@@ -33,6 +33,8 @@ using std::vector;
 #endif
 
 #include <iostream>
+#include <random>
+#include <algorithm>
 #include <map>
 #include <set>
 #include <vector>
@@ -342,6 +344,9 @@ int main(int argc, char** argv)
     //FIRST is variable we want to test for
     //SECOND is what we have to assumoe (in negative)
     map<uint32_t, uint32_t> testvar_to_assump;
+    map<uint32_t, uint32_t> assump_to_testvar;
+
+
     for(const auto& var: unknown) {
         solver->new_var();
         uint32_t ass = solver->nVars()-1;
@@ -356,16 +361,28 @@ int main(int argc, char** argv)
         tmp[2] = ~tmp[2];
         solver->add_clause(tmp);
         testvar_to_assump[var] = ass;
+        assump_to_testvar[ass] = var;
     }
     cout << "[mis] Start unknown size: " << unknown.size() << endl;
 
     double start_iter_time = cpuTime();
     uint32_t not_indep = 0;
     vector<Lit> assumptions;
+    vector<char> seen;
+    seen.resize(solver->nVars(), 0);
+    uint32_t iter = 0;
+    bool slow_mode = false;
     while(!unknown.empty()) {
+        bool old_mode = slow_mode;
         assumptions.clear();
-        uint32_t test_var = *unknown.begin();
-        unknown.erase(test_var);
+
+        uint32_t test_var = var_Undef;
+        if (slow_mode) {
+            test_var = *unknown.begin();
+            unknown.erase(test_var);
+        } else {
+            solver->forget();
+        }
 
         //Add unknown as assumptions
         for(const auto& var: unknown) {
@@ -380,34 +397,82 @@ int main(int argc, char** argv)
         }
 
         double myTime = cpuTime();
+        std::random_shuffle(assumptions.begin(), assumptions.end());
         lbool ret = solver->solve(&assumptions);
         assert(ret != l_Undef);
+        //anything that's NOT in the reason is dependent.
+
+        uint32_t num_removed = 0;
         if (ret == l_True) {
+            assert(slow_mode);
             indep.push_back(test_var);
+            num_removed++;
         } else {
-            //not independent.
-            tmp.clear();
-            tmp.push_back(Lit(testvar_to_assump[test_var], false));
-            solver->add_clause(tmp);
-            assert(ret == l_False);
-            not_indep++;
+            if (slow_mode) {
+                //not independent
+                uint32_t var = test_var;
+                tmp.clear();
+                tmp.push_back(Lit(testvar_to_assump[var], false));
+                solver->add_clause(tmp);
+                not_indep++;
+                num_removed++;
+                slow_mode = false;
+            } else {
+                vector<Lit> reason = solver->get_conflict();
+                cout << "reason size: " << reason.size() << endl;
+                for(Lit l: reason) {
+                    seen[l.var()] = true;
+                }
+                vector<uint32_t> not_in_reason;
+                for(Lit l: assumptions) {
+                    if (!seen[l.var()]) {
+                        not_in_reason.push_back(l.var());
+                    }
+                }
+                for(Lit l: reason) {
+                    seen[l.var()] = false;
+                }
+                cout << "not in reason: " << not_in_reason.size() << endl;
+
+                //not independent.
+                for(uint32_t ass: not_in_reason) {
+                    uint32_t var = assump_to_testvar[ass];
+                    tmp.clear();
+                    assert(testvar_to_assump[var] == ass);
+                    tmp.push_back(Lit(testvar_to_assump[var], false));
+                    solver->add_clause(tmp);
+                    not_indep++;
+                    num_removed++;
+                    unknown.erase(var);
+                }
+                if (not_indep < 2) {
+                    slow_mode = true;
+                }
+            }
         }
+
         cout
-        << "[mis] testing var: " << std::setw(7) << test_var+1
-        << " indep: " << (int)(ret == l_True)
+        << "[mis] iter: "
+        << " mode: " << (old_mode ? "slow" : "fast")
+        << " ret: " << std::setw(8) << ret
         << " U: " << std::setw(7) << unknown.size()
         << " I: " << std::setw(7) << indep.size()
         << " N: " << std::setw(7) << not_indep
+        << " Rem : " << std::setw(7) << num_removed
         << " T: "
         << std::setprecision(2) << std::fixed << (cpuTime() - myTime)
         << endl;
+        iter++;
     }
     cout
-    << "[mis] Final indep: " << std::setw(7) << indep.size()
+    << "[mis] Final indep: " << std::setw(7) << unknown.size()+indep.size()
     << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_iter_time)
     << endl;
 
     cout << "c ind ";
+    for(const auto& var: unknown) {
+        cout << var+1 << " ";
+    }
     for(const auto& var: indep) {
         cout << var+1 << " ";
     }
