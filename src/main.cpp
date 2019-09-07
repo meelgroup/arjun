@@ -33,6 +33,9 @@ using std::vector;
 #endif
 
 #include <iostream>
+#include <map>
+#include <set>
+#include <vector>
 #include "time_mem.h"
 #include "GitSHA1.h"
 #include <cryptominisat5/cryptominisat.h>
@@ -43,6 +46,8 @@ using namespace CMSat;
 using std::cout;
 using std::cerr;
 using std::endl;
+using std::map;
+using std::set;
 
 po::options_description mis_options = po::options_description("MIS options");
 po::options_description help_options;
@@ -50,11 +55,11 @@ po::variables_map vm;
 po::positional_options_description p;
 CMSat::SATSolver* solver = NULL;
 double startTime;
+vector<uint32_t> sampling_set;
 
 struct Config {
     int verb = 0;
     int seed = 0;
-    vector<uint32_t> sampling_set;
 };
 
 Config conf;
@@ -177,15 +182,14 @@ void add_supported_options(int argc, char** argv)
     }
 }
 
-void readInAFile(const string& filename)
+void readInAFile(const string& filename, uint32_t var_offset, bool get_sampling_set)
 {
-    solver->add_sql_tag("filename", filename);
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<FILE*, FN> > parser(solver, NULL, 2);
+    DimacsParser<StreamBuffer<FILE*, FN> > parser(solver, NULL, 0);
     #else
     gzFile in = gzopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<gzFile, GZ> > parser(solver, NULL, 2);
+    DimacsParser<StreamBuffer<gzFile, GZ> > parser(solver, NULL, 0);
     #endif
 
     if (in == NULL) {
@@ -197,11 +201,12 @@ void readInAFile(const string& filename)
         std::exit(-1);
     }
 
-    if (!parser.parse_DIMACS(in, false)) {
+    if (!parser.parse_DIMACS(in, false, var_offset)) {
         exit(-1);
     }
-
-    conf.sampling_set.swap(parser.sampling_vars);
+    if (get_sampling_set) {
+        sampling_set = parser.sampling_vars;
+    }
 
     #ifndef USE_ZLIB
         fclose(in);
@@ -210,62 +215,27 @@ void readInAFile(const string& filename)
     #endif
 }
 
-void readInStandardInput()
+void update_and_print_sampling_vars()
 {
-    cout
-    << "c Reading from standard input... Use '-h' or '--help' for help."
-    << endl;
-
-    #ifndef USE_ZLIB
-    FILE * in = stdin;
-    #else
-    gzFile in = gzdopen(0, "rb"); //opens stdin, which is 0
-    #endif
-
-    if (in == NULL) {
-        std::cerr << "ERROR! Could not open standard input for reading" << endl;
-        std::exit(1);
-    }
-
-    #ifndef USE_ZLIB
-    DimacsParser<StreamBuffer<FILE*, FN> > parser(solver, NULL, 2);
-    #else
-    DimacsParser<StreamBuffer<gzFile, GZ> > parser(solver, NULL, 2);
-    #endif
-
-    if (!parser.parse_DIMACS(in, false)) {
-        exit(-1);
-    }
-
-    conf.sampling_set.swap(parser.sampling_vars);
-
-    #ifdef USE_ZLIB
-        gzclose(in);
-    #endif
-}
-
-void set_sampling_vars()
-{
-    if (conf.sampling_set.empty()) {
+    if (sampling_set.empty()) {
         cout
         << "[mis] No sample set given, starting with full" << endl;
         for (size_t i = 0; i < solver->nVars(); i++) {
-            conf.sampling_set.push_back(i);
+            sampling_set.push_back(i);
         }
     }
-    cout << "[mis] Sampling set size: " << conf.sampling_set.size() << endl;
-    if (conf.sampling_set.size() > 100) {
+    cout << "[mis] Sampling set size: " << sampling_set.size() << endl;
+    if (sampling_set.size() > 100) {
         cout
         << "[mis] Sampling var set contains over 100 variables, not displaying"
         << endl;
     } else {
         cout << "[mis] Sampling set: ";
-        for (auto v: conf.sampling_set) {
+        for (auto v: sampling_set) {
             cout << v+1 << ", ";
         }
         cout << endl;
     }
-    solver->set_sampling_vars(&conf.sampling_set);
 }
 
 int main(int argc, char** argv)
@@ -289,16 +259,159 @@ int main(int argc, char** argv)
     }
 
     //parsing the input
-    if (vm.count("input") != 0) {
-        string inp = vm["input"].as<string>();
-        if (inp.size() > 1) {
-            cout << "[mis] ERROR: can only parse in one file" << endl;
-        }
-        readInAFile(inp.c_str());
-    } else {
-        readInStandardInput();
+    if (vm.count("input") == 0) {
+        cout << "ERROR: you must pass a file" << endl;
     }
-    set_sampling_vars();
+    const string inp = vm["input"].as<string>();
+
+    //Read in file and set sampling set
+    readInAFile(inp.c_str(), 0, true);
+    update_and_print_sampling_vars();
+
+    //Read in file again, with offset
+    const uint32_t orig_num_vars = solver->nVars();
+    readInAFile(inp.c_str(), orig_num_vars, false);
+
+    //Set up solver
+    solver->set_no_bve();
+    solver->set_no_bva();
+    solver->set_up_for_scalmc();
+    //solver->set_verbosity(2);
+
+    //Print stats
+    cout << "Orig number of variables: " << orig_num_vars << endl;
+    cout << "Cur number of variables : " << solver->nVars() << endl;
+
+    vector<uint32_t> indic;
+
+    vector<Lit> tmp;
+    //Indicator variable is TRUE when they are NOT equal
+    for(uint32_t i = 0; i < orig_num_vars; i++) {
+        //(a=b) = !f
+        //a  V -b V  f
+        //-a V  b V  f
+        //a  V  b V -f
+        //-a V -b V -f
+        solver->new_var();
+        uint32_t this_indic = solver->nVars()-1;
+        indic.push_back(this_indic);
+
+        tmp.clear();
+        tmp.push_back(Lit(i,               false));
+        tmp.push_back(Lit(i+orig_num_vars, true));
+        tmp.push_back(Lit(this_indic,      false));
+        solver->add_clause(tmp);
+
+        tmp.clear();
+        tmp.push_back(Lit(i,               true));
+        tmp.push_back(Lit(i+orig_num_vars, false));
+        tmp.push_back(Lit(this_indic,      false));
+        solver->add_clause(tmp);
+
+        tmp.clear();
+        tmp.push_back(Lit(i,               false));
+        tmp.push_back(Lit(i+orig_num_vars, false));
+        tmp.push_back(Lit(this_indic,      true));
+        solver->add_clause(tmp);
+
+        tmp.clear();
+        tmp.push_back(Lit(i,               true));
+        tmp.push_back(Lit(i+orig_num_vars, true));
+        tmp.push_back(Lit(this_indic,      true));
+        solver->add_clause(tmp);
+    }
+
+    //OR together the indicators: one of them must NOT be equal
+    //indicator tells us when they are NOT equal. One among them MUST be NOT equal
+    //hence at least one indicator variable must be TRUE
+    assert(indic.size() == orig_num_vars);
+    tmp.clear();
+    for(uint32_t var: indic) {
+        tmp.push_back(Lit(var, false));
+    }
+    solver->add_clause(tmp);
+
+    //Initially, all of independent set is unknown
+    set<uint32_t> unknown;
+    unknown.insert(sampling_set.begin(), sampling_set.end());
+
+    //start with empty independent set
+    vector<uint32_t> indep;
+
+    //testvar_to_assump:
+    //FIRST is variable we want to test for
+    //SECOND is what we have to assumoe (in negative)
+    map<uint32_t, uint32_t> testvar_to_assump;
+    for(const auto& var: unknown) {
+        solver->new_var();
+        uint32_t ass = solver->nVars()-1;
+
+        tmp.clear();
+        tmp.push_back(Lit(ass, false));
+        tmp.push_back(Lit(var, false));
+        tmp.push_back(Lit(var+orig_num_vars, true));
+        solver->add_clause(tmp);
+
+        tmp[1] = ~tmp[1];
+        tmp[2] = ~tmp[2];
+        solver->add_clause(tmp);
+        testvar_to_assump[var] = ass;
+    }
+    cout << "[mis] Start unknown size: " << unknown.size() << endl;
+
+    double start_iter_time = cpuTime();
+    uint32_t not_indep = 0;
+    vector<Lit> assumptions;
+    while(!unknown.empty()) {
+        assumptions.clear();
+        uint32_t test_var = *unknown.begin();
+        unknown.erase(test_var);
+
+        //Add unknown as assumptions
+        for(const auto& var: unknown) {
+            uint32_t ass = testvar_to_assump[var];
+            assumptions.push_back(Lit(ass, true));
+        }
+
+        //Add known independent as assumptions
+        for(const auto& var: indep) {
+            uint32_t ass = testvar_to_assump[var];
+            assumptions.push_back(Lit(ass, true));
+        }
+
+        double myTime = cpuTime();
+        lbool ret = solver->solve(&assumptions);
+        assert(ret != l_Undef);
+        if (ret == l_True) {
+            indep.push_back(test_var);
+        } else {
+            //not independent.
+            tmp.clear();
+            tmp.push_back(Lit(testvar_to_assump[test_var], false));
+            solver->add_clause(tmp);
+            assert(ret == l_False);
+            not_indep++;
+        }
+        cout
+        << "[mis] testing var: " << std::setw(7) << test_var+1
+        << " indep: " << (int)(ret == l_True)
+        << " U: " << std::setw(7) << unknown.size()
+        << " I: " << std::setw(7) << indep.size()
+        << " N: " << std::setw(7) << not_indep
+        << " T: "
+        << std::setprecision(2) << std::fixed << (cpuTime() - myTime)
+        << endl;
+    }
+    cout
+    << "[mis] Final indep: " << std::setw(7) << indep.size()
+    << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_iter_time)
+    << endl;
+
+    cout << "c ind ";
+    for(const auto& var: indep) {
+        cout << var+1 << " ";
+    }
+    cout << "0" << endl;
 
     return 0;
 }
