@@ -421,7 +421,10 @@ int main(int argc, char** argv)
             //solver->forget_long_cls(0, torem);
         }
         if (iter ==0) {
+            double myTime = cpuTime();
+            cout << "Simplifying..." << endl;
             solver->simplify(&assumptions);
+            cout << "Done. T: " << (cpuTime() - myTime) << endl;
         }
         lbool ret = solver->solve(&assumptions);
         assert(ret != l_Undef);
