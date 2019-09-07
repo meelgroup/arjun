@@ -40,6 +40,7 @@ using std::vector;
 #include <vector>
 #include "time_mem.h"
 #include "GitSHA1.h"
+#include "MersenneTwister.h"
 #include <cryptominisat5/cryptominisat.h>
 #include "cryptominisat5/dimacsparser.h"
 #include "cryptominisat5/streambuffer.h"
@@ -65,6 +66,7 @@ struct Config {
 };
 
 Config conf;
+MTRand mtrand;
 
 void add_mis_options()
 {
@@ -255,6 +257,7 @@ int main(int argc, char** argv)
     cout << "[mis] using seed: " << conf.seed << endl;
 
     startTime = cpuTimeTotal();
+    mtrand.seed(conf.seed);
     solver = new SATSolver();
     if (conf.verb > 2) {
         solver->set_verbosity(conf.verb-2);
@@ -276,8 +279,8 @@ int main(int argc, char** argv)
 
     //Set up solver
     vector<Lit> torem_orig;
-    solver->set_no_bve();
-    solver->set_no_bva();
+    //solver->set_no_bve();
+    //solver->set_no_bva();
     solver->set_up_for_scalmc();
     //solver->set_verbosity(2);
 
@@ -388,7 +391,13 @@ int main(int argc, char** argv)
 
         uint32_t test_var = var_Undef;
         if (slow_mode) {
-            test_var = *unknown.begin();
+            //TODO improve
+            vector<uint32_t> pick;
+            for(const auto& x: unknown) {
+                pick.push_back(x);
+            }
+            test_var = pick[mtrand.randInt(pick.size()-1)];
+            test_var = pick[pick.size()-1];
             unknown.erase(test_var);
         }
 
@@ -410,7 +419,7 @@ int main(int argc, char** argv)
         }
 
         double myTime = cpuTime();
-        std::random_shuffle(assumptions.begin(), assumptions.end());
+        //std::random_shuffle(assumptions.begin(), assumptions.end());
         /*cout << "ass: ";
         for(uint32_t i = 0; i < assumptions.size(); i ++) {
             cout << assumptions[i] << " ";
