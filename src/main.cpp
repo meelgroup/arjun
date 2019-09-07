@@ -377,7 +377,7 @@ int main(int argc, char** argv)
     uint32_t num_fast = 0;
     while(!unknown.empty()) {
         if (!slow_mode) {
-            if (num_fast < 10) {
+            if (iter % 100 == 0 ||  iter < 1) {
                 num_fast ++;
             } else {
                 slow_mode = true;
@@ -417,7 +417,8 @@ int main(int argc, char** argv)
         }
         cout << "0" << endl;*/
         if (!slow_mode) {
-            solver->forget_long_cls(0, torem);
+            //solver->simplify(&assumptions);
+            //solver->forget_long_cls(0, torem);
         }
         if (iter ==0) {
             solver->simplify(&assumptions);
@@ -477,7 +478,7 @@ int main(int argc, char** argv)
         }
 
         cout
-        << "[mis] iter: "
+        << "[mis] iter: " << std::setw(8) << iter
         << " mode: " << (old_mode ? "slow" : "fast")
         << " ret: " << std::setw(8) << ret
         << " U: " << std::setw(7) << unknown.size()
