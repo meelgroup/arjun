@@ -275,6 +275,7 @@ int main(int argc, char** argv)
     readInAFile(inp.c_str(), orig_num_vars, false);
 
     //Set up solver
+    vector<Lit> torem_orig;
     solver->set_no_bve();
     solver->set_no_bva();
     solver->set_up_for_scalmc();
@@ -296,6 +297,7 @@ int main(int argc, char** argv)
         //-a V -b V -f
         solver->new_var();
         uint32_t this_indic = solver->nVars()-1;
+        torem_orig.push_back(Lit(this_indic, false));
         indic.push_back(this_indic);
 
         tmp.clear();
@@ -372,7 +374,15 @@ int main(int argc, char** argv)
     seen.resize(solver->nVars(), 0);
     uint32_t iter = 0;
     bool slow_mode = false;
+    uint32_t num_fast = 0;
     while(!unknown.empty()) {
+        if (!slow_mode) {
+            if (num_fast < 10) {
+                num_fast ++;
+            } else {
+                slow_mode = true;
+            }
+        }
         bool old_mode = slow_mode;
         assumptions.clear();
 
@@ -380,24 +390,38 @@ int main(int argc, char** argv)
         if (slow_mode) {
             test_var = *unknown.begin();
             unknown.erase(test_var);
-        } else {
-            solver->forget();
         }
 
         //Add unknown as assumptions
+        vector<Lit> torem(torem_orig);
         for(const auto& var: unknown) {
+            //torem.push_back(Lit(var, false));
             uint32_t ass = testvar_to_assump[var];
             assumptions.push_back(Lit(ass, true));
+            torem.push_back(Lit(ass, false));
         }
 
         //Add known independent as assumptions
         for(const auto& var: indep) {
+            //torem.push_back(Lit(var, false));
             uint32_t ass = testvar_to_assump[var];
             assumptions.push_back(Lit(ass, true));
+            torem.push_back(Lit(ass, false));
         }
 
         double myTime = cpuTime();
         std::random_shuffle(assumptions.begin(), assumptions.end());
+        /*cout << "ass: ";
+        for(uint32_t i = 0; i < assumptions.size(); i ++) {
+            cout << assumptions[i] << " ";
+        }
+        cout << "0" << endl;*/
+        if (!slow_mode) {
+            solver->forget_long_cls(0, torem);
+        }
+        if (iter ==0) {
+            solver->simplify(&assumptions);
+        }
         lbool ret = solver->solve(&assumptions);
         assert(ret != l_Undef);
         //anything that's NOT in the reason is dependent.
@@ -407,6 +431,7 @@ int main(int argc, char** argv)
             assert(slow_mode);
             indep.push_back(test_var);
             num_removed++;
+            slow_mode = false;
         } else {
             if (slow_mode) {
                 //not independent
@@ -419,7 +444,7 @@ int main(int argc, char** argv)
                 slow_mode = false;
             } else {
                 vector<Lit> reason = solver->get_conflict();
-                cout << "reason size: " << reason.size() << endl;
+                //cout << "reason size: " << reason.size() << endl;
                 for(Lit l: reason) {
                     seen[l.var()] = true;
                 }
@@ -432,7 +457,7 @@ int main(int argc, char** argv)
                 for(Lit l: reason) {
                     seen[l.var()] = false;
                 }
-                cout << "not in reason: " << not_in_reason.size() << endl;
+                //cout << "not in reason: " << not_in_reason.size() << endl;
 
                 //not independent.
                 for(uint32_t ass: not_in_reason) {
@@ -445,7 +470,7 @@ int main(int argc, char** argv)
                     num_removed++;
                     unknown.erase(var);
                 }
-                if (not_indep < 2) {
+                if (num_removed < 2) {
                     slow_mode = true;
                 }
             }
