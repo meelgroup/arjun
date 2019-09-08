@@ -62,6 +62,8 @@ vector<uint32_t> sampling_set;
 vector<Lit> tmp;
 vector<char> seen;
 uint32_t orig_num_vars;
+uint32_t total_eq_removed = 0;
+uint32_t total_set_removed = 0;
 
 struct Config {
     int verb = 0;
@@ -76,7 +78,8 @@ struct Config {
 Config conf;
 MTRand mtrand;
 
-void remove_eq_literals();
+void remove_eq_literals(set<uint32_t>* unknown = NULL);
+void remove_zero_assigned_literals(set<uint32_t>* unknown = NULL);
 void add_mis_options()
 {
     std::ostringstream my_epsilon;
@@ -352,7 +355,7 @@ void fill_assumptions(
 
 vector<uint32_t> one_round(uint32_t by)
 {
-    startTime = cpuTimeTotal();
+    double start_round_time = cpuTimeTotal();
     //start with empty independent set
     vector<uint32_t> indep;
 
@@ -396,7 +399,6 @@ vector<uint32_t> one_round(uint32_t by)
     seen.resize(solver->nVars(), 0);
     vector<Lit> assumptions;
 
-    double start_iter_time = cpuTime();
     uint32_t iter = 0;
     bool one_by_one_mode = conf.always_one_by_one;
     uint32_t num_fast = 0;
@@ -446,14 +448,18 @@ vector<uint32_t> one_round(uint32_t by)
         }
         if (iter == 0 && conf.simp_at_start) {
             double simp_time = cpuTime();
-            cout << "Simplifying..." << endl;
+            cout << "[mis] Simplifying..." << endl;
             solver->simplify(&all_assumption_lits);
-            remove_eq_literals();
-            cout << "Done. T: " << (cpuTime() - simp_time) << endl;
+            remove_eq_literals(&unknown);
+            remove_zero_assigned_literals(&unknown);
+            cout << "[mis] Simplify finished. T: " << (cpuTime() - simp_time) << endl;
         }
         lbool ret = solver->solve(&assumptions);
         assert(ret != l_Undef);
-        //anything that's NOT in the reason is dependent.
+        if (!one_by_one_mode) {
+            remove_eq_literals(&unknown);
+            remove_zero_assigned_literals(&unknown);
+        }
 
         uint32_t num_removed = 0;
         if (ret == l_True) {
@@ -464,7 +470,6 @@ vector<uint32_t> one_round(uint32_t by)
                 indep.push_back(var);
                 num_removed++;
             }
-            one_by_one_mode = false;
         } else {
             if (one_by_one_mode) {
                 //not independent
@@ -474,7 +479,6 @@ vector<uint32_t> one_round(uint32_t by)
                 tmp.push_back(Lit(ass, false));
                 solver->add_clause(tmp);
                 not_indep += assump_to_testvars[ass].size();
-                one_by_one_mode = false;
             } else {
                 vector<Lit> reason = solver->get_conflict();
                 //cout << "reason size: " << reason.size() << endl;
@@ -490,7 +494,7 @@ vector<uint32_t> one_round(uint32_t by)
                 for(Lit l: reason) {
                     seen[l.var()] = false;
                 }
-                cout << "not in reason size: " << not_in_reason.size() << endl;
+                //cout << "not in reason size: " << not_in_reason.size() << endl;
 
                 //not independent.
                 for(uint32_t ass: not_in_reason) {
@@ -510,12 +514,7 @@ vector<uint32_t> one_round(uint32_t by)
                     tmp.push_back(Lit(testvar_to_assump[vars[0]], false));
                     solver->add_clause(tmp);
                 }
-                cout << "fin unknown size: " << unknown.size() << endl;
-
-
-                if (num_removed < 2) {
-                    one_by_one_mode = true;
-                }
+                //cout << "fin unknown size: " << unknown.size() << endl;
             }
         }
 
@@ -533,7 +532,7 @@ vector<uint32_t> one_round(uint32_t by)
         iter++;
     }
     cout << "[mis] one_round finished T: "
-    << std::setprecision(2) << std::fixed << (cpuTime() - start_iter_time)
+    << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
     << endl;
 
     //clear clauses to do with assumptions
@@ -553,7 +552,7 @@ vector<uint32_t> one_round(uint32_t by)
     return final_indep;
 }
 
-void remove_zero_assigned_literals()
+void remove_zero_assigned_literals(set<uint32_t>* unknown)
 {
     //Remove zero-assigned literals
     seen.clear();
@@ -571,16 +570,21 @@ void remove_zero_assigned_literals()
         if (seen[i]) {
             sampling_set.push_back(i);
             seen[i] = 0;
+        } else {
+            if (unknown) {
+                unknown->erase(i);
+            }
         }
     }
-    cout << "[mis] Removed set       : "
-    << (orig_sampling_set_size - sampling_set.size()) << endl;
+    if (orig_sampling_set_size - sampling_set.size() > 0) {
+        total_set_removed += orig_sampling_set_size - sampling_set.size();
+        cout << "[mis] Removed set       : "
+        << (orig_sampling_set_size - sampling_set.size()) << endl;
+    }
 }
 
-void remove_eq_literals()
+void remove_eq_literals(set<uint32_t>* unknown)
 {
-    solver->run_scc_vrepl();
-
     seen.clear();
     seen.resize(solver->nVars(), 0);
     uint32_t orig_sampling_set_size = sampling_set.size();
@@ -600,15 +604,23 @@ void remove_eq_literals()
         if (seen[i]) {
             sampling_set.push_back(i);
             seen[i] = 0;
+        } else {
+            if (unknown) unknown->erase(i);
         }
     }
-    cout << "[mis] Removed equivalent: "
-    << (orig_sampling_set_size - sampling_set.size()) << endl;
+
+    total_eq_removed += orig_sampling_set_size - sampling_set.size();
+    if (orig_sampling_set_size - sampling_set.size() > 0) {
+        cout << "[mis] Removed equivalent: "
+        << (orig_sampling_set_size - sampling_set.size())
+        << endl;
+    }
 
 }
 
 void init_solver_setup()
 {
+    double myTime = cpuTime();
     solver = new SATSolver();
     if (conf.verb > 2) {
         solver->set_verbosity(conf.verb-2);
@@ -623,7 +635,6 @@ void init_solver_setup()
     //Read in file and set sampling_set in case we are starting with empty
     readInAFile(inp.c_str(), 0, sampling_set.empty());
     update_and_print_sampling_vars(conf.recompute_sampling_set);
-    remove_eq_literals();
     remove_zero_assigned_literals();
 
 
@@ -643,6 +654,7 @@ void init_solver_setup()
 
     //Print stats
     add_fixed_clauses();
+    cout << "[mis] Setup time: " << (cpuTime()-myTime) << endl;
 }
 
 int main(int argc, char** argv)
@@ -661,6 +673,9 @@ int main(int argc, char** argv)
     double starTime = cpuTime();
     mtrand.seed(conf.seed);
     init_solver_setup();
+    if (sampling_set.size() > 20000) {
+        sampling_set = one_round(10000);
+    }
     if (sampling_set.size() > 2000) {
         sampling_set = one_round(1000);
     }
