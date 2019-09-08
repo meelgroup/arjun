@@ -314,6 +314,29 @@ void add_fixed_clauses(const uint32_t orig_num_vars)
     solver->add_clause(tmp);
 }
 
+void fill_assumptions(
+    vector<Lit>& assumptions,
+    const set<uint32_t>& unknown,
+    const vector<uint32_t>& indep,
+    map<uint32_t, uint32_t>& testvar_to_assump
+)
+{
+    assumptions.clear();
+
+    //Add unknown as assumptions
+    for(const auto& var: unknown) {
+        uint32_t ass = testvar_to_assump[var];
+        assumptions.push_back(Lit(ass, true));
+    }
+
+    //Add known independent as assumptions
+    for(const auto& var: indep) {
+        uint32_t ass = testvar_to_assump[var];
+        assumptions.push_back(Lit(ass, true));
+    }
+
+}
+
 vector<uint32_t> one_round(
     uint32_t by = 1
 )
@@ -404,7 +427,6 @@ vector<uint32_t> one_round(
         if (conf.always_one_by_one) {
             one_by_one_mode = true;
         }
-        assumptions.clear();
         bool old_mode = one_by_one_mode;
 
         uint32_t test_var = var_Undef;
@@ -418,18 +440,7 @@ vector<uint32_t> one_round(
             test_var = pick[pick.size()-1];
             unknown.erase(test_var);
         }
-
-        //Add unknown as assumptions
-        for(const auto& var: unknown) {
-            uint32_t ass = testvar_to_assump[var];
-            assumptions.push_back(Lit(ass, true));
-        }
-
-        //Add known independent as assumptions
-        for(const auto& var: indep) {
-            uint32_t ass = testvar_to_assump[var];
-            assumptions.push_back(Lit(ass, true));
-        }
+        fill_assumptions(assumptions, unknown, indep, testvar_to_assump);
 
         double myTime = cpuTime();
         //std::random_shuffle(assumptions.begin(), assumptions.end());
