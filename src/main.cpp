@@ -273,7 +273,7 @@ void add_fixed_clauses()
     vector<uint32_t> indic;
 
     //Indicator variable is TRUE when they are NOT equal
-    for(uint32_t i = 0; i < orig_num_vars; i++) {
+    for(uint32_t i: sampling_set) {
         //(a=b) = !f
         //a  V -b V  f
         //-a V  b V  f
@@ -312,7 +312,7 @@ void add_fixed_clauses()
     //OR together the indicators: one of them must NOT be equal
     //indicator tells us when they are NOT equal. One among them MUST be NOT equal
     //hence at least one indicator variable must be TRUE
-    assert(indic.size() == orig_num_vars);
+    assert(indic.size() == sampling_set.size());
     tmp.clear();
     for(uint32_t var: indic) {
         tmp.push_back(Lit(var, false));
