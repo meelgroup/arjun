@@ -410,7 +410,7 @@ vector<uint32_t> one_round(uint32_t by)
         if (conf.always_one_by_one) {
             one_by_one_mode = true;
         }
-        bool old_mode = one_by_one_mode;
+        bool old_one_by_one_mode = one_by_one_mode;
 
         uint32_t test_var = var_Undef;
         if (one_by_one_mode) {
@@ -518,7 +518,7 @@ vector<uint32_t> one_round(uint32_t by)
 
         cout
         << "[mis] iter: " << std::setw(8) << iter
-        << " mode: " << (old_mode ? "slow" : "fast")
+        << " mode: " << (old_one_by_one_mode ? "one " : "many")
         << " ret: " << std::setw(8) << ret
         << " U: " << std::setw(7) << unknown.size()
         << " I: " << std::setw(7) << indep.size()
