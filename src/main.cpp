@@ -456,7 +456,6 @@ vector<uint32_t> one_round()
             assert(one_by_one_mode);
             indep.push_back(test_var);
             num_removed++;
-            unknown.erase(test_var);
             one_by_one_mode = false;
         } else {
             if (one_by_one_mode) {
@@ -467,7 +466,6 @@ vector<uint32_t> one_round()
                 solver->add_clause(tmp);
                 not_indep++;
                 num_removed++;
-                unknown.erase(var);
                 one_by_one_mode = false;
             } else {
                 vector<Lit> reason = solver->get_conflict();
