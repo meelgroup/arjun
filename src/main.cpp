@@ -550,6 +550,30 @@ vector<uint32_t> one_round(uint32_t by)
     return final_indep;
 }
 
+void remove_zero_assigned_literals()
+{
+    //Remove zero-assigned literals
+    seen.clear();
+    seen.resize(solver->nVars(), 0);
+    uint32_t orig_sampling_set_size = sampling_set.size();
+    for(auto x: sampling_set) {
+        seen[x] = 1;
+    }
+    const auto zero_ass = solver->get_zero_assigned_lits();
+    for(Lit l: zero_ass) {
+        seen[l.var()] = 0;
+    }
+    sampling_set.clear();
+    for(uint32_t i = 0; i < seen.size(); i++) {
+        if (seen[i]) {
+            sampling_set.push_back(i);
+            seen[i] = 0;
+        }
+    }
+    cout << "[mis] Removed from sampling due to being set: "
+    << (orig_sampling_set_size - sampling_set.size()) << endl;
+}
+
 void init_solver_setup()
 {
     solver = new SATSolver();
@@ -566,6 +590,8 @@ void init_solver_setup()
     //Read in file and set sampling_set in case we are starting with empty
     readInAFile(inp.c_str(), 0, sampling_set.empty());
     update_and_print_sampling_vars(conf.recompute_sampling_set);
+    remove_zero_assigned_literals();
+
 
     //Read in file again, with offset
     orig_num_vars = solver->nVars();
