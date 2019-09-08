@@ -602,9 +602,15 @@ int main(int argc, char** argv)
     double starTime = cpuTime();
     mtrand.seed(conf.seed);
     init_solver_setup();
-    sampling_set = one_round(1000);
-    sampling_set = one_round(100);
-    sampling_set = one_round(10);
+    if (sampling_set.size() > 3000) {
+        sampling_set = one_round(1000);
+    }
+    if (sampling_set.size() > 300) {
+        sampling_set = one_round(100);
+    }
+    if (sampling_set.size() > 30) {
+        sampling_set = one_round(10);
+    }
     sampling_set = one_round(1);
 
     cout
