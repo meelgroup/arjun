@@ -64,6 +64,7 @@ vector<char> seen;
 uint32_t orig_num_vars;
 uint32_t total_eq_removed = 0;
 uint32_t total_set_removed = 0;
+enum ModeType {one_mode, many_mode, inverse_mode};
 
 struct Config {
     int verb = 0;
@@ -400,24 +401,24 @@ vector<uint32_t> one_round(uint32_t by)
     vector<Lit> assumptions;
 
     uint32_t iter = 0;
-    bool one_by_one_mode = conf.always_one_by_one;
+    ModeType one_by_one_mode = conf.always_one_by_one ? one_mode : many_mode;
     uint32_t num_fast = 0;
     uint32_t not_indep = 0;
     while(!unknown.empty()) {
-        if (!one_by_one_mode) {
+        if (one_by_one_mode != one_mode) {
             if (iter % 100 == 0 ||  iter < 1) {
                 num_fast ++;
             } else {
-                one_by_one_mode = true;
+                one_by_one_mode = one_mode;
             }
         }
         if (conf.always_one_by_one) {
-            one_by_one_mode = true;
+            one_by_one_mode = one_mode;
         }
         bool old_one_by_one_mode = one_by_one_mode;
 
         uint32_t test_var = var_Undef;
-        if (one_by_one_mode) {
+        if (one_by_one_mode == one_mode) {
             //TODO improve
             vector<uint32_t> pick;
             for(const auto& unk_v: unknown) {
@@ -443,9 +444,6 @@ vector<uint32_t> one_round(uint32_t by)
             cout << assumptions[i] << " ";
         }
         cout << "0" << endl;*/
-        if (!one_by_one_mode) {
-            //solver->simplify(&assumptions);
-        }
         if (iter == 0 && conf.simp_at_start) {
             double simp_time = cpuTime();
             cout << "[mis] Simplifying..." << endl;
@@ -456,22 +454,23 @@ vector<uint32_t> one_round(uint32_t by)
         }
         lbool ret = solver->solve(&assumptions);
         assert(ret != l_Undef);
-        if (!one_by_one_mode) {
+        if (one_by_one_mode == many_mode) {
             remove_eq_literals(&unknown);
             remove_zero_assigned_literals(&unknown);
         }
 
-        uint32_t num_removed = 0;
+        uint32_t independent = 0;
         if (ret == l_True) {
-            assert(one_by_one_mode);
+            //Independent
+            assert(one_by_one_mode == one_mode);
             uint32_t ass = testvar_to_assump[test_var];
             const auto& vars = assump_to_testvars[ass];
             for(uint32_t var: vars) {
                 indep.push_back(var);
-                num_removed++;
+                independent++;
             }
         } else {
-            if (one_by_one_mode) {
+            if (one_by_one_mode == one_mode) {
                 //not independent
                 uint32_t var = test_var;
                 uint32_t ass = testvar_to_assump[var];
@@ -504,7 +503,6 @@ vector<uint32_t> one_round(uint32_t by)
                     //Remove from unknown
                     for(uint32_t var: vars) {
                         not_indep++;
-                        num_removed++;
                         unknown.erase(var);
                     }
 
@@ -520,12 +518,11 @@ vector<uint32_t> one_round(uint32_t by)
 
         cout
         << "[mis] iter: " << std::setw(8) << iter
-        << " mode: " << (old_one_by_one_mode ? "one " : "many")
+        << " mode: " << (old_one_by_one_mode==one_mode ? "one " : "many")
         << " ret: " << std::setw(8) << ret
         << " U: " << std::setw(7) << unknown.size()
         << " I: " << std::setw(7) << indep.size()
         << " N: " << std::setw(7) << not_indep
-        << " Rem : " << std::setw(7) << num_removed
         << " T: "
         << std::setprecision(2) << std::fixed << (cpuTime() - myTime)
         << endl;
