@@ -59,6 +59,8 @@ po::positional_options_description p;
 CMSat::SATSolver* solver = NULL;
 double startTime;
 vector<uint32_t> sampling_set;
+vector<Lit> tmp;
+vector<char> seen;
 
 struct Config {
     int verb = 0;
@@ -260,46 +262,10 @@ void update_and_print_sampling_vars()
     }
 }
 
-vector<uint32_t> one_round()
+void add_fixed_clauses(const uint32_t orig_num_vars)
 {
-    startTime = cpuTimeTotal();
-    solver = new SATSolver();
-    if (conf.verb > 2) {
-        solver->set_verbosity(conf.verb-2);
-    }
-
-    //parsing the input
-    if (vm.count("input") == 0) {
-        cout << "ERROR: you must pass a file" << endl;
-    }
-    const string inp = vm["input"].as<string>();
-
-    //Read in file and set sampling set
-    readInAFile(inp.c_str(), 0, true);
-    update_and_print_sampling_vars();
-
-    //Read in file again, with offset
-    const uint32_t orig_num_vars = solver->nVars();
-    readInAFile(inp.c_str(), orig_num_vars, false);
-
-    //Set up solver
-    vector<Lit> torem_orig;
-    if (!conf.bva) {
-        solver->set_no_bve();
-    }
-    if (!conf.bve) {
-        solver->set_no_bva();
-    }
-    solver->set_up_for_scalmc();
-    //solver->set_verbosity(2);
-
-    //Print stats
-    cout << "[mis] Orig number of variables: " << orig_num_vars << endl;
-    cout << "[mis] Cur number of variables : " << solver->nVars() << endl;
-
     vector<uint32_t> indic;
 
-    vector<Lit> tmp;
     //Indicator variable is TRUE when they are NOT equal
     for(uint32_t i = 0; i < orig_num_vars; i++) {
         //(a=b) = !f
@@ -309,7 +275,7 @@ vector<uint32_t> one_round()
         //-a V -b V -f
         solver->new_var();
         uint32_t this_indic = solver->nVars()-1;
-        torem_orig.push_back(Lit(this_indic, false));
+        //torem_orig.push_back(Lit(this_indic, false));
         indic.push_back(this_indic);
 
         tmp.clear();
@@ -346,10 +312,46 @@ vector<uint32_t> one_round()
         tmp.push_back(Lit(var, false));
     }
     solver->add_clause(tmp);
+}
 
-    //Initially, all of independent set is unknown
-    set<uint32_t> unknown;
-    unknown.insert(sampling_set.begin(), sampling_set.end());
+vector<uint32_t> one_round(
+    uint32_t by = 1
+)
+{
+    startTime = cpuTimeTotal();
+    solver = new SATSolver();
+    if (conf.verb > 2) {
+        solver->set_verbosity(conf.verb-2);
+    }
+
+    //parsing the input
+    if (vm.count("input") == 0) {
+        cout << "ERROR: you must pass a file" << endl;
+    }
+    const string inp = vm["input"].as<string>();
+
+    //Read in file and set sampling_set in case we are starting with empty
+    readInAFile(inp.c_str(), 0, sampling_set.empty());
+    update_and_print_sampling_vars();
+
+    //Read in file again, with offset
+    const uint32_t orig_num_vars = solver->nVars();
+    readInAFile(inp.c_str(), orig_num_vars, false);
+
+    //Set up solver
+    if (!conf.bva) {
+        solver->set_no_bve();
+    }
+    if (!conf.bve) {
+        solver->set_no_bva();
+    }
+    solver->set_up_for_scalmc();
+    //solver->set_verbosity(2);
+
+    //Print stats
+    cout << "[mis] Orig number of variables: " << orig_num_vars << endl;
+    cout << "[mis] Cur number of variables : " << solver->nVars() << endl;
+    add_fixed_clauses(orig_num_vars);
 
     //start with empty independent set
     vector<uint32_t> indep;
@@ -359,9 +361,8 @@ vector<uint32_t> one_round()
     //SECOND is what we have to assumoe (in negative)
     map<uint32_t, uint32_t> testvar_to_assump;
     map<uint32_t, uint32_t> assump_to_testvar;
-
-
-    for(const auto& var: unknown) {
+    for(uint32_t i = 0; i < sampling_set.size(); i++) {
+        uint32_t var = sampling_set[i];
         solver->new_var();
         uint32_t ass = solver->nVars()-1;
 
@@ -377,16 +378,21 @@ vector<uint32_t> one_round()
         testvar_to_assump[var] = ass;
         assump_to_testvar[ass] = var;
     }
+
+    //Initially, all of samping_set is unknown
+    set<uint32_t> unknown;
+    unknown.insert(sampling_set.begin(), sampling_set.end());
     cout << "[mis] Start unknown size: " << unknown.size() << endl;
 
-    double start_iter_time = cpuTime();
-    uint32_t not_indep = 0;
-    vector<Lit> assumptions;
-    vector<char> seen;
+    seen.clear();
     seen.resize(solver->nVars(), 0);
+    vector<Lit> assumptions;
+
+    double start_iter_time = cpuTime();
     uint32_t iter = 0;
     bool one_by_one_mode = conf.always_one_by_one;
     uint32_t num_fast = 0;
+    uint32_t not_indep = 0;
     while(!unknown.empty()) {
         if (!one_by_one_mode) {
             if (iter % 100 == 0 ||  iter < 1) {
@@ -414,20 +420,15 @@ vector<uint32_t> one_round()
         }
 
         //Add unknown as assumptions
-        vector<Lit> torem(torem_orig);
         for(const auto& var: unknown) {
-            //torem.push_back(Lit(var, false));
             uint32_t ass = testvar_to_assump[var];
             assumptions.push_back(Lit(ass, true));
-            torem.push_back(Lit(ass, false));
         }
 
         //Add known independent as assumptions
         for(const auto& var: indep) {
-            //torem.push_back(Lit(var, false));
             uint32_t ass = testvar_to_assump[var];
             assumptions.push_back(Lit(ass, true));
-            torem.push_back(Lit(ass, false));
         }
 
         double myTime = cpuTime();
@@ -439,7 +440,6 @@ vector<uint32_t> one_round()
         cout << "0" << endl;*/
         if (!one_by_one_mode) {
             //solver->simplify(&assumptions);
-            //solver->forget_long_cls(0, torem);
         }
         if (iter == 0 && conf.simp_at_start) {
             double simp_time = cpuTime();
