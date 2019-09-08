@@ -242,22 +242,9 @@ void update_and_print_sampling_vars()
     }
 }
 
-int main(int argc, char** argv)
+vector<uint32_t> one_round()
 {
-    #if defined(__GNUC__) && defined(__linux__)
-    feenableexcept(FE_INVALID   |
-                   FE_DIVBYZERO |
-                   FE_OVERFLOW
-                  );
-    #endif
-
-    add_supported_options(argc, argv);
-    cout << "[mis] Version: " << get_version_sha1() << endl;
-
-    cout << "[mis] using seed: " << conf.seed << endl;
-
     startTime = cpuTimeTotal();
-    mtrand.seed(conf.seed);
     solver = new SATSolver();
     if (conf.verb > 2) {
         solver->set_verbosity(conf.verb-2);
@@ -430,10 +417,10 @@ int main(int argc, char** argv)
             //solver->forget_long_cls(0, torem);
         }
         if (iter ==0) {
-            double myTime = cpuTime();
+            double simp_time = cpuTime();
             cout << "Simplifying..." << endl;
             solver->simplify(&assumptions);
-            cout << "Done. T: " << (cpuTime() - myTime) << endl;
+            cout << "Done. T: " << (cpuTime() - simp_time) << endl;
         }
         lbool ret = solver->solve(&assumptions);
         assert(ret != l_Undef);
@@ -502,15 +489,45 @@ int main(int argc, char** argv)
         << endl;
         iter++;
     }
+    cout << "[mis] one_round finished T: "
+    << std::setprecision(2) << std::fixed << (cpuTime() - start_iter_time)
+    << endl;
+
+    vector<uint32_t> final_indep;
+    for(const auto& var: unknown) {
+        final_indep.push_back(var);
+    }
+    for(const auto& var: indep) {
+        final_indep.push_back(var);
+    }
+    delete solver;
+    return final_indep;
+
+}
+
+int main(int argc, char** argv)
+{
+    #if defined(__GNUC__) && defined(__linux__)
+    feenableexcept(FE_INVALID   |
+                   FE_DIVBYZERO |
+                   FE_OVERFLOW
+                  );
+    #endif
+
+    add_supported_options(argc, argv);
+    cout << "[mis] Version: " << get_version_sha1() << endl;
+    cout << "[mis] using seed: " << conf.seed << endl;
+
+    double starTime = cpuTime();
+    mtrand.seed(conf.seed);
+    auto indep = one_round();
+
     cout
-    << "[mis] Final indep: " << std::setw(7) << unknown.size()+indep.size()
-    << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_iter_time)
+    << "[mis] Final indep: " << std::setw(7) << indep.size()
+    << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
     << endl;
 
     cout << "c ind ";
-    for(const auto& var: unknown) {
-        cout << var+1 << " ";
-    }
     for(const auto& var: indep) {
         cout << var+1 << " ";
     }
@@ -518,4 +535,3 @@ int main(int argc, char** argv)
 
     return 0;
 }
-
