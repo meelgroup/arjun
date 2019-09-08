@@ -66,6 +66,7 @@ struct Config {
     int bva = 1;
     int bve = 1;
     int simp_at_start = 1;
+    int always_one_by_one = 0;
 };
 
 Config conf;
@@ -85,6 +86,7 @@ void add_mis_options()
     ("seed,s", po::value(&conf.seed)->default_value(conf.seed), "Seed")
     ("bva", po::value(&conf.bva)->default_value(conf.seed), "bva")
     ("bve", po::value(&conf.bve)->default_value(conf.seed), "bve")
+    ("slowall", po::value(&conf.always_one_by_one)->default_value(conf.seed), "always one-by-one mode")
     ("simp", po::value(&conf.simp_at_start)->default_value(conf.seed), "simp at iter 0")
     ;
 
@@ -373,21 +375,24 @@ vector<uint32_t> one_round()
     vector<char> seen;
     seen.resize(solver->nVars(), 0);
     uint32_t iter = 0;
-    bool slow_mode = false;
+    bool one_by_one_mode = conf.always_one_by_one;
     uint32_t num_fast = 0;
     while(!unknown.empty()) {
-        if (!slow_mode) {
+        if (!one_by_one_mode) {
             if (iter % 100 == 0 ||  iter < 1) {
                 num_fast ++;
             } else {
-                slow_mode = true;
+                one_by_one_mode = true;
             }
         }
-        bool old_mode = slow_mode;
+        if (conf.always_one_by_one) {
+            one_by_one_mode = true;
+        }
         assumptions.clear();
+        bool old_mode = one_by_one_mode;
 
         uint32_t test_var = var_Undef;
-        if (slow_mode) {
+        if (one_by_one_mode) {
             //TODO improve
             vector<uint32_t> pick;
             for(const auto& x: unknown) {
@@ -422,7 +427,7 @@ vector<uint32_t> one_round()
             cout << assumptions[i] << " ";
         }
         cout << "0" << endl;*/
-        if (!slow_mode) {
+        if (!one_by_one_mode) {
             //solver->simplify(&assumptions);
             //solver->forget_long_cls(0, torem);
         }
@@ -438,13 +443,13 @@ vector<uint32_t> one_round()
 
         uint32_t num_removed = 0;
         if (ret == l_True) {
-            assert(slow_mode);
+            assert(one_by_one_mode);
             indep.push_back(test_var);
             num_removed++;
-            slow_mode = false;
             unknown.erase(test_var);
+            one_by_one_mode = false;
         } else {
-            if (slow_mode) {
+            if (one_by_one_mode) {
                 //not independent
                 uint32_t var = test_var;
                 tmp.clear();
@@ -452,7 +457,7 @@ vector<uint32_t> one_round()
                 solver->add_clause(tmp);
                 not_indep++;
                 num_removed++;
-                slow_mode = false;
+                unknown.erase(var);
                 one_by_one_mode = false;
             } else {
                 vector<Lit> reason = solver->get_conflict();
@@ -483,7 +488,7 @@ vector<uint32_t> one_round()
                     unknown.erase(var);
                 }
                 if (num_removed < 2) {
-                    slow_mode = true;
+                    one_by_one_mode = true;
                 }
             }
         }
