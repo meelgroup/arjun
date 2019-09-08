@@ -76,6 +76,7 @@ struct Config {
 Config conf;
 MTRand mtrand;
 
+void remove_eq_literals();
 void add_mis_options()
 {
     std::ostringstream my_epsilon;
@@ -447,6 +448,7 @@ vector<uint32_t> one_round(uint32_t by)
             double simp_time = cpuTime();
             cout << "Simplifying..." << endl;
             solver->simplify(&all_assumption_lits);
+            remove_eq_literals();
             cout << "Done. T: " << (cpuTime() - simp_time) << endl;
         }
         lbool ret = solver->solve(&assumptions);
@@ -571,8 +573,38 @@ void remove_zero_assigned_literals()
             seen[i] = 0;
         }
     }
-    cout << "[mis] Removed from sampling due to being set: "
+    cout << "[mis] Removed set       : "
     << (orig_sampling_set_size - sampling_set.size()) << endl;
+}
+
+void remove_eq_literals()
+{
+    solver->run_scc_vrepl();
+
+    seen.clear();
+    seen.resize(solver->nVars(), 0);
+    uint32_t orig_sampling_set_size = sampling_set.size();
+    for(auto x: sampling_set) {
+        seen[x] = 1;
+    }
+    const auto zero_ass = solver->get_all_binary_xors();
+    for(auto mypair: zero_ass) {
+        //Only remove if both are sampling vars
+        if (seen[mypair.second.var()] == 1 && seen[mypair.first.var()] == 1) {
+            //Doesn't matter which one to remove
+            seen[mypair.second.var()] = 0;
+        }
+    }
+    sampling_set.clear();
+    for(uint32_t i = 0; i < seen.size(); i++) {
+        if (seen[i]) {
+            sampling_set.push_back(i);
+            seen[i] = 0;
+        }
+    }
+    cout << "[mis] Removed equivalent: "
+    << (orig_sampling_set_size - sampling_set.size()) << endl;
+
 }
 
 void init_solver_setup()
@@ -591,6 +623,7 @@ void init_solver_setup()
     //Read in file and set sampling_set in case we are starting with empty
     readInAFile(inp.c_str(), 0, sampling_set.empty());
     update_and_print_sampling_vars(conf.recompute_sampling_set);
+    remove_eq_literals();
     remove_zero_assigned_literals();
 
 
