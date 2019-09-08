@@ -88,11 +88,11 @@ void add_mis_options()
     ("input", po::value<string>(), "file to read")
     ("verb,v", po::value(&conf.verb)->default_value(conf.verb), "verbosity")
     ("seed,s", po::value(&conf.seed)->default_value(conf.seed), "Seed")
-    ("bva", po::value(&conf.bva)->default_value(conf.seed), "bva")
-    ("bve", po::value(&conf.bve)->default_value(conf.seed), "bve")
-    ("one", po::value(&conf.always_one_by_one)->default_value(conf.seed), "always one-by-one mode")
-    ("simp", po::value(&conf.simp_at_start)->default_value(conf.seed), "simp at iter 0")
-    ("recomp", po::value(&conf.recompute_sampling_set)->default_value(conf.seed), "Recompute sampling set even if it's part of the CNF")
+    ("bva", po::value(&conf.bva)->default_value(conf.bva), "bva")
+    ("bve", po::value(&conf.bve)->default_value(conf.bve), "bve")
+    ("one", po::value(&conf.always_one_by_one)->default_value(conf.always_one_by_one), "always one-by-one mode")
+    ("simp", po::value(&conf.simp_at_start)->default_value(conf.simp_at_start), "simp at iter 0")
+    ("recomp", po::value(&conf.recompute_sampling_set)->default_value(conf.recompute_sampling_set), "Recompute sampling set even if it's part of the CNF")
     ;
 
     help_options.add(mis_options);
@@ -327,15 +327,25 @@ void fill_assumptions(
     //Add unknown as assumptions
     for(const auto& var: unknown) {
         uint32_t ass = testvar_to_assump[var];
-        assumptions.push_back(Lit(ass, true));
+        if (!seen[ass]) {
+            seen[ass] = 1;
+            assumptions.push_back(Lit(ass, true));
+        }
     }
 
     //Add known independent as assumptions
     for(const auto& var: indep) {
         uint32_t ass = testvar_to_assump[var];
-        assumptions.push_back(Lit(ass, true));
+        if (!seen[ass]) {
+            seen[ass] = 1;
+            assumptions.push_back(Lit(ass, true));
+        }
     }
 
+    //clear seen
+    for(const auto& x: assumptions) {
+        seen[x.var()] = 0;
+    }
 }
 
 vector<uint32_t> one_round(uint32_t by)
@@ -349,9 +359,11 @@ vector<uint32_t> one_round(uint32_t by)
     //SECOND is what we have to assumoe (in negative)
     map<uint32_t, uint32_t> testvar_to_assump;
     map<uint32_t, vector<uint32_t>> assump_to_testvars;
+    vector<Lit> all_assumption_lits;
     for(uint32_t i = 0; i < sampling_set.size();) {
         solver->new_var();
         const uint32_t ass = solver->nVars()-1;
+        all_assumption_lits.push_back(Lit(ass, false));
 
         vector<uint32_t> vars;
         for(uint32_t i2 = 0; i2 < by && i < sampling_set.size(); i2++, i++) {
@@ -433,7 +445,7 @@ vector<uint32_t> one_round(uint32_t by)
         if (iter == 0 && conf.simp_at_start) {
             double simp_time = cpuTime();
             cout << "Simplifying..." << endl;
-            solver->simplify(&assumptions);
+            solver->simplify(&all_assumption_lits);
             cout << "Done. T: " << (cpuTime() - simp_time) << endl;
         }
         lbool ret = solver->solve(&assumptions);
@@ -454,10 +466,11 @@ vector<uint32_t> one_round(uint32_t by)
             if (one_by_one_mode) {
                 //not independent
                 uint32_t var = test_var;
+                uint32_t ass = testvar_to_assump[var];
                 tmp.clear();
-                tmp.push_back(Lit(testvar_to_assump[var], false));
+                tmp.push_back(Lit(ass, false));
                 solver->add_clause(tmp);
-                not_indep++;
+                not_indep += assump_to_testvars[ass].size();
                 one_by_one_mode = false;
             } else {
                 vector<Lit> reason = solver->get_conflict();
@@ -474,21 +487,29 @@ vector<uint32_t> one_round(uint32_t by)
                 for(Lit l: reason) {
                     seen[l.var()] = false;
                 }
-                //cout << "not in reason: " << not_in_reason.size() << endl;
+                cout << "not in reason size: " << not_in_reason.size() << endl;
 
                 //not independent.
                 for(uint32_t ass: not_in_reason) {
+                    assert(assump_to_testvars.find(ass) != assump_to_testvars.end());
                     const auto& vars = assump_to_testvars[ass];
-                    tmp.clear();
-                    assert(testvar_to_assump[vars[0]] == ass);
-                    tmp.push_back(Lit(testvar_to_assump[vars[0]], false));
-                    solver->add_clause(tmp);
+
+                    //Remove from unknown
                     for(uint32_t var: vars) {
                         not_indep++;
                         num_removed++;
                         unknown.erase(var);
                     }
+
+                    //Remove from solver
+                    tmp.clear();
+                    assert(testvar_to_assump[vars[0]] == ass);
+                    tmp.push_back(Lit(testvar_to_assump[vars[0]], false));
+                    solver->add_clause(tmp);
                 }
+                cout << "fin unknown size: " << unknown.size() << endl;
+
+
                 if (num_removed < 2) {
                     one_by_one_mode = true;
                 }
@@ -513,9 +534,9 @@ vector<uint32_t> one_round(uint32_t by)
     << endl;
 
     //clear clauses to do with assumptions
-    for(const auto& x: assump_to_testvars) {
+    for(const auto& lit: all_assumption_lits) {
         tmp.clear();
-        tmp.push_back(Lit(x.first, false));
+        tmp.push_back(lit);
         solver->add_clause(tmp);
     }
 
@@ -581,7 +602,9 @@ int main(int argc, char** argv)
     double starTime = cpuTime();
     mtrand.seed(conf.seed);
     init_solver_setup();
+    sampling_set = one_round(1000);
     sampling_set = one_round(100);
+    sampling_set = one_round(10);
     sampling_set = one_round(1);
 
     cout
