@@ -63,6 +63,9 @@ vector<uint32_t> sampling_set;
 struct Config {
     int verb = 0;
     int seed = 0;
+    int bva = 1;
+    int bve = 1;
+    int simp_at_start = 1;
 };
 
 Config conf;
@@ -80,6 +83,9 @@ void add_mis_options()
     ("input", po::value<string>(), "file to read")
     ("verb,v", po::value(&conf.verb)->default_value(conf.verb), "verbosity")
     ("seed,s", po::value(&conf.seed)->default_value(conf.seed), "Seed")
+    ("bva", po::value(&conf.bva)->default_value(conf.seed), "bva")
+    ("bve", po::value(&conf.bve)->default_value(conf.seed), "bve")
+    ("simp", po::value(&conf.simp_at_start)->default_value(conf.seed), "simp at iter 0")
     ;
 
     help_options.add(mis_options);
@@ -266,8 +272,12 @@ vector<uint32_t> one_round()
 
     //Set up solver
     vector<Lit> torem_orig;
-    //solver->set_no_bve();
-    //solver->set_no_bva();
+    if (!conf.bva) {
+        solver->set_no_bve();
+    }
+    if (!conf.bve) {
+        solver->set_no_bva();
+    }
     solver->set_up_for_scalmc();
     //solver->set_verbosity(2);
 
@@ -416,7 +426,7 @@ vector<uint32_t> one_round()
             //solver->simplify(&assumptions);
             //solver->forget_long_cls(0, torem);
         }
-        if (iter ==0) {
+        if (iter == 0 && conf.simp_at_start) {
             double simp_time = cpuTime();
             cout << "Simplifying..." << endl;
             solver->simplify(&assumptions);
