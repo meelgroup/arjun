@@ -249,7 +249,7 @@ void update_and_print_sampling_vars(bool recompute)
             sampling_set.push_back(i);
         }
     }
-    cout << "[mis] Sampling set size: " << sampling_set.size() << endl;
+
     if (sampling_set.size() > 100) {
         cout
         << "[mis] Sampling var set contains over 100 variables, not displaying"
@@ -261,6 +261,7 @@ void update_and_print_sampling_vars(bool recompute)
         }
         cout << endl;
     }
+    cout << "[mis] Orig size         : " << sampling_set.size() << endl;
 }
 
 void add_fixed_clauses()
@@ -608,7 +609,6 @@ void init_solver_setup()
     //solver->set_verbosity(2);
 
     //Print stats
-    cout << "[mis] Orig number of variables: " << orig_num_vars << endl;
     add_fixed_clauses();
 }
 
