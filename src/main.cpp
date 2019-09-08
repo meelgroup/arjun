@@ -86,7 +86,7 @@ void add_mis_options()
     ("seed,s", po::value(&conf.seed)->default_value(conf.seed), "Seed")
     ("bva", po::value(&conf.bva)->default_value(conf.seed), "bva")
     ("bve", po::value(&conf.bve)->default_value(conf.seed), "bve")
-    ("slowall", po::value(&conf.always_one_by_one)->default_value(conf.seed), "always one-by-one mode")
+    ("one", po::value(&conf.always_one_by_one)->default_value(conf.seed), "always one-by-one mode")
     ("simp", po::value(&conf.simp_at_start)->default_value(conf.seed), "simp at iter 0")
     ;
 
