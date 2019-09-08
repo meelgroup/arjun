@@ -67,6 +67,7 @@ struct Config {
     int bve = 1;
     int simp_at_start = 1;
     int always_one_by_one = 0;
+    int recompute_sampling_set = 0;
 };
 
 Config conf;
@@ -88,6 +89,7 @@ void add_mis_options()
     ("bve", po::value(&conf.bve)->default_value(conf.seed), "bve")
     ("one", po::value(&conf.always_one_by_one)->default_value(conf.seed), "always one-by-one mode")
     ("simp", po::value(&conf.simp_at_start)->default_value(conf.seed), "simp at iter 0")
+    ("recomp", po::value(&conf.recompute_sampling_set)->default_value(conf.seed), "Recompute sampling set even if it's part of the CNF")
     ;
 
     help_options.add(mis_options);
@@ -229,9 +231,17 @@ void readInAFile(const string& filename, uint32_t var_offset, bool get_sampling_
 
 void update_and_print_sampling_vars()
 {
-    if (sampling_set.empty()) {
-        cout
-        << "[mis] No sample set given, starting with full" << endl;
+    if (sampling_set.empty() || conf.recompute_sampling_set) {
+        if (conf.recompute_sampling_set && !sampling_set.empty()) {
+            cout << "[mis] WARNING: recomputing independent set even though" << endl;
+            cout << "[mis]          a sampling/independent set was part of the CNF" << endl;
+            cout << "[mis]          orig sampling set size: " << sampling_set.size() << endl;
+        }
+
+        if (sampling_set.empty()) {
+            cout << "[mis] No sample set given, starting with full" << endl;
+        }
+        sampling_set.clear();
         for (size_t i = 0; i < solver->nVars(); i++) {
             sampling_set.push_back(i);
         }
