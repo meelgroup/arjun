@@ -284,8 +284,8 @@ vector<uint32_t> one_round()
     //solver->set_verbosity(2);
 
     //Print stats
-    cout << "Orig number of variables: " << orig_num_vars << endl;
-    cout << "Cur number of variables : " << solver->nVars() << endl;
+    cout << "[mis] Orig number of variables: " << orig_num_vars << endl;
+    cout << "[mis] Cur number of variables : " << solver->nVars() << endl;
 
     vector<uint32_t> indic;
 
