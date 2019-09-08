@@ -442,6 +442,7 @@ vector<uint32_t> one_round()
             indep.push_back(test_var);
             num_removed++;
             slow_mode = false;
+            unknown.erase(test_var);
         } else {
             if (slow_mode) {
                 //not independent
