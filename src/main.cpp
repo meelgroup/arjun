@@ -453,6 +453,7 @@ vector<uint32_t> one_round()
                 not_indep++;
                 num_removed++;
                 slow_mode = false;
+                one_by_one_mode = false;
             } else {
                 vector<Lit> reason = solver->get_conflict();
                 //cout << "reason size: " << reason.size() << endl;
