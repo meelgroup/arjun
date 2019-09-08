@@ -628,13 +628,13 @@ int main(int argc, char** argv)
     double starTime = cpuTime();
     mtrand.seed(conf.seed);
     init_solver_setup();
-    if (sampling_set.size() > 3000) {
+    if (sampling_set.size() > 2000) {
         sampling_set = one_round(1000);
     }
-    if (sampling_set.size() > 300) {
+    if (sampling_set.size() > 200) {
         sampling_set = one_round(100);
     }
-    if (sampling_set.size() > 30) {
+    if (sampling_set.size() > 20) {
         sampling_set = one_round(10);
     }
     sampling_set = one_round(1);
