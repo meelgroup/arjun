@@ -755,7 +755,7 @@ int main(int argc, char** argv)
     uint32_t num;
     while(true) {
         simp();
-        if (sampling_set.size() < prev_size/3) {
+        if (sampling_set.size() < prev_size/2) {
             num = sampling_set.size()/10;
         } else {
             num = num/5;
