@@ -38,6 +38,9 @@ using std::vector;
 #include <map>
 #include <set>
 #include <vector>
+#include <mutex>
+#include <signal.h>
+
 #include "time_mem.h"
 #include "GitSHA1.h"
 #include "MersenneTwister.h"
@@ -66,6 +69,7 @@ uint32_t orig_num_vars;
 uint32_t total_eq_removed = 0;
 uint32_t total_set_removed = 0;
 enum ModeType {one_mode, many_mode, inverse_mode};
+std::mutex sampling_set_mut;
 
 struct Config {
     int verb = 0;
@@ -79,6 +83,19 @@ struct Config {
 
 Config conf;
 MTRand mtrand;
+
+static void signal_handler(int) {
+    sampling_set_mut.lock();
+    cout << endl << "*** INTERRUPTED ***" << endl << std::flush;
+    cout << "c ind ";
+    for(const uint32_t s: sampling_set) {
+        cout << s+1 << " ";
+    }
+    cout << "0" << endl;
+    cout << endl << "*** INTERRUPTED ***" << endl << std::flush;
+    sampling_set_mut.unlock();
+    exit(1);
+}
 
 void remove_eq_literals(set<uint32_t>* unknown = NULL);
 void remove_zero_assigned_literals(set<uint32_t>* unknown = NULL);
@@ -393,7 +410,7 @@ uint32_t fill_assumptions2(
     return ass;
 }
 
-vector<uint32_t> one_round(uint32_t by, bool only_inverse)
+void one_round(uint32_t by, bool only_inverse)
 {
     double start_round_time = cpuTimeTotal();
     //start with empty independent set
@@ -590,6 +607,16 @@ vector<uint32_t> one_round(uint32_t by, bool only_inverse)
         << std::setprecision(2) << std::fixed << (cpuTime() - myTime)
         << endl;
         iter++;
+
+        sampling_set_mut.lock();
+        sampling_set.clear();
+        for(const auto& var: unknown) {
+            sampling_set.push_back(var);
+        }
+        for(const auto& var: indep) {
+            sampling_set.push_back(var);
+        }
+        sampling_set_mut.unlock();
     }
     cout << "[mis] one_round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
@@ -601,15 +628,6 @@ vector<uint32_t> one_round(uint32_t by, bool only_inverse)
         tmp.push_back(lit);
         solver->add_clause(tmp);
     }
-
-    vector<uint32_t> final_indep;
-    for(const auto& var: unknown) {
-        final_indep.push_back(var);
-    }
-    for(const auto& var: indep) {
-        final_indep.push_back(var);
-    }
-    return final_indep;
 }
 
 void simp()
@@ -637,6 +655,8 @@ void remove_zero_assigned_literals(set<uint32_t>* unknown)
     for(Lit l: zero_ass) {
         seen[l.var()] = 0;
     }
+
+    sampling_set_mut.lock();
     sampling_set.clear();
     for(uint32_t i = 0; i < seen.size(); i++) {
         if (seen[i]) {
@@ -648,6 +668,8 @@ void remove_zero_assigned_literals(set<uint32_t>* unknown)
             }
         }
     }
+    sampling_set_mut.unlock();
+
     if (orig_sampling_set_size - sampling_set.size() > 0) {
         total_set_removed += orig_sampling_set_size - sampling_set.size();
         cout << "[mis] Removed set       : "
@@ -671,6 +693,8 @@ void remove_eq_literals(set<uint32_t>* unknown)
             seen[mypair.second.var()] = 0;
         }
     }
+
+    sampling_set_mut.lock();
     sampling_set.clear();
     for(uint32_t i = 0; i < seen.size(); i++) {
         if (seen[i]) {
@@ -680,6 +704,7 @@ void remove_eq_literals(set<uint32_t>* unknown)
             if (unknown) unknown->erase(i);
         }
     }
+    sampling_set_mut.unlock();
 
     total_eq_removed += orig_sampling_set_size - sampling_set.size();
     if (orig_sampling_set_size - sampling_set.size() > 0) {
@@ -757,11 +782,13 @@ int main(int argc, char** argv)
     double starTime = cpuTime();
     mtrand.seed(conf.seed);
     init_solver_setup();
+    signal(SIGALRM,signal_handler);
+    signal(SIGINT,signal_handler);
 
     if (false) {
         uint32_t guess_indep = std::max<uint32_t>(sampling_set.size()/20, 50);
         simp();
-        sampling_set = one_round(guess_indep, true);
+        one_round(guess_indep, true);
     }
 
     uint32_t prev_size = sampling_set.size()*100;
@@ -779,12 +806,13 @@ int main(int argc, char** argv)
         prev_size = sampling_set.size();
 
         cout << "[mis] ===--> Doing a run for " << num << endl;
-        sampling_set = one_round(num, false);
+        one_round(num, false);
         if (num == 1) {
             break;
         }
     }
 
+    sampling_set_mut.lock();
     cout
     << "[mis] Final indep: " << std::setw(7) << sampling_set.size()
     << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
@@ -795,6 +823,7 @@ int main(int argc, char** argv)
         cout << var+1 << " ";
     }
     cout << "0" << endl;
+    sampling_set_mut.unlock();
 
     delete solver;
     return 0;
