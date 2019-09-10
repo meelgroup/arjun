@@ -47,7 +47,7 @@ endif()
 # -----------------------------------------------------------------------------
 # Provide scripts dir for included cmakes to use
 # -----------------------------------------------------------------------------
-set(MISS_SCRIPTS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/scripts)
+set(ARJUNS_SCRIPTS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/scripts)
 
 # -----------------------------------------------------------------------------
 # Make RelWithDebInfo the default build type if otherwise not set
@@ -84,7 +84,7 @@ foreach (build_config ${build_types})
     endforeach()
 endforeach()
 
-PROJECT(mis)
+PROJECT(arjun)
 
 # contains some library search cmake scripts
 SET(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
@@ -312,7 +312,7 @@ if ((${CMAKE_SYSTEM_NAME} MATCHES "Windows") AND (STATICCOMPILE))
 endif()
 
 if(NOT MSVC)
-  set(DEF_INSTALL_CMAKE_DIR lib/cmake/mis)
+  set(DEF_INSTALL_CMAKE_DIR lib/cmake/arjun)
 endif()
 
 # -----------------------------------------------------------------------------
@@ -335,10 +335,10 @@ if (GIT_EXECUTABLE)
 else()
   set(GIT_SHA "GIT-hash-notfound")
 endif()
-set(MIS_FULL_VERSION "2.5.0")
+set(ARJUN_FULL_VERSION "2.5.0")
 
-string(REPLACE "." ";" MIS_FULL_VERSION_LIST ${MIS_FULL_VERSION})
-SetVersionNumber("PROJECT" ${MIS_FULL_VERSION_LIST})
+string(REPLACE "." ";" ARJUN_FULL_VERSION_LIST ${ARJUN_FULL_VERSION})
+SetVersionNumber("PROJECT" ${ARJUN_FULL_VERSION_LIST})
 MESSAGE(STATUS "PROJECT_VERSION: ${PROJECT_VERSION}")
 MESSAGE(STATUS "PROJECT_VERSION_MAJOR: ${PROJECT_VERSION_MAJOR}")
 MESSAGE(STATUS "PROJECT_VERSION_MINOR: ${PROJECT_VERSION_MINOR}")
@@ -358,19 +358,19 @@ endif()
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux" AND NOT EMSCRIPTEN)
     find_program(HELP2MAN_FOUND help2man)
     if (HELP2MAN_FOUND)
-        ADD_CUSTOM_TARGET(man_mis
+        ADD_CUSTOM_TARGET(man_arjun
             ALL
-            DEPENDS mis
+            DEPENDS arjun
         )
 
         ADD_CUSTOM_COMMAND(
-            TARGET man_mis
+            TARGET man_arjun
             COMMAND help2man
-            ARGS --version-string=${MIS_FULL_VERSION} --help-option="-h" $<TARGET_FILE:mis> -o ${CMAKE_CURRENT_BINARY_DIR}/mis.1
+            ARGS --version-string=${ARJUN_FULL_VERSION} --help-option="-h" $<TARGET_FILE:arjun> -o ${CMAKE_CURRENT_BINARY_DIR}/arjun.1
         )
 
         INSTALL(
-            FILES ${CMAKE_CURRENT_BINARY_DIR}/mis.1
+            FILES ${CMAKE_CURRENT_BINARY_DIR}/arjun.1
             DESTINATION ${CMAKE_INSTALL_PREFIX}/man/man1)
 
         message(STATUS "Manpage will be created and installed")
@@ -442,9 +442,9 @@ endif()
 # -----------------------------------------------------------------------------
 # Provide an export name to be used by targets that wish to export themselves.
 # -----------------------------------------------------------------------------
-set(MIS_EXPORT_NAME "misTargets")
+set(ARJUN_EXPORT_NAME "arjunTargets")
 
-add_subdirectory(src apx-src)
+add_subdirectory(src rjun-src)
 
 # -----------------------------------------------------------------------------
 # Add uninstall target for makefiles
@@ -476,42 +476,42 @@ endif()
 
 # -----------------------------------------------------------------------------
 # Export our targets so that other CMake based projects can interface with
-# the build of mis in the build-tree
+# the build of arjun in the build-tree
 # -----------------------------------------------------------------------------
-set(MIS_TARGETS_FILENAME "misTargets.cmake")
-set(MIS_CONFIG_FILENAME "misConfig.cmake")
+set(ARJUN_TARGETS_FILENAME "arjunTargets.cmake")
+set(ARJUN_CONFIG_FILENAME "arjunConfig.cmake")
 
 # Export targets
-set(MY_TARGETS mis)
+set(MY_TARGETS arjun)
 export(
     TARGETS ${MY_TARGETS}
-    FILE "${CMAKE_CURRENT_BINARY_DIR}/${MIS_TARGETS_FILENAME}"
+    FILE "${CMAKE_CURRENT_BINARY_DIR}/${ARJUN_TARGETS_FILENAME}"
 )
 
-# Create misConfig file
+# Create arjunConfig file
 set(EXPORT_TYPE "Build-tree")
 set(CONF_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include")
-configure_file(misConfig.cmake.in
-    "${CMAKE_CURRENT_BINARY_DIR}/${MIS_CONFIG_FILENAME}" @ONLY
+configure_file(arjunConfig.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/${ARJUN_CONFIG_FILENAME}" @ONLY
 )
 
-set(MIS_INSTALL_CMAKE_DIR ${DEF_INSTALL_CMAKE_DIR} CACHE PATH
-    "Installation directory for mis CMake files")
+set(ARJUN_INSTALL_CMAKE_DIR ${DEF_INSTALL_CMAKE_DIR} CACHE PATH
+    "Installation directory for arjun CMake files")
 
-# Create misConfig file
+# Create arjunConfig file
 set(EXPORT_TYPE "installed")
 set(CONF_INCLUDE_DIRS "${CMAKE_INSTALL_PREFIX}/include")
-configure_file(misConfig.cmake.in
-   "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_FILES_DIRECTORY}/${MIS_CONFIG_FILENAME}" @ONLY
+configure_file(arjunConfig.cmake.in
+   "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_FILES_DIRECTORY}/${ARJUN_CONFIG_FILENAME}" @ONLY
 )
 
 install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_FILES_DIRECTORY}/${MIS_CONFIG_FILENAME}"
-    DESTINATION "${MIS_INSTALL_CMAKE_DIR}"
+    "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_FILES_DIRECTORY}/${ARJUN_CONFIG_FILENAME}"
+    DESTINATION "${ARJUN_INSTALL_CMAKE_DIR}"
 )
 
 # Install the export set for use with the install-tree
 install(
-    EXPORT ${MIS_EXPORT_NAME}
-    DESTINATION "${MIS_INSTALL_CMAKE_DIR}"
+    EXPORT ${ARJUN_EXPORT_NAME}
+    DESTINATION "${ARJUN_INSTALL_CMAKE_DIR}"
 )

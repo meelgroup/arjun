@@ -1,7 +1,7 @@
 /*
- MIS
+ Arjun
 
- Copyright (c) 2009-2018, Mate Soos. All rights reserved.
+ Copyright (c) 2019, Mate Soos and Kuldeep S. Meel. All rights reserved.
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
