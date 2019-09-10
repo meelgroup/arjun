@@ -84,14 +84,26 @@ struct Config {
 Config conf;
 MTRand mtrand;
 
-static void signal_handler(int) {
-    sampling_set_mut.lock();
-    cout << endl << "*** INTERRUPTED ***" << endl << std::flush;
+void print_indep_set()
+{
     cout << "c ind ";
     for(const uint32_t s: sampling_set) {
         cout << s+1 << " ";
     }
     cout << "0" << endl;
+
+    cout << "c set size: " << std::setw(8)
+    << sampling_set.size()
+    << " fraction of original: "
+    <<  std::setw(6) << std::setprecision(4)
+    << (double)sampling_set.size()/(double)orig_num_vars
+    << endl << std::flush;
+}
+
+static void signal_handler(int) {
+    sampling_set_mut.lock();
+    cout << endl << "*** INTERRUPTED ***" << endl << std::flush;
+    print_indep_set();
     cout << endl << "*** INTERRUPTED ***" << endl << std::flush;
     sampling_set_mut.unlock();
     exit(1);
@@ -813,16 +825,11 @@ int main(int argc, char** argv)
     }
 
     sampling_set_mut.lock();
+    print_indep_set();
     cout
-    << "[mis] Final indep: " << std::setw(7) << sampling_set.size()
+    << "[mis] "
     << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
     << endl;
-
-    cout << "c ind ";
-    for(const auto& var: sampling_set) {
-        cout << var+1 << " ";
-    }
-    cout << "0" << endl;
     sampling_set_mut.unlock();
 
     delete solver;
