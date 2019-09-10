@@ -77,6 +77,7 @@ struct Config {
     int bva = 1;
     int bve = 1;
     int simp_at_start = 1;
+    int simp_every_round = 0;
     int always_one_by_one = 0;
     int recompute_sampling_set = 0;
 };
@@ -109,6 +110,7 @@ static void signal_handler(int) {
     exit(1);
 }
 
+void simp();
 void remove_eq_literals(set<uint32_t>* unknown = NULL);
 void remove_zero_assigned_literals(set<uint32_t>* unknown = NULL);
 void add_mis_options()
@@ -126,7 +128,8 @@ void add_mis_options()
     ("bva", po::value(&conf.bva)->default_value(conf.bva), "bva")
     ("bve", po::value(&conf.bve)->default_value(conf.bve), "bve")
     ("one", po::value(&conf.always_one_by_one)->default_value(conf.always_one_by_one), "always one-by-one mode")
-    ("simp", po::value(&conf.simp_at_start)->default_value(conf.simp_at_start), "simp at iter 0")
+    ("simpstart", po::value(&conf.simp_at_start)->default_value(conf.simp_at_start), "simp at startup")
+    ("simpallround", po::value(&conf.simp_every_round)->default_value(conf.simp_every_round), "simp at every round")
     ("recomp", po::value(&conf.recompute_sampling_set)->default_value(conf.recompute_sampling_set), "Recompute sampling set even if it's part of the CNF")
     ;
 
@@ -805,8 +808,11 @@ int main(int argc, char** argv)
 
     uint32_t prev_size = sampling_set.size()*100;
     uint32_t num;
+    uint32_t round_num = 0;
     while(true) {
-        simp();
+        if (conf.simp_every_round || (conf.simp_at_start && round_num ==0)) {
+            simp();
+        }
         if (sampling_set.size() < prev_size/2) {
             num = sampling_set.size()/10;
         } else {
@@ -822,6 +828,7 @@ int main(int argc, char** argv)
         if (num == 1) {
             break;
         }
+        round_num++;
     }
 
     sampling_set_mut.lock();
