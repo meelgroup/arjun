@@ -806,7 +806,7 @@ int main(int argc, char** argv)
     double starTime = cpuTime();
     mtrand.seed(conf.seed);
     init_solver_setup();
-    cout << "[mis] CMS Version: " << solver->get_text_version_info();
+    cout << solver->get_text_version_info();
     signal(SIGALRM,signal_handler);
     signal(SIGINT,signal_handler);
 
