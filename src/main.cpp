@@ -784,6 +784,9 @@ int main(int argc, char** argv)
                   );
     #endif
 
+    sampling_set = &sampling_set_tmp1;
+    other_sampling_set = &sampling_set_tmp2;
+
     //Reconstruct the command line so we can emit it later if needed
     for(int i = 0; i < argc; i++) {
         command_line += string(argv[i]);
