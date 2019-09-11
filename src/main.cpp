@@ -38,7 +38,7 @@ using std::vector;
 #include <map>
 #include <set>
 #include <vector>
-#include <mutex>
+#include <atomic>
 #include <signal.h>
 
 #include "time_mem.h"
@@ -62,14 +62,17 @@ po::positional_options_description p;
 string command_line;
 CMSat::SATSolver* solver = NULL;
 double startTime;
-vector<uint32_t> sampling_set;
 vector<Lit> tmp;
 vector<char> seen;
 uint32_t orig_num_vars;
 uint32_t total_eq_removed = 0;
 uint32_t total_set_removed = 0;
 enum ModeType {one_mode, many_mode, inverse_mode};
-std::mutex sampling_set_mut;
+
+vector<uint32_t> sampling_set_tmp1;
+vector<uint32_t> sampling_set_tmp2;
+vector<uint32_t>* sampling_set = NULL;
+vector<uint32_t>* other_sampling_set = NULL;
 
 struct Config {
     int verb = 0;
@@ -88,25 +91,23 @@ MTRand mtrand;
 void print_indep_set()
 {
     cout << "c ind ";
-    for(const uint32_t s: sampling_set) {
+    for(const uint32_t s: *sampling_set) {
         cout << s+1 << " ";
     }
     cout << "0" << endl;
 
     cout << "c set size: " << std::setw(8)
-    << sampling_set.size()
+    << sampling_set->size()
     << " fraction of original: "
     <<  std::setw(6) << std::setprecision(4)
-    << (double)sampling_set.size()/(double)orig_num_vars
+    << (double)sampling_set->size()/(double)orig_num_vars
     << endl << std::flush;
 }
 
 static void signal_handler(int) {
-    sampling_set_mut.lock();
     cout << endl << "*** INTERRUPTED ***" << endl << std::flush;
     print_indep_set();
     cout << endl << "*** INTERRUPTED ***" << endl << std::flush;
-    sampling_set_mut.unlock();
     exit(1);
 }
 
@@ -260,7 +261,7 @@ void readInAFile(const string& filename, uint32_t var_offset, bool get_sampling_
         exit(-1);
     }
     if (get_sampling_set) {
-        sampling_set = parser.sampling_vars;
+        *sampling_set = parser.sampling_vars;
     }
 
     #ifndef USE_ZLIB
@@ -270,36 +271,36 @@ void readInAFile(const string& filename, uint32_t var_offset, bool get_sampling_
     #endif
 }
 
-void update_and_print_sampling_vars(bool recompute)
+void init_samping_set(bool recompute)
 {
-    if (sampling_set.empty() || recompute) {
-        if (recompute && !sampling_set.empty()) {
+    if (sampling_set->empty() || recompute) {
+        if (recompute && !sampling_set->empty()) {
             cout << "[mis] WARNING: recomputing independent set even though" << endl;
             cout << "[mis]          a sampling/independent set was part of the CNF" << endl;
-            cout << "[mis]          orig sampling set size: " << sampling_set.size() << endl;
+            cout << "[mis]          orig sampling set size: " << sampling_set->size() << endl;
         }
 
-        if (sampling_set.empty()) {
+        if (sampling_set->empty()) {
             cout << "[mis] No sample set given, starting with full" << endl;
         }
-        sampling_set.clear();
+        sampling_set->clear();
         for (size_t i = 0; i < solver->nVars(); i++) {
-            sampling_set.push_back(i);
+            sampling_set->push_back(i);
         }
     }
 
-    if (sampling_set.size() > 100) {
+    if (sampling_set->size() > 100) {
         cout
         << "[mis] Sampling var set contains over 100 variables, not displaying"
         << endl;
     } else {
         cout << "[mis] Sampling set: ";
-        for (auto v: sampling_set) {
+        for (auto v: *sampling_set) {
             cout << v+1 << ", ";
         }
         cout << endl;
     }
-    cout << "[mis] Orig size         : " << sampling_set.size() << endl;
+    cout << "[mis] Orig size         : " << sampling_set->size() << endl;
 }
 
 void add_fixed_clauses()
@@ -307,7 +308,7 @@ void add_fixed_clauses()
     vector<uint32_t> indic;
 
     //Indicator variable is TRUE when they are NOT equal
-    for(uint32_t i: sampling_set) {
+    for(uint32_t i: *sampling_set) {
         //(a=b) = !f
         //a  V -b V  f
         //-a V  b V  f
@@ -346,7 +347,7 @@ void add_fixed_clauses()
     //OR together the indicators: one of them must NOT be equal
     //indicator tells us when they are NOT equal. One among them MUST be NOT equal
     //hence at least one indicator variable must be TRUE
-    assert(indic.size() == sampling_set.size());
+    assert(indic.size() == sampling_set->size());
     tmp.clear();
     for(uint32_t var: indic) {
         tmp.push_back(Lit(var, false));
@@ -437,14 +438,14 @@ void one_round(uint32_t by, bool only_inverse)
     map<uint32_t, uint32_t> testvar_to_assump;
     map<uint32_t, vector<uint32_t>> assump_to_testvars;
     vector<Lit> all_assumption_lits;
-    for(uint32_t i = 0; i < sampling_set.size();) {
+    for(uint32_t i = 0; i < sampling_set->size();) {
         solver->new_var();
         const uint32_t ass = solver->nVars()-1;
         all_assumption_lits.push_back(Lit(ass, false));
 
         vector<uint32_t> vars;
-        for(uint32_t i2 = 0; i2 < by && i < sampling_set.size(); i2++, i++) {
-            uint32_t var = sampling_set[i];
+        for(uint32_t i2 = 0; i2 < by && i < sampling_set->size(); i2++, i++) {
+            uint32_t var = (*sampling_set)[i];
 
             tmp.clear();
             tmp.push_back(Lit(ass, false));
@@ -460,11 +461,11 @@ void one_round(uint32_t by, bool only_inverse)
         }
         assump_to_testvars[ass] = vars;
     }
-    assert(testvar_to_assump.size() == sampling_set.size());
+    assert(testvar_to_assump.size() == sampling_set->size());
 
     //Initially, all of samping_set is unknown
     set<uint32_t> unknown;
-    unknown.insert(sampling_set.begin(), sampling_set.end());
+    unknown.insert(sampling_set->begin(), sampling_set->end());
     cout << "[mis] Start unknown size: " << unknown.size() << endl;
 
     seen.clear();
@@ -623,15 +624,16 @@ void one_round(uint32_t by, bool only_inverse)
         << endl;
         iter++;
 
-        sampling_set_mut.lock();
-        sampling_set.clear();
+        other_sampling_set->clear();
         for(const auto& var: unknown) {
-            sampling_set.push_back(var);
+            other_sampling_set->push_back(var);
         }
         for(const auto& var: indep) {
-            sampling_set.push_back(var);
+            other_sampling_set->push_back(var);
         }
-        sampling_set_mut.unlock();
+        //TODO: atomic swap
+        std::swap(sampling_set, other_sampling_set);
+
     }
     cout << "[mis] one_round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
@@ -662,8 +664,10 @@ void remove_zero_assigned_literals(set<uint32_t>* unknown)
     //Remove zero-assigned literals
     seen.clear();
     seen.resize(solver->nVars(), 0);
-    uint32_t orig_sampling_set_size = sampling_set.size();
-    for(auto x: sampling_set) {
+
+    *other_sampling_set = *sampling_set;
+    uint32_t orig_sampling_set_size = other_sampling_set->size();
+    for(auto x: *other_sampling_set) {
         seen[x] = 1;
     }
     const auto zero_ass = solver->get_zero_assigned_lits();
@@ -671,11 +675,10 @@ void remove_zero_assigned_literals(set<uint32_t>* unknown)
         seen[l.var()] = 0;
     }
 
-    sampling_set_mut.lock();
-    sampling_set.clear();
+    other_sampling_set->clear();
     for(uint32_t i = 0; i < seen.size(); i++) {
         if (seen[i]) {
-            sampling_set.push_back(i);
+            other_sampling_set->push_back(i);
             seen[i] = 0;
         } else {
             if (unknown) {
@@ -683,12 +686,13 @@ void remove_zero_assigned_literals(set<uint32_t>* unknown)
             }
         }
     }
-    sampling_set_mut.unlock();
+    //TODO atomic swap
+    std::swap(sampling_set, other_sampling_set);
 
-    if (orig_sampling_set_size - sampling_set.size() > 0) {
-        total_set_removed += orig_sampling_set_size - sampling_set.size();
+    if (orig_sampling_set_size - sampling_set->size() > 0) {
+        total_set_removed += orig_sampling_set_size - sampling_set->size();
         cout << "[mis] Removed set       : "
-        << (orig_sampling_set_size - sampling_set.size()) << endl;
+        << (orig_sampling_set_size - sampling_set->size()) << endl;
     }
 }
 
@@ -696,8 +700,10 @@ void remove_eq_literals(set<uint32_t>* unknown)
 {
     seen.clear();
     seen.resize(solver->nVars(), 0);
-    uint32_t orig_sampling_set_size = sampling_set.size();
-    for(auto x: sampling_set) {
+    *other_sampling_set = *sampling_set;
+
+    uint32_t orig_sampling_set_size = other_sampling_set->size();
+    for(auto x: *other_sampling_set) {
         seen[x] = 1;
     }
     const auto zero_ass = solver->get_all_binary_xors();
@@ -709,22 +715,22 @@ void remove_eq_literals(set<uint32_t>* unknown)
         }
     }
 
-    sampling_set_mut.lock();
-    sampling_set.clear();
+    other_sampling_set->clear();
     for(uint32_t i = 0; i < seen.size(); i++) {
         if (seen[i]) {
-            sampling_set.push_back(i);
+            other_sampling_set->push_back(i);
             seen[i] = 0;
         } else {
             if (unknown) unknown->erase(i);
         }
     }
-    sampling_set_mut.unlock();
+    //TODO atomic swap
+    std::swap(sampling_set, other_sampling_set);
 
-    total_eq_removed += orig_sampling_set_size - sampling_set.size();
-    if (orig_sampling_set_size - sampling_set.size() > 0) {
+    total_eq_removed += orig_sampling_set_size - sampling_set->size();
+    if (orig_sampling_set_size - sampling_set->size() > 0) {
         cout << "[mis] Removed equivalent: "
-        << (orig_sampling_set_size - sampling_set.size())
+        << (orig_sampling_set_size - sampling_set->size())
         << endl;
     }
 
@@ -745,8 +751,8 @@ void init_solver_setup()
     const string inp = vm["input"].as<string>();
 
     //Read in file and set sampling_set in case we are starting with empty
-    readInAFile(inp.c_str(), 0, sampling_set.empty());
-    update_and_print_sampling_vars(conf.recompute_sampling_set);
+    readInAFile(inp.c_str(), 0, sampling_set->empty());
+    init_samping_set(conf.recompute_sampling_set);
     remove_zero_assigned_literals();
 
 
@@ -801,27 +807,27 @@ int main(int argc, char** argv)
     signal(SIGINT,signal_handler);
 
     if (false) {
-        uint32_t guess_indep = std::max<uint32_t>(sampling_set.size()/20, 50);
+        uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/20, 50);
         simp();
         one_round(guess_indep, true);
     }
 
-    uint32_t prev_size = sampling_set.size()*100;
+    uint32_t prev_size = sampling_set->size()*100;
     uint32_t num;
     uint32_t round_num = 0;
     while(true) {
         if (conf.simp_every_round || (conf.simp_at_start && round_num ==0)) {
             simp();
         }
-        if (sampling_set.size() < prev_size/2) {
-            num = sampling_set.size()/10;
+        if (sampling_set->size() < prev_size/2) {
+            num = sampling_set->size()/10;
         } else {
             num = num/5;
         }
         if (num < 5) {
             num = 1;
         }
-        prev_size = sampling_set.size();
+        prev_size = sampling_set->size();
 
         cout << "[mis] ===--> Doing a run for " << num << endl;
         one_round(num, false);
@@ -831,13 +837,11 @@ int main(int argc, char** argv)
         round_num++;
     }
 
-    sampling_set_mut.lock();
     print_indep_set();
     cout
     << "[mis] "
     << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
     << endl;
-    sampling_set_mut.unlock();
 
     delete solver;
     return 0;
