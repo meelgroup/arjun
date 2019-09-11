@@ -79,6 +79,7 @@ struct Config {
     int seed = 0;
     int bva = 1;
     int bve = 1;
+    int guess = 0;
     int simp_at_start = 1;
     int simp_every_round = 0;
     int always_one_by_one = 0;
@@ -128,6 +129,7 @@ void add_mis_options()
     ("seed,s", po::value(&conf.seed)->default_value(conf.seed), "Seed")
     ("bva", po::value(&conf.bva)->default_value(conf.bva), "bva")
     ("bve", po::value(&conf.bve)->default_value(conf.bve), "bve")
+    ("guess", po::value(&conf.guess)->default_value(conf.guess), "Guess small set")
     ("one", po::value(&conf.always_one_by_one)->default_value(conf.always_one_by_one), "always one-by-one mode")
     ("simpstart", po::value(&conf.simp_at_start)->default_value(conf.simp_at_start), "simp at startup")
     ("simpallround", po::value(&conf.simp_every_round)->default_value(conf.simp_every_round), "simp at every round")
@@ -810,7 +812,7 @@ int main(int argc, char** argv)
     signal(SIGALRM,signal_handler);
     signal(SIGINT,signal_handler);
 
-    if (false) {
+    if (conf.guess && sampling_set->size() > 60) {
         uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/20, 50);
         simp();
         one_round(guess_indep, true);
