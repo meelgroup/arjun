@@ -796,7 +796,7 @@ int main(int argc, char** argv)
     }
 
     add_supported_options(argc, argv);
-    cout << "[mis] Version: " << get_version_sha1() << endl;
+    cout << "[mis] Arjun Version: " << get_version_sha1() << endl;
     cout
     << "c executed with command line: "
     << command_line
@@ -806,6 +806,7 @@ int main(int argc, char** argv)
     double starTime = cpuTime();
     mtrand.seed(conf.seed);
     init_solver_setup();
+    cout << "[mis] CMS Version: " << solver->get_text_version_info();
     signal(SIGALRM,signal_handler);
     signal(SIGINT,signal_handler);
 
