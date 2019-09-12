@@ -579,9 +579,9 @@ void one_round(uint32_t by, bool only_inverse)
         if (one_by_one_mode == inverse_mode) {
             //solver->set_max_confl(10000);
         }
-        if (one_by_one_mode == one_mode) {
+        //if (one_by_one_mode == one_mode) {
             solver->set_max_confl(500);
-        }
+        //}
         lbool ret = solver->solve(&assumptions);
         if (ret == l_Undef) {
             if (one_by_one_mode == inverse_mode) {
@@ -881,9 +881,9 @@ int main(int argc, char** argv)
             simp();
         }
         if (sampling_set->size() < prev_size/2) {
-            num = sampling_set->size()/10;
+            num = sampling_set->size()/20;
         } else {
-            num = num/5;
+            num = num/20;
         }
         if (num < 10) {
             num = 1;
