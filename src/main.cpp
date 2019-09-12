@@ -67,6 +67,7 @@ vector<char> seen;
 uint32_t orig_num_vars;
 uint32_t total_eq_removed = 0;
 uint32_t total_set_removed = 0;
+uint32_t mult_or_invers_var;
 enum ModeType {one_mode, many_mode, inverse_mode};
 map<uint32_t, uint32_t> indic; //to indicate indic[var] is same for VAR, assert it
 
@@ -83,7 +84,7 @@ struct Config {
     int guess = 0;
     int simp_at_start = 1;
     int simp_every_round = 0;
-    int always_one_by_one = 0;
+    int always_one_by_one = 1;
     int recompute_sampling_set = 0;
 };
 
@@ -350,6 +351,9 @@ void add_fixed_clauses()
     //hence at least one indicator variable must be TRUE
     assert(indic.size() == sampling_set->size());
     tmp.clear();
+    solver->new_var();
+    mult_or_invers_var = solver->nVars()-1;
+    tmp.push_back(Lit(mult_or_invers_var, false));
     for(const auto& var: indic) {
         tmp.push_back(Lit(var.second, false));
     }
@@ -504,6 +508,7 @@ void one_round(uint32_t by, bool only_inverse)
 
         uint32_t test_var = var_Undef;
         uint32_t ass;
+
         if (one_by_one_mode == one_mode) {
             //TODO improve
             vector<uint32_t> pick;
@@ -525,8 +530,44 @@ void one_round(uint32_t by, bool only_inverse)
         uint32_t inverse_ass = var_Undef;
         if (one_by_one_mode == inverse_mode) {
             inverse_ass = fill_assumptions2(assumptions, indep, testvar_to_assump, assump_to_testvars, iter);
-        } else {
+            assumptions.push_back(Lit(mult_or_invers_var, true));
+
+        }
+        else if (one_by_one_mode == many_mode) {
             fill_assumptions(assumptions, unknown, indep, testvar_to_assump);
+            assumptions.push_back(Lit(mult_or_invers_var, true));
+        }
+        else if (one_by_one_mode == one_mode) {
+            fill_assumptions(assumptions, unknown, indep, testvar_to_assump);
+            const auto& vars = assump_to_testvars[ass];
+
+            if (vars.size() > 1) {
+                solver->new_var();
+                solver->new_var();
+                uint32_t one = solver->nVars()-2;
+                uint32_t other = solver->nVars()-1;
+
+                vector<Lit> tmp_one;
+                tmp_one.push_back(Lit(one, false));
+
+                vector<Lit> tmp_other;
+                tmp_other.push_back(Lit(other, false));
+
+                for(uint32_t var: vars) {
+                    tmp_one.push_back(Lit(var, false));
+                    tmp_other.push_back(Lit(var+orig_num_vars, true));
+                }
+                solver->add_clause(tmp_one);
+                solver->add_clause(tmp_other);
+
+                assumptions.push_back(Lit(one, true));
+                assumptions.push_back(Lit(other, true));
+            } else {
+                assert(vars.size() == 1);
+                uint32_t var = vars[0];
+                assumptions.push_back(Lit(var, false));
+                assumptions.push_back(Lit(var + orig_num_vars, true));
+            }
         }
 
         //std::random_shuffle(assumptions.begin(), assumptions.end());
@@ -538,7 +579,9 @@ void one_round(uint32_t by, bool only_inverse)
         if (one_by_one_mode == inverse_mode) {
             //solver->set_max_confl(10000);
         }
-        solver->set_max_confl(700);
+        if (one_by_one_mode == one_mode) {
+            solver->set_max_confl(500);
+        }
         lbool ret = solver->solve(&assumptions);
         if (ret == l_Undef) {
             if (one_by_one_mode == inverse_mode) {
@@ -588,7 +631,9 @@ void one_round(uint32_t by, bool only_inverse)
 
                 //not independent.
                 for(uint32_t ass: not_in_reason) {
-                    assert(assump_to_testvars.find(ass) != assump_to_testvars.end());
+                    if (assump_to_testvars.find(ass) == assump_to_testvars.end()) {
+                        continue;
+                    }
                     const auto& vars = assump_to_testvars[ass];
 
                     //Remove from unknown
@@ -619,7 +664,7 @@ void one_round(uint32_t by, bool only_inverse)
             }
         }
 
-        if (iter % 50 == 0) {
+        if (iter % 1 == 0) {
             cout
             << "[mis] iter: " << std::setw(8) << iter
             << " mode: "
@@ -840,7 +885,7 @@ int main(int argc, char** argv)
         } else {
             num = num/5;
         }
-        if (num < 5) {
+        if (num < 10) {
             num = 1;
         }
         num = 1;
