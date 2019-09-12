@@ -68,6 +68,7 @@ uint32_t orig_num_vars;
 uint32_t total_eq_removed = 0;
 uint32_t total_set_removed = 0;
 enum ModeType {one_mode, many_mode, inverse_mode};
+map<uint32_t, uint32_t> indic; //to indicate indic[var] is same for VAR, assert it
 
 vector<uint32_t> sampling_set_tmp1;
 vector<uint32_t> sampling_set_tmp2;
@@ -307,10 +308,8 @@ void init_samping_set(bool recompute)
 
 void add_fixed_clauses()
 {
-    vector<uint32_t> indic;
-
     //Indicator variable is TRUE when they are NOT equal
-    for(uint32_t i: *sampling_set) {
+    for(uint32_t var: *sampling_set) {
         //(a=b) = !f
         //a  V -b V  f
         //-a V  b V  f
@@ -319,29 +318,29 @@ void add_fixed_clauses()
         solver->new_var();
         uint32_t this_indic = solver->nVars()-1;
         //torem_orig.push_back(Lit(this_indic, false));
-        indic.push_back(this_indic);
+        indic[var] = this_indic;
 
         tmp.clear();
-        tmp.push_back(Lit(i,               false));
-        tmp.push_back(Lit(i+orig_num_vars, true));
+        tmp.push_back(Lit(var,               false));
+        tmp.push_back(Lit(var+orig_num_vars, true));
         tmp.push_back(Lit(this_indic,      false));
         solver->add_clause(tmp);
 
         tmp.clear();
-        tmp.push_back(Lit(i,               true));
-        tmp.push_back(Lit(i+orig_num_vars, false));
+        tmp.push_back(Lit(var,               true));
+        tmp.push_back(Lit(var+orig_num_vars, false));
         tmp.push_back(Lit(this_indic,      false));
         solver->add_clause(tmp);
 
         tmp.clear();
-        tmp.push_back(Lit(i,               false));
-        tmp.push_back(Lit(i+orig_num_vars, false));
+        tmp.push_back(Lit(var,               false));
+        tmp.push_back(Lit(var+orig_num_vars, false));
         tmp.push_back(Lit(this_indic,      true));
         solver->add_clause(tmp);
 
         tmp.clear();
-        tmp.push_back(Lit(i,               true));
-        tmp.push_back(Lit(i+orig_num_vars, true));
+        tmp.push_back(Lit(var,               true));
+        tmp.push_back(Lit(var+orig_num_vars, true));
         tmp.push_back(Lit(this_indic,      true));
         solver->add_clause(tmp);
     }
@@ -351,8 +350,8 @@ void add_fixed_clauses()
     //hence at least one indicator variable must be TRUE
     assert(indic.size() == sampling_set->size());
     tmp.clear();
-    for(uint32_t var: indic) {
-        tmp.push_back(Lit(var, false));
+    for(const auto& var: indic) {
+        tmp.push_back(Lit(var.second, false));
     }
     solver->add_clause(tmp);
 }
@@ -451,12 +450,8 @@ void one_round(uint32_t by, bool only_inverse)
 
             tmp.clear();
             tmp.push_back(Lit(ass, false));
-            tmp.push_back(Lit(var, false));
-            tmp.push_back(Lit(var+orig_num_vars, true));
-            solver->add_clause(tmp);
-
-            tmp[1] = ~tmp[1];
-            tmp[2] = ~tmp[2];
+            assert(indic.find(var) != indic.end());
+            tmp.push_back(Lit(indic[var], true));
             solver->add_clause(tmp);
             testvar_to_assump[var] = ass;
             vars.push_back(var);
