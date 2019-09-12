@@ -439,6 +439,7 @@ void one_round(uint32_t by, bool only_inverse)
     map<uint32_t, uint32_t> testvar_to_assump;
     map<uint32_t, vector<uint32_t>> assump_to_testvars;
     vector<Lit> all_assumption_lits;
+    std::random_shuffle(sampling_set->begin(), sampling_set->end());
     for(uint32_t i = 0; i < sampling_set->size();) {
         solver->new_var();
         const uint32_t ass = solver->nVars()-1;
@@ -477,17 +478,21 @@ void one_round(uint32_t by, bool only_inverse)
     uint32_t num_fast = 0;
     uint32_t not_indep = 0;
     bool inverse_won = false;
+    double myTime = cpuTime();
     while(
         (!only_inverse && !unknown.empty())
         || (only_inverse && iter < assump_to_testvars.size())
     ) {
         if (one_by_one_mode == many_mode) {
-            if (iter % 100 == 0 ||  iter < 1) {
+            //if (iter % 50 == 0 ||  iter < 1) {
                 num_fast ++;
-            } else {
-                one_by_one_mode = one_mode;
-            }
         }
+        if (iter % 100 == 0) {
+            one_by_one_mode = many_mode;
+        } else {
+            one_by_one_mode = one_mode;
+        }
+
         if (conf.always_one_by_one) {
             one_by_one_mode = one_mode;
         }
@@ -498,6 +503,7 @@ void one_round(uint32_t by, bool only_inverse)
         auto old_one_by_one_mode = one_by_one_mode;
 
         uint32_t test_var = var_Undef;
+        uint32_t ass;
         if (one_by_one_mode == one_mode) {
             //TODO improve
             vector<uint32_t> pick;
@@ -505,10 +511,10 @@ void one_round(uint32_t by, bool only_inverse)
                 pick.push_back(unk_v);
             }
             test_var = pick[mtrand.randInt(pick.size()-1)];
-            test_var = pick[pick.size()-1];
+            //test_var = pick[pick.size()-1];
 
             assert(testvar_to_assump.find(test_var) != testvar_to_assump.end());
-            uint32_t ass = testvar_to_assump[test_var];
+            ass = testvar_to_assump[test_var];
             assert(assump_to_testvars.find(ass) != assump_to_testvars.end());
             const auto& vars = assump_to_testvars[ass];
             for(uint32_t var: vars) {
@@ -523,7 +529,6 @@ void one_round(uint32_t by, bool only_inverse)
             fill_assumptions(assumptions, unknown, indep, testvar_to_assump);
         }
 
-        double myTime = cpuTime();
         //std::random_shuffle(assumptions.begin(), assumptions.end());
         /*cout << "ass: ";
         for(uint32_t i = 0; i < assumptions.size(); i ++) {
@@ -533,9 +538,16 @@ void one_round(uint32_t by, bool only_inverse)
         if (one_by_one_mode == inverse_mode) {
             //solver->set_max_confl(10000);
         }
+        solver->set_max_confl(700);
         lbool ret = solver->solve(&assumptions);
         if (ret == l_Undef) {
-            assert(one_by_one_mode == inverse_mode);
+            if (one_by_one_mode == inverse_mode) {
+            } else {
+                const auto& vars = assump_to_testvars[ass];
+                for(uint32_t var: vars) {
+                    unknown.insert(var);
+                }
+            }
         }
 
         if (ret == l_True) {
@@ -607,18 +619,21 @@ void one_round(uint32_t by, bool only_inverse)
             }
         }
 
-        cout
-        << "[mis] iter: " << std::setw(8) << iter
-        << " mode: "
-        << (old_one_by_one_mode==one_mode ? "one " :
-        ((old_one_by_one_mode==many_mode) ? "many" : "inv " ))
-        << " ret: " << std::setw(8) << ret
-        << " U: " << std::setw(7) << unknown.size()
-        << " I: " << std::setw(7) << indep.size()
-        << " N: " << std::setw(7) << not_indep
-        << " T: "
-        << std::setprecision(2) << std::fixed << (cpuTime() - myTime)
-        << endl;
+        if (iter % 50 == 0) {
+            cout
+            << "[mis] iter: " << std::setw(8) << iter
+            << " mode: "
+            << (old_one_by_one_mode==one_mode ? "one " :
+            ((old_one_by_one_mode==many_mode) ? "many" : "inv " ))
+            << " ret: " << std::setw(8) << ret
+            << " U: " << std::setw(7) << unknown.size()
+            << " I: " << std::setw(7) << indep.size()
+            << " N: " << std::setw(7) << not_indep
+            << " T: "
+            << std::setprecision(2) << std::fixed << (cpuTime() - myTime)
+            << endl;
+            myTime = cpuTime();
+        }
         iter++;
 
         other_sampling_set->clear();
@@ -764,7 +779,7 @@ void init_solver_setup()
     if (!conf.bve) {
         solver->set_no_bva();
     }
-    solver->set_up_for_scalmc();
+    //solver->set_up_for_scalmc();
     //solver->set_verbosity(2);
 
     //Print stats
@@ -808,7 +823,7 @@ int main(int argc, char** argv)
     signal(SIGINT,signal_handler);
 
     if (conf.guess && sampling_set->size() > 60) {
-        uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/20, 50);
+        uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/10, 50);
         simp();
         one_round(guess_indep, true);
     }
@@ -828,6 +843,7 @@ int main(int argc, char** argv)
         if (num < 5) {
             num = 1;
         }
+        num = 1;
         prev_size = sampling_set->size();
 
         cout << "[mis] ===--> Doing a run for " << num << endl;
