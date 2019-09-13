@@ -504,6 +504,8 @@ void one_round(uint32_t by, bool only_inverse)
     testvar_to_assump.resize(orig_num_vars, var_Undef);
 
     map<uint32_t, vector<uint32_t>> assump_to_testvars;
+    vector<uint32_t> assump_to_testvar;
+
     vector<Lit> all_assumption_lits;
     std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter(incidence));
 //     std::sort(sampling_set->begin(), sampling_set->end());
@@ -528,6 +530,12 @@ void one_round(uint32_t by, bool only_inverse)
             vars.push_back(var);
         }
         assump_to_testvars[ass] = vars;
+
+        if (assump_to_testvar.size() <= ass) {
+            assump_to_testvar.resize(ass+1, var_Undef);
+        }
+        assump_to_testvar[ass] = vars[0];
+
     }
 
     //Initially, all of samping_set is unknown
@@ -612,9 +620,15 @@ void one_round(uint32_t by, bool only_inverse)
             uint32_t ass = testvar_to_assump[test_var];
             assert(ass != var_Undef);
 
-            assert(assump_to_testvars.find(ass) != assump_to_testvars.end());
-            const auto& vars = assump_to_testvars[ass];
-            for(uint32_t var: vars) {
+            if (by > 1) {
+                assert(assump_to_testvars.find(ass) != assump_to_testvars.end());
+                const auto& vars = assump_to_testvars[ass];
+                for(uint32_t var: vars) {
+                    unknown.erase(var);
+                    tried_var_already[var] = 1;
+                }
+            } else {
+                const auto& var = assump_to_testvar[ass];
                 unknown.erase(var);
                 tried_var_already[var] = 1;
             }
@@ -635,14 +649,11 @@ void one_round(uint32_t by, bool only_inverse)
             uint32_t ass = testvar_to_assump[test_var];
             assert(ass != var_Undef);
 
-            assert(assump_to_testvars.find(ass) != assump_to_testvars.end());
-            const auto& vars = assump_to_testvars[ass];
-
-            fill_assumptions(assumptions, unknown, indep, testvar_to_assump, vars.size() == 1);
-
-            if (vars.size() == 1) {
-                assert(vars.size() == 1);
-                uint32_t var = vars[0];
+            if (by > 1) {
+                fill_assumptions(assumptions, unknown, indep, testvar_to_assump, false);
+            } else {
+                fill_assumptions(assumptions, unknown, indep, testvar_to_assump, true);
+                const auto& var = assump_to_testvar[ass];
                 assumptions.push_back(Lit(var, false));
                 assumptions.push_back(Lit(var + orig_num_vars, true));
             }
@@ -679,8 +690,17 @@ void one_round(uint32_t by, bool only_inverse)
             assert(one_by_one_mode == one_mode || one_by_one_mode == inverse_mode);
             if (one_by_one_mode == one_mode) {
                 uint32_t ass = testvar_to_assump[test_var];
-                const auto& vars = assump_to_testvars[ass];
-                for(uint32_t var: vars) {
+
+                if (by > 1) {
+                    const auto& vars = assump_to_testvars[ass];
+                    for(uint32_t var: vars) {
+                        indep.push_back(var);
+                        /*tmp.clear();
+                        tmp.push_back(Lit(indic[var], true));
+                        solver->add_clause(tmp);*/
+                    }
+                } else {
+                    const auto& var = assump_to_testvar[ass];
                     indep.push_back(var);
                     /*tmp.clear();
                     tmp.push_back(Lit(indic[var], true));
