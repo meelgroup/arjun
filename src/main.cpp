@@ -930,7 +930,7 @@ int main(int argc, char** argv)
         } else {
             num = num/20;
         }
-        if (num < 10) {
+        if (num < 30) {
             num = 1;
         }
         //num = 1;
