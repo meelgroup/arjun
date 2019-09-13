@@ -33,6 +33,7 @@ using std::vector;
 #endif
 
 #include <iostream>
+#include <iomanip>
 #include <random>
 #include <algorithm>
 #include <map>
@@ -75,17 +76,31 @@ vector<uint32_t> sampling_set_tmp1;
 vector<uint32_t> sampling_set_tmp2;
 vector<uint32_t>* sampling_set = NULL;
 vector<uint32_t>* other_sampling_set = NULL;
+vector<uint32_t> incidence;
 
 struct Config {
     int verb = 0;
     int seed = 0;
-    int bva = 1;
-    int bve = 1;
+    int bva = 0;
+    int bve = 0;
     int guess = 0;
     int simp_at_start = 1;
     int simp_every_round = 0;
     int always_one_by_one = 1;
     int recompute_sampling_set = 0;
+};
+
+struct IncidenceSorter
+{
+    IncidenceSorter(const vector<uint32_t>& _inc) :
+        inc(_inc)
+    {}
+
+    bool operator()(const uint32_t a, const uint32_t b) {
+        return inc[a] < inc[b];
+    }
+
+    const vector<uint32_t>& inc;
 };
 
 Config conf;
@@ -443,7 +458,7 @@ void one_round(uint32_t by, bool only_inverse)
     map<uint32_t, uint32_t> testvar_to_assump;
     map<uint32_t, vector<uint32_t>> assump_to_testvars;
     vector<Lit> all_assumption_lits;
-    std::random_shuffle(sampling_set->begin(), sampling_set->end());
+    std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter(incidence));
     for(uint32_t i = 0; i < sampling_set->size();) {
         solver->new_var();
         const uint32_t ass = solver->nVars()-1;
@@ -515,8 +530,10 @@ void one_round(uint32_t by, bool only_inverse)
             for(const auto& unk_v: unknown) {
                 pick.push_back(unk_v);
             }
-            test_var = pick[mtrand.randInt(pick.size()-1)];
-            //test_var = pick[pick.size()-1];
+            std::sort(pick.begin(), pick.end(), IncidenceSorter(incidence));
+            //test_var = pick[mtrand.randInt(pick.size()-1)];
+            test_var = pick[0];
+            assert(test_var < orig_num_vars);
 
             assert(testvar_to_assump.find(test_var) != testvar_to_assump.end());
             ass = testvar_to_assump[test_var];
@@ -713,6 +730,7 @@ void simp()
         remove_eq_literals(NULL);
         remove_zero_assigned_literals(NULL);
         cout << "[mis] Simplify finished. T: " << (cpuTime() - simp_time) << endl;
+        incidence = solver->get_var_incidence();
     }
 }
 
@@ -829,6 +847,7 @@ void init_solver_setup()
 
     //Print stats
     add_fixed_clauses();
+    incidence = solver->get_var_incidence();
     cout << "[mis] Setup time: " << (cpuTime()-myTime) << endl;
 }
 
