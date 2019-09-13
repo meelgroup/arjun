@@ -407,7 +407,8 @@ void add_fixed_clauses()
 
 void fill_assumptions(
     vector<Lit>& assumptions,
-    const set<uint32_t>& unknown,
+    vector<uint32_t>& unknown,
+    const vector<char>& unknown_set,
     const vector<uint32_t>& indep,
     const vector<uint32_t>& testvar_to_assump,
     bool trick = false
@@ -416,7 +417,15 @@ void fill_assumptions(
     assumptions.clear();
 
     //Add unknown as assumptions
-    for(const auto& var: unknown) {
+    uint32_t j = 0;
+    for(uint32_t i = 0; i < unknown.size(); i++) {
+        uint32_t var = unknown[i];
+        if (unknown_set[var] == 0) {
+            continue;
+        } else {
+            unknown[j++] = var;
+        }
+
         assert(testvar_to_assump.size() > var);
         uint32_t ass = testvar_to_assump[var];
         if (!seen[ass]) {
@@ -427,6 +436,7 @@ void fill_assumptions(
             }
         }
     }
+    unknown.resize(j);
 
     //Add known independent as assumptions
     for(const auto& var: indep) {
@@ -539,8 +549,13 @@ void one_round(uint32_t by, bool only_inverse)
     }
 
     //Initially, all of samping_set is unknown
-    set<uint32_t> unknown;
-    unknown.insert(sampling_set->begin(), sampling_set->end());
+    vector<uint32_t> unknown;
+    vector<char> unknown_set;
+    unknown_set.resize(orig_num_vars, 0);
+    for(const auto& x: *sampling_set) {
+        unknown.push_back(x);
+        unknown_set[x] = 1;
+    }
     cout << "[mis] Start unknown size: " << unknown.size() << endl;
 
     seen.clear();
@@ -579,7 +594,7 @@ void one_round(uint32_t by, bool only_inverse)
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
     while(
-        (!only_inverse && !unknown.empty())
+        (!only_inverse && true)
         || (only_inverse && iter < assump_to_testvars.size())
     ) {
         if (one_by_one_mode == many_mode) {
@@ -624,12 +639,12 @@ void one_round(uint32_t by, bool only_inverse)
                 assert(assump_to_testvars.find(ass) != assump_to_testvars.end());
                 const auto& vars = assump_to_testvars[ass];
                 for(uint32_t var: vars) {
-                    unknown.erase(var);
+                    unknown_set[var] = 0;
                     tried_var_already[var] = 1;
                 }
             } else {
                 const auto& var = assump_to_testvar[ass];
-                unknown.erase(var);
+                unknown_set[var] = 0;
                 tried_var_already[var] = 1;
             }
         }
@@ -641,7 +656,7 @@ void one_round(uint32_t by, bool only_inverse)
 
         }
         else if (one_by_one_mode == many_mode) {
-            fill_assumptions(assumptions, unknown, indep, testvar_to_assump, true);
+            fill_assumptions(assumptions, unknown, unknown_set, indep, testvar_to_assump, true);
             assumptions.push_back(Lit(mult_or_invers_var, true));
         }
         else if (one_by_one_mode == one_mode) {
@@ -650,9 +665,9 @@ void one_round(uint32_t by, bool only_inverse)
             assert(ass != var_Undef);
 
             if (by > 1) {
-                fill_assumptions(assumptions, unknown, indep, testvar_to_assump, false);
+                fill_assumptions(assumptions, unknown, unknown_set, indep, testvar_to_assump, false);
             } else {
-                fill_assumptions(assumptions, unknown, indep, testvar_to_assump, true);
+                fill_assumptions(assumptions, unknown, unknown_set, indep, testvar_to_assump, true);
                 const auto& var = assump_to_testvar[ass];
                 assumptions.push_back(Lit(var, false));
                 assumptions.push_back(Lit(var + orig_num_vars, true));
@@ -682,7 +697,8 @@ void one_round(uint32_t by, bool only_inverse)
                 uint32_t ass = testvar_to_assump[test_var];
                 const auto& vars = assump_to_testvars[ass];
                 for(uint32_t var: vars) {
-                    unknown.insert(var);
+                    assert(unknown_set[var] == 0);
+                    unknown_set[var] = 1;
                 }
             }
         } else if (ret == l_True) {
@@ -743,7 +759,7 @@ void one_round(uint32_t by, bool only_inverse)
                     //Remove from unknown
                     for(uint32_t var: vars) {
                         not_indep++;
-                        unknown.erase(var);
+                        unknown_set[var] = 0;
                     }
 
                     //Remove from solver
@@ -760,8 +776,16 @@ void one_round(uint32_t by, bool only_inverse)
                 assert(assump_to_testvars.find(inverse_ass) != assump_to_testvars.end());
                 const auto& vars = assump_to_testvars[inverse_ass];
                 uint32_t old_size = unknown.size();
+                for(auto&x: unknown) {
+                    unknown_set[x] = 0;
+                }
                 unknown.clear();
-                unknown.insert(vars.begin(), vars.end());
+                for(auto&x: unknown) {
+                    unknown.push_back(x);
+                    unknown_set[x] = 1;
+                }
+
+
                 cout << "After unknown size: " << unknown.size() << endl;
                 not_indep += old_size - unknown.size();
                 break;
@@ -804,7 +828,9 @@ void one_round(uint32_t by, bool only_inverse)
 
         other_sampling_set->clear();
         for(const auto& var: unknown) {
-            other_sampling_set->push_back(var);
+            if (unknown_set[var]) {
+                other_sampling_set->push_back(var);
+            }
         }
         for(const auto& var: indep) {
             other_sampling_set->push_back(var);
