@@ -722,6 +722,10 @@ void one_round(uint32_t by, bool only_inverse)
         }
         iter++;
 
+        if ((iter % 100) == 99) {
+            incidence = solver->get_var_incidence();
+        }
+
         other_sampling_set->clear();
         for(const auto& var: unknown) {
             other_sampling_set->push_back(var);
