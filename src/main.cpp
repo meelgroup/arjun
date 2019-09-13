@@ -82,7 +82,7 @@ struct Config {
     int verb = 0;
     int seed = 0;
     int bva = 0;
-    int bve = 0;
+    int bve = 1;
     int guess = 0;
     int simp_at_start = 1;
     int simp_every_round = 0;
