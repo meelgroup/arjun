@@ -501,6 +501,15 @@ void one_round(uint32_t by, bool only_inverse)
     vector<char> tried_var_already;
     tried_var_already.resize(orig_num_vars, 0);
 
+    //Calc mod:
+    uint32_t mod = 1;
+    if ((sampling_set->size()/by) > 20 ) {
+        uint32_t will_do_iters = (sampling_set->size()/by);
+        uint32_t want_printed = 30;
+        mod = will_do_iters/want_printed;
+        mod = std::max<int>(mod, 1);
+    }
+
     uint32_t ret_false = 0;
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
@@ -585,18 +594,8 @@ void one_round(uint32_t by, bool only_inverse)
             }
         }
 
-        //std::random_shuffle(assumptions.begin(), assumptions.end());
-        /*cout << "ass: ";
-        for(uint32_t i = 0; i < assumptions.size(); i ++) {
-            cout << assumptions[i] << " ";
-        }
-        cout << "0" << endl;*/
-        if (one_by_one_mode == inverse_mode) {
-            //solver->set_max_confl(10000);
-        }
-
         if (by > 100) {
-            solver->set_max_confl(500);
+            solver->set_max_confl(800);
         } else {
             solver->set_max_confl(200);
         }
@@ -605,7 +604,7 @@ void one_round(uint32_t by, bool only_inverse)
             ret_false++;
         } else if (ret == l_True) {
             ret_true++;
-        } else if (ret == l_True) {
+        } else if (ret == l_Undef) {
             ret_undef++;
         }
 
@@ -689,11 +688,7 @@ void one_round(uint32_t by, bool only_inverse)
             }
         }
 
-        uint32_t mod = 1;
-        if ((sampling_set->size()/by) > 10 ) {
-            mod = 10;
-        }
-        if (iter % mod == 0) {
+        if (iter % mod == (mod-1)) {
             cout
             << "[mis] iter: " << std::setw(8) << iter;
             if (mod == 1) {
@@ -703,9 +698,10 @@ void one_round(uint32_t by, bool only_inverse)
                 << " ret: " << std::setw(8) << ret;
             } else {
                 cout
-                << " T: " << std::setw(3) << ret_true
-                << " F: " << std::setw(3) << ret_false
-                << " U: " << std::setw(3) << ret_undef;
+                << " T/F/U: ";
+                std::stringstream ss;
+                ss << ret_true << "/" << ret_false << "/" << ret_undef;
+                cout << std::setw(8) << std::left << ss.str() << std::right;
                 ret_true = 0;
                 ret_false = 0;
                 ret_undef = 0;
@@ -916,7 +912,7 @@ int main(int argc, char** argv)
     signal(SIGINT,signal_handler);
 
     if (conf.guess && sampling_set->size() > 60) {
-        uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/10, 50);
+        uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/30, 50);
         simp();
         one_round(guess_indep, true);
     }
