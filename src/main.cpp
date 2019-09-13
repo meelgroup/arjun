@@ -842,6 +842,7 @@ void init_solver_setup()
     if (!conf.bve) {
         solver->set_no_bva();
     }
+    solver->set_no_intree_probe();
     //solver->set_up_for_scalmc();
     //solver->set_verbosity(2);
 
