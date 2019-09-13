@@ -560,6 +560,13 @@ void one_round(uint32_t by, bool only_inverse)
         mod = std::max<int>(mod, 1);
     }
 
+    vector<uint32_t> pick_possibilities;
+    for(const auto& unk_v: unknown) {
+        pick_possibilities.push_back(unk_v);
+    }
+    std::sort(pick_possibilities.begin(), pick_possibilities.end(), IncidenceSorter(incidence));
+    std::reverse(pick_possibilities.begin(), pick_possibilities.end());
+
     uint32_t ret_false = 0;
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
@@ -588,16 +595,13 @@ void one_round(uint32_t by, bool only_inverse)
         uint32_t test_var = var_Undef;
         if (one_by_one_mode == one_mode) {
             //TODO improve
-            vector<uint32_t> pick;
-            for(const auto& unk_v: unknown) {
-                pick.push_back(unk_v);
-            }
-            std::sort(pick.begin(), pick.end(), IncidenceSorter(incidence));
             test_var = var_Undef;
-            for(uint32_t i = 0; i < pick.size(); i++) {
-                if (!tried_var_already[pick[i]]) {
-                    test_var = pick[i];
+            for(int i = pick_possibilities.size()-1; i>= 0; i--) {
+                if (!tried_var_already[pick_possibilities[i]]) {
+                    test_var = pick_possibilities[i];
                     break;
+                } else {
+                    pick_possibilities.pop_back();
                 }
             }
             if (test_var == var_Undef) {
