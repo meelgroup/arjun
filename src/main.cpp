@@ -309,6 +309,7 @@ void init_samping_set(bool recompute)
 
 void add_fixed_clauses()
 {
+   
     //Indicator variable is TRUE when they are NOT equal
     for(uint32_t var: *sampling_set) {
         //(a=b) = !f
@@ -320,7 +321,18 @@ void add_fixed_clauses()
         uint32_t this_indic = solver->nVars()-1;
         //torem_orig.push_back(Lit(this_indic, false));
         indic[var] = this_indic;
-
+   
+   /*
+        tmp.clear();
+        tmp.push_back(Lit(var, false));
+        tmp.push_back(Lit(this_indic, true));
+        solver->add_clause(tmp);
+        
+        tmp.clear();
+        tmp.push_back(Lit(var+orig_num_vars, true));
+        tmp.push_back(Lit(this_indic, true));
+        solver->add_clause(tmp); 
+     */   
         tmp.clear();
         tmp.push_back(Lit(var,               false));
         tmp.push_back(Lit(var+orig_num_vars, true));
@@ -344,6 +356,7 @@ void add_fixed_clauses()
         tmp.push_back(Lit(var+orig_num_vars, true));
         tmp.push_back(Lit(this_indic,      true));
         solver->add_clause(tmp);
+
     }
 
     //OR together the indicators: one of them must NOT be equal
@@ -351,13 +364,16 @@ void add_fixed_clauses()
     //hence at least one indicator variable must be TRUE
     assert(indic.size() == sampling_set->size());
     tmp.clear();
+ 
     solver->new_var();
     mult_or_invers_var = solver->nVars()-1;
     tmp.push_back(Lit(mult_or_invers_var, false));
+    
     for(const auto& var: indic) {
         tmp.push_back(Lit(var.second, false));
     }
-    solver->add_clause(tmp);
+ //   solver->add_clause(tmp);
+    
 }
 
 void fill_assumptions(
@@ -540,14 +556,45 @@ void one_round(uint32_t by, bool only_inverse)
         else if (one_by_one_mode == one_mode) {
             fill_assumptions(assumptions, unknown, indep, testvar_to_assump);
             const auto& vars = assump_to_testvars[ass];
-
+            solver->new_var();
+            uint32_t one = solver->nVars()-1;
+            vector<Lit> tmp_one;
+            tmp_one.push_back(Lit(one, true));
+            for(uint32_t var: vars) {
+                 
+                
+               
+                solver->new_var();
+                uint32_t this_indic = solver->nVars()-1;
+                //torem_orig.push_back(Lit(this_indic, false));
+   
+                tmp.clear();
+                tmp.push_back(Lit(var, false));
+                tmp.push_back(Lit(this_indic, true));
+                solver->add_clause(tmp);
+                
+                tmp.clear();
+                tmp.push_back(Lit(var+orig_num_vars, true));
+                tmp.push_back(Lit(this_indic, true));
+                solver->add_clause(tmp); 
+                
+              
+               // tmp.clear();
+                
+                tmp_one.push_back(Lit(this_indic,false));
+                 
+                
+            }
+            solver->add_clause(tmp_one); 
+            assumptions.push_back(Lit(one,false));
+            /* KSM: Commenting out
             if (vars.size() > 1) {
                 solver->new_var();
                 solver->new_var();
                 uint32_t one = solver->nVars()-2;
                 uint32_t other = solver->nVars()-1;
 
-                vector<Lit> tmp_one;
+                
                 tmp_one.push_back(Lit(one, false));
 
                 vector<Lit> tmp_other;
@@ -565,9 +612,10 @@ void one_round(uint32_t by, bool only_inverse)
             } else {
                 assert(vars.size() == 1);
                 uint32_t var = vars[0];
-                assumptions.push_back(Lit(var, false));
-                assumptions.push_back(Lit(var + orig_num_vars, true));
+           //     assumptions.push_back(Lit(var, false));
+           //     assumptions.push_back(Lit(var + orig_num_vars, true));
             }
+         //   */
         }
 
         //std::random_shuffle(assumptions.begin(), assumptions.end());
@@ -580,7 +628,7 @@ void one_round(uint32_t by, bool only_inverse)
             //solver->set_max_confl(10000);
         }
         //if (one_by_one_mode == one_mode) {
-            solver->set_max_confl(500);
+        //    solver->set_max_confl(500);
         //}
         lbool ret = solver->solve(&assumptions);
         if (ret == l_Undef) {
@@ -888,7 +936,7 @@ int main(int argc, char** argv)
         if (num < 10) {
             num = 1;
         }
-        num = 1;
+        //num = 10;
         prev_size = sampling_set->size();
 
         cout << "[mis] ===--> Doing a run for " << num << endl;
