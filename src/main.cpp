@@ -498,6 +498,9 @@ void one_round(uint32_t by, bool only_inverse)
     uint32_t not_indep = 0;
     bool inverse_won = false;
     double myTime = cpuTime();
+    vector<char> tried_var_already;
+    tried_var_already.resize(orig_num_vars, 0);
+
     while(
         (!only_inverse && !unknown.empty())
         || (only_inverse && iter < assump_to_testvars.size())
@@ -522,7 +525,6 @@ void one_round(uint32_t by, bool only_inverse)
         auto old_one_by_one_mode = one_by_one_mode;
 
         uint32_t test_var = var_Undef;
-        uint32_t ass;
 
         if (one_by_one_mode == one_mode) {
             //TODO improve
@@ -531,16 +533,25 @@ void one_round(uint32_t by, bool only_inverse)
                 pick.push_back(unk_v);
             }
             std::sort(pick.begin(), pick.end(), IncidenceSorter(incidence));
-            //test_var = pick[mtrand.randInt(pick.size()-1)];
-            test_var = pick[0];
+            test_var = var_Undef;
+            for(uint32_t i = 0; i < pick.size(); i++) {
+                if (!tried_var_already[pick[i]]) {
+                    test_var = pick[i];
+                    break;
+                }
+            }
+            if (test_var == var_Undef) {
+                break;
+            }
             assert(test_var < orig_num_vars);
 
             assert(testvar_to_assump.find(test_var) != testvar_to_assump.end());
-            ass = testvar_to_assump[test_var];
+            uint32_t ass = testvar_to_assump[test_var];
             assert(assump_to_testvars.find(ass) != assump_to_testvars.end());
             const auto& vars = assump_to_testvars[ass];
             for(uint32_t var: vars) {
                 unknown.erase(var);
+                tried_var_already[var] = 1;
             }
         }
 
@@ -556,29 +567,14 @@ void one_round(uint32_t by, bool only_inverse)
         }
         else if (one_by_one_mode == one_mode) {
             fill_assumptions(assumptions, unknown, indep, testvar_to_assump);
+
+            assert(testvar_to_assump.find(test_var) != testvar_to_assump.end());
+            uint32_t ass = testvar_to_assump[test_var];
+            assert(assump_to_testvars.find(ass) != assump_to_testvars.end());
             const auto& vars = assump_to_testvars[ass];
 
             if (vars.size() > 1) {
-                solver->new_var();
-                solver->new_var();
-                uint32_t one = solver->nVars()-2;
-                uint32_t other = solver->nVars()-1;
-
-                vector<Lit> tmp_one;
-                tmp_one.push_back(Lit(one, false));
-
-                vector<Lit> tmp_other;
-                tmp_other.push_back(Lit(other, false));
-
-                for(uint32_t var: vars) {
-                    tmp_one.push_back(Lit(var, false));
-                    tmp_other.push_back(Lit(var+orig_num_vars, true));
-                }
-                solver->add_clause(tmp_one);
-                solver->add_clause(tmp_other);
-
-                assumptions.push_back(Lit(one, true));
-                assumptions.push_back(Lit(other, true));
+                assumptions.push_back(Lit(mult_or_invers_var, true));
             } else {
                 assert(vars.size() == 1);
                 uint32_t var = vars[0];
@@ -596,21 +592,24 @@ void one_round(uint32_t by, bool only_inverse)
         if (one_by_one_mode == inverse_mode) {
             //solver->set_max_confl(10000);
         }
-        //if (one_by_one_mode == one_mode) {
+
+        if (by > 100) {
             solver->set_max_confl(500);
-        //}
+        } else {
+            solver->set_max_confl(200);
+        }
         lbool ret = solver->solve(&assumptions);
         if (ret == l_Undef) {
             if (one_by_one_mode == inverse_mode) {
             } else {
+                uint32_t ass = testvar_to_assump[test_var];
                 const auto& vars = assump_to_testvars[ass];
                 for(uint32_t var: vars) {
                     unknown.insert(var);
                 }
             }
         }
-
-        if (ret == l_True) {
+        else if (ret == l_True) {
             //Independent
             assert(one_by_one_mode == one_mode || one_by_one_mode == inverse_mode);
             if (one_by_one_mode == one_mode) {
@@ -681,7 +680,11 @@ void one_round(uint32_t by, bool only_inverse)
             }
         }
 
-        if (iter % 1 == 0) {
+        uint32_t mod = 1;
+        if (by < 5 ) {
+            mod = 30;
+        }
+        if (iter % mod == 0) {
             cout
             << "[mis] iter: " << std::setw(8) << iter
             << " mode: "
@@ -900,15 +903,15 @@ int main(int argc, char** argv)
         if (conf.simp_every_round || (conf.simp_at_start && round_num ==0)) {
             simp();
         }
-        if (sampling_set->size() < prev_size/2) {
-            num = sampling_set->size()/20;
+        if (sampling_set->size() < prev_size/5) {
+            num = sampling_set->size()/10;
         } else {
             num = num/20;
         }
         if (num < 10) {
             num = 1;
         }
-        num = 1;
+        //num = 1;
         prev_size = sampling_set->size();
 
         cout << "[mis] ===--> Doing a run for " << num << endl;
