@@ -501,6 +501,9 @@ void one_round(uint32_t by, bool only_inverse)
     vector<char> tried_var_already;
     tried_var_already.resize(orig_num_vars, 0);
 
+    uint32_t ret_false = 0;
+    uint32_t ret_true = 0;
+    uint32_t ret_undef = 0;
     while(
         (!only_inverse && !unknown.empty())
         || (only_inverse && iter < assump_to_testvars.size())
@@ -599,6 +602,14 @@ void one_round(uint32_t by, bool only_inverse)
             solver->set_max_confl(200);
         }
         lbool ret = solver->solve(&assumptions);
+        if (ret == l_False) {
+            ret_false++;
+        } else if (ret == l_True) {
+            ret_true++;
+        } else if (ret == l_True) {
+            ret_undef++;
+        }
+
         if (ret == l_Undef) {
             if (one_by_one_mode == inverse_mode) {
             } else {
@@ -608,8 +619,7 @@ void one_round(uint32_t by, bool only_inverse)
                     unknown.insert(var);
                 }
             }
-        }
-        else if (ret == l_True) {
+        } else if (ret == l_True) {
             //Independent
             assert(one_by_one_mode == one_mode || one_by_one_mode == inverse_mode);
             if (one_by_one_mode == one_mode) {
@@ -681,16 +691,28 @@ void one_round(uint32_t by, bool only_inverse)
         }
 
         uint32_t mod = 1;
-        if (by < 5 ) {
-            mod = 30;
+        if ((sampling_set->size()/by) > 10 ) {
+            mod = 10;
         }
         if (iter % mod == 0) {
             cout
-            << "[mis] iter: " << std::setw(8) << iter
-            << " mode: "
-            << (old_one_by_one_mode==one_mode ? "one " :
-            ((old_one_by_one_mode==many_mode) ? "many" : "inv " ))
-            << " ret: " << std::setw(8) << ret
+            << "[mis] iter: " << std::setw(8) << iter;
+            if (mod == 1) {
+                cout << " mode: "
+                << (old_one_by_one_mode==one_mode ? "one " :
+                ((old_one_by_one_mode==many_mode) ? "many" : "inv " ))
+                << " ret: " << std::setw(8) << ret;
+            } else {
+                cout
+                << " T: " << std::setw(3) << ret_true
+                << " F: " << std::setw(3) << ret_false
+                << " U: " << std::setw(3) << ret_undef;
+                ret_true = 0;
+                ret_false = 0;
+                ret_undef = 0;
+            }
+            cout
+            << " by: " << std::setw(3) << by
             << " U: " << std::setw(7) << unknown.size()
             << " I: " << std::setw(7) << indep.size()
             << " N: " << std::setw(7) << not_indep
