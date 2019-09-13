@@ -509,10 +509,9 @@ void one_round(uint32_t by, bool only_inverse)
         || (only_inverse && iter < assump_to_testvars.size())
     ) {
         if (one_by_one_mode == many_mode) {
-            //if (iter % 50 == 0 ||  iter < 1) {
-                num_fast ++;
+            num_fast ++;
         }
-        if (iter % 100 == 0) {
+        if (iter % 500 == 0) {
             one_by_one_mode = many_mode;
         } else {
             one_by_one_mode = one_mode;
