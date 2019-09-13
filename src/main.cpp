@@ -409,7 +409,7 @@ void fill_assumptions(
     vector<Lit>& assumptions,
     const set<uint32_t>& unknown,
     const vector<uint32_t>& indep,
-    map<uint32_t, uint32_t>& testvar_to_assump,
+    const vector<uint32_t>& testvar_to_assump,
     bool trick = false
 )
 {
@@ -417,6 +417,7 @@ void fill_assumptions(
 
     //Add unknown as assumptions
     for(const auto& var: unknown) {
+        assert(testvar_to_assump.size() > var);
         uint32_t ass = testvar_to_assump[var];
         if (!seen[ass]) {
             seen[ass] = 1;
@@ -429,6 +430,7 @@ void fill_assumptions(
 
     //Add known independent as assumptions
     for(const auto& var: indep) {
+        assert(testvar_to_assump.size() > var);
         uint32_t ass = testvar_to_assump[var];
         if (!seen[ass]) {
             seen[ass] = 1;
@@ -448,7 +450,7 @@ void fill_assumptions(
 uint32_t fill_assumptions2(
     vector<Lit>& assumptions,
     const vector<uint32_t>& indep,
-    map<uint32_t, uint32_t>& testvar_to_assump,
+    const vector<uint32_t>& testvar_to_assump,
     map<uint32_t, vector<uint32_t>>& assump_to_testvars,
     uint32_t index
 )
@@ -498,7 +500,9 @@ void one_round(uint32_t by, bool only_inverse)
     //testvar_to_assump:
     //FIRST is variable we want to test for
     //SECOND is what we have to assumoe (in negative)
-    map<uint32_t, uint32_t> testvar_to_assump;
+    vector<uint32_t> testvar_to_assump;
+    testvar_to_assump.resize(orig_num_vars, var_Undef);
+
     map<uint32_t, vector<uint32_t>> assump_to_testvars;
     vector<Lit> all_assumption_lits;
     std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter(incidence));
@@ -518,12 +522,13 @@ void one_round(uint32_t by, bool only_inverse)
             assert(indic.find(var) != indic.end());
             tmp.push_back(Lit(indic[var], true));
             solver->add_clause(tmp);
+
+            assert(var < orig_num_vars);
             testvar_to_assump[var] = ass;
             vars.push_back(var);
         }
         assump_to_testvars[ass] = vars;
     }
-    assert(testvar_to_assump.size() == sampling_set->size());
 
     //Initially, all of samping_set is unknown
     set<uint32_t> unknown;
@@ -581,7 +586,6 @@ void one_round(uint32_t by, bool only_inverse)
         auto old_one_by_one_mode = one_by_one_mode;
 
         uint32_t test_var = var_Undef;
-
         if (one_by_one_mode == one_mode) {
             //TODO improve
             vector<uint32_t> pick;
@@ -600,9 +604,10 @@ void one_round(uint32_t by, bool only_inverse)
                 break;
             }
             assert(test_var < orig_num_vars);
-
-            assert(testvar_to_assump.find(test_var) != testvar_to_assump.end());
+            assert(testvar_to_assump.size() > test_var);
             uint32_t ass = testvar_to_assump[test_var];
+            assert(ass != var_Undef);
+
             assert(assump_to_testvars.find(ass) != assump_to_testvars.end());
             const auto& vars = assump_to_testvars[ass];
             for(uint32_t var: vars) {
@@ -622,8 +627,10 @@ void one_round(uint32_t by, bool only_inverse)
             assumptions.push_back(Lit(mult_or_invers_var, true));
         }
         else if (one_by_one_mode == one_mode) {
-            assert(testvar_to_assump.find(test_var) != testvar_to_assump.end());
+            assert(testvar_to_assump.size() > test_var);
             uint32_t ass = testvar_to_assump[test_var];
+            assert(ass != var_Undef);
+
             assert(assump_to_testvars.find(ass) != assump_to_testvars.end());
             const auto& vars = assump_to_testvars[ass];
 
@@ -655,8 +662,8 @@ void one_round(uint32_t by, bool only_inverse)
         }
 
         if (ret == l_Undef) {
-            if (one_by_one_mode == inverse_mode) {
-            } else {
+            if (one_by_one_mode == one_mode) {
+                assert(test_var < orig_num_vars);
                 uint32_t ass = testvar_to_assump[test_var];
                 const auto& vars = assump_to_testvars[ass];
                 for(uint32_t var: vars) {
