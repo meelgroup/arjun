@@ -45,6 +45,7 @@ using std::vector;
 #include "time_mem.h"
 #include "GitSHA1.h"
 #include "MersenneTwister.h"
+
 #include <cryptominisat5/cryptominisat.h>
 #include "cryptominisat5/dimacsparser.h"
 #include "cryptominisat5/streambuffer.h"
@@ -84,6 +85,7 @@ struct Config {
     int bva = 0;
     int bve = 1;
     int guess = 0;
+    int force_by_one = 0;
     int simp_at_start = 1;
     int simp_every_round = 0;
     int always_one_by_one = 1;
@@ -151,6 +153,9 @@ void add_mis_options()
     ("simpstart", po::value(&conf.simp_at_start)->default_value(conf.simp_at_start), "simp at startup")
     ("simpallround", po::value(&conf.simp_every_round)->default_value(conf.simp_every_round), "simp at every round")
     ("recomp", po::value(&conf.recompute_sampling_set)->default_value(conf.recompute_sampling_set), "Recompute sampling set even if it's part of the CNF")
+    ("byforce", po::value(&conf.force_by_one)->default_value(conf.force_by_one), "Force 1-by-1 query")
+
+
     ;
 
     help_options.add(mis_options);
@@ -599,6 +604,9 @@ void one_round(uint32_t by, bool only_inverse)
         } else {
             solver->set_max_confl(200);
         }
+        if (one_by_one_mode == one_mode) {
+            solver->set_no_confl_needed();
+        }
         lbool ret = solver->solve(&assumptions);
         if (ret == l_False) {
             ret_false++;
@@ -690,7 +698,7 @@ void one_round(uint32_t by, bool only_inverse)
 
         if (iter % mod == (mod-1)) {
             cout
-            << "[mis] iter: " << std::setw(8) << iter;
+            << "[mis] iter: " << std::setw(5) << iter;
             if (mod == 1) {
                 cout << " mode: "
                 << (old_one_by_one_mode==one_mode ? "one " :
@@ -927,12 +935,14 @@ int main(int argc, char** argv)
         if (sampling_set->size() < prev_size/5) {
             num = sampling_set->size()/10;
         } else {
-            num = num/20;
+            num = num/100;
         }
         if (num < 30) {
             num = 1;
         }
-        //num = 1;
+        if (conf.force_by_one) {
+            num = 1;
+        }
         prev_size = sampling_set->size();
 
         cout << "[mis] ===--> Doing a run for " << num << endl;
