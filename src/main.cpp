@@ -78,6 +78,7 @@ vector<uint32_t> sampling_set_tmp2;
 vector<uint32_t>* sampling_set = NULL;
 vector<uint32_t>* other_sampling_set = NULL;
 vector<uint32_t> incidence;
+vector<uint32_t> this_indic2;
 
 struct Config {
     int verb = 0;
@@ -378,13 +379,38 @@ void add_fixed_clauses()
         tmp.push_back(Lit(var.second, false));
     }
     solver->add_clause(tmp);
+
+
+
+    assert(this_indic2.empty());
+    this_indic2.resize(orig_num_vars, var_Undef);
+    vector<Lit> tmp_one;
+    for(uint32_t var: *sampling_set) {
+        solver->new_var();
+        uint32_t this_indic = solver->nVars()-1;
+
+        tmp.clear();
+        tmp.push_back(Lit(var, false));
+        tmp.push_back(Lit(this_indic, true));
+        solver->add_clause(tmp);
+
+        tmp.clear();
+        tmp.push_back(Lit(var+orig_num_vars, true));
+        tmp.push_back(Lit(this_indic, true));
+        solver->add_clause(tmp);
+
+        this_indic2[var] = this_indic;
+        tmp_one.push_back(Lit(this_indic, false));
+    }
+    solver->add_clause(tmp_one);
 }
 
 void fill_assumptions(
     vector<Lit>& assumptions,
     const set<uint32_t>& unknown,
     const vector<uint32_t>& indep,
-    map<uint32_t, uint32_t>& testvar_to_assump
+    map<uint32_t, uint32_t>& testvar_to_assump,
+    bool trick = false
 )
 {
     assumptions.clear();
@@ -395,6 +421,9 @@ void fill_assumptions(
         if (!seen[ass]) {
             seen[ass] = 1;
             assumptions.push_back(Lit(ass, true));
+            if (!trick) {
+                assumptions.push_back(Lit(this_indic2[var], true));
+            }
         }
     }
 
@@ -404,6 +433,9 @@ void fill_assumptions(
         if (!seen[ass]) {
             seen[ass] = 1;
             assumptions.push_back(Lit(ass, true));
+            if (!trick) {
+                assumptions.push_back(Lit(this_indic2[var], true));
+            }
         }
     }
 
@@ -434,8 +466,14 @@ uint32_t fill_assumptions2(
     seen[ass] = 1;
     assumptions.push_back(Lit(ass, true));
 
+    for(const auto& v: assump_to_testvars[ass]) {
+        //cout << "v: " << v+1 << " inc: " << incidence[v] << endl;
+        assumptions.push_back(Lit(this_indic2[v], true));
+    }
+
     //Add known independent as assumptions
     for(const auto& var: indep) {
+        assumptions.push_back(Lit(this_indic2[var], true));
         uint32_t ass_indep = testvar_to_assump[var];
         if (!seen[ass_indep]) {
             seen[ass_indep] = 1;
@@ -464,6 +502,8 @@ void one_round(uint32_t by, bool only_inverse)
     map<uint32_t, vector<uint32_t>> assump_to_testvars;
     vector<Lit> all_assumption_lits;
     std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter(incidence));
+//     std::sort(sampling_set->begin(), sampling_set->end());
+//     std::random_shuffle(sampling_set->begin(), sampling_set->end());
     for(uint32_t i = 0; i < sampling_set->size();) {
         solver->new_var();
         const uint32_t ass = solver->nVars()-1;
@@ -578,20 +618,18 @@ void one_round(uint32_t by, bool only_inverse)
 
         }
         else if (one_by_one_mode == many_mode) {
-            fill_assumptions(assumptions, unknown, indep, testvar_to_assump);
+            fill_assumptions(assumptions, unknown, indep, testvar_to_assump, true);
             assumptions.push_back(Lit(mult_or_invers_var, true));
         }
         else if (one_by_one_mode == one_mode) {
-            fill_assumptions(assumptions, unknown, indep, testvar_to_assump);
-
             assert(testvar_to_assump.find(test_var) != testvar_to_assump.end());
             uint32_t ass = testvar_to_assump[test_var];
             assert(assump_to_testvars.find(ass) != assump_to_testvars.end());
             const auto& vars = assump_to_testvars[ass];
 
-            if (vars.size() > 1) {
-                assumptions.push_back(Lit(mult_or_invers_var, true));
-            } else {
+            fill_assumptions(assumptions, unknown, indep, testvar_to_assump, vars.size() == 1);
+
+            if (vars.size() == 1) {
                 assert(vars.size() == 1);
                 uint32_t var = vars[0];
                 assumptions.push_back(Lit(var, false));
@@ -600,7 +638,7 @@ void one_round(uint32_t by, bool only_inverse)
         }
 
         if (by > 100) {
-            solver->set_max_confl(800);
+            solver->set_max_confl(200);
         } else {
             solver->set_max_confl(200);
         }
@@ -633,6 +671,9 @@ void one_round(uint32_t by, bool only_inverse)
                 const auto& vars = assump_to_testvars[ass];
                 for(uint32_t var: vars) {
                     indep.push_back(var);
+                    /*tmp.clear();
+                    tmp.push_back(Lit(indic[var], true));
+                    solver->add_clause(tmp);*/
                 }
             }
         } else if (ret == l_False) {
@@ -727,7 +768,7 @@ void one_round(uint32_t by, bool only_inverse)
         iter++;
 
         if ((iter % 100) == 99) {
-            incidence = solver->get_var_incidence();
+            //incidence = solver->get_var_incidence();
         }
 
         other_sampling_set->clear();
@@ -762,7 +803,7 @@ void simp()
         remove_eq_literals(NULL);
         remove_zero_assigned_literals(NULL);
         cout << "[mis] Simplify finished. T: " << (cpuTime() - simp_time) << endl;
-        incidence = solver->get_var_incidence();
+        //incidence = solver->get_var_incidence();
     }
 }
 
@@ -920,7 +961,8 @@ int main(int argc, char** argv)
     signal(SIGINT,signal_handler);
 
     if (conf.guess && sampling_set->size() > 60) {
-        uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/30, 50);
+        uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/10, 50);
+        //guess_indep = 1000;
         simp();
         one_round(guess_indep, true);
     }
@@ -935,9 +977,9 @@ int main(int argc, char** argv)
         if (sampling_set->size() < prev_size/5) {
             num = sampling_set->size()/10;
         } else {
-            num = num/100;
+            num = num/10;
         }
-        if (num < 30) {
+        if (num < 100) {
             num = 1;
         }
         if (conf.force_by_one) {
