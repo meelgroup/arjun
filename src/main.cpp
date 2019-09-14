@@ -78,6 +78,7 @@ vector<uint32_t> sampling_set_tmp2;
 vector<uint32_t>* sampling_set = NULL;
 vector<uint32_t>* other_sampling_set = NULL;
 vector<uint32_t> incidence;
+vector<double> vsids_scores;
 vector<uint32_t> this_indic2;
 
 struct Config {
@@ -100,9 +101,27 @@ struct IncidenceSorter
     {}
 
     bool operator()(const uint32_t a, const uint32_t b) {
-        return inc[a] < inc[b];
+        return inc[a] > inc[b];
     }
 
+    const vector<uint32_t>& inc;
+};
+
+struct VSIDSSorter
+{
+    VSIDSSorter(const vector<uint32_t>& _inc, const vector<double>& _vsids) :
+        vsids(_vsids),
+        inc(_inc)
+    {}
+
+    bool operator()(const uint32_t a, const uint32_t b) {
+        if (inc[a] != inc[b]) {
+            return inc[a] > inc[b];
+        }
+        return vsids[a] > vsids[b];
+    }
+
+    const vector<double>& vsids;
     const vector<uint32_t>& inc;
 };
 
@@ -501,6 +520,25 @@ uint32_t fill_assumptions2(
     return ass;
 }
 
+void update_sampling_set(
+    const vector<uint32_t>& unknown,
+    const vector<char>& unknown_set,
+    const vector<uint32_t>& indep
+)
+{
+    other_sampling_set->clear();
+    for(const auto& var: unknown) {
+        if (unknown_set[var]) {
+            other_sampling_set->push_back(var);
+        }
+    }
+    for(const auto& var: indep) {
+        other_sampling_set->push_back(var);
+    }
+    //TODO: atomic swap
+    std::swap(sampling_set, other_sampling_set);
+}
+
 void one_round(uint32_t by, bool only_inverse)
 {
     double start_round_time = cpuTimeTotal();
@@ -518,8 +556,6 @@ void one_round(uint32_t by, bool only_inverse)
 
     vector<Lit> all_assumption_lits;
     std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter(incidence));
-//     std::sort(sampling_set->begin(), sampling_set->end());
-//     std::random_shuffle(sampling_set->begin(), sampling_set->end());
     for(uint32_t i = 0; i < sampling_set->size();) {
         solver->new_var();
         const uint32_t ass = solver->nVars()-1;
@@ -588,7 +624,6 @@ void one_round(uint32_t by, bool only_inverse)
         pick_possibilities.push_back(unk_v);
     }
     std::sort(pick_possibilities.begin(), pick_possibilities.end(), IncidenceSorter(incidence));
-    std::reverse(pick_possibilities.begin(), pick_possibilities.end());
 
     uint32_t ret_false = 0;
     uint32_t ret_true = 0;
@@ -699,6 +734,7 @@ void one_round(uint32_t by, bool only_inverse)
                 for(uint32_t var: vars) {
                     assert(unknown_set[var] == 0);
                     unknown_set[var] = 1;
+                    unknown.push_back(var);
                 }
             }
         } else if (ret == l_True) {
@@ -822,23 +858,18 @@ void one_round(uint32_t by, bool only_inverse)
         }
         iter++;
 
-        if ((iter % 100) == 99) {
-            //incidence = solver->get_var_incidence();
+        if ((iter % 500) == 499 && false) {
+            vsids_scores = solver->get_vsids_scores();
+            std::sort(pick_possibilities.begin(), pick_possibilities.end(), VSIDSSorter(incidence, vsids_scores));
+            cout << "Re-sorted" << endl;
         }
 
-        other_sampling_set->clear();
-        for(const auto& var: unknown) {
-            if (unknown_set[var]) {
-                other_sampling_set->push_back(var);
-            }
+        if (by > 10 || iter % 10 == 0) {
+            update_sampling_set(unknown, unknown_set, indep);
         }
-        for(const auto& var: indep) {
-            other_sampling_set->push_back(var);
-        }
-        //TODO: atomic swap
-        std::swap(sampling_set, other_sampling_set);
 
     }
+    update_sampling_set(unknown, unknown_set, indep);
     cout << "[mis] one_round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
     << endl;
