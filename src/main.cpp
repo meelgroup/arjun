@@ -87,9 +87,9 @@ struct Config {
     int verb = 0;
     int seed = 0;
     int bva = 0;
-    int bve = 1;
-    int guess = 0;
-    int force_by_one = 0;
+    int bve = 0;
+    int guess = 1;
+    int force_by_one = 1;
     int simp_at_start = 1;
     int always_one_by_one = 1;
     int recompute_sampling_set = 0;
@@ -1196,10 +1196,15 @@ int main(int argc, char** argv)
     uint32_t prev_size = sampling_set->size()*100;
     uint32_t num;
     uint32_t round_num = 0;
+
     while(true) {
-        if (conf.simp_every_round || (conf.simp_at_start && round_num ==0)) {
+        if (conf.simp_at_start && round_num ==0) {
             simp();
         }
+        if (conf.guess) {
+            run_guess();
+        }
+
         if (sampling_set->size() < prev_size/5) {
             num = sampling_set->size()/10;
         } else {
