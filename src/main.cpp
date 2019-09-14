@@ -1011,7 +1011,7 @@ void one_round(uint32_t by, bool only_inverse, bool reverse = false, bool shuffl
         iter++;
        
         if (iter % 1000 == 0){
-            run_guess();
+         //   run_guess();
         }
             
         if (by > 10 || iter % 10 == 0) {
@@ -1176,23 +1176,25 @@ void run_guess()
     double myTime = cpuTime();
     guess_assumption_set->clear();
     bool flip = true;
-    uint32_t div = 6;
+    uint32_t div = 8;
+
      uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/div, 50);
       guess_assumption_set->clear();
-    for (uint32_t i = 1; i < 2; i++){
-       
+    for (uint32_t i = 1; i < 3; i++){
          cout<<"Guess set size:"<<guess_assumption_set->size()<<endl;
-         
          one_round(guess_indep, true, flip, false, 0, i*guess_indep);
-         flip = !flip;
+        // flip = !flip;
     }
-
+    if (sampling_set->size() < orig_num_vars/5){
+        div = 3;
+        guess_indep = std::max<uint32_t>(sampling_set->size()/div, 50);
+    }
     guess_assumption_set->clear();
     one_round(guess_indep, true, true, false, 0, 0);
-    for (uint32_t i = 1; i < 2; i++){
+    for (uint32_t i = 1; i < 3; i++){
         guess_assumption_set->clear();
-         cout<<"Guess set size:"<<guess_assumption_set->size()<<endl;
-     one_round(guess_indep, true, false, false, 0, i*guess_indep);
+        cout<<"Guess set size:"<<guess_assumption_set->size()<<endl;
+        one_round(guess_indep, true, false, false, 0, i*guess_indep);
         
     }
     return;
@@ -1276,23 +1278,25 @@ int main(int argc, char** argv)
     signal(SIGALRM,signal_handler);
     //signal(SIGINT,signal_handler);
 
+    
     if (conf.guess && sampling_set->size() > 60) {
         uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/10, 50);
         //guess_indep = 1000;
         simp();
         one_round(guess_indep, true);
     }
-
+    
     uint32_t prev_size = sampling_set->size()*100;
     uint32_t num;
     uint32_t round_num = 0;
 
     while(true) {
         if (conf.simp_at_start && round_num ==0) {
-           // simp();
+            simp();
         }
         if (conf.guess) {
             run_guess();
+            
         }
 
         if (sampling_set->size() < prev_size/5) {
