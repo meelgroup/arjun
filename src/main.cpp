@@ -515,7 +515,7 @@ uint32_t fill_assumptions2(
     
     //Add known independent as assumptions
     for(const auto& var: indep) {
-        assumptions.push_back(Lit(this_indic2[var], true));
+        assumptions.push_back(Lit(this_indic2[var], true)); //Shouldn't this be false?
         uint32_t ass_indep = testvar_to_assump[var];
         if (!seen[ass_indep]) {
             seen[ass_indep] = 1;
@@ -569,13 +569,19 @@ void re_sort(vector<uint32_t>* pick_possibilities = NULL)
 uint32_t inverse_remove(vector<Lit>& assumptions,
                     vector<char>& unknown_set,
                     const vector<uint32_t> testvar_to_assump,
+                    map<uint32_t, vector<uint32_t>>& assump_to_testvars,
                     const vector<uint32_t>& dontremove)
 {
     uint32_t removed = 10;
     uint32_t total_removed = 0;
     cout << "assumptions size: " << assumptions.size() << endl;
-    while (removed > 0){
+    uint32_t more_ass = 0;
+    uint32_t i = 0;
+    while (removed > 0 || i < 4){
+        i++;
         removed = 0;
+        uint32_t seen_ass = 0;
+      
         vector<Lit> prop = solver->propagated_by(assumptions);
         cout << "prop len: " << prop.size() << endl;
         
@@ -601,23 +607,48 @@ uint32_t inverse_remove(vector<Lit>& assumptions,
                 if (unknown_set[var]) {
                      unknown_set[var] = 0;
                 //    cout<<"var "<<var<<endl; 
-                    if (var < this_indic2.size() && testvar_to_assump[var] != var_Undef){ //KSM: To check with Mate
-                        assumptions.push_back(Lit(this_indic2[var], true));
-                        uint32_t ass_indep = testvar_to_assump[var];
-                    //    cout<<"ass_indep "<<ass_indep<<endl;
-                        assumptions.push_back(Lit(ass_indep, true));
-                         removed++;
-                         total_removed ++;
-                    }
+                    if (var < this_indic2.size() && var < indic.size() && testvar_to_assump[var] != var_Undef ){ //KSM: To check with Mate
+                        uint32_t  ass_var = testvar_to_assump[var];
+                        if (seen_ass == 0 || seen_ass != ass_var){
+                            more_ass ++;
+                            
+                            seen_ass = ass_var;
+                        }
+                        if (seen[indic[var]]){
+                        
+                            uint32_t ass_indic = indic[var];
+                            seen[ass_indic] = 0;
+                        
+                      
+                            if (more_ass < 3 ){
+                                cout<<"Added "<<assump_to_testvars[ass_var].size()<<endl;
+                                for (auto var2: assump_to_testvars[ass_var]){
+                                    if (seen[indic[var2]]){
+                                        ass_indic = indic[var2];
+                        
+                                        seen[ass_indic] = 0;
+                                    }
+                                }
+                            assumptions.push_back(Lit(ass_var, true));
+                            }
+                            removed++;
+                            total_removed++;
+                        }
+                        }
                 }
             }
         }
 
-        for(Lit l: prop) {
+       for(Lit l: prop) {
             seen[l.var()] = 0;
         }
+        solver->set_max_confl(2000);
+        solver->solve(&assumptions);
+        
          cout << "removed: " << removed << endl;
+         
     }
+      
       cout << "total removed: " << total_removed << endl;
     return total_removed;
 }
@@ -684,7 +715,7 @@ void one_round(uint32_t by, bool only_inverse, bool reverse = false, bool shuffl
     }
     std::sort(ass_select.begin(), ass_select.end());
     uint32_t ass = ass_select.at(inv_at);
-     if (only_inverse){
+     if (false && only_inverse){
             cout<<" Guess set size: "<<guess_assumption_set->size()<<endl;
             for(uint32_t i2 = 0; i2 < guess_assumption_set->size();i2++) {
                 uint32_t guess_ass = (*guess_assumption_set)[i2];
@@ -808,7 +839,7 @@ void one_round(uint32_t by, bool only_inverse, bool reverse = false, bool shuffl
         if (one_by_one_mode == inverse_mode && iter < 1) {
             inverse_ass = fill_assumptions2(
                 assumptions, indep, testvar_to_assump, assump_to_testvars,
-                inv_at);
+                iter);
           
 
             assumptions.push_back(Lit(mult_or_invers_var, true));
@@ -869,7 +900,7 @@ void one_round(uint32_t by, bool only_inverse, bool reverse = false, bool shuffl
                     unknown.push_back(var);
                 }
             } else if (ret == l_Undef) {
-               removed = inverse_remove(assumptions, unknown_set , testvar_to_assump, assump_to_testvars[inverse_ass]);
+               removed = inverse_remove(assumptions, unknown_set , testvar_to_assump, assump_to_testvars, assump_to_testvars[inverse_ass]);
                if (removed >= 10){
                     guess_assumption_set->push_back(inverse_ass);
                 }
@@ -882,7 +913,7 @@ void one_round(uint32_t by, bool only_inverse, bool reverse = false, bool shuffl
             //Independent
             assert(one_by_one_mode == one_mode || one_by_one_mode == inverse_mode);
             if (one_by_one_mode == inverse_mode) {
-                removed = inverse_remove(assumptions, unknown_set , testvar_to_assump, assump_to_testvars[inverse_ass]);
+                removed = inverse_remove(assumptions, unknown_set , testvar_to_assump, assump_to_testvars, assump_to_testvars[inverse_ass]);
                 if (removed >= 10 ){
                     guess_assumption_set->push_back(inverse_ass);
                 }
@@ -1010,8 +1041,8 @@ void one_round(uint32_t by, bool only_inverse, bool reverse = false, bool shuffl
         }
         iter++;
        
-        if (iter % 1000 == 0){
-         //   run_guess();
+        if (false && iter % 1000 == 0){
+            run_guess();
         }
             
         if (by > 10 || iter % 10 == 0) {
@@ -1169,16 +1200,13 @@ void init_solver_setup()
 
 void run_guess()
 {
-    if (sampling_set->size() < 500){
-        return;
-        
-    }
+   
     double myTime = cpuTime();
     guess_assumption_set->clear();
-    bool flip = true;
-    uint32_t div = 8;
+    bool flip = false;
+    uint32_t div = 10;
 
-     uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/div, 50);
+     uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/div, 20);
       guess_assumption_set->clear();
     for (uint32_t i = 1; i < 3; i++){
          cout<<"Guess set size:"<<guess_assumption_set->size()<<endl;
@@ -1282,6 +1310,7 @@ int main(int argc, char** argv)
     if (conf.guess && sampling_set->size() > 60) {
         uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/10, 50);
         //guess_indep = 1000;
+       // guess_indep = 100;
         simp();
         one_round(guess_indep, true);
     }
