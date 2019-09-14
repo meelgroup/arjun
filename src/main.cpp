@@ -151,9 +151,9 @@ static void signal_handler(int) {
     exit(1);
 }
 
-void simp();
-void remove_eq_literals(set<uint32_t>* unknown = NULL);
-void remove_zero_assigned_literals(set<uint32_t>* unknown = NULL);
+void simp(vector<char>* unknown_set = NULL);
+void remove_eq_literals(vector<char>* unknown_set = NULL);
+void remove_zero_assigned_literals(vector<char>* unknown_set = NULL);
 void add_mis_options()
 {
     std::ostringstream my_epsilon;
@@ -539,6 +539,16 @@ void update_sampling_set(
     std::swap(sampling_set, other_sampling_set);
 }
 
+template<class C>
+void re_sort(C& pick_possibilities)
+{
+    incidence = solver->get_var_incidence_also_red();
+    vsids_scores = solver->get_vsids_scores();
+    std::sort(pick_possibilities.begin(), pick_possibilities.end(), VSIDSSorter(incidence, vsids_scores));
+    //std::sort(pick_possibilities.begin(), pick_possibilities.end(), IncidenceSorter(incidence));
+    cout << "Re-sorted" << endl;
+}
+
 void one_round(uint32_t by, bool only_inverse)
 {
     double start_round_time = cpuTimeTotal();
@@ -655,7 +665,8 @@ void one_round(uint32_t by, bool only_inverse)
             //TODO improve
             test_var = var_Undef;
             for(int i = pick_possibilities.size()-1; i>= 0; i--) {
-                if (!tried_var_already[pick_possibilities[i]]) {
+                uint32_t var = pick_possibilities[i];
+                if (!tried_var_already[var] && unknown_set[var]) {
                     test_var = pick_possibilities[i];
                     break;
                 } else {
@@ -695,14 +706,14 @@ void one_round(uint32_t by, bool only_inverse)
             assumptions.push_back(Lit(mult_or_invers_var, true));
         }
         else if (one_by_one_mode == one_mode) {
-            assert(testvar_to_assump.size() > test_var);
-            uint32_t ass = testvar_to_assump[test_var];
-            assert(ass != var_Undef);
-
             if (by > 1) {
                 fill_assumptions(assumptions, unknown, unknown_set, indep, testvar_to_assump, false);
             } else {
                 fill_assumptions(assumptions, unknown, unknown_set, indep, testvar_to_assump, true);
+
+                assert(testvar_to_assump.size() > test_var);
+                uint32_t ass = testvar_to_assump[test_var];
+                assert(ass != var_Undef);
                 const auto& var = assump_to_testvar[ass];
                 assumptions.push_back(Lit(var, false));
                 assumptions.push_back(Lit(var + orig_num_vars, true));
@@ -747,16 +758,10 @@ void one_round(uint32_t by, bool only_inverse)
                     const auto& vars = assump_to_testvars[ass];
                     for(uint32_t var: vars) {
                         indep.push_back(var);
-                        /*tmp.clear();
-                        tmp.push_back(Lit(indic[var], true));
-                        solver->add_clause(tmp);*/
                     }
                 } else {
                     const auto& var = assump_to_testvar[ass];
                     indep.push_back(var);
-                    /*tmp.clear();
-                    tmp.push_back(Lit(indic[var], true));
-                    solver->add_clause(tmp);*/
                 }
             }
         } else if (ret == l_False) {
@@ -859,12 +864,8 @@ void one_round(uint32_t by, bool only_inverse)
         iter++;
 
         if ((iter % 2000) == 1999) {
-            solver->simplify();
-            incidence = solver->get_var_incidence_also_red();
-            vsids_scores = solver->get_vsids_scores();
-            std::sort(pick_possibilities.begin(), pick_possibilities.end(), VSIDSSorter(incidence, vsids_scores));
-            //std::sort(pick_possibilities.begin(), pick_possibilities.end(), IncidenceSorter(incidence));
-            cout << "Re-sorted" << endl;
+            simp(&unknown_set);
+            re_sort(pick_possibilities);
         }
 
         if (by > 10 || iter % 10 == 0) {
@@ -872,6 +873,8 @@ void one_round(uint32_t by, bool only_inverse)
         }
 
     }
+    simp();
+    re_sort(pick_possibilities);
     update_sampling_set(unknown, unknown_set, indep);
     cout << "[mis] one_round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
@@ -885,21 +888,22 @@ void one_round(uint32_t by, bool only_inverse)
     }
 }
 
-void simp()
+void simp(vector<char>* unknown_set)
 {
     if (conf.simp_at_start) {
         double simp_time = cpuTime();
         cout << "[mis] Simplifying..." << endl;
         solver->simplify();
-        remove_eq_literals(NULL);
-        remove_zero_assigned_literals(NULL);
+        remove_eq_literals(unknown_set);
+        remove_zero_assigned_literals(unknown_set);
         cout << "[mis] Simplify finished. T: " << (cpuTime() - simp_time) << endl;
         //incidence = solver->get_var_incidence();
     }
 }
 
-void remove_zero_assigned_literals(set<uint32_t>* unknown)
+void remove_zero_assigned_literals(vector<char>* unknown_set)
 {
+    cout << " old size: " << sampling_set->size() << endl;
     //Remove zero-assigned literals
     seen.clear();
     seen.resize(solver->nVars(), 0);
@@ -907,36 +911,37 @@ void remove_zero_assigned_literals(set<uint32_t>* unknown)
     *other_sampling_set = *sampling_set;
     uint32_t orig_sampling_set_size = other_sampling_set->size();
     for(auto x: *other_sampling_set) {
+        //cout << "x:" << x << " orig_num_vars: " << orig_num_vars << endl;
         seen[x] = 1;
     }
     const auto zero_ass = solver->get_zero_assigned_lits();
     for(Lit l: zero_ass) {
         seen[l.var()] = 0;
+        if (unknown_set && l.var() < orig_num_vars) {
+            (*unknown_set)[l.var()] = 0;
+        }
     }
 
     other_sampling_set->clear();
-    for(uint32_t i = 0; i < seen.size(); i++) {
+    for(uint32_t i = 0; i < seen.size() && i < orig_num_vars; i++) {
         if (seen[i]) {
             other_sampling_set->push_back(i);
-            seen[i] = 0;
-        } else {
-            if (unknown) {
-                unknown->erase(i);
-            }
         }
+        seen[i] = 0;
     }
     //TODO atomic swap
     std::swap(sampling_set, other_sampling_set);
 
-    if (orig_sampling_set_size - sampling_set->size() > 0) {
-        total_set_removed += orig_sampling_set_size - sampling_set->size();
-        cout << "[mis] Removed set       : "
-        << (orig_sampling_set_size - sampling_set->size()) << endl;
-    }
+    total_set_removed += orig_sampling_set_size - sampling_set->size();
+    cout << "[mis] Removed set       : "
+    << (orig_sampling_set_size - sampling_set->size())
+    << " new size: " << sampling_set->size()
+    << endl;
 }
 
-void remove_eq_literals(set<uint32_t>* unknown)
+void remove_eq_literals(vector<char>* unknown_set)
 {
+    cout << " old size: " << sampling_set->size() << endl;
     seen.clear();
     seen.resize(solver->nVars(), 0);
     *other_sampling_set = *sampling_set;
@@ -951,27 +956,28 @@ void remove_eq_literals(set<uint32_t>* unknown)
         if (seen[mypair.second.var()] == 1 && seen[mypair.first.var()] == 1) {
             //Doesn't matter which one to remove
             seen[mypair.second.var()] = 0;
+            if (unknown_set && mypair.second.var() < orig_num_vars) {
+                (*unknown_set)[mypair.second.var()] = 0;
+            }
         }
     }
 
     other_sampling_set->clear();
-    for(uint32_t i = 0; i < seen.size(); i++) {
+    for(uint32_t i = 0; i < seen.size() && i < orig_num_vars; i++) {
         if (seen[i]) {
             other_sampling_set->push_back(i);
-            seen[i] = 0;
-        } else {
-            if (unknown) unknown->erase(i);
         }
+        seen[i] = 0;
     }
     //TODO atomic swap
     std::swap(sampling_set, other_sampling_set);
 
     total_eq_removed += orig_sampling_set_size - sampling_set->size();
-    if (orig_sampling_set_size - sampling_set->size() > 0) {
-        cout << "[mis] Removed equivalent: "
-        << (orig_sampling_set_size - sampling_set->size())
-        << endl;
-    }
+
+    cout << "[mis] Removed equivalent: "
+    << (orig_sampling_set_size - sampling_set->size())
+    << " new size: " << sampling_set->size()
+    << endl;
 
 }
 
@@ -992,14 +998,14 @@ void init_solver_setup()
     //Read in file and set sampling_set in case we are starting with empty
     readInAFile(inp.c_str(), 0, sampling_set->empty());
     init_samping_set(conf.recompute_sampling_set);
+    orig_num_vars = solver->nVars();
     remove_zero_assigned_literals();
 
-
     //Read in file again, with offset
-    orig_num_vars = solver->nVars();
     readInAFile(inp.c_str(), orig_num_vars, false);
 
     //Set up solver
+    solver->set_up_for_scalmc();
     if (!conf.bva) {
         solver->set_no_bve();
     }
@@ -1007,7 +1013,6 @@ void init_solver_setup()
         solver->set_no_bva();
     }
     solver->set_no_intree_probe();
-    //solver->set_up_for_scalmc();
     //solver->set_verbosity(2);
 
     //Print stats
