@@ -1184,7 +1184,7 @@ int main(int argc, char** argv)
     init_solver_setup();
     cout << solver->get_text_version_info();
     signal(SIGALRM,signal_handler);
-    signal(SIGINT,signal_handler);
+    //signal(SIGINT,signal_handler);
 
     if (conf.guess && sampling_set->size() > 60) {
         uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/10, 50);
