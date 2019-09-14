@@ -89,7 +89,7 @@ struct Config {
     int bva = 0;
     int bve = 0;
     int guess = 1;
-    int force_by_one = 1;
+    int force_by_one = 0;
     int simp_at_start = 1;
     int always_one_by_one = 1;
     int recompute_sampling_set = 0;
