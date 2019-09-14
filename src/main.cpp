@@ -71,7 +71,9 @@ uint32_t total_eq_removed = 0;
 uint32_t total_set_removed = 0;
 uint32_t mult_or_invers_var;
 enum ModeType {one_mode, many_mode, inverse_mode};
-map<uint32_t, uint32_t> indic; //to indicate indic[var] is same for VAR, assert it
+
+//assert indic[var] to FASLE to force var==var+orig_num_vars
+map<uint32_t, uint32_t> indic;
 
 vector<uint32_t> sampling_set_tmp1;
 vector<uint32_t> sampling_set_tmp2;
@@ -89,7 +91,6 @@ struct Config {
     int guess = 0;
     int force_by_one = 0;
     int simp_at_start = 1;
-    int simp_every_round = 0;
     int always_one_by_one = 1;
     int recompute_sampling_set = 0;
 };
@@ -136,6 +137,12 @@ void print_indep_set()
     }
     cout << "0" << endl;
 
+//     cout << "c inc ";
+//     for(const uint32_t s: *sampling_set) {
+//         cout << incidence[s] << " ";
+//     }
+//     cout << "0" << endl;
+
     cout << "c set size: " << std::setw(8)
     << sampling_set->size()
     << " fraction of original: "
@@ -171,10 +178,8 @@ void add_mis_options()
     ("guess", po::value(&conf.guess)->default_value(conf.guess), "Guess small set")
     ("one", po::value(&conf.always_one_by_one)->default_value(conf.always_one_by_one), "always one-by-one mode")
     ("simpstart", po::value(&conf.simp_at_start)->default_value(conf.simp_at_start), "simp at startup")
-    ("simpallround", po::value(&conf.simp_every_round)->default_value(conf.simp_every_round), "simp at every round")
     ("recomp", po::value(&conf.recompute_sampling_set)->default_value(conf.recompute_sampling_set), "Recompute sampling set even if it's part of the CNF")
     ("byforce", po::value(&conf.force_by_one)->default_value(conf.force_by_one), "Force 1-by-1 query")
-
 
     ;
 
@@ -497,10 +502,10 @@ uint32_t fill_assumptions2(
     seen[ass] = 1;
     assumptions.push_back(Lit(ass, true));
 
-    for(const auto& v: assump_to_testvars[ass]) {
+    /*for(const auto& v: assump_to_testvars[ass]) {
         //cout << "v: " << v+1 << " inc: " << incidence[v] << endl;
         assumptions.push_back(Lit(this_indic2[v], true));
-    }
+    }*/
 
     //Add known independent as assumptions
     for(const auto& var: indep) {
@@ -539,17 +544,59 @@ void update_sampling_set(
     std::swap(sampling_set, other_sampling_set);
 }
 
-template<class C>
-void re_sort(C& pick_possibilities)
+void re_sort(vector<uint32_t>* pick_possibilities = NULL)
 {
     incidence = solver->get_var_incidence_also_red();
     vsids_scores = solver->get_vsids_scores();
-    std::sort(pick_possibilities.begin(), pick_possibilities.end(), VSIDSSorter(incidence, vsids_scores));
-    //std::sort(pick_possibilities.begin(), pick_possibilities.end(), IncidenceSorter(incidence));
+    if (pick_possibilities) {
+        std::sort(pick_possibilities->begin(),
+                  pick_possibilities->end(),
+                  VSIDSSorter(incidence, vsids_scores));
+
+//         std::sort(pick_possibilities->begin(),
+//                   pick_possibilities->end(),
+//                   IncidenceSorter(incidence));
+    }
     cout << "Re-sorted" << endl;
 }
 
-void one_round(uint32_t by, bool only_inverse)
+void inverse_remove(vector<Lit>& assumptions,
+                    vector<char>& unknown_set,
+                    const vector<uint32_t>& dontremove)
+{
+    cout << "assumptions size: " << assumptions.size() << endl;
+    vector<Lit> prop = solver->propagated_by(assumptions);
+    cout << "prop len: " << prop.size() << endl;
+    uint32_t removed = 0;
+    seen.resize(solver->nVars(), 0);
+    for(Lit l: prop) {
+        if (l.sign() == true) {
+            seen[l.var()] = 1;
+        }
+    }
+    for(auto var: dontremove) {
+        assert(indic.find(var) != indic.end());
+        seen[indic[var]] = 0;
+    }
+
+    for(auto& x: indic) {
+        if (seen[x.second]) {
+            //cout << x.second+1 << " is dependent" << endl;
+            assert(x.first < orig_num_vars);
+            if (unknown_set[x.first]) {
+                removed++;
+                unknown_set[x.first] = 0;
+            }
+        }
+    }
+
+    for(Lit l: prop) {
+        seen[l.var()] = 0;
+    }
+    cout << "removed: " << removed << endl;
+}
+
+void one_round(uint32_t by, bool only_inverse, bool reverse = false, bool shuffle = false, int inv_at = 0)
 {
     double start_round_time = cpuTimeTotal();
     //start with empty independent set
@@ -566,6 +613,12 @@ void one_round(uint32_t by, bool only_inverse)
 
     vector<Lit> all_assumption_lits;
     std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter(incidence));
+    if (reverse) {
+        std::reverse(sampling_set->begin(), sampling_set->end());
+    }
+    if (shuffle) {
+        std::random_shuffle(sampling_set->begin(), sampling_set->end());
+    }
     for(uint32_t i = 0; i < sampling_set->size();) {
         solver->new_var();
         const uint32_t ass = solver->nVars()-1;
@@ -634,13 +687,12 @@ void one_round(uint32_t by, bool only_inverse)
         pick_possibilities.push_back(unk_v);
     }
     std::sort(pick_possibilities.begin(), pick_possibilities.end(), IncidenceSorter(incidence));
-
     uint32_t ret_false = 0;
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
     while(
         (!only_inverse && true)
-        || (only_inverse && iter < assump_to_testvars.size())
+        || (only_inverse && iter < 1)
     ) {
         if (one_by_one_mode == many_mode) {
             num_fast ++;
@@ -695,9 +747,14 @@ void one_round(uint32_t by, bool only_inverse)
             }
         }
 
+
+        //Assumption filling
         uint32_t inverse_ass = var_Undef;
         if (one_by_one_mode == inverse_mode) {
-            inverse_ass = fill_assumptions2(assumptions, indep, testvar_to_assump, assump_to_testvars, iter);
+            inverse_ass = fill_assumptions2(
+                assumptions, indep, testvar_to_assump, assump_to_testvars,
+                inv_at);
+
             assumptions.push_back(Lit(mult_or_invers_var, true));
 
         }
@@ -721,14 +778,18 @@ void one_round(uint32_t by, bool only_inverse)
         }
 
         if (by > 100) {
-            solver->set_max_confl(200);
+            solver->set_max_confl(1500);
         } else {
-            solver->set_max_confl(200);
+            solver->set_max_confl(500);
         }
         if (one_by_one_mode == one_mode) {
-            solver->set_no_confl_needed();
+            //solver->set_no_confl_needed();
         }
-        lbool ret = solver->solve(&assumptions);
+
+        lbool ret = l_Undef;
+        if (!only_inverse) {
+            ret = solver->solve(&assumptions);
+        }
         if (ret == l_False) {
             ret_false++;
         } else if (ret == l_True) {
@@ -747,10 +808,15 @@ void one_round(uint32_t by, bool only_inverse)
                     unknown_set[var] = 1;
                     unknown.push_back(var);
                 }
+            } else if (ret == l_Undef) {
+                inverse_remove(assumptions, unknown_set, assump_to_testvars[inverse_ass]);
             }
         } else if (ret == l_True) {
             //Independent
             assert(one_by_one_mode == one_mode || one_by_one_mode == inverse_mode);
+            if (one_by_one_mode == inverse_mode) {
+                inverse_remove(assumptions, unknown_set, assump_to_testvars[inverse_ass]);
+            }
             if (one_by_one_mode == one_mode) {
                 uint32_t ass = testvar_to_assump[test_var];
 
@@ -863,18 +929,15 @@ void one_round(uint32_t by, bool only_inverse)
         }
         iter++;
 
-        if ((iter % 2000) == 1999) {
-            simp(&unknown_set);
-            re_sort(pick_possibilities);
-        }
-
         if (by > 10 || iter % 10 == 0) {
             update_sampling_set(unknown, unknown_set, indep);
         }
 
     }
-    simp();
-    re_sort(pick_possibilities);
+    if (!only_inverse && by != 1) {
+        simp();
+        re_sort();
+    }
     update_sampling_set(unknown, unknown_set, indep);
     cout << "[mis] one_round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
@@ -903,7 +966,6 @@ void simp(vector<char>* unknown_set)
 
 void remove_zero_assigned_literals(vector<char>* unknown_set)
 {
-    cout << " old size: " << sampling_set->size() << endl;
     //Remove zero-assigned literals
     seen.clear();
     seen.resize(solver->nVars(), 0);
@@ -941,7 +1003,6 @@ void remove_zero_assigned_literals(vector<char>* unknown_set)
 
 void remove_eq_literals(vector<char>* unknown_set)
 {
-    cout << " old size: " << sampling_set->size() << endl;
     seen.clear();
     seen.resize(solver->nVars(), 0);
     *other_sampling_set = *sampling_set;
@@ -1019,6 +1080,75 @@ void init_solver_setup()
     add_fixed_clauses();
     incidence = solver->get_var_incidence();
     cout << "[mis] Setup time: " << (cpuTime()-myTime) << endl;
+}
+
+void run_guess()
+{
+    double myTime = cpuTime();
+    one_round(100, true, false, false, 0);
+    one_round(500, true, false, false, 0);
+    one_round(1000, true, false, false, 0);
+    one_round(4000, true, false, false, 0);
+    one_round(9000, true, false, false, 0);
+    one_round(13000, true, false, false, 0);
+    one_round(16000, true, false, false, 0);
+    one_round(18000, true, false, false, 0);
+    one_round(22000, true, false, false, 0);
+    one_round(24000, true, false, false, 0);
+    cout << "REVVVVVV" << sampling_set->size() << endl;
+
+    one_round(100, true,  true, false, 0);
+    one_round(500, true, false, false, 0);
+    one_round(1000, true, false, false, 0);
+    one_round(4000, true,  true, false, 0);
+    one_round(9000, true,  true, false, 0);
+    one_round(13000, true, true, false, 0);
+    one_round(16000, true, true, false, 0);
+    one_round(18000, true, true, false, 0);
+    one_round(22000, true, true, false, 0);
+    one_round(24000, true, true, false, 0);
+
+    cout << "final :" << sampling_set->size() << " T: " << (myTime - cpuTime()) << endl;
+
+    uint32_t last_sampl_size = sampling_set->size();
+    uint32_t last_gain = 100000000;
+    for(int div = 4; div < 6; div+=2) {
+        cout << "rem Norm NOW..." << endl;
+        last_gain = 1000000;
+        for(int i = 0; i < div; i++) {
+            uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/div, 50);
+            cout << "Guessing: " << guess_indep << endl;
+            one_round(guess_indep, true, false, false, i);
+
+            assert(last_sampl_size >= sampling_set->size());
+            last_gain = last_sampl_size - sampling_set->size();
+            last_sampl_size = sampling_set->size();
+        }
+
+        cout << "rem shuffling NOW..." << endl;
+        for(int i = 0; i < div; i++) {
+            uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/div, 50);
+            cout << "Guessing: " << guess_indep << endl;
+            one_round(guess_indep, true, false, true, i);
+
+            assert(last_sampl_size >= sampling_set->size());
+            last_gain = last_sampl_size - sampling_set->size();
+            last_sampl_size = sampling_set->size();
+        }
+
+        cout << "rem REVERSING NOW..." << endl;
+        last_gain = 1000000;
+        for(int i = 0; i < div; i++) {
+            uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/div, 50);
+            cout << "Guessing: " << guess_indep << endl;
+            one_round(guess_indep, true, true, false, i);
+
+            assert(last_sampl_size >= sampling_set->size());
+            last_gain = last_sampl_size - sampling_set->size();
+            last_sampl_size = sampling_set->size();
+        }
+    }
+    cout << "1====final :" << sampling_set->size() << " T: " << (myTime - cpuTime()) << endl;
 }
 
 int main(int argc, char** argv)
