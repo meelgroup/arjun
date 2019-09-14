@@ -577,6 +577,9 @@ uint32_t inverse_remove(vector<Lit>& assumptions,
     cout << "assumptions size: " << assumptions.size() << endl;
     uint32_t more_ass = 0;
     uint32_t i = 0;
+    vector<char> allowed;
+    allowed.resize(solver->nVars(), 1);
+    seen.resize(solver->nVars(), 0);
     while (removed > 0 || i < 4){
         i++;
         removed = 0;
@@ -585,12 +588,11 @@ uint32_t inverse_remove(vector<Lit>& assumptions,
         vector<Lit> prop = solver->propagated_by(assumptions);
         cout << "prop len: " << prop.size() << endl;
         
-        
-
-        seen.resize(solver->nVars(), 0);
+    
+       
         for(Lit l: prop) {
             if (l.sign() == true) {
-                    seen[l.var()] = 1;
+                    seen[l.var()] = (1 && allowed[l.var()]);
             }
         }
         for(auto var: dontremove) {
@@ -606,6 +608,8 @@ uint32_t inverse_remove(vector<Lit>& assumptions,
                  auto var = x.first;
                 if (unknown_set[var]) {
                      unknown_set[var] = 0;
+                        removed++;
+                        total_removed++;
                 //    cout<<"var "<<var<<endl; 
                     if (var < this_indic2.size() && var < indic.size() && testvar_to_assump[var] != var_Undef ){ //KSM: To check with Mate
                         uint32_t  ass_var = testvar_to_assump[var];
@@ -614,41 +618,41 @@ uint32_t inverse_remove(vector<Lit>& assumptions,
                             
                             seen_ass = ass_var;
                         }
-                        if (seen[indic[var]]){
+                        if (allowed[indic[var]]){
                         
                             uint32_t ass_indic = indic[var];
-                            seen[ass_indic] = 0;
-                        
+                            allowed[ass_indic] = 0;
+                            assumptions.push_back(Lit(ass_indic,true));
                       
                             if (more_ass < 3 ){
                                 cout<<"Added "<<assump_to_testvars[ass_var].size()<<endl;
                                 for (auto var2: assump_to_testvars[ass_var]){
-                                    if (seen[indic[var2]]){
+                                    if (allowed[indic[var2]]){
                                         ass_indic = indic[var2];
-                        
-                                        seen[ass_indic] = 0;
+                                        assumptions.push_back(Lit(ass_indic,true));
+                                        allowed[ass_indic] = 0;
                                     }
                                 }
                             assumptions.push_back(Lit(ass_var, true));
                             }
-                            removed++;
-                            total_removed++;
+                           
                         }
                         }
+
                 }
             }
         }
 
        for(Lit l: prop) {
-            seen[l.var()] = 0;
+            seen[l.var()] = 0;     
         }
-        solver->set_max_confl(2000);
-        solver->solve(&assumptions);
+        //solver->set_max_confl(20000);
+        //solver->solve(&assumptions);
         
          cout << "removed: " << removed << endl;
          
     }
-      
+     
       cout << "total removed: " << total_removed << endl;
     return total_removed;
 }
@@ -871,7 +875,7 @@ void one_round(uint32_t by, bool only_inverse, bool reverse = false, bool shuffl
         if (by > 100) {
             solver->set_max_confl(1500);
         } else {
-            solver->set_max_confl(500);
+            solver->set_max_confl(5000);
         }
         if (one_by_one_mode == one_mode) {
             //solver->set_no_confl_needed();
@@ -1308,7 +1312,7 @@ int main(int argc, char** argv)
 
     
     if (conf.guess && sampling_set->size() > 60) {
-        uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/10, 50);
+        uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/10, 100);
         //guess_indep = 1000;
        // guess_indep = 100;
         simp();
