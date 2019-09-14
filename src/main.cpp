@@ -858,9 +858,12 @@ void one_round(uint32_t by, bool only_inverse)
         }
         iter++;
 
-        if ((iter % 500) == 499 && false) {
+        if ((iter % 2000) == 1999) {
+            solver->simplify();
+            incidence = solver->get_var_incidence_also_red();
             vsids_scores = solver->get_vsids_scores();
             std::sort(pick_possibilities.begin(), pick_possibilities.end(), VSIDSSorter(incidence, vsids_scores));
+            //std::sort(pick_possibilities.begin(), pick_possibilities.end(), IncidenceSorter(incidence));
             cout << "Re-sorted" << endl;
         }
 
