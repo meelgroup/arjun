@@ -608,6 +608,10 @@ uint32_t inverse_remove(vector<Lit>& assumptions,
 
 void one_round(uint32_t by, bool only_inverse, bool reverse = false, bool shuffle = false, int inv_at = 0, int offset_guess = 0)
 {
+    for(const auto& x: seen) {
+        assert(x == 0);
+    }
+
     if (offset_guess >= sampling_set->size()){
         return;
     }
@@ -659,8 +663,8 @@ void one_round(uint32_t by, bool only_inverse, bool reverse = false, bool shuffl
             assump_to_testvar.resize(ass+1, var_Undef);
         }
        assump_to_testvar[ass] = vars[0];
-
     }
+    seen.resize(solver->nVars(), 0);
 
     vector<uint32_t> ass_select;
     for(const auto& x: assump_to_testvars) {
@@ -695,8 +699,6 @@ void one_round(uint32_t by, bool only_inverse, bool reverse = false, bool shuffl
     }
     cout << "[mis] Start unknown size: " << unknown.size() << endl;
 
-    seen.clear();
-    seen.resize(solver->nVars(), 0);
     vector<Lit> assumptions;
 
     uint32_t iter = 0;
@@ -881,7 +883,7 @@ void one_round(uint32_t by, bool only_inverse, bool reverse = false, bool shuffl
             should_continue_inverse = false;
             seen.resize(solver->nVars(), 0);
             for (uint32_t var = 0; var <solver->nVars();var++){
-              seen[var] = 1;
+                seen[var] = 1;
             }
             for(auto var: dontremove) {
                 seen[var] = 0;
@@ -890,8 +892,7 @@ void one_round(uint32_t by, bool only_inverse, bool reverse = false, bool shuffl
                 auto var = x.first;
                 auto indic_var = x.second;
 
-                if (seen[var]){
-
+                if (seen[var]) {
                     if (solver->get_model()[indic_var] == l_True){
                         assumptions.push_back(Lit(indic_var, true));
                         if (unknown_set[var]){
@@ -900,6 +901,9 @@ void one_round(uint32_t by, bool only_inverse, bool reverse = false, bool shuffl
                         should_continue_inverse = true;
                     }
                 }
+            }
+            for (uint32_t var = 0; var <solver->nVars();var++){
+              seen[var] = 0;
             }
             cout << "dontremove size: " << dontremove.size() << endl;
 
@@ -1291,6 +1295,8 @@ int main(int argc, char** argv)
     signal(SIGALRM,signal_handler);
     //signal(SIGINT,signal_handler);
 
+    seen.clear();
+    seen.resize(solver->nVars(), 0);
 
     if (conf.guess && sampling_set->size() > 60) {
         uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/10, 100);
