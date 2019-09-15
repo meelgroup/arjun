@@ -666,29 +666,6 @@ void one_round(uint32_t by, bool only_inverse, bool reverse = false, bool shuffl
     }
     seen.resize(solver->nVars(), 0);
 
-    vector<uint32_t> ass_select;
-    for(const auto& x: assump_to_testvars) {
-        ass_select.push_back(x.first);
-    }
-    std::sort(ass_select.begin(), ass_select.end());
-    uint32_t ass = ass_select.at(inv_at);
-     if (false && only_inverse){
-            cout<<" Guess set size: "<<guess_assumption_set->size()<<endl;
-            for(uint32_t i2 = 0; i2 < guess_assumption_set->size();i2++) {
-                uint32_t guess_ass = (*guess_assumption_set)[i2];
-      //          cout<<"Size "<<global_assump_to_testvars[guess_ass].size()<<endl;
-                for (uint32_t i3 = 0; i3 < global_assump_to_testvars[guess_ass].size(); i3++) {
-                    uint32_t var = global_assump_to_testvars[guess_ass][i3];
-                        assert(var < orig_num_vars);
-                        assert(indic.find(var) != indic.end());
-                        assump_to_testvars[ass].push_back(var);
-
-                        total_by++;
-                }
-            }
-
-        }
-
     //Initially, all of samping_set is unknown
     vector<uint32_t> unknown;
     vector<char> unknown_set;
@@ -877,42 +854,35 @@ void one_round(uint32_t by, bool only_inverse, bool reverse = false, bool shuffl
                     guess_assumption_set->push_back(inverse_ass);
                 }
 
-            const vector<lbool> model = solver->get_model();
-            cout << "dontremove size: " << dontremove.size() << endl;
-            cout << "indic size: " << indic.size() << endl;
-            should_continue_inverse = false;
-            seen.resize(solver->nVars(), 0);
-            for (uint32_t var = 0; var <solver->nVars();var++){
-                seen[var] = 1;
-            }
-            for(auto var: dontremove) {
-                seen[var] = 0;
-            }
-            for(auto& x: indic) {
-                auto var = x.first;
-                auto indic_var = x.second;
+                const vector<lbool> model = solver->get_model();
+                cout << "dontremove size: " << dontremove.size() << endl;
+                cout << "indic size: " << indic.size() << endl;
+                should_continue_inverse = false;
+                seen.resize(solver->nVars(), 0);
+                for (uint32_t var = 0; var <solver->nVars();var++){
+                    seen[var] = 1;
+                }
+                for(auto var: dontremove) {
+                    seen[var] = 0;
+                }
+                for(auto& x: indic) {
+                    auto var = x.first;
+                    auto indic_var = x.second;
 
-                if (seen[var]) {
-                    if (solver->get_model()[indic_var] == l_True){
-                        assumptions.push_back(Lit(indic_var, true));
-                        if (unknown_set[var]){
-                            dontremove.push_back(var);
+                    if (seen[var]) {
+                        if (solver->get_model()[indic_var] == l_True){
+                            assumptions.push_back(Lit(indic_var, true));
+                            if (unknown_set[var]){
+                                dontremove.push_back(var);
+                            }
+                            should_continue_inverse = true;
                         }
-                        should_continue_inverse = true;
                     }
                 }
-            }
-            for (uint32_t var = 0; var <solver->nVars();var++){
-              seen[var] = 0;
-            }
-            cout << "dontremove size: " << dontremove.size() << endl;
-
-                if (removed > 50){
-                 //simp();
-
+                for (uint32_t var = 0; var <solver->nVars();var++){
+                  seen[var] = 0;
                 }
-
-
+                cout << "dontremove size: " << dontremove.size() << endl;
             }
             if (one_by_one_mode == one_mode) {
                 uint32_t ass = testvar_to_assump[test_var];
