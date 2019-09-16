@@ -85,6 +85,7 @@ vector<uint32_t>* other_sampling_set = NULL;
 map<uint32_t, vector<uint32_t>> global_assump_to_testvars;
 vector<uint32_t> incidence;
 vector<double> vsids_scores;
+vector<Lit> dont_elim;
 vector<uint32_t> this_indic2;
 void run_guess();
 
@@ -92,7 +93,7 @@ struct Config {
     int verb = 0;
     int seed = 0;
     int bva = 0;
-    int bve = 0;
+    int bve = 1;
     int guess = 1;
     int force_by_one = 0;
     int simp_at_start = 1;
@@ -373,6 +374,7 @@ void add_fixed_clauses()
         uint32_t this_indic = solver->nVars()-1;
         //torem_orig.push_back(Lit(this_indic, false));
         var_to_indic[var] = this_indic;
+        dont_elim.push_back(Lit(this_indic, false));
         indic_to_var.resize(this_indic+1, var_Undef);
         indic_to_var[this_indic] = var;
 
@@ -407,6 +409,7 @@ void add_fixed_clauses()
     tmp.clear();
     solver->new_var();
     mult_or_invers_var = solver->nVars()-1;
+    dont_elim.push_back(Lit(mult_or_invers_var, false));
     tmp.push_back(Lit(mult_or_invers_var, false));
     for(uint32_t var = 0; var < var_to_indic.size(); var++) {
         uint32_t indic = var_to_indic[var];
@@ -425,6 +428,7 @@ void add_fixed_clauses()
     for(uint32_t var: *sampling_set) {
         solver->new_var();
         uint32_t this_indic = solver->nVars()-1;
+        dont_elim.push_back(Lit(this_indic, false));
 
         tmp.clear();
         tmp.push_back(Lit(var, false));
@@ -440,6 +444,11 @@ void add_fixed_clauses()
         tmp_one.push_back(Lit(this_indic, false));
     }
     solver->add_clause(tmp_one);
+
+    for(uint32_t i = 0; i < orig_num_vars; i ++) {
+        dont_elim.push_back(Lit(i, false));
+        dont_elim.push_back(Lit(i+orig_num_vars, false));
+    }
 }
 
 void fill_assumptions_one(
@@ -1358,7 +1367,7 @@ void simp(vector<char>* unknown_set)
     if (conf.simp_at_start) {
         double simp_time = cpuTime();
         cout << "[mis] Simplifying..." << endl;
-        solver->simplify();
+        solver->simplify(&dont_elim);
         remove_eq_literals(unknown_set);
         remove_zero_assigned_literals(unknown_set);
         cout << "[mis] Simplify finished. T: " << (cpuTime() - simp_time) << endl;
@@ -1564,7 +1573,7 @@ int main(int argc, char** argv)
     seen.clear();
     seen.resize(solver->nVars(), 0);
 
-    if (conf.guess && sampling_set->size() > 60) {
+    if (sampling_set->size() > 60) {
         simp();
     }
 
