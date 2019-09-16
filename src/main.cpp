@@ -1569,8 +1569,9 @@ bool forward_round(
         if (ret == l_Undef) {
             assert(test_var < orig_num_vars);
             assert(unknown_set[test_var] == 0);
-            unknown_set[test_var] = 1;
-            unknown.push_back(test_var);
+            indep.push_back(test_var);
+            //unknown_set[test_var] = 1;
+            //unknown.push_back(test_var);
         } else if (ret == l_True) {
             //Independent
             indep.push_back(test_var);
@@ -1880,7 +1881,8 @@ int main(int argc, char** argv)
         if (num == 1) {
             if (forward) {
                 cout << " FORWARD " << endl;
-                uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/5, 10);
+                uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/10, 10);
+
                 forward_round(50000, guess_indep, false, false, 0);
                 cont = true;
             } else {
