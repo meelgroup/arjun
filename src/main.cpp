@@ -1553,7 +1553,7 @@ bool forward_round(
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
 
-        solver->set_max_confl(500);
+        solver->set_max_confl(50);
         solver->set_no_confl_needed();
 
         lbool ret = l_Undef;
