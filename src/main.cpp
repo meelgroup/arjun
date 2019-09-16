@@ -550,6 +550,7 @@ void update_sampling_set(
 
 void re_sort(vector<uint32_t>* pick_possibilities = NULL)
 {
+    assert(false);
     incidence = solver->get_var_incidence_also_red();
     vsids_scores = solver->get_vsids_scores();
     if (pick_possibilities) {
@@ -628,8 +629,34 @@ bool one_round(uint32_t max_iters = std::numeric_limits<uint32_t>::max())
 
         uint32_t test_var = var_Undef;
         if (mode_type == one_mode) {
-            if (!quick_pop_ok) {
-                test_var = var_Undef;
+            if (quick_pop_ok) {
+                //Remove 2 last
+                assumptions.pop_back();
+                assumptions.pop_back();
+
+                //No more left, try again with full
+                if (assumptions.empty()) {
+                    quick_pop_ok = false;
+                    continue;
+                }
+
+                uint32_t ass_var = assumptions[assumptions.size()-1].var();
+                assumptions.pop_back();
+                assert(ass_var < indic_to_var.size());
+                test_var = indic_to_var[ass_var];
+                assert(test_var != var_Undef);
+                assert(test_var < orig_num_vars);
+
+                //Something is odd, try again with full
+                if (!unknown_set[test_var]) {
+                    test_var = var_Undef;
+                    quick_pop_ok = false;
+                    continue;
+                }
+                uint32_t last_unkn = unknown[unknown.size()-1];
+                assert(last_unkn == test_var);
+                unknown.pop_back();
+            } else {
                 for(int i = pick_possibilities.size()-1; i>= 0; i--) {
                     uint32_t var = pick_possibilities[i];
                     if (!tried_var_already[var] && unknown_set[var]) {
@@ -642,29 +669,9 @@ bool one_round(uint32_t max_iters = std::numeric_limits<uint32_t>::max())
                 if (test_var == var_Undef) {
                     break;
                 }
-            } else {
-                //Remove 2 last
-                assumptions.pop_back();
-                assumptions.pop_back();
-
-                //No more left, exit
-                if (assumptions.empty()) {
-                    break;
-                }
-
-                uint32_t ass_var = assumptions[assumptions.size()-1].var();
-                assumptions.pop_back();
-                assert(ass_var < indic_to_var.size());
-                test_var = indic_to_var[ass_var];
-                assert(test_var != var_Undef);
-                assert(test_var < orig_num_vars);
-
-                if (!unknown_set[test_var]) {
-                    //One that's left is not unknown.. weird, exit.
-                    break;
-                }
             }
             assert(test_var < orig_num_vars);
+            assert(unknown_set[test_var] == 1);
             unknown_set[test_var] = 0;
             tried_var_already[test_var] = 1;
         }
@@ -871,6 +878,7 @@ void group_round(uint32_t group)
 
     vector<Lit> all_assumption_lits;
     std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter(incidence));
+    //std::reverse(sampling_set->begin(), sampling_set->end());
 
     for(uint32_t i = 0; i < sampling_set->size();) {
         solver->new_var();
@@ -935,6 +943,7 @@ void group_round(uint32_t group)
         pick_possibilities.push_back(unk_v);
     }
     std::sort(pick_possibilities.begin(), pick_possibilities.end(), IncidenceSorter(incidence));
+    //std::reverse(pick_possibilities.begin(), pick_possibilities.end());
     uint32_t ret_false = 0;
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
@@ -999,7 +1008,7 @@ void group_round(uint32_t group)
             assumptions.push_back(Lit(mult_or_invers_var, true));
         }
 
-        solver->set_max_confl(1500);
+        solver->set_max_confl(100);
         lbool ret = l_Undef;
         ret = solver->solve(&assumptions);
         if (ret == l_False) {
@@ -1118,7 +1127,6 @@ void group_round(uint32_t group)
         update_sampling_set(unknown, unknown_set, indep);
 
     }
-    simp();
 
     update_sampling_set(unknown, unknown_set, indep);
     cout << "[mis] one_round finished T: "
@@ -1244,9 +1252,9 @@ void inverse_round(
     uint32_t ret_undef = 0;
     bool should_continue_inverse = true;
     uint32_t tot_removed = 0;
-    while((iter < 10)) {
+    while((iter < 5)) {
         //Assumption filling
-        if (iter < 10) {
+        if (iter < 1) {
             dontremove_vars = fill_assumptions_inv(
                 assumptions,
                 indep,
@@ -1505,7 +1513,7 @@ void run_guess()
     uint32_t start_sampl = sampling_set->size();
 
     guess_indep = std::max<uint32_t>(sampling_set->size()/10, 20);
-    for (uint32_t i = 0; i < 10; i++){
+    for (uint32_t i = 0; i < 5; i++){
         cout
         << "[mis] guess_indep: " << guess_indep
         << " INVERSE offs: " << i << endl;
@@ -1515,14 +1523,14 @@ void run_guess()
     << " INVERSE offs: " << 0 << endl;
     inverse_round(guess_indep, true, false, 0);
 
-    for (uint32_t i = 0; i < 10; i++){
+    for (uint32_t i = 0; i < 5; i++) {
         cout
         << "[mis] guess_indep: " << guess_indep
         << " NORMAL  offs: " << i << endl;
         inverse_round(guess_indep, false, false, i);
     }
 
-    for (uint32_t i = 0; i < 10; i++) {
+    for (uint32_t i = 0; i < 5; i++) {
         cout
         << "[mis] guess_indep: " << guess_indep
         << " RANDOM  offs: " << i << endl;
@@ -1573,16 +1581,15 @@ int main(int argc, char** argv)
     seen.clear();
     seen.resize(solver->nVars(), 0);
 
-    if (sampling_set->size() > 60) {
-        simp();
-    }
-
     uint32_t prev_size = sampling_set->size()*100;
     uint32_t num;
     uint32_t round_num = 0;
 
     bool cont = true;
     while(cont) {
+        if (sampling_set->size() > 60) {
+            simp();
+        }
         if (conf.guess) {
             run_guess();
         }
@@ -1602,10 +1609,10 @@ int main(int argc, char** argv)
 
         cout << "[mis] ===--> Doing a run for " << num << endl;
         if (num == 1) {
-            cont = !one_round(3000000);
+            cont = !one_round(10000);
         } else {
             group_round(num);
-            cont = false;
+            cont = true;
         }
         round_num++;
     }
