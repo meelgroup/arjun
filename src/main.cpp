@@ -774,7 +774,7 @@ bool one_round(uint32_t max_iters = std::numeric_limits<uint32_t>::max())
                 << " T/F/U: ";
                 std::stringstream ss;
                 ss << ret_true << "/" << ret_false << "/" << ret_undef;
-                cout << std::setw(8) << std::left << ss.str() << std::right;
+                cout << std::setw(10) << std::left << ss.str() << std::right;
                 ret_true = 0;
                 ret_false = 0;
                 ret_undef = 0;
@@ -1102,7 +1102,7 @@ void group_round(uint32_t group)
                 << " T/F/U: ";
                 std::stringstream ss;
                 ss << ret_true << "/" << ret_false << "/" << ret_undef;
-                cout << std::setw(8) << std::left << ss.str() << std::right;
+                cout << std::setw(10) << std::left << ss.str() << std::right;
                 ret_true = 0;
                 ret_false = 0;
                 ret_undef = 0;
@@ -1346,7 +1346,7 @@ void inverse_round(
                 << " T/F/U: ";
                 std::stringstream ss;
                 ss << ret_true << "/" << ret_false << "/" << ret_undef;
-                cout << std::setw(8) << std::left << ss.str() << std::right;
+                cout << std::setw(10) << std::left << ss.str() << std::right;
                 ret_true = 0;
                 ret_false = 0;
                 ret_undef = 0;
