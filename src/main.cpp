@@ -1618,10 +1618,6 @@ bool forward_round(
 
         }
         iter++;
-
-        if (iter % 100 == 99) {
-            update_sampling_set(unknown, unknown_set, indep);
-        }
     }
 
     for (uint32_t var =0; var < orig_num_vars; var++){
@@ -1880,7 +1876,7 @@ int main(int argc, char** argv)
             simp();
         }
 
-        if (conf.guess) {
+        if (conf.guess && round_num > 0) {
             run_guess();
         }
 
