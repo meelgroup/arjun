@@ -916,9 +916,7 @@ void fill_assumptions_group(
 )
 {
     assumptions.clear();
-    for(const auto& x: assumptions) {
-        seen[x.var()] = 0;
-    }
+
     //Add unknown as assumptions
     uint32_t j = 0;
     for(uint32_t i = 0; i < unknown.size(); i++) {
@@ -1336,11 +1334,11 @@ void inverse_round(
     uint32_t ret_undef = 0;
     bool should_continue_inverse = true;
     uint32_t tot_removed = 0;
-    while(iter < 20 && should_continue_inverse) {
+    while(iter < 5) {
         should_continue_inverse = false;
 
         //Assumption filling
-        if (iter <1) {
+        if (iter < 5) {
             fill_assumptions_inv(
                 assumptions,
                 indep,
@@ -1353,18 +1351,11 @@ void inverse_round(
             );
             assumptions.push_back(Lit(mult_or_invers_var, true));
         }
-        removed = inverse_remove_and_update_ass(
-                assumptions, unknown_set, dontremove_vars);
-        if (removed > 0){
-            should_continue_inverse = true;
 
-        }
-        tot_removed += removed;
-        solver->set_max_confl(500);
+        solver->set_max_confl(100);
         lbool ret = l_Undef;
-        if (removed ==0){
-        ret = solver->solve(&assumptions);
-        }
+        //ret = solver->solve(&assumptions);
+
         if (ret == l_False) {
             ret_false++;
         } else if (ret == l_True) {
@@ -1373,9 +1364,16 @@ void inverse_round(
             ret_undef++;
         }
 
-        if (ret == l_True) {
+        if (ret != l_False) {
+            removed = inverse_remove_and_update_ass(
+                assumptions, unknown_set, dontremove_vars);
+
+            tot_removed += removed;
+        }
+
+        /*if (ret == l_True) {
             const vector<lbool> model = solver->get_model();
-            uint32_t addednewvars = 0;
+
             for(uint32_t var = 0; var < var_to_indic.size(); var++) {
                 assert(var < orig_num_vars);
                 auto indic_var = var_to_indic[var];
@@ -1390,12 +1388,11 @@ void inverse_round(
                         assumptions.push_back(Lit(indic_var, true));
                         dontremove_vars[var] = 1;
                         should_continue_inverse = true;
-                        addednewvars += 1;
                     }
                 }
             }
-            cout<<"added new vars:"<<addednewvars<<endl;
-        } else if (ret == l_False) {
+        } else*/
+        if (ret == l_False) {
             uint32_t before_unk_size = unknown.size();
             for(auto&x: unknown) {
                 unknown_set[x] = 0;
@@ -1411,7 +1408,7 @@ void inverse_round(
             }
             removed = unknown.size() - before_unk_size;
             tot_removed += removed;
-
+            break;
         }
 
         if (iter % mod == (mod-1)) {
@@ -1442,10 +1439,6 @@ void inverse_round(
             tot_removed = 0;
         }
         iter++;
-        if (ret == l_False){
-            break;
-        }
-
     }
     update_sampling_set(unknown, unknown_set, indep);
     cout << "[mis] one_round finished T: "
@@ -1777,39 +1770,30 @@ void run_guess()
     double myTime = cpuTime();
     uint32_t start_sampl = sampling_set->size();
 
-    uint32_t div = 20;
-    uint32_t guess_indep = std::max<uint32_t>(orig_num_vars/div, 20);
+    uint32_t div = 5;
+    uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/div, 20);
 
     //NORM
     uint32_t cur_sampl_size = sampling_set->size();
-    uint32_t counter = 0;
     if (true) {
         cout << " ============ INV ==============" << endl;
-        for (uint32_t i = div/4; i < div; i++){
+        for (uint32_t i = 0; i < div/2; i++){
             inverse_round(guess_indep, true, false, i);
-            if(counter > 5){
-                break;
-            }
-            counter ++;
         }
     }
     uint32_t inv_removed = cur_sampl_size - sampling_set->size();
-    counter = 0;
+
     cur_sampl_size = sampling_set->size();
     if (true) {
         cout << " ============ NORM ==============" << endl;
-        for (uint32_t i = div/4; i < div; i++) {
+        for (uint32_t i = 0; i < div/2; i++) {
             inverse_round(guess_indep, false, false, i);
-                        if(counter > 5){
-                break;
-            }
-            counter ++;
         }
     }
     uint32_t norm_removed = cur_sampl_size - sampling_set->size();
 
     cur_sampl_size = sampling_set->size();
-    if (false) {
+    if (true) {
         cout << " ============ RND ==============" << endl;
         for (uint32_t i = 0; i < div/2; i++) {
             inverse_round(guess_indep, false, true, 0);
@@ -1875,11 +1859,9 @@ int main(int argc, char** argv)
         if (sampling_set->size() > 60) {
             simp();
         }
-
         if (conf.guess && round_num > 0) {
             run_guess();
         }
-
 
         if (sampling_set->size() < prev_size/5) {
             num = sampling_set->size()/10;
