@@ -555,14 +555,17 @@ void fill_assumptions_forward(
         }
     }
 
-    /*for(const auto& var: dep) {
+    //Just an optimization -- these are defined by GUESS+INDEP
+    //So we might as well put them in. We COULD remove them
+    //but it might help.
+    for(const auto& var: dep) {
         assert(var < orig_num_vars);
 
         uint32_t ass = var_to_indic[var];
         assert(ass != var_Undef);
         assert(!seen[ass]);
         assumptions.push_back(Lit(ass, true));
-    }*/
+    }
 
     for(uint32_t i = group*offs; i < group*(offs+1) && i < unknown.size(); i++) {
         uint32_t var = unknown[i];
@@ -1511,11 +1514,21 @@ bool forward_round(
         guess_set
     );
 
+    fill_assumptions_forward(
+        assumptions,
+        indep,
+        unknown,
+        dep,
+        group,
+        offset,
+        guess_set
+    );
+
     cout << "[mis] Start unknown size: " << pick_possibilities.size() << endl;
     uint32_t ret_false = 0;
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
-    bool quick_fill_ok = false;
+    uint32_t prev_test_var = var_Undef;
     while(iter < max_iters) {
         //Select var
         uint32_t test_var = var_Undef;
@@ -1539,20 +1552,21 @@ bool forward_round(
 
         //Assumption filling: with guess_set that is in range + indep
         assert(test_var != var_Undef);
-        if (!quick_fill_ok) {
-            fill_assumptions_forward(
-                assumptions,
-                indep,
-                unknown,
-                dep,
-                group,
-                offset,
-                guess_set
-            );
-        } else {
+
+        //Remove old
+        if (iter != 0) {
             assumptions.pop_back();
             assumptions.pop_back();
+
+            //in case of DEP: This is just an optimization, to add the dependent var
+            //in case of INDEP: This is needed.
+            uint32_t ass = var_to_indic[prev_test_var];
+            assert(ass != var_Undef);
+            assert(!seen[ass]);
+            assumptions.push_back(Lit(ass, true));
         }
+
+        //Add new one
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
 
@@ -1569,20 +1583,14 @@ bool forward_round(
             ret_undef++;
         }
 
-        if (ret == l_Undef) {
+        if (ret == l_Undef || ret == l_True) {
             assert(test_var < orig_num_vars);
             assert(unknown_set[test_var] == 0);
             indep.push_back(test_var);
-            quick_fill_ok = false;
-        } else if (ret == l_True) {
-            //Independent
-            indep.push_back(test_var);
-            quick_fill_ok = false;
         } else if (ret == l_False) {
             //not independent
             not_indep++;
             dep.push_back(test_var);
-            quick_fill_ok = true;
             //TODO: In the forward pass, even when the variable is not independent, we can still add it to the assumptions
         }
 
@@ -1615,6 +1623,7 @@ bool forward_round(
 
         }
         iter++;
+        prev_test_var = test_var;
     }
 
     for (uint32_t var =0; var < orig_num_vars; var++){
