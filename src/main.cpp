@@ -450,7 +450,7 @@ void add_fixed_clauses()
         dont_elim.push_back(Lit(i+orig_num_vars, false));
     }
 }
-void fill_assumptions_one(
+void fill_assumptions_backward(
     vector<Lit>& assumptions,
     vector<uint32_t>& unknown,
     const vector<char>& unknown_set,
@@ -529,7 +529,7 @@ void fill_assumptions_inv(
     }
 }
 
-void fill_assumptions_forward_round(
+void fill_assumptions_forward(
     vector<Lit>& assumptions,
     const vector<uint32_t>& indep,
     vector<uint32_t>& unknown,
@@ -539,7 +539,6 @@ void fill_assumptions_forward_round(
     vector<char>& guess_set
 )
 {
-
     assumptions.clear();
     for(auto& x: seen) {
         assert(x == 0);
@@ -556,6 +555,15 @@ void fill_assumptions_forward_round(
         }
     }
 
+    /*for(const auto& var: dep) {
+        assert(var < orig_num_vars);
+
+        uint32_t ass = var_to_indic[var];
+        assert(ass != var_Undef);
+        assert(!seen[ass]);
+        assumptions.push_back(Lit(ass, true));
+    }*/
+
     for(uint32_t i = group*offs; i < group*(offs+1) && i < unknown.size(); i++) {
         uint32_t var = unknown[i];
         assert(var < orig_num_vars);
@@ -566,15 +574,6 @@ void fill_assumptions_forward_round(
                 assumptions.push_back(Lit(ass, true));
             }
         }
-    }
-
-    for(const auto& var: dep) {
-        assert(var < orig_num_vars);
-
-        uint32_t ass = var_to_indic[var];
-        assert(ass != var_Undef);
-        assert(!seen[ass]);
-        assumptions.push_back(Lit(ass, true));
     }
 
     //clear seen
@@ -667,7 +666,7 @@ void re_sort(vector<uint32_t>* pick_possibilities = NULL)
     cout << "Re-sorted" << endl;
 }
 
-bool one_round(uint32_t max_iters = std::numeric_limits<uint32_t>::max())
+bool backward_round(uint32_t max_iters = std::numeric_limits<uint32_t>::max())
 {
     for(const auto& x: seen) {
         assert(x == 0);
@@ -780,13 +779,13 @@ bool one_round(uint32_t max_iters = std::numeric_limits<uint32_t>::max())
 
         //Assumption filling
         if (mode_type == many_mode) {
-            fill_assumptions_one(assumptions, unknown, unknown_set, indep);
+            fill_assumptions_backward(assumptions, unknown, unknown_set, indep);
             assumptions.push_back(Lit(mult_or_invers_var, true));
         }
         else if (mode_type == one_mode) {
             assert(test_var != var_Undef);
             if (!quick_pop_ok) {
-                fill_assumptions_one(assumptions, unknown, unknown_set, indep);
+                fill_assumptions_backward(assumptions, unknown, unknown_set, indep);
                 assumptions.push_back(Lit(test_var, false));
                 assumptions.push_back(Lit(test_var + orig_num_vars, true));
             } else {
@@ -899,7 +898,7 @@ bool one_round(uint32_t max_iters = std::numeric_limits<uint32_t>::max())
         }
     }
     update_sampling_set(unknown, unknown_set, indep);
-    cout << "[mis] one_round finished T: "
+    cout << "[mis] backward_round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
     << endl;
 
@@ -1227,7 +1226,7 @@ void group_round(uint32_t group)
     }
 
     update_sampling_set(unknown, unknown_set, indep);
-    cout << "[mis] one_round finished T: "
+    cout << "[mis] backward_round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
     << endl;
 
@@ -1441,7 +1440,7 @@ void inverse_round(
         iter++;
     }
     update_sampling_set(unknown, unknown_set, indep);
-    cout << "[mis] one_round finished T: "
+    cout << "[mis] backward_round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
     << endl;
 }
@@ -1516,6 +1515,7 @@ bool forward_round(
     uint32_t ret_false = 0;
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
+    bool quick_fill_ok = false;
     while(iter < max_iters) {
         //Select var
         uint32_t test_var = var_Undef;
@@ -1539,17 +1539,20 @@ bool forward_round(
 
         //Assumption filling: with guess_set that is in range + indep
         assert(test_var != var_Undef);
-        fill_assumptions_forward_round(
-            assumptions,
-            indep,
-            unknown,
-            dep,
-            group,
-            offset,
-            guess_set
-        );
-        assumptions.push_back(Lit(mult_or_invers_var, true));
-
+        if (!quick_fill_ok) {
+            fill_assumptions_forward(
+                assumptions,
+                indep,
+                unknown,
+                dep,
+                group,
+                offset,
+                guess_set
+            );
+        } else {
+            assumptions.pop_back();
+            assumptions.pop_back();
+        }
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
 
@@ -1570,16 +1573,16 @@ bool forward_round(
             assert(test_var < orig_num_vars);
             assert(unknown_set[test_var] == 0);
             indep.push_back(test_var);
-            //unknown_set[test_var] = 1;
-            //unknown.push_back(test_var);
+            quick_fill_ok = false;
         } else if (ret == l_True) {
             //Independent
             indep.push_back(test_var);
-
+            quick_fill_ok = false;
         } else if (ret == l_False) {
             //not independent
             not_indep++;
             dep.push_back(test_var);
+            quick_fill_ok = true;
             //TODO: In the forward pass, even when the variable is not independent, we can still add it to the assumptions
         }
 
@@ -1629,7 +1632,7 @@ bool forward_round(
     indep.clear();
 
     update_sampling_set(unknown, unknown_set, indep);
-    cout << "[mis] one_round finished T: "
+    cout << "[mis] backward_round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
     << endl;
 
@@ -1887,7 +1890,7 @@ int main(int argc, char** argv)
                 cont = true;
             } else {
                 cout << " BACKWARD " << endl;
-                cont = !one_round(5000);
+                cont = !backward_round(5000);
             }
             forward = !forward;
         } else {
