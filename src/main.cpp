@@ -1498,7 +1498,6 @@ int main(int argc, char** argv)
         if (forward) {
             cout << " FORWARD " << endl;
             uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/100, 10);
-            guess_indep = 0;
             forward_round(50000, guess_indep, false, false, 0);
             cont = true;
         } else {
