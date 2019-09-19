@@ -99,6 +99,7 @@ struct Config {
     int simp_at_start = 1;
     int always_one_by_one = 1;
     int recompute_sampling_set = 0;
+    int backward_only = 0;
 };
 
 struct IncidenceSorter
@@ -186,6 +187,7 @@ void add_mis_options()
     ("simpstart", po::value(&conf.simp_at_start)->default_value(conf.simp_at_start), "simp at startup")
     ("recomp", po::value(&conf.recompute_sampling_set)->default_value(conf.recompute_sampling_set), "Recompute sampling set even if it's part of the CNF")
     ("byforce", po::value(&conf.force_by_one)->default_value(conf.force_by_one), "Force 1-by-1 query")
+    ("backwardonly", po::value(&conf.backward_only)->default_value(conf.backward_only), "Only do backwards query")
 
     ;
 
@@ -708,6 +710,7 @@ bool backward_round(uint32_t max_iters = std::numeric_limits<uint32_t>::max())
     }
 
     vector<uint32_t> pick_possibilities;
+    pick_possibilities.reserve(unknown.size());
     for(const auto& unk_v: unknown) {
         pick_possibilities.push_back(unk_v);
     }
@@ -896,7 +899,7 @@ bool backward_round(uint32_t max_iters = std::numeric_limits<uint32_t>::max())
         }
         iter++;
 
-        if (iter % 100 == 99) {
+        if (iter % 500 == 499) {
             update_sampling_set(unknown, unknown_set, indep);
         }
     }
@@ -1470,6 +1473,9 @@ int main(int argc, char** argv)
 
     bool cont = true;
     bool forward = true;
+    if (conf.backward_only) {
+        forward = false;
+    }
     while(cont) {
         if (sampling_set->size() > 60) {
             simp();
@@ -1490,9 +1496,15 @@ int main(int argc, char** argv)
             cont = true;
         } else {
             cout << " BACKWARD " << endl;
-            cont = !backward_round(50000);
+            uint32_t num = 50000;
+            if (conf.backward_only) {
+                num = std::numeric_limits<uint32_t>::max();
+            }
+            cont = !backward_round(num);
         }
-        forward = !forward;
+        if (round_num > 1) {
+            forward = !forward;
+        }
         round_num++;
     }
 
