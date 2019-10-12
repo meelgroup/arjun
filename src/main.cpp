@@ -99,7 +99,7 @@ struct Config {
     int always_one_by_one = 1;
     int recompute_sampling_set = 0;
     int backward_only = 0;
-    int set_val_forward = 0;
+    int set_val_forward = 1;
 };
 
 struct IncidenceSorter
@@ -1500,7 +1500,7 @@ int main(int argc, char** argv)
         if (forward) {
             cout << " FORWARD " << endl;
             uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/5, 10);
-            //guess_indep = 1;
+            guess_indep = std::min<uint32_t>(guess_indep, 1000);
 
             forward_round(50000, guess_indep, false, false, 0);
             cont = true;
