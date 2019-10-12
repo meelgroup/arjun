@@ -95,7 +95,7 @@ struct Config {
     int bve = 1;
     int guess = 0;
     int force_by_one = 1;
-    int simp = 0;
+    int simp = 1;
     int always_one_by_one = 1;
     int recompute_sampling_set = 0;
     int backward_only = 0;
