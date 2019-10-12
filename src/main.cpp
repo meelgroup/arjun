@@ -88,6 +88,7 @@ vector<double> vsids_scores;
 vector<Lit> dont_elim;
 vector<uint32_t> this_indic2;
 void run_guess();
+void init_solver_setup(bool init_sampling);
 
 struct Config {
     int verb = 0;
@@ -362,7 +363,10 @@ void init_samping_set(bool recompute)
 
 void add_fixed_clauses()
 {
+    dont_elim.clear();
+    var_to_indic.clear();
     var_to_indic.resize(orig_num_vars, var_Undef);
+    indic_to_var.clear();
     indic_to_var.resize(solver->nVars(), var_Undef);
 
     //Indicator variable is TRUE when they are NOT equal
@@ -424,7 +428,7 @@ void add_fixed_clauses()
 
 
 
-    assert(this_indic2.empty());
+    this_indic2.clear();
     this_indic2.resize(orig_num_vars, var_Undef);
     vector<Lit> tmp_one;
     for(uint32_t var: *sampling_set) {
@@ -452,6 +456,7 @@ void add_fixed_clauses()
         dont_elim.push_back(Lit(i+orig_num_vars, false));
     }
 }
+
 void fill_assumptions_backward(
     vector<Lit>& assumptions,
     vector<uint32_t>& unknown,
@@ -535,7 +540,6 @@ void fill_assumptions_forward(
     vector<Lit>& assumptions,
     const vector<uint32_t>& indep,
     vector<uint32_t>& unknown,
-    vector<uint32_t>& dep,
     uint32_t group,
     uint32_t offs,
     vector<char>& guess_set
@@ -555,18 +559,6 @@ void fill_assumptions_forward(
             seen[ass] = 1;
             assumptions.push_back(Lit(ass, true));
         }
-    }
-
-    //Just an optimization -- these are defined by GUESS+INDEP
-    //So we might as well put them in. We COULD remove them
-    //but it might help.
-    for(const auto& var: dep) {
-        assert(var < orig_num_vars);
-
-        uint32_t ass = var_to_indic[var];
-        assert(ass != var_Undef);
-        assert(!seen[ass]);
-        assumptions.push_back(Lit(ass, true));
     }
 
     for(uint32_t i = group*offs; i < group*(offs+1) && i < unknown.size(); i++) {
@@ -1067,7 +1059,6 @@ bool forward_round(
     double start_round_time = cpuTimeTotal();
     //start with empty independent set
     vector<uint32_t> indep;
-    vector<uint32_t> dep;
     //Initially, all of samping_set is unknown
     vector<uint32_t> unknown;
     vector<char> unknown_set;
@@ -1109,6 +1100,7 @@ bool forward_round(
         }
     }
     std::sort(pick_possibilities.begin(), pick_possibilities.end(), IncidenceSorter(incidence));
+    cout << "[mis] Start unknown size: " << pick_possibilities.size() << endl;
 
     set_guess_forward_round(
         indep,
@@ -1123,13 +1115,17 @@ bool forward_round(
         assumptions,
         indep,
         unknown,
-        dep,
         group,
         offset,
         guess_set
     );
+//     for(const auto& a: assumptions) {
+//         tmp.clear();
+//         tmp.push_back(a);
+//         solver->add_clause(tmp);
+//     }
+//     assumptions.clear();
 
-    cout << "[mis] Start unknown size: " << pick_possibilities.size() << endl;
     uint32_t ret_false = 0;
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
@@ -1168,6 +1164,9 @@ bool forward_round(
             uint32_t ass = var_to_indic[prev_test_var];
             assert(ass != var_Undef);
             assert(!seen[ass]);
+//             tmp.clear();
+//             tmp.push_back(Lit(ass, true));
+//             solver->add_clause(tmp);
             assumptions.push_back(Lit(ass, true));
         }
 
@@ -1195,7 +1194,6 @@ bool forward_round(
         } else if (ret == l_False) {
             //not independent
             not_indep++;
-            dep.push_back(test_var);
             //TODO: In the forward pass, even when the variable is not independent, we can still add it to the assumptions
         }
 
@@ -1232,7 +1230,7 @@ bool forward_round(
     }
 
     for (uint32_t var =0; var < orig_num_vars; var++){
-        if (guess_set[var]){
+        if (guess_set[var]) {
             unknown_set[var] = 1;
             unknown.push_back(var);
         }
@@ -1250,6 +1248,8 @@ bool forward_round(
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
     << endl;
 
+    //we messed up the solver, re-init please
+    //init_solver_setup(false);
     return iter < max_iters;
 }
 void simp(vector<char>* unknown_set)
@@ -1343,8 +1343,9 @@ void remove_eq_literals(vector<char>* unknown_set)
 
 }
 
-void init_solver_setup()
+void init_solver_setup(bool init_sampling)
 {
+    delete solver;
     double myTime = cpuTime();
     solver = new SATSolver();
     if (conf.verb > 2) {
@@ -1358,8 +1359,10 @@ void init_solver_setup()
     const string inp = vm["input"].as<string>();
 
     //Read in file and set sampling_set in case we are starting with empty
-    readInAFile(inp.c_str(), 0, sampling_set->empty());
-    init_samping_set(conf.recompute_sampling_set);
+    readInAFile(inp.c_str(), 0, true);
+    if (init_sampling) {
+        init_samping_set(conf.recompute_sampling_set);
+    }
     orig_num_vars = solver->nVars();
     remove_zero_assigned_literals();
 
@@ -1374,13 +1377,13 @@ void init_solver_setup()
     if (!conf.bve) {
         solver->set_no_bve();
     }
-    solver->set_no_intree_probe();
+    solver->set_intree_probe(0);
     //solver->set_verbosity(2);
 
     //Print stats
     add_fixed_clauses();
     incidence = solver->get_var_incidence();
-    cout << "[mis] Setup time: " << (cpuTime()-myTime) << endl;
+    cout << "[mis] CNF read-in time: " << (cpuTime()-myTime) << endl;
 }
 
 void run_guess()
@@ -1459,7 +1462,7 @@ int main(int argc, char** argv)
 
     double starTime = cpuTime();
     mtrand.seed(conf.seed);
-    init_solver_setup();
+    init_solver_setup(true);
     cout << solver->get_text_version_info();
     signal(SIGALRM,signal_handler);
     //signal(SIGINT,signal_handler);
