@@ -78,9 +78,7 @@ vector<uint32_t> indic_to_var; //maps an INDICATOR VAR to ORIG VAR
 
 vector<uint32_t> sampling_set_tmp1;
 vector<uint32_t> sampling_set_tmp2;
-vector<uint32_t> guess_set_tmp;
 vector<uint32_t>* sampling_set = NULL;
-vector<uint32_t>* guess_assumption_set = NULL;
 vector<uint32_t>* other_sampling_set = NULL;
 map<uint32_t, vector<uint32_t>> global_assump_to_testvars;
 vector<uint32_t> incidence;
@@ -95,12 +93,13 @@ struct Config {
     int seed = 0;
     int bva = 0;
     int bve = 1;
-    int guess = 1;
+    int guess = 0;
     int force_by_one = 1;
-    int simp_at_start = 1;
+    int simp = 0;
     int always_one_by_one = 1;
     int recompute_sampling_set = 0;
     int backward_only = 0;
+    int set_val_forward = 0;
 };
 
 struct IncidenceSorter
@@ -185,9 +184,10 @@ void add_mis_options()
     ("bve", po::value(&conf.bve)->default_value(conf.bve), "bve")
     ("guess", po::value(&conf.guess)->default_value(conf.guess), "Guess small set")
     ("one", po::value(&conf.always_one_by_one)->default_value(conf.always_one_by_one), "always one-by-one mode")
-    ("simpstart", po::value(&conf.simp_at_start)->default_value(conf.simp_at_start), "simp at startup")
+    ("simp", po::value(&conf.simp)->default_value(conf.simp), "simplify")
     ("recomp", po::value(&conf.recompute_sampling_set)->default_value(conf.recompute_sampling_set), "Recompute sampling set even if it's part of the CNF")
     ("byforce", po::value(&conf.force_by_one)->default_value(conf.force_by_one), "Force 1-by-1 query")
+    ("setfwd", po::value(&conf.set_val_forward)->default_value(conf.set_val_forward), "When doing forward, set the value instead of using assumptions")
     ("backwardonly", po::value(&conf.backward_only)->default_value(conf.backward_only), "Only do backwards query")
 
     ;
@@ -896,7 +896,7 @@ bool backward_round(uint32_t max_iters = std::numeric_limits<uint32_t>::max())
         }
     }
     update_sampling_set(unknown, unknown_set, indep);
-    cout << "[mis] backward_round finished T: "
+    cout << "[mis] backward round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
     << endl;
 
@@ -1040,7 +1040,7 @@ void guess_round(
         iter++;
     }
     update_sampling_set(unknown, unknown_set, indep);
-    cout << "[mis] backward_round finished T: "
+    cout << "[mis] guess round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
     << endl;
 }
@@ -1119,12 +1119,14 @@ bool forward_round(
         offset,
         guess_set
     );
-//     for(const auto& a: assumptions) {
-//         tmp.clear();
-//         tmp.push_back(a);
-//         solver->add_clause(tmp);
-//     }
-//     assumptions.clear();
+    if (conf.set_val_forward) {
+        for(const auto& a: assumptions) {
+            tmp.clear();
+            tmp.push_back(a);
+            solver->add_clause(tmp);
+        }
+        assumptions.clear();
+    }
 
     uint32_t ret_false = 0;
     uint32_t ret_true = 0;
@@ -1164,17 +1166,20 @@ bool forward_round(
             uint32_t ass = var_to_indic[prev_test_var];
             assert(ass != var_Undef);
             assert(!seen[ass]);
-//             tmp.clear();
-//             tmp.push_back(Lit(ass, true));
-//             solver->add_clause(tmp);
-            assumptions.push_back(Lit(ass, true));
+            if (conf.set_val_forward) {
+                tmp.clear();
+                tmp.push_back(Lit(ass, true));
+                solver->add_clause(tmp);
+            } else {
+                assumptions.push_back(Lit(ass, true));
+            }
         }
 
         //Add new one
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
 
-        solver->set_max_confl(50);
+        solver->set_max_confl(10);
         solver->set_no_confl_needed();
 
         lbool ret = l_Undef;
@@ -1244,17 +1249,19 @@ bool forward_round(
     indep.clear();
 
     update_sampling_set(unknown, unknown_set, indep);
-    cout << "[mis] backward_round finished T: "
+    cout << "[mis] forward round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
     << endl;
 
-    //we messed up the solver, re-init please
-    //init_solver_setup(false);
+    if (conf.set_val_forward) {
+        //we messed up the solver, re-init please
+        init_solver_setup(false);
+    }
     return iter < max_iters;
 }
 void simp(vector<char>* unknown_set)
 {
-    if (conf.simp_at_start) {
+    if (conf.simp) {
         double simp_time = cpuTime();
         cout << "[mis] Simplifying..." << endl;
         solver->simplify(&dont_elim);
@@ -1359,7 +1366,7 @@ void init_solver_setup(bool init_sampling)
     const string inp = vm["input"].as<string>();
 
     //Read in file and set sampling_set in case we are starting with empty
-    readInAFile(inp.c_str(), 0, true);
+    readInAFile(inp.c_str(), 0, init_sampling);
     if (init_sampling) {
         init_samping_set(conf.recompute_sampling_set);
     }
@@ -1442,8 +1449,6 @@ int main(int argc, char** argv)
 
     sampling_set = &sampling_set_tmp1;
     other_sampling_set = &sampling_set_tmp2;
-    guess_assumption_set = &guess_set_tmp;
-    guess_assumption_set->clear();
     //Reconstruct the command line so we can emit it later if needed
     for(int i = 0; i < argc; i++) {
         command_line += string(argv[i]);
@@ -1474,15 +1479,16 @@ int main(int argc, char** argv)
     uint32_t num;
     uint32_t round_num = 0;
 
+    if (sampling_set->size() > 60) {
+        simp();
+    }
+
     bool cont = true;
     bool forward = true;
     if (conf.backward_only) {
         forward = false;
     }
     while(cont) {
-        if (sampling_set->size() > 60) {
-            simp();
-        }
         if (conf.guess && round_num > 0) {
             run_guess();
         }
@@ -1493,7 +1499,8 @@ int main(int argc, char** argv)
         cout << "[mis] ===--> Doing a run for " << num << endl;
         if (forward) {
             cout << " FORWARD " << endl;
-            uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/10, 10);
+            uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/5, 10);
+            //guess_indep = 1;
 
             forward_round(50000, guess_indep, false, false, 0);
             cont = true;
@@ -1505,9 +1512,9 @@ int main(int argc, char** argv)
             }
             cont = !backward_round(num);
         }
-        if (round_num > 1) {
+        //if (round_num > 1) {
             forward = !forward;
-        }
+        //}
         round_num++;
     }
 
