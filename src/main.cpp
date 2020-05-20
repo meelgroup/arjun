@@ -141,7 +141,7 @@ void print_indep_set()
     cout << "vp ";
     for(const uint32_t s: *sampling_set) {
         cout << s+1 << " ";
-    }s
+    }
     cout << "0" << endl;
 
 //     cout << "c inc ";
