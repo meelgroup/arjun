@@ -1514,7 +1514,7 @@ int main(int argc, char** argv)
             cont = true;
         } else {
             cout << "c [mis] BACKWARD " << endl;
-            uint32_t num = 50000;
+            num = 50000;
             if (conf.backward_only) {
                 num = std::numeric_limits<uint32_t>::max();
             }
