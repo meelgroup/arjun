@@ -138,7 +138,7 @@ MTRand mtrand;
 
 void print_indep_set()
 {
-    cout << "c ind ";
+    cout << "vp ";
     for(const uint32_t s: *sampling_set) {
         cout << s+1 << " ";
     }
@@ -215,7 +215,7 @@ void add_supported_options(int argc, char** argv)
         }
 
         if (vm.count("version")) {
-            cout << "[mis] Version: " << get_version_sha1() << endl;
+            cout << "c [mis] Version: " << get_version_sha1() << endl;
             std::exit(0);
         }
 
@@ -333,13 +333,13 @@ void init_samping_set(bool recompute)
 {
     if (sampling_set->empty() || recompute) {
         if (recompute && !sampling_set->empty()) {
-            cout << "[mis] WARNING: recomputing independent set even though" << endl;
-            cout << "[mis]          a sampling/independent set was part of the CNF" << endl;
-            cout << "[mis]          orig sampling set size: " << sampling_set->size() << endl;
+            cout << "c [mis] WARNING: recomputing independent set even though" << endl;
+            cout << "c [mis]          a sampling/independent set was part of the CNF" << endl;
+            cout << "c [mis]          orig sampling set size: " << sampling_set->size() << endl;
         }
 
         if (sampling_set->empty()) {
-            cout << "[mis] No sample set given, starting with full" << endl;
+            cout << "c [mis] No sample set given, starting with full" << endl;
         }
         sampling_set->clear();
         for (size_t i = 0; i < solver->nVars(); i++) {
@@ -349,16 +349,16 @@ void init_samping_set(bool recompute)
 
     if (sampling_set->size() > 100) {
         cout
-        << "[mis] Sampling var set contains over 100 variables, not displaying"
+        << "c [mis] Sampling var set contains over 100 variables, not displaying"
         << endl;
     } else {
-        cout << "[mis] Sampling set: ";
+        cout << "c [mis] Sampling set: ";
         for (auto v: *sampling_set) {
             cout << v+1 << ", ";
         }
         cout << endl;
     }
-    cout << "[mis] Orig size         : " << sampling_set->size() << endl;
+    cout << "c [mis] Orig size         : " << sampling_set->size() << endl;
 }
 
 void add_fixed_clauses()
@@ -681,7 +681,7 @@ bool backward_round(uint32_t max_iters = std::numeric_limits<uint32_t>::max())
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
-    cout << "[mis] Start unknown size: " << unknown.size() << endl;
+    cout << "c [mis] Start unknown size: " << unknown.size() << endl;
 
     vector<Lit> assumptions;
     uint32_t iter = 0;
@@ -862,7 +862,7 @@ bool backward_round(uint32_t max_iters = std::numeric_limits<uint32_t>::max())
 
         if (iter % mod == (mod-1)) {
             cout
-            << "[mis] iter: " << std::setw(5) << iter;
+            << "c [mis] iter: " << std::setw(5) << iter;
             if (mod == 1) {
                 cout << " mode: "
                 << (old_mode_type==one_mode ? "one " :
@@ -896,7 +896,7 @@ bool backward_round(uint32_t max_iters = std::numeric_limits<uint32_t>::max())
         }
     }
     update_sampling_set(unknown, unknown_set, indep);
-    cout << "[mis] backward round finished T: "
+    cout << "c [mis] backward round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
     << endl;
 
@@ -965,7 +965,7 @@ void guess_round(
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
-    cout << "[mis] Start unknown size: " << unknown.size() << endl;
+    cout << "c [mis] Start unknown size: " << unknown.size() << endl;
 
     vector<Lit> assumptions;
 
@@ -1024,7 +1024,7 @@ void guess_round(
 
         if (iter % mod == (mod-1)) {
             cout
-            << "[mis] iter: " << std::setw(5) << iter;
+            << "c [mis] iter: " << std::setw(5) << iter;
             cout << " mode: guess ";
             cout
             << " Test: " << std::setw(7) << assumptions.size()
@@ -1040,7 +1040,7 @@ void guess_round(
         iter++;
     }
     update_sampling_set(unknown, unknown_set, indep);
-    cout << "[mis] guess round finished T: "
+    cout << "c [mis] guess round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
     << endl;
 }
@@ -1100,7 +1100,7 @@ bool forward_round(
         }
     }
     std::sort(pick_possibilities.begin(), pick_possibilities.end(), IncidenceSorter(incidence));
-    cout << "[mis] Start unknown size: " << pick_possibilities.size() << endl;
+    cout << "c [mis] Start unknown size: " << pick_possibilities.size() << endl;
 
     set_guess_forward_round(
         indep,
@@ -1204,7 +1204,7 @@ bool forward_round(
 
         if (iter % mod == (mod-1)) {
             cout
-            << "[mis] iter: " << std::setw(5) << iter;
+            << "c [mis] iter: " << std::setw(5) << iter;
             if (mod == 1) {
                 cout << " mode: "
                 << " guess one "
@@ -1249,7 +1249,7 @@ bool forward_round(
     indep.clear();
 
     update_sampling_set(unknown, unknown_set, indep);
-    cout << "[mis] forward round finished T: "
+    cout << "c [mis] forward round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
     << endl;
 
@@ -1263,11 +1263,11 @@ void simp(vector<char>* unknown_set)
 {
     if (conf.simp) {
         double simp_time = cpuTime();
-        cout << "[mis] Simplifying..." << endl;
+        cout << "c [mis] Simplifying..." << endl;
         solver->simplify(&dont_elim);
         remove_eq_literals(unknown_set);
         remove_zero_assigned_literals(unknown_set);
-        cout << "[mis] Simplify finished. T: " << (cpuTime() - simp_time) << endl;
+        cout << "c [mis] Simplify finished. T: " << (cpuTime() - simp_time) << endl;
         //incidence = solver->get_var_incidence();
     }
 }
@@ -1303,7 +1303,7 @@ void remove_zero_assigned_literals(vector<char>* unknown_set)
     std::swap(sampling_set, other_sampling_set);
 
     total_set_removed += orig_sampling_set_size - sampling_set->size();
-    cout << "[mis] Removed set       : "
+    cout << "c [mis] Removed set       : "
     << (orig_sampling_set_size - sampling_set->size())
     << " new size: " << sampling_set->size()
     << endl;
@@ -1343,7 +1343,7 @@ void remove_eq_literals(vector<char>* unknown_set)
 
     total_eq_removed += orig_sampling_set_size - sampling_set->size();
 
-    cout << "[mis] Removed equivalent: "
+    cout << "c [mis] Removed equivalent: "
     << (orig_sampling_set_size - sampling_set->size())
     << " new size: " << sampling_set->size()
     << endl;
@@ -1390,7 +1390,7 @@ void init_solver_setup(bool init_sampling)
     //Print stats
     add_fixed_clauses();
     incidence = solver->get_var_incidence();
-    cout << "[mis] CNF read-in time: " << (cpuTime()-myTime) << endl;
+    cout << "c [mis] CNF read-in time: " << (cpuTime()-myTime) << endl;
 }
 
 void run_guess()
@@ -1458,12 +1458,12 @@ int main(int argc, char** argv)
     }
 
     add_supported_options(argc, argv);
-    cout << "[mis] Arjun Version: " << get_version_sha1() << endl;
+    cout << "c [mis] Arjun Version: " << get_version_sha1() << endl;
     cout
     << "c executed with command line: "
     << command_line
     << endl;
-    cout << "[mis] using seed: " << conf.seed << endl;
+    cout << "c [mis] using seed: " << conf.seed << endl;
 
     double starTime = cpuTime();
     mtrand.seed(conf.seed);
@@ -1496,16 +1496,16 @@ int main(int argc, char** argv)
         num = 1;
         prev_size = sampling_set->size();
 
-        cout << "[mis] ===--> Doing a run for " << num << endl;
+        cout << "c [mis] ===--> Doing a run for " << num << endl;
         if (forward) {
-            cout << " FORWARD " << endl;
+            cout << "c [mis] FORWARD " << endl;
             uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/5, 10);
             guess_indep = std::min<uint32_t>(guess_indep, 1000);
 
             forward_round(50000, guess_indep, false, false, 0);
             cont = true;
         } else {
-            cout << " BACKWARD " << endl;
+            cout << "c [mis] BACKWARD " << endl;
             uint32_t num = 50000;
             if (conf.backward_only) {
                 num = std::numeric_limits<uint32_t>::max();
@@ -1519,8 +1519,7 @@ int main(int argc, char** argv)
     }
 
     print_indep_set();
-    cout
-    << "[mis] "
+    cout << "c [mis] "
     << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
     << endl;
 
