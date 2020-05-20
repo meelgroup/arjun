@@ -1526,7 +1526,7 @@ int main(int argc, char** argv)
         round_num++;
         if (round_num > 0) {
             //forward = !forward;
-            forward = 1;
+            forward = 0;
         }
     }
 
