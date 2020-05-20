@@ -67,6 +67,7 @@ double startTime;
 vector<Lit> tmp;
 vector<char> seen;
 uint32_t orig_num_vars;
+uint32_t orig_samples_set_size;
 uint32_t total_eq_removed = 0;
 uint32_t total_set_removed = 0;
 uint32_t mult_or_invers_var;
@@ -98,7 +99,7 @@ struct Config {
     int simp = 1;
     int always_one_by_one = 1;
     int recompute_sampling_set = 0;
-    int backward_only = 0;
+    int backward_only = 1;
     int set_val_forward = 1;
 };
 
@@ -154,7 +155,7 @@ void print_indep_set()
     << sampling_set->size()
     << " fraction of original: "
     <<  std::setw(6) << std::setprecision(4)
-    << (double)sampling_set->size()/(double)orig_num_vars
+    << (double)sampling_set->size()/(double)orig_samples_set_size
     << endl << std::flush;
 }
 
@@ -995,9 +996,6 @@ void guess_round(
         std::random_shuffle(unknown.begin(), unknown.end());
     }
 
-    uint32_t ret_false = 0;
-    uint32_t ret_true = 0;
-    uint32_t ret_undef = 0;
     bool should_continue_guess = true;
     uint32_t tot_removed = 0;
     while(iter < 5) {
@@ -1240,7 +1238,7 @@ bool forward_round(
     }
 
     unknown.clear();
-    for (uint32_t var =0; var < orig_num_vars; var++){
+    for (uint32_t var = 0; var < orig_num_vars; var++){
         if (guess_set[var]) {
             unknown_set[var] = 1;
             unknown.push_back(var);
@@ -1254,7 +1252,7 @@ bool forward_round(
         }
     }
 
-    indep.clear();\
+    indep.clear();
     update_sampling_set(unknown, unknown_set, indep);
     cout << "c [mis] forward round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
@@ -1378,13 +1376,18 @@ void init_solver_setup(bool init_sampling)
         init_samping_set(conf.recompute_sampling_set);
     }
     orig_num_vars = solver->nVars();
+    if (sampling_set->size() > 0) {
+        orig_samples_set_size = sampling_set->size();
+    } else {
+        orig_samples_set_size = orig_num_vars;
+    }
     remove_zero_assigned_literals();
 
     //Read in file again, with offset
     readInAFile(inp.c_str(), orig_num_vars, false);
 
     //Set up solver
-    solver->set_up_for_scalmc();
+    //solver->set_up_for_scalmc();
     if (!conf.bva) {
         solver->set_no_bva();
     }
@@ -1520,15 +1523,16 @@ int main(int argc, char** argv)
             }
             cont = !backward_round(num);
         }
-        if (round_num > 0) {
-            forward = !forward;
-        }
         round_num++;
+        if (round_num > 0) {
+            //forward = !forward;
+            forward = 1;
+        }
     }
 
     print_indep_set();
     cout << "c [mis] "
-    << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
+    << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
     << endl;
 
     delete solver;
