@@ -141,7 +141,7 @@ void print_indep_set()
     cout << "vp ";
     for(const uint32_t s: *sampling_set) {
         cout << s+1 << " ";
-    }
+    }s
     cout << "0" << endl;
 
 //     cout << "c inc ";
@@ -637,6 +637,7 @@ void update_sampling_set(
     for(const auto& var: unknown) {
         if (unknown_set[var]) {
             other_sampling_set->push_back(var);
+
         }
     }
     for(const auto& var: indep) {
@@ -644,6 +645,7 @@ void update_sampling_set(
     }
     //TODO: atomic swap
     std::swap(sampling_set, other_sampling_set);
+
 }
 
 void re_sort(vector<uint32_t>* pick_possibilities = NULL)
@@ -1052,6 +1054,7 @@ bool forward_round(
     bool shuffle = false,
     int offset = 0)
 {
+
     for(const auto& x: seen) {
         assert(x == 0);
     }
@@ -1092,7 +1095,9 @@ bool forward_round(
         std::random_shuffle(unknown.begin(), unknown.end());
     }
     vector<char> guess_set(orig_num_vars, 0);
-
+    for(uint32_t var = 0; var < orig_num_vars; var++) {
+        guess_set[var] = 0;
+    }
     vector<uint32_t> pick_possibilities;
     for(const auto& unk_v: unknown) {
         if (unknown_set[unk_v]){
@@ -1234,20 +1239,22 @@ bool forward_round(
         prev_test_var = test_var;
     }
 
+    unknown.clear();
     for (uint32_t var =0; var < orig_num_vars; var++){
         if (guess_set[var]) {
             unknown_set[var] = 1;
             unknown.push_back(var);
         }
     }
+
     for (auto var: indep) {
         if (!unknown_set[var]) {
             unknown.push_back(var);
             unknown_set[var] = 1;
         }
     }
-    indep.clear();
 
+    indep.clear();\
     update_sampling_set(unknown, unknown_set, indep);
     cout << "c [mis] forward round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
@@ -1489,7 +1496,10 @@ int main(int argc, char** argv)
         forward = false;
     }
     while(cont) {
-        if (conf.guess && round_num > 0) {
+        if (sampling_set->size() > 60 && round_num < 1) {
+            simp();
+        }
+        if (conf.guess && round_num > 1) {
             run_guess();
         }
 
@@ -1499,9 +1509,7 @@ int main(int argc, char** argv)
         cout << "c [mis] ===--> Doing a run for " << num << endl;
         if (forward) {
             cout << "c [mis] FORWARD " << endl;
-            uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/5, 10);
-            guess_indep = std::min<uint32_t>(guess_indep, 1000);
-
+            uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/100, 10);
             forward_round(50000, guess_indep, false, false, 0);
             cont = true;
         } else {
@@ -1512,9 +1520,9 @@ int main(int argc, char** argv)
             }
             cont = !backward_round(num);
         }
-        //if (round_num > 1) {
+        if (round_num > 0) {
             forward = !forward;
-        //}
+        }
         round_num++;
     }
 
