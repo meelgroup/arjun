@@ -82,8 +82,22 @@ void Common::init_samping_set(bool recompute)
             cout << "c [mis] No sample set given, starting with full" << endl;
         }
         sampling_set->clear();
+
+        vector<Lit> already_assigned = solver->get_zero_assigned_lits();
+        for (Lit l: already_assigned) {
+            seen[l.var()] = 1;
+        }
+
+        //Only set up for sampling if it's not already set
         for (size_t i = 0; i < solver->nVars(); i++) {
-            sampling_set->push_back(i);
+            if (seen[i] == 0) {
+                sampling_set->push_back(i);
+            }
+        }
+
+        //Clear seen
+        for (Lit l: already_assigned) {
+            seen[l.var()] = 0;
         }
     }
 
@@ -166,8 +180,6 @@ void Common::add_fixed_clauses()
     }
     solver->add_clause(tmp);
 
-
-
     this_indic2.clear();
     this_indic2.resize(orig_num_vars, var_Undef);
     vector<Lit> tmp_one;
@@ -210,6 +222,8 @@ void Common::init_solver_setup(bool init_sampling, string fname)
     //Read in file and set sampling_set in case we are starting with empty
     readInAFile(fname.c_str(), 0, init_sampling);
     if (init_sampling) {
+        seen.clear();
+        seen.resize(solver->nVars(), 0);
         init_samping_set(conf.recompute_sampling_set);
     }
     orig_num_vars = solver->nVars();
@@ -238,10 +252,6 @@ void Common::init_solver_setup(bool init_sampling, string fname)
     add_fixed_clauses();
     incidence = solver->get_var_incidence();
     cout << "c [mis] CNF read-in time: " << (cpuTime()-myTime) << endl;
-
-    //Set up seen
-    seen.clear();
-    seen.resize(solver->nVars(), 0);
 }
 
 void Common::readInAFile(const string& filename, uint32_t var_offset, bool get_sampling_set)
