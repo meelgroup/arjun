@@ -46,8 +46,19 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/GitSHA1.cpp.in" "${CMAKE_CURRENT_BIN
 
 add_executable(arjun
     main.cpp
+    forward.cpp
+    backward.cpp
+    guess.cpp
+    simplify.cpp
+    common.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
 )
+
+add_executable(oldarjun
+    main_old.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
+)
+
 
 set(arjun_exec_link_libs
     ${Boost_LIBRARIES}
@@ -57,30 +68,30 @@ IF (ZLIB_FOUND)
     SET(arjun_exec_link_libs ${arjun_exec_link_libs} ${ZLIB_LIBRARY})
 ENDIF()
 
-target_link_libraries(arjun
-    ${arjun_exec_link_libs}
-)
-
 if (STATICCOMPILE)
-    SET_TARGET_PROPERTIES(arjun PROPERTIES LINK_SEARCH_START_STATIC 1)
     SET(cms_libs ${CRYPTOMINISAT5_STATIC_LIBRARIES})
-    message(STATUS "bimm: ${CRYPTOMINISAT5_STATIC_LIBRARIES}")
 else()
     SET(cms_libs ${CRYPTOMINISAT5_LIBRARIES})
 endif()
+
 set_target_properties(arjun PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
-if (STATICCOMPILE)
-    SET_TARGET_PROPERTIES(arjun PROPERTIES LINK_SEARCH_END_STATIC 1)
-endif()
+set_target_properties(oldarjun PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 
 target_link_libraries(arjun
     ${cms_libs}
+    ${arjun_exec_link_libs}
+)
+target_link_libraries(oldarjun
+    ${cms_libs}
+    ${arjun_exec_link_libs}
 )
 
 install(TARGETS arjun
     EXPORT ${ARJUN_EXPORT_NAME}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-SET(CPACK_PACKAGE_EXECUTABLES "arjun")

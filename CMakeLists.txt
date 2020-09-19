@@ -22,8 +22,7 @@ cmake_minimum_required(VERSION 3.3 FATAL_ERROR)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 11)
 
-include (GenerateExportHeader)
-include (GNUInstallDirs)
+enable_language( CXX )
 
 message(STATUS "LIB directory is '${CMAKE_INSTALL_LIBDIR}'")
 message(STATUS "BIN directory is '${CMAKE_INSTALL_BINDIR}'")
@@ -48,6 +47,9 @@ endif()
 # Provide scripts dir for included cmakes to use
 # -----------------------------------------------------------------------------
 set(ARJUNS_SCRIPTS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/scripts)
+
+include (GenerateExportHeader)
+include (GNUInstallDirs)
 
 # -----------------------------------------------------------------------------
 # Make RelWithDebInfo the default build type if otherwise not set
@@ -436,8 +438,18 @@ if (cryptominisat5_FOUND)
 else()
     message(FATAL_ERROR "Cannot find CryptoMiniSat5. Please install it! Exiting.")
 endif()
-# set(CRYPTOMINISAT5_INCLUDE_DIRS "/usr/local/include/")
-# set(CRYPTOMINISAT5_LIBRARIES "/usr/local/lib/libcryptominisat5.so")
+
+find_package(minisat CONFIG)
+if (minisat_FOUND)
+    add_definitions(-DMINISAT_CONSTANTS_AS_MACROS)
+    message(STATUS "Found MiniSat")
+    message(STATUS "minisat dynamic lib: ${MINISAT_LIBRARIES}")
+    message(STATUS "minisat include dirs: ${MINISAT_INCLUDE_DIRS}")
+else()
+    message(FATAL_ERROR "Cannot find MiniSat. Please install it! Exiting.")
+endif()
+
+
 
 # -----------------------------------------------------------------------------
 # Provide an export name to be used by targets that wish to export themselves.
