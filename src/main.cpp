@@ -297,10 +297,10 @@ void readInAFile(const string& filename, uint32_t var_offset, bool get_sampling_
 {
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<FILE*, FN> > parser(solver, NULL, 0);
+    DimacsParser<StreamBuffer<FILE*, FN>, SATSolver > parser(solver, NULL, 0);
     #else
     gzFile in = gzopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<gzFile, GZ> > parser(solver, NULL, 0);
+    DimacsParser<StreamBuffer<gzFile, GZ>, SATSolver > parser(solver, NULL, 0);
     #endif
 
     if (in == NULL) {
@@ -1148,7 +1148,11 @@ uint32_t inverse_remove_and_update_ass(
     uint32_t removed = 0;
     seen.resize(solver->nVars(), 0);
 
-    vector<Lit> prop = solver->propagated_by(assumptions);
+    vector<Lit> prop;
+    bool ok = solver->implied_by(assumptions, prop);
+    if (!ok) {
+        return 0;
+    }
 
     //Anything that's remaining, remove
     for(const Lit p: prop) {
@@ -1468,7 +1472,7 @@ void init_solver_setup()
     if (!conf.bve) {
         solver->set_no_bve();
     }
-    solver->set_no_intree_probe();
+    solver->set_intree_probe(false);
     //solver->set_verbosity(2);
 
     //Print stats
