@@ -88,7 +88,6 @@ struct Common
     vector<uint32_t> incidence;
     vector<double> vsids_scores;
     vector<Lit> dont_elim;
-    vector<uint32_t> this_indic2;
     vector<Lit> tmp_implied_by;
     string saved_fname; //This is a HACK and needs removal
 

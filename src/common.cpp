@@ -166,6 +166,7 @@ void Common::add_fixed_clauses()
     //OR together the indicators: one of them must NOT be equal
     //indicator tells us when they are NOT equal. One among them MUST be NOT equal
     //hence at least one indicator variable must be TRUE
+    //This is a single clause: indic1 V indic2 V ... indicN
     tmp.clear();
     solver->new_var();
     mult_or_invers_var = solver->nVars()-1;
@@ -180,32 +181,36 @@ void Common::add_fixed_clauses()
     }
     solver->add_clause(tmp);
 
-    this_indic2.clear();
-    this_indic2.resize(orig_num_vars, var_Undef);
-    vector<Lit> tmp_one;
+    //This is a set of clauses:
+    // a1 V -k1
+    //-b1 V -k1
+    // --> i.e. if a1=False or b1=True --> k1 is False
+    // --> one of the ks must be TRUE
+    //k1 V k2 V ... kN
+    vector<Lit> tmp2;
     for(uint32_t var: *sampling_set) {
         solver->new_var();
-        uint32_t this_indic = solver->nVars()-1;
-        dont_elim.push_back(Lit(this_indic, false));
+        uint32_t k = solver->nVars()-1;
+        dont_elim.push_back(Lit(k, false));
 
         tmp.clear();
         tmp.push_back(Lit(var, false));
-        tmp.push_back(Lit(this_indic, true));
+        tmp.push_back(Lit(k, true));
         solver->add_clause(tmp);
 
         tmp.clear();
         tmp.push_back(Lit(var+orig_num_vars, true));
-        tmp.push_back(Lit(this_indic, true));
+        tmp.push_back(Lit(k, true));
         solver->add_clause(tmp);
 
-        this_indic2[var] = this_indic;
-        tmp_one.push_back(Lit(this_indic, false));
+        tmp2.push_back(Lit(k, false));
     }
-    solver->add_clause(tmp_one);
+    solver->add_clause(tmp2);
 
+    //Don't eliminate the orignial variables
     for(uint32_t i = 0; i < orig_num_vars; i ++) {
         dont_elim.push_back(Lit(i, false));
-        dont_elim.push_back(Lit(i+orig_num_vars, false));
+        //dont_elim.push_back(Lit(i+orig_num_vars, false));
     }
 }
 
@@ -238,18 +243,25 @@ void Common::init_solver_setup(bool init_sampling, string fname)
     readInAFile(fname.c_str(), orig_num_vars, false);
 
     //Set up solver
-    //solver->set_up_for_scalmc();
+    solver->set_up_for_arjun();
     if (!conf.bva) {
         solver->set_no_bva();
     }
     if (!conf.bve) {
         solver->set_no_bve();
     }
-    solver->set_intree_probe(0);
-    //solver->set_verbosity(2);
+    solver->set_intree_probe(false);
+    solver->set_distill(true);
+//     solver->set_verbosity(2);
+
+    //Add the connection clauses, indicator variables, etc.
+    add_fixed_clauses();
+
+    //Seen needs re-init, because we got new variables
+    seen.clear();
+    seen.resize(solver->nVars(), 0);
 
     //Print stats
-    add_fixed_clauses();
     incidence = solver->get_var_incidence();
     cout << "c [mis] CNF read-in time: " << (cpuTime()-myTime) << endl;
 }

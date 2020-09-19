@@ -37,6 +37,7 @@ struct Config {
     int recompute_sampling_set = 0;
     int backward_only = 1;
     int set_val_forward = 1;
+    uint32_t backw_max_confl = 500;
 };
 
 //ARJUN_CONFIG_H

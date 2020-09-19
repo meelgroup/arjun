@@ -190,7 +190,7 @@ bool Common::backward_round(
         }
         quick_pop_ok = false;
 
-        solver->set_max_confl(500);
+        solver->set_max_confl(conf.backw_max_confl);
         if (mode_type == one_mode) {
             solver->set_no_confl_needed();
         }

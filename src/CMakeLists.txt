@@ -69,12 +69,6 @@ IF (ZLIB_FOUND)
     SET(arjun_exec_link_libs ${arjun_exec_link_libs} ${ZLIB_LIBRARY})
 ENDIF()
 
-if (STATICCOMPILE)
-    SET(cms_libs ${CRYPTOMINISAT5_STATIC_LIBRARIES})
-else()
-    SET(cms_libs ${CRYPTOMINISAT5_LIBRARIES})
-endif()
-
 set_target_properties(arjun PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
@@ -84,11 +78,11 @@ set_target_properties(oldarjun PROPERTIES
 
 
 target_link_libraries(arjun
-    ${cms_libs}
+    ${CRYPTOMINISAT5_LIBRARIES}
     ${arjun_exec_link_libs}
 )
 target_link_libraries(oldarjun
-    ${cms_libs}
+    ${CRYPTOMINISAT5_LIBRARIES}
     ${arjun_exec_link_libs}
 )
 

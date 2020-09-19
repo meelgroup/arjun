@@ -46,7 +46,6 @@ void Common::remove_zero_assigned_literals(vector<char>* unknown_set)
     *other_sampling_set = *sampling_set;
     uint32_t orig_sampling_set_size = other_sampling_set->size();
     for(auto x: *other_sampling_set) {
-        //cout << "x:" << x << " orig_num_vars: " << orig_num_vars << endl;
         seen[x] = 1;
     }
     const auto zero_ass = solver->get_zero_assigned_lits();

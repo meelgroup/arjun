@@ -91,12 +91,21 @@ void add_mis_options()
     ("bva", po::value(&common.conf.bva)->default_value(common.conf.bva), "bva")
     ("bve", po::value(&common.conf.bve)->default_value(common.conf.bve), "bve")
     ("guess", po::value(&common.conf.guess)->default_value(common.conf.guess), "Guess small set")
-    ("one", po::value(&common.conf.always_one_by_one)->default_value(common.conf.always_one_by_one), "always one-by-one mode")
-    ("simp", po::value(&common.conf.simp)->default_value(common.conf.simp), "simplify")
-    ("recomp", po::value(&common.conf.recompute_sampling_set)->default_value(common.conf.recompute_sampling_set), "Recompute sampling set even if it's part of the CNF")
-    ("byforce", po::value(&common.conf.force_by_one)->default_value(common.conf.force_by_one), "Force 1-by-1 query")
-    ("setfwd", po::value(&common.conf.set_val_forward)->default_value(common.conf.set_val_forward), "When doing forward, set the value instead of using assumptions")
-    ("backwardonly", po::value(&common.conf.backward_only)->default_value(common.conf.backward_only), "Only do backwards query")
+    ("one", po::value(&common.conf.always_one_by_one)->default_value(common.conf.always_one_by_one),
+     "always one-by-one mode")
+    ("simp", po::value(&common.conf.simp)->default_value(common.conf.simp),
+     "simplify")
+    ("recomp", po::value(&common.conf.recompute_sampling_set)->default_value(common.conf.recompute_sampling_set),
+     "Recompute sampling set even if it's part of the CNF")
+    ("byforce", po::value(&common.conf.force_by_one)->default_value(common.conf.force_by_one),
+     "Force 1-by-1 query")
+    ("setfwd", po::value(&common.conf.set_val_forward)->default_value(common.conf.set_val_forward),
+     "When doing forward, set the value instead of using assumptions")
+    ("backwardonly", po::value(&common.conf.backward_only)->default_value(common.conf.backward_only),
+     "Only do backwards query")
+    ("bmaxc", po::value(&common.conf.backw_max_confl)->default_value(common.conf.backw_max_confl),
+     "Maximum conflicts per variable in backward mode")
+
 
     ;
 
@@ -247,10 +256,6 @@ int main(int argc, char** argv)
     uint32_t prev_size = common.sampling_set->size()*100;
     uint32_t num;
     uint32_t round_num = 0;
-
-    if (common.sampling_set->size() > 60) {
-        common.simp();
-    }
 
     bool cont = true;
     bool forward = true;

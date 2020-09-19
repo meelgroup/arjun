@@ -97,6 +97,14 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package (Threads REQUIRED)
 
+# static compilation
+option(BUILD_SHARED_LIBS "Build the shared library" ON)
+option(STATICCOMPILE "Compile to static executable" OFF)
+if (STATICCOMPILE)
+    set(BUILD_SHARED_LIBS OFF)
+    set(Boost_USE_STATIC_LIBS ON)
+endif()
+
 option(SANITIZE "Use Clang sanitizers. You MUST use clang++ as the compiler for this to work" OFF)
 if (SANITIZE)
     MESSAGE(WARNING " --Using clang sanitizers -- you MUST use clang++ or the compile WILL fail")
@@ -237,7 +245,6 @@ endif()
 
 option(ENABLE_TESTING "Enable testing" OFF)
 option(COVERAGE "Build with coverage check" OFF)
-option(STATICCOMPILE "Compile to static executable" OFF)
 if (COVERAGE AND NOT STATICCOMPILE)
     MESSAGE(FATAL_ERROR "Coverage can only be computed on static compilation")
 endif()
@@ -265,6 +272,7 @@ if (NOT WIN32)
     add_cxx_flag_if_supported("-Wparentheses")
     add_cxx_flag_if_supported("-Wunreachable-code")
     add_cxx_flag_if_supported("-g")
+    add_cxx_flag_if_supported("-ggdb3")
     add_compile_options("-fPIC")
 
     # add_cxx_flag_if_supported("-flto") # slow compile and not enough benefits
@@ -307,10 +315,6 @@ if ((${CMAKE_SYSTEM_NAME} MATCHES "Linux") OR (${CMAKE_SYSTEM_NAME} MATCHES "Dar
         add_definitions(-DBOOST_TEST_DYN_LINK)
         MESSAGE(STATUS "Compiling for dynamic library use")
     endif()
-endif()
-
-if ((${CMAKE_SYSTEM_NAME} MATCHES "Windows") AND (STATICCOMPILE))
-    set(Boost_USE_STATIC_LIBS ON)
 endif()
 
 if(NOT MSVC)
