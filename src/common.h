@@ -126,9 +126,10 @@ struct Common
         vector<char>& dontremove_vars);
 
     //simp
-    void simp(vector<char>* unknown_set = NULL);
-    void remove_zero_assigned_literals(vector<char>* unknown_set = NULL);
-    void remove_eq_literals(vector<char>* unknown_set);
+    void simp();
+    void remove_definable_by_gates();
+    void remove_zero_assigned_literals();
+    void remove_eq_literals();
 
     //forward
     void set_guess_forward_round(

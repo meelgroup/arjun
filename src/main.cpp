@@ -103,6 +103,8 @@ void add_mis_options()
      "When doing forward, set the value instead of using assumptions")
     ("backwardonly", po::value(&common.conf.backward_only)->default_value(common.conf.backward_only),
      "Only do backwards query")
+    ("gates", po::value(&common.conf.gate_based)->default_value(common.conf.gate_based),
+     "Use 3-long gate detection in SAT solver")
     ("bmaxc", po::value(&common.conf.backw_max_confl)->default_value(common.conf.backw_max_confl),
      "Maximum conflicts per variable in backward mode")
 

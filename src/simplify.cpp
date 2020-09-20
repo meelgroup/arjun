@@ -24,20 +24,69 @@
 
 #include "common.h"
 
-void Common::simp(vector<char>* unknown_set)
+void Common::simp()
 {
-    if (conf.simp) {
-        double simp_time = cpuTime();
-        cout << "c [mis] Simplifying..." << endl;
-        solver->simplify(&dont_elim);
-        remove_eq_literals(unknown_set);
-        remove_zero_assigned_literals(unknown_set);
-        cout << "c [mis] Simplify finished. T: " << (cpuTime() - simp_time) << endl;
-        //incidence = solver->get_var_incidence();
+    auto old_size = sampling_set->size();
+    double myTime = cpuTime();
+
+    if (conf.gate_based) {
+        remove_definable_by_gates();
     }
+
+    cout << "c [mis] Simplifying..." << endl;
+    if (conf.simp) {
+        solver->simplify(&dont_elim);
+    }
+    remove_eq_literals();
+    remove_zero_assigned_literals();
+    if (conf.gate_based) {
+        remove_definable_by_gates();
+    }
+    cout << "c [mis] Simplify finished "
+    << " removed: " << (old_size-sampling_set->size())
+    << " perc: " << std::fixed << std::setprecision(2)
+    << ((double)(old_size-sampling_set->size())/(double)sampling_set->size())*100.0
+    << " T: " << (cpuTime() - myTime)
+    << endl;
+
+    //incidence = solver->get_var_incidence();
 }
 
-void Common::remove_zero_assigned_literals(vector<char>* unknown_set)
+void Common::remove_definable_by_gates()
+{
+    double myTime = cpuTime();
+    auto old_size = sampling_set->size();
+    vector<uint32_t> vars = *sampling_set;
+    vector<uint32_t> definable = solver->get_definabe(vars);
+
+    for(auto v: definable) {
+        assert(v < orig_num_vars);
+        seen[v] = 1;
+    }
+
+    other_sampling_set->clear();
+    for(auto v: *sampling_set) {
+        if (seen[v] == 0) {
+            other_sampling_set->push_back(v);
+        }
+    }
+
+    //cleanup
+    for(auto v: definable) {
+        seen[v] = 0;
+    }
+
+    //TODO atomic swap
+    std::swap(sampling_set, other_sampling_set);
+
+    cout << "c [mis] gate-based"
+    << " removed: " << (old_size-sampling_set->size())
+    << " perc: " << std::fixed << std::setprecision(2)
+    << ((double)(old_size-sampling_set->size())/(double)sampling_set->size())*100.0
+    << " T: " << (cpuTime() - myTime) << endl;
+}
+
+void Common::remove_zero_assigned_literals()
 {
     //Remove zero-assigned literals
     seen.clear();
@@ -51,9 +100,6 @@ void Common::remove_zero_assigned_literals(vector<char>* unknown_set)
     const auto zero_ass = solver->get_zero_assigned_lits();
     for(Lit l: zero_ass) {
         seen[l.var()] = 0;
-        if (unknown_set && l.var() < orig_num_vars) {
-            (*unknown_set)[l.var()] = 0;
-        }
     }
 
     other_sampling_set->clear();
@@ -73,7 +119,7 @@ void Common::remove_zero_assigned_literals(vector<char>* unknown_set)
     << endl;
 }
 
-void Common::remove_eq_literals(vector<char>* unknown_set)
+void Common::remove_eq_literals()
 {
     seen.clear();
     seen.resize(solver->nVars(), 0);
@@ -89,9 +135,6 @@ void Common::remove_eq_literals(vector<char>* unknown_set)
         if (seen[mypair.second.var()] == 1 && seen[mypair.first.var()] == 1) {
             //Doesn't matter which one to remove
             seen[mypair.second.var()] = 0;
-            if (unknown_set && mypair.second.var() < orig_num_vars) {
-                (*unknown_set)[mypair.second.var()] = 0;
-            }
         }
     }
 

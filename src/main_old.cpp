@@ -953,6 +953,7 @@ void simp(vector<char>* unknown_set)
         solver->simplify();
         remove_eq_literals(unknown_set);
         remove_zero_assigned_literals(unknown_set);
+
         cout << "[mis] Simplify finished. T: " << (cpuTime() - simp_time) << endl;
         //incidence = solver->get_var_incidence();
     }
