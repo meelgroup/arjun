@@ -45,7 +45,7 @@ void Common::simp()
     cout << "c [mis] Simplify finished "
     << " removed: " << (old_size-sampling_set->size())
     << " perc: " << std::fixed << std::setprecision(2)
-    << ((double)(old_size-sampling_set->size())/(double)sampling_set->size())*100.0
+    << ((double)(old_size-sampling_set->size())/(double)old_size)*100.0
     << " T: " << (cpuTime() - myTime)
     << endl;
 
@@ -82,7 +82,7 @@ void Common::remove_definable_by_gates()
     cout << "c [mis] gate-based"
     << " removed: " << (old_size-sampling_set->size())
     << " perc: " << std::fixed << std::setprecision(2)
-    << ((double)(old_size-sampling_set->size())/(double)sampling_set->size())*100.0
+    << ((double)(old_size-sampling_set->size())/(double)old_size)*100.0
     << " T: " << (cpuTime() - myTime) << endl;
 }
 
