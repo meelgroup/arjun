@@ -244,9 +244,6 @@ void Common::init_solver_setup(bool init_sampling, string fname)
 
     //Set up solver
     solver->set_up_for_arjun();
-    if (!conf.bva) {
-        solver->set_no_bva();
-    }
     if (!conf.bve) {
         solver->set_no_bve();
     }

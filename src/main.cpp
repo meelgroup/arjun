@@ -88,7 +88,6 @@ void add_mis_options()
     ("input", po::value<string>(), "file to read")
     ("verb,v", po::value(&common.conf.verb)->default_value(common.conf.verb), "verbosity")
     ("seed,s", po::value(&common.conf.seed)->default_value(common.conf.seed), "Seed")
-    ("bva", po::value(&common.conf.bva)->default_value(common.conf.bva), "bva")
     ("bve", po::value(&common.conf.bve)->default_value(common.conf.bve), "bve")
     ("guess", po::value(&common.conf.guess)->default_value(common.conf.guess), "Guess small set")
     ("one", po::value(&common.conf.always_one_by_one)->default_value(common.conf.always_one_by_one),

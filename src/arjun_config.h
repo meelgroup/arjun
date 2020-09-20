@@ -28,7 +28,6 @@
 struct Config {
     int verb = 0;
     int seed = 0;
-    int bva = 0;
     int bve = 1;
     int guess = 0;
     int force_by_one = 1;
