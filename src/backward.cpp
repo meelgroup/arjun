@@ -36,10 +36,11 @@ void Common::fill_assumptions_backward(
     for(const auto& var: indep) {
         assert(var < orig_num_vars);
 
-        uint32_t ass_var = var_to_indic[var];
-        assert(ass_var != var_Undef);
-        assumptions.push_back(Lit(ass_var, true));
+        uint32_t indic = var_to_indic[var];
+        assert(indic != var_Undef);
+        assumptions.push_back(Lit(indic, true));
     }
+
     //Add unknown as assumptions, clean "unknown"
     uint32_t j = 0;
     std::sort(unknown.begin(), unknown.end(), IncidenceSorter(incidence));
@@ -52,9 +53,9 @@ void Common::fill_assumptions_backward(
         }
 
         assert(var < orig_num_vars);
-        uint32_t ass_var = var_to_indic[var];
-        assert(ass_var != var_Undef);
-        assumptions.push_back(Lit(ass_var, true));
+        uint32_t indic = var_to_indic[var];
+        assert(indic != var_Undef);
+        assumptions.push_back(Lit(indic, true));
     }
     unknown.resize(j);
 }
@@ -109,6 +110,8 @@ bool Common::backward_round(
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
     bool quick_pop_ok = false;
+    bool did_backbone_before = false;
+    uint32_t num_backbones = 0;
     while(iter < max_iters) {
         if (iter % 500 == 0) {
             mode_type = many_mode;
@@ -162,7 +165,9 @@ bool Common::backward_round(
                         pick_possibilities.pop_back();
                     }
                 }
+
                 if (test_var == var_Undef) {
+                    //we are done, backward is finished
                     break;
                 }
             }
@@ -188,7 +193,6 @@ bool Common::backward_round(
                 assumptions.push_back(Lit(test_var + orig_num_vars, true));
             }
         }
-        quick_pop_ok = false;
 
         solver->set_max_confl(conf.backw_max_confl);
         if (mode_type == one_mode) {
@@ -196,7 +200,48 @@ bool Common::backward_round(
         }
 
         lbool ret = l_Undef;
-        ret = solver->solve(&assumptions);
+        if (did_backbone_before || num_backbones > 10 || !conf.backbone) {
+            ret = solver->solve(&assumptions);
+            did_backbone_before = false;
+        } else {
+            num_backbones++;
+            vector<uint32_t> non_indep_vars;
+            //TODO somehow indicate KNOWN INDEP (but that will return TRUE anyway, no?)
+            solver->find_backbone(&assumptions, indic_to_var, orig_num_vars, non_indep_vars);
+            if (!non_indep_vars.empty()) {
+                //The two top assumptions
+                //(test_var, false) (test_var+orig_num_vars, true) need to be popped
+                //assumptions.pop_back();
+                //assumptions.pop_back();
+
+                cout << "non_indep_vars.size(): " << non_indep_vars.size() << endl;
+                for(uint32_t i = 0; i < non_indep_vars.size(); i ++) {
+//                     cout << "i : " << i
+//                     << " non_indep_vars[i]: " << non_indep_vars[i]
+//                     << " unknown[unknown.size()-1-i]: " << unknown[unknown.size()-1-i]
+//                     << " unknown size: " << unknown.size()
+//                     << " unknown at: " << unknown.size()-1-i
+//                     << endl;
+                    uint32_t var = non_indep_vars[i];
+                    if (i == 0) {
+                        assert(var == test_var);
+                        assert(unknown_set[var] == 0);
+                    } else {
+                        assert(unknown_set[var] == 1);
+                        unknown_set[var] = 0;
+                    }
+                    not_indep++;
+                }
+                did_backbone_before = true;
+                quick_pop_ok = false;
+                continue;
+            } else {
+                cout << "non_indep_vars did NOT work" << endl;
+                //Didn't work, let's just do the normal thing
+                ret = solver->solve(&assumptions);
+                did_backbone_before = false;
+            }
+        }
         if (ret == l_False) {
             ret_false++;
         } else if (ret == l_True) {
@@ -206,14 +251,18 @@ bool Common::backward_round(
         }
 
         if (ret == l_Undef) {
+            //Timed out, we'll treat is as unknown
+            quick_pop_ok = false;
             if (mode_type == one_mode) {
                 assert(test_var < orig_num_vars);
                 assert(unknown_set[test_var] == 0);
                 unknown_set[test_var] = 1;
                 unknown.push_back(test_var);
             }
+            assert(mode_type != many_mode && "TODO waaaait... we don't deal with many_mode here???");
         } else if (ret == l_True) {
             //Independent
+            quick_pop_ok = false;
             assert(mode_type == one_mode);
             if (mode_type == one_mode) {
                 indep.push_back(test_var);
@@ -221,9 +270,11 @@ bool Common::backward_round(
         } else if (ret == l_False) {
             if (mode_type == one_mode) {
                 //not independent
+                //i.e. given that all in indep+unkown is equivalent, it's not possible that a1 != b1
                 not_indep++;
                 quick_pop_ok = true;
             } else if (mode_type == many_mode) {
+                quick_pop_ok = false;
                 vector<Lit> reason = solver->get_conflict();
                 for(Lit l: reason) {
                     seen[l.var()] = 1;
@@ -254,10 +305,14 @@ bool Common::backward_round(
                     tmp.push_back(Lit(ass, false));
                     solver->add_clause(tmp);
                 }
+            } else {
+                assert(false && "only one_mode or many_mode exists");
             }
         }
 
         if (iter % mod == (mod-1)) {
+            //remove_definable_by_gates();
+            //solver->remove_and_clean_all();
             cout
             << "c [mis] iter: " << std::setw(5) << iter;
             if (mod == 1) {

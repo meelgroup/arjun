@@ -89,6 +89,8 @@ void add_mis_options()
     ("verb,v", po::value(&common.conf.verb)->default_value(common.conf.verb), "verbosity")
     ("seed,s", po::value(&common.conf.seed)->default_value(common.conf.seed), "Seed")
     ("bve", po::value(&common.conf.bve)->default_value(common.conf.bve), "bve")
+    ("distill", po::value(&common.conf.distill)->default_value(common.conf.distill), "distill")
+    ("backbone", po::value(&common.conf.backbone)->default_value(common.conf.backbone), "backbone")
     ("guess", po::value(&common.conf.guess)->default_value(common.conf.guess), "Guess small set")
     ("one", po::value(&common.conf.always_one_by_one)->default_value(common.conf.always_one_by_one),
      "always one-by-one mode")

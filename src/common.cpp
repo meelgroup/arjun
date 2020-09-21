@@ -191,7 +191,7 @@ void Common::add_fixed_clauses()
     for(uint32_t var: *sampling_set) {
         solver->new_var();
         uint32_t k = solver->nVars()-1;
-        dont_elim.push_back(Lit(k, false));
+//         dont_elim.push_back(Lit(k, false));
 
         tmp.clear();
         tmp.push_back(Lit(var, false));
@@ -210,7 +210,7 @@ void Common::add_fixed_clauses()
     //Don't eliminate the orignial variables
     for(uint32_t i = 0; i < orig_num_vars; i ++) {
         dont_elim.push_back(Lit(i, false));
-        //dont_elim.push_back(Lit(i+orig_num_vars, false));
+        dont_elim.push_back(Lit(i+orig_num_vars, false));
     }
 }
 
@@ -248,7 +248,7 @@ void Common::init_solver_setup(bool init_sampling, string fname)
         solver->set_no_bve();
     }
     solver->set_intree_probe(false);
-    solver->set_distill(true);
+    solver->set_distill(conf.distill);
 //     solver->set_verbosity(2);
 
     //Add the connection clauses, indicator variables, etc.
