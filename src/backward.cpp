@@ -206,7 +206,13 @@ bool Common::backward_round(
         } else {
             backbone_calls++;
             vector<uint32_t> non_indep_vars;
-            ret = solver->find_backbone(&assumptions, indic_to_var, orig_num_vars, non_indep_vars, test_var);
+            ret = solver->find_backbone(
+                &assumptions,
+                indic_to_var,
+                orig_num_vars,
+                non_indep_vars,
+                test_var,
+                indep.size());
             assert(ret != l_False);
 
             backbone_tot += non_indep_vars.size();
