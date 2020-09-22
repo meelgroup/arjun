@@ -163,10 +163,7 @@ void Common::add_fixed_clauses()
         solver->add_clause(tmp);
     }
 
-    //OR together the indicators: one of them must NOT be equal
-    //indicator tells us when they are NOT equal. One among them MUST be NOT equal
-    //hence at least one indicator variable must be TRUE
-    //This is a single clause: indic1 V indic2 V ... indicN
+    //This is a single clause: indic1 V indic2 V ... indicN V mult_or_inverse_var
     tmp.clear();
     solver->new_var();
     mult_or_invers_var = solver->nVars()-1;
@@ -181,7 +178,7 @@ void Common::add_fixed_clauses()
     }
     solver->add_clause(tmp);
 
-    //This is a set of clauses:
+    //This is a set of clauses where k1..kN are new indicators:
     // a1 V -k1
     //-b1 V -k1
     // --> i.e. if a1=False or b1=True --> k1 is False
