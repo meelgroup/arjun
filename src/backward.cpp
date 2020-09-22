@@ -110,8 +110,9 @@ bool Common::backward_round(
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
     bool quick_pop_ok = false;
-    bool did_backbone_before = false;
-    uint32_t num_backbones = 0;
+    uint32_t backbone_calls = 0;
+    uint32_t backbone_max = 0;
+    uint32_t backbone_tot = 0;
     while(iter < max_iters) {
         if (iter % 500 == 0) {
             mode_type = many_mode;
@@ -200,47 +201,33 @@ bool Common::backward_round(
         }
 
         lbool ret = l_Undef;
-        if (did_backbone_before || num_backbones > 10 || !conf.backbone) {
+        if (!conf.backbone) {
             ret = solver->solve(&assumptions);
-            did_backbone_before = false;
         } else {
-            num_backbones++;
+            backbone_calls++;
             vector<uint32_t> non_indep_vars;
-            //TODO somehow indicate KNOWN INDEP (but that will return TRUE anyway, no?)
-            solver->find_backbone(&assumptions, indic_to_var, orig_num_vars, non_indep_vars);
-            if (!non_indep_vars.empty()) {
-                //The two top assumptions
-                //(test_var, false) (test_var+orig_num_vars, true) need to be popped
-                //assumptions.pop_back();
-                //assumptions.pop_back();
+            ret = solver->find_backbone(&assumptions, indic_to_var, orig_num_vars, non_indep_vars, test_var);
+            assert(ret != l_False);
 
-                cout << "non_indep_vars.size(): " << non_indep_vars.size() << endl;
-                for(uint32_t i = 0; i < non_indep_vars.size(); i ++) {
-//                     cout << "i : " << i
-//                     << " non_indep_vars[i]: " << non_indep_vars[i]
-//                     << " unknown[unknown.size()-1-i]: " << unknown[unknown.size()-1-i]
-//                     << " unknown size: " << unknown.size()
-//                     << " unknown at: " << unknown.size()-1-i
-//                     << endl;
-                    uint32_t var = non_indep_vars[i];
-                    if (i == 0) {
-                        assert(var == test_var);
-                        assert(unknown_set[var] == 0);
-                    } else {
-                        assert(unknown_set[var] == 1);
-                        unknown_set[var] = 0;
-                    }
-                    not_indep++;
+            backbone_tot += non_indep_vars.size();
+            backbone_max = std::max<uint32_t>(non_indep_vars.size(), backbone_max);
+            for(uint32_t i = 0; i < non_indep_vars.size(); i ++) {
+                uint32_t var = non_indep_vars[i];
+                if (i == 0) {
+                    assert(unknown_set[var] == 0);
+                } else {
+                    assert(unknown_set[var] == 1);
+                    unknown_set[var] = 0;
                 }
-                did_backbone_before = true;
-                quick_pop_ok = false;
-                continue;
-            } else {
-                cout << "non_indep_vars did NOT work" << endl;
-                //Didn't work, let's just do the normal thing
-                ret = solver->solve(&assumptions);
-                did_backbone_before = false;
+                not_indep++;
             }
+            quick_pop_ok = false;
+
+            //We have finished it all off
+            if (test_var == var_Undef) {
+                continue;
+            }
+            unknown_set[test_var] = 0;
         }
         if (ret == l_False) {
             ret_false++;
@@ -335,11 +322,19 @@ bool Common::backward_round(
             << " U: " << std::setw(7) << unknown.size()
             << " I: " << std::setw(7) << indep.size()
             << " N: " << std::setw(7) << not_indep
-            << " T: "
+            ;
+            if (conf.backbone) {
+                cout << " backb avg:" << std::setprecision(1) << std::setw(7)
+                << (double)backbone_tot/(double)backbone_calls
+                << " backb max:" << std::setw(7) << backbone_max;
+            }
+            cout << " T: "
             << std::setprecision(2) << std::fixed << (cpuTime() - myTime)
             << endl;
             myTime = cpuTime();
-
+            backbone_tot = 0;
+            backbone_calls = 0;
+            backbone_max = 0;
         }
         iter++;
 
