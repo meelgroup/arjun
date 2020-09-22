@@ -215,10 +215,12 @@ bool Common::backward_round(
                 indep.size());
             assert(ret != l_False);
 
+//             cout << "non_indep_vars.size(): " << non_indep_vars.size() << endl;
             backbone_tot += non_indep_vars.size();
             backbone_max = std::max<uint32_t>(non_indep_vars.size(), backbone_max);
             for(uint32_t i = 0; i < non_indep_vars.size(); i ++) {
                 uint32_t var = non_indep_vars[i];
+                assert(var < orig_num_vars);
                 if (i == 0) {
                     assert(unknown_set[var] == 0);
                 } else {

@@ -222,6 +222,12 @@ void Common::init_solver_setup(bool init_sampling, string fname)
     if (conf.verb > 2) {
         solver->set_verbosity(conf.verb-2);
     }
+    solver->set_up_for_arjun();
+    if (!conf.bve) {
+        solver->set_no_bve();
+    }
+    solver->set_intree_probe(false);
+    solver->set_distill(conf.distill);
 
     //Read in file and set sampling_set in case we are starting with empty
     readInAFile(fname.c_str(), 0, init_sampling);
@@ -237,18 +243,10 @@ void Common::init_solver_setup(bool init_sampling, string fname)
         orig_samples_set_size = orig_num_vars;
     }
     remove_zero_assigned_literals();
+    simp();
 
     //Read in file again, with offset
     readInAFile(fname.c_str(), orig_num_vars, false);
-
-    //Set up solver
-    solver->set_up_for_arjun();
-    if (!conf.bve) {
-        solver->set_no_bve();
-    }
-    solver->set_intree_probe(false);
-    solver->set_distill(conf.distill);
-//     solver->set_verbosity(2);
 
     //Add the connection clauses, indicator variables, etc.
     add_fixed_clauses();
@@ -256,9 +254,9 @@ void Common::init_solver_setup(bool init_sampling, string fname)
     //Seen needs re-init, because we got new variables
     seen.clear();
     seen.resize(solver->nVars(), 0);
+    incidence = solver->get_var_incidence();
 
     //Print stats
-    incidence = solver->get_var_incidence();
     cout << "c [mis] CNF read-in time: " << (cpuTime()-myTime) << endl;
 }
 
