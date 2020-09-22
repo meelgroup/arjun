@@ -30,6 +30,9 @@ void Common::fill_assumptions_backward(
     const vector<char>& unknown_set,
     const vector<uint32_t>& indep)
 {
+    if (conf.verb > 5) {
+        cout << "Filling assumps BEGIN" << endl;
+    }
     assumptions.clear();
 
     //Add known independent as assumptions
@@ -39,6 +42,9 @@ void Common::fill_assumptions_backward(
         uint32_t indic = var_to_indic[var];
         assert(indic != var_Undef);
         assumptions.push_back(Lit(indic, true));
+        if (conf.verb > 5) {
+            cout << "Filled assump with indep: " << var << endl;
+        }
     }
 
     //Add unknown as assumptions, clean "unknown"
@@ -51,6 +57,9 @@ void Common::fill_assumptions_backward(
         } else {
             unknown[j++] = var;
         }
+        if (conf.verb > 5) {
+            cout << "Filled assump with unknown: " << var << endl;
+        }
 
         assert(var < orig_num_vars);
         uint32_t indic = var_to_indic[var];
@@ -58,6 +67,9 @@ void Common::fill_assumptions_backward(
         assumptions.push_back(Lit(indic, true));
     }
     unknown.resize(j);
+    if (conf.verb > 5) {
+        cout << "Filling assumps END, total assumps size: " << assumptions.size() << endl;
+    }
 }
 
 bool Common::backward_round(
@@ -76,6 +88,7 @@ bool Common::backward_round(
     vector<char> unknown_set;
     unknown_set.resize(orig_num_vars, 0);
     for(const auto& x: *sampling_set) {
+        assert(unknown_set[x] == 0 && "No var should be in 'sampling_set' twice!");
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
@@ -87,8 +100,6 @@ bool Common::backward_round(
     uint32_t not_indep = 0;
 
     double myTime = cpuTime();
-    vector<char> tried_var_already;
-    tried_var_already.resize(orig_num_vars, 0);
 
     //Calc mod:
     uint32_t mod = 1;
@@ -113,6 +124,7 @@ bool Common::backward_round(
     uint32_t backbone_calls = 0;
     uint32_t backbone_max = 0;
     uint32_t backbone_tot = 0;
+    vector<uint32_t> non_indep_vars;
     while(iter < max_iters) {
         if (iter % 500 == 0) {
             mode_type = many_mode;
@@ -159,7 +171,7 @@ bool Common::backward_round(
             } else {
                 for(int i = pick_possibilities.size()-1; i>= 0; i--) {
                     uint32_t var = pick_possibilities[i];
-                    if (!tried_var_already[var] && unknown_set[var]) {
+                    if (unknown_set[var]) {
                         test_var = pick_possibilities[i];
                         break;
                     } else {
@@ -175,7 +187,6 @@ bool Common::backward_round(
             assert(test_var < orig_num_vars);
             assert(unknown_set[test_var] == 1);
             unknown_set[test_var] = 0;
-            tried_var_already[test_var] = 1;
         }
 
         //Assumption filling
@@ -205,7 +216,11 @@ bool Common::backward_round(
             ret = solver->solve(&assumptions);
         } else {
             backbone_calls++;
-            vector<uint32_t> non_indep_vars;
+            if (conf.verb > 5) {
+                cout << "test var is: " << test_var << endl;
+                cout << "find_backbone BEGIN " << endl;
+            }
+            non_indep_vars.clear();
             ret = solver->find_backbone(
                 &assumptions,
                 indic_to_var,
@@ -221,6 +236,9 @@ bool Common::backward_round(
             for(uint32_t i = 0; i < non_indep_vars.size(); i ++) {
                 uint32_t var = non_indep_vars[i];
                 assert(var < orig_num_vars);
+                if (conf.verb > 5) {
+                    cout << "backbone indep var: " << var << endl;
+                }
                 if (i == 0) {
                     assert(unknown_set[var] == 0);
                 } else {
@@ -230,6 +248,9 @@ bool Common::backward_round(
                 not_indep++;
             }
             quick_pop_ok = false;
+            if (conf.verb > 5) {
+                cout << "find_backbone  END " << endl;
+            }
 
             //We have finished it all off
             if (test_var == var_Undef) {
@@ -245,23 +266,19 @@ bool Common::backward_round(
             ret_undef++;
         }
 
+        assert(unknown_set[test_var] == 0);
         if (ret == l_Undef) {
+            assert(mode_type != many_mode && "TODO waaaait... we don't deal with many_mode here???");
+
             //Timed out, we'll treat is as unknown
             quick_pop_ok = false;
-            if (mode_type == one_mode) {
-                assert(test_var < orig_num_vars);
-                assert(unknown_set[test_var] == 0);
-                unknown_set[test_var] = 1;
-                unknown.push_back(test_var);
-            }
-            assert(mode_type != many_mode && "TODO waaaait... we don't deal with many_mode here???");
+            assert(test_var < orig_num_vars);
+            indep.push_back(test_var);
         } else if (ret == l_True) {
             //Independent
             quick_pop_ok = false;
             assert(mode_type == one_mode);
-            if (mode_type == one_mode) {
-                indep.push_back(test_var);
-            }
+            indep.push_back(test_var);
         } else if (ret == l_False) {
             if (mode_type == one_mode) {
                 //not independent
