@@ -206,31 +206,39 @@ bool Common::backward_round(
             }
         }
 
-        solver->set_max_confl(conf.backw_max_confl);
         if (mode_type == one_mode) {
             solver->set_no_confl_needed();
         }
 
+        BackBoneData b;
+        b._assumptions = &assumptions;
+        b.indic_to_var  = &indic_to_var;
+        b.orig_num_vars = orig_num_vars;
+        b.non_indep_vars = &non_indep_vars;
+        b.indep_size = indep.size();
+        b.backbone_on = true;
+        b.backbone_test_var = &test_var;
+
         lbool ret = l_Undef;
         if (!conf.backbone) {
+            solver->set_max_confl(conf.backw_max_confl);
             ret = solver->solve(&assumptions);
         } else {
+            //solver->set_max_confl(conf.backw_max_confl);
             backbone_calls++;
             if (conf.verb > 5) {
                 cout << "test var is: " << test_var << endl;
                 cout << "find_backbone BEGIN " << endl;
             }
             non_indep_vars.clear();
-            ret = solver->find_backbone(
-                &assumptions,
-                indic_to_var,
-                orig_num_vars,
-                non_indep_vars,
-                test_var,
-                indep.size());
+            ret = solver->find_backbone(b);
             assert(ret != l_False);
 
-//             cout << "non_indep_vars.size(): " << non_indep_vars.size() << endl;
+            cout
+            << "non_indep_vars.size(): " << non_indep_vars.size()
+            << " ret: " << ret
+            << " test_var: " << test_var
+            << endl;
             backbone_tot += non_indep_vars.size();
             backbone_max = std::max<uint32_t>(non_indep_vars.size(), backbone_max);
             for(uint32_t i = 0; i < non_indep_vars.size(); i ++) {
@@ -371,6 +379,7 @@ bool Common::backward_round(
     cout << "c [mis] backward round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
     << endl;
+    solver->print_stats();
 
     return iter < max_iters;
 }

@@ -89,6 +89,7 @@ void add_mis_options()
     ("verb,v", po::value(&common.conf.verb)->default_value(common.conf.verb), "verbosity")
     ("seed,s", po::value(&common.conf.seed)->default_value(common.conf.seed), "Seed")
     ("bve", po::value(&common.conf.bve)->default_value(common.conf.bve), "bve")
+    ("intree", po::value(&common.conf.intree)->default_value(common.conf.intree), "intree")
     ("distill", po::value(&common.conf.distill)->default_value(common.conf.distill), "distill")
     ("backbone", po::value(&common.conf.backbone)->default_value(common.conf.backbone), "backbone")
     ("guess", po::value(&common.conf.guess)->default_value(common.conf.guess), "Guess small set")
@@ -106,7 +107,7 @@ void add_mis_options()
      "Only do backwards query")
     ("gates", po::value(&common.conf.gate_based)->default_value(common.conf.gate_based),
      "Use 3-long gate detection in SAT solver")
-    ("bmaxc", po::value(&common.conf.backw_max_confl)->default_value(common.conf.backw_max_confl),
+    ("maxc", po::value(&common.conf.backw_max_confl)->default_value(common.conf.backw_max_confl),
      "Maximum conflicts per variable in backward mode")
 
 

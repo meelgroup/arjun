@@ -226,7 +226,7 @@ void Common::init_solver_setup(bool init_sampling, string fname)
     if (!conf.bve) {
         solver->set_no_bve();
     }
-    solver->set_intree_probe(false);
+    solver->set_intree_probe(conf.intree);
     solver->set_distill(conf.distill);
 
     //Read in file and set sampling_set in case we are starting with empty
@@ -247,6 +247,7 @@ void Common::init_solver_setup(bool init_sampling, string fname)
 
     //Read in file again, with offset
     readInAFile(fname.c_str(), orig_num_vars, false);
+    solver->set_intree_probe(false);
 
     //Add the connection clauses, indicator variables, etc.
     add_fixed_clauses();
