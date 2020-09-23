@@ -242,8 +242,8 @@ void Common::init_solver_setup(bool init_sampling, string fname)
     } else {
         orig_samples_set_size = orig_num_vars;
     }
-    remove_zero_assigned_literals();
     simp();
+    incidence = solver->get_var_incidence();
 
     //Read in file again, with offset
     readInAFile(fname.c_str(), orig_num_vars, false);
@@ -255,7 +255,6 @@ void Common::init_solver_setup(bool init_sampling, string fname)
     //Seen needs re-init, because we got new variables
     seen.clear();
     seen.resize(solver->nVars(), 0);
-    incidence = solver->get_var_incidence();
 
     //Print stats
     cout << "c [mis] CNF read-in time: " << (cpuTime()-myTime) << endl;
