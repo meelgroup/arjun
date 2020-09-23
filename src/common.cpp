@@ -213,6 +213,31 @@ void Common::add_fixed_clauses()
     }
 }
 
+void Common::duplicate_problem()
+{
+    vector<vector<Lit>> cnf;
+    solver->start_getting_small_clauses(
+        std::numeric_limits<uint32_t>::max(),
+        std::numeric_limits<uint32_t>::max(),
+        false);
+
+    bool ret = true;
+    vector<Lit> clause;
+    while(ret) {
+        ret = solver->get_next_small_clause(clause);
+        cnf.push_back(clause);
+    }
+    solver->end_getting_small_clauses();
+    solver->new_vars(orig_num_vars);
+
+    for(auto& cl: cnf) {
+        for(auto& l: cl) {
+            l = Lit(l.var()+orig_num_vars, l.sign());
+        }
+        solver->add_clause(cl);
+    }
+}
+
 void Common::init_solver_setup(bool init_sampling, string fname)
 {
     saved_fname = fname;
@@ -246,7 +271,7 @@ void Common::init_solver_setup(bool init_sampling, string fname)
     incidence = solver->get_var_incidence();
 
     //Read in file again, with offset
-    readInAFile(fname.c_str(), orig_num_vars, false);
+    duplicate_problem();
     solver->set_intree_probe(false);
     solver->set_distill(false);
 

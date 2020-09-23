@@ -102,6 +102,7 @@ struct Common
     void print_indep_set();
     void add_fixed_clauses();
     void init_samping_set(bool recompute);
+    void duplicate_problem();
 
 
     //guess
