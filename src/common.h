@@ -171,7 +171,10 @@ struct IncidenceSorter
     {}
 
     bool operator()(const uint32_t a, const uint32_t b) {
-        return inc[a] > inc[b];
+        if (inc[a] != inc[b]) {
+            return inc[a] > inc[b];
+        }
+        return a < b;
     }
 
     const vector<uint32_t>& inc;
