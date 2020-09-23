@@ -164,20 +164,21 @@ struct Common
 
 };
 
+template<class T>
 struct IncidenceSorter
 {
-    IncidenceSorter(const vector<uint32_t>& _inc) :
+    IncidenceSorter(const vector<T>& _inc) :
         inc(_inc)
     {}
 
-    bool operator()(const uint32_t a, const uint32_t b) {
+    bool operator()(const T a, const T b) {
         if (inc[a] != inc[b]) {
             return inc[a] > inc[b];
         }
         return a < b;
     }
 
-    const vector<uint32_t>& inc;
+    const vector<T>& inc;
 };
 
 struct VSIDSSorter

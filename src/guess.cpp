@@ -160,7 +160,7 @@ void Common::guess_round(
     }
     vector<char> dontremove_vars(orig_num_vars, 0);
 
-    std::sort(unknown.begin(), unknown.end(), IncidenceSorter(incidence));
+    std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
     if (reverse) {
         std::reverse(unknown.begin(), unknown.end());
     }

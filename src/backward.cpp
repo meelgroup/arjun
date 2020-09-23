@@ -49,7 +49,6 @@ void Common::fill_assumptions_backward(
 
     //Add unknown as assumptions, clean "unknown"
     uint32_t j = 0;
-    std::sort(unknown.begin(), unknown.end(), IncidenceSorter(incidence));
     for(uint32_t i = 0; i < unknown.size(); i++) {
         uint32_t var = unknown[i];
         if (unknown_set[var] == 0) {
@@ -112,10 +111,11 @@ bool Common::backward_round(
 
     vector<uint32_t> pick_possibilities;
     pick_possibilities.reserve(unknown.size());
+    std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
     for(const auto& unk_v: unknown) {
         pick_possibilities.push_back(unk_v);
     }
-    std::sort(pick_possibilities.begin(), pick_possibilities.end(), IncidenceSorter(incidence));
+
 
     uint32_t ret_false = 0;
     uint32_t ret_true = 0;
@@ -220,8 +220,8 @@ bool Common::backward_round(
         b.backbone_test_var = &test_var;
 
         lbool ret = l_Undef;
+        solver->set_max_confl(conf.backw_max_confl);
         if (!conf.backbone) {
-            solver->set_max_confl(conf.backw_max_confl);
             ret = solver->solve(&assumptions);
         } else {
             //solver->set_max_confl(conf.backw_max_confl);

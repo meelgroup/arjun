@@ -154,7 +154,7 @@ bool Common::forward_round(
         mod = will_do_iters/want_printed;
         mod = std::max<int>(mod, 1);
     }
-    std::sort(unknown.begin(), unknown.end(), IncidenceSorter(incidence));
+    std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
     if (reverse) {
         std::reverse(unknown.begin(), unknown.end());
     }
@@ -171,7 +171,7 @@ bool Common::forward_round(
             pick_possibilities.push_back(unk_v);
         }
     }
-    std::sort(pick_possibilities.begin(), pick_possibilities.end(), IncidenceSorter(incidence));
+    std::sort(pick_possibilities.begin(), pick_possibilities.end(), IncidenceSorter<uint32_t>(incidence));
     cout << "c [mis] Start unknown size: " << pick_possibilities.size() << endl;
 
     set_guess_forward_round(
