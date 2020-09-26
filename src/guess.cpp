@@ -24,7 +24,7 @@
 
 #include "common.h"
 
-void Common::fill_assumptions_inv(
+void Common::fill_assumptions_guess(
     vector<Lit>& assumptions,
     const vector<uint32_t>& indep,
     const vector<uint32_t>& unknown,
@@ -175,7 +175,7 @@ void Common::guess_round(
 
         //Assumption filling
         if (iter < 5) {
-            fill_assumptions_inv(
+            fill_assumptions_guess(
                 assumptions,
                 indep,
                 unknown,

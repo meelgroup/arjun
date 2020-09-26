@@ -107,7 +107,7 @@ struct Common
 
     //guess
     void run_guess();
-    void fill_assumptions_inv(
+    void fill_assumptions_guess(
         vector<Lit>& assumptions,
         const vector<uint32_t>& indep,
         const vector<uint32_t>& unknown,
