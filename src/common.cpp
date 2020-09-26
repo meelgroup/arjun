@@ -250,11 +250,19 @@ void Common::init_solver_setup(bool init_sampling, string fname)
         solver->set_verbosity(conf.verb-2);
     }
     solver->set_up_for_arjun();
-    if (!conf.bve) {
+    if (conf.bve) {
+        assert(false && "Not supported.");
+    } else {
         solver->set_no_bve();
     }
     solver->set_intree_probe(conf.intree);
     solver->set_distill(conf.distill);
+    if (conf.polarmode == 0 || conf.polarmode == 1) {
+        solver->set_default_polarity(conf.polarmode);
+    } else {
+        assert(conf.polarmode == 2);
+        solver->set_polarity_auto();
+    }
 
     //Read in file and set sampling_set in case we are starting with empty
     readInAFile(fname.c_str(), 0, init_sampling);

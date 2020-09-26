@@ -92,6 +92,8 @@ void add_mis_options()
     ("smartd", po::value(&common.conf.smart_duplicate)->default_value(common.conf.smart_duplicate),
      "Duplicate by getting simplified problem and re-injecting it")
     ("intree", po::value(&common.conf.intree)->default_value(common.conf.intree), "intree")
+    ("polar", po::value(&common.conf.polarmode)->default_value(common.conf.polarmode),
+     "Polarity mode. 0 = false, 1 = true, 2 = polarity caching")
     ("distill", po::value(&common.conf.distill)->default_value(common.conf.distill), "distill")
     ("backbone", po::value(&common.conf.backbone)->default_value(common.conf.backbone), "backbone")
     ("guess", po::value(&common.conf.guess)->default_value(common.conf.guess), "Guess small set")
@@ -269,9 +271,6 @@ int main(int argc, char** argv)
         forward = false;
     }
     while(cont) {
-        if (common.sampling_set->size() > 60 && round_num < 1) {
-            common.simp();
-        }
         if (common.conf.guess && round_num > 1) {
             common.run_guess();
         }

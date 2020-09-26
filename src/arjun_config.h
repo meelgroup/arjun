@@ -36,6 +36,7 @@ struct Config {
     int force_by_one = 1;
     int simp = 1;
     int gate_based = 1;
+    int polarmode = 0;
     int always_one_by_one = 1;
     int recompute_sampling_set = 1;
     int smart_duplicate = 1;
