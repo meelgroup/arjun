@@ -103,7 +103,7 @@ void Common::remove_definabile_by_xor()
             }
         }
     }
-    cout << "c [mis] XOR Potential: " << potential << endl;
+    cout << "c [mis-xor] XOR Potential: " << potential << endl;
 
     //Sort with lowest occur numbers first
     //So we have the highest chance that we can set defined later variables
@@ -146,7 +146,7 @@ void Common::remove_definabile_by_xor()
             break;
         }
     }
-    cout << "c [mis] Non-zero OCCs were: " << non_zero_occs << " seen_set_0: " << seen_set_0 << endl;
+    cout << "c [mis-xor] Non-zero OCCs were: " << non_zero_occs << " seen_set_0: " << seen_set_0 << endl;
 
     sampling_set->clear();
     for(auto v: toClear) {
@@ -157,7 +157,7 @@ void Common::remove_definabile_by_xor()
     }
     toClear.clear();
 
-    cout << "c [mis] XOR-based"
+    cout << "c [mis-xor] XOR-based"
     << " removed: " << (old_size-sampling_set->size())
     << " perc: " << std::fixed << std::setprecision(2)
     << stats_line_percent(old_size-sampling_set->size(), old_size)
