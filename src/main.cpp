@@ -111,6 +111,8 @@ void add_mis_options()
      "Only do backwards query")
     ("gates", po::value(&common.conf.gate_based)->default_value(common.conf.gate_based),
      "Use 3-long gate detection in SAT solver to define some variables")
+    ("probe", po::value(&common.conf.probe_based)->default_value(common.conf.probe_based),
+     "Use simple probing to set (and define) some variables")
     ("xorb", po::value(&common.conf.xor_based)->default_value(common.conf.xor_based),
      "Use XOR detection in SAT solver to define some variables")
     ("maxc", po::value(&common.conf.backw_max_confl)->default_value(common.conf.backw_max_confl),

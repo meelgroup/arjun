@@ -91,6 +91,7 @@ bool Common::backward_round(
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
+//     std::sort(unknown.begin(), unknown.end(), IncidenceSorter2<uint32_t>(incidence, incidence2));
     std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
     cout << "c [mis] Start unknown size: " << unknown.size() << endl;
 

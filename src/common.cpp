@@ -281,7 +281,7 @@ void Common::init_solver_setup(bool init_sampling, string fname)
     seen.resize(solver->nVars(), 0);
     incidence = solver->get_var_incidence();
     simp();
-    incidence = solver->get_var_incidence();
+//     incidence = solver->get_var_incidence();
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
     //Read in file again, with offset

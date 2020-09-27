@@ -86,6 +86,7 @@ struct Common
     vector<uint32_t>* other_sampling_set = NULL;
     map<uint32_t, vector<uint32_t>> global_assump_to_testvars;
     vector<uint32_t> incidence;
+    vector<uint32_t> incidence2;
     vector<double> vsids_scores;
     vector<Lit> dont_elim;
     vector<Lit> tmp_implied_by;
@@ -131,8 +132,9 @@ struct Common
     void simp();
     void remove_definabile_by_xor();
     void remove_definable_by_gates();
-    void remove_zero_assigned_literals();
-    void remove_eq_literals();
+    void remove_zero_assigned_literals(bool print = true);
+    void remove_eq_literals(bool print = true);
+    void probe_all();
 
     //forward
     void set_guess_forward_round(
@@ -191,6 +193,28 @@ struct IncidenceSorter
     }
 
     const vector<T>& inc;
+};
+
+template<class T>
+struct IncidenceSorter2
+{
+    IncidenceSorter2(const vector<T>& _inc, const vector<T>& _inc2) :
+        inc(_inc),
+        inc2(_inc2)
+    {}
+
+    bool operator()(const T a, const T b) {
+        if (inc[a] != inc[b]) {
+            return inc[a] > inc[b];
+        }
+        if (inc2[a] != inc2[b]) {
+            return inc2[a] > inc2[b];
+        }
+        return a < b;
+    }
+
+    const vector<T>& inc;
+    const vector<T>& inc2;
 };
 
 struct VSIDSSorter

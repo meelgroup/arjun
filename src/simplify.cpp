@@ -45,14 +45,43 @@ void Common::simp()
     if (conf.gate_based) {
         remove_definable_by_gates();
     }
+    if (conf.probe_based) {
+        probe_all();
+    }
     cout << "c [mis] Simplify finished "
     << " removed: " << (old_size-sampling_set->size())
     << " perc: " << std::fixed << std::setprecision(2)
     << stats_line_percent(old_size-sampling_set->size(), old_size)
     << " T: " << (cpuTime() - myTime)
     << endl;
+}
 
-    //incidence = solver->get_var_incidence();
+void Common::probe_all()
+{
+    double myTime = cpuTime();
+    auto old_size = sampling_set->size();
+
+    incidence2.resize(orig_num_vars, 0);
+    for(auto v: *sampling_set) {
+        uint32_t tot_props = 0;
+        uint32_t props = 0;
+        Lit l(v, false);
+        auto ret = solver->probe(l, props);
+        assert(ret == l_Undef);
+        tot_props += props;
+
+        incidence2[v] = tot_props;
+    }
+    string s("scc-vrepl");
+    solver->simplify(NULL, &s);
+    remove_zero_assigned_literals(true);
+    remove_eq_literals(true);
+
+    cout << "c [mis] probing"
+    << " removed: " << (old_size-sampling_set->size())
+    << " perc: " << std::fixed << std::setprecision(2)
+    << stats_line_percent(old_size-sampling_set->size(), old_size)
+    << " T: " << (cpuTime() - myTime) << endl;
 }
 
 struct OccurSorter {
@@ -197,7 +226,7 @@ void Common::remove_definable_by_gates()
     << " T: " << (cpuTime() - myTime) << endl;
 }
 
-void Common::remove_zero_assigned_literals()
+void Common::remove_zero_assigned_literals(bool print)
 {
     //Remove zero-assigned literals
     seen.clear();
@@ -223,14 +252,16 @@ void Common::remove_zero_assigned_literals()
     //TODO atomic swap
     std::swap(sampling_set, other_sampling_set);
 
-    total_set_removed += orig_sampling_set_size - sampling_set->size();
-    cout << "c [mis] Removed set       : "
-    << (orig_sampling_set_size - sampling_set->size())
-    << " new size: " << sampling_set->size()
-    << endl;
+    if (print) {
+        total_set_removed += orig_sampling_set_size - sampling_set->size();
+        cout << "c [mis] Removed set       : "
+        << (orig_sampling_set_size - sampling_set->size())
+        << " new size: " << sampling_set->size()
+        << endl;
+    }
 }
 
-void Common::remove_eq_literals()
+void Common::remove_eq_literals(bool print)
 {
     *other_sampling_set = *sampling_set;
 
@@ -259,9 +290,10 @@ void Common::remove_eq_literals()
 
     total_eq_removed += orig_sampling_set_size - sampling_set->size();
 
-    cout << "c [mis] Removed equivalent: "
-    << (orig_sampling_set_size - sampling_set->size())
-    << " new size: " << sampling_set->size()
-    << endl;
-
+    if (print) {
+        cout << "c [mis] Removed equivalent: "
+        << (orig_sampling_set_size - sampling_set->size())
+        << " new size: " << sampling_set->size()
+        << endl;
+    }
 }

@@ -37,6 +37,7 @@ struct Config {
     int simp = 1;
     int gate_based = 1;
     int xor_based = 1;
+    int probe_based = 0;
     int polarmode = 0;
     int always_one_by_one = 1;
     int recompute_sampling_set = 1;
