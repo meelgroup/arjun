@@ -28,7 +28,6 @@
 struct Config {
     int verb = 0;
     int seed = 0;
-    int bve = 0;
     int backbone = 1;
     int distill = 0;
     int intree = 1;
@@ -37,7 +36,7 @@ struct Config {
     int simp = 1;
     int gate_based = 1;
     int xor_based = 1;
-    int probe_based = 0;
+    int probe_based = 1;
     int polarmode = 0;
     int always_one_by_one = 1;
     int recompute_sampling_set = 1;

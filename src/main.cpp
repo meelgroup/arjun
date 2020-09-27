@@ -88,7 +88,7 @@ void add_mis_options()
     ("input", po::value<string>(), "file to read")
     ("verb,v", po::value(&common.conf.verb)->default_value(common.conf.verb), "verbosity")
     ("seed,s", po::value(&common.conf.seed)->default_value(common.conf.seed), "Seed")
-    ("bve", po::value(&common.conf.bve)->default_value(common.conf.bve), "bve")
+//     ("bve", po::value(&common.conf.bve)->default_value(common.conf.bve), "bve")
     ("smartd", po::value(&common.conf.smart_duplicate)->default_value(common.conf.smart_duplicate),
      "Duplicate by getting simplified problem and re-injecting it")
     ("intree", po::value(&common.conf.intree)->default_value(common.conf.intree), "intree")

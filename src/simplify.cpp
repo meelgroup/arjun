@@ -35,7 +35,11 @@ void Common::simp()
 
     cout << "c [mis] Simplifying..." << endl;
     if (conf.simp) {
-        solver->simplify(&dont_elim);
+        solver->set_verbosity(1);
+        solver->set_no_bve();
+        solver->set_intree_probe(1);
+        solver->simplify();
+        solver->set_verbosity(0);
     }
     if (conf.xor_based) {
         remove_definabile_by_xor();
@@ -77,7 +81,7 @@ void Common::probe_all()
     remove_zero_assigned_literals(true);
     remove_eq_literals(true);
 
-    cout << "c [mis] probing"
+    cout << "c [mis] probe"
     << " removed: " << (old_size-sampling_set->size())
     << " perc: " << std::fixed << std::setprecision(2)
     << stats_line_percent(old_size-sampling_set->size(), old_size)

@@ -209,9 +209,9 @@ void Common::add_fixed_clauses()
     }
 
     //Don't eliminate the orignial variables
-    for(uint32_t i = 0; i < orig_num_vars; i ++) {
-        dont_elim.push_back(Lit(i, false));
-        dont_elim.push_back(Lit(i+orig_num_vars, false));
+    for(uint32_t var: *sampling_set) {
+        dont_elim.push_back(Lit(var, false));
+        dont_elim.push_back(Lit(var+orig_num_vars, false));
     }
 }
 
@@ -249,11 +249,7 @@ void Common::init_solver_setup(bool init_sampling, string fname)
     double myTime = cpuTime();
     solver = new SATSolver();
     solver->set_up_for_arjun();
-    if (conf.bve) {
-        assert(false && "Not supported.");
-    } else {
-        solver->set_no_bve();
-    }
+    solver->set_no_bve();
     solver->set_verbosity(0);
     solver->set_intree_probe(conf.intree);
     solver->set_distill(conf.distill);
@@ -292,6 +288,17 @@ void Common::init_solver_setup(bool init_sampling, string fname)
     }
     solver->set_intree_probe(false);
     solver->set_distill(false);
+    //Don't eliminate the orignial variables
+    for(uint32_t var: *sampling_set) {
+        dont_elim.push_back(Lit(var, false));
+        dont_elim.push_back(Lit(var+orig_num_vars, false));
+    }
+    solver->set_bve(1);
+    solver->set_verbosity(1);
+    string str("occ-bve");
+    solver->simplify(&dont_elim, &str);
+    solver->set_verbosity(0);
+
 
     //Add the connection clauses, indicator variables, etc.
     add_fixed_clauses();
