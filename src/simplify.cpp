@@ -37,6 +37,9 @@ void Common::simp()
     if (conf.simp) {
         solver->simplify(&dont_elim);
     }
+    if (conf.xor_based) {
+        remove_definabile_by_xor();
+    }
     remove_eq_literals();
     remove_zero_assigned_literals();
     if (conf.gate_based) {
@@ -45,19 +48,127 @@ void Common::simp()
     cout << "c [mis] Simplify finished "
     << " removed: " << (old_size-sampling_set->size())
     << " perc: " << std::fixed << std::setprecision(2)
-    << ((double)(old_size-sampling_set->size())/(double)old_size)*100.0
+    << stats_line_percent(old_size-sampling_set->size(), old_size)
     << " T: " << (cpuTime() - myTime)
     << endl;
 
     //incidence = solver->get_var_incidence();
 }
 
+struct OccurSorter {
+    OccurSorter(const vector<vector<uint32_t>>& _occ) :
+        occ(_occ)
+    {}
+
+    bool operator()(uint32_t v1, uint32_t v2) const {
+        return occ[v1].size() < occ[v2].size();
+    }
+
+    const vector<vector<uint32_t>>& occ;
+
+};
+
+void Common::remove_definabile_by_xor()
+{
+    double myTime = cpuTime();
+    uint32_t old_size = sampling_set->size();
+    vector<vector<uint32_t>> vars_xor_occurs(orig_num_vars);
+
+    assert(toClear.empty());
+    auto xors = solver->get_recovered_xors(true);
+    for(auto v: *sampling_set) {
+        toClear.push_back(v);
+        seen[v] = 1;
+    }
+
+    //Build occur for XOR
+    uint32_t potential = 0;
+    for(uint32_t i = 0; i < xors.size(); i ++) {
+        const auto& x = xors[i];
+        uint32_t num = 0;
+        bool all_orig = true;
+        for(auto v: x.first) {
+            if (v < orig_num_vars) {
+                num += seen[v];
+            } else {
+                all_orig = false;
+                break;
+            }
+        }
+        //This one can be used to remove a variable
+        if (all_orig && num == x.first.size()) {
+            for(auto v: x.first) {
+                vars_xor_occurs[v].push_back(i);
+                potential++;
+            }
+        }
+    }
+    cout << "c [mis] XOR Potential: " << potential << endl;
+
+    //Sort with lowest occur numbers first
+    //So we have the highest chance that we can set defined later variables
+    std::sort(sampling_set->begin(), sampling_set->end(), OccurSorter(vars_xor_occurs));
+    uint32_t non_zero_occs = 0;
+    uint32_t seen_set_0 = 0;
+    for(uint32_t v: *sampling_set) {
+        assert(seen[v]);
+        if (vars_xor_occurs[v].size() == 0) {
+            continue;
+        }
+        non_zero_occs++;
+//         cout << "Do something with v " << v << " size: " << vars_xor_occurs[v].size() << endl;
+
+        //Define v as a function of the other variables in the XOR
+        for(uint32_t o: vars_xor_occurs[v]) {
+            const auto& x = xors[o];
+            bool ok = true;
+            bool found_v = false;
+            for(auto xor_v: x.first) {
+                //Have they been removed from sampling set in the meanwhile?
+                if (!seen[xor_v]) {
+                    ok = false;
+                    break;
+                }
+                if (xor_v == v) {
+                    found_v = true;
+                }
+            }
+            if (!ok) {
+                //In the meanwhile, the variable that could define this
+                //have been set to be defined themselves. Cycle could happen.
+                continue;
+            }
+
+            //All good, we can define v in terms of the other variables
+            assert(found_v);
+            seen[v] = 0;
+            seen_set_0++;
+            break;
+        }
+    }
+    cout << "c [mis] Non-zero OCCs were: " << non_zero_occs << " seen_set_0: " << seen_set_0 << endl;
+
+    sampling_set->clear();
+    for(auto v: toClear) {
+        if (seen[v]) {
+            sampling_set->push_back(v);
+        }
+        seen[v] = 0;
+    }
+    toClear.clear();
+
+    cout << "c [mis] XOR-based"
+    << " removed: " << (old_size-sampling_set->size())
+    << " perc: " << std::fixed << std::setprecision(2)
+    << stats_line_percent(old_size-sampling_set->size(), old_size)
+    << " T: " << (cpuTime() - myTime) << endl;
+}
+
 void Common::remove_definable_by_gates()
 {
     double myTime = cpuTime();
     auto old_size = sampling_set->size();
-    vector<uint32_t> vars = *sampling_set;
-    vector<uint32_t> definable = solver->get_definabe(vars);
+    vector<uint32_t> definable = solver->get_definabe(*sampling_set);
 
     for(auto v: definable) {
         assert(v < orig_num_vars);
@@ -82,7 +193,7 @@ void Common::remove_definable_by_gates()
     cout << "c [mis] gate-based"
     << " removed: " << (old_size-sampling_set->size())
     << " perc: " << std::fixed << std::setprecision(2)
-    << ((double)(old_size-sampling_set->size())/(double)old_size)*100.0
+    << stats_line_percent(old_size-sampling_set->size(), old_size)
     << " T: " << (cpuTime() - myTime) << endl;
 }
 
@@ -121,8 +232,6 @@ void Common::remove_zero_assigned_literals()
 
 void Common::remove_eq_literals()
 {
-    seen.clear();
-    seen.resize(solver->nVars(), 0);
     *other_sampling_set = *sampling_set;
 
     uint32_t orig_sampling_set_size = other_sampling_set->size();

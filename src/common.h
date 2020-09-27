@@ -127,7 +127,9 @@ struct Common
         vector<char>& dontremove_vars);
 
     //simp
+    vector<uint32_t> toClear;
     void simp();
+    void remove_definabile_by_xor();
     void remove_definable_by_gates();
     void remove_zero_assigned_literals();
     void remove_eq_literals();
@@ -164,6 +166,15 @@ struct Common
         uint32_t max_iters = std::numeric_limits<uint32_t>::max());
 
 };
+
+inline double stats_line_percent(double num, double total)
+{
+    if (total == 0) {
+        return 0;
+    } else {
+        return num/total*100.0;
+    }
+}
 
 template<class T>
 struct IncidenceSorter

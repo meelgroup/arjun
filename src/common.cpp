@@ -248,15 +248,13 @@ void Common::init_solver_setup(bool init_sampling, string fname)
     delete solver;
     double myTime = cpuTime();
     solver = new SATSolver();
-    if (conf.verb > 2) {
-        solver->set_verbosity(conf.verb-2);
-    }
     solver->set_up_for_arjun();
     if (conf.bve) {
         assert(false && "Not supported.");
     } else {
         solver->set_no_bve();
     }
+    solver->set_verbosity(0);
     solver->set_intree_probe(conf.intree);
     solver->set_distill(conf.distill);
     if (conf.polarmode == 0 || conf.polarmode == 1) {
@@ -279,8 +277,12 @@ void Common::init_solver_setup(bool init_sampling, string fname)
     } else {
         orig_samples_set_size = orig_num_vars;
     }
+    seen.clear();
+    seen.resize(solver->nVars(), 0);
+    incidence = solver->get_var_incidence();
     simp();
     incidence = solver->get_var_incidence();
+    solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
     //Read in file again, with offset
     if (conf.smart_duplicate) {

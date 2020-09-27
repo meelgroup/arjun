@@ -110,7 +110,9 @@ void add_mis_options()
     ("backwardonly", po::value(&common.conf.backward_only)->default_value(common.conf.backward_only),
      "Only do backwards query")
     ("gates", po::value(&common.conf.gate_based)->default_value(common.conf.gate_based),
-     "Use 3-long gate detection in SAT solver")
+     "Use 3-long gate detection in SAT solver to define some variables")
+    ("xorb", po::value(&common.conf.xor_based)->default_value(common.conf.xor_based),
+     "Use XOR detection in SAT solver to define some variables")
     ("maxc", po::value(&common.conf.backw_max_confl)->default_value(common.conf.backw_max_confl),
      "Maximum conflicts per variable in backward mode")
 
@@ -256,8 +258,8 @@ int main(int argc, char** argv)
     }
     const string inp = vm["input"].as<string>();
 
-    common.init_solver_setup(true, inp);
     cout << common.solver->get_text_version_info();
+    common.init_solver_setup(true, inp);
     signal(SIGALRM,signal_handler);
     //signal(SIGINT,signal_handler);
 
@@ -271,7 +273,7 @@ int main(int argc, char** argv)
         forward = false;
     }
     while(cont) {
-        if (common.conf.guess && round_num > 1) {
+        if (common.conf.guess && round_num == 0) {
             common.run_guess();
         }
 
