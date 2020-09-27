@@ -227,7 +227,9 @@ void Common::duplicate_problem()
     vector<Lit> clause;
     while(ret) {
         ret = solver->get_next_small_clause(clause);
-        cnf.push_back(clause);
+        if (ret) {
+            cnf.push_back(clause);
+        }
     }
     solver->end_getting_small_clauses();
     solver->new_vars(orig_num_vars);
