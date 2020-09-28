@@ -244,8 +244,7 @@ void Common::duplicate_problem()
 
 void Common::init_solver_setup(bool init_sampling, string fname)
 {
-    saved_fname = fname;
-    delete solver;
+    assert(solver == NULL);
     double myTime = cpuTime();
     solver = new SATSolver();
     solver->set_up_for_arjun();

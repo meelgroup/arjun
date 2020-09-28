@@ -116,11 +116,11 @@ void Common::fill_assumptions_forward(
 
 bool Common::forward_round(
     uint32_t max_iters,
-    uint32_t group ,
-    bool reverse,
-    bool shuffle,
+    uint32_t group,
     int offset)
 {
+    ///Will be used in case set_val_forward is set and we mess up the solver
+    SATSolver* solver2 = NULL;
 
     for(const auto& x: seen) {
         assert(x == 0);
@@ -155,12 +155,7 @@ bool Common::forward_round(
         mod = std::max<int>(mod, 1);
     }
     std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
-    if (reverse) {
-        std::reverse(unknown.begin(), unknown.end());
-    }
-    if (shuffle) {
-        std::random_shuffle(unknown.begin(), unknown.end());
-    }
+    std::reverse(unknown.begin(), unknown.end());
     vector<char> guess_set(orig_num_vars, 0);
     for(uint32_t var = 0; var < orig_num_vars; var++) {
         guess_set[var] = 0;
@@ -173,6 +168,7 @@ bool Common::forward_round(
     }
     std::sort(pick_possibilities.begin(), pick_possibilities.end(), IncidenceSorter<uint32_t>(incidence));
     cout << "c [mis] Start unknown size: " << pick_possibilities.size() << endl;
+    std::reverse(pick_possibilities.begin(), pick_possibilities.end());
 
     set_guess_forward_round(
         indep,
@@ -191,6 +187,28 @@ bool Common::forward_round(
         offset,
         guess_set
     );
+
+    if (conf.set_val_forward) {
+        //we will mess up the solver, so this saves the state
+        solver2 = new SATSolver();
+        bool ret = true;
+        solver2->set_up_for_arjun();
+        solver->start_getting_small_clauses(
+            std::numeric_limits<uint32_t>::max(),
+            std::numeric_limits<uint32_t>::max(),
+            false
+        );
+        solver2->new_vars(solver->nVars());
+        vector<Lit> lits;
+        while(ret) {
+            ret = solver->get_next_small_clause(lits);
+            if (ret) {
+                solver2->add_clause(lits);
+            }
+        }
+    }
+
+
     if (conf.set_val_forward) {
         for(const auto& a: assumptions) {
             tmp.clear();
@@ -321,16 +339,15 @@ bool Common::forward_round(
         }
     }
 
+    if (conf.set_val_forward) {
+        delete solver;
+        solver = solver2;
+    }
+
     indep.clear();
     update_sampling_set(unknown, unknown_set, indep);
     cout << "c [mis] forward round finished T: "
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
     << endl;
-
-    if (conf.set_val_forward) {
-        //we messed up the solver, re-init please
-        cout << "We messed up the solver, re-init needed here -- TODO this is not a good idea AT ALL" << endl;
-        init_solver_setup(false, saved_fname);
-    }
     return iter < max_iters;
 }

@@ -90,7 +90,6 @@ struct Common
     vector<double> vsids_scores;
     vector<Lit> dont_elim;
     vector<Lit> tmp_implied_by;
-    string saved_fname; //This is a HACK and needs removal
 
     //setup, common functions
     void readInAFile(const string& filename, uint32_t var_offset, bool get_sampling_set);
@@ -154,8 +153,6 @@ struct Common
     bool forward_round(
         uint32_t max_iters = std::numeric_limits<uint32_t>::max(),
         uint32_t group = 1,
-        bool reverse = false,
-        bool shuffle = false,
         int offset = 0);
 
     //backward

@@ -107,8 +107,12 @@ void add_mis_options()
      "Force 1-by-1 query")
     ("setfwd", po::value(&common.conf.set_val_forward)->default_value(common.conf.set_val_forward),
      "When doing forward, set the value instead of using assumptions")
-    ("backwardonly", po::value(&common.conf.backward_only)->default_value(common.conf.backward_only),
-     "Only do backwards query")
+    ("backward", po::value(&common.conf.backward)->default_value(common.conf.backward),
+     "Do backwards query")
+    ("backward", po::value(&common.conf.backward_full)->default_value(common.conf.backward_full),
+     "Do backwards query")
+    ("forward", po::value(&common.conf.forward)->default_value(common.conf.forward),
+     "Do forward query")
     ("gates", po::value(&common.conf.gate_based)->default_value(common.conf.gate_based),
      "Use 3-long gate detection in SAT solver to define some variables")
     ("probe", po::value(&common.conf.probe_based)->default_value(common.conf.probe_based),
@@ -270,10 +274,7 @@ int main(int argc, char** argv)
     uint32_t round_num = 0;
 
     bool cont = true;
-    bool forward = true;
-    if (common.conf.backward_only) {
-        forward = false;
-    }
+    bool forward = common.conf.forward;
     while(cont) {
         if (common.conf.guess && round_num == 0) {
             common.run_guess();
@@ -286,12 +287,14 @@ int main(int argc, char** argv)
         if (forward) {
             cout << "c [mis] FORWARD " << endl;
             uint32_t guess_indep = std::max<uint32_t>(common.sampling_set->size()/100, 10);
-            common.forward_round(50000, guess_indep, false, false, 0);
+            common.forward_round(50000, guess_indep, 0);
             cont = true;
-        } else {
+        }
+
+        if (common.conf.backward) {
             cout << "c [mis] BACKWARD " << endl;
             num = 50000;
-            if (common.conf.backward_only) {
+            if (common.conf.backward_full) {
                 num = std::numeric_limits<uint32_t>::max();
             }
             cont = !common.backward_round(num);
