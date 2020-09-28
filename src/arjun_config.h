@@ -44,7 +44,7 @@ struct Config {
     int forward = 0;
     int backward = 1;
     int backward_full = 1;
-    int set_val_forward = 1;
+    int set_val_forward = 0;
     uint32_t backw_max_confl = 500;
 };
 
