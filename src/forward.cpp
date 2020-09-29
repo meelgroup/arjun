@@ -152,7 +152,7 @@ bool Common::forward_round(
     uint32_t mod = 1;
     if ((sampling_set->size()) > 20 ) {
         uint32_t will_do_iters = sampling_set->size();
-        uint32_t want_printed = 350;
+        uint32_t want_printed = 30;
         mod = will_do_iters/want_printed;
         mod = std::max<int>(mod, 1);
     }
