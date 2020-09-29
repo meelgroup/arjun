@@ -30,7 +30,7 @@ void Common::fill_assumptions_guess(
     const vector<uint32_t>& unknown,
     const vector<char>& unknown_set,
     uint32_t group,
-    uint32_t offs,
+    uint32_t offset,
     uint32_t index,
     vector<char>& dontremove_vars)
 {
@@ -39,22 +39,23 @@ void Common::fill_assumptions_guess(
     //Add known independent as assumptions
     for(const auto& var: indep) {
         //assumptions.push_back(Lit(this_indic2[var], true)); //Shouldn't this be false?
-        uint32_t ass = var_to_indic[var];
-        if (!seen[ass]) {
-            seen[ass] = 1;
-            assumptions.push_back(Lit(ass, true));
+        uint32_t indic = var_to_indic[var];
+        if (!seen[indic]) {
+            seen[indic] = 1;
+            assumptions.push_back(Lit(indic, true));
             dontremove_vars[var] = 1;
         }
     }
 
-    for(uint32_t i = group*offs; i < group*(offs+index+1) && i < unknown.size(); i++) {
+    //Add guess as assumptions
+    for(uint32_t i = group*offset; i < group*(offset+index+1) && i < unknown.size(); i++) {
         uint32_t var = unknown[i];
         assert(var < orig_num_vars);
         if (unknown_set[var]) {
-            uint32_t ass = var_to_indic[var];
-            if (!seen[ass]) {
-                seen[ass] = 1;
-                assumptions.push_back(Lit(ass, true));
+            uint32_t indic = var_to_indic[var];
+            if (!seen[indic]) {
+                seen[indic] = 1;
+                assumptions.push_back(Lit(indic, true));
                 dontremove_vars[var] = 1;
             }
         }
@@ -66,58 +67,13 @@ void Common::fill_assumptions_guess(
     }
 }
 
-void Common::run_guess()
-{
-    double myTime = cpuTime();
-    uint32_t start_sampl = sampling_set->size();
-
-    uint32_t div = 5;
-    uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/div, 20);
-
-    //NORM
-    uint32_t cur_sampl_size = sampling_set->size();
-    if (true) {
-        cout << " ============ INV ==============" << endl;
-        for (uint32_t i = 0; i < div/2; i++){
-            guess_round(guess_indep, true, false, i);
-        }
-    }
-    uint32_t inv_removed = cur_sampl_size - sampling_set->size();
-
-    cur_sampl_size = sampling_set->size();
-    if (true) {
-        cout << " ============ NORM ==============" << endl;
-        for (uint32_t i = 0; i < div/2; i++) {
-            guess_round(guess_indep, false, false, i);
-        }
-    }
-    uint32_t norm_removed = cur_sampl_size - sampling_set->size();
-
-    cur_sampl_size = sampling_set->size();
-    if (true) {
-        cout << " ============ RND ==============" << endl;
-        for (uint32_t i = 0; i < div/2; i++) {
-            guess_round(guess_indep, false, true, 0);
-        }
-    }
-    uint32_t rnd_removed = cur_sampl_size - sampling_set->size();
-
-    cout
-    << "[mis] GUESS"
-    << " rem: " << std::setw(7) << (start_sampl - sampling_set->size())
-    << " rem-inv: " << inv_removed
-    << " rem-norm: " << norm_removed
-    << " rem-rnd: " << rnd_removed
-    << " T: " << (cpuTime() - myTime) << endl;
-}
-
-
 void Common::guess_round(
     uint32_t group,
     bool reverse,
     bool shuffle,
-    int offset)
+    uint32_t offset)
 {
+    double start_round_time = cpuTimeTotal();
     for(const auto& x: seen) {
         assert(x == 0);
     }
@@ -126,7 +82,6 @@ void Common::guess_round(
         return;
     }
 
-    double start_round_time = cpuTimeTotal();
     //start with empty independent set
     vector<uint32_t> indep;
 
@@ -141,8 +96,6 @@ void Common::guess_round(
         unknown_set[x] = 1;
     }
     cout << "c [mis] Start unknown size: " << unknown.size() << endl;
-
-    vector<Lit> assumptions;
 
     uint32_t iter = 0;
     uint32_t removed = 0;
@@ -170,11 +123,12 @@ void Common::guess_round(
 
     bool should_continue_guess = true;
     uint32_t tot_removed = 0;
-    while(iter < 5) {
+    vector<Lit> assumptions;
+    while(iter < guess_div) {
         should_continue_guess = false;
 
         //Assumption filling
-        if (iter < 5) {
+        if (iter < guess_div) {
             fill_assumptions_guess(
                 assumptions,
                 indep,
@@ -217,7 +171,6 @@ void Common::guess_round(
     << endl;
 }
 
-
 uint32_t Common::guess_remove_and_update_ass(
     vector<Lit>& assumptions,
     vector<char>& unknown_set,
@@ -234,6 +187,8 @@ uint32_t Common::guess_remove_and_update_ass(
     //Anything that's remaining, remove
     for(const Lit p: tmp_implied_by) {
         uint32_t ind = p.var();
+
+        //Not an indicator variable, or it's not equal (hence independent)
         if (p.sign() == false ||
             ind >= indic_to_var.size() ||
             indic_to_var[ind] == var_Undef)
@@ -242,14 +197,74 @@ uint32_t Common::guess_remove_and_update_ass(
         }
         uint32_t var = indic_to_var[ind];
 
-        //Setting them to be dependent
+        //Setting the remaining to be dependent
         if (!dontremove_vars[var] && unknown_set[var]) {
             unknown_set[var] = 0;
-            assumptions.push_back(Lit(ind, true));
+            assumptions.push_back(Lit(ind, true)); //this is an optimization
             dontremove_vars[var] = 1;
             removed++;
         }
     }
 
     return removed;
+}
+
+
+void Common::run_guess()
+{
+    double myTime = cpuTime();
+    guess_div = 10;
+
+    //We need to do this or we won't get any gains. Intree at least needs to run
+    cout << "c [mis] Simplifying for guess..." << endl;
+    std::string s("intree-probe, sub-str-cls-with-bin, occ-backw-sub-str, str-impl,sub-str-cls-with-bin");
+    solver->set_bve(0);
+    solver->simplify(&dont_elim, NULL);
+    cout << "c [mis] CMS::simplify() with no BVE finished. T: "
+    << (cpuTime() - myTime)
+    << endl;
+
+    uint32_t old_size = sampling_set->size();
+
+    uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/guess_div, 20);
+
+    //REVERSE
+    uint32_t cur_sampl_size = sampling_set->size();
+    if (true) {
+        cout << " ============ INV ==============" << endl;
+        for (uint32_t offset = 0; offset < guess_div/2; offset+=guess_div/2){
+            guess_round(guess_indep, true, false, offset);
+        }
+    }
+    uint32_t inv_removed = cur_sampl_size - sampling_set->size();
+
+    //SHUFFLE
+    cur_sampl_size = sampling_set->size();
+    if (true) {
+        cout << " ============ RND ==============" << endl;
+        guess_round(guess_indep, false, true, 0);
+        guess_round(guess_indep, false, true, 0);
+    }
+    uint32_t rnd_removed = cur_sampl_size - sampling_set->size();
+
+    /*(
+    //NORM
+    cur_sampl_size = sampling_set->size();
+    if (true) {
+        cout << " ============ NORM ==============" << endl;
+        for (uint32_t i = 0; i < guess_div/2; i++) {
+            guess_round(guess_indep, false, false, i);
+        }
+    }
+    uint32_t norm_removed = cur_sampl_size - sampling_set->size();*/
+
+    cout
+    << "c [mis] GUESS"
+    << " removed: " << (old_size-sampling_set->size())
+    << " perc: " << std::fixed << std::setprecision(2)
+    << stats_line_percent(old_size-sampling_set->size(), old_size)
+    << " rem-inv: " << inv_removed
+    //<< " rem-norm: " << norm_removed
+    << " rem-rnd: " << rnd_removed
+    << " T: " << (cpuTime() - myTime) << endl;
 }

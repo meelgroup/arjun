@@ -208,7 +208,7 @@ void Common::add_fixed_clauses()
         solver->add_clause(tmp2);
     }
 
-    //Don't eliminate the orignial variables
+    //Don't eliminate the sampling variables
     for(uint32_t var: *sampling_set) {
         dont_elim.push_back(Lit(var, false));
         dont_elim.push_back(Lit(var+orig_num_vars, false));
@@ -292,22 +292,27 @@ void Common::init_solver_setup(bool init_sampling, string fname)
         dont_elim.push_back(Lit(var, false));
         dont_elim.push_back(Lit(var+orig_num_vars, false));
     }
+
+    double simpBVETime = cpuTime();
+    cout << "c [mis] CMS::simplify() with *only* BVE..." << endl;
     solver->set_bve(1);
-    solver->set_verbosity(1);
+    solver->set_verbosity(0);
     string str("occ-bve");
     solver->simplify(&dont_elim, &str);
     solver->set_verbosity(0);
+    cout << "c [mis] CMS::simplify() with *only* BVE finished. T: "
+    << cpuTime() - simpBVETime
+    << endl;
 
 
     //Add the connection clauses, indicator variables, etc.
+    double duplTime = cpuTime();
     add_fixed_clauses();
+    cout << "c [mis] CNF duplication time: " << (cpuTime()-duplTime) << endl;
 
     //Seen needs re-init, because we got new variables
     seen.clear();
     seen.resize(solver->nVars(), 0);
-
-    //Print stats
-    cout << "c [mis] CNF read-in time: " << (cpuTime()-myTime) << endl;
 }
 
 void Common::readInAFile(const string& filename, uint32_t var_offset, bool get_sampling_set)

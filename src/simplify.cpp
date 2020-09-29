@@ -33,14 +33,19 @@ void Common::simp()
         remove_definable_by_gates();
     }
 
-    cout << "c [mis] Simplifying..." << endl;
     if (conf.simp) {
-        solver->set_verbosity(1);
+        cout << "c [mis] CMS::simplify()..." << endl;
+        double simpTime = cpuTime();
+        solver->set_verbosity(0);
         solver->set_no_bve();
         solver->set_intree_probe(1);
         solver->simplify();
         solver->set_verbosity(0);
+        cout << "c [mis] CMS::simplify() with no BVE finished. T: "
+        << (cpuTime() - simpTime)
+        << endl;
     }
+
     if (conf.xor_based) {
         remove_definabile_by_xor();
     }
@@ -52,7 +57,7 @@ void Common::simp()
     if (conf.probe_based) {
         probe_all();
     }
-    cout << "c [mis] Simplify finished "
+    cout << "c [mis] Arjun simplification finished "
     << " removed: " << (old_size-sampling_set->size())
     << " perc: " << std::fixed << std::setprecision(2)
     << stats_line_percent(old_size-sampling_set->size(), old_size)
@@ -81,7 +86,7 @@ void Common::probe_all()
     remove_zero_assigned_literals(true);
     remove_eq_literals(true);
 
-    cout << "c [mis] probe"
+    cout << "c [mis-simp] probe"
     << " removed: " << (old_size-sampling_set->size())
     << " perc: " << std::fixed << std::setprecision(2)
     << stats_line_percent(old_size-sampling_set->size(), old_size)
@@ -136,7 +141,7 @@ void Common::remove_definabile_by_xor()
             }
         }
     }
-    cout << "c [mis-xor] XOR Potential: " << potential << endl;
+    cout << "c [mis-simp] XOR Potential: " << potential << endl;
 
     //Sort with lowest occur numbers first
     //So we have the highest chance that we can set defined later variables
@@ -179,7 +184,7 @@ void Common::remove_definabile_by_xor()
             break;
         }
     }
-    cout << "c [mis-xor] Non-zero OCCs were: " << non_zero_occs << " seen_set_0: " << seen_set_0 << endl;
+    cout << "c [mis-simp] Non-zero OCCs were: " << non_zero_occs << " seen_set_0: " << seen_set_0 << endl;
 
     sampling_set->clear();
     for(auto v: toClear) {
@@ -190,7 +195,7 @@ void Common::remove_definabile_by_xor()
     }
     toClear.clear();
 
-    cout << "c [mis-xor] XOR-based"
+    cout << "c [mis-simp] XOR-based"
     << " removed: " << (old_size-sampling_set->size())
     << " perc: " << std::fixed << std::setprecision(2)
     << stats_line_percent(old_size-sampling_set->size(), old_size)
@@ -223,7 +228,7 @@ void Common::remove_definable_by_gates()
     //TODO atomic swap
     std::swap(sampling_set, other_sampling_set);
 
-    cout << "c [mis] gate-based"
+    cout << "c [mis-simp] gate-based"
     << " removed: " << (old_size-sampling_set->size())
     << " perc: " << std::fixed << std::setprecision(2)
     << stats_line_percent(old_size-sampling_set->size(), old_size)
@@ -258,7 +263,7 @@ void Common::remove_zero_assigned_literals(bool print)
 
     if (print) {
         total_set_removed += orig_sampling_set_size - sampling_set->size();
-        cout << "c [mis] Removed set       : "
+        cout << "c [mis-simp] Removed set       : "
         << (orig_sampling_set_size - sampling_set->size())
         << " new size: " << sampling_set->size()
         << endl;
@@ -295,7 +300,7 @@ void Common::remove_eq_literals(bool print)
     total_eq_removed += orig_sampling_set_size - sampling_set->size();
 
     if (print) {
-        cout << "c [mis] Removed equivalent: "
+        cout << "c [mis-simp] Removed equivalent: "
         << (orig_sampling_set_size - sampling_set->size())
         << " new size: " << sampling_set->size()
         << endl;

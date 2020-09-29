@@ -31,7 +31,7 @@ struct Config {
     int backbone = 1;
     int distill = 0;
     int intree = 1;
-    int guess = 0;
+    int guess = 1;
     int force_by_one = 1;
     int simp = 1;
     int gate_based = 1;

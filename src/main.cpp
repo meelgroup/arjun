@@ -275,7 +275,7 @@ int main(int argc, char** argv)
 
     bool cont = true;
     while(cont) {
-        if (common.conf.guess && round_num == 0) {
+        if (common.conf.guess) {
             common.run_guess();
         }
 

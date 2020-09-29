@@ -106,6 +106,7 @@ struct Common
 
 
     //guess
+    uint32_t guess_div = 10;
     void run_guess();
     void fill_assumptions_guess(
         vector<Lit>& assumptions,
@@ -120,7 +121,7 @@ struct Common
         uint32_t group,
         bool reverse = false,
         bool shuffle = false,
-        int offset = 0);
+        uint32_t offset = 0);
     uint32_t guess_remove_and_update_ass(
         vector<Lit>& assumptions,
         vector<char>& unknown_set,
