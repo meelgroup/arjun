@@ -139,7 +139,7 @@ void Common::guess_round(
                 iter,
                 dontremove_vars
             );
-            assumptions.push_back(Lit(mult_or_invers_var, true));
+//             assumptions.push_back(Lit(mult_or_invers_var, true));
         }
 
         solver->set_max_confl(100);
