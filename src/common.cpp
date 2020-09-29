@@ -242,7 +242,7 @@ void Common::duplicate_problem()
     }
 }
 
-void Common::init_solver_setup(bool init_sampling, string fname)
+void Common::init_solver_setup(string fname)
 {
     assert(solver == NULL);
     double myTime = cpuTime();
@@ -260,12 +260,10 @@ void Common::init_solver_setup(bool init_sampling, string fname)
     }
 
     //Read in file and set sampling_set in case we are starting with empty
-    readInAFile(fname.c_str(), 0, init_sampling);
-    if (init_sampling) {
-        seen.clear();
-        seen.resize(solver->nVars(), 0);
-        init_samping_set(conf.recompute_sampling_set);
-    }
+    readInAFile(fname.c_str(), 0, true);
+    seen.clear();
+    seen.resize(solver->nVars(), 0);
+    init_samping_set(conf.recompute_sampling_set);
     orig_num_vars = solver->nVars();
     if (sampling_set->size() > 0) {
         orig_samples_set_size = sampling_set->size();

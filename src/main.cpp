@@ -265,7 +265,7 @@ int main(int argc, char** argv)
     const string inp = vm["input"].as<string>();
 
     cout << common.solver->get_text_version_info();
-    common.init_solver_setup(true, inp);
+    common.init_solver_setup(inp);
     signal(SIGALRM,signal_handler);
     //signal(SIGINT,signal_handler);
 

@@ -98,7 +98,7 @@ struct Common
         const vector<char>& unknown_set,
         const vector<uint32_t>& indep
     );
-    void init_solver_setup(bool init_sampling, string fname);
+    void init_solver_setup(string fname);
     void print_indep_set();
     void add_fixed_clauses();
     void init_samping_set(bool recompute);
