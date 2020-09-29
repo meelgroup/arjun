@@ -274,7 +274,6 @@ int main(int argc, char** argv)
     uint32_t round_num = 0;
 
     bool cont = true;
-    bool forward = common.conf.forward;
     while(cont) {
         if (common.conf.guess && round_num == 0) {
             common.run_guess();
@@ -284,7 +283,7 @@ int main(int argc, char** argv)
         prev_size = common.sampling_set->size();
 
         cout << "c [mis] ===--> Doing a run for " << num << endl;
-        if (forward) {
+        if (common.conf.forward) {
             cout << "c [mis] FORWARD " << endl;
             uint32_t guess_indep = std::max<uint32_t>(common.sampling_set->size()/100, 10);
             common.forward_round(50000, guess_indep, 0);
@@ -300,10 +299,6 @@ int main(int argc, char** argv)
             cont = !common.backward_round(num);
         }
         round_num++;
-        if (round_num > 0) {
-            //forward = !forward;
-            forward = 0;
-        }
     }
 
     common.print_indep_set();

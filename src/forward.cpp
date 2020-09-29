@@ -24,6 +24,7 @@
 
 #include "common.h"
 
+//Only called once.
 void Common::set_guess_forward_round(
     const vector<uint32_t>& indep,
     vector<uint32_t>& unknown,
@@ -65,7 +66,7 @@ void Common::set_guess_forward_round(
     }
 }
 
-
+// Only called once
 void Common::fill_assumptions_forward(
     vector<Lit>& assumptions,
     const vector<uint32_t>& indep,
@@ -127,8 +128,10 @@ bool Common::forward_round(
     }
 
     double start_round_time = cpuTimeTotal();
+
     //start with empty independent set
     vector<uint32_t> indep;
+
     //Initially, all of samping_set is unknown
     vector<uint32_t> unknown;
     vector<char> unknown_set;
@@ -138,7 +141,6 @@ bool Common::forward_round(
         unknown_set[x] = 1;
     }
 
-    vector<Lit> assumptions;
     uint32_t iter = 0;
     uint32_t not_indep = 0;
 
@@ -146,14 +148,17 @@ bool Common::forward_round(
     vector<char> tried_var_already;
     tried_var_already.resize(orig_num_vars, 0);
 
-    //Calc mod:
+    //Calc printing data
     uint32_t mod = 1;
     if ((sampling_set->size()) > 20 ) {
         uint32_t will_do_iters = sampling_set->size();
-        uint32_t want_printed = 30;
+        uint32_t want_printed = 350;
         mod = will_do_iters/want_printed;
         mod = std::max<int>(mod, 1);
     }
+
+
+    //Sort how we'll try to decide the unknowns
     std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
     std::reverse(unknown.begin(), unknown.end());
     vector<char> guess_set(orig_num_vars, 0);
@@ -179,6 +184,7 @@ bool Common::forward_round(
         guess_set
     );
 
+    vector<Lit> assumptions;
     fill_assumptions_forward(
         assumptions,
         indep,
@@ -188,8 +194,8 @@ bool Common::forward_round(
         guess_set
     );
 
+    //we will mess up the solver, so this saves the state
     if (conf.set_val_forward) {
-        //we will mess up the solver, so this saves the state
         solver2 = new SATSolver();
         bool ret = true;
         solver2->set_up_for_arjun();
@@ -209,6 +215,7 @@ bool Common::forward_round(
     }
 
 
+    //Make assumptions set
     if (conf.set_val_forward) {
         for(const auto& a: assumptions) {
             tmp.clear();
@@ -221,7 +228,8 @@ bool Common::forward_round(
     uint32_t ret_false = 0;
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
-    uint32_t prev_test_var = var_Undef;
+    bool last_indep = true;
+    cout << "Start assumptions set: " << assumptions.size() << endl;
     while(iter < max_iters) {
         //Select var
         uint32_t test_var = var_Undef;
@@ -246,25 +254,6 @@ bool Common::forward_round(
         //Assumption filling: with guess_set that is in range + indep
         assert(test_var != var_Undef);
 
-        //Remove old
-        if (iter != 0) {
-            assumptions.pop_back();
-            assumptions.pop_back();
-
-            //in case of DEP: This is just an optimization, to add the dependent var
-            //in case of INDEP: This is needed.
-            uint32_t ass = var_to_indic[prev_test_var];
-            assert(ass != var_Undef);
-            assert(!seen[ass]);
-            if (conf.set_val_forward) {
-                tmp.clear();
-                tmp.push_back(Lit(ass, true));
-                solver->add_clause(tmp);
-            } else {
-                assumptions.push_back(Lit(ass, true));
-            }
-        }
-
         //Add new one
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
@@ -272,8 +261,7 @@ bool Common::forward_round(
         solver->set_max_confl(10);
         solver->set_no_confl_needed();
 
-        lbool ret = l_Undef;
-        ret = solver->solve(&assumptions);
+        lbool ret = solver->solve(&assumptions);
         if (ret == l_False) {
             ret_false++;
         } else if (ret == l_True) {
@@ -286,10 +274,33 @@ bool Common::forward_round(
             assert(test_var < orig_num_vars);
             assert(unknown_set[test_var] == 0);
             indep.push_back(test_var);
+            last_indep = true;
         } else if (ret == l_False) {
             //not independent
             not_indep++;
-            //TODO: In the forward pass, even when the variable is not independent, we can still add it to the assumptions
+            last_indep = false;
+        }
+
+        //Remove test var's assumptions
+        assumptions.pop_back();
+        assumptions.pop_back();
+
+        //NOTE: in case last var was DEP, we can STILL add it.
+        //        But should we? It'll make the assumption set larger which
+        //        would be OK if we hacked this into CMS but passing
+        //        a large assumption set is not a good idea
+        if (last_indep) {
+            //in case last var was INDEP: This is needed
+            uint32_t ass = var_to_indic[test_var];
+            assert(ass != var_Undef);
+            assert(!seen[ass]);
+            if (conf.set_val_forward) {
+                tmp.clear();
+                tmp.push_back(Lit(ass, true));
+                solver->add_clause(tmp);
+            } else {
+                assumptions.push_back(Lit(ass, true));
+            }
         }
 
         if (iter % mod == (mod-1)) {
@@ -321,7 +332,6 @@ bool Common::forward_round(
 
         }
         iter++;
-        prev_test_var = test_var;
     }
 
     unknown.clear();
