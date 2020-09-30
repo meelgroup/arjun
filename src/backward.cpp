@@ -96,6 +96,8 @@ bool Common::backward_round(
         std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
     } else if (conf.incidence_sort == 2) {
         std::sort(unknown.begin(), unknown.end(), IncidenceSorter2<uint32_t>(incidence, incidence2));
+    } else if (conf.incidence_sort == 3) {
+        std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence2));
     } else {
         cout << "ERROR: wrong sorting mechanism given" << endl;
         exit(-1);
