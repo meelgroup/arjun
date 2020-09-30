@@ -213,13 +213,22 @@ uint32_t Common::guess_remove_and_update_ass(
 void Common::run_guess()
 {
     double myTime = cpuTime();
+    cout << " ============ Guess ==============" << endl;
     guess_div = 10;
 
     //We need to do this or we won't get any gains. Intree at least needs to run
-    cout << "c [mis] Simplifying for guess..." << endl;
-    std::string s("intree-probe, sub-str-cls-with-bin, occ-backw-sub-str, str-impl,sub-str-cls-with-bin");
+    std::string s;
+    s = "intree-probe, sub-str-cls-with-bin, occ-backw-sub-str, str-impl,sub-str-cls-with-bin";
+    s = "sub-impl,"
+            "scc-vrepl,"
+            "occ-xor,"
+            "scc-vrepl,"
+            "occ-xor,"
+//             "intree-probe,"
+            ;
+    cout << "c [mis] Simplifying for guess. Schedule: " << s << endl;
     solver->set_bve(0);
-    solver->simplify(&dont_elim, NULL);
+    solver->simplify(&dont_elim, &s);
     cout << "c [mis] CMS::simplify() with no BVE finished. T: "
     << (cpuTime() - myTime)
     << endl;
@@ -230,21 +239,15 @@ void Common::run_guess()
 
     //REVERSE
     uint32_t cur_sampl_size = sampling_set->size();
-    if (true) {
-        cout << " ============ INV ==============" << endl;
-        for (uint32_t offset = 0; offset < guess_div/2; offset+=guess_div/2){
-            guess_round(guess_indep, true, false, offset);
-        }
-    }
+    cout << " ============ INV ==============" << endl;
+    guess_round(guess_indep, true, false, 0);
     uint32_t inv_removed = cur_sampl_size - sampling_set->size();
 
     //SHUFFLE
     cur_sampl_size = sampling_set->size();
-    if (true) {
-        cout << " ============ RND ==============" << endl;
-        guess_round(guess_indep, false, true, 0);
-        guess_round(guess_indep, false, true, 0);
-    }
+    cout << " ============ RND ==============" << endl;
+    guess_round(guess_indep, false, true, 0);
+    guess_round(guess_indep, false, true, 0);
     uint32_t rnd_removed = cur_sampl_size - sampling_set->size();
 
     /*(
