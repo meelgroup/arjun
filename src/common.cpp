@@ -248,10 +248,11 @@ void Common::init_solver_setup(string fname)
     double myTime = cpuTime();
     solver = new SATSolver();
     solver->set_up_for_arjun();
-    solver->set_no_bve();
+    solver->set_bve(0);
     solver->set_verbosity(0);
     solver->set_intree_probe(conf.intree);
     solver->set_distill(conf.distill);
+    solver->set_sls(0);
     if (conf.polarmode == 0 || conf.polarmode == 1) {
         solver->set_default_polarity(conf.polarmode);
     } else {
