@@ -34,6 +34,7 @@ struct Config {
     int guess = 1;
     int force_by_one = 1;
     int simp = 1;
+    int incidence_sort = 1;
     int gate_based = 1;
     int xor_based = 0;
     int probe_based = 1;

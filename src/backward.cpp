@@ -91,8 +91,15 @@ bool Common::backward_round(
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
-//     std::sort(unknown.begin(), unknown.end(), IncidenceSorter2<uint32_t>(incidence, incidence2));
-    std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
+
+    if (conf.incidence_sort == 1) {
+        std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
+    } else if (conf.incidence_sort == 2) {
+        std::sort(unknown.begin(), unknown.end(), IncidenceSorter2<uint32_t>(incidence, incidence2));
+    } else {
+        cout << "ERROR: wrong sorting mechanism given" << endl;
+        exit(-1);
+    }
     cout << "c [mis] Start unknown size: " << unknown.size() << endl;
 
     vector<Lit> assumptions;

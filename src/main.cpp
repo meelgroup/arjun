@@ -97,6 +97,8 @@ void add_mis_options()
     ("distill", po::value(&common.conf.distill)->default_value(common.conf.distill), "distill")
     ("backbone", po::value(&common.conf.backbone)->default_value(common.conf.backbone), "backbone")
     ("guess", po::value(&common.conf.guess)->default_value(common.conf.guess), "Guess small set")
+    ("sort", po::value(&common.conf.incidence_sort)->default_value(common.conf.incidence_sort),
+     "Which sorting mechanism. 1 == min lit inc + varnum, 2 == min lit inc + min lit probe + varnum")
     ("one", po::value(&common.conf.always_one_by_one)->default_value(common.conf.always_one_by_one),
      "always one-by-one mode")
     ("simp", po::value(&common.conf.simp)->default_value(common.conf.simp),
