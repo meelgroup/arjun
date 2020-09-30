@@ -106,6 +106,7 @@ struct Common
 
 
     //guess
+    std::mt19937 random_source = std::mt19937(0);
     uint32_t guess_div = 10;
     void run_guess();
     void fill_assumptions_guess(

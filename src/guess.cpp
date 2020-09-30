@@ -118,7 +118,7 @@ void Common::guess_round(
         std::reverse(unknown.begin(), unknown.end());
     }
     if (shuffle) {
-        std::random_shuffle(unknown.begin(), unknown.end());
+        std::shuffle(unknown.begin(), unknown.end(), random_source);
     }
 
     bool should_continue_guess = true;
