@@ -103,6 +103,7 @@ struct Common
     void add_fixed_clauses();
     void init_samping_set(bool recompute);
     void duplicate_problem();
+    void get_incidence();
 
 
     //guess

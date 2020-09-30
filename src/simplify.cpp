@@ -72,14 +72,12 @@ void Common::probe_all()
 
     incidence2.resize(orig_num_vars, 0);
     for(auto v: *sampling_set) {
-        uint32_t tot_props = 0;
-        uint32_t props = 0;
+        uint32_t min_props = 0;
         Lit l(v, false);
-        auto ret = solver->probe(l, props);
+        auto ret = solver->probe(l, min_props);
         assert(ret == l_Undef);
-        tot_props += props;
 
-        incidence2[v] = tot_props;
+        incidence2[v] = min_props;
     }
     string s("scc-vrepl");
     solver->simplify(NULL, &s);

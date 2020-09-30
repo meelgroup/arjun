@@ -242,6 +242,18 @@ void Common::duplicate_problem()
     }
 }
 
+void Common::get_incidence()
+{
+    incidence.resize(orig_num_vars, 0);
+//     incidence = solver->get_var_incidence();
+    vector<uint32_t> inc = solver->get_lit_incidence();
+    for(uint32_t i = 0; i < orig_num_vars; i++) {
+        Lit l = Lit(i, true);
+        incidence[l.var()] = std::min(inc[l.toInt()],inc[(~l).toInt()]);
+        //incidence[l.var()] = inc[(~l).toInt()];
+    }
+}
+
 void Common::init_solver_setup(string fname)
 {
     assert(solver == NULL);
@@ -273,7 +285,7 @@ void Common::init_solver_setup(string fname)
     }
     seen.clear();
     seen.resize(solver->nVars(), 0);
-    incidence = solver->get_var_incidence();
+    get_incidence();
 
     //Solve problem to SAT
     double solve_time = cpuTime();
