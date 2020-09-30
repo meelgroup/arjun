@@ -274,16 +274,36 @@ void Common::init_solver_setup(string fname)
     seen.clear();
     seen.resize(solver->nVars(), 0);
     incidence = solver->get_var_incidence();
+
+    //Solve problem to SAT
+    double solve_time = cpuTime();
+    cout << "c [mis] Solving problem once..." << endl;
+    solver->set_max_confl(50000);
+    auto ret = solver->solve();
+    //solver->print_stats();
+    if (ret == l_False) {
+        cout << "c [mis] CNF is unsatisfiable. Exiting." << endl;
+        exit(0);
+    }
+    cout << "c [mis] Solved problem to " << ret << " T: " << (cpuTime()-solve_time) << endl;
+
+    //Simplify problem
     simp();
-//     incidence = solver->get_var_incidence();
+    //incidence = solver->get_var_incidence(); //NOTE: makes it slower
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
     //Read in file again, with offset
+    cout << "c [mis] Duplicating CNF..." << endl;
+    double dupl_time = cpuTime();
     if (conf.smart_duplicate) {
         duplicate_problem();
+        //TODO also add learnt clauses(?) We did a solve() so maybe that could help?
     } else {
         readInAFile(fname.c_str(), orig_num_vars, false);
     }
+    cout << "c [mis] Duplicated CNF. T:" << (cpuTime() - dupl_time) << endl;
+
+    //BVE ***ONLY***
     solver->set_intree_probe(false);
     solver->set_distill(false);
     //Don't eliminate the orignial variables
@@ -291,7 +311,6 @@ void Common::init_solver_setup(string fname)
         dont_elim.push_back(Lit(var, false));
         dont_elim.push_back(Lit(var+orig_num_vars, false));
     }
-
     double simpBVETime = cpuTime();
     cout << "c [mis] CMS::simplify() with *only* BVE..." << endl;
     solver->set_bve(1);
@@ -307,7 +326,7 @@ void Common::init_solver_setup(string fname)
     //Add the connection clauses, indicator variables, etc.
     double duplTime = cpuTime();
     add_fixed_clauses();
-    cout << "c [mis] CNF duplication time: " << (cpuTime()-duplTime) << endl;
+    cout << "c [mis] Adding fixed clauses time: " << (cpuTime()-duplTime) << endl;
 
     //Seen needs re-init, because we got new variables
     seen.clear();
