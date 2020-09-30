@@ -35,7 +35,7 @@ struct Config {
     int force_by_one = 1;
     int simp = 1;
     int gate_based = 1;
-    int xor_based = 1;
+    int xor_based = 0;
     int probe_based = 1;
     int polarmode = 0;
     int always_one_by_one = 1;
