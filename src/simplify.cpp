@@ -141,9 +141,18 @@ void Common::remove_definabile_by_xor()
     }
     cout << "c [mis-simp] XOR Potential: " << potential << endl;
 
-    //Sort with lowest occur numbers first
-    //So we have the highest chance that we can set defined later variables
-    std::sort(sampling_set->begin(), sampling_set->end(), OccurSorter(vars_xor_occurs));
+    /*NOTE: there are a few ways to sort. But we want to sort NOT
+            to optimize what we remove NOW. Instead, we should optimize what
+            removes most once EVERYTHING runs. The best NOW would be
+            //std::sort(sampling_set->begin(), sampling_set->end(), OccurSorter(vars_xor_occurs));
+            --> This sorts with lowest occur numbers first
+            --> So we have the highest chance that we can set defined later variables
+
+            Instead, we should sort by reverse incidence, as that's the one
+            that will be the right order in the long run.
+    */
+    std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(incidence));
+    std::reverse(sampling_set->begin(), sampling_set->end());
     uint32_t non_zero_occs = 0;
     uint32_t seen_set_0 = 0;
     for(uint32_t v: *sampling_set) {
