@@ -127,6 +127,7 @@ bool Common::backward_round(
     uint32_t backbone_calls = 0;
     uint32_t backbone_max = 0;
     uint32_t backbone_tot = 0;
+    uint32_t indic_var = var_Undef;
     vector<uint32_t> non_indep_vars;
     while(iter < max_iters) {
         uint32_t test_var = var_Undef;
@@ -140,10 +141,10 @@ bool Common::backward_round(
                 break;
             }
 
-            uint32_t ass_var = assumptions[assumptions.size()-1].var();
+            indic_var = assumptions[assumptions.size()-1].var();
             assumptions.pop_back();
-            assert(ass_var < indic_to_var.size());
-            test_var = indic_to_var[ass_var];
+            assert(indic_var < indic_to_var.size());
+            test_var = indic_to_var[indic_var];
             assert(test_var != var_Undef);
             assert(test_var < orig_num_vars);
 
@@ -171,6 +172,7 @@ bool Common::backward_round(
                 //we are done, backward is finished
                 break;
             }
+            indic_var = var_to_indic[test_var];
         }
         assert(test_var < orig_num_vars);
         assert(unknown_set[test_var] == 1);
@@ -197,9 +199,10 @@ bool Common::backward_round(
             b.indic_to_var  = &indic_to_var;
             b.orig_num_vars = orig_num_vars;
             b.non_indep_vars = &non_indep_vars;
-            b.indep_size = indep.size();
+            b.indep_vars = &indep;
             b.backbone_on = true;
-            b.backbone_test_var = &test_var;
+            b.test_indic = &indic_var;
+            b.test_var = &test_var;
 
             //solver->set_max_confl(conf.backw_max_confl);
             backbone_calls++;
@@ -208,37 +211,38 @@ bool Common::backward_round(
                 cout << "find_backbone BEGIN " << endl;
             }
             non_indep_vars.clear();
+            uint32_t indep_vars_last_pos = indep.size();
             ret = solver->find_backbone(b);
             assert(ret != l_False);
 
-//             cout
-//             << "non_indep_vars.size(): " << non_indep_vars.size()
-//             << " ret: " << ret
-//             << " test_var: " << test_var
-//             << endl;
+            cout
+            << "non_indep_vars.size(): " << non_indep_vars.size()
+            << " indep.size(): " << indep.size()
+            << " ret: " << ret
+            << " test_var: " << test_var
+            << endl;
             backbone_tot += non_indep_vars.size();
             backbone_max = std::max<uint32_t>(non_indep_vars.size(), backbone_max);
+            for(uint32_t i = indep_vars_last_pos; i < indep.size(); i ++) {
+                uint32_t var = indep[i];
+                unknown_set[var] = 0;
+            }
+
             for(uint32_t i = 0; i < non_indep_vars.size(); i ++) {
                 uint32_t var = non_indep_vars[i];
                 assert(var < orig_num_vars);
-//                 cout << "backbone indep var: " << var << endl;
-                if (i == 0) {
-                    assert(unknown_set[var] == 0);
-                } else {
-                    assert(unknown_set[var] == 1);
-                    unknown_set[var] = 0;
-                }
+                unknown_set[var] = 0;
                 not_indep++;
             }
             quick_pop_ok = false;
 
             //We have finished it all off
             if (test_var == var_Undef) {
+                assert(indic_var == var_Undef);
                 continue;
             }
             unknown_set[test_var] = 0;
         }
-//         cout << "Testing ret: " << ret << endl;
         if (ret == l_False) {
             ret_false++;
         } else if (ret == l_True) {
