@@ -249,7 +249,7 @@ void Common::duplicate_problem()
 void Common::get_incidence()
 {
     incidence.resize(orig_num_vars, 0);
-    incidence2.resize(orig_num_vars, 0);
+    incidence_probing.resize(orig_num_vars, 0);
 //     incidence = solver->get_var_incidence();
     vector<uint32_t> inc = solver->get_lit_incidence();
     for(uint32_t i = 0; i < orig_num_vars; i++) {

@@ -96,9 +96,9 @@ bool Common::backward_round(
     if (conf.incidence_sort == 1) {
         std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
     } else if (conf.incidence_sort == 2) {
-        std::sort(unknown.begin(), unknown.end(), IncidenceSorter2<uint32_t>(incidence, incidence2));
+        std::sort(unknown.begin(), unknown.end(), IncidenceSorter2<uint32_t>(incidence, incidence_probing));
     } else if (conf.incidence_sort == 3) {
-        std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence2));
+        std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence_probing));
     } else if (conf.incidence_sort == 4) {
         std::sort(unknown.begin(), unknown.end(), IncidenceSorterCommPart(this));
     } else if (conf.incidence_sort == 5) {
@@ -109,6 +109,17 @@ bool Common::backward_round(
         cout << "ERROR: wrong sorting mechanism given" << endl;
         exit(-1);
     }
+
+    cout << "Sorted output: "<< endl;
+    for (const auto& v:unknown) {
+        cout
+        << "Var: " << std::setw(6) << v
+        << " inc: " << std::setw(6) << incidence[v]
+        << " prop-inc: " << std::setw(6) << incidence_probing[v]
+        << " fan-out to comms: " << std::setw(6) << var_to_num_communities[v].size()
+        << endl;
+    }
+
     cout << "c [mis] Start unknown size: " << unknown.size() << endl;
 
     vector<Lit> assumptions;

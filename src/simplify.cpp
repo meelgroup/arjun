@@ -70,14 +70,14 @@ void Common::probe_all()
     double myTime = cpuTime();
     auto old_size = sampling_set->size();
 
-    incidence2.resize(orig_num_vars, 0);
+    incidence_probing.resize(orig_num_vars, 0);
     for(auto v: *sampling_set) {
         uint32_t min_props = 0;
         Lit l(v, false);
         auto ret = solver->probe(l, min_props);
         assert(ret == l_Undef);
 
-        incidence2[v] = min_props;
+        incidence_probing[v] = min_props;
     }
     string s("scc-vrepl");
     solver->simplify(NULL, &s);

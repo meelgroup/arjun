@@ -85,12 +85,22 @@ struct Common
 
     vector<uint32_t>* other_sampling_set = NULL;
     map<uint32_t, vector<uint32_t>> global_assump_to_testvars;
+
+    //Incidence as counted by clauses it's appeared together with other variables
     vector<uint32_t> incidence;
-    vector<uint32_t> incidence2;
-    vector<int> commpart; //maps var->commpart. If it doesn't belong anywhere, it's -1
+
+    //Incidence as counted by probing
+    vector<uint32_t> incidence_probing;
+
+    //maps var->commpart. If it doesn't belong anywhere, it's -1
+    vector<int> commpart;
+
+    //maps variable -> number of communities it's connected to via clauses
     vector<set<int>> var_to_num_communities;
-    int max_commpart = -1;
-    vector<uint32_t> commpart_incs; //total incidence in a commpart. Maps commpart->maxinc
+
+    //total incidence in a commpart. Maps commpart->maxinc
+    vector<uint32_t> commpart_incs;
+
     vector<double> vsids_scores;
     vector<Lit> dont_elim;
     vector<Lit> tmp_implied_by;
@@ -285,8 +295,8 @@ struct IncidenceSorterCommPartToOtherComm
             return part_a < part_b; //"a" is connected to LESS communities -> return TRUE
         }
 
-        auto a_inc = comm->incidence2[a];
-        auto b_inc = comm->incidence2[b];
+        auto a_inc = comm->incidence_probing[a];
+        auto b_inc = comm->incidence_probing[b];
         if (a_inc != b_inc) {
             return a_inc > b_inc; //"a" has LARGER incidence -> return TRUE
         }
@@ -295,24 +305,6 @@ struct IncidenceSorterCommPartToOtherComm
     }
 
     const Common* comm;
-};
-
-struct VSIDSSorter
-{
-    VSIDSSorter(const vector<uint32_t>& _inc, const vector<double>& _vsids) :
-        vsids(_vsids),
-        inc(_inc)
-    {}
-
-    bool operator()(const uint32_t a, const uint32_t b) {
-        if (inc[a] != inc[b]) {
-            return inc[a] > inc[b];
-        }
-        return vsids[a] > vsids[b];
-    }
-
-    const vector<double>& vsids;
-    const vector<uint32_t>& inc;
 };
 
 //ARJUN_COMMON_H
