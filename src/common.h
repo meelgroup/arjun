@@ -87,6 +87,10 @@ struct Common
     map<uint32_t, vector<uint32_t>> global_assump_to_testvars;
     vector<uint32_t> incidence;
     vector<uint32_t> incidence2;
+    vector<int> commpart; //maps var->commpart. If it doesn't belong anywhere, it's -1
+    vector<set<int>> var_to_num_communities;
+    int max_commpart = -1;
+    vector<uint32_t> commpart_incs; //total incidence in a commpart. Maps commpart->maxinc
     vector<double> vsids_scores;
     vector<Lit> dont_elim;
     vector<Lit> tmp_implied_by;
@@ -104,6 +108,7 @@ struct Common
     void init_samping_set(bool recompute);
     void duplicate_problem();
     void get_incidence();
+    void read_commpart();
 
 
     //guess
@@ -215,6 +220,81 @@ struct IncidenceSorter2
 
     const vector<T>& inc;
     const vector<T>& inc2;
+};
+
+struct IncidenceSorterCommPart
+{
+    IncidenceSorterCommPart(const Common* _comm) :
+        comm(_comm)
+    {}
+
+    bool operator()(const uint32_t a, const uint32_t b) {
+        assert(a < comm->orig_num_vars);
+        assert(b < comm->orig_num_vars);
+
+        auto part_a = comm->commpart.at(a);
+        auto part_b = comm->commpart.at(b);
+
+        if (part_a == -1 && part_b == -1 ) {
+            return false;
+        }
+
+        //If not in "part", put at the end
+        if (part_a == -1) {
+            return false;
+        }
+        if (part_b == -1) {
+            return true;
+        }
+
+        //Put parts with smaller MAX incidence first
+        auto part_a_inc = comm->commpart_incs.at(part_a);
+        auto part_b_inc = comm->commpart_incs.at(part_b);
+        if (part_a_inc != part_b_inc) {
+            return part_a_inc < part_b_inc;
+        }
+        return false;
+
+        auto a_inc = comm->incidence[a];
+        auto b_inc = comm->incidence[b];
+        if (a_inc != b_inc) {
+            return a_inc > b_inc; //"a" has larger incidence -> return TRUE
+        }
+        return a < b;
+    }
+
+    const Common* comm;
+};
+
+
+
+struct IncidenceSorterCommPartToOtherComm
+{
+    IncidenceSorterCommPartToOtherComm(const Common* _comm) :
+        comm(_comm)
+    {}
+
+    bool operator()(const uint32_t a, const uint32_t b) {
+        assert(a < comm->orig_num_vars);
+        assert(b < comm->orig_num_vars);
+
+        auto part_a = comm->var_to_num_communities.at(a).size();
+        auto part_b = comm->var_to_num_communities.at(b).size();
+
+        if (part_a != part_b) {
+            return part_a < part_b; //"a" is connected to LESS communities -> return TRUE
+        }
+
+        auto a_inc = comm->incidence2[a];
+        auto b_inc = comm->incidence2[b];
+        if (a_inc != b_inc) {
+            return a_inc > b_inc; //"a" has LARGER incidence -> return TRUE
+        }
+
+        return a < b;
+    }
+
+    const Common* comm;
 };
 
 struct VSIDSSorter

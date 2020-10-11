@@ -443,17 +443,14 @@ else()
     message(FATAL_ERROR "Cannot find CryptoMiniSat5. Please install it! Exiting.")
 endif()
 
-find_package(minisat CONFIG)
-if (minisat_FOUND)
-    add_definitions(-DMINISAT_CONSTANTS_AS_MACROS)
-    message(STATUS "Found MiniSat")
-    message(STATUS "minisat dynamic lib: ${MINISAT_LIBRARIES}")
-    message(STATUS "minisat include dirs: ${MINISAT_INCLUDE_DIRS}")
+find_package(louvain_communities CONFIG)
+if (louvain_communities_FOUND)
+    message(STATUS "Found Louvain Communities library")
+    message(STATUS "Louvain Communities dynamic lib: ${LOUVAIN_COMMUNITIES_LIBRARIES}")
+    message(STATUS "Louvain Communities include dirs: ${LOUVAIN_COMMUNITIES_INCLUDE_DIRS}")
 else()
-    message(FATAL_ERROR "Cannot find MiniSat. Please install it! Exiting.")
+    message(FATAL_ERROR "Cannot find Louvain Communities libraries. Please install it! Exiting.")
 endif()
-
-
 
 # -----------------------------------------------------------------------------
 # Provide an export name to be used by targets that wish to export themselves.

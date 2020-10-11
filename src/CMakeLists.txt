@@ -18,9 +18,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-include_directories(
-    ${PROJECT_SOURCE_DIR}
-)
+include_directories(${PROJECT_SOURCE_DIR})
+include_directories(${LOUVAIN_COMMUNITIES_INCLUDE_DIRS})
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories(${Boost_INCLUDE_DIRS})
+include_directories(${CRYPTOMINISAT5_INCLUDE_DIRS})
 
 if (NOT WIN32)
     add_cxx_flag_if_supported("-Wno-bitfield-constant-conversion")
@@ -37,11 +39,6 @@ if (NOT WIN32)
     add_cxx_flag_if_supported("-pedantic")
     #add_cxx_flag_if_supported("-Wdeprecated")
 endif()
-
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
-include_directories(${Boost_INCLUDE_DIRS})
-include_directories(${CRYPTOMINISAT5_INCLUDE_DIRS})
-include_directories(${MINISAT_INCLUDE_DIRS})
 
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/GitSHA1.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp" @ONLY)
 
@@ -78,6 +75,7 @@ set_target_properties(oldarjun PROPERTIES
 
 
 target_link_libraries(arjun
+    ${LOUVAIN_COMMUNITIES_LIBRARIES}
     ${CRYPTOMINISAT5_LIBRARIES}
     ${arjun_exec_link_libs}
 )

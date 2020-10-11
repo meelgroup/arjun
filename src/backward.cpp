@@ -87,6 +87,7 @@ bool Common::backward_round(
     vector<char> unknown_set;
     unknown_set.resize(orig_num_vars, 0);
     for(const auto& x: *sampling_set) {
+        assert(x < orig_num_vars);
         assert(unknown_set[x] == 0 && "No var should be in 'sampling_set' twice!");
         unknown.push_back(x);
         unknown_set[x] = 1;
@@ -98,6 +99,12 @@ bool Common::backward_round(
         std::sort(unknown.begin(), unknown.end(), IncidenceSorter2<uint32_t>(incidence, incidence2));
     } else if (conf.incidence_sort == 3) {
         std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence2));
+    } else if (conf.incidence_sort == 4) {
+        std::sort(unknown.begin(), unknown.end(), IncidenceSorterCommPart(this));
+    } else if (conf.incidence_sort == 5) {
+        std::sort(unknown.begin(), unknown.end(), IncidenceSorterCommPartToOtherComm(this));
+    } else if (conf.incidence_sort == 6) {
+        std::shuffle(unknown.begin(), unknown.end(), random_source);
     } else {
         cout << "ERROR: wrong sorting mechanism given" << endl;
         exit(-1);

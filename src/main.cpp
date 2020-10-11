@@ -25,8 +25,6 @@
 #include <boost/program_options.hpp>
 using boost::lexical_cast;
 namespace po = boost::program_options;
-using std::string;
-using std::vector;
 
 #if defined(__GNUC__) && defined(__linux__)
 #include <fenv.h>
@@ -40,6 +38,9 @@ using std::vector;
 #include <set>
 #include <vector>
 #include <atomic>
+#include <fstream>
+#include <sstream>
+#include <string>
 #include <signal.h>
 
 #include "time_mem.h"
@@ -58,6 +59,8 @@ using std::cerr;
 using std::endl;
 using std::map;
 using std::set;
+using std::string;
+using std::vector;
 
 po::options_description mis_options = po::options_description("MIS options");
 po::options_description help_options;

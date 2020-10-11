@@ -23,6 +23,10 @@
  */
 
 #include "common.h"
+#include "louvain_communities/louvain_communities.h"
+
+using std::pair;
+using std::make_pair;
 
 void Common::print_indep_set()
 {
@@ -287,6 +291,7 @@ void Common::init_solver_setup(string fname)
     seen.clear();
     seen.resize(solver->nVars(), 0);
     get_incidence();
+    read_commpart();
 
     //Solve problem to SAT
     double solve_time = cpuTime();
@@ -377,4 +382,104 @@ void Common::readInAFile(const string& filename, uint32_t var_offset, bool get_s
     #else
         gzclose(in);
     #endif
+}
+
+void Common::read_commpart()
+{
+    vector<vector<Lit>> cnf;
+    solver->start_getting_small_clauses(
+        std::numeric_limits<uint32_t>::max(),
+        std::numeric_limits<uint32_t>::max(),
+        false);
+
+    bool ret = true;
+    vector<Lit> cl;
+    map<pair<uint32_t, uint32_t>, long double> edges;
+    while(ret) {
+        ret = solver->get_next_small_clause(cl);
+        if (!ret) {
+            continue;
+        }
+
+        if (cl.size() == 1) {
+            continue;
+        }
+
+        //Update VIG graph
+        long double weight = 1.0L/((long double)cl.size()*((long double)cl.size()-1.0L)/2.0L);
+        for(uint32_t i = 0; i < cl.size(); i ++) {
+            for(uint32_t i2 = i+1; i2 < cl.size(); i2 ++) {
+                uint32_t v1 = cl[i].var();
+                uint32_t v2 = cl[i2].var();
+                assert(v1 < orig_num_vars);
+                assert(v2 < orig_num_vars);
+
+                //must start with smallest
+                if (v2  < v1) {
+                    std::swap(v1, v2);
+                }
+                auto edge = make_pair(v1, v2);
+                auto it = edges.find(edge);
+                if (it == edges.end()) {
+                    edges[edge] = weight;
+                } else {
+                    it->second+=weight;
+                }
+            }
+        }
+    }
+    solver->end_getting_small_clauses();
+
+    double myTime = cpuTime();
+    LouvainC::Communities graph;
+    for(const auto& it: edges) {
+        graph.add_edge(it.first.first, it.first.second, it.second);
+    }
+    graph.calculate(true);
+    commpart.clear();
+    commpart.resize(orig_num_vars, -1);
+    auto mapping = graph.get_mapping();
+    for(const auto& x: mapping) {
+        assert(x.first < orig_num_vars);
+        commpart[x.first] = x.second;
+        if (x.second == -1) {
+            continue;
+        }
+        if ((unsigned)x.second >= commpart_incs.size()) {
+            commpart_incs.resize(x.second+1, -1);
+        }
+        commpart_incs[x.second] = std::max(
+            commpart_incs[x.second],
+            incidence[x.first]);
+    }
+
+    var_to_num_communities.resize(orig_num_vars);
+    solver->start_getting_small_clauses(
+        std::numeric_limits<uint32_t>::max(),
+        std::numeric_limits<uint32_t>::max(),
+        false);
+    ret = true;
+    while(ret) {
+        ret = solver->get_next_small_clause(cl);
+        if (!ret) {
+            continue;
+        }
+
+        if (cl.size() == 1) {
+            continue;
+        }
+
+        for(uint32_t i = 0; i < cl.size(); i ++) {
+            for(uint32_t i2 = i+1; i2 < cl.size(); i2 ++) {
+                uint32_t v = cl[i].var();
+                uint32_t comm = commpart[cl[i2].var()];
+                var_to_num_communities[v].insert(comm);
+            }
+        }
+    }
+    solver->end_getting_small_clauses();
+
+    cout << "c [mis-comm] Number of communities: " << commpart_incs.size()
+    << " T: " << (cpuTime() - myTime)
+    << endl;
 }
