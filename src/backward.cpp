@@ -71,8 +71,7 @@ void Common::fill_assumptions_backward(
     }
 }
 
-bool Common::backward_round(
-    uint32_t max_iters)
+void Common::backward_round()
 {
     for(const auto& x: seen) {
         assert(x == 0);
@@ -147,7 +146,7 @@ bool Common::backward_round(
     uint32_t backbone_tot = 0;
     uint32_t indic_var = var_Undef;
     vector<uint32_t> non_indep_vars;
-    while(iter < max_iters) {
+    while(!interrupt_asap) {
         uint32_t test_var = var_Undef;
         if (quick_pop_ok) {
             //Remove 2 last
@@ -334,6 +333,4 @@ bool Common::backward_round(
     << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
     << endl;
     solver->print_stats();
-
-    return iter < max_iters;
 }

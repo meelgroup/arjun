@@ -55,6 +55,7 @@ struct Common
     Common() {
         sampling_set = &sampling_set_tmp1;
         other_sampling_set = &sampling_set_tmp2;
+        interrupt_asap = false;
     }
 
     ~Common()
@@ -67,6 +68,8 @@ struct Common
     vector<uint32_t> sampling_set_tmp1;
     vector<uint32_t> sampling_set_tmp2;
     vector<uint32_t>* sampling_set = NULL;
+    std::atomic<bool> interrupt_asap;
+
 
 
     vector<Lit> tmp;
@@ -179,8 +182,7 @@ struct Common
         vector<uint32_t>& unknown,
         const vector<char>& unknown_set,
         const vector<uint32_t>& indep);
-    bool backward_round(
-        uint32_t max_iters = std::numeric_limits<uint32_t>::max());
+    void backward_round();
 
 };
 

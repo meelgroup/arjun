@@ -52,11 +52,6 @@ add_executable(arjun
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
 )
 
-add_executable(oldarjun
-    main_old.cpp
-    ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
-)
-
 
 set(arjun_exec_link_libs
     ${Boost_LIBRARIES}
@@ -69,17 +64,10 @@ ENDIF()
 set_target_properties(arjun PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
-set_target_properties(oldarjun PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
-    INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 
 target_link_libraries(arjun
     ${LOUVAIN_COMMUNITIES_LIBRARIES}
-    ${CRYPTOMINISAT5_LIBRARIES}
-    ${arjun_exec_link_libs}
-)
-target_link_libraries(oldarjun
     ${CRYPTOMINISAT5_LIBRARIES}
     ${arjun_exec_link_libs}
 )

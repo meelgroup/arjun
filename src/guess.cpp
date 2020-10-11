@@ -139,7 +139,6 @@ void Common::guess_round(
                 iter,
                 dontremove_vars
             );
-//             assumptions.push_back(Lit(mult_or_invers_var, true));
         }
 
         solver->set_max_confl(100);
@@ -238,17 +237,23 @@ void Common::run_guess()
     uint32_t guess_indep = std::max<uint32_t>(sampling_set->size()/guess_div, 20);
 
     //REVERSE
-    uint32_t cur_sampl_size = sampling_set->size();
-    cout << " ============ INV ==============" << endl;
-    guess_round(guess_indep, true, false, 0);
-    uint32_t inv_removed = cur_sampl_size - sampling_set->size();
+    uint32_t inv_removed = 0;
+    if (!interrupt_asap) {
+        uint32_t cur_sampl_size = sampling_set->size();
+        cout << " ============ INV ==============" << endl;
+        guess_round(guess_indep, true, false, 0);
+        inv_removed += cur_sampl_size - sampling_set->size();
+    }
 
     //SHUFFLE
-    cur_sampl_size = sampling_set->size();
-    cout << " ============ RND ==============" << endl;
-    guess_round(guess_indep, false, true, 0);
-    guess_round(guess_indep, false, true, 0);
-    uint32_t rnd_removed = cur_sampl_size - sampling_set->size();
+    uint32_t rnd_removed = 0;
+    if (!interrupt_asap) {
+        uint32_t cur_sampl_size = sampling_set->size();
+        cout << " ============ RND ==============" << endl;
+        guess_round(guess_indep, false, true, 0);
+        guess_round(guess_indep, false, true, 0);
+        rnd_removed += cur_sampl_size - sampling_set->size();
+    }
 
     /*(
     //NORM

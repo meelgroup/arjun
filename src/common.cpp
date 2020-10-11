@@ -263,7 +263,7 @@ void Common::init_solver_setup(string fname)
 {
     assert(solver == NULL);
     double myTime = cpuTime();
-    solver = new SATSolver();
+    solver = new SATSolver(NULL, &interrupt_asap);
     solver->set_up_for_arjun();
     solver->set_bve(0);
     solver->set_verbosity(0);

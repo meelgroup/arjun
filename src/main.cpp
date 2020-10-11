@@ -73,10 +73,8 @@ Common common;
 MTRand mtrand;
 
 static void signal_handler(int) {
-    cout << endl << "*** INTERRUPTED ***" << endl << std::flush;
-    common.print_indep_set();
-    cout << endl << "*** INTERRUPTED ***" << endl << std::flush;
-    exit(1);
+    cout << endl << "c [mis] INTERRUPTING ***" << endl << std::flush;
+    common.interrupt_asap = true;
 }
 
 void add_mis_options()
@@ -271,39 +269,22 @@ int main(int argc, char** argv)
 
     cout << common.solver->get_text_version_info();
     common.init_solver_setup(inp);
-    signal(SIGALRM,signal_handler);
-    //signal(SIGINT,signal_handler);
+    //signal(SIGALRM,signal_handler);
+    signal(SIGINT,signal_handler);
 
-    uint32_t prev_size = common.sampling_set->size()*100;
-    uint32_t num;
-    uint32_t round_num = 0;
+    if (common.conf.guess) {
+        common.run_guess();
+    }
 
-    bool cont = true;
-    while(cont) {
-        if (common.conf.guess) {
-            common.run_guess();
-        }
+    if (common.conf.forward) {
+        cout << "c [mis] FORWARD " << endl;
+        uint32_t guess_indep = std::max<uint32_t>(common.sampling_set->size()/100, 10);
+        common.forward_round(50000, guess_indep, 0);
+    }
 
-        num = 1;
-        prev_size = common.sampling_set->size();
-
-        cout << "c [mis] ===--> Doing a run for " << num << endl;
-        if (common.conf.forward) {
-            cout << "c [mis] FORWARD " << endl;
-            uint32_t guess_indep = std::max<uint32_t>(common.sampling_set->size()/100, 10);
-            common.forward_round(50000, guess_indep, 0);
-            cont = true;
-        }
-
-        if (common.conf.backward) {
-            cout << "c [mis] BACKWARD " << endl;
-            num = 50000;
-            if (common.conf.backward_full) {
-                num = std::numeric_limits<uint32_t>::max();
-            }
-            cont = !common.backward_round(num);
-        }
-        round_num++;
+    if (common.conf.backward) {
+        cout << "c [mis] BACKWARD " << endl;
+        common.backward_round();
     }
 
     common.print_indep_set();
