@@ -366,13 +366,13 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Linux" AND NOT EMSCRIPTEN)
     if (HELP2MAN_FOUND)
         ADD_CUSTOM_TARGET(man_arjun
             ALL
-            DEPENDS arjun
+            DEPENDS arjun-bin
         )
 
         ADD_CUSTOM_COMMAND(
             TARGET man_arjun
             COMMAND help2man
-            ARGS --version-string=${ARJUN_FULL_VERSION} --help-option="-h" $<TARGET_FILE:arjun> -o ${CMAKE_CURRENT_BINARY_DIR}/arjun.1
+            ARGS --version-string=${ARJUN_FULL_VERSION} --help-option="-h" $<TARGET_FILE:arjun-bin> -o ${CMAKE_CURRENT_BINARY_DIR}/arjun.1
         )
 
         INSTALL(
@@ -417,7 +417,7 @@ message(STATUS "All defines at startup: ${COMPILE_DEFINES}")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/lib)
 
-macro(cmsat_add_public_header LIBTARGET HEADER)
+macro(arjun_add_public_header LIBTARGET HEADER)
     get_target_property(EXISTING_PUBLIC_HEADERS ${LIBTARGET} PUBLIC_HEADER)
     if(EXISTING_PUBLIC_HEADERS)
         list(APPEND EXISTING_PUBLIC_HEADERS "${HEADER}")

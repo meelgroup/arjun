@@ -28,28 +28,6 @@
 using std::pair;
 using std::make_pair;
 
-void Common::print_indep_set()
-{
-    cout << "vp ";
-    for(const uint32_t s: *sampling_set) {
-        cout << s+1 << " ";
-    }
-    cout << "0" << endl;
-
-//     cout << "c inc ";
-//     for(const uint32_t s: *sampling_set) {
-//         cout << incidence[s] << " ";
-//     }
-//     cout << "0" << endl;
-
-    cout << "c set size: " << std::setw(8)
-    << sampling_set->size()
-    << " fraction of original: "
-    <<  std::setw(6) << std::setprecision(4)
-    << (double)sampling_set->size()/(double)orig_samples_set_size
-    << endl << std::flush;
-}
-
 
 void Common::update_sampling_set(
     const vector<uint32_t>& unknown,
@@ -72,39 +50,33 @@ void Common::update_sampling_set(
 
 }
 
-
-void Common::init_samping_set(bool recompute)
+void Common::start_with_clean_sampling_set()
 {
-    if (sampling_set->empty() || recompute) {
-        if (recompute && !sampling_set->empty()) {
-            cout << "c [mis] WARNING: recomputing independent set even though" << endl;
-            cout << "c [mis]          a sampling/independent set was part of the CNF" << endl;
-            cout << "c [mis]          orig sampling set size: " << sampling_set->size() << endl;
-        }
+    seen.clear();
+    seen.resize(solver->nVars(), 0);
 
-        if (sampling_set->empty()) {
-            cout << "c [mis] No sample set given, starting with full" << endl;
-        }
-        sampling_set->clear();
+    sampling_set->clear();
+    vector<Lit> already_assigned = solver->get_zero_assigned_lits();
+    for (Lit l: already_assigned) {
+        seen[l.var()] = 1;
+    }
 
-        vector<Lit> already_assigned = solver->get_zero_assigned_lits();
-        for (Lit l: already_assigned) {
-            seen[l.var()] = 1;
-        }
-
-        //Only set up for sampling if it's not already set
-        for (size_t i = 0; i < solver->nVars(); i++) {
-            if (seen[i] == 0) {
-                sampling_set->push_back(i);
-            }
-        }
-
-        //Clear seen
-        for (Lit l: already_assigned) {
-            seen[l.var()] = 0;
+    //Only set up for sampling if it's not already set
+    for (size_t i = 0; i < solver->nVars(); i++) {
+        if (seen[i] == 0) {
+            sampling_set->push_back(i);
         }
     }
 
+    //Clear seen
+    for (Lit l: already_assigned) {
+        seen[l.var()] = 0;
+    }
+}
+
+
+void Common::print_orig_sampling_set()
+{
     if (sampling_set->size() > 100) {
         cout
         << "c [mis] Sampling var set contains over 100 variables, not displaying"
@@ -259,10 +231,9 @@ void Common::get_incidence()
     }
 }
 
-void Common::init_solver_setup(string fname)
+void Common::set_up_solver()
 {
     assert(solver == NULL);
-    double myTime = cpuTime();
     solver = new SATSolver(NULL, &interrupt_asap);
     solver->set_up_for_arjun();
     solver->set_bve(0);
@@ -276,22 +247,15 @@ void Common::init_solver_setup(string fname)
         assert(conf.polarmode == 2);
         solver->set_polarity_auto();
     }
+}
 
-    //Read in file and set sampling_set in case we are starting with empty
-    readInAFile(fname.c_str(), 0, true);
-    seen.clear();
-    seen.resize(solver->nVars(), 0);
-    init_samping_set(conf.recompute_sampling_set);
+void Common::preproc_and_duplicate()
+{
     orig_num_vars = solver->nVars();
-    if (sampling_set->size() > 0) {
-        orig_samples_set_size = sampling_set->size();
-    } else {
-        orig_samples_set_size = orig_num_vars;
-    }
     seen.clear();
     seen.resize(solver->nVars(), 0);
     get_incidence();
-    read_commpart();
+    calc_community_parts();
 
     //Solve problem to SAT
     double solve_time = cpuTime();
@@ -313,12 +277,7 @@ void Common::init_solver_setup(string fname)
     //Read in file again, with offset
     cout << "c [mis] Duplicating CNF..." << endl;
     double dupl_time = cpuTime();
-    if (conf.smart_duplicate) {
-        duplicate_problem();
-        //TODO also add learnt clauses(?) We did a solve() so maybe that could help?
-    } else {
-        readInAFile(fname.c_str(), orig_num_vars, false);
-    }
+    duplicate_problem();
     cout << "c [mis] Duplicated CNF. T:" << (cpuTime() - dupl_time) << endl;
 
     //BVE ***ONLY***
@@ -351,40 +310,7 @@ void Common::init_solver_setup(string fname)
     seen.resize(solver->nVars(), 0);
 }
 
-void Common::readInAFile(const string& filename, uint32_t var_offset, bool get_sampling_set)
-{
-    #ifndef USE_ZLIB
-    FILE * in = fopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<FILE*, FN>, SATSolver > parser(solver, NULL, 0);
-    #else
-    gzFile in = gzopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<gzFile, GZ>, SATSolver> parser(solver, NULL, 0);
-    #endif
-
-    if (in == NULL) {
-        std::cerr
-        << "ERROR! Could not open file '"
-        << filename
-        << "' for reading: " << strerror(errno) << endl;
-
-        std::exit(-1);
-    }
-
-    if (!parser.parse_DIMACS(in, false, var_offset)) {
-        exit(-1);
-    }
-    if (get_sampling_set) {
-        *sampling_set = parser.sampling_vars;
-    }
-
-    #ifndef USE_ZLIB
-        fclose(in);
-    #else
-        gzclose(in);
-    #endif
-}
-
-void Common::read_commpart()
+void Common::calc_community_parts()
 {
     vector<vector<Lit>> cnf;
     solver->start_getting_small_clauses(

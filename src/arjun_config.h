@@ -40,8 +40,6 @@ struct Config {
     int probe_based = 1;
     int polarmode = 0;
     int always_one_by_one = 1;
-    int recompute_sampling_set = 1;
-    int smart_duplicate = 1;
     int forward = 0;
     int backward = 1;
     int backward_full = 1;

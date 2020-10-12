@@ -56,6 +56,7 @@ struct Common
         sampling_set = &sampling_set_tmp1;
         other_sampling_set = &sampling_set_tmp2;
         interrupt_asap = false;
+        set_up_solver();
     }
 
     ~Common()
@@ -70,12 +71,9 @@ struct Common
     vector<uint32_t>* sampling_set = NULL;
     std::atomic<bool> interrupt_asap;
 
-
-
     vector<Lit> tmp;
     vector<char> seen;
     uint32_t orig_num_vars;
-    uint32_t orig_samples_set_size;
     uint32_t total_eq_removed = 0;
     uint32_t total_set_removed = 0;
     uint32_t mult_or_invers_var;
@@ -108,20 +106,19 @@ struct Common
     vector<Lit> dont_elim;
     vector<Lit> tmp_implied_by;
 
-    //setup, common functions
-    void readInAFile(const string& filename, uint32_t var_offset, bool get_sampling_set);
     void update_sampling_set(
         const vector<uint32_t>& unknown,
         const vector<char>& unknown_set,
         const vector<uint32_t>& indep
     );
-    void init_solver_setup(string fname);
-    void print_indep_set();
+    void preproc_and_duplicate();
     void add_fixed_clauses();
-    void init_samping_set(bool recompute);
+    void print_orig_sampling_set();
+    void start_with_clean_sampling_set();
     void duplicate_problem();
     void get_incidence();
-    void read_commpart();
+    void calc_community_parts();
+    void set_up_solver();
 
 
     //guess

@@ -32,10 +32,6 @@ namespace po = boost::program_options;
 
 #include <iostream>
 #include <iomanip>
-#include <random>
-#include <algorithm>
-#include <map>
-#include <set>
 #include <vector>
 #include <atomic>
 #include <fstream>
@@ -44,16 +40,12 @@ namespace po = boost::program_options;
 #include <signal.h>
 
 #include "time_mem.h"
-#include "GitSHA1.h"
-#include "MersenneTwister.h"
 
-#include <cryptominisat5/cryptominisat.h>
-#include "cryptominisat5/dimacsparser.h"
-#include "cryptominisat5/streambuffer.h"
+#include "arjun.h"
 #include "arjun_config.h"
-#include "common.h"
+#include <cryptominisat5/dimacsparser.h>
 
-using namespace CMSat;
+
 using std::cout;
 using std::cerr;
 using std::endl;
@@ -62,67 +54,62 @@ using std::set;
 using std::string;
 using std::vector;
 
-po::options_description mis_options = po::options_description("MIS options");
+po::options_description mis_options = po::options_description("Arjun options");
 po::options_description help_options;
 po::variables_map vm;
 po::positional_options_description p;
-string command_line;
 double startTime;
+Config conf;
+ArjunNS::Arjun* arjun = NULL;
 
-Common common;
-MTRand mtrand;
+int recompute_sampling_set = 1;
+uint32_t orig_sampling_set_size = 0;
 
-static void signal_handler(int) {
-    cout << endl << "c [mis] INTERRUPTING ***" << endl << std::flush;
-    common.interrupt_asap = true;
-}
+// static void signal_handler(int) {
+//     cout << endl << "c [mis] INTERRUPTING ***" << endl << std::flush;
+//     common.interrupt_asap = true;
+// }
 
 void add_mis_options()
 {
-    std::ostringstream my_epsilon;
-    std::ostringstream my_delta;
-    std::ostringstream my_kappa;
-
     mis_options.add_options()
     ("help,h", "Prints help")
     ("version", "Print version info")
     ("input", po::value<string>(), "file to read")
-    ("verb,v", po::value(&common.conf.verb)->default_value(common.conf.verb), "verbosity")
-    ("seed,s", po::value(&common.conf.seed)->default_value(common.conf.seed), "Seed")
-//     ("bve", po::value(&common.conf.bve)->default_value(common.conf.bve), "bve")
-    ("smartd", po::value(&common.conf.smart_duplicate)->default_value(common.conf.smart_duplicate),
-     "Duplicate by getting simplified problem and re-injecting it")
-    ("intree", po::value(&common.conf.intree)->default_value(common.conf.intree), "intree")
-    ("polar", po::value(&common.conf.polarmode)->default_value(common.conf.polarmode),
+    ("verb,v", po::value(&conf.verb)->default_value(conf.verb), "verbosity")
+    ("seed,s", po::value(&conf.seed)->default_value(conf.seed), "Seed")
+//     ("bve", po::value(&conf.bve)->default_value(conf.bve), "bve")
+    ("intree", po::value(&conf.intree)->default_value(conf.intree), "intree")
+    ("polar", po::value(&conf.polarmode)->default_value(conf.polarmode),
      "Polarity mode. 0 = false, 1 = true, 2 = polarity caching")
-    ("distill", po::value(&common.conf.distill)->default_value(common.conf.distill), "distill")
-    ("backbone", po::value(&common.conf.backbone)->default_value(common.conf.backbone), "backbone")
-    ("guess", po::value(&common.conf.guess)->default_value(common.conf.guess), "Guess small set")
-    ("sort", po::value(&common.conf.incidence_sort)->default_value(common.conf.incidence_sort),
+    ("distill", po::value(&conf.distill)->default_value(conf.distill), "distill")
+    ("backbone", po::value(&conf.backbone)->default_value(conf.backbone), "backbone")
+    ("guess", po::value(&conf.guess)->default_value(conf.guess), "Guess small set")
+    ("sort", po::value(&conf.incidence_sort)->default_value(conf.incidence_sort),
      "Which sorting mechanism. 1 == min lit inc + varnum, 2 == min lit inc + min lit probe + varnum")
-    ("one", po::value(&common.conf.always_one_by_one)->default_value(common.conf.always_one_by_one),
+    ("one", po::value(&conf.always_one_by_one)->default_value(conf.always_one_by_one),
      "always one-by-one mode")
-    ("simp", po::value(&common.conf.simp)->default_value(common.conf.simp),
+    ("simp", po::value(&conf.simp)->default_value(conf.simp),
      "simplify")
-    ("recomp", po::value(&common.conf.recompute_sampling_set)->default_value(common.conf.recompute_sampling_set),
+    ("recomp", po::value(&recompute_sampling_set)->default_value(recompute_sampling_set),
      "Recompute sampling set even if it's part of the CNF")
-    ("byforce", po::value(&common.conf.force_by_one)->default_value(common.conf.force_by_one),
+    ("byforce", po::value(&conf.force_by_one)->default_value(conf.force_by_one),
      "Force 1-by-1 query")
-    ("setfwd", po::value(&common.conf.set_val_forward)->default_value(common.conf.set_val_forward),
+    ("setfwd", po::value(&conf.set_val_forward)->default_value(conf.set_val_forward),
      "When doing forward, set the value instead of using assumptions")
-    ("backward", po::value(&common.conf.backward)->default_value(common.conf.backward),
+    ("backward", po::value(&conf.backward)->default_value(conf.backward),
      "Do backwards query")
-    ("backward", po::value(&common.conf.backward_full)->default_value(common.conf.backward_full),
+    ("backward", po::value(&conf.backward_full)->default_value(conf.backward_full),
      "Do backwards query")
-    ("forward", po::value(&common.conf.forward)->default_value(common.conf.forward),
+    ("forward", po::value(&conf.forward)->default_value(conf.forward),
      "Do forward query")
-    ("gates", po::value(&common.conf.gate_based)->default_value(common.conf.gate_based),
+    ("gates", po::value(&conf.gate_based)->default_value(conf.gate_based),
      "Use 3-long gate detection in SAT solver to define some variables")
-    ("probe", po::value(&common.conf.probe_based)->default_value(common.conf.probe_based),
+    ("probe", po::value(&conf.probe_based)->default_value(conf.probe_based),
      "Use simple probing to set (and define) some variables")
-    ("xorb", po::value(&common.conf.xor_based)->default_value(common.conf.xor_based),
+    ("xorb", po::value(&conf.xor_based)->default_value(conf.xor_based),
      "Use XOR detection in SAT solver to define some variables")
-    ("maxc", po::value(&common.conf.backw_max_confl)->default_value(common.conf.backw_max_confl),
+    ("maxc", po::value(&conf.backw_max_confl)->default_value(conf.backw_max_confl),
      "Maximum conflicts per variable in backward mode")
 
 
@@ -141,17 +128,17 @@ void add_supported_options(int argc, char** argv)
         if (vm.count("help"))
         {
             cout
-            << "Probably Approximate counter" << endl;
+            << "Minimal projection set finder" << endl;
 
             cout
-            << "approxmc [options] inputfile" << endl << endl;
+            << "arjun [options] inputfile" << endl << endl;
 
             cout << help_options << endl;
             std::exit(0);
         }
 
         if (vm.count("version")) {
-            cout << "c [mis] Version: " << get_version_sha1() << endl;
+            cout << "c [mis] Version: " << arjun->get_version_info() << endl;
             std::exit(0);
         }
 
@@ -232,9 +219,61 @@ void add_supported_options(int argc, char** argv)
     }
 }
 
+void print_indep_set(const vector<uint32_t>& indep_set)
+{
+    cout << "vp ";
+    for(const uint32_t s: indep_set) {
+        cout << s+1 << " ";
+    }
+    cout << "0" << endl;
+
+    cout << "c set size: " << std::setw(8)
+    << indep_set.size()
+    << " fraction of original: "
+    <<  std::setw(6) << std::setprecision(4)
+    << (double)indep_set.size()/(double)orig_sampling_set_size
+    << endl << std::flush;
+}
+
+void readInAFile(const string& filename)
+{
+    #ifndef USE_ZLIB
+    FILE * in = fopen(filename.c_str(), "rb");
+    DimacsParser<StreamBuffer<FILE*, FN>, SATSolver > parser(arjun->get_solver(), NULL, 0);
+    #else
+    gzFile in = gzopen(filename.c_str(), "rb");
+    DimacsParser<StreamBuffer<gzFile, GZ>, SATSolver> parser(arjun->get_solver(), NULL, 0);
+    #endif
+
+    if (in == NULL) {
+        std::cerr
+        << "ERROR! Could not open file '"
+        << filename
+        << "' for reading: " << strerror(errno) << endl;
+
+        std::exit(-1);
+    }
+
+    if (!parser.parse_DIMACS(in, false)) {
+        exit(-1);
+    }
+
+    if (parser.sampling_vars.empty() || recompute_sampling_set) {
+        orig_sampling_set_size = arjun->start_with_clean_sampling_set();
+    } else {
+        orig_sampling_set_size = arjun->set_starting_sampling_set(parser.sampling_vars);
+    }
+
+    #ifndef USE_ZLIB
+        fclose(in);
+    #else
+        gzclose(in);
+    #endif
+}
 
 int main(int argc, char** argv)
 {
+    arjun = new ArjunNS::Arjun;
     #if defined(__GNUC__) && defined(__linux__)
     feenableexcept(FE_INVALID   |
                    FE_DIVBYZERO |
@@ -243,6 +282,7 @@ int main(int argc, char** argv)
     #endif
 
     //Reconstruct the command line so we can emit it later if needed
+    string command_line;
     for(int i = 0; i < argc; i++) {
         command_line += string(argv[i]);
         if (i+1 < argc) {
@@ -251,46 +291,37 @@ int main(int argc, char** argv)
     }
 
     add_supported_options(argc, argv);
-    cout << "c [mis] Arjun Version: " << get_version_sha1() << endl;
+
+    cout << "c [mis] Arjun Version: "
+    << arjun->get_version_info() << endl;
+
     cout
     << "c executed with command line: "
     << command_line
     << endl;
-    cout << "c [mis] using seed: " << common.conf.seed << endl;
 
     double starTime = cpuTime();
-    mtrand.seed(common.conf.seed);
+    cout << "c [mis] using seed: " << conf.seed << endl;
+    arjun->set_seed(conf.seed);
+    arjun->set_verbosity(conf.verb);
 
-        //parsing the input
+    //signal(SIGINT,signal_handler);
+
+    //parsing the input
     if (vm.count("input") == 0) {
         cout << "ERROR: you must pass a file" << endl;
+        exit(-1);
     }
     const string inp = vm["input"].as<string>();
+    readInAFile(inp);
 
-    cout << common.solver->get_text_version_info();
-    common.init_solver_setup(inp);
-    //signal(SIGALRM,signal_handler);
-    signal(SIGINT,signal_handler);
-
-    if (common.conf.guess) {
-        common.run_guess();
-    }
-
-    if (common.conf.forward) {
-        cout << "c [mis] FORWARD " << endl;
-        uint32_t guess_indep = std::max<uint32_t>(common.sampling_set->size()/100, 10);
-        common.forward_round(50000, guess_indep, 0);
-    }
-
-    if (common.conf.backward) {
-        cout << "c [mis] BACKWARD " << endl;
-        common.backward_round();
-    }
-
-    common.print_indep_set();
+    cout << arjun->get_solver()->get_text_version_info();
+    auto sampl_set = arjun->get_indep_set();
+    print_indep_set(sampl_set);
     cout << "c [mis] "
     << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
     << endl;
 
+    delete arjun;
     return 0;
 }

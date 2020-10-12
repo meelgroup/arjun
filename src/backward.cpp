@@ -109,17 +109,21 @@ void Common::backward_round()
         exit(-1);
     }
 
-    cout << "Sorted output: "<< endl;
-    for (const auto& v:unknown) {
-        cout
-        << "Var: " << std::setw(6) << v
-        << " inc: " << std::setw(6) << incidence[v]
-        << " prop-inc: " << std::setw(6) << incidence_probing[v]
-        << " fan-out to comms: " << std::setw(6) << var_to_num_communities[v].size()
-        << endl;
+    if (conf.verb >= 3) {
+        cout << "Sorted output: "<< endl;
+        for (const auto& v:unknown) {
+            cout
+            << "Var: " << std::setw(6) << v
+            << " inc: " << std::setw(6) << incidence[v]
+            << " prop-inc: " << std::setw(6) << incidence_probing[v]
+            << " fan-out to comms: " << std::setw(6) << var_to_num_communities[v].size()
+            << endl;
+        }
     }
 
-    cout << "c [mis] Start unknown size: " << unknown.size() << endl;
+    if (conf.verb) {
+        cout << "c [mis] Start unknown size: " << unknown.size() << endl;
+    }
 
     vector<Lit> assumptions;
     uint32_t iter = 0;
@@ -329,8 +333,13 @@ void Common::backward_round()
         }
     }
     update_sampling_set(unknown, unknown_set, indep);
-    cout << "c [mis] backward round finished T: "
-    << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
-    << endl;
-    solver->print_stats();
+
+    if (conf.verb) {
+        cout << "c [mis] backward round finished T: "
+        << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
+        << endl;
+    }
+    if (conf.verb >= 2) {
+        solver->print_stats();
+    }
 }

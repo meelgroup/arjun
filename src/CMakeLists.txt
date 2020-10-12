@@ -42,37 +42,84 @@ endif()
 
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/GitSHA1.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp" @ONLY)
 
-add_executable(arjun
-    main.cpp
+add_library(arjun
     forward.cpp
     backward.cpp
     guess.cpp
     simplify.cpp
     common.cpp
+    arjun.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
 )
 
+add_executable(arjun-bin
+    main.cpp
+)
 
-set(arjun_exec_link_libs
+set(arjun_bin_exec_link_libs
     ${Boost_LIBRARIES}
 )
 
 IF (ZLIB_FOUND)
-    SET(arjun_exec_link_libs ${arjun_exec_link_libs} ${ZLIB_LIBRARY})
+    SET(arjun_bin_exec_link_libs ${arjun_bin_exec_link_libs} ${ZLIB_LIBRARY})
 ENDIF()
 
 set_target_properties(arjun PROPERTIES
+    PUBLIC_HEADER "${arjun_public_headers}"
+    VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+    SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+)
+
+set_target_properties(arjun-bin PROPERTIES
+    OUTPUT_NAME arjun
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 
-target_link_libraries(arjun
+target_link_libraries(arjun-bin
     ${LOUVAIN_COMMUNITIES_LIBRARIES}
     ${CRYPTOMINISAT5_LIBRARIES}
-    ${arjun_exec_link_libs}
+    ${arjun_bin_exec_link_libs}
+    arjun
 )
 
+
+
+arjun_add_public_header(
+    arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun.h )
+
+# -----------------------------------------------------------------------------
+# Copy public headers into build directory include directory.
+# The arjunConfig.cmake we generate in the build directory depends on
+# this.
+# -----------------------------------------------------------------------------
+set(HEADER_DEST "${PROJECT_BINARY_DIR}/include/arjun")
+add_custom_target(CopyPublicHeaders ALL)
+get_target_property(arjun_public_headers arjun PUBLIC_HEADER)
+foreach(public_header ${arjun_public_headers})
+    get_filename_component(HEADER_NAME ${public_header} NAME)
+    add_custom_command(TARGET CopyPublicHeaders PRE_BUILD
+                       COMMAND ${CMAKE_COMMAND} -E make_directory
+                               "${HEADER_DEST}"
+                       COMMAND ${CMAKE_COMMAND} -E echo
+                       "Copying ${HEADER_NAME} to ${HEADER_DEST}"
+                       COMMAND ${CMAKE_COMMAND} -E
+                           copy_if_different
+                           ${public_header}
+                           "${HEADER_DEST}"
+                      )
+endforeach()
+
+
 install(TARGETS arjun
+    EXPORT ${ARJUN_EXPORT_NAME}
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/arjun"
+)
+
+install(TARGETS arjun-bin
     EXPORT ${ARJUN_EXPORT_NAME}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
