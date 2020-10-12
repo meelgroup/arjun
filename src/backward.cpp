@@ -224,8 +224,8 @@ void Common::backward_round()
             b.backbone_on = true;
             b.test_indic = &indic_var;
             b.test_var = &test_var;
+            b.max_confl = conf.backw_max_confl;
 
-            //solver->set_max_confl(conf.backw_max_confl);
             backbone_calls++;
             if (conf.verb > 5) {
                 cout << "test var is: " << test_var << endl;

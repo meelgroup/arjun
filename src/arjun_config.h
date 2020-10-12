@@ -42,7 +42,6 @@ struct Config {
     int always_one_by_one = 1;
     int forward = 0;
     int backward = 1;
-    int backward_full = 1;
     int set_val_forward = 0;
     uint32_t backw_max_confl = 500;
 };

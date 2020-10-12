@@ -99,8 +99,6 @@ void add_mis_options()
      "When doing forward, set the value instead of using assumptions")
     ("backward", po::value(&conf.backward)->default_value(conf.backward),
      "Do backwards query")
-    ("backward", po::value(&conf.backward_full)->default_value(conf.backward_full),
-     "Do backwards query")
     ("forward", po::value(&conf.forward)->default_value(conf.forward),
      "Do forward query")
     ("gates", po::value(&conf.gate_based)->default_value(conf.gate_based),
