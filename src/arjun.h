@@ -42,7 +42,7 @@ namespace ArjunNS {
         Arjun();
         ~Arjun();
         std::string get_version_info();
-        CMSat::SATSolver* get_solver();
+        std::string get_solver_version_info();
         //void set_projection_set(const std::vector<uint32_t>& vars);
         void set_verbosity(uint32_t verb);
         void new_vars(uint32_t num);
@@ -54,6 +54,12 @@ namespace ArjunNS {
         uint32_t set_starting_sampling_set(const std::vector<uint32_t>& vars);
         uint32_t start_with_clean_sampling_set();
         std::vector<uint32_t> get_indep_set();
+        uint32_t get_orig_num_vars() const;
+
+        //Get clauses
+        void start_getting_small_clauses(uint32_t max_len, uint32_t max_glue, bool red = true);
+        bool get_next_small_clause(std::vector<CMSat::Lit>& ret); //returns FALSE if no more
+        void end_getting_small_clauses();
 
     private:
         ArjPrivateData* arjdata = NULL;

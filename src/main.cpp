@@ -87,14 +87,10 @@ void add_mis_options()
     ("guess", po::value(&conf.guess)->default_value(conf.guess), "Guess small set")
     ("sort", po::value(&conf.incidence_sort)->default_value(conf.incidence_sort),
      "Which sorting mechanism. 1 == min lit inc + varnum, 2 == min lit inc + min lit probe + varnum")
-    ("one", po::value(&conf.always_one_by_one)->default_value(conf.always_one_by_one),
-     "always one-by-one mode")
     ("simp", po::value(&conf.simp)->default_value(conf.simp),
      "simplify")
     ("recomp", po::value(&recompute_sampling_set)->default_value(recompute_sampling_set),
      "Recompute sampling set even if it's part of the CNF")
-    ("byforce", po::value(&conf.force_by_one)->default_value(conf.force_by_one),
-     "Force 1-by-1 query")
     ("setfwd", po::value(&conf.set_val_forward)->default_value(conf.set_val_forward),
      "When doing forward, set the value instead of using assumptions")
     ("backward", po::value(&conf.backward)->default_value(conf.backward),
@@ -217,7 +213,7 @@ void add_supported_options(int argc, char** argv)
     }
 }
 
-void print_indep_set(const vector<uint32_t>& indep_set)
+void print_indep_set(const vector<uint32_t>& indep_set, uint32_t orig_sampling_set_size)
 {
     cout << "vp ";
     for(const uint32_t s: indep_set) {
@@ -237,10 +233,10 @@ void readInAFile(const string& filename)
 {
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<FILE*, FN>, SATSolver > parser(arjun->get_solver(), NULL, 0);
+    DimacsParser<StreamBuffer<FILE*, FN>, ArjunNS::Arjun> parser(arjun, NULL, 0);
     #else
     gzFile in = gzopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<gzFile, GZ>, SATSolver> parser(arjun->get_solver(), NULL, 0);
+    DimacsParser<StreamBuffer<gzFile, GZ>, ArjunNS::Arjun> parser(arjun, NULL, 0);
     #endif
 
     if (in == NULL) {
@@ -313,9 +309,9 @@ int main(int argc, char** argv)
     const string inp = vm["input"].as<string>();
     readInAFile(inp);
 
-    cout << arjun->get_solver()->get_text_version_info();
+    cout << arjun->get_solver_version_info() << endl;
     auto sampl_set = arjun->get_indep_set();
-    print_indep_set(sampl_set);
+    print_indep_set(sampl_set, orig_sampling_set_size);
     cout << "c [mis] "
     << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
     << endl;

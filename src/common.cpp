@@ -139,23 +139,6 @@ void Common::add_fixed_clauses()
         solver->add_clause(tmp);
     }
 
-    if (!conf.force_by_one) {
-        //This is a single clause: indic1 V indic2 V ... indicN V mult_or_invers_var
-        tmp.clear();
-        solver->new_var();
-        mult_or_invers_var = solver->nVars()-1;
-        dont_elim.push_back(Lit(mult_or_invers_var, false));
-        tmp.push_back(Lit(mult_or_invers_var, false));
-        for(uint32_t var = 0; var < var_to_indic.size(); var++) {
-            uint32_t indic = var_to_indic[var];
-            if (indic == var_Undef)
-                continue;
-
-            tmp.push_back(Lit(indic, false));
-        }
-        solver->add_clause(tmp);
-    }
-
     if (false) {
         //This is a set of clauses where k1..kN are new indicators:
         // a1 V -k1

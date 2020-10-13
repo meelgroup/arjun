@@ -32,14 +32,12 @@ struct Config {
     int distill = 0;
     int intree = 1;
     int guess = 1;
-    int force_by_one = 1;
     int simp = 1;
     int incidence_sort = 3;
     int gate_based = 1;
     int xor_based = 0;
     int probe_based = 1;
     int polarmode = 0;
-    int always_one_by_one = 1;
     int forward = 0;
     int backward = 1;
     int set_val_forward = 0;

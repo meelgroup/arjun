@@ -56,12 +56,6 @@ DLL_PUBLIC Arjun::~Arjun()
     delete arjdata;
 }
 
-DLL_PUBLIC CMSat::SATSolver* Arjun::get_solver()
-{
-    return arjdata->common.solver;
-}
-
-
 // DLL_PUBLIC void Arjun::set_projection_set(const vector<uint32_t>& vars)
 // {
 //     //arjdata->conf.sampling_set = vars;
@@ -120,6 +114,11 @@ DLL_PUBLIC string Arjun::get_version_info()
     return get_version_sha1();
 }
 
+DLL_PUBLIC std::string Arjun::get_solver_version_info()
+{
+    return arjdata->common.solver->get_version();
+}
+
 DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
 {
     double starTime = cpuTime();
@@ -153,3 +152,22 @@ DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
     return *arjdata->common.sampling_set;
 }
 
+DLL_PUBLIC void Arjun::start_getting_small_clauses(uint32_t max_len, uint32_t max_glue, bool red)
+{
+    arjdata->common.solver->start_getting_small_clauses(max_len, max_glue, red);
+}
+
+DLL_PUBLIC bool Arjun::get_next_small_clause(std::vector<CMSat::Lit>& ret)
+{
+    return arjdata->common.solver->get_next_small_clause(ret);
+}
+
+DLL_PUBLIC void Arjun::end_getting_small_clauses()
+{
+    arjdata->common.solver->end_getting_small_clauses();
+}
+
+DLL_PUBLIC uint32_t Arjun::get_orig_num_vars() const
+{
+    return arjdata->common.orig_num_vars;
+}
