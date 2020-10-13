@@ -26,7 +26,7 @@
 #include <cryptominisat5/cryptominisat.h>
 #include "cryptominisat5/dimacsparser.h"
 #include "cryptominisat5/streambuffer.h"
-#include "arjun_config.h"
+#include "config.h"
 #include "common.h"
 #include "GitSHA1.h"
 

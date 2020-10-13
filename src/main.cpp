@@ -42,7 +42,7 @@ namespace po = boost::program_options;
 #include "time_mem.h"
 
 #include "arjun.h"
-#include "arjun_config.h"
+#include "config.h"
 #include <cryptominisat5/dimacsparser.h>
 
 

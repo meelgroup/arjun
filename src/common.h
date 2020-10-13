@@ -39,7 +39,7 @@
 #include "cryptominisat5/dimacsparser.h"
 
 #include "time_mem.h"
-#include "arjun_config.h"
+#include "config.h"
 
 using namespace CMSat;
 using std::cout;

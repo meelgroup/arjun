@@ -22,8 +22,8 @@
  THE SOFTWARE.
  */
 
-#ifndef ARJUN_CONFIG_H
-#define ARJUN_CONFIG_H
+#ifndef CONFIG_H
+#define CONFIG_H
 
 struct Config {
     int verb = 0;
