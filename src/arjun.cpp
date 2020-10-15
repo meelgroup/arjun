@@ -87,11 +87,6 @@ DLL_PUBLIC void Arjun::add_xor_clause(const vector<uint32_t>& vars, bool rhs)
     arjdata->common.solver->add_xor_clause(vars, rhs);
 }
 
-DLL_PUBLIC void Arjun::set_seed(uint32_t seed)
-{
-    arjdata->common.random_source.seed(seed);
-}
-
 DLL_PUBLIC uint32_t Arjun::set_starting_sampling_set(const vector<uint32_t>& vars)
 {
     *arjdata->common.sampling_set = vars;
@@ -102,11 +97,6 @@ DLL_PUBLIC uint32_t Arjun::start_with_clean_sampling_set()
 {
     arjdata->common.start_with_clean_sampling_set();
     return arjdata->common.sampling_set->size();
-}
-
-DLL_PUBLIC void Arjun::set_verbosity(uint32_t verb)
-{
-    arjdata->common.conf.verb = verb;
 }
 
 DLL_PUBLIC string Arjun::get_version_info()
@@ -170,4 +160,87 @@ DLL_PUBLIC void Arjun::end_getting_small_clauses()
 DLL_PUBLIC uint32_t Arjun::get_orig_num_vars() const
 {
     return arjdata->common.orig_num_vars;
+}
+
+
+DLL_PUBLIC void Arjun::set_verbosity(uint32_t verb)
+{
+    arjdata->common.conf.verb = verb;
+}
+
+DLL_PUBLIC void Arjun::set_seed(uint32_t seed)
+{
+    arjdata->common.random_source.seed(seed);
+}
+
+
+DLL_PUBLIC void Arjun::set_use_fast_backw(bool fast_backw)
+{
+    arjdata->common.conf.fast_backw = fast_backw;
+}
+
+DLL_PUBLIC void Arjun::set_use_distill(bool distill)
+{
+    arjdata->common.conf.distill = distill;
+}
+
+DLL_PUBLIC void Arjun::set_use_intree(bool intree)
+{
+    arjdata->common.conf.intree = intree;
+}
+
+DLL_PUBLIC void Arjun::set_use_guess(bool guess)
+{
+    arjdata->common.conf.guess = guess;
+}
+
+DLL_PUBLIC void Arjun::set_use_simp(bool simp)
+{
+    arjdata->common.conf.simp = simp;
+}
+
+DLL_PUBLIC void Arjun::set_use_incidence_sort(bool incidence_sort)
+{
+    arjdata->common.conf.incidence_sort = incidence_sort;
+}
+
+DLL_PUBLIC void Arjun::set_use_gate_based(bool gate_based)
+{
+    arjdata->common.conf.gate_based = gate_based;
+}
+
+DLL_PUBLIC void Arjun::set_use_xor_based(bool xor_based)
+{
+    arjdata->common.conf.xor_based = xor_based;
+}
+
+DLL_PUBLIC void Arjun::set_use_probe_based(bool probe_based)
+{
+    arjdata->common.conf.probe_based = probe_based;
+}
+
+DLL_PUBLIC void Arjun::set_use_polarmode(bool polarmode)
+{
+    arjdata->common.conf.polarmode = polarmode;
+}
+
+DLL_PUBLIC void Arjun::set_use_forward(bool forward)
+{
+    arjdata->common.conf.forward = forward;
+}
+
+DLL_PUBLIC void Arjun::set_use_backward(bool backward)
+{
+    assert(backward && "We MUST have backward or we cannot work");
+    arjdata->common.conf.backward = backward;
+}
+
+DLL_PUBLIC void Arjun::set_set_val_forward(bool set_val_forward)
+{
+    arjdata->common.conf.set_val_forward = set_val_forward;
+}
+
+DLL_PUBLIC void Arjun::set_set_backw_max_confl(uint32_t backw_max_confl)
+{
+    arjdata->common.conf.backw_max_confl = backw_max_confl;
 }

@@ -44,8 +44,6 @@ namespace ArjunNS {
         std::string get_version_info();
         std::string get_solver_version_info();
         //void set_projection_set(const std::vector<uint32_t>& vars);
-        void set_verbosity(uint32_t verb);
-        void new_vars(uint32_t num);
         uint32_t nVars();
         void new_var();
         void add_xor_clause(const std::vector<uint32_t>& vars, bool rhs);
@@ -60,6 +58,24 @@ namespace ArjunNS {
         void start_getting_small_clauses(uint32_t max_len, uint32_t max_glue, bool red = true);
         bool get_next_small_clause(std::vector<CMSat::Lit>& ret); //returns FALSE if no more
         void end_getting_small_clauses();
+
+        //Set config
+        void set_verbosity(uint32_t verb);
+        void new_vars(uint32_t num);
+        void set_use_fast_backw(bool fast_backw);
+        void set_use_distill(bool distill);
+        void set_use_intree(bool intree);
+        void set_use_guess(bool guess);
+        void set_use_simp(bool simp);
+        void set_use_incidence_sort(bool incidence_sort);
+        void set_use_gate_based(bool gate_based);
+        void set_use_xor_based(bool xor_based);
+        void set_use_probe_based(bool probe_based);
+        void set_use_polarmode(bool polarmode);
+        void set_use_forward(bool forward);
+        void set_use_backward(bool backward);
+        void set_set_val_forward(bool set_val_forward);
+        void set_set_backw_max_confl(uint32_t backw_max_confl);
 
     private:
         ArjPrivateData* arjdata = NULL;

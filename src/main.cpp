@@ -296,8 +296,22 @@ int main(int argc, char** argv)
 
     double starTime = cpuTime();
     cout << "c [mis] using seed: " << conf.seed << endl;
-    arjun->set_seed(conf.seed);
     arjun->set_verbosity(conf.verb);
+    arjun->set_seed(conf.seed);
+    arjun->set_use_fast_backw(conf.fast_backw);
+    arjun->set_use_distill(conf.distill);
+    arjun->set_use_intree(conf.intree);
+    arjun->set_use_guess(conf.guess);
+    arjun->set_use_simp(conf.simp);
+    arjun->set_use_incidence_sort(conf.incidence_sort);
+    arjun->set_use_gate_based(conf.gate_based);
+    arjun->set_use_xor_based(conf.xor_based);
+    arjun->set_use_probe_based(conf.probe_based);
+    arjun->set_use_polarmode(conf.polarmode);
+    arjun->set_use_forward(conf.forward);
+    arjun->set_use_backward(conf.backward);
+    arjun->set_set_val_forward(conf.set_val_forward);
+    arjun->set_set_backw_max_confl(conf.backw_max_confl);
 
     //signal(SIGINT,signal_handler);
 
