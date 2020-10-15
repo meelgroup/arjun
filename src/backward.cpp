@@ -145,9 +145,9 @@ void Common::backward_round()
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
     bool quick_pop_ok = false;
-    uint32_t backbone_calls = 0;
-    uint32_t backbone_max = 0;
-    uint32_t backbone_tot = 0;
+    uint32_t fast_backw_calls = 0;
+    uint32_t fast_backw_max = 0;
+    uint32_t fast_backw_tot = 0;
     uint32_t indic_var = var_Undef;
     vector<uint32_t> non_indep_vars;
     while(!interrupt_asap) {
@@ -212,28 +212,28 @@ void Common::backward_round()
 
         lbool ret = l_Undef;
         solver->set_max_confl(conf.backw_max_confl);
-        if (!conf.backbone) {
+        if (!conf.fast_backw) {
             ret = solver->solve(&assumptions);
         } else {
-            BackBoneData b;
+            FastBackwData b;
             b._assumptions = &assumptions;
             b.indic_to_var  = &indic_to_var;
             b.orig_num_vars = orig_num_vars;
             b.non_indep_vars = &non_indep_vars;
             b.indep_vars = &indep;
-            b.backbone_on = true;
+            b.fast_backw_on = true;
             b.test_indic = &indic_var;
             b.test_var = &test_var;
             b.max_confl = conf.backw_max_confl;
 
-            backbone_calls++;
+            fast_backw_calls++;
             if (conf.verb > 5) {
                 cout << "test var is: " << test_var << endl;
-                cout << "find_backbone BEGIN " << endl;
+                cout << "find_fast_backw BEGIN " << endl;
             }
             non_indep_vars.clear();
             uint32_t indep_vars_last_pos = indep.size();
-            ret = solver->find_backbone(b);
+            ret = solver->find_fast_backw(b);
             assert(ret != l_False);
 
             cout
@@ -242,8 +242,8 @@ void Common::backward_round()
             << " ret: " << ret
             << " test_var: " << test_var
             << endl;
-            backbone_tot += non_indep_vars.size();
-            backbone_max = std::max<uint32_t>(non_indep_vars.size(), backbone_max);
+            fast_backw_tot += non_indep_vars.size();
+            fast_backw_max = std::max<uint32_t>(non_indep_vars.size(), fast_backw_max);
             for(uint32_t i = indep_vars_last_pos; i < indep.size(); i ++) {
                 uint32_t var = indep[i];
                 unknown_set[var] = 0;
@@ -313,18 +313,18 @@ void Common::backward_round()
             << " I: " << std::setw(7) << indep.size()
             << " N: " << std::setw(7) << not_indep
             ;
-            if (conf.backbone) {
+            if (conf.fast_backw) {
                 cout << " backb avg:" << std::setprecision(1) << std::setw(7)
-                << (double)backbone_tot/(double)backbone_calls
-                << " backb max:" << std::setw(7) << backbone_max;
+                << (double)fast_backw_tot/(double)fast_backw_calls
+                << " backb max:" << std::setw(7) << fast_backw_max;
             }
             cout << " T: "
             << std::setprecision(2) << std::fixed << (cpuTime() - myTime)
             << endl;
             myTime = cpuTime();
-            backbone_tot = 0;
-            backbone_calls = 0;
-            backbone_max = 0;
+            fast_backw_tot = 0;
+            fast_backw_calls = 0;
+            fast_backw_max = 0;
         }
         iter++;
 

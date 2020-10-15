@@ -83,7 +83,7 @@ void add_mis_options()
     ("polar", po::value(&conf.polarmode)->default_value(conf.polarmode),
      "Polarity mode. 0 = false, 1 = true, 2 = polarity caching")
     ("distill", po::value(&conf.distill)->default_value(conf.distill), "distill")
-    ("backbone", po::value(&conf.backbone)->default_value(conf.backbone), "backbone")
+    ("fastbackw", po::value(&conf.fast_backw)->default_value(conf.fast_backw), "fast_backw")
     ("guess", po::value(&conf.guess)->default_value(conf.guess), "Guess small set")
     ("sort", po::value(&conf.incidence_sort)->default_value(conf.incidence_sort),
      "Which sorting mechanism. 1 == min lit inc + varnum, 2 == min lit inc + min lit probe + varnum")

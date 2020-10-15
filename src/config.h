@@ -28,7 +28,7 @@
 struct Config {
     int verb = 0;
     int seed = 0;
-    int backbone = 1;
+    int fast_backw = 1;
     int distill = 0;
     int intree = 1;
     int guess = 1;
