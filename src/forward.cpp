@@ -120,7 +120,7 @@ bool Common::forward_round(
     uint32_t group,
     int offset)
 {
-    ///Will be used in case set_val_forward is set and we mess up the solver
+    ///Will be used in case assign_fwd_val is set and we mess up the solver
     SATSolver* solver2 = NULL;
 
     for(const auto& x: seen) {
@@ -195,7 +195,7 @@ bool Common::forward_round(
     );
 
     //we will mess up the solver, so this saves the state
-    if (conf.set_val_forward) {
+    if (conf.assign_fwd_val) {
         solver2 = new SATSolver();
         bool ret = true;
         solver2->set_up_for_arjun();
@@ -216,7 +216,7 @@ bool Common::forward_round(
 
 
     //Make assumptions set
-    if (conf.set_val_forward) {
+    if (conf.assign_fwd_val) {
         for(const auto& a: assumptions) {
             tmp.clear();
             tmp.push_back(a);
@@ -294,7 +294,7 @@ bool Common::forward_round(
             uint32_t ass = var_to_indic[test_var];
             assert(ass != var_Undef);
             assert(!seen[ass]);
-            if (conf.set_val_forward) {
+            if (conf.assign_fwd_val) {
                 tmp.clear();
                 tmp.push_back(Lit(ass, true));
                 solver->add_clause(tmp);
@@ -349,7 +349,7 @@ bool Common::forward_round(
         }
     }
 
-    if (conf.set_val_forward) {
+    if (conf.assign_fwd_val) {
         delete solver;
         solver = solver2;
     }

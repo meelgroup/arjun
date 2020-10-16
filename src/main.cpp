@@ -91,7 +91,7 @@ void add_mis_options()
      "simplify")
     ("recomp", po::value(&recompute_sampling_set)->default_value(recompute_sampling_set),
      "Recompute sampling set even if it's part of the CNF")
-    ("setfwd", po::value(&conf.set_val_forward)->default_value(conf.set_val_forward),
+    ("setfwd", po::value(&conf.assign_fwd_val)->default_value(conf.assign_fwd_val),
      "When doing forward, set the value instead of using assumptions")
     ("backward", po::value(&conf.backward)->default_value(conf.backward),
      "Do backwards query")
@@ -298,20 +298,20 @@ int main(int argc, char** argv)
     cout << "c [mis] using seed: " << conf.seed << endl;
     arjun->set_verbosity(conf.verb);
     arjun->set_seed(conf.seed);
-    arjun->set_use_fast_backw(conf.fast_backw);
-    arjun->set_use_distill(conf.distill);
-    arjun->set_use_intree(conf.intree);
-    arjun->set_use_guess(conf.guess);
-    arjun->set_use_simp(conf.simp);
-    arjun->set_use_incidence_sort(conf.incidence_sort);
-    arjun->set_use_gate_based(conf.gate_based);
-    arjun->set_use_xor_based(conf.xor_based);
-    arjun->set_use_probe_based(conf.probe_based);
-    arjun->set_use_polarmode(conf.polarmode);
-    arjun->set_use_forward(conf.forward);
-    arjun->set_use_backward(conf.backward);
-    arjun->set_set_val_forward(conf.set_val_forward);
-    arjun->set_set_backw_max_confl(conf.backw_max_confl);
+    arjun->set_fast_backw(conf.fast_backw);
+    arjun->set_distill(conf.distill);
+    arjun->set_intree(conf.intree);
+    arjun->set_guess(conf.guess);
+    arjun->set_simp(conf.simp);
+    arjun->set_incidence_sort(conf.incidence_sort);
+    arjun->set_gate_based(conf.gate_based);
+    arjun->set_xor_based(conf.xor_based);
+    arjun->set_probe_based(conf.probe_based);
+    arjun->set_polarmode(conf.polarmode);
+    arjun->set_forward(conf.forward);
+    arjun->set_backward(conf.backward);
+    arjun->set_assign_fwd_val(conf.assign_fwd_val);
+    arjun->set_backw_max_confl(conf.backw_max_confl);
 
     //signal(SIGINT,signal_handler);
 

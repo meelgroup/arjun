@@ -62,37 +62,37 @@ namespace ArjunNS {
 
         //Set config
         void set_verbosity(uint32_t verb);
-        void set_use_fast_backw(bool fast_backw);
-        void set_use_distill(bool distill);
-        void set_use_intree(bool intree);
-        void set_use_guess(bool guess);
-        void set_use_simp(bool simp);
-        void set_use_incidence_sort(bool incidence_sort);
-        void set_use_gate_based(bool gate_based);
-        void set_use_xor_based(bool xor_based);
-        void set_use_probe_based(bool probe_based);
-        void set_use_polarmode(bool polarmode);
-        void set_use_forward(bool forward);
-        void set_use_backward(bool backward);
-        void set_set_val_forward(bool set_val_forward);
-        void set_set_backw_max_confl(uint32_t backw_max_confl);
+        void set_fast_backw(bool fast_backw);
+        void set_distill(bool distill);
+        void set_intree(bool intree);
+        void set_guess(bool guess);
+        void set_simp(bool simp);
+        void set_incidence_sort(bool incidence_sort);
+        void set_gate_based(bool gate_based);
+        void set_xor_based(bool xor_based);
+        void set_probe_based(bool probe_based);
+        void set_polarmode(bool polarmode);
+        void set_forward(bool forward);
+        void set_backward(bool backward);
+        void set_assign_fwd_val(bool assign_fwd_val);
+        void set_backw_max_confl(uint32_t backw_max_confl);
 
         //Get config
         uint32_t get_verbosity();
-        bool get_use_fast_backw();
-        bool get_use_distill();
-        bool get_use_intree();
-        bool get_use_guess();
-        bool get_use_simp();
-        bool get_use_incidence_sort();
-        bool get_use_gate_based();
-        bool get_use_xor_based();
-        bool get_use_probe_based();
-        bool get_use_polarmode();
-        bool get_use_forward();
-        bool get_use_backward();
-        bool get_set_val_forward();
-        uint32_t get_set_backw_max_confl();
+        bool get_fast_backw();
+        bool get_distill();
+        bool get_intree();
+        bool get_guess();
+        bool get_simp();
+        bool get_incidence_sort();
+        bool get_gate_based();
+        bool get_xor_based();
+        bool get_probe_based();
+        bool get_polarmode();
+        bool get_forward();
+        bool get_backward();
+        bool get_assign_fwd_val();
+        uint32_t get_backw_max_confl();
 
     private:
         ArjPrivateData* arjdata = NULL;

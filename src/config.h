@@ -40,7 +40,7 @@ struct Config {
     int polarmode = 0;
     int forward = 0;
     int backward = 1;
-    int set_val_forward = 0;
+    int assign_fwd_val = 0;
     uint32_t backw_max_confl = 500;
 };
 
