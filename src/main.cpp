@@ -62,7 +62,7 @@ double startTime;
 Config conf;
 ArjunNS::Arjun* arjun = NULL;
 
-int recompute_sampling_set = 1;
+int recompute_sampling_set = 0;
 uint32_t orig_sampling_set_size = 0;
 
 // static void signal_handler(int) {
