@@ -242,15 +242,19 @@ void Common::preproc_and_duplicate()
 
     //Solve problem to SAT
     double solve_time = cpuTime();
-    cout << "c [mis] Solving problem once..." << endl;
-    solver->set_max_confl(50000);
+    if (conf.verb) {
+        cout << "c [mis] Solving problem once..." << endl;
+    }
+    solver->set_max_confl(10000);
     auto ret = solver->solve();
     //solver->print_stats();
     if (ret == l_False) {
         cout << "c [mis] CNF is unsatisfiable. Exiting." << endl;
         exit(0);
     }
-    cout << "c [mis] Solved problem to " << ret << " T: " << (cpuTime()-solve_time) << endl;
+    if (conf.verb) {
+        cout << "c [mis] Solved problem to " << ret << " T: " << (cpuTime()-solve_time) << endl;
+    }
 
     //Simplify problem
     simp();
@@ -258,10 +262,14 @@ void Common::preproc_and_duplicate()
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
     //Read in file again, with offset
-    cout << "c [mis] Duplicating CNF..." << endl;
+    if (conf.verb) {
+        cout << "c [mis] Duplicating CNF..." << endl;
+    }
     double dupl_time = cpuTime();
     duplicate_problem();
-    cout << "c [mis] Duplicated CNF. T:" << (cpuTime() - dupl_time) << endl;
+    if (conf.verb) {
+        cout << "c [mis] Duplicated CNF. T:" << (cpuTime() - dupl_time) << endl;
+    }
 
     //BVE ***ONLY***
     solver->set_intree_probe(false);
@@ -272,21 +280,27 @@ void Common::preproc_and_duplicate()
         dont_elim.push_back(Lit(var+orig_num_vars, false));
     }
     double simpBVETime = cpuTime();
-    cout << "c [mis] CMS::simplify() with *only* BVE..." << endl;
+    if (conf.verb) {
+        cout << "c [mis] CMS::simplify() with *only* BVE..." << endl;
+    }
     solver->set_bve(1);
     solver->set_verbosity(0);
     string str("occ-bve");
     solver->simplify(&dont_elim, &str);
     solver->set_verbosity(0);
-    cout << "c [mis] CMS::simplify() with *only* BVE finished. T: "
-    << cpuTime() - simpBVETime
-    << endl;
+    if (conf.verb) {
+        cout << "c [mis] CMS::simplify() with *only* BVE finished. T: "
+        << cpuTime() - simpBVETime
+        << endl;
+    }
 
 
     //Add the connection clauses, indicator variables, etc.
-    double duplTime = cpuTime();
+    double fix_cl_time = cpuTime();
     add_fixed_clauses();
-    cout << "c [mis] Adding fixed clauses time: " << (cpuTime()-duplTime) << endl;
+    if (conf.verb) {
+        cout << "c [mis] Adding fixed clauses time: " << (cpuTime()-fix_cl_time) << endl;
+    }
 
     //Seen needs re-init, because we got new variables
     seen.clear();
@@ -388,7 +402,9 @@ void Common::calc_community_parts()
     }
     solver->end_getting_small_clauses();
 
-    cout << "c [mis-comm] Number of communities: " << commpart_incs.size()
-    << " T: " << (cpuTime() - myTime)
-    << endl;
+    if (conf.verb) {
+        cout << "c [mis-comm] Number of communities: " << commpart_incs.size()
+        << " T: " << (cpuTime() - myTime)
+        << endl;
+    }
 }

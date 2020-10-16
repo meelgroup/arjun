@@ -67,7 +67,7 @@ namespace ArjunNS {
         void set_intree(bool intree);
         void set_guess(bool guess);
         void set_simp(bool simp);
-        void set_incidence_sort(bool incidence_sort);
+        void set_incidence_sort(uint32_t incidence_sort);
         void set_gate_based(bool gate_based);
         void set_xor_based(bool xor_based);
         void set_probe_based(bool probe_based);
@@ -84,7 +84,7 @@ namespace ArjunNS {
         bool get_intree();
         bool get_guess();
         bool get_simp();
-        bool get_incidence_sort();
+        uint32_t get_incidence_sort();
         bool get_gate_based();
         bool get_xor_based();
         bool get_probe_based();

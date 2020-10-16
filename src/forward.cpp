@@ -172,7 +172,9 @@ bool Common::forward_round(
         }
     }
     std::sort(pick_possibilities.begin(), pick_possibilities.end(), IncidenceSorter<uint32_t>(incidence));
-    cout << "c [mis] Start unknown size: " << pick_possibilities.size() << endl;
+    if (conf.verb) {
+        cout << "c [mis] Start unknown size: " << pick_possibilities.size() << endl;
+    }
     std::reverse(pick_possibilities.begin(), pick_possibilities.end());
 
     set_guess_forward_round(
@@ -303,7 +305,7 @@ bool Common::forward_round(
             }
         }
 
-        if (iter % mod == (mod-1)) {
+        if (iter % mod == (mod-1) && conf.verb) {
             cout
             << "c [mis] iter: " << std::setw(5) << iter;
             if (mod == 1) {
@@ -356,8 +358,10 @@ bool Common::forward_round(
 
     indep.clear();
     update_sampling_set(unknown, unknown_set, indep);
-    cout << "c [mis] forward round finished T: "
-    << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
-    << endl;
+    if (conf.verb) {
+        cout << "c [mis] forward round finished T: "
+        << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
+        << endl;
+    }
     return iter < max_iters;
 }

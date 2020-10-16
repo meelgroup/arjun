@@ -199,7 +199,7 @@ DLL_PUBLIC void Arjun::set_simp(bool simp)
     arjdata->common.conf.simp = simp;
 }
 
-DLL_PUBLIC void Arjun::set_incidence_sort(bool incidence_sort)
+DLL_PUBLIC void Arjun::set_incidence_sort(uint32_t incidence_sort)
 {
     arjdata->common.conf.incidence_sort = incidence_sort;
 }
@@ -276,7 +276,7 @@ DLL_PUBLIC bool Arjun::get_simp()
     return arjdata->common.conf.simp;
 }
 
-DLL_PUBLIC bool Arjun::get_incidence_sort()
+DLL_PUBLIC uint32_t Arjun::get_incidence_sort()
 {
     return arjdata->common.conf.incidence_sort;
 }

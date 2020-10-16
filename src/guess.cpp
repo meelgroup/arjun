@@ -95,7 +95,9 @@ void Common::guess_round(
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
-    cout << "c [mis] Start unknown size: " << unknown.size() << endl;
+    if (conf.verb) {
+        cout << "c [mis] Start unknown size: " << unknown.size() << endl;
+    }
 
     uint32_t iter = 0;
     uint32_t removed = 0;
@@ -147,7 +149,7 @@ void Common::guess_round(
 
         tot_removed += removed;
 
-        if (iter % mod == (mod-1)) {
+        if (iter % mod == (mod-1) && conf.verb) {
             cout
             << "c [mis] iter: " << std::setw(5) << iter;
             cout << " mode: guess ";
@@ -165,9 +167,11 @@ void Common::guess_round(
         iter++;
     }
     update_sampling_set(unknown, unknown_set, indep);
-    cout << "c [mis] guess round finished T: "
-    << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
-    << endl;
+    if (conf.verb) {
+        cout << "c [mis] guess round finished T: "
+        << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
+        << endl;
+    }
 }
 
 uint32_t Common::guess_remove_and_update_ass(
@@ -212,7 +216,9 @@ uint32_t Common::guess_remove_and_update_ass(
 void Common::run_guess()
 {
     double myTime = cpuTime();
-    cout << " ============ Guess ==============" << endl;
+    if (conf.verb) {
+        cout << " ============ Guess ==============" << endl;
+    }
     guess_div = 10;
 
     //We need to do this or we won't get any gains. Intree at least needs to run
@@ -225,12 +231,16 @@ void Common::run_guess()
             "occ-xor,"
 //             "intree-probe,"
             ;
-    cout << "c [mis] Simplifying for guess. Schedule: " << s << endl;
+    if (conf.verb) {
+        cout << "c [mis] Simplifying for guess. Schedule: " << s << endl;
+    }
     solver->set_bve(0);
     solver->simplify(&dont_elim, &s);
-    cout << "c [mis] CMS::simplify() with no BVE finished. T: "
-    << (cpuTime() - myTime)
-    << endl;
+    if (conf.verb) {
+        cout << "c [mis] CMS::simplify() with no BVE finished. T: "
+        << (cpuTime() - myTime)
+        << endl;
+    }
 
     uint32_t old_size = sampling_set->size();
 
@@ -240,7 +250,9 @@ void Common::run_guess()
     uint32_t inv_removed = 0;
     if (!interrupt_asap) {
         uint32_t cur_sampl_size = sampling_set->size();
-        cout << " ============ INV ==============" << endl;
+        if (conf.verb) {
+            cout << " ============ INV ==============" << endl;
+        }
         guess_round(guess_indep, true, false, 0);
         inv_removed += cur_sampl_size - sampling_set->size();
     }
@@ -249,7 +261,9 @@ void Common::run_guess()
     uint32_t rnd_removed = 0;
     if (!interrupt_asap) {
         uint32_t cur_sampl_size = sampling_set->size();
-        cout << " ============ RND ==============" << endl;
+        if (conf.verb) {
+            cout << " ============ RND ==============" << endl;
+        }
         guess_round(guess_indep, false, true, 0);
         guess_round(guess_indep, false, true, 0);
         rnd_removed += cur_sampl_size - sampling_set->size();
@@ -266,13 +280,15 @@ void Common::run_guess()
     }
     uint32_t norm_removed = cur_sampl_size - sampling_set->size();*/
 
-    cout
-    << "c [mis] GUESS"
-    << " removed: " << (old_size-sampling_set->size())
-    << " perc: " << std::fixed << std::setprecision(2)
-    << stats_line_percent(old_size-sampling_set->size(), old_size)
-    << " rem-inv: " << inv_removed
-    //<< " rem-norm: " << norm_removed
-    << " rem-rnd: " << rnd_removed
-    << " T: " << (cpuTime() - myTime) << endl;
+    if (conf.verb) {
+        cout
+        << "c [mis] GUESS"
+        << " removed: " << (old_size-sampling_set->size())
+        << " perc: " << std::fixed << std::setprecision(2)
+        << stats_line_percent(old_size-sampling_set->size(), old_size)
+        << " rem-inv: " << inv_removed
+        //<< " rem-norm: " << norm_removed
+        << " rem-rnd: " << rnd_removed
+        << " T: " << (cpuTime() - myTime) << endl;
+    }
 }

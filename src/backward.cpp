@@ -289,7 +289,7 @@ void Common::backward_round()
             quick_pop_ok = true;
         }
 
-        if (iter % mod == (mod-1)) {
+        if (iter % mod == (mod-1) && conf.verb) {
             //remove_definable_by_gates();
             //solver->remove_and_clean_all();
             cout

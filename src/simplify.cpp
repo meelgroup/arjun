@@ -34,16 +34,20 @@ void Common::simp()
     }
 
     if (conf.simp) {
-        cout << "c [mis] CMS::simplify()..." << endl;
+        if (conf.verb) {
+            cout << "c [mis] CMS::simplify()..." << endl;
+        }
         double simpTime = cpuTime();
         solver->set_verbosity(0);
         solver->set_no_bve();
         solver->set_intree_probe(1);
         solver->simplify();
         solver->set_verbosity(0);
-        cout << "c [mis] CMS::simplify() with no BVE finished. T: "
-        << (cpuTime() - simpTime)
-        << endl;
+        if (conf.verb) {
+            cout << "c [mis] CMS::simplify() with no BVE finished. T: "
+            << (cpuTime() - simpTime)
+            << endl;
+        }
     }
 
     if (conf.xor_based) {
@@ -57,12 +61,14 @@ void Common::simp()
     if (conf.probe_based) {
         probe_all();
     }
-    cout << "c [mis] Arjun simplification finished "
-    << " removed: " << (old_size-sampling_set->size())
-    << " perc: " << std::fixed << std::setprecision(2)
-    << stats_line_percent(old_size-sampling_set->size(), old_size)
-    << " T: " << (cpuTime() - myTime)
-    << endl;
+    if (conf.verb) {
+        cout << "c [mis] Arjun simplification finished "
+        << " removed: " << (old_size-sampling_set->size())
+        << " perc: " << std::fixed << std::setprecision(2)
+        << stats_line_percent(old_size-sampling_set->size(), old_size)
+        << " T: " << (cpuTime() - myTime)
+        << endl;
+    }
 }
 
 void Common::probe_all()
@@ -84,11 +90,13 @@ void Common::probe_all()
     remove_zero_assigned_literals(true);
     remove_eq_literals(true);
 
-    cout << "c [mis-simp] probe"
-    << " removed: " << (old_size-sampling_set->size())
-    << " perc: " << std::fixed << std::setprecision(2)
-    << stats_line_percent(old_size-sampling_set->size(), old_size)
-    << " T: " << (cpuTime() - myTime) << endl;
+    if (conf.verb) {
+        cout << "c [mis-simp] probe"
+        << " removed: " << (old_size-sampling_set->size())
+        << " perc: " << std::fixed << std::setprecision(2)
+        << stats_line_percent(old_size-sampling_set->size(), old_size)
+        << " T: " << (cpuTime() - myTime) << endl;
+    }
 }
 
 struct OccurSorter {
@@ -139,7 +147,9 @@ void Common::remove_definabile_by_xor()
             }
         }
     }
-    cout << "c [mis-simp] XOR Potential: " << potential << endl;
+    if (conf.verb) {
+        cout << "c [mis-simp] XOR Potential: " << potential << endl;
+    }
 
     /*NOTE: there are a few ways to sort. But we want to sort NOT
             to optimize what we remove NOW. Instead, we should optimize what
@@ -191,7 +201,9 @@ void Common::remove_definabile_by_xor()
             break;
         }
     }
-    cout << "c [mis-simp] Non-zero OCCs were: " << non_zero_occs << " seen_set_0: " << seen_set_0 << endl;
+    if (conf.verb) {
+        cout << "c [mis-simp] Non-zero OCCs were: " << non_zero_occs << " seen_set_0: " << seen_set_0 << endl;
+    }
 
     sampling_set->clear();
     for(auto v: toClear) {
@@ -202,11 +214,13 @@ void Common::remove_definabile_by_xor()
     }
     toClear.clear();
 
-    cout << "c [mis-simp] XOR-based"
-    << " removed: " << (old_size-sampling_set->size())
-    << " perc: " << std::fixed << std::setprecision(2)
-    << stats_line_percent(old_size-sampling_set->size(), old_size)
-    << " T: " << (cpuTime() - myTime) << endl;
+    if (conf.verb) {
+        cout << "c [mis-simp] XOR-based"
+        << " removed: " << (old_size-sampling_set->size())
+        << " perc: " << std::fixed << std::setprecision(2)
+        << stats_line_percent(old_size-sampling_set->size(), old_size)
+        << " T: " << (cpuTime() - myTime) << endl;
+    }
 }
 
 void Common::remove_definable_by_gates()
@@ -235,11 +249,13 @@ void Common::remove_definable_by_gates()
     //TODO atomic swap
     std::swap(sampling_set, other_sampling_set);
 
-    cout << "c [mis-simp] gate-based"
-    << " removed: " << (old_size-sampling_set->size())
-    << " perc: " << std::fixed << std::setprecision(2)
-    << stats_line_percent(old_size-sampling_set->size(), old_size)
-    << " T: " << (cpuTime() - myTime) << endl;
+    if (conf.verb) {
+        cout << "c [mis-simp] gate-based"
+        << " removed: " << (old_size-sampling_set->size())
+        << " perc: " << std::fixed << std::setprecision(2)
+        << stats_line_percent(old_size-sampling_set->size(), old_size)
+        << " T: " << (cpuTime() - myTime) << endl;
+    }
 }
 
 void Common::remove_zero_assigned_literals(bool print)
@@ -268,7 +284,7 @@ void Common::remove_zero_assigned_literals(bool print)
     //TODO atomic swap
     std::swap(sampling_set, other_sampling_set);
 
-    if (print) {
+    if (print && conf.verb) {
         total_set_removed += orig_sampling_set_size - sampling_set->size();
         cout << "c [mis-simp] Removed set       : "
         << (orig_sampling_set_size - sampling_set->size())
@@ -306,7 +322,7 @@ void Common::remove_eq_literals(bool print)
 
     total_eq_removed += orig_sampling_set_size - sampling_set->size();
 
-    if (print) {
+    if (print && conf.verb) {
         cout << "c [mis-simp] Removed equivalent: "
         << (orig_sampling_set_size - sampling_set->size())
         << " new size: " << sampling_set->size()
