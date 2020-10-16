@@ -244,3 +244,79 @@ DLL_PUBLIC void Arjun::set_set_backw_max_confl(uint32_t backw_max_confl)
 {
     arjdata->common.conf.backw_max_confl = backw_max_confl;
 }
+
+
+DLL_PUBLIC uint32_t Arjun::get_verbosity()
+{
+    return arjdata->common.conf.verb;
+}
+
+DLL_PUBLIC bool Arjun::get_use_fast_backw()
+{
+    return arjdata->common.conf.fast_backw;
+}
+
+DLL_PUBLIC bool Arjun::get_use_distill()
+{
+    return arjdata->common.conf.distill;
+}
+
+DLL_PUBLIC bool Arjun::get_use_intree()
+{
+    return arjdata->common.conf.intree;
+}
+
+DLL_PUBLIC bool Arjun::get_use_guess()
+{
+    return arjdata->common.conf.guess;
+}
+
+DLL_PUBLIC bool Arjun::get_use_simp()
+{
+    return arjdata->common.conf.simp;
+}
+
+DLL_PUBLIC bool Arjun::get_use_incidence_sort()
+{
+    return arjdata->common.conf.incidence_sort;
+}
+
+DLL_PUBLIC bool Arjun::get_use_gate_based()
+{
+    return arjdata->common.conf.gate_based;
+}
+
+DLL_PUBLIC bool Arjun::get_use_xor_based()
+{
+    return arjdata->common.conf.xor_based;
+}
+
+DLL_PUBLIC bool Arjun::get_use_probe_based()
+{
+    return arjdata->common.conf.probe_based;
+}
+
+DLL_PUBLIC bool Arjun::get_use_polarmode()
+{
+    return arjdata->common.conf.polarmode;
+}
+
+DLL_PUBLIC bool Arjun::get_use_forward()
+{
+    return arjdata->common.conf.forward;
+}
+
+DLL_PUBLIC bool Arjun::get_use_backward()
+{
+    return arjdata->common.conf.backward;
+}
+
+DLL_PUBLIC bool Arjun::get_set_val_forward()
+{
+    return arjdata->common.conf.set_val_forward;
+}
+
+DLL_PUBLIC uint32_t Arjun::get_set_backw_max_confl()
+{
+    return arjdata->common.conf.backw_max_confl;
+}

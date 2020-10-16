@@ -53,6 +53,7 @@ namespace ArjunNS {
         uint32_t start_with_clean_sampling_set();
         std::vector<uint32_t> get_indep_set();
         uint32_t get_orig_num_vars() const;
+        void new_vars(uint32_t num);
 
         //Get clauses
         void start_getting_small_clauses(uint32_t max_len, uint32_t max_glue, bool red = true);
@@ -61,7 +62,6 @@ namespace ArjunNS {
 
         //Set config
         void set_verbosity(uint32_t verb);
-        void new_vars(uint32_t num);
         void set_use_fast_backw(bool fast_backw);
         void set_use_distill(bool distill);
         void set_use_intree(bool intree);
@@ -76,6 +76,23 @@ namespace ArjunNS {
         void set_use_backward(bool backward);
         void set_set_val_forward(bool set_val_forward);
         void set_set_backw_max_confl(uint32_t backw_max_confl);
+
+        //Get config
+        uint32_t get_verbosity();
+        bool get_use_fast_backw();
+        bool get_use_distill();
+        bool get_use_intree();
+        bool get_use_guess();
+        bool get_use_simp();
+        bool get_use_incidence_sort();
+        bool get_use_gate_based();
+        bool get_use_xor_based();
+        bool get_use_probe_based();
+        bool get_use_polarmode();
+        bool get_use_forward();
+        bool get_use_backward();
+        bool get_set_val_forward();
+        uint32_t get_set_backw_max_confl();
 
     private:
         ArjPrivateData* arjdata = NULL;
