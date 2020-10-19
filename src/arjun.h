@@ -76,6 +76,8 @@ namespace ArjunNS {
         void set_backward(bool backward);
         void set_assign_fwd_val(bool assign_fwd_val);
         void set_backw_max_confl(uint32_t backw_max_confl);
+        void set_solve_to_sat(bool solve_to_sat);
+        void set_do_xors(bool do_xors);
 
         //Get config
         uint32_t get_verbosity();
@@ -93,6 +95,8 @@ namespace ArjunNS {
         bool get_backward();
         bool get_assign_fwd_val();
         uint32_t get_backw_max_confl();
+        bool get_solve_to_sat();
+        bool get_do_xors();
 
     private:
         ArjPrivateData* arjdata = NULL;

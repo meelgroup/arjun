@@ -232,32 +232,40 @@ void Common::set_up_solver()
     }
 }
 
-void Common::preproc_and_duplicate()
+bool Common::preproc_and_duplicate()
 {
     orig_num_vars = solver->nVars();
     seen.clear();
     seen.resize(solver->nVars(), 0);
     get_incidence();
-    calc_community_parts();
+    if (conf.incidence_sort == 4 || conf.incidence_sort == 5) {
+        calc_community_parts();
+    }
 
     //Solve problem to SAT
-    double solve_time = cpuTime();
-    if (conf.verb) {
-        cout << "c [mis] Solving problem once..." << endl;
-    }
-    solver->set_max_confl(10000);
-    auto ret = solver->solve();
-    //solver->print_stats();
-    if (ret == l_False) {
-        cout << "c [mis] CNF is unsatisfiable. Exiting." << endl;
-        exit(0);
-    }
-    if (conf.verb) {
-        cout << "c [mis] Solved problem to " << ret << " T: " << (cpuTime()-solve_time) << endl;
+    if (conf.solve_to_sat) {
+        double solve_time = cpuTime();
+        if (conf.verb) {
+            cout << "c [mis] Solving problem once..." << endl;
+        }
+        solver->set_max_confl(10000);
+        auto ret = solver->solve();
+        //solver->print_stats();
+        if (ret == l_False) {
+            cout << "c [mis] CNF is unsatisfiable!" << endl;
+            return false;
+        }
+        if (conf.verb) {
+            cout << "c [mis] Solved problem to " << ret << " T: " << (cpuTime()-solve_time) << endl;
+        }
     }
 
     //Simplify problem
-    simp();
+    if (!simp()) {
+        cout << "Sim..." << endl;
+        return false;
+    }
+
     //incidence = solver->get_var_incidence(); //NOTE: makes it slower
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
@@ -286,8 +294,9 @@ void Common::preproc_and_duplicate()
     solver->set_bve(1);
     solver->set_verbosity(0);
     string str("occ-bve");
-    solver->simplify(&dont_elim, &str);
-    solver->set_verbosity(0);
+    if (solver->simplify(&dont_elim, &str) == l_False) {
+        return false;
+    }
     if (conf.verb) {
         cout << "c [mis] CMS::simplify() with *only* BVE finished. T: "
         << cpuTime() - simpBVETime
@@ -302,13 +311,33 @@ void Common::preproc_and_duplicate()
         cout << "c [mis] Adding fixed clauses time: " << (cpuTime()-fix_cl_time) << endl;
     }
 
+    //Discover XORs
+    if (conf.do_xors) {
+        str = "occ-xor";
+        solver->set_bve(0);
+        solver->set_allow_otf_gauss();
+        solver->set_xor_detach(false);
+        solver->set_verbosity(1);
+        conf.verb = 2;
+        if (solver->simplify(&dont_elim, &str) == l_False) {
+            return false;
+        }
+    }
+
     //Seen needs re-init, because we got new variables
     seen.clear();
     seen.resize(solver->nVars(), 0);
+
+    return true;
 }
 
 void Common::calc_community_parts()
 {
+    double myTime = cpuTime();
+    if (conf.verb) {
+        cout << "c [mis] Calculating Louvain Communities..." << endl;
+    }
+
     vector<vector<Lit>> cnf;
     solver->start_getting_small_clauses(
         std::numeric_limits<uint32_t>::max(),
@@ -353,7 +382,6 @@ void Common::calc_community_parts()
     }
     solver->end_getting_small_clauses();
 
-    double myTime = cpuTime();
     LouvainC::Communities graph;
     for(const auto& it: edges) {
         graph.add_edge(it.first.first, it.first.second, it.second);

@@ -106,13 +106,15 @@ DLL_PUBLIC string Arjun::get_version_info()
 
 DLL_PUBLIC std::string Arjun::get_solver_version_info()
 {
-    return arjdata->common.solver->get_version();
+    return arjdata->common.solver->get_text_version_info();
 }
 
 DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
 {
     double starTime = cpuTime();
-    arjdata->common.preproc_and_duplicate();
+    if (!arjdata->common.preproc_and_duplicate()) {
+        return *arjdata->common.sampling_set;
+    }
 
     if (arjdata->common.conf.guess) {
         arjdata->common.run_guess();
@@ -319,4 +321,25 @@ DLL_PUBLIC bool Arjun::get_assign_fwd_val()
 DLL_PUBLIC uint32_t Arjun::get_backw_max_confl()
 {
     return arjdata->common.conf.backw_max_confl;
+}
+
+DLL_PUBLIC void Arjun::set_solve_to_sat(bool solve_to_sat)
+{
+    arjdata->common.conf.solve_to_sat = solve_to_sat;
+}
+
+DLL_PUBLIC bool Arjun::get_solve_to_sat()
+{
+    return arjdata->common.conf.solve_to_sat;
+}
+
+
+DLL_PUBLIC void Arjun::set_do_xors(bool do_xors)
+{
+    arjdata->common.conf.do_xors = do_xors;
+}
+
+DLL_PUBLIC bool Arjun::get_do_xors()
+{
+    return arjdata->common.conf.do_xors;
 }

@@ -111,7 +111,7 @@ struct Common
         const vector<char>& unknown_set,
         const vector<uint32_t>& indep
     );
-    void preproc_and_duplicate();
+    bool preproc_and_duplicate();
     void add_fixed_clauses();
     void print_orig_sampling_set();
     void start_with_clean_sampling_set();
@@ -146,12 +146,12 @@ struct Common
 
     //simp
     vector<uint32_t> toClear;
-    void simp();
+    bool simp();
     void remove_definabile_by_xor();
     void remove_definable_by_gates();
     void remove_zero_assigned_literals(bool print = true);
     void remove_eq_literals(bool print = true);
-    void probe_all();
+    bool probe_all();
 
     //forward
     void set_guess_forward_round(

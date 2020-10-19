@@ -41,6 +41,8 @@ struct Config {
     int forward = 0;
     int backward = 1;
     int assign_fwd_val = 0;
+    int solve_to_sat = 0;
+    int do_xors = 1;
     uint32_t backw_max_confl = 500;
 };
 

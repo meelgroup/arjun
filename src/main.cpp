@@ -72,6 +72,8 @@ uint32_t orig_sampling_set_size = 0;
 
 void add_mis_options()
 {
+    conf.verb = 1;
+
     mis_options.add_options()
     ("help,h", "Prints help")
     ("version", "Print version info")
@@ -105,6 +107,10 @@ void add_mis_options()
      "Use XOR detection in SAT solver to define some variables")
     ("maxc", po::value(&conf.backw_max_confl)->default_value(conf.backw_max_confl),
      "Maximum conflicts per variable in backward mode")
+    ("solvesat", po::value(&conf.solve_to_sat)->default_value(conf.solve_to_sat),
+     "Solve until we find a satisfiable assignment")
+    ("xors", po::value(&conf.do_xors)->default_value(conf.do_xors),
+     "Use XOR finding and Gauss-Jordan elimination")
 
 
     ;
@@ -312,6 +318,8 @@ int main(int argc, char** argv)
     arjun->set_backward(conf.backward);
     arjun->set_assign_fwd_val(conf.assign_fwd_val);
     arjun->set_backw_max_confl(conf.backw_max_confl);
+    arjun->set_solve_to_sat(conf.solve_to_sat);
+    arjun->set_do_xors(conf.do_xors);
 
     //signal(SIGINT,signal_handler);
 
@@ -323,7 +331,7 @@ int main(int argc, char** argv)
     const string inp = vm["input"].as<string>();
     readInAFile(inp);
 
-    cout << arjun->get_solver_version_info() << endl;
+    cout << arjun->get_solver_version_info();
     auto sampl_set = arjun->get_indep_set();
     print_indep_set(sampl_set, orig_sampling_set_size);
     cout << "c [mis] "

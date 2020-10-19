@@ -24,8 +24,9 @@
 
 #include "common.h"
 
-void Common::simp()
+bool Common::simp()
 {
+    assert(solver->okay());
     auto old_size = sampling_set->size();
     double myTime = cpuTime();
 
@@ -41,7 +42,9 @@ void Common::simp()
         solver->set_verbosity(0);
         solver->set_no_bve();
         solver->set_intree_probe(1);
-        solver->simplify();
+        if (solver->simplify() == l_False) {
+            return false;
+        }
         solver->set_verbosity(0);
         if (conf.verb) {
             cout << "c [mis] CMS::simplify() with no BVE finished. T: "
@@ -59,8 +62,11 @@ void Common::simp()
         remove_definable_by_gates();
     }
     if (conf.probe_based) {
-        probe_all();
+        if (!probe_all()) {
+            return false;
+        }
     }
+
     if (conf.verb) {
         cout << "c [mis] Arjun simplification finished "
         << " removed: " << (old_size-sampling_set->size())
@@ -69,9 +75,11 @@ void Common::simp()
         << " T: " << (cpuTime() - myTime)
         << endl;
     }
+
+    return true;
 }
 
-void Common::probe_all()
+bool Common::probe_all()
 {
     double myTime = cpuTime();
     auto old_size = sampling_set->size();
@@ -80,13 +88,15 @@ void Common::probe_all()
     for(auto v: *sampling_set) {
         uint32_t min_props = 0;
         Lit l(v, false);
-        auto ret = solver->probe(l, min_props);
-        assert(ret == l_Undef);
-
+        if(solver->probe(l, min_props) == l_False) {
+            return false;
+        }
         incidence_probing[v] = min_props;
     }
     string s("scc-vrepl");
-    solver->simplify(NULL, &s);
+    if (solver->simplify(NULL, &s) == l_False) {
+        return false;
+    }
     remove_zero_assigned_literals(true);
     remove_eq_literals(true);
 
@@ -97,6 +107,8 @@ void Common::probe_all()
         << stats_line_percent(old_size-sampling_set->size(), old_size)
         << " T: " << (cpuTime() - myTime) << endl;
     }
+
+    return true;
 }
 
 struct OccurSorter {
@@ -227,6 +239,12 @@ void Common::remove_definable_by_gates()
 {
     double myTime = cpuTime();
     auto old_size = sampling_set->size();
+
+    if (conf.verb) {
+        cout << "c [mis-simp] attempting gate-based..." << endl;
+    }
+
+
     vector<uint32_t> definable = solver->get_definabe(*sampling_set);
 
     for(auto v: definable) {
