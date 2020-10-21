@@ -45,6 +45,7 @@ bool Common::simp()
         if (solver->simplify() == l_False) {
             return false;
         }
+        solver->set_intree_probe(0);
         solver->set_verbosity(0);
         if (conf.verb) {
             cout << "c [mis] CMS::simplify() with no BVE finished. T: "

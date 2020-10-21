@@ -317,7 +317,7 @@ bool Common::preproc_and_duplicate()
         solver->set_bve(0);
         solver->set_allow_otf_gauss();
         solver->set_xor_detach(false);
-        solver->set_verbosity(1);
+//         solver->set_verbosity(1);
         conf.verb = 2;
         if (solver->simplify(&dont_elim, &str) == l_False) {
             return false;
