@@ -161,6 +161,10 @@ DLL_PUBLIC void Arjun::end_getting_small_clauses()
 
 DLL_PUBLIC uint32_t Arjun::get_orig_num_vars() const
 {
+    if (arjdata->common.orig_num_vars == std::numeric_limits<uint32_t>::max()) {
+        return arjdata->common.solver->nVars();
+    }
+
     return arjdata->common.orig_num_vars;
 }
 

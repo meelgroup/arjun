@@ -73,7 +73,7 @@ struct Common
 
     vector<Lit> tmp;
     vector<char> seen;
-    uint32_t orig_num_vars;
+    uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
     uint32_t total_eq_removed = 0;
     uint32_t total_set_removed = 0;
     uint32_t mult_or_invers_var;
