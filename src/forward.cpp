@@ -159,7 +159,7 @@ bool Common::forward_round(
 
 
     //Sort how we'll try to decide the unknowns
-    std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
+    sort_unknown(unknown);
     std::reverse(unknown.begin(), unknown.end());
     vector<char> guess_set(orig_num_vars, 0);
     for(uint32_t var = 0; var < orig_num_vars; var++) {

@@ -181,6 +181,9 @@ struct Common
         const vector<uint32_t>& indep);
     void backward_round();
 
+    //Sorting
+    template<class T> void sort_unknown(T& unknown);
+
 };
 
 inline double stats_line_percent(double num, double total)
@@ -305,6 +308,27 @@ struct IncidenceSorterCommPartToOtherComm
 
     const Common* comm;
 };
+
+template<class T>
+void Common::sort_unknown(T& unknown)
+{
+    if (conf.incidence_sort == 1) {
+        std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
+    } else if (conf.incidence_sort == 2) {
+        std::sort(unknown.begin(), unknown.end(), IncidenceSorter2<uint32_t>(incidence, incidence_probing));
+    } else if (conf.incidence_sort == 3) {
+        std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence_probing));
+    } else if (conf.incidence_sort == 4) {
+        std::sort(unknown.begin(), unknown.end(), IncidenceSorterCommPart(this));
+    } else if (conf.incidence_sort == 5) {
+        std::sort(unknown.begin(), unknown.end(), IncidenceSorterCommPartToOtherComm(this));
+    } else if (conf.incidence_sort == 6) {
+        std::shuffle(unknown.begin(), unknown.end(), random_source);
+    } else {
+        cout << "ERROR: wrong sorting mechanism given" << endl;
+        exit(-1);
+    }
+}
 
 //ARJUN_COMMON_H
 #endif

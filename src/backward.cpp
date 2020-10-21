@@ -92,23 +92,7 @@ void Common::backward_round()
         unknown_set[x] = 1;
     }
 
-    if (conf.incidence_sort == 1) {
-        std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
-    } else if (conf.incidence_sort == 2) {
-        std::sort(unknown.begin(), unknown.end(), IncidenceSorter2<uint32_t>(incidence, incidence_probing));
-    } else if (conf.incidence_sort == 3) {
-        std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence_probing));
-    } else if (conf.incidence_sort == 4) {
-        std::sort(unknown.begin(), unknown.end(), IncidenceSorterCommPart(this));
-    } else if (conf.incidence_sort == 5) {
-        std::sort(unknown.begin(), unknown.end(), IncidenceSorterCommPartToOtherComm(this));
-    } else if (conf.incidence_sort == 6) {
-        std::shuffle(unknown.begin(), unknown.end(), random_source);
-    } else {
-        cout << "ERROR: wrong sorting mechanism given" << endl;
-        exit(-1);
-    }
-
+    sort_unknown(unknown);
     if (conf.verb >= 3) {
         cout << "Sorted output: "<< endl;
         for (const auto& v:unknown) {
