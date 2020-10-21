@@ -219,7 +219,16 @@ void add_supported_options(int argc, char** argv)
     }
 }
 
-void print_indep_set(const vector<uint32_t>& indep_set, uint32_t orig_sampling_set_size)
+inline double stats_line_percent(double num, double total)
+{
+    if (total == 0) {
+        return 0;
+    } else {
+        return num/total*100.0;
+    }
+}
+
+void print_indep_set(const vector<uint32_t>& indep_set)
 {
     cout << "vp ";
     for(const uint32_t s: indep_set) {
@@ -229,10 +238,10 @@ void print_indep_set(const vector<uint32_t>& indep_set, uint32_t orig_sampling_s
 
     cout << "c set size: " << std::setw(8)
     << indep_set.size()
-    << " fraction of original: "
+    << " percent of original: "
     <<  std::setw(6) << std::setprecision(4)
-    << (double)indep_set.size()/(double)orig_sampling_set_size
-    << endl << std::flush;
+    << stats_line_percent(indep_set.size(), orig_sampling_set_size)
+    << " %" << endl << std::flush;
 }
 
 void readInAFile(const string& filename)
@@ -294,6 +303,7 @@ int main(int argc, char** argv)
 
     cout << "c [mis] Arjun Version: "
     << arjun->get_version_info() << endl;
+    cout << arjun->get_solver_version_info();
 
     cout
     << "c executed with command line: "
@@ -330,10 +340,10 @@ int main(int argc, char** argv)
     }
     const string inp = vm["input"].as<string>();
     readInAFile(inp);
+    cout << "c [mis] original sampling set size: " << orig_sampling_set_size << endl;
 
-    cout << arjun->get_solver_version_info();
     auto sampl_set = arjun->get_indep_set();
-    print_indep_set(sampl_set, orig_sampling_set_size);
+    print_indep_set(sampl_set);
     cout << "c [mis] "
     << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
     << endl;

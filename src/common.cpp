@@ -276,7 +276,7 @@ bool Common::preproc_and_duplicate()
     double dupl_time = cpuTime();
     duplicate_problem();
     if (conf.verb) {
-        cout << "c [mis] Duplicated CNF. T:" << (cpuTime() - dupl_time) << endl;
+        cout << "c [mis] Duplicated CNF. T: " << (cpuTime() - dupl_time) << endl;
     }
 
     //BVE ***ONLY***

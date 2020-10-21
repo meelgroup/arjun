@@ -36,7 +36,7 @@ bool Common::simp()
 
     if (conf.simp) {
         if (conf.verb) {
-            cout << "c [mis] CMS::simplify()..." << endl;
+            cout << "c [mis] CMS::simplify() with no BVE, intree probe..." << endl;
         }
         double simpTime = cpuTime();
         solver->set_verbosity(0);
