@@ -36,7 +36,7 @@ bool Common::simp()
 
     if (conf.simp) {
         if (conf.verb) {
-            cout << "c [arjun] CMS::simplify() with no BVE, intree probe..." << endl;
+            cout << "c [arjun-simp] CMS::simplify() with no BVE, intree probe..." << endl;
         }
         double simpTime = cpuTime();
         solver->set_verbosity(0);
@@ -48,7 +48,7 @@ bool Common::simp()
         solver->set_intree_probe(0);
         solver->set_verbosity(0);
         if (conf.verb) {
-            cout << "c [arjun] CMS::simplify() with no BVE finished. T: "
+            cout << "c [arjun-simp] CMS::simplify() with no BVE finished. T: "
             << (cpuTime() - simpTime)
             << endl;
         }
@@ -102,7 +102,7 @@ bool Common::probe_all()
     remove_eq_literals(true);
 
     if (conf.verb) {
-        cout << "c [mis-simp] probe"
+        cout << "c [arjun-simp] probe"
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
@@ -161,7 +161,7 @@ void Common::remove_definabile_by_xor()
         }
     }
     if (conf.verb) {
-        cout << "c [mis-simp] XOR Potential: " << potential << endl;
+        cout << "c [arjun-simp] XOR Potential: " << potential << endl;
     }
 
     /*NOTE: there are a few ways to sort. But we want to sort NOT
@@ -215,7 +215,7 @@ void Common::remove_definabile_by_xor()
         }
     }
     if (conf.verb) {
-        cout << "c [mis-simp] Non-zero OCCs were: " << non_zero_occs << " seen_set_0: " << seen_set_0 << endl;
+        cout << "c [arjun-simp] Non-zero OCCs were: " << non_zero_occs << " seen_set_0: " << seen_set_0 << endl;
     }
 
     sampling_set->clear();
@@ -228,7 +228,7 @@ void Common::remove_definabile_by_xor()
     toClear.clear();
 
     if (conf.verb) {
-        cout << "c [mis-simp] XOR-based"
+        cout << "c [arjun-simp] XOR-based"
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
@@ -242,7 +242,7 @@ void Common::remove_definable_by_gates()
     auto old_size = sampling_set->size();
 
     if (conf.verb) {
-        cout << "c [mis-simp] attempting gate-based..." << endl;
+        cout << "c [arjun-simp] attempting gate-based..." << endl;
     }
 
 
@@ -269,7 +269,7 @@ void Common::remove_definable_by_gates()
     std::swap(sampling_set, other_sampling_set);
 
     if (conf.verb) {
-        cout << "c [mis-simp] gate-based"
+        cout << "c [arjun-simp] gate-based"
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
@@ -305,7 +305,7 @@ void Common::remove_zero_assigned_literals(bool print)
 
     if (print && conf.verb) {
         total_set_removed += orig_sampling_set_size - sampling_set->size();
-        cout << "c [mis-simp] Removed set       : "
+        cout << "c [arjun-simp] Removed set       : "
         << (orig_sampling_set_size - sampling_set->size())
         << " new size: " << sampling_set->size()
         << endl;
@@ -342,7 +342,7 @@ void Common::remove_eq_literals(bool print)
     total_eq_removed += orig_sampling_set_size - sampling_set->size();
 
     if (print && conf.verb) {
-        cout << "c [mis-simp] Removed equivalent: "
+        cout << "c [arjun-simp] Removed equivalent: "
         << (orig_sampling_set_size - sampling_set->size())
         << " new size: " << sampling_set->size()
         << endl;
