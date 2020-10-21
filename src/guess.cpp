@@ -143,7 +143,7 @@ void Common::guess_round(
             );
         }
 
-        solver->set_max_confl(100);
+        solver->set_max_confl(conf.guess_max_confl);
         removed = guess_remove_and_update_ass(
             assumptions, unknown_set, dontremove_vars);
 

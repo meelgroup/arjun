@@ -44,6 +44,7 @@ struct Config {
     int solve_to_sat = 0;
     int do_xors = 1;
     uint32_t backw_max_confl = 500;
+    uint32_t guess_max_confl = 1000;
 };
 
 //ARJUN_CONFIG_H

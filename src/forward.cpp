@@ -260,7 +260,7 @@ bool Common::forward_round(
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
 
-        solver->set_max_confl(10);
+        solver->set_max_confl(conf.backw_max_confl);
         solver->set_no_confl_needed();
 
         lbool ret = solver->solve(&assumptions);
