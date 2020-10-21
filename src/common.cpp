@@ -79,16 +79,16 @@ void Common::print_orig_sampling_set()
 {
     if (sampling_set->size() > 100) {
         cout
-        << "c [mis] Sampling var set contains over 100 variables, not displaying"
+        << "c [arjun] Sampling var set contains over 100 variables, not displaying"
         << endl;
     } else {
-        cout << "c [mis] Sampling set: ";
+        cout << "c [arjun] Sampling set: ";
         for (auto v: *sampling_set) {
             cout << v+1 << ", ";
         }
         cout << endl;
     }
-    cout << "c [mis] Orig size         : " << sampling_set->size() << endl;
+    cout << "c [arjun] Orig size         : " << sampling_set->size() << endl;
 }
 
 void Common::add_fixed_clauses()
@@ -246,17 +246,17 @@ bool Common::preproc_and_duplicate()
     if (conf.solve_to_sat) {
         double solve_time = cpuTime();
         if (conf.verb) {
-            cout << "c [mis] Solving problem once..." << endl;
+            cout << "c [arjun] Solving problem once..." << endl;
         }
         solver->set_max_confl(10000);
         auto ret = solver->solve();
         //solver->print_stats();
         if (ret == l_False) {
-            cout << "c [mis] CNF is unsatisfiable!" << endl;
+            cout << "c [arjun] CNF is unsatisfiable!" << endl;
             return false;
         }
         if (conf.verb) {
-            cout << "c [mis] Solved problem to " << ret << " T: " << (cpuTime()-solve_time) << endl;
+            cout << "c [arjun] Solved problem to " << ret << " T: " << (cpuTime()-solve_time) << endl;
         }
     }
 
@@ -271,12 +271,12 @@ bool Common::preproc_and_duplicate()
 
     //Read in file again, with offset
     if (conf.verb) {
-        cout << "c [mis] Duplicating CNF..." << endl;
+        cout << "c [arjun] Duplicating CNF..." << endl;
     }
     double dupl_time = cpuTime();
     duplicate_problem();
     if (conf.verb) {
-        cout << "c [mis] Duplicated CNF. T: " << (cpuTime() - dupl_time) << endl;
+        cout << "c [arjun] Duplicated CNF. T: " << (cpuTime() - dupl_time) << endl;
     }
 
     //BVE ***ONLY***
@@ -289,7 +289,7 @@ bool Common::preproc_and_duplicate()
     }
     double simpBVETime = cpuTime();
     if (conf.verb) {
-        cout << "c [mis] CMS::simplify() with *only* BVE..." << endl;
+        cout << "c [arjun] CMS::simplify() with *only* BVE..." << endl;
     }
     solver->set_bve(1);
     solver->set_verbosity(0);
@@ -298,7 +298,7 @@ bool Common::preproc_and_duplicate()
         return false;
     }
     if (conf.verb) {
-        cout << "c [mis] CMS::simplify() with *only* BVE finished. T: "
+        cout << "c [arjun] CMS::simplify() with *only* BVE finished. T: "
         << cpuTime() - simpBVETime
         << endl;
     }
@@ -308,7 +308,7 @@ bool Common::preproc_and_duplicate()
     double fix_cl_time = cpuTime();
     add_fixed_clauses();
     if (conf.verb) {
-        cout << "c [mis] Adding fixed clauses time: " << (cpuTime()-fix_cl_time) << endl;
+        cout << "c [arjun] Adding fixed clauses time: " << (cpuTime()-fix_cl_time) << endl;
     }
 
     //Discover XORs
@@ -335,7 +335,7 @@ void Common::calc_community_parts()
 {
     double myTime = cpuTime();
     if (conf.verb) {
-        cout << "c [mis] Calculating Louvain Communities..." << endl;
+        cout << "c [arjun] Calculating Louvain Communities..." << endl;
     }
 
     vector<vector<Lit>> cnf;

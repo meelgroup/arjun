@@ -106,7 +106,7 @@ void Common::backward_round()
     }
 
     if (conf.verb) {
-        cout << "c [mis] Start unknown size: " << unknown.size() << endl;
+        cout << "c [arjun] Start unknown size: " << unknown.size() << endl;
     }
 
     vector<Lit> assumptions;
@@ -277,7 +277,7 @@ void Common::backward_round()
             //remove_definable_by_gates();
             //solver->remove_and_clean_all();
             cout
-            << "c [mis] iter: " << std::setw(5) << iter;
+            << "c [arjun] iter: " << std::setw(5) << iter;
             if (mod == 1) {
                 cout
                 << " ret: " << std::setw(8) << ret;
@@ -319,7 +319,7 @@ void Common::backward_round()
     update_sampling_set(unknown, unknown_set, indep);
 
     if (conf.verb) {
-        cout << "c [mis] backward round finished T: "
+        cout << "c [arjun] backward round finished T: "
         << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
         << endl;
     }

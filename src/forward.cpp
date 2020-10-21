@@ -173,7 +173,7 @@ bool Common::forward_round(
     }
     std::sort(pick_possibilities.begin(), pick_possibilities.end(), IncidenceSorter<uint32_t>(incidence));
     if (conf.verb) {
-        cout << "c [mis] Start unknown size: " << pick_possibilities.size() << endl;
+        cout << "c [arjun] Start unknown size: " << pick_possibilities.size() << endl;
     }
     std::reverse(pick_possibilities.begin(), pick_possibilities.end());
 
@@ -307,7 +307,7 @@ bool Common::forward_round(
 
         if (iter % mod == (mod-1) && conf.verb) {
             cout
-            << "c [mis] iter: " << std::setw(5) << iter;
+            << "c [arjun] iter: " << std::setw(5) << iter;
             if (mod == 1) {
                 cout << " mode: "
                 << " guess one "
@@ -359,7 +359,7 @@ bool Common::forward_round(
     indep.clear();
     update_sampling_set(unknown, unknown_set, indep);
     if (conf.verb) {
-        cout << "c [mis] forward round finished T: "
+        cout << "c [arjun] forward round finished T: "
         << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
         << endl;
     }

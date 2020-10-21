@@ -96,7 +96,7 @@ void Common::guess_round(
         unknown_set[x] = 1;
     }
     if (conf.verb) {
-        cout << "c [mis] Start unknown size: " << unknown.size() << endl;
+        cout << "c [arjun] Start unknown size: " << unknown.size() << endl;
     }
 
     uint32_t iter = 0;
@@ -151,7 +151,7 @@ void Common::guess_round(
 
         if (iter % mod == (mod-1) && conf.verb) {
             cout
-            << "c [mis] iter: " << std::setw(5) << iter;
+            << "c [arjun] iter: " << std::setw(5) << iter;
             cout << " mode: guess ";
             cout
             << " Test: " << std::setw(7) << assumptions.size()
@@ -168,7 +168,7 @@ void Common::guess_round(
     }
     update_sampling_set(unknown, unknown_set, indep);
     if (conf.verb) {
-        cout << "c [mis] guess round finished T: "
+        cout << "c [arjun] guess round finished T: "
         << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
         << endl;
     }
@@ -232,12 +232,12 @@ void Common::run_guess()
 //             "intree-probe,"
             ;
     if (conf.verb) {
-        cout << "c [mis] Simplifying for guess. Schedule: " << s << endl;
+        cout << "c [arjun] Simplifying for guess. Schedule: " << s << endl;
     }
     solver->set_bve(0);
     solver->simplify(&dont_elim, &s);
     if (conf.verb) {
-        cout << "c [mis] CMS::simplify() with no BVE finished. T: "
+        cout << "c [arjun] CMS::simplify() with no BVE finished. T: "
         << (cpuTime() - myTime)
         << endl;
     }
@@ -282,7 +282,7 @@ void Common::run_guess()
 
     if (conf.verb) {
         cout
-        << "c [mis] GUESS"
+        << "c [arjun] GUESS"
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)

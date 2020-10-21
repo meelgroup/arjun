@@ -36,7 +36,7 @@ bool Common::simp()
 
     if (conf.simp) {
         if (conf.verb) {
-            cout << "c [mis] CMS::simplify() with no BVE, intree probe..." << endl;
+            cout << "c [arjun] CMS::simplify() with no BVE, intree probe..." << endl;
         }
         double simpTime = cpuTime();
         solver->set_verbosity(0);
@@ -48,7 +48,7 @@ bool Common::simp()
         solver->set_intree_probe(0);
         solver->set_verbosity(0);
         if (conf.verb) {
-            cout << "c [mis] CMS::simplify() with no BVE finished. T: "
+            cout << "c [arjun] CMS::simplify() with no BVE finished. T: "
             << (cpuTime() - simpTime)
             << endl;
         }
@@ -69,7 +69,7 @@ bool Common::simp()
     }
 
     if (conf.verb) {
-        cout << "c [mis] Arjun simplification finished "
+        cout << "c [arjun] Arjun simplification finished "
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)

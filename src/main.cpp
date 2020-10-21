@@ -66,7 +66,7 @@ int recompute_sampling_set = 0;
 uint32_t orig_sampling_set_size = 0;
 
 // static void signal_handler(int) {
-//     cout << endl << "c [mis] INTERRUPTING ***" << endl << std::flush;
+//     cout << endl << "c [arjun] INTERRUPTING ***" << endl << std::flush;
 //     common.interrupt_asap = true;
 // }
 
@@ -138,7 +138,7 @@ void add_supported_options(int argc, char** argv)
         }
 
         if (vm.count("version")) {
-            cout << "c [mis] Version: " << arjun->get_version_info() << endl;
+            cout << "c [arjun] Version: " << arjun->get_version_info() << endl;
             std::exit(0);
         }
 
@@ -301,7 +301,7 @@ int main(int argc, char** argv)
 
     add_supported_options(argc, argv);
 
-    cout << "c [mis] Arjun Version: "
+    cout << "c [arjun] Arjun Version: "
     << arjun->get_version_info() << endl;
     cout << arjun->get_solver_version_info();
 
@@ -311,7 +311,7 @@ int main(int argc, char** argv)
     << endl;
 
     double starTime = cpuTime();
-    cout << "c [mis] using seed: " << conf.seed << endl;
+    cout << "c [arjun] using seed: " << conf.seed << endl;
     arjun->set_verbosity(conf.verb);
     arjun->set_seed(conf.seed);
     arjun->set_fast_backw(conf.fast_backw);
@@ -340,11 +340,11 @@ int main(int argc, char** argv)
     }
     const string inp = vm["input"].as<string>();
     readInAFile(inp);
-    cout << "c [mis] original sampling set size: " << orig_sampling_set_size << endl;
+    cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
 
     auto sampl_set = arjun->get_indep_set();
     print_indep_set(sampl_set);
-    cout << "c [mis] "
+    cout << "c [arjun] "
     << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
     << endl;
 
