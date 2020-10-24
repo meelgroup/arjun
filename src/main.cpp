@@ -228,7 +228,7 @@ inline double stats_line_percent(double num, double total)
     }
 }
 
-void print_indep_set(const vector<uint32_t>& indep_set)
+void print_final_indep_set(const vector<uint32_t>& indep_set)
 {
     cout << "vp ";
     for(const uint32_t s: indep_set) {
@@ -236,7 +236,7 @@ void print_indep_set(const vector<uint32_t>& indep_set)
     }
     cout << "0" << endl;
 
-    cout << "c set size: " << std::setw(8)
+    cout << "c [arjun] final set size: " << std::setw(8)
     << indep_set.size()
     << " percent of original: "
     <<  std::setw(6) << std::setprecision(4)
@@ -343,7 +343,7 @@ int main(int argc, char** argv)
     cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
 
     auto sampl_set = arjun->get_indep_set();
-    print_indep_set(sampl_set);
+    print_final_indep_set(sampl_set);
     cout << "c [arjun] "
     << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
     << endl;
