@@ -124,8 +124,8 @@ DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
         if (arjdata->common.conf.verb) {
             cout << "c [arjun] FORWARD " << endl;
         }
-        uint32_t guess_indep = std::max<uint32_t>(arjdata->common.sampling_set->size()/100, 10);
-        arjdata->common.forward_round(50000, guess_indep, 0);
+        uint32_t forward_size = std::max<uint32_t>(arjdata->common.sampling_set->size()/100, 10);
+        arjdata->common.forward_round(50000, forward_size, 0);
     }
 
     if (arjdata->common.conf.backward) {
