@@ -218,7 +218,6 @@ void Common::backward_round()
             non_indep_vars.clear();
             uint32_t indep_vars_last_pos = indep.size();
             ret = solver->find_fast_backw(b);
-            assert(ret != l_False);
 
             cout
             << "non_indep_vars.size(): " << non_indep_vars.size()
@@ -226,6 +225,19 @@ void Common::backward_round()
             << " ret: " << ret
             << " test_var: " << test_var
             << endl;
+            if (ret == l_False) {
+                if (conf.verb) {
+                    cout << "c [arjun] Problem is UNSAT" << endl;
+                }
+                for(auto& x: unknown_set) {
+                    x = 0;
+                }
+                unknown.clear();
+                indep.clear();
+                assumptions.clear();
+                break;
+            }
+
             fast_backw_tot += non_indep_vars.size();
             fast_backw_max = std::max<uint32_t>(non_indep_vars.size(), fast_backw_max);
             for(uint32_t i = indep_vars_last_pos; i < indep.size(); i ++) {
