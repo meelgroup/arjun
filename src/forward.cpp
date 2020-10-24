@@ -120,6 +120,13 @@ bool Common::forward_round(
     uint32_t group,
     int offset)
 {
+    if (conf.verb) {
+        cout << "c [arjun] Running FORWARD with group " << group
+        << " offset: " << offset
+        << " max_iters: " << max_iters
+        << endl;
+    }
+
     ///Will be used in case assign_fwd_val is set and we mess up the solver
     SATSolver* solver2 = NULL;
 
@@ -231,7 +238,9 @@ bool Common::forward_round(
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
     bool last_indep = true;
-    cout << "Start assumptions set: " << assumptions.size() << endl;
+    if (conf.verb >= 2) {
+        cout << "c [arjun] Forward start assumptions set: " << assumptions.size() << endl;
+    }
     while(iter < max_iters) {
         //Select var
         uint32_t test_var = var_Undef;
