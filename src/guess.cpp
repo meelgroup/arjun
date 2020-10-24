@@ -217,7 +217,7 @@ void Common::run_guess()
 {
     double myTime = cpuTime();
     if (conf.verb) {
-        cout << " ============ Guess ==============" << endl;
+        cout << "c [arjun] ============ Guess ==============" << endl;
     }
     guess_div = 10;
 
@@ -251,7 +251,7 @@ void Common::run_guess()
     if (!interrupt_asap) {
         uint32_t cur_sampl_size = sampling_set->size();
         if (conf.verb) {
-            cout << " ============ INV ==============" << endl;
+            cout << "c [arjun] ============ Guess INV ==============" << endl;
         }
         guess_round(guess_indep, true, false, 0);
         inv_removed += cur_sampl_size - sampling_set->size();
@@ -262,7 +262,7 @@ void Common::run_guess()
     if (!interrupt_asap) {
         uint32_t cur_sampl_size = sampling_set->size();
         if (conf.verb) {
-            cout << " ============ RND ==============" << endl;
+            cout << "c [arjun] ============ Guess RND ==============" << endl;
         }
         guess_round(guess_indep, false, true, 0);
         guess_round(guess_indep, false, true, 0);

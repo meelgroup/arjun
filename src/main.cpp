@@ -301,7 +301,7 @@ int main(int argc, char** argv)
 
     add_supported_options(argc, argv);
 
-    cout << "c [arjun] Arjun Version: "
+    cout << "c Arjun Version: "
     << arjun->get_version_info() << endl;
     cout << arjun->get_solver_version_info();
 
