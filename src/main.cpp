@@ -88,7 +88,7 @@ void add_arjun_options()
     ("fastbackw", po::value(&conf.fast_backw)->default_value(conf.fast_backw), "fast_backw")
     ("guess", po::value(&conf.guess)->default_value(conf.guess), "Guess small set")
     ("sort", po::value(&conf.incidence_sort)->default_value(conf.incidence_sort),
-     "Which sorting mechanism. 1 == min lit inc + varnum, 2 == min lit inc + min lit probe + varnum")
+     "Which sorting mechanism.")
     ("simp", po::value(&conf.simp)->default_value(conf.simp),
      "simplify")
     ("recomp", po::value(&recompute_sampling_set)->default_value(recompute_sampling_set),
