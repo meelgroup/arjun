@@ -78,9 +78,9 @@ set_target_properties(arjun-bin PROPERTIES
 
 target_link_libraries(arjun-bin
     ${LOUVAIN_COMMUNITIES_LIBRARIES}
-    ${CRYPTOMINISAT5_LIBRARIES}
     ${arjun_bin_exec_link_libs}
     arjun
+    ${CRYPTOMINISAT5_LIBRARIES}
 )
 
 
