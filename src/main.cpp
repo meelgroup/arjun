@@ -54,7 +54,7 @@ using std::set;
 using std::string;
 using std::vector;
 
-po::options_description mis_options = po::options_description("Arjun options");
+po::options_description arjun_options = po::options_description("Arjun options");
 po::options_description help_options;
 po::variables_map vm;
 po::positional_options_description p;
@@ -70,11 +70,11 @@ uint32_t orig_sampling_set_size = 0;
 //     common.interrupt_asap = true;
 // }
 
-void add_mis_options()
+void add_arjun_options()
 {
     conf.verb = 1;
 
-    mis_options.add_options()
+    arjun_options.add_options()
     ("help,h", "Prints help")
     ("version", "Print version info")
     ("input", po::value<string>(), "file to read")
@@ -115,12 +115,12 @@ void add_mis_options()
 
     ;
 
-    help_options.add(mis_options);
+    help_options.add(arjun_options);
 }
 
 void add_supported_options(int argc, char** argv)
 {
-    add_mis_options();
+    add_arjun_options();
     p.add("input", 1);
 
     try {
