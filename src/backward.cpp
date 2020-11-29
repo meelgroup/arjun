@@ -219,12 +219,15 @@ void Common::backward_round()
             uint32_t indep_vars_last_pos = indep.size();
             ret = solver->find_fast_backw(b);
 
-            cout
-            << "non_indep_vars.size(): " << non_indep_vars.size()
-            << " indep.size(): " << indep.size()
-            << " ret: " << ret
-            << " test_var: " << test_var
-            << endl;
+            if (conf.verb >= 2) {
+                cout << "conf.verb:" << conf.verb << endl;
+                cout
+                << "c [arjun] non_indep_vars.size(): " << non_indep_vars.size()
+                << " indep.size(): " << indep.size()
+                << " ret: " << ret
+                << " test_var: " << test_var
+                << endl;
+            }
             if (ret == l_False) {
                 if (conf.verb) {
                     cout << "c [arjun] Problem is UNSAT" << endl;
