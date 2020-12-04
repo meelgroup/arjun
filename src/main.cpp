@@ -344,7 +344,7 @@ int main(int argc, char** argv)
 
     auto sampl_set = arjun->get_indep_set();
     print_final_indep_set(sampl_set);
-    cout << "c [arjun] "
+    cout << "c [arjun] finished "
     << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
     << endl;
 
