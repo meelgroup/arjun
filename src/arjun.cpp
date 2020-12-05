@@ -205,9 +205,9 @@ DLL_PUBLIC void Arjun::set_guess(bool guess)
     arjdata->common.conf.guess = guess;
 }
 
-DLL_PUBLIC void Arjun::set_simp(bool simp)
+DLL_PUBLIC void Arjun::set_pre_simplify(bool simp)
 {
-    arjdata->common.conf.simp = simp;
+    arjdata->common.conf.pre_simplify = simp;
 }
 
 DLL_PUBLIC void Arjun::set_incidence_sort(uint32_t incidence_sort)
@@ -282,9 +282,9 @@ DLL_PUBLIC bool Arjun::get_guess()
     return arjdata->common.conf.guess;
 }
 
-DLL_PUBLIC bool Arjun::get_simp()
+DLL_PUBLIC bool Arjun::get_pre_simplify()
 {
-    return arjdata->common.conf.simp;
+    return arjdata->common.conf.pre_simplify;
 }
 
 DLL_PUBLIC uint32_t Arjun::get_incidence_sort()

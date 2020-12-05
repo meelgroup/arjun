@@ -33,7 +33,7 @@ struct Config {
     int regularly_simplify = 0;
     int intree = 1;
     int guess = 1;
-    int simp = 1;
+    int pre_simplify = 1;
     int incidence_sort = 3;
     int gate_based = 1;
     int xor_based = 0;

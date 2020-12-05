@@ -89,7 +89,7 @@ void add_arjun_options()
     ("guess", po::value(&conf.guess)->default_value(conf.guess), "Guess small set")
     ("sort", po::value(&conf.incidence_sort)->default_value(conf.incidence_sort),
      "Which sorting mechanism.")
-    ("simp", po::value(&conf.simp)->default_value(conf.simp),
+    ("presimp", po::value(&conf.pre_simplify)->default_value(conf.pre_simplify),
      "simplify")
     ("regsimp", po::value(&conf.regularly_simplify)->default_value(conf.regularly_simplify),
      "Regularly simplify")
@@ -321,7 +321,7 @@ int main(int argc, char** argv)
     arjun->set_regularly_simplify(conf.regularly_simplify);
     arjun->set_intree(conf.intree);
     arjun->set_guess(conf.guess);
-    arjun->set_simp(conf.simp);
+    arjun->set_pre_simplify(conf.pre_simplify);
     arjun->set_incidence_sort(conf.incidence_sort);
     arjun->set_gate_based(conf.gate_based);
     arjun->set_xor_based(conf.xor_based);

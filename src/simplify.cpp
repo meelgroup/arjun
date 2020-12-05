@@ -34,7 +34,7 @@ bool Common::simp()
         remove_definable_by_gates();
     }
 
-    if (conf.simp) {
+    if (conf.pre_simplify) {
         if (conf.verb) {
             cout << "c [arjun-simp] CMS::simplify() with no BVE, intree probe..." << endl;
         }
