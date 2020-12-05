@@ -79,6 +79,7 @@ namespace ArjunNS {
         void set_backw_max_confl(uint32_t backw_max_confl);
         void set_solve_to_sat(bool solve_to_sat);
         void set_do_xors(bool do_xors);
+        void set_regularly_simplify(bool reg_simp);
 
         //Get config
         uint32_t get_verbosity();
@@ -98,6 +99,7 @@ namespace ArjunNS {
         uint32_t get_backw_max_confl();
         bool get_solve_to_sat();
         bool get_do_xors();
+        bool get_regularly_simplify();
 
     private:
         ArjPrivateData* arjdata = NULL;

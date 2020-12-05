@@ -352,3 +352,13 @@ DLL_PUBLIC bool Arjun::get_do_xors()
 {
     return arjdata->common.conf.do_xors;
 }
+
+DLL_PUBLIC void Arjun::set_regularly_simplify(bool reg_simp)
+{
+    arjdata->common.conf.regularly_simplify = reg_simp;
+}
+
+DLL_PUBLIC bool Arjun::get_regularly_simplify()
+{
+    return arjdata->common.conf.regularly_simplify;
+}

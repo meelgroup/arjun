@@ -328,6 +328,7 @@ bool Common::preproc_and_duplicate()
     seen.clear();
     seen.resize(solver->nVars(), 0);
 
+    solver->set_simplify(conf.regularly_simplify);
     return true;
 }
 

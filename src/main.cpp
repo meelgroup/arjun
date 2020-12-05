@@ -91,6 +91,8 @@ void add_arjun_options()
      "Which sorting mechanism.")
     ("simp", po::value(&conf.simp)->default_value(conf.simp),
      "simplify")
+    ("regsimp", po::value(&conf.regularly_simplify)->default_value(conf.regularly_simplify),
+     "Regularly simplify")
     ("recomp", po::value(&recompute_sampling_set)->default_value(recompute_sampling_set),
      "Recompute sampling set even if it's part of the CNF")
     ("setfwd", po::value(&conf.assign_fwd_val)->default_value(conf.assign_fwd_val),
@@ -316,6 +318,7 @@ int main(int argc, char** argv)
     arjun->set_seed(conf.seed);
     arjun->set_fast_backw(conf.fast_backw);
     arjun->set_distill(conf.distill);
+    arjun->set_regularly_simplify(conf.regularly_simplify);
     arjun->set_intree(conf.intree);
     arjun->set_guess(conf.guess);
     arjun->set_simp(conf.simp);

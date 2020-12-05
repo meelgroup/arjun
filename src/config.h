@@ -30,6 +30,7 @@ struct Config {
     int seed = 0;
     int fast_backw = 1;
     int distill = 0;
+    int regularly_simplify = 0;
     int intree = 1;
     int guess = 1;
     int simp = 1;
