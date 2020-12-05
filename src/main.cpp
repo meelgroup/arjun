@@ -113,8 +113,6 @@ void add_arjun_options()
      "Solve until we find a satisfiable assignment")
     ("xors", po::value(&conf.do_xors)->default_value(conf.do_xors),
      "Use XOR finding and Gauss-Jordan elimination")
-
-
     ;
 
     help_options.add(arjun_options);
