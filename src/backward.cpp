@@ -93,15 +93,17 @@ void Common::backward_round()
     }
 
     sort_unknown(unknown);
-    if (conf.verb >= 3) {
+    if (conf.verb >= 4) {
         cout << "Sorted output: "<< endl;
         for (const auto& v:unknown) {
             cout
             << "Var: " << std::setw(6) << v
             << " inc: " << std::setw(6) << incidence[v]
-            << " prop-inc: " << std::setw(6) << incidence_probing[v]
-            << " fan-out to comms: " << std::setw(6) << var_to_num_communities[v].size()
-            << endl;
+            << " prop-inc: " << std::setw(6) << incidence_probing[v];
+            if (var_to_num_communities.size() > v) {
+                cout << " fan-out to comms: " << std::setw(6) << var_to_num_communities[v].size();
+            }
+            cout << endl;
         }
     }
 
@@ -195,8 +197,8 @@ void Common::backward_round()
         solver->set_no_confl_needed();
 
         lbool ret = l_Undef;
-        solver->set_max_confl(conf.backw_max_confl);
         if (!conf.fast_backw) {
+            solver->set_max_confl(conf.backw_max_confl);
             ret = solver->solve(&assumptions);
         } else {
             FastBackwData b;
