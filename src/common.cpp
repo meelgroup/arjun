@@ -329,6 +329,8 @@ bool Common::preproc_and_duplicate()
     seen.resize(solver->nVars(), 0);
 
     solver->set_simplify(conf.regularly_simplify);
+    solver->set_intree_probe(conf.intree);
+    solver->set_distill(conf.distill);
     return true;
 }
 

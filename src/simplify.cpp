@@ -45,7 +45,7 @@ bool Common::simp()
         if (solver->simplify() == l_False) {
             return false;
         }
-        solver->set_intree_probe(0);
+        solver->set_intree_probe(conf.intree);
         solver->set_verbosity(std::max((int)conf.verb-2, 0));
         if (conf.verb) {
             cout << "c [arjun-simp] CMS::simplify() with no BVE finished. T: "
