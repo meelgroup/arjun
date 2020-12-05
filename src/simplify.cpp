@@ -39,14 +39,14 @@ bool Common::simp()
             cout << "c [arjun-simp] CMS::simplify() with no BVE, intree probe..." << endl;
         }
         double simpTime = cpuTime();
-        solver->set_verbosity(0);
+        solver->set_verbosity(std::max((int)conf.verb-2, 0));
         solver->set_no_bve();
         solver->set_intree_probe(1);
         if (solver->simplify() == l_False) {
             return false;
         }
         solver->set_intree_probe(0);
-        solver->set_verbosity(0);
+        solver->set_verbosity(std::max((int)conf.verb-2, 0));
         if (conf.verb) {
             cout << "c [arjun-simp] CMS::simplify() with no BVE finished. T: "
             << (cpuTime() - simpTime)

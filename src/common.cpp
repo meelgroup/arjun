@@ -220,7 +220,7 @@ void Common::set_up_solver()
     solver = new SATSolver(NULL, &interrupt_asap);
     solver->set_up_for_arjun();
     solver->set_bve(0);
-    solver->set_verbosity(0);
+    solver->set_verbosity(std::max((int)conf.verb-2, 0));
     solver->set_intree_probe(conf.intree);
     solver->set_distill(conf.distill);
     solver->set_sls(0);
@@ -292,7 +292,7 @@ bool Common::preproc_and_duplicate()
         cout << "c [arjun] CMS::simplify() with *only* BVE..." << endl;
     }
     solver->set_bve(1);
-    solver->set_verbosity(0);
+    solver->set_verbosity(std::max((int)conf.verb-2, 0));
     string str("occ-bve");
     if (solver->simplify(&dont_elim, &str) == l_False) {
         return false;
