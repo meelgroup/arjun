@@ -95,12 +95,14 @@ void add_arjun_options()
      "Regularly simplify")
     ("recomp", po::value(&recompute_sampling_set)->default_value(recompute_sampling_set),
      "Recompute sampling set even if it's part of the CNF")
-    ("setfwd", po::value(&conf.assign_fwd_val)->default_value(conf.assign_fwd_val),
+    ("fwdset", po::value(&conf.assign_fwd_val)->default_value(conf.assign_fwd_val),
      "When doing forward, set the value instead of using assumptions")
     ("backward", po::value(&conf.backward)->default_value(conf.backward),
      "Do backwards query")
     ("forward", po::value(&conf.forward)->default_value(conf.forward),
      "Do forward query")
+    ("fwdgroup", po::value(&conf.forward_group)->default_value(conf.forward_group),
+     "Group variables by this bunches when doing forward query")
     ("gates", po::value(&conf.gate_based)->default_value(conf.gate_based),
      "Use 3-long gate detection in SAT solver to define some variables")
     ("probe", po::value(&conf.probe_based)->default_value(conf.probe_based),
@@ -331,6 +333,7 @@ int main(int argc, char** argv)
     arjun->set_backw_max_confl(conf.backw_max_confl);
     arjun->set_solve_to_sat(conf.solve_to_sat);
     arjun->set_do_xors(conf.do_xors);
+    arjun->set_fwd_group(conf.forward_group);
 
     //signal(SIGINT,signal_handler);
 

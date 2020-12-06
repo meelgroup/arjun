@@ -80,6 +80,7 @@ namespace ArjunNS {
         void set_solve_to_sat(bool solve_to_sat);
         void set_do_xors(bool do_xors);
         void set_regularly_simplify(bool reg_simp);
+        void set_fwd_group(uint32_t forward_group);
 
         //Get config
         uint32_t get_verbosity();
@@ -100,6 +101,7 @@ namespace ArjunNS {
         bool get_solve_to_sat();
         bool get_do_xors();
         bool get_regularly_simplify();
+        uint32_t get_fwd_group();
 
     private:
         ArjPrivateData* arjdata = NULL;

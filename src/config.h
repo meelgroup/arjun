@@ -40,6 +40,7 @@ struct Config {
     int probe_based = 1;
     int polarmode = 0;
     int forward = 0;
+    int forward_group = 10;
     int backward = 1;
     int assign_fwd_val = 0;
     int solve_to_sat = 0;

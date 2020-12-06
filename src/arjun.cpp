@@ -124,8 +124,7 @@ DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
         if (arjdata->common.conf.verb) {
             cout << "c [arjun] FORWARD " << endl;
         }
-        uint32_t forward_size = std::max<uint32_t>(arjdata->common.sampling_set->size()/100, 10);
-        arjdata->common.forward_round(50000, forward_size, 0);
+        arjdata->common.forward_round(5000000, arjdata->common.conf.forward_group, 0);
     }
 
     if (arjdata->common.conf.backward) {
@@ -242,7 +241,7 @@ DLL_PUBLIC void Arjun::set_forward(bool forward)
 
 DLL_PUBLIC void Arjun::set_backward(bool backward)
 {
-    assert(backward && "We MUST have backward or we cannot work");
+    //assert(backward && "We MUST have backward or we cannot work");
     arjdata->common.conf.backward = backward;
 }
 
@@ -361,4 +360,14 @@ DLL_PUBLIC void Arjun::set_regularly_simplify(bool reg_simp)
 DLL_PUBLIC bool Arjun::get_regularly_simplify()
 {
     return arjdata->common.conf.regularly_simplify;
+}
+
+DLL_PUBLIC void Arjun::set_fwd_group(uint32_t forward_group)
+{
+    arjdata->common.conf.forward_group = forward_group;
+}
+
+DLL_PUBLIC uint32_t Arjun::get_fwd_group()
+{
+    return arjdata->common.conf.forward_group;
 }
