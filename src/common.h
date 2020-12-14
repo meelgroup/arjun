@@ -146,7 +146,7 @@ struct Common
 
     //simp
     vector<uint32_t> toClear;
-    bool simp();
+    bool simplify_intree_probe_xorgates_normgates_probe();
     void remove_definabile_by_xor();
     void remove_definable_by_gates();
     void remove_zero_assigned_literals(bool print = true);

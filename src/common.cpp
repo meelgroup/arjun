@@ -261,7 +261,7 @@ bool Common::preproc_and_duplicate()
     }
 
     //Simplify problem
-    if (!simp()) {
+    if (!simplify_intree_probe_xorgates_normgates_probe()) {
         cout << "Sim..." << endl;
         return false;
     }

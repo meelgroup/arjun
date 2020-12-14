@@ -24,7 +24,7 @@
 
 #include "common.h"
 
-bool Common::simp()
+bool Common::simplify_intree_probe_xorgates_normgates_probe()
 {
     assert(solver->okay());
     auto old_size = sampling_set->size();
