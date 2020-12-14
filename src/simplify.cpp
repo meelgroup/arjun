@@ -54,7 +54,7 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
         }
     }
 
-    if (conf.xor_based) {
+    if (conf.xor_gates_based) {
         remove_definabile_by_xor();
     }
     remove_eq_literals();

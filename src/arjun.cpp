@@ -219,9 +219,9 @@ DLL_PUBLIC void Arjun::set_gate_based(bool gate_based)
     arjdata->common.conf.gate_based = gate_based;
 }
 
-DLL_PUBLIC void Arjun::set_xor_based(bool xor_based)
+DLL_PUBLIC void Arjun::set_xor_gates_based(bool xor_gates_based)
 {
-    arjdata->common.conf.xor_based = xor_based;
+    arjdata->common.conf.xor_gates_based = xor_gates_based;
 }
 
 DLL_PUBLIC void Arjun::set_probe_based(bool probe_based)
@@ -256,77 +256,77 @@ DLL_PUBLIC void Arjun::set_backw_max_confl(uint32_t backw_max_confl)
 }
 
 
-DLL_PUBLIC uint32_t Arjun::get_verbosity()
+DLL_PUBLIC uint32_t Arjun::get_verbosity() const
 {
     return arjdata->common.conf.verb;
 }
 
-DLL_PUBLIC bool Arjun::get_fast_backw()
+DLL_PUBLIC bool Arjun::get_fast_backw() const
 {
     return arjdata->common.conf.fast_backw;
 }
 
-DLL_PUBLIC bool Arjun::get_distill()
+DLL_PUBLIC bool Arjun::get_distill() const
 {
     return arjdata->common.conf.distill;
 }
 
-DLL_PUBLIC bool Arjun::get_intree()
+DLL_PUBLIC bool Arjun::get_intree() const
 {
     return arjdata->common.conf.intree;
 }
 
-DLL_PUBLIC bool Arjun::get_guess()
+DLL_PUBLIC bool Arjun::get_guess() const
 {
     return arjdata->common.conf.guess;
 }
 
-DLL_PUBLIC bool Arjun::get_pre_simplify()
+DLL_PUBLIC bool Arjun::get_pre_simplify() const
 {
     return arjdata->common.conf.pre_simplify;
 }
 
-DLL_PUBLIC uint32_t Arjun::get_incidence_sort()
+DLL_PUBLIC uint32_t Arjun::get_incidence_sort() const
 {
     return arjdata->common.conf.incidence_sort;
 }
 
-DLL_PUBLIC bool Arjun::get_gate_based()
+DLL_PUBLIC bool Arjun::get_gate_based() const
 {
     return arjdata->common.conf.gate_based;
 }
 
-DLL_PUBLIC bool Arjun::get_xor_based()
+DLL_PUBLIC bool Arjun::get_xor_gates_based() const
 {
-    return arjdata->common.conf.xor_based;
+    return arjdata->common.conf.xor_gates_based;
 }
 
-DLL_PUBLIC bool Arjun::get_probe_based()
+DLL_PUBLIC bool Arjun::get_probe_based() const
 {
     return arjdata->common.conf.probe_based;
 }
 
-DLL_PUBLIC bool Arjun::get_polarmode()
+DLL_PUBLIC bool Arjun::get_polarmode() const
 {
     return arjdata->common.conf.polarmode;
 }
 
-DLL_PUBLIC bool Arjun::get_forward()
+DLL_PUBLIC bool Arjun::get_forward() const
 {
     return arjdata->common.conf.forward;
 }
 
-DLL_PUBLIC bool Arjun::get_backward()
+DLL_PUBLIC bool Arjun::get_backward() const
 {
     return arjdata->common.conf.backward;
 }
 
-DLL_PUBLIC bool Arjun::get_assign_fwd_val()
+DLL_PUBLIC bool Arjun::get_assign_fwd_val() const
 {
     return arjdata->common.conf.assign_fwd_val;
 }
 
-DLL_PUBLIC uint32_t Arjun::get_backw_max_confl()
+DLL_PUBLIC uint32_t Arjun::get_backw_max_confl() const
 {
     return arjdata->common.conf.backw_max_confl;
 }
@@ -336,20 +336,19 @@ DLL_PUBLIC void Arjun::set_solve_to_sat(bool solve_to_sat)
     arjdata->common.conf.solve_to_sat = solve_to_sat;
 }
 
-DLL_PUBLIC bool Arjun::get_solve_to_sat()
+DLL_PUBLIC bool Arjun::get_solve_to_sat() const
 {
     return arjdata->common.conf.solve_to_sat;
 }
 
-
-DLL_PUBLIC void Arjun::set_do_xors(bool do_xors)
+DLL_PUBLIC void Arjun::set_gauss_jordan(bool gauss_jordan)
 {
-    arjdata->common.conf.do_xors = do_xors;
+    arjdata->common.conf.gauss_jordan = gauss_jordan;
 }
 
-DLL_PUBLIC bool Arjun::get_do_xors()
+DLL_PUBLIC bool Arjun::get_gauss_jordan() const
 {
-    return arjdata->common.conf.do_xors;
+    return arjdata->common.conf.gauss_jordan;
 }
 
 DLL_PUBLIC void Arjun::set_regularly_simplify(bool reg_simp)
@@ -357,7 +356,7 @@ DLL_PUBLIC void Arjun::set_regularly_simplify(bool reg_simp)
     arjdata->common.conf.regularly_simplify = reg_simp;
 }
 
-DLL_PUBLIC bool Arjun::get_regularly_simplify()
+DLL_PUBLIC bool Arjun::get_regularly_simplify() const
 {
     return arjdata->common.conf.regularly_simplify;
 }
@@ -367,7 +366,17 @@ DLL_PUBLIC void Arjun::set_fwd_group(uint32_t forward_group)
     arjdata->common.conf.forward_group = forward_group;
 }
 
-DLL_PUBLIC uint32_t Arjun::get_fwd_group()
+DLL_PUBLIC uint32_t Arjun::get_fwd_group() const
 {
     return arjdata->common.conf.forward_group;
+}
+
+DLL_PUBLIC void Arjun::set_find_xors(bool find_xors)
+{
+    arjdata->common.conf.find_xors = find_xors;
+}
+
+DLL_PUBLIC bool Arjun::get_find_xors() const
+{
+    return arjdata->common.conf.find_xors;
 }

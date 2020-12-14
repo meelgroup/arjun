@@ -36,7 +36,7 @@ struct Config {
     int pre_simplify = 1;
     int incidence_sort = 3;
     int gate_based = 1;
-    int xor_based = 0;
+    int xor_gates_based = 0;
     int probe_based = 1;
     int polarmode = 0;
     int forward = 0;
@@ -44,7 +44,8 @@ struct Config {
     int backward = 1;
     int assign_fwd_val = 0;
     int solve_to_sat = 0;
-    int do_xors = 1;
+    int gauss_jordan = 1;
+    int find_xors = 1;
     uint32_t backw_max_confl = 500;
     uint32_t guess_max_confl = 1000;
 };

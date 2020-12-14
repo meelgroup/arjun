@@ -70,7 +70,7 @@ namespace ArjunNS {
         void set_pre_simplify(bool simp);
         void set_incidence_sort(uint32_t incidence_sort);
         void set_gate_based(bool gate_based);
-        void set_xor_based(bool xor_based);
+        void set_xor_gates_based(bool xor_gates_based);
         void set_probe_based(bool probe_based);
         void set_polarmode(bool polarmode);
         void set_forward(bool forward);
@@ -78,30 +78,32 @@ namespace ArjunNS {
         void set_assign_fwd_val(bool assign_fwd_val);
         void set_backw_max_confl(uint32_t backw_max_confl);
         void set_solve_to_sat(bool solve_to_sat);
-        void set_do_xors(bool do_xors);
+        void set_gauss_jordan(bool gauss_jordan);
         void set_regularly_simplify(bool reg_simp);
         void set_fwd_group(uint32_t forward_group);
+        void set_find_xors(bool find_xors);
 
         //Get config
-        uint32_t get_verbosity();
-        bool get_fast_backw();
-        bool get_distill();
-        bool get_intree();
-        bool get_guess();
-        bool get_pre_simplify();
-        uint32_t get_incidence_sort();
-        bool get_gate_based();
-        bool get_xor_based();
-        bool get_probe_based();
-        bool get_polarmode();
-        bool get_forward();
-        bool get_backward();
-        bool get_assign_fwd_val();
-        uint32_t get_backw_max_confl();
-        bool get_solve_to_sat();
-        bool get_do_xors();
-        bool get_regularly_simplify();
-        uint32_t get_fwd_group();
+        uint32_t get_verbosity() const;
+        bool get_fast_backw() const;
+        bool get_distill() const;
+        bool get_intree() const;
+        bool get_guess() const;
+        bool get_pre_simplify() const;
+        uint32_t get_incidence_sort() const;
+        bool get_gate_based() const;
+        bool get_xor_gates_based() const;
+        bool get_probe_based() const;
+        bool get_polarmode() const;
+        bool get_forward() const;
+        bool get_backward() const;
+        bool get_assign_fwd_val() const;
+        uint32_t get_backw_max_confl() const;
+        bool get_solve_to_sat() const;
+        bool get_gauss_jordan() const;
+        bool get_regularly_simplify() const;
+        uint32_t get_fwd_group() const;
+        bool get_find_xors() const;
 
     private:
         ArjPrivateData* arjdata = NULL;

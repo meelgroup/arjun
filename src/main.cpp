@@ -107,13 +107,15 @@ void add_arjun_options()
      "Use 3-long gate detection in SAT solver to define some variables")
     ("probe", po::value(&conf.probe_based)->default_value(conf.probe_based),
      "Use simple probing to set (and define) some variables")
-    ("xorb", po::value(&conf.xor_based)->default_value(conf.xor_based),
+    ("xorb", po::value(&conf.xor_gates_based)->default_value(conf.xor_gates_based),
      "Use XOR detection in SAT solver to define some variables")
     ("maxc", po::value(&conf.backw_max_confl)->default_value(conf.backw_max_confl),
      "Maximum conflicts per variable in backward mode")
     ("solvesat", po::value(&conf.solve_to_sat)->default_value(conf.solve_to_sat),
      "Solve until we find a satisfiable assignment")
-    ("xors", po::value(&conf.do_xors)->default_value(conf.do_xors),
+    ("gaussj", po::value(&conf.gauss_jordan)->default_value(conf.gauss_jordan),
+     "Use XOR finding and Gauss-Jordan elimination")
+    ("findxors", po::value(&conf.find_xors)->default_value(conf.find_xors),
      "Use XOR finding and Gauss-Jordan elimination")
     ;
 
@@ -324,7 +326,7 @@ int main(int argc, char** argv)
     arjun->set_pre_simplify(conf.pre_simplify);
     arjun->set_incidence_sort(conf.incidence_sort);
     arjun->set_gate_based(conf.gate_based);
-    arjun->set_xor_based(conf.xor_based);
+    arjun->set_xor_gates_based(conf.xor_gates_based);
     arjun->set_probe_based(conf.probe_based);
     arjun->set_polarmode(conf.polarmode);
     arjun->set_forward(conf.forward);
@@ -332,8 +334,9 @@ int main(int argc, char** argv)
     arjun->set_assign_fwd_val(conf.assign_fwd_val);
     arjun->set_backw_max_confl(conf.backw_max_confl);
     arjun->set_solve_to_sat(conf.solve_to_sat);
-    arjun->set_do_xors(conf.do_xors);
+    arjun->set_gauss_jordan(conf.gauss_jordan);
     arjun->set_fwd_group(conf.forward_group);
+    arjun->set_find_xors(conf.find_xors);
 
     //signal(SIGINT,signal_handler);
 
