@@ -25,18 +25,21 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+// moving to expected best:
+// -v3 --maxc 500 --recomp 1 --regsimp 1 --intree 1 --gaussj 0 --sort 3 --distill 1 --xorb 1 --gates 1 --guess 1 --fastbackw 1 --findxor 0
+
 struct Config {
-    int verb = 0;
+    int verb = 3;
     int seed = 0;
     int fast_backw = 1;
-    int distill = 0;
-    int regularly_simplify = 0;
+    int distill = 1;
+    int regularly_simplify = 1;
     int intree = 1;
     int guess = 1;
     int pre_simplify = 1;
     int incidence_sort = 3;
     int gate_based = 1;
-    int xor_gates_based = 0;
+    int xor_gates_based = 1;
     int probe_based = 1;
     int polarmode = 0;
     int forward = 0;
@@ -44,8 +47,8 @@ struct Config {
     int backward = 1;
     int assign_fwd_val = 0;
     int solve_to_sat = 0;
-    int gauss_jordan = 1;
-    int find_xors = 1;
+    int gauss_jordan = 0;
+    int find_xors = 0;
     uint32_t backw_max_confl = 500;
     uint32_t guess_max_confl = 1000;
 };
