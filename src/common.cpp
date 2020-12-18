@@ -139,34 +139,6 @@ void Common::add_fixed_clauses()
         solver->add_clause(tmp);
     }
 
-    if (false) {
-        //This is a set of clauses where k1..kN are new indicators:
-        // a1 V -k1
-        //-b1 V -k1
-        // --> i.e. if a1=False or b1=True --> k1 is False
-        // --> one of the ks must be TRUE
-        //k1 V k2 V ... kN
-        vector<Lit> tmp2;
-        for(uint32_t var: *sampling_set) {
-            solver->new_var();
-            uint32_t k = solver->nVars()-1;
-            dont_elim.push_back(Lit(k, false));
-
-            tmp.clear();
-            tmp.push_back(Lit(var, false));
-            tmp.push_back(Lit(k, true));
-            solver->add_clause(tmp);
-
-            tmp.clear();
-            tmp.push_back(Lit(var+orig_num_vars, true));
-            tmp.push_back(Lit(k, true));
-            solver->add_clause(tmp);
-
-            tmp2.push_back(Lit(k, false));
-        }
-        solver->add_clause(tmp2);
-    }
-
     //Don't eliminate the sampling variables
     for(uint32_t var: *sampling_set) {
         dont_elim.push_back(Lit(var, false));
