@@ -20,10 +20,12 @@
 
 import sys
 
+
+num_cls = 0
+num_vars = 0
+num_lits = 0
+set_lits = {}
 with open(sys.argv[1], "r") as f:
-    num_cls = 0
-    num_vars = 0
-    num_lits = 0
     for line in f:
         l = line.strip()
         if len(line) < 1:
@@ -35,15 +37,22 @@ with open(sys.argv[1], "r") as f:
         if line[0] == "p":
             line = line.split()
             print(line)
-            num_vars = line[2]
+            num_vars = int(line[2])
             continue
     
+        l = l.split()
+        #print(l)
+        if len(l) == 2:
+            set_lits[abs(int(l[0]))] = 1
+            continue
+
         num_cls +=1
-        for x in l.split():
+        for x in l:
             if x != "0":
                 num_lits+=1
     
 
-print("num vars: ", num_vars)
-print("num cls: ", num_cls)
-print("num lits: ", num_lits)
+print("num set lits: ", len(set_lits))
+print("num (non-set) vars: ", num_vars-len(set_lits))
+print("num (non-unit) cls: ", num_cls)
+print("num (non-unit) lits: ", num_lits)
