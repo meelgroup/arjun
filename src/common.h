@@ -119,6 +119,7 @@ struct Common
     void get_incidence();
     void calc_community_parts();
     void set_up_solver();
+    vector<vector<Lit>> get_cnf();
 
 
     //guess

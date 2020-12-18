@@ -176,6 +176,19 @@ void Common::add_fixed_clauses()
 
 void Common::duplicate_problem()
 {
+    vector<vector<Lit>> cnf = get_cnf();
+
+    solver->new_vars(orig_num_vars);
+    for(auto& cl: cnf) {
+        for(auto& l: cl) {
+            l = Lit(l.var()+orig_num_vars, l.sign());
+        }
+        solver->add_clause(cl);
+    }
+}
+
+vector<vector<Lit>> Common::get_cnf()
+{
     vector<vector<Lit>> cnf;
     solver->start_getting_small_clauses(
         std::numeric_limits<uint32_t>::max(),
@@ -191,14 +204,8 @@ void Common::duplicate_problem()
         }
     }
     solver->end_getting_small_clauses();
-    solver->new_vars(orig_num_vars);
 
-    for(auto& cl: cnf) {
-        for(auto& l: cl) {
-            l = Lit(l.var()+orig_num_vars, l.sign());
-        }
-        solver->add_clause(cl);
-    }
+    return cnf;
 }
 
 void Common::get_incidence()

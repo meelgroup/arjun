@@ -59,9 +59,9 @@ namespace ArjunNS {
         void start_getting_small_clauses(uint32_t max_len, uint32_t max_glue, bool red = true);
         bool get_next_small_clause(std::vector<CMSat::Lit>& ret); //returns FALSE if no more
         void end_getting_small_clauses();
-        std::vector<CMSat::Lit> get_zero_assigned_lits();
 
         //Set config
+        std::vector<std::vector<CMSat::Lit>> get_cnf();
         void set_verbosity(uint32_t verb);
         void set_fast_backw(bool fast_backw);
         void set_distill(bool distill);
@@ -69,7 +69,7 @@ namespace ArjunNS {
         void set_guess(bool guess);
         void set_pre_simplify(bool simp);
         void set_incidence_sort(uint32_t incidence_sort);
-        void set_gate_based(bool gate_based);
+        void set_or_gate_based(bool or_gate_based);
         void set_xor_gates_based(bool xor_gates_based);
         void set_probe_based(bool probe_based);
         void set_polarmode(bool polarmode);
@@ -91,7 +91,7 @@ namespace ArjunNS {
         bool get_guess() const;
         bool get_pre_simplify() const;
         uint32_t get_incidence_sort() const;
-        bool get_gate_based() const;
+        bool get_or_gate_based() const;
         bool get_xor_gates_based() const;
         bool get_probe_based() const;
         bool get_polarmode() const;
@@ -104,6 +104,7 @@ namespace ArjunNS {
         bool get_regularly_simplify() const;
         uint32_t get_fwd_group() const;
         bool get_find_xors() const;
+        std::vector<CMSat::Lit> get_zero_assigned_lits() const;
 
     private:
         ArjPrivateData* arjdata = NULL;

@@ -26,7 +26,7 @@
 #define CONFIG_H
 
 // moving to expected best:
-// -v3 --maxc 500 --recomp 1 --regsimp 1 --intree 1 --gaussj 0 --sort 3 --distill 1 --xorb 1 --gates 1 --guess 1 --fastbackw 1 --findxor 0
+// --regsimp 1 --intree 1 --gaussj 0 --sort 3 --distill 1 --xorgate 1 --orgate 1 --guess 1 --fastbackw 1 --findxor 0
 
 struct Config {
     int verb = 3;
@@ -38,7 +38,7 @@ struct Config {
     int guess = 1;
     int pre_simplify = 1;
     int incidence_sort = 3;
-    int gate_based = 1;
+    int or_gate_based = 1;
     int xor_gates_based = 1;
     int probe_based = 1;
     int polarmode = 0;

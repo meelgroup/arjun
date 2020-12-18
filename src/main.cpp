@@ -103,11 +103,11 @@ void add_arjun_options()
      "Do forward query")
     ("fwdgroup", po::value(&conf.forward_group)->default_value(conf.forward_group),
      "Group variables by this bunches when doing forward query")
-    ("gates", po::value(&conf.gate_based)->default_value(conf.gate_based),
+    ("orgate", po::value(&conf.or_gate_based)->default_value(conf.or_gate_based),
      "Use 3-long gate detection in SAT solver to define some variables")
     ("probe", po::value(&conf.probe_based)->default_value(conf.probe_based),
      "Use simple probing to set (and define) some variables")
-    ("xorb", po::value(&conf.xor_gates_based)->default_value(conf.xor_gates_based),
+    ("xorgate", po::value(&conf.xor_gates_based)->default_value(conf.xor_gates_based),
      "Use XOR detection in SAT solver to define some variables")
     ("maxc", po::value(&conf.backw_max_confl)->default_value(conf.backw_max_confl),
      "Maximum conflicts per variable in backward mode")
@@ -325,7 +325,7 @@ int main(int argc, char** argv)
     arjun->set_guess(conf.guess);
     arjun->set_pre_simplify(conf.pre_simplify);
     arjun->set_incidence_sort(conf.incidence_sort);
-    arjun->set_gate_based(conf.gate_based);
+    arjun->set_or_gate_based(conf.or_gate_based);
     arjun->set_xor_gates_based(conf.xor_gates_based);
     arjun->set_probe_based(conf.probe_based);
     arjun->set_polarmode(conf.polarmode);

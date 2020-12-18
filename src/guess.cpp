@@ -123,12 +123,9 @@ void Common::guess_round(
         std::shuffle(unknown.begin(), unknown.end(), random_source);
     }
 
-    bool should_continue_guess = true;
     uint32_t tot_removed = 0;
     vector<Lit> assumptions;
     while(iter < guess_div) {
-        should_continue_guess = false;
-
         //Assumption filling
         if (iter < guess_div) {
             fill_assumptions_guess(

@@ -143,11 +143,6 @@ DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
     return *arjdata->common.sampling_set;
 }
 
-DLL_PUBLIC std::vector<CMSat::Lit> Arjun::get_zero_assigned_lits()
-{
-    return arjdata->common.solver->get_zero_assigned_lits();
-}
-
 DLL_PUBLIC void Arjun::start_getting_small_clauses(uint32_t max_len, uint32_t max_glue, bool red)
 {
     arjdata->common.solver->start_getting_small_clauses(max_len, max_glue, red);
@@ -214,9 +209,9 @@ DLL_PUBLIC void Arjun::set_incidence_sort(uint32_t incidence_sort)
     arjdata->common.conf.incidence_sort = incidence_sort;
 }
 
-DLL_PUBLIC void Arjun::set_gate_based(bool gate_based)
+DLL_PUBLIC void Arjun::set_or_gate_based(bool or_gate_based)
 {
-    arjdata->common.conf.gate_based = gate_based;
+    arjdata->common.conf.or_gate_based = or_gate_based;
 }
 
 DLL_PUBLIC void Arjun::set_xor_gates_based(bool xor_gates_based)
@@ -291,9 +286,9 @@ DLL_PUBLIC uint32_t Arjun::get_incidence_sort() const
     return arjdata->common.conf.incidence_sort;
 }
 
-DLL_PUBLIC bool Arjun::get_gate_based() const
+DLL_PUBLIC bool Arjun::get_or_gate_based() const
 {
-    return arjdata->common.conf.gate_based;
+    return arjdata->common.conf.or_gate_based;
 }
 
 DLL_PUBLIC bool Arjun::get_xor_gates_based() const
@@ -379,4 +374,23 @@ DLL_PUBLIC void Arjun::set_find_xors(bool find_xors)
 DLL_PUBLIC bool Arjun::get_find_xors() const
 {
     return arjdata->common.conf.find_xors;
+}
+
+DLL_PUBLIC vector<vector<Lit>> Arjun::get_cnf()
+{
+    return arjdata->common.get_cnf();
+
+}
+
+DLL_PUBLIC vector<Lit> Arjun::get_zero_assigned_lits() const
+{
+    vector<Lit> ret;
+    vector<Lit> lits = arjdata->common.solver->get_zero_assigned_lits();
+    for(const auto& lit: lits) {
+        if (lit.var() < arjdata->common.orig_num_vars) {
+            ret.push_back(lit);
+        }
+    }
+
+    return ret;
 }
