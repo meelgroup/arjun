@@ -61,6 +61,7 @@ po::positional_options_description p;
 double startTime;
 Config conf;
 ArjunNS::Arjun* arjun = NULL;
+string elimtofile;
 
 int recompute_sampling_set = 0;
 uint32_t orig_sampling_set_size = 0;
@@ -116,6 +117,8 @@ void add_arjun_options()
     ("gaussj", po::value(&conf.gauss_jordan)->default_value(conf.gauss_jordan),
      "Use XOR finding and Gauss-Jordan elimination")
     ("findxors", po::value(&conf.find_xors)->default_value(conf.find_xors),
+     "Use XOR finding and Gauss-Jordan elimination")
+    ("elimtofile", po::value(&elimtofile),
      "Use XOR finding and Gauss-Jordan elimination")
     ;
 
@@ -284,6 +287,28 @@ void readInAFile(const string& filename)
     #endif
 }
 
+vector<vector<Lit>> get_simplified_cnf(SATSolver* solver, vector<uint32_t>& sampl_set)
+{
+    vector<vector<Lit>> cnf;
+    solver->start_getting_small_clauses(
+        std::numeric_limits<uint32_t>::max(),
+        std::numeric_limits<uint32_t>::max(),
+        false, false, true);
+
+    sampl_set = solver->translate_sampl_set(sampl_set);
+
+    bool ret = true;
+    vector<Lit> clause;
+    while(ret) {
+        ret = solver->get_next_small_clause(clause);
+        if (ret) {
+            cnf.push_back(clause);
+        }
+    }
+    solver->end_getting_small_clauses();
+    return cnf;
+}
+
 int main(int argc, char** argv)
 {
     arjun = new ArjunNS::Arjun;
@@ -349,11 +374,68 @@ int main(int argc, char** argv)
     readInAFile(inp);
     cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
 
-    auto sampl_set = arjun->get_indep_set();
+    auto orig_cnf = arjun->get_cnf();
+    uint32_t orig_num_vars = arjun->nVars();
+    vector<uint32_t> sampl_set = arjun->get_indep_set();
     print_final_indep_set(sampl_set);
     cout << "c [arjun] finished "
     << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
     << endl;
+
+    if (!elimtofile.empty()) {
+        double dump_start_time = cpuTime();
+        cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
+        CMSat::SATSolver solver;
+        solver.set_verbosity(2);
+        solver.new_vars(orig_num_vars);
+        for(const auto& cl: orig_cnf) {
+            solver.add_clause(cl);
+        }
+        auto zero_lev_lits = arjun->get_zero_assigned_lits();
+        vector<Lit> dummy;
+        for(const Lit& lit: zero_lev_lits) {
+            dummy.clear();
+            dummy.push_back(lit);
+            solver.add_clause(dummy);
+        }
+
+        vector<Lit> dont_elim;
+        for(const auto& v: sampl_set) {
+            dont_elim.push_back(Lit(v, false));
+        }
+
+        string str("occ-bve, occ-xor, distill-cls, intree-probe, sub-str-cls-with-bin, sub-cls-with-bin, must-distill-cls, sub-str-cls-with-bin, sub-cls-with-bin, occ-bve, must-renumber");
+        solver.simplify(&dont_elim, &str);
+        vector<vector<Lit>> cnf = get_simplified_cnf(&solver, sampl_set);
+
+
+        uint32_t num_cls = cnf.size();
+        uint32_t max_var = 0;
+        for(const auto& cl: cnf) {
+            for(const auto& l: cl) {
+                if (l.var()+1 > max_var) {
+                    max_var = l.var()+1;
+                }
+            }
+        }
+        std::ofstream outf;
+        outf.open(elimtofile.c_str(), std::ios::out);
+        outf << "p cnf " << max_var << " " << num_cls << endl;
+
+        //Add projection
+        if (false) {
+            outf << "c ind ";
+            for(const auto& v: sampl_set) {
+                outf << v+1  << " ";
+            }
+            outf << "0\n";
+        }
+
+        for(const auto& cl: cnf) {
+            outf << cl << " 0\n";
+        }
+        cout << "c [arjun] Done dumping. T: " << (cpuTime() - dump_start_time) << endl;
+    }
 
     delete arjun;
     return 0;
