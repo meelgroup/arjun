@@ -83,10 +83,24 @@ target_link_libraries(arjun-bin
     ${CRYPTOMINISAT5_LIBRARIES}
 )
 
-
-
 arjun_add_public_header(
     arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun.h )
+
+
+add_executable(counter-bin
+    counter.cpp
+)
+
+target_link_libraries(counter-bin
+    ${arjun_bin_exec_link_libs}
+    ${CRYPTOMINISAT5_LIBRARIES}
+)
+
+set_target_properties(counter-bin PROPERTIES
+    OUTPUT_NAME counter
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 
 # -----------------------------------------------------------------------------
 # Copy public headers into build directory include directory.
