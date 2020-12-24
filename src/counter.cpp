@@ -70,6 +70,7 @@ CMSat::SATSolver* solver;
 vector<uint32_t> sampling_set;
 int verb = 1;
 int seed = 0;
+int simp = 1;
 uint32_t precision = 100;
 
 void add_arjun_options()
@@ -80,6 +81,7 @@ void add_arjun_options()
     ("help,h", "Prints help")
     ("version", "Print version info")
     ("verb,v", po::value(&verb)->default_value(verb), "verbosity")
+    ("simp,s", po::value(&simp)->default_value(simp), "simplify")
 //     ("seed,s", po::value(&seed)->default_value(seed), "Seed")
     ("precision,p", po::value(&precision)->default_value(precision), "The precision to do")
     ("input", po::value<string>(), "file to read")
@@ -214,7 +216,8 @@ void readInAFile(const string& filename)
     }
 
     if (parser.sampling_vars.empty()) {
-        cout << "Must give sampling set!!" << endl;
+        cout << "ERROR: Must give sampling set!!" << endl;
+        exit(-1);
     }
 
     sampling_set = parser.sampling_vars;
@@ -236,6 +239,7 @@ int main(int argc, char** argv)
                    FE_OVERFLOW
                   );
     #endif
+    double start_time = cpuTime();
 
     //Reconstruct the command line so we can emit it later if needed
     string command_line;
@@ -262,7 +266,6 @@ int main(int argc, char** argv)
     const string inp = vm["input"].as<string>();
     readInAFile(inp);
 
-    solver->set_up_for_sample_counter();
 
     //Get initial solution
     if (sampling_set.size() == 0) {
@@ -271,18 +274,32 @@ int main(int argc, char** argv)
         return 0;
 
     }
+
+    double simp_time = cpuTime();
+    cout << "Simplifying..." << endl;
     solver->set_sampling_vars(&sampling_set);
-    vector<Lit> dont_elim;
-    for(const auto& x: sampling_set) {
-        dont_elim.push_back(Lit(x, false));
+
+    if (simp) {
+        vector<Lit> dont_elim;
+        for(const auto& x: sampling_set) {
+            dont_elim.push_back(Lit(x, false));
+        }
+        solver->simplify(&dont_elim);
+        cout << "Simplify done. T: "
+        << std::fixed
+        << std::setprecision(2) << std::setw(6)
+        << (cpuTime() - simp_time) << endl;
     }
-    solver->simplify(&dont_elim);
+
+
     lbool ret = solver->solve(NULL, true);
     if (ret == l_False) {
         cout << "Num sols: 0" << endl;
         return 0;
     }
 
+    //Now we sample
+    solver->set_up_for_sample_counter();
     vector<lbool> solution;
     for(const auto& v: sampling_set) {
         solution.push_back(solver->get_model()[v]);
@@ -298,16 +315,26 @@ int main(int argc, char** argv)
     double sampling_time = cpuTime();
     vector<cpp_bin_float_100> values;
     values.push_back(1.0);
-    for(int i = sampling_set.size()-1; i >=0; i --) {
+    uint32_t at = 0;
+    solver->set_verbosity(verb-1);
+    for(int i = sampling_set.size()-1; i >=0; i--, at++) {
         cout << "Doing round " << i << " ..." << endl;
         double one_round_t = cpuTime();
         const uint32_t var = sampling_set[i];
         const lbool val = solution[i];
 
         assumps.resize(i);
+        if (at % 20 == 19 && simp) {
+            cout << "New simplify..." << endl;
+            double in_simp_time = cpuTime();
+            solver->simplify(&assumps);
+            cout << "New simp finished. T: " << (cpuTime() - in_simp_time) << endl;
+        }
+
         uint32_t set_right = 0;
         for(uint32_t i2 = 0; i2 < precision; i2++) {
             solver->solve(&assumps, true);
+            assert(solver->get_model()[var] != l_Undef);
             if (solver->get_model()[var] == val) {
                 set_right++;
             }
@@ -327,13 +354,17 @@ int main(int argc, char** argv)
     << std::setprecision(4) << std::setw(6)
     << (cpuTime() - sampling_time) << endl;
 
+    cout << "Total time: "
+    << std::setprecision(2) << std::setw(2)
+    << (cpuTime() - start_time) << endl;
+
     cpp_bin_float_100 count = 1.0;
     for(const auto& x: values) {
-        count *= x;
+        count /= x;
     }
     cout << "Num sols: "
     << std::fixed
-    << (1.0/count) << endl;
+    << (count) << endl;
 
     delete solver;
 }
