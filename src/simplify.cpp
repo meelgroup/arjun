@@ -56,7 +56,10 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
     }
 
     if (conf.xor_gates_based) {
-        remove_definabile_by_xor();
+        bool changed = true;
+        while(changed) {
+            changed = remove_definabile_by_xor();
+        }
     }
     remove_eq_literals();
     remove_zero_assigned_literals();
@@ -128,7 +131,7 @@ struct OccurSorter {
 
 };
 
-void Common::remove_definabile_by_xor()
+bool Common::remove_definabile_by_xor()
 {
     double myTime = cpuTime();
     uint32_t old_size = sampling_set->size();
@@ -233,6 +236,7 @@ void Common::remove_definabile_by_xor()
     }
     toClear.clear();
 
+    bool changed = sampling_set->size() > other_sampling_set->size();
     //TODO atomic swap
     std::swap(sampling_set, other_sampling_set);
 
@@ -243,46 +247,56 @@ void Common::remove_definabile_by_xor()
         << stats_line_percent(old_size-sampling_set->size(), old_size)
         << " T: " << (cpuTime() - myTime) << endl;
     }
+
+    return changed;
 }
 
 void Common::remove_definable_by_gates()
 {
     double myTime = cpuTime();
-    auto old_size = sampling_set->size();
 
     if (conf.verb) {
         cout << "c [arjun-simp] attempting gate-based..." << endl;
     }
 
 
-    vector<uint32_t> definable = solver->get_definabe(*sampling_set);
+    bool changed = true;
+    uint32_t iter = 0;
+    while (changed) {
+        auto old_size = sampling_set->size();
+        vector<uint32_t> definable = solver->get_definabe(*sampling_set);
 
-    for(auto v: definable) {
-        assert(v < orig_num_vars);
-        seen[v] = 1;
-    }
-
-    other_sampling_set->clear();
-    for(auto v: *sampling_set) {
-        if (seen[v] == 0) {
-            other_sampling_set->push_back(v);
+        for(auto v: definable) {
+            assert(v < orig_num_vars);
+            seen[v] = 1;
         }
-    }
 
-    //cleanup
-    for(auto v: definable) {
-        seen[v] = 0;
-    }
+        other_sampling_set->clear();
+        for(auto v: *sampling_set) {
+            if (seen[v] == 0) {
+                other_sampling_set->push_back(v);
+            }
+        }
 
-    //TODO atomic swap
-    std::swap(sampling_set, other_sampling_set);
+        //cleanup
+        for(auto v: definable) {
+            seen[v] = 0;
+        }
 
-    if (conf.verb) {
-        cout << "c [arjun-simp] gate-based"
-        << " removed: " << (old_size-sampling_set->size())
-        << " perc: " << std::fixed << std::setprecision(2)
-        << stats_line_percent(old_size-sampling_set->size(), old_size)
-        << " T: " << (cpuTime() - myTime) << endl;
+
+        changed = sampling_set->size() > other_sampling_set->size();
+        //TODO atomic swap
+        std::swap(sampling_set, other_sampling_set);
+
+        if (conf.verb) {
+            cout << "c [arjun-simp] gate-based"
+            << " iter: " << iter
+            << " removed: " << (old_size-sampling_set->size())
+            << " perc: " << std::fixed << std::setprecision(2)
+            << stats_line_percent(old_size-sampling_set->size(), old_size)
+            << " T: " << (cpuTime() - myTime) << endl;
+        }
+        iter++;
     }
 }
 
