@@ -317,6 +317,12 @@ int main(int argc, char** argv)
     values.push_back(1.0);
     uint32_t at = 0;
     solver->set_verbosity(verb-1);
+
+
+    //TODO
+    // 1) Reverse the order, i.e. normal order
+    // 2) Go forward and pick polarity that has higher distribution
+    // 3) Do this 3 times, take median
     for(int i = sampling_set.size()-1; i >=0; i--, at++) {
         cout << "Doing round " << i << " ..." << endl;
         double one_round_t = cpuTime();

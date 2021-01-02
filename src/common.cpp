@@ -248,7 +248,7 @@ bool Common::preproc_and_duplicate()
     //incidence = solver->get_var_incidence(); //NOTE: makes it slower
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
-    //Read in file again, with offset
+    //Duplicate the already simplified problem
     if (conf.verb) {
         cout << "c [arjun] Duplicating CNF..." << endl;
     }
@@ -258,10 +258,9 @@ bool Common::preproc_and_duplicate()
         cout << "c [arjun] Duplicated CNF. T: " << (cpuTime() - dupl_time) << endl;
     }
 
-    //BVE ***ONLY***
+    //BVE ***ONLY***, don't eliminate the orignial variables
     solver->set_intree_probe(false);
     solver->set_distill(false);
-    //Don't eliminate the orignial variables
     for(uint32_t var: *sampling_set) {
         dont_elim.push_back(Lit(var, false));
         dont_elim.push_back(Lit(var+orig_num_vars, false));

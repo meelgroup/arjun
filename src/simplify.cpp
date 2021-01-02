@@ -30,6 +30,7 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
     auto old_size = sampling_set->size();
     double myTime = cpuTime();
 
+    solver->set_verbosity(0);
     if (conf.or_gate_based) {
         remove_definable_by_gates();
     }
@@ -62,11 +63,13 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
     if (conf.or_gate_based) {
         remove_definable_by_gates();
     }
+
     if (conf.probe_based) {
         if (!probe_all()) {
             return false;
         }
     }
+    solver->set_verbosity(std::max<int>((int)conf.verb-2, 0));
 
     if (conf.verb) {
         cout << "c [arjun] Arjun simplification finished "
@@ -160,7 +163,7 @@ void Common::remove_definabile_by_xor()
             }
         }
     }
-    if (conf.verb) {
+    if (conf.verb > 4) {
         cout << "c [arjun-simp] XOR Potential: " << potential << endl;
     }
 
@@ -215,17 +218,23 @@ void Common::remove_definabile_by_xor()
         }
     }
     if (conf.verb) {
-        cout << "c [arjun-simp] Non-zero OCCs were: " << non_zero_occs << " seen_set_0: " << seen_set_0 << endl;
+        cout << "c [arjun-simp] XOR-based"
+        << " Potential was: " << potential
+        << " Non-zero OCCs were: " << non_zero_occs
+        << " seen_set_0: " << seen_set_0 << endl;
     }
 
-    sampling_set->clear();
+    other_sampling_set->clear();
     for(auto v: toClear) {
         if (seen[v]) {
-            sampling_set->push_back(v);
+            other_sampling_set->push_back(v);
         }
         seen[v] = 0;
     }
     toClear.clear();
+
+    //TODO atomic swap
+    std::swap(sampling_set, other_sampling_set);
 
     if (conf.verb) {
         cout << "c [arjun-simp] XOR-based"
