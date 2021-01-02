@@ -40,6 +40,7 @@ typedef bmp::number<bmp::cpp_bin_float<100> > cpp_bin_float_100;
 #include <vector>
 #include <atomic>
 #include <fstream>
+#include <random>
 #include <sstream>
 #include <string>
 #include <signal.h>
@@ -72,6 +73,8 @@ int verb = 1;
 int seed = 0;
 int simp = 1;
 uint32_t precision = 100;
+uint32_t rounds = 3;
+std::mt19937 g;
 
 void add_arjun_options()
 {
@@ -82,7 +85,8 @@ void add_arjun_options()
     ("version", "Print version info")
     ("verb,v", po::value(&verb)->default_value(verb), "verbosity")
     ("simp,s", po::value(&simp)->default_value(simp), "simplify")
-//     ("seed,s", po::value(&seed)->default_value(seed), "Seed")
+    ("seed,s", po::value(&seed)->default_value(seed), "Seed")
+    ("rounds,s", po::value(&rounds)->default_value(rounds), "Num rounds to take median from")
     ("precision,p", po::value(&precision)->default_value(precision), "The precision to do")
     ("input", po::value<string>(), "file to read")
     ;
@@ -230,6 +234,71 @@ void readInAFile(const string& filename)
 }
 
 
+cpp_bin_float_100 one_round()
+{
+    vector<lbool> solution;
+    vector<Lit> assumps;
+    vector<cpp_bin_float_100> values;
+    values.push_back(1.0);
+
+    double start_time = cpuTime();
+    std::shuffle(sampling_set.begin(), sampling_set.end(), g);
+    for(uint32_t i = 0; i < sampling_set.size(); i++) {
+        cout << "Doing round " << i << " ..." << endl;
+        double one_round_t = cpuTime();
+        const uint32_t var = sampling_set[i];
+
+        uint32_t set_pos = 0;
+        for(uint32_t i2 = 0; i2 < precision; i2++) {
+            solver->solve(&assumps, true);
+            assert(solver->get_model()[var] != l_Undef);
+            if (solver->get_model()[var] == l_True) {
+                set_pos++;
+            }
+        }
+
+        cpp_bin_float_100 distrib;
+
+        bool to_take = set_pos > precision/2;
+        if (set_pos > (double)precision*0.3 &&
+            set_pos < (double)precision*0.7)
+        {
+            to_take = g() % 2;
+        }
+        if (to_take) {
+            distrib = set_pos;
+            assumps.push_back(Lit(var, false));
+        } else {
+            distrib = precision-set_pos;
+            assumps.push_back(Lit(var, true));
+        }
+        distrib /= precision;
+
+        values.push_back(distrib);
+        cout << "Round " << i << " time: "
+        << std::setprecision(4) << std::setw(6)
+        << (cpuTime() - one_round_t)
+        << std::setprecision(4) << std::setw(6)
+        << " distrib: " << distrib
+        << " pos: " << set_pos
+        << endl;
+    }
+
+    cpp_bin_float_100 count = 1.0;
+    for(const auto& x: values) {
+        count /= x;
+    }
+
+    cout << "One round"
+    << " count: " << std::scientific << count << std::fixed
+    << " T: "
+    << std::setprecision(2) << std::setw(2)
+    << (cpuTime() - start_time) << endl;
+
+    return count;
+}
+
+
 int main(int argc, char** argv)
 {
     solver = new CMSat::SATSolver;
@@ -300,22 +369,8 @@ int main(int argc, char** argv)
 
     //Now we sample
     solver->set_up_for_sample_counter();
-    vector<lbool> solution;
-    for(const auto& v: sampling_set) {
-        solution.push_back(solver->get_model()[v]);
-    }
-    vector<Lit> assumps;
-    for(uint32_t i = 0 ; i < sampling_set.size(); i++) {
-        uint32_t var = sampling_set[i];
-        lbool val = solution[i];
-        assert(val != l_Undef);
-        assumps.push_back(Lit(var, val==l_False));
-    }
 
     double sampling_time = cpuTime();
-    vector<cpp_bin_float_100> values;
-    values.push_back(1.0);
-    uint32_t at = 0;
     solver->set_verbosity(verb-1);
 
 
@@ -323,54 +378,24 @@ int main(int argc, char** argv)
     // 1) Reverse the order, i.e. normal order
     // 2) Go forward and pick polarity that has higher distribution
     // 3) Do this 3 times, take median
-    for(int i = sampling_set.size()-1; i >=0; i--, at++) {
-        cout << "Doing round " << i << " ..." << endl;
-        double one_round_t = cpuTime();
-        const uint32_t var = sampling_set[i];
-        const lbool val = solution[i];
-
-        assumps.resize(i);
-        if (at % 20 == 19 && simp) {
-            cout << "New simplify..." << endl;
-            double in_simp_time = cpuTime();
-            solver->simplify(&assumps);
-            cout << "New simp finished. T: " << (cpuTime() - in_simp_time) << endl;
-        }
-
-        uint32_t set_right = 0;
-        for(uint32_t i2 = 0; i2 < precision; i2++) {
-            solver->solve(&assumps, true);
-            assert(solver->get_model()[var] != l_Undef);
-            if (solver->get_model()[var] == val) {
-                set_right++;
-            }
-        }
-        cpp_bin_float_100 distrib = set_right;
-        distrib /= precision;
-
-        values.push_back(distrib);
-        cout << "Round " << i << " time: "
-        << std::setprecision(4) << std::setw(6)
-        << (cpuTime() - one_round_t)
-        << std::setprecision(4) << std::setw(6)
-        << " distrib: " << distrib
-        << endl;
+    g.seed(seed);
+    vector<cpp_bin_float_100> counts;
+    assert(rounds > 0);
+    for(uint32_t i = 0; i < rounds; i++) {
+        counts.push_back(one_round());
     }
+
     cout << "All round time: "
     << std::setprecision(4) << std::setw(6)
     << (cpuTime() - sampling_time) << endl;
 
-    cout << "Total time: "
-    << std::setprecision(2) << std::setw(2)
-    << (cpuTime() - start_time) << endl;
+    std::sort(counts.begin(), counts.end());
 
-    cpp_bin_float_100 count = 1.0;
-    for(const auto& x: values) {
-        count /= x;
-    }
-    cout << "Num sols: "
+    cout << "Num sols median: "
+    << std::scientific
+    << counts.at(counts.size()/2)
     << std::fixed
-    << (count) << endl;
+    << endl;
 
     delete solver;
 }
