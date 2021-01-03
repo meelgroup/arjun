@@ -413,7 +413,12 @@ int main(int argc, char** argv)
             dont_elim.push_back(Lit(v, false));
         }
 
-        string str("occ-bve, occ-xor, distill-cls, intree-probe, sub-str-cls-with-bin, sub-cls-with-bin, must-distill-cls, sub-str-cls-with-bin, sub-cls-with-bin, occ-bve, must-renumber");
+        //1007 vars in pollard now
+        string str("occ-xor, intree-probe, must-distill-cls, occ-bve, sub-str-cls-with-bin, sub-cls-with-bin, sub-str-cls-with-bin, sub-cls-with-bin, must-distill-cls, intree-probe, occ-lit-rem, occ-bve, str-impl, must-renumber");
+
+
+        //old best
+        //string str("occ-bve, occ-xor, distill-cls, intree-probe, sub-str-cls-with-bin, sub-cls-with-bin, must-distill-cls, sub-str-cls-with-bin, sub-cls-with-bin, occ-bve, must-renumber");
         solver.simplify(&dont_elim, &str);
         vector<vector<Lit>> cnf = get_simplified_cnf(&solver, sampl_set);
 
