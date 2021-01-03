@@ -373,11 +373,6 @@ int main(int argc, char** argv)
     double sampling_time = cpuTime();
     solver->set_verbosity(verb-1);
 
-
-    //TODO
-    // 1) Reverse the order, i.e. normal order
-    // 2) Go forward and pick polarity that has higher distribution
-    // 3) Do this 3 times, take median
     g.seed(seed);
     vector<cpp_bin_float_100> counts;
     assert(rounds > 0);
