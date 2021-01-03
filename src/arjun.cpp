@@ -29,6 +29,9 @@
 #include "config.h"
 #include "common.h"
 #include "GitSHA1.h"
+#include <utility>
+
+using std::pair;
 
 #if defined _WIN32
     #define DLL_PUBLIC __declspec(dllexport)
@@ -389,6 +392,21 @@ DLL_PUBLIC vector<Lit> Arjun::get_zero_assigned_lits() const
     for(const auto& lit: lits) {
         if (lit.var() < arjdata->common.orig_num_vars) {
             ret.push_back(lit);
+        }
+    }
+
+    return ret;
+}
+
+std::vector<std::pair<CMSat::Lit, CMSat::Lit> > Arjun::get_all_binary_xors() const
+{
+    vector<pair<Lit, Lit>> ret;
+    const auto bin_xors = arjdata->common.solver->get_all_binary_xors();
+    for(const auto& bx: bin_xors) {
+        if (bx.first.var() < arjdata->common.orig_num_vars &&
+            bx.second.var() < arjdata->common.orig_num_vars)
+        {
+            ret.push_back(bx);
         }
     }
 

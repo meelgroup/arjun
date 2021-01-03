@@ -105,6 +105,7 @@ namespace ArjunNS {
         uint32_t get_fwd_group() const;
         bool get_find_xors() const;
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
+        std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;
 
     private:
         ArjPrivateData* arjdata = NULL;
