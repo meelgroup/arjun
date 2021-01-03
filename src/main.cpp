@@ -402,7 +402,7 @@ int main(int argc, char** argv)
         auto bin_xors = arjun->get_all_binary_xors();
         vector<uint32_t> dummy_v;
         for(const auto& bx: bin_xors) {
-            dummy.clear();
+            dummy_v.clear();
             dummy_v.push_back(bx.first.var());
             dummy_v.push_back(bx.second.var());
             solver.add_xor_clause(dummy_v, bx.first.sign()^bx.second.sign());
