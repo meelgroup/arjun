@@ -413,7 +413,7 @@ int main(int argc, char** argv)
             dont_elim.push_back(Lit(v, false));
         }
 
-        //1007 vars in pollard now
+        ///pollard now solves in 2.36s with 6bbb9991bde6809ae6da95e833b034b66ab70c2d
         string str("occ-xor, intree-probe, must-distill-cls, distill-bins, occ-bve, sub-str-cls-with-bin, sub-cls-with-bin, sub-str-cls-with-bin, sub-cls-with-bin, must-distill-cls, intree-probe, occ-lit-rem, must-distill-cls, occ-bve, str-impl, must-renumber");
 
 
