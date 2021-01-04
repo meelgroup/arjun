@@ -414,7 +414,7 @@ int main(int argc, char** argv)
         }
 
         //1007 vars in pollard now
-        string str("occ-xor, intree-probe, must-distill-cls, occ-bve, sub-str-cls-with-bin, sub-cls-with-bin, sub-str-cls-with-bin, sub-cls-with-bin, must-distill-cls, intree-probe, must-distill-cls, occ-lit-rem, occ-bve, str-impl, must-renumber");
+        string str("occ-xor, intree-probe, must-distill-cls, occ-bve, sub-str-cls-with-bin, sub-cls-with-bin, sub-str-cls-with-bin, sub-cls-with-bin, must-distill-cls, intree-probe, occ-lit-rem, must-distill-cls, occ-bve, str-impl, must-renumber");
 
 
         //old best
