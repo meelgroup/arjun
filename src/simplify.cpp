@@ -100,7 +100,7 @@ bool Common::probe_all()
         }
         incidence_probing[v] = min_props;
     }
-    string s("scc-vrepl");
+    string s("must-scc-vrepl");
     if (solver->simplify(NULL, &s) == l_False) {
         return false;
     }
