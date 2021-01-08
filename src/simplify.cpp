@@ -105,10 +105,21 @@ bool Common::backbone_simpl()
 
     vector<Lit> tmp_clause;
     vector<Lit> assumps;
+    solver->set_max_confl(50ULL*1000ULL);
     lbool ret = solver->solve(NULL, false);
     if (ret == l_False) {
         return false;
     }
+    if (ret == l_Undef) {
+        if (conf.verb) {
+            cout << "c [arjun-simp] backbone"
+            << " skipping, taking too many conflicts."
+            << " T: " << cpuTime() - myTime
+            << endl;
+            return true;
+        }
+    }
+
     vector<lbool> model = solver->get_model();
     vector<char> model_enabled(solver->nVars(), 1);
     for(uint32_t i = 0; i < solver->nVars(); i++) {
