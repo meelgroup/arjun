@@ -398,7 +398,7 @@ DLL_PUBLIC vector<Lit> Arjun::get_zero_assigned_lits() const
     return ret;
 }
 
-std::vector<std::pair<CMSat::Lit, CMSat::Lit> > Arjun::get_all_binary_xors() const
+DLL_PUBLIC std::vector<std::pair<CMSat::Lit, CMSat::Lit> > Arjun::get_all_binary_xors() const
 {
     vector<pair<Lit, Lit>> ret;
     const auto bin_xors = arjdata->common.solver->get_all_binary_xors();
