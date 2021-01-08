@@ -100,28 +100,28 @@ bool Common::backbone_simpl()
 
     double myTime = cpuTime();
     uint32_t orig_vars_set = solver->get_zero_assigned_lits().size();
-    //uint64_t max_confl = 100*1000ULL;
+    bool finished = false;
+    uint64_t max_confl = 10ULL*1000ULL;
 
 
     vector<Lit> tmp_clause;
     vector<Lit> assumps;
-    solver->set_max_confl(50ULL*1000ULL);
+    vector<lbool> model;
+    vector<char> model_enabled;
+
+    solver->set_max_confl(max_confl);
     lbool ret = solver->solve(NULL, false);
     if (ret == l_False) {
         return false;
     }
     if (ret == l_Undef) {
         if (conf.verb) {
-            cout << "c [arjun-simp] backbone"
-            << " skipping, taking too many conflicts."
-            << " T: " << cpuTime() - myTime
-            << endl;
-            return true;
+            goto end;
         }
     }
 
-    vector<lbool> model = solver->get_model();
-    vector<char> model_enabled(solver->nVars(), 1);
+    model = solver->get_model();
+    model_enabled.resize(solver->nVars(), 1);
     for(uint32_t i = 0; i < solver->nVars(); i++) {
         if (!model_enabled[i]) {
             continue;
@@ -130,6 +130,7 @@ bool Common::backbone_simpl()
         Lit l = Lit(i, model[i] == l_False);
         assumps.clear();
         assumps.push_back(~l);
+        solver->set_max_confl(max_confl);
         ret = solver->solve(&assumps);
         if (ret == l_True) {
             for(uint32_t i2 = 0; i2 < solver->nVars(); i2++) {
@@ -137,22 +138,32 @@ bool Common::backbone_simpl()
                     model_enabled[i2] = 0;
                 }
             }
-        } else {
+        } else if (ret == l_False) {
             tmp_clause.clear();
             tmp_clause.push_back(l);
             if (!solver->add_clause(tmp_clause)) {
                 return false;
             }
+        } else {
+            assert(ret == l_Undef);
+            goto end;
         }
     }
+    finished = true;
 
+    end:
     uint32_t num_set = solver->get_zero_assigned_lits().size() - orig_vars_set;
     double time_used = cpuTime() - myTime;
 
     if (conf.verb) {
+        if (!finished) {
+            cout << "c [arjun-simp] backbone"
+            << " skipping, taking too many conflicts."
+            << endl;
+        }
         cout << "c [arjun-simp] backbone"
         << " set: " << num_set
-        << " T:" << std::setprecision(2) << time_used
+        << " T: " << std::setprecision(2) << time_used
         << endl;
     }
 
