@@ -31,6 +31,12 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
     double myTime = cpuTime();
 
     solver->set_verbosity(0);
+    if (conf.backbone_simpl) {
+        if (!backbone_simpl()) {
+            return false;
+        }
+    }
+
     if (conf.or_gate_based) {
         remove_definable_by_gates();
     }
@@ -65,12 +71,6 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
     remove_zero_assigned_literals();
     if (conf.or_gate_based) {
         remove_definable_by_gates();
-    }
-
-    if (conf.backbone_simpl) {
-        if (!backbone_simpl()) {
-            return false;
-        }
     }
 
     if (conf.probe_based) {
