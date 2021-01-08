@@ -49,6 +49,7 @@ struct Config {
     int solve_to_sat = 0;
     int gauss_jordan = 0;
     int find_xors = 0;
+    int backbone_simpl = 1;
     uint32_t backw_max_confl = 500;
     uint32_t guess_max_confl = 1000;
 };

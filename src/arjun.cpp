@@ -412,3 +412,13 @@ DLL_PUBLIC std::vector<std::pair<CMSat::Lit, CMSat::Lit> > Arjun::get_all_binary
 
     return ret;
 }
+
+DLL_PUBLIC void Arjun::set_backbone_simpl(bool backbone_simpl)
+{
+    arjdata->common.conf.backbone_simpl = backbone_simpl;
+}
+
+DLL_PUBLIC bool Arjun::get_backbone_simpl() const
+{
+    return arjdata->common.conf.backbone_simpl;
+}

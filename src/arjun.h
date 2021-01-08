@@ -82,6 +82,7 @@ namespace ArjunNS {
         void set_regularly_simplify(bool reg_simp);
         void set_fwd_group(uint32_t forward_group);
         void set_find_xors(bool find_xors);
+        void set_backbone_simpl(bool backbone_simpl);
 
         //Get config
         uint32_t get_verbosity() const;
@@ -104,6 +105,7 @@ namespace ArjunNS {
         bool get_regularly_simplify() const;
         uint32_t get_fwd_group() const;
         bool get_find_xors() const;
+        bool get_backbone_simpl() const;
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
         std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;
 

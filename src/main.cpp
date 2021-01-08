@@ -108,6 +108,8 @@ void add_arjun_options()
      "Use 3-long gate detection in SAT solver to define some variables")
     ("probe", po::value(&conf.probe_based)->default_value(conf.probe_based),
      "Use simple probing to set (and define) some variables")
+    ("backbone", po::value(&conf.backbone_simpl)->default_value(conf.backbone_simpl),
+     "Use backbone simplification")
     ("xorgate", po::value(&conf.xor_gates_based)->default_value(conf.xor_gates_based),
      "Use XOR detection in SAT solver to define some variables")
     ("maxc", po::value(&conf.backw_max_confl)->default_value(conf.backw_max_confl),
@@ -362,6 +364,7 @@ int main(int argc, char** argv)
     arjun->set_gauss_jordan(conf.gauss_jordan);
     arjun->set_fwd_group(conf.forward_group);
     arjun->set_find_xors(conf.find_xors);
+    arjun->set_backbone_simpl(conf.backbone_simpl);
 
     //signal(SIGINT,signal_handler);
 
