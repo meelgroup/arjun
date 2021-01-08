@@ -114,8 +114,6 @@ void add_arjun_options()
      "Use XOR detection in SAT solver to define some variables")
     ("maxc", po::value(&conf.backw_max_confl)->default_value(conf.backw_max_confl),
      "Maximum conflicts per variable in backward mode")
-    ("solvesat", po::value(&conf.solve_to_sat)->default_value(conf.solve_to_sat),
-     "Solve until we find a satisfiable assignment")
     ("gaussj", po::value(&conf.gauss_jordan)->default_value(conf.gauss_jordan),
      "Use XOR finding and Gauss-Jordan elimination")
     ("findxors", po::value(&conf.find_xors)->default_value(conf.find_xors),
@@ -362,7 +360,6 @@ int main(int argc, char** argv)
     arjun->set_backward(conf.backward);
     arjun->set_assign_fwd_val(conf.assign_fwd_val);
     arjun->set_backw_max_confl(conf.backw_max_confl);
-    arjun->set_solve_to_sat(conf.solve_to_sat);
     arjun->set_gauss_jordan(conf.gauss_jordan);
     arjun->set_fwd_group(conf.forward_group);
     arjun->set_find_xors(conf.find_xors);

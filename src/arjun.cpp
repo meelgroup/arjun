@@ -329,16 +329,6 @@ DLL_PUBLIC uint32_t Arjun::get_backw_max_confl() const
     return arjdata->common.conf.backw_max_confl;
 }
 
-DLL_PUBLIC void Arjun::set_solve_to_sat(bool solve_to_sat)
-{
-    arjdata->common.conf.solve_to_sat = solve_to_sat;
-}
-
-DLL_PUBLIC bool Arjun::get_solve_to_sat() const
-{
-    return arjdata->common.conf.solve_to_sat;
-}
-
 DLL_PUBLIC void Arjun::set_gauss_jordan(bool gauss_jordan)
 {
     arjdata->common.conf.gauss_jordan = gauss_jordan;

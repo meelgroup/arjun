@@ -46,7 +46,6 @@ struct Config {
     int forward_group = 10;
     int backward = 1;
     int assign_fwd_val = 0;
-    int solve_to_sat = 0;
     int gauss_jordan = 0;
     int find_xors = 0;
     int backbone_simpl = 1;

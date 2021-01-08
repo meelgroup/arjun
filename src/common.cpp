@@ -221,24 +221,6 @@ bool Common::preproc_and_duplicate()
         calc_community_parts();
     }
 
-    //Solve problem to SAT
-    if (conf.solve_to_sat) {
-        double solve_time = cpuTime();
-        if (conf.verb) {
-            cout << "c [arjun] Solving problem once..." << endl;
-        }
-        solver->set_max_confl(10000);
-        auto ret = solver->solve();
-        //solver->print_stats();
-        if (ret == l_False) {
-            cout << "c [arjun] CNF is unsatisfiable!" << endl;
-            return false;
-        }
-        if (conf.verb) {
-            cout << "c [arjun] Solved problem to " << ret << " T: " << (cpuTime()-solve_time) << endl;
-        }
-    }
-
     //Simplify problem
     if (!simplify_intree_probe_xorgates_normgates_probe()) {
         cout << "Sim..." << endl;

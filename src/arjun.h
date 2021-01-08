@@ -77,7 +77,6 @@ namespace ArjunNS {
         void set_backward(bool backward);
         void set_assign_fwd_val(bool assign_fwd_val);
         void set_backw_max_confl(uint32_t backw_max_confl);
-        void set_solve_to_sat(bool solve_to_sat);
         void set_gauss_jordan(bool gauss_jordan);
         void set_regularly_simplify(bool reg_simp);
         void set_fwd_group(uint32_t forward_group);
@@ -100,7 +99,6 @@ namespace ArjunNS {
         bool get_backward() const;
         bool get_assign_fwd_val() const;
         uint32_t get_backw_max_confl() const;
-        bool get_solve_to_sat() const;
         bool get_gauss_jordan() const;
         bool get_regularly_simplify() const;
         uint32_t get_fwd_group() const;
