@@ -295,7 +295,9 @@ vector<vector<Lit>> get_simplified_cnf(SATSolver* solver, vector<uint32_t>& samp
     solver->start_getting_small_clauses(
         std::numeric_limits<uint32_t>::max(),
         std::numeric_limits<uint32_t>::max(),
-        false, false, true);
+        false, //red
+        false, //bva vars
+        true); //simplified
 
     sampl_set = solver->translate_sampl_set(sampl_set);
 
