@@ -184,12 +184,10 @@ void Common::get_incidence()
 {
     incidence.resize(orig_num_vars, 0);
     incidence_probing.resize(orig_num_vars, 0);
-//     incidence = solver->get_var_incidence();
     vector<uint32_t> inc = solver->get_lit_incidence();
     for(uint32_t i = 0; i < orig_num_vars; i++) {
         Lit l = Lit(i, true);
         incidence[l.var()] = std::min(inc[l.toInt()],inc[(~l).toInt()]);
-        //incidence[l.var()] = inc[(~l).toInt()];
     }
 }
 
