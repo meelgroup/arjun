@@ -153,7 +153,6 @@ struct Common
     void remove_zero_assigned_literals(bool print = true);
     void remove_eq_literals(bool print = true);
     bool probe_all();
-    bool backbone_simpl();
 
     //forward
     void set_guess_forward_round(

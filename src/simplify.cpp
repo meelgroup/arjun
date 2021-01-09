@@ -32,7 +32,7 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
 
     solver->set_verbosity(0);
     if (conf.backbone_simpl) {
-        if (!backbone_simpl()) {
+        if (solver->backbone_simpl() == l_False) {
             return false;
         }
     }
@@ -86,84 +86,6 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
         << " T: " << (cpuTime() - myTime)
-        << endl;
-    }
-
-    return true;
-}
-
-bool Common::backbone_simpl()
-{
-    if (conf.verb) {
-        cout << "c [arjun-simp] starting backbone simplification..." << endl;
-    }
-
-    double myTime = cpuTime();
-    uint32_t orig_vars_set = solver->get_zero_assigned_lits().size();
-    bool finished = false;
-    uint64_t max_confl = 10ULL*1000ULL;
-
-
-    vector<Lit> tmp_clause;
-    vector<Lit> assumps;
-    vector<lbool> model;
-    vector<char> model_enabled;
-
-    solver->set_max_confl(max_confl);
-    lbool ret = solver->solve(NULL, false);
-    if (ret == l_False) {
-        return false;
-    }
-    if (ret == l_Undef) {
-        if (conf.verb) {
-            goto end;
-        }
-    }
-
-    model = solver->get_model();
-    model_enabled.resize(solver->nVars(), 1);
-    for(uint32_t i = 0; i < solver->nVars(); i++) {
-        if (!model_enabled[i]) {
-            continue;
-        }
-
-        Lit l = Lit(i, model[i] == l_False);
-        assumps.clear();
-        assumps.push_back(~l);
-        solver->set_max_confl(max_confl);
-        ret = solver->solve(&assumps);
-        if (ret == l_True) {
-            for(uint32_t i2 = 0; i2 < solver->nVars(); i2++) {
-                if (solver->get_model()[i2] != model[i2]) {
-                    model_enabled[i2] = 0;
-                }
-            }
-        } else if (ret == l_False) {
-            tmp_clause.clear();
-            tmp_clause.push_back(l);
-            if (!solver->add_clause(tmp_clause)) {
-                return false;
-            }
-        } else {
-            assert(ret == l_Undef);
-            goto end;
-        }
-    }
-    finished = true;
-
-    end:
-    uint32_t num_set = solver->get_zero_assigned_lits().size() - orig_vars_set;
-    double time_used = cpuTime() - myTime;
-
-    if (conf.verb) {
-        if (!finished) {
-            cout << "c [arjun-simp] backbone"
-            << " skipping, taking too many conflicts."
-            << endl;
-        }
-        cout << "c [arjun-simp] backbone"
-        << " set: " << num_set
-        << " T: " << std::setprecision(2) << time_used
         << endl;
     }
 
