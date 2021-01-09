@@ -393,6 +393,7 @@ int main(int argc, char** argv)
         for(const auto& cl: orig_cnf) {
             solver.add_clause(cl);
         }
+
         auto zero_lev_lits = arjun->get_zero_assigned_lits();
         vector<Lit> dummy;
         for(const Lit& lit: zero_lev_lits) {
