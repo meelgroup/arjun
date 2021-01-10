@@ -394,6 +394,7 @@ int main(int argc, char** argv)
             solver.add_clause(cl);
         }
 
+        arjun->simplify_before_elim();
         auto zero_lev_lits = arjun->get_zero_assigned_lits();
         vector<Lit> dummy;
         for(const Lit& lit: zero_lev_lits) {
@@ -416,8 +417,10 @@ int main(int argc, char** argv)
             dont_elim.push_back(Lit(v, false));
         }
 
-        //ProcessBean optimization below, CMS a50454dbab078bc1ce8b65bf2a88c27850cbdb0a
-        string str("full-probe, must-scc-vrepl, occ-xor, intree-probe, distill-bins, must-scc-vrepl, must-distill-cls, occ-bve, full-probe, sub-str-cls-with-bin, sub-cls-with-bin, sub-str-cls-with-bin, sub-cls-with-bin, must-distill-cls, must-distill-cls, occ-bve, full-probe, distill-bins, occ-xor, str-impl, occ-lit-rem, intree-probe, must-scc-vrepl, must-renumber");
+        //ProcessBean+pollard optimization below, CMS 7b124d0e186df81d629eeade3d69bb4896e145f9
+        solver.set_min_bva_gain(32);
+        solver.set_varelim_check_resolvent_subs(true);
+        string str("full-probe, must-scc-vrepl, occ-xor, occ-ternary-res, intree-probe, distill-bins, must-scc-vrepl, must-distill-cls-onlyrem, must-distill-cls, distill-litrem, occ-bve, full-probe, must-scc-vrepl, sub-str-cls-with-bin, sub-cls-with-bin, sub-str-cls-with-bin, sub-cls-with-bin, must-distill-cls, distill-litrem, must-distill-cls, occ-backw-sub-str, occ-bve, full-probe, must-scc-vrepl, distill-bins, occ-xor, str-impl, distill-litrem, intree-probe, must-scc-vrepl, distill-cls-onlyrem, must-renumber");
 
 
         //old best

@@ -54,6 +54,7 @@ namespace ArjunNS {
         std::vector<uint32_t> get_indep_set();
         uint32_t get_orig_num_vars() const;
         void new_vars(uint32_t num);
+        void simplify_before_elim();
 
         //Get clauses
         void start_getting_small_clauses(uint32_t max_len, uint32_t max_glue, bool red = true);
