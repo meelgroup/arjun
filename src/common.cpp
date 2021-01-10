@@ -201,12 +201,6 @@ void Common::set_up_solver()
     solver->set_intree_probe(conf.intree);
     solver->set_distill(conf.distill);
     solver->set_sls(0);
-    if (conf.polarmode == 0 || conf.polarmode == 1) {
-        solver->set_default_polarity(conf.polarmode);
-    } else {
-        assert(conf.polarmode == 2);
-        solver->set_polarity_auto();
-    }
 }
 
 bool Common::preproc_and_duplicate()
