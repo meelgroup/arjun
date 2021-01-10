@@ -30,13 +30,7 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
     auto old_size = sampling_set->size();
     double myTime = cpuTime();
 
-    solver->set_verbosity(0);
-    if (conf.backbone_simpl) {
-        if (solver->backbone_simpl() == l_False) {
-            return false;
-        }
-    }
-
+    solver->set_verbosity(1);
     if (conf.or_gate_based) {
         remove_definable_by_gates();
     }
@@ -46,20 +40,25 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
             cout << "c [arjun-simp] CMS::simplify() with no BVE, intree probe..." << endl;
         }
         double simpTime = cpuTime();
-        solver->set_verbosity(std::max((int)conf.verb-2, 0));
         solver->set_no_bve();
         solver->set_intree_probe(1);
         if (solver->simplify() == l_False) {
             return false;
         }
         solver->set_intree_probe(conf.intree);
-        solver->set_verbosity(std::max((int)conf.verb-2, 0));
         if (conf.verb) {
             cout << "c [arjun-simp] CMS::simplify() with no BVE finished. T: "
             << (cpuTime() - simpTime)
             << endl;
         }
     }
+
+    if (conf.backbone_simpl) {
+        if (solver->backbone_simpl() == l_False) {
+            return false;
+        }
+    }
+    solver->set_verbosity(std::max((int)conf.verb-2, 0));
 
     if (conf.xor_gates_based) {
         bool changed = true;
@@ -96,6 +95,7 @@ bool Common::probe_all()
 {
     double myTime = cpuTime();
     auto old_size = sampling_set->size();
+    solver->set_verbosity(1);
 
     incidence_probing.resize(orig_num_vars, 0);
     for(auto v: *sampling_set) {
@@ -110,6 +110,7 @@ bool Common::probe_all()
     if (solver->simplify(NULL, &s) == l_False) {
         return false;
     }
+    solver->set_verbosity(0);
     remove_zero_assigned_literals(true);
     remove_eq_literals(true);
 
