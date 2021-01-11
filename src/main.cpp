@@ -416,14 +416,18 @@ int main(int argc, char** argv)
             dont_elim.push_back(Lit(v, false));
         }
 
-        //ProcessBean+pollard optimization below, CMS 7b124d0e186df81d629eeade3d69bb4896e145f9
+        //Below works for both ProcessBean and Pollard
+        //-> with CMS 91e8b56bacb6e98c02335d7a950c9deb9d21f13a
         solver.set_min_bva_gain(32);
         solver.set_varelim_check_resolvent_subs(true);
-        string str("full-probe, must-scc-vrepl, occ-xor, occ-ternary-res, intree-probe, distill-bins, must-scc-vrepl, must-distill-cls-onlyrem, must-distill-cls, distill-litrem, occ-bve, full-probe, must-scc-vrepl, sub-str-cls-with-bin, sub-cls-with-bin, sub-str-cls-with-bin, sub-cls-with-bin, must-distill-cls, distill-litrem, must-distill-cls, occ-backw-sub-str, occ-bve, full-probe, must-scc-vrepl, distill-bins, occ-xor, str-impl, distill-litrem, intree-probe, must-scc-vrepl, distill-cls-onlyrem, must-renumber");
 
-
-        //old best
-        //string str("occ-bve, occ-xor, distill-cls, intree-probe, sub-str-cls-with-bin, sub-cls-with-bin, must-distill-cls, sub-str-cls-with-bin, sub-cls-with-bin, occ-bve, must-renumber");
+        //good
+        string str("full-probe, must-scc-vrepl, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, occ-bve, distill-cls, must-scc-vrepl, must-renumber");
+        solver.simplify(&dont_elim, &str);
+        solver.simplify(&dont_elim, &str);
+        solver.simplify(&dont_elim, &str);
+        solver.simplify(&dont_elim, &str);
+        solver.simplify(&dont_elim, &str);
         solver.simplify(&dont_elim, &str);
         vector<vector<Lit>> cnf = get_simplified_cnf(&solver, sampl_set);
 
