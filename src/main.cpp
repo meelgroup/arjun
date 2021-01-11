@@ -417,7 +417,7 @@ int main(int argc, char** argv)
         }
 
         //Below works for both ProcessBean and Pollard
-        //-> with CMS eaf90019d1fa6085345a839289dfab67671db286
+        //-> with CMS 9162bc20f509cb6728226329a2ad56b6f79b329e
         solver.set_min_bva_gain(32);
         solver.set_varelim_check_resolvent_subs(true);
 
