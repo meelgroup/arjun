@@ -422,7 +422,7 @@ int main(int argc, char** argv)
         solver.set_varelim_check_resolvent_subs(true);
 
         //good
-        string str("full-probe, must-scc-vrepl, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, occ-bve, distill-cls, must-scc-vrepl, must-renumber");
+        string str("full-probe, must-scc-vrepl, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, occ-bve, distill-cls, must-scc-vrepl, sub-str-cls-with-bin, must-renumber");
         solver.simplify(&dont_elim, &str);
         solver.simplify(&dont_elim, &str);
         solver.simplify(&dont_elim, &str);
