@@ -422,14 +422,15 @@ int main(int argc, char** argv)
         solver.set_varelim_check_resolvent_subs(true);
 
         //good
-        string str("full-probe, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, occ-bve, distill-cls, must-scc-vrepl, sub-str-cls-with-bin");
+        string str("full-probe, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, occ-bve, distill-cls, scc-vrepl, sub-str-cls-with-bin");
+        solver.simplify(&dont_elim, &str);
+        str = string(",intree-probe,") + str;
         solver.simplify(&dont_elim, &str);
         solver.simplify(&dont_elim, &str);
         solver.simplify(&dont_elim, &str);
         solver.simplify(&dont_elim, &str);
         solver.simplify(&dont_elim, &str);
-        solver.simplify(&dont_elim, &str);
-        str = string(",intree-probe,") + str + string(",must-renumber");
+        str += string(",must-scc-vrepl,must-renumber");
         solver.simplify(&dont_elim, &str);
         vector<vector<Lit>> cnf = get_simplified_cnf(&solver, sampl_set);
 
