@@ -60,6 +60,8 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
     }
     solver->set_verbosity(std::max((int)conf.verb-2, 0));
 
+    simplified_cnf = get_cnf();
+
     if (conf.xor_gates_based) {
         bool changed = true;
         while(changed) {

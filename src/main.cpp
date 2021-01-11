@@ -376,7 +376,6 @@ int main(int argc, char** argv)
     readInAFile(inp);
     cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
 
-    auto orig_cnf = arjun->get_cnf();
     uint32_t orig_num_vars = arjun->nVars();
     vector<uint32_t> sampl_set = arjun->get_indep_set();
     print_final_indep_set(sampl_set);
@@ -390,7 +389,7 @@ int main(int argc, char** argv)
         CMSat::SATSolver solver;
         solver.set_verbosity(2);
         solver.new_vars(orig_num_vars);
-        for(const auto& cl: orig_cnf) {
+        for(const auto& cl: arjun->get_simplified_cnf()) {
             solver.add_clause(cl);
         }
 

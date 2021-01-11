@@ -419,3 +419,8 @@ DLL_PUBLIC void Arjun::simplify_before_elim()
     std::string tmp("must-scc-vrepl");
     arjdata->common.solver->simplify(NULL, &tmp);
 }
+
+DLL_PUBLIC vector<vector<Lit>> Arjun::get_simplified_cnf()
+{
+    return arjdata->common.simplified_cnf;
+}
