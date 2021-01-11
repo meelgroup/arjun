@@ -417,12 +417,12 @@ int main(int argc, char** argv)
         }
 
         //Below works for both ProcessBean and Pollard
-        //-> with CMS d8f8e4f2a50a627efc85a4cf82975b222bcd15c2
+        //-> with CMS eaf90019d1fa6085345a839289dfab67671db286
         solver.set_min_bva_gain(32);
         solver.set_varelim_check_resolvent_subs(true);
 
         //good
-        string str("full-probe, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, occ-bve, distill-cls, sub-str-cls-with-bin, must-renumber");
+        string str("full-probe, must-scc-vrepl, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, occ-bve, distill-cls, must-scc-vrepl, sub-str-cls-with-bin, must-renumber");
         solver.simplify(&dont_elim, &str);
         solver.simplify(&dont_elim, &str);
         solver.simplify(&dont_elim, &str);
