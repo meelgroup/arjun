@@ -414,12 +414,11 @@ int main(int argc, char** argv)
         }
 
         //Below works for both ProcessBean and Pollard
-        //-> with CMS 9162bc20f509cb6728226329a2ad56b6f79b329e
+        //-> with CMS bd3ef2c758a80ce8ccb7e4d5c8c0d8999aaf786c
         solver.set_min_bva_gain(32);
         solver.set_varelim_check_resolvent_subs(true);
 
-        //good
-        string str("full-probe, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, occ-bve, distill-cls, scc-vrepl, sub-str-cls-with-bin");
+        string str("full-probe, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, occ-backw-sub, occ-bve, distill-cls, scc-vrepl, sub-str-cls-with-bin");
         solver.simplify(&dont_elim, &str);
         str = string(",intree-probe,") + str;
         solver.simplify(&dont_elim, &str);
