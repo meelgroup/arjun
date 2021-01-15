@@ -227,11 +227,6 @@ DLL_PUBLIC void Arjun::set_probe_based(bool probe_based)
     arjdata->common.conf.probe_based = probe_based;
 }
 
-DLL_PUBLIC void Arjun::set_polarmode(bool polarmode)
-{
-    arjdata->common.conf.polarmode = polarmode;
-}
-
 DLL_PUBLIC void Arjun::set_forward(bool forward)
 {
     arjdata->common.conf.forward = forward;
@@ -302,11 +297,6 @@ DLL_PUBLIC bool Arjun::get_xor_gates_based() const
 DLL_PUBLIC bool Arjun::get_probe_based() const
 {
     return arjdata->common.conf.probe_based;
-}
-
-DLL_PUBLIC bool Arjun::get_polarmode() const
-{
-    return arjdata->common.conf.polarmode;
 }
 
 DLL_PUBLIC bool Arjun::get_forward() const

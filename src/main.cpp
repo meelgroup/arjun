@@ -83,8 +83,6 @@ void add_arjun_options()
     ("seed,s", po::value(&conf.seed)->default_value(conf.seed), "Seed")
 //     ("bve", po::value(&conf.bve)->default_value(conf.bve), "bve")
     ("intree", po::value(&conf.intree)->default_value(conf.intree), "intree")
-    ("polar", po::value(&conf.polarmode)->default_value(conf.polarmode),
-     "Polarity mode. 0 = false, 1 = true, 2 = polarity caching")
     ("distill", po::value(&conf.distill)->default_value(conf.distill), "distill")
     ("fastbackw", po::value(&conf.fast_backw)->default_value(conf.fast_backw), "fast_backw")
     ("guess", po::value(&conf.guess)->default_value(conf.guess), "Guess small set")
@@ -355,7 +353,6 @@ int main(int argc, char** argv)
     arjun->set_or_gate_based(conf.or_gate_based);
     arjun->set_xor_gates_based(conf.xor_gates_based);
     arjun->set_probe_based(conf.probe_based);
-    arjun->set_polarmode(conf.polarmode);
     arjun->set_forward(conf.forward);
     arjun->set_backward(conf.backward);
     arjun->set_assign_fwd_val(conf.assign_fwd_val);

@@ -41,7 +41,6 @@ struct Config {
     int or_gate_based = 1;
     int xor_gates_based = 1;
     int probe_based = 1;
-    int polarmode = 0;
     int forward = 0;
     int forward_group = 10;
     int backward = 1;
