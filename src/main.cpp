@@ -418,7 +418,7 @@ int main(int argc, char** argv)
         solver.set_min_bva_gain(32);
         solver.set_varelim_check_resolvent_subs(true);
 
-        string str("full-probe, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, occ-backw-sub, occ-bve, distill-cls, scc-vrepl, sub-str-cls-with-bin");
+        string str("full-probe, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, sub-str-cls-with-bin, occ-backw-sub-str, occ-bve, distill-cls, scc-vrepl, sub-str-cls-with-bin");
         solver.simplify(&dont_elim, &str);
         str = string(",intree-probe,") + str;
         solver.simplify(&dont_elim, &str);
