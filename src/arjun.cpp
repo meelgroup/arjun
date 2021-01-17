@@ -405,8 +405,8 @@ DLL_PUBLIC bool Arjun::get_backbone_simpl() const
 
 DLL_PUBLIC void Arjun::simplify_before_elim()
 {
-    arjdata->common.solver->backbone_simpl();
-    std::string tmp("must-scc-vrepl");
+    //arjdata->common.solver->backbone_simpl();
+    std::string tmp("must-scc-vrepl, cl-consolidate");
     arjdata->common.solver->simplify(NULL, &tmp);
 }
 

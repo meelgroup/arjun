@@ -414,9 +414,11 @@ int main(int argc, char** argv)
         }
 
         //Below works for: ProcessBean, pollard, track1_116.mcc2020_cnf
-        //-> with CMS e7d12f7457d13105b9e13052d46e79c7e8f47d04
+        //    and is quite fast
+        //-> with CMS f356f5cef4e566fad94043324093ef9848697aae
         solver.set_min_bva_gain(32);
         solver.set_varelim_check_resolvent_subs(true);
+        solver.set_max_red_linkin_size(0);
 
         string str("full-probe, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, sub-str-cls-with-bin, occ-ternary-res, occ-bve, distill-cls, occ-backw-sub-str, scc-vrepl, sub-str-cls-with-bin");
         solver.simplify(&dont_elim, &str);
@@ -425,7 +427,7 @@ int main(int argc, char** argv)
         solver.simplify(&dont_elim, &str);
         solver.simplify(&dont_elim, &str);
         solver.simplify(&dont_elim, &str);
-        solver.simplify(&dont_elim, &str);
+//         solver.simplify(&dont_elim, &str);
         str += string(",must-scc-vrepl,must-renumber");
         solver.simplify(&dont_elim, &str);
         vector<vector<Lit>> cnf = get_simplified_cnf(&solver, sampl_set);
