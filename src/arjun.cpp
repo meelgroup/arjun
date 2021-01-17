@@ -359,6 +359,17 @@ DLL_PUBLIC bool Arjun::get_find_xors() const
     return arjdata->common.conf.find_xors;
 }
 
+DLL_PUBLIC void Arjun::set_ite_gate_based(bool ite_gate_based)
+{
+    arjdata->common.conf.ite_gate_based = ite_gate_based;
+}
+
+DLL_PUBLIC bool Arjun::get_ite_gate_based() const
+{
+    return arjdata->common.conf.ite_gate_based;
+}
+
+
 DLL_PUBLIC vector<vector<Lit>> Arjun::get_cnf()
 {
     return arjdata->common.get_cnf();

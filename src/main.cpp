@@ -104,6 +104,8 @@ void add_arjun_options()
      "Group variables by this bunches when doing forward query")
     ("orgate", po::value(&conf.or_gate_based)->default_value(conf.or_gate_based),
      "Use 3-long gate detection in SAT solver to define some variables")
+    ("itegate", po::value(&conf.ite_gate_based)->default_value(conf.ite_gate_based),
+     "Use ITE gate detection in SAT solver to define some variables")
     ("probe", po::value(&conf.probe_based)->default_value(conf.probe_based),
      "Use simple probing to set (and define) some variables")
     ("backbone", po::value(&conf.backbone_simpl)->default_value(conf.backbone_simpl),
@@ -351,6 +353,7 @@ int main(int argc, char** argv)
     arjun->set_pre_simplify(conf.pre_simplify);
     arjun->set_incidence_sort(conf.incidence_sort);
     arjun->set_or_gate_based(conf.or_gate_based);
+    arjun->set_ite_gate_based(conf.ite_gate_based);
     arjun->set_xor_gates_based(conf.xor_gates_based);
     arjun->set_probe_based(conf.probe_based);
     arjun->set_forward(conf.forward);

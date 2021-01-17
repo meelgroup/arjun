@@ -24,6 +24,8 @@
 
 #include "common.h"
 
+using std::pair;
+
 bool Common::simplify_intree_probe_xorgates_normgates_probe()
 {
     assert(solver->okay());
@@ -31,10 +33,6 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
     double myTime = cpuTime();
 
     solver->set_verbosity(1);
-    if (conf.or_gate_based) {
-        remove_definable_by_gates();
-    }
-
     if (conf.pre_simplify) {
         if (conf.verb) {
             cout << "c [arjun-simp] CMS::simplify() with no BVE, intree probe..." << endl;
@@ -62,16 +60,13 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
 
     simplified_cnf = get_cnf();
 
-    if (conf.xor_gates_based) {
-        bool changed = true;
-        while(changed) {
-            changed = remove_definabile_by_xor();
-        }
-    }
     remove_eq_literals();
     remove_zero_assigned_literals();
-    if (conf.or_gate_based) {
-        remove_definable_by_gates();
+    if (conf.xor_gates_based || conf.or_gate_based) {
+        bool changed = true;
+        while(changed) {
+            changed = remove_definable_by_gates();
+        }
     }
 
     if (conf.probe_based) {
@@ -140,14 +135,41 @@ struct OccurSorter {
 
 };
 
-bool Common::remove_definabile_by_xor()
+enum class gate_t {or_gate, xor_gate, ite_gate};
+
+struct GateOccurs
+{
+    GateOccurs(gate_t _t, uint32_t _at) :
+        t(_t),
+        at(_at)
+    {}
+
+    gate_t t;
+    uint32_t at;
+};
+
+bool Common::remove_definable_by_gates()
 {
     double myTime = cpuTime();
     uint32_t old_size = sampling_set->size();
-    vector<vector<uint32_t>> vars_xor_occurs(orig_num_vars);
+    vector<vector<GateOccurs>> vars_gate_occurs(orig_num_vars);
+    vector<pair<vector<uint32_t>, bool>> xors;
+    vector<OrGate> ors;
+    vector<ITEGate> ites;
 
     assert(toClear.empty());
-    auto xors = solver->get_recovered_xors(true);
+
+    if (conf.xor_gates_based) {
+        xors = solver->get_recovered_xors(false);
+    }
+    if (conf.or_gate_based) {
+        ors = solver->get_recovered_or_gates();
+    }
+    if (conf.ite_gate_based) {
+        ites = solver->get_recovered_ite_gates();
+    }
+
+
     for(auto v: *sampling_set) {
         toClear.push_back(v);
         seen[v] = 1;
@@ -169,71 +191,135 @@ bool Common::remove_definabile_by_xor()
         }
         //This one can be used to remove a variable
         if (all_orig && num == x.first.size()) {
-            for(auto v: x.first) {
-                vars_xor_occurs[v].push_back(i);
+            for(const uint32_t v: x.first) {
+                vars_gate_occurs[v].push_back(GateOccurs(gate_t::xor_gate, i));
                 potential++;
             }
         }
     }
+
+    //Build occur for OR
+    for(uint32_t i = 0; i < ors.size(); i ++) {
+        const auto& orgate = ors[i];
+        uint32_t num = 0;
+        bool all_orig = true;
+        for(const Lit& l: orgate.get_all()) {
+            if (l.var() < orig_num_vars) {
+                num += seen[l.var()];
+            } else {
+                all_orig = false;
+                break;
+            }
+        }
+        //This one can be used to remove a variable
+        if (all_orig && num == orgate.get_all().size()) {
+            vars_gate_occurs[orgate.rhs.var()].push_back(GateOccurs(gate_t::or_gate, i));
+            potential++;
+        }
+    }
+
+    //Build occur for ITE
+    for(uint32_t i = 0; i < ites.size(); i ++) {
+        const auto& itegate = ites[i];
+        uint32_t num = 0;
+        bool all_orig = true;
+        for(const Lit& l: itegate.get_all()) {
+            if (l.var() < orig_num_vars) {
+                num += seen[l.var()];
+            } else {
+                all_orig = false;
+                break;
+            }
+        }
+        //This one can be used to remove a variable
+        if (all_orig && num == itegate.get_all().size()) {
+            vars_gate_occurs[itegate.rhs.var()].push_back(GateOccurs(gate_t::ite_gate, i));
+            potential++;
+        }
+    }
+
+
     if (conf.verb > 4) {
         cout << "c [arjun-simp] XOR Potential: " << potential << endl;
     }
 
-    /*NOTE: there are a few ways to sort. But we want to sort NOT
-            to optimize what we remove NOW. Instead, we should optimize what
-            removes most once EVERYTHING runs. The best NOW would be
-            //std::sort(sampling_set->begin(), sampling_set->end(), OccurSorter(vars_xor_occurs));
-            --> This sorts with lowest occur numbers first
-            --> So we have the highest chance that we can set defined later variables
-
-            Instead, we should sort by reverse incidence, as that's the one
-            that will be the right order in the long run.
-    */
     std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(incidence));
     std::reverse(sampling_set->begin(), sampling_set->end());
     uint32_t non_zero_occs = 0;
     uint32_t seen_set_0 = 0;
     for(uint32_t v: *sampling_set) {
         assert(seen[v]);
-        if (vars_xor_occurs[v].size() == 0) {
+        if (vars_gate_occurs[v].size() == 0) {
             continue;
         }
         non_zero_occs++;
-//         cout << "Do something with v " << v << " size: " << vars_xor_occurs[v].size() << endl;
+        //cout << "Trying to define var " << v << " size of lookup: " << vars_xor_occurs[v].size() << endl;
 
         //Define v as a function of the other variables in the XOR
-        for(uint32_t o: vars_xor_occurs[v]) {
-            const auto& x = xors[o];
-            bool ok = true;
-            bool found_v = false;
-            for(auto xor_v: x.first) {
-                //Have they been removed from sampling set in the meanwhile?
-                if (!seen[xor_v]) {
-                    ok = false;
-                    break;
+        for(const auto& gate: vars_gate_occurs[v]) {
+            if (gate.t == gate_t::xor_gate) {
+                const auto& x = xors[gate.at];
+                bool ok = true;
+                bool found_v = false;
+                for(auto xor_v: x.first) {
+                    //Have they been removed from sampling set in the meanwhile?
+                    if (!seen[xor_v]) {
+                        ok = false;
+                        break;
+                    }
+                    if (xor_v == v) {
+                        found_v = true;
+                    }
                 }
-                if (xor_v == v) {
-                    found_v = true;
+                if (!ok) {
+                    //In the meanwhile, the variable that could define this
+                    //have been set to be defined themselves. Cycle could happen.
+                    continue;
                 }
-            }
-            if (!ok) {
-                //In the meanwhile, the variable that could define this
-                //have been set to be defined themselves. Cycle could happen.
-                continue;
-            }
 
-            //All good, we can define v in terms of the other variables
-            assert(found_v);
-            seen[v] = 0;
-            seen_set_0++;
-            break;
+                //All good, we can define v in terms of the other variables
+                assert(found_v);
+                seen[v] = 0;
+                seen_set_0++;
+                break;
+            } else if (gate.t == gate_t::or_gate) {
+                const auto& o = ors[gate.at];
+                bool ok = true;
+                for(auto& or_l: o.get_lhs()) {
+                    if (!seen[or_l.var()]) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (!ok) {
+                    //In the meanwhile, the variable that could define this
+                    //have been set to be defined themselves. Cycle could happen.
+                    continue;
+                }
+                seen[v] = 0;
+                seen_set_0++;
+                break;
+            } else if (gate.t == gate_t::ite_gate) {
+                const auto& ite = ites[gate.at];
+                bool ok = true;
+                for(auto& ite_l: ite.lhs) {
+                    if (!seen[ite_l.var()]) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (!ok) {
+                    //In the meanwhile, the variable that could define this
+                    //have been set to be defined themselves. Cycle could happen.
+                    continue;
+                }
+                seen[v] = 0;
+                seen_set_0++;
+                break;
+            } else {
+                assert(false);
+            }
         }
-    }
-    if (conf.verb) {
-        cout << "c [arjun-simp] XOR-based"
-        << " Potential was: " << potential
-        << " Non-zero OCCs were: " << non_zero_occs
-        << " seen_set_0: " << seen_set_0 << endl;
     }
 
     other_sampling_set->clear();
@@ -250,7 +336,9 @@ bool Common::remove_definabile_by_xor()
     std::swap(sampling_set, other_sampling_set);
 
     if (conf.verb) {
-        cout << "c [arjun-simp] XOR-based"
+        cout << "c [arjun-simp] GATE-based"
+        << " Potential was: " << potential
+        << " Non-zero OCCs were: " << non_zero_occs
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
@@ -258,55 +346,6 @@ bool Common::remove_definabile_by_xor()
     }
 
     return changed;
-}
-
-void Common::remove_definable_by_gates()
-{
-    double myTime = cpuTime();
-
-    if (conf.verb) {
-        cout << "c [arjun-simp] attempting gate-based..." << endl;
-    }
-
-
-    bool changed = true;
-    uint32_t iter = 0;
-    while (changed) {
-        auto old_size = sampling_set->size();
-        vector<uint32_t> definable = solver->get_definabe(*sampling_set);
-
-        for(auto v: definable) {
-            assert(v < orig_num_vars);
-            seen[v] = 1;
-        }
-
-        other_sampling_set->clear();
-        for(auto v: *sampling_set) {
-            if (seen[v] == 0) {
-                other_sampling_set->push_back(v);
-            }
-        }
-
-        //cleanup
-        for(auto v: definable) {
-            seen[v] = 0;
-        }
-
-
-        changed = sampling_set->size() > other_sampling_set->size();
-        //TODO atomic swap
-        std::swap(sampling_set, other_sampling_set);
-
-        if (conf.verb) {
-            cout << "c [arjun-simp] gate-based"
-            << " iter: " << iter
-            << " removed: " << (old_size-sampling_set->size())
-            << " perc: " << std::fixed << std::setprecision(2)
-            << stats_line_percent(old_size-sampling_set->size(), old_size)
-            << " T: " << (cpuTime() - myTime) << endl;
-        }
-        iter++;
-    }
 }
 
 void Common::remove_zero_assigned_literals(bool print)

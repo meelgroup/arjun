@@ -290,7 +290,6 @@ void Common::backward_round()
         }
 
         if (iter % mod == (mod-1) && conf.verb) {
-            //remove_definable_by_gates();
             //solver->remove_and_clean_all();
             cout
             << "c [arjun] iter: " << std::setw(5) << iter;
