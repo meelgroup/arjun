@@ -175,6 +175,8 @@ bool Common::remove_definable_by_gates()
         seen[v] = 1;
     }
 
+    vector<uint32_t> rhs_incidence(solver->nVars(), 0);
+
     //Build occur for XOR
     uint32_t potential = 0;
     for(uint32_t i = 0; i < xors.size(); i ++) {
@@ -192,6 +194,7 @@ bool Common::remove_definable_by_gates()
         //This one can be used to remove a variable
         if (all_orig && num == x.first.size()) {
             for(const uint32_t v: x.first) {
+                rhs_incidence[v]++;
                 vars_gate_occurs[v].push_back(GateOccurs(gate_t::xor_gate, i));
                 potential++;
             }
@@ -213,6 +216,7 @@ bool Common::remove_definable_by_gates()
         }
         //This one can be used to remove a variable
         if (all_orig && num == orgate.get_all().size()) {
+            rhs_incidence[orgate.rhs.var()]++;
             vars_gate_occurs[orgate.rhs.var()].push_back(GateOccurs(gate_t::or_gate, i));
             potential++;
         }
@@ -233,6 +237,7 @@ bool Common::remove_definable_by_gates()
         }
         //This one can be used to remove a variable
         if (all_orig && num == itegate.get_all().size()) {
+            rhs_incidence[itegate.rhs.var()]++;
             vars_gate_occurs[itegate.rhs.var()].push_back(GateOccurs(gate_t::ite_gate, i));
             potential++;
         }
@@ -243,8 +248,8 @@ bool Common::remove_definable_by_gates()
         cout << "c [arjun-simp] XOR Potential: " << potential << endl;
     }
 
-    std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(incidence));
-    std::reverse(sampling_set->begin(), sampling_set->end());
+    std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(rhs_incidence));
+    std::reverse(sampling_set->begin(), sampling_set->end()); //we want most likely independent as last
     uint32_t non_zero_occs = 0;
     uint32_t seen_set_0 = 0;
     for(uint32_t v: *sampling_set) {

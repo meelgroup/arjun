@@ -197,7 +197,7 @@ inline double stats_line_percent(double num, double total)
 }
 
 template<class T>
-struct IncidenceSorter
+struct IncidenceSorter ///DESCENDING ORDER (i.e. most likely independent at the top)
 {
     IncidenceSorter(const vector<T>& _inc) :
         inc(_inc)
