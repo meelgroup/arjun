@@ -32,6 +32,10 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
     auto old_size = sampling_set->size();
     double myTime = cpuTime();
 
+    if (conf.xor_gates_based || conf.or_gate_based || conf.ite_gate_based) {
+        remove_definable_by_gates();
+    }
+
     solver->set_verbosity(1);
     if (conf.pre_simplify) {
         if (conf.verb) {
@@ -62,12 +66,10 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
 
     remove_eq_literals();
     remove_zero_assigned_literals();
-    if (conf.xor_gates_based || conf.or_gate_based) {
-        bool changed = true;
-        while(changed) {
-            changed = remove_definable_by_gates();
-        }
+    if (conf.xor_gates_based || conf.or_gate_based || conf.ite_gate_based) {
+        remove_definable_by_gates();
     }
+
 
     if (conf.probe_based) {
         if (!probe_all()) {
