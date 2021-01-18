@@ -37,7 +37,7 @@ struct Config {
     int intree = 1;
     int guess = 1;
     int pre_simplify = 1;
-    int incidence_sort = 3;
+    int incidence_sort = 1;
     int or_gate_based = 1;
     int xor_gates_based = 1;
     int ite_gate_based = 1;
