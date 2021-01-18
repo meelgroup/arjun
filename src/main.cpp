@@ -118,6 +118,8 @@ void add_arjun_options()
      "Use XOR finding and Gauss-Jordan elimination")
     ("findxors", po::value(&conf.find_xors)->default_value(conf.find_xors),
      "Use XOR finding and Gauss-Jordan elimination")
+    ("gatesortspecial", po::value(&conf.gate_sort_special)->default_value(conf.gate_sort_special),
+     "Use XOR finding and Gauss-Jordan elimination")
     ("elimtofile", po::value(&elimtofile),
      "Use XOR finding and Gauss-Jordan elimination")
     ;
@@ -364,6 +366,7 @@ int main(int argc, char** argv)
     arjun->set_fwd_group(conf.forward_group);
     arjun->set_find_xors(conf.find_xors);
     arjun->set_backbone_simpl(conf.backbone_simpl);
+    arjun->set_gate_sort_special(conf.gate_sort_special);
 
     //signal(SIGINT,signal_handler);
 

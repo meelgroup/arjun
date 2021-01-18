@@ -171,7 +171,6 @@ bool Common::remove_definable_by_gates()
         ites = solver->get_recovered_ite_gates();
     }
 
-
     for(auto v: *sampling_set) {
         toClear.push_back(v);
         seen[v] = 1;
@@ -250,7 +249,11 @@ bool Common::remove_definable_by_gates()
         cout << "c [arjun-simp] XOR Potential: " << potential << endl;
     }
 
-    std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(rhs_incidence));
+    if (conf.gate_sort_special) {
+        std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(rhs_incidence));
+    } else {
+        std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(incidence));
+    }
     std::reverse(sampling_set->begin(), sampling_set->end()); //we want most likely independent as last
     uint32_t non_zero_occs = 0;
     uint32_t seen_set_0 = 0;

@@ -85,6 +85,7 @@ namespace ArjunNS {
         void set_find_xors(bool find_xors);
         void set_backbone_simpl(bool backbone_simpl);
         void set_ite_gate_based(bool ite_gate_based);
+        void set_gate_sort_special(bool gate_sort_special);
 
         //Get config
         uint32_t get_verbosity() const;
@@ -108,6 +109,7 @@ namespace ArjunNS {
         bool get_find_xors() const;
         bool get_backbone_simpl() const;
         bool get_ite_gate_based() const;
+        bool get_gate_sort_special() const;
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
         std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;
 

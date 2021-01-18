@@ -369,6 +369,16 @@ DLL_PUBLIC bool Arjun::get_ite_gate_based() const
     return arjdata->common.conf.ite_gate_based;
 }
 
+DLL_PUBLIC void Arjun::set_gate_sort_special(bool gate_sort_special)
+{
+    arjdata->common.conf.gate_sort_special = gate_sort_special;
+}
+
+DLL_PUBLIC bool Arjun::get_gate_sort_special() const
+{
+    return arjdata->common.conf.gate_sort_special;
+}
+
 
 DLL_PUBLIC vector<vector<Lit>> Arjun::get_cnf()
 {
