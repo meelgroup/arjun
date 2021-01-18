@@ -218,21 +218,12 @@ void Common::run_guess()
     }
     guess_div = 10;
 
-    //We need to do this or we won't get any gains. Intree at least needs to run
-    std::string s;
-    s = "intree-probe, sub-str-cls-with-bin, occ-backw-sub-str, str-impl,sub-str-cls-with-bin";
-    s = "sub-impl,"
-            "scc-vrepl,"
-            "occ-xor,"
-            "scc-vrepl,"
-            "occ-xor,"
-//             "intree-probe,"
-            ;
+    //We need to simplify or we won't get any gains. Intree at least needs to run
     if (conf.verb) {
-        cout << "c [arjun] Simplifying for guess. Schedule: " << s << endl;
+        cout << "c [arjun] Simplifying for guess." << endl;
     }
     solver->set_bve(0);
-    solver->simplify(&dont_elim, &s);
+    solver->simplify(&dont_elim, NULL);
     if (conf.verb) {
         cout << "c [arjun] CMS::simplify() with no BVE finished. T: "
         << (cpuTime() - myTime)
