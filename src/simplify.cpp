@@ -66,10 +66,6 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
 
     remove_eq_literals();
     remove_zero_assigned_literals();
-    if (conf.xor_gates_based || conf.or_gate_based || conf.ite_gate_based) {
-        remove_definable_by_gates();
-    }
-
 
     if (conf.probe_based) {
         if (!probe_all()) {
