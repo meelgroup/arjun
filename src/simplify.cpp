@@ -245,12 +245,13 @@ bool Common::remove_definable_by_gates()
         cout << "c [arjun-simp] XOR Potential: " << potential << endl;
     }
 
+    std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(incidence));
     if (conf.gate_sort_special) {
-        std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(rhs_incidence));
+        //no reverse
     } else {
-        std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(incidence));
+        std::reverse(sampling_set->begin(), sampling_set->end()); //we want most likely independent as last
     }
-    std::reverse(sampling_set->begin(), sampling_set->end()); //we want most likely independent as last
+
     uint32_t non_zero_occs = 0;
     uint32_t seen_set_0 = 0;
     for(uint32_t v: *sampling_set) {
