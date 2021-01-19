@@ -25,9 +25,6 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// moving to expected best:
-// --regsimp 1 --intree 1 --gaussj 0 --sort 3 --distill 1 --xorgate 1 --orgate 1 --guess 1 --fastbackw 1 --findxor 0
-
 struct Config {
     int verb = 3;
     int seed = 0;
@@ -35,8 +32,8 @@ struct Config {
     int distill = 1;
     int regularly_simplify = 1;
     int intree = 1;
-    int gate_sort_special = 1;
-    int guess = 1;
+    int gate_sort_special = 0;
+    int guess = 0;
     int pre_simplify = 1;
     int incidence_sort = 1;
     int or_gate_based = 1;
