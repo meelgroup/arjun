@@ -104,7 +104,7 @@ DLL_PUBLIC uint32_t Arjun::start_with_clean_sampling_set()
 
 DLL_PUBLIC string Arjun::get_version_info()
 {
-    return get_version_sha1();
+    return ArjunIntNS::get_version_sha1();
 }
 
 DLL_PUBLIC std::string Arjun::get_solver_version_info()
