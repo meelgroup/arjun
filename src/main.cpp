@@ -313,81 +313,9 @@ vector<vector<Lit>> get_simplified_cnf(SATSolver* solver, vector<uint32_t>& samp
     return cnf;
 }
 
-int main(int argc, char** argv)
+void elim_to_file(vector<uint32_t>& sampl_set, uint32_t orig_num_vars)
 {
-    arjun = new ArjunNS::Arjun;
-    #if defined(__GNUC__) && defined(__linux__)
-    feenableexcept(FE_INVALID   |
-                   FE_DIVBYZERO |
-                   FE_OVERFLOW
-                  );
-    #endif
-
-    //Reconstruct the command line so we can emit it later if needed
-    string command_line;
-    for(int i = 0; i < argc; i++) {
-        command_line += string(argv[i]);
-        if (i+1 < argc) {
-            command_line += " ";
-        }
-    }
-
-    add_supported_options(argc, argv);
-
-    cout << "c Arjun Version: "
-    << arjun->get_version_info() << endl;
-    cout << arjun->get_solver_version_info();
-
-    cout
-    << "c executed with command line: "
-    << command_line
-    << endl;
-
-    double starTime = cpuTime();
-    cout << "c [arjun] using seed: " << conf.seed << endl;
-    arjun->set_verbosity(conf.verb);
-    arjun->set_seed(conf.seed);
-    arjun->set_fast_backw(conf.fast_backw);
-    arjun->set_distill(conf.distill);
-    arjun->set_regularly_simplify(conf.regularly_simplify);
-    arjun->set_intree(conf.intree);
-    arjun->set_guess(conf.guess);
-    arjun->set_pre_simplify(conf.pre_simplify);
-    arjun->set_incidence_sort(conf.incidence_sort);
-    arjun->set_or_gate_based(conf.or_gate_based);
-    arjun->set_ite_gate_based(conf.ite_gate_based);
-    arjun->set_xor_gates_based(conf.xor_gates_based);
-    arjun->set_probe_based(conf.probe_based);
-    arjun->set_forward(conf.forward);
-    arjun->set_backward(conf.backward);
-    arjun->set_assign_fwd_val(conf.assign_fwd_val);
-    arjun->set_backw_max_confl(conf.backw_max_confl);
-    arjun->set_gauss_jordan(conf.gauss_jordan);
-    arjun->set_fwd_group(conf.forward_group);
-    arjun->set_find_xors(conf.find_xors);
-    arjun->set_backbone_simpl(conf.backbone_simpl);
-    arjun->set_gate_sort_special(conf.gate_sort_special);
-
-    //signal(SIGINT,signal_handler);
-
-    //parsing the input
-    if (vm.count("input") == 0) {
-        cout << "ERROR: you must pass a file" << endl;
-        exit(-1);
-    }
-    const string inp = vm["input"].as<string>();
-    readInAFile(inp);
-    cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
-
-    uint32_t orig_num_vars = arjun->nVars();
-    vector<uint32_t> sampl_set = arjun->get_indep_set();
-    print_final_indep_set(sampl_set);
-    cout << "c [arjun] finished "
-    << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
-    << endl;
-
-    if (!elimtofile.empty()) {
-        double dump_start_time = cpuTime();
+    double dump_start_time = cpuTime();
         cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
         CMSat::SATSolver solver;
         solver.set_verbosity(2);
@@ -465,6 +393,83 @@ int main(int argc, char** argv)
             outf << cl << " 0\n";
         }
         cout << "c [arjun] Done dumping. T: " << (cpuTime() - dump_start_time) << endl;
+}
+
+int main(int argc, char** argv)
+{
+    arjun = new ArjunNS::Arjun;
+    #if defined(__GNUC__) && defined(__linux__)
+    feenableexcept(FE_INVALID   |
+                   FE_DIVBYZERO |
+                   FE_OVERFLOW
+                  );
+    #endif
+
+    //Reconstruct the command line so we can emit it later if needed
+    string command_line;
+    for(int i = 0; i < argc; i++) {
+        command_line += string(argv[i]);
+        if (i+1 < argc) {
+            command_line += " ";
+        }
+    }
+
+    add_supported_options(argc, argv);
+
+    cout << "c Arjun Version: "
+    << arjun->get_version_info() << endl;
+    cout << arjun->get_solver_version_info();
+
+    cout
+    << "c executed with command line: "
+    << command_line
+    << endl;
+
+    double starTime = cpuTime();
+    cout << "c [arjun] using seed: " << conf.seed << endl;
+    arjun->set_verbosity(conf.verb);
+    arjun->set_seed(conf.seed);
+    arjun->set_fast_backw(conf.fast_backw);
+    arjun->set_distill(conf.distill);
+    arjun->set_regularly_simplify(conf.regularly_simplify);
+    arjun->set_intree(conf.intree);
+    arjun->set_guess(conf.guess);
+    arjun->set_pre_simplify(conf.pre_simplify);
+    arjun->set_incidence_sort(conf.incidence_sort);
+    arjun->set_or_gate_based(conf.or_gate_based);
+    arjun->set_ite_gate_based(conf.ite_gate_based);
+    arjun->set_xor_gates_based(conf.xor_gates_based);
+    arjun->set_probe_based(conf.probe_based);
+    arjun->set_forward(conf.forward);
+    arjun->set_backward(conf.backward);
+    arjun->set_assign_fwd_val(conf.assign_fwd_val);
+    arjun->set_backw_max_confl(conf.backw_max_confl);
+    arjun->set_gauss_jordan(conf.gauss_jordan);
+    arjun->set_fwd_group(conf.forward_group);
+    arjun->set_find_xors(conf.find_xors);
+    arjun->set_backbone_simpl(conf.backbone_simpl);
+    arjun->set_gate_sort_special(conf.gate_sort_special);
+
+    //signal(SIGINT,signal_handler);
+
+    //parsing the input
+    if (vm.count("input") == 0) {
+        cout << "ERROR: you must pass a file" << endl;
+        exit(-1);
+    }
+    const string inp = vm["input"].as<string>();
+    readInAFile(inp);
+    cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
+
+    uint32_t orig_num_vars = arjun->nVars();
+    vector<uint32_t> sampl_set = arjun->get_indep_set();
+    print_final_indep_set(sampl_set);
+    cout << "c [arjun] finished "
+    << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
+    << endl;
+
+    if (!elimtofile.empty()) {
+        elim_to_file(sampl_set, orig_num_vars);
     }
 
     delete arjun;
