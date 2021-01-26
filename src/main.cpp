@@ -65,6 +65,7 @@ string elimtofile;
 
 int recompute_sampling_set = 0;
 uint32_t orig_sampling_set_size = 0;
+uint32_t polar_mode = 0;
 
 // static void signal_handler(int) {
 //     cout << endl << "c [arjun] INTERRUPTING ***" << endl << std::flush;
@@ -116,12 +117,12 @@ void add_arjun_options()
      "Maximum conflicts per variable in backward mode")
     ("gaussj", po::value(&conf.gauss_jordan)->default_value(conf.gauss_jordan),
      "Use XOR finding and Gauss-Jordan elimination")
-    ("findxors", po::value(&conf.find_xors)->default_value(conf.find_xors),
-     "Use XOR finding and Gauss-Jordan elimination")
     ("gatesortspecial", po::value(&conf.gate_sort_special)->default_value(conf.gate_sort_special),
-     "Use XOR finding and Gauss-Jordan elimination")
+     "Special sorting of variables when doing gates")
+    ("polarmode", po::value(&polar_mode)->default_value(polar_mode),
+     "Use set polarity mode")
     ("elimtofile", po::value(&elimtofile),
-     "Use XOR finding and Gauss-Jordan elimination")
+     "Perform 'E' to a file")
     ;
 
     help_options.add(arjun_options);
@@ -446,9 +447,12 @@ int main(int argc, char** argv)
     arjun->set_backw_max_confl(conf.backw_max_confl);
     arjun->set_gauss_jordan(conf.gauss_jordan);
     arjun->set_fwd_group(conf.forward_group);
-    arjun->set_find_xors(conf.find_xors);
     arjun->set_backbone_simpl(conf.backbone_simpl);
     arjun->set_gate_sort_special(conf.gate_sort_special);
+    if (polar_mode == 1) {
+        arjun->set_polar_mode(CMSat::PolarityMode::polarmode_neg);
+    }
+
 
     //signal(SIGINT,signal_handler);
 

@@ -349,16 +349,6 @@ DLL_PUBLIC uint32_t Arjun::get_fwd_group() const
     return arjdata->common.conf.forward_group;
 }
 
-DLL_PUBLIC void Arjun::set_find_xors(bool find_xors)
-{
-    arjdata->common.conf.find_xors = find_xors;
-}
-
-DLL_PUBLIC bool Arjun::get_find_xors() const
-{
-    return arjdata->common.conf.find_xors;
-}
-
 DLL_PUBLIC void Arjun::set_ite_gate_based(bool ite_gate_based)
 {
     arjdata->common.conf.ite_gate_based = ite_gate_based;
@@ -434,4 +424,9 @@ DLL_PUBLIC void Arjun::simplify_before_elim()
 DLL_PUBLIC vector<vector<Lit>> Arjun::get_simplified_cnf()
 {
     return arjdata->common.simplified_cnf;
+}
+
+DLL_PUBLIC void Arjun::set_polar_mode(CMSat::PolarityMode mode)
+{
+    arjdata->common.solver->set_polarity_mode(mode);
 }

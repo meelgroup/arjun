@@ -25,6 +25,8 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include <cryptominisat5/solvertypesmini.h>
+
 struct Config {
     int verb = 3;
     int seed = 0;
@@ -45,7 +47,6 @@ struct Config {
     int backward = 1;
     int assign_fwd_val = 0;
     int gauss_jordan = 0;
-    int find_xors = 0;
     int backbone_simpl = 0;
     uint32_t backw_max_confl = 500;
     uint32_t guess_max_confl = 1000;

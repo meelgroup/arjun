@@ -283,7 +283,7 @@ bool Common::preproc_and_duplicate()
     solver->set_simplify(conf.regularly_simplify);
     solver->set_intree_probe(conf.intree);
     solver->set_distill(conf.distill);
-    solver->set_find_xors(conf.find_xors || conf.gauss_jordan);
+    solver->set_find_xors(conf.gauss_jordan);
     return true;
 }
 

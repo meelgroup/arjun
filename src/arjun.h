@@ -74,7 +74,6 @@ namespace ArjunNS {
         void set_or_gate_based(bool or_gate_based);
         void set_xor_gates_based(bool xor_gates_based);
         void set_probe_based(bool probe_based);
-        void set_polarmode(bool polarmode);
         void set_forward(bool forward);
         void set_backward(bool backward);
         void set_assign_fwd_val(bool assign_fwd_val);
@@ -86,6 +85,7 @@ namespace ArjunNS {
         void set_backbone_simpl(bool backbone_simpl);
         void set_ite_gate_based(bool ite_gate_based);
         void set_gate_sort_special(bool gate_sort_special);
+        void set_polar_mode(CMSat::PolarityMode mode);
 
         //Get config
         uint32_t get_verbosity() const;
@@ -98,7 +98,6 @@ namespace ArjunNS {
         bool get_or_gate_based() const;
         bool get_xor_gates_based() const;
         bool get_probe_based() const;
-        bool get_polarmode() const;
         bool get_forward() const;
         bool get_backward() const;
         bool get_assign_fwd_val() const;
