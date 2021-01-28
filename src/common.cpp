@@ -148,33 +148,30 @@ void Common::add_fixed_clauses()
 
 void Common::duplicate_problem()
 {
-    vector<vector<Lit>> cnf = get_cnf();
+    vector<Lit> cnf = get_cnf();
 
     solver->new_vars(orig_num_vars);
-    for(auto& cl: cnf) {
-        for(auto& l: cl) {
+    vector<Lit> cl;
+    for(Lit l: cnf) {
+        if (l != lit_Undef) {
             l = Lit(l.var()+orig_num_vars, l.sign());
+            cl.push_back(l);
+            continue;
         }
         solver->add_clause(cl);
+        cl.clear();
     }
 }
 
-vector<vector<Lit>> Common::get_cnf()
+vector<Lit> Common::get_cnf()
 {
-    vector<vector<Lit>> cnf;
+    vector<Lit> cnf;
     solver->start_getting_small_clauses(
         std::numeric_limits<uint32_t>::max(),
         std::numeric_limits<uint32_t>::max(),
         false);
 
-    bool ret = true;
-    vector<Lit> clause;
-    while(ret) {
-        ret = solver->get_next_small_clause(clause);
-        if (ret) {
-            cnf.push_back(clause);
-        }
-    }
+    solver->get_next_small_clause(cnf, true);
     solver->end_getting_small_clauses();
 
     return cnf;
@@ -215,7 +212,6 @@ bool Common::preproc_and_duplicate()
 
     //Simplify problem
     if (!simplify_intree_probe_xorgates_normgates_probe()) {
-        cout << "Sim..." << endl;
         return false;
     }
 

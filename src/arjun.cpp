@@ -370,13 +370,6 @@ DLL_PUBLIC bool Arjun::get_gate_sort_special() const
     return arjdata->common.conf.gate_sort_special;
 }
 
-
-DLL_PUBLIC vector<vector<Lit>> Arjun::get_cnf()
-{
-    return arjdata->common.get_cnf();
-
-}
-
 DLL_PUBLIC vector<Lit> Arjun::get_zero_assigned_lits() const
 {
     vector<Lit> ret;
@@ -422,7 +415,7 @@ DLL_PUBLIC void Arjun::simplify_before_elim()
     arjdata->common.solver->simplify(NULL, &tmp);
 }
 
-DLL_PUBLIC vector<vector<Lit>> Arjun::get_simplified_cnf()
+DLL_PUBLIC const vector<Lit>& Arjun::get_simplified_cnf() const
 {
     return arjdata->common.simplified_cnf;
 }

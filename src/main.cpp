@@ -321,8 +321,15 @@ void elim_to_file(vector<uint32_t>& sampl_set, uint32_t orig_num_vars)
         CMSat::SATSolver solver;
         solver.set_verbosity(2);
         solver.new_vars(orig_num_vars);
-        for(const auto& cl: arjun->get_simplified_cnf()) {
-            solver.add_clause(cl);
+
+        vector<Lit> tmp;
+        for(const auto& l: arjun->get_simplified_cnf()) {
+            if (l != lit_Undef) {
+                tmp.push_back(l);
+                continue;
+            }
+            solver.add_clause(tmp);
+            tmp.clear();
         }
 
         arjun->simplify_before_elim();
@@ -355,7 +362,7 @@ void elim_to_file(vector<uint32_t>& sampl_set, uint32_t orig_num_vars)
         solver.set_varelim_check_resolvent_subs(true);
         solver.set_max_red_linkin_size(0);
 
-        string str("full-probe, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, sub-str-cls-with-bin, occ-ternary-res, occ-bve, distill-cls, occ-backw-sub-str, scc-vrepl, sub-str-cls-with-bin");
+        string str("sub-str-cls-with-bin, full-probe, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, occ-ternary-res, occ-bve, distill-cls, occ-backw-sub-str, scc-vrepl, sub-str-cls-with-bin");
         solver.simplify(&dont_elim, &str);
         str = string(",intree-probe,") + str;
         solver.simplify(&dont_elim, &str);

@@ -60,10 +60,9 @@ namespace ArjunNS {
         void start_getting_small_clauses(uint32_t max_len, uint32_t max_glue, bool red = true);
         bool get_next_small_clause(std::vector<CMSat::Lit>& ret); //returns FALSE if no more
         void end_getting_small_clauses();
-        std::vector<std::vector<CMSat::Lit>> get_simplified_cnf();
+        const std::vector<CMSat::Lit>& get_simplified_cnf() const;
 
         //Set config
-        std::vector<std::vector<CMSat::Lit>> get_cnf();
         void set_verbosity(uint32_t verb);
         void set_fast_backw(bool fast_backw);
         void set_distill(bool distill);

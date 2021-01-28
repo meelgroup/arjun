@@ -119,7 +119,7 @@ struct Common
     void get_incidence();
     void calc_community_parts();
     void set_up_solver();
-    vector<vector<Lit>> get_cnf();
+    vector<Lit> get_cnf();
 
 
     //guess
@@ -152,7 +152,7 @@ struct Common
     void remove_zero_assigned_literals(bool print = true);
     void remove_eq_literals(bool print = true);
     bool probe_all();
-    vector<vector<Lit>> simplified_cnf;
+    vector<Lit> simplified_cnf;
 
     //forward
     void set_guess_forward_round(
