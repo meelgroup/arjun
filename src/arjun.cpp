@@ -116,7 +116,7 @@ DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
 {
     double starTime = cpuTime();
     if (!arjdata->common.preproc_and_duplicate()) {
-        return *arjdata->common.sampling_set;
+        goto end;
     }
 
     if (arjdata->common.conf.guess) {
@@ -137,6 +137,7 @@ DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
         arjdata->common.backward_round();
     }
 
+    end:
     if (arjdata->common.conf.verb) {
         cout << "c [arjun] get_indep_set finished "
         << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
