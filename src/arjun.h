@@ -84,7 +84,7 @@ namespace ArjunNS {
         void set_backbone_simpl(bool backbone_simpl);
         void set_ite_gate_based(bool ite_gate_based);
         void set_gate_sort_special(bool gate_sort_special);
-        void set_polar_mode(CMSat::PolarityMode mode);
+        //void set_polar_mode(CMSat::PolarityMode mode);
 
         //Get config
         uint32_t get_verbosity() const;

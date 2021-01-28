@@ -34,7 +34,6 @@ struct Config {
     int distill = 1;
     int regularly_simplify = 1;
     int intree = 1;
-    int gate_sort_special = 0;
     int guess = 0;
     int pre_simplify = 1;
     int incidence_sort = 1;
