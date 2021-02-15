@@ -28,7 +28,6 @@ using std::pair;
 
 bool Common::simplify_intree_probe_xorgates_normgates_probe()
 {
-    assert(solver->okay());
     auto old_size = sampling_set->size();
     double myTime = cpuTime();
 
@@ -75,7 +74,7 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
     solver->set_verbosity(std::max<int>((int)conf.verb-2, 0));
 
     if (conf.verb) {
-        cout << "c [arjun] Arjun simplification finished "
+        cout << "c [arjun] simplification finished "
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
@@ -84,6 +83,21 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
     }
 
     return true;
+}
+
+void Common::empty_out_indep_set_if_unsat()
+{
+    if (solver->okay()) {
+        return;
+    }
+
+    //It's UNSAT so the sampling set is empty
+    other_sampling_set->clear();
+    std::swap(sampling_set, other_sampling_set);
+    if (conf.verb) {
+        cout << "c [arjun] CNF is UNSAT, setting sampling set to empty"
+        << endl;
+    }
 }
 
 bool Common::probe_all()

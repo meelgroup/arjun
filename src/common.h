@@ -152,6 +152,7 @@ struct Common
     void remove_zero_assigned_literals(bool print = true);
     void remove_eq_literals(bool print = true);
     bool probe_all();
+    void empty_out_indep_set_if_unsat();
     vector<Lit> simplified_cnf;
 
     //forward

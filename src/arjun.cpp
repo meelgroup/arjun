@@ -138,6 +138,7 @@ DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
     }
 
     end:
+    arjdata->common.empty_out_indep_set_if_unsat();
     if (arjdata->common.conf.verb) {
         cout << "c [arjun] get_indep_set finished "
         << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
