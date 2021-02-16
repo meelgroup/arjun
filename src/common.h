@@ -147,11 +147,12 @@ struct Common
 
     //simp
     vector<uint32_t> toClear;
-    bool simplify_intree_probe_xorgates_normgates_probe();
+    bool simplify();
     bool remove_definable_by_gates();
     void remove_zero_assigned_literals(bool print = true);
     void remove_eq_literals(bool print = true);
     bool probe_all();
+    bool backbone_simpl(uint64_t orig_max_confl);
     void empty_out_indep_set_if_unsat();
     vector<Lit> simplified_cnf;
 
@@ -187,6 +188,30 @@ struct Common
     template<class T> void sort_unknown(T& unknown);
 
 };
+
+
+inline string print_value_kilo_mega(const int64_t value, bool setw = true)
+{
+    std::stringstream ss;
+    if (value > 20*1000LL*1000LL) {
+        if (setw) {
+            ss << std::setw(4);
+        }
+        ss << value/(1000LL*1000LL) << "M";
+    } else if (value > 20LL*1000LL) {
+        if (setw) {
+            ss << std::setw(4);
+        }
+        ss << value/1000LL << "K";
+    } else {
+        if (setw) {
+            ss << std::setw(5);
+        }
+        ss << value;
+    }
+
+    return ss.str();
+}
 
 inline double stats_line_percent(double num, double total)
 {

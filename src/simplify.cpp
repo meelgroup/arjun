@@ -26,7 +26,7 @@
 
 using std::pair;
 
-bool Common::simplify_intree_probe_xorgates_normgates_probe()
+bool Common::simplify()
 {
     auto old_size = sampling_set->size();
     double myTime = cpuTime();
@@ -54,8 +54,8 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
         }
     }
 
-    if (conf.backbone_simpl) {
-        if (solver->backbone_simpl() == l_False) {
+    if (conf.backbone_simpl && sampling_set->size() > 1000) {
+        if (!backbone_simpl(conf.backbone_simpl_max_confl)) {
             return false;
         }
     }
@@ -81,6 +81,124 @@ bool Common::simplify_intree_probe_xorgates_normgates_probe()
         << " T: " << (cpuTime() - myTime)
         << endl;
     }
+
+    return true;
+}
+
+struct IncSorterAsc
+{
+    IncSorterAsc(const vector<uint32_t>& _inc) :
+        inc(_inc)
+    {}
+
+    bool operator()(const uint32_t a, const uint32_t b) const {
+        //Return that the order is OK when "a" has less incidence than "b"
+        return inc[a] < inc[b];
+    }
+
+    const vector<uint32_t>& inc;
+};
+
+bool Common::backbone_simpl(uint64_t orig_max_confl)
+{
+    if (conf.verb) {
+        cout << "c [backbone-simpl] starting backbone simplification..." << endl;
+    }
+    uint64_t last_sum_conflicts = 0;
+    int64_t max_confl = orig_max_confl;
+
+    solver->set_verbosity(0);
+    double myTime = cpuTime();
+    uint32_t orig_vars_set = solver->get_zero_assigned_lits().size();
+    bool finished = false;
+    Lit l;
+
+    vector<Lit> tmp_clause;
+    vector<Lit> assumps;
+    vector<lbool> model;
+    vector<char> model_enabled;
+    solver->set_polarity_mode(PolarityMode::polarmode_neg);
+
+    vector<uint32_t> var_order(solver->nVars());
+    for(uint32_t i = 0, max = solver->nVars(); i < max; i++) {
+        var_order[i] = i;
+    }
+    //std::sort(var_order.begin(), var_order.end(), IncSorterAsc(incidence));
+
+    solver->set_max_confl(max_confl);
+    max_confl -= solver->get_sum_conflicts();
+    last_sum_conflicts = solver->get_sum_conflicts();
+    lbool ret = solver->solve();
+    if (ret == l_False) {
+        return false;
+    }
+    if (ret == l_Undef || max_confl < 0) {
+        goto end;
+    }
+
+    model = solver->get_model();
+    model_enabled.resize(solver->nVars(), 1);
+
+    for(const uint32_t var: var_order) {
+        if (!model_enabled[var]) {
+            continue;
+        }
+
+        l = Lit(var, model[var] == l_False);
+
+        //There is definitely a solution with "l". Let's see if ~l fails.
+        assumps.clear();
+        assumps.push_back(~l);
+        solver->set_max_confl(max_confl);
+        ret = solver->solve(&assumps);
+
+        //Update max confl
+        assert(last_sum_conflicts <= solver->get_sum_conflicts());
+        max_confl -= (solver->get_sum_conflicts() - last_sum_conflicts);
+        last_sum_conflicts = solver->get_sum_conflicts();
+
+        //Check return value
+        if (ret == l_True) {
+            const auto& this_model = solver->get_model();
+            for(uint32_t i2 = 0, max = solver->nVars(); i2 < max; i2++) {
+                if (this_model[i2] != model[i2]) {
+                    model_enabled[i2] = 0;
+                }
+            }
+        } else if (ret == l_False) {
+            tmp_clause.clear();
+            tmp_clause.push_back(l);
+            if (!solver->add_clause(tmp_clause)) {
+                return false;
+            }
+        }
+        if (ret == l_Undef || max_confl < 0) {
+            goto end;
+        }
+    }
+    finished = true;
+    assert(solver->okay());
+
+    end:
+    uint32_t num_set = solver->get_zero_assigned_lits().size() - orig_vars_set;
+    double time_used = cpuTime() - myTime;
+    solver->set_polarity_mode(PolarityMode::polarmode_best);
+
+    if (conf.verb) {
+        if (!finished) {
+            cout << "c [backbone-simpl] "
+            << "skipping, taking more than max conflicts:"
+            << print_value_kilo_mega(orig_max_confl)
+            << endl;
+        }
+        cout << "c [backbone-simpl]"
+        << " set: " << num_set
+        << " conflicts used: " << print_value_kilo_mega(solver->get_sum_conflicts())
+        << " conflicts max: " << print_value_kilo_mega(orig_max_confl)
+        << " T: " << std::setprecision(2) << time_used
+        << endl;
+    }
+    solver->set_verbosity(1);
 
     return true;
 }

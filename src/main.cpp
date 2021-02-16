@@ -111,6 +111,8 @@ void add_arjun_options()
      "Use simple probing to set (and define) some variables")
     ("backbone", po::value(&conf.backbone_simpl)->default_value(conf.backbone_simpl),
      "Use backbone simplification")
+    ("backbonemaxconfl", po::value(&conf.backbone_simpl_max_confl)->default_value(conf.backbone_simpl_max_confl),
+     "Backbone simplification max conflicts")
     ("xorgate", po::value(&conf.xor_gates_based)->default_value(conf.xor_gates_based),
      "Use XOR detection in SAT solver to define some variables")
     ("maxc", po::value(&conf.backw_max_confl)->default_value(conf.backw_max_confl),
@@ -451,6 +453,7 @@ int main(int argc, char** argv)
     arjun->set_gauss_jordan(conf.gauss_jordan);
     arjun->set_fwd_group(conf.forward_group);
     arjun->set_backbone_simpl(conf.backbone_simpl);
+    arjun->set_backbone_simpl_max_confl(conf.backbone_simpl_max_confl);
 //     if (polar_mode == 1) {
 //         arjun->set_polar_mode(CMSat::PolarityMode::polarmode_neg);
 //     }

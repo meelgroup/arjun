@@ -47,6 +47,7 @@ struct Config {
     int assign_fwd_val = 0;
     int gauss_jordan = 0;
     int backbone_simpl = 0;
+    unsigned long backbone_simpl_max_confl = 100ULL*1000ULL;
     uint32_t backw_max_confl = 500;
     uint32_t guess_max_confl = 1000;
 };

@@ -250,6 +250,15 @@ DLL_PUBLIC void Arjun::set_backw_max_confl(uint32_t backw_max_confl)
     arjdata->common.conf.backw_max_confl = backw_max_confl;
 }
 
+DLL_PUBLIC void Arjun::set_backbone_simpl_max_confl(uint64_t backbone_simpl_max_confl)
+{
+    arjdata->common.conf.backbone_simpl_max_confl = backbone_simpl_max_confl;
+}
+
+DLL_PUBLIC long unsigned Arjun::get_backbone_simpl_max_confl() const
+{
+    return arjdata->common.conf.backbone_simpl_max_confl;
+}
 
 DLL_PUBLIC uint32_t Arjun::get_verbosity() const
 {

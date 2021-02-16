@@ -217,7 +217,7 @@ bool Common::preproc_and_duplicate()
     }
 
     //Simplify problem
-    if (!simplify_intree_probe_xorgates_normgates_probe()) {
+    if (!simplify()) {
         return false;
     }
 
@@ -265,14 +265,12 @@ bool Common::preproc_and_duplicate()
         cout << "c [arjun] Adding fixed clauses time: " << (cpuTime()-fix_cl_time) << endl;
     }
 
-    //Discover XORs
+    //Run Gauss-Jordan if need be
     if (conf.gauss_jordan) {
         str = "occ-xor";
         solver->set_bve(0);
         solver->set_allow_otf_gauss();
         solver->set_xor_detach(false);
-//         solver->set_verbosity(1);
-//         conf.verb = 2;
         if (solver->simplify(&dont_elim, &str) == l_False) {
             return false;
         }
