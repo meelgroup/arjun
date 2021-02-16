@@ -314,7 +314,7 @@ struct IncidenceSorterCommPartToOtherComm
 template<class T>
 void Common::sort_unknown(T& unknown)
 {
-    if (conf.incidence_sort == 1) {
+    if (conf.incidence_sort == 1 || conf.incidence_sort >= 10) {
         std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
     } else if (conf.incidence_sort == 2) {
         std::sort(unknown.begin(), unknown.end(), IncidenceSorter2<uint32_t>(incidence, incidence_probing));

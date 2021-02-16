@@ -184,7 +184,13 @@ void Common::get_incidence()
     vector<uint32_t> inc = solver->get_lit_incidence();
     for(uint32_t i = 0; i < orig_num_vars; i++) {
         Lit l = Lit(i, true);
-        incidence[l.var()] = std::min(inc[l.toInt()],inc[(~l).toInt()]);
+        if (conf.incidence_sort == 10) {
+            incidence[l.var()] = inc[l.toInt()] + inc[(~l).toInt()];
+        } else if (conf.incidence_sort == 11) {
+            incidence[l.var()] = std::max(inc[l.toInt()], inc[(~l).toInt()]);
+        } else {
+            incidence[l.var()] = std::min(inc[l.toInt()],inc[(~l).toInt()]);
+        }
     }
 }
 
