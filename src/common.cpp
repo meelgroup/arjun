@@ -166,14 +166,7 @@ void Common::duplicate_problem()
 vector<Lit> Common::get_cnf()
 {
     vector<Lit> cnf;
-    solver->start_getting_small_clauses(
-        std::numeric_limits<uint32_t>::max(),
-        std::numeric_limits<uint32_t>::max(),
-        false);
-
-    solver->get_next_small_clause(cnf, true);
-    solver->end_getting_small_clauses();
-
+    solver->get_all_irred_clauses(cnf);
     return cnf;
 }
 
