@@ -288,30 +288,6 @@ void readInAFile(const string& filename)
     #endif
 }
 
-vector<vector<Lit>> get_simplified_cnf(SATSolver* solver, vector<uint32_t>& sampl_set)
-{
-    vector<vector<Lit>> cnf;
-    solver->start_getting_small_clauses(
-        std::numeric_limits<uint32_t>::max(),
-        std::numeric_limits<uint32_t>::max(),
-        false, //red
-        false, //bva vars
-        true); //simplified
-
-    sampl_set = solver->translate_sampl_set(sampl_set);
-
-    bool ret = true;
-    vector<Lit> clause;
-    while(ret) {
-        ret = solver->get_next_small_clause(clause);
-        if (ret) {
-            cnf.push_back(clause);
-        }
-    }
-    solver->end_getting_small_clauses();
-    return cnf;
-}
-
 void dump_cnf(const vector<vector<Lit>>& cnf, const vector<uint32_t>& sampl_set)
 {
     uint32_t num_cls = cnf.size();
@@ -328,83 +304,25 @@ void dump_cnf(const vector<vector<Lit>>& cnf, const vector<uint32_t>& sampl_set)
     outf << "p cnf " << max_var << " " << num_cls << endl;
 
     //Add projection
-    if (false) {
-        outf << "c ind ";
-        for(const auto& v: sampl_set) {
-            outf << v+1  << " ";
-        }
-        outf << "0\n";
+    outf << "c ind ";
+    for(const auto& v: sampl_set) {
+        outf << v+1  << " ";
     }
+    outf << "0\n";
 
     for(const auto& cl: cnf) {
         outf << cl << " 0\n";
     }
 }
 
-void elim_to_file(vector<uint32_t>& sampl_set, uint32_t orig_num_vars)
+void elim_to_file(const vector<uint32_t>& sampl_set, uint32_t orig_num_vars)
 {
     double dump_start_time = cpuTime();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
-    CMSat::SATSolver solver;
-    solver.set_verbosity(2);
-    solver.new_vars(orig_num_vars);
-
-    vector<Lit> tmp;
-    for(const auto& l: arjun->get_simplified_cnf()) {
-        if (l != lit_Undef) {
-            tmp.push_back(l);
-            continue;
-        }
-        solver.add_clause(tmp);
-        tmp.clear();
-    }
-
-    arjun->simplify_before_elim();
-    auto zero_lev_lits = arjun->get_zero_assigned_lits();
-    vector<Lit> dummy;
-    for(const Lit& lit: zero_lev_lits) {
-        dummy.clear();
-        dummy.push_back(lit);
-        solver.add_clause(dummy);
-    }
-
-    auto bin_xors = arjun->get_all_binary_xors();
-    vector<uint32_t> dummy_v;
-    for(const auto& bx: bin_xors) {
-        dummy_v.clear();
-        dummy_v.push_back(bx.first.var());
-        dummy_v.push_back(bx.second.var());
-        solver.add_xor_clause(dummy_v, bx.first.sign()^bx.second.sign());
-    }
-
-    vector<Lit> dont_elim;
-    for(const auto& v: sampl_set) {
-        dont_elim.push_back(Lit(v, false));
-    }
-
-    //Below works for: ProcessBean, pollard, track1_116.mcc2020_cnf
-    //    and is quite fast
-    //-> with CMS f356f5cef4e566fad94043324093ef9848697aae
-    solver.set_min_bva_gain(32);
-    solver.set_varelim_check_resolvent_subs(true);
-    solver.set_max_red_linkin_size(0);
-
-    string str("sub-str-cls-with-bin, full-probe, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, occ-ternary-res, occ-bve, distill-cls, occ-backw-sub-str, scc-vrepl, sub-str-cls-with-bin");
-    solver.simplify(&dont_elim, &str);
-    str = string(",intree-probe,") + str;
-    solver.simplify(&dont_elim, &str);
-    solver.simplify(&dont_elim, &str);
-    solver.simplify(&dont_elim, &str);
-    solver.simplify(&dont_elim, &str);
-//         solver.simplify(&dont_elim, &str);
-    str += string(",must-scc-vrepl,must-renumber");
-    solver.simplify(&dont_elim, &str);
-    vector<vector<Lit>> cnf = get_simplified_cnf(&solver, sampl_set);
-    dump_cnf(cnf, sampl_set);
+    auto ret = arjun->get_fully_simplified_cnf(sampl_set, orig_num_vars);
+    dump_cnf(ret.first, ret.second);
     cout << "c [arjun] Done dumping. T: " << (cpuTime() - dump_start_time) << endl;
 }
-
-
 
 int main(int argc, char** argv)
 {

@@ -420,6 +420,95 @@ DLL_PUBLIC const vector<Lit>& Arjun::get_simplified_cnf() const
     return arjdata->common.simplified_cnf;
 }
 
+vector<vector<Lit>> tmp_get_simplified_cnf(SATSolver* solver, vector<uint32_t>& sampl_set)
+{
+    vector<vector<Lit>> cnf;
+    solver->start_getting_small_clauses(
+        std::numeric_limits<uint32_t>::max(),
+        std::numeric_limits<uint32_t>::max(),
+        false, //red
+        false, //bva vars
+        true); //simplified
+
+    sampl_set = solver->translate_sampl_set(sampl_set);
+
+    bool ret = true;
+    vector<Lit> clause;
+    while(ret) {
+        ret = solver->get_next_small_clause(clause);
+        if (ret) {
+            cnf.push_back(clause);
+        }
+    }
+    solver->end_getting_small_clauses();
+    return cnf;
+}
+
+DLL_PUBLIC std::pair<vector<vector<Lit>>, vector<uint32_t>>
+Arjun::get_fully_simplified_cnf(
+    const vector<uint32_t>& sampl_set,
+    const uint32_t orig_num_vars)
+{
+    CMSat::SATSolver solver;
+    solver.set_verbosity(2);
+    solver.new_vars(orig_num_vars);
+
+    vector<Lit> tmp;
+    for(const auto& l: get_simplified_cnf()) {
+        if (l != lit_Undef) {
+            tmp.push_back(l);
+            continue;
+        }
+        solver.add_clause(tmp);
+        tmp.clear();
+    }
+
+    simplify_before_elim();
+    auto zero_lev_lits = get_zero_assigned_lits();
+    vector<Lit> dummy;
+    for(const Lit& lit: zero_lev_lits) {
+        dummy.clear();
+        dummy.push_back(lit);
+        solver.add_clause(dummy);
+    }
+
+    auto bin_xors = get_all_binary_xors();
+    vector<uint32_t> dummy_v;
+    for(const auto& bx: bin_xors) {
+        dummy_v.clear();
+        dummy_v.push_back(bx.first.var());
+        dummy_v.push_back(bx.second.var());
+        solver.add_xor_clause(dummy_v, bx.first.sign()^bx.second.sign());
+    }
+
+    vector<Lit> dont_elim;
+    for(const auto& v: sampl_set) {
+        dont_elim.push_back(Lit(v, false));
+    }
+
+    //Below works for: ProcessBean, pollard, track1_116.mcc2020_cnf
+    //    and is quite fast
+    //-> with CMS f356f5cef4e566fad94043324093ef9848697aae
+    solver.set_min_bva_gain(32);
+    solver.set_varelim_check_resolvent_subs(true);
+    solver.set_max_red_linkin_size(0);
+
+    string str("sub-str-cls-with-bin, full-probe, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, occ-ternary-res, occ-bve, distill-cls, occ-backw-sub-str, scc-vrepl, sub-str-cls-with-bin");
+    solver.simplify(&dont_elim, &str);
+    str = string(",intree-probe,") + str;
+    solver.simplify(&dont_elim, &str);
+    solver.simplify(&dont_elim, &str);
+    solver.simplify(&dont_elim, &str);
+    solver.simplify(&dont_elim, &str);
+//         solver.simplify(&dont_elim, &str);
+    str += string(",must-scc-vrepl,must-renumber");
+    solver.simplify(&dont_elim, &str);
+
+    vector<uint32_t> new_sampl_set = sampl_set;
+    vector<vector<Lit>> cnf = tmp_get_simplified_cnf(&solver, new_sampl_set);
+    return std::make_pair(cnf, new_sampl_set);
+}
+
 // DLL_PUBLIC void Arjun::set_polar_mode(CMSat::PolarityMode mode)
 // {
 //     arjdata->common.solver->set_polarity_mode(mode);

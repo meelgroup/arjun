@@ -61,6 +61,10 @@ namespace ArjunNS {
         bool get_next_small_clause(std::vector<CMSat::Lit>& ret); //returns FALSE if no more
         void end_getting_small_clauses();
         const std::vector<CMSat::Lit>& get_simplified_cnf() const;
+        std::pair<std::vector<std::vector<CMSat::Lit>>, std::vector<uint32_t>>
+            get_fully_simplified_cnf(
+            const std::vector<uint32_t>& sampl_set,
+            const uint32_t orig_num_vars);
 
         //Set config
         void set_verbosity(uint32_t verb);
