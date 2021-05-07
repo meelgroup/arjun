@@ -513,3 +513,14 @@ Arjun::get_fully_simplified_cnf(
 // {
 //     arjdata->common.solver->set_polarity_mode(mode);
 // }
+
+
+DLL_PUBLIC void Arjun::set_pred_forever_cutoff(int pred_forever_cutoff)
+{
+    arjdata->common.solver->set_pred_forever_cutoff(pred_forever_cutoff);
+}
+
+DLL_PUBLIC void Arjun::set_every_pred_reduce(int every_pred_reduce)
+{
+    arjdata->common.solver->set_every_pred_reduce(every_pred_reduce);
+}
