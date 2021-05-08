@@ -238,7 +238,7 @@ inline double stats_line_percent(double num, double total)
 
 void print_final_indep_set(const vector<uint32_t>& indep_set)
 {
-    cout << "vp ";
+    cout << "c ind ";
     for(const uint32_t s: indep_set) {
         cout << s+1 << " ";
     }
