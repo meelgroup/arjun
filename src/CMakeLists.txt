@@ -76,11 +76,15 @@ set_target_properties(arjun-bin PROPERTIES
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 
+target_link_libraries(arjun
+    LINK_PUBLIC ${LOUVAIN_COMMUNITIES_LIBRARIES}
+)
+
+
 target_link_libraries(arjun-bin
     ${arjun_bin_exec_link_libs}
     arjun
     ${CRYPTOMINISAT5_LIBRARIES}
-    ${LOUVAIN_COMMUNITIES_LIBRARIES}
 )
 
 arjun_add_public_header(
