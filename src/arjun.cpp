@@ -112,6 +112,11 @@ DLL_PUBLIC std::string Arjun::get_solver_version_info()
     return arjdata->common.solver->get_text_version_info();
 }
 
+DLL_PUBLIC std::string Arjun::get_compilation_env()
+{
+    return arjdata->common.solver->get_compilation_env();
+}
+
 DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
 {
     double starTime = cpuTime();

@@ -45,7 +45,6 @@ const char* ArjunIntNS::get_compilation_env()
     "STATICCOMPILE = @STATICCOMPILE@ | "
     "Boost_FOUND = @Boost_FOUND@ | "
     "ZLIB_FOUND = @ZLIB_FOUND@ | "
-    "VALGRIND_FOUND = @VALGRIND_FOUND@ | "
     "ENABLE_ASSERTIONS = @ENABLE_ASSERTIONS@ | "
     "MY_TARGETS = @MY_TARGETS@ | "
     "compilation date time = " __DATE__ " " __TIME__

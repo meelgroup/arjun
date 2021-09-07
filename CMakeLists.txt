@@ -457,7 +457,6 @@ add_custom_target(uninstall
 if (ENABLE_TESTING)
     enable_testing()
 
-    #use valgrind
     message(STATUS "Testing is enabled")
     set(UNIT_TEST_EXE_SUFFIX "Tests" CACHE STRING "Suffix for Unit test executable")
     #add_subdirectory(tests)

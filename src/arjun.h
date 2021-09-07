@@ -42,6 +42,7 @@ namespace ArjunNS {
         Arjun();
         ~Arjun();
         std::string get_version_info();
+        std::string get_compilation_env();
         std::string get_solver_version_info();
         //void set_projection_set(const std::vector<uint32_t>& vars);
         uint32_t nVars();

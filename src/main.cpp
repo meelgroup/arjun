@@ -146,7 +146,8 @@ void add_supported_options(int argc, char** argv)
         }
 
         if (vm.count("version")) {
-            cout << "c [arjun] Version: " << arjun->get_version_info() << endl;
+            cout << "c [arjun] SHA revision: " << arjun->get_version_info() << endl;
+            cout << "c [arjun] Compilation environment: " << arjun->get_compilation_env() << endl;
             std::exit(0);
         }
 
