@@ -243,11 +243,15 @@ cpp_bin_float_100 one_round()
 
     double start_time = cpuTime();
     std::shuffle(sampling_set.begin(), sampling_set.end(), g);
+
+    //Go through each variable in the sampling set
     for(uint32_t i = 0; i < sampling_set.size(); i++) {
         cout << "Doing round " << i << " ..." << endl;
         double one_round_t = cpuTime();
         const uint32_t var = sampling_set[i];
 
+        //Get PRECISION random solutions (SAT solver already set up to generate random samples)
+        //Count how many are set positively for this VAR
         uint32_t set_pos = 0;
         for(uint32_t i2 = 0; i2 < precision; i2++) {
             solver->solve(&assumps, true);
@@ -259,12 +263,18 @@ cpp_bin_float_100 one_round()
 
         cpp_bin_float_100 distrib;
 
+        // If <= 30% -> NEVER take it.
+        // If > 30% and < 70% -> take with 50% prob
+        // If >= 70% -> ALWAYS take it
         bool to_take = set_pos > precision/2;
         if (set_pos > (double)precision*0.3 &&
             set_pos < (double)precision*0.7)
         {
+            //Take with 50% prob
             to_take = g() % 2;
         }
+
+        //Add to assumptions pos or neg
         if (to_take) {
             distrib = set_pos;
             assumps.push_back(Lit(var, false));
@@ -274,7 +284,9 @@ cpp_bin_float_100 one_round()
         }
         distrib /= precision;
 
+        //Save distribution
         values.push_back(distrib);
+
         cout << "Round " << i << " time: "
         << std::setprecision(4) << std::setw(6)
         << (cpuTime() - one_round_t)
@@ -284,6 +296,7 @@ cpp_bin_float_100 one_round()
         << endl;
     }
 
+    //Final count
     cpp_bin_float_100 count = 1.0;
     for(const auto& x: values) {
         count /= x;
