@@ -80,14 +80,23 @@ DLL_PUBLIC void Arjun::new_var()
     arjdata->common.solver->new_var();
 }
 
-DLL_PUBLIC void Arjun::add_clause(const vector<CMSat::Lit>& lits)
+DLL_PUBLIC bool Arjun::add_clause(const vector<CMSat::Lit>& lits)
 {
-    arjdata->common.solver->add_clause(lits);
+    return arjdata->common.solver->add_clause(lits);
 }
 
-DLL_PUBLIC void Arjun::add_xor_clause(const vector<uint32_t>& vars, bool rhs)
+DLL_PUBLIC bool Arjun::add_xor_clause(const vector<uint32_t>& vars, bool rhs)
 {
-    arjdata->common.solver->add_xor_clause(vars, rhs);
+    return arjdata->common.solver->add_xor_clause(vars, rhs);
+}
+
+DLL_PUBLIC bool Arjun::add_bnn_clause(
+            const std::vector<CMSat::Lit>& lits,
+            signed cutoff,
+            unsigned out_var
+        )
+{
+    return arjdata->common.solver->add_bnn_clause(lits, cutoff, out_var);
 }
 
 DLL_PUBLIC uint32_t Arjun::set_starting_sampling_set(const vector<uint32_t>& vars)
@@ -212,6 +221,11 @@ DLL_PUBLIC void Arjun::set_guess(bool guess)
 DLL_PUBLIC void Arjun::set_pre_simplify(bool simp)
 {
     arjdata->common.conf.pre_simplify = simp;
+}
+
+DLL_PUBLIC void Arjun::set_simp(bool simp)
+{
+    arjdata->common.conf.simp = simp;
 }
 
 DLL_PUBLIC void Arjun::set_incidence_sort(uint32_t incidence_sort)

@@ -47,8 +47,12 @@ namespace ArjunNS {
         //void set_projection_set(const std::vector<uint32_t>& vars);
         uint32_t nVars();
         void new_var();
-        void add_xor_clause(const std::vector<uint32_t>& vars, bool rhs);
-        void add_clause(const std::vector<CMSat::Lit>& lits);
+        bool add_xor_clause(const std::vector<uint32_t>& vars, bool rhs);
+        bool add_clause(const std::vector<CMSat::Lit>& lits);
+        bool add_bnn_clause(
+            const std::vector<CMSat::Lit>& lits,
+            signed cutoff,
+            unsigned out_var);
         void set_seed(uint32_t seed);
         uint32_t set_starting_sampling_set(const std::vector<uint32_t>& vars);
         uint32_t start_with_clean_sampling_set();
@@ -73,6 +77,7 @@ namespace ArjunNS {
         void set_distill(bool distill);
         void set_intree(bool intree);
         void set_guess(bool guess);
+        void set_simp(bool simp);
         void set_pre_simplify(bool simp);
         void set_incidence_sort(uint32_t incidence_sort);
         void set_or_gate_based(bool or_gate_based);

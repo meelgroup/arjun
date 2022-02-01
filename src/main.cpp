@@ -87,6 +87,7 @@ void add_arjun_options()
     ("distill", po::value(&conf.distill)->default_value(conf.distill), "distill")
     ("fastbackw", po::value(&conf.fast_backw)->default_value(conf.fast_backw), "fast_backw")
     ("guess", po::value(&conf.guess)->default_value(conf.guess), "Guess small set")
+    ("simp", po::value(&conf.simp)->default_value(conf.simp), "Do ANY sort of simplification")
     ("sort", po::value(&conf.incidence_sort)->default_value(conf.incidence_sort),
      "Which sorting mechanism.")
     ("presimp", po::value(&conf.pre_simplify)->default_value(conf.pre_simplify),
@@ -378,6 +379,7 @@ int main(int argc, char** argv)
     arjun->set_fwd_group(conf.forward_group);
     arjun->set_backbone_simpl(conf.backbone_simpl);
     arjun->set_backbone_simpl_max_confl(conf.backbone_simpl_max_confl);
+    arjun->set_simp(conf.simp);
 //     if (polar_mode == 1) {
 //         arjun->set_polar_mode(CMSat::PolarityMode::polarmode_neg);
 //     }

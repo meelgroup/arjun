@@ -161,6 +161,19 @@ void Common::duplicate_problem()
         solver->add_clause(cl);
         cl.clear();
     }
+
+    vector<BNN*> bnns = solver->get_bnns();
+    vector<Lit> lits;
+    for (const BNN* bnn: bnns) {
+        //cout << "BNN: " << *bnn << endl;
+        assert(bnn->out.sign() == false);
+        uint32_t out = bnn->out.var()+orig_num_vars;
+        lits.clear();
+        for (const auto& l: bnn->in) {
+            lits.push_back(Lit(l.var()+orig_num_vars, l.sign()));
+        }
+        solver->add_bnn_clause(lits, bnn->cutoff, out);
+    }
 }
 
 vector<Lit> Common::get_cnf()
@@ -194,8 +207,8 @@ void Common::set_up_solver()
     solver->set_up_for_arjun();
     solver->set_bve(0);
     solver->set_verbosity(std::max((int)conf.verb-2, 0));
-    solver->set_intree_probe(conf.intree);
-    solver->set_distill(conf.distill);
+    solver->set_intree_probe(conf.intree && conf.simp);
+    solver->set_distill(conf.distill && conf.simp);
     solver->set_sls(0);
 }
 
@@ -210,7 +223,7 @@ bool Common::preproc_and_duplicate()
     }
 
     //Simplify problem
-    if (!simplify()) {
+    if (conf.simp && !simplify()) {
         return false;
     }
 
@@ -238,16 +251,20 @@ bool Common::preproc_and_duplicate()
     if (conf.verb) {
         cout << "c [arjun] CMS::simplify() with *only* BVE..." << endl;
     }
-    solver->set_bve(1);
-    solver->set_verbosity(std::max((int)conf.verb-2, 0));
-    string str("occ-bve");
-    if (solver->simplify(&dont_elim, &str) == l_False) {
-        return false;
-    }
-    if (conf.verb) {
-        cout << "c [arjun] CMS::simplify() with *only* BVE finished. T: "
-        << cpuTime() - simpBVETime
-        << endl;
+
+    //Do BVE
+    if (conf.simp) {
+        solver->set_bve(1);
+        solver->set_verbosity(std::max((int)conf.verb-2, 0));
+        string str("occ-bve");
+        if (solver->simplify(&dont_elim, &str) == l_False) {
+            return false;
+        }
+        if (conf.verb) {
+            cout << "c [arjun] CMS::simplify() with *only* BVE finished. T: "
+            << cpuTime() - simpBVETime
+            << endl;
+        }
     }
 
 
@@ -259,8 +276,8 @@ bool Common::preproc_and_duplicate()
     }
 
     //Run Gauss-Jordan if need be
-    if (conf.gauss_jordan) {
-        str = "occ-xor";
+    if (conf.gauss_jordan && conf.simp) {
+        string str = "occ-xor";
         solver->set_bve(0);
         solver->set_allow_otf_gauss();
         solver->set_xor_detach(false);
@@ -273,10 +290,10 @@ bool Common::preproc_and_duplicate()
     seen.clear();
     seen.resize(solver->nVars(), 0);
 
-    solver->set_simplify(conf.regularly_simplify);
-    solver->set_intree_probe(conf.intree);
-    solver->set_distill(conf.distill);
-    solver->set_find_xors(conf.gauss_jordan);
+    solver->set_simplify(conf.regularly_simplify && conf.simp);
+    solver->set_intree_probe(conf.intree && conf.simp);
+    solver->set_distill(conf.distill && conf.simp);
+    solver->set_find_xors(conf.gauss_jordan && conf.simp);
     return true;
 }
 

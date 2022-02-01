@@ -30,6 +30,7 @@
 struct Config {
     int verb = 3;
     int seed = 0;
+    int simp = 0;
     int fast_backw = 1;
     int distill = 1;
     int regularly_simplify = 1;

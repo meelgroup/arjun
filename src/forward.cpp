@@ -205,6 +205,7 @@ bool Common::forward_round(
 
     //we will mess up the solver, so this saves the state
     if (conf.assign_fwd_val) {
+        assert(conf.simp == 1 && "Cannot do this without simp");
         solver2 = new SATSolver();
         bool ret = true;
         solver2->set_up_for_arjun();
