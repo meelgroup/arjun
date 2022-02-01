@@ -70,6 +70,7 @@ namespace ArjunNS {
             get_fully_simplified_cnf(
             const std::vector<uint32_t>& sampl_set,
             const uint32_t orig_num_vars);
+        const std::vector<CMSat::BNN*>& get_bnns() const;
 
         //Set config
         void set_verbosity(uint32_t verb);

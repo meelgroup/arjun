@@ -162,6 +162,11 @@ DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
     return *arjdata->common.sampling_set;
 }
 
+DLL_PUBLIC const vector<CMSat::BNN*>& Arjun::get_bnns() const
+{
+    return arjdata->common.solver->get_bnns();
+}
+
 DLL_PUBLIC void Arjun::start_getting_small_clauses(uint32_t max_len, uint32_t max_glue, bool red)
 {
     arjdata->common.solver->start_getting_small_clauses(max_len, max_glue, red);
