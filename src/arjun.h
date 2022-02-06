@@ -52,7 +52,7 @@ namespace ArjunNS {
         bool add_bnn_clause(
             const std::vector<CMSat::Lit>& lits,
             signed cutoff,
-            unsigned out_var);
+            CMSat::Lit out = CMSat::lit_Undef);
         void set_seed(uint32_t seed);
         uint32_t set_starting_sampling_set(const std::vector<uint32_t>& vars);
         uint32_t start_with_clean_sampling_set();

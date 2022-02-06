@@ -93,10 +93,10 @@ DLL_PUBLIC bool Arjun::add_xor_clause(const vector<uint32_t>& vars, bool rhs)
 DLL_PUBLIC bool Arjun::add_bnn_clause(
             const std::vector<CMSat::Lit>& lits,
             signed cutoff,
-            unsigned out_var
+            Lit out
         )
 {
-    return arjdata->common.solver->add_bnn_clause(lits, cutoff, out_var);
+    return arjdata->common.solver->add_bnn_clause(lits, cutoff, out);
 }
 
 DLL_PUBLIC uint32_t Arjun::set_starting_sampling_set(const vector<uint32_t>& vars)

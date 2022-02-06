@@ -165,14 +165,21 @@ void Common::duplicate_problem()
     vector<BNN*> bnns = solver->get_bnns();
     vector<Lit> lits;
     for (const BNN* bnn: bnns) {
-        //cout << "BNN: " << *bnn << endl;
-        assert(bnn->out.sign() == false);
-        uint32_t out = bnn->out.var()+orig_num_vars;
+        if (bnn == NULL) {
+            continue;
+        }
         lits.clear();
         for (const auto& l: bnn->in) {
             lits.push_back(Lit(l.var()+orig_num_vars, l.sign()));
         }
-        solver->add_bnn_clause(lits, bnn->cutoff, out);
+        if (bnn->set) {
+            assert(bnn->out == lit_Undef);
+            solver->add_bnn_clause(lits, bnn->cutoff);
+        } else {
+            assert(bnn->out != lit_Undef);
+            Lit out = Lit(bnn->out.var()+orig_num_vars, bnn->out.sign());
+            solver->add_bnn_clause(lits, bnn->cutoff, out);
+        }
     }
 }
 
