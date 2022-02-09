@@ -36,7 +36,7 @@ bool Common::simplify()
     }
 
     solver->set_verbosity(1);
-    if (conf.pre_simplify) {
+    /*if (conf.pre_simplify) {
         if (conf.verb) {
             cout << "c [arjun-simp] CMS::simplify() with no BVE, intree probe..." << endl;
         }
@@ -52,7 +52,7 @@ bool Common::simplify()
             << (cpuTime() - simpTime)
             << endl;
         }
-    }
+    }*/
 
     if (conf.backbone_simpl && sampling_set->size() > 1000) {
         if (!backbone_simpl(conf.backbone_simpl_max_confl)) {

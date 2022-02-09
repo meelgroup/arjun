@@ -169,7 +169,7 @@ void Common::duplicate_problem()
             continue;
         }
         lits.clear();
-        for (const auto& l: bnn->in) {
+        for (const auto& l: *bnn) {
             lits.push_back(Lit(l.var()+orig_num_vars, l.sign()));
         }
         if (bnn->set) {
