@@ -480,6 +480,21 @@ bool Common::remove_definable_by_gates()
         << " T: " << (cpuTime() - myTime) << endl;
     }
 
+    if (conf.defined_based) {
+        myTime = cpuTime();
+        old_size = sampling_set->size();
+        *other_sampling_set = solver->get_definable_vars(*sampling_set);
+        std::swap(sampling_set, other_sampling_set);
+
+        if (conf.verb) {
+            cout << "c [arjun-simp] DEFINE-based"
+            << " removed: " << (old_size-sampling_set->size())
+            << " perc: " << std::fixed << std::setprecision(2)
+            << stats_line_percent(old_size-sampling_set->size(), old_size)
+            << " T: " << (cpuTime() - myTime) << endl;
+        }
+    }
+
     return changed;
 }
 

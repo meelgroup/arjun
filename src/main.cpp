@@ -106,6 +106,8 @@ void add_arjun_options()
      "Group variables by this bunches when doing forward query")
     ("orgate", po::value(&conf.or_gate_based)->default_value(conf.or_gate_based),
      "Use 3-long gate detection in SAT solver to define some variables")
+    ("define", po::value(&conf.defined_based)->default_value(conf.defined_based),
+     "Use define-based removal of variables from sampling set")
     ("itegate", po::value(&conf.ite_gate_based)->default_value(conf.ite_gate_based),
      "Use ITE gate detection in SAT solver to define some variables")
     ("probe", po::value(&conf.probe_based)->default_value(conf.probe_based),
@@ -378,6 +380,7 @@ int main(int argc, char** argv)
     arjun->set_gauss_jordan(conf.gauss_jordan);
     arjun->set_fwd_group(conf.forward_group);
     arjun->set_backbone_simpl(conf.backbone_simpl);
+    arjun->set_defined_based(conf.defined_based);
     arjun->set_backbone_simpl_max_confl(conf.backbone_simpl_max_confl);
     arjun->set_simp(conf.simp);
 //     if (polar_mode == 1) {

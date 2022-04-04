@@ -30,7 +30,7 @@
 struct Config {
     int verb = 3;
     int seed = 0;
-    int simp = 0;
+    int simp = 1;
     int fast_backw = 1;
     int distill = 1;
     int regularly_simplify = 1;
@@ -48,6 +48,7 @@ struct Config {
     int assign_fwd_val = 0;
     int gauss_jordan = 0;
     int backbone_simpl = 0;
+    int defined_based = 1;
     unsigned long backbone_simpl_max_confl = 100ULL*1000ULL;
     uint32_t backw_max_confl = 500;
     uint32_t guess_max_confl = 1000;

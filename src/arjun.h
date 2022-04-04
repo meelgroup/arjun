@@ -94,6 +94,7 @@ namespace ArjunNS {
         void set_find_xors(bool find_xors);
         void set_backbone_simpl(bool backbone_simpl);
         void set_ite_gate_based(bool ite_gate_based);
+        void set_defined_based(const bool defined_based);
         void set_gate_sort_special(bool gate_sort_special);
         void set_backbone_simpl_max_confl(uint64_t backbone_simpl_max_confl);
         //void set_polar_mode(CMSat::PolarityMode mode);
@@ -121,6 +122,7 @@ namespace ArjunNS {
         bool get_find_xors() const;
         bool get_backbone_simpl() const;
         bool get_ite_gate_based() const;
+        bool get_defined_based() const;
         bool get_gate_sort_special() const;
         long unsigned get_backbone_simpl_max_confl() const;
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
