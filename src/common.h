@@ -69,6 +69,7 @@ struct Common
     vector<uint32_t> sampling_set_tmp1;
     vector<uint32_t> sampling_set_tmp2;
     vector<uint32_t>* sampling_set = NULL;
+    vector<uint32_t> empty_occs;
     std::atomic<bool> interrupt_asap;
 
     vector<Lit> tmp;

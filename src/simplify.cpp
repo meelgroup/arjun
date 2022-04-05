@@ -483,7 +483,18 @@ bool Common::remove_definable_by_gates()
     if (conf.defined_based) {
         myTime = cpuTime();
         old_size = sampling_set->size();
-        *other_sampling_set = solver->get_definable_vars(*sampling_set);
+        empty_occs.clear();
+        *other_sampling_set = solver->get_definable_vars(*sampling_set, &empty_occs);
+        std::swap(sampling_set, other_sampling_set);
+
+        // Remove from the sampling set elements that are empty
+        std::set<uint32_t> tmp_set;
+        tmp_set.insert(sampling_set->begin(), sampling_set->end());
+        for(auto const& v: empty_occs) {
+            tmp_set.erase(v);
+        }
+        other_sampling_set->clear();
+        other_sampling_set->insert(other_sampling_set->begin(), tmp_set.begin(), tmp_set.end());
         std::swap(sampling_set, other_sampling_set);
 
         if (conf.verb) {

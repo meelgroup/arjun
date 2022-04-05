@@ -159,6 +159,13 @@ DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
         << endl;
     }
 
+    // Deal with empty_occs
+    arjdata->common.sampling_set->insert(
+        arjdata->common.sampling_set->begin(),
+        arjdata->common.empty_occs.begin(),
+        arjdata->common.empty_occs.end());
+    arjdata->common.empty_occs.clear();
+
     return *arjdata->common.sampling_set;
 }
 
