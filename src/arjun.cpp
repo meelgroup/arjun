@@ -401,14 +401,14 @@ DLL_PUBLIC bool Arjun::get_ite_gate_based() const
     return arjdata->common.conf.ite_gate_based;
 }
 
-DLL_PUBLIC void Arjun::set_defined_based(const bool defined_based)
+DLL_PUBLIC void Arjun::set_irreg_gate_based(const bool irreg_gate_based)
 {
-    arjdata->common.conf.defined_based = defined_based;
+    arjdata->common.conf.irreg_gate_based = irreg_gate_based;
 }
 
-DLL_PUBLIC bool Arjun::get_defined_based() const
+DLL_PUBLIC bool Arjun::get_irreg_gate_based() const
 {
-    return arjdata->common.conf.defined_based;
+    return arjdata->common.conf.irreg_gate_based;
 }
 
 DLL_PUBLIC vector<Lit> Arjun::get_zero_assigned_lits() const

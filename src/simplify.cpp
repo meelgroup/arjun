@@ -34,6 +34,7 @@ bool Common::simplify()
     if (conf.xor_gates_based || conf.or_gate_based || conf.ite_gate_based) {
         remove_definable_by_gates();
     }
+    if (conf.irreg_gate_based) remove_definable_by_irreg_gates();
 
     solver->set_verbosity(1);
     /*if (conf.pre_simplify) {
@@ -59,18 +60,19 @@ bool Common::simplify()
             return false;
         }
     }
-    solver->set_verbosity(std::max((int)conf.verb-2, 0));
+//     solver->set_verbosity(std::max((int)conf.verb-2, 0));
 
     simplified_cnf = get_cnf();
 
     remove_eq_literals();
     remove_zero_assigned_literals();
-
     if (conf.probe_based) {
         if (!probe_all()) {
             return false;
         }
     }
+    if (conf.irreg_gate_based) remove_definable_by_irreg_gates();
+
     solver->set_verbosity(std::max<int>((int)conf.verb-2, 0));
 
     if (conf.verb) {
@@ -480,33 +482,43 @@ bool Common::remove_definable_by_gates()
         << " T: " << (cpuTime() - myTime) << endl;
     }
 
-    if (conf.defined_based) {
-        myTime = cpuTime();
-        old_size = sampling_set->size();
-        empty_occs.clear();
-        *other_sampling_set = solver->get_definable_vars(*sampling_set, &empty_occs);
-        std::swap(sampling_set, other_sampling_set);
+    return changed;
+}
 
-        // Remove from the sampling set elements that are empty
-        std::set<uint32_t> tmp_set;
-        tmp_set.insert(sampling_set->begin(), sampling_set->end());
-        for(auto const& v: empty_occs) {
-            tmp_set.erase(v);
-        }
-        other_sampling_set->clear();
-        other_sampling_set->insert(other_sampling_set->begin(), tmp_set.begin(), tmp_set.end());
-        std::swap(sampling_set, other_sampling_set);
+void Common::remove_definable_by_irreg_gates()
+{
+    assert(conf.irreg_gate_based);
+    double myTime = cpuTime();
+    uint32_t old_size = sampling_set->size();
+    empty_occs.clear();
+    *other_sampling_set = solver->get_definable_vars(*sampling_set, &empty_occs);
+    std::swap(sampling_set, other_sampling_set);
 
-        if (conf.verb) {
-            cout << "c [arjun-simp] DEFINE-based"
-            << " removed: " << (old_size-sampling_set->size())
-            << " perc: " << std::fixed << std::setprecision(2)
-            << stats_line_percent(old_size-sampling_set->size(), old_size)
-            << " T: " << (cpuTime() - myTime) << endl;
-        }
+    if (conf.verb) {
+        cout << "c [arjun-simp] IRREG-GATE-based"
+        << " removed: " << (old_size-sampling_set->size())
+        << " perc: " << std::fixed << std::setprecision(2)
+        << stats_line_percent(old_size-sampling_set->size(), old_size)
+        << " T: " << (cpuTime() - myTime) << endl;
     }
 
-    return changed;
+    // Remove from the sampling set elements that are empty
+    old_size = sampling_set->size();
+    std::set<uint32_t> tmp_set;
+    tmp_set.insert(sampling_set->begin(), sampling_set->end());
+    for(auto const& v: empty_occs) {
+        tmp_set.erase(v);
+    }
+    other_sampling_set->clear();
+    other_sampling_set->insert(other_sampling_set->begin(), tmp_set.begin(), tmp_set.end());
+    std::swap(sampling_set, other_sampling_set);
+    if (conf.verb) {
+        cout << "c [arjun-simp] 0-occ"
+        << " removed: " << (old_size-sampling_set->size())
+        << " perc: " << std::fixed << std::setprecision(2)
+        << stats_line_percent(old_size-sampling_set->size(), old_size)
+        << endl;
+    }
 }
 
 void Common::remove_zero_assigned_literals(bool print)

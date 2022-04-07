@@ -150,6 +150,7 @@ struct Common
     vector<uint32_t> toClear;
     bool simplify();
     bool remove_definable_by_gates();
+    void remove_definable_by_irreg_gates();
     void remove_zero_assigned_literals(bool print = true);
     void remove_eq_literals(bool print = true);
     bool probe_all();
