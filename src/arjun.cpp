@@ -129,25 +129,18 @@ DLL_PUBLIC std::string Arjun::get_compilation_env()
 DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
 {
     double starTime = cpuTime();
-    if (!arjdata->common.preproc_and_duplicate()) {
-        goto end;
-    }
+    if (!arjdata->common.preproc_and_duplicate()) goto end;
 
-    if (arjdata->common.conf.guess) {
-        arjdata->common.run_guess();
-    }
+    // Guess
+    if (arjdata->common.conf.guess) arjdata->common.run_guess();
 
+    // Forward
     if (arjdata->common.conf.forward) {
-        if (arjdata->common.conf.verb) {
-            cout << "c [arjun] FORWARD " << endl;
-        }
         arjdata->common.forward_round(5000000, arjdata->common.conf.forward_group, 0);
     }
 
+    //Backward
     if (arjdata->common.conf.backward) {
-        if (arjdata->common.conf.verb) {
-            cout << "c [arjun] BACKWARD " << endl;
-        }
         arjdata->common.backward_round();
     }
 

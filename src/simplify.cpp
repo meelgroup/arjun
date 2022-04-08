@@ -36,7 +36,7 @@ bool Common::simplify()
     }
     if (conf.irreg_gate_based) remove_definable_by_irreg_gates();
 
-    solver->set_verbosity(1);
+//     solver->set_verbosity(1);
     /*if (conf.pre_simplify) {
         if (conf.verb) {
             cout << "c [arjun-simp] CMS::simplify() with no BVE, intree probe..." << endl;
@@ -491,7 +491,7 @@ void Common::remove_definable_by_irreg_gates()
     double myTime = cpuTime();
     uint32_t old_size = sampling_set->size();
     empty_occs.clear();
-    *other_sampling_set = solver->get_definable_vars(*sampling_set, &empty_occs);
+    *other_sampling_set = solver->get_definable_by_irreg_gate_vars(*sampling_set, &empty_occs);
     std::swap(sampling_set, other_sampling_set);
 
     if (conf.verb) {

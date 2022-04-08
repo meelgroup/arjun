@@ -156,6 +156,8 @@ struct Common
     bool probe_all();
     bool backbone_simpl(uint64_t orig_max_confl);
     void empty_out_indep_set_if_unsat();
+    bool simplify_bve_only();
+    bool run_gauss_jordan();
     vector<Lit> simplified_cnf;
 
     //forward

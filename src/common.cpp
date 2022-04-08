@@ -93,6 +93,7 @@ void Common::print_orig_sampling_set()
 
 void Common::add_fixed_clauses()
 {
+    double fix_cl_time = cpuTime();
     dont_elim.clear();
     var_to_indic.clear();
     var_to_indic.resize(orig_num_vars, var_Undef);
@@ -144,10 +145,18 @@ void Common::add_fixed_clauses()
         dont_elim.push_back(Lit(var, false));
         dont_elim.push_back(Lit(var+orig_num_vars, false));
     }
+    if (conf.verb) {
+        cout << "c [arjun] Adding fixed clauses time: " << (cpuTime()-fix_cl_time) << endl;
+    }
 }
 
 void Common::duplicate_problem()
 {
+    solver->set_verbosity(std::max<int>(conf.verb-2, 0));
+
+    //Duplicate the already simplified problem
+    if (conf.verb) cout << "c [arjun] Duplicating CNF..." << endl;
+    double dupl_time = cpuTime();
     vector<Lit> cnf = get_cnf();
 
     solver->new_vars(orig_num_vars);
@@ -181,6 +190,7 @@ void Common::duplicate_problem()
             solver->add_bnn_clause(lits, bnn->cutoff, out);
         }
     }
+    if (conf.verb) cout << "c [arjun] Duplicated CNF. T: " << (cpuTime() - dupl_time) << endl;
 }
 
 vector<Lit> Common::get_cnf()
@@ -219,35 +229,10 @@ void Common::set_up_solver()
     solver->set_sls(0);
 }
 
-bool Common::preproc_and_duplicate()
+bool Common:: simplify_bve_only()
 {
-    orig_num_vars = solver->nVars();
-    seen.clear();
-    seen.resize(solver->nVars(), 0);
-    get_incidence();
-    if (conf.incidence_sort == 4 || conf.incidence_sort == 5) {
-        calc_community_parts();
-    }
-
-    //Simplify problem
-    if (conf.simp && !simplify()) {
-        return false;
-    }
-
-    //incidence = solver->get_var_incidence(); //NOTE: makes it slower
-    solver->set_verbosity(std::max<int>(conf.verb-2, 0));
-
-    //Duplicate the already simplified problem
-    if (conf.verb) {
-        cout << "c [arjun] Duplicating CNF..." << endl;
-    }
-    double dupl_time = cpuTime();
-    duplicate_problem();
-    if (conf.verb) {
-        cout << "c [arjun] Duplicated CNF. T: " << (cpuTime() - dupl_time) << endl;
-    }
-
     //BVE ***ONLY***, don't eliminate the orignial variables
+
     solver->set_intree_probe(false);
     solver->set_distill(false);
     for(uint32_t var: *sampling_set) {
@@ -273,16 +258,11 @@ bool Common::preproc_and_duplicate()
             << endl;
         }
     }
+    return true;
+}
 
-
-    //Add the connection clauses, indicator variables, etc.
-    double fix_cl_time = cpuTime();
-    add_fixed_clauses();
-    if (conf.verb) {
-        cout << "c [arjun] Adding fixed clauses time: " << (cpuTime()-fix_cl_time) << endl;
-    }
-
-    //Run Gauss-Jordan if need be
+bool Common::run_gauss_jordan()
+{
     if (conf.gauss_jordan && conf.simp) {
         string str = "occ-xor";
         solver->set_bve(0);
@@ -292,10 +272,27 @@ bool Common::preproc_and_duplicate()
             return false;
         }
     }
+    return true;
+}
 
-    //Seen needs re-init, because we got new variables
+bool Common::preproc_and_duplicate()
+{
+    orig_num_vars = solver->nVars();
     seen.clear();
     seen.resize(solver->nVars(), 0);
+
+    get_incidence();
+    if (conf.incidence_sort == 4 || conf.incidence_sort == 5) calc_community_parts();
+    if (conf.simp && !simplify()) return false;
+    //incidence = solver->get_var_incidence(); //NOTE: makes it slower
+    duplicate_problem();
+    if (!simplify_bve_only()) return false;
+
+    add_fixed_clauses(); //Add the connection clauses, indicator variables, etc.
+    if (!run_gauss_jordan()) return false;;
+
+    //Seen needs re-init, because we got new variables
+    seen.clear(); seen.resize(solver->nVars(), 0);
 
     solver->set_simplify(conf.regularly_simplify && conf.simp);
     solver->set_intree_probe(conf.intree && conf.simp);
