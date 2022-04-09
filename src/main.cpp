@@ -323,7 +323,7 @@ void elim_to_file(const vector<uint32_t>& sampl_set, uint32_t orig_num_vars)
 {
     double dump_start_time = cpuTime();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
-    auto ret = arjun->get_fully_simplified_cnf(sampl_set, orig_num_vars);
+    auto ret = arjun->get_fully_simplified_renumbered_cnf(sampl_set, orig_num_vars);
     dump_cnf(ret.first, ret.second);
     cout << "c [arjun] Done dumping. T: " << (cpuTime() - dump_start_time) << endl;
 }

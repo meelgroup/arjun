@@ -60,7 +60,6 @@ bool Common::simplify()
             return false;
         }
     }
-//     solver->set_verbosity(std::max((int)conf.verb-2, 0));
 
     simplified_cnf = get_cnf();
 
@@ -490,8 +489,8 @@ void Common::remove_definable_by_irreg_gates()
     assert(conf.irreg_gate_based);
     double myTime = cpuTime();
     uint32_t old_size = sampling_set->size();
-    empty_occs.clear();
-    *other_sampling_set = solver->get_definable_by_irreg_gate_vars(*sampling_set, &empty_occs);
+    vector<uint32_t> new_empty_occs;
+    *other_sampling_set = solver->get_definable_by_irreg_gate_vars(*sampling_set, &new_empty_occs);
     std::swap(sampling_set, other_sampling_set);
 
     if (conf.verb) {
@@ -506,17 +505,20 @@ void Common::remove_definable_by_irreg_gates()
     old_size = sampling_set->size();
     std::set<uint32_t> tmp_set;
     tmp_set.insert(sampling_set->begin(), sampling_set->end());
-    for(auto const& v: empty_occs) {
+    for(auto const& v: new_empty_occs) {
         tmp_set.erase(v);
     }
     other_sampling_set->clear();
     other_sampling_set->insert(other_sampling_set->begin(), tmp_set.begin(), tmp_set.end());
+    empty_occs.insert(empty_occs.end(), new_empty_occs.begin(), new_empty_occs.end());
+
     std::swap(sampling_set, other_sampling_set);
     if (conf.verb) {
         cout << "c [arjun-simp] 0-occ"
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
+        << " total 0-occ now: " << empty_occs.size()
         << endl;
     }
 }

@@ -157,7 +157,6 @@ DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
         arjdata->common.sampling_set->begin(),
         arjdata->common.empty_occs.begin(),
         arjdata->common.empty_occs.end());
-    arjdata->common.empty_occs.clear();
 
     return *arjdata->common.sampling_set;
 }
@@ -442,11 +441,16 @@ DLL_PUBLIC bool Arjun::get_backbone_simpl() const
     return arjdata->common.conf.backbone_simpl;
 }
 
-DLL_PUBLIC void Arjun::simplify_before_elim()
+DLL_PUBLIC void Arjun::varreplace()
 {
     //arjdata->common.solver->backbone_simpl();
     std::string tmp("must-scc-vrepl, cl-consolidate");
     arjdata->common.solver->simplify(NULL, &tmp);
+}
+
+DLL_PUBLIC vector<uint32_t> Arjun::get_empty_occ_sampl_vars() const
+{
+    return arjdata->common.empty_occs;
 }
 
 DLL_PUBLIC const vector<Lit>& Arjun::get_simplified_cnf() const
@@ -454,7 +458,7 @@ DLL_PUBLIC const vector<Lit>& Arjun::get_simplified_cnf() const
     return arjdata->common.simplified_cnf;
 }
 
-vector<vector<Lit>> tmp_get_simplified_cnf(SATSolver* solver, vector<uint32_t>& sampl_set)
+vector<vector<Lit>> get_simplified_renumbered_cnf(SATSolver* solver, vector<uint32_t>& sampl_set)
 {
     vector<vector<Lit>> cnf;
     solver->start_getting_small_clauses(
@@ -479,7 +483,7 @@ vector<vector<Lit>> tmp_get_simplified_cnf(SATSolver* solver, vector<uint32_t>& 
 }
 
 DLL_PUBLIC std::pair<vector<vector<Lit>>, vector<uint32_t>>
-Arjun::get_fully_simplified_cnf(
+Arjun::get_fully_simplified_renumbered_cnf(
     const vector<uint32_t>& sampl_set,
     const uint32_t orig_num_vars)
 {
@@ -497,7 +501,7 @@ Arjun::get_fully_simplified_cnf(
         tmp.clear();
     }
 
-    simplify_before_elim();
+    varreplace();
     auto zero_lev_lits = get_zero_assigned_lits();
     vector<Lit> dummy;
     for(const Lit& lit: zero_lev_lits) {
@@ -539,7 +543,7 @@ Arjun::get_fully_simplified_cnf(
     solver.simplify(&dont_elim, &str);
 
     vector<uint32_t> new_sampl_set = sampl_set;
-    vector<vector<Lit>> cnf = tmp_get_simplified_cnf(&solver, new_sampl_set);
+    vector<vector<Lit>> cnf = get_simplified_renumbered_cnf(&solver, new_sampl_set);
     return std::make_pair(cnf, new_sampl_set);
 }
 

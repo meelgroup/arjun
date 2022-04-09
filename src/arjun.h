@@ -44,7 +44,8 @@ namespace ArjunNS {
         std::string get_version_info();
         std::string get_compilation_env();
         std::string get_solver_version_info();
-        //void set_projection_set(const std::vector<uint32_t>& vars);
+
+        // Adding CNF
         uint32_t nVars();
         void new_var();
         bool add_xor_clause(const std::vector<uint32_t>& vars, bool rhs);
@@ -53,13 +54,15 @@ namespace ArjunNS {
             const std::vector<CMSat::Lit>& lits,
             signed cutoff,
             CMSat::Lit out = CMSat::lit_Undef);
-        void set_seed(uint32_t seed);
+        void new_vars(uint32_t num);
+
+        // Perform indep set calculation
         uint32_t set_starting_sampling_set(const std::vector<uint32_t>& vars);
         uint32_t start_with_clean_sampling_set();
         std::vector<uint32_t> get_indep_set();
         uint32_t get_orig_num_vars() const;
-        void new_vars(uint32_t num);
-        void simplify_before_elim();
+        void varreplace();
+        std::vector<uint32_t> get_empty_occ_sampl_vars() const;
 
         //Get clauses
         void start_getting_small_clauses(uint32_t max_len, uint32_t max_glue, bool red = true);
@@ -67,12 +70,15 @@ namespace ArjunNS {
         void end_getting_small_clauses();
         const std::vector<CMSat::Lit>& get_simplified_cnf() const;
         std::pair<std::vector<std::vector<CMSat::Lit>>, std::vector<uint32_t>>
-            get_fully_simplified_cnf(
+            get_fully_simplified_renumbered_cnf(
             const std::vector<uint32_t>& sampl_set,
             const uint32_t orig_num_vars);
         const std::vector<CMSat::BNN*>& get_bnns() const;
+        std::vector<CMSat::Lit> get_zero_assigned_lits() const;
+        std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;
 
         //Set config
+        void set_seed(uint32_t seed);
         void set_verbosity(uint32_t verb);
         void set_fast_backw(bool fast_backw);
         void set_distill(bool distill);
@@ -124,9 +130,8 @@ namespace ArjunNS {
         bool get_ite_gate_based() const;
         bool get_irreg_gate_based() const;
         bool get_gate_sort_special() const;
+
         long unsigned get_backbone_simpl_max_confl() const;
-        std::vector<CMSat::Lit> get_zero_assigned_lits() const;
-        std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;
 
     private:
         ArjPrivateData* arjdata = NULL;
