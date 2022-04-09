@@ -122,6 +122,8 @@ void add_arjun_options()
      "Maximum conflicts per variable in backward mode")
     ("gaussj", po::value(&conf.gauss_jordan)->default_value(conf.gauss_jordan),
      "Use XOR finding and Gauss-Jordan elimination")
+    ("empty", po::value(&conf.empty_occs_based)->default_value(conf.empty_occs_based),
+     "Use empty occurrence improvement")
     ("elimtofile", po::value(&elimtofile),
      "Perform 'E' to a file")
     ;
@@ -240,20 +242,26 @@ inline double stats_line_percent(double num, double total)
     }
 }
 
-void print_final_indep_set(const vector<uint32_t>& indep_set)
+void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint32_t>& empty_occ)
 {
     cout << "c ind ";
-    for(const uint32_t s: indep_set) {
-        cout << s+1 << " ";
-    }
+    for(const uint32_t s: indep_set) cout << s+1 << " ";
+    cout << "0" << endl;
+    cout << "c emptyocc ";
+    for(const uint32_t s: empty_occ) cout << s+1 << " ";
     cout << "0" << endl;
 
-    cout << "c [arjun] final set size: " << std::setw(8)
-    << indep_set.size()
+    cout
+    << "c [arjun] final set size:      " << std::setw(7) << indep_set.size()
     << " percent of original: "
     <<  std::setw(6) << std::setprecision(4)
     << stats_line_percent(indep_set.size(), orig_sampling_set_size)
-    << " %" << endl << std::flush;
+    << " %" << endl
+    << "c [arjun] of which empty occs: " << std::setw(7) << empty_occ.size()
+    << " percent of original: "
+    <<  std::setw(6) << std::setprecision(4)
+    << stats_line_percent(empty_occ.size(), orig_sampling_set_size)
+    << " %" << endl;
 }
 
 void readInAFile(const string& filename)
@@ -383,6 +391,7 @@ int main(int argc, char** argv)
     arjun->set_irreg_gate_based(conf.irreg_gate_based);
     arjun->set_backbone_simpl_max_confl(conf.backbone_simpl_max_confl);
     arjun->set_simp(conf.simp);
+    arjun->set_empty_occs_based(conf.empty_occs_based);
 //     if (polar_mode == 1) {
 //         arjun->set_polar_mode(CMSat::PolarityMode::polarmode_neg);
 //     }
@@ -401,7 +410,7 @@ int main(int argc, char** argv)
 
     uint32_t orig_num_vars = arjun->nVars();
     vector<uint32_t> sampl_set = arjun->get_indep_set();
-    print_final_indep_set(sampl_set);
+    print_final_indep_set(sampl_set, arjun->get_empty_occ_sampl_vars());
     cout << "c [arjun] finished "
     << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
     << endl;

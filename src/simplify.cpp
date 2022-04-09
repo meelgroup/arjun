@@ -501,25 +501,27 @@ void Common::remove_definable_by_irreg_gates()
         << " T: " << (cpuTime() - myTime) << endl;
     }
 
-    // Remove from the sampling set elements that are empty
-    old_size = sampling_set->size();
-    std::set<uint32_t> tmp_set;
-    tmp_set.insert(sampling_set->begin(), sampling_set->end());
-    for(auto const& v: new_empty_occs) {
-        tmp_set.erase(v);
-    }
-    other_sampling_set->clear();
-    other_sampling_set->insert(other_sampling_set->begin(), tmp_set.begin(), tmp_set.end());
-    empty_occs.insert(empty_occs.end(), new_empty_occs.begin(), new_empty_occs.end());
+    if (conf.empty_occs_based) {
+        // Remove from the sampling set elements that are empty
+        old_size = sampling_set->size();
+        std::set<uint32_t> tmp_set;
+        tmp_set.insert(sampling_set->begin(), sampling_set->end());
+        for(auto const& v: new_empty_occs) {
+            tmp_set.erase(v);
+        }
+        other_sampling_set->clear();
+        other_sampling_set->insert(other_sampling_set->begin(), tmp_set.begin(), tmp_set.end());
+        empty_occs.insert(empty_occs.end(), new_empty_occs.begin(), new_empty_occs.end());
 
-    std::swap(sampling_set, other_sampling_set);
-    if (conf.verb) {
-        cout << "c [arjun-simp] 0-occ"
-        << " removed: " << (old_size-sampling_set->size())
-        << " perc: " << std::fixed << std::setprecision(2)
-        << stats_line_percent(old_size-sampling_set->size(), old_size)
-        << " total 0-occ now: " << empty_occs.size()
-        << endl;
+        std::swap(sampling_set, other_sampling_set);
+        if (conf.verb) {
+            cout << "c [arjun-simp] 0-occ"
+            << " removed: " << (old_size-sampling_set->size())
+            << " perc: " << std::fixed << std::setprecision(2)
+            << stats_line_percent(old_size-sampling_set->size(), old_size)
+            << " total 0-occ now: " << empty_occs.size()
+            << endl;
+        }
     }
 }
 

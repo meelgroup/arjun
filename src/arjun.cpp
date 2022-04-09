@@ -562,3 +562,8 @@ DLL_PUBLIC void Arjun::set_every_pred_reduce(int every_pred_reduce)
 {
     arjdata->common.solver->set_every_pred_reduce(every_pred_reduce);
 }
+
+DLL_PUBLIC void Arjun::set_empty_occs_based(const bool empty_occs_based)
+{
+    arjdata->common.conf.empty_occs_based = empty_occs_based;
+}
