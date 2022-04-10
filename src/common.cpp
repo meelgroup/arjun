@@ -74,7 +74,6 @@ void Common::start_with_clean_sampling_set()
     }
 }
 
-
 void Common::print_orig_sampling_set()
 {
     if (sampling_set->size() > 100) {
