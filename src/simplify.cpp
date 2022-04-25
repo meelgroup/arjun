@@ -118,6 +118,7 @@ bool Common::backbone_simpl(uint64_t orig_max_confl)
     vector<Lit> assumps;
     vector<lbool> model;
     vector<char> model_enabled;
+    const auto old_polar_mode = solver->get_polarity_mode();
     solver->set_polarity_mode(PolarityMode::polarmode_neg);
 
     vector<uint32_t> var_order(solver->nVars());
@@ -183,7 +184,7 @@ bool Common::backbone_simpl(uint64_t orig_max_confl)
     end:
     uint32_t num_set = solver->get_zero_assigned_lits().size() - orig_vars_set;
     double time_used = cpuTime() - myTime;
-    solver->set_polarity_mode(PolarityMode::polarmode_best);
+    solver->set_polarity_mode(old_polar_mode);
 
     if (conf.verb) {
         if (!finished) {
