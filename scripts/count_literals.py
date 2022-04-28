@@ -65,10 +65,10 @@ with open(sys.argv[1], "r") as f:
                 num_lits+=1
     
 
-print("num set lits: ", len(set_lits))
-print("num (non-set) vars: ", num_vars-len(set_lits))
-print("num (non-unit) cls: ", num_cls)
-print("num bin cls       : ", num_bin_cls)
-print("max cl size       : ", max_cl_sz)
-print("avg non-bin cl sz : %4.1f" % (float(tot_non_bin_cl_size)/float(non_bin_cls)))
-print("num (non-unit) lits: ", num_lits)
+print("num set lits        ", len(set_lits))
+print("num (non-set) vars  ", num_vars-len(set_lits))
+print("num (non-unit) cls  ", num_cls)
+print("num bin cls         ", num_bin_cls)
+print("max cl size         ", max_cl_sz)
+print("avg non-bin cl sz   %4.1f" % (float(tot_non_bin_cl_size)/float(non_bin_cls)))
+print("num (non-unit) lits ", num_lits)
