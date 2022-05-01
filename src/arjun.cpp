@@ -527,11 +527,11 @@ Arjun::get_fully_simplified_renumbered_cnf(
     //Below works for: ProcessBean, pollard, track1_116.mcc2020_cnf
     //    and is quite fast
     //-> with CMS f356f5cef4e566fad94043324093ef9848697aae
-    solver.set_min_bva_gain(32);
+    solver.set_min_bva_gain(20);
     solver.set_varelim_check_resolvent_subs(true);
     solver.set_max_red_linkin_size(0);
 
-    string str("sub-str-cls-with-bin, full-probe, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, occ-ternary-res, occ-bve, distill-cls, occ-backw-sub-str, scc-vrepl, sub-str-cls-with-bin");
+    string str("sub-str-cls-with-bin, full-probe, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, occ-ternary-res, occ-bve, distill-cls, occ-backw-sub-str, scc-vrepl, sub-str-cls-with-bin, full-probe, clean-cls");
     solver.simplify(&dont_elim, &str);
     str = string(",intree-probe,") + str;
     solver.simplify(&dont_elim, &str);

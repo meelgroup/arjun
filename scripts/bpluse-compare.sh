@@ -7,8 +7,9 @@ echo "Running on CNF file $1"
 
 fname="$1-noind"
 grep -v "c ind" $1 > $fname
-/usr/bin/time ./BiPe -preproc "$fname" > "$fname-simplified-bpe"
-./count_literals.py "$fname-simplified-bpe"
 /usr/bin/time ./arjun --elimtofile "$fname-simplified-arjun" "$fname" > /dev/null
 ./count_literals.py "$fname-simplified-arjun"
+
+/usr/bin/time ./BiPe -preproc "$fname" > "$fname-simplified-bpe"
+./count_literals.py "$fname-simplified-bpe"
 
