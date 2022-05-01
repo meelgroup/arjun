@@ -162,6 +162,7 @@ struct Common
     void empty_out_indep_set_if_unsat();
     bool simplify_bve_only();
     bool run_gauss_jordan();
+    void check_no_duplicate_in_sampling_set();
     vector<Lit> simplified_cnf;
 
     //forward

@@ -26,8 +26,21 @@
 
 using std::pair;
 
+void Common::check_no_duplicate_in_sampling_set()
+{
+    for(auto const& v: *sampling_set) {
+        if (seen[v]) {
+            cout << "Variable " << v+1 << " in sampling set twice!" << endl;
+            assert(false);
+        }
+        seen[v] = 1;
+    }
+    for(auto const& v: *sampling_set) seen[v] = 0;
+}
+
 bool Common::simplify()
 {
+    check_no_duplicate_in_sampling_set();
     auto old_size = sampling_set->size();
     double myTime = cpuTime();
 
@@ -48,9 +61,7 @@ bool Common::simplify()
     }
 
     if (conf.backbone_simpl && sampling_set->size() > 1000) {
-        if (!backbone_simpl(conf.backbone_simpl_max_confl)) {
-            return false;
-        }
+        if (!backbone_simpl(conf.backbone_simpl_max_confl)) return false;
     }
 
     simplified_cnf = get_cnf();
@@ -58,9 +69,7 @@ bool Common::simplify()
     remove_eq_literals();
     remove_zero_assigned_literals();
     if (conf.probe_based) {
-        if (!probe_all()) {
-            return false;
-        }
+        if (!probe_all()) return false;
     }
     if (conf.irreg_gate_based) remove_definable_by_irreg_gates();
 
@@ -72,6 +81,7 @@ bool Common::simplify()
         << stats_line_percent(old_size-sampling_set->size(), old_size)
         << " T: " << (cpuTime() - myTime));
 
+    check_no_duplicate_in_sampling_set();
     return true;
 }
 
@@ -480,7 +490,7 @@ void Common::remove_definable_by_irreg_gates()
     double myTime = cpuTime();
     uint32_t old_size = sampling_set->size();
     vector<uint32_t> new_empty_occs;
-    *other_sampling_set = solver->get_definable_by_irreg_gate_vars(*sampling_set, &new_empty_occs);
+    *other_sampling_set = solver->remove_definable_by_irreg_gate(*sampling_set, &new_empty_occs);
     std::swap(sampling_set, other_sampling_set);
 
     if (conf.verb) {
@@ -496,9 +506,7 @@ void Common::remove_definable_by_irreg_gates()
         old_size = sampling_set->size();
         std::set<uint32_t> tmp_set;
         tmp_set.insert(sampling_set->begin(), sampling_set->end());
-        for(auto const& v: new_empty_occs) {
-            tmp_set.erase(v);
-        }
+        for(auto const& v: new_empty_occs) tmp_set.erase(v);
         other_sampling_set->clear();
         other_sampling_set->insert(other_sampling_set->begin(), tmp_set.begin(), tmp_set.end());
         empty_occs.insert(empty_occs.end(), new_empty_occs.begin(), new_empty_occs.end());
@@ -558,8 +566,8 @@ void Common::remove_eq_literals(bool print)
     for(auto x: *other_sampling_set) {
         seen[x] = 1;
     }
-    const auto zero_ass = solver->get_all_binary_xors();
-    for(auto mypair: zero_ass) {
+    const auto eq_lits = solver->get_all_binary_xors();
+    for(auto mypair: eq_lits) {
         //Only remove if both are sampling vars
         if (seen[mypair.second.var()] == 1 && seen[mypair.first.var()] == 1) {
             //Doesn't matter which one to remove
