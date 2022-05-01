@@ -257,6 +257,8 @@ bool Common:: simplify_bve_only()
             << endl;
         }
     }
+    solver->set_intree_probe(true);
+    solver->set_distill(true);
     return true;
 }
 

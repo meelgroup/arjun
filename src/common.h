@@ -25,6 +25,10 @@
 #ifndef ARJUN_COMMON_H
 #define ARJUN_COMMON_H
 
+// verb_print
+#define verb_print(a, x) \
+    do { if (conf.verb >= a) {std::cout << "c " << x << std::endl;} } while (0)
+
 #include <vector>
 #include <iostream>
 #include <iomanip>

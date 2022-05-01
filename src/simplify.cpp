@@ -36,24 +36,16 @@ bool Common::simplify()
     }
     if (conf.irreg_gate_based) remove_definable_by_irreg_gates();
 
-//     solver->set_verbosity(1);
-    /*if (conf.pre_simplify) {
-        if (conf.verb) {
-            cout << "c [arjun-simp] CMS::simplify() with no BVE, intree probe..." << endl;
-        }
+    if (conf.pre_simplify) {
+        verb_print(1, "[arjun-simp] CMS::simplify() with no BVE, intree probe...");
         double simpTime = cpuTime();
-        solver->set_no_bve();
+        solver->set_bve(0);
         solver->set_intree_probe(1);
-        if (solver->simplify() == l_False) {
-            return false;
-        }
+        if (solver->simplify() == l_False) return false;
         solver->set_intree_probe(conf.intree);
-        if (conf.verb) {
-            cout << "c [arjun-simp] CMS::simplify() with no BVE finished. T: "
-            << (cpuTime() - simpTime)
-            << endl;
-        }
-    }*/
+        verb_print(1,"[arjun-simp] CMS::simplify() with no BVE finished."
+            << " T: " << (cpuTime() - simpTime));
+    }
 
     if (conf.backbone_simpl && sampling_set->size() > 1000) {
         if (!backbone_simpl(conf.backbone_simpl_max_confl)) {
@@ -74,14 +66,11 @@ bool Common::simplify()
 
     solver->set_verbosity(std::max<int>((int)conf.verb-2, 0));
 
-    if (conf.verb) {
-        cout << "c [arjun] simplification finished "
+    verb_print(1, "[arjun] simplification finished "
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
-        << " T: " << (cpuTime() - myTime)
-        << endl;
-    }
+        << " T: " << (cpuTime() - myTime));
 
     return true;
 }
