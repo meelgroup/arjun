@@ -221,6 +221,7 @@ void Common::set_up_solver()
     assert(solver == NULL);
     solver = new SATSolver(NULL, &interrupt_asap);
     solver->set_up_for_arjun();
+    solver->set_renumber(0);
     solver->set_bve(0);
     solver->set_verbosity(std::max((int)conf.verb-2, 0));
     solver->set_intree_probe(conf.intree && conf.simp);

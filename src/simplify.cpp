@@ -490,6 +490,10 @@ void Common::remove_definable_by_irreg_gates()
     double myTime = cpuTime();
     uint32_t old_size = sampling_set->size();
     vector<uint32_t> new_empty_occs;
+
+    //std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(incidence));
+    //std::reverse(sampling_set->begin(), sampling_set->end()); //we want most likely independent as last
+
     *other_sampling_set = solver->remove_definable_by_irreg_gate(*sampling_set, &new_empty_occs);
     std::swap(sampling_set, other_sampling_set);
 
