@@ -567,3 +567,8 @@ DLL_PUBLIC void Arjun::set_empty_occs_based(const bool empty_occs_based)
 {
     arjdata->common.conf.empty_occs_based = empty_occs_based;
 }
+
+DLL_PUBLIC void Arjun::set_mirror_empty(const bool mirror_empty)
+{
+    arjdata->common.conf.mirror_empty = mirror_empty;
+}

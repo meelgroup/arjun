@@ -501,7 +501,8 @@ void Common::remove_definable_by_irreg_gates()
     std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(inc2));
     std::reverse(sampling_set->begin(), sampling_set->end()); //we want most likely independent as last
 
-    *other_sampling_set = solver->remove_definable_by_irreg_gate(*sampling_set, &new_empty_occs);
+    *other_sampling_set = solver->remove_definable_by_irreg_gate(
+        *sampling_set, &new_empty_occs, conf.mirror_empty);
     std::swap(sampling_set, other_sampling_set);
 
     if (conf.verb) {
