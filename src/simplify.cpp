@@ -491,8 +491,15 @@ void Common::remove_definable_by_irreg_gates()
     uint32_t old_size = sampling_set->size();
     vector<uint32_t> new_empty_occs;
 
-    //std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(incidence));
-    //std::reverse(sampling_set->begin(), sampling_set->end()); //we want most likely independent as last
+    vector<uint32_t> inc2;
+    inc2.resize(orig_num_vars, 0);
+    vector<uint32_t> inc = solver->get_lit_incidence();
+    for(uint32_t i = 0; i < orig_num_vars; i++) {
+        Lit l = Lit(i, true);
+        inc2[l.var()] = std::min(inc[l.toInt()],inc[(~l).toInt()]);
+    }
+    std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(inc2));
+    std::reverse(sampling_set->begin(), sampling_set->end()); //we want most likely independent as last
 
     *other_sampling_set = solver->remove_definable_by_irreg_gate(*sampling_set, &new_empty_occs);
     std::swap(sampling_set, other_sampling_set);
