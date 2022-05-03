@@ -206,13 +206,12 @@ bool Common::backbone_simpl(uint64_t orig_max_confl)
 
 void Common::empty_out_indep_set_if_unsat()
 {
-    if (solver->okay()) {
-        return;
-    }
+    if (solver->okay()) return;
 
     //It's UNSAT so the sampling set is empty
     other_sampling_set->clear();
     std::swap(sampling_set, other_sampling_set);
+    empty_occs.clear();
     if (conf.verb) {
         cout << "c [arjun] CNF is UNSAT, setting sampling set to empty"
         << endl;
