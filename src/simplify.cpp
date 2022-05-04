@@ -56,21 +56,25 @@ bool Common::simplify()
         solver->set_intree_probe(1);
         if (solver->simplify() == l_False) return false;
         solver->set_intree_probe(conf.intree);
+        get_incidence();
         verb_print(1,"[arjun-simp] CMS::simplify() with no BVE finished."
             << " T: " << (cpuTime() - simpTime));
     }
 
     if (conf.backbone_simpl && sampling_set->size() > 1000) {
         if (!backbone_simpl(conf.backbone_simpl_max_confl)) return false;
+        get_incidence();
     }
 
     simplified_cnf = get_cnf();
 
+    order_sampl_set_for_simp();
     remove_eq_literals();
     remove_zero_assigned_literals();
     if (conf.probe_based) {
         if (!probe_all()) return false;
     }
+    get_incidence();
     if (conf.irreg_gate_based) remove_definable_by_irreg_gates();
 
     solver->set_verbosity(std::max<int>((int)conf.verb-2, 0));
@@ -377,9 +381,7 @@ bool Common::remove_definable_by_gates()
         cout << "c [arjun-simp] XOR Potential: " << potential << endl;
     }
 
-    std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(incidence));
-    std::reverse(sampling_set->begin(), sampling_set->end()); //we want most likely independent as last
-
+    order_sampl_set_for_simp();
     uint32_t non_zero_occs = 0;
     uint32_t seen_set_0 = 0;
     for(uint32_t v: *sampling_set) {
@@ -483,6 +485,12 @@ bool Common::remove_definable_by_gates()
     return changed;
 }
 
+void Common::order_sampl_set_for_simp()
+{
+    std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(incidence));
+    std::reverse(sampling_set->begin(), sampling_set->end()); //we want most likely independent as last
+}
+
 void Common::remove_definable_by_irreg_gates()
 {
     assert(conf.irreg_gate_based);
@@ -490,15 +498,7 @@ void Common::remove_definable_by_irreg_gates()
     uint32_t old_size = sampling_set->size();
     vector<uint32_t> new_empty_occs;
 
-    vector<uint32_t> inc2;
-    inc2.resize(orig_num_vars, 0);
-    vector<uint32_t> inc = solver->get_lit_incidence();
-    for(uint32_t i = 0; i < orig_num_vars; i++) {
-        Lit l = Lit(i, true);
-        inc2[l.var()] = std::min(inc[l.toInt()],inc[(~l).toInt()]);
-    }
-    std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(inc2));
-    std::reverse(sampling_set->begin(), sampling_set->end()); //we want most likely independent as last
+    order_sampl_set_for_simp();
 
     *other_sampling_set = solver->remove_definable_by_irreg_gate(
         *sampling_set, &new_empty_occs, conf.mirror_empty);
@@ -524,13 +524,15 @@ void Common::remove_definable_by_irreg_gates()
 
         std::swap(sampling_set, other_sampling_set);
         if (conf.verb) {
-            cout << "c [arjun-simp] 0-occ"
+            cout << "c [arjun-simp] empty-occ"
             << " removed: " << (old_size-sampling_set->size())
             << " perc: " << std::fixed << std::setprecision(2)
             << stats_line_percent(old_size-sampling_set->size(), old_size)
             << " total 0-occ now: " << empty_occs.size()
             << endl;
         }
+
+        order_sampl_set_for_simp();
     }
 }
 
