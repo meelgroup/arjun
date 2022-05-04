@@ -219,7 +219,7 @@ void Common::get_incidence()
 void Common::set_up_solver()
 {
     assert(solver == NULL);
-    solver = new SATSolver(NULL, &interrupt_asap);
+    solver = new SATSolver(NULL);
     solver->set_up_for_arjun();
     solver->set_renumber(0);
     solver->set_bve(0);

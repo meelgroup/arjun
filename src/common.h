@@ -59,7 +59,6 @@ struct Common
     Common() {
         sampling_set = &sampling_set_tmp1;
         other_sampling_set = &sampling_set_tmp2;
-        interrupt_asap = false;
         set_up_solver();
     }
 
@@ -74,7 +73,6 @@ struct Common
     vector<uint32_t> sampling_set_tmp2;
     vector<uint32_t>* sampling_set = NULL;
     vector<uint32_t> empty_occs;
-    std::atomic<bool> interrupt_asap;
 
     vector<Lit> tmp;
     vector<char> seen;
@@ -163,6 +161,7 @@ struct Common
     bool simplify_bve_only();
     bool run_gauss_jordan();
     void check_no_duplicate_in_sampling_set();
+    void order_sampl_set_for_simp();
     vector<Lit> simplified_cnf;
 
     //forward

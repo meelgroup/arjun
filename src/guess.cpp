@@ -236,26 +236,22 @@ void Common::run_guess()
 
     //REVERSE
     uint32_t inv_removed = 0;
-    if (!interrupt_asap) {
-        uint32_t cur_sampl_size = sampling_set->size();
-        if (conf.verb) {
-            cout << "c [arjun] ============ Guess INV ==============" << endl;
-        }
-        guess_round(guess_indep, true, false, 0);
-        inv_removed += cur_sampl_size - sampling_set->size();
+    uint32_t cur_sampl_size = sampling_set->size();
+    if (conf.verb) {
+        cout << "c [arjun] ============ Guess INV ==============" << endl;
     }
+    guess_round(guess_indep, true, false, 0);
+    inv_removed += cur_sampl_size - sampling_set->size();
 
     //SHUFFLE
     uint32_t rnd_removed = 0;
-    if (!interrupt_asap) {
-        uint32_t cur_sampl_size = sampling_set->size();
-        if (conf.verb) {
-            cout << "c [arjun] ============ Guess RND ==============" << endl;
-        }
-        guess_round(guess_indep, false, true, 0);
-        guess_round(guess_indep, false, true, 0);
-        rnd_removed += cur_sampl_size - sampling_set->size();
+    cur_sampl_size = sampling_set->size();
+    if (conf.verb) {
+        cout << "c [arjun] ============ Guess RND ==============" << endl;
     }
+    guess_round(guess_indep, false, true, 0);
+    guess_round(guess_indep, false, true, 0);
+    rnd_removed += cur_sampl_size - sampling_set->size();
 
     /*(
     //NORM

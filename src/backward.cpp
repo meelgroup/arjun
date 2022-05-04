@@ -136,7 +136,7 @@ void Common::backward_round()
     uint32_t fast_backw_tot = 0;
     uint32_t indic_var = var_Undef;
     vector<uint32_t> non_indep_vars;
-    while(!interrupt_asap) {
+    while(true) {
         uint32_t test_var = var_Undef;
         if (quick_pop_ok) {
             //Remove 2 last
@@ -145,6 +145,7 @@ void Common::backward_round()
 
             //No more left, try again with full
             if (assumptions.empty()) {
+                if (conf.verb >= 5) cout << "c [arjun] No more left, try again with full" << endl;
                 break;
             }
 
@@ -177,6 +178,7 @@ void Common::backward_round()
 
             if (test_var == var_Undef) {
                 //we are done, backward is finished
+                if (conf.verb >= 5) cout << "c [arjun] we are done, backward is finished" << endl;
                 break;
             }
             indic_var = var_to_indic[test_var];
@@ -266,9 +268,12 @@ void Common::backward_round()
         }
         if (ret == l_False) {
             ret_false++;
+            if (conf.verb >= 5) cout << "c [arjun] backw solve(): False" << endl;
         } else if (ret == l_True) {
             ret_true++;
+            if (conf.verb >= 5) cout << "c [arjun] backw solve(): True" << endl;
         } else if (ret == l_Undef) {
+            if (conf.verb >= 5) cout << "c [arjun] backw solve(): Undef" << endl;
             ret_undef++;
         }
 
