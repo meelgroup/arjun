@@ -48,6 +48,7 @@ bool Common::simplify()
         remove_definable_by_gates();
     }
     if (conf.irreg_gate_based) remove_definable_by_irreg_gates();
+    if (conf.empty_occs_based) find_equiv_subformula();
 
     if (conf.pre_simplify) {
         verb_print(1, "[arjun-simp] CMS::simplify() with no BVE, intree probe...");
@@ -56,25 +57,26 @@ bool Common::simplify()
         solver->set_intree_probe(1);
         if (solver->simplify() == l_False) return false;
         solver->set_intree_probe(conf.intree);
-        get_incidence();
         verb_print(1,"[arjun-simp] CMS::simplify() with no BVE finished."
             << " T: " << (cpuTime() - simpTime));
     }
 
     if (conf.backbone_simpl && sampling_set->size() > 1000) {
         if (!backbone_simpl(conf.backbone_simpl_max_confl)) return false;
-        get_incidence();
+    } else {
+        // Find at least one solution (so it's not UNSAT) within some timeout
+        solver->set_verbosity(0);
+        solver->set_max_confl(1000);
+        solver->solve();
+        solver->set_verbosity(std::max<int>((int)conf.verb-2, 0));
     }
 
-    simplified_cnf = get_cnf();
-
-    order_sampl_set_for_simp();
     remove_eq_literals();
     remove_zero_assigned_literals();
-    if (conf.probe_based) {
-        if (!probe_all()) return false;
-    }
-    get_incidence();
+    if (conf.probe_based && !probe_all()) return false;
+    simplified_cnf = get_cnf();
+
+    if (conf.empty_occs_based) find_equiv_subformula();
     if (conf.irreg_gate_based) remove_definable_by_irreg_gates();
 
     solver->set_verbosity(std::max<int>((int)conf.verb-2, 0));
@@ -203,7 +205,7 @@ bool Common::backbone_simpl(uint64_t orig_max_confl)
         << " T: " << std::setprecision(2) << time_used
         << endl;
     }
-    solver->set_verbosity(1);
+    solver->set_verbosity(std::max<int>((int)conf.verb-2, 0));
 
     return true;
 }
@@ -225,8 +227,8 @@ void Common::empty_out_indep_set_if_unsat()
 bool Common::probe_all()
 {
     double myTime = cpuTime();
+    order_sampl_set_for_simp();
     auto old_size = sampling_set->size();
-    solver->set_verbosity(1);
 
     incidence_probing.resize(orig_num_vars, 0);
     for(auto v: *sampling_set) {
@@ -241,7 +243,7 @@ bool Common::probe_all()
     if (solver->simplify(NULL, &s) == l_False) {
         return false;
     }
-    solver->set_verbosity(0);
+    solver->set_verbosity(std::max<int>((int)conf.verb-2, 0));
     remove_zero_assigned_literals(true);
     remove_eq_literals(true);
 
@@ -285,6 +287,7 @@ struct GateOccurs
 bool Common::remove_definable_by_gates()
 {
     double myTime = cpuTime();
+    order_sampl_set_for_simp();
     uint32_t old_size = sampling_set->size();
     vector<vector<GateOccurs>> vars_gate_occurs(orig_num_vars);
     vector<pair<vector<uint32_t>, bool>> xors;
@@ -487,8 +490,38 @@ bool Common::remove_definable_by_gates()
 
 void Common::order_sampl_set_for_simp()
 {
+    get_incidence();
     std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(incidence));
     std::reverse(sampling_set->begin(), sampling_set->end()); //we want most likely independent as last
+}
+
+void Common::find_equiv_subformula()
+{
+    assert(conf.empty_occs_based);
+    const double myTime = cpuTime();
+    solver->set_verbosity(1);
+    vector<uint32_t> new_empty_occs = solver->find_equiv_subformula(*sampling_set, conf.mirror_empty);
+
+    // Remove from the sampling set elements that are empty
+    uint32_t old_size = sampling_set->size();
+    std::set<uint32_t> tmp_set;
+    tmp_set.insert(sampling_set->begin(), sampling_set->end());
+    for(auto const& v: new_empty_occs) tmp_set.erase(v);
+    other_sampling_set->clear();
+    other_sampling_set->insert(other_sampling_set->begin(), tmp_set.begin(), tmp_set.end());
+    empty_occs.insert(empty_occs.end(), new_empty_occs.begin(), new_empty_occs.end());
+
+    std::swap(sampling_set, other_sampling_set);
+    if (conf.verb) {
+        cout << "c [arjun-simp] equiv-subform"
+        << " removed: " << (old_size-sampling_set->size())
+        << " perc: " << std::fixed << std::setprecision(2)
+        << stats_line_percent(old_size-sampling_set->size(), old_size)
+        << " total equiv_subform now: " << empty_occs.size()
+        << " T: " << std::setprecision(2) << cpuTime() - myTime
+        << endl;
+    }
+    solver->set_verbosity(std::max<int>((int)conf.verb-2, 0));
 }
 
 void Common::remove_definable_by_irreg_gates()
@@ -496,12 +529,9 @@ void Common::remove_definable_by_irreg_gates()
     assert(conf.irreg_gate_based);
     double myTime = cpuTime();
     uint32_t old_size = sampling_set->size();
-    vector<uint32_t> new_empty_occs;
-
     order_sampl_set_for_simp();
 
-    *other_sampling_set = solver->remove_definable_by_irreg_gate(
-        *sampling_set, &new_empty_occs, conf.mirror_empty);
+    *other_sampling_set = solver->remove_definable_by_irreg_gate(*sampling_set);
     std::swap(sampling_set, other_sampling_set);
 
     if (conf.verb) {
@@ -510,29 +540,6 @@ void Common::remove_definable_by_irreg_gates()
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
         << " T: " << (cpuTime() - myTime) << endl;
-    }
-
-    if (conf.empty_occs_based) {
-        // Remove from the sampling set elements that are empty
-        old_size = sampling_set->size();
-        std::set<uint32_t> tmp_set;
-        tmp_set.insert(sampling_set->begin(), sampling_set->end());
-        for(auto const& v: new_empty_occs) tmp_set.erase(v);
-        other_sampling_set->clear();
-        other_sampling_set->insert(other_sampling_set->begin(), tmp_set.begin(), tmp_set.end());
-        empty_occs.insert(empty_occs.end(), new_empty_occs.begin(), new_empty_occs.end());
-
-        std::swap(sampling_set, other_sampling_set);
-        if (conf.verb) {
-            cout << "c [arjun-simp] empty-occ"
-            << " removed: " << (old_size-sampling_set->size())
-            << " perc: " << std::fixed << std::setprecision(2)
-            << stats_line_percent(old_size-sampling_set->size(), old_size)
-            << " total 0-occ now: " << empty_occs.size()
-            << endl;
-        }
-
-        order_sampl_set_for_simp();
     }
 }
 
@@ -573,18 +580,13 @@ void Common::remove_zero_assigned_literals(bool print)
 
 void Common::remove_eq_literals(bool print)
 {
-    *other_sampling_set = *sampling_set;
-
-    uint32_t orig_sampling_set_size = other_sampling_set->size();
-    for(auto x: *other_sampling_set) {
-        seen[x] = 1;
-    }
+    uint32_t orig_sampling_set_size = sampling_set->size();
+    for(auto x: *sampling_set) seen[x] = 1;
     const auto eq_lits = solver->get_all_binary_xors();
     for(auto mypair: eq_lits) {
         //Only remove if both are sampling vars
         if (seen[mypair.second.var()] == 1 && seen[mypair.first.var()] == 1) {
-            //Doesn't matter which one to remove
-            seen[mypair.second.var()] = 0;
+            seen[mypair.first.var()] = 0;
         }
     }
 
@@ -601,7 +603,7 @@ void Common::remove_eq_literals(bool print)
     total_eq_removed += orig_sampling_set_size - sampling_set->size();
 
     if (print && conf.verb) {
-        cout << "c [arjun-simp] Removed equivalent: "
+        cout << "c [arjun-simp] Removed eq lits: "
         << (orig_sampling_set_size - sampling_set->size())
         << " new size: " << sampling_set->size()
         << endl;

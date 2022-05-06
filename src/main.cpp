@@ -244,13 +244,10 @@ inline double stats_line_percent(double num, double total)
     }
 }
 
-void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint32_t>& empty_occ)
+void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint32_t>& empty_occs)
 {
     cout << "c ind ";
     for(const uint32_t s: indep_set) cout << s+1 << " ";
-    cout << "0" << endl;
-    cout << "c emptyocc ";
-    for(const uint32_t s: empty_occ) cout << s+1 << " ";
     cout << "0" << endl;
 
     cout
@@ -259,10 +256,10 @@ void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint3
     <<  std::setw(6) << std::setprecision(4)
     << stats_line_percent(indep_set.size(), orig_sampling_set_size)
     << " %" << endl
-    << "c [arjun] of which empty occs: " << std::setw(7) << empty_occ.size()
+    << "c [arjun] of which empty occs: " << std::setw(7) << empty_occs.size()
     << " percent of original: "
     <<  std::setw(6) << std::setprecision(4)
-    << stats_line_percent(empty_occ.size(), orig_sampling_set_size)
+    << stats_line_percent(empty_occs.size(), orig_sampling_set_size)
     << " %" << endl;
 }
 
