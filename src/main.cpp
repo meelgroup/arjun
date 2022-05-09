@@ -286,7 +286,7 @@ void readInAFile(const string& filename)
         exit(-1);
     }
 
-    if (parser.sampling_vars.empty() || recompute_sampling_set) {
+    if (!parser.sampling_vars_found || recompute_sampling_set) {
         orig_sampling_set_size = arjun->start_with_clean_sampling_set();
     } else {
         orig_sampling_set_size = arjun->set_starting_sampling_set(parser.sampling_vars);
