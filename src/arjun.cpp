@@ -527,19 +527,22 @@ Arjun::get_fully_simplified_renumbered_cnf(
     //Below works for: ProcessBean, pollard, track1_116.mcc2020_cnf
     //    and is quite fast
     //-> with CMS f356f5cef4e566fad94043324093ef9848697aae
-    solver.set_min_bva_gain(20);
-    solver.set_varelim_check_resolvent_subs(true);
+    solver.set_min_bva_gain(0);
+    //solver.set_varelim_check_resolvent_subs(true);
     solver.set_max_red_linkin_size(0);
+    solver.set_timeout_all_calls(100);
 
-    string str("sub-str-cls-with-bin, full-probe, sub-cls-with-bin, distill-bins, distill-cls-onlyrem, sub-impl, occ-ternary-res, occ-bve, distill-cls, occ-backw-sub-str, scc-vrepl, sub-str-cls-with-bin, full-probe, clean-cls");
+    // occ-ternary-res not used
+    string str("full-probe, sub-cls-with-bin, scc-vrepl, distill-bins, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-backw-sub, occ-rem-with-orgates, occ-bve");
     solver.simplify(&dont_elim, &str);
-    str = string(",intree-probe,") + str;
+    str = string(",intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls,") + str;
+
     solver.simplify(&dont_elim, &str);
     solver.simplify(&dont_elim, &str);
     solver.simplify(&dont_elim, &str);
-    solver.simplify(&dont_elim, &str);
-//         solver.simplify(&dont_elim, &str);
-    str += string(",must-scc-vrepl,must-renumber");
+//     solver.simplify(&dont_elim, &str);
+        solver.simplify(&dont_elim, &str);
+    str = string(", must-scc-vrepl,must-renumber");
     solver.simplify(&dont_elim, &str);
 
     vector<uint32_t> new_sampl_set = sampl_set;
