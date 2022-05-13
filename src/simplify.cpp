@@ -342,16 +342,20 @@ bool Common::remove_definable_by_gates()
         const auto& orgate = ors[i];
         uint32_t num = 0;
         bool all_orig = true;
-        for(const Lit& l: orgate.get_all()) {
-            if (l.var() < orig_num_vars) {
-                num += seen[l.var()];
-            } else {
+        for(const Lit& l: orgate.lits) {
+            if (l.var() < orig_num_vars) num += seen[l.var()];
+            else {
                 all_orig = false;
                 break;
             }
         }
+        if (orgate.rhs.var() < orig_num_vars) num += seen[orgate.rhs.var()];
+        else {
+            all_orig = false;
+            break;
+        }
         //This one can be used to remove a variable
-        if (all_orig && num == orgate.get_all().size()) {
+        if (all_orig && num == orgate.lits.size()+1) {
             rhs_incidence[orgate.rhs.var()]++;
             vars_gate_occurs[orgate.rhs.var()].push_back(GateOccurs(gate_t::or_gate, i));
             potential++;
