@@ -531,17 +531,19 @@ Arjun::get_fully_simplified_renumbered_cnf(
     //solver.set_varelim_check_resolvent_subs(true);
     solver.set_max_red_linkin_size(0);
     solver.set_timeout_all_calls(100);
+    solver.set_weaken_time_limitM(2000);
 
     // occ-ternary-res not used
-    string str("full-probe, sub-cls-with-bin, scc-vrepl, distill-bins, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-backw-sub, occ-rem-with-orgates, occ-bve");
+    string str("full-probe, sub-cls-with-bin, scc-vrepl, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-backw-sub, occ-rem-with-orgates, occ-bve,");
     solver.simplify(&dont_elim, &str);
-    str = string(",intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls,") + str;
+//     solver.simplify(&dont_elim, &str);
+    str = string(",intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls,distill-bins, ") + str;
 
     solver.simplify(&dont_elim, &str);
     solver.simplify(&dont_elim, &str);
     solver.simplify(&dont_elim, &str);
 //     solver.simplify(&dont_elim, &str);
-        solver.simplify(&dont_elim, &str);
+    solver.simplify(&dont_elim, &str);
     str = string(", must-scc-vrepl,must-renumber");
     solver.simplify(&dont_elim, &str);
 
