@@ -524,11 +524,10 @@ Arjun::get_fully_simplified_renumbered_cnf(
         dont_elim.push_back(Lit(v, false));
     }
 
-    //Below works for: ProcessBean, pollard, track1_116.mcc2020_cnf
-    //    and is quite fast
-    //-> with CMS f356f5cef4e566fad94043324093ef9848697aae
+    //Below works VERY WELL for: ProcessBean, pollard, track1_116.mcc2020_cnf
+    //with CMS cb434d5aa4dea747ba2e8f658b3f5a11165d716a
     solver.set_min_bva_gain(0);
-    //solver.set_varelim_check_resolvent_subs(true);
+    solver.set_varelim_check_resolvent_subs(true);
     solver.set_max_red_linkin_size(0);
     solver.set_timeout_all_calls(100);
     solver.set_weaken_time_limitM(2000);
