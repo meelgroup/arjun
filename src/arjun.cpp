@@ -525,8 +525,8 @@ Arjun::get_fully_simplified_renumbered_cnf(
     }
 
     //Below works VERY WELL for: ProcessBean, pollard, track1_116.mcc2020_cnf
-    //with CMS cb434d5aa4dea747ba2e8f658b3f5a11165d716a
-    //NOTE: blasted_TR_b14_even3_linear.cnf.gz.no_w.cnfstill gives headaches
+    //   and blasted_TR_b14_even3_linear.cnf.gz.no_w.cnf
+    //with CMS b3a3a147e12024d911d10f5f18f67fc6a798e27f
     solver.set_min_bva_gain(0);
     solver.set_varelim_check_resolvent_subs(true);
     solver.set_max_red_linkin_size(0);
@@ -534,7 +534,7 @@ Arjun::get_fully_simplified_renumbered_cnf(
     solver.set_weaken_time_limitM(2000);
 
     // occ-ternary-res not used
-    string str("full-probe, sub-cls-with-bin, scc-vrepl, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-backw-sub, occ-rem-with-orgates, occ-bve,");
+    string str("full-probe, sub-cls-with-bin, scc-vrepl, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-del-blocked, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, ");
     solver.simplify(&dont_elim, &str);
 //     solver.simplify(&dont_elim, &str);
     str = string(",intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls,distill-bins, ") + str;
@@ -544,7 +544,7 @@ Arjun::get_fully_simplified_renumbered_cnf(
     solver.simplify(&dont_elim, &str);
 //     solver.simplify(&dont_elim, &str);
     solver.simplify(&dont_elim, &str);
-    str = string(", must-scc-vrepl,must-renumber");
+    str = string(", occ-rem-unconn-assumps, must-scc-vrepl,must-renumber");
     solver.simplify(&dont_elim, &str);
 
     vector<uint32_t> new_sampl_set = sampl_set;
