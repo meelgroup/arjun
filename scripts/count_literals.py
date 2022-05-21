@@ -105,9 +105,9 @@ with open(sys.argv[1], "r") as f:
 
 print("num set lits        ", len(set_vals))
 print("num (non-set) vars  ", num_vars-len(set_vals))
-print("num long cls        ", num_cls-num_bin_cls)
+print("num cls             ", num_cls)
 print("num bin cls         ", num_bin_cls)
 print("max cl size         ", max_cl_sz)
-if (non_bin_cls != 0): print("avg non-bin cl sz   %4.1f" % (float(tot_non_bin_cl_size)/float(non_bin_cls)))
-else: print("avg non-bin cl sz   %4.1f (no non-bin cl)" % 0)
+if (non_bin_cls != 0): print("avg non-bin cl sz    %-4.1f" % (float(tot_non_bin_cl_size)/float(non_bin_cls)))
+else: print("avg non-bin cl sz   %-4.1f (no non-bin cl)" % 0)
 print("num (non-unit) lits ", num_lits)
