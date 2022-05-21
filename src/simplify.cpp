@@ -296,15 +296,9 @@ bool Common::remove_definable_by_gates()
 
     assert(toClear.empty());
 
-    if (conf.xor_gates_based) {
-        xors = solver->get_recovered_xors(false);
-    }
-    if (conf.or_gate_based) {
-        ors = solver->get_recovered_or_gates();
-    }
-    if (conf.ite_gate_based) {
-        ites = solver->get_recovered_ite_gates();
-    }
+    if (conf.xor_gates_based) xors = solver->get_recovered_xors(false);
+    if (conf.or_gate_based) ors = solver->get_recovered_or_gates();
+    if (conf.ite_gate_based) ites = solver->get_recovered_ite_gates();
 
     for(auto v: *sampling_set) {
         toClear.push_back(v);
@@ -384,9 +378,7 @@ bool Common::remove_definable_by_gates()
     }
 
 
-    if (conf.verb > 4) {
-        cout << "c [arjun-simp] XOR Potential: " << potential << endl;
-    }
+    if (conf.verb > 4) cout << "c [arjun-simp] XOR Potential: " << potential << endl;
 
     order_sampl_set_for_simp();
     uint32_t non_zero_occs = 0;
