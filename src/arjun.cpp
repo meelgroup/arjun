@@ -544,20 +544,19 @@ Arjun::get_fully_simplified_renumbered_cnf(
     // eqlit-find ? (too slow)
     string str("full-probe, sub-cls-with-bin, must-scc-vrepl, must-scc-vrepl, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-del-blocked, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, ");
     solver.simplify(&dont_elim, &str);
-//     solver.simplify(&dont_elim, &str);
     str = string(",intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls,distill-bins, ") + str;
 
     solver.simplify(&dont_elim, &str);
     solver.simplify(&dont_elim, &str);
     solver.simplify(&dont_elim, &str);
-//     solver.simplify(&dont_elim, &str);
+    str = string("sparsify,") + str;
     solver.simplify(&dont_elim, &str);
 
     str = string("");
     if (arjdata->common.definitely_satisfiable) {
         str += string("occ-rem-unconn-assumps, ");
     }
-    str += string(", must-scc-vrepl,must-renumber");
+    str += string(", must-scc-vrepl, must-renumber");
     solver.simplify(&dont_elim, &str);
 
     vector<uint32_t> new_sampl_set;
