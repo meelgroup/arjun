@@ -531,7 +531,7 @@ Arjun::get_fully_simplified_renumbered_cnf(
 
     //Below works VERY WELL for: ProcessBean, pollard, track1_116.mcc2020_cnf
     //   and blasted_TR_b14_even3_linear.cnf.gz.no_w.cnf
-    //with CMS b3a3a147e12024d911d10f5f18f67fc6a798e27f
+    //with CMS ef6ea7e87e00bde50c0cce0c1e13a012191c4e1c and Arjun 5f2dfe814e07ee6ee0dde65b1350b5c343209ed0
     solver.set_min_bva_gain(0);
     solver.set_varelim_check_resolvent_subs(true);
     solver.set_max_red_linkin_size(0);
