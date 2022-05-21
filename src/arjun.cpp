@@ -485,6 +485,7 @@ vector<vector<Lit>> get_simplified_renumbered_cnf(SATSolver* solver, vector<uint
 DLL_PUBLIC std::pair<vector<vector<Lit>>, vector<uint32_t>>
 Arjun::get_fully_simplified_renumbered_cnf(
     const vector<uint32_t>& sampl_set,
+    const vector<uint32_t>& empty_vars,
     const uint32_t orig_num_vars)
 {
     CMSat::SATSolver solver;
@@ -520,9 +521,13 @@ Arjun::get_fully_simplified_renumbered_cnf(
     }
 
     vector<Lit> dont_elim;
-    for(const auto& v: sampl_set) {
-        dont_elim.push_back(Lit(v, false));
-    }
+    set<Lit> dont_elim_set;
+    for(const auto& v: sampl_set) dont_elim_set.insert(Lit(v, false));
+//     for(const auto& v: empty_vars) {
+//         assert(dont_elim_set.find(Lit(v, false)) != dont_elim_set.end());
+//         dont_elim_set.erase(Lit(v, false));
+//     }
+    for(const auto& l: dont_elim_set) dont_elim.push_back(l);
 
     //Below works VERY WELL for: ProcessBean, pollard, track1_116.mcc2020_cnf
     //   and blasted_TR_b14_even3_linear.cnf.gz.no_w.cnf
@@ -534,7 +539,7 @@ Arjun::get_fully_simplified_renumbered_cnf(
     solver.set_weaken_time_limitM(2000);
 
     // occ-ternary-res not used
-    string str("full-probe, sub-cls-with-bin, scc-vrepl, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-del-blocked, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, ");
+    string str("full-probe, sub-cls-with-bin, must-scc-vrepl, eqlit-find, must-scc-vrepl, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-del-blocked, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, ");
     solver.simplify(&dont_elim, &str);
 //     solver.simplify(&dont_elim, &str);
     str = string(",intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls,distill-bins, ") + str;
@@ -547,8 +552,10 @@ Arjun::get_fully_simplified_renumbered_cnf(
     str = string(", occ-rem-unconn-assumps, must-scc-vrepl,must-renumber");
     solver.simplify(&dont_elim, &str);
 
-    vector<uint32_t> new_sampl_set = sampl_set;
+    vector<uint32_t> new_sampl_set;
+    for(const auto& l: dont_elim) new_sampl_set.push_back(l.var());
     vector<vector<Lit>> cnf = get_simplified_renumbered_cnf(&solver, new_sampl_set);
+    //cout << "Must multiply by:  " << empty_vars.size() << endl;
     return std::make_pair(cnf, new_sampl_set);
 }
 
