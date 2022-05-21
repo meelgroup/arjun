@@ -67,7 +67,8 @@ bool Common::simplify()
         // Find at least one solution (so it's not UNSAT) within some timeout
         solver->set_verbosity(0);
         solver->set_max_confl(1000);
-        solver->solve();
+        lbool ret = solver->solve();
+        if (ret == l_True) definitely_satisfiable = true;
         solver->set_verbosity(std::max<int>((int)conf.verb-2, 0));
     }
 

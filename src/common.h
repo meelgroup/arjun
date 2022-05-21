@@ -80,6 +80,7 @@ struct Common
     uint32_t total_eq_removed = 0;
     uint32_t total_set_removed = 0;
     uint32_t mult_or_invers_var;
+    bool definitely_satisfiable = false;
     enum ModeType {one_mode, many_mode};
 
     //assert indic[var] to FASLE to force var==var+orig_num_vars

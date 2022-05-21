@@ -539,7 +539,8 @@ Arjun::get_fully_simplified_renumbered_cnf(
     solver.set_weaken_time_limitM(2000);
 
     // occ-ternary-res not used
-    string str("full-probe, sub-cls-with-bin, must-scc-vrepl, eqlit-find, must-scc-vrepl, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-del-blocked, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, ");
+    // eqlit-find ? (too slow)
+    string str("full-probe, sub-cls-with-bin, must-scc-vrepl, must-scc-vrepl, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-del-blocked, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, ");
     solver.simplify(&dont_elim, &str);
 //     solver.simplify(&dont_elim, &str);
     str = string(",intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls,distill-bins, ") + str;
@@ -549,7 +550,12 @@ Arjun::get_fully_simplified_renumbered_cnf(
     solver.simplify(&dont_elim, &str);
 //     solver.simplify(&dont_elim, &str);
     solver.simplify(&dont_elim, &str);
-    str = string(", occ-rem-unconn-assumps, must-scc-vrepl,must-renumber");
+
+    str = string("");
+    if (arjdata->common.definitely_satisfiable) {
+        str += string("occ-rem-unconn-assumps, ");
+    }
+    str += string(", must-scc-vrepl,must-renumber");
     solver.simplify(&dont_elim, &str);
 
     vector<uint32_t> new_sampl_set;
