@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <vector>
 #include <utility>
 #include <string>
+#include <tuple>
 #include <cryptominisat5/cryptominisat.h>
 #include <cryptominisat5/solvertypesmini.h>
 
@@ -69,7 +70,7 @@ namespace ArjunNS {
         bool get_next_small_clause(std::vector<CMSat::Lit>& ret); //returns FALSE if no more
         void end_getting_small_clauses();
         const std::vector<CMSat::Lit>& get_simplified_cnf() const;
-        std::pair<std::vector<std::vector<CMSat::Lit>>, std::vector<uint32_t>>
+        std::tuple<std::vector<std::vector<CMSat::Lit>>, std::vector<uint32_t>, uint32_t>
             get_fully_simplified_renumbered_cnf(
             const std::vector<uint32_t>& sampl_set,
             const std::vector<uint32_t>& empty_vars,

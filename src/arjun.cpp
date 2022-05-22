@@ -30,6 +30,7 @@
 #include "common.h"
 #include "GitSHA1.h"
 #include <utility>
+#include <tuple>
 
 using std::pair;
 
@@ -549,7 +550,7 @@ vector<Lit> fill_solver_no_empty(
     return dont_elim;
 }
 
-DLL_PUBLIC std::pair<vector<vector<Lit>>, vector<uint32_t>>
+DLL_PUBLIC std::tuple<vector<vector<Lit>>, vector<uint32_t>, uint32_t>
 Arjun::get_fully_simplified_renumbered_cnf(
     const vector<uint32_t>& sampl_set,
     const vector<uint32_t>& empty_vars,
@@ -592,8 +593,7 @@ Arjun::get_fully_simplified_renumbered_cnf(
     vector<uint32_t> new_sampl_set;
     for(const auto& l: dont_elim) new_sampl_set.push_back(l.var());
     vector<vector<Lit>> cnf = get_simplified_renumbered_cnf(&solver, new_sampl_set);
-    cout << "c Must multiply by:  " << empty_vars.size() << endl;
-    return std::make_pair(cnf, new_sampl_set);
+    return std::make_tuple(cnf, new_sampl_set, empty_vars.size());
 }
 
 // DLL_PUBLIC void Arjun::set_polar_mode(CMSat::PolarityMode mode)

@@ -299,7 +299,7 @@ void readInAFile(const string& filename)
     #endif
 }
 
-void dump_cnf(const vector<vector<Lit>>& cnf, const vector<uint32_t>& sampl_set)
+void dump_cnf(const vector<vector<Lit>>& cnf, const vector<uint32_t>& sampl_set, const uint32_t multiply = 0)
 {
     uint32_t num_cls = cnf.size();
     uint32_t max_var = 0;
@@ -324,6 +324,7 @@ void dump_cnf(const vector<vector<Lit>>& cnf, const vector<uint32_t>& sampl_set)
     for(const auto& cl: cnf) {
         outf << cl << " 0\n";
     }
+    outf << "c MUST MUTIPLY BY 2**" << multiply << endl;
 }
 
 void elim_to_file(
@@ -334,7 +335,7 @@ void elim_to_file(
     double dump_start_time = cpuTime();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
     auto ret = arjun->get_fully_simplified_renumbered_cnf(sampl_set, empty_occs, orig_num_vars);
-    dump_cnf(ret.first, ret.second);
+    dump_cnf(std::get<0>(ret), std::get<1>(ret), std::get<2>(ret));
     cout << "c [arjun] Done dumping. T: " << (cpuTime() - dump_start_time) << endl;
 }
 
