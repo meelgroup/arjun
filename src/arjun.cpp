@@ -482,6 +482,73 @@ vector<vector<Lit>> get_simplified_renumbered_cnf(SATSolver* solver, vector<uint
     return cnf;
 }
 
+vector<Lit> fill_solver_no_empty(
+    const vector<uint32_t>& sampl_set,
+    const vector<uint32_t>& empty_vars,
+    const uint32_t orig_num_vars,
+    SATSolver& solver,
+    Arjun* arjun)
+{
+    solver.new_vars(orig_num_vars-empty_vars.size());
+    vector<char> seen(orig_num_vars, 0);
+    vector<uint32_t> mymap;
+    for(auto const& e: empty_vars) {
+        assert(e < orig_num_vars);
+        seen[e] = 1;
+    }
+
+    uint32_t at = 0;
+    for(uint32_t i = 0; i < orig_num_vars; i++) {
+        if (!seen[i]) {
+            mymap.push_back(at);
+            at++;
+        } else {
+            mymap.push_back(numeric_limits<uint32_t>::max());
+        }
+    }
+    assert(at == solver.nVars());
+
+    vector<Lit> tmp;
+    for(const auto& l: arjun->get_simplified_cnf()) {
+        if (l != lit_Undef) {
+            assert(seen[l.var()] != 1);
+            tmp.push_back(Lit(mymap[l.var()], l.sign()));
+            continue;
+        }
+        solver.add_clause(tmp);
+        tmp.clear();
+    }
+
+    arjun->varreplace();
+    auto zero_lev_lits = arjun->get_zero_assigned_lits();
+    vector<Lit> dummy;
+    for(const Lit& l: zero_lev_lits) {
+        dummy.clear();
+        assert(seen[l.var()] != 1);
+        dummy.push_back(Lit(mymap[l.var()], l.sign()));
+        solver.add_clause(dummy);
+    }
+
+    auto bin_xors = arjun->get_all_binary_xors();
+    vector<uint32_t> dummy_v;
+    for(const auto& bx: bin_xors) {
+        dummy_v.clear();
+        dummy_v.push_back(mymap[bx.first.var()]);
+        dummy_v.push_back(mymap[bx.second.var()]);
+        solver.add_xor_clause(dummy_v, bx.first.sign()^bx.second.sign());
+    }
+
+    vector<Lit> dont_elim;
+    set<Lit> dont_elim_set;
+    for(const auto& v: sampl_set) {
+        if (seen[v]) continue;
+        dont_elim_set.insert(Lit(mymap[v], false));
+    }
+    for(const auto& l: dont_elim_set) dont_elim.push_back(l);
+
+    return dont_elim;
+}
+
 DLL_PUBLIC std::pair<vector<vector<Lit>>, vector<uint32_t>>
 Arjun::get_fully_simplified_renumbered_cnf(
     const vector<uint32_t>& sampl_set,
@@ -490,44 +557,7 @@ Arjun::get_fully_simplified_renumbered_cnf(
 {
     CMSat::SATSolver solver;
     solver.set_verbosity(2);
-    solver.new_vars(orig_num_vars);
-
-    vector<Lit> tmp;
-    for(const auto& l: get_simplified_cnf()) {
-        if (l != lit_Undef) {
-            tmp.push_back(l);
-            continue;
-        }
-        solver.add_clause(tmp);
-        tmp.clear();
-    }
-
-    varreplace();
-    auto zero_lev_lits = get_zero_assigned_lits();
-    vector<Lit> dummy;
-    for(const Lit& lit: zero_lev_lits) {
-        dummy.clear();
-        dummy.push_back(lit);
-        solver.add_clause(dummy);
-    }
-
-    auto bin_xors = get_all_binary_xors();
-    vector<uint32_t> dummy_v;
-    for(const auto& bx: bin_xors) {
-        dummy_v.clear();
-        dummy_v.push_back(bx.first.var());
-        dummy_v.push_back(bx.second.var());
-        solver.add_xor_clause(dummy_v, bx.first.sign()^bx.second.sign());
-    }
-
-    vector<Lit> dont_elim;
-    set<Lit> dont_elim_set;
-    for(const auto& v: sampl_set) dont_elim_set.insert(Lit(v, false));
-//     for(const auto& v: empty_vars) {
-//         assert(dont_elim_set.find(Lit(v, false)) != dont_elim_set.end());
-//         dont_elim_set.erase(Lit(v, false));
-//     }
-    for(const auto& l: dont_elim_set) dont_elim.push_back(l);
+    auto dont_elim = fill_solver_no_empty(sampl_set, empty_vars, orig_num_vars, solver, this);
 
     //Below works VERY WELL for: ProcessBean, pollard, track1_116.mcc2020_cnf
     //   and blasted_TR_b14_even3_linear.cnf.gz.no_w.cnf
@@ -562,7 +592,7 @@ Arjun::get_fully_simplified_renumbered_cnf(
     vector<uint32_t> new_sampl_set;
     for(const auto& l: dont_elim) new_sampl_set.push_back(l.var());
     vector<vector<Lit>> cnf = get_simplified_renumbered_cnf(&solver, new_sampl_set);
-    //cout << "Must multiply by:  " << empty_vars.size() << endl;
+    cout << "c Must multiply by:  " << empty_vars.size() << endl;
     return std::make_pair(cnf, new_sampl_set);
 }
 
