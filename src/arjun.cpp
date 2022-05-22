@@ -546,34 +546,36 @@ vector<Lit> fill_solver_no_empty(
     }
     assert(at == solver.nVars());
 
+    //NOTE: we can have binary XORs that refer to EMPTY. This is because
+    //      var x (in sampling set) was replaced by var y, which became empty.
     vector<Lit> tmp;
+    uint32_t sz = 0;
+    bool ok = true;
     for(const auto& l: arjun->get_simplified_cnf()) {
         if (l != lit_Undef) {
-            assert(seen[l.var()] != 1);
-            tmp.push_back(Lit(mymap[l.var()], l.sign()));
+            if (seen[l.var()] == 1) ok = false;
+            if (ok) tmp.push_back(Lit(mymap[l.var()], l.sign()));
+            sz++;
             continue;
         }
-        solver.add_clause(tmp);
+        if (ok) solver.add_clause(tmp);
+        else assert(sz == 2);
         tmp.clear();
+        ok = true;
+        sz = 0;
     }
 
     arjun->varreplace();
-    auto zero_lev_lits = arjun->get_zero_assigned_lits();
-    vector<Lit> dummy;
-    for(const Lit& l: zero_lev_lits) {
-        dummy.clear();
-        assert(seen[l.var()] != 1);
-        dummy.push_back(Lit(mymap[l.var()], l.sign()));
-        solver.add_clause(dummy);
-    }
 
     auto bin_xors = arjun->get_all_binary_xors();
     vector<uint32_t> dummy_v;
     for(const auto& bx: bin_xors) {
         dummy_v.clear();
-        dummy_v.push_back(mymap[bx.first.var()]);
-        dummy_v.push_back(mymap[bx.second.var()]);
-        solver.add_xor_clause(dummy_v, bx.first.sign()^bx.second.sign());
+        if (seen[bx.first.var()] == 0 && seen[bx.second.var()] == 0) { // see note above
+            dummy_v.push_back(mymap[bx.first.var()]);
+            dummy_v.push_back(mymap[bx.second.var()]);
+            solver.add_xor_clause(dummy_v, bx.first.sign()^bx.second.sign());
+        }
     }
 
     vector<Lit> dont_elim;
