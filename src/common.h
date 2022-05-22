@@ -164,7 +164,6 @@ struct Common
     bool run_gauss_jordan();
     void check_no_duplicate_in_sampling_set();
     void order_sampl_set_for_simp();
-    vector<Lit> simplified_cnf;
 
     //forward
     void set_guess_forward_round(

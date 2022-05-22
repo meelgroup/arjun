@@ -454,12 +454,49 @@ DLL_PUBLIC vector<uint32_t> Arjun::get_empty_occ_sampl_vars() const
     return arjdata->common.empty_occs;
 }
 
-DLL_PUBLIC const vector<Lit>& Arjun::get_simplified_cnf() const
+DLL_PUBLIC const vector<Lit> Arjun::get_simplified_cnf() const
 {
-    return arjdata->common.simplified_cnf;
+    vector<Lit> cnf;
+    bool ret = true;
+
+    arjdata->common.solver->start_getting_small_clauses(
+        std::numeric_limits<uint32_t>::max(),
+        std::numeric_limits<uint32_t>::max(),
+        false);
+    vector<Lit> clause;
+    while (ret) {
+        ret = arjdata->common.solver->get_next_small_clause(clause);
+        if (!ret) {
+            break;
+        }
+
+        bool ok = true;
+        for(auto l: clause) {
+            if (l.var() >= arjdata->common.orig_num_vars) {
+                ok = false;
+                break;
+            }
+        }
+
+        if (ok) {
+            for(auto const& l: clause) cnf.push_back(l);
+            cnf.push_back(lit_Undef);
+        }
+    }
+    arjdata->common.solver->end_getting_small_clauses();
+
+    auto units = arjdata->common.solver->get_zero_assigned_lits();
+    for(const auto& unit: units) {
+        if (unit.var() < arjdata->common.orig_num_vars) {
+            cnf.push_back(unit);
+            cnf.push_back(lit_Undef);
+        }
+    }
+
+    return cnf;
 }
 
-vector<vector<Lit>> get_simplified_renumbered_cnf(SATSolver* solver, vector<uint32_t>& sampl_set)
+std::pair<vector<vector<Lit>>, uint32_t> get_simplified_renumbered_cnf(SATSolver* solver, vector<uint32_t>& sampl_set)
 {
     vector<vector<Lit>> cnf;
     solver->start_getting_small_clauses(
@@ -480,7 +517,7 @@ vector<vector<Lit>> get_simplified_renumbered_cnf(SATSolver* solver, vector<uint
         }
     }
     solver->end_getting_small_clauses();
-    return cnf;
+    return std::make_pair(cnf, solver->simplified_nvars());
 }
 
 vector<Lit> fill_solver_no_empty(
@@ -550,7 +587,7 @@ vector<Lit> fill_solver_no_empty(
     return dont_elim;
 }
 
-DLL_PUBLIC std::tuple<vector<vector<Lit>>, vector<uint32_t>, uint32_t>
+DLL_PUBLIC std::tuple<pair<vector<vector<Lit>>, uint32_t>, vector<uint32_t>, uint32_t>
 Arjun::get_fully_simplified_renumbered_cnf(
     const vector<uint32_t>& sampl_set,
     const vector<uint32_t>& empty_vars,
@@ -592,7 +629,7 @@ Arjun::get_fully_simplified_renumbered_cnf(
 
     vector<uint32_t> new_sampl_set;
     for(const auto& l: dont_elim) new_sampl_set.push_back(l.var());
-    vector<vector<Lit>> cnf = get_simplified_renumbered_cnf(&solver, new_sampl_set);
+    auto cnf = get_simplified_renumbered_cnf(&solver, new_sampl_set);
     return std::make_tuple(cnf, new_sampl_set, empty_vars.size());
 }
 

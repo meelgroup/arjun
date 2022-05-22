@@ -299,17 +299,10 @@ void readInAFile(const string& filename)
     #endif
 }
 
-void dump_cnf(const vector<vector<Lit>>& cnf, const vector<uint32_t>& sampl_set, const uint32_t multiply = 0)
+void dump_cnf(const std::pair<vector<vector<Lit>>, uint32_t>& cnf, const vector<uint32_t>& sampl_set, const uint32_t multiply = 0)
 {
-    uint32_t num_cls = cnf.size();
-    uint32_t max_var = 0;
-    for(const auto& cl: cnf) {
-        for(const auto& l: cl) {
-            if (l.var()+1 > max_var) {
-                max_var = l.var()+1;
-            }
-        }
-    }
+    uint32_t num_cls = cnf.first.size();
+    uint32_t max_var = cnf.second;
     std::ofstream outf;
     outf.open(elimtofile.c_str(), std::ios::out);
     outf << "p cnf " << max_var << " " << num_cls << endl;
@@ -321,7 +314,7 @@ void dump_cnf(const vector<vector<Lit>>& cnf, const vector<uint32_t>& sampl_set,
     }
     outf << "0\n";
 
-    for(const auto& cl: cnf) {
+    for(const auto& cl: cnf.first) {
         outf << cl << " 0\n";
     }
     outf << "c MUST MUTIPLY BY 2**" << multiply << endl;

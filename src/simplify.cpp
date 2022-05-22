@@ -75,7 +75,6 @@ bool Common::simplify()
     remove_eq_literals();
     remove_zero_assigned_literals();
     if (conf.probe_based && !probe_all()) return false;
-    simplified_cnf = get_cnf();
 
     if (conf.empty_occs_based) find_equiv_subformula();
     if (conf.irreg_gate_based) remove_definable_by_irreg_gates();
