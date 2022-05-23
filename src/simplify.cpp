@@ -61,8 +61,8 @@ bool Common::simplify()
             << " T: " << (cpuTime() - simpTime));
     }
 
-    if (conf.backbone_simpl && sampling_set->size() > 1000) {
-        if (!backbone_simpl(conf.backbone_simpl_max_confl)) return false;
+    if (conf.backbone_simpl) {
+        if (!backbone_simpl()) return false;
     } else {
         // Find at least one solution (so it's not UNSAT) within some timeout
         solver->set_verbosity(0);
@@ -105,13 +105,13 @@ struct IncSorterAsc
     const vector<uint32_t>& inc;
 };
 
-bool Common::backbone_simpl(uint64_t orig_max_confl)
+bool Common::backbone_simpl()
 {
     if (conf.verb) {
         cout << "c [backbone-simpl] starting backbone simplification..." << endl;
     }
     uint64_t last_sum_conflicts = 0;
-    int64_t max_confl = orig_max_confl;
+    int64_t max_confl = conf.backbone_simpl_max_confl;
 
     solver->set_verbosity(0);
     double myTime = cpuTime();
@@ -195,13 +195,13 @@ bool Common::backbone_simpl(uint64_t orig_max_confl)
         if (!finished) {
             cout << "c [backbone-simpl] "
             << "skipping, taking more than max conflicts:"
-            << print_value_kilo_mega(orig_max_confl)
+            << print_value_kilo_mega(conf.backbone_simpl_max_confl)
             << endl;
         }
         cout << "c [backbone-simpl]"
         << " set: " << num_set
         << " conflicts used: " << print_value_kilo_mega(solver->get_sum_conflicts())
-        << " conflicts max: " << print_value_kilo_mega(orig_max_confl)
+        << " conflicts max: " << print_value_kilo_mega(conf.backbone_simpl_max_confl)
         << " T: " << std::setprecision(2) << time_used
         << endl;
     }
