@@ -495,24 +495,17 @@ void Common::find_equiv_subformula()
 {
     assert(conf.empty_occs_based);
     const double myTime = cpuTime();
-    solver->set_verbosity(1);
-    vector<uint32_t> new_empty_occs = solver->find_equiv_subformula(*sampling_set, conf.mirror_empty);
-
-    // Remove from the sampling set elements that are empty
     uint32_t old_size = sampling_set->size();
-    std::set<uint32_t> tmp_set;
-    tmp_set.insert(sampling_set->begin(), sampling_set->end());
-    for(auto const& v: new_empty_occs) tmp_set.erase(v);
-    other_sampling_set->clear();
-    other_sampling_set->insert(other_sampling_set->begin(), tmp_set.begin(), tmp_set.end());
-    empty_occs.insert(empty_occs.end(), new_empty_occs.begin(), new_empty_occs.end());
+
+    solver->set_verbosity(1);
+    solver->find_equiv_subformula(*sampling_set, empty_occs, conf.mirror_empty);
 
     std::swap(sampling_set, other_sampling_set);
     if (conf.verb) {
         cout << "c [arjun-simp] equiv-subform"
-        << " removed: " << (old_size-sampling_set->size())
+        << " removed: " << (sampling_set->size()-old_size)
         << " perc: " << std::fixed << std::setprecision(2)
-        << stats_line_percent(old_size-sampling_set->size(), old_size)
+        << stats_line_percent(sampling_set->size()-old_size, old_size)
         << " total equiv_subform now: " << empty_occs.size()
         << " T: " << std::setprecision(2) << cpuTime() - myTime
         << endl;
