@@ -500,12 +500,11 @@ void Common::find_equiv_subformula()
     solver->set_verbosity(1);
     solver->find_equiv_subformula(*sampling_set, empty_occs, conf.mirror_empty);
 
-    std::swap(sampling_set, other_sampling_set);
     if (conf.verb) {
         cout << "c [arjun-simp] equiv-subform"
-        << " removed: " << (sampling_set->size()-old_size)
+        << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
-        << stats_line_percent(sampling_set->size()-old_size, old_size)
+        << stats_line_percent(old_size-sampling_set->size(), old_size)
         << " total equiv_subform now: " << empty_occs.size()
         << " T: " << std::setprecision(2) << cpuTime() - myTime
         << endl;
