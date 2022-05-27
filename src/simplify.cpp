@@ -22,6 +22,8 @@
  THE SOFTWARE.
  */
 
+#include <algorithm>
+#include <random>
 #include "common.h"
 
 using std::pair;
@@ -126,13 +128,24 @@ bool Common::backbone_simpl()
     const auto old_polar_mode = solver->get_polarity_mode();
     solver->set_polarity_mode(PolarityMode::polarmode_neg);
 
-    vector<uint32_t> var_order(solver->nVars());
+    vector<Lit> zero_set = solver->get_zero_assigned_lits();
+    for(auto const& l2: zero_set) seen[l2.var()] = 1;
+    for(auto const& v: empty_occs) seen[v] = 1;
+    vector<uint32_t> var_order;
     for(uint32_t i = 0, max = solver->nVars(); i < max; i++) {
-        var_order[i] = i;
+        if (seen[i]) continue;
+        var_order.push_back(i);
     }
-    //std::sort(var_order.begin(), var_order.end(), IncSorterAsc(incidence));
+    for(auto const& l2: zero_set) seen[l2.var()] = 0;
+    for(auto const& v: empty_occs) seen[v] = 0;
+    if (var_order.empty()) return true;
+
+    std::mt19937 g;
+    g.seed(1337);
+    std::shuffle(var_order.begin(), var_order.end(), g);
 
     solver->set_max_confl(max_confl);
+//     cout << "c [backbone] sum conf: " << solver->get_sum_conflicts() << endl;
     max_confl -= solver->get_sum_conflicts();
     last_sum_conflicts = solver->get_sum_conflicts();
     lbool ret = solver->solve();
@@ -156,13 +169,18 @@ bool Common::backbone_simpl()
         //There is definitely a solution with "l". Let's see if ~l fails.
         assumps.clear();
         assumps.push_back(~l);
+//         cout << "c [backbone]  assumps: " << endl;
+//         for (auto const& l2: assumps) cout << l2 << " , ";
+//         cout << " -- sum conf: " << solver->get_sum_conflicts() << endl;
         solver->set_max_confl(max_confl);
         ret = solver->solve(&assumps);
 
         //Update max confl
         assert(last_sum_conflicts <= solver->get_sum_conflicts());
-        max_confl -= (solver->get_sum_conflicts() - last_sum_conflicts);
+        max_confl -= ((int64_t)solver->get_sum_conflicts() - last_sum_conflicts);
+        max_confl -= 500;
         last_sum_conflicts = solver->get_sum_conflicts();
+//         cout << "max_confl: " << max_confl << endl;
 
         //Check return value
         if (ret == l_True) {
