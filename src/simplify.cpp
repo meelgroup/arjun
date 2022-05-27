@@ -178,7 +178,7 @@ bool Common::backbone_simpl()
         //Update max confl
         assert(last_sum_conflicts <= solver->get_sum_conflicts());
         max_confl -= ((int64_t)solver->get_sum_conflicts() - last_sum_conflicts);
-        max_confl -= 500;
+        max_confl -= 100;
         last_sum_conflicts = solver->get_sum_conflicts();
 //         cout << "max_confl: " << max_confl << endl;
 
