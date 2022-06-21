@@ -176,6 +176,7 @@ bool Common::forward_round(
         cout << "x = " << x << " (forward_round)" << endl;
         unknown.push_back(x);
         unknown_set[x] = 1;
+        cout << "unknown_set[" << x << "] = " << unknown_set[x] << endl;
     }
     cout << "unknown.size() after init = " << unknown.size() << endl;
 
@@ -197,7 +198,8 @@ bool Common::forward_round(
 
 
     //Sort how we'll try to decide the unknowns
-    sort_unknown(unknown);
+    // TODO: bring back sorting, but with groups!
+    // sort_unknown(unknown);
     std::reverse(unknown.begin(), unknown.end());
     vector<char> guess_set(orig_num_vars, 0);
     for(uint32_t var = 0; var < orig_num_vars; var++) {
@@ -270,29 +272,73 @@ bool Common::forward_round(
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
     bool last_indep = true;
+    vector<uint32_t> test_group;
     if (conf.verb >= 2) {
         cout << "c [arjun] Forward start assumptions set: " << assumptions.size() << endl;
     }
     while(iter < max_iters) {
         //Select var
         uint32_t test_var = var_Undef;
-        for(int i = pick_possibilities.size()-1; i>= 0; i--) {
-            uint32_t var = pick_possibilities[i];
-            if (!tried_var_already[var] && unknown_set[var] && !guess_set[var]) {
-                test_var = pick_possibilities[i];
+
+        // If there are still variables left in the group to process, pick the
+        // next variable in the group.
+        cout << "test_group.size() = " << test_group.size() << endl;
+
+        if (conf.group_indep && !test_group.empty()) {
+          test_var = test_group[test_group.size()-1];
+          cout << "Processing the rest of group " << get_group_idx(test_var) << endl;
+          test_group.pop_back();
+        }
+        // Otherwise, select a new (group) variable to process.
+        else {
+            cout << "pick new variable for branching" << endl;
+            cout << "pick_possibilities.size() = " << pick_possibilities.size() << endl;
+            for(int i = pick_possibilities.size()-1; i>= 0; i--) {
+                uint32_t var = pick_possibilities[i];
+                cout << "tried_var_already[" << var << "] = " << tried_var_already[var] << endl;
+                cout << "unknown_set[" << var << "] = " << unknown_set[var] << endl;
+                cout << "guess_set[" << var << "] = " << guess_set[var] << endl;
+                if (!tried_var_already[var] && unknown_set[var] && !guess_set[var]) {
+                    test_var = pick_possibilities[i];
+                    cout << "Found new testvar! " << test_var << endl;
+                    break;
+                } else {
+                    cout << "Popping back " << pick_possibilities[pick_possibilities.size()-1] << endl;
+                    pick_possibilities.pop_back();
+                }
+
+            }
+            // If we have just picked a new group variable, initialise the 
+            // test_group helper vector:
+            if (test_var == var_Undef) {
                 break;
-            } else {
-                pick_possibilities.pop_back();
+            }
+            if (conf.group_indep) {
+                for (auto& grp_var: var_groups[get_group_idx(test_var)]) {
+                    if (grp_var != test_var) {
+                        test_group.push_back(grp_var);
+                    }
+                }
             }
         }
         if (test_var == var_Undef) {
             break;
         }
+        
+        cout << "Branching on var " << test_var << endl;
+
+        // Mark relevant variables as no longer unknown
+        cout << "full unknown_set:" << endl;
+        for (uint32_t i = 0; i < unknown_set.size(); i++) {
+            cout << "unknown_set[" << i << "]: " << unknown_set[i] << endl;
+        }
+
         if (conf.group_indep && in_variable_group(test_var)) {
-            uint32_t grp_idx = get_group_idx(test_var);
-            for (auto& grp_var: var_groups[grp_idx]) {
+            for (auto& grp_var: var_groups[get_group_idx(test_var)]) {
                 assert(grp_var < orig_num_vars);
-                assert(unknown_set[grp_var] == 1);
+                // The following assertion is no longer helpful, since we are
+                // removing groups of variables from the unknown set.
+                // assert(unknown_set[grp_var] == 1);
                 unknown_set[grp_var] = 0;
                 assert(guess_set[grp_var] == 0);
                 tried_var_already[grp_var] = 1;
@@ -310,16 +356,18 @@ bool Common::forward_round(
         assert(test_var != var_Undef);
 
         //Add new one
-        if (conf.group_indep && in_variable_group(test_var)) {
-            uint32_t grp_idx = var2var_group[test_var];
-            for (auto& grp_var: var_groups[grp_idx]) {
-                assumptions.push_back(Lit(grp_var, false));
-                assumptions.push_back(Lit(grp_var + orig_num_vars, true));
-            }
-        } else {
-            assumptions.push_back(Lit(test_var, false));
-            assumptions.push_back(Lit(test_var + orig_num_vars, true));
-        }        
+        assumptions.push_back(Lit(test_var, false));
+        assumptions.push_back(Lit(test_var + orig_num_vars, true));
+        // if (conf.group_indep && in_variable_group(test_var)) {
+        //     uint32_t grp_idx = var2var_group[test_var];
+        //     for (auto& grp_var: var_groups[get_group_idx(test_var)]) {
+        //         assumptions.push_back(Lit(grp_var, false));
+        //         assumptions.push_back(Lit(grp_var + orig_num_vars, true));
+        //     }
+        // } else {
+        //     assumptions.push_back(Lit(test_var, false));
+        //     assumptions.push_back(Lit(test_var + orig_num_vars, true));
+        // }        
 
         solver->set_max_confl(conf.backw_max_confl);
         solver->set_no_confl_needed();
@@ -333,15 +381,26 @@ bool Common::forward_round(
             ret_undef++;
         }
 
+        cout << "ret = " << ret << endl;
+
+        // Formula is SAT, so test_var is Independent.
         if (ret == l_Undef || ret == l_True) {
             assert(test_var < orig_num_vars);
             assert(unknown_set[test_var] == 0);
+            // In group mode: since we have found that one variable in
+            // test_group is independent, we add all group variables to the
+            // Independent set, and clean the test_group helper vector.
             if (conf.group_indep && in_variable_group(test_var)) {
-                uint32_t grp_idx = var2var_group[test_var];
-                for (auto& grp_var: var_groups[grp_idx]) {
+                for (auto& grp_var: var_groups[get_group_idx(test_var)]) {
+                    cout << "Pushing group var " << grp_var << " to indep." << endl;
                     indep.push_back(grp_var);
                 }
-            } else {
+                test_group.clear();
+            } 
+            // When not in group mode, we simply add test_var to the set of 
+            // independent variables.
+            else {
+                cout << "Pushing var " << test_var << " to indep." << endl;
                 indep.push_back(test_var);
             }
             last_indep = true;
@@ -352,23 +411,18 @@ bool Common::forward_round(
         }
 
         //Remove test var's assumptions
-        if (conf.group_indep && in_variable_group(test_var)) {
-            uint32_t grp_idx = var2var_group[test_var];
-            for (uint i = 0; i < var_groups[grp_idx].size() * 2; i++) {
-            // for (auto& grp_var: var_groups[grp_idx]) {
-                // assumptions.pop_back();
-                assumptions.pop_back();
-            }
-        } else {
-            assumptions.pop_back();
-            assumptions.pop_back();
-        }
+        cout << "assumptions.size() before: " << assumptions.size() << endl;
+        assumptions.pop_back();
+        assumptions.pop_back();
+        cout << "assumptions.size() after: " << assumptions.size() << endl;
+
 
         //NOTE: in case last var was DEP, we can STILL add it.
         //        But should we? It'll make the assumption set larger which
         //        would be OK if we hacked this into CMS but passing
         //        a large assumption set is not a good idea
         if (last_indep) {
+            cout << "last_indep" << endl;
             //in case last var was INDEP: This is needed
             uint32_t ass = var_to_indic[test_var];
             assert(ass != var_Undef);
@@ -376,8 +430,7 @@ bool Common::forward_round(
             if (conf.assign_fwd_val) {
                 
                 if (conf.group_indep && in_variable_group(test_var)) {
-                    uint32_t grp_idx = var2var_group[test_var];
-                    for (auto& grp_var: var_groups[grp_idx]) {
+                    for (auto& grp_var: var_groups[get_group_idx(test_var)]) {
                         ass = var_to_indic[grp_var];
                         tmp.clear();
                         tmp.push_back(Lit(ass, true));
@@ -390,8 +443,7 @@ bool Common::forward_round(
                 }
             } else {
                 if (conf.group_indep && in_variable_group(test_var)) {
-                    uint32_t grp_idx = var2var_group[test_var];
-                    for (auto& grp_var: var_groups[grp_idx]) {
+                    for (auto& grp_var: var_groups[get_group_idx(test_var)]) {
                         ass = var_to_indic[grp_var];
                         assumptions.push_back(Lit(ass, true));
                     }
@@ -437,7 +489,7 @@ bool Common::forward_round(
         if (guess_set[var]) {
             if (conf.group_indep && in_variable_group(var)) {
                 for (auto& grp_var: var_groups[get_group_idx(var)]) {
-                    if (!unknown_set[grp_var]) {    // avoid adding variables multiple times
+                    if (unknown_set[grp_var] == 0) {    // avoid adding variables multiple times
                         unknown_set[grp_var] = 1;
                         unknown.push_back(grp_var);
                     }
@@ -450,12 +502,16 @@ bool Common::forward_round(
         }
     }
     for (auto var: indep) {
-        if (!unknown_set[var]) {
+        if (unknown_set[var] == 0) {
             if (conf.group_indep && in_variable_group(var)) {
                 for (auto& grp_var: var_groups[get_group_idx(var)]) {
-                    if (!unknown_set[grp_var]) {
+                    cout << "unknown_set[" << grp_var << "] = " << unknown_set[grp_var] 
+                         << " (in group " << get_group_idx(var) << ")" << endl;
+                    if (unknown_set[grp_var] == 0) {
                         unknown.push_back(grp_var);
                         unknown_set[grp_var] = 1;
+                        cout << "Setting unknown_set[" << grp_var 
+                             << "] to 1: " << unknown_set[grp_var] << endl;
                     }
                 }
             } else {
