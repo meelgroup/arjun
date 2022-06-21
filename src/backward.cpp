@@ -41,31 +41,117 @@ void Common::fill_assumptions_backward(
 
         uint32_t indic = var_to_indic[var];
         assert(indic != var_Undef);
+
+        // The known independents should already contain all the grouped
+        // variables. Variables belonging to the same group, should be grouped
+        // in the list of known indepdents also. Therefore, there is no need 
+        // for special treatment here.
         assumptions.push_back(Lit(indic, true));
+        cout << "pushed indic var " << indic << " on assumptions stack" << endl;
+
+        // if (conf.group_indep && in_variable_group(var)) {
+        //     uint32_t grp_idx = get_group_idx(var);
+        //     for (auto& grp_var: var_groups[grp_idx]) {
+        //         indic = var_to_indic[grp_var];
+        //         assert(grp_var != var_Undef);
+        //         assert(indic != var_Undef);
+        //         assumptions.push_back(Lit(indic, true));
+        //         cout << "pushed back indep ass " << Lit(indic, true) 
+        //              << " (indic! var " << indic 
+        //              << ", indic_var " << Lit(indic, true).var() << ")" << endl;
+        //     }
+        // } else {
+        //     assumptions.push_back(Lit(indic, true));
+        // } // by anna
+
         if (conf.verb > 5) {
             cout << "Filled assump with indep: " << var << endl;
         }
     }
 
     //Add unknown as assumptions, clean "unknown"
+    
+    // We need to group the "unknown" variables by their groups, if
+    // applicable. This helper array is meant to do that.
+    vector<bool> added (orig_num_vars, false);
+    cout << "unknown.size() = " << unknown.size() << endl;
+    cout << "assumptions.size() = " << assumptions.size() << endl;
+
+    // We are going to fill the unknown vector with the indicator variables of
+    // variables that we have not yet branched on (?).
     uint32_t j = 0;
     for(uint32_t i = 0; i < unknown.size(); i++) {
+        cout << "i = " << i << endl;
         uint32_t var = unknown[i];
+        // cout << "added[" << var << "] (var " << var << ") = " << added[var] << endl;
         if (unknown_set[var] == 0) {
+            cout << "continue" << endl;
             continue;
-        } else {
-            unknown[j++] = var;
-        }
-        if (conf.verb > 5) {
-            cout << "Filled assump with unknown: " << var << endl;
-        }
+        } 
+
+        // anna: I commented this part of the function out and replaced by the
+        // function below.
+        // else {
+        //     cout << "change unknown[ " << j << "] = " << unknown[j] << " to var " << var << endl;
+        //     unknown[j++] = var;
+        // }
+
 
         assert(var < orig_num_vars);
         uint32_t indic = var_to_indic[var];
         assert(indic != var_Undef);
-        assumptions.push_back(Lit(indic, true));
+
+        if (conf.group_indep && in_variable_group(var)) {
+            if (!added[var]) {
+                cout << "var " << var << " was not yet added, adding now" << endl;
+                for (auto& grp_var: var_groups[var2var_group[var]]) {
+                    unknown[j++] = grp_var;
+                    indic = var_to_indic[grp_var];
+                    assert(indic != var_Undef);
+                    assumptions.push_back(Lit(indic, true));
+                    added[grp_var] = true;
+                    // Continue to iterate through the array, knowin that 
+                    // variables corresponding to the same group are also
+                    // grouped together in the unknown stack:
+                    i++;
+                    cout << "pushed group var " << grp_var << " on assumptions stack" << endl;
+                }
+                // Since the outer loop automatically increases i, but we already
+                // increased it in the inner loop, we must decrease it now
+                // to make sure that we don't miss some variables.
+                i--;
+            } else {
+                cout << "var " << var << " was already added" << endl;
+            }
+        } else {
+            cout << "change unknown[ " << j << "] = " << unknown[j] << " to var " << var << endl;
+            unknown[j++] = var;
+            assert(indic != var_Undef);
+            assumptions.push_back(Lit(indic, true));
+            cout << "pushed non group variable " << var << " on assumptions stack"  << endl;
+        }
+
+        if (conf.verb > 5) {
+            cout << "Filled assump with unknown: " << var << endl;
+        }    
+
+        // if (conf.group_indep && in_variable_group(var)) {
+        //     uint32_t grp_idx = var2var_group[var];
+        //     for (auto& grp_var: var_groups[grp_idx]) {
+        //         indic = var_to_indic[grp_var];
+        //         assert(grp_var != var_Undef);
+        //         assert(indic != var_Undef);
+        //         assumptions.push_back(Lit(indic, true));
+        //         cout << "pushed back unknown ass " << Lit(indic, true) 
+        //              << " (indic! var " << indic 
+        //              << ", indic_var " << Lit(indic, true).var() << ")" << endl;
+        //     }
+        // } else{
+        //     assumptions.push_back(Lit(indic, true));
+        // }
     }
     unknown.resize(j);
+    cout << "Filling assumps END, total unknown size: " << unknown.size() << endl;
     if (conf.verb > 5) {
         cout << "Filling assumps END, total assumps size: " << assumptions.size() << endl;
     }
@@ -82,17 +168,36 @@ void Common::backward_round()
     vector<uint32_t> indep;
 
     //Initially, all of samping_set is unknown
-    vector<uint32_t> unknown;
+
+    // stack of variables for which we don't know if they are independent or not
+    vector<uint32_t> unknown;       
+    // helper array to keep track of which variables are on the unknown stack(?)
     vector<char> unknown_set;
     unknown_set.resize(orig_num_vars, 0);
     for(const auto& x: *sampling_set) {
         assert(x < orig_num_vars);
-        assert(unknown_set[x] == 0 && "No var should be in 'sampling_set' twice!");
-        unknown.push_back(x);
-        unknown_set[x] = 1;
+        // TODO: See if we can come up with an alternative for this assertion:
+        // assert(unknown_set[x] == 0 && "No var should be in 'sampling_set' twice!");
+        // I disabled it to make it possible to group variables together in
+        // their variable groups.
+        if (conf.group_indep && in_variable_group(x)) {
+            for (auto& grp_var: var_groups[var2var_group[x]]) {
+                if (unknown_set[grp_var] == 0) {
+                    unknown.push_back(grp_var);
+                    cout << "Pushing var " << grp_var << " on unknown stack during init." << endl;
+                    unknown_set[grp_var] = 1;
+                }
+            }
+        } else {
+            cout << "Pushing non-group var " << x << " on unknown stack during init." << endl;
+            unknown.push_back(x);
+            unknown_set[x] = 1;
+        }
     }
 
-    sort_unknown(unknown);
+    cout << "Before sorting, unknown.size() = " << unknown.size() << endl;
+
+    // sort_unknown(unknown); // TODO: bring back sorting! But respecting the groups!
     if (conf.verb >= 4) {
         cout << "Sorted output: "<< endl;
         for (const auto& v:unknown) {
@@ -136,21 +241,112 @@ void Common::backward_round()
     uint32_t fast_backw_tot = 0;
     uint32_t indic_var = var_Undef;
     vector<uint32_t> non_indep_vars;
+
+
+    cout << "Start while loop, assumptions.size() = " << assumptions.size() << endl;
     while(true) {
         uint32_t test_var = var_Undef;
+        cout << "new iteration!" << endl;
+        cout << "assumptions.size() = " << assumptions.size() << endl;
+        for (auto& a: assumptions) {
+          cout << "assumption: " << a << endl;
+        }
         if (quick_pop_ok) {
-            //Remove 2 last
-            assumptions.pop_back();
-            assumptions.pop_back();
+            cout << "quick_pop_ok" << endl;
+            //Remove 2 last 
+            // Here, we're popping original variables and copied variables,
+            // that's why we pop two at a time.
+            // If not in group mode, the two last are a positive and a negative
+            // literal. If in group mode, the "two last" are a positive and a
+            // negative literal *for each variable in the last group* (if the
+            // last assumption was a group assumption). We should therefore 
+            // check if the last assumption was a group assumption, and if it
+            // was, we should pop assumptions accordingly.
+            if (conf.group_indep) {
+                // Get variable associated with the last assumption. Note that 
+                // this can be either a normal variable or a copied 
+                // variable.
+                indic_var = assumptions[assumptions.size()-1].var();
+                uint32_t ass_var;
+                if (indic_var > 2 * orig_num_vars) {    // indicator variable
+                    cout << "assumption is indicator variable " << indic_var << '!' << endl;
+                    ass_var = indic_to_var[indic_var];
+                } else if (indic_var > orig_num_vars) { // copied variable
+                    cout << "assumption is copied variable " << indic_var << '!' << endl;
+                    ass_var = indic_to_var[indic_var + orig_num_vars]; 
+                } else {                                // normal variable
+                    cout << "assumption is normal variable " << indic_var << '!' << endl;
+                    ass_var = indic_var;
+                }
+                cout << "assumptions.size() = " << assumptions.size() << endl;
+                indic_var = assumptions[assumptions.size()-1].var();
+                cout << "indic_var: " << indic_var << endl;
+                cout << "indic_var - orig_num_vars: " << indic_var - orig_num_vars << endl; 
+                // uint32_t ass_var = indic_to_var[indic_var];
+                // for (auto& this_var: indic_to_var) {
+                //   cout << "this_var: " << this_var << endl;
+                // }
+                cout << "ass_var: " << ass_var << endl;
+                cout << "ass_var == var_Undef? " << (ass_var == var_Undef) << endl;
+                cout << "ass_var - orig_num_vars == var_Undef?" << (indic_to_var[indic_var - orig_num_vars] == var_Undef) << endl;
+                
+                cout << "in_variable_group(" << indic_var - orig_num_vars << ")?" << in_variable_group(indic_var - orig_num_vars) << endl; 
+                if (in_variable_group(ass_var)) {
+                    cout << "YES!" << endl;
+                    uint32_t grp_idx = var2var_group[ass_var];
+                    for (uint i = 0; i < var_groups[grp_idx].size() * 2; i++) {
+                        cout << "popped assumption " << assumptions[assumptions.size() - 1] << " on line 192" << endl;
+                        assumptions.pop_back();
+                    }
+                } else {
+                    cout << "else!" << endl;
+                    assumptions.pop_back();
+                    assumptions.pop_back();
+                    cout << "Done popping!" << endl;
+                } 
+            } 
+            // Not in grouped variables mode: just pop one assumption off the stack.
+            else {
+                assumptions.pop_back();
+                assumptions.pop_back();
+            }
+
+            cout << "assumptions.size() = " << assumptions.size() << endl;
+            
 
             //No more left, try again with full
             if (assumptions.empty()) {
                 if (conf.verb >= 5) cout << "c [arjun] No more left, try again with full" << endl;
+                cout << "c [arjun] No more left, try again with full" << endl;
                 break;
             }
+          
+            cout << "assumptions: " << endl;
+            for (auto& ass: assumptions) {
+                cout << "ass: " << ass << ", (indic_)var: " << ass.var() << endl;       
+            }
 
+            // Here we are popping assumptions that are indicator variables.
+            // Because the indicator variables are sorted by the group that they
+            // belong to, we can pop entire groups in one go.
             indic_var = assumptions[assumptions.size()-1].var();
-            assumptions.pop_back();
+            cout << "indic_var: " << indic_var << endl;
+            if (conf.group_indep) {
+                uint32_t ass_var = indic_to_var[indic_var];
+                cout << "ass_var = " << ass_var << endl;
+                if (in_variable_group(ass_var)) {
+                    uint32_t grp_idx = var2var_group[ass_var];
+                    for (uint i = 0; i < var_groups[grp_idx].size(); i++) {
+                        cout << "popped assumption " << assumptions[assumptions.size() - 1] << " on line 226" << endl;
+                        assumptions.pop_back();
+                    }
+                } else {
+                    assumptions.pop_back();
+                }
+            } else {
+                assumptions.pop_back();
+            }
+            cout << "indic_to_var.size() = " << indic_to_var.size() << endl;
             assert(indic_var < indic_to_var.size());
             test_var = indic_to_var[indic_var];
             assert(test_var != var_Undef);
@@ -162,46 +358,146 @@ void Common::backward_round()
                 continue;
             }
             uint32_t last_unkn = unknown[unknown.size()-1];
-            assert(last_unkn == test_var);
-            unknown.pop_back();
-        } else {
+            if (conf.group_indep && in_variable_group(last_unkn)) {
+                bool test_var_in_last_unkown = false;
+                uint32_t grp_idx = var2var_group[last_unkn];
+                for (auto& grp_var: var_groups[grp_idx]) {
+                    if (grp_var == test_var) {
+                      test_var_in_last_unkown = true;
+                    }
+                }
+                assert(test_var_in_last_unkown);
+                for (uint i = 0; i < var_groups[grp_idx].size(); i++) {
+                    unknown.pop_back();
+                }
+            } else {
+                assert(last_unkn == test_var);
+                unknown.pop_back();
+            } // by anna
+        } 
+        // !quick_pop_ok:
+        else {
+            cout << "No quick pop!" << endl;
+            // while(!unknown.empty()) {
+            //     uint32_t var = unknown[unknown.size()-1];
+            //     if (unknown_set[var]) {
+            //         test_var = var;
+            //         unknown.pop_back();
+            //         break;
+            //     } else {
+            //         unknown.pop_back();
+            //     }
+            // }
+
+            // Remove variables from the unknown stack until you find a
+            // variable for which unknown_set is true (such that that variable
+            // actually is unknown). That variable will be the first one to 
+            // branch on(?)
             while(!unknown.empty()) {
                 uint32_t var = unknown[unknown.size()-1];
+                // Variable on top of unknown stack is actually unknown, so
+                // we set test_var as this variable, pop it off the unkown stack
+                // so we don't encounter it again, and basically branch on test_var.
                 if (unknown_set[var]) {
                     test_var = var;
-                    unknown.pop_back();
+                    if (conf.group_indep && in_variable_group(test_var)) {
+                        for (uint i = 0; i < var_groups[var2var_group[test_var]].size(); i++) {
+                            unknown.pop_back();
+                            cout << "Popping unknown variable " << var_groups[var2var_group[test_var]][i] 
+                                 << " off stack because we're branching on " << test_var << endl;
+                        }
+                    } else {
+                        unknown.pop_back();
+                    }
                     break;
-                } else {
-                    unknown.pop_back();
+                } 
+                // Variable on top of stack is actually not unknown, so we
+                // remove it without doing anything with it.
+                else {    
+                    if (conf.group_indep && in_variable_group(test_var)) {
+                        for (uint i = 0; i < var_groups[var2var_group[test_var]].size(); i++) {
+                            cout << "Popping " << var_groups[var2var_group[test_var]][i] 
+                                 << " off unknown stack because " << test_var << " is actually known" << endl;
+                            unknown.pop_back();
+                        }
+                    } else {
+                        unknown.pop_back();
+                    }
                 }
             }
 
+            // This happens if the unknown stack doesn't contain any variables
+            // anymore that are actually unknown.
             if (test_var == var_Undef) {
                 //we are done, backward is finished
                 if (conf.verb >= 5) cout << "c [arjun] we are done, backward is finished" << endl;
+                cout << "c [arjun] we are done, backward is finished" << endl;
                 break;
             }
+            // If there was still an unknown variable on the stack, we get its
+            // corresponding indicator variable and branch on it.
             indic_var = var_to_indic[test_var];
         }
+
         assert(test_var < orig_num_vars);
-        assert(unknown_set[test_var] == 1);
-        unknown_set[test_var] = 0;
-//         cout << "Testing: " << test_var << endl;
+        if (conf.group_indep && in_variable_group(test_var)) {
+            uint32_t grp_idx = var2var_group[test_var];
+            for (auto& grp_var: var_groups[grp_idx]) {
+                assert(unknown_set[grp_var] == 1);
+                unknown_set[grp_var] = 0;
+            }
+        } else {
+            assert(unknown_set[test_var] == 1);
+            unknown_set[test_var] = 0;
+        } // by anna
+        
+        cout << "Testing: " << test_var << endl;
+        cout << "unknown.size() = " << unknown.size() << endl;
+
+        for (uint i = 0; i < unknown.size(); i++) {
+            cout << "unknown[" << i << "] = " << unknown[i] << endl; 
+        }
 
         //Assumption filling
         assert(test_var != var_Undef);
         if (!quick_pop_ok) {
             fill_assumptions_backward(assumptions, unknown, unknown_set, indep);
         }
-        assumptions.push_back(Lit(test_var, false));
-        assumptions.push_back(Lit(test_var + orig_num_vars, true));
+        cout << "After fill_assumptions_backward, assumptions.size() = " << assumptions.size() << endl;
+        if (conf.group_indep && in_variable_group(test_var)) {
+            uint32_t grp_idx = get_group_idx(test_var);
+            cout << "grp_idx = " << grp_idx << endl;
+            for (auto& grp_var: var_groups[grp_idx]) {
+                assert(grp_var != var_Undef);
+                assumptions.push_back(Lit(grp_var, false));
+                assumptions.push_back(Lit(grp_var + orig_num_vars, true));
+                cout << "pushed assumption " << Lit(grp_var, false) 
+                     << " (var " << grp_var 
+                     << ") on assumption stack" << endl;
+                cout << "pushed assumption " << Lit(grp_var + orig_num_vars, true) 
+                     << " (var " << grp_var + orig_num_vars
+                     << ") on assumption stack" << endl;
+            }
+        } else {
+            assert(test_var != var_Undef);
+            assumptions.push_back(Lit(test_var, false));
+            assumptions.push_back(Lit(test_var + orig_num_vars, true));
+        } // by anna
 
         solver->set_no_confl_needed();
-
+        
+        // TODO: make grouped variables compatible with fast_backw
         lbool ret = l_Undef;
         if (!conf.fast_backw) {
             solver->set_max_confl(conf.backw_max_confl);
+            std::vector<CMSat::Lit> old_assumptions = assumptions;
             ret = solver->solve(&assumptions);
+            for (uint i = 0; i < old_assumptions.size(); i++) {
+                cout << "oa: " << old_assumptions[i] << ", na: " << assumptions[i] << endl;
+                if (old_assumptions[i] != assumptions[i]) {
+                  cout << "DIFF!" << endl;
+                }
+            }
         } else {
             FastBackwData b;
             b._assumptions = &assumptions;
@@ -221,6 +517,8 @@ void Common::backward_round()
             }
             non_indep_vars.clear();
             uint32_t indep_vars_last_pos = indep.size();
+
+            // TODO: the next call fails with grouped variables
             ret = solver->find_fast_backw(b);
 
             if (conf.verb >= 3) {
@@ -277,19 +575,29 @@ void Common::backward_round()
             ret_undef++;
         }
 
+        cout << "ret = " << ret << endl;
         assert(unknown_set[test_var] == 0);
-        if (ret == l_Undef) {
-            //Timed out, we'll treat is as unknown
+        if (ret == l_Undef || //Timed out, we'll treat is as unknown
+            ret == l_True)    //Independent
+        {   
+            
             quick_pop_ok = false;
             assert(test_var < orig_num_vars);
-            indep.push_back(test_var);
-        } else if (ret == l_True) {
-            //Independent
-            quick_pop_ok = false;
-            indep.push_back(test_var);
+            if (conf.group_indep && in_variable_group(test_var)) {
+                cout << "Group " <<  var2var_group[test_var] << " is independent" << endl;
+                uint32_t grp_idx = var2var_group[test_var];
+                for (auto& grp_var: var_groups[grp_idx]) {
+                    cout << "Pushing " << grp_var << " to indep." << endl;
+                    indep.push_back(grp_var);
+                }
+            } else {
+                cout << "Pushing " <<  test_var << " to indep." << endl;
+                indep.push_back(test_var);
+            } // anna
         } else if (ret == l_False) {
             //not independent
             //i.e. given that all in indep+unkown is equivalent, it's not possible that a1 != b1
+            cout << "Variable " << test_var << " is NOT independent" << endl;
             not_indep++;
             quick_pop_ok = true;
         }
@@ -331,7 +639,7 @@ void Common::backward_round()
             fast_backw_max = 0;
         }
         iter++;
-
+        cout << "printed stats" << endl;
         if (iter % 500 == 499) {
             update_sampling_set(unknown, unknown_set, indep);
         }

@@ -100,6 +100,8 @@ void Common::add_fixed_clauses()
     indic_to_var.resize(solver->nVars(), var_Undef);
 
     //Indicator variable is TRUE when they are NOT equal
+    // Original variable: a
+    // Copied variable: b
     for(uint32_t var: *sampling_set) {
         //(a=b) = !f
         //a  V -b V  f
@@ -140,6 +142,7 @@ void Common::add_fixed_clauses()
     }
 
     //Don't eliminate the sampling variables
+    // TODO: why only the negative literals?
     for(uint32_t var: *sampling_set) {
         dont_elim.push_back(Lit(var, false));
         dont_elim.push_back(Lit(var+orig_num_vars, false));
@@ -407,4 +410,18 @@ void Common::calc_community_parts()
         << " T: " << (cpuTime() - myTime)
         << endl;
     }
+}
+
+bool Common::in_variable_group(uint32_t var)
+{
+    // if (var < orig_num_vars) {
+    //     return var2var_group[var];
+    // }
+    // return var2var_group[var - orig_num_vars];
+    return var2var_group[var];
+}
+
+uint32_t Common::get_group_idx(uint32_t var)
+{
+    return var2var_group[var];
 }

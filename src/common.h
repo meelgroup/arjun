@@ -74,6 +74,14 @@ struct Common
     vector<uint32_t>* sampling_set = NULL;
     vector<uint32_t> empty_occs;
 
+    /** by anna; Maps variable to the index of the variable group it belongs to.
+     * If the variable does not belong to any group, it maps to 0. */ 
+    vector<uint32_t> var2var_group;
+    /** by anna; Vector of vectors, where each vector corresponds to the
+     * variables that are in the group corresponding to the index of the vector.
+     * The zeroth group is empty. */
+    vector<vector<uint32_t>> var_groups;
+
     vector<Lit> tmp;
     vector<char> seen;
     uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
@@ -83,7 +91,7 @@ struct Common
     bool definitely_satisfiable = false;
     enum ModeType {one_mode, many_mode};
 
-    //assert indic[var] to FASLE to force var==var+orig_num_vars
+    //assert indic[var] to FALSE to force var==var+orig_num_vars
     vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
     vector<uint32_t> indic_to_var; //maps an INDICATOR VAR to ORIG VAR
 
@@ -164,6 +172,8 @@ struct Common
     bool run_gauss_jordan();
     void check_no_duplicate_in_sampling_set();
     void order_sampl_set_for_simp();
+    bool in_variable_group(uint32_t var);
+    uint32_t get_group_idx(uint32_t var);
 
     //forward
     void set_guess_forward_round(

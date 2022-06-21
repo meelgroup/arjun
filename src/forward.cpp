@@ -54,8 +54,17 @@ void Common::set_guess_forward_round(
             unknown_set[var] = 0;
             uint32_t ass = var_to_indic[var];
             if (!seen[ass]) {
-                seen[ass] = 1;
-                guess_set[var] = 1;
+                if (conf.group_indep && in_variable_group(var)) {
+                    uint32_t grp_idx = var2var_group[var] ;
+                    for (auto& grp_var: var_groups[grp_idx]) {
+                        ass = var_to_indic[grp_var];
+                        seen[ass] = 1;
+                        guess_set[grp_var] = 1;
+                    }
+                } else {
+                    seen[ass] = 1;
+                    guess_set[var] = 1;
+                } // by anna
             }
         }
     }
@@ -86,9 +95,19 @@ void Common::fill_assumptions_forward(
         uint32_t ass = var_to_indic[var];
         assert(ass != var_Undef);
         if (!seen[ass]) {
-            seen[ass] = 1;
-            assumptions.push_back(Lit(ass, true));
-        }
+            if (conf.group_indep && in_variable_group(var)) {
+              uint32_t grp_idx = var2var_group[var];
+              for (auto& grp_var: var_groups[grp_idx]) {
+                  ass = var_to_indic[grp_var];
+                  assert(ass != var_Undef);
+                  seen[ass] = 1;
+                  assumptions.push_back(Lit(ass, true));
+              }
+            } else {
+                seen[ass] = 1;
+                assumptions.push_back(Lit(ass, true));
+            } // by anna
+        } 
     }
 
     for(uint32_t i = group*offs; i < group*(offs+1) && i < unknown.size(); i++) {
@@ -97,9 +116,19 @@ void Common::fill_assumptions_forward(
         if (guess_set[var]) {
             uint32_t ass = var_to_indic[var];
             if (!seen[ass]) {
-                seen[ass] = 1;
-                assumptions.push_back(Lit(ass, true));
-            }
+                if (conf.group_indep && in_variable_group(var)) {
+                  uint32_t grp_idx = var2var_group[var];
+                  for (auto& grp_var: var_groups[grp_idx]) {
+                      ass = var_to_indic[grp_var];
+                      assert(ass != var_Undef);
+                      seen[ass] = 1;
+                      assumptions.push_back(Lit(ass, true));
+                  }
+                } else {
+                    seen[ass] = 1;
+                    assumptions.push_back(Lit(ass, true));
+                } // by anna
+            } 
         }
     }
 
@@ -144,9 +173,11 @@ bool Common::forward_round(
     vector<char> unknown_set;
     unknown_set.resize(orig_num_vars, 0);
     for(const auto& x: *sampling_set) {
+        cout << "x = " << x << " (forward_round)" << endl;
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
+    cout << "unknown.size() after init = " << unknown.size() << endl;
 
     uint32_t iter = 0;
     uint32_t not_indep = 0;
@@ -257,18 +288,38 @@ bool Common::forward_round(
         if (test_var == var_Undef) {
             break;
         }
-        assert(test_var < orig_num_vars);
-        assert(unknown_set[test_var] == 1);
-        unknown_set[test_var] = 0;
-        assert(guess_set[test_var] == 0);
-        tried_var_already[test_var] = 1;
+        if (conf.group_indep && in_variable_group(test_var)) {
+            uint32_t grp_idx = get_group_idx(test_var);
+            for (auto& grp_var: var_groups[grp_idx]) {
+                assert(grp_var < orig_num_vars);
+                assert(unknown_set[grp_var] == 1);
+                unknown_set[grp_var] = 0;
+                assert(guess_set[grp_var] == 0);
+                tried_var_already[grp_var] = 1;
+            }
+        } else {
+            assert(test_var < orig_num_vars);
+            assert(unknown_set[test_var] == 1);
+            unknown_set[test_var] = 0;
+            assert(guess_set[test_var] == 0);
+            tried_var_already[test_var] = 1;
+        } // by anna
+        
 
         //Assumption filling: with guess_set that is in range + indep
         assert(test_var != var_Undef);
 
         //Add new one
-        assumptions.push_back(Lit(test_var, false));
-        assumptions.push_back(Lit(test_var + orig_num_vars, true));
+        if (conf.group_indep && in_variable_group(test_var)) {
+            uint32_t grp_idx = var2var_group[test_var];
+            for (auto& grp_var: var_groups[grp_idx]) {
+                assumptions.push_back(Lit(grp_var, false));
+                assumptions.push_back(Lit(grp_var + orig_num_vars, true));
+            }
+        } else {
+            assumptions.push_back(Lit(test_var, false));
+            assumptions.push_back(Lit(test_var + orig_num_vars, true));
+        }        
 
         solver->set_max_confl(conf.backw_max_confl);
         solver->set_no_confl_needed();
@@ -285,7 +336,14 @@ bool Common::forward_round(
         if (ret == l_Undef || ret == l_True) {
             assert(test_var < orig_num_vars);
             assert(unknown_set[test_var] == 0);
-            indep.push_back(test_var);
+            if (conf.group_indep && in_variable_group(test_var)) {
+                uint32_t grp_idx = var2var_group[test_var];
+                for (auto& grp_var: var_groups[grp_idx]) {
+                    indep.push_back(grp_var);
+                }
+            } else {
+                indep.push_back(test_var);
+            }
             last_indep = true;
         } else if (ret == l_False) {
             //not independent
@@ -294,8 +352,17 @@ bool Common::forward_round(
         }
 
         //Remove test var's assumptions
-        assumptions.pop_back();
-        assumptions.pop_back();
+        if (conf.group_indep && in_variable_group(test_var)) {
+            uint32_t grp_idx = var2var_group[test_var];
+            for (uint i = 0; i < var_groups[grp_idx].size() * 2; i++) {
+            // for (auto& grp_var: var_groups[grp_idx]) {
+                // assumptions.pop_back();
+                assumptions.pop_back();
+            }
+        } else {
+            assumptions.pop_back();
+            assumptions.pop_back();
+        }
 
         //NOTE: in case last var was DEP, we can STILL add it.
         //        But should we? It'll make the assumption set larger which
@@ -307,11 +374,30 @@ bool Common::forward_round(
             assert(ass != var_Undef);
             assert(!seen[ass]);
             if (conf.assign_fwd_val) {
-                tmp.clear();
-                tmp.push_back(Lit(ass, true));
-                solver->add_clause(tmp);
+                
+                if (conf.group_indep && in_variable_group(test_var)) {
+                    uint32_t grp_idx = var2var_group[test_var];
+                    for (auto& grp_var: var_groups[grp_idx]) {
+                        ass = var_to_indic[grp_var];
+                        tmp.clear();
+                        tmp.push_back(Lit(ass, true));
+                        solver->add_clause(tmp);
+                    }
+                } else {
+                    tmp.clear();
+                    tmp.push_back(Lit(ass, true));
+                    solver->add_clause(tmp);
+                }
             } else {
-                assumptions.push_back(Lit(ass, true));
+                if (conf.group_indep && in_variable_group(test_var)) {
+                    uint32_t grp_idx = var2var_group[test_var];
+                    for (auto& grp_var: var_groups[grp_idx]) {
+                        ass = var_to_indic[grp_var];
+                        assumptions.push_back(Lit(ass, true));
+                    }
+                } else {
+                    assumptions.push_back(Lit(ass, true));
+                }
             }
         }
 
@@ -349,15 +435,33 @@ bool Common::forward_round(
     unknown.clear();
     for (uint32_t var = 0; var < orig_num_vars; var++){
         if (guess_set[var]) {
-            unknown_set[var] = 1;
-            unknown.push_back(var);
+            if (conf.group_indep && in_variable_group(var)) {
+                for (auto& grp_var: var_groups[get_group_idx(var)]) {
+                    if (!unknown_set[grp_var]) {    // avoid adding variables multiple times
+                        unknown_set[grp_var] = 1;
+                        unknown.push_back(grp_var);
+                    }
+                }
+            } else {
+                unknown_set[var] = 1;
+                unknown.push_back(var);
+            }
+            
         }
     }
-
     for (auto var: indep) {
         if (!unknown_set[var]) {
-            unknown.push_back(var);
-            unknown_set[var] = 1;
+            if (conf.group_indep && in_variable_group(var)) {
+                for (auto& grp_var: var_groups[get_group_idx(var)]) {
+                    if (!unknown_set[grp_var]) {
+                        unknown.push_back(grp_var);
+                        unknown_set[grp_var] = 1;
+                    }
+                }
+            } else {
+                unknown.push_back(var);
+                unknown_set[var] = 1;
+            }
         }
     }
 

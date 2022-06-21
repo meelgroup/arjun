@@ -45,6 +45,7 @@ struct Config {
     int mirror_empty = 1;
     int empty_occs_based = 1;
     int probe_based = 1;
+    int group_indep = 0;
     int forward = 0;
     int forward_group = 10;
     int backward = 1;

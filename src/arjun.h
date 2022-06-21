@@ -65,6 +65,22 @@ namespace ArjunNS {
         void varreplace();
         std::vector<uint32_t> get_empty_occ_sampl_vars() const;
 
+        // by anna; For group independent support
+        /** by anna; maps variable name to the index of the variable group that
+         * it is a member of. */
+        std::vector<uint32_t> var2var_group;
+        /** by anna; maps variable group index to the variable names that are
+         * members of that group. */
+        std::vector<std::vector<uint32_t>> var_groups;
+        /** by anna */
+        void set_variable_groups(
+          const std::vector<uint32_t>& _var2var_group,
+          const std::vector<std::vector<uint32_t>>& _var_groups);
+        /** by anna */
+        void set_group_independent_support(uint32_t group_ind);
+        /** by anna; for debugging purposes only. TODO: remove when done. */
+        void print_var_groups(); // by anna
+
         //Get clauses
         void start_getting_small_clauses(uint32_t max_len, uint32_t max_glue, bool red = true);
         bool get_next_small_clause(std::vector<CMSat::Lit>& ret); //returns FALSE if no more

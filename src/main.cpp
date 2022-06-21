@@ -96,6 +96,8 @@ void add_arjun_options()
      "Regularly simplify")
     ("recomp", po::value(&recompute_sampling_set)->default_value(recompute_sampling_set),
      "Recompute sampling set even if it's part of the CNF")
+    ("groupind", po::value(&conf.group_indep)->default_value(conf.group_indep),
+     "Input defines grouped variables.") // by anna
     ("fwdset", po::value(&conf.assign_fwd_val)->default_value(conf.assign_fwd_val),
      "When doing forward, set the value instead of using assumptions")
     ("backward", po::value(&conf.backward)->default_value(conf.backward),
@@ -291,6 +293,15 @@ void readInAFile(const string& filename)
     } else {
         orig_sampling_set_size = arjun->set_starting_sampling_set(parser.sampling_vars);
     }
+    if (conf.group_indep) {
+        // We must communicate the variable groups that the parser read to Arjun
+        cout << "SET GROUPS IN ARJUN" << endl;
+        arjun->set_group_independent_support(conf.group_indep);
+        arjun->set_variable_groups(parser.var2var_group, parser.var_groups);
+        // arjun->var2var_group = parser.var2var_group;
+        // arjun->var_groups = parser.var_groups;
+        arjun->print_var_groups();
+    }  // by anna
 
     #ifndef USE_ZLIB
         fclose(in);

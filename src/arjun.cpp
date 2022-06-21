@@ -660,3 +660,36 @@ DLL_PUBLIC void Arjun::set_mirror_empty(const bool mirror_empty)
 {
     arjdata->common.conf.mirror_empty = mirror_empty;
 }
+
+DLL_PUBLIC void Arjun::set_variable_groups(
+  const std::vector<uint32_t>& _var2var_group,
+  const std::vector<std::vector<uint32_t>>& _var_groups)
+{   
+    arjdata->common.var2var_group = _var2var_group;
+    cout << "set var2var_group, insize = " << _var2var_group.size()
+         << ", outsize = " << arjdata->common.var2var_group.size() << endl;
+    arjdata->common.var_groups = _var_groups;
+}
+
+DLL_PUBLIC void Arjun::set_group_independent_support(uint32_t group_indep)
+{
+    arjdata->common.conf.group_indep = group_indep;
+}
+
+DLL_PUBLIC void Arjun::print_var_groups()
+{
+    cout << "GROUPS:" << endl;
+    cout << "-------" << endl;
+    for (auto group = begin(arjdata->common.var_groups) + 1; group != end(arjdata->common.var_groups); group++) {
+      cout << "Group size: " << group->size();
+      cout << ", group vars: ";
+      for (auto var = begin(*group); var != end(*group); var++) {
+        cout << *var + 1 << " ";
+      }
+      cout << endl;
+    }
+    cout << "var2var_group.size() = " << arjdata->common.var2var_group.size() << endl;
+    for (uint i = 0; i < get_orig_num_vars(); i++) {
+        cout << "Variable " << i << " belongs to group " << arjdata->common.var2var_group[i] << endl;
+    }
+} // by anna
