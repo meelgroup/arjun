@@ -23,7 +23,10 @@
  */
 
 #include "common.h"
+
+#ifdef LOUVAIN_COMMS
 #include "louvain_communities/louvain_communities.h"
+#endif
 
 using std::pair;
 using std::make_pair;
@@ -284,7 +287,14 @@ bool Common::preproc_and_duplicate()
     seen.resize(solver->nVars(), 0);
 
     get_incidence();
-    if (conf.incidence_sort == 4 || conf.incidence_sort == 5) calc_community_parts();
+    if (conf.incidence_sort == 4 || conf.incidence_sort == 5) {
+        #ifdef LOUVAIN_COMMS
+        calc_community_parts();
+        #else
+        cout << "ERROR: you must compile with louvain community libraries for this to work. Install https://github.com/meelgroup/louvain-community first." << endl;
+        exit(-1);
+        #endif
+    }
     if (conf.simp && !simplify()) return false;
     //incidence = solver->get_var_incidence(); //NOTE: makes it slower
     duplicate_problem();
@@ -303,6 +313,7 @@ bool Common::preproc_and_duplicate()
     return true;
 }
 
+#ifdef LOUVAIN_COMMS
 void Common::calc_community_parts()
 {
     double myTime = cpuTime();
@@ -408,3 +419,5 @@ void Common::calc_community_parts()
         << endl;
     }
 }
+
+#endif

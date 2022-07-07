@@ -121,7 +121,9 @@ struct Common
     void start_with_clean_sampling_set();
     void duplicate_problem();
     void get_incidence();
+    #ifdef LOUVAIN_COMMS
     void calc_community_parts();
+    #endif
     void set_up_solver();
     vector<Lit> get_cnf();
 

@@ -427,8 +427,9 @@ if (louvain_communities_FOUND)
     message(STATUS "Found Louvain Communities library")
     message(STATUS "Louvain Communities dynamic lib: ${LOUVAIN_COMMUNITIES_LIBRARIES}")
     message(STATUS "Louvain Communities include dirs: ${LOUVAIN_COMMUNITIES_INCLUDE_DIRS}")
+    add_definitions( -DLOUVAIN_COMMS )
 else()
-    message(FATAL_ERROR "Cannot find Louvain Communities libraries. Please install it! Exiting.")
+    message(STATUS "Cannot find Louvain Communities libraries. Not enabling.")
 endif()
 
 # -----------------------------------------------------------------------------
