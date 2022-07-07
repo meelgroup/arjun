@@ -52,6 +52,7 @@ typedef struct {
 
     int verbose;
     int simp;
+    int get_indep_called = 0;
 } Arjun;
 
 static const char solver_create_docstring[] = \
@@ -474,6 +475,12 @@ static PyObject* nb_vars(Arjun *self)
 
 static PyObject* get_indep_set(Arjun *self, PyObject *args, PyObject *kwds)
 {
+    if (self->get_indep_called > 0) {
+        PyErr_SetString(PyExc_SystemError, "get_indep_set can only be called ONCE per Arjun object");
+        return NULL;
+    }
+    self->get_indep_called++;
+
     static char* kwlist[] = {"indep_vars", NULL};
     PyObject *vars;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", kwlist, &vars)) {
@@ -541,8 +548,12 @@ static PyObject* get_indep_set(Arjun *self, PyObject *args, PyObject *kwds)
 }
 
 PyDoc_STRVAR(get_indep_set_doc,
-"get_inde_set(variables)\n\
-Return smaller independent set.\n\
+"get_indep_set(variables)\n\
+Return smaller independent set than given. If empty array given, all variables are taken\n\
+as independent. Otherwise, the input array determines what set needs to be minimized. \n\
+\n\
+This function can only be called ONCE per Arjun object. In other words, you must first\n\
+add all the clauses you want to, then you should call this function.\n\
 \n\
 :return: Smaller independent set\n\
 :rtype: <array <Longs>>"
