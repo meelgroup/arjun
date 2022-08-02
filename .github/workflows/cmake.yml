@@ -21,13 +21,14 @@ jobs:
     - uses: actions/checkout@v3
     
     - name: Build CMS
-      run: git clone https://github.com/msoos/cryptominisat
-           cd cryptominisat
-           mkdir build && cd build
-           cmake -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} ..
-           cmake --build . --config ${{env.BUILD_TYPE}}
-           cd ..
-      
+      run: |
+       mkdir cms_git && cd cms_git
+       git clone --depth 1 https://github.com/msoos/cryptominisat
+       cd cryptominisat
+       mkdir build && cd build
+       cmake -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} ..
+       cmake --build . --config ${{env.BUILD_TYPE}}
+       cd ../../..
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
