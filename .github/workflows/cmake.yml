@@ -20,7 +20,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
-    - name: boost and python3
+    - name: boost install
       run: sudo apt-get update && sudo apt-get install -yq libboost-dev libboost-program-options-dev
     
     - name: Build CMS
