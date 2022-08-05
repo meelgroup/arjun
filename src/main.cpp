@@ -79,7 +79,7 @@ void add_arjun_options()
     arjun_options.add_options()
     ("help,h", "Prints help")
     ("version", "Print version info")
-    ("input", po::value<string>(), "file to read")
+    ("input", po::value<std::vector<string>>(), "file to read/write")
     ("verb,v", po::value(&conf.verb)->default_value(conf.verb), "verbosity")
     ("seed,s", po::value(&conf.seed)->default_value(conf.seed), "Seed")
 //     ("bve", po::value(&conf.bve)->default_value(conf.bve), "bve")
@@ -126,8 +126,6 @@ void add_arjun_options()
      "Use empty occurrence improvement")
     ("mirrorempty", po::value(&conf.mirror_empty)->default_value(conf.mirror_empty),
      "Allow mirror F|v=true === F|v=false empty")
-    ("elimtofile", po::value(&elimtofile),
-     "Perform 'E' to a file")
     ;
 
     help_options.add(arjun_options);
@@ -136,7 +134,7 @@ void add_arjun_options()
 void add_supported_options(int argc, char** argv)
 {
     add_arjun_options();
-    p.add("input", 1);
+    p.add("input", -1);
 
     try {
         po::store(po::command_line_parser(argc, argv).options(help_options).positional(p).run(), vm);
@@ -397,11 +395,15 @@ int main(int argc, char** argv)
     //signal(SIGINT,signal_handler);
 
     //parsing the input
-    if (vm.count("input") == 0) {
-        cout << "ERROR: you must pass a file" << endl;
+    if (vm.count("input") == 0 || vm["input"].as<vector<string>>().size() == 0 || vm["input"].as<vector<string>>().size() > 2) {
+        cout << "ERROR: you must pass an INPUT and optionally an OUTPUT file as parameters" << endl;
         exit(-1);
     }
-    const string inp = vm["input"].as<string>();
+
+    const string inp = vm["input"].as<vector<string>>()[0];
+    if (vm["input"].as<vector<string>>().size() >= 2) {
+        elimtofile = vm["input"].as<vector<string>>()[1];
+    }
     readInAFile(inp);
     cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
 
