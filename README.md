@@ -39,11 +39,10 @@ Run it on your instance and it will give you a reduced independent set:
 ./arjun input.cnf output.cnf
 c [arjun] original sampling set size: 500
 c ind 1 4 5 20 31 0
-c [arjun] final set size:            5 percent of original: 1.0000 %
-c [arjun] finished T: 0.27
+[...]
+c [arjun] Done dumping. T: 1.0406
 ```
-
-This means that your input independent set, which was 500, can be actually 5, which is ony 1% of the original set. You can now copy-paste the "c ind" line into the CNF and you are good to go.
+This means that your input independent set of your input formula `input.cnf`, which had a size of 500 has been reduced to 5, which is ony 1% of the original set. The simplified formula with the smaller independent set has been output to `output.cnf`.
 
 
 
