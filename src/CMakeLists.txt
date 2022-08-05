@@ -76,9 +76,11 @@ set_target_properties(arjun-bin PROPERTIES
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 
-target_link_libraries(arjun
-    LINK_PUBLIC ${LOUVAIN_COMMUNITIES_LIBRARIES}
-)
+if (louvain_communities_FOUND)
+    target_link_libraries(arjun
+        LINK_PUBLIC ${LOUVAIN_COMMUNITIES_LIBRARIES}
+    )
+endif()
 
 
 target_link_libraries(arjun-bin
