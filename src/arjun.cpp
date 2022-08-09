@@ -593,7 +593,8 @@ DLL_PUBLIC std::tuple<pair<vector<vector<Lit>>, uint32_t>, vector<uint32_t>, uin
 Arjun::get_fully_simplified_renumbered_cnf(
     const vector<uint32_t>& sampl_set,
     const vector<uint32_t>& empty_vars,
-    const uint32_t orig_num_vars)
+    const uint32_t orig_num_vars,
+    const bool sparsify)
 {
     CMSat::SATSolver solver;
     solver.set_verbosity(2);
@@ -619,8 +620,10 @@ Arjun::get_fully_simplified_renumbered_cnf(
     solver.simplify(&dont_elim, &str);
     solver.simplify(&dont_elim, &str);
     solver.simplify(&dont_elim, &str);
-    str = string("sparsify,") + str;
-    solver.simplify(&dont_elim, &str);
+    if (sparsify) {
+        str = string("sparsify,") + str;
+        solver.simplify(&dont_elim, &str);
+    }
 
     str = string("");
     if (arjdata->common.definitely_satisfiable) {

@@ -74,7 +74,8 @@ namespace ArjunNS {
             get_fully_simplified_renumbered_cnf(
             const std::vector<uint32_t>& sampl_set,
             const std::vector<uint32_t>& empty_vars,
-            const uint32_t orig_num_vars);
+            const uint32_t orig_num_vars,
+            bool sparsify = true);
         const std::vector<CMSat::BNN*>& get_bnns() const;
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
         std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;
