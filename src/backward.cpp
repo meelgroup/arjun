@@ -205,7 +205,6 @@ void Common::backward_round()
         lbool ret = l_Undef;
         assert(test_var != var_Undef);
         if (get_group_idx(test_var) != 0) {
-            const uint32_t sz = var_groups[get_group_idx(test_var)].size();
             const uint32_t orig_ass_size = assumptions.size();
             for (auto& v: var_groups[get_group_idx(test_var)]) {
                 assumptions.push_back(Lit(v, false));
