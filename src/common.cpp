@@ -414,10 +414,7 @@ void Common::calc_community_parts()
 
 bool Common::in_variable_group(uint32_t var)
 {
-    // if (var < orig_num_vars) {
-    //     return var2var_group[var];
-    // }
-    // return var2var_group[var - orig_num_vars];
+    assert(var2var_group.size() > var);
     return var2var_group[var];
 }
 
