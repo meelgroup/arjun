@@ -207,16 +207,13 @@ void Common::backward_round()
         if (get_group_idx(test_var) != 0) {
             const uint32_t sz = var_groups[get_group_idx(test_var)].size();
             const uint32_t orig_ass_size = assumptions.size();
-            for(uint32_t i = 0; i < 1U<<sz; i++) {
-                for (auto& v: var_groups[get_group_idx(test_var)]) {
-                    bool val = false;
-                    assumptions.push_back(Lit(v, false^val));
-                    assumptions.push_back(Lit(v + orig_num_vars, true^val));
-                    solver->set_max_confl(conf.backw_max_confl);
-                    ret = solver->solve(&assumptions);
-                    if (ret == l_Undef || ret == l_True) break;
-                    assumptions.resize(orig_ass_size);
-                }
+            for (auto& v: var_groups[get_group_idx(test_var)]) {
+                assumptions.push_back(Lit(v, false));
+                assumptions.push_back(Lit(v + orig_num_vars, true));
+                solver->set_max_confl(conf.backw_max_confl);
+                ret = solver->solve(&assumptions);
+                if (ret == l_Undef || ret == l_True) break;
+                assumptions.resize(orig_ass_size);
             }
             cout << "Final ret: " << ret << endl;
         } else {
