@@ -30,7 +30,7 @@ void Common::fill_assumptions_backward(
     const vector<char>& unknown_set,
     const vector<uint32_t>& indep)
 {
-    cout << "Filling assumps BEGIN" << endl;
+    // cout << "Filling assumps BEGIN" << endl;
     assumptions.clear();
 
     //Add known independent as assumptions
@@ -45,8 +45,8 @@ void Common::fill_assumptions_backward(
     // We need to group the "unknown" variables by their groups, if
     // applicable. This helper array is meant to do that.
     vector<bool> added (orig_num_vars, false);
-    cout << "unknown.size() = " << unknown.size() << endl;
-    cout << "assumptions.size() = " << assumptions.size() << endl;
+    // cout << "unknown.size() = " << unknown.size() << endl;
+    // cout << "assumptions.size() = " << assumptions.size() << endl;
 
     uint32_t j = 0;
     for(uint32_t i = 0; i < unknown.size(); i++) {
@@ -71,7 +71,7 @@ void Common::fill_assumptions_backward(
                 }
                 i--;
             } else {
-                cout << "var " << var << " was already added" << endl;
+                // cout << "var " << var << " was already added" << endl;
             }
         } else {
             unknown[j++] = var;
@@ -84,7 +84,7 @@ void Common::fill_assumptions_backward(
         }
     }
     unknown.resize(j);
-    cout << "Filling assumps END, total unknown size: " << unknown.size() << endl;
+    // cout << "Filling assumps END, total unknown size: " << unknown.size() << endl;
 }
 
 void Common::backward_round()
@@ -162,8 +162,8 @@ void Common::backward_round()
 
     while(true) {
         uint32_t test_var = var_Undef;
-        cout << "new iteration!" << endl;
-        cout << "assumptions.size() = " << assumptions.size() << endl;
+        // cout << "new iteration!" << endl;
+        // cout << "assumptions.size() = " << assumptions.size() << endl;
 
         while(!unknown.empty()) {
             uint32_t var = unknown[unknown.size()-1];
@@ -195,8 +195,8 @@ void Common::backward_round()
         assert(unknown_set[test_var] == 1);
         unknown_set[test_var] = 0;
         
-        cout << "Testing: " << test_var << endl;
-        cout << "unknown.size() = " << unknown.size() << endl;
+        // cout << "Testing: " << test_var << endl;
+        // cout << "unknown.size() = " << unknown.size() << endl;
 
         //Assumption filling
         assert(test_var != var_Undef);
@@ -214,7 +214,7 @@ void Common::backward_round()
                 if (ret == l_Undef || ret == l_True) break;
                 assumptions.resize(orig_ass_size);
             }
-            cout << "Final ret: " << ret << endl;
+            // cout << "Final ret: " << ret << endl;
         } else {
             assumptions.push_back(Lit(test_var, false));
             assumptions.push_back(Lit(test_var + orig_num_vars, true));
@@ -235,7 +235,7 @@ void Common::backward_round()
             ret_undef++;
         }
 
-        cout << "ret = " << ret << endl;
+        // cout << "ret = " << ret << endl;
 
         // cout << "unknown_set:" << endl;
         // for (uint32_t i = 0; i < unknown_set.size(); i++) {
@@ -254,17 +254,17 @@ void Common::backward_round()
             if (in_variable_group(test_var)) {
                 cout << "Group " <<  var2var_group[test_var] << " is independent" << endl;
                 for (auto& grp_var: var_groups[get_group_idx(test_var)]) {
-                    cout << "Pushing " << grp_var << " to indep." << endl;
+                    // cout << "Pushing " << grp_var << " to indep." << endl;
                     indep.push_back(grp_var);
                 }
             } else {
-                cout << "Pushing " <<  test_var << " to indep." << endl;
+                // cout << "Pushing " <<  test_var << " to indep." << endl;
                 indep.push_back(test_var);
             }
         } else if (ret == l_False) {
             //not independent
             //i.e. given that all in indep+unkown is equivalent, it's not possible that a1 != b1
-            cout << "Variable " << test_var << " is NOT independent" << endl;
+            // cout << "Variable " << test_var << " is NOT independent" << endl;
             not_indep++;
         }
 
@@ -305,7 +305,7 @@ void Common::backward_round()
             fast_backw_max = 0;
         }
         iter++;
-        cout << "printed stats" << endl;
+        // cout << "printed stats" << endl;
         if (iter % 500 == 499) {
             update_sampling_set(unknown, unknown_set, indep);
         }
