@@ -38,7 +38,7 @@ void Common::fill_assumptions_backward(
         assert(var < orig_num_vars);
         uint32_t indic = var_to_indic[var];
         assert(indic != var_Undef);
-        cout << "assump indic for var: " << var << endl;
+        // cout << "assump indic for var: " << var << endl;
         assumptions.push_back(Lit(indic, true));
     }
     
@@ -59,7 +59,7 @@ void Common::fill_assumptions_backward(
 
         if (conf.group_indep && in_variable_group(var)) {
             if (!added[var]) {
-                cout << "var " << var << " was not yet added, adding now" << endl;
+                // cout << "var " << var << " was not yet added, adding now" << endl;
                 for (auto& grp_var: var_groups[var2var_group[var]]) {
                     unknown[j++] = grp_var;
                     indic = var_to_indic[grp_var];
@@ -237,10 +237,10 @@ void Common::backward_round()
 
         cout << "ret = " << ret << endl;
 
-        cout << "unknown_set:" << endl;
-        for (uint32_t i = 0; i < unknown_set.size(); i++) {
-            cout << "unknown_set[" << std::setw(3) << i << "] = " << (int)unknown_set[i] << endl;
-        }
+        // cout << "unknown_set:" << endl;
+        // for (uint32_t i = 0; i < unknown_set.size(); i++) {
+        //     cout << "unknown_set[" << std::setw(3) << i << "] = " << (int)unknown_set[i] << endl;
+        // }
 
         // TODO: come up with an equivalent assertion for group mode.
         if (!conf.group_indep) {
