@@ -52,6 +52,17 @@ add_library(arjun
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
 )
 
+if (louvain_communities_FOUND)
+    target_link_libraries(arjun
+        LINK_PUBLIC ${LOUVAIN_COMMUNITIES_LIBRARIES}
+        LINK_PUBLIC ${CRYPTOMINISAT5_LIBRARIES}
+    )
+else()
+    target_link_libraries(arjun
+        LINK_PUBLIC ${CRYPTOMINISAT5_LIBRARIES}
+    )
+endif()
+
 add_executable(arjun-bin
     main.cpp
 )
@@ -76,17 +87,9 @@ set_target_properties(arjun-bin PROPERTIES
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 
-if (louvain_communities_FOUND)
-    target_link_libraries(arjun
-        LINK_PUBLIC ${LOUVAIN_COMMUNITIES_LIBRARIES}
-    )
-endif()
-
-
 target_link_libraries(arjun-bin
     ${arjun_bin_exec_link_libs}
     arjun
-    ${CRYPTOMINISAT5_LIBRARIES}
 )
 
 arjun_add_public_header(
