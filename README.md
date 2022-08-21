@@ -1,6 +1,8 @@
 # Arjun
 
-A minimal independent set calculator using a combination of explicit and implicit search, together with implicit gate detection, etc. Name is taken from the Hindu myth where [Arjun](https://en.wikipedia.org/wiki/Arjuna) is known for being the "one who concentrates the most". This system is also used as a preprocessor for our tool [ApproxMC](https://github.com/meelgroup/ApproxMC) to concentrate on counting only over the independent set. For the paper, see [here](https://arxiv.org/abs/2110.09026).
+A minimal independent set calculator using a combination of explicit and implicit search, together with implicit gate detection, etc. Name is taken from the Hindu myth where [Arjun](https://en.wikipedia.org/wiki/Arjuna) is known for being the "one who concentrates the most". This system is also used as a preprocessor for our tool [ApproxMC](https://github.com/meelgroup/ApproxMC) to concentrate on counting only over the independent set. For the paper, see [here](http://www.msoos.org/wordpress/wp-content/uploads/2022/08/arjun.pdf).
+
+Note that the simplification part of Arjun contains code from SharpSAT-td by Tuukka Korhonen and Matti Jarvisalo, see [this PDF](https://raw.githubusercontent.com/Laakeri/sharpsat-td/main/description.pdf) and [this code](https://github.com/Laakeri/sharpsat-td) for details. Note that treewidth-decomposition is _not_ part of Arjun.
 
 
 ## How to Build
