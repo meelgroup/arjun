@@ -25,8 +25,6 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include <cryptominisat5/solvertypesmini.h>
-
 struct Config {
     int verb = 3;
     int seed = 0;
