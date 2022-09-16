@@ -23,16 +23,15 @@
  */
 
 #include "arjun.h"
-#include <cryptominisat5/cryptominisat.h>
-#include "cryptominisat5/dimacsparser.h"
-#include "cryptominisat5/streambuffer.h"
 #include "config.h"
 #include "common.h"
 #include "GitSHA1.h"
 #include <utility>
 #include <tuple>
+#include <limits>
 
 using std::pair;
+using std::numeric_limits;
 
 #if defined _WIN32
     #define DLL_PUBLIC __declspec(dllexport)

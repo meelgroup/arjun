@@ -40,7 +40,6 @@
 #include <sstream>
 #include <string>
 #include <cryptominisat5/cryptominisat.h>
-#include "cryptominisat5/dimacsparser.h"
 
 #include "time_mem.h"
 #include "config.h"
