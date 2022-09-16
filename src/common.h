@@ -39,7 +39,11 @@
 #include <vector>
 #include <sstream>
 #include <string>
+#ifdef CMS_LOCAL_BUILD
+#include "cryptominisat.h"
+#else
 #include <cryptominisat5/cryptominisat.h>
+#endif
 
 #include "time_mem.h"
 #include "config.h"

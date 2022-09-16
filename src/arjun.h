@@ -28,7 +28,11 @@ THE SOFTWARE.
 #include <utility>
 #include <string>
 #include <tuple>
+#ifdef CMS_LOCAL_BUILD
+#include "cryptominisat.h"
+#else
 #include <cryptominisat5/cryptominisat.h>
+#endif
 
 namespace ArjunNS {
     struct ArjPrivateData;
