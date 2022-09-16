@@ -63,13 +63,30 @@ else()
     )
 endif()
 
-add_executable(arjun-bin
-    main.cpp
-)
 
-set(arjun_bin_exec_link_libs
-    ${Boost_LIBRARIES}
-)
+if (EMSCRIPTEN)
+    add_executable(arjun-bin
+        main_emscripten.cpp
+    )
+
+    set_target_properties(arjun-bin
+        PROPERTIES
+        OUTPUT_NAME arjun
+        LINK_FLAGS "-s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -s EXTRA_EXPORTED_RUNTIME_METHODS='[\"ccall\", \"cwrap\"]'  -s LINKABLE=1 -s EXPORT_ALL=1 --pre-js ${CMAKE_CURRENT_SOURCE_DIR}/pre.js"
+    )
+
+    SET_SOURCE_FILES_PROPERTIES(main_emscripten.cpp
+        PROPERTIES COMPILE_FLAGS "-s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -s EXTRA_EXPORTED_RUNTIME_METHODS='[\"ccall\", \"cwrap\"]'  -s LINKABLE=1 -s EXPORT_ALL=1"
+    )
+else()
+    add_executable(arjun-bin
+        main.cpp
+    )
+
+    set(arjun_bin_exec_link_libs
+        ${Boost_LIBRARIES}
+    )
+endif()
 
 IF (ZLIB_FOUND)
     SET(arjun_bin_exec_link_libs ${arjun_bin_exec_link_libs} ${ZLIB_LIBRARY})
