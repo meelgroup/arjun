@@ -233,6 +233,15 @@ void add_supported_options(int argc, char** argv)
     }
 }
 
+inline double stats_line_percent(double num, double total)
+{
+    if (total == 0) {
+        return 0;
+    } else {
+        return num/total*100.0;
+    }
+}
+
 void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint32_t>& empty_occs)
 {
     cout << "c ind ";

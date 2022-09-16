@@ -28,7 +28,7 @@ THE SOFTWARE.
 #include <utility>
 #include <string>
 #include <tuple>
-#include "common.h"
+#include <cryptominisat5/cryptominisat.h>
 
 namespace ArjunNS {
     struct ArjPrivateData;
