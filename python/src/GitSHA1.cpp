@@ -24,18 +24,18 @@ THE SOFTWARE.
 
 const char* ArjunIntNS::get_version_sha1()
 {
-    static const char myversion_sha1[] = "NOT-GIT";
+    static const char myversion_sha1[] = "python";
     return myversion_sha1;
 }
 
 const char* ArjunIntNS::get_version_tag()
 {
-    static const char myversion_tag[] = "5.9.0";
+    static const char myversion_tag[] = "see-python-version";
     return myversion_tag;
 }
 
 const char* ArjunIntNS::get_compilation_env()
 {
-    static const char compilation_env[] = "UNKNOWN";
+    static const char compilation_env[] = "python";
     return compilation_env;
 }
