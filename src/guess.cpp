@@ -23,6 +23,7 @@
  */
 
 #include "common.h"
+using namespace ArjunInt;
 
 void Common::fill_assumptions_guess(
     vector<Lit>& assumptions,

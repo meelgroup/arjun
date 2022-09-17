@@ -27,6 +27,7 @@
 #include "common.h"
 
 using std::pair;
+using namespace ArjunInt;
 
 void Common::check_no_duplicate_in_sampling_set()
 {

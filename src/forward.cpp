@@ -23,6 +23,7 @@
  */
 
 #include "common.h"
+using namespace ArjunInt;
 
 //Only called once.
 void Common::set_guess_forward_round(

@@ -25,6 +25,8 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+namespace ArjunInt {
+
 struct Config {
     int verb = 3;
     int seed = 0;
@@ -53,6 +55,8 @@ struct Config {
     uint32_t backw_max_confl = 500;
     uint32_t guess_max_confl = 1000;
 };
+
+}
 
 //ARJUN_CONFIG_H
 #endif

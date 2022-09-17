@@ -30,6 +30,7 @@
 
 using std::pair;
 using std::make_pair;
+using namespace ArjunInt;
 
 
 void Common::update_sampling_set(

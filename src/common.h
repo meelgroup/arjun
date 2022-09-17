@@ -57,6 +57,8 @@ using std::set;
 using std::string;
 using std::vector;
 
+namespace ArjunInt {
+
 struct Common
 {
     Common() {
@@ -369,6 +371,8 @@ void Common::sort_unknown(T& unknown)
         cout << "ERROR: wrong sorting mechanism given" << endl;
         exit(-1);
     }
+}
+
 }
 
 //ARJUN_COMMON_H

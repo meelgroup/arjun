@@ -59,7 +59,7 @@ po::options_description help_options;
 po::variables_map vm;
 po::positional_options_description p;
 double startTime;
-Config conf;
+ArjunInt::Config conf;
 ArjunNS::Arjun* arjun = NULL;
 string elimtofile;
 

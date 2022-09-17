@@ -32,6 +32,7 @@
 
 using std::pair;
 using std::numeric_limits;
+using namespace ArjunInt;
 
 #if defined _WIN32
     #define DLL_PUBLIC __declspec(dllexport)
