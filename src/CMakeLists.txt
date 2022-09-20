@@ -83,6 +83,10 @@ else()
         main.cpp
     )
 
+    add_executable(arjun-example
+        example.cpp
+    )
+
     set(arjun_bin_exec_link_libs
         ${Boost_LIBRARIES}
     )
@@ -105,6 +109,18 @@ set_target_properties(arjun-bin PROPERTIES
 
 
 target_link_libraries(arjun-bin
+    ${arjun_bin_exec_link_libs}
+    arjun
+)
+
+
+set_target_properties(arjun-example PROPERTIES
+    OUTPUT_NAME example
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+
+target_link_libraries(arjun-example
     ${arjun_bin_exec_link_libs}
     arjun
 )
