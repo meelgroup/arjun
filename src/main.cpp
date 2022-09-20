@@ -66,6 +66,7 @@ string elimtofile;
 int recompute_sampling_set = 0;
 uint32_t orig_sampling_set_size = 0;
 uint32_t polar_mode = 0;
+int sparsify = true;
 
 // static void signal_handler(int) {
 //     cout << endl << "c [arjun] INTERRUPTING ***" << endl << std::flush;
@@ -126,6 +127,9 @@ void add_arjun_options()
      "Use empty occurrence improvement")
     ("mirrorempty", po::value(&conf.mirror_empty)->default_value(conf.mirror_empty),
      "Allow mirror F|v=true === F|v=false empty")
+    ("sparsify", po::value(&sparsify)->default_value(sparsify),
+     "Use Oracle from SharpSAT-TD to sparsify CNF formula. Expensive, but useful for SharpSAT-style counters")
+
     ;
 
     help_options.add(arjun_options);
@@ -325,7 +329,7 @@ void elim_to_file(
 {
     double dump_start_time = cpuTime();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
-    auto ret = arjun->get_fully_simplified_renumbered_cnf(sampl_set, empty_occs, orig_num_vars);
+    auto ret = arjun->get_fully_simplified_renumbered_cnf(sampl_set, empty_occs, orig_num_vars, sparsify);
     dump_cnf(std::get<0>(ret), std::get<1>(ret), std::get<2>(ret));
     cout << "c [arjun] Done dumping. T: " << (cpuTime() - dump_start_time) << endl;
 }
