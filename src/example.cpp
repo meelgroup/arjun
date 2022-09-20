@@ -75,7 +75,13 @@ int main()
         }
 
         if (ok) {
-            cout << "clause: " << clause << endl;
+            cout << "clause: ";
+            for(const auto& l: clause) {
+                int lit = l.var()+1;
+                if (l.sign()) lit *= -1;
+                cout << lit << " ";
+            }
+            cout << "0" << endl;
         }
     }
     arjun.end_getting_small_clauses();
