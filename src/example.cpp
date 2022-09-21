@@ -17,6 +17,7 @@ int main()
 
     ArjunNS::Arjun arjun;
     arjun.new_vars(100);
+    arjun.set_verbosity(0);
 
     vector<Lit> clause;
 

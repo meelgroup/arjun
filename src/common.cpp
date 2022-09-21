@@ -229,7 +229,7 @@ void Common::set_up_solver()
     solver->set_up_for_arjun();
     solver->set_renumber(0);
     solver->set_bve(0);
-    solver->set_verbosity(std::max((int)conf.verb-2, 0));
+    solver->set_verbosity(std::max(conf.verb-2, 0));
     solver->set_intree_probe(conf.intree && conf.simp);
     solver->set_distill(conf.distill && conf.simp);
     solver->set_sls(0);
@@ -253,7 +253,7 @@ bool Common:: simplify_bve_only()
     //Do BVE
     if (conf.simp) {
         solver->set_bve(1);
-        solver->set_verbosity(std::max((int)conf.verb-2, 0));
+        solver->set_verbosity(std::max(conf.verb-2, 0));
         string str("occ-bve");
         if (solver->simplify(&dont_elim, &str) == l_False) {
             return false;

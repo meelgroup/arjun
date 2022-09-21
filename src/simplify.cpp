@@ -72,7 +72,7 @@ bool Common::simplify()
         solver->set_max_confl(1000);
         lbool ret = solver->solve();
         if (ret == l_True) definitely_satisfiable = true;
-        solver->set_verbosity(std::max<int>((int)conf.verb-2, 0));
+        solver->set_verbosity(std::max<int>(conf.verb-2, 0));
     }
 
     remove_eq_literals();
@@ -82,7 +82,7 @@ bool Common::simplify()
     if (conf.empty_occs_based) find_equiv_subformula();
     if (conf.irreg_gate_based) remove_definable_by_irreg_gates();
 
-    solver->set_verbosity(std::max<int>((int)conf.verb-2, 0));
+    solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
     verb_print(1, "[arjun] simplification finished "
         << " removed: " << (old_size-sampling_set->size())
@@ -224,7 +224,7 @@ bool Common::backbone_simpl()
         << " T: " << std::setprecision(2) << time_used
         << endl;
     }
-    solver->set_verbosity(std::max<int>((int)conf.verb-2, 0));
+    solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
     return true;
 }
@@ -262,7 +262,7 @@ bool Common::probe_all()
     if (solver->simplify(NULL, &s) == l_False) {
         return false;
     }
-    solver->set_verbosity(std::max<int>((int)conf.verb-2, 0));
+    solver->set_verbosity(std::max<int>(conf.verb-2, 0));
     remove_zero_assigned_literals(true);
     remove_eq_literals(true);
 
@@ -516,7 +516,7 @@ void Common::find_equiv_subformula()
     const double myTime = cpuTime();
     uint32_t old_size = sampling_set->size();
 
-    solver->set_verbosity(1);
+    solver->set_verbosity(std::max<int>(conf.verb-2, 0));
     solver->find_equiv_subformula(*sampling_set, empty_occs, conf.mirror_empty);
 
     if (conf.verb) {
@@ -528,7 +528,7 @@ void Common::find_equiv_subformula()
         << " T: " << std::setprecision(2) << cpuTime() - myTime
         << endl;
     }
-    solver->set_verbosity(std::max<int>((int)conf.verb-2, 0));
+    solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 }
 
 void Common::remove_definable_by_irreg_gates()

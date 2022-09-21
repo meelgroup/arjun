@@ -195,6 +195,7 @@ DLL_PUBLIC uint32_t Arjun::get_orig_num_vars() const
 DLL_PUBLIC void Arjun::set_verbosity(uint32_t verb)
 {
     arjdata->common.conf.verb = verb;
+    arjdata->common.solver->set_verbosity(verb);
 }
 
 DLL_PUBLIC void Arjun::set_seed(uint32_t seed)
@@ -599,7 +600,7 @@ Arjun::get_fully_simplified_renumbered_cnf(
     const bool renumber)
 {
     CMSat::SATSolver solver;
-    solver.set_verbosity(2);
+    solver.set_verbosity(arjdata->common.conf.verb);
     solver.set_renumber(renumber);
     auto dont_elim = fill_solver_no_empty(
         sampl_vars, empty_vars, orig_num_vars, solver, this);
