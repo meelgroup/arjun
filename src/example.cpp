@@ -14,13 +14,15 @@ using namespace ArjunNS;
 
 int main()
 {
+    const uint32_t num_vars = 100;
 
     ArjunNS::Arjun arjun;
-    arjun.new_vars(100);
     arjun.set_verbosity(0);
+    arjun.new_vars(num_vars);
 
     vector<Lit> clause;
 
+    //TODO add clauses here
     //1 2 0
     clause.clear();
     clause.push_back(CMSat::Lit(0, false));
@@ -53,15 +55,18 @@ int main()
 
     proj = arjun.get_indep_set();
     std::set<uint32_t> dont_elim (proj.begin(), proj.end());
+
+    //TODO add frozen variables here
     dont_elim.insert(10);
+    dont_elim.insert(29);
     vector<uint32_t> dont_elim_vec(dont_elim.begin(), dont_elim.end());
 
     arjun.get_fully_simplified_renumbered_cnf(
         dont_elim_vec,
         vector<uint32_t>(),
-        100,
-        false,
-        false
+        num_vars,
+        true, //sparsify
+        false //don't renumber and don't replace variables
     );
 
     //get cnf

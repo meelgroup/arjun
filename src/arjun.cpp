@@ -602,6 +602,7 @@ Arjun::get_fully_simplified_renumbered_cnf(
     CMSat::SATSolver solver;
     solver.set_verbosity(arjdata->common.conf.verb);
     solver.set_renumber(renumber);
+    solver.set_scc(renumber);
     auto dont_elim = fill_solver_no_empty(
         sampl_vars, empty_vars, orig_num_vars, solver, this);
 
