@@ -3,6 +3,8 @@
 #include <vector>
 #include <iostream>
 #include <limits>
+#include <set>
+
 using std::vector;
 using std::cout;
 using std::endl;
@@ -47,11 +49,19 @@ int main()
     vector<uint32_t> proj;
     for(uint32_t i = 0; i < 100; i++) proj.push_back(i);
     arjun.set_starting_sampling_set(proj);
-    vector<uint32_t> frozen;
-    //arjun.set_frozen_varibles(frozen);
 
     proj = arjun.get_indep_set();
-    auto empty = arjun.get_empty_occ_sampl_vars();
+    std::set<uint32_t> dont_elim (proj.begin(), proj.end());
+    dont_elim.insert(10);
+    vector<uint32_t> dont_elim_vec(dont_elim.begin(), dont_elim.end());
+
+    arjun.get_fully_simplified_renumbered_cnf(
+        dont_elim_vec,
+        vector<uint32_t>(),
+        100,
+        false,
+        false
+    );
 
     //get cnf
     bool ret = true;

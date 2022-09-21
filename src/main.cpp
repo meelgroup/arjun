@@ -323,13 +323,14 @@ void dump_cnf(const std::pair<vector<vector<Lit>>, uint32_t>& cnf, const vector<
 }
 
 void elim_to_file(
-    const vector<uint32_t>& sampl_set,
+    const vector<uint32_t>& sampl_vars, //contains empty_occs!
     const vector<uint32_t>& empty_occs,
     uint32_t orig_num_vars)
 {
     double dump_start_time = cpuTime();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
-    auto ret = arjun->get_fully_simplified_renumbered_cnf(sampl_set, empty_occs, orig_num_vars, sparsify);
+    auto ret = arjun->get_fully_simplified_renumbered_cnf(
+        sampl_vars, empty_occs, orig_num_vars, sparsify);
     dump_cnf(std::get<0>(ret), std::get<1>(ret), std::get<2>(ret));
     cout << "c [arjun] Done dumping. T: " << (cpuTime() - dump_start_time) << endl;
 }
@@ -412,14 +413,15 @@ int main(int argc, char** argv)
     cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
 
     uint32_t orig_num_vars = arjun->nVars();
-    vector<uint32_t> sampl_set = arjun->get_indep_set();
-    print_final_indep_set(sampl_set, arjun->get_empty_occ_sampl_vars());
+    vector<uint32_t> indep_vars = arjun->get_indep_set();
+    print_final_indep_set(indep_vars, arjun->get_empty_occ_sampl_vars());
     cout << "c [arjun] finished "
     << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
     << endl;
 
     if (!elimtofile.empty()) {
-        elim_to_file(sampl_set, arjun->get_empty_occ_sampl_vars(), orig_num_vars);
+        elim_to_file(
+            indep_vars, arjun->get_empty_occ_sampl_vars(), orig_num_vars);
     }
 
     delete arjun;

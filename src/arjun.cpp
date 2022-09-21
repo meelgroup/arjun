@@ -496,7 +496,7 @@ DLL_PUBLIC const vector<Lit> Arjun::get_simplified_cnf() const
     return cnf;
 }
 
-std::pair<vector<vector<Lit>>, uint32_t> get_simplified_renumbered_cnf(SATSolver* solver, vector<uint32_t>& sampl_set)
+std::pair<vector<vector<Lit>>, uint32_t> get_simplified_renumbered_cnf(SATSolver* solver, vector<uint32_t>& sampl_vars)
 {
     vector<vector<Lit>> cnf;
     solver->start_getting_small_clauses(
@@ -506,7 +506,7 @@ std::pair<vector<vector<Lit>>, uint32_t> get_simplified_renumbered_cnf(SATSolver
         false, //bva vars
         true); //simplified
 
-    sampl_set = solver->translate_sampl_set(sampl_set);
+    sampl_vars = solver->translate_sampl_set(sampl_vars);
 
     bool ret = true;
     vector<Lit> clause;
@@ -521,12 +521,13 @@ std::pair<vector<vector<Lit>>, uint32_t> get_simplified_renumbered_cnf(SATSolver
 }
 
 vector<Lit> fill_solver_no_empty(
-    const vector<uint32_t>& sampl_set,
+    const vector<uint32_t>& sampl_vars,
     const vector<uint32_t>& empty_vars,
     const uint32_t orig_num_vars,
-    SATSolver& solver,
+    SATSolver& solver, // Solver here is EMPTY
     Arjun* arjun)
 {
+    // We create a new Solver that has all variables (except empty)
     solver.new_vars(orig_num_vars-empty_vars.size());
     vector<char> seen(orig_num_vars, 0);
     vector<uint32_t> mymap;
@@ -580,7 +581,7 @@ vector<Lit> fill_solver_no_empty(
 
     vector<Lit> dont_elim;
     set<Lit> dont_elim_set;
-    for(const auto& v: sampl_set) {
+    for(const auto& v: sampl_vars) {
         if (seen[v]) continue;
         dont_elim_set.insert(Lit(mymap[v], false));
     }
@@ -591,14 +592,17 @@ vector<Lit> fill_solver_no_empty(
 
 DLL_PUBLIC std::tuple<pair<vector<vector<Lit>>, uint32_t>, vector<uint32_t>, uint32_t>
 Arjun::get_fully_simplified_renumbered_cnf(
-    const vector<uint32_t>& sampl_set,
+    const vector<uint32_t>& sampl_vars, //contains empty_vars!
     const vector<uint32_t>& empty_vars,
     const uint32_t orig_num_vars,
-    const bool sparsify)
+    const bool sparsify,
+    const bool renumber)
 {
     CMSat::SATSolver solver;
     solver.set_verbosity(2);
-    auto dont_elim = fill_solver_no_empty(sampl_set, empty_vars, orig_num_vars, solver, this);
+    solver.set_renumber(renumber);
+    auto dont_elim = fill_solver_no_empty(
+        sampl_vars, empty_vars, orig_num_vars, solver, this);
 
     //Below works VERY WELL for: ProcessBean, pollard, track1_116.mcc2020_cnf
     //   and blasted_TR_b14_even3_linear.cnf.gz.no_w.cnf

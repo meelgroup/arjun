@@ -111,9 +111,10 @@ struct Common
     //total incidence in a commpart. Maps commpart->maxinc
     vector<uint32_t> commpart_incs;
 
-    vector<double> vsids_scores;
     vector<Lit> dont_elim;
     vector<Lit> tmp_implied_by;
+    vector<uint32_t> frozen_vars;
+
 
     void update_sampling_set(
         const vector<uint32_t>& unknown,

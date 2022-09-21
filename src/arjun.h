@@ -75,10 +75,11 @@ namespace ArjunNS {
         const std::vector<CMSat::Lit> get_simplified_cnf() const;
         std::tuple<std::pair<std::vector<std::vector<CMSat::Lit>>, uint32_t>, std::vector<uint32_t>, uint32_t>
             get_fully_simplified_renumbered_cnf(
-            const std::vector<uint32_t>& sampl_set,
+            const std::vector<uint32_t>& sampl_vars,
             const std::vector<uint32_t>& empty_vars,
             const uint32_t orig_num_vars,
-            bool sparsify = true);
+            const bool sparsify = true,
+            const bool renumber = true);
         const std::vector<CMSat::BNN*>& get_bnns() const;
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
         std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;
