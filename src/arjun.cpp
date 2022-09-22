@@ -497,7 +497,7 @@ DLL_PUBLIC const vector<Lit> Arjun::get_simplified_cnf() const
     return cnf;
 }
 
-std::pair<vector<vector<Lit>>, uint32_t> get_simplified_renumbered_cnf(SATSolver* solver, vector<uint32_t>& sampl_vars)
+static std::pair<vector<vector<Lit>>, uint32_t> get_simplified_renumbered_cnf(SATSolver* solver, vector<uint32_t>& sampl_vars)
 {
     vector<vector<Lit>> cnf;
     solver->start_getting_small_clauses(
@@ -521,7 +521,7 @@ std::pair<vector<vector<Lit>>, uint32_t> get_simplified_renumbered_cnf(SATSolver
     return std::make_pair(cnf, solver->simplified_nvars());
 }
 
-vector<Lit> fill_solver_no_empty(
+static vector<Lit> fill_solver_no_empty(
     const vector<uint32_t>& sampl_vars,
     const vector<uint32_t>& empty_vars,
     const uint32_t orig_num_vars,
@@ -643,11 +643,6 @@ Arjun::get_fully_simplified_renumbered_cnf(
     auto cnf = get_simplified_renumbered_cnf(&solver, new_sampl_set);
     return std::make_tuple(cnf, new_sampl_set, empty_vars.size());
 }
-
-// DLL_PUBLIC void Arjun::set_polar_mode(CMSat::PolarityMode mode)
-// {
-//     arjdata->common.solver->set_polarity_mode(mode);
-// }
 
 
 DLL_PUBLIC void Arjun::set_pred_forever_cutoff(int pred_forever_cutoff)
