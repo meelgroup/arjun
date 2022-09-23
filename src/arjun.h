@@ -72,7 +72,7 @@ namespace ArjunNS {
         void start_getting_small_clauses(uint32_t max_len, uint32_t max_glue, bool red = true);
         bool get_next_small_clause(std::vector<CMSat::Lit>& ret); //returns FALSE if no more
         void end_getting_small_clauses();
-        const std::vector<CMSat::Lit> get_simplified_cnf() const;
+        const std::vector<CMSat::Lit> get_internal_cnf(uint32_t& num_cls) const;
         std::tuple<std::pair<std::vector<std::vector<CMSat::Lit>>, uint32_t>, std::vector<uint32_t>, uint32_t>
             get_fully_simplified_renumbered_cnf(
             const std::vector<uint32_t>& sampl_vars,

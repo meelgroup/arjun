@@ -43,6 +43,7 @@ void Common::check_no_duplicate_in_sampling_set()
 
 bool Common::simplify()
 {
+    assert(conf.simp);
     check_no_duplicate_in_sampling_set();
     auto old_size = sampling_set->size();
     double myTime = cpuTime();

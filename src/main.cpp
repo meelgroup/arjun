@@ -420,8 +420,26 @@ int main(int argc, char** argv)
     << endl;
 
     if (!elimtofile.empty()) {
-        elim_to_file(
-            indep_vars, arjun->get_empty_occ_sampl_vars(), orig_num_vars);
+        if (conf.simp) {
+            elim_to_file(
+                indep_vars, arjun->get_empty_occ_sampl_vars(), orig_num_vars);
+        } else {
+            uint32_t num_cls;
+            vector<Lit> cnf = arjun->get_internal_cnf(num_cls);
+            std::ofstream outf;
+            outf.open(elimtofile.c_str(), std::ios::out);
+            outf << "p cnf " << orig_num_vars << " " << num_cls << endl;
+
+            //Add projection
+            outf << "c ind ";
+            for(const auto& v: indep_vars) outf << v+1  << " ";
+            outf << "0\n";
+
+            for(const auto& l: cnf) {
+                if (l == lit_Undef) outf << "0\n";
+                else outf << l << " ";
+            }
+        }
     }
 
     delete arjun;

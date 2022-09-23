@@ -447,10 +447,11 @@ DLL_PUBLIC vector<uint32_t> Arjun::get_empty_occ_sampl_vars() const
     return arjdata->common.empty_occs;
 }
 
-DLL_PUBLIC const vector<Lit> Arjun::get_simplified_cnf() const
+DLL_PUBLIC const vector<Lit> Arjun::get_internal_cnf(uint32_t& num_cls) const
 {
     vector<Lit> cnf;
     bool ret = true;
+    num_cls = 0;
 
     arjdata->common.solver->start_getting_small_clauses(
         std::numeric_limits<uint32_t>::max(),
@@ -474,6 +475,7 @@ DLL_PUBLIC const vector<Lit> Arjun::get_simplified_cnf() const
         if (ok) {
             for(auto const& l: clause) cnf.push_back(l);
             cnf.push_back(lit_Undef);
+            num_cls++;
         }
     }
     arjdata->common.solver->end_getting_small_clauses();
@@ -483,6 +485,7 @@ DLL_PUBLIC const vector<Lit> Arjun::get_simplified_cnf() const
         if (unit.var() < arjdata->common.orig_num_vars) {
             cnf.push_back(unit);
             cnf.push_back(lit_Undef);
+            num_cls++;
         }
     }
 
@@ -545,7 +548,9 @@ static vector<Lit> fill_solver_no_empty(
     vector<Lit> tmp;
     uint32_t sz = 0;
     bool ok = true;
-    for(const auto& l: arjun->get_simplified_cnf()) {
+    uint32_t num_cls;
+    const auto cnf = arjun->get_internal_cnf(num_cls);
+    for(const auto& l: cnf) {
         if (l != lit_Undef) {
             if (seen[l.var()] == 1) ok = false;
             if (ok) tmp.push_back(Lit(mymap[l.var()], l.sign()));
