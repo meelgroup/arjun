@@ -132,14 +132,6 @@ DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
     double starTime = cpuTime();
     if (!arjdata->common.preproc_and_duplicate()) goto end;
 
-    // Guess
-    if (arjdata->common.conf.guess) arjdata->common.run_guess();
-
-    // Forward
-    if (arjdata->common.conf.forward) {
-        arjdata->common.forward_round(5000000, arjdata->common.conf.forward_group, 0);
-    }
-
     //Backward
     if (arjdata->common.conf.backward) {
         arjdata->common.backward_round();

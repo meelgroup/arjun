@@ -113,7 +113,6 @@ struct Common
 
     vector<Lit> dont_elim;
     vector<Lit> tmp_implied_by;
-    vector<uint32_t> frozen_vars;
 
 
     void update_sampling_set(
@@ -132,30 +131,7 @@ struct Common
     #endif
     void set_up_solver();
     vector<Lit> get_cnf();
-
-
-    //guess
     std::mt19937 random_source = std::mt19937(0);
-    uint32_t guess_div = 10;
-    void run_guess();
-    void fill_assumptions_guess(
-        vector<Lit>& assumptions,
-        const vector<uint32_t>& indep,
-        const vector<uint32_t>& unknown,
-        const vector<char>& unknown_set,
-        uint32_t group,
-        uint32_t offs,
-        uint32_t index,
-        vector<char>& dontremove_vars);
-    void guess_round(
-        uint32_t group,
-        bool reverse = false,
-        bool shuffle = false,
-        uint32_t offset = 0);
-    uint32_t guess_remove_and_update_ass(
-        vector<Lit>& assumptions,
-        vector<char>& unknown_set,
-        vector<char>& dontremove_vars);
 
     //simp
     vector<uint32_t> toClear;
@@ -172,26 +148,6 @@ struct Common
     bool run_gauss_jordan();
     void check_no_duplicate_in_sampling_set();
     void order_sampl_set_for_simp();
-
-    //forward
-    void set_guess_forward_round(
-        const vector<uint32_t>& indep,
-        vector<uint32_t>& unknown,
-        vector<char>& unknown_set,
-        uint32_t group,
-        uint32_t offs,
-        vector<char>& guess_set);
-    void fill_assumptions_forward(
-        vector<Lit>& assumptions,
-        const vector<uint32_t>& indep,
-        vector<uint32_t>& unknown,
-        uint32_t group,
-        uint32_t offs,
-        vector<char>& guess_set);
-    bool forward_round(
-        uint32_t max_iters = std::numeric_limits<uint32_t>::max(),
-        uint32_t group = 1,
-        int offset = 0);
 
     //backward
     void fill_assumptions_backward(

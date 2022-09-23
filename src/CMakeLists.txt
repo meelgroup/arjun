@@ -43,9 +43,7 @@ endif()
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/GitSHA1.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp" @ONLY)
 
 add_library(arjun
-    forward.cpp
     backward.cpp
-    guess.cpp
     simplify.cpp
     common.cpp
     arjun.cpp
