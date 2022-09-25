@@ -396,9 +396,6 @@ int main(int argc, char** argv)
 //         arjun->set_polar_mode(CMSat::PolarityMode::polarmode_neg);
 //     }
 
-
-    //signal(SIGINT,signal_handler);
-
     //parsing the input
     if (vm.count("input") == 0 || vm["input"].as<vector<string>>().size() == 0 || vm["input"].as<vector<string>>().size() > 2) {
         cout << "ERROR: you must pass an INPUT and optionally an OUTPUT file as parameters" << endl;
@@ -412,7 +409,7 @@ int main(int argc, char** argv)
     readInAFile(inp);
     cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
 
-    uint32_t orig_num_vars = arjun->nVars();
+    const uint32_t orig_num_vars = arjun->nVars();
     vector<uint32_t> indep_vars = arjun->get_indep_set();
     print_final_indep_set(indep_vars, arjun->get_empty_occ_sampl_vars());
     cout << "c [arjun] finished "

@@ -299,12 +299,10 @@ bool Common::preproc_and_duplicate()
         #endif
     }
     if (conf.simp && !simplify()) return false;
-    //incidence = solver->get_var_incidence(); //NOTE: makes it slower
     duplicate_problem();
-    if (!simplify_bve_only()) return false;
-
-    add_fixed_clauses(); //Add the connection clauses, indicator variables, etc.
-    if (!run_gauss_jordan()) return false;;
+    if (conf.simp && !simplify_bve_only()) return false;
+    add_fixed_clauses();
+    if (!run_gauss_jordan()) return false;
 
     //Seen needs re-init, because we got new variables
     seen.clear(); seen.resize(solver->nVars(), 0);

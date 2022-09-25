@@ -461,9 +461,7 @@ DLL_PUBLIC const vector<Lit> Arjun::get_internal_cnf(uint32_t& num_cls) const
     vector<Lit> clause;
     while (ret) {
         ret = arjdata->common.solver->get_next_small_clause(clause);
-        if (!ret) {
-            break;
-        }
+        if (!ret) break;
 
         bool ok = true;
         for(auto l: clause) {
@@ -480,16 +478,6 @@ DLL_PUBLIC const vector<Lit> Arjun::get_internal_cnf(uint32_t& num_cls) const
         }
     }
     arjdata->common.solver->end_getting_small_clauses();
-
-    auto units = arjdata->common.solver->get_zero_assigned_lits();
-    for(const auto& unit: units) {
-        if (unit.var() < arjdata->common.orig_num_vars) {
-            cnf.push_back(unit);
-            cnf.push_back(lit_Undef);
-            num_cls++;
-        }
-    }
-
     return cnf;
 }
 
