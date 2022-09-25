@@ -88,6 +88,7 @@ DLL_PUBLIC bool Arjun::add_clause(const vector<CMSat::Lit>& lits)
 
 DLL_PUBLIC bool Arjun::add_xor_clause(const vector<uint32_t>& vars, bool rhs)
 {
+    assert(false && "Funnily enough this does NOT work. The XORs would generate a BVA variable, and that would then not be returned as part of the simplified CNF. We could calculate a smaller independent set, but that's all.");
     return arjdata->common.solver->add_xor_clause(vars, rhs);
 }
 
