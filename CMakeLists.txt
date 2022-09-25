@@ -105,6 +105,10 @@ if (STATICCOMPILE)
     set(Boost_USE_STATIC_LIBS ON)
 endif()
 
+macro(add_sanitize_option flagname)
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${flagname}" )
+endmacro()
+
 option(SANITIZE "Use Clang sanitizers. You MUST use clang++ as the compiler for this to work" OFF)
 if (SANITIZE)
     # MESSAGE(WARNING " --Using clang sanitizers -- you MUST use clang++ or the compile WILL fail")
