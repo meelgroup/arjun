@@ -38,9 +38,12 @@ namespace po = boost::program_options;
 #include <sstream>
 #include <string>
 #include <signal.h>
+#ifdef USE_ZLIB
+#include <zlib.h>
+#endif
+
 
 #include "time_mem.h"
-
 #include "arjun.h"
 #include "config.h"
 #include <cryptominisat5/dimacsparser.h>
@@ -269,10 +272,10 @@ void readInAFile(const string& filename)
 {
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<FILE*, FN>, ArjunNS::Arjun> parser(arjun, NULL, 0);
+    CMSat::DimacsParser<CMSat::StreamBuffer<FILE*, CMSat::FN>, ArjunNS::Arjun> parser(arjun, NULL, 0);
     #else
     gzFile in = gzopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<gzFile, GZ>, ArjunNS::Arjun> parser(arjun, NULL, 0);
+    CMSat::DimacsParser<CMSat::StreamBuffer<gzFile, CMSat::GZ>, ArjunNS::Arjun> parser(arjun, NULL, 0);
     #endif
 
     if (in == NULL) {
@@ -301,7 +304,7 @@ void readInAFile(const string& filename)
     #endif
 }
 
-void dump_cnf(const std::pair<vector<vector<Lit>>, uint32_t>& cnf, const vector<uint32_t>& sampl_set, const uint32_t multiply = 0)
+void dump_cnf(const std::pair<vector<vector<CMSat::Lit>>, uint32_t>& cnf, const vector<uint32_t>& sampl_set, const uint32_t multiply = 0)
 {
     uint32_t num_cls = cnf.first.size();
     uint32_t max_var = cnf.second;
