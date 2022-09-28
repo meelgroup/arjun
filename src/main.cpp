@@ -56,6 +56,7 @@ using std::map;
 using std::set;
 using std::string;
 using std::vector;
+using namespace CMSat;
 
 po::options_description arjun_options = po::options_description("Arjun options");
 po::options_description help_options;
@@ -272,10 +273,10 @@ void readInAFile(const string& filename)
 {
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
-    CMSat::DimacsParser<CMSat::StreamBuffer<FILE*, CMSat::FN>, ArjunNS::Arjun> parser(arjun, NULL, 0);
+    DimacsParser<StreamBuffer<FILE*, FN>, ArjunNS::Arjun> parser(arjun, NULL, 0);
     #else
     gzFile in = gzopen(filename.c_str(), "rb");
-    CMSat::DimacsParser<CMSat::StreamBuffer<gzFile, CMSat::GZ>, ArjunNS::Arjun> parser(arjun, NULL, 0);
+    DimacsParser<StreamBuffer<gzFile, GZ>, ArjunNS::Arjun> parser(arjun, NULL, 0);
     #endif
 
     if (in == NULL) {
@@ -304,7 +305,7 @@ void readInAFile(const string& filename)
     #endif
 }
 
-void dump_cnf(const std::pair<vector<vector<CMSat::Lit>>, uint32_t>& cnf, const vector<uint32_t>& sampl_set, const uint32_t multiply = 0)
+void dump_cnf(const std::pair<vector<vector<Lit>>, uint32_t>& cnf, const vector<uint32_t>& sampl_set, const uint32_t multiply = 0)
 {
     uint32_t num_cls = cnf.first.size();
     uint32_t max_var = cnf.second;
@@ -396,7 +397,7 @@ int main(int argc, char** argv)
     arjun->set_empty_occs_based(conf.empty_occs_based);
     arjun->set_mirror_empty(conf.mirror_empty);
 //     if (polar_mode == 1) {
-//         arjun->set_polar_mode(CMSat::PolarityMode::polarmode_neg);
+//         arjun->set_polar_mode(PolarityMode::polarmode_neg);
 //     }
 
     //parsing the input
