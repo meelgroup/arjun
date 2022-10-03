@@ -360,31 +360,31 @@ endif()
 # ----------
 # manpage
 # ----------
-# if (${CMAKE_SYSTEM_NAME} MATCHES "Linux" AND NOT EMSCRIPTEN)
-#     find_program(HELP2MAN_FOUND help2man)
-#     if (HELP2MAN_FOUND)
-#         ADD_CUSTOM_TARGET(man_arjun
-#             ALL
-#             DEPENDS arjun-bin
-#         )
-#
-#         ADD_CUSTOM_COMMAND(
-#             TARGET man_arjun
-#             COMMAND help2man
-#             ARGS --version-string=${ARJUN_FULL_VERSION} --help-option="-h" $<TARGET_FILE:arjun-bin> -o ${CMAKE_CURRENT_BINARY_DIR}/arjun.1
-#         )
-#
-#         INSTALL(
-#             FILES ${CMAKE_CURRENT_BINARY_DIR}/arjun.1
-#             DESTINATION ${CMAKE_INSTALL_PREFIX}/man/man1)
-#
-#         message(STATUS "Manpage will be created and installed")
-#     else()
-#         MESSAGE(STATUS "Cannot find help2man, not creating manpage")
-#     endif()
-# else()
-#     MESSAGE(STATUS "Not on Linux, not creating manpage")
-# endif()
+if (${CMAKE_SYSTEM_NAME} MATCHES "Linux" AND NOT EMSCRIPTEN)
+    find_program(HELP2MAN_FOUND help2man)
+    if (HELP2MAN_FOUND)
+        ADD_CUSTOM_TARGET(man_arjun
+            ALL
+            DEPENDS arjun-bin
+        )
+
+        ADD_CUSTOM_COMMAND(
+            TARGET man_arjun
+            COMMAND help2man
+            ARGS --version-string=${ARJUN_FULL_VERSION} --help-option="-h" $<TARGET_FILE:arjun-bin> -o ${CMAKE_CURRENT_BINARY_DIR}/arjun.1
+        )
+
+        INSTALL(
+            FILES ${CMAKE_CURRENT_BINARY_DIR}/arjun.1
+            DESTINATION ${CMAKE_INSTALL_PREFIX}/man/man1)
+
+        message(STATUS "Manpage will be created and installed")
+    else()
+        MESSAGE(STATUS "Cannot find help2man, not creating manpage")
+    endif()
+else()
+    MESSAGE(STATUS "Not on Linux, not creating manpage")
+endif()
 
 # -----------------------------------------------------------------------------
 # Look for ZLIB (For reading zipped CNFs)
