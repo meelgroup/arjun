@@ -481,7 +481,7 @@ DLL_PUBLIC const vector<Lit> Arjun::get_internal_cnf(uint32_t& num_cls) const
     return cnf;
 }
 
-static std::pair<vector<vector<Lit>>, uint32_t> get_simplified_renumbered_cnf(SATSolver* solver, vector<uint32_t>& sampl_vars)
+static std::pair<vector<vector<Lit>>, uint32_t> get_simplified_renumbered_cnf(SATSolver* solver, vector<uint32_t>& sampl_vars, const bool renumber)
 {
     vector<vector<Lit>> cnf;
     solver->start_getting_small_clauses(
@@ -489,9 +489,9 @@ static std::pair<vector<vector<Lit>>, uint32_t> get_simplified_renumbered_cnf(SA
         std::numeric_limits<uint32_t>::max(),
         false, //red
         false, //bva vars
-        true); //simplified
+        renumber); //simplified
 
-    sampl_vars = solver->translate_sampl_set(sampl_vars);
+    if (renumber) sampl_vars = solver->translate_sampl_set(sampl_vars);
 
     bool ret = true;
     vector<Lit> clause;
@@ -502,7 +502,8 @@ static std::pair<vector<vector<Lit>>, uint32_t> get_simplified_renumbered_cnf(SA
         }
     }
     solver->end_getting_small_clauses();
-    return std::make_pair(cnf, solver->simplified_nvars());
+    return std::make_pair(cnf,
+            renumber ? solver->simplified_nvars() :  solver->nVars());
 }
 
 static vector<Lit> fill_solver_no_empty(
@@ -626,7 +627,7 @@ Arjun::get_fully_simplified_renumbered_cnf(
 
     vector<uint32_t> new_sampl_set;
     for(const auto& l: dont_elim) new_sampl_set.push_back(l.var());
-    auto cnf = get_simplified_renumbered_cnf(&solver, new_sampl_set);
+    auto cnf = get_simplified_renumbered_cnf(&solver, new_sampl_set, renumber);
     return std::make_tuple(cnf, new_sampl_set, empty_vars.size());
 }
 

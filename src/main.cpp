@@ -71,6 +71,7 @@ int recompute_sampling_set = 0;
 uint32_t orig_sampling_set_size = 0;
 uint32_t polar_mode = 0;
 int sparsify = true;
+int renumber = true;
 
 // static void signal_handler(int) {
 //     cout << endl << "c [arjun] INTERRUPTING ***" << endl << std::flush;
@@ -133,6 +134,8 @@ void add_arjun_options()
      "Allow mirror F|v=true === F|v=false empty")
     ("sparsify", po::value(&sparsify)->default_value(sparsify),
      "Use Oracle from SharpSAT-TD to sparsify CNF formula. Expensive, but useful for SharpSAT-style counters")
+    ("renumber", po::value(&renumber)->default_value(renumber),
+     "Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!")
 
     ;
 
@@ -334,7 +337,7 @@ void elim_to_file(
     double dump_start_time = cpuTime();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
     auto ret = arjun->get_fully_simplified_renumbered_cnf(
-        sampl_vars, empty_occs, orig_num_vars, sparsify);
+        sampl_vars, empty_occs, orig_num_vars, sparsify, renumber);
     dump_cnf(std::get<0>(ret), std::get<1>(ret), std::get<2>(ret));
     cout << "c [arjun] Done dumping. T: " << (cpuTime() - dump_start_time) << endl;
 }
