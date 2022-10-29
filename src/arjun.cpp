@@ -591,6 +591,9 @@ Arjun::get_fully_simplified_renumbered_cnf(
     solver.set_verbosity(arjdata->common.conf.verb);
     solver.set_renumber(renumber);
     solver.set_scc(renumber);
+
+    // Create a new SAT solver that contains no empties.
+    // dont_elim now how no empties in it
     auto dont_elim = fill_solver_no_empty(
         sampl_vars, empty_vars, orig_num_vars, solver, this);
 
@@ -631,7 +634,6 @@ Arjun::get_fully_simplified_renumbered_cnf(
     auto cnf = get_simplified_renumbered_cnf(&solver, new_sampl_set, renumber);
     return std::make_tuple(cnf, new_sampl_set, empty_vars.size());
 }
-
 
 DLL_PUBLIC void Arjun::set_pred_forever_cutoff(int pred_forever_cutoff)
 {
