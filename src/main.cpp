@@ -306,7 +306,9 @@ void readInAFile(const string& filename)
     #endif
 }
 
-void dump_cnf(const std::pair<vector<vector<Lit>>, uint32_t>& cnf, const vector<uint32_t>& sampl_set, const uint32_t multiply = 0)
+void dump_cnf(const std::pair<vector<vector<Lit>>,
+        uint32_t>& cnf, const vector<uint32_t>& sampl_set,
+        const uint32_t multiply = 0)
 {
     uint32_t num_cls = cnf.first.size();
     uint32_t max_var = cnf.second;
@@ -317,6 +319,7 @@ void dump_cnf(const std::pair<vector<vector<Lit>>, uint32_t>& cnf, const vector<
     //Add projection
     outf << "c ind ";
     for(const auto& v: sampl_set) {
+        assert(v < max_var);
         outf << v+1  << " ";
     }
     outf << "0\n";
@@ -336,6 +339,7 @@ void elim_to_file(
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
     auto ret = arjun->get_fully_simplified_renumbered_cnf(
         sampl_vars, empty_occs, orig_num_vars, sparsify, renumber);
+
     dump_cnf(std::get<0>(ret), std::get<1>(ret), std::get<2>(ret));
     cout << "c [arjun] Done dumping. T: " << (cpuTime() - dump_start_time) << endl;
 }
@@ -433,7 +437,11 @@ int main(int argc, char** argv)
 
             //Add projection
             outf << "c ind ";
-            for(const auto& v: indep_vars) outf << v+1  << " ";
+            std::sort(indep_vars.begin(), indep_vars.end());
+            for(const auto& v: indep_vars) {
+                assert(v < orig_num_vars);
+                outf << v+1  << " ";
+            }
             outf << "0\n";
 
             for(const auto& l: cnf) {

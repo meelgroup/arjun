@@ -481,7 +481,8 @@ DLL_PUBLIC const vector<Lit> Arjun::get_internal_cnf(uint32_t& num_cls) const
     return cnf;
 }
 
-static std::pair<vector<vector<Lit>>, uint32_t> get_simplified_renumbered_cnf(SATSolver* solver, vector<uint32_t>& sampl_vars, const bool renumber)
+static std::pair<vector<vector<Lit>>, uint32_t> get_simplified_renumbered_cnf(
+        SATSolver* solver, vector<uint32_t>& sampl_vars, const bool renumber)
 {
     vector<vector<Lit>> cnf;
     solver->start_getting_small_clauses(
@@ -492,6 +493,7 @@ static std::pair<vector<vector<Lit>>, uint32_t> get_simplified_renumbered_cnf(SA
         renumber); //simplified
 
     if (renumber) sampl_vars = solver->translate_sampl_set(sampl_vars);
+    std::sort(sampl_vars.begin(), sampl_vars.end());
 
     bool ret = true;
     vector<Lit> clause;
@@ -516,12 +518,11 @@ static vector<Lit> fill_solver_no_empty(
     // We create a new Solver that has all variables (except empty)
     solver.new_vars(orig_num_vars-empty_vars.size());
     vector<char> seen(orig_num_vars, 0);
-    vector<uint32_t> mymap;
+    vector<uint32_t> mymap; // variable map without EMPTY
     for(auto const& e: empty_vars) {
         assert(e < orig_num_vars);
         seen[e] = 1;
     }
-
     uint32_t at = 0;
     for(uint32_t i = 0; i < orig_num_vars; i++) {
         if (!seen[i]) {
@@ -553,7 +554,6 @@ static vector<Lit> fill_solver_no_empty(
         ok = true;
         sz = 0;
     }
-
     arjun->varreplace();
 
     auto bin_xors = arjun->get_all_binary_xors();
@@ -567,15 +567,16 @@ static vector<Lit> fill_solver_no_empty(
         }
     }
 
-    vector<Lit> dont_elim;
-    set<Lit> dont_elim_set;
+    // return sampling set, without empties
+    set<Lit> sampl_set_no_empty;
     for(const auto& v: sampl_vars) {
         if (seen[v]) continue;
-        dont_elim_set.insert(Lit(mymap[v], false));
+        sampl_set_no_empty.insert(Lit(mymap[v], false));
     }
-    for(const auto& l: dont_elim_set) dont_elim.push_back(l);
+    vector<Lit> sampl_vars_no_empty;
+    for(const auto& l: sampl_set_no_empty) sampl_vars_no_empty.push_back(l);
 
-    return dont_elim;
+    return sampl_vars_no_empty;
 }
 
 DLL_PUBLIC std::tuple<pair<vector<vector<Lit>>, uint32_t>, vector<uint32_t>, uint32_t>
