@@ -130,8 +130,6 @@ void add_arjun_options()
      "Use XOR finding and Gauss-Jordan elimination")
     ("empty", po::value(&conf.empty_occs_based)->default_value(conf.empty_occs_based),
      "Use empty occurrence improvement")
-    ("mirrorempty", po::value(&conf.mirror_empty)->default_value(conf.mirror_empty),
-     "Allow mirror F|v=true === F|v=false empty")
     ("sparsify", po::value(&sparsify)->default_value(sparsify),
      "Use Oracle from SharpSAT-TD to sparsify CNF formula. Expensive, but useful for SharpSAT-style counters")
     ("renumber", po::value(&renumber)->default_value(renumber),
@@ -398,7 +396,6 @@ int main(int argc, char** argv)
     arjun->set_backbone_simpl_max_confl(conf.backbone_simpl_max_confl);
     arjun->set_simp(conf.simp);
     arjun->set_empty_occs_based(conf.empty_occs_based);
-    arjun->set_mirror_empty(conf.mirror_empty);
 //     if (polar_mode == 1) {
 //         arjun->set_polar_mode(PolarityMode::polarmode_neg);
 //     }

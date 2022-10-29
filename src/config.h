@@ -42,7 +42,6 @@ struct Config {
     int xor_gates_based = 1;
     int ite_gate_based = 1;
     int irreg_gate_based = 1;
-    int mirror_empty = 1;
     int empty_occs_based = 0;
     int probe_based = 1;
     int forward = 0;
