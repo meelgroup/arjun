@@ -52,9 +52,9 @@ c [arjun] Done dumping. T: 1.0406
 This means that your input independent set of your input formula `input.cnf`, which had a size of 500 has been reduced to 5, which is ony 1% of the original set. The simplified formula with the smaller independent set has been output to `output.cnf`.
 
 
-## Extra use-cases (1)
+## Empty occurrences
 
-In case you are prepared to deal with so-called "empty occurrences", you can also turn on empty occurrence detection via `--empty 1`:
+Empty occurrences are when a variable is ostensibly part of the CNF, but actually doesn't show up in it at all. This happens often after simplification. Obviously, all solution numbers need to be multiplied by 2**n for such cases. Arjun can remove these variables via `--empty 1`:
 ```
 ./arjun --empty 1 input.cnf output.cnf
 c [arjun] original sampling set size: 500
@@ -67,9 +67,9 @@ grep "MUST" output.cnf
 c MUST MUTIPLY BY 2**10
 ```
 
-which means that the final count of the CNF must be multiplied by 2^10 (i.e. 1024) in order to get the correct count. Note that if you forget to multiply, the count will be wrong. So you must multiply. Otherwise, just use the default setting, i.e. without `--empty 1`.
+This means that the final count of the CNF must be multiplied by 2^10 (i.e. 1024) in order to get the correct count. Note that if you forget to multiply, the count will be wrong. So you must multiply. Otherwise, just use the default setting, i.e. without `--empty 1`.
 
-## Extrac use cases (2)
+## Only extracting independent set
 In case you are only interested in a reduced independent set, use:
 ```
 ./arjun input.cnf
