@@ -95,20 +95,6 @@ bool Common::simplify()
     return true;
 }
 
-struct IncSorterAsc
-{
-    IncSorterAsc(const vector<uint32_t>& _inc) :
-        inc(_inc)
-    {}
-
-    bool operator()(const uint32_t a, const uint32_t b) const {
-        //Return that the order is OK when "a" has less incidence than "b"
-        return inc[a] < inc[b];
-    }
-
-    const vector<uint32_t>& inc;
-};
-
 bool Common::backbone_simpl()
 {
     if (conf.verb) {
@@ -277,19 +263,6 @@ bool Common::probe_all()
 
     return true;
 }
-
-struct OccurSorter {
-    OccurSorter(const vector<vector<uint32_t>>& _occ) :
-        occ(_occ)
-    {}
-
-    bool operator()(uint32_t v1, uint32_t v2) const {
-        return occ[v1].size() < occ[v2].size();
-    }
-
-    const vector<vector<uint32_t>>& occ;
-
-};
 
 enum class gate_t {or_gate, xor_gate, ite_gate};
 

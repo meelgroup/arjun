@@ -577,7 +577,6 @@ Arjun::get_fully_simplified_renumbered_cnf(
     solver.set_weaken_time_limitM(2000);
     solver.set_occ_based_lit_rem_time_limitM(500);
 
-
     // occ-ternary-res not used
     // eqlit-find ? (too slow)
     string str("full-probe, sub-cls-with-bin, must-scc-vrepl, must-scc-vrepl, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-del-blocked, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, ");
