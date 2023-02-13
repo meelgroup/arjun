@@ -102,14 +102,8 @@ void add_arjun_options()
      "Regularly simplify")
     ("recomp", po::value(&recompute_sampling_set)->default_value(recompute_sampling_set),
      "Recompute sampling set even if it's part of the CNF")
-    ("fwdset", po::value(&conf.assign_fwd_val)->default_value(conf.assign_fwd_val),
-     "When doing forward, set the value instead of using assumptions")
     ("backward", po::value(&conf.backward)->default_value(conf.backward),
      "Do backwards query")
-    ("forward", po::value(&conf.forward)->default_value(conf.forward),
-     "Do forward query")
-    ("fwdgroup", po::value(&conf.forward_group)->default_value(conf.forward_group),
-     "Group variables by this bunches when doing forward query")
     ("orgate", po::value(&conf.or_gate_based)->default_value(conf.or_gate_based),
      "Use 3-long gate detection in SAT solver to define some variables")
     ("irreggate", po::value(&conf.irreg_gate_based)->default_value(conf.irreg_gate_based),
@@ -389,12 +383,9 @@ int main(int argc, char** argv)
     arjun->set_ite_gate_based(conf.ite_gate_based);
     arjun->set_xor_gates_based(conf.xor_gates_based);
     arjun->set_probe_based(conf.probe_based);
-    arjun->set_forward(conf.forward);
     arjun->set_backward(conf.backward);
-    arjun->set_assign_fwd_val(conf.assign_fwd_val);
     arjun->set_backw_max_confl(conf.backw_max_confl);
     arjun->set_gauss_jordan(conf.gauss_jordan);
-    arjun->set_fwd_group(conf.forward_group);
     arjun->set_backbone_simpl(conf.backbone_simpl);
     arjun->set_irreg_gate_based(conf.irreg_gate_based);
     arjun->set_backbone_simpl_max_confl(conf.backbone_simpl_max_confl);

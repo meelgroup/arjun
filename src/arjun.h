@@ -97,13 +97,10 @@ namespace ArjunNS {
         void set_or_gate_based(bool or_gate_based);
         void set_xor_gates_based(bool xor_gates_based);
         void set_probe_based(bool probe_based);
-        void set_forward(bool forward);
         void set_backward(bool backward);
-        void set_assign_fwd_val(bool assign_fwd_val);
         void set_backw_max_confl(uint32_t backw_max_confl);
         void set_gauss_jordan(bool gauss_jordan);
         void set_regularly_simplify(bool reg_simp);
-        void set_fwd_group(uint32_t forward_group);
         void set_find_xors(bool find_xors);
         void set_backbone_simpl(bool backbone_simpl);
         void set_ite_gate_based(bool ite_gate_based);
@@ -126,13 +123,10 @@ namespace ArjunNS {
         bool get_or_gate_based() const;
         bool get_xor_gates_based() const;
         bool get_probe_based() const;
-        bool get_forward() const;
         bool get_backward() const;
-        bool get_assign_fwd_val() const;
         uint32_t get_backw_max_confl() const;
         bool get_gauss_jordan() const;
         bool get_regularly_simplify() const;
-        uint32_t get_fwd_group() const;
         bool get_find_xors() const;
         bool get_backbone_simpl() const;
         bool get_ite_gate_based() const;

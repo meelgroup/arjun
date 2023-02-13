@@ -247,20 +247,10 @@ DLL_PUBLIC void Arjun::set_probe_based(bool probe_based)
     arjdata->common.conf.probe_based = probe_based;
 }
 
-DLL_PUBLIC void Arjun::set_forward(bool forward)
-{
-    arjdata->common.conf.forward = forward;
-}
-
 DLL_PUBLIC void Arjun::set_backward(bool backward)
 {
     //assert(backward && "We MUST have backward or we cannot work");
     arjdata->common.conf.backward = backward;
-}
-
-DLL_PUBLIC void Arjun::set_assign_fwd_val(bool assign_fwd_val)
-{
-    arjdata->common.conf.assign_fwd_val = assign_fwd_val;
 }
 
 DLL_PUBLIC void Arjun::set_backw_max_confl(uint32_t backw_max_confl)
@@ -328,19 +318,9 @@ DLL_PUBLIC bool Arjun::get_probe_based() const
     return arjdata->common.conf.probe_based;
 }
 
-DLL_PUBLIC bool Arjun::get_forward() const
-{
-    return arjdata->common.conf.forward;
-}
-
 DLL_PUBLIC bool Arjun::get_backward() const
 {
     return arjdata->common.conf.backward;
-}
-
-DLL_PUBLIC bool Arjun::get_assign_fwd_val() const
-{
-    return arjdata->common.conf.assign_fwd_val;
 }
 
 DLL_PUBLIC uint32_t Arjun::get_backw_max_confl() const
@@ -366,16 +346,6 @@ DLL_PUBLIC void Arjun::set_regularly_simplify(bool reg_simp)
 DLL_PUBLIC bool Arjun::get_regularly_simplify() const
 {
     return arjdata->common.conf.regularly_simplify;
-}
-
-DLL_PUBLIC void Arjun::set_fwd_group(uint32_t forward_group)
-{
-    arjdata->common.conf.forward_group = forward_group;
-}
-
-DLL_PUBLIC uint32_t Arjun::get_fwd_group() const
-{
-    return arjdata->common.conf.forward_group;
 }
 
 DLL_PUBLIC void Arjun::set_ite_gate_based(bool ite_gate_based)

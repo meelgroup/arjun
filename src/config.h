@@ -44,10 +44,7 @@ struct Config {
     int irreg_gate_based = 1;
     int empty_occs_based = 0;
     int probe_based = 1;
-    int forward = 0;
-    int forward_group = 10;
     int backward = 1;
-    int assign_fwd_val = 0;
     int gauss_jordan = 0;
     int backbone_simpl = 0;
     unsigned long backbone_simpl_max_confl = 10ULL*1000ULL;
