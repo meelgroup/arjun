@@ -30,6 +30,14 @@ tot_non_bin_cl_size = 0
 non_bin_cls = 0
 set_vals = {}
 
+if len(sys.argv) < 2:
+    print("ERROR: You need the filename")
+    exit(-1)
+
+verbose = False
+if len(sys.argv) >= 3 and sys.argv[2].strip() == "-v":
+    verbose = True
+
 # read set lits
 with open(sys.argv[1], "r") as f:
     for line in f:
@@ -42,7 +50,7 @@ with open(sys.argv[1], "r") as f:
 
         if line[0] == "p":
             line = line.split()
-            print(line)
+            if verbose: print(line)
             num_vars = int(line[2])
             continue
 
@@ -58,16 +66,16 @@ with open(sys.argv[1], "r") as f:
         l = line.strip()
         if len(line) < 1:
             continue
-    
+
         if line[0] == "c":
             continue
-    
+
         if line[0] == "p":
             line = line.split()
-            print(line)
+            if verbose: print(line)
             num_vars = int(line[2])
             continue
-    
+
         l = l.split()
         if len(l) == 2:
             lit = int(l[0])
@@ -101,13 +109,16 @@ with open(sys.argv[1], "r") as f:
         for x in l2:
             if x != "0":
                 num_lits+=1
-    
 
-print("num set lits        ", len(set_vals))
-print("num (non-set) vars  ", num_vars-len(set_vals))
-print("num cls             ", num_cls)
-print("num bin cls         ", num_bin_cls)
-print("max cl size         ", max_cl_sz)
-if (non_bin_cls != 0): print("avg non-bin cl sz    %-4.1f" % (float(tot_non_bin_cl_size)/float(non_bin_cls)))
-else: print("avg non-bin cl sz   %-4.1f (no non-bin cl)" % 0)
-print("num (non-unit) lits ", num_lits)
+
+if verbose:
+    print("num set lits        ", len(set_vals))
+print("num (non-set) vars  %7d" % (num_vars-len(set_vals)))
+print("num cls             %7d" % num_cls)
+print("num bin cls         %7d" % num_bin_cls)
+print("max cl size         %7d" % max_cl_sz)
+if (non_bin_cls != 0):
+    print("avg non-bin cl sz    %5.1f" % (float(tot_non_bin_cl_size)/float(non_bin_cls)))
+else:
+    print("avg non-bin cl sz   %5.1f (no non-bin cl)" % 0)
+print("num (non-unit) lits %7d" % num_lits)
