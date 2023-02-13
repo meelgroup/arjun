@@ -23,7 +23,6 @@
  */
 
 #include <boost/program_options.hpp>
-using boost::lexical_cast;
 namespace po = boost::program_options;
 
 #if defined(__GNUC__) && defined(__linux__)
@@ -48,12 +47,9 @@ namespace po = boost::program_options;
 #include "config.h"
 #include <cryptominisat5/dimacsparser.h>
 
-
 using std::cout;
 using std::cerr;
 using std::endl;
-using std::map;
-using std::set;
 using std::string;
 using std::vector;
 using namespace CMSat;
