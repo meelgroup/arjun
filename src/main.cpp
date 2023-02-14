@@ -68,6 +68,7 @@ uint32_t orig_sampling_set_size = 0;
 uint32_t polar_mode = 0;
 int sparsify = true;
 int renumber = true;
+bool gates = true;
 
 // static void signal_handler(int) {
 //     cout << endl << "c [arjun] INTERRUPTING ***" << endl << std::flush;
@@ -100,20 +101,25 @@ void add_arjun_options()
      "Recompute sampling set even if it's part of the CNF")
     ("backward", po::value(&conf.backward)->default_value(conf.backward),
      "Do backwards query")
+
+    //gates
+    ("gates", po::value<bool>(&gates),
+     "Turn on/off all gate-based definability")
     ("orgate", po::value(&conf.or_gate_based)->default_value(conf.or_gate_based),
      "Use 3-long gate detection in SAT solver to define some variables")
     ("irreggate", po::value(&conf.irreg_gate_based)->default_value(conf.irreg_gate_based),
      "Use irregular gate based removal of variables from sampling set")
     ("itegate", po::value(&conf.ite_gate_based)->default_value(conf.ite_gate_based),
      "Use ITE gate detection in SAT solver to define some variables")
+    ("xorgate", po::value(&conf.xor_gates_based)->default_value(conf.xor_gates_based),
+     "Use XOR detection in SAT solver to define some variables")
+
     ("probe", po::value(&conf.probe_based)->default_value(conf.probe_based),
      "Use simple probing to set (and define) some variables")
     ("backbone", po::value(&conf.backbone_simpl)->default_value(conf.backbone_simpl),
      "Use backbone simplification")
     ("backbonemaxconfl", po::value(&conf.backbone_simpl_max_confl)->default_value(conf.backbone_simpl_max_confl),
      "Backbone simplification max conflicts")
-    ("xorgate", po::value(&conf.xor_gates_based)->default_value(conf.xor_gates_based),
-     "Use XOR detection in SAT solver to define some variables")
     ("maxc", po::value(&conf.backw_max_confl)->default_value(conf.backw_max_confl),
      "Maximum conflicts per variable in backward mode")
     ("gaussj", po::value(&conf.gauss_jordan)->default_value(conf.gauss_jordan),
@@ -375,15 +381,27 @@ int main(int argc, char** argv)
     arjun->set_guess(conf.guess);
     arjun->set_pre_simplify(conf.pre_simplify);
     arjun->set_incidence_sort(conf.incidence_sort);
-    arjun->set_or_gate_based(conf.or_gate_based);
-    arjun->set_ite_gate_based(conf.ite_gate_based);
-    arjun->set_xor_gates_based(conf.xor_gates_based);
+    if (gates) {
+      arjun->set_or_gate_based(conf.or_gate_based);
+      arjun->set_ite_gate_based(conf.ite_gate_based);
+      arjun->set_xor_gates_based(conf.xor_gates_based);
+      arjun->set_irreg_gate_based(conf.irreg_gate_based);
+    } else {
+      cout << "c NOTE: all gates are turned off due to `--gates 0`" << endl;
+      if (vm.count("orgate") || vm.count("itegate") || vm.count("xorgate") || vm.count("irreggate")) {
+          cout << "ERROR: if `--gate 0` is given, no other gate-based option can be given" << endl;
+          exit(-1);
+      }
+      arjun->set_or_gate_based   (0);
+      arjun->set_ite_gate_based  (0);
+      arjun->set_xor_gates_based (0);
+      arjun->set_irreg_gate_based(0);
+    }
     arjun->set_probe_based(conf.probe_based);
     arjun->set_backward(conf.backward);
     arjun->set_backw_max_confl(conf.backw_max_confl);
     arjun->set_gauss_jordan(conf.gauss_jordan);
     arjun->set_backbone_simpl(conf.backbone_simpl);
-    arjun->set_irreg_gate_based(conf.irreg_gate_based);
     arjun->set_backbone_simpl_max_confl(conf.backbone_simpl_max_confl);
     arjun->set_simp(conf.simp);
     arjun->set_empty_occs_based(conf.empty_occs_based);
