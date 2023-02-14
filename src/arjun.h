@@ -90,7 +90,6 @@ namespace ArjunNS {
         void set_fast_backw(bool fast_backw);
         void set_distill(bool distill);
         void set_intree(bool intree);
-        void set_guess(bool guess);
         void set_simp(bool simp);
         void set_pre_simplify(bool simp);
         void set_incidence_sort(uint32_t incidence_sort);
@@ -117,7 +116,6 @@ namespace ArjunNS {
         bool get_fast_backw() const;
         bool get_distill() const;
         bool get_intree() const;
-        bool get_guess() const;
         bool get_pre_simplify() const;
         uint32_t get_incidence_sort() const;
         bool get_or_gate_based() const;

@@ -37,7 +37,6 @@ struct Config {
     int distill = 1;
     int regularly_simplify = 1;
     int intree = 1;
-    int guess = 0;
     int pre_simplify = 1;
     int incidence_sort = 1;
     int or_gate_based = 1;
@@ -51,7 +50,6 @@ struct Config {
     int backbone_simpl = 0;
     unsigned long backbone_simpl_max_confl = 10ULL*1000ULL;
     uint32_t backw_max_confl = 500;
-    uint32_t guess_max_confl = 1000;
 };
 
 }

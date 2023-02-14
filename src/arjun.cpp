@@ -212,11 +212,6 @@ DLL_PUBLIC void Arjun::set_intree(bool intree)
     arjdata->common.conf.intree = intree;
 }
 
-DLL_PUBLIC void Arjun::set_guess(bool guess)
-{
-    arjdata->common.conf.guess = guess;
-}
-
 DLL_PUBLIC void Arjun::set_pre_simplify(bool simp)
 {
     arjdata->common.conf.pre_simplify = simp;
@@ -286,11 +281,6 @@ DLL_PUBLIC bool Arjun::get_distill() const
 DLL_PUBLIC bool Arjun::get_intree() const
 {
     return arjdata->common.conf.intree;
-}
-
-DLL_PUBLIC bool Arjun::get_guess() const
-{
-    return arjdata->common.conf.guess;
 }
 
 DLL_PUBLIC bool Arjun::get_pre_simplify() const

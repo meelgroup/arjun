@@ -89,7 +89,6 @@ void add_arjun_options()
     ("intree", po::value(&conf.intree)->default_value(conf.intree), "intree")
     ("distill", po::value(&conf.distill)->default_value(conf.distill), "distill")
     ("fastbackw", po::value(&conf.fast_backw)->default_value(conf.fast_backw), "fast_backw")
-    ("guess", po::value(&conf.guess)->default_value(conf.guess), "Guess small set")
     ("simp", po::value(&conf.simp)->default_value(conf.simp), "Do ANY sort of simplification")
     ("sort", po::value(&conf.incidence_sort)->default_value(conf.incidence_sort),
      "Which sorting mechanism.")
@@ -378,7 +377,6 @@ int main(int argc, char** argv)
     arjun->set_distill(conf.distill);
     arjun->set_regularly_simplify(conf.regularly_simplify);
     arjun->set_intree(conf.intree);
-    arjun->set_guess(conf.guess);
     arjun->set_pre_simplify(conf.pre_simplify);
     arjun->set_incidence_sort(conf.incidence_sort);
     if (gates) {
