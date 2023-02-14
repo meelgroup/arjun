@@ -86,10 +86,6 @@ void add_arjun_options()
     ("verb,v", po::value(&conf.verb)->default_value(conf.verb), "verbosity")
     ("seed,s", po::value(&conf.seed)->default_value(conf.seed), "Seed")
 //     ("bve", po::value(&conf.bve)->default_value(conf.bve), "bve")
-    ("intree", po::value(&conf.intree)->default_value(conf.intree), "intree")
-    ("distill", po::value(&conf.distill)->default_value(conf.distill), "distill")
-    ("fastbackw", po::value(&conf.fast_backw)->default_value(conf.fast_backw), "fast_backw")
-    ("simp", po::value(&conf.simp)->default_value(conf.simp), "Do ANY sort of simplification")
     ("sort", po::value(&conf.incidence_sort)->default_value(conf.incidence_sort),
      "Which sorting mechanism.")
     ("presimp", po::value(&conf.pre_simplify)->default_value(conf.pre_simplify),
@@ -100,8 +96,34 @@ void add_arjun_options()
      "Recompute sampling set even if it's part of the CNF")
     ("backward", po::value(&conf.backward)->default_value(conf.backward),
      "Do backwards query")
+    ("empty", po::value(&conf.empty_occs_based)->default_value(conf.empty_occs_based),
+     "Use empty occurrence improvement")
+    ("maxc", po::value(&conf.backw_max_confl)->default_value(conf.backw_max_confl),
+     "Maximum conflicts per variable in backward mode")
+    ;
 
-    //gates
+    po::options_description misc_options("Misc options");
+    misc_options.add_options()
+    ("intree", po::value(&conf.intree)->default_value(conf.intree), "intree")
+    ("distill", po::value(&conf.distill)->default_value(conf.distill), "distill")
+    ("fastbackw", po::value(&conf.fast_backw)->default_value(conf.fast_backw), "fast_backw")
+    ("simp", po::value(&conf.simp)->default_value(conf.simp), "Do ANY sort of simplification")
+    ("probe", po::value(&conf.probe_based)->default_value(conf.probe_based),
+     "Use simple probing to set (and define) some variables")
+    ("backbone", po::value(&conf.backbone_simpl)->default_value(conf.backbone_simpl),
+     "Use backbone simplification")
+    ("backbonemaxconfl", po::value(&conf.backbone_simpl_max_confl)->default_value(conf.backbone_simpl_max_confl),
+     "Backbone simplification max conflicts")
+    ("gaussj", po::value(&conf.gauss_jordan)->default_value(conf.gauss_jordan),
+     "Use XOR finding and Gauss-Jordan elimination")
+    ("sparsify", po::value(&sparsify)->default_value(sparsify),
+     "Use Oracle from SharpSAT-TD to sparsify CNF formula. Expensive, but useful for SharpSAT-style counters")
+    ("renumber", po::value(&renumber)->default_value(renumber),
+     "Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!")
+    ;
+
+    po::options_description gate_options("Gate options");
+    gate_options.add_options()
     ("gates", po::value<bool>(&gates),
      "Turn on/off all gate-based definability")
     ("orgate", po::value(&conf.or_gate_based)->default_value(conf.or_gate_based),
@@ -112,27 +134,11 @@ void add_arjun_options()
      "Use ITE gate detection in SAT solver to define some variables")
     ("xorgate", po::value(&conf.xor_gates_based)->default_value(conf.xor_gates_based),
      "Use XOR detection in SAT solver to define some variables")
-
-    ("probe", po::value(&conf.probe_based)->default_value(conf.probe_based),
-     "Use simple probing to set (and define) some variables")
-    ("backbone", po::value(&conf.backbone_simpl)->default_value(conf.backbone_simpl),
-     "Use backbone simplification")
-    ("backbonemaxconfl", po::value(&conf.backbone_simpl_max_confl)->default_value(conf.backbone_simpl_max_confl),
-     "Backbone simplification max conflicts")
-    ("maxc", po::value(&conf.backw_max_confl)->default_value(conf.backw_max_confl),
-     "Maximum conflicts per variable in backward mode")
-    ("gaussj", po::value(&conf.gauss_jordan)->default_value(conf.gauss_jordan),
-     "Use XOR finding and Gauss-Jordan elimination")
-    ("empty", po::value(&conf.empty_occs_based)->default_value(conf.empty_occs_based),
-     "Use empty occurrence improvement")
-    ("sparsify", po::value(&sparsify)->default_value(sparsify),
-     "Use Oracle from SharpSAT-TD to sparsify CNF formula. Expensive, but useful for SharpSAT-style counters")
-    ("renumber", po::value(&renumber)->default_value(renumber),
-     "Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!")
-
     ;
 
     help_options.add(arjun_options);
+    help_options.add(misc_options);
+    help_options.add(gate_options);
 }
 
 void add_supported_options(int argc, char** argv)
@@ -145,10 +151,8 @@ void add_supported_options(int argc, char** argv)
         if (vm.count("help"))
         {
             cout
-            << "Minimal projection set finder" << endl;
-
-            cout
-            << "arjun [options] inputfile" << endl << endl;
+            << "Minimal projection set finder and simplifier." << endl << endl
+            << "arjun [options] inputfile [outputfile]" << endl;
 
             cout << help_options << endl;
             std::exit(0);
@@ -386,10 +390,6 @@ int main(int argc, char** argv)
       arjun->set_irreg_gate_based(conf.irreg_gate_based);
     } else {
       cout << "c NOTE: all gates are turned off due to `--gates 0`" << endl;
-      if (vm.count("orgate") || vm.count("itegate") || vm.count("xorgate") || vm.count("irreggate")) {
-          cout << "ERROR: if `--gate 0` is given, no other gate-based option can be given" << endl;
-          exit(-1);
-      }
       arjun->set_or_gate_based   (0);
       arjun->set_ite_gate_based  (0);
       arjun->set_xor_gates_based (0);

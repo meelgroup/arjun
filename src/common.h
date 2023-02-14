@@ -278,8 +278,6 @@ struct IncidenceSorterCommPart
     const Common* comm;
 };
 
-
-
 struct IncidenceSorterCommPartToOtherComm
 {
     IncidenceSorterCommPartToOtherComm(const Common* _comm) :
