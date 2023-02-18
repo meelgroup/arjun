@@ -353,6 +353,11 @@ DLL_PUBLIC void Arjun::set_irreg_gate_based(const bool irreg_gate_based)
     arjdata->common.conf.irreg_gate_based = irreg_gate_based;
 }
 
+DLL_PUBLIC void Arjun::set_specified_order_fname(std::string specified_order_fname)
+{
+    arjdata->common.conf.specified_order_fname = specified_order_fname;
+}
+
 DLL_PUBLIC bool Arjun::get_irreg_gate_based() const
 {
     return arjdata->common.conf.irreg_gate_based;

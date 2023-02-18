@@ -23,6 +23,8 @@
  */
 
 #include "common.h"
+#include <set>
+
 using namespace ArjunInt;
 
 void Common::fill_assumptions_backward(
@@ -94,6 +96,32 @@ void Common::backward_round()
     }
 
     sort_unknown(unknown);
+
+    if (conf.specified_order_fname != "") {
+        std::set<uint32_t> old_unknown(unknown.begin(), unknown.end());
+        unknown.clear();
+
+        std::ifstream infile(conf.specified_order_fname);
+        std::string line;
+        uint32_t line_num = 1;
+        while (std::getline(infile, line))
+        {
+            std::istringstream iss(line);
+            int a;
+            if (!(iss >> a)) {
+                cout << "ERROR: the file '" << conf.specified_order_fname << "' contains a line we cannot parse to be a variable number" << endl;
+                cout << "ERROR line number: " << line_num << std::endl;
+                cout << "ERROR: lines should ONLY contain a single variable" << endl;
+                exit(-1);
+            }
+            if (old_unknown.find(a) == old_unknown.end()) {
+                cout << "WARNING: the variable " << a << " is in the order file but not in the original order." << endl;
+            }
+            unknown.push_back(a);
+            line_num++;
+        }
+    }
+
     if (conf.verb >= 4) {
         cout << "Sorted output: "<< endl;
         for (const auto& v:unknown) {

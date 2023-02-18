@@ -26,6 +26,7 @@
 #define CONFIG_H
 
 #include <cstdint>
+#include <string>
 
 namespace ArjunInt {
 
@@ -48,6 +49,7 @@ struct Config {
     int backward = 1;
     int gauss_jordan = 0;
     int backbone_simpl = 0;
+    std::string specified_order_fname;
     unsigned long backbone_simpl_max_confl = 10ULL*1000ULL;
     uint32_t backw_max_confl = 500;
 };

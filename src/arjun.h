@@ -110,6 +110,7 @@ namespace ArjunNS {
         void set_pred_forever_cutoff(int pred_forever_cutoff = -1);
         void set_every_pred_reduce(int every_pred_reduce = -1);
         void set_empty_occs_based(const bool empty_occs_based);
+        void set_specified_order_fname(std::string specified_order_fname);
 
         //Get config
         uint32_t get_verbosity() const;

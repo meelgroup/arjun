@@ -88,10 +88,6 @@ void add_arjun_options()
 //     ("bve", po::value(&conf.bve)->default_value(conf.bve), "bve")
     ("sort", po::value(&conf.incidence_sort)->default_value(conf.incidence_sort),
      "Which sorting mechanism.")
-    ("presimp", po::value(&conf.pre_simplify)->default_value(conf.pre_simplify),
-     "simplify")
-    ("regsimp", po::value(&conf.regularly_simplify)->default_value(conf.regularly_simplify),
-     "Regularly simplify")
     ("recomp", po::value(&recompute_sampling_set)->default_value(recompute_sampling_set),
      "Recompute sampling set even if it's part of the CNF")
     ("backward", po::value(&conf.backward)->default_value(conf.backward),
@@ -102,24 +98,34 @@ void add_arjun_options()
      "Maximum conflicts per variable in backward mode")
     ;
 
-    po::options_description misc_options("Misc options");
-    misc_options.add_options()
-    ("intree", po::value(&conf.intree)->default_value(conf.intree), "intree")
-    ("distill", po::value(&conf.distill)->default_value(conf.distill), "distill")
-    ("fastbackw", po::value(&conf.fast_backw)->default_value(conf.fast_backw), "fast_backw")
+    po::options_description simp_options("Simplification before indep detection");
+    simp_options.add_options()
+    ("presimp", po::value(&conf.pre_simplify)->default_value(conf.pre_simplify),
+     "simplify")
+    ("regsimp", po::value(&conf.regularly_simplify)->default_value(conf.regularly_simplify),
+     "Regularly simplify")
     ("simp", po::value(&conf.simp)->default_value(conf.simp), "Do ANY sort of simplification")
     ("probe", po::value(&conf.probe_based)->default_value(conf.probe_based),
      "Use simple probing to set (and define) some variables")
+    ("intree", po::value(&conf.intree)->default_value(conf.intree), "intree")
     ("backbone", po::value(&conf.backbone_simpl)->default_value(conf.backbone_simpl),
      "Use backbone simplification")
     ("backbonemaxconfl", po::value(&conf.backbone_simpl_max_confl)->default_value(conf.backbone_simpl_max_confl),
      "Backbone simplification max conflicts")
+    ;
+
+    po::options_description misc_options("misc options");
+    misc_options.add_options()
+    ("fastbackw", po::value(&conf.fast_backw)->default_value(conf.fast_backw), "fast_backw")
     ("gaussj", po::value(&conf.gauss_jordan)->default_value(conf.gauss_jordan),
      "Use XOR finding and Gauss-Jordan elimination")
     ("sparsify", po::value(&sparsify)->default_value(sparsify),
      "Use Oracle from SharpSAT-TD to sparsify CNF formula. Expensive, but useful for SharpSAT-style counters")
     ("renumber", po::value(&renumber)->default_value(renumber),
      "Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!")
+    ("distill", po::value(&conf.distill)->default_value(conf.distill), "distill")
+    ("specifiedorder", po::value(&conf.specified_order_fname)
+     , "Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables tart at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG mostly!")
     ;
 
     po::options_description gate_options("Gate options");
@@ -137,6 +143,7 @@ void add_arjun_options()
     ;
 
     help_options.add(arjun_options);
+    help_options.add(simp_options);
     help_options.add(misc_options);
     help_options.add(gate_options);
 }
@@ -379,6 +386,7 @@ int main(int argc, char** argv)
     arjun->set_seed(conf.seed);
     arjun->set_fast_backw(conf.fast_backw);
     arjun->set_distill(conf.distill);
+    arjun->set_specified_order_fname(conf.specified_order_fname);
     arjun->set_regularly_simplify(conf.regularly_simplify);
     arjun->set_intree(conf.intree);
     arjun->set_pre_simplify(conf.pre_simplify);
