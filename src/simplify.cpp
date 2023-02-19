@@ -54,7 +54,7 @@ bool Common::simplify()
     if (conf.irreg_gate_based) remove_definable_by_irreg_gates();
     if (conf.empty_occs_based) find_equiv_subformula();
 
-    if (conf.pre_simplify) {
+    if (conf.bve_pre_simplify) {
         verb_print(1, "[arjun-simp] CMS::simplify() with no BVE, intree probe...");
         double simpTime = cpuTime();
         solver->set_bve(0);
@@ -79,7 +79,6 @@ bool Common::simplify()
     remove_eq_literals();
     remove_zero_assigned_literals();
     if (conf.probe_based && !probe_all()) return false;
-
     if (conf.empty_occs_based) find_equiv_subformula();
     if (conf.irreg_gate_based) remove_definable_by_irreg_gates();
 
@@ -375,7 +374,6 @@ bool Common::remove_definable_by_gates()
 
     order_sampl_set_for_simp();
     uint32_t non_zero_occs = 0;
-    uint32_t seen_set_0 = 0;
     for(uint32_t v: *sampling_set) {
         assert(seen[v]);
         if (vars_gate_occurs[v].size() == 0) {
@@ -409,7 +407,6 @@ bool Common::remove_definable_by_gates()
                 //All good, we can define v in terms of the other variables
                 assert(found_v);
                 seen[v] = 0;
-                seen_set_0++;
                 break;
             } else if (gate.t == gate_t::or_gate) {
                 const auto& o = ors[gate.at];
@@ -426,7 +423,6 @@ bool Common::remove_definable_by_gates()
                     continue;
                 }
                 seen[v] = 0;
-                seen_set_0++;
                 break;
             } else if (gate.t == gate_t::ite_gate) {
                 const auto& ite = ites[gate.at];
@@ -443,7 +439,6 @@ bool Common::remove_definable_by_gates()
                     continue;
                 }
                 seen[v] = 0;
-                seen_set_0++;
                 break;
             } else {
                 assert(false);

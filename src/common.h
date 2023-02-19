@@ -50,7 +50,6 @@
 
 using namespace CMSat;
 using std::cout;
-using std::cerr;
 using std::endl;
 using std::map;
 using std::set;
@@ -114,6 +113,8 @@ struct Common
     vector<Lit> dont_elim;
     vector<Lit> tmp_implied_by;
 
+    // cnf as we parsed it in (no simplification whatsoever)
+    vector<Lit> orig_cnf;
 
     void update_sampling_set(
         const vector<uint32_t>& unknown,

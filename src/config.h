@@ -36,9 +36,8 @@ struct Config {
     int simp = 1;
     int fast_backw = 1;
     int distill = 1;
-    int regularly_simplify = 1;
     int intree = 1;
-    int pre_simplify = 1;
+    int bve_pre_simplify = 1;
     int incidence_sort = 10;
     int or_gate_based = 1;
     int xor_gates_based = 1;

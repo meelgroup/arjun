@@ -307,7 +307,7 @@ bool Common::preproc_and_duplicate()
     //Seen needs re-init, because we got new variables
     seen.clear(); seen.resize(solver->nVars(), 0);
 
-    solver->set_simplify(conf.regularly_simplify && conf.simp);
+    solver->set_simplify(conf.simp);
     solver->set_intree_probe(conf.intree && conf.simp);
     solver->set_distill(conf.distill && conf.simp);
     solver->set_find_xors(conf.gauss_jordan && conf.simp);

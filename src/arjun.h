@@ -83,6 +83,7 @@ namespace ArjunNS {
         const std::vector<CMSat::BNN*>& get_bnns() const;
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
         std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;
+        std::vector<CMSat::Lit> get_orig_cnf();
 
         //Set config
         void set_seed(uint32_t seed);
@@ -91,7 +92,7 @@ namespace ArjunNS {
         void set_distill(bool distill);
         void set_intree(bool intree);
         void set_simp(bool simp);
-        void set_pre_simplify(bool simp);
+        void set_bve_pre_simplify(bool bve_pre_simp);
         void set_incidence_sort(uint32_t incidence_sort);
         void set_or_gate_based(bool or_gate_based);
         void set_xor_gates_based(bool xor_gates_based);
@@ -99,7 +100,6 @@ namespace ArjunNS {
         void set_backward(bool backward);
         void set_backw_max_confl(uint32_t backw_max_confl);
         void set_gauss_jordan(bool gauss_jordan);
-        void set_regularly_simplify(bool reg_simp);
         void set_find_xors(bool find_xors);
         void set_backbone_simpl(bool backbone_simpl);
         void set_ite_gate_based(bool ite_gate_based);
@@ -117,7 +117,7 @@ namespace ArjunNS {
         bool get_fast_backw() const;
         bool get_distill() const;
         bool get_intree() const;
-        bool get_pre_simplify() const;
+        bool get_bve_pre_simplify() const;
         uint32_t get_incidence_sort() const;
         bool get_or_gate_based() const;
         bool get_xor_gates_based() const;
@@ -125,7 +125,6 @@ namespace ArjunNS {
         bool get_backward() const;
         uint32_t get_backw_max_confl() const;
         bool get_gauss_jordan() const;
-        bool get_regularly_simplify() const;
         bool get_find_xors() const;
         bool get_backbone_simpl() const;
         bool get_ite_gate_based() const;

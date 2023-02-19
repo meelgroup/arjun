@@ -100,10 +100,8 @@ void add_arjun_options()
 
     po::options_description simp_options("Simplification before indep detection");
     simp_options.add_options()
-    ("presimp", po::value(&conf.pre_simplify)->default_value(conf.pre_simplify),
+    ("bvepresimp", po::value(&conf.bve_pre_simplify)->default_value(conf.bve_pre_simplify),
      "simplify")
-    ("regsimp", po::value(&conf.regularly_simplify)->default_value(conf.regularly_simplify),
-     "Regularly simplify")
     ("simp", po::value(&conf.simp)->default_value(conf.simp), "Do ANY sort of simplification")
     ("probe", po::value(&conf.probe_based)->default_value(conf.probe_based),
      "Use simple probing to set (and define) some variables")
@@ -347,7 +345,8 @@ void elim_to_file(
         sampl_vars, empty_occs, orig_num_vars, sparsify, renumber);
 
     dump_cnf(std::get<0>(ret), std::get<1>(ret), std::get<2>(ret));
-    cout << "c [arjun] Done dumping. T: " << (cpuTime() - dump_start_time) << endl;
+    cout << "c [arjun] Done dumping. T: "
+        << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
 }
 
 int main(int argc, char** argv)
@@ -387,9 +386,8 @@ int main(int argc, char** argv)
     arjun->set_fast_backw(conf.fast_backw);
     arjun->set_distill(conf.distill);
     arjun->set_specified_order_fname(conf.specified_order_fname);
-    arjun->set_regularly_simplify(conf.regularly_simplify);
     arjun->set_intree(conf.intree);
-    arjun->set_pre_simplify(conf.pre_simplify);
+    arjun->set_bve_pre_simplify(conf.bve_pre_simplify);
     arjun->set_incidence_sort(conf.incidence_sort);
     if (gates) {
       arjun->set_or_gate_based(conf.or_gate_based);
@@ -416,7 +414,9 @@ int main(int argc, char** argv)
 //     }
 
     //parsing the input
-    if (vm.count("input") == 0 || vm["input"].as<vector<string>>().size() == 0 || vm["input"].as<vector<string>>().size() > 2) {
+    if (vm.count("input") == 0
+            || vm["input"].as<vector<string>>().size() == 0
+            || vm["input"].as<vector<string>>().size() > 2) {
         cout << "ERROR: you must pass an INPUT and optionally an OUTPUT file as parameters" << endl;
         exit(-1);
     }
@@ -432,16 +432,18 @@ int main(int argc, char** argv)
     vector<uint32_t> indep_vars = arjun->get_indep_set();
     print_final_indep_set(indep_vars, arjun->get_empty_occ_sampl_vars());
     cout << "c [arjun] finished "
-    << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
-    << endl;
+        << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
+        << endl;
 
     if (!elimtofile.empty()) {
         if (conf.simp) {
             elim_to_file(
                 indep_vars, arjun->get_empty_occ_sampl_vars(), orig_num_vars);
         } else {
-            uint32_t num_cls;
-            vector<Lit> cnf = arjun->get_internal_cnf(num_cls);
+            uint32_t num_cls = 0;
+            /* vector<Lit> cnf = arjun->get_internal_cnf(num_cls); */
+            const auto cnf = arjun->get_orig_cnf();
+            for(const auto& l: cnf) if (l == lit_Undef) num_cls++;
             std::ofstream outf;
             outf.open(elimtofile.c_str(), std::ios::out);
             outf << "p cnf " << orig_num_vars << " " << num_cls << endl;

@@ -128,9 +128,15 @@ DLL_PUBLIC std::string Arjun::get_compilation_env()
     return arjdata->common.solver->get_compilation_env();
 }
 
+DLL_PUBLIC std::vector<Lit> Arjun::get_orig_cnf()
+{
+    return arjdata->common.orig_cnf;
+}
+
 DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
 {
     double starTime = cpuTime();
+    arjdata->common.orig_cnf = arjdata->common.get_cnf();
     if (!arjdata->common.preproc_and_duplicate()) goto end;
 
     //Backward
@@ -212,9 +218,9 @@ DLL_PUBLIC void Arjun::set_intree(bool intree)
     arjdata->common.conf.intree = intree;
 }
 
-DLL_PUBLIC void Arjun::set_pre_simplify(bool simp)
+DLL_PUBLIC void Arjun::set_bve_pre_simplify(bool bve_pre_simp)
 {
-    arjdata->common.conf.pre_simplify = simp;
+    arjdata->common.conf.bve_pre_simplify = bve_pre_simp;
 }
 
 DLL_PUBLIC void Arjun::set_simp(bool simp)
@@ -283,9 +289,9 @@ DLL_PUBLIC bool Arjun::get_intree() const
     return arjdata->common.conf.intree;
 }
 
-DLL_PUBLIC bool Arjun::get_pre_simplify() const
+DLL_PUBLIC bool Arjun::get_bve_pre_simplify() const
 {
-    return arjdata->common.conf.pre_simplify;
+    return arjdata->common.conf.bve_pre_simplify;
 }
 
 DLL_PUBLIC uint32_t Arjun::get_incidence_sort() const
@@ -326,16 +332,6 @@ DLL_PUBLIC void Arjun::set_gauss_jordan(bool gauss_jordan)
 DLL_PUBLIC bool Arjun::get_gauss_jordan() const
 {
     return arjdata->common.conf.gauss_jordan;
-}
-
-DLL_PUBLIC void Arjun::set_regularly_simplify(bool reg_simp)
-{
-    arjdata->common.conf.regularly_simplify = reg_simp;
-}
-
-DLL_PUBLIC bool Arjun::get_regularly_simplify() const
-{
-    return arjdata->common.conf.regularly_simplify;
 }
 
 DLL_PUBLIC void Arjun::set_ite_gate_based(bool ite_gate_based)
@@ -483,7 +479,7 @@ static vector<Lit> fill_solver_no_empty(
     // We create a new Solver that has all variables (except empty)
     solver.new_vars(orig_num_vars-empty_vars.size());
     vector<char> seen(orig_num_vars, 0);
-    vector<uint32_t> mymap; // variable map without EMPTY
+    vector<uint32_t> varmap_noempty; // variable map without EMPTY
     for(auto const& e: empty_vars) {
         assert(e < orig_num_vars);
         seen[e] = 1;
@@ -491,10 +487,10 @@ static vector<Lit> fill_solver_no_empty(
     uint32_t at = 0;
     for(uint32_t i = 0; i < orig_num_vars; i++) {
         if (!seen[i]) {
-            mymap.push_back(at);
+            varmap_noempty.push_back(at);
             at++;
         } else {
-            mymap.push_back(numeric_limits<uint32_t>::max());
+            varmap_noempty.push_back(numeric_limits<uint32_t>::max());
         }
     }
     assert(at == solver.nVars());
@@ -504,12 +500,12 @@ static vector<Lit> fill_solver_no_empty(
     vector<Lit> tmp;
     uint32_t sz = 0;
     bool ok = true;
-    uint32_t num_cls;
-    const auto cnf = arjun->get_internal_cnf(num_cls);
+    const auto cnf = arjun->get_orig_cnf();
+
     for(const auto& l: cnf) {
         if (l != lit_Undef) {
             if (seen[l.var()] == 1) ok = false;
-            if (ok) tmp.push_back(Lit(mymap[l.var()], l.sign()));
+            if (ok) tmp.push_back(Lit(varmap_noempty[l.var()], l.sign()));
             sz++;
             continue;
         }
@@ -521,13 +517,24 @@ static vector<Lit> fill_solver_no_empty(
     }
     arjun->varreplace();
 
+    // inject set vars
+    const auto lits =  arjun->get_zero_assigned_lits();
+    for(const auto& l: lits) {
+        if (l.var() < orig_num_vars && seen[l.var()] == 0) {
+            tmp.clear();
+            tmp.push_back(Lit(varmap_noempty[l.var()], l.sign()));
+            solver.add_clause(tmp);
+        }
+    }
+
+    // inject bin-xor clauses
     auto bin_xors = arjun->get_all_binary_xors();
     vector<uint32_t> dummy_v;
     for(const auto& bx: bin_xors) {
         dummy_v.clear();
         if (seen[bx.first.var()] == 0 && seen[bx.second.var()] == 0) { // see note above
-            dummy_v.push_back(mymap[bx.first.var()]);
-            dummy_v.push_back(mymap[bx.second.var()]);
+            dummy_v.push_back(varmap_noempty[bx.first.var()]);
+            dummy_v.push_back(varmap_noempty[bx.second.var()]);
             solver.add_xor_clause(dummy_v, bx.first.sign()^bx.second.sign());
         }
     }
@@ -536,12 +543,10 @@ static vector<Lit> fill_solver_no_empty(
     set<Lit> sampl_set_no_empty;
     for(const auto& v: sampl_vars) {
         if (seen[v]) continue;
-        sampl_set_no_empty.insert(Lit(mymap[v], false));
+        sampl_set_no_empty.insert(Lit(varmap_noempty[v], false));
     }
-    vector<Lit> sampl_vars_no_empty;
-    for(const auto& l: sampl_set_no_empty) sampl_vars_no_empty.push_back(l);
 
-    return sampl_vars_no_empty;
+    return vector<Lit>(sampl_set_no_empty.begin(), sampl_set_no_empty.end());
 }
 
 DLL_PUBLIC std::tuple<pair<vector<vector<Lit>>, uint32_t>, vector<uint32_t>, uint32_t>

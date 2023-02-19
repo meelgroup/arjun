@@ -125,10 +125,9 @@ void Common::backward_round()
     if (conf.verb >= 4) {
         cout << "Sorted output: "<< endl;
         for (const auto& v:unknown) {
-            cout
-            << "Var: " << std::setw(6) << v
-            << " inc: " << std::setw(6) << incidence[v]
-            << " prop-inc: " << std::setw(6) << incidence_probing[v];
+            cout << "c var: " << v << " occ: " << incidence[v]
+            //<< " prop-inc: " << std::setw(6) << incidence_probing[v]
+            << endl;
             if (var_to_num_communities.size() > v) {
                 cout << " fan-out to comms: " << std::setw(6) << var_to_num_communities[v].size();
             }
