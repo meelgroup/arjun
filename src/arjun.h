@@ -82,7 +82,7 @@ namespace ArjunNS {
         const std::vector<CMSat::BNN*>& get_bnns() const;
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
         std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;
-        std::vector<CMSat::Lit> get_orig_cnf();
+        const std::vector<CMSat::Lit>& get_orig_cnf();
 
         //Set config
         void set_seed(uint32_t seed);
@@ -106,12 +106,16 @@ namespace ArjunNS {
         void set_gate_sort_special(bool gate_sort_special);
         void set_backbone_simpl_max_confl(uint64_t backbone_simpl_max_confl);
         //void set_polar_mode(CMSat::PolarityMode mode);
+        void set_no_gates_below(double no_gates_below);
         void set_pred_forever_cutoff(int pred_forever_cutoff = -1);
         void set_every_pred_reduce(int every_pred_reduce = -1);
         void set_empty_occs_based(const bool empty_occs_based);
         void set_specified_order_fname(std::string specified_order_fname);
 
         //Get config
+        std::string get_specified_order_fname() const;
+        double get_no_gates_below() const;
+        bool get_simp() const;
         uint32_t get_verbosity() const;
         bool get_fast_backw() const;
         bool get_distill() const;
