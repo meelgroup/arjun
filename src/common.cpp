@@ -299,6 +299,7 @@ bool Common::preproc_and_duplicate()
         #endif
     }
     if (conf.simp && !simplify()) return false;
+    get_incidence();
     duplicate_problem();
     if (conf.simp && !simplify_bve_only()) return false;
     add_fixed_clauses();
