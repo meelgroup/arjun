@@ -43,14 +43,15 @@ struct Config {
     int xor_gates_based = 1;
     int ite_gate_based = 1;
     int irreg_gate_based = 1;
-    int empty_occs_based = 0;
+    int empty_occs_based = 1;
     int probe_based = 1;
     int backward = 1;
     int gauss_jordan = 0;
     int backbone_simpl = 0;
+    double no_gates_below = 0.8;
     std::string specified_order_fname;
     unsigned long backbone_simpl_max_confl = 10ULL*1000ULL;
-    uint32_t backw_max_confl = 500;
+    uint32_t backw_max_confl = 2000;
 };
 
 }

@@ -130,6 +130,8 @@ void add_arjun_options()
     gate_options.add_options()
     ("gates", po::value<bool>(&gates),
      "Turn on/off all gate-based definability")
+    ("nogatebelow", po::value<double>(&conf.no_gates_below)
+     , "Don't use gates below this position (relative, 1.0-0.0) in the independent set")
     ("orgate", po::value(&conf.or_gate_based)->default_value(conf.or_gate_based),
      "Use 3-long gate detection in SAT solver to define some variables")
     ("irreggate", po::value(&conf.irreg_gate_based)->default_value(conf.irreg_gate_based),

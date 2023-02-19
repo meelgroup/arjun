@@ -442,7 +442,7 @@ DLL_PUBLIC const vector<Lit> Arjun::get_internal_cnf(uint32_t& num_cls) const
     return cnf;
 }
 
-static std::pair<vector<vector<Lit>>, uint32_t> get_simplified_renumbered_cnf(
+static std::pair<vector<vector<Lit>>, uint32_t> get_simplified_cnf(
         SATSolver* solver, vector<uint32_t>& sampl_vars, const bool renumber)
 {
     vector<vector<Lit>> cnf;
@@ -469,61 +469,40 @@ static std::pair<vector<vector<Lit>>, uint32_t> get_simplified_renumbered_cnf(
             renumber ? solver->simplified_nvars() :  solver->nVars());
 }
 
-static vector<Lit> fill_solver_no_empty(
-    const vector<uint32_t>& sampl_vars,
-    const vector<uint32_t>& empty_vars,
+static void fill_solver(
     const uint32_t orig_num_vars,
     SATSolver& solver, // Solver here is EMPTY
     Arjun* arjun)
 {
-    // We create a new Solver that has all variables (except empty)
-    solver.new_vars(orig_num_vars-empty_vars.size());
-    vector<char> seen(orig_num_vars, 0);
-    vector<uint32_t> varmap_noempty; // variable map without EMPTY
-    for(auto const& e: empty_vars) {
-        assert(e < orig_num_vars);
-        seen[e] = 1;
-    }
-    uint32_t at = 0;
-    for(uint32_t i = 0; i < orig_num_vars; i++) {
-        if (!seen[i]) {
-            varmap_noempty.push_back(at);
-            at++;
-        } else {
-            varmap_noempty.push_back(numeric_limits<uint32_t>::max());
-        }
-    }
-    assert(at == solver.nVars());
+    solver.new_vars(orig_num_vars);
 
-    //NOTE: we can have binary XORs that refer to EMPTY. This is because
-    //      var x (in sampling set) was replaced by var y, which became empty.
-    vector<Lit> tmp;
-    uint32_t sz = 0;
-    bool ok = true;
+    /* This below would work... except it doesn't work because
+     * it's been transformed, and some of that transformation is
+     * detrimental to simplifying the CNF
+    uint32_t num_cls;
+    const auto cnf = arjun->get_internal_cnf(num_cls);
+     */
+
+    // Inject original CNF
     const auto cnf = arjun->get_orig_cnf();
-
+    vector<Lit> cl;
     for(const auto& l: cnf) {
         if (l != lit_Undef) {
-            if (seen[l.var()] == 1) ok = false;
-            if (ok) tmp.push_back(Lit(varmap_noempty[l.var()], l.sign()));
-            sz++;
+            assert(l.var() < orig_num_vars);
+            cl.push_back(l);
             continue;
         }
-        if (ok) solver.add_clause(tmp);
-        else assert(sz == 2);
-        tmp.clear();
-        ok = true;
-        sz = 0;
+        solver.add_clause(cl);
+        cl.clear();
     }
-    arjun->varreplace();
 
     // inject set vars
     const auto lits =  arjun->get_zero_assigned_lits();
     for(const auto& l: lits) {
-        if (l.var() < orig_num_vars && seen[l.var()] == 0) {
-            tmp.clear();
-            tmp.push_back(Lit(varmap_noempty[l.var()], l.sign()));
-            solver.add_clause(tmp);
+        if (l.var() < orig_num_vars) {
+            cl.clear();
+            cl.push_back(l);
+            solver.add_clause(cl);
         }
     }
 
@@ -532,27 +511,15 @@ static vector<Lit> fill_solver_no_empty(
     vector<uint32_t> dummy_v;
     for(const auto& bx: bin_xors) {
         dummy_v.clear();
-        if (seen[bx.first.var()] == 0 && seen[bx.second.var()] == 0) { // see note above
-            dummy_v.push_back(varmap_noempty[bx.first.var()]);
-            dummy_v.push_back(varmap_noempty[bx.second.var()]);
-            solver.add_xor_clause(dummy_v, bx.first.sign()^bx.second.sign());
-        }
+        dummy_v.push_back(bx.first.var());
+        dummy_v.push_back(bx.second.var());
+        solver.add_xor_clause(dummy_v, bx.first.sign()^bx.second.sign());
     }
-
-    // return sampling set, without empties
-    set<Lit> sampl_set_no_empty;
-    for(const auto& v: sampl_vars) {
-        if (seen[v]) continue;
-        sampl_set_no_empty.insert(Lit(varmap_noempty[v], false));
-    }
-
-    return vector<Lit>(sampl_set_no_empty.begin(), sampl_set_no_empty.end());
 }
 
-DLL_PUBLIC std::tuple<pair<vector<vector<Lit>>, uint32_t>, vector<uint32_t>, uint32_t>
+std::tuple<std::pair<std::vector<std::vector<CMSat::Lit>>, uint32_t>, std::vector<uint32_t>>
 Arjun::get_fully_simplified_renumbered_cnf(
     const vector<uint32_t>& sampl_vars, //contains empty_vars!
-    const vector<uint32_t>& empty_vars,
     const uint32_t orig_num_vars,
     const bool sparsify,
     const bool renumber)
@@ -564,8 +531,9 @@ Arjun::get_fully_simplified_renumbered_cnf(
 
     // Create a new SAT solver that contains no empties.
     // dont_elim now how no empties in it
-    auto dont_elim = fill_solver_no_empty(
-        sampl_vars, empty_vars, orig_num_vars, solver, this);
+    fill_solver(orig_num_vars, solver, this);
+    vector<Lit> dont_elim;
+    for(uint32_t v: sampl_vars) dont_elim.push_back(Lit(v, false));
 
     //Below works VERY WELL for: ProcessBean, pollard, track1_116.mcc2020_cnf
     //   and blasted_TR_b14_even3_linear.cnf.gz.no_w.cnf
@@ -600,8 +568,8 @@ Arjun::get_fully_simplified_renumbered_cnf(
 
     vector<uint32_t> new_sampl_set;
     for(const auto& l: dont_elim) new_sampl_set.push_back(l.var());
-    auto cnf = get_simplified_renumbered_cnf(&solver, new_sampl_set, renumber);
-    return std::make_tuple(cnf, new_sampl_set, empty_vars.size());
+    auto cnf = get_simplified_cnf(&solver, new_sampl_set, renumber);
+    return std::make_tuple(cnf, new_sampl_set);
 }
 
 DLL_PUBLIC void Arjun::set_pred_forever_cutoff(int pred_forever_cutoff)

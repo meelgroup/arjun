@@ -19,7 +19,7 @@ grep -v "c ind" "$1" > "$fname"
 echo "Running Arjun..."
 # config=""
 # config="--gates 1 --empty 1 --irreggate 0"
-/usr/bin/time ./arjun "$fname" "$fname-simplified-arjun" > /dev/null
+/usr/bin/time ./arjun "$fname" "$fname-simplified-arjun" > "${fname}-arjun-output"
 
 ./count_literals.py "$fname-simplified-arjun" >"${fname}_count_arj_out"
 
