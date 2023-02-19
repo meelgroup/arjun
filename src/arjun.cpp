@@ -424,9 +424,11 @@ Arjun::get_fully_simplified_renumbered_cnf(
     solver.simplify(&dont_elim, &str);
     solver.simplify(&dont_elim, &str);
     if (sparsify) {
-        str = string("sparsify,") + str;
-        solver.simplify(&dont_elim, &str);
+        string str2 = string("sparsify,") + str;
+        solver.simplify(&dont_elim, &str2);
     }
+    //one more without sparsify
+    solver.simplify(&dont_elim, &str);
 
     str = string("");
     if (arjdata->common.definitely_satisfiable) {
