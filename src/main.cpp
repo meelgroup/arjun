@@ -350,6 +350,60 @@ void elim_to_file(
         << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
 }
 
+void set_config(ArjunNS::Arjun* arj) {
+    cout << "c [arjun] using seed: " << conf.seed << endl;
+    arj->set_verbosity(conf.verb);
+    arj->set_seed(conf.seed);
+    arj->set_fast_backw(conf.fast_backw);
+    arj->set_distill(conf.distill);
+    arj->set_specified_order_fname(conf.specified_order_fname);
+    arj->set_intree(conf.intree);
+    arj->set_bve_pre_simplify(conf.bve_pre_simplify);
+    arj->set_incidence_sort(conf.incidence_sort);
+    if (gates) {
+      arj->set_or_gate_based(conf.or_gate_based);
+      arj->set_ite_gate_based(conf.ite_gate_based);
+      arj->set_xor_gates_based(conf.xor_gates_based);
+      arj->set_irreg_gate_based(conf.irreg_gate_based);
+    } else {
+      cout << "c NOTE: all gates are turned off due to `--gates 0`" << endl;
+      arj->set_or_gate_based   (0);
+      arj->set_ite_gate_based  (0);
+      arj->set_xor_gates_based (0);
+      arj->set_irreg_gate_based(0);
+    }
+    arj->set_no_gates_below(conf.no_gates_below);
+    arj->set_probe_based(conf.probe_based);
+    arj->set_backward(conf.backward);
+    arj->set_backw_max_confl(conf.backw_max_confl);
+    arj->set_gauss_jordan(conf.gauss_jordan);
+    arj->set_backbone_simpl(conf.backbone_simpl);
+    arj->set_backbone_simpl_max_confl(conf.backbone_simpl_max_confl);
+    arj->set_simp(conf.simp);
+    arj->set_empty_occs_based(conf.empty_occs_based);
+}
+
+void do_it_again(vector<uint32_t>& indep_vars)
+{
+    ArjunNS::Arjun arjun2;
+    set_config(&arjun2);
+    arjun2.new_vars(arjun->get_orig_num_vars());
+    arjun2.set_starting_sampling_set(indep_vars);
+    arjun2.set_irreg_gate_based(1);
+    vector<Lit> cl;
+    for(const auto& l: arjun->get_orig_cnf()) {
+        if (l != lit_Undef) {
+            assert(l.var() < arjun->get_orig_num_vars());
+            cl.push_back(l);
+            continue;
+        }
+        arjun2.add_clause(cl);
+        cl.clear();
+    }
+    indep_vars = arjun2.get_indep_set();
+    print_final_indep_set(indep_vars, arjun->get_empty_occ_sampl_vars());
+}
+
 int main(int argc, char** argv)
 {
     arjun = new ArjunNS::Arjun;
@@ -381,35 +435,7 @@ int main(int argc, char** argv)
     << endl;
 
     double starTime = cpuTime();
-    cout << "c [arjun] using seed: " << conf.seed << endl;
-    arjun->set_verbosity(conf.verb);
-    arjun->set_seed(conf.seed);
-    arjun->set_fast_backw(conf.fast_backw);
-    arjun->set_distill(conf.distill);
-    arjun->set_specified_order_fname(conf.specified_order_fname);
-    arjun->set_intree(conf.intree);
-    arjun->set_bve_pre_simplify(conf.bve_pre_simplify);
-    arjun->set_incidence_sort(conf.incidence_sort);
-    if (gates) {
-      arjun->set_or_gate_based(conf.or_gate_based);
-      arjun->set_ite_gate_based(conf.ite_gate_based);
-      arjun->set_xor_gates_based(conf.xor_gates_based);
-      arjun->set_irreg_gate_based(conf.irreg_gate_based);
-    } else {
-      cout << "c NOTE: all gates are turned off due to `--gates 0`" << endl;
-      arjun->set_or_gate_based   (0);
-      arjun->set_ite_gate_based  (0);
-      arjun->set_xor_gates_based (0);
-      arjun->set_irreg_gate_based(0);
-    }
-    arjun->set_probe_based(conf.probe_based);
-    arjun->set_backward(conf.backward);
-    arjun->set_backw_max_confl(conf.backw_max_confl);
-    arjun->set_gauss_jordan(conf.gauss_jordan);
-    arjun->set_backbone_simpl(conf.backbone_simpl);
-    arjun->set_backbone_simpl_max_confl(conf.backbone_simpl_max_confl);
-    arjun->set_simp(conf.simp);
-    arjun->set_empty_occs_based(conf.empty_occs_based);
+    set_config(arjun);
 
     //parsing the input
     if (vm.count("input") == 0
@@ -429,9 +455,11 @@ int main(int argc, char** argv)
     const uint32_t orig_num_vars = arjun->nVars();
     vector<uint32_t> indep_vars = arjun->get_indep_set();
     print_final_indep_set(indep_vars, arjun->get_empty_occ_sampl_vars());
+    /* do_it_again(indep_vars); // in case we want to try to run Arjun again, not useful */
     cout << "c [arjun] finished "
         << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
         << endl;
+
 
     if (!elimtofile.empty()) {
         if (conf.simp) {
@@ -439,7 +467,7 @@ int main(int argc, char** argv)
         } else {
             uint32_t num_cls = 0;
             /* vector<Lit> cnf = arjun->get_internal_cnf(num_cls); */
-            const auto cnf = arjun->get_orig_cnf();
+            const auto& cnf = arjun->get_orig_cnf();
             for(const auto& l: cnf) if (l == lit_Undef) num_cls++;
             std::ofstream outf;
             outf.open(elimtofile.c_str(), std::ios::out);
