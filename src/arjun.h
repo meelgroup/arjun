@@ -74,7 +74,7 @@ namespace ArjunNS {
         void end_getting_small_clauses();
         const std::vector<CMSat::Lit> get_internal_cnf(uint32_t& num_cls) const;
         std::tuple<std::pair<std::vector<std::vector<CMSat::Lit>>, uint32_t>, std::vector<uint32_t>>
-            get_fully_simplified_renumbered_cnf(
+        get_fully_simplified_renumbered_cnf(
             const std::vector<uint32_t>& sampl_vars,
             const uint32_t orig_num_vars,
             const bool sparsify = true,
