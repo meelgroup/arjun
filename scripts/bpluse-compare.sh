@@ -17,10 +17,13 @@ echo "Running on CNF file $1"
 fname="$1-noind"
 grep -v "c ind" "$1" > "$fname"
 echo "Running Arjun..."
-options="${@:2}" # all except first argument
-exec="./arjun $options $fname $fname-simplified-arjun"
+# config=""
+# config="--gates 1 --empty 1 --irreggate 0"
+stuff="${@:2}"
+exec="./arjun $stuff $fname $fname-simplified-arjun"
 echo "Executing: $exec"
-/usr/bin/time $exec "$fname-simplified-arjun" > "${fname}-arjun-output"
+/usr/bin/time $exec > "${fname}-arjun-output"
+
 ./count_literals.py "$fname-simplified-arjun" >"${fname}_count_arj_out"
 
 echo "Running BPE (new, compiled)"
