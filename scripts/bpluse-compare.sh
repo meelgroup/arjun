@@ -7,8 +7,8 @@
 # good example files:
 # faster_with_be/wage_circuit_div.t1.i18.777adaa9.stp.cnf
 # faster_with_be/amm-hhk2008-2.c.stp.cnf
-# ProcessBean
-# pollard
+# ProcessBean.cnf
+# pollard.cnf
 # track1_116.mcc2020_cnf
 # blasted_TR_b14_even3_linear.cnf.gz.no_w.cnf
 
@@ -17,14 +17,16 @@ echo "Running on CNF file $1"
 fname="$1-noind"
 grep -v "c ind" "$1" > "$fname"
 echo "Running Arjun..."
-config=""
-/usr/bin/time ./arjun $config "$fname" "$fname-simplified-arjun" > /dev/null
-./count_literals.py "$fname-simplified-arjun" > arj_out
+# config=""
+# config="--gates 1 --empty 1 --irreggate 0"
+/usr/bin/time ./arjun "$fname" "$fname-simplified-arjun" > /dev/null
+
+./count_literals.py "$fname-simplified-arjun" >"${fname}_count_arj_out"
 
 echo "Running BPE (new, compiled)"
 /usr/bin/time ./BiPe -preproc "$fname" > "$fname-simplified-bpe"
-./count_literals.py "$fname-simplified-bpe" > bpe_out
+./count_literals.py "$fname-simplified-bpe" > "${fname}_count_bpe_out"
 
 echo "ARJUN vs BPE (new, compiled)"
-paste arj_out bpe_out
+paste "${fname}_count_arj_out" "${fname}_count_bpe_out"
 
