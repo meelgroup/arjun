@@ -212,11 +212,11 @@ void Common::get_incidence()
     assert(inc.size() == orig_num_vars*2);
     for(uint32_t i = 0; i < orig_num_vars; i++) {
         Lit l = Lit(i, true);
-        if (conf.incidence_sort == 10) {
+        if (conf.incidence_count == 1) {
             incidence[l.var()] = inc[l.toInt()] + inc[(~l).toInt()];
-        } else if (conf.incidence_sort == 11) {
+        } else if (conf.incidence_count == 2) {
             incidence[l.var()] = std::max(inc[l.toInt()], inc[(~l).toInt()]);
-        } else {
+        } else if (conf.incidence_count == 3) {
             incidence[l.var()] = std::min(inc[l.toInt()],inc[(~l).toInt()]);
         }
     }
@@ -290,14 +290,7 @@ bool Common::preproc_and_duplicate()
     seen.resize(solver->nVars(), 0);
 
     get_incidence();
-    if (conf.incidence_sort == 4 || conf.incidence_sort == 5) {
-        #ifdef LOUVAIN_COMMS
-        calc_community_parts();
-        #else
-        cout << "ERROR: you must compile with louvain community libraries for this to work. Install https://github.com/meelgroup/louvain-community first." << endl;
-        exit(-1);
-        #endif
-    }
+    calc_community_parts();
     if (conf.simp && !simplify()) return false;
     get_incidence();
     duplicate_problem();
@@ -315,13 +308,18 @@ bool Common::preproc_and_duplicate()
     return true;
 }
 
-#ifdef LOUVAIN_COMMS
 void Common::calc_community_parts()
 {
-    double myTime = cpuTime();
-    if (conf.verb) {
-        cout << "c [arjun] Calculating Louvain Communities..." << endl;
+    if (!(conf.unknown_sort == 4 || conf.unknown_sort == 5)) {
+        return;
     }
+    #ifndef LOUVAIN_COMMS
+    cout << "ERROR: you must compile with louvain community libraries for this to work."
+        << " Install https://github.com/meelgroup/louvain-community first." << endl;
+    exit(-1);
+    #else
+    double myTime = cpuTime();
+    verb_print(1, "[arjun] Calculating Louvain Communities...");
 
     vector<vector<Lit>> cnf;
     solver->start_getting_small_clauses(
@@ -415,11 +413,8 @@ void Common::calc_community_parts()
     }
     solver->end_getting_small_clauses();
 
-    if (conf.verb) {
-        cout << "c [mis-comm] Number of communities: " << commpart_incs.size()
-        << " T: " << (cpuTime() - myTime)
-        << endl;
-    }
+    verb_print(1, "[mis-comm] Number of communities: " << commpart_incs.size() \
+            << " T: " << (cpuTime() - myTime));
+#endif
 }
 
-#endif

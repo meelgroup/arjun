@@ -377,7 +377,6 @@ bool Common::remove_definable_by_gates()
         }
     }
 
-
     if (conf.verb > 4) cout << "c [arjun-simp] XOR Potential: " << potential << endl;
 
     order_sampl_set_for_simp();
@@ -386,7 +385,6 @@ bool Common::remove_definable_by_gates()
     // If this is large, it means it'd get removed anyway:
     //       bottom of the pie, we go through the pile in reverse order to try to remove
     vector<double> var_to_rel_position(orig_num_vars, 1.0);
-    std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(incidence));
     for(uint32_t i = 0; i < sampling_set->size(); i++) {
         assert(sampling_set->at(i) < orig_num_vars);
         var_to_rel_position[sampling_set->at(i)] = (double)i/(double)sampling_set->size();
@@ -399,7 +397,7 @@ bool Common::remove_definable_by_gates()
             continue;
         }
 
-        // Only try removing if it's at the bottom X percent of incidence_sort
+        // Only try removing if it's at the bottom X percent of unknown_sort
         // If 0.01 is SMALLER, then we have to remove with backward LESS
         if (var_to_rel_position[v] < conf.no_gates_below) continue;
 
@@ -499,7 +497,7 @@ bool Common::remove_definable_by_gates()
 void Common::order_sampl_set_for_simp()
 {
     get_incidence();
-    std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(incidence));
+    sort_unknown(*sampling_set);
     std::reverse(sampling_set->begin(), sampling_set->end()); //we want most likely independent as last
 }
 

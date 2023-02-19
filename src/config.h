@@ -38,7 +38,8 @@ struct Config {
     int distill = 1;
     int intree = 1;
     int bve_pre_simplify = 1;
-    int incidence_sort = 10;
+    int incidence_count = 3; // this determines what incidence MEANS
+    int unknown_sort = 4; // this determines HOW we sort
     int or_gate_based = 1;
     int xor_gates_based = 1;
     int ite_gate_based = 1;

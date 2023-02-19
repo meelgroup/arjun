@@ -92,7 +92,8 @@ namespace ArjunNS {
         void set_intree(bool intree);
         void set_simp(bool simp);
         void set_bve_pre_simplify(bool bve_pre_simp);
-        void set_incidence_sort(uint32_t incidence_sort);
+        void set_unknown_sort(uint32_t unknown_sort);
+        void set_incidence_count(uint32_t incidence_count);
         void set_or_gate_based(bool or_gate_based);
         void set_xor_gates_based(bool xor_gates_based);
         void set_probe_based(bool probe_based);
@@ -121,7 +122,8 @@ namespace ArjunNS {
         bool get_distill() const;
         bool get_intree() const;
         bool get_bve_pre_simplify() const;
-        uint32_t get_incidence_sort() const;
+        uint32_t get_incidence_count() const;
+        uint32_t get_unknown_sort() const;
         bool get_or_gate_based() const;
         bool get_xor_gates_based() const;
         bool get_probe_based() const;

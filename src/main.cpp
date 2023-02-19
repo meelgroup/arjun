@@ -86,7 +86,7 @@ void add_arjun_options()
     ("verb,v", po::value(&conf.verb)->default_value(conf.verb), "verbosity")
     ("seed,s", po::value(&conf.seed)->default_value(conf.seed), "Seed")
 //     ("bve", po::value(&conf.bve)->default_value(conf.bve), "bve")
-    ("sort", po::value(&conf.incidence_sort)->default_value(conf.incidence_sort),
+    ("sort", po::value(&conf.unknown_sort)->default_value(conf.unknown_sort),
      "Which sorting mechanism.")
     ("recomp", po::value(&recompute_sampling_set)->default_value(recompute_sampling_set),
      "Recompute sampling set even if it's part of the CNF")
@@ -360,7 +360,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_specified_order_fname(conf.specified_order_fname);
     arj->set_intree(conf.intree);
     arj->set_bve_pre_simplify(conf.bve_pre_simplify);
-    arj->set_incidence_sort(conf.incidence_sort);
+    arj->set_unknown_sort(conf.unknown_sort);
     if (gates) {
       arj->set_or_gate_based(conf.or_gate_based);
       arj->set_ite_gate_based(conf.ite_gate_based);

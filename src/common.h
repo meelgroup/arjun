@@ -127,9 +127,7 @@ struct Common
     void start_with_clean_sampling_set();
     void duplicate_problem();
     void get_incidence();
-    #ifdef LOUVAIN_COMMS
     void calc_community_parts();
-    #endif
     void set_up_solver();
     vector<Lit> get_cnf();
     std::mt19937 random_source = std::mt19937(0);
@@ -266,7 +264,6 @@ struct IncidenceSorterCommPart
         if (part_a_inc != part_b_inc) {
             return part_a_inc < part_b_inc;
         }
-        return false;
 
         auto a_inc = comm->incidence[a];
         auto b_inc = comm->incidence[b];
@@ -311,17 +308,17 @@ struct IncidenceSorterCommPartToOtherComm
 template<class T>
 void Common::sort_unknown(T& unknown)
 {
-    if (conf.incidence_sort == 1 || conf.incidence_sort >= 10) {
+    if (conf.unknown_sort == 1 || conf.unknown_sort >= 10) {
         std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
-    } else if (conf.incidence_sort == 2) {
+    } else if (conf.unknown_sort == 2) {
         std::sort(unknown.begin(), unknown.end(), IncidenceSorter2<uint32_t>(incidence, incidence_probing));
-    } else if (conf.incidence_sort == 3) {
+    } else if (conf.unknown_sort == 3) {
         std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence_probing));
-    } else if (conf.incidence_sort == 4) {
+    } else if (conf.unknown_sort == 4) {
         std::sort(unknown.begin(), unknown.end(), IncidenceSorterCommPart(this));
-    } else if (conf.incidence_sort == 5) {
+    } else if (conf.unknown_sort == 5) {
         std::sort(unknown.begin(), unknown.end(), IncidenceSorterCommPartToOtherComm(this));
-    } else if (conf.incidence_sort == 6) {
+    } else if (conf.unknown_sort == 6) {
         std::shuffle(unknown.begin(), unknown.end(), random_source);
     } else {
         cout << "ERROR: wrong sorting mechanism given" << endl;
