@@ -338,15 +338,14 @@ void dump_cnf(const std::pair<vector<vector<Lit>>,
 
 void elim_to_file(
     const vector<uint32_t>& sampl_vars, //contains empty_occs!
-    const vector<uint32_t>& empty_occs,
     uint32_t orig_num_vars)
 {
     double dump_start_time = cpuTime();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
     auto ret = arjun->get_fully_simplified_renumbered_cnf(
-        sampl_vars, empty_occs, orig_num_vars, sparsify, renumber);
+        sampl_vars, orig_num_vars, sparsify, renumber);
 
-    dump_cnf(std::get<0>(ret), std::get<1>(ret), std::get<2>(ret));
+    dump_cnf(std::get<0>(ret), std::get<1>(ret), 0);
     cout << "c [arjun] Done dumping. T: "
         << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
 }
@@ -411,9 +410,6 @@ int main(int argc, char** argv)
     arjun->set_backbone_simpl_max_confl(conf.backbone_simpl_max_confl);
     arjun->set_simp(conf.simp);
     arjun->set_empty_occs_based(conf.empty_occs_based);
-//     if (polar_mode == 1) {
-//         arjun->set_polar_mode(PolarityMode::polarmode_neg);
-//     }
 
     //parsing the input
     if (vm.count("input") == 0
@@ -439,8 +435,7 @@ int main(int argc, char** argv)
 
     if (!elimtofile.empty()) {
         if (conf.simp) {
-            elim_to_file(
-                indep_vars, arjun->get_empty_occ_sampl_vars(), orig_num_vars);
+            elim_to_file(indep_vars, orig_num_vars);
         } else {
             uint32_t num_cls = 0;
             /* vector<Lit> cnf = arjun->get_internal_cnf(num_cls); */

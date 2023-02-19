@@ -374,11 +374,26 @@ bool Common::remove_definable_by_gates()
 
     order_sampl_set_for_simp();
     uint32_t non_zero_occs = 0;
+
+    // If this is large, it means it'd get removed anyway:
+    //       bottom of the pie, we go through the pile in reverse order to try to remove
+    vector<double> var_to_rel_position(orig_num_vars, 1.0);
+    std::sort(sampling_set->begin(), sampling_set->end(), IncidenceSorter<uint32_t>(incidence));
+    for(uint32_t i = 0; i < sampling_set->size(); i++) {
+        assert(sampling_set->at(i) < orig_num_vars);
+        var_to_rel_position[sampling_set->at(i)] = (double)i/(double)sampling_set->size();
+    }
+
     for(uint32_t v: *sampling_set) {
         assert(seen[v]);
         if (vars_gate_occurs[v].size() == 0) {
             continue;
         }
+
+        // Only try removing if it's at the bottom X percent of incidence_sort
+        // If 0.1 is SMALLER, then we have to remove with backward LESS
+        /* if (var_to_rel_position[v] < 0.1) continue; */
+
         non_zero_occs++;
         //cout << "Trying to define var " << v << " size of lookup: " << vars_xor_occurs[v].size() << endl;
 
