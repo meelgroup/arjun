@@ -5,8 +5,8 @@
 # grep "User time" out2 | sed "s/\t//g"
 #
 # good example files:
-# faster_with_be/wage_circuit_div.t1.i18.777adaa9.stp.cnf
-# faster_with_be/amm-hhk2008-2.c.stp.cnf
+# wage_circuit_div.t1.i18.777adaa9.stp.cnf
+# amm-hhk2008-2.c.stp.cnf
 # ProcessBean.cnf
 # pollard.cnf
 # track1_116.mcc2020_cnf
