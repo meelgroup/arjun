@@ -48,6 +48,14 @@ bool Common::simplify()
     auto old_size = sampling_set->size();
     double myTime = cpuTime();
 
+    if (sampling_set->size() < 10000) {
+        cout << "c WARNING: Turning off gates, because the sampling size is small, so we can just do it" << endl;
+        conf.xor_gates_based = 0;
+        conf.ite_gate_based = 0;
+        conf.or_gate_based = 0;
+        conf.irreg_gate_based = 0;
+    }
+
     if (conf.xor_gates_based || conf.or_gate_based || conf.ite_gate_based) {
         remove_definable_by_gates();
     }
@@ -392,8 +400,8 @@ bool Common::remove_definable_by_gates()
         }
 
         // Only try removing if it's at the bottom X percent of incidence_sort
-        // If 0.1 is SMALLER, then we have to remove with backward LESS
-        if (var_to_rel_position[v] < 0.01) continue;
+        // If 0.01 is SMALLER, then we have to remove with backward LESS
+        if (var_to_rel_position[v] < conf.no_gates_below) continue;
 
         non_zero_occs++;
         //cout << "Trying to define var " << v << " size of lookup: " << vars_xor_occurs[v].size() << endl;

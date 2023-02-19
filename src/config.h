@@ -48,7 +48,7 @@ struct Config {
     int backward = 1;
     int gauss_jordan = 0;
     int backbone_simpl = 0;
-    double no_gates_below = 0.8;
+    double no_gates_below = 0.01;
     std::string specified_order_fname;
     unsigned long backbone_simpl_max_confl = 10ULL*1000ULL;
     uint32_t backw_max_confl = 5000;

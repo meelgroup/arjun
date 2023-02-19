@@ -112,26 +112,13 @@ void add_arjun_options()
      "Backbone simplification max conflicts")
     ;
 
-    po::options_description misc_options("misc options");
-    misc_options.add_options()
-    ("fastbackw", po::value(&conf.fast_backw)->default_value(conf.fast_backw), "fast_backw")
-    ("gaussj", po::value(&conf.gauss_jordan)->default_value(conf.gauss_jordan),
-     "Use XOR finding and Gauss-Jordan elimination")
-    ("sparsify", po::value(&sparsify)->default_value(sparsify),
-     "Use Oracle from SharpSAT-TD to sparsify CNF formula. Expensive, but useful for SharpSAT-style counters")
-    ("renumber", po::value(&renumber)->default_value(renumber),
-     "Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!")
-    ("distill", po::value(&conf.distill)->default_value(conf.distill), "distill")
-    ("specifiedorder", po::value(&conf.specified_order_fname)
-     , "Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables tart at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG mostly!")
-    ;
 
     po::options_description gate_options("Gate options");
     gate_options.add_options()
     ("gates", po::value<bool>(&gates),
      "Turn on/off all gate-based definability")
-    ("nogatebelow", po::value<double>(&conf.no_gates_below)
-     , "Don't use gates below this position (relative, 1.0-0.0) in the independent set")
+    ("nogatebelow", po::value<double>(&conf.no_gates_below)->default_value(conf.no_gates_below)
+     , "Don't use gates below this incidence relative position (1.0-0.0) to minimize the independent set. Gates are not very accurate, but can save a LOT of time. We use them to get rid of most of the uppert part of the sampling set only. Default is 99% is free-for-all, the last 1% we test. At 1.0 we test everything, at 0.0 we try using gates for everything.")
     ("orgate", po::value(&conf.or_gate_based)->default_value(conf.or_gate_based),
      "Use 3-long gate detection in SAT solver to define some variables")
     ("irreggate", po::value(&conf.irreg_gate_based)->default_value(conf.irreg_gate_based),
@@ -142,10 +129,24 @@ void add_arjun_options()
      "Use XOR detection in SAT solver to define some variables")
     ;
 
+    po::options_description debug_options("Debug options");
+    debug_options.add_options()
+    ("fastbackw", po::value(&conf.fast_backw)->default_value(conf.fast_backw), "fast_backw")
+    ("gaussj", po::value(&conf.gauss_jordan)->default_value(conf.gauss_jordan),
+     "Use XOR finding and Gauss-Jordan elimination")
+    ("sparsify", po::value(&sparsify)->default_value(sparsify),
+     "Use Oracle from SharpSAT-TD to sparsify CNF formula. Expensive, but useful for SharpSAT-style counters")
+    ("renumber", po::value(&renumber)->default_value(renumber),
+     "Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!")
+    ("distill", po::value(&conf.distill)->default_value(conf.distill), "distill")
+    ("specifiedorder", po::value(&conf.specified_order_fname)
+     , "Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY")
+    ;
+
     help_options.add(arjun_options);
     help_options.add(simp_options);
-    help_options.add(misc_options);
     help_options.add(gate_options);
+    help_options.add(debug_options);
 }
 
 void add_supported_options(int argc, char** argv)
