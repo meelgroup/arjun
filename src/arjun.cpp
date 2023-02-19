@@ -386,7 +386,7 @@ static void fill_solver(
     }
 }
 
-std::tuple<std::pair<std::vector<std::vector<CMSat::Lit>>, uint32_t>, std::vector<uint32_t>>
+DLL_PUBLIC std::tuple<std::pair<std::vector<std::vector<CMSat::Lit>>, uint32_t>, std::vector<uint32_t>>
 Arjun::get_fully_simplified_renumbered_cnf(
     const vector<uint32_t>& sampl_vars, //contains empty_vars!
     const uint32_t orig_num_vars,
