@@ -384,6 +384,7 @@ bool Common::remove_definable_by_gates()
         var_to_rel_position[sampling_set->at(i)] = (double)i/(double)sampling_set->size();
     }
 
+    std::reverse(sampling_set->begin(), sampling_set->end());
     for(uint32_t v: *sampling_set) {
         assert(seen[v]);
         if (vars_gate_occurs[v].size() == 0) {
@@ -392,7 +393,7 @@ bool Common::remove_definable_by_gates()
 
         // Only try removing if it's at the bottom X percent of incidence_sort
         // If 0.1 is SMALLER, then we have to remove with backward LESS
-        /* if (var_to_rel_position[v] < 0.1) continue; */
+        if (var_to_rel_position[v] < 0.01) continue;
 
         non_zero_occs++;
         //cout << "Trying to define var " << v << " size of lookup: " << vars_xor_occurs[v].size() << endl;
