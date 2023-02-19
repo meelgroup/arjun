@@ -41,6 +41,18 @@ using namespace ArjunInt;
     #define DLL_LOCAL  __attribute__ ((visibility ("hidden")))
 #endif
 
+#define set_get_macro(TYPE, NAME) \
+DLL_PUBLIC void Arjun::set_##NAME (TYPE NAME) \
+{ \
+    arjdata->common.conf.NAME = NAME; \
+} \
+DLL_PUBLIC TYPE Arjun::get_##NAME () const \
+{ \
+    return arjdata->common.conf.NAME; \
+} \
+
+
+
 namespace ArjunNS {
     struct ArjPrivateData {
         Common common;
@@ -128,7 +140,7 @@ DLL_PUBLIC std::string Arjun::get_compilation_env()
     return arjdata->common.solver->get_compilation_env();
 }
 
-DLL_PUBLIC std::vector<Lit> Arjun::get_orig_cnf()
+DLL_PUBLIC const std::vector<Lit>& Arjun::get_orig_cnf()
 {
     return arjdata->common.orig_cnf;
 }
@@ -202,162 +214,29 @@ DLL_PUBLIC void Arjun::set_seed(uint32_t seed)
     arjdata->common.random_source.seed(seed);
 }
 
-
-DLL_PUBLIC void Arjun::set_fast_backw(bool fast_backw)
-{
-    arjdata->common.conf.fast_backw = fast_backw;
-}
-
-DLL_PUBLIC void Arjun::set_distill(bool distill)
-{
-    arjdata->common.conf.distill = distill;
-}
-
-DLL_PUBLIC void Arjun::set_intree(bool intree)
-{
-    arjdata->common.conf.intree = intree;
-}
-
-DLL_PUBLIC void Arjun::set_bve_pre_simplify(bool bve_pre_simp)
-{
-    arjdata->common.conf.bve_pre_simplify = bve_pre_simp;
-}
-
-DLL_PUBLIC void Arjun::set_simp(bool simp)
-{
-    arjdata->common.conf.simp = simp;
-}
-
-DLL_PUBLIC void Arjun::set_incidence_sort(uint32_t incidence_sort)
-{
-    arjdata->common.conf.incidence_sort = incidence_sort;
-}
-
-DLL_PUBLIC void Arjun::set_or_gate_based(bool or_gate_based)
-{
-    arjdata->common.conf.or_gate_based = or_gate_based;
-}
-
-DLL_PUBLIC void Arjun::set_xor_gates_based(bool xor_gates_based)
-{
-    arjdata->common.conf.xor_gates_based = xor_gates_based;
-}
-
-DLL_PUBLIC void Arjun::set_probe_based(bool probe_based)
-{
-    arjdata->common.conf.probe_based = probe_based;
-}
-
-DLL_PUBLIC void Arjun::set_backward(bool backward)
-{
-    //assert(backward && "We MUST have backward or we cannot work");
-    arjdata->common.conf.backward = backward;
-}
-
-DLL_PUBLIC void Arjun::set_backw_max_confl(uint32_t backw_max_confl)
-{
-    arjdata->common.conf.backw_max_confl = backw_max_confl;
-}
-
-DLL_PUBLIC void Arjun::set_backbone_simpl_max_confl(uint64_t backbone_simpl_max_confl)
-{
-    arjdata->common.conf.backbone_simpl_max_confl = backbone_simpl_max_confl;
-}
-
-DLL_PUBLIC long unsigned Arjun::get_backbone_simpl_max_confl() const
-{
-    return arjdata->common.conf.backbone_simpl_max_confl;
-}
-
 DLL_PUBLIC uint32_t Arjun::get_verbosity() const
 {
     return arjdata->common.conf.verb;
 }
 
-DLL_PUBLIC bool Arjun::get_fast_backw() const
-{
-    return arjdata->common.conf.fast_backw;
-}
-
-DLL_PUBLIC bool Arjun::get_distill() const
-{
-    return arjdata->common.conf.distill;
-}
-
-DLL_PUBLIC bool Arjun::get_intree() const
-{
-    return arjdata->common.conf.intree;
-}
-
-DLL_PUBLIC bool Arjun::get_bve_pre_simplify() const
-{
-    return arjdata->common.conf.bve_pre_simplify;
-}
-
-DLL_PUBLIC uint32_t Arjun::get_incidence_sort() const
-{
-    return arjdata->common.conf.incidence_sort;
-}
-
-DLL_PUBLIC bool Arjun::get_or_gate_based() const
-{
-    return arjdata->common.conf.or_gate_based;
-}
-
-DLL_PUBLIC bool Arjun::get_xor_gates_based() const
-{
-    return arjdata->common.conf.xor_gates_based;
-}
-
-DLL_PUBLIC bool Arjun::get_probe_based() const
-{
-    return arjdata->common.conf.probe_based;
-}
-
-DLL_PUBLIC bool Arjun::get_backward() const
-{
-    return arjdata->common.conf.backward;
-}
-
-DLL_PUBLIC uint32_t Arjun::get_backw_max_confl() const
-{
-    return arjdata->common.conf.backw_max_confl;
-}
-
-DLL_PUBLIC void Arjun::set_gauss_jordan(bool gauss_jordan)
-{
-    arjdata->common.conf.gauss_jordan = gauss_jordan;
-}
-
-DLL_PUBLIC bool Arjun::get_gauss_jordan() const
-{
-    return arjdata->common.conf.gauss_jordan;
-}
-
-DLL_PUBLIC void Arjun::set_ite_gate_based(bool ite_gate_based)
-{
-    arjdata->common.conf.ite_gate_based = ite_gate_based;
-}
-
-DLL_PUBLIC bool Arjun::get_ite_gate_based() const
-{
-    return arjdata->common.conf.ite_gate_based;
-}
-
-DLL_PUBLIC void Arjun::set_irreg_gate_based(const bool irreg_gate_based)
-{
-    arjdata->common.conf.irreg_gate_based = irreg_gate_based;
-}
-
-DLL_PUBLIC void Arjun::set_specified_order_fname(std::string specified_order_fname)
-{
-    arjdata->common.conf.specified_order_fname = specified_order_fname;
-}
-
-DLL_PUBLIC bool Arjun::get_irreg_gate_based() const
-{
-    return arjdata->common.conf.irreg_gate_based;
-}
+set_get_macro(bool, fast_backw)
+set_get_macro(bool, distill)
+set_get_macro(bool, intree)
+set_get_macro(bool, bve_pre_simplify)
+set_get_macro(bool, simp)
+set_get_macro(uint32_t, incidence_sort)
+set_get_macro(bool, or_gate_based)
+set_get_macro(bool, xor_gates_based)
+set_get_macro(bool, probe_based)
+set_get_macro(bool, backward)
+set_get_macro(uint32_t, backw_max_confl)
+set_get_macro(uint64_t, backbone_simpl_max_confl)
+set_get_macro(bool, gauss_jordan)
+set_get_macro(bool, ite_gate_based)
+set_get_macro(bool, irreg_gate_based)
+set_get_macro(double, no_gates_below)
+set_get_macro(std::string, specified_order_fname)
+set_get_macro(bool, backbone_simpl)
 
 DLL_PUBLIC vector<Lit> Arjun::get_zero_assigned_lits() const
 {
@@ -385,16 +264,6 @@ DLL_PUBLIC std::vector<std::pair<CMSat::Lit, CMSat::Lit> > Arjun::get_all_binary
     }
 
     return ret;
-}
-
-DLL_PUBLIC void Arjun::set_backbone_simpl(bool backbone_simpl)
-{
-    arjdata->common.conf.backbone_simpl = backbone_simpl;
-}
-
-DLL_PUBLIC bool Arjun::get_backbone_simpl() const
-{
-    return arjdata->common.conf.backbone_simpl;
 }
 
 DLL_PUBLIC void Arjun::varreplace()
