@@ -313,28 +313,23 @@ void readInAFile(const string& filename)
     #endif
 }
 
-void dump_cnf(const std::pair<vector<vector<Lit>>,
-        uint32_t>& cnf, const vector<uint32_t>& sampl_set,
-        const uint32_t multiply = 0)
+void dump_cnf(const ArjunNS::SimplifiedCNF& simpcnf)
 {
-    uint32_t num_cls = cnf.first.size();
-    uint32_t max_var = cnf.second;
+    uint32_t num_cls = simpcnf.cnf.size();
     std::ofstream outf;
     outf.open(elimtofile.c_str(), std::ios::out);
-    outf << "p cnf " << max_var << " " << num_cls << endl;
+    outf << "p cnf " << simpcnf.nvars << " " << num_cls << endl;
 
     //Add projection
     outf << "c ind ";
-    for(const auto& v: sampl_set) {
-        assert(v < max_var);
+    for(const auto& v: simpcnf.sampling_vars) {
+        assert(v < simpcnf.nvars);
         outf << v+1  << " ";
     }
     outf << "0\n";
 
-    for(const auto& cl: cnf.first) {
-        outf << cl << " 0\n";
-    }
-    outf << "c MUST MUTIPLY BY 2**" << multiply << endl;
+    for(const auto& cl: simpcnf.cnf) outf << cl << " 0\n";
+    outf << "c MUST MUTIPLY BY 2**" << simpcnf.empty_occs << endl;
 }
 
 void elim_to_file(
@@ -346,7 +341,7 @@ void elim_to_file(
     auto ret = arjun->get_fully_simplified_renumbered_cnf(
         sampl_vars, orig_num_vars, sparsify, renumber);
 
-    dump_cnf(std::get<0>(ret), std::get<1>(ret), 0);
+    dump_cnf(ret);
     cout << "c [arjun] Done dumping. T: "
         << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
 }

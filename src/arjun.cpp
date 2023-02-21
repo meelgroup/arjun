@@ -312,19 +312,18 @@ DLL_PUBLIC const vector<Lit> Arjun::get_internal_cnf(uint32_t& num_cls) const
     return cnf;
 }
 
-static std::pair<vector<vector<Lit>>, uint32_t> get_simplified_cnf(
-        SATSolver* solver, vector<uint32_t>& sampl_vars, const bool renumber)
+static void get_simplified_cnf(
+        SATSolver* solver, vector<uint32_t>& sampl_vars, const bool renumber,
+        vector<vector<Lit>>& cnf, uint32_t& nvars)
 {
-    vector<vector<Lit>> cnf;
+    assert(cnf.empty());
     solver->start_getting_small_clauses(
         std::numeric_limits<uint32_t>::max(),
         std::numeric_limits<uint32_t>::max(),
         false, //red
         false, //bva vars
         renumber); //simplified
-
     if (renumber) sampl_vars = solver->translate_sampl_set(sampl_vars);
-    std::sort(sampl_vars.begin(), sampl_vars.end());
 
     bool ret = true;
     vector<Lit> clause;
@@ -335,8 +334,7 @@ static std::pair<vector<vector<Lit>>, uint32_t> get_simplified_cnf(
         }
     }
     solver->end_getting_small_clauses();
-    return std::make_pair(cnf,
-            renumber ? solver->simplified_nvars() :  solver->nVars());
+    nvars = renumber ? solver->simplified_nvars() :  solver->nVars();
 }
 
 static void fill_solver(
@@ -387,8 +385,7 @@ static void fill_solver(
     }
 }
 
-DLL_PUBLIC std::tuple<std::pair<std::vector<std::vector<CMSat::Lit>>, uint32_t>, std::vector<uint32_t>>
-Arjun::get_fully_simplified_renumbered_cnf(
+DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     const vector<uint32_t>& sampl_vars, //contains empty_vars!
     const uint32_t orig_num_vars,
     const bool sparsify,
@@ -438,10 +435,17 @@ Arjun::get_fully_simplified_renumbered_cnf(
     str += string(", must-scc-vrepl, must-renumber");
     solver.simplify(&dont_elim, &str);
 
-    vector<uint32_t> new_sampl_set;
-    for(const auto& l: dont_elim) new_sampl_set.push_back(l.var());
-    auto cnf = get_simplified_cnf(&solver, new_sampl_set, renumber);
-    return std::make_tuple(cnf, new_sampl_set);
+    vector<uint32_t> new_sampl_vars (sampl_vars);
+    SimplifiedCNF cnf;
+    get_simplified_cnf(&solver, new_sampl_vars, renumber, cnf.cnf, cnf.nvars);
+
+    vector<uint32_t> empty_occs;
+    if (arjdata->common.conf.empty_occs_based)
+        solver.find_equiv_subformula(new_sampl_vars, empty_occs);
+    std::sort(new_sampl_vars.begin(), new_sampl_vars.end());
+    cnf.sampling_vars = new_sampl_vars;
+    cnf.empty_occs = empty_occs.size();
+    return cnf;
 }
 
 DLL_PUBLIC void Arjun::set_pred_forever_cutoff(int pred_forever_cutoff)

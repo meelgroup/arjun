@@ -35,6 +35,13 @@ THE SOFTWARE.
 #endif
 
 namespace ArjunNS {
+    struct SimplifiedCNF {
+        std::vector<std::vector<CMSat::Lit>> cnf;
+        std::vector<uint32_t> sampling_vars;
+        uint32_t nvars;
+        uint32_t empty_occs;
+    };
+
     struct ArjPrivateData;
     #ifdef _WIN32
     class __declspec(dllexport) Arjun
@@ -73,8 +80,7 @@ namespace ArjunNS {
         bool get_next_small_clause(std::vector<CMSat::Lit>& ret); //returns FALSE if no more
         void end_getting_small_clauses();
         const std::vector<CMSat::Lit> get_internal_cnf(uint32_t& num_cls) const;
-        std::tuple<std::pair<std::vector<std::vector<CMSat::Lit>>, uint32_t>, std::vector<uint32_t>>
-        get_fully_simplified_renumbered_cnf(
+        SimplifiedCNF get_fully_simplified_renumbered_cnf(
             const std::vector<uint32_t>& sampl_vars,
             const uint32_t orig_num_vars,
             const bool sparsify = true,
