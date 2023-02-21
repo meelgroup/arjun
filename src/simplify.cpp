@@ -387,10 +387,9 @@ bool Common::remove_definable_by_gates()
     vector<double> var_to_rel_position(orig_num_vars, 1.0);
     for(uint32_t i = 0; i < sampling_set->size(); i++) {
         assert(sampling_set->at(i) < orig_num_vars);
-        var_to_rel_position[sampling_set->at(i)] = (double)i/(double)sampling_set->size();
+        var_to_rel_position[sampling_set->at(i)] = (double)(sampling_set->size()-i)/(double)sampling_set->size();
     }
 
-    std::reverse(sampling_set->begin(), sampling_set->end());
     for(uint32_t v: *sampling_set) {
         assert(seen[v]);
         if (vars_gate_occurs[v].size() == 0) {

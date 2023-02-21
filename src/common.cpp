@@ -218,6 +218,8 @@ void Common::get_incidence()
             incidence[l.var()] = std::max(inc[l.toInt()], inc[(~l).toInt()]);
         } else if (conf.incidence_count == 3) {
             incidence[l.var()] = std::min(inc[l.toInt()],inc[(~l).toInt()]);
+        } else {
+            assert(false && "This is NOT accepted incidence count");
         }
     }
 }
