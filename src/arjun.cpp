@@ -441,7 +441,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
 
     vector<uint32_t> empty_occs;
     if (arjdata->common.conf.empty_occs_based)
-        solver.find_equiv_subformula(new_sampl_vars, empty_occs);
+        solver.clean_sampl_and_get_empties(new_sampl_vars, empty_occs);
     std::sort(new_sampl_vars.begin(), new_sampl_vars.end());
     cnf.sampling_vars = new_sampl_vars;
     cnf.empty_occs = empty_occs.size();

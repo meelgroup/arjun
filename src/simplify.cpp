@@ -507,7 +507,7 @@ void Common::find_equiv_subformula()
     uint32_t old_size = sampling_set->size();
 
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
-    solver->find_equiv_subformula(*sampling_set, empty_occs);
+    solver->clean_sampl_and_get_empties(*sampling_set, empty_occs);
 
     if (conf.verb) {
         cout << "c [arjun-simp] equiv-subform"
