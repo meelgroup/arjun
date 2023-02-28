@@ -120,6 +120,7 @@ namespace ArjunNS {
         void set_specified_order_fname(std::string specified_order_fname);
 
         //Get config
+        bool get_empty_occs_based() const;
         std::string get_specified_order_fname() const;
         double get_no_gates_below() const;
         bool get_simp() const;

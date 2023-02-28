@@ -238,6 +238,22 @@ set_get_macro(bool, irreg_gate_based)
 set_get_macro(double, no_gates_below)
 set_get_macro(std::string, specified_order_fname)
 set_get_macro(bool, backbone_simpl)
+set_get_macro(bool, empty_occs_based)
+
+DLL_PUBLIC vector<uint32_t> Arjun::get_empty_occ_sampl_vars() const
+{
+    return arjdata->common.empty_occs;
+}
+
+DLL_PUBLIC void Arjun::set_pred_forever_cutoff(int pred_forever_cutoff)
+{
+    arjdata->common.solver->set_pred_forever_cutoff(pred_forever_cutoff);
+}
+
+DLL_PUBLIC void Arjun::set_every_pred_reduce(int every_pred_reduce)
+{
+    arjdata->common.solver->set_every_pred_reduce(every_pred_reduce);
+}
 
 DLL_PUBLIC vector<Lit> Arjun::get_zero_assigned_lits() const
 {
@@ -272,11 +288,6 @@ DLL_PUBLIC void Arjun::varreplace()
     //arjdata->common.solver->backbone_simpl();
     std::string tmp("must-scc-vrepl, cl-consolidate");
     arjdata->common.solver->simplify(NULL, &tmp);
-}
-
-DLL_PUBLIC vector<uint32_t> Arjun::get_empty_occ_sampl_vars() const
-{
-    return arjdata->common.empty_occs;
 }
 
 DLL_PUBLIC const vector<Lit> Arjun::get_internal_cnf(uint32_t& num_cls) const
@@ -446,20 +457,5 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     cnf.sampling_vars = new_sampl_vars;
     cnf.empty_occs = empty_occs.size();
     return cnf;
-}
-
-DLL_PUBLIC void Arjun::set_pred_forever_cutoff(int pred_forever_cutoff)
-{
-    arjdata->common.solver->set_pred_forever_cutoff(pred_forever_cutoff);
-}
-
-DLL_PUBLIC void Arjun::set_every_pred_reduce(int every_pred_reduce)
-{
-    arjdata->common.solver->set_every_pred_reduce(every_pred_reduce);
-}
-
-DLL_PUBLIC void Arjun::set_empty_occs_based(const bool empty_occs_based)
-{
-    arjdata->common.conf.empty_occs_based = empty_occs_based;
 }
 
