@@ -51,8 +51,6 @@ DLL_PUBLIC TYPE Arjun::get_##NAME () const \
     return arjdata->common.conf.NAME; \
 } \
 
-
-
 namespace ArjunNS {
     struct ArjPrivateData {
         Common common;
@@ -71,13 +69,6 @@ DLL_PUBLIC Arjun::~Arjun()
 {
     delete arjdata;
 }
-
-// DLL_PUBLIC void Arjun::set_projection_set(const vector<uint32_t>& vars)
-// {
-//     //arjdata->conf.sampling_set = vars;
-//     assert(false);
-// }
-
 
 DLL_PUBLIC uint32_t Arjun::nVars() {
     return arjdata->common.solver->nVars();
