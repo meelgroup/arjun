@@ -136,10 +136,20 @@ DLL_PUBLIC const std::vector<Lit>& Arjun::get_orig_cnf()
     return arjdata->common.orig_cnf;
 }
 
+template <class T>
+void check_sanity_sampling_vars(T vars, const uint32_t nvars)
+{
+    for(const auto& v: vars) if (v >= nvars) {
+        cout << "ERROR: sampling set provided is incorrect, it has a variable in it: " << v+1 << " that is larger than the total number of variables: " << nvars << endl;
+        exit(-1);
+    }
+}
+
 DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
 {
     double starTime = cpuTime();
     arjdata->common.orig_cnf = arjdata->common.get_cnf();
+    check_sanity_sampling_vars(*arjdata->common.sampling_set, get_orig_num_vars());
     if (!arjdata->common.preproc_and_duplicate()) goto end;
 
     //Backward
