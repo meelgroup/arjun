@@ -57,7 +57,7 @@ This means that your input independent set of your input formula `input.cnf`, wh
 
 ## Empty occurrences
 
-Empty occurrences are when a variable is ostensibly part of the CNF, but actually doesn't show up in it at all. This happens often after simplification. Obviously, all solution numbers need to be multiplied by 2**n for such cases. Arjun can remove these variables via `--empty 1`:
+Empty occurrences are when a variable is ostensibly part of the CNF, but actually doesn't show up in it at all. This happens often after simplification. Obviously, all solution numbers need to be multiplied by 2^n for such cases. Arjun can remove these variables via `--empty 1`:
 ```
 ./arjun --empty 1 input.cnf output.cnf
 c [arjun] original sampling set size: 500
