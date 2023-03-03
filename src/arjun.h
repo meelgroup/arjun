@@ -142,8 +142,7 @@ namespace ArjunNS {
         bool get_ite_gate_based() const;
         bool get_irreg_gate_based() const;
         bool get_gate_sort_special() const;
-
-        long unsigned get_backbone_simpl_max_confl() const;
+        uint64_t get_backbone_simpl_max_confl() const;
 
     private:
         ArjPrivateData* arjdata = NULL;
