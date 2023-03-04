@@ -350,25 +350,18 @@ static void get_simplified_cnf(
 }
 
 static void fill_solver(
-    const uint32_t orig_num_vars,
-    SATSolver& solver, // Solver here is EMPTY
+    SATSolver& solver,
     Arjun* arjun)
 {
-    solver.new_vars(orig_num_vars);
-
-    /* This below would work... except it doesn't work because
-     * it's been transformed, and some of that transformation is
-     * detrimental to simplifying the CNF
-    uint32_t num_cls;
-    const auto cnf = arjun->get_internal_cnf(num_cls);
-     */
+    assert(solver.nVars() == 0); // Solver here is empty
+    solver.new_vars(arjun->get_orig_num_vars());
 
     // Inject original CNF
     const auto cnf = arjun->get_orig_cnf();
     vector<Lit> cl;
     for(const auto& l: cnf) {
         if (l != lit_Undef) {
-            assert(l.var() < orig_num_vars);
+            assert(l.var() < arjun->get_orig_num_vars());
             cl.push_back(l);
             continue;
         }
@@ -379,7 +372,7 @@ static void fill_solver(
     // inject set vars
     const auto lits =  arjun->get_zero_assigned_lits();
     for(const auto& l: lits) {
-        if (l.var() < orig_num_vars) {
+        if (l.var() < arjun->get_orig_num_vars()) {
             cl.clear();
             cl.push_back(l);
             solver.add_clause(cl);
@@ -399,7 +392,6 @@ static void fill_solver(
 
 DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     const vector<uint32_t>& sampl_vars, //contains empty_vars!
-    const uint32_t orig_num_vars,
     const bool sparsify,
     const bool renumber)
 {
@@ -410,7 +402,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
 
     // Create a new SAT solver that contains no empties.
     // dont_elim now how no empties in it
-    fill_solver(orig_num_vars, solver, this);
+    fill_solver(solver, this);
     vector<Lit> dont_elim;
     for(uint32_t v: sampl_vars) dont_elim.push_back(Lit(v, false));
 

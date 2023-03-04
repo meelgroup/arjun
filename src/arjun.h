@@ -82,7 +82,6 @@ namespace ArjunNS {
         const std::vector<CMSat::Lit> get_internal_cnf(uint32_t& num_cls) const;
         SimplifiedCNF get_fully_simplified_renumbered_cnf(
             const std::vector<uint32_t>& sampl_vars,
-            const uint32_t orig_num_vars,
             const bool sparsify = true,
             const bool renumber = true);
         const std::vector<CMSat::BNN*>& get_bnns() const;

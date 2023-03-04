@@ -87,7 +87,6 @@ int main()
 
     arjun.get_fully_simplified_renumbered_cnf(
         dont_elim_vec,
-        num_vars,
         true, //sparsify
         false //don't renumber and don't replace variables
     );

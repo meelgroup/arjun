@@ -332,14 +332,12 @@ void dump_cnf(const ArjunNS::SimplifiedCNF& simpcnf)
     outf << "c MUST MUTIPLY BY 2**" << simpcnf.empty_occs << endl;
 }
 
-void elim_to_file(
-    const vector<uint32_t>& sampl_vars, //contains empty_occs!
-    uint32_t orig_num_vars)
+void elim_to_file(const vector<uint32_t>& sampl_vars) //contains empty_occs!
 {
     double dump_start_time = cpuTime();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
     auto ret = arjun->get_fully_simplified_renumbered_cnf(
-        sampl_vars, orig_num_vars, sparsify, renumber);
+        sampl_vars, sparsify, renumber);
 
     dump_cnf(ret);
     cout << "c [arjun] Done dumping. T: "
@@ -448,7 +446,6 @@ int main(int argc, char** argv)
     readInAFile(inp);
     cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
 
-    const uint32_t orig_num_vars = arjun->nVars();
     vector<uint32_t> indep_vars = arjun->get_indep_set();
     print_final_indep_set(indep_vars, arjun->get_empty_occ_sampl_vars());
     /* do_it_again(indep_vars); // in case we want to try to run Arjun again, not useful */
@@ -456,24 +453,22 @@ int main(int argc, char** argv)
         << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
         << endl;
 
-
     if (!elimtofile.empty()) {
         if (conf.simp) {
-            elim_to_file(indep_vars, orig_num_vars);
+            elim_to_file(indep_vars);
         } else {
             uint32_t num_cls = 0;
-            /* vector<Lit> cnf = arjun->get_internal_cnf(num_cls); */
             const auto& cnf = arjun->get_orig_cnf();
             for(const auto& l: cnf) if (l == lit_Undef) num_cls++;
             std::ofstream outf;
             outf.open(elimtofile.c_str(), std::ios::out);
-            outf << "p cnf " << orig_num_vars << " " << num_cls << endl;
+            outf << "p cnf " << arjun->get_orig_num_vars() << " " << num_cls << endl;
 
             //Add projection
             outf << "c ind ";
             std::sort(indep_vars.begin(), indep_vars.end());
             for(const auto& v: indep_vars) {
-                assert(v < orig_num_vars);
+                assert(v < arjun->get_orig_num_vars());
                 outf << v+1  << " ";
             }
             outf << "0\n";
