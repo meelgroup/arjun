@@ -62,6 +62,7 @@ double startTime;
 ArjunInt::Config conf;
 ArjunNS::Arjun* arjun = NULL;
 string elimtofile;
+string recover_file;
 
 int recompute_sampling_set = 0;
 uint32_t orig_sampling_set_size = 0;
@@ -412,9 +413,7 @@ int main(int argc, char** argv)
     string command_line;
     for(int i = 0; i < argc; i++) {
         command_line += string(argv[i]);
-        if (i+1 < argc) {
-            command_line += " ";
-        }
+        if (i+1 < argc) command_line += " ";
     }
 
     add_supported_options(argc, argv);
@@ -434,14 +433,17 @@ int main(int argc, char** argv)
     //parsing the input
     if (vm.count("input") == 0
             || vm["input"].as<vector<string>>().size() == 0
-            || vm["input"].as<vector<string>>().size() > 2) {
-        cout << "ERROR: you must pass an INPUT and optionally an OUTPUT file as parameters" << endl;
+            || vm["input"].as<vector<string>>().size() > 3) {
+        cout << "ERROR: you must pass an INPUT, optionally an OUTPUT, and optionally a RECOVER files as parameters" << endl;
         exit(-1);
     }
 
     const string inp = vm["input"].as<vector<string>>()[0];
     if (vm["input"].as<vector<string>>().size() >= 2) {
         elimtofile = vm["input"].as<vector<string>>()[1];
+    }
+    if (vm["input"].as<vector<string>>().size() >= 3) {
+        recover_file = vm["input"].as<vector<string>>()[2];
     }
     readInAFile(inp);
     cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;

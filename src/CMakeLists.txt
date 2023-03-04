@@ -85,6 +85,10 @@ else()
         example.cpp
     )
 
+    add_executable(solextend
+        solextend.cpp
+    )
+
     set(arjun_bin_exec_link_libs
         ${Boost_LIBRARIES}
     )
@@ -121,6 +125,15 @@ set_target_properties(arjun-example PROPERTIES
 target_link_libraries(arjun-example
     ${arjun_bin_exec_link_libs}
     arjun
+)
+
+set_target_properties(solextend PROPERTIES
+    OUTPUT_NAME solextend
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+target_link_libraries(solextend
+    LINK_PUBLIC ${CRYPTOMINISAT5_LIBRARIES}
 )
 
 arjun_add_public_header(

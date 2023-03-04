@@ -40,6 +40,7 @@ namespace ArjunNS {
         std::vector<uint32_t> sampling_vars;
         uint32_t nvars;
         uint32_t empty_occs;
+        std::string sol_ext_data;
     };
 
     struct ArjPrivateData;
@@ -52,9 +53,9 @@ namespace ArjunNS {
     public:
         Arjun();
         ~Arjun();
-        std::string get_version_info();
-        std::string get_compilation_env();
-        std::string get_solver_version_info();
+        static std::string get_version_info();
+        static std::string get_compilation_env();
+        static std::string get_solver_version_info();
 
         // Adding CNF
         uint32_t nVars();
@@ -83,7 +84,8 @@ namespace ArjunNS {
         SimplifiedCNF get_fully_simplified_renumbered_cnf(
             const std::vector<uint32_t>& sampl_vars,
             const bool sparsify = true,
-            const bool renumber = true);
+            const bool renumber = true,
+            const bool need_sol_extend = false);
         const std::vector<CMSat::BNN*>& get_bnns() const;
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
         std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;

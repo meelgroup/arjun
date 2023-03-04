@@ -123,12 +123,12 @@ DLL_PUBLIC string Arjun::get_version_info()
 
 DLL_PUBLIC std::string Arjun::get_solver_version_info()
 {
-    return arjdata->common.solver->get_text_version_info();
+    return CMSat::SATSolver::get_text_version_info();
 }
 
 DLL_PUBLIC std::string Arjun::get_compilation_env()
 {
-    return arjdata->common.solver->get_compilation_env();
+    return ArjunIntNS::get_compilation_env();
 }
 
 DLL_PUBLIC const std::vector<Lit>& Arjun::get_orig_cnf()
@@ -393,7 +393,8 @@ static void fill_solver(
 DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     const vector<uint32_t>& sampl_vars, //contains empty_vars!
     const bool sparsify,
-    const bool renumber)
+    const bool renumber,
+    const bool need_sol_extend)
 {
     CMSat::SATSolver solver;
     solver.set_verbosity(arjdata->common.conf.verb);
@@ -449,6 +450,11 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     std::sort(new_sampl_vars.begin(), new_sampl_vars.end());
     cnf.sampling_vars = new_sampl_vars;
     cnf.empty_occs = empty_occs.size();
+    if (need_sol_extend) {
+        solver.set_sampling_vars(&sampl_vars);
+        cnf.sol_ext_data = solver.serlialize_solution_reconstruction_data();
+    }
+
     return cnf;
 }
 
