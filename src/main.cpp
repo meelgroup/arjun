@@ -338,7 +338,13 @@ void elim_to_file(const vector<uint32_t>& sampl_vars) //contains empty_occs!
     double dump_start_time = cpuTime();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
     auto ret = arjun->get_fully_simplified_renumbered_cnf(
-        sampl_vars, sparsify, renumber);
+        sampl_vars, sparsify, renumber, !recover_file.empty());
+
+    if (!recover_file.empty()) {
+        std::ofstream f(recover_file, std::ios::out);
+        f << ret.sol_ext_data;
+        f.close();
+    }
 
     dump_cnf(ret);
     cout << "c [arjun] Done dumping. T: "
