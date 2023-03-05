@@ -60,6 +60,7 @@ double startTime;
 int verb;
 int seed;
 vector<lbool> simp_sol;
+bool satisfiable;
 
 void add_options()
 {
@@ -192,6 +193,10 @@ void parse_v_line(StreamBuffer<FILE*, FN>& in, const uint32_t lineNum)
         if (simp_sol.size() <= var)
             simp_sol.insert(simp_sol.end(), var-simp_sol.size()+1, l_Undef);
 
+        if (simp_sol[var] != l_Undef) {
+            cout << "ERROR: Variable " << var+1 << " is in the solution TWICE! That's wrong." << endl;
+            exit(-1);
+        }
         simp_sol[var] = parsed_lit < 0 ? l_False : l_True;
     }
 }
@@ -213,22 +218,33 @@ void parse_solution(StreamBuffer<FILE*, FN>& in)
             return;
         case 's': {
             ++in;
-            in.skipWhitespace();
-            std::string s;
-            in.parseString(str);
-            if (str != string("SATISFIABLE")) {
-                cout << "ERROR: solution doesn't contain 's SATISFIABLE'" << endl;
+            if (s_line_found) {
+                cout << "ERROR: solution contains TWO lines starting with 's'. That's wrong." << endl;
                 exit(-1);
             }
+            in.skipWhitespace();
+            in.parseString(str);
+            if (str == string("SATISFIABLE")) {
+                satisfiable = true;
+            } else if (str == string("UNSATISFIABLE")) {
+                satisfiable = false;
+            } else {
+                cout << "ERROR: line starting with 's' is not followed by either SATISFIABLE or UNSATISFIABLE" << endl;
+                exit(-1);
+            }
+            s_line_found = true;
+            in.skipLine();
             lineNum++;
             break;
         }
         case 'v':
             ++in;
             parse_v_line(in, lineNum);
+            in.skipLine();
             lineNum++;
             break;
         default:
+            ++in;
             in.skipLine();
             lineNum++;
             break;
@@ -236,6 +252,31 @@ void parse_solution(StreamBuffer<FILE*, FN>& in)
     }
 }
 
+uint32_t print_model(const vector<lbool>& model, std::ostream* os)
+{
+    *os << "v ";
+    size_t line_size = 2;
+    size_t num_undef = 0;
+
+    auto fun = [&](uint32_t var) {
+        if (model[var] != CMSat::l_Undef) {
+            const bool value_is_positive = (model[var] == CMSat::l_True);
+            const size_t this_var_size = std::ceil(std::log10(var+1)) + 1 + !value_is_positive;
+            line_size += this_var_size;
+            if (line_size > 80) {
+                *os << std::endl << "v ";
+                line_size = 2 + this_var_size;
+            }
+            *os << (value_is_positive? "" : "-") << var+1 << " ";
+        } else {
+            num_undef++;
+        }
+    };
+
+    for (uint32_t var = 0; var < model.size(); var++) fun(var);
+    *os << "0" << std::endl;
+    return num_undef;
+}
 
 int main(int argc, char** argv)
 {
@@ -248,49 +289,67 @@ int main(int argc, char** argv)
 
     add_supported_options(argc, argv);
 
-    cout << "c Arjun Version: "
-    << ArjunNS::Arjun::get_version_info() << endl;
-    cout << ArjunNS::Arjun::get_solver_version_info();
+    if (verb) {
+        cout << "c Arjun Version: "
+        << ArjunNS::Arjun::get_version_info() << endl;
+        cout << ArjunNS::Arjun::get_solver_version_info();
 
-    cout
-    << "c executed with command line: "
-    << command_line
-    << endl;
+        cout
+        << "c executed with command line: "
+        << command_line
+        << endl;
+    }
 
     //parsing the input
-    if (vm.count("input") != 2) {
-        cout << "ERROR: you must pass an INPUT, optionally an OUTPUT, and optionally a RECOVER files as parameters" << endl;
+    if (vm.count("input") == 0 || vm["input"].as<vector<string>>().size() != 2) {
+        cout << "ERROR: you must pass a RECOVER and a SOLUTION file as parameters" << endl;
         exit(-1);
     }
 
-    const string sol_file = vm["input"].as<vector<string>>()[0];
-    const string recover_file = vm["input"].as<vector<string>>()[2];
+    const string recover_file = vm["input"].as<vector<string>>()[0];
+    const string sol_file = vm["input"].as<vector<string>>()[1];
 
     // get solution from file
     FILE * in = fopen(sol_file.c_str(), "rb");
     StreamBuffer<FILE*, FN> sb(in);
     parse_solution(sb);
     fclose(in);
-    if (verb) {
+    if (verb >= 2) {
         cout << "c orig solution is: ";
-        for(const auto& l: simp_sol)
-            cout << l << " ";
-        cout << "0" << endl;
+        if (satisfiable) {
+            cout << "SAT" << endl;
+            for(uint32_t i = 0; i < simp_sol.size(); i++) {
+                cout << "var " << std::setw(7) << i+1 << " : " << simp_sol[i]  << " " << endl;
+            }
+        } else {
+            cout << "UNSAT" << endl;
+        }
     }
-    return 0;
+
+    if (!satisfiable) {
+        cout << "s UNSATISFIABLE" << endl;
+        return 20;
+    }
 
     // get recovery system from file
-    std::ifstream indat(recover_file, std::ios::in);
-    string rec_data;
-    indat >> rec_data;
-    indat.close();
+    std::ifstream ifs(recover_file, std::ios::in | std::ios::binary);
+    string rec_data(
+            (std::istreambuf_iterator<char>(ifs)),
+            (std::istreambuf_iterator<char>()));
+    ifs.close();
     void* solver = SATSolver::create_extend_solution_setup(rec_data);
 
     // Extend solutions
     const auto sol = SATSolver::extend_solution(solver, simp_sol);
+    if (verb) cout << "c solution mapped back" << endl;
+    assert(sol.first != l_Undef);
+    if (sol.first == l_False) {
+        cout << "s UNSATISFIABLE" << endl;
+        return 20;
+    }
+    cout << "s SATISFIABLE" << endl;
+    print_model(sol.second, &std::cout);
 
-
-
-    return 0;
+    return 10;
 }
 

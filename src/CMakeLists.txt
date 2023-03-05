@@ -134,6 +134,8 @@ set_target_properties(solextend PROPERTIES
 
 target_link_libraries(solextend
     LINK_PUBLIC ${CRYPTOMINISAT5_LIBRARIES}
+    ${arjun_bin_exec_link_libs}
+    arjun
 )
 
 arjun_add_public_header(

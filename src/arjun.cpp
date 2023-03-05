@@ -450,10 +450,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     std::sort(new_sampl_vars.begin(), new_sampl_vars.end());
     cnf.sampling_vars = new_sampl_vars;
     cnf.empty_occs = empty_occs.size();
-    if (need_sol_extend) {
-        solver.set_sampling_vars(&sampl_vars);
-        cnf.sol_ext_data = solver.serlialize_solution_reconstruction_data();
-    }
+    if (need_sol_extend) cnf.sol_ext_data = solver.serialize_solution_reconstruction_data();
 
     return cnf;
 }

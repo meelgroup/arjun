@@ -265,6 +265,10 @@ void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint3
     for(const uint32_t s: indep_set) cout << s+1 << " ";
     cout << "0" << endl;
 
+    cout << "c empties ";
+    for(const uint32_t s: empty_occs) cout << s+1 << " ";
+    cout << "0" << endl;
+
     cout
     << "c [arjun] final set size:      " << std::setw(7) << indep_set.size()
     << " percent of original: "
@@ -341,8 +345,8 @@ void elim_to_file(const vector<uint32_t>& sampl_vars) //contains empty_occs!
         sampl_vars, sparsify, renumber, !recover_file.empty());
 
     if (!recover_file.empty()) {
-        std::ofstream f(recover_file, std::ios::out);
-        f << ret.sol_ext_data;
+        std::ofstream f(recover_file, std::ios::out | std::ios::binary);
+        f.write(&ret.sol_ext_data[0], ret.sol_ext_data.size());
         f.close();
     }
 
