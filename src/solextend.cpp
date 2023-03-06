@@ -87,7 +87,7 @@ void add_supported_options(int argc, char** argv)
         {
             cout
             << "Solution extender for Arjun." << endl << endl
-            << "arjun-extend [options] recover.dat solutionfile" << endl;
+            << "solextend [options] recover.dat solutionfile" << endl;
 
             cout << help_options << endl;
             std::exit(0);
