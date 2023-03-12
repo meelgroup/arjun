@@ -140,6 +140,8 @@ void add_arjun_options()
     ("renumber", po::value(&renumber)->default_value(renumber),
      "Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!")
     ("distill", po::value(&conf.distill)->default_value(conf.distill), "distill")
+    ("bce", po::value(&conf.bce)->default_value(conf.bce),
+     "Use blocked clause elimination (BCE). VERY experimental!!")
     ("specifiedorder", po::value(&conf.specified_order_fname)
      , "Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY")
     ;

@@ -119,6 +119,7 @@ namespace ArjunNS {
         void set_every_pred_reduce(int every_pred_reduce = -1);
         void set_empty_occs_based(const bool empty_occs_based);
         void set_specified_order_fname(std::string specified_order_fname);
+        void set_bce(const bool bce);
 
         //Get config
         bool get_empty_occs_based() const;
@@ -144,6 +145,7 @@ namespace ArjunNS {
         bool get_irreg_gate_based() const;
         bool get_gate_sort_special() const;
         uint64_t get_backbone_simpl_max_confl() const;
+        bool get_bce() const;
 
     private:
         ArjPrivateData* arjdata = NULL;

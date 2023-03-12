@@ -240,6 +240,7 @@ set_get_macro(double, no_gates_below)
 set_get_macro(std::string, specified_order_fname)
 set_get_macro(bool, backbone_simpl)
 set_get_macro(bool, empty_occs_based)
+set_get_macro(bool, bce)
 
 DLL_PUBLIC vector<uint32_t> Arjun::get_empty_occ_sampl_vars() const
 {
@@ -421,23 +422,29 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     // eqlit-find ? (too slow)
     string str("full-probe, sub-cls-with-bin, must-scc-vrepl, must-scc-vrepl, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-del-elimed, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, ");
     solver.simplify(&dont_elim, &str);
-    str = string(",intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls,distill-bins, ") + str;
+
+    string str2;
+    if (arjdata->common.conf.bce) str2 += "occ-bce,";
+    str = str2 + string("intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls,distill-bins, ") + str;
 
     solver.simplify(&dont_elim, &str);
     solver.simplify(&dont_elim, &str);
     solver.simplify(&dont_elim, &str);
     if (sparsify) {
-        string str2 = string("sparsify,") + str;
+        str2.clear();
+        if (arjdata->common.conf.bce) str2+= "occ-bce,";
+        str2 += string("sparsify,") + str;
         solver.simplify(&dont_elim, &str2);
     }
     //one more without sparsify
     solver.simplify(&dont_elim, &str);
 
-    str = string("");
+    str.clear();
     if (arjdata->common.definitely_satisfiable) {
         str += string("occ-rem-unconn-assumps, ");
     }
-    str += string(", must-scc-vrepl, must-renumber");
+    str += string(", must-scc-vrepl, must-renumber,");
+    if (arjdata->common.conf.bce) str += "occ-bce,";
     solver.simplify(&dont_elim, &str);
 
     vector<uint32_t> new_sampl_vars (sampl_vars);
