@@ -448,19 +448,17 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     solver.simplify(&dont_elim, &str);
 
     vector<uint32_t> new_sampl_vars (sampl_vars);
-    SimplifiedCNF cnf;
-    get_simplified_cnf(&solver, new_sampl_vars, renumber, cnf.cnf, cnf.nvars);
-
     vector<uint32_t> empty_occs;
+    SimplifiedCNF cnf;
     if (arjdata->common.conf.empty_occs_based) {
         solver.clean_sampl_and_get_empties(new_sampl_vars, empty_occs);
         dont_elim.clear();
         for(uint32_t v: new_sampl_vars) dont_elim.push_back(Lit(v, false));
         str = "occ-bve-empty, must-renumber";
         solver.simplify(&dont_elim, &str);
-        cnf.clear();
-        get_simplified_cnf(&solver, new_sampl_vars, renumber, cnf.cnf, cnf.nvars);
     }
+    get_simplified_cnf(&solver, new_sampl_vars, renumber, cnf.cnf, cnf.nvars);
+
     std::sort(new_sampl_vars.begin(), new_sampl_vars.end());
     cnf.sampling_vars = new_sampl_vars;
     cnf.empty_occs = empty_occs.size();
