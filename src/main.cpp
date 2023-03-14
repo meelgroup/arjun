@@ -336,7 +336,7 @@ void dump_cnf(const ArjunNS::SimplifiedCNF& simpcnf)
     outf << "0\n";
 
     for(const auto& cl: simpcnf.cnf) outf << cl << " 0\n";
-    outf << "c MUST MUTIPLY BY 2**" << simpcnf.empty_occs << endl;
+    outf << "c MUST MULTIPLY BY 2**" << simpcnf.empty_occs << endl;
 }
 
 void elim_to_file(const vector<uint32_t>& sampl_vars) //contains empty_occs!

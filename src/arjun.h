@@ -41,6 +41,14 @@ namespace ArjunNS {
         uint32_t nvars;
         uint32_t empty_occs;
         std::string sol_ext_data;
+
+        void clear() {
+            cnf.clear();
+            sampling_vars.clear();
+            nvars = 0;
+            empty_occs = 0;
+            sol_ext_data.clear();
+        }
     };
 
     struct ArjPrivateData;
