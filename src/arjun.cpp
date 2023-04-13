@@ -241,6 +241,7 @@ set_get_macro(std::string, specified_order_fname)
 set_get_macro(bool, backbone_simpl)
 set_get_macro(bool, empty_occs_based)
 set_get_macro(bool, bce)
+set_get_macro(bool, bve_during_elimtofile)
 
 DLL_PUBLIC vector<uint32_t> Arjun::get_empty_occ_sampl_vars() const
 {
@@ -417,6 +418,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     solver.set_timeout_all_calls(100);
     solver.set_weaken_time_limitM(2000);
     solver.set_occ_based_lit_rem_time_limitM(500);
+    solver.set_bve(arjdata->common.conf.bve_during_elimtofile);
 
     // occ-ternary-res not used
     // eqlit-find ? (too slow)

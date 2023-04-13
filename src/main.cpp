@@ -140,6 +140,8 @@ void add_arjun_options()
     ("renumber", po::value(&renumber)->default_value(renumber),
      "Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!")
     ("distill", po::value(&conf.distill)->default_value(conf.distill), "distill")
+    ("bve", po::value(&conf.bve_during_elimtofile)->default_value(conf.bve_during_elimtofile),
+     "Use BVE during simplificaiton of the formula")
     ("bce", po::value(&conf.bce)->default_value(conf.bce),
      "Use blocked clause elimination (BCE). VERY experimental!!")
     ("specifiedorder", po::value(&conf.specified_order_fname)
@@ -388,6 +390,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_backbone_simpl_max_confl(conf.backbone_simpl_max_confl);
     arj->set_simp(conf.simp);
     arj->set_empty_occs_based(conf.empty_occs_based);
+    arj->set_bve_during_elimtofile(conf.bve_during_elimtofile);
 }
 
 void do_it_again(vector<uint32_t>& indep_vars)

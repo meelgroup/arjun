@@ -54,6 +54,7 @@ struct Config {
     std::string specified_order_fname;
     unsigned long backbone_simpl_max_confl = 10ULL*1000ULL;
     uint32_t backw_max_confl = 5000;
+    int bve_during_elimtofile = true;
 };
 
 }
