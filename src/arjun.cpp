@@ -326,6 +326,112 @@ DLL_PUBLIC const vector<Lit> Arjun::get_internal_cnf(uint32_t& num_cls) const
     return cnf;
 }
 
+static void check_flippable(SATSolver* solver)
+{
+    double myTime = cpuTime();
+    uint32_t orig_num_vars = solver->nVars();
+    vector<uint32_t> var_to_indic;
+    vector<uint32_t> indic_to_var;
+    var_to_indic.clear();
+    var_to_indic.resize(orig_num_vars, var_Undef);
+    indic_to_var.clear();
+    indic_to_var.resize(solver->nVars(), var_Undef);
+
+    vector<Lit> tmp;
+    SATSolver s;
+    s.new_vars(solver->nVars()*2);
+    vector<Lit> indic;
+    //Indicator variable is FALSE when they are NOT equal
+    for(uint32_t var = 0; var < solver->nVars(); var++) {
+        solver->new_var();
+        uint32_t this_indic = solver->nVars()-1;
+        //torem_orig.push_back(Lit(this_indic, false));
+        var_to_indic[var] = this_indic;
+        indic_to_var.resize(this_indic+1, var_Undef);
+        indic_to_var[this_indic] = var;
+
+        tmp.clear();
+        tmp.push_back(Lit(var,               false));
+        tmp.push_back(Lit(var+orig_num_vars, true));
+        tmp.push_back(Lit(this_indic,      true));
+        solver->add_clause(tmp);
+
+        tmp.clear();
+        tmp.push_back(Lit(var,               true));
+        tmp.push_back(Lit(var+orig_num_vars, false));
+        tmp.push_back(Lit(this_indic,      true));
+        solver->add_clause(tmp);
+
+        tmp.clear();
+        tmp.push_back(Lit(var,               false));
+        tmp.push_back(Lit(var+orig_num_vars, false));
+        tmp.push_back(Lit(this_indic,      false));
+        solver->add_clause(tmp);
+
+        tmp.clear();
+        tmp.push_back(Lit(var,               true));
+        tmp.push_back(Lit(var+orig_num_vars, true));
+        tmp.push_back(Lit(this_indic,      false));
+        solver->add_clause(tmp);
+    }
+
+    solver->start_getting_small_clauses(
+        std::numeric_limits<uint32_t>::max(),
+        std::numeric_limits<uint32_t>::max(),
+        false, //red
+        false, //bva vars
+        false); //simplified
+
+    vector<Lit> zs;
+    bool ret = true;
+    vector<Lit> clause;
+    while(ret) {
+        ret = solver->get_next_small_clause(clause);
+        if (ret) {
+            // F(x)
+            s.add_clause(clause);
+
+            // !F(y)
+            s.new_var();
+            uint32_t zv = s.nVars()-1;
+            Lit z = Lit(zv, false);
+
+            // (C shifted) V -z
+            tmp.clear();
+            for(auto l: clause) tmp.push_back(Lit(l.var()+orig_num_vars, l.sign()));
+            tmp.push_back(~z);
+            s.add_clause(tmp);
+
+            // (each -lit in C) V z
+            for(auto l: clause) {
+                tmp.clear();
+                tmp = {Lit(l.var()+orig_num_vars, !l.sign()),  z};
+                s.add_clause(tmp);
+            }
+            zs.push_back(z);
+        }
+    }
+    solver->end_getting_small_clauses();
+    tmp.clear();
+    for(auto z: zs) tmp.push_back(~z);
+    s.add_clause(tmp);
+    cout << "Built up the solver. T: " << (cpuTime() - myTime) << endl;
+
+    vector<Lit> assumps;
+    for(uint32_t i = 0; i < orig_num_vars; i++) {
+        // Checking now if var i is flippable
+        myTime = cpuTime();
+        assumps.clear();
+        for(uint32_t i2 = 0; i2 < orig_num_vars; i2++) {
+            if (i != i2) assumps.push_back(indic[i2]);
+        }
+        assumps.push_back(~indic[i]);
+        cout << "Solving now for var " << i << endl;
+        auto sret = s.solve(&assumps);
+        cout << "Ret: " << sret << " << T: " << (cpuTime() - myTime) << endl; 
+    }
+}
+
 static void get_simplified_cnf(
         SATSolver* solver, vector<uint32_t>& sampl_vars, const bool renumber,
         vector<vector<Lit>>& cnf, uint32_t& nvars)
