@@ -49,10 +49,11 @@ struct Config {
     int backward = 1;
     int gauss_jordan = 0;
     int backbone_simpl = 0;
+    int backbone_simpl_cmsgen = 1;
     int bce = 0;
     double no_gates_below = 0.01;
     std::string specified_order_fname;
-    unsigned long backbone_simpl_max_confl = 10ULL*1000ULL;
+    unsigned long backbone_simpl_max_confl = 20ULL*1000ULL;
     uint32_t backw_max_confl = 5000;
     int bve_during_elimtofile = true;
 };
