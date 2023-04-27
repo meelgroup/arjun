@@ -403,7 +403,7 @@ static bool backbone_simpl(int verb, uint64_t backbone_simpl_max_confl,
             << "c [backbone-simpl] num seen flipped: " << num_seen_flipped
             << " conflicts used: " << print_value_kilo_mega(s2.get_sum_conflicts())
             << " num runs succeeded: " << num_runs
-            << " T: " << std::fixed << std::setprecision(2) << (cpuTime() - myTime) << endl;
+            << " T: " << (cpuTime() - myTime) << endl;
     }
 
     vector<uint32_t> var_order;
@@ -434,6 +434,7 @@ static bool backbone_simpl(int verb, uint64_t backbone_simpl_max_confl,
         //There is definitely a solution with "l". Let's see if ~l fails.
         assumps.clear();
         assumps.push_back(~l);
+        solver->set_verbosity(1);
         solver->set_max_confl(max_confl/20);
         ret = solver->solve(&assumps);
 
@@ -589,6 +590,9 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     solver.simplify(&dont_elim, &str);
     solver.simplify(&dont_elim, &str);
     if (arjdata->common.conf.backbone_simpl)
+        /* solver.backbone_simpl( */
+        /*     arjdata->common.conf.backbone_simpl_max_confl, */
+        /*     arjdata->common.conf.backbone_simpl_cmsgen); */
         backbone_simpl(
             arjdata->common.conf.verb,
             arjdata->common.conf.backbone_simpl_max_confl,
