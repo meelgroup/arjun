@@ -141,7 +141,6 @@ struct Common
     void remove_eq_literals(bool print = true);
     void find_equiv_subformula();
     bool probe_all();
-    bool backbone_simpl();
     void empty_out_indep_set_if_unsat();
     bool simplify_bve_only();
     bool run_gauss_jordan();

@@ -109,7 +109,8 @@ void add_arjun_options()
     ("intree", po::value(&conf.intree)->default_value(conf.intree), "intree")
     ("backbone", po::value(&conf.backbone_simpl)->default_value(conf.backbone_simpl),
      "Use backbone simplification")
-    ("backbonemaxconfl", po::value(&conf.backbone_simpl_max_confl)->default_value(conf.backbone_simpl_max_confl),
+    ("backcmsgen", po::value(&conf.backbone_simpl_cmsgen)->default_value(conf.backbone_simpl_cmsgen), "Use CMSGen to detect flipped during backbone simplification")
+    ("backmaxconfl", po::value(&conf.backbone_simpl_max_confl)->default_value(conf.backbone_simpl_max_confl),
      "Backbone simplification max conflicts")
     ;
 
@@ -391,6 +392,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_simp(conf.simp);
     arj->set_empty_occs_based(conf.empty_occs_based);
     arj->set_bve_during_elimtofile(conf.bve_during_elimtofile);
+    arj->set_backbone_simpl_cmsgen(conf.backbone_simpl_cmsgen);
 }
 
 void do_it_again(vector<uint32_t>& indep_vars)

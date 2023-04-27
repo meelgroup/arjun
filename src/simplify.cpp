@@ -73,16 +73,12 @@ bool Common::simplify()
             << " T: " << (cpuTime() - simpTime));
     }
 
-    if (conf.backbone_simpl) {
-        if (!backbone_simpl()) return false;
-    } else {
-        // Find at least one solution (so it's not UNSAT) within some timeout
-        solver->set_verbosity(0);
-        solver->set_max_confl(1000);
-        lbool ret = solver->solve();
-        if (ret == l_True) definitely_satisfiable = true;
-        solver->set_verbosity(std::max<int>(conf.verb-2, 0));
-    }
+    // Find at least one solution (so it's not UNSAT) within some timeout
+    solver->set_verbosity(0);
+    solver->set_max_confl(1000);
+    lbool ret = solver->solve();
+    if (ret == l_True) definitely_satisfiable = true;
+    solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
     remove_eq_literals();
     remove_zero_assigned_literals();
@@ -99,127 +95,6 @@ bool Common::simplify()
         << " T: " << (cpuTime() - myTime));
 
     check_no_duplicate_in_sampling_set();
-    return true;
-}
-
-bool Common::backbone_simpl()
-{
-    if (conf.verb) {
-        cout << "c [backbone-simpl] starting backbone simplification..." << endl;
-    }
-    uint64_t last_sum_conflicts = 0;
-    int64_t max_confl = conf.backbone_simpl_max_confl;
-
-    solver->set_verbosity(0);
-    double myTime = cpuTime();
-    uint32_t orig_vars_set = solver->get_zero_assigned_lits().size();
-    bool finished = false;
-    Lit l;
-
-    vector<Lit> tmp_clause;
-    vector<Lit> assumps;
-    vector<lbool> model;
-    vector<char> model_enabled;
-    const auto old_polar_mode = solver->get_polarity_mode();
-    solver->set_polarity_mode(PolarityMode::polarmode_neg);
-
-    vector<Lit> zero_set = solver->get_zero_assigned_lits();
-    for(auto const& l2: zero_set) seen[l2.var()] = 1;
-    for(auto const& v: empty_occs) seen[v] = 1;
-    vector<uint32_t> var_order;
-    for(uint32_t i = 0, max = solver->nVars(); i < max; i++) {
-        if (seen[i]) continue;
-        var_order.push_back(i);
-    }
-    for(auto const& l2: zero_set) seen[l2.var()] = 0;
-    for(auto const& v: empty_occs) seen[v] = 0;
-    if (var_order.empty()) return true;
-
-    std::mt19937 g;
-    g.seed(1337);
-    std::shuffle(var_order.begin(), var_order.end(), g);
-
-    solver->set_max_confl(max_confl);
-//     cout << "c [backbone] sum conf: " << solver->get_sum_conflicts() << endl;
-    max_confl -= solver->get_sum_conflicts();
-    last_sum_conflicts = solver->get_sum_conflicts();
-    lbool ret = solver->solve();
-    if (ret == l_False) {
-        return false;
-    }
-    if (ret == l_Undef || max_confl < 0) {
-        goto end;
-    }
-
-    model = solver->get_model();
-    model_enabled.resize(solver->nVars(), 1);
-
-    for(const uint32_t var: var_order) {
-        if (!model_enabled[var]) {
-            continue;
-        }
-
-        l = Lit(var, model[var] == l_False);
-
-        //There is definitely a solution with "l". Let's see if ~l fails.
-        assumps.clear();
-        assumps.push_back(~l);
-//         cout << "c [backbone]  assumps: " << endl;
-//         for (auto const& l2: assumps) cout << l2 << " , ";
-//         cout << " -- sum conf: " << solver->get_sum_conflicts() << endl;
-        solver->set_max_confl(max_confl);
-        ret = solver->solve(&assumps);
-
-        //Update max confl
-        assert(last_sum_conflicts <= solver->get_sum_conflicts());
-        max_confl -= ((int64_t)solver->get_sum_conflicts() - last_sum_conflicts);
-        max_confl -= 100;
-        last_sum_conflicts = solver->get_sum_conflicts();
-//         cout << "max_confl: " << max_confl << endl;
-
-        //Check return value
-        if (ret == l_True) {
-            const auto& this_model = solver->get_model();
-            for(uint32_t i2 = 0, max = solver->nVars(); i2 < max; i2++) {
-                if (this_model[i2] != model[i2]) {
-                    model_enabled[i2] = 0;
-                }
-            }
-        } else if (ret == l_False) {
-            tmp_clause.clear();
-            tmp_clause.push_back(l);
-            if (!solver->add_clause(tmp_clause)) {
-                return false;
-            }
-        }
-        if (ret == l_Undef || max_confl < 0) {
-            goto end;
-        }
-    }
-    finished = true;
-    assert(solver->okay());
-
-    end:
-    uint32_t num_set = solver->get_zero_assigned_lits().size() - orig_vars_set;
-    double time_used = cpuTime() - myTime;
-    solver->set_polarity_mode(old_polar_mode);
-
-    if (conf.verb) {
-        if (!finished) {
-            cout << "c [backbone-simpl] "
-            << "skipping, taking more than max conflicts:"
-            << print_value_kilo_mega(conf.backbone_simpl_max_confl)
-            << endl;
-        }
-        cout << "c [backbone-simpl]"
-        << " set: " << num_set
-        << " conflicts used: " << print_value_kilo_mega(solver->get_sum_conflicts())
-        << " conflicts max: " << print_value_kilo_mega(conf.backbone_simpl_max_confl)
-        << " T: " << std::setprecision(2) << time_used
-        << endl;
-    }
-    solver->set_verbosity(std::max<int>(conf.verb-2, 0));
-
     return true;
 }
 

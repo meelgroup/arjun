@@ -383,6 +383,7 @@ set_get_macro(bool, backbone_simpl)
 set_get_macro(bool, empty_occs_based)
 set_get_macro(bool, bce)
 set_get_macro(bool, bve_during_elimtofile)
+set_get_macro(bool, backbone_simpl_cmsgen)
 
 DLL_PUBLIC vector<uint32_t> Arjun::get_empty_occ_sampl_vars() const
 {
@@ -465,6 +466,162 @@ DLL_PUBLIC const vector<Lit> Arjun::get_internal_cnf(uint32_t& num_cls) const
     }
     arjdata->common.solver->end_getting_small_clauses();
     return cnf;
+}
+
+static bool backbone_simpl(int verb, uint64_t backbone_simpl_max_confl,
+        bool backbone_simpl_cmsgen, SATSolver* solver)
+{
+    if (verb) {
+        cout << "c [backbone-simpl] starting backbone simplification..." << endl;
+    }
+    uint64_t last_sum_conflicts = 0;
+    int64_t max_confl = backbone_simpl_max_confl;
+
+    double myTime = cpuTime();
+    uint32_t orig_vars_set = solver->get_zero_assigned_lits().size();
+    bool finished = false;
+    Lit l;
+    uint32_t undefs = 0;
+
+    vector<Lit> tmp_clause;
+    vector<Lit> assumps;
+    vector<lbool> model;
+    uint32_t num_seen_flipped = 0;
+    vector<char> seen_flipped;
+    seen_flipped.resize(solver->nVars(), 0);
+    const auto old_polar_mode = solver->get_polarity_mode();
+    const auto old_verb = solver->get_verbosity();
+    solver->set_verbosity(0);
+
+    vector<Lit> zero_set = solver->get_zero_assigned_lits();
+    for(auto const& l2: zero_set) seen_flipped[l2.var()] = 1;
+
+    if (backbone_simpl_cmsgen) {
+        //CMSGen-based seen_flipped detection, so we don't need to query so much
+        SATSolver s2;
+        s2.set_up_for_sample_counter(100);
+        s2.new_vars(solver->nVars());
+        s2.set_verbosity(0);
+        bool ret = true;
+        solver->start_getting_small_clauses(
+            std::numeric_limits<uint32_t>::max(),
+            std::numeric_limits<uint32_t>::max(),
+            false);
+        vector<Lit> clause;
+        while (ret) {
+            ret = solver->get_next_small_clause(clause);
+            if (!ret) break;
+            s2.add_clause(clause);
+        }
+        solver->end_getting_small_clauses();
+
+        uint64_t last_num_conflicts = 0;
+        int64_t remaining_confls = backbone_simpl_max_confl;
+        s2.set_max_confl(remaining_confls/4);
+        uint32_t num_runs = 0;
+        auto s2_ret = s2.solve();
+        remaining_confls -= (s2.get_sum_conflicts() - last_num_conflicts);
+        if (s2_ret == l_True) {
+            model = s2.get_model();
+            for(uint32_t i = 0; i < 30 && remaining_confls > 0; i++) {
+                last_num_conflicts = s2.get_sum_conflicts();
+                s2.set_max_confl(remaining_confls);
+                s2_ret = s2.solve();
+                remaining_confls -= (s2.get_sum_conflicts() - last_num_conflicts);
+                if (s2_ret == l_Undef) break;
+                num_runs++;
+                const auto& this_model = s2.get_model();
+                for(uint32_t i2 = 0, max = s2.nVars(); i2 < max; i2++) {
+                    if (seen_flipped[i2]) continue;
+                    if (this_model[i2] != model[i2]) {
+                        seen_flipped[i2] = 1;
+                        num_seen_flipped++;
+                    }
+                }
+            }
+        }
+        if (verb) cout
+            << "c [backbone-simpl] num seen flipped: " << num_seen_flipped
+            << " conflicts used: " << print_value_kilo_mega(s2.get_sum_conflicts())
+            << " num runs succeeded: " << num_runs
+            << " T: " << (cpuTime() - myTime) << endl;
+    }
+
+    vector<uint32_t> var_order;
+    for(uint32_t i = 0, max = solver->nVars(); i < max; i++) {
+        if (seen_flipped[i]) continue;
+        var_order.push_back(i);
+    }
+    if (var_order.empty()) return true;
+
+    std::mt19937 g;
+    g.seed(1337);
+    std::shuffle(var_order.begin(), var_order.end(), g);
+
+    solver->set_max_confl(max_confl);
+    max_confl -= solver->get_sum_conflicts();
+    last_sum_conflicts = solver->get_sum_conflicts();
+
+    solver->set_polarity_mode(PolarityMode::polarmode_neg);
+    lbool ret = solver->solve();
+    if (ret == l_False) return false;
+    if (ret == l_Undef || max_confl < 0) goto end;
+    model = solver->get_model();
+
+    for(const uint32_t var: var_order) {
+        if (seen_flipped[var]) continue;
+        l = Lit(var, model[var] == l_False);
+
+        //There is definitely a solution with "l". Let's see if ~l fails.
+        assumps.clear();
+        assumps.push_back(~l);
+        solver->set_max_confl(max_confl/20);
+        ret = solver->solve(&assumps);
+
+        //Update max confl
+        assert(last_sum_conflicts <= solver->get_sum_conflicts());
+        max_confl -= ((int64_t)solver->get_sum_conflicts() - last_sum_conflicts);
+        max_confl -= 100;
+        last_sum_conflicts = solver->get_sum_conflicts();
+
+        if (ret == l_True) {
+            const auto& this_model = solver->get_model();
+            for(uint32_t i2 = 0, max = solver->nVars(); i2 < max; i2++) {
+                if (seen_flipped[i2]) continue;
+                if (this_model[i2] != model[i2]) {
+                    seen_flipped[i2] = 1;
+                    num_seen_flipped++;
+                }
+            }
+        } else if (ret == l_False) {
+            tmp_clause.clear();
+            tmp_clause.push_back(l);
+            if (!solver->add_clause(tmp_clause)) return false;
+        }
+        if (ret == l_Undef) undefs++;
+        if (max_confl < 0) goto end;
+    }
+    finished = true;
+    assert(solver->okay());
+
+    end:
+    uint32_t num_set = solver->get_zero_assigned_lits().size() - orig_vars_set;
+    double time_used = cpuTime() - myTime;
+    solver->set_polarity_mode(old_polar_mode);
+    solver->set_verbosity(old_verb);
+
+    if (verb) {
+        cout << "c [backbone-simpl]"
+        << " finished: " << finished
+        << " undefs: " << undefs
+        << " set: " << num_set
+        << " conflicts used: " << print_value_kilo_mega(solver->get_sum_conflicts())
+        << " conflicts max: " << print_value_kilo_mega(backbone_simpl_max_confl)
+        << " T: " << std::setprecision(2) << time_used
+        << endl;
+    }
+
+    return true;
 }
 
 static void get_simplified_cnf(
@@ -571,6 +728,14 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     str = str2 + string("intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls,distill-bins, ") + str;
 
     solver.simplify(&dont_elim, &str);
+    if (arjdata->common.conf.backbone_simpl)
+        solver.backbone_simpl(
+            arjdata->common.conf.backbone_simpl_max_confl,
+            arjdata->common.conf.backbone_simpl_cmsgen);
+        /* backbone_simpl( */
+        /*     arjdata->common.conf.verb, */
+        /*     arjdata->common.conf.backbone_simpl_max_confl, */
+        /*     arjdata->common.conf.backbone_simpl_cmsgen, &solver); */
     solver.simplify(&dont_elim, &str);
     solver.simplify(&dont_elim, &str);
     if (sparsify) {

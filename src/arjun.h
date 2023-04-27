@@ -129,6 +129,7 @@ namespace ArjunNS {
         void set_specified_order_fname(std::string specified_order_fname);
         void set_bce(const bool bce);
         void set_bve_during_elimtofile(const bool);
+        void set_backbone_simpl_cmsgen(const bool);
 
         //Get config
         bool get_empty_occs_based() const;
@@ -156,6 +157,7 @@ namespace ArjunNS {
         uint64_t get_backbone_simpl_max_confl() const;
         bool get_bce() const;
         bool get_bve_during_elimtofile() const;
+        bool get_backbone_simpl_cmsgen() const;
 
     private:
         ArjPrivateData* arjdata = NULL;
