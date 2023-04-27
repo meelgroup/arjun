@@ -434,7 +434,6 @@ static bool backbone_simpl(int verb, uint64_t backbone_simpl_max_confl,
         //There is definitely a solution with "l". Let's see if ~l fails.
         assumps.clear();
         assumps.push_back(~l);
-        solver->set_verbosity(1);
         solver->set_max_confl(max_confl/20);
         ret = solver->solve(&assumps);
 
@@ -588,15 +587,15 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     str = str2 + string("intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls,distill-bins, ") + str;
 
     solver.simplify(&dont_elim, &str);
-    solver.simplify(&dont_elim, &str);
     if (arjdata->common.conf.backbone_simpl)
-        /* solver.backbone_simpl( */
-        /*     arjdata->common.conf.backbone_simpl_max_confl, */
-        /*     arjdata->common.conf.backbone_simpl_cmsgen); */
-        backbone_simpl(
-            arjdata->common.conf.verb,
+        solver.backbone_simpl(
             arjdata->common.conf.backbone_simpl_max_confl,
-            arjdata->common.conf.backbone_simpl_cmsgen, &solver);
+            arjdata->common.conf.backbone_simpl_cmsgen);
+        /* backbone_simpl( */
+        /*     arjdata->common.conf.verb, */
+        /*     arjdata->common.conf.backbone_simpl_max_confl, */
+        /*     arjdata->common.conf.backbone_simpl_cmsgen, &solver); */
+    solver.simplify(&dont_elim, &str);
     solver.simplify(&dont_elim, &str);
     if (sparsify) {
         str2.clear();
