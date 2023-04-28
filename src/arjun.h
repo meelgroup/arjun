@@ -20,8 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ***********************************************/
 
-#ifndef ARJUN_H__
-#define ARJUN_H__
+#pragma once
 
 #include <cstdint>
 #include <vector>
@@ -158,10 +157,9 @@ namespace ArjunNS {
         bool get_bce() const;
         bool get_bve_during_elimtofile() const;
         bool get_backbone_simpl_cmsgen() const;
+        bool definitely_satisfiable() const;
 
     private:
         ArjPrivateData* arjdata = NULL;
     };
 }
-
-#endif
