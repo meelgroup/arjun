@@ -40,10 +40,17 @@ using std::set;
 
 class Sampo {
 public:
-    Sampo(const Config& _conf, Arjun* _arjun);
+    Sampo(const Config& _conf);
     ~Sampo();
+
+    SimplifiedCNF only_synthesis_unit(
+            Arjun* arjun,
+            const vector<uint32_t>& sampl_vars
+            );
+
     SimplifiedCNF get_fully_simplified_renumbered_cnf(
-        const vector<uint32_t>& sampl_vars, //contains empty_vars!
+        Arjun* arjun,
+        const vector<uint32_t>& sampl_vars,
         const bool sparsify,
         const bool renumber,
         const bool need_sol_extend);
@@ -51,16 +58,15 @@ public:
 private:
     SATSolver* solver = nullptr;
     SATSolver* setup_f_not_f_indic();
-    void conditional_flippable();
+    void conditional_dontcare();
     void synthesis_unit();
 
     bool backbone_simpl();
-    void fill_solver();
+    void fill_solver(Arjun* arjun);
     void get_simplified_cnf(
-        vector<uint32_t>& sampl_vars, const bool renumber,
-        vector<vector<Lit>>& cnf, uint32_t& nvars);
+            vector<uint32_t>& sampl_vars,
+            vector<vector<Lit>>& cnf, uint32_t& nvars, const bool renumber);
 
-    Arjun* arjun;
     const Config& conf;
 
     // For the unit/flippable

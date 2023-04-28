@@ -38,14 +38,14 @@ namespace ArjunNS {
         std::vector<std::vector<CMSat::Lit>> cnf;
         std::vector<uint32_t> sampling_vars;
         uint32_t nvars;
-        uint32_t empty_occs;
+        uint32_t empty_vars;
         std::string sol_ext_data;
 
         void clear() {
             cnf.clear();
             sampling_vars.clear();
             nvars = 0;
-            empty_occs = 0;
+            empty_vars = 0;
             sol_ext_data.clear();
         }
     };
@@ -81,7 +81,7 @@ namespace ArjunNS {
         std::vector<uint32_t> get_indep_set();
         uint32_t get_orig_num_vars() const;
         void varreplace();
-        std::vector<uint32_t> get_empty_occ_sampl_vars() const;
+        std::vector<uint32_t> get_empty_vars_sampl_vars() const;
 
         //Get clauses
         void start_getting_small_clauses(uint32_t max_len, uint32_t max_glue, bool red = true);
@@ -93,6 +93,7 @@ namespace ArjunNS {
             const bool sparsify = true,
             const bool renumber = true,
             const bool need_sol_extend = false);
+        SimplifiedCNF only_synthesis_unit(const std::vector<uint32_t>& sampl_vars);
         const std::vector<CMSat::BNN*>& get_bnns() const;
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
         std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;
@@ -124,14 +125,14 @@ namespace ArjunNS {
         void set_no_gates_below(double no_gates_below);
         void set_pred_forever_cutoff(int pred_forever_cutoff = -1);
         void set_every_pred_reduce(int every_pred_reduce = -1);
-        void set_empty_occs_based(const bool empty_occs_based);
+        void set_empty_vars_based(const bool empty_occs_based);
         void set_specified_order_fname(std::string specified_order_fname);
         void set_bce(const bool bce);
         void set_bve_during_elimtofile(const bool);
         void set_backbone_simpl_cmsgen(const bool);
 
         //Get config
-        bool get_empty_occs_based() const;
+        bool get_empty_vars_based() const;
         std::string get_specified_order_fname() const;
         double get_no_gates_below() const;
         bool get_simp() const;

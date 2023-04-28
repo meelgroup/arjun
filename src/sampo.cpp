@@ -41,7 +41,7 @@ using std::endl;
 using std::vector;
 
 
-Sampo::Sampo(const Config& _conf, Arjun* _arjun) : arjun(_arjun), conf(_conf){}
+Sampo::Sampo(const Config& _conf) : conf(_conf){}
 Sampo::~Sampo() { delete solver; }
 
 SATSolver* Sampo::setup_f_not_f_indic()
@@ -67,7 +67,6 @@ SATSolver* Sampo::setup_f_not_f_indic()
     //Indicator variable is FALSE when they are NOT equal
     for(const auto& var: sampl_set) {
         if (solver->removed_var(var)) continue;
-        /* cout << " -- new indic " << (var+1) << endl; */
         s->new_var();
         uint32_t this_indic = s->nVars()-1;
         //torem_orig.push_back(Lit(this_indic, false));
@@ -80,28 +79,24 @@ SATSolver* Sampo::setup_f_not_f_indic()
         tmp.push_back(Lit(var+orig_num_vars, true));
         tmp.push_back(Lit(this_indic,      true));
         s->add_clause(tmp);
-        /* cout << "cl-i:" << tmp << endl; */
 
         tmp.clear();
         tmp.push_back(Lit(var,               true));
         tmp.push_back(Lit(var+orig_num_vars, false));
         tmp.push_back(Lit(this_indic,      true));
         s->add_clause(tmp);
-        /* cout << "cl-i:" << tmp << endl; */
 
         tmp.clear();
         tmp.push_back(Lit(var,               false));
         tmp.push_back(Lit(var+orig_num_vars, false));
         tmp.push_back(Lit(this_indic,      false));
         s->add_clause(tmp);
-        /* cout << "cl-i:" << tmp << endl; */
 
         tmp.clear();
         tmp.push_back(Lit(var,               true));
         tmp.push_back(Lit(var+orig_num_vars, true));
         tmp.push_back(Lit(this_indic,      false));
         s->add_clause(tmp);
-        /* cout << "cl-i:" << tmp << endl; */
     }
 
     solver->start_getting_small_clauses(
@@ -148,7 +143,7 @@ SATSolver* Sampo::setup_f_not_f_indic()
     for(auto z: zs) tmp.push_back(~z);
     s->add_clause(tmp);
     s->simplify();
-    cout << "c [flippable] Built up the solver. T: " << (cpuTime() - myTime) << endl;
+    cout << "c [dontcare] Built up the solver. T: " << (cpuTime() - myTime) << endl;
     return s;
 }
 
@@ -167,7 +162,7 @@ void Sampo::synthesis_unit()
         // we can only do this for non-sampling vars
         if (sampl_set.count(var)) continue;
         if (s->get_sum_conflicts() > 50000) break;
-        /* cout << "s->get_sum_conflicts(): " << s->get_sum_conflicts() << " t: " << (cpuTime() - myTime) << endl; */
+        cout << "s->get_sum_conflicts(): " << s->get_sum_conflicts() << " t: " << (cpuTime() - myTime) << endl;
 
         assumps.clear();
         for(const auto& i2: sampl_set) {
@@ -194,16 +189,16 @@ void Sampo::synthesis_unit()
             assumps.pop_back();
         }
     }
-    cout << "c [flippable-non-indep]"
+    cout << "c [synthesis-unit]"
         << " set: " << (solver->get_zero_assigned_lits().size()-orig_units)
-        << " true: " << trues << " falses: " << falses << " undefs: " << undefs
+        << " trues: " << trues << " falses: " << falses << " undefs: " << undefs
         << " T: " << (cpuTime()-myTime)
         << endl;
 
     delete s;
 }
 
-void Sampo::conditional_flippable()
+void Sampo::conditional_dontcare()
 {
     double myTime = cpuTime();
     SATSolver* s = setup_f_not_f_indic();
@@ -231,7 +226,7 @@ void Sampo::conditional_flippable()
                 if (ret == l_False) continue;
             }
 
-            // Checking now if var i is flippable
+            // Checking now if var i is dontcare
             myTime = cpuTime();
             assumps.clear();
             if (g != lit_Undef) assumps.push_back(g);
@@ -243,7 +238,7 @@ void Sampo::conditional_flippable()
             s->set_max_confl(1000);
             auto sret = s->solve(&assumps);
             cout << "Assuming " << g
-                << " then var " << (i+1) << " is flippable?"
+                << " then var " << (i+1) << " is dontcare?"
                 << "Ret: " << sret << " T: " << (cpuTime() - myTime)
                 << " -- inside F: " << (int)in_formula[i]
                 << endl;
@@ -255,8 +250,8 @@ void Sampo::conditional_flippable()
 }
 
 void Sampo::get_simplified_cnf(
-        vector<uint32_t>& sampl_vars, const bool renumber,
-        vector<vector<Lit>>& cnf, uint32_t& nvars)
+        vector<uint32_t>& sampl_vars,
+        vector<vector<Lit>>& cnf, uint32_t& nvars, const bool renumber)
 {
     assert(cnf.empty());
     solver->start_getting_small_clauses(
@@ -277,10 +272,15 @@ void Sampo::get_simplified_cnf(
     }
     solver->end_getting_small_clauses();
     nvars = renumber ? solver->simplified_nvars() :  solver->nVars();
+    std::sort(sampl_vars.begin(), sampl_vars.end());
 }
 
-void Sampo::fill_solver()
+void Sampo::fill_solver(Arjun* arjun)
 {
+    assert(solver == nullptr);
+    solver = new CMSat::SATSolver();
+    solver->set_verbosity(conf.verb);
+
     assert(solver->nVars() == 0); // Solver here is empty
     solver->new_vars(arjun->get_orig_num_vars());
 
@@ -319,19 +319,18 @@ void Sampo::fill_solver()
 }
 
 SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
-    const vector<uint32_t>& sampl_vars, //contains empty_vars!
+    Arjun* arjun,
+    const vector<uint32_t>& sampl_vars,
     const bool sparsify,
     const bool renumber,
     const bool need_sol_extend)
 {
-    solver = new CMSat::SATSolver();
-    solver->set_verbosity(conf.verb);
+    fill_solver(arjun);
     solver->set_renumber(renumber);
     solver->set_scc(renumber);
 
     // Create a new SAT solver that contains no empties.
     // dont_elim now how no empties in it
-    fill_solver();
     vector<Lit> dont_elim;
     for(uint32_t v: sampl_vars) dont_elim.push_back(Lit(v, false));
     sampl_set.clear();
@@ -360,12 +359,12 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
     solver->simplify(&dont_elim, &str);
     solver->simplify(&dont_elim, &str);
     solver->simplify(&dont_elim, &str);
-    /* synthesis_unit(); */
-    /* conditional_flippable(); */
+    /* conditional_dontcare(); */
     if (conf.backbone_simpl)
         solver->backbone_simpl(
             conf.backbone_simpl_max_confl,
             conf.backbone_simpl_cmsgen);
+    /* synthesis_unit(); */
     if (sparsify) {
         str2.clear();
         if (conf.bce) str2+= "occ-bce,";
@@ -383,22 +382,36 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
     if (conf.bce) str += "occ-bce,";
     solver->simplify(&dont_elim, &str);
 
-    vector<uint32_t> new_sampl_vars (sampl_vars);
-    vector<uint32_t> empty_occs;
+    vector<uint32_t> empty_vars;
     SimplifiedCNF cnf;
-    if (conf.empty_occs_based) {
-        solver->clean_sampl_and_get_empties(new_sampl_vars, empty_occs);
+    cnf.sampling_vars = sampl_vars;
+    if (conf.empty_vars_based) {
+        solver->clean_sampl_and_get_empties(cnf.sampling_vars, empty_vars);
         dont_elim.clear();
-        for(uint32_t v: new_sampl_vars) dont_elim.push_back(Lit(v, false));
+        for(uint32_t v: cnf.sampling_vars) dont_elim.push_back(Lit(v, false));
         str = "occ-bve-empty, must-renumber";
         solver->simplify(&dont_elim, &str);
     }
-    get_simplified_cnf(new_sampl_vars, renumber, cnf.cnf, cnf.nvars);
+    get_simplified_cnf(cnf.sampling_vars, cnf.cnf, cnf.nvars, renumber);
 
-    std::sort(new_sampl_vars.begin(), new_sampl_vars.end());
-    cnf.sampling_vars = new_sampl_vars;
-    cnf.empty_occs = empty_occs.size();
+    cnf.empty_vars = empty_vars.size();
     if (need_sol_extend) cnf.sol_ext_data = solver->serialize_solution_reconstruction_data();
 
+    return cnf;
+}
+
+SimplifiedCNF Sampo::only_synthesis_unit(
+        Arjun* arjun,
+        const vector<uint32_t>& sampl_vars)
+{
+    fill_solver(arjun);
+    sampl_set.clear();
+    for(uint32_t v: sampl_vars) sampl_set.insert(v);
+    synthesis_unit();
+
+    vector<uint32_t> empty_vars;
+    SimplifiedCNF cnf;
+    cnf.sampling_vars = sampl_vars;
+    get_simplified_cnf(cnf.sampling_vars, cnf.cnf, cnf.nvars, false);
     return cnf;
 }

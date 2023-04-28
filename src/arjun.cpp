@@ -170,8 +170,8 @@ DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
     // Deal with empty_occs
     arjdata->common.sampling_set->insert(
         arjdata->common.sampling_set->begin(),
-        arjdata->common.empty_occs.begin(),
-        arjdata->common.empty_occs.end());
+        arjdata->common.empty_vars.begin(),
+        arjdata->common.empty_vars.end());
 
     return *arjdata->common.sampling_set;
 }
@@ -241,14 +241,14 @@ set_get_macro(bool, irreg_gate_based)
 set_get_macro(double, no_gates_below)
 set_get_macro(std::string, specified_order_fname)
 set_get_macro(bool, backbone_simpl)
-set_get_macro(bool, empty_occs_based)
+set_get_macro(bool, empty_vars_based)
 set_get_macro(bool, bce)
 set_get_macro(bool, bve_during_elimtofile)
 set_get_macro(bool, backbone_simpl_cmsgen)
 
-DLL_PUBLIC vector<uint32_t> Arjun::get_empty_occ_sampl_vars() const
+DLL_PUBLIC vector<uint32_t> Arjun::get_empty_vars_sampl_vars() const
 {
-    return arjdata->common.empty_occs;
+    return arjdata->common.empty_vars;
 }
 
 DLL_PUBLIC void Arjun::set_pred_forever_cutoff(int pred_forever_cutoff)
@@ -334,11 +334,18 @@ bool Arjun::definitely_satisfiable() const {
 }
 
 DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
-    const vector<uint32_t>& sampl_vars, //contains empty_vars!
+    const vector<uint32_t>& sampl_vars,
     const bool sparsify,
     const bool renumber,
     const bool need_sol_extend)
 {
-    Sampo sampo(arjdata->common.conf, this);
-    return sampo.get_fully_simplified_renumbered_cnf(sampl_vars, sparsify, renumber, need_sol_extend);
+    Sampo sampo(arjdata->common.conf);
+    return sampo.get_fully_simplified_renumbered_cnf(
+            this, sampl_vars, sparsify, renumber, need_sol_extend);
+}
+
+DLL_PUBLIC SimplifiedCNF Arjun::only_synthesis_unit(const vector<uint32_t>& sampl_vars)
+{
+    Sampo sampo(arjdata->common.conf);
+    return sampo.only_synthesis_unit( this, sampl_vars);
 }

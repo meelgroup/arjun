@@ -76,7 +76,7 @@ struct Common
     vector<uint32_t> sampling_set_tmp1;
     vector<uint32_t> sampling_set_tmp2;
     vector<uint32_t>* sampling_set = NULL;
-    vector<uint32_t> empty_occs;
+    vector<uint32_t> empty_vars;
 
     vector<Lit> tmp;
     vector<char> seen;
@@ -139,7 +139,7 @@ struct Common
     void remove_definable_by_irreg_gates();
     void remove_zero_assigned_literals(bool print = true);
     void remove_eq_literals(bool print = true);
-    void find_equiv_subformula();
+    void get_empties();
     bool probe_all();
     void empty_out_indep_set_if_unsat();
     bool simplify_bve_only();

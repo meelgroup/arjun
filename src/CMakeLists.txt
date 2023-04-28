@@ -82,6 +82,10 @@ else()
         main.cpp
     )
 
+    add_executable(simpletest-bin
+        main-simple.cpp
+    )
+
     add_executable(arjun-example
         example.cpp
     )
@@ -110,12 +114,21 @@ set_target_properties(arjun-bin PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
+set_target_properties(simpletest-bin PROPERTIES
+    OUTPUT_NAME simpletest
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 
 target_link_libraries(arjun-bin
     ${arjun_bin_exec_link_libs}
     arjun
 )
 
+target_link_libraries(simpletest-bin
+    ${arjun_bin_exec_link_libs}
+    arjun
+)
 
 set_target_properties(arjun-example PROPERTIES
     OUTPUT_NAME example
