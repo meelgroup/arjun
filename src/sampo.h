@@ -50,9 +50,9 @@ public:
 
 private:
     SATSolver* solver = nullptr;
-    SATSolver* setup_flippable();
+    SATSolver* setup_f_not_f_indic();
     void conditional_flippable();
-    void non_indep_flippable();
+    void synthesis_unit();
 
     bool backbone_simpl();
     void fill_solver();

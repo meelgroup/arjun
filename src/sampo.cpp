@@ -44,7 +44,7 @@ using std::vector;
 Sampo::Sampo(const Config& _conf, Arjun* _arjun) : arjun(_arjun), conf(_conf){}
 Sampo::~Sampo() { delete solver; }
 
-SATSolver* Sampo::setup_flippable()
+SATSolver* Sampo::setup_f_not_f_indic()
 {
     double myTime = cpuTime();
     orig_num_vars = solver->nVars();
@@ -152,10 +152,10 @@ SATSolver* Sampo::setup_flippable()
     return s;
 }
 
-void Sampo::non_indep_flippable()
+void Sampo::synthesis_unit()
 {
     double myTime = cpuTime();
-    SATSolver* s = setup_flippable();
+    SATSolver* s = setup_f_not_f_indic();
     vector<Lit> assumps;
     vector<Lit> cl;
     uint32_t undefs = 0;
@@ -206,7 +206,7 @@ void Sampo::non_indep_flippable()
 void Sampo::conditional_flippable()
 {
     double myTime = cpuTime();
-    SATSolver* s = setup_flippable();
+    SATSolver* s = setup_f_not_f_indic();
     vector<Lit> assumps;
     for(int given = -1; given < (int)orig_num_vars*2; given++) {
         Lit g;
@@ -360,7 +360,7 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
     solver->simplify(&dont_elim, &str);
     solver->simplify(&dont_elim, &str);
     solver->simplify(&dont_elim, &str);
-    /* non_indep_flippable(); */
+    /* synthesis_unit(); */
     /* conditional_flippable(); */
     if (conf.backbone_simpl)
         solver->backbone_simpl(
