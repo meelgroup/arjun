@@ -44,7 +44,7 @@ void Common::fill_assumptions_backward(
 
         uint32_t indic = var_to_indic[var];
         assert(indic != var_Undef);
-        assumptions.push_back(Lit(indic, true));
+        assumptions.push_back(Lit(indic, false));
         if (conf.verb > 5) {
             cout << "Filled assump with indep: " << var << endl;
         }
@@ -66,7 +66,7 @@ void Common::fill_assumptions_backward(
         assert(var < orig_num_vars);
         uint32_t indic = var_to_indic[var];
         assert(indic != var_Undef);
-        assumptions.push_back(Lit(indic, true));
+        assumptions.push_back(Lit(indic, false));
     }
     unknown.resize(j);
     if (conf.verb > 5) {

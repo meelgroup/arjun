@@ -103,13 +103,8 @@ void Common::add_fixed_clauses()
     indic_to_var.clear();
     indic_to_var.resize(solver->nVars(), var_Undef);
 
-    //Indicator variable is TRUE when they are NOT equal
+    //If indicator variable is TRUE, they are FORCED EQUAL
     for(uint32_t var: *sampling_set) {
-        //(a=b) = !f
-        //a  V -b V  f
-        //-a V  b V  f
-        //a  V  b V -f
-        //-a V -b V -f
         solver->new_var();
         uint32_t this_indic = solver->nVars()-1;
         //torem_orig.push_back(Lit(this_indic, false));
@@ -118,28 +113,17 @@ void Common::add_fixed_clauses()
         indic_to_var.resize(this_indic+1, var_Undef);
         indic_to_var[this_indic] = var;
 
+        // Below two mean var == (var+orig) in case indic is TRUE
         tmp.clear();
         tmp.push_back(Lit(var,               false));
         tmp.push_back(Lit(var+orig_num_vars, true));
-        tmp.push_back(Lit(this_indic,      false));
+        tmp.push_back(Lit(this_indic,        true));
         solver->add_clause(tmp);
 
         tmp.clear();
         tmp.push_back(Lit(var,               true));
         tmp.push_back(Lit(var+orig_num_vars, false));
-        tmp.push_back(Lit(this_indic,      false));
-        solver->add_clause(tmp);
-
-        tmp.clear();
-        tmp.push_back(Lit(var,               false));
-        tmp.push_back(Lit(var+orig_num_vars, false));
-        tmp.push_back(Lit(this_indic,      true));
-        solver->add_clause(tmp);
-
-        tmp.clear();
-        tmp.push_back(Lit(var,               true));
-        tmp.push_back(Lit(var+orig_num_vars, true));
-        tmp.push_back(Lit(this_indic,      true));
+        tmp.push_back(Lit(this_indic,        true));
         solver->add_clause(tmp);
     }
 
