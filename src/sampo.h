@@ -43,7 +43,7 @@ public:
     Sampo(const Config& _conf);
     ~Sampo();
 
-    SimplifiedCNF only_synthesis_unit(
+    SimplifiedCNF only_synthesis_unate(
             Arjun* arjun,
             const vector<uint32_t>& sampl_vars
             );
@@ -59,7 +59,7 @@ private:
     SATSolver* solver = nullptr;
     SATSolver* setup_f_not_f_indic();
     void conditional_dontcare();
-    void synthesis_unit();
+    void synthesis_unate();
 
     bool backbone_simpl();
     void fill_solver(Arjun* arjun);
@@ -76,4 +76,5 @@ private:
     uint32_t orig_num_vars;
     vector<uint8_t> in_formula;
     set<uint32_t> sampl_set;
+    vector<Lit> dont_elim;
 };

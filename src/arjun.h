@@ -37,8 +37,8 @@ namespace ArjunNS {
     struct SimplifiedCNF {
         std::vector<std::vector<CMSat::Lit>> cnf;
         std::vector<uint32_t> sampling_vars;
-        uint32_t nvars;
-        uint32_t empty_vars;
+        uint32_t nvars = 0;
+        uint32_t empty_vars = 0;
         std::string sol_ext_data;
 
         void clear() {
@@ -78,6 +78,7 @@ namespace ArjunNS {
         // Perform indep set calculation
         uint32_t set_starting_sampling_set(const std::vector<uint32_t>& vars);
         uint32_t start_with_clean_sampling_set();
+        void init();
         std::vector<uint32_t> get_indep_set();
         uint32_t get_orig_num_vars() const;
         void varreplace();
@@ -93,7 +94,7 @@ namespace ArjunNS {
             const bool sparsify = true,
             const bool renumber = true,
             const bool need_sol_extend = false);
-        SimplifiedCNF only_synthesis_unit(const std::vector<uint32_t>& sampl_vars);
+        SimplifiedCNF only_synthesis_unate(const std::vector<uint32_t>& sampl_vars);
         const std::vector<CMSat::BNN*>& get_bnns() const;
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
         std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;

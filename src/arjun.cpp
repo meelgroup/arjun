@@ -147,11 +147,16 @@ void check_sanity_sampling_vars(T vars, const uint32_t nvars)
     }
 }
 
+DLL_PUBLIC void Arjun::init()
+{
+    arjdata->common.orig_cnf = arjdata->common.get_cnf();
+    check_sanity_sampling_vars(*arjdata->common.sampling_set, get_orig_num_vars());
+}
+
 DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
 {
     double starTime = cpuTime();
-    arjdata->common.orig_cnf = arjdata->common.get_cnf();
-    check_sanity_sampling_vars(*arjdata->common.sampling_set, get_orig_num_vars());
+    init();
     if (!arjdata->common.preproc_and_duplicate()) goto end;
 
     //Backward
@@ -344,8 +349,8 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
             this, sampl_vars, sparsify, renumber, need_sol_extend);
 }
 
-DLL_PUBLIC SimplifiedCNF Arjun::only_synthesis_unit(const vector<uint32_t>& sampl_vars)
+DLL_PUBLIC SimplifiedCNF Arjun::only_synthesis_unate(const vector<uint32_t>& sampl_vars)
 {
     Sampo sampo(arjdata->common.conf);
-    return sampo.only_synthesis_unit( this, sampl_vars);
+    return sampo.only_synthesis_unate( this, sampl_vars);
 }

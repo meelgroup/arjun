@@ -248,11 +248,11 @@ void dump_cnf(const ArjunNS::SimplifiedCNF& simpcnf)
     outf << "c MUST MULTIPLY BY 2**" << simpcnf.empty_vars << endl;
 }
 
-void elim_to_file(const vector<uint32_t>& sampl_vars)
+void only_synthesis_unate(const vector<uint32_t>& sampl_vars)
 {
     double dump_start_time = cpuTime();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
-    auto ret = arjun->only_synthesis_unit(sampl_vars);
+    auto ret = arjun->only_synthesis_unate(sampl_vars);
 
     dump_cnf(ret);
     cout << "c [arjun] Done dumping. T: "
@@ -260,7 +260,7 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
 }
 
 void set_config(ArjunNS::Arjun* arj) {
-    cout << "c [arjun] using seed: " << conf.seed << endl;
+    /* cout << "c [arjun] using seed: " << conf.seed << endl; */
     arj->set_verbosity(conf.verb);
     arj->set_seed(conf.seed);
 }
@@ -284,14 +284,14 @@ int main(int argc, char** argv)
 
     add_supported_options(argc, argv);
 
-    cout << "c Arjun Version: "
-    << arjun->get_version_info() << endl;
-    cout << arjun->get_solver_version_info();
+    /* cout << "c Arjun Version: " */
+    /* << arjun->get_version_info() << endl; */
+    /* cout << arjun->get_solver_version_info(); */
 
-    cout
-    << "c executed with command line: "
-    << command_line
-    << endl;
+    /* cout */
+    /* << "c executed with command line: " */
+    /* << command_line */
+    /* << endl; */
 
     set_config(arjun);
 
@@ -317,7 +317,8 @@ int main(int argc, char** argv)
         cout << "Must give output file" << endl;
         exit(-1);
     }
-    elim_to_file(orig_sampling_set);
+    arjun->init();
+    only_synthesis_unate(orig_sampling_set);
 
     delete arjun;
     return 0;
