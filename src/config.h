@@ -44,7 +44,7 @@ struct Config {
     int xor_gates_based = 1;
     int ite_gate_based = 1;
     int irreg_gate_based = 1;
-    int empty_vars_based = 1;
+    int empty_occs_based = 1;
     int probe_based = 1;
     int backward = 1;
     int gauss_jordan = 0;

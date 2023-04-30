@@ -60,7 +60,7 @@ bool Common::simplify()
         remove_definable_by_gates();
     }
     if (conf.irreg_gate_based) remove_definable_by_irreg_gates();
-    if (conf.empty_vars_based) get_empties();
+    if (conf.empty_occs_based) get_empties();
 
     if (conf.bve_pre_simplify) {
         verb_print(1, "[arjun-simp] CMS::simplify() with no BVE, intree probe...");
@@ -83,7 +83,7 @@ bool Common::simplify()
     remove_eq_literals();
     remove_zero_assigned_literals();
     if (conf.probe_based && !probe_all()) return false;
-    if (conf.empty_vars_based) get_empties();
+    if (conf.empty_occs_based) get_empties();
     if (conf.irreg_gate_based) remove_definable_by_irreg_gates();
 
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
@@ -105,7 +105,7 @@ void Common::empty_out_indep_set_if_unsat()
     //It's UNSAT so the sampling set is empty
     other_sampling_set->clear();
     std::swap(sampling_set, other_sampling_set);
-    empty_vars.clear();
+    empty_occs.clear();
     if (conf.verb) {
         cout << "c [arjun] CNF is UNSAT, setting sampling set to empty"
         << endl;
@@ -377,19 +377,19 @@ void Common::order_sampl_set_for_simp()
 
 void Common::get_empties()
 {
-    assert(conf.empty_vars_based);
+    assert(conf.empty_occs_based);
     const double myTime = cpuTime();
     uint32_t old_size = sampling_set->size();
 
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
-    solver->clean_sampl_and_get_empties(*sampling_set, empty_vars);
+    solver->clean_sampl_and_get_empties(*sampling_set, empty_occs);
 
     if (conf.verb) {
         cout << "c [arjun-simp] get-empties"
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
-        << " total empties now: " << empty_vars.size()
+        << " total empties now: " << empty_occs.size()
         << " T: " << std::setprecision(2) << cpuTime() - myTime
         << endl;
     }

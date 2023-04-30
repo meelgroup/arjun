@@ -157,59 +157,75 @@ void Sampo::synthesis_unate()
     uint32_t undefs = 0;
     uint32_t trues = 0;
     uint32_t falses = 0;
+    bool timeout = false;
     auto orig_units = solver->get_zero_assigned_lits().size();
 
-    // sampling set is always the same
-    for(const auto& i2: sampl_set) {
-        if (solver->removed_var(i2)) continue;
-        cl.clear();
-        cl.push_back(Lit(var_to_indic[i2], false));
-        s->add_clause(cl);
-    }
     string str("clean-cls");
     s->simplify(NULL, &str);
 
-    for(uint32_t var = 0; var < orig_num_vars; var++) {
-        if (solver->removed_var(var)) continue;
-        // we can only do this for non-sampling vars
-        if (sampl_set.count(var)) continue;
-        if (s->get_sum_conflicts() > 50000) break;
-        verb_print(2, "v: " << (var+1) << " confl: " << s->get_sum_conflicts()
-            << " T: " << (cpuTime() - myTime));
+    set<uint32_t> given_set;
+    /* given_set = sampl_set; */
+    given_set.insert(var_Undef);
+    for(uint32_t given: given_set) {
+        if (given != var_Undef && solver->removed_var(given)) continue;
+        for(uint32_t test = 0; test < orig_num_vars; test++) {
+            if (test == given) continue;
+            if (solver->removed_var(test)) continue;
+            // we can only do this for non-sampling vars
+            // for sampling vars, we need to have BOTH ways mapping
+            if (sampl_set.count(test)) continue;
+            if (s->get_sum_conflicts() > 50000) {timeout = true; break;}
+            verb_print(3, "given: " << (given+1)
+                    << " test: " << (test+1)
+                    << " confl: " << s->get_sum_conflicts()
+                    << " T: " << (cpuTime() - myTime));
 
-        assumps.clear();
-        for(uint32_t i2 = 0; i2 < solver->nVars(); i2++) {
-            if (sampl_set.count(i2)) continue; // already set above
-            if (solver->removed_var(i2)) continue;
-            /* if (var != i2) assumps.push_back(Lit(var_to_indic[i2], true)); */
-            if (var != i2) assumps.push_back(Lit(var_to_indic[i2], false));
-        }
-        for(int flip = 0; flip < 2; flip++) {
-            assumps.push_back(Lit(var, false ^ flip));
-            assumps.push_back(Lit(var+orig_num_vars, true ^ flip));
-            s->set_max_confl(1500);
-            auto ret = s->solve(&assumps);
-            /* cout << "Ret: " << ret << " flip: " << flip << endl; */
-            if (ret == l_False) {
-                falses++;
-                cl = {Lit(var, true ^ flip)};
-                s->add_clause(cl);
-                solver->add_clause(cl);
-                cl = {Lit(var+orig_num_vars, true ^ flip)};
-                s->add_clause(cl);
-                break;
+            assumps.clear();
+            for(uint32_t i2 = 0; i2 < solver->nVars(); i2++) {
+                if (i2 == given || i2 == test) continue;
+                if (solver->removed_var(i2)) continue;
+                assumps.push_back(Lit(var_to_indic[i2], true));
+                /* if (var != i2) assumps.push_back(Lit(var_to_indic[i2], false)); */
             }
-            if (ret == l_Undef) undefs++;
-            if (ret == l_True) trues++;
-            assumps.pop_back();
-            assumps.pop_back();
+            if (given != var_Undef) {
+                assumps.push_back(Lit(given, false));
+                assumps.push_back(Lit(given+orig_num_vars, false));
+            }
+            for(int flip = 0; flip < 2; flip++) {
+                assumps.push_back(Lit(test, true ^ flip));
+                assumps.push_back(Lit(test+orig_num_vars, false ^ flip));
+                s->set_max_confl(1500);
+                auto ret = s->solve(&assumps);
+                verb_print(3, "Ret: " << ret << " flip: " << flip);
+                if (ret == l_False) {
+                    verb_print(2, "given: " << std::setw(3) << (given+1)
+                        << " test: " << std::setw(3)  << (test+1)
+                        << " FALSE"
+                        << " T: " << (cpuTime() - myTime));
+                    falses++;
+                    cl = {Lit(test, false ^ flip)};
+                    if (given != var_Undef) cl.push_back(Lit(given, true));
+                    s->add_clause(cl);
+                    solver->add_clause(cl);
+                    cl = {Lit(test+orig_num_vars, false ^ flip)};
+                    if (given != var_Undef) cl.push_back(Lit(given+orig_num_vars, true));
+                    s->add_clause(cl);
+                    break;
+                }
+                if (ret == l_Undef) undefs++;
+                if (ret == l_True) trues++;
+                assumps.pop_back();
+                assumps.pop_back();
+            }
         }
     }
     cout << "c [synthesis-unate]"
         << " set: " << (solver->get_zero_assigned_lits().size()-orig_units)
         << " trues: " << trues << " falses: " << falses << " undefs: " << undefs
+        << " T-out: " << (int)timeout
         << " T: " << (cpuTime()-myTime)
         << endl;
+    solver->set_verbosity(0);
 
     delete s;
 }
@@ -398,11 +414,11 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
     if (conf.bce) str += "occ-bce,";
     solver->simplify(&dont_elim, &str);
 
-    vector<uint32_t> empty_vars;
+    vector<uint32_t> empty_occs;
     SimplifiedCNF cnf;
     cnf.sampling_vars = sampl_vars;
-    if (conf.empty_vars_based) {
-        solver->clean_sampl_and_get_empties(cnf.sampling_vars, empty_vars);
+    if (conf.empty_occs_based) {
+        solver->clean_sampl_and_get_empties(cnf.sampling_vars, empty_occs);
         dont_elim.clear();
         for(uint32_t v: cnf.sampling_vars) dont_elim.push_back(Lit(v, false));
         str = "occ-bve-empty, must-renumber";
@@ -410,7 +426,7 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
     }
     get_simplified_cnf(cnf.sampling_vars, cnf.cnf, cnf.nvars, renumber);
 
-    cnf.empty_vars = empty_vars.size();
+    cnf.empty_occs = empty_occs.size();
     if (need_sol_extend) cnf.sol_ext_data = solver->serialize_solution_reconstruction_data();
 
     return cnf;

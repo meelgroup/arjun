@@ -245,7 +245,7 @@ void dump_cnf(const ArjunNS::SimplifiedCNF& simpcnf)
     outf << "0\n";
 
     for(const auto& cl: simpcnf.cnf) outf << cl << " 0\n";
-    outf << "c MUST MULTIPLY BY 2**" << simpcnf.empty_vars << endl;
+    outf << "c MUST MULTIPLY BY 2**" << simpcnf.empty_occs << endl;
 }
 
 void only_synthesis_unate(const vector<uint32_t>& sampl_vars)
@@ -255,8 +255,8 @@ void only_synthesis_unate(const vector<uint32_t>& sampl_vars)
     auto ret = arjun->only_synthesis_unate(sampl_vars);
 
     dump_cnf(ret);
-    cout << "c [arjun] Done dumping. T: "
-        << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
+    /* cout << "c [arjun] Done dumping. T: " */
+    /*     << std::setprecision(2) << (cpuTime() - dump_start_time) << endl; */
 }
 
 void set_config(ArjunNS::Arjun* arj) {

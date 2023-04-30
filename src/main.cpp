@@ -93,7 +93,7 @@ void add_arjun_options()
      "Recompute sampling set even if it's part of the CNF")
     ("backward", po::value(&conf.backward)->default_value(conf.backward),
      "Do backwards query")
-    ("empty", po::value(&conf.empty_vars_based)->default_value(conf.empty_vars_based),
+    ("empty", po::value(&conf.empty_occs_based)->default_value(conf.empty_occs_based),
      "Use empty occurrence improvement")
     ("maxc", po::value(&conf.backw_max_confl)->default_value(conf.backw_max_confl),
      "Maximum conflicts per variable in backward mode")
@@ -264,14 +264,14 @@ inline double stats_line_percent(double num, double total)
     }
 }
 
-void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint32_t>& empty_vars)
+void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint32_t>& empty_occs)
 {
     cout << "c ind ";
     for(const uint32_t s: indep_set) cout << s+1 << " ";
     cout << "0" << endl;
 
     cout << "c empties ";
-    for(const uint32_t s: empty_vars) cout << s+1 << " ";
+    for(const uint32_t s: empty_occs) cout << s+1 << " ";
     cout << "0" << endl;
 
     cout
@@ -280,10 +280,10 @@ void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint3
     <<  std::setw(6) << std::setprecision(4)
     << stats_line_percent(indep_set.size(), orig_sampling_set_size)
     << " %" << endl
-    << "c [arjun] of which empty occs: " << std::setw(7) << empty_vars.size()
+    << "c [arjun] of which empty occs: " << std::setw(7) << empty_occs.size()
     << " percent of original: "
     <<  std::setw(6) << std::setprecision(4)
-    << stats_line_percent(empty_vars.size(), orig_sampling_set_size)
+    << stats_line_percent(empty_occs.size(), orig_sampling_set_size)
     << " %" << endl;
 }
 
@@ -339,7 +339,7 @@ void dump_cnf(const ArjunNS::SimplifiedCNF& simpcnf)
     outf << "0\n";
 
     for(const auto& cl: simpcnf.cnf) outf << cl << " 0\n";
-    outf << "c MUST MULTIPLY BY 2**" << simpcnf.empty_vars << endl;
+    outf << "c MUST MULTIPLY BY 2**" << simpcnf.empty_occs << endl;
 }
 
 void elim_to_file(const vector<uint32_t>& sampl_vars)
@@ -390,7 +390,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_backbone_simpl(conf.backbone_simpl);
     arj->set_backbone_simpl_max_confl(conf.backbone_simpl_max_confl);
     arj->set_simp(conf.simp);
-    arj->set_empty_vars_based(conf.empty_vars_based);
+    arj->set_empty_occs_based(conf.empty_occs_based);
     arj->set_bve_during_elimtofile(conf.bve_during_elimtofile);
     arj->set_backbone_simpl_cmsgen(conf.backbone_simpl_cmsgen);
 }
@@ -445,7 +445,7 @@ int main(int argc, char** argv)
     cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
 
     vector<uint32_t> indep_vars = arjun->get_indep_set();
-    print_final_indep_set(indep_vars, arjun->get_empty_vars_sampl_vars());
+    print_final_indep_set(indep_vars, arjun->get_empty_occ_sampl_vars());
     cout << "c [arjun] finished "
         << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
         << endl;
