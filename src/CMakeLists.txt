@@ -43,6 +43,7 @@ endif()
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/GitSHA1.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp" @ONLY)
 
 add_library(arjun
+    extend.cpp
     backward.cpp
     simplify.cpp
     common.cpp
@@ -82,8 +83,12 @@ else()
         main.cpp
     )
 
-    add_executable(simpletest-bin
-        main-simple.cpp
+    add_executable(unate-bin
+        main-unate.cpp
+    )
+
+    add_executable(extend-bin
+        main-extend.cpp
     )
 
     add_executable(arjun-example
@@ -114,18 +119,27 @@ set_target_properties(arjun-bin PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-set_target_properties(simpletest-bin PROPERTIES
-    OUTPUT_NAME simpletest
+set_target_properties(unate-bin PROPERTIES
+    OUTPUT_NAME unate
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
+set_target_properties(extend-bin PROPERTIES
+    OUTPUT_NAME extend
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 target_link_libraries(arjun-bin
     ${arjun_bin_exec_link_libs}
     arjun
 )
 
-target_link_libraries(simpletest-bin
+target_link_libraries(unate-bin
+    ${arjun_bin_exec_link_libs}
+    arjun
+)
+
+target_link_libraries(extend-bin
     ${arjun_bin_exec_link_libs}
     arjun
 )

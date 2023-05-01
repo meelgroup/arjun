@@ -332,11 +332,10 @@ void Sampo::fill_solver(Arjun* arjun)
     // inject set vars
     const auto lits =  arjun->get_zero_assigned_lits();
     for(const auto& l: lits) {
-        if (l.var() < arjun->get_orig_num_vars()) {
-            cl.clear();
-            cl.push_back(l);
-            solver->add_clause(cl);
-        }
+        assert(l.var() < arjun->get_orig_num_vars());
+        cl.clear();
+        cl.push_back(l);
+        solver->add_clause(cl);
     }
 
     // inject bin-xor clauses
@@ -417,6 +416,7 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
     vector<uint32_t> empty_occs;
     SimplifiedCNF cnf;
     cnf.sampling_vars = sampl_vars;
+
     if (conf.empty_occs_based) {
         solver->clean_sampl_and_get_empties(cnf.sampling_vars, empty_occs);
         dont_elim.clear();

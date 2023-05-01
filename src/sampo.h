@@ -62,6 +62,7 @@ private:
     void synthesis_unate();
 
     bool backbone_simpl();
+
     void fill_solver(Arjun* arjun);
     void get_simplified_cnf(
             vector<uint32_t>& sampl_vars,

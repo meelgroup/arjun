@@ -73,17 +73,14 @@ struct Common
 
     Config conf;
     CMSat::SATSolver* solver = NULL;
+    bool already_duplicated = false;
     vector<uint32_t> sampling_set_tmp1;
     vector<uint32_t> sampling_set_tmp2;
     vector<uint32_t>* sampling_set = NULL;
     vector<uint32_t> empty_occs;
 
-    vector<Lit> tmp;
     vector<char> seen;
     uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
-    uint32_t total_eq_removed = 0;
-    uint32_t total_set_removed = 0;
-    uint32_t mult_or_invers_var;
     bool definitely_satisfiable = false;
     enum ModeType {one_mode, many_mode};
 
@@ -116,6 +113,7 @@ struct Common
     // cnf as we parsed it in (no simplification whatsoever)
     vector<Lit> orig_cnf;
 
+    void init();
     void update_sampling_set(
         const vector<uint32_t>& unknown,
         const vector<char>& unknown_set,
@@ -123,6 +121,7 @@ struct Common
     );
     bool preproc_and_duplicate();
     void add_fixed_clauses();
+    void add_all_indics();
     void print_orig_sampling_set();
     void start_with_clean_sampling_set();
     void duplicate_problem();
@@ -155,11 +154,16 @@ struct Common
         const vector<uint32_t>& indep);
     void backward_round();
 
+    // extend
+    void fill_assumptions_extend(
+        vector<Lit>& assumptions,
+        const vector<uint32_t>& indep);
+    void extend_round();
+
     //Sorting
     template<class T> void sort_unknown(T& unknown);
 
 };
-
 
 inline string print_value_kilo_mega(const int64_t value, bool setw = true)
 {

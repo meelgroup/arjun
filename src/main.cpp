@@ -23,7 +23,6 @@
  */
 
 #include <boost/program_options.hpp>
-namespace po = boost::program_options;
 
 #if defined(__GNUC__) && defined(__linux__)
 #include <fenv.h>
@@ -45,10 +44,10 @@ namespace po = boost::program_options;
 #include "time_mem.h"
 #include "arjun.h"
 #include "config.h"
+#include "helper.h"
 #include <cryptominisat5/dimacsparser.h>
 
 using std::cout;
-using std::cerr;
 using std::endl;
 using std::string;
 using std::vector;
@@ -63,13 +62,15 @@ ArjunInt::Config conf;
 ArjunNS::Arjun* arjun = NULL;
 string elimtofile;
 string recover_file;
-
 int recompute_sampling_set = 0;
+
+uint32_t orig_cnf_must_mult_exp2 = 0;
 uint32_t orig_sampling_set_size = 0;
 uint32_t polar_mode = 0;
 int sparsify = true;
 int renumber = true;
 bool gates = true;
+int extend_indep = false;
 
 // static void signal_handler(int) {
 //     cout << endl << "c [arjun] INTERRUPTING ***" << endl << std::flush;
@@ -97,6 +98,8 @@ void add_arjun_options()
      "Use empty occurrence improvement")
     ("maxc", po::value(&conf.backw_max_confl)->default_value(conf.backw_max_confl),
      "Maximum conflicts per variable in backward mode")
+    ("extend", po::value(&extend_indep)->default_value(extend_indep),
+     "Extend independent set just before CNF dumping")
     ;
 
     po::options_description simp_options("Simplification before indep detection");
@@ -155,115 +158,6 @@ void add_arjun_options()
     help_options.add(debug_options);
 }
 
-void add_supported_options(int argc, char** argv)
-{
-    add_arjun_options();
-    p.add("input", -1);
-
-    try {
-        po::store(po::command_line_parser(argc, argv).options(help_options).positional(p).run(), vm);
-        if (vm.count("help"))
-        {
-            cout
-            << "Minimal projection set finder and simplifier." << endl << endl
-            << "arjun [options] inputfile [outputfile]" << endl;
-
-            cout << help_options << endl;
-            std::exit(0);
-        }
-
-        if (vm.count("version")) {
-            cout << "c [arjun] SHA revision: " << arjun->get_version_info() << endl;
-            cout << "c [arjun] Compilation environment: " << arjun->get_compilation_env() << endl;
-            std::exit(0);
-        }
-
-        po::notify(vm);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::unknown_option> >& c
-    ) {
-        cerr
-        << "ERROR: Some option you gave was wrong. Please give '--help' to get help" << endl
-        << "       Unkown option: " << c.what() << endl;
-        std::exit(-1);
-    } catch (boost::bad_any_cast &e) {
-        std::cerr
-        << "ERROR! You probably gave a wrong argument type" << endl
-        << "       Bad cast: " << e.what()
-        << endl;
-
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::invalid_option_value> >& what
-    ) {
-        cerr
-        << "ERROR: Invalid value '" << what.what() << "'" << endl
-        << "       given to option '" << what.get_option_name() << "'"
-        << endl;
-
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::multiple_occurrences> >& what
-    ) {
-        cerr
-        << "ERROR: " << what.what() << " of option '"
-        << what.get_option_name() << "'"
-        << endl;
-
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::required_option> >& what
-    ) {
-        cerr
-        << "ERROR: You forgot to give a required option '"
-        << what.get_option_name() << "'"
-        << endl;
-
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::too_many_positional_options_error> >& what
-    ) {
-        cerr
-        << "ERROR: You gave too many positional arguments. Only the input CNF can be given as a positional option." << endl;
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::ambiguous_option> >& what
-    ) {
-        cerr
-        << "ERROR: The option you gave was not fully written and matches" << endl
-        << "       more than one option. Please give the full option name." << endl
-        << "       The option you gave: '" << what.get_option_name() << "'" <<endl
-        << "       The alternatives are: ";
-        for(size_t i = 0; i < what.alternatives().size(); i++) {
-            cout << what.alternatives()[i];
-            if (i+1 < what.alternatives().size()) {
-                cout << ", ";
-            }
-        }
-        cout << endl;
-
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::invalid_command_line_syntax> >& what
-    ) {
-        cerr
-        << "ERROR: The option you gave is missing the argument or the" << endl
-        << "       argument is given with space between the equal sign." << endl
-        << "       detailed error message: " << what.what() << endl
-        ;
-        std::exit(-1);
-    }
-}
-
-inline double stats_line_percent(double num, double total)
-{
-    if (total == 0) {
-        return 0;
-    } else {
-        return num/total*100.0;
-    }
-}
-
 void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint32_t>& empty_occs)
 {
     cout << "c ind ";
@@ -287,61 +181,6 @@ void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint3
     << " %" << endl;
 }
 
-void readInAFile(const string& filename)
-{
-    #ifndef USE_ZLIB
-    FILE * in = fopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<FILE*, FN>, ArjunNS::Arjun> parser(arjun, NULL, 0);
-    #else
-    gzFile in = gzopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<gzFile, GZ>, ArjunNS::Arjun> parser(arjun, NULL, 0);
-    #endif
-
-    if (in == NULL) {
-        std::cerr
-        << "ERROR! Could not open file '"
-        << filename
-        << "' for reading: " << strerror(errno) << endl;
-
-        std::exit(-1);
-    }
-
-    if (!parser.parse_DIMACS(in, true)) {
-        exit(-1);
-    }
-
-    if (!parser.sampling_vars_found || recompute_sampling_set) {
-        orig_sampling_set_size = arjun->start_with_clean_sampling_set();
-    } else {
-        orig_sampling_set_size = arjun->set_starting_sampling_set(parser.sampling_vars);
-    }
-
-    #ifndef USE_ZLIB
-        fclose(in);
-    #else
-        gzclose(in);
-    #endif
-}
-
-void dump_cnf(const ArjunNS::SimplifiedCNF& simpcnf)
-{
-    uint32_t num_cls = simpcnf.cnf.size();
-    std::ofstream outf;
-    outf.open(elimtofile.c_str(), std::ios::out);
-    outf << "p cnf " << simpcnf.nvars << " " << num_cls << endl;
-
-    //Add projection
-    outf << "c ind ";
-    for(const auto& v: simpcnf.sampling_vars) {
-        assert(v < simpcnf.nvars);
-        outf << v+1  << " ";
-    }
-    outf << "0\n";
-
-    for(const auto& cl: simpcnf.cnf) outf << cl << " 0\n";
-    outf << "c MUST MULTIPLY BY 2**" << simpcnf.empty_occs << endl;
-}
-
 void elim_to_file(const vector<uint32_t>& sampl_vars)
 {
     double dump_start_time = cpuTime();
@@ -349,13 +188,23 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
     auto ret = arjun->get_fully_simplified_renumbered_cnf(
         sampl_vars, sparsify, renumber, !recover_file.empty());
 
+    delete arjun;
+    arjun = NULL;
+    if (extend_indep) {
+        Arjun arj2;
+        arj2.new_vars(ret.nvars);
+        for(const auto& cl: ret.cnf) arj2.add_clause(cl);
+        arj2.set_starting_sampling_set(ret.sampling_vars);
+        ret.sampling_vars = arj2.extend_indep_set();
+    }
+
     if (!recover_file.empty()) {
         std::ofstream f(recover_file, std::ios::out | std::ios::binary);
         f.write(&ret.sol_ext_data[0], ret.sol_ext_data.size());
         f.close();
     }
 
-    dump_cnf(ret);
+    write_simpcnf(ret, elimtofile, orig_cnf_must_mult_exp2);
     cout << "c [arjun] Done dumping. T: "
         << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
 }
@@ -412,7 +261,8 @@ int main(int argc, char** argv)
         if (i+1 < argc) command_line += " ";
     }
 
-    add_supported_options(argc, argv);
+    add_arjun_options();
+    add_supported_options(argc, argv, p, help_options, vm, arjun);
 
     cout << "c Arjun Version: "
     << arjun->get_version_info() << endl;
@@ -441,7 +291,8 @@ int main(int argc, char** argv)
     if (vm["input"].as<vector<string>>().size() >= 3) {
         recover_file = vm["input"].as<vector<string>>()[2];
     }
-    readInAFile(inp);
+    readInAFile(inp, arjun, orig_sampling_set_size, orig_cnf_must_mult_exp2,
+            recompute_sampling_set);
     cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
 
     vector<uint32_t> indep_vars = arjun->get_indep_set();
@@ -451,29 +302,13 @@ int main(int argc, char** argv)
         << endl;
 
     if (!elimtofile.empty()) {
-        if (conf.simp) {
-            elim_to_file(indep_vars);
-        } else {
-            uint32_t num_cls = 0;
-            const auto& cnf = arjun->get_orig_cnf();
-            for(const auto& l: cnf) if (l == lit_Undef) num_cls++;
-            std::ofstream outf;
-            outf.open(elimtofile.c_str(), std::ios::out);
-            outf << "p cnf " << arjun->get_orig_num_vars() << " " << num_cls << endl;
-
-            //Add projection
-            outf << "c ind ";
-            std::sort(indep_vars.begin(), indep_vars.end());
-            for(const auto& v: indep_vars) {
-                assert(v < arjun->get_orig_num_vars());
-                outf << v+1  << " ";
+        if (conf.simp) elim_to_file(indep_vars);
+        else {
+            if (extend_indep) {
+                arjun->set_starting_sampling_set(indep_vars);
+                indep_vars = arjun->extend_indep_set();
             }
-            outf << "0\n";
-
-            for(const auto& l: cnf) {
-                if (l == lit_Undef) outf << "0\n";
-                else outf << l << " ";
-            }
+            write_origcnf(arjun, indep_vars, elimtofile, orig_cnf_must_mult_exp2);
         }
     }
 

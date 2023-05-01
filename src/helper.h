@@ -22,72 +22,40 @@
  THE SOFTWARE.
  */
 
-#include <boost/program_options.hpp>
-namespace po = boost::program_options;
+#pragma once
 
-#if defined(__GNUC__) && defined(__linux__)
-#include <fenv.h>
-#endif
-
+#include <cstdint>
 #include <iostream>
-#include <iomanip>
 #include <vector>
-#include <atomic>
 #include <fstream>
-#include <sstream>
 #include <string>
-#include <signal.h>
+#include <boost/program_options.hpp>
+#include <cryptominisat5/dimacsparser.h>
+#include <cryptominisat5/solvertypesmini.h>
 #ifdef USE_ZLIB
 #include <zlib.h>
 #endif
 
-
-#include "time_mem.h"
 #include "arjun.h"
-#include "config.h"
-#include <cryptominisat5/dimacsparser.h>
 
-using std::cout;
-using std::cerr;
-using std::endl;
-using std::string;
+namespace po = boost::program_options;
 using std::vector;
+using namespace ArjunNS;
 using namespace CMSat;
+using std::cerr;
+using std::cout;
+using std::endl;
 
-po::options_description arjun_options = po::options_description("Arjun options");
-po::options_description help_options;
-po::variables_map vm;
-po::positional_options_description p;
-double startTime;
-ArjunInt::Config conf;
-ArjunNS::Arjun* arjun = NULL;
-string elimtofile;
-
-uint32_t orig_sampling_set_size = 0;
-vector<uint32_t> orig_sampling_set;
-
-void add_arjun_options()
+inline void add_supported_options(int argc, char** argv,
+        po::positional_options_description& p,
+        po::options_description& help_options,
+        po::variables_map& vm, Arjun* arjun)
 {
-    conf.verb = 1;
-
-    arjun_options.add_options()
-    ("help,h", "Prints help")
-    ("version", "Print version info")
-    ("input", po::value<std::vector<string>>(), "file to read/write")
-    ("verb,v", po::value(&conf.verb)->default_value(conf.verb), "verbosity")
-    ("seed,s", po::value(&conf.seed)->default_value(conf.seed), "Seed")
-    ;
-
-    help_options.add(arjun_options);
-}
-
-void add_supported_options(int argc, char** argv)
-{
-    add_arjun_options();
     p.add("input", -1);
 
     try {
-        po::store(po::command_line_parser(argc, argv).options(help_options).positional(p).run(), vm);
+        po::store(po::command_line_parser(argc, argv).
+                options(help_options).positional(p).run(), vm);
         if (vm.count("help"))
         {
             cout
@@ -190,8 +158,59 @@ inline double stats_line_percent(double num, double total)
     }
 }
 
-void readInAFile(const string& filename)
+inline void write_origcnf(Arjun* arjun, vector<uint32_t>& indep_vars,
+        const std::string& elimtofile, const uint32_t orig_cnf_must_mult_exp2)
 {
+    uint32_t num_cls = 0;
+    const auto& cnf = arjun->get_orig_cnf();
+    for(const auto& l: cnf) if (l == lit_Undef) num_cls++;
+    std::ofstream outf;
+    outf.open(elimtofile.c_str(), std::ios::out);
+    outf << "p cnf " << arjun->get_orig_num_vars() << " " << num_cls << endl;
+
+    //Add projection
+    outf << "c ind ";
+    std::sort(indep_vars.begin(), indep_vars.end());
+    for(const auto& v: indep_vars) {
+        assert(v < arjun->get_orig_num_vars());
+        outf << v+1  << " ";
+    }
+    outf << "0\n";
+
+    for(const auto& l: cnf) {
+        if (l == lit_Undef) outf << "0\n";
+        else outf << l << " ";
+    }
+    outf << "c MUST MULTIPLY BY 2**" << orig_cnf_must_mult_exp2 << endl;
+}
+
+inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
+        const std::string& elimtofile, const uint32_t orig_cnf_must_mult_exp2)
+{
+    uint32_t num_cls = simpcnf.cnf.size();
+    std::ofstream outf;
+    outf.open(elimtofile.c_str(), std::ios::out);
+    outf << "p cnf " << simpcnf.nvars << " " << num_cls << endl;
+
+    //Add projection
+    outf << "c ind ";
+    for(const auto& v: simpcnf.sampling_vars) {
+        assert(v < simpcnf.nvars);
+        outf << v+1  << " ";
+    }
+    outf << "0\n";
+
+    for(const auto& cl: simpcnf.cnf) outf << cl << " 0\n";
+    outf << "c MUST MULTIPLY BY 2**" << simpcnf.empty_occs+orig_cnf_must_mult_exp2 << endl;
+}
+
+inline void readInAFile(const std::string& filename,
+        Arjun* arjun,
+        uint32_t& orig_sampling_set_size,
+        uint32_t& orig_cnf_must_mult_exp2,
+        const bool recompute_sampling_set)
+{
+    assert(orig_cnf_must_mult_exp2 == 0);
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
     DimacsParser<StreamBuffer<FILE*, FN>, ArjunNS::Arjun> parser(arjun, NULL, 0);
@@ -213,113 +232,16 @@ void readInAFile(const string& filename)
         exit(-1);
     }
 
-    assert(orig_sampling_set.empty());
-    if (!parser.sampling_vars_found) {
+    if (!parser.sampling_vars_found || recompute_sampling_set) {
         orig_sampling_set_size = arjun->start_with_clean_sampling_set();
-        for(uint32_t i = 0; i < arjun->nVars(); i++) orig_sampling_set.push_back(i);
     } else {
         orig_sampling_set_size = arjun->set_starting_sampling_set(parser.sampling_vars);
-        orig_sampling_set = parser.sampling_vars;
     }
+    orig_cnf_must_mult_exp2 = parser.must_mult_exp2;
 
     #ifndef USE_ZLIB
         fclose(in);
     #else
         gzclose(in);
     #endif
-}
-
-void dump_cnf(const ArjunNS::SimplifiedCNF& simpcnf)
-{
-    uint32_t num_cls = simpcnf.cnf.size();
-    std::ofstream outf;
-    outf.open(elimtofile.c_str(), std::ios::out);
-    outf << "p cnf " << simpcnf.nvars << " " << num_cls << endl;
-
-    //Add projection
-    outf << "c ind ";
-    for(const auto& v: simpcnf.sampling_vars) {
-        assert(v < simpcnf.nvars);
-        outf << v+1  << " ";
-    }
-    outf << "0\n";
-
-    for(const auto& cl: simpcnf.cnf) outf << cl << " 0\n";
-    outf << "c MUST MULTIPLY BY 2**" << simpcnf.empty_occs << endl;
-}
-
-void only_synthesis_unate(const vector<uint32_t>& sampl_vars)
-{
-    double dump_start_time = cpuTime();
-    cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
-    auto ret = arjun->only_synthesis_unate(sampl_vars);
-
-    dump_cnf(ret);
-    /* cout << "c [arjun] Done dumping. T: " */
-    /*     << std::setprecision(2) << (cpuTime() - dump_start_time) << endl; */
-}
-
-void set_config(ArjunNS::Arjun* arj) {
-    /* cout << "c [arjun] using seed: " << conf.seed << endl; */
-    arj->set_verbosity(conf.verb);
-    arj->set_seed(conf.seed);
-}
-
-int main(int argc, char** argv)
-{
-    arjun = new ArjunNS::Arjun;
-    #if defined(__GNUC__) && defined(__linux__)
-    feenableexcept(FE_INVALID   |
-                   FE_DIVBYZERO |
-                   FE_OVERFLOW
-                  );
-    #endif
-
-    //Reconstruct the command line so we can emit it later if needed
-    string command_line;
-    for(int i = 0; i < argc; i++) {
-        command_line += string(argv[i]);
-        if (i+1 < argc) command_line += " ";
-    }
-
-    add_supported_options(argc, argv);
-
-    /* cout << "c Arjun Version: " */
-    /* << arjun->get_version_info() << endl; */
-    /* cout << arjun->get_solver_version_info(); */
-
-    /* cout */
-    /* << "c executed with command line: " */
-    /* << command_line */
-    /* << endl; */
-
-    set_config(arjun);
-
-    //parsing the input
-    if (vm.count("input") == 0
-            || vm["input"].as<vector<string>>().size() == 0
-            || vm["input"].as<vector<string>>().size() > 3) {
-        cout << "ERROR: you must pass an INPUT, optionally an OUTPUT, and optionally a RECOVER files as parameters" << endl;
-        exit(-1);
-    }
-
-    const string inp = vm["input"].as<vector<string>>()[0];
-    if (vm["input"].as<vector<string>>().size() >= 2) {
-        elimtofile = vm["input"].as<vector<string>>()[1];
-    }
-    if (vm["input"].as<vector<string>>().size() >= 3) {
-        assert(false);
-    }
-    readInAFile(inp);
-    cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
-
-    if (elimtofile.empty()) {
-        cout << "Must give output file" << endl;
-        exit(-1);
-    }
-    arjun->init();
-    only_synthesis_unate(orig_sampling_set);
-
-    delete arjun;
-    return 0;
 }

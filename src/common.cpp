@@ -32,7 +32,6 @@ using std::pair;
 using std::make_pair;
 using namespace ArjunInt;
 
-
 void Common::update_sampling_set(
     const vector<uint32_t>& unknown,
     const vector<char>& unknown_set,
@@ -104,6 +103,7 @@ void Common::add_fixed_clauses()
     indic_to_var.resize(solver->nVars(), var_Undef);
 
     //If indicator variable is TRUE, they are FORCED EQUAL
+    vector<Lit> tmp;
     for(uint32_t var: *sampling_set) {
         solver->new_var();
         uint32_t this_indic = solver->nVars()-1;
@@ -189,7 +189,9 @@ vector<Lit> Common::get_cnf()
 
 void Common::get_incidence()
 {
+    incidence.clear();
     incidence.resize(orig_num_vars, 0);
+    incidence.clear();
     incidence_probing.resize(orig_num_vars, 0);
     assert(solver->nVars() == orig_num_vars);
     vector<uint32_t> inc = solver->get_lit_incidence();
@@ -269,12 +271,29 @@ bool Common::run_gauss_jordan()
     return true;
 }
 
-bool Common::preproc_and_duplicate()
+template <class T>
+void check_sanity_sampling_vars(T vars, const uint32_t nvars)
 {
+    for(const auto& v: vars) if (v >= nvars) {
+        cout << "ERROR: sampling set provided is incorrect, it has a variable in it: " << v+1 << " that is larger than the total number of variables: " << nvars << endl;
+        exit(-1);
+    }
+}
+
+void Common::init()
+{
+    orig_cnf = get_cnf();
     orig_num_vars = solver->nVars();
+    check_sanity_sampling_vars(*sampling_set, orig_num_vars);
     seen.clear();
     seen.resize(solver->nVars(), 0);
+    assert(empty_occs.empty());
+}
 
+bool Common::preproc_and_duplicate()
+{
+    assert(!already_duplicated);
+    already_duplicated = true;
     get_incidence();
     calc_community_parts();
     if (conf.simp && !simplify()) return false;

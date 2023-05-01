@@ -61,6 +61,12 @@ namespace ArjunNS {
 
 using namespace ArjunNS;
 
+void check_duplicated(bool duplicated) {
+    if (!duplicated) return;
+    cout << "ERROR: manipulating the solver AFTER call to indep support manipulation" << endl;
+    assert(false);
+    exit(-1);
+}
 
 DLL_PUBLIC Arjun::Arjun()
 {
@@ -78,21 +84,25 @@ DLL_PUBLIC uint32_t Arjun::nVars() {
 
 DLL_PUBLIC void Arjun::new_vars(uint32_t num)
 {
+    check_duplicated(arjdata->common.already_duplicated);
     arjdata->common.solver->new_vars(num);
 }
 
 DLL_PUBLIC void Arjun::new_var()
 {
+    check_duplicated(arjdata->common.already_duplicated);
     arjdata->common.solver->new_var();
 }
 
 DLL_PUBLIC bool Arjun::add_clause(const vector<CMSat::Lit>& lits)
 {
+    check_duplicated(arjdata->common.already_duplicated);
     return arjdata->common.solver->add_clause(lits);
 }
 
 DLL_PUBLIC bool Arjun::add_xor_clause(const vector<uint32_t>& vars, bool rhs)
 {
+    check_duplicated(arjdata->common.already_duplicated);
     assert(false && "Funnily enough this does NOT work. The XORs would generate a BVA variable, and that would then not be returned as part of the simplified CNF. We could calculate a smaller independent set, but that's all.");
     return arjdata->common.solver->add_xor_clause(vars, rhs);
 }
@@ -103,17 +113,20 @@ DLL_PUBLIC bool Arjun::add_bnn_clause(
             Lit out
         )
 {
+    check_duplicated(arjdata->common.already_duplicated);
     return arjdata->common.solver->add_bnn_clause(lits, cutoff, out);
 }
 
 DLL_PUBLIC uint32_t Arjun::set_starting_sampling_set(const vector<uint32_t>& vars)
 {
+    check_duplicated(arjdata->common.already_duplicated);
     *arjdata->common.sampling_set = vars;
     return arjdata->common.sampling_set->size();
 }
 
 DLL_PUBLIC uint32_t Arjun::start_with_clean_sampling_set()
 {
+    check_duplicated(arjdata->common.already_duplicated);
     arjdata->common.start_with_clean_sampling_set();
     return arjdata->common.sampling_set->size();
 }
@@ -138,31 +151,14 @@ DLL_PUBLIC const std::vector<Lit>& Arjun::get_orig_cnf()
     return arjdata->common.orig_cnf;
 }
 
-template <class T>
-void check_sanity_sampling_vars(T vars, const uint32_t nvars)
-{
-    for(const auto& v: vars) if (v >= nvars) {
-        cout << "ERROR: sampling set provided is incorrect, it has a variable in it: " << v+1 << " that is larger than the total number of variables: " << nvars << endl;
-        exit(-1);
-    }
-}
-
-DLL_PUBLIC void Arjun::init()
-{
-    arjdata->common.orig_cnf = arjdata->common.get_cnf();
-    check_sanity_sampling_vars(*arjdata->common.sampling_set, get_orig_num_vars());
-}
-
 DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
 {
     double starTime = cpuTime();
-    init();
+    arjdata->common.init();
     if (!arjdata->common.preproc_and_duplicate()) goto end;
 
     //Backward
-    if (arjdata->common.conf.backward) {
-        arjdata->common.backward_round();
-    }
+    if (arjdata->common.conf.backward) arjdata->common.backward_round();
 
     end:
     arjdata->common.empty_out_indep_set_if_unsat();
@@ -178,6 +174,27 @@ DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
         arjdata->common.empty_occs.begin(),
         arjdata->common.empty_occs.end());
 
+    return *arjdata->common.sampling_set;
+}
+
+DLL_PUBLIC vector<uint32_t> Arjun::extend_indep_set()
+{
+    double starTime = cpuTime();
+    arjdata->common.conf.simp = false;
+    uint32_t orig_size = arjdata->common.sampling_set->size();
+    assert(!arjdata->common.already_duplicated);
+    arjdata->common.init();
+    if (!arjdata->common.preproc_and_duplicate()) goto end;
+
+    arjdata->common.extend_round();
+    if (arjdata->common.conf.verb) {
+        cout << "c [arjun] extend fully finished"
+        << " Extended by: " << (arjdata->common.sampling_set->size() - orig_size)
+        << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
+        << endl;
+    }
+
+    end:
     return *arjdata->common.sampling_set;
 }
 
@@ -294,13 +311,6 @@ DLL_PUBLIC std::vector<std::pair<CMSat::Lit, CMSat::Lit> > Arjun::get_all_binary
     return ret;
 }
 
-DLL_PUBLIC void Arjun::varreplace()
-{
-    //arjdata->common.solver->backbone_simpl();
-    std::string tmp("must-scc-vrepl, cl-consolidate");
-    arjdata->common.solver->simplify(NULL, &tmp);
-}
-
 DLL_PUBLIC const vector<Lit> Arjun::get_internal_cnf(uint32_t& num_cls) const
 {
     vector<Lit> cnf;
@@ -351,6 +361,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
 
 DLL_PUBLIC SimplifiedCNF Arjun::only_synthesis_unate(const vector<uint32_t>& sampl_vars)
 {
+    arjdata->common.init();
     Sampo sampo(arjdata->common.conf);
     return sampo.only_synthesis_unate( this, sampl_vars);
 }

@@ -78,10 +78,9 @@ namespace ArjunNS {
         // Perform indep set calculation
         uint32_t set_starting_sampling_set(const std::vector<uint32_t>& vars);
         uint32_t start_with_clean_sampling_set();
-        void init();
         std::vector<uint32_t> get_indep_set();
+        std::vector<uint32_t> extend_indep_set();
         uint32_t get_orig_num_vars() const;
-        void varreplace();
         std::vector<uint32_t> get_empty_occsampl_vars() const;
 
         //Get clauses

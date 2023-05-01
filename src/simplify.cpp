@@ -442,7 +442,6 @@ void Common::remove_zero_assigned_literals(bool print)
     std::swap(sampling_set, other_sampling_set);
 
     if (print && conf.verb) {
-        total_set_removed += orig_sampling_set_size - sampling_set->size();
         cout << "c [arjun-simp] Removed set       : "
         << (orig_sampling_set_size - sampling_set->size())
         << " new size: " << sampling_set->size()
@@ -471,8 +470,6 @@ void Common::remove_eq_literals(bool print)
     }
     //TODO atomic swap
     std::swap(sampling_set, other_sampling_set);
-
-    total_eq_removed += orig_sampling_set_size - sampling_set->size();
 
     if (print && conf.verb) {
         cout << "c [arjun-simp] Removed eq lits: "
