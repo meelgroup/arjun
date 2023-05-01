@@ -304,9 +304,7 @@ int main(int argc, char** argv)
     if (!elimtofile.empty()) {
         if (conf.simp) elim_to_file(indep_vars);
         else {
-            if (extend_indep) {
-                indep_vars = arjun->extend_indep_set();
-            }
+            if (extend_indep) indep_vars = arjun->extend_indep_set();
             write_origcnf(arjun, indep_vars, elimtofile, orig_cnf_must_mult_exp2);
         }
     }
