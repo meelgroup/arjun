@@ -118,7 +118,7 @@ print("num cls             %7d" % num_cls)
 print("num bin cls         %7d" % num_bin_cls)
 print("max cl size         %7d" % max_cl_sz)
 if (non_bin_cls != 0):
-    print("avg non-bin cl sz    %5.1f" % (float(tot_non_bin_cl_size)/float(non_bin_cls)))
+    print("avg non-bin cl sz     %5.1f" % (float(tot_non_bin_cl_size)/float(non_bin_cls)))
 else:
-    print("avg non-bin cl sz   %5.1f (no non-bin cl)" % 0)
+    print("avg non-bin cl sz     %5.1f (no non-bin cl)" % 0)
 print("num (non-unit) lits %7d" % num_lits)
