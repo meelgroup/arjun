@@ -179,13 +179,12 @@ DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
 
 DLL_PUBLIC vector<uint32_t> Arjun::extend_indep_set()
 {
+    assert(!arjdata->common.already_duplicated);
     double starTime = cpuTime();
     arjdata->common.conf.simp = false;
     uint32_t orig_size = arjdata->common.sampling_set->size();
-    if (!arjdata->common.already_duplicated) {
-        arjdata->common.init();
-        if (!arjdata->common.preproc_and_duplicate()) goto end;
-    }
+    arjdata->common.init();
+    if (!arjdata->common.preproc_and_duplicate()) goto end;
 
     arjdata->common.extend_round();
     if (arjdata->common.conf.verb) {

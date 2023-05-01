@@ -304,7 +304,10 @@ int main(int argc, char** argv)
     if (!elimtofile.empty()) {
         if (conf.simp) elim_to_file(indep_vars);
         else {
-            if (extend_indep) indep_vars = arjun->extend_indep_set();
+            if (extend_indep) {
+                cout << "ERROR, '--extend 1' option makes no sense if not simplifying. The tool would shrink then extend the projection set. Why do that?" << endl;
+                exit(-1);
+            }
             write_origcnf(arjun, indep_vars, elimtofile, orig_cnf_must_mult_exp2);
         }
     }
