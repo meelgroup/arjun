@@ -389,12 +389,12 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
 
     solver->simplify(&dont_elim, &str);
     solver->simplify(&dont_elim, &str);
-    solver->simplify(&dont_elim, &str);
-    /* conditional_dontcare(); */
     if (conf.backbone_simpl)
         solver->backbone_simpl(
             conf.backbone_simpl_max_confl,
             conf.backbone_simpl_cmsgen);
+    solver->simplify(&dont_elim, &str);
+    /* conditional_dontcare(); */
     /* synthesis_unate(); */
     if (sparsify) {
         str2.clear();
