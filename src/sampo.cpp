@@ -281,30 +281,31 @@ void Sampo::conditional_dontcare()
     delete s;
 }
 
-void Sampo::get_simplified_cnf(
-        vector<uint32_t>& sampl_vars,
-        vector<vector<Lit>>& cnf, uint32_t& nvars, const bool renumber)
+void Sampo::get_simplified_cnf(SimplifiedCNF& scnf, const bool renumber)
 {
-    assert(cnf.empty());
+    assert(scnf.cnf.empty());
+    vector<Lit> clause;
     solver->start_getting_small_clauses(
         std::numeric_limits<uint32_t>::max(),
         std::numeric_limits<uint32_t>::max(),
         false, //red
         false, //bva vars
         renumber); //simplified
-    if (renumber) sampl_vars = solver->translate_sampl_set(sampl_vars);
-
-    bool ret = true;
-    vector<Lit> clause;
-    while(ret) {
-        ret = solver->get_next_small_clause(clause);
-        if (ret) {
-            cnf.push_back(clause);
-        }
-    }
+    if (renumber) scnf.sampling_vars = solver->translate_sampl_set(scnf.sampling_vars);
+    while(solver->get_next_small_clause(clause)) scnf.cnf.push_back(clause);
     solver->end_getting_small_clauses();
-    nvars = renumber ? solver->simplified_nvars() :  solver->nVars();
-    std::sort(sampl_vars.begin(), sampl_vars.end());
+
+    solver->start_getting_small_clauses(
+        std::numeric_limits<uint32_t>::max(),
+        std::numeric_limits<uint32_t>::max(),
+        true, //red
+        false, //bva vars
+        renumber); //simplified
+    while(solver->get_next_small_clause(clause)) scnf.red_cnf.push_back(clause);
+    solver->end_getting_small_clauses();
+
+    scnf.nvars = renumber ? solver->simplified_nvars() :  solver->nVars();
+    std::sort(scnf.sampling_vars.begin(), scnf.sampling_vars.end());
 }
 
 void Sampo::fill_solver(Arjun* arjun)
@@ -424,7 +425,7 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
         str = "occ-bve-empty, must-renumber";
         solver->simplify(&dont_elim, &str);
     }
-    get_simplified_cnf(cnf.sampling_vars, cnf.cnf, cnf.nvars, renumber);
+    get_simplified_cnf(cnf, renumber);
 
     cnf.empty_occs = empty_occs.size();
     if (need_sol_extend) cnf.sol_ext_data = solver->serialize_solution_reconstruction_data();
@@ -448,6 +449,6 @@ SimplifiedCNF Sampo::only_synthesis_unate(
 
     SimplifiedCNF cnf;
     cnf.sampling_vars = sampl_vars;
-    get_simplified_cnf(cnf.sampling_vars, cnf.cnf, cnf.nvars, false);
+    get_simplified_cnf(cnf, false);
     return cnf;
 }

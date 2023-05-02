@@ -201,6 +201,7 @@ inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
     outf << "0\n";
 
     for(const auto& cl: simpcnf.cnf) outf << cl << " 0\n";
+    for(const auto& cl: simpcnf.red_cnf) outf << "c red " << cl << " 0\n";
     outf << "c MUST MULTIPLY BY 2**" << simpcnf.empty_occs+orig_cnf_must_mult_exp2 << endl;
 }
 

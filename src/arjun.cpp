@@ -94,10 +94,10 @@ DLL_PUBLIC void Arjun::new_var()
     arjdata->common.solver->new_var();
 }
 
-DLL_PUBLIC bool Arjun::add_clause(const vector<CMSat::Lit>& lits)
+DLL_PUBLIC bool Arjun::add_clause(const vector<CMSat::Lit>& lits, bool red)
 {
     check_duplicated(arjdata->common.already_duplicated);
-    return arjdata->common.solver->add_clause(lits);
+    return arjdata->common.solver->add_clause(lits, red);
 }
 
 DLL_PUBLIC bool Arjun::add_xor_clause(const vector<uint32_t>& vars, bool rhs)

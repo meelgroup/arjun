@@ -64,9 +64,7 @@ private:
     bool backbone_simpl();
 
     void fill_solver(Arjun* arjun);
-    void get_simplified_cnf(
-            vector<uint32_t>& sampl_vars,
-            vector<vector<Lit>>& cnf, uint32_t& nvars, const bool renumber);
+    void get_simplified_cnf(SimplifiedCNF& sncf, const bool renumber);
 
     const Config& conf;
 

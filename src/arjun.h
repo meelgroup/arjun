@@ -36,6 +36,7 @@ THE SOFTWARE.
 namespace ArjunNS {
     struct SimplifiedCNF {
         std::vector<std::vector<CMSat::Lit>> cnf;
+        std::vector<std::vector<CMSat::Lit>> red_cnf;
         std::vector<uint32_t> sampling_vars;
         uint32_t nvars = 0;
         uint32_t empty_occs = 0;
@@ -68,7 +69,7 @@ namespace ArjunNS {
         uint32_t nVars();
         void new_var();
         bool add_xor_clause(const std::vector<uint32_t>& vars, bool rhs);
-        bool add_clause(const std::vector<CMSat::Lit>& lits);
+        bool add_clause(const std::vector<CMSat::Lit>& lits, bool red = false);
         bool add_bnn_clause(
             const std::vector<CMSat::Lit>& lits,
             signed cutoff,

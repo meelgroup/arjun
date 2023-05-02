@@ -36,8 +36,7 @@ void Common::update_sampling_set(
     const vector<uint32_t>& unknown,
     const vector<char>& unknown_set,
     const vector<uint32_t>& indep
-)
-{
+) {
     other_sampling_set->clear();
     for(const auto& var: unknown) {
         if (unknown_set[var]) {
