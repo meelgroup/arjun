@@ -33,7 +33,7 @@ void Common::check_no_duplicate_in_sampling_set()
 {
     for(auto const& v: *sampling_set) {
         if (seen[v]) {
-            cout << "Variable " << v+1 << " in sampling set twice!" << endl;
+            cout << "ERROR: Variable " << v+1 << " in sampling set twice!" << endl;
             assert(false);
         }
         seen[v] = 1;
@@ -49,7 +49,7 @@ bool Common::simplify()
     double myTime = cpuTime();
 
     if (sampling_set->size() < 10000) {
-        cout << "c WARNING: Turning off gates, because the sampling size is small, so we can just do it" << endl;
+        verb_print(1, "WARNING: Turning off gates, because the sampling size is small, so we can just do it");
         conf.xor_gates_based = 0;
         conf.ite_gate_based = 0;
         conf.or_gate_based = 0;
@@ -106,10 +106,7 @@ void Common::empty_out_indep_set_if_unsat()
     other_sampling_set->clear();
     std::swap(sampling_set, other_sampling_set);
     empty_occs.clear();
-    if (conf.verb) {
-        cout << "c [arjun] CNF is UNSAT, setting sampling set to empty"
-        << endl;
-    }
+    verb_print(1, "[arjun] CNF is UNSAT, setting sampling set to empty");
 }
 
 bool Common::probe_all()
@@ -135,13 +132,11 @@ bool Common::probe_all()
     remove_zero_assigned_literals(true);
     remove_eq_literals(true);
 
-    if (conf.verb) {
-        cout << "c [arjun-simp] probe"
+    verb_print(1, "[arjun-simp] probe"
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
-        << " T: " << (cpuTime() - myTime) << endl;
-    }
+        << " T: " << (cpuTime() - myTime));
 
     return true;
 }
@@ -252,7 +247,7 @@ bool Common::remove_definable_by_gates()
         }
     }
 
-    if (conf.verb > 4) cout << "c [arjun-simp] XOR Potential: " << potential << endl;
+    verb_print(4, "[arjun-simp] XOR Potential: " << potential);
 
     order_sampl_set_for_simp();
     uint32_t non_zero_occs = 0;
@@ -355,15 +350,13 @@ bool Common::remove_definable_by_gates()
     //TODO atomic swap
     std::swap(sampling_set, other_sampling_set);
 
-    if (conf.verb) {
-        cout << "c [arjun-simp] GATE-based"
+    verb_print(1, "[arjun-simp] GATE-based"
         << " Potential was: " << potential
         << " Non-zero OCCs were: " << non_zero_occs
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
-        << " T: " << (cpuTime() - myTime) << endl;
-    }
+        << " T: " << (cpuTime() - myTime));
 
     return changed;
 }
@@ -384,15 +377,12 @@ void Common::find_equiv_subformula()
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
     solver->clean_sampl_and_get_empties(*sampling_set, empty_occs);
 
-    if (conf.verb) {
-        cout << "c [arjun-simp] equiv-subform"
+    verb_print(1, "[arjun-simp] equiv-subform"
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
         << " total equiv_subform now: " << empty_occs.size()
-        << " T: " << std::setprecision(2) << cpuTime() - myTime
-        << endl;
-    }
+        << " T: " << std::setprecision(2) << cpuTime() - myTime);
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 }
 
@@ -406,13 +396,11 @@ void Common::remove_definable_by_irreg_gates()
     *other_sampling_set = solver->remove_definable_by_irreg_gate(*sampling_set);
     std::swap(sampling_set, other_sampling_set);
 
-    if (conf.verb) {
-        cout << "c [arjun-simp] IRREG-GATE-based"
+    verb_print(1, "[arjun-simp] IRREG-GATE-based"
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
-        << " T: " << (cpuTime() - myTime) << endl;
-    }
+        << " T: " << (cpuTime() - myTime));
 }
 
 void Common::remove_zero_assigned_literals(bool print)
