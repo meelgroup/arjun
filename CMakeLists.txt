@@ -241,9 +241,9 @@ else()
 endif()
 
 option(ENABLE_TESTING "Enable testing" OFF)
-option(COVERAGE "Build with coverage check" OFF)
-if (COVERAGE AND NOT STATICCOMPILE)
-    MESSAGE(FATAL_ERROR "Coverage can only be computed on static compilation")
+option(ARJUN_SERIALIZE OFF)
+if (ARJUN_SERIALIZE)
+    add_definitions( -DARJUN_SERIALIZE )
 endif()
 
 if (NOT WIN32)

@@ -95,9 +95,11 @@ else()
         example.cpp
     )
 
+if (ARJUN_SERIALIZE)
     add_executable(solextend
         solextend.cpp
     )
+endif()
 
     set(arjun_bin_exec_link_libs
         ${Boost_LIBRARIES}
@@ -155,6 +157,7 @@ target_link_libraries(arjun-example
     arjun
 )
 
+if (ARJUN_SERIALIZE)
 set_target_properties(solextend PROPERTIES
     OUTPUT_NAME solextend
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
@@ -165,6 +168,7 @@ target_link_libraries(solextend
     ${arjun_bin_exec_link_libs}
     arjun
 )
+endif()
 
 arjun_add_public_header(
     arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun.h )
