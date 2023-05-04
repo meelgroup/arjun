@@ -428,7 +428,15 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
     get_simplified_cnf(cnf, renumber);
 
     cnf.empty_occs = empty_occs.size();
-    if (need_sol_extend) cnf.sol_ext_data = solver->serialize_solution_reconstruction_data();
+
+    if (need_sol_extend) {
+#ifdef ARJUN_SERIALIZE
+        cnf.sol_ext_data = solver.serialize_solution_reconstruction_data();
+#else
+        cout << "ERROR: Both Arjun and CMS needs to be compiled with 'ARJUN_SERIALIZE' to extend solutions" << endl;
+        exit(-1);
+#endif
+    }
 
     return cnf;
 }
