@@ -117,11 +117,9 @@ namespace ArjunNS {
         void set_backw_max_confl(uint32_t backw_max_confl);
         void set_gauss_jordan(bool gauss_jordan);
         void set_find_xors(bool find_xors);
-        void set_backbone_simpl(bool backbone_simpl);
         void set_ite_gate_based(bool ite_gate_based);
         void set_irreg_gate_based(const bool irreg_gate_based);
         void set_gate_sort_special(bool gate_sort_special);
-        void set_backbone_simpl_max_confl(uint64_t backbone_simpl_max_confl);
         //void set_polar_mode(CMSat::PolarityMode mode);
         void set_no_gates_below(double no_gates_below);
         void set_pred_forever_cutoff(int pred_forever_cutoff = -1);
@@ -130,7 +128,6 @@ namespace ArjunNS {
         void set_specified_order_fname(std::string specified_order_fname);
         void set_bce(const bool bce);
         void set_bve_during_elimtofile(const bool);
-        void set_backbone_simpl_cmsgen(const bool);
 
         //Get config
         bool get_empty_occs_based() const;
@@ -151,14 +148,11 @@ namespace ArjunNS {
         uint32_t get_backw_max_confl() const;
         bool get_gauss_jordan() const;
         bool get_find_xors() const;
-        bool get_backbone_simpl() const;
         bool get_ite_gate_based() const;
         bool get_irreg_gate_based() const;
         bool get_gate_sort_special() const;
-        uint64_t get_backbone_simpl_max_confl() const;
         bool get_bce() const;
         bool get_bve_during_elimtofile() const;
-        bool get_backbone_simpl_cmsgen() const;
         bool definitely_satisfiable() const;
         std::vector<uint32_t> get_empty_occ_sampl_vars() const;
 

@@ -256,17 +256,14 @@ set_get_macro(bool, xor_gates_based)
 set_get_macro(bool, probe_based)
 set_get_macro(bool, backward)
 set_get_macro(uint32_t, backw_max_confl)
-set_get_macro(uint64_t, backbone_simpl_max_confl)
 set_get_macro(bool, gauss_jordan)
 set_get_macro(bool, ite_gate_based)
 set_get_macro(bool, irreg_gate_based)
 set_get_macro(double, no_gates_below)
 set_get_macro(std::string, specified_order_fname)
-set_get_macro(bool, backbone_simpl)
 set_get_macro(bool, empty_occs_based)
 set_get_macro(bool, bce)
 set_get_macro(bool, bve_during_elimtofile)
-set_get_macro(bool, backbone_simpl_cmsgen)
 
 DLL_PUBLIC vector<uint32_t> Arjun::get_empty_occ_sampl_vars() const
 {

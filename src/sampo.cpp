@@ -390,10 +390,6 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
 
     solver->simplify(&dont_elim, &str);
     solver->simplify(&dont_elim, &str);
-    if (conf.backbone_simpl)
-        solver->backbone_simpl(
-            conf.backbone_simpl_max_confl,
-            conf.backbone_simpl_cmsgen);
     solver->simplify(&dont_elim, &str);
     /* conditional_dontcare(); */
     /* synthesis_unate(); */

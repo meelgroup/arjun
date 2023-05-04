@@ -110,11 +110,6 @@ void add_arjun_options()
     ("probe", po::value(&conf.probe_based)->default_value(conf.probe_based),
      "Use simple probing to set (and define) some variables")
     ("intree", po::value(&conf.intree)->default_value(conf.intree), "intree")
-    ("backbone", po::value(&conf.backbone_simpl)->default_value(conf.backbone_simpl),
-     "Use backbone simplification")
-    ("backcmsgen", po::value(&conf.backbone_simpl_cmsgen)->default_value(conf.backbone_simpl_cmsgen), "Use CMSGen to detect flipped during backbone simplification")
-    ("backmaxconfl", po::value(&conf.backbone_simpl_max_confl)->default_value(conf.backbone_simpl_max_confl),
-     "Backbone simplification max conflicts")
     ;
 
 
@@ -236,12 +231,9 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_backward(conf.backward);
     arj->set_backw_max_confl(conf.backw_max_confl);
     arj->set_gauss_jordan(conf.gauss_jordan);
-    arj->set_backbone_simpl(conf.backbone_simpl);
-    arj->set_backbone_simpl_max_confl(conf.backbone_simpl_max_confl);
     arj->set_simp(conf.simp);
     arj->set_empty_occs_based(conf.empty_occs_based);
     arj->set_bve_during_elimtofile(conf.bve_during_elimtofile);
-    arj->set_backbone_simpl_cmsgen(conf.backbone_simpl_cmsgen);
 }
 
 int main(int argc, char** argv)

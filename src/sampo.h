@@ -61,8 +61,6 @@ private:
     void conditional_dontcare();
     void synthesis_unate();
 
-    bool backbone_simpl();
-
     void fill_solver(Arjun* arjun);
     void get_simplified_cnf(SimplifiedCNF& sncf, const bool renumber);
 
