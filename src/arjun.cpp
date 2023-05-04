@@ -362,3 +362,11 @@ DLL_PUBLIC SimplifiedCNF Arjun::only_synthesis_unate(const vector<uint32_t>& sam
     Sampo sampo(arjdata->common.conf);
     return sampo.only_synthesis_unate( this, sampl_vars);
 }
+
+
+DLL_PUBLIC SimplifiedCNF Arjun::only_backbone(const vector<uint32_t>& sampl_vars)
+{
+    arjdata->common.init();
+    Sampo sampo(arjdata->common.conf);
+    return sampo.only_backbone(this, sampl_vars);
+}

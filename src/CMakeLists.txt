@@ -87,6 +87,10 @@ else()
         main-unate.cpp
     )
 
+    add_executable(backbone-bin
+        main-backbone.cpp
+    )
+
     add_executable(extend-bin
         main-extend.cpp
     )
@@ -126,6 +130,11 @@ set_target_properties(unate-bin PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
+set_target_properties(backbone-bin PROPERTIES
+    OUTPUT_NAME backbone
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 set_target_properties(extend-bin PROPERTIES
     OUTPUT_NAME extend
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
@@ -137,6 +146,11 @@ target_link_libraries(arjun-bin
 )
 
 target_link_libraries(unate-bin
+    ${arjun_bin_exec_link_libs}
+    arjun
+)
+
+target_link_libraries(backbone-bin
     ${arjun_bin_exec_link_libs}
     arjun
 )

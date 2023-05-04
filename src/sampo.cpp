@@ -360,13 +360,7 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
     fill_solver(arjun);
     solver->set_renumber(renumber);
     solver->set_scc(renumber);
-
-    // Create a new SAT solver that contains no empties.
-    // dont_elim now how no empties in it
-    assert(dont_elim.empty());
-    for(uint32_t v: sampl_vars) dont_elim.push_back(Lit(v, false));
-    sampl_set.clear();
-    for(uint32_t v: sampl_vars) sampl_set.insert(v);
+    setup_sampl_vars_dontelim(sampl_vars);
 
     //Below works VERY WELL for: ProcessBean, pollard, track1_116.mcc2020_cnf
     //   and blasted_TR_b14_even3_linear.cnf.gz.no_w.cnf
@@ -437,18 +431,35 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
     return cnf;
 }
 
-SimplifiedCNF Sampo::only_synthesis_unate(
-        Arjun* arjun,
-        const vector<uint32_t>& sampl_vars)
+void Sampo::setup_sampl_vars_dontelim(const vector<uint32_t>& sampl_vars)
 {
-    fill_solver(arjun);
     assert(dont_elim.empty());
     for(uint32_t v: sampl_vars) dont_elim.push_back(Lit(v, false));
-
     sampl_set.clear();
     for(uint32_t v: sampl_vars) sampl_set.insert(v);
+}
+
+SimplifiedCNF Sampo::only_synthesis_unate(Arjun* arjun, const vector<uint32_t>& sampl_vars)
+{
+    fill_solver(arjun);
+    setup_sampl_vars_dontelim(sampl_vars);
+
     synthesis_unate();
     std::string s = "clean-cls";
+    solver->simplify(&dont_elim, &s);
+
+    SimplifiedCNF cnf;
+    cnf.sampling_vars = sampl_vars;
+    get_simplified_cnf(cnf, false);
+    return cnf;
+}
+
+SimplifiedCNF Sampo::only_backbone(Arjun* arjun, const vector<uint32_t>& sampl_vars)
+{
+    fill_solver(arjun);
+    setup_sampl_vars_dontelim(sampl_vars);
+
+    std::string s = "backbone";
     solver->simplify(&dont_elim, &s);
 
     SimplifiedCNF cnf;

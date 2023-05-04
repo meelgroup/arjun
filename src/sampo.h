@@ -45,8 +45,10 @@ public:
 
     SimplifiedCNF only_synthesis_unate(
             Arjun* arjun,
-            const vector<uint32_t>& sampl_vars
-            );
+            const vector<uint32_t>& sampl_vars);
+    SimplifiedCNF only_backbone(
+            Arjun* arjun,
+            const vector<uint32_t>& sampl_vars);
 
     SimplifiedCNF get_fully_simplified_renumbered_cnf(
         Arjun* arjun,
@@ -60,6 +62,7 @@ private:
     SATSolver* setup_f_not_f_indic();
     void conditional_dontcare();
     void synthesis_unate();
+    void setup_sampl_vars_dontelim(const vector<uint32_t>& sampl_vars);
 
     void fill_solver(Arjun* arjun);
     void get_simplified_cnf(SimplifiedCNF& sncf, const bool renumber);

@@ -95,6 +95,7 @@ namespace ArjunNS {
             const bool renumber = true,
             const bool need_sol_extend = false);
         SimplifiedCNF only_synthesis_unate(const std::vector<uint32_t>& sampl_vars);
+        SimplifiedCNF only_backbone(const std::vector<uint32_t>& sampl_vars);
         const std::vector<CMSat::BNN*>& get_bnns() const;
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
         std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;
