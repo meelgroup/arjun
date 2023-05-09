@@ -200,7 +200,7 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
         f.close();
     }
 
-    ret.renumber_sampling_for_ganak();
+    if (renumber) ret.renumber_sampling_for_ganak();
     write_simpcnf(ret, elimtofile, orig_cnf_must_mult_exp2);
     cout << "c [arjun] Done dumping. T: "
         << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
