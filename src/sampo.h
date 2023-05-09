@@ -65,7 +65,7 @@ private:
     void setup_sampl_vars_dontelim(const vector<uint32_t>& sampl_vars);
 
     void fill_solver(Arjun* arjun);
-    vector<uint32_t> renumber_sampling_for_ganak(SimplifiedCNF& scnf, bool renumber);
+    void renumber_sampling_for_ganak(SimplifiedCNF& scnf);
     void get_simplified_cnf(SimplifiedCNF& sncf, const bool renumber);
 
     const Config& conf;

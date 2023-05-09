@@ -281,45 +281,8 @@ void Sampo::conditional_dontcare()
     delete s;
 }
 
-static vector<Lit>& map_cl(vector<Lit>& cl, vector<uint32_t> var_map) {
-    for(auto& l: cl) {
-        l = Lit(var_map[l.var()], l.sign());
-    }
-    return cl;
-}
-
-vector<uint32_t> Sampo::renumber_sampling_for_ganak(SimplifiedCNF& scnf, bool renumber)
-{
-    scnf.nvars = renumber ? solver->simplified_nvars() :  solver->nVars();
-    constexpr uint32_t m = std::numeric_limits<uint32_t>::max();
-    vector<uint32_t> map_here_to_there(scnf.nvars, m);
-    if (renumber) {
-        scnf.sampling_vars = solver->translate_sampl_set(scnf.sampling_vars);
-        uint32_t i = 0;
-        vector<uint32_t> translated_sampl_vars;
-        for(const auto& v: scnf.sampling_vars) {
-            assert(v < scnf.nvars);
-            map_here_to_there[v] = i;
-            translated_sampl_vars.push_back(i);
-            i++;
-        }
-        scnf.sampling_vars = translated_sampl_vars;
-        for(uint32_t x = 0; x < scnf.nvars; x++) {
-            if (map_here_to_there[x] == m) {
-                map_here_to_there[x] = i;
-                i++;
-            }
-        }
-        assert(i == scnf.nvars);
-    } else {
-        for(uint32_t i = 0; i < scnf.nvars; i++) map_here_to_there[i] = i;
-    }
-    return map_here_to_there;
-}
-
 void Sampo::get_simplified_cnf(SimplifiedCNF& scnf, const bool renumber)
 {
-    // Gather CNF
     assert(scnf.cnf.empty());
     vector<Lit> clause;
     solver->start_getting_small_clauses(
@@ -328,10 +291,8 @@ void Sampo::get_simplified_cnf(SimplifiedCNF& scnf, const bool renumber)
         false, //red
         false, //bva vars
         renumber); //simplified
-
-    const auto map_here_to_there = renumber_sampling_for_ganak(scnf, renumber);
-    while(solver->get_next_small_clause(clause))
-        scnf.cnf.push_back(map_cl(clause, map_here_to_there));
+    if (renumber) scnf.sampling_vars = solver->translate_sampl_set(scnf.sampling_vars);
+    while(solver->get_next_small_clause(clause)) scnf.cnf.push_back(clause);
     solver->end_getting_small_clauses();
 
     solver->start_getting_small_clauses(
@@ -340,9 +301,11 @@ void Sampo::get_simplified_cnf(SimplifiedCNF& scnf, const bool renumber)
         true, //red
         false, //bva vars
         renumber); //simplified
-    while(solver->get_next_small_clause(clause))
-            scnf.red_cnf.push_back(map_cl(clause, map_here_to_there));
+    while(solver->get_next_small_clause(clause)) scnf.red_cnf.push_back(clause);
     solver->end_getting_small_clauses();
+
+    scnf.nvars = renumber ? solver->simplified_nvars() :  solver->nVars();
+    std::sort(scnf.sampling_vars.begin(), scnf.sampling_vars.end());
 }
 
 void Sampo::fill_solver(Arjun* arjun)

@@ -193,12 +193,14 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
         ret.sampling_vars = arj2.extend_indep_set();
     }
 
+    // TODO fix recover file based on SCNF renumbering
     if (!recover_file.empty()) {
         std::ofstream f(recover_file, std::ios::out | std::ios::binary);
         f.write(&ret.sol_ext_data[0], ret.sol_ext_data.size());
         f.close();
     }
 
+    ret.renumber_sampling_for_ganak();
     write_simpcnf(ret, elimtofile, orig_cnf_must_mult_exp2);
     cout << "c [arjun] Done dumping. T: "
         << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;

@@ -49,6 +49,37 @@ namespace ArjunNS {
             empty_occs = 0;
             sol_ext_data.clear();
         }
+
+        std::vector<CMSat::Lit>& map_cl(std::vector<CMSat::Lit>& cl, std::vector<uint32_t> var_map) {
+            for(auto& l: cl) {
+                l = CMSat::Lit(var_map[l.var()], l.sign());
+            }
+            return cl;
+        }
+
+        void renumber_sampling_for_ganak()
+        {
+            constexpr uint32_t m = std::numeric_limits<uint32_t>::max();
+            std::vector<uint32_t> map_here_to_there(nvars, m);
+            uint32_t i = 0;
+            std::vector<uint32_t> translated_sampl_vars;
+            for(const auto& v: sampling_vars) {
+                assert(v < nvars);
+                map_here_to_there[v] = i;
+                translated_sampl_vars.push_back(i);
+                i++;
+            }
+            sampling_vars = translated_sampl_vars;
+            for(uint32_t x = 0; x < nvars; x++) {
+                if (map_here_to_there[x] == m) {
+                    map_here_to_there[x] = i;
+                    i++;
+                }
+            }
+            assert(i == nvars);
+            for(auto& cl: cnf) map_cl(cl, map_here_to_there);
+            for(auto& cl: red_cnf) map_cl(cl, map_here_to_there);
+        }
     };
 
     struct ArjPrivateData;
