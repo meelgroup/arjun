@@ -375,7 +375,7 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
 
     // occ-ternary-res not used
     // eqlit-find ? (too slow)
-    string str("full-probe, sub-cls-with-bin, must-scc-vrepl, must-scc-vrepl, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-del-elimed, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, ");
+    string str("full-probe, sub-cls-with-bin, must-scc-vrepl, must-scc-vrepl, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, ");
     solver->simplify(&dont_elim, &str);
 
     string str2;
