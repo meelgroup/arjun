@@ -169,7 +169,7 @@ inline void write_origcnf(Arjun* arjun, vector<uint32_t>& indep_vars,
     outf << "p cnf " << arjun->get_orig_num_vars() << " " << num_cls << endl;
 
     //Add projection
-    outf << "c ind ";
+    outf << "c p show ";
     std::sort(indep_vars.begin(), indep_vars.end());
     for(const auto& v: indep_vars) {
         assert(v < arjun->get_orig_num_vars());
@@ -193,7 +193,7 @@ inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
     outf << "p cnf " << simpcnf.nvars << " " << num_cls << endl;
 
     //Add projection
-    outf << "c ind ";
+    outf << "c p show ";
     for(const auto& v: simpcnf.sampling_vars) {
         assert(v < simpcnf.nvars);
         outf << v+1  << " ";

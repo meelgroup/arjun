@@ -155,7 +155,7 @@ void add_arjun_options()
 
 void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint32_t>& empty_occs)
 {
-    cout << "c ind ";
+    cout << "c p show ";
     for(const uint32_t s: indep_set) cout << s+1 << " ";
     cout << "0" << endl;
 
