@@ -374,6 +374,7 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
     solver->set_timeout_all_calls(100);
     solver->set_weaken_time_limitM(2000);
     solver->set_occ_based_lit_rem_time_limitM(500);
+    solver->set_oracle_removed_is_learnt(1);
     solver->set_bve(conf.bve_during_elimtofile);
 
     // occ-ternary-res not used
