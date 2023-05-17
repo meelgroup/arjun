@@ -185,7 +185,8 @@ inline void write_origcnf(Arjun* arjun, vector<uint32_t>& indep_vars,
 }
 
 inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
-        const std::string& elimtofile, const uint32_t orig_cnf_must_mult_exp2)
+        const std::string& elimtofile, const uint32_t orig_cnf_must_mult_exp2,
+        bool red = true)
 {
     uint32_t num_cls = simpcnf.cnf.size();
     std::ofstream outf;
@@ -201,7 +202,7 @@ inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
     outf << "0\n";
 
     for(const auto& cl: simpcnf.cnf) outf << cl << " 0\n";
-    for(const auto& cl: simpcnf.red_cnf) outf << "c red " << cl << " 0\n";
+    if (red) for(const auto& cl: simpcnf.red_cnf) outf << "c red " << cl << " 0\n";
     outf << "c MUST MULTIPLY BY 2**" << simpcnf.empty_occs+orig_cnf_must_mult_exp2 << endl;
 }
 

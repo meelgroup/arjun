@@ -87,8 +87,11 @@ int main()
 
     arjun.get_fully_simplified_renumbered_cnf(
         dont_elim_vec,
-        true, //sparsify
-        false //don't renumber and don't replace variables
+        true, // vivify
+        true, // sparsify
+        1, 2,
+        false, // don't renumber and don't replace variables
+        false // no need to extend
     );
 
     //get cnf

@@ -353,7 +353,10 @@ void Sampo::fill_solver(Arjun* arjun)
 SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
     Arjun* arjun,
     const vector<uint32_t>& sampl_vars,
-    const bool sparsify,
+    const bool oracle_vivify,
+    const bool oracle_sparsify,
+    const int iters1,
+    const int iters2,
     const bool renumber,
     const bool need_sol_extend)
 {
@@ -375,31 +378,22 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
 
     // occ-ternary-res not used
     // eqlit-find ? (too slow)
-    string str("full-probe, sub-cls-with-bin, must-scc-vrepl, must-scc-vrepl, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, ");
-    solver->simplify(&dont_elim, &str);
-
+    string str("full-probe, sub-cls-with-bin, must-scc-vrepl, must-scc-vrepl, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
+    for (int i = 0; i < iters1; i++) solver->simplify(&dont_elim, &str);
     string str2;
-    if (conf.bce) str2 += "occ-bce,";
-    str = str2 + string("intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls,distill-bins, ") + str;
-
-    solver->simplify(&dont_elim, &str);
-    solver->simplify(&dont_elim, &str);
-    solver->simplify(&dont_elim, &str);
     /* conditional_dontcare(); */
     /* synthesis_unate(); */
-    if (sparsify) {
-        str2.clear();
-        if (conf.bce) str2+= "occ-bce,";
-        str2 += string("sparsify,") + str;
-        solver->simplify(&dont_elim, &str2);
-    }
-    //one more without sparsify
-    solver->simplify(&dont_elim, &str);
+    if (conf.bce) {str2 = "occ-bce"; solver->simplify(&dont_elim, &str2);}
+    if (oracle_vivify && oracle_sparsify) str2 = "oracle-vivif-sparsify";
+    else if (oracle_vivify) str2 = "oracle-vivif";
+    else if (oracle_sparsify) str2 = "oracle-sparsify";
+    else str2 = "backbone";
+    solver->simplify(&dont_elim, &str2);
+    for (int i = 0; i < iters2; i++) solver->simplify(&dont_elim, &str);
 
+    // Final cleanup -- renumbering, disconnected component removing, etc.
     str.clear();
-    if (arjun->definitely_satisfiable()) {
-        str += string("occ-rem-unconn-assumps, ");
-    }
+    if (arjun->definitely_satisfiable()) { str += string("occ-rem-unconn-assumps, "); }
     str += string(", must-scc-vrepl, must-renumber,");
     if (conf.bce) str += "occ-bce,";
     solver->simplify(&dont_elim, &str);

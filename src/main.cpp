@@ -67,10 +67,14 @@ int recompute_sampling_set = 0;
 uint32_t orig_cnf_must_mult_exp2 = 0;
 uint32_t orig_sampling_set_size = 0;
 uint32_t polar_mode = 0;
-int sparsify = true;
+int oracle_sparsify = true;
+int oracle_vivif = true;
+int sampo_iters1 = 1;
+int sampo_iters2 = 2;
 int renumber = true;
 bool gates = true;
 int extend_indep = false;
+int redundant_cls = true;
 
 // static void signal_handler(int) {
 //     cout << endl << "c [arjun] INTERRUPTING ***" << endl << std::flush;
@@ -134,8 +138,14 @@ void add_arjun_options()
     ("fastbackw", po::value(&conf.fast_backw)->default_value(conf.fast_backw), "fast_backw")
     ("gaussj", po::value(&conf.gauss_jordan)->default_value(conf.gauss_jordan),
      "Use XOR finding and Gauss-Jordan elimination")
-    ("sparsify", po::value(&sparsify)->default_value(sparsify),
-     "Use Oracle from SharpSAT-TD to sparsify CNF formula. Expensive, but useful for SharpSAT-style counters")
+    ("sampoiters1", po::value(&sampo_iters1)->default_value(sampo_iters1),
+     "Sampo iters before oracle")
+    ("sampoiters2", po::value(&sampo_iters2)->default_value(sampo_iters2),
+     "Sampo iters after oracle")
+    ("oraclesparsify", po::value(&oracle_sparsify)->default_value(oracle_sparsify),
+     "Use Oracle to sparsify")
+    ("oraclevivif", po::value(&oracle_vivif)->default_value(oracle_vivif),
+     "Use oracle to vivify")
     ("renumber", po::value(&renumber)->default_value(renumber),
      "Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!")
     ("distill", po::value(&conf.distill)->default_value(conf.distill), "distill")
@@ -143,6 +153,8 @@ void add_arjun_options()
      "Use BVE during simplificaiton of the formula")
     ("bce", po::value(&conf.bce)->default_value(conf.bce),
      "Use blocked clause elimination (BCE). VERY experimental!!")
+    ("red", po::value(&redundant_cls)->default_value(redundant_cls),
+     "Also dump redundant clauses")
     ("specifiedorder", po::value(&conf.specified_order_fname)
      , "Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY")
     ;
@@ -181,7 +193,8 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
     double dump_start_time = cpuTime();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
     auto ret = arjun->get_fully_simplified_renumbered_cnf(
-        sampl_vars, sparsify, renumber, !recover_file.empty());
+        sampl_vars, oracle_vivif, oracle_sparsify,
+        sampo_iters1, sampo_iters2, renumber, !recover_file.empty());
 
     delete arjun;
     arjun = NULL;
@@ -201,7 +214,7 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
     }
 
     if (renumber) ret.renumber_sampling_for_ganak();
-    write_simpcnf(ret, elimtofile, orig_cnf_must_mult_exp2);
+    write_simpcnf(ret, elimtofile, orig_cnf_must_mult_exp2, redundant_cls);
     cout << "c [arjun] Done dumping. T: "
         << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
 }

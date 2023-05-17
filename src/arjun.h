@@ -122,9 +122,12 @@ namespace ArjunNS {
         const std::vector<CMSat::Lit> get_internal_cnf(uint32_t& num_cls) const;
         SimplifiedCNF get_fully_simplified_renumbered_cnf(
             const std::vector<uint32_t>& sampl_vars,
-            const bool sparsify = true,
-            const bool renumber = true,
-            const bool need_sol_extend = false);
+            const bool oracle_vivify,
+            const bool oracle_sparsify,
+            const int iters1,
+            const int iters2,
+            const bool renumber,
+            const bool need_sol_extend);
         SimplifiedCNF only_synthesis_unate(const std::vector<uint32_t>& sampl_vars);
         SimplifiedCNF only_backbone(const std::vector<uint32_t>& sampl_vars);
         const std::vector<CMSat::BNN*>& get_bnns() const;
