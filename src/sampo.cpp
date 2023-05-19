@@ -369,7 +369,7 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
     //Below works VERY WELL for: ProcessBean, pollard, track1_116.mcc2020_cnf
     //   and blasted_TR_b14_even3_linear.cnf.gz.no_w.cnf
     //with CMS ef6ea7e87e00bde50c0cce0c1e13a012191c4e1c and Arjun 5f2dfe814e07ee6ee0dde65b1350b5c343209ed0
-    solver->set_min_bva_gain(8);
+    solver->set_min_bva_gain(0);
     solver->set_varelim_check_resolvent_subs(true);
     solver->set_max_red_linkin_size(0);
     solver->set_timeout_all_calls(100);
@@ -382,7 +382,7 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
 
     // occ-ternary-res not used
     // eqlit-find ? (too slow)
-    string str("full-probe, sub-cls-with-bin, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, intree-probe, distill-cls, distill-bins,occ-backw-sub-str, sub-str-cls-with-bin, clean-cls,  ");
+    string str("full-probe, sub-cls-with-bin, must-scc-vrepl, must-scc-vrepl, distill-cls-onlyrem, sub-impl, occ-resolv-subs, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
     for (int i = 0; i < iters1; i++) solver->simplify(&dont_elim, &str);
     string str2;
     /* conditional_dontcare(); */
