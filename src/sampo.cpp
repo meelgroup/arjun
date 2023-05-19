@@ -354,6 +354,7 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
     Arjun* arjun,
     const vector<uint32_t>& sampl_vars,
     const bool oracle_vivify,
+    const bool oracle_vivif_get_learnts,
     const bool oracle_sparsify,
     const int iters1,
     const int iters2,
@@ -374,6 +375,7 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
     solver->set_timeout_all_calls(100);
     solver->set_weaken_time_limitM(2000);
     solver->set_occ_based_lit_rem_time_limitM(500);
+    solver->set_oracle_get_learnts(oracle_vivif_get_learnts);
     solver->set_oracle_removed_is_learnt(1);
     solver->set_bve(conf.bve_during_elimtofile);
 

@@ -348,6 +348,7 @@ bool Arjun::definitely_satisfiable() const {
 DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     const vector<uint32_t>& sampl_vars,
     const bool oracle_vivify,
+    const bool oracle_vivif_get_learnts,
     const bool oracle_sparsify,
     const int iters1,
     const int iters2,
@@ -356,7 +357,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
 {
     Sampo sampo(arjdata->common.conf);
     return sampo.get_fully_simplified_renumbered_cnf(
-            this, sampl_vars, oracle_vivify, oracle_sparsify,
+            this, sampl_vars, oracle_vivify, oracle_vivif_get_learnts, oracle_sparsify,
             iters1, iters2, renumber, need_sol_extend);
 }
 

@@ -69,6 +69,7 @@ uint32_t orig_sampling_set_size = 0;
 uint32_t polar_mode = 0;
 int oracle_sparsify = true;
 int oracle_vivif = true;
+int oracle_vivif_get_learnts = false;
 int sampo_iters1 = 2;
 int sampo_iters2 = 2;
 int renumber = true;
@@ -146,6 +147,8 @@ void add_arjun_options()
      "Use Oracle to sparsify")
     ("oraclevivif", po::value(&oracle_vivif)->default_value(oracle_vivif),
      "Use oracle to vivify")
+    ("oraclevivifgetl", po::value(&oracle_vivif_get_learnts)->default_value(oracle_vivif_get_learnts),
+     "Use oracle to vivify get learnts")
     ("renumber", po::value(&renumber)->default_value(renumber),
      "Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!")
     ("distill", po::value(&conf.distill)->default_value(conf.distill), "distill")
@@ -193,7 +196,7 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
     double dump_start_time = cpuTime();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
     auto ret = arjun->get_fully_simplified_renumbered_cnf(
-        sampl_vars, oracle_vivif, oracle_sparsify,
+        sampl_vars, oracle_vivif, oracle_vivif_get_learnts, oracle_sparsify,
         sampo_iters1, sampo_iters2, renumber, !recover_file.empty());
 
     delete arjun;

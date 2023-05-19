@@ -88,6 +88,7 @@ int main()
     arjun.get_fully_simplified_renumbered_cnf(
         dont_elim_vec,
         true, // vivify
+        true, // oracle vivif getlearnts
         true, // sparsify
         1, 2,
         false, // don't renumber and don't replace variables

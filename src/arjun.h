@@ -123,6 +123,7 @@ namespace ArjunNS {
         SimplifiedCNF get_fully_simplified_renumbered_cnf(
             const std::vector<uint32_t>& sampl_vars,
             const bool oracle_vivify,
+            const bool oracle_vivify_get_learnts,
             const bool oracle_sparsify,
             const int iters1,
             const int iters2,
