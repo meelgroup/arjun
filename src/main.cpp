@@ -218,8 +218,11 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
 
     if (renumber) ret.renumber_sampling_for_ganak();
     write_simpcnf(ret, elimtofile, orig_cnf_must_mult_exp2, redundant_cls);
-    cout << "c [arjun] Done dumping. T: "
+    cout << "c [arjun] Dumping took: "
         << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
+
+    cout << "c [arjun] All done. T: "
+        << std::setprecision(2) << (cpuTime() - startTime) << endl;
 }
 
 void set_config(ArjunNS::Arjun* arj) {
@@ -283,7 +286,7 @@ int main(int argc, char** argv)
     << command_line
     << endl;
 
-    double starTime = cpuTime();
+    startTime = cpuTime();
     set_config(arjun);
 
     //parsing the input
@@ -308,7 +311,7 @@ int main(int argc, char** argv)
     vector<uint32_t> indep_vars = arjun->get_indep_set();
     print_final_indep_set(indep_vars, arjun->get_empty_occ_sampl_vars());
     cout << "c [arjun] finished "
-        << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
+        << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - startTime)
         << endl;
 
     if (!elimtofile.empty()) {

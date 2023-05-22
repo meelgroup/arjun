@@ -48,30 +48,34 @@ bool Common::simplify()
     auto old_size = sampling_set->size();
     double myTime = cpuTime();
 
+    if (conf.probe_based && !probe_all()) return false;
+    if (conf.empty_occs_based) get_empties();
+    if (conf.bve_pre_simplify) {
+        verb_print(1, "[arjun-simp] CMS::simplify() with no BVE, intree probe...");
+        double simpTime = cpuTime();
+        solver->set_bve(0);
+        solver->set_intree_probe(1);
+        std::string s("intree-probe");
+        if (solver->simplify(NULL, &s) == l_False) return false;
+        if (solver->simplify() == l_False) return false;
+        solver->set_intree_probe(conf.intree);
+        verb_print(1,"[arjun-simp] CMS::simplify() with no BVE finished."
+            << " T: " << (cpuTime() - simpTime));
+    }
     if (sampling_set->size() < 10000) {
-        verb_print(1, "WARNING: Turning off gates, because the sampling size is small, so we can just do it");
+        verb_print(1, "WARNING: Turning off gates, because the sampling size is small, so we can just do it. Size: " << sampling_set->size());
         conf.xor_gates_based = 0;
         conf.ite_gate_based = 0;
         conf.or_gate_based = 0;
         conf.irreg_gate_based = 0;
+    } else {
+        verb_print(1, "num vars: " << sampling_set->size() << " not turning off gates.");
     }
 
     if (conf.xor_gates_based || conf.or_gate_based || conf.ite_gate_based) {
         remove_definable_by_gates();
     }
     if (conf.irreg_gate_based) remove_definable_by_irreg_gates();
-    if (conf.empty_occs_based) get_empties();
-
-    if (conf.bve_pre_simplify) {
-        verb_print(1, "[arjun-simp] CMS::simplify() with no BVE, intree probe...");
-        double simpTime = cpuTime();
-        solver->set_bve(0);
-        solver->set_intree_probe(1);
-        if (solver->simplify() == l_False) return false;
-        solver->set_intree_probe(conf.intree);
-        verb_print(1,"[arjun-simp] CMS::simplify() with no BVE finished."
-            << " T: " << (cpuTime() - simpTime));
-    }
 
     // Find at least one solution (so it's not UNSAT) within some timeout
     solver->set_verbosity(0);
