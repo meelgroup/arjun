@@ -194,7 +194,6 @@ void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint3
 void elim_to_file(const vector<uint32_t>& sampl_vars)
 {
     double dump_start_time = cpuTime();
-    cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
     auto ret = arjun->get_fully_simplified_renumbered_cnf(
         sampl_vars, oracle_vivif, oracle_vivif_get_learnts, oracle_sparsify,
         sampo_iters1, sampo_iters2, renumber, !recover_file.empty());
@@ -204,6 +203,7 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
     if (extend_indep) {
         Arjun arj2;
         arj2.new_vars(ret.nvars);
+        arj2.set_verbosity(conf.verb);
         for(const auto& cl: ret.cnf) arj2.add_clause(cl);
         arj2.set_starting_sampling_set(ret.sampling_vars);
         ret.sampling_vars = arj2.extend_indep_set();
@@ -217,6 +217,7 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
     }
 
     if (renumber) ret.renumber_sampling_for_ganak();
+    cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
     write_simpcnf(ret, elimtofile, orig_cnf_must_mult_exp2, redundant_cls);
     cout << "c [arjun] Dumping took: "
         << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
