@@ -78,7 +78,6 @@ struct Common
     vector<uint32_t>* sampling_set = NULL;
     vector<uint32_t> empty_occs;
 
-    vector<Lit> tmp;
     vector<char> seen;
     uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
     uint32_t total_eq_removed = 0;
