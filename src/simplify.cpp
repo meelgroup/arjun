@@ -119,6 +119,7 @@ bool Common::probe_all()
     order_sampl_set_for_simp();
     auto old_size = sampling_set->size();
 
+    verb_print(1, "[arjun-simp] probing all sampling variables");
     incidence_probing.resize(orig_num_vars, 0);
     for(auto v: *sampling_set) {
         uint32_t min_props = 0;
