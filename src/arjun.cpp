@@ -89,6 +89,11 @@ DLL_PUBLIC bool Arjun::add_clause(const vector<CMSat::Lit>& lits)
     return arjdata->common.solver->add_clause(lits);
 }
 
+DLL_PUBLIC bool Arjun::add_red_clause(const vector<CMSat::Lit>& lits)
+{
+    return arjdata->common.solver->add_red_clause(lits);
+}
+
 DLL_PUBLIC bool Arjun::add_xor_clause(const vector<uint32_t>& vars, bool rhs)
 {
     assert(false && "Funnily enough this does NOT work. The XORs would generate a BVA variable, and that would then not be returned as part of the simplified CNF. We could calculate a smaller independent set, but that's all.");
@@ -587,14 +592,16 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     str = str2 + string("intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls,distill-bins, ") + str;
 
     solver.simplify(&dont_elim, &str);
-    if (arjdata->common.conf.backbone_simpl)
+    if (arjdata->common.conf.backbone_simpl) {
+        bool finished;
         solver.backbone_simpl(
             arjdata->common.conf.backbone_simpl_max_confl,
-            arjdata->common.conf.backbone_simpl_cmsgen);
+            arjdata->common.conf.backbone_simpl_cmsgen, finished);
         /* backbone_simpl( */
         /*     arjdata->common.conf.verb, */
         /*     arjdata->common.conf.backbone_simpl_max_confl, */
         /*     arjdata->common.conf.backbone_simpl_cmsgen, &solver); */
+    }
     solver.simplify(&dont_elim, &str);
     solver.simplify(&dont_elim, &str);
     if (sparsify) {

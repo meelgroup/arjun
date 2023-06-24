@@ -70,6 +70,7 @@ namespace ArjunNS {
         void new_var();
         bool add_xor_clause(const std::vector<uint32_t>& vars, bool rhs);
         bool add_clause(const std::vector<CMSat::Lit>& lits);
+        bool add_red_clause(const std::vector<CMSat::Lit>& lits);
         bool add_bnn_clause(
             const std::vector<CMSat::Lit>& lits,
             signed cutoff,
