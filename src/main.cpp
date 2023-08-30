@@ -168,15 +168,23 @@ void add_arjun_options()
     help_options.add(debug_options);
 }
 
-void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint32_t>& empty_occs)
+void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint32_t>& empty_occs, bool force)
 {
-    cout << "c p show ";
-    for(const uint32_t s: indep_set) cout << s+1 << " ";
-    cout << "0" << endl;
+    if (indep_set.size() < 100 || force) {
+        cout << "c p show ";
+        for(const uint32_t s: indep_set) cout << s+1 << " ";
+        cout << "0" << endl;
+    } else {
+        cout << "c not printing indep set, it's more than 100 elements" << endl;
+    }
 
-    cout << "c empties ";
-    for(const uint32_t s: empty_occs) cout << s+1 << " ";
-    cout << "0" << endl;
+    if (empty_occs.size() < 100 || force) {
+        cout << "c empties ";
+        for(const uint32_t s: empty_occs) cout << s+1 << " ";
+        cout << "0" << endl;
+    } else {
+        cout << "c not printing empty set, it's more than 100 elements" << endl;
+    }
 
     cout
     << "c [arjun] final set size:      " << std::setw(7) << indep_set.size()
@@ -310,7 +318,7 @@ int main(int argc, char** argv)
     cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
 
     vector<uint32_t> indep_vars = arjun->get_indep_set();
-    print_final_indep_set(indep_vars, arjun->get_empty_occ_sampl_vars());
+    print_final_indep_set(indep_vars, arjun->get_empty_occ_sampl_vars(), elimtofile.empty());
     cout << "c [arjun] finished "
         << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - startTime)
         << endl;
