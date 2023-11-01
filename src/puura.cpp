@@ -380,19 +380,23 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->set_bve_too_large_resolvent(-1);
     solver->set_bve(conf.bve_during_elimtofile);
 
-    // occ-ternary-res not used
-    // eqlit-find ? (too slow)
+    // occ-cl-rem-with-orgates not used -- should test and add, probably to 2nd iter
+    // eqlit-find from oracle not used (too slow?)
     string str("must-scc-vrepl, full-probe, backbone, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
     for (int i = 0; i < iters1; i++) solver->simplify(&dont_elim, &str);
-    string str2;
+
+    // Now doing Oracle
     /* conditional_dontcare(); */
     /* synthesis_unate(); */
+    string str2;
     if (conf.bce) {str2 = "occ-bce"; solver->simplify(&dont_elim, &str2);}
     if (oracle_vivify && oracle_sparsify) str2 = "oracle-vivif-sparsify";
     else if (oracle_vivify) str2 = "oracle-vivif";
     else if (oracle_sparsify) str2 = "oracle-sparsify";
     else str2 = "";
     solver->simplify(&dont_elim, &str2);
+
+    // Now more expensive BVE, also RED linked in to occur
     solver->set_varelim_check_resolvent_subs(true);
     solver->set_max_red_linkin_size(20);
     for (int i = 0; i < iters2; i++) solver->simplify(&dont_elim, &str);
