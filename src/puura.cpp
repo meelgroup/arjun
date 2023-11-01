@@ -30,7 +30,7 @@
 #include <iomanip>
 #include <random>
 #include "time_mem.h"
-#include "sampo.h"
+#include "puura.h"
 #include "arjun.h"
 #include "common.h"
 
@@ -41,10 +41,10 @@ using std::endl;
 using std::vector;
 
 
-Sampo::Sampo(const Config& _conf) : conf(_conf){}
-Sampo::~Sampo() { delete solver; }
+Puura::Puura(const Config& _conf) : conf(_conf){}
+Puura::~Puura() { delete solver; }
 
-SATSolver* Sampo::setup_f_not_f_indic()
+SATSolver* Puura::setup_f_not_f_indic()
 {
     double myTime = cpuTime();
     orig_num_vars = solver->nVars();
@@ -148,7 +148,7 @@ SATSolver* Sampo::setup_f_not_f_indic()
     return s;
 }
 
-void Sampo::synthesis_unate()
+void Puura::synthesis_unate()
 {
     double myTime = cpuTime();
     SATSolver* s = setup_f_not_f_indic();
@@ -230,7 +230,7 @@ void Sampo::synthesis_unate()
     delete s;
 }
 
-void Sampo::conditional_dontcare()
+void Puura::conditional_dontcare()
 {
     double myTime = cpuTime();
     SATSolver* s = setup_f_not_f_indic();
@@ -281,7 +281,7 @@ void Sampo::conditional_dontcare()
     delete s;
 }
 
-void Sampo::get_simplified_cnf(SimplifiedCNF& scnf, const bool renumber)
+void Puura::get_simplified_cnf(SimplifiedCNF& scnf, const bool renumber)
 {
     assert(scnf.cnf.empty());
     vector<Lit> clause;
@@ -308,7 +308,7 @@ void Sampo::get_simplified_cnf(SimplifiedCNF& scnf, const bool renumber)
     std::sort(scnf.sampling_vars.begin(), scnf.sampling_vars.end());
 }
 
-void Sampo::fill_solver(Arjun* arjun)
+void Puura::fill_solver(Arjun* arjun)
 {
     assert(solver == nullptr);
     solver = new CMSat::SATSolver();
@@ -350,7 +350,7 @@ void Sampo::fill_solver(Arjun* arjun)
     }
 }
 
-SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
+SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     Arjun* arjun,
     const vector<uint32_t>& sampl_vars,
     const bool oracle_vivify,
@@ -431,7 +431,7 @@ SimplifiedCNF Sampo::get_fully_simplified_renumbered_cnf(
     return cnf;
 }
 
-void Sampo::setup_sampl_vars_dontelim(const vector<uint32_t>& sampl_vars)
+void Puura::setup_sampl_vars_dontelim(const vector<uint32_t>& sampl_vars)
 {
     assert(dont_elim.empty());
     for(uint32_t v: sampl_vars) dont_elim.push_back(Lit(v, false));
@@ -439,7 +439,7 @@ void Sampo::setup_sampl_vars_dontelim(const vector<uint32_t>& sampl_vars)
     for(uint32_t v: sampl_vars) sampl_set.insert(v);
 }
 
-SimplifiedCNF Sampo::only_synthesis_unate(Arjun* arjun, const vector<uint32_t>& sampl_vars)
+SimplifiedCNF Puura::only_synthesis_unate(Arjun* arjun, const vector<uint32_t>& sampl_vars)
 {
     fill_solver(arjun);
     setup_sampl_vars_dontelim(sampl_vars);
@@ -454,7 +454,7 @@ SimplifiedCNF Sampo::only_synthesis_unate(Arjun* arjun, const vector<uint32_t>& 
     return cnf;
 }
 
-SimplifiedCNF Sampo::only_backbone(Arjun* arjun, const vector<uint32_t>& sampl_vars)
+SimplifiedCNF Puura::only_backbone(Arjun* arjun, const vector<uint32_t>& sampl_vars)
 {
     fill_solver(arjun);
     setup_sampl_vars_dontelim(sampl_vars);

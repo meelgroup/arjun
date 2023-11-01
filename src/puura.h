@@ -38,10 +38,10 @@ using namespace ArjunNS;
 using std::vector;
 using std::set;
 
-class Sampo {
+class Puura {
 public:
-    Sampo(const Config& _conf);
-    ~Sampo();
+    Puura(const Config& _conf);
+    ~Puura();
 
     SimplifiedCNF only_synthesis_unate(
             Arjun* arjun,

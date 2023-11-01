@@ -70,8 +70,8 @@ uint32_t polar_mode = 0;
 int oracle_sparsify = true;
 int oracle_vivif = true;
 int oracle_vivif_get_learnts = false;
-int sampo_iters1 = 2;
-int sampo_iters2 = 2;
+int puura_iters1 = 2;
+int puura_iters2 = 2;
 int renumber = true;
 bool gates = true;
 int extend_indep = false;
@@ -139,10 +139,10 @@ void add_arjun_options()
     ("fastbackw", po::value(&conf.fast_backw)->default_value(conf.fast_backw), "fast_backw")
     ("gaussj", po::value(&conf.gauss_jordan)->default_value(conf.gauss_jordan),
      "Use XOR finding and Gauss-Jordan elimination")
-    ("sampoiters1", po::value(&sampo_iters1)->default_value(sampo_iters1),
-     "Sampo iters before oracle")
-    ("sampoiters2", po::value(&sampo_iters2)->default_value(sampo_iters2),
-     "Sampo iters after oracle")
+    ("puuraiters1", po::value(&puura_iters1)->default_value(puura_iters1),
+     "Puura iters before oracle")
+    ("puuraiters2", po::value(&puura_iters2)->default_value(puura_iters2),
+     "Puura iters after oracle")
     ("oraclesparsify", po::value(&oracle_sparsify)->default_value(oracle_sparsify),
      "Use Oracle to sparsify")
     ("oraclevivif", po::value(&oracle_vivif)->default_value(oracle_vivif),
@@ -204,7 +204,7 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
     double dump_start_time = cpuTime();
     auto ret = arjun->get_fully_simplified_renumbered_cnf(
         sampl_vars, oracle_vivif, oracle_vivif_get_learnts, oracle_sparsify,
-        sampo_iters1, sampo_iters2, renumber, !recover_file.empty());
+        puura_iters1, puura_iters2, renumber, !recover_file.empty());
 
     delete arjun; arjun = NULL;
     if (extend_indep) {

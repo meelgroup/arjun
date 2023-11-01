@@ -48,7 +48,7 @@ add_library(arjun
     simplify.cpp
     common.cpp
     arjun.cpp
-    sampo.cpp
+    puura.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
 )
 
