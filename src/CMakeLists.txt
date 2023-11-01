@@ -64,40 +64,25 @@ else()
 endif()
 
 
-if (EMSCRIPTEN)
-    add_executable(arjun-bin
-        main_emscripten.cpp
-    )
+add_executable(arjun-bin
+    main.cpp
+)
 
-    set_target_properties(arjun-bin
-        PROPERTIES
-        OUTPUT_NAME arjun
-        LINK_FLAGS "-s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -s EXTRA_EXPORTED_RUNTIME_METHODS='[\"ccall\", \"cwrap\"]'  -s LINKABLE=1 -s EXPORT_ALL=1 --pre-js ${CMAKE_CURRENT_SOURCE_DIR}/pre.js"
-    )
+add_executable(unate-bin
+    main-unate.cpp
+)
 
-    SET_SOURCE_FILES_PROPERTIES(main_emscripten.cpp
-        PROPERTIES COMPILE_FLAGS "-s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -s EXTRA_EXPORTED_RUNTIME_METHODS='[\"ccall\", \"cwrap\"]'  -s LINKABLE=1 -s EXPORT_ALL=1"
-    )
-else()
-    add_executable(arjun-bin
-        main.cpp
-    )
+add_executable(backbone-bin
+    main-backbone.cpp
+)
 
-    add_executable(unate-bin
-        main-unate.cpp
-    )
+add_executable(extend-bin
+    main-extend.cpp
+)
 
-    add_executable(backbone-bin
-        main-backbone.cpp
-    )
-
-    add_executable(extend-bin
-        main-extend.cpp
-    )
-
-    add_executable(arjun-example
-        example.cpp
-    )
+add_executable(arjun-example
+    example.cpp
+)
 
 if (ARJUN_SERIALIZE)
     add_executable(solextend
@@ -105,10 +90,9 @@ if (ARJUN_SERIALIZE)
     )
 endif()
 
-    set(arjun_bin_exec_link_libs
-        ${Boost_LIBRARIES}
-    )
-endif()
+set(arjun_bin_exec_link_libs
+    ${Boost_LIBRARIES}
+)
 
 IF (ZLIB_FOUND)
     SET(arjun_bin_exec_link_libs ${arjun_bin_exec_link_libs} ${ZLIB_LIBRARY})
