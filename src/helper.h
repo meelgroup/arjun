@@ -185,12 +185,12 @@ inline void write_origcnf(Arjun* arjun, vector<uint32_t>& indep_vars,
 }
 
 inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
-        const std::string& elimtofile, const uint32_t orig_cnf_must_mult_exp2,
+        const std::string& fname, const uint32_t orig_cnf_must_mult_exp2,
         bool red = true)
 {
     uint32_t num_cls = simpcnf.cnf.size();
     std::ofstream outf;
-    outf.open(elimtofile.c_str(), std::ios::out);
+    outf.open(fname.c_str(), std::ios::out);
     outf << "p cnf " << simpcnf.nvars << " " << num_cls << endl;
 
     //Add projection

@@ -206,8 +206,7 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
         sampl_vars, oracle_vivif, oracle_vivif_get_learnts, oracle_sparsify,
         sampo_iters1, sampo_iters2, renumber, !recover_file.empty());
 
-    delete arjun;
-    arjun = NULL;
+    delete arjun; arjun = NULL;
     if (extend_indep) {
         Arjun arj2;
         arj2.new_vars(ret.nvars);
@@ -224,14 +223,11 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
         f.close();
     }
 
-    if (renumber) ret.renumber_sampling_for_ganak();
+    if (renumber) ret.renumber_sampling_vars_for_ganak();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
     write_simpcnf(ret, elimtofile, orig_cnf_must_mult_exp2, redundant_cls);
-    cout << "c [arjun] Dumping took: "
-        << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
-
-    cout << "c [arjun] All done. T: "
-        << std::setprecision(2) << (cpuTime() - startTime) << endl;
+    cout << "c [arjun] Dumping took: " << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
+    cout << "c [arjun] All done. T: " << std::setprecision(2) << (cpuTime() - startTime) << endl;
 }
 
 void set_config(ArjunNS::Arjun* arj) {

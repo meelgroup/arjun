@@ -57,7 +57,8 @@ namespace ArjunNS {
             return cl;
         }
 
-        void renumber_sampling_for_ganak()
+        // renumber variables such that sampling set start from 0...N
+        void renumber_sampling_vars_for_ganak()
         {
             constexpr uint32_t m = std::numeric_limits<uint32_t>::max();
             std::vector<uint32_t> map_here_to_there(nvars, m);
@@ -69,7 +70,8 @@ namespace ArjunNS {
                 translated_sampl_vars.push_back(i);
                 i++;
             }
-            sampling_vars = translated_sampl_vars;
+
+            // Go through the rest of the variables not in sampling set.
             for(uint32_t x = 0; x < nvars; x++) {
                 if (map_here_to_there[x] == m) {
                     map_here_to_there[x] = i;
@@ -77,6 +79,9 @@ namespace ArjunNS {
                 }
             }
             assert(i == nvars);
+
+            // Now we have the full map. Renumber.
+            sampling_vars = translated_sampl_vars;
             for(auto& cl: cnf) map_cl(cl, map_here_to_there);
             for(auto& cl: red_cnf) map_cl(cl, map_here_to_there);
         }
