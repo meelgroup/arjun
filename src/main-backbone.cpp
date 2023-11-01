@@ -53,7 +53,7 @@ using std::string;
 using std::vector;
 using namespace CMSat;
 
-po::options_description arjun_options = po::options_description("Arjun options");
+po::options_description backbone_options = po::options_description("Arjun options");
 po::options_description help_options;
 po::variables_map vm;
 po::positional_options_description p;
@@ -66,11 +66,11 @@ uint32_t orig_cnf_must_mult_exp2;
 uint32_t orig_sampling_set_size = 0;
 vector<uint32_t> orig_sampling_set;
 
-void add_arjun_options()
+void add_backbone_options()
 {
     conf.verb = 1;
 
-    arjun_options.add_options()
+    backbone_options.add_options()
     ("help,h", "Prints help")
     ("version", "Print version info")
     ("input", po::value<std::vector<string>>(), "file to read/write")
@@ -78,19 +78,19 @@ void add_arjun_options()
     ("seed,s", po::value(&conf.seed)->default_value(conf.seed), "Seed")
     ;
 
-    help_options.add(arjun_options);
+    help_options.add(backbone_options);
 }
 
 void only_synthesis_unate(const vector<uint32_t>& sampl_vars)
 {
-    cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
+    cout << "c [backbone] dumping simplified problem to '" << elimtofile << "'" << endl;
     auto ret = arjun->only_synthesis_unate(sampl_vars);
 
     write_simpcnf(ret, elimtofile, orig_cnf_must_mult_exp2);
 }
 
 void set_config(ArjunNS::Arjun* arj) {
-    /* cout << "c [arjun] using seed: " << conf.seed << endl; */
+    cout << "c [backbone] using seed: " << conf.seed << endl;
     arj->set_verbosity(conf.verb);
     arj->set_seed(conf.seed);
 }
@@ -112,17 +112,12 @@ int main(int argc, char** argv)
         if (i+1 < argc) command_line += " ";
     }
 
-    add_arjun_options();
+    add_backbone_options();
     add_supported_options(argc, argv, p, help_options, vm, arjun);
 
-    /* cout << "c Arjun Version: " */
-    /* << arjun->get_version_info() << endl; */
-    /* cout << arjun->get_solver_version_info(); */
-
-    /* cout */
-    /* << "c executed with command line: " */
-    /* << command_line */
-    /* << endl; */
+    cout << "c Backbone Arjun Version: " << arjun->get_version_info() << endl;
+    cout << arjun->get_solver_version_info();
+    cout << "c executed with command line: " << command_line << endl;
 
     set_config(arjun);
 
@@ -135,14 +130,10 @@ int main(int argc, char** argv)
     }
 
     const string inp = vm["input"].as<vector<string>>()[0];
-    if (vm["input"].as<vector<string>>().size() >= 2) {
-        elimtofile = vm["input"].as<vector<string>>()[1];
-    }
-    if (vm["input"].as<vector<string>>().size() >= 3) {
-        assert(false);
-    }
+    if (vm["input"].as<vector<string>>().size() >= 2) elimtofile = vm["input"].as<vector<string>>()[1];
+    if (vm["input"].as<vector<string>>().size() >= 3) assert(false);
     readInAFile(inp, arjun, orig_sampling_set_size, orig_cnf_must_mult_exp2, false);
-    cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
+    cout << "c [backbone] original sampling set size: " << orig_sampling_set_size << endl;
 
     if (elimtofile.empty()) {
         cout << "Must give output file" << endl;
