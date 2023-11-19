@@ -46,6 +46,9 @@ public:
     SimplifiedCNF only_synthesis_unate(
             Arjun* arjun,
             const vector<uint32_t>& sampl_vars);
+    SimplifiedCNF only_conditional_dontcare(
+            Arjun* arjun,
+            const vector<uint32_t>& sampl_vars);
     SimplifiedCNF only_backbone(
             Arjun* arjun,
             const vector<uint32_t>& sampl_vars);

@@ -53,7 +53,7 @@ using std::string;
 using std::vector;
 using namespace CMSat;
 
-po::options_description unate_options = po::options_description("unate options");
+po::options_description dontcare_options = po::options_description("dontcare options");
 po::options_description help_options;
 po::variables_map vm;
 po::positional_options_description p;
@@ -66,11 +66,11 @@ uint32_t orig_cnf_must_mult_exp2;
 uint32_t orig_sampling_set_size = 0;
 vector<uint32_t> orig_sampling_set;
 
-void add_unate_options()
+void add_dontcare_options()
 {
     conf.verb = 1;
 
-    unate_options.add_options()
+    dontcare_options.add_options()
     ("help,h", "Prints help")
     ("version", "Print version info")
     ("input", po::value<std::vector<string>>(), "file to read/write")
@@ -78,13 +78,13 @@ void add_unate_options()
     ("seed,s", po::value(&conf.seed)->default_value(conf.seed), "Seed")
     ;
 
-    help_options.add(unate_options);
+    help_options.add(dontcare_options);
 }
 
-void only_synthesis_unate(const vector<uint32_t>& sampl_vars)
+void only_conditional_dontcare(const vector<uint32_t>& sampl_vars)
 {
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
-    auto simp_cnf = arjun->only_synthesis_unate(sampl_vars);
+    auto simp_cnf = arjun->only_conditional_dontcare(sampl_vars);
     cout << " simp cnf size: " << simp_cnf.cnf.size() << endl;
 
     write_simpcnf(simp_cnf, elimtofile, orig_cnf_must_mult_exp2);
@@ -113,7 +113,7 @@ int main(int argc, char** argv)
         if (i+1 < argc) command_line += " ";
     }
 
-    add_unate_options();
+    add_dontcare_options();
     add_supported_options(argc, argv, p, help_options, vm, arjun);
 
     /* cout << "c Arjun Version: " */
@@ -149,7 +149,7 @@ int main(int argc, char** argv)
         cout << "Must give output file" << endl;
         exit(-1);
     }
-    only_synthesis_unate(orig_sampling_set);
+    only_conditional_dontcare(orig_sampling_set);
 
     delete arjun;
     return 0;

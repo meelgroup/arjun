@@ -151,6 +151,7 @@ SATSolver* Puura::setup_f_not_f_indic()
 void Puura::synthesis_unate()
 {
     double myTime = cpuTime();
+    assert(false && "this is wrong here");
     SATSolver* s = setup_f_not_f_indic();
     vector<Lit> assumps;
     vector<Lit> cl;
@@ -175,10 +176,11 @@ void Puura::synthesis_unate()
             // for sampling vars, we need to have BOTH ways mapping
             if (sampl_set.count(test)) continue;
             if (s->get_sum_conflicts() > 50000) {timeout = true; break;}
-            verb_print(3, "given: " << (given+1)
-                    << " test: " << (test+1)
-                    << " confl: " << s->get_sum_conflicts()
-                    << " T: " << (cpuTime() - myTime));
+            verb_print(3, "given: " << std::setw(3)
+                << ((given == var_Undef) ? -1 : (given+1))
+                << " test: " << (test+1)
+                << " confl: " << s->get_sum_conflicts()
+                << " T: " << (cpuTime() - myTime));
 
             assumps.clear();
             for(uint32_t i2 = 0; i2 < solver->nVars(); i2++) {
@@ -198,7 +200,8 @@ void Puura::synthesis_unate()
                 auto ret = s->solve(&assumps);
                 verb_print(3, "Ret: " << ret << " flip: " << flip);
                 if (ret == l_False) {
-                    verb_print(2, "given: " << std::setw(3) << (given+1)
+                    verb_print(2, "given: " << std::setw(3)
+                        << ((given == var_Undef) ? -1 : (given+1))
                         << " test: " << std::setw(3)  << (test+1)
                         << " FALSE"
                         << " T: " << (cpuTime() - myTime));
@@ -243,29 +246,30 @@ void Puura::conditional_dontcare()
                 (!in_formula[g.var()] || !sampl_set.count(g.var()) ||
                  solver->removed_var(g.var()))) continue;
 
+        // Let's check if there is a solution with this condition at all
+        if (given != -1) {
+            assumps = {g};
+            auto v = solver->get_verbosity();
+            solver->set_verbosity(0);
+            const auto ret = solver->solve(&assumps);
+            solver->set_verbosity(v);
+            if (ret == l_False) continue;
+        }
+
         for(const auto& i: sampl_set) {
             if (!in_formula[i]) continue;
             if (solver->removed_var(i)) continue;
             if (i == g.var()) continue;
 
-            // Let's check if there is a solution with this condition at all
-            if (given != -1) {
-                assumps = {g};
-                auto v = solver->get_verbosity();
-                solver->set_verbosity(0);
-                const auto ret = solver->solve(&assumps);
-                solver->set_verbosity(v);
-                if (ret == l_False) continue;
-            }
-
             // Checking now if var i is dontcare
             myTime = cpuTime();
             assumps.clear();
-            if (g != lit_Undef) assumps.push_back(g);
-
+            if (given != -1) assumps.push_back(g);
             for(const auto& i2: sampl_set) {
+                // They are all equal except for this
                 if (i != i2) assumps.push_back(Lit(var_to_indic[i2], false));
             }
+            // but this is NOT equal
             assumps.push_back(Lit(var_to_indic[i], true));
             s->set_max_confl(1000);
             auto sret = s->solve(&assumps);
@@ -449,6 +453,22 @@ SimplifiedCNF Puura::only_synthesis_unate(Arjun* arjun, const vector<uint32_t>& 
     setup_sampl_vars_dontelim(sampl_vars);
 
     synthesis_unate();
+    std::string s = "clean-cls";
+    solver->simplify(&dont_elim, &s);
+
+    SimplifiedCNF cnf;
+    cnf.sampling_vars = sampl_vars;
+    get_simplified_cnf(cnf, false);
+    return cnf;
+}
+
+
+SimplifiedCNF Puura::only_conditional_dontcare(Arjun* arjun, const vector<uint32_t>& sampl_vars)
+{
+    fill_solver(arjun);
+    setup_sampl_vars_dontelim(sampl_vars);
+
+    conditional_dontcare();
     std::string s = "clean-cls";
     solver->simplify(&dont_elim, &s);
 

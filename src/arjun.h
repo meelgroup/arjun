@@ -136,6 +136,7 @@ namespace ArjunNS {
             const bool renumber,
             const bool need_sol_extend);
         SimplifiedCNF only_synthesis_unate(const std::vector<uint32_t>& sampl_vars);
+        SimplifiedCNF only_conditional_dontcare(const std::vector<uint32_t>& sampl_vars);
         SimplifiedCNF only_backbone(const std::vector<uint32_t>& sampl_vars);
         const std::vector<CMSat::BNN*>& get_bnns() const;
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
