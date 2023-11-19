@@ -53,7 +53,7 @@ using std::string;
 using std::vector;
 using namespace CMSat;
 
-po::options_description backbone_options = po::options_description("Arjun options");
+po::options_description backbone_options = po::options_description("backbone options");
 po::options_description help_options;
 po::variables_map vm;
 po::positional_options_description p;
@@ -134,13 +134,14 @@ int main(int argc, char** argv)
     if (vm["input"].as<vector<string>>().size() >= 3) assert(false);
     readInAFile(inp, arjun, orig_sampling_set_size, orig_cnf_must_mult_exp2, false);
     cout << "c [backbone] original sampling set size: " << orig_sampling_set_size << endl;
+    vector<uint32_t> sampling_set = arjun->get_current_indep_set();
 
     if (elimtofile.empty()) {
         cout << "Must give output file" << endl;
         exit(-1);
     }
-    arjun->only_backbone(orig_sampling_set);
-    write_origcnf(arjun, orig_sampling_set, elimtofile, orig_cnf_must_mult_exp2);
+    auto simp_cnf = arjun->only_backbone(sampling_set);
+    write_simpcnf(simp_cnf, elimtofile, orig_cnf_must_mult_exp2);
 
     delete arjun;
     return 0;

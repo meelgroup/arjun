@@ -81,15 +81,6 @@ void add_dontcare_options()
     help_options.add(dontcare_options);
 }
 
-void only_conditional_dontcare(const vector<uint32_t>& sampl_vars)
-{
-    cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
-    auto simp_cnf = arjun->only_conditional_dontcare(sampl_vars);
-    cout << " simp cnf size: " << simp_cnf.cnf.size() << endl;
-
-    write_simpcnf(simp_cnf, elimtofile, orig_cnf_must_mult_exp2);
-}
-
 void set_config(ArjunNS::Arjun* arj) {
     /* cout << "c [arjun] using seed: " << conf.seed << endl; */
     arj->set_verbosity(conf.verb);
@@ -150,7 +141,8 @@ int main(int argc, char** argv)
         cout << "Must give output file" << endl;
         exit(-1);
     }
-    only_conditional_dontcare(sampling_set);
+    auto simp_cnf = arjun->only_conditional_dontcare(sampling_set);
+    write_simpcnf(simp_cnf, elimtofile, orig_cnf_must_mult_exp2);
 
     delete arjun;
     return 0;
