@@ -157,6 +157,10 @@ DLL_PUBLIC const std::vector<Lit>& Arjun::get_orig_cnf()
     return arjdata->common.orig_cnf;
 }
 
+DLL_PUBLIC const vector<uint32_t>& Arjun::get_current_indep_set() const {
+    return *arjdata->common.sampling_set;
+}
+
 DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
 {
     double starTime = cpuTime();

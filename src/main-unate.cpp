@@ -144,12 +144,13 @@ int main(int argc, char** argv)
     }
     readInAFile(inp, arjun, orig_sampling_set_size, orig_cnf_must_mult_exp2, false);
     cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
+    vector<uint32_t> sampling_set = arjun->get_current_indep_set();
 
     if (elimtofile.empty()) {
         cout << "Must give output file" << endl;
         exit(-1);
     }
-    only_synthesis_unate(orig_sampling_set);
+    only_synthesis_unate(sampling_set);
 
     delete arjun;
     return 0;

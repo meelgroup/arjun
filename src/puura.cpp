@@ -238,6 +238,8 @@ void Puura::conditional_dontcare()
     double myTime = cpuTime();
     SATSolver* s = setup_f_not_f_indic();
     vector<Lit> assumps;
+    auto v = solver->get_verbosity();
+    solver->set_verbosity(0);
     for(int given = -1; given < (int)orig_num_vars*2; given++) {
         Lit g;
         if (given == -1) g = lit_Undef;
@@ -247,14 +249,10 @@ void Puura::conditional_dontcare()
                  solver->removed_var(g.var()))) continue;
 
         // Let's check if there is a solution with this condition at all
-        if (given != -1) {
-            assumps = {g};
-            auto v = solver->get_verbosity();
-            solver->set_verbosity(0);
-            const auto ret = solver->solve(&assumps);
-            solver->set_verbosity(v);
-            if (ret == l_False) continue;
-        }
+        if (given != -1) assumps = {g};
+        else assumps = {};
+        const auto ret = solver->solve(&assumps);
+        if (ret == l_False) continue;
 
         for(const auto& i: sampl_set) {
             if (!in_formula[i]) continue;
@@ -281,6 +279,7 @@ void Puura::conditional_dontcare()
             s->set_verbosity(0);
         }
     }
+    solver->set_verbosity(v);
 
     delete s;
 }
