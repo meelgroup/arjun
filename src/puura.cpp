@@ -58,7 +58,7 @@ SATSolver* Puura::setup_f_not_f_indic()
     vector<Lit> tmp;
     SATSolver* s = new SATSolver;
     s->set_verbosity(0);
-    s->new_vars(orig_num_vars*2);
+    s->new_vars(orig_num_vars*2); // one for orig, one for copy
     s->set_bve(false);
     s->set_bva(false);
     s->set_no_simplify_at_startup();
@@ -98,6 +98,7 @@ SATSolver* Puura::setup_f_not_f_indic()
         tmp.push_back(Lit(var+orig_num_vars, true));
         tmp.push_back(Lit(this_indic,      false));
         s->add_clause(tmp);
+        /* cout << "indic: " << this_indic+1 << " vars: " << var+1 << " " << var+orig_num_vars+1 << endl; */
     }
 
     solver->start_getting_small_clauses(
@@ -112,46 +113,47 @@ SATSolver* Puura::setup_f_not_f_indic()
     vector<Lit> clause;
     while(ret) {
         ret = solver->get_next_small_clause(clause);
-        if (ret) {
-            // set in_formula (but not in a unit)
-            if (clause.size() > 1) for(const auto l: clause) in_formula[l.var()] = 1;
+        if (!ret) break;
 
-            // F(x)
-            s->add_clause(clause);
+        // set in_formula (but not in a unit)
+        if (clause.size() > 1) for(const auto l: clause) in_formula[l.var()] = 1;
 
-            // !F(y)
-            s->new_var();
-            uint32_t zv = s->nVars()-1;
-            Lit z = Lit(zv, false);
+        // F(x)
+        s->add_clause(clause);
 
-            // (C shifted) V -z
+        // !F(y)
+        s->new_var(); // new var for each clause
+        uint32_t zv = s->nVars()-1;
+        Lit z = Lit(zv, false);
+
+        // (C shifted) V -z
+        tmp.clear();
+        for(auto l: clause) tmp.push_back(Lit(l.var()+orig_num_vars, l.sign()));
+        tmp.push_back(~z);
+        s->add_clause(tmp);
+
+        // (each -lit in C, shifted) V z
+        for(auto l: clause) {
             tmp.clear();
-            for(auto l: clause) tmp.push_back(Lit(l.var()+orig_num_vars, l.sign()));
-            tmp.push_back(~z);
+            tmp = {Lit(l.var()+orig_num_vars, !l.sign()),  z};
             s->add_clause(tmp);
-
-            // (each -lit in C) V z
-            for(auto l: clause) {
-                tmp.clear();
-                tmp = {Lit(l.var()+orig_num_vars, !l.sign()),  z};
-                s->add_clause(tmp);
-            }
-            zs.push_back(z);
         }
+        zs.push_back(z);
     }
     solver->end_getting_small_clauses();
+
+    // At least ONE clause must be FALSE
     tmp.clear();
     for(auto z: zs) tmp.push_back(~z);
     s->add_clause(tmp);
     s->simplify();
-    cout << "c [dontcare] Built up the solver. T: " << (cpuTime() - myTime) << endl;
+    cout << "c [puura] Built up the solver. T: " << (cpuTime() - myTime) << endl;
     return s;
 }
 
 void Puura::synthesis_unate()
 {
     double myTime = cpuTime();
-    assert(false && "this is wrong here");
     SATSolver* s = setup_f_not_f_indic();
     vector<Lit> assumps;
     vector<Lit> cl;
@@ -169,6 +171,7 @@ void Puura::synthesis_unate()
     given_set.insert(var_Undef);
     for(uint32_t given: given_set) {
         if (given != var_Undef && solver->removed_var(given)) continue;
+        verb_print(2, "Will test " << orig_num_vars << " vars.");
         for(uint32_t test = 0; test < orig_num_vars; test++) {
             if (test == given) continue;
             if (solver->removed_var(test)) continue;
@@ -179,26 +182,25 @@ void Puura::synthesis_unate()
             verb_print(3, "given: " << std::setw(3)
                 << ((given == var_Undef) ? -1 : (given+1))
                 << " test: " << (test+1)
-                << " confl: " << s->get_sum_conflicts()
-                << " T: " << (cpuTime() - myTime));
+                << " confl: " << s->get_sum_conflicts());
 
             assumps.clear();
             for(uint32_t i2 = 0; i2 < solver->nVars(); i2++) {
                 if (i2 == given || i2 == test) continue;
                 if (solver->removed_var(i2)) continue;
-                assumps.push_back(Lit(var_to_indic[i2], true));
-                /* if (var != i2) assumps.push_back(Lit(var_to_indic[i2], false)); */
+                assumps.push_back(Lit(var_to_indic[i2], false)); // they ARE equal
             }
             if (given != var_Undef) {
                 assumps.push_back(Lit(given, false));
                 assumps.push_back(Lit(given+orig_num_vars, false));
             }
+
             for(int flip = 0; flip < 2; flip++) {
                 assumps.push_back(Lit(test, true ^ flip));
                 assumps.push_back(Lit(test+orig_num_vars, false ^ flip));
                 s->set_max_confl(1500);
                 auto ret = s->solve(&assumps);
-                verb_print(3, "Ret: " << ret << " flip: " << flip);
+                verb_print(4, "Ret: " << ret << " flip: " << flip);
                 if (ret == l_False) {
                     verb_print(2, "given: " << std::setw(3)
                         << ((given == var_Undef) ? -1 : (given+1))
@@ -206,13 +208,15 @@ void Puura::synthesis_unate()
                         << " FALSE"
                         << " T: " << (cpuTime() - myTime));
                     falses++;
-                    cl = {Lit(test, false ^ flip)};
+
+                    cl = {Lit(test, true ^ flip)};
                     if (given != var_Undef) cl.push_back(Lit(given, true));
-                    s->add_clause(cl);
+                    /* s->add_clause(cl); */
+                    cout << "cl : " << cl << " 0" << endl;
                     solver->add_clause(cl);
                     cl = {Lit(test+orig_num_vars, false ^ flip)};
                     if (given != var_Undef) cl.push_back(Lit(given+orig_num_vars, true));
-                    s->add_clause(cl);
+                    /* s->add_clause(cl); */
                     break;
                 }
                 if (ret == l_Undef) undefs++;
@@ -249,8 +253,8 @@ void Puura::conditional_dontcare()
                  solver->removed_var(g.var()))) continue;
 
         // Let's check if there is a solution with this condition at all
+        assumps.clear();
         if (given != -1) assumps = {g};
-        else assumps = {};
         const auto ret = solver->solve(&assumps);
         if (ret == l_False) continue;
 
@@ -268,14 +272,20 @@ void Puura::conditional_dontcare()
                 if (i != i2) assumps.push_back(Lit(var_to_indic[i2], false));
             }
             // but this is NOT equal
-            assumps.push_back(Lit(var_to_indic[i], true));
+            assumps.push_back(Lit(i, true));
+            assumps.push_back(Lit(i+orig_num_vars, false));
             s->set_max_confl(1000);
             auto sret = s->solve(&assumps);
-            cout << "Assuming " << g
-                << " then var " << (i+1) << " is dontcare?"
-                << "Ret: " << sret << " T: " << (cpuTime() - myTime)
-                << " -- inside F: " << (int)in_formula[i]
-                << endl;
+            if (sret == l_False) {
+                verb_print(2, "Assuming " << g
+                    << " then var " << (i+1) << " is dontcare?"
+                    << "Ret: " << sret << " T: " << std::fixed << std::setprecision(2) << (cpuTime() - myTime)
+                    << " -- inside F: " << (int)in_formula[i]);
+                vector<Lit> cl;
+                cl.push_back(~g);
+                cl.push_back(Lit(i+1, false));
+                solver->add_clause(cl);
+            }
             s->set_verbosity(0);
         }
     }
