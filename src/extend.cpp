@@ -75,7 +75,6 @@ void Common::add_all_indics()
         tmp.push_back(Lit(this_indic,        true));
         solver->add_clause(tmp);
     }
-
 }
 
 void Common::synthesis_define(const set<uint32_t>& input) {
