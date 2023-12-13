@@ -76,6 +76,7 @@ int renumber = true;
 bool gates = true;
 int extend_indep = false;
 int redundant_cls = true;
+int compute_indep = true;
 
 // static void signal_handler(int) {
 //     cout << endl << "c [arjun] INTERRUPTING ***" << endl << std::flush;
@@ -105,6 +106,8 @@ void add_arjun_options()
      "Maximum conflicts per variable in backward mode")
     ("extend", po::value(&extend_indep)->default_value(extend_indep),
      "Extend independent set just before CNF dumping")
+    ("compindep", po::value(&compute_indep)->default_value(compute_indep),
+        "compute indep support")
     ;
 
     po::options_description simp_options("Simplification before indep detection");
@@ -231,6 +234,12 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
 }
 
 void set_config(ArjunNS::Arjun* arj) {
+
+    if (!compute_indep) {
+        conf.backward = 0;
+        conf.empty_occs_based = 0;
+    }
+
     cout << "c [arjun] using seed: " << conf.seed << endl;
     arj->set_verbosity(conf.verb);
     arj->set_seed(conf.seed);
