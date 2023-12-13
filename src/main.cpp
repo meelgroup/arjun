@@ -77,6 +77,8 @@ bool gates = true;
 int extend_indep = false;
 int redundant_cls = true;
 int compute_indep = true;
+int unate = false;
+int simptofile = true;
 
 // static void signal_handler(int) {
 //     cout << endl << "c [arjun] INTERRUPTING ***" << endl << std::flush;
@@ -108,6 +110,8 @@ void add_arjun_options()
      "Extend independent set just before CNF dumping")
     ("compindep", po::value(&compute_indep)->default_value(compute_indep),
         "compute indep support")
+    ("unate", po::value(&conf.do_unate)->default_value(conf.do_unate),
+        "Perform unate analysis")
     ;
 
     po::options_description simp_options("Simplification before indep detection");
@@ -115,6 +119,7 @@ void add_arjun_options()
     ("bvepresimp", po::value(&conf.bve_pre_simplify)->default_value(conf.bve_pre_simplify),
      "simplify")
     ("simp", po::value(&conf.simp)->default_value(conf.simp), "Do ANY sort of simplification")
+    ("simptofile", po::value(&simptofile)->default_value(simptofile), "Write SIMPLIFIED file")
     ("probe", po::value(&conf.probe_based)->default_value(conf.probe_based),
      "Use simple probing to set (and define) some variables")
     ("intree", po::value(&conf.intree)->default_value(conf.intree), "intree")
@@ -234,8 +239,8 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
 }
 
 void set_config(ArjunNS::Arjun* arj) {
-
     if (!compute_indep) {
+        gates = 0;
         conf.backward = 0;
         conf.empty_occs_based = 0;
     }
@@ -249,6 +254,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_intree(conf.intree);
     arj->set_bve_pre_simplify(conf.bve_pre_simplify);
     arj->set_unknown_sort(conf.unknown_sort);
+    arj->set_do_unate(conf.do_unate);
     if (gates) {
       arj->set_or_gate_based(conf.or_gate_based);
       arj->set_ite_gate_based(conf.ite_gate_based);
@@ -329,7 +335,7 @@ int main(int argc, char** argv)
         << endl;
 
     if (!elimtofile.empty()) {
-        if (conf.simp) elim_to_file(indep_vars);
+        if (simptofile) elim_to_file(indep_vars);
         else {
             if (extend_indep) {
                 cout << "ERROR, '--extend 1' option makes no sense if not simplifying. The tool would shrink then extend the projection set. Why do that?" << endl;

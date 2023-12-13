@@ -195,7 +195,9 @@ inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
 
     //Add projection
     outf << "c p show ";
-    for(const auto& v: simpcnf.sampling_vars) {
+    auto sampl = simpcnf.sampling_vars;
+    std::sort(sampl.begin(), sampl.end());
+    for(const auto& v: sampl) {
         assert(v < simpcnf.nvars);
         outf << v+1  << " ";
     }

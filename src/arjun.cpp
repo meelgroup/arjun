@@ -274,6 +274,7 @@ set_get_macro(std::string, specified_order_fname)
 set_get_macro(bool, empty_occs_based)
 set_get_macro(bool, bce)
 set_get_macro(bool, bve_during_elimtofile)
+set_get_macro(bool, do_unate)
 
 DLL_PUBLIC vector<uint32_t> Arjun::get_empty_occ_sampl_vars() const
 {
@@ -375,7 +376,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::only_synthesis_unate(const vector<uint32_t>& sam
 {
     arjdata->common.init();
     Puura pura(arjdata->common.conf);
-    return pura.only_synthesis_unate( this, sampl_vars);
+    return pura.only_synthesis_unate(this, sampl_vars);
 }
 
 DLL_PUBLIC SimplifiedCNF Arjun::only_conditional_dontcare(const vector<uint32_t>& sampl_vars)

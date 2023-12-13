@@ -138,40 +138,34 @@ SATSolver* Puura::setup_f_not_f_indic()
             tmp = {Lit(l.var()+orig_num_vars, !l.sign()),  z};
             s->add_clause(tmp);
         }
-        zs.push_back(z);
+        zs.push_back(~z);
     }
     solver->end_getting_small_clauses();
 
     // At least ONE clause must be FALSE
-    tmp.clear();
-    for(auto z: zs) tmp.push_back(~z);
-    s->add_clause(tmp);
+    s->add_clause(zs);
     s->simplify();
     cout << "c [puura] Built up the solver. T: " << (cpuTime() - myTime) << endl;
     return s;
 }
 
-void Puura::synthesis_unate()
-{
+void Puura::synthesis_unate(bool do_given) {
     double myTime = cpuTime();
     SATSolver* s = setup_f_not_f_indic();
     vector<Lit> assumps;
     vector<Lit> cl;
     uint32_t undefs = 0;
-    uint32_t trues = 0;
     uint32_t falses = 0;
     bool timeout = false;
     auto orig_units = solver->get_zero_assigned_lits().size();
 
-    string str("clean-cls");
-    s->simplify(NULL, &str);
-
     set<uint32_t> given_set;
-    /* given_set = sampl_set; */
+    if (do_given) given_set = sampl_set;
     given_set.insert(var_Undef);
     for(uint32_t given: given_set) {
+        if (given != var_Undef && !sampl_set.count(given)) continue;
         if (given != var_Undef && solver->removed_var(given)) continue;
-        verb_print(2, "Will test " << orig_num_vars << " vars.");
+        verb_print(1, "Will unate test " << orig_num_vars-sampl_set.size() << " vars given " << ((given == var_Undef) ? -1 : (int)given));
         for(uint32_t test = 0; test < orig_num_vars; test++) {
             if (test == given) continue;
             if (solver->removed_var(test)) continue;
@@ -209,30 +203,30 @@ void Puura::synthesis_unate()
                         << " T: " << (cpuTime() - myTime));
                     falses++;
 
-                    cl = {Lit(test, true ^ flip)};
+                    cl = {Lit(test, false ^ flip)};
                     if (given != var_Undef) cl.push_back(Lit(given, true));
-                    /* s->add_clause(cl); */
-                    cout << "cl : " << cl << " 0" << endl;
+                    s->add_clause(cl);
                     solver->add_clause(cl);
+                    /* cout << "cl : " << cl << " 0" << endl; */
                     cl = {Lit(test+orig_num_vars, false ^ flip)};
                     if (given != var_Undef) cl.push_back(Lit(given+orig_num_vars, true));
-                    /* s->add_clause(cl); */
+                    s->add_clause(cl);
                     break;
                 }
                 if (ret == l_Undef) undefs++;
-                if (ret == l_True) trues++;
                 assumps.pop_back();
                 assumps.pop_back();
             }
         }
     }
+
     cout << "c [synthesis-unate]"
         << " set: " << (solver->get_zero_assigned_lits().size()-orig_units)
-        << " trues: " << trues << " falses: " << falses << " undefs: " << undefs
+        << " orig units: " << orig_units
+        << " falses: " << falses << " undefs: " << undefs
         << " T-out: " << (int)timeout
         << " T: " << (cpuTime()-myTime)
         << endl;
-    solver->set_verbosity(0);
 
     delete s;
 }
@@ -393,6 +387,9 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->set_bve_too_large_resolvent(-1);
     solver->set_bve(conf.bve_during_elimtofile);
 
+    // Unate, if needed
+    if (conf.do_unate) synthesis_unate(false);
+
     // occ-cl-rem-with-orgates not used -- should test and add, probably to 2nd iter
     // eqlit-find from oracle not used (too slow?)
     string str("must-scc-vrepl, full-probe, backbone, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
@@ -400,7 +397,6 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 
     // Now doing Oracle
     /* conditional_dontcare(); */
-    /* synthesis_unate(); */
     string str2;
     if (conf.bce) {str2 = "occ-bce"; solver->simplify(&dont_elim, &str2);}
     if (oracle_vivify && oracle_sparsify) str2 = "oracle-vivif-sparsify";
@@ -460,10 +456,7 @@ SimplifiedCNF Puura::only_synthesis_unate(Arjun* arjun, const vector<uint32_t>& 
 {
     fill_solver(arjun);
     setup_sampl_vars_dontelim(sampl_vars);
-
     synthesis_unate();
-    std::string s = "clean-cls";
-    solver->simplify(&dont_elim, &s);
 
     SimplifiedCNF cnf;
     cnf.sampling_vars = sampl_vars;

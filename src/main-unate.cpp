@@ -126,21 +126,23 @@ int main(int argc, char** argv)
         exit(-1);
     }
 
+    // Checking options
     const string inp = vm["input"].as<vector<string>>()[0];
     if (vm["input"].as<vector<string>>().size() >= 2) {
         elimtofile = vm["input"].as<vector<string>>()[1];
     }
-    if (vm["input"].as<vector<string>>().size() >= 3) {
-        assert(false);
+    if (vm["input"].as<vector<string>>().size() >= 2) {
+        cout << "ERROR: you must only give at most two input files" << endl;
+        exit(-1);
     }
-    readInAFile(inp, arjun, orig_sampling_set_size, orig_cnf_must_mult_exp2, false);
-    cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
-    vector<uint32_t> sampling_set = arjun->get_current_indep_set();
-
     if (elimtofile.empty()) {
         cout << "Must give output file" << endl;
         exit(-1);
     }
+
+    readInAFile(inp, arjun, orig_sampling_set_size, orig_cnf_must_mult_exp2, false);
+    cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
+    vector<uint32_t> sampling_set = arjun->get_current_indep_set();
     auto simp_cnf = arjun->only_synthesis_unate(sampling_set);
     write_simpcnf(simp_cnf, elimtofile, orig_cnf_must_mult_exp2);
 

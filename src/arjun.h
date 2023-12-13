@@ -162,6 +162,7 @@ namespace ArjunNS {
         void set_gauss_jordan(bool gauss_jordan);
         void set_find_xors(bool find_xors);
         void set_ite_gate_based(bool ite_gate_based);
+        void set_do_unate(bool do_unate);
         void set_irreg_gate_based(const bool irreg_gate_based);
         void set_gate_sort_special(bool gate_sort_special);
         //void set_polar_mode(CMSat::PolarityMode mode);
@@ -174,6 +175,7 @@ namespace ArjunNS {
         void set_bve_during_elimtofile(const bool);
 
         //Get config
+        bool get_do_unate() const;
         bool get_empty_occs_based() const;
         std::string get_specified_order_fname() const;
         double get_no_gates_below() const;

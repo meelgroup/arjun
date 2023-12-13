@@ -68,7 +68,7 @@ private:
     SATSolver* solver = nullptr;
     SATSolver* setup_f_not_f_indic();
     void conditional_dontcare();
-    void synthesis_unate();
+    void synthesis_unate(bool do_given = 0);
     void setup_sampl_vars_dontelim(const vector<uint32_t>& sampl_vars);
 
     void fill_solver(Arjun* arjun);
