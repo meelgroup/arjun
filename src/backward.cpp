@@ -136,11 +136,7 @@ void Common::backward_round()
     if (conf.specified_order_fname != "")
         order_by_file(conf.specified_order_fname, unknown);
     print_sorted_unknown(unknown);
-
-
-    if (conf.verb) {
-        cout << "c [arjun] Start unknown size: " << unknown.size() << endl;
-    }
+    verb_print(1, "[arjun] Start unknown size: " << unknown.size());
 
     vector<Lit> assumptions;
     uint32_t iter = 0;

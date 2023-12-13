@@ -41,8 +41,7 @@ void Common::check_no_duplicate_in_sampling_set()
     for(auto const& v: *sampling_set) seen[v] = 0;
 }
 
-bool Common::simplify()
-{
+bool Common::simplify() {
     assert(conf.simp);
     check_no_duplicate_in_sampling_set();
     auto old_size = sampling_set->size();
@@ -456,9 +455,7 @@ void Common::remove_eq_literals(bool print)
 
     other_sampling_set->clear();
     for(uint32_t i = 0; i < seen.size() && i < orig_num_vars; i++) {
-        if (seen[i]) {
-            other_sampling_set->push_back(i);
-        }
+        if (seen[i]) other_sampling_set->push_back(i);
         seen[i] = 0;
     }
     //TODO atomic swap
