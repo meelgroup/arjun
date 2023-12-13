@@ -115,8 +115,7 @@ void Common::print_sorted_unknown(const vector<uint32_t>& unknown) const
     }
 }
 
-void Common::backward_round()
-{
+void Common::backward_round() {
     for(const auto& x: seen) assert(x == 0);
     double start_round_time = cpuTimeTotal();
     //start with empty independent set
