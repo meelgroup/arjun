@@ -153,6 +153,8 @@ struct Common
         const vector<char>& unknown_set,
         const vector<uint32_t>& indep);
     void backward_round();
+    void order_by_file(const string& fname, vector<uint32_t>& unknown);
+    void print_sorted_unknown(const vector<uint32_t>& unknown) const;
 
     // extend
     void fill_assumptions_extend(

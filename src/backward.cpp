@@ -74,12 +74,50 @@ void Common::fill_assumptions_backward(
     }
 }
 
+void Common::order_by_file(const string& fname, vector<uint32_t>& unknown) {
+    std::set<uint32_t> old_unknown(unknown.begin(), unknown.end());
+    unknown.clear();
+
+    std::ifstream infile(fname);
+    std::string line;
+    uint32_t line_num = 1;
+    while (std::getline(infile, line))
+    {
+        std::istringstream iss(line);
+        int a;
+        if (!(iss >> a)) {
+            cout << "ERROR: the file '" << fname << "' contains a line we cannot parse to be a variable number" << endl;
+            cout << "ERROR line number: " << line_num << std::endl;
+            cout << "ERROR: lines should ONLY contain a single variable" << endl;
+            exit(-1);
+        }
+        if (old_unknown.find(a) == old_unknown.end()) {
+            cout << "WARNING: the variable " << a << " is in the order file but not in the original order." << endl;
+        }
+        unknown.push_back(a);
+        line_num++;
+    }
+}
+
+void Common::print_sorted_unknown(const vector<uint32_t>& unknown) const
+{
+    if (conf.verb >= 4) {
+        cout << "Sorted output: "<< endl;
+        for (const auto& v: unknown) {
+            cout << "c var: " << v << " occ: " << incidence[v]
+            //<< " prop-inc: " << std::setw(6) << incidence_probing[v]
+            << endl;
+            if (var_to_num_communities.size() > v) {
+                cout << " fan-out to comms: " << std::setw(6) << var_to_num_communities[v].size();
+            }
+            cout << endl;
+        }
+    }
+}
+
 void Common::backward_round()
 {
-    for(const auto& x: seen) {
-        assert(x == 0);
-    }
-
+    for(const auto& x: seen) assert(x == 0);
     double start_round_time = cpuTimeTotal();
     //start with empty independent set
     vector<uint32_t> indep;
@@ -94,46 +132,11 @@ void Common::backward_round()
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
-
     sort_unknown(unknown);
+    if (conf.specified_order_fname != "")
+        order_by_file(conf.specified_order_fname, unknown);
+    print_sorted_unknown(unknown);
 
-    if (conf.specified_order_fname != "") {
-        std::set<uint32_t> old_unknown(unknown.begin(), unknown.end());
-        unknown.clear();
-
-        std::ifstream infile(conf.specified_order_fname);
-        std::string line;
-        uint32_t line_num = 1;
-        while (std::getline(infile, line))
-        {
-            std::istringstream iss(line);
-            int a;
-            if (!(iss >> a)) {
-                cout << "ERROR: the file '" << conf.specified_order_fname << "' contains a line we cannot parse to be a variable number" << endl;
-                cout << "ERROR line number: " << line_num << std::endl;
-                cout << "ERROR: lines should ONLY contain a single variable" << endl;
-                exit(-1);
-            }
-            if (old_unknown.find(a) == old_unknown.end()) {
-                cout << "WARNING: the variable " << a << " is in the order file but not in the original order." << endl;
-            }
-            unknown.push_back(a);
-            line_num++;
-        }
-    }
-
-    if (conf.verb >= 4) {
-        cout << "Sorted output: "<< endl;
-        for (const auto& v:unknown) {
-            cout << "c var: " << v << " occ: " << incidence[v]
-            //<< " prop-inc: " << std::setw(6) << incidence_probing[v]
-            << endl;
-            if (var_to_num_communities.size() > v) {
-                cout << " fan-out to comms: " << std::setw(6) << var_to_num_communities[v].size();
-            }
-            cout << endl;
-        }
-    }
 
     if (conf.verb) {
         cout << "c [arjun] Start unknown size: " << unknown.size() << endl;
@@ -142,7 +145,6 @@ void Common::backward_round()
     vector<Lit> assumptions;
     uint32_t iter = 0;
     uint32_t not_indep = 0;
-
     double myTime = cpuTime();
 
     //Calc mod:
