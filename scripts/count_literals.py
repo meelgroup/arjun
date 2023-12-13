@@ -130,7 +130,7 @@ with open(sys.argv[1], "r") as f:
                 num_lits+=1
 
 num_output_not_set = 0
-for i in range(num_vars):
+for i in range(1, num_vars+1):
     if (i not in input_vars) and (i not in set_vars):
         num_output_not_set += 1
 
