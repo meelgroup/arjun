@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <utility>
 #include <string>
 #include <tuple>
+#include <set>
 #ifdef CMS_LOCAL_BUILD
 #include "cryptominisat.h"
 #else
@@ -119,6 +120,7 @@ namespace ArjunNS {
         const std::vector<uint32_t>& get_current_indep_set() const;
         std::vector<uint32_t> get_indep_set();
         std::vector<uint32_t> extend_indep_set();
+        std::vector<uint32_t> synthesis_define();
         uint32_t get_orig_num_vars() const;
         std::vector<uint32_t> get_empty_occsampl_vars() const;
 

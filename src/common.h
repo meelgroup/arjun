@@ -157,10 +157,12 @@ struct Common
     void print_sorted_unknown(const vector<uint32_t>& unknown) const;
 
     // extend
+    template<class T>
     void fill_assumptions_extend(
         vector<Lit>& assumptions,
-        const vector<uint32_t>& indep);
+        const T& indep);
     void extend_round();
+    void synthesis_define(const std::set<uint32_t>& input);
 
     //Sorting
     template<class T> void sort_unknown(T& unknown);

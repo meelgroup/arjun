@@ -260,9 +260,7 @@ void Common::backward_round() {
                 if (conf.verb) {
                     cout << "c [arjun] Problem is UNSAT" << endl;
                 }
-                for(auto& x: unknown_set) {
-                    x = 0;
-                }
+                for(auto& x: unknown_set) x = 0;
                 unknown.clear();
                 indep.clear();
                 assumptions.clear();

@@ -75,6 +75,7 @@ int puura_iters2 = 2;
 int renumber = true;
 bool gates = true;
 int extend_indep = false;
+int synthesis_define = false;
 int redundant_cls = true;
 int compute_indep = true;
 int unate = false;
@@ -108,6 +109,8 @@ void add_arjun_options()
      "Maximum conflicts per variable in backward mode")
     ("extend", po::value(&extend_indep)->default_value(extend_indep),
      "Extend independent set just before CNF dumping")
+    ("synthdefine", po::value(&synthesis_define)->default_value(synthesis_define),
+     "Define for synthesis")
     ("compindep", po::value(&compute_indep)->default_value(compute_indep),
         "compute indep support")
     ("unate", po::value(&conf.do_unate)->default_value(conf.do_unate),
@@ -215,6 +218,10 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
         puura_iters1, puura_iters2, renumber, !recover_file.empty());
 
     delete arjun; arjun = NULL;
+    if (extend_indep && synthesis_define) {
+        cout << "ERROR: can't have both --extend and --synthdefine" << endl;
+        exit(-1);
+    }
     if (extend_indep) {
         Arjun arj2;
         arj2.new_vars(ret.nvars);
@@ -222,6 +229,15 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
         for(const auto& cl: ret.cnf) arj2.add_clause(cl);
         arj2.set_starting_sampling_set(ret.sampling_vars);
         ret.sampling_vars = arj2.extend_indep_set();
+    }
+
+    if (synthesis_define) {
+        Arjun arj2;
+        arj2.new_vars(ret.nvars);
+        arj2.set_verbosity(conf.verb);
+        for(const auto& cl: ret.cnf) arj2.add_clause(cl);
+        arj2.set_starting_sampling_set(ret.sampling_vars);
+        ret.sampling_vars = arj2.synthesis_define();
     }
 
     // TODO fix recover file based on SCNF renumbering
