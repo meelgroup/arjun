@@ -29,6 +29,30 @@
 #define verb_print(a, x) \
     do { if (conf.verb >= a) {std::cout << "c " << x << std::endl;} } while (0)
 
+#if defined(_MSC_VER)
+#include "cms_windows_includes.h"
+#define release_assert(a) \
+    do { \
+    __pragma(warning(push)) \
+    __pragma(warning(disable:4127)) \
+        if (!(a)) {\
+    __pragma(warning(pop)) \
+            fprintf(stderr, "*** ASSERTION FAILURE in %s() [%s:%d]: %s\n", \
+            __FUNCTION__, __FILE__, __LINE__, #a); \
+            abort(); \
+        } \
+    } while (0)
+#else
+#define release_assert(a) \
+    do { \
+        if (!(a)) {\
+            fprintf(stderr, "*** ASSERTION FAILURE in %s() [%s:%d]: %s\n", \
+            __FUNCTION__, __FILE__, __LINE__, #a); \
+            abort(); \
+        } \
+    } while (0)
+#endif
+
 #include <vector>
 #include <iostream>
 #include <iomanip>
