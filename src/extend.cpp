@@ -25,6 +25,10 @@
 #include "common.h"
 #include <algorithm>
 #include <set>
+#include <map>
+extern "C" {
+#include "picosat/picosat.h"
+}
 
 using namespace ArjunInt;
 
@@ -75,6 +79,122 @@ void Common::add_all_indics()
         tmp.push_back(Lit(this_indic,        true));
         solver->add_clause(tmp);
     }
+}
+
+// lit to picolit
+int lit_to_pl(const Lit l) {
+    int picolit = (l.var()+1) * (l.sign() ? -1 : 1);
+    return picolit;
+}
+
+void Common::generate_picosat(const vector<Lit>& assumptions , uint32_t test_var
+        , const set<uint32_t>& inputs) {
+
+    PicoSAT* ps = picosat_init();
+    int pret = picosat_enable_trace_generation(ps);
+    release_assert(pret != 0 && "Traces cannot be generated in PicoSAT");
+    map<uint32_t, vector<Lit>> cl_map;
+    uint32_t cl_num = 0;
+
+    solver->start_getting_small_clauses(
+        std::numeric_limits<uint32_t>::max(),
+        std::numeric_limits<uint32_t>::max(),
+        false, //red
+        false, //bva vars
+        false); //simplified
+
+    bool ret = true;
+    vector<Lit> cl;
+    for(uint32_t i = 0; i < solver->nVars(); i++) picosat_inc_max_var(ps);
+    while(ret) {
+        ret = solver->get_next_small_clause(cl);
+        if (!ret) break;
+        /* cout << "CL " << cl_num << ": " << cl << endl; */
+        cl_map[cl_num++] = cl;
+        for (const auto& l: cl) picosat_add(ps, lit_to_pl(l));
+        picosat_add(ps, 0);
+    }
+    solver->end_getting_clauses();
+    /* cout << "c assumptions" << endl; */
+    for(const auto& l: assumptions) {
+        /* cout << "CL " << cl_num << ": " << l << " 0" << endl; */
+        cl_map[cl_num++] = vector<Lit>{l};
+        picosat_add(ps, lit_to_pl(l));
+        picosat_add(ps, 0);
+    }
+    pret = picosat_sat(ps, 10000);
+    release_assert(pret == PICOSAT_UNSATISFIABLE);
+
+    map<uint32_t, uint32_t> indic_map;
+    for(const auto& m: cl_map) {
+        if (picosat_coreclause(ps, m.first)) {
+            if (m.second.size() != 1) continue;
+            Lit l = m.second[0];
+            if (l.var() < indic_to_var.size() && l.var() >= orig_num_vars*2) {
+                /* cout << "c indic-to-var: " << l << " -- " << indic_to_var[l.var()]+1 << endl; */
+                indic_map[indic_to_var[l.var()]+orig_num_vars] = indic_to_var[l.var()];
+            }
+        }
+    }
+
+    vector<vector<Lit>> mini_cls;
+    if (seen.size() < solver->nVars()*2) seen.resize(solver->nVars()*2, 0);
+    for(const auto& m: cl_map) {
+        if (picosat_coreclause(ps, m.first)) {
+            bool indic = false;
+            bool taut = false;
+            cl = m.second;
+            cl.clear();
+            for(auto l: m.second) {
+                if (l.var() < indic_to_var.size() && l.var() >= orig_num_vars*2)
+                    indic = true;
+                if (indic_map.count(l.var())) l = Lit(indic_map[l.var()], l.sign());
+                if (seen[(~l).toInt()]) {taut = true; break;}
+                seen[l.toInt()] = true;
+                cl.push_back(l);
+            }
+            if (taut) goto end;
+            if (indic && cl.size() == 1) {
+                // only indic, skip
+                assert(cl[0].sign() == false);
+                goto end;
+            }
+            mini_cls.push_back(cl);
+            end:
+            for(const auto& l: cl) seen[l.toInt()] = false;
+        }
+    }
+    std::stringstream name;
+    name << "core-" << test_var+1 << ".cnf";
+    auto f = std::ofstream(name.str());
+    f << "p cnf " << orig_num_vars*2 << " " << mini_cls.size() << endl;
+    f << "c orig_num_vars: " << orig_num_vars << endl;
+    f << "c output: " << test_var +1 << endl;
+    f << "c output2: " << orig_num_vars+test_var +1 << endl;
+    f << "c num inputs: " << inputs.size() << endl;
+    f << "c inputs: "; for(const auto& l: inputs) f << (l+1) << " "; f << endl;
+    for(const auto& c: mini_cls) f << c << " 0" << endl;
+    f.close();
+    picosat_reset(ps);
+
+    // picosat on the core only, on a simplified CNF
+    ps = picosat_init();
+    pret = picosat_enable_trace_generation(ps);
+    release_assert(pret != 0 && "Traces cannot be generated in PicoSAT");
+    for(uint32_t i = 0; i < orig_num_vars*2; i++) picosat_inc_max_var(ps);
+    for(const auto& c: mini_cls) {
+        for(const auto& l: c) picosat_add(ps, lit_to_pl(l));
+        picosat_add(ps, 0);
+    }
+    pret = picosat_sat(ps, 10000);
+    release_assert(pret == PICOSAT_UNSATISFIABLE);
+    name.str("");
+    name.clear();
+    name << "proof-" << test_var+1 << ".trace";
+    FILE* trace = fopen(name.str().c_str(), "w");
+    picosat_write_extended_trace (ps, trace);
+    picosat_reset(ps);
+    fclose(trace);
 }
 
 void Common::synthesis_define(const set<uint32_t>& input) {
@@ -157,6 +277,7 @@ void Common::synthesis_define(const set<uint32_t>& input) {
             indep.insert(test_var);
         } else if (ret == l_False) {
             // Dependent fully on `indep`
+            generate_picosat(assumptions, test_var, indep);
         }
 
         if (iter % mod == (mod-1) && conf.verb) {
