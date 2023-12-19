@@ -8,8 +8,8 @@ A="$1"
 shift
 B="$@"
 echo "opts: $B"
-rm proof*
-rm core*
+rm -f proof*
+rm -f core*
 
 echo "Orig count of $A:"
 ./count_literals.py "$A"
