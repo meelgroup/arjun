@@ -35,6 +35,16 @@ THE SOFTWARE.
 #endif
 
 namespace ArjunNS {
+    struct SimpConf {
+        bool oracle_vivify = true;
+        bool oracle_vivify_get_learnts = true;
+        bool oracle_sparsify = true;
+        int iter1 = 2;
+        int iter2 = 2;
+        int bve_grow_iter1 = 0;
+        int bve_grow_iter2 = 0;
+    };
+
     struct SimplifiedCNF {
         std::vector<std::vector<CMSat::Lit>> cnf;
         std::vector<std::vector<CMSat::Lit>> red_cnf;
@@ -131,11 +141,7 @@ namespace ArjunNS {
         const std::vector<CMSat::Lit> get_internal_cnf(uint32_t& num_cls) const;
         SimplifiedCNF get_fully_simplified_renumbered_cnf(
             const std::vector<uint32_t>& sampl_vars,
-            const bool oracle_vivify,
-            const bool oracle_vivify_get_learnts,
-            const bool oracle_sparsify,
-            const int iters1,
-            const int iters2,
+            const SimpConf& simpConf,
             const bool renumber,
             const bool need_sol_extend);
         SimplifiedCNF only_synthesis_unate(const std::vector<uint32_t>& sampl_vars);

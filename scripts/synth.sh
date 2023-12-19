@@ -20,5 +20,5 @@ echo "New count of $A:"
 ./count_literals.py out
 
 echo "Doing UNSAT based synthesis"
-./arjun $B --comp 0 out out2 --oraclevivif 0 --oraclespars 0 --renumber 0 --synthdefine 1 --puuraiters1 0 --puuraiters2 0 > arjun_out2
+./arjun $B --comp 0 out out2 --oraclevivif 0 --oraclespars 0 --renumber 0 --synthdefine 1 --iter1 0 --iter2 0 > arjun_out2
 grep "final extension" arjun_out2

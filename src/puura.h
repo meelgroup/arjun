@@ -56,11 +56,7 @@ public:
     SimplifiedCNF get_fully_simplified_renumbered_cnf(
         Arjun* arjun,
         const vector<uint32_t>& sampl_vars,
-        const bool oracle_vivify,
-        const bool oracle_vivif_get_learnts,
-        const bool oracle_sparsify,
-        const int iters,
-        const int iters2,
+        const SimpConf simpConf,
         const bool renumber,
         const bool need_sol_extend);
 

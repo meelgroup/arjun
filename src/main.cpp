@@ -67,11 +67,7 @@ int recompute_sampling_set = 0;
 uint32_t orig_cnf_must_mult_exp2 = 0;
 uint32_t orig_sampling_set_size = 0;
 uint32_t polar_mode = 0;
-int oracle_sparsify = true;
-int oracle_vivif = true;
-int oracle_vivif_get_learnts = false;
-int puura_iters1 = 2;
-int puura_iters2 = 2;
+SimpConf simpConf;
 int renumber = true;
 bool gates = true;
 int extend_indep = false;
@@ -150,15 +146,19 @@ void add_arjun_options()
     ("fastbackw", po::value(&conf.fast_backw)->default_value(conf.fast_backw), "fast_backw")
     ("gaussj", po::value(&conf.gauss_jordan)->default_value(conf.gauss_jordan),
      "Use XOR finding and Gauss-Jordan elimination")
-    ("puuraiters1", po::value(&puura_iters1)->default_value(puura_iters1),
-     "Puura iters before oracle")
-    ("puuraiters2", po::value(&puura_iters2)->default_value(puura_iters2),
-     "Puura iters after oracle")
-    ("oraclesparsify", po::value(&oracle_sparsify)->default_value(oracle_sparsify),
+    ("iter1", po::value(&simpConf.iter1)->default_value(simpConf.iter1),
+     "Puura iterations before oracle")
+    ("iter1grow", po::value(&simpConf.bve_grow_iter1)->default_value(simpConf.bve_grow_iter1),
+     "Puura BVE grow rate allowed before Oracle")
+    ("iter2", po::value(&simpConf.iter2)->default_value(simpConf.iter2),
+     "Puura iterations after oracle")
+    ("iter2grow", po::value(&simpConf.bve_grow_iter2)->default_value(simpConf.bve_grow_iter2),
+     "Puura BVE grow rate allowed after Oracle")
+    ("oraclesparsify", po::value(&simpConf.oracle_sparsify)->default_value(simpConf.oracle_sparsify),
      "Use Oracle to sparsify")
-    ("oraclevivif", po::value(&oracle_vivif)->default_value(oracle_vivif),
+    ("oraclevivif", po::value(&simpConf.oracle_vivify)->default_value(simpConf.oracle_vivify),
      "Use oracle to vivify")
-    ("oraclevivifgetl", po::value(&oracle_vivif_get_learnts)->default_value(oracle_vivif_get_learnts),
+    ("oraclevivifgetl", po::value(&simpConf.oracle_vivify_get_learnts)->default_value(simpConf.oracle_vivify_get_learnts),
      "Use oracle to vivify get learnts")
     ("renumber", po::value(&renumber)->default_value(renumber),
      "Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!")
@@ -214,8 +214,7 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
 {
     double dump_start_time = cpuTime();
     auto ret = arjun->get_fully_simplified_renumbered_cnf(
-        sampl_vars, oracle_vivif, oracle_vivif_get_learnts, oracle_sparsify,
-        puura_iters1, puura_iters2, renumber, !recover_file.empty());
+        sampl_vars, simpConf, renumber, !recover_file.empty());
 
     delete arjun; arjun = NULL;
     if (extend_indep && synthesis_define) {

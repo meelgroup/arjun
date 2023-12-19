@@ -85,12 +85,9 @@ int main()
     dont_elim.insert(29);
     vector<uint32_t> dont_elim_vec(dont_elim.begin(), dont_elim.end());
 
+    SimpConf simpConf;
     arjun.get_fully_simplified_renumbered_cnf(
-        dont_elim_vec,
-        true, // vivify
-        true, // oracle vivif getlearnts
-        true, // sparsify
-        1, 2,
+        dont_elim_vec, simpConf,
         false, // don't renumber and don't replace variables
         false // no need to extend
     );

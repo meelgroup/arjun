@@ -49,7 +49,6 @@ namespace po = boost::program_options;
 #include <cryptominisat5/dimacsparser.h>
 
 using std::cout;
-using std::cerr;
 using std::endl;
 using std::string;
 using std::vector;
