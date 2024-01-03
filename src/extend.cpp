@@ -90,6 +90,7 @@ int lit_to_pl(const Lit l) {
 void Common::generate_picosat(const vector<Lit>& assumptions , uint32_t test_var
         , const set<uint32_t>& inputs) {
 
+    // FIRST, we get an UNSAT core
     PicoSAT* ps = picosat_init();
     int pret = picosat_enable_trace_generation(ps);
     release_assert(pret != 0 && "Traces cannot be generated in PicoSAT");
@@ -125,6 +126,9 @@ void Common::generate_picosat(const vector<Lit>& assumptions , uint32_t test_var
     pret = picosat_sat(ps, 10000);
     release_assert(pret == PICOSAT_UNSATISFIABLE);
 
+    // NEXT we extract information we'll need to make simplified UNSAT core
+    // in particular, we'll make sure that variables that are equivalent are
+    // not represented as two different variables
     map<uint32_t, uint32_t> indic_map;
     for(const auto& m: cl_map) {
         if (picosat_coreclause(ps, m.first)) {
@@ -137,6 +141,8 @@ void Common::generate_picosat(const vector<Lit>& assumptions , uint32_t test_var
         }
     }
 
+    // NEXT we generate the small CNF that is UNSAT and is simplified
+    // TODO: simplify away the SET values of x && \neg x
     vector<vector<Lit>> mini_cls;
     if (seen.size() < solver->nVars()*2) seen.resize(solver->nVars()*2, 0);
     for(const auto& m: cl_map) {
@@ -164,6 +170,8 @@ void Common::generate_picosat(const vector<Lit>& assumptions , uint32_t test_var
             for(const auto& l: cl) seen[l.toInt()] = false;
         }
     }
+
+    // Write the CORE file
     std::stringstream name;
     name << "core-" << test_var+1 << ".cnf";
     auto f = std::ofstream(name.str());
