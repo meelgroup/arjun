@@ -27,7 +27,7 @@
 #include <set>
 #include <map>
 extern "C" {
-#include "picosat/picosat.h"
+#include "mpicosat/mpicosat.h"
 }
 
 using namespace ArjunInt;
