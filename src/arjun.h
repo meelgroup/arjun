@@ -115,6 +115,7 @@ namespace ArjunNS {
         // Adding CNF
         uint32_t nVars();
         void new_var();
+        bool add_xor_clause(const std::vector<CMSat::Lit>& lits, bool rhs);
         bool add_xor_clause(const std::vector<uint32_t>& vars, bool rhs);
         bool add_clause(const std::vector<CMSat::Lit>& lits);
         bool add_red_clause(const std::vector<CMSat::Lit>& lits);
