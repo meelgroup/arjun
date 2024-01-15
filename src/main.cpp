@@ -22,8 +22,6 @@
  THE SOFTWARE.
  */
 
-#include <boost/program_options.hpp>
-
 #if defined(__GNUC__) && defined(__linux__)
 #include <fenv.h>
 #endif
@@ -39,7 +37,7 @@
 #ifdef USE_ZLIB
 #include <zlib.h>
 #endif
-
+#include "argparse.hpp"
 
 #include "time_mem.h"
 #include "arjun.h"
@@ -53,10 +51,7 @@ using std::string;
 using std::vector;
 using namespace CMSat;
 
-po::options_description arjun_options = po::options_description("Arjun options");
-po::options_description help_options;
-po::variables_map vm;
-po::positional_options_description p;
+argparse::ArgumentParser program = argparse::ArgumentParser("arjun");
 double startTime;
 ArjunInt::Config conf;
 ArjunNS::Arjun* arjun = NULL;
@@ -85,98 +80,169 @@ int simptofile = true;
 void add_arjun_options()
 {
     conf.verb = 1;
+        /* .action([&](const auto&) {dont_ban_solutions = true;}) */
 
-    arjun_options.add_options()
-    ("help,h", "Prints help")
-    ("version", "Print version info")
-    ("input", po::value<std::vector<string>>(), "file to read/write")
-    ("verb,v", po::value(&conf.verb)->default_value(conf.verb), "verbosity")
-    ("seed,s", po::value(&conf.seed)->default_value(conf.seed), "Seed")
-//     ("bve", po::value(&conf.bve)->default_value(conf.bve), "bve")
-    ("sort", po::value(&conf.unknown_sort)->default_value(conf.unknown_sort),
-     "Which sorting mechanism.")
-    ("recomp", po::value(&recompute_sampling_set)->default_value(recompute_sampling_set),
-     "Recompute sampling set even if it's part of the CNF")
-    ("backward", po::value(&conf.backward)->default_value(conf.backward),
-     "Do backwards query")
-    ("empty", po::value(&conf.empty_occs_based)->default_value(conf.empty_occs_based),
-     "Use empty occurrence improvement")
-    ("maxc", po::value(&conf.backw_max_confl)->default_value(conf.backw_max_confl),
-     "Maximum conflicts per variable in backward mode")
-    ("extend", po::value(&extend_indep)->default_value(extend_indep),
-     "Extend independent set just before CNF dumping")
-    ("synthdefine", po::value(&synthesis_define)->default_value(synthesis_define),
-     "Define for synthesis")
-    ("compindep", po::value(&compute_indep)->default_value(compute_indep),
-        "compute indep support")
-    ("unate", po::value(&conf.do_unate)->default_value(conf.do_unate),
-        "Perform unate analysis")
-    ;
+    program.add_argument("-h", "--help"),
+     .help("Prints help");
+    program.add_argument("-v", "--version"),
+     .help("Print version info");
+    program.add_argument("-v", "--verb")
+        , po::value(&conf.verb)
+        .default_value(conf.verb)
+     .help("verbosity");
+    program.add_argument("--s", "--seed")
+        , po::value(&conf.seed)
+        .default_value(conf.seed)
+     .help("Seed");
+    program.add_argument("--sort")
+        , po::value(&conf.unknown_sort)
+        .default_value(conf.unknown_sort)
+     .help("Which sorting mechanism.");
+    program.add_argument("--recomp")
+        , po::value(&recompute_sampling_set)
+        .default_value(recompute_sampling_set)
+     .help("Recompute sampling set even if it's part of the CNF");
+    program.add_argument("--backward")
+        , po::value(&conf.backward)
+        .default_value(conf.backward)
+     .help("Do backwards query");
+    program.add_argument("--empty")
+        , po::value(&conf.empty_occs_based)
+        .default_value(conf.empty_occs_based)
+     .help("Use empty occurrence improvement");
+    program.add_argument("--maxc")
+        , po::value(&conf.backw_max_confl)
+        .default_value(conf.backw_max_confl)
+     .help("Maximum conflicts per variable in backward mode");
+    program.add_argument("--extend")
+        , po::value(&extend_indep)
+        .default_value(extend_indep)
+     .help("Extend independent set just before CNF dumping");
+    program.add_argument("--synthdefine")
+        , po::value(&synthesis_define)
+        .default_value(synthesis_define)
+     .help("Define for synthesis");
+    program.add_argument("--compindep")
+        , po::value(&compute_indep)
+        .default_value(compute_indep)
+        .help("compute indep support");
+    program.add_argument("--unate")
+        , po::value(&conf.do_unate)
+        .default_value(conf.do_unate)
+        .help("Perform unate analysis");
 
-    po::options_description simp_options("Simplification before indep detection");
-    simp_options.add_options()
-    ("bvepresimp", po::value(&conf.bve_pre_simplify)->default_value(conf.bve_pre_simplify),
-     "simplify")
-    ("simp", po::value(&conf.simp)->default_value(conf.simp), "Do ANY sort of simplification")
-    ("simptofile", po::value(&simptofile)->default_value(simptofile), "Write SIMPLIFIED file")
-    ("probe", po::value(&conf.probe_based)->default_value(conf.probe_based),
-     "Use simple probing to set (and define) some variables")
-    ("intree", po::value(&conf.intree)->default_value(conf.intree), "intree")
-    ;
+    /* po::options_description simp_options("Simplification before indep detection"); */
+    /* simp_options.add_options() */
+    program.add_argument("--bvepresimp")
+        , po::value(&conf.bve_pre_simplify)
+        .default_value(conf.bve_pre_simplify)
+     .help("simplify");
+    program.add_argument("--simp")
+        , po::value(&conf.simp)
+        .default_value(conf.simp)
+     .help("Do ANY sort of simplification");
+    program.add_argument("--simptofile")
+        , po::value(&simptofile)
+        .default_value(simptofile)
+     .help("Write SIMPLIFIED file");
+    program.add_argument("--probe")
+        , po::value(&conf.probe_based)
+        .default_value(conf.probe_based)
+     .help("Use simple probing to set (and define) some variables");
+    program.add_argument("--intree")
+        , po::value(&conf.intree)
+        .default_value(conf.intree)
+     .help("intree");
 
-
-    po::options_description gate_options("Gate options");
-    gate_options.add_options()
-    ("gates", po::value<bool>(&gates),
-     "Turn on/off all gate-based definability")
-    ("nogatebelow", po::value<double>(&conf.no_gates_below)->default_value(conf.no_gates_below)
+    /* po::options_description gate_options("Gate options"); */
+    /* gate_options.add_options() */
+    program.add_argument("--gates")
+        , po::value<bool>(&gates),
+     .help("Turn on/off all gate-based definability");
+    program.add_argument("--nogatebelow")
+        , po::value<double>(&conf.no_gates_below)
+        .default_value(conf.no_gates_below
      , "Don't use gates below this incidence relative position (1.0-0.0) to minimize the independent set. Gates are not very accurate, but can save a LOT of time. We use them to get rid of most of the uppert part of the sampling set only. Default is 99% is free-for-all, the last 1% we test. At 1.0 we test everything, at 0.0 we try using gates for everything.")
-    ("orgate", po::value(&conf.or_gate_based)->default_value(conf.or_gate_based),
-     "Use 3-long gate detection in SAT solver to define some variables")
-    ("irreggate", po::value(&conf.irreg_gate_based)->default_value(conf.irreg_gate_based),
-     "Use irregular gate based removal of variables from sampling set")
-    ("itegate", po::value(&conf.ite_gate_based)->default_value(conf.ite_gate_based),
-     "Use ITE gate detection in SAT solver to define some variables")
-    ("xorgate", po::value(&conf.xor_gates_based)->default_value(conf.xor_gates_based),
-     "Use XOR detection in SAT solver to define some variables")
+    program.add_argument("--orgate")
+    , po::value(&conf.or_gate_based)
+    .default_value(conf.or_gate_based)
+     .help("Use 3-long gate detection in SAT solver to define some variables");
+    program.add_argument("--irreggate")
+        , po::value(&conf.irreg_gate_based)
+        .default_value(conf.irreg_gate_based)
+     .help("Use irregular gate based removal of variables from sampling set");
+    program.add_argument("--itegate")
+        , po::value(&conf.ite_gate_based)
+        .default_value(conf.ite_gate_based)
+     .help("Use ITE gate detection in SAT solver to define some variables");
+    program.add_argument("--xorgate")
+        , po::value(&conf.xor_gates_based)
+        .default_value(conf.xor_gates_based)
+     .help("Use XOR detection in SAT solver to define some variables");
+
+    /* po::options_description debug_options("Debug options"); */
+    /* debug_options.add_options() */
+    program.add_argument("--fastbackw")
+        , po::value(&conf.fast_backw)
+        .default_value(conf.fast_backw)
+     .help("fast_backw");
+    program.add_argument("--gaussj")
+        , po::value(&conf.gauss_jordan)
+        .default_value(conf.gauss_jordan)
+     .help("Use XOR finding and Gauss-Jordan elimination");
+    program.add_argument("--iter1")
+        , po::value(&simpConf.iter1)
+        .default_value(simpConf.iter1)
+     .help("Puura iterations before oracle");
+    program.add_argument("--iter1grow")
+        , po::value(&simpConf.bve_grow_iter1)
+        .default_value(simpConf.bve_grow_iter1)
+     .help("Puura BVE grow rate allowed before Oracle");
+    program.add_argument("--iter2")
+        , po::value(&simpConf.iter2)
+        .default_value(simpConf.iter2)
+     .help("Puura iterations after oracle");
+    program.add_argument("--iter2grow")
+        , po::value(&simpConf.bve_grow_iter2)
+        .default_value(simpConf.bve_grow_iter2)
+     .help("Puura BVE grow rate allowed after Oracle");
+    program.add_argument("--oraclesparsify")
+        , po::value(&simpConf.oracle_sparsify)
+        .default_value(simpConf.oracle_sparsify)
+     .help("Use Oracle to sparsify");
+    program.add_argument("--oraclevivif")
+        , po::value(&simpConf.oracle_vivify)
+        .default_value(simpConf.oracle_vivify)
+     .help("Use oracle to vivify");
+    program.add_argument("--oraclevivifgetl")
+        , po::value(&simpConf.oracle_vivify_get_learnts)
+        .default_value(simpConf.oracle_vivify_get_learnts)
+     .help("Use oracle to vivify get learnts");
+    program.add_argument("--renumber")
+        , po::value(&renumber)
+        .default_value(renumber)
+     .help("Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!");
+    program.add_argument("--distill")
+        , po::value(&conf.distill)
+        .default_value(conf.distill), "distill"
+    program.add_argument("--bve")
+    , po::value(&conf.bve_during_elimtofile)
+    .default_value(conf.bve_during_elimtofile)
+     .help("Use BVE during simplificaiton of the formula");
+    program.add_argument("--bce")
+        , po::value(&conf.bce)
+        .default_value(conf.bce)
+     .help("Use blocked clause elimination (BCE). VERY experimental!!");
+    program.add_argument("--red")
+        , po::value(&redundant_cls)
+        .default_value(redundant_cls)
+     .help("Also dump redundant clauses");
+    program.add_argument("--specifiedorder")
+        , po::value(&conf.specified_order_fname),
+     .help("Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY");
     ;
 
-    po::options_description debug_options("Debug options");
-    debug_options.add_options()
-    ("fastbackw", po::value(&conf.fast_backw)->default_value(conf.fast_backw), "fast_backw")
-    ("gaussj", po::value(&conf.gauss_jordan)->default_value(conf.gauss_jordan),
-     "Use XOR finding and Gauss-Jordan elimination")
-    ("iter1", po::value(&simpConf.iter1)->default_value(simpConf.iter1),
-     "Puura iterations before oracle")
-    ("iter1grow", po::value(&simpConf.bve_grow_iter1)->default_value(simpConf.bve_grow_iter1),
-     "Puura BVE grow rate allowed before Oracle")
-    ("iter2", po::value(&simpConf.iter2)->default_value(simpConf.iter2),
-     "Puura iterations after oracle")
-    ("iter2grow", po::value(&simpConf.bve_grow_iter2)->default_value(simpConf.bve_grow_iter2),
-     "Puura BVE grow rate allowed after Oracle")
-    ("oraclesparsify", po::value(&simpConf.oracle_sparsify)->default_value(simpConf.oracle_sparsify),
-     "Use Oracle to sparsify")
-    ("oraclevivif", po::value(&simpConf.oracle_vivify)->default_value(simpConf.oracle_vivify),
-     "Use oracle to vivify")
-    ("oraclevivifgetl", po::value(&simpConf.oracle_vivify_get_learnts)->default_value(simpConf.oracle_vivify_get_learnts),
-     "Use oracle to vivify get learnts")
-    ("renumber", po::value(&renumber)->default_value(renumber),
-     "Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!")
-    ("distill", po::value(&conf.distill)->default_value(conf.distill), "distill")
-    ("bve", po::value(&conf.bve_during_elimtofile)->default_value(conf.bve_during_elimtofile),
-     "Use BVE during simplificaiton of the formula")
-    ("bce", po::value(&conf.bce)->default_value(conf.bce),
-     "Use blocked clause elimination (BCE). VERY experimental!!")
-    ("red", po::value(&redundant_cls)->default_value(redundant_cls),
-     "Also dump redundant clauses")
-    ("specifiedorder", po::value(&conf.specified_order_fname)
-     , "Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY")
-    ;
-
-    help_options.add(arjun_options);
-    help_options.add(simp_options);
-    help_options.add(gate_options);
-    help_options.add(debug_options);
+    /* ("input", po::value<std::vector<string>>(), "file to read/write") */
 }
 
 void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint32_t>& empty_occs, bool force)
@@ -310,6 +376,22 @@ int main(int argc, char** argv)
     }
 
     add_arjun_options();
+    po::store(po::command_line_parser(argc, argv).options(help_options).positional(p).run(), vm);
+    if (vm.count("help"))
+    {
+        cout
+        << "Minimal projection set finder and simplifier." << endl << endl
+        << "arjun [options] inputfile [outputfile]" << endl;
+
+        cout << help_options << endl;
+        std::exit(0);
+    }
+
+    if (vm.count("version")) {
+        cout << "c [arjun] SHA revision: " << arjun->get_version_info() << endl;
+        cout << "c [arjun] Compilation environment: " << arjun->get_compilation_env() << endl;
+        std::exit(0);
+    }
     add_supported_options(argc, argv, p, help_options, vm, arjun);
 
     cout << "c Arjun Version: "

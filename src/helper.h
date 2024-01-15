@@ -29,7 +29,6 @@
 #include <vector>
 #include <fstream>
 #include <string>
-#include <boost/program_options.hpp>
 #include <cryptominisat5/dimacsparser.h>
 #include <cryptominisat5/solvertypesmini.h>
 #ifdef USE_ZLIB
@@ -38,116 +37,12 @@
 
 #include "arjun.h"
 
-namespace po = boost::program_options;
 using std::vector;
 using namespace ArjunNS;
 using namespace CMSat;
 using std::cerr;
 using std::cout;
 using std::endl;
-
-inline void add_supported_options(int argc, char** argv,
-        po::positional_options_description& p,
-        po::options_description& help_options,
-        po::variables_map& vm, Arjun* arjun)
-{
-    p.add("input", -1);
-
-    try {
-        po::store(po::command_line_parser(argc, argv).
-                options(help_options).positional(p).run(), vm);
-        if (vm.count("help"))
-        {
-            cout
-            << "Minimal projection set finder and simplifier." << endl << endl
-            << "arjun [options] inputfile [outputfile]" << endl;
-
-            cout << help_options << endl;
-            std::exit(0);
-        }
-
-        if (vm.count("version")) {
-            cout << "c [arjun] SHA revision: " << arjun->get_version_info() << endl;
-            cout << "c [arjun] Compilation environment: " << arjun->get_compilation_env() << endl;
-            std::exit(0);
-        }
-
-        po::notify(vm);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::unknown_option> >& c
-    ) {
-        cerr
-        << "ERROR: Some option you gave was wrong. Please give '--help' to get help" << endl
-        << "       Unkown option: " << c.what() << endl;
-        std::exit(-1);
-    } catch (boost::bad_any_cast &e) {
-        std::cerr
-        << "ERROR! You probably gave a wrong argument type" << endl
-        << "       Bad cast: " << e.what()
-        << endl;
-
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::invalid_option_value> >& what
-    ) {
-        cerr
-        << "ERROR: Invalid value '" << what.what() << "'" << endl
-        << "       given to option '" << what.get_option_name() << "'"
-        << endl;
-
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::multiple_occurrences> >& what
-    ) {
-        cerr
-        << "ERROR: " << what.what() << " of option '"
-        << what.get_option_name() << "'"
-        << endl;
-
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::required_option> >& what
-    ) {
-        cerr
-        << "ERROR: You forgot to give a required option '"
-        << what.get_option_name() << "'"
-        << endl;
-
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::too_many_positional_options_error> >& what
-    ) {
-        cerr
-        << "ERROR: You gave too many positional arguments. Only the input CNF can be given as a positional option." << endl;
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::ambiguous_option> >& what
-    ) {
-        cerr
-        << "ERROR: The option you gave was not fully written and matches" << endl
-        << "       more than one option. Please give the full option name." << endl
-        << "       The option you gave: '" << what.get_option_name() << "'" <<endl
-        << "       The alternatives are: ";
-        for(size_t i = 0; i < what.alternatives().size(); i++) {
-            cout << what.alternatives()[i];
-            if (i+1 < what.alternatives().size()) {
-                cout << ", ";
-            }
-        }
-        cout << endl;
-
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::invalid_command_line_syntax> >& what
-    ) {
-        cerr
-        << "ERROR: The option you gave is missing the argument or the" << endl
-        << "       argument is given with space between the equal sign." << endl
-        << "       detailed error message: " << what.what() << endl
-        ;
-        std::exit(-1);
-    }
-}
 
 inline double stats_line_percent(double num, double total)
 {
