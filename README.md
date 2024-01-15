@@ -9,7 +9,7 @@ Note that the simplification part of Arjun contains code from SharpSAT-td by Tuu
 To build on Linux, you will need the following:
 ```
 sudo apt-get install build-essential cmake
-sudo apt-get install zlib1g-dev libboost-program-options-dev libboost-serialization-dev
+sudo apt-get install zlib1g-dev
 ```
 
 Then, build CryptoMiniSat, Louvain-Community, and Arjun:

@@ -80,169 +80,170 @@ int simptofile = true;
 void add_arjun_options()
 {
     conf.verb = 1;
-        /* .action([&](const auto&) {dont_ban_solutions = true;}) */
-
-    program.add_argument("-h", "--help"),
-     .help("Prints help");
-    program.add_argument("-v", "--version"),
-     .help("Print version info");
+    program.add_argument("-h", "--help")
+        .help("Prints help")
+        .default_value(false);
+    program.add_argument("-v", "--version")
+        .help("Print version info")
+        .flag();
     program.add_argument("-v", "--verb")
-        , po::value(&conf.verb)
+        .action([&](const auto& a) {conf.verb = std::atoi(a.c_str());})
         .default_value(conf.verb)
-     .help("verbosity");
+        .help("verbosity");
     program.add_argument("--s", "--seed")
-        , po::value(&conf.seed)
+        .action([&](const auto& a) {conf.seed = std::atoi(a.c_str());})
         .default_value(conf.seed)
-     .help("Seed");
+        .help("Seed");
     program.add_argument("--sort")
-        , po::value(&conf.unknown_sort)
+        .action([&](const auto& a) {conf.unknown_sort = std::atoi(a.c_str());})
         .default_value(conf.unknown_sort)
-     .help("Which sorting mechanism.");
+        .help("Which sorting mechanism.");
     program.add_argument("--recomp")
-        , po::value(&recompute_sampling_set)
+        .action([&](const auto& a) {recompute_sampling_set = std::atoi(a.c_str());})
         .default_value(recompute_sampling_set)
-     .help("Recompute sampling set even if it's part of the CNF");
+        .help("Recompute sampling set even if it's part of the CNF");
     program.add_argument("--backward")
-        , po::value(&conf.backward)
+        .action([&](const auto& a) {conf.backward = std::atoi(a.c_str());})
         .default_value(conf.backward)
-     .help("Do backwards query");
+        .help("Do backwards query");
     program.add_argument("--empty")
-        , po::value(&conf.empty_occs_based)
+        .action([&](const auto& a) {conf.empty_occs_based = std::atoi(a.c_str());})
         .default_value(conf.empty_occs_based)
-     .help("Use empty occurrence improvement");
+        .help("Use empty occurrence improvement");
     program.add_argument("--maxc")
-        , po::value(&conf.backw_max_confl)
+        .action([&](const auto& a) {conf.backw_max_confl = std::atoi(a.c_str());})
         .default_value(conf.backw_max_confl)
-     .help("Maximum conflicts per variable in backward mode");
+        .help("Maximum conflicts per variable in backward mode");
     program.add_argument("--extend")
-        , po::value(&extend_indep)
+        .action([&](const auto& a) {extend_indep = std::atoi(a.c_str());})
         .default_value(extend_indep)
-     .help("Extend independent set just before CNF dumping");
+        .help("Extend independent set just before CNF dumping");
     program.add_argument("--synthdefine")
-        , po::value(&synthesis_define)
+        .action([&](const auto& a) {synthesis_define = std::atoi(a.c_str());})
         .default_value(synthesis_define)
-     .help("Define for synthesis");
+        .help("Define for synthesis");
     program.add_argument("--compindep")
-        , po::value(&compute_indep)
+        .action([&](const auto& a) {compute_indep = std::atoi(a.c_str());})
         .default_value(compute_indep)
         .help("compute indep support");
     program.add_argument("--unate")
-        , po::value(&conf.do_unate)
+        .action([&](const auto& a) {conf.do_unate = std::atoi(a.c_str());})
         .default_value(conf.do_unate)
         .help("Perform unate analysis");
 
     /* po::options_description simp_options("Simplification before indep detection"); */
     /* simp_options.add_options() */
     program.add_argument("--bvepresimp")
-        , po::value(&conf.bve_pre_simplify)
+        .action([&](const auto& a) {conf.bve_pre_simplify = std::atoi(a.c_str());})
         .default_value(conf.bve_pre_simplify)
-     .help("simplify");
+        .help("simplify");
     program.add_argument("--simp")
-        , po::value(&conf.simp)
+        .action([&](const auto& a) {conf.simp = std::atoi(a.c_str());})
         .default_value(conf.simp)
-     .help("Do ANY sort of simplification");
+        .help("Do ANY sort of simplification");
     program.add_argument("--simptofile")
-        , po::value(&simptofile)
+        .action([&](const auto& a) {simptofile = std::atoi(a.c_str());})
         .default_value(simptofile)
-     .help("Write SIMPLIFIED file");
+        .help("Write SIMPLIFIED file");
     program.add_argument("--probe")
-        , po::value(&conf.probe_based)
+        .action([&](const auto& a) {conf.probe_based = std::atoi(a.c_str());})
         .default_value(conf.probe_based)
-     .help("Use simple probing to set (and define) some variables");
+        .help("Use simple probing to set (and define) some variables");
     program.add_argument("--intree")
-        , po::value(&conf.intree)
+        .action([&](const auto& a) {conf.intree = std::atoi(a.c_str());})
         .default_value(conf.intree)
-     .help("intree");
+        .help("intree");
 
     /* po::options_description gate_options("Gate options"); */
     /* gate_options.add_options() */
     program.add_argument("--gates")
-        , po::value<bool>(&gates),
-     .help("Turn on/off all gate-based definability");
+        .action([&](const auto& a) {gates = std::atoi(a.c_str());})
+        .default_value(1)
+        .help("Turn on/off all gate-based definability");
     program.add_argument("--nogatebelow")
-        , po::value<double>(&conf.no_gates_below)
-        .default_value(conf.no_gates_below
-     , "Don't use gates below this incidence relative position (1.0-0.0) to minimize the independent set. Gates are not very accurate, but can save a LOT of time. We use them to get rid of most of the uppert part of the sampling set only. Default is 99% is free-for-all, the last 1% we test. At 1.0 we test everything, at 0.0 we try using gates for everything.")
+        .action([&](const auto& a) {conf.no_gates_below = std::atof(a.c_str());})
+        .default_value(conf.no_gates_below)
+        .help("Don't use gates below this incidence relative position (1.0-0.0) to minimize the independent set. Gates are not very accurate, but can save a LOT of time. We use them to get rid of most of the uppert part of the sampling set only. Default is 99% is free-for-all, the last 1% we test. At 1.0 we test everything, at 0.0 we try using gates for everything.");
     program.add_argument("--orgate")
-    , po::value(&conf.or_gate_based)
-    .default_value(conf.or_gate_based)
-     .help("Use 3-long gate detection in SAT solver to define some variables");
+        .action([&](const auto& a) {conf.or_gate_based = std::atoi(a.c_str());})
+        .default_value(conf.or_gate_based)
+        .help("Use 3-long gate detection in SAT solver to define some variables");
     program.add_argument("--irreggate")
-        , po::value(&conf.irreg_gate_based)
+        .action([&](const auto& a) {conf.irreg_gate_based = std::atoi(a.c_str());})
         .default_value(conf.irreg_gate_based)
-     .help("Use irregular gate based removal of variables from sampling set");
+        .help("Use irregular gate based removal of variables from sampling set");
     program.add_argument("--itegate")
-        , po::value(&conf.ite_gate_based)
+        .action([&](const auto& a) {conf.ite_gate_based = std::atoi(a.c_str());})
         .default_value(conf.ite_gate_based)
-     .help("Use ITE gate detection in SAT solver to define some variables");
+        .help("Use ITE gate detection in SAT solver to define some variables");
     program.add_argument("--xorgate")
-        , po::value(&conf.xor_gates_based)
+        .action([&](const auto& a) {conf.xor_gates_based = std::atoi(a.c_str());})
         .default_value(conf.xor_gates_based)
-     .help("Use XOR detection in SAT solver to define some variables");
+        .help("Use XOR detection in SAT solver to define some variables");
 
     /* po::options_description debug_options("Debug options"); */
     /* debug_options.add_options() */
     program.add_argument("--fastbackw")
-        , po::value(&conf.fast_backw)
+        .action([&](const auto& a) {conf.fast_backw = std::atoi(a.c_str());})
         .default_value(conf.fast_backw)
-     .help("fast_backw");
+        .help("fast_backw");
     program.add_argument("--gaussj")
-        , po::value(&conf.gauss_jordan)
+        .action([&](const auto& a) {conf.gauss_jordan = std::atoi(a.c_str());})
         .default_value(conf.gauss_jordan)
-     .help("Use XOR finding and Gauss-Jordan elimination");
+        .help("Use XOR finding and Gauss-Jordan elimination");
     program.add_argument("--iter1")
-        , po::value(&simpConf.iter1)
+        .action([&](const auto& a) {simpConf.iter1 = std::atoi(a.c_str());})
         .default_value(simpConf.iter1)
-     .help("Puura iterations before oracle");
+        .help("Puura iterations before oracle");
     program.add_argument("--iter1grow")
-        , po::value(&simpConf.bve_grow_iter1)
+        .action([&](const auto& a) {simpConf.bve_grow_iter1 = std::atoi(a.c_str());})
         .default_value(simpConf.bve_grow_iter1)
-     .help("Puura BVE grow rate allowed before Oracle");
+        .help("Puura BVE grow rate allowed before Oracle");
     program.add_argument("--iter2")
-        , po::value(&simpConf.iter2)
+        .action([&](const auto& a) {simpConf.iter2 = std::atoi(a.c_str());})
         .default_value(simpConf.iter2)
-     .help("Puura iterations after oracle");
+        .help("Puura iterations after oracle");
     program.add_argument("--iter2grow")
-        , po::value(&simpConf.bve_grow_iter2)
+        .action([&](const auto& a) {simpConf.bve_grow_iter2 = std::atoi(a.c_str());})
         .default_value(simpConf.bve_grow_iter2)
-     .help("Puura BVE grow rate allowed after Oracle");
+        .help("Puura BVE grow rate allowed after Oracle");
     program.add_argument("--oraclesparsify")
-        , po::value(&simpConf.oracle_sparsify)
+        .action([&](const auto& a) {simpConf.oracle_sparsify = std::atoi(a.c_str());})
         .default_value(simpConf.oracle_sparsify)
-     .help("Use Oracle to sparsify");
+        .help("Use Oracle to sparsify");
     program.add_argument("--oraclevivif")
-        , po::value(&simpConf.oracle_vivify)
+        .action([&](const auto& a) {simpConf.oracle_vivify = std::atoi(a.c_str());})
         .default_value(simpConf.oracle_vivify)
-     .help("Use oracle to vivify");
+        .help("Use oracle to vivify");
     program.add_argument("--oraclevivifgetl")
-        , po::value(&simpConf.oracle_vivify_get_learnts)
+        .action([&](const auto& a) {simpConf.oracle_vivify_get_learnts = std::atoi(a.c_str());})
         .default_value(simpConf.oracle_vivify_get_learnts)
-     .help("Use oracle to vivify get learnts");
+        .help("Use oracle to vivify get learnts");
     program.add_argument("--renumber")
-        , po::value(&renumber)
+        .action([&](const auto& a) {renumber = std::atoi(a.c_str());})
         .default_value(renumber)
-     .help("Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!");
+        .help("Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!");
     program.add_argument("--distill")
-        , po::value(&conf.distill)
-        .default_value(conf.distill), "distill"
+        .action([&](const auto& a) {conf.distill = std::atoi(a.c_str());})
+        .default_value(conf.distill);
     program.add_argument("--bve")
-    , po::value(&conf.bve_during_elimtofile)
-    .default_value(conf.bve_during_elimtofile)
-     .help("Use BVE during simplificaiton of the formula");
+        .action([&](const auto& a) {conf.bve_during_elimtofile = std::atoi(a.c_str());})
+        .default_value(conf.bve_during_elimtofile)
+        .help("Use BVE during simplificaiton of the formula");
     program.add_argument("--bce")
-        , po::value(&conf.bce)
+        .action([&](const auto& a) {conf.bce = std::atoi(a.c_str());})
         .default_value(conf.bce)
-     .help("Use blocked clause elimination (BCE). VERY experimental!!");
+        .help("Use blocked clause elimination (BCE). VERY experimental!!");
     program.add_argument("--red")
-        , po::value(&redundant_cls)
+        .action([&](const auto& a) {redundant_cls = std::atoi(a.c_str());})
         .default_value(redundant_cls)
-     .help("Also dump redundant clauses");
+        .help("Also dump redundant clauses");
     program.add_argument("--specifiedorder")
-        , po::value(&conf.specified_order_fname),
-     .help("Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY");
-    ;
+        .action([&](const auto& a) {conf.specified_order_fname = a;})
+        .default_value(conf.specified_order_fname)
+        .help("Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY");
 
-    /* ("input", po::value<std::vector<string>>(), "file to read/write") */
+    program.add_argument("files").remaining().help("input file and output file");
 }
 
 void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint32_t>& empty_occs, bool force)
@@ -362,10 +363,7 @@ int main(int argc, char** argv)
 {
     arjun = new ArjunNS::Arjun;
     #if defined(__GNUC__) && defined(__linux__)
-    feenableexcept(FE_INVALID   |
-                   FE_DIVBYZERO |
-                   FE_OVERFLOW
-                  );
+    feenableexcept(FE_INVALID   | FE_DIVBYZERO | FE_OVERFLOW);
     #endif
 
     //Reconstruct the command line so we can emit it later if needed
@@ -376,60 +374,59 @@ int main(int argc, char** argv)
     }
 
     add_arjun_options();
-    po::store(po::command_line_parser(argc, argv).options(help_options).positional(p).run(), vm);
-    if (vm.count("help"))
-    {
-        cout
-        << "Minimal projection set finder and simplifier." << endl << endl
-        << "arjun [options] inputfile [outputfile]" << endl;
-
-        cout << help_options << endl;
-        std::exit(0);
+    try {
+        program.parse_args(argc, argv);
+        if (program.is_used("--help")) {
+            cout
+            << "Minimal projection set finder and simplifier." << endl << endl
+            << "arjun [options] inputfile [outputfile]" << endl;
+            cout << program << endl;
+            std::exit(0);
+        }
+    }
+    catch (const std::exception& err) {
+        std::cerr << err.what() << std::endl;
+        std::cerr << program;
+        exit(-1);
     }
 
-    if (vm.count("version")) {
+    if (program["version"] == true) {
         cout << "c [arjun] SHA revision: " << arjun->get_version_info() << endl;
         cout << "c [arjun] Compilation environment: " << arjun->get_compilation_env() << endl;
         std::exit(0);
     }
-    add_supported_options(argc, argv, p, help_options, vm, arjun);
 
-    cout << "c Arjun Version: "
-    << arjun->get_version_info() << endl;
+    cout << "c Arjun Version: " << arjun->get_version_info() << endl;
     cout << arjun->get_solver_version_info();
-
-    cout
-    << "c executed with command line: "
-    << command_line
-    << endl;
+    cout << "c executed with command line: " << command_line << endl;
 
     startTime = cpuTime();
     set_config(arjun);
 
     //parsing the input
-    if (vm.count("input") == 0
-            || vm["input"].as<vector<string>>().size() == 0
-            || vm["input"].as<vector<string>>().size() > 3) {
-        cout << "ERROR: you must pass an INPUT, optionally an OUTPUT, and optionally a RECOVER files as parameters" << endl;
+    vector<std::string> files;
+    try {
+        files = program.get<std::vector<std::string>>("files");
+        if (files.size() > 3) {
+            cout << "ERROR: you can only pass at most 3 positional parameters: an INPUT file"
+                ", optionally an OUTPUT file, and optionally a RECOVER file" << endl;
+            exit(-1);
+        }
+    } catch (std::logic_error& e) {
+        cout << "ERROR: you must give at least an input file" << endl;
         exit(-1);
     }
 
-    const string inp = vm["input"].as<vector<string>>()[0];
-    if (vm["input"].as<vector<string>>().size() >= 2) {
-        elimtofile = vm["input"].as<vector<string>>()[1];
-    }
-    if (vm["input"].as<vector<string>>().size() >= 3) {
-        recover_file = vm["input"].as<vector<string>>()[2];
-    }
-    readInAFile(inp, arjun, orig_sampling_set_size, orig_cnf_must_mult_exp2,
-            recompute_sampling_set);
+    const string inp = files[0];
+    if (files.size() >= 2) elimtofile = files[1];
+    if (files.size() >= 3) recover_file = files[2];
+    readInAFile(inp, arjun, orig_sampling_set_size, orig_cnf_must_mult_exp2, recompute_sampling_set);
     cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
 
     vector<uint32_t> indep_vars = arjun->get_indep_set();
     print_final_indep_set(indep_vars, arjun->get_empty_occ_sampl_vars(), elimtofile.empty());
     cout << "c [arjun] finished "
-        << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - startTime)
-        << endl;
+        << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - startTime) << endl;
 
     if (!elimtofile.empty()) {
         if (simptofile) elim_to_file(indep_vars);

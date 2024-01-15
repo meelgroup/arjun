@@ -22,8 +22,6 @@
  THE SOFTWARE.
  */
 
-#include <boost/program_options.hpp>
-
 #if defined(__GNUC__) && defined(__linux__)
 #include <fenv.h>
 #endif
@@ -41,6 +39,7 @@
 #endif
 
 
+#include "argparse.hpp"
 #include "time_mem.h"
 #include "arjun.h"
 #include "config.h"
@@ -53,10 +52,7 @@ using std::string;
 using std::vector;
 using namespace CMSat;
 
-po::options_description backbone_options = po::options_description("backbone options");
-po::options_description help_options;
-po::variables_map vm;
-po::positional_options_description p;
+argparse::ArgumentParser program = argparse::ArgumentParser("dontcare");
 double startTime;
 ArjunInt::Config conf;
 ArjunNS::Arjun* arjun = NULL;
@@ -66,19 +62,23 @@ uint32_t orig_cnf_must_mult_exp2;
 uint32_t orig_sampling_set_size = 0;
 vector<uint32_t> orig_sampling_set;
 
-void add_backbone_options()
-{
+void add_backbone_options() {
     conf.verb = 1;
-
-    backbone_options.add_options()
-    ("help,h", "Prints help")
-    ("version", "Print version info")
-    ("input", po::value<std::vector<string>>(), "file to read/write")
-    ("verb,v", po::value(&conf.verb)->default_value(conf.verb), "verbosity")
-    ("seed,s", po::value(&conf.seed)->default_value(conf.seed), "Seed")
-    ;
-
-    help_options.add(backbone_options);
+    program.add_argument("-h", "--help")
+        .help("Prints help");
+    program.add_argument("-v", "--version")
+        .help("Print version info")
+        .flag();
+    program.add_argument("--verb,v")
+        .action([&](const auto& a) {conf.verb = std::atoi(a.c_str());})
+        .default_value(conf.verb)
+        .help("verbosity");
+    program.add_argument("--seed,s")
+        .action([&](const auto& a) {conf.seed = std::atoi(a.c_str());})
+        .default_value(conf.seed)
+        .help("Seed");
+    program.add_argument("files").remaining().help("input file and output file");
+    conf.verb = 1;
 }
 
 void only_synthesis_unate(const vector<uint32_t>& sampl_vars)
@@ -99,10 +99,7 @@ int main(int argc, char** argv)
 {
     arjun = new ArjunNS::Arjun;
     #if defined(__GNUC__) && defined(__linux__)
-    feenableexcept(FE_INVALID   |
-                   FE_DIVBYZERO |
-                   FE_OVERFLOW
-                  );
+    feenableexcept(FE_INVALID   | FE_DIVBYZERO | FE_OVERFLOW);
     #endif
 
     //Reconstruct the command line so we can emit it later if needed
@@ -113,33 +110,29 @@ int main(int argc, char** argv)
     }
 
     add_backbone_options();
-    add_supported_options(argc, argv, p, help_options, vm, arjun);
-
-    cout << "c Backbone Arjun Version: " << arjun->get_version_info() << endl;
+    cout << "c backbone Arjun Version: " << arjun->get_version_info() << endl;
     cout << arjun->get_solver_version_info();
     cout << "c executed with command line: " << command_line << endl;
 
     set_config(arjun);
-
     //parsing the input
-    if (vm.count("input") == 0
-            || vm["input"].as<vector<string>>().size() == 0
-            || vm["input"].as<vector<string>>().size() > 3) {
-        cout << "ERROR: you must pass an INPUT, optionally an OUTPUT, and optionally a RECOVER files as parameters" << endl;
+    vector<std::string> files;
+    try {
+        files = program.get<std::vector<std::string>>("files");
+        if (files.size() != 2) {
+            cout << "ERROR: you must give an input an output file" << endl;
+            exit(-1);
+        }
+    } catch (std::logic_error& e) {
+        cout << "ERROR: you must give at least an input file" << endl;
         exit(-1);
     }
+    const string inp = files[0];
+    elimtofile = files[1];
 
-    const string inp = vm["input"].as<vector<string>>()[0];
-    if (vm["input"].as<vector<string>>().size() >= 2) elimtofile = vm["input"].as<vector<string>>()[1];
-    if (vm["input"].as<vector<string>>().size() >= 3) assert(false);
     readInAFile(inp, arjun, orig_sampling_set_size, orig_cnf_must_mult_exp2, false);
     cout << "c [backbone] original sampling set size: " << orig_sampling_set_size << endl;
     vector<uint32_t> sampling_set = arjun->get_current_indep_set();
-
-    if (elimtofile.empty()) {
-        cout << "Must give output file" << endl;
-        exit(-1);
-    }
     auto simp_cnf = arjun->only_backbone(sampling_set);
     write_simpcnf(simp_cnf, elimtofile, orig_cnf_must_mult_exp2);
 

@@ -23,8 +23,6 @@
  */
 
 #include "src/arjun.h"
-#include <boost/program_options.hpp>
-namespace po = boost::program_options;
 
 #if defined(__GNUC__) && defined(__linux__)
 #include <fenv.h>
@@ -43,6 +41,8 @@ namespace po = boost::program_options;
 #endif
 #include <cryptominisat5/cryptominisat.h>
 #include <cryptominisat5/streambuffer.h>
+
+#include "argparse.hpp"
 #include "time_mem.h"
 
 using std::cout;
@@ -52,10 +52,7 @@ using std::string;
 using std::vector;
 using namespace CMSat;
 
-po::options_description options = po::options_description("Solution Extender options");
-po::options_description help_options;
-po::variables_map vm;
-po::positional_options_description p;
+argparse::ArgumentParser program = argparse::ArgumentParser("dontcare");
 double startTime;
 int verb;
 int seed;
@@ -64,117 +61,21 @@ bool satisfiable;
 
 void add_options()
 {
-
-    options.add_options()
-    ("help,h", "Prints help")
-    ("version", "Print version info")
-    ("input", po::value<std::vector<string>>(), "file to read/write")
-    ("verb,v", po::value(&verb)->default_value(verb), "verbosity")
-    ("seed,s", po::value(&seed)->default_value(seed), "Seed")
-    ;
-
-    help_options.add(options);
-}
-
-void add_supported_options(int argc, char** argv)
-{
-    add_options();
-    p.add("input", -1);
-
-    try {
-        po::store(po::command_line_parser(argc, argv).options(help_options).positional(p).run(), vm);
-        if (vm.count("help"))
-        {
-            cout
-            << "Solution extender for Arjun." << endl << endl
-            << "solextend [options] recover.dat solutionfile" << endl;
-
-            cout << help_options << endl;
-            std::exit(0);
-        }
-
-        if (vm.count("version")) {
-            cout << "c [arjun] SHA revision: " << ArjunNS::Arjun::get_version_info() << endl;
-            cout << "c [arjun] Compilation environment: " << ArjunNS::Arjun::get_compilation_env() << endl;
-            cout << "c [arjun] CMS version: " << ArjunNS::Arjun::get_solver_version_info();
-            std::exit(0);
-        }
-
-        po::notify(vm);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::unknown_option> >& c
-    ) {
-        cerr
-        << "ERROR: Some option you gave was wrong. Please give '--help' to get help" << endl
-        << "       Unkown option: " << c.what() << endl;
-        std::exit(-1);
-    } catch (boost::bad_any_cast &e) {
-        std::cerr
-        << "ERROR! You probably gave a wrong argument type" << endl
-        << "       Bad cast: " << e.what()
-        << endl;
-
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::invalid_option_value> >& what
-    ) {
-        cerr
-        << "ERROR: Invalid value '" << what.what() << "'" << endl
-        << "       given to option '" << what.get_option_name() << "'"
-        << endl;
-
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::multiple_occurrences> >& what
-    ) {
-        cerr
-        << "ERROR: " << what.what() << " of option '"
-        << what.get_option_name() << "'"
-        << endl;
-
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::required_option> >& what
-    ) {
-        cerr
-        << "ERROR: You forgot to give a required option '"
-        << what.get_option_name() << "'"
-        << endl;
-
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::too_many_positional_options_error> >& what
-    ) {
-        cerr
-        << "ERROR: You gave too many positional arguments. Only the input CNF can be given as a positional option." << endl;
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::ambiguous_option> >& what
-    ) {
-        cerr
-        << "ERROR: The option you gave was not fully written and matches" << endl
-        << "       more than one option. Please give the full option name." << endl
-        << "       The option you gave: '" << what.get_option_name() << "'" <<endl
-        << "       The alternatives are: ";
-        for(size_t i = 0; i < what.alternatives().size(); i++) {
-            cout << what.alternatives()[i];
-            if (i+1 < what.alternatives().size()) {
-                cout << ", ";
-            }
-        }
-        cout << endl;
-
-        std::exit(-1);
-    } catch (boost::exception_detail::clone_impl<
-        boost::exception_detail::error_info_injector<po::invalid_command_line_syntax> >& what
-    ) {
-        cerr
-        << "ERROR: The option you gave is missing the argument or the" << endl
-        << "       argument is given with space between the equal sign." << endl
-        << "       detailed error message: " << what.what() << endl
-        ;
-        std::exit(-1);
-    }
+    verb = 1;
+    program.add_argument("-h", "--help")
+        .help("Prints help");
+    program.add_argument("-v", "--version")
+        .help("Print version info")
+        .flag();
+    program.add_argument("--verb,v")
+        .action([&](const auto& a) {verb = std::atoi(a.c_str());})
+        .default_value(verb)
+        .help("verbosity");
+    program.add_argument("--seed,s")
+        .action([&](const auto& a) {seed = std::atoi(a.c_str());})
+        .default_value(seed)
+        .help("Seed");
+    program.add_argument("files").remaining().help("input file and output file");
 }
 
 void parse_v_line(StreamBuffer<FILE*, FN>& in, const uint32_t lineNum)
@@ -287,27 +188,26 @@ int main(int argc, char** argv)
         if (i+1 < argc) command_line += " ";
     }
 
-    add_supported_options(argc, argv);
-
     if (verb) {
-        cout << "c Arjun Version: "
-        << ArjunNS::Arjun::get_version_info() << endl;
+        cout << "c solextend Version: " << ArjunNS::Arjun::get_version_info() << endl;
         cout << ArjunNS::Arjun::get_solver_version_info();
-
-        cout
-        << "c executed with command line: "
-        << command_line
-        << endl;
+        cout << "c executed with command line: " << command_line << endl;
     }
 
     //parsing the input
-    if (vm.count("input") == 0 || vm["input"].as<vector<string>>().size() != 2) {
-        cout << "ERROR: you must pass a RECOVER and a SOLUTION file as parameters" << endl;
+    vector<std::string> files;
+    try {
+        files = program.get<std::vector<std::string>>("files");
+        if (files.size() != 2) {
+            cout << "ERROR: you must give an input an output file" << endl;
+            exit(-1);
+        }
+    } catch (std::logic_error& e) {
+        cout << "ERROR: you must give at least an input file" << endl;
         exit(-1);
     }
-
-    const string recover_file = vm["input"].as<vector<string>>()[0];
-    const string sol_file = vm["input"].as<vector<string>>()[1];
+    const string recover_file = files[0];
+    const string sol_file = files[1];
 
     // get solution from file
     FILE * in = fopen(sol_file.c_str(), "rb");
@@ -352,4 +252,3 @@ int main(int argc, char** argv)
 
     return 10;
 }
-

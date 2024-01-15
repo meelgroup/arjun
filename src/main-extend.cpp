@@ -22,9 +22,6 @@
  THE SOFTWARE.
  */
 
-#include <boost/program_options.hpp>
-namespace po = boost::program_options;
-
 #if defined(__GNUC__) && defined(__linux__)
 #include <fenv.h>
 #endif
@@ -41,7 +38,7 @@ namespace po = boost::program_options;
 #include <zlib.h>
 #endif
 
-
+#include "argparse.hpp"
 #include "time_mem.h"
 #include "arjun.h"
 #include "config.h"
@@ -54,10 +51,7 @@ using std::string;
 using std::vector;
 using namespace CMSat;
 
-po::options_description arjun_options = po::options_description("Arjun options");
-po::options_description help_options;
-po::variables_map vm;
-po::positional_options_description p;
+argparse::ArgumentParser program = argparse::ArgumentParser("extend");
 double startTime;
 ArjunInt::Config conf;
 ArjunNS::Arjun* arjun = NULL;
@@ -69,39 +63,44 @@ uint32_t orig_cnf_must_mult_exp2 = 0;
 uint32_t orig_sampling_set_size = 0;
 vector<uint32_t> orig_sampling_set;
 
-void add_arjun_options()
-{
+void add_extend_options() {
     conf.verb = 1;
+    program.add_argument("-h", "--help")
+        .help("Prints help");
+    program.add_argument("-v", "--version")
+        .help("Print version info")
+        .flag();
+    program.add_argument("--verb,v")
+        .action([&](const auto& a) {conf.verb = std::atoi(a.c_str());})
+        .default_value(conf.verb)
+        .help("verbosity");
+    program.add_argument("--seed,s")
+        .action([&](const auto& a) {conf.seed = std::atoi(a.c_str());})
+        .default_value(conf.seed)
+        .help("Seed");
+    program.add_argument("--sparsify")
+        .action([&](const auto& a) {sparsify = std::atoi(a.c_str());})
+        .default_value(sparsify)
+        .help("Use Oracle from SharpSAT-TD to sparsify CNF formula."
+                "Expensive, but useful for SharpSAT-style counters");
+    program.add_argument("--renumber")
+        .action([&](const auto& a) {renumber = std::atoi(a.c_str());})
+        .default_value(renumber)
+        .help("Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!");
 
-    arjun_options.add_options()
-    ("help,h", "Prints help")
-    ("version", "Print version info")
-    ("input", po::value<std::vector<string>>(), "file to read/write")
-    ("verb,v", po::value(&conf.verb)->default_value(conf.verb), "verbosity")
-    ("seed,s", po::value(&conf.seed)->default_value(conf.seed), "Seed")
-    ("sparsify", po::value(&sparsify)->default_value(sparsify),
-     "Use Oracle from SharpSAT-TD to sparsify CNF formula. Expensive, but useful for SharpSAT-style counters")
-    ("renumber", po::value(&renumber)->default_value(renumber),
-     "Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!")
-    ;
-
-    help_options.add(arjun_options);
+    program.add_argument("files").remaining().help("input file and output file");
 }
 
 void set_config(ArjunNS::Arjun* arj) {
-    /* cout << "c [arjun] using seed: " << conf.seed << endl; */
+    cout << "c [extend] using seed: " << conf.seed << endl;
     arj->set_verbosity(conf.verb);
     arj->set_seed(conf.seed);
 }
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
     arjun = new ArjunNS::Arjun;
     #if defined(__GNUC__) && defined(__linux__)
-    feenableexcept(FE_INVALID   |
-                   FE_DIVBYZERO |
-                   FE_OVERFLOW
-                  );
+    feenableexcept(FE_INVALID   | FE_DIVBYZERO | FE_OVERFLOW);
     #endif
 
     //Reconstruct the command line so we can emit it later if needed
@@ -111,42 +110,29 @@ int main(int argc, char** argv)
         if (i+1 < argc) command_line += " ";
     }
 
-    add_arjun_options();
-    add_supported_options(argc, argv, p, help_options, vm, arjun);
-
-    /* cout << "c Arjun Version: " */
-    /* << arjun->get_version_info() << endl; */
-    /* cout << arjun->get_solver_version_info(); */
-
-    /* cout */
-    /* << "c executed with command line: " */
-    /* << command_line */
-    /* << endl; */
-
+    add_extend_options();
+    cout << "c extend Version: " << arjun->get_version_info() << endl;
+    cout << arjun->get_solver_version_info();
+    cout << "c executed with command line: " << command_line << endl;
     set_config(arjun);
 
     //parsing the input
-    if (vm.count("input") == 0
-            || vm["input"].as<vector<string>>().size() == 0
-            || vm["input"].as<vector<string>>().size() > 3) {
-        cout << "ERROR: you must pass an INPUT, optionally an OUTPUT, and optionally a RECOVER files as parameters" << endl;
+    vector<std::string> files;
+    try {
+        files = program.get<std::vector<std::string>>("files");
+        if (files.size() != 2) {
+            cout << "ERROR: you must give an input an output file" << endl;
+            exit(-1);
+        }
+    } catch (std::logic_error& e) {
+        cout << "ERROR: you must give at least an input file" << endl;
         exit(-1);
     }
+    const string inp = files[0];
+    elimtofile = files[1];
 
-    const string inp = vm["input"].as<vector<string>>()[0];
-    if (vm["input"].as<vector<string>>().size() >= 2) {
-        elimtofile = vm["input"].as<vector<string>>()[1];
-    }
-    if (vm["input"].as<vector<string>>().size() >= 3) {
-        assert(false);
-    }
     readInAFile(inp, arjun, orig_sampling_set_size, orig_cnf_must_mult_exp2, false);
-    cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
-
-    if (elimtofile.empty()) {
-        cout << "Must give output file" << endl;
-        exit(-1);
-    }
+    cout << "c [extend] original sampling set size: " << orig_sampling_set_size << endl;
     vector<uint32_t> sampl_set = arjun->extend_indep_set();
     write_origcnf(arjun, sampl_set, elimtofile, orig_cnf_must_mult_exp2);
 
