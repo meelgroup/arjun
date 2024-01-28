@@ -41,12 +41,12 @@ using std::endl;
 using std::vector;
 
 
-Puura::Puura(const Config& _conf) : conf(_conf){}
+Puura::Puura(const Config& _conf) : conf(_conf) {}
 Puura::~Puura() { delete solver; }
 
 SATSolver* Puura::setup_f_not_f_indic()
 {
-    double myTime = cpuTime();
+    double my_time = cpuTime();
     orig_num_vars = solver->nVars();
     var_to_indic.clear();
     var_to_indic.resize(orig_num_vars, var_Undef);
@@ -143,12 +143,12 @@ SATSolver* Puura::setup_f_not_f_indic()
     // At least ONE clause must be FALSE
     s->add_clause(zs);
     s->simplify();
-    cout << "c [puura] Built up the solver. T: " << (cpuTime() - myTime) << endl;
+    cout << "c [puura] Built up the solver. T: " << (cpuTime() - my_time) << endl;
     return s;
 }
 
 void Puura::synthesis_unate(bool do_given) {
-    double myTime = cpuTime();
+    double my_time = cpuTime();
     SATSolver* s = setup_f_not_f_indic();
     vector<Lit> assumps;
     vector<Lit> cl;
@@ -198,7 +198,7 @@ void Puura::synthesis_unate(bool do_given) {
                         << ((given == var_Undef) ? -1 : (given+1))
                         << " test: " << std::setw(3)  << (test+1)
                         << " FALSE"
-                        << " T: " << (cpuTime() - myTime));
+                        << " T: " << (cpuTime() - my_time));
                     falses++;
 
                     cl = {Lit(test, false ^ flip)};
@@ -223,7 +223,7 @@ void Puura::synthesis_unate(bool do_given) {
         << " orig units: " << orig_units
         << " falses: " << falses << " undefs: " << undefs
         << " T-out: " << (int)timeout
-        << " T: " << (cpuTime()-myTime)
+        << " T: " << (cpuTime()-my_time)
         << endl;
 
     delete s;
@@ -231,7 +231,7 @@ void Puura::synthesis_unate(bool do_given) {
 
 void Puura::conditional_dontcare()
 {
-    double myTime = cpuTime();
+    double my_time = cpuTime();
     SATSolver* s = setup_f_not_f_indic();
     vector<Lit> assumps;
     auto v = solver->get_verbosity();
@@ -256,7 +256,7 @@ void Puura::conditional_dontcare()
             if (i == g.var()) continue;
 
             // Checking now if var i is dontcare
-            myTime = cpuTime();
+            my_time = cpuTime();
             assumps.clear();
             if (given != -1) assumps.push_back(g);
             for(const auto& i2: sampl_set) {
@@ -271,7 +271,7 @@ void Puura::conditional_dontcare()
             if (sret == l_False) {
                 verb_print(2, "Assuming " << g
                     << " then var " << (i+1) << " is dontcare?"
-                    << "Ret: " << sret << " T: " << std::fixed << std::setprecision(2) << (cpuTime() - myTime)
+                    << "Ret: " << sret << " T: " << std::fixed << std::setprecision(2) << (cpuTime() - my_time)
                     << " -- inside F: " << (int)in_formula[i]);
                 vector<Lit> cl;
                 cl.push_back(~g);
@@ -356,7 +356,7 @@ void Puura::fill_solver(Arjun* arjun)
 SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     Arjun* arjun,
     const vector<uint32_t>& sampl_vars,
-    const SimpConf simpConf,
+    const SimpConf simp_conf,
     const bool renumber,
     const bool need_sol_extend)
 {
@@ -368,13 +368,13 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     //Below works VERY WELL for: ProcessBean, pollard, track1_116.mcc2020_cnf
     //   and blasted_TR_b14_even3_linear.cnf.gz.no_w.cnf
     //with CMS ef6ea7e87e00bde50c0cce0c1e13a012191c4e1c and Arjun 5f2dfe814e07ee6ee0dde65b1350b5c343209ed0
-    solver->set_min_bva_gain(simpConf.bve_grow_iter1);
+    solver->set_min_bva_gain(simp_conf.bve_grow_iter1);
     solver->set_varelim_check_resolvent_subs(false);
     solver->set_max_red_linkin_size(0);
     solver->set_timeout_all_calls(100);
     solver->set_weaken_time_limitM(2000);
     solver->set_occ_based_lit_rem_time_limitM(500);
-    solver->set_oracle_get_learnts(simpConf.oracle_vivify_get_learnts);
+    solver->set_oracle_get_learnts(simp_conf.oracle_vivify_get_learnts);
     solver->set_oracle_removed_is_learnt(1);
     solver->set_bve_too_large_resolvent(-1);
     solver->set_bve(conf.bve_during_elimtofile);
@@ -384,23 +384,23 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     // occ-cl-rem-with-orgates not used -- should test and add, probably to 2nd iter
     // eqlit-find from oracle not used (too slow?)
     string str("must-scc-vrepl, full-probe, backbone, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
-    for (int i = 0; i < simpConf.iter1; i++) solver->simplify(&dont_elim, &str);
+    for (int i = 0; i < simp_conf.iter1; i++) solver->simplify(&dont_elim, &str);
 
     // Now doing Oracle
     /* conditional_dontcare(); */
     string str2;
     if (conf.bce) {str2 = "occ-bce"; solver->simplify(&dont_elim, &str2);}
-    if (simpConf.oracle_vivify && simpConf.oracle_sparsify) str2 = "oracle-vivif-sparsify";
-    else if (simpConf.oracle_vivify) str2 = "oracle-vivif";
-    else if (simpConf.oracle_sparsify) str2 = "oracle-sparsify";
+    if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify";
+    else if (simp_conf.oracle_vivify) str2 = "oracle-vivif";
+    else if (simp_conf.oracle_sparsify) str2 = "oracle-sparsify";
     else str2 = "";
     solver->simplify(&dont_elim, &str2);
 
     // Now more expensive BVE, also RED linked in to occur
-    solver->set_min_bva_gain(simpConf.bve_grow_iter2);
+    solver->set_min_bva_gain(simp_conf.bve_grow_iter2);
     solver->set_varelim_check_resolvent_subs(true);
     solver->set_max_red_linkin_size(20);
-    for (int i = 0; i < simpConf.iter2; i++) solver->simplify(&dont_elim, &str);
+    for (int i = 0; i < simp_conf.iter2; i++) solver->simplify(&dont_elim, &str);
 
     // Final cleanup -- renumbering, disconnected component removing, etc.
     str.clear();

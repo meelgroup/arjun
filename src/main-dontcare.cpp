@@ -54,7 +54,7 @@ using namespace CMSat;
 argparse::ArgumentParser program = argparse::ArgumentParser("dontcare");
 double startTime;
 ArjunInt::Config conf;
-ArjunNS::Arjun* arjun = NULL;
+ArjunNS::Arjun* arjun = nullptr;
 string elimtofile;
 
 uint32_t orig_cnf_must_mult_exp2;

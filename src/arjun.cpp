@@ -368,13 +368,13 @@ bool Arjun::definitely_satisfiable() const {
 
 DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     const vector<uint32_t>& sampl_vars,
-    const SimpConf& simpConf,
+    const SimpConf& simp_conf,
     const bool renumber,
     const bool need_sol_extend)
 {
     Puura pura(arjdata->common.conf);
     return pura.get_fully_simplified_renumbered_cnf(
-            this, sampl_vars, simpConf, renumber, need_sol_extend);
+            this, sampl_vars, simp_conf, renumber, need_sol_extend);
 }
 
 DLL_PUBLIC SimplifiedCNF Arjun::only_synthesis_unate(const vector<uint32_t>& sampl_vars)

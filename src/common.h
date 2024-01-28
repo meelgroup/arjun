@@ -226,10 +226,7 @@ inline double stats_line_percent(double num, double total)
 template<class T>
 struct IncidenceSorter ///DESCENDING ORDER (i.e. most likely independent at the top)
 {
-    IncidenceSorter(const vector<T>& _inc) :
-        inc(_inc)
-    {}
-
+    IncidenceSorter(const vector<T>& _inc) : inc(_inc) {}
     bool operator()(const T a, const T b) {
         if (inc[a] != inc[b]) {
             return inc[a] > inc[b];
@@ -243,11 +240,7 @@ struct IncidenceSorter ///DESCENDING ORDER (i.e. most likely independent at the 
 template<class T>
 struct IncidenceSorter2
 {
-    IncidenceSorter2(const vector<T>& _inc, const vector<T>& _inc2) :
-        inc(_inc),
-        inc2(_inc2)
-    {}
-
+    IncidenceSorter2(const vector<T>& _inc, const vector<T>& _inc2) : inc(_inc), inc2(_inc2) {}
     bool operator()(const T a, const T b) {
         if (inc[a] != inc[b]) {
             return inc[a] > inc[b];
@@ -264,10 +257,7 @@ struct IncidenceSorter2
 
 struct IncidenceSorterCommPart
 {
-    IncidenceSorterCommPart(const Common* _comm) :
-        comm(_comm)
-    {}
-
+    IncidenceSorterCommPart(const Common* _comm) : comm(_comm) {}
     bool operator()(const uint32_t a, const uint32_t b) {
         assert(a < comm->orig_num_vars);
         assert(b < comm->orig_num_vars);
@@ -280,12 +270,8 @@ struct IncidenceSorterCommPart
         }
 
         //If not in "part", put at the end
-        if (part_a == -1) {
-            return false;
-        }
-        if (part_b == -1) {
-            return true;
-        }
+        if (part_a == -1) return false;
+        if (part_b == -1) return true;
 
         //Put parts with smaller MAX incidence first
         auto part_a_inc = comm->commpart_incs.at(part_a);
@@ -307,10 +293,7 @@ struct IncidenceSorterCommPart
 
 struct IncidenceSorterCommPartToOtherComm
 {
-    IncidenceSorterCommPartToOtherComm(const Common* _comm) :
-        comm(_comm)
-    {}
-
+    IncidenceSorterCommPartToOtherComm(const Common* _comm) : comm(_comm) {}
     bool operator()(const uint32_t a, const uint32_t b) {
         assert(a < comm->orig_num_vars);
         assert(b < comm->orig_num_vars);

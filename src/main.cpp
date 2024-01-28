@@ -54,7 +54,7 @@ using namespace CMSat;
 argparse::ArgumentParser program = argparse::ArgumentParser("arjun");
 double startTime;
 ArjunInt::Config conf;
-ArjunNS::Arjun* arjun = NULL;
+ArjunNS::Arjun* arjun = nullptr;
 string elimtofile;
 string recover_file;
 int recompute_sampling_set = 0;
@@ -283,7 +283,7 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
     auto ret = arjun->get_fully_simplified_renumbered_cnf(
         sampl_vars, simpConf, renumber, !recover_file.empty());
 
-    delete arjun; arjun = NULL;
+    delete arjun; arjun = nullptr;
     if (extend_indep && synthesis_define) {
         cout << "ERROR: can't have both --extend and --synthdefine" << endl;
         exit(-1);

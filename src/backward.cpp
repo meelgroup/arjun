@@ -140,7 +140,7 @@ void Common::backward_round() {
     vector<Lit> assumptions;
     uint32_t iter = 0;
     uint32_t not_indep = 0;
-    double myTime = cpuTime();
+    double my_time = cpuTime();
 
     //Calc mod:
     uint32_t mod = 1;
@@ -346,9 +346,9 @@ void Common::backward_round() {
                 << " backb max:" << std::setw(7) << fast_backw_max;
             }
             cout << " T: "
-            << std::setprecision(2) << std::fixed << (cpuTime() - myTime)
+            << std::setprecision(2) << std::fixed << (cpuTime() - my_time)
             << endl;
-            myTime = cpuTime();
+            my_time = cpuTime();
             fast_backw_tot = 0;
             fast_backw_calls = 0;
             fast_backw_max = 0;

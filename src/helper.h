@@ -112,13 +112,13 @@ inline void readInAFile(const std::string& filename,
     assert(orig_cnf_must_mult_exp2 == 0);
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<FILE*, FN>, ArjunNS::Arjun> parser(arjun, NULL, 0);
+    DimacsParser<StreamBuffer<FILE*, FN>, ArjunNS::Arjun> parser(arjun, nullptr, 0);
     #else
     gzFile in = gzopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<gzFile, GZ>, ArjunNS::Arjun> parser(arjun, NULL, 0);
+    DimacsParser<StreamBuffer<gzFile, GZ>, ArjunNS::Arjun> parser(arjun, nullptr, 0);
     #endif
 
-    if (in == NULL) {
+    if (in == nullptr) {
         std::cerr
         << "ERROR! Could not open file '"
         << filename

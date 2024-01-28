@@ -45,7 +45,7 @@ bool Common::simplify() {
     assert(conf.simp);
     check_no_duplicate_in_sampling_set();
     auto old_size = sampling_set->size();
-    double myTime = cpuTime();
+    double my_time = cpuTime();
 
     if (conf.probe_based && !probe_all()) return false;
     if (conf.empty_occs_based) get_empties();
@@ -55,7 +55,7 @@ bool Common::simplify() {
         solver->set_bve(0);
         solver->set_intree_probe(1);
         std::string s("intree-probe");
-        if (solver->simplify(NULL, &s) == l_False) return false;
+        if (solver->simplify(nullptr, &s) == l_False) return false;
         if (solver->simplify() == l_False) return false;
         solver->set_intree_probe(conf.intree);
         verb_print(1,"[arjun-simp] CMS::simplify() with no BVE finished."
@@ -95,7 +95,7 @@ bool Common::simplify() {
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
-        << " T: " << (cpuTime() - myTime));
+        << " T: " << (cpuTime() - my_time));
 
     check_no_duplicate_in_sampling_set();
     return true;
@@ -114,7 +114,7 @@ void Common::empty_out_indep_set_if_unsat()
 
 bool Common::probe_all()
 {
-    double myTime = cpuTime();
+    double my_time = cpuTime();
     order_sampl_set_for_simp();
     auto old_size = sampling_set->size();
 
@@ -129,7 +129,7 @@ bool Common::probe_all()
         incidence_probing[v] = min_props;
     }
     string s("must-scc-vrepl");
-    if (solver->simplify(NULL, &s) == l_False) {
+    if (solver->simplify(nullptr, &s) == l_False) {
         return false;
     }
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
@@ -140,7 +140,7 @@ bool Common::probe_all()
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
-        << " T: " << (cpuTime() - myTime));
+        << " T: " << (cpuTime() - my_time));
 
     return true;
 }
@@ -160,7 +160,7 @@ struct GateOccurs
 
 bool Common::remove_definable_by_gates()
 {
-    double myTime = cpuTime();
+    double my_time = cpuTime();
     order_sampl_set_for_simp();
     uint32_t old_size = sampling_set->size();
     vector<vector<GateOccurs>> vars_gate_occurs(orig_num_vars);
@@ -360,7 +360,7 @@ bool Common::remove_definable_by_gates()
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
-        << " T: " << (cpuTime() - myTime));
+        << " T: " << (cpuTime() - my_time));
 
     return changed;
 }
@@ -375,7 +375,7 @@ void Common::order_sampl_set_for_simp()
 void Common::get_empties()
 {
     assert(conf.empty_occs_based);
-    const double myTime = cpuTime();
+    const double my_time = cpuTime();
     uint32_t old_size = sampling_set->size();
 
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
@@ -386,14 +386,14 @@ void Common::get_empties()
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
         << " total empties now: " << empty_occs.size()
-        << " T: " << std::setprecision(2) << cpuTime() - myTime);
+        << " T: " << std::setprecision(2) << cpuTime() - my_time);
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 }
 
 void Common::remove_definable_by_irreg_gates()
 {
     assert(conf.irreg_gate_based);
-    double myTime = cpuTime();
+    double my_time = cpuTime();
     uint32_t old_size = sampling_set->size();
     order_sampl_set_for_simp();
 
@@ -404,7 +404,7 @@ void Common::remove_definable_by_irreg_gates()
         << " removed: " << (old_size-sampling_set->size())
         << " perc: " << std::fixed << std::setprecision(2)
         << stats_line_percent(old_size-sampling_set->size(), old_size)
-        << " T: " << (cpuTime() - myTime));
+        << " T: " << (cpuTime() - my_time));
 }
 
 void Common::remove_zero_assigned_literals(bool print)

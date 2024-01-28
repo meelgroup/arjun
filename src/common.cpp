@@ -199,7 +199,7 @@ void Common::get_incidence()
 
 void Common::set_up_solver()
 {
-    assert(solver == NULL);
+    assert(solver == nullptr);
     solver = new SATSolver;
     solver->set_up_for_arjun();
     solver->set_renumber(0);
@@ -221,7 +221,7 @@ bool Common:: simplify_bve_only()
         dont_elim.push_back(Lit(var, false));
         dont_elim.push_back(Lit(var+orig_num_vars, false));
     }
-    double simpBVETime = cpuTime();
+    double simp_bve_time = cpuTime();
     if (conf.verb) {
         cout << "c [arjun] CMS::simplify() with *only* BVE..." << endl;
     }
@@ -236,7 +236,7 @@ bool Common:: simplify_bve_only()
         }
         if (conf.verb) {
             cout << "c [arjun] CMS::simplify() with *only* BVE finished. T: "
-            << cpuTime() - simpBVETime
+            << cpuTime() - simp_bve_time
             << endl;
         }
     }
@@ -310,7 +310,7 @@ void Common::calc_community_parts()
         << " Install https://github.com/meelgroup/louvain-community first." << endl;
     exit(-1);
     #else
-    double myTime = cpuTime();
+    double my_time = cpuTime();
     verb_print(1, "[arjun] Calculating Louvain Communities...");
 
     vector<vector<Lit>> cnf;
@@ -386,7 +386,7 @@ void Common::calc_community_parts()
     solver->end_getting_constraints();
 
     verb_print(1, "[mis-comm] Number of communities: " << commpart_incs.size()
-            << " T: " << (cpuTime() - myTime));
+            << " T: " << (cpuTime() - my_time));
 #endif
 }
 

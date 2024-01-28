@@ -205,7 +205,7 @@ void Common::synthesis_define(const set<uint32_t>& input) {
 
     for(const auto& x: seen) assert(x == 0);
     double start_round_time = cpuTimeTotal();
-    double myTime = cpuTime();
+    double my_time = cpuTime();
     set<uint32_t> indep;
 
     //Initially, all of samping_set is unknown
@@ -299,8 +299,8 @@ void Common::synthesis_define(const set<uint32_t>& input) {
             << " by: " << std::setw(3) << 1
             << " U: " << std::setw(7) << ret_undef
             << " I: " << std::setw(7) << ret_false
-            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - myTime) << endl;
-            myTime = cpuTime();
+            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - my_time) << endl;
+            my_time = cpuTime();
         }
         iter++;
     }
@@ -321,7 +321,7 @@ void Common::extend_round()
 
     for(const auto& x: seen) assert(x == 0);
     double start_round_time = cpuTimeTotal();
-    double myTime = cpuTime();
+    double my_time = cpuTime();
     vector<uint32_t> indep = *sampling_set;
     for(const auto& v: indep) seen[v] = 1;
 
@@ -410,8 +410,8 @@ void Common::extend_round()
             << " U: " << std::setw(7) << unknown.size()
             << " I: " << std::setw(7) << indep.size()
             << " X: " << std::setw(7) << ret_false
-            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - myTime) << endl;
-            myTime = cpuTime();
+            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - my_time) << endl;
+            my_time = cpuTime();
         }
         iter++;
 

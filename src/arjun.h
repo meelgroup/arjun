@@ -215,6 +215,6 @@ namespace ArjunNS {
         std::vector<uint32_t> get_empty_occ_sampl_vars() const;
 
     private:
-        ArjPrivateData* arjdata = NULL;
+        ArjPrivateData* arjdata = nullptr;
     };
 }
