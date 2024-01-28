@@ -97,28 +97,21 @@ void Common::generate_picosat(const vector<Lit>& assumptions , uint32_t test_var
     map<uint32_t, vector<Lit>> cl_map;
     uint32_t cl_num = 0;
 
-    solver->start_getting_small_clauses(
-        std::numeric_limits<uint32_t>::max(),
-        std::numeric_limits<uint32_t>::max(),
-        false, //red
-        false, //bva vars
-        false); //simplified
-
+    solver->start_getting_constraints();
     bool ret = true;
     vector<Lit> cl;
+    bool is_xor, rhs;
     for(uint32_t i = 0; i < solver->nVars(); i++) picosat_inc_max_var(ps);
     while(ret) {
-        ret = solver->get_next_small_clause(cl);
+        ret = solver->get_next_constraint(cl, is_xor, rhs);
         if (!ret) break;
-        /* cout << "CL " << cl_num << ": " << cl << endl; */
+        assert(!is_xor); assert(rhs);
         cl_map[cl_num++] = cl;
         for (const auto& l: cl) picosat_add(ps, lit_to_pl(l));
         picosat_add(ps, 0);
     }
-    solver->end_getting_clauses();
-    /* cout << "c assumptions" << endl; */
+    solver->end_getting_constraints();
     for(const auto& l: assumptions) {
-        /* cout << "CL " << cl_num << ": " << l << " 0" << endl; */
         cl_map[cl_num++] = vector<Lit>{l};
         picosat_add(ps, lit_to_pl(l));
         picosat_add(ps, 0);

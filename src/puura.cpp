@@ -64,6 +64,7 @@ SATSolver* Puura::setup_f_not_f_indic()
     s->set_no_simplify_at_startup();
     s->set_simplify(false);
     s->set_sls(false);
+    s->set_find_xors(false);
     //Indicator variable is FALSE when they are NOT equal
     for(uint32_t var = 0; var < solver->nVars(); var++) {
         if (solver->removed_var(var)) continue;
@@ -101,19 +102,16 @@ SATSolver* Puura::setup_f_not_f_indic()
         /* cout << "indic: " << this_indic+1 << " vars: " << var+1 << " " << var+orig_num_vars+1 << endl; */
     }
 
-    solver->start_getting_small_clauses(
-        std::numeric_limits<uint32_t>::max(),
-        std::numeric_limits<uint32_t>::max(),
-        false, //red
-        false, //bva vars
-        false); //simplified
-
+    solver->start_getting_constraints();
     vector<Lit> zs;
     bool ret = true;
     vector<Lit> clause;
+    bool is_xor, rhs;
     while(ret) {
-        ret = solver->get_next_small_clause(clause);
+        ret = solver->get_next_constraint(clause, is_xor, rhs);
         if (!ret) break;
+        assert(!is_xor);
+        assert(rhs);
 
         // set in_formula (but not in a unit)
         if (clause.size() > 1) for(const auto l: clause) in_formula[l.var()] = 1;
@@ -140,7 +138,7 @@ SATSolver* Puura::setup_f_not_f_indic()
         }
         zs.push_back(~z);
     }
-    solver->end_getting_small_clauses();
+    solver->end_getting_constraints();
 
     // At least ONE clause must be FALSE
     s->add_clause(zs);
@@ -292,24 +290,21 @@ void Puura::get_simplified_cnf(SimplifiedCNF& scnf, const bool renumber)
 {
     assert(scnf.cnf.empty());
     vector<Lit> clause;
-    solver->start_getting_small_clauses(
-        std::numeric_limits<uint32_t>::max(),
-        std::numeric_limits<uint32_t>::max(),
-        false, //red
-        false, //bva vars
-        renumber); //simplified
+    bool is_xor, rhs;
+    solver->start_getting_constraints(false, renumber);
     if (renumber) scnf.sampling_vars = solver->translate_sampl_set(scnf.sampling_vars);
-    while(solver->get_next_small_clause(clause)) scnf.cnf.push_back(clause);
-    solver->end_getting_small_clauses();
+    while(solver->get_next_constraint(clause, is_xor, rhs)) {
+        assert(!is_xor); assert(rhs);
+        scnf.cnf.push_back(clause);
+    }
+    solver->end_getting_constraints();
 
-    solver->start_getting_small_clauses(
-        std::numeric_limits<uint32_t>::max(),
-        std::numeric_limits<uint32_t>::max(),
-        true, //red
-        false, //bva vars
-        renumber); //simplified
-    while(solver->get_next_small_clause(clause)) scnf.red_cnf.push_back(clause);
-    solver->end_getting_small_clauses();
+    solver->start_getting_constraints(true, renumber);
+    while(solver->get_next_constraint(clause, is_xor, rhs)) {
+        assert(!is_xor); assert(rhs);
+        scnf.red_cnf.push_back(clause);
+    }
+    solver->end_getting_constraints();
 
     scnf.nvars = renumber ? solver->simplified_nvars() :  solver->nVars();
     std::sort(scnf.sampling_vars.begin(), scnf.sampling_vars.end());
@@ -318,8 +313,9 @@ void Puura::get_simplified_cnf(SimplifiedCNF& scnf, const bool renumber)
 void Puura::fill_solver(Arjun* arjun)
 {
     assert(solver == nullptr);
-    solver = new CMSat::SATSolver();
+    solver = new CMSat::SATSolver;
     solver->set_verbosity(conf.verb);
+    solver->set_find_xors(false);
 
     assert(solver->nVars() == 0); // Solver here is empty
     solver->new_vars(arjun->get_orig_num_vars());

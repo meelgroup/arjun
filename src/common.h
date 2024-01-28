@@ -89,18 +89,14 @@ struct Common
         other_sampling_set = &sampling_set_tmp2;
         set_up_solver();
     }
-
-    ~Common()
-    {
-        delete solver;
-    }
+    ~Common() { delete solver; }
 
     Config conf;
-    CMSat::SATSolver* solver = NULL;
+    CMSat::SATSolver* solver = nullptr;
     bool already_duplicated = false;
     vector<uint32_t> sampling_set_tmp1;
     vector<uint32_t> sampling_set_tmp2;
-    vector<uint32_t>* sampling_set = NULL;
+    vector<uint32_t>* sampling_set = nullptr;
     vector<uint32_t> empty_occs;
 
     vector<char> seen;
@@ -113,7 +109,7 @@ struct Common
     vector<uint32_t> indic_to_var; //maps an INDICATOR VAR to ORIG VAR
 
 
-    vector<uint32_t>* other_sampling_set = NULL;
+    vector<uint32_t>* other_sampling_set = nullptr;
     map<uint32_t, vector<uint32_t>> global_assump_to_testvars;
 
     //Incidence as counted by clauses it's appeared together with other variables

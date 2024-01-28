@@ -23,6 +23,7 @@
  */
 
 #include "common.h"
+#include "cryptominisat5/solvertypesmini.h"
 
 #ifdef LOUVAIN_COMMS
 #include "louvain_communities/louvain_communities.h"
@@ -156,33 +157,20 @@ void Common::duplicate_problem()
         solver->add_clause(cl);
         cl.clear();
     }
-
-    vector<BNN*> bnns = solver->get_bnns();
-    vector<Lit> lits;
-    for (const BNN* bnn: bnns) {
-        if (bnn == NULL) {
-            continue;
-        }
-        lits.clear();
-        for (const auto& l: *bnn) {
-            lits.push_back(Lit(l.var()+orig_num_vars, l.sign()));
-        }
-        if (bnn->set) {
-            assert(bnn->out == lit_Undef);
-            solver->add_bnn_clause(lits, bnn->cutoff);
-        } else {
-            assert(bnn->out != lit_Undef);
-            Lit out = Lit(bnn->out.var()+orig_num_vars, bnn->out.sign());
-            solver->add_bnn_clause(lits, bnn->cutoff, out);
-        }
-    }
     if (conf.verb) cout << "c [arjun] Duplicated CNF. T: " << (cpuTime() - dupl_time) << endl;
 }
 
-vector<Lit> Common::get_cnf()
-{
+vector<Lit> Common::get_cnf() {
     vector<Lit> cnf;
-    solver->get_all_irred_clauses(cnf);
+    vector<Lit> clause;
+    bool is_xor, rhs;
+    solver->start_getting_constraints();
+    while(solver->get_next_constraint(clause, is_xor, rhs)) {
+        assert(!is_xor); assert(rhs);
+        cnf.insert(cnf.end(), clause.begin(), clause.end());
+        cnf.push_back(lit_Undef);
+    }
+    solver->end_getting_constraints();
     return cnf;
 }
 
@@ -212,14 +200,15 @@ void Common::get_incidence()
 void Common::set_up_solver()
 {
     assert(solver == NULL);
-    solver = new SATSolver(NULL);
+    solver = new SATSolver;
     solver->set_up_for_arjun();
     solver->set_renumber(0);
     solver->set_bve(0);
     solver->set_verbosity(std::max(conf.verb-2, 0));
     solver->set_intree_probe(conf.intree && conf.simp);
     solver->set_distill(conf.distill && conf.simp);
-    solver->set_sls(0);
+    solver->set_sls(false);
+    solver->set_find_xors(false);
 }
 
 bool Common:: simplify_bve_only()
@@ -325,23 +314,16 @@ void Common::calc_community_parts()
     verb_print(1, "[arjun] Calculating Louvain Communities...");
 
     vector<vector<Lit>> cnf;
-    solver->start_getting_small_clauses(
-        std::numeric_limits<uint32_t>::max(),
-        std::numeric_limits<uint32_t>::max(),
-        false);
-
+    solver->start_getting_constraints();
     bool ret = true;
     vector<Lit> cl;
+    bool is_xor, rhs;
     map<pair<uint32_t, uint32_t>, long double> edges;
     while(ret) {
-        ret = solver->get_next_small_clause(cl);
-        if (!ret) {
-            continue;
-        }
-
-        if (cl.size() == 1) {
-            continue;
-        }
+        ret = solver->get_next_constraint(cl, is_xor, rhs);
+        if (!ret) continue;
+        assert(!is_xor); assert(rhs);
+        if (cl.size() == 1) continue;
 
         //Update VIG graph
         long double weight = 1.0L/((long double)cl.size()*((long double)cl.size()-1.0L)/2.0L);
@@ -366,12 +348,10 @@ void Common::calc_community_parts()
             }
         }
     }
-    solver->end_getting_small_clauses();
+    solver->end_getting_constraints();
 
     LouvainC::Communities graph;
-    for(const auto& it: edges) {
-        graph.add_edge(it.first.first, it.first.second, it.second);
-    }
+    for(const auto& it: edges) graph.add_edge(it.first.first, it.first.second, it.second);
     graph.calculate(true);
     commpart.clear();
     commpart.resize(orig_num_vars, -1);
@@ -379,9 +359,7 @@ void Common::calc_community_parts()
     for(const auto& x: mapping) {
         assert(x.first < orig_num_vars);
         commpart[x.first] = x.second;
-        if (x.second == -1) {
-            continue;
-        }
+        if (x.second == -1) continue;
         if ((unsigned)x.second >= commpart_incs.size()) {
             commpart_incs.resize(x.second+1, -1);
         }
@@ -391,21 +369,12 @@ void Common::calc_community_parts()
     }
 
     var_to_num_communities.resize(orig_num_vars);
-    solver->start_getting_small_clauses(
-        std::numeric_limits<uint32_t>::max(),
-        std::numeric_limits<uint32_t>::max(),
-        false);
+    solver->start_getting_constraints();
     ret = true;
     while(ret) {
-        ret = solver->get_next_small_clause(cl);
-        if (!ret) {
-            continue;
-        }
-
-        if (cl.size() == 1) {
-            continue;
-        }
-
+        ret = solver->get_next_constraint(cl, is_xor, rhs);
+        if (!ret) continue;
+        if (cl.size() == 1) continue;
         for(uint32_t i = 0; i < cl.size(); i ++) {
             for(uint32_t i2 = i+1; i2 < cl.size(); i2 ++) {
                 uint32_t v = cl[i].var();
@@ -414,9 +383,9 @@ void Common::calc_community_parts()
             }
         }
     }
-    solver->end_getting_small_clauses();
+    solver->end_getting_constraints();
 
-    verb_print(1, "[mis-comm] Number of communities: " << commpart_incs.size() \
+    verb_print(1, "[mis-comm] Number of communities: " << commpart_incs.size()
             << " T: " << (cpuTime() - myTime));
 #endif
 }

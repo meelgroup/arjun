@@ -170,7 +170,7 @@ DLL_PUBLIC const vector<uint32_t>& Arjun::get_current_indep_set() const {
 
 DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
 {
-    double starTime = cpuTime();
+    double start_time = cpuTime();
     arjdata->common.init();
     if (!arjdata->common.preproc_and_duplicate()) goto end;
 
@@ -181,7 +181,7 @@ DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
     arjdata->common.empty_out_indep_set_if_unsat();
     if (arjdata->common.conf.verb) {
         cout << "c [arjun] get_indep_set finished "
-        << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
+        << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time)
         << endl;
     }
 
@@ -212,7 +212,7 @@ DLL_PUBLIC vector<uint32_t> Arjun::synthesis_define()
 DLL_PUBLIC vector<uint32_t> Arjun::extend_indep_set()
 {
     assert(!arjdata->common.already_duplicated);
-    double starTime = cpuTime();
+    double start_time = cpuTime();
     arjdata->common.conf.simp = false;
     uint32_t orig_size = arjdata->common.sampling_set->size();
     arjdata->common.init();
@@ -222,7 +222,7 @@ DLL_PUBLIC vector<uint32_t> Arjun::extend_indep_set()
     if (arjdata->common.conf.verb) {
         cout << "c [arjun] extend fully finished"
         << " Extended by: " << (arjdata->common.sampling_set->size() - orig_size)
-        << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - starTime)
+        << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time)
         << endl;
     }
 
@@ -230,24 +230,20 @@ DLL_PUBLIC vector<uint32_t> Arjun::extend_indep_set()
     return *arjdata->common.sampling_set;
 }
 
-DLL_PUBLIC const vector<CMSat::BNN*>& Arjun::get_bnns() const
-{
-    return arjdata->common.solver->get_bnns();
+DLL_PUBLIC void Arjun::start_getting_constraints(
+       bool red, // also redundant, otherwise only irred
+       bool simplified,
+       uint32_t max_len,
+       uint32_t max_glue) {
+    arjdata->common.solver->start_getting_constraints(red, simplified, max_len, max_glue);
 }
 
-DLL_PUBLIC void Arjun::start_getting_small_clauses(uint32_t max_len, uint32_t max_glue, bool red)
-{
-    arjdata->common.solver->start_getting_small_clauses(max_len, max_glue, red);
+DLL_PUBLIC bool Arjun::get_next_constraint(std::vector<CMSat::Lit>& ret, bool& is_xor, bool& rhs) {
+    return arjdata->common.solver->get_next_constraint(ret, is_xor, rhs);
 }
 
-DLL_PUBLIC bool Arjun::get_next_small_clause(std::vector<CMSat::Lit>& ret)
-{
-    return arjdata->common.solver->get_next_small_clause(ret);
-}
-
-DLL_PUBLIC void Arjun::end_getting_small_clauses()
-{
-    arjdata->common.solver->end_getting_small_clauses();
+DLL_PUBLIC void Arjun::end_getting_constraints() {
+    arjdata->common.solver->end_getting_constraints();
 }
 
 DLL_PUBLIC uint32_t Arjun::get_orig_num_vars() const
@@ -259,22 +255,14 @@ DLL_PUBLIC uint32_t Arjun::get_orig_num_vars() const
     return arjdata->common.orig_num_vars;
 }
 
-
 DLL_PUBLIC void Arjun::set_verbosity(uint32_t verb)
 {
     arjdata->common.conf.verb = verb;
     arjdata->common.solver->set_verbosity(verb);
 }
 
-DLL_PUBLIC void Arjun::set_seed(uint32_t seed)
-{
-    arjdata->common.random_source.seed(seed);
-}
-
-DLL_PUBLIC uint32_t Arjun::get_verbosity() const
-{
-    return arjdata->common.conf.verb;
-}
+DLL_PUBLIC void Arjun::set_seed(uint32_t seed) { arjdata->common.random_source.seed(seed); }
+DLL_PUBLIC uint32_t Arjun::get_verbosity() const { return arjdata->common.conf.verb; }
 
 set_get_macro(bool, fast_backw)
 set_get_macro(bool, distill)
@@ -341,20 +329,20 @@ DLL_PUBLIC std::vector<std::pair<CMSat::Lit, CMSat::Lit> > Arjun::get_all_binary
     return ret;
 }
 
-DLL_PUBLIC const vector<Lit> Arjun::get_internal_cnf(uint32_t& num_cls) const
-{
+DLL_PUBLIC const vector<Lit> Arjun::get_internal_cnf(uint32_t& num_cls) const {
     vector<Lit> cnf;
     bool ret = true;
     num_cls = 0;
 
-    arjdata->common.solver->start_getting_small_clauses(
-        std::numeric_limits<uint32_t>::max(),
-        std::numeric_limits<uint32_t>::max(),
-        false);
+    arjdata->common.solver->start_getting_constraints();
     vector<Lit> clause;
+    bool is_xor;
+    bool rhs;
     while (ret) {
-        ret = arjdata->common.solver->get_next_small_clause(clause);
+        ret = arjdata->common.solver->get_next_constraint(clause, is_xor, rhs);
         if (!ret) break;
+        assert(!is_xor);
+        assert(rhs);
 
         bool ok = true;
         for(auto l: clause) {
@@ -370,7 +358,7 @@ DLL_PUBLIC const vector<Lit> Arjun::get_internal_cnf(uint32_t& num_cls) const
             num_cls++;
         }
     }
-    arjdata->common.solver->end_getting_small_clauses();
+    arjdata->common.solver->end_getting_constraints();
     return cnf;
 }
 

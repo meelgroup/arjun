@@ -136,9 +136,13 @@ namespace ArjunNS {
         std::vector<uint32_t> get_empty_occsampl_vars() const;
 
         //Get clauses
-        void start_getting_small_clauses(uint32_t max_len, uint32_t max_glue, bool red = true);
-        bool get_next_small_clause(std::vector<CMSat::Lit>& ret); //returns FALSE if no more
-        void end_getting_small_clauses();
+        void start_getting_constraints(
+               bool red = false, // also redundant, otherwise only irred
+               bool simplified = false,
+               uint32_t max_len = std::numeric_limits<uint32_t>::max(),
+               uint32_t max_glue = std::numeric_limits<uint32_t>::max());
+        bool get_next_constraint(std::vector<CMSat::Lit>& ret, bool& is_xor, bool& rhs);
+        void end_getting_constraints();
         const std::vector<CMSat::Lit> get_internal_cnf(uint32_t& num_cls) const;
         SimplifiedCNF get_fully_simplified_renumbered_cnf(
             const std::vector<uint32_t>& sampl_vars,
@@ -148,7 +152,6 @@ namespace ArjunNS {
         SimplifiedCNF only_synthesis_unate(const std::vector<uint32_t>& sampl_vars);
         SimplifiedCNF only_conditional_dontcare(const std::vector<uint32_t>& sampl_vars);
         SimplifiedCNF only_backbone(const std::vector<uint32_t>& sampl_vars);
-        const std::vector<CMSat::BNN*>& get_bnns() const;
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
         std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;
         const std::vector<CMSat::Lit>& get_orig_cnf();

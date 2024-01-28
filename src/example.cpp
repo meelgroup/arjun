@@ -85,33 +85,22 @@ int main()
     dont_elim.insert(29);
     vector<uint32_t> dont_elim_vec(dont_elim.begin(), dont_elim.end());
 
-    SimpConf simpConf;
+    SimpConf simp_conf;
     arjun.get_fully_simplified_renumbered_cnf(
-        dont_elim_vec, simpConf,
+        dont_elim_vec, simp_conf,
         false, // don't renumber and don't replace variables
         false // no need to extend
     );
 
     //get cnf
-    bool ret = true;
     const uint32_t orig_num_vars = arjun.get_orig_num_vars();
-    arjun.start_getting_small_clauses(
-        std::numeric_limits<uint32_t>::max(),
-        std::numeric_limits<uint32_t>::max(),
-        false);
-    while (ret) {
-        ret = arjun.get_next_small_clause(clause);
-        if (!ret) {
-            break;
-        }
-
+    bool is_xor, rhs;
+    arjun.start_getting_constraints();
+    while (arjun.get_next_constraint(clause, is_xor, rhs)) {
+        assert(!is_xor); assert(rhs);
         bool ok = true;
-        for(auto l: clause) {
-            if (l.var() >= orig_num_vars) {
-                ok = false;
-                break;
-            }
-        }
+        for(auto l: clause)
+            if (l.var() >= orig_num_vars) { ok = false; break; }
 
         if (ok) {
             cout << "clause: ";
@@ -123,7 +112,7 @@ int main()
             cout << "0" << endl;
         }
     }
-    arjun.end_getting_small_clauses();
+    arjun.end_getting_constraints();
 
     return 0;
 }
