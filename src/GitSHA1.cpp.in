@@ -46,7 +46,6 @@ const char* ArjunIntNS::get_compilation_env()
     "ZLIB_FOUND = @ZLIB_FOUND@ | "
     "ENABLE_ASSERTIONS = @ENABLE_ASSERTIONS@ | "
     "MY_TARGETS = @MY_TARGETS@ | "
-    "compilation date time = " __DATE__ " " __TIME__
     ""
     ;
     return compilation_env;
