@@ -607,7 +607,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     if (sparsify) {
         str2.clear();
         if (arjdata->common.conf.bce) str2+= "occ-bce,";
-        str2 += string("sparsify,") + str;
+        str2 += string("oracle-sparsify,") + str;
         solver.simplify(&dont_elim, &str2);
     }
     //one more without sparsify
