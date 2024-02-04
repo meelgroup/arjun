@@ -64,11 +64,6 @@ vector<uint32_t> orig_sampling_set;
 
 void add_backbone_options() {
     conf.verb = 1;
-    program.add_argument("-h", "--help")
-        .help("Prints help");
-    program.add_argument("-v", "--version")
-        .help("Print version info")
-        .flag();
     program.add_argument("-v", "--verb")
         .action([&](const auto& a) {conf.verb = std::atoi(a.c_str());})
         .default_value(conf.verb)

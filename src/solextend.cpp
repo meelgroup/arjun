@@ -62,11 +62,6 @@ bool satisfiable;
 void add_options()
 {
     verb = 1;
-    program.add_argument("-h", "--help")
-        .help("Prints help");
-    program.add_argument("-v", "--version")
-        .help("Print version info")
-        .flag();
     program.add_argument("--verb,v")
         .action([&](const auto& a) {verb = std::atoi(a.c_str());})
         .default_value(verb)
