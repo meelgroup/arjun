@@ -27,8 +27,8 @@ echo "Executing: $exec"
 ./count_literals.py "$fname-simplified-arjun" >"${fname}_count_arj_out"
 
 echo "Running BPE (new, compiled)"
-#/usr/bin/time ./BiPe -preproc "$fname" > "$fname-simplified-bpe"
-/usr/bin/time ../../sharpsat-td/build/sharpSAT-prepro "$fname" > "$fname-simplified-bpe"
+/usr/bin/time ./BiPe -preproc "$fname" > "$fname-simplified-bpe"
+# /usr/bin/time ../../sharpsat-td/build/sharpSAT-prepro "$fname" > "$fname-simplified-bpe"
 ./count_literals.py "$fname-simplified-bpe" > "${fname}_count_bpe_out"
 
 echo "ARJUN vs BPE (new, compiled)"
