@@ -23,7 +23,7 @@
  */
 
 #if defined(__GNUC__) && defined(__linux__)
-#include <fenv.h>
+#include <cfenv>
 #endif
 
 #include <iostream>
@@ -33,7 +33,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <signal.h>
+#include <csignal>
 #ifdef USE_ZLIB
 #include <zlib.h>
 #endif
@@ -52,7 +52,7 @@ using std::vector;
 using namespace CMSat;
 
 argparse::ArgumentParser program = argparse::ArgumentParser("arjun");
-double startTime;
+double start_time;
 ArjunInt::Config conf;
 ArjunNS::Arjun* arjun = nullptr;
 string elimtofile;
@@ -62,7 +62,7 @@ int recompute_sampling_set = 0;
 uint32_t orig_cnf_must_mult_exp2 = 0;
 uint32_t orig_sampling_set_size = 0;
 uint32_t polar_mode = 0;
-SimpConf simpConf;
+SimpConf simp_conf;
 int renumber = true;
 bool gates = true;
 int extend_indep = false;
@@ -192,32 +192,32 @@ void add_arjun_options()
         .default_value(conf.gauss_jordan)
         .help("Use XOR finding and Gauss-Jordan elimination");
     program.add_argument("--iter1")
-        .action([&](const auto& a) {simpConf.iter1 = std::atoi(a.c_str());})
-        .default_value(simpConf.iter1)
+        .action([&](const auto& a) {simp_conf.iter1 = std::atoi(a.c_str());})
+        .default_value(simp_conf.iter1)
         .help("Puura iterations before oracle");
     program.add_argument("--iter1grow")
-        .action([&](const auto& a) {simpConf.bve_grow_iter1 = std::atoi(a.c_str());})
-        .default_value(simpConf.bve_grow_iter1)
+        .action([&](const auto& a) {simp_conf.bve_grow_iter1 = std::atoi(a.c_str());})
+        .default_value(simp_conf.bve_grow_iter1)
         .help("Puura BVE grow rate allowed before Oracle");
     program.add_argument("--iter2")
-        .action([&](const auto& a) {simpConf.iter2 = std::atoi(a.c_str());})
-        .default_value(simpConf.iter2)
+        .action([&](const auto& a) {simp_conf.iter2 = std::atoi(a.c_str());})
+        .default_value(simp_conf.iter2)
         .help("Puura iterations after oracle");
     program.add_argument("--iter2grow")
-        .action([&](const auto& a) {simpConf.bve_grow_iter2 = std::atoi(a.c_str());})
-        .default_value(simpConf.bve_grow_iter2)
+        .action([&](const auto& a) {simp_conf.bve_grow_iter2 = std::atoi(a.c_str());})
+        .default_value(simp_conf.bve_grow_iter2)
         .help("Puura BVE grow rate allowed after Oracle");
     program.add_argument("--oraclesparsify")
-        .action([&](const auto& a) {simpConf.oracle_sparsify = std::atoi(a.c_str());})
-        .default_value(simpConf.oracle_sparsify)
+        .action([&](const auto& a) {simp_conf.oracle_sparsify = std::atoi(a.c_str());})
+        .default_value(simp_conf.oracle_sparsify)
         .help("Use Oracle to sparsify");
     program.add_argument("--oraclevivif")
-        .action([&](const auto& a) {simpConf.oracle_vivify = std::atoi(a.c_str());})
-        .default_value(simpConf.oracle_vivify)
+        .action([&](const auto& a) {simp_conf.oracle_vivify = std::atoi(a.c_str());})
+        .default_value(simp_conf.oracle_vivify)
         .help("Use oracle to vivify");
     program.add_argument("--oraclevivifgetl")
-        .action([&](const auto& a) {simpConf.oracle_vivify_get_learnts = std::atoi(a.c_str());})
-        .default_value(simpConf.oracle_vivify_get_learnts)
+        .action([&](const auto& a) {simp_conf.oracle_vivify_get_learnts = std::atoi(a.c_str());})
+        .default_value(simp_conf.oracle_vivify_get_learnts)
         .help("Use oracle to vivify get learnts");
     program.add_argument("--renumber")
         .action([&](const auto& a) {renumber = std::atoi(a.c_str());})
@@ -281,7 +281,7 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
 {
     double dump_start_time = cpuTime();
     auto ret = arjun->get_fully_simplified_renumbered_cnf(
-        sampl_vars, simpConf, renumber, !recover_file.empty());
+        sampl_vars, simp_conf, renumber, !recover_file.empty());
 
     delete arjun; arjun = nullptr;
     if (extend_indep && synthesis_define) {
@@ -317,7 +317,7 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
     write_simpcnf(ret, elimtofile, orig_cnf_must_mult_exp2, redundant_cls);
     cout << "c [arjun] Dumping took: " << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
-    cout << "c [arjun] All done. T: " << std::setprecision(2) << (cpuTime() - startTime) << endl;
+    cout << "c [arjun] All done. T: " << std::setprecision(2) << (cpuTime() - start_time) << endl;
 }
 
 void set_config(ArjunNS::Arjun* arj) {
@@ -400,7 +400,7 @@ int main(int argc, char** argv)
     cout << arjun->get_solver_version_info();
     cout << "c executed with command line: " << command_line << endl;
 
-    startTime = cpuTime();
+    start_time = cpuTime();
     set_config(arjun);
 
     //parsing the input
@@ -426,7 +426,7 @@ int main(int argc, char** argv)
     vector<uint32_t> indep_vars = arjun->get_indep_set();
     print_final_indep_set(indep_vars, arjun->get_empty_occ_sampl_vars(), elimtofile.empty());
     cout << "c [arjun] finished "
-        << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - startTime) << endl;
+        << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time) << endl;
 
     if (!elimtofile.empty()) {
         if (simptofile) elim_to_file(indep_vars);

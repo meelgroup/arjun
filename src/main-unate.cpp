@@ -23,7 +23,7 @@
  */
 
 #if defined(__GNUC__) && defined(__linux__)
-#include <fenv.h>
+#include <cfenv>
 #endif
 
 #include <iostream>
@@ -33,7 +33,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <signal.h>
+#include <csignal>
 #ifdef USE_ZLIB
 #include <zlib.h>
 #endif
@@ -52,7 +52,7 @@ using std::vector;
 using namespace CMSat;
 
 argparse::ArgumentParser program = argparse::ArgumentParser("unate");
-double startTime;
+double start_time;
 ArjunInt::Config conf;
 ArjunNS::Arjun* arjun = nullptr;
 string elimtofile;
