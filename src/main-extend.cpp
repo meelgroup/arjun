@@ -70,11 +70,11 @@ void add_extend_options() {
     program.add_argument("-v", "--version")
         .help("Print version info")
         .flag();
-    program.add_argument("--verb,v")
+    program.add_argument("-v", "--verb")
         .action([&](const auto& a) {conf.verb = std::atoi(a.c_str());})
         .default_value(conf.verb)
         .help("verbosity");
-    program.add_argument("--seed,s")
+    program.add_argument("-s", "--seed")
         .action([&](const auto& a) {conf.seed = std::atoi(a.c_str());})
         .default_value(conf.seed)
         .help("Seed");
