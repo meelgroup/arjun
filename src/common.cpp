@@ -24,6 +24,7 @@
 
 #include "common.h"
 #include "cryptominisat5/solvertypesmini.h"
+#include <limits>
 
 #ifdef LOUVAIN_COMMS
 #include "louvain_communities/louvain_communities.h"
@@ -164,7 +165,7 @@ vector<Lit> Common::get_cnf() {
     vector<Lit> cnf;
     vector<Lit> clause;
     bool is_xor, rhs;
-    solver->start_getting_constraints();
+    solver->start_getting_constraints(false);
     while(solver->get_next_constraint(clause, is_xor, rhs)) {
         assert(!is_xor); assert(rhs);
         cnf.insert(cnf.end(), clause.begin(), clause.end());
@@ -270,6 +271,7 @@ void check_sanity_sampling_vars(T vars, const uint32_t nvars)
 void Common::init()
 {
     orig_cnf = get_cnf();
+    assert(orig_num_vars  == std::numeric_limits<uint32_t>::max() && "double init");
     orig_num_vars = solver->nVars();
     check_sanity_sampling_vars(*sampling_set, orig_num_vars);
     seen.clear();
@@ -302,9 +304,8 @@ bool Common::preproc_and_duplicate()
 
 void Common::calc_community_parts()
 {
-    if (!(conf.unknown_sort == 4 || conf.unknown_sort == 5)) {
-        return;
-    }
+    assert(solver->nVars() == orig_num_vars &&  "INTERNAL ERROR, must be called before duplication!");
+    if (!(conf.unknown_sort == 4 || conf.unknown_sort == 5)) return;
     #ifndef LOUVAIN_COMMS
     cout << "ERROR: you must compile with louvain community libraries for this to work."
         << " Install https://github.com/meelgroup/louvain-community first." << endl;
@@ -314,7 +315,7 @@ void Common::calc_community_parts()
     verb_print(1, "[arjun] Calculating Louvain Communities...");
 
     vector<vector<Lit>> cnf;
-    solver->start_getting_constraints();
+    solver->start_getting_constraints(false);
     bool ret = true;
     vector<Lit> cl;
     bool is_xor, rhs;
@@ -369,7 +370,7 @@ void Common::calc_community_parts()
     }
 
     var_to_num_communities.resize(orig_num_vars);
-    solver->start_getting_constraints();
+    solver->start_getting_constraints(false);
     ret = true;
     while(ret) {
         ret = solver->get_next_constraint(cl, is_xor, rhs);

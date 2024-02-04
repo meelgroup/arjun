@@ -25,7 +25,7 @@
 #include "src/arjun.h"
 
 #if defined(__GNUC__) && defined(__linux__)
-#include <fenv.h>
+#include <cfenv>
 #endif
 
 #include <iostream>
@@ -35,7 +35,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <signal.h>
+#include <csignal>
 #ifdef USE_ZLIB
 #include <zlib.h>
 #endif
@@ -46,14 +46,13 @@
 #include "time_mem.h"
 
 using std::cout;
-using std::cerr;
 using std::endl;
 using std::string;
 using std::vector;
 using namespace CMSat;
 
 argparse::ArgumentParser program = argparse::ArgumentParser("dontcare");
-double startTime;
+double start_time;
 int verb;
 int seed;
 vector<lbool> simp_sol;
@@ -73,12 +72,12 @@ void add_options()
     program.add_argument("files").remaining().help("input file and output file");
 }
 
-void parse_v_line(StreamBuffer<FILE*, FN>& in, const uint32_t lineNum)
+void parse_v_line(StreamBuffer<FILE*, FN>& in, const uint32_t line_num)
 {
     int32_t parsed_lit;
     uint32_t var;
     for (;;) {
-        if (!in.parseInt(parsed_lit, lineNum, true)) {
+        if (!in.parseInt(parsed_lit, line_num, true)) {
             exit(-1);
         }
         if (parsed_lit == std::numeric_limits<int32_t>::max()) {
@@ -100,7 +99,7 @@ void parse_v_line(StreamBuffer<FILE*, FN>& in, const uint32_t lineNum)
 void parse_solution(StreamBuffer<FILE*, FN>& in)
 {
     std::string str;
-    uint32_t lineNum = 0;
+    uint32_t line_num = 0;
     bool s_line_found = false;
 
     for (;;) {
@@ -130,19 +129,19 @@ void parse_solution(StreamBuffer<FILE*, FN>& in)
             }
             s_line_found = true;
             in.skipLine();
-            lineNum++;
+            line_num++;
             break;
         }
         case 'v':
             ++in;
-            parse_v_line(in, lineNum);
+            parse_v_line(in, line_num);
             in.skipLine();
-            lineNum++;
+            line_num++;
             break;
         default:
             ++in;
             in.skipLine();
-            lineNum++;
+            line_num++;
             break;
         }
     }

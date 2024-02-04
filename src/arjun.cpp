@@ -329,20 +329,19 @@ DLL_PUBLIC std::vector<std::pair<CMSat::Lit, CMSat::Lit> > Arjun::get_all_binary
     return ret;
 }
 
-DLL_PUBLIC const vector<Lit> Arjun::get_internal_cnf(uint32_t& num_cls) const {
+DLL_PUBLIC const vector<Lit> Arjun::get_cnf(uint32_t& num_cls) const {
     vector<Lit> cnf;
     bool ret = true;
     num_cls = 0;
 
-    arjdata->common.solver->start_getting_constraints();
+    arjdata->common.solver->start_getting_constraints(false);
     vector<Lit> clause;
     bool is_xor;
     bool rhs;
     while (ret) {
         ret = arjdata->common.solver->get_next_constraint(clause, is_xor, rhs);
         if (!ret) break;
-        assert(!is_xor);
-        assert(rhs);
+        assert(!is_xor); assert(rhs);
 
         bool ok = true;
         for(auto l: clause) {

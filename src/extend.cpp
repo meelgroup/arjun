@@ -97,7 +97,7 @@ void Common::generate_picosat(const vector<Lit>& assumptions , uint32_t test_var
     map<uint32_t, vector<Lit>> cl_map;
     uint32_t cl_num = 0;
 
-    solver->start_getting_constraints();
+    solver->start_getting_constraints(false);
     bool ret = true;
     vector<Lit> cl;
     bool is_xor, rhs;
@@ -205,7 +205,6 @@ void Common::synthesis_define(const set<uint32_t>& input) {
 
     for(const auto& x: seen) assert(x == 0);
     double start_round_time = cpuTimeTotal();
-    double my_time = cpuTime();
     set<uint32_t> indep;
 
     //Initially, all of samping_set is unknown
@@ -218,25 +217,9 @@ void Common::synthesis_define(const set<uint32_t>& input) {
     }
 
     sort_unknown(unknown);
-    /* std::reverse(unknown.begin(), unknown.end()); */
     verb_print(1,"[arjun] Start unknown size: " << unknown.size());
 
     vector<Lit> assumptions;
-    uint32_t iter = 0;
-
-    //Calc mod:
-    uint32_t mod = 1;
-    if (unknown.size() > 20 ) {
-        uint32_t will_do_iters = unknown.size();
-        uint32_t want_printed = 30;
-        mod = will_do_iters/want_printed;
-        mod = std::max<int>(mod, 1);
-    }
-
-    uint32_t ret_false = 0;
-    uint32_t ret_true = 0;
-    uint32_t ret_undef = 0;
-
     uint32_t tot_ret_false = 0;
     while(!unknown.empty()) {
         uint32_t test_var = unknown.back();
@@ -252,21 +235,20 @@ void Common::synthesis_define(const set<uint32_t>& input) {
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
 
+        //TODO: Actually, we should get conflict, that will make things easier
         solver->set_no_confl_needed();
 
         lbool ret = l_Undef;
-        solver->set_max_confl(conf.backw_max_confl);
+        // TODO we probably shouldn't use this, removing.
+        /* solver->set_max_confl(conf.backw_max_confl); */
         ret = solver->solve(&assumptions);
         if (ret == l_False) {
-            ret_false++;
             tot_ret_false++;
-            if (conf.verb >= 5) cout << "c [arjun] extend solve(): False" << endl;
+            verb_print(5, "[arjun] extend solve(): False");
         } else if (ret == l_True) {
-            ret_true++;
-            if (conf.verb >= 5) cout << "c [arjun] extend solve(): True" << endl;
+            verb_print(5, "[arjun] extend solve(): True");
         } else if (ret == l_Undef) {
-            if (conf.verb >= 5) cout << "c [arjun] extend solve(): Undef" << endl;
-            ret_undef++;
+            verb_print(5, "[arjun] extend solve(): Undef");
         }
 
         if (ret == l_Undef) {
@@ -278,36 +260,15 @@ void Common::synthesis_define(const set<uint32_t>& input) {
             indep.insert(test_var);
         } else if (ret == l_False) {
             // Dependent fully on `indep`
+            // TODO: run get_conflict and then we know which were
+            // actually needed, so we can do an easier generation/check
             generate_picosat(assumptions, test_var, indep);
         }
-
-        if (iter % mod == (mod-1) && conf.verb) {
-            cout
-            << "c [arjun] iter: " << std::setw(5) << iter;
-            if (mod == 1) cout << " ret: " << std::setw(8) << ret;
-            else {
-                cout
-                << " T/F/U: ";
-                std::stringstream ss;
-                ss << ret_true << "/" << ret_false << "/" << ret_undef;
-                cout << std::setw(10) << std::left << ss.str() << std::right;
-                ret_true = 0;
-                ret_false = 0;
-                ret_undef = 0;
-            }
-            cout
-            << " by: " << std::setw(3) << 1
-            << " U: " << std::setw(7) << ret_undef
-            << " I: " << std::setw(7) << ret_false
-            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - my_time) << endl;
-            my_time = cpuTime();
-        }
-        iter++;
     }
     sampling_set->clear();
     for(const auto& i: indep) sampling_set->push_back(i);
 
-    verb_print(1, "[arjun] extend round finished "
+    verb_print(1, "[arjun] UNSAT-based define finished "
             << " final extension: " << tot_ret_false
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
@@ -372,12 +333,12 @@ void Common::extend_round()
         ret = solver->solve(&assumptions);
         if (ret == l_False) {
             ret_false++;
-            if (conf.verb >= 5) cout << "c [arjun] extend solve(): False" << endl;
+            verb_print(5, "[arjun] extend solve(): False");
         } else if (ret == l_True) {
             ret_true++;
-            if (conf.verb >= 5) cout << "c [arjun] extend solve(): True" << endl;
+            verb_print(5, "[arjun] extend solve(): True");
         } else if (ret == l_Undef) {
-            if (conf.verb >= 5) cout << "c [arjun] extend solve(): Undef" << endl;
+            verb_print(5, "[arjun] extend solve(): Undef");
             ret_undef++;
         }
 

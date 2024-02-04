@@ -102,7 +102,7 @@ SATSolver* Puura::setup_f_not_f_indic()
         /* cout << "indic: " << this_indic+1 << " vars: " << var+1 << " " << var+orig_num_vars+1 << endl; */
     }
 
-    solver->start_getting_constraints();
+    solver->start_getting_constraints(false);
     vector<Lit> zs;
     bool ret = true;
     vector<Lit> clause;

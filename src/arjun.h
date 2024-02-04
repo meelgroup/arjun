@@ -143,10 +143,10 @@ namespace ArjunNS {
                uint32_t max_glue = std::numeric_limits<uint32_t>::max());
         bool get_next_constraint(std::vector<CMSat::Lit>& ret, bool& is_xor, bool& rhs);
         void end_getting_constraints();
-        const std::vector<CMSat::Lit> get_internal_cnf(uint32_t& num_cls) const;
+        const std::vector<CMSat::Lit> get_cnf(uint32_t& num_cls) const;
         SimplifiedCNF get_fully_simplified_renumbered_cnf(
             const std::vector<uint32_t>& sampl_vars,
-            const SimpConf& simpConf,
+            const SimpConf& simp_conf,
             const bool renumber,
             const bool need_sol_extend);
         SimplifiedCNF only_synthesis_unate(const std::vector<uint32_t>& sampl_vars);

@@ -33,9 +33,7 @@ void Common::fill_assumptions_backward(
     const vector<char>& unknown_set,
     const vector<uint32_t>& indep)
 {
-    if (conf.verb > 5) {
-        cout << "Filling assumps BEGIN" << endl;
-    }
+    verb_print(5, "Filling assumps BEGIN");
     assumptions.clear();
 
     //Add known independent as assumptions
@@ -45,23 +43,16 @@ void Common::fill_assumptions_backward(
         uint32_t indic = var_to_indic[var];
         assert(indic != var_Undef);
         assumptions.push_back(Lit(indic, false));
-        if (conf.verb > 5) {
-            cout << "Filled assump with indep: " << var << endl;
-        }
+        verb_print(5, "Filled assump with indep: " << var);
     }
 
     //Add unknown as assumptions, clean "unknown"
     uint32_t j = 0;
     for(uint32_t i = 0; i < unknown.size(); i++) {
         uint32_t var = unknown[i];
-        if (unknown_set[var] == 0) {
-            continue;
-        } else {
-            unknown[j++] = var;
-        }
-        if (conf.verb > 5) {
-            cout << "Filled assump with unknown: " << var << endl;
-        }
+        if (unknown_set[var] == 0) continue;
+        else unknown[j++] = var;
+        verb_print(5, "Filled assump with unknown: " << var);
 
         assert(var < orig_num_vars);
         uint32_t indic = var_to_indic[var];
@@ -69,9 +60,7 @@ void Common::fill_assumptions_backward(
         assumptions.push_back(Lit(indic, false));
     }
     unknown.resize(j);
-    if (conf.verb > 5) {
-        cout << "Filling assumps END, total assumps size: " << assumptions.size() << endl;
-    }
+    verb_print(5, "Filling assumps END, total assumps size: " << assumptions.size());
 }
 
 void Common::order_by_file(const string& fname, vector<uint32_t>& unknown) {
@@ -132,8 +121,7 @@ void Common::backward_round() {
         unknown_set[x] = 1;
     }
     sort_unknown(unknown);
-    if (conf.specified_order_fname != "")
-        order_by_file(conf.specified_order_fname, unknown);
+    if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
     print_sorted_unknown(unknown);
     verb_print(1, "[arjun] Start unknown size: " << unknown.size());
 
@@ -170,7 +158,7 @@ void Common::backward_round() {
 
             //No more left, try again with full
             if (assumptions.empty()) {
-                if (conf.verb >= 5) cout << "c [arjun] No more left, try again with full" << endl;
+                verb_print(5, "[arjun] No more left, try again with full");
                 break;
             }
 
@@ -203,7 +191,7 @@ void Common::backward_round() {
 
             if (test_var == var_Undef) {
                 //we are done, backward is finished
-                if (conf.verb >= 5) cout << "c [arjun] we are done, backward is finished" << endl;
+                verb_print(5, "[arjun] we are done, backward is finished");
                 break;
             }
             indic_var = var_to_indic[test_var];
@@ -248,18 +236,10 @@ void Common::backward_round() {
             uint32_t indep_vars_last_pos = indep.size();
             ret = solver->find_fast_backw(b);
 
-            if (conf.verb >= 3) {
-                cout
-                << "c [arjun] non_indep_vars.size(): " << non_indep_vars.size()
-                << " indep.size(): " << indep.size()
-                << " ret: " << ret
-                << " test_var: " << test_var
-                << endl;
-            }
+            verb_print(3, "[arjun] non_indep_vars.size(): " << non_indep_vars.size()
+                << " indep.size(): " << indep.size() << " ret: " << ret << " test_var: " << test_var);
             if (ret == l_False) {
-                if (conf.verb) {
-                    cout << "c [arjun] Problem is UNSAT" << endl;
-                }
+                verb_print(5, "[arjun] Problem is UNSAT");
                 for(auto& x: unknown_set) x = 0;
                 unknown.clear();
                 indep.clear();
@@ -274,8 +254,7 @@ void Common::backward_round() {
                 unknown_set[var] = 0;
             }
 
-            for(uint32_t i = 0; i < non_indep_vars.size(); i ++) {
-                uint32_t var = non_indep_vars[i];
+            for(const auto& var: non_indep_vars) {
                 assert(var < orig_num_vars);
                 unknown_set[var] = 0;
                 not_indep++;
@@ -291,12 +270,12 @@ void Common::backward_round() {
         }
         if (ret == l_False) {
             ret_false++;
-            if (conf.verb >= 5) cout << "c [arjun] backw solve(): False" << endl;
+            verb_print(5, "[arjun] backw solve(): False");
         } else if (ret == l_True) {
             ret_true++;
-            if (conf.verb >= 5) cout << "c [arjun] backw solve(): True" << endl;
+            verb_print(5, "[arjun] backw solve(): True");
         } else if (ret == l_Undef) {
-            if (conf.verb >= 5) cout << "c [arjun] backw solve(): Undef" << endl;
+            verb_print(5, "[arjun] backw solve(): Undef");
             ret_undef++;
         }
 
@@ -361,12 +340,7 @@ void Common::backward_round() {
     }
     update_sampling_set(unknown, unknown_set, indep);
 
-    if (conf.verb) {
-        cout << "c [arjun] backward round finished T: "
-        << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
-        << endl;
-    }
-    if (conf.verb >= 2) {
-        solver->print_stats();
-    }
+    verb_print(1, "[arjun] backward round finished T: "
+        << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
+    if (conf.verb >= 2) solver->print_stats();
 }
