@@ -43,6 +43,7 @@ namespace ArjunNS {
         int iter2 = 2;
         int bve_grow_iter1 = 0;
         int bve_grow_iter2 = 0;
+        bool appmc = false;
     };
 
     struct SimplifiedCNF {

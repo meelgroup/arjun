@@ -353,6 +353,14 @@ void Puura::fill_solver(Arjun* arjun)
     }
 }
 
+bool replace(std::string& str, const std::string& from, const std::string& to) {
+    size_t start_pos = str.find(from);
+    if(start_pos == std::string::npos)
+        return false;
+    str.replace(start_pos, from.length(), to);
+    return true;
+}
+
 SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     Arjun* arjun,
     const vector<uint32_t>& sampl_vars,
@@ -368,22 +376,26 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     //Below works VERY WELL for: ProcessBean, pollard, track1_116.mcc2020_cnf
     //   and blasted_TR_b14_even3_linear.cnf.gz.no_w.cnf
     //with CMS ef6ea7e87e00bde50c0cce0c1e13a012191c4e1c and Arjun 5f2dfe814e07ee6ee0dde65b1350b5c343209ed0
-    solver->set_min_bva_gain(simp_conf.bve_grow_iter1);
     solver->set_varelim_check_resolvent_subs(false);
     solver->set_max_red_linkin_size(0);
     solver->set_timeout_all_calls(100);
     solver->set_weaken_time_limitM(2000);
-    solver->set_occ_based_lit_rem_time_limitM(500);
     solver->set_oracle_get_learnts(simp_conf.oracle_vivify_get_learnts);
     solver->set_oracle_removed_is_learnt(1);
-    solver->set_bve_too_large_resolvent(-1);
+    if (!simp_conf.appmc) {
+        solver->set_min_bva_gain(simp_conf.bve_grow_iter1);
+        solver->set_occ_based_lit_rem_time_limitM(500);
+        solver->set_bve_too_large_resolvent(-1);
+    } else {
+        solver->set_occ_based_lit_rem_time_limitM(0);
+    }
     solver->set_bve(conf.bve_during_elimtofile);
-
 
     if (conf.do_unate) synthesis_unate(false);
     // occ-cl-rem-with-orgates not used -- should test and add, probably to 2nd iter
     // eqlit-find from oracle not used (too slow?)
     string str("must-scc-vrepl, full-probe, backbone, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
+    if (simp_conf.appmc) str = string("must-scc-vrepl, full-probe, backbone, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
     for (int i = 0; i < simp_conf.iter1; i++) solver->simplify(&dont_elim, &str);
 
     // Now doing Oracle
@@ -397,8 +409,10 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->simplify(&dont_elim, &str2);
 
     // Now more expensive BVE, also RED linked in to occur
-    solver->set_min_bva_gain(simp_conf.bve_grow_iter2);
-    solver->set_varelim_check_resolvent_subs(true);
+    if (!simp_conf.appmc) {
+        solver->set_min_bva_gain(simp_conf.bve_grow_iter2);
+        solver->set_varelim_check_resolvent_subs(true);
+    }
     solver->set_max_red_linkin_size(20);
     for (int i = 0; i < simp_conf.iter2; i++) solver->simplify(&dont_elim, &str);
 
