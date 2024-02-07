@@ -71,6 +71,7 @@ int redundant_cls = true;
 int compute_indep = true;
 int unate = false;
 int simptofile = true;
+int sampl_start_at_zero = false;
 
 // static void signal_handler(int) {
 //     cout << endl << "c [arjun] INTERRUPTING ***" << endl << std::flush;
@@ -205,6 +206,17 @@ void add_arjun_options()
         .action([&](const auto& a) {simp_conf.oracle_sparsify = std::atoi(a.c_str());})
         .default_value(simp_conf.oracle_sparsify)
         .help("Use Oracle to sparsify");
+    program.add_argument("--appmc")
+        .action([&](const auto&) {
+                simp_conf.appmc = true;
+                simp_conf.oracle_vivify = true;
+                simp_conf.oracle_sparsify = false;
+                simp_conf.oracle_vivify_get_learnts = 1;
+                simp_conf.iter1 = 2;
+                simp_conf.iter2 = 0;
+                })
+        .flag()
+        .help("Set CNF options for appmc");
     program.add_argument("--oraclevivif")
         .action([&](const auto& a) {simp_conf.oracle_vivify = std::atoi(a.c_str());})
         .default_value(simp_conf.oracle_vivify)
@@ -217,6 +229,11 @@ void add_arjun_options()
         .action([&](const auto& a) {renumber = std::atoi(a.c_str());})
         .default_value(renumber)
         .help("Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!");
+    program.add_argument("--samplstartzero")
+        .action([&](const auto& a) {sampl_start_at_zero = std::atoi(a.c_str());})
+        .default_value(sampl_start_at_zero)
+        .help("Renumber variable before dumping the CNF to make sure sampling vars start at 1...k."
+                "This is required for GANAK");
     program.add_argument("--distill")
         .action([&](const auto& a) {conf.distill = std::atoi(a.c_str());})
         .default_value(conf.distill);
@@ -235,7 +252,9 @@ void add_arjun_options()
     program.add_argument("--specifiedorder")
         .action([&](const auto& a) {conf.specified_order_fname = a;})
         .default_value(conf.specified_order_fname)
-        .help("Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY");
+        .help("Try to remove variables from the independent set in this order. "
+                "File must contain a variable on each line. "
+                "Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY");
 
     program.add_argument("files").remaining().help("input file and output file");
 }
@@ -307,7 +326,7 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
         f.close();
     }
 
-    if (renumber) ret.renumber_sampling_vars_for_ganak();
+    if (sampl_start_at_zero) ret.renumber_sampling_vars_for_ganak();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
     write_simpcnf(ret, elimtofile, orig_cnf_must_mult_exp2, redundant_cls);
     cout << "c [arjun] Dumping took: " << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
