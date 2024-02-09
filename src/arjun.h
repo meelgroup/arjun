@@ -49,6 +49,7 @@ namespace ArjunNS {
     struct SimplifiedCNF {
         std::vector<std::vector<CMSat::Lit>> cnf;
         std::vector<std::vector<CMSat::Lit>> red_cnf;
+        std::vector<uint32_t> optional_sampling_vars;
         std::vector<uint32_t> sampling_vars;
         uint32_t nvars = 0;
         uint32_t empty_occs = 0;
@@ -57,6 +58,7 @@ namespace ArjunNS {
         void clear() {
             cnf.clear();
             sampling_vars.clear();
+            optional_sampling_vars.clear();
             nvars = 0;
             empty_occs = 0;
             sol_ext_data.clear();
@@ -68,18 +70,25 @@ namespace ArjunNS {
             }
             return cl;
         }
+        std::vector<uint32_t>& map_var(std::vector<uint32_t>& cl, std::vector<uint32_t> var_map) {
+            for(auto& l: cl) l = var_map[l];
+            return cl;
+        }
 
         // renumber variables such that sampling set start from 0...N
         void renumber_sampling_vars_for_ganak()
         {
+            if (optional_sampling_vars.empty()) optional_sampling_vars = sampling_vars;
+            assert(sampling_vars.size() <= optional_sampling_vars.size());
+
             constexpr uint32_t m = std::numeric_limits<uint32_t>::max();
             std::vector<uint32_t> map_here_to_there(nvars, m);
             uint32_t i = 0;
-            std::vector<uint32_t> translated_sampl_vars;
-            for(const auto& v: sampling_vars) {
+            std::vector<uint32_t> translated_opt_sampl_vars;
+            for(const auto& v: optional_sampling_vars) {
                 assert(v < nvars);
                 map_here_to_there[v] = i;
-                translated_sampl_vars.push_back(i);
+                translated_opt_sampl_vars.push_back(i);
                 i++;
             }
 
@@ -93,7 +102,8 @@ namespace ArjunNS {
             assert(i == nvars);
 
             // Now we have the full map. Renumber.
-            sampling_vars = translated_sampl_vars;
+            optional_sampling_vars = translated_opt_sampl_vars;
+            sampling_vars = map_var(sampling_vars, map_here_to_there);
             for(auto& cl: cnf) map_cl(cl, map_here_to_there);
             for(auto& cl: red_cnf) map_cl(cl, map_here_to_there);
         }
