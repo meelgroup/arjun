@@ -93,6 +93,23 @@ int main(int argc, char** argv) {
         if (i+1 < argc) command_line += " ";
     }
 
+    try {
+        program.parse_args(argc, argv);
+        if (program.is_used("--help")) {
+            cout
+            << "Unate runner" << endl << endl
+            << "unate [options] inputfile outputfile" << endl;
+            cout << program << endl;
+            std::exit(0);
+        }
+    }
+    catch (const std::exception& err) {
+        std::cerr << err.what() << std::endl;
+        std::cerr << program;
+        exit(-1);
+    }
+
+
     add_unate_options();
     cout << "c Unate Version: " << arjun->get_version_info() << endl;
     cout << arjun->get_solver_version_info();

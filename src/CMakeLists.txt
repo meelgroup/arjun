@@ -22,6 +22,7 @@ include_directories(${PROJECT_SOURCE_DIR})
 include_directories(${LOUVAIN_COMMUNITIES_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CRYPTOMINISAT5_INCLUDE_DIRS})
+include_directories(${SBVA_INCLUDE_DIRS})
 
 if (NOT WIN32)
     add_cxx_flag_if_supported("-Wno-bitfield-constant-conversion")
@@ -55,6 +56,7 @@ if (louvain_communities_FOUND)
     target_link_libraries(arjun
         LINK_PUBLIC ${LOUVAIN_COMMUNITIES_LIBRARIES}
         LINK_PUBLIC ${CRYPTOMINISAT5_LIBRARIES}
+        LINK_PUBLIC ${SBVA_LIBRARIES}
     )
 else()
     target_link_libraries(arjun
