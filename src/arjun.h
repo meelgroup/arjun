@@ -166,6 +166,9 @@ namespace ArjunNS {
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
         std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;
         const std::vector<CMSat::Lit>& get_orig_cnf();
+        void run_sbva(SimplifiedCNF& orig,
+            int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,
+            uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1);
 
         //Set config
         void set_seed(uint32_t seed);

@@ -29,6 +29,8 @@
 #include <iostream>
 #include <iomanip>
 #include <random>
+
+#include <sbva/sbva.h>
 #include "time_mem.h"
 #include "puura.h"
 #include "arjun.h"
@@ -498,4 +500,56 @@ SimplifiedCNF Puura::only_backbone(Arjun* arjun, const vector<uint32_t>& sampl_v
     cnf.sampling_vars = sampl_vars;
     get_simplified_cnf(cnf, false);
     return cnf;
+}
+
+void Puura::run_sbva(SimplifiedCNF& orig,
+        int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak) {
+    auto my_time = cpuTime();
+    if (conf.verb) {
+        cout << "c [arjun-sbva] entering SBVA with"
+            " vars: " << orig.nvars << " cls: " << orig.cnf.size() << endl;
+    }
+
+    SBVA::Config sbva_conf;
+    sbva_conf.steps = sbva_steps*1e6;
+    sbva_conf.matched_cls_cutoff = sbva_cls_cutoff;
+    sbva_conf.matched_lits_cutoff = sbva_lits_cutoff;
+    SBVA::CNF cnf;
+    cnf.init_cnf(orig.nvars, sbva_conf);
+    vector<int> tmp;
+    for(const auto& cl: orig.cnf) {
+        tmp.clear();
+        for(const auto& l: cl) tmp.push_back((l.var()+1) * (l.sign() ? -1 : 1));
+        cnf.add_cl(tmp);
+    }
+    cnf.finish_cnf();
+    assert(sbva_tiebreak == 0 || sbva_tiebreak == 1);
+    cnf.run(sbva_tiebreak == 1 ? SBVA::Tiebreak::ThreeHop : SBVA::Tiebreak::None);
+    uint32_t ncls;
+    auto ret = cnf.get_cnf(orig.nvars, ncls);
+
+    orig.cnf.clear();
+    vector<Lit> cl;
+    uint32_t at = 0;
+    while(ret.size() > at) {
+        int l = ret[at++];
+        if (l == 0) {
+            orig.cnf.push_back(cl);
+            cl.clear();
+            continue;
+        }
+        cl.push_back(Lit(std::abs(l)-1, l < 0));
+    }
+    assert(cl.empty() && "SBVA should have ended with a 0");
+
+    if (conf.verb) {
+        cout << "c [arjun-sbva] steps remainK: " << std::setprecision(2) << std::fixed
+           << (double)sbva_conf.steps/1000.0
+           << " Timeout: " << (sbva_conf.steps <= 0 ? "Yes" : "No")
+           << " T: " << std::setprecision(2) << std::fixed
+           << (cpuTime() - my_time)
+           << endl;
+        cout << "c [arjun-sbva] exited SBVA with"
+            " vars: " << orig.nvars << " cls: " << orig.cnf.size() << endl;
+    }
 }

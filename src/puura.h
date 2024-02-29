@@ -60,6 +60,9 @@ public:
         const bool renumber,
         const bool need_sol_extend);
 
+    void run_sbva(SimplifiedCNF& orig,
+        int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak);
+
 private:
     SATSolver* solver = nullptr;
     SATSolver* setup_f_not_f_indic();

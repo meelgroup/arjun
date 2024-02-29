@@ -44,7 +44,6 @@
 #include "config.h"
 #include "helper.h"
 #include <cryptominisat5/dimacsparser.h>
-#include <sbva/sbva.h>
 
 using std::cout;
 using std::endl;
@@ -75,8 +74,8 @@ int simptofile = true;
 int sampl_start_at_zero = false;
 int64_t sbva_steps = 200;
 int sbva_cls_cutoff = 2;
-int sbva_lits_cutoff = 22;
-SBVA::Tiebreak sbva_tiebreak;
+int sbva_lits_cutoff = 2;
+int sbva_tiebreak = 1;
 
 // static void signal_handler(int) {
 //     cout << endl << "c [arjun] INTERRUPTING ***" << endl << std::flush;
@@ -144,13 +143,12 @@ void add_arjun_options()
         .help("SBVA heuristic cutoff. The higher, the more it needs to improve to be applied");
     program.add_argument("--sbvabreak")
         .action([&](const auto& a) {
-                if (a == "sbva") sbva_tiebreak = SBVA::Tiebreak::ThreeHop;
-                else if (a == "bva") sbva_tiebreak = SBVA::Tiebreak::None;
-                else {
+                sbva_tiebreak = std::atoi(a.c_str());
+                if (sbva_tiebreak != 0 && sbva_tiebreak != 1 ) {
                     cout << "Unrecognized tie break: sbva/bva allowed." << endl;
                     exit(-1);}
                 })
-        .default_value("sbva")
+        .default_value(1)
         .help("SBVA tie break: sbva or bva");
 
     /* po::options_description simp_options("Simplification before indep detection"); */
@@ -317,63 +315,14 @@ void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint3
     << " %" << endl;
 }
 
-void run_sbva(SimplifiedCNF& orig) {
-    auto my_time = cpuTime();
-    if (conf.verb) {
-        cout << "c [arjun-sbva] entering SBVA with"
-            " vars: " << orig.nvars << " cls: " << orig.cnf.size() << endl;
-    }
-
-    SBVA::Config sbva_conf;
-    sbva_conf.steps = sbva_steps*1e6;
-    sbva_conf.matched_cls_cutoff = sbva_cls_cutoff;
-    sbva_conf.matched_lits_cutoff = sbva_lits_cutoff;
-    SBVA::CNF cnf;
-    cnf.init_cnf(orig.nvars, sbva_conf);
-    vector<int> tmp;
-    for(const auto& cl: orig.cnf) {
-        tmp.clear();
-        for(const auto& l: cl) tmp.push_back((l.var()+1) * (l.sign() ? -1 : 1));
-        cnf.add_cl(tmp);
-    }
-    cnf.finish_cnf();
-    cnf.run(sbva_tiebreak);
-    uint32_t ncls;
-    auto ret = cnf.get_cnf(orig.nvars, ncls);
-
-    orig.cnf.clear();
-    vector<Lit> cl;
-    uint32_t at = 0;
-    while(ret.size() > at) {
-        int l = ret[at++];
-        if (l == 0) {
-            orig.cnf.push_back(cl);
-            cl.clear();
-            continue;
-        }
-        cl.push_back(Lit(std::abs(l)-1, l < 0));
-    }
-    assert(cl.empty() && "SBVA should have ended with a 0");
-
-    if (conf.verb) {
-        cout << "c [arjun-sbva] steps remainK: " << std::setprecision(2) << std::fixed
-           << (double)sbva_conf.steps/1000.0
-           << " Timeout: " << (sbva_conf.steps <= 0 ? "Yes" : "No")
-           << " T: " << std::setprecision(2) << std::fixed
-           << (cpuTime() - my_time)
-           << endl;
-        cout << "c [arjun-sbva] exited SBVA with"
-            " vars: " << orig.nvars << " cls: " << orig.cnf.size() << endl;
-    }
-}
-
 void elim_to_file(const vector<uint32_t>& sampl_vars)
 {
     double dump_start_time = cpuTime();
     auto ret = arjun->get_fully_simplified_renumbered_cnf(
         sampl_vars, simp_conf, renumber, !recover_file.empty());
 
-    if (sbva_steps > 0) run_sbva(ret);
+    if (sbva_steps > 0)
+        arjun->run_sbva(ret, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 
     delete arjun; arjun = nullptr;
     if (extend_indep && synthesis_define) {
