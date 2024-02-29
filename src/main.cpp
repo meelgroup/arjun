@@ -321,8 +321,7 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
     auto ret = arjun->get_fully_simplified_renumbered_cnf(
         sampl_vars, simp_conf, renumber, !recover_file.empty());
 
-    if (sbva_steps > 0)
-        arjun->run_sbva(ret, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
+    arjun->run_sbva(ret, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 
     delete arjun; arjun = nullptr;
     if (extend_indep && synthesis_define) {

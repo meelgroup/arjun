@@ -504,6 +504,9 @@ SimplifiedCNF Puura::only_backbone(Arjun* arjun, const vector<uint32_t>& sampl_v
 
 void Puura::run_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak) {
+
+    if (sbva_steps == 0) return;
+
     auto my_time = cpuTime();
     if (conf.verb) {
         cout << "c [arjun-sbva] entering SBVA with"

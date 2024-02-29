@@ -400,6 +400,8 @@ DLL_PUBLIC SimplifiedCNF Arjun::only_backbone(const vector<uint32_t>& sampl_vars
 DLL_PUBLIC void Arjun::run_sbva(SimplifiedCNF& orig,
             int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak)
 {
+    if (sbva_steps == 0) return;
+
     Puura pura(arjdata->common.conf);
     pura.run_sbva(orig, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 }
