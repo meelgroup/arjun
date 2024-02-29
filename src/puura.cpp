@@ -517,6 +517,7 @@ void Puura::run_sbva(SimplifiedCNF& orig,
     sbva_conf.steps = sbva_steps*1e6;
     sbva_conf.matched_cls_cutoff = sbva_cls_cutoff;
     sbva_conf.matched_lits_cutoff = sbva_lits_cutoff;
+    sbva_conf.preserve_model_cnt = 1;
     SBVA::CNF cnf;
     cnf.init_cnf(orig.nvars, sbva_conf);
     vector<int> tmp;
