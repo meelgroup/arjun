@@ -120,6 +120,7 @@ namespace ArjunNS {
         Arjun();
         ~Arjun();
         static std::string get_version_info();
+        static std::string get_sbva_version_info();
         static std::string get_compilation_env();
         static std::string get_solver_version_info();
 

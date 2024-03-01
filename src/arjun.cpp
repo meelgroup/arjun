@@ -25,6 +25,7 @@
 #include <utility>
 #include <tuple>
 #include <limits>
+#include <sbva/sbva.h>
 
 #include "arjun.h"
 #include "config.h"
@@ -142,6 +143,11 @@ DLL_PUBLIC uint32_t Arjun::start_with_clean_sampling_set()
     check_duplicated(arjdata->common.already_duplicated);
     arjdata->common.start_with_clean_sampling_set();
     return arjdata->common.sampling_set->size();
+}
+
+DLL_PUBLIC string Arjun::get_sbva_version_info()
+{
+    return SBVA::get_version_sha1();
 }
 
 DLL_PUBLIC string Arjun::get_version_info()
