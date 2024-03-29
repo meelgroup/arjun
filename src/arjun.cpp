@@ -23,7 +23,6 @@
  */
 
 #include <utility>
-#include <tuple>
 #include <limits>
 #include <sbva/sbva.h>
 
@@ -408,6 +407,6 @@ DLL_PUBLIC void Arjun::run_sbva(SimplifiedCNF& orig,
 {
     if (sbva_steps == 0) return;
 
-    Puura pura(arjdata->common.conf);
-    pura.run_sbva(orig, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
+    Puura puura(arjdata->common.conf);
+    puura.run_sbva(orig, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 }
