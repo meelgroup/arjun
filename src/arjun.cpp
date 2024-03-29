@@ -376,30 +376,30 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     const bool renumber,
     const bool need_sol_extend)
 {
-    Puura pura(arjdata->common.conf);
-    return pura.get_fully_simplified_renumbered_cnf(
+    Puura puura(arjdata->common.conf);
+    return puura.get_fully_simplified_renumbered_cnf(
             this, sampl_vars, simp_conf, renumber, need_sol_extend);
 }
 
 DLL_PUBLIC SimplifiedCNF Arjun::only_synthesis_unate(const vector<uint32_t>& sampl_vars)
 {
     arjdata->common.init();
-    Puura pura(arjdata->common.conf);
-    return pura.only_synthesis_unate(this, sampl_vars);
+    Puura puura(arjdata->common.conf);
+    return puura.only_synthesis_unate(this, sampl_vars);
 }
 
 DLL_PUBLIC SimplifiedCNF Arjun::only_conditional_dontcare(const vector<uint32_t>& sampl_vars)
 {
     arjdata->common.init();
-    Puura pura(arjdata->common.conf);
-    return pura.only_conditional_dontcare(this, sampl_vars);
+    Puura puura(arjdata->common.conf);
+    return puura.only_conditional_dontcare(this, sampl_vars);
 }
 
 DLL_PUBLIC SimplifiedCNF Arjun::only_backbone(const vector<uint32_t>& sampl_vars)
 {
     arjdata->common.init();
-    Puura pura(arjdata->common.conf);
-    return pura.only_backbone(this, sampl_vars);
+    Puura puura(arjdata->common.conf);
+    return puura.only_backbone(this, sampl_vars);
 }
 
 DLL_PUBLIC void Arjun::run_sbva(SimplifiedCNF& orig,
