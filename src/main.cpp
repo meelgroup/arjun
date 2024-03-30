@@ -56,8 +56,6 @@ string elimtofile;
 int recompute_sampling_set = 0;
 bool indep_support_given = false;
 
-uint32_t orig_cnf_must_mult_exp2 = 0;
-uint32_t orig_sampling_set_size = 0;
 uint32_t polar_mode = 0;
 SimpConf simp_conf;
 int renumber = true;
@@ -102,10 +100,6 @@ void add_arjun_options()
         .action([&](const auto& a) {conf.backward = std::atoi(a.c_str());})
         .default_value(conf.backward)
         .help("Do backwards query");
-    program.add_argument("--empty")
-        .action([&](const auto& a) {conf.empty_occs_based = std::atoi(a.c_str());})
-        .default_value(conf.empty_occs_based)
-        .help("Use empty occurrence improvement");
     program.add_argument("--maxc")
         .action([&](const auto& a) {conf.backw_max_confl = std::atoi(a.c_str());})
         .default_value(conf.backw_max_confl)
@@ -158,10 +152,6 @@ void add_arjun_options()
         .action([&](const auto& a) {conf.simp = std::atoi(a.c_str());})
         .default_value(conf.simp)
         .help("Do ANY sort of simplification");
-    program.add_argument("--simptofile")
-        .action([&](const auto& a) {simptofile = std::atoi(a.c_str());})
-        .default_value(simptofile)
-        .help("Write SIMPLIFIED file");
     program.add_argument("--probe")
         .action([&](const auto& a) {conf.probe_based = std::atoi(a.c_str());})
         .default_value(conf.probe_based)
@@ -276,41 +266,29 @@ void add_arjun_options()
     program.add_argument("files").remaining().help("input file and output file");
 }
 
-void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint32_t>& empty_occs, bool force)
-{
-    if (indep_set.size() < 100 || force) {
+void print_final_sampl_set(const vector<uint32_t>& sampl_vars) {
+    if (sampl_vars.size() < 100) {
         cout << "c p show ";
-        for(const uint32_t s: indep_set) cout << s+1 << " ";
+        for(const uint32_t s: sampl_vars) cout << s+1 << " ";
         cout << "0" << endl;
     } else {
         cout << "c not printing indep set, it's more than 100 elements" << endl;
     }
 
-    if (empty_occs.size() < 100 || force) {
-        cout << "c empties ";
-        for(const uint32_t s: empty_occs) cout << s+1 << " ";
-        cout << "0" << endl;
-    } else {
-        cout << "c not printing empty set, it's more than 100 elements" << endl;
-    }
-
     cout
-    << "c [arjun] final set size:      " << std::setw(7) << indep_set.size()
-    << " percent of original: "
-    <<  std::setw(6) << std::setprecision(4)
-    << stats_line_percent(indep_set.size(), orig_sampling_set_size)
-    << " %" << endl
-    << "c [arjun] of which empty occs: " << std::setw(7) << empty_occs.size()
-    << " percent of original: "
-    <<  std::setw(6) << std::setprecision(4)
-    << stats_line_percent(empty_occs.size(), orig_sampling_set_size)
+    << "c [arjun] final set size: " << std::setw(7) << sampl_vars.size()
+    << " percent of original: " << std::setw(6) << std::setprecision(4)
+    << stats_line_percent(sampl_vars.size(), arjun->get_orig_sampl_vars().size()) << " %" << endl
+
+    << "c [arjun] empty occs: " << std::setw(7) << arjun->get_empty_sampl_vars().size()
+    << " percent of original: " <<  std::setw(6) << std::setprecision(4)
+    << stats_line_percent(arjun->get_empty_sampl_vars().size(), arjun->get_orig_sampl_vars().size())
     << " %" << endl;
 }
 
-void elim_to_file(const vector<uint32_t>& sampl_vars) {
+void elim_to_file() {
     double dump_start_time = cpuTime();
-    auto ret = arjun->get_fully_simplified_renumbered_cnf(
-        sampl_vars, simp_conf, renumber);
+    auto ret = arjun->get_fully_simplified_renumbered_cnf(simp_conf);
 
     arjun->run_sbva(ret, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 
@@ -320,15 +298,15 @@ void elim_to_file(const vector<uint32_t>& sampl_vars) {
         exit(-1);
     }
     if (!indep_support_given) {
-        assert(ret.optional_sampling_vars.empty());
-        for(uint32_t i = 0; i < ret.nvars; i++) ret.optional_sampling_vars.push_back(i);
+        assert(ret.opt_sampl_vars.empty());
+        for(uint32_t i = 0; i < ret.nvars; i++) ret.opt_sampl_vars.push_back(i);
     } else if (extend_indep) {
         Arjun arj2;
         arj2.new_vars(ret.nvars);
         arj2.set_verbosity(conf.verb);
         for(const auto& cl: ret.cnf) arj2.add_clause(cl);
-        arj2.set_starting_sampling_set(ret.sampling_vars);
-        ret.optional_sampling_vars = arj2.extend_indep_set();
+        arj2.set_starting_sampling_set(ret.sampl_vars);
+        ret.opt_sampl_vars = arj2.extend_sampl_set();
     }
 
     /* if (synthesis_define) { */
@@ -342,7 +320,7 @@ void elim_to_file(const vector<uint32_t>& sampl_vars) {
 
     ret.renumber_sampling_vars_for_ganak();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
-    write_simpcnf(ret, elimtofile, orig_cnf_must_mult_exp2, redundant_cls);
+    write_simpcnf(ret, elimtofile, redundant_cls);
     cout << "c [arjun] Dumping took: " << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
     cout << "c [arjun] All done. T: " << std::setprecision(2) << (cpuTime() - start_time) << endl;
 }
@@ -351,7 +329,6 @@ void set_config(ArjunNS::Arjun* arj) {
     if (!compute_indep) {
         gates = 0;
         conf.backward = 0;
-        conf.empty_occs_based = 0;
     }
 
     cout << "c [arjun] using seed: " << conf.seed << endl;
@@ -382,12 +359,10 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_backw_max_confl(conf.backw_max_confl);
     arj->set_gauss_jordan(conf.gauss_jordan);
     arj->set_simp(conf.simp);
-    arj->set_empty_occs_based(conf.empty_occs_based);
     arj->set_bve_during_elimtofile(conf.bve_during_elimtofile);
 }
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
     arjun = new ArjunNS::Arjun;
     #if defined(__GNUC__) && defined(__linux__)
     feenableexcept(FE_INVALID   | FE_DIVBYZERO | FE_OVERFLOW);
@@ -446,25 +421,16 @@ int main(int argc, char** argv)
 
     const string inp = files[0];
     if (files.size() >= 2) elimtofile = files[1];
-    readInAFile(inp, arjun, orig_sampling_set_size, orig_cnf_must_mult_exp2,
-            recompute_sampling_set, indep_support_given);
-    cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
+    readInAFile(inp, arjun, recompute_sampling_set, indep_support_given);
+    vector<uint32_t> sampl_vars = arjun->run_backwards();
 
-    vector<uint32_t> indep_vars = arjun->get_indep_set();
-    print_final_indep_set(indep_vars, arjun->get_empty_occ_sampl_vars(), elimtofile.empty());
+    const auto& cnf = arjun->get_orig_cnf();
+    cout << "c [arjun] original sampling set size: " << cnf.sampl_vars.size() << endl;
+    print_final_sampl_set(sampl_vars);
     cout << "c [arjun] finished "
         << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time) << endl;
 
-    if (!elimtofile.empty()) {
-        if (simptofile) elim_to_file(indep_vars);
-        else {
-            if (extend_indep) {
-                cout << "ERROR, '--extend 1' option makes no sense if not simplifying. The tool would shrink then extend the projection set. Why do that?" << endl;
-                exit(-1);
-            }
-            write_origcnf(arjun, indep_vars, elimtofile, orig_cnf_must_mult_exp2);
-        }
-    }
+    if (!elimtofile.empty()) elim_to_file();
 
     delete arjun;
     return 0;

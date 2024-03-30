@@ -12,22 +12,13 @@ sudo apt-get install build-essential cmake
 sudo apt-get install zlib1g-dev
 ```
 
-Then, build CryptoMiniSat, Louvain-Community, and Arjun:
+Then, build CryptoMiniSat and Arjun:
 ```
 git clone https://github.com/msoos/cryptominisat
 cd cryptominisat
 mkdir build && cd build
 cmake ..
 make
-sudo make install
-sudo ldconfig
-
-cd ../..
-git clone https://github.com/meelgroup/louvain-community
-cd louvain-community
-mkdir build && cd build
-cmake ..
-make -j4
 sudo make install
 sudo ldconfig
 

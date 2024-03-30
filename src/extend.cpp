@@ -265,8 +265,8 @@ void Common::synthesis_define(const set<uint32_t>& input) {
             generate_picosat(assumptions, test_var, indep);
         }
     }
-    sampling_set->clear();
-    for(const auto& i: indep) sampling_set->push_back(i);
+    sampling_set.clear();
+    for(const auto& i: indep) sampling_set.push_back(i);
 
     verb_print(1, "[arjun] UNSAT-based define finished "
             << " final extension: " << tot_ret_false
@@ -283,7 +283,7 @@ void Common::extend_round()
     for(const auto& x: seen) assert(x == 0);
     double start_round_time = cpuTimeTotal();
     double my_time = cpuTime();
-    vector<uint32_t> indep = *sampling_set;
+    vector<uint32_t> indep = sampling_set;
     for(const auto& v: indep) seen[v] = 1;
 
     //Initially, all of samping_set is unknown
@@ -377,7 +377,7 @@ void Common::extend_round()
         iter++;
 
     }
-    *sampling_set = indep;
+    sampling_set = indep;
 
     verb_print(1, "[arjun] extend round finished "
             << " final size: " << indep.size()

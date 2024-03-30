@@ -27,20 +27,14 @@
 #endif
 
 #include <iostream>
-#include <iomanip>
 #include <vector>
-#include <atomic>
-#include <fstream>
-#include <sstream>
 #include <string>
-#include <csignal>
 #ifdef USE_ZLIB
 #include <zlib.h>
 #endif
 
 
 #include "argparse.hpp"
-#include "time_mem.h"
 #include "arjun.h"
 #include "config.h"
 #include "helper.h"
@@ -57,10 +51,6 @@ double start_time;
 ArjunInt::Config conf;
 ArjunNS::Arjun* arjun = nullptr;
 string elimtofile;
-
-uint32_t orig_cnf_must_mult_exp2;
-uint32_t orig_sampling_set_size = 0;
-vector<uint32_t> orig_sampling_set;
 
 void add_backbone_options() {
     conf.verb = 1;
@@ -79,9 +69,9 @@ void add_backbone_options() {
 void only_synthesis_unate(const vector<uint32_t>& sampl_vars)
 {
     cout << "c [backbone] dumping simplified problem to '" << elimtofile << "'" << endl;
-    auto ret = arjun->only_synthesis_unate(sampl_vars);
+    auto ret = arjun->only_synthesis_unate(sampl_vars, arjun->get_orig_sampl_vars());
 
-    write_simpcnf(ret, elimtofile, orig_cnf_must_mult_exp2);
+    write_simpcnf(ret, elimtofile);
 }
 
 void set_config(ArjunNS::Arjun* arj) {
@@ -126,12 +116,11 @@ int main(int argc, char** argv)
     elimtofile = files[1];
 
     bool indep_support_given = false;
-    readInAFile(inp, arjun, orig_sampling_set_size, orig_cnf_must_mult_exp2,
-            false, indep_support_given);
-    cout << "c [backbone] original sampling set size: " << orig_sampling_set_size << endl;
+    readInAFile(inp, arjun, false, indep_support_given);
+    cout << "c [backbone] original sampling set size: " << arjun->get_orig_sampl_vars().size() << endl;
     vector<uint32_t> sampling_set = arjun->get_current_indep_set();
-    auto simp_cnf = arjun->only_backbone(sampling_set);
-    write_simpcnf(simp_cnf, elimtofile, orig_cnf_must_mult_exp2);
+    auto simp_cnf = arjun->only_backbone(sampling_set, arjun->get_orig_sampl_vars());
+    write_simpcnf(simp_cnf, elimtofile);
 
     delete arjun;
     return 0;

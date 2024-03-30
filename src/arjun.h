@@ -26,7 +26,9 @@ THE SOFTWARE.
 #include <vector>
 #include <utility>
 #include <string>
+#include <mpfr.h>
 #include <map>
+#include <gmpxx.h>
 #ifdef CMS_LOCAL_BUILD
 #include "cryptominisat.h"
 #else
@@ -46,43 +48,34 @@ namespace ArjunNS {
     };
 
     struct SimplifiedCNF {
+        uint32_t nvars = 0;
+        std::vector<uint32_t> sampl_vars;
+        std::vector<uint32_t> opt_sampl_vars;
         std::vector<std::vector<CMSat::Lit>> cnf;
         std::vector<std::vector<CMSat::Lit>> red_cnf;
-        std::vector<uint32_t> optional_sampling_vars;
-        std::vector<uint32_t> sampling_vars;
-        uint32_t nvars = 0;
-        uint32_t empty_occs = 0;
-        std::string sol_ext_data;
 
-        void clear() {
-            cnf.clear();
-            sampling_vars.clear();
-            optional_sampling_vars.clear();
-            nvars = 0;
-            empty_occs = 0;
-            sol_ext_data.clear();
-        }
+        bool weighted = false;
+        mpz_class multiplier_weight = 1;
+#ifdef WEIGHTED
+        std::map<CMSat::Lit, double> weights; // ONLY makes sense when weighted is TRUE
+#endif
 
-        std::vector<CMSat::Lit>& map_cl(std::vector<CMSat::Lit>& cl, std::vector<uint32_t> var_map) {
-            for(auto& l: cl) {
-                l = CMSat::Lit(var_map[l.var()], l.sign());
-            }
+        std::vector<CMSat::Lit>& map_cl(std::vector<CMSat::Lit>& cl, std::vector<uint32_t> v_map) {
+            for(auto& l: cl) l = CMSat::Lit(v_map[l.var()], l.sign());
             return cl;
         }
-        std::vector<uint32_t>& map_var(std::vector<uint32_t>& cl, std::vector<uint32_t> var_map) {
-            for(auto& l: cl) l = var_map[l];
+        std::vector<uint32_t>& map_var(std::vector<uint32_t>& cl, std::vector<uint32_t> v_map) {
+            for(auto& l: cl) l = v_map[l];
             return cl;
         }
 
         // renumber variables such that sampling set start from 0...N
         void renumber_sampling_vars_for_ganak() {
-            assert(sampling_vars.size() <= optional_sampling_vars.size());
+            assert(sampl_vars.size() <= opt_sampl_vars.size());
             constexpr uint32_t m = std::numeric_limits<uint32_t>::max();
             std::vector<uint32_t> map_here_to_there(nvars, m);
             uint32_t i = 0;
-            std::vector<uint32_t> translated_sampl_vars;
-            std::vector<uint32_t> translated_opt_sampl_vars;
-            for(const auto& v: sampling_vars) {
+            for(const auto& v: sampl_vars) {
                 assert(v < nvars);
                 map_here_to_there[v] = i;
                 i++;
@@ -97,11 +90,19 @@ namespace ArjunNS {
             }
             assert(i == nvars);
 
-            // Now we have the full map. Renumber.
-            optional_sampling_vars = map_var(optional_sampling_vars, map_here_to_there);
-            sampling_vars = map_var(sampling_vars, map_here_to_there);
+            // Now we renumber
+            sampl_vars = map_var(sampl_vars, map_here_to_there);
+            opt_sampl_vars = map_var(opt_sampl_vars, map_here_to_there);
             for(auto& cl: cnf) map_cl(cl, map_here_to_there);
             for(auto& cl: red_cnf) map_cl(cl, map_here_to_there);
+#ifdef WEIGHTED
+            if (weighted) {
+                std::map<CMSat::Lit, double> new_weights;
+                for(auto& w: weights)
+                    new_weights[CMSat::Lit(map_here_to_there[w.first.var()], w.first.sign())] = w.second;
+                weights = new_weights;
+            }
+#endif
         }
     };
 
@@ -125,6 +126,7 @@ namespace ArjunNS {
         void new_var();
         bool add_xor_clause(const std::vector<CMSat::Lit>& lits, bool rhs);
         bool add_xor_clause(const std::vector<uint32_t>& vars, bool rhs);
+        void set_lit_weight(const CMSat::Lit lit, const double weight);
         bool add_clause(const std::vector<CMSat::Lit>& lits);
         bool add_red_clause(const std::vector<CMSat::Lit>& lits);
         bool add_bnn_clause(
@@ -132,16 +134,18 @@ namespace ArjunNS {
             signed cutoff,
             CMSat::Lit out = CMSat::lit_Undef);
         void new_vars(uint32_t num);
+        void set_multiplier_weight(const mpz_class mult);
 
         // Perform indep set calculation
         uint32_t set_starting_sampling_set(const std::vector<uint32_t>& vars);
         uint32_t start_with_clean_sampling_set();
         const std::vector<uint32_t>& get_current_indep_set() const;
-        std::vector<uint32_t> get_indep_set();
-        std::vector<uint32_t> extend_indep_set();
+        std::vector<uint32_t> run_backwards();
+        std::vector<uint32_t> extend_sampl_set();
         std::vector<uint32_t> synthesis_define();
         uint32_t get_orig_num_vars() const;
-        std::vector<uint32_t> get_empty_occsampl_vars() const;
+        const std::vector<uint32_t>& get_orig_sampl_vars() const;
+        const std::vector<uint32_t>& get_empty_sampl_vars() const;
 
         //Get clauses
         void start_getting_constraints(
@@ -152,15 +156,10 @@ namespace ArjunNS {
         bool get_next_constraint(std::vector<CMSat::Lit>& ret, bool& is_xor, bool& rhs);
         void end_getting_constraints();
         SimplifiedCNF get_fully_simplified_renumbered_cnf(
-            const std::vector<uint32_t>& sampl_vars,
-            const SimpConf& simp_conf,
-            const bool renumber);
-        SimplifiedCNF only_synthesis_unate(const std::vector<uint32_t>& sampl_vars);
-        SimplifiedCNF only_conditional_dontcare(const std::vector<uint32_t>& sampl_vars);
-        SimplifiedCNF only_backbone(const std::vector<uint32_t>& sampl_vars);
+                const SimpConf& simp_conf);
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
         std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;
-        const std::vector<CMSat::Lit>& get_orig_cnf();
+        const SimplifiedCNF& get_orig_cnf() const;
         void run_sbva(SimplifiedCNF& orig,
             int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,
             uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1);
@@ -190,14 +189,13 @@ namespace ArjunNS {
         void set_no_gates_below(double no_gates_below);
         void set_pred_forever_cutoff(int pred_forever_cutoff = -1);
         void set_every_pred_reduce(int every_pred_reduce = -1);
-        void set_empty_occs_based(const bool empty_occs_based);
         void set_specified_order_fname(std::string specified_order_fname);
         void set_bce(const bool bce);
         void set_bve_during_elimtofile(const bool);
+        void set_weighted(const bool);
 
         //Get config
         bool get_do_unate() const;
-        bool get_empty_occs_based() const;
         std::string get_specified_order_fname() const;
         double get_no_gates_below() const;
         bool get_simp() const;
@@ -221,7 +219,8 @@ namespace ArjunNS {
         bool get_bce() const;
         bool get_bve_during_elimtofile() const;
         bool definitely_satisfiable() const;
-        std::vector<uint32_t> get_empty_occ_sampl_vars() const;
+        const std::vector<uint32_t>& get_set_sampling_vars() const;
+        bool get_weighted() const;
 
     private:
         ArjPrivateData* arjdata = nullptr;

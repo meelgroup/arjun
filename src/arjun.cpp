@@ -133,15 +133,16 @@ DLL_PUBLIC bool Arjun::add_bnn_clause(
 DLL_PUBLIC uint32_t Arjun::set_starting_sampling_set(const vector<uint32_t>& vars)
 {
     check_duplicated(arjdata->common.already_duplicated);
-    *arjdata->common.sampling_set = vars;
-    return arjdata->common.sampling_set->size();
+    arjdata->common.sampling_set = vars;
+    arjdata->common.orig_sampling_vars = vars;
+    return arjdata->common.sampling_set.size();
 }
 
 DLL_PUBLIC uint32_t Arjun::start_with_clean_sampling_set()
 {
     check_duplicated(arjdata->common.already_duplicated);
     arjdata->common.start_with_clean_sampling_set();
-    return arjdata->common.sampling_set->size();
+    return arjdata->common.sampling_set.size();
 }
 
 DLL_PUBLIC string Arjun::get_sbva_version_info()
@@ -164,75 +165,64 @@ DLL_PUBLIC std::string Arjun::get_compilation_env()
     return ArjunIntNS::get_compilation_env();
 }
 
-DLL_PUBLIC const std::vector<Lit>& Arjun::get_orig_cnf()
+DLL_PUBLIC const SimplifiedCNF& Arjun::get_orig_cnf() const
 {
     return arjdata->common.orig_cnf;
 }
 
 DLL_PUBLIC const vector<uint32_t>& Arjun::get_current_indep_set() const {
-    return *arjdata->common.sampling_set;
+    return arjdata->common.sampling_set;
 }
 
-DLL_PUBLIC vector<uint32_t> Arjun::get_indep_set()
-{
+DLL_PUBLIC vector<uint32_t> Arjun::run_backwards() {
     double start_time = cpuTime();
     arjdata->common.init();
     if (!arjdata->common.preproc_and_duplicate()) goto end;
-
-    //Backward
-    if (arjdata->common.conf.backward) arjdata->common.backward_round();
+    if (!arjdata->common.orig_cnf.weighted && arjdata->common.conf.backward)
+        arjdata->common.backward_round();
 
     end:
-    arjdata->common.empty_out_indep_set_if_unsat();
     if (arjdata->common.conf.verb) {
-        cout << "c [arjun] get_indep_set finished "
+        cout << "c [arjun] run_backwards finished "
         << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time)
         << endl;
     }
-
-    // Deal with empty_occs
-    arjdata->common.sampling_set->insert(
-        arjdata->common.sampling_set->begin(),
-        arjdata->common.empty_occs.begin(),
-        arjdata->common.empty_occs.end());
-
-    return *arjdata->common.sampling_set;
+    return arjdata->common.sampling_set;
 }
-
 
 DLL_PUBLIC vector<uint32_t> Arjun::synthesis_define()
 {
     assert(!arjdata->common.already_duplicated);
     arjdata->common.conf.simp = false;
     std::set<uint32_t> input;
-    for(const auto& v: *arjdata->common.sampling_set) input.insert(v);
+    for(const auto& v: arjdata->common.sampling_set) input.insert(v);
     arjdata->common.init();
     if (!arjdata->common.preproc_and_duplicate()) goto end;
     arjdata->common.synthesis_define(input);
 
     end:
-    return *arjdata->common.sampling_set;
+    return arjdata->common.sampling_set;
 }
 
-DLL_PUBLIC vector<uint32_t> Arjun::extend_indep_set()
+DLL_PUBLIC vector<uint32_t> Arjun::extend_sampl_set()
 {
     assert(!arjdata->common.already_duplicated);
     double start_time = cpuTime();
     arjdata->common.conf.simp = false;
-    uint32_t orig_size = arjdata->common.sampling_set->size();
+    uint32_t orig_size = arjdata->common.sampling_set.size();
     arjdata->common.init();
     if (!arjdata->common.preproc_and_duplicate()) goto end;
 
     arjdata->common.extend_round();
     if (arjdata->common.conf.verb) {
         cout << "c [arjun] extend fully finished"
-        << " Extended by: " << (arjdata->common.sampling_set->size() - orig_size)
+        << " Extended by: " << (arjdata->common.sampling_set.size() - orig_size)
         << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time)
         << endl;
     }
 
     end:
-    return *arjdata->common.sampling_set;
+    return arjdata->common.sampling_set;
 }
 
 DLL_PUBLIC void Arjun::start_getting_constraints(
@@ -286,23 +276,16 @@ set_get_macro(bool, ite_gate_based)
 set_get_macro(bool, irreg_gate_based)
 set_get_macro(double, no_gates_below)
 set_get_macro(std::string, specified_order_fname)
-set_get_macro(bool, empty_occs_based)
 set_get_macro(bool, bce)
 set_get_macro(bool, bve_during_elimtofile)
 set_get_macro(bool, do_unate)
+set_get_macro(bool, weighted)
 
-DLL_PUBLIC vector<uint32_t> Arjun::get_empty_occ_sampl_vars() const
-{
-    return arjdata->common.empty_occs;
-}
-
-DLL_PUBLIC void Arjun::set_pred_forever_cutoff(int pred_forever_cutoff)
-{
+DLL_PUBLIC void Arjun::set_pred_forever_cutoff(int pred_forever_cutoff) {
     arjdata->common.solver->set_pred_forever_cutoff(pred_forever_cutoff);
 }
 
-DLL_PUBLIC void Arjun::set_every_pred_reduce(int every_pred_reduce)
-{
+DLL_PUBLIC void Arjun::set_every_pred_reduce(int every_pred_reduce) {
     arjdata->common.solver->set_every_pred_reduce(every_pred_reduce);
 }
 
@@ -338,36 +321,23 @@ bool Arjun::definitely_satisfiable() const {
     return arjdata->common.definitely_satisfiable;
 }
 
-DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
-    const vector<uint32_t>& sampl_vars,
-    const SimpConf& simp_conf,
-    const bool renumber)
+DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(const SimpConf& simp_conf)
 {
     Puura puura(arjdata->common.conf);
-    return puura.get_fully_simplified_renumbered_cnf(
-            this, sampl_vars, simp_conf, renumber);
+    return puura.get_fully_simplified_renumbered_cnf(this, simp_conf,
+            arjdata->common.sampling_set,
+            arjdata->common.set_sampling_vars,
+            arjdata->common.set_sampling_vars, arjdata->common.orig_sampling_vars);
 }
 
-DLL_PUBLIC SimplifiedCNF Arjun::only_synthesis_unate(const vector<uint32_t>& sampl_vars)
-{
-    arjdata->common.init();
-    Puura puura(arjdata->common.conf);
-    return puura.only_synthesis_unate(this, sampl_vars);
-}
-
-DLL_PUBLIC SimplifiedCNF Arjun::only_conditional_dontcare(const vector<uint32_t>& sampl_vars)
-{
-    arjdata->common.init();
-    Puura puura(arjdata->common.conf);
-    return puura.only_conditional_dontcare(this, sampl_vars);
-}
-
-DLL_PUBLIC SimplifiedCNF Arjun::only_backbone(const vector<uint32_t>& sampl_vars)
-{
-    arjdata->common.init();
-    Puura puura(arjdata->common.conf);
-    return puura.only_backbone(this, sampl_vars);
-}
+DLL_PUBLIC void Arjun::set_lit_weight(
+        [[maybe_unused]] const CMSat::Lit lit, [[maybe_unused]] const double weight) {
+#ifdef WEIGHTED
+    arjdata->common.solver->set_lit_weight(lit, weight);
+#else
+    assert(false && "This is not a weighted build");
+#endif
+ }
 
 DLL_PUBLIC void Arjun::run_sbva(SimplifiedCNF& orig,
             int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak)
@@ -376,4 +346,20 @@ DLL_PUBLIC void Arjun::run_sbva(SimplifiedCNF& orig,
 
     Puura puura(arjdata->common.conf);
     puura.run_sbva(orig, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
+}
+
+DLL_PUBLIC const std::vector<uint32_t>& Arjun::get_empty_sampl_vars() const {
+    return arjdata->common.empty_sampling_vars;
+}
+
+DLL_PUBLIC const std::vector<uint32_t>& Arjun::get_orig_sampl_vars() const {
+    return arjdata->common.orig_sampling_vars;
+}
+
+DLL_PUBLIC const std::vector<uint32_t>& Arjun::get_set_sampling_vars() const {
+    return arjdata->common.set_sampling_vars;
+}
+
+DLL_PUBLIC void Arjun::set_multiplier_weight(const mpz_class mult) {
+    arjdata->common.solver->set_multiplier_weight(mult);
 }

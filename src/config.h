@@ -44,7 +44,6 @@ struct Config {
     int xor_gates_based = 1;
     int ite_gate_based = 1;
     int irreg_gate_based = 1;
-    int empty_occs_based = 1;
     int probe_based = 1;
     int backward = 1;
     int gauss_jordan = 0;
@@ -52,8 +51,9 @@ struct Config {
     int do_unate = 0;
     double no_gates_below = 0.01;
     std::string specified_order_fname;
-    uint32_t backw_max_confl = 5000;
+    uint32_t backw_max_confl = 5000*10;
     int bve_during_elimtofile = true;
+    bool weighted = false;
 };
 
 }

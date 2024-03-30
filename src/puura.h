@@ -43,21 +43,13 @@ public:
     Puura(const Config& _conf);
     ~Puura();
 
-    SimplifiedCNF only_synthesis_unate(
-            Arjun* arjun,
-            const vector<uint32_t>& sampl_vars);
-    SimplifiedCNF only_conditional_dontcare(
-            Arjun* arjun,
-            const vector<uint32_t>& sampl_vars);
-    SimplifiedCNF only_backbone(
-            Arjun* arjun,
-            const vector<uint32_t>& sampl_vars);
-
     SimplifiedCNF get_fully_simplified_renumbered_cnf(
         Arjun* arjun,
-        const vector<uint32_t>& sampl_vars,
         const SimpConf simp_conf,
-        const bool renumber);
+        vector<uint32_t>& sampl_vars,
+        vector<uint32_t>& set_sampl_vars,
+        vector<uint32_t>& empty_sampl_vars,
+        vector<uint32_t>& orig_sampl_vars);
 
     void run_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak);
@@ -71,7 +63,11 @@ private:
 
     void fill_solver(Arjun* arjun);
     void renumber_sampling_vars_for_ganak(SimplifiedCNF& scnf);
-    void get_simplified_cnf(SimplifiedCNF& sncf, const bool renumber);
+    void get_simplified_cnf(SimplifiedCNF& sncf,
+        const vector<uint32_t>& sampl_vars,
+        const vector<uint32_t>& set_sampl_vars,
+        const vector<uint32_t>& empty_sampl_vars,
+        const vector<uint32_t>& orig_sampl_vars);
 
     const Config& conf;
 

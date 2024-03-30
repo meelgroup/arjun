@@ -53,35 +53,8 @@ inline double stats_line_percent(double num, double total)
     }
 }
 
-inline void write_origcnf(Arjun* arjun, vector<uint32_t>& indep_vars,
-        const std::string& elimtofile, const uint32_t orig_cnf_must_mult_exp2)
-{
-    uint32_t num_cls = 0;
-    const auto& cnf = arjun->get_orig_cnf();
-    for(const auto& l: cnf) if (l == lit_Undef) num_cls++;
-    std::ofstream outf;
-    outf.open(elimtofile.c_str(), std::ios::out);
-    outf << "p cnf " << arjun->get_orig_num_vars() << " " << num_cls << endl;
-
-    //Add projection
-    outf << "c p show ";
-    std::sort(indep_vars.begin(), indep_vars.end());
-    for(const auto& v: indep_vars) {
-        assert(v < arjun->get_orig_num_vars());
-        outf << v+1  << " ";
-    }
-    outf << "0\n";
-
-    for(const auto& l: cnf) {
-        if (l == lit_Undef) outf << "0\n";
-        else outf << l << " ";
-    }
-    outf << "c MUST MULTIPLY BY 2**" << orig_cnf_must_mult_exp2 << endl;
-}
-
 inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
-        const std::string& fname, const uint32_t orig_cnf_must_mult_exp2,
-        bool red = true)
+        const std::string& fname, bool red = true)
 {
     uint32_t num_cls = simpcnf.cnf.size();
     std::ofstream outf;
@@ -90,7 +63,7 @@ inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
 
     //Add projection
     outf << "c p show ";
-    auto sampl = simpcnf.sampling_vars;
+    auto sampl = simpcnf.sampl_vars;
     std::sort(sampl.begin(), sampl.end());
     for(const auto& v: sampl) {
         assert(v < simpcnf.nvars);
@@ -98,7 +71,7 @@ inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
     }
     outf << "0\n";
     outf << "c p optshow ";
-    sampl = simpcnf.optional_sampling_vars;
+    sampl = simpcnf.opt_sampl_vars;
     std::sort(sampl.begin(), sampl.end());
     for(const auto& v: sampl) {
         assert(v < simpcnf.nvars);
@@ -108,17 +81,23 @@ inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
 
     for(const auto& cl: simpcnf.cnf) outf << cl << " 0\n";
     if (red) for(const auto& cl: simpcnf.red_cnf) outf << "c red " << cl << " 0\n";
-    outf << "c MUST MULTIPLY BY 2**" << simpcnf.empty_occs+orig_cnf_must_mult_exp2 << endl;
+
+#ifdef WEIGHTED
+    if (simpcnf.weighted) {
+        for(const auto& it: simpcnf.weights) {
+            outf << "c p weight " << it.first << " " << it.second << endl;
+        }
+    }
+#endif
+    mpz_class w = simpcnf.multiplier_weight;
+    outf << "c MUST MULTIPLY BY " << w << endl;
 }
 
 inline void readInAFile(const std::string& filename,
         Arjun* arjun,
-        uint32_t& orig_sampling_set_size,
-        uint32_t& orig_cnf_must_mult_exp2,
         const bool recompute_sampling_set,
         bool& indep_support_given)
 {
-    assert(orig_cnf_must_mult_exp2 == 0);
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
     DimacsParser<StreamBuffer<FILE*, FN>, ArjunNS::Arjun> parser(arjun, nullptr, 0);
@@ -137,14 +116,12 @@ inline void readInAFile(const std::string& filename,
     }
 
     if (!parser.parse_DIMACS(in, true)) exit(-1);
-    if (!parser.sampling_vars_found || recompute_sampling_set) {
-        orig_sampling_set_size = arjun->start_with_clean_sampling_set();
+    if (!parser.sampl_vars_found || recompute_sampling_set) {
+        arjun->start_with_clean_sampling_set();
     } else {
-        orig_sampling_set_size = arjun->set_starting_sampling_set(parser.sampling_vars);
+        arjun->set_starting_sampling_set(parser.sampl_vars);
         indep_support_given = true;
     }
-    orig_cnf_must_mult_exp2 = parser.must_mult_exp2;
-
     #ifndef USE_ZLIB
         fclose(in);
     #else

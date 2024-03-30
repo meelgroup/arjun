@@ -288,55 +288,71 @@ void Puura::conditional_dontcare()
     delete s;
 }
 
-void Puura::get_simplified_cnf(SimplifiedCNF& scnf, const bool renumber)
-{
+void Puura::get_simplified_cnf(SimplifiedCNF& scnf,
+        const vector<uint32_t>& sampl_vars,
+        const vector<uint32_t>& set_sampl_vars,
+        const vector<uint32_t>& empty_sampl_vars,
+        const vector<uint32_t>& orig_sampl_vars) {
     assert(scnf.cnf.empty());
+
     vector<Lit> clause;
     bool is_xor, rhs;
-    solver->start_getting_constraints(false, renumber);
-    if (renumber) scnf.sampling_vars = solver->translate_sampl_set(scnf.sampling_vars);
+
+
+    scnf.sampl_vars = sampl_vars;
+    scnf.weighted = solver->get_weighted();
+    mpz_class dummy(2);
+    mpz_pow_ui(dummy.get_mpz_t(), dummy.get_mpz_t(), empty_sampl_vars.size());
+    scnf.multiplier_weight = solver->get_multiplier_weight()*dummy;
+#ifdef WEIGHTED
+    if (scnf.weighted) {
+        solver->get_weights(scnf.weights, sampl_vars, orig_sampl_vars);
+        // todo
+    }
+#endif
+
+    solver->start_getting_constraints(false, true);
+    scnf.sampl_vars = solver->translate_sampl_set(scnf.sampl_vars);
     while(solver->get_next_constraint(clause, is_xor, rhs)) {
         assert(!is_xor); assert(rhs);
         scnf.cnf.push_back(clause);
     }
     solver->end_getting_constraints();
 
-    solver->start_getting_constraints(true, renumber);
+    solver->start_getting_constraints(true, true);
     while(solver->get_next_constraint(clause, is_xor, rhs)) {
         assert(!is_xor); assert(rhs);
         scnf.red_cnf.push_back(clause);
     }
     solver->end_getting_constraints();
 
-    scnf.nvars = renumber ? solver->simplified_nvars() :  solver->nVars();
-    std::sort(scnf.sampling_vars.begin(), scnf.sampling_vars.end());
+    scnf.nvars = solver->simplified_nvars();
+    std::sort(scnf.sampl_vars.begin(), scnf.sampl_vars.end());
 }
 
-void Puura::fill_solver(Arjun* arjun)
-{
+void Puura::fill_solver(Arjun* arjun) {
     assert(solver == nullptr);
     solver = new CMSat::SATSolver;
     solver->set_verbosity(conf.verb);
     solver->set_find_xors(false);
 
     assert(solver->nVars() == 0); // Solver here is empty
-    solver->new_vars(arjun->get_orig_num_vars());
 
     // Inject original CNF
-    const auto cnf = arjun->get_orig_cnf();
-    vector<Lit> cl;
-    for(const auto& l: cnf) {
-        if (l != lit_Undef) {
-            assert(l.var() < arjun->get_orig_num_vars());
-            cl.push_back(l);
-            continue;
-        }
-        solver->add_clause(cl);
-        cl.clear();
+    const auto& cnf = arjun->get_orig_cnf();
+    solver->new_vars(cnf.nvars);
+    for(const auto& cl: cnf.cnf) solver->add_clause(cl);
+    for(const auto& cl: cnf.red_cnf) solver->add_red_clause(cl);
+#ifdef WEIGHTED
+    if (cnf.weighted) {
+        for(const auto& it: cnf.weights) solver->set_lit_weight(it.first, it.second);
     }
+#endif
+    solver->set_multiplier_weight(cnf.multiplier_weight);
 
     // inject set vars
-    const auto lits =  arjun->get_zero_assigned_lits();
+    const auto lits = arjun->get_zero_assigned_lits();
+    vector<Lit> cl;
     for(const auto& l: lits) {
         assert(l.var() < arjun->get_orig_num_vars());
         cl.clear();
@@ -365,13 +381,15 @@ bool replace(std::string& str, const std::string& from, const std::string& to) {
 
 SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     Arjun* arjun,
-    const vector<uint32_t>& sampl_vars,
     const SimpConf simp_conf,
-    const bool renumber)
+    vector<uint32_t>& sampl_vars,
+    vector<uint32_t>& set_sampl_vars,
+    vector<uint32_t>& empty_sampl_vars,
+    vector<uint32_t>& orig_sampl_vars)
 {
     fill_solver(arjun);
-    solver->set_renumber(renumber);
-    solver->set_scc(renumber);
+    solver->set_renumber(true);
+    solver->set_scc(true);
     setup_sampl_vars_dontelim(sampl_vars);
 
     //Below works VERY WELL for: ProcessBean, pollard, track1_116.mcc2020_cnf
@@ -424,20 +442,13 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     if (conf.bce) str += "occ-bce,";
     solver->simplify(&dont_elim, &str);
 
-    vector<uint32_t> empty_occs;
     SimplifiedCNF cnf;
-    cnf.sampling_vars = sampl_vars;
-
-    if (conf.empty_occs_based) {
-        solver->clean_sampl_and_get_empties(cnf.sampling_vars, empty_occs);
-        dont_elim.clear();
-        for(uint32_t v: cnf.sampling_vars) dont_elim.push_back(Lit(v, false));
-        str = "occ-bve-empty, must-renumber";
-        solver->simplify(&dont_elim, &str);
-    }
-    get_simplified_cnf(cnf, renumber);
-
-    cnf.empty_occs = empty_occs.size();
+    solver->get_empties(sampl_vars, empty_sampl_vars);
+    dont_elim.clear();
+    for(uint32_t v: sampl_vars) dont_elim.push_back(Lit(v, false));
+    str = "occ-bve-empty, must-renumber";
+    solver->simplify(&dont_elim, &str);
+    get_simplified_cnf(cnf, sampl_vars, set_sampl_vars, empty_sampl_vars, orig_sampl_vars);
     return cnf;
 }
 
@@ -449,58 +460,14 @@ void Puura::setup_sampl_vars_dontelim(const vector<uint32_t>& sampl_vars)
     for(uint32_t v: sampl_vars) sampl_set.insert(v);
 }
 
-SimplifiedCNF Puura::only_synthesis_unate(Arjun* arjun, const vector<uint32_t>& sampl_vars)
-{
-    fill_solver(arjun);
-    setup_sampl_vars_dontelim(sampl_vars);
-    synthesis_unate();
-
-    SimplifiedCNF cnf;
-    cnf.sampling_vars = sampl_vars;
-    get_simplified_cnf(cnf, false);
-    return cnf;
-}
-
-
-SimplifiedCNF Puura::only_conditional_dontcare(Arjun* arjun, const vector<uint32_t>& sampl_vars)
-{
-    fill_solver(arjun);
-    setup_sampl_vars_dontelim(sampl_vars);
-
-    conditional_dontcare();
-    std::string s = "clean-cls";
-    solver->simplify(&dont_elim, &s);
-
-    SimplifiedCNF cnf;
-    cnf.sampling_vars = sampl_vars;
-    get_simplified_cnf(cnf, false);
-    return cnf;
-}
-
-SimplifiedCNF Puura::only_backbone(Arjun* arjun, const vector<uint32_t>& sampl_vars)
-{
-    fill_solver(arjun);
-    setup_sampl_vars_dontelim(sampl_vars);
-
-    std::string s = "backbone";
-    solver->simplify(&dont_elim, &s);
-
-    SimplifiedCNF cnf;
-    cnf.sampling_vars = sampl_vars;
-    get_simplified_cnf(cnf, false);
-    return cnf;
-}
-
 void Puura::run_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak) {
 
     if (sbva_steps == 0) return;
 
     auto my_time = cpuTime();
-    if (conf.verb) {
-        cout << "c [arjun-sbva] entering SBVA with"
-            " vars: " << orig.nvars << " cls: " << orig.cnf.size() << endl;
-    }
+    verb_print(1, "[arjun-sbva] entering SBVA with"
+            " vars: " << orig.nvars << " cls: " << orig.cnf.size());
 
     SBVA::Config sbva_conf;
     sbva_conf.steps = sbva_steps*1e6;

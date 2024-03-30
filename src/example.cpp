@@ -77,7 +77,7 @@ int main()
     for(uint32_t i = 0; i < 100; i++) proj.push_back(i);
     arjun.set_starting_sampling_set(proj);
 
-    proj = arjun.get_indep_set();
+    proj = arjun.run_backwards();
     std::set<uint32_t> dont_elim (proj.begin(), proj.end());
 
     //TODO add frozen variables here
@@ -86,10 +86,7 @@ int main()
     vector<uint32_t> dont_elim_vec(dont_elim.begin(), dont_elim.end());
 
     SimpConf simp_conf;
-    arjun.get_fully_simplified_renumbered_cnf(
-        dont_elim_vec, simp_conf,
-        false // don't renumber and don't replace variables
-    );
+    arjun.get_fully_simplified_renumbered_cnf(simp_conf);
 
     //get cnf
     const uint32_t orig_num_vars = arjun.get_orig_num_vars();

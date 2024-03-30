@@ -96,10 +96,6 @@ void Common::print_sorted_unknown(const vector<uint32_t>& unknown) const
             cout << "c var: " << v << " occ: " << incidence[v]
             //<< " prop-inc: " << std::setw(6) << incidence_probing[v]
             << endl;
-            if (var_to_num_communities.size() > v) {
-                cout << " fan-out to comms: " << std::setw(6) << var_to_num_communities[v].size();
-            }
-            cout << endl;
         }
     }
 }
@@ -114,7 +110,7 @@ void Common::backward_round() {
     vector<uint32_t> unknown;
     vector<char> unknown_set;
     unknown_set.resize(orig_num_vars, 0);
-    for(const auto& x: *sampling_set) {
+    for(const auto& x: sampling_set) {
         assert(x < orig_num_vars);
         assert(unknown_set[x] == 0 && "No var should be in 'sampling_set' twice!");
         unknown.push_back(x);
@@ -132,8 +128,8 @@ void Common::backward_round() {
 
     //Calc mod:
     uint32_t mod = 1;
-    if ((sampling_set->size()) > 20 ) {
-        uint32_t will_do_iters = sampling_set->size();
+    if ((sampling_set.size()) > 20 ) {
+        uint32_t will_do_iters = sampling_set.size();
         uint32_t want_printed = 30;
         mod = will_do_iters/want_printed;
         mod = std::max<int>(mod, 1);
@@ -341,7 +337,7 @@ void Common::backward_round() {
     update_sampling_set(unknown, unknown_set, indep);
 
     verb_print(1, "[arjun] backward round finished. U: " <<
-            " I: " << sampling_set->size() << " T: "
+            " I: " << sampling_set.size() << " T: "
         << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
 }
