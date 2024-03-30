@@ -88,8 +88,7 @@ int main()
     SimpConf simp_conf;
     arjun.get_fully_simplified_renumbered_cnf(
         dont_elim_vec, simp_conf,
-        false, // don't renumber and don't replace variables
-        false // no need to extend
+        false // don't renumber and don't replace variables
     );
 
     //get cnf

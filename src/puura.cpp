@@ -367,8 +367,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     Arjun* arjun,
     const vector<uint32_t>& sampl_vars,
     const SimpConf simp_conf,
-    const bool renumber,
-    const bool need_sol_extend)
+    const bool renumber)
 {
     fill_solver(arjun);
     solver->set_renumber(renumber);
@@ -439,16 +438,6 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     get_simplified_cnf(cnf, renumber);
 
     cnf.empty_occs = empty_occs.size();
-
-    if (need_sol_extend) {
-#ifdef ARJUN_SERIALIZE
-        cnf.sol_ext_data = solver.serialize_solution_reconstruction_data();
-#else
-        cout << "ERROR: Both Arjun and CMS needs to be compiled with 'ARJUN_SERIALIZE' to extend solutions" << endl;
-        exit(-1);
-#endif
-    }
-
     return cnf;
 }
 

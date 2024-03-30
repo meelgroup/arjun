@@ -29,11 +29,8 @@
 #include <iostream>
 #include <iomanip>
 #include <vector>
-#include <atomic>
 #include <fstream>
-#include <sstream>
 #include <string>
-#include <csignal>
 #ifdef USE_ZLIB
 #include <zlib.h>
 #endif
@@ -56,8 +53,8 @@ double start_time;
 ArjunInt::Config conf;
 ArjunNS::Arjun* arjun = nullptr;
 string elimtofile;
-string recover_file;
 int recompute_sampling_set = 0;
+bool indep_support_given = false;
 
 uint32_t orig_cnf_must_mult_exp2 = 0;
 uint32_t orig_sampling_set_size = 0;
@@ -254,11 +251,6 @@ void add_arjun_options()
         .action([&](const auto& a) {renumber = std::atoi(a.c_str());})
         .default_value(renumber)
         .help("Renumber variables to start from 1...N in CNF. Setting this to 0 is EXPERIMENTAL!!");
-    program.add_argument("--samplstartzero")
-        .action([&](const auto& a) {sampl_start_at_zero = std::atoi(a.c_str());})
-        .default_value(sampl_start_at_zero)
-        .help("Renumber variable before dumping the CNF to make sure sampling vars start at 1...k."
-                "This is required for GANAK");
     program.add_argument("--distill")
         .action([&](const auto& a) {conf.distill = std::atoi(a.c_str());})
         .default_value(conf.distill);
@@ -315,11 +307,10 @@ void print_final_indep_set(const vector<uint32_t>& indep_set, const vector<uint3
     << " %" << endl;
 }
 
-void elim_to_file(const vector<uint32_t>& sampl_vars)
-{
+void elim_to_file(const vector<uint32_t>& sampl_vars) {
     double dump_start_time = cpuTime();
     auto ret = arjun->get_fully_simplified_renumbered_cnf(
-        sampl_vars, simp_conf, renumber, !recover_file.empty());
+        sampl_vars, simp_conf, renumber);
 
     arjun->run_sbva(ret, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 
@@ -328,32 +319,28 @@ void elim_to_file(const vector<uint32_t>& sampl_vars)
         cout << "ERROR: can't have both --extend and --synthdefine" << endl;
         exit(-1);
     }
-    if (extend_indep) {
+    if (!indep_support_given) {
+        assert(ret.optional_sampling_vars.empty());
+        for(uint32_t i = 0; i < ret.nvars; i++) ret.optional_sampling_vars.push_back(i);
+    } else if (extend_indep) {
         Arjun arj2;
         arj2.new_vars(ret.nvars);
         arj2.set_verbosity(conf.verb);
         for(const auto& cl: ret.cnf) arj2.add_clause(cl);
         arj2.set_starting_sampling_set(ret.sampling_vars);
-        ret.sampling_vars = arj2.extend_indep_set();
+        ret.optional_sampling_vars = arj2.extend_indep_set();
     }
 
-    if (synthesis_define) {
-        Arjun arj2;
-        arj2.new_vars(ret.nvars);
-        arj2.set_verbosity(conf.verb);
-        for(const auto& cl: ret.cnf) arj2.add_clause(cl);
-        arj2.set_starting_sampling_set(ret.sampling_vars);
-        ret.sampling_vars = arj2.synthesis_define();
-    }
+    /* if (synthesis_define) { */
+    /*     Arjun arj2; */
+    /*     arj2.new_vars(ret.nvars); */
+    /*     arj2.set_verbosity(conf.verb); */
+    /*     for(const auto& cl: ret.cnf) arj2.add_clause(cl); */
+    /*     arj2.set_starting_sampling_set(ret.sampling_vars); */
+    /*     ret.sampling_vars = arj2.synthesis_define(); */
+    /* } */
 
-    // TODO fix recover file based on SCNF renumbering
-    if (!recover_file.empty()) {
-        std::ofstream f(recover_file, std::ios::out | std::ios::binary);
-        f.write(&ret.sol_ext_data[0], ret.sol_ext_data.size());
-        f.close();
-    }
-
-    if (sampl_start_at_zero) ret.renumber_sampling_vars_for_ganak();
+    ret.renumber_sampling_vars_for_ganak();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
     write_simpcnf(ret, elimtofile, orig_cnf_must_mult_exp2, redundant_cls);
     cout << "c [arjun] Dumping took: " << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
@@ -459,8 +446,8 @@ int main(int argc, char** argv)
 
     const string inp = files[0];
     if (files.size() >= 2) elimtofile = files[1];
-    if (files.size() >= 3) recover_file = files[2];
-    readInAFile(inp, arjun, orig_sampling_set_size, orig_cnf_must_mult_exp2, recompute_sampling_set);
+    readInAFile(inp, arjun, orig_sampling_set_size, orig_cnf_must_mult_exp2,
+            recompute_sampling_set, indep_support_given);
     cout << "c [arjun] original sampling set size: " << orig_sampling_set_size << endl;
 
     vector<uint32_t> indep_vars = arjun->get_indep_set();

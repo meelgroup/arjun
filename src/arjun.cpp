@@ -334,38 +334,6 @@ DLL_PUBLIC std::vector<std::pair<CMSat::Lit, CMSat::Lit> > Arjun::get_all_binary
     return ret;
 }
 
-DLL_PUBLIC const vector<Lit> Arjun::get_cnf(uint32_t& num_cls) const {
-    vector<Lit> cnf;
-    bool ret = true;
-    num_cls = 0;
-
-    arjdata->common.solver->start_getting_constraints(false);
-    vector<Lit> clause;
-    bool is_xor;
-    bool rhs;
-    while (ret) {
-        ret = arjdata->common.solver->get_next_constraint(clause, is_xor, rhs);
-        if (!ret) break;
-        assert(!is_xor); assert(rhs);
-
-        bool ok = true;
-        for(auto l: clause) {
-            if (l.var() >= arjdata->common.orig_num_vars) {
-                ok = false;
-                break;
-            }
-        }
-
-        if (ok) {
-            for(auto const& l: clause) cnf.push_back(l);
-            cnf.push_back(lit_Undef);
-            num_cls++;
-        }
-    }
-    arjdata->common.solver->end_getting_constraints();
-    return cnf;
-}
-
 bool Arjun::definitely_satisfiable() const {
     return arjdata->common.definitely_satisfiable;
 }
@@ -373,12 +341,11 @@ bool Arjun::definitely_satisfiable() const {
 DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(
     const vector<uint32_t>& sampl_vars,
     const SimpConf& simp_conf,
-    const bool renumber,
-    const bool need_sol_extend)
+    const bool renumber)
 {
     Puura puura(arjdata->common.conf);
     return puura.get_fully_simplified_renumbered_cnf(
-            this, sampl_vars, simp_conf, renumber, need_sol_extend);
+            this, sampl_vars, simp_conf, renumber);
 }
 
 DLL_PUBLIC SimplifiedCNF Arjun::only_synthesis_unate(const vector<uint32_t>& sampl_vars)

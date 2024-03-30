@@ -97,6 +97,14 @@ inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
         outf << v+1  << " ";
     }
     outf << "0\n";
+    outf << "c p optshow ";
+    sampl = simpcnf.optional_sampling_vars;
+    std::sort(sampl.begin(), sampl.end());
+    for(const auto& v: sampl) {
+        assert(v < simpcnf.nvars);
+        outf << v+1  << " ";
+    }
+    outf << "0\n";
 
     for(const auto& cl: simpcnf.cnf) outf << cl << " 0\n";
     if (red) for(const auto& cl: simpcnf.red_cnf) outf << "c red " << cl << " 0\n";
@@ -107,7 +115,8 @@ inline void readInAFile(const std::string& filename,
         Arjun* arjun,
         uint32_t& orig_sampling_set_size,
         uint32_t& orig_cnf_must_mult_exp2,
-        const bool recompute_sampling_set)
+        const bool recompute_sampling_set,
+        bool& indep_support_given)
 {
     assert(orig_cnf_must_mult_exp2 == 0);
     #ifndef USE_ZLIB
@@ -127,14 +136,12 @@ inline void readInAFile(const std::string& filename,
         std::exit(-1);
     }
 
-    if (!parser.parse_DIMACS(in, true)) {
-        exit(-1);
-    }
-
+    if (!parser.parse_DIMACS(in, true)) exit(-1);
     if (!parser.sampling_vars_found || recompute_sampling_set) {
         orig_sampling_set_size = arjun->start_with_clean_sampling_set();
     } else {
         orig_sampling_set_size = arjun->set_starting_sampling_set(parser.sampling_vars);
+        indep_support_given = true;
     }
     orig_cnf_must_mult_exp2 = parser.must_mult_exp2;
 

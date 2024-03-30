@@ -126,7 +126,9 @@ int main(int argc, char** argv) {
     const string inp = files[0];
     elimtofile = files[1];
 
-    readInAFile(inp, arjun, orig_sampling_set_size, orig_cnf_must_mult_exp2, false);
+    bool indep_support_given = false;
+    readInAFile(inp, arjun, orig_sampling_set_size, orig_cnf_must_mult_exp2,
+            false, indep_support_given);
     cout << "c [extend] original sampling set size: " << orig_sampling_set_size << endl;
     vector<uint32_t> sampl_set = arjun->extend_indep_set();
     write_origcnf(arjun, sampl_set, elimtofile, orig_cnf_must_mult_exp2);

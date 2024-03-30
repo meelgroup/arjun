@@ -57,8 +57,7 @@ public:
         Arjun* arjun,
         const vector<uint32_t>& sampl_vars,
         const SimpConf simp_conf,
-        const bool renumber,
-        const bool need_sol_extend);
+        const bool renumber);
 
     void run_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak);

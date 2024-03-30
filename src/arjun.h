@@ -26,8 +26,7 @@ THE SOFTWARE.
 #include <vector>
 #include <utility>
 #include <string>
-#include <tuple>
-#include <set>
+#include <map>
 #ifdef CMS_LOCAL_BUILD
 #include "cryptominisat.h"
 #else
@@ -76,8 +75,7 @@ namespace ArjunNS {
         }
 
         // renumber variables such that sampling set start from 0...N
-        void renumber_sampling_vars_for_ganak()
-        {
+        void renumber_sampling_vars_for_ganak() {
             assert(sampling_vars.size() <= optional_sampling_vars.size());
             constexpr uint32_t m = std::numeric_limits<uint32_t>::max();
             std::vector<uint32_t> map_here_to_there(nvars, m);
@@ -153,12 +151,10 @@ namespace ArjunNS {
                uint32_t max_glue = std::numeric_limits<uint32_t>::max());
         bool get_next_constraint(std::vector<CMSat::Lit>& ret, bool& is_xor, bool& rhs);
         void end_getting_constraints();
-        const std::vector<CMSat::Lit> get_cnf(uint32_t& num_cls) const;
         SimplifiedCNF get_fully_simplified_renumbered_cnf(
             const std::vector<uint32_t>& sampl_vars,
             const SimpConf& simp_conf,
-            const bool renumber,
-            const bool need_sol_extend);
+            const bool renumber);
         SimplifiedCNF only_synthesis_unate(const std::vector<uint32_t>& sampl_vars);
         SimplifiedCNF only_conditional_dontcare(const std::vector<uint32_t>& sampl_vars);
         SimplifiedCNF only_backbone(const std::vector<uint32_t>& sampl_vars);
