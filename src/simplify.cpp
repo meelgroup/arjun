@@ -124,15 +124,11 @@ bool Common::probe_all()
     for(auto v: sampling_set) {
         uint32_t min_props = 0;
         Lit l(v, false);
-        if(solver->probe(l, min_props) == l_False) {
-            return false;
-        }
+        if(solver->probe(l, min_props) == l_False) return false;
         incidence_probing[v] = min_props;
     }
     string s("must-scc-vrepl");
-    if (solver->simplify(nullptr, &s) == l_False) {
-        return false;
-    }
+    if (solver->simplify(nullptr, &s) == l_False) return false;
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
     remove_zero_assigned_literals(true);
     remove_eq_literals(true);
