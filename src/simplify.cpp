@@ -142,16 +142,16 @@ bool Common::probe_all()
     return true;
 }
 
-enum class gate_t {or_gate, xor_gate, ite_gate};
+enum class GateT {or_gate, xor_gate, ite_gate};
 
 struct GateOccurs
 {
-    GateOccurs(gate_t _t, uint32_t _at) :
+    GateOccurs(GateT _t, uint32_t _at) :
         t(_t),
         at(_at)
     {}
 
-    gate_t t;
+    GateT t;
     uint32_t at;
 };
 
@@ -195,7 +195,7 @@ bool Common::remove_definable_by_gates() {
         if (all_orig && num == x.first.size()) {
             for(const uint32_t v: x.first) {
                 rhs_incidence[v]++;
-                vars_gate_occurs[v].push_back(GateOccurs(gate_t::xor_gate, i));
+                vars_gate_occurs[v].push_back(GateOccurs(GateT::xor_gate, i));
                 potential++;
             }
         }
@@ -221,7 +221,7 @@ bool Common::remove_definable_by_gates() {
         //This one can be used to remove a variable
         if (all_orig && num == orgate.lits.size()+1) {
             rhs_incidence[orgate.rhs.var()]++;
-            vars_gate_occurs[orgate.rhs.var()].push_back(GateOccurs(gate_t::or_gate, i));
+            vars_gate_occurs[orgate.rhs.var()].push_back(GateOccurs(GateT::or_gate, i));
             potential++;
         }
     }
@@ -242,7 +242,7 @@ bool Common::remove_definable_by_gates() {
         //This one can be used to remove a variable
         if (all_orig && num == itegate.get_all().size()) {
             rhs_incidence[itegate.rhs.var()]++;
-            vars_gate_occurs[itegate.rhs.var()].push_back(GateOccurs(gate_t::ite_gate, i));
+            vars_gate_occurs[itegate.rhs.var()].push_back(GateOccurs(GateT::ite_gate, i));
             potential++;
         }
     }
@@ -273,7 +273,7 @@ bool Common::remove_definable_by_gates() {
 
         //Define v as a function of the other variables in the XOR
         for(const auto& gate: vars_gate_occurs[v]) {
-            if (gate.t == gate_t::xor_gate) {
+            if (gate.t == GateT::xor_gate) {
                 const auto& x = xors[gate.at];
                 bool ok = true;
                 bool found_v = false;
@@ -297,7 +297,7 @@ bool Common::remove_definable_by_gates() {
                 assert(found_v);
                 seen[v] = 0;
                 break;
-            } else if (gate.t == gate_t::or_gate) {
+            } else if (gate.t == GateT::or_gate) {
                 const auto& o = ors[gate.at];
                 bool ok = true;
                 for(auto& or_l: o.get_lhs()) {
@@ -313,7 +313,7 @@ bool Common::remove_definable_by_gates() {
                 }
                 seen[v] = 0;
                 break;
-            } else if (gate.t == gate_t::ite_gate) {
+            } else if (gate.t == GateT::ite_gate) {
                 const auto& ite = ites[gate.at];
                 bool ok = true;
                 for(auto& ite_l: ite.lhs) {

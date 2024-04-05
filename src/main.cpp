@@ -29,7 +29,6 @@
 #include <iostream>
 #include <iomanip>
 #include <vector>
-#include <fstream>
 #include <string>
 #ifdef USE_ZLIB
 #include <zlib.h>
