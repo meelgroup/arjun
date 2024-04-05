@@ -130,8 +130,9 @@ DLL_PUBLIC bool Arjun::add_bnn_clause(
     return arjdata->common.solver->add_bnn_clause(lits, cutoff, out);
 }
 
-DLL_PUBLIC uint32_t Arjun::set_starting_sampling_set(const vector<uint32_t>& vars)
+DLL_PUBLIC uint32_t Arjun::set_sampl_vars(const vector<uint32_t>& vars)
 {
+    sampling_vars_set = true;
     check_duplicated(arjdata->common.already_duplicated);
     arjdata->common.sampling_set = vars;
     arjdata->common.orig_sampling_vars = vars;
@@ -140,6 +141,7 @@ DLL_PUBLIC uint32_t Arjun::set_starting_sampling_set(const vector<uint32_t>& var
 
 DLL_PUBLIC uint32_t Arjun::start_with_clean_sampling_set()
 {
+    sampling_vars_set = true;
     check_duplicated(arjdata->common.already_duplicated);
     arjdata->common.start_with_clean_sampling_set();
     return arjdata->common.sampling_set.size();
@@ -362,4 +364,8 @@ DLL_PUBLIC const std::vector<uint32_t>& Arjun::get_set_sampling_vars() const {
 
 DLL_PUBLIC void Arjun::set_multiplier_weight(const mpz_class mult) {
     arjdata->common.solver->set_multiplier_weight(mult);
+}
+
+DLL_PUBLIC mpz_class Arjun::get_multiplier_weight() const {
+    return arjdata->common.solver->get_multiplier_weight();
 }

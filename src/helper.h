@@ -93,7 +93,7 @@ inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
     outf << "c MUST MULTIPLY BY " << w << endl;
 }
 
-inline void readInAFile(const std::string& filename,
+inline void read_in_a_file(const std::string& filename,
         Arjun* arjun,
         const bool recompute_sampling_set,
         bool& indep_support_given)
@@ -116,10 +116,10 @@ inline void readInAFile(const std::string& filename,
     }
 
     if (!parser.parse_DIMACS(in, true)) exit(-1);
-    if (!parser.sampl_vars_found || recompute_sampling_set) {
+    if (!arjun->get_sampl_vars_set() || recompute_sampling_set) {
         arjun->start_with_clean_sampling_set();
+        indep_support_given = false;
     } else {
-        arjun->set_starting_sampling_set(parser.sampl_vars);
         indep_support_given = true;
     }
     #ifndef USE_ZLIB

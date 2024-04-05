@@ -52,7 +52,7 @@ bool Common::simplify() {
     get_empty_occs();
     if (conf.bve_pre_simplify) {
         verb_print(1, "[arjun-simp] CMS::simplify() with no BVE, intree probe...");
-        double simpTime = cpuTime();
+        double simp_time = cpuTime();
         solver->set_bve(0);
         solver->set_intree_probe(1);
         std::string s("intree-probe");
@@ -60,7 +60,7 @@ bool Common::simplify() {
         if (solver->simplify() == l_False) return false;
         solver->set_intree_probe(conf.intree);
         verb_print(1,"[arjun-simp] CMS::simplify() with no BVE finished."
-            << " T: " << (cpuTime() - simpTime));
+            << " T: " << (cpuTime() - simp_time));
     }
     if (sampling_set.size() < 10000) {
         verb_print(1, "WARNING: Turning off gates, because the sampling size is small, so we can just do it. Size: " << sampling_set.size());

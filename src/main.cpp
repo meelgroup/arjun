@@ -305,7 +305,7 @@ void elim_to_file() {
         arj2.new_vars(ret.nvars);
         arj2.set_verbosity(conf.verb);
         for(const auto& cl: ret.cnf) arj2.add_clause(cl);
-        arj2.set_starting_sampling_set(ret.sampl_vars);
+        arj2.set_sampl_vars(ret.sampl_vars);
         ret.opt_sampl_vars = arj2.extend_sampl_set();
     }
 
@@ -421,7 +421,7 @@ int main(int argc, char** argv) {
 
     const string inp = files[0];
     if (files.size() >= 2) elimtofile = files[1];
-    readInAFile(inp, arjun, recompute_sampling_set, indep_support_given);
+    read_in_a_file(inp, arjun, recompute_sampling_set, indep_support_given);
     vector<uint32_t> sampl_vars = arjun->run_backwards();
 
     const auto& cnf = arjun->get_orig_cnf();

@@ -75,7 +75,7 @@ int main()
 
     vector<uint32_t> proj;
     for(uint32_t i = 0; i < 100; i++) proj.push_back(i);
-    arjun.set_starting_sampling_set(proj);
+    arjun.set_sampl_vars(proj);
 
     proj = arjun.run_backwards();
     std::set<uint32_t> dont_elim (proj.begin(), proj.end());

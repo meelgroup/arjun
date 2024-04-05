@@ -46,7 +46,7 @@ c [arjun] Done dumping. T: 1.0406
 This means that your input independent set of your input formula `input.cnf`, which had a size of 500 has been reduced to 5, which is ony 1% of the original set. The simplified formula with the smaller independent set has been output to `output.cnf`. The final simplified will contain a line such as:
 
 ```
-c MUST MULTIPLY BY 2**10
+c MUST MULTIPLY BY 1024
 ```
 
 This means that the final count of the CNF must be multiplied by 2^10 (i.e. 1024) in order to get the correct count. Note that if you forget to multiply, the count will be wrong. So you must multiply.

@@ -457,7 +457,7 @@ void Puura::setup_sampl_vars_dontelim(const vector<uint32_t>& sampl_vars)
     assert(dont_elim.empty());
     for(uint32_t v: sampl_vars) dont_elim.push_back(Lit(v, false));
     sampl_set.clear();
-    for(uint32_t v: sampl_vars) sampl_set.insert(v);
+    for(uint32_t v: sampl_set) sampl_set.insert(v);
 }
 
 void Puura::run_sbva(SimplifiedCNF& orig,

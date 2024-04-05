@@ -116,7 +116,7 @@ int main(int argc, char** argv)
     elimtofile = files[1];
 
     bool indep_support_given = false;
-    readInAFile(inp, arjun, false, indep_support_given);
+    read_in_a_file(inp, arjun, false, indep_support_given);
     cout << "c [backbone] original sampling set size: " << arjun->get_orig_sampl_vars().size() << endl;
     vector<uint32_t> sampling_set = arjun->get_current_indep_set();
     auto simp_cnf = arjun->only_backbone(sampling_set, arjun->get_orig_sampl_vars());

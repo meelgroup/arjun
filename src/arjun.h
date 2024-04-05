@@ -137,7 +137,10 @@ namespace ArjunNS {
         void set_multiplier_weight(const mpz_class mult);
 
         // Perform indep set calculation
-        uint32_t set_starting_sampling_set(const std::vector<uint32_t>& vars);
+        uint32_t set_sampl_vars(const std::vector<uint32_t>& vars);
+        uint32_t set_opt_sampl_vars(const std::vector<uint32_t>&) {
+            assert(false && "Ingesting optional indep not supported in arjun");
+        }
         uint32_t start_with_clean_sampling_set();
         const std::vector<uint32_t>& get_current_indep_set() const;
         std::vector<uint32_t> run_backwards();
@@ -146,6 +149,8 @@ namespace ArjunNS {
         uint32_t get_orig_num_vars() const;
         const std::vector<uint32_t>& get_orig_sampl_vars() const;
         const std::vector<uint32_t>& get_empty_sampl_vars() const;
+        bool sampling_vars_set = false;
+        bool get_sampl_vars_set() const { return sampling_vars_set; }
 
         //Get clauses
         void start_getting_constraints(
@@ -193,6 +198,7 @@ namespace ArjunNS {
         void set_bce(const bool bce);
         void set_bve_during_elimtofile(const bool);
         void set_weighted(const bool);
+        mpz_class get_multiplier_weight() const;
 
         //Get config
         bool get_do_unate() const;
