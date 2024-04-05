@@ -81,6 +81,14 @@ namespace ArjunNS {
                 i++;
             }
 
+            for(const auto& v: opt_sampl_vars) {
+                assert(v < nvars);
+                if (map_here_to_there[v] == m) {
+                    map_here_to_there[v] = i;
+                    i++;
+                }
+            }
+
             // Go through the rest of the variables not in sampling set.
             for(uint32_t x = 0; x < nvars; x++) {
                 if (map_here_to_there[x] == m) {
