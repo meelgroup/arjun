@@ -329,7 +329,8 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(const SimpCo
     return puura.get_fully_simplified_renumbered_cnf(this, simp_conf,
             arjdata->common.sampling_set,
             arjdata->common.set_sampling_vars,
-            arjdata->common.set_sampling_vars, arjdata->common.orig_sampling_vars);
+            arjdata->common.empty_sampling_vars,
+            arjdata->common.orig_sampling_vars);
 }
 
 DLL_PUBLIC void Arjun::set_lit_weight(
