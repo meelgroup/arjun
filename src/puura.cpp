@@ -301,8 +301,13 @@ void Puura::get_simplified_cnf(SimplifiedCNF& scnf,
 
     scnf.sampl_vars = sampl_vars;
     scnf.weighted = solver->get_weighted();
+
+    solver->start_getting_constraints(false, true);
+
+    // Weights/empties/etc
+    const auto tmp = solver->translate_sampl_set(empty_sampl_vars);
     mpz_class dummy(2);
-    mpz_pow_ui(dummy.get_mpz_t(), dummy.get_mpz_t(), empty_sampl_vars.size());
+    mpz_pow_ui(dummy.get_mpz_t(), dummy.get_mpz_t(), tmp.size());
     scnf.multiplier_weight = solver->get_multiplier_weight()*dummy;
 #ifdef WEIGHTED
     if (scnf.weighted) {
@@ -311,7 +316,6 @@ void Puura::get_simplified_cnf(SimplifiedCNF& scnf,
     }
 #endif
 
-    solver->start_getting_constraints(false, true);
     scnf.sampl_vars = solver->translate_sampl_set(scnf.sampl_vars);
     while(solver->get_next_constraint(clause, is_xor, rhs)) {
         assert(!is_xor); assert(rhs);
