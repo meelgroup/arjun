@@ -299,13 +299,17 @@ void elim_to_file() {
     if (!indep_support_given) {
         assert(ret.opt_sampl_vars.empty());
         for(uint32_t i = 0; i < ret.nvars; i++) ret.opt_sampl_vars.push_back(i);
-    } else if (extend_indep) {
-        Arjun arj2;
-        arj2.new_vars(ret.nvars);
-        arj2.set_verbosity(conf.verb);
-        for(const auto& cl: ret.cnf) arj2.add_clause(cl);
-        arj2.set_sampl_vars(ret.sampl_vars);
-        ret.opt_sampl_vars = arj2.extend_sampl_set();
+    } else {
+        if (extend_indep) {
+            Arjun arj2;
+            arj2.new_vars(ret.nvars);
+            arj2.set_verbosity(conf.verb);
+            for(const auto& cl: ret.cnf) arj2.add_clause(cl);
+            arj2.set_sampl_vars(ret.sampl_vars);
+            ret.opt_sampl_vars = arj2.extend_sampl_set();
+        } else {
+            ret.opt_sampl_vars = ret.sampl_vars;
+        }
     }
 
     /* if (synthesis_define) { */
