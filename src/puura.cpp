@@ -387,6 +387,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     vector<uint32_t>& empty_sampl_vars,
     vector<uint32_t>& orig_sampl_vars)
 {
+    verb_print(3, "Running "<< __PRETTY_FUNCTION__);
     fill_solver(arjun);
     solver->set_renumber(true);
     solver->set_scc(true);
