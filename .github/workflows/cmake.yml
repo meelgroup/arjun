@@ -22,6 +22,34 @@ jobs:
     
     - name: boost install
       run: sudo apt-get update && sudo apt-get install -yq libboost-dev libboost-program-options-dev libboost-serialization-dev
+
+    - name: Checkout Cadical
+      uses: actions/checkout@v2
+      with:
+        repository: meelgroup/cadical
+        ref: mate-only-libraries-1.8.0
+        path: cadical
+        
+    - name: Build Cadical
+      run: |
+       cd cadical
+       ./configure
+       make -j8
+       cd ..
+
+    - name: Checkout Cadiback
+      uses: actions/checkout@v2
+      with:
+        repository: meelgroup/cadiback
+        ref: mate
+        path: cadiback
+        
+    - name: Build Cadiback
+      run: |
+       cd cadiback
+       ./configure
+       make -j8
+       cd ..
     
     - name: Build CMS
       run: |
