@@ -22,12 +22,36 @@
  THE SOFTWARE.
  */
 
-#ifndef ARJUN_COMMON_H
-#define ARJUN_COMMON_H
+#pragma once
 
 // verb_print
+#include "src/arjun.h"
 #define verb_print(a, x) \
     do { if (conf.verb >= a) {std::cout << "c " << x << std::endl;} } while (0)
+
+#if defined(_MSC_VER)
+#include "cms_windows_includes.h"
+#define release_assert(a) \
+    do { \
+    __pragma(warning(push)) \
+    __pragma(warning(disable:4127)) \
+        if (!(a)) {\
+    __pragma(warning(pop)) \
+            fprintf(stderr, "*** ASSERTION FAILURE in %s() [%s:%d]: %s\n", \
+            __FUNCTION__, __FILE__, __LINE__, #a); \
+            abort(); \
+        } \
+    } while (0)
+#else
+#define release_assert(a) \
+    do { \
+        if (!(a)) {\
+            fprintf(stderr, "*** ASSERTION FAILURE in %s() [%s:%d]: %s\n", \
+            __FUNCTION__, __FILE__, __LINE__, #a); \
+            abort(); \
+        } \
+    } while (0)
+#endif
 
 #include <vector>
 #include <iostream>
@@ -61,28 +85,20 @@ namespace ArjunInt {
 struct Common
 {
     Common() {
-        sampling_set = &sampling_set_tmp1;
-        other_sampling_set = &sampling_set_tmp2;
         set_up_solver();
     }
-
-    ~Common()
-    {
-        delete solver;
-    }
+    ~Common() { delete solver; }
 
     Config conf;
-    CMSat::SATSolver* solver = NULL;
-    vector<uint32_t> sampling_set_tmp1;
-    vector<uint32_t> sampling_set_tmp2;
-    vector<uint32_t>* sampling_set = NULL;
-    vector<uint32_t> empty_occs;
+    CMSat::SATSolver* solver = nullptr;
+    bool already_duplicated = false;
+    vector<uint32_t> sampling_set;
+    vector<uint32_t> orig_sampling_vars;
+    vector<uint32_t> empty_sampling_vars;
+    vector<uint32_t> set_sampling_vars;
 
     vector<char> seen;
     uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
-    uint32_t total_eq_removed = 0;
-    uint32_t total_set_removed = 0;
-    uint32_t mult_or_invers_var;
     bool definitely_satisfiable = false;
     enum ModeType {one_mode, many_mode};
 
@@ -90,31 +106,17 @@ struct Common
     vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
     vector<uint32_t> indic_to_var; //maps an INDICATOR VAR to ORIG VAR
 
-
-    vector<uint32_t>* other_sampling_set = NULL;
-    map<uint32_t, vector<uint32_t>> global_assump_to_testvars;
-
     //Incidence as counted by clauses it's appeared together with other variables
     vector<uint32_t> incidence;
-
     //Incidence as counted by probing
     vector<uint32_t> incidence_probing;
 
-    //maps var->commpart. If it doesn't belong anywhere, it's -1
-    vector<int> commpart;
-
-    //maps variable -> number of communities it's connected to via clauses
-    vector<set<int>> var_to_num_communities;
-
-    //total incidence in a commpart. Maps commpart->maxinc
-    vector<uint32_t> commpart_incs;
-
     vector<Lit> dont_elim;
-    vector<Lit> tmp_implied_by;
 
     // cnf as we parsed it in (no simplification whatsoever)
-    vector<Lit> orig_cnf;
+    ArjunNS::SimplifiedCNF orig_cnf;
 
+    void init();
     void update_sampling_set(
         const vector<uint32_t>& unknown,
         const vector<char>& unknown_set,
@@ -122,13 +124,13 @@ struct Common
     );
     bool preproc_and_duplicate();
     void add_fixed_clauses();
+    void add_all_indics();
     void print_orig_sampling_set();
     void start_with_clean_sampling_set();
     void duplicate_problem();
     void get_incidence();
-    void calc_community_parts();
     void set_up_solver();
-    vector<Lit> get_cnf();
+    ArjunNS::SimplifiedCNF get_init_cnf();
     std::mt19937 random_source = std::mt19937(0);
 
     //simp
@@ -138,7 +140,7 @@ struct Common
     void remove_definable_by_irreg_gates();
     void remove_zero_assigned_literals(bool print = true);
     void remove_eq_literals(bool print = true);
-    void find_equiv_subformula();
+    void get_empty_occs();
     bool probe_all();
     void empty_out_indep_set_if_unsat();
     bool simplify_bve_only();
@@ -153,12 +155,23 @@ struct Common
         const vector<char>& unknown_set,
         const vector<uint32_t>& indep);
     void backward_round();
+    void order_by_file(const string& fname, vector<uint32_t>& unknown);
+    void print_sorted_unknown(const vector<uint32_t>& unknown) const;
+
+    // extend
+    template<class T>
+    void fill_assumptions_extend(
+        vector<Lit>& assumptions,
+        const T& indep);
+    void extend_round();
+    void synthesis_define(const std::set<uint32_t>& input);
+    void generate_picosat(const vector<Lit>& assumptions , uint32_t test_var
+        , const set<uint32_t>& indep);
 
     //Sorting
     template<class T> void sort_unknown(T& unknown);
 
 };
-
 
 inline string print_value_kilo_mega(const int64_t value, bool setw = true)
 {
@@ -195,10 +208,7 @@ inline double stats_line_percent(double num, double total)
 template<class T>
 struct IncidenceSorter ///DESCENDING ORDER (i.e. most likely independent at the top)
 {
-    IncidenceSorter(const vector<T>& _inc) :
-        inc(_inc)
-    {}
-
+    IncidenceSorter(const vector<T>& _inc) : inc(_inc) {}
     bool operator()(const T a, const T b) {
         if (inc[a] != inc[b]) {
             return inc[a] > inc[b];
@@ -212,11 +222,7 @@ struct IncidenceSorter ///DESCENDING ORDER (i.e. most likely independent at the 
 template<class T>
 struct IncidenceSorter2
 {
-    IncidenceSorter2(const vector<T>& _inc, const vector<T>& _inc2) :
-        inc(_inc),
-        inc2(_inc2)
-    {}
-
+    IncidenceSorter2(const vector<T>& _inc, const vector<T>& _inc2) : inc(_inc), inc2(_inc2) {}
     bool operator()(const T a, const T b) {
         if (inc[a] != inc[b]) {
             return inc[a] > inc[b];
@@ -231,78 +237,6 @@ struct IncidenceSorter2
     const vector<T>& inc2;
 };
 
-struct IncidenceSorterCommPart
-{
-    IncidenceSorterCommPart(const Common* _comm) :
-        comm(_comm)
-    {}
-
-    bool operator()(const uint32_t a, const uint32_t b) {
-        assert(a < comm->orig_num_vars);
-        assert(b < comm->orig_num_vars);
-
-        auto part_a = comm->commpart.at(a);
-        auto part_b = comm->commpart.at(b);
-
-        if (part_a == -1 && part_b == -1 ) {
-            return false;
-        }
-
-        //If not in "part", put at the end
-        if (part_a == -1) {
-            return false;
-        }
-        if (part_b == -1) {
-            return true;
-        }
-
-        //Put parts with smaller MAX incidence first
-        auto part_a_inc = comm->commpart_incs.at(part_a);
-        auto part_b_inc = comm->commpart_incs.at(part_b);
-        if (part_a_inc != part_b_inc) {
-            return part_a_inc < part_b_inc;
-        }
-
-        auto a_inc = comm->incidence[a];
-        auto b_inc = comm->incidence[b];
-        if (a_inc != b_inc) {
-            return a_inc > b_inc; //"a" has larger incidence -> return TRUE
-        }
-        return a < b;
-    }
-
-    const Common* comm;
-};
-
-struct IncidenceSorterCommPartToOtherComm
-{
-    IncidenceSorterCommPartToOtherComm(const Common* _comm) :
-        comm(_comm)
-    {}
-
-    bool operator()(const uint32_t a, const uint32_t b) {
-        assert(a < comm->orig_num_vars);
-        assert(b < comm->orig_num_vars);
-
-        auto part_a = comm->var_to_num_communities.at(a).size();
-        auto part_b = comm->var_to_num_communities.at(b).size();
-
-        if (part_a != part_b) {
-            return part_a < part_b; //"a" is connected to LESS communities -> return TRUE
-        }
-
-        auto a_inc = comm->incidence_probing[a];
-        auto b_inc = comm->incidence_probing[b];
-        if (a_inc != b_inc) {
-            return a_inc > b_inc; //"a" has LARGER incidence -> return TRUE
-        }
-
-        return a < b;
-    }
-
-    const Common* comm;
-};
-
 template<class T>
 void Common::sort_unknown(T& unknown)
 {
@@ -312,10 +246,6 @@ void Common::sort_unknown(T& unknown)
         std::sort(unknown.begin(), unknown.end(), IncidenceSorter2<uint32_t>(incidence, incidence_probing));
     } else if (conf.unknown_sort == 3) {
         std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence_probing));
-    } else if (conf.unknown_sort == 4) {
-        std::sort(unknown.begin(), unknown.end(), IncidenceSorterCommPart(this));
-    } else if (conf.unknown_sort == 5) {
-        std::sort(unknown.begin(), unknown.end(), IncidenceSorterCommPartToOtherComm(this));
     } else if (conf.unknown_sort == 6) {
         std::shuffle(unknown.begin(), unknown.end(), random_source);
     } else {
@@ -325,6 +255,3 @@ void Common::sort_unknown(T& unknown)
 }
 
 }
-
-//ARJUN_COMMON_H
-#endif

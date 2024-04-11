@@ -19,10 +19,9 @@
 # THE SOFTWARE.
 
 include_directories(${PROJECT_SOURCE_DIR})
-include_directories(${LOUVAIN_COMMUNITIES_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
-include_directories(${Boost_INCLUDE_DIRS})
 include_directories(${CRYPTOMINISAT5_INCLUDE_DIRS})
+include_directories(${SBVA_INCLUDE_DIRS})
 
 if (NOT WIN32)
     add_cxx_flag_if_supported("-Wno-bitfield-constant-conversion")
@@ -43,58 +42,23 @@ endif()
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/GitSHA1.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp" @ONLY)
 
 add_library(arjun
+    extend.cpp
     backward.cpp
     simplify.cpp
     common.cpp
     arjun.cpp
+    puura.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
 )
 
-if (louvain_communities_FOUND)
-    target_link_libraries(arjun
-        LINK_PUBLIC ${LOUVAIN_COMMUNITIES_LIBRARIES}
-        LINK_PUBLIC ${CRYPTOMINISAT5_LIBRARIES}
-    )
-else()
-    target_link_libraries(arjun
-        LINK_PUBLIC ${CRYPTOMINISAT5_LIBRARIES}
-    )
-endif()
+target_link_libraries(arjun
+    LINK_PUBLIC ${CRYPTOMINISAT5_LIBRARIES}
+    LINK_PUBLIC ${SBVA_LIBRARIES}
+)
 
-
-if (EMSCRIPTEN)
-    add_executable(arjun-bin
-        main_emscripten.cpp
-    )
-
-    set_target_properties(arjun-bin
-        PROPERTIES
-        OUTPUT_NAME arjun
-        LINK_FLAGS "-s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -s EXTRA_EXPORTED_RUNTIME_METHODS='[\"ccall\", \"cwrap\"]'  -s LINKABLE=1 -s EXPORT_ALL=1 --pre-js ${CMAKE_CURRENT_SOURCE_DIR}/pre.js"
-    )
-
-    SET_SOURCE_FILES_PROPERTIES(main_emscripten.cpp
-        PROPERTIES COMPILE_FLAGS "-s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -s EXTRA_EXPORTED_RUNTIME_METHODS='[\"ccall\", \"cwrap\"]'  -s LINKABLE=1 -s EXPORT_ALL=1"
-    )
-else()
-    add_executable(arjun-bin
-        main.cpp
-    )
-
-    add_executable(arjun-example
-        example.cpp
-    )
-
-if (ARJUN_SERIALIZE)
-    add_executable(solextend
-        solextend.cpp
-    )
-endif()
-
-    set(arjun_bin_exec_link_libs
-        ${Boost_LIBRARIES}
-    )
-endif()
+add_executable(arjun-bin main.cpp)
+# add_executable(unate-bin main-unate.cpp)
+add_executable(arjun-example example.cpp)
 
 IF (ZLIB_FOUND)
     SET(arjun_bin_exec_link_libs ${arjun_bin_exec_link_libs} ${ZLIB_LIBRARY})
@@ -111,39 +75,20 @@ set_target_properties(arjun-bin PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
+# set_target_properties(unate-bin PROPERTIES
+#     OUTPUT_NAME unate
+#     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+#     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-target_link_libraries(arjun-bin
-    ${arjun_bin_exec_link_libs}
-    arjun
-)
-
-
+target_link_libraries(arjun-bin ${arjun_bin_exec_link_libs} arjun)
+# target_link_libraries(unate-bin ${arjun_bin_exec_link_libs} arjun)
 set_target_properties(arjun-example PROPERTIES
     OUTPUT_NAME example
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
+target_link_libraries(arjun-example ${arjun_bin_exec_link_libs} arjun)
 
-
-target_link_libraries(arjun-example
-    ${arjun_bin_exec_link_libs}
-    arjun
-)
-
-if (ARJUN_SERIALIZE)
-set_target_properties(solextend PROPERTIES
-    OUTPUT_NAME solextend
-    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
-    INSTALL_RPATH_USE_LINK_PATH TRUE)
-
-target_link_libraries(solextend
-    LINK_PUBLIC ${CRYPTOMINISAT5_LIBRARIES}
-    ${arjun_bin_exec_link_libs}
-    arjun
-)
-endif()
-
-arjun_add_public_header(
-    arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun.h )
+arjun_add_public_header(arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun.h )
 
 # -----------------------------------------------------------------------------
 # Copy public headers into build directory include directory.

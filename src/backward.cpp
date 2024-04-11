@@ -33,9 +33,7 @@ void Common::fill_assumptions_backward(
     const vector<char>& unknown_set,
     const vector<uint32_t>& indep)
 {
-    if (conf.verb > 5) {
-        cout << "Filling assumps BEGIN" << endl;
-    }
+    verb_print(5, "Filling assumps BEGIN");
     assumptions.clear();
 
     //Add known independent as assumptions
@@ -45,23 +43,16 @@ void Common::fill_assumptions_backward(
         uint32_t indic = var_to_indic[var];
         assert(indic != var_Undef);
         assumptions.push_back(Lit(indic, false));
-        if (conf.verb > 5) {
-            cout << "Filled assump with indep: " << var << endl;
-        }
+        verb_print(5, "Filled assump with indep: " << var);
     }
 
     //Add unknown as assumptions, clean "unknown"
     uint32_t j = 0;
     for(uint32_t i = 0; i < unknown.size(); i++) {
         uint32_t var = unknown[i];
-        if (unknown_set[var] == 0) {
-            continue;
-        } else {
-            unknown[j++] = var;
-        }
-        if (conf.verb > 5) {
-            cout << "Filled assump with unknown: " << var << endl;
-        }
+        if (unknown_set[var] == 0) continue;
+        else unknown[j++] = var;
+        verb_print(5, "Filled assump with unknown: " << var);
 
         assert(var < orig_num_vars);
         uint32_t indic = var_to_indic[var];
@@ -69,17 +60,48 @@ void Common::fill_assumptions_backward(
         assumptions.push_back(Lit(indic, false));
     }
     unknown.resize(j);
-    if (conf.verb > 5) {
-        cout << "Filling assumps END, total assumps size: " << assumptions.size() << endl;
+    verb_print(5, "Filling assumps END, total assumps size: " << assumptions.size());
+}
+
+void Common::order_by_file(const string& fname, vector<uint32_t>& unknown) {
+    std::set<uint32_t> old_unknown(unknown.begin(), unknown.end());
+    unknown.clear();
+
+    std::ifstream infile(fname);
+    std::string line;
+    uint32_t line_num = 1;
+    while (std::getline(infile, line))
+    {
+        std::istringstream iss(line);
+        int a;
+        if (!(iss >> a)) {
+            cout << "ERROR: the file '" << fname << "' contains a line we cannot parse to be a variable number" << endl;
+            cout << "ERROR line number: " << line_num << std::endl;
+            cout << "ERROR: lines should ONLY contain a single variable" << endl;
+            exit(-1);
+        }
+        if (old_unknown.find(a) == old_unknown.end()) {
+            cout << "WARNING: the variable " << a << " is in the order file but not in the original order." << endl;
+        }
+        unknown.push_back(a);
+        line_num++;
     }
 }
 
-void Common::backward_round()
+void Common::print_sorted_unknown(const vector<uint32_t>& unknown) const
 {
-    for(const auto& x: seen) {
-        assert(x == 0);
+    if (conf.verb >= 4) {
+        cout << "Sorted output: "<< endl;
+        for (const auto& v: unknown) {
+            cout << "c var: " << v << " occ: " << incidence[v]
+            //<< " prop-inc: " << std::setw(6) << incidence_probing[v]
+            << endl;
+        }
     }
+}
 
+void Common::backward_round() {
+    for(const auto& x: seen) assert(x == 0);
     double start_round_time = cpuTimeTotal();
     //start with empty independent set
     vector<uint32_t> indep;
@@ -88,67 +110,26 @@ void Common::backward_round()
     vector<uint32_t> unknown;
     vector<char> unknown_set;
     unknown_set.resize(orig_num_vars, 0);
-    for(const auto& x: *sampling_set) {
+    for(const auto& x: sampling_set) {
         assert(x < orig_num_vars);
         assert(unknown_set[x] == 0 && "No var should be in 'sampling_set' twice!");
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
-
     sort_unknown(unknown);
-
-    if (conf.specified_order_fname != "") {
-        std::set<uint32_t> old_unknown(unknown.begin(), unknown.end());
-        unknown.clear();
-
-        std::ifstream infile(conf.specified_order_fname);
-        std::string line;
-        uint32_t line_num = 1;
-        while (std::getline(infile, line))
-        {
-            std::istringstream iss(line);
-            int a;
-            if (!(iss >> a)) {
-                cout << "ERROR: the file '" << conf.specified_order_fname << "' contains a line we cannot parse to be a variable number" << endl;
-                cout << "ERROR line number: " << line_num << std::endl;
-                cout << "ERROR: lines should ONLY contain a single variable" << endl;
-                exit(-1);
-            }
-            if (old_unknown.find(a) == old_unknown.end()) {
-                cout << "WARNING: the variable " << a << " is in the order file but not in the original order." << endl;
-            }
-            unknown.push_back(a);
-            line_num++;
-        }
-    }
-
-    if (conf.verb >= 4) {
-        cout << "Sorted output: "<< endl;
-        for (const auto& v:unknown) {
-            cout << "c var: " << v << " occ: " << incidence[v]
-            //<< " prop-inc: " << std::setw(6) << incidence_probing[v]
-            << endl;
-            if (var_to_num_communities.size() > v) {
-                cout << " fan-out to comms: " << std::setw(6) << var_to_num_communities[v].size();
-            }
-            cout << endl;
-        }
-    }
-
-    if (conf.verb) {
-        cout << "c [arjun] Start unknown size: " << unknown.size() << endl;
-    }
+    if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
+    print_sorted_unknown(unknown);
+    verb_print(1, "[arjun] Start unknown size: " << unknown.size());
 
     vector<Lit> assumptions;
     uint32_t iter = 0;
     uint32_t not_indep = 0;
-
-    double myTime = cpuTime();
+    double my_time = cpuTime();
 
     //Calc mod:
     uint32_t mod = 1;
-    if ((sampling_set->size()) > 20 ) {
-        uint32_t will_do_iters = sampling_set->size();
+    if ((sampling_set.size()) > 20 ) {
+        uint32_t will_do_iters = sampling_set.size();
         uint32_t want_printed = 30;
         mod = will_do_iters/want_printed;
         mod = std::max<int>(mod, 1);
@@ -173,7 +154,7 @@ void Common::backward_round()
 
             //No more left, try again with full
             if (assumptions.empty()) {
-                if (conf.verb >= 5) cout << "c [arjun] No more left, try again with full" << endl;
+                verb_print(5, "[arjun] No more left, try again with full");
                 break;
             }
 
@@ -206,7 +187,7 @@ void Common::backward_round()
 
             if (test_var == var_Undef) {
                 //we are done, backward is finished
-                if (conf.verb >= 5) cout << "c [arjun] we are done, backward is finished" << endl;
+                verb_print(5, "[arjun] we are done, backward is finished");
                 break;
             }
             indic_var = var_to_indic[test_var];
@@ -251,21 +232,11 @@ void Common::backward_round()
             uint32_t indep_vars_last_pos = indep.size();
             ret = solver->find_fast_backw(b);
 
-            if (conf.verb >= 3) {
-                cout
-                << "c [arjun] non_indep_vars.size(): " << non_indep_vars.size()
-                << " indep.size(): " << indep.size()
-                << " ret: " << ret
-                << " test_var: " << test_var
-                << endl;
-            }
+            verb_print(3, "[arjun] non_indep_vars.size(): " << non_indep_vars.size()
+                << " indep.size(): " << indep.size() << " ret: " << ret << " test_var: " << test_var);
             if (ret == l_False) {
-                if (conf.verb) {
-                    cout << "c [arjun] Problem is UNSAT" << endl;
-                }
-                for(auto& x: unknown_set) {
-                    x = 0;
-                }
+                verb_print(5, "[arjun] Problem is UNSAT");
+                for(auto& x: unknown_set) x = 0;
                 unknown.clear();
                 indep.clear();
                 assumptions.clear();
@@ -279,8 +250,7 @@ void Common::backward_round()
                 unknown_set[var] = 0;
             }
 
-            for(uint32_t i = 0; i < non_indep_vars.size(); i ++) {
-                uint32_t var = non_indep_vars[i];
+            for(const auto& var: non_indep_vars) {
                 assert(var < orig_num_vars);
                 unknown_set[var] = 0;
                 not_indep++;
@@ -296,12 +266,12 @@ void Common::backward_round()
         }
         if (ret == l_False) {
             ret_false++;
-            if (conf.verb >= 5) cout << "c [arjun] backw solve(): False" << endl;
+            verb_print(5, "[arjun] backw solve(): False");
         } else if (ret == l_True) {
             ret_true++;
-            if (conf.verb >= 5) cout << "c [arjun] backw solve(): True" << endl;
+            verb_print(5, "[arjun] backw solve(): True");
         } else if (ret == l_Undef) {
-            if (conf.verb >= 5) cout << "c [arjun] backw solve(): Undef" << endl;
+            verb_print(5, "[arjun] backw solve(): Undef");
             ret_undef++;
         }
 
@@ -351,9 +321,9 @@ void Common::backward_round()
                 << " backb max:" << std::setw(7) << fast_backw_max;
             }
             cout << " T: "
-            << std::setprecision(2) << std::fixed << (cpuTime() - myTime)
+            << std::setprecision(2) << std::fixed << (cpuTime() - my_time)
             << endl;
-            myTime = cpuTime();
+            my_time = cpuTime();
             fast_backw_tot = 0;
             fast_backw_calls = 0;
             fast_backw_max = 0;
@@ -366,12 +336,8 @@ void Common::backward_round()
     }
     update_sampling_set(unknown, unknown_set, indep);
 
-    if (conf.verb) {
-        cout << "c [arjun] backward round finished T: "
-        << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
-        << endl;
-    }
-    if (conf.verb >= 2) {
-        solver->print_stats();
-    }
+    verb_print(1, "[arjun] backward round finished. U: " <<
+            " I: " << sampling_set.size() << " T: "
+        << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
+    if (conf.verb >= 2) solver->print_stats();
 }

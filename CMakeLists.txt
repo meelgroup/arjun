@@ -20,7 +20,7 @@
 
 cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
 set(CMAKE_C_STANDARD 99)
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 
 enable_language( CXX )
 
@@ -96,13 +96,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package (Threads REQUIRED)
+find_package (sbva REQUIRED)
 
 # static compilation
 option(BUILD_SHARED_LIBS "Build the shared library" ON)
 option(STATICCOMPILE "Compile to static executable" OFF)
 if (STATICCOMPILE)
     set(BUILD_SHARED_LIBS OFF)
-    set(Boost_USE_STATIC_LIBS ON)
 endif()
 
 macro(add_sanitize_option flagname)
@@ -309,7 +309,6 @@ if ((${CMAKE_SYSTEM_NAME} MATCHES "Linux") OR (${CMAKE_SYSTEM_NAME} MATCHES "Dar
             set(${VAR_TO_MODIFY} "${replacement}" CACHE STRING "Default flags for ${build_config} configuration" FORCE)
         endforeach()
     else()
-        add_definitions(-DBOOST_TEST_DYN_LINK)
         MESSAGE(STATUS "Compiling for dynamic library use")
     endif()
 endif()
@@ -348,11 +347,7 @@ MESSAGE(STATUS "PROJECT_VERSION_MINOR: ${PROJECT_VERSION_MINOR}")
 MESSAGE(STATUS "PROJECT_VERSION_PATCH: ${PROJECT_VERSION_PATCH}")
 
 option(EMSCRIPTEN "Generate only emscripten JS" OFF)
-if (NOT EMSCRIPTEN)
-    set (boost_components "")
-    set(boost_components ${boost_components} program_options serialization)
-    find_package( Boost 1.46 COMPONENTS ${boost_components})
-else()
+if (EMSCRIPTEN)
     set(BUILD_SHARED_LIBS ON)
     set(NOZLIB ON)
 endif()
@@ -441,16 +436,6 @@ if (cryptominisat5_FOUND)
     message(STATUS "CryptoMiniSat5 include dirs: ${CRYPTOMINISAT5_INCLUDE_DIRS}")
 else()
     message(FATAL_ERROR "Cannot find CryptoMiniSat5. Please install it! Exiting.")
-endif()
-
-find_package(louvain_communities CONFIG)
-if (louvain_communities_FOUND)
-    message(STATUS "Found Louvain Communities library")
-    message(STATUS "Louvain Communities dynamic lib: ${LOUVAIN_COMMUNITIES_LIBRARIES}")
-    message(STATUS "Louvain Communities include dirs: ${LOUVAIN_COMMUNITIES_INCLUDE_DIRS}")
-    add_definitions( -DLOUVAIN_COMMS )
-else()
-    message(STATUS "Cannot find Louvain Communities libraries. Not enabling.")
 endif()
 
 # -----------------------------------------------------------------------------

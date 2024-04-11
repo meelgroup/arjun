@@ -28,7 +28,9 @@ num_bin_cls = 0
 max_cl_sz = 0
 tot_non_bin_cl_size = 0
 non_bin_cls = 0
-set_vals = {}
+set_vars = {}
+input_vars = {}
+num_input_vars = 0
 
 if len(sys.argv) < 2:
     print("ERROR: You need the filename")
@@ -46,6 +48,19 @@ with open(sys.argv[1], "r") as f:
             continue
 
         if line[0] == "c":
+            if "c p show" in line:
+                line = line[8:].split()
+                line = line[:len(line)-1]
+                for var in line:
+                    var = int(var)
+                    if var != abs(var):
+                        print("ERROR! c p show contains LITERAL not VARIABLE!")
+                        exit(-1)
+                    input_vars[var] = True
+                    if var > num_vars:
+                        print("Error! Var %s in 'c p show' but num vars promised to be: %s" % (var, num_vars))
+                        exit(-1)
+                num_input_vars = len(line)
             continue
 
         if line[0] == "p":
@@ -56,9 +71,13 @@ with open(sys.argv[1], "r") as f:
 
         l = l.split()
         #print(l)
+        for lit in l:
+            if abs(int(lit)) > num_vars:
+                print("Error! Lit %s in CNF but num vars promised to be: %s" % (lit, num_vars))
+                exit(-1)
         if len(l) == 2:
             lit = int(l[0])
-            set_vals[abs(lit)] = lit > 0
+            set_vars[abs(lit)] = lit > 0
             continue
 
 with open(sys.argv[1], "r") as f:
@@ -79,15 +98,15 @@ with open(sys.argv[1], "r") as f:
         l = l.split()
         if len(l) == 2:
             lit = int(l[0])
-            set_vals[abs(lit)] = lit > 0
+            set_vars[abs(lit)] = lit > 0
             continue
 
         sat_cl = False
         l2 = []
         for lit in l:
             lit = int(lit)
-            if abs(lit) in set_vals:
-                val = set_vals[abs(lit)]
+            if abs(lit) in set_vars:
+                val = set_vars[abs(lit)]
                 if lit < 0: val ^= True
                 if val: sat_cl = True
             else:
@@ -110,15 +129,21 @@ with open(sys.argv[1], "r") as f:
             if x != "0":
                 num_lits+=1
 
+num_output_not_set = 0
+for i in range(1, num_vars+1):
+    if (i not in input_vars) and (i not in set_vars):
+        num_output_not_set += 1
 
 if verbose:
-    print("num set lits        ", len(set_vals))
-print("num (non-set) vars  %7d" % (num_vars-len(set_vals)))
-print("num cls             %7d" % num_cls)
-print("num bin cls         %7d" % num_bin_cls)
-print("max cl size         %7d" % max_cl_sz)
+    print("num set lits        ", len(set_vars))
+print("num (non-set) vars       %7d" % (num_vars-len(set_vars)))
+print("num input     vars       %7d" % (num_input_vars))
+print("num (non-set) outp vars  %7d" % (num_output_not_set))
+print("num cls                  %7d" % num_cls)
+print("num bin cls              %7d" % num_bin_cls)
+print("max cl size              %7d" % max_cl_sz)
 if (non_bin_cls != 0):
-    print("avg non-bin cl sz    %5.1f" % (float(tot_non_bin_cl_size)/float(non_bin_cls)))
+    print("avg non-bin cl sz          %5.1f" % (float(tot_non_bin_cl_size)/float(non_bin_cls)))
 else:
-    print("avg non-bin cl sz   %5.1f (no non-bin cl)" % 0)
-print("num (non-unit) lits %7d" % num_lits)
+    print("avg non-bin cl sz           %5.1f (no non-bin cl)" % 0)
+print("num (non-unit) lits      %7d" % num_lits)

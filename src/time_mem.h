@@ -24,13 +24,13 @@ THE SOFTWARE.
 #ifndef TIME_MEM_H
 #define TIME_MEM_H
 #include <cassert>
-#include <time.h>
+#include <ctime>
+#include <cstdint>
 
 #include <ios>
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <signal.h>
 
 // note: MinGW64 defines both __MINGW32__ and __MINGW64__
 #if defined (_MSC_VER) || defined (__MINGW32__) || defined(_WIN32)
