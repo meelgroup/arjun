@@ -21,7 +21,7 @@ jobs:
     - uses: actions/checkout@v3
     
     - name: boost install
-      run: sudo apt-get update && sudo apt-get install -yq libboost-dev libboost-program-options-dev libboost-serialization-dev
+      run: sudo apt-get update && sudo apt-get install -yq libboost-dev libboost-program-options-dev libboost-serialization-dev libmpfr-dev
 
     - name: Checkout Cadical
       uses: actions/checkout@v2
