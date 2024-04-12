@@ -15,11 +15,23 @@ echo "Orig count of $A:"
 ./count_literals.py "$A"
 
 echo "Doing BVE based synthesis"
-./arjun $B --compindep 0 "$A" --oraclevivif 0 out > arjun_out
+./arjun $B --compindep 0 --oraclevivif 0 --unsatdefine 1 "$A" out > arjun_out
+retval=$?
+if [ $retval -ne 0 ]; then
+    echo "Error: arjun failed"
+    tail arjun_out
+    exit -1
+fi
 echo "New count of $A:"
 ./count_literals.py out
 
 echo "Doing UNSAT based synthesis"
-./arjun $B --compindep 0 out out2 --oraclevivif 0 --oraclespars 0 --renumber 0 --unsatdefine 1 --puuraiters1 0 --puuraiters2 0 > arjun_out2
+./arjun $B --compindep 0 --oraclevivif 0 --oraclesparsify 0 --renumber 0 --unsatdefine 1 --iter1 0 --iter2 0 out out2 > arjun_out2
+retval=$?
+if [ $retval -ne 0 ]; then
+    echo "Error: arjun UNSAT failed"
+    tail arjun_out2
+    exit -1
+fi
 
 grep "final extension" arjun_out2
