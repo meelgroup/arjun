@@ -290,7 +290,6 @@ void Puura::conditional_dontcare()
 
 void Puura::get_simplified_cnf(SimplifiedCNF& scnf,
         const vector<uint32_t>& sampl_vars,
-        const vector<uint32_t>& set_sampl_vars,
         const vector<uint32_t>& empty_sampl_vars,
         const vector<uint32_t>& orig_sampl_vars) {
     assert(scnf.cnf.empty());
@@ -300,12 +299,13 @@ void Puura::get_simplified_cnf(SimplifiedCNF& scnf,
 
 
     scnf.sampl_vars = sampl_vars;
+
     scnf.weighted = solver->get_weighted();
 
     solver->start_getting_constraints(false, true);
 
     // Weights/empties/etc
-    const auto tmp = solver->translate_sampl_set(empty_sampl_vars);
+    const auto tmp = solver->translate_sampl_set(empty_sampl_vars, true);
     mpz_class dummy(2);
     mpz_pow_ui(dummy.get_mpz_t(), dummy.get_mpz_t(), tmp.size());
     scnf.multiplier_weight = solver->get_multiplier_weight()*dummy;
@@ -316,7 +316,8 @@ void Puura::get_simplified_cnf(SimplifiedCNF& scnf,
     }
 #endif
 
-    scnf.sampl_vars = solver->translate_sampl_set(scnf.sampl_vars);
+    scnf.opt_sampl_vars = solver->translate_sampl_set(orig_sampl_vars, false);
+    scnf.sampl_vars = solver->translate_sampl_set(scnf.sampl_vars, false);
     while(solver->get_next_constraint(clause, is_xor, rhs)) {
         assert(!is_xor); assert(rhs);
         scnf.cnf.push_back(clause);
@@ -387,7 +388,6 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     Arjun* arjun,
     const SimpConf simp_conf,
     vector<uint32_t>& sampl_vars,
-    vector<uint32_t>& set_sampl_vars,
     vector<uint32_t>& empty_sampl_vars,
     vector<uint32_t>& orig_sampl_vars)
 {
@@ -453,7 +453,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     for(uint32_t v: sampl_vars) dont_elim.push_back(Lit(v, false));
     str = "occ-bve-empty, must-renumber";
     solver->simplify(&dont_elim, &str);
-    get_simplified_cnf(cnf, sampl_vars, set_sampl_vars, empty_sampl_vars, orig_sampl_vars);
+    get_simplified_cnf(cnf, sampl_vars, empty_sampl_vars, orig_sampl_vars);
     return cnf;
 }
 

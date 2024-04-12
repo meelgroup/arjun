@@ -293,7 +293,8 @@ void elim_to_file() {
     double dump_start_time = cpuTime();
     auto ret = arjun->get_fully_simplified_renumbered_cnf(simp_conf);
 
-    arjun->run_sbva(ret, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
+    if (!unsat_define)
+        arjun->run_sbva(ret, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 
     delete arjun; arjun = nullptr;
     if (extend_indep && unsat_define) {
@@ -301,7 +302,6 @@ void elim_to_file() {
         exit(-1);
     }
     if (!indep_support_given) {
-        assert(ret.opt_sampl_vars.empty());
         for(uint32_t i = 0; i < ret.nvars; i++) ret.opt_sampl_vars.push_back(i);
     } else {
         if (extend_indep) {
@@ -309,23 +309,24 @@ void elim_to_file() {
             arj2.new_vars(ret.nvars);
             arj2.set_verbosity(conf.verb);
             for(const auto& cl: ret.cnf) arj2.add_clause(cl);
-            arj2.set_sampl_vars(ret.sampl_vars);
+            arj2.set_sampl_vars(ret.opt_sampl_vars);
             ret.opt_sampl_vars = arj2.extend_sampl_set();
         } else {
-            ret.opt_sampl_vars = ret.sampl_vars;
+            ret.opt_sampl_vars = ret.opt_sampl_vars;
         }
     }
 
-    /* if (unsat_define) { */
-    /*     Arjun arj2; */
-    /*     arj2.new_vars(ret.nvars); */
-    /*     arj2.set_verbosity(conf.verb); */
-    /*     for(const auto& cl: ret.cnf) arj2.add_clause(cl); */
-    /*     arj2.set_starting_sampling_set(ret.sampling_vars); */
-    /*     ret.sampling_vars = arj2.unsat_define(); */
-    /* } */
+    if (unsat_define) {
+        Arjun arj2;
+        arj2.new_vars(ret.nvars);
+        arj2.set_verbosity(conf.verb);
+        for(const auto& cl: ret.cnf) arj2.add_clause(cl);
+        arj2.set_sampl_vars(ret.sampl_vars);
+        ret.sampl_vars = arj2.unsat_define();
+        ret.opt_sampl_vars = ret.sampl_vars;
+    }
 
-    ret.renumber_sampling_vars_for_ganak();
+    if (!unsat_define) ret.renumber_sampling_vars_for_ganak();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
     write_simpcnf(ret, elimtofile, redundant_cls);
     cout << "c [arjun] Dumping took: " << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;

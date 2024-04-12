@@ -47,7 +47,6 @@ public:
         Arjun* arjun,
         const SimpConf simp_conf,
         vector<uint32_t>& sampl_vars,
-        vector<uint32_t>& set_sampl_vars,
         vector<uint32_t>& empty_sampl_vars,
         vector<uint32_t>& orig_sampl_vars);
 
@@ -65,7 +64,6 @@ private:
     void renumber_sampling_vars_for_ganak(SimplifiedCNF& scnf);
     void get_simplified_cnf(SimplifiedCNF& sncf,
         const vector<uint32_t>& sampl_vars,
-        const vector<uint32_t>& set_sampl_vars,
         const vector<uint32_t>& empty_sampl_vars,
         const vector<uint32_t>& orig_sampl_vars);
 

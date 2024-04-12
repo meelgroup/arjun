@@ -54,7 +54,8 @@ void Common::add_all_indics()
     for(uint32_t var = 0; var < orig_num_vars; var++) {
         // Already has an indicator variable
         if (var_to_indic[var] != var_Undef) continue;
-        if (solver->removed_var(var)) continue;
+
+        assert(!solver->removed_var(var) && "Should not happen during UNSAT synth");
 
         solver->new_var();
         uint32_t this_indic = solver->nVars()-1;
@@ -241,14 +242,10 @@ void Common::unsat_define(const set<uint32_t>& input) {
         // TODO we probably shouldn't use this, removing.
         /* solver->set_max_confl(conf.backw_max_confl); */
         ret = solver->solve(&assumptions);
-        if (ret == l_False) {
-            tot_ret_false++;
-            verb_print(5, "[arjun] extend solve(): False");
-        } else if (ret == l_True) {
-            verb_print(5, "[arjun] extend solve(): True");
-        } else if (ret == l_Undef) {
-            verb_print(5, "[arjun] extend solve(): Undef");
-        }
+
+        if (ret == l_False) verb_print(5, "[arjun] extend solve(): False");
+        else if (ret == l_True) verb_print(5, "[arjun] extend solve(): True");
+        else if (ret == l_Undef) verb_print(5, "[arjun] extend solve(): Undef");
 
         if (ret == l_Undef) {
             // Timed out, we'll treat is as unknown
@@ -261,19 +258,19 @@ void Common::unsat_define(const set<uint32_t>& input) {
             // Dependent fully on `indep`
             // TODO: run get_conflict and then we know which were
             // actually needed, so we can do an easier generation/check
+            tot_ret_false++;
             generate_picosat(assumptions, test_var, indep);
         }
     }
-    sampling_set.clear();
-    for(const auto& i: indep) sampling_set.push_back(i);
-
-    verb_print(1, "[arjun] UNSAT-based define finished "
-            << " final extension: " << tot_ret_false
-            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
+    sampling_set.clear(); for(const auto& i: indep) sampling_set.push_back(i);
     if (conf.verb >= 2) solver->print_stats();
 
-    set<uint32_t> todo_define(indep);
-    todo_define.erase(input.begin(), input.end());
+    set<uint32_t> todo_define;
+    std::set_difference(indep.begin(), indep.end(), input.begin(), input.end(),
+            std::inserter(todo_define, todo_define.end()));
+    verb_print(1, "indep:" << indep.size() << " input:" << input.size()
+            << " todo define:" << todo_define.size()
+            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
 }
 
 void Common::extend_round()

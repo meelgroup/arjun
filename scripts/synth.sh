@@ -1,5 +1,6 @@
 #!/usr/bin/bash
-set +x
+set -x
+set -v
 
 # ./arjun wage_circuit_div.t1.i18.777adaa9.stp.cnf out rec
 # ~/development/sat_solvers/cadical/build/cadical out > sol
@@ -24,14 +25,3 @@ if [ $retval -ne 0 ]; then
 fi
 echo "New count of $A:"
 ./count_literals.py out
-
-echo "Doing UNSAT based synthesis"
-./arjun $B --compindep 0 --oraclevivif 0 --oraclesparsify 0 --renumber 0 --unsatdefine 1 --iter1 0 --iter2 0 out out2 > arjun_out2
-retval=$?
-if [ $retval -ne 0 ]; then
-    echo "Error: arjun UNSAT failed"
-    tail arjun_out2
-    exit -1
-fi
-
-grep "final extension" arjun_out2
