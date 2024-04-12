@@ -6,25 +6,50 @@ on:
   pull_request:
     branches: [ "master" ]
 
-env:
-  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
-  BUILD_TYPE: Release
 
 jobs:
   build:
-    # The CMake configure and build commands are platform agnostic and should work equally well on Windows or Mac.
-    # You can convert this to a matrix build if you need cross-platform coverage.
-    # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
-    runs-on: ubuntu-latest
+    # The CMake configure and build commands are platform agnostic and should work equally
+    # well on Windows or Mac.  You can convert this to a matrix build if you need
+    # cross-platform coverage.
+    # See: https://docs.github.com/en/actions/configuring-and-managing-workflows/configuring-a-workflow#configuring-a-build-matrix
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        #os: [ubuntu-20.04, windows-2022, macos-13]
+        os: [ubuntu-20.04, macos-13]
+        build_type: ['Release']
+        staticcompile: ['ON', 'OFF']
 
     steps:
-    - uses: actions/checkout@v3
     
-    - name: boost install
-      run: sudo apt-get update && sudo apt-get install -yq libboost-dev libboost-program-options-dev libboost-serialization-dev libmpfr-dev
+    # install dependencies
+    - name: Install boost & help2man for Linux
+      if: matrix.os == 'ubuntu-20.04'
+      run: sudo apt-get update && sudo apt-get install -yq libboost-dev libboost-serialization-dev libboost-program-options-dev help2man libgmp-dev
+      
+    - name: Install gmp for Mac
+      if: matrix.os == 'macos-13'
+      run: | 
+        HOMEBREW_NO_AUTO_UPDATE=1 brew install cmake
+        wget https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz
+        tar xf gmp-6.3.0.tar.xz
+        cd gmp-6.3.0
+        ./configure --enable-static -enable-cxx --enable-shared
+        make -j8
+        sudo make install
+        cd ..
+      
+    - name: Installing Numpy
+      run: |
+        pip install pip --upgrade
+        pip install numpy lit
+        
+    - uses: actions/checkout@v4
 
     - name: Checkout Cadical
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
       with:
         repository: meelgroup/cadical
         ref: mate-only-libraries-1.8.0
@@ -38,7 +63,7 @@ jobs:
        cd ..
 
     - name: Checkout Cadiback
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
       with:
         repository: meelgroup/cadiback
         ref: mate
@@ -61,7 +86,7 @@ jobs:
        cd ../..
     
     - name: Checkout SBVA
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
       with:
         repository: meelgroup/sbva
         ref: master
