@@ -82,7 +82,7 @@ jobs:
        cd cryptominisat
        mkdir build && cd build
        cmake -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} ..
-       cmake --build . --config ${{env.BUILD_TYPE}}
+       cmake --build .
        cd ../..
     
     - name: Checkout SBVA
