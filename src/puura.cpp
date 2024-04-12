@@ -149,6 +149,145 @@ SATSolver* Puura::setup_f_not_f_indic()
     return s;
 }
 
+void Puura::synthesis_unate(bool do_given) {
+    double my_time = cpuTime();
+    SATSolver* s = setup_f_not_f_indic();
+    vector<Lit> assumps;
+    vector<Lit> cl;
+    uint32_t undefs = 0;
+    uint32_t falses = 0;
+    bool timeout = false;
+    auto orig_units = solver->get_zero_assigned_lits().size();
+
+    set<uint32_t> given_set;
+    if (do_given) given_set = sampl_set;
+    given_set.insert(var_Undef);
+    for(uint32_t given: given_set) {
+        if (given != var_Undef && !sampl_set.count(given)) continue;
+        if (given != var_Undef && solver->removed_var(given)) continue;
+        verb_print(1, "Will unate test " << orig_num_vars-sampl_set.size() << " vars given " << ((given == var_Undef) ? -1 : (int)given));
+        for(uint32_t test = 0; test < orig_num_vars; test++) {
+            if (test == given) continue;
+            if (solver->removed_var(test)) continue;
+            // we can only do this for non-sampling vars
+            // for sampling vars, we need to have BOTH ways mapping
+            if (sampl_set.count(test)) continue;
+            if (s->get_sum_conflicts() > 50000) {timeout = true; break;}
+            verb_print(3, "given: " << std::setw(3)
+                << ((given == var_Undef) ? -1 : (given+1))
+                << " test: " << (test+1)
+                << " confl: " << s->get_sum_conflicts());
+
+            assumps.clear();
+            for(uint32_t i2 = 0; i2 < solver->nVars(); i2++) {
+                if (i2 == given || i2 == test) continue;
+                if (solver->removed_var(i2)) continue;
+                assumps.push_back(Lit(var_to_indic[i2], false)); // they ARE equal
+            }
+            if (given != var_Undef) {
+                assumps.push_back(Lit(given, false));
+                assumps.push_back(Lit(given+orig_num_vars, false));
+            }
+
+            for(int flip = 0; flip < 2; flip++) {
+                assumps.push_back(Lit(test, true ^ flip));
+                assumps.push_back(Lit(test+orig_num_vars, false ^ flip));
+                s->set_max_confl(1500);
+                auto ret = s->solve(&assumps);
+                verb_print(4, "Ret: " << ret << " flip: " << flip);
+                if (ret == l_False) {
+                    verb_print(2, "given: " << std::setw(3)
+                        << ((given == var_Undef) ? -1 : (given+1))
+                        << " test: " << std::setw(3)  << (test+1)
+                        << " FALSE"
+                        << " T: " << (cpuTime() - my_time));
+                    falses++;
+
+                    cl = {Lit(test, false ^ flip)};
+                    if (given != var_Undef) cl.push_back(Lit(given, true));
+                    s->add_clause(cl);
+                    solver->add_clause(cl);
+                    /* cout << "cl : " << cl << " 0" << endl; */
+                    cl = {Lit(test+orig_num_vars, false ^ flip)};
+                    if (given != var_Undef) cl.push_back(Lit(given+orig_num_vars, true));
+                    s->add_clause(cl);
+                    break;
+                }
+                if (ret == l_Undef) undefs++;
+                assumps.pop_back();
+                assumps.pop_back();
+            }
+        }
+    }
+
+    cout << "c [synthesis-unate]"
+        << " set: " << (solver->get_zero_assigned_lits().size()-orig_units)
+        << " orig units: " << orig_units
+        << " falses: " << falses << " undefs: " << undefs
+        << " T-out: " << (int)timeout
+        << " T: " << (cpuTime()-my_time)
+        << endl;
+
+    delete s;
+}
+
+void Puura::conditional_dontcare()
+{
+    double my_time = cpuTime();
+    SATSolver* s = setup_f_not_f_indic();
+    vector<Lit> assumps;
+    auto v = solver->get_verbosity();
+    solver->set_verbosity(0);
+    for(int given = -1; given < (int)orig_num_vars*2; given++) {
+        Lit g;
+        if (given == -1) g = lit_Undef;
+        else g = Lit(given/2, given%2);
+        if (given != -1 &&
+                (!in_formula[g.var()] || !sampl_set.count(g.var()) ||
+                 solver->removed_var(g.var()))) continue;
+
+        // Let's check if there is a solution with this condition at all
+        assumps.clear();
+        if (given != -1) assumps = {g};
+        const auto ret = solver->solve(&assumps);
+        if (ret == l_False) continue;
+
+        for(const auto& i: sampl_set) {
+            if (!in_formula[i]) continue;
+            if (solver->removed_var(i)) continue;
+            if (i == g.var()) continue;
+
+            // Checking now if var i is dontcare
+            my_time = cpuTime();
+            assumps.clear();
+            if (given != -1) assumps.push_back(g);
+            for(const auto& i2: sampl_set) {
+                // They are all equal except for this
+                if (i != i2) assumps.push_back(Lit(var_to_indic[i2], false));
+            }
+            // but this is NOT equal
+            assumps.push_back(Lit(i, true));
+            assumps.push_back(Lit(i+orig_num_vars, false));
+            s->set_max_confl(1000);
+            auto sret = s->solve(&assumps);
+            if (sret == l_False) {
+                verb_print(2, "Assuming " << g
+                    << " then var " << (i+1) << " is dontcare?"
+                    << "Ret: " << sret << " T: " << std::fixed << std::setprecision(2) << (cpuTime() - my_time)
+                    << " -- inside F: " << (int)in_formula[i]);
+                vector<Lit> cl;
+                cl.push_back(~g);
+                cl.push_back(Lit(i+1, false));
+                solver->add_clause(cl);
+            }
+            s->set_verbosity(0);
+        }
+    }
+    solver->set_verbosity(v);
+
+    delete s;
+}
+
 void Puura::get_simplified_cnf(SimplifiedCNF& scnf,
         const vector<uint32_t>& sampl_vars,
         const vector<uint32_t>& set_sampl_vars,
@@ -276,6 +415,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     }
     solver->set_bve(conf.bve_during_elimtofile);
 
+    if (conf.do_unate) synthesis_unate(false);
     // occ-cl-rem-with-orgates not used -- should test and add, probably to 2nd iter
     // eqlit-find from oracle not used (too slow?)
     string str("must-scc-vrepl, full-probe, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-rem-with-orgates, occ-bve, occ-ternary-res, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
@@ -283,6 +423,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     for (int i = 0; i < simp_conf.iter1; i++) solver->simplify(&dont_elim, &str);
 
     // Now doing Oracle
+    /* conditional_dontcare(); */
     string str2;
     if (conf.bce) {str2 = "occ-bce"; solver->simplify(&dont_elim, &str2);}
     if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify";

@@ -59,6 +59,7 @@ target_link_libraries(arjun
 )
 
 add_executable(arjun-bin main.cpp)
+# add_executable(unate-bin main-unate.cpp)
 add_executable(arjun-example example.cpp)
 
 IF (ZLIB_FOUND)
@@ -76,7 +77,13 @@ set_target_properties(arjun-bin PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
+# set_target_properties(unate-bin PROPERTIES
+#     OUTPUT_NAME unate
+#     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+#     INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 target_link_libraries(arjun-bin ${arjun_bin_exec_link_libs} arjun)
+# target_link_libraries(unate-bin ${arjun_bin_exec_link_libs} arjun)
 set_target_properties(arjun-example PROPERTIES
     OUTPUT_NAME example
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}

@@ -154,6 +154,7 @@ namespace ArjunNS {
         const std::vector<uint32_t>& get_current_indep_set() const;
         std::vector<uint32_t> run_backwards();
         std::vector<uint32_t> extend_sampl_set();
+        std::vector<uint32_t> synthesis_define();
         uint32_t get_orig_num_vars() const;
         const std::vector<uint32_t>& get_orig_sampl_vars() const;
         const std::vector<uint32_t>& get_empty_sampl_vars() const;
@@ -195,6 +196,7 @@ namespace ArjunNS {
         void set_gauss_jordan(bool gauss_jordan);
         void set_find_xors(bool find_xors);
         void set_ite_gate_based(bool ite_gate_based);
+        void set_do_unate(bool do_unate);
         void set_irreg_gate_based(const bool irreg_gate_based);
         void set_gate_sort_special(bool gate_sort_special);
         //void set_polar_mode(CMSat::PolarityMode mode);
@@ -208,6 +210,7 @@ namespace ArjunNS {
         mpz_class get_multiplier_weight() const;
 
         //Get config
+        bool get_do_unate() const;
         std::string get_specified_order_fname() const;
         double get_no_gates_below() const;
         bool get_simp() const;

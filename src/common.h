@@ -164,6 +164,9 @@ struct Common
         vector<Lit>& assumptions,
         const T& indep);
     void extend_round();
+    void synthesis_define(const std::set<uint32_t>& input);
+    void generate_picosat(const vector<Lit>& assumptions , uint32_t test_var
+        , const set<uint32_t>& indep);
 
     //Sorting
     template<class T> void sort_unknown(T& unknown);
