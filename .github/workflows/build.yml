@@ -1,0 +1,129 @@
+name: CMake
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+
+jobs:
+  build:
+    # The CMake configure and build commands are platform agnostic and should work equally
+    # well on Windows or Mac.  You can convert this to a matrix build if you need
+    # cross-platform coverage.
+    # See: https://docs.github.com/en/actions/configuring-and-managing-workflows/configuring-a-workflow#configuring-a-build-matrix
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        #os: [ubuntu-20.04, windows-2022, macos-13]
+        os: [ubuntu-20.04, macos-13]
+        build_type: ['Release']
+        staticcompile: ['ON', 'OFF']
+
+    steps:
+    
+    # install dependencies
+    - name: Install boost & help2man for Linux
+      if: matrix.os == 'ubuntu-20.04'
+      run: sudo apt-get update && sudo apt-get install -yq libboost-dev libboost-serialization-dev libboost-program-options-dev help2man libgmp-dev libmpfr-dev
+      
+    - name: Install gmp for Mac
+      if: matrix.os == 'macos-13'
+      run: | 
+        HOMEBREW_NO_AUTO_UPDATE=1 brew install cmake
+        HOMEBREW_NO_AUTO_UPDATE=1 brew install zlib
+        wget https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz
+        tar xf gmp-6.3.0.tar.xz
+        cd gmp-6.3.0
+        ./configure --enable-static -enable-cxx --enable-shared
+        make -j8
+        sudo make install
+        cd ..
+  
+    - name: Install mpfr for Mac
+      if: matrix.os == 'macos-13'
+      run: | 
+        wget https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.1.tar.xz 
+        tar xf mpfr-4.2.1.tar.xz 
+        cd mpfr-4.2.1
+        ./configure --enable-static -enable-cxx --enable-shared
+        make -j8
+        sudo make install
+        cd ..
+      
+    - name: Installing Numpy
+      run: |
+        pip install pip --upgrade
+        pip install numpy lit
+        
+    - uses: actions/checkout@v4
+
+    - name: Checkout Cadical
+      uses: actions/checkout@v4
+      with:
+        repository: meelgroup/cadical
+        ref: mate-only-libraries-1.8.0
+        path: cadical
+        
+    - name: Build Cadical
+      run: |
+       cd cadical
+       ./configure
+       make -j8
+       cd ..
+
+    - name: Checkout Cadiback
+      uses: actions/checkout@v4
+      with:
+        repository: meelgroup/cadiback
+        ref: mate
+        path: cadiback
+        
+    - name: Build Cadiback
+      run: |
+       cd cadiback
+       ./configure
+       make -j8
+       cd ..
+    
+    - name: Build CMS
+      run: |
+       git clone --depth 1 https://github.com/msoos/cryptominisat
+       cd cryptominisat
+       mkdir build && cd build
+       cmake -DCMAKE_BUILD_TYPE=${{env.build_type}} ..
+       cmake --build .
+       cd ../..
+    
+    - name: Checkout SBVA
+      uses: actions/checkout@v4
+      with:
+        repository: meelgroup/sbva
+        ref: master
+        path: sbva    
+        
+    - name: Build SBVA
+      run: |
+       cd sbva
+       mkdir build && cd build
+       cmake ..
+       make -j8
+       cd ../..
+
+    - name: Configure CMake
+      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
+      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.build_type}}
+
+    - name: Build
+      # Build your program with the given configuration
+      run: cmake --build ${{github.workspace}}/build
+
+    - name: Test
+      working-directory: ${{github.workspace}}/build
+      # Execute tests defined by the CMake configuration.  
+      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
+      run: ctest -C ${{env.build_type}}
+      
