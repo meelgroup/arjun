@@ -22,6 +22,7 @@ include_directories(${PROJECT_SOURCE_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CRYPTOMINISAT5_INCLUDE_DIRS})
 include_directories(${SBVA_INCLUDE_DIRS})
+include_directories(${MPFR_INCLUDES})
 
 if (NOT WIN32)
     add_cxx_flag_if_supported("-Wno-bitfield-constant-conversion")
@@ -54,6 +55,7 @@ add_library(arjun
 target_link_libraries(arjun
     LINK_PUBLIC ${CRYPTOMINISAT5_LIBRARIES}
     LINK_PUBLIC ${SBVA_LIBRARIES}
+    LINK_PUBLIC ${MPFR_LIBRARIES}
 )
 
 add_executable(arjun-bin main.cpp)

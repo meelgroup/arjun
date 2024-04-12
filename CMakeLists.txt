@@ -381,6 +381,8 @@ else()
     MESSAGE(STATUS "Not on Linux, not creating manpage")
 endif()
 
+find_package(MPFR REQUIRED)
+
 # -----------------------------------------------------------------------------
 # Look for ZLIB (For reading zipped CNFs)
 # -----------------------------------------------------------------------------
