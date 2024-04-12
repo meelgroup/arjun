@@ -25,9 +25,22 @@
 #pragma once
 
 // verb_print
-#include "src/arjun.h"
+#define COLRED "\033[31m"
+#define COLYEL2 "\033[35m"
+#define COLYEL "\033[33m"
+#define COLCYN "\033[36m"
+#define COLWHT "\033[97m"
+#define COLORG "\033[43m"
+#define COLBLBACK  "\033[44m"
+#define COLORGBG "\033[100m"
+#define COLREDBG "\033[41m"
+//default
+#define COLDEF "\033[0m"
+
 #define verb_print(a, x) \
-    do { if (conf.verb >= a) {std::cout << "c " << x << std::endl;} } while (0)
+    do { \
+        if (conf.verb >= a) {std::cout << COLDEF << "c " << x << COLDEF << std::endl;}\
+    } while (0)
 
 #if defined(_MSC_VER)
 #include "cms_windows_includes.h"
@@ -53,6 +66,7 @@
     } while (0)
 #endif
 
+#include "arjun.h"
 #include <vector>
 #include <iostream>
 #include <iomanip>

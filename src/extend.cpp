@@ -147,6 +147,7 @@ void Common::generate_picosat(const vector<Lit>& assumptions , uint32_t test_var
                     indic = true;
                 if (indic_map.count(l.var())) l = Lit(indic_map[l.var()], l.sign());
                 if (seen[(~l).toInt()]) {taut = true; break;}
+                if (seen[l.toInt()]) continue;
                 seen[l.toInt()] = true;
                 cl.push_back(l);
             }

@@ -336,7 +336,7 @@ void Common::backward_round() {
     }
     update_sampling_set(unknown, unknown_set, indep);
 
-    verb_print(1, "[arjun] backward round finished. U: " <<
+    verb_print(1, COLRED "[arjun] backward round finished. U: " <<
             " I: " << sampling_set.size() << " T: "
         << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();

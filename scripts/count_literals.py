@@ -31,6 +31,7 @@ non_bin_cls = 0
 set_vars = {}
 input_vars = {}
 num_input_vars = 0
+num_opt_input_vars = 0
 
 if len(sys.argv) < 2:
     print("ERROR: You need the filename")
@@ -40,18 +41,23 @@ verbose = False
 if len(sys.argv) >= 3 and sys.argv[2].strip() == "-v":
     verbose = True
 
+def remove_prefix(s, prefix):
+    if s.startswith(prefix):
+        return s[len(prefix):]
+    else:
+        return s
+
 # read set lits
 with open(sys.argv[1], "r") as f:
     for line in f:
-        l = line.strip()
+        line = line.strip()
         if len(line) < 1:
             continue
 
         if line[0] == "c":
             if "c p show" in line:
-                line = line[8:].split()
-                line = line[:len(line)-1]
-                for var in line:
+                line = remove_prefix(line, "c p show")
+                for var in line.split():
                     var = int(var)
                     if var != abs(var):
                         print("ERROR! c p show contains LITERAL not VARIABLE!")
@@ -61,6 +67,22 @@ with open(sys.argv[1], "r") as f:
                         print("Error! Var %s in 'c p show' but num vars promised to be: %s" % (var, num_vars))
                         exit(-1)
                 num_input_vars = len(line)
+                continue
+            if "c p optshow" in line:
+                line = remove_prefix(line, "c p optshow")
+                for var in line.split():
+                    var = int(var)
+                    if var != abs(var):
+                        print("ERROR! c p show contains LITERAL not VARIABLE!")
+                        exit(-1)
+                    input_vars[var] = True
+                    if var > num_vars:
+                        print("Error! Var %s in 'c p show' but num vars promised to be: %s" % (var, num_vars))
+                        exit(-1)
+                num_opt_input_vars = len(line)
+                continue
+
+            # regular comment
             continue
 
         if line[0] == "p":
@@ -69,14 +91,15 @@ with open(sys.argv[1], "r") as f:
             num_vars = int(line[2])
             continue
 
-        l = l.split()
-        #print(l)
-        for lit in l:
+        line = line.split()
+        for lit in line:
             if abs(int(lit)) > num_vars:
                 print("Error! Lit %s in CNF but num vars promised to be: %s" % (lit, num_vars))
                 exit(-1)
-        if len(l) == 2:
-            lit = int(l[0])
+
+        # unit clause
+        if len(line) == 2:
+            lit = int(line[0])
             set_vars[abs(lit)] = lit > 0
             continue
 
@@ -138,7 +161,8 @@ if verbose:
     print("num set lits        ", len(set_vars))
 print("num (non-set) vars       %7d" % (num_vars-len(set_vars)))
 print("num input     vars       %7d" % (num_input_vars))
-print("num (non-set) outp vars  %7d" % (num_output_not_set))
+print("num opt input vars       %7d" % (num_opt_input_vars))
+print("num outp      vars       %7d" % (num_output_not_set))
 print("num cls                  %7d" % num_cls)
 print("num bin cls              %7d" % num_bin_cls)
 print("max cl size              %7d" % max_cl_sz)

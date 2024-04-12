@@ -107,7 +107,7 @@ void add_arjun_options()
         .action([&](const auto& a) {extend_indep = std::atoi(a.c_str());})
         .default_value(extend_indep)
         .help("Extend independent set just before CNF dumping");
-    program.add_argument("--synthdefine")
+    program.add_argument("--unsatdefine")
         .action([&](const auto& a) {unsat_define = std::atoi(a.c_str());})
         .default_value(unsat_define)
         .help("Define for synthesis");
