@@ -60,10 +60,8 @@ SimpConf simp_conf;
 int renumber = true;
 bool gates = true;
 int extend_indep = false;
-int synthesis_define = false;
 int redundant_cls = true;
 int compute_indep = true;
-int unate = false;
 int simptofile = true;
 int sampl_start_at_zero = false;
 int64_t sbva_steps = 200;
@@ -107,18 +105,10 @@ void add_arjun_options()
         .action([&](const auto& a) {extend_indep = std::atoi(a.c_str());})
         .default_value(extend_indep)
         .help("Extend independent set just before CNF dumping");
-    program.add_argument("--synthdefine")
-        .action([&](const auto& a) {synthesis_define = std::atoi(a.c_str());})
-        .default_value(synthesis_define)
-        .help("Define for synthesis");
     program.add_argument("--compindep")
         .action([&](const auto& a) {compute_indep = std::atoi(a.c_str());})
         .default_value(compute_indep)
         .help("compute indep support");
-    program.add_argument("--unate")
-        .action([&](const auto& a) {conf.do_unate = std::atoi(a.c_str());})
-        .default_value(conf.do_unate)
-        .help("Perform unate analysis");
     program.add_argument("--sbva")
         .action([&](const auto& a) {sbva_steps = std::atoi(a.c_str());})
         .default_value(sbva_steps)
@@ -296,10 +286,6 @@ void elim_to_file() {
     arjun->run_sbva(ret, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 
     delete arjun; arjun = nullptr;
-    if (extend_indep && synthesis_define) {
-        cout << "ERROR: can't have both --extend and --synthdefine" << endl;
-        exit(-1);
-    }
     if (!indep_support_given) {
         assert(ret.opt_sampl_vars.empty());
         for(uint32_t i = 0; i < ret.nvars; i++) ret.opt_sampl_vars.push_back(i);
@@ -315,15 +301,6 @@ void elim_to_file() {
             ret.opt_sampl_vars = ret.sampl_vars;
         }
     }
-
-    /* if (synthesis_define) { */
-    /*     Arjun arj2; */
-    /*     arj2.new_vars(ret.nvars); */
-    /*     arj2.set_verbosity(conf.verb); */
-    /*     for(const auto& cl: ret.cnf) arj2.add_clause(cl); */
-    /*     arj2.set_starting_sampling_set(ret.sampling_vars); */
-    /*     ret.sampling_vars = arj2.synthesis_define(); */
-    /* } */
 
     ret.renumber_sampling_vars_for_ganak();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
@@ -347,7 +324,6 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_intree(conf.intree);
     arj->set_bve_pre_simplify(conf.bve_pre_simplify);
     arj->set_unknown_sort(conf.unknown_sort);
-    arj->set_do_unate(conf.do_unate);
     if (gates) {
       arj->set_or_gate_based(conf.or_gate_based);
       arj->set_ite_gate_based(conf.ite_gate_based);

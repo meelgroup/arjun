@@ -192,20 +192,6 @@ DLL_PUBLIC vector<uint32_t> Arjun::run_backwards() {
     return arjdata->common.sampling_set;
 }
 
-DLL_PUBLIC vector<uint32_t> Arjun::synthesis_define()
-{
-    assert(!arjdata->common.already_duplicated);
-    arjdata->common.conf.simp = false;
-    std::set<uint32_t> input;
-    for(const auto& v: arjdata->common.sampling_set) input.insert(v);
-    arjdata->common.init();
-    if (!arjdata->common.preproc_and_duplicate()) goto end;
-    arjdata->common.synthesis_define(input);
-
-    end:
-    return arjdata->common.sampling_set;
-}
-
 DLL_PUBLIC vector<uint32_t> Arjun::extend_sampl_set()
 {
     assert(!arjdata->common.already_duplicated);
@@ -280,7 +266,6 @@ set_get_macro(double, no_gates_below)
 set_get_macro(std::string, specified_order_fname)
 set_get_macro(bool, bce)
 set_get_macro(bool, bve_during_elimtofile)
-set_get_macro(bool, do_unate)
 set_get_macro(bool, weighted)
 
 DLL_PUBLIC void Arjun::set_pred_forever_cutoff(int pred_forever_cutoff) {
