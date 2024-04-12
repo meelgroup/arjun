@@ -213,6 +213,10 @@ void add_arjun_options()
         .action([&](const auto& a) {simp_conf.bve_grow_iter2 = std::atoi(a.c_str());})
         .default_value(simp_conf.bve_grow_iter2)
         .help("Puura BVE grow rate allowed after Oracle");
+    program.add_argument("--bveresolvmaxsz")
+        .action([&](const auto& a) {simp_conf.bve_too_large_resolvent = std::atoi(a.c_str());})
+        .default_value(simp_conf.bve_too_large_resolvent)
+        .help("Puura BVE max resolvent size in literals. -1 == no limit");
     program.add_argument("--oraclesparsify")
         .action([&](const auto& a) {simp_conf.oracle_sparsify = std::atoi(a.c_str());})
         .default_value(simp_conf.oracle_sparsify)

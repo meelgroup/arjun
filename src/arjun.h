@@ -45,6 +45,7 @@ namespace ArjunNS {
         int bve_grow_iter1 = 0;
         int bve_grow_iter2 = 0;
         bool appmc = false;
+        int bve_too_large_resolvent = -1;
     };
 
     struct SimplifiedCNF {

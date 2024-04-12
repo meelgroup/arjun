@@ -409,7 +409,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     if (!simp_conf.appmc) {
         solver->set_min_bva_gain(simp_conf.bve_grow_iter1);
         solver->set_occ_based_lit_rem_time_limitM(500);
-        solver->set_bve_too_large_resolvent(-1);
+        solver->set_bve_too_large_resolvent(simp_conf.bve_too_large_resolvent);
     } else {
         solver->set_occ_based_lit_rem_time_limitM(0);
     }
