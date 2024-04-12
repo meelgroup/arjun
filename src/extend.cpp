@@ -33,9 +33,7 @@ extern "C" {
 using namespace ArjunInt;
 
 template<class T>
-void Common::fill_assumptions_extend(
-    vector<Lit>& assumptions,
-    const T& indep)
+void Common::fill_assumptions_extend(vector<Lit>& assumptions, const T& indep)
 {
     verb_print(5, "Filling assumps BEGIN");
     assumptions.clear();
@@ -198,7 +196,7 @@ void Common::generate_picosat(const vector<Lit>& assumptions , uint32_t test_var
     fclose(trace);
 }
 
-void Common::synthesis_define(const set<uint32_t>& input) {
+void Common::unsat_define(const set<uint32_t>& input) {
     assert(already_duplicated);
     solver->set_verbosity(0);
     add_all_indics();
@@ -228,7 +226,7 @@ void Common::synthesis_define(const set<uint32_t>& input) {
         assert(test_var < orig_num_vars);
         verb_print(5, "Testing: " << test_var);
 
-        //Assumption filling
+        //Assumption filling -- assume everything in indep is the same
         assert(test_var != var_Undef);
         indep.erase(test_var);
         fill_assumptions_extend(assumptions, indep);
@@ -272,6 +270,9 @@ void Common::synthesis_define(const set<uint32_t>& input) {
             << " final extension: " << tot_ret_false
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
+
+    set<uint32_t> todo_define(indep);
+    todo_define.erase(input.begin(), input.end());
 }
 
 void Common::extend_round()

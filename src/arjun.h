@@ -153,7 +153,7 @@ namespace ArjunNS {
         const std::vector<uint32_t>& get_current_indep_set() const;
         std::vector<uint32_t> run_backwards();
         std::vector<uint32_t> extend_sampl_set();
-        std::vector<uint32_t> synthesis_define();
+        std::vector<uint32_t> unsat_define();
         uint32_t get_orig_num_vars() const;
         const std::vector<uint32_t>& get_orig_sampl_vars() const;
         const std::vector<uint32_t>& get_empty_sampl_vars() const;

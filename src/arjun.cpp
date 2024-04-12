@@ -192,7 +192,7 @@ DLL_PUBLIC vector<uint32_t> Arjun::run_backwards() {
     return arjdata->common.sampling_set;
 }
 
-DLL_PUBLIC vector<uint32_t> Arjun::synthesis_define()
+DLL_PUBLIC vector<uint32_t> Arjun::unsat_define()
 {
     assert(!arjdata->common.already_duplicated);
     arjdata->common.conf.simp = false;
@@ -200,7 +200,7 @@ DLL_PUBLIC vector<uint32_t> Arjun::synthesis_define()
     for(const auto& v: arjdata->common.sampling_set) input.insert(v);
     arjdata->common.init();
     if (!arjdata->common.preproc_and_duplicate()) goto end;
-    arjdata->common.synthesis_define(input);
+    arjdata->common.unsat_define(input);
 
     end:
     return arjdata->common.sampling_set;

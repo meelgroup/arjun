@@ -60,7 +60,7 @@ SimpConf simp_conf;
 int renumber = true;
 bool gates = true;
 int extend_indep = false;
-int synthesis_define = false;
+int unsat_define = false;
 int redundant_cls = true;
 int compute_indep = true;
 int unate = false;
@@ -108,8 +108,8 @@ void add_arjun_options()
         .default_value(extend_indep)
         .help("Extend independent set just before CNF dumping");
     program.add_argument("--synthdefine")
-        .action([&](const auto& a) {synthesis_define = std::atoi(a.c_str());})
-        .default_value(synthesis_define)
+        .action([&](const auto& a) {unsat_define = std::atoi(a.c_str());})
+        .default_value(unsat_define)
         .help("Define for synthesis");
     program.add_argument("--compindep")
         .action([&](const auto& a) {compute_indep = std::atoi(a.c_str());})
@@ -292,7 +292,7 @@ void elim_to_file() {
     arjun->run_sbva(ret, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 
     delete arjun; arjun = nullptr;
-    if (extend_indep && synthesis_define) {
+    if (extend_indep && unsat_define) {
         cout << "ERROR: can't have both --extend and --synthdefine" << endl;
         exit(-1);
     }
@@ -312,13 +312,13 @@ void elim_to_file() {
         }
     }
 
-    /* if (synthesis_define) { */
+    /* if (unsat_define) { */
     /*     Arjun arj2; */
     /*     arj2.new_vars(ret.nvars); */
     /*     arj2.set_verbosity(conf.verb); */
     /*     for(const auto& cl: ret.cnf) arj2.add_clause(cl); */
     /*     arj2.set_starting_sampling_set(ret.sampling_vars); */
-    /*     ret.sampling_vars = arj2.synthesis_define(); */
+    /*     ret.sampling_vars = arj2.unsat_define(); */
     /* } */
 
     ret.renumber_sampling_vars_for_ganak();

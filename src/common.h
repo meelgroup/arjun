@@ -102,7 +102,7 @@ struct Common
     bool definitely_satisfiable = false;
     enum ModeType {one_mode, many_mode};
 
-    //assert indic[var] to FASLE to force var==var+orig_num_vars
+    //assert indic[var] to TRUE to force var==var+orig_num_vars
     vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
     vector<uint32_t> indic_to_var; //maps an INDICATOR VAR to ORIG VAR
 
@@ -164,7 +164,9 @@ struct Common
         vector<Lit>& assumptions,
         const T& indep);
     void extend_round();
-    void synthesis_define(const std::set<uint32_t>& input);
+
+    // Unsat define
+    void unsat_define(const std::set<uint32_t>& input);
     void generate_picosat(const vector<Lit>& assumptions , uint32_t test_var
         , const set<uint32_t>& indep);
 
