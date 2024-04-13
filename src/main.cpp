@@ -59,7 +59,7 @@ uint32_t polar_mode = 0;
 SimpConf simp_conf;
 int renumber = true;
 bool gates = true;
-int extend_indep = false;
+int extend_indep = true;
 int redundant_cls = true;
 int compute_indep = true;
 int simptofile = true;
