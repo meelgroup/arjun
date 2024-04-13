@@ -293,6 +293,7 @@ void print_final_sampl_set(const vector<uint32_t>& sampl_vars) {
 }
 
 void do_synthesis() {
+    conf.bce = 0;
     simp_conf.bve_too_large_resolvent = -1;
     arjun->unsat_define();
     auto ret = arjun->get_fully_simplified_renumbered_cnf(simp_conf);
