@@ -324,33 +324,28 @@ void Common::extend_round()
     for(const auto& x: seen) assert(x == 0);
     double start_round_time = cpuTimeTotal();
     double my_time = cpuTime();
-    vector<uint32_t> indep = sampling_set;
-    for(const auto& v: indep) seen[v] = 1;
+    set<uint32_t> indep(sampling_set.begin(), sampling_set.end());
+    vector<Lit> cl;
+    for(const auto& v: indep) {
+        if (var_to_indic[v] == var_Undef) continue;
+        cl.clear();
+        cl.push_back(Lit(var_to_indic[v], false));
+        solver->add_clause(cl);
+    }
 
     //Initially, all of samping_set is unknown
     vector<uint32_t> unknown;
     for(uint32_t i = 0; i < orig_num_vars; i++) {
-        if (seen[i]) continue;
+        if (indep.count(i)) continue;
         if (solver->removed_var(i)) continue;
         unknown.push_back(i);
     }
-    for(const auto& v: indep) seen[v] = 0;
 
     sort_unknown(unknown);
     verb_print(1,"[arjun] Start unknown size: " << unknown.size());
 
     vector<Lit> assumptions;
     uint32_t iter = 0;
-
-    //Calc mod:
-    uint32_t mod = 1;
-    if (unknown.size() > 20 ) {
-        uint32_t will_do_iters = unknown.size();
-        uint32_t want_printed = 30;
-        mod = will_do_iters/want_printed;
-        mod = std::max<int>(mod, 1);
-    }
-
     uint32_t ret_false = 0;
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
@@ -390,23 +385,23 @@ void Common::extend_round()
             // Not fully dependent
         } else if (ret == l_False) {
             // Dependent fully on `indep`
-            indep.push_back(test_var);
+            indep.insert(test_var);
+            cl.clear();
+            cl.push_back(Lit(var_to_indic[test_var], false));
+            solver->add_clause(cl);
         }
 
-        if (iter % mod == (mod-1) && conf.verb) {
+        if (conf.verb >= 5) {
             cout
             << "c [arjun] iter: " << std::setw(5) << iter;
-            if (mod == 1) cout << " ret: " << std::setw(8) << ret;
-            else {
-                cout
-                << " T/F/U: ";
-                std::stringstream ss;
-                ss << ret_true << "/" << ret_false << "/" << ret_undef;
-                cout << std::setw(10) << std::left << ss.str() << std::right;
-                ret_true = 0;
-                ret_false = 0;
-                ret_undef = 0;
-            }
+            cout
+            << " T/F/U: ";
+            std::stringstream ss;
+            ss << ret_true << "/" << ret_false << "/" << ret_undef;
+            cout << std::setw(10) << std::left << ss.str() << std::right;
+            ret_true = 0;
+            ret_false = 0;
+            ret_undef = 0;
             cout
             << " by: " << std::setw(3) << 1
             << " U: " << std::setw(7) << unknown.size()
@@ -418,7 +413,8 @@ void Common::extend_round()
         iter++;
 
     }
-    sampling_set = indep;
+    sampling_set.clear();
+    sampling_set.insert(sampling_set.begin(), indep.begin(), indep.end());
 
     verb_print(1, "[arjun] extend round finished "
             << " final size: " << indep.size()
