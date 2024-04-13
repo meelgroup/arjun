@@ -30,8 +30,7 @@ tot_non_bin_cl_size = 0
 non_bin_cls = 0
 set_vars = {}
 input_vars = {}
-num_input_vars = 0
-num_opt_input_vars = 0
+opt_input_vars = {}
 
 if len(sys.argv) < 2:
     print("ERROR: You need the filename")
@@ -66,7 +65,6 @@ with open(sys.argv[1], "r") as f:
                     if var > num_vars:
                         print("Error! Var %s in 'c p show' but num vars promised to be: %s" % (var, num_vars))
                         exit(-1)
-                num_input_vars = len(line)
                 continue
             if "c p optshow" in line:
                 line = remove_prefix(line, "c p optshow")
@@ -75,11 +73,10 @@ with open(sys.argv[1], "r") as f:
                     if var != abs(var):
                         print("ERROR! c p show contains LITERAL not VARIABLE!")
                         exit(-1)
-                    input_vars[var] = True
+                    opt_input_vars[var] = True
                     if var > num_vars:
                         print("Error! Var %s in 'c p show' but num vars promised to be: %s" % (var, num_vars))
                         exit(-1)
-                num_opt_input_vars = len(line)
                 continue
 
             # regular comment
@@ -103,9 +100,10 @@ with open(sys.argv[1], "r") as f:
             set_vars[abs(lit)] = lit > 0
             continue
 
+seen_vars = {}
 with open(sys.argv[1], "r") as f:
     for line in f:
-        l = line.strip()
+        line = line.strip()
         if len(line) < 1:
             continue
 
@@ -118,15 +116,15 @@ with open(sys.argv[1], "r") as f:
             num_vars = int(line[2])
             continue
 
-        l = l.split()
-        if len(l) == 2:
-            lit = int(l[0])
+        line = line.split()
+        if len(line) == 2:
+            lit = int(line[0])
             set_vars[abs(lit)] = lit > 0
             continue
 
         sat_cl = False
         l2 = []
-        for lit in l:
+        for lit in line:
             lit = int(lit)
             if abs(lit) in set_vars:
                 val = set_vars[abs(lit)]
@@ -137,6 +135,11 @@ with open(sys.argv[1], "r") as f:
 
         if sat_cl:
             continue
+
+        # fill seen
+        for lit in line:
+            lit = int(lit)
+            seen_vars[abs(lit)] = True
 
         cl_len = len(l2)-1;
         if cl_len == 2:
@@ -154,14 +157,14 @@ with open(sys.argv[1], "r") as f:
 
 num_output_not_set = 0
 for i in range(1, num_vars+1):
-    if (i not in input_vars) and (i not in set_vars):
+    if (i not in input_vars) and (i not in set_vars) and (i in seen_vars):
         num_output_not_set += 1
 
 if verbose:
     print("num set lits        ", len(set_vars))
 print("num (non-set) vars       %7d" % (num_vars-len(set_vars)))
-print("num input     vars       %7d" % (num_input_vars))
-print("num opt input vars       %7d" % (num_opt_input_vars))
+print("num input     vars       %7d" % (len(input_vars)))
+print("num opt input vars       %7d" % (len(opt_input_vars)))
 print("num outp      vars       %7d" % (num_output_not_set))
 print("num cls                  %7d" % num_cls)
 print("num bin cls              %7d" % num_bin_cls)

@@ -180,9 +180,8 @@ struct Common
     void extend_round();
 
     // Unsat define
-    void unsat_define(const std::set<uint32_t>& input);
-    void generate_picosat(const vector<Lit>& assumptions , uint32_t test_var
-        , const set<uint32_t>& indep);
+    void unsat_define(const vector<uint32_t>& orig_sampl_vars);
+    void generate_picosat(const vector<Lit>& assumptions , uint32_t test_var);
 
     //Sorting
     template<class T> void sort_unknown(T& unknown);
@@ -253,8 +252,7 @@ struct IncidenceSorter2
     const vector<T>& inc2;
 };
 
-template<class T>
-void Common::sort_unknown(T& unknown)
+template<class T> void Common::sort_unknown(T& unknown)
 {
     if (conf.unknown_sort == 1) {
         std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));

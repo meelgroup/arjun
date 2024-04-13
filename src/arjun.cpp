@@ -192,15 +192,26 @@ DLL_PUBLIC vector<uint32_t> Arjun::run_backwards() {
     return arjdata->common.sampling_set;
 }
 
-DLL_PUBLIC vector<uint32_t> Arjun::unsat_define()
-{
+DLL_PUBLIC vector<uint32_t> Arjun::unsat_define() {
     assert(!arjdata->common.already_duplicated);
     arjdata->common.conf.simp = false;
-    std::set<uint32_t> input;
-    for(const auto& v: arjdata->common.sampling_set) input.insert(v);
     arjdata->common.init();
-    if (!arjdata->common.preproc_and_duplicate()) goto end;
-    arjdata->common.unsat_define(input);
+    {
+        auto cnf = get_orig_cnf();
+        Arjun a2;
+        a2.new_vars(cnf.nvars);
+        for(const auto& cl: cnf.cnf) a2.add_clause(cl);
+        a2.set_sampl_vars(cnf.sampl_vars);
+        a2.arjdata->common.conf.or_gate_based = false;
+        a2.arjdata->common.conf.xor_gates_based = false;
+        a2.arjdata->common.conf.ite_gate_based = false;
+        a2.arjdata->common.conf.irreg_gate_based = false;
+        a2.arjdata->common.init();
+        if (!a2.arjdata->common.preproc_and_duplicate()) goto end;
+        a2.arjdata->common.unsat_define(arjdata->common.orig_sampling_vars);
+        arjdata->common.sampling_set = a2.arjdata->common.sampling_set;
+    }
+    arjdata->common.orig_sampling_vars = arjdata->common.sampling_set;
 
     end:
     return arjdata->common.sampling_set;

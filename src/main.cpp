@@ -60,16 +60,18 @@ SimpConf simp_conf;
 int renumber = true;
 bool gates = true;
 int extend_indep = false;
-int unsat_define = false;
 int redundant_cls = true;
 int compute_indep = true;
-int unate = false;
 int simptofile = true;
 int sampl_start_at_zero = false;
 int64_t sbva_steps = 200;
 int sbva_cls_cutoff = 2;
 int sbva_lits_cutoff = 2;
 int sbva_tiebreak = 1;
+
+
+int synthesis = false;
+int unate = false;
 
 // static void signal_handler(int) {
 //     cout << endl << "c [arjun] INTERRUPTING ***" << endl << std::flush;
@@ -107,18 +109,19 @@ void add_arjun_options()
         .action([&](const auto& a) {extend_indep = std::atoi(a.c_str());})
         .default_value(extend_indep)
         .help("Extend independent set just before CNF dumping");
-    program.add_argument("--unsatdefine")
-        .action([&](const auto& a) {unsat_define = std::atoi(a.c_str());})
-        .default_value(unsat_define)
+    program.add_argument("--synth")
+        .action([&](const auto&) {synthesis = 1;})
+        .default_value(synthesis)
+        .flag()
         .help("Define for synthesis");
-    program.add_argument("--compindep")
-        .action([&](const auto& a) {compute_indep = std::atoi(a.c_str());})
-        .default_value(compute_indep)
-        .help("compute indep support");
     program.add_argument("--unate")
         .action([&](const auto& a) {conf.do_unate = std::atoi(a.c_str());})
         .default_value(conf.do_unate)
         .help("Perform unate analysis");
+    program.add_argument("--compindep")
+        .action([&](const auto& a) {compute_indep = std::atoi(a.c_str());})
+        .default_value(compute_indep)
+        .help("compute indep support");
     program.add_argument("--sbva")
         .action([&](const auto& a) {sbva_steps = std::atoi(a.c_str());})
         .default_value(sbva_steps)
@@ -289,18 +292,20 @@ void print_final_sampl_set(const vector<uint32_t>& sampl_vars) {
     << " %" << endl;
 }
 
+void do_synthesis () {
+    simp_conf.bve_too_large_resolvent = -1;
+    arjun->unsat_define();
+    auto ret = arjun->get_fully_simplified_renumbered_cnf(simp_conf);
+    write_simpcnf(ret, elimtofile, redundant_cls);
+    cout << "c [arjun] All done. T: " << std::setprecision(2) << (cpuTime() - start_time) << endl;
+}
+
 void elim_to_file() {
     double dump_start_time = cpuTime();
     auto ret = arjun->get_fully_simplified_renumbered_cnf(simp_conf);
-
-    if (!unsat_define)
-        arjun->run_sbva(ret, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
+    arjun->run_sbva(ret, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 
     delete arjun; arjun = nullptr;
-    if (extend_indep && unsat_define) {
-        cout << "ERROR: can't have both --extend and --synthdefine" << endl;
-        exit(-1);
-    }
     if (!indep_support_given) {
         for(uint32_t i = 0; i < ret.nvars; i++) ret.opt_sampl_vars.push_back(i);
     } else {
@@ -316,17 +321,7 @@ void elim_to_file() {
         }
     }
 
-    if (unsat_define) {
-        Arjun arj2;
-        arj2.new_vars(ret.nvars);
-        arj2.set_verbosity(conf.verb);
-        for(const auto& cl: ret.cnf) arj2.add_clause(cl);
-        arj2.set_sampl_vars(ret.sampl_vars);
-        ret.sampl_vars = arj2.unsat_define();
-        ret.opt_sampl_vars = ret.sampl_vars;
-    }
-
-    if (!unsat_define) ret.renumber_sampling_vars_for_ganak();
+    ret.renumber_sampling_vars_for_ganak();
     cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
     write_simpcnf(ret, elimtofile, redundant_cls);
     cout << "c [arjun] Dumping took: " << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
@@ -430,15 +425,17 @@ int main(int argc, char** argv) {
     const string inp = files[0];
     if (files.size() >= 2) elimtofile = files[1];
     read_in_a_file(inp, arjun, recompute_sampling_set, indep_support_given);
-    vector<uint32_t> sampl_vars = arjun->run_backwards();
-
-    const auto& cnf = arjun->get_orig_cnf();
-    cout << "c [arjun] original sampling set size: " << cnf.sampl_vars.size() << endl;
-    print_final_sampl_set(sampl_vars);
-    cout << "c [arjun] finished "
-        << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time) << endl;
-
-    if (!elimtofile.empty()) elim_to_file();
+    if (synthesis) {
+        do_synthesis();
+    } else {
+        vector<uint32_t> sampl_vars = arjun->run_backwards();
+        const auto& cnf = arjun->get_orig_cnf();
+        cout << "c [arjun] original sampling set size: " << cnf.sampl_vars.size() << endl;
+        print_final_sampl_set(sampl_vars);
+        cout << "c [arjun] finished "
+            << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time) << endl;
+        if (!elimtofile.empty()) elim_to_file();
+    }
 
     delete arjun;
     return 0;

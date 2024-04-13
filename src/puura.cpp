@@ -25,10 +25,8 @@
 #include "cryptominisat5/cryptominisat.h"
 #include <cstdint>
 #include <vector>
-#include <limits>
 #include <iostream>
 #include <iomanip>
-#include <random>
 
 #include <sbva/sbva.h>
 #include "time_mem.h"
