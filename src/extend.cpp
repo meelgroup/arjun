@@ -283,8 +283,6 @@ void Common::unsat_define(const vector<uint32_t>& orig_sampl_vars) {
         solver->set_no_confl_needed();
 
         lbool ret = l_Undef;
-        // TODO we probably shouldn't use this, removing.
-        /* solver->set_max_confl(conf.backw_max_confl); */
         ret = solver->solve(&assumptions);
 
         if (ret == l_False) verb_print(5, "[arjun] extend solve(): False");
