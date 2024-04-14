@@ -49,7 +49,7 @@ public:
         vector<uint32_t>& sampl_vars,
         vector<uint32_t>& empty_sampl_vars,
         vector<uint32_t>& orig_sampl_vars);
-
+    void reverse_bce(SimplifiedCNF& cnf);
     void run_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak);
 
@@ -61,6 +61,7 @@ private:
     void setup_sampl_vars_dontelim(const vector<uint32_t>& sampl_vars);
 
     void fill_solver(Arjun* arjun);
+    void fill_solver(const SimplifiedCNF& cnf);
     void renumber_sampling_vars_for_ganak(SimplifiedCNF& scnf);
     void get_simplified_cnf(SimplifiedCNF& sncf,
         const vector<uint32_t>& sampl_vars,

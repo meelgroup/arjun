@@ -160,6 +160,7 @@ namespace ArjunNS {
         std::vector<uint32_t> run_backwards();
         std::vector<uint32_t> extend_sampl_set();
         std::vector<uint32_t> unsat_define();
+
         uint32_t get_orig_num_vars() const;
         const std::vector<uint32_t>& get_orig_sampl_vars() const;
         const std::vector<uint32_t>& get_empty_sampl_vars() const;
@@ -176,6 +177,8 @@ namespace ArjunNS {
         void end_getting_constraints();
         SimplifiedCNF get_fully_simplified_renumbered_cnf(
                 const SimpConf& simp_conf);
+
+        void reverse_bce(SimplifiedCNF& cnf);
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
         std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;
         const SimplifiedCNF& get_orig_cnf() const;

@@ -333,6 +333,26 @@ void Puura::get_simplified_cnf(SimplifiedCNF& scnf,
     std::sort(scnf.sampl_vars.begin(), scnf.sampl_vars.end());
 }
 
+
+void Puura::fill_solver(const SimplifiedCNF& cnf) {
+    assert(solver == nullptr);
+    solver = new CMSat::SATSolver;
+    solver->set_verbosity(conf.verb);
+    solver->set_find_xors(false);
+    assert(solver->nVars() == 0); // Solver here is empty
+
+    // Inject original CNF
+    solver->new_vars(cnf.nvars);
+    for(const auto& cl: cnf.cnf) solver->add_clause(cl);
+    for(const auto& cl: cnf.red_cnf) solver->add_red_clause(cl);
+#ifdef WEIGHTED
+    if (cnf.weighted) {
+        for(const auto& it: cnf.weights) solver->set_lit_weight(it.first, it.second);
+    }
+#endif
+    solver->set_multiplier_weight(cnf.multiplier_weight);
+}
+
 void Puura::fill_solver(Arjun* arjun) {
     assert(solver == nullptr);
     solver = new CMSat::SATSolver;
@@ -380,6 +400,15 @@ bool replace(std::string& str, const std::string& from, const std::string& to) {
         return false;
     str.replace(start_pos, from.length(), to);
     return true;
+}
+
+void Puura::reverse_bce(SimplifiedCNF& cnf) {
+    fill_solver(cnf);
+    solver->set_renumber(false);
+    solver->set_scc(false);
+    setup_sampl_vars_dontelim(cnf.opt_sampl_vars);
+    solver->set_sampl_vars(cnf.opt_sampl_vars);
+    solver->reverse_bce();
 }
 
 SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(

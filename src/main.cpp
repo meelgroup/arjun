@@ -292,22 +292,21 @@ void print_final_sampl_set(const vector<uint32_t>& sampl_vars) {
     << " %" << endl;
 }
 
-void do_synthesis() {
-    conf.bce = 0;
-    simp_conf.bve_too_large_resolvent = -1;
-    arjun->unsat_define();
-    auto ret = arjun->get_fully_simplified_renumbered_cnf(simp_conf);
-    write_simpcnf(ret, elimtofile, redundant_cls);
-    cout << "c [arjun] All done. T: " << std::setprecision(2) << (cpuTime() - start_time) << endl;
-}
+void set_config(ArjunNS::Arjun* arj);
 
 void elim_to_file() {
     double dump_start_time = cpuTime();
+    cout << indep_support_given << endl;
+    if (!indep_support_given && conf.bce) {
+        cout << "c [arjun] WARN: Forcing BCE to FALSE due to non-projected MC" << endl;
+        conf.bce = 0;
+    }
     auto ret = arjun->get_fully_simplified_renumbered_cnf(simp_conf);
     arjun->run_sbva(ret, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 
     delete arjun; arjun = nullptr;
     if (!indep_support_given) {
+        ret.opt_sampl_vars.clear();
         for(uint32_t i = 0; i < ret.nvars; i++) ret.opt_sampl_vars.push_back(i);
     } else {
         if (extend_indep) {
@@ -317,8 +316,6 @@ void elim_to_file() {
             for(const auto& cl: ret.cnf) arj2.add_clause(cl);
             arj2.set_sampl_vars(ret.opt_sampl_vars);
             ret.opt_sampl_vars = arj2.extend_sampl_set();
-        } else {
-            ret.opt_sampl_vars = ret.opt_sampl_vars;
         }
     }
 
@@ -364,6 +361,21 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_gauss_jordan(conf.gauss_jordan);
     arj->set_simp(conf.simp);
     arj->set_bve_during_elimtofile(conf.bve_during_elimtofile);
+}
+
+void do_synthesis() {
+    conf.bce = 0;
+    simp_conf.bve_too_large_resolvent = -1;
+    arjun->unsat_define();
+
+    /* arjun = new Arjun; */
+    /* set_config(arjun); */
+    /* arjun->reverse_bce(ret); */
+
+    auto cnf = arjun->get_fully_simplified_renumbered_cnf(simp_conf);
+    arjun->reverse_bce(cnf);
+    write_simpcnf(cnf, elimtofile, redundant_cls);
+    cout << "c [arjun] All done. T: " << std::setprecision(2) << (cpuTime() - start_time) << endl;
 }
 
 int main(int argc, char** argv) {

@@ -47,7 +47,7 @@ struct Config {
     int probe_based = 1;
     int backward = 1;
     int gauss_jordan = 0;
-    int bce = 1;
+    int bce = 0;
     int do_unate = 0;
     double no_gates_below = 0.01;
     std::string specified_order_fname;

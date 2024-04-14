@@ -343,6 +343,13 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(const SimpCo
             arjdata->common.orig_sampling_vars);
 }
 
+
+DLL_PUBLIC void Arjun::reverse_bce(SimplifiedCNF& cnf)
+{
+    Puura puura(arjdata->common.conf);
+    return puura.reverse_bce(cnf);
+}
+
 DLL_PUBLIC void Arjun::set_lit_weight(
         [[maybe_unused]] const CMSat::Lit lit, [[maybe_unused]] const double weight) {
 #ifdef WEIGHTED
