@@ -152,9 +152,7 @@ namespace ArjunNS {
 
         // Perform indep set calculation
         uint32_t set_sampl_vars(const std::vector<uint32_t>& vars);
-        uint32_t set_opt_sampl_vars(const std::vector<uint32_t>&) {
-            assert(false && "Ingesting optional indep not supported in arjun");
-        }
+        uint32_t set_opt_sampl_vars(const std::vector<uint32_t>& vars);
         uint32_t start_with_clean_sampling_set();
         const std::vector<uint32_t>& get_current_indep_set() const;
         std::vector<uint32_t> run_backwards();

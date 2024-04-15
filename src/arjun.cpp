@@ -139,6 +139,21 @@ DLL_PUBLIC uint32_t Arjun::set_sampl_vars(const vector<uint32_t>& vars)
     return arjdata->common.sampling_set.size();
 }
 
+
+DLL_PUBLIC uint32_t Arjun::set_opt_sampl_vars(const std::vector<uint32_t>& vars) {
+    if (!sampling_vars_set) {
+        std::cerr << "ERROR: For arjun, you must set optional sampling vars after setting the sampling vars" << std::endl;
+        assert(false);
+        exit(-1);
+    }
+    if (vars != arjdata->common.sampling_set) {
+        std::cerr << "ERROR: For arjun, you must set optional sampling vars EXACTLY the same as the sampling set" << std::endl;
+        assert(false);
+        exit(-1);
+    }
+    return vars.size();
+}
+
 DLL_PUBLIC uint32_t Arjun::start_with_clean_sampling_set()
 {
     sampling_vars_set = true;
