@@ -68,7 +68,7 @@ int64_t sbva_steps = 200;
 int sbva_cls_cutoff = 2;
 int sbva_lits_cutoff = 2;
 int sbva_tiebreak = 1;
-
+int bce = true;
 
 int synthesis = false;
 int unate = false;
@@ -255,8 +255,8 @@ void add_arjun_options()
         .default_value(conf.bve_during_elimtofile)
         .help("Use BVE during simplificaiton of the formula");
     program.add_argument("--bce")
-        .action([&](const auto& a) {conf.bce = std::atoi(a.c_str());})
-        .default_value(conf.bce)
+        .action([&](const auto& a) {bce = std::atoi(a.c_str());})
+        .default_value(bce)
         .help("Use blocked clause elimination (BCE). VERY experimental!!");
     program.add_argument("--red")
         .action([&](const auto& a) {redundant_cls = std::atoi(a.c_str());})
@@ -297,9 +297,9 @@ void set_config(ArjunNS::Arjun* arj);
 void elim_to_file() {
     double dump_start_time = cpuTime();
     cout << indep_support_given << endl;
-    if (!indep_support_given && conf.bce) {
+    if (!indep_support_given && bce) {
         cout << "c [arjun] WARN: Forcing BCE to FALSE due to non-projected MC" << endl;
-        conf.bce = 0;
+        bce = 0;
     }
     auto ret = arjun->get_fully_simplified_renumbered_cnf(simp_conf);
     arjun->run_sbva(ret, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
@@ -317,6 +317,20 @@ void elim_to_file() {
             arj2.set_sampl_vars(ret.opt_sampl_vars);
             ret.opt_sampl_vars = arj2.extend_sampl_set();
         }
+    }
+    if (bce) {
+        Arjun arj2;
+        arj2.new_vars(ret.nvars);
+        arj2.set_verbosity(conf.verb);
+        for(const auto& cl: ret.cnf) arj2.add_clause(cl);
+        for(const auto& cl: ret.red_cnf) arj2.add_red_clause(cl);
+
+        // Important. Only BCE clauses at are not incident on optional sampl set
+        arj2.set_sampl_vars(ret.opt_sampl_vars);
+
+        auto ret2 = arj2.only_bce();
+        ret.cnf = ret2.cnf;
+        ret.red_cnf = ret2.red_cnf;
     }
 
     ret.renumber_sampling_vars_for_ganak();
@@ -364,7 +378,6 @@ void set_config(ArjunNS::Arjun* arj) {
 }
 
 void do_synthesis() {
-    conf.bce = 0;
     simp_conf.bve_too_large_resolvent = -1;
     arjun->unsat_define();
 

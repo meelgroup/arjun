@@ -304,7 +304,6 @@ set_get_macro(bool, ite_gate_based)
 set_get_macro(bool, irreg_gate_based)
 set_get_macro(double, no_gates_below)
 set_get_macro(std::string, specified_order_fname)
-set_get_macro(bool, bce)
 set_get_macro(bool, bve_during_elimtofile)
 set_get_macro(bool, do_unate)
 set_get_macro(bool, weighted)
@@ -345,8 +344,17 @@ DLL_PUBLIC std::vector<std::pair<CMSat::Lit, CMSat::Lit> > Arjun::get_all_binary
     return ret;
 }
 
-bool Arjun::definitely_satisfiable() const {
+DLL_PUBLIC bool Arjun::definitely_satisfiable() const {
     return arjdata->common.definitely_satisfiable;
+}
+
+DLL_PUBLIC SimplifiedCNF Arjun::only_bce() {
+    Puura puura(arjdata->common.conf);
+    arjdata->common.init();
+    return puura.only_bce(this,
+            arjdata->common.sampling_set,
+            arjdata->common.empty_sampling_vars,
+            arjdata->common.orig_sampling_vars);
 }
 
 DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(const SimpConf& simp_conf)

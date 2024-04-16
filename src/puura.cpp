@@ -294,19 +294,16 @@ void Puura::get_simplified_cnf(SimplifiedCNF& scnf,
 
     vector<Lit> clause;
     bool is_xor, rhs;
-
-
     scnf.sampl_vars = sampl_vars;
-
     scnf.weighted = solver->get_weighted();
 
+    // IRRED clauses
     solver->start_getting_constraints(false, true);
-
-    // Weights/empties/etc
     const auto tmp = solver->translate_sampl_set(empty_sampl_vars, true);
     mpz_class dummy(2);
     mpz_pow_ui(dummy.get_mpz_t(), dummy.get_mpz_t(), tmp.size());
     scnf.multiplier_weight = solver->get_multiplier_weight()*dummy;
+
 #ifdef WEIGHTED
     if (scnf.weighted) {
         solver->get_weights(scnf.weights, sampl_vars, orig_sampl_vars);
@@ -322,6 +319,7 @@ void Puura::get_simplified_cnf(SimplifiedCNF& scnf,
     }
     solver->end_getting_constraints();
 
+    // RED clauses
     solver->start_getting_constraints(true, true);
     while(solver->get_next_constraint(clause, is_xor, rhs)) {
         assert(!is_xor); assert(rhs);
@@ -411,6 +409,26 @@ void Puura::reverse_bce(SimplifiedCNF& cnf) {
     solver->reverse_bce();
 }
 
+SimplifiedCNF Puura::only_bce(
+    Arjun* arjun,
+    vector<uint32_t>& sampl_vars,
+    vector<uint32_t>& empty_sampl_vars,
+    vector<uint32_t>& orig_sampl_vars)
+{
+    verb_print(3, "Running "<< __PRETTY_FUNCTION__);
+    fill_solver(arjun);
+    solver->set_renumber(false);
+    solver->set_scc(false);
+    solver->set_renumber(false);
+    solver->set_verbosity(conf.verb-1);
+    setup_sampl_vars_dontelim(sampl_vars);
+    string str2 = "occ-bce";
+    solver->simplify(&dont_elim, &str2);
+    SimplifiedCNF cnf;
+    get_simplified_cnf(cnf, sampl_vars, empty_sampl_vars, orig_sampl_vars);
+    return cnf;
+}
+
 SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     Arjun* arjun,
     const SimpConf simp_conf,
@@ -452,7 +470,6 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     // Now doing Oracle
     /* conditional_dontcare(); */
     string str2;
-    if (conf.bce) {str2 = "occ-bce"; solver->simplify(&dont_elim, &str2);}
     if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify";
     else if (simp_conf.oracle_vivify) str2 = "oracle-vivif";
     else if (simp_conf.oracle_sparsify) str2 = "oracle-sparsify";
@@ -471,15 +488,14 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     str.clear();
     if (arjun->definitely_satisfiable()) { str += string("occ-rem-unconn-assumps, "); }
     str += string(", must-scc-vrepl, must-renumber,");
-    if (conf.bce) str += "occ-bce,";
     solver->simplify(&dont_elim, &str);
 
-    SimplifiedCNF cnf;
     solver->get_empties(sampl_vars, empty_sampl_vars);
     dont_elim.clear();
     for(uint32_t v: sampl_vars) dont_elim.push_back(Lit(v, false));
     str = "occ-bve-empty, must-renumber";
     solver->simplify(&dont_elim, &str);
+    SimplifiedCNF cnf;
     get_simplified_cnf(cnf, sampl_vars, empty_sampl_vars, orig_sampl_vars);
     return cnf;
 }
