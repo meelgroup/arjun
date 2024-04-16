@@ -157,10 +157,8 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
     }
 
     // NEXT we generate the small CNF that is UNSAT and is simplified
-    // TODO: simplify away the SET values of x && \neg x
     vector<vector<Lit>> mini_cls;
     seen.resize(indic_to_var.size(), 0);
-
     for(const auto& m: cl_map) {
         if (picosat_coreclause(ps, m.first)) {
             bool indic = false;
@@ -187,21 +185,24 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
             for(const auto& l: cl) seen[l.toInt()] = false;
         }
     }
-
-    // Write the CORE file
-    std::stringstream name;
-    name << "core-" << test_var+1 << ".cnf";
-    verb_print(5, "Writing core to: " << name.str());
-    auto f = std::ofstream(name.str());
-    f << "p cnf " << orig_num_vars*2 << " " << mini_cls.size() << endl;
-    f << "c orig_num_vars: " << orig_num_vars << endl;
-    f << "c output: " << test_var +1 << endl;
-    f << "c output2: " << orig_num_vars+test_var +1 << endl;
-    f << "c num inputs: " << sampling_set.size() << endl;
-    f << "c inputs: "; for(const auto& l: sampling_set) f << (l+1) << " "; f << endl;
-    for(const auto& c: mini_cls) f << c << " 0" << endl;
-    f.close();
     picosat_reset(ps);
+
+
+    bool debug_core = false;
+    if (debug_core) {
+        std::stringstream name;
+        name << "core-" << test_var+1 << ".cnf";
+        verb_print(5, "Writing core to: " << name.str());
+        auto f = std::ofstream(name.str());
+        f << "p cnf " << orig_num_vars*2 << " " << mini_cls.size() << endl;
+        f << "c orig_num_vars: " << orig_num_vars << endl;
+        f << "c output: " << test_var +1 << endl;
+        f << "c output2: " << orig_num_vars+test_var +1 << endl;
+        f << "c num inputs: " << sampling_set.size() << endl;
+        f << "c inputs: "; for(const auto& l: sampling_set) f << (l+1) << " "; f << endl;
+        for(const auto& c: mini_cls) f << c << " 0" << endl;
+        f.close();
+    }
 
     // picosat on the core only, on a simplified CNF
     ps = picosat_init();
@@ -225,11 +226,12 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
         exit(-1);
     }
     release_assert(pret == PICOSAT_UNSATISFIABLE);
-    name.str("");
-    name.clear();
-    name << "proof-" << test_var+1 << ".trace";
-    FILE* trace = fopen(name.str().c_str(), "w");
-    picosat_write_extended_trace (ps, trace);
+    if (debug_core) {
+        std::stringstream name;
+        name << "proof-" << test_var+1 << ".trace";
+        FILE* trace = fopen(name.str().c_str(), "w");
+        picosat_write_extended_trace (ps, trace);
+    }
     picosat_reset(ps);
     fclose(trace);
 }

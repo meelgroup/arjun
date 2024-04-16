@@ -379,14 +379,14 @@ void set_config(ArjunNS::Arjun* arj) {
 
 void do_synthesis() {
     simp_conf.bve_too_large_resolvent = -1;
+
+    // First we extend
     arjun->unsat_define();
 
-    /* arjun = new Arjun; */
-    /* set_config(arjun); */
-    /* arjun->reverse_bce(ret); */
-
+    // Then we BVE
     auto cnf = arjun->get_fully_simplified_renumbered_cnf(simp_conf);
-    arjun->reverse_bce(cnf);
+    /* arjun->reverse_bce(cnf); */
+
     write_simpcnf(cnf, elimtofile, redundant_cls);
     cout << "c [arjun] All done. T: " << std::setprecision(2) << (cpuTime() - start_time) << endl;
 }
