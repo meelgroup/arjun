@@ -85,6 +85,9 @@
 
 #include "time_mem.h"
 #include "config.h"
+extern "C" {
+#include "mpicosat/mpicosat.h"
+}
 
 using namespace CMSat;
 using std::cout;
@@ -119,6 +122,11 @@ struct Common
     //assert indic[var] to TRUE to force var==var+orig_num_vars
     vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
     vector<uint32_t> indic_to_var; //maps an INDICATOR VAR to ORIG VAR
+
+    PicoSAT* ps = nullptr;
+    map<uint32_t, vector<Lit>> cl_map;
+    uint32_t cl_num = 0;
+    vector<lbool> set_vals;
 
     //Incidence as counted by clauses it's appeared together with other variables
     vector<uint32_t> incidence;

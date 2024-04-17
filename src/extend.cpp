@@ -87,14 +87,15 @@ int lit_to_pl(const Lit l) {
     return picolit;
 }
 
-void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var) {
-    verb_print(2, "generating unsat proof for: " << test_var+1);
-    // FIRST, we get an UNSAT core
-    PicoSAT* ps = picosat_init();
+void Common::unsat_define(const vector<uint32_t>& orig_sampl_vars) {
+    assert(already_duplicated);
+    solver->set_verbosity(0);
+    add_all_indics();
+
+    assert(ps == nullptr);
+    ps = picosat_init();
     int pret = picosat_enable_trace_generation(ps);
     release_assert(pret != 0 && "Traces cannot be generated in PicoSAT");
-    map<uint32_t, vector<Lit>> cl_map;
-    uint32_t cl_num = 0;
 
     solver->start_getting_constraints(false);
     vector<Lit> cl;
@@ -107,135 +108,7 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
         picosat_add(ps, 0);
     }
     solver->end_getting_constraints();
-
-    for(const auto& l: assumptions) {
-        cl_map[cl_num++] = vector<Lit>{l};
-        picosat_add(ps, lit_to_pl(l));
-        picosat_add(ps, 0);
-    }
-    pret = picosat_sat(ps, 10000000);
-    verb_print(5, "c pret: " << pret);
-    if (pret == PICOSAT_SATISFIABLE) {
-        cout << "BUG, core should be UNSAT" << endl;
-        assert(false);
-        exit(-1);
-    }
-    if (pret == PICOSAT_UNKNOWN) {
-        cout << "OOOpps, we should give more time for picosat, got UNKNOWN" << endl;
-        assert(false);
-        exit(-1);
-    }
-    release_assert(pret == PICOSAT_UNSATISFIABLE);
-
-    // NEXT we extract information we'll need to make simplified UNSAT core
-    // in particular, we'll make sure that variables that are equivalent are
-    // not represented as two different variables
-    map<uint32_t, uint32_t> indic_map;
-    map<uint32_t, lbool> set_vals;
-    for(const auto& m: cl_map) {
-        if (picosat_coreclause(ps, m.first)) {
-            if (m.second.size() != 1) continue;
-            Lit l = m.second[0];
-            set_vals[l.var()] = l.sign() ? l_False : l_True;
-            if (l.var() < indic_to_var.size() && indic_to_var[l.var()] != var_Undef) {
-
-                verb_print(5, "indic: " << l << " indidates var: " << indic_to_var[l.var()]+1 << " is equivalent to " << indic_to_var[l.var()]+orig_num_vars+1);
-                verb_print(5, "replacing var: " << indic_to_var[l.var()]+orig_num_vars << " with " << indic_to_var[l.var()]+1);
-                /* indic_map[l.var()] = indic_to_var[l.var()]; */
-                indic_map[indic_to_var[l.var()]+orig_num_vars] = indic_to_var[l.var()];
-            }
-        }
-    }
-
-    // NEXT we generate the small CNF that is UNSAT and is simplified
-    vector<vector<Lit>> mini_cls;
-    seen.resize(indic_to_var.size(), 0);
-    for(const auto& m: cl_map) {
-        if (picosat_coreclause(ps, m.first)) {
-            bool indic = false;
-            bool taut = false;
-            cl = m.second;
-            cl.clear();
-            for(auto l: m.second) {
-                if (set_vals.count(l.var())) {
-                    int val = set_vals[l.var()] == l_True;
-                    val ^= l.sign();
-                    if (val) goto end; //satisfied clause
-                    continue; // false value in clausee
-                }
-                if (indic_map.count(l.var())) l = Lit(indic_map[l.var()], l.sign());
-                if (seen[(~l).toInt()]) {taut = true; break;}
-                if (seen[l.toInt()]) continue;
-                seen[l.toInt()] = true;
-                cl.push_back(l);
-            }
-            if (taut) goto end;
-            for(const auto& l: cl) assert(l.var() < orig_num_vars*2);
-            mini_cls.push_back(cl);
-            end:
-            for(const auto& l: cl) seen[l.toInt()] = false;
-        }
-    }
-    picosat_reset(ps);
-
-
-    bool debug_core = true;
-    if (debug_core) {
-        std::stringstream name;
-        name << "core-" << test_var+1 << ".cnf";
-        verb_print(5, "Writing core to: " << name.str());
-        auto f = std::ofstream(name.str());
-        f << "p cnf " << orig_num_vars*2 << " " << mini_cls.size() << endl;
-        f << "c orig_num_vars: " << orig_num_vars << endl;
-        f << "c output: " << test_var +1 << endl;
-        f << "c output2: " << orig_num_vars+test_var +1 << endl;
-        f << "c num inputs: " << sampling_set.size() << endl;
-        f << "c inputs: "; for(const auto& l: sampling_set) f << (l+1) << " "; f << endl;
-        for(const auto& c: mini_cls) f << c << " 0" << endl;
-        f.close();
-    }
-
-    // picosat on the core only, on a simplified CNF
-    ps = picosat_init();
-    pret = picosat_enable_trace_generation(ps);
-    release_assert(pret != 0 && "Traces cannot be generated in PicoSAT");
-    for(uint32_t i = 0; i < orig_num_vars*2; i++) picosat_inc_max_var(ps);
-    for(const auto& c: mini_cls) {
-        for(const auto& l: c) picosat_add(ps, lit_to_pl(l));
-        picosat_add(ps, 0);
-    }
-    pret = picosat_sat(ps, 10000000);
-    verb_print(5, "c pret: " << pret);
-    if (pret == PICOSAT_SATISFIABLE) {
-        cout << "BUG, core should be UNSAT" << endl;
-        assert(false);
-        exit(-1);
-    }
-    if (pret == PICOSAT_UNKNOWN) {
-        cout << "OOOpps, we should give more time for picosat, got UNKNOWN" << endl;
-        assert(false);
-        exit(-1);
-    }
-    release_assert(pret == PICOSAT_UNSATISFIABLE);
-    if (debug_core) {
-        std::stringstream name;
-        name << "proof-" << test_var+1 << ".trace";
-        FILE* trace = fopen(name.str().c_str(), "w");
-        picosat_write_extended_trace (ps, trace);
-    }
-    TraceData dat;
-    dat.data = nullptr;
-    dat.size = 0;
-    dat.capacity = 0;
-    picosat_write_extended_trace_data (ps, &dat);
-    cout << "c [arjun] Proof size: " << dat.size << endl;
-    picosat_reset(ps);
-}
-
-void Common::unsat_define(const vector<uint32_t>& orig_sampl_vars) {
-    assert(already_duplicated);
-    solver->set_verbosity(0);
-    add_all_indics();
+    set_vals.resize(solver->nVars(), l_Undef);
 
     for(const auto& x: seen) assert(x == 0);
     double start_round_time = cpuTimeTotal();
@@ -273,9 +146,11 @@ void Common::unsat_define(const vector<uint32_t>& orig_sampl_vars) {
         assumptions.clear();
         uint32_t indic = var_to_indic[test_var];
         assumptions.push_back(Lit(indic, false));
-
+        set_vals[indic] = l_True;
         assumptions.push_back(Lit(test_var, false));
+        set_vals[test_var] = l_True;
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
+        set_vals[test_var+orig_num_vars] = l_False;
 
         //TODO: Actually, we should get conflict, that will make things easier
         solver->set_no_confl_needed();
@@ -297,17 +172,163 @@ void Common::unsat_define(const vector<uint32_t>& orig_sampl_vars) {
             // TODO: run get_conflict and then we know which were
             // actually needed, so we can do an easier generation/check
             generate_picosat(assumptions, test_var);
-            vector<Lit> cl;
-            cl.push_back(Lit(indic, false));
+            cl.clear();
+            Lit l(indic, false);
+            cl.push_back(l);
             solver->add_clause(cl);
+            cl_map[cl_num++] = cl;
+            picosat_add(ps, lit_to_pl(l));
+            picosat_add(ps, 0);
+
             sampling_set.push_back(test_var);
         }
     }
+    picosat_reset(ps);
     verb_print(1, "new sampl set:" << sampling_set.size()
             << " old sampl set:" << orig_sampling_vars.size()
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
 }
+
+void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var) {
+    verb_print(2, "generating unsat proof for: " << test_var+1);
+    // FIRST, we get an UNSAT core
+    for(const auto& l: assumptions) picosat_assume(ps, lit_to_pl(l));
+
+    auto pret = picosat_sat(ps, 10000000);
+    verb_print(5, "c pret: " << pret);
+    if (pret == PICOSAT_SATISFIABLE) {
+        cout << "BUG, core should be UNSAT" << endl;
+        assert(false);
+        exit(-1);
+    }
+    if (pret == PICOSAT_UNKNOWN) {
+        cout << "OOOpps, we should give more time for picosat, got UNKNOWN" << endl;
+        assert(false);
+        exit(-1);
+    }
+    release_assert(pret == PICOSAT_UNSATISFIABLE);
+
+    // NEXT we extract information we'll need to make simplified UNSAT core
+    // in particular, we'll make sure that variables that are equivalent are
+    // not represented as two different variables
+    /* map<uint32_t, uint32_t> indic_map; */
+    /* map<uint32_t, lbool> set_vals; */
+    /* for(const auto& m: cl_map) { */
+    /*     if (picosat_coreclause(ps, m.first)) { */
+    /*         if (m.second.size() != 1) continue; */
+    /*         Lit l = m.second[0]; */
+    /*         set_vals[l.var()] = l.sign() ? l_False : l_True; */
+    /*         assert(l.var() < indic_to_var.size()); */
+    /*         if (indic_to_var[l.var()] != var_Undef) { */
+    /*             auto v = indic_to_var[l.var()]; */
+    /*             verb_print(5, "indic: " << l */
+    /*                     << " indidates var: " << v+1 */
+    /*                     << " is equivalent to " << v+orig_num_vars+1); */
+    /*             verb_print(5, "replacing var: " << v+orig_num_vars */
+    /*                     << " with " << v+1); */
+    /*             indic_map[v+orig_num_vars] = v; */
+    /*         } */
+    /*     } */
+    /* } */
+
+    // NEXT we generate the small CNF that is UNSAT and is simplified
+    vector<Lit> cl;
+    vector<vector<Lit>> mini_cls;
+    seen.resize(indic_to_var.size()*2, 0);
+    for(uint32_t cl_at = 0; cl_at < cl_num; cl_at++) {
+        if (picosat_coreclause(ps, cl_at)) {
+            bool taut = false;
+            cl.clear();
+            for(auto l: cl_map[cl_at]) {
+
+                // Deal with set vars
+                if (set_vals[l.var()] != l_Undef) {
+                    int val = set_vals[l.var()] == l_True;
+                    val ^= l.sign();
+                    if (val) goto end; //satisfied clause
+                    continue; // false value in clausee
+                }
+
+                // if it's a var that's the image that has been
+                // forced to be equal, then replace
+                if (l.var() < orig_num_vars*2 && l.var() >= orig_num_vars) {
+                    auto v = var_to_indic[l.var()-orig_num_vars];
+                    if (set_vals[v] == l_True) l = Lit (v, l.sign());
+                }
+
+                if (seen[(~l).toInt()]) {taut = true; break;}
+                if (seen[l.toInt()]) continue;
+                seen[l.toInt()] = true;
+                cl.push_back(l);
+            }
+            if (taut) goto end;
+            for(const auto& l: cl) assert(l.var() < orig_num_vars*2);
+            mini_cls.push_back(cl);
+            end:
+            for(const auto& l: cl) seen[l.toInt()] = false;
+        }
+    }
+
+
+    bool debug_core = false;
+    if (debug_core) {
+        std::stringstream name;
+        name << "core-" << test_var+1 << ".cnf";
+        verb_print(5, "Writing core to: " << name.str());
+        auto f = std::ofstream(name.str());
+        f << "p cnf " << orig_num_vars*2 << " " << mini_cls.size() << endl;
+        f << "c orig_num_vars: " << orig_num_vars << endl;
+        f << "c output: " << test_var +1 << endl;
+        f << "c output2: " << orig_num_vars+test_var +1 << endl;
+        f << "c num inputs: " << sampling_set.size() << endl;
+        f << "c inputs: "; for(const auto& l: sampling_set) f << (l+1) << " "; f << endl;
+        for(const auto& c: mini_cls) f << c << " 0" << endl;
+        f.close();
+    }
+
+    // picosat on the core only, on a simplified CNF
+    PicoSAT* ps2 = picosat_init();
+    pret = picosat_enable_trace_generation(ps2);
+    release_assert(pret != 0 && "Traces cannot be generated in PicoSAT");
+    for(uint32_t i = 0; i < orig_num_vars*2; i++) picosat_inc_max_var(ps2);
+    for(const auto& c: mini_cls) {
+        for(const auto& l: c) picosat_add(ps2, lit_to_pl(l));
+        picosat_add(ps2, 0);
+    }
+    for(const auto& l: assumptions) {
+        /* cl_map[cl_num++] = vector<Lit>{l}; */
+        picosat_assume(ps2, lit_to_pl(l));
+    }
+    pret = picosat_sat(ps2, 10000000);
+    verb_print(5, "c pret: " << pret);
+    if (pret == PICOSAT_SATISFIABLE) {
+        cout << "BUG, core should be UNSAT" << endl;
+        assert(false);
+        exit(-1);
+    }
+    if (pret == PICOSAT_UNKNOWN) {
+        cout << "OOOpps, we should give more time for picosat, got UNKNOWN" << endl;
+        assert(false);
+        exit(-1);
+    }
+    release_assert(pret == PICOSAT_UNSATISFIABLE);
+    if (debug_core) {
+        std::stringstream name;
+        name << "proof-" << test_var+1 << ".trace";
+        FILE* trace = fopen(name.str().c_str(), "w");
+        picosat_write_extended_trace (ps2, trace);
+    }
+    TraceData dat;
+    dat.data = nullptr;
+    dat.size = 0;
+    dat.capacity = 0;
+    picosat_write_extended_trace_data (ps2, &dat);
+    cout << "c [arjun] Proof size: " << dat.size << endl;
+    free(dat.data);
+    picosat_reset(ps2);
+}
+
 
 // TODO; This is confluent!! We can just mess up the SAT solver
 // and ONLY have to use assumption for the indic + var + NOT var
