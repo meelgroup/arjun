@@ -157,7 +157,7 @@ namespace ArjunNS {
         const std::vector<uint32_t>& get_current_indep_set() const;
         std::vector<uint32_t> run_backwards();
         std::vector<uint32_t> extend_sampl_set();
-        std::vector<uint32_t> unsat_define();
+        void unsat_define();
 
         uint32_t get_orig_num_vars() const;
         const std::vector<uint32_t>& get_orig_sampl_vars() const;
@@ -240,7 +240,6 @@ namespace ArjunNS {
         bool get_bce() const;
         bool get_bve_during_elimtofile() const;
         bool definitely_satisfiable() const;
-        const std::vector<uint32_t>& get_set_sampling_vars() const;
         bool get_weighted() const;
 
     private:

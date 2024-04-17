@@ -69,6 +69,7 @@ int sbva_cls_cutoff = 2;
 int sbva_lits_cutoff = 2;
 int sbva_tiebreak = 1;
 int bce = true;
+int debug_synt = false;
 
 int synthesis = false;
 int unate = false;
@@ -126,6 +127,10 @@ void add_arjun_options()
         .action([&](const auto& a) {sbva_steps = std::atoi(a.c_str());})
         .default_value(sbva_steps)
         .help("SBVA timeout. 0 = no sbva");
+    program.add_argument("--debugsynt")
+        .action([&](const auto&) {debug_synt = true;})
+        .flag()
+        .help("Debug synthesis");
     program.add_argument("--sbvaclcut")
         .action([&](const auto& a) {sbva_cls_cutoff = std::atoi(a.c_str());})
         .default_value(sbva_cls_cutoff)
@@ -361,12 +366,11 @@ void set_config(ArjunNS::Arjun* arj) {
 }
 
 void do_synthesis() {
-    simp_conf.bve_too_large_resolvent = -1;
-
     // First we extend
     arjun->unsat_define();
 
     // Then we BVE
+    simp_conf.bve_too_large_resolvent = -1;
     auto cnf = arjun->get_fully_simplified_renumbered_cnf(simp_conf);
     /* arjun->reverse_bce(cnf); */
 

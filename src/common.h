@@ -25,6 +25,7 @@
 #pragma once
 
 // verb_print
+#include <cstdint>
 #define COLRED "\033[31m"
 #define COLYEL2 "\033[35m"
 #define COLYEL "\033[33m"
@@ -109,10 +110,9 @@ struct Common
     Config conf;
     CMSat::SATSolver* solver = nullptr;
     bool already_duplicated = false;
-    vector<uint32_t> sampling_set;
+    vector<uint32_t> sampling_vars;
     vector<uint32_t> orig_sampling_vars;
     vector<uint32_t> empty_sampling_vars;
-    vector<uint32_t> set_sampling_vars;
 
     vector<char> seen;
     uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
@@ -188,7 +188,7 @@ struct Common
     void extend_round();
 
     // Unsat define
-    void unsat_define(const vector<uint32_t>& orig_sampl_vars);
+    vector<uint32_t> unsat_define();
     void generate_picosat(const vector<Lit>& assumptions , uint32_t test_var);
 
     //Sorting

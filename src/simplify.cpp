@@ -30,20 +30,20 @@ using namespace ArjunInt;
 
 void Common::check_no_duplicate_in_sampling_set()
 {
-    for(auto const& v: sampling_set) {
+    for(auto const& v: sampling_vars) {
         if (seen[v]) {
             cout << "ERROR: Variable " << v+1 << " in sampling set twice!" << endl;
             assert(false);
         }
         seen[v] = 1;
     }
-    for(auto const& v: sampling_set) seen[v] = 0;
+    for(auto const& v: sampling_vars) seen[v] = 0;
 }
 
 bool Common::simplify() {
     assert(conf.simp);
     check_no_duplicate_in_sampling_set();
-    auto old_size = sampling_set.size();
+    auto old_size = sampling_vars.size();
     double my_time = cpuTime();
 
     if (conf.probe_based && !probe_all()) return false;
@@ -62,14 +62,14 @@ bool Common::simplify() {
         verb_print(1,"[arjun-simp] CMS::simplify() with no BVE finished."
             << " T: " << (cpuTime() - simp_time));
     }
-    if (sampling_set.size() < 10000) {
-        verb_print(1, "WARNING: Turning off gates, because the sampling size is small, so we can just do it. Size: " << sampling_set.size());
+    if (sampling_vars.size() < 10000) {
+        verb_print(1, "WARNING: Turning off gates, because the sampling size is small, so we can just do it. Size: " << sampling_vars.size());
         conf.xor_gates_based = 0;
         conf.ite_gate_based = 0;
         conf.or_gate_based = 0;
         conf.irreg_gate_based = 0;
     } else {
-        verb_print(1, "[arjun-simp] num vars: " << sampling_set.size() << " not turning off gates.");
+        verb_print(1, "[arjun-simp] num vars: " << sampling_vars.size() << " not turning off gates.");
     }
 
     if (!orig_cnf.weighted) {
@@ -96,9 +96,9 @@ bool Common::simplify() {
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
     verb_print(1, "[arjun] simplification finished "
-        << " removed: " << (old_size-sampling_set.size())
+        << " removed: " << (old_size-sampling_vars.size())
         << " perc: " << std::fixed << std::setprecision(2)
-        << stats_line_percent(old_size-sampling_set.size(), old_size)
+        << stats_line_percent(old_size-sampling_vars.size(), old_size)
         << " T: " << (cpuTime() - my_time));
 
     check_no_duplicate_in_sampling_set();
@@ -109,7 +109,7 @@ void Common::empty_out_indep_set_if_unsat() {
     if (solver->okay()) return;
 
     //It's UNSAT so the sampling set is empty
-    sampling_set.clear();
+    sampling_vars.clear();
     verb_print(1, "[arjun] CNF is UNSAT, setting sampling set to empty");
 }
 
@@ -117,11 +117,11 @@ bool Common::probe_all()
 {
     double my_time = cpuTime();
     order_sampl_set_for_simp();
-    auto old_size = sampling_set.size();
+    auto old_size = sampling_vars.size();
 
     verb_print(1, "[arjun-simp] probing all sampling variables");
     incidence_probing.resize(orig_num_vars, 0);
-    for(auto v: sampling_set) {
+    for(auto v: sampling_vars) {
         uint32_t min_props = 0;
         Lit l(v, false);
         if(solver->probe(l, min_props) == l_False) return false;
@@ -134,9 +134,9 @@ bool Common::probe_all()
     remove_eq_literals(true);
 
     verb_print(1, "[arjun-simp] probe"
-        << " removed: " << (old_size-sampling_set.size())
+        << " removed: " << (old_size-sampling_vars.size())
         << " perc: " << std::fixed << std::setprecision(2)
-        << stats_line_percent(old_size-sampling_set.size(), old_size)
+        << stats_line_percent(old_size-sampling_vars.size(), old_size)
         << " T: " << (cpuTime() - my_time));
 
     return true;
@@ -158,7 +158,7 @@ struct GateOccurs
 bool Common::remove_definable_by_gates() {
     double my_time = cpuTime();
     order_sampl_set_for_simp();
-    uint32_t old_size = sampling_set.size();
+    uint32_t old_size = sampling_vars.size();
     vector<vector<GateOccurs>> vars_gate_occurs(orig_num_vars);
     vector<pair<vector<uint32_t>, bool>> xors;
     vector<OrGate> ors;
@@ -170,7 +170,7 @@ bool Common::remove_definable_by_gates() {
     if (conf.or_gate_based) ors = solver->get_recovered_or_gates();
     if (conf.ite_gate_based) ites = solver->get_recovered_ite_gates();
 
-    for(auto v: sampling_set) {
+    for(auto v: sampling_vars) {
         toClear.push_back(v);
         seen[v] = 1;
     }
@@ -255,12 +255,12 @@ bool Common::remove_definable_by_gates() {
     // If this is large, it means it'd get removed anyway:
     //       bottom of the pie, we go through the pile in reverse order to try to remove
     vector<double> var_to_rel_position(orig_num_vars, 1.0);
-    for(uint32_t i = 0; i < sampling_set.size(); i++) {
-        assert(sampling_set.at(i) < orig_num_vars);
-        var_to_rel_position[sampling_set.at(i)] = (double)(sampling_set.size()-i)/(double)sampling_set.size();
+    for(uint32_t i = 0; i < sampling_vars.size(); i++) {
+        assert(sampling_vars.at(i) < orig_num_vars);
+        var_to_rel_position[sampling_vars.at(i)] = (double)(sampling_vars.size()-i)/(double)sampling_vars.size();
     }
 
-    for(uint32_t v: sampling_set) {
+    for(uint32_t v: sampling_vars) {
         assert(seen[v]);
         if (vars_gate_occurs[v].empty()) continue;
 
@@ -342,15 +342,15 @@ bool Common::remove_definable_by_gates() {
     }
     toClear.clear();
 
-    bool changed = sampling_set.size() > new_sampl_set.size();
-    std::swap(sampling_set, new_sampl_set);
+    bool changed = sampling_vars.size() > new_sampl_set.size();
+    std::swap(sampling_vars, new_sampl_set);
 
     verb_print(1, "[arjun-simp] GATE-based"
         << " Potential was: " << potential
         << " Non-zero OCCs were: " << non_zero_occs
-        << " removed: " << (old_size-sampling_set.size())
+        << " removed: " << (old_size-sampling_vars.size())
         << " perc: " << std::fixed << std::setprecision(2)
-        << stats_line_percent(old_size-sampling_set.size(), old_size)
+        << stats_line_percent(old_size-sampling_vars.size(), old_size)
         << " T: " << (cpuTime() - my_time));
 
     return changed;
@@ -359,21 +359,21 @@ bool Common::remove_definable_by_gates() {
 void Common::order_sampl_set_for_simp()
 {
     get_incidence();
-    sort_unknown(sampling_set);
-    std::reverse(sampling_set.begin(), sampling_set.end()); //we want most likely independent as last
+    sort_unknown(sampling_vars);
+    std::reverse(sampling_vars.begin(), sampling_vars.end()); //we want most likely independent as last
 }
 
 void Common::get_empty_occs() {
     const double my_time = cpuTime();
-    uint32_t old_size = sampling_set.size();
+    uint32_t old_size = sampling_vars.size();
 
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
-    solver->get_empties(sampling_set, empty_sampling_vars);
+    solver->get_empties(sampling_vars, empty_sampling_vars);
 
     verb_print(1, "[arjun-simp] get-empties"
-        << " removed: " << (old_size-sampling_set.size())
+        << " removed: " << (old_size-sampling_vars.size())
         << " perc: " << std::fixed << std::setprecision(2)
-        << stats_line_percent(old_size-sampling_set.size(), old_size)
+        << stats_line_percent(old_size-sampling_vars.size(), old_size)
         << " total empties now: " << empty_sampling_vars.size()
         << " T: " << std::setprecision(2) << cpuTime() - my_time);
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
@@ -382,15 +382,15 @@ void Common::get_empty_occs() {
 void Common::remove_definable_by_irreg_gates() {
     assert(conf.irreg_gate_based);
     double my_time = cpuTime();
-    uint32_t old_size = sampling_set.size();
+    uint32_t old_size = sampling_vars.size();
     order_sampl_set_for_simp();
 
-    sampling_set = solver->remove_definable_by_irreg_gate(sampling_set);
+    sampling_vars = solver->remove_definable_by_irreg_gate(sampling_vars);
 
     verb_print(1, "[arjun-simp] IRREG-GATE-based"
-        << " removed: " << (old_size-sampling_set.size())
+        << " removed: " << (old_size-sampling_vars.size())
         << " perc: " << std::fixed << std::setprecision(2)
-        << stats_line_percent(old_size-sampling_set.size(), old_size)
+        << stats_line_percent(old_size-sampling_vars.size(), old_size)
         << " T: " << (cpuTime() - my_time));
 }
 
@@ -398,26 +398,26 @@ void Common::remove_zero_assigned_literals(bool print) {
     seen.clear();
     seen.resize(solver->nVars(), 0);
 
-    const auto orig_sampling_set_size = sampling_set.size();
-    for(auto x: sampling_set) seen[x] = 1;
+    const auto orig_sampling_set_size = sampling_vars.size();
+    for(auto x: sampling_vars) seen[x] = 1;
 
     const auto zero_ass = solver->get_zero_assigned_lits();
     for(Lit l: zero_ass) seen[l.var()] = 0;
 
-    sampling_set.clear();
+    sampling_vars.clear();
     for(uint32_t i = 0; i < seen.size() && i < orig_num_vars; i++) {
-        if (seen[i]) sampling_set.push_back(i);
+        if (seen[i]) sampling_vars.push_back(i);
         seen[i] = 0;
     }
 
     if (print) verb_print(1,"[arjun-simp] Removed set       : "
-        << (orig_sampling_set_size - sampling_set.size())
-        << " new size: " << sampling_set.size());
+        << (orig_sampling_set_size - sampling_vars.size())
+        << " new size: " << sampling_vars.size());
 }
 
 void Common::remove_eq_literals(bool print) {
-    uint32_t orig_sampling_set_size = sampling_set.size();
-    for(auto x: sampling_set) seen[x] = 1;
+    uint32_t orig_sampling_set_size = sampling_vars.size();
+    for(auto x: sampling_vars) seen[x] = 1;
 
     // [ replaced, replaced_with ]
     const auto eq_lits = solver->get_all_binary_xors();
@@ -427,16 +427,16 @@ void Common::remove_eq_literals(bool print) {
         }
     }
 
-    sampling_set.clear();
+    sampling_vars.clear();
     for(uint32_t i = 0; i < seen.size() && i < orig_num_vars; i++) {
-        if (seen[i]) sampling_set.push_back(i);
+        if (seen[i]) sampling_vars.push_back(i);
         seen[i] = 0;
     }
 
     if (print && conf.verb) {
         cout << "c [arjun-simp] Removed eq lits: "
-        << (orig_sampling_set_size - sampling_set.size())
-        << " new size: " << sampling_set.size()
+        << (orig_sampling_set_size - sampling_vars.size())
+        << " new size: " << sampling_vars.size()
         << endl;
     }
 }

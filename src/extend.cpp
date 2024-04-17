@@ -25,6 +25,7 @@
 #include "common.h"
 #include "cryptominisat5/solvertypesmini.h"
 #include <algorithm>
+#include <cstdint>
 #include <map>
 extern "C" {
 #include "mpicosat/mpicosat.h"
@@ -91,8 +92,9 @@ int lit_to_pl(const Lit l) {
     return picolit;
 }
 
-void Common::unsat_define(const vector<uint32_t>& orig_sampl_vars) {
+vector<uint32_t> Common::unsat_define() {
     assert(already_duplicated);
+    uint32_t start_size = orig_sampling_vars.size();
     solver->set_verbosity(0);
     add_all_indics();
 
@@ -116,8 +118,7 @@ void Common::unsat_define(const vector<uint32_t>& orig_sampl_vars) {
 
     for(const auto& x: seen) assert(x == 0);
     double start_round_time = cpuTimeTotal();
-    set<uint32_t> orig_sampl_set(orig_sampl_vars.begin(), orig_sampl_vars.end());
-    for(const auto& v: sampling_set) {
+    for(const auto& v: orig_sampling_vars) {
         if (var_to_indic[v] == var_Undef) continue;
         cl.clear();
         auto v2 = var_to_indic[v];
@@ -138,6 +139,7 @@ void Common::unsat_define(const vector<uint32_t>& orig_sampl_vars) {
     for(const auto& p: setl) no_need.insert(p.var());
 
     //Initially, all of samping_set is unknown
+    const set<uint32_t> orig_sampl_set(orig_sampling_vars.begin(), orig_sampling_vars.end());
     vector<uint32_t> unknown;
     for(uint32_t i = 0; i < orig_num_vars; i++) {
         if (no_need.count(i)) continue;
@@ -192,7 +194,7 @@ void Common::unsat_define(const vector<uint32_t>& orig_sampl_vars) {
             picosat_add(ps, 0);
             set_vals[indic] = l_True;
 
-            sampling_set.push_back(test_var);
+            orig_sampling_vars.push_back(test_var);
         } else {
             set_vals[indic] = l_Undef;
         }
@@ -200,10 +202,12 @@ void Common::unsat_define(const vector<uint32_t>& orig_sampl_vars) {
         set_vals[test_var+orig_num_vars] = l_Undef;
     }
     picosat_reset(ps);
-    verb_print(1, "defined via Padoa: " << sampling_set.size()-orig_sampling_vars.size()
+    verb_print(1, "defined via Padoa: " << orig_sampling_vars.size()-start_size
             << " SAT: " << sat
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
+
+    return sampling_vars;
 }
 
 void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var) {
@@ -264,7 +268,7 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
     }
 
 
-    bool debug_core = true;
+    bool debug_core = false;
     if (debug_core) {
         std::stringstream name;
         name << "core-" << test_var+1 << ".cnf";
@@ -274,8 +278,8 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
         f << "c orig_num_vars: " << orig_num_vars << endl;
         f << "c output: " << test_var +1 << endl;
         f << "c output2: " << orig_num_vars+test_var +1 << endl;
-        f << "c num inputs: " << sampling_set.size() << endl;
-        f << "c inputs: "; for(const auto& l: sampling_set) f << (l+1) << " "; f << endl;
+        f << "c num inputs: " << sampling_vars.size() << endl;
+        f << "c inputs: "; for(const auto& l: sampling_vars) f << (l+1) << " "; f << endl;
         for(const auto& c: mini_cls) f << c << " 0" << endl;
         f.close();
     }
@@ -334,7 +338,7 @@ void Common::extend_round()
     for(const auto& x: seen) assert(x == 0);
     double start_round_time = cpuTimeTotal();
     double my_time = cpuTime();
-    set<uint32_t> indep(sampling_set.begin(), sampling_set.end());
+    set<uint32_t> indep(sampling_vars.begin(), sampling_vars.end());
     vector<Lit> cl;
     for(const auto& v: indep) {
         if (var_to_indic[v] == var_Undef) continue;
@@ -423,8 +427,8 @@ void Common::extend_round()
         iter++;
 
     }
-    sampling_set.clear();
-    sampling_set.insert(sampling_set.begin(), indep.begin(), indep.end());
+    sampling_vars.clear();
+    sampling_vars.insert(sampling_vars.begin(), indep.begin(), indep.end());
 
     verb_print(1, "[arjun] extend round finished "
             << " final size: " << indep.size()

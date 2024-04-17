@@ -34,34 +34,34 @@ void Common::update_sampling_set(
     const vector<char>& unknown_set,
     const vector<uint32_t>& indep
 ) {
-    sampling_set.clear();
+    sampling_vars.clear();
     for(const auto& var: unknown) {
-        if (unknown_set[var]) sampling_set.push_back(var);
+        if (unknown_set[var]) sampling_vars.push_back(var);
     }
-    for(const auto& var: indep) sampling_set.push_back(var);
+    for(const auto& var: indep) sampling_vars.push_back(var);
 
 }
 
 void Common::start_with_clean_sampling_set() {
-    sampling_set.clear();
+    sampling_vars.clear();
     for (size_t i = 0; i < solver->nVars(); i++) {
-        sampling_set.push_back(i);
+        sampling_vars.push_back(i);
         orig_sampling_vars.push_back(i);
     }
 }
 
 void Common::print_orig_sampling_set()
 {
-    if (sampling_set.size() > 100) {
+    if (sampling_vars.size() > 100) {
         cout
         << "c [arjun] Sampling var set contains over 100 variables, not displaying"
         << endl;
     } else {
         cout << "c [arjun] Sampling set: ";
-        for (auto v: sampling_set) cout << v+1 << ", ";
+        for (auto v: sampling_vars) cout << v+1 << ", ";
         cout << endl;
     }
-    cout << "c [arjun] Orig size         : " << sampling_set.size() << endl;
+    cout << "c [arjun] Orig size         : " << sampling_vars.size() << endl;
 }
 
 void Common::add_fixed_clauses()
@@ -75,7 +75,7 @@ void Common::add_fixed_clauses()
 
     //If indicator variable is TRUE, they are FORCED EQUAL
     vector<Lit> tmp;
-    for(uint32_t var: sampling_set) {
+    for(uint32_t var: sampling_vars) {
         solver->new_var();
         uint32_t this_indic = solver->nVars()-1;
         //torem_orig.push_back(Lit(this_indic, false));
@@ -99,7 +99,7 @@ void Common::add_fixed_clauses()
     }
 
     //Don't eliminate the sampling variables
-    for(uint32_t var: sampling_set) {
+    for(uint32_t var: sampling_vars) {
         dont_elim.push_back(Lit(var, false));
         dont_elim.push_back(Lit(var+orig_num_vars, false));
     }
@@ -137,12 +137,12 @@ ArjunNS::SimplifiedCNF Common::get_init_cnf() {
     solver->end_getting_constraints();
 
     cnf.nvars = solver->nVars();
-    cnf.sampl_vars = sampling_set;
-    cnf.opt_sampl_vars = sampling_set;
+    cnf.sampl_vars = sampling_vars;
+    cnf.opt_sampl_vars = sampling_vars;
     cnf.multiplier_weight = solver->get_multiplier_weight();
 #ifdef WEIGHTED
     if (cnf.weighted) {
-        solver->get_weights(cnf.weights, sampling_set, orig_sampling_vars);
+        solver->get_weights(cnf.weights, sampling_vars, orig_sampling_vars);
         //todo
     }
 #endif
@@ -191,7 +191,7 @@ bool Common:: simplify_bve_only() {
     //BVE ***ONLY***, don't eliminate the original variables
     solver->set_intree_probe(false);
     solver->set_distill(false);
-    for(uint32_t var: sampling_set) {
+    for(uint32_t var: sampling_vars) {
         dont_elim.push_back(Lit(var, false));
         dont_elim.push_back(Lit(var+orig_num_vars, false));
     }
@@ -239,7 +239,7 @@ void Common::init() {
     orig_cnf = get_init_cnf();
     assert(orig_num_vars  == std::numeric_limits<uint32_t>::max() && "double init");
     orig_num_vars = solver->nVars();
-    check_sanity_sampling_vars(sampling_set, orig_num_vars);
+    check_sanity_sampling_vars(sampling_vars, orig_num_vars);
     seen.clear();
     seen.resize(solver->nVars(), 0);
 }
