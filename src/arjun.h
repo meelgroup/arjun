@@ -175,7 +175,7 @@ namespace ArjunNS {
         void end_getting_constraints();
         SimplifiedCNF get_fully_simplified_renumbered_cnf(
                 const SimpConf& simp_conf);
-        SimplifiedCNF only_bce();
+        void only_bce(SimplifiedCNF& cnf);
         void reverse_bce(SimplifiedCNF& cnf);
         std::vector<CMSat::Lit> get_zero_assigned_lits() const;
         std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;

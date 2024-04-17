@@ -297,10 +297,6 @@ void set_config(ArjunNS::Arjun* arj);
 void elim_to_file() {
     double dump_start_time = cpuTime();
     cout << indep_support_given << endl;
-    if (!indep_support_given && bce) {
-        cout << "c [arjun] WARN: Forcing BCE to FALSE due to non-projected MC" << endl;
-        bce = 0;
-    }
     auto ret = arjun->get_fully_simplified_renumbered_cnf(simp_conf);
     arjun->run_sbva(ret, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 
@@ -317,20 +313,7 @@ void elim_to_file() {
             arj2.set_sampl_vars(ret.opt_sampl_vars);
             ret.opt_sampl_vars = arj2.extend_sampl_set();
         }
-    }
-    if (bce) {
-        Arjun arj2;
-        arj2.new_vars(ret.nvars);
-        arj2.set_verbosity(conf.verb);
-        for(const auto& cl: ret.cnf) arj2.add_clause(cl);
-        for(const auto& cl: ret.red_cnf) arj2.add_red_clause(cl);
-
-        // Important. Only BCE clauses at are not incident on optional sampl set
-        arj2.set_sampl_vars(ret.opt_sampl_vars);
-
-        auto ret2 = arj2.only_bce();
-        ret.cnf = ret2.cnf;
-        ret.red_cnf = ret2.red_cnf;
+        if (bce) arjun->only_bce(ret);
     }
 
     ret.renumber_sampling_vars_for_ganak();

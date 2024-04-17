@@ -409,26 +409,6 @@ void Puura::reverse_bce(SimplifiedCNF& cnf) {
     solver->reverse_bce();
 }
 
-SimplifiedCNF Puura::only_bce(
-    Arjun* arjun,
-    vector<uint32_t>& sampl_vars,
-    vector<uint32_t>& empty_sampl_vars,
-    vector<uint32_t>& orig_sampl_vars)
-{
-    verb_print(3, "Running "<< __PRETTY_FUNCTION__);
-    fill_solver(arjun);
-    solver->set_renumber(false);
-    solver->set_scc(false);
-    solver->set_renumber(false);
-    solver->set_verbosity(conf.verb-1);
-    setup_sampl_vars_dontelim(sampl_vars);
-    string str2 = "occ-bce";
-    solver->simplify(&dont_elim, &str2);
-    SimplifiedCNF cnf;
-    get_simplified_cnf(cnf, sampl_vars, empty_sampl_vars, orig_sampl_vars);
-    return cnf;
-}
-
 SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     Arjun* arjun,
     const SimpConf simp_conf,

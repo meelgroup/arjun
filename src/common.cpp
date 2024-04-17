@@ -23,11 +23,11 @@
  */
 
 #include "common.h"
-#include "cryptominisat5/solvertypesmini.h"
-#include "src/arjun.h"
+#include <cstdint>
 #include <limits>
 
 using namespace ArjunInt;
+using std::numeric_limits;
 
 void Common::update_sampling_set(
     const vector<uint32_t>& unknown,

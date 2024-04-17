@@ -49,11 +49,6 @@ public:
         vector<uint32_t>& sampl_vars,
         vector<uint32_t>& empty_sampl_vars,
         vector<uint32_t>& orig_sampl_vars);
-    SimplifiedCNF only_bce(
-        Arjun* arjun,
-        vector<uint32_t>& sampl_vars,
-        vector<uint32_t>& empty_sampl_vars,
-        vector<uint32_t>& orig_sampl_vars);
     void reverse_bce(SimplifiedCNF& cnf);
     void run_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak);

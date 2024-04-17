@@ -348,13 +348,79 @@ DLL_PUBLIC bool Arjun::definitely_satisfiable() const {
     return arjdata->common.definitely_satisfiable;
 }
 
-DLL_PUBLIC SimplifiedCNF Arjun::only_bce() {
-    Puura puura(arjdata->common.conf);
-    arjdata->common.init();
-    return puura.only_bce(this,
-            arjdata->common.sampling_set,
-            arjdata->common.empty_sampling_vars,
-            arjdata->common.orig_sampling_vars);
+
+struct Clause {
+    uint32_t at = numeric_limits<uint32_t>::max();
+    vector<Lit> lits;
+    bool red = false;
+};
+DLL_PUBLIC void Arjun::only_bce(SimplifiedCNF& cnf) {
+    // If all variables are in opt sampling set, return
+    set<uint32_t> dont_block(cnf.opt_sampl_vars.begin(),
+            cnf.opt_sampl_vars.end());
+    if (dont_block.size() == cnf.nvars) return;
+
+    const double start_time = cpuTime();
+    vector<Clause> cls;
+    vector<vector<uint32_t>> occs(cnf.nvars*2);
+    uint32_t at = 0;
+    for(const auto& cl: cnf.cnf) {
+        // UNSAT CNF, just return the CNF
+        if (cl.empty()) return;
+
+        Clause c;
+        c.lits = cl;
+        c.at = at;
+        c.red = false;
+        cls.push_back(c);
+        for(const auto& l: cl) occs[l.toInt()].push_back(at);
+        assert(cl.size() > 1 && "CNF must be simplified for BCE");
+        at++;
+    }
+
+    vector<uint8_t> seen;
+    seen.resize(cnf.nvars*2, 0);
+
+    uint32_t tot_removed = 0;
+    bool removed_one;
+    do {
+        removed_one = false;
+        for(auto& cl: cls) {
+            if (cl.red) continue;
+            bool can_remove = false;
+            for(const auto& l: cl.lits) seen[l.toInt()] = true;
+            for(const auto& l: cl.lits) {
+                if (dont_block.count(l.var())) continue;
+                bool all_blocking = true;
+                for(const auto& cl2_at: occs[(~l).toInt()]) {
+                    const Clause& cl2 = cls[cl2_at];
+                    if (cl2.red) continue;
+                    bool found_blocking_lit = false;
+                    for(const auto& l2: cl2.lits) {
+                        if (l2 == ~l) continue;
+                        if (seen[(~l2).toInt()]) {found_blocking_lit = true; break;}
+                    }
+                    if (!found_blocking_lit) {all_blocking = false; break;}
+                }
+                if (all_blocking) {can_remove = true; break; }
+            }
+            for(const auto& l: cl.lits) seen[l.toInt()] = 0;
+            if (can_remove) {
+                cl.red = true;
+                removed_one = true;
+                tot_removed++;
+            }
+        }
+    } while(removed_one);
+
+    cnf.cnf.clear();
+    for(const auto& cl: cls) {
+        if (!cl.red) cnf.cnf.push_back(cl.lits);
+        else cnf.red_cnf.push_back(cl.lits);
+    }
+    if (arjdata->common.conf.verb)
+        cout << "v o [arjun] BCE removed " << tot_removed << " clauses"
+            " T: " << (cpuTime() - start_time) << endl;
 }
 
 DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(const SimpConf& simp_conf)
