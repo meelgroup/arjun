@@ -200,8 +200,7 @@ void Common::unsat_define(const vector<uint32_t>& orig_sampl_vars) {
         set_vals[test_var+orig_num_vars] = l_Undef;
     }
     picosat_reset(ps);
-    verb_print(1, "new sampl set:" << sampling_set.size()
-            << " old sampl set:" << orig_sampling_vars.size()
+    verb_print(1, "defined via Padoa: " << sampling_set.size()-orig_sampling_vars.size()
             << " SAT: " << sat
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();

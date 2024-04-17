@@ -12,10 +12,12 @@ echo "opts: $B"
 rm -f proof*
 rm -f core*
 
-echo "Orig count of $A:"
-./count_literals.py "$A"
+echo "File $A"
+./count_literals.py "$A" > orig
+cat orig
+cnt_old=$(cat orig | grep outp | awk '{print $4}')
+echo "-----------------"
 
-echo "Doing BVE based synthesis"
 ./arjun $B --synth "$A" out > arjun_out
 retval=$?
 if [ $retval -ne 0 ]; then
@@ -30,11 +32,15 @@ proof_lines=$(cat proof* | wc -l)
 core_lines=$(cat core* | wc -l)
 cnt=$(./count_literals.py out | grep outp | awk '{print $4}')
 
-echo "New count: $cnt"
 echo "Num core files   : $num_core"
 echo "Num proof files  : $num_proof"
-
-
 echo "Core lines total : $core_lines"
 echo "Proof lines total: $proof_lines"
 
+echo "-----------------"
+padoa=$(grep -i Padoa arjun_out | awk '{print $5}')
+bve=$(python -c "print ($cnt_old-$cnt-$padoa)")
+echo "Padoa                 : $padoa"
+echo "BVE, replace, backbone: $bve"
+echo "Old count             : $cnt_old"
+echo "New count             : $cnt"
