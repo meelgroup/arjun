@@ -188,7 +188,7 @@ struct Common
     void extend_round();
 
     // Unsat define
-    vector<uint32_t> unsat_define();
+    void unsat_define();
     void generate_picosat(const vector<Lit>& assumptions , uint32_t test_var);
 
     //Sorting

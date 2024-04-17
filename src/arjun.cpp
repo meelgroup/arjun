@@ -216,7 +216,7 @@ DLL_PUBLIC void Arjun::unsat_define() {
     arjdata->common.conf.ite_gate_based = false;
     arjdata->common.conf.irreg_gate_based = false;
     if (!arjdata->common.preproc_and_duplicate()) return;
-    arjdata->common.sampling_vars = arjdata->common.unsat_define();
+    arjdata->common.unsat_define();
     arjdata->common.orig_sampling_vars = arjdata->common.sampling_vars;
 }
 

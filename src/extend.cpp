@@ -32,10 +32,10 @@ extern "C" {
 }
 
 using namespace ArjunInt;
+using std::setw;
 
 template<class T>
-void Common::fill_assumptions_extend(vector<Lit>& assumptions, const T& indep)
-{
+void Common::fill_assumptions_extend(vector<Lit>& assumptions, const T& indep) {
     verb_print(5, "Filling assumps BEGIN");
     assumptions.clear();
 
@@ -49,8 +49,7 @@ void Common::fill_assumptions_extend(vector<Lit>& assumptions, const T& indep)
     verb_print(5, "Filling assumps END, total assumps size: " << assumptions.size());
 }
 
-void Common::add_all_indics()
-{
+void Common::add_all_indics() {
     // [ replaced, replaced_with ]
     auto ret = solver->get_all_binary_xors();
     set<uint32_t> no_need;
@@ -92,7 +91,7 @@ int lit_to_pl(const Lit l) {
     return picolit;
 }
 
-vector<uint32_t> Common::unsat_define() {
+void Common::unsat_define() {
     assert(already_duplicated);
     uint32_t start_size = orig_sampling_vars.size();
     solver->set_verbosity(0);
@@ -153,7 +152,18 @@ vector<uint32_t> Common::unsat_define() {
     uint32_t sat = 0;
 
     vector<Lit> assumptions;
+    uint32_t num_done = 0;
+    uint32_t num_unsat = 0;
     while(!unknown.empty()) {
+        if (num_done % 100 == 99) {
+            verb_print(1, "[padoa] done: " << setw(4) << num_done
+                    << " unsat: " << setw(4) << num_unsat
+                    << " left: " << setw(4) << unknown.size()
+                    << " T: " << std::setprecision(2) << std::fixed << setw(6)
+                    << (cpuTime() - start_round_time)
+                    << " var/s: " << setw(6) << (double)num_done/(cpuTime() - start_round_time));
+
+        }
         uint32_t test_var = unknown.back();
         unknown.pop_back();
 
@@ -175,12 +185,14 @@ vector<uint32_t> Common::unsat_define() {
 
         lbool ret = l_Undef;
         ret = solver->solve(&assumptions);
+        num_done++;
 
         if (ret == l_False) verb_print(5, "[arjun] extend solve(): False");
         else if (ret == l_True) {verb_print(5, "[arjun] extend solve(): True");sat++;}
         else if (ret == l_Undef) verb_print(5, "[arjun] extend solve(): Undef");
 
         if (ret == l_False) {
+            num_unsat++;
             // Dependent fully on `indep`
             // TODO: run get_conflict and then we know which were
             // actually needed, so we can do an easier generation/check
@@ -202,12 +214,12 @@ vector<uint32_t> Common::unsat_define() {
         set_vals[test_var+orig_num_vars] = l_Undef;
     }
     picosat_reset(ps);
+
+    sampling_vars = orig_sampling_vars;
     verb_print(1, "defined via Padoa: " << orig_sampling_vars.size()-start_size
             << " SAT: " << sat
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
-
-    return sampling_vars;
 }
 
 void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var) {
@@ -321,7 +333,7 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
     dat.size = 0;
     dat.capacity = 1024;
     picosat_write_extended_trace_data (ps2, &dat);
-    cout << "c [arjun] Proof size: " << dat.size << endl;
+    verb_print(2, "[arjun] Proof size: " << dat.size);
     free(dat.data);
     picosat_reset(ps2);
 }
@@ -329,8 +341,7 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
 
 // TODO; This is confluent!! We can just mess up the SAT solver
 // and ONLY have to use assumption for the indic + var + NOT var
-void Common::extend_round()
-{
+void Common::extend_round() {
     assert(already_duplicated);
     solver->set_verbosity(0);
     add_all_indics();
