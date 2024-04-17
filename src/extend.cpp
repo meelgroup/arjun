@@ -97,26 +97,17 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
     uint32_t cl_num = 0;
 
     solver->start_getting_constraints(false);
-    bool ret = true;
     vector<Lit> cl;
     bool is_xor, rhs;
     for(uint32_t i = 0; i < solver->nVars(); i++) picosat_inc_max_var(ps);
-    while(ret) {
-        ret = solver->get_next_constraint(cl, is_xor, rhs);
-        if (!ret) break;
+    while(solver->get_next_constraint(cl, is_xor, rhs)) {
         assert(!is_xor); assert(rhs);
         cl_map[cl_num++] = cl;
         for (const auto& l: cl) picosat_add(ps, lit_to_pl(l));
         picosat_add(ps, 0);
     }
     solver->end_getting_constraints();
-    for(const auto& v: sampling_set) {
-        if (var_to_indic[v] == var_Undef) continue;
-        auto l = Lit(var_to_indic[v], false);
-        cl_map[cl_num++] = vector<Lit>{l};
-        picosat_add(ps, lit_to_pl(l));
-        picosat_add(ps, 0);
-    }
+
     for(const auto& l: assumptions) {
         cl_map[cl_num++] = vector<Lit>{l};
         picosat_add(ps, lit_to_pl(l));
@@ -188,7 +179,7 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
     picosat_reset(ps);
 
 
-    bool debug_core = false;
+    bool debug_core = true;
     if (debug_core) {
         std::stringstream name;
         name << "core-" << test_var+1 << ".cnf";
@@ -232,8 +223,13 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
         FILE* trace = fopen(name.str().c_str(), "w");
         picosat_write_extended_trace (ps, trace);
     }
+    TraceData dat;
+    dat.data = nullptr;
+    dat.size = 0;
+    dat.capacity = 0;
+    picosat_write_extended_trace_data (ps, &dat);
+    cout << "c [arjun] Proof size: " << dat.size << endl;
     picosat_reset(ps);
-    fclose(trace);
 }
 
 void Common::unsat_define(const vector<uint32_t>& orig_sampl_vars) {

@@ -23,5 +23,18 @@ if [ $retval -ne 0 ]; then
     tail arjun_out
     exit 255
 fi
-echo "New count of $A:"
-./count_literals.py out | grep outp
+
+num_core=$(find core* | wc -l)
+num_proof=$(find proof* | wc -l)
+proof_lines=$(cat proof* | wc -l)
+core_lines=$(cat core* | wc -l)
+cnt=$(./count_literals.py out | grep outp | awk '{print $4}')
+
+echo "New count: $cnt"
+echo "Num core files   : $num_core"
+echo "Num proof files  : $num_proof"
+
+
+echo "Core lines total : $core_lines"
+echo "Proof lines total: $proof_lines"
+
