@@ -23,6 +23,7 @@
  */
 
 #include "common.h"
+#include "cryptominisat5/solvertypesmini.h"
 #include <algorithm>
 #include <map>
 extern "C" {
@@ -49,14 +50,17 @@ void Common::fill_assumptions_extend(vector<Lit>& assumptions, const T& indep)
 
 void Common::add_all_indics()
 {
+    // [ replaced, replaced_with ]
+    auto ret = solver->get_all_binary_xors();
+    set<uint32_t> no_need;
+    for(const auto& p: ret) no_need.insert(p.first.var());
+
     vector<Lit> tmp;
     for(uint32_t var = 0; var < orig_num_vars; var++) {
         // Already has an indicator variable
         if (var_to_indic[var] != var_Undef) continue;
-        if (solver->removed_var(var)) {
-            var_to_indic[var] = var_Undef;
-            continue;
-        }
+
+        if (solver->removed_var(var) || no_need.count(var)) continue;
 
         solver->new_var();
         uint32_t this_indic = solver->nVars()-1;
@@ -115,15 +119,28 @@ void Common::unsat_define(const vector<uint32_t>& orig_sampl_vars) {
     set<uint32_t> orig_sampl_set(orig_sampl_vars.begin(), orig_sampl_vars.end());
     for(const auto& v: sampling_set) {
         if (var_to_indic[v] == var_Undef) continue;
-        vector<Lit> cl;
+        cl.clear();
         auto v2 = var_to_indic[v];
-        cl.push_back(Lit(v2, false));
+        Lit l2 = Lit(v2, false);
+        cl.push_back(l2);
         solver->add_clause(cl);
+        cl_map[cl_num++] = cl;
+        picosat_add(ps, lit_to_pl(l2));
+        picosat_add(ps, 0);
+        set_vals[l2.var()] = l_True;
     }
+
+    // Already replaced
+    auto binx = solver->get_all_binary_xors();
+    set<uint32_t> no_need;
+    for(const auto& p: binx) no_need.insert(p.first.var());
+    auto setl = solver->get_zero_assigned_lits();
+    for(const auto& p: setl) no_need.insert(p.var());
 
     //Initially, all of samping_set is unknown
     vector<uint32_t> unknown;
     for(uint32_t i = 0; i < orig_num_vars; i++) {
+        if (no_need.count(i)) continue;
         if (solver->removed_var(i)) continue;
         if (orig_sampl_set.count(i)) continue;
         unknown.push_back(i);
@@ -131,6 +148,7 @@ void Common::unsat_define(const vector<uint32_t>& orig_sampl_vars) {
 
     sort_unknown(unknown);
     verb_print(1,"[arjun] Start unknown size: " << unknown.size());
+    uint32_t sat = 0;
 
     vector<Lit> assumptions;
     while(!unknown.empty()) {
@@ -145,8 +163,6 @@ void Common::unsat_define(const vector<uint32_t>& orig_sampl_vars) {
 
         assumptions.clear();
         uint32_t indic = var_to_indic[test_var];
-        assumptions.push_back(Lit(indic, false));
-        set_vals[indic] = l_True;
         assumptions.push_back(Lit(test_var, false));
         set_vals[test_var] = l_True;
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
@@ -159,15 +175,10 @@ void Common::unsat_define(const vector<uint32_t>& orig_sampl_vars) {
         ret = solver->solve(&assumptions);
 
         if (ret == l_False) verb_print(5, "[arjun] extend solve(): False");
-        else if (ret == l_True) verb_print(5, "[arjun] extend solve(): True");
+        else if (ret == l_True) {verb_print(5, "[arjun] extend solve(): True");sat++;}
         else if (ret == l_Undef) verb_print(5, "[arjun] extend solve(): Undef");
 
-        if (ret == l_Undef) {
-            // Timed out, we'll treat is as unknown
-            assert(test_var < orig_num_vars);
-        } else if (ret == l_True) {
-            // Not fully dependent
-        } else if (ret == l_False) {
+        if (ret == l_False) {
             // Dependent fully on `indep`
             // TODO: run get_conflict and then we know which were
             // actually needed, so we can do an easier generation/check
@@ -179,13 +190,19 @@ void Common::unsat_define(const vector<uint32_t>& orig_sampl_vars) {
             cl_map[cl_num++] = cl;
             picosat_add(ps, lit_to_pl(l));
             picosat_add(ps, 0);
+            set_vals[indic] = l_True;
 
             sampling_set.push_back(test_var);
+        } else {
+            set_vals[indic] = l_Undef;
         }
+        set_vals[test_var] = l_Undef;
+        set_vals[test_var+orig_num_vars] = l_Undef;
     }
     picosat_reset(ps);
     verb_print(1, "new sampl set:" << sampling_set.size()
             << " old sampl set:" << orig_sampling_vars.size()
+            << " SAT: " << sat
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
 }
@@ -209,29 +226,6 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
     }
     release_assert(pret == PICOSAT_UNSATISFIABLE);
 
-    // NEXT we extract information we'll need to make simplified UNSAT core
-    // in particular, we'll make sure that variables that are equivalent are
-    // not represented as two different variables
-    /* map<uint32_t, uint32_t> indic_map; */
-    /* map<uint32_t, lbool> set_vals; */
-    /* for(const auto& m: cl_map) { */
-    /*     if (picosat_coreclause(ps, m.first)) { */
-    /*         if (m.second.size() != 1) continue; */
-    /*         Lit l = m.second[0]; */
-    /*         set_vals[l.var()] = l.sign() ? l_False : l_True; */
-    /*         assert(l.var() < indic_to_var.size()); */
-    /*         if (indic_to_var[l.var()] != var_Undef) { */
-    /*             auto v = indic_to_var[l.var()]; */
-    /*             verb_print(5, "indic: " << l */
-    /*                     << " indidates var: " << v+1 */
-    /*                     << " is equivalent to " << v+orig_num_vars+1); */
-    /*             verb_print(5, "replacing var: " << v+orig_num_vars */
-    /*                     << " with " << v+1); */
-    /*             indic_map[v+orig_num_vars] = v; */
-    /*         } */
-    /*     } */
-    /* } */
-
     // NEXT we generate the small CNF that is UNSAT and is simplified
     vector<Lit> cl;
     vector<vector<Lit>> mini_cls;
@@ -241,10 +235,9 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
             bool taut = false;
             cl.clear();
             for(auto l: cl_map[cl_at]) {
-
                 // Deal with set vars
                 if (set_vals[l.var()] != l_Undef) {
-                    int val = set_vals[l.var()] == l_True;
+                    int val = (set_vals[l.var()] == l_True);
                     val ^= l.sign();
                     if (val) goto end; //satisfied clause
                     continue; // false value in clausee
@@ -253,8 +246,9 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
                 // if it's a var that's the image that has been
                 // forced to be equal, then replace
                 if (l.var() < orig_num_vars*2 && l.var() >= orig_num_vars) {
-                    auto v = var_to_indic[l.var()-orig_num_vars];
-                    if (set_vals[v] == l_True) l = Lit (v, l.sign());
+                    auto indic = var_to_indic[l.var()-orig_num_vars];
+                    if (indic != var_Undef && set_vals[indic] == l_True)
+                        l = Lit (l.var()-orig_num_vars, l.sign());
                 }
 
                 if (seen[(~l).toInt()]) {taut = true; break;}
@@ -271,7 +265,7 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
     }
 
 
-    bool debug_core = false;
+    bool debug_core = true;
     if (debug_core) {
         std::stringstream name;
         name << "core-" << test_var+1 << ".cnf";
@@ -320,9 +314,9 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
         picosat_write_extended_trace (ps2, trace);
     }
     TraceData dat;
-    dat.data = nullptr;
+    dat.data = (int*)malloc(1024*sizeof(int));
     dat.size = 0;
-    dat.capacity = 0;
+    dat.capacity = 1024;
     picosat_write_extended_trace_data (ps2, &dat);
     cout << "c [arjun] Proof size: " << dat.size << endl;
     free(dat.data);
