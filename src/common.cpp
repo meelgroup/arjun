@@ -109,6 +109,7 @@ void Common::add_fixed_clauses()
 }
 
 void Common::duplicate_problem() {
+    assert(!already_duplicated);
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
     //Duplicate the already simplified problem
@@ -122,6 +123,7 @@ void Common::duplicate_problem() {
         solver->add_clause(cl);
     }
     if (conf.verb) cout << "c [arjun] Duplicated CNF. T: " << (cpuTime() - dupl_time) << endl;
+    already_duplicated = true;
 }
 
 ArjunNS::SimplifiedCNF Common::get_init_cnf() {
@@ -150,11 +152,11 @@ ArjunNS::SimplifiedCNF Common::get_init_cnf() {
     return cnf;
 }
 
-void Common::get_incidence()
-{
+void Common::get_incidence() {
+    assert(orig_num_vars == solver->nVars());
+
     incidence.clear();
     incidence.resize(orig_num_vars, 0);
-    incidence.clear();
     incidence_probing.resize(orig_num_vars, 0);
     assert(solver->nVars() == orig_num_vars);
     vector<uint32_t> inc = solver->get_lit_incidence();
@@ -237,7 +239,7 @@ void check_sanity_sampling_vars(T vars, const uint32_t nvars)
 
 void Common::init() {
     orig_cnf = get_init_cnf();
-    assert(orig_num_vars  == std::numeric_limits<uint32_t>::max() && "double init");
+    assert(orig_num_vars == std::numeric_limits<uint32_t>::max() && "double init");
     orig_num_vars = solver->nVars();
     check_sanity_sampling_vars(sampling_vars, orig_num_vars);
     seen.clear();
@@ -246,7 +248,6 @@ void Common::init() {
 
 bool Common::preproc_and_duplicate() {
     assert(!already_duplicated);
-    already_duplicated = true;
     get_incidence();
     if (conf.simp && !simplify()) return false;
     get_incidence();

@@ -318,7 +318,15 @@ void elim_to_file() {
             arj2.set_sampl_vars(ret.opt_sampl_vars);
             ret.opt_sampl_vars = arj2.extend_sampl_set();
         }
-        if (bce) arjun->only_bce(ret);
+        if (bce) {
+            Arjun arj2;
+            arj2.set_verbosity(conf.verb);
+            arj2.only_bce(ret);
+        }
+    }
+    if (conf.do_unate) {
+        Arjun arj2;
+        arj2.only_unate(ret);
     }
 
     ret.renumber_sampling_vars_for_ganak();
@@ -373,6 +381,9 @@ void do_synthesis() {
     simp_conf.bve_too_large_resolvent = -1;
     auto cnf = arjun->get_fully_simplified_renumbered_cnf(simp_conf);
     /* arjun->reverse_bce(cnf); */
+
+    // Then unate is bigger base set
+    if (conf.do_unate) arjun->only_unate(cnf);
 
     write_simpcnf(cnf, elimtofile, redundant_cls);
     cout << "c [arjun] All done. T: " << std::setprecision(2) << (cpuTime() - start_time) << endl;
@@ -441,10 +452,10 @@ int main(int argc, char** argv) {
     if (synthesis) {
         do_synthesis();
     } else {
-        vector<uint32_t> sampl_vars = arjun->run_backwards();
+        arjun->run_backwards();
         const auto& cnf = arjun->get_orig_cnf();
         cout << "c [arjun] original sampling set size: " << cnf.sampl_vars.size() << endl;
-        print_final_sampl_set(sampl_vars);
+        print_final_sampl_set(arjun->get_sampl_vars());
         cout << "c [arjun] finished "
             << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time) << endl;
         if (!elimtofile.empty()) elim_to_file();

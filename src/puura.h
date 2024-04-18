@@ -52,12 +52,12 @@ public:
     void reverse_bce(SimplifiedCNF& cnf);
     void run_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak);
+    vector<Lit> synthesis_unate(SimplifiedCNF& cnf);
 
 private:
     SATSolver* solver = nullptr;
     SATSolver* setup_f_not_f_indic();
-    void conditional_dontcare();
-    void synthesis_unate(bool do_given = 0);
+    /* void conditional_dontcare(); */
     void setup_sampl_vars_dontelim(const vector<uint32_t>& sampl_vars);
 
     void fill_solver(Arjun* arjun);

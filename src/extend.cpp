@@ -50,6 +50,7 @@ void Common::fill_assumptions_extend(vector<Lit>& assumptions, const T& indep) {
 }
 
 void Common::add_all_indics() {
+    var_to_indic.resize(orig_num_vars*2, var_Undef);
     // [ replaced, replaced_with ]
     auto ret = solver->get_all_binary_xors();
     set<uint32_t> no_need;
@@ -59,13 +60,13 @@ void Common::add_all_indics() {
     for(uint32_t var = 0; var < orig_num_vars; var++) {
         // Already has an indicator variable
         if (var_to_indic[var] != var_Undef) continue;
-
         if (solver->removed_var(var) || no_need.count(var)) continue;
 
         solver->new_var();
         uint32_t this_indic = solver->nVars()-1;
         //torem_orig.push_back(Lit(this_indic, false));
         var_to_indic[var] = this_indic;
+        var_to_indic[var+orig_num_vars] = this_indic;
         dont_elim.push_back(Lit(this_indic, false));
         indic_to_var.resize(this_indic+1, var_Undef);
         indic_to_var[this_indic] = var;
@@ -92,9 +93,10 @@ int lit_to_pl(const Lit l) {
 }
 
 void Common::unsat_define() {
-    assert(already_duplicated);
+    assert(sampling_vars.size() == orig_sampling_vars.size());
     uint32_t start_size = orig_sampling_vars.size();
     solver->set_verbosity(0);
+    solver->set_scc(1);
     add_all_indics();
 
     assert(ps == nullptr);
@@ -102,10 +104,24 @@ void Common::unsat_define() {
     int pret = picosat_enable_trace_generation(ps);
     release_assert(pret != 0 && "Traces cannot be generated in PicoSAT");
 
+    // Don't mess with already set/replaced variables
+    std::string str = "must-scc-vrepl, clean-cls";
+    solver->simplify(nullptr, &str);
+
+    // Already replaced, already set
+    set<uint32_t> no_need;
+    // [ replaced, replaced_with ]
+    auto binx = solver->get_all_binary_xors();
+    for(const auto& p: binx) no_need.insert(p.first.var());
+    auto setl = solver->get_zero_assigned_lits();
+    for(const auto& p: setl) no_need.insert(p.var());
+    set_vals.clear();
+    set_vals.resize(solver->nVars(), l_Undef);
+
     solver->start_getting_constraints(false);
     vector<Lit> cl;
     bool is_xor, rhs;
-    for(uint32_t i = 0; i < solver->nVars(); i++) picosat_inc_max_var(ps);
+    for(uint32_t i = 0; i < indic_to_var.size(); i++) picosat_inc_max_var(ps);
     while(solver->get_next_constraint(cl, is_xor, rhs)) {
         assert(!is_xor); assert(rhs);
         cl_map[cl_num++] = cl;
@@ -113,29 +129,22 @@ void Common::unsat_define() {
         picosat_add(ps, 0);
     }
     solver->end_getting_constraints();
-    set_vals.resize(solver->nVars(), l_Undef);
 
     for(const auto& x: seen) assert(x == 0);
     double start_round_time = cpuTimeTotal();
     for(const auto& v: orig_sampling_vars) {
         if (var_to_indic[v] == var_Undef) continue;
         cl.clear();
-        auto v2 = var_to_indic[v];
-        Lit l2 = Lit(v2, false);
-        cl.push_back(l2);
+        auto ind_v = var_to_indic[v];
+        Lit ind_l = Lit(ind_v, false);
+        cl.push_back(ind_l);
         solver->add_clause(cl);
         cl_map[cl_num++] = cl;
-        picosat_add(ps, lit_to_pl(l2));
+        picosat_add(ps, lit_to_pl(ind_l));
         picosat_add(ps, 0);
-        set_vals[l2.var()] = l_True;
+        set_vals[ind_l.var()] = l_True;
     }
 
-    // Already replaced
-    auto binx = solver->get_all_binary_xors();
-    set<uint32_t> no_need;
-    for(const auto& p: binx) no_need.insert(p.first.var());
-    auto setl = solver->get_zero_assigned_lits();
-    for(const auto& p: setl) no_need.insert(p.var());
 
     //Initially, all of samping_set is unknown
     const set<uint32_t> orig_sampl_set(orig_sampling_vars.begin(), orig_sampling_vars.end());
@@ -206,7 +215,7 @@ void Common::unsat_define() {
             picosat_add(ps, 0);
             set_vals[indic] = l_True;
 
-            orig_sampling_vars.push_back(test_var);
+            sampling_vars.push_back(test_var);
         } else {
             set_vals[indic] = l_Undef;
         }
@@ -215,8 +224,7 @@ void Common::unsat_define() {
     }
     picosat_reset(ps);
 
-    sampling_vars = orig_sampling_vars;
-    verb_print(1, "defined via Padoa: " << orig_sampling_vars.size()-start_size
+    verb_print(1, "defined via Padoa: " << sampling_vars.size()-start_size
             << " SAT: " << sat
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
@@ -301,13 +309,13 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
     pret = picosat_enable_trace_generation(ps2);
     release_assert(pret != 0 && "Traces cannot be generated in PicoSAT");
     for(uint32_t i = 0; i < orig_num_vars*2; i++) picosat_inc_max_var(ps2);
+    for(const auto& l: assumptions) {
+        picosat_add(ps2, lit_to_pl(l));
+        picosat_add(ps2, 0);
+    }
     for(const auto& c: mini_cls) {
         for(const auto& l: c) picosat_add(ps2, lit_to_pl(l));
         picosat_add(ps2, 0);
-    }
-    for(const auto& l: assumptions) {
-        /* cl_map[cl_num++] = vector<Lit>{l}; */
-        picosat_assume(ps2, lit_to_pl(l));
     }
     pret = picosat_sat(ps2, 10000000);
     verb_print(5, "c pret: " << pret);

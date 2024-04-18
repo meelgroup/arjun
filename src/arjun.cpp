@@ -187,7 +187,7 @@ DLL_PUBLIC const SimplifiedCNF& Arjun::get_orig_cnf() const
     return arjdata->common.orig_cnf;
 }
 
-DLL_PUBLIC const vector<uint32_t>& Arjun::get_current_indep_set() const {
+DLL_PUBLIC const vector<uint32_t>& Arjun::get_sampl_vars() const {
     return arjdata->common.sampling_vars;
 }
 
@@ -209,15 +209,12 @@ DLL_PUBLIC vector<uint32_t> Arjun::run_backwards() {
 
 DLL_PUBLIC void Arjun::unsat_define() {
     assert(!arjdata->common.already_duplicated);
-    arjdata->common.conf.simp = false;
-    arjdata->common.init();
-    arjdata->common.conf.or_gate_based = false;
-    arjdata->common.conf.xor_gates_based = false;
-    arjdata->common.conf.ite_gate_based = false;
-    arjdata->common.conf.irreg_gate_based = false;
-    if (!arjdata->common.preproc_and_duplicate()) return;
+    if (arjdata->common.orig_num_vars == std::numeric_limits<uint32_t>::max()) {
+        arjdata->common.init();
+    }
+    arjdata->common.get_incidence();
+    arjdata->common.duplicate_problem();
     arjdata->common.unsat_define();
-    arjdata->common.orig_sampling_vars = arjdata->common.sampling_vars;
 }
 
 DLL_PUBLIC vector<uint32_t> Arjun::extend_sampl_set()
@@ -425,6 +422,17 @@ DLL_PUBLIC void Arjun::reverse_bce(SimplifiedCNF& cnf)
 {
     Puura puura(arjdata->common.conf);
     return puura.reverse_bce(cnf);
+}
+
+
+DLL_PUBLIC void Arjun::only_unate(SimplifiedCNF& cnf)
+{
+    Puura puura(arjdata->common.conf);
+    vector<Lit> ret = puura.synthesis_unate(cnf);
+    for(const auto& l: ret) {
+        arjdata->common.solver->add_clause({l});
+        arjdata->common.orig_cnf.cnf.push_back({l});
+    }
 }
 
 DLL_PUBLIC void Arjun::set_lit_weight(

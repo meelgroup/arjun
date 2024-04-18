@@ -154,10 +154,11 @@ namespace ArjunNS {
         uint32_t set_sampl_vars(const std::vector<uint32_t>& vars);
         uint32_t set_opt_sampl_vars(const std::vector<uint32_t>& vars);
         uint32_t start_with_clean_sampling_set();
-        const std::vector<uint32_t>& get_current_indep_set() const;
+        const std::vector<uint32_t>& get_sampl_vars() const;
         std::vector<uint32_t> run_backwards();
         std::vector<uint32_t> extend_sampl_set();
         void unsat_define();
+        void only_unate(SimplifiedCNF& cnf);
 
         uint32_t get_orig_num_vars() const;
         const std::vector<uint32_t>& get_orig_sampl_vars() const;
