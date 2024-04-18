@@ -18,11 +18,11 @@ cat orig
 cnt_old=$(cat orig | grep outp | awk '{print $4}')
 echo "-----------------"
 
-/usr/bin/time --verbose ./arjun $B --synth "$A" out > arjun_out 2>&1
+timeout 10 /usr/bin/time --verbose ./arjun $B --synth "$A" out > arjun_out 2>&1
 retval=$?
 if [ $retval -ne 0 ]; then
-    echo "Error: arjun failed"
-    tail arjun_out
+    echo "Error: arjun failed, check arjun_out"
+    # tail arjun_out
     exit 255
 fi
 
@@ -38,7 +38,7 @@ cnt=$(./count_literals.py out | grep outp | awk '{print $4}')
 # echo "Proof lines total: $proof_lines"
 
 echo "-----------------"
-padoa=$(grep -i Padoa arjun_out | awk '{print $5}')
+padoa=$(grep -i "defined via Padoa" arjun_out | awk '{print $5}')
 t=$(grep -i "User time" arjun_out | awk '{print $4}')
 bve=$(python -c "print ($cnt_old-$cnt-$padoa)")
 echo "Old count             : $cnt_old"
