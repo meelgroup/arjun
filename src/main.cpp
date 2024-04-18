@@ -380,7 +380,7 @@ void do_synthesis() {
     // Then we BVE
     simp_conf.bve_too_large_resolvent = -1;
     auto cnf = arjun->get_fully_simplified_renumbered_cnf(simp_conf);
-    /* arjun->reverse_bce(cnf); */
+    arjun->only_reverse_bce(cnf);
 
     // Then unate is bigger base set
     if (conf.do_unate) arjun->only_unate(cnf);

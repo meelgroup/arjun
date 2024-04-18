@@ -418,7 +418,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(const SimpCo
 }
 
 
-DLL_PUBLIC void Arjun::reverse_bce(SimplifiedCNF& cnf)
+DLL_PUBLIC void Arjun::only_reverse_bce(SimplifiedCNF& cnf)
 {
     Puura puura(arjdata->common.conf);
     return puura.reverse_bce(cnf);

@@ -309,8 +309,8 @@ void Puura::reverse_bce(SimplifiedCNF& cnf) {
     fill_solver(cnf);
     solver->set_renumber(false);
     solver->set_scc(false);
-    setup_sampl_vars_dontelim(cnf.opt_sampl_vars);
-    solver->set_sampl_vars(cnf.opt_sampl_vars);
+    setup_sampl_vars_dontelim(cnf.sampl_vars);
+    solver->set_sampl_vars(cnf.sampl_vars);
     solver->reverse_bce();
 }
 
