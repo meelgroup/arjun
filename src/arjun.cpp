@@ -199,11 +199,8 @@ DLL_PUBLIC vector<uint32_t> Arjun::run_backwards() {
         arjdata->common.backward_round();
 
     end:
-    if (arjdata->common.conf.verb) {
-        cout << "c [arjun] run_backwards finished "
-        << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time)
-        << endl;
-    }
+    verb_print2(1, "[arjun] run_backwards finished "
+        << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time));
     return arjdata->common.sampling_vars;
 }
 
@@ -227,12 +224,9 @@ DLL_PUBLIC vector<uint32_t> Arjun::extend_sampl_set()
     if (!arjdata->common.preproc_and_duplicate()) goto end;
 
     arjdata->common.extend_round();
-    if (arjdata->common.conf.verb) {
-        cout << "c [arjun] extend fully finished"
+    verb_print2(1, "[arjun] extend fully finished"
         << " Extended by: " << (arjdata->common.sampling_vars.size() - orig_size)
-        << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time)
-        << endl;
-    }
+        << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time));
 
     end:
     return arjdata->common.sampling_vars;
@@ -403,9 +397,8 @@ DLL_PUBLIC void Arjun::only_bce(SimplifiedCNF& cnf) {
         if (!cl.red) cnf.cnf.push_back(cl.lits);
         else cnf.red_cnf.push_back(cl.lits);
     }
-    if (arjdata->common.conf.verb)
-        cout << "v o [arjun] BCE removed " << tot_removed << " clauses"
-            " T: " << (cpuTime() - start_time) << endl;
+    verb_print2(1, "[arjun] BCE removed " << tot_removed << " clauses"
+        " T: " << (cpuTime() - start_time));
 }
 
 DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(const SimpConf& simp_conf)
