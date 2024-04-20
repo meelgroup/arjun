@@ -121,6 +121,7 @@ void Common::backward_round() {
     if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
     print_sorted_unknown(unknown);
     verb_print(1, "[arjun] Start unknown size: " << unknown.size());
+    solver->set_verbosity(0);
 
     vector<Lit> assumptions;
     uint32_t iter = 0;

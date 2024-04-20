@@ -220,6 +220,28 @@ DLL_PUBLIC void Arjun::only_bce(SimplifiedCNF& cnf) {
         " T: " << (cpuTime() - start_time));
 }
 
+void Arjun::elim_to_file(SimplifiedCNF& cnf, bool indep_support_given,
+        bool do_extend_indep, bool do_bce,
+        bool do_unate, const SimpConf& simp_conf,
+        int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak) {
+
+    cnf = only_get_simplified_cnf(cnf, simp_conf);
+    if (!indep_support_given) {
+        cnf.opt_sampl_vars.clear();
+        for(uint32_t i = 0; i < cnf.nvars; i++) cnf.opt_sampl_vars.push_back(i);
+    }
+    if (do_extend_indep && cnf.opt_sampl_vars.size() != cnf.nvars)
+        only_extend_sampl_vars(cnf);
+    if (sbva_steps)
+        only_run_sbva(cnf, sbva_steps,
+                sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
+    if (do_bce && cnf.opt_sampl_vars.size() != cnf.nvars)
+        only_bce(cnf);
+    if (do_unate)
+        only_unate(cnf);
+    cnf.renumber_sampling_vars_for_ganak();
+}
+
 set_get_macro(bool, distill)
 set_get_macro(bool, intree)
 set_get_macro(bool, bve_pre_simplify)

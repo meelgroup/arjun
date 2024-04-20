@@ -59,7 +59,7 @@ bool indep_support_given = false;
 SimpConf simp_conf;
 int renumber = true;
 bool gates = true;
-int extend_indep = true;
+int do_extend_indep = true;
 int redundant_cls = true;
 int compute_indep = true;
 int simptofile = true;
@@ -68,7 +68,7 @@ int64_t sbva_steps = 200;
 int sbva_cls_cutoff = 2;
 int sbva_lits_cutoff = 2;
 int sbva_tiebreak = 1;
-int bce = true;
+int do_bce = true;
 int debug_synt = false;
 
 int synthesis = false;
@@ -92,8 +92,8 @@ void add_arjun_options()
         .default_value(conf.backw_max_confl)
         .help("Maximum conflicts per variable in backward mode");
     program.add_argument("--extend")
-        .action([&](const auto& a) {extend_indep = std::atoi(a.c_str());})
-        .default_value(extend_indep)
+        .action([&](const auto& a) {do_extend_indep = std::atoi(a.c_str());})
+        .default_value(do_extend_indep)
         .help("Extend independent set just before CNF dumping");
     program.add_argument("--synth")
         .action([&](const auto&) {synthesis = 1;})
@@ -241,8 +241,8 @@ void add_arjun_options()
         .action([&](const auto& a) {conf.distill = std::atoi(a.c_str());})
         .default_value(conf.distill);
     program.add_argument("--bce")
-        .action([&](const auto& a) {bce = std::atoi(a.c_str());})
-        .default_value(bce)
+        .action([&](const auto& a) {do_bce = std::atoi(a.c_str());})
+        .default_value(do_bce)
         .help("Use blocked clause elimination (BCE). VERY experimental!!");
     program.add_argument("--red")
         .action([&](const auto& a) {redundant_cls = std::atoi(a.c_str());})
@@ -274,8 +274,6 @@ void print_final_sampl_set(SimplifiedCNF& cnf, const vector<uint32_t>& orig_samp
 
     << "c [arjun] multiplier: " << std::setw(7) << cnf.multiplier_weight << endl;
 }
-
-void elim_to_file(SimplifiedCNF& cnf);
 
 void set_config(ArjunNS::Arjun* arj) {
     arj->set_verb(conf.verb);
@@ -321,47 +319,23 @@ void do_synthesis() {
 void do_minimize() {
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, ignore_sampling_set, indep_support_given);
+
     if (do_fast_backw) {
         const auto orig_sampl_vars = cnf.sampl_vars;
-        arjun->only_run_backwards(cnf);
+        Arjun arj2;
+        arj2.only_run_backwards(cnf);
         print_final_sampl_set(cnf, orig_sampl_vars);
     }
 
     if (!elimtofile.empty()) {
-        cnf = arjun->only_get_simplified_cnf(cnf, simp_conf);
-        delete arjun; arjun = nullptr;
-        elim_to_file(cnf);
-    }
-}
+        arjun->elim_to_file(cnf, indep_support_given,
+            do_extend_indep, do_bce,
+            do_unate, simp_conf,
+            sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 
-void elim_to_file(SimplifiedCNF& cnf) {
-    if (!indep_support_given) {
-        cnf.opt_sampl_vars.clear();
-        for(uint32_t i = 0; i < cnf.nvars; i++) cnf.opt_sampl_vars.push_back(i);
+        write_simpcnf(cnf, elimtofile, redundant_cls);
+        cout << "c [arjun] dumped simplified problem to '" << elimtofile << "'" << endl;
     }
-    if (extend_indep && cnf.opt_sampl_vars.size() != cnf.nvars) {
-        Arjun arj2;
-        arj2.set_verb(conf.verb);
-        arj2.only_extend_sampl_vars(cnf);
-    }
-    if (sbva_steps) {
-        Arjun arj2;
-        arj2.set_verb(conf.verb);
-        arj2.only_run_sbva(cnf, sbva_steps,
-                sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
-    }
-    if (bce && cnf.opt_sampl_vars.size() != cnf.nvars) {
-        Arjun arj2;
-        arj2.set_verb(conf.verb);
-        arj2.only_bce(cnf);
-    }
-    if (do_unate) {
-        Arjun arj2;
-        arj2.only_unate(cnf);
-    }
-    cnf.renumber_sampling_vars_for_ganak();
-    write_simpcnf(cnf, elimtofile, redundant_cls);
-    cout << "c [arjun] dumped simplified problem to '" << elimtofile << "'" << endl;
 }
 
 int main(int argc, char** argv) {

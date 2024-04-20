@@ -168,10 +168,10 @@ namespace ArjunNS {
         void only_unsat_define(SimplifiedCNF& cnf);
         void only_unate(SimplifiedCNF& cnf);
 
-        bool sampling_vars_set = false;
-        bool get_sampl_vars_set() const { return sampling_vars_set; }
-
-        //Get clauses
+        void elim_to_file(SimplifiedCNF& cnf, bool indep_support_given,
+            bool do_extend_indep, bool do_bce,
+            bool do_unate, const SimpConf& simp_conf,
+            int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak);
         SimplifiedCNF only_get_simplified_cnf(const SimplifiedCNF& cnf, const SimpConf& simp_conf);
         void only_bce(SimplifiedCNF& cnf);
         void only_reverse_bce(SimplifiedCNF& cnf);
