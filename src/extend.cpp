@@ -24,7 +24,9 @@
 
 #include "common.h"
 #include "cryptominisat5/solvertypesmini.h"
-#include <algorithm>
+#include "src/arjun.h"
+#include "src/time_mem.h"
+#include "extend.h"
 #include <cstdint>
 #include <map>
 extern "C" {
@@ -32,35 +34,19 @@ extern "C" {
 }
 
 using namespace ArjunInt;
+using namespace ArjunNS;
 using std::setw;
 
-template<class T>
-void Common::fill_assumptions_extend(vector<Lit>& assumptions, const T& indep) {
-    verb_print(5, "Filling assumps BEGIN");
-    assumptions.clear();
+void Extend::add_all_indics_except(const set<uint32_t>& except) {
+    assert(dont_elim.empty());
+    assert(var_to_indic.empty());
+    assert(indic_to_var.empty());
 
-    //Add known independent as assumptions
-    for(const auto& var: indep) {
-        assert(var < orig_num_vars);
-        uint32_t indic = var_to_indic[var];
-        assumptions.push_back(Lit(indic, false));
-        verb_print(5, "Filled assump with indep: " << var + 1);
-    }
-    verb_print(5, "Filling assumps END, total assumps size: " << assumptions.size());
-}
-
-void Common::add_all_indics() {
     var_to_indic.resize(orig_num_vars*2, var_Undef);
-    // [ replaced, replaced_with ]
-    auto ret = solver->get_all_binary_xors();
-    set<uint32_t> no_need;
-    for(const auto& p: ret) no_need.insert(p.first.var());
 
     vector<Lit> tmp;
     for(uint32_t var = 0; var < orig_num_vars; var++) {
-        // Already has an indicator variable
-        if (var_to_indic[var] != var_Undef) continue;
-        if (solver->removed_var(var) || no_need.count(var)) continue;
+        if (except.count(var)) continue;
 
         solver->new_var();
         uint32_t this_indic = solver->nVars()-1;
@@ -84,6 +70,8 @@ void Common::add_all_indics() {
         tmp.push_back(Lit(this_indic,        true));
         solver->add_clause(tmp);
     }
+    seen.clear();
+    seen.resize(indic_to_var.size()*2, 0);
 }
 
 // lit to picolit
@@ -92,12 +80,22 @@ int lit_to_pl(const Lit l) {
     return picolit;
 }
 
-void Common::unsat_define() {
-    assert(sampling_vars.size() == orig_sampling_vars.size());
-    uint32_t start_size = orig_sampling_vars.size();
+void Extend::unsat_define(SimplifiedCNF& cnf) {
+    double start_round_time = cpuTime();
+    uint32_t start_size = cnf.sampl_vars.size();
+    fill_solver(cnf);
     solver->set_verbosity(0);
     solver->set_scc(1);
-    add_all_indics();
+
+    // Fill no need
+    set<uint32_t> no_need;
+    // [ replaced, replaced_with ]
+    auto ret1 = solver->get_all_binary_xors();
+    for(const auto& p: ret1) no_need.insert(p.first.var());
+    auto ret2 = solver->get_zero_assigned_lits();
+    for(const auto& p: ret2) no_need.insert(p.var());
+    for(const auto& v: cnf.sampl_vars) no_need.insert(v);
+    add_all_indics_except(no_need);
 
     assert(ps == nullptr);
     ps = picosat_init();
@@ -108,13 +106,6 @@ void Common::unsat_define() {
     std::string str = "must-scc-vrepl, clean-cls";
     solver->simplify(nullptr, &str);
 
-    // Already replaced, already set
-    set<uint32_t> no_need;
-    // [ replaced, replaced_with ]
-    auto binx = solver->get_all_binary_xors();
-    for(const auto& p: binx) no_need.insert(p.first.var());
-    auto setl = solver->get_zero_assigned_lits();
-    for(const auto& p: setl) no_need.insert(p.var());
     set_vals.clear();
     set_vals.resize(solver->nVars(), l_Undef);
 
@@ -131,8 +122,7 @@ void Common::unsat_define() {
     solver->end_getting_constraints();
 
     for(const auto& x: seen) assert(x == 0);
-    double start_round_time = cpuTimeTotal();
-    for(const auto& v: orig_sampling_vars) {
+    for(const auto& v: cnf.sampl_vars) {
         if (var_to_indic[v] == var_Undef) continue;
         cl.clear();
         auto ind_v = var_to_indic[v];
@@ -145,14 +135,10 @@ void Common::unsat_define() {
         set_vals[ind_l.var()] = l_True;
     }
 
-
     //Initially, all of samping_set is unknown
-    const set<uint32_t> orig_sampl_set(orig_sampling_vars.begin(), orig_sampling_vars.end());
     vector<uint32_t> unknown;
     for(uint32_t i = 0; i < orig_num_vars; i++) {
         if (no_need.count(i)) continue;
-        if (solver->removed_var(i)) continue;
-        if (orig_sampl_set.count(i)) continue;
         unknown.push_back(i);
     }
 
@@ -205,7 +191,7 @@ void Common::unsat_define() {
             // Dependent fully on `indep`
             // TODO: run get_conflict and then we know which were
             // actually needed, so we can do an easier generation/check
-            generate_picosat(assumptions, test_var);
+            generate_picosat(assumptions, test_var, cnf);
             cl.clear();
             Lit l(indic, false);
             cl.push_back(l);
@@ -215,7 +201,7 @@ void Common::unsat_define() {
             picosat_add(ps, 0);
             set_vals[indic] = l_True;
 
-            sampling_vars.push_back(test_var);
+            cnf.sampl_vars.push_back(test_var);
         } else {
             set_vals[indic] = l_Undef;
         }
@@ -224,13 +210,13 @@ void Common::unsat_define() {
     }
     picosat_reset(ps);
 
-    verb_print(1, "defined via Padoa: " << sampling_vars.size()-start_size
+    verb_print(1, "defined via Padoa: " << cnf.sampl_vars.size()-start_size
             << " SAT: " << sat
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
 }
 
-void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var) {
+void Extend::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var, SimplifiedCNF& cnf) {
     verb_print(2, "generating unsat proof for: " << test_var+1);
     // FIRST, we get an UNSAT core
     for(const auto& l: assumptions) picosat_assume(ps, lit_to_pl(l));
@@ -252,7 +238,6 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
     // NEXT we generate the small CNF that is UNSAT and is simplified
     vector<Lit> cl;
     vector<vector<Lit>> mini_cls;
-    seen.resize(indic_to_var.size()*2, 0);
     for(uint32_t cl_at = 0; cl_at < cl_num; cl_at++) {
         if (picosat_coreclause(ps, cl_at)) {
             bool taut = false;
@@ -298,8 +283,8 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
         f << "c orig_num_vars: " << orig_num_vars << endl;
         f << "c output: " << test_var +1 << endl;
         f << "c output2: " << orig_num_vars+test_var +1 << endl;
-        f << "c num inputs: " << sampling_vars.size() << endl;
-        f << "c inputs: "; for(const auto& l: sampling_vars) f << (l+1) << " "; f << endl;
+        f << "c num inputs: " << cnf.sampl_vars.size() << endl;
+        f << "c inputs: "; for(const auto& l: cnf.sampl_vars) f << (l+1) << " "; f << endl;
         for(const auto& c: mini_cls) f << c << " 0" << endl;
         f.close();
     }
@@ -346,18 +331,23 @@ void Common::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var)
     picosat_reset(ps2);
 }
 
-
-// TODO; This is confluent!! We can just mess up the SAT solver
-// and ONLY have to use assumption for the indic + var + NOT var
-void Common::extend_round() {
-    assert(already_duplicated);
+void Extend::extend_round(SimplifiedCNF& cnf) {
+    double start_round_time = cpuTime();
+    const uint32_t orig_size = cnf.opt_sampl_vars.size();
+    fill_solver(cnf);
     solver->set_verbosity(0);
-    add_all_indics();
 
-    for(const auto& x: seen) assert(x == 0);
-    double start_round_time = cpuTimeTotal();
-    double my_time = cpuTime();
-    set<uint32_t> indep(sampling_vars.begin(), sampling_vars.end());
+    // Fill no need
+    set<uint32_t> no_need;
+    // [ replaced, replaced_with ]
+    auto ret1 = solver->get_all_binary_xors();
+    for(const auto& p: ret1) no_need.insert(p.first.var());
+    auto ret2 = solver->get_zero_assigned_lits();
+    for(const auto& p: ret2) no_need.insert(p.var());
+    for(const auto& v: cnf.opt_sampl_vars) no_need.insert(v);
+    add_all_indics_except(no_need);
+    set<uint32_t> indep(cnf.opt_sampl_vars.begin(), cnf.opt_sampl_vars.end());
+
     vector<Lit> cl;
     for(const auto& v: indep) {
         if (var_to_indic[v] == var_Undef) continue;
@@ -366,17 +356,18 @@ void Common::extend_round() {
         solver->add_clause(cl);
     }
 
-    //Initially, all of samping_set is unknown
+    //Initially, all of vars are unknown, except sampling set & replaced & set
     vector<uint32_t> unknown;
     for(uint32_t i = 0; i < orig_num_vars; i++) {
-        if (indep.count(i)) continue;
+        if (no_need.count(i)) continue;
         if (solver->removed_var(i)) continue;
         unknown.push_back(i);
     }
 
     sort_unknown(unknown);
-    verb_print(1,"[arjun] Start unknown size: " << unknown.size());
+    verb_print(1,"[arjun-extend] Start unknown size: " << unknown.size());
 
+    double my_time = cpuTime();
     vector<Lit> assumptions;
     uint32_t iter = 0;
     uint32_t ret_false = 0;
@@ -391,7 +382,7 @@ void Common::extend_round() {
 
         //Assumption filling
         assert(test_var != var_Undef);
-        fill_assumptions_extend(assumptions, indep);
+        assumptions.clear();
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
 
@@ -446,11 +437,63 @@ void Common::extend_round() {
         iter++;
 
     }
-    sampling_vars.clear();
-    sampling_vars.insert(sampling_vars.begin(), indep.begin(), indep.end());
+    cnf.opt_sampl_vars.clear();
+    cnf.opt_sampl_vars.insert(cnf.opt_sampl_vars.begin(), indep.begin(), indep.end());
 
-    verb_print(1, "[arjun] extend round finished "
-            << " final size: " << indep.size()
+    verb_print(1, "[arjun-extend] Extend finished "
+            << " orig size: " << orig_size
+            << " final size: " << cnf.opt_sampl_vars.size()
+            << " Undef: " << ret_undef
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
+}
+
+template<class T> void Extend::sort_unknown(T& unknown) {
+    std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
+}
+
+void Extend::get_incidence() {
+    assert(orig_num_vars == solver->nVars());
+
+    incidence.clear();
+    incidence.resize(orig_num_vars, 0);
+    assert(solver->nVars() == orig_num_vars);
+    vector<uint32_t> inc = solver->get_lit_incidence();
+    assert(inc.size() == orig_num_vars*2);
+    for(uint32_t i = 0; i < orig_num_vars; i++) {
+        Lit l = Lit(i, true);
+        incidence[l.var()] = std::min(inc[l.toInt()],inc[(~l).toInt()]);
+    }
+}
+
+void Extend::fill_solver(const SimplifiedCNF& cnf) {
+    assert(solver == nullptr);
+    solver = new CMSat::SATSolver;
+    solver->set_verbosity(conf.verb);
+    solver->set_find_xors(false);
+    assert(solver->nVars() == 0); // Solver here is empty
+
+    // Inject original CNF
+    orig_num_vars = cnf.nvars;
+    solver->new_vars(orig_num_vars);
+    for(const auto& cl: cnf.clauses) solver->add_clause(cl);
+    get_incidence();
+
+    // Double vars
+    solver->new_vars(orig_num_vars);
+    seen.clear();
+    seen.resize(solver->nVars()*2, 0);
+
+    // We only need to double the non-sampling vars
+    for(const auto& v: cnf.sampl_vars) seen[v] = 1;
+    vector<Lit> cl2;
+    for(const auto& cl: cnf.clauses) {
+        cl2.clear();
+        for (const auto& l: cl) {
+            if (seen[l.var()]) cl2.push_back(l);
+            else cl2.push_back(Lit(l.var()+orig_num_vars, l.sign()));
+        }
+        solver->add_clause(cl2);
+    }
+    for(const auto& v: cnf.sampl_vars) seen[v] = 0;
 }

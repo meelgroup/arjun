@@ -31,6 +31,8 @@
 #include "common.h"
 #include "GitSHA1.h"
 #include "puura.h"
+#include "extend.h"
+#include "time_mem.h"
 
 using std::pair;
 using std::numeric_limits;
@@ -46,16 +48,16 @@ using namespace ArjunInt;
 #define set_get_macro(TYPE, NAME) \
 DLL_PUBLIC void Arjun::set_##NAME (TYPE NAME) \
 { \
-    arjdata->common.conf.NAME = NAME; \
+    arjdata->conf.NAME = NAME; \
 } \
 DLL_PUBLIC TYPE Arjun::get_##NAME () const \
 { \
-    return arjdata->common.conf.NAME; \
+    return arjdata->conf.NAME; \
 } \
 
 namespace ArjunNS {
     struct ArjPrivateData {
-        Common common;
+        Config conf;
     };
 }
 
@@ -78,90 +80,6 @@ DLL_PUBLIC Arjun::~Arjun()
     delete arjdata;
 }
 
-DLL_PUBLIC uint32_t Arjun::nVars() {
-    return arjdata->common.solver->nVars();
-}
-
-DLL_PUBLIC void Arjun::new_vars(uint32_t num)
-{
-    check_duplicated(arjdata->common.already_duplicated);
-    arjdata->common.solver->new_vars(num);
-}
-
-DLL_PUBLIC void Arjun::new_var()
-{
-    check_duplicated(arjdata->common.already_duplicated);
-    arjdata->common.solver->new_var();
-}
-
-DLL_PUBLIC bool Arjun::add_clause(const vector<CMSat::Lit>& lits)
-{
-    check_duplicated(arjdata->common.already_duplicated);
-    return arjdata->common.solver->add_clause(lits);
-}
-
-DLL_PUBLIC bool Arjun::add_red_clause(const vector<CMSat::Lit>& lits)
-{
-    check_duplicated(arjdata->common.already_duplicated);
-    return arjdata->common.solver->add_red_clause(lits);
-}
-
-DLL_PUBLIC bool Arjun::add_xor_clause(const vector<uint32_t>& vars, bool rhs)
-{
-    check_duplicated(arjdata->common.already_duplicated);
-    assert(false && "Funnily enough this does NOT work. The XORs would generate a BVA variable, and that would then not be returned as part of the simplified CNF. We could calculate a smaller independent set, but that's all.");
-    return arjdata->common.solver->add_xor_clause(vars, rhs);
-}
-
-DLL_PUBLIC bool Arjun::add_xor_clause(const vector<CMSat::Lit>& lits, bool rhs)
-{
-    check_duplicated(arjdata->common.already_duplicated);
-    assert(false && "Funnily enough this does NOT work. The XORs would generate a BVA variable, and that would then not be returned as part of the simplified CNF. We could calculate a smaller independent set, but that's all.");
-    return arjdata->common.solver->add_xor_clause(lits, rhs);
-}
-
-DLL_PUBLIC bool Arjun::add_bnn_clause(
-            const std::vector<CMSat::Lit>& lits,
-            signed cutoff,
-            Lit out
-        )
-{
-    check_duplicated(arjdata->common.already_duplicated);
-    return arjdata->common.solver->add_bnn_clause(lits, cutoff, out);
-}
-
-DLL_PUBLIC uint32_t Arjun::set_sampl_vars(const vector<uint32_t>& vars)
-{
-    sampling_vars_set = true;
-    check_duplicated(arjdata->common.already_duplicated);
-    arjdata->common.sampling_vars = vars;
-    arjdata->common.orig_sampling_vars = vars;
-    return arjdata->common.sampling_vars.size();
-}
-
-
-DLL_PUBLIC uint32_t Arjun::set_opt_sampl_vars(const std::vector<uint32_t>& vars) {
-    if (!sampling_vars_set) {
-        std::cerr << "ERROR: For arjun, you must set optional sampling vars after setting the sampling vars" << std::endl;
-        assert(false);
-        exit(-1);
-    }
-    if (vars != arjdata->common.sampling_vars) {
-        std::cerr << "ERROR: For arjun, you must set optional sampling vars EXACTLY the same as the sampling set" << std::endl;
-        assert(false);
-        exit(-1);
-    }
-    return vars.size();
-}
-
-DLL_PUBLIC uint32_t Arjun::start_with_clean_sampling_set()
-{
-    sampling_vars_set = true;
-    check_duplicated(arjdata->common.already_duplicated);
-    arjdata->common.start_with_clean_sampling_set();
-    return arjdata->common.sampling_vars.size();
-}
-
 DLL_PUBLIC string Arjun::get_sbva_version_info()
 {
     return SBVA::get_version_sha1();
@@ -182,151 +100,52 @@ DLL_PUBLIC std::string Arjun::get_compilation_env()
     return ArjunIntNS::get_compilation_env();
 }
 
-DLL_PUBLIC const SimplifiedCNF& Arjun::get_orig_cnf() const
+DLL_PUBLIC void Arjun::only_run_backwards(SimplifiedCNF& cnf) {
+    Common common(arjdata->conf);
+    common.run_backwards(cnf);
+}
+
+DLL_PUBLIC void Arjun::only_unsat_define(SimplifiedCNF& cnf) {
+    Extend extend(arjdata->conf);
+    extend.unsat_define(cnf);
+}
+
+DLL_PUBLIC void Arjun::only_extend_sampl_vars(SimplifiedCNF& cnf)
 {
-    return arjdata->common.orig_cnf;
+    Extend extend(arjdata->conf);
+    extend.extend_round(cnf);
 }
 
-DLL_PUBLIC const vector<uint32_t>& Arjun::get_sampl_vars() const {
-    return arjdata->common.sampling_vars;
-}
-
-DLL_PUBLIC vector<uint32_t> Arjun::run_backwards() {
-    double start_time = cpuTime();
-    arjdata->common.init();
-    if (!arjdata->common.preproc_and_duplicate()) goto end;
-    if (!arjdata->common.orig_cnf.weighted && arjdata->common.conf.backward)
-        arjdata->common.backward_round();
-
-    end:
-    verb_print2(1, "[arjun] run_backwards finished "
-        << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time));
-    return arjdata->common.sampling_vars;
-}
-
-DLL_PUBLIC void Arjun::unsat_define() {
-    assert(!arjdata->common.already_duplicated);
-    if (arjdata->common.orig_num_vars == std::numeric_limits<uint32_t>::max()) {
-        arjdata->common.init();
-    }
-    arjdata->common.get_incidence();
-    arjdata->common.duplicate_problem();
-    arjdata->common.unsat_define();
-}
-
-DLL_PUBLIC vector<uint32_t> Arjun::extend_sampl_set()
+DLL_PUBLIC SimplifiedCNF Arjun::only_get_simplified_cnf(
+                const SimplifiedCNF& cnf, const SimpConf& simp_conf)
 {
-    assert(!arjdata->common.already_duplicated);
-    double start_time = cpuTime();
-    arjdata->common.conf.simp = false;
-    uint32_t orig_size = arjdata->common.sampling_vars.size();
-    arjdata->common.init();
-    if (!arjdata->common.preproc_and_duplicate()) goto end;
-
-    arjdata->common.extend_round();
-    verb_print2(1, "[arjun] extend fully finished"
-        << " Extended by: " << (arjdata->common.sampling_vars.size() - orig_size)
-        << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time));
-
-    end:
-    return arjdata->common.sampling_vars;
+    Puura puura(arjdata->conf);
+    puura.fill_solver(cnf);
+    return puura.get_fully_simplified_renumbered_cnf(simp_conf,
+            cnf.sampl_vars,
+            vector<uint32_t>(),
+            cnf.sampl_vars);
 }
 
-DLL_PUBLIC void Arjun::start_getting_constraints(
-       bool red, // also redundant, otherwise only irred
-       bool simplified,
-       uint32_t max_len,
-       uint32_t max_glue) {
-    arjdata->common.solver->start_getting_constraints(red, simplified, max_len, max_glue);
-}
-
-DLL_PUBLIC bool Arjun::get_next_constraint(std::vector<CMSat::Lit>& ret, bool& is_xor, bool& rhs) {
-    return arjdata->common.solver->get_next_constraint(ret, is_xor, rhs);
-}
-
-DLL_PUBLIC void Arjun::end_getting_constraints() {
-    arjdata->common.solver->end_getting_constraints();
-}
-
-DLL_PUBLIC uint32_t Arjun::get_orig_num_vars() const
+DLL_PUBLIC void Arjun::only_reverse_bce(SimplifiedCNF& cnf)
 {
-    if (arjdata->common.orig_num_vars == std::numeric_limits<uint32_t>::max()) {
-        return arjdata->common.solver->nVars();
-    }
-
-    return arjdata->common.orig_num_vars;
+    Puura puura(arjdata->conf);
+    return puura.reverse_bce(cnf);
 }
 
-DLL_PUBLIC void Arjun::set_verbosity(uint32_t verb)
+
+DLL_PUBLIC void Arjun::only_unate(SimplifiedCNF& cnf)
 {
-    arjdata->common.conf.verb = verb;
-    arjdata->common.solver->set_verbosity(verb);
+    Puura puura(arjdata->conf);
+    puura.synthesis_unate(cnf);
 }
 
-DLL_PUBLIC void Arjun::set_seed(uint32_t seed) { arjdata->common.random_source.seed(seed); }
-DLL_PUBLIC uint32_t Arjun::get_verbosity() const { return arjdata->common.conf.verb; }
-
-set_get_macro(bool, fast_backw)
-set_get_macro(bool, distill)
-set_get_macro(bool, intree)
-set_get_macro(bool, bve_pre_simplify)
-set_get_macro(bool, simp)
-set_get_macro(uint32_t, unknown_sort)
-set_get_macro(uint32_t, incidence_count)
-set_get_macro(bool, or_gate_based)
-set_get_macro(bool, xor_gates_based)
-set_get_macro(bool, probe_based)
-set_get_macro(bool, backward)
-set_get_macro(uint32_t, backw_max_confl)
-set_get_macro(bool, gauss_jordan)
-set_get_macro(bool, ite_gate_based)
-set_get_macro(bool, irreg_gate_based)
-set_get_macro(double, no_gates_below)
-set_get_macro(std::string, specified_order_fname)
-set_get_macro(bool, bve_during_elimtofile)
-set_get_macro(bool, do_unate)
-set_get_macro(bool, weighted)
-
-DLL_PUBLIC void Arjun::set_pred_forever_cutoff(int pred_forever_cutoff) {
-    arjdata->common.solver->set_pred_forever_cutoff(pred_forever_cutoff);
-}
-
-DLL_PUBLIC void Arjun::set_every_pred_reduce(int every_pred_reduce) {
-    arjdata->common.solver->set_every_pred_reduce(every_pred_reduce);
-}
-
-DLL_PUBLIC vector<Lit> Arjun::get_zero_assigned_lits() const
+DLL_PUBLIC void Arjun::only_run_sbva(SimplifiedCNF& orig,
+            int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak)
 {
-    vector<Lit> ret;
-    vector<Lit> lits = arjdata->common.solver->get_zero_assigned_lits();
-    for(const auto& lit: lits) {
-        if (lit.var() < arjdata->common.orig_num_vars) {
-            ret.push_back(lit);
-        }
-    }
-
-    return ret;
+    Puura puura(arjdata->conf);
+    puura.run_sbva(orig, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 }
-
-DLL_PUBLIC std::vector<std::pair<CMSat::Lit, CMSat::Lit> > Arjun::get_all_binary_xors() const
-{
-    vector<pair<Lit, Lit>> ret;
-    const auto bin_xors = arjdata->common.solver->get_all_binary_xors();
-    for(const auto& bx: bin_xors) {
-        if (bx.first.var() < arjdata->common.orig_num_vars &&
-            bx.second.var() < arjdata->common.orig_num_vars)
-        {
-            ret.push_back(bx);
-        }
-    }
-
-    return ret;
-}
-
-DLL_PUBLIC bool Arjun::definitely_satisfiable() const {
-    return arjdata->common.definitely_satisfiable;
-}
-
 
 struct Clause {
     uint32_t at = numeric_limits<uint32_t>::max();
@@ -343,7 +162,7 @@ DLL_PUBLIC void Arjun::only_bce(SimplifiedCNF& cnf) {
     vector<Clause> cls;
     vector<vector<uint32_t>> occs(cnf.nvars*2);
     uint32_t at = 0;
-    for(const auto& cl: cnf.cnf) {
+    for(const auto& cl: cnf.clauses) {
         // UNSAT CNF, just return the CNF
         if (cl.empty()) return;
 
@@ -392,72 +211,27 @@ DLL_PUBLIC void Arjun::only_bce(SimplifiedCNF& cnf) {
         }
     } while(removed_one);
 
-    cnf.cnf.clear();
+    cnf.clauses.clear();
     for(const auto& cl: cls) {
-        if (!cl.red) cnf.cnf.push_back(cl.lits);
-        else cnf.red_cnf.push_back(cl.lits);
+        if (!cl.red) cnf.clauses.push_back(cl.lits);
+        else cnf.red_clauses.push_back(cl.lits);
     }
     verb_print2(1, "[arjun] BCE removed " << tot_removed << " clauses"
         " T: " << (cpuTime() - start_time));
 }
 
-DLL_PUBLIC SimplifiedCNF Arjun::get_fully_simplified_renumbered_cnf(const SimpConf& simp_conf)
-{
-    Puura puura(arjdata->common.conf);
-    return puura.get_fully_simplified_renumbered_cnf(this, simp_conf,
-            arjdata->common.sampling_vars,
-            arjdata->common.empty_sampling_vars,
-            arjdata->common.orig_sampling_vars);
-}
-
-
-DLL_PUBLIC void Arjun::only_reverse_bce(SimplifiedCNF& cnf)
-{
-    Puura puura(arjdata->common.conf);
-    return puura.reverse_bce(cnf);
-}
-
-
-DLL_PUBLIC void Arjun::only_unate(SimplifiedCNF& cnf)
-{
-    Puura puura(arjdata->common.conf);
-    vector<Lit> ret = puura.synthesis_unate(cnf);
-    for(const auto& l: ret) {
-        arjdata->common.solver->add_clause({l});
-        arjdata->common.orig_cnf.cnf.push_back({l});
-    }
-}
-
-DLL_PUBLIC void Arjun::set_lit_weight(
-        [[maybe_unused]] const CMSat::Lit lit, [[maybe_unused]] const double weight) {
-#ifdef WEIGHTED
-    arjdata->common.solver->set_lit_weight(lit, weight);
-#else
-    assert(false && "This is not a weighted build");
-#endif
- }
-
-DLL_PUBLIC void Arjun::run_sbva(SimplifiedCNF& orig,
-            int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak)
-{
-    if (sbva_steps == 0) return;
-
-    Puura puura(arjdata->common.conf);
-    puura.run_sbva(orig, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
-}
-
-DLL_PUBLIC const std::vector<uint32_t>& Arjun::get_empty_sampl_vars() const {
-    return arjdata->common.empty_sampling_vars;
-}
-
-DLL_PUBLIC const std::vector<uint32_t>& Arjun::get_orig_sampl_vars() const {
-    return arjdata->common.orig_sampling_vars;
-}
-
-DLL_PUBLIC void Arjun::set_multiplier_weight(const mpz_class mult) {
-    arjdata->common.solver->set_multiplier_weight(mult);
-}
-
-DLL_PUBLIC mpz_class Arjun::get_multiplier_weight() const {
-    return arjdata->common.solver->get_multiplier_weight();
-}
+set_get_macro(bool, distill)
+set_get_macro(bool, intree)
+set_get_macro(bool, bve_pre_simplify)
+set_get_macro(bool, simp)
+set_get_macro(uint32_t, incidence_count)
+set_get_macro(bool, or_gate_based)
+set_get_macro(bool, xor_gates_based)
+set_get_macro(bool, probe_based)
+set_get_macro(uint32_t, backw_max_confl)
+set_get_macro(bool, gauss_jordan)
+set_get_macro(bool, ite_gate_based)
+set_get_macro(bool, irreg_gate_based)
+set_get_macro(double, no_gates_below)
+set_get_macro(std::string, specified_order_fname)
+set_get_macro(uint32_t, verb)

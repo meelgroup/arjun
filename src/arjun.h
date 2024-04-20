@@ -24,7 +24,6 @@ THE SOFTWARE.
 
 #include <cstdint>
 #include <vector>
-#include <utility>
 #include <string>
 #include <mpfr.h>
 #include <set>
@@ -49,21 +48,47 @@ namespace ArjunNS {
     };
 
     struct SimplifiedCNF {
-        uint32_t nvars = 0;
+        std::vector<std::vector<CMSat::Lit>> clauses;
+        std::vector<std::vector<CMSat::Lit>> red_clauses;
         std::vector<uint32_t> sampl_vars;
         std::vector<uint32_t> opt_sampl_vars;
-        std::vector<std::vector<CMSat::Lit>> cnf;
-        std::vector<std::vector<CMSat::Lit>> red_cnf;
-
-        bool weighted = false;
+        uint32_t nvars = 0;
         mpz_class multiplier_weight = 1;
-#ifdef WEIGHTED
-        std::map<CMSat::Lit, double> weights; // ONLY makes sense when weighted is TRUE
-#endif
+        bool weighted = false;
+
+        uint32_t nVars() const { return nvars; }
+        uint32_t new_vars(uint32_t vars) { nvars+=vars; return nvars; }
+        uint32_t new_var() { nvars++; return nvars;}
+
+        void start_with_clean_sampl_vars() {
+            assert(sampl_vars.empty());
+            assert(opt_sampl_vars.empty());
+            for(uint32_t i = 0; i < nvars; i++) sampl_vars.push_back(i);
+            for(uint32_t i = 0; i < nvars; i++) opt_sampl_vars.push_back(i);
+        }
+        void add_xor_clause(std::vector<uint32_t>&, bool) { exit(-1); }
+        void add_xor_clause(std::vector<CMSat::Lit>&, bool) { exit(-1); }
+        void add_clause(std::vector<CMSat::Lit>& cl) { clauses.push_back(cl); }
+        void add_red_clause(std::vector<CMSat::Lit>& cl) { red_clauses.push_back(cl); }
+        bool get_sampl_vars_set() const { return sampl_vars_set; }
+        bool sampl_vars_set = false;
+        bool opt_sampl_vars_set = false;
+        void set_sampl_vars(std::vector<uint32_t>& vars)
+            { sampl_vars_set = true; sampl_vars = vars; }
+        const auto& get_sampl_vars() const { return sampl_vars; }
+        void set_opt_sampl_vars(std::vector<uint32_t>& vars)
+            { opt_sampl_vars_set = true; opt_sampl_vars = vars; }
+
+        void set_multiplier_weight(mpz_class m) { multiplier_weight = m; }
+        auto get_multiplier_weight() const { return multiplier_weight; }
+        void set_lit_weight(CMSat::Lit /*lit*/, double /*weight*/) {
+            assert(false && "Not yet supported"); exit(-1); }
+        void set_weighted(bool _weighted) { weighted = _weighted; }
+        bool get_weighted() const { return weighted; }
 
         std::vector<CMSat::Lit>& map_cl(std::vector<CMSat::Lit>& cl, std::vector<uint32_t> v_map) {
-            for(auto& l: cl) l = CMSat::Lit(v_map[l.var()], l.sign());
-            return cl;
+                for(auto& l: cl) l = CMSat::Lit(v_map[l.var()], l.sign());
+                return cl;
         }
         std::vector<uint32_t>& map_var(std::vector<uint32_t>& cl, std::vector<uint32_t> v_map) {
             for(auto& l: cl) l = v_map[l];
@@ -107,18 +132,20 @@ namespace ArjunNS {
             // Now we renumber
             sampl_vars = map_var(sampl_vars, map_here_to_there);
             opt_sampl_vars = map_var(opt_sampl_vars, map_here_to_there);
-            for(auto& cl: cnf) map_cl(cl, map_here_to_there);
-            for(auto& cl: red_cnf) map_cl(cl, map_here_to_there);
+            for(auto& cl: clauses) map_cl(cl, map_here_to_there);
+            for(auto& cl: red_clauses) map_cl(cl, map_here_to_there);
+            assert(!weighted);
 #ifdef WEIGHTED
             if (weighted) {
                 std::map<CMSat::Lit, double> new_weights;
                 for(auto& w: weights)
-                    new_weights[CMSat::Lit(map_here_to_there[w.first.var()], w.first.sign())] = w.second;
+                    new_weights[CMSat::Lit(
+                             map_here_to_there[w.first.var()], w.first.sign())] = w.second;
                 weights = new_weights;
             }
 #endif
-        }
-    };
+            }
+        };
 
     struct ArjPrivateData;
     #ifdef _WIN32
@@ -135,60 +162,26 @@ namespace ArjunNS {
         static std::string get_compilation_env();
         static std::string get_solver_version_info();
 
-        // Adding CNF
-        uint32_t nVars();
-        void new_var();
-        bool add_xor_clause(const std::vector<CMSat::Lit>& lits, bool rhs);
-        bool add_xor_clause(const std::vector<uint32_t>& vars, bool rhs);
-        void set_lit_weight(const CMSat::Lit lit, const double weight);
-        bool add_clause(const std::vector<CMSat::Lit>& lits);
-        bool add_red_clause(const std::vector<CMSat::Lit>& lits);
-        bool add_bnn_clause(
-            const std::vector<CMSat::Lit>& lits,
-            signed cutoff,
-            CMSat::Lit out = CMSat::lit_Undef);
-        void new_vars(uint32_t num);
-        void set_multiplier_weight(const mpz_class mult);
-
         // Perform indep set calculation
-        uint32_t set_sampl_vars(const std::vector<uint32_t>& vars);
-        uint32_t set_opt_sampl_vars(const std::vector<uint32_t>& vars);
-        uint32_t start_with_clean_sampling_set();
-        const std::vector<uint32_t>& get_sampl_vars() const;
-        std::vector<uint32_t> run_backwards();
-        std::vector<uint32_t> extend_sampl_set();
-        void unsat_define();
+        void only_run_backwards(SimplifiedCNF& cnf);
+        void only_extend_sampl_vars(SimplifiedCNF& cnf);
+        void only_unsat_define(SimplifiedCNF& cnf);
         void only_unate(SimplifiedCNF& cnf);
 
-        uint32_t get_orig_num_vars() const;
-        const std::vector<uint32_t>& get_orig_sampl_vars() const;
-        const std::vector<uint32_t>& get_empty_sampl_vars() const;
         bool sampling_vars_set = false;
         bool get_sampl_vars_set() const { return sampling_vars_set; }
 
         //Get clauses
-        void start_getting_constraints(
-               bool red = false, // also redundant, otherwise only irred
-               bool simplified = false,
-               uint32_t max_len = std::numeric_limits<uint32_t>::max(),
-               uint32_t max_glue = std::numeric_limits<uint32_t>::max());
-        bool get_next_constraint(std::vector<CMSat::Lit>& ret, bool& is_xor, bool& rhs);
-        void end_getting_constraints();
-        SimplifiedCNF get_fully_simplified_renumbered_cnf(
-                const SimpConf& simp_conf);
+        SimplifiedCNF only_get_simplified_cnf(const SimplifiedCNF& cnf, const SimpConf& simp_conf);
         void only_bce(SimplifiedCNF& cnf);
         void only_reverse_bce(SimplifiedCNF& cnf);
-        std::vector<CMSat::Lit> get_zero_assigned_lits() const;
-        std::vector<std::pair<CMSat::Lit, CMSat::Lit> > get_all_binary_xors() const;
         const SimplifiedCNF& get_orig_cnf() const;
-        void run_sbva(SimplifiedCNF& orig,
+        void only_run_sbva(SimplifiedCNF& orig,
             int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,
             uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1);
 
         //Set config
-        void set_seed(uint32_t seed);
-        void set_verbosity(uint32_t verb);
-        void set_fast_backw(bool fast_backw);
+        void set_verb(uint32_t verb);
         void set_distill(bool distill);
         void set_intree(bool intree);
         void set_simp(bool simp);
@@ -208,21 +201,16 @@ namespace ArjunNS {
         void set_gate_sort_special(bool gate_sort_special);
         //void set_polar_mode(CMSat::PolarityMode mode);
         void set_no_gates_below(double no_gates_below);
-        void set_pred_forever_cutoff(int pred_forever_cutoff = -1);
-        void set_every_pred_reduce(int every_pred_reduce = -1);
         void set_specified_order_fname(std::string specified_order_fname);
         void set_bce(const bool bce);
-        void set_bve_during_elimtofile(const bool);
         void set_weighted(const bool);
-        mpz_class get_multiplier_weight() const;
 
         //Get config
+        uint32_t get_verb() const;
         bool get_do_unate() const;
         std::string get_specified_order_fname() const;
         double get_no_gates_below() const;
         bool get_simp() const;
-        uint32_t get_verbosity() const;
-        bool get_fast_backw() const;
         bool get_distill() const;
         bool get_intree() const;
         bool get_bve_pre_simplify() const;
@@ -239,9 +227,6 @@ namespace ArjunNS {
         bool get_irreg_gate_based() const;
         bool get_gate_sort_special() const;
         bool get_bce() const;
-        bool get_bve_during_elimtofile() const;
-        bool definitely_satisfiable() const;
-        bool get_weighted() const;
 
     private:
         ArjPrivateData* arjdata = nullptr;

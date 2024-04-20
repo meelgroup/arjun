@@ -47,7 +47,7 @@
 
 #define verb_print2(a, x) \
     do { \
-        if (arjdata->common.conf.verb >= a) {\
+        if (arjdata->conf.verb >= a) {\
             std::cout << COLDEF << "c " << x << COLDEF << std::endl;}\
     } while (0)
 
@@ -92,11 +92,7 @@
 #include <cryptominisat5/cryptominisat.h>
 #endif
 
-#include "time_mem.h"
 #include "config.h"
-extern "C" {
-#include "mpicosat/mpicosat.h"
-}
 
 using namespace CMSat;
 using std::cout;
@@ -110,41 +106,30 @@ namespace ArjunInt {
 
 struct Common
 {
-    Common() {
+    Common(const Config& _conf) : conf(_conf) {
         set_up_solver();
     }
     ~Common() { delete solver; }
 
-    Config conf;
+    void run_backwards(ArjunNS::SimplifiedCNF& cnf);
+
+    const Config conf;
     CMSat::SATSolver* solver = nullptr;
     bool already_duplicated = false;
     vector<uint32_t> sampling_vars;
-    vector<uint32_t> orig_sampling_vars;
     vector<uint32_t> empty_sampling_vars;
 
     vector<char> seen;
     uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
-    bool definitely_satisfiable = false;
-    enum ModeType {one_mode, many_mode};
 
     //assert indic[var] to TRUE to force var==var+orig_num_vars
     vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
     vector<uint32_t> indic_to_var; //maps an INDICATOR VAR to ORIG VAR
 
-    PicoSAT* ps = nullptr;
-    map<uint32_t, vector<Lit>> cl_map;
-    uint32_t cl_num = 0;
-    vector<lbool> set_vals;
-
     //Incidence as counted by clauses it's appeared together with other variables
     vector<uint32_t> incidence;
-    //Incidence as counted by probing
-    vector<uint32_t> incidence_probing;
 
     vector<Lit> dont_elim;
-
-    // cnf as we parsed it in (no simplification whatsoever)
-    ArjunNS::SimplifiedCNF orig_cnf;
 
     void init();
     void update_sampling_set(
@@ -152,16 +137,14 @@ struct Common
         const vector<char>& unknown_set,
         const vector<uint32_t>& indep
     );
-    bool preproc_and_duplicate();
+    bool preproc_and_duplicate(const ArjunNS::SimplifiedCNF& orig_cnf);
     void add_fixed_clauses();
-    void add_all_indics();
     void print_orig_sampling_set();
-    void start_with_clean_sampling_set();
-    void duplicate_problem();
+    void start_with_clean_sampl_vars();
+    void duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf);
     void get_incidence();
     void set_up_solver();
     ArjunNS::SimplifiedCNF get_init_cnf();
-    std::mt19937 random_source = std::mt19937(0);
 
     //simp
     vector<uint32_t> toClear;
@@ -187,17 +170,6 @@ struct Common
     void backward_round();
     void order_by_file(const string& fname, vector<uint32_t>& unknown);
     void print_sorted_unknown(const vector<uint32_t>& unknown) const;
-
-    // extend
-    template<class T>
-    void fill_assumptions_extend(
-        vector<Lit>& assumptions,
-        const T& indep);
-    void extend_round();
-
-    // Unsat define
-    void unsat_define();
-    void generate_picosat(const vector<Lit>& assumptions , uint32_t test_var);
 
     //Sorting
     template<class T> void sort_unknown(T& unknown);
@@ -270,18 +242,7 @@ struct IncidenceSorter2
 
 template<class T> void Common::sort_unknown(T& unknown)
 {
-    if (conf.unknown_sort == 1) {
-        std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
-    } else if (conf.unknown_sort == 2) {
-        std::sort(unknown.begin(), unknown.end(), IncidenceSorter2<uint32_t>(incidence, incidence_probing));
-    } else if (conf.unknown_sort == 3) {
-        std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence_probing));
-    } else if (conf.unknown_sort == 6) {
-        std::shuffle(unknown.begin(), unknown.end(), random_source);
-    } else {
-        cout << "ERROR: wrong sorting mechanism given" << endl;
-        exit(-1);
-    }
+    std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
 }
 
 }

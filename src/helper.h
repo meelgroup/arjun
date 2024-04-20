@@ -56,7 +56,7 @@ inline double stats_line_percent(double num, double total)
 inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
         const std::string& fname, bool red = true)
 {
-    uint32_t num_cls = simpcnf.cnf.size();
+    uint32_t num_cls = simpcnf.clauses.size();
     std::ofstream outf;
     outf.open(fname.c_str(), std::ios::out);
     outf << "p cnf " << simpcnf.nvars << " " << num_cls << endl;
@@ -79,8 +79,8 @@ inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
     }
     outf << "0\n";
 
-    for(const auto& cl: simpcnf.cnf) outf << cl << " 0\n";
-    if (red) for(const auto& cl: simpcnf.red_cnf) outf << "c red " << cl << " 0\n";
+    for(const auto& cl: simpcnf.clauses) outf << cl << " 0\n";
+    if (red) for(const auto& cl: simpcnf.red_clauses) outf << "c red " << cl << " 0\n";
 
 #ifdef WEIGHTED
     if (simpcnf.weighted) {
@@ -93,17 +93,17 @@ inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
     outf << "c MUST MULTIPLY BY " << w << endl;
 }
 
-inline void read_in_a_file(const std::string& filename,
-        Arjun* arjun,
-        const bool recompute_sampling_set,
+template<typename T> void read_in_a_file(const std::string& filename,
+        T* holder,
+        const bool ignore_sampling_set,
         bool& indep_support_given)
 {
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<FILE*, FN>, ArjunNS::Arjun> parser(arjun, nullptr, 0);
+    DimacsParser<StreamBuffer<FILE*, FN>, T> parser(arjun, nullptr, 0);
     #else
     gzFile in = gzopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<gzFile, GZ>, ArjunNS::Arjun> parser(arjun, nullptr, 0);
+    DimacsParser<StreamBuffer<gzFile, GZ>, T> parser(holder, nullptr, 0);
     #endif
 
     if (in == nullptr) {
@@ -116,8 +116,8 @@ inline void read_in_a_file(const std::string& filename,
     }
 
     if (!parser.parse_DIMACS(in, true)) exit(-1);
-    if (!arjun->get_sampl_vars_set() || recompute_sampling_set) {
-        arjun->start_with_clean_sampling_set();
+    if (!holder->get_sampl_vars_set() || ignore_sampling_set) {
+        holder->start_with_clean_sampl_vars();
         indep_support_given = false;
     } else {
         indep_support_given = true;

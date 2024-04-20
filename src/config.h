@@ -32,26 +32,21 @@ namespace ArjunInt {
 
 struct Config {
     int verb = 3;
-    int seed = 0;
     int simp = 1;
     int fast_backw = 1;
     int distill = 1;
     int intree = 1;
     int bve_pre_simplify = 1;
     int incidence_count = 3; // this determines what incidence MEANS
-    int unknown_sort = 1; // this determines HOW we sort
     int or_gate_based = 1;
     int xor_gates_based = 1;
     int ite_gate_based = 1;
     int irreg_gate_based = 1;
     int probe_based = 1;
-    int backward = 1;
     int gauss_jordan = 0;
-    int do_unate = 0;
     double no_gates_below = 0.01;
     std::string specified_order_fname;
     uint32_t backw_max_confl = 5000*10;
-    int bve_during_elimtofile = true;
     bool weighted = false;
 };
 

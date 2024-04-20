@@ -51,11 +51,11 @@ argparse::ArgumentParser program = argparse::ArgumentParser("arjun");
 double start_time;
 ArjunInt::Config conf;
 ArjunNS::Arjun* arjun = nullptr;
+string input_file;
 string elimtofile;
-int recompute_sampling_set = 0;
+int ignore_sampling_set = 0;
 bool indep_support_given = false;
 
-uint32_t polar_mode = 0;
 SimpConf simp_conf;
 int renumber = true;
 bool gates = true;
@@ -72,12 +72,9 @@ int bce = true;
 int debug_synt = false;
 
 int synthesis = false;
-int unate = false;
-
-// static void signal_handler(int) {
-//     cout << endl << "c [arjun] INTERRUPTING ***" << endl << std::flush;
-//     common.interrupt_asap = true;
-// }
+int do_unate = false;
+int do_revbce = false;
+int do_fast_backw = true;
 
 void add_arjun_options()
 {
@@ -86,22 +83,10 @@ void add_arjun_options()
         .action([&](const auto& a) {conf.verb = std::atoi(a.c_str());})
         .default_value(conf.verb)
         .help("verbosity");
-    program.add_argument("--s", "--seed")
-        .action([&](const auto& a) {conf.seed = std::atoi(a.c_str());})
-        .default_value(conf.seed)
-        .help("Seed");
-    program.add_argument("--sort")
-        .action([&](const auto& a) {conf.unknown_sort = std::atoi(a.c_str());})
-        .default_value(conf.unknown_sort)
-        .help("Which sorting mechanism.");
-    program.add_argument("--recomp")
-        .action([&](const auto& a) {recompute_sampling_set = std::atoi(a.c_str());})
-        .default_value(recompute_sampling_set)
-        .help("Recompute sampling set even if it's part of the CNF");
-    program.add_argument("--backward")
-        .action([&](const auto& a) {conf.backward = std::atoi(a.c_str());})
-        .default_value(conf.backward)
-        .help("Do backwards query");
+    program.add_argument("--ignore")
+        .action([&](const auto& a) {ignore_sampling_set = std::atoi(a.c_str());})
+        .default_value(ignore_sampling_set)
+        .help("Ignore whatever is in the CNF as sampling set");
     program.add_argument("--maxc")
         .action([&](const auto& a) {conf.backw_max_confl = std::atoi(a.c_str());})
         .default_value(conf.backw_max_confl)
@@ -116,13 +101,13 @@ void add_arjun_options()
         .flag()
         .help("Define for synthesis");
     program.add_argument("--unate")
-        .action([&](const auto& a) {conf.do_unate = std::atoi(a.c_str());})
-        .default_value(conf.do_unate)
+        .action([&](const auto& a) {do_unate = std::atoi(a.c_str());})
+        .default_value(do_unate)
         .help("Perform unate analysis");
-    program.add_argument("--compindep")
-        .action([&](const auto& a) {compute_indep = std::atoi(a.c_str());})
-        .default_value(compute_indep)
-        .help("compute indep support");
+    program.add_argument("--revbce")
+        .action([&](const auto& a) {do_revbce = std::atoi(a.c_str());})
+        .default_value(do_revbce)
+        .help("Perform reverse BCE");
     program.add_argument("--sbva")
         .action([&](const auto& a) {sbva_steps = std::atoi(a.c_str());})
         .default_value(sbva_steps)
@@ -197,10 +182,10 @@ void add_arjun_options()
 
     /* po::options_description debug_options("Debug options"); */
     /* debug_options.add_options() */
-    program.add_argument("--fastbackw")
-        .action([&](const auto& a) {conf.fast_backw = std::atoi(a.c_str());})
-        .default_value(conf.fast_backw)
-        .help("fast_backw");
+    program.add_argument("--minimize")
+        .action([&](const auto& a) {do_fast_backw = std::atoi(a.c_str());})
+        .default_value(do_fast_backw)
+        .help("Minimize indep set");
     program.add_argument("--gaussj")
         .action([&](const auto& a) {conf.gauss_jordan = std::atoi(a.c_str());})
         .default_value(conf.gauss_jordan)
@@ -255,10 +240,6 @@ void add_arjun_options()
     program.add_argument("--distill")
         .action([&](const auto& a) {conf.distill = std::atoi(a.c_str());})
         .default_value(conf.distill);
-    program.add_argument("--bve")
-        .action([&](const auto& a) {conf.bve_during_elimtofile = std::atoi(a.c_str());})
-        .default_value(conf.bve_during_elimtofile)
-        .help("Use BVE during simplificaiton of the formula");
     program.add_argument("--bce")
         .action([&](const auto& a) {bce = std::atoi(a.c_str());})
         .default_value(bce)
@@ -277,81 +258,31 @@ void add_arjun_options()
     program.add_argument("files").remaining().help("input file and output file");
 }
 
-void print_final_sampl_set(const vector<uint32_t>& sampl_vars) {
-    if (sampl_vars.size() < 100) {
+void print_final_sampl_set(SimplifiedCNF& cnf, const vector<uint32_t>& orig_sampl_vars) {
+    if (cnf.sampl_vars.size() < 100) {
         cout << "c p show ";
-        for(const uint32_t s: sampl_vars) cout << s+1 << " ";
+        for(const uint32_t s: cnf.sampl_vars) cout << s+1 << " ";
         cout << "0" << endl;
     } else {
         cout << "c not printing indep set, it's more than 100 elements" << endl;
     }
 
     cout
-    << "c [arjun] final set size: " << std::setw(7) << sampl_vars.size()
+    << "c [arjun] final set size: " << std::setw(7) << cnf.sampl_vars.size()
     << " percent of original: " << std::setw(6) << std::setprecision(4)
-    << stats_line_percent(sampl_vars.size(), arjun->get_orig_sampl_vars().size()) << " %" << endl
+    << stats_line_percent(cnf.sampl_vars.size(), orig_sampl_vars.size()) << " %" << endl
 
-    << "c [arjun] empty occs: " << std::setw(7) << arjun->get_empty_sampl_vars().size()
-    << " percent of original: " <<  std::setw(6) << std::setprecision(4)
-    << stats_line_percent(arjun->get_empty_sampl_vars().size(), arjun->get_orig_sampl_vars().size())
-    << " %" << endl;
+    << "c [arjun] multiplier: " << std::setw(7) << cnf.multiplier_weight << endl;
 }
 
-void set_config(ArjunNS::Arjun* arj);
-
-void elim_to_file() {
-    double dump_start_time = cpuTime();
-    cout << indep_support_given << endl;
-    auto ret = arjun->get_fully_simplified_renumbered_cnf(simp_conf);
-    arjun->run_sbva(ret, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
-
-    delete arjun; arjun = nullptr;
-    if (!indep_support_given) {
-        ret.opt_sampl_vars.clear();
-        for(uint32_t i = 0; i < ret.nvars; i++) ret.opt_sampl_vars.push_back(i);
-    } else {
-        if (extend_indep) {
-            Arjun arj2;
-            arj2.new_vars(ret.nvars);
-            arj2.set_verbosity(conf.verb);
-            for(const auto& cl: ret.cnf) arj2.add_clause(cl);
-            arj2.set_sampl_vars(ret.opt_sampl_vars);
-            ret.opt_sampl_vars = arj2.extend_sampl_set();
-        }
-        if (bce) {
-            Arjun arj2;
-            arj2.set_verbosity(conf.verb);
-            arj2.only_bce(ret);
-        }
-    }
-    if (conf.do_unate) {
-        Arjun arj2;
-        arj2.only_unate(ret);
-    }
-
-    ret.renumber_sampling_vars_for_ganak();
-    cout << "c [arjun] dumping simplified problem to '" << elimtofile << "'" << endl;
-    write_simpcnf(ret, elimtofile, redundant_cls);
-    cout << "c [arjun] Dumping took: " << std::setprecision(2) << (cpuTime() - dump_start_time) << endl;
-    cout << "c [arjun] All done. T: " << std::setprecision(2) << (cpuTime() - start_time) << endl;
-}
+void elim_to_file(SimplifiedCNF& cnf);
 
 void set_config(ArjunNS::Arjun* arj) {
-    if (!compute_indep) {
-        gates = 0;
-        conf.backward = 0;
-    }
-
-    cout << "c [arjun] using seed: " << conf.seed << endl;
-    arj->set_verbosity(conf.verb);
-    arj->set_seed(conf.seed);
-    arj->set_fast_backw(conf.fast_backw);
+    arj->set_verb(conf.verb);
     arj->set_distill(conf.distill);
     arj->set_specified_order_fname(conf.specified_order_fname);
     arj->set_intree(conf.intree);
     arj->set_bve_pre_simplify(conf.bve_pre_simplify);
-    arj->set_unknown_sort(conf.unknown_sort);
-    arj->set_do_unate(conf.do_unate);
     if (gates) {
       arj->set_or_gate_based(conf.or_gate_based);
       arj->set_ite_gate_based(conf.ite_gate_based);
@@ -366,27 +297,71 @@ void set_config(ArjunNS::Arjun* arj) {
     }
     arj->set_no_gates_below(conf.no_gates_below);
     arj->set_probe_based(conf.probe_based);
-    arj->set_backward(conf.backward);
     arj->set_backw_max_confl(conf.backw_max_confl);
     arj->set_gauss_jordan(conf.gauss_jordan);
     arj->set_simp(conf.simp);
-    arj->set_bve_during_elimtofile(conf.bve_during_elimtofile);
 }
 
 void do_synthesis() {
+    SimplifiedCNF cnf;
+    read_in_a_file(input_file, &cnf, ignore_sampling_set, indep_support_given);
+
     // First we extend
-    arjun->unsat_define();
+    arjun->only_unsat_define(cnf);
 
     // Then we BVE
     simp_conf.bve_too_large_resolvent = -1;
-    auto cnf = arjun->get_fully_simplified_renumbered_cnf(simp_conf);
-    arjun->only_reverse_bce(cnf);
+    cnf = arjun->only_get_simplified_cnf(cnf, simp_conf);
+    if (do_revbce) arjun->only_reverse_bce(cnf);
+    if (do_unate) arjun->only_unate(cnf);
 
-    // Then unate is bigger base set
-    if (conf.do_unate) arjun->only_unate(cnf);
+    write_simpcnf(cnf, elimtofile, false);
+}
 
+void do_minimize() {
+    SimplifiedCNF cnf;
+    read_in_a_file(input_file, &cnf, ignore_sampling_set, indep_support_given);
+    if (do_fast_backw) {
+        const auto orig_sampl_vars = cnf.sampl_vars;
+        arjun->only_run_backwards(cnf);
+        print_final_sampl_set(cnf, orig_sampl_vars);
+    }
+
+    if (!elimtofile.empty()) {
+        cnf = arjun->only_get_simplified_cnf(cnf, simp_conf);
+        delete arjun; arjun = nullptr;
+        elim_to_file(cnf);
+    }
+}
+
+void elim_to_file(SimplifiedCNF& cnf) {
+    if (!indep_support_given) {
+        cnf.opt_sampl_vars.clear();
+        for(uint32_t i = 0; i < cnf.nvars; i++) cnf.opt_sampl_vars.push_back(i);
+    }
+    if (extend_indep && cnf.opt_sampl_vars.size() != cnf.nvars) {
+        Arjun arj2;
+        arj2.set_verb(conf.verb);
+        arj2.only_extend_sampl_vars(cnf);
+    }
+    if (sbva_steps) {
+        Arjun arj2;
+        arj2.set_verb(conf.verb);
+        arj2.only_run_sbva(cnf, sbva_steps,
+                sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
+    }
+    if (bce && cnf.opt_sampl_vars.size() != cnf.nvars) {
+        Arjun arj2;
+        arj2.set_verb(conf.verb);
+        arj2.only_bce(cnf);
+    }
+    if (do_unate) {
+        Arjun arj2;
+        arj2.only_unate(cnf);
+    }
+    cnf.renumber_sampling_vars_for_ganak();
     write_simpcnf(cnf, elimtofile, redundant_cls);
-    cout << "c [arjun] All done. T: " << std::setprecision(2) << (cpuTime() - start_time) << endl;
+    cout << "c [arjun] dumped simplified problem to '" << elimtofile << "'" << endl;
 }
 
 int main(int argc, char** argv) {
@@ -446,20 +421,14 @@ int main(int argc, char** argv) {
         exit(-1);
     }
 
-    const string inp = files[0];
+    input_file = files[0];
     if (files.size() >= 2) elimtofile = files[1];
-    read_in_a_file(inp, arjun, recompute_sampling_set, indep_support_given);
     if (synthesis) {
         do_synthesis();
     } else {
-        arjun->run_backwards();
-        const auto& cnf = arjun->get_orig_cnf();
-        cout << "c [arjun] original sampling set size: " << cnf.sampl_vars.size() << endl;
-        print_final_sampl_set(arjun->get_sampl_vars());
-        cout << "c [arjun] finished "
-            << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time) << endl;
-        if (!elimtofile.empty()) elim_to_file();
+        do_minimize();
     }
+    cout << "c [arjun] All done. T: " << std::setprecision(2) << (cpuTime() - start_time) << endl;
 
     delete arjun;
     return 0;

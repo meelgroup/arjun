@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include "common.h"
+#include "time_mem.h"
 
 using std::pair;
 using namespace ArjunInt;
@@ -62,36 +63,28 @@ bool Common::simplify() {
         verb_print(1,"[arjun-simp] CMS::simplify() with no BVE finished."
             << " T: " << (cpuTime() - simp_time));
     }
+    bool use_gates = true;
     if (sampling_vars.size() < 10000) {
         verb_print(1, "WARNING: Turning off gates, because the sampling size is small, so we can just do it. Size: " << sampling_vars.size());
-        conf.xor_gates_based = 0;
-        conf.ite_gate_based = 0;
-        conf.or_gate_based = 0;
-        conf.irreg_gate_based = 0;
+        use_gates = false;
     } else {
         verb_print(1, "[arjun-simp] num vars: " << sampling_vars.size() << " not turning off gates.");
     }
 
-    if (!orig_cnf.weighted) {
-        if (conf.xor_gates_based || conf.or_gate_based || conf.ite_gate_based)
-            remove_definable_by_gates();
-        if (conf.irreg_gate_based) remove_definable_by_irreg_gates();
-    }
+    if ((conf.xor_gates_based || conf.or_gate_based || conf.ite_gate_based) &&
+            use_gates) remove_definable_by_gates();
+    if (conf.irreg_gate_based && use_gates) remove_definable_by_irreg_gates();
 
     // Find at least one solution (so it's not UNSAT) within some timeout
     solver->set_verbosity(0);
     solver->set_max_confl(1000);
-    lbool ret = solver->solve();
-    if (ret == l_True) definitely_satisfiable = true;
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
     if (conf.probe_based && !probe_all()) return false;
     remove_zero_assigned_literals();
     remove_eq_literals();
     get_empty_occs();
-    if (!orig_cnf.weighted) {
-        if (conf.irreg_gate_based) remove_definable_by_irreg_gates();
-    }
+    if (conf.irreg_gate_based && use_gates) remove_definable_by_irreg_gates();
 
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
@@ -120,12 +113,10 @@ bool Common::probe_all()
     auto old_size = sampling_vars.size();
 
     verb_print(1, "[arjun-simp] probing all sampling variables");
-    incidence_probing.resize(orig_num_vars, 0);
     for(auto v: sampling_vars) {
         uint32_t min_props = 0;
         Lit l(v, false);
         if(solver->probe(l, min_props) == l_False) return false;
-        incidence_probing[v] = min_props;
     }
     string s("must-scc-vrepl");
     if (solver->simplify(nullptr, &s) == l_False) return false;

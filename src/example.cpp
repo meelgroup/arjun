@@ -40,9 +40,8 @@ int main()
 {
     const uint32_t num_vars = 100;
 
-    ArjunNS::Arjun arjun;
-    arjun.set_verbosity(0);
-    arjun.new_vars(num_vars);
+    SimplifiedCNF cnf;
+    cnf.new_vars(num_vars);
 
     vector<Lit> clause;
 
@@ -51,64 +50,57 @@ int main()
     clause.clear();
     clause.push_back(CMSat::Lit(0, false));
     clause.push_back(CMSat::Lit(1, false));
-    arjun.add_clause(clause);
+    cnf.add_clause(clause);
 
     //1 2 10 0
     clause.clear();
     clause.push_back(CMSat::Lit(0, false));
     clause.push_back(CMSat::Lit(1, false));
     clause.push_back(CMSat::Lit(9, false));
-    arjun.add_clause(clause);
+    cnf.add_clause(clause);
 
     //3 -4 0
     clause.clear();
     clause.push_back(CMSat::Lit(2, false));
     clause.push_back(CMSat::Lit(3, true));
-    arjun.add_clause(clause);
+    cnf.add_clause(clause);
 
     //3 -4  5 0
     clause.clear();
     clause.push_back(CMSat::Lit(2, false));
     clause.push_back(CMSat::Lit(3, true));
     clause.push_back(CMSat::Lit(4, true));
-    arjun.add_clause(clause);
+    cnf.add_clause(clause);
 
     vector<uint32_t> proj;
     for(uint32_t i = 0; i < 100; i++) proj.push_back(i);
-    arjun.set_sampl_vars(proj);
+    cnf.set_sampl_vars(proj);
 
-    proj = arjun.run_backwards();
+    Arjun arjun;
+    arjun.set_verb(0);
+    arjun.only_run_backwards(cnf);
     std::set<uint32_t> dont_elim (proj.begin(), proj.end());
 
-    //TODO add frozen variables here
-    dont_elim.insert(10);
-    dont_elim.insert(29);
-    vector<uint32_t> dont_elim_vec(dont_elim.begin(), dont_elim.end());
-
     SimpConf simp_conf;
-    arjun.get_fully_simplified_renumbered_cnf(simp_conf);
+    auto cnf2 = arjun.only_get_simplified_cnf(cnf, simp_conf);
 
-    //get cnf
-    const uint32_t orig_num_vars = arjun.get_orig_num_vars();
-    bool is_xor, rhs;
-    arjun.start_getting_constraints();
-    while (arjun.get_next_constraint(clause, is_xor, rhs)) {
-        assert(!is_xor); assert(rhs);
-        bool ok = true;
-        for(auto l: clause)
-            if (l.var() >= orig_num_vars) { ok = false; break; }
-
-        if (ok) {
-            cout << "clause: ";
-            for(const auto& l: clause) {
-                int lit = l.var()+1;
-                if (l.sign()) lit *= -1;
-                cout << lit << " ";
-            }
-            cout << "0" << endl;
+    cout << "p cnf " << cnf2.nvars << " " << cnf2.clauses.size() << endl;
+    for(const auto& cl: cnf2.clauses) {
+        for(const auto& l: cl) {
+            int lit = l.var()+1;
+            if (l.sign()) lit *= -1;
+            cout << lit << " ";
         }
+        cout << "0" << endl;
     }
-    arjun.end_getting_constraints();
-
+    for(const auto& cl: cnf2.clauses) {
+        cout << "c red ";
+        for(const auto& l: cl) {
+            int lit = l.var()+1;
+            if (l.sign()) lit *= -1;
+            cout << lit << " ";
+        }
+        cout << "0" << endl;
+    }
     return 0;
 }

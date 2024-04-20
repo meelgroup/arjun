@@ -525,7 +525,7 @@ static PyObject* get_indep_set(Arjun *self, PyObject *args, PyObject *kwds)
     }
 
     if (out_vars.empty()) {
-        self->arjun->start_with_clean_sampling_set();
+        self->arjun->start_with_clean_sampl_vars();
     } else {
         self->arjun->set_starting_sampling_set(out_vars);
     }

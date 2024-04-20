@@ -25,6 +25,8 @@
 #include "common.h"
 #include <cstdint>
 #include <limits>
+#include "src/arjun.h"
+#include "time_mem.h"
 
 using namespace ArjunInt;
 using std::numeric_limits;
@@ -42,11 +44,10 @@ void Common::update_sampling_set(
 
 }
 
-void Common::start_with_clean_sampling_set() {
+void Common::start_with_clean_sampl_vars() {
     sampling_vars.clear();
     for (size_t i = 0; i < solver->nVars(); i++) {
         sampling_vars.push_back(i);
-        orig_sampling_vars.push_back(i);
     }
 }
 
@@ -108,48 +109,22 @@ void Common::add_fixed_clauses()
     }
 }
 
-void Common::duplicate_problem() {
+void Common::duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf) {
     assert(!already_duplicated);
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
     //Duplicate the already simplified problem
     if (conf.verb) cout << "c [arjun] Duplicating CNF..." << endl;
     double dupl_time = cpuTime();
-    auto cnf = get_init_cnf();
 
     solver->new_vars(orig_num_vars);
-    for(auto& cl: cnf.cnf) {
-        for(auto& l: cl) l = Lit(l.var()+orig_num_vars, l.sign());
-        solver->add_clause(cl);
+    for(const auto& cl: orig_cnf.clauses) {
+        auto cl2 = cl;
+        for(auto& l: cl2) l = Lit(l.var()+orig_num_vars, l.sign());
+        solver->add_clause(cl2);
     }
     if (conf.verb) cout << "c [arjun] Duplicated CNF. T: " << (cpuTime() - dupl_time) << endl;
     already_duplicated = true;
-}
-
-ArjunNS::SimplifiedCNF Common::get_init_cnf() {
-    ArjunNS::SimplifiedCNF cnf;
-
-    vector<Lit> clause;
-    bool is_xor, rhs;
-    solver->start_getting_constraints(false);
-    while(solver->get_next_constraint(clause, is_xor, rhs)) {
-        assert(!is_xor); assert(rhs);
-        cnf.cnf.push_back(clause);
-    }
-    solver->end_getting_constraints();
-
-    cnf.nvars = solver->nVars();
-    cnf.sampl_vars = sampling_vars;
-    cnf.opt_sampl_vars = sampling_vars;
-    cnf.multiplier_weight = solver->get_multiplier_weight();
-#ifdef WEIGHTED
-    if (cnf.weighted) {
-        solver->get_weights(cnf.weights, sampling_vars, orig_sampling_vars);
-        //todo
-    }
-#endif
-
-    return cnf;
 }
 
 void Common::get_incidence() {
@@ -157,21 +132,12 @@ void Common::get_incidence() {
 
     incidence.clear();
     incidence.resize(orig_num_vars, 0);
-    incidence_probing.resize(orig_num_vars, 0);
     assert(solver->nVars() == orig_num_vars);
     vector<uint32_t> inc = solver->get_lit_incidence();
     assert(inc.size() == orig_num_vars*2);
     for(uint32_t i = 0; i < orig_num_vars; i++) {
         Lit l = Lit(i, true);
-        if (conf.incidence_count == 1) {
-            incidence[l.var()] = inc[l.toInt()] + inc[(~l).toInt()];
-        } else if (conf.incidence_count == 2) {
-            incidence[l.var()] = std::max(inc[l.toInt()], inc[(~l).toInt()]);
-        } else if (conf.incidence_count == 3) {
-            incidence[l.var()] = std::min(inc[l.toInt()],inc[(~l).toInt()]);
-        } else {
-            assert(false && "This is NOT accepted incidence count");
-        }
+        incidence[l.var()] = std::min(inc[l.toInt()],inc[(~l).toInt()]);
     }
 }
 
@@ -238,7 +204,6 @@ void check_sanity_sampling_vars(T vars, const uint32_t nvars)
 }
 
 void Common::init() {
-    orig_cnf = get_init_cnf();
     assert(orig_num_vars == std::numeric_limits<uint32_t>::max() && "double init");
     orig_num_vars = solver->nVars();
     check_sanity_sampling_vars(sampling_vars, orig_num_vars);
@@ -246,12 +211,12 @@ void Common::init() {
     seen.resize(solver->nVars(), 0);
 }
 
-bool Common::preproc_and_duplicate() {
+bool Common::preproc_and_duplicate(const ArjunNS::SimplifiedCNF& orig_cnf) {
     assert(!already_duplicated);
     get_incidence();
     if (conf.simp && !simplify()) return false;
     get_incidence();
-    duplicate_problem();
+    duplicate_problem(orig_cnf);
     if (conf.simp && !simplify_bve_only()) return false;
     add_fixed_clauses();
     if (!run_gauss_jordan()) return false;
@@ -264,4 +229,50 @@ bool Common::preproc_and_duplicate() {
     solver->set_distill(conf.distill && conf.simp);
     solver->set_find_xors(conf.gauss_jordan && conf.simp);
     return true;
+}
+
+void Common::run_backwards(ArjunNS::SimplifiedCNF& cnf) {
+    double start_time = cpuTime();
+    solver->set_verbosity(conf.verb);
+    solver->new_vars(cnf.nvars);
+    for(const auto& cl: cnf.clauses) solver->add_clause(cl);
+    for(const auto& cl: cnf.red_clauses) solver->add_red_clause(cl);
+    sampling_vars = cnf.sampl_vars;
+    if (cnf.opt_sampl_vars_set) {
+        if (cnf.sampl_vars != cnf.opt_sampl_vars) {
+            cout <<"ERROR: backwards does not support opt sampling set" << endl;
+            exit(-1);
+        }
+    }
+    assert(!cnf.weighted);
+
+    init();
+    if (!preproc_and_duplicate(cnf)) goto end;
+    assert(!cnf.weighted);
+    backward_round();
+
+    end:
+    // Get what we came here for
+    cnf.sampl_vars = sampling_vars;
+
+    // Take units and binary xors back
+    for(const auto& l: solver->get_zero_assigned_lits())
+        if (l.var() < cnf.nvars) cnf.clauses.push_back({l});
+    for(const auto& p: solver->get_all_binary_xors()) {
+        if (p.first.var() >= cnf.nvars || p.second.var() >= cnf.nvars) continue;
+        vector<Lit> cl(2);
+        cl[0] = p.first;
+        cl[1] = ~p.second;
+        cnf.clauses.push_back(cl);
+        cl[0] = ~cl[0];
+        cl[1] = ~cl[1];
+        cnf.clauses.push_back(cl);
+    }
+
+    mpz_class dummy(2);
+    mpz_pow_ui(dummy.get_mpz_t(), dummy.get_mpz_t(), empty_sampling_vars.size());
+    cnf.multiplier_weight *= dummy;
+
+    verb_print(1, "[arjun] run_backwards finished "
+        << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time));
 }

@@ -24,56 +24,57 @@
 
 #pragma once
 
-#include "src/config.h"
 #include <cstdint>
+#include <sys/types.h>
 #include <vector>
+#include <map>
 #include <set>
+#include <cryptominisat5/cryptominisat.h>
 #include "config.h"
 #include "arjun.h"
+extern "C" {
+#include "mpicosat/mpicosat.h"
+}
 
+using std::vector;
+using std::map;
+using std::set;
 using namespace CMSat;
 using namespace ArjunInt;
 using namespace ArjunNS;
-using std::vector;
-using std::set;
 
-class Puura {
-public:
-    Puura(const Config& _conf);
-    ~Puura();
+struct Extend {
+    Extend(const Config& _conf) : conf(_conf) {}
+    ~Extend() {delete solver;}
+
+    void add_all_indics_except(const set<uint32_t>& except);
+    SATSolver* solver = nullptr;
+    PicoSAT* ps = nullptr;
+
+    uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
+
+
+    //assert indic[var] to TRUE to force var==var+orig_num_vars
+    vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
+    vector<uint32_t> indic_to_var; //maps an INDICATOR VAR to ORIG VAR
+    vector<Lit> dont_elim;
+    vector<char> seen;
+    map<uint32_t, vector<Lit>> cl_map;
+    uint32_t cl_num = 0;
+
+    template<class T>
+    void fill_assumptions_extend(
+        vector<Lit>& assumptions,
+        const T& indep);
+    void extend_round(SimplifiedCNF& cnf);
+    vector<lbool> set_vals;
+
+    void unsat_define(SimplifiedCNF& cnf);
+    void generate_picosat(const vector<Lit>& assumptions, uint32_t test_var,SimplifiedCNF& cnf);
+    Config conf;
 
     void fill_solver(const SimplifiedCNF& cnf);
-    SimplifiedCNF get_fully_simplified_renumbered_cnf(
-        const SimpConf simp_conf,
-        const vector<uint32_t>& sampl_vars,
-        const vector<uint32_t>& empty_sampl_vars,
-        const vector<uint32_t>& orig_sampl_vars);
-    void reverse_bce(SimplifiedCNF& cnf);
-    void run_sbva(SimplifiedCNF& orig,
-        int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak);
-    void synthesis_unate(SimplifiedCNF& cnf);
-
-private:
-    SATSolver* solver = nullptr;
-    SATSolver* setup_f_not_f_indic();
-    /* void conditional_dontcare(); */
-    void setup_sampl_vars_dontelim(const vector<uint32_t>& sampl_vars);
-
-    void renumber_sampling_vars_for_ganak(SimplifiedCNF& scnf);
-    void get_simplified_cnf(SimplifiedCNF& sncf,
-        const vector<uint32_t>& sampl_vars,
-        const vector<uint32_t>& empty_sampl_vars,
-        const vector<uint32_t>& orig_sampl_vars);
-
-    const Config& conf;
-
-    // For the unit/flippable
-    //
-    vector<uint32_t> var_to_indic;
-    vector<uint32_t> indic_to_var;
-    uint32_t orig_num_vars;
-    vector<uint8_t> in_formula;
-    set<uint32_t> sampl_set;
-    vector<Lit> dont_elim;
+    void get_incidence();
+    template<class T> void sort_unknown(T& unknown);
+    vector<uint32_t> incidence;
 };
-
