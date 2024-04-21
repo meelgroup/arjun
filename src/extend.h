@@ -75,6 +75,5 @@ struct Extend {
 
     void fill_solver(const SimplifiedCNF& cnf);
     void get_incidence();
-    template<class T> void sort_unknown(T& unknown);
     vector<uint32_t> incidence;
 };

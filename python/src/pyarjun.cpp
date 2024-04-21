@@ -530,7 +530,7 @@ static PyObject* get_indep_set(Arjun *self, PyObject *args, PyObject *kwds)
         self->arjun->set_starting_sampling_set(out_vars);
     }
 
-    std::vector<uint32_t> ret = self->arjun->run_backwards();
+    std::vector<uint32_t> ret = self->arjun->run_minimize_indep();
     PyObject* reto = PyList_New(0);
     if (!reto) {
         Py_DECREF(reto);

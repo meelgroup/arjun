@@ -22,16 +22,18 @@
  THE SOFTWARE.
  */
 
-#include "common.h"
+#include "minimize.h"
 #include <cstdint>
 #include <limits>
+
 #include "src/arjun.h"
 #include "time_mem.h"
+#include "constants.h"
 
 using namespace ArjunInt;
 using std::numeric_limits;
 
-void Common::update_sampling_set(
+void Minimize::update_sampling_set(
     const vector<uint32_t>& unknown,
     const vector<char>& unknown_set,
     const vector<uint32_t>& indep
@@ -44,14 +46,14 @@ void Common::update_sampling_set(
 
 }
 
-void Common::start_with_clean_sampl_vars() {
+void Minimize::start_with_clean_sampl_vars() {
     sampling_vars.clear();
     for (size_t i = 0; i < solver->nVars(); i++) {
         sampling_vars.push_back(i);
     }
 }
 
-void Common::print_orig_sampling_set()
+void Minimize::print_orig_sampling_set()
 {
     if (sampling_vars.size() > 100) {
         cout
@@ -65,7 +67,7 @@ void Common::print_orig_sampling_set()
     cout << "c [arjun] Orig size         : " << sampling_vars.size() << endl;
 }
 
-void Common::add_fixed_clauses()
+void Minimize::add_fixed_clauses()
 {
     double fix_cl_time = cpuTime();
     dont_elim.clear();
@@ -109,7 +111,7 @@ void Common::add_fixed_clauses()
     }
 }
 
-void Common::duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf) {
+void Minimize::duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf) {
     assert(!already_duplicated);
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
@@ -127,7 +129,7 @@ void Common::duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf) {
     already_duplicated = true;
 }
 
-void Common::get_incidence() {
+void Minimize::get_incidence() {
     assert(orig_num_vars == solver->nVars());
 
     incidence.clear();
@@ -141,7 +143,7 @@ void Common::get_incidence() {
     }
 }
 
-void Common::set_up_solver()
+void Minimize::set_up_solver()
 {
     assert(solver == nullptr);
     solver = new SATSolver;
@@ -155,7 +157,7 @@ void Common::set_up_solver()
     solver->set_find_xors(false);
 }
 
-bool Common:: simplify_bve_only() {
+bool Minimize:: simplify_bve_only() {
     //BVE ***ONLY***, don't eliminate the original variables
     solver->set_intree_probe(false);
     solver->set_distill(false);
@@ -181,7 +183,7 @@ bool Common:: simplify_bve_only() {
     return true;
 }
 
-bool Common::run_gauss_jordan()
+bool Minimize::run_gauss_jordan()
 {
     if (conf.gauss_jordan && conf.simp) {
         string str = "occ-xor";
@@ -203,7 +205,7 @@ void check_sanity_sampling_vars(T vars, const uint32_t nvars)
     }
 }
 
-void Common::init() {
+void Minimize::init() {
     assert(orig_num_vars == std::numeric_limits<uint32_t>::max() && "double init");
     orig_num_vars = solver->nVars();
     check_sanity_sampling_vars(sampling_vars, orig_num_vars);
@@ -211,7 +213,7 @@ void Common::init() {
     seen.resize(solver->nVars(), 0);
 }
 
-bool Common::preproc_and_duplicate(const ArjunNS::SimplifiedCNF& orig_cnf) {
+bool Minimize::preproc_and_duplicate(const ArjunNS::SimplifiedCNF& orig_cnf) {
     assert(!already_duplicated);
     get_incidence();
     if (conf.simp && !simplify()) return false;
@@ -231,7 +233,7 @@ bool Common::preproc_and_duplicate(const ArjunNS::SimplifiedCNF& orig_cnf) {
     return true;
 }
 
-void Common::run_backwards(ArjunNS::SimplifiedCNF& cnf) {
+void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
     double start_time = cpuTime();
     solver->set_verbosity(conf.verb);
     solver->new_vars(cnf.nvars);
@@ -273,6 +275,6 @@ void Common::run_backwards(ArjunNS::SimplifiedCNF& cnf) {
     mpz_pow_ui(dummy.get_mpz_t(), dummy.get_mpz_t(), empty_sampling_vars.size());
     cnf.multiplier_weight *= dummy;
 
-    verb_print(1, "[arjun] run_backwards finished "
+    verb_print(1, "[arjun] run_minimize_indep finished "
         << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time));
 }

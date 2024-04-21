@@ -22,13 +22,14 @@
  THE SOFTWARE.
  */
 
-#include "common.h"
+#include "minimize.h"
+#include "constants.h"
 #include "src/time_mem.h"
 #include <set>
 
 using namespace ArjunInt;
 
-void Common::fill_assumptions_backward(
+void Minimize::fill_assumptions_backward(
     vector<Lit>& assumptions,
     vector<uint32_t>& unknown,
     const vector<char>& unknown_set,
@@ -64,7 +65,7 @@ void Common::fill_assumptions_backward(
     verb_print(5, "Filling assumps END, total assumps size: " << assumptions.size());
 }
 
-void Common::order_by_file(const string& fname, vector<uint32_t>& unknown) {
+void Minimize::order_by_file(const string& fname, vector<uint32_t>& unknown) {
     std::set<uint32_t> old_unknown(unknown.begin(), unknown.end());
     unknown.clear();
 
@@ -89,7 +90,7 @@ void Common::order_by_file(const string& fname, vector<uint32_t>& unknown) {
     }
 }
 
-void Common::print_sorted_unknown(const vector<uint32_t>& unknown) const
+void Minimize::print_sorted_unknown(const vector<uint32_t>& unknown) const
 {
     if (conf.verb >= 4) {
         cout << "Sorted output: "<< endl;
@@ -101,7 +102,7 @@ void Common::print_sorted_unknown(const vector<uint32_t>& unknown) const
     }
 }
 
-void Common::backward_round() {
+void Minimize::backward_round() {
     for(const auto& x: seen) assert(x == 0);
     double start_round_time = cpuTime();
     //start with empty independent set
@@ -117,7 +118,7 @@ void Common::backward_round() {
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
-    sort_unknown(unknown);
+    sort_unknown(unknown, incidence);
     if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
     print_sorted_unknown(unknown);
     verb_print(1, "[arjun] Start unknown size: " << unknown.size());

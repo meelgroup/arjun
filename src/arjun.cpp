@@ -28,11 +28,12 @@
 
 #include "arjun.h"
 #include "config.h"
-#include "common.h"
+#include "minimize.h"
 #include "GitSHA1.h"
 #include "puura.h"
 #include "extend.h"
 #include "time_mem.h"
+#include "constants.h"
 
 using std::pair;
 using std::numeric_limits;
@@ -100,9 +101,9 @@ DLL_PUBLIC std::string Arjun::get_compilation_env()
     return ArjunIntNS::get_compilation_env();
 }
 
-DLL_PUBLIC void Arjun::only_run_backwards(SimplifiedCNF& cnf) {
-    Common common(arjdata->conf);
-    common.run_backwards(cnf);
+DLL_PUBLIC void Arjun::only_run_minimize_indep(SimplifiedCNF& cnf) {
+    Minimize common(arjdata->conf);
+    common.run_minimize_indep(cnf);
 }
 
 DLL_PUBLIC void Arjun::only_unsat_define(SimplifiedCNF& cnf) {
@@ -120,8 +121,8 @@ DLL_PUBLIC SimplifiedCNF Arjun::only_get_simplified_cnf(
                 const SimplifiedCNF& cnf, const SimpConf& simp_conf)
 {
     Puura puura(arjdata->conf);
-    puura.fill_solver(cnf);
-    return puura.get_fully_simplified_renumbered_cnf(simp_conf,
+    return puura.get_fully_simplified_renumbered_cnf(
+            cnf, simp_conf,
             cnf.sampl_vars,
             vector<uint32_t>(),
             cnf.sampl_vars);
@@ -240,6 +241,11 @@ void Arjun::elim_to_file(SimplifiedCNF& cnf, bool indep_support_given,
     if (do_unate)
         only_unate(cnf);
     cnf.renumber_sampling_vars_for_ganak();
+}
+
+void Arjun::only_backbone(SimplifiedCNF& cnf) {
+    Puura puura(arjdata->conf);
+    puura.backbone(cnf);
 }
 
 set_get_macro(bool, distill)

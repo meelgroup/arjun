@@ -24,56 +24,6 @@
 
 #pragma once
 
-// verb_print
-#include <cstdint>
-#define COLRED "\033[31m"
-#define COLYEL2 "\033[35m"
-#define COLYEL "\033[33m"
-#define COLCYN "\033[36m"
-#define COLWHT "\033[97m"
-#define COLORG "\033[43m"
-#define COLBLBACK  "\033[44m"
-#define COLORGBG "\033[100m"
-#define COLREDBG "\033[41m"
-//default
-#define COLDEF "\033[0m"
-
-#define verb_print(a, x) \
-    do { \
-        if (conf.verb >= a) {\
-            std::cout << COLDEF << "c " << x << COLDEF << std::endl;}\
-    } while (0)
-
-
-#define verb_print2(a, x) \
-    do { \
-        if (arjdata->conf.verb >= a) {\
-            std::cout << COLDEF << "c " << x << COLDEF << std::endl;}\
-    } while (0)
-
-#if defined(_MSC_VER)
-#include "cms_windows_includes.h"
-#define release_assert(a) \
-    do { \
-    __pragma(warning(push)) \
-    __pragma(warning(disable:4127)) \
-        if (!(a)) {\
-    __pragma(warning(pop)) \
-            fprintf(stderr, "*** ASSERTION FAILURE in %s() [%s:%d]: %s\n", \
-            __FUNCTION__, __FILE__, __LINE__, #a); \
-            abort(); \
-        } \
-    } while (0)
-#else
-#define release_assert(a) \
-    do { \
-        if (!(a)) {\
-            fprintf(stderr, "*** ASSERTION FAILURE in %s() [%s:%d]: %s\n", \
-            __FUNCTION__, __FILE__, __LINE__, #a); \
-            abort(); \
-        } \
-    } while (0)
-#endif
 
 #include "arjun.h"
 #include <vector>
@@ -104,14 +54,14 @@ using std::vector;
 
 namespace ArjunInt {
 
-struct Common
+struct Minimize
 {
-    Common(const Config& _conf) : conf(_conf) {
+    Minimize(const Config& _conf) : conf(_conf) {
         set_up_solver();
     }
-    ~Common() { delete solver; }
+    ~Minimize() { delete solver; }
 
-    void run_backwards(ArjunNS::SimplifiedCNF& cnf);
+    void run_minimize_indep(ArjunNS::SimplifiedCNF& cnf);
 
     const Config conf;
     CMSat::SATSolver* solver = nullptr;
@@ -170,79 +120,6 @@ struct Common
     void backward_round();
     void order_by_file(const string& fname, vector<uint32_t>& unknown);
     void print_sorted_unknown(const vector<uint32_t>& unknown) const;
-
-    //Sorting
-    template<class T> void sort_unknown(T& unknown);
-
 };
-
-inline string print_value_kilo_mega(const int64_t value, bool setw = true)
-{
-    std::stringstream ss;
-    if (value > 20*1000LL*1000LL) {
-        if (setw) {
-            ss << std::setw(4);
-        }
-        ss << value/(1000LL*1000LL) << "M";
-    } else if (value > 20LL*1000LL) {
-        if (setw) {
-            ss << std::setw(4);
-        }
-        ss << value/1000LL << "K";
-    } else {
-        if (setw) {
-            ss << std::setw(5);
-        }
-        ss << value;
-    }
-
-    return ss.str();
-}
-
-inline double stats_line_percent(double num, double total)
-{
-    if (total == 0) {
-        return 0;
-    } else {
-        return num/total*100.0;
-    }
-}
-
-template<class T>
-struct IncidenceSorter ///DESCENDING ORDER (i.e. most likely independent at the top)
-{
-    IncidenceSorter(const vector<T>& _inc) : inc(_inc) {}
-    bool operator()(const T a, const T b) {
-        if (inc[a] != inc[b]) {
-            return inc[a] > inc[b];
-        }
-        return a < b;
-    }
-
-    const vector<T>& inc;
-};
-
-template<class T>
-struct IncidenceSorter2
-{
-    IncidenceSorter2(const vector<T>& _inc, const vector<T>& _inc2) : inc(_inc), inc2(_inc2) {}
-    bool operator()(const T a, const T b) {
-        if (inc[a] != inc[b]) {
-            return inc[a] > inc[b];
-        }
-        if (inc2[a] != inc2[b]) {
-            return inc2[a] > inc2[b];
-        }
-        return a < b;
-    }
-
-    const vector<T>& inc;
-    const vector<T>& inc2;
-};
-
-template<class T> void Common::sort_unknown(T& unknown)
-{
-    std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
-}
 
 }

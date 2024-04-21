@@ -74,7 +74,7 @@ int debug_synt = false;
 int synthesis = false;
 int do_unate = false;
 int do_revbce = false;
-int do_fast_backw = true;
+int do_minim_indep = true;
 
 void add_arjun_options()
 {
@@ -183,8 +183,8 @@ void add_arjun_options()
     /* po::options_description debug_options("Debug options"); */
     /* debug_options.add_options() */
     program.add_argument("--minimize")
-        .action([&](const auto& a) {do_fast_backw = std::atoi(a.c_str());})
-        .default_value(do_fast_backw)
+        .action([&](const auto& a) {do_minim_indep = std::atoi(a.c_str());})
+        .default_value(do_minim_indep)
         .help("Minimize indep set");
     program.add_argument("--gaussj")
         .action([&](const auto& a) {conf.gauss_jordan = std::atoi(a.c_str());})
@@ -303,15 +303,19 @@ void set_config(ArjunNS::Arjun* arj) {
 void do_synthesis() {
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, ignore_sampling_set, indep_support_given);
+    if (do_unate) {
+        arjun->only_backbone(cnf);
+        arjun->only_unate(cnf);
+    }
 
     // First we extend
     arjun->only_unsat_define(cnf);
+
 
     // Then we BVE
     simp_conf.bve_too_large_resolvent = -1;
     cnf = arjun->only_get_simplified_cnf(cnf, simp_conf);
     if (do_revbce) arjun->only_reverse_bce(cnf);
-    if (do_unate) arjun->only_unate(cnf);
 
     write_simpcnf(cnf, elimtofile, false);
 }
@@ -320,10 +324,10 @@ void do_minimize() {
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, ignore_sampling_set, indep_support_given);
 
-    if (do_fast_backw) {
+    if (do_minim_indep) {
         const auto orig_sampl_vars = cnf.sampl_vars;
         Arjun arj2;
-        arj2.only_run_backwards(cnf);
+        arj2.only_run_minimize_indep(cnf);
         print_final_sampl_set(cnf, orig_sampl_vars);
     }
 

@@ -24,6 +24,7 @@
 
 #pragma once
 
+#include "cryptominisat5/cryptominisat.h"
 #include "src/config.h"
 #include <cstdint>
 #include <vector>
@@ -42,8 +43,9 @@ public:
     Puura(const Config& _conf);
     ~Puura();
 
-    void fill_solver(const SimplifiedCNF& cnf);
+    SATSolver* fill_solver(const SimplifiedCNF& cnf);
     SimplifiedCNF get_fully_simplified_renumbered_cnf(
+        const SimplifiedCNF& cnf,
         const SimpConf simp_conf,
         const vector<uint32_t>& sampl_vars,
         const vector<uint32_t>& empty_sampl_vars,
@@ -52,15 +54,16 @@ public:
     void run_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak);
     void synthesis_unate(SimplifiedCNF& cnf);
+    void backbone(SimplifiedCNF& cnf);
 
 private:
-    SATSolver* solver = nullptr;
-    SATSolver* setup_f_not_f_indic();
+    SATSolver* setup_f_not_f_indic(const SimplifiedCNF& cnf);
     /* void conditional_dontcare(); */
     void setup_sampl_vars_dontelim(const vector<uint32_t>& sampl_vars);
 
     void renumber_sampling_vars_for_ganak(SimplifiedCNF& scnf);
-    void get_simplified_cnf(SimplifiedCNF& sncf,
+    SimplifiedCNF get_simplified_cnf(
+        SATSolver* solver,
         const vector<uint32_t>& sampl_vars,
         const vector<uint32_t>& empty_sampl_vars,
         const vector<uint32_t>& orig_sampl_vars);

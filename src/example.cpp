@@ -78,7 +78,7 @@ int main()
 
     Arjun arjun;
     arjun.set_verb(0);
-    arjun.only_run_backwards(cnf);
+    arjun.only_run_minimize_indep(cnf);
     std::set<uint32_t> dont_elim (proj.begin(), proj.end());
 
     SimpConf simp_conf;

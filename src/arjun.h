@@ -163,7 +163,7 @@ namespace ArjunNS {
         static std::string get_solver_version_info();
 
         // Perform indep set calculation
-        void only_run_backwards(SimplifiedCNF& cnf);
+        void only_run_minimize_indep(SimplifiedCNF& cnf);
         void only_extend_sampl_vars(SimplifiedCNF& cnf);
         void only_unsat_define(SimplifiedCNF& cnf);
         void only_unate(SimplifiedCNF& cnf);
@@ -175,6 +175,7 @@ namespace ArjunNS {
         SimplifiedCNF only_get_simplified_cnf(const SimplifiedCNF& cnf, const SimpConf& simp_conf);
         void only_bce(SimplifiedCNF& cnf);
         void only_reverse_bce(SimplifiedCNF& cnf);
+        void only_backbone(SimplifiedCNF& cnf);
         const SimplifiedCNF& get_orig_cnf() const;
         void only_run_sbva(SimplifiedCNF& orig,
             int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,

@@ -27,12 +27,13 @@
 #include <vector>
 #include <iostream>
 #include <iomanip>
+#include <string>
 
 #include <sbva/sbva.h>
 #include "time_mem.h"
 #include "puura.h"
 #include "arjun.h"
-#include "common.h"
+#include "constants.h"
 
 using namespace ArjunNS;
 using namespace CMSat;
@@ -41,19 +42,20 @@ using std::endl;
 using std::vector;
 using std::setw;
 using std::setprecision;
+using std::string;
 
 
 Puura::Puura(const Config& _conf) : conf(_conf) {}
-Puura::~Puura() { delete solver; }
+Puura::~Puura() { }
 
-SATSolver* Puura::setup_f_not_f_indic() {
+SATSolver* Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
     double my_time = cpuTime();
-    orig_num_vars = solver->nVars();
 
     vector<Lit> tmp;
     SATSolver* s = new SATSolver;
+    orig_num_vars = cnf.nvars;
     s->set_verbosity(0);
-    s->new_vars(orig_num_vars*2); // one for orig, one for copy
+    s->new_vars(cnf.nvars*2); // one for orig, one for copy
     s->set_bve(false);
     s->set_bva(false);
     s->set_no_simplify_at_startup();
@@ -61,19 +63,10 @@ SATSolver* Puura::setup_f_not_f_indic() {
     s->set_sls(false);
     s->set_find_xors(false);
 
-    solver->start_getting_constraints(false);
     vector<Lit> zs;
-    bool ret = true;
-    vector<Lit> clause;
-    bool is_xor, rhs;
-    while(ret) {
-        ret = solver->get_next_constraint(clause, is_xor, rhs);
-        if (!ret) break;
-        assert(!is_xor);
-        assert(rhs);
-
+    for(const auto& cl: cnf.clauses) {
         // F(x)
-        s->add_clause(clause);
+        s->add_clause(cl);
 
         // !F(y)
         s->new_var(); // new var for each clause
@@ -82,7 +75,7 @@ SATSolver* Puura::setup_f_not_f_indic() {
 
         // (C shifted) V -z
         tmp.clear();
-        for(auto l: clause) {
+        for(auto l: cl) {
             if (sampl_set.count(l.var())) {
                 tmp.push_back(l);
             } else {
@@ -93,7 +86,7 @@ SATSolver* Puura::setup_f_not_f_indic() {
         s->add_clause(tmp);
 
         // (each -lit in C, shifted) V z
-        for(auto l: clause) {
+        for(auto l: cl) {
             tmp.clear();
             if (sampl_set.count(l.var())) {
                 tmp = {~l,  z};
@@ -104,13 +97,21 @@ SATSolver* Puura::setup_f_not_f_indic() {
         }
         zs.push_back(~z);
     }
-    solver->end_getting_constraints();
 
     // At least ONE clause must be FALSE
     s->add_clause(zs);
     s->simplify();
     cout << "c [puura] Built up the solver. T: " << (cpuTime() - my_time) << endl;
     return s;
+}
+
+void Puura::backbone(SimplifiedCNF& cnf) {
+    auto solver = fill_solver(cnf);
+    string str = "backbone";
+    solver->simplify(nullptr, &str);
+    auto lits = solver->get_zero_assigned_lits();
+    for(const auto& l: lits) cnf.clauses.push_back({l});
+    delete solver;
 }
 
 // TODO: Beware, empty var elim (i.e. all resolvents are tautology) should be done BEFORE this
@@ -121,70 +122,72 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     for(const auto& v: cnf.sampl_vars) sampl_set.insert(v);
     verb_print(1, "sampling set size: " << sampl_set.size());
 
-    fill_solver(cnf);
-    SATSolver* s = setup_f_not_f_indic();
+    SATSolver* s = setup_f_not_f_indic(cnf);
     vector<Lit> assumps;
     vector<Lit> cl;
     uint32_t undefs = 0;
     bool timeout = false;
-    solver->set_find_xors(true);
-    solver->set_scc(true);
-    solver->set_bve(true);
-
+    s->set_find_xors(true);
+    s->set_scc(true);
+    s->set_bve(false);
 
     uint32_t to_test = 0;
     dont_elim.clear();
     for(uint32_t test = 0; test < orig_num_vars; test++) {
-        if (solver->removed_var(test)) continue;
+        if (s->removed_var(test)) continue;
         if (sampl_set.count(test)) continue;
         dont_elim.push_back(Lit(test, false));
         dont_elim.push_back(Lit(test+orig_num_vars, false));
         to_test ++;
     }
     s->simplify(&dont_elim);
-    solver->set_bve(false);
+    s->set_bve(false);
 
     verb_print(1, "[unate] Going to test: " << to_test);
     uint32_t tested_num = 0;
-    for(uint32_t test = 0; test < orig_num_vars; test++) {
-        if (solver->removed_var(test)) continue;
-        if (sampl_set.count(test)) continue;
-        if (s->get_sum_conflicts() > 50000) {timeout = true; break;}
-        tested_num++;
-        if (tested_num % 100 == 99) {
-            verb_print(1, "[unate] test no: " << setw(5) << tested_num
-                << " confl K: " << setw(4) << s->get_sum_conflicts()/1000
-                << " new units: " << setw(4) << new_units
-                << " T: " << setprecision(2) << std::fixed << (cpuTime() - my_time));
-        }
-
-        assumps.clear();
-        for(int flip = 0; flip < 2; flip++) {
-            assumps.push_back(Lit(test, true ^ flip));
-            assumps.push_back(Lit(test+orig_num_vars, false ^ flip));
-            s->set_max_confl(1500);
-            auto ret = s->solve(&assumps, true);
-            verb_print(4, "[unate] Ret: " << ret << " flip: " << flip);
-            if (ret == l_False) {
-                verb_print(2, "[unate] test: " << std::setw(3)  << (test+1)
-                    << " FALSE"
-                    << " T: " << (cpuTime() - my_time));
-
-                cl = {Lit(test, false ^ flip)};
-                cnf.clauses.push_back(cl);
-                s->add_clause(cl);
-                solver->add_clause(cl);
-
-                cl = {Lit(test+orig_num_vars, false ^ flip)};
-                s->add_clause(cl);
-                new_units++;
-                break;
+    uint32_t old_units;
+    do {
+        old_units = new_units;
+        for(uint32_t test = 0; test < orig_num_vars; test++) {
+            if (s->removed_var(test)) continue;
+            if (sampl_set.count(test)) continue;
+            if (s->get_sum_conflicts() > 50000) {timeout = true; break;}
+            tested_num++;
+            if (tested_num % 100 == 99) {
+                verb_print(1, "[unate] test no: " << setw(5) << tested_num
+                    << " confl K: " << setw(4) << s->get_sum_conflicts()/1000
+                    << " new units: " << setw(4) << new_units
+                    << " T: " << setprecision(2) << std::fixed << (cpuTime() - my_time));
             }
-            if (ret == l_Undef) undefs++;
-            assumps.pop_back();
-            assumps.pop_back();
+
+            assumps.clear();
+            for(int flip = 0; flip < 2; flip++) {
+                assumps.push_back(Lit(test, true ^ flip));
+                assumps.push_back(Lit(test+orig_num_vars, false ^ flip));
+                s->set_max_confl(1500);
+                s->set_no_confl_needed();
+                auto ret = s->solve(&assumps, true);
+                verb_print(4, "[unate] Ret: " << ret << " flip: " << flip);
+                if (ret == l_False) {
+                    verb_print(2, "[unate] test: " << std::setw(3)  << (test+1)
+                        << " FALSE"
+                        << " T: " << (cpuTime() - my_time));
+
+                    cl = {Lit(test, false ^ flip)};
+                    cnf.clauses.push_back(cl);
+                    s->add_clause(cl);
+
+                    cl = {Lit(test+orig_num_vars, false ^ flip)};
+                    s->add_clause(cl);
+                    new_units++;
+                    break;
+                }
+                if (ret == l_Undef) undefs++;
+                assumps.pop_back();
+                assumps.pop_back();
+            }
         }
-    }
+    } while (new_units > old_units);
 
     verb_print(1, "[unate]" << " new units: " << new_units << " undefs: " << undefs
         << " T-out: " << (int)timeout << " T: " << (cpuTime()-my_time));
@@ -192,12 +195,12 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     delete s;
 }
 
-void Puura::get_simplified_cnf(SimplifiedCNF& scnf,
+SimplifiedCNF Puura::get_simplified_cnf(
+        SATSolver* solver,
         const vector<uint32_t>& sampl_vars,
         const vector<uint32_t>& empty_sampl_vars,
         const vector<uint32_t>& orig_sampl_vars) {
-    assert(scnf.clauses.empty());
-
+    SimplifiedCNF scnf;
     vector<Lit> clause;
     bool is_xor, rhs;
     scnf.sampl_vars = sampl_vars;
@@ -235,10 +238,11 @@ void Puura::get_simplified_cnf(SimplifiedCNF& scnf,
 
     scnf.nvars = solver->simplified_nvars();
     std::sort(scnf.sampl_vars.begin(), scnf.sampl_vars.end());
+    return scnf;
 }
 
-void Puura::fill_solver(const SimplifiedCNF& cnf) {
-    assert(solver == nullptr);
+SATSolver* Puura::fill_solver(const SimplifiedCNF& cnf) {
+    SATSolver* solver;
     solver = new CMSat::SATSolver;
     solver->set_verbosity(conf.verb);
     solver->set_find_xors(false);
@@ -254,6 +258,7 @@ void Puura::fill_solver(const SimplifiedCNF& cnf) {
     }
 #endif
     solver->set_multiplier_weight(cnf.multiplier_weight);
+    return solver;
 }
 
 bool replace(std::string& str, const std::string& from, const std::string& to) {
@@ -265,20 +270,23 @@ bool replace(std::string& str, const std::string& from, const std::string& to) {
 }
 
 void Puura::reverse_bce(SimplifiedCNF& cnf) {
-    fill_solver(cnf);
+    auto solver = fill_solver(cnf);
     solver->set_renumber(false);
     solver->set_scc(false);
     setup_sampl_vars_dontelim(cnf.sampl_vars);
     solver->set_sampl_vars(cnf.sampl_vars);
     solver->reverse_bce();
+    delete solver;
 }
 
 SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
+    const SimplifiedCNF& cnf,
     const SimpConf simp_conf,
     const vector<uint32_t>& sampl_vars,
     const vector<uint32_t>& empty_sampl_vars,
     const vector<uint32_t>& orig_sampl_vars)
 {
+    auto solver = fill_solver(cnf);
     verb_print(3, "Running "<< __PRETTY_FUNCTION__);
     solver->set_renumber(true);
     solver->set_scc(true);
@@ -343,9 +351,10 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->simplify(&dont_elim, &str);
 
     // Return final one
-    SimplifiedCNF cnf;
-    get_simplified_cnf(cnf, new_sampl_vars, new_empty_sampl_vars, orig_sampl_vars);
-    return cnf;
+    auto ret = get_simplified_cnf(
+            solver, new_sampl_vars, new_empty_sampl_vars, orig_sampl_vars);
+    delete solver;
+    return ret;
 }
 
 void Puura::setup_sampl_vars_dontelim(const vector<uint32_t>& sampl_vars)

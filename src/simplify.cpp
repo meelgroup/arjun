@@ -23,13 +23,14 @@
  */
 
 #include <algorithm>
-#include "common.h"
+#include "minimize.h"
+#include "constants.h"
 #include "time_mem.h"
 
 using std::pair;
 using namespace ArjunInt;
 
-void Common::check_no_duplicate_in_sampling_set()
+void Minimize::check_no_duplicate_in_sampling_set()
 {
     for(auto const& v: sampling_vars) {
         if (seen[v]) {
@@ -41,7 +42,7 @@ void Common::check_no_duplicate_in_sampling_set()
     for(auto const& v: sampling_vars) seen[v] = 0;
 }
 
-bool Common::simplify() {
+bool Minimize::simplify() {
     assert(conf.simp);
     check_no_duplicate_in_sampling_set();
     auto old_size = sampling_vars.size();
@@ -98,7 +99,7 @@ bool Common::simplify() {
     return true;
 }
 
-void Common::empty_out_indep_set_if_unsat() {
+void Minimize::empty_out_indep_set_if_unsat() {
     if (solver->okay()) return;
 
     //It's UNSAT so the sampling set is empty
@@ -106,7 +107,7 @@ void Common::empty_out_indep_set_if_unsat() {
     verb_print(1, "[arjun] CNF is UNSAT, setting sampling set to empty");
 }
 
-bool Common::probe_all()
+bool Minimize::probe_all()
 {
     double my_time = cpuTime();
     order_sampl_set_for_simp();
@@ -146,7 +147,7 @@ struct GateOccurs
     uint32_t at;
 };
 
-bool Common::remove_definable_by_gates() {
+bool Minimize::remove_definable_by_gates() {
     double my_time = cpuTime();
     order_sampl_set_for_simp();
     uint32_t old_size = sampling_vars.size();
@@ -347,14 +348,14 @@ bool Common::remove_definable_by_gates() {
     return changed;
 }
 
-void Common::order_sampl_set_for_simp()
+void Minimize::order_sampl_set_for_simp()
 {
     get_incidence();
-    sort_unknown(sampling_vars);
+    sort_unknown(sampling_vars, incidence);
     std::reverse(sampling_vars.begin(), sampling_vars.end()); //we want most likely independent as last
 }
 
-void Common::get_empty_occs() {
+void Minimize::get_empty_occs() {
     const double my_time = cpuTime();
     uint32_t old_size = sampling_vars.size();
 
@@ -370,7 +371,7 @@ void Common::get_empty_occs() {
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 }
 
-void Common::remove_definable_by_irreg_gates() {
+void Minimize::remove_definable_by_irreg_gates() {
     assert(conf.irreg_gate_based);
     double my_time = cpuTime();
     uint32_t old_size = sampling_vars.size();
@@ -385,7 +386,7 @@ void Common::remove_definable_by_irreg_gates() {
         << " T: " << (cpuTime() - my_time));
 }
 
-void Common::remove_zero_assigned_literals(bool print) {
+void Minimize::remove_zero_assigned_literals(bool print) {
     seen.clear();
     seen.resize(solver->nVars(), 0);
 
@@ -406,7 +407,7 @@ void Common::remove_zero_assigned_literals(bool print) {
         << " new size: " << sampling_vars.size());
 }
 
-void Common::remove_eq_literals(bool print) {
+void Minimize::remove_eq_literals(bool print) {
     uint32_t orig_sampling_set_size = sampling_vars.size();
     for(auto x: sampling_vars) seen[x] = 1;
 

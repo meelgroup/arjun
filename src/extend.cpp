@@ -22,13 +22,16 @@
  THE SOFTWARE.
  */
 
-#include "common.h"
-#include "cryptominisat5/solvertypesmini.h"
+#include <cstdint>
+#include <iomanip>
+#include <map>
+
 #include "src/arjun.h"
 #include "src/time_mem.h"
 #include "extend.h"
-#include <cstdint>
-#include <map>
+#include "constants.h"
+#include "cryptominisat5/solvertypesmini.h"
+
 extern "C" {
 #include "mpicosat/mpicosat.h"
 }
@@ -142,7 +145,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
         unknown.push_back(i);
     }
 
-    sort_unknown(unknown);
+    sort_unknown(unknown, incidence);
     verb_print(1,"[arjun] Start unknown size: " << unknown.size());
     uint32_t sat = 0;
 
@@ -364,7 +367,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
         unknown.push_back(i);
     }
 
-    sort_unknown(unknown);
+    sort_unknown(unknown, incidence);
     verb_print(1,"[arjun-extend] Start unknown size: " << unknown.size());
 
     double my_time = cpuTime();
@@ -446,10 +449,6 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             << " Undef: " << ret_undef
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
-}
-
-template<class T> void Extend::sort_unknown(T& unknown) {
-    std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
 }
 
 void Extend::get_incidence() {
