@@ -75,7 +75,6 @@ private:
     vector<uint32_t> var_to_indic;
     vector<uint32_t> indic_to_var;
     uint32_t orig_num_vars;
-    vector<uint8_t> in_formula;
     set<uint32_t> sampl_set;
     vector<Lit> dont_elim;
 };
