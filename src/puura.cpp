@@ -316,7 +316,6 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     for (int i = 0; i < simp_conf.iter1; i++) solver->simplify(&dont_elim, &str);
 
     // Now doing Oracle
-    /* conditional_dontcare(); */
     string str2;
     if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify";
     else if (simp_conf.oracle_vivify) str2 = "oracle-vivif";
