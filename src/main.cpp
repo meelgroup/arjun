@@ -303,8 +303,8 @@ void set_config(ArjunNS::Arjun* arj) {
 void do_synthesis() {
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, ignore_sampling_set, indep_support_given);
+    arjun->only_backbone(cnf);
     if (do_unate) {
-        arjun->only_backbone(cnf);
         arjun->only_unate(cnf);
     }
 
