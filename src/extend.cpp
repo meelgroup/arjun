@@ -85,6 +85,7 @@ int lit_to_pl(const Lit l) {
 
 void Extend::unsat_define(SimplifiedCNF& cnf) {
     double start_round_time = cpuTime();
+    assert(cnf.sampl_vars_set);
     uint32_t start_size = cnf.sampl_vars.size();
     fill_solver(cnf);
     solver->set_verbosity(0);
@@ -335,7 +336,7 @@ void Extend::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var,
 }
 
 void Extend::extend_round(SimplifiedCNF& cnf) {
-    assert(cnf.opt_sampl_vars_set = true);
+    assert(cnf.opt_sampl_vars_given = true);
     double start_round_time = cpuTime();
     const uint32_t orig_size = cnf.opt_sampl_vars.size();
     fill_solver(cnf);
@@ -443,7 +444,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     }
     cnf.opt_sampl_vars.clear();
     cnf.opt_sampl_vars.insert(cnf.opt_sampl_vars.begin(), indep.begin(), indep.end());
-    cnf.opt_sampl_vars_set = true;
+    cnf.opt_sampl_vars_given = true;
 
     verb_print(1, "[arjun-extend] Extend finished "
             << " orig size: " << orig_size

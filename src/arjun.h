@@ -72,12 +72,12 @@ namespace ArjunNS {
         void add_red_clause(std::vector<CMSat::Lit>& cl) { red_clauses.push_back(cl); }
         bool get_sampl_vars_set() const { return sampl_vars_set; }
         bool sampl_vars_set = false;
-        bool opt_sampl_vars_set = false;
+        bool opt_sampl_vars_given = false;
         void set_sampl_vars(std::vector<uint32_t>& vars)
             { sampl_vars_set = true; sampl_vars = vars; }
         const auto& get_sampl_vars() const { return sampl_vars; }
         void set_opt_sampl_vars(std::vector<uint32_t>& vars)
-            { opt_sampl_vars_set = true; opt_sampl_vars = vars; }
+            { opt_sampl_vars_given = true; opt_sampl_vars = vars; }
 
         void set_multiplier_weight(mpz_class m) { multiplier_weight = m; }
         auto get_multiplier_weight() const { return multiplier_weight; }

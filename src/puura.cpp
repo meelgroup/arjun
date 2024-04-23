@@ -369,6 +369,7 @@ void Puura::run_sbva(SimplifiedCNF& cnf,
         int sbva_tiebreak)
 {
     if (sbva_steps == 0) return;
+    assert(cnf.opt_sampl_vars_given);
 
     auto my_time = cpuTime();
     verb_print(1,
@@ -412,12 +413,15 @@ void Puura::run_sbva(SimplifiedCNF& cnf,
         cl.push_back(Lit(std::abs(l)-1, l < 0));
     }
     assert(cl.empty() && "SBVA should have ended with a 0");
-    cnf.opt_sampl_vars.clear();
+
+    vector<uint32_t> tmp2;
     for(const auto& v: sbva_sampl_vars) {
         assert(v-1 < cnf.nvars);
-        cnf.opt_sampl_vars.push_back(v-1);
+        tmp2.push_back(v-1);
     }
+    cnf.set_sampl_vars(tmp2);
     assert(cnf.opt_sampl_vars.size() >= old_opt_sampl_vars_sz);
+
 
     verb_print(1,
            std::left << setw(35) << "[arjun-sbva] exited SBVA with"

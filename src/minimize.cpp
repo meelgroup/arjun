@@ -240,7 +240,7 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
     for(const auto& cl: cnf.clauses) solver->add_clause(cl);
     for(const auto& cl: cnf.red_clauses) solver->add_red_clause(cl);
     sampling_vars = cnf.sampl_vars;
-    if (cnf.opt_sampl_vars_set) {
+    if (cnf.opt_sampl_vars_given) {
         if (cnf.sampl_vars != cnf.opt_sampl_vars) {
             cout <<"ERROR: backwards does not support opt sampling set" << endl;
             exit(-1);
