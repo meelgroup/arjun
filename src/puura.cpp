@@ -203,7 +203,6 @@ SimplifiedCNF Puura::get_simplified_cnf(
     SimplifiedCNF scnf;
     vector<Lit> clause;
     bool is_xor, rhs;
-    scnf.sampl_vars = sampl_vars;
     scnf.weighted = solver->get_weighted();
 
     // IRRED clauses
@@ -220,8 +219,8 @@ SimplifiedCNF Puura::get_simplified_cnf(
     }
 #endif
 
-    scnf.opt_sampl_vars = solver->translate_sampl_set(orig_sampl_vars, false);
-    scnf.sampl_vars = solver->translate_sampl_set(scnf.sampl_vars, false);
+    scnf.set_sampl_vars(solver->translate_sampl_set(sampl_vars, false));
+    scnf.set_opt_sampl_vars(solver->translate_sampl_set(orig_sampl_vars, false));
     while(solver->get_next_constraint(clause, is_xor, rhs)) {
         assert(!is_xor); assert(rhs);
         scnf.clauses.push_back(clause);
@@ -282,15 +281,13 @@ void Puura::reverse_bce(SimplifiedCNF& cnf) {
 SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     const SimplifiedCNF& cnf,
     const SimpConf simp_conf,
-    const vector<uint32_t>& sampl_vars,
-    const vector<uint32_t>& empty_sampl_vars,
-    const vector<uint32_t>& orig_sampl_vars)
+    const vector<uint32_t>& empty_sampl_vars)
 {
     auto solver = fill_solver(cnf);
     verb_print(3, "Running "<< __PRETTY_FUNCTION__);
     solver->set_renumber(true);
     solver->set_scc(true);
-    setup_sampl_vars_dontelim(sampl_vars);
+    setup_sampl_vars_dontelim(cnf.sampl_vars);
 
     //Below works VERY WELL for: ProcessBean, pollard, track1_116.mcc2020_cnf
     //   and blasted_TR_b14_even3_linear.cnf.gz.no_w.cnf
@@ -341,7 +338,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->simplify(&dont_elim, &str);
 
     // Deal with empties
-    auto new_sampl_vars = sampl_vars;
+    auto new_sampl_vars = cnf.sampl_vars;
     auto new_empty_sampl_vars = empty_sampl_vars;
     solver->get_empties(new_sampl_vars, new_empty_sampl_vars);
     dont_elim.clear();
@@ -351,7 +348,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 
     // Return final one
     auto ret = get_simplified_cnf(
-            solver, new_sampl_vars, new_empty_sampl_vars, orig_sampl_vars);
+            solver, new_sampl_vars, new_empty_sampl_vars, cnf.sampl_vars);
     delete solver;
     return ret;
 }

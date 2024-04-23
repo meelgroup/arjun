@@ -123,9 +123,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::only_get_simplified_cnf(
     Puura puura(arjdata->conf);
     return puura.get_fully_simplified_renumbered_cnf(
             cnf, simp_conf,
-            cnf.sampl_vars,
-            vector<uint32_t>(),
-            cnf.sampl_vars);
+            vector<uint32_t>());
 }
 
 DLL_PUBLIC void Arjun::only_reverse_bce(SimplifiedCNF& cnf)
