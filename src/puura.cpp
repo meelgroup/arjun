@@ -195,11 +195,10 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     delete s;
 }
 
-SimplifiedCNF Puura::get_simplified_cnf(
+SimplifiedCNF Puura::get_cnf(
         SATSolver* solver,
         const vector<uint32_t>& sampl_vars,
-        const vector<uint32_t>& empty_sampl_vars,
-        const vector<uint32_t>& orig_sampl_vars) {
+        const vector<uint32_t>& empty_sampl_vars) {
     SimplifiedCNF scnf;
     vector<Lit> clause;
     bool is_xor, rhs;
@@ -220,7 +219,7 @@ SimplifiedCNF Puura::get_simplified_cnf(
 #endif
 
     scnf.set_sampl_vars(solver->translate_sampl_set(sampl_vars, false));
-    scnf.set_opt_sampl_vars(solver->translate_sampl_set(orig_sampl_vars, false));
+    scnf.set_opt_sampl_vars(solver->translate_sampl_set(sampl_vars, false));
     while(solver->get_next_constraint(clause, is_xor, rhs)) {
         assert(!is_xor); assert(rhs);
         scnf.clauses.push_back(clause);
@@ -297,6 +296,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->set_timeout_all_calls(100);
     solver->set_weaken_time_limitM(2000);
     solver->set_oracle_get_learnts(simp_conf.oracle_vivify_get_learnts);
+    solver->set_picosat_gate_limitK(400);
     solver->set_oracle_removed_is_learnt(1);
     if (!simp_conf.appmc) {
         solver->set_min_bva_gain(simp_conf.bve_grow_iter1);
@@ -347,8 +347,8 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->simplify(&dont_elim, &str);
 
     // Return final one
-    auto ret = get_simplified_cnf(
-            solver, new_sampl_vars, new_empty_sampl_vars, cnf.sampl_vars);
+    auto ret = get_cnf(
+            solver, new_sampl_vars, new_empty_sampl_vars);
     delete solver;
     return ret;
 }
@@ -416,7 +416,7 @@ void Puura::run_sbva(SimplifiedCNF& cnf,
         assert(v-1 < cnf.nvars);
         tmp2.push_back(v-1);
     }
-    cnf.set_sampl_vars(tmp2);
+    cnf.set_opt_sampl_vars(tmp2);
     assert(cnf.opt_sampl_vars.size() >= old_opt_sampl_vars_sz);
 
 

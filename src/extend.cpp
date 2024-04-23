@@ -442,9 +442,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
         iter++;
 
     }
-    cnf.opt_sampl_vars.clear();
-    cnf.opt_sampl_vars.insert(cnf.opt_sampl_vars.begin(), indep.begin(), indep.end());
-    cnf.opt_sampl_vars_given = true;
+    cnf.set_opt_sampl_vars(indep);
 
     verb_print(1, "[arjun-extend] Extend finished "
             << " orig size: " << orig_size

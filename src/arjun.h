@@ -78,6 +78,10 @@ namespace ArjunNS {
         const auto& get_sampl_vars() const { return sampl_vars; }
         void set_opt_sampl_vars(const std::vector<uint32_t>& vars)
             { opt_sampl_vars_given = true; opt_sampl_vars = vars; }
+        void set_opt_sampl_vars(const std::set<uint32_t>& vars)
+            { opt_sampl_vars_given = true;
+                opt_sampl_vars.clear();
+                opt_sampl_vars.insert(opt_sampl_vars.begin(), vars.begin(), vars.end()); }
 
         void set_multiplier_weight(mpz_class m) { multiplier_weight = m; }
         auto get_multiplier_weight() const { return multiplier_weight; }
