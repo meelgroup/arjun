@@ -296,8 +296,6 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->set_timeout_all_calls(100);
     solver->set_weaken_time_limitM(2000);
     solver->set_oracle_get_learnts(simp_conf.oracle_vivify_get_learnts);
-    solver->set_picosat_gate_limitK(400);
-    solver->set_picosat_confl_limit(1000);
     solver->set_oracle_removed_is_learnt(1);
     if (!simp_conf.appmc) {
         solver->set_min_bva_gain(simp_conf.bve_grow_iter1);
@@ -327,7 +325,13 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
         solver->set_varelim_check_resolvent_subs(true);
     }
     solver->set_max_red_linkin_size(20);
-    for (int i = 0; i < simp_conf.iter2; i++) solver->simplify(&dont_elim, &str);
+    for (int i = 0; i < simp_conf.iter2; i++) {
+        if (i >= 1) {
+            solver->set_picosat_gate_limitK(400);
+            solver->set_picosat_confl_limit(1000);
+        }
+        solver->simplify(&dont_elim, &str);
+    }
 
     // Final cleanup -- renumbering, disconnected component removing, etc.
     str.clear();
