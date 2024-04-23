@@ -230,7 +230,7 @@ void Arjun::elim_to_file(SimplifiedCNF& cnf, bool indep_support_given,
         for(uint32_t i = 0; i < cnf.nvars; i++) all_vars.push_back(i);
         cnf.set_opt_sampl_vars(all_vars);
     }
-    if (do_extend_indep)
+    if (do_extend_indep && cnf.opt_sampl_vars.size() != cnf.nvars)
         only_extend_sampl_vars(cnf);
     if (sbva_steps)
         only_run_sbva(cnf, sbva_steps,
