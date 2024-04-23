@@ -335,6 +335,7 @@ void Extend::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var,
 }
 
 void Extend::extend_round(SimplifiedCNF& cnf) {
+    assert(cnf.opt_sampl_vars_set = true);
     double start_round_time = cpuTime();
     const uint32_t orig_size = cnf.opt_sampl_vars.size();
     fill_solver(cnf);
@@ -442,6 +443,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     }
     cnf.opt_sampl_vars.clear();
     cnf.opt_sampl_vars.insert(cnf.opt_sampl_vars.begin(), indep.begin(), indep.end());
+    cnf.opt_sampl_vars_set = true;
 
     verb_print(1, "[arjun-extend] Extend finished "
             << " orig size: " << orig_size
