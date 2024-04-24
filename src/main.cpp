@@ -304,18 +304,16 @@ void do_synthesis() {
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, ignore_sampling_set, indep_support_given);
     arjun->only_backbone(cnf);
-    if (do_unate) {
-        arjun->only_unate(cnf);
-    }
+    if (do_unate) arjun->only_unate(cnf);
 
     // First we extend
     arjun->only_unsat_define(cnf);
-
 
     // Then we BVE
     simp_conf.bve_too_large_resolvent = -1;
     cnf = arjun->only_get_simplified_cnf(cnf, simp_conf);
     if (do_revbce) arjun->only_reverse_bce(cnf);
+    if (do_minim_indep) arjun->only_run_minimize_indep_synth(cnf);
 
     write_simpcnf(cnf, elimtofile, false);
 }

@@ -67,7 +67,7 @@ void Minimize::print_orig_sampling_set()
     cout << "c [arjun] Orig size         : " << sampling_vars.size() << endl;
 }
 
-void Minimize::add_fixed_clauses()
+void Minimize::add_fixed_clauses(bool all)
 {
     double fix_cl_time = cpuTime();
     dont_elim.clear();
@@ -77,8 +77,12 @@ void Minimize::add_fixed_clauses()
     indic_to_var.resize(solver->nVars(), var_Undef);
 
     //If indicator variable is TRUE, they are FORCED EQUAL
+    set<uint32_t> add_indic_for;
+    add_indic_for.insert(sampling_vars.begin(), sampling_vars.end());
+    if (all) for(uint32_t i = 0; i < orig_num_vars; i++) add_indic_for.insert(i);
+
     vector<Lit> tmp;
-    for(uint32_t var: sampling_vars) {
+    for(uint32_t var: add_indic_for) {
         solver->new_var();
         uint32_t this_indic = solver->nVars()-1;
         //torem_orig.push_back(Lit(this_indic, false));
@@ -233,8 +237,7 @@ bool Minimize::preproc_and_duplicate(const ArjunNS::SimplifiedCNF& orig_cnf) {
     return true;
 }
 
-void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
-    double start_time = cpuTime();
+void Minimize::fill_solver(const ArjunNS::SimplifiedCNF& cnf) {
     solver->set_verbosity(conf.verb);
     solver->new_vars(cnf.nvars);
     for(const auto& cl: cnf.clauses) solver->add_clause(cl);
@@ -247,7 +250,22 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
         }
     }
     assert(!cnf.weighted);
+}
 
+
+void Minimize::run_minimize_for_synth(ArjunNS::SimplifiedCNF& cnf) {
+    fill_solver(cnf);
+    init();
+    get_incidence();
+    duplicate_problem(cnf);
+    add_fixed_clauses(true);
+    backward_round_synth();
+    cnf.sampl_vars = sampling_vars;
+}
+
+void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
+    double start_time = cpuTime();
+    fill_solver(cnf);
     init();
     if (!preproc_and_duplicate(cnf)) goto end;
     assert(!cnf.weighted);

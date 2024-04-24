@@ -198,7 +198,7 @@ void Minimize::backward_round() {
         assert(test_var < orig_num_vars);
         assert(unknown_set[test_var] == 1);
         unknown_set[test_var] = 0;
-//         cout << "Testing: " << test_var << endl;
+        //cout << "Testing: " << test_var << endl;
 
         //Assumption filling
         assert(test_var != var_Undef);
@@ -341,6 +341,145 @@ void Minimize::backward_round() {
 
     verb_print(1, COLRED "[arjun] backward round finished. U: " <<
             " I: " << sampling_vars.size() << " T: "
+        << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
+    if (conf.verb >= 2) solver->print_stats();
+}
+
+void Minimize::backward_round_synth() {
+    for(const auto& x: seen) assert(x == 0);
+    double start_round_time = cpuTime();
+    vector<uint32_t> indep;
+
+    //Initially, all of samping_set is unknown
+    vector<uint32_t> unknown;
+    vector<char> unknown_set;
+    unknown_set.resize(orig_num_vars, 0);
+    set<uint32_t> dep;
+    set<uint32_t> curr_sampl_set;
+    for(const auto& x: sampling_vars) curr_sampl_set.insert(x);
+    for(uint32_t x = 0; x < orig_num_vars; x++) {
+        if (curr_sampl_set.count(x)) {
+            solver->add_clause({Lit(var_to_indic[x], false)});
+            dep.insert(x);
+            continue;
+        }
+        unknown.push_back(x);
+        unknown_set[x] = 1;
+    }
+    cout << "dep size: " << dep.size() << endl;
+    sort_unknown(unknown, incidence);
+    if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
+    print_sorted_unknown(unknown);
+    verb_print(1, "[arjun] Start unknown size: " << unknown.size());
+    solver->set_verbosity(0);
+
+    vector<Lit> assumptions;
+    bool quick_pop_ok = false;
+    uint32_t indic_var = var_Undef;
+    uint32_t ret_true = 0;
+    uint32_t ret_false = 0;
+    uint32_t ret_undef = 0;
+    while(true) {
+        uint32_t test_var = var_Undef;
+        if (quick_pop_ok) {
+            //Remove 2 last
+            assumptions.pop_back();
+            assumptions.pop_back();
+
+            //No more left, try again with full
+            if (assumptions.empty()) {
+                verb_print(5, "[arjun] No more left, try again with full");
+                break;
+            }
+
+            indic_var = assumptions[assumptions.size()-1].var();
+            assumptions.pop_back();
+            assert(indic_var < indic_to_var.size());
+            test_var = indic_to_var[indic_var];
+            assert(test_var != var_Undef);
+            assert(test_var < orig_num_vars);
+
+            //something is messed up
+            if (!unknown_set[test_var]) {
+                quick_pop_ok = false;
+                continue;
+            }
+            uint32_t last_unkn = unknown[unknown.size()-1];
+            assert(last_unkn == test_var);
+            unknown.pop_back();
+        } else {
+            while(!unknown.empty()) {
+                uint32_t var = unknown[unknown.size()-1];
+                if (unknown_set[var]) {
+                    test_var = var;
+                    unknown.pop_back();
+                    break;
+                } else {
+                    unknown.pop_back();
+                }
+            }
+
+            if (test_var == var_Undef) {
+                //we are done, backward is finished
+                verb_print(5, "[arjun] we are done, backward is finished");
+                break;
+            }
+            indic_var = var_to_indic[test_var];
+        }
+        assert(test_var < orig_num_vars);
+        assert(unknown_set[test_var] == 1);
+        unknown_set[test_var] = 0;
+        cout << "Testing: " << test_var << endl;
+
+        //Assumption filling
+        assert(test_var != var_Undef);
+        if (!quick_pop_ok) {
+            fill_assumptions_backward(assumptions, unknown, unknown_set, indep);
+        }
+        assumptions.push_back(Lit(test_var, false));
+        assumptions.push_back(Lit(test_var + orig_num_vars, true));
+
+        solver->set_no_confl_needed();
+
+        lbool ret = l_Undef;
+        solver->set_max_confl(conf.backw_max_confl);
+        ret = solver->solve(&assumptions);
+
+        if (ret == l_False) {
+            ret_false++;
+            verb_print(5, "[arjun] backw solve(): False");
+        } else if (ret == l_True) {
+            ret_true++;
+            verb_print(5, "[arjun] backw solve(): True");
+        } else if (ret == l_Undef) {
+            verb_print(5, "[arjun] backw solve(): Undef");
+            ret_undef++;
+        }
+
+        assert(unknown_set[test_var] == 0);
+        if (ret == l_Undef) {
+            //Timed out, we'll treat is as unknown
+            quick_pop_ok = false;
+            assert(test_var < orig_num_vars);
+            indep.push_back(test_var);
+        } else if (ret == l_True) {
+            //Independent
+            quick_pop_ok = false;
+            indep.push_back(test_var);
+        } else if (ret == l_False) {
+            //not independent
+            //i.e. given that all in indep+unkown is equivalent, it's not possible that a1 != b1
+            quick_pop_ok = true;
+            dep.insert(test_var);
+        }
+    }
+
+    cout << "dep size: " << dep.size() << endl;
+    sampling_vars.clear();
+    sampling_vars.insert(sampling_vars.begin(), dep.begin(), dep.end());
+
+    verb_print(1, COLRED "[arjun] backward round finished. T: " << ret_true << " U: " << ret_undef
+            << " F: " << ret_false << " I: " << sampling_vars.size() << " T: "
         << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
 }

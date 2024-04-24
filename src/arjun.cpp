@@ -22,7 +22,6 @@
  THE SOFTWARE.
  */
 
-#include <utility>
 #include <limits>
 #include <sbva/sbva.h>
 
@@ -35,7 +34,6 @@
 #include "time_mem.h"
 #include "constants.h"
 
-using std::pair;
 using std::numeric_limits;
 using namespace ArjunInt;
 
@@ -104,6 +102,11 @@ DLL_PUBLIC std::string Arjun::get_compilation_env()
 DLL_PUBLIC void Arjun::only_run_minimize_indep(SimplifiedCNF& cnf) {
     Minimize common(arjdata->conf);
     common.run_minimize_indep(cnf);
+}
+
+DLL_PUBLIC void Arjun::only_run_minimize_indep_synth(SimplifiedCNF& cnf) {
+    Minimize common(arjdata->conf);
+    common.run_minimize_for_synth(cnf);
 }
 
 DLL_PUBLIC void Arjun::only_unsat_define(SimplifiedCNF& cnf) {

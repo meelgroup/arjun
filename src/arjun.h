@@ -168,6 +168,7 @@ namespace ArjunNS {
 
         // Perform indep set calculation
         void only_run_minimize_indep(SimplifiedCNF& cnf);
+        void only_run_minimize_indep_synth(SimplifiedCNF& cnf);
         void only_extend_sampl_vars(SimplifiedCNF& cnf);
         void only_unsat_define(SimplifiedCNF& cnf);
         void only_unate(SimplifiedCNF& cnf);

@@ -28,13 +28,9 @@
 #include "arjun.h"
 #include <vector>
 #include <iostream>
-#include <iomanip>
-#include <random>
-#include <algorithm>
 #include <map>
 #include <set>
 #include <vector>
-#include <sstream>
 #include <string>
 #ifdef CMS_LOCAL_BUILD
 #include "cryptominisat.h"
@@ -62,6 +58,7 @@ struct Minimize
     ~Minimize() { delete solver; }
 
     void run_minimize_indep(ArjunNS::SimplifiedCNF& cnf);
+    void run_minimize_for_synth(ArjunNS::SimplifiedCNF& cnf);
 
     const Config conf;
     CMSat::SATSolver* solver = nullptr;
@@ -88,7 +85,7 @@ struct Minimize
         const vector<uint32_t>& indep
     );
     bool preproc_and_duplicate(const ArjunNS::SimplifiedCNF& orig_cnf);
-    void add_fixed_clauses();
+    void add_fixed_clauses(bool all = false);
     void print_orig_sampling_set();
     void start_with_clean_sampl_vars();
     void duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf);
@@ -117,7 +114,9 @@ struct Minimize
         vector<uint32_t>& unknown,
         const vector<char>& unknown_set,
         const vector<uint32_t>& indep);
+    void fill_solver(const ArjunNS::SimplifiedCNF& cnf);
     void backward_round();
+    void backward_round_synth();
     void order_by_file(const string& fname, vector<uint32_t>& unknown);
     void print_sorted_unknown(const vector<uint32_t>& unknown) const;
 };
