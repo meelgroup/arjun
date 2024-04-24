@@ -413,7 +413,7 @@ void Minimize::remove_eq_literals() {
     for(auto x: sampling_vars) seen[x] = 1;
     do {
         go_again = false;
-        std::string s("must-scc-vrepl, clean-cls");
+        std::string s("must-scc-vrepl, clean-cls, sub-impl");
         solver->simplify(nullptr, &s);
 
         // [ replaced, replaced_with ]
