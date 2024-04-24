@@ -24,6 +24,7 @@
 
 #include "cryptominisat5/cryptominisat.h"
 #include <cstdint>
+#include <cwchar>
 #include <vector>
 #include <iostream>
 #include <iomanip>
@@ -46,7 +47,7 @@ using std::string;
 
 
 Puura::Puura(const Config& _conf) : conf(_conf) {}
-Puura::~Puura() { }
+Puura::~Puura() = default;
 
 SATSolver* Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
     double my_time = cpuTime();

@@ -321,7 +321,7 @@ void do_synthesis() {
 void do_minimize() {
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, ignore_sampling_set, indep_support_given);
-
+    arjun->only_backbone(cnf);
     if (do_minim_indep) {
         const auto orig_sampl_vars = cnf.sampl_vars;
         Arjun arj2;

@@ -49,8 +49,8 @@ bool Minimize::simplify() {
     double my_time = cpuTime();
 
     if (conf.probe_based && !probe_all()) return false;
-    remove_zero_assigned_literals();
     remove_eq_literals();
+    remove_zero_assigned_literals();
     get_empty_occs();
     if (conf.bve_pre_simplify) {
         verb_print(1, "[arjun-simp] CMS::simplify() with no BVE, intree probe...");
@@ -76,14 +76,12 @@ bool Minimize::simplify() {
             use_gates) remove_definable_by_gates();
     if (conf.irreg_gate_based && use_gates) remove_definable_by_irreg_gates();
 
-    // Find at least one solution (so it's not UNSAT) within some timeout
-    solver->set_verbosity(0);
-    solver->set_max_confl(1000);
-    solver->set_verbosity(std::max<int>(conf.verb-2, 0));
-
-    if (conf.probe_based && !probe_all()) return false;
-    remove_zero_assigned_literals();
     remove_eq_literals();
+    remove_zero_assigned_literals();
+    get_empty_occs();
+    if (conf.probe_based && !probe_all()) return false;
+    remove_eq_literals();
+    remove_zero_assigned_literals();
     get_empty_occs();
     if (conf.irreg_gate_based && use_gates) remove_definable_by_irreg_gates();
 
@@ -112,6 +110,8 @@ bool Minimize::probe_all()
     double my_time = cpuTime();
     order_sampl_set_for_simp();
     auto old_size = sampling_vars.size();
+    string s("clean-cls, must-scc-vrepl");
+    if (solver->simplify(nullptr, &s) == l_False) return false;
 
     verb_print(1, "[arjun-simp] probing all sampling variables");
     for(auto v: sampling_vars) {
@@ -119,11 +119,11 @@ bool Minimize::probe_all()
         Lit l(v, false);
         if(solver->probe(l, min_props) == l_False) return false;
     }
-    string s("must-scc-vrepl");
+    s = "must-scc-vrepl";
     if (solver->simplify(nullptr, &s) == l_False) return false;
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
     remove_zero_assigned_literals(true);
-    remove_eq_literals(true);
+    remove_eq_literals();
 
     verb_print(1, "[arjun-simp] probe"
         << " removed: " << (old_size-sampling_vars.size())
@@ -407,17 +407,24 @@ void Minimize::remove_zero_assigned_literals(bool print) {
         << " new size: " << sampling_vars.size());
 }
 
-void Minimize::remove_eq_literals(bool print) {
+void Minimize::remove_eq_literals() {
+    bool go_again;
     uint32_t orig_sampling_set_size = sampling_vars.size();
     for(auto x: sampling_vars) seen[x] = 1;
+    do {
+        go_again = false;
+        std::string s("must-scc-vrepl, clean-cls");
+        solver->simplify(nullptr, &s);
 
-    // [ replaced, replaced_with ]
-    const auto eq_lits = solver->get_all_binary_xors();
-    for(auto mypair: eq_lits) {
-        if (seen[mypair.second.var()] == 1 && seen[mypair.first.var()] == 1) {
-            seen[mypair.first.var()] = 0;
+        // [ replaced, replaced_with ]
+        const auto eq_lits = solver->get_all_binary_xors();
+        for(auto mypair: eq_lits) {
+            if (seen[mypair.second.var()] == 1 && seen[mypair.first.var()] == 1) {
+                seen[mypair.first.var()] = 0;
+                go_again = true;
+            }
         }
-    }
+    } while(go_again);
 
     sampling_vars.clear();
     for(uint32_t i = 0; i < seen.size() && i < orig_num_vars; i++) {
@@ -425,7 +432,7 @@ void Minimize::remove_eq_literals(bool print) {
         seen[i] = 0;
     }
 
-    if (print && conf.verb) {
+    if (conf.verb) {
         cout << "c [arjun-simp] Removed eq lits: "
         << (orig_sampling_set_size - sampling_vars.size())
         << " new size: " << sampling_vars.size()

@@ -219,7 +219,6 @@ void Minimize::init() {
 
 bool Minimize::preproc_and_duplicate(const ArjunNS::SimplifiedCNF& orig_cnf) {
     assert(!already_duplicated);
-    get_incidence();
     if (conf.simp && !simplify()) return false;
     get_incidence();
     duplicate_problem(orig_cnf);
