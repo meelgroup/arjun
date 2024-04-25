@@ -429,7 +429,7 @@ void Minimize::backward_round_synth() {
         assert(test_var < orig_num_vars);
         assert(unknown_set[test_var] == 1);
         unknown_set[test_var] = 0;
-        cout << "Testing: " << test_var << endl;
+        /* cout << "Testing: " << test_var << endl; */
 
         //Assumption filling
         assert(test_var != var_Undef);

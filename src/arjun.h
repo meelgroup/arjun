@@ -42,7 +42,7 @@ namespace ArjunNS {
         int iter1 = 2;
         int iter2 = 2;
         int bve_grow_iter1 = 0;
-        int bve_grow_iter2 = 0;
+        int bve_grow_iter2 = 6;
         bool appmc = false;
         int bve_too_large_resolvent = -1;
     };
