@@ -159,6 +159,7 @@ namespace ArjunNS {
         const std::vector<uint32_t>& get_empty_sampl_vars() const;
         bool sampling_vars_set = false;
         bool get_sampl_vars_set() const { return sampling_vars_set; }
+        const std::vector<uint32_t>& get_sampl_vars() const;
 
         //Get clauses
         void start_getting_constraints(

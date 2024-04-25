@@ -348,6 +348,10 @@ DLL_PUBLIC const std::vector<uint32_t>& Arjun::get_set_sampling_vars() const {
     return arjdata->common.set_sampling_vars;
 }
 
+DLL_PUBLIC const std::vector<uint32_t>& Arjun::get_sampl_vars() const {
+    return arjdata->common.sampling_set;
+}
+
 DLL_PUBLIC void Arjun::set_multiplier_weight(const mpz_class mult) {
     arjdata->common.solver->set_multiplier_weight(mult);
 }
