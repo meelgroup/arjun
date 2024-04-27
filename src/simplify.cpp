@@ -360,7 +360,7 @@ void Minimize::get_empty_occs() {
     uint32_t old_size = sampling_vars.size();
 
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
-    solver->get_empties(sampling_vars, empty_sampling_vars);
+    solver->clean_sampl_get_empties(sampling_vars, empty_sampling_vars);
 
     verb_print(1, "[arjun-simp] get-empties"
         << " removed: " << (old_size-sampling_vars.size())

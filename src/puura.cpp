@@ -346,7 +346,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     // Deal with empties
     auto new_sampl_vars = cnf.sampl_vars;
     auto new_empty_sampl_vars = empty_sampl_vars;
-    solver->get_empties(new_sampl_vars, new_empty_sampl_vars);
+    solver->clean_sampl_get_empties(new_sampl_vars, new_empty_sampl_vars);
     dont_elim.clear();
     for(uint32_t v: new_sampl_vars) dont_elim.push_back(Lit(v, false));
     str = "occ-bve-empty, must-renumber";
