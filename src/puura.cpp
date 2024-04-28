@@ -102,7 +102,7 @@ SATSolver* Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
     // At least ONE clause must be FALSE
     s->add_clause(zs);
     s->simplify();
-    cout << "c [puura] Built up the solver. T: " << (cpuTime() - my_time) << endl;
+    verb_print(1, "[puura] Built up the solver. T: " << (cpuTime() - my_time));
     return s;
 }
 

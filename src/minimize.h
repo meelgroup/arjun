@@ -86,7 +86,6 @@ struct Minimize
     );
     bool preproc_and_duplicate(const ArjunNS::SimplifiedCNF& orig_cnf);
     void add_fixed_clauses(bool all = false);
-    void print_orig_sampling_set();
     void start_with_clean_sampl_vars();
     void duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf);
     void get_incidence();

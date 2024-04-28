@@ -53,20 +53,6 @@ void Minimize::start_with_clean_sampl_vars() {
     }
 }
 
-void Minimize::print_orig_sampling_set()
-{
-    if (sampling_vars.size() > 100) {
-        cout
-        << "c [arjun] Sampling var set contains over 100 variables, not displaying"
-        << endl;
-    } else {
-        cout << "c [arjun] Sampling set: ";
-        for (auto v: sampling_vars) cout << v+1 << ", ";
-        cout << endl;
-    }
-    cout << "c [arjun] Orig size         : " << sampling_vars.size() << endl;
-}
-
 void Minimize::add_fixed_clauses(bool all)
 {
     double fix_cl_time = cpuTime();
@@ -110,9 +96,7 @@ void Minimize::add_fixed_clauses(bool all)
         dont_elim.push_back(Lit(var, false));
         dont_elim.push_back(Lit(var+orig_num_vars, false));
     }
-    if (conf.verb) {
-        cout << "c [arjun] Adding fixed clauses time: " << (cpuTime()-fix_cl_time) << endl;
-    }
+    verb_print(1, "[arjun] Adding fixed clauses time: " << (cpuTime()-fix_cl_time));
 }
 
 void Minimize::duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf) {
@@ -120,7 +104,7 @@ void Minimize::duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf) {
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
     //Duplicate the already simplified problem
-    if (conf.verb) cout << "c [arjun] Duplicating CNF..." << endl;
+    verb_print(1, "[arjun] Duplicating CNF...");
     double dupl_time = cpuTime();
 
     solver->new_vars(orig_num_vars);
@@ -129,7 +113,7 @@ void Minimize::duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf) {
         for(auto& l: cl2) l = Lit(l.var()+orig_num_vars, l.sign());
         solver->add_clause(cl2);
     }
-    if (conf.verb) cout << "c [arjun] Duplicated CNF. T: " << (cpuTime() - dupl_time) << endl;
+    verb_print(1, "[arjun] Duplicated CNF. T: " << (cpuTime() - dupl_time));
     already_duplicated = true;
 }
 
@@ -170,9 +154,7 @@ bool Minimize:: simplify_bve_only() {
         dont_elim.push_back(Lit(var+orig_num_vars, false));
     }
     double simp_bve_time = cpuTime();
-    if (conf.verb) {
-        cout << "c [arjun] CMS::simplify() with *only* BVE..." << endl;
-    }
+    verb_print(1, "[arjun] CMS::simplify() with *only* BVE...");
 
     if (conf.simp) {
         solver->set_bve(1);

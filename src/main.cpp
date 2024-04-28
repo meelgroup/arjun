@@ -259,20 +259,15 @@ void add_arjun_options()
 }
 
 void print_final_sampl_set(SimplifiedCNF& cnf, const vector<uint32_t>& orig_sampl_vars) {
-    if (cnf.sampl_vars.size() < 100) {
-        cout << "c p show ";
-        for(const uint32_t s: cnf.sampl_vars) cout << s+1 << " ";
-        cout << "0" << endl;
-    } else {
-        cout << "c not printing indep set, it's more than 100 elements" << endl;
-    }
+    cout << "c o c p show ";
+    for(const uint32_t s: cnf.sampl_vars) cout << s+1 << " ";
+    cout << "0" << endl;
 
     cout
-    << "c [arjun] final set size: " << std::setw(7) << cnf.sampl_vars.size()
+    << "c o [arjun] final set size: " << std::setw(7) << cnf.sampl_vars.size()
     << " percent of original: " << std::setw(6) << std::setprecision(4)
     << stats_line_percent(cnf.sampl_vars.size(), orig_sampl_vars.size()) << " %" << endl
-
-    << "c [arjun] multiplier: " << std::setw(7) << cnf.multiplier_weight << endl;
+    << "c o [arjun] multiplier: " << std::setw(7) << cnf.multiplier_weight << endl;
 }
 
 void set_config(ArjunNS::Arjun* arj) {
@@ -287,7 +282,7 @@ void set_config(ArjunNS::Arjun* arj) {
       arj->set_xor_gates_based(conf.xor_gates_based);
       arj->set_irreg_gate_based(conf.irreg_gate_based);
     } else {
-      cout << "c NOTE: all gates are turned off due to `--gates 0`" << endl;
+      cout << "c o NOTE: all gates are turned off due to `--gates 0`" << endl;
       arj->set_or_gate_based   (0);
       arj->set_ite_gate_based  (0);
       arj->set_xor_gates_based (0);
@@ -336,7 +331,7 @@ void do_minimize() {
             sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 
         write_simpcnf(cnf, elimtofile, redundant_cls);
-        cout << "c [arjun] dumped simplified problem to '" << elimtofile << "'" << endl;
+        cout << "c o [arjun] dumped simplified problem to '" << elimtofile << "'" << endl;
     }
 }
 
@@ -371,14 +366,14 @@ int main(int argc, char** argv) {
     }
 
     if (program["version"] == true) {
-        cout << "c [arjun] SHA revision: " << arjun->get_version_info() << endl;
-        cout << "c [arjun] Compilation environment: " << arjun->get_compilation_env() << endl;
+        cout << "c o [arjun] SHA revision: " << arjun->get_version_info() << endl;
+        cout << "c o [arjun] Compilation environment: " << arjun->get_compilation_env() << endl;
         std::exit(0);
     }
 
-    cout << "c Arjun Version: " << arjun->get_version_info() << endl;
+    cout << "c o Arjun Version: " << arjun->get_version_info() << endl;
     cout << arjun->get_solver_version_info();
-    cout << "c executed with command line: " << command_line << endl;
+    cout << "c o executed with command line: " << command_line << endl;
 
     start_time = cpuTime();
     set_config(arjun);
@@ -404,7 +399,7 @@ int main(int argc, char** argv) {
     } else {
         do_minimize();
     }
-    cout << "c [arjun] All done. T: " << std::setprecision(2) << (cpuTime() - start_time) << endl;
+    cout << "c o [arjun] All done. T: " << std::setprecision(2) << (cpuTime() - start_time) << endl;
 
     delete arjun;
     return 0;

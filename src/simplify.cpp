@@ -432,10 +432,8 @@ void Minimize::remove_eq_literals() {
         seen[i] = 0;
     }
 
-    if (conf.verb) {
-        cout << "c [arjun-simp] Removed eq lits: "
+
+    verb_print(1, "[arjun-simp] Removed eq lits: "
         << (orig_sampling_set_size - sampling_vars.size())
-        << " new size: " << sampling_vars.size()
-        << endl;
-    }
+        << " new size: " << sampling_vars.size());
 }

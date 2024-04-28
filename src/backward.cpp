@@ -93,9 +93,9 @@ void Minimize::order_by_file(const string& fname, vector<uint32_t>& unknown) {
 void Minimize::print_sorted_unknown(const vector<uint32_t>& unknown) const
 {
     if (conf.verb >= 4) {
-        cout << "Sorted output: "<< endl;
+        cout << "c o Sorted output: "<< endl;
         for (const auto& v: unknown) {
-            cout << "c var: " << v << " occ: " << incidence[v]
+            cout << "c o var: " << v << " occ: " << incidence[v]
             //<< " prop-inc: " << std::setw(6) << incidence_probing[v]
             << endl;
         }
