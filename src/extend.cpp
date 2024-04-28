@@ -449,7 +449,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             << " final size: " << cnf.opt_sampl_vars.size()
             << " Undef: " << ret_undef
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
-    if (conf.verb >= 2) solver->print_stats();
+    if (conf.verb >= 4) solver->print_stats();
 }
 
 void Extend::get_incidence() {
