@@ -386,11 +386,8 @@ void Puura::run_sbva(SimplifiedCNF& cnf,
     sbva_conf.matched_lits_cutoff = sbva_lits_cutoff;
     sbva_conf.preserve_model_cnt = 1;
     if (conf.verb >= 3) sbva_conf.verbosity = 1;
-    uint32_t old_opt_sampl_vars_sz = cnf.opt_sampl_vars.size();
-    set<uint32_t> sbva_sampl_vars;
-    for(const auto& v: cnf.opt_sampl_vars) sbva_sampl_vars.insert(v+1);
     SBVA::CNF sbva;
-    sbva.init_cnf(cnf.nvars, sbva_conf, &sbva_sampl_vars);
+    sbva.init_cnf(cnf.nvars, sbva_conf);
     vector<int> tmp;
     for(const auto& cl: cnf.clauses) {
         tmp.clear();
@@ -401,7 +398,7 @@ void Puura::run_sbva(SimplifiedCNF& cnf,
     assert(sbva_tiebreak == 0 || sbva_tiebreak == 1);
     sbva.run(sbva_tiebreak == 1 ? SBVA::Tiebreak::ThreeHop : SBVA::Tiebreak::None);
     uint32_t ncls;
-    auto ret = sbva.get_cnf(cnf.nvars, ncls, &sbva_sampl_vars);
+    auto ret = sbva.get_cnf(cnf.nvars, ncls);
 
     cnf.clauses.clear();
     vector<Lit> cl;
@@ -417,19 +414,9 @@ void Puura::run_sbva(SimplifiedCNF& cnf,
     }
     assert(cl.empty() && "SBVA should have ended with a 0");
 
-    vector<uint32_t> tmp2;
-    for(const auto& v: sbva_sampl_vars) {
-        assert(v-1 < cnf.nvars);
-        tmp2.push_back(v-1);
-    }
-    cnf.set_opt_sampl_vars(tmp2);
-    assert(cnf.opt_sampl_vars.size() >= old_opt_sampl_vars_sz);
-
-
     verb_print(1,
            std::left << setw(35) << "[arjun-sbva] exited SBVA with"
-           << " vars: " << setw(7) << cnf.nvars << setw(8) << " cls: " << cnf.clauses.size()
-           << " opt sampl: " << cnf.opt_sampl_vars.size());
+           << " vars: " << setw(7) << cnf.nvars << setw(8) << " cls: " << cnf.clauses.size());
     verb_print(1, "[arjun-sbva] steps remainK: " << std::setprecision(2) << std::fixed
            << (double)sbva_conf.steps/1000.0
            << " T-out: " << (sbva_conf.steps <= 0 ? "Yes" : "No")
