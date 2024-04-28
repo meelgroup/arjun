@@ -50,14 +50,14 @@ using std::setw;
 #define verb_print(a, x) \
     do { \
         if (conf.verb >= a) {\
-            std::cout << COLDEF << "c " << x << COLDEF << std::endl;}\
+            std::cout << "c o " << COLDEF << x << COLDEF << std::endl;}\
     } while (0)
 
 
 #define verb_print2(a, x) \
     do { \
         if (arjdata->conf.verb >= a) {\
-            std::cout << COLDEF << "c " << x << COLDEF << std::endl;}\
+            std::cout << "c o " << COLDEF << x << COLDEF << std::endl;}\
     } while (0)
 
 #if defined(_MSC_VER)
