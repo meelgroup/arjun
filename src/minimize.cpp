@@ -136,6 +136,7 @@ void Minimize::set_up_solver()
     assert(solver == nullptr);
     solver = new SATSolver;
     solver->set_up_for_arjun();
+    solver->set_prefix("c o ");
     solver->set_renumber(0);
     solver->set_bve(0);
     solver->set_verbosity(std::max(conf.verb-2, 0));

@@ -56,6 +56,7 @@ SATSolver* Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
     SATSolver* s = new SATSolver;
     orig_num_vars = cnf.nvars;
     s->set_verbosity(0);
+    s->set_prefix("c o ");
     s->new_vars(cnf.nvars*2); // one for orig, one for copy
     s->set_bve(false);
     s->set_bva(false);
@@ -242,8 +243,9 @@ SimplifiedCNF Puura::get_cnf(
 
 SATSolver* Puura::fill_solver(const SimplifiedCNF& cnf) {
     SATSolver* solver;
-    solver = new CMSat::SATSolver;
+    solver = new SATSolver;
     solver->set_verbosity(conf.verb);
+    solver->set_prefix("c o ");
     solver->set_find_xors(false);
     assert(solver->nVars() == 0); // Solver here is empty
 

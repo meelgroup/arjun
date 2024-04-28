@@ -468,8 +468,9 @@ void Extend::get_incidence() {
 
 void Extend::fill_solver(const SimplifiedCNF& cnf) {
     assert(solver == nullptr);
-    solver = new CMSat::SATSolver;
+    solver = new SATSolver;
     solver->set_verbosity(conf.verb);
+    solver->set_prefix("c o ");
     solver->set_find_xors(false);
     assert(solver->nVars() == 0); // Solver here is empty
 

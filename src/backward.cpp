@@ -342,7 +342,7 @@ void Minimize::backward_round() {
     verb_print(1, COLRED "[arjun] backward round finished. U: " <<
             " I: " << sampling_vars.size() << " T: "
         << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
-    if (conf.verb >= 2) solver->print_stats();
+    if (conf.verb >= 4) solver->print_stats();
 }
 
 void Minimize::backward_round_synth() {
