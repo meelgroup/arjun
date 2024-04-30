@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <iostream>
 #include <vector>
+#include <set>
 #include <fstream>
 #include <string>
 #include <cryptominisat5/dimacsparser.h>
@@ -38,6 +39,7 @@
 #include "arjun.h"
 
 using std::vector;
+using std::set;
 using namespace ArjunNS;
 using namespace CMSat;
 using std::cerr;
@@ -51,6 +53,33 @@ inline double stats_line_percent(double num, double total)
     } else {
         return num/total*100.0;
     }
+}
+
+inline void write_synth(const ArjunNS::SimplifiedCNF& simpcnf,
+        const std::string& fname, bool red = true)
+{
+    uint32_t num_cls = simpcnf.clauses.size();
+    std::ofstream outf;
+    outf.open(fname.c_str(), std::ios::out);
+    outf << "p cnf " << simpcnf.nvars << " " << num_cls << endl;
+
+    //Add projection
+    outf << "a ";
+    auto sampl = simpcnf.sampl_vars;
+    std::sort(sampl.begin(), sampl.end());
+    for(const auto& v: sampl) {
+        assert(v < simpcnf.nvars);
+        outf << v+1  << " ";
+    }
+    outf << "0\n";
+    set<uint32_t> e;
+    for(uint32_t i = 0; i < simpcnf.nvars; i++) e.insert(i);
+    for(auto v: simpcnf.sampl_vars) e.erase(v);
+    outf << "e ";
+    for(const auto& v: e) outf << v+1  << " ";
+    outf << "0\n";
+
+    for(const auto& cl: simpcnf.clauses) outf << cl << " 0\n";
 }
 
 inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,

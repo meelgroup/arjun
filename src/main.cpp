@@ -296,6 +296,7 @@ void set_config(ArjunNS::Arjun* arj) {
 }
 
 void do_synthesis() {
+    assert(!elimtofile.empty());
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, ignore_sampling_set, indep_support_given);
     arjun->only_backbone(cnf);
@@ -310,7 +311,7 @@ void do_synthesis() {
     if (do_revbce) arjun->only_reverse_bce(cnf);
     if (do_minim_indep) arjun->only_run_minimize_indep_synth(cnf);
 
-    write_simpcnf(cnf, elimtofile, false);
+    write_synth(cnf, elimtofile, false);
 }
 
 void do_minimize() {
