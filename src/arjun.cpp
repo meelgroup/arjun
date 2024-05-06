@@ -228,14 +228,14 @@ void Arjun::elim_to_file(SimplifiedCNF& cnf, bool indep_support_given,
         int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak) {
 
     cnf = only_get_simplified_cnf(cnf, simp_conf);
+    if (sbva_steps)
+        only_run_sbva(cnf, sbva_steps,
+                sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
     if (!indep_support_given) {
         vector<uint32_t> all_vars;
         for(uint32_t i = 0; i < cnf.nvars; i++) all_vars.push_back(i);
         cnf.set_opt_sampl_vars(all_vars);
     }
-    if (sbva_steps)
-        only_run_sbva(cnf, sbva_steps,
-                sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
     if (do_extend_indep && cnf.opt_sampl_vars.size() != cnf.nvars)
         only_extend_sampl_vars(cnf);
     if (do_bce && cnf.opt_sampl_vars.size() != cnf.nvars)
