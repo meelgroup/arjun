@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <string>
 #include <mpfr.h>
 #include <set>
+#include <fstream>
 #include <gmpxx.h>
 #ifdef CMS_LOCAL_BUILD
 #include "cryptominisat.h"
@@ -148,6 +149,48 @@ namespace ArjunNS {
                 weights = new_weights;
             }
 #endif
+            }
+
+
+            void write_simpcnf(const std::string& fname,
+                    bool red = true) const
+            {
+                uint32_t num_cls = clauses.size();
+                std::ofstream outf;
+                outf.open(fname.c_str(), std::ios::out);
+                outf << "p cnf " << nvars << " " << num_cls << std::endl;
+
+                //Add projection
+                outf << "c p show ";
+                auto sampl = sampl_vars;
+                std::sort(sampl.begin(), sampl.end());
+                for(const auto& v: sampl) {
+                    assert(v < nvars);
+                    outf << v+1  << " ";
+                }
+                outf << "0\n";
+                outf << "c p optshow ";
+                sampl = opt_sampl_vars;
+                std::sort(sampl.begin(), sampl.end());
+                for(const auto& v: sampl) {
+                    assert(v < nvars);
+                    outf << v+1  << " ";
+                }
+                outf << "0\n";
+
+                for(const auto& cl: clauses) outf << cl << " 0\n";
+                if (red) for(const auto& cl: red_clauses)
+                    outf << "c red " << cl << " 0\n";
+
+#ifdef WEIGHTED
+                if (simpcnf.weighted) {
+                    for(const auto& it: simpcnf.weights) {
+                        outf << "c p weight " << it.first << " " << it.second << endl;
+                    }
+                }
+#endif
+                mpz_class w = multiplier_weight;
+                outf << "c MUST MULTIPLY BY " << w << std::endl;
             }
         };
 

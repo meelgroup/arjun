@@ -331,7 +331,7 @@ void do_minimize() {
             do_unate, simp_conf,
             sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 
-        write_simpcnf(cnf, elimtofile, redundant_cls);
+        cnf.write_simpcnf(elimtofile, redundant_cls);
         cout << "c o [arjun] dumped simplified problem to '" << elimtofile << "'" << endl;
     }
 }

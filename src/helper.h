@@ -85,45 +85,6 @@ inline void write_synth(const ArjunNS::SimplifiedCNF& simpcnf,
     for(const auto& cl: simpcnf.red_clauses) outf << cl << " 0\n";
 }
 
-inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
-        const std::string& fname, bool red = true)
-{
-    uint32_t num_cls = simpcnf.clauses.size();
-    std::ofstream outf;
-    outf.open(fname.c_str(), std::ios::out);
-    outf << "p cnf " << simpcnf.nvars << " " << num_cls << endl;
-
-    //Add projection
-    outf << "c p show ";
-    auto sampl = simpcnf.sampl_vars;
-    std::sort(sampl.begin(), sampl.end());
-    for(const auto& v: sampl) {
-        assert(v < simpcnf.nvars);
-        outf << v+1  << " ";
-    }
-    outf << "0\n";
-    outf << "c p optshow ";
-    sampl = simpcnf.opt_sampl_vars;
-    std::sort(sampl.begin(), sampl.end());
-    for(const auto& v: sampl) {
-        assert(v < simpcnf.nvars);
-        outf << v+1  << " ";
-    }
-    outf << "0\n";
-
-    for(const auto& cl: simpcnf.clauses) outf << cl << " 0\n";
-    if (red) for(const auto& cl: simpcnf.red_clauses) outf << "c red " << cl << " 0\n";
-
-#ifdef WEIGHTED
-    if (simpcnf.weighted) {
-        for(const auto& it: simpcnf.weights) {
-            outf << "c p weight " << it.first << " " << it.second << endl;
-        }
-    }
-#endif
-    mpz_class w = simpcnf.multiplier_weight;
-    outf << "c MUST MULTIPLY BY " << w << endl;
-}
 
 template<typename T> void read_in_a_file(const std::string& filename,
         T* holder,
