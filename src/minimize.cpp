@@ -271,9 +271,19 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
         cnf.clauses.push_back(cl);
     }
 
-    mpz_class dummy(2);
-    mpz_pow_ui(dummy.get_mpz_t(), dummy.get_mpz_t(), empty_sampling_vars.size());
-    cnf.multiplier_weight *= dummy;
+    if (!cnf.get_weighted()) {
+        mpz_class dummy(2);
+        mpz_pow_ui(dummy.get_mpz_t(), dummy.get_mpz_t(), empty_sampling_vars.size());
+        cnf.multiplier_weight *= dummy;
+    } else {
+        mpq_class dummy(1);
+        for(const auto& v: empty_sampling_vars) {
+            mpq_class tmp(0);
+            tmp += cnf.get_lit_weight(Lit(v, false));
+            tmp += cnf.get_lit_weight(Lit(v, false));
+            dummy *= tmp;
+        }
+    }
 
     verb_print(1, "[arjun] run_minimize_indep finished "
         << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time));

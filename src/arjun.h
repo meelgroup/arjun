@@ -54,12 +54,14 @@ namespace ArjunNS {
         std::vector<uint32_t> sampl_vars;
         std::vector<uint32_t> opt_sampl_vars;
         uint32_t nvars = 0;
-        mpz_class multiplier_weight = 1;
+        mpq_class multiplier_weight = 1;
         bool weighted = false;
+        struct Weight {mpq_class pos = 0.5; mpq_class neg = 0.5;};
+        std::map<uint32_t, Weight> weights;
 
         uint32_t nVars() const { return nvars; }
         uint32_t new_vars(uint32_t vars) { nvars+=vars; return nvars; }
-        uint32_t new_var() { nvars++; return nvars;}
+        uint32_t new_var() { nvars++; return nvars; }
 
         void start_with_clean_sampl_vars() {
             assert(sampl_vars.empty());
@@ -84,10 +86,31 @@ namespace ArjunNS {
                 opt_sampl_vars.clear();
                 opt_sampl_vars.insert(opt_sampl_vars.begin(), vars.begin(), vars.end()); }
 
-        void set_multiplier_weight(mpz_class m) { multiplier_weight = m; }
+        void set_multiplier_weight(const mpq_class& m) { multiplier_weight = m; }
         auto get_multiplier_weight() const { return multiplier_weight; }
-        void set_lit_weight(CMSat::Lit /*lit*/, double /*weight*/) {
-            assert(false && "Not yet supported"); exit(-1); }
+        mpq_class get_lit_weight(CMSat::Lit lit) const {
+            assert(weighted);
+            auto it = weights.find(lit.var());
+            if (it == weights.end()) return 0.5;
+            else {
+                if (!lit.sign()) return it->second.pos;
+                else return it->second.neg;
+            }
+        }
+        void set_lit_weight(CMSat::Lit lit, const mpq_class& w) {
+            assert(weighted);
+            auto it = weights.find(lit.var());
+            if (it == weights.end()) {
+                Weight weight;
+                if (lit.sign()) {weight.neg = w;weight.pos = 1.0-w;}
+                else {weight.pos = w;weight.neg = 1.0-w;}
+                weights[lit.var()] = weight;
+                return;
+            } else {
+                if (!lit.sign()) it->second.pos = w;
+                else it->second.neg = w;
+            }
+        }
         void set_weighted(bool _weighted) { weighted = _weighted; }
         bool get_weighted() const { return weighted; }
 
@@ -182,15 +205,15 @@ namespace ArjunNS {
                 if (red) for(const auto& cl: red_clauses)
                     outf << "c red " << cl << " 0\n";
 
-#ifdef WEIGHTED
-                if (simpcnf.weighted) {
-                    for(const auto& it: simpcnf.weights) {
-                        outf << "c p weight " << it.first << " " << it.second << endl;
+                if (weighted) {
+                    for(const auto& it: weights) {
+                        outf << "c p weight " << CMSat::Lit(it.first,false) << " "
+                            << it.second.pos << std::endl;
+                        outf << "c p weight " << CMSat::Lit(it.first,true) << " "
+                            << it.second.neg << std::endl;
                     }
                 }
-#endif
-                mpz_class w = multiplier_weight;
-                outf << "c MUST MULTIPLY BY " << w << std::endl;
+                outf << "c MUST MULTIPLY BY " << multiplier_weight << std::endl;
             }
         };
 
