@@ -56,7 +56,7 @@ namespace ArjunNS {
         uint32_t nvars = 0;
         mpq_class multiplier_weight = 1;
         bool weighted = false;
-        struct Weight {mpq_class pos = 0.5; mpq_class neg = 0.5;};
+        struct Weight {mpq_class pos = 1; mpq_class neg = 1;};
         std::map<uint32_t, Weight> weights;
 
         uint32_t nVars() const { return nvars; }
@@ -91,7 +91,7 @@ namespace ArjunNS {
         mpq_class get_lit_weight(CMSat::Lit lit) const {
             assert(weighted);
             auto it = weights.find(lit.var());
-            if (it == weights.end()) return 0.5;
+            if (it == weights.end()) return 1;
             else {
                 if (!lit.sign()) return it->second.pos;
                 else return it->second.neg;
