@@ -372,11 +372,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     sort_unknown(unknown, incidence);
     verb_print(1,"[arjun-extend] Start unknown size: " << unknown.size());
 
-    double my_time = cpuTime();
     vector<Lit> assumptions;
-    uint32_t iter = 0;
-    uint32_t ret_false = 0;
-    uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
     while(!unknown.empty()) {
         uint32_t test_var = unknown.back();
@@ -394,13 +390,11 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
         solver->set_no_confl_needed();
 
         lbool ret = l_Undef;
-        solver->set_max_confl(conf.backw_max_confl);
+        solver->set_max_confl(std::max<uint32_t>(conf.backw_max_confl/50, 10U));
         ret = solver->solve(&assumptions);
         if (ret == l_False) {
-            ret_false++;
             verb_print(5, "[arjun] extend solve(): False");
         } else if (ret == l_True) {
-            ret_true++;
             verb_print(5, "[arjun] extend solve(): True");
         } else if (ret == l_Undef) {
             verb_print(5, "[arjun] extend solve(): Undef");
@@ -419,28 +413,6 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             cl.push_back(Lit(var_to_indic[test_var], false));
             solver->add_clause(cl);
         }
-
-        if (conf.verb >= 5) {
-            cout
-            << "c [arjun] iter: " << std::setw(5) << iter;
-            cout
-            << " T/F/U: ";
-            std::stringstream ss;
-            ss << ret_true << "/" << ret_false << "/" << ret_undef;
-            cout << std::setw(10) << std::left << ss.str() << std::right;
-            ret_true = 0;
-            ret_false = 0;
-            ret_undef = 0;
-            cout
-            << " by: " << std::setw(3) << 1
-            << " U: " << std::setw(7) << unknown.size()
-            << " I: " << std::setw(7) << indep.size()
-            << " X: " << std::setw(7) << ret_false
-            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - my_time) << endl;
-            my_time = cpuTime();
-        }
-        iter++;
-
     }
     cnf.set_opt_sampl_vars(indep);
 
