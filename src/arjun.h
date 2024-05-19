@@ -239,7 +239,7 @@ namespace ArjunNS {
         void only_unsat_define(SimplifiedCNF& cnf);
         void only_unate(SimplifiedCNF& cnf);
 
-        void elim_to_file(SimplifiedCNF& cnf, bool indep_support_given,
+        void elim_to_file(SimplifiedCNF& cnf, bool all_indep,
             bool do_extend_indep, bool do_bce,
             bool do_unate, const SimpConf& simp_conf,
             int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak);

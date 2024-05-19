@@ -88,8 +88,7 @@ inline void write_synth(const ArjunNS::SimplifiedCNF& simpcnf,
 
 template<typename T> void read_in_a_file(const std::string& filename,
         T* holder,
-        const bool ignore_sampling_set,
-        bool& indep_support_given)
+        bool& all_indep)
 {
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
@@ -109,11 +108,9 @@ template<typename T> void read_in_a_file(const std::string& filename,
     }
 
     if (!parser.parse_DIMACS(in, true)) exit(-1);
-    if (!holder->get_sampl_vars_set() || ignore_sampling_set) {
+    if (!holder->get_sampl_vars_set()) {
         holder->start_with_clean_sampl_vars();
-        indep_support_given = false;
-    } else {
-        indep_support_given = true;
+        all_indep = true;
     }
     #ifndef USE_ZLIB
         fclose(in);

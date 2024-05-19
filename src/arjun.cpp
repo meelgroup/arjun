@@ -222,7 +222,7 @@ DLL_PUBLIC void Arjun::only_bce(SimplifiedCNF& cnf) {
         " T: " << (cpuTime() - start_time));
 }
 
-void Arjun::elim_to_file(SimplifiedCNF& cnf, bool indep_support_given,
+void Arjun::elim_to_file(SimplifiedCNF& cnf, bool all_indep,
         bool do_extend_indep, bool do_bce,
         bool do_unate, const SimpConf& simp_conf,
         int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak) {
@@ -231,7 +231,7 @@ void Arjun::elim_to_file(SimplifiedCNF& cnf, bool indep_support_given,
     if (sbva_steps)
         only_run_sbva(cnf, sbva_steps,
                 sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
-    if (!indep_support_given) {
+    if (all_indep) {
         vector<uint32_t> all_vars;
         for(uint32_t i = 0; i < cnf.nvars; i++) all_vars.push_back(i);
         cnf.set_opt_sampl_vars(all_vars);

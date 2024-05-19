@@ -53,8 +53,6 @@ ArjunInt::Config conf;
 ArjunNS::Arjun* arjun = nullptr;
 string input_file;
 string elimtofile;
-int ignore_sampling_set = 0;
-bool indep_support_given = false;
 
 SimpConf simp_conf;
 int renumber = true;
@@ -75,6 +73,7 @@ int synthesis = false;
 int do_unate = false;
 int do_revbce = false;
 int do_minim_indep = true;
+bool all_indep = false;
 
 void add_arjun_options()
 {
@@ -83,10 +82,10 @@ void add_arjun_options()
         .action([&](const auto& a) {conf.verb = std::atoi(a.c_str());})
         .default_value(conf.verb)
         .help("verbosity");
-    program.add_argument("--ignore")
-        .action([&](const auto& a) {ignore_sampling_set = std::atoi(a.c_str());})
-        .default_value(ignore_sampling_set)
-        .help("Ignore whatever is in the CNF as sampling set");
+    program.add_argument("--allindep")
+        .action([&](const auto& a) {all_indep = std::atoi(a.c_str());})
+        .default_value(all_indep)
+        .help("All variables are in the independent set. The indep set is given only to help Arjun");
     program.add_argument("--maxc")
         .action([&](const auto& a) {conf.backw_max_confl = std::atoi(a.c_str());})
         .default_value(conf.backw_max_confl)
@@ -298,7 +297,7 @@ void set_config(ArjunNS::Arjun* arj) {
 void do_synthesis() {
     assert(!elimtofile.empty());
     SimplifiedCNF cnf;
-    read_in_a_file(input_file, &cnf, ignore_sampling_set, indep_support_given);
+    read_in_a_file(input_file, &cnf, all_indep);
     arjun->only_backbone(cnf);
     if (do_unate) arjun->only_unate(cnf);
 
@@ -316,7 +315,7 @@ void do_synthesis() {
 
 void do_minimize() {
     SimplifiedCNF cnf;
-    read_in_a_file(input_file, &cnf, ignore_sampling_set, indep_support_given);
+    read_in_a_file(input_file, &cnf, all_indep);
     arjun->only_backbone(cnf);
     if (do_minim_indep) {
         const auto orig_sampl_vars = cnf.sampl_vars;
@@ -326,7 +325,7 @@ void do_minimize() {
     }
 
     if (!elimtofile.empty()) {
-        arjun->elim_to_file(cnf, indep_support_given,
+        arjun->elim_to_file(cnf, all_indep,
             do_extend_indep, do_bce,
             do_unate, simp_conf,
             sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
