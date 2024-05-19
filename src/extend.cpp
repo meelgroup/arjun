@@ -390,7 +390,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
         solver->set_no_confl_needed();
 
         lbool ret = l_Undef;
-        solver->set_max_confl(std::max<uint32_t>(conf.backw_max_confl/50, 10U));
+        solver->set_max_confl(conf.extend_max_confl);
         ret = solver->solve(&assumptions);
         if (ret == l_False) {
             verb_print(5, "[arjun] extend solve(): False");

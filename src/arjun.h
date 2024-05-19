@@ -276,6 +276,7 @@ namespace ArjunNS {
         void set_specified_order_fname(std::string specified_order_fname);
         void set_bce(const bool bce);
         void set_weighted(const bool);
+        void set_extend_max_confl(uint32_t extend_max_confl);
 
         //Get config
         uint32_t get_verb() const;
@@ -299,6 +300,7 @@ namespace ArjunNS {
         bool get_irreg_gate_based() const;
         bool get_gate_sort_special() const;
         bool get_bce() const;
+        uint32_t get_extend_max_confl() const;
 
     private:
         ArjPrivateData* arjdata = nullptr;
