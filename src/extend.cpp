@@ -370,6 +370,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     }
 
     sort_unknown(unknown, incidence);
+    std::reverse(unknown.begin(), unknown.end());
     verb_print(1,"[arjun-extend] Start unknown size: " << unknown.size());
 
     vector<Lit> assumptions;
