@@ -109,8 +109,7 @@ SATSolver* Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
 
 void Puura::backbone(SimplifiedCNF& cnf) {
     auto solver = fill_solver(cnf);
-    string str = "backbone";
-    solver->simplify(nullptr, &str);
+    solver->backbone_simpl(20*1000ULL, cnf.backbone_done);
     auto lits = solver->get_zero_assigned_lits();
     for(const auto& l: lits) cnf.clauses.push_back({l});
     delete solver;
@@ -316,9 +315,14 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 
     // Now doing Oracle
     string str2;
-    if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify";
-    else if (simp_conf.oracle_vivify) str2 = "oracle-vivif";
-    else if (simp_conf.oracle_sparsify) str2 = "oracle-sparsify";
+    bool backbone_done = cnf.backbone_done;
+    if (!backbone_done)
+        solver->backbone_simpl(30*1000, backbone_done);
+    if (backbone_done) {
+        if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify";
+        else if (simp_conf.oracle_vivify) str2 = "oracle-vivif";
+        else if (simp_conf.oracle_sparsify) str2 = "oracle-sparsify";
+    }
     else str2 = "";
     solver->simplify(&dont_elim, &str2);
 
@@ -357,6 +361,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     // Return final one
     auto ret = get_cnf(
             solver, new_sampl_vars, new_empty_sampl_vars);
+    ret.backbone_done = backbone_done;
     delete solver;
     return ret;
 }

@@ -56,6 +56,7 @@ namespace ArjunNS {
         uint32_t nvars = 0;
         mpq_class multiplier_weight = 1;
         bool weighted = false;
+        bool backbone_done = false;
         struct Weight {mpq_class pos = 1; mpq_class neg = 1;};
         std::map<uint32_t, Weight> weights;
 

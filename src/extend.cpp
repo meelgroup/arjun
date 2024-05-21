@@ -370,14 +370,17 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     }
 
     sort_unknown(unknown, incidence);
-    std::reverse(unknown.begin(), unknown.end());
+    /* std::reverse(unknown.begin(), unknown.end()); */
     verb_print(1,"[arjun-extend] Start unknown size: " << unknown.size());
 
     vector<Lit> assumptions;
     uint32_t ret_undef = 0;
+    /* conf.verb = 5; */
+    set<uint32_t> unknown_set(unknown.begin(), unknown.end());
     while(!unknown.empty()) {
         uint32_t test_var = unknown.back();
         unknown.pop_back();
+        if (unknown_set.count(test_var) == 0) continue;
 
         assert(test_var < orig_num_vars);
         verb_print(5, "Testing: " << test_var);
@@ -406,6 +409,14 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             // Timed out, we'll treat is as unknown
             assert(test_var < orig_num_vars);
         } else if (ret == l_True) {
+            for(uint32_t v = 0; v < solver->nVars(); v++) {
+                if (!unknown_set.count(v)) continue;
+                uint32_t other_v = v + orig_num_vars;
+                if (solver->get_model()[other_v] != solver->get_model()[v]) {
+                    verb_print(5,"TRUE erasing v: " << v + 1);
+                    unknown_set.erase(v);
+                }
+            }
             // Not fully dependent
         } else if (ret == l_False) {
             // Dependent fully on `indep`
