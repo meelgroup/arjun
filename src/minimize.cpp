@@ -255,7 +255,7 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
 
     end:
     // Get what we came here for
-    if (!cnf.opt_sampl_vars_given) cnf.set_opt_sampl_vars(sampling_vars);
+    cnf.set_opt_sampl_vars(sampling_vars);
     cnf.sampl_vars = sampling_vars;
 
     // Take units and binary xors back
