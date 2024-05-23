@@ -62,6 +62,7 @@ private:
     SimplifiedCNF get_cnf(
         SATSolver* solver,
         const vector<uint32_t>& sampl_vars,
+        const vector<uint32_t>& orig_sampl_vars,
         const vector<uint32_t>& empty_sampl_vars);
 
     const Config& conf;

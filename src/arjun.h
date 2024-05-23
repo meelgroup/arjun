@@ -52,6 +52,8 @@ namespace ArjunNS {
         std::vector<std::vector<CMSat::Lit>> clauses;
         std::vector<std::vector<CMSat::Lit>> red_clauses;
         std::vector<uint32_t> sampl_vars;
+        // for minimize this is set to orig sampling set,
+        // for extend, this is extended, and the weights of the extend are set to 0.5/0.5
         std::vector<uint32_t> opt_sampl_vars;
         uint32_t nvars = 0;
         mpq_class multiplier_weight = 1;
@@ -77,8 +79,11 @@ namespace ArjunNS {
         bool get_sampl_vars_set() const { return sampl_vars_set; }
         bool sampl_vars_set = false;
         bool opt_sampl_vars_given = false;
-        void set_sampl_vars(const std::vector<uint32_t>& vars)
-            { sampl_vars_set = true; sampl_vars = vars; }
+        void set_sampl_vars(const std::vector<uint32_t>& vars) {
+            assert(sampl_vars_set == false);
+            sampl_vars_set = true;
+            sampl_vars = vars;
+        }
         const auto& get_sampl_vars() const { return sampl_vars; }
         void set_opt_sampl_vars(const std::vector<uint32_t>& vars)
             { opt_sampl_vars_given = true; opt_sampl_vars = vars; }

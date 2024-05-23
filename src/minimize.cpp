@@ -255,6 +255,7 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
 
     end:
     // Get what we came here for
+    if (!cnf.opt_sampl_vars_given) cnf.set_opt_sampl_vars(sampling_vars);
     cnf.sampl_vars = sampling_vars;
 
     // Take units and binary xors back
@@ -280,9 +281,10 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
         for(const auto& v: empty_sampling_vars) {
             mpq_class tmp(0);
             tmp += cnf.get_lit_weight(Lit(v, false));
-            tmp += cnf.get_lit_weight(Lit(v, false));
+            tmp += cnf.get_lit_weight(Lit(v, true));
             dummy *= tmp;
         }
+        cnf.multiplier_weight *= dummy;
     }
 
     verb_print(1, "[arjun] run_minimize_indep finished "

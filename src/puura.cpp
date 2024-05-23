@@ -44,7 +44,7 @@ using std::vector;
 using std::setw;
 using std::setprecision;
 using std::string;
-
+using std::map;
 
 Puura::Puura(const Config& _conf) : conf(_conf) {}
 Puura::~Puura() = default;
@@ -199,7 +199,9 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
 SimplifiedCNF Puura::get_cnf(
         SATSolver* solver,
         const vector<uint32_t>& sampl_vars,
-        const vector<uint32_t>& empty_sampl_vars) {
+        const vector<uint32_t>& opt_sampl_vars,
+        const vector<uint32_t>& empty_sampl_vars
+        ) {
     SimplifiedCNF scnf;
     vector<Lit> clause;
     bool is_xor, rhs;
@@ -207,20 +209,32 @@ SimplifiedCNF Puura::get_cnf(
 
     // IRRED clauses
     solver->start_getting_constraints(false, true);
-    const auto tmp = solver->translate_sampl_set(empty_sampl_vars, true);
-    mpz_class dummy(2);
-    mpz_pow_ui(dummy.get_mpz_t(), dummy.get_mpz_t(), tmp.size());
-    scnf.multiplier_weight = solver->get_multiplier_weight()*dummy;
 
-#ifdef WEIGHTED
+    const auto empties = solver->translate_sampl_set(empty_sampl_vars, true);
     if (scnf.weighted) {
-        solver->get_weights(scnf.weights, sampl_vars, orig_sampl_vars);
-        // todo
+        map<Lit, mpq_class> w;
+        solver->get_weights(w, sampl_vars, opt_sampl_vars);
+        mpq_class mul(1);
+        for(const auto& v: empties) {
+            mul *= w[Lit(v, false)] + w[Lit(v, true)];
+        }
+        const auto units = solver->get_zero_assigned_lits();
+        for(const auto& u: units) mul *= w[u];
+        scnf.multiplier_weight = solver->get_multiplier_weight()*mul;
+    } else {
+        mpz_class dummy(2);
+        mpz_pow_ui(dummy.get_mpz_t(), dummy.get_mpz_t(), empties.size());
+        scnf.multiplier_weight = solver->get_multiplier_weight()*dummy;
     }
-#endif
 
     scnf.set_sampl_vars(solver->translate_sampl_set(sampl_vars, false));
-    scnf.set_opt_sampl_vars(solver->translate_sampl_set(sampl_vars, false));
+
+    // Opt sampl vars
+    auto tmp = solver->translate_sampl_set(opt_sampl_vars, false);
+    std::set<uint32_t> tmp2(tmp.begin(), tmp.end());
+    for(const auto& t: empties) tmp2.erase(t);
+    scnf.set_opt_sampl_vars(tmp2);
+
     while(solver->get_next_constraint(clause, is_xor, rhs)) {
         assert(!is_xor); assert(rhs);
         scnf.clauses.push_back(clause);
@@ -252,11 +266,12 @@ SATSolver* Puura::fill_solver(const SimplifiedCNF& cnf) {
     solver->new_vars(cnf.nvars);
     for(const auto& cl: cnf.clauses) solver->add_clause(cl);
     for(const auto& cl: cnf.red_clauses) solver->add_red_clause(cl);
-#ifdef WEIGHTED
     if (cnf.weighted) {
-        for(const auto& it: cnf.weights) solver->set_lit_weight(it.first, it.second);
+        for(const auto& it: cnf.weights) {
+            solver->set_lit_weight(Lit(it.first, false), it.second.pos);
+            solver->set_lit_weight(Lit(it.first, true), it.second.neg);
+        }
     }
-#endif
     solver->set_multiplier_weight(cnf.multiplier_weight);
     return solver;
 }
@@ -360,7 +375,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 
     // Return final one
     auto ret = get_cnf(
-            solver, new_sampl_vars, new_empty_sampl_vars);
+            solver, new_sampl_vars, cnf.opt_sampl_vars, new_empty_sampl_vars);
     ret.backbone_done = backbone_done;
     delete solver;
     return ret;
