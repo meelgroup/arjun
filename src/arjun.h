@@ -183,6 +183,7 @@ namespace ArjunNS {
             std::ofstream outf;
             outf.open(fname.c_str(), std::ios::out);
             outf << "p cnf " << nvars << " " << num_cls << std::endl;
+            if (weighted) outf << "c t wmc" << std::endl;
 
             //Add projection
             outf << "c p show ";

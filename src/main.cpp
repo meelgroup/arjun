@@ -258,16 +258,19 @@ void add_arjun_options()
 }
 
 void print_final_sampl_set(SimplifiedCNF& cnf, const vector<uint32_t>& orig_sampl_vars) {
-    cout << "c o c p show ";
-    for(const uint32_t s: cnf.sampl_vars) cout << s+1 << " ";
-    cout << "0" << endl;
-
     cout
     << "c o [arjun] final set size: " << std::setw(7) << cnf.sampl_vars.size()
     << " percent of original: " << std::setw(6) << std::setprecision(3)
     << std::fixed
-    << stats_line_percent(cnf.sampl_vars.size(), orig_sampl_vars.size()) << " %" << endl
-    << "c o [arjun] multiplier: " << std::setw(7) << cnf.multiplier_weight << endl;
+    << stats_line_percent(cnf.sampl_vars.size(), orig_sampl_vars.size()) << " %" << endl;
+
+    cout << "c p show ";
+    for(const uint32_t s: cnf.sampl_vars) cout << s+1 << " ";
+    cout << "0" << endl;
+    cout << "c p optshow ";
+    for(const uint32_t s: cnf.opt_sampl_vars) cout << s+1 << " ";
+    cout << "0" << endl;
+    cout << "c MUST MULTIPLY BY " << cnf.multiplier_weight << std::endl;
 }
 
 void set_config(ArjunNS::Arjun* arj) {
@@ -318,12 +321,11 @@ void do_minimize() {
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, all_indep);
     arjun->only_backbone(cnf);
+    const auto orig_sampl_vars = cnf.sampl_vars;
     if (do_minim_indep) {
-        const auto orig_sampl_vars = cnf.sampl_vars;
         Arjun arj2;
         set_config(&arj2);
         arj2.only_run_minimize_indep(cnf);
-        print_final_sampl_set(cnf, orig_sampl_vars);
     }
 
     if (!elimtofile.empty()) {
@@ -334,6 +336,8 @@ void do_minimize() {
 
         cnf.write_simpcnf(elimtofile, redundant_cls);
         cout << "c o [arjun] dumped simplified problem to '" << elimtofile << "'" << endl;
+    } else {
+        print_final_sampl_set(cnf, orig_sampl_vars);
     }
 }
 

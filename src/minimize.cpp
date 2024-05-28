@@ -252,13 +252,19 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
     backward_round();
 
     end:
-    // Get what we came here for
-    cnf.set_opt_sampl_vars(sampling_vars);
     cnf.sampl_vars = sampling_vars;
 
     // Take units and binary xors back
+    set<uint32_t> sampling_vars_set(sampling_vars.begin(), sampling_vars.end());
     for(const auto& l: solver->get_zero_assigned_lits())
-        if (l.var() < cnf.nvars) cnf.clauses.push_back({l});
+        if (l.var() < cnf.nvars) {
+            cnf.clauses.push_back({l});
+            if (cnf.weighted) cnf.multiplier_weight *= cnf.get_lit_weight(l);
+            sampling_vars_set.erase(l.var());
+        }
+    // opt sampl vars has to have units removed
+    cnf.set_opt_sampl_vars(sampling_vars_set);
+
     for(const auto& p: solver->get_all_binary_xors()) {
         if (p.first.var() >= cnf.nvars || p.second.var() >= cnf.nvars) continue;
         vector<Lit> cl(2);
