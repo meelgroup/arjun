@@ -306,7 +306,7 @@ void Puura::reverse_bce(SimplifiedCNF& cnf) {
     auto solver = fill_solver(cnf);
     solver->set_renumber(false);
     solver->set_scc(false);
-    setup_sampl_vars_dontelim(cnf.sampl_vars);
+    setup_sampl_vars_dontelim(cnf);
     solver->set_sampl_vars(cnf.sampl_vars);
     solver->reverse_bce();
     delete solver;
@@ -321,7 +321,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     verb_print(3, "Running "<< __PRETTY_FUNCTION__);
     solver->set_renumber(true);
     solver->set_scc(true);
-    setup_sampl_vars_dontelim(cnf.sampl_vars);
+    setup_sampl_vars_dontelim(cnf);
 
     //Below works VERY WELL for: ProcessBean, pollard, track1_116.mcc2020_cnf
     //   and blasted_TR_b14_even3_linear.cnf.gz.no_w.cnf
@@ -399,12 +399,15 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     return ret;
 }
 
-void Puura::setup_sampl_vars_dontelim(const vector<uint32_t>& sampl_vars)
+void Puura::setup_sampl_vars_dontelim(const SimplifiedCNF& cnf)
 {
     assert(dont_elim.empty());
-    for(uint32_t v: sampl_vars) dont_elim.push_back(Lit(v, false));
+    if (cnf.weighted)
+        for(uint32_t v: cnf.opt_sampl_vars) dont_elim.push_back(Lit(v, false));
+    else
+        for(uint32_t v: cnf.sampl_vars) dont_elim.push_back(Lit(v, false));
     sampl_set.clear();
-    for(uint32_t v: sampl_vars) sampl_set.insert(v);
+    for(uint32_t v: cnf.sampl_vars) sampl_set.insert(v);
 }
 
 void Puura::run_sbva(SimplifiedCNF& cnf,

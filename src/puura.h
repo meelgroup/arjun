@@ -56,7 +56,7 @@ public:
 
 private:
     SATSolver* setup_f_not_f_indic(const SimplifiedCNF& cnf);
-    void setup_sampl_vars_dontelim(const vector<uint32_t>& sampl_vars);
+    void setup_sampl_vars_dontelim(const SimplifiedCNF& cnf);
 
     void renumber_sampling_vars_for_ganak(SimplifiedCNF& scnf);
     SimplifiedCNF get_cnf(
