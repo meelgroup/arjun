@@ -109,6 +109,8 @@ SATSolver* Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
 
 void Puura::backbone(SimplifiedCNF& cnf) {
     auto solver = fill_solver(cnf);
+    string str = "clean-cls, must-scc-vrepl, full-probe, must-scc-vrepl";
+    solver->simplify(nullptr, &str);
     solver->backbone_simpl(20*1000ULL, cnf.backbone_done);
     auto lits = solver->get_zero_assigned_lits();
     for(const auto& l: lits) cnf.clauses.push_back({l});
