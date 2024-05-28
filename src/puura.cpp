@@ -223,6 +223,10 @@ SimplifiedCNF Puura::get_cnf(
         const auto units = solver->get_zero_assigned_lits();
         for(const auto& u: units) mul *= w[u];
         scnf.multiplier_weight = solver->get_multiplier_weight()*mul;
+        for(const auto& it: w) {
+            if (it.first.var() >= scnf.nvars) continue;
+            scnf.set_lit_weight(it.first, it.second);
+        }
     } else {
         mpz_class dummy(2);
         mpz_pow_ui(dummy.get_mpz_t(), dummy.get_mpz_t(), empties.size());
@@ -269,6 +273,7 @@ SATSolver* Puura::fill_solver(const SimplifiedCNF& cnf) {
     for(const auto& cl: cnf.clauses) solver->add_clause(cl);
     for(const auto& cl: cnf.red_clauses) solver->add_red_clause(cl);
     if (cnf.weighted) {
+        solver->set_weighted(true);
         for(const auto& it: cnf.weights) {
             solver->set_lit_weight(Lit(it.first, false), it.second.pos);
             solver->set_lit_weight(Lit(it.first, true), it.second.neg);

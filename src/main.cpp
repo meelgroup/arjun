@@ -264,7 +264,8 @@ void print_final_sampl_set(SimplifiedCNF& cnf, const vector<uint32_t>& orig_samp
 
     cout
     << "c o [arjun] final set size: " << std::setw(7) << cnf.sampl_vars.size()
-    << " percent of original: " << std::setw(6) << std::setprecision(4)
+    << " percent of original: " << std::setw(6) << std::setprecision(3)
+    << std::fixed
     << stats_line_percent(cnf.sampl_vars.size(), orig_sampl_vars.size()) << " %" << endl
     << "c o [arjun] multiplier: " << std::setw(7) << cnf.multiplier_weight << endl;
 }
@@ -320,6 +321,7 @@ void do_minimize() {
     if (do_minim_indep) {
         const auto orig_sampl_vars = cnf.sampl_vars;
         Arjun arj2;
+        set_config(&arj2);
         arj2.only_run_minimize_indep(cnf);
         print_final_sampl_set(cnf, orig_sampl_vars);
     }
@@ -365,15 +367,13 @@ int main(int argc, char** argv) {
         exit(-1);
     }
 
-    if (program["version"] == true) {
-        cout << "c o [arjun] SHA revision: " << arjun->get_version_info() << endl;
+    if (conf.verb || program["version"] == true) {
+        cout << "c o Arjun Version: " << arjun->get_version_info() << endl;
+        cout << arjun->get_solver_version_info();
         cout << "c o [arjun] Compilation environment: " << arjun->get_compilation_env() << endl;
-        std::exit(0);
+        cout << "c o executed with command line: " << command_line << endl;
     }
-
-    cout << "c o Arjun Version: " << arjun->get_version_info() << endl;
-    cout << arjun->get_solver_version_info();
-    cout << "c o executed with command line: " << command_line << endl;
+    if (program["version"] == true) exit(0);
 
     start_time = cpuTime();
     set_config(arjun);
@@ -382,7 +382,7 @@ int main(int argc, char** argv) {
     vector<std::string> files;
     try {
         files = program.get<std::vector<std::string>>("files");
-        if (files.size() > 3) {
+        if (files.size() >= 3) {
             cout << "ERROR: you can only pass at most 3 positional parameters: an INPUT file"
                 ", optionally an OUTPUT file, and optionally a RECOVER file" << endl;
             exit(-1);
@@ -394,12 +394,16 @@ int main(int argc, char** argv) {
 
     input_file = files[0];
     if (files.size() >= 2) elimtofile = files[1];
+    cout << "c o [arjun] Input file: " << input_file << endl;
+    if (!elimtofile.empty())
+        cout << "c o [arjun] Output file: " << elimtofile << endl;
     if (synthesis) {
         do_synthesis();
     } else {
         do_minimize();
     }
-    cout << "c o [arjun] All done. T: " << std::setprecision(2) << (cpuTime() - start_time) << endl;
+    cout << "c o [arjun] All done. T: " << std::setprecision(2) << std::fixed
+        << (cpuTime() - start_time) << endl;
 
     delete arjun;
     return 0;

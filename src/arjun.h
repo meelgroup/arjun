@@ -168,60 +168,55 @@ namespace ArjunNS {
             opt_sampl_vars = map_var(opt_sampl_vars, map_here_to_there);
             for(auto& cl: clauses) map_cl(cl, map_here_to_there);
             for(auto& cl: red_clauses) map_cl(cl, map_here_to_there);
-            assert(!weighted);
-#ifdef WEIGHTED
             if (weighted) {
-                std::map<CMSat::Lit, double> new_weights;
+                std::map<uint32_t, Weight> new_weights;
                 for(auto& w: weights)
-                    new_weights[CMSat::Lit(
-                             map_here_to_there[w.first.var()], w.first.sign())] = w.second;
-                weights = new_weights;
+                    new_weights[map_here_to_there[w.first]] = w.second;
             }
-#endif
-            }
+        }
 
 
-            void write_simpcnf(const std::string& fname,
+        void write_simpcnf(const std::string& fname,
                     bool red = true) const
-            {
-                uint32_t num_cls = clauses.size();
-                std::ofstream outf;
-                outf.open(fname.c_str(), std::ios::out);
-                outf << "p cnf " << nvars << " " << num_cls << std::endl;
+        {
+            uint32_t num_cls = clauses.size();
+            std::ofstream outf;
+            outf.open(fname.c_str(), std::ios::out);
+            outf << "p cnf " << nvars << " " << num_cls << std::endl;
 
-                //Add projection
-                outf << "c p show ";
-                auto sampl = sampl_vars;
-                std::sort(sampl.begin(), sampl.end());
-                for(const auto& v: sampl) {
-                    assert(v < nvars);
-                    outf << v+1  << " ";
-                }
-                outf << "0\n";
-                outf << "c p optshow ";
-                sampl = opt_sampl_vars;
-                std::sort(sampl.begin(), sampl.end());
-                for(const auto& v: sampl) {
-                    assert(v < nvars);
-                    outf << v+1  << " ";
-                }
-                outf << "0\n";
-
-                for(const auto& cl: clauses) outf << cl << " 0\n";
-                if (red) for(const auto& cl: red_clauses)
-                    outf << "c red " << cl << " 0\n";
-
-                if (weighted) {
-                    for(const auto& it: weights) {
-                        outf << "c p weight " << CMSat::Lit(it.first,false) << " "
-                            << it.second.pos << std::endl;
-                        outf << "c p weight " << CMSat::Lit(it.first,true) << " "
-                            << it.second.neg << std::endl;
-                    }
-                }
-                outf << "c MUST MULTIPLY BY " << multiplier_weight << std::endl;
+            //Add projection
+            outf << "c p show ";
+            auto sampl = sampl_vars;
+            std::sort(sampl.begin(), sampl.end());
+            for(const auto& v: sampl) {
+                assert(v < nvars);
+                outf << v+1  << " ";
             }
-        };
+            outf << "0\n";
+            outf << "c p optshow ";
+            sampl = opt_sampl_vars;
+            std::sort(sampl.begin(), sampl.end());
+            for(const auto& v: sampl) {
+                assert(v < nvars);
+                outf << v+1  << " ";
+            }
+            outf << "0\n";
+
+            for(const auto& cl: clauses) outf << cl << " 0\n";
+            if (red) for(const auto& cl: red_clauses)
+                outf << "c red " << cl << " 0\n";
+
+            if (weighted) {
+                for(const auto& it: weights) {
+                    outf << "c p weight " << CMSat::Lit(it.first,false) << " "
+                        << it.second.pos << std::endl;
+                    outf << "c p weight " << CMSat::Lit(it.first,true) << " "
+                        << it.second.neg << std::endl;
+                }
+            }
+            outf << "c MUST MULTIPLY BY " << multiplier_weight << std::endl;
+        }
+    };
 
     struct ArjPrivateData;
     #ifdef _WIN32
