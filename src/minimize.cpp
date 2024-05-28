@@ -231,7 +231,6 @@ void Minimize::fill_solver(const ArjunNS::SimplifiedCNF& cnf) {
             exit(-1);
         }
     }
-    assert(!cnf.weighted);
 }
 
 
@@ -250,7 +249,6 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
     fill_solver(cnf);
     init();
     if (!preproc_and_duplicate(cnf)) goto end;
-    assert(!cnf.weighted);
     backward_round();
 
     end:
