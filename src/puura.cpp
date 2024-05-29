@@ -215,18 +215,26 @@ SimplifiedCNF Puura::get_cnf(
     if (scnf.weighted) {
         map<Lit, mpq_class> w;
         solver->get_weights(w, sampl_vars, opt_sampl_vars);
+        /* for(const auto& p: w) { */
+        /*     cout << "w " << p.first << " " << p.second << endl; */
+        /* } */
         set<uint32_t> tmp3(opt_sampl_vars.begin(), opt_sampl_vars.end());
 
         mpq_class mul(1);
         for(const auto& v: empty_sampl_vars) {
             if (!tmp3.count(v)) continue;
+            assert(w.count(Lit(v, false)));
             mul *= w[Lit(v, false)] + w[Lit(v, true)];
+            /* cout << "empty " << v+1 << " mul: " << mul << endl; */
         }
         const auto units = solver->get_zero_assigned_lits();
         for(const auto& u: units) {
             if (!tmp3.count(u.var())) continue;
+            assert(w.count(u));
             mul *= w[u];
+            /* cout << "unit "<< u << " mul: " << mul << endl; */
         }
+        /* cout << "arjun mul: " << mul << " solver mul: " << solver->get_multiplier_weight()<< endl; */
         scnf.multiplier_weight = solver->get_multiplier_weight()*mul;
         map<Lit, mpq_class> outer_w;
         for(const auto& it: w) {
@@ -234,6 +242,7 @@ SimplifiedCNF Puura::get_cnf(
         }
         auto inter_w = solver->translate_weights(outer_w);
         for(const auto& myw: inter_w) {
+            if (myw.first.var() >= scnf.nvars) continue;
             scnf.set_lit_weight(myw.first, myw.second);
         }
     } else {
