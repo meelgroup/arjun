@@ -252,28 +252,61 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
     backward_round();
 
     end:
+    remove_zero_assigned_literals();
+    remove_eq_literals();
+
     set<uint32_t> opt_sampling_vars_set(cnf.sampl_vars.begin(), cnf.sampl_vars.end());
-    cnf.sampl_vars = sampling_vars;
+    set<uint32_t> sampling_vars_set(sampling_vars.begin(), sampling_vars.end());
 
-    // Take units and binary xors back
-    for(const auto& l: solver->get_zero_assigned_lits())
-        if (l.var() < cnf.nvars) {
-            cnf.clauses.push_back({l});
-            if (cnf.weighted) cnf.multiplier_weight *= cnf.get_lit_weight(l);
-            opt_sampling_vars_set.erase(l.var());
+    // Take units
+    for(const auto& l: solver->get_zero_assigned_lits()) {
+        if (l.var() >= cnf.nvars) continue;
+        sampling_vars_set.erase(l.var());
+        opt_sampling_vars_set.erase(l.var());
+
+        cnf.clauses.push_back({l});
+        if (cnf.get_weighted()) {
+            cnf.multiplier_weight *= cnf.get_lit_weight(l);
+            verb_print(5, "[w-debug] unit multiplier_weight: " << cnf.multiplier_weight);
+            cnf.unset_var_weight(l.var());
         }
-    // opt sampl vars has to have units removed
-    cnf.set_opt_sampl_vars(opt_sampling_vars_set);
+    }
 
-    for(const auto& p: solver->get_all_binary_xors()) {
-        if (p.first.var() >= cnf.nvars || p.second.var() >= cnf.nvars) continue;
-        vector<Lit> cl(2);
-        cl[0] = p.first;
-        cl[1] = ~p.second;
-        cnf.clauses.push_back(cl);
-        cl[0] = ~cl[0];
-        cl[1] = ~cl[1];
-        cnf.clauses.push_back(cl);
+    // Take bin XORs
+    // [ replaced, replaced_with ]
+    const auto eq_lits = solver->get_all_binary_xors();
+    for(auto p: eq_lits) {
+        if (opt_sampling_vars_set.count(p.first.var()) && opt_sampling_vars_set.count(p.second.var())) {
+            sampling_vars_set.erase(p.first.var());
+            opt_sampling_vars_set.erase(p.first.var());
+            verb_print(5, "[w-debug] repl: " << p.first.var()+1 << " with " << p.second.var()+1);
+            if (cnf.weighted) {
+                auto wp2 = cnf.get_lit_weight(p.second);
+                auto wn2 = cnf.get_lit_weight(~p.second);
+                auto wp1 = cnf.get_lit_weight(p.first);
+                auto wn1 = cnf.get_lit_weight(~p.first);
+                if (p.first.sign() == p.second.sign()) {
+                    wp2 *= wp1;
+                    wn2 *= wn1;
+                } else {
+                    wp2 *= wn1;
+                    wn2 *= wp1;
+                }
+                cnf.set_lit_weight(p.second, wp2);
+                cnf.set_lit_weight(~p.second, wn2);
+                verb_print(5, "[w-debug] set lit " << p.second << " weight to " << wp2);
+                verb_print(5, "[w-debug] set lit " << ~p.second << " weight to " << wn2);
+                cnf.unset_var_weight(p.first.var());
+            }
+
+            vector<Lit> cl(2);
+            cl[0] = p.first;
+            cl[1] = ~p.second;
+            cnf.clauses.push_back(cl);
+            cl[0] = ~cl[0];
+            cl[1] = ~cl[1];
+            cnf.clauses.push_back(cl);
+        }
     }
 
     if (!cnf.get_weighted()) {
@@ -281,15 +314,22 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
         mpz_pow_ui(dummy.get_mpz_t(), dummy.get_mpz_t(), empty_sampling_vars.size());
         cnf.multiplier_weight *= dummy;
     } else {
-        mpq_class dummy(1);
         for(const auto& v: empty_sampling_vars) {
+            sampling_vars_set.erase(v);
+            opt_sampling_vars_set.erase(v);
+
+            verb_print(5, "[w-debug] empty sampling var: " << v+1);
             mpq_class tmp(0);
-            tmp += cnf.get_lit_weight(Lit(v, false));
-            tmp += cnf.get_lit_weight(Lit(v, true));
-            dummy *= tmp;
+            Lit l(v, false);
+            tmp += cnf.get_lit_weight(l);
+            tmp += cnf.get_lit_weight(~l);
+            cnf.multiplier_weight *= tmp;
+            cnf.unset_var_weight(l.var());
+            verb_print(5, "[w-debug] empty multiplier_weight: " << cnf.multiplier_weight);
         }
-        cnf.multiplier_weight *= dummy;
     }
+    cnf.set_sampl_vars(sampling_vars_set, true);
+    cnf.set_opt_sampl_vars(opt_sampling_vars_set);
 
     verb_print(1, "[arjun] run_minimize_indep finished "
         << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time));

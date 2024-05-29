@@ -408,6 +408,9 @@ void Minimize::remove_zero_assigned_literals(bool print) {
 }
 
 void Minimize::remove_eq_literals() {
+    seen.clear();
+    seen.resize(solver->nVars(), 0);
+
     bool go_again;
     uint32_t orig_sampling_set_size = sampling_vars.size();
     for(auto x: sampling_vars) seen[x] = 1;
@@ -419,7 +422,7 @@ void Minimize::remove_eq_literals() {
         // [ replaced, replaced_with ]
         const auto eq_lits = solver->get_all_binary_xors();
         for(auto mypair: eq_lits) {
-            if (seen[mypair.second.var()] == 1 && seen[mypair.first.var()] == 1) {
+            if (seen[mypair.second.var()] && seen[mypair.first.var()]) {
                 seen[mypair.first.var()] = 0;
                 go_again = true;
             }
@@ -431,7 +434,6 @@ void Minimize::remove_eq_literals() {
         if (seen[i]) sampling_vars.push_back(i);
         seen[i] = 0;
     }
-
 
     verb_print(1, "[arjun-simp] Removed eq lits: "
         << (orig_sampling_set_size - sampling_vars.size())

@@ -79,18 +79,24 @@ namespace ArjunNS {
         bool get_sampl_vars_set() const { return sampl_vars_set; }
         bool sampl_vars_set = false;
         bool opt_sampl_vars_given = false;
-        void set_sampl_vars(const std::vector<uint32_t>& vars) {
-            assert(sampl_vars_set == false);
+        template<class T>
+        void set_sampl_vars(const T& vars, bool ignore = false) {
+            if (!ignore) {
+                assert(sampl_vars.empty());
+                assert(sampl_vars_set == false);
+            }
+            sampl_vars.clear();
             sampl_vars_set = true;
-            sampl_vars = vars;
+            sampl_vars.insert(sampl_vars.begin(), vars.begin(), vars.end());
         }
         const auto& get_sampl_vars() const { return sampl_vars; }
-        void set_opt_sampl_vars(const std::vector<uint32_t>& vars)
-            { opt_sampl_vars_given = true; opt_sampl_vars = vars; }
-        void set_opt_sampl_vars(const std::set<uint32_t>& vars)
-            { opt_sampl_vars_given = true;
-                opt_sampl_vars.clear();
-                opt_sampl_vars.insert(opt_sampl_vars.begin(), vars.begin(), vars.end()); }
+        template<class T>
+        void set_opt_sampl_vars(const T& vars) {
+            assert(opt_sampl_vars.empty());
+            assert(opt_sampl_vars_given == false);
+            opt_sampl_vars_given = true;
+            opt_sampl_vars.insert(opt_sampl_vars.begin(), vars.begin(), vars.end());
+        }
 
         void set_multiplier_weight(const mpq_class& m) { multiplier_weight = m; }
         auto get_multiplier_weight() const { return multiplier_weight; }
@@ -102,6 +108,10 @@ namespace ArjunNS {
                 if (!lit.sign()) return it->second.pos;
                 else return it->second.neg;
             }
+        }
+        void unset_var_weight(uint32_t v) {
+            auto it = weights.find(v);
+            if (it != weights.end()) weights.erase(it);
         }
         void set_lit_weight(CMSat::Lit lit, const mpq_class& w) {
             assert(weighted);
@@ -210,9 +220,9 @@ namespace ArjunNS {
             if (weighted) {
                 for(const auto& it: weights) {
                     outf << "c p weight " << CMSat::Lit(it.first,false) << " "
-                        << it.second.pos << std::endl;
+                        << it.second.pos << " 0" << std::endl;
                     outf << "c p weight " << CMSat::Lit(it.first,true) << " "
-                        << it.second.neg << std::endl;
+                        << it.second.neg << " 0" << std::endl;
                 }
             }
             outf << "c MUST MULTIPLY BY " << multiplier_weight << std::endl;

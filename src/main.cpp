@@ -338,6 +338,7 @@ void do_minimize() {
         cout << "c o [arjun] dumped simplified problem to '" << elimtofile << "'" << endl;
     } else {
         print_final_sampl_set(cnf, orig_sampl_vars);
+        /* cnf.write_simpcnf("tmp"); */
     }
 }
 

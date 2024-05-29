@@ -215,34 +215,35 @@ SimplifiedCNF Puura::get_cnf(
     if (scnf.weighted) {
         map<Lit, mpq_class> w;
         solver->get_weights(w, sampl_vars, opt_sampl_vars);
-        /* for(const auto& p: w) { */
-        /*     cout << "w " << p.first << " " << p.second << endl; */
-        /* } */
-        set<uint32_t> tmp3(opt_sampl_vars.begin(), opt_sampl_vars.end());
+        for(const auto& p: w)
+            verb_print(5, "[w-debug] w " << p.first << " " << p.second);
+        set<uint32_t> opt_sampl_set(opt_sampl_vars.begin(), opt_sampl_vars.end());
+        for(const auto& v: opt_sampl_vars)
+            verb_print(5, "[w-debug] opt sampl var: " << v+1);
 
         mpq_class mul(1);
         for(const auto& v: empty_sampl_vars) {
-            if (!tmp3.count(v)) continue;
+            if (!opt_sampl_set.count(v)) continue;
             assert(w.count(Lit(v, false)));
             mul *= w[Lit(v, false)] + w[Lit(v, true)];
-            /* cout << "empty " << v+1 << " mul: " << mul << endl; */
+            verb_print(5, "[w-debug] empty " << v+1 << " mul: " << mul);
         }
         const auto units = solver->get_zero_assigned_lits();
         for(const auto& u: units) {
-            if (!tmp3.count(u.var())) continue;
+            if (!opt_sampl_set.count(u.var())) continue;
             assert(w.count(u));
             mul *= w[u];
-            /* cout << "unit "<< u << " mul: " << mul << endl; */
+            verb_print(5, "[w-debug] unit "<< u << " mul: " << mul);
         }
-        /* cout << "arjun mul: " << mul << " solver mul: " << solver->get_multiplier_weight()<< endl; */
+        verb_print(5, "[w-debug] arjun mul: " << mul
+                << " solver mul: " << solver->get_multiplier_weight());
         scnf.multiplier_weight = solver->get_multiplier_weight()*mul;
         map<Lit, mpq_class> outer_w;
-        for(const auto& it: w) {
-            outer_w[it.first] = it.second;
-        }
+        for(const auto& it: w) outer_w[it.first] = it.second;
         auto inter_w = solver->translate_weights(outer_w);
         for(const auto& myw: inter_w) {
             if (myw.first.var() >= scnf.nvars) continue;
+            verb_print(5, "[w-debug] int w: " << myw.first << " " << myw.second);
             scnf.set_lit_weight(myw.first, myw.second);
         }
     } else {
@@ -251,6 +252,7 @@ SimplifiedCNF Puura::get_cnf(
         scnf.multiplier_weight = solver->get_multiplier_weight()*dummy;
     }
     scnf.set_sampl_vars(solver->translate_sampl_set(sampl_vars, false));
+
     // opt sampl set
     auto tmp = solver->translate_sampl_set(opt_sampl_vars, false);
     set<uint32_t> tmp2(tmp.begin(), tmp.end());
@@ -315,7 +317,7 @@ void Puura::reverse_bce(SimplifiedCNF& cnf) {
     auto solver = fill_solver(cnf);
     solver->set_renumber(false);
     solver->set_scc(false);
-    setup_sampl_vars_dontelim(cnf);
+    set_up_sampl_vars_dont_elim(cnf);
     solver->set_sampl_vars(cnf.sampl_vars);
     solver->reverse_bce();
     delete solver;
@@ -330,7 +332,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     verb_print(3, "Running "<< __PRETTY_FUNCTION__);
     solver->set_renumber(true);
     solver->set_scc(true);
-    setup_sampl_vars_dontelim(cnf);
+    set_up_sampl_vars_dont_elim(cnf);
 
     //Below works VERY WELL for: ProcessBean, pollard, track1_116.mcc2020_cnf
     //   and blasted_TR_b14_even3_linear.cnf.gz.no_w.cnf
@@ -408,11 +410,16 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     return ret;
 }
 
-void Puura::setup_sampl_vars_dontelim(const SimplifiedCNF& cnf)
+void Puura::set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf)
 {
     assert(dont_elim.empty());
     if (cnf.weighted)
-        for(uint32_t v: cnf.opt_sampl_vars) dont_elim.push_back(Lit(v, false));
+        for(uint32_t v: cnf.opt_sampl_vars) {
+            // TODO multiply by one weight when eliminated.
+            /* Lit l(v, false); */
+            /* if (cnf.get_lit_weight(l) != cnf.get_lit_weight(~l)) continue; */
+            dont_elim.push_back(Lit(v, false));
+        }
     else
         for(uint32_t v: cnf.sampl_vars) dont_elim.push_back(Lit(v, false));
     sampl_set.clear();
