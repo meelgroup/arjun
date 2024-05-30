@@ -329,7 +329,7 @@ void do_minimize() {
     }
     if (true) {
         auto cnf2 = cnf;
-        cnf2.write_simpcnf("tmp", false, true);
+        /* cnf2.write_simpcnf("tmp", false, true); */
         cnf2.renumber_sampling_vars_for_ganak();
     }
 
