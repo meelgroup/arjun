@@ -77,8 +77,9 @@ namespace ArjunNS {
         void add_clause(std::vector<CMSat::Lit>& cl) { clauses.push_back(cl); }
         void add_red_clause(std::vector<CMSat::Lit>& cl) { red_clauses.push_back(cl); }
         bool get_sampl_vars_set() const { return sampl_vars_set; }
+        bool get_opt_sampl_vars_set() const { return opt_sampl_vars_set; }
         bool sampl_vars_set = false;
-        bool opt_sampl_vars_given = false;
+        bool opt_sampl_vars_set = false;
         template<class T>
         void set_sampl_vars(const T& vars, bool ignore = false) {
             if (!ignore) {
@@ -91,10 +92,13 @@ namespace ArjunNS {
         }
         const auto& get_sampl_vars() const { return sampl_vars; }
         template<class T>
-        void set_opt_sampl_vars(const T& vars) {
-            assert(opt_sampl_vars.empty());
-            assert(opt_sampl_vars_given == false);
-            opt_sampl_vars_given = true;
+        void set_opt_sampl_vars(const T& vars, bool ignore = false) {
+            if (!ignore) {
+                assert(opt_sampl_vars.empty());
+                assert(opt_sampl_vars_set == false);
+            }
+            opt_sampl_vars.clear();
+            opt_sampl_vars_set = true;
             opt_sampl_vars.insert(opt_sampl_vars.begin(), vars.begin(), vars.end());
         }
 
@@ -182,12 +186,15 @@ namespace ArjunNS {
                 std::map<uint32_t, Weight> new_weights;
                 for(auto& w: weights)
                     new_weights[map_here_to_there[w.first]] = w.second;
+                weights = new_weights;
+            } else {
+                assert(weights.empty());
             }
         }
 
 
         void write_simpcnf(const std::string& fname,
-                    bool red = true) const
+                    bool red = true, bool convert = false) const
         {
             uint32_t num_cls = clauses.size();
             std::ofstream outf;
@@ -219,10 +226,20 @@ namespace ArjunNS {
 
             if (weighted) {
                 for(const auto& it: weights) {
-                    outf << "c p weight " << CMSat::Lit(it.first,false) << " "
-                        << it.second.pos << " 0" << std::endl;
-                    outf << "c p weight " << CMSat::Lit(it.first,true) << " "
-                        << it.second.neg << " 0" << std::endl;
+                    outf << "c p weight " << CMSat::Lit(it.first,false) << " ";
+                    if (convert) {
+                        mpf_class pos = it.second.pos;
+                        outf << pos << " 0" << std::endl;
+                    } else {
+                        outf << it.second.pos << " 0" << std::endl;
+                    }
+                    outf << "c p weight " << CMSat::Lit(it.first,true) << " ";
+                    if (convert) {
+                        mpf_class neg = it.second.neg;
+                        outf << neg << " 0" << std::endl;
+                    } else {
+                        outf << it.second.neg << " 0" << std::endl;
+                    }
                 }
             }
             outf << "c MUST MULTIPLY BY " << multiplier_weight << std::endl;

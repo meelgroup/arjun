@@ -327,6 +327,11 @@ void do_minimize() {
         set_config(&arj2);
         arj2.only_run_minimize_indep(cnf);
     }
+    if (true) {
+        auto cnf2 = cnf;
+        cnf2.write_simpcnf("tmp", false, true);
+        cnf2.renumber_sampling_vars_for_ganak();
+    }
 
     if (!elimtofile.empty()) {
         arjun->elim_to_file(cnf, all_indep,
@@ -334,11 +339,10 @@ void do_minimize() {
             do_unate, simp_conf,
             sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 
-        cnf.write_simpcnf(elimtofile, redundant_cls);
+        cnf.write_simpcnf(elimtofile, redundant_cls, true);
         cout << "c o [arjun] dumped simplified problem to '" << elimtofile << "'" << endl;
     } else {
         print_final_sampl_set(cnf, orig_sampl_vars);
-        /* cnf.write_simpcnf("tmp"); */
     }
 }
 

@@ -225,7 +225,7 @@ void Minimize::fill_solver(const ArjunNS::SimplifiedCNF& cnf) {
     for(const auto& cl: cnf.clauses) solver->add_clause(cl);
     for(const auto& cl: cnf.red_clauses) solver->add_red_clause(cl);
     sampling_vars = cnf.sampl_vars;
-    if (cnf.opt_sampl_vars_given) {
+    if (cnf.opt_sampl_vars_set) {
         if (cnf.sampl_vars != cnf.opt_sampl_vars) {
             cout <<"ERROR: backwards does not support opt sampling set" << endl;
             exit(-1);
@@ -279,19 +279,17 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
         if (opt_sampling_vars_set.count(p.first.var()) && opt_sampling_vars_set.count(p.second.var())) {
             sampling_vars_set.erase(p.first.var());
             opt_sampling_vars_set.erase(p.first.var());
-            verb_print(5, "[w-debug] repl: " << p.first.var()+1 << " with " << p.second.var()+1);
+            verb_print(5, "[w-debug] repl: " << p.first << " with " << p.second);
             if (cnf.weighted) {
                 auto wp2 = cnf.get_lit_weight(p.second);
                 auto wn2 = cnf.get_lit_weight(~p.second);
                 auto wp1 = cnf.get_lit_weight(p.first);
                 auto wn1 = cnf.get_lit_weight(~p.first);
-                if (p.first.sign() == p.second.sign()) {
-                    wp2 *= wp1;
-                    wn2 *= wn1;
-                } else {
-                    wp2 *= wn1;
-                    wn2 *= wp1;
-                }
+                verb_print(5, "[w-debug] wp1 " << wp1 << " wn1 " << wn1);
+                verb_print(5, "[w-debug] wp2 " << wp2 << " wn2 " << wn2);
+                wp2 *= wp1;
+                wn2 *= wn1;
+                cnf.unset_var_weight(p.second.var());
                 cnf.set_lit_weight(p.second, wp2);
                 cnf.set_lit_weight(~p.second, wn2);
                 verb_print(5, "[w-debug] set lit " << p.second << " weight to " << wp2);
@@ -303,9 +301,11 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
             cl[0] = p.first;
             cl[1] = ~p.second;
             cnf.clauses.push_back(cl);
+            verb_print(5, "[w-debug] adding cl: " << cl);
             cl[0] = ~cl[0];
             cl[1] = ~cl[1];
             cnf.clauses.push_back(cl);
+            verb_print(5, "[w-debug] adding cl: " << cl);
         }
     }
 
@@ -329,7 +329,8 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
         }
     }
     cnf.set_sampl_vars(sampling_vars_set, true);
-    cnf.set_opt_sampl_vars(opt_sampling_vars_set);
+    cnf.set_opt_sampl_vars(opt_sampling_vars_set, true);
+    verb_print(5, "[w-debug] ----- minimize done.");
 
     verb_print(1, "[arjun] run_minimize_indep finished "
         << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time));

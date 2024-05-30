@@ -431,7 +431,7 @@ void Puura::run_sbva(SimplifiedCNF& cnf,
         int sbva_tiebreak)
 {
     if (sbva_steps == 0) return;
-    assert(cnf.opt_sampl_vars_given);
+    assert(cnf.opt_sampl_vars_set);
 
     auto my_time = cpuTime();
     verb_print(1,
