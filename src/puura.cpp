@@ -108,10 +108,12 @@ SATSolver* Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
 }
 
 void Puura::backbone(SimplifiedCNF& cnf) {
-    for(const auto& v: cnf.opt_sampl_vars) {
-        Lit l(v, false);
-        if (cnf.get_lit_weight(l) == 0) cnf.clauses.push_back({~l});
-        if (cnf.get_lit_weight(~l) == 0) cnf.clauses.push_back({l});
+    if (cnf.weighted) {
+        for(const auto& v: cnf.opt_sampl_vars) {
+            Lit l(v, false);
+            if (cnf.get_lit_weight(l) == 0) cnf.clauses.push_back({~l});
+            if (cnf.get_lit_weight(~l) == 0) cnf.clauses.push_back({l});
+        }
     }
     auto solver = fill_solver(cnf);
     string str = "clean-cls, must-scc-vrepl, full-probe, must-scc-vrepl, must-renumber";
