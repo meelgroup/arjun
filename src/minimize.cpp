@@ -252,9 +252,6 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
     backward_round();
 
     end:
-    remove_zero_assigned_literals();
-    remove_eq_literals();
-
     set<uint32_t> opt_sampling_vars_set(cnf.sampl_vars.begin(), cnf.sampl_vars.end());
     set<uint32_t> sampling_vars_set(sampling_vars.begin(), sampling_vars.end());
 
