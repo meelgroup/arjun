@@ -74,6 +74,7 @@ int do_unate = false;
 int do_revbce = false;
 int do_minim_indep = true;
 bool all_indep = false;
+string debug_minim;
 
 void add_arjun_options()
 {
@@ -253,6 +254,9 @@ void add_arjun_options()
         .help("Try to remove variables from the independent set in this order. "
                 "File must contain a variable on each line. "
                 "Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY");
+    program.add_argument("--debugminim")
+        .action([&](const auto& a) {debug_minim = a;})
+        .help("Create this file that is the CNF after indep set minimization");
 
     program.add_argument("files").remaining().help("input file and output file");
 }
@@ -327,7 +331,8 @@ void do_minimize() {
         set_config(&arj2);
         arj2.only_run_minimize_indep(cnf);
     }
-    if (true) cnf.write_simpcnf("tmp", false, true);
+    if (!debug_minim.empty())
+        cnf.write_simpcnf(debug_minim, false, true);
 
     if (!elimtofile.empty()) {
         arjun->elim_to_file(cnf, all_indep,
