@@ -247,6 +247,7 @@ namespace ArjunNS {
                 const std::vector<uint32_t>& empty_sampling_vars) {
             std::set<uint32_t> sampling_vars_set(new_sampl_vars.begin(), new_sampl_vars.end());
             std::set<uint32_t> opt_sampling_vars_set(opt_sampl_vars.begin(), opt_sampl_vars.end());
+            bool debug_w = false;
 
             // Take units
             for(const auto& l: solver->get_zero_assigned_lits()) {
@@ -255,7 +256,8 @@ namespace ArjunNS {
                 opt_sampling_vars_set.erase(l.var());
                 if (get_weighted()) {
                     multiplier_weight *= get_lit_weight(l);
-                    std::cout << "[w-debug] unit: " << l << " multiplier_weight: " << multiplier_weight << std::endl;
+                    if (debug_w)
+                        std::cout << "[w-debug] unit: " << l << " multiplier_weight: " << multiplier_weight << std::endl;
                     unset_var_weight(l.var());
                 }
             }
@@ -270,14 +272,18 @@ namespace ArjunNS {
                     auto wn2 = get_lit_weight(~p.second);
                     auto wp1 = get_lit_weight(p.first);
                     auto wn1 = get_lit_weight(~p.first);
-                    std::cout << "[w-debug] wp1 " << wp1 << " wn1 " << wn1 << std::endl;
-                    std::cout << "[w-debug] wp2 " << wp2 << " wn2 " << wn2 << std::endl;
+                    if (debug_w) {
+                        std::cout << "[w-debug] wp1 " << wp1 << " wn1 " << wn1 << std::endl;
+                        std::cout << "[w-debug] wp2 " << wp2 << " wn2 " << wn2 << std::endl;
+                    }
                     wp2 *= wp1;
                     wn2 *= wn1;
                     set_lit_weight(p.second, wp2);
                     set_lit_weight(~p.second, wn2);
-                    std::cout << "[w-debug] set lit " << p.second << " weight to " << wp2 << std::endl;
-                    std::cout << "[w-debug] set lit " << ~p.second << " weight to " << wn2 << std::endl;
+                    if (debug_w) {
+                        std::cout << "[w-debug] set lit " << p.second << " weight to " << wp2 << std::endl;
+                        std::cout << "[w-debug] set lit " << ~p.second << " weight to " << wn2 << std::endl;
+                    }
                     unset_var_weight(p.first.var());
                 }
             }
@@ -299,7 +305,8 @@ namespace ArjunNS {
                 sampling_vars_set.erase(v);
                 opt_sampling_vars_set.erase(v);
 
-                std::cout << "[w-debug] empty sampling var: " << v+1 << std::endl;
+                if (debug_w)
+                    std::cout << "[w-debug] empty sampling var: " << v+1 << std::endl;
                 mpq_class tmp(0);
                 if (get_weighted()) {
                     CMSat::Lit l(v, false);
@@ -308,7 +315,8 @@ namespace ArjunNS {
                     unset_var_weight(l.var());
                 } else tmp = 2;
                 multiplier_weight *= tmp;
-                std::cout << "[w-debug] empty mul: " << tmp << " final multiplier_weight: " << multiplier_weight << std::endl;
+                if (debug_w)
+                    std::cout << "[w-debug] empty mul: " << tmp << " final multiplier_weight: " << multiplier_weight << std::endl;
             }
 
             set_sampl_vars(sampling_vars_set, true);
@@ -318,16 +326,18 @@ namespace ArjunNS {
                 if (opt_sampling_vars_set.count(i) == 0) unset_var_weight(i);
             }
 
-            std::cout << "w-debug FINAL sampl_vars    : ";
-            for(const auto& v: sampl_vars) {
-                std::cout << v+1 << " ";
+            if (debug_w) {
+                std::cout << "w-debug FINAL sampl_vars    : ";
+                for(const auto& v: sampl_vars) {
+                    std::cout << v+1 << " ";
+                }
+                std::cout << std::endl;
+                std::cout << "w-debug FINAL opt_sampl_vars: ";
+                for(const auto& v: opt_sampl_vars) {
+                    std::cout << v+1 << " ";
+                }
+                std::cout << std::endl;
             }
-            std::cout << std::endl;
-            std::cout << "w-debug FINAL opt_sampl_vars: ";
-            for(const auto& v: opt_sampl_vars) {
-                std::cout << v+1 << " ";
-            }
-            std::cout << std::endl;
         }
     };
 
