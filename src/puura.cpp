@@ -343,7 +343,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 SimplifiedCNF Puura::get_cnf(
         SATSolver* solver,
         const SimplifiedCNF& cnf,
-        const vector<uint32_t>& sampl_vars,
+        const vector<uint32_t>& new_sampl_vars,
         const vector<uint32_t>& empty_sampl_vars
         ) {
     SimplifiedCNF scnf;
