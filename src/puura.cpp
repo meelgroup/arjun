@@ -398,9 +398,19 @@ SimplifiedCNF Puura::get_cnf(
     }
     solver->end_getting_constraints();
 
-    scnf.nvars = solver->simplified_nvars();
     std::sort(scnf.sampl_vars.begin(), scnf.sampl_vars.end());
     std::sort(scnf.opt_sampl_vars.begin(), scnf.opt_sampl_vars.end());
+
+    std::cout << "w-debug AFTER PURA FINAL sampl_vars    : ";
+    for(const auto& v: scnf.sampl_vars) {
+        std::cout << v+1 << " ";
+    }
+    cout << endl;
+    std::cout << "w-debug AFTER PURA FINAL opt_sampl_vars: ";
+    for(const auto& v: scnf.opt_sampl_vars) {
+        std::cout << v+1 << " ";
+    }
+    cout << endl;
     return scnf;
 }
 

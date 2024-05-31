@@ -85,8 +85,9 @@ int lit_to_pl(const Lit l) {
 
 void Extend::unsat_define(SimplifiedCNF& cnf) {
     double start_round_time = cpuTime();
-    assert(cnf.sampl_vars_set);
-    uint32_t start_size = cnf.sampl_vars.size();
+    assert(cnf.sampl_vars.size() == cnf.opt_sampl_vars.size());
+    assert(cnf.opt_sampl_vars_set);
+    uint32_t start_size = cnf.opt_sampl_vars.size();
     fill_solver(cnf);
     solver->set_verbosity(0);
     solver->set_scc(1);
@@ -94,11 +95,11 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     // Fill no need
     set<uint32_t> no_need;
     // [ replaced, replaced_with ]
-    auto ret1 = solver->get_all_binary_xors();
-    for(const auto& p: ret1) no_need.insert(p.first.var());
+    /* auto ret1 = solver->get_all_binary_xors(); */
+    /* for(const auto& p: ret1) no_need.insert(p.first.var()); */
     auto ret2 = solver->get_zero_assigned_lits();
     for(const auto& p: ret2) no_need.insert(p.var());
-    for(const auto& v: cnf.sampl_vars) no_need.insert(v);
+    for(const auto& v: cnf.opt_sampl_vars) no_need.insert(v);
     add_all_indics_except(no_need);
 
     assert(ps == nullptr);
@@ -126,7 +127,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     solver->end_getting_constraints();
 
     for(const auto& x: seen) assert(x == 0);
-    for(const auto& v: cnf.sampl_vars) {
+    for(const auto& v: cnf.opt_sampl_vars) {
         if (var_to_indic[v] == var_Undef) continue;
         cl.clear();
         auto ind_v = var_to_indic[v];
@@ -205,7 +206,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             picosat_add(ps, 0);
             set_vals[indic] = l_True;
 
-            cnf.sampl_vars.push_back(test_var);
+            cnf.opt_sampl_vars.push_back(test_var);
         } else {
             set_vals[indic] = l_Undef;
         }
@@ -214,7 +215,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     }
     picosat_reset(ps);
 
-    verb_print(1, "defined via Padoa: " << cnf.sampl_vars.size()-start_size
+    verb_print(1, "defined via Padoa: " << cnf.opt_sampl_vars.size()-start_size
             << " SAT: " << sat
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
@@ -344,9 +345,6 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
 
     // Fill no need
     set<uint32_t> no_need;
-    // [ replaced, replaced_with ]
-    auto ret1 = solver->get_all_binary_xors();
-    for(const auto& p: ret1) no_need.insert(p.first.var());
     auto ret2 = solver->get_zero_assigned_lits();
     for(const auto& p: ret2) no_need.insert(p.var());
     for(const auto& v: cnf.opt_sampl_vars) no_need.insert(v);
@@ -469,8 +467,8 @@ void Extend::fill_solver(const SimplifiedCNF& cnf) {
     seen.clear();
     seen.resize(solver->nVars()*2, 0);
 
-    // We only need to double the non-sampling vars
-    for(const auto& v: cnf.sampl_vars) seen[v] = 1;
+    // We only need to double the non-opt-sampling vars
+    for(const auto& v: cnf.opt_sampl_vars) seen[v] = 1;
     vector<Lit> cl2;
     for(const auto& cl: cnf.clauses) {
         cl2.clear();

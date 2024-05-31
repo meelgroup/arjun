@@ -317,6 +317,17 @@ namespace ArjunNS {
             for(uint32_t i = 0; i < nvars; i++) {
                 if (opt_sampling_vars_set.count(i) == 0) unset_var_weight(i);
             }
+
+            std::cout << "w-debug FINAL sampl_vars    : ";
+            for(const auto& v: sampl_vars) {
+                std::cout << v+1 << " ";
+            }
+            std::cout << std::endl;
+            std::cout << "w-debug FINAL opt_sampl_vars: ";
+            for(const auto& v: opt_sampl_vars) {
+                std::cout << v+1 << " ";
+            }
+            std::cout << std::endl;
         }
     };
 
