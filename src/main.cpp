@@ -331,8 +331,11 @@ void do_minimize() {
         set_config(&arj2);
         arj2.only_run_minimize_indep(cnf);
     }
-    if (!debug_minim.empty())
+    if (!debug_minim.empty()) {
         cnf.write_simpcnf(debug_minim, false, true);
+        cnf.renumber_sampling_vars_for_ganak();
+        cnf.write_simpcnf(debug_minim+"-renum", false, true);
+    }
 
     if (!elimtofile.empty()) {
         arjun->elim_to_file(cnf, all_indep,

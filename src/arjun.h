@@ -89,6 +89,9 @@ namespace ArjunNS {
             sampl_vars.clear();
             sampl_vars_set = true;
             sampl_vars.insert(sampl_vars.begin(), vars.begin(), vars.end());
+            if (opt_sampl_vars.empty()) {
+                opt_sampl_vars = sampl_vars;
+            }
         }
         const auto& get_sampl_vars() const { return sampl_vars; }
         template<class T>
@@ -243,6 +246,87 @@ namespace ArjunNS {
                 }
             }
             outf << "c MUST MULTIPLY BY " << multiplier_weight << std::endl;
+        }
+
+        void fix_weights(CMSat::SATSolver* solver,
+                const std::vector<uint32_t> new_sampl_vars,
+                const std::vector<uint32_t>& empty_sampling_vars) {
+            std::set<uint32_t> sampling_vars_set(new_sampl_vars.begin(), new_sampl_vars.end());
+            std::set<uint32_t> opt_sampling_vars_set(opt_sampl_vars.begin(), opt_sampl_vars.end());
+
+            // Take units
+            for(const auto& l: solver->get_zero_assigned_lits()) {
+                if (l.var() >= nvars) continue;
+                sampling_vars_set.erase(l.var());
+                opt_sampling_vars_set.erase(l.var());
+                if (get_weighted()) {
+                    multiplier_weight *= get_lit_weight(l);
+                    std::cout << "[w-debug] unit: " << l << " multiplier_weight: " << multiplier_weight << std::endl;
+                    unset_var_weight(l.var());
+                }
+            }
+
+            // Take bin XORs
+            // [ replaced, replaced_with ]
+            const auto eq_lits = solver->get_all_binary_xors();
+            for(auto p: eq_lits) {
+                std::cout << "[w-debug] repl: " << p.first << " with " << p.second << std::endl;
+                if (get_weighted()) {
+                    auto wp2 = get_lit_weight(p.second);
+                    auto wn2 = get_lit_weight(~p.second);
+                    auto wp1 = get_lit_weight(p.first);
+                    auto wn1 = get_lit_weight(~p.first);
+                    std::cout << "[w-debug] wp1 " << wp1 << " wn1 " << wn1 << std::endl;
+                    std::cout << "[w-debug] wp2 " << wp2 << " wn2 " << wn2 << std::endl;
+                    wp2 *= wp1;
+                    wn2 *= wn1;
+                    set_lit_weight(p.second, wp2);
+                    set_lit_weight(~p.second, wn2);
+                    std::cout << "[w-debug] set lit " << p.second << " weight to " << wp2 << std::endl;
+                    std::cout << "[w-debug] set lit " << ~p.second << " weight to " << wn2 << std::endl;
+                    unset_var_weight(p.first.var());
+                }
+            }
+
+            set_sampl_vars(sampling_vars_set, true);
+            set_opt_sampl_vars(opt_sampling_vars_set, true);
+
+            solver->start_getting_constraints(false);
+            sampl_vars = solver->translate_sampl_set(sampl_vars, true);
+            opt_sampl_vars = solver->translate_sampl_set(opt_sampl_vars, true);
+            auto empty_sampling_vars2 = solver->translate_sampl_set(empty_sampling_vars, true);
+            solver->end_getting_constraints();
+            sampling_vars_set.clear();
+            sampling_vars_set.insert(sampl_vars.begin(), sampl_vars.end());
+            opt_sampling_vars_set.clear();
+            opt_sampling_vars_set.insert(opt_sampl_vars.begin(), opt_sampl_vars.end());
+
+            for(const auto& v: empty_sampling_vars2) {
+                sampling_vars_set.erase(v);
+                opt_sampling_vars_set.erase(v);
+
+                std::cout << "[w-debug] empty sampling var: " << v+1 << std::endl;
+                mpq_class tmp(0);
+                if (get_weighted()) {
+                    CMSat::Lit l(v, false);
+                    tmp += get_lit_weight(l);
+                    tmp += get_lit_weight(~l);
+                    unset_var_weight(l.var());
+                } else tmp = 2;
+                multiplier_weight *= tmp;
+                std::cout << "[w-debug] empty multiplier_weight: " << multiplier_weight << std::endl;
+            }
+            /* for(const auto& v: empty_sampling_vars) { */
+            /*     sampling_vars_set.insert(v); */
+            /*     opt_sampling_vars_set.insert(v); */
+            /* } */
+
+            set_sampl_vars(sampling_vars_set, true);
+            set_opt_sampl_vars(opt_sampling_vars_set, true);
+
+            for(uint32_t i = 0; i < nvars; i++) {
+                if (opt_sampling_vars_set.count(i) == 0) unset_var_weight(i);
+            }
         }
     };
 

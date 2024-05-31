@@ -205,103 +205,6 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     delete s;
 }
 
-SimplifiedCNF Puura::get_cnf(
-        SATSolver* solver,
-        const vector<uint32_t>& sampl_vars,
-        const vector<uint32_t>& opt_sampl_vars,
-        const vector<uint32_t>& empty_sampl_vars
-        ) {
-    SimplifiedCNF scnf;
-    vector<Lit> clause;
-    bool is_xor, rhs;
-    scnf.weighted = solver->get_weighted();
-    scnf.new_vars(solver->simplified_nvars());
-
-    for(const auto& v: sampl_vars)
-        verb_print(5, "[w-debug] sampl var: " << v+1);
-    for(const auto& v: opt_sampl_vars)
-        verb_print(5, "[w-debug] opt sampl var: " << v+1);
-
-    // IRRED clauses
-    solver->start_getting_constraints(false, true);
-    if (scnf.weighted) {
-        map<Lit, mpq_class> w;
-        solver->get_weights(w, sampl_vars, opt_sampl_vars);
-        for(const auto& p: w)
-            verb_print(5, "[w-debug] w " << p.first << " " << p.second);
-        set<uint32_t> opt_sampl_set(opt_sampl_vars.begin(), opt_sampl_vars.end());
-
-        mpq_class mul(1);
-        // empty
-        for(const auto& v: empty_sampl_vars) {
-            verb_print(5, "[w-debug] empty " << v+1);
-            if (!opt_sampl_set.count(v)) continue;
-            assert(w.count(Lit(v, false)));
-            Lit l(v, false);
-            mul *= w[l] + w[~l];
-            w.erase(l);
-            w.erase(~l);
-            verb_print(5, "[w-debug] empty " << v+1 << " mul: " << mul);
-        }
-        // unit
-        const auto units = solver->get_zero_assigned_lits();
-        for(const auto& u: units) {
-            if (!opt_sampl_set.count(u.var())) continue;
-            assert(w.count(u));
-            mul *= w[u];
-            w.erase(u);
-            w.erase(~u);
-            verb_print(5, "[w-debug] unit "<< u << " mul: " << mul);
-        }
-        verb_print(5, "[w-debug] arjun mul: " << mul
-                << " solver mul: " << solver->get_multiplier_weight());
-        scnf.multiplier_weight = solver->get_multiplier_weight()*mul;
-        map<Lit, mpq_class> outer_w;
-        for(const auto& it: w) {
-            outer_w[it.first] = it.second;
-            verb_print(5, "[w-debug] outer_w " << it.first << " w: " << it.second);
-        }
-        auto inter_w = solver->translate_weights(outer_w);
-        for(const auto& myw: inter_w) {
-            verb_print(5, "???[w-debug] int w: " << myw.first << " " << myw.second);
-            if (myw.first.var() >= scnf.nvars) continue;
-            verb_print(5, "[w-debug] int w: " << myw.first << " " << myw.second);
-            scnf.set_lit_weight(myw.first, myw.second);
-        }
-    } else {
-        mpz_class dummy(2);
-        mpz_pow_ui(dummy.get_mpz_t(), dummy.get_mpz_t(), empty_sampl_vars.size());
-        scnf.multiplier_weight = solver->get_multiplier_weight()*dummy;
-    }
-    scnf.set_sampl_vars(solver->translate_sampl_set(sampl_vars, false));
-
-    // opt sampl set
-    auto opt = solver->translate_sampl_set(opt_sampl_vars, false);
-    set<uint32_t> opt_set(opt.begin(), opt.end());
-    const auto empties = solver->translate_sampl_set(empty_sampl_vars, true);
-    for(const auto& e: empties) opt_set.erase(e);
-    scnf.set_opt_sampl_vars(opt_set);
-
-
-    while(solver->get_next_constraint(clause, is_xor, rhs)) {
-        assert(!is_xor); assert(rhs);
-        scnf.clauses.push_back(clause);
-    }
-    solver->end_getting_constraints();
-
-    // RED clauses
-    solver->start_getting_constraints(true, true);
-    while(solver->get_next_constraint(clause, is_xor, rhs)) {
-        assert(!is_xor); assert(rhs);
-        scnf.red_clauses.push_back(clause);
-    }
-    solver->end_getting_constraints();
-
-    scnf.nvars = solver->simplified_nvars();
-    std::sort(scnf.sampl_vars.begin(), scnf.sampl_vars.end());
-    return scnf;
-}
-
 SATSolver* Puura::fill_solver(const SimplifiedCNF& cnf) {
     SATSolver* solver;
     solver = new SATSolver;
@@ -321,6 +224,7 @@ SATSolver* Puura::fill_solver(const SimplifiedCNF& cnf) {
             if (!tmp.count(it.first)) continue;
             solver->set_lit_weight(Lit(it.first, false), it.second.pos);
             solver->set_lit_weight(Lit(it.first, true), it.second.neg);
+            verb_print(5, "[w-debug] fill_solver lit: " << it.first+1 << " w: " << it.second.pos << " " << it.second.neg);
         }
     }
     solver->set_multiplier_weight(cnf.multiplier_weight);
@@ -350,6 +254,11 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     const SimpConf simp_conf,
     const vector<uint32_t>& empty_sampl_vars)
 {
+    for(const auto& v: cnf.sampl_vars)
+        verb_print(5, "[w-debug] orig sampl var: " << v+1);
+    for(const auto& v: cnf.opt_sampl_vars)
+        verb_print(5, "[w-debug] orig opt sampl var: " << v+1);
+
     auto solver = fill_solver(cnf);
     verb_print(3, "Running "<< __PRETTY_FUNCTION__);
     solver->set_renumber(true);
@@ -417,28 +326,145 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 
     // Deal with empties
     auto new_sampl_vars = cnf.sampl_vars;
-    auto new_opt_sampl_vars = cnf.opt_sampl_vars;
     vector<uint32_t> new_empty_sampl_vars;
     solver->clean_sampl_get_empties(new_sampl_vars, new_empty_sampl_vars);
     dont_elim.clear();
     if (!cnf.weighted) {
         for(uint32_t v: new_sampl_vars) dont_elim.push_back(Lit(v, false));
     } else {
-        set<uint32_t> new_opt(new_opt_sampl_vars.begin(), new_opt_sampl_vars.end());
+        // don't eliminate anything but the empties from opt_sampl_vars
+        auto tmp = cnf.opt_sampl_vars;
+        set<uint32_t> new_opt(tmp.begin(), tmp.end());
         for(uint32_t v:new_empty_sampl_vars) new_opt.erase(v);
-        new_opt_sampl_vars.clear();
-        new_opt_sampl_vars.insert(new_opt_sampl_vars.end(), new_opt.begin(), new_opt.end());
-        for(uint32_t v: new_opt_sampl_vars) dont_elim.push_back(Lit(v, false));
+        tmp.clear();
+        tmp.insert(tmp.end(), new_opt.begin(), new_opt.end());
+        for(uint32_t v: tmp) dont_elim.push_back(Lit(v, false));
     }
     str = "occ-bve-empty, must-renumber";
     solver->simplify(&dont_elim, &str);
 
     // Return final one
     auto ret = get_cnf(
-            solver, new_sampl_vars, new_opt_sampl_vars, new_empty_sampl_vars);
+            solver, cnf, new_sampl_vars, cnf.opt_sampl_vars, new_empty_sampl_vars);
     ret.backbone_done = backbone_done;
     delete solver;
     return ret;
+}
+
+SimplifiedCNF Puura::get_cnf(
+        SATSolver* solver,
+        const SimplifiedCNF& cnf,
+        const vector<uint32_t>& sampl_vars,
+        const vector<uint32_t>& opt_sampl_vars,
+        const vector<uint32_t>& empty_sampl_vars
+        ) {
+    SimplifiedCNF scnf;
+    vector<Lit> clause;
+    bool is_xor, rhs;
+    scnf.weighted = solver->get_weighted();
+    scnf.new_vars(solver->simplified_nvars());
+
+    for(const auto& v: sampl_vars)
+        verb_print(5, "[w-debug] get_cnf sampl var: " << v+1);
+    for(const auto& v: opt_sampl_vars)
+        verb_print(5, "[w-debug] get_cnf opt sampl var: " << v+1);
+    for(const auto& v: empty_sampl_vars)
+        verb_print(5, "[w-debug] get_cnf empty sampl var: " << v+1);
+    auto cnf2 = cnf;
+    cnf2.fix_weights(solver, sampl_vars, empty_sampl_vars);
+
+    solver->start_getting_constraints(false, true);
+    if (cnf.weighted) {
+        map<Lit, mpq_class> outer_w;
+        for(const auto& it: cnf2.weights) {
+            Lit l(it.first, false);
+            outer_w[l] = it.second.pos;
+            outer_w[~l] = it.second.neg;
+            std::cout << "[w-debug] outer_w " << l << " w: " << it.second.pos << std::endl;
+            std::cout << "[w-debug] outer_w " << l << " w: " << it.second.neg << std::endl;
+        }
+        auto inter_w = solver->translate_weights(outer_w);
+        for(const auto& myw: inter_w) {
+            std::cout << "???[w-debug] int w: " << myw.first << " " << myw.second << std::endl;
+            if (myw.first.var() >= scnf.nvars) continue;
+            std::cout << "[w-debug] int w: " << myw.first << " " << myw.second << std::endl;
+            scnf.set_lit_weight(myw.first, myw.second);
+        }
+    }
+    scnf.multiplier_weight = cnf.multiplier_weight;
+
+    // IRRED clauses
+    if (scnf.weighted) {
+        /* map<Lit, mpq_class> w; */
+        /* solver->get_weights(w, sampl_vars, opt_sampl_vars); */
+        /* for(const auto& p: w) */
+        /*     verb_print(5, "[w-debug] w " << p.first << " " << p.second); */
+        /* set<uint32_t> opt_sampl_set(opt_sampl_vars.begin(), opt_sampl_vars.end()); */
+
+        /* mpq_class mul(1); */
+        /* // empty */
+        /* for(const auto& v: empty_sampl_vars) { */
+        /*     Lit l(v, false); */
+        /*     verb_print(5, "[w-debug] empty " << l); */
+        /*     if (!opt_sampl_set.count(v)) continue; */
+        /*     mul *= cnf.get_lit_weight(l) + cnf.get_lit_weight(~l); */
+        /*     verb_print(5, "[w-debug] empty " << l << " mul: " << mul); */
+        /* } */
+        /* // unit */
+        /* const auto units = solver->get_zero_assigned_lits(); */
+        /* for(const auto& u: units) { */
+        /*     if (!opt_sampl_set.count(u.var())) continue; */
+        /*     mul *= cnf.get_lit_weight(u); */
+        /*     verb_print(5, "[w-debug] unit "<< u << " mul: " << mul); */
+        /* } */
+        /* verb_print(5, "[w-debug] arjun mul: " << mul */
+        /*         << " solver mul: " << solver->get_multiplier_weight()); */
+        /* scnf.multiplier_weight = solver->get_multiplier_weight()*mul; */
+        /* map<Lit, mpq_class> outer_w; */
+        /* for(const auto& it: w) { */
+        /*     outer_w[it.first] = it.second; */
+        /*     verb_print(5, "[w-debug] outer_w " << it.first << " w: " << it.second); */
+        /* } */
+        /* auto inter_w = solver->translate_weights(outer_w); */
+        /* for(const auto& myw: inter_w) { */
+        /*     verb_print(5, "???[w-debug] int w: " << myw.first << " " << myw.second); */
+        /*     if (myw.first.var() >= scnf.nvars) continue; */
+        /*     verb_print(5, "[w-debug] int w: " << myw.first << " " << myw.second); */
+        /*     scnf.set_lit_weight(myw.first, myw.second); */
+        /* } */
+    } else {
+        /* mpz_class dummy(2); */
+        /* mpz_pow_ui(dummy.get_mpz_t(), dummy.get_mpz_t(), empty_sampl_vars.size()); */
+        /* scnf.multiplier_weight = solver->get_multiplier_weight()*dummy; */
+    }
+    scnf.set_sampl_vars(solver->translate_sampl_set(sampl_vars, false));
+
+    // opt sampl set
+    scnf.set_opt_sampl_vars(solver->translate_sampl_set(opt_sampl_vars, false), true);
+    /* auto opt = solver->translate_sampl_set(opt_sampl_vars, false); */
+    /* set<uint32_t> opt_set(opt.begin(), opt.end()); */
+    /* const auto empties = solver->translate_sampl_set(empty_sampl_vars, true); */
+    /* for(const auto& e: empties) opt_set.erase(e); */
+    /* scnf.set_opt_sampl_vars(opt_set); */
+
+
+    while(solver->get_next_constraint(clause, is_xor, rhs)) {
+        assert(!is_xor); assert(rhs);
+        scnf.clauses.push_back(clause);
+    }
+    solver->end_getting_constraints();
+
+    // RED clauses
+    solver->start_getting_constraints(true, true);
+    while(solver->get_next_constraint(clause, is_xor, rhs)) {
+        assert(!is_xor); assert(rhs);
+        scnf.red_clauses.push_back(clause);
+    }
+    solver->end_getting_constraints();
+
+    scnf.nvars = solver->simplified_nvars();
+    std::sort(scnf.sampl_vars.begin(), scnf.sampl_vars.end());
+    return scnf;
 }
 
 void Puura::set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf)

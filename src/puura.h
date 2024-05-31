@@ -61,6 +61,7 @@ private:
     void renumber_sampling_vars_for_ganak(SimplifiedCNF& scnf);
     SimplifiedCNF get_cnf(
         SATSolver* solver,
+        const SimplifiedCNF& cnf,
         const vector<uint32_t>& sampl_vars,
         const vector<uint32_t>& orig_sampl_vars,
         const vector<uint32_t>& empty_sampl_vars);
