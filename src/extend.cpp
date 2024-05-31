@@ -349,10 +349,10 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     for(const auto& p: ret2) no_need.insert(p.var());
     for(const auto& v: cnf.opt_sampl_vars) no_need.insert(v);
     add_all_indics_except(no_need);
-    set<uint32_t> opt_indep(cnf.opt_sampl_vars.begin(), cnf.opt_sampl_vars.end());
+    set<uint32_t> opt_sampl(cnf.opt_sampl_vars.begin(), cnf.opt_sampl_vars.end());
 
     vector<Lit> cl;
-    for(const auto& v: opt_indep) {
+    for(const auto& v: opt_sampl) {
         if (var_to_indic[v] == var_Undef) continue;
         cl.clear();
         cl.push_back(Lit(var_to_indic[v], false));
@@ -418,13 +418,13 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             // Not fully dependent
         } else if (ret == l_False) {
             // Dependent fully on `indep`
-            opt_indep.insert(test_var);
+            opt_sampl.insert(test_var);
             cl.clear();
             cl.push_back(Lit(var_to_indic[test_var], false));
             solver->add_clause(cl);
         }
     }
-    cnf.set_opt_sampl_vars(opt_indep);
+    cnf.set_opt_sampl_vars(opt_sampl);
 
     verb_print(1, "[arjun-extend] Extend finished "
             << " orig size: " << orig_size
