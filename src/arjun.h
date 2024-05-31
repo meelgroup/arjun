@@ -89,17 +89,11 @@ namespace ArjunNS {
             sampl_vars.clear();
             sampl_vars_set = true;
             sampl_vars.insert(sampl_vars.begin(), vars.begin(), vars.end());
-            if (opt_sampl_vars.empty()) {
-                opt_sampl_vars = sampl_vars;
-            }
+            if (!opt_sampl_vars_set) set_opt_sampl_vars(vars);
         }
         const auto& get_sampl_vars() const { return sampl_vars; }
         template<class T>
-        void set_opt_sampl_vars(const T& vars, bool ignore = false) {
-            if (!ignore) {
-                assert(opt_sampl_vars.empty());
-                assert(opt_sampl_vars_set == false);
-            }
+        void set_opt_sampl_vars(const T& vars) {
             opt_sampl_vars.clear();
             opt_sampl_vars_set = true;
             opt_sampl_vars.insert(opt_sampl_vars.begin(), vars.begin(), vars.end());
@@ -289,18 +283,18 @@ namespace ArjunNS {
             }
 
             set_sampl_vars(sampling_vars_set, true);
-            set_opt_sampl_vars(opt_sampling_vars_set, true);
+            set_opt_sampl_vars(opt_sampling_vars_set);
 
             solver->start_getting_constraints(false);
-            sampl_vars = solver->translate_sampl_set(sampl_vars, true);
+            sampl_vars = solver->translate_sampl_set(new_sampl_vars, true);
             opt_sampl_vars = solver->translate_sampl_set(opt_sampl_vars, true);
             auto empty_sampling_vars2 = solver->translate_sampl_set(empty_sampling_vars, true);
             solver->end_getting_constraints();
+
             sampling_vars_set.clear();
             sampling_vars_set.insert(sampl_vars.begin(), sampl_vars.end());
             opt_sampling_vars_set.clear();
             opt_sampling_vars_set.insert(opt_sampl_vars.begin(), opt_sampl_vars.end());
-
             for(const auto& v: empty_sampling_vars2) {
                 sampling_vars_set.erase(v);
                 opt_sampling_vars_set.erase(v);
@@ -314,7 +308,7 @@ namespace ArjunNS {
                     unset_var_weight(l.var());
                 } else tmp = 2;
                 multiplier_weight *= tmp;
-                std::cout << "[w-debug] empty multiplier_weight: " << multiplier_weight << std::endl;
+                std::cout << "[w-debug] empty mul: " << tmp << " final multiplier_weight: " << multiplier_weight << std::endl;
             }
             /* for(const auto& v: empty_sampling_vars) { */
             /*     sampling_vars_set.insert(v); */
@@ -322,7 +316,7 @@ namespace ArjunNS {
             /* } */
 
             set_sampl_vars(sampling_vars_set, true);
-            set_opt_sampl_vars(opt_sampling_vars_set, true);
+            set_opt_sampl_vars(opt_sampling_vars_set);
 
             for(uint32_t i = 0; i < nvars; i++) {
                 if (opt_sampling_vars_set.count(i) == 0) unset_var_weight(i);

@@ -426,7 +426,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             solver->add_clause(cl);
         }
     }
-    cnf.set_opt_sampl_vars(opt_indep, true);
+    cnf.set_opt_sampl_vars(opt_indep);
 
     verb_print(1, "[arjun-extend] Extend finished "
             << " orig size: " << orig_size

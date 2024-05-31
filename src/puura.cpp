@@ -374,7 +374,7 @@ SimplifiedCNF Puura::get_cnf(
     cnf2.fix_weights(solver, sampl_vars, empty_sampl_vars);
 
     solver->start_getting_constraints(false, true);
-    if (cnf.weighted) {
+    if (cnf2.weighted) {
         map<Lit, mpq_class> outer_w;
         for(const auto& it: cnf2.weights) {
             Lit l(it.first, false);
@@ -391,7 +391,7 @@ SimplifiedCNF Puura::get_cnf(
             scnf.set_lit_weight(myw.first, myw.second);
         }
     }
-    scnf.multiplier_weight = cnf.multiplier_weight;
+    scnf.multiplier_weight = cnf2.multiplier_weight;
 
     // IRRED clauses
     if (scnf.weighted) {
@@ -440,7 +440,7 @@ SimplifiedCNF Puura::get_cnf(
     scnf.set_sampl_vars(solver->translate_sampl_set(sampl_vars, false));
 
     // opt sampl set
-    scnf.set_opt_sampl_vars(solver->translate_sampl_set(opt_sampl_vars, false), true);
+    scnf.set_opt_sampl_vars(solver->translate_sampl_set(opt_sampl_vars, false));
     /* auto opt = solver->translate_sampl_set(opt_sampl_vars, false); */
     /* set<uint32_t> opt_set(opt.begin(), opt.end()); */
     /* const auto empties = solver->translate_sampl_set(empty_sampl_vars, true); */
