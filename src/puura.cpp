@@ -352,14 +352,16 @@ SimplifiedCNF Puura::get_cnf(
     scnf.weighted = cnf.get_weighted();
     scnf.new_vars(solver->simplified_nvars());
 
-    for(const auto& v: sampl_vars)
-        verb_print(5, "[w-debug] get_cnf sampl var: " << v+1);
-    for(const auto& v: cnf.opt_sampl_vars)
-        verb_print(5, "[w-debug] get_cnf opt sampl var: " << v+1);
-    for(const auto& v: empty_sampl_vars)
-        verb_print(5, "[w-debug] get_cnf empty sampl var: " << v+1);
+    if (conf.verb >= 5) {
+        for(const auto& v: new_sampl_vars)
+            verb_print(5, "[w-debug] get_cnf sampl var: " << v+1);
+        for(const auto& v: cnf.opt_sampl_vars)
+            verb_print(5, "[w-debug] get_cnf opt sampl var: " << v+1);
+        for(const auto& v: empty_sampl_vars)
+            verb_print(5, "[w-debug] get_cnf empty sampl var: " << v+1);
+    }
     auto cnf2 = cnf;
-    cnf2.fix_weights(solver, sampl_vars, empty_sampl_vars);
+    cnf2.fix_weights(solver, new_sampl_vars, empty_sampl_vars);
 
     solver->start_getting_constraints(false, true);
     if (cnf2.weighted) {
@@ -368,13 +370,13 @@ SimplifiedCNF Puura::get_cnf(
             Lit l(it.first, false);
             outer_w[l] = it.second.pos;
             outer_w[~l] = it.second.neg;
-            std::cout << "[w-debug] outer_w " << l << " w: " << it.second.pos << std::endl;
-            std::cout << "[w-debug] outer_w " << l << " w: " << it.second.neg << std::endl;
+            verb_print(5, "[w-debug] outer_w " << l << " w: " << it.second.pos);
+            verb_print(5, "[w-debug] outer_w " << l << " w: " << it.second.neg);
         }
         auto inter_w = solver->translate_weights(outer_w);
         for(const auto& myw: inter_w) {
             if (myw.first.var() >= scnf.nvars) continue;
-            std::cout << "[w-debug] int w: " << myw.first << " " << myw.second << std::endl;
+            verb_print(5, "[w-debug] int w: " << myw.first << " " << myw.second);
             scnf.set_lit_weight(myw.first, myw.second);
         }
     }
@@ -401,16 +403,18 @@ SimplifiedCNF Puura::get_cnf(
     std::sort(scnf.sampl_vars.begin(), scnf.sampl_vars.end());
     std::sort(scnf.opt_sampl_vars.begin(), scnf.opt_sampl_vars.end());
 
-    std::cout << "w-debug AFTER PURA FINAL sampl_vars    : ";
-    for(const auto& v: scnf.sampl_vars) {
-        std::cout << v+1 << " ";
+    if (conf.verb >= 5) {
+        std::cout << "w-debug AFTER PURA FINAL sampl_vars    : ";
+        for(const auto& v: scnf.sampl_vars) {
+            std::cout << v+1 << " ";
+        }
+        cout << endl;
+        std::cout << "w-debug AFTER PURA FINAL opt_sampl_vars: ";
+        for(const auto& v: scnf.opt_sampl_vars) {
+            std::cout << v+1 << " ";
+        }
+        cout << endl;
     }
-    cout << endl;
-    std::cout << "w-debug AFTER PURA FINAL opt_sampl_vars: ";
-    for(const auto& v: scnf.opt_sampl_vars) {
-        std::cout << v+1 << " ";
-    }
-    cout << endl;
     return scnf;
 }
 
