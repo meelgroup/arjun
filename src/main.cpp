@@ -333,8 +333,9 @@ void do_minimize() {
     }
     if (!debug_minim.empty()) {
         cnf.write_simpcnf(debug_minim, false, true);
-        cnf.renumber_sampling_vars_for_ganak();
-        cnf.write_simpcnf(debug_minim+"-renum", false, true);
+        auto cnf2 = cnf;
+        cnf2.renumber_sampling_vars_for_ganak();
+        cnf2.write_simpcnf(debug_minim+"-renum", false, true);
     }
 
     if (!elimtofile.empty()) {
