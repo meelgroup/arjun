@@ -238,7 +238,7 @@ void Arjun::elim_to_file(SimplifiedCNF& cnf, bool all_indep,
     }
     if (do_extend_indep && cnf.opt_sampl_vars.size() != cnf.nvars)
         only_extend_sampl_vars(cnf);
-    if (do_bce && cnf.opt_sampl_vars.size() != cnf.nvars)
+    if (do_bce && !cnf.get_weighted() && cnf.opt_sampl_vars.size() != cnf.nvars)
         only_bce(cnf);
     if (do_unate)
         only_unate(cnf);

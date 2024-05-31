@@ -310,10 +310,6 @@ namespace ArjunNS {
                 multiplier_weight *= tmp;
                 std::cout << "[w-debug] empty mul: " << tmp << " final multiplier_weight: " << multiplier_weight << std::endl;
             }
-            /* for(const auto& v: empty_sampling_vars) { */
-            /*     sampling_vars_set.insert(v); */
-            /*     opt_sampling_vars_set.insert(v); */
-            /* } */
 
             set_sampl_vars(sampling_vars_set, true);
             set_opt_sampl_vars(opt_sampling_vars_set);
