@@ -91,7 +91,7 @@ DLL_PUBLIC string Arjun::get_version_info()
 
 DLL_PUBLIC std::string Arjun::get_solver_version_info()
 {
-    return CMSat::SATSolver::get_text_version_info();
+    return CMSat::SATSolver::get_text_version_info("c o ");
 }
 
 DLL_PUBLIC std::string Arjun::get_compilation_env()
