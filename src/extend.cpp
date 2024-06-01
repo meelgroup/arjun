@@ -375,10 +375,29 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     uint32_t ret_undef = 0;
     /* conf.verb = 5; */
     set<uint32_t> unknown_set(unknown.begin(), unknown.end());
+    uint32_t num_done = 0;
     while(!unknown.empty()) {
         uint32_t test_var = unknown.back();
         unknown.pop_back();
         if (unknown_set.count(test_var) == 0) continue;
+        unknown_set.erase(test_var);
+        num_done++;
+        if (num_done == 200 && unknown_set.size() > 1000) {
+            verb_print(1, "[arjun] extend: too many to do, after 100 still lots left. Lowering conflict limit");
+            // Too many to do, to expensive
+            conf.extend_max_confl /= 4;
+        }
+        if (num_done == 1000 && unknown_set.size() > 2000) {
+            verb_print(1, "[arjun] extend: too many to do, after 100 still lots left. Lowering conflict limit");
+            // Too many to do, to expensive
+            conf.extend_max_confl /= 5;
+        }
+        if (num_done == 3000 && unknown_set.size() > 3000) {
+            verb_print(1, "[arjun] extend: too many to do, after 100 still lots left. Lowering conflict limit");
+            // Too many to do, to expensive
+            conf.extend_max_confl /= 2;
+        }
+        /* cout << "num_done: " << num_done << " unknown_set.size(): " << unknown_set.size() << endl; */
 
         assert(test_var < orig_num_vars);
         verb_print(5, "Testing: " << test_var);
