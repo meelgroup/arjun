@@ -117,7 +117,8 @@ void Puura::backbone(SimplifiedCNF& cnf) {
     }
     auto solver = fill_solver(cnf);
     solver->set_orig_global_timeout_multiplier(6);
-    string str = "clean-cls, must-scc-vrepl, intree-probe, must-scc-vrepl, full-probe, must-scc-vrepl, occ-ternary-res, must-renumber";
+    string str = "clean-cls, must-scc-vrepl, full-probe, must-scc-vrepl, must-renumber";
+    /* string str = "clean-cls, must-scc-vrepl, intree-probe, must-scc-vrepl, full-probe, must-scc-vrepl, occ-ternary-res, must-renumber"; */
     solver->set_bve(false);
     solver->simplify(nullptr, &str);
     solver->backbone_simpl(20*1000ULL, cnf.backbone_done);
