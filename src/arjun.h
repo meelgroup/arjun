@@ -266,7 +266,8 @@ namespace ArjunNS {
             // [ replaced, replaced_with ]
             const auto eq_lits = solver->get_all_binary_xors();
             for(auto p: eq_lits) {
-                std::cout << "[w-debug] repl: " << p.first << " with " << p.second << std::endl;
+                if (debug_w)
+                    std::cout << "[w-debug] repl: " << p.first << " with " << p.second << std::endl;
                 if (get_weighted()) {
                     auto wp2 = get_lit_weight(p.second);
                     auto wn2 = get_lit_weight(~p.second);
