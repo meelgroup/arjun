@@ -268,10 +268,17 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
         cnf.clauses.push_back(cl);
         verb_print(5, "[w-debug] adding cl: " << cl);
     }
+
+    set<uint32_t> sampl_vars(cnf.sampl_vars.begin(), cnf.sampl_vars.end());
+    set<uint32_t> opt_sampl_vars(cnf.opt_sampl_vars.begin(), cnf.opt_sampl_vars.end());
     for(const auto& l: solver->get_zero_assigned_lits()) {
         if (l.var() >= cnf.nvars) continue;
         cnf.clauses.push_back({l});
+        sampl_vars.erase(l.var());
+        opt_sampl_vars.erase(l.var());
     }
+    cnf.set_sampl_vars(sampl_vars, true);
+    cnf.set_opt_sampl_vars(opt_sampl_vars);
 
     for(const auto& v: cnf.sampl_vars)
         verb_print(5, "[w-debug] minim final sampl var: " << v+1);
