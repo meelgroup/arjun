@@ -327,9 +327,7 @@ void do_minimize() {
     arjun->only_backbone(cnf);
     const auto orig_sampl_vars = cnf.sampl_vars;
     if (do_minim_indep) {
-        Arjun arj2;
-        set_config(&arj2);
-        arj2.only_run_minimize_indep(cnf);
+        arjun->only_run_minimize_indep(cnf);
     }
     if (!debug_minim.empty()) {
         cnf.write_simpcnf(debug_minim, false, true);
