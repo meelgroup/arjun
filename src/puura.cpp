@@ -108,6 +108,7 @@ SATSolver* Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
 }
 
 void Puura::backbone(SimplifiedCNF& cnf) {
+    double my_time = cpuTime();
     if (cnf.weighted) {
         for(const auto& v: cnf.opt_sampl_vars) {
             Lit l(v, false);
@@ -121,9 +122,11 @@ void Puura::backbone(SimplifiedCNF& cnf) {
     /* string str = "clean-cls, must-scc-vrepl, intree-probe, must-scc-vrepl, full-probe, must-scc-vrepl, occ-ternary-res, must-renumber"; */
     solver->set_bve(false);
     solver->simplify(nullptr, &str);
+    solver->set_verbosity(1);
     solver->backbone_simpl(20*1000ULL, cnf.backbone_done);
     auto lits = solver->get_zero_assigned_lits();
     for(const auto& l: lits) cnf.clauses.push_back({l});
+    verb_print(1, "[arjun-backbone] done, T: " << (cpuTime() - my_time));
     delete solver;
 }
 
