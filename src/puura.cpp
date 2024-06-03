@@ -122,7 +122,7 @@ void Puura::backbone(SimplifiedCNF& cnf) {
     /* string str = "clean-cls, must-scc-vrepl, intree-probe, must-scc-vrepl, full-probe, must-scc-vrepl, occ-ternary-res, must-renumber"; */
     solver->set_bve(false);
     solver->simplify(nullptr, &str);
-    solver->set_verbosity(1);
+    solver->set_verbosity(2);
     solver->backbone_simpl(20*1000ULL, cnf.backbone_done);
     auto lits = solver->get_zero_assigned_lits();
     for(const auto& l: lits) cnf.clauses.push_back({l});
