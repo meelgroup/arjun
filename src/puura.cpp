@@ -317,21 +317,29 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->simplify(&dont_elim, &str);
 
     // Deal with empties
+    /* cout << "w-debug before empty dont_elim: "; */
+    /* for(const auto& d: dont_elim) cout << d << " "; */
+    /* cout << endl; */
+
     auto new_sampl_vars = cnf.sampl_vars;
     vector<uint32_t> new_empty_sampl_vars;
     solver->clean_sampl_get_empties(new_sampl_vars, new_empty_sampl_vars);
-    dont_elim.clear();
     if (!cnf.weighted) {
+        dont_elim.clear();
         for(uint32_t v: new_sampl_vars) dont_elim.push_back(Lit(v, false));
     } else {
         // don't eliminate anything but the empties from opt_sampl_vars
-        auto tmp = cnf.opt_sampl_vars;
-        set<uint32_t> new_opt(tmp.begin(), tmp.end());
-        for(uint32_t v:new_empty_sampl_vars) new_opt.erase(v);
-        tmp.clear();
-        tmp.insert(tmp.end(), new_opt.begin(), new_opt.end());
-        for(uint32_t v: tmp) dont_elim.push_back(Lit(v, false));
+        set<Lit> tmp(dont_elim.begin(), dont_elim.end());
+        for(uint32_t v: new_empty_sampl_vars) {
+            tmp.erase(Lit(v, false));
+            tmp.erase(Lit(v, true));
+        }
+        dont_elim.clear();
+        for(const auto& l: tmp) dont_elim.push_back(l);
     }
+    /* cout << "w-debug after empty dont_elim: "; */
+    /* for(const auto& d: dont_elim) cout << d << " "; */
+    /* cout << endl; */
     str = "occ-bve-empty, must-renumber";
     solver->simplify(&dont_elim, &str);
 
@@ -424,14 +432,14 @@ SimplifiedCNF Puura::get_cnf(
 void Puura::set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf)
 {
     assert(dont_elim.empty());
-    if (cnf.weighted)
+    if (cnf.weighted) {
         for(uint32_t v: cnf.opt_sampl_vars) {
-            // TODO multiply by one weight when eliminated.
-            /* Lit l(v, false); */
-            /* if (cnf.get_lit_weight(l) != cnf.get_lit_weight(~l)) continue; */
-            verb_print(5, "[w-debug] dont_elim outer: " << v+1);
-            dont_elim.push_back(Lit(v, false));
+            if (cnf.weight_set(v)) {
+                verb_print(5, "[w-debug] dont_elim outer: " << v+1);
+                dont_elim.push_back(Lit(v, false));
+            }
         }
+    }
     for(uint32_t v: cnf.sampl_vars) dont_elim.push_back(Lit(v, false));
     sampl_set.clear();
     for(uint32_t v: cnf.sampl_vars) sampl_set.insert(v);

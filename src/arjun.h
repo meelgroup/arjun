@@ -242,6 +242,26 @@ namespace ArjunNS {
             outf << "c MUST MULTIPLY BY " << multiplier_weight << std::endl;
         }
 
+        bool weight_set(uint32_t v) const {
+            return weights.count(v) > 0;
+        }
+
+        void remove_equiv_weights() {
+            if (!weighted) return;
+            std::set<uint32_t> tmp(opt_sampl_vars.begin(), opt_sampl_vars.end());
+            for(uint32_t i = 0; i < nvars; i++) {
+                CMSat::Lit l(i, false);
+                if (tmp.count(i) == 0) continue;
+
+                if (weights.count(l.var()) && get_lit_weight(l) == get_lit_weight(~l)) {
+                    std::cout << __FUNCTION__ << " Removing equiv weight for " << l
+                        << " get_lit_weight(l): " << get_lit_weight(l) << std::endl;
+                    multiplier_weight *= get_lit_weight(l);
+                    unset_var_weight(i);
+                }
+            }
+        }
+
         void fix_weights(CMSat::SATSolver* solver,
                 const std::vector<uint32_t> new_sampl_vars,
                 const std::vector<uint32_t>& empty_sampling_vars) {
@@ -257,7 +277,7 @@ namespace ArjunNS {
                 if (get_weighted()) {
                     multiplier_weight *= get_lit_weight(l);
                     if (debug_w)
-                        std::cout << "[w-debug] unit: " << l << " multiplier_weight: " << multiplier_weight << std::endl;
+                        std::cout << __FUNCTION__ << " [w-debug] unit: " << l << " multiplier_weight: " << multiplier_weight << std::endl;
                     unset_var_weight(l.var());
                 }
             }
@@ -267,23 +287,23 @@ namespace ArjunNS {
             const auto eq_lits = solver->get_all_binary_xors();
             for(auto p: eq_lits) {
                 if (debug_w)
-                    std::cout << "[w-debug] repl: " << p.first << " with " << p.second << std::endl;
+                    std::cout << __FUNCTION__ << " [w-debug] repl: " << p.first << " with " << p.second << std::endl;
                 if (get_weighted()) {
                     auto wp2 = get_lit_weight(p.second);
                     auto wn2 = get_lit_weight(~p.second);
                     auto wp1 = get_lit_weight(p.first);
                     auto wn1 = get_lit_weight(~p.first);
                     if (debug_w) {
-                        std::cout << "[w-debug] wp1 " << wp1 << " wn1 " << wn1 << std::endl;
-                        std::cout << "[w-debug] wp2 " << wp2 << " wn2 " << wn2 << std::endl;
+                        std::cout << __FUNCTION__ << " [w-debug] wp1 " << wp1 << " wn1 " << wn1 << std::endl;
+                        std::cout << __FUNCTION__ << " [w-debug] wp2 " << wp2 << " wn2 " << wn2 << std::endl;
                     }
                     wp2 *= wp1;
                     wn2 *= wn1;
                     set_lit_weight(p.second, wp2);
                     set_lit_weight(~p.second, wn2);
                     if (debug_w) {
-                        std::cout << "[w-debug] set lit " << p.second << " weight to " << wp2 << std::endl;
-                        std::cout << "[w-debug] set lit " << ~p.second << " weight to " << wn2 << std::endl;
+                        std::cout << __FUNCTION__ << " [w-debug] set lit " << p.second << " weight to " << wp2 << std::endl;
+                        std::cout << __FUNCTION__ << " [w-debug] set lit " << ~p.second << " weight to " << wn2 << std::endl;
                     }
                     unset_var_weight(p.first.var());
                 }
@@ -307,7 +327,7 @@ namespace ArjunNS {
                 opt_sampling_vars_set.erase(v);
 
                 if (debug_w)
-                    std::cout << "[w-debug] empty sampling var: " << v+1 << std::endl;
+                    std::cout << __FUNCTION__ << " [w-debug] empty sampling var: " << v+1 << std::endl;
                 mpq_class tmp(0);
                 if (get_weighted()) {
                     CMSat::Lit l(v, false);
@@ -317,7 +337,7 @@ namespace ArjunNS {
                 } else tmp = 2;
                 multiplier_weight *= tmp;
                 if (debug_w)
-                    std::cout << "[w-debug] empty mul: " << tmp << " final multiplier_weight: " << multiplier_weight << std::endl;
+                    std::cout << __FUNCTION__ << " [w-debug] empty mul: " << tmp << " final multiplier_weight: " << multiplier_weight << std::endl;
             }
 
             set_sampl_vars(sampling_vars_set, true);

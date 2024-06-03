@@ -277,6 +277,7 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
         verb_print(5, "[w-debug] minim final sampl var: " << v+1);
     for(const auto& v: cnf.opt_sampl_vars)
         verb_print(5, "[w-debug] minim final opt sampl var: " << v+1);
+    cnf.remove_equiv_weights();
 
     verb_print(5, "[w-debug] ----- minimize done.");
 

@@ -228,6 +228,7 @@ void Arjun::elim_to_file(SimplifiedCNF& cnf, bool all_indep,
         int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak) {
 
     cnf = only_get_simplified_cnf(cnf, simp_conf);
+    cnf.remove_equiv_weights();
     if (sbva_steps)
         only_run_sbva(cnf, sbva_steps,
                 sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
@@ -242,6 +243,7 @@ void Arjun::elim_to_file(SimplifiedCNF& cnf, bool all_indep,
         only_bce(cnf);
     if (do_unate)
         only_unate(cnf);
+    cnf.remove_equiv_weights();
     cnf.renumber_sampling_vars_for_ganak();
 }
 
