@@ -37,7 +37,7 @@ THE SOFTWARE.
 
 namespace ArjunNS {
     struct SimpConf {
-        bool oracle_extra = false;
+        bool oracle_extra = true;
         bool oracle_vivify = true;
         bool oracle_vivify_get_learnts = true;
         bool oracle_sparsify = true;
@@ -47,7 +47,7 @@ namespace ArjunNS {
         int bve_grow_iter2 = 6;
         bool appmc = false;
         int bve_too_large_resolvent = -1;
-        int do_subs_with_resolvent_clauses = 1;
+        int do_subs_with_resolvent_clauses = 0;
     };
 
     struct SimplifiedCNF {
