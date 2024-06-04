@@ -262,7 +262,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     //with CMS ef6ea7e87e00bde50c0cce0c1e13a012191c4e1c and Arjun 5f2dfe814e07ee6ee0dde65b1350b5c343209ed0
     solver->set_varelim_check_resolvent_subs(false);
     solver->set_max_red_linkin_size(0);
-    solver->set_timeout_all_calls(100);
+    /* solver->set_timeout_all_calls(100); */
     solver->set_weaken_time_limitM(2000);
     solver->set_oracle_get_learnts(simp_conf.oracle_vivify_get_learnts);
     solver->set_oracle_removed_is_learnt(1);
@@ -315,7 +315,8 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 
     // one more sparisfy
     if (backbone_done && simp_conf.oracle_sparsify) {
-        string s = "oracle-vivif-fast, oracle-sparsify-fast";
+        /* string s = "oracle-vivif-fast, oracle-sparsify-fast"; */
+        string s = "oracle-sparsify-fast";
         solver->simplify(&dont_elim, &s);
     }
 
