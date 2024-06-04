@@ -37,6 +37,7 @@ THE SOFTWARE.
 
 namespace ArjunNS {
     struct SimpConf {
+        bool oracle_extra = false;
         bool oracle_vivify = true;
         bool oracle_vivify_get_learnts = true;
         bool oracle_sparsify = true;

@@ -314,11 +314,10 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     /* if (arjun->definitely_satisfiable()) { str += string("occ-rem-unconn-assumps, "); } */
 
     // one more sparisfy
-    /* if (backbone_done && simp_conf.oracle_sparsify) { */
-    /*     /1* string s = "oracle-vivif-fast, oracle-sparsify-fast"; *1/ */
-    /*     string s = "oracle-sparsify-fast"; */
-    /*     solver->simplify(&dont_elim, &s); */
-    /* } */
+    if (backbone_done && simp_conf.oracle_extra) {
+        string s = "oracle-vivif-fast, oracle-sparsify-fast";
+        solver->simplify(&dont_elim, &s);
+    }
 
     str += string(", must-scc-vrepl, must-renumber,");
     solver->simplify(&dont_elim, &str);
