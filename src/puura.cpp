@@ -315,7 +315,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 
     // one more sparisfy
     if (backbone_done && simp_conf.oracle_sparsify) {
-        string s = "oracle-sparsify-fast";
+        string s = "oracle-vivif-fast, oracle-sparsify-fast";
         solver->simplify(&dont_elim, &s);
     }
 
