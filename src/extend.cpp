@@ -342,14 +342,48 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     const uint32_t orig_size = cnf.opt_sampl_vars.size();
     fill_solver(cnf);
     solver->set_verbosity(0);
+    set<uint32_t> opt_sampl(cnf.opt_sampl_vars.begin(), cnf.opt_sampl_vars.end());
+
+    /* auto xors = solver->get_recovered_xors(false); */
+    /* for(const auto& g: xors) { */
+    /*     int bad = 0; */
+    /*     for(const auto& v: g.first) { */
+    /*         if (!opt_sampl.count(v)) bad++; */
+    /*         if (v >= orig_num_vars) bad = 100; */
+    /*         if (bad > 1) break; */
+    /*     } */
+    /*     if (bad != 1) continue; */
+    /*     for(const auto& v: g.first) { opt_sampl.insert(v); } */
+    /* } */
+    auto ites = solver->get_recovered_ite_gates();
+    for(const auto& g: ites) {
+        if (g.rhs.var() >= orig_num_vars) continue;
+        bool ok = true;
+        for(const auto& l: g.lhs) if (!opt_sampl.count(l.var())) {
+            ok = false;
+            break;
+        }
+        if (!ok) continue;
+        opt_sampl.insert(g.rhs.var());
+    }
+    auto ors = solver->get_recovered_or_gates();
+    for(const auto& g: ors) {
+        if (g.rhs.var() >= orig_num_vars) continue;
+        bool ok = true;
+        for(const auto& l: g.get_lhs()) if (!opt_sampl.count(l.var())) {
+            ok = false;
+            break;
+        }
+        if (!ok) continue;
+        opt_sampl.insert(g.rhs.var());
+    }
+    verb_print(1, "[extend-gates] Gates added to opt indep: " << opt_sampl.size()-orig_size << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
 
     // Fill no need
     set<uint32_t> no_need;
     auto ret2 = solver->get_zero_assigned_lits();
     for(const auto& p: ret2) no_need.insert(p.var());
-    for(const auto& v: cnf.opt_sampl_vars) no_need.insert(v);
     add_all_indics_except(no_need);
-    set<uint32_t> opt_sampl(cnf.opt_sampl_vars.begin(), cnf.opt_sampl_vars.end());
 
     vector<Lit> cl;
     for(const auto& v: opt_sampl) {
@@ -363,6 +397,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     vector<uint32_t> unknown;
     for(uint32_t i = 0; i < orig_num_vars; i++) {
         if (no_need.count(i)) continue;
+        if (opt_sampl.count(i)) continue;
         if (solver->removed_var(i)) continue;
         unknown.push_back(i);
     }
@@ -489,6 +524,7 @@ void Extend::fill_solver(const SimplifiedCNF& cnf) {
     orig_num_vars = cnf.nvars;
     solver->new_vars(orig_num_vars);
     for(const auto& cl: cnf.clauses) solver->add_clause(cl);
+    for(const auto& cl: cnf.red_clauses) solver->add_red_clause(cl);
     get_incidence();
 
     // Double vars
