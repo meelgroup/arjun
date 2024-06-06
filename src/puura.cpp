@@ -317,8 +317,10 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     /* if (arjun->definitely_satisfiable()) { str += string("occ-rem-unconn-assumps, "); } */
 
     // one more sparisfy
-    if (backbone_done && simp_conf.oracle_extra) {
-        string s = "oracle-vivif-fast, oracle-sparsify-fast";
+    if (simp_conf.oracle_extra) {
+        string s;
+        if (backbone_done) s = "oracle-vivif-fast, oracle-sparsify-fast";
+        else s = "oracle-vivif-sparsify-mustfinish";
         solver->simplify(&dont_elim, &s);
     }
 
