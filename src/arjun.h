@@ -48,6 +48,7 @@ namespace ArjunNS {
         bool appmc = false;
         int bve_too_large_resolvent = -1;
         int do_subs_with_resolvent_clauses = 0;
+        bool do_backbone_puura = true;
     };
 
     struct SimplifiedCNF {

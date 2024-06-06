@@ -284,7 +284,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     // Now doing Oracle
     string str2;
     bool backbone_done = cnf.backbone_done;
-    if (!backbone_done)
+    if (!backbone_done && simp_conf.do_backbone_puura)
         solver->backbone_simpl(30*1000, backbone_done);
     if (backbone_done) {
         if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify";
