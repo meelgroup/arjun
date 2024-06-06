@@ -290,8 +290,10 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
         if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify";
         else if (simp_conf.oracle_vivify) str2 = "oracle-vivif";
         else if (simp_conf.oracle_sparsify) str2 = "oracle-sparsify";
+    } else {
+        if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify-mustfinish";
+        else if (simp_conf.oracle_vivify) str2 = "oracle-vivif";
     }
-    else str2 = "";
     solver->simplify(&dont_elim, &str2);
 
     // Now more expensive BVE, also RED linked in to occur
