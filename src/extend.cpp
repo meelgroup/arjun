@@ -471,7 +471,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             // Timed out, we'll treat is as unknown
             assert(test_var < orig_num_vars);
         } else if (ret == l_True) {
-            for(uint32_t v = 0; v < solver->nVars(); v++) {
+            for(uint32_t v = 0; v < orig_num_vars; v++) {
                 if (!unknown_set.count(v)) continue;
                 uint32_t other_v = v + orig_num_vars;
                 if (solver->get_model()[other_v] != solver->get_model()[v]) {
