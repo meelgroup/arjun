@@ -59,6 +59,7 @@ namespace ArjunNS {
         std::vector<uint32_t> opt_sampl_vars;
         uint32_t nvars = 0;
         mpq_class multiplier_weight = 1;
+        bool proj = false;
         bool weighted = false;
         bool backbone_done = false;
         struct Weight {mpq_class pos = 1; mpq_class neg = 1;};
@@ -131,7 +132,9 @@ namespace ArjunNS {
             }
         }
         void set_weighted(bool _weighted) { weighted = _weighted; }
+        void set_projected(bool _projected) { proj = _projected; }
         bool get_weighted() const { return weighted; }
+        bool get_projected() const { return proj; }
 
         std::vector<CMSat::Lit>& map_cl(std::vector<CMSat::Lit>& cl, std::vector<uint32_t> v_map) {
                 for(auto& l: cl) l = CMSat::Lit(v_map[l.var()], l.sign());
@@ -199,7 +202,10 @@ namespace ArjunNS {
             std::ofstream outf;
             outf.open(fname.c_str(), std::ios::out);
             outf << "p cnf " << nvars << " " << num_cls << std::endl;
-            if (weighted) outf << "c t wmc" << std::endl;
+            if (weighted  &&  proj) outf << "c t pwmc" << std::endl;
+            if (weighted  && !proj) outf << "c t wmc" << std::endl;
+            if (!weighted &&  proj) outf << "c t pmc" << std::endl;
+            if (!weighted && !proj) outf << "c t mc" << std::endl;
 
             //Add projection
             outf << "c p show ";

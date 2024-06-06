@@ -368,6 +368,7 @@ SimplifiedCNF Puura::get_cnf(
     vector<Lit> clause;
     bool is_xor, rhs;
     scnf.weighted = cnf.get_weighted();
+    scnf.proj = cnf.get_projected();
     scnf.new_vars(solver->simplified_nvars());
 
     if (conf.verb >= 5) {
