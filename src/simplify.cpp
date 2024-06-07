@@ -61,6 +61,9 @@ bool Minimize::simplify() {
         if (conf.simp == 1) s = "intree-probe";
         else s = "str-impl, intree-probe,occ-ternary-res, occ-backw-sub, distill-litrem, must-distill-cls, distill-bins, oracle-vivif-veryfast";
         if (solver->simplify(nullptr, &s) == l_False) return false;
+        if (conf.simp >= 3) {
+            if (solver->simplify(nullptr, &s) == l_False) return false;
+        }
         if (solver->simplify() == l_False) return false;
         solver->set_intree_probe(conf.intree);
         verb_print(1,"[arjun-simp] CMS::simplify() with no BVE finished."
