@@ -57,7 +57,9 @@ bool Minimize::simplify() {
         double simp_time = cpuTime();
         solver->set_bve(0);
         solver->set_intree_probe(1);
-        std::string s("intree-probe");
+        std::string s;
+        if (conf.simp == 1) s = "intree-probe";
+        else s = "str-impl, intree-probe,occ-ternary-res, occ-backw-sub, distill-litrem, must-distill-cls, distill-bins, oracle-vivif-veryfast";
         if (solver->simplify(nullptr, &s) == l_False) return false;
         if (solver->simplify() == l_False) return false;
         solver->set_intree_probe(conf.intree);

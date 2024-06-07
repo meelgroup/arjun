@@ -255,7 +255,7 @@ void Arjun::only_backbone(SimplifiedCNF& cnf) {
 set_get_macro(bool, distill)
 set_get_macro(bool, intree)
 set_get_macro(bool, bve_pre_simplify)
-set_get_macro(bool, simp)
+set_get_macro(int, simp)
 set_get_macro(uint32_t, incidence_count)
 set_get_macro(bool, or_gate_based)
 set_get_macro(bool, xor_gates_based)

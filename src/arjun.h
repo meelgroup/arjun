@@ -410,7 +410,7 @@ namespace ArjunNS {
         void set_verb(uint32_t verb);
         void set_distill(bool distill);
         void set_intree(bool intree);
-        void set_simp(bool simp);
+        void set_simp(int simp);
         void set_bve_pre_simplify(bool bve_pre_simp);
         void set_unknown_sort(uint32_t unknown_sort);
         void set_incidence_count(uint32_t incidence_count);
@@ -437,7 +437,7 @@ namespace ArjunNS {
         bool get_do_unate() const;
         std::string get_specified_order_fname() const;
         double get_no_gates_below() const;
-        bool get_simp() const;
+        int get_simp() const;
         bool get_distill() const;
         bool get_intree() const;
         bool get_bve_pre_simplify() const;
