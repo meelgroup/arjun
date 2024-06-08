@@ -102,15 +102,25 @@ void Minimize::add_fixed_clauses(bool all)
 void Minimize::duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf) {
     assert(!already_duplicated);
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
+    auto tran = [=] (Lit x) {
+        return Lit(x.var()+orig_num_vars, x.sign());
+    };
 
     //Duplicate the already simplified problem
     verb_print(1, "[arjun] Duplicating CNF...");
     double dupl_time = cpuTime();
+    auto units = solver->get_zero_assigned_lits();
 
     solver->new_vars(orig_num_vars);
+    vector<Lit> cl_u;
+    for(const auto& u: units) {
+        cl_u.clear();
+        cl_u.push_back(tran(u));
+        solver->add_clause(cl_u);
+    }
     for(const auto& cl: orig_cnf.clauses) {
         auto cl2 = cl;
-        for(auto& l: cl2) l = Lit(l.var()+orig_num_vars, l.sign());
+        for(auto& l: cl2) l = tran(l);
         solver->add_clause(cl2);
     }
     verb_print(1, "[arjun] Duplicated CNF. T: " << (cpuTime() - dupl_time));
