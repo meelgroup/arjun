@@ -257,14 +257,17 @@ namespace ArjunNS {
 
         void remove_equiv_weights() {
             if (!weighted) return;
+
+            bool debug_w = false;
             std::set<uint32_t> tmp(opt_sampl_vars.begin(), opt_sampl_vars.end());
             for(uint32_t i = 0; i < nvars; i++) {
                 CMSat::Lit l(i, false);
                 if (tmp.count(i) == 0) continue;
 
                 if (weights.count(l.var()) && get_lit_weight(l) == get_lit_weight(~l)) {
-                    std::cout << __FUNCTION__ << " Removing equiv weight for " << l
-                        << " get_lit_weight(l): " << get_lit_weight(l) << std::endl;
+                    if (debug_w)
+                        std::cout << __FUNCTION__ << " Removing equiv weight for " << l
+                            << " get_lit_weight(l): " << get_lit_weight(l) << std::endl;
                     multiplier_weight *= get_lit_weight(l);
                     unset_var_weight(i);
                 }
