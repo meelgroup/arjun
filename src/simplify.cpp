@@ -51,7 +51,6 @@ bool Minimize::simplify() {
     if (conf.probe_based && !probe_all()) return false;
     remove_eq_literals();
     remove_zero_assigned_literals();
-    if (!clean_cls()) return false;
     get_empty_occs();
     if (conf.bve_pre_simplify) {
         verb_print(1, "[arjun-simp] CMS::simplify() with no BVE, intree probe...");
@@ -71,7 +70,7 @@ bool Minimize::simplify() {
             << " T: " << (cpuTime() - simp_time));
     }
     bool use_gates = true;
-    if (sampling_vars.size() < 90*1000) {
+    if (sampling_vars.size() < 1e6) {
         verb_print(1, "WARNING: Turning off gates, because the sampling size is small, so we can just do it. Size: " << sampling_vars.size());
         use_gates = false;
     } else {
@@ -84,12 +83,10 @@ bool Minimize::simplify() {
 
     remove_eq_literals();
     remove_zero_assigned_literals();
-    if (!clean_cls()) return false;
     get_empty_occs();
     if (conf.probe_based && !probe_all()) return false;
     remove_eq_literals();
     remove_zero_assigned_literals();
-    if (!clean_cls()) return false;
     get_empty_occs();
     if (conf.irreg_gate_based && use_gates) remove_definable_by_irreg_gates();
 
@@ -361,12 +358,6 @@ void Minimize::order_sampl_set_for_simp()
     get_incidence();
     sort_unknown(sampling_vars, incidence);
     std::reverse(sampling_vars.begin(), sampling_vars.end()); //we want most likely independent as last
-}
-
-bool Minimize::clean_cls() {
-    string s = "clean-cls";
-    if (solver->simplify(nullptr, &s) == l_False) return false;
-    return true;
 }
 
 void Minimize::get_empty_occs() {
