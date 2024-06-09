@@ -70,7 +70,7 @@ bool Minimize::simplify() {
             << " T: " << (cpuTime() - simp_time));
     }
     bool use_gates = true;
-    if (sampling_vars.size() < 1e6) {
+    if (sampling_vars.size() < 90*1000) {
         verb_print(1, "WARNING: Turning off gates, because the sampling size is small, so we can just do it. Size: " << sampling_vars.size());
         use_gates = false;
     } else {
