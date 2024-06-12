@@ -107,6 +107,7 @@ namespace ArjunNS {
         auto get_multiplier_weight() const { return multiplier_weight; }
         mpq_class get_lit_weight(CMSat::Lit lit) const {
             assert(weighted);
+            assert(lit.var() < nVars());
             auto it = weights.find(lit.var());
             if (it == weights.end()) return 1;
             else {
@@ -115,11 +116,13 @@ namespace ArjunNS {
             }
         }
         void unset_var_weight(uint32_t v) {
+            assert(v < nVars());
             auto it = weights.find(v);
             if (it != weights.end()) weights.erase(it);
         }
         void set_lit_weight(CMSat::Lit lit, const mpq_class& w) {
             assert(weighted);
+            assert(lit.var() < nVars());
             auto it = weights.find(lit.var());
             if (it == weights.end()) {
                 Weight weight;
@@ -283,7 +286,9 @@ namespace ArjunNS {
 
             // Take units
             for(const auto& l: solver->get_zero_assigned_lits()) {
-                if (l.var() >= nvars) continue;
+                if (l.var() >= nVars()) continue;
+                if (debug_w)
+                    std::cout << __FUNCTION__ << " [w-debug] orig unit l: " << l << " w: " << get_lit_weight(l) << std::endl;
                 sampling_vars_set.erase(l.var());
                 opt_sampling_vars_set.erase(l.var());
                 if (get_weighted()) {
@@ -298,6 +303,7 @@ namespace ArjunNS {
             // [ replaced, replaced_with ]
             const auto eq_lits = solver->get_all_binary_xors();
             for(auto p: eq_lits) {
+                if (p.first.var() >= nVars() || p.second.var() >= nVars()) continue;
                 if (debug_w)
                     std::cout << __FUNCTION__ << " [w-debug] repl: " << p.first << " with " << p.second << std::endl;
                 if (get_weighted()) {
@@ -355,7 +361,7 @@ namespace ArjunNS {
             set_sampl_vars(sampling_vars_set, true);
             set_opt_sampl_vars(opt_sampling_vars_set);
 
-            for(uint32_t i = 0; i < nvars; i++) {
+            for(uint32_t i = 0; i < nVars(); i++) {
                 if (opt_sampling_vars_set.count(i) == 0) unset_var_weight(i);
             }
 

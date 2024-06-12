@@ -394,7 +394,7 @@ SimplifiedCNF Puura::get_cnf(
             outer_w[l] = it.second.pos;
             outer_w[~l] = it.second.neg;
             verb_print(5, "[w-debug] outer_w " << l << " w: " << it.second.pos);
-            verb_print(5, "[w-debug] outer_w " << l << " w: " << it.second.neg);
+            verb_print(5, "[w-debug] outer_w " << ~l << " w: " << it.second.neg);
         }
         auto inter_w = solver->translate_weights(outer_w);
         for(const auto& myw: inter_w) {
