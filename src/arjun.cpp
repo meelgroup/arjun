@@ -154,6 +154,7 @@ struct Clause {
     vector<Lit> lits;
     bool red = false;
 };
+
 DLL_PUBLIC void Arjun::only_bce(SimplifiedCNF& cnf) {
     // If all variables are in opt sampling set, return
     set<uint32_t> dont_block(cnf.opt_sampl_vars.begin(),

@@ -150,6 +150,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     sort_unknown(unknown, incidence);
     verb_print(1,"[arjun] Start unknown size: " << unknown.size());
     uint32_t sat = 0;
+    set<uint32_t> unknown_set(unknown.begin(), unknown.end());
 
     vector<Lit> assumptions;
     uint32_t num_done = 0;
@@ -166,6 +167,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
         }
         uint32_t test_var = unknown.back();
         unknown.pop_back();
+        if (unknown_set.count(test_var) == 0) continue;
 
         assert(test_var < orig_num_vars);
         verb_print(5, "Testing: " << test_var);
@@ -207,6 +209,19 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             set_vals[indic] = l_True;
 
             cnf.opt_sampl_vars.push_back(test_var);
+
+        } else if (ret == l_True) {
+            // Optimisation: if we see both true and false, then it cannot be independent
+            for(uint32_t v = 0; v < orig_num_vars; v++) {
+                if (!unknown_set.count(v)) continue;
+                uint32_t other_v = v + orig_num_vars;
+                if (solver->get_model()[other_v] != solver->get_model()[v]) {
+                    verb_print(5,"TRUE erasing v: " << v + 1 << " because it's been seen both true&false");
+                    unknown_set.erase(v);
+                }
+            }
+            // Not fully dependent
+            set_vals[indic] = l_Undef;
         } else {
             set_vals[indic] = l_Undef;
         }
