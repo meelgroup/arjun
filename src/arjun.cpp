@@ -227,6 +227,7 @@ void Arjun::elim_to_file(SimplifiedCNF& cnf, bool all_indep,
         bool do_unate, const SimpConf& simp_conf,
         int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak) {
 
+    cnf.remove_equiv_weights();
     cnf = only_get_simplified_cnf(cnf, simp_conf);
     cnf.remove_equiv_weights();
     if (sbva_steps)
