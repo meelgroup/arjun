@@ -23,9 +23,29 @@
  */
 
 #include "manthan.h"
+#include "cryptominisat5/cryptominisat.h"
+#include "src/arjun.h"
+#include <vector>
+
+using std::vector;
+using std::set;
 
 using namespace ArjunInt;
 using namespace ArjunNS;
+using namespace CMSat;
+
+vector<vector<lbool>> Manthan::get_samples(const SimplifiedCNF& cnf, uint32_t num) {
+    vector<vector<lbool>> solutions;
+    sample_solver.set_up_for_sample_counter(100);
+    for(const auto& c: cnf.clauses) sample_solver.add_clause(c);
+    for(const auto& c: cnf.red_clauses) sample_solver.add_red_clause(c);
+
+    for (uint32_t i = 0; i < num; i++) {
+        sample_solver.solve();
+        solutions.push_back(sample_solver.get_model());
+    }
+    return solutions;
+}
 
 void Manthan::do_manthan(SimplifiedCNF& cnf) {
     // Grand master plan
@@ -36,4 +56,7 @@ void Manthan::do_manthan(SimplifiedCNF& cnf) {
     // 5a -- we could fix solutions one-by-one but that's slow
     // 5b -- instead, get the conflict from the assumptions, which is a kind of poor "core",
     //       and do the "stupid" fix on that.
+    //
+
+    vector<vector<lbool>> solutions = get_samples(cnf, 10e3);
 }

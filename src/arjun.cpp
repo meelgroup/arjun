@@ -33,6 +33,7 @@
 #include "extend.h"
 #include "time_mem.h"
 #include "constants.h"
+#include "manthan.h"
 
 using std::numeric_limits;
 using namespace ArjunInt;
@@ -127,6 +128,12 @@ DLL_PUBLIC SimplifiedCNF Arjun::only_get_simplified_cnf(
     return puura.get_fully_simplified_renumbered_cnf(
             cnf, simp_conf,
             vector<uint32_t>());
+}
+
+DLL_PUBLIC SimplifiedCNF Arjun::only_manthan(const SimplifiedCNF& cnf)
+{
+    Manthan manthan(arjdata->conf);
+    return manthan.do_manthan(cnf);
 }
 
 DLL_PUBLIC void Arjun::only_reverse_bce(SimplifiedCNF& cnf)

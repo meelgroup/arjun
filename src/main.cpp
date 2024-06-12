@@ -319,6 +319,7 @@ void do_synthesis() {
     if (false && do_minim_indep) arjun->only_run_minimize_indep_synth(cnf);
 
     write_synth(cnf, elimtofile, false);
+    arjun->only_manthan(cnf);
 }
 
 void do_minimize() {

@@ -25,6 +25,13 @@
 #include "arjun.h"
 #include "config.h"
 
+#include <cstdint>
+#include <vector>
+#include <set>
+
+using std::vector;
+using std::set;
+
 using namespace ArjunInt;
 using namespace ArjunNS;
 
@@ -35,4 +42,8 @@ class Manthan {
 
     private:
         const Config& conf;
+        CMSat::SATSolver sample_solver;
+
+        void add_sample_clauses(SimplifiedCNF& cnf);
+        vector<vector<CMSat::lbool>> get_samples(const SimplifiedCNF& cnf, uint32_t num_samples);
 };
