@@ -26,6 +26,15 @@
 #include "cryptominisat5/cryptominisat.h"
 #include "src/arjun.h"
 #include <vector>
+#include <xgboost/c_api.h>
+
+#define safe_xgb(call) {  \
+  int err = (call); \
+  if (err != 0) { \
+    fprintf(stderr, "%s:%d: error in %s: %s\n", __FILE__, __LINE__, #call, XGBGetLastError());  \
+    exit(1); \
+  } \
+}
 
 using std::vector;
 using std::set;
@@ -59,4 +68,37 @@ void Manthan::do_manthan(SimplifiedCNF& cnf) {
     //
 
     vector<vector<lbool>> solutions = get_samples(cnf, 10e3);
+    BoosterHandle booster = nullptr;
+    safe_xgb(XGBoosterSetParam(booster, "nthread", "1"))
+    DMatrixHandle data;
+    const int data1[] = { 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0 };
+    int eval_dmats_size = 10;
+
+    // We assume that training and test data have been loaded into 'train' and 'test'
+    DMatrixHandle eval_dmats[eval_dmats_size] = {train, test};
+    /* safe_xgboost(XGBoosterCreate(eval_dmats, eval_dmats_size, &booster)); */
+    float* ret_data;
+    safe_xgboost(XGDMatrixCreateFromMat(ret_data, num_rows, num_cols, missing_val, &dmat));
+    free(ret_data);
+
+    int num_of_iterations = 20;
+    const char* eval_names[eval_dmats_size] = {"train", "test"};
+    const char* eval_result = NULL;
+
+
+    for (int i = 0; i < num_of_iterations; ++i) {
+      // Update the model performance for each iteration
+      safe_xgboost(XGBoosterUpdateOneIter(booster, i, train));
+    }
+
+
+  // Give the statistics for the learner for training & testing dataset
+  // in terms of error after each iteration
+  safe_xgboost(XGBoosterEvalOneIter(booster, i, eval_dmats, eval_names, eval_dmats_size, &eval_result));
+
+  /* printf("%s\n", eval_result); */
+
+
+    XGBoosterFree(booster);
+
 }

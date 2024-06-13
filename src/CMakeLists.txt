@@ -56,6 +56,7 @@ target_link_libraries(arjun
     LINK_PUBLIC ${CRYPTOMINISAT5_LIBRARIES}
     LINK_PUBLIC ${SBVA_LIBRARIES}
     LINK_PUBLIC ${MPFR_LIBRARIES}
+    LINK_PUBLIC xgboost
 )
 
 add_executable(arjun-bin main.cpp)
