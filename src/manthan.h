@@ -43,7 +43,10 @@ class Manthan {
     private:
         const Config& conf;
         CMSat::SATSolver sample_solver;
+        set<uint32_t> input;
+        set<uint32_t> output;
 
         void add_sample_clauses(SimplifiedCNF& cnf);
         vector<vector<CMSat::lbool>> get_samples(const SimplifiedCNF& cnf, uint32_t num_samples);
+        void train(const vector<vector<CMSat::lbool>>& samples, uint32_t v)
 };
