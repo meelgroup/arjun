@@ -29,6 +29,16 @@
 #include <vector>
 #include <set>
 
+
+
+#define MLPACK_PRINT_INFO
+#define MLPACK_PRINT_WARN
+#include <mlpack.hpp>
+
+using namespace arma;
+using namespace mlpack;
+using namespace mlpack::tree;
+
 using std::vector;
 using std::set;
 
@@ -46,6 +56,7 @@ class Manthan {
         CMSat::SATSolver sample_solver;
         set<uint32_t> input;
         set<uint32_t> output;
+        void recur(DecisionTree<>* node, const vec& point_0, const vec& point_1, uint32_t depth = 0);
 
         void add_sample_clauses(SimplifiedCNF& cnf);
         vector<vector<CMSat::lbool>> get_samples(const SimplifiedCNF& cnf, uint32_t num_samples);

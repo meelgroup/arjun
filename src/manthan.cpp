@@ -85,7 +85,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         if (input.count(i) == 0) output.insert(i);
     }
 
-    uint32_t num_samples = 1e3;
+    uint32_t num_samples = 5*1e2;
     vector<vector<lbool>> solutions = get_samples(cnf, num_samples);
     cout << "Got " << solutions.size() << " samples\n";
     for(const auto& v: output) train(solutions, v);
@@ -93,20 +93,20 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     return cnf;
 }
 
-
-static void recur(DecisionTree<>* node, uint32_t depth = 0) {
+void Manthan::recur(DecisionTree<>* node, const vec& point_0, const vec& point_1, uint32_t depth) {
    for(uint32_t i = 0; i < depth; i++) cout << " ";
    if (node->NumChildren() == 0) {
        cout << "Leaf: ";
        for(uint32_t i = 0; i < node->NumClasses(); i++) {
-           cout << "class "<< i << " : " << node->ClassProbabilities()[i] << " ";
+           cout << "class "<< i << " prob: " << node->ClassProbabilities()[i] << " --- ";
        }
        cout << endl;
    } else {
-       cout << "Node." << node->SplitDimension() << endl;
+       cout << "Node. v: " << node->SplitDimension();
+       cout << "  -- all-0 goes -> " << node->CalculateDirection(point_0);
+       cout << "  -- all-1 goes -> " << node->CalculateDirection(point_1) << endl;
        for(uint32_t i = 0; i < node->NumChildren(); i++) {
-           recur(&node->Child(i), depth+1);
-           /* cout << "Child " << i << ":\n"; */
+           recur(&node->Child(i), point_0, point_1, depth+1);
        }
    }
 }
@@ -115,6 +115,10 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
     cout << "variable: " << v << endl;
     assert(!samples.empty());
     assert(v < cnf.nVars());
+    vec point_0 = vec(cnf.nVars());
+    for(uint32_t i = 0; i < cnf.nVars(); i++) point_0[i] = 0;
+    vec point_1 = vec(cnf.nVars());
+    for(uint32_t i = 0; i < cnf.nVars(); i++) point_1[i] = 1;
 
     Mat<size_t> dataset;
     Row<size_t> labels;
@@ -172,7 +176,7 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
    /* while (node->NumChildren() != 0) */
    /*  node = &node->Child(0); */
    /*  r.serialize(cout); */
-    recur(&r, 0);
+    recur(&r, point_0, point_1, 0);
     cout << "Done\n";
     /* exit(0); */
 }
