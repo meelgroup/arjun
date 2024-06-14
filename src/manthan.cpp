@@ -28,6 +28,9 @@
 #include <cstdint>
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
 #include <vector>
+#include <iterator>
+#include <algorithm>
+#include "constants.h"
 
 #define MLPACK_PRINT_INFO
 #define MLPACK_PRINT_WARN
@@ -62,10 +65,12 @@ vector<vector<lbool>> Manthan::get_samples(uint32_t num) {
     sample_solver.new_vars(cnf.nVars());
     for(const auto& c: cnf.clauses) sample_solver.add_clause(c);
     for(const auto& c: cnf.red_clauses) sample_solver.add_red_clause(c);
+    get_incidence();
 
     for (uint32_t i = 0; i < num; i++) {
         sample_solver.solve();
         assert(sample_solver.get_model().size() == cnf.nVars());
+        /// TODO: old idea of CMS, make them zero if they are all the last decision and I can do it.
         solutions.push_back(sample_solver.get_model());
     }
     return solutions;
@@ -87,16 +92,23 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     for (uint32_t i = 0; i < cnf.nVars(); i++) {
         if (input.count(i) == 0) output.insert(i);
     }
+    dependency_mat.resize(cnf.nVars());
+    for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);
 
     uint32_t num_samples = 5*1e2;
     vector<vector<lbool>> solutions = get_samples(num_samples);
     cout << "Got " << solutions.size() << " samples\n";
-    for(const auto& v: output) train(solutions, v);
+
+    vector<uint32_t> to_train;
+    for(const auto& v: output) to_train.push_back(v);
+    sort_unknown(to_train, incidence);
+    std::reverse(to_train.begin(), to_train.end());
+    for(const auto& v: to_train) train(solutions, v);
 
     return cnf;
 }
 
-void Manthan::recur(DecisionTree<>* node, const vec& point_0, const vec& point_1, uint32_t depth) {
+void Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, const vec& point_0, const vec& point_1, uint32_t depth) {
    for(uint32_t i = 0; i < depth; i++) cout << " ";
    if (node->NumChildren() == 0) {
        cout << "Leaf: ";
@@ -105,17 +117,27 @@ void Manthan::recur(DecisionTree<>* node, const vec& point_0, const vec& point_1
        }
        cout << endl;
    } else {
-       cout << "Node. v: " << node->SplitDimension();
+       uint32_t v = node->SplitDimension();
+       cout << "(learning " << learned_v+1<< ") Node. v: " << v+1 << std::flush;
+       if (output.count(v)) {
+           // v does not depend on us!
+           assert(dependency_mat[v][learned_v] == 0);
+           // we depend on v
+           dependency_mat[learned_v][v] = 1;
+           // and everything that v depends on
+           for(uint32_t i = 0 ; i < cnf.nVars(); i++) dependency_mat[learned_v][i] |= dependency_mat[v][i];
+       }
+
        cout << "  -- all-0 goes -> " << node->CalculateDirection(point_0);
        cout << "  -- all-1 goes -> " << node->CalculateDirection(point_1) << endl;
        for(uint32_t i = 0; i < node->NumChildren(); i++) {
-           recur(&node->Child(i), point_0, point_1, depth+1);
+           recur(&node->Child(i), learned_v, point_0, point_1, depth+1);
        }
    }
 }
 
 void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
-    cout << "variable: " << v << endl;
+    cout << "variable: " << v+1 << endl;
     assert(!samples.empty());
     assert(v < cnf.nVars());
     vec point_0 = vec(cnf.nVars());
@@ -132,16 +154,16 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
     for(uint32_t i = 0; i < samples.size(); i++) {
         assert(samples[i].size() == cnf.nVars());
         for(uint32_t j = 0; j < cnf.nVars(); j++) {
-            if (j == v) dataset(j, i) = 0;
-            else dataset(j, i) = samples[i][j] == l_True ? 1 : 0;
+            // we are learning v.
+            if (j == v) {dataset(j, i) = 0; continue;}
+            if (dependency_mat[j][v] == 1) { dataset(j, i) = 0; continue;}
+            dataset(j, i) = samples[i][j] == l_True ? 1 : 0;
         }
     }
     labels.resize(samples.size());
     for(uint32_t i = 0; i < samples.size(); i++) {
         labels[i] = samples[i][v] == l_True ? 1 : 0;
     }
-
-
 
 /* //! Construct and train. */
 /* template<typename FitnessFunction, */
@@ -175,13 +197,59 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
     cout << "Training error: " << train_error << "%." << endl;
     /* r.serialize(cout, 1); */
 
-   /* DecisionTree* node = r.children[0]; */
-   /* while (node->NumChildren() != 0) */
-   /*  node = &node->Child(0); */
-   /*  r.serialize(cout); */
-    recur(&r, point_0, point_1, 0);
+    recur(&r, v, point_0, point_1, 0);
     cout << "Done\n";
-    /* exit(0); */
 }
 
 
+void Manthan::get_incidence() {
+    incidence.clear();
+    incidence.resize(cnf.nVars(), 0);
+    for(const auto& cl: cnf.clauses) {
+        for(const auto& l: cl) {
+            incidence[l.var()]++;
+        }
+    }
+}
+
+Formula Manthan::constant_formula(int value) {
+    Formula ret;
+    uint32_t fresh = sample_solver.nVars()-1;
+    ret.inter_vs.insert(fresh);
+    ret.out = Lit(fresh, false);
+    ret.clauses.push_back({Lit(fresh, !value)});
+    return ret;
+}
+
+Formula Manthan::compose_ite(const Formula& fleft, const Formula& fright, Lit branch) {
+    Formula ret;
+    std::set_union(fleft.inter_vs.cbegin(), fleft.inter_vs.cend(),
+                   fright.inter_vs.cbegin(), fright.inter_vs.cend(),
+                   std::back_inserter(ret.inter_vs));
+    ret.clauses = fleft.clauses;
+    for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
+    sample_solver.new_var();
+    uint32_t fresh_v = sample_solver.nVars()-1;
+    // branch -> return left
+    // branch -> return right
+    //
+    //  b -> fresh = left
+    // !b -> fresh = right
+    //
+    // !b V    f V -left
+    // -b V   -f V  left
+    //  b V    f V -right
+    //  b V   -f V  right
+    //
+    Lit b = branch;
+    Lit l = fleft.out;
+    Lit r = fright.out;
+    Lit fresh = Lit(fresh_v, false);
+    ret.clauses.push_back({~b, fresh, ~l});
+    ret.clauses.push_back({~b, ~fresh, l});
+    ret.clauses.push_back({b, fresh, ~r});
+    ret.clauses.push_back({b, ~fresh, r});
+    ret.out = Lit(fresh_v, false);
+
+    return ret;
+}

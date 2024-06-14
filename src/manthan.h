@@ -38,12 +38,20 @@
 using namespace arma;
 using namespace mlpack;
 using namespace mlpack::tree;
+using namespace CMSat;
 
 using std::vector;
 using std::set;
+using std::map;
 
 using namespace ArjunInt;
 using namespace ArjunNS;
+
+struct Formula {
+    vector<vector<Lit>> clauses;
+    set<uint32_t> inter_vs;
+    Lit out; // member of inter_vs
+};
 
 class Manthan {
     public:
@@ -53,12 +61,18 @@ class Manthan {
 
     private:
         const Config& conf;
-        CMSat::SATSolver sample_solver;
+        SATSolver sample_solver;
         set<uint32_t> input;
         set<uint32_t> output;
-        void recur(DecisionTree<>* node, const vec& point_0, const vec& point_1, uint32_t depth = 0);
+        void recur(DecisionTree<>* node, const uint32_t learned_v, const vec& point_0, const vec& point_1, uint32_t depth = 0);
+        vector<uint32_t> incidence;
+        void get_incidence();
+        map<uint32_t, Formula> funcs;
+        Formula compose_ite(const Formula& a, const Formula& b, Lit branch);
+        Formula constant_formula(int val);
 
         void add_sample_clauses(SimplifiedCNF& cnf);
-        vector<vector<CMSat::lbool>> get_samples(uint32_t num_samples);
-        void train(const vector<vector<CMSat::lbool>>& samples, uint32_t v);
+        vector<vector<lbool>> get_samples(uint32_t num_samples);
+        void train(const vector<vector<lbool>>& samples, uint32_t v);
+        vector<vector<char>> dependency_mat;
 };
