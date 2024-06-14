@@ -53,7 +53,10 @@ using namespace ArjunInt;
 using namespace ArjunNS;
 using namespace CMSat;
 
-vector<vector<lbool>> Manthan::get_samples(const SimplifiedCNF& cnf, uint32_t num) {
+// good: qdimacs/small-bug1-fixpoint-10.qdimacs.cnf
+// also good: simplify qdimacs/amba2f9n.sat.qdimacs.cnf then run manthan
+
+vector<vector<lbool>> Manthan::get_samples(uint32_t num) {
     vector<vector<lbool>> solutions;
     sample_solver.set_up_for_sample_counter(100);
     sample_solver.new_vars(cnf.nVars());
@@ -86,7 +89,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     }
 
     uint32_t num_samples = 5*1e2;
-    vector<vector<lbool>> solutions = get_samples(cnf, num_samples);
+    vector<vector<lbool>> solutions = get_samples(num_samples);
     cout << "Got " << solutions.size() << " samples\n";
     for(const auto& v: output) train(solutions, v);
 

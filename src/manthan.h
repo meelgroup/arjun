@@ -59,6 +59,6 @@ class Manthan {
         void recur(DecisionTree<>* node, const vec& point_0, const vec& point_1, uint32_t depth = 0);
 
         void add_sample_clauses(SimplifiedCNF& cnf);
-        vector<vector<CMSat::lbool>> get_samples(const SimplifiedCNF& cnf, uint32_t num_samples);
+        vector<vector<CMSat::lbool>> get_samples(uint32_t num_samples);
         void train(const vector<vector<CMSat::lbool>>& samples, uint32_t v);
 };

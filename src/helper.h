@@ -64,7 +64,8 @@ inline void write_synth(const ArjunNS::SimplifiedCNF& simpcnf,
     outf << "p cnf " << simpcnf.nvars << " " << num_cls << endl;
 
     //Add projection
-    outf << "a ";
+    /* outf << "a "; */
+    outf << "c p show ";
     auto sampl = simpcnf.sampl_vars;
     std::sort(sampl.begin(), sampl.end());
     for(const auto& v: sampl) {
@@ -76,7 +77,8 @@ inline void write_synth(const ArjunNS::SimplifiedCNF& simpcnf,
     set<uint32_t> e;
     for(uint32_t i = 0; i < simpcnf.nvars; i++) e.insert(i);
     for(auto v: simpcnf.sampl_vars) e.erase(v);
-    outf << "e ";
+    /* outf << "e "; */
+    outf << "c e ";
     for(const auto& v: e) outf << v+1  << " ";
     outf << "0\n";
     cout << "c o exist vars: " << e.size() << endl;

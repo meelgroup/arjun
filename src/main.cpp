@@ -75,6 +75,7 @@ int do_revbce = false;
 int do_minim_indep = true;
 bool all_indep = false;
 string debug_minim;
+int do_pre_manthan = false;
 
 void add_arjun_options()
 {
@@ -86,6 +87,10 @@ void add_arjun_options()
     program.add_argument("--allindep")
         .action([&](const auto& a) {all_indep = std::atoi(a.c_str());})
         .default_value(all_indep)
+        .help("All variables are in the independent set. The indep set is given only to help Arjun");
+    program.add_argument("--premanthan")
+        .action([&](const auto& a) {do_pre_manthan = std::atoi(a.c_str());})
+        .default_value(do_pre_manthan)
         .help("All variables are in the independent set. The indep set is given only to help Arjun");
     program.add_argument("--maxc")
         .action([&](const auto& a) {conf.backw_max_confl = std::atoi(a.c_str());})
@@ -310,7 +315,7 @@ void do_synthesis() {
     if (do_unate) arjun->only_unate(cnf);
 
 
-    if (false) {
+    if (do_pre_manthan) {
         // First we extend
         arjun->only_unsat_define(cnf);
 
@@ -320,6 +325,10 @@ void do_synthesis() {
         if (do_revbce) arjun->only_reverse_bce(cnf);
         if (false && do_minim_indep) arjun->only_run_minimize_indep_synth(cnf);
         write_synth(cnf, elimtofile, false);
+    }
+    if (cnf.opt_sampl_vars.size() == cnf.nVars()) {
+        cout << "c o [arjun] No variables to synthesize" << endl;
+        return;
     }
     arjun->only_manthan(cnf);
 }
