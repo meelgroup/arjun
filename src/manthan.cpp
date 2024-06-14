@@ -56,17 +56,20 @@ using namespace CMSat;
 vector<vector<lbool>> Manthan::get_samples(const SimplifiedCNF& cnf, uint32_t num) {
     vector<vector<lbool>> solutions;
     sample_solver.set_up_for_sample_counter(100);
+    sample_solver.new_vars(cnf.nVars());
     for(const auto& c: cnf.clauses) sample_solver.add_clause(c);
     for(const auto& c: cnf.red_clauses) sample_solver.add_red_clause(c);
 
     for (uint32_t i = 0; i < num; i++) {
         sample_solver.solve();
+        assert(sample_solver.get_model().size() == cnf.nVars());
         solutions.push_back(sample_solver.get_model());
     }
     return solutions;
 }
 
-void Manthan::do_manthan(SimplifiedCNF& cnf) {
+SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
+    cnf = input_cnf;
     // Grand master plan
     // 1. Get 10k samples
     // 2. Run ML to get a tree one-by-one and thereby generate an order
@@ -82,23 +85,48 @@ void Manthan::do_manthan(SimplifiedCNF& cnf) {
         if (input.count(i) == 0) output.insert(i);
     }
 
-    vector<vector<lbool>> solutions = get_samples(cnf, 10e3);
+    uint32_t num_samples = 1e3;
+    vector<vector<lbool>> solutions = get_samples(cnf, num_samples);
+    cout << "Got " << solutions.size() << " samples\n";
+    for(const auto& v: output) train(solutions, v);
+
+    return cnf;
+}
 
 
+static void recur(DecisionTree<>* node, uint32_t depth = 0) {
+   for(uint32_t i = 0; i < depth; i++) cout << " ";
+   if (node->NumChildren() == 0) {
+       cout << "Leaf: ";
+       for(uint32_t i = 0; i < node->NumClasses(); i++) {
+           cout << "class "<< i << " : " << node->ClassProbabilities()[i] << " ";
+       }
+       cout << endl;
+   } else {
+       cout << "Node." << node->SplitDimension() << endl;
+       for(uint32_t i = 0; i < node->NumChildren(); i++) {
+           recur(&node->Child(i), depth+1);
+           /* cout << "Child " << i << ":\n"; */
+       }
+   }
 }
 
 void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
+    cout << "variable: " << v << endl;
     assert(!samples.empty());
+    assert(v < cnf.nVars());
 
     Mat<size_t> dataset;
     Row<size_t> labels;
-    dataset.resize(samples.size(), samples[0].size());
+    dataset.resize(cnf.nVars(), samples.size());
+    cout << "Dataset size: " << dataset.n_rows << " x " << dataset.n_cols << endl;
     // TODO: we fill 0 for the value of v, this MAY come back in the tree,but likely not
 
     for(uint32_t i = 0; i < samples.size(); i++) {
-        for(uint32_t j = 0; j < samples[i].size(); j++) {
-            if (i == j) dataset(i, j) = 0;
-            dataset(i, j) = samples[i][j] == l_True ? 1 : 0;
+        assert(samples[i].size() == cnf.nVars());
+        for(uint32_t j = 0; j < cnf.nVars(); j++) {
+            if (j == v) dataset(j, i) = 0;
+            else dataset(j, i) = samples[i][j] == l_True ? 1 : 0;
         }
     }
     labels.resize(samples.size());
@@ -106,20 +134,28 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
         labels[i] = samples[i][v] == l_True ? 1 : 0;
     }
 
-    // Labels are 1-7, but we want 0-6 (we are 0-indexed in C++).
-    labels -= 1;
 
 
-  /* template<typename MatType, typename LabelsType> */
-  /* DecisionTree(MatType data, */
-  /*              const data::DatasetInfo& datasetInfo, */
-  /*              LabelsType labels, */
-  /*              const size_t numClasses, */
-  /*              const size_t minimumLeafSize = 10, */
-  /*              const double minimumGainSplit = 1e-7, */
-  /*              const size_t maximumDepth = 0, */
-  /*              DimensionSelectionType dimensionSelector = */
-  /*                  DimensionSelectionType()); */
+/* //! Construct and train. */
+/* template<typename FitnessFunction, */
+/*          template<typename> class NumericSplitType, */
+/*          template<typename> class CategoricalSplitType, */
+/*          typename DimensionSelectionType, */
+/*          bool NoRecursion> */
+/* template<typename MatType, typename LabelsType> */
+/* DecisionTree<FitnessFunction, */
+/*              NumericSplitType, */
+/*              CategoricalSplitType, */
+/*              DimensionSelectionType, */
+/*              NoRecursion>::DecisionTree( */
+/*     MatType data, */
+/*     LabelsType labels, */
+/*     const size_t numClasses, */
+/*     const size_t minimumLeafSize, */
+/*     const double minimumGainSplit, */
+/*     const size_t maximumDepth, */
+/*     DimensionSelectionType dimensionSelector) */
+
 
     // Create the RandomForest object and train it on the training data.
     DecisionTree<> r(dataset, labels, 2);
@@ -130,9 +166,15 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
     const double train_error =
       arma::accu(predictions != labels) * 100.0 / (double)labels.n_elem;
     cout << "Training error: " << train_error << "%." << endl;
+    /* r.serialize(cout, 1); */
 
-    for(uint32_t i = 0; i < r.NumChildren(); i++) {
-        cout << "Child " << i << ":\n";
-        r.Child(i).Print(cout);
-    }
+   /* DecisionTree* node = r.children[0]; */
+   /* while (node->NumChildren() != 0) */
+   /*  node = &node->Child(0); */
+   /*  r.serialize(cout); */
+    recur(&r, 0);
+    cout << "Done\n";
+    /* exit(0); */
 }
+
+

@@ -309,16 +309,18 @@ void do_synthesis() {
     arjun->only_backbone(cnf);
     if (do_unate) arjun->only_unate(cnf);
 
-    // First we extend
-    arjun->only_unsat_define(cnf);
 
-    // Then we BVE
-    simp_conf.bve_too_large_resolvent = -1;
-    cnf = arjun->only_get_simplified_cnf(cnf, simp_conf);
-    if (do_revbce) arjun->only_reverse_bce(cnf);
-    if (false && do_minim_indep) arjun->only_run_minimize_indep_synth(cnf);
+    if (false) {
+        // First we extend
+        arjun->only_unsat_define(cnf);
 
-    write_synth(cnf, elimtofile, false);
+        // Then we BVE
+        simp_conf.bve_too_large_resolvent = -1;
+        cnf = arjun->only_get_simplified_cnf(cnf, simp_conf);
+        if (do_revbce) arjun->only_reverse_bce(cnf);
+        if (false && do_minim_indep) arjun->only_run_minimize_indep_synth(cnf);
+        write_synth(cnf, elimtofile, false);
+    }
     arjun->only_manthan(cnf);
 }
 

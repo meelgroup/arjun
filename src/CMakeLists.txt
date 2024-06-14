@@ -49,6 +49,7 @@ add_library(arjun
     minimize.cpp
     arjun.cpp
     puura.cpp
+    manthan.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
 )
 

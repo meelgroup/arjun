@@ -38,7 +38,8 @@ using namespace ArjunNS;
 class Manthan {
     public:
         Manthan(Config& _conf) : conf(_conf) {}
-        void do_manthan(SimplifiedCNF& cnf);
+        SimplifiedCNF do_manthan(const SimplifiedCNF& cnf);
+        SimplifiedCNF cnf;
 
     private:
         const Config& conf;
@@ -48,5 +49,5 @@ class Manthan {
 
         void add_sample_clauses(SimplifiedCNF& cnf);
         vector<vector<CMSat::lbool>> get_samples(const SimplifiedCNF& cnf, uint32_t num_samples);
-        void train(const vector<vector<CMSat::lbool>>& samples, uint32_t v)
+        void train(const vector<vector<CMSat::lbool>>& samples, uint32_t v);
 };

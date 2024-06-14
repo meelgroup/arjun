@@ -415,6 +415,9 @@ namespace ArjunNS {
             int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,
             uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1);
 
+        //Manthan
+        SimplifiedCNF only_manthan(const SimplifiedCNF& cnf);
+
         //Set config
         void set_verb(uint32_t verb);
         void set_distill(bool distill);
