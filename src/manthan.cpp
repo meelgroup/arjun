@@ -98,6 +98,9 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     uint32_t num_samples = 5*1e2;
     vector<vector<lbool>> solutions = get_samples(num_samples);
     cout << "Got " << solutions.size() << " samples\n";
+    sample_solver.new_vars(1);
+    my_true_lit = Lit(sample_solver.nVars()-1, false);
+    sample_solver.add_clause({my_true_lit});
 
     vector<uint32_t> to_train;
     for(const auto& v: output) to_train.push_back(v);
@@ -108,41 +111,47 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     return cnf;
 }
 
-void Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, const vec& point_0, const vec& point_1, uint32_t depth) {
-   for(uint32_t i = 0; i < depth; i++) cout << " ";
-   if (node->NumChildren() == 0) {
-       cout << "Leaf: ";
-       for(uint32_t i = 0; i < node->NumClasses(); i++) {
-           cout << "class "<< i << " prob: " << node->ClassProbabilities()[i] << " --- ";
-       }
-       cout << endl;
-   } else {
-       uint32_t v = node->SplitDimension();
-       cout << "(learning " << learned_v+1<< ") Node. v: " << v+1 << std::flush;
-       if (output.count(v)) {
-           // v does not depend on us!
-           assert(dependency_mat[v][learned_v] == 0);
-           // we depend on v
-           dependency_mat[learned_v][v] = 1;
-           // and everything that v depends on
-           for(uint32_t i = 0 ; i < cnf.nVars(); i++) dependency_mat[learned_v][i] |= dependency_mat[v][i];
-       }
+Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth) {
+    Formula ret;
+    for(uint32_t i = 0; i < depth; i++) cout << " ";
+    if (node->NumChildren() == 0) {
+        uint32_t val = node->ClassProbabilities()[1] > node->ClassProbabilities()[0];
+        cout << "Leaf: ";
+        for(uint32_t i = 0; i < node->NumClasses(); i++) {
+            cout << "class "<< i << " prob: " << node->ClassProbabilities()[i] << " --- ";
+        }
+        cout << endl;
+        return constant_formula(val);
+    } else {
+        uint32_t v = node->SplitDimension();
+        cout << "(learning " << learned_v+1<< ") Node. v: " << v+1 << std::flush;
+        if (output.count(v)) {
+            // v does not depend on us!
+            assert(dependency_mat[v][learned_v] == 0);
+            // we depend on v
+            dependency_mat[learned_v][v] = 1;
+            // and everything that v depends on
+            for(uint32_t i = 0 ; i < cnf.nVars(); i++) dependency_mat[learned_v][i] |= dependency_mat[v][i];
+        }
 
-       cout << "  -- all-0 goes -> " << node->CalculateDirection(point_0);
-       cout << "  -- all-1 goes -> " << node->CalculateDirection(point_1) << endl;
-       for(uint32_t i = 0; i < node->NumChildren(); i++) {
-           recur(&node->Child(i), learned_v, point_0, point_1, depth+1);
-       }
-   }
+        cout << "  -- all-0 goes -> " << node->CalculateDirection(point_0);
+        cout << "  -- all-1 goes -> " << node->CalculateDirection(point_1) << endl;
+        assert(node->NumChildren() == 2);
+        auto form_0 = recur(&node->Child(0), learned_v, depth+1);
+        auto form_1 = recur(&node->Child(1), learned_v, depth+1);
+        bool val_going_right = node->CalculateDirection(point_1);
+        return compose_ite(form_0, form_1, Lit(v, val_going_right));
+    }
+    assert(false);
 }
 
 void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
     cout << "variable: " << v+1 << endl;
     assert(!samples.empty());
     assert(v < cnf.nVars());
-    vec point_0 = vec(cnf.nVars());
+    point_0.resize(cnf.nVars());
     for(uint32_t i = 0; i < cnf.nVars(); i++) point_0[i] = 0;
-    vec point_1 = vec(cnf.nVars());
+    point_1.resize(cnf.nVars());
     for(uint32_t i = 0; i < cnf.nVars(); i++) point_1[i] = 1;
 
     Mat<size_t> dataset;
@@ -197,7 +206,10 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
     cout << "Training error: " << train_error << "%." << endl;
     /* r.serialize(cout, 1); */
 
-    recur(&r, v, point_0, point_1, 0);
+    funcs[v] = recur(&r, v, 0);
+    cout << "Formula for " << v+1 << ":" << endl
+        << funcs[v] << endl;
+    cout << "------------------------------" << endl;
     cout << "Done\n";
 }
 
@@ -214,18 +226,15 @@ void Manthan::get_incidence() {
 
 Formula Manthan::constant_formula(int value) {
     Formula ret;
-    uint32_t fresh = sample_solver.nVars()-1;
-    ret.inter_vs.insert(fresh);
-    ret.out = Lit(fresh, false);
-    ret.clauses.push_back({Lit(fresh, !value)});
+    ret.out = value ? my_true_lit : ~my_true_lit;
+    ret.inter_vs.insert(my_true_lit.var());
     return ret;
 }
 
 Formula Manthan::compose_ite(const Formula& fleft, const Formula& fright, Lit branch) {
     Formula ret;
-    std::set_union(fleft.inter_vs.cbegin(), fleft.inter_vs.cend(),
-                   fright.inter_vs.cbegin(), fright.inter_vs.cend(),
-                   std::back_inserter(ret.inter_vs));
+    ret.inter_vs = fleft.inter_vs;
+    for(const auto& v: fright.inter_vs) ret.inter_vs.insert(v);
     ret.clauses = fleft.clauses;
     for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
     sample_solver.new_var();
@@ -245,6 +254,7 @@ Formula Manthan::compose_ite(const Formula& fleft, const Formula& fright, Lit br
     Lit l = fleft.out;
     Lit r = fright.out;
     Lit fresh = Lit(fresh_v, false);
+    ret.inter_vs.insert(fresh_v);
     ret.clauses.push_back({~b, fresh, ~l});
     ret.clauses.push_back({~b, ~fresh, l});
     ret.clauses.push_back({b, fresh, ~r});

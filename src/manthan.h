@@ -24,6 +24,7 @@
 
 #include "arjun.h"
 #include "config.h"
+#include "cryptominisat5/solvertypesmini.h"
 
 #include <cstdint>
 #include <vector>
@@ -50,8 +51,25 @@ using namespace ArjunNS;
 struct Formula {
     vector<vector<Lit>> clauses;
     set<uint32_t> inter_vs;
-    Lit out; // member of inter_vs
+    Lit out = lit_Error; // member of inter_vs
 };
+
+inline std::ostream& operator<<(std::ostream& os, const Formula& f) {
+    os << " ==== Formula: " << f.out << " ==== " << endl;
+    for (const auto& cl : f.clauses) {
+        for (const auto& l : cl) {
+            os << std::setw(6) << l;
+        }
+        cout << " 0" << endl;
+    }
+    os << "Intermediates: ";
+    for (const auto& v : f.inter_vs) {
+        os << v+1 << " ";
+    }
+    os << endl;
+    os << "Output: " << f.out << endl;
+    return os;
+}
 
 class Manthan {
     public:
@@ -60,11 +78,15 @@ class Manthan {
         SimplifiedCNF cnf;
 
     private:
+        vec point_0;
+        vec point_1;
+        Lit my_true_lit;
+
         const Config& conf;
         SATSolver sample_solver;
         set<uint32_t> input;
         set<uint32_t> output;
-        void recur(DecisionTree<>* node, const uint32_t learned_v, const vec& point_0, const vec& point_1, uint32_t depth = 0);
+        Formula recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth = 0);
         vector<uint32_t> incidence;
         void get_incidence();
         map<uint32_t, Formula> funcs;
