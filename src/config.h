@@ -44,6 +44,7 @@ struct Config {
     int irreg_gate_based = 1;
     int probe_based = 0;
     int gauss_jordan = 0;
+    int backbone_only_optindep = 0;
     double no_gates_below = 0.01;
     std::string specified_order_fname;
     uint32_t backw_max_confl = 5000*10;

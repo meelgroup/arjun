@@ -442,7 +442,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             // Too many to do, to expensive
             conf.extend_max_confl /= 4;
         }
-        if (num_done == 12000 && unknown_set.size() > 3000) {
+        if (num_done == 15000 && unknown_set.size() > 3000) {
             verb_print(1, "[arjun] extend: too many to do, after 9000 still lots left. BREAKING");
             break;
         }

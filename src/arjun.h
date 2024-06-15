@@ -440,6 +440,7 @@ namespace ArjunNS {
         void set_bce(const bool bce);
         void set_weighted(const bool);
         void set_extend_max_confl(uint32_t extend_max_confl);
+        void set_backbone_only_optindep(bool backbone_only_optindep);
 
         //Get config
         uint32_t get_verb() const;
@@ -464,6 +465,7 @@ namespace ArjunNS {
         bool get_gate_sort_special() const;
         bool get_bce() const;
         uint32_t get_extend_max_confl() const;
+        bool get_backbone_only_optindep() const;
 
     private:
         ArjPrivateData* arjdata = nullptr;

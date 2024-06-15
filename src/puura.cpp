@@ -120,7 +120,12 @@ void Puura::backbone(SimplifiedCNF& cnf) {
     string str = "clean-cls, must-scc-vrepl, full-probe, must-scc-vrepl, must-renumber";
     solver->simplify(nullptr, &str);
     solver->set_verbosity(2);
-    solver->backbone_simpl(20*1000ULL, cnf.backbone_done);
+
+    if (conf.backbone_only_optindep)
+        solver->backbone_simpl(20*1000ULL, cnf.opt_sampl_vars, cnf.backbone_done);
+    else
+        solver->backbone_simpl(20*1000ULL, vector<uint32_t>(), cnf.backbone_done);
+
     auto lits = solver->get_zero_assigned_lits();
     for(const auto& l: lits) cnf.clauses.push_back({l});
     verb_print(1, "[arjun-backbone] done, T: " << (cpuTime() - my_time));
@@ -284,8 +289,12 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     // Now doing Oracle
     string str2;
     bool backbone_done = cnf.backbone_done;
-    if (!backbone_done && simp_conf.do_backbone_puura)
-        solver->backbone_simpl(30*1000, backbone_done);
+    if (!backbone_done && simp_conf.do_backbone_puura) {
+        if (conf.backbone_only_optindep)
+            solver->backbone_simpl(30*1000ULL, cnf.opt_sampl_vars, backbone_done);
+        else
+            solver->backbone_simpl(30*1000ULL, vector<uint32_t>(), backbone_done);
+    }
     if (backbone_done) {
         if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify";
         else if (simp_conf.oracle_vivify) str2 = "oracle-vivif";
