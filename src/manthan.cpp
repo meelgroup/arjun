@@ -24,6 +24,7 @@
 
 #include "manthan.h"
 #include "cryptominisat5/cryptominisat.h"
+#include "cryptominisat5/solvertypesmini.h"
 #include "src/arjun.h"
 #include <cstdint>
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
@@ -118,6 +119,13 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 }
 
 void Manthan::get_counterexample() {
+    // Inject the formulas into the solver
+    for(const auto& f: funcs) {
+        const auto& form = f.second;
+        for(const auto& cl: form.clauses) {
+            solver.add_clause(cl);
+        }
+    }
     // add indicator variables for each output == expected output
     vector<Lit> cl;
     for(const auto& o: output) {
@@ -126,12 +134,12 @@ void Manthan::get_counterexample() {
         Lit out = Lit(o, false);
         out_to_indic[o] = ind.var();
         indic_to_out[ind.var()] = o;
-        // when indic is TRUE, they are EQUIVALENT
+        // when indic is FALSE, they are NOT EQUIVALENT
         cl.clear();
-        cl.push_back(~ind);
+        cl.push_back(ind);
         cl.push_back(out);
         assert(funcs.count(o));
-        cl.push_back(~funcs[o].out);
+        cl.push_back(funcs[o].out);
         solver.add_clause(cl);
         cl[1] = ~cl[1];
         cl[2] = ~cl[2];
@@ -140,10 +148,11 @@ void Manthan::get_counterexample() {
     vector<Lit> assumptions;
     assumptions.reserve(out_to_indic.size());
     for(const auto& i: out_to_indic) {
-        assumptions.push_back(Lit(i.second, false));
+        assumptions.push_back(Lit(i.second, true));
     }
-    solver.solve(&assumptions);
-    if (solver.okay()) {
+    auto ret = solver.solve(&assumptions);
+    assert(ret != l_Undef);
+    if (ret == l_True) {
         cout << "No counterexample found\n";
         return;
     }

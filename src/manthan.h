@@ -85,6 +85,7 @@ class Manthan {
 
         map<uint32_t, Formula> funcs; // output -> formula
         // when indic is TRUE, they are EQUIVALENT
+        // when indic is FALSE, they are NOT EQUIVALENT <<-- only this injected
         map<uint32_t, uint32_t> out_to_indic;
         map<uint32_t, uint32_t> indic_to_out;
 
