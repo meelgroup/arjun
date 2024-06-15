@@ -103,6 +103,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     sample_solver.add_clause({my_true_lit});
 
     vector<uint32_t> to_train;
+    to_train.reserve(output.size());
     for(const auto& v: output) to_train.push_back(v);
     sort_unknown(to_train, incidence);
     std::reverse(to_train.begin(), to_train.end());
