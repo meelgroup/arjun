@@ -428,7 +428,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             conf.extend_max_confl /= 2;
         }
         if (num_done == 1000 && unknown_set.size() > 2000) {
-            verb_print(1, "[arjun] extend: too many to do, after 1000 still lots left. Lowering conflict limit");
+            verb_print(1, "[arjun] extend: too many to do, after 2000 still lots left. Lowering conflict limit");
             // Too many to do, to expensive
             conf.extend_max_confl /= 4;
         }
@@ -438,7 +438,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             conf.extend_max_confl /= 4;
         }
         if (num_done == 6000 && unknown_set.size() > 3000) {
-            verb_print(1, "[arjun] extend: too many to do, after 3000 still lots left. Lowering conflict limit");
+            verb_print(1, "[arjun] extend: too many to do, after 6000 still lots left. Lowering conflict limit");
             // Too many to do, to expensive
             conf.extend_max_confl /= 4;
         }
