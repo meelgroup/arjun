@@ -57,6 +57,7 @@ bool Minimize::simplify() {
         double simp_time = cpuTime();
         solver->set_bve(0);
         solver->set_intree_probe(1);
+        solver->set_oracle_find_bins(conf.oracle_find_bins);
         std::string s;
         if (conf.simp == 1) s = "intree-probe";
         else s = "str-impl, intree-probe,occ-ternary-res, occ-backw-sub, distill-litrem, must-distill-cls, distill-bins, oracle-vivif-veryfast";
