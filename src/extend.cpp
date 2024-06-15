@@ -442,6 +442,10 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             // Too many to do, to expensive
             conf.extend_max_confl /= 4;
         }
+        if (num_done == 12000 && unknown_set.size() > 3000) {
+            verb_print(1, "[arjun] extend: too many to do, after 9000 still lots left. BREAKING");
+            break;
+        }
         /* cout << "num_done: " << num_done << " unknown_set.size(): " << unknown_set.size() << " confl: " << (double)solver->get_sum_conflicts()/((double)num_done*conf.extend_max_confl) << endl; */
 
         assert(test_var < orig_num_vars);
