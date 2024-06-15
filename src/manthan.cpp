@@ -61,17 +61,17 @@ using namespace CMSat;
 
 vector<vector<lbool>> Manthan::get_samples(uint32_t num) {
     vector<vector<lbool>> solutions;
-    sample_solver.set_up_for_sample_counter(100);
-    sample_solver.new_vars(cnf.nVars());
-    for(const auto& c: cnf.clauses) sample_solver.add_clause(c);
-    for(const auto& c: cnf.red_clauses) sample_solver.add_red_clause(c);
+    solver.set_up_for_sample_counter(100);
+    solver.new_vars(cnf.nVars());
+    for(const auto& c: cnf.clauses) solver.add_clause(c);
+    for(const auto& c: cnf.red_clauses) solver.add_red_clause(c);
     get_incidence();
 
     for (uint32_t i = 0; i < num; i++) {
-        sample_solver.solve();
-        assert(sample_solver.get_model().size() == cnf.nVars());
+        solver.solve();
+        assert(solver.get_model().size() == cnf.nVars());
         /// TODO: old idea of CMS, make them zero if they are all the last decision and I can do it.
-        solutions.push_back(sample_solver.get_model());
+        solutions.push_back(solver.get_model());
     }
     return solutions;
 }
@@ -95,13 +95,15 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     dependency_mat.resize(cnf.nVars());
     for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);
 
+    // Sampling
     uint32_t num_samples = 5*1e2;
     vector<vector<lbool>> solutions = get_samples(num_samples);
     cout << "Got " << solutions.size() << " samples\n";
-    sample_solver.new_vars(1);
-    my_true_lit = Lit(sample_solver.nVars()-1, false);
-    sample_solver.add_clause({my_true_lit});
+    solver.new_vars(1);
+    my_true_lit = Lit(solver.nVars()-1, false);
+    solver.add_clause({my_true_lit});
 
+    // Training
     vector<uint32_t> to_train;
     to_train.reserve(output.size());
     for(const auto& v: output) to_train.push_back(v);
@@ -109,7 +111,49 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     std::reverse(to_train.begin(), to_train.end());
     for(const auto& v: to_train) train(solutions, v);
 
+    // Counterexample
+    get_counterexample();
+
     return cnf;
+}
+
+void Manthan::get_counterexample() {
+    // add indicator variables for each output == expected output
+    vector<Lit> cl;
+    for(const auto& o: output) {
+        solver.new_var();
+        Lit ind = Lit(solver.nVars()-1, false);
+        Lit out = Lit(o, false);
+        out_to_indic[o] = ind.var();
+        indic_to_out[ind.var()] = o;
+        // when indic is TRUE, they are EQUIVALENT
+        cl.clear();
+        cl.push_back(~ind);
+        cl.push_back(out);
+        assert(funcs.count(o));
+        cl.push_back(~funcs[o].out);
+        solver.add_clause(cl);
+        cl[1] = ~cl[1];
+        cl[2] = ~cl[2];
+        solver.add_clause(cl);
+    }
+    vector<Lit> assumptions;
+    assumptions.reserve(out_to_indic.size());
+    for(const auto& i: out_to_indic) {
+        assumptions.push_back(Lit(i.second, false));
+    }
+    solver.solve(&assumptions);
+    if (solver.okay()) {
+        cout << "No counterexample found\n";
+        return;
+    }
+    vector<Lit> conflict = solver.get_conflict();
+    cout << "Conflict sz: " << conflict.size() << endl;
+    for(const auto& l: conflict)  {
+        cout << l << " -- ";
+        if (indic_to_out.count(l.var())) cout << " output lit: " << indic_to_out[l.var()];
+        cout << endl;
+    }
 }
 
 Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth) {
@@ -238,8 +282,8 @@ Formula Manthan::compose_ite(const Formula& fleft, const Formula& fright, Lit br
     for(const auto& v: fright.inter_vs) ret.inter_vs.insert(v);
     ret.clauses = fleft.clauses;
     for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
-    sample_solver.new_var();
-    uint32_t fresh_v = sample_solver.nVars()-1;
+    solver.new_var();
+    uint32_t fresh_v = solver.nVars()-1;
     // branch -> return left
     // branch -> return right
     //

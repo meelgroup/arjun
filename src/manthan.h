@@ -82,16 +82,22 @@ class Manthan {
         vec point_1;
         Lit my_true_lit;
 
+
+        map<uint32_t, Formula> funcs; // output -> formula
+        // when indic is TRUE, they are EQUIVALENT
+        map<uint32_t, uint32_t> out_to_indic;
+        map<uint32_t, uint32_t> indic_to_out;
+
         const Config& conf;
-        SATSolver sample_solver;
+        SATSolver solver;
         set<uint32_t> input;
         set<uint32_t> output;
         Formula recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth = 0);
         vector<uint32_t> incidence;
         void get_incidence();
-        map<uint32_t, Formula> funcs;
         Formula compose_ite(const Formula& a, const Formula& b, Lit branch);
         Formula constant_formula(int val);
+        void get_counterexample();
 
         void add_sample_clauses(SimplifiedCNF& cnf);
         vector<vector<lbool>> get_samples(uint32_t num_samples);
