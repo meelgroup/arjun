@@ -27,6 +27,7 @@
 #include "cryptominisat5/solvertypesmini.h"
 
 #include <cstdint>
+#include <sys/types.h>
 #include <vector>
 #include <set>
 
@@ -84,10 +85,12 @@ class Manthan {
 
 
         map<uint32_t, Formula> funcs; // output -> formula
-        // when indic is TRUE, they are EQUIVALENT
-        // when indic is FALSE, they are NOT EQUIVALENT <<-- only this injected
-        map<uint32_t, uint32_t> out_to_indic;
-        map<uint32_t, uint32_t> indic_to_out;
+        map<uint32_t, uint32_t> y_to_y_hat;
+        map<uint32_t, uint32_t> y_hat_to_y;
+
+        // when indic is TRUE, y_hat and func_out are EQUAL
+        map<uint32_t, uint32_t> y_hat_to_indic;
+        map<uint32_t, uint32_t> indic_to_y_hat;
 
         const Config& conf;
         SATSolver solver;
@@ -98,7 +101,7 @@ class Manthan {
         void get_incidence();
         Formula compose_ite(const Formula& a, const Formula& b, Lit branch);
         Formula constant_formula(int val);
-        void get_counterexample();
+        bool get_counterexample(vector<lbool>& ctx);
 
         void add_sample_clauses(SimplifiedCNF& cnf);
         vector<vector<lbool>> get_samples(uint32_t num_samples);

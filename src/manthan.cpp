@@ -63,6 +63,7 @@ using namespace CMSat;
 vector<vector<lbool>> Manthan::get_samples(uint32_t num) {
     vector<vector<lbool>> solutions;
     solver.set_up_for_sample_counter(100);
+    /* solver.set_verbosity(1); */
     solver.new_vars(cnf.nVars());
     for(const auto& c: cnf.clauses) solver.add_clause(c);
     for(const auto& c: cnf.red_clauses) solver.add_red_clause(c);
@@ -103,6 +104,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     solver.new_vars(1);
     my_true_lit = Lit(solver.nVars()-1, false);
     solver.add_clause({my_true_lit});
+    cout << "True lit: " << my_true_lit << endl;
 
     // Training
     vector<uint32_t> to_train;
@@ -113,55 +115,121 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     for(const auto& v: to_train) train(solutions, v);
 
     // Counterexample
-    get_counterexample();
+    vector<lbool> ctx;
+    bool finished = get_counterexample(ctx);
+    if (finished) return cnf;
+    auto pr = [=](lbool val) {
+        if (val == l_True) return "1";
+        if (val == l_False) return "0";
+        if (val == l_Undef) assert(false);
+        exit(-1);
+    };
+    for(const auto& y: output) {
+        auto y_hat = y_to_y_hat[y];
+        if (ctx[y] == ctx[y_hat]) continue;
+        cout << "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
+            << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]) << endl;
+        for(const auto& i: input) {
+            cout << "val " << setw(4) << i+1 << ": " << pr(ctx[i]) << " -- ";
+        }
+        cout << endl;
+    }
+    exit(0);
 
     return cnf;
 }
 
-void Manthan::get_counterexample() {
+bool Manthan::get_counterexample(vector<lbool>& ctx) {
     // Inject the formulas into the solver
     for(const auto& f: funcs) {
         const auto& form = f.second;
-        for(const auto& cl: form.clauses) {
-            solver.add_clause(cl);
-        }
+        for(const auto& cl: form.clauses) solver.add_clause(cl);
     }
-    // add indicator variables for each output == expected output
-    vector<Lit> cl;
-    for(const auto& o: output) {
+    // Create variables for y_hat
+    for(const auto& y: output) {
         solver.new_var();
-        Lit ind = Lit(solver.nVars()-1, false);
-        Lit out = Lit(o, false);
-        out_to_indic[o] = ind.var();
-        indic_to_out[ind.var()] = o;
-        // when indic is FALSE, they are NOT EQUIVALENT
-        cl.clear();
-        cl.push_back(ind);
-        cl.push_back(out);
-        assert(funcs.count(o));
-        cl.push_back(funcs[o].out);
-        solver.add_clause(cl);
-        cl[1] = ~cl[1];
-        cl[2] = ~cl[2];
-        solver.add_clause(cl);
+        uint32_t y_hat = solver.nVars()-1;
+        y_to_y_hat[y] = y_hat;
+        y_hat_to_y[y_hat] = y;
+        cout << "mapping -- y: " << y+1 << " y_hat: " << y_hat+1 << endl;
     }
+
+    // Relation between y_hat and func_out
+    // when y_hat_to_indic is TRUE, y_hat and func_out are EQUAL
+    vector<Lit> tmp;
+    for(const auto& y: output) {
+        solver.new_var();
+        uint32_t ind = solver.nVars()-1;
+
+        assert(funcs.count(y));
+        auto func_out = funcs[y].out;
+        auto y_hat = y_to_y_hat[y];
+
+        y_hat_to_indic[y_hat] = ind;
+        indic_to_y_hat[ind] = y_hat;
+        cout << "-> ind: " << ind+1 << " y_hat: " << y_hat+1  << " func_out: " << func_out << endl;
+
+        // when indic is TRUE, y_hat and func_out are EQUAL
+        auto y_hat_l = Lit(y_hat, false);
+        auto ind_l = Lit(ind, false);
+        tmp.clear();
+        tmp.push_back(~ind_l);
+        tmp.push_back(y_hat_l);
+        tmp.push_back(~func_out);
+        solver.add_clause(tmp);
+        tmp[1] = ~tmp[1];
+        tmp[2] = ~tmp[2];
+        solver.add_clause(tmp);
+    }
+
+    // Adds ~F(x, y_hat)
+    vector<Lit> cl_indics; // if true, clause is satisfied, if false, clause is unsatisfied
+    for(const auto& cl_orig: cnf.clauses) {
+        // Replace y with y_hat in the clause
+        vector<Lit> cl;
+        for(const auto& l: cl_orig) {
+            if (output.count(l.var())) {
+                cl.push_back(Lit(y_to_y_hat[l.var()], l.sign()));
+            } else cl.push_back(l);
+        }
+
+        solver.new_var();
+        uint32_t v = solver.nVars()-1;
+        Lit cl_indic(v, false);
+        tmp.clear();
+        tmp.push_back(~cl_indic);
+        for(const auto&l : cl) tmp.push_back(l);
+        solver.add_clause(tmp);
+
+        for(const auto&l : cl) {
+            tmp.clear();
+            tmp.push_back(cl_indic);
+            tmp.push_back(~l);
+            solver.add_clause(tmp);
+        }
+        cl_indics.push_back(cl_indic);
+    }
+    tmp.clear();
+    for(const auto& l: cl_indics) tmp.push_back(~l); // at least one is unsatisfied
+    solver.add_clause(tmp);
+
     vector<Lit> assumptions;
-    assumptions.reserve(out_to_indic.size());
-    for(const auto& i: out_to_indic) {
-        assumptions.push_back(Lit(i.second, true));
-    }
+    assumptions.reserve(y_hat_to_indic.size());
+    for(const auto& i: y_hat_to_indic) assumptions.push_back(Lit(i.second, false));
+    cout << "assumptions: " << assumptions << endl;
+
+
     auto ret = solver.solve(&assumptions);
     assert(ret != l_Undef);
     if (ret == l_True) {
-        cout << "No counterexample found\n";
-        return;
-    }
-    vector<Lit> conflict = solver.get_conflict();
-    cout << "Conflict sz: " << conflict.size() << endl;
-    for(const auto& l: conflict)  {
-        cout << l << " -- ";
-        if (indic_to_out.count(l.var())) cout << " output lit: " << indic_to_out[l.var()];
-        cout << endl;
+        cout << "Counterexample found\n";
+        ctx = solver.get_model();
+        return false;
+    } else {
+        assert(ret == l_False);
+        /* vector<Lit> conflict = solver.get_conflict(); */
+        cout << "Function is good!" << endl;
+        return true;
     }
 }
 
