@@ -93,7 +93,9 @@ class Manthan {
         map<uint32_t, uint32_t> indic_to_y_hat;
 
         const Config& conf;
-        SATSolver solver;
+        SATSolver solver_train;
+        SATSolver solver_rep;
+        SATSolver solver_samp;
         set<uint32_t> input;
         set<uint32_t> output;
         Formula recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth = 0);
@@ -102,6 +104,10 @@ class Manthan {
         Formula compose_ite(const Formula& a, const Formula& b, Lit branch);
         Formula constant_formula(int val);
         bool get_counterexample(vector<lbool>& ctx);
+        vector<lbool> find_better_ctx(const vector<lbool>& ctx);
+        void inject_cnf(SATSolver& s);
+        void inject_unit(SATSolver& s);
+
 
         void add_sample_clauses(SimplifiedCNF& cnf);
         vector<vector<lbool>> get_samples(uint32_t num_samples);
