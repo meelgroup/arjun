@@ -311,11 +311,9 @@ void do_synthesis() {
     assert(!elimtofile.empty());
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, all_indep);
-    arjun->only_backbone(cnf);
-    if (do_unate) arjun->only_unate(cnf);
-
-
     if (do_pre_manthan) {
+        arjun->only_backbone(cnf);
+        if (do_unate) arjun->only_unate(cnf);
         // First we extend
         arjun->only_unsat_define(cnf);
 
