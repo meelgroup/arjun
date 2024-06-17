@@ -161,12 +161,10 @@ if (NOT MSVC)
     add_compile_options( -pthread )
 
     add_compile_options("$<$<CONFIG:RELWITHDEBINFO>:-O3>")
-    add_compile_options("$<$<CONFIG:RELWITHDEBINFO>:-mtune=native>")
 
     add_compile_options("$<$<CONFIG:RELEASE>:-O3>")
     add_compile_options("$<$<CONFIG:RELEASE>:-g0>")
     add_compile_options("$<$<CONFIG:RELEASE>:-DNDEBUG>")
-    add_compile_options("$<$<CONFIG:RELEASE>:-mtune=native>")
 
     add_compile_options("$<$<CONFIG:DEBUG>:-O0>")
 
@@ -269,6 +267,7 @@ if (NOT WIN32)
     add_cxx_flag_if_supported("-Wunreachable-code")
     add_cxx_flag_if_supported("-g")
     add_cxx_flag_if_supported("-ggdb3")
+    add_cxx_flag_if_supported("-msse4.2")
     add_compile_options("-fPIC")
 
     # add_cxx_flag_if_supported("-flto") # slow compile and not enough benefits
