@@ -50,6 +50,8 @@ using namespace ArjunInt;
 using namespace ArjunNS;
 
 struct Formula {
+    // TODO: we could have a flag of what has already been inserted into
+    // solver_train
     vector<vector<Lit>> clauses;
     set<uint32_t> inter_vs;
     Lit out = lit_Error; // member of inter_vs
@@ -94,7 +96,6 @@ class Manthan {
 
         const Config& conf;
         SATSolver solver_train;
-        SATSolver solver_rep;
         SATSolver solver_samp;
         set<uint32_t> input;
         set<uint32_t> output;
@@ -109,6 +110,7 @@ class Manthan {
         void inject_cnf(SATSolver& s);
         void inject_unit(SATSolver& s);
         void repair(uint32_t v, const vector<lbool>& ctx);
+        void init_solver_train();
 
         /* vector<uint32_t> y_order; */
         void fix_order();

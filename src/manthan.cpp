@@ -126,35 +126,37 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     for(const auto& v: to_train) train(solutions, v);
 
     // Counterexample
-    vector<lbool> ctx;
-    bool finished = get_counterexample(ctx);
-    if (finished) return cnf;
-    auto pr = [=](lbool val) {
-        if (val == l_True) return "1";
-        if (val == l_False) return "0";
-        if (val == l_Undef) assert(false);
-        exit(-1);
-    };
-    for(const auto& y: output) {
-        auto y_hat = y_to_y_hat[y];
-        if (ctx[y] == ctx[y_hat]) continue;
-        cout << "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
-            << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]) << endl;
-        for(const auto& i: input) {
-            cout << "val " << setw(4) << i+1 << ": " << pr(ctx[i]) << " -- ";
+    init_solver_train();
+    while(true) {
+        vector<lbool> ctx;
+        bool finished = get_counterexample(ctx);
+        if (finished) break;
+        auto pr = [=](lbool val) {
+            if (val == l_True) return "1";
+            if (val == l_False) return "0";
+            if (val == l_Undef) assert(false);
+            exit(-1);
+        };
+        for(const auto& y: output) {
+            auto y_hat = y_to_y_hat[y];
+            if (ctx[y] == ctx[y_hat]) continue;
+            cout << "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
+                << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]) << endl;
+            for(const auto& i: input) {
+                cout << "val " << setw(4) << i+1 << ": " << pr(ctx[i]) << " -- ";
+            }
+            cout << endl;
         }
-        cout << endl;
+        vector<uint32_t> needs_repair;
+        auto better_ctx = find_better_ctx(ctx, needs_repair);
+        /* fix_order(); */
+        for(const auto& v: needs_repair) {
+            cout << "repairing: " << v+1 << endl;
+            repair(v, ctx);
+            cout << "finished repairing " << v+1 << endl;
+        }
     }
-    vector<uint32_t> needs_repair;
-    auto better_ctx = find_better_ctx(ctx, needs_repair);
-    /* fix_order(); */
-    for(const auto& v: needs_repair) {
-        cout << "repairing: " << v+1 << endl;
-        repair(v, ctx);
-
-    }
-
-    // repair. We need to find the largest set of solutions for which the valuation needs to be flipped
+    cout << "DONE" << endl;
     exit(0);
 
     return cnf;
@@ -193,7 +195,10 @@ void Manthan::repair(uint32_t v, const vector<lbool>& ctx) {
     solver_train.new_var();
     auto fresh_l = Lit(solver_train.nVars()-1, false);
     cl.push_back(fresh_l);
-    for(const auto& l: conflict) cl.push_back(l);
+    for(const auto& l: conflict) {
+        cl.push_back(l);
+        dependency_mat[v][l.var()] = 1;
+    }
     f.clauses.push_back(cl);
     for(const auto& l: conflict) {
         cl.clear();
@@ -210,7 +215,6 @@ void Manthan::repair(uint32_t v, const vector<lbool>& ctx) {
     funcs[v] = compose_ite(constant_formula(ctx[v] == l_True), funcs[v], f);
     cout << "repaired formula for " << v+1 << ":" << endl
         << funcs[v] << endl;
-    exit(0);
 }
 
 void Manthan::fix_order() {
@@ -235,6 +239,7 @@ void Manthan::fix_order() {
 
 vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx, vector<uint32_t>& needs_repair) {
     needs_repair.clear();
+    SATSolver solver_rep;
     inject_cnf(solver_rep);
     vector<Lit> cl;
     for(const auto& x: input) {
@@ -257,9 +262,9 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx, vector<uint32_t
         assert(ret != l_Undef);
         if (ret == l_True) break;
         auto confl = solver_rep.get_conflict();
-        for(const auto&l : confl) {
-            cout << "conf: " << l << endl;
-        }
+        cout << "confl sz: " << confl.size() << endl;
+        assert(!confl.empty());
+        for(const auto&l : confl) cout << "conf: " << l << endl;
         for(const auto&l : confl) {
             assert(assumps.count(~l));
             assumps.erase(~l);
@@ -270,12 +275,8 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx, vector<uint32_t
     return solver_rep.get_model();
 }
 
-bool Manthan::get_counterexample(vector<lbool>& ctx) {
-    // Inject the formulas into the solver
-    for(const auto& f: funcs) {
-        const auto& form = f.second;
-        for(const auto& cl: form.clauses) solver_train.add_clause(cl);
-    }
+void Manthan::init_solver_train() {
+    vector<Lit> tmp;
     // Create variables for y_hat
     for(const auto& y: output) {
         solver_train.new_var();
@@ -283,34 +284,6 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
         y_to_y_hat[y] = y_hat;
         y_hat_to_y[y_hat] = y;
         cout << "mapping -- y: " << y+1 << " y_hat: " << y_hat+1 << endl;
-    }
-
-    // Relation between y_hat and func_out
-    // when y_hat_to_indic is TRUE, y_hat and func_out are EQUAL
-    vector<Lit> tmp;
-    for(const auto& y: output) {
-        solver_train.new_var();
-        uint32_t ind = solver_train.nVars()-1;
-
-        assert(funcs.count(y));
-        auto func_out = funcs[y].out;
-        auto y_hat = y_to_y_hat[y];
-
-        y_hat_to_indic[y_hat] = ind;
-        indic_to_y_hat[ind] = y_hat;
-        cout << "-> ind: " << ind+1 << " y_hat: " << y_hat+1  << " func_out: " << func_out << endl;
-
-        // when indic is TRUE, y_hat and func_out are EQUAL
-        auto y_hat_l = Lit(y_hat, false);
-        auto ind_l = Lit(ind, false);
-        tmp.clear();
-        tmp.push_back(~ind_l);
-        tmp.push_back(y_hat_l);
-        tmp.push_back(~func_out);
-        solver_train.add_clause(tmp);
-        tmp[1] = ~tmp[1];
-        tmp[2] = ~tmp[2];
-        solver_train.add_clause(tmp);
     }
 
     // Adds ~F(x, y_hat)
@@ -343,6 +316,44 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     tmp.clear();
     for(const auto& l: cl_indics) tmp.push_back(~l); // at least one is unsatisfied
     solver_train.add_clause(tmp);
+}
+
+bool Manthan::get_counterexample(vector<lbool>& ctx) {
+    // Inject the formulas into the solver
+    for(const auto& f: funcs) {
+        const auto& form = f.second;
+        for(const auto& cl: form.clauses) solver_train.add_clause(cl);
+    }
+
+    // Relation between y_hat and func_out
+    // when y_hat_to_indic is TRUE, y_hat and func_out are EQUAL
+    vector<Lit> tmp;
+    y_hat_to_indic.clear();
+    indic_to_y_hat.clear();
+    for(const auto& y: output) {
+        solver_train.new_var();
+        uint32_t ind = solver_train.nVars()-1;
+
+        assert(funcs.count(y));
+        auto func_out = funcs[y].out;
+        auto y_hat = y_to_y_hat[y];
+
+        y_hat_to_indic[y_hat] = ind;
+        indic_to_y_hat[ind] = y_hat;
+        cout << "->CTX ind: " << ind+1 << " y_hat: " << y_hat+1  << " func_out: " << func_out << endl;
+
+        // when indic is TRUE, y_hat and func_out are EQUAL
+        auto y_hat_l = Lit(y_hat, false);
+        auto ind_l = Lit(ind, false);
+        tmp.clear();
+        tmp.push_back(~ind_l);
+        tmp.push_back(y_hat_l);
+        tmp.push_back(~func_out);
+        solver_train.add_clause(tmp);
+        tmp[1] = ~tmp[1];
+        tmp[2] = ~tmp[2];
+        solver_train.add_clause(tmp);
+    }
 
     vector<Lit> assumptions;
     assumptions.reserve(y_hat_to_indic.size());
