@@ -109,8 +109,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);
 
     // Sampling
-    /* uint32_t num_samples = 5*1e2; */
-    uint32_t num_samples = 2;
+    uint32_t num_samples = 2000;
+    /* uint32_t num_samples = 2; */
     vector<vector<lbool>> solutions = get_samples(num_samples);
     cout << "Got " << solutions.size() << " samples\n";
     cout << "True lit: " << my_true_lit << endl;
@@ -122,12 +122,13 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     to_train.reserve(output.size());
     for(const auto& v: output) to_train.push_back(v);
     sort_unknown(to_train, incidence);
-    std::reverse(to_train.begin(), to_train.end());
+    /* std::reverse(to_train.begin(), to_train.end()); */
     for(const auto& v: to_train) train(solutions, v);
 
     // Counterexample
     init_solver_train();
     while(true) {
+start:
         vector<lbool> ctx;
         bool finished = get_counterexample(ctx);
         if (finished) break;
@@ -141,22 +142,21 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             auto y_hat = y_to_y_hat[y];
             if (ctx[y] == ctx[y_hat]) continue;
             cout << "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
-                << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]) << endl;
-            for(const auto& i: input) {
-                cout << "val " << setw(4) << i+1 << ": " << pr(ctx[i]) << " -- ";
-            }
-            cout << endl;
+            << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]) << endl;
+            /* for(const auto& i: input) cout << "val " << setw(4) << i+1 << ": " << pr(ctx[i]) << " -- "; */
+            /* cout << endl; */
         }
         vector<uint32_t> needs_repair;
         auto better_ctx = find_better_ctx(ctx, needs_repair);
         /* fix_order(); */
         for(const auto& v: needs_repair) {
-            cout << "repairing: " << v+1 << endl;
+            /* cout << "repairing: " << v+1 << endl; */
             repair(v, ctx);
-            cout << "finished repairing " << v+1 << endl;
+            /* goto start; */
+            /* cout << "finished repairing " << v+1 << endl; */
         }
     }
-    cout << "DONE" << endl;
+    /* cout << "DONE" << endl; */
     exit(0);
 
     return cnf;
@@ -182,12 +182,12 @@ void Manthan::repair(uint32_t v, const vector<lbool>& ctx) {
     auto ret = solver.solve(&assumps);
     assert(ret != l_Undef);
     if (ret == l_True) {
-        cout << "repairing " << v+1 << " is not possible\n";
+        /* cout << "repairing " << v+1 << " is not possible\n"; */
         return;
     }
     assert(ret == l_False);
     auto conflict = solver.get_conflict();
-    cout << "conflict: " << conflict << endl;
+    /* cout << "conflict: " << conflict << endl; */
 
     // not (conflict) -> v = ctx(v)
     Formula f;
@@ -208,13 +208,11 @@ void Manthan::repair(uint32_t v, const vector<lbool>& ctx) {
     }
     f.out = fresh_l;
     // when fresh_l is false, confl is satisfied
-    cout << "Original formula for " << v+1 << ":" << endl
-        << funcs[v] << endl;
-    cout << "Branch formula. When this is true, H is wrong:" << endl
-        << f << endl;
+    /* cout << "Original formula for " << v+1 << ":" << endl << funcs[v] << endl; */
+    /* cout << "Branch formula. When this is true, H is wrong:" << endl << f << endl; */
     funcs[v] = compose_ite(constant_formula(ctx[v] == l_True), funcs[v], f);
-    cout << "repaired formula for " << v+1 << ":" << endl
-        << funcs[v] << endl;
+    /* cout << "repaired formula for " << v+1 << ":" << endl << funcs[v] << endl; */
+    cout << "repaired formula for " << v+1 << endl;
 }
 
 void Manthan::fix_order() {
@@ -262,13 +260,13 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx, vector<uint32_t
         assert(ret != l_Undef);
         if (ret == l_True) break;
         auto confl = solver_rep.get_conflict();
-        cout << "confl sz: " << confl.size() << endl;
+        /* cout << "confl sz: " << confl.size() << endl; */
         assert(!confl.empty());
-        for(const auto&l : confl) cout << "conf: " << l << endl;
+        /* for(const auto&l : confl) cout << "conf: " << l << endl; */
         for(const auto&l : confl) {
             assert(assumps.count(~l));
             assumps.erase(~l);
-            cout << "had to erase y: " << ~l << " because it needs repair" << endl;
+            /* cout << "had to erase y: " << ~l << " because it needs repair" << endl; */
             needs_repair.push_back(l.var());
         }
     }
@@ -283,7 +281,7 @@ void Manthan::init_solver_train() {
         uint32_t y_hat = solver_train.nVars()-1;
         y_to_y_hat[y] = y_hat;
         y_hat_to_y[y_hat] = y;
-        cout << "mapping -- y: " << y+1 << " y_hat: " << y_hat+1 << endl;
+        /* cout << "mapping -- y: " << y+1 << " y_hat: " << y_hat+1 << endl; */
     }
 
     // Adds ~F(x, y_hat)
@@ -340,7 +338,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
 
         y_hat_to_indic[y_hat] = ind;
         indic_to_y_hat[ind] = y_hat;
-        cout << "->CTX ind: " << ind+1 << " y_hat: " << y_hat+1  << " func_out: " << func_out << endl;
+        /* cout << "->CTX ind: " << ind+1 << " y_hat: " << y_hat+1  << " func_out: " << func_out << endl; */
 
         // when indic is TRUE, y_hat and func_out are EQUAL
         auto y_hat_l = Lit(y_hat, false);
@@ -358,13 +356,13 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     vector<Lit> assumptions;
     assumptions.reserve(y_hat_to_indic.size());
     for(const auto& i: y_hat_to_indic) assumptions.push_back(Lit(i.second, false));
-    cout << "assumptions: " << assumptions << endl;
+    /* cout << "assumptions: " << assumptions << endl; */
 
 
     auto ret = solver_train.solve(&assumptions);
     assert(ret != l_Undef);
     if (ret == l_True) {
-        cout << "Counterexample found\n";
+        /* cout << "Counterexample found\n"; */
         ctx = solver_train.get_model();
         return false;
     } else {
@@ -377,18 +375,18 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
 
 Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth) {
     Formula ret;
-    for(uint32_t i = 0; i < depth; i++) cout << " ";
+    /* for(uint32_t i = 0; i < depth; i++) cout << " "; */
     if (node->NumChildren() == 0) {
         uint32_t val = node->ClassProbabilities()[1] > node->ClassProbabilities()[0];
-        cout << "Leaf: ";
-        for(uint32_t i = 0; i < node->NumClasses(); i++) {
-            cout << "class "<< i << " prob: " << node->ClassProbabilities()[i] << " --- ";
-        }
-        cout << endl;
+        /* cout << "Leaf: "; */
+        /* for(uint32_t i = 0; i < node->NumClasses(); i++) { */
+        /*     cout << "class "<< i << " prob: " << node->ClassProbabilities()[i] << " --- "; */
+        /* } */
+        /* cout << endl; */
         return constant_formula(val);
     } else {
         uint32_t v = node->SplitDimension();
-        cout << "(learning " << learned_v+1<< ") Node. v: " << v+1 << std::flush;
+        /* cout << "(learning " << learned_v+1<< ") Node. v: " << v+1 << std::flush; */
         if (output.count(v)) {
             // v does not depend on us!
             assert(dependency_mat[v][learned_v] == 0);
@@ -398,8 +396,8 @@ Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t 
             for(uint32_t i = 0 ; i < cnf.nVars(); i++) dependency_mat[learned_v][i] |= dependency_mat[v][i];
         }
 
-        cout << "  -- all-0 goes -> " << node->CalculateDirection(point_0);
-        cout << "  -- all-1 goes -> " << node->CalculateDirection(point_1) << endl;
+        /* cout << "  -- all-0 goes -> " << node->CalculateDirection(point_0); */
+        /* cout << "  -- all-1 goes -> " << node->CalculateDirection(point_1) << endl; */
         assert(node->NumChildren() == 2);
         auto form_0 = recur(&node->Child(0), learned_v, depth+1);
         auto form_1 = recur(&node->Child(1), learned_v, depth+1);
@@ -410,7 +408,7 @@ Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t 
 }
 
 void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
-    cout << "variable: " << v+1 << endl;
+    /* cout << "variable: " << v+1 << endl; */
     assert(!samples.empty());
     assert(v < cnf.nVars());
     point_0.resize(cnf.nVars());
@@ -421,7 +419,7 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
     Mat<size_t> dataset;
     Row<size_t> labels;
     dataset.resize(cnf.nVars(), samples.size());
-    cout << "Dataset size: " << dataset.n_rows << " x " << dataset.n_cols << endl;
+    /* cout << "Dataset size: " << dataset.n_rows << " x " << dataset.n_cols << endl; */
     // TODO: we fill 0 for the value of v, this MAY come back in the tree,but likely not
 
     for(uint32_t i = 0; i < samples.size(); i++) {
@@ -467,14 +465,13 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
     r.Classify(dataset, predictions);
     const double train_error =
       arma::accu(predictions != labels) * 100.0 / (double)labels.n_elem;
-    cout << "Training error: " << train_error << "%." << endl;
+    cout << "Training error: " << train_error << "%." << " on v: " << v << endl;
     /* r.serialize(cout, 1); */
 
     funcs[v] = recur(&r, v, 0);
-    cout << "Formula for " << v+1 << ":" << endl
-        << funcs[v] << endl;
-    cout << "------------------------------" << endl;
-    cout << "Done\n";
+    /* cout << "Formula for " << v+1 << ":" << endl << funcs[v] << endl; */
+    /* cout << "------------------------------" << endl; */
+    /* cout << "Done\n"; */
 }
 
 

@@ -127,7 +127,11 @@ void Puura::backbone(SimplifiedCNF& cnf) {
         solver->backbone_simpl(20*1000ULL, vector<uint32_t>(), cnf.backbone_done);
 
     auto lits = solver->get_zero_assigned_lits();
-    for(const auto& l: lits) cnf.clauses.push_back({l});
+    for(const auto& l: lits) {
+        cnf.clauses.push_back({l});
+        cout << "backbone inserting : " << l << endl;
+    }
+    cout << "backbone inserted : " << lits.size() << " T: " << (cpuTime() - my_time) << endl;
     verb_print(1, "[arjun-backbone] done, T: " << (cpuTime() - my_time));
     delete solver;
 }

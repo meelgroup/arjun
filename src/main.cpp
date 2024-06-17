@@ -320,14 +320,16 @@ void do_synthesis() {
         // Then we BVE
         simp_conf.bve_too_large_resolvent = -1;
         cnf = arjun->only_get_simplified_cnf(cnf, simp_conf);
-        if (do_revbce) arjun->only_reverse_bce(cnf);
+        /* if (do_revbce) arjun->only_reverse_bce(cnf); */
         if (false && do_minim_indep) arjun->only_run_minimize_indep_synth(cnf);
-        cnf.renumber_sampling_vars_for_ganak();
-        write_synth(cnf, elimtofile, false);
+        /* cnf.renumber_sampling_vars_for_ganak(); */
+        /* write_synth(cnf, elimtofile, false); */
     }
     if (cnf.opt_sampl_vars.size() == cnf.nVars()) {
         cout << "c o [arjun] No variables to synthesize" << endl;
         return;
+    } else {
+        cout << "c o [arjun] Num variables to synthesize via manthan:" << (cnf.nVars() - cnf.opt_sampl_vars.size()) << endl;
     }
     arjun->only_manthan(cnf);
 }
