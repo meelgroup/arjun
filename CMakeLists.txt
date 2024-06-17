@@ -267,7 +267,7 @@ if (NOT WIN32)
     add_cxx_flag_if_supported("-Winit-self")
     add_cxx_flag_if_supported("-Wparentheses")
     add_cxx_flag_if_supported("-Wunreachable-code")
-    add_cxx_flag_if_supported("-msse4.2")
+    add_cxx_flag_if_supported("-msse4")
     add_cxx_flag_if_supported("-mpopcnt")
     add_compile_options("-fPIC")
 
