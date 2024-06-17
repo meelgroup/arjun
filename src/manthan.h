@@ -102,11 +102,16 @@ class Manthan {
         vector<uint32_t> incidence;
         void get_incidence();
         Formula compose_ite(const Formula& a, const Formula& b, Lit branch);
+        Formula compose_ite(const Formula& a, const Formula& b, const Formula& f);
         Formula constant_formula(int val);
         bool get_counterexample(vector<lbool>& ctx);
-        vector<lbool> find_better_ctx(const vector<lbool>& ctx);
+        vector<lbool> find_better_ctx(const vector<lbool>& ctx, vector<uint32_t>& needs_repair);
         void inject_cnf(SATSolver& s);
         void inject_unit(SATSolver& s);
+        void repair(uint32_t v, const vector<lbool>& ctx);
+
+        /* vector<uint32_t> y_order; */
+        void fix_order();
 
 
         void add_sample_clauses(SimplifiedCNF& cnf);

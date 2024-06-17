@@ -144,14 +144,97 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             cout << "val " << setw(4) << i+1 << ": " << pr(ctx[i]) << " -- ";
         }
         cout << endl;
-        ctx = find_better_ctx(ctx);
     }
+    vector<uint32_t> needs_repair;
+    auto better_ctx = find_better_ctx(ctx, needs_repair);
+    /* fix_order(); */
+    for(const auto& v: needs_repair) {
+        cout << "repairing: " << v+1 << endl;
+        repair(v, ctx);
+
+    }
+
+    // repair. We need to find the largest set of solutions for which the valuation needs to be flipped
     exit(0);
 
     return cnf;
 }
 
-vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
+void Manthan::repair(uint32_t v, const vector<lbool>& ctx) {
+    // F(x,y) & x = ctx(x) && forall_y (y not dependent on v) (y = ctx(y)) & NOT (v = ctx(v))
+    SATSolver solver;
+    inject_cnf(solver);
+
+    vector<Lit> cl;
+    cl.push_back(Lit(v, ctx[v] == l_True));
+    solver.add_clause(cl);
+
+    vector<Lit> assumps;
+    for(const auto& x: input) {
+        assumps.push_back(Lit(x, ctx[x] == l_False));
+    }
+    for(const auto& y: output) {
+        if (dependency_mat[y][v] == 1) continue;
+        assumps.push_back(Lit(y, ctx[y] == l_False));
+    }
+    auto ret = solver.solve(&assumps);
+    assert(ret != l_Undef);
+    if (ret == l_True) {
+        cout << "repairing " << v+1 << " is not possible\n";
+        return;
+    }
+    assert(ret == l_False);
+    auto conflict = solver.get_conflict();
+    cout << "conflict: " << conflict << endl;
+
+    // not (conflict) -> v = ctx(v)
+    Formula f;
+    cl.clear();
+    solver_train.new_var();
+    auto fresh_l = Lit(solver_train.nVars()-1, false);
+    cl.push_back(fresh_l);
+    for(const auto& l: conflict) cl.push_back(l);
+    f.clauses.push_back(cl);
+    for(const auto& l: conflict) {
+        cl.clear();
+        cl.push_back(~fresh_l);
+        cl.push_back(~l);
+        f.clauses.push_back(cl);
+    }
+    f.out = fresh_l;
+    // when fresh_l is false, confl is satisfied
+    cout << "Original formula for " << v+1 << ":" << endl
+        << funcs[v] << endl;
+    cout << "Branch formula. When this is true, H is wrong:" << endl
+        << f << endl;
+    funcs[v] = compose_ite(constant_formula(ctx[v] == l_True), funcs[v], f);
+    cout << "repaired formula for " << v+1 << ":" << endl
+        << funcs[v] << endl;
+    exit(0);
+}
+
+void Manthan::fix_order() {
+    set<uint32_t> already_fixed;
+    while(already_fixed.size() != output.size()) {
+        for(const auto& y: output) {
+            if (already_fixed.count(y)) continue;
+            bool ok = true;
+            for(const auto& y2: output) {
+                if (y == y2) continue;
+                if (dependency_mat[y][y2] == 0) continue;
+                if (dependency_mat[y][y2] == 1 && already_fixed.count(y)) continue;
+                ok = false;
+                break;
+            }
+            if (!ok) continue;
+            already_fixed.insert(y);
+            /* y_order.push_back(y); */
+        }
+    }
+}
+
+vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx, vector<uint32_t>& needs_repair) {
+    needs_repair.clear();
     inject_cnf(solver_rep);
     vector<Lit> cl;
     for(const auto& x: input) {
@@ -180,7 +263,8 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
         for(const auto&l : confl) {
             assert(assumps.count(~l));
             assumps.erase(~l);
-            cout << "had to erase y: " << ~l << endl;
+            cout << "had to erase y: " << ~l << " because it needs repair" << endl;
+            needs_repair.push_back(l.var());
         }
     }
     return solver_rep.get_model();
@@ -400,6 +484,15 @@ Formula Manthan::constant_formula(int value) {
     return ret;
 }
 
+
+Formula Manthan::compose_ite(const Formula& fleft, const Formula& fright, const Formula& branch) {
+    Formula ret = compose_ite(fleft, fright, branch.out);
+    ret.inter_vs.insert(branch.inter_vs.begin(), branch.inter_vs.end());
+    ret.inter_vs.insert(branch.out.var());
+    ret.clauses.insert(ret.clauses.end(), branch.clauses.begin(), branch.clauses.end());
+    return ret;
+}
+
 Formula Manthan::compose_ite(const Formula& fleft, const Formula& fright, Lit branch) {
     Formula ret;
     ret.inter_vs = fleft.inter_vs;
@@ -408,8 +501,8 @@ Formula Manthan::compose_ite(const Formula& fleft, const Formula& fright, Lit br
     for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
     solver_train.new_var();
     uint32_t fresh_v = solver_train.nVars()-1;
-    // branch -> return left
-    // branch -> return right
+    //  branch -> return left
+    // !branch -> return right
     //
     //  b -> fresh = left
     // !b -> fresh = right
