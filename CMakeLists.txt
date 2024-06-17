@@ -160,11 +160,11 @@ if (NOT MSVC)
     add_compile_options( -g)
     add_compile_options( -pthread )
 
-    add_compile_options("$<$<CONFIG:RELWITHDEBINFO>:-O3>")
+    add_compile_options("$<$<CONFIG:RelWithDebInfo>:-O3>")
 
-    add_compile_options("$<$<CONFIG:RELEASE>:-O3>")
-    add_compile_options("$<$<CONFIG:RELEASE>:-g0>")
-    add_compile_options("$<$<CONFIG:RELEASE>:-DNDEBUG>")
+    add_compile_options("$<$<CONFIG:Release>:-O3>")
+    add_compile_options("$<$<CONFIG:Release>:-g0>")
+    add_compile_options("$<$<CONFIG:Release>:-DNDEBUG>")
 
     add_compile_options("$<$<CONFIG:DEBUG>:-O0>")
 
@@ -176,10 +176,10 @@ else()
     add_compile_options("$<$<CONFIG:RELWITHDEBINFO>:/Ox>")
     add_compile_options("$<$<CONFIG:RELWITHDEBINFO>:/ZI>")
 
-    add_compile_options("$<$<CONFIG:RELEASE>:/Ox>")
-    add_compile_options("$<$<CONFIG:RELEASE>:/D>")
-    add_compile_options("$<$<CONFIG:RELEASE>:/NDEBUG>")
-    add_compile_options("$<$<CONFIG:RELEASE>:/ZI>")
+    add_compile_options("$<$<CONFIG:Release>:/Ox>")
+    add_compile_options("$<$<CONFIG:Release>:/D>")
+    add_compile_options("$<$<CONFIG:Release>:/NDEBUG>")
+    add_compile_options("$<$<CONFIG:Release>:/ZI>")
 
     add_compile_options("$<$<CONFIG:DEBUG>:/Od>")
 
