@@ -327,7 +327,7 @@ void do_synthesis() {
         cnf = arjun->only_get_simplified_cnf(cnf, simp_conf);
         /* if (do_revbce) arjun->only_reverse_bce(cnf); */
         if (false && do_minim_indep) arjun->only_run_minimize_indep_synth(cnf);
-        /* cnf.renumber_sampling_vars_for_ganak(); */
+        cnf.renumber_sampling_vars_for_ganak();
         if (!elimtofile.empty()) write_synth(cnf, elimtofile, false);
     }
     if (cnf.opt_sampl_vars.size() == cnf.nVars()) {

@@ -170,11 +170,6 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx, vector<lbool>& be
     SATSolver solver;
     inject_cnf(solver);
 
-    {
-        Lit l = Lit(y_rep, ctx[y_rep] == l_True);
-        solver.add_clause({l});
-        cout << "setting " << l << " to wrong." << endl;
-    }
 
     vector<Lit> assumps;
     for(const auto& x: input) {
@@ -182,7 +177,7 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx, vector<lbool>& be
     }
     for(const auto& y: output) {
         if (y == y_rep) continue;
-        if (dependency_mat[y][y_rep] == 1) cout << "this depends on: us: " << y+1 << endl;
+        if (dependency_mat[y][y_rep] == 1) cout << "this depends on us: " << y+1 << endl;
         if (ctx[y] != ctx[y_to_y_hat[y]])  cout << "this has wrong value: " << y+1 << endl;
 
         if (dependency_mat[y][y_rep] == 1) {
@@ -201,6 +196,11 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx, vector<lbool>& be
         cout << "assuming " << y << " is correct" << endl;
         assumps.push_back(Lit(y, ctx[y] == l_False)); //correct value
     }
+
+    Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
+    /* solver.add_clause({~l}); */
+    assumps.push_back(~repairing);
+    cout << "assuming the to-be-repaired " << repairing << " to wrong." << endl;
     auto ret = solver.solve(&assumps);
     assert(ret != l_Undef);
     if (ret == l_True) {
@@ -214,6 +214,13 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx, vector<lbool>& be
         verb_print(1, "repairing " << y_rep+1 << " is not possible");
         return false;
     }// assert(!conflict.empty());
+    auto it = std::find(conflict.begin(),conflict.end(), repairing);
+    if (it != conflict.end()) { conflict.erase(it);}
+    else cout << "reparing lit not in conflict" << endl;
+    if (conflict.empty()) {
+        verb_print(1, "repairing " << y_rep+1 << " is not possible");
+        return false;
+    }
 
     // not (conflict) -> v = ctx(v)
     Formula f;
