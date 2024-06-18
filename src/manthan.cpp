@@ -27,6 +27,7 @@
 #include "cryptominisat5/solvertypesmini.h"
 #include "src/arjun.h"
 #include <cstdint>
+#include <ios>
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
 #include <vector>
 #include <iterator>
@@ -109,9 +110,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);
 
     // Sampling
-    uint32_t num_samples = 2000;
-    /* uint32_t num_samples = 2; */
-    vector<vector<lbool>> solutions = get_samples(num_samples);
+    vector<vector<lbool>> solutions = get_samples(conf.num_samples);
     cout << "Got " << solutions.size() << " samples\n";
     cout << "True lit: " << my_true_lit << endl;
 
@@ -128,7 +127,6 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     // Counterexample
     init_solver_train();
     while(true) {
-start:
         vector<lbool> ctx;
         bool finished = get_counterexample(ctx);
         if (finished) break;
@@ -146,58 +144,89 @@ start:
             /* for(const auto& i: input) cout << "val " << setw(4) << i+1 << ": " << pr(ctx[i]) << " -- "; */
             /* cout << endl; */
         }
-        vector<uint32_t> needs_repair;
+        set<uint32_t> needs_repair;
         auto better_ctx = find_better_ctx(ctx, needs_repair);
+        for(const auto& y: output) if (!needs_repair.count(y)) ctx[y] = better_ctx[y];
         /* fix_order(); */
-        for(const auto& v: needs_repair) {
-            /* cout << "repairing: " << v+1 << endl; */
-            repair(v, ctx);
-            /* goto start; */
-            /* cout << "finished repairing " << v+1 << endl; */
+        uint32_t num_repaired = 0;
+        for(const auto& y: needs_repair) {
+            verb_print(1, "repairing: " << y+1);
+            bool done = repair(y, ctx, better_ctx); // beware, this updates ctx on v
+            if (done) num_repaired++;
+            verb_print(1, "finished repairing " << y+1 << " : " << std::boolalpha << done);
         }
+        assert(num_repaired > 0 && "at least one must be repaired");
     }
-    /* cout << "DONE" << endl; */
+    verb_print(2, "DONE");
     exit(0);
 
     return cnf;
 }
 
-void Manthan::repair(uint32_t v, const vector<lbool>& ctx) {
+// ctx contains both y, and y_hat
+bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx, vector<lbool>& better_ctx) {
     // F(x,y) & x = ctx(x) && forall_y (y not dependent on v) (y = ctx(y)) & NOT (v = ctx(v))
+    // Used to find UNSAT core that will help us repair the function
     SATSolver solver;
     inject_cnf(solver);
 
-    vector<Lit> cl;
-    cl.push_back(Lit(v, ctx[v] == l_True));
-    solver.add_clause(cl);
+    {
+        Lit l = Lit(y_rep, ctx[y_rep] == l_True);
+        solver.add_clause({l});
+        cout << "setting " << l << " to wrong." << endl;
+    }
 
     vector<Lit> assumps;
     for(const auto& x: input) {
-        assumps.push_back(Lit(x, ctx[x] == l_False));
+        assumps.push_back(Lit(x, ctx[x] == l_False)); //correct value
     }
     for(const auto& y: output) {
-        if (dependency_mat[y][v] == 1) continue;
-        assumps.push_back(Lit(y, ctx[y] == l_False));
+        if (y == y_rep) continue;
+        if (dependency_mat[y][y_rep] == 1) cout << "this depends on: us: " << y+1 << endl;
+        if (ctx[y] != ctx[y_to_y_hat[y]])  cout << "this has wrong value: " << y+1 << endl;
+
+        if (dependency_mat[y][y_rep] == 1) {
+            // Everything that depends on y_rep, we need to set to correct val
+            Lit l = Lit(y, ctx[y] == l_False);
+            solver.add_clause({l});
+        } else if (ctx[y] != ctx[y_to_y_hat[y]]) {
+            Lit l = Lit(y, ctx[y_to_y_hat[y]] == l_False);
+            assumps.push_back({l});
+        }
+    }
+    for(const auto& y: output) {
+        if (y == y_rep) continue;
+        if (dependency_mat[y][y_rep] == 1) continue;
+        if (ctx[y] != ctx[y_to_y_hat[y]]) continue;
+        cout << "assuming " << y << " is correct" << endl;
+        assumps.push_back(Lit(y, ctx[y] == l_False)); //correct value
     }
     auto ret = solver.solve(&assumps);
     assert(ret != l_Undef);
     if (ret == l_True) {
-        /* cout << "repairing " << v+1 << " is not possible\n"; */
-        return;
+        verb_print(1, "repairing " << y_rep+1 << " is not possible");
+        return false;
     }
     assert(ret == l_False);
     auto conflict = solver.get_conflict();
-    /* cout << "conflict: " << conflict << endl; */
+    verb_print(2, "conflict: " << conflict);
+    if (conflict.empty()) {
+        verb_print(1, "repairing " << y_rep+1 << " is not possible");
+        return false;
+    }// assert(!conflict.empty());
 
     // not (conflict) -> v = ctx(v)
     Formula f;
-    cl.clear();
+    vector<Lit> cl;
     solver_train.new_var();
     auto fresh_l = Lit(solver_train.nVars()-1, false);
     cl.push_back(fresh_l);
     for(const auto& l: conflict) {
         cl.push_back(l);
-        dependency_mat[v][l.var()] = 1;
+        dependency_mat[y_rep][l.var()] = 1;
+        // recursive update
+        for(uint32_t i = 0; i < cnf.nVars(); i++)
+            dependency_mat[y_rep][i] |= dependency_mat[l.var()][i];
     }
     f.clauses.push_back(cl);
     for(const auto& l: conflict) {
@@ -208,11 +237,15 @@ void Manthan::repair(uint32_t v, const vector<lbool>& ctx) {
     }
     f.out = fresh_l;
     // when fresh_l is false, confl is satisfied
-    /* cout << "Original formula for " << v+1 << ":" << endl << funcs[v] << endl; */
-    /* cout << "Branch formula. When this is true, H is wrong:" << endl << f << endl; */
-    funcs[v] = compose_ite(constant_formula(ctx[v] == l_True), funcs[v], f);
-    /* cout << "repaired formula for " << v+1 << ":" << endl << funcs[v] << endl; */
-    cout << "repaired formula for " << v+1 << endl;
+    verb_print(3, "Original formula for " << y_rep+1 << ":" << endl << funcs[y_rep]);
+    verb_print(2, "Branch formula. When this is true, H is wrong:" << endl << f);
+    funcs[y_rep] = compose_ite(constant_formula(ctx[y_rep] == l_True), funcs[y_rep], f);
+    verb_print(3, "repaired formula for " << y_rep+1 << ":" << endl << funcs[y_rep]);
+    cout << "repaired formula for " << y_rep+1 << endl;
+
+    //We fixed the ctx on this variable
+    ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
+    return true;
 }
 
 void Manthan::fix_order() {
@@ -235,22 +268,30 @@ void Manthan::fix_order() {
     }
 }
 
-vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx, vector<uint32_t>& needs_repair) {
+// Fills needs_repair with vars from y (i.e. output)
+vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx, set<uint32_t>& needs_repair) {
     needs_repair.clear();
     SATSolver solver_rep;
+    solver_rep.set_up_for_sample_counter(10000);
     inject_cnf(solver_rep);
-    vector<Lit> cl;
     for(const auto& x: input) {
-        cl.clear();
-        cl.push_back(Lit(x, ctx[x] == l_False));
-        solver_rep.add_clause(cl);
+        auto l =Lit(x, ctx[x] == l_False);
+        solver_rep.add_clause({l});
     }
+
+    for(const auto& y: output) {
+        auto y_hat = y_to_y_hat[y];
+        if (ctx[y] != ctx[y_hat]) continue;
+        Lit l = Lit(y, ctx[y_hat] == l_False);
+        solver_rep.add_clause({l});
+    }
+
     set<Lit> assumps;
     for(const auto& y: output) {
         auto y_hat = y_to_y_hat[y];
-        /* if (ctx[y] == ctx[y_hat]) continue; */
+        if (ctx[y] == ctx[y_hat]) continue;
         auto l = Lit(y, ctx[y_hat] == l_False);
-        /* cout << "put into ass: " << l << endl; */
+        verb_print(2, "put into ass: " << l);
         assumps.insert(l);
     }
 
@@ -258,16 +299,19 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx, vector<uint32_t
         vector<Lit> ass(assumps.begin(), assumps.end());
         lbool ret = solver_rep.solve(&ass);
         assert(ret != l_Undef);
-        if (ret == l_True) break;
+        if (ret == l_True) {
+            verb_print(2, "Repaired counterexample, now potentially shorter");
+            break;
+        }
         auto confl = solver_rep.get_conflict();
-        /* cout << "confl sz: " << confl.size() << endl; */
+        verb_print(2, "confl sz: " << confl.size());
         assert(!confl.empty());
         /* for(const auto&l : confl) cout << "conf: " << l << endl; */
         for(const auto&l : confl) {
             assert(assumps.count(~l));
             assumps.erase(~l);
-            /* cout << "had to erase y: " << ~l << " because it needs repair" << endl; */
-            needs_repair.push_back(l.var());
+            verb_print(2, "had to erase y: " << ~l << " because it needs repair");
+            needs_repair.insert(l.var());
         }
     }
     return solver_rep.get_model();
@@ -281,7 +325,7 @@ void Manthan::init_solver_train() {
         uint32_t y_hat = solver_train.nVars()-1;
         y_to_y_hat[y] = y_hat;
         y_hat_to_y[y_hat] = y;
-        /* cout << "mapping -- y: " << y+1 << " y_hat: " << y_hat+1 << endl; */
+        verb_print(2, "mapping -- y: " << y+1 << " y_hat: " << y_hat+1);
     }
 
     // Adds ~F(x, y_hat)
@@ -338,7 +382,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
 
         y_hat_to_indic[y_hat] = ind;
         indic_to_y_hat[ind] = y_hat;
-        /* cout << "->CTX ind: " << ind+1 << " y_hat: " << y_hat+1  << " func_out: " << func_out << endl; */
+        verb_print(2, "->CTX ind: " << ind+1 << " y_hat: " << y_hat+1  << " func_out: " << func_out);
 
         // when indic is TRUE, y_hat and func_out are EQUAL
         auto y_hat_l = Lit(y_hat, false);
@@ -356,13 +400,14 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     vector<Lit> assumptions;
     assumptions.reserve(y_hat_to_indic.size());
     for(const auto& i: y_hat_to_indic) assumptions.push_back(Lit(i.second, false));
-    /* cout << "assumptions: " << assumptions << endl; */
+    verb_print(2, "assumptions: " << assumptions);
 
 
+    solver_train.set_up_for_sample_counter(1000);
     auto ret = solver_train.solve(&assumptions);
     assert(ret != l_Undef);
     if (ret == l_True) {
-        /* cout << "Counterexample found\n"; */
+        verb_print(1, "Counterexample found");
         ctx = solver_train.get_model();
         return false;
     } else {
@@ -389,11 +434,25 @@ Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t 
         /* cout << "(learning " << learned_v+1<< ") Node. v: " << v+1 << std::flush; */
         if (output.count(v)) {
             // v does not depend on us!
+            cout << "v: " << v+1 << " does not depend on us!" << endl;
             assert(dependency_mat[v][learned_v] == 0);
+            for(uint32_t i = 0; i < cnf.nVars(); i++) {
+                if (dependency_mat[v][i] == 1) {
+                    // nothing that v depends on can depend on us
+                    cout << "i: " << i+1 << " does not depend on us, because " << v+1 << " depends on it" << endl;
+                    assert(dependency_mat[i][learned_v] == 0);
+                }
+            }
             // we depend on v
             dependency_mat[learned_v][v] = 1;
+            cout << learned_v+1 << " depends on " << v+1 << endl;
+
             // and everything that v depends on
-            for(uint32_t i = 0 ; i < cnf.nVars(); i++) dependency_mat[learned_v][i] |= dependency_mat[v][i];
+            for(uint32_t i = 0 ; i < cnf.nVars(); i++) {
+                dependency_mat[learned_v][i] |= dependency_mat[v][i];
+                if (dependency_mat[v][i])
+                    cout << "setting " << learned_v+1 << " depends on " << i+1 << endl;
+            }
         }
 
         /* cout << "  -- all-0 goes -> " << node->CalculateDirection(point_0); */
@@ -408,7 +467,7 @@ Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t 
 }
 
 void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
-    /* cout << "variable: " << v+1 << endl; */
+    verb_print(2, "training variable: " << v+1);
     assert(!samples.empty());
     assert(v < cnf.nVars());
     point_0.resize(cnf.nVars());
@@ -419,7 +478,7 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
     Mat<size_t> dataset;
     Row<size_t> labels;
     dataset.resize(cnf.nVars(), samples.size());
-    /* cout << "Dataset size: " << dataset.n_rows << " x " << dataset.n_cols << endl; */
+    verb_print(2, "Dataset size: " << dataset.n_rows << " x " << dataset.n_cols);
     // TODO: we fill 0 for the value of v, this MAY come back in the tree,but likely not
 
     for(uint32_t i = 0; i < samples.size(); i++) {
@@ -465,13 +524,21 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
     r.Classify(dataset, predictions);
     const double train_error =
       arma::accu(predictions != labels) * 100.0 / (double)labels.n_elem;
-    cout << "Training error: " << train_error << "%." << " on v: " << v << endl;
+    cout << "Training error: " << train_error << "%." << " on v: " << v+1 << endl;
     /* r.serialize(cout, 1); */
 
     funcs[v] = recur(&r, v, 0);
-    /* cout << "Formula for " << v+1 << ":" << endl << funcs[v] << endl; */
-    /* cout << "------------------------------" << endl; */
-    /* cout << "Done\n"; */
+    // Forward dependency update
+    for(uint32_t i = 0; i < cnf.nVars(); i++) {
+        if (dependency_mat[i][v]) {
+            for(uint32_t j = 0; j < cnf.nVars(); j++) {
+                dependency_mat[i][j] |= dependency_mat[v][j];
+            }
+        }
+    }
+    verb_print(3, "Formula for " << v+1 << ":" << endl << funcs[v]);
+    verb_print(2, "------------------------------");
+    verb_print(2,"Done training variable: " << v+1);
 }
 
 
@@ -497,6 +564,7 @@ Formula Manthan::compose_ite(const Formula& fleft, const Formula& fright, const 
     Formula ret = compose_ite(fleft, fright, branch.out);
     ret.inter_vs.insert(branch.inter_vs.begin(), branch.inter_vs.end());
     ret.inter_vs.insert(branch.out.var());
+    ret.inter_vs.insert(ret.out.var());
     ret.clauses.insert(ret.clauses.end(), branch.clauses.begin(), branch.clauses.end());
     return ret;
 }
@@ -525,6 +593,8 @@ Formula Manthan::compose_ite(const Formula& fleft, const Formula& fright, Lit br
     Lit r = fright.out;
     Lit fresh = Lit(fresh_v, false);
     ret.inter_vs.insert(fresh_v);
+    ret.inter_vs.insert(l.var());
+    ret.inter_vs.insert(r.var());
     ret.clauses.push_back({~b, fresh, ~l});
     ret.clauses.push_back({~b, ~fresh, l});
     ret.clauses.push_back({b, fresh, ~r});

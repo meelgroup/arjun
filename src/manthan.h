@@ -106,10 +106,10 @@ class Manthan {
         Formula compose_ite(const Formula& a, const Formula& b, const Formula& f);
         Formula constant_formula(int val);
         bool get_counterexample(vector<lbool>& ctx);
-        vector<lbool> find_better_ctx(const vector<lbool>& ctx, vector<uint32_t>& needs_repair);
+        vector<lbool> find_better_ctx(const vector<lbool>& ctx, set<uint32_t>& needs_repair);
         void inject_cnf(SATSolver& s);
         void inject_unit(SATSolver& s);
-        void repair(uint32_t v, const vector<lbool>& ctx);
+        bool repair(const uint32_t v, vector<lbool>& ctx,  vector<lbool>& better_ctx);
         void init_solver_train();
 
         /* vector<uint32_t> y_order; */
@@ -119,5 +119,5 @@ class Manthan {
         void add_sample_clauses(SimplifiedCNF& cnf);
         vector<vector<lbool>> get_samples(uint32_t num_samples);
         void train(const vector<vector<lbool>>& samples, uint32_t v);
-        vector<vector<char>> dependency_mat;
+        vector<vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
 };

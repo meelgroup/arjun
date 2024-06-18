@@ -76,6 +76,7 @@ int do_minim_indep = true;
 bool all_indep = false;
 string debug_minim;
 int do_pre_manthan = false;
+int num_samples = 2000;
 
 void add_arjun_options()
 {
@@ -121,6 +122,9 @@ void add_arjun_options()
         .action([&](const auto&) {debug_synt = true;})
         .flag()
         .help("Debug synthesis");
+    program.add_argument("--samples")
+        .action([&](const auto& a) {num_samples = std::atoi(a.c_str());})
+        .help("Number of samples");
     program.add_argument("--sbvaclcut")
         .action([&](const auto& a) {sbva_cls_cutoff = std::atoi(a.c_str());})
         .default_value(sbva_cls_cutoff)
@@ -305,10 +309,11 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_backw_max_confl(conf.backw_max_confl);
     arj->set_gauss_jordan(conf.gauss_jordan);
     arj->set_simp(conf.simp);
+    arj->set_num_samples(num_samples);
 }
 
 void do_synthesis() {
-    assert(!elimtofile.empty());
+    /* assert(!elimtofile.empty()); */
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, all_indep);
     if (do_pre_manthan) {
@@ -323,7 +328,7 @@ void do_synthesis() {
         /* if (do_revbce) arjun->only_reverse_bce(cnf); */
         if (false && do_minim_indep) arjun->only_run_minimize_indep_synth(cnf);
         /* cnf.renumber_sampling_vars_for_ganak(); */
-        /* write_synth(cnf, elimtofile, false); */
+        if (!elimtofile.empty()) write_synth(cnf, elimtofile, false);
     }
     if (cnf.opt_sampl_vars.size() == cnf.nVars()) {
         cout << "c o [arjun] No variables to synthesize" << endl;
