@@ -51,7 +51,7 @@ struct Config {
     uint32_t extend_max_confl = 1000;
     bool weighted = false;
     bool oracle_find_bins = false;
-    uint32_t num_samples = 2000;
+    uint32_t num_samples = 10000;
 };
 
 }

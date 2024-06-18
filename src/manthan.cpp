@@ -91,6 +91,8 @@ vector<vector<lbool>> Manthan::get_samples(uint32_t num) {
 }
 
 SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
+    uint32_t tot_repaired = 0;
+    uint32_t tot_simple_repaired = 0;
     cnf = input_cnf;
     // Grand master plan
     // 1. Get 10k samples
@@ -139,8 +141,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         for(const auto& y: output) {
             auto y_hat = y_to_y_hat[y];
             if (ctx[y] == ctx[y_hat]) continue;
-            cout << "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
-            << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]) << endl;
+            verb_print(1, "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
+                    << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]));
             /* for(const auto& i: input) cout << "val " << setw(4) << i+1 << ": " << pr(ctx[i]) << " -- "; */
             /* cout << endl; */
         }
@@ -148,23 +150,35 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         auto better_ctx = find_better_ctx(ctx, needs_repair);
         for(const auto& y: output) if (!needs_repair.count(y)) ctx[y] = better_ctx[y];
         /* fix_order(); */
+        assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
         for(const auto& y: needs_repair) {
             verb_print(1, "repairing: " << y+1);
-            bool done = repair(y, ctx, better_ctx); // beware, this updates ctx on v
-            if (done) num_repaired++;
-            verb_print(1, "finished repairing " << y+1 << " : " << std::boolalpha << done);
+            bool done = repair(y, ctx); // beware, this updates ctx on v
+            if (done) {
+                num_repaired++;
+                tot_repaired++;
+            }
+            verb_print(2, "finished repairing " << y+1 << " : " << std::boolalpha << done);
         }
-        assert(num_repaired > 0 && "at least one must be repaired");
+        if (num_repaired == 0) {
+            // do simple repair
+            auto to_repair = *needs_repair.begin();
+            vector<Lit> confl;
+            for(const auto& i: input) confl.push_back(Lit(i, ctx[i] == l_False));
+            perform_repair(to_repair, ctx, confl);
+            tot_simple_repaired++;
+        }
+        verb_print(1, "Tot repaired: " << tot_repaired << " tot simple repaired: " << tot_simple_repaired);
     }
-    verb_print(2, "DONE");
+    verb_print(1, "DONE");
     exit(0);
 
     return cnf;
 }
 
 // ctx contains both y, and y_hat
-bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx, vector<lbool>& better_ctx) {
+bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     // F(x,y) & x = ctx(x) && forall_y (y not dependent on v) (y = ctx(y)) & NOT (v = ctx(v))
     // Used to find UNSAT core that will help us repair the function
     SATSolver solver;
@@ -177,8 +191,10 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx, vector<lbool>& be
     }
     for(const auto& y: output) {
         if (y == y_rep) continue;
-        if (dependency_mat[y][y_rep] == 1) cout << "this depends on us: " << y+1 << endl;
-        if (ctx[y] != ctx[y_to_y_hat[y]])  cout << "this has wrong value: " << y+1 << endl;
+        if (conf.verb >= 2) {
+            if (dependency_mat[y][y_rep] == 1) cout << "this depends on us: " << y+1 << endl;
+            if (ctx[y] != ctx[y_to_y_hat[y]])  cout << "this has wrong value: " << y+1 << endl;
+        }
 
         if (dependency_mat[y][y_rep] == 1) {
             // Everything that depends on y_rep, we need to set to correct val
@@ -193,14 +209,13 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx, vector<lbool>& be
         if (y == y_rep) continue;
         if (dependency_mat[y][y_rep] == 1) continue;
         if (ctx[y] != ctx[y_to_y_hat[y]]) continue;
-        cout << "assuming " << y << " is correct" << endl;
+        verb_print(2, "assuming " << y << " is correct");
         assumps.push_back(Lit(y, ctx[y] == l_False)); //correct value
     }
 
     Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
-    /* solver.add_clause({~l}); */
-    assumps.push_back(~repairing);
-    cout << "assuming the to-be-repaired " << repairing << " to wrong." << endl;
+    solver.add_clause({~repairing});
+    verb_print(2, "assuming the to-be-repaired " << repairing << " to wrong.");
     auto ret = solver.solve(&assumps);
     assert(ret != l_Undef);
     if (ret == l_True) {
@@ -213,15 +228,17 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx, vector<lbool>& be
     if (conflict.empty()) {
         verb_print(1, "repairing " << y_rep+1 << " is not possible");
         return false;
-    }// assert(!conflict.empty());
-    auto it = std::find(conflict.begin(),conflict.end(), repairing);
-    if (it != conflict.end()) { conflict.erase(it);}
-    else cout << "reparing lit not in conflict" << endl;
+    }
     if (conflict.empty()) {
         verb_print(1, "repairing " << y_rep+1 << " is not possible");
         return false;
     }
+    perform_repair(y_rep, ctx, conflict);
 
+    return true;
+}
+
+void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vector<Lit>& conflict) {
     // not (conflict) -> v = ctx(v)
     Formula f;
     vector<Lit> cl;
@@ -248,11 +265,10 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx, vector<lbool>& be
     verb_print(2, "Branch formula. When this is true, H is wrong:" << endl << f);
     funcs[y_rep] = compose_ite(constant_formula(ctx[y_rep] == l_True), funcs[y_rep], f);
     verb_print(3, "repaired formula for " << y_rep+1 << ":" << endl << funcs[y_rep]);
-    cout << "repaired formula for " << y_rep+1 << endl;
+    verb_print(1, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
 
     //We fixed the ctx on this variable
     ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
-    return true;
 }
 
 void Manthan::fix_order() {
@@ -307,7 +323,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx, set<uint32_t>& 
         lbool ret = solver_rep.solve(&ass);
         assert(ret != l_Undef);
         if (ret == l_True) {
-            verb_print(2, "Repaired counterexample, now potentially shorter");
+            verb_print(2, "Improved counterexample, now potentially shorter");
             break;
         }
         auto confl = solver_rep.get_conflict();
@@ -441,24 +457,24 @@ Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t 
         /* cout << "(learning " << learned_v+1<< ") Node. v: " << v+1 << std::flush; */
         if (output.count(v)) {
             // v does not depend on us!
-            cout << "v: " << v+1 << " does not depend on us!" << endl;
+            verb_print(2, "v: " << v+1 << " does not depend on us!");
             assert(dependency_mat[v][learned_v] == 0);
             for(uint32_t i = 0; i < cnf.nVars(); i++) {
                 if (dependency_mat[v][i] == 1) {
                     // nothing that v depends on can depend on us
-                    cout << "i: " << i+1 << " does not depend on us, because " << v+1 << " depends on it" << endl;
+                    verb_print(2, "i: " << i+1 << " does not depend on us, because " << v+1 << " depends on it");
                     assert(dependency_mat[i][learned_v] == 0);
                 }
             }
             // we depend on v
             dependency_mat[learned_v][v] = 1;
-            cout << learned_v+1 << " depends on " << v+1 << endl;
+            verb_print(2, learned_v+1 << " depends on " << v+1);
 
             // and everything that v depends on
             for(uint32_t i = 0 ; i < cnf.nVars(); i++) {
                 dependency_mat[learned_v][i] |= dependency_mat[v][i];
                 if (dependency_mat[v][i])
-                    cout << "setting " << learned_v+1 << " depends on " << i+1 << endl;
+                    verb_print(2, "setting " << learned_v+1 << " depends on " << i+1);
             }
         }
 
@@ -531,7 +547,7 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
     r.Classify(dataset, predictions);
     const double train_error =
       arma::accu(predictions != labels) * 100.0 / (double)labels.n_elem;
-    cout << "Training error: " << train_error << "%." << " on v: " << v+1 << endl;
+    verb_print(1, "Training error: " << train_error << "%." << " on v: " << v+1);
     /* r.serialize(cout, 1); */
 
     funcs[v] = recur(&r, v, 0);

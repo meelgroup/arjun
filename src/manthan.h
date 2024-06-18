@@ -109,7 +109,8 @@ class Manthan {
         vector<lbool> find_better_ctx(const vector<lbool>& ctx, set<uint32_t>& needs_repair);
         void inject_cnf(SATSolver& s);
         void inject_unit(SATSolver& s);
-        bool repair(const uint32_t v, vector<lbool>& ctx,  vector<lbool>& better_ctx);
+        bool repair(const uint32_t v, vector<lbool>& ctx);
+        void perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vector<Lit>& conflict);
         void init_solver_train();
 
         /* vector<uint32_t> y_order; */
