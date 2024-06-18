@@ -70,7 +70,7 @@ inline std::ostream& operator<<(std::ostream& os, const Formula& f) {
         os << v+1 << " ";
     }
     os << endl;
-    os << "Output: " << f.out << endl;
+    os << "Output: " << f.out;
     return os;
 }
 
@@ -93,6 +93,7 @@ class Manthan {
         // when indic is TRUE, y_hat and func_out are EQUAL
         map<uint32_t, uint32_t> y_hat_to_indic;
         map<uint32_t, uint32_t> indic_to_y_hat;
+        set<uint32_t> needs_repair;
 
         const Config& conf;
         SATSolver solver_train;
@@ -106,7 +107,7 @@ class Manthan {
         Formula compose_ite(const Formula& a, const Formula& b, const Formula& f);
         Formula constant_formula(int val);
         bool get_counterexample(vector<lbool>& ctx);
-        vector<lbool> find_better_ctx(const vector<lbool>& ctx, set<uint32_t>& needs_repair);
+        vector<lbool> find_better_ctx(const vector<lbool>& ctx);
         void inject_cnf(SATSolver& s);
         void inject_unit(SATSolver& s);
         bool repair(const uint32_t v, vector<lbool>& ctx);

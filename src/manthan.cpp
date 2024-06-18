@@ -114,11 +114,11 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     // Sampling
     vector<vector<lbool>> solutions = get_samples(conf.num_samples);
     cout << "Got " << solutions.size() << " samples\n";
-    cout << "True lit: " << my_true_lit << endl;
 
     // Training
     inject_cnf(solver_train);
     inject_unit(solver_train);
+    cout << "True lit: " << my_true_lit << endl;
     vector<uint32_t> to_train;
     to_train.reserve(output.size());
     for(const auto& v: output) to_train.push_back(v);
@@ -143,16 +143,20 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             if (ctx[y] == ctx[y_hat]) continue;
             verb_print(1, "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
                     << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]));
-            /* for(const auto& i: input) cout << "val " << setw(4) << i+1 << ": " << pr(ctx[i]) << " -- "; */
-            /* cout << endl; */
         }
-        set<uint32_t> needs_repair;
-        auto better_ctx = find_better_ctx(ctx, needs_repair);
+        if (true) {
+            for(uint32_t i = 0; i < cnf.nVars(); i++) cout << "val " << setw(4) << i+1 << ": " << pr(ctx[i]) << " -- ";
+            cout << endl;
+        }
+        needs_repair.clear();
+        auto better_ctx = find_better_ctx(ctx);
         for(const auto& y: output) if (!needs_repair.count(y)) ctx[y] = better_ctx[y];
         /* fix_order(); */
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
-        for(const auto& y: needs_repair) {
+        while(!needs_repair.empty()) {
+            auto y = *needs_repair.begin();
+            needs_repair.erase(y);
             verb_print(1, "repairing: " << y+1);
             bool done = repair(y, ctx); // beware, this updates ctx on v
             if (done) {
@@ -163,12 +167,14 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         }
         if (num_repaired == 0) {
             // do simple repair
-            auto to_repair = *needs_repair.begin();
+            verb_print(1, "doing simple repair");
+            auto y_rep = *needs_repair.begin();
             vector<Lit> confl;
-            for(const auto& i: input) confl.push_back(Lit(i, ctx[i] == l_False));
-            perform_repair(to_repair, ctx, confl);
+            for(const auto& i: input) confl.push_back(~Lit(i, ctx[i] == l_False));
+            perform_repair(y_rep, ctx, confl);
             tot_simple_repaired++;
         }
+
         verb_print(1, "Tot repaired: " << tot_repaired << " tot simple repaired: " << tot_simple_repaired);
     }
     verb_print(1, "DONE");
@@ -200,8 +206,10 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
             // Everything that depends on y_rep, we need to set to correct val
             Lit l = Lit(y, ctx[y] == l_False);
             solver.add_clause({l});
+            cout << "adding to solver: " << l << endl;
         } else if (ctx[y] != ctx[y_to_y_hat[y]]) {
             Lit l = Lit(y, ctx[y_to_y_hat[y]] == l_False);
+            verb_print(2, "assuming " << y+1 << " is " << ctx[y_to_y_hat[y]]);
             assumps.push_back({l});
         }
     }
@@ -209,13 +217,15 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
         if (y == y_rep) continue;
         if (dependency_mat[y][y_rep] == 1) continue;
         if (ctx[y] != ctx[y_to_y_hat[y]]) continue;
-        verb_print(2, "assuming " << y << " is correct");
+        verb_print(2, "assuming " << y+1 << " is correct");
         assumps.push_back(Lit(y, ctx[y] == l_False)); //correct value
     }
 
     Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
     solver.add_clause({~repairing});
-    verb_print(2, "assuming the to-be-repaired " << repairing << " to wrong.");
+    cout << "adding to solver: " << ~repairing << endl;
+    verb_print(2, "setting the to-be-repaired " << repairing << " to wrong.");
+    verb_print(2, "solving with assumps: " << assumps);
     auto ret = solver.solve(&assumps);
     assert(ret != l_Undef);
     if (ret == l_True) {
@@ -266,6 +276,7 @@ void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vec
     funcs[y_rep] = compose_ite(constant_formula(ctx[y_rep] == l_True), funcs[y_rep], f);
     verb_print(3, "repaired formula for " << y_rep+1 << ":" << endl << funcs[y_rep]);
     verb_print(1, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
+    verb_print(1, "------------------------");
 
     //We fixed the ctx on this variable
     ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
@@ -292,7 +303,7 @@ void Manthan::fix_order() {
 }
 
 // Fills needs_repair with vars from y (i.e. output)
-vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx, set<uint32_t>& needs_repair) {
+vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     needs_repair.clear();
     SATSolver solver_rep;
     solver_rep.set_up_for_sample_counter(10000);
@@ -560,8 +571,8 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
         }
     }
     verb_print(3, "Formula for " << v+1 << ":" << endl << funcs[v]);
-    verb_print(2, "------------------------------");
     verb_print(2,"Done training variable: " << v+1);
+    verb_print(2, "------------------------------");
 }
 
 
