@@ -446,6 +446,7 @@ namespace ArjunNS {
         void set_backbone_only_optindep(bool backbone_only_optindep);
         void set_oracle_find_bins(bool oracle_find_bins);
         void set_num_samples(int num_samples);
+        void set_oracle_find_bins(int oracle_find_bins);
 
         //Get config
         uint32_t get_verb() const;
@@ -473,6 +474,7 @@ namespace ArjunNS {
         bool get_backbone_only_optindep() const;
         bool get_oracle_find_bins() const;
         int get_num_samples() const;
+        int get_oracle_find_bins() const;
 
     private:
         ArjPrivateData* arjdata = nullptr;

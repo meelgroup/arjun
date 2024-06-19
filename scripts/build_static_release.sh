@@ -3,7 +3,7 @@
 set -e
 
 rm -rf lib* Test* tests* include tests CM* cmake* arjun
-cmake -DSTATICCOMPILE=ON ..
+cmake -DCMAKE_BUILD_TYPE=Release -DSTATICCOMPILE=ON ..
 make -j12
 make test
 strip arjun

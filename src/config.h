@@ -52,6 +52,7 @@ struct Config {
     bool weighted = false;
     bool oracle_find_bins = false;
     uint32_t num_samples = 10000;
+    int oracle_find_bins = 0;
 };
 
 }
