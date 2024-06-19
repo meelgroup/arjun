@@ -459,6 +459,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
 
 
     /* solver_train.set_up_for_sample_counter(1000); */
+    solver_train.simplify();
     auto ret = solver_train.solve(&assumptions);
     assert(ret != l_Undef);
     if (ret == l_True) {
