@@ -76,7 +76,7 @@ void Manthan::inject_unit(SATSolver& s) {
 
 vector<vector<lbool>> Manthan::get_samples(uint32_t num) {
     vector<vector<lbool>> solutions;
-    solver_samp.set_up_for_sample_counter(100);
+    solver_samp.set_up_for_sample_counter(1000);
     inject_cnf(solver_samp);
     /* solver.set_verbosity(1); */
     get_incidence();
@@ -284,10 +284,16 @@ void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vec
 }
 
 void Manthan::fix_order() {
+    vector<uint32_t> sorted;
+    sorted.reserve(output.size());
+    for(const auto& v: output) sorted.push_back(v);
+    sort_unknown(sorted, incidence);
+    /* std::reverse(sorted.begin(), sorted.end()); */
+
     set<uint32_t> already_fixed;
     assert(y_order.empty());
     while(already_fixed.size() != output.size()) {
-        for(const auto& y: output) {
+        for(const auto& y: sorted) {
             verb_print(2, "Checking y: " << y+1);
             if (already_fixed.count(y)) continue;
             bool ok = true;
@@ -310,19 +316,19 @@ void Manthan::fix_order() {
 // Fills needs_repair with vars from y (i.e. output)
 vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     needs_repair.clear();
-    SATSolver solver_rep;
-    solver_rep.set_up_for_sample_counter(10000);
-    inject_cnf(solver_rep);
+    SATSolver s_ctx;
+    s_ctx.set_up_for_sample_counter(10000);
+    inject_cnf(s_ctx);
     for(const auto& x: input) {
         auto l =Lit(x, ctx[x] == l_False);
-        solver_rep.add_clause({l});
+        s_ctx.add_clause({l});
     }
 
     for(const auto& y: output) {
         auto y_hat = y_to_y_hat[y];
         if (ctx[y] != ctx[y_hat]) continue;
         Lit l = Lit(y, ctx[y_hat] == l_False);
-        solver_rep.add_clause({l});
+        s_ctx.add_clause({l});
     }
 
     set<Lit> assumps;
@@ -336,13 +342,13 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
 
     for(;;) {
         vector<Lit> ass(assumps.begin(), assumps.end());
-        lbool ret = solver_rep.solve(&ass);
+        lbool ret = s_ctx.solve(&ass);
         assert(ret != l_Undef);
         if (ret == l_True) {
             verb_print(2, "Improved counterexample, now potentially shorter");
             break;
         }
-        auto confl = solver_rep.get_conflict();
+        auto confl = s_ctx.get_conflict();
         verb_print(2, "confl sz: " << confl.size());
         assert(!confl.empty());
         /* for(const auto&l : confl) cout << "conf: " << l << endl; */
@@ -353,7 +359,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
             needs_repair.insert(l.var());
         }
     }
-    return solver_rep.get_model();
+    return s_ctx.get_model();
 }
 
 void Manthan::init_solver_train() {
