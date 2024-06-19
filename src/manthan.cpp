@@ -239,6 +239,7 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     }
     assert(ret == l_False);
     auto conflict = solver.get_conflict();
+    // TODO: further minimize this conflict, if possible
     verb_print(2, "conflict: " << conflict);
     if (conflict.empty()) {
         verb_print(1, "repairing " << y_rep+1 << " is not possible");
@@ -314,6 +315,7 @@ void Manthan::fix_order() {
 }
 
 // Fills needs_repair with vars from y (i.e. output)
+// TODO: use MaxSAT solver
 vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     needs_repair.clear();
     SATSolver s_ctx;
@@ -408,6 +410,7 @@ void Manthan::init_solver_train() {
 bool Manthan::get_counterexample(vector<lbool>& ctx) {
     // Inject the formulas into the solver
     // Replace y with y_hat
+    // TODO: have flag of what clause has already been added
     for(const auto& f: funcs) {
         const auto& form = f.second;
         for(const auto& cl: form.clauses) {
