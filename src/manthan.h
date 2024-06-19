@@ -114,7 +114,7 @@ class Manthan {
         void perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vector<Lit>& conflict);
         void init_solver_train();
 
-        /* vector<uint32_t> y_order; */
+        vector<uint32_t> y_order; //1st only depends on inputs
         void fix_order();
 
 

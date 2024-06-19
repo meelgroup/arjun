@@ -128,6 +128,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 
     // Counterexample
     init_solver_train();
+    fix_order();
     while(true) {
         vector<lbool> ctx;
         bool finished = get_counterexample(ctx);
@@ -144,19 +145,26 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             verb_print(1, "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
                     << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]));
         }
-        if (true) {
+        if (conf.verb >= 3) {
             for(uint32_t i = 0; i < cnf.nVars(); i++) cout << "val " << setw(4) << i+1 << ": " << pr(ctx[i]) << " -- ";
             cout << endl;
         }
         needs_repair.clear();
         auto better_ctx = find_better_ctx(ctx);
         for(const auto& y: output) if (!needs_repair.count(y)) ctx[y] = better_ctx[y];
-        /* fix_order(); */
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
         while(!needs_repair.empty()) {
-            auto y = *needs_repair.begin();
+            uint32_t y = std::numeric_limits<uint32_t>::max();
+            for(const auto& t: y_order) {
+                if (needs_repair.count(t)) {
+                    y = t;
+                    break;
+                }
+            }
+            assert(y != std::numeric_limits<uint32_t>::max());
             needs_repair.erase(y);
+            verb_print(1, "-------------------");
             verb_print(1, "repairing: " << y+1);
             bool done = repair(y, ctx); // beware, this updates ctx on v
             if (done) {
@@ -165,16 +173,15 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             }
             verb_print(2, "finished repairing " << y+1 << " : " << std::boolalpha << done);
         }
-        if (num_repaired == 0) {
-            // do simple repair
-            verb_print(1, "doing simple repair");
-            auto y_rep = *needs_repair.begin();
-            vector<Lit> confl;
-            for(const auto& i: input) confl.push_back(~Lit(i, ctx[i] == l_False));
-            perform_repair(y_rep, ctx, confl);
-            tot_simple_repaired++;
-        }
-
+        /* if (num_repaired == 0) { */
+        /*     // do simple repair */
+        /*     verb_print(1, "doing simple repair"); */
+        /*     auto y_rep = *needs_repair.begin(); */
+        /*     vector<Lit> confl; */
+        /*     for(const auto& i: input) confl.push_back(~Lit(i, ctx[i] == l_False)); */
+        /*     perform_repair(y_rep, ctx, confl); */
+        /*     tot_simple_repaired++; */
+        /* } */
         verb_print(1, "Tot repaired: " << tot_repaired << " tot simple repaired: " << tot_simple_repaired);
     }
     verb_print(1, "DONE");
@@ -195,41 +202,39 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     for(const auto& x: input) {
         assumps.push_back(Lit(x, ctx[x] == l_False)); //correct value
     }
-    for(const auto& y: output) {
-        if (y == y_rep) continue;
-        if (conf.verb >= 2) {
-            if (dependency_mat[y][y_rep] == 1) cout << "this depends on us: " << y+1 << endl;
-            if (ctx[y] != ctx[y_to_y_hat[y]])  cout << "this has wrong value: " << y+1 << endl;
-        }
-
-        if (dependency_mat[y][y_rep] == 1) {
-            // Everything that depends on y_rep, we need to set to correct val
-            Lit l = Lit(y, ctx[y] == l_False);
-            solver.add_clause({l});
-            cout << "adding to solver: " << l << endl;
-        } else if (ctx[y] != ctx[y_to_y_hat[y]]) {
-            Lit l = Lit(y, ctx[y_to_y_hat[y]] == l_False);
-            verb_print(2, "assuming " << y+1 << " is " << ctx[y_to_y_hat[y]]);
-            assumps.push_back({l});
-        }
-    }
-    for(const auto& y: output) {
-        if (y == y_rep) continue;
-        if (dependency_mat[y][y_rep] == 1) continue;
-        if (ctx[y] != ctx[y_to_y_hat[y]]) continue;
-        verb_print(2, "assuming " << y+1 << " is correct");
-        assumps.push_back(Lit(y, ctx[y] == l_False)); //correct value
+    for(const auto& y: y_order) {
+        if (y == y_rep) break;
+        assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen");
+        assert(ctx[y] == ctx[y_to_y_hat[y]]);
+        Lit l = Lit(y, ctx[y] == l_False);
+        verb_print(2, "assuming " << y+1 << " is " << ctx[y]);
+        assumps.push_back({l});
     }
 
     Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
-    solver.add_clause({~repairing});
-    cout << "adding to solver: " << ~repairing << endl;
+    solver.add_clause({~repairing}); //assume to wrong value
+    ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
+
+    verb_print(2, "adding to solver: " << ~repairing);
     verb_print(2, "setting the to-be-repaired " << repairing << " to wrong.");
     verb_print(2, "solving with assumps: " << assumps);
     auto ret = solver.solve(&assumps);
     assert(ret != l_Undef);
     if (ret == l_True) {
-        verb_print(1, "repairing " << y_rep+1 << " is not possible");
+        auto model = solver.get_model();
+        if (conf.verb >= 3) {
+            for(uint32_t i = 0; i < cnf.nVars(); i++) {
+                cout << "model i " << i+1 << " : " << model[i] << endl;
+            }
+        }
+        bool reached = false;
+        for(const auto&y: y_order) {
+            if (y == y_rep) {reached = true; continue;}
+            if (!reached) continue;
+            if (model[y] != ctx[y_to_y_hat[y]]) {
+                needs_repair.insert(y);
+            }
+        }
         return false;
     }
     assert(ret == l_False);
@@ -244,7 +249,6 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
         return false;
     }
     perform_repair(y_rep, ctx, conflict);
-
     return true;
 }
 
@@ -276,28 +280,29 @@ void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vec
     funcs[y_rep] = compose_ite(constant_formula(ctx[y_rep] == l_True), funcs[y_rep], f);
     verb_print(3, "repaired formula for " << y_rep+1 << ":" << endl << funcs[y_rep]);
     verb_print(1, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
-    verb_print(1, "------------------------");
-
     //We fixed the ctx on this variable
-    ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
 }
 
 void Manthan::fix_order() {
     set<uint32_t> already_fixed;
+    assert(y_order.empty());
     while(already_fixed.size() != output.size()) {
         for(const auto& y: output) {
+            verb_print(2, "Checking y: " << y+1);
             if (already_fixed.count(y)) continue;
             bool ok = true;
             for(const auto& y2: output) {
                 if (y == y2) continue;
                 if (dependency_mat[y][y2] == 0) continue;
-                if (dependency_mat[y][y2] == 1 && already_fixed.count(y)) continue;
+                if (dependency_mat[y][y2] == 1 && already_fixed.count(y2)) continue;
+                verb_print(2, "Bad due to y2: " << y2+1);
                 ok = false;
                 break;
             }
             if (!ok) continue;
+            verb_print(2, "fixed order of " << y+1 << " to: " << y_order.size());
             already_fixed.insert(y);
-            /* y_order.push_back(y); */
+            y_order.push_back(y);
         }
     }
 }
@@ -396,9 +401,19 @@ void Manthan::init_solver_train() {
 
 bool Manthan::get_counterexample(vector<lbool>& ctx) {
     // Inject the formulas into the solver
+    // Replace y with y_hat
     for(const auto& f: funcs) {
         const auto& form = f.second;
-        for(const auto& cl: form.clauses) solver_train.add_clause(cl);
+        for(const auto& cl: form.clauses) {
+            vector<Lit> cl2;
+            for(const auto& l: cl) {
+                auto v = l.var();
+                if (output.count(v)) {
+                    cl2.push_back(Lit(y_to_y_hat[v], l.sign()));
+                } else cl2.push_back(l);
+            }
+            solver_train.add_clause(cl2);
+        }
     }
 
     // Relation between y_hat and func_out
