@@ -326,7 +326,10 @@ void do_synthesis() {
         simp_conf.bve_too_large_resolvent = -1;
         cnf = arjun->only_get_simplified_cnf(cnf, simp_conf);
         /* if (do_revbce) arjun->only_reverse_bce(cnf); */
+
+        // We need to get back to functions for this to work
         if (false && do_minim_indep) arjun->only_run_minimize_indep_synth(cnf);
+
         cnf.renumber_sampling_vars_for_ganak();
         if (!elimtofile.empty()) write_synth(cnf, elimtofile, false);
     }
