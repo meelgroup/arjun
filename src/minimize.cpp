@@ -241,7 +241,7 @@ void Minimize::run_minimize_for_synth(ArjunNS::SimplifiedCNF& cnf) {
     duplicate_problem(cnf);
     add_fixed_clauses(true);
     backward_round_synth();
-    cnf.sampl_vars = sampling_vars;
+    cnf.opt_sampl_vars = sampling_vars;
 }
 
 void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
