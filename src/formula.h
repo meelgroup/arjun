@@ -15,8 +15,7 @@ using std::endl;
 using std::cout;
 using CMSat::Lit;
 
-
-struct FormulaHolder {
+struct FHolder {
     struct Formula {
         // TODO: we could have a flag of what has already been inserted into
         // solver_train
@@ -101,7 +100,7 @@ struct FormulaHolder {
 };
 
 
-inline std::ostream& operator<<(std::ostream& os, const FormulaHolder::Formula& f) {
+inline std::ostream& operator<<(std::ostream& os, const FHolder::Formula& f) {
     os << " ==== Formula: " << f.out << " ==== " << endl;
     for (const auto& cl : f.clauses) {
         for (const auto& l : cl) {

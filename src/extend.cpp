@@ -22,6 +22,7 @@
  THE SOFTWARE.
  */
 
+#include <algorithm>
 #include <cstdint>
 #include <iomanip>
 #include <map>
@@ -89,6 +90,11 @@ int lit_to_pl(const Lit l) {
 Lit pl_to_lit(const int l) {
     uint32_t v = abs(l)-1;
     return Lit(v, l < 0);
+}
+vector<Lit> pl_to_lit_cl(const vector<int>& cl) {
+    vector<Lit> ret;
+    for(const auto& l: cl) ret.push_back(pl_to_lit(l));
+    return ret;
 }
 
 void Extend::unsat_define(SimplifiedCNF& cnf) {
@@ -252,37 +258,64 @@ struct MyTracer : public Tracer {
       fh.solver = &ss;
       input.insert(_opt_sampl_vars.begin(), _opt_sampl_vars.end());
   }
-  map<uint64_t, vector<int>> cls;
-  map<uint64_t, FormulaHolder::Formula> fs;
-  FormulaHolder fh;
-  FormulaHolder::Formula out;
+  map<uint64_t, vector<Lit>> cls;
+  map<uint64_t, FHolder::Formula> fs;
+  FHolder fh;
+  FHolder::Formula out;
   void add_derived_clause (uint64_t id, bool red, const std::vector<int> & clause,
                                    const std::vector<uint64_t> & antec) override {
       cout << "red ID:" << setw(4) << id << " red:" << (int)red;
       cout << " cl: "; for(const auto& l: clause) cout << l << " "; cout << endl;
       cout << "atec: "; for(const auto& l: antec) cout << l << " "; cout << endl;
-      for(const auto& l: antec) {
+      cls[id] = pl_to_lit_cl(clause);
+      auto rev_antec = antec;
+      std::reverse(rev_antec.begin(), rev_antec.end());
+      assert(rev_antec.size() >= 2);
 
+      const uint64_t id1 = antec[0];
+      FHolder::Formula f = fs[id1];
+      set<Lit> resolvent(cls[id1].begin(),cls[id1].end());
+      for(uint32_t i = 1; i < antec.size(); i++) {
+          const uint64_t id2 = antec[i];
+          const vector<Lit>& cl = cls[id2];
+          Lit res_lit = lit_Undef;
+          for(const auto& l: cl) {
+              if (resolvent.count(~l)) {
+                  assert(res_lit == lit_Undef);
+                  res_lit = ~l;
+                  resolvent.erase(~l);
+              } else {
+                  assert(resolvent.count(~l) == 0 && "not tautological resolvent!");
+                  resolvent.insert(l);
+              }
+          }
+          assert(res_lit != lit_Undef);
+          bool resolvent_is_input = input.count(res_lit.var());
+          if (resolvent_is_input) f = fh.compose_and(f, fs[id2]);
+          else f = fh.compose_or(f, fs[id2]);
       }
-      cls[id] = clause;
+      fs[id] = f;
+      if (clause.empty()) out = f;
   }
 
   void add_original_clause (uint64_t id, bool red, const std::vector<int> & clause, bool) override {
       assert(red == false);
       cout << "orig ID:" << setw(4)<< id;
       cout << " cl: ";
+      cls[id] = pl_to_lit_cl(clause);
       for(const auto& l: clause) cout << l << " "; cout << endl;
       bool is_orig = true;
       for(const auto& l : clause) {
           if (abs(l)-1 >= orig_num_vars) {is_orig = false; break;}
       }
       if (is_orig) {
+          // output of formula is equal to the set of inputs being satisfied or not in this CL
           vector<Lit> cl;
           for(const auto& l: clause) {
               int32_t v = abs(l)-1;
               if (input.count(v)) cl.push_back(pl_to_lit(l));
           }
-          FormulaHolder::Formula f;
+          FHolder::Formula f;
           ss.new_var();
           f.out = Lit(ss.nVars()-1, false);
           auto cl2 = cl;

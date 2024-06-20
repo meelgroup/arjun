@@ -61,7 +61,7 @@ class Manthan {
         Lit my_true_lit;
 
 
-        map<uint32_t, FormulaHolder::Formula> funcs; // output -> formula
+        map<uint32_t, FHolder::Formula> funcs; // output -> formula
         map<uint32_t, uint32_t> y_to_y_hat;
         map<uint32_t, uint32_t> y_hat_to_y;
 
@@ -75,7 +75,7 @@ class Manthan {
         SATSolver solver_samp;
         set<uint32_t> input;
         set<uint32_t> output;
-        FormulaHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth = 0);
+        FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth = 0);
         vector<uint32_t> incidence;
         void get_incidence();
         bool get_counterexample(vector<lbool>& ctx);
@@ -94,5 +94,5 @@ class Manthan {
         vector<vector<lbool>> get_samples(uint32_t num_samples);
         void train(const vector<vector<lbool>>& samples, uint32_t v);
         vector<vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
-        FormulaHolder fh;
+        FHolder fh;
 };

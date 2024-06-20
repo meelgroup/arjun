@@ -255,7 +255,7 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
 
 void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vector<Lit>& conflict) {
     // not (conflict) -> v = ctx(v)
-    FormulaHolder::Formula f;
+    FHolder::Formula f;
     vector<Lit> cl;
     solver_train.new_var();
     auto fresh_l = Lit(solver_train.nVars()-1, false);
@@ -477,8 +477,8 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     }
 }
 
-FormulaHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth) {
-    FormulaHolder::Formula ret;
+FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth) {
+    FHolder::Formula ret;
     /* for(uint32_t i = 0; i < depth; i++) cout << " "; */
     if (node->NumChildren() == 0) {
         uint32_t val = node->ClassProbabilities()[1] > node->ClassProbabilities()[0];
