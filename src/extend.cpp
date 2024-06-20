@@ -31,6 +31,7 @@
 #include "extend.h"
 #include "constants.h"
 #include "cryptominisat5/solvertypesmini.h"
+#include "formula.h"
 
 /* extern "C" { */
 /* #include "mpicosat/mpicosat.h" */
@@ -84,6 +85,10 @@ void Extend::add_all_indics_except(const set<uint32_t>& except) {
 int lit_to_pl(const Lit l) {
     int picolit = (l.var()+1) * (l.sign() ? -1 : 1);
     return picolit;
+}
+Lit pl_to_lit(const int l) {
+    uint32_t v = abs(l)-1;
+    return Lit(v, l < 0);
 }
 
 void Extend::unsat_define(SimplifiedCNF& cnf) {
@@ -239,23 +244,62 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     if (conf.verb >= 2) solver->print_stats();
 }
 
-class MyTracer : public Tracer {
-  void add_derived_clause (uint64_t ID, bool red, const std::vector<int> & clause,
+struct MyTracer : public Tracer {
+  MyTracer(uint32_t _def_v, uint32_t _orig_num_vars, vector<uint32_t> _opt_sampl_vars
+          ) : def_v(_def_v), orig_num_vars(_orig_num_vars) {
+      ss.new_var();
+      fh.my_true_lit = Lit(ss.nVars()-1, false);
+      fh.solver = &ss;
+      input.insert(_opt_sampl_vars.begin(), _opt_sampl_vars.end());
+  }
+  map<uint64_t, vector<int>> cls;
+  map<uint64_t, FormulaHolder::Formula> fs;
+  FormulaHolder fh;
+  FormulaHolder::Formula out;
+  void add_derived_clause (uint64_t id, bool red, const std::vector<int> & clause,
                                    const std::vector<uint64_t> & antec) override {
-      cout << "red ID:" << setw(4) << ID << " red:" << (int)red;
-      cout << " cl: ";
-      for(const auto& l: clause) cout << l << " "; cout << endl;
-      cout << "atec: ";
-      for(const auto& l: antec) cout << l << " "; cout << endl;
+      cout << "red ID:" << setw(4) << id << " red:" << (int)red;
+      cout << " cl: "; for(const auto& l: clause) cout << l << " "; cout << endl;
+      cout << "atec: "; for(const auto& l: antec) cout << l << " "; cout << endl;
+      for(const auto& l: antec) {
+
+      }
+      cls[id] = clause;
   }
 
-  void add_original_clause (uint64_t ID, bool red, const std::vector<int> & clause, bool) override {
+  void add_original_clause (uint64_t id, bool red, const std::vector<int> & clause, bool) override {
       assert(red == false);
-      cout << "orig ID:" << setw(4)<< ID;
+      cout << "orig ID:" << setw(4)<< id;
       cout << " cl: ";
       for(const auto& l: clause) cout << l << " "; cout << endl;
+      bool is_orig = true;
+      for(const auto& l : clause) {
+          if (abs(l)-1 >= orig_num_vars) {is_orig = false; break;}
+      }
+      if (is_orig) {
+          vector<Lit> cl;
+          for(const auto& l: clause) {
+              int32_t v = abs(l)-1;
+              if (input.count(v)) cl.push_back(pl_to_lit(l));
+          }
+          FormulaHolder::Formula f;
+          ss.new_var();
+          f.out = Lit(ss.nVars()-1, false);
+          auto cl2 = cl;
+          cl2.push_back(~f.out);
+          f.clauses.push_back(cl2);
+          for(const auto& l: cl) {
+              f.clauses.push_back({~l, f.out});
+          }
+          fs[id] = f;
+      } else {
+          fs[id] = fh.constant_formula(true);
+      }
   }
-
+  SATSolver ss;
+  int32_t def_v;
+  int32_t orig_num_vars;
+  set<uint32_t> input;
 };
 
 void Extend::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var, SimplifiedCNF& cnf) {
@@ -333,7 +377,7 @@ void Extend::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var,
 
     // picosat on the core only, on a simplified CNF
     CaDiCaL::Solver* cdcl = new Solver();
-    MyTracer t;
+    MyTracer t(test_var, orig_num_vars, cnf.opt_sampl_vars);
     cdcl->connect_proof_tracer(&t, true);
     /* std::stringstream name; */
     /* name << "core-" << test_var+1 << ".cnf.trace"; */
