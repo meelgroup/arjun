@@ -32,12 +32,15 @@
 #include "constants.h"
 #include "cryptominisat5/solvertypesmini.h"
 
-extern "C" {
-#include "mpicosat/mpicosat.h"
-}
+/* extern "C" { */
+/* #include "mpicosat/mpicosat.h" */
+/* } */
+#include "cadical.hpp"
+#include "tracer.hpp"
 
 using namespace ArjunInt;
 using namespace ArjunNS;
+using namespace CaDiCaL;
 using std::setw;
 
 void Extend::add_all_indics_except(const set<uint32_t>& except) {
@@ -236,6 +239,25 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     if (conf.verb >= 2) solver->print_stats();
 }
 
+class MyTracer : public Tracer {
+  void add_derived_clause (uint64_t ID, bool red, const std::vector<int> & clause,
+                                   const std::vector<uint64_t> & antec) override {
+      cout << "red ID:" << setw(4) << ID << " red:" << (int)red;
+      cout << " cl: ";
+      for(const auto& l: clause) cout << l << " "; cout << endl;
+      cout << "atec: ";
+      for(const auto& l: antec) cout << l << " "; cout << endl;
+  }
+
+  void add_original_clause (uint64_t ID, bool red, const std::vector<int> & clause, bool) override {
+      assert(red == false);
+      cout << "orig ID:" << setw(4)<< ID;
+      cout << " cl: ";
+      for(const auto& l: clause) cout << l << " "; cout << endl;
+  }
+
+};
+
 void Extend::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var, SimplifiedCNF& cnf) {
     verb_print(2, "generating unsat proof for: " << test_var+1);
     // FIRST, we get an UNSAT core
@@ -293,7 +315,7 @@ void Extend::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var,
     }
 
 
-    bool debug_core = false;
+    bool debug_core = true;
     if (debug_core) {
         std::stringstream name;
         name << "core-" << test_var+1 << ".cnf";
@@ -310,45 +332,51 @@ void Extend::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var,
     }
 
     // picosat on the core only, on a simplified CNF
-    PicoSAT* ps2 = picosat_init();
-    pret = picosat_enable_trace_generation(ps2);
+    CaDiCaL::Solver* cdcl = new Solver();
+    MyTracer t;
+    cdcl->connect_proof_tracer(&t, true);
+    /* std::stringstream name; */
+    /* name << "core-" << test_var+1 << ".cnf.trace"; */
+    /* FILE* core = fopen(name.str().c_str(), "w"); */
     release_assert(pret != 0 && "Traces cannot be generated in PicoSAT");
-    for(uint32_t i = 0; i < orig_num_vars*2; i++) picosat_inc_max_var(ps2);
     for(const auto& l: assumptions) {
-        picosat_add(ps2, lit_to_pl(l));
-        picosat_add(ps2, 0);
+        cdcl->add(lit_to_pl(l));
+        cdcl->add(0);
     }
     for(const auto& c: mini_cls) {
-        for(const auto& l: c) picosat_add(ps2, lit_to_pl(l));
-        picosat_add(ps2, 0);
+        for(const auto& l: c) cdcl->add(lit_to_pl(l));
+        cdcl->add(0);
     }
-    pret = picosat_sat(ps2, 10000000);
+    pret = cdcl->solve();
     verb_print(5, "c pret: " << pret);
-    if (pret == PICOSAT_SATISFIABLE) {
+    if (pret == Status::SATISFIABLE) {
         cout << "BUG, core should be UNSAT" << endl;
         assert(false);
         exit(-1);
     }
-    if (pret == PICOSAT_UNKNOWN) {
+    if (pret == Status::UNKNOWN) {
         cout << "OOOpps, we should give more time for picosat, got UNKNOWN" << endl;
         assert(false);
         exit(-1);
     }
-    release_assert(pret == PICOSAT_UNSATISFIABLE);
-    if (debug_core) {
-        std::stringstream name;
-        name << "proof-" << test_var+1 << ".trace";
-        FILE* trace = fopen(name.str().c_str(), "w");
-        picosat_write_extended_trace (ps2, trace);
-    }
-    TraceData dat;
-    dat.data = (int*)malloc(1024*sizeof(int));
-    dat.size = 0;
-    dat.capacity = 1024;
-    picosat_write_extended_trace_data (ps2, &dat);
-    verb_print(2, "[arjun] Proof size: " << dat.size);
-    free(dat.data);
-    picosat_reset(ps2);
+    release_assert(pret == Status::UNSATISFIABLE);
+    /* if (debug_core) { */
+    /*     std::stringstream name; */
+    /*     name << "core-" << test_var+1 << ".cnf.trace"; */
+    /*     FILE* trace = fopen(name.str().c_str(), "w"); */
+    /*     picosat_write_rup_trace(ps2, trace); */
+    /* } */
+    /* TraceData dat; */
+    /* dat.data = (int*)malloc(1024*sizeof(int)); */
+    /* dat.size = 0; */
+    /* dat.capacity = 1024; */
+    /* verb_print(2, "[arjun] Proof size: " << dat.size); */
+    /* free(dat.data); */
+    /* picosat_reset(cdcl); */
+    /* fclose(core); */
+    cdcl->disconnect_proof_tracer(&t);
+    delete cdcl;
+    cout << "----------------------------" << endl;
 }
 
 void Extend::extend_round(SimplifiedCNF& cnf) {
