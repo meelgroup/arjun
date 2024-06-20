@@ -30,8 +30,6 @@
 #include <ios>
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
 #include <vector>
-#include <iterator>
-#include <algorithm>
 #include "constants.h"
 
 #define MLPACK_PRINT_INFO
@@ -118,6 +116,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     // Training
     inject_cnf(solver_train);
     inject_unit(solver_train);
+    fh.my_true_lit = my_true_lit;
+    fh.solver = &solver_train;
     cout << "True lit: " << my_true_lit << endl;
     vector<uint32_t> to_train;
     to_train.reserve(output.size());
@@ -255,7 +255,7 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
 
 void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vector<Lit>& conflict) {
     // not (conflict) -> v = ctx(v)
-    Formula f;
+    FormulaHolder::Formula f;
     vector<Lit> cl;
     solver_train.new_var();
     auto fresh_l = Lit(solver_train.nVars()-1, false);
@@ -278,7 +278,7 @@ void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vec
     // when fresh_l is false, confl is satisfied
     verb_print(3, "Original formula for " << y_rep+1 << ":" << endl << funcs[y_rep]);
     verb_print(2, "Branch formula. When this is true, H is wrong:" << endl << f);
-    funcs[y_rep] = compose_ite(constant_formula(ctx[y_rep] == l_True), funcs[y_rep], f);
+    funcs[y_rep] = fh.compose_ite(fh.constant_formula(ctx[y_rep] == l_True), funcs[y_rep], f);
     verb_print(3, "repaired formula for " << y_rep+1 << ":" << endl << funcs[y_rep]);
     verb_print(1, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
     //We fixed the ctx on this variable
@@ -477,8 +477,8 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     }
 }
 
-Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth) {
-    Formula ret;
+FormulaHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth) {
+    FormulaHolder::Formula ret;
     /* for(uint32_t i = 0; i < depth; i++) cout << " "; */
     if (node->NumChildren() == 0) {
         uint32_t val = node->ClassProbabilities()[1] > node->ClassProbabilities()[0];
@@ -487,7 +487,7 @@ Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t 
         /*     cout << "class "<< i << " prob: " << node->ClassProbabilities()[i] << " --- "; */
         /* } */
         /* cout << endl; */
-        return constant_formula(val);
+        return fh.constant_formula(val);
     } else {
         uint32_t v = node->SplitDimension();
         /* cout << "(learning " << learned_v+1<< ") Node. v: " << v+1 << std::flush; */
@@ -520,7 +520,7 @@ Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t 
         auto form_0 = recur(&node->Child(0), learned_v, depth+1);
         auto form_1 = recur(&node->Child(1), learned_v, depth+1);
         bool val_going_right = node->CalculateDirection(point_1);
-        return compose_ite(form_0, form_1, Lit(v, val_going_right));
+        return fh.compose_ite(form_0, form_1, Lit(v, val_going_right));
     }
     assert(false);
 }
@@ -609,56 +609,4 @@ void Manthan::get_incidence() {
             incidence[l.var()]++;
         }
     }
-}
-
-Formula Manthan::constant_formula(int value) {
-    Formula ret;
-    ret.out = value ? my_true_lit : ~my_true_lit;
-    ret.inter_vs.insert(my_true_lit.var());
-    return ret;
-}
-
-
-Formula Manthan::compose_ite(const Formula& fleft, const Formula& fright, const Formula& branch) {
-    Formula ret = compose_ite(fleft, fright, branch.out);
-    ret.inter_vs.insert(branch.inter_vs.begin(), branch.inter_vs.end());
-    ret.inter_vs.insert(branch.out.var());
-    ret.inter_vs.insert(ret.out.var());
-    ret.clauses.insert(ret.clauses.end(), branch.clauses.begin(), branch.clauses.end());
-    return ret;
-}
-
-Formula Manthan::compose_ite(const Formula& fleft, const Formula& fright, Lit branch) {
-    Formula ret;
-    ret.inter_vs = fleft.inter_vs;
-    for(const auto& v: fright.inter_vs) ret.inter_vs.insert(v);
-    ret.clauses = fleft.clauses;
-    for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
-    solver_train.new_var();
-    uint32_t fresh_v = solver_train.nVars()-1;
-    //  branch -> return left
-    // !branch -> return right
-    //
-    //  b -> fresh = left
-    // !b -> fresh = right
-    //
-    // !b V    f V -left
-    // -b V   -f V  left
-    //  b V    f V -right
-    //  b V   -f V  right
-    //
-    Lit b = branch;
-    Lit l = fleft.out;
-    Lit r = fright.out;
-    Lit fresh = Lit(fresh_v, false);
-    ret.inter_vs.insert(fresh_v);
-    ret.inter_vs.insert(l.var());
-    ret.inter_vs.insert(r.var());
-    ret.clauses.push_back({~b, fresh, ~l});
-    ret.clauses.push_back({~b, ~fresh, l});
-    ret.clauses.push_back({b, fresh, ~r});
-    ret.clauses.push_back({b, ~fresh, r});
-    ret.out = Lit(fresh_v, false);
-
-    return ret;
 }

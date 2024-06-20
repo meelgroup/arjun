@@ -30,7 +30,7 @@
 #include <sys/types.h>
 #include <vector>
 #include <set>
-
+#include "formula.h"
 
 
 #define MLPACK_PRINT_INFO
@@ -49,31 +49,6 @@ using std::map;
 using namespace ArjunInt;
 using namespace ArjunNS;
 
-struct Formula {
-    // TODO: we could have a flag of what has already been inserted into
-    // solver_train
-    vector<vector<Lit>> clauses;
-    set<uint32_t> inter_vs;
-    Lit out = lit_Error; // member of inter_vs
-};
-
-inline std::ostream& operator<<(std::ostream& os, const Formula& f) {
-    os << " ==== Formula: " << f.out << " ==== " << endl;
-    for (const auto& cl : f.clauses) {
-        for (const auto& l : cl) {
-            os << std::setw(6) << l;
-        }
-        cout << " 0" << endl;
-    }
-    os << "Intermediates: ";
-    for (const auto& v : f.inter_vs) {
-        os << v+1 << " ";
-    }
-    os << endl;
-    os << "Output: " << f.out;
-    return os;
-}
-
 class Manthan {
     public:
         Manthan(Config& _conf) : conf(_conf) {}
@@ -86,7 +61,7 @@ class Manthan {
         Lit my_true_lit;
 
 
-        map<uint32_t, Formula> funcs; // output -> formula
+        map<uint32_t, FormulaHolder::Formula> funcs; // output -> formula
         map<uint32_t, uint32_t> y_to_y_hat;
         map<uint32_t, uint32_t> y_hat_to_y;
 
@@ -100,12 +75,9 @@ class Manthan {
         SATSolver solver_samp;
         set<uint32_t> input;
         set<uint32_t> output;
-        Formula recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth = 0);
+        FormulaHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth = 0);
         vector<uint32_t> incidence;
         void get_incidence();
-        Formula compose_ite(const Formula& a, const Formula& b, Lit branch);
-        Formula compose_ite(const Formula& a, const Formula& b, const Formula& f);
-        Formula constant_formula(int val);
         bool get_counterexample(vector<lbool>& ctx);
         vector<lbool> find_better_ctx(const vector<lbool>& ctx);
         void inject_cnf(SATSolver& s);
@@ -122,4 +94,5 @@ class Manthan {
         vector<vector<lbool>> get_samples(uint32_t num_samples);
         void train(const vector<vector<lbool>>& samples, uint32_t v);
         vector<vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
+        FormulaHolder fh;
 };
