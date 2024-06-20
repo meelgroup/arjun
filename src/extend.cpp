@@ -122,8 +122,8 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     release_assert(pret != 0 && "Traces cannot be generated in PicoSAT");
 
     // Don't mess with already set/replaced variables
-    std::string str = "must-scc-vrepl, clean-cls";
-    solver->simplify(nullptr, &str);
+    /* std::string str = "must-scc-vrepl, clean-cls"; */
+    /* solver->simplify(nullptr, &str); */
 
     set_vals.clear();
     set_vals.resize(solver->nVars(), l_Undef);
@@ -139,20 +139,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
         picosat_add(ps, 0);
     }
     solver->end_getting_constraints();
-
     for(const auto& x: seen) assert(x == 0);
-    for(const auto& v: cnf.opt_sampl_vars) {
-        if (var_to_indic[v] == var_Undef) continue;
-        cl.clear();
-        auto ind_v = var_to_indic[v];
-        Lit ind_l = Lit(ind_v, false);
-        cl.push_back(ind_l);
-        solver->add_clause(cl);
-        cl_map[cl_num++] = cl;
-        picosat_add(ps, lit_to_pl(ind_l));
-        picosat_add(ps, 0);
-        set_vals[ind_l.var()] = l_True;
-    }
 
     //Initially, all of samping_set is unknown
     vector<uint32_t> unknown;
@@ -192,9 +179,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
         assumptions.clear();
         uint32_t indic = var_to_indic[test_var];
         assumptions.push_back(Lit(test_var, false));
-        set_vals[test_var] = l_True;
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
-        set_vals[test_var+orig_num_vars] = l_False;
 
         //TODO: Actually, we should get conflict, that will make things easier
         solver->set_no_confl_needed();
@@ -239,8 +224,6 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
         } else {
             set_vals[indic] = l_Undef;
         }
-        set_vals[test_var] = l_Undef;
-        set_vals[test_var+orig_num_vars] = l_Undef;
     }
     picosat_reset(ps);
 
@@ -253,9 +236,6 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
 struct MyTracer : public Tracer {
   MyTracer(uint32_t _def_v, uint32_t _orig_num_vars, vector<uint32_t> _opt_sampl_vars
           ) : def_v(_def_v), orig_num_vars(_orig_num_vars) {
-      ss.new_var();
-      fh.my_true_lit = Lit(ss.nVars()-1, false);
-      fh.solver = &ss;
       input.insert(_opt_sampl_vars.begin(), _opt_sampl_vars.end());
   }
   map<uint64_t, vector<Lit>> cls;
@@ -263,21 +243,24 @@ struct MyTracer : public Tracer {
   FHolder fh;
   FHolder::Formula out;
   void add_derived_clause (uint64_t id, bool red, const std::vector<int> & clause,
-                                   const std::vector<uint64_t> & antec) override {
-      cout << "red ID:" << setw(4) << id << " red:" << (int)red;
+                                   const std::vector<uint64_t> & oantec) override {
+      cout << "red  ID:" << setw(4) << id;//  << " red: " << (int)red;
       cout << " cl: "; for(const auto& l: clause) cout << l << " "; cout << endl;
-      cout << "atec: "; for(const auto& l: antec) cout << l << " "; cout << endl;
+      cout << "atec: "; for(const auto& l: oantec) cout << l << " "; cout << endl;
       cls[id] = pl_to_lit_cl(clause);
-      auto rev_antec = antec;
-      std::reverse(rev_antec.begin(), rev_antec.end());
-      assert(rev_antec.size() >= 2);
+      auto rantec = oantec;
+      std::reverse(rantec.begin(), rantec.end());
+      assert(rantec.size() >= 2);
 
-      const uint64_t id1 = antec[0];
+      const uint64_t id1 = rantec[0];
       FHolder::Formula f = fs[id1];
       set<Lit> resolvent(cls[id1].begin(),cls[id1].end());
-      for(uint32_t i = 1; i < antec.size(); i++) {
-          const uint64_t id2 = antec[i];
+      for(uint32_t i = 1; i < rantec.size(); i++) {
+          cout << "resolvent: "; for(const auto& l: resolvent) cout << l << " "; cout << endl;
+
+          const uint64_t id2 = rantec[i];
           const vector<Lit>& cl = cls[id2];
+          cout << "resolving with: " << cl << endl;;
           Lit res_lit = lit_Undef;
           for(const auto& l: cl) {
               if (resolvent.count(~l)) {
@@ -295,7 +278,10 @@ struct MyTracer : public Tracer {
           else f = fh.compose_or(f, fs[id2]);
       }
       fs[id] = f;
-      if (clause.empty()) out = f;
+      if (clause.empty()) {
+          out = f;
+          cout << "Final formula: " << f << endl;
+      }
   }
 
   void add_original_clause (uint64_t id, bool red, const std::vector<int> & clause, bool) override {
@@ -357,19 +343,18 @@ void Extend::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var,
     // NEXT we generate the small CNF that is UNSAT and is simplified
     vector<Lit> cl;
     vector<vector<Lit>> mini_cls;
+    for(uint32_t i = 0; i < orig_num_vars; i++) {
+        if (set_vals[i] != l_Undef) {
+            if (i == test_var) continue;
+            cl.clear();
+            cl.push_back(Lit(i, set_vals[i] == l_False));
+            mini_cls.push_back(cl);
+        }
+    }
     for(uint32_t cl_at = 0; cl_at < cl_num; cl_at++) {
         if (picosat_coreclause(ps, cl_at)) {
-            bool taut = false;
             cl.clear();
             for(auto l: cl_map[cl_at]) {
-                // Deal with set vars
-                if (set_vals[l.var()] != l_Undef) {
-                    int val = (set_vals[l.var()] == l_True);
-                    val ^= l.sign();
-                    if (val) goto end; //satisfied clause
-                    continue; // false value in clausee
-                }
-
                 // if it's a var that's the image that has been
                 // forced to be equal, then replace
                 if (l.var() < orig_num_vars*2 && l.var() >= orig_num_vars) {
@@ -377,20 +362,13 @@ void Extend::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var,
                     if (indic != var_Undef && set_vals[indic] == l_True)
                         l = Lit (l.var()-orig_num_vars, l.sign());
                 }
-
-                if (seen[(~l).toInt()]) {taut = true; break;}
-                if (seen[l.toInt()]) continue;
-                seen[l.toInt()] = true;
                 cl.push_back(l);
             }
-            if (taut) goto end;
             for(const auto& l: cl) assert(l.var() < orig_num_vars*2);
             mini_cls.push_back(cl);
-            end:
-            for(const auto& l: cl) seen[l.toInt()] = false;
         }
     }
-
+    for(const auto& l: assumptions) mini_cls.push_back({l});
 
     bool debug_core = true;
     if (debug_core) {
@@ -411,15 +389,17 @@ void Extend::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var,
     // picosat on the core only, on a simplified CNF
     CaDiCaL::Solver* cdcl = new Solver();
     MyTracer t(test_var, orig_num_vars, cnf.opt_sampl_vars);
+    t.ss.new_vars(orig_num_vars*2);
+    t.ss.new_var();
+    t.fh.my_true_lit = Lit(t.ss.nVars()-1, false);
+    t.fh.solver = &t.ss;
+    cout << "true lit: " << t.fh.my_true_lit << endl;
+
     cdcl->connect_proof_tracer(&t, true);
     /* std::stringstream name; */
     /* name << "core-" << test_var+1 << ".cnf.trace"; */
     /* FILE* core = fopen(name.str().c_str(), "w"); */
     release_assert(pret != 0 && "Traces cannot be generated in PicoSAT");
-    for(const auto& l: assumptions) {
-        cdcl->add(lit_to_pl(l));
-        cdcl->add(0);
-    }
     for(const auto& c: mini_cls) {
         for(const auto& l: c) cdcl->add(lit_to_pl(l));
         cdcl->add(0);
@@ -667,5 +647,5 @@ void Extend::fill_solver(const SimplifiedCNF& cnf) {
         }
         solver->add_clause(cl2);
     }
-    for(const auto& v: cnf.sampl_vars) seen[v] = 0;
+    for(const auto& v: cnf.opt_sampl_vars) seen[v] = 0;
 }

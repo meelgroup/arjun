@@ -68,6 +68,8 @@ int sbva_lits_cutoff = 5;
 int sbva_tiebreak = 1;
 int do_bce = true;
 int debug_synt = false;
+int do_backbone = true;
+int do_synth_bve = false;
 
 int synthesis = false;
 int do_unate = false;
@@ -110,6 +112,14 @@ void add_arjun_options()
         .action([&](const auto& a) {do_unate = std::atoi(a.c_str());})
         .default_value(do_unate)
         .help("Perform unate analysis");
+    program.add_argument("--backbone")
+        .action([&](const auto& a) {do_backbone = std::atoi(a.c_str());})
+        .default_value(do_backbone)
+        .help("Perform backbone analysis");
+    program.add_argument("--synthbve")
+        .action([&](const auto& a) {do_synth_bve = std::atoi(a.c_str());})
+        .default_value(do_synth_bve)
+        .help("Perform BVE for synthesis");
     program.add_argument("--revbce")
         .action([&](const auto& a) {do_revbce = std::atoi(a.c_str());})
         .default_value(do_revbce)
@@ -317,14 +327,13 @@ void do_synthesis() {
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, all_indep);
     if (do_pre_manthan) {
-        arjun->only_backbone(cnf);
+        if (do_backbone) arjun->only_backbone(cnf);
         if (do_unate) arjun->only_unate(cnf);
-        // First we extend
-        arjun->only_unsat_define(cnf);
-
-        // Then we BVE
-        simp_conf.bve_too_large_resolvent = -1;
-        cnf = arjun->only_get_simplified_cnf(cnf, simp_conf);
+        if (do_extend_indep) arjun->only_unsat_define(cnf);
+        if (do_synth_bve) {
+            simp_conf.bve_too_large_resolvent = -1;
+            cnf = arjun->only_get_simplified_cnf(cnf, simp_conf);
+        }
         /* if (do_revbce) arjun->only_reverse_bce(cnf); */
 
         // We need to get back to functions for this to work
@@ -345,11 +354,9 @@ void do_synthesis() {
 void do_minimize() {
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, all_indep);
-    arjun->only_backbone(cnf);
+    if (do_backbone) arjun->only_backbone(cnf);
     const auto orig_sampl_vars = cnf.sampl_vars;
-    if (do_minim_indep) {
-        arjun->only_run_minimize_indep(cnf);
-    }
+    if (do_minim_indep) arjun->only_run_minimize_indep(cnf);
     if (!debug_minim.empty()) {
         cnf.write_simpcnf(debug_minim, false, true);
         auto cnf2 = cnf;
