@@ -273,11 +273,12 @@ struct MyTracer : public Tracer {
               }
           }
           assert(res_lit != lit_Undef);
-          bool resolvent_is_input = input.count(res_lit.var());
-          if (resolvent_is_input) f = fh.compose_and(f, fs[id2]);
+          bool input_or_copy = input.count(res_lit.var()) || res_lit.var() >= (uint32_t)orig_num_vars;
+          if (input_or_copy) f = fh.compose_and(f, fs[id2]);
           else f = fh.compose_or(f, fs[id2]);
       }
       fs[id] = f;
+      cout << "intermediate formula: " << fs[id] << endl;
       if (clause.empty()) {
           out = f;
           cout << "Final formula: " << f << endl;
@@ -290,11 +291,11 @@ struct MyTracer : public Tracer {
       cout << " cl: ";
       cls[id] = pl_to_lit_cl(clause);
       for(const auto& l: clause) cout << l << " "; cout << endl;
-      bool is_orig = true;
+      bool formula_A = true;
       for(const auto& l : clause) {
-          if (abs(l)-1 >= orig_num_vars) {is_orig = false; break;}
+          if (abs(l)-1 >= orig_num_vars) {formula_A = false; break;}
       }
-      if (is_orig) {
+      if (formula_A) {
           // output of formula is equal to the set of inputs being satisfied or not in this CL
           vector<Lit> cl;
           for(const auto& l: clause) {
@@ -314,6 +315,7 @@ struct MyTracer : public Tracer {
       } else {
           fs[id] = fh.constant_formula(true);
       }
+      cout << "intermediate formula: " << fs[id] << endl;
   }
   SATSolver ss;
   int32_t def_v;
