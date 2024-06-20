@@ -389,7 +389,7 @@ void Extend::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var,
     // picosat on the core only, on a simplified CNF
     CaDiCaL::Solver* cdcl = new Solver();
     MyTracer t(test_var, orig_num_vars, cnf.opt_sampl_vars);
-    t.ss.new_vars(orig_num_vars*2);
+    t.ss.new_vars(solver->nVars());
     t.ss.new_var();
     t.fh.my_true_lit = Lit(t.ss.nVars()-1, false);
     t.fh.solver = &t.ss;
