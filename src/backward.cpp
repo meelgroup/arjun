@@ -103,7 +103,9 @@ void Minimize::print_sorted_unknown(const vector<uint32_t>& unknown) const
 }
 
 void Minimize::backward_round() {
+#ifndef NDEBUG
     for(const auto& x: seen) assert(x == 0);
+#endif
     double start_round_time = cpuTime();
     //start with empty independent set
     vector<uint32_t> indep;
@@ -346,7 +348,9 @@ void Minimize::backward_round() {
 }
 
 void Minimize::backward_round_synth() {
+#ifndef NDEBUG
     for(const auto& x: seen) assert(x == 0);
+#endif
     double start_round_time = cpuTime();
     vector<uint32_t> indep;
 

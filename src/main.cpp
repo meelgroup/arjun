@@ -62,7 +62,7 @@ int redundant_cls = true;
 int compute_indep = true;
 int simptofile = true;
 int sampl_start_at_zero = false;
-int64_t sbva_steps = 1000;
+int64_t sbva_steps = 1;
 int sbva_cls_cutoff = 4;
 int sbva_lits_cutoff = 5;
 int sbva_tiebreak = 1;
@@ -124,6 +124,10 @@ void add_arjun_options()
         .action([&](const auto& a) {sbva_lits_cutoff = std::atoi(a.c_str());})
         .default_value(sbva_lits_cutoff)
         .help("SBVA heuristic cutoff. The higher, the more it needs to improve to be applied");
+    program.add_argument("--findbins")
+        .action([&](const auto& a) {conf.oracle_find_bins = std::atoi(a.c_str());})
+        .default_value(conf.oracle_find_bins)
+        .help("How aggressively find binaries via oracle");
     program.add_argument("--sbvabreak")
         .action([&](const auto& a) {
                 sbva_tiebreak = std::atoi(a.c_str());
@@ -300,6 +304,9 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_backw_max_confl(conf.backw_max_confl);
     arj->set_gauss_jordan(conf.gauss_jordan);
     arj->set_simp(conf.simp);
+    arj->set_extend_max_confl(conf.extend_max_confl);
+    arj->set_backbone_only_optindep(conf.backbone_only_optindep);
+    arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 
 void do_synthesis() {
@@ -326,9 +333,7 @@ void do_minimize() {
     read_in_a_file(input_file, &cnf, all_indep);
     arjun->only_backbone(cnf);
     const auto orig_sampl_vars = cnf.sampl_vars;
-    if (do_minim_indep) {
-        arjun->only_run_minimize_indep(cnf);
-    }
+    if (do_minim_indep) arjun->only_run_minimize_indep(cnf);
     if (!debug_minim.empty()) {
         cnf.write_simpcnf(debug_minim, false, true);
         auto cnf2 = cnf;
@@ -341,7 +346,10 @@ void do_minimize() {
             do_extend_indep, do_bce,
             do_unate, simp_conf,
             sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
-
+        if (all_indep) {
+            cnf.opt_sampl_vars.clear();
+            for(uint32_t i = 0; i < cnf.nVars(); i++) cnf.opt_sampl_vars.push_back(i);
+        }
         cnf.write_simpcnf(elimtofile, redundant_cls, true);
         cout << "c o [arjun] dumped simplified problem to '" << elimtofile << "'" << endl;
     } else {
