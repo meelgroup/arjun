@@ -115,7 +115,7 @@ struct Minimize
         const vector<uint32_t>& indep);
     void fill_solver(const ArjunNS::SimplifiedCNF& cnf);
     void backward_round();
-    void backward_round_synth();
+    void backward_round_synth(ArjunNS::SimplifiedCNF& cnf);
     void order_by_file(const string& fname, vector<uint32_t>& unknown);
     void print_sorted_unknown(const vector<uint32_t>& unknown) const;
 };

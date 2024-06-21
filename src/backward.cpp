@@ -110,8 +110,7 @@ void Minimize::backward_round() {
 
     //Initially, all of samping_set is unknown
     vector<uint32_t> unknown;
-    vector<char> unknown_set;
-    unknown_set.resize(orig_num_vars, 0);
+    vector<char> unknown_set(orig_num_vars, 0);
     for(const auto& x: sampling_vars) {
         assert(x < orig_num_vars);
         assert(unknown_set[x] == 0 && "No var should be in 'sampling_vars' twice!");
@@ -345,100 +344,62 @@ void Minimize::backward_round() {
     if (conf.verb >= 4) solver->print_stats();
 }
 
-void Minimize::backward_round_synth() {
+void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     for(const auto& x: seen) assert(x == 0);
     double start_round_time = cpuTime();
     vector<uint32_t> indep;
 
     //Initially, all of samping_set is unknown
+    vector<char> unknown_set(orig_num_vars, 0);
     vector<uint32_t> unknown;
-    vector<char> unknown_set;
-    unknown_set.resize(orig_num_vars, 0);
     set<uint32_t> dep;
-    set<uint32_t> curr_sampl_set;
-    for(const auto& x: sampling_vars) curr_sampl_set.insert(x);
+    set<uint32_t> opt_sampl_vars;
+    for(const auto& x: cnf.opt_sampl_vars) opt_sampl_vars.insert(x);
     for(uint32_t x = 0; x < orig_num_vars; x++) {
-        if (curr_sampl_set.count(x)) {
+        if (opt_sampl_vars.count(x)) {
             solver->add_clause({Lit(var_to_indic[x], false)});
-            dep.insert(x);
             continue;
         }
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
-    cout << "dep size: " << dep.size() << endl;
     sort_unknown(unknown, incidence);
-    if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
     print_sorted_unknown(unknown);
     verb_print(1, "[arjun] Start unknown size: " << unknown.size());
     solver->set_verbosity(0);
 
     vector<Lit> assumptions;
-    bool quick_pop_ok = false;
-    uint32_t indic_var = var_Undef;
     uint32_t ret_true = 0;
     uint32_t ret_false = 0;
     uint32_t ret_undef = 0;
     while(true) {
         uint32_t test_var = var_Undef;
-        if (quick_pop_ok) {
-            //Remove 2 last
-            assumptions.pop_back();
-            assumptions.pop_back();
-
-            //No more left, try again with full
-            if (assumptions.empty()) {
-                verb_print(5, "[arjun] No more left, try again with full");
+        while(!unknown.empty()) {
+            uint32_t var = unknown.back();
+            if (unknown_set[var]) {
+                test_var = var;
+                unknown.pop_back();
                 break;
+            } else {
+                unknown.pop_back();
             }
+        }
 
-            indic_var = assumptions[assumptions.size()-1].var();
-            assumptions.pop_back();
-            assert(indic_var < indic_to_var.size());
-            test_var = indic_to_var[indic_var];
-            assert(test_var != var_Undef);
-            assert(test_var < orig_num_vars);
-
-            //something is messed up
-            if (!unknown_set[test_var]) {
-                quick_pop_ok = false;
-                continue;
-            }
-            uint32_t last_unkn = unknown[unknown.size()-1];
-            assert(last_unkn == test_var);
-            unknown.pop_back();
-        } else {
-            while(!unknown.empty()) {
-                uint32_t var = unknown[unknown.size()-1];
-                if (unknown_set[var]) {
-                    test_var = var;
-                    unknown.pop_back();
-                    break;
-                } else {
-                    unknown.pop_back();
-                }
-            }
-
-            if (test_var == var_Undef) {
-                //we are done, backward is finished
-                verb_print(5, "[arjun] we are done, backward is finished");
-                break;
-            }
-            indic_var = var_to_indic[test_var];
+        if (test_var == var_Undef) {
+            //we are done, backward is finished
+            verb_print(5, "[arjun] we are done, backward is finished");
+            break;
         }
         assert(test_var < orig_num_vars);
-        assert(unknown_set[test_var] == 1);
+        assert(unknown_set[test_var]);
         unknown_set[test_var] = 0;
         /* cout << "Testing: " << test_var << endl; */
 
         //Assumption filling
         assert(test_var != var_Undef);
-        if (!quick_pop_ok) {
-            fill_assumptions_backward(assumptions, unknown, unknown_set, indep);
-        }
+        fill_assumptions_backward(assumptions, unknown, unknown_set, indep);
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
-
         solver->set_no_confl_needed();
 
         lbool ret = l_Undef;
@@ -459,17 +420,14 @@ void Minimize::backward_round_synth() {
         assert(unknown_set[test_var] == 0);
         if (ret == l_Undef) {
             //Timed out, we'll treat is as unknown
-            quick_pop_ok = false;
             assert(test_var < orig_num_vars);
             indep.push_back(test_var);
         } else if (ret == l_True) {
             //Independent
-            quick_pop_ok = false;
             indep.push_back(test_var);
         } else if (ret == l_False) {
             //not independent
             //i.e. given that all in indep+unkown is equivalent, it's not possible that a1 != b1
-            quick_pop_ok = true;
             dep.insert(test_var);
         }
     }

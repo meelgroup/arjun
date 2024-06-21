@@ -103,6 +103,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     assert(cnf.opt_sampl_vars_set);
     uint32_t start_size = cnf.opt_sampl_vars.size();
     fill_solver(cnf);
+
     solver->set_verbosity(0);
     solver->set_scc(1);
 
@@ -115,6 +116,11 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     for(const auto& p: ret2) no_need.insert(p.var());
     for(const auto& v: cnf.opt_sampl_vars) no_need.insert(v);
     add_all_indics_except(no_need);
+
+    // Generate my_true_lit
+    solver->new_var();
+    assert(cnf.my_true_lit == lit_Undef);
+    cnf.my_true_lit = Lit(solver->nVars()-1, false);
 
     assert(ps == nullptr);
     ps = picosat_init();
@@ -231,6 +237,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             << " SAT: " << sat
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
+    cnf.last_formula_var = solver->nVars();
 }
 
 struct MyTracer : public Tracer {
@@ -392,8 +399,7 @@ void Extend::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var,
     CaDiCaL::Solver* cdcl = new Solver();
     MyTracer t(test_var, orig_num_vars, cnf.opt_sampl_vars);
     t.ss.new_vars(solver->nVars());
-    t.ss.new_var();
-    t.fh.my_true_lit = Lit(t.ss.nVars()-1, false);
+    t.fh.my_true_lit = cnf.my_true_lit;
     t.fh.solver = &t.ss;
     cout << "true lit: " << t.fh.my_true_lit << endl;
 
@@ -435,6 +441,8 @@ void Extend::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var,
     /* fclose(core); */
     cdcl->disconnect_proof_tracer(&t);
     delete cdcl;
+    cnf.funcs[test_var] = t.out;
+    cnf.funcs[test_var].finished = true;
     cout << "----------------------------" << endl;
 }
 

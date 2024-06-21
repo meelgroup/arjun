@@ -61,7 +61,6 @@ class Manthan {
         Lit my_true_lit;
 
 
-        map<uint32_t, FHolder::Formula> funcs; // output -> formula
         map<uint32_t, uint32_t> y_to_y_hat;
         map<uint32_t, uint32_t> y_hat_to_y;
 

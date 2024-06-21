@@ -233,15 +233,14 @@ void Minimize::fill_solver(const ArjunNS::SimplifiedCNF& cnf) {
     }
 }
 
-
 void Minimize::run_minimize_for_synth(ArjunNS::SimplifiedCNF& cnf) {
     fill_solver(cnf);
     init();
     get_incidence();
     duplicate_problem(cnf);
     add_fixed_clauses(true);
-    backward_round_synth();
-    cnf.opt_sampl_vars = sampling_vars;
+    backward_round_synth(cnf);
+    assert(false && "what to do??");
 }
 
 void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {

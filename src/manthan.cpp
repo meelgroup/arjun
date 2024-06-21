@@ -63,13 +63,6 @@ void Manthan::inject_cnf(SATSolver& s) {
     s.new_vars(cnf.nVars());
     for(const auto& c: cnf.clauses) s.add_clause(c);
     for(const auto& c: cnf.red_clauses) s.add_red_clause(c);
-
-}
-
-void Manthan::inject_unit(SATSolver& s) {
-    s.new_vars(1);
-    my_true_lit = Lit(s.nVars()-1, false);
-    s.add_clause({my_true_lit});
 }
 
 vector<vector<lbool>> Manthan::get_samples(uint32_t num) {
@@ -115,9 +108,14 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 
     // Training
     inject_cnf(solver_train);
-    inject_unit(solver_train);
+    my_true_lit = cnf.my_true_lit;
     fh.my_true_lit = my_true_lit;
     fh.solver = &solver_train;
+    assert(cnf.last_formula_var > solver_train.nVars());
+    for(uint32_t i = solver_train.nVars(); solver_train.nVars() < cnf.last_formula_var; i++)
+        solver_train.new_var();
+    assert(solver_train.nVars() == cnf.last_formula_var);
+
     cout << "True lit: " << my_true_lit << endl;
     vector<uint32_t> to_train;
     to_train.reserve(output.size());
@@ -276,10 +274,10 @@ void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vec
     }
     f.out = fresh_l;
     // when fresh_l is false, confl is satisfied
-    verb_print(3, "Original formula for " << y_rep+1 << ":" << endl << funcs[y_rep]);
+    verb_print(3, "Original formula for " << y_rep+1 << ":" << endl << cnf.funcs[y_rep]);
     verb_print(2, "Branch formula. When this is true, H is wrong:" << endl << f);
-    funcs[y_rep] = fh.compose_ite(fh.constant_formula(ctx[y_rep] == l_True), funcs[y_rep], f);
-    verb_print(3, "repaired formula for " << y_rep+1 << ":" << endl << funcs[y_rep]);
+    cnf.funcs[y_rep] = fh.compose_ite(fh.constant_formula(ctx[y_rep] == l_True), cnf.funcs[y_rep], f);
+    verb_print(3, "repaired formula for " << y_rep+1 << ":" << endl << cnf.funcs[y_rep]);
     verb_print(1, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
     //We fixed the ctx on this variable
 }
@@ -411,7 +409,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     // Inject the formulas into the solver
     // Replace y with y_hat
     // TODO: have flag of what clause has already been added
-    for(const auto& f: funcs) {
+    for(const auto& f: cnf.funcs) {
         const auto& form = f.second;
         for(const auto& cl: form.clauses) {
             vector<Lit> cl2;
@@ -434,8 +432,8 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
         solver_train.new_var();
         uint32_t ind = solver_train.nVars()-1;
 
-        assert(funcs.count(y));
-        auto func_out = funcs[y].out;
+        assert(cnf.funcs.count(y));
+        auto func_out = cnf.funcs[y].out;
         auto y_hat = y_to_y_hat[y];
 
         y_hat_to_indic[y_hat] = ind;
@@ -471,8 +469,13 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
         return false;
     } else {
         assert(ret == l_False);
-        /* vector<Lit> conflict = solver_train.get_conflict(); */
         cout << "Function is good!" << endl;
+        for(auto& f: cnf.funcs) {
+            if (!f.second.finished) {
+                cout << "Marking Function for " << f.first+1 << " as finished" << endl;
+                f.second.finished = true;
+            }
+        }
         return true;
     }
 }
@@ -586,7 +589,7 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
     verb_print(1, "Training error: " << train_error << "%." << " on v: " << v+1);
     /* r.serialize(cout, 1); */
 
-    funcs[v] = recur(&r, v, 0);
+    cnf.funcs[v] = recur(&r, v, 0);
     // Forward dependency update
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
         if (dependency_mat[i][v]) {
@@ -595,7 +598,7 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
             }
         }
     }
-    verb_print(3, "Formula for " << v+1 << ":" << endl << funcs[v]);
+    verb_print(3, "Formula for " << v+1 << ":" << endl << cnf.funcs[v]);
     verb_print(2,"Done training variable: " << v+1);
     verb_print(2, "------------------------------");
 }
