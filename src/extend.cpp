@@ -547,5 +547,5 @@ void Extend::fill_solver(const SimplifiedCNF& cnf) {
         }
         solver->add_clause(cl2);
     }
-    for(const auto& v: cnf.sampl_vars) seen[v] = 0;
+    for(const auto& v: cnf.opt_sampl_vars) seen[v] = 0;
 }
