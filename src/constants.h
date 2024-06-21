@@ -22,6 +22,9 @@
  THE SOFTWARE.
  */
 
+#pragma once
+
+#include "cryptominisat5/solvertypesmini.h"
 #include <iostream>
 #include <string>
 #include <vector>
@@ -46,6 +49,22 @@ using std::setw;
 #define COLREDBG "\033[41m"
 //default
 #define COLDEF "\033[0m"
+
+
+// lit to picolit
+inline int lit_to_pl(const CMSat::Lit l) {
+    int picolit = (l.var()+1) * (l.sign() ? -1 : 1);
+    return picolit;
+}
+inline CMSat::Lit pl_to_lit(const int l) {
+    uint32_t v = abs(l)-1;
+    return CMSat::Lit(v, l < 0);
+}
+inline vector<CMSat::Lit> pl_to_lit_cl(const vector<int>& cl) {
+    vector<CMSat::Lit> ret;
+    for(const auto& l: cl) ret.push_back(pl_to_lit(l));
+    return ret;
+}
 
 #define verb_print(a, x) \
     do { \

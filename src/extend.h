@@ -32,6 +32,7 @@
 #include <cryptominisat5/cryptominisat.h>
 #include "config.h"
 #include "arjun.h"
+#include "interpolant.h"
 extern "C" {
 #include "mpicosat/mpicosat.h"
 }
@@ -44,12 +45,12 @@ using namespace ArjunInt;
 using namespace ArjunNS;
 
 struct Extend {
-    Extend(const Config& _conf) : conf(_conf) {}
+    Extend(const Config& _conf) : interp(_conf), conf(_conf) {}
     ~Extend() {delete solver;}
 
     void add_all_indics_except(const set<uint32_t>& except);
     SATSolver* solver = nullptr;
-    PicoSAT* ps = nullptr;
+    Interpolant interp;
 
     uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
 
@@ -59,18 +60,14 @@ struct Extend {
     vector<uint32_t> indic_to_var; //maps an INDICATOR VAR to ORIG VAR
     vector<Lit> dont_elim;
     vector<char> seen;
-    map<uint32_t, vector<Lit>> cl_map;
-    uint32_t cl_num = 0;
 
     template<class T>
     void fill_assumptions_extend(
         vector<Lit>& assumptions,
         const T& indep);
     void extend_round(SimplifiedCNF& cnf);
-    vector<lbool> set_vals;
 
     void unsat_define(SimplifiedCNF& cnf);
-    void generate_picosat(const vector<Lit>& assumptions, uint32_t test_var,SimplifiedCNF& cnf);
     Config conf;
 
     void fill_solver(const SimplifiedCNF& cnf);
