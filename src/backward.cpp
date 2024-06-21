@@ -24,6 +24,8 @@
 
 #include "minimize.h"
 #include "constants.h"
+#include "interpolant.h"
+#include "src/interpolant.h"
 #include "src/time_mem.h"
 #include <set>
 
@@ -348,6 +350,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     for(const auto& x: seen) assert(x == 0);
     double start_round_time = cpuTime();
     vector<uint32_t> indep;
+    Interpolant interp;
 
     //Initially, all of samping_set is unknown
     vector<char> unknown_set(orig_num_vars, 0);
@@ -440,4 +443,5 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
             << " F: " << ret_false << " I: " << sampling_vars.size() << " T: "
         << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
+    cnf.last_formula_var = solver->nVars();
 }

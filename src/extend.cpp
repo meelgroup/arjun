@@ -198,7 +198,6 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     cnf.last_formula_var = solver->nVars();
 }
 
-
 void Extend::extend_round(SimplifiedCNF& cnf) {
     assert(cnf.opt_sampl_vars_set = true);
     double start_round_time = cpuTime();
