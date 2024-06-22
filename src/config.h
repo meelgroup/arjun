@@ -32,7 +32,7 @@ namespace ArjunInt {
 
 struct Config {
     int verb = 3;
-    int simp = 1;
+    int simp = 2;
     int fast_backw = 1;
     int distill = 1;
     int intree = 1;
@@ -42,7 +42,7 @@ struct Config {
     int xor_gates_based = 1;
     int ite_gate_based = 1;
     int irreg_gate_based = 1;
-    int probe_based = 0;
+    int probe_based = 1;
     int gauss_jordan = 0;
     int backbone_only_optindep = 0;
     double no_gates_below = 0.01;

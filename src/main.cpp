@@ -59,7 +59,6 @@ int renumber = true;
 bool gates = true;
 int do_extend_indep = true;
 int redundant_cls = true;
-int compute_indep = true;
 int simptofile = true;
 int sampl_start_at_zero = false;
 int64_t sbva_steps = 1;
@@ -128,6 +127,10 @@ void add_arjun_options()
         .action([&](const auto& a) {conf.oracle_find_bins = std::atoi(a.c_str());})
         .default_value(conf.oracle_find_bins)
         .help("How aggressively find binaries via oracle");
+    program.add_argument("--probe")
+        .action([&](const auto& a) {conf.probe_based = std::atoi(a.c_str());})
+        .default_value(conf.probe_based)
+        .help("Do probing during orignal Arjun");
     program.add_argument("--sbvabreak")
         .action([&](const auto& a) {
                 sbva_tiebreak = std::atoi(a.c_str());
