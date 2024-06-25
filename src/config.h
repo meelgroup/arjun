@@ -50,7 +50,7 @@ struct Config {
     uint32_t backw_max_confl = 20000;
     uint32_t extend_max_confl = 1000;
     bool weighted = false;
-    int oracle_find_bins = 0;
+    int oracle_find_bins = 4;
 };
 
 }
