@@ -350,7 +350,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     for(const auto& x: seen) assert(x == 0);
     double start_round_time = cpuTime();
     vector<uint32_t> indep;
-    Interpolant interp;
+    Interpolant interp(conf);
 
     //Initially, all of samping_set is unknown
     vector<char> unknown_set(orig_num_vars, 0);
