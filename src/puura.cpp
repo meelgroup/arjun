@@ -22,7 +22,6 @@
  THE SOFTWARE.
  */
 
-#include "cryptominisat5/cryptominisat.h"
 #include <cstdint>
 #include <vector>
 #include <limits>
@@ -32,8 +31,10 @@
 
 #ifdef CMS_LOCAL_BUILD
 #include "sbva.h"
+#include "cryptominisat.h"
 #else
 #include <sbva/sbva.h>
+#include "cryptominisat5/cryptominisat.h"
 #endif
 #include "time_mem.h"
 #include "puura.h"
