@@ -24,7 +24,7 @@
 
 #include "common.h"
 #ifdef CMS_LOCAL_BUILD
-#include "python/cryptominisat/src/solvertypesmini.h"
+#include "solvertypesmini.h"
 #else
 #include "cryptominisat5/solvertypesmini.h"
 #endif
