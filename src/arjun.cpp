@@ -24,7 +24,12 @@
 
 #include <utility>
 #include <limits>
+
+#ifdef CMS_LOCAL_BUILD
+#include "sbva.h"
+#else
 #include <sbva/sbva.h>
+#endif
 
 #include "arjun.h"
 #include "config.h"

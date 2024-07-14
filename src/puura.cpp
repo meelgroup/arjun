@@ -30,7 +30,11 @@
 #include <iomanip>
 #include <random>
 
+#ifdef CMS_LOCAL_BUILD
+#include "sbva.h"
+#else
 #include <sbva/sbva.h>
+#endif
 #include "time_mem.h"
 #include "puura.h"
 #include "arjun.h"
