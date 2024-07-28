@@ -217,29 +217,6 @@ namespace ArjunNS {
             if (weighted  && !proj) outf << "c t wmc" << std::endl;
             if (!weighted &&  proj) outf << "c t pmc" << std::endl;
             if (!weighted && !proj) outf << "c t mc" << std::endl;
-
-            //Add projection
-            outf << "c p show ";
-            auto sampl = sampl_vars;
-            std::sort(sampl.begin(), sampl.end());
-            for(const auto& v: sampl) {
-                assert(v < nvars);
-                outf << v+1  << " ";
-            }
-            outf << "0\n";
-            outf << "c p optshow ";
-            sampl = opt_sampl_vars;
-            std::sort(sampl.begin(), sampl.end());
-            for(const auto& v: sampl) {
-                assert(v < nvars);
-                outf << v+1  << " ";
-            }
-            outf << "0\n";
-
-            for(const auto& cl: clauses) outf << cl << " 0\n";
-            if (red) for(const auto& cl: red_clauses)
-                outf << "c red " << cl << " 0\n";
-
             if (weighted) {
                 for(const auto& it: weights) {
                     outf << "c p weight " << CMSat::Lit(it.first,false) << " ";
@@ -258,6 +235,28 @@ namespace ArjunNS {
                     }
                 }
             }
+
+            for(const auto& cl: clauses) outf << cl << " 0\n";
+            if (red) for(const auto& cl: red_clauses)
+                outf << "c red " << cl << " 0\n";
+
+            //Add projection
+            outf << "c p show ";
+            auto sampl = sampl_vars;
+            std::sort(sampl.begin(), sampl.end());
+            for(const auto& v: sampl) {
+                assert(v < nvars);
+                outf << v+1  << " ";
+            }
+            outf << "0\n";
+            outf << "c p optshow ";
+            sampl = opt_sampl_vars;
+            std::sort(sampl.begin(), sampl.end());
+            for(const auto& v: sampl) {
+                assert(v < nvars);
+                outf << v+1  << " ";
+            }
+            outf << "0\n";
             outf << "c MUST MULTIPLY BY " << multiplier_weight << std::endl;
         }
 
