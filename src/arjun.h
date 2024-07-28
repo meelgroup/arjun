@@ -139,6 +139,13 @@ namespace ArjunNS {
         void set_projected(bool _projected) { proj = _projected; }
         bool get_weighted() const { return weighted; }
         bool get_projected() const { return proj; }
+        void clear_weights_for_nonprojected_vars() {
+            if (!weighted) return;
+            std::set<uint32_t> tmp(sampl_vars.begin(), sampl_vars.end());
+            for(uint32_t i = 0; i < nVars(); i++) {
+                if (tmp.count(i) == 0) unset_var_weight(i);
+            }
+        }
 
         std::vector<CMSat::Lit>& map_cl(std::vector<CMSat::Lit>& cl, std::vector<uint32_t> v_map) {
                 for(auto& l: cl) l = CMSat::Lit(v_map[l.var()], l.sign());
