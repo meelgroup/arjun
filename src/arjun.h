@@ -448,6 +448,7 @@ namespace ArjunNS {
         void set_extend_max_confl(uint32_t extend_max_confl);
         void set_backbone_only_optindep(bool backbone_only_optindep);
         void set_oracle_find_bins(int oracle_find_bins);
+        void set_cms_mult(double cms_mult);
 
         //Get config
         uint32_t get_verb() const;
@@ -474,6 +475,7 @@ namespace ArjunNS {
         uint32_t get_extend_max_confl() const;
         bool get_backbone_only_optindep() const;
         int get_oracle_find_bins() const;
+        double get_cms_mult() const;
 
     private:
         ArjPrivateData* arjdata = nullptr;

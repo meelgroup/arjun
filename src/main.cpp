@@ -74,6 +74,7 @@ int do_revbce = false;
 int do_minim_indep = true;
 bool all_indep = false;
 string debug_minim;
+double cms_mult = -1.0;
 
 void add_arjun_options()
 {
@@ -264,6 +265,10 @@ void add_arjun_options()
     program.add_argument("--debugminim")
         .action([&](const auto& a) {debug_minim = a;})
         .help("Create this file that is the CNF after indep set minimization");
+    program.add_argument("--cmsmult")
+        .action([&](const auto& a) {conf.cms_mult = std::atof(a.c_str());})
+        .default_value(conf.cms_mult)
+        .help("Multiply timeouts in CMS by this. Default is -1, which means no change");
 
     program.add_argument("files").remaining().help("input file and output file");
 }
@@ -290,6 +295,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_specified_order_fname(conf.specified_order_fname);
     arj->set_intree(conf.intree);
     arj->set_bve_pre_simplify(conf.bve_pre_simplify);
+    arj->set_cms_mult(conf.cms_mult);
     if (gates) {
       arj->set_or_gate_based(conf.or_gate_based);
       arj->set_ite_gate_based(conf.ite_gate_based);

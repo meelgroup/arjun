@@ -144,6 +144,7 @@ void Minimize::set_up_solver()
     solver->set_distill(conf.distill && conf.simp);
     solver->set_sls(false);
     solver->set_find_xors(false);
+    if (conf.cms_mult > 0) solver->set_orig_global_timeout_multiplier(conf.cms_mult);
 }
 
 bool Minimize:: simplify_bve_only() {

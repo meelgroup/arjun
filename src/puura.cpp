@@ -260,6 +260,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     verb_print(3, "Running "<< __PRETTY_FUNCTION__);
     solver->set_renumber(true);
     solver->set_scc(true);
+    if (conf.cms_mult > 0) solver->set_orig_global_timeout_multiplier(conf.cms_mult);
     set_up_sampl_vars_dont_elim(cnf);
 
     //Below works VERY WELL for: ProcessBean, pollard, track1_116.mcc2020_cnf

@@ -51,6 +51,7 @@ struct Config {
     uint32_t extend_max_confl = 1000;
     bool weighted = false;
     int oracle_find_bins = 4;
+    double cms_mult = -1.0;
 };
 
 }
