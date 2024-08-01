@@ -316,6 +316,7 @@ void do_synthesis() {
     assert(!elimtofile.empty());
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, all_indep);
+    if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
     arjun->only_backbone(cnf);
     if (do_unate) arjun->only_unate(cnf);
 
@@ -334,6 +335,7 @@ void do_synthesis() {
 void do_minimize() {
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, all_indep);
+    if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
     arjun->only_backbone(cnf);
     const auto orig_sampl_vars = cnf.sampl_vars;
     if (do_minim_indep) arjun->only_run_minimize_indep(cnf);
