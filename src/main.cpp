@@ -56,8 +56,8 @@ string elimtofile;
 
 SimpConf simp_conf;
 int renumber = true;
-bool gates = true;
-int do_extend_indep = true;
+int gates = 1;
+int do_extend_indep = 1;
 int redundant_cls = true;
 int simptofile = true;
 int sampl_start_at_zero = false;
@@ -65,9 +65,9 @@ int64_t sbva_steps = 1;
 int sbva_cls_cutoff = 4;
 int sbva_lits_cutoff = 5;
 int sbva_tiebreak = 1;
-int do_bce = true;
+int do_bce = 1;
 int debug_synt = false;
-int do_pre_backbone = false;
+int do_pre_backbone = 0;
 
 int synthesis = false;
 int do_unate = false;
