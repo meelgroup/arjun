@@ -15,10 +15,13 @@
 echo "Running on CNF file $1"
 
 fname="$1-noind"
+rm -f "$fname-simplified-arjun"
+rm -f "$fname-simplified-puura"
+rm -f "$fname-simplified-bpe"
+rm -f "$fname-simplified-sstd"
+
 grep -v "c ind" "$1" > "$fname"
 echo "Running Arjun..."
-# config=""
-# config="--gates 1 --empty 1 --irreggate 0"
 stuff="${@:2}"
 
 exec="./arjun --sbva 0 $stuff $fname $fname-simplified-arjun"
@@ -32,14 +35,20 @@ echo "Executing: $exec"
 echo "Running BPE (new, compiled)"
 /usr/bin/time ./BiPe -preproc "$fname" > "$fname-simplified-bpe" &
 
-# echo "Running SSTD"
-# /usr/bin/time ../../sharpsat-td/build/sharpSAT-prepro "$fname" > "$fname-simplified-sstd" &
+echo "Running SSTD"
+/usr/bin/time ../../sharpsat-td/build/sharpSAT-prepro "$fname" > "$fname-simplified-sstd" &
 
 wait
-./count_literals.py "$fname-simplified-puura" >"${fname}_count_puura_out"
-./count_literals.py "$fname-simplified-bpe" > "${fname}_count_bpe_out"
+
+rm -f "${fname}_count_puura_out"
+rm -f "${fname}_count_bpe_out"
+rm -f "${fname}_count_sstd_out"
+rm -f "${fname}_count_arjun_out"
+
+# ./count_literals.py "$fname-simplified-puura" >"${fname}_count_puura_out"
+# ./count_literals.py "$fname-simplified-bpe" > "${fname}_count_bpe_out"
 # ./count_literals.py "$fname-simplified-sstd" > "${fname}_count_sstd_out"
-./count_literals.py "$fname-simplified-arjun" >"${fname}_count_arjun_out"
+./count_literals.py "$fname-simplified-arjun" > "${fname}_count_arjun_out"
 
 echo "ARJUN vs PUURA vs BPE (new, compiled) vs SSTD"
 paste "${fname}_count_arjun_out" "${fname}_count_puura_out" "${fname}_count_bpe_out" "${fname}_count_sstd_out"
