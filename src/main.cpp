@@ -67,6 +67,7 @@ int sbva_lits_cutoff = 5;
 int sbva_tiebreak = 1;
 int do_bce = true;
 int debug_synt = false;
+int do_pre_backbone = false;
 
 int synthesis = false;
 int do_unate = false;
@@ -112,6 +113,10 @@ void add_arjun_options()
         .action([&](const auto& a) {sbva_steps = std::atoi(a.c_str());})
         .default_value(sbva_steps)
         .help("SBVA timeout. 0 = no sbva");
+    program.add_argument("--prebackbone")
+        .action([&](const auto& a) {do_pre_backbone = std::atoi(a.c_str());})
+        .default_value(do_pre_backbone)
+        .help("Perform backbone before other things");
     program.add_argument("--debugsynt")
         .action([&](const auto&) {debug_synt = true;})
         .flag()
@@ -342,7 +347,7 @@ void do_minimize() {
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, all_indep);
     if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
-    arjun->only_backbone(cnf);
+    if (do_pre_backbone) arjun->only_backbone(cnf);
     const auto orig_sampl_vars = cnf.sampl_vars;
     if (do_minim_indep) arjun->only_run_minimize_indep(cnf);
     if (!debug_minim.empty()) {

@@ -46,7 +46,7 @@ namespace ArjunNS {
         int bve_grow_iter1 = 0;
         int bve_grow_iter2 = 6;
         bool appmc = false;
-        int bve_too_large_resolvent = -1;
+        int bve_too_large_resolvent = 12;
         int do_subs_with_resolvent_clauses = 0;
         bool do_backbone_puura = true;
     };
