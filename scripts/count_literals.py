@@ -73,7 +73,8 @@ with open(sys.argv[1], "r") as f:
                     if var != abs(var):
                         print("ERROR! c p show contains LITERAL not VARIABLE!")
                         exit(-1)
-                    opt_input_vars[var] = True
+                    if var != 0:
+                        opt_input_vars[var] = True
                     if var > num_vars:
                         print("Error! Var %s in 'c p show' but num vars promised to be: %s" % (var, num_vars))
                         exit(-1)
