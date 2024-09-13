@@ -291,4 +291,3 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
     verb_print(1, "[arjun] run_minimize_indep finished "
         << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time));
 }
-
