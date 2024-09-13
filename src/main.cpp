@@ -348,7 +348,8 @@ void do_synthesis() {
     read_in_a_file(input_file, &cnf, all_indep);
     if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
     if (do_pre_manthan) {
-        if (do_pre_backbone) arjun->only_backbone(cnf);
+        cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
+        arjun->only_backbone(cnf);
         if (do_unate) arjun->only_unate(cnf);
         if (do_synth_bve) {
             simp_conf.bve_too_large_resolvent = -1;
