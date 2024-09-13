@@ -189,10 +189,9 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     inject_cnf(solver);
 
 
-    vector<Lit> assumps;
-    for(const auto& x: input) {
+    vector<Lit> assumps; assumps.reserve(input.size());
+    for(const auto& x: input)
         assumps.push_back(Lit(x, ctx[x] == l_False)); //correct value
-    }
     for(const auto& y: y_order) {
         if (y == y_rep) break;
         assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen");
