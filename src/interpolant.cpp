@@ -7,9 +7,9 @@ extern "C" {
 using namespace CMSat;
 using namespace CaDiCaL;
 
-void MyTracer::add_derived_clause (uint64_t id, bool red, const std::vector<int> & clause,
+void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<int> & clause,
                                const std::vector<uint64_t> & oantec) {
-  cout << "red  ID:" << setw(4) << id;//  << " red: " << (int)red;
+  cout << "red ID:" << setw(4) << id;//  << " red: " << (int)red;
   cout << " cl: "; for(const auto& l: clause) cout << l << " "; cout << endl;
   cout << "atec: "; for(const auto& l: oantec) cout << l << " "; cout << endl;
   cls[id] = pl_to_lit_cl(clause);

@@ -32,6 +32,7 @@
 #include <vector>
 #include "constants.h"
 
+// These ask mlpack to give more info & warnings
 #define MLPACK_PRINT_INFO
 #define MLPACK_PRINT_WARN
 #include <mlpack.hpp>
@@ -40,14 +41,6 @@ using namespace arma;
 using namespace mlpack;
 using namespace mlpack::tree;
 using namespace std;
-
-#define safe_xgb(call) {  \
-  int err = (call); \
-  if (err != 0) { \
-    fprintf(stderr, "%s:%d: error in %s: %s\n", __FILE__, __LINE__, #call, XGBGetLastError());  \
-    exit(1); \
-  } \
-}
 
 using std::vector;
 using std::set;
@@ -557,27 +550,6 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
         labels[i] = samples[i][v] == l_True ? 1 : 0;
     }
 
-/* //! Construct and train. */
-/* template<typename FitnessFunction, */
-/*          template<typename> class NumericSplitType, */
-/*          template<typename> class CategoricalSplitType, */
-/*          typename DimensionSelectionType, */
-/*          bool NoRecursion> */
-/* template<typename MatType, typename LabelsType> */
-/* DecisionTree<FitnessFunction, */
-/*              NumericSplitType, */
-/*              CategoricalSplitType, */
-/*              DimensionSelectionType, */
-/*              NoRecursion>::DecisionTree( */
-/*     MatType data, */
-/*     LabelsType labels, */
-/*     const size_t numClasses, */
-/*     const size_t minimumLeafSize, */
-/*     const double minimumGainSplit, */
-/*     const size_t maximumDepth, */
-/*     DimensionSelectionType dimensionSelector) */
-
-
     // Create the RandomForest object and train it on the training data.
     DecisionTree<> r(dataset, labels, 2);
 
@@ -602,7 +574,6 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
     verb_print(2,"Done training variable: " << v+1);
     verb_print(2, "------------------------------");
 }
-
 
 void Manthan::get_incidence() {
     incidence.clear();
