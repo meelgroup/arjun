@@ -48,7 +48,7 @@ namespace ArjunNS {
         int bve_grow_iter1 = 0;
         int bve_grow_iter2 = 6;
         bool appmc = false;
-        int bve_too_large_resolvent = -1;
+        int bve_too_large_resolvent = 12;
         int do_subs_with_resolvent_clauses = 0;
         bool do_backbone_puura = true;
     };
@@ -145,6 +145,13 @@ namespace ArjunNS {
         void set_projected(bool _projected) { proj = _projected; }
         bool get_weighted() const { return weighted; }
         bool get_projected() const { return proj; }
+        void clear_weights_for_nonprojected_vars() {
+            if (!weighted) return;
+            std::set<uint32_t> tmp(sampl_vars.begin(), sampl_vars.end());
+            for(uint32_t i = 0; i < nVars(); i++) {
+                if (tmp.count(i) == 0) unset_var_weight(i);
+            }
+        }
 
         std::vector<CMSat::Lit>& map_cl(std::vector<CMSat::Lit>& cl, std::vector<uint32_t> v_map) {
                 for(auto& l: cl) l = CMSat::Lit(v_map[l.var()], l.sign());
@@ -216,29 +223,6 @@ namespace ArjunNS {
             if (weighted  && !proj) outf << "c t wmc" << std::endl;
             if (!weighted &&  proj) outf << "c t pmc" << std::endl;
             if (!weighted && !proj) outf << "c t mc" << std::endl;
-
-            //Add projection
-            outf << "c p show ";
-            auto sampl = sampl_vars;
-            std::sort(sampl.begin(), sampl.end());
-            for(const auto& v: sampl) {
-                assert(v < nvars);
-                outf << v+1  << " ";
-            }
-            outf << "0\n";
-            outf << "c p optshow ";
-            sampl = opt_sampl_vars;
-            std::sort(sampl.begin(), sampl.end());
-            for(const auto& v: sampl) {
-                assert(v < nvars);
-                outf << v+1  << " ";
-            }
-            outf << "0\n";
-
-            for(const auto& cl: clauses) outf << cl << " 0\n";
-            if (red) for(const auto& cl: red_clauses)
-                outf << "c red " << cl << " 0\n";
-
             if (weighted) {
                 for(const auto& it: weights) {
                     outf << "c p weight " << CMSat::Lit(it.first,false) << " ";
@@ -257,6 +241,28 @@ namespace ArjunNS {
                     }
                 }
             }
+
+            for(const auto& cl: clauses) outf << cl << " 0\n";
+            if (red) for(const auto& cl: red_clauses)
+                outf << "c red " << cl << " 0\n";
+
+            //Add projection
+            outf << "c p show ";
+            auto sampl = sampl_vars;
+            std::sort(sampl.begin(), sampl.end());
+            for(const auto& v: sampl) {
+                assert(v < nvars);
+                outf << v+1  << " ";
+            }
+            outf << "0\n";
+            outf << "c p optshow ";
+            sampl = opt_sampl_vars;
+            std::sort(sampl.begin(), sampl.end());
+            for(const auto& v: sampl) {
+                assert(v < nvars);
+                outf << v+1  << " ";
+            }
+            outf << "0\n";
             outf << "c MUST MULTIPLY BY " << multiplier_weight << std::endl;
         }
 
@@ -452,6 +458,7 @@ namespace ArjunNS {
         void set_backbone_only_optindep(bool backbone_only_optindep);
         void set_oracle_find_bins(int oracle_find_bins);
         void set_num_samples(int num_samples);
+        void set_cms_mult(double cms_mult);
 
         //Get config
         uint32_t get_verb() const;
@@ -479,6 +486,7 @@ namespace ArjunNS {
         bool get_backbone_only_optindep() const;
         int get_num_samples() const;
         int get_oracle_find_bins() const;
+        double get_cms_mult() const;
 
     private:
         ArjPrivateData* arjdata = nullptr;

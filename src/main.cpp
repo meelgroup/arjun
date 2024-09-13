@@ -56,20 +56,19 @@ string elimtofile;
 
 SimpConf simp_conf;
 int renumber = true;
-bool gates = true;
-int do_extend_indep = true;
+int gates = 1;
+int do_extend_indep = 1;
 int redundant_cls = true;
-int compute_indep = true;
 int simptofile = true;
 int sampl_start_at_zero = false;
-int64_t sbva_steps = 1000;
+int64_t sbva_steps = 1;
 int sbva_cls_cutoff = 4;
 int sbva_lits_cutoff = 5;
 int sbva_tiebreak = 1;
-int do_bce = true;
+int do_bce = 1;
 int debug_synt = false;
-int do_backbone = true;
 int do_synth_bve = false;
+int do_pre_backbone = 0;
 
 int synthesis = false;
 int do_unate = false;
@@ -79,6 +78,7 @@ bool all_indep = false;
 string debug_minim;
 int do_pre_manthan = false;
 int num_samples = 2000;
+double cms_mult = -1.0;
 
 void add_arjun_options()
 {
@@ -128,6 +128,10 @@ void add_arjun_options()
         .action([&](const auto& a) {sbva_steps = std::atoi(a.c_str());})
         .default_value(sbva_steps)
         .help("SBVA timeout. 0 = no sbva");
+    program.add_argument("--prebackbone")
+        .action([&](const auto& a) {do_pre_backbone = std::atoi(a.c_str());})
+        .default_value(do_pre_backbone)
+        .help("Perform backbone before other things");
     program.add_argument("--debugsynt")
         .action([&](const auto&) {debug_synt = true;})
         .flag()
@@ -143,6 +147,14 @@ void add_arjun_options()
         .action([&](const auto& a) {sbva_lits_cutoff = std::atoi(a.c_str());})
         .default_value(sbva_lits_cutoff)
         .help("SBVA heuristic cutoff. The higher, the more it needs to improve to be applied");
+    program.add_argument("--findbins")
+        .action([&](const auto& a) {conf.oracle_find_bins = std::atoi(a.c_str());})
+        .default_value(conf.oracle_find_bins)
+        .help("How aggressively find binaries via oracle");
+    program.add_argument("--probe")
+        .action([&](const auto& a) {conf.probe_based = std::atoi(a.c_str());})
+        .default_value(conf.probe_based)
+        .help("Do probing during orignal Arjun");
     program.add_argument("--sbvabreak")
         .action([&](const auto& a) {
                 sbva_tiebreak = std::atoi(a.c_str());
@@ -276,6 +288,10 @@ void add_arjun_options()
     program.add_argument("--debugminim")
         .action([&](const auto& a) {debug_minim = a;})
         .help("Create this file that is the CNF after indep set minimization");
+    program.add_argument("--cmsmult")
+        .action([&](const auto& a) {conf.cms_mult = std::atof(a.c_str());})
+        .default_value(conf.cms_mult)
+        .help("Multiply timeouts in CMS by this. Default is -1, which means no change");
 
     program.add_argument("files").remaining().help("input file and output file");
 }
@@ -302,6 +318,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_specified_order_fname(conf.specified_order_fname);
     arj->set_intree(conf.intree);
     arj->set_bve_pre_simplify(conf.bve_pre_simplify);
+    arj->set_cms_mult(conf.cms_mult);
     if (gates) {
       arj->set_or_gate_based(conf.or_gate_based);
       arj->set_ite_gate_based(conf.ite_gate_based);
@@ -320,14 +337,18 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_gauss_jordan(conf.gauss_jordan);
     arj->set_simp(conf.simp);
     arj->set_num_samples(num_samples);
+    arj->set_extend_max_confl(conf.extend_max_confl);
+    arj->set_backbone_only_optindep(conf.backbone_only_optindep);
+    arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 
 void do_synthesis() {
     /* assert(!elimtofile.empty()); */
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, all_indep);
+    if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
     if (do_pre_manthan) {
-        if (do_backbone) arjun->only_backbone(cnf);
+        if (do_pre_backbone) arjun->only_backbone(cnf);
         if (do_unate) arjun->only_unate(cnf);
         if (do_synth_bve) {
             simp_conf.bve_too_large_resolvent = -1;
@@ -335,6 +356,8 @@ void do_synthesis() {
         }
         if (do_extend_indep) arjun->only_unsat_define(cnf);
         /* if (do_revbce) arjun->only_reverse_bce(cnf); */
+    arjun->only_backbone(cnf);
+    if (do_unate) arjun->only_unate(cnf);
 
         // We need to get back to functions for this to work
         if (do_minim_indep) arjun->only_run_minimize_indep_synth(cnf);
@@ -354,7 +377,8 @@ void do_synthesis() {
 void do_minimize() {
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, all_indep);
-    if (do_backbone) arjun->only_backbone(cnf);
+    if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
+    if (do_pre_backbone) arjun->only_backbone(cnf);
     const auto orig_sampl_vars = cnf.sampl_vars;
     if (do_minim_indep) arjun->only_run_minimize_indep(cnf);
     if (!debug_minim.empty()) {
@@ -369,7 +393,10 @@ void do_minimize() {
             do_extend_indep, do_bce,
             do_unate, simp_conf,
             sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
-
+        if (all_indep) {
+            cnf.opt_sampl_vars.clear();
+            for(uint32_t i = 0; i < cnf.nVars(); i++) cnf.opt_sampl_vars.push_back(i);
+        }
         cnf.write_simpcnf(elimtofile, redundant_cls, true);
         cout << "c o [arjun] dumped simplified problem to '" << elimtofile << "'" << endl;
     } else {
