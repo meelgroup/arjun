@@ -60,9 +60,10 @@ void Manthan::inject_cnf(SATSolver& s) {
 
 vector<vector<lbool>> Manthan::get_samples(uint32_t num) {
     vector<vector<lbool>> solutions;
+    SATSolver solver_samp;
     solver_samp.set_up_for_sample_counter(1000);
     inject_cnf(solver_samp);
-    /* solver.set_verbosity(1); */
+    /* solver_samp.set_verbosity(1); */
     get_incidence();
 
     for (uint32_t i = 0; i < num; i++) {
@@ -97,7 +98,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 
     // Sampling
     vector<vector<lbool>> solutions = get_samples(conf.num_samples);
-    cout << "Got " << solutions.size() << " samples\n";
+    verb_print(1, "Got " << solutions.size() << " samples");
 
     // Training
     inject_cnf(solver_train);
@@ -109,7 +110,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         solver_train.new_var();
     assert(solver_train.nVars() == cnf.last_formula_var);
 
-    cout << "True lit: " << my_true_lit << endl;
+    verb_print(1, "True lit: " << my_true_lit);
     vector<uint32_t> to_train;
     to_train.reserve(output.size());
     for(const auto& v: output) to_train.push_back(v);
@@ -137,7 +138,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
                     << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]));
         }
         if (conf.verb >= 3) {
-            for(uint32_t i = 0; i < cnf.nVars(); i++) cout << "val " << setw(4) << i+1 << ": " << pr(ctx[i]) << " -- ";
+            for(uint32_t i = 0; i < cnf.nVars(); i++)
+                cout << "val " << setw(4) << i+1 << ": " << pr(ctx[i]) << " -- ";
             cout << endl;
         }
         needs_repair.clear();
@@ -213,9 +215,8 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     if (ret == l_True) {
         auto model = solver.get_model();
         if (conf.verb >= 3) {
-            for(uint32_t i = 0; i < cnf.nVars(); i++) {
-                cout << "model i " << i+1 << " : " << model[i] << endl;
-            }
+            for(uint32_t i = 0; i < cnf.nVars(); i++)
+                cout << "model i " << setw(5) << i+1 << " : " << model[i] << endl;
         }
         bool reached = false;
         for(const auto&y: y_order) {
@@ -461,10 +462,10 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
         return false;
     } else {
         assert(ret == l_False);
-        cout << "Function is good!" << endl;
+        verb_print(1, "Function is good!");
         for(auto& f: cnf.fh->funcs) {
             if (!f.second.finished) {
-                cout << "Marking Function for " << f.first+1 << " as finished" << endl;
+                verb_print(1, "Marking Function for " << f.first+1 << " as finished");
                 f.second.finished = true;
             }
         }
