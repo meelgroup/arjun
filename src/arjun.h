@@ -408,27 +408,24 @@ namespace ArjunNS {
         static std::string get_solver_version_info();
 
         // Perform indep set calculation
-        void only_run_minimize_indep(SimplifiedCNF& cnf);
-        void only_run_minimize_indep_synth(SimplifiedCNF& cnf);
-        void only_extend_sampl_vars(SimplifiedCNF& cnf);
-        void only_unsat_define(SimplifiedCNF& cnf);
-        void only_unate(SimplifiedCNF& cnf);
+        void standalone_minimize_indep(SimplifiedCNF& cnf);
+        void standalone_minimize_indep_synt(SimplifiedCNF& cnf);
+        void standalone_extend_sampl_set(SimplifiedCNF& cnf);
+        void standalone_unsat_define(SimplifiedCNF& cnf);
+        void standalone_unate(SimplifiedCNF& cnf);
 
         void elim_to_file(SimplifiedCNF& cnf, bool all_indep,
             bool do_extend_indep, bool do_bce,
             bool do_unate, const SimpConf& simp_conf,
             int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak);
         SimplifiedCNF only_get_simplified_cnf(const SimplifiedCNF& cnf, const SimpConf& simp_conf);
-        void only_bce(SimplifiedCNF& cnf);
-        void only_reverse_bce(SimplifiedCNF& cnf);
-        void only_backbone(SimplifiedCNF& cnf);
-        const SimplifiedCNF& get_orig_cnf() const;
-        void only_run_sbva(SimplifiedCNF& orig,
+        void standalone_bce(SimplifiedCNF& cnf);
+        void standalone_rev_bce(SimplifiedCNF& cnf);
+        void standalone_backbone(SimplifiedCNF& cnf);
+        void standalone_sbva(SimplifiedCNF& orig,
             int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,
             uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1);
-
-        //Manthan
-        SimplifiedCNF only_manthan(const SimplifiedCNF& cnf);
+        SimplifiedCNF standalone_manthan(const SimplifiedCNF& cnf);
 
         //Set config
         void set_verb(uint32_t verb);

@@ -100,22 +100,22 @@ DLL_PUBLIC std::string Arjun::get_compilation_env()
     return ArjunIntNS::get_compilation_env();
 }
 
-DLL_PUBLIC void Arjun::only_run_minimize_indep(SimplifiedCNF& cnf) {
+DLL_PUBLIC void Arjun::standalone_minimize_indep(SimplifiedCNF& cnf) {
     Minimize common(arjdata->conf);
     common.run_minimize_indep(cnf);
 }
 
-DLL_PUBLIC void Arjun::only_run_minimize_indep_synth(SimplifiedCNF& cnf) {
+DLL_PUBLIC void Arjun::standalone_minimize_indep_synt(SimplifiedCNF& cnf) {
     Minimize common(arjdata->conf);
     common.run_minimize_for_synth(cnf);
 }
 
-DLL_PUBLIC void Arjun::only_unsat_define(SimplifiedCNF& cnf) {
+DLL_PUBLIC void Arjun::standalone_unsat_define(SimplifiedCNF& cnf) {
     Extend extend(arjdata->conf);
     extend.unsat_define(cnf);
 }
 
-DLL_PUBLIC void Arjun::only_extend_sampl_vars(SimplifiedCNF& cnf)
+DLL_PUBLIC void Arjun::standalone_extend_sampl_set(SimplifiedCNF& cnf)
 {
     Extend extend(arjdata->conf);
     extend.extend_round(cnf);
@@ -130,26 +130,26 @@ DLL_PUBLIC SimplifiedCNF Arjun::only_get_simplified_cnf(
             vector<uint32_t>());
 }
 
-DLL_PUBLIC SimplifiedCNF Arjun::only_manthan(const SimplifiedCNF& cnf)
+DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(const SimplifiedCNF& cnf)
 {
     Manthan manthan(arjdata->conf);
     return manthan.do_manthan(cnf);
 }
 
-DLL_PUBLIC void Arjun::only_reverse_bce(SimplifiedCNF& cnf)
+DLL_PUBLIC void Arjun::standalone_rev_bce(SimplifiedCNF& cnf)
 {
     Puura puura(arjdata->conf);
     return puura.reverse_bce(cnf);
 }
 
 
-DLL_PUBLIC void Arjun::only_unate(SimplifiedCNF& cnf)
+DLL_PUBLIC void Arjun::standalone_unate(SimplifiedCNF& cnf)
 {
     Puura puura(arjdata->conf);
     puura.synthesis_unate(cnf);
 }
 
-DLL_PUBLIC void Arjun::only_run_sbva(SimplifiedCNF& orig,
+DLL_PUBLIC void Arjun::standalone_sbva(SimplifiedCNF& orig,
             int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak)
 {
     Puura puura(arjdata->conf);
@@ -162,7 +162,7 @@ struct Clause {
     bool red = false;
 };
 
-DLL_PUBLIC void Arjun::only_bce(SimplifiedCNF& cnf) {
+DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
     // If all variables are in opt sampling set, return
     set<uint32_t> dont_block(cnf.opt_sampl_vars.begin(),
             cnf.opt_sampl_vars.end());
@@ -246,7 +246,7 @@ void Arjun::elim_to_file(SimplifiedCNF& cnf, bool all_indep,
     simp_conf2.bve_too_large_resolvent = 4;
     cnf = only_get_simplified_cnf(cnf, simp_conf2);
     if (sbva_steps)
-        only_run_sbva(cnf, sbva_steps,
+        standalone_sbva(cnf, sbva_steps,
                 sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
     if (all_indep) {
         vector<uint32_t> all_vars;
@@ -254,16 +254,16 @@ void Arjun::elim_to_file(SimplifiedCNF& cnf, bool all_indep,
         cnf.set_opt_sampl_vars(all_vars);
     }
     if (do_extend_indep && cnf.opt_sampl_vars.size() != cnf.nvars)
-        only_extend_sampl_vars(cnf);
+        standalone_extend_sampl_set(cnf);
     if (do_bce && !cnf.get_weighted() && cnf.opt_sampl_vars.size() != cnf.nvars)
-        only_bce(cnf);
+        standalone_bce(cnf);
     if (do_unate)
-        only_unate(cnf);
+        standalone_unate(cnf);
     cnf.remove_equiv_weights();
     cnf.renumber_sampling_vars_for_ganak();
 }
 
-void Arjun::only_backbone(SimplifiedCNF& cnf) {
+void Arjun::standalone_backbone(SimplifiedCNF& cnf) {
     Puura puura(arjdata->conf);
     puura.backbone(cnf);
 }

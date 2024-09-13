@@ -230,19 +230,19 @@ void do_synthesis() {
     if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
     if (do_pre_manthan) {
         cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
-        arjun->only_backbone(cnf);
-        if (do_unate) arjun->only_unate(cnf);
+        arjun->standalone_backbone(cnf);
+        if (do_unate) arjun->standalone_unate(cnf);
         if (do_synth_bve) {
             simp_conf.bve_too_large_resolvent = -1;
             cnf = arjun->only_get_simplified_cnf(cnf, simp_conf);
         }
-        if (do_extend_indep) arjun->only_unsat_define(cnf);
-        /* if (do_revbce) arjun->only_reverse_bce(cnf); */
-    arjun->only_backbone(cnf);
-    if (do_unate) arjun->only_unate(cnf);
+        if (do_extend_indep) arjun->standalone_unsat_define(cnf);
+        /* if (do_revbce) arjun->standalone_rev_bce(cnf); */
+    arjun->standalone_backbone(cnf);
+    if (do_unate) arjun->standalone_unate(cnf);
 
         // We need to get back to functions for this to work
-        if (do_minim_indep) arjun->only_run_minimize_indep_synth(cnf);
+        if (do_minim_indep) arjun->standalone_minimize_indep_synt(cnf);
 
         /* cnf.renumber_sampling_vars_for_ganak(); */
         if (!elimtofile.empty()) write_synth(cnf, elimtofile, false);
@@ -253,16 +253,16 @@ void do_synthesis() {
     } else {
         cout << "c o [arjun] Num variables to synthesize via manthan:" << (cnf.nVars() - cnf.opt_sampl_vars.size()) << endl;
     }
-    arjun->only_manthan(cnf);
+    arjun->standalone_manthan(cnf);
 }
 
 void do_minimize() {
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, all_indep);
     if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
-    if (do_pre_backbone) arjun->only_backbone(cnf);
+    if (do_pre_backbone) arjun->standalone_backbone(cnf);
     const auto orig_sampl_vars = cnf.sampl_vars;
-    if (do_minim_indep) arjun->only_run_minimize_indep(cnf);
+    if (do_minim_indep) arjun->standalone_minimize_indep(cnf);
     if (!debug_minim.empty()) {
         cnf.write_simpcnf(debug_minim, false, true);
         auto cnf2 = cnf;
