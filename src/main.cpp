@@ -245,7 +245,7 @@ void do_synthesis() {
         if (do_minim_indep) arjun->standalone_minimize_indep_synt(cnf);
 
         /* cnf.renumber_sampling_vars_for_ganak(); */
-        if (!elimtofile.empty()) write_synth(cnf, elimtofile, false);
+        if (!elimtofile.empty()) write_synth(cnf, elimtofile);
     }
     if (cnf.opt_sampl_vars.size() == cnf.nVars()) {
         cout << "c o [arjun] No variables to synthesize" << endl;

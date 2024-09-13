@@ -107,8 +107,8 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
 
     // Generate my_true_lit
     solver->new_var();
-    assert(cnf.my_true_lit == lit_Undef);
-    cnf.my_true_lit = Lit(solver->nVars()-1, false);
+    assert(cnf.fh->my_true_lit == lit_Undef);
+    cnf.fh->my_true_lit = Lit(solver->nVars()-1, false);
 
     //Initially, all of samping_set is unknown
     for(const auto& x: seen) assert(x == 0);

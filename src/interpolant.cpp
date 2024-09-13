@@ -154,7 +154,7 @@ void Interpolant::generate_picosat(const vector<Lit>& assumptions, uint32_t test
     CaDiCaL::Solver* cdcl = new Solver();
     MyTracer t(test_var, orig_num_vars, cnf.opt_sampl_vars);
     t.ss = solver;
-    t.fh.my_true_lit = cnf.my_true_lit;
+    t.fh.my_true_lit = cnf.fh->my_true_lit;
     t.fh.solver = solver;
     cout << "true lit: " << t.fh.my_true_lit << endl;
 
@@ -196,8 +196,8 @@ void Interpolant::generate_picosat(const vector<Lit>& assumptions, uint32_t test
     /* fclose(core); */
     cdcl->disconnect_proof_tracer(&t);
     delete cdcl;
-    cnf.funcs[test_var] = t.out;
-    cnf.funcs[test_var].finished = true;
+    cnf.fh->funcs[test_var] = t.out;
+    cnf.fh->funcs[test_var].finished = true;
     cout << "----------------------------" << endl;
 }
 

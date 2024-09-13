@@ -46,18 +46,12 @@ using std::cerr;
 using std::cout;
 using std::endl;
 
-inline double stats_line_percent(double num, double total)
-{
-    if (total == 0) {
-        return 0;
-    } else {
-        return num/total*100.0;
-    }
+inline double stats_line_percent(double num, double total) {
+    if (total == 0) return 0;
+    else return num/total*100.0;
 }
 
-inline void write_synth(const ArjunNS::SimplifiedCNF& simpcnf,
-        const std::string& fname, bool red = true)
-{
+inline void write_synth(const ArjunNS::SimplifiedCNF& simpcnf, const std::string& fname) {
     uint32_t num_cls = simpcnf.clauses.size()+simpcnf.red_clauses.size();
     std::ofstream outf;
     outf.open(fname.c_str(), std::ios::out);
@@ -88,10 +82,7 @@ inline void write_synth(const ArjunNS::SimplifiedCNF& simpcnf,
 }
 
 
-template<typename T> void read_in_a_file(const std::string& filename,
-        T* holder,
-        bool& all_indep)
-{
+template<typename T> void read_in_a_file(const std::string& filename, T* holder, bool& all_indep) {
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
     DimacsParser<StreamBuffer<FILE*, FN>, T> parser(arjun, nullptr, 0);

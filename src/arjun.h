@@ -30,12 +30,12 @@ THE SOFTWARE.
 #include <fstream>
 #include <gmpxx.h>
 #include "cryptominisat5/solvertypesmini.h"
-#include "formula.h"
 #ifdef CMS_LOCAL_BUILD
 #include "cryptominisat.h"
 #else
 #include <cryptominisat5/cryptominisat.h>
 #endif
+struct FHolder;
 
 namespace ArjunNS {
     struct SimpConf {
@@ -54,8 +54,7 @@ namespace ArjunNS {
     };
 
     struct SimplifiedCNF {
-        std::map<uint32_t, FHolder::Formula> funcs;
-        Lit my_true_lit = CMSat::lit_Undef;
+        FHolder* fh = nullptr;
         uint32_t last_formula_var;
 
         std::vector<std::vector<CMSat::Lit>> clauses;
