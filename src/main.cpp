@@ -30,9 +30,6 @@
 #include <iomanip>
 #include <vector>
 #include <string>
-#ifdef USE_ZLIB
-#include <zlib.h>
-#endif
 #include "argparse.hpp"
 #include <cryptominisat5/dimacsparser.h>
 
