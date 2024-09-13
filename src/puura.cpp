@@ -252,8 +252,7 @@ void Puura::reverse_bce(SimplifiedCNF& cnf) {
 
 SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     const SimplifiedCNF& cnf,
-    const SimpConf simp_conf,
-    const vector<uint32_t>& empty_sampl_vars)
+    const SimpConf simp_conf)
 {
     for(const auto& v: cnf.sampl_vars)
         verb_print(5, "[w-debug] orig sampl var: " << v+1);

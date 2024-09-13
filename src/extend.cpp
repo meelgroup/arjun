@@ -96,13 +96,11 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     add_all_indics_except(no_need);
 
     // set up interpolant
-    interp.fill_picolsat(solver, orig_num_vars);
+    interp.solver = solver;
+    interp.fill_picolsat(orig_num_vars);
     interp.fill_var_to_indic(var_to_indic);
-
-    // Generate my_true_lit
     solver->new_var();
-    assert(cnf.fh->my_true_lit == lit_Undef);
-    cnf.fh->my_true_lit = Lit(solver->nVars()-1, false);
+    interp.my_true_lit = Lit(solver->nVars()-1, false);
 
     //Initially, all of samping_set is unknown
     for(const auto& x: seen) assert(x == 0);

@@ -43,7 +43,7 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
   assert(rantec.size() >= 2);
 
   const uint64_t id1 = rantec[0];
-  FHolder::Formula f = fh->fs[id1];
+  FHolder::Formula f = fs_clid[id1];
   set<Lit> resolvent(cls[id1].begin(),cls[id1].end());
   for(uint32_t i = 1; i < rantec.size(); i++) {
       cout << "resolvent: "; for(const auto& l: resolvent) cout << l << " "; cout << endl;
@@ -64,11 +64,11 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
       }
       assert(res_lit != lit_Undef);
       bool input_or_copy = input.count(res_lit.var()) || res_lit.var() >= (uint32_t)orig_num_vars;
-      if (input_or_copy) f = fh->compose_and(f, fh->fs[id2]);
-      else f = fh->compose_or(f, fh->fs[id2]);
+      if (input_or_copy) f = fh->compose_and(f, fs_clid[id2]);
+      else f = fh->compose_or(f, fs_clid[id2]);
   }
-  fh->fs[id] = f;
-  cout << "intermediate formula: " << fh->fs[id] << endl;
+  fs_clid[id] = f;
+  cout << "intermediate formula: " << fs_clid[id] << endl;
   if (clause.empty()) {
       out = f;
       cout << "Final formula: " << f << endl;
@@ -101,18 +101,19 @@ void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int>
       for(const auto& l: cl) {
           f.clauses.push_back({~l, f.out});
       }
-      fh->fs[id] = f;
+      fs_clid[id] = f;
   } else {
-      fh->fs[id] = fh->constant_formula(true);
+      fs_clid[id] = fh->constant_formula(true);
   }
-  cout << "intermediate formula: " << fh->fs[id] << endl;
+  cout << "intermediate formula: " << fs_clid[id] << endl;
 }
 
-void Interpolant::generate_interpolant(const vector<Lit>& assumptions, uint32_t test_var, ArjunNS::SimplifiedCNF& cnf) {
+void Interpolant::generate_interpolant(
+        const vector<Lit>& assumptions, uint32_t test_var, ArjunNS::SimplifiedCNF& cnf) {
     verb_print(2, "generating unsat proof for: " << test_var+1);
+
     // FIRST, we get an UNSAT core
     for(const auto& l: assumptions) picosat_assume(ps, lit_to_pl(l));
-
     auto pret = picosat_sat(ps, 10000000);
     verb_print(5, "c pret: " << pret);
     if (pret == PICOSAT_SATISFIABLE) {
@@ -128,8 +129,8 @@ void Interpolant::generate_interpolant(const vector<Lit>& assumptions, uint32_t 
     release_assert(pret == PICOSAT_UNSATISFIABLE);
 
     // NEXT we generate the small CNF that is UNSAT and is simplified
-    vector<Lit> cl;
     vector<vector<Lit>> mini_cls;
+    vector<Lit> cl;
     for(uint32_t i = 0; i < orig_num_vars; i++) {
         if (set_vals[i] != l_Undef) {
             if (i == test_var) continue;
@@ -175,10 +176,12 @@ void Interpolant::generate_interpolant(const vector<Lit>& assumptions, uint32_t 
         f.close();
     }
 
-    // picosat on the core only, on a simplified CNF
+    // CaDiCaL on the core only
     CaDiCaL::Solver* cdcl = new Solver();
-    MyTracer t(test_var, orig_num_vars, cnf.opt_sampl_vars);
-    t.fh = cnf.fh;
+    MyTracer t(orig_num_vars, cnf.opt_sampl_vars);
+    t.fh = new FHolder();
+    t.fh->solver = solver;
+    t.fh->my_true_lit = my_true_lit;
     verb_print(1, "true lit: " << t.fh->my_true_lit);
 
     cdcl->connect_proof_tracer(&t, true);
@@ -218,12 +221,15 @@ void Interpolant::generate_interpolant(const vector<Lit>& assumptions, uint32_t 
     /* fclose(core); */
     cdcl->disconnect_proof_tracer(&t);
     delete cdcl;
-    cnf.fh->fs[test_var] = t.out;
-    cnf.fh->fs[test_var].finished = true;
+
+    //TODO: test_var's definition is now computed, and should be saved
+    /* cnf.fh->fs[test_var] = t.out; */
+    /* cnf.fh->fs[test_var].finished = true; */
+    verb_print(1, "definition of var: " << test_var+1 << " is: " << t.out);
     verb_print(1, "----------------------------");
 }
 
-void Interpolant::fill_picolsat(SATSolver* solver, uint32_t _orig_num_vars) {
+void Interpolant::fill_picolsat(uint32_t _orig_num_vars) {
     set_vals.clear();
     set_vals.resize(solver->nVars(), l_Undef);
     orig_num_vars = _orig_num_vars;

@@ -48,7 +48,6 @@ struct Extend {
     void add_all_indics_except(const set<uint32_t>& except);
     SATSolver* solver = nullptr;
     Interpolant interp;
-
     uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
 
     //assert indic[var] to TRUE to force var==var+orig_num_vars

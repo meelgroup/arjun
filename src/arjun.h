@@ -54,7 +54,6 @@ namespace ArjunNS {
     };
 
     struct SimplifiedCNF {
-        FHolder* fh = nullptr;
         uint32_t last_formula_var;
 
         std::vector<std::vector<CMSat::Lit>> clauses;

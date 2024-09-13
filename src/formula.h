@@ -122,7 +122,6 @@ struct FHolder {
 
     CMSat::SATSolver* solver;
     Lit my_true_lit;
-    std::map<uint32_t, Formula> fs;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const FHolder::Formula& f) {

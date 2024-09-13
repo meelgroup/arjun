@@ -125,9 +125,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::only_get_simplified_cnf(
                 const SimplifiedCNF& cnf, const SimpConf& simp_conf)
 {
     Puura puura(arjdata->conf);
-    return puura.get_fully_simplified_renumbered_cnf(
-            cnf, simp_conf,
-            vector<uint32_t>());
+    return puura.get_fully_simplified_renumbered_cnf(cnf, simp_conf);
 }
 
 DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(const SimplifiedCNF& cnf)

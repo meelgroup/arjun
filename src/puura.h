@@ -45,9 +45,7 @@ public:
 
     SATSolver* fill_solver(const SimplifiedCNF& cnf);
     SimplifiedCNF get_fully_simplified_renumbered_cnf(
-        const SimplifiedCNF& cnf,
-        const SimpConf simp_conf,
-        const vector<uint32_t>& empty_sampl_vars);
+        const SimplifiedCNF& cnf, const SimpConf simp_conf);
     void reverse_bce(SimplifiedCNF& cnf);
     void run_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak);
