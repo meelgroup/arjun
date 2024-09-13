@@ -58,8 +58,6 @@ class Manthan {
     private:
         vec point_0;
         vec point_1;
-        Lit my_true_lit;
-
 
         map<uint32_t, uint32_t> y_to_y_hat;
         map<uint32_t, uint32_t> y_hat_to_y;
@@ -92,5 +90,5 @@ class Manthan {
         vector<vector<lbool>> get_samples(uint32_t num_samples);
         void train(const vector<vector<lbool>>& samples, uint32_t v);
         vector<vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
-        FHolder fh;
+        FHolder* fh;
 };

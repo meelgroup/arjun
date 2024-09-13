@@ -33,9 +33,6 @@
 #include "config.h"
 #include "arjun.h"
 #include "interpolant.h"
-extern "C" {
-#include "mpicosat/mpicosat.h"
-}
 
 using std::vector;
 using std::map;
@@ -53,7 +50,6 @@ struct Extend {
     Interpolant interp;
 
     uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
-
 
     //assert indic[var] to TRUE to force var==var+orig_num_vars
     vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR

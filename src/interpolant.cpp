@@ -1,3 +1,4 @@
+#include "src/constants.h"
 extern "C" {
 #include "mpicosat/mpicosat.h"
 }
@@ -18,7 +19,7 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
   assert(rantec.size() >= 2);
 
   const uint64_t id1 = rantec[0];
-  FHolder::Formula f = fs[id1];
+  FHolder::Formula f = fh->fs[id1];
   set<Lit> resolvent(cls[id1].begin(),cls[id1].end());
   for(uint32_t i = 1; i < rantec.size(); i++) {
       cout << "resolvent: "; for(const auto& l: resolvent) cout << l << " "; cout << endl;
@@ -39,28 +40,28 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
       }
       assert(res_lit != lit_Undef);
       bool input_or_copy = input.count(res_lit.var()) || res_lit.var() >= (uint32_t)orig_num_vars;
-      if (input_or_copy) f = fh.compose_and(f, fs[id2]);
-      else f = fh.compose_or(f, fs[id2]);
+      if (input_or_copy) f = fh->compose_and(f, fh->fs[id2]);
+      else f = fh->compose_or(f, fh->fs[id2]);
   }
-  fs[id] = f;
-  cout << "intermediate formula: " << fs[id] << endl;
+  fh->fs[id] = f;
+  cout << "intermediate formula: " << fh->fs[id] << endl;
   if (clause.empty()) {
       out = f;
       cout << "Final formula: " << f << endl;
   }
 }
 
-void MyTracer::add_original_clause (uint64_t id, bool red, const std::vector<int> & clause, bool) {
+void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int> & clause, bool) {
   assert(red == false);
   cout << "orig ID:" << setw(4)<< id;
   cout << " cl: "; for(const auto& l: clause) cout << l << " "; cout << endl;
   cls[id] = pl_to_lit_cl(clause);
 
-  bool formula_A = true;
+  bool formula_a = true;
   for(const auto& l : clause) {
-      if (abs(l)-1 >= orig_num_vars) {formula_A = false; break;}
+      if (abs(l)-1 >= orig_num_vars) {formula_a = false; break;}
   }
-  if (formula_A) {
+  if (formula_a) {
       // output of formula is equal to the set of inputs being satisfied or not in this CL
       vector<Lit> cl;
       for(const auto& l: clause) {
@@ -68,22 +69,22 @@ void MyTracer::add_original_clause (uint64_t id, bool red, const std::vector<int
           if (input.count(v)) cl.push_back(pl_to_lit(l));
       }
       FHolder::Formula f;
-      ss->new_var();
-      f.out = Lit(ss->nVars()-1, false);
+      fh->solver->new_var();
+      f.out = Lit(fh->solver->nVars()-1, false);
       auto cl2 = cl;
       cl2.push_back(~f.out);
       f.clauses.push_back(cl2);
       for(const auto& l: cl) {
           f.clauses.push_back({~l, f.out});
       }
-      fs[id] = f;
+      fh->fs[id] = f;
   } else {
-      fs[id] = fh.constant_formula(true);
+      fh->fs[id] = fh->constant_formula(true);
   }
-  cout << "intermediate formula: " << fs[id] << endl;
+  cout << "intermediate formula: " << fh->fs[id] << endl;
 }
 
-void Interpolant::generate_picosat(const vector<Lit>& assumptions, uint32_t test_var, ArjunNS::SimplifiedCNF& cnf) {
+void Interpolant::generate_interpolant(const vector<Lit>& assumptions, uint32_t test_var, ArjunNS::SimplifiedCNF& cnf) {
     verb_print(2, "generating unsat proof for: " << test_var+1);
     // FIRST, we get an UNSAT core
     for(const auto& l: assumptions) picosat_assume(ps, lit_to_pl(l));
@@ -153,29 +154,26 @@ void Interpolant::generate_picosat(const vector<Lit>& assumptions, uint32_t test
     // picosat on the core only, on a simplified CNF
     CaDiCaL::Solver* cdcl = new Solver();
     MyTracer t(test_var, orig_num_vars, cnf.opt_sampl_vars);
-    t.ss = solver;
-    t.fh.my_true_lit = cnf.fh->my_true_lit;
-    t.fh.solver = solver;
-    cout << "true lit: " << t.fh.my_true_lit << endl;
+    t.fh = cnf.fh;
+    verb_print(1, "true lit: " << t.fh->my_true_lit);
 
     cdcl->connect_proof_tracer(&t, true);
     /* std::stringstream name; */
     /* name << "core-" << test_var+1 << ".cnf.trace"; */
     /* FILE* core = fopen(name.str().c_str(), "w"); */
-    release_assert(pret != 0 && "Traces cannot be generated in PicoSAT");
     for(const auto& c: mini_cls) {
         for(const auto& l: c) cdcl->add(lit_to_pl(l));
         cdcl->add(0);
     }
     pret = cdcl->solve();
-    verb_print(5, "c pret: " << pret);
+    verb_print(3, "c CaDiCaL ret: " << pret);
     if (pret == Status::SATISFIABLE) {
-        cout << "BUG, core should be UNSAT" << endl;
+        cout << "ERROR: core should be UNSAT" << endl;
         assert(false);
         exit(-1);
     }
     if (pret == Status::UNKNOWN) {
-        cout << "OOOpps, we should give more time for picosat, got UNKNOWN" << endl;
+        cout << "ERROR: OOOpps, we should give more time for picosat, got UNKNOWN" << endl;
         assert(false);
         exit(-1);
     }
@@ -196,14 +194,12 @@ void Interpolant::generate_picosat(const vector<Lit>& assumptions, uint32_t test
     /* fclose(core); */
     cdcl->disconnect_proof_tracer(&t);
     delete cdcl;
-    cnf.fh->funcs[test_var] = t.out;
-    cnf.fh->funcs[test_var].finished = true;
-    cout << "----------------------------" << endl;
+    cnf.fh->fs[test_var] = t.out;
+    cnf.fh->fs[test_var].finished = true;
+    verb_print(1, "----------------------------");
 }
 
-
-void Interpolant::fill_picolsat(SATSolver* _solver, uint32_t _orig_num_vars) {
-    solver = _solver;
+void Interpolant::fill_picolsat(SATSolver* solver, uint32_t _orig_num_vars) {
     set_vals.clear();
     set_vals.resize(solver->nVars(), l_Undef);
     orig_num_vars = _orig_num_vars;
@@ -220,7 +216,6 @@ void Interpolant::fill_picolsat(SATSolver* _solver, uint32_t _orig_num_vars) {
     }
     solver->end_getting_constraints();
 }
-
 
 void Interpolant::fill_var_to_indic(const vector<uint32_t>& _var_to_indic) {
     var_to_indic = _var_to_indic;

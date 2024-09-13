@@ -102,15 +102,12 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 
     // Training
     inject_cnf(solver_train);
-    my_true_lit = cnf.fh->my_true_lit;
-    fh.my_true_lit = my_true_lit;
-    fh.solver = &solver_train;
+    fh->solver = &solver_train;
     assert(cnf.last_formula_var > solver_train.nVars());
-    for(uint32_t i = solver_train.nVars(); solver_train.nVars() < cnf.last_formula_var; i++)
-        solver_train.new_var();
+    while(solver_train.nVars() < cnf.last_formula_var) solver_train.new_var();
     assert(solver_train.nVars() == cnf.last_formula_var);
 
-    verb_print(1, "True lit: " << my_true_lit);
+    verb_print(1, "True lit: " << fh->my_true_lit);
     vector<uint32_t> to_train;
     to_train.reserve(output.size());
     for(const auto& v: output) to_train.push_back(v);
@@ -267,10 +264,10 @@ void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vec
     }
     f.out = fresh_l;
     // when fresh_l is false, confl is satisfied
-    verb_print(3, "Original formula for " << y_rep+1 << ":" << endl << cnf.fh->funcs[y_rep]);
+    verb_print(3, "Original formula for " << y_rep+1 << ":" << endl << cnf.fh->fs[y_rep]);
     verb_print(2, "Branch formula. When this is true, H is wrong:" << endl << f);
-    cnf.fh->funcs[y_rep] = fh.compose_ite(fh.constant_formula(ctx[y_rep] == l_True), cnf.fh->funcs[y_rep], f);
-    verb_print(3, "repaired formula for " << y_rep+1 << ":" << endl << cnf.fh->funcs[y_rep]);
+    cnf.fh->fs[y_rep] = fh->compose_ite(fh->constant_formula(ctx[y_rep] == l_True), cnf.fh->fs[y_rep], f);
+    verb_print(3, "repaired formula for " << y_rep+1 << ":" << endl << cnf.fh->fs[y_rep]);
     verb_print(1, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
     //We fixed the ctx on this variable
 }
@@ -402,7 +399,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     // Inject the formulas into the solver
     // Replace y with y_hat
     // TODO: have flag of what clause has already been added
-    for(const auto& f: cnf.fh->funcs) {
+    for(const auto& f: cnf.fh->fs) {
         const auto& form = f.second;
         for(const auto& cl: form.clauses) {
             vector<Lit> cl2;
@@ -425,8 +422,8 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
         solver_train.new_var();
         uint32_t ind = solver_train.nVars()-1;
 
-        assert(cnf.fh->funcs.count(y));
-        auto func_out = cnf.fh->funcs[y].out;
+        assert(cnf.fh->fs.count(y));
+        auto func_out = cnf.fh->fs[y].out;
         auto y_hat = y_to_y_hat[y];
 
         y_hat_to_indic[y_hat] = ind;
@@ -463,7 +460,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     } else {
         assert(ret == l_False);
         verb_print(1, "Function is good!");
-        for(auto& f: cnf.fh->funcs) {
+        for(auto& f: cnf.fh->fs) {
             if (!f.second.finished) {
                 verb_print(1, "Marking Function for " << f.first+1 << " as finished");
                 f.second.finished = true;
@@ -483,7 +480,7 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
         /*     cout << "class "<< i << " prob: " << node->ClassProbabilities()[i] << " --- "; */
         /* } */
         /* cout << endl; */
-        return fh.constant_formula(val);
+        return fh->constant_formula(val);
     } else {
         uint32_t v = node->SplitDimension();
         /* cout << "(learning " << learned_v+1<< ") Node. v: " << v+1 << std::flush; */
@@ -516,7 +513,7 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
         auto form_0 = recur(&node->Child(0), learned_v, depth+1);
         auto form_1 = recur(&node->Child(1), learned_v, depth+1);
         bool val_going_right = node->CalculateDirection(point_1);
-        return fh.compose_ite(form_0, form_1, Lit(v, val_going_right));
+        return fh->compose_ite(form_0, form_1, Lit(v, val_going_right));
     }
     assert(false);
 }
@@ -561,7 +558,7 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
     verb_print(1, "Training error: " << train_error << "%." << " on v: " << v+1);
     /* r.serialize(cout, 1); */
 
-    cnf.fh->funcs[v] = recur(&r, v, 0);
+    cnf.fh->fs[v] = recur(&r, v, 0);
     // Forward dependency update
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
         if (dependency_mat[i][v]) {
@@ -570,7 +567,7 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
             }
         }
     }
-    verb_print(3, "Formula for " << v+1 << ":" << endl << cnf.fh->funcs[v]);
+    verb_print(3, "Formula for " << v+1 << ":" << endl << cnf.fh->fs[v]);
     verb_print(2,"Done training variable: " << v+1);
     verb_print(2, "------------------------------");
 }

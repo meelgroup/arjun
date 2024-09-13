@@ -25,7 +25,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <iomanip>
-#include <map>
 
 #include "src/arjun.h"
 #include "src/time_mem.h"
@@ -33,11 +32,6 @@
 #include "constants.h"
 #include "cryptominisat5/solvertypesmini.h"
 #include "formula.h"
-
-/* extern "C" { */
-/* #include "mpicosat/mpicosat.h" */
-/* } */
-#include "cadical.hpp"
 
 using namespace ArjunInt;
 using namespace ArjunNS;
@@ -167,7 +161,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             // Dependent fully on `indep`
             // TODO: run get_conflict and then we know which were
             // actually needed, so we can do an easier generation/check
-            interp.generate_picosat(assumptions, test_var, cnf);
+            interp.generate_interpolant(assumptions, test_var, cnf);
             vector<Lit> cl;
             Lit l(indic, false);
             cl.push_back(l);
@@ -206,17 +200,6 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     solver->set_verbosity(0);
     set<uint32_t> opt_sampl(cnf.opt_sampl_vars.begin(), cnf.opt_sampl_vars.end());
 
-    /* auto xors = solver->get_recovered_xors(false); */
-    /* for(const auto& g: xors) { */
-    /*     int bad = 0; */
-    /*     for(const auto& v: g.first) { */
-    /*         if (!opt_sampl.count(v)) bad++; */
-    /*         if (v >= orig_num_vars) bad = 100; */
-    /*         if (bad > 1) break; */
-    /*     } */
-    /*     if (bad != 1) continue; */
-    /*     for(const auto& v: g.first) { opt_sampl.insert(v); } */
-    /* } */
     auto ites = solver->get_recovered_ite_gates();
     for(const auto& g: ites) {
         if (g.rhs.var() >= orig_num_vars) continue;

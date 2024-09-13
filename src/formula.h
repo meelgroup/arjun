@@ -50,13 +50,11 @@ struct FHolder {
         bool finished = false;
     };
 
-
     Formula constant_formula(int value) {
         Formula ret;
         ret.out = value ? my_true_lit : ~my_true_lit;
         return ret;
     }
-
 
     Formula compose_ite(const Formula& fleft, const Formula& fright, const Formula& branch) {
         Formula ret = compose_ite(fleft, fright, branch.out);
@@ -124,7 +122,7 @@ struct FHolder {
 
     CMSat::SATSolver* solver;
     Lit my_true_lit;
-    std::map<uint32_t, Formula> funcs;
+    std::map<uint32_t, Formula> fs;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const FHolder::Formula& f) {
@@ -139,4 +137,3 @@ inline std::ostream& operator<<(std::ostream& os, const FHolder::Formula& f) {
     os << "Output: " << f.out;
     return os;
 }
-
