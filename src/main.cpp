@@ -63,26 +63,18 @@ string input_file;
 string elimtofile;
 
 SimpConf simp_conf;
-int do_renumber = true;
+ArjunNS::Arjun::ElimToFileConf etof_conf;
 int do_gates = 1;
-int do_extend_indep = 1;
 int redundant_cls = true;
 int simptofile = true;
 int sampl_start_at_zero = false;
-int64_t sbva_steps = 1;
-int sbva_cls_cutoff = 4;
-int sbva_lits_cutoff = 5;
-int sbva_tiebreak = 1;
-int do_bce = 1;
 int debug_synt = false;
 int do_synth_bve = false;
 int do_pre_backbone = 0;
 
 int synthesis = false;
-int do_unate = false;
 int do_revbce = false;
 int do_minim_indep = true;
-bool all_indep = false;
 string debug_minim;
 int do_pre_manthan = false;
 double cms_mult = -1.0;
@@ -104,21 +96,21 @@ void add_arjun_options()
         .flag()
         .help("Print version and exit");
 
-    myopt("--allindep", all_indep , atoi, "Ignore indep, set all vars to independent set.");
+    myopt("--allindep", etof_conf.all_indep , atoi, "Ignore indep, set all vars to independent set.");
     myopt("--premanthan", do_pre_manthan, atoi, "Run all simplifcation before Manthan");
     myopt("--maxc", conf.backw_max_confl, atoi,"Maximum conflicts per variable in backward mode");
-    myopt("--extend", do_extend_indep, atoi,"Extend independent set just before CNF dumping");
+    myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
     program.add_argument("--synth")
         .action([&](const auto&) {synthesis = 1;})
         .default_value(synthesis)
         .flag()
         .help("Run synthesis");
     myopt("--debugsynt", debug_synt, atoi, "Debug synthesis");
-    myopt("--unate", do_unate, atoi,"Perform unate analysis");
+    myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
     myopt("--backbone", do_pre_backbone, atoi,"Perform backbone analysis");
     myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
     myopt("--revbce", do_revbce, atoi,"Perform reverse BCE");
-    myopt("--sbva", sbva_steps, atoi,"SBVA timeout. 0 = no sbva");
+    myopt("--sbva", etof_conf.num_sbva_steps, atoi,"SBVA timeout. 0 = no sbva");
     myopt("--prebackbone", do_pre_backbone, atoi,"Perform backbone before other things");
     myopt("--samples", conf.num_samples, atoi,"Number of samples");
 
@@ -151,10 +143,10 @@ void add_arjun_options()
         .help("Set CNF simplification options for appmc");
 
     // Detailed Configuration
-    myopt("--sbvaclcut", sbva_cls_cutoff, atoi,"SBVA heuristic cutoff. Higher -> only appied to more clauses");
-    myopt("--sbvalitcut", sbva_lits_cutoff, atoi,"SBVA heuristic cutoff. Higher -> only appied to larger clauses");
+    myopt("--sbvaclcut", etof_conf.sbva_cls_cutoff, atoi,"SBVA heuristic cutoff. Higher -> only appied to more clauses");
+    myopt("--sbvalitcut", etof_conf.sbva_lits_cutoff, atoi,"SBVA heuristic cutoff. Higher -> only appied to larger clauses");
     myopt("--findbins", conf.oracle_find_bins, atoi,"How aggressively find binaries via oracle");
-    myopt("--sbvabreak",  sbva_tiebreak, atoi,"SBVA tie break: 1=sbva or 0=bva");
+    myopt("--sbvabreak",  etof_conf.sbva_tiebreak, atoi,"SBVA tie break: 1=sbva or 0=bva");
     myopt("--gaussj", conf.gauss_jordan, atoi,"Use XOR finding and Gauss-Jordan elimination");
     myopt("--iter1", simp_conf.iter1, atoi,"Puura iterations before oracle");
     myopt("--iter1grow", simp_conf.bve_grow_iter1, atoi,"Puura BVE grow rate allowed before Oracle");
@@ -165,11 +157,11 @@ void add_arjun_options()
     myopt("--oraclevivif", simp_conf.oracle_vivify, atoi,"Use oracle to vivify");
     myopt("--oraclevivifgetl", simp_conf.oracle_vivify_get_learnts, atoi,"Use oracle to vivify get learnts");
     myopt("--distill", conf.distill, atoi, "Distill clauses before minimization of indep");
-    myopt("--bce", do_bce, atoi, "Use blocked clause elimination (BCE) statically");
+    myopt("--bce", etof_conf.do_bce, atoi, "Use blocked clause elimination (BCE) statically");
     myopt("--red", redundant_cls, atoi,"Also dump redundant clauses");
 
     // Debug
-    myopt("--renumber", do_renumber, atoi,"Renumber variables to start from 1...N in CNF.");
+    myopt("--renumber", etof_conf.do_renumber, atoi,"Renumber variables to start from 1...N in CNF.");
     myopt("--specifiedorder", conf.specified_order_fname, string, "Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY");
     myopt("--minimize", do_minim_indep, atoi,"Minimize indep set");
     myopt("--debugminim", debug_minim, string,"Create this file that is the CNF after indep set minimization");
@@ -226,20 +218,20 @@ void set_config(ArjunNS::Arjun* arj) {
 
 void do_synthesis() {
     SimplifiedCNF cnf;
-    read_in_a_file(input_file, &cnf, all_indep);
+    read_in_a_file(input_file, &cnf, etof_conf.all_indep);
     if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
     if (do_pre_manthan) {
         cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
         arjun->standalone_backbone(cnf);
-        if (do_unate) arjun->standalone_unate(cnf);
+        if (etof_conf.do_unate) arjun->standalone_unate(cnf);
         if (do_synth_bve) {
             simp_conf.bve_too_large_resolvent = -1;
             cnf = arjun->only_get_simplified_cnf(cnf, simp_conf);
         }
-        if (do_extend_indep) arjun->standalone_unsat_define(cnf);
+        if (etof_conf.do_extend_indep) arjun->standalone_unsat_define(cnf);
         /* if (do_revbce) arjun->standalone_rev_bce(cnf); */
     arjun->standalone_backbone(cnf);
-    if (do_unate) arjun->standalone_unate(cnf);
+    if (etof_conf.do_unate) arjun->standalone_unate(cnf);
 
         // We need to get back to functions for this to work
         if (do_minim_indep) arjun->standalone_minimize_indep_synt(cnf);
@@ -258,7 +250,7 @@ void do_synthesis() {
 
 void do_minimize() {
     SimplifiedCNF cnf;
-    read_in_a_file(input_file, &cnf, all_indep);
+    read_in_a_file(input_file, &cnf, etof_conf.all_indep);
     if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
     if (do_pre_backbone) arjun->standalone_backbone(cnf);
     const auto orig_sampl_vars = cnf.sampl_vars;
@@ -271,11 +263,8 @@ void do_minimize() {
     }
 
     if (!elimtofile.empty()) {
-        arjun->elim_to_file(cnf, all_indep,
-            do_extend_indep, do_bce,
-            do_unate, simp_conf,
-            sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
-        if (all_indep) {
+        arjun->standalone_elim_to_file(cnf, etof_conf, simp_conf);
+        if (etof_conf.all_indep) {
             cnf.opt_sampl_vars.clear();
             for(uint32_t i = 0; i < cnf.nVars(); i++) cnf.opt_sampl_vars.push_back(i);
         }
@@ -316,7 +305,7 @@ int main(int argc, char** argv) {
         exit(-1);
     }
 
-    if (sbva_tiebreak != 0 && sbva_tiebreak != 1) {
+    if (etof_conf.sbva_tiebreak != 0 && etof_conf.sbva_tiebreak != 1) {
         cout << "Unrecognized tie break: sbva/bva allowed." << endl;
         exit(-1);
     }

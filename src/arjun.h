@@ -413,10 +413,19 @@ namespace ArjunNS {
         void standalone_unsat_define(SimplifiedCNF& cnf);
         void standalone_unate(SimplifiedCNF& cnf);
 
-        void elim_to_file(SimplifiedCNF& cnf, bool all_indep,
-            bool do_extend_indep, bool do_bce,
-            bool do_unate, const SimpConf& simp_conf,
-            int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak);
+        struct ElimToFileConf {
+            bool all_indep = false;
+            bool do_extend_indep = true;
+            bool do_bce = true;
+            bool do_unate = false;
+            int num_sbva_steps = 1;
+            uint32_t sbva_cls_cutoff = 4;
+            uint32_t sbva_lits_cutoff = 5;
+            int sbva_tiebreak = 1;
+            bool do_renumber = true;
+        };
+        void standalone_elim_to_file(SimplifiedCNF& cnf,
+                const ElimToFileConf& etof_conf, const SimpConf& simp_conf);
         SimplifiedCNF only_get_simplified_cnf(const SimplifiedCNF& cnf, const SimpConf& simp_conf);
         void standalone_bce(SimplifiedCNF& cnf);
         void standalone_rev_bce(SimplifiedCNF& cnf);

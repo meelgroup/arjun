@@ -230,11 +230,8 @@ DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
         " T: " << (cpuTime() - start_time));
 }
 
-void Arjun::elim_to_file(SimplifiedCNF& cnf, bool all_indep,
-        bool do_extend_indep, bool do_bce,
-        bool do_unate, const SimpConf& simp_conf,
-        int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak) {
-
+void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
+        const ElimToFileConf& etof_conf, const SimpConf& simp_conf) {
     cnf.remove_equiv_weights();
     cnf = only_get_simplified_cnf(cnf, simp_conf);
     cnf.remove_equiv_weights();
@@ -245,22 +242,22 @@ void Arjun::elim_to_file(SimplifiedCNF& cnf, bool all_indep,
     simp_conf2.iter2 = 1;
     simp_conf2.bve_too_large_resolvent = 4;
     cnf = only_get_simplified_cnf(cnf, simp_conf2);
-    if (sbva_steps)
-        standalone_sbva(cnf, sbva_steps,
-                sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
-    if (all_indep) {
+    if (etof_conf.num_sbva_steps > 0)
+        standalone_sbva(cnf, etof_conf.num_sbva_steps,
+                etof_conf.sbva_cls_cutoff, etof_conf.sbva_lits_cutoff, etof_conf.sbva_tiebreak);
+    if (etof_conf.all_indep) {
         vector<uint32_t> all_vars;
         for(uint32_t i = 0; i < cnf.nvars; i++) all_vars.push_back(i);
         cnf.set_opt_sampl_vars(all_vars);
     }
-    if (do_extend_indep && cnf.opt_sampl_vars.size() != cnf.nvars)
+    if (etof_conf.do_extend_indep && cnf.opt_sampl_vars.size() != cnf.nvars)
         standalone_extend_sampl_set(cnf);
-    if (do_bce && !cnf.get_weighted() && cnf.opt_sampl_vars.size() != cnf.nvars)
+    if (etof_conf.do_bce && !cnf.get_weighted() && cnf.opt_sampl_vars.size() != cnf.nvars)
         standalone_bce(cnf);
-    if (do_unate)
+    if (etof_conf.do_unate)
         standalone_unate(cnf);
     cnf.remove_equiv_weights();
-    cnf.renumber_sampling_vars_for_ganak();
+    if (etof_conf.do_renumber) cnf.renumber_sampling_vars_for_ganak();
 }
 
 void Arjun::standalone_backbone(SimplifiedCNF& cnf) {
