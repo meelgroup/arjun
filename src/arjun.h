@@ -432,7 +432,6 @@ namespace ArjunNS {
         void set_intree(bool intree);
         void set_simp(int simp);
         void set_bve_pre_simplify(bool bve_pre_simp);
-        void set_unknown_sort(uint32_t unknown_sort);
         void set_incidence_count(uint32_t incidence_count);
         void set_or_gate_based(bool or_gate_based);
         void set_xor_gates_based(bool xor_gates_based);
@@ -444,11 +443,9 @@ namespace ArjunNS {
         void set_ite_gate_based(bool ite_gate_based);
         void set_do_unate(bool do_unate);
         void set_irreg_gate_based(const bool irreg_gate_based);
-        void set_gate_sort_special(bool gate_sort_special);
         //void set_polar_mode(CMSat::PolarityMode mode);
         void set_no_gates_below(double no_gates_below);
         void set_specified_order_fname(std::string specified_order_fname);
-        void set_bce(const bool bce);
         void set_weighted(const bool);
         void set_extend_max_confl(uint32_t extend_max_confl);
         void set_backbone_only_optindep(bool backbone_only_optindep);
@@ -466,7 +463,6 @@ namespace ArjunNS {
         bool get_intree() const;
         bool get_bve_pre_simplify() const;
         uint32_t get_incidence_count() const;
-        uint32_t get_unknown_sort() const;
         bool get_or_gate_based() const;
         bool get_xor_gates_based() const;
         bool get_probe_based() const;
@@ -476,8 +472,6 @@ namespace ArjunNS {
         bool get_find_xors() const;
         bool get_ite_gate_based() const;
         bool get_irreg_gate_based() const;
-        bool get_gate_sort_special() const;
-        bool get_bce() const;
         uint32_t get_extend_max_confl() const;
         bool get_backbone_only_optindep() const;
         int get_num_samples() const;
