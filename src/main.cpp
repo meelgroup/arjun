@@ -113,8 +113,8 @@ void add_arjun_options()
         .default_value(do_unate)
         .help("Perform unate analysis");
     program.add_argument("--backbone")
-        .action([&](const auto& a) {do_backbone = std::atoi(a.c_str());})
-        .default_value(do_backbone)
+        .action([&](const auto& a) {do_pre_backbone = std::atoi(a.c_str());})
+        .default_value(do_pre_backbone)
         .help("Perform backbone analysis");
     program.add_argument("--synthbve")
         .action([&](const auto& a) {do_synth_bve = std::atoi(a.c_str());})
