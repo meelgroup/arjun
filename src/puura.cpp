@@ -357,9 +357,6 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
         dont_elim.clear();
         for(const auto& l: tmp) dont_elim.push_back(l);
     }
-    /* cout << "w-debug after empty dont_elim: "; */
-    /* for(const auto& d: dont_elim) cout << d << " "; */
-    /* cout << endl; */
     str = "occ-bve-empty, must-renumber";
     solver->simplify(&dont_elim, &str);
 
