@@ -219,10 +219,10 @@ void set_config(ArjunNS::Arjun* arj) {
 void do_synthesis() {
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, etof_conf.all_indep);
-    if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
+    assert(!cnf.get_projected());
     if (do_pre_manthan) {
         cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
-        arjun->standalone_backbone(cnf);
+        if (do_pre_backbone) arjun->standalone_backbone(cnf);
         if (etof_conf.do_unate) arjun->standalone_unate(cnf);
         if (do_synth_bve) {
             simp_conf.bve_too_large_resolvent = -1;
@@ -230,15 +230,13 @@ void do_synthesis() {
         }
         if (etof_conf.do_extend_indep) arjun->standalone_unsat_define(cnf);
         /* if (do_revbce) arjun->standalone_rev_bce(cnf); */
-    arjun->standalone_backbone(cnf);
-    if (etof_conf.do_unate) arjun->standalone_unate(cnf);
-
-        // We need to get back to functions for this to work
-        if (do_minim_indep) arjun->standalone_minimize_indep_synt(cnf);
-
-        /* cnf.renumber_sampling_vars_for_ganak(); */
-        if (!elimtofile.empty()) write_synth(cnf, elimtofile);
+        if (etof_conf.do_unate) arjun->standalone_unate(cnf);
     }
+    // TODO We need to get back to functions for this to work
+    if (do_minim_indep) arjun->standalone_minimize_indep_synt(cnf);
+
+    /* cnf.renumber_sampling_vars_for_ganak(); */
+    if (!elimtofile.empty()) write_synth(cnf, elimtofile);
     if (cnf.opt_sampl_vars.size() == cnf.nVars()) {
         cout << "c o [arjun] No variables to synthesize" << endl;
         return;

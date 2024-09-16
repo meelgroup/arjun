@@ -93,6 +93,7 @@ struct AIGManager {
         ret->type = t_and;
         ret->l = a;
         ret->r = a;
+
         ret->neg = true;
         aigs.push_back(ret);
         return ret;

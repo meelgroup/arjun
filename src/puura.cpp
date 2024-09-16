@@ -341,11 +341,6 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     str += string(", must-scc-vrepl, must-renumber,");
     solver->simplify(&dont_elim, &str);
 
-    // Deal with empties
-    /* cout << "w-debug before empty dont_elim: "; */
-    /* for(const auto& d: dont_elim) cout << d << " "; */
-    /* cout << endl; */
-
     auto new_sampl_vars = cnf.sampl_vars;
     vector<uint32_t> new_empty_sampl_vars;
     solver->clean_sampl_get_empties(new_sampl_vars, new_empty_sampl_vars);
