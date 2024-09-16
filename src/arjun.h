@@ -30,6 +30,7 @@ THE SOFTWARE.
 #include <fstream>
 #include <gmpxx.h>
 #include "cryptominisat5/solvertypesmini.h"
+#include "src/constants.h"
 #ifdef CMS_LOCAL_BUILD
 #include "cryptominisat.h"
 #else
@@ -69,10 +70,21 @@ namespace ArjunNS {
         bool backbone_done = false;
         struct Weight {mpq_class pos = 1; mpq_class neg = 1;};
         std::map<uint32_t, Weight> weights;
+        std::map<uint32_t, std::pair<CMSat::Lit, CMSat::lbool>> orig_to_new_var;
 
         uint32_t nVars() const { return nvars; }
-        uint32_t new_vars(uint32_t vars) { nvars+=vars; return nvars; }
-        uint32_t new_var() { nvars++; return nvars; }
+        uint32_t new_vars(uint32_t vars) {
+            nvars+=vars;
+            for(uint32_t i = 0; i < vars; i++)
+                orig_to_new_var[nvars-vars+i] =
+                    std::make_pair(CMSat::Lit(nvars-vars+i, false), CMSat::l_Undef);
+            return nvars;
+        }
+        uint32_t new_var() {
+            nvars++;
+            orig_to_new_var[nvars-1] = std::make_pair(CMSat::Lit(nvars-1, false), CMSat::l_Undef);
+            return nvars;
+        }
 
         void start_with_clean_sampl_vars() {
             assert(sampl_vars.empty());
@@ -176,6 +188,21 @@ namespace ArjunNS {
                 map_here_to_there[v] = i;
                 i++;
             }
+
+            // Update var map
+            std::map<uint32_t, std::pair<CMSat::Lit, CMSat::lbool>> upd_vmap;
+            for(const auto& p: orig_to_new_var) {
+                if (p.second.first != CMSat::lit_Undef) {
+                    assert(p.second.second == CMSat::l_Undef);
+                    CMSat::Lit l = p.second.first;
+                    l = CMSat::Lit(map_here_to_there[l.var()], l.sign());
+                    upd_vmap[p.first] = std::make_pair(l, CMSat::l_Undef);
+                } else {
+                    assert(p.second.second != CMSat::l_Undef);
+                    upd_vmap[p.first] = p.second;
+                }
+            }
+            orig_to_new_var = upd_vmap;
 
             for(const auto& v: opt_sampl_vars) {
                 assert(v < nvars);

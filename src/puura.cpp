@@ -380,6 +380,7 @@ SimplifiedCNF Puura::get_cnf(
     scnf.weighted = cnf.get_weighted();
     scnf.proj = cnf.get_projected();
     scnf.new_vars(solver->simplified_nvars());
+    scnf.orig_to_new_var = solver->update_var_mapping(cnf.orig_to_new_var);
 
     if (conf.verb >= 5) {
         for(const auto& v: new_sampl_vars)
@@ -411,9 +412,9 @@ SimplifiedCNF Puura::get_cnf(
     }
     scnf.multiplier_weight = cnf2.multiplier_weight;
 
+    // Map orig set to new set
     scnf.set_sampl_vars(solver->translate_sampl_set(cnf2.sampl_vars, false));
     scnf.set_opt_sampl_vars(solver->translate_sampl_set(cnf2.opt_sampl_vars, false));
-
 
     while(solver->get_next_constraint(clause, is_xor, rhs)) {
         assert(!is_xor); assert(rhs);
