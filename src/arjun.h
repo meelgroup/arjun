@@ -425,7 +425,7 @@ namespace ArjunNS {
         };
         void standalone_elim_to_file(SimplifiedCNF& cnf,
                 const ElimToFileConf& etof_conf, const SimpConf& simp_conf);
-        SimplifiedCNF only_get_simplified_cnf(const SimplifiedCNF& cnf, const SimpConf& simp_conf);
+        SimplifiedCNF standalone_get_simplified_cnf(const SimplifiedCNF& cnf, const SimpConf& simp_conf);
         void standalone_bce(SimplifiedCNF& cnf);
         void standalone_rev_bce(SimplifiedCNF& cnf);
         void standalone_backbone(SimplifiedCNF& cnf);

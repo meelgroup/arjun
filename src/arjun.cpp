@@ -121,7 +121,7 @@ DLL_PUBLIC void Arjun::standalone_extend_sampl_set(SimplifiedCNF& cnf)
     extend.extend_round(cnf);
 }
 
-DLL_PUBLIC SimplifiedCNF Arjun::only_get_simplified_cnf(
+SimplifiedCNF Arjun::standalone_get_simplified_cnf(
                 const SimplifiedCNF& cnf, const SimpConf& simp_conf)
 {
     Puura puura(arjdata->conf);
@@ -231,7 +231,7 @@ DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
 void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
         const ElimToFileConf& etof_conf, const SimpConf& simp_conf) {
     cnf.remove_equiv_weights();
-    cnf = only_get_simplified_cnf(cnf, simp_conf);
+    cnf = standalone_get_simplified_cnf(cnf, simp_conf);
     cnf.remove_equiv_weights();
     auto simp_conf2 = simp_conf;
     simp_conf2.bve_grow_iter1 = 0;
@@ -239,7 +239,7 @@ void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     simp_conf2.iter1 = 1;
     simp_conf2.iter2 = 1;
     simp_conf2.bve_too_large_resolvent = 4;
-    cnf = only_get_simplified_cnf(cnf, simp_conf2);
+    cnf = standalone_get_simplified_cnf(cnf, simp_conf2);
     if (etof_conf.num_sbva_steps > 0)
         standalone_sbva(cnf, etof_conf.num_sbva_steps,
                 etof_conf.sbva_cls_cutoff, etof_conf.sbva_lits_cutoff, etof_conf.sbva_tiebreak);

@@ -82,7 +82,7 @@ int main()
     std::set<uint32_t> dont_elim (proj.begin(), proj.end());
 
     SimpConf simp_conf;
-    auto cnf2 = arjun.only_get_simplified_cnf(cnf, simp_conf);
+    auto cnf2 = arjun.standalone_get_simplified_cnf(cnf, simp_conf);
 
     cout << "p cnf " << cnf2.nvars << " " << cnf2.clauses.size() << endl;
     for(const auto& cl: cnf2.clauses) {

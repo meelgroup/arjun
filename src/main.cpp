@@ -226,7 +226,7 @@ void do_synthesis() {
         if (etof_conf.do_unate) arjun->standalone_unate(cnf);
         if (do_synth_bve) {
             simp_conf.bve_too_large_resolvent = -1;
-            cnf = arjun->only_get_simplified_cnf(cnf, simp_conf);
+            cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
         }
         if (etof_conf.do_extend_indep) arjun->standalone_unsat_define(cnf);
         /* if (do_revbce) arjun->standalone_rev_bce(cnf); */
