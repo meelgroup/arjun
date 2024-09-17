@@ -34,6 +34,7 @@
 #include <set>
 #include <iostream>
 #include <iomanip>
+#include "arjun.h"
 using std::vector;
 using std::setw;
 using std::set;
@@ -41,96 +42,6 @@ using std::endl;
 using std::cout;
 using CMSat::Lit;
 using std::map;
-
-enum AIGT {t_and, t_var, t_const};
-struct AIG {
-    AIGT type = t_const;
-    uint32_t var = std::numeric_limits<uint32_t>::max();
-    bool neg = false;
-    AIG* l = nullptr;
-    AIG* r = nullptr;
-};
-
-struct AIGManager {
-    AIGManager() {
-        const_true = new AIG();
-        const_true->type = t_const;
-        const_true->neg = false;
-
-        const_false = new_neg(const_false);
-        aigs.push_back(const_true);
-        aigs.push_back(const_false);
-    }
-
-    ~AIGManager() {
-        for (auto aig : aigs) delete aig;
-    }
-
-    AIG* new_lit(Lit l) {
-        return new_lit(l.var(), l.sign());
-    }
-
-    AIG* new_lit(uint32_t var, bool neg = false) {
-        if (lit_to_aig.count(Lit(var, neg))) {
-            return lit_to_aig.at(Lit(var, neg));
-        }
-        AIG* ret = new AIG();
-        ret->type = t_var;
-        ret->var = var;
-        ret->neg = neg;
-        aigs.push_back(ret);
-        lit_to_aig[Lit(var, neg)] = ret;
-
-        return ret;
-    }
-
-    AIG* new_const(bool val) {
-        return val ? const_true : const_false;
-    }
-
-    AIG* new_neg(AIG* a) {
-        AIG* ret = new AIG();
-        ret->type = t_and;
-        ret->l = a;
-        ret->r = a;
-
-        ret->neg = true;
-        aigs.push_back(ret);
-        return ret;
-    }
-
-    AIG* new_and(AIG* l, AIG* r) {
-        AIG* ret = new AIG();
-        ret->type = t_and;
-        ret->l = l;
-        ret->r = r;
-        aigs.push_back(ret);
-        return ret;
-    }
-
-    AIG* new_or(AIG* l, AIG* r) {
-        AIG* ret = new AIG();
-        ret->type = t_and;
-        ret->neg = true;
-        ret->l = new_neg(l);
-        ret->r = new_neg(r);
-        aigs.push_back(ret);
-        return ret;
-    }
-    AIG* new_ite(AIG* l, AIG* r, AIG* b) {
-        return new_or(new_and(b, l), new_and(new_neg(b), r));
-    }
-
-    AIG* new_ite(AIG* l, AIG* r, Lit b) {
-        auto b_aig = new_lit(b.var(), b.sign());
-        return new_or(new_and(b_aig, l), new_and(new_neg(b_aig), r));
-    }
-
-    vector<AIG*> aigs;
-    map<Lit, AIG*> lit_to_aig;
-    AIG* const_true = nullptr;
-    AIG* const_false = nullptr;
-};
 
 struct FHolder {
     struct Formula {
@@ -162,7 +73,7 @@ struct FHolder {
     Formula neg(const Formula& f) {
         Formula ret = f;
         if (solver) ret.out = ~f.out;
-        ret.aig = aig_mng.new_neg(f.aig);
+        ret.aig = aig_mng.new_not(f.aig);
         return ret;
     }
 

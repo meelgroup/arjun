@@ -23,6 +23,7 @@
  */
 
 #include "cryptominisat5/cryptominisat.h"
+#include <armadillo>
 #include <cstdint>
 #include <cwchar>
 #include <vector>
@@ -394,6 +395,7 @@ SimplifiedCNF Puura::get_cnf(
     cnf2.fix_weights(solver, new_sampl_vars, empty_sampl_vars);
 
     solver->start_getting_constraints(false, true);
+    get_bve_mapping(cnf, scnf, solver);
     if (cnf2.weighted) {
         map<Lit, mpq_class> outer_w;
         for(const auto& it: cnf2.weights) {
@@ -446,6 +448,55 @@ SimplifiedCNF Puura::get_cnf(
         cout << endl;
     }
     return scnf;
+}
+
+void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSolver* solver) const {
+    assert("TODO: map AIG vars with cnf's mappings" && false);
+    assert("TODO: ooops, BOTH definitions, x and NOT x, are returned, we should use only one" && false);
+    vector<uint32_t> vs = solver->get_elimed_vars();
+    for(const auto& v: vs) {
+        vector<vector<Lit>> def;
+        def = solver->get_cls_defining_var(v);
+
+        // Sanity check and figure out the sign
+        bool found = false;
+        bool sign;
+        for(const auto& cl: def) {
+            bool found_this_cl = false;
+            for(const auto& l: cl) {
+                if (l.var() != v) continue;
+                found_this_cl = true;
+                if (!found) {
+                    found = true;
+                    sign = l.sign();
+                }
+                else assert(sign == l.sign());
+            }
+            assert(found_this_cl);
+        }
+        assert(found);
+
+        AIG* overall = nullptr;
+        for(const auto& cl: def) {
+            AIG* current = nullptr;
+            for(const auto& l: cl) {
+                if (l.var() == v) continue;
+                AIG* aig = scnf.aig_mng.new_lit(~l);
+                if (current == nullptr) {
+                    current = aig;
+                } else {
+                    current = scnf.aig_mng.new_and(current, aig);
+                }
+            }
+            if (overall == nullptr) {
+                overall = current;
+            } else {
+                overall = scnf.aig_mng.new_or(overall, current);
+            }
+        }
+        if (sign) overall = scnf.aig_mng.new_not(overall);
+        scnf.var_to_aig[v] = overall;
+    }
 }
 
 void Puura::set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf)

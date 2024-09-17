@@ -26,17 +26,107 @@ THE SOFTWARE.
 #include <vector>
 #include <string>
 #include <mpfr.h>
+#include <map>
 #include <set>
 #include <fstream>
 #include <gmpxx.h>
 #include "cryptominisat5/solvertypesmini.h"
-#include "src/constants.h"
 #ifdef CMS_LOCAL_BUILD
 #include "cryptominisat.h"
 #else
 #include <cryptominisat5/cryptominisat.h>
 #endif
 struct FHolder;
+
+enum AIGT {t_and, t_var, t_const};
+struct AIG {
+    AIGT type = t_const;
+    uint32_t var = std::numeric_limits<uint32_t>::max();
+    bool neg = false;
+    AIG* l = nullptr;
+    AIG* r = nullptr;
+};
+
+struct AIGManager {
+    AIGManager() {
+        const_true = new AIG();
+        const_true->type = t_const;
+        const_true->neg = false;
+
+        const_false = new_not(const_false);
+        aigs.push_back(const_true);
+        aigs.push_back(const_false);
+    }
+
+    ~AIGManager() {
+        for (auto aig : aigs) delete aig;
+    }
+
+    AIG* new_lit(CMSat::Lit l) {
+        return new_lit(l.var(), l.sign());
+    }
+
+    AIG* new_lit(uint32_t var, bool neg = false) {
+        if (lit_to_aig.count(CMSat::Lit(var, neg))) {
+            return lit_to_aig.at(CMSat::Lit(var, neg));
+        }
+        AIG* ret = new AIG();
+        ret->type = t_var;
+        ret->var = var;
+        ret->neg = neg;
+        aigs.push_back(ret);
+        lit_to_aig[CMSat::Lit(var, neg)] = ret;
+
+        return ret;
+    }
+
+    AIG* new_const(bool val) {
+        return val ? const_true : const_false;
+    }
+
+    AIG* new_not(AIG* a) {
+        AIG* ret = new AIG();
+        ret->type = t_and;
+        ret->l = a;
+        ret->r = a;
+
+        ret->neg = true;
+        aigs.push_back(ret);
+        return ret;
+    }
+
+    AIG* new_and(AIG* l, AIG* r) {
+        AIG* ret = new AIG();
+        ret->type = t_and;
+        ret->l = l;
+        ret->r = r;
+        aigs.push_back(ret);
+        return ret;
+    }
+
+    AIG* new_or(AIG* l, AIG* r) {
+        AIG* ret = new AIG();
+        ret->type = t_and;
+        ret->neg = true;
+        ret->l = new_not(l);
+        ret->r = new_not(r);
+        aigs.push_back(ret);
+        return ret;
+    }
+    AIG* new_ite(AIG* l, AIG* r, AIG* b) {
+        return new_or(new_and(b, l), new_and(new_not(b), r));
+    }
+
+    AIG* new_ite(AIG* l, AIG* r, CMSat::Lit b) {
+        auto b_aig = new_lit(b.var(), b.sign());
+        return new_or(new_and(b_aig, l), new_and(new_not(b_aig), r));
+    }
+
+    std::vector<AIG*> aigs;
+    std::map<CMSat::Lit, AIG*> lit_to_aig;
+    AIG* const_true = nullptr;
+    AIG* const_false = nullptr;
+};
 
 namespace ArjunNS {
     struct SimpConf {
@@ -71,6 +161,8 @@ namespace ArjunNS {
         struct Weight {mpq_class pos = 1; mpq_class neg = 1;};
         std::map<uint32_t, Weight> weights;
         std::map<uint32_t, std::pair<CMSat::Lit, CMSat::lbool>> orig_to_new_var;
+        std::map<uint32_t, AIG*> var_to_aig;
+        AIGManager aig_mng;
 
         uint32_t nVars() const { return nvars; }
         uint32_t new_vars(uint32_t vars) {
