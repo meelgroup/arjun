@@ -452,47 +452,45 @@ SimplifiedCNF Puura::get_cnf(
 
 void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSolver* solver) const {
     assert("TODO: map AIG vars with cnf's mappings" && false);
-    assert("TODO: ooops, BOTH definitions, x and NOT x, are returned, we should use only one" && false);
     vector<uint32_t> vs = solver->get_elimed_vars();
     for(const auto& v: vs) {
         vector<vector<Lit>> def;
         def = solver->get_cls_defining_var(v);
 
-        // Sanity check and figure out the sign
-        bool found = false;
-        bool sign;
+        uint32_t pos = 0;
+        uint32_t neg = 0;
         for(const auto& cl: def) {
             bool found_this_cl = false;
             for(const auto& l: cl) {
                 if (l.var() != v) continue;
                 found_this_cl = true;
-                if (!found) {
-                    found = true;
-                    sign = l.sign();
-                }
-                else assert(sign == l.sign());
+                if (l.sign()) neg++;
+                else pos++;
             }
             assert(found_this_cl);
         }
-        assert(found);
+        bool sign = neg > pos;
 
-        AIG* overall = nullptr;
+        AIG* overall = scnf.aig_mng.new_const(false);
         for(const auto& cl: def) {
-            AIG* current = nullptr;
+            AIG* current = scnf.aig_mng.new_const(true);
+
+            // Make sure only one side is used, the smaller side
+            bool ok = false;
+            for(const auto& l: cl) {
+                if (l.var() == v) {
+                    if (l.sign() == sign) ok = true;
+                    break;
+                }
+            }
+            if (!ok) continue;
+
             for(const auto& l: cl) {
                 if (l.var() == v) continue;
                 AIG* aig = scnf.aig_mng.new_lit(~l);
-                if (current == nullptr) {
-                    current = aig;
-                } else {
-                    current = scnf.aig_mng.new_and(current, aig);
-                }
+                current = scnf.aig_mng.new_and(current, aig);
             }
-            if (overall == nullptr) {
-                overall = current;
-            } else {
-                overall = scnf.aig_mng.new_or(overall, current);
-            }
+            overall = scnf.aig_mng.new_or(overall, current);
         }
         if (sign) overall = scnf.aig_mng.new_not(overall);
         scnf.var_to_aig[v] = overall;
