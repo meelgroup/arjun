@@ -103,9 +103,11 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     // Training
     inject_cnf(solver_train);
     fh->solver = &solver_train;
-    assert(cnf.last_formula_var > solver_train.nVars());
-    while(solver_train.nVars() < cnf.last_formula_var) solver_train.new_var();
-    assert(solver_train.nVars() == cnf.last_formula_var);
+
+    // TODO: what the HELL is this last_formula_var?
+    /* assert(last_formula_var > solver_train.nVars()); */
+    /* while(solver_train.nVars() < last_formula_var) solver_train.new_var(); */
+    /* assert(solver_train.nVars() == last_formula_var); */
 
     verb_print(1, "True lit: " << fh->my_true_lit);
     vector<uint32_t> to_train;

@@ -61,7 +61,13 @@ struct AIGManager {
         const_false = new_not(const_true);
     }
 
-    AIGManager(const AIGManager& other) {
+    AIGManager& operator=(const AIGManager& other) {
+        aigs.clear();
+        lit_to_aig.clear();
+        const_true = nullptr;
+        const_false = nullptr;
+        max_id = 0;
+
         std::map<uint64_t, AIG*> id_to_aig;
         std::function<AIG*(AIG*)> copy = [&](AIG* aig) -> AIG* {
             if (aig == nullptr) return nullptr;
@@ -79,6 +85,7 @@ struct AIGManager {
             return new_aig;
         };
 
+        assert(aigs.empty());
         for (auto aig : other.aigs) {
             AIG* new_aig = copy(aig);
             if (new_aig) aigs.push_back(new_aig);
@@ -90,7 +97,14 @@ struct AIGManager {
         assert(lit_to_aig.empty());
         for (auto& it : other.lit_to_aig)
             lit_to_aig[it.first] = id_to_aig.at(it.second->id);
+
+        return *this;
     }
+
+    AIGManager(const AIGManager& other) {
+        *this = other;
+    }
+
 
     ~AIGManager() {
         for (auto aig : aigs) delete aig;
@@ -182,25 +196,54 @@ namespace ArjunNS {
     };
 
     struct SimplifiedCNF {
-        SimplifiedCNF(const SimplifiedCNF& other) = delete;
-        uint32_t last_formula_var;
+        SimplifiedCNF() = default;
 
         std::vector<std::vector<CMSat::Lit>> clauses;
         std::vector<std::vector<CMSat::Lit>> red_clauses;
+        bool proj = false;
+        bool sampl_vars_set = false;
+        bool opt_sampl_vars_set = false;
         std::vector<uint32_t> sampl_vars;
-        // for minimize this is set to orig sampling set,
-        // for extend, this is extended, and the weights of the extend are set to 0.5/0.5
         std::vector<uint32_t> opt_sampl_vars;
+
         uint32_t nvars = 0;
         mpq_class multiplier_weight = 1;
-        bool proj = false;
         bool weighted = false;
         bool backbone_done = false;
         struct Weight {mpq_class pos = 1; mpq_class neg = 1;};
         std::map<uint32_t, Weight> weights;
         std::map<uint32_t, std::pair<CMSat::Lit, CMSat::lbool>> orig_to_new_var;
-        std::map<uint32_t, AIG*> var_to_aig;
         AIGManager aig_mng;
+        std::map<uint32_t, AIG*> var_to_aig;
+
+        SimplifiedCNF& operator=(const SimplifiedCNF& other) {
+            clauses = other.clauses;
+            red_clauses = other.red_clauses;
+            proj = other.proj;
+            sampl_vars_set = other.sampl_vars_set;
+            opt_sampl_vars_set = other.opt_sampl_vars_set;
+            sampl_vars = other.sampl_vars;
+            opt_sampl_vars = other.opt_sampl_vars;
+            nvars = other.nvars;
+            multiplier_weight = other.multiplier_weight;
+            weighted = other.weighted;
+            backbone_done = other.backbone_done;
+            weights = other.weights;
+            orig_to_new_var = other.orig_to_new_var;
+            aig_mng = other.aig_mng;
+            std::map<uint64_t, AIG*> id_to_aig;
+            for(const auto& aig: aig_mng.aigs) var_to_aig[aig->id] = aig;
+
+            for(const auto& aig: other.var_to_aig) {
+                var_to_aig[aig.first] = id_to_aig[aig.second->id];
+            }
+
+            return *this;
+        }
+
+        SimplifiedCNF(const SimplifiedCNF& other) {
+            *this = other;
+        }
 
         uint32_t nVars() const { return nvars; }
         uint32_t new_vars(uint32_t vars) {
@@ -228,8 +271,6 @@ namespace ArjunNS {
         void add_red_clause(std::vector<CMSat::Lit>& cl) { red_clauses.push_back(cl); }
         bool get_sampl_vars_set() const { return sampl_vars_set; }
         bool get_opt_sampl_vars_set() const { return opt_sampl_vars_set; }
-        bool sampl_vars_set = false;
-        bool opt_sampl_vars_set = false;
         template<class T>
         void set_sampl_vars(const T& vars, bool ignore = false) {
             if (!ignore) {
@@ -242,8 +283,7 @@ namespace ArjunNS {
             if (!opt_sampl_vars_set) set_opt_sampl_vars(vars);
         }
         const auto& get_sampl_vars() const { return sampl_vars; }
-        template<class T>
-        void set_opt_sampl_vars(const T& vars) {
+        template<class T> void set_opt_sampl_vars(const T& vars) {
             opt_sampl_vars.clear();
             opt_sampl_vars_set = true;
             opt_sampl_vars.insert(opt_sampl_vars.begin(), vars.begin(), vars.end());
@@ -366,7 +406,6 @@ namespace ArjunNS {
             }
         }
 
-
         void write_simpcnf(const std::string& fname,
                     bool red = true, bool convert = false) const
         {
@@ -421,9 +460,7 @@ namespace ArjunNS {
             outf << "c MUST MULTIPLY BY " << multiplier_weight << std::endl;
         }
 
-        bool weight_set(uint32_t v) const {
-            return weights.count(v) > 0;
-        }
+        bool weight_set(uint32_t v) const { return weights.count(v) > 0; }
 
         void remove_equiv_weights() {
             if (!weighted) return;
@@ -527,7 +564,7 @@ namespace ArjunNS {
                 } else tmp = 2;
                 multiplier_weight *= tmp;
                 if (debug_w)
-                    std::cout << __FUNCTION__ << " [w-debug] empty mul: " << tmp 
+                    std::cout << __FUNCTION__ << " [w-debug] empty mul: " << tmp
                         << " final multiplier_weight: " << multiplier_weight << std::endl;
             }
 
@@ -540,9 +577,7 @@ namespace ArjunNS {
 
             if (debug_w) {
                 std::cout << "w-debug FINAL sampl_vars    : ";
-                for(const auto& v: sampl_vars) {
-                    std::cout << v+1 << " ";
-                }
+                for(const auto& v: sampl_vars) std::cout << v+1 << " ";
                 std::cout << std::endl;
                 std::cout << "w-debug FINAL opt_sampl_vars: ";
                 for(const auto& v: opt_sampl_vars) {

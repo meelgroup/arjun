@@ -187,7 +187,6 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             << " SAT: " << sat
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
-    cnf.last_formula_var = solver->nVars();
 }
 
 void Extend::extend_round(SimplifiedCNF& cnf) {

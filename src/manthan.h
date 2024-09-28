@@ -58,6 +58,7 @@ class Manthan {
     private:
         vec point_0;
         vec point_1;
+        uint32_t last_formula_var;
 
         map<uint32_t, uint32_t> y_to_y_hat;
         map<uint32_t, uint32_t> y_hat_to_y;

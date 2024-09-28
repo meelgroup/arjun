@@ -447,5 +447,4 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
             << " F: " << ret_false << " I: " << sampling_vars.size() << " T: "
         << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
-    cnf.last_formula_var = solver->nVars();
 }
