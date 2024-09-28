@@ -25,6 +25,7 @@ THE SOFTWARE.
 #include <cstdint>
 #include <vector>
 #include <string>
+#include <functional>
 #include <mpfr.h>
 #include <map>
 #include <set>
@@ -40,26 +41,60 @@ struct FHolder;
 
 enum AIGT {t_and, t_var, t_const};
 struct AIG {
+    AIG(uint64_t _id = 0) : id(_id) {}
+    AIG() = delete;
     AIGT type = t_const;
     uint32_t var = std::numeric_limits<uint32_t>::max();
     bool neg = false;
     AIG* l = nullptr;
     AIG* r = nullptr;
+    uint64_t id = 0;
 };
 
 struct AIGManager {
     AIGManager() {
-        const_true = new AIG();
+        const_true = new AIG(max_id++);
         const_true->type = t_const;
         const_true->neg = false;
-
-        const_false = new_not(const_false);
         aigs.push_back(const_true);
-        aigs.push_back(const_false);
+
+        const_false = new_not(const_true);
+    }
+
+    AIGManager(const AIGManager& other) {
+        std::map<uint64_t, AIG*> id_to_aig;
+        std::function<AIG*(AIG*)> copy = [&](AIG* aig) -> AIG* {
+            if (aig == nullptr) return nullptr;
+            if (id_to_aig.count(aig->id)) return id_to_aig.at(aig->id);
+
+            AIG* new_aig = new AIG(max_id++);
+            new_aig->type = aig->type;
+            new_aig->var = aig->var;
+            new_aig->neg = aig->neg;
+            new_aig->id = aig->id;
+            new_aig->l = copy(aig->l);
+            new_aig->r = copy(aig->r);
+            aigs.push_back(new_aig);
+            id_to_aig[aig->id] = new_aig;
+            return new_aig;
+        };
+
+        for (auto aig : other.aigs) {
+            AIG* new_aig = copy(aig);
+            if (new_aig) aigs.push_back(new_aig);
+        }
+        const_true = id_to_aig.at(other.const_true->id);
+        const_false = id_to_aig.at(other.const_false->id);
+        max_id = other.max_id;
+
+        assert(lit_to_aig.empty());
+        for (auto& it : other.lit_to_aig)
+            lit_to_aig[it.first] = id_to_aig.at(it.second->id);
     }
 
     ~AIGManager() {
         for (auto aig : aigs) delete aig;
+        max_id = 0;
     }
 
     AIG* new_lit(CMSat::Lit l) {
@@ -70,7 +105,7 @@ struct AIGManager {
         if (lit_to_aig.count(CMSat::Lit(var, neg))) {
             return lit_to_aig.at(CMSat::Lit(var, neg));
         }
-        AIG* ret = new AIG();
+        AIG* ret = new AIG(max_id++);
         ret->type = t_var;
         ret->var = var;
         ret->neg = neg;
@@ -85,7 +120,7 @@ struct AIGManager {
     }
 
     AIG* new_not(AIG* a) {
-        AIG* ret = new AIG();
+        AIG* ret = new AIG(max_id++);
         ret->type = t_and;
         ret->l = a;
         ret->r = a;
@@ -96,7 +131,7 @@ struct AIGManager {
     }
 
     AIG* new_and(AIG* l, AIG* r) {
-        AIG* ret = new AIG();
+        AIG* ret = new AIG(max_id++);
         ret->type = t_and;
         ret->l = l;
         ret->r = r;
@@ -105,7 +140,7 @@ struct AIGManager {
     }
 
     AIG* new_or(AIG* l, AIG* r) {
-        AIG* ret = new AIG();
+        AIG* ret = new AIG(max_id++);
         ret->type = t_and;
         ret->neg = true;
         ret->l = new_not(l);
@@ -113,6 +148,7 @@ struct AIGManager {
         aigs.push_back(ret);
         return ret;
     }
+
     AIG* new_ite(AIG* l, AIG* r, AIG* b) {
         return new_or(new_and(b, l), new_and(new_not(b), r));
     }
@@ -126,6 +162,7 @@ struct AIGManager {
     std::map<CMSat::Lit, AIG*> lit_to_aig;
     AIG* const_true = nullptr;
     AIG* const_false = nullptr;
+    uint64_t max_id = 0;
 };
 
 namespace ArjunNS {
@@ -145,6 +182,7 @@ namespace ArjunNS {
     };
 
     struct SimplifiedCNF {
+        SimplifiedCNF(const SimplifiedCNF& other) = delete;
         uint32_t last_formula_var;
 
         std::vector<std::vector<CMSat::Lit>> clauses;
@@ -417,13 +455,15 @@ namespace ArjunNS {
             for(const auto& l: solver->get_zero_assigned_lits()) {
                 if (l.var() >= nVars()) continue;
                 if (debug_w)
-                    std::cout << __FUNCTION__ << " [w-debug] orig unit l: " << l << " w: " << get_lit_weight(l) << std::endl;
+                    std::cout << __FUNCTION__ << " [w-debug] orig unit l: " << l
+                        << " w: " << get_lit_weight(l) << std::endl;
                 sampling_vars_set.erase(l.var());
                 opt_sampling_vars_set.erase(l.var());
                 if (get_weighted()) {
                     multiplier_weight *= get_lit_weight(l);
                     if (debug_w)
-                        std::cout << __FUNCTION__ << " [w-debug] unit: " << l << " multiplier_weight: " << multiplier_weight << std::endl;
+                        std::cout << __FUNCTION__ << " [w-debug] unit: " << l
+                            << " multiplier_weight: " << multiplier_weight << std::endl;
                     unset_var_weight(l.var());
                 }
             }
@@ -434,7 +474,8 @@ namespace ArjunNS {
             for(auto p: eq_lits) {
                 if (p.first.var() >= nVars() || p.second.var() >= nVars()) continue;
                 if (debug_w)
-                    std::cout << __FUNCTION__ << " [w-debug] repl: " << p.first << " with " << p.second << std::endl;
+                    std::cout << __FUNCTION__ << " [w-debug] repl: " << p.first
+                        << " with " << p.second << std::endl;
                 if (get_weighted()) {
                     auto wp2 = get_lit_weight(p.second);
                     auto wn2 = get_lit_weight(~p.second);
@@ -449,8 +490,10 @@ namespace ArjunNS {
                     set_lit_weight(p.second, wp2);
                     set_lit_weight(~p.second, wn2);
                     if (debug_w) {
-                        std::cout << __FUNCTION__ << " [w-debug] set lit " << p.second << " weight to " << wp2 << std::endl;
-                        std::cout << __FUNCTION__ << " [w-debug] set lit " << ~p.second << " weight to " << wn2 << std::endl;
+                        std::cout << __FUNCTION__ << " [w-debug] set lit " << p.second
+                            << " weight to " << wp2 << std::endl;
+                        std::cout << __FUNCTION__ << " [w-debug] set lit " << ~p.second
+                            << " weight to " << wn2 << std::endl;
                     }
                     unset_var_weight(p.first.var());
                 }
@@ -484,7 +527,8 @@ namespace ArjunNS {
                 } else tmp = 2;
                 multiplier_weight *= tmp;
                 if (debug_w)
-                    std::cout << __FUNCTION__ << " [w-debug] empty mul: " << tmp << " final multiplier_weight: " << multiplier_weight << std::endl;
+                    std::cout << __FUNCTION__ << " [w-debug] empty mul: " << tmp 
+                        << " final multiplier_weight: " << multiplier_weight << std::endl;
             }
 
             set_sampl_vars(sampling_vars_set, true);

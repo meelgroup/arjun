@@ -381,7 +381,6 @@ SimplifiedCNF Puura::get_cnf(
     scnf.weighted = cnf.get_weighted();
     scnf.proj = cnf.get_projected();
     scnf.new_vars(solver->simplified_nvars());
-    scnf.orig_to_new_var = solver->update_var_mapping(cnf.orig_to_new_var);
 
     if (conf.verb >= 5) {
         for(const auto& v: new_sampl_vars)
@@ -447,6 +446,9 @@ SimplifiedCNF Puura::get_cnf(
         }
         cout << endl;
     }
+
+    // Now we do the mapping. Otherwise, above will be complicated
+    scnf.orig_to_new_var = solver->update_var_mapping(cnf.orig_to_new_var);
     return scnf;
 }
 
@@ -487,7 +489,10 @@ void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSo
 
             for(const auto& l: cl) {
                 if (l.var() == v) continue;
-                AIG* aig = scnf.aig_mng.new_lit(~l);
+                auto x = scnf.orig_to_new_var[l.var()];
+                assert(x.second == l_Undef);
+                Lit l2 = l ^ x.first.sign();
+                AIG* aig = scnf.aig_mng.new_lit(~l2);
                 current = scnf.aig_mng.new_and(current, aig);
             }
             overall = scnf.aig_mng.new_or(overall, current);
