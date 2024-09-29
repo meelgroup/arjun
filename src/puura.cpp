@@ -328,9 +328,6 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     // Final cleanup -- renumbering, disconnected component removing, etc.
     str.clear();
 
-    // TODO this is useful...
-    /* if (arjun->definitely_satisfiable()) { str += string("occ-rem-unconn-assumps, "); } */
-
     // one more sparisfy
     if (simp_conf.oracle_extra && simp_conf.oracle_sparsify && simp_conf.oracle_vivify) {
         string s;
@@ -362,8 +359,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->simplify(&dont_elim, &str);
 
     // Return final one
-    auto ret = get_cnf(
-            solver, cnf, new_sampl_vars, new_empty_sampl_vars);
+    auto ret = get_cnf(solver, cnf, new_sampl_vars, new_empty_sampl_vars);
     ret.backbone_done = backbone_done;
     delete solver;
     return ret;
@@ -381,6 +377,7 @@ SimplifiedCNF Puura::get_cnf(
     scnf.weighted = cnf.get_weighted();
     scnf.proj = cnf.get_projected();
     scnf.new_vars(solver->simplified_nvars());
+    scnf.copy_aigs(cnf);
 
     if (conf.verb >= 5) {
         for(const auto& v: new_sampl_vars)
@@ -449,22 +446,47 @@ SimplifiedCNF Puura::get_cnf(
 
     // Now we do the mapping. Otherwise, above will be complicated
     scnf.orig_to_new_var = solver->update_var_mapping(cnf.orig_to_new_var);
+    // NOTE AIG mapping does not need to be updated, as it's orig to orig
     return scnf;
 }
 
 void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSolver* solver) const {
-    assert("TODO: map AIG vars with cnf's mappings" && false);
     vector<uint32_t> vs = solver->get_elimed_vars();
+    const auto new_to_orig_var = cnf.get_new_to_orig_var();
+
+    // We are all in NEW here. So we need to map back to orig, both the
+    // definition and the target
+    auto map_to_orig = [&new_to_orig_var](const vector<vector<Lit>>& def) {
+        vector<vector<Lit>> ret;
+        for(const auto& cl: def) {
+            vector<Lit> new_cl;
+            for(const auto& l: cl) {
+                assert(new_to_orig_var.count(l.var()) && "Must be in the new var set");
+                const Lit l2 = new_to_orig_var.at(l.var());
+                new_cl.push_back(l2 ^ l.sign());
+            }
+            ret.push_back(new_cl);
+        }
+        return ret;
+    };
+
+    vector<Lit> vs_orig;
     for(const auto& v: vs) {
+        assert(new_to_orig_var.count(v) && "ust be in the new var set");
+        vs_orig.push_back(new_to_orig_var.at(v));
+    }
+
+    for(const auto& target: vs_orig) {
         vector<vector<Lit>> def;
-        def = solver->get_cls_defining_var(v);
+        def = solver->get_cls_defining_var(target.var());
+        def = map_to_orig(def);
 
         uint32_t pos = 0;
         uint32_t neg = 0;
         for(const auto& cl: def) {
             bool found_this_cl = false;
             for(const auto& l: cl) {
-                if (l.var() != v) continue;
+                if (l.var() != target.var()) continue;
                 found_this_cl = true;
                 if (l.sign()) neg++;
                 else pos++;
@@ -480,7 +502,7 @@ void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSo
             // Make sure only one side is used, the smaller side
             bool ok = false;
             for(const auto& l: cl) {
-                if (l.var() == v) {
+                if (l.var() == target.var()) {
                     if (l.sign() == sign) ok = true;
                     break;
                 }
@@ -488,7 +510,7 @@ void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSo
             if (!ok) continue;
 
             for(const auto& l: cl) {
-                if (l.var() == v) continue;
+                if (l.var() == target.var()) continue;
                 auto x = scnf.orig_to_new_var[l.var()];
                 assert(x.second == l_Undef);
                 Lit l2 = l ^ x.first.sign();
@@ -497,8 +519,8 @@ void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSo
             }
             overall = scnf.aig_mng.new_or(overall, current);
         }
-        if (sign) overall = scnf.aig_mng.new_not(overall);
-        scnf.var_to_aig[v] = overall;
+        if (sign ^ target.sign()) overall = scnf.aig_mng.new_not(overall);
+        scnf.var_to_aig[target.var()] = overall;
     }
 }
 

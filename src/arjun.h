@@ -230,6 +230,12 @@ namespace ArjunNS {
             backbone_done = other.backbone_done;
             weights = other.weights;
             orig_to_new_var = other.orig_to_new_var;
+            copy_aigs(other);
+
+            return *this;
+        }
+
+        void copy_aigs(const SimplifiedCNF& other) {
             aig_mng = other.aig_mng;
             std::map<uint64_t, AIG*> id_to_aig;
             for(const auto& aig: aig_mng.aigs) var_to_aig[aig->id] = aig;
@@ -237,12 +243,21 @@ namespace ArjunNS {
             for(const auto& aig: other.var_to_aig) {
                 var_to_aig[aig.first] = id_to_aig[aig.second->id];
             }
-
-            return *this;
         }
 
         SimplifiedCNF(const SimplifiedCNF& other) {
             *this = other;
+        }
+
+        std::map<uint32_t, CMSat::Lit> get_new_to_orig_var() const {
+            std::map<uint32_t, CMSat::Lit> ret;
+            for(const auto& p: orig_to_new_var) {
+                const CMSat::Lit l = p.second.first;
+                if (l != CMSat::lit_Undef) {
+                    ret[l.var()] = CMSat::Lit(p.first, l.sign());
+                }
+            }
+            return ret;
         }
 
         uint32_t nVars() const { return nvars; }
