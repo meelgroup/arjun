@@ -391,7 +391,7 @@ SimplifiedCNF Puura::get_cnf(
     cnf2.fix_weights(solver, new_sampl_vars, empty_sampl_vars);
 
     solver->start_getting_constraints(false, true);
-    get_bve_mapping(cnf, scnf, solver);
+    if (cnf.need_aig) get_bve_mapping(cnf, scnf, solver);
     if (cnf2.weighted) {
         map<Lit, mpq_class> outer_w;
         for(const auto& it: cnf2.weights) {
@@ -446,7 +446,6 @@ SimplifiedCNF Puura::get_cnf(
 
     // Now we do the mapping. Otherwise, above will be complicated
     scnf.orig_to_new_var = solver->update_var_mapping(cnf.orig_to_new_var);
-    // NOTE AIG mapping does not need to be updated, as it's orig to orig
     return scnf;
 }
 

@@ -198,6 +198,7 @@ namespace ArjunNS {
     struct SimplifiedCNF {
         SimplifiedCNF() = default;
 
+        bool need_aig = false;
         std::vector<std::vector<CMSat::Lit>> clauses;
         std::vector<std::vector<CMSat::Lit>> red_clauses;
         bool proj = false;
@@ -217,6 +218,7 @@ namespace ArjunNS {
         std::map<uint32_t, AIG*> var_to_aig;
 
         SimplifiedCNF& operator=(const SimplifiedCNF& other) {
+            need_aig = other.need_aig;
             clauses = other.clauses;
             red_clauses = other.red_clauses;
             proj = other.proj;
@@ -230,7 +232,7 @@ namespace ArjunNS {
             backbone_done = other.backbone_done;
             weights = other.weights;
             orig_to_new_var = other.orig_to_new_var;
-            copy_aigs(other);
+            if (need_aig) copy_aigs(other);
 
             return *this;
         }
