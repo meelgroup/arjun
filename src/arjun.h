@@ -87,8 +87,7 @@ struct AIGManager {
 
         assert(aigs.empty());
         for (auto aig : other.aigs) {
-            AIG* new_aig = copy(aig);
-            if (new_aig) aigs.push_back(new_aig);
+            copy(aig);
         }
         const_true = id_to_aig.at(other.const_true->id);
         const_false = id_to_aig.at(other.const_false->id);
