@@ -91,7 +91,7 @@ class Manthan {
         vector<vector<lbool>> get_samples(uint32_t num_samples);
         void train(const vector<vector<lbool>>& samples, uint32_t v);
         vector<vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
-                                             //
-        FHolder* fh;
+
+        FHolder fh;
         std::map<uint32_t, FHolder::Formula> fs_var; // var -> formula
 };

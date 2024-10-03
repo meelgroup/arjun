@@ -240,8 +240,9 @@ void Minimize::run_minimize_for_synth(ArjunNS::SimplifiedCNF& cnf) {
     get_incidence();
     duplicate_problem(cnf);
     add_fixed_clauses(true);
+    assert(false &&  "This is the one where we define some BY SOME OTHER, that isn't the input");
+    assert(false &&  "We need to get back to functions for this to work");
     backward_round_synth(cnf);
-    assert(false && "what to do??");
 }
 
 void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {

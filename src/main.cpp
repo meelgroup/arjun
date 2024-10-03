@@ -219,7 +219,7 @@ void set_config(ArjunNS::Arjun* arj) {
 void do_synthesis() {
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, etof_conf.all_indep);
-    assert(!cnf.get_projected());
+    assert(cnf.sampl_vars == cnf.opt_sampl_vars && "Synthesis extends opt_sampl_vars, so it must be the same as sampl_vars");
     if (do_pre_manthan) {
         cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
         if (do_pre_backbone) arjun->standalone_backbone(cnf);
@@ -232,8 +232,9 @@ void do_synthesis() {
         /* if (do_revbce) arjun->standalone_rev_bce(cnf); */
         if (etof_conf.do_unate) arjun->standalone_unate(cnf);
     }
-    // TODO We need to get back to functions for this to work
-    if (do_minim_indep) arjun->standalone_minimize_indep_synt(cnf);
+    // TODO
+    // Currently NOT implemented. This defines things by vars that are themselves not currently defined!
+    /* if (do_minim_indep) arjun->standalone_minimize_indep_synt(cnf); */
 
     /* cnf.renumber_sampling_vars_for_ganak(); */
     if (!elimtofile.empty()) write_synth(cnf, elimtofile);

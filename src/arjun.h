@@ -204,7 +204,7 @@ namespace ArjunNS {
         bool sampl_vars_set = false;
         bool opt_sampl_vars_set = false;
         std::vector<uint32_t> sampl_vars;
-        std::vector<uint32_t> opt_sampl_vars;
+        std::vector<uint32_t> opt_sampl_vars; // Filled during synthesis with vars that have been defined already
 
         uint32_t nvars = 0;
         mpq_class multiplier_weight = 1;

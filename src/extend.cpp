@@ -81,7 +81,6 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     assert(cnf.opt_sampl_vars_set);
     uint32_t start_size = cnf.opt_sampl_vars.size();
     fill_solver(cnf);
-
     solver->set_verbosity(0);
     solver->set_scc(1);
 

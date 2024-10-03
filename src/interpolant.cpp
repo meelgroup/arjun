@@ -28,15 +28,18 @@ extern "C" {
 }
 
 #include "interpolant.h"
+#include "constants.h"
 
 using namespace CMSat;
 using namespace CaDiCaL;
 
 void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<int> & clause,
                                const std::vector<uint64_t> & oantec) {
-  cout << "red ID:" << setw(4) << id;//  << " red: " << (int)red;
-  cout << " cl: "; for(const auto& l: clause) cout << l << " "; cout << endl;
-  cout << "atec: "; for(const auto& l: oantec) cout << l << " "; cout << endl;
+  if (conf.verb >= 2) {
+      cout << "red ID:" << setw(4) << id;//  << " red: " << (int)red;
+      cout << " cl: "; for(const auto& l: clause) cout << l << " "; cout << endl;
+      cout << "atec: "; for(const auto& l: oantec) cout << l << " "; cout << endl;
+  }
   cls[id] = pl_to_lit_cl(clause);
   auto rantec = oantec;
   std::reverse(rantec.begin(), rantec.end());
@@ -46,11 +49,13 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
   FHolder::Formula f = fs_clid[id1];
   set<Lit> resolvent(cls[id1].begin(),cls[id1].end());
   for(uint32_t i = 1; i < rantec.size(); i++) {
-      cout << "resolvent: "; for(const auto& l: resolvent) cout << l << " "; cout << endl;
+      if (conf.verb >= 2) {
+          cout << "resolvent: "; for(const auto& l: resolvent) cout << l << " "; cout << endl;
+      }
 
       const uint64_t id2 = rantec[i];
       const vector<Lit>& cl = cls[id2];
-      cout << "resolving with: " << cl << endl;;
+      verb_print(2, "resolving with: " << cl);
       Lit res_lit = lit_Undef;
       for(const auto& l: cl) {
           if (resolvent.count(~l)) {
@@ -68,17 +73,19 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
       else f = fh->compose_or(f, fs_clid[id2]);
   }
   fs_clid[id] = f;
-  cout << "intermediate formula: " << fs_clid[id] << endl;
+  verb_print(2, "intermediate formula: " << fs_clid[id]);
   if (clause.empty()) {
       out = f;
-      cout << "Final formula: " << f << endl;
+      verb_print(2, "Final formula: " << f);
   }
 }
 
 void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int> & clause, bool) {
   assert(red == false);
-  cout << "orig ID:" << setw(4)<< id;
-  cout << " cl: "; for(const auto& l: clause) cout << l << " "; cout << endl;
+  if (conf.verb >= 2) {
+      cout << "orig ID:" << setw(4)<< id << " cl: ";
+      for(const auto& l: clause) cout << l << " "; cout << endl;
+  }
   cls[id] = pl_to_lit_cl(clause);
 
   bool formula_a = true;
@@ -105,7 +112,7 @@ void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int>
   } else {
       fs_clid[id] = fh->constant_formula(true);
   }
-  cout << "intermediate formula: " << fs_clid[id] << endl;
+  verb_print(2, "intermediate formula: " << fs_clid[id]);
 }
 
 void Interpolant::generate_interpolant(
@@ -142,7 +149,7 @@ void Interpolant::generate_interpolant(
     for(uint32_t cl_at = 0; cl_at < cl_num; cl_at++) {
         if (picosat_coreclause(ps, cl_at)) {
             cl.clear();
-            cout << "cl: " << cl_map[cl_at] << endl;
+            verb_print(2, "cl: " << cl_map[cl_at]);
             for(auto l: cl_map[cl_at]) {
                 // if it's a var that's the image that has been
                 // forced to be equal, then replace
@@ -153,7 +160,7 @@ void Interpolant::generate_interpolant(
                 }
                 cl.push_back(l);
             }
-            cout << "cl: " << cl << endl;
+            verb_print(2, "cl: " << cl);
             for(const auto& l: cl) assert(l.var() < orig_num_vars*2);
             mini_cls.push_back(cl);
         }
@@ -178,7 +185,7 @@ void Interpolant::generate_interpolant(
 
     // CaDiCaL on the core only
     CaDiCaL::Solver* cdcl = new Solver();
-    MyTracer t(orig_num_vars, cnf.opt_sampl_vars);
+    MyTracer t(orig_num_vars, cnf.opt_sampl_vars, conf);
     t.fh = new FHolder();
     t.fh->solver = solver;
     t.fh->my_true_lit = my_true_lit;

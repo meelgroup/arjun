@@ -43,10 +43,13 @@ using std::vector;
 using std::map;
 
 struct MyTracer : public CaDiCaL::Tracer {
-    MyTracer(uint32_t _orig_num_vars, vector<uint32_t> _opt_sampl_vars) :
-      orig_num_vars(_orig_num_vars) {
+    MyTracer(uint32_t _orig_num_vars, vector<uint32_t> _opt_sampl_vars, const ArjunInt::Config& _conf) :
+      conf(_conf),
+      orig_num_vars(_orig_num_vars)
+    {
       input.insert(_opt_sampl_vars.begin(), _opt_sampl_vars.end());
     }
+    const ArjunInt::Config& conf;
     map<uint64_t, vector<Lit>> cls;
     std::map<uint64_t, FHolder::Formula> fs_clid;  // clause ID to formula
     FHolder* fh = nullptr;
@@ -85,7 +88,7 @@ private:
     map<uint32_t, vector<Lit>> cl_map;
     uint32_t cl_num = 0;
     vector<CMSat::lbool> set_vals;
-    ArjunInt::Config conf;
+    const ArjunInt::Config conf;
     uint32_t orig_num_vars;
     vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
 };

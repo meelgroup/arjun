@@ -22,6 +22,7 @@
  THE SOFTWARE.
  */
 
+#include "constants.h"
 #include "minimize.h"
 #include "constants.h"
 #include "interpolant.h"
@@ -349,9 +350,7 @@ void Minimize::backward_round() {
 }
 
 void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
-#ifndef NDEBUG
-    for(const auto& x: seen) assert(x == 0);
-#endif
+    SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
     double start_round_time = cpuTime();
     vector<uint32_t> indep;
     Interpolant interp(conf);

@@ -50,6 +50,11 @@ using std::setw;
 //default
 #define COLDEF "\033[0m"
 
+#ifdef SLOW_DEBUG
+#define SLOW_DEBUG_DO(x) do { x; } while (0)
+#else
+#define SLOW_DEBUG_DO(x) do { } while (0)
+#endif
 
 // lit to picolit
 inline int lit_to_pl(const CMSat::Lit l) {
