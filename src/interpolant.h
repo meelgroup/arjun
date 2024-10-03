@@ -24,7 +24,6 @@
 
 #pragma once
 
-#include "cryptominisat5/cryptominisat.h"
 #include "cryptominisat5/solvertypesmini.h"
 extern "C" {
 #include "mpicosat/mpicosat.h"
@@ -43,17 +42,18 @@ using std::vector;
 using std::map;
 
 struct MyTracer : public CaDiCaL::Tracer {
-    MyTracer(uint32_t _orig_num_vars, vector<uint32_t> _opt_sampl_vars, const ArjunInt::Config& _conf) :
+    MyTracer(uint32_t _orig_num_vars, vector<uint32_t> _opt_sampl_vars, AIGManager* _aig_mng, const ArjunInt::Config& _conf) :
       conf(_conf),
+      aig_mng(_aig_mng),
       orig_num_vars(_orig_num_vars)
     {
       input.insert(_opt_sampl_vars.begin(), _opt_sampl_vars.end());
     }
     const ArjunInt::Config& conf;
     map<uint64_t, vector<Lit>> cls;
-    std::map<uint64_t, FHolder::Formula> fs_clid;  // clause ID to formula
-    FHolder* fh = nullptr;
-    FHolder::Formula out; // Final output formula
+    std::map<uint64_t, AIG*> fs_clid;  // clause ID to formula
+    AIGManager* aig_mng = nullptr;
+    AIG* out; // Final output formula
     int32_t orig_num_vars;
     set<uint32_t> input;
 
@@ -78,10 +78,10 @@ public:
     void fill_var_to_indic(const vector<uint32_t>& var_to_indic);
     void generate_interpolant(const vector<Lit>& assumptions, uint32_t test_var, ArjunNS::SimplifiedCNF& cnf);
     void add_clause(const vector<Lit>& cl);
+    const AIGManager& get_aig_mng() const { return aig_mng; }
 
-    // Kinda private
+    // Internal really
     CMSat::SATSolver* solver = nullptr;
-    Lit my_true_lit = CMSat::lit_Error;
 
 private:
     PicoSAT* ps = nullptr;
@@ -91,5 +91,7 @@ private:
     const ArjunInt::Config conf;
     uint32_t orig_num_vars;
     vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
+    AIGManager aig_mng;
+    map<uint32_t, AIG*> defs; // the definitions of the variables
 };
 

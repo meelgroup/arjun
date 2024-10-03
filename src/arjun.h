@@ -231,15 +231,15 @@ namespace ArjunNS {
             backbone_done = other.backbone_done;
             weights = other.weights;
             orig_to_new_var = other.orig_to_new_var;
-            if (need_aig) copy_aigs(other);
+            if (need_aig) copy_aigs_from(other);
 
             return *this;
         }
 
-        void copy_aigs(const SimplifiedCNF& other) {
+        void copy_aigs_from(const SimplifiedCNF& other) {
             aig_mng = other.aig_mng;
             std::map<uint64_t, AIG*> id_to_aig;
-            for(const auto& aig: aig_mng.aigs) var_to_aig[aig->id] = aig;
+            for(const auto& aig: aig_mng.aigs) id_to_aig[aig->id] = aig;
 
             for(const auto& aig: other.var_to_aig) {
                 var_to_aig[aig.first] = id_to_aig[aig.second->id];
@@ -601,6 +601,17 @@ namespace ArjunNS {
                 }
                 std::cout << std::endl;
             }
+        }
+
+        bool not_renumbered() const {
+            for(uint32_t i = 0; i < nvars; i++) {
+                CMSat::Lit l = CMSat::Lit (i, false);
+                auto it = orig_to_new_var.find(i);
+                assert(it != orig_to_new_var.end());
+                if (it->second != std::make_pair(l, CMSat::l_Undef)) return false;
+
+            }
+            return true;
         }
     };
 

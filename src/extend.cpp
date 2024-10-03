@@ -76,6 +76,7 @@ void Extend::add_all_indics_except(const set<uint32_t>& except) {
 }
 
 void Extend::unsat_define(SimplifiedCNF& cnf) {
+    assert(cnf.not_renumbered() && "Makes interpolant generation much harder, there's no need");
     double start_round_time = cpuTime();
     assert(cnf.sampl_vars.size() == cnf.opt_sampl_vars.size());
     assert(cnf.opt_sampl_vars_set);
@@ -98,8 +99,6 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     interp.solver = solver;
     interp.fill_picolsat(orig_num_vars);
     interp.fill_var_to_indic(var_to_indic);
-    solver->new_var();
-    interp.my_true_lit = Lit(solver->nVars()-1, false);
 
     //Initially, all of samping_set is unknown
     for(const auto& x: seen) assert(x == 0);
@@ -186,6 +185,9 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             << " SAT: " << sat
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
+
+    // AIG movement
+    interp.get_aig_mng().append_aigs_to(cnf);
 }
 
 void Extend::extend_round(SimplifiedCNF& cnf) {

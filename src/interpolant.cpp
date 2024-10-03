@@ -46,7 +46,7 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
   assert(rantec.size() >= 2);
 
   const uint64_t id1 = rantec[0];
-  FHolder::Formula f = fs_clid[id1];
+  AIG* aig = fs_clid[id1];
   set<Lit> resolvent(cls[id1].begin(),cls[id1].end());
   for(uint32_t i = 1; i < rantec.size(); i++) {
       if (conf.verb >= 2) {
@@ -69,14 +69,14 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
       }
       assert(res_lit != lit_Undef);
       bool input_or_copy = input.count(res_lit.var()) || res_lit.var() >= (uint32_t)orig_num_vars;
-      if (input_or_copy) f = fh->compose_and(f, fs_clid[id2]);
-      else f = fh->compose_or(f, fs_clid[id2]);
+      if (input_or_copy) aig = aig_mng->new_and(aig, fs_clid[id2]);
+      else aig = aig_mng->new_or(aig, fs_clid[id2]);
   }
-  fs_clid[id] = f;
+  fs_clid[id] = aig;
   verb_print(2, "intermediate formula: " << fs_clid[id]);
   if (clause.empty()) {
-      out = f;
-      verb_print(2, "Final formula: " << f);
+      out = aig;
+      verb_print(2, "Final formula: " << aig);
   }
 }
 
@@ -84,7 +84,8 @@ void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int>
   assert(red == false);
   if (conf.verb >= 2) {
       cout << "orig ID:" << setw(4)<< id << " cl: ";
-      for(const auto& l: clause) cout << l << " "; cout << endl;
+      for(const auto& l: clause) cout << l << " ";
+      cout << endl;
   }
   cls[id] = pl_to_lit_cl(clause);
 
@@ -99,18 +100,11 @@ void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int>
           int32_t v = abs(l)-1;
           if (input.count(v)) cl.push_back(pl_to_lit(l));
       }
-      FHolder::Formula f;
-      fh->solver->new_var();
-      f.out = Lit(fh->solver->nVars()-1, false);
-      auto cl2 = cl;
-      cl2.push_back(~f.out);
-      f.clauses.push_back(cl2);
-      for(const auto& l: cl) {
-          f.clauses.push_back({~l, f.out});
-      }
-      fs_clid[id] = f;
+      AIG* aig = aig_mng->new_const(false);
+      for(const auto& l: cl) aig = aig_mng->new_or(aig, aig_mng->new_lit(l));
+      fs_clid[id] = aig;
   } else {
-      fs_clid[id] = fh->constant_formula(true);
+      fs_clid[id] = aig_mng->new_const(true);
   }
   verb_print(2, "intermediate formula: " << fs_clid[id]);
 }
@@ -185,11 +179,7 @@ void Interpolant::generate_interpolant(
 
     // CaDiCaL on the core only
     CaDiCaL::Solver* cdcl = new Solver();
-    MyTracer t(orig_num_vars, cnf.opt_sampl_vars, conf);
-    t.fh = new FHolder();
-    t.fh->solver = solver;
-    t.fh->my_true_lit = my_true_lit;
-    verb_print(1, "true lit: " << t.fh->my_true_lit);
+    MyTracer t(orig_num_vars, cnf.opt_sampl_vars, &aig_mng, conf);
 
     cdcl->connect_proof_tracer(&t, true);
     /* std::stringstream name; */
@@ -212,26 +202,10 @@ void Interpolant::generate_interpolant(
         exit(-1);
     }
     release_assert(pret == Status::UNSATISFIABLE);
-    /* if (debug_core) { */
-    /*     std::stringstream name; */
-    /*     name << "core-" << test_var+1 << ".cnf.trace"; */
-    /*     FILE* trace = fopen(name.str().c_str(), "w"); */
-    /*     picosat_write_rup_trace(ps2, trace); */
-    /* } */
-    /* TraceData dat; */
-    /* dat.data = (int*)malloc(1024*sizeof(int)); */
-    /* dat.size = 0; */
-    /* dat.capacity = 1024; */
-    /* verb_print(2, "[arjun] Proof size: " << dat.size); */
-    /* free(dat.data); */
-    /* picosat_reset(cdcl); */
-    /* fclose(core); */
     cdcl->disconnect_proof_tracer(&t);
     delete cdcl;
 
-    //TODO: test_var's definition is now computed, and should be saved
-    /* cnf.fh->fs[test_var] = t.out; */
-    /* cnf.fh->fs[test_var].finished = true; */
+    defs[test_var] = t.out;
     verb_print(1, "definition of var: " << test_var+1 << " is: " << t.out);
     verb_print(1, "----------------------------");
 }

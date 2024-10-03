@@ -377,7 +377,7 @@ SimplifiedCNF Puura::get_cnf(
     scnf.weighted = cnf.get_weighted();
     scnf.proj = cnf.get_projected();
     scnf.new_vars(solver->simplified_nvars());
-    if (cnf.need_aig) scnf.copy_aigs(cnf);
+    if (cnf.need_aig) scnf.copy_aigs_from(cnf);
 
     if (conf.verb >= 5) {
         for(const auto& v: new_sampl_vars)
