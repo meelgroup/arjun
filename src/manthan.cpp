@@ -77,7 +77,6 @@ vector<vector<lbool>> Manthan::get_samples(uint32_t num) {
 
 SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     uint32_t tot_repaired = 0;
-    uint32_t tot_simple_repaired = 0;
     cnf = input_cnf;
     // Grand master plan
     // 1. Get 10k samples
