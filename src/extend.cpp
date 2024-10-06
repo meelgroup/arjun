@@ -186,8 +186,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
 
-    // AIG movement
-    interp.get_aig_mng().append_aigs_to(cnf);
+    cnf.add_aigs_from(interp.get_aig_mng(), interp.get_defs());
 }
 
 void Extend::extend_round(SimplifiedCNF& cnf) {

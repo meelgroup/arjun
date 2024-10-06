@@ -72,6 +72,11 @@ struct AIGManager {
     };
 
     AIGManager& operator=(const AIGManager& other) {
+        replace_with(other);
+        return *this;
+    }
+
+    std::map<uint64_t, AIG*> replace_with(const AIGManager& other) {
         aigs.clear();
         lit_to_aig.clear();
         const_true = nullptr;
@@ -89,20 +94,22 @@ struct AIGManager {
         for (auto& it : other.lit_to_aig)
             lit_to_aig[it.first] = old_id_to_new_aig.at(it.second->id);
 
-        return *this;
+        return old_id_to_new_aig;
     }
 
     AIGManager(const AIGManager& other) {
         *this = other;
     }
 
-    void append_aigs_to(AIGManager& other) const {
+    std::map<uint64_t, AIG*> append_aigs_to(AIGManager& other) const {
         std::map<uint64_t, AIG*> old_id_to_new_aig;
         for (auto aig : aigs) other.copy_aig(aig, old_id_to_new_aig);
         for(auto& it: lit_to_aig) {
             // NOTE: we may be overriding old ones. It's fine, we can have duplicates
             other.lit_to_aig[it.first] = old_id_to_new_aig.at(it.second->id);
         }
+        // No need to copy const_true and const_false
+        return old_id_to_new_aig;
     }
 
     ~AIGManager() {
@@ -221,7 +228,7 @@ namespace ArjunNS {
         std::map<uint32_t, Weight> weights;
         std::map<uint32_t, std::pair<CMSat::Lit, CMSat::lbool>> orig_to_new_var;
         AIGManager aig_mng;
-        std::map<uint32_t, AIG*> var_to_aig;
+        std::map<uint32_t, AIG*> defs; //definition of variables in terms of AIG
 
         SimplifiedCNF& operator=(const SimplifiedCNF& other) {
             need_aig = other.need_aig;
@@ -238,18 +245,35 @@ namespace ArjunNS {
             backbone_done = other.backbone_done;
             weights = other.weights;
             orig_to_new_var = other.orig_to_new_var;
-            if (need_aig) copy_aigs_from(other);
+            if (need_aig) replace_aigs_from(other);
+            else assert(aig_mng.aigs.empty() && defs.empty());
 
             return *this;
         }
 
-        void copy_aigs_from(const SimplifiedCNF& other) {
+        void replace_aigs_from(const SimplifiedCNF& other) {
             aig_mng = other.aig_mng;
             std::map<uint64_t, AIG*> id_to_aig;
             for(const auto& aig: aig_mng.aigs) id_to_aig[aig->id] = aig;
 
-            for(const auto& aig: other.var_to_aig) {
-                var_to_aig[aig.first] = id_to_aig[aig.second->id];
+            defs.clear();
+            for(const auto& it: other.defs) {
+                assert(id_to_aig.count(it.second->id) && "Must have already been copied");
+                defs[it.first] = id_to_aig[it.second->id];
+            }
+        }
+
+        void add_aigs_from(const AIGManager& other, const std::map<uint32_t, AIG*>& other_defs) {
+            if (!need_aig) {
+                assert(aig_mng.aigs.empty() && defs.empty());
+                return;
+            }
+            auto old_id_to_new_aig = other.append_aigs_to(aig_mng);
+
+            for(const auto& it: other_defs) {
+                assert(defs.find(it.first) == defs.end() && "Must not already be defined here");
+                assert(old_id_to_new_aig.count(it.second->id) && "Must have already been copied");
+                defs[it.first] = old_id_to_new_aig[it.second->id];
             }
         }
 

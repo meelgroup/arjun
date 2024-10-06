@@ -79,6 +79,7 @@ public:
     void generate_interpolant(const vector<Lit>& assumptions, uint32_t test_var, ArjunNS::SimplifiedCNF& cnf);
     void add_clause(const vector<Lit>& cl);
     const AIGManager& get_aig_mng() const { return aig_mng; }
+    const map<uint32_t, AIG*>& get_defs() const { return defs; }
 
     // Internal really
     CMSat::SATSolver* solver = nullptr;

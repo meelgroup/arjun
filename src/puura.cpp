@@ -377,7 +377,7 @@ SimplifiedCNF Puura::get_cnf(
     scnf.weighted = cnf.get_weighted();
     scnf.proj = cnf.get_projected();
     scnf.new_vars(solver->simplified_nvars());
-    if (cnf.need_aig) scnf.copy_aigs_from(cnf);
+    if (cnf.need_aig) scnf.replace_aigs_from(cnf);
 
     if (conf.verb >= 5) {
         for(const auto& v: new_sampl_vars)
@@ -519,7 +519,7 @@ void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSo
             overall = scnf.aig_mng.new_or(overall, current);
         }
         if (sign ^ target.sign()) overall = scnf.aig_mng.new_not(overall);
-        scnf.var_to_aig[target.var()] = overall;
+        scnf.defs[target.var()] = overall;
     }
 }
 
