@@ -90,10 +90,18 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     //
     for (const auto& v: cnf.opt_sampl_vars) input.insert(v);
     for (uint32_t i = 0; i < cnf.nVars(); i++) {
-        if (input.count(i) == 0) output.insert(i);
+        assert(false && "beware, defs below is in original numbering, so this won't work below");
+        if (input.count(i) == 0 && !cnf.defs.count(i)) to_define.insert(i);
     }
     dependency_mat.resize(cnf.nVars());
     for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);
+    for(const auto& o: to_define) {
+        const auto deps = cnf.get_cannot_depend_on(o);
+        for(const auto& d: deps) {
+            // NOTE: not sure this is the right way, this dependency_mat is a bit mysterious
+            dependency_mat[o][d] = 1;
+        }
+    }
 
     // Sampling
     vector<vector<lbool>> solutions = get_samples(conf.num_samples);
@@ -110,15 +118,14 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 
     verb_print(1, "True lit: " << fh.my_true_lit);
     vector<uint32_t> to_train;
-    to_train.reserve(output.size());
-    for(const auto& v: output) to_train.push_back(v);
+    to_train.reserve(to_define.size());
+    for(const auto& v: to_define) to_train.push_back(v);
     sort_unknown(to_train, incidence);
-    /* std::reverse(to_train.begin(), to_train.end()); */
-    for(const auto& v: to_train) train(solutions, v);
+    for(const auto& v: to_train) train(solutions, v); // updates dependency_mat
 
-    // Counterexample
     init_solver_train();
     fix_order();
+    // Counterexample-guided repair
     while(true) {
         vector<lbool> ctx;
         bool finished = get_counterexample(ctx);
@@ -129,7 +136,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             if (val == l_Undef) assert(false);
             exit(-1);
         };
-        for(const auto& y: output) {
+        for(const auto& y: to_define) {
             auto y_hat = y_to_y_hat[y];
             if (ctx[y] == ctx[y_hat]) continue;
             verb_print(1, "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
@@ -142,7 +149,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         }
         needs_repair.clear();
         auto better_ctx = find_better_ctx(ctx);
-        for(const auto& y: output) if (!needs_repair.count(y)) ctx[y] = better_ctx[y];
+        for(const auto& y: to_define) if (!needs_repair.count(y)) ctx[y] = better_ctx[y];
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
         while(!needs_repair.empty()) {
@@ -265,20 +272,21 @@ void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vec
 }
 
 void Manthan::fix_order() {
+    verb_print(1, "[manthan] Fixing order...");
     vector<uint32_t> sorted;
-    sorted.reserve(output.size());
-    for(const auto& v: output) sorted.push_back(v);
+    sorted.reserve(to_define.size());
+    for(const auto& v: to_define) sorted.push_back(v);
     sort_unknown(sorted, incidence);
-    /* std::reverse(sorted.begin(), sorted.end()); */
 
     set<uint32_t> already_fixed;
     assert(y_order.empty());
-    while(already_fixed.size() != output.size()) {
+    while(already_fixed.size() != to_define.size()) {
         for(const auto& y: sorted) {
-            verb_print(2, "Checking y: " << y+1);
             if (already_fixed.count(y)) continue;
+            verb_print(2, "Trying to add " << y+1 << " to order...");
+
             bool ok = true;
-            for(const auto& y2: output) {
+            for(const auto& y2: to_define) {
                 if (y == y2) continue;
                 if (dependency_mat[y][y2] == 0) continue;
                 if (dependency_mat[y][y2] == 1 && already_fixed.count(y2)) continue;
@@ -287,7 +295,7 @@ void Manthan::fix_order() {
                 break;
             }
             if (!ok) continue;
-            verb_print(2, "fixed order of " << y+1 << " to: " << y_order.size());
+            verb_print(2, "Fixed order of " << y+1 << " to: " << y_order.size());
             already_fixed.insert(y);
             y_order.push_back(y);
         }
@@ -306,7 +314,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
         s_ctx.add_clause({l});
     }
 
-    for(const auto& y: output) {
+    for(const auto& y: to_define) {
         auto y_hat = y_to_y_hat[y];
         if (ctx[y] != ctx[y_hat]) continue;
         Lit l = Lit(y, ctx[y_hat] == l_False);
@@ -314,7 +322,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     }
 
     set<Lit> assumps;
-    for(const auto& y: output) {
+    for(const auto& y: to_define) {
         auto y_hat = y_to_y_hat[y];
         if (ctx[y] == ctx[y_hat]) continue;
         auto l = Lit(y, ctx[y_hat] == l_False);
@@ -347,7 +355,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
 void Manthan::init_solver_train() {
     vector<Lit> tmp;
     // Create variables for y_hat
-    for(const auto& y: output) {
+    for(const auto& y: to_define) {
         solver_train.new_var();
         uint32_t y_hat = solver_train.nVars()-1;
         y_to_y_hat[y] = y_hat;
@@ -361,7 +369,7 @@ void Manthan::init_solver_train() {
         // Replace y with y_hat in the clause
         vector<Lit> cl;
         for(const auto& l: cl_orig) {
-            if (output.count(l.var())) {
+            if (to_define.count(l.var())) {
                 cl.push_back(Lit(y_to_y_hat[l.var()], l.sign()));
             } else cl.push_back(l);
         }
@@ -397,7 +405,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
             vector<Lit> cl2;
             for(const auto& l: cl) {
                 auto v = l.var();
-                if (output.count(v)) {
+                if (to_define.count(v)) {
                     cl2.push_back(Lit(y_to_y_hat[v], l.sign()));
                 } else cl2.push_back(l);
             }
@@ -410,7 +418,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     vector<Lit> tmp;
     y_hat_to_indic.clear();
     indic_to_y_hat.clear();
-    for(const auto& y: output) {
+    for(const auto& y: to_define) {
         solver_train.new_var();
         uint32_t ind = solver_train.nVars()-1;
 
@@ -476,14 +484,14 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
     } else {
         uint32_t v = node->SplitDimension();
         /* cout << "(learning " << learned_v+1<< ") Node. v: " << v+1 << std::flush; */
-        if (output.count(v)) {
+        if (to_define.count(v)) {
             // v does not depend on us!
             verb_print(2, "v: " << v+1 << " does not depend on us!");
             assert(dependency_mat[v][learned_v] == 0);
             for(uint32_t i = 0; i < cnf.nVars(); i++) {
                 if (dependency_mat[v][i] == 1) {
                     // nothing that v depends on can depend on us
-                    verb_print(2, "i: " << i+1 << " does not depend on us, because " << v+1 << " depends on it");
+                    verb_print(2, "ERROR. i: " << i+1 << " does not depend on us, because " << v+1 << " depends on it");
                     assert(dependency_mat[i][learned_v] == 0);
                 }
             }
@@ -551,15 +559,18 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
     /* r.serialize(cout, 1); */
 
     fs_var[v] = recur(&r, v, 0);
+
     // Forward dependency update
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
+        if (input.count(i)) continue;
         if (dependency_mat[i][v]) {
             for(uint32_t j = 0; j < cnf.nVars(); j++) {
+                if (input.count(j)) continue;
                 dependency_mat[i][j] |= dependency_mat[v][j];
             }
         }
     }
-    verb_print(3, "Formula for " << v+1 << ":" << endl << fs_var[v]);
+    verb_print(3, "Tentative, trained formula for " << v+1 << ":" << fs_var[v]);
     verb_print(2,"Done training variable: " << v+1);
     verb_print(2, "------------------------------");
 }

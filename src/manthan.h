@@ -71,7 +71,7 @@ class Manthan {
         const Config& conf;
         SATSolver solver_train;
         set<uint32_t> input;
-        set<uint32_t> output;
+        set<uint32_t> to_define;
         FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth = 0);
         vector<uint32_t> incidence;
         void get_incidence();

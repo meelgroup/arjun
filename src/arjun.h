@@ -271,7 +271,7 @@ namespace ArjunNS {
         std::map<uint32_t, Weight> weights;
         std::map<uint32_t, std::pair<CMSat::Lit, CMSat::lbool>> orig_to_new_var;
         AIGManager aig_mng;
-        std::map<uint32_t, AIG*> defs; //definition of variables in terms of AIG
+        std::map<uint32_t, AIG*> defs; //definition of variables in terms of AIG. ORIGINAL number space
 
         SimplifiedCNF& operator=(const SimplifiedCNF& other) {
             need_aig = other.need_aig;
@@ -697,6 +697,60 @@ namespace ArjunNS {
             return ::evaluate(vals, defs.find(var)->second, defs);
         }
 
+        std::set<uint32_t> get_vars_need_definition() const {
+            std::set<uint32_t> ret;
+            std::set<uint32_t> osv(opt_sampl_vars.begin(), opt_sampl_vars.end());
+            for(uint32_t i = 0; i < nvars; i++) {
+                if (defs.find(i) == defs.end() && !osv.count(i))
+                    ret.insert(i);
+            }
+            return ret;
+        }
+
+        bool aig_contains(const AIG* aig, const uint32_t v) const {
+            assert(aig->invariants());
+            if (aig == nullptr) return false;
+            if (aig->type == t_lit) {
+                if (aig->var == v) return true;
+
+                /// Need to be recursive
+                if (defs.find(aig->var) != defs.end()) {
+                    AIG* aig2 = defs.at(aig->var);
+                    return aig_contains(aig2, v);
+                }
+                return false;
+            }
+            if (aig->type == t_const) return false;
+            if (aig->type == t_and) {
+                return aig_contains(aig->l, v) || aig_contains(aig->r, v);
+            }
+            assert(false && "Unknown AIG type");
+        }
+
+        std::set<uint32_t> get_cannot_depend_on(const uint32_t v) const {
+            assert(false && "defs is original number space but v is not... below is broken");
+            if (defs.find(v) != defs.end()) {
+                std::cout << "ERROR: Variable " << v+1 << " already defined, why query what it cannot depend on???" << std::endl;
+                assert(false);
+                exit(-1);
+            }
+            std::set<uint32_t> osv(opt_sampl_vars.begin(), opt_sampl_vars.end());
+            if (osv.count(v)) {
+                std::cout << "ERROR: Variable " << v+1 << " is in opt sampling set, why query what it cannot depend on???" << std::endl;
+                assert(false);
+                exit(-1);
+            }
+
+            std::set<uint32_t> ret;
+            for(const auto& it: defs) {
+                if (osv.count(it.first)) {
+                    // The extended input we can always depend on
+                    continue;
+                }
+                if (aig_contains(it.second, v)) ret.insert(it.first);
+            }
+            return ret;
+        }
     };
 
     struct ArjPrivateData;

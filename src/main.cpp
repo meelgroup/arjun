@@ -233,8 +233,7 @@ void do_synthesis() {
         if (etof_conf.do_unate) arjun->standalone_unate(cnf);
     }
     // TODO
-    // Currently NOT implemented. This defines things by vars that are themselves not currently defined!
-    /* if (do_minim_indep) arjun->standalone_minimize_indep_synt(cnf); */
+    if (do_minim_indep) arjun->standalone_minimize_indep_synt(cnf);
 
     /* cnf.renumber_sampling_vars_for_ganak(); */
     if (!elimtofile.empty()) write_synth(cnf, elimtofile);
