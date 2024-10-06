@@ -44,7 +44,48 @@ struct AIG {
     AIG* l = nullptr;
     AIG* r = nullptr;
     uint64_t id = 0;
+
+    bool invariants() const {
+        if (type == t_lit) {
+            return l == nullptr && r == nullptr && var != std::numeric_limits<uint32_t>::max();
+        }
+        if (type == t_const) {
+            return l == nullptr && r == nullptr && var == std::numeric_limits<uint32_t>::max();
+        }
+        if (type == t_and) {
+            return l != nullptr && r != nullptr && var == std::numeric_limits<uint32_t>::max();
+        }
+        assert(false && "Unknown AIG type");
+    }
 };
+
+inline bool evaluate(const std::vector<CMSat::lbool>& vals, const AIG* aig, const std::map<uint32_t, AIG*>& defs) {
+    assert(aig->invariants());
+    if (aig->type == t_lit) {
+        if (defs.find(aig->var) != defs.end()) {
+            // NOTE: this is highly inefficient, because this should be cached
+            assert(vals.size() < aig->var || vals[aig->var] == CMSat::l_Undef); // Must not be part of input
+            return aig->neg ^ evaluate(vals, defs.at(aig->var), defs);
+        } else {
+            assert(aig->var < vals.size());
+            assert(vals[aig->var] != CMSat::l_Undef);
+            bool ret = vals[aig->var] == CMSat::l_True;
+            ret ^= aig->neg;
+            return ret;
+        }
+    }
+
+    if (aig->type == t_const) return aig->neg == false;
+
+    if (aig->type == t_and) {
+        const bool l = evaluate(vals, aig->l, defs);
+        const bool r = evaluate(vals, aig->r, defs);
+        bool ret = l && r;
+        if (aig->neg) ret = !ret;
+        return ret;
+    }
+    assert(false && "Unknown AIG type");
+}
 
 struct AIGManager {
     AIGManager() {
@@ -57,6 +98,7 @@ struct AIGManager {
     }
 
     AIG* copy_aig(AIG* aig, std::map<uint64_t, AIG*>& old_id_to_new_aig) {
+        assert(aig->invariants());
         if (aig == nullptr) return nullptr;
         if (old_id_to_new_aig.count(aig->id)) return old_id_to_new_aig.at(aig->id);
 
@@ -116,6 +158,7 @@ struct AIGManager {
         for (auto aig : aigs) delete aig;
         max_id = 0;
     }
+
 
     AIG* new_lit(CMSat::Lit l) {
         return new_lit(l.var(), l.sign());
@@ -644,6 +687,16 @@ namespace ArjunNS {
             }
             return true;
         }
+
+        bool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var) const {
+            if (defs.find(var) == defs.end()) {
+                std::cout << "ERROR: Variable " << var+1 << " not defined" << std::endl;
+                assert(defs.find(var) != defs.end() && "Must be defined");
+                exit(-1);
+            }
+            return ::evaluate(vals, defs.find(var)->second, defs);
+        }
+
     };
 
     struct ArjPrivateData;

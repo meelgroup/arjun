@@ -80,6 +80,14 @@ public:
     void add_clause(const vector<Lit>& cl);
     const AIGManager& get_aig_mng() const { return aig_mng; }
     const map<uint32_t, AIG*>& get_defs() const { return defs; }
+    bool evaluate(const vector<CMSat::lbool>& vals, uint32_t test_var) {
+        if (!defs.count(test_var)) {
+            cout << "ERROR: Variable " << test_var+1 << " not defined by this interpolant" << endl;
+            assert(defs.count(test_var) && "Don't query variables that haven't been defined, please");
+            exit(-1);
+        }
+        return ::evaluate(vals, defs[test_var], defs);
+    }
 
     // Internal really
     CMSat::SATSolver* solver = nullptr;
