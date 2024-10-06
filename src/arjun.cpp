@@ -140,7 +140,6 @@ DLL_PUBLIC void Arjun::standalone_rev_bce(SimplifiedCNF& cnf)
     return puura.reverse_bce(cnf);
 }
 
-
 DLL_PUBLIC void Arjun::standalone_unate(SimplifiedCNF& cnf)
 {
     Puura puura(arjdata->conf);
