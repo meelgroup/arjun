@@ -25,21 +25,16 @@ THE SOFTWARE.
 #include <cstdint>
 #include <vector>
 #include <string>
-#include <functional>
 #include <mpfr.h>
 #include <map>
 #include <set>
 #include <fstream>
 #include <gmpxx.h>
 #include "cryptominisat5/solvertypesmini.h"
-#ifdef CMS_LOCAL_BUILD
-#include "cryptominisat.h"
-#else
 #include <cryptominisat5/cryptominisat.h>
-#endif
 struct FHolder;
 
-enum AIGT {t_and, t_var, t_const};
+enum AIGT {t_and, t_lit, t_const};
 struct AIG {
     AIG(uint64_t _id = 0) : id(_id) {}
     AIG() = delete;
@@ -61,6 +56,21 @@ struct AIGManager {
         const_false = new_not(const_true);
     }
 
+    AIG* copy_aig(AIG* aig, std::map<uint64_t, AIG*>& old_id_to_new_aig) {
+        if (aig == nullptr) return nullptr;
+        if (old_id_to_new_aig.count(aig->id)) return old_id_to_new_aig.at(aig->id);
+
+        AIG* new_aig = new AIG(max_id++);
+        new_aig->type = aig->type;
+        new_aig->var = aig->var;
+        new_aig->neg = aig->neg;
+        new_aig->l = copy_aig(aig->l, old_id_to_new_aig);
+        new_aig->r = copy_aig(aig->r, old_id_to_new_aig);
+        aigs.push_back(new_aig);
+        old_id_to_new_aig[aig->id] = new_aig;
+        return new_aig;
+    };
+
     AIGManager& operator=(const AIGManager& other) {
         aigs.clear();
         lit_to_aig.clear();
@@ -68,34 +78,16 @@ struct AIGManager {
         const_false = nullptr;
         max_id = 0;
 
-        std::map<uint64_t, AIG*> id_to_aig;
-        std::function<AIG*(AIG*)> copy = [&](AIG* aig) -> AIG* {
-            if (aig == nullptr) return nullptr;
-            if (id_to_aig.count(aig->id)) return id_to_aig.at(aig->id);
-
-            AIG* new_aig = new AIG(max_id++);
-            new_aig->type = aig->type;
-            new_aig->var = aig->var;
-            new_aig->neg = aig->neg;
-            new_aig->id = aig->id;
-            new_aig->l = copy(aig->l);
-            new_aig->r = copy(aig->r);
-            aigs.push_back(new_aig);
-            id_to_aig[aig->id] = new_aig;
-            return new_aig;
-        };
-
+        std::map<uint64_t, AIG*> old_id_to_new_aig;
         assert(aigs.empty());
-        for (auto aig : other.aigs) {
-            copy(aig);
-        }
-        const_true = id_to_aig.at(other.const_true->id);
-        const_false = id_to_aig.at(other.const_false->id);
+        for (auto aig : other.aigs) copy_aig(aig, old_id_to_new_aig);
+        const_true = old_id_to_new_aig.at(const_true->id);
+        const_false = old_id_to_new_aig.at(const_false->id);
         max_id = other.max_id;
 
         assert(lit_to_aig.empty());
         for (auto& it : other.lit_to_aig)
-            lit_to_aig[it.first] = id_to_aig.at(it.second->id);
+            lit_to_aig[it.first] = old_id_to_new_aig.at(it.second->id);
 
         return *this;
     }
@@ -104,6 +96,14 @@ struct AIGManager {
         *this = other;
     }
 
+    void append_aigs_to(AIGManager& other) const {
+        std::map<uint64_t, AIG*> old_id_to_new_aig;
+        for (auto aig : aigs) other.copy_aig(aig, old_id_to_new_aig);
+        for(auto& it: lit_to_aig) {
+            // NOTE: we may be overriding old ones. It's fine, we can have duplicates
+            other.lit_to_aig[it.first] = old_id_to_new_aig.at(it.second->id);
+        }
+    }
 
     ~AIGManager() {
         for (auto aig : aigs) delete aig;
@@ -119,7 +119,7 @@ struct AIGManager {
             return lit_to_aig.at(CMSat::Lit(var, neg));
         }
         AIG* ret = new AIG(max_id++);
-        ret->type = t_var;
+        ret->type = t_lit;
         ret->var = var;
         ret->neg = neg;
         aigs.push_back(ret);
@@ -172,8 +172,15 @@ struct AIGManager {
     }
 
     std::vector<AIG*> aigs;
+    // A map from lit to AIG. This is just a lookup -- it is NOT guaranteed
+    // there aren't any other AIGs that are this lit. Due to copying, there may
+    // well be. So we DON'T guarantee uniqueness
     std::map<CMSat::Lit, AIG*> lit_to_aig;
+    // There could be other const true, this is just a good example so we don't always copy
+    // Due to copying we don'g guarantee uniqueness
     AIG* const_true = nullptr;
+    // There could be other const false, this is just a good example so we don't always copy
+    // Due to copying we don'g guarantee uniqueness
     AIG* const_false = nullptr;
     uint64_t max_id = 0;
 };
