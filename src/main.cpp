@@ -69,7 +69,7 @@ int redundant_cls = true;
 int simptofile = true;
 int sampl_start_at_zero = false;
 int debug_synt = false;
-int do_synth_bve = false;
+int do_synth_bve = true;
 int do_pre_backbone = 0;
 
 int synthesis = false;
@@ -218,12 +218,12 @@ void set_config(ArjunNS::Arjun* arj) {
 
 void do_synthesis() {
     SimplifiedCNF cnf;
+    cnf.need_aig = true;
     read_in_a_file(input_file, &cnf, etof_conf.all_indep);
     assert(cnf.sampl_vars == cnf.opt_sampl_vars && "Synthesis extends opt_sampl_vars, so it must be the same as sampl_vars");
     if (do_pre_manthan) {
         cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
         if (do_pre_backbone) arjun->standalone_backbone(cnf);
-        if (etof_conf.do_unate) arjun->standalone_unate(cnf);
         if (do_synth_bve) {
             simp_conf.bve_too_large_resolvent = -1;
             cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);

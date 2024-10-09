@@ -98,8 +98,8 @@ struct AIGManager {
     }
 
     AIG* copy_aig(AIG* aig, std::map<uint64_t, AIG*>& old_id_to_new_aig) {
-        assert(aig->invariants());
         if (aig == nullptr) return nullptr;
+        assert(aig->invariants());
         if (old_id_to_new_aig.count(aig->id)) return old_id_to_new_aig.at(aig->id);
 
         AIG* new_aig = new AIG(max_id++);
@@ -128,8 +128,8 @@ struct AIGManager {
         std::map<uint64_t, AIG*> old_id_to_new_aig;
         assert(aigs.empty());
         for (auto aig : other.aigs) copy_aig(aig, old_id_to_new_aig);
-        const_true = old_id_to_new_aig.at(const_true->id);
-        const_false = old_id_to_new_aig.at(const_false->id);
+        const_true = old_id_to_new_aig.at(other.const_true->id);
+        const_false = old_id_to_new_aig.at(other.const_false->id);
         max_id = other.max_id;
 
         assert(lit_to_aig.empty());
@@ -288,17 +288,24 @@ namespace ArjunNS {
             backbone_done = other.backbone_done;
             weights = other.weights;
             orig_to_new_var = other.orig_to_new_var;
-            if (need_aig) replace_aigs_from(other);
-            else assert(aig_mng.aigs.empty() && defs.empty());
+            replace_aigs_from(other);
 
             return *this;
         }
 
         void replace_aigs_from(const SimplifiedCNF& other) {
+            assert(aig_mng.aigs.size() == 2 && defs.empty());
+            if (!need_aig) {
+                assert(other.aig_mng.aigs.size() == 2 && other.defs.empty());
+                return;
+            }
+
+            // Copy AIGs
             aig_mng = other.aig_mng;
             std::map<uint64_t, AIG*> id_to_aig;
             for(const auto& aig: aig_mng.aigs) id_to_aig[aig->id] = aig;
 
+            // Copy defs
             defs.clear();
             for(const auto& it: other.defs) {
                 assert(id_to_aig.count(it.second->id) && "Must have already been copied");
@@ -308,7 +315,7 @@ namespace ArjunNS {
 
         void add_aigs_from(const AIGManager& other, const std::map<uint32_t, AIG*>& other_defs) {
             if (!need_aig) {
-                assert(aig_mng.aigs.empty() && defs.empty());
+                assert(aig_mng.aigs.size() == 2 && defs.empty());
                 return;
             }
             auto old_id_to_new_aig = other.append_aigs_to(aig_mng);
@@ -708,8 +715,8 @@ namespace ArjunNS {
         }
 
         bool aig_contains(const AIG* aig, const uint32_t v) const {
-            assert(aig->invariants());
             if (aig == nullptr) return false;
+            assert(aig->invariants());
             if (aig->type == t_lit) {
                 if (aig->var == v) return true;
 
