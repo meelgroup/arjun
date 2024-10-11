@@ -269,7 +269,7 @@ namespace ArjunNS {
         bool backbone_done = false;
         struct Weight {mpq_class pos = 1; mpq_class neg = 1;};
         std::map<uint32_t, Weight> weights;
-        std::map<uint32_t, std::pair<CMSat::Lit, CMSat::lbool>> orig_to_new_var;
+        std::map<uint32_t, CMSat::VarMap> orig_to_new_var;
         AIGManager aig_mng;
         std::map<uint32_t, AIG*> defs; //definition of variables in terms of AIG. ORIGINAL number space
 
@@ -331,12 +331,14 @@ namespace ArjunNS {
             *this = other;
         }
 
-        std::map<uint32_t, CMSat::Lit> get_new_to_orig_var() const {
-            std::map<uint32_t, CMSat::Lit> ret;
+        std::map<uint32_t, std::vector<CMSat::Lit>> get_new_to_orig_var() const {
+            std::map<uint32_t, std::vector<CMSat::Lit>> ret;
             for(const auto& p: orig_to_new_var) {
-                const CMSat::Lit l = p.second.first;
+                const CMSat::Lit l = p.second.lit;
                 if (l != CMSat::lit_Undef) {
-                    ret[l.var()] = CMSat::Lit(p.first, l.sign());
+                    auto it2 = ret.find(l.var());
+                    if (it2 != ret.end()) ret[l.var()] = std::vector<CMSat::Lit>();
+                    ret[l.var()].push_back(CMSat::Lit(p.first, l.sign()));
                 }
             }
             return ret;
@@ -345,14 +347,16 @@ namespace ArjunNS {
         uint32_t nVars() const { return nvars; }
         uint32_t new_vars(uint32_t vars) {
             nvars+=vars;
-            for(uint32_t i = 0; i < vars; i++)
-                orig_to_new_var[nvars-vars+i] =
-                    std::make_pair(CMSat::Lit(nvars-vars+i, false), CMSat::l_Undef);
+            for(uint32_t i = 0; i < vars; i++) {
+                const uint32_t v = nvars-vars+i;
+                orig_to_new_var[v] = CMSat::VarMap(CMSat::Lit(v, false));
+            }
             return nvars;
         }
         uint32_t new_var() {
+            uint32_t v = nvars;
             nvars++;
-            orig_to_new_var[nvars-1] = std::make_pair(CMSat::Lit(nvars-1, false), CMSat::l_Undef);
+            orig_to_new_var[v] = CMSat::VarMap(CMSat::Lit(v, false));
             return nvars;
         }
 
@@ -447,6 +451,8 @@ namespace ArjunNS {
         // renumber variables such that sampling set start from 0...N
         void renumber_sampling_vars_for_ganak() {
             assert(sampl_vars.size() <= opt_sampl_vars.size());
+
+            // Create mapping
             constexpr uint32_t m = std::numeric_limits<uint32_t>::max();
             std::vector<uint32_t> map_here_to_there(nvars, m);
             uint32_t i = 0;
@@ -455,22 +461,6 @@ namespace ArjunNS {
                 map_here_to_there[v] = i;
                 i++;
             }
-
-            // Update var map
-            std::map<uint32_t, std::pair<CMSat::Lit, CMSat::lbool>> upd_vmap;
-            for(const auto& p: orig_to_new_var) {
-                if (p.second.first != CMSat::lit_Undef) {
-                    assert(p.second.second == CMSat::l_Undef);
-                    CMSat::Lit l = p.second.first;
-                    l = CMSat::Lit(map_here_to_there[l.var()], l.sign());
-                    upd_vmap[p.first] = std::make_pair(l, CMSat::l_Undef);
-                } else {
-                    assert(p.second.second != CMSat::l_Undef);
-                    upd_vmap[p.first] = p.second;
-                }
-            }
-            orig_to_new_var = upd_vmap;
-
             for(const auto& v: opt_sampl_vars) {
                 assert(v < nvars);
                 if (map_here_to_there[v] == m) {
@@ -478,8 +468,6 @@ namespace ArjunNS {
                     i++;
                 }
             }
-
-            // Go through the rest of the variables not in sampling set.
             for(uint32_t x = 0; x < nvars; x++) {
                 if (map_here_to_there[x] == m) {
                     map_here_to_there[x] = i;
@@ -488,7 +476,21 @@ namespace ArjunNS {
             }
             assert(i == nvars);
 
-            // Now we renumber
+            // Update var map
+            std::map<uint32_t, CMSat::VarMap> upd_vmap;
+            for(const auto& p: orig_to_new_var) {
+                p.second.invariant();
+                if (p.second.lit != CMSat::lit_Undef) {
+                    CMSat::Lit l = p.second.lit;
+                    l = CMSat::Lit(map_here_to_there[l.var()], l.sign());
+                    upd_vmap[p.first] = CMSat::VarMap(l);
+                } else {
+                    upd_vmap[p.first] = p.second;
+                }
+            }
+            orig_to_new_var = upd_vmap;
+
+            // Now we renumber samp_vars, opt_sampl_vars, weights
             sampl_vars = map_var(sampl_vars, map_here_to_there);
             opt_sampl_vars = map_var(opt_sampl_vars, map_here_to_there);
             for(auto& cl: clauses) map_cl(cl, map_here_to_there);
@@ -689,7 +691,8 @@ namespace ArjunNS {
                 CMSat::Lit l = CMSat::Lit (i, false);
                 auto it = orig_to_new_var.find(i);
                 assert(it != orig_to_new_var.end());
-                if (it->second != std::make_pair(l, CMSat::l_Undef)) return false;
+                assert(it->second.invariant());
+                if (it->second != CMSat::VarMap(l)) return false;
 
             }
             return true;

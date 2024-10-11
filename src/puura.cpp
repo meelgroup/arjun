@@ -511,8 +511,8 @@ void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSo
             for(const auto& l: cl) {
                 if (l.var() == target.var()) continue;
                 auto x = scnf.orig_to_new_var[l.var()];
-                assert(x.second == l_Undef);
-                Lit l2 = l ^ x.first.sign();
+                assert(x.val == l_Undef);
+                Lit l2 = l ^ x.lit.sign();
                 AIG* aig = scnf.aig_mng.new_lit(~l2);
                 current = scnf.aig_mng.new_and(current, aig);
             }
