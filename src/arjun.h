@@ -331,7 +331,8 @@ namespace ArjunNS {
             *this = other;
         }
 
-        std::map<uint32_t, std::vector<CMSat::Lit>> get_new_to_orig_var() const {
+        // Gives all the orig lits that map to this variable
+        std::map<uint32_t, std::vector<CMSat::Lit>> get_new_to_orig_var_list() const {
             std::map<uint32_t, std::vector<CMSat::Lit>> ret;
             for(const auto& p: orig_to_new_var) {
                 const CMSat::Lit l = p.second.lit;
@@ -339,6 +340,18 @@ namespace ArjunNS {
                     auto it2 = ret.find(l.var());
                     if (it2 != ret.end()) ret[l.var()] = std::vector<CMSat::Lit>();
                     ret[l.var()].push_back(CMSat::Lit(p.first, l.sign()));
+                }
+            }
+            return ret;
+        }
+
+        // Gives an example lit, sometimes good enough
+        std::map<uint32_t, CMSat::Lit> get_new_to_orig_var() const {
+            std::map<uint32_t, CMSat::Lit> ret;
+            for(const auto& p: orig_to_new_var) {
+                const CMSat::Lit l = p.second.lit;
+                if (l != CMSat::lit_Undef) {
+                    ret[l.var()] = CMSat::Lit(p.first, l.sign());
                 }
             }
             return ret;
