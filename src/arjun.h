@@ -119,6 +119,7 @@ struct AIGManager {
     }
 
     std::map<uint64_t, AIG*> replace_with(const AIGManager& other) {
+        for(auto aig: aigs) delete aig;
         aigs.clear();
         lit_to_aig.clear();
         const_true = nullptr;
@@ -294,8 +295,8 @@ namespace ArjunNS {
         }
 
         void replace_aigs_from(const SimplifiedCNF& other) {
-            assert(aig_mng.aigs.size() == 2 && defs.empty());
             if (!need_aig) {
+                assert(!other.need_aig);
                 assert(other.aig_mng.aigs.size() == 2 && other.defs.empty());
                 return;
             }
