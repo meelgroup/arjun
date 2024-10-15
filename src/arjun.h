@@ -111,7 +111,7 @@ struct AIGManager {
         aigs.push_back(new_aig);
         old_id_to_new_aig[aig->id] = new_aig;
         return new_aig;
-    };
+    }
 
     AIGManager& operator=(const AIGManager& other) {
         replace_with(other);
