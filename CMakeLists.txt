@@ -277,41 +277,9 @@ if (COVERAGE)
     SET(CMAKE_EXE_LINKER_FLAGS "--coverage")
 endif()
 
-
-# -----------------------------------------------------------------------------
-# Uncomment these for static compilation under Linux (messes up Valgrind)
-# -----------------------------------------------------------------------------
-if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    set(CMAKE_EXE_LINKER_FLAGS " ${CMAKE_EXE_LINKER_FLAGS} -Wl,--discard-all -Wl,--build-id=sha1")
-endif()
-
-if ((${CMAKE_SYSTEM_NAME} MATCHES "Linux") OR (${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
-    if(STATICCOMPILE)
-        MESSAGE(STATUS "Compiling for static library use")
-        if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-            set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static -Wl,--whole-archive -lpthread -Wl,--no-whole-archive -static ")
-        endif()
-
-        SET(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
-
-        # removing -rdynamic that's automatically added
-        foreach (language CXX C)
-            set(VAR_TO_MODIFY "CMAKE_SHARED_LIBRARY_LINK_${language}_FLAGS")
-            string(REGEX REPLACE "(^| )-rdynamic($| )"
-                                 " "
-                                 replacement
-                                 "${${VAR_TO_MODIFY}}")
-            #message("Original (${VAR_TO_MODIFY}) is ${${VAR_TO_MODIFY}} replacement is ${replacement}")
-            set(${VAR_TO_MODIFY} "${replacement}" CACHE STRING "Default flags for ${build_config} configuration" FORCE)
-        endforeach()
-    else()
-        MESSAGE(STATUS "Compiling for dynamic library use")
-    endif()
-endif()
-
-if(NOT MSVC)
-  set(DEF_INSTALL_CMAKE_DIR lib/cmake/arjun)
-endif()
+set(DEF_INSTALL_CMAKE_DIR lib/cmake/arjun)
+set(ARJUN_INSTALL_CMAKE_DIR ${DEF_INSTALL_CMAKE_DIR} CACHE PATH
+    "Installation directory for arjun CMake files")
 
 # -----------------------------------------------------------------------------
 # Add GIT version
