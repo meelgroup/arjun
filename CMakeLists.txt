@@ -24,7 +24,6 @@ set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-enable_language( CXX )
 
 message(STATUS "LIB directory is '${CMAKE_INSTALL_LIBDIR}'")
 message(STATUS "BIN directory is '${CMAKE_INSTALL_BINDIR}'")
@@ -50,8 +49,6 @@ endif()
 # -----------------------------------------------------------------------------
 set(ARJUNS_SCRIPTS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/scripts)
 
-include (GenerateExportHeader)
-include (GNUInstallDirs)
 
 # -----------------------------------------------------------------------------
 # Make RelWithDebInfo the default build type if otherwise not set
@@ -89,6 +86,9 @@ foreach (build_config ${build_types})
 endforeach()
 
 PROJECT(arjun)
+enable_language( CXX )
+include (GenerateExportHeader)
+include (GNUInstallDirs)
 
 # contains some library search cmake scripts
 SET(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
