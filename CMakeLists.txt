@@ -90,17 +90,17 @@ SET(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 # generate JSON file of compile commands -- useful for code extension
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 
-set(THREADS_PREFER_PTHREAD_FLAG ON)
-find_package (Threads REQUIRED)
-find_package (sbva REQUIRED)
-# find_package( mlpack REQUIRED)
-
 # static compilation
 option(BUILD_SHARED_LIBS "Build the shared library" ON)
 option(STATICCOMPILE "Compile to static executable" OFF)
 if (STATICCOMPILE)
     set(BUILD_SHARED_LIBS OFF)
 endif()
+
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package (Threads REQUIRED)
+find_package (sbva REQUIRED)
+# find_package( mlpack REQUIRED)
 
 macro(add_sanitize_option flagname)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${flagname}" )
@@ -155,7 +155,6 @@ endif()
 # Note: O3 gives slight speed increase, 1 more solved from SAT Comp'14 @ 3600s
 if (NOT MSVC)
     add_compile_options( -g)
-    add_compile_options( -pthread )
 
     add_compile_options("$<$<CONFIG:RelWithDebInfo>:-O3>")
 
