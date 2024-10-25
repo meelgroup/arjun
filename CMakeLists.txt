@@ -19,8 +19,10 @@
 # THE SOFTWARE.
 
 cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
+set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 enable_language( CXX )
 
@@ -272,7 +274,6 @@ if (NOT WIN32)
     add_cxx_flag_if_supported("-Wunreachable-code")
     add_cxx_flag_if_supported("-msse4.2")
     add_cxx_flag_if_supported("-mpopcnt")
-    add_compile_options("-fPIC")
 
     # add_cxx_flag_if_supported("-flto") # slow compile and not enough benefits
     #add_cxx_flag_if_supported("-fno-exceptions")
