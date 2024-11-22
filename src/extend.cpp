@@ -197,29 +197,74 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     solver->set_verbosity(0);
     set<uint32_t> opt_sampl(cnf.opt_sampl_vars.begin(), cnf.opt_sampl_vars.end());
 
+    // we don't care about literal polarities, we treat all gates
+    // as if they were OR gates
+    auto all_gates = solver->get_recovered_or_gates();
     auto ites = solver->get_recovered_ite_gates();
     for(const auto& g: ites) {
         if (g.rhs.var() >= orig_num_vars) continue;
-        bool ok = true;
-        for(const auto& l: g.lhs) if (!opt_sampl.count(l.var())) {
-            ok = false;
-            break;
-        }
-        if (!ok) continue;
-        opt_sampl.insert(g.rhs.var());
+        vector<Lit> tmp (g.lhs.begin(), g.lhs.end());
+        OrGate og(g.rhs, tmp, 0);
+        all_gates.push_back(og);
     }
-    auto ors = solver->get_recovered_or_gates();
-    for(const auto& g: ors) {
+    auto xors = solver->get_recovered_xors(true);
+    for(const auto& g: xors) {
+        // Is any bad?
+        bool ok = true;
+        for(const auto& l: g.first)
+            if (l >= orig_num_vars) {
+                ok = false;
+                break;
+            }
+        if (!ok) continue;
+
+        // any of them could be rhs
+        for(const auto& rhs: g.first) {
+            vector<Lit> tmp;
+            for(const auto& l: g.first) if (l != rhs) tmp.push_back(Lit(l, false));
+            OrGate og(Lit(rhs, false), tmp, 0);
+            all_gates.push_back(og);
+        }
+    }
+    bool changed = true;
+    while(changed) {
+        changed = false;
+        for(const auto& g: all_gates) {
+            if (g.rhs.var() >= orig_num_vars) continue;
+            bool ok = true;
+            for(const auto& l: g.get_lhs()) if (!opt_sampl.count(l.var())) {
+                ok = false;
+                break;
+            }
+            if (!ok) continue;
+            if (opt_sampl.count(g.rhs.var())) continue;
+            opt_sampl.insert(g.rhs.var());
+            changed = true;
+        }
+        auto ret = solver->extend_definable_by_irreg_gate(vector<uint32_t>(opt_sampl.begin(), opt_sampl.end()));
+        for(const auto& v: ret) {
+            if (v >= orig_num_vars) continue;
+            if (opt_sampl.count(v)) continue;
+            opt_sampl.insert(v);
+            changed = true;
+        }
+    }
+    verb_print(1, "[extend-gates] Gates added to opt indep: " << opt_sampl.size()-orig_size
+            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
+    map<uint32_t, vector<uint32_t>> var_to_gate_ind;
+    for(uint32_t i = 0; i < all_gates.size(); i++) {
+        const auto& g = all_gates[i];
         if (g.rhs.var() >= orig_num_vars) continue;
-        bool ok = true;
-        for(const auto& l: g.get_lhs()) if (!opt_sampl.count(l.var())) {
-            ok = false;
-            break;
+        if (opt_sampl.count(g.rhs.var())) continue; // no use
+
+        for(const auto& l: g.lits) {
+            if (!var_to_gate_ind.count(l.var())) var_to_gate_ind[l.var()] = {i};
+            else var_to_gate_ind[l.var()].push_back(i);
         }
-        if (!ok) continue;
-        opt_sampl.insert(g.rhs.var());
     }
-    verb_print(1, "[extend-gates] Gates added to opt indep: " << opt_sampl.size()-orig_size << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
+    if (conf.verb >= 3)
+        for(const auto& m: var_to_gate_ind)
+            verb_print(3, "var: " << m.first+1 << " num gates: " << m.second.size());
 
     // Fill no need
     set<uint32_t> no_need;
@@ -250,7 +295,6 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
 
     vector<Lit> assumptions;
     uint32_t ret_undef = 0;
-    /* conf.verb = 5; */
     set<uint32_t> unknown_set(unknown.begin(), unknown.end());
     uint32_t num_done = 0;
     while(!unknown.empty()) {
@@ -332,6 +376,22 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             cl.clear();
             cl.push_back(Lit(var_to_indic[test_var], false));
             solver->add_clause(cl);
+
+            for(const auto& ind: var_to_gate_ind[test_var]) {
+                const auto& g = all_gates[ind];
+                if (opt_sampl.count(g.rhs.var())) continue;
+                bool ok = true;
+                for(const auto& l: g.lits) {
+                    if (!opt_sampl.count(l.var()))  {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (ok) {
+                    opt_sampl.insert(g.rhs.var());
+                    unknown_set.erase(g.rhs.var());
+                }
+            }
         }
     }
     cnf.set_opt_sampl_vars(opt_sampl);
