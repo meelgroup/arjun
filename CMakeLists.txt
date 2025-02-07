@@ -251,6 +251,31 @@ if (ARJUN_SERIALIZE)
     add_definitions( -DARJUN_SERIALIZE )
 endif()
 
+# Use mold/sold linker if available
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  message(STATUS "Detected GCC/Clang, checking for mold/sold linker...")
+
+  # Check for mold linker on general systems and ld64.mold on macOS
+  if(APPLE)
+    find_program(MOLD_LINKER ld64.mold)
+    set(CMAKE_LINKER_TYPE SOLD)
+  else()
+    find_program(MOLD_LINKER mold)
+    set(CMAKE_LINKER_TYPE MOLD)
+  endif()
+
+  if(MOLD_LINKER)
+    message(STATUS "LINKER_TYPE set to ${CMAKE_LINKER_TYPE} for faster builds")
+    list(APPEND CMAKE_MESSAGE_INDENT " ")
+    message(STATUS "(set -DUSE_MOLD=OFF to disable)")
+    list(POP_BACK CMAKE_MESSAGE_INDENT)
+  else()
+    message(STATUS "  -- No suitable mold linker found. Using default linker.")
+  endif()
+else()
+  message(STATUS "Compiler is neither GCC nor Clang. Skipping mold linker check.")
+endif()
+
 if (NOT WIN32)
     add_cxx_flag_if_supported("-Wall")
     add_cxx_flag_if_supported("-Wextra")
