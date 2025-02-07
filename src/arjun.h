@@ -448,15 +448,15 @@ namespace ArjunNS {
             }
         }
 
-        std::vector<CMSat::Lit>& map_cl(std::vector<CMSat::Lit>& cl, std::vector<uint32_t> v_map) {
+        std::vector<CMSat::Lit>& map_cl(std::vector<CMSat::Lit>& cl, const std::vector<uint32_t>& v_map) {
                 for(auto& l: cl) l = CMSat::Lit(v_map[l.var()], l.sign());
                 return cl;
         }
-        std::vector<uint32_t>& map_var(std::vector<uint32_t>& cl, std::vector<uint32_t> v_map) {
+        std::vector<uint32_t>& map_var(std::vector<uint32_t>& cl, const std::vector<uint32_t>& v_map) {
             for(auto& l: cl) l = v_map[l];
             return cl;
         }
-        std::set<uint32_t> map_var(const std::set<uint32_t>& cl, std::vector<uint32_t> v_map) {
+        std::set<uint32_t> map_var(const std::set<uint32_t>& cl, const std::vector<uint32_t>& v_map) {
             std::set<uint32_t> new_set;
             for(auto& l: cl) new_set.insert(v_map[l]);
             return new_set;
