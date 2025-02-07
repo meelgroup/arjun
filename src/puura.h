@@ -57,7 +57,6 @@ private:
     void set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf);
 
     void get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSolver* solver) const;
-    void renumber_sampling_vars_for_ganak(SimplifiedCNF& scnf);
     SimplifiedCNF get_cnf(
         SATSolver* solver,
         const SimplifiedCNF& cnf,
