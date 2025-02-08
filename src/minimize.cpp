@@ -144,7 +144,6 @@ void Minimize::set_up_solver()
     solver->set_distill(conf.distill && conf.simp);
     solver->set_sls(false);
     solver->set_find_xors(false);
-    cout << "minimize:get_orig_global_timeout_multiplier(): " << solver->get_orig_global_timeout_multiplier() << endl;
     if (conf.cms_glob_mult > 0) solver->set_orig_global_timeout_multiplier(conf.cms_glob_mult);
 }
 
