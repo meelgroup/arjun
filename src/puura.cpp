@@ -121,11 +121,7 @@ void Puura::backbone(SimplifiedCNF& cnf) {
     string str = "clean-cls, must-scc-vrepl, full-probe, must-scc-vrepl, must-renumber";
     solver->simplify(nullptr, &str);
     solver->set_verbosity(2);
-
-    if (conf.backbone_only_optindep)
-        solver->backbone_simpl(20*1000ULL, cnf.opt_sampl_vars, cnf.backbone_done);
-    else
-        solver->backbone_simpl(20*1000ULL, vector<uint32_t>(), cnf.backbone_done);
+    solver->backbone_simpl(20*1000ULL, cnf.backbone_done);
 
     auto lits = solver->get_zero_assigned_lits();
     for(const auto& l: lits) {
@@ -264,7 +260,6 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     verb_print(3, "Running "<< __PRETTY_FUNCTION__);
     solver->set_renumber(true);
     solver->set_scc(true);
-    cout << "puura::get_orig_global_timeout_multiplier(): " << solver->get_orig_global_timeout_multiplier() << endl;
     if (conf.cms_glob_mult > 0) solver->set_orig_global_timeout_multiplier(conf.cms_glob_mult);
     set_up_sampl_vars_dont_elim(cnf);
 
@@ -297,10 +292,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     string str2;
     bool backbone_done = cnf.backbone_done;
     if (!backbone_done && simp_conf.do_backbone_puura) {
-        if (conf.backbone_only_optindep)
-            solver->backbone_simpl(30*1000ULL, cnf.opt_sampl_vars, backbone_done);
-        else
-            solver->backbone_simpl(30*1000ULL, vector<uint32_t>(), backbone_done);
+        solver->backbone_simpl(30*1000ULL, backbone_done);
     }
     if (backbone_done) {
         if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify";

@@ -843,7 +843,6 @@ namespace ArjunNS {
         void set_specified_order_fname(std::string specified_order_fname);
         void set_weighted(const bool);
         void set_extend_max_confl(uint32_t extend_max_confl);
-        void set_backbone_only_optindep(bool backbone_only_optindep);
         void set_oracle_find_bins(int oracle_find_bins);
         void set_num_samples(int num_samples);
         void set_cms_glob_mult(double cms_glob_mult);
@@ -868,7 +867,6 @@ namespace ArjunNS {
         bool get_ite_gate_based() const;
         bool get_irreg_gate_based() const;
         uint32_t get_extend_max_confl() const;
-        bool get_backbone_only_optindep() const;
         int get_num_samples() const;
         int get_oracle_find_bins() const;
         double get_cms_glob_mult() const;

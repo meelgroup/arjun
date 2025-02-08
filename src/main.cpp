@@ -212,7 +212,6 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_simp(conf.simp);
     arj->set_num_samples(conf.num_samples);
     arj->set_extend_max_confl(conf.extend_max_confl);
-    arj->set_backbone_only_optindep(conf.backbone_only_optindep);
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 
