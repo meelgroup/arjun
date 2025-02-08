@@ -89,7 +89,6 @@ string print_version() {
 
 void add_arjun_options()
 {
-    conf.verb = 1;
     myopt2("-v", "--verb", conf.verb, atoi, "Verbosity");
     program.add_argument("-v", "--version") \
         .action([&](const auto&) {print_version(); exit(0);}) \

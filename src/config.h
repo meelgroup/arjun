@@ -31,7 +31,7 @@
 namespace ArjunInt {
 
 struct Config {
-    int verb = 3;
+    int verb = 1;
     int simp = 2;
     int fast_backw = 1;
     int distill = 1;
