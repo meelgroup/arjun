@@ -195,6 +195,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     const uint32_t orig_size = cnf.opt_sampl_vars.size();
     fill_solver(cnf);
     solver->set_verbosity(0);
+    solver->set_sls(0);
     set<uint32_t> opt_sampl(cnf.opt_sampl_vars.begin(), cnf.opt_sampl_vars.end());
 
     // we don't care about literal polarities, we treat all gates
@@ -297,6 +298,26 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     uint32_t ret_undef = 0;
     set<uint32_t> unknown_set(unknown.begin(), unknown.end());
     uint32_t num_done = 0;
+
+
+    if (true) {
+        double ccnr_time = cpuTime();
+        auto ret = solver->many_sls(5LL*1000LL*1000LL, 10);
+        uint32_t ccnr_erased = 0;
+        for(const auto& sol: ret) {
+            for(uint32_t v = 0; v < orig_num_vars; v++) {
+                if (!unknown_set.count(v)) continue;
+                uint32_t other_v = v + orig_num_vars;
+                if (sol[other_v] != sol[v]) {
+                    ccnr_erased++;
+                    unknown_set.erase(v);
+                }
+            }
+        }
+        verb_print(1, "[arjun-extend] ccnr. got back sols: " << ret.size()
+                << " erased: " << ccnr_erased << " T: " << (cpuTime() - ccnr_time));
+    }
+
     while(!unknown.empty()) {
         uint32_t test_var = unknown.back();
         unknown.pop_back();
