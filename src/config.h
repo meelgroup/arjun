@@ -52,7 +52,7 @@ struct Config {
     bool weighted = false;
     uint32_t num_samples = 10000;
     int oracle_find_bins = 6;
-    double cms_mult = -1.0;
+    double cms_glob_mult = -1.0;
 };
 
 }

@@ -77,7 +77,7 @@ int do_revbce = false;
 int do_minim_indep = true;
 string debug_minim;
 int do_pre_manthan = false;
-double cms_mult = -1.0;
+double cms_glob_mult = -1.0;
 
 string print_version() {
     std::stringstream ss;
@@ -165,7 +165,7 @@ void add_arjun_options()
     myopt("--specifiedorder", conf.specified_order_fname, string, "Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY");
     myopt("--minimize", do_minim_indep, atoi,"Minimize indep set");
     myopt("--debugminim", debug_minim, string,"Create this file that is the CNF after indep set minimization");
-    myopt("--cmsmult", conf.cms_mult, atof,"Multiply timeouts in CMS by this. Default is -1, which means no change. Useful for debugging");
+    myopt("--cmsmult", conf.cms_glob_mult, atof,"Multiply timeouts in CMS by this. Default is -1, which means no change. Useful for debugging");
 
     program.add_argument("files").remaining().help("input file and output file");
 }
@@ -192,7 +192,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_specified_order_fname(conf.specified_order_fname);
     arj->set_intree(conf.intree);
     arj->set_bve_pre_simplify(conf.bve_pre_simplify);
-    arj->set_cms_mult(conf.cms_mult);
+    arj->set_cms_glob_mult(conf.cms_glob_mult);
     if (do_gates) {
       arj->set_or_gate_based(conf.or_gate_based);
       arj->set_ite_gate_based(conf.ite_gate_based);
