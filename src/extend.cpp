@@ -302,7 +302,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
 
     if (true) {
         double ccnr_time = cpuTime();
-        auto ret = solver->many_sls(5LL*1000LL*1000LL, 10);
+        auto ret = solver->many_sls(30LL*1000LL*1000LL, 5);
         uint32_t ccnr_erased = 0;
         for(const auto& sol: ret) {
             for(uint32_t v = 0; v < orig_num_vars; v++) {
