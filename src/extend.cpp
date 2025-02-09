@@ -195,7 +195,6 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     const uint32_t orig_size = cnf.opt_sampl_vars.size();
     fill_solver(cnf);
     solver->set_verbosity(0);
-    solver->set_sls(0);
     set<uint32_t> opt_sampl(cnf.opt_sampl_vars.begin(), cnf.opt_sampl_vars.end());
 
     // we don't care about literal polarities, we treat all gates
