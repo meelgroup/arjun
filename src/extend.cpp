@@ -299,9 +299,9 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     uint32_t num_done = 0;
 
 
-    if (true) {
+    if (conf.extend_ccnr >= 0) {
         double ccnr_time = cpuTime();
-        auto ret = solver->many_sls(30LL*1000LL*1000LL, 5);
+        auto ret = solver->many_sls(conf.extend_ccnr*1000LL*1000LL, 5);
         uint32_t ccnr_erased = 0;
         for(const auto& sol: ret) {
             for(uint32_t v = 0; v < orig_num_vars; v++) {

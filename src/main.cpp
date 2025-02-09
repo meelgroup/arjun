@@ -119,6 +119,7 @@ void add_arjun_options()
     myopt("--simp", conf.simp, atoi,"Do ~ sort of simplification during indep minimixation");
     myopt("--probe", conf.probe_based, atoi,"Use simple probing to set (and define) some variables");
     myopt("--intree", conf.intree, atoi,"intree");
+    myopt("--extendccnr", conf.extend_ccnr, atoi,"Filter extend with CCNR. If 0, none otherwise, in the million mems");
 
     // Gate options
     myopt("--gates", do_gates, atoi,"Turn on/off all gate-based definability");
@@ -190,6 +191,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_distill(conf.distill);
     arj->set_specified_order_fname(conf.specified_order_fname);
     arj->set_intree(conf.intree);
+    arj->set_extend_ccnr(conf.extend_ccnr);
     arj->set_bve_pre_simplify(conf.bve_pre_simplify);
     arj->set_cms_glob_mult(conf.cms_glob_mult);
     if (do_gates) {

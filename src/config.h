@@ -52,6 +52,7 @@ struct Config {
     uint32_t num_samples = 10000;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;
+    int extend_ccnr = 0;
 };
 
 }
