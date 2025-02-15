@@ -32,11 +32,7 @@ using std::pair;
 using std::make_pair;
 using std::vector;
 
-namespace ArjunNS {
-  struct SimplifiedCNF;
-}
-
-namespace CCNR {
+namespace ArjunCCNR {
 
 class LSSolver;
 
@@ -48,7 +44,6 @@ struct CCNRConf {
 class Ganak_ccnr {
 public:
     int main(const vector<vector<CMSat::Lit>>& cls, const uint32_t nvars, const vector<uint32_t>& sampling_vars, const int mult);
-    int main(ArjunNS::SimplifiedCNF const* cnf);
     vector<CMSat::lbool> get_model() const;
     Ganak_ccnr(uint32_t verb);
     ~Ganak_ccnr();

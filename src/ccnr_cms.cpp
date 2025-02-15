@@ -30,7 +30,7 @@ THE SOFTWARE.
 #include "time_mem.h"
 #include "constants.h"
 
-using namespace CCNR;
+using namespace ArjunCCNR;
 using std::setprecision;
 using std::fixed;
 using CMSat::Lit;
@@ -78,7 +78,7 @@ void Ganak_ccnr::add_this_clause(const vector<Lit>& cl) {
     assert(sz > 0);
 
     for(auto& lit: yals_lits) {
-        ls_s->cls[cl_num].lits.push_back(CCNR::lit(lit, cl_num));
+        ls_s->cls[cl_num].lits.push_back(ArjunCCNR::lit(lit, cl_num));
     }
     cl_num++;
 }

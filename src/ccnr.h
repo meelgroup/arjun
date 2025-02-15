@@ -31,7 +31,7 @@ THE SOFTWARE.
 using std::vector;
 using std::abs;
 
-namespace CCNR {
+namespace ArjunCCNR {
 
 struct lit {
     int var_num;             //variable num, begin with 1

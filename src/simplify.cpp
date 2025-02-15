@@ -478,7 +478,7 @@ void Minimize::run_autarkies() {
         }
         f.close();
 
-        CCNR::Ganak_ccnr ccnr(conf.verb);
+        ArjunCCNR::Ganak_ccnr ccnr(conf.verb);
         vector<uint32_t> notouch_vars(sampling_vars);
         for(auto v: units) notouch_vars.push_back(v);
 

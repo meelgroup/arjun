@@ -28,7 +28,7 @@ THE SOFTWARE.
 #include <cassert>
 #include "constants.h"
 
-using namespace CCNR;
+using namespace ArjunCCNR;
 
 using std::cout;
 using std::endl;
