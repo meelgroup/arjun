@@ -51,6 +51,8 @@ add_library(arjun
     puura.cpp
     manthan.cpp
     interpolant.cpp
+    ccnr.cpp
+    ccnr_cms.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
 )
 

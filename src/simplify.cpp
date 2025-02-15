@@ -26,6 +26,7 @@
 #include "minimize.h"
 #include "constants.h"
 #include "time_mem.h"
+#include "ccnr_cms.h"
 
 using std::pair;
 using namespace ArjunInt;
@@ -52,6 +53,7 @@ bool Minimize::simplify() {
     remove_eq_literals();
     remove_zero_assigned_literals();
     get_empty_occs();
+    run_autarkies();
     if (conf.bve_pre_simplify) {
         verb_print(1, "[arjun-simp] CMS::simplify() with no BVE, intree probe...");
         double simp_time = cpuTime();
@@ -445,3 +447,37 @@ void Minimize::remove_eq_literals() {
         << (orig_sampling_set_size - sampling_vars.size())
         << " new size: " << sampling_vars.size());
 }
+
+void Minimize::run_autarkies() {
+    double my_time = cpuTime();
+    int ret = 1;
+    while (ret) {
+        const vector<vector<Lit>> cnf;
+        string s = string("clean-cls, must-scc-vrepl");
+        if (solver->simplify(nullptr, &s) == l_False) return;
+
+        solver->start_getting_constraints(false);
+        vector<vector<Lit>> cls;
+        bool is_xor, rhs;
+        uint32_t nvars = solver->nVars();
+        vector<Lit> cl;
+        while(solver->get_next_constraint(cl, is_xor, rhs)) {
+            assert(!is_xor); assert(rhs);
+            cls.push_back(cl);
+        }
+        solver->end_getting_constraints();
+
+        CCNR::Ganak_ccnr ccnr(conf.verb);
+        ret = ccnr.main(cls, nvars, sampling_vars);
+        if (ret == 1) {
+            auto model = ccnr.get_model();
+            for(uint32_t i = 0; i < model.size(); i++) {
+                if (model[i] != l_Undef) solver->add_clause({Lit(i, model[i] == l_False)});
+            }
+        }
+    }
+
+    verb_print(1, "[arjun-simp] autarkies"
+        << " T: " << (cpuTime() - my_time));
+}
+

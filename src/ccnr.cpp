@@ -20,13 +20,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ***********************************************/
 
-#include "ccnr.hpp"
-#include "common.hpp"
+#include "ccnr.h"
 
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <cassert>
+#include "constants.h"
 
 using namespace CCNR;
 

@@ -249,6 +249,7 @@ void do_synthesis() {
 void do_minimize() {
     SimplifiedCNF cnf;
     read_in_a_file(input_file, &cnf, etof_conf.all_indep);
+
     if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
     if (do_pre_backbone) arjun->standalone_backbone(cnf);
     const auto orig_sampl_vars = cnf.sampl_vars;

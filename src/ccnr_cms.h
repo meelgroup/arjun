@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 #pragma once
 
+#include "cryptominisat5/solvertypesmini.h"
 #include <cstdint>
 #include <cstdio>
 #include <utility>
@@ -46,7 +47,9 @@ struct CCNRConf {
 
 class Ganak_ccnr {
 public:
+    int main(const vector<vector<CMSat::Lit>>& cls, uint32_t nvars, const vector<uint32_t>& sampling_vars);
     int main(ArjunNS::SimplifiedCNF const* cnf);
+    vector<CMSat::lbool> get_model() const;
     Ganak_ccnr(uint32_t verb);
     ~Ganak_ccnr();
 
@@ -54,15 +57,14 @@ private:
     void flipvar(uint32_t toflip);
     void parse_parameters();
     void init_for_round();
-    bool init_problem();
+    bool init_problem(const vector<vector<CMSat::Lit>>& cls, uint32_t nvars, const vector<uint32_t>& sampling_vars);
     LSSolver* ls_s = nullptr;
     uint32_t cl_num = 0;
 
-    template<class T> void add_this_clause(const T& cl);
+    void add_this_clause(const vector<CMSat::Lit>& cl);
     vector<int> yals_lits;
 
     CCNRConf conf;
-    const ArjunNS::SimplifiedCNF* cnf;
 };
 
 }
