@@ -44,7 +44,7 @@ Ganak_ccnr::Ganak_ccnr(uint32_t _verb) {
 
 Ganak_ccnr::~Ganak_ccnr() { delete ls_s; }
 
-int Ganak_ccnr::main(const vector<vector<Lit>>& cls, uint32_t nvars, const vector<uint32_t>& sampling_vars) {
+int Ganak_ccnr::main(const vector<vector<Lit>>& cls, const uint32_t nvars, const vector<uint32_t>& sampling_vars) {
     //It might not work well with few number of variables
     //rnovelty could also die/exit(-1), etc.
     if (nvars == 0 || cls.size() == 0) {

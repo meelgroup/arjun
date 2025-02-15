@@ -53,12 +53,12 @@ bool Minimize::simplify() {
     remove_eq_literals();
     remove_zero_assigned_literals();
     get_empty_occs();
-    run_autarkies();
     if (conf.bve_pre_simplify) {
         verb_print(1, "[arjun-simp] CMS::simplify() with no BVE, intree probe...");
         double simp_time = cpuTime();
         solver->set_bve(0);
         solver->set_intree_probe(1);
+        run_autarkies();
         solver->set_oracle_find_bins(conf.oracle_find_bins);
         std::string s;
         if (conf.simp == 1) s = "intree-probe";
