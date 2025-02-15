@@ -44,7 +44,7 @@ Ganak_ccnr::Ganak_ccnr(uint32_t _verb) {
 
 Ganak_ccnr::~Ganak_ccnr() { delete ls_s; }
 
-int Ganak_ccnr::main(const vector<vector<Lit>>& cls, const uint32_t nvars, const vector<uint32_t>& sampling_vars) {
+int Ganak_ccnr::main(const vector<vector<Lit>>& cls, const uint32_t nvars, const vector<uint32_t>& sampling_vars, const int mult) {
     //It might not work well with few number of variables
     //rnovelty could also die/exit(-1), etc.
     if (nvars == 0 || cls.size() == 0) {
@@ -58,7 +58,7 @@ int Ganak_ccnr::main(const vector<vector<Lit>>& cls, const uint32_t nvars, const
         return 0;
     }
     init_problem(cls, nvars, sampling_vars);
-    int res = ls_s->local_search(conf.yalsat_max_mems*50LL*1000LL, "c o");
+    int res = ls_s->local_search(mult*50LL*1000LL, "c o");
     if (res == 1) ls_s->print_solution(true);
 
     double time_used = cpuTime()-start_time;

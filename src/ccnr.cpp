@@ -84,7 +84,7 @@ bool LSSolver::local_search(long long int mems_limit , const char* prefix) {
                 break;
             }
             if (touched_cls.empty()) {
-              cout << prefix << "[ccnr] no touched cls, restart" << endl;
+              /* cout << prefix << "[ccnr] no touched cls, restart" << endl; */
               break;
             }
 
@@ -92,13 +92,13 @@ bool LSSolver::local_search(long long int mems_limit , const char* prefix) {
             if (random_gen.next(100) <= 30) {
               int ret = unset_a_clause();
               if (ret == 1) {
-                cout << prefix << "[ccnr] no cls to unset, restart" << endl;
+                /* cout << prefix << "[ccnr] no cls to unset, restart" << endl; */
                 break;
               }
             } else {
               int flipv = pick_var();
               if (flipv == -1) {
-                cout << prefix << "[ccnr] no var to flip, restart" << endl;
+                /* cout << prefix << "[ccnr] no var to flip, restart" << endl; */
                 break;
               }
 
@@ -107,7 +107,7 @@ bool LSSolver::local_search(long long int mems_limit , const char* prefix) {
                 cout << "mems limit reached" << endl;
                 return false;
               }
-              cout << "num unsat cls: " << unsat_cls.size() << " touched_cls: " << touched_cls.size() << endl;
+              /* cout << "num unsat cls: " << unsat_cls.size() << " touched_cls: " << touched_cls.size() << endl; */
             }
             SLOW_DEBUG_DO(check_invariants());
 

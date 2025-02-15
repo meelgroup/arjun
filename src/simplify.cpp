@@ -23,6 +23,7 @@
  */
 
 #include <algorithm>
+#include <fstream>
 #include "minimize.h"
 #include "constants.h"
 #include "time_mem.h"
@@ -58,7 +59,7 @@ bool Minimize::simplify() {
         double simp_time = cpuTime();
         solver->set_bve(0);
         solver->set_intree_probe(1);
-        run_autarkies();
+        if (conf.autarkies > 0 ) run_autarkies();
         solver->set_oracle_find_bins(conf.oracle_find_bins);
         std::string s;
         if (conf.simp == 1) s = "intree-probe";
@@ -451,11 +452,13 @@ void Minimize::remove_eq_literals() {
 void Minimize::run_autarkies() {
     double my_time = cpuTime();
     int ret = 1;
+    int at = 0;
     while (ret) {
         const vector<vector<Lit>> cnf;
         string s = string("clean-cls, must-scc-vrepl");
         if (solver->simplify(nullptr, &s) == l_False) return;
 
+        vector<uint32_t> units;
         solver->start_getting_constraints(false);
         vector<vector<Lit>> cls;
         bool is_xor, rhs;
@@ -463,18 +466,34 @@ void Minimize::run_autarkies() {
         vector<Lit> cl;
         while(solver->get_next_constraint(cl, is_xor, rhs)) {
             assert(!is_xor); assert(rhs);
-            cls.push_back(cl);
+            if (cl.size() == 1) units.push_back(cl[0].var());
+            else cls.push_back(cl);
         }
         solver->end_getting_constraints();
+        std::ofstream f("autarky-" + std::to_string(at) + ".cnf");
+        f << "p cnf " << nvars << " " << cls.size() << endl;
+        for(const auto& c: cls) {
+            for(const auto& l: c) f << l << " ";
+            f << "0" << endl;
+        }
+        f.close();
 
         CCNR::Ganak_ccnr ccnr(conf.verb);
-        ret = ccnr.main(cls, nvars, sampling_vars);
+        vector<uint32_t> notouch_vars(sampling_vars);
+        for(auto v: units) notouch_vars.push_back(v);
+
+        ret = ccnr.main(cls, nvars, notouch_vars, conf.autarkies);
         if (ret == 1) {
             auto model = ccnr.get_model();
             for(uint32_t i = 0; i < model.size(); i++) {
-                if (model[i] != l_Undef) solver->add_clause({Lit(i, model[i] == l_False)});
+                if (model[i] != l_Undef) {
+                    auto lit = Lit(i, model[i] == l_False);
+                    solver->add_clause({lit});
+                    cout << "c [AUTARKY] at " << at << " set " << lit << endl;
+                }
             }
         }
+        at++;
     }
 
     verb_print(1, "[arjun-simp] autarkies"

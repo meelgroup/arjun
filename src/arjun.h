@@ -847,6 +847,7 @@ namespace ArjunNS {
         void set_num_samples(int num_samples);
         void set_cms_glob_mult(double cms_glob_mult);
         void set_extend_ccnr(int extend_ccnr);
+        void set_autarkies(int autarkies);
 
         //Get config
         uint32_t get_verb() const;
@@ -872,6 +873,7 @@ namespace ArjunNS {
         int get_oracle_find_bins() const;
         double get_cms_glob_mult() const;
         int get_extend_ccnr() const;
+        int get_autarkies() const;
 
     private:
         ArjPrivateData* arjdata = nullptr;
