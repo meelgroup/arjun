@@ -252,7 +252,7 @@ void do_minimize() {
     if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
     if (do_pre_backbone) arjun->standalone_backbone(cnf);
     const auto orig_sampl_vars = cnf.sampl_vars;
-    if (do_minim_indep) arjun->standalone_minimize_indep(cnf);
+    if (do_minim_indep) arjun->standalone_minimize_indep(cnf, etof_conf.all_indep);
     if (!debug_minim.empty()) {
         cnf.write_simpcnf(debug_minim, false, true);
         auto cnf2 = cnf;
@@ -262,10 +262,6 @@ void do_minimize() {
 
     if (!elimtofile.empty()) {
         arjun->standalone_elim_to_file(cnf, etof_conf, simp_conf);
-        if (etof_conf.all_indep) {
-            cnf.opt_sampl_vars.clear();
-            for(uint32_t i = 0; i < cnf.nVars(); i++) cnf.opt_sampl_vars.push_back(i);
-        }
         cnf.write_simpcnf(elimtofile, redundant_cls, true);
         cout << "c o [arjun] dumped simplified problem to '" << elimtofile << "'" << endl;
     } else {

@@ -245,7 +245,7 @@ void Minimize::run_minimize_for_synth(ArjunNS::SimplifiedCNF& cnf) {
     backward_round_synth(cnf);
 }
 
-void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
+void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf, bool all_indep) {
     double start_time = cpuTime();
     fill_solver(cnf);
     init();
@@ -253,6 +253,10 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf) {
     backward_round();
 
     end:
+    if (all_indep) {
+        cnf.opt_sampl_vars.clear();
+        for(uint32_t i = 0; i < cnf.nvars; i++) cnf.opt_sampl_vars.push_back(i);
+    }
     cnf.fix_weights(solver, sampling_vars, empty_sampling_vars);
 
     // Get back clauses

@@ -57,7 +57,7 @@ struct Minimize
     }
     ~Minimize() { delete solver; }
 
-    void run_minimize_indep(ArjunNS::SimplifiedCNF& cnf);
+    void run_minimize_indep(ArjunNS::SimplifiedCNF& cnf, bool all_indep);
     void run_minimize_for_synth(ArjunNS::SimplifiedCNF& cnf);
 
     const Config conf;
