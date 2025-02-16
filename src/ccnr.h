@@ -68,8 +68,8 @@ struct lit {
 struct variable {
     vector<lit> lits;
     vector<int> neighbor_vars;
-    long long score;
-    long long last_flip_step;
+    int64_t score;
+    int64_t last_flip_step;
     int unsat_appear; //how many unsat clauses it appears in
 };
 
@@ -78,7 +78,7 @@ struct clause {
     int sat_count; //no. of satisfied literals
     int touched_cnt; // no. of literals that are touched but not satisfied
     int sat_var; // the variable that makes the clause satisfied
-    long long weight;
+    int64_t weight;
 };
 
 inline std::ostream& operator<<(std::ostream &os, const lit &l) {
@@ -98,7 +98,7 @@ class LSSolver {
  public:
     LSSolver();
     bool local_search(
-        long long int _mems_limit = 100*1000*1000
+        int64_t mems_limit = 100*1000*1000
         , const char* prefix = "c "
     );
     void print_solution(bool need_verify = 0);
@@ -133,7 +133,7 @@ class LSSolver {
     Mersenne random_gen;
 
     // Config
-    long long max_steps;
+    int64_t max_steps;
     int64_t max_tries;
     uint32_t verb = 0;
     float swt_p = 0.3;
@@ -144,7 +144,7 @@ class LSSolver {
     int64_t step;
     int64_t mems = 0;
     int avg_cl_weight;
-    long long delta_tot_cl_weight;
+    int64_t delta_tot_cl_weight;
 
     //main functions
     void initialize();

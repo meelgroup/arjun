@@ -23,6 +23,7 @@ THE SOFTWARE.
 #include "ccnr.h"
 
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <cassert>
@@ -37,7 +38,7 @@ using std::string;
 
 LSSolver::LSSolver() {
     max_tries = 1000LL*1000LL;
-    max_steps = 1*1000 * 1000;
+    max_steps = 1*100 * 1000;
     random_gen.seed(1337);
     verb = 0;
 }
@@ -73,10 +74,11 @@ void LSSolver::build_neighborhood() {
     }
 }
 
-bool LSSolver::local_search(long long int mems_limit , const char* prefix) {
+bool LSSolver::local_search(int64_t mems_limit , const char* prefix) {
     bool result = false;
     for (int t = 0; t < max_tries && !result; t++) {
         initialize();
+        int cutoff =  random_gen.next(60);
         for (step = 0; step < max_steps && !result; step++) {
             if (unsat_cls.empty() && !touched_cls.empty()) {
                 cout << "YAY" << endl;
@@ -84,21 +86,21 @@ bool LSSolver::local_search(long long int mems_limit , const char* prefix) {
                 break;
             }
             if (touched_cls.empty()) {
-              /* cout << prefix << "[ccnr] no touched cls, restart" << endl; */
+              cout << prefix << "[ccnr] no touched cls, restart" << endl;
               break;
             }
 
             update_clause_weights();
-            if (random_gen.next(100) <= 30) {
+            if (random_gen.next(100) <= cutoff) {
               int ret = unset_a_clause();
-              if (ret == 1) {
-                /* cout << prefix << "[ccnr] no cls to unset, restart" << endl; */
+              if (ret == -1) {
+                cout << prefix << "[ccnr] no cls to unset, restart" << endl;
                 break;
               }
             } else {
               int flipv = pick_var();
               if (flipv == -1) {
-                /* cout << prefix << "[ccnr] no var to flip, restart" << endl; */
+                cout << prefix << "[ccnr] no var to flip, restart" << endl;
                 break;
               }
 
@@ -107,7 +109,9 @@ bool LSSolver::local_search(long long int mems_limit , const char* prefix) {
                 cout << "mems limit reached" << endl;
                 return false;
               }
-              /* cout << "num unsat cls: " << unsat_cls.size() << " touched_cls: " << touched_cls.size() << endl; */
+            }
+            if (step % 1000 == 0) {
+              cout << "num unsat cls: " << unsat_cls.size() << " touched_cls: " << touched_cls.size() << endl;
             }
             SLOW_DEBUG_DO(check_invariants());
 
@@ -121,6 +125,7 @@ bool LSSolver::local_search(long long int mems_limit , const char* prefix) {
                 << endl;
             }
         }
+        cout << "restart . try: " << t << " done" << endl;
     }
     return result;
 }
@@ -129,11 +134,12 @@ void LSSolver::initialize() {
     unsat_cls.clear();
     unsat_vars.clear();
     touched_cls.clear();
+    int perc = random_gen.next(15);
     for (auto &i: idx_in_unsat_cls) i = 0;
     for (auto &i: idx_in_unsat_vars) i = 0;
     for (int v = 1; v <= num_vars; v++) {
       if (!indep_map[v]) {
-        if (random_gen.next(100) < 1) {
+        if (random_gen.next(100) < perc) {
           sol[v] = random_gen.next(2);
         } else {
           sol[v] = 2;
@@ -172,7 +178,6 @@ void LSSolver::initialize() {
 }
 
 void LSSolver::initialize_variable_datas() {
-    //scores
     for (int v = 1; v <= num_vars; v++) {
         auto & vp = vars[v];
         vp.score = 0;
@@ -255,17 +260,17 @@ int LSSolver::pick_var() {
 
     const clause& cl = cls[cid];
     int best_var = -1;
-    int best_score = std::numeric_limits<int>::min();
+    int64_t best_score = std::numeric_limits<int64_t>::min();
     for (auto& l: cl.lits) {
         int v = l.var_num;
         if (indep_map[v]) {
           assert(sol[v] == 2);
           continue;
         }
-        int score = vars[v].score;
-        if (sol[v] == 2 && score > 0) score *= 0.8;
+        int64_t score = vars[v].score;
+        if (sol[v] == 2 && score > 0) score *= 0.01;
 
-        if (score > best_score) {
+        if (score >= best_score) {
             best_var = v;
             best_score = score;
         } else if (score == best_score &&
@@ -412,7 +417,7 @@ void LSSolver::flip(int v) {
         /* cout << "CHG flipping var " << v << " new val: " << (int)sol[v] << endl; */
     }
 
-    const int orig_score = vars[v].score;
+    const int64_t orig_score = vars[v].score;
     mems += vars[v].lits.size();
 
     // Go through each clause the literal is in and update status
@@ -631,7 +636,7 @@ void LSSolver::print_solution(bool need_verify) {
 
     if (verb > 0) {
         uint32_t num_vars_touched = 0;
-        cout << "v";
+        cout << "AUTARKY v";
         for (int v = 1; v <= num_vars; v++) {
             if (sol[v] != 2) num_vars_touched++;
             if (sol[v] == 2) continue;

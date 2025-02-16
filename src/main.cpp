@@ -106,7 +106,6 @@ void add_arjun_options()
         .help("Run synthesis");
     myopt("--debugsynt", debug_synt, atoi, "Debug synthesis");
     myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
-    myopt("--backbone", do_pre_backbone, atoi,"Perform backbone analysis");
     myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
     myopt("--revbce", do_revbce, atoi,"Perform reverse BCE");
     myopt("--sbva", etof_conf.num_sbva_steps, atoi,"SBVA timeout. 0 = no sbva");

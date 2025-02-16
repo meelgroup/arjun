@@ -23,7 +23,6 @@
  */
 
 #include <algorithm>
-#include <fstream>
 #include "minimize.h"
 #include "constants.h"
 #include "time_mem.h"
@@ -59,7 +58,6 @@ bool Minimize::simplify() {
         double simp_time = cpuTime();
         solver->set_bve(0);
         solver->set_intree_probe(1);
-        if (conf.autarkies > 0 ) run_autarkies();
         solver->set_oracle_find_bins(conf.oracle_find_bins);
         std::string s;
         if (conf.simp == 1) s = "intree-probe";
@@ -70,6 +68,7 @@ bool Minimize::simplify() {
         }
         if (solver->simplify() == l_False) return false;
         solver->set_intree_probe(conf.intree);
+        remove_zero_assigned_literals();
         verb_print(1,"[arjun-simp] CMS::simplify() with no BVE finished."
             << " T: " << (cpuTime() - simp_time));
     }
@@ -93,6 +92,7 @@ bool Minimize::simplify() {
     remove_zero_assigned_literals();
     get_empty_occs();
     if (conf.irreg_gate_based && use_gates) remove_definable_by_irreg_gates();
+    if (sampling_vars.size() > 10 && conf.autarkies > 0) run_autarkies();
 
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
@@ -453,6 +453,7 @@ void Minimize::run_autarkies() {
     double my_time = cpuTime();
     int ret = 1;
     int at = 0;
+    uint32_t set = 0;
     while (ret) {
         const vector<vector<Lit>> cnf;
         string s = string("clean-cls, must-scc-vrepl");
@@ -489,14 +490,14 @@ void Minimize::run_autarkies() {
                 if (model[i] != l_Undef) {
                     auto lit = Lit(i, model[i] == l_False);
                     solver->add_clause({lit});
-                    cout << "c [AUTARKY] at " << at << " set " << lit << endl;
+                    set++;
+                    /* cout << "c [AUTARKY] at " << at << " set " << lit << endl; */
                 }
             }
         }
         at++;
     }
 
-    verb_print(1, "[arjun-simp] autarkies"
-        << " T: " << (cpuTime() - my_time));
+    verb_print(1, "[arjun-simp] AUTARY set:" << set << " T: " << (cpuTime() - my_time));
 }
 
