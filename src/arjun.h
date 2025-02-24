@@ -606,7 +606,7 @@ namespace ArjunNS {
                 const std::vector<uint32_t>& empty_sampling_vars) {
             std::set<uint32_t> sampling_vars_set(new_sampl_vars.begin(), new_sampl_vars.end());
             std::set<uint32_t> opt_sampling_vars_set(opt_sampl_vars.begin(), opt_sampl_vars.end());
-            bool debug_w = true;
+            bool debug_w = false;
             std::cout << __FUNCTION__ << " [w-debug] orig multiplier_weight: " << multiplier_weight
                 << std::endl;
 
