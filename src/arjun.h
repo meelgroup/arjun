@@ -23,6 +23,7 @@ THE SOFTWARE.
 #pragma once
 
 #include <cstdint>
+#include <memory_resource>
 #include <vector>
 #include <complex>
 #include <string>
@@ -238,6 +239,10 @@ struct AIGManager {
 };
 
 namespace ArjunNS {
+    std::complex<mpq_class> get_default_weight() {
+        return std::complex<mpq_class>(1, 0);
+    }
+
     struct SimpConf {
         bool oracle_extra = true;
         bool oracle_vivify = true;
@@ -266,10 +271,12 @@ namespace ArjunNS {
         std::vector<uint32_t> opt_sampl_vars; // Filled during synthesis with vars that have been defined already
 
         uint32_t nvars = 0;
-        std::complex<mpq_class> multiplier_weight = std::complex<mpq_class>(1,1);
+        std::complex<mpq_class> multiplier_weight = get_default_weight();
         bool weighted = false;
         bool backbone_done = false;
-        struct Weight {std::complex<mpq_class> pos = std::complex<mpq_class>(1,1); std::complex<mpq_class> neg = std::complex<mpq_class>(1,1);};
+        struct Weight {
+            std::complex<mpq_class> pos = get_default_weight();
+            std::complex<mpq_class> neg = get_default_weight();};
         std::map<uint32_t, Weight> weights;
         std::map<uint32_t, CMSat::VarMap> orig_to_new_var;
         AIGManager aig_mng;
@@ -411,7 +418,7 @@ namespace ArjunNS {
             assert(weighted);
             assert(lit.var() < nVars());
             auto it = weights.find(lit.var());
-            if (it == weights.end()) return std::complex<mpq_class>(1,1);
+            if (it == weights.end()) return get_default_weight();
             else {
                 if (!lit.sign()) return it->second.pos;
                 else return it->second.neg;
@@ -428,8 +435,8 @@ namespace ArjunNS {
             auto it = weights.find(lit.var());
             if (it == weights.end()) {
                 Weight weight;
-                if (lit.sign()) {weight.neg = w;weight.pos = std::complex<mpq_class>(1,1)-w;}
-                else {weight.pos = w;weight.neg = std::complex<mpq_class>(1,1)-w;}
+                if (lit.sign()) {weight.neg = w;weight.pos = get_default_weight()-w;}
+                else {weight.pos = w;weight.neg = get_default_weight()-w;}
                 weights[lit.var()] = weight;
                 return;
             } else {
@@ -570,7 +577,9 @@ namespace ArjunNS {
                 outf << v+1  << " ";
             }
             outf << "0\n";
-            outf << "c MUST MULTIPLY BY " << multiplier_weight << std::endl;
+            outf << "c MUST MULTIPLY BY "
+                << multiplier_weight.real() << " + "
+                << multiplier_weight.imag() << "i" << std::endl;
         }
 
         bool weight_set(uint32_t v) const { return weights.count(v) > 0; }
@@ -599,7 +608,9 @@ namespace ArjunNS {
                 const std::vector<uint32_t>& empty_sampling_vars) {
             std::set<uint32_t> sampling_vars_set(new_sampl_vars.begin(), new_sampl_vars.end());
             std::set<uint32_t> opt_sampling_vars_set(opt_sampl_vars.begin(), opt_sampl_vars.end());
-            bool debug_w = false;
+            bool debug_w = true;
+            std::cout << __FUNCTION__ << " [w-debug] orig multiplier_weight: " << multiplier_weight
+                << std::endl;
 
             // Take units
             for(const auto& l: solver->get_zero_assigned_lits()) {
@@ -673,8 +684,12 @@ namespace ArjunNS {
                     CMSat::Lit l(v, false);
                     tmp += get_lit_weight(l);
                     tmp += get_lit_weight(~l);
+                    std::cout << "tmp: " << tmp << std::endl;
                     unset_var_weight(l.var());
-                } else tmp = std::complex<mpq_class>(2, 0);
+                } else {
+                    tmp = get_default_weight();
+                    tmp *= 2;
+                }
                 multiplier_weight *= tmp;
                 if (debug_w)
                     std::cout << __FUNCTION__ << " [w-debug] empty mul: " << tmp
@@ -878,4 +893,5 @@ namespace ArjunNS {
     private:
         ArjPrivateData* arjdata = nullptr;
     };
+
 }
