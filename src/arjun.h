@@ -23,11 +23,9 @@ THE SOFTWARE.
 #pragma once
 
 #include <cstdint>
-#include <memory_resource>
 #include <vector>
 #include <complex>
 #include <string>
-#include <mpfr.h>
 #include <map>
 #include <set>
 #include <fstream>

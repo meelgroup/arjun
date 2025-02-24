@@ -58,7 +58,6 @@ add_library(arjun
 target_link_libraries(arjun
     LINK_PUBLIC ${CRYPTOMINISAT5_LIBRARIES}
     LINK_PUBLIC ${SBVA_LIBRARIES}
-    LINK_PUBLIC ${MPFR_LIBRARIES}
     LINK_PUBLIC ${PROJECT_SOURCE_DIR}/../cadical/build/libcadical.so
 )
 
