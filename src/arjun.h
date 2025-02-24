@@ -239,7 +239,7 @@ struct AIGManager {
 };
 
 namespace ArjunNS {
-    std::complex<mpq_class> get_default_weight() {
+    inline std::complex<mpq_class> get_default_weight() {
         return std::complex<mpq_class>(1, 0);
     }
 
