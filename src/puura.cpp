@@ -46,6 +46,7 @@ using std::setw;
 using std::setprecision;
 using std::string;
 using std::map;
+using std::complex;
 
 Puura::Puura(const Config& _conf) : conf(_conf) {}
 Puura::~Puura() = default;
@@ -113,8 +114,8 @@ void Puura::backbone(SimplifiedCNF& cnf) {
     if (cnf.weighted) {
         for(const auto& v: cnf.opt_sampl_vars) {
             Lit l(v, false);
-            if (cnf.get_lit_weight(l) == 0) cnf.clauses.push_back({~l});
-            if (cnf.get_lit_weight(~l) == 0) cnf.clauses.push_back({l});
+            if (cnf.get_lit_weight(l) == std::complex<mpq_class>()) cnf.clauses.push_back({~l});
+            if (cnf.get_lit_weight(~l) == std::complex<mpq_class>()) cnf.clauses.push_back({l});
         }
     }
     auto solver = fill_solver(cnf);
@@ -386,7 +387,7 @@ SimplifiedCNF Puura::get_cnf(
     solver->start_getting_constraints(false, true);
     if (cnf.need_aig) get_bve_mapping(cnf, scnf, solver);
     if (cnf2.weighted) {
-        map<Lit, mpq_class> outer_w;
+        map<Lit, complex<mpq_class>> outer_w;
         for(const auto& it: cnf2.weights) {
             Lit l(it.first, false);
             outer_w[l] = it.second.pos;

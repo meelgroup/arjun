@@ -24,6 +24,7 @@ THE SOFTWARE.
 
 #include <cstdint>
 #include <vector>
+#include <complex>
 #include <string>
 #include <mpfr.h>
 #include <map>
@@ -265,10 +266,10 @@ namespace ArjunNS {
         std::vector<uint32_t> opt_sampl_vars; // Filled during synthesis with vars that have been defined already
 
         uint32_t nvars = 0;
-        mpq_class multiplier_weight = 1;
+        std::complex<mpq_class> multiplier_weight = std::complex<mpq_class>(1,1);
         bool weighted = false;
         bool backbone_done = false;
-        struct Weight {mpq_class pos = 1; mpq_class neg = 1;};
+        struct Weight {std::complex<mpq_class> pos = std::complex<mpq_class>(1,1); std::complex<mpq_class> neg = std::complex<mpq_class>(1,1);};
         std::map<uint32_t, Weight> weights;
         std::map<uint32_t, CMSat::VarMap> orig_to_new_var;
         AIGManager aig_mng;
@@ -404,13 +405,13 @@ namespace ArjunNS {
             opt_sampl_vars.insert(opt_sampl_vars.begin(), vars.begin(), vars.end());
         }
 
-        void set_multiplier_weight(const mpq_class& m) { multiplier_weight = m; }
+        void set_multiplier_weight(const std::complex<mpq_class>& m) { multiplier_weight = m; }
         auto get_multiplier_weight() const { return multiplier_weight; }
-        mpq_class get_lit_weight(CMSat::Lit lit) const {
+        std::complex<mpq_class> get_lit_weight(CMSat::Lit lit) const {
             assert(weighted);
             assert(lit.var() < nVars());
             auto it = weights.find(lit.var());
-            if (it == weights.end()) return 1;
+            if (it == weights.end()) return std::complex<mpq_class>(1,1);
             else {
                 if (!lit.sign()) return it->second.pos;
                 else return it->second.neg;
@@ -421,14 +422,14 @@ namespace ArjunNS {
             auto it = weights.find(v);
             if (it != weights.end()) weights.erase(it);
         }
-        void set_lit_weight(CMSat::Lit lit, const mpq_class& w) {
+        void set_lit_weight(CMSat::Lit lit, const std::complex<mpq_class>& w) {
             assert(weighted);
             assert(lit.var() < nVars());
             auto it = weights.find(lit.var());
             if (it == weights.end()) {
                 Weight weight;
-                if (lit.sign()) {weight.neg = w;weight.pos = 1.0-w;}
-                else {weight.pos = w;weight.neg = 1.0-w;}
+                if (lit.sign()) {weight.neg = w;weight.pos = std::complex<mpq_class>(1,1)-w;}
+                else {weight.pos = w;weight.neg = std::complex<mpq_class>(1,1)-w;}
                 weights[lit.var()] = weight;
                 return;
             } else {
@@ -534,18 +535,17 @@ namespace ArjunNS {
                 for(const auto& it: weights) {
                     outf << "c p weight " << CMSat::Lit(it.first,false) << " ";
                     if (convert) {
-                        mpf_class pos = it.second.pos;
-                        outf << pos << " 0" << std::endl;
-                    } else {
-                        outf << it.second.pos << " 0" << std::endl;
-                    }
+                        mpf_class pos_r = it.second.pos.real();
+                        mpf_class pos_i = it.second.pos.imag();
+                        outf << pos_r << " + " << pos_i << "i 0" << std::endl;
+                    } else outf << it.second.pos << " 0" << std::endl;
+
                     outf << "c p weight " << CMSat::Lit(it.first,true) << " ";
                     if (convert) {
-                        mpf_class neg = it.second.neg;
-                        outf << neg << " 0" << std::endl;
-                    } else {
-                        outf << it.second.neg << " 0" << std::endl;
-                    }
+                        mpf_class neg_r = it.second.neg.real();
+                        mpf_class neg_i = it.second.neg.imag();
+                        outf << neg_r << " + " << neg_i << "i 0" << std::endl;
+                    } else outf << it.second.neg << " 0" << std::endl;
                 }
             }
 
@@ -668,13 +668,13 @@ namespace ArjunNS {
 
                 if (debug_w)
                     std::cout << __FUNCTION__ << " [w-debug] empty sampling var: " << v+1 << std::endl;
-                mpq_class tmp(0);
+                std::complex<mpq_class> tmp;
                 if (get_weighted()) {
                     CMSat::Lit l(v, false);
                     tmp += get_lit_weight(l);
                     tmp += get_lit_weight(~l);
                     unset_var_weight(l.var());
-                } else tmp = 2;
+                } else tmp = std::complex<mpq_class>(2, 0);
                 multiplier_weight *= tmp;
                 if (debug_w)
                     std::cout << __FUNCTION__ << " [w-debug] empty mul: " << tmp
