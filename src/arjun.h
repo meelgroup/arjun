@@ -444,6 +444,23 @@ namespace ArjunNS {
         }
         void set_weighted(bool _weighted) { weighted = _weighted; }
         void set_projected(bool _projected) { proj = _projected; }
+        bool is_complex() const {
+            bool cpx = false;
+            if (multiplier_weight.imag() ! mpq_class())
+                cpx = true;
+            if (!cpx) {
+                for(const auto& w: weights) {
+                    if (w.second.pos.imag() != mpq_class()
+                            || w.second.neg.imag() != mpq_class()
+                    ) {
+                        cpx = true;
+                        break;
+                    }
+                }
+            }
+            if (!weighted && cpx) assert(false && "cannot both be non-weighted and complex!");
+            return cpx;
+        }
         bool get_weighted() const { return weighted; }
         bool get_projected() const { return proj; }
         void clear_weights_for_nonprojected_vars() {
