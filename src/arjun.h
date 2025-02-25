@@ -446,7 +446,7 @@ namespace ArjunNS {
         void set_projected(bool _projected) { proj = _projected; }
         bool is_complex() const {
             bool cpx = false;
-            if (multiplier_weight.imag() ! mpq_class())
+            if (multiplier_weight.imag() != mpq_class())
                 cpx = true;
             if (!cpx) {
                 for(const auto& w: weights) {
