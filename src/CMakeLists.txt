@@ -52,6 +52,7 @@ add_library(arjun
     interpolant.cpp
     ccnr.cpp
     ccnr_cms.cpp
+    field.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
 )
 

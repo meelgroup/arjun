@@ -23,8 +23,8 @@ THE SOFTWARE.
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <vector>
-#include <complex>
 #include <string>
 #include <map>
 #include <set>
@@ -33,6 +33,31 @@ THE SOFTWARE.
 #include "cryptominisat5/solvertypesmini.h"
 #include <cryptominisat5/cryptominisat.h>
 struct FHolder;
+
+
+class Field {
+public:
+    virtual ~Field() = default;
+
+    // Virtual methods for field operations
+    virtual Field& operator=(const Field& other) = 0;
+    virtual Field& operator+=(const Field& other) = 0;
+    virtual Field& operator-=(const Field& other) = 0;
+    virtual Field& operator*=(const Field& other) = 0;
+    virtual Field& operator/=(const Field& other) = 0;
+    virtual bool is_zero() const = 0;
+    virtual bool is_one() const = 0;
+    virtual Field* duplicate() const = 0;
+
+    // A method to display the value (for demonstration purposes)
+    virtual std::ostream& display(std::ostream& os) const = 0;
+};
+
+class FieldGen {
+public:
+    virtual Field* zero() const = 0;
+    virtual Field* one() const = 0;
+};
 
 enum AIGT {t_and, t_lit, t_const};
 struct AIG {
@@ -237,10 +262,6 @@ struct AIGManager {
 };
 
 namespace ArjunNS {
-    inline std::complex<mpq_class> get_default_weight() {
-        return std::complex<mpq_class>(1, 0);
-    }
-
     struct SimpConf {
         bool oracle_extra = true;
         bool oracle_vivify = true;
@@ -257,7 +278,13 @@ namespace ArjunNS {
     };
 
     struct SimplifiedCNF {
-        SimplifiedCNF() = default;
+        FieldGen* fg = nullptr;
+        SimplifiedCNF(FieldGen* _fg) : fg(_fg) {
+            multiplier_weight = fg->one();
+        }
+        ~SimplifiedCNF() {
+            delete multiplier_weight;
+        }
 
         bool need_aig = false;
         std::vector<std::vector<CMSat::Lit>> clauses;
@@ -269,12 +296,14 @@ namespace ArjunNS {
         std::vector<uint32_t> opt_sampl_vars; // Filled during synthesis with vars that have been defined already
 
         uint32_t nvars = 0;
-        std::complex<mpq_class> multiplier_weight = get_default_weight();
+        Field* multiplier_weight;
         bool weighted = false;
         bool backbone_done = false;
         struct Weight {
-            std::complex<mpq_class> pos = get_default_weight();
-            std::complex<mpq_class> neg = get_default_weight();};
+            std::unique_ptr<Field> pos;
+            std::unique_ptr<Field> neg;
+            Weight(FieldGen* fg) : pos(fg->zero()), neg(fg->zero()) {}
+        };
         std::map<uint32_t, Weight> weights;
         std::map<uint32_t, CMSat::VarMap> orig_to_new_var;
         AIGManager aig_mng;
@@ -410,13 +439,17 @@ namespace ArjunNS {
             opt_sampl_vars.insert(opt_sampl_vars.begin(), vars.begin(), vars.end());
         }
 
-        void set_multiplier_weight(const std::complex<mpq_class>& m) { multiplier_weight = m; }
+        void set_multiplier_weight(const Field* m) { multiplier_weight = m->duplicate(); }
         auto get_multiplier_weight() const { return multiplier_weight; }
-        std::complex<mpq_class> get_lit_weight(CMSat::Lit lit) const {
+        std::unique_ptr<Field> get_lit_weight(CMSat::Lit lit) const {
             assert(weighted);
             assert(lit.var() < nVars());
             auto it = weights.find(lit.var());
-            if (it == weights.end()) return get_default_weight();
+            if (it == weights.end()) return new fg->zero();
+            else {
+                if (!lit.sign()) return it->second.pos;
+                else return it->second.neg;
+            }
             else {
                 if (!lit.sign()) return it->second.pos;
                 else return it->second.neg;
@@ -427,13 +460,13 @@ namespace ArjunNS {
             auto it = weights.find(v);
             if (it != weights.end()) weights.erase(it);
         }
-        void set_lit_weight(CMSat::Lit lit, const std::complex<mpq_class>& w) {
+        void set_lit_weight(CMSat::Lit lit, const Field& w) {
             assert(weighted);
             assert(lit.var() < nVars());
             auto it = weights.find(lit.var());
             if (it == weights.end()) {
-                Weight weight;
-                if (lit.sign()) {weight.neg = w;weight.pos = get_default_weight()-w;}
+                Weight weight(fg);
+                if (lit.sign()) {weight.neg = w; weight.pos = fg->zero()-w;}
                 else {weight.pos = w;weight.neg = get_default_weight()-w;}
                 weights[lit.var()] = weight;
                 return;
