@@ -20,16 +20,91 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ***********************************************/
 
-#include <iostream>
-#include <stdexcept>
 #include "arjun.h"
+#include <iostream>
+#include <gmpxx.h>
+
+class FMpz : public Field {
+private:
+    mpz_class val;
+
+public:
+    FMpz(const int _val) : val(_val) {}
+    FMpz(const mpz_class& _val) : val(_val) {}
+    FMpz(const FMpz& other) : val(other.val) {}
+
+    Field& operator=(const Field& other) override {
+        const auto& od = dynamic_cast<const FMpz&>(other);
+        val = od.val;
+        return *this;
+    }
+
+    Field& operator+=(const Field& other) override {
+        const auto& od = dynamic_cast<const FMpz&>(other);
+        val += od.val;
+        return *this;
+    }
+
+    Field& operator-=(const Field& other) override {
+        const auto& od = dynamic_cast<const FMpz&>(other);
+        val -= od.val;
+        return *this;
+    }
+
+    Field& operator*=(const Field& other) override {
+        const auto& od = dynamic_cast<const FMpz&>(other);
+        val *= od.val;
+        return *this;
+    }
+
+    Field& operator/=(const Field& other) override {
+        const auto& od = dynamic_cast<const FMpz&>(other);
+        if (od.val == 0) throw std::runtime_error("Division by zero");
+        val /= od.val;
+        return *this;
+    }
+
+    std::ostream& display(std::ostream& os) const override {
+        os << val;
+        return os;
+    }
+
+    Field* duplicate() const override {
+        return new FMpz(val);
+    }
+
+    bool is_zero() const override {
+        return val == 0;
+    }
+
+    bool is_one() const override {
+        return val == 1;
+    }
+};
+
+class FGenMpz : public FieldGen {
+public:
+    ~FGenMpz() override = default;
+    Field* zero() const override {
+        return new FMpz(0);
+    }
+
+    Field* one() const override {
+        return new FMpz(1.0);
+    }
+
+    FieldGen* duplicate() const override {
+        return new FGenMpz();
+    }
+};
+
 
 class FDouble : public Field {
 private:
     double val;
 
 public:
-    FDouble(double _val) : val(_val) {}
+    FDouble(const double _val) : val(_val) {}
 
     Field& operator=(const Field& other) override {
         const auto& od = dynamic_cast<const FDouble&>(other);

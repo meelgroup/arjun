@@ -26,22 +26,21 @@
 
 #include <vector>
 #include <iostream>
-#include <limits>
 #include <set>
+#include "fdouble.h"
 
 using std::vector;
 using std::cout;
 using std::endl;
-using std::numeric_limits;
 using namespace CMSat;
 using namespace ArjunNS;
 
 int main()
 {
     const uint32_t num_vars = 100;
-    FGenDouble fgen;
+    std::unique_ptr<FieldGen> fg(new FGenMpz);
 
-    SimplifiedCNF cnf;
+    SimplifiedCNF cnf(fg);
     cnf.new_vars(num_vars);
 
     vector<Lit> clause;

@@ -183,7 +183,7 @@ void print_final_sampl_set(SimplifiedCNF& cnf, const vector<uint32_t>& orig_samp
     cout << "c p optshow ";
     for(const uint32_t s: cnf.opt_sampl_vars) cout << s+1 << " ";
     cout << "0" << endl;
-    cout << "c MUST MULTIPLY BY " << cnf.multiplier_weight << std::endl;
+    cout << "c MUST MULTIPLY BY " << *cnf.multiplier_weight << std::endl;
 }
 
 void set_config(ArjunNS::Arjun* arj) {
