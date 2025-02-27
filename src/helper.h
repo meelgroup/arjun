@@ -81,13 +81,14 @@ inline void write_synth(const ArjunNS::SimplifiedCNF& simpcnf, const std::string
     for(const auto& cl: simpcnf.red_clauses) outf << cl << " 0\n";
 }
 
-template<typename T> void read_in_a_file(const std::string& filename, T* holder, bool& all_indep) {
+template<typename T> void read_in_a_file(const std::string& filename,
+        T* holder, bool& all_indep, unique_ptr<CMSat::FieldGen>& fg) {
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<FILE*, FN>, T> parser(arjun, nullptr, 0);
+    DimacsParser<StreamBuffer<FILE*, FN>, T> parser(arjun, nullptr, 0, fg);
     #else
     gzFile in = gzopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<gzFile, GZ>, T> parser(holder, nullptr, 0);
+    DimacsParser<StreamBuffer<gzFile, GZ>, T> parser(holder, nullptr, 0, fg);
     #endif
 
     if (in == nullptr) {

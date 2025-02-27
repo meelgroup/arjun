@@ -39,7 +39,7 @@
 #include "arjun.h"
 #include "config.h"
 #include "helper.h"
-#include "fdouble.h"
+#include "fmpq.h"
 
 #define myopt(name, var, fun, hhelp) \
     program.add_argument(name) \
@@ -105,7 +105,7 @@ void add_arjun_options()
     myopt("--premanthan", do_pre_manthan, atoi, "Run all simplifcation before Manthan");
     myopt("--maxc", conf.backw_max_confl, atoi,"Maximum conflicts per variable in backward mode");
     myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
-    myopt("--mode", mode , atoi, "0=regular counting, 1=weighted counting, 2=complex numbers");
+    myopt("--mode", mode , atoi, "0=rational numbers, 1=complex numbers");
     program.add_argument("--synth")
         .action([&](const auto&) {synthesis = 1;})
         .default_value(synthesis)
@@ -227,7 +227,7 @@ void set_config(ArjunNS::Arjun* arj) {
 void do_synthesis() {
     SimplifiedCNF cnf(fg);
     cnf.need_aig = true;
-    read_in_a_file(input_file, &cnf, etof_conf.all_indep);
+    read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
     assert(cnf.sampl_vars == cnf.opt_sampl_vars && "Synthesis extends opt_sampl_vars, so it must be the same as sampl_vars");
     if (do_pre_manthan) {
         cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
@@ -256,7 +256,7 @@ void do_synthesis() {
 
 void do_minimize() {
     SimplifiedCNF cnf(fg);
-    read_in_a_file(input_file, &cnf, etof_conf.all_indep);
+    read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
 
     if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
     if (do_pre_backbone) arjun->standalone_backbone(cnf);
@@ -283,14 +283,6 @@ int main(int argc, char** argv) {
     #if defined(__GNUC__) && defined(__linux__)
     feenableexcept(FE_INVALID   | FE_DIVBYZERO | FE_OVERFLOW);
     #endif
-    switch (mode) {
-        case 0:
-            fg = std::make_unique<FGenMpz>();
-            break;
-        default:
-            cout << "c o [arjun] ERROR: Unknown mode" << endl;
-            exit(-1);
-    }
 
     //Reconstruct the command line so we can emit it later if needed
     string command_line;
@@ -325,6 +317,18 @@ int main(int argc, char** argv) {
         cout << print_version() << endl;
         cout << "c o executed with command line: " << command_line << endl;
     }
+    switch (mode) {
+        case 0:
+            fg = std::make_unique<FGenMpq>();
+            break;
+        case 1:
+            fg = std::make_unique<FGenComplex>();
+            break;
+        default:
+            cout << "c o [arjun] ERROR: Unknown mode" << endl;
+            exit(-1);
+    }
+
     if (program["version"] == true) exit(0);
 
     start_time = cpuTime();

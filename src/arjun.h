@@ -31,40 +31,11 @@ THE SOFTWARE.
 #include <set>
 #include <fstream>
 #include <gmpxx.h>
+#include "cryptominisat5/dimacsparser.h"
 #include "cryptominisat5/solvertypesmini.h"
 #include <cryptominisat5/cryptominisat.h>
 struct FHolder;
 
-
-class Field {
-public:
-    virtual ~Field() = default;
-
-    // Virtual methods for field operations
-    virtual Field& operator=(const Field& other) = 0;
-    virtual Field& operator+=(const Field& other) = 0;
-    virtual Field& operator-=(const Field& other) = 0;
-    virtual Field& operator*=(const Field& other) = 0;
-    virtual Field& operator/=(const Field& other) = 0;
-    virtual bool is_zero() const = 0;
-    virtual bool is_one() const = 0;
-    virtual Field* duplicate() const = 0;
-
-    // A method to display the value (for demonstration purposes)
-    virtual std::ostream& display(std::ostream& os) const = 0;
-};
-
-inline std::ostream& operator<<(std::ostream& os, const Field& f) {
-    return f.display(os);
-}
-
-class FieldGen {
-public:
-    virtual ~FieldGen() = default;
-    virtual Field* zero() const = 0;
-    virtual Field* one() const = 0;
-    virtual FieldGen* duplicate() const = 0;
-};
 
 enum AIGT {t_and, t_lit, t_const};
 struct AIG {
@@ -285,9 +256,9 @@ namespace ArjunNS {
     };
 
     struct SimplifiedCNF {
-        std::unique_ptr<FieldGen> fg;
-        SimplifiedCNF(FieldGen* _fg) : fg(_fg->duplicate()), multiplier_weight(fg->one()) {}
-        SimplifiedCNF(std::unique_ptr<FieldGen>& _fg) : fg(_fg->duplicate()), multiplier_weight(fg->one()) {}
+        std::unique_ptr<CMSat::FieldGen> fg;
+        SimplifiedCNF(CMSat::FieldGen* _fg) : fg(_fg->duplicate()), multiplier_weight(fg->one()) {}
+        SimplifiedCNF(std::unique_ptr<CMSat::FieldGen>& _fg) : fg(_fg->duplicate()), multiplier_weight(fg->one()) {}
         ~SimplifiedCNF() = default;
 
         bool need_aig = false;
@@ -300,15 +271,15 @@ namespace ArjunNS {
         std::vector<uint32_t> opt_sampl_vars; // Filled during synthesis with vars that have been defined already
 
         uint32_t nvars = 0;
-        std::unique_ptr<Field> multiplier_weight;
+        std::unique_ptr<CMSat::Field> multiplier_weight;
         bool weighted = false;
         bool backbone_done = false;
         struct Weight {
             Weight() = default;
-            std::unique_ptr<Field> pos;
-            std::unique_ptr<Field> neg;
-            Weight(FieldGen* fg) : pos(fg->zero()), neg(fg->zero()) {}
-            Weight(std::unique_ptr<FieldGen>& fg) : pos(fg->zero()), neg(fg->zero()) {}
+            std::unique_ptr<CMSat::Field> pos;
+            std::unique_ptr<CMSat::Field> neg;
+            Weight(CMSat::FieldGen* fg) : pos(fg->zero()), neg(fg->zero()) {}
+            Weight(std::unique_ptr<CMSat::FieldGen>& fg) : pos(fg->zero()), neg(fg->zero()) {}
 
             Weight(const Weight& other) :
                 pos (other.pos->duplicate()),
@@ -455,16 +426,18 @@ namespace ArjunNS {
             opt_sampl_vars.insert(opt_sampl_vars.begin(), vars.begin(), vars.end());
         }
 
-        void set_multiplier_weight(const Field* m) { multiplier_weight.reset(m->duplicate()); }
+        void set_multiplier_weight(const std::unique_ptr<CMSat::Field>& m) {
+            multiplier_weight.reset(m->duplicate());
+        }
         const auto& get_multiplier_weight() const { return *multiplier_weight; }
-        std::unique_ptr<Field> get_lit_weight(CMSat::Lit lit) const {
+        std::unique_ptr<CMSat::Field> get_lit_weight(CMSat::Lit lit) const {
             assert(weighted);
             assert(lit.var() < nVars());
             auto it = weights.find(lit.var());
-            if (it == weights.end()) return std::unique_ptr<Field>(fg->zero());
+            if (it == weights.end()) return std::unique_ptr<CMSat::Field>(fg->zero());
             else {
-                if (!lit.sign()) return std::unique_ptr<Field>(it->second.pos->duplicate());
-                else return std::unique_ptr<Field>(it->second.neg->duplicate());
+                if (!lit.sign()) return std::unique_ptr<CMSat::Field>(it->second.pos->duplicate());
+                else return std::unique_ptr<CMSat::Field>(it->second.neg->duplicate());
             }
         }
         void unset_var_weight(uint32_t v) {
@@ -472,25 +445,25 @@ namespace ArjunNS {
             auto it = weights.find(v);
             if (it != weights.end()) weights.erase(it);
         }
-        void set_lit_weight(CMSat::Lit lit, const Field& w) {
+        void set_lit_weight(CMSat::Lit lit, const std::unique_ptr<CMSat::Field>& w) {
             assert(weighted);
             assert(lit.var() < nVars());
             auto it = weights.find(lit.var());
             if (it == weights.end()) {
                 Weight weight(fg);
                 if (lit.sign()) {
-                    *weight.neg = w;
+                    *weight.neg = *w;
                     *weight.pos = *fg->one();
-                    *weight.pos -= w;}
+                    *weight.pos -= *w;}
                 else {
-                    *weight.pos = w;
+                    *weight.pos = *w;
                     *weight.neg = *fg->one();
-                    *weight.neg -= w;}
+                    *weight.neg -= *w;}
                 weights[lit.var()] = weight;
                 return;
             } else {
-                if (!lit.sign()) *it->second.pos = w;
-                else *it->second.neg = w;
+                if (!lit.sign()) *it->second.pos = *w;
+                else *it->second.neg = *w;
             }
         }
         void set_weighted(bool _weighted) { weighted = _weighted; }
@@ -689,8 +662,8 @@ namespace ArjunNS {
                     }
                     *wp2 *= *wp1;
                     *wn2 *= *wn1;
-                    set_lit_weight(p.second, *wp2);
-                    set_lit_weight(~p.second, *wn2);
+                    set_lit_weight(p.second, wp2);
+                    set_lit_weight(~p.second, wn2);
                     if (debug_w) {
                         std::cout << __FUNCTION__ << " [w-debug] set lit " << p.second
                             << " weight to " << *wp2 << std::endl;
@@ -720,7 +693,7 @@ namespace ArjunNS {
 
                 if (debug_w)
                     std::cout << __FUNCTION__ << " [w-debug] empty sampling var: " << v+1 << std::endl;
-                Field* tmp = fg->zero();
+                CMSat::Field* tmp = fg->zero();
                 if (get_weighted()) {
                     CMSat::Lit l(v, false);
                     *tmp += *get_lit_weight(l);

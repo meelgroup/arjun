@@ -408,7 +408,7 @@ SimplifiedCNF Puura::get_cnf(
         for(const auto& myw: inter_w) {
             if (myw.first.var() >= scnf.nvars) continue;
             verb_print(5, "[w-debug] int w: " << myw.first << " " << *myw.second);
-            scnf.set_lit_weight(myw.first, *myw.second);
+            scnf.set_lit_weight(myw.first, myw.second);
         }
     }
     *scnf.multiplier_weight = *cnf2.multiplier_weight;
