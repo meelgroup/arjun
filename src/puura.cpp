@@ -46,7 +46,8 @@ using std::setw;
 using std::setprecision;
 using std::string;
 using std::map;
-using std::complex;
+using std::unique_ptr;
+using std::unique_ptr;
 
 Puura::Puura(const Config& _conf) : conf(_conf) {}
 Puura::~Puura() = default;
@@ -114,8 +115,8 @@ void Puura::backbone(SimplifiedCNF& cnf) {
     if (cnf.weighted) {
         for(const auto& v: cnf.opt_sampl_vars) {
             Lit l(v, false);
-            if (cnf.get_lit_weight(l) == std::complex<mpq_class>()) cnf.clauses.push_back({~l});
-            if (cnf.get_lit_weight(~l) == std::complex<mpq_class>()) cnf.clauses.push_back({l});
+            if (cnf.get_lit_weight(l)->is_zero()) cnf.clauses.push_back({~l});
+            if (cnf.get_lit_weight(~l)->is_zero()) cnf.clauses.push_back({l});
         }
     }
     auto solver = fill_solver(cnf);
@@ -365,7 +366,7 @@ SimplifiedCNF Puura::get_cnf(
         const vector<uint32_t>& new_sampl_vars,
         const vector<uint32_t>& empty_sampl_vars
         ) {
-    SimplifiedCNF scnf;
+    SimplifiedCNF scnf(scnf.fg);
     vector<Lit> clause;
     bool is_xor, rhs;
     scnf.weighted = cnf.get_weighted();
@@ -387,30 +388,30 @@ SimplifiedCNF Puura::get_cnf(
     solver->start_getting_constraints(false, true);
     if (cnf.need_aig) get_bve_mapping(cnf, scnf, solver);
     if (cnf2.weighted) {
-        map<Lit, complex<mpq_class>> outer_w;
+        map<Lit, unique_ptr<Field>> outer_w;
         for(const auto& it: cnf2.weights) {
             Lit l(it.first, false);
-            outer_w[l] = it.second.pos;
-            outer_w[~l] = it.second.neg;
-            verb_print(5, "[w-debug] outer_w " << l << " w: " << it.second.pos);
-            verb_print(5, "[w-debug] outer_w " << ~l << " w: " << it.second.neg);
+            *outer_w[l] = *it.second.pos;
+            *outer_w[~l] = *it.second.neg;
+            verb_print(5, "[w-debug] outer_w " << l << " w: " << *it.second.pos);
+            verb_print(5, "[w-debug] outer_w " << ~l << " w: " << *it.second.neg);
         }
 
         auto trans = solver->get_weight_translation();
-        map<Lit, complex<mpq_class>> inter_w;
+        map<Lit, unique_ptr<Field>> inter_w;
         for(const auto& w: outer_w) {
             Lit orig = w.first;
             Lit t = trans[orig.toInt()];
-            inter_w[t] = w.second;
+            *inter_w[t] = *w.second;
         }
 
         for(const auto& myw: inter_w) {
             if (myw.first.var() >= scnf.nvars) continue;
-            verb_print(5, "[w-debug] int w: " << myw.first << " " << myw.second);
-            scnf.set_lit_weight(myw.first, myw.second);
+            verb_print(5, "[w-debug] int w: " << myw.first << " " << *myw.second);
+            scnf.set_lit_weight(myw.first, *myw.second);
         }
     }
-    scnf.multiplier_weight = cnf2.multiplier_weight;
+    *scnf.multiplier_weight = *cnf2.multiplier_weight;
 
     // Map orig set to new set
     scnf.set_sampl_vars(solver->translate_sampl_set(cnf2.sampl_vars, false));

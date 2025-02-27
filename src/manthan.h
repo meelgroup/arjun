@@ -27,6 +27,7 @@
 #include "cryptominisat5/solvertypesmini.h"
 
 #include <cstdint>
+#include <memory>
 #include <sys/types.h>
 #include <vector>
 #include <set>
@@ -45,13 +46,15 @@ using namespace CMSat;
 using std::vector;
 using std::set;
 using std::map;
+using std::unique_ptr;
 
 using namespace ArjunInt;
 using namespace ArjunNS;
 
 class Manthan {
     public:
-        Manthan(Config& _conf) : conf(_conf) {}
+        Manthan(const Config& _conf, const std::unique_ptr<FieldGen>& _fg):
+            cnf(_fg->duplicate()), conf(_conf), fg(_fg->duplicate())  {}
         SimplifiedCNF do_manthan(const SimplifiedCNF& cnf);
         SimplifiedCNF cnf;
 
@@ -69,6 +72,7 @@ class Manthan {
         set<uint32_t> needs_repair;
 
         const Config& conf;
+        unique_ptr<FieldGen> fg;
         SATSolver solver_train;
         set<uint32_t> input;
         set<uint32_t> to_define;

@@ -130,7 +130,7 @@ SimplifiedCNF Arjun::standalone_get_simplified_cnf(
 
 DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(const SimplifiedCNF& cnf)
 {
-    Manthan manthan(arjdata->conf);
+    Manthan manthan(arjdata->conf, cnf.fg);
     return manthan.do_manthan(cnf);
 }
 

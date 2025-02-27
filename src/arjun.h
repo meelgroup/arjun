@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 #pragma once
 
+#include <armadillo>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -53,10 +54,16 @@ public:
     virtual std::ostream& display(std::ostream& os) const = 0;
 };
 
+inline std::ostream& operator<<(std::ostream& os, const Field& f) {
+    return f.display(os);
+}
+
 class FieldGen {
 public:
+    virtual ~FieldGen() = default;
     virtual Field* zero() const = 0;
     virtual Field* one() const = 0;
+    virtual FieldGen* duplicate() const = 0;
 };
 
 enum AIGT {t_and, t_lit, t_const};
@@ -278,13 +285,10 @@ namespace ArjunNS {
     };
 
     struct SimplifiedCNF {
-        FieldGen* fg = nullptr;
-        SimplifiedCNF(FieldGen* _fg) : fg(_fg) {
-            multiplier_weight = fg->one();
-        }
-        ~SimplifiedCNF() {
-            delete multiplier_weight;
-        }
+        std::unique_ptr<FieldGen> fg;
+        SimplifiedCNF(FieldGen* _fg) : fg(_fg->duplicate()), multiplier_weight(fg->one()) {}
+        SimplifiedCNF(std::unique_ptr<FieldGen>& _fg) : fg(_fg->duplicate()), multiplier_weight(fg->one()) {}
+        ~SimplifiedCNF() = default;
 
         bool need_aig = false;
         std::vector<std::vector<CMSat::Lit>> clauses;
@@ -296,13 +300,24 @@ namespace ArjunNS {
         std::vector<uint32_t> opt_sampl_vars; // Filled during synthesis with vars that have been defined already
 
         uint32_t nvars = 0;
-        Field* multiplier_weight;
+        std::unique_ptr<Field> multiplier_weight;
         bool weighted = false;
         bool backbone_done = false;
         struct Weight {
+            Weight() = default;
             std::unique_ptr<Field> pos;
             std::unique_ptr<Field> neg;
             Weight(FieldGen* fg) : pos(fg->zero()), neg(fg->zero()) {}
+            Weight(std::unique_ptr<FieldGen>& fg) : pos(fg->zero()), neg(fg->zero()) {}
+
+            Weight(const Weight& other) :
+                pos (other.pos->duplicate()),
+                neg (other.neg->duplicate()) {}
+            Weight& operator=(const Weight& other) {
+                *pos = *other.pos;
+                *neg = *other.neg;
+                return *this;
+            }
         };
         std::map<uint32_t, Weight> weights;
         std::map<uint32_t, CMSat::VarMap> orig_to_new_var;
@@ -319,12 +334,13 @@ namespace ArjunNS {
             sampl_vars = other.sampl_vars;
             opt_sampl_vars = other.opt_sampl_vars;
             nvars = other.nvars;
-            multiplier_weight = other.multiplier_weight;
+            *multiplier_weight = *other.multiplier_weight;
             weighted = other.weighted;
             backbone_done = other.backbone_done;
             weights = other.weights;
             orig_to_new_var = other.orig_to_new_var;
             replace_aigs_from(other);
+            fg.reset(other.fg->duplicate());
 
             return *this;
         }
@@ -439,20 +455,16 @@ namespace ArjunNS {
             opt_sampl_vars.insert(opt_sampl_vars.begin(), vars.begin(), vars.end());
         }
 
-        void set_multiplier_weight(const Field* m) { multiplier_weight = m->duplicate(); }
-        auto get_multiplier_weight() const { return multiplier_weight; }
+        void set_multiplier_weight(const Field* m) { multiplier_weight.reset(m->duplicate()); }
+        const auto& get_multiplier_weight() const { return *multiplier_weight; }
         std::unique_ptr<Field> get_lit_weight(CMSat::Lit lit) const {
             assert(weighted);
             assert(lit.var() < nVars());
             auto it = weights.find(lit.var());
-            if (it == weights.end()) return new fg->zero();
+            if (it == weights.end()) return std::unique_ptr<Field>(fg->zero());
             else {
-                if (!lit.sign()) return it->second.pos;
-                else return it->second.neg;
-            }
-            else {
-                if (!lit.sign()) return it->second.pos;
-                else return it->second.neg;
+                if (!lit.sign()) return std::unique_ptr<Field>(it->second.pos->duplicate());
+                else return std::unique_ptr<Field>(it->second.neg->duplicate());
             }
         }
         void unset_var_weight(uint32_t v) {
@@ -466,34 +478,23 @@ namespace ArjunNS {
             auto it = weights.find(lit.var());
             if (it == weights.end()) {
                 Weight weight(fg);
-                if (lit.sign()) {weight.neg = w; weight.pos = fg->zero()-w;}
-                else {weight.pos = w;weight.neg = get_default_weight()-w;}
+                if (lit.sign()) {
+                    *weight.neg = w;
+                    *weight.pos = *fg->one();
+                    *weight.pos -= w;}
+                else {
+                    *weight.pos = w;
+                    *weight.neg = *fg->one();
+                    *weight.neg -= w;}
                 weights[lit.var()] = weight;
                 return;
             } else {
-                if (!lit.sign()) it->second.pos = w;
-                else it->second.neg = w;
+                if (!lit.sign()) *it->second.pos = w;
+                else *it->second.neg = w;
             }
         }
         void set_weighted(bool _weighted) { weighted = _weighted; }
         void set_projected(bool _projected) { proj = _projected; }
-        bool is_complex() const {
-            bool cpx = false;
-            if (multiplier_weight.imag() != mpq_class())
-                cpx = true;
-            if (!cpx) {
-                for(const auto& w: weights) {
-                    if (w.second.pos.imag() != mpq_class()
-                            || w.second.neg.imag() != mpq_class()
-                    ) {
-                        cpx = true;
-                        break;
-                    }
-                }
-            }
-            if (!weighted && cpx) assert(false && "cannot both be non-weighted and complex!");
-            return cpx;
-        }
         bool get_weighted() const { return weighted; }
         bool get_projected() const { return proj; }
         void clear_weights_for_nonprojected_vars() {
@@ -575,8 +576,7 @@ namespace ArjunNS {
             }
         }
 
-        void write_simpcnf(const std::string& fname,
-                    bool red = true, bool convert = false) const
+        void write_simpcnf(const std::string& fname, bool red = true) const
         {
             uint32_t num_cls = clauses.size();
             std::ofstream outf;
@@ -588,19 +588,11 @@ namespace ArjunNS {
             if (!weighted && !proj) outf << "c t mc" << std::endl;
             if (weighted) {
                 for(const auto& it: weights) {
-                    outf << "c p weight " << CMSat::Lit(it.first,false) << " ";
-                    if (convert) {
-                        mpf_class pos_r = it.second.pos.real();
-                        mpf_class pos_i = it.second.pos.imag();
-                        outf << pos_r << " + " << pos_i << "i 0" << std::endl;
-                    } else outf << it.second.pos << " 0" << std::endl;
+                    outf << "c p weight " << CMSat::Lit(it.first,false) << " "
+                        << *it.second.pos << " 0" << std::endl;
 
-                    outf << "c p weight " << CMSat::Lit(it.first,true) << " ";
-                    if (convert) {
-                        mpf_class neg_r = it.second.neg.real();
-                        mpf_class neg_i = it.second.neg.imag();
-                        outf << neg_r << " + " << neg_i << "i 0" << std::endl;
-                    } else outf << it.second.neg << " 0" << std::endl;
+                    outf << "c p weight " << CMSat::Lit(it.first,true) << " "
+                        << *it.second.neg << " 0" << std::endl;
                 }
             }
 
@@ -625,9 +617,7 @@ namespace ArjunNS {
                 outf << v+1  << " ";
             }
             outf << "0\n";
-            outf << "c MUST MULTIPLY BY "
-                << multiplier_weight.real() << " + "
-                << multiplier_weight.imag() << "i" << std::endl;
+            outf << "c MUST MULTIPLY BY " << *multiplier_weight << std::endl;
         }
 
         bool weight_set(uint32_t v) const { return weights.count(v) > 0; }
@@ -644,8 +634,8 @@ namespace ArjunNS {
                 if (weights.count(l.var()) && get_lit_weight(l) == get_lit_weight(~l)) {
                     if (debug_w)
                         std::cout << __FUNCTION__ << " Removing equiv weight for " << l
-                            << " get_lit_weight(l): " << get_lit_weight(l) << std::endl;
-                    multiplier_weight *= get_lit_weight(l);
+                            << " get_lit_weight(l): " << *get_lit_weight(l) << std::endl;
+                    *multiplier_weight *= *get_lit_weight(l);
                     unset_var_weight(i);
                 }
             }
@@ -658,22 +648,22 @@ namespace ArjunNS {
             std::set<uint32_t> opt_sampling_vars_set(opt_sampl_vars.begin(), opt_sampl_vars.end());
             bool debug_w = false;
             if (debug_w)
-                std::cout << __FUNCTION__ << " [w-debug] orig multiplier_weight: " << multiplier_weight
-                << std::endl;
+                std::cout << __FUNCTION__ << " [w-debug] orig multiplier_weight: "
+                    << *multiplier_weight << std::endl;
 
             // Take units
             for(const auto& l: solver->get_zero_assigned_lits()) {
                 if (l.var() >= nVars()) continue;
                 if (debug_w)
                     std::cout << __FUNCTION__ << " [w-debug] orig unit l: " << l
-                        << " w: " << get_lit_weight(l) << std::endl;
+                        << " w: " << *get_lit_weight(l) << std::endl;
                 sampling_vars_set.erase(l.var());
                 opt_sampling_vars_set.erase(l.var());
                 if (get_weighted()) {
-                    multiplier_weight *= get_lit_weight(l);
+                    *multiplier_weight *= *get_lit_weight(l);
                     if (debug_w)
                         std::cout << __FUNCTION__ << " [w-debug] unit: " << l
-                            << " multiplier_weight: " << multiplier_weight << std::endl;
+                            << " multiplier_weight: " << *multiplier_weight << std::endl;
                     unset_var_weight(l.var());
                 }
             }
@@ -692,18 +682,20 @@ namespace ArjunNS {
                     auto wp1 = get_lit_weight(p.first);
                     auto wn1 = get_lit_weight(~p.first);
                     if (debug_w) {
-                        std::cout << __FUNCTION__ << " [w-debug] wp1 " << wp1 << " wn1 " << wn1 << std::endl;
-                        std::cout << __FUNCTION__ << " [w-debug] wp2 " << wp2 << " wn2 " << wn2 << std::endl;
+                        std::cout << __FUNCTION__ << " [w-debug] wp1 " << *wp1
+                            << " wn1 " << *wn1 << std::endl;
+                        std::cout << __FUNCTION__ << " [w-debug] wp2 " << *wp2
+                            << " wn2 " << *wn2 << std::endl;
                     }
-                    wp2 *= wp1;
-                    wn2 *= wn1;
-                    set_lit_weight(p.second, wp2);
-                    set_lit_weight(~p.second, wn2);
+                    *wp2 *= *wp1;
+                    *wn2 *= *wn1;
+                    set_lit_weight(p.second, *wp2);
+                    set_lit_weight(~p.second, *wn2);
                     if (debug_w) {
                         std::cout << __FUNCTION__ << " [w-debug] set lit " << p.second
-                            << " weight to " << wp2 << std::endl;
+                            << " weight to " << *wp2 << std::endl;
                         std::cout << __FUNCTION__ << " [w-debug] set lit " << ~p.second
-                            << " weight to " << wn2 << std::endl;
+                            << " weight to " << *wn2 << std::endl;
                     }
                     unset_var_weight(p.first.var());
                 }
@@ -728,21 +720,20 @@ namespace ArjunNS {
 
                 if (debug_w)
                     std::cout << __FUNCTION__ << " [w-debug] empty sampling var: " << v+1 << std::endl;
-                std::complex<mpq_class> tmp;
+                Field* tmp = fg->zero();
                 if (get_weighted()) {
                     CMSat::Lit l(v, false);
-                    tmp += get_lit_weight(l);
-                    tmp += get_lit_weight(~l);
-                    std::cout << "tmp: " << tmp << std::endl;
+                    *tmp += *get_lit_weight(l);
+                    *tmp += *get_lit_weight(~l);
                     unset_var_weight(l.var());
                 } else {
-                    tmp = get_default_weight();
-                    tmp *= 2;
+                    *tmp = *fg->one();
+                    *tmp += *fg->one();
                 }
-                multiplier_weight *= tmp;
+                *multiplier_weight *= *tmp;
                 if (debug_w)
                     std::cout << __FUNCTION__ << " [w-debug] empty mul: " << tmp
-                        << " final multiplier_weight: " << multiplier_weight << std::endl;
+                        << " final multiplier_weight: " << *multiplier_weight << std::endl;
             }
 
             set_sampl_vars(sampling_vars_set, true);

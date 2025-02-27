@@ -39,6 +39,7 @@ using namespace ArjunNS;
 int main()
 {
     const uint32_t num_vars = 100;
+    FGenDouble fgen;
 
     SimplifiedCNF cnf;
     cnf.new_vars(num_vars);

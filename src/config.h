@@ -22,8 +22,7 @@
  THE SOFTWARE.
  */
 
-#ifndef CONFIG_H
-#define CONFIG_H
+#pragma once
 
 #include <cstdint>
 #include <string>
@@ -57,6 +56,3 @@ struct Config {
 };
 
 }
-
-//ARJUN_CONFIG_H
-#endif
