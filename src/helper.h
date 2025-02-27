@@ -81,7 +81,6 @@ inline void write_synth(const ArjunNS::SimplifiedCNF& simpcnf, const std::string
     for(const auto& cl: simpcnf.red_clauses) outf << cl << " 0\n";
 }
 
-
 template<typename T> void read_in_a_file(const std::string& filename, T* holder, bool& all_indep) {
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
@@ -92,11 +91,8 @@ template<typename T> void read_in_a_file(const std::string& filename, T* holder,
     #endif
 
     if (in == nullptr) {
-        std::cerr
-        << "ERROR! Could not open file '"
-        << filename
-        << "' for reading: " << strerror(errno) << endl;
-
+        std::cerr << "ERROR! Could not open file '" << filename
+            << "' for reading: " << strerror(errno) << endl;
         std::exit(-1);
     }
 

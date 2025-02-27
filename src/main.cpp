@@ -22,6 +22,8 @@
  THE SOFTWARE.
  */
 
+#include <armadillo>
+#include <memory>
 #if defined(__GNUC__) && defined(__linux__)
 #include <cfenv>
 #endif
@@ -37,6 +39,7 @@
 #include "arjun.h"
 #include "config.h"
 #include "helper.h"
+#include "fdouble.h"
 
 #define myopt(name, var, fun, hhelp) \
     program.add_argument(name) \
@@ -53,6 +56,7 @@ using std::cout;
 using std::endl;
 using std::string;
 using std::vector;
+using std::unique_ptr;
 using namespace CMSat;
 
 argparse::ArgumentParser program = argparse::ArgumentParser("arjun");
@@ -78,6 +82,8 @@ int do_minim_indep = true;
 string debug_minim;
 int do_pre_manthan = false;
 double cms_glob_mult = -1.0;
+int mode = 0;
+unique_ptr<FieldGen> fg = nullptr;
 
 string print_version() {
     std::stringstream ss;
@@ -99,6 +105,7 @@ void add_arjun_options()
     myopt("--premanthan", do_pre_manthan, atoi, "Run all simplifcation before Manthan");
     myopt("--maxc", conf.backw_max_confl, atoi,"Maximum conflicts per variable in backward mode");
     myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
+    myopt("--mode", mode , atoi, "0=regular counting, 1=weighted counting, 2=complex numbers");
     program.add_argument("--synth")
         .action([&](const auto&) {synthesis = 1;})
         .default_value(synthesis)
@@ -218,7 +225,7 @@ void set_config(ArjunNS::Arjun* arj) {
 }
 
 void do_synthesis() {
-    SimplifiedCNF cnf;
+    SimplifiedCNF cnf(fg);
     cnf.need_aig = true;
     read_in_a_file(input_file, &cnf, etof_conf.all_indep);
     assert(cnf.sampl_vars == cnf.opt_sampl_vars && "Synthesis extends opt_sampl_vars, so it must be the same as sampl_vars");
@@ -248,7 +255,7 @@ void do_synthesis() {
 }
 
 void do_minimize() {
-    SimplifiedCNF cnf;
+    SimplifiedCNF cnf(fg);
     read_in_a_file(input_file, &cnf, etof_conf.all_indep);
 
     if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
@@ -256,15 +263,15 @@ void do_minimize() {
     const auto orig_sampl_vars = cnf.sampl_vars;
     if (do_minim_indep) arjun->standalone_minimize_indep(cnf, etof_conf.all_indep);
     if (!debug_minim.empty()) {
-        cnf.write_simpcnf(debug_minim, false, true);
+        cnf.write_simpcnf(debug_minim, false);
         auto cnf2 = cnf;
         cnf2.renumber_sampling_vars_for_ganak();
-        cnf2.write_simpcnf(debug_minim+"-renum", false, true);
+        cnf2.write_simpcnf(debug_minim+"-renum", false);
     }
 
     if (!elimtofile.empty()) {
         arjun->standalone_elim_to_file(cnf, etof_conf, simp_conf);
-        cnf.write_simpcnf(elimtofile, redundant_cls, true);
+        cnf.write_simpcnf(elimtofile, redundant_cls);
         cout << "c o [arjun] dumped simplified problem to '" << elimtofile << "'" << endl;
     } else {
         print_final_sampl_set(cnf, orig_sampl_vars);
@@ -276,6 +283,14 @@ int main(int argc, char** argv) {
     #if defined(__GNUC__) && defined(__linux__)
     feenableexcept(FE_INVALID   | FE_DIVBYZERO | FE_OVERFLOW);
     #endif
+    switch (mode) {
+        case 0:
+            fg = std::make_unique<FGenMpz>();
+            break;
+        default:
+            cout << "c o [arjun] ERROR: Unknown mode" << endl;
+            exit(-1);
+    }
 
     //Reconstruct the command line so we can emit it later if needed
     string command_line;
