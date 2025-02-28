@@ -68,6 +68,11 @@ public:
         return *this;
     }
 
+    bool operator==(const Field& other) const override {
+        const auto& od = dynamic_cast<const FMpq&>(other);
+        return val == od.val;
+    }
+
     std::ostream& display(std::ostream& os) const override {
         os << val;
         return os;
@@ -219,6 +224,11 @@ public:
         if (od.val.real() == 0) throw std::runtime_error("Division by zero");
         val /= od.val;
         return *this;
+    }
+
+    bool operator==(const Field& other) const override {
+        const auto& od = dynamic_cast<const FComplex&>(other);
+        return val == od.val;
     }
 
     std::ostream& display(std::ostream& os) const override {
