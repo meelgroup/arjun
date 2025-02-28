@@ -360,7 +360,9 @@ public:
             }
             at++;
             mpz_class exp;
+            auto sign2 = parse_sign(str, at);
             if (!parse_int(exp, str, at, line_no)) return false;
+            exp*=sign2;
             if (!exp.fits_sint_p()) {
                 std::cerr << "PARSE ERROR! Exponent too large for int64_t"
                 << " At line " << line_no << " Probably looks like 1e100" << std::endl;
@@ -903,7 +905,7 @@ public:
                 const std::vector<uint32_t>& empty_sampling_vars) {
             std::set<uint32_t> sampling_vars_set(new_sampl_vars.begin(), new_sampl_vars.end());
             std::set<uint32_t> opt_sampling_vars_set(opt_sampl_vars.begin(), opt_sampl_vars.end());
-            bool debug_w = true;
+            bool debug_w = false;
             if (debug_w)
                 std::cout << __FUNCTION__ << " [w-debug] orig multiplier_weight: "
                     << *multiplier_weight << std::endl;
