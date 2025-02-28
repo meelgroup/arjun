@@ -256,7 +256,7 @@ namespace ArjunNS {
     };
 
     struct SimplifiedCNF {
-        std::unique_ptr<CMSat::FieldGen> fg;
+        std::unique_ptr<CMSat::FieldGen> fg = nullptr;
         SimplifiedCNF(const std::unique_ptr<CMSat::FieldGen>& _fg) : fg(_fg->duplicate()), multiplier_weight(fg->one()) {}
         SimplifiedCNF(const CMSat::FieldGen* _fg) : fg(_fg->duplicate()), multiplier_weight(fg->one()) {}
         ~SimplifiedCNF() = default;
@@ -271,7 +271,7 @@ namespace ArjunNS {
         std::vector<uint32_t> opt_sampl_vars; // Filled during synthesis with vars that have been defined already
 
         uint32_t nvars = 0;
-        std::unique_ptr<CMSat::Field> multiplier_weight;
+        std::unique_ptr<CMSat::Field> multiplier_weight = nullptr;
         bool weighted = false;
         bool backbone_done = false;
         struct Weight {
@@ -296,6 +296,7 @@ namespace ArjunNS {
         std::map<uint32_t, AIG*> defs; //definition of variables in terms of AIG. ORIGINAL number space
 
         SimplifiedCNF& operator=(const SimplifiedCNF& other) {
+            fg.reset(other.fg->duplicate());
             need_aig = other.need_aig;
             clauses = other.clauses;
             red_clauses = other.red_clauses;
@@ -305,13 +306,12 @@ namespace ArjunNS {
             sampl_vars = other.sampl_vars;
             opt_sampl_vars = other.opt_sampl_vars;
             nvars = other.nvars;
-            *multiplier_weight = *other.multiplier_weight;
+            multiplier_weight.reset(other.multiplier_weight->duplicate());
             weighted = other.weighted;
             backbone_done = other.backbone_done;
             weights = other.weights;
             orig_to_new_var = other.orig_to_new_var;
             replace_aigs_from(other);
-            fg.reset(other.fg->duplicate());
 
             return *this;
         }
@@ -693,7 +693,7 @@ namespace ArjunNS {
 
                 if (debug_w)
                     std::cout << __FUNCTION__ << " [w-debug] empty sampling var: " << v+1 << std::endl;
-                CMSat::Field* tmp = fg->zero();
+                auto tmp = fg->zero();
                 if (get_weighted()) {
                     CMSat::Lit l(v, false);
                     *tmp += *get_lit_weight(l);
@@ -705,7 +705,7 @@ namespace ArjunNS {
                 }
                 *multiplier_weight *= *tmp;
                 if (debug_w)
-                    std::cout << __FUNCTION__ << " [w-debug] empty mul: " << tmp
+                    std::cout << __FUNCTION__ << " [w-debug] empty mul: " << *tmp
                         << " final multiplier_weight: " << *multiplier_weight << std::endl;
             }
 

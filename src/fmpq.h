@@ -151,12 +151,12 @@ public:
 class FGenMpq : public CMSat::FieldGen {
 public:
     ~FGenMpq() override = default;
-    CMSat::Field* zero() const override {
-        return new FMpq(0);
+    std::unique_ptr<CMSat::Field> zero() const override {
+        return std::make_unique<FMpq>(0);
     }
 
-    CMSat::Field* one() const override {
-        return new FMpq(1.0);
+    std::unique_ptr<CMSat::Field> one() const override {
+        return std::make_unique<FMpq>(1.0);
     }
 
     FieldGen* duplicate() const override {
@@ -172,6 +172,7 @@ private:
 public:
     FComplex() { val = std::complex<mpq_class>(0, 0); }
     FComplex(const std::complex<mpq_class>& _val) : val(_val) {}
+    FComplex(const mpq_class& _real, const mpq_class& _imag) : val(_real, _imag) {}
     FComplex(const FComplex& other) : val(other.val) {}
 
     Field& operator=(const Field& other) override {
@@ -248,13 +249,12 @@ public:
 class FGenComplex : public CMSat::FieldGen {
 public:
     ~FGenComplex() override = default;
-    CMSat::Field* zero() const override {
-        return new FComplex();
+    std::unique_ptr<CMSat::Field> zero() const override {
+        return std::make_unique<FComplex>();
     }
 
-    CMSat::Field* one() const override {
-        std::complex<mpq_class> one(1, 0);
-        return new FComplex(one);
+    std::unique_ptr<CMSat::Field> one() const override {
+        return std::make_unique<FComplex>(1, 0);
     }
 
     FieldGen* duplicate() const override {
