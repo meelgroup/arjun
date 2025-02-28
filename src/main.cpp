@@ -88,7 +88,7 @@ string print_version() {
     std::stringstream ss;
     ss << "c o Arjun Version: " << arjun->get_version_info() << endl;
     ss << arjun->get_solver_version_info();
-    ss << "c o [arjun] Compilation environment: " << arjun->get_compilation_env() << endl;
+    ss << "c o [arjun] Compilation environment: " << arjun->get_compilation_env();
     return ss.str();
 }
 
