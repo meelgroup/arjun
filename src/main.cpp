@@ -100,11 +100,11 @@ void add_arjun_options()
         .flag()
         .help("Print version and exit");
 
+    myopt("--mode", mode , atoi, "0=counting, 1=weightd counting, 2=complex numbers");
     myopt("--allindep", etof_conf.all_indep , atoi, "All variables can be made part of the indepedent support. Indep support is given ONLY to help the solver.");
     myopt("--premanthan", do_pre_manthan, atoi, "Run all simplifcation before Manthan");
     myopt("--maxc", conf.backw_max_confl, atoi,"Maximum conflicts per variable in backward mode");
     myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
-    myopt("--mode", mode , atoi, "0=counting, 1=weightd counting, 2=complex numbers");
     program.add_argument("--synth")
         .action([&](const auto&) {synthesis = 1;})
         .default_value(synthesis)
