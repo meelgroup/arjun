@@ -73,8 +73,8 @@ public:
         return os;
     }
 
-    Field* duplicate() const override {
-        return new FMpq(val);
+    std::unique_ptr<Field> duplicate() const override {
+        return std::make_unique<FMpq>(val);
     }
 
     bool is_zero() const override {
@@ -159,8 +159,8 @@ public:
         return std::make_unique<FMpq>(1.0);
     }
 
-    FieldGen* duplicate() const override {
-        return new FGenMpq();
+    std::unique_ptr<FieldGen> duplicate() const override {
+        return std::make_unique<FGenMpq>();
     }
 };
 
@@ -211,8 +211,8 @@ public:
         return os;
     }
 
-    Field* duplicate() const override {
-        return new FComplex(val);
+    std::unique_ptr<Field> duplicate() const override {
+        return std::make_unique<FComplex>(val);
     }
 
     bool is_zero() const override {
@@ -257,7 +257,7 @@ public:
         return std::make_unique<FComplex>(1, 0);
     }
 
-    FieldGen* duplicate() const override {
-        return new FGenComplex();
+    std::unique_ptr<FieldGen> duplicate() const override {
+        return std::make_unique<FGenComplex>();
     }
 };

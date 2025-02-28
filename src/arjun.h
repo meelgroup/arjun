@@ -284,8 +284,8 @@ namespace ArjunNS {
                 pos (other.pos->duplicate()),
                 neg (other.neg->duplicate()) {}
             Weight& operator=(const Weight& other) {
-                pos.reset(other.pos->duplicate());
-                neg.reset(other.neg->duplicate());
+                pos = other.pos->duplicate();
+                neg = other.neg->duplicate();
                 return *this;
             }
         };
@@ -295,7 +295,7 @@ namespace ArjunNS {
         std::map<uint32_t, AIG*> defs; //definition of variables in terms of AIG. ORIGINAL number space
 
         SimplifiedCNF& operator=(const SimplifiedCNF& other) {
-            fg.reset(other.fg->duplicate());
+            fg = other.fg->duplicate();
             need_aig = other.need_aig;
             clauses = other.clauses;
             red_clauses = other.red_clauses;
@@ -305,7 +305,7 @@ namespace ArjunNS {
             sampl_vars = other.sampl_vars;
             opt_sampl_vars = other.opt_sampl_vars;
             nvars = other.nvars;
-            multiplier_weight.reset(other.multiplier_weight->duplicate());
+            multiplier_weight = other.multiplier_weight->duplicate();
             weighted = other.weighted;
             backbone_done = other.backbone_done;
             weights = other.weights;
@@ -426,7 +426,7 @@ namespace ArjunNS {
         }
 
         void set_multiplier_weight(const std::unique_ptr<CMSat::Field>& m) {
-            multiplier_weight.reset(m->duplicate());
+            *multiplier_weight = *m;
         }
         const auto& get_multiplier_weight() const { return *multiplier_weight; }
         auto get_lit_weight(CMSat::Lit lit) const {
