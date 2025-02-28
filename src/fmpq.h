@@ -206,7 +206,7 @@ public:
     }
 
     std::ostream& display(std::ostream& os) const override {
-        os << val;
+        os << val.real() << " + " << val.imag() << "i";
         return os;
     }
 
