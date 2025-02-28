@@ -429,7 +429,7 @@ namespace ArjunNS {
             multiplier_weight.reset(m->duplicate());
         }
         const auto& get_multiplier_weight() const { return *multiplier_weight; }
-        std::unique_ptr<CMSat::Field> get_lit_weight(CMSat::Lit lit) const {
+        auto get_lit_weight(CMSat::Lit lit) const {
             assert(weighted);
             assert(lit.var() < nVars());
             auto it = weights.find(lit.var());
