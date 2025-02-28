@@ -91,7 +91,7 @@ public:
         return check_end_of_weight(str, at, line_no);
     }
 
-    void reset() override { val = 0; }
+    void set_zero() override { val = 0; }
 
     template<class T>
     inline uint64_t helper(const T& v) const {
@@ -235,7 +235,7 @@ public:
         return val.real() == 1 && val.imag() == 0;
     }
 
-    void reset() override {
+    void set_zero() override {
         val.real() = 1;
         val.imag() = 0;
     }
