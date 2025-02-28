@@ -104,7 +104,7 @@ void add_arjun_options()
     myopt("--premanthan", do_pre_manthan, atoi, "Run all simplifcation before Manthan");
     myopt("--maxc", conf.backw_max_confl, atoi,"Maximum conflicts per variable in backward mode");
     myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
-    myopt("--mode", mode , atoi, "0=rational numbers, 1=complex numbers");
+    myopt("--mode", mode , atoi, "0=counting, 1=weightd counting, 2=complex numbers");
     program.add_argument("--synth")
         .action([&](const auto&) {synthesis = 1;})
         .default_value(synthesis)
@@ -316,12 +316,16 @@ int main(int argc, char** argv) {
         cout << print_version() << endl;
         cout << "c o executed with command line: " << command_line << endl;
     }
+
     switch (mode) {
         case 0:
-            fg = std::make_unique<FGenMpq>();
+            fg = std::make_unique<CMSat::FGenMpz>();
             break;
         case 1:
-            fg = std::make_unique<FGenComplex>();
+            fg = std::make_unique<ArjunNS::FGenMpq>();
+            break;
+        case 2:
+            fg = std::make_unique<ArjunNS::FGenComplex>();
             break;
         default:
             cout << "c o [arjun] ERROR: Unknown mode" << endl;
