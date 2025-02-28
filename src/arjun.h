@@ -257,8 +257,8 @@ namespace ArjunNS {
 
     struct SimplifiedCNF {
         std::unique_ptr<CMSat::FieldGen> fg = nullptr;
-        SimplifiedCNF(const std::unique_ptr<CMSat::FieldGen>& _fg) : fg(_fg->duplicate()), multiplier_weight(fg->one()) {}
-        SimplifiedCNF(const CMSat::FieldGen* _fg) : fg(_fg->duplicate()), multiplier_weight(fg->one()) {}
+        SimplifiedCNF(const std::unique_ptr<CMSat::FieldGen>& _fg) : fg(_fg->dup()), multiplier_weight(fg->one()) {}
+        SimplifiedCNF(const CMSat::FieldGen* _fg) : fg(_fg->dup()), multiplier_weight(fg->one()) {}
         ~SimplifiedCNF() = default;
 
         bool need_aig = false;
@@ -281,11 +281,11 @@ namespace ArjunNS {
             Weight(std::unique_ptr<CMSat::FieldGen>& fg) : pos(fg->one()), neg(fg->one()) {}
 
             Weight(const Weight& other) :
-                pos (other.pos->duplicate()),
-                neg (other.neg->duplicate()) {}
+                pos (other.pos->dup()),
+                neg (other.neg->dup()) {}
             Weight& operator=(const Weight& other) {
-                pos = other.pos->duplicate();
-                neg = other.neg->duplicate();
+                pos = other.pos->dup();
+                neg = other.neg->dup();
                 return *this;
             }
         };
@@ -295,7 +295,7 @@ namespace ArjunNS {
         std::map<uint32_t, AIG*> defs; //definition of variables in terms of AIG. ORIGINAL number space
 
         SimplifiedCNF& operator=(const SimplifiedCNF& other) {
-            fg = other.fg->duplicate();
+            fg = other.fg->dup();
             need_aig = other.need_aig;
             clauses = other.clauses;
             red_clauses = other.red_clauses;
@@ -305,7 +305,7 @@ namespace ArjunNS {
             sampl_vars = other.sampl_vars;
             opt_sampl_vars = other.opt_sampl_vars;
             nvars = other.nvars;
-            multiplier_weight = other.multiplier_weight->duplicate();
+            multiplier_weight = other.multiplier_weight->dup();
             weighted = other.weighted;
             backbone_done = other.backbone_done;
             weights = other.weights;
@@ -435,8 +435,8 @@ namespace ArjunNS {
             auto it = weights.find(lit.var());
             if (it == weights.end()) return std::unique_ptr<CMSat::Field>(fg->one());
             else {
-                if (!lit.sign()) return std::unique_ptr<CMSat::Field>(it->second.pos->duplicate());
-                else return std::unique_ptr<CMSat::Field>(it->second.neg->duplicate());
+                if (!lit.sign()) return std::unique_ptr<CMSat::Field>(it->second.pos->dup());
+                else return std::unique_ptr<CMSat::Field>(it->second.neg->dup());
             }
         }
         void unset_var_weight(uint32_t v) {

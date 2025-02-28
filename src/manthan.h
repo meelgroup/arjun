@@ -54,7 +54,7 @@ using namespace ArjunNS;
 class Manthan {
     public:
         Manthan(const Config& _conf, const std::unique_ptr<FieldGen>& _fg):
-            cnf(_fg->duplicate()), conf(_conf), fg(_fg->duplicate())  {}
+            cnf(_fg->dup()), conf(_conf), fg(_fg->dup())  {}
         SimplifiedCNF do_manthan(const SimplifiedCNF& cnf);
         SimplifiedCNF cnf;
 

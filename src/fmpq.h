@@ -73,7 +73,7 @@ public:
         return os;
     }
 
-    std::unique_ptr<Field> duplicate() const override {
+    std::unique_ptr<Field> dup() const override {
         return std::make_unique<FMpq>(val);
     }
 
@@ -159,7 +159,7 @@ public:
         return std::make_unique<FMpq>(1.0);
     }
 
-    std::unique_ptr<FieldGen> duplicate() const override {
+    std::unique_ptr<FieldGen> dup() const override {
         return std::make_unique<FGenMpq>();
     }
 };
@@ -211,7 +211,7 @@ public:
         return os;
     }
 
-    std::unique_ptr<Field> duplicate() const override {
+    std::unique_ptr<Field> dup() const override {
         return std::make_unique<FComplex>(val);
     }
 
@@ -257,7 +257,7 @@ public:
         return std::make_unique<FComplex>(1, 0);
     }
 
-    std::unique_ptr<FieldGen> duplicate() const override {
+    std::unique_ptr<FieldGen> dup() const override {
         return std::make_unique<FGenComplex>();
     }
 };
