@@ -366,7 +366,7 @@ SimplifiedCNF Puura::get_cnf(
         const vector<uint32_t>& new_sampl_vars,
         const vector<uint32_t>& empty_sampl_vars
         ) {
-    SimplifiedCNF scnf(scnf.fg);
+    SimplifiedCNF scnf(cnf.fg);
     vector<Lit> clause;
     bool is_xor, rhs;
     scnf.weighted = cnf.get_weighted();

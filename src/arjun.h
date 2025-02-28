@@ -257,8 +257,8 @@ namespace ArjunNS {
 
     struct SimplifiedCNF {
         std::unique_ptr<CMSat::FieldGen> fg;
-        SimplifiedCNF(CMSat::FieldGen* _fg) : fg(_fg->duplicate()), multiplier_weight(fg->one()) {}
-        SimplifiedCNF(std::unique_ptr<CMSat::FieldGen>& _fg) : fg(_fg->duplicate()), multiplier_weight(fg->one()) {}
+        SimplifiedCNF(const std::unique_ptr<CMSat::FieldGen>& _fg) : fg(_fg->duplicate()), multiplier_weight(fg->one()) {}
+        SimplifiedCNF(const CMSat::FieldGen* _fg) : fg(_fg->duplicate()), multiplier_weight(fg->one()) {}
         ~SimplifiedCNF() = default;
 
         bool need_aig = false;
@@ -285,8 +285,8 @@ namespace ArjunNS {
                 pos (other.pos->duplicate()),
                 neg (other.neg->duplicate()) {}
             Weight& operator=(const Weight& other) {
-                *pos = *other.pos;
-                *neg = *other.neg;
+                pos.reset(other.pos->duplicate());
+                neg.reset(other.neg->duplicate());
                 return *this;
             }
         };
