@@ -92,6 +92,7 @@ public:
     }
 
     void set_zero() override { val = 0; }
+    void set_one() override { val = 1; }
 
     template<class T>
     inline uint64_t helper(const T& v) const {
@@ -236,6 +237,11 @@ public:
     }
 
     void set_zero() override {
+        val.real() = 0;
+        val.imag() = 0;
+    }
+
+    void set_one() override {
         val.real() = 1;
         val.imag() = 0;
     }
