@@ -91,6 +91,18 @@ public:
         return check_end_of_weight(str, at, line_no);
     }
 
+    void reset() override { val = 0; }
+
+    template<class T>
+    inline uint64_t helper(const T& v) const {
+      return v->_mp_alloc * sizeof(mp_limb_t);
+    }
+
+    inline uint64_t bytes_used() const override {
+      return sizeof(mpq_class) +
+          helper(val.get_num().get_mpz_t()) + helper(val.get_den().get_mpz_t());
+    }
+
     bool parse_mpq(const std::string& str, uint32_t& at, const uint32_t line_no) {
         skip_whitespace(str, at);
         mpz_class head;
@@ -221,6 +233,22 @@ public:
 
     bool is_one() const override {
         return val.real() == 1 && val.imag() == 0;
+    }
+
+    void reset() override {
+        val.real() = 1;
+        val.imag() = 0;
+    }
+
+    template<class T>
+    inline uint64_t helper(const T& v) const {
+      return v->_mp_alloc * sizeof(mp_limb_t);
+    }
+
+    inline uint64_t bytes_used() const override {
+      return 2*sizeof(mpq_class) +
+          helper(val.imag().get_num().get_mpz_t()) + helper(val.imag().get_den().get_mpz_t()) +
+          helper(val.real().get_num().get_mpz_t()) + helper(val.real().get_den().get_mpz_t());
     }
 
     bool parse(const std::string& str, const uint32_t line_no) override {
