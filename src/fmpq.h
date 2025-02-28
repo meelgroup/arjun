@@ -175,6 +175,8 @@ public:
     std::unique_ptr<FieldGen> dup() const override {
         return std::make_unique<FGenMpq>();
     }
+
+    bool weighted() const override { return true; }
 };
 
 
@@ -294,4 +296,6 @@ public:
     std::unique_ptr<FieldGen> dup() const override {
         return std::make_unique<FGenComplex>();
     }
+
+    bool weighted() const override { return true; }
 };
