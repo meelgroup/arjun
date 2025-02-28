@@ -39,7 +39,6 @@
 #include "arjun.h"
 #include "config.h"
 #include "helper.h"
-#include "fmpq.h"
 
 #define myopt(name, var, fun, hhelp) \
     program.add_argument(name) \
