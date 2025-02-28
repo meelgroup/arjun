@@ -278,8 +278,7 @@ namespace ArjunNS {
             Weight() = default;
             std::unique_ptr<CMSat::Field> pos;
             std::unique_ptr<CMSat::Field> neg;
-            Weight(CMSat::FieldGen* fg) : pos(fg->zero()), neg(fg->zero()) {}
-            Weight(std::unique_ptr<CMSat::FieldGen>& fg) : pos(fg->zero()), neg(fg->zero()) {}
+            Weight(std::unique_ptr<CMSat::FieldGen>& fg) : pos(fg->one()), neg(fg->one()) {}
 
             Weight(const Weight& other) :
                 pos (other.pos->duplicate()),
@@ -434,7 +433,7 @@ namespace ArjunNS {
             assert(weighted);
             assert(lit.var() < nVars());
             auto it = weights.find(lit.var());
-            if (it == weights.end()) return std::unique_ptr<CMSat::Field>(fg->zero());
+            if (it == weights.end()) return std::unique_ptr<CMSat::Field>(fg->one());
             else {
                 if (!lit.sign()) return std::unique_ptr<CMSat::Field>(it->second.pos->duplicate());
                 else return std::unique_ptr<CMSat::Field>(it->second.neg->duplicate());
@@ -619,7 +618,7 @@ namespace ArjunNS {
                 const std::vector<uint32_t>& empty_sampling_vars) {
             std::set<uint32_t> sampling_vars_set(new_sampl_vars.begin(), new_sampl_vars.end());
             std::set<uint32_t> opt_sampling_vars_set(opt_sampl_vars.begin(), opt_sampl_vars.end());
-            bool debug_w = false;
+            bool debug_w = true;
             if (debug_w)
                 std::cout << __FUNCTION__ << " [w-debug] orig multiplier_weight: "
                     << *multiplier_weight << std::endl;
