@@ -263,6 +263,11 @@ public:
         return *this;
     }
 
+    std::unique_ptr<Field> add(const Field& other) override {
+        const auto& od = dynamic_cast<const FMpq&>(other);
+        return std::make_unique<FMpq>(val + od.val);
+    }
+
     Field& operator-=(const Field& other) override {
         const auto& od = dynamic_cast<const FMpq&>(other);
         val -= od.val;
@@ -418,6 +423,11 @@ public:
         const auto& od = dynamic_cast<const FComplex&>(other);
         val += od.val;
         return *this;
+    }
+
+    std::unique_ptr<Field> add(const Field& other) override {
+        const auto& od = dynamic_cast<const FComplex&>(other);
+        return std::make_unique<FComplex>(val + od.val);
     }
 
     Field& operator-=(const Field& other) override {
