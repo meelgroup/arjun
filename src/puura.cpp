@@ -402,7 +402,7 @@ SimplifiedCNF Puura::get_cnf(
         for(const auto& w: outer_w) {
             Lit orig = w.first;
             Lit t = trans[orig.toInt()];
-            *inter_w[t] = *w.second;
+            inter_w[t] = w.second->dup();
         }
 
         for(const auto& myw: inter_w) {
@@ -441,9 +441,7 @@ SimplifiedCNF Puura::get_cnf(
         }
         cout << endl;
         std::cout << "w-debug AFTER PURA FINAL opt_sampl_vars: ";
-        for(const auto& v: scnf.opt_sampl_vars) {
-            std::cout << v+1 << " ";
-        }
+        for(const auto& v: scnf.opt_sampl_vars) std::cout << v+1 << " ";
         cout << endl;
     }
 
