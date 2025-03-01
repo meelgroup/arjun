@@ -242,10 +242,8 @@ struct AIGManager {
 namespace ArjunNS {
 
 class FMpq : public CMSat::Field {
-private:
-    mpq_class val;
-
 public:
+    mpq_class val;
     FMpq() : val(0) {}
     FMpq(const int _val) : val(_val) {}
     FMpq(const mpz_class& _val) : val(_val) {}
@@ -403,10 +401,8 @@ public:
 
 
 class FComplex : public CMSat::Field {
-private:
-    std::complex<mpq_class> val;
-
 public:
+    std::complex<mpq_class> val;
     FComplex() { val = std::complex<mpq_class>(0, 0); }
     FComplex(const std::complex<mpq_class>& _val) : val(_val) {}
     FComplex(const mpq_class& _real, const mpq_class& _imag) : val(_real, _imag) {}
