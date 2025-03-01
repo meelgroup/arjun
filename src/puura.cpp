@@ -391,8 +391,8 @@ SimplifiedCNF Puura::get_cnf(
         map<Lit, unique_ptr<Field>> outer_w;
         for(const auto& it: cnf2.weights) {
             Lit l(it.first, false);
-            *outer_w[l] = *it.second.pos;
-            *outer_w[~l] = *it.second.neg;
+            outer_w[l] = it.second.pos->dup();
+            outer_w[~l] = it.second.neg->dup();
             verb_print(5, "[w-debug] outer_w " << l << " w: " << *it.second.pos);
             verb_print(5, "[w-debug] outer_w " << ~l << " w: " << *it.second.neg);
         }
