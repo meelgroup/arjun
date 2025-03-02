@@ -1,4 +1,10 @@
-name: CMake
+name: build
+
+on:
+  push:
+    branches: [ "*" ]
+  pull_request:
+    branches: [ "*" ]
 
 jobs:
   build:
