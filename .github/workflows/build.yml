@@ -18,20 +18,6 @@ jobs:
         build_type: [Release]
         staticcompile: [ON, OFF]
         c_compiler: [gcc]
-        # include:
-        #   - os: ubuntu-latest
-        #     c_compiler: gcc
-        #     cpp_compiler: g++
-          # - os: ubuntu-latest
-          #   c_compiler: clang
-          #   cpp_compiler: clang++
-        # exclude:
-        #   - os: windows-latest
-        #     c_compiler: gcc
-        #   - os: windows-latest
-        #     c_compiler: clang
-        #   - os: ubuntu-latest
-        #     c_compiler: cl
 
     steps:
     - uses: actions/setup-python@v5
@@ -224,13 +210,13 @@ jobs:
       uses: actions/upload-artifact@v4
       with:     
         name: arjun-linux-amd64
-        path: build/cryptominisat5
+        path: build/arjun
     
     - name: Upload Artifact - Mac
       if: matrix.os == 'macos-14' && matrix.staticcompile == 'ON'
       uses: actions/upload-artifact@v4
       with:
-        name: arjun-mac-amd64
+        name: arjun-mac-arm64
         path: project/arjun
 
     - name: Upload Artifact - Windows
