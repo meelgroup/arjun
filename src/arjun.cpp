@@ -227,6 +227,11 @@ DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
         " T: " << (cpuTime() - start_time));
 }
 
+void Arjun::standalone_backbone(SimplifiedCNF& cnf) {
+    Puura puura(arjdata->conf);
+    puura.backbone(cnf);
+}
+
 void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
         const ElimToFileConf& etof_conf, const SimpConf& simp_conf) {
     cnf.remove_equiv_weights();
@@ -255,11 +260,6 @@ void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
         standalone_unate(cnf);
     cnf.remove_equiv_weights();
     if (etof_conf.do_renumber) cnf.renumber_sampling_vars_for_ganak();
-}
-
-void Arjun::standalone_backbone(SimplifiedCNF& cnf) {
-    Puura puura(arjdata->conf);
-    puura.backbone(cnf);
 }
 
 set_get_macro(bool, distill)
