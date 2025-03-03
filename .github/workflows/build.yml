@@ -36,11 +36,13 @@ jobs:
             c_compiler: cl
 
     steps:
+
+    - name: Create Build Environment
+      run: cmake -E make_directory ${{runner.workspace}}/build
     
-    # install dependencies
-    - name: Install boost & help2man for Linux
+    - name: Install dependencies for Linux
       if: matrix.os == 'ubuntu-latest'
-      run: sudo apt-get update && sudo apt-get install -yq help2man libgmp-dev libmpfr-dev
+      run: sudo apt-get update && sudo apt-get install -yq help2man libgmp-dev libmpfr-dev libarmadillo-dev
       
     - name: Install gmp for Mac
       if: matrix.os == 'macos-13'
