@@ -23,7 +23,6 @@
  */
 
 #include "cryptominisat5/cryptominisat.h"
-#include <armadillo>
 #include <cstdint>
 #include <cwchar>
 #include <vector>

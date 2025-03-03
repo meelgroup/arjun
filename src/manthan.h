@@ -34,8 +34,8 @@
 #include "formula.h"
 
 
-#define MLPACK_PRINT_INFO
-#define MLPACK_PRINT_WARN
+/* #define MLPACK_PRINT_INFO */
+/* #define MLPACK_PRINT_WARN */
 #include <mlpack.hpp>
 
 using namespace arma;

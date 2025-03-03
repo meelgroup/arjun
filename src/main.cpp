@@ -22,7 +22,6 @@
  THE SOFTWARE.
  */
 
-#include <armadillo>
 #include <memory>
 #if defined(__GNUC__) && defined(__linux__)
 #include <cfenv>

@@ -22,7 +22,6 @@ THE SOFTWARE.
 
 #pragma once
 
-#include <armadillo>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -31,7 +30,6 @@ THE SOFTWARE.
 #include <set>
 #include <fstream>
 #include <gmpxx.h>
-#include "cryptominisat5/dimacsparser.h"
 #include "cryptominisat5/solvertypesmini.h"
 #include <cryptominisat5/cryptominisat.h>
 struct FHolder;
