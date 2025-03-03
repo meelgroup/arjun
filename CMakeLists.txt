@@ -112,6 +112,7 @@ endif()
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package (Threads REQUIRED)
 find_package (sbva REQUIRED)
+message(STATUS "Found SBVA includes at: ${SBVA_INCLUDE_DIRS}")
 # find_package( mlpack REQUIRED)
 
 macro(add_sanitize_option flagname)
