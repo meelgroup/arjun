@@ -121,7 +121,7 @@ DLL_PUBLIC void Arjun::standalone_extend_sampl_set(SimplifiedCNF& cnf)
     extend.extend_round(cnf);
 }
 
-SimplifiedCNF Arjun::standalone_get_simplified_cnf(
+DLL_PUBLIC SimplifiedCNF Arjun::standalone_get_simplified_cnf(
                 const SimplifiedCNF& cnf, const SimpConf& simp_conf)
 {
     Puura puura(arjdata->conf);
