@@ -103,14 +103,21 @@ jobs:
        make -j8
        cd ..
     
+    - name: Checkout CMS
+      uses: actions/checkout@v4
+      with:
+        repository: msoos/cryptominisat
+        ref: synthesis
+        path: cryptominisat
+        submodules: 'true'
+
     - name: Build CMS
       run: |
-       git clone --depth 1 https://github.com/msoos/cryptominisat
-       cd cryptominisat
-       mkdir build && cd build
-       cmake -DCMAKE_BUILD_TYPE=${{env.build_type}} ..
-       cmake --build .
-       cd ../..
+        cd cryptominisat
+        mkdir build
+        cd build
+        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DENABLE_TESTING=OFF -DSTATICCOMPILE=${{ matrix.staticcompile }} ..
+        cd ../..
     
     - name: Checkout SBVA
       uses: actions/checkout@v4
