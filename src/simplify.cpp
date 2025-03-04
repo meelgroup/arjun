@@ -22,6 +22,7 @@
  THE SOFTWARE.
  */
 
+#include <cmath>
 #include <algorithm>
 #include "minimize.h"
 #include "constants.h"

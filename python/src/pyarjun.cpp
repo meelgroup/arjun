@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <vector>
 #include <limits>
 #include <cassert>
+#include <cmath>
 #include <algorithm>
 #include "arjun.h"
 
