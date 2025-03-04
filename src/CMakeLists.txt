@@ -90,7 +90,6 @@ set_target_properties(arjun-example PROPERTIES
 target_link_libraries(arjun-example ${arjun_bin_exec_link_libs} arjun)
 
 arjun_add_public_header(arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun.h )
-arjun_add_public_header(arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjuntypes.h )
 
 # -----------------------------------------------------------------------------
 # Copy public headers into build directory include directory.
