@@ -23,6 +23,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CRYPTOMINISAT5_INCLUDE_DIRS})
 include_directories(${SBVA_INCLUDE_DIRS})
 include_directories( ${GMP_INCLUDE_DIR} )
+include_directories( ${MLPACK_INCLUDE_DIR} )
 include_directories(${PROJECT_SOURCE_DIR}/../cadical/src/)
 
 if (NOT WIN32)

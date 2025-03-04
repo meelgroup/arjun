@@ -114,7 +114,7 @@ find_package (Threads REQUIRED)
 find_package (sbva REQUIRED)
 message(STATUS "Found SBVA includes at: ${SBVA_INCLUDE_DIRS}")
 find_package(GMP REQUIRED)
-# find_package( mlpack REQUIRED)
+find_package( MLPACK REQUIRED)
 
 macro(add_sanitize_option flagname)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${flagname}" )
