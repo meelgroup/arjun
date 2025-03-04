@@ -594,6 +594,10 @@ public:
         const auto& get_multiplier_weight() const { return *multiplier_weight; }
         auto get_lit_weight(CMSat::Lit lit) const {
             assert(weighted);
+            if (!fg->weighted()) {
+              std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
+              exit(-1);
+            }
             assert(lit.var() < nVars());
             auto it = weights.find(lit.var());
             if (it == weights.end()) return std::unique_ptr<CMSat::Field>(fg->one());
@@ -609,6 +613,10 @@ public:
         }
         void set_lit_weight(CMSat::Lit lit, const std::unique_ptr<CMSat::Field>& w) {
             assert(weighted);
+            if (!fg->weighted()) {
+              std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
+              exit(-1);
+            }
             assert(lit.var() < nVars());
             auto it = weights.find(lit.var());
             if (it == weights.end()) {
@@ -755,7 +763,13 @@ public:
             outf << "c MUST MULTIPLY BY " << *multiplier_weight << std::endl;
         }
 
-        bool weight_set(uint32_t v) const { return weights.count(v) > 0; }
+        bool weight_set(uint32_t v) const {
+            if (!fg->weighted()) {
+              std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
+              exit(-1);
+            }
+            return weights.count(v) > 0;
+        }
 
         void remove_equiv_weights() {
             if (!weighted) return;
