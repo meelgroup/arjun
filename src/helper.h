@@ -85,7 +85,7 @@ template<typename T> void read_in_a_file(const std::string& filename,
         T* holder, bool& all_indep, unique_ptr<CMSat::FieldGen>& fg) {
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<FILE*, FN>, T> parser(arjun, nullptr, 0, fg);
+    DimacsParser<StreamBuffer<FILE*, FN>, T> parser(holder, nullptr, 0, fg);
     #else
     gzFile in = gzopen(filename.c_str(), "rb");
     DimacsParser<StreamBuffer<gzFile, GZ>, T> parser(holder, nullptr, 0, fg);
