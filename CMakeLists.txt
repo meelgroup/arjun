@@ -299,7 +299,7 @@ if (NOT WIN32)
     add_cxx_flag_if_supported("-Wstrict-aliasing")
     add_cxx_flag_if_supported("-Wpointer-arith")
     add_cxx_flag_if_supported("-Wheader-guard")
-    if(NOT ENABLE_TESTING AND ${CMAKE_SYSTEM_NAME} MATCHES "Linux" AND NOT COVERAGE)
+    if(NOT ENABLE_TESTING AND ${CMAKE_SYSTEM_NAME} MATCHES "Linux")
         add_cxx_flag_if_supported("-fvisibility=hidden")
     endif()
     add_cxx_flag_if_supported("-Wpointer-arith")
@@ -312,11 +312,6 @@ if (NOT WIN32)
 
     # add_cxx_flag_if_supported("-flto") # slow compile and not enough benefits
     #add_cxx_flag_if_supported("-fno-exceptions")
-endif()
-
-if (COVERAGE)
-    add_compile_options("--coverage")
-    SET(CMAKE_EXE_LINKER_FLAGS "--coverage")
 endif()
 
 set(DEF_INSTALL_CMAKE_DIR lib/cmake/arjun)
