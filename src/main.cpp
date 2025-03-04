@@ -22,11 +22,12 @@
  THE SOFTWARE.
  */
 
+
+#include "arjuntypes.h"
 #include <memory>
 #if defined(__GNUC__) && defined(__linux__)
 #include <cfenv>
 #endif
-
 #include <iostream>
 #include <iomanip>
 #include <vector>
@@ -321,10 +322,10 @@ int main(int argc, char** argv) {
             fg = std::make_unique<CMSat::FGenMpz>();
             break;
         case 1:
-            fg = std::make_unique<ArjunNS::FGenMpq>();
+            fg = std::make_unique<FGenMpq>();
             break;
         case 2:
-            fg = std::make_unique<ArjunNS::FGenComplex>();
+            fg = std::make_unique<FGenComplex>();
             break;
         default:
             cout << "c o [arjun] ERROR: Unknown mode" << endl;
