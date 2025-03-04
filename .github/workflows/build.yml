@@ -218,14 +218,14 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: arjun-mac-arm64
-        path: project/arjun
+        path: build/arjun
 
     - name: Upload Artifact - Windows
       if: matrix.os == 'windows-2022' && matrix.staticcompile == 'ON'
       uses: actions/upload-artifact@v4
       with:
         name: arjun-win64.exe
-        path: project\Release\arjun.exe
+        path: build\Release\arjun.exe
     
     - name: Test
       run: ctest -C ${{matrix.build_type}} --verbose
