@@ -99,7 +99,7 @@ void add_arjun_options()
         .flag()
         .help("Print version and exit");
 
-    myopt("--mode", mode , atoi, "0=counting, 1=weightd counting, 2=complex numbers");
+    myopt("--mode", mode , atoi, "0=counting, 1=weightd counting");
     myopt("--allindep", etof_conf.all_indep , atoi, "All variables can be made part of the indepedent support. Indep support is given ONLY to help the solver.");
     myopt("--premanthan", do_pre_manthan, atoi, "Run all simplifcation before Manthan");
     myopt("--maxc", conf.backw_max_confl, atoi,"Maximum conflicts per variable in backward mode");
@@ -322,9 +322,6 @@ int main(int argc, char** argv) {
             break;
         case 1:
             fg = std::make_unique<ArjunNS::FGenMpq>();
-            break;
-        case 2:
-            fg = std::make_unique<ArjunNS::FGenComplex>();
             break;
         default:
             cout << "c o [arjun] ERROR: Unknown mode" << endl;
