@@ -232,21 +232,21 @@ jobs:
       uses: actions/upload-artifact@v4
       with:     
         name: arjun-linux-amd64
-        path: build/arjun
+        path: arjun
     
     - name: Upload Artifact - Mac
       if: matrix.os == 'macos-14' && matrix.staticcompile == 'ON'
       uses: actions/upload-artifact@v4
       with:
         name: arjun-mac-arm64
-        path: build/arjun
+        path: arjun
 
     - name: Upload Artifact - Windows
       if: matrix.os == 'windows-2022' && matrix.staticcompile == 'ON'
       uses: actions/upload-artifact@v4
       with:
         name: arjun-win64.exe
-        path: build\Release\arjun.exe
+        path: Release\arjun.exe
     
     - name: Test
       run: ctest -C ${{matrix.build_type}} --verbose
