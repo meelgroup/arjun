@@ -115,6 +115,10 @@ find_package (sbva REQUIRED)
 message(STATUS "Found SBVA includes at: ${SBVA_INCLUDE_DIRS}")
 find_package(GMP REQUIRED)
 find_package( MLPACK REQUIRED)
+find_library(cadical
+    PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../cadical/build/
+    NAMES cadical
+    REQUIRED)
 
 macro(add_sanitize_option flagname)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${flagname}" )
