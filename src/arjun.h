@@ -953,6 +953,7 @@ public:
                 return aig_contains(aig->l, v) || aig_contains(aig->r, v);
             }
             assert(false && "Unknown AIG type");
+            exit(-1);
         }
 
         std::set<uint32_t> get_cannot_depend_on(const uint32_t v) const {
