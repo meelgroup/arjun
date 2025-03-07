@@ -35,8 +35,8 @@ extern "C" {
 #include <vector>
 #include <map>
 #include <cstdint>
-#include "cadical.hpp"
-#include "tracer.hpp"
+#include <cadical.hpp>
+#include <tracer.hpp>
 
 using std::vector;
 using std::map;
