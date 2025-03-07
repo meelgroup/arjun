@@ -24,7 +24,7 @@
 
 #include "arjun.h"
 #include "config.h"
-#include "cryptominisat5/solvertypesmini.h"
+#include <cryptominisat5/solvertypesmini.h>
 
 #include <cstdint>
 #include <memory>

@@ -30,7 +30,7 @@ THE SOFTWARE.
 #include <set>
 #include <fstream>
 #include <gmpxx.h>
-#include "cryptominisat5/solvertypesmini.h"
+#include <cryptominisat5/solvertypesmini.h>
 #include <cryptominisat5/cryptominisat.h>
 struct FHolder;
 

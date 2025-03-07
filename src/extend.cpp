@@ -31,7 +31,7 @@
 #include "src/time_mem.h"
 #include "extend.h"
 #include "constants.h"
-#include "cryptominisat5/solvertypesmini.h"
+#include <cryptominisat5/solvertypesmini.h>
 #include "formula.h"
 
 using namespace ArjunInt;

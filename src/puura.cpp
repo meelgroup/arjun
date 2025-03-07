@@ -22,7 +22,7 @@
  THE SOFTWARE.
  */
 
-#include "cryptominisat5/cryptominisat.h"
+#include <cryptominisat5/cryptominisat.h>
 #include <cstdint>
 #include <cwchar>
 #include <vector>

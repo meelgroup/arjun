@@ -24,9 +24,9 @@
 
 #pragma once
 
-#include "cryptominisat5/solvertypesmini.h"
+#include <cryptominisat5/solvertypesmini.h>
 extern "C" {
-#include "mpicosat/mpicosat.h"
+#include <cryptominisat5/mpicosat.h>
 }
 #include "constants.h"
 #include "arjun.h"

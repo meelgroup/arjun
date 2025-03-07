@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 #pragma once
 
-#include "cryptominisat5/solvertypesmini.h"
+#include <cryptominisat5/solvertypesmini.h>
 #include <cstdint>
 #include <cstdio>
 #include <utility>

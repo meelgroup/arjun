@@ -24,7 +24,7 @@
 
 #pragma once
 
-#include "cryptominisat5/cryptominisat.h"
+#include <cryptominisat5/cryptominisat.h>
 #include "src/config.h"
 #include <cstdint>
 #include <vector>
