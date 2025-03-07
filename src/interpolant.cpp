@@ -24,7 +24,7 @@
 
 #include "src/constants.h"
 extern "C" {
-#include "mpicosat/mpicosat.h"
+#include <cryptominisat5/mpicosat.h>
 }
 
 #include "interpolant.h"
