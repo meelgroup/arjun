@@ -239,7 +239,6 @@ struct AIGManager {
     uint64_t max_id = 0;
 };
 
-
 class FMpq : public CMSat::Field {
 public:
     mpq_class val;
