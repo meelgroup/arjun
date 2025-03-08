@@ -134,7 +134,7 @@ struct FHolder {
         return ret;
     }
 
-    ArjunNS::AIGManager aig_mng;
+    AIGManager aig_mng;
     CMSat::SATSolver* solver;
     Lit my_true_lit;
 };
