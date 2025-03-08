@@ -40,6 +40,7 @@ extern "C" {
 
 using std::vector;
 using std::map;
+using namespace ArjunNS;
 
 struct MyTracer : public CaDiCaL::Tracer {
     MyTracer(uint32_t _orig_num_vars, vector<uint32_t> _opt_sampl_vars, AIGManager* _aig_mng, const ArjunInt::Config& _conf) :
@@ -76,7 +77,7 @@ public:
     }
     void fill_picolsat(uint32_t _orig_num_vars);
     void fill_var_to_indic(const vector<uint32_t>& var_to_indic);
-    void generate_interpolant(const vector<Lit>& assumptions, uint32_t test_var, ArjunNS::SimplifiedCNF& cnf);
+    void generate_interpolant(const vector<Lit>& assumptions, uint32_t test_var, SimplifiedCNF& cnf);
     void add_clause(const vector<Lit>& cl);
     const AIGManager& get_aig_mng() const { return aig_mng; }
     const map<uint32_t, AIG*>& get_defs() const { return defs; }

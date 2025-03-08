@@ -43,6 +43,8 @@ using std::cout;
 using CMSat::Lit;
 using std::map;
 
+namespace ArjunNS {
+
 struct FHolder {
     struct Formula {
         // TODO: we could have a flag of what has already been inserted into
@@ -132,12 +134,14 @@ struct FHolder {
         return ret;
     }
 
-    AIGManager aig_mng;
+    ArjunNS::AIGManager aig_mng;
     CMSat::SATSolver* solver;
     Lit my_true_lit;
 };
 
-inline std::ostream& operator<<(std::ostream& os, const FHolder::Formula& f) {
+}
+
+inline std::ostream& operator<<(std::ostream& os, const ArjunNS::FHolder::Formula& f) {
     os << " ==== Formula: " << f.out << " ==== " << endl;
     for (const auto& cl : f.clauses) {
         for (const auto& l : cl) {

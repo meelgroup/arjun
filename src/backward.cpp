@@ -28,6 +28,8 @@
 #include "interpolant.h"
 #include "src/interpolant.h"
 #include "src/time_mem.h"
+#include <algorithm>
+#include <random>
 #include <set>
 
 using namespace ArjunInt;
@@ -123,6 +125,9 @@ void Minimize::backward_round() {
         unknown_set[x] = 1;
     }
     sort_unknown(unknown, incidence);
+    /* std::reverse(unknown.begin(), unknown.end()); */
+    /* std::mt19937_64 rand(33); */
+    /* std::shuffle(unknown.begin(), unknown.end(), rand); */
     if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
     print_sorted_unknown(unknown);
     verb_print(1, "[arjun] Start unknown size: " << unknown.size());
