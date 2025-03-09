@@ -201,7 +201,7 @@ void Minimize::init() {
     seen.resize(solver->nVars(), 0);
 }
 
-bool Minimize::set_zero_weight(const ArjunNS::SimplifiedCNF& cnf) {
+bool Minimize::set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf) {
     if (!cnf.get_weighted()) return true;
     for(uint32_t i = 0; i < cnf.nvars; i++) {
         if (cnf.get_lit_weight(Lit(i, false))->is_zero()) {
@@ -216,7 +216,7 @@ bool Minimize::set_zero_weight(const ArjunNS::SimplifiedCNF& cnf) {
 
 bool Minimize::preproc_and_duplicate(const ArjunNS::SimplifiedCNF& orig_cnf) {
     assert(!already_duplicated);
-    if (conf.simp && !set_zero_weight(orig_cnf)) return false;
+    if (conf.simp && !set_zero_weight_lits(orig_cnf)) return false;
     if (conf.simp && !simplify()) return false;
     get_incidence();
     duplicate_problem(orig_cnf);
