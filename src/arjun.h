@@ -59,6 +59,7 @@ struct AIG {
             return l != nullptr && r != nullptr && var == std::numeric_limits<uint32_t>::max();
         }
         assert(false && "Unknown AIG type");
+        std::exit(-1);
     }
 };
 
