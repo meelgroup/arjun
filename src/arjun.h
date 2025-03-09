@@ -321,7 +321,7 @@ public:
     }
 
     uint64_t bytes_used() const override {
-      return sizeof(mpq_class) +
+      return sizeof(FMpq) +
           helper(val.get_num()) + helper(val.get_den());
     }
 
