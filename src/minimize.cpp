@@ -206,7 +206,8 @@ bool Minimize::set_zero_weight(const ArjunNS::SimplifiedCNF& cnf) {
     for(uint32_t i = 0; i < cnf.nvars; i++) {
         if (cnf.get_lit_weight(Lit(i, false))->is_zero()) {
             solver->add_clause({Lit(i, true)});
-        } else if (cnf.get_lit_weight(Lit(i, true))->is_zero()) {
+        }
+        if (cnf.get_lit_weight(Lit(i, true))->is_zero()) {
             solver->add_clause({Lit(i, false)});
         }
     }
