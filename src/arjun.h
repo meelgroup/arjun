@@ -766,7 +766,7 @@ struct SimplifiedCNF {
             outf << v+1  << " ";
         }
         outf << "0\n";
-        outf << "c MUST MULTIPLY BY " << *multiplier_weight << std::endl;
+        outf << "c MUST MULTIPLY BY " << *multiplier_weight << " 0" << std::endl;
     }
 
     bool weight_set(uint32_t v) const {
