@@ -268,6 +268,7 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf, bool all_indep) {
 
     end:
     if (all_indep) {
+        verb_print(2, "[arjun] All variables are independent, filling opt_sampl_vars");
         cnf.opt_sampl_vars.clear();
         for(uint32_t i = 0; i < cnf.nvars; i++) cnf.opt_sampl_vars.push_back(i);
     }
