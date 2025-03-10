@@ -400,6 +400,12 @@ public:
         return std::make_unique<FGenMpq>();
     }
 
+    bool larger_than(const CMSat::Field& a, const CMSat::Field& b) const override {
+        const auto& ad = dynamic_cast<const FMpq&>(a);
+        const auto& bd = dynamic_cast<const FMpq&>(b);
+        return ad.val > bd.val;
+    }
+
     bool weighted() const override { return true; }
 };
 
