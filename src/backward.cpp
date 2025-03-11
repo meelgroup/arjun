@@ -146,7 +146,6 @@ void Minimize::backward_round() {
         mod = std::max<int>(mod, 1);
     }
 
-
     uint32_t ret_false = 0;
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
