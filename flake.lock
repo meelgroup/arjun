@@ -177,7 +177,29 @@
         "cadiback": "cadiback",
         "cadical": "cadical_2",
         "cryptominisat": "cryptominisat",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "sbva": "sbva"
+      }
+    },
+    "sbva": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1741818348,
+        "narHash": "sha256-uIZjMl4/p8XNPeyltfM82vCMdXTbLgowdnBFEa+/93E=",
+        "owner": "itepastra",
+        "repo": "sbva",
+        "rev": "0bf98e8f2a3fbfd84f4e9c76780c3cdc7428aa59",
+        "type": "github"
+      },
+      "original": {
+        "owner": "itepastra",
+        "ref": "add-flake",
+        "repo": "sbva",
+        "type": "github"
       }
     }
   },

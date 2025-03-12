@@ -14,6 +14,10 @@
       url = "github:itepastra/cryptominisat/add-flake";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    sbva = {
+      url = "github:itepastra/sbva/add-flake";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
   outputs =
     {
@@ -22,6 +26,7 @@
       cadical,
       cadiback,
       cryptominisat,
+      sbva,
     }:
     let
       inherit (nixpkgs) lib;
@@ -29,28 +34,6 @@
       forAllSystems = lib.genAttrs systems;
       nixpkgsFor = forAllSystems (system: nixpkgs.legacyPackages.${system});
       fs = lib.fileset;
-      sbva-package =
-        {
-          stdenv,
-          eigen,
-          fetchFromGitHub,
-          cmake,
-          autoPatchelfHook,
-        }:
-        stdenv.mkDerivation {
-          name = "sbva";
-          src = fetchFromGitHub {
-            owner = "meelgroup";
-            repo = "SBVA";
-            rev = "5912435affe8c77ecf364093cea29e0fc5c1b5cb";
-            hash = "sha256-BoR14FBH3eCPYio6l6d+oQp3/hu4U7t1STb9NgSWJ2M=";
-          };
-          nativeBuildInputs = [
-            cmake
-            autoPatchelfHook
-          ];
-          buildInputs = [ eigen ];
-        };
       ensmallen-package =
         {
           stdenv,
@@ -146,15 +129,15 @@
       packages = forAllSystems (
         system:
         let
-          sbva = nixpkgsFor.${system}.callPackage sbva-package { };
           ensmallen = nixpkgsFor.${system}.callPackage ensmallen-package { };
           mlpack = nixpkgsFor.${system}.callPackage mlpack-package { inherit ensmallen; };
 
           arjun = nixpkgsFor.${system}.callPackage arjun-package {
-            inherit sbva mlpack ensmallen;
+            inherit mlpack ensmallen;
             cadical = cadical.packages.${system}.cadical;
             cadiback = cadiback.packages.${system}.cadiback;
             cryptominisat5 = cryptominisat.packages.${system}.cryptominisat5;
+            sbva = sbva.packages.${system}.sbva;
           };
         in
         {
