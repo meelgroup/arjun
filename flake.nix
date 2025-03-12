@@ -1,5 +1,5 @@
 {
-  description = "BackBone Extractor for CaDiCal";
+  description = "minimal independent set calculator and CNF minimizer";
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
     cadical = {
