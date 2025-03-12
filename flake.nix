@@ -116,9 +116,9 @@
         stdenv.mkDerivation {
           name = "arjun";
           src = fetchFromGitHub {
-            owner = "meelgroup";
+            owner = "itepastra";
             repo = "arjun";
-            rev = "b05b4cce46b5c6fca77b8829c0ab0d49b9a70159";
+            rev = "cf7e0a1e644a83b1109ce9fb4f17ab93d0348850";
             hash = "sha256-qQT16wNiRoNwpTpIxg80+SjGUhVXvuWYXFaS+kq2ezc=";
           };
           # src = fs.toSource {

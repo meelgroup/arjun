@@ -5,3 +5,5 @@ compile_commands.json
 .cache
 examples
 neovide_backtraces.log
+/result
+/.ccls-cache
