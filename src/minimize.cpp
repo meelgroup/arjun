@@ -201,8 +201,22 @@ void Minimize::init() {
     seen.resize(solver->nVars(), 0);
 }
 
+bool Minimize::set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf) {
+    if (!cnf.get_weighted()) return true;
+    for(uint32_t i = 0; i < cnf.nvars; i++) {
+        if (cnf.get_lit_weight(Lit(i, false))->is_zero()) {
+            solver->add_clause({Lit(i, true)});
+        }
+        if (cnf.get_lit_weight(Lit(i, true))->is_zero()) {
+            solver->add_clause({Lit(i, false)});
+        }
+    }
+    return solver->okay();
+}
+
 bool Minimize::preproc_and_duplicate(const ArjunNS::SimplifiedCNF& orig_cnf) {
     assert(!already_duplicated);
+    if (conf.simp && !set_zero_weight_lits(orig_cnf)) return false;
     if (conf.simp && !simplify()) return false;
     get_incidence();
     duplicate_problem(orig_cnf);
@@ -254,6 +268,7 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf, bool all_indep) {
 
     end:
     if (all_indep) {
+        verb_print(2, "[arjun] All variables are independent, filling opt_sampl_vars");
         cnf.opt_sampl_vars.clear();
         for(uint32_t i = 0; i < cnf.nvars; i++) cnf.opt_sampl_vars.push_back(i);
     }

@@ -28,6 +28,7 @@
 #include "interpolant.h"
 #include "src/interpolant.h"
 #include "src/time_mem.h"
+#include <algorithm>
 #include <set>
 
 using namespace ArjunInt;
@@ -48,7 +49,7 @@ void Minimize::fill_assumptions_backward(
         uint32_t indic = var_to_indic[var];
         assert(indic != var_Undef);
         assumptions.push_back(Lit(indic, false));
-        verb_print(5, "Filled assump with indep: " << var);
+        verb_print(5, "Filled assump with indep: " << var+1);
     }
 
     //Add unknown as assumptions, clean "unknown"
@@ -57,7 +58,7 @@ void Minimize::fill_assumptions_backward(
         uint32_t var = unknown[i];
         if (unknown_set[var] == 0) continue;
         else unknown[j++] = var;
-        verb_print(5, "Filled assump with unknown: " << var);
+        verb_print(5, "Filled assump with unknown: " << var+1);
 
         assert(var < orig_num_vars);
         uint32_t indic = var_to_indic[var];
@@ -98,7 +99,7 @@ void Minimize::print_sorted_unknown(const vector<uint32_t>& unknown) const
     if (conf.verb >= 4) {
         cout << "c o Sorted output: "<< endl;
         for (const auto& v: unknown) {
-            cout << "c o var: " << v << " occ: " << incidence[v]
+            cout << "c o var: " << v+1 << " occ: " << incidence[v]
             //<< " prop-inc: " << std::setw(6) << incidence_probing[v]
             << endl;
         }
@@ -123,6 +124,9 @@ void Minimize::backward_round() {
         unknown_set[x] = 1;
     }
     sort_unknown(unknown, incidence);
+    /* std::reverse(unknown.begin(), unknown.end()); */
+    /* std::mt19937_64 rand(33); */
+    /* std::shuffle(unknown.begin(), unknown.end(), rand); */
     if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
     print_sorted_unknown(unknown);
     verb_print(1, "[arjun] Start unknown size: " << unknown.size());
@@ -141,7 +145,6 @@ void Minimize::backward_round() {
         mod = will_do_iters/want_printed;
         mod = std::max<int>(mod, 1);
     }
-
 
     uint32_t ret_false = 0;
     uint32_t ret_true = 0;
@@ -202,7 +205,7 @@ void Minimize::backward_round() {
         assert(test_var < orig_num_vars);
         assert(unknown_set[test_var] == 1);
         unknown_set[test_var] = 0;
-        //cout << "Testing: " << test_var << endl;
+        verb_print(5, "[arjun] Testing: " << test_var+1);
 
         //Assumption filling
         assert(test_var != var_Undef);
