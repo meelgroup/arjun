@@ -55,6 +55,7 @@ public:
 private:
     SATSolver* setup_f_not_f_indic(const SimplifiedCNF& cnf);
     void set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf);
+    bool set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, SATSolver* solver);
 
     void get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSolver* solver) const;
     SimplifiedCNF get_cnf(

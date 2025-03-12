@@ -248,6 +248,19 @@ void Puura::reverse_bce(SimplifiedCNF& cnf) {
     delete solver;
 }
 
+bool Puura::set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, SATSolver* solver) {
+    if (!cnf.get_weighted()) return true;
+    for(uint32_t i = 0; i < cnf.nvars; i++) {
+        if (cnf.get_lit_weight(Lit(i, false))->is_zero()) {
+            solver->add_clause({Lit(i, true)});
+        }
+        if (cnf.get_lit_weight(Lit(i, true))->is_zero()) {
+            solver->add_clause({Lit(i, false)});
+        }
+    }
+    return solver->okay();
+}
+
 SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     const SimplifiedCNF& cnf,
     const SimpConf simp_conf)
@@ -258,6 +271,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
         verb_print(5, "[w-debug] orig opt sampl var: " << v+1);
 
     auto solver = fill_solver(cnf);
+    set_zero_weight_lits(cnf, solver);
     verb_print(3, "Running "<< __PRETTY_FUNCTION__);
     solver->set_renumber(true);
     solver->set_scc(true);
