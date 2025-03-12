@@ -115,22 +115,16 @@
         }:
         stdenv.mkDerivation {
           name = "arjun";
-          src = fetchFromGitHub {
-            owner = "itepastra";
-            repo = "arjun";
-            rev = "cf7e0a1e644a83b1109ce9fb4f17ab93d0348850";
-            hash = "sha256-qQT16wNiRoNwpTpIxg80+SjGUhVXvuWYXFaS+kq2ezc=";
+          src = fs.toSource {
+            root = ./.;
+            fileset = fs.unions [
+              ./CMakeLists.txt
+              ./cmake
+              ./src
+              ./arjunConfig.cmake.in
+              ./scripts
+            ];
           };
-          # src = fs.toSource {
-          #   root = ./.;
-          #   fileset = fs.unions [
-          #     ./CMakeLists.txt
-          #     ./cmake
-          #     ./src
-          #     ./arjunConfig.cmake.in
-          #     ./scripts
-          #   ];
-          # };
           nativeBuildInputs = [
             cmake
           ];
