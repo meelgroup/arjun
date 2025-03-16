@@ -160,9 +160,12 @@ struct Clause {
 };
 
 DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
-    // If all variables are in opt sampling set, return
-    set<uint32_t> dont_block(cnf.opt_sampl_vars.begin(),
-            cnf.opt_sampl_vars.end());
+    // Unfortunately, with opt_sampling_set, we rely on a variables
+    // being fully deterministic. So we can't block on them
+    // otherwise we'd need to remove those variables from the opt_sampling set
+    set<uint32_t> dont_block;
+    for(const auto& v: cnf.sampl_vars) dont_block.insert(v);
+    for(const auto& v: cnf.opt_sampl_vars) dont_block.insert(v);
     if (dont_block.size() == cnf.nvars) return;
 
     const double start_time = cpuTime();
@@ -254,8 +257,7 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     }
     if (etof_conf.do_extend_indep && cnf.opt_sampl_vars.size() != cnf.nvars)
         standalone_extend_sampl_set(cnf);
-    if (etof_conf.do_bce && !cnf.get_weighted() && cnf.opt_sampl_vars.size() != cnf.nvars)
-        standalone_bce(cnf);
+    if (etof_conf.do_bce) standalone_bce(cnf);
     if (etof_conf.do_unate)
         standalone_unate(cnf);
     cnf.remove_equiv_weights();
