@@ -251,43 +251,43 @@ public:
     const mpq_class& get_val() const { return val; }
 
     Field& operator=(const Field& other) override {
-        const auto& od = dynamic_cast<const FMpq&>(other);
+        const auto& od = static_cast<const FMpq&>(other);
         val = od.val;
         return *this;
     }
 
     Field& operator+=(const Field& other) override {
-        const auto& od = dynamic_cast<const FMpq&>(other);
+        const auto& od = static_cast<const FMpq&>(other);
         val += od.val;
         return *this;
     }
 
     std::unique_ptr<Field> add(const Field& other) override {
-        const auto& od = dynamic_cast<const FMpq&>(other);
+        const auto& od = static_cast<const FMpq&>(other);
         return std::make_unique<FMpq>(val + od.val);
     }
 
     Field& operator-=(const Field& other) override {
-        const auto& od = dynamic_cast<const FMpq&>(other);
+        const auto& od = static_cast<const FMpq&>(other);
         val -= od.val;
         return *this;
     }
 
     Field& operator*=(const Field& other) override {
-        const auto& od = dynamic_cast<const FMpq&>(other);
+        const auto& od = static_cast<const FMpq&>(other);
         val *= od.val;
         return *this;
     }
 
     Field& operator/=(const Field& other) override {
-        const auto& od = dynamic_cast<const FMpq&>(other);
+        const auto& od = static_cast<const FMpq&>(other);
         if (od.val == 0) throw std::runtime_error("Division by zero");
         val /= od.val;
         return *this;
     }
 
     bool operator==(const Field& other) const override {
-        const auto& od = dynamic_cast<const FMpq&>(other);
+        const auto& od = static_cast<const FMpq&>(other);
         return val == od.val;
     }
 
@@ -401,8 +401,8 @@ public:
     }
 
     bool larger_than(const CMSat::Field& a, const CMSat::Field& b) const override {
-        const auto& ad = dynamic_cast<const FMpq&>(a);
-        const auto& bd = dynamic_cast<const FMpq&>(b);
+        const auto& ad = static_cast<const FMpq&>(a);
+        const auto& bd = static_cast<const FMpq&>(b);
         return ad.val > bd.val;
     }
 
