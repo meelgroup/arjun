@@ -3,19 +3,19 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
     cadical = {
-      url = "github:itepastra/cadical/add-flake";
+      url = "github:meelgroup/cadical/add_dynamic_lib";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     cadiback = {
-      url = "github:itepastra/cadiback/add-flake";
+      url = "github:meelgroup/cadiback/synthesis";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     cryptominisat = {
-      url = "github:itepastra/cryptominisat/add-flake";
+      url = "github:meelgroup/cryptominisat/synthesis";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     sbva = {
-      url = "github:itepastra/sbva/add-flake";
+      url = "github:meelgroup/sbva/master";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
