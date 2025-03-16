@@ -254,15 +254,16 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
         vector<uint32_t> all_vars;
         for(uint32_t i = 0; i < cnf.nvars; i++) all_vars.push_back(i);
         cnf.set_opt_sampl_vars(all_vars);
-    }
-    if (etof_conf.do_extend_indep && cnf.opt_sampl_vars.size() != cnf.nvars)
-        standalone_extend_sampl_set(cnf);
+    } else {
+        if (etof_conf.do_extend_indep && cnf.opt_sampl_vars.size() != cnf.nvars)
+            standalone_extend_sampl_set(cnf);
 
-    // BCE shoudl be after extension, as opt_sampl_vars
-    // could be smaller if BCE is run before... maybe we should try
-    // reverse system, though. Would work... but then BCE would be
-    // better, and opt_sampl_vars would be smaller
-    if (etof_conf.do_bce) standalone_bce(cnf);
+        // BCE shoudl be after extension, as opt_sampl_vars
+        // could be smaller if BCE is run before... maybe we should try
+        // reverse system, though. Would work... but then BCE would be
+        // better, and opt_sampl_vars would be smaller
+        if (etof_conf.do_bce) standalone_bce(cnf);
+    }
     if (etof_conf.do_unate)
         standalone_unate(cnf);
     cnf.remove_equiv_weights();
