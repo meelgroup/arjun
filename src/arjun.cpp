@@ -70,33 +70,32 @@ void check_duplicated(bool duplicated) {
     exit(-1);
 }
 
-DLL_PUBLIC Arjun::Arjun()
-{
-    arjdata = new ArjPrivateData;
-}
-
-DLL_PUBLIC Arjun::~Arjun()
-{
-    delete arjdata;
-}
-
-DLL_PUBLIC string Arjun::get_sbva_version_info()
-{
+DLL_PUBLIC Arjun::Arjun() { arjdata = new ArjPrivateData; }
+DLL_PUBLIC Arjun::~Arjun() { delete arjdata; }
+DLL_PUBLIC string Arjun::get_sbva_version_sha1() {
     return SBVA::get_version_sha1();
 }
 
-DLL_PUBLIC string Arjun::get_version_info()
-{
+DLL_PUBLIC string Arjun::get_version_sha1() {
     return ArjunIntNS::get_version_sha1();
 }
 
-DLL_PUBLIC std::string Arjun::get_solver_version_info()
-{
-    return CMSat::SATSolver::get_text_version_info("c o ");
+DLL_PUBLIC string Arjun::get_thanks_info(const char* prefix) {
+    std::stringstream ss;
+    ss << prefix << "Using ideas by JM Lagniez, and Pierre Marquis" << endl;
+    ss << prefix << "    from paper 'Improving Model Counting [..] IJCAI 2016";
+    return ss.str();
 }
 
-DLL_PUBLIC std::string Arjun::get_compilation_env()
-{
+DLL_PUBLIC std::string Arjun::get_solver_version_sha1() {
+    return CMSat::SATSolver::get_version_sha1();
+}
+
+DLL_PUBLIC std::string Arjun::get_solver_thanks_info(const char* prefix) {
+    return CMSat::SATSolver::get_thanks_info(prefix);
+}
+
+DLL_PUBLIC std::string Arjun::get_compilation_env() {
     return ArjunIntNS::get_compilation_env();
 }
 

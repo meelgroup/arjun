@@ -85,8 +85,11 @@ unique_ptr<FieldGen> fg = nullptr;
 
 string print_version() {
     std::stringstream ss;
-    ss << "c o Arjun Version: " << arjun->get_version_info() << endl;
-    ss << arjun->get_solver_version_info();
+    ss << "c o Arjun SHA1: " << arjun->get_version_sha1() << endl;
+    ss << "c o SBVA SHA1: " << arjun->get_sbva_version_sha1() << endl;
+    ss << "c o CMS SHA1: " << arjun->get_solver_version_sha1() << endl;
+    ss << arjun->get_thanks_info("c o ") << endl;
+    ss << arjun->get_solver_thanks_info("c o ") << endl;
     ss << "c o [arjun] Compilation environment: " << arjun->get_compilation_env();
     return ss.str();
 }

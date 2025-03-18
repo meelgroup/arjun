@@ -998,10 +998,12 @@ class Arjun
 public:
     Arjun();
     ~Arjun();
-    static std::string get_version_info();
-    static std::string get_sbva_version_info();
+    static std::string get_version_sha1();
+    static std::string get_thanks_info(const char* prefix = "c o ");
+    static std::string get_sbva_version_sha1();
     static std::string get_compilation_env();
-    static std::string get_solver_version_info();
+    static std::string get_solver_version_sha1();
+    static std::string get_solver_thanks_info(const char* prefix);
 
     // Perform indep set calculation
     void standalone_minimize_indep(SimplifiedCNF& cnf, bool all_indep);
