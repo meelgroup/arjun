@@ -263,8 +263,7 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
         // better, and opt_sampl_vars would be smaller
         if (etof_conf.do_bce) standalone_bce(cnf);
     }
-    if (etof_conf.do_unate)
-        standalone_unate(cnf);
+    if (etof_conf.do_unate) standalone_unate(cnf);
     cnf.remove_equiv_weights();
     if (etof_conf.do_renumber) cnf.renumber_sampling_vars_for_ganak();
 }
