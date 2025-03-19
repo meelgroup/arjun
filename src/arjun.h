@@ -786,7 +786,7 @@ struct SimplifiedCNF {
             CMSat::Lit l(i, false);
             if (tmp.count(i) == 0) continue;
 
-            if (weights.count(l.var()) && get_lit_weight(l) == get_lit_weight(~l)) {
+            if (weights.count(l.var()) && *get_lit_weight(l) == *get_lit_weight(~l)) {
                 if (debug_w)
                     std::cout << __FUNCTION__ << " Removing equiv weight for " << l
                         << " get_lit_weight(l): " << *get_lit_weight(l) << std::endl;
