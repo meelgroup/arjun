@@ -75,7 +75,7 @@ jobs:
         cd ..
 
     - name: Install dependencies for Linux
-      if: matrix.os == 'ubuntu-latest'
+      if: matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-24.04-arm'
       run: sudo apt-get update && sudo apt-get install -yq help2man libgmp-dev libmpfr-dev
 
     - name: Checkout Cadical
