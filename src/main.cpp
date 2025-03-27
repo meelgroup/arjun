@@ -321,7 +321,7 @@ int main(int argc, char** argv) {
 
     switch (mode) {
         case 0:
-            fg = std::make_unique<CMSat::FGenMpz>();
+            fg = std::make_unique<FGenMpz>();
             break;
         case 1:
             fg = std::make_unique<ArjunNS::FGenMpq>();
