@@ -452,7 +452,7 @@ endif()
 # -----------------------------------------------------------------------------
 set(ARJUN_EXPORT_NAME "arjunTargets")
 
-add_subdirectory(src rjun-src)
+add_subdirectory(src)
 
 # -----------------------------------------------------------------------------
 # Add uninstall target for makefiles
@@ -489,9 +489,8 @@ set(ARJUN_TARGETS_FILENAME "arjunTargets.cmake")
 set(ARJUN_CONFIG_FILENAME "arjunConfig.cmake")
 
 # Export targets
-set(MY_TARGETS arjun)
 export(
-    TARGETS ${MY_TARGETS}
+    TARGETS arjun
     FILE "${CMAKE_CURRENT_BINARY_DIR}/${ARJUN_TARGETS_FILENAME}"
 )
 
