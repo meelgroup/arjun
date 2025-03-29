@@ -225,6 +225,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 
+#ifdef SYNTH
 void do_synthesis() {
     SimplifiedCNF cnf(fg);
     cnf.need_aig = true;
@@ -254,6 +255,7 @@ void do_synthesis() {
     }
     arjun->standalone_manthan(cnf);
 }
+#endif
 
 void do_minimize() {
     SimplifiedCNF cnf(fg);
@@ -356,7 +358,9 @@ int main(int argc, char** argv) {
     if (!elimtofile.empty())
         cout << "c o [arjun] Output file: " << elimtofile << endl;
     if (synthesis) {
+#ifdef SYNTH
         do_synthesis();
+#endif
     } else {
         do_minimize();
     }

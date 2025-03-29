@@ -23,7 +23,9 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CRYPTOMINISAT5_INCLUDE_DIRS})
 include_directories(${SBVA_INCLUDE_DIRS})
 include_directories( ${GMP_INCLUDE_DIR} )
-include_directories( ${MLPACK_INCLUDE_DIR} )
+if (SYNTH)
+    include_directories( ${MLPACK_INCLUDE_DIR} )
+endif()
 include_directories(${PROJECT_SOURCE_DIR}/../cadical/src/)
 
 if (NOT WIN32)
@@ -43,19 +45,25 @@ endif()
 
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/GitSHA1.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp" @ONLY)
 
-add_library(arjun
+set(libfiles
     extend.cpp
     backward.cpp
     simplify.cpp
     minimize.cpp
     arjun.cpp
     puura.cpp
-    manthan.cpp
-    interpolant.cpp
     ccnr.cpp
     ccnr_cms.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
 )
+
+if (SYNTH)
+    set(libfiles ${libfiles}
+    manthan.cpp
+    interpolant.cpp)
+endif()
+
+add_library(arjun ${libfiles})
 
 target_link_libraries(arjun
     LINK_PUBLIC ${CRYPTOMINISAT5_LIBRARIES}

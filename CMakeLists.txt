@@ -91,6 +91,7 @@ SET(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 
 # static compilation
+option(SYNTH "Also build synthesis" ON)
 option(BUILD_SHARED_LIBS "Build the shared library" ON)
 option(STATICCOMPILE "Compile to static executable" OFF)
 if (STATICCOMPILE)
@@ -114,11 +115,14 @@ find_package (Threads REQUIRED)
 find_package (sbva REQUIRED)
 message(STATUS "Found SBVA includes at: ${SBVA_INCLUDE_DIRS}")
 find_package(GMP REQUIRED)
-find_package( MLPACK REQUIRED)
-find_library(cadical
-    PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../cadical/build/
-    NAMES cadical
-    REQUIRED)
+if (SYNTH)
+    add_definitions(-DSYNTH)
+    find_package(MLPACK REQUIRED)
+    find_library(cadical
+        PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../cadical/build/
+        NAMES cadical
+        REQUIRED)
+endif()
 
 macro(add_sanitize_option flagname)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${flagname}" )
@@ -258,7 +262,7 @@ if (ARJUN_SERIALIZE)
 endif()
 
 # Use mold/sold linker if available
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT EMSCRIPTEN)
   message(STATUS "Detected GCC/Clang, checking for mold/sold linker...")
 
   # Check for mold linker on general systems and ld64.mold on macOS

@@ -33,7 +33,9 @@
 #include "extend.h"
 #include "time_mem.h"
 #include "constants.h"
+#ifdef SYNTH
 #include "manthan.h"
+#endif
 
 using std::numeric_limits;
 using namespace ArjunInt;
@@ -104,10 +106,12 @@ DLL_PUBLIC void Arjun::standalone_minimize_indep(SimplifiedCNF& cnf, bool all_in
     common.run_minimize_indep(cnf, all_indep);
 }
 
+#ifdef SYNTH
 DLL_PUBLIC void Arjun::standalone_minimize_indep_synt(SimplifiedCNF& cnf) {
     Minimize common(arjdata->conf);
     common.run_minimize_for_synth(cnf);
 }
+#endif
 
 DLL_PUBLIC void Arjun::standalone_unsat_define(SimplifiedCNF& cnf) {
     Extend extend(arjdata->conf);
@@ -126,12 +130,13 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_get_simplified_cnf(
     Puura puura(arjdata->conf);
     return puura.get_fully_simplified_renumbered_cnf(cnf, simp_conf);
 }
-
+#ifdef SYNTH
 DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(const SimplifiedCNF& cnf)
 {
     Manthan manthan(arjdata->conf, cnf.fg);
     return manthan.do_manthan(cnf);
 }
+#endif
 
 DLL_PUBLIC void Arjun::standalone_rev_bce(SimplifiedCNF& cnf)
 {
