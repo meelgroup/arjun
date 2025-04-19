@@ -1,3 +1,8 @@
 include LICENSE
-include README.rst
-recursive-include src *.cpp *.h
+include README.md
+global-exclude *.json
+global-exclude *.timeout
+global-exclude *.in
+global-exclude *.txt
+recursive-include src/ *.cpp *.h
+recursive-include python/src/ *.h *.hpp *.cpp
