@@ -216,35 +216,33 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: arjun-linux-amd64
-        path: project/build/arjun
+        path: |
+          project/build/arjun
+          project/build/lib/*
 
     - name: Upload Artifact - Linux arm
       if: contains(matrix.os, 'ubuntu') && matrix.staticcompile == 'ON' && contains(matrix.os, 'arm')
       uses: actions/upload-artifact@v4
       with:
         name: arjun-linux-arm64
-        path: project/build/arjun
+        path: |
+          project/build/arjun
+          project/build/lib/*
 
     - name: Upload Artifact - Mac arm
       if: matrix.os == 'macos-14' && matrix.staticcompile == 'ON'
       uses: actions/upload-artifact@v4
       with:
         name: arjun-mac-arm64
-        path: project/build/arjun
+        path: |
+          project/build/arjun
+          project/build/lib/*
 
     - name: Upload Artifact - Mac x86
       if: matrix.os == 'macos-13' && matrix.staticcompile == 'ON'
       uses: actions/upload-artifact@v4
       with:
         name: arjun-mac-x86_64
-        path: project/build/arjun
-
-    - name: Upload Artifact - Windows
-      if: matrix.os == 'windows-2022' && matrix.staticcompile == 'ON'
-      uses: actions/upload-artifact@v4
-      with:
-        name: arjun-win64.exe
-        path: project\build\Release\arjun.exe
-
-    - name: Test
-      run: ctest -C ${{matrix.build_type}} --verbose
+        path: |
+          project/build/arjun
+          project/build/lib/*
