@@ -373,6 +373,7 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Linux" AND NOT EMSCRIPTEN)
         )
 
         ADD_CUSTOM_COMMAND(
+            POST_BUILD
             TARGET man_arjun
             COMMAND help2man
             ARGS --version-string=${ARJUN_FULL_VERSION} --help-option="-h" $<TARGET_FILE:arjun-bin> -o ${CMAKE_CURRENT_BINARY_DIR}/arjun.1
@@ -435,7 +436,7 @@ macro(arjun_add_public_header LIBTARGET HEADER)
      )
 endmacro()
 
-find_package(cryptominisat5 CONFIG)
+find_package(cryptominisat5 CONFIG REQUIRED)
 if (cryptominisat5_FOUND)
     message(STATUS "Found CryptoMiniSat 5.x")
     message(STATUS "CryptoMiniSat5 dynamic lib: ${CRYPTOMINISAT5_LIBRARIES}")
@@ -443,8 +444,6 @@ if (cryptominisat5_FOUND)
     message(STATUS "CryptoMiniSat5 static lib:  ${CRYPTOMINISAT5_STATIC_LIBRARIES}")
     message(STATUS "CryptoMiniSat5 static lib deps: ${CRYPTOMINISAT5_STATIC_LIBRARIES_DEPS}")
     message(STATUS "CryptoMiniSat5 include dirs: ${CRYPTOMINISAT5_INCLUDE_DIRS}")
-else()
-    message(FATAL_ERROR "Cannot find CryptoMiniSat5. Please install it! Exiting.")
 endif()
 
 # -----------------------------------------------------------------------------
