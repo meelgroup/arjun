@@ -24,51 +24,48 @@
 
 #pragma once
 
-#include <cryptominisat5/cryptominisat.h>
-#include "src/config.h"
 #include <cstdint>
+#include <sys/types.h>
 #include <vector>
+#include <map>
 #include <set>
+#include <cryptominisat5/cryptominisat.h>
 #include "config.h"
 #include "arjun.h"
+#include "interpolant.h"
 
+using std::vector;
+using std::map;
+using std::set;
 using namespace CMSat;
 using namespace ArjunInt;
 using namespace ArjunNS;
-using std::vector;
-using std::set;
 
-class Puura {
-public:
-    Puura(const Config& _conf);
-    ~Puura();
+struct Extend {
+    Extend(const Config& _conf) : interp(_conf), conf(_conf) {}
+    ~Extend() {delete solver;}
 
-    SATSolver* fill_solver(const SimplifiedCNF& cnf);
-    SimplifiedCNF get_fully_simplified_renumbered_cnf(
-        const SimplifiedCNF& cnf, const SimpConf simp_conf);
-    void reverse_bce(SimplifiedCNF& cnf);
-    void run_sbva(SimplifiedCNF& orig,
-        int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak);
-    void synthesis_unate(SimplifiedCNF& cnf);
-    void backbone(SimplifiedCNF& cnf);
+    void add_all_indics_except(const set<uint32_t>& except);
+    SATSolver* solver = nullptr;
+    Interpolant interp;
+    uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
 
-private:
-    SATSolver* setup_f_not_f_indic(const SimplifiedCNF& cnf);
-    void set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf);
-    bool set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, SATSolver* solver);
-
-    void get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSolver* solver) const;
-    SimplifiedCNF get_cnf(
-        SATSolver* solver,
-        const SimplifiedCNF& cnf,
-        const vector<uint32_t>& sampl_vars,
-        const vector<uint32_t>& empty_sampl_vars);
-
-    const Config& conf;
-
-    vector<uint32_t> var_to_indic;
-    uint32_t orig_num_vars;
-    set<uint32_t> sampl_set;
+    //assert indic[var] to TRUE to force var==var+orig_num_vars
+    vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
+    vector<uint32_t> indic_to_var; //maps an INDICATOR VAR to ORIG VAR
     vector<Lit> dont_elim;
-};
+    vector<char> seen;
 
+    template<class T>
+    void fill_assumptions_extend(
+        vector<Lit>& assumptions,
+        const T& indep);
+    void extend_round(SimplifiedCNF& cnf);
+
+    void unsat_define(SimplifiedCNF& cnf);
+    Config conf;
+
+    void fill_solver(const SimplifiedCNF& cnf);
+    void get_incidence();
+    vector<uint32_t> incidence;
+};

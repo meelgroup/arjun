@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <vector>
 #include <limits>
 #include <cassert>
+#include <cmath>
 #include <algorithm>
 #include "arjun.h"
 
@@ -525,12 +526,12 @@ static PyObject* get_indep_set(Arjun *self, PyObject *args, PyObject *kwds)
     }
 
     if (out_vars.empty()) {
-        self->arjun->start_with_clean_sampling_set();
+        self->arjun->start_with_clean_sampl_vars();
     } else {
         self->arjun->set_starting_sampling_set(out_vars);
     }
 
-    std::vector<uint32_t> ret = self->arjun->run_backwards();
+    std::vector<uint32_t> ret = self->arjun->run_minimize_indep();
     PyObject* reto = PyList_New(0);
     if (!reto) {
         Py_DECREF(reto);

@@ -22,12 +22,18 @@
  THE SOFTWARE.
  */
 
-#include "common.h"
+#include "constants.h"
+#include "minimize.h"
+#include "constants.h"
+#include "interpolant.h"
+#include "src/interpolant.h"
+#include "src/time_mem.h"
+#include <algorithm>
 #include <set>
 
 using namespace ArjunInt;
 
-void Common::fill_assumptions_backward(
+void Minimize::fill_assumptions_backward(
     vector<Lit>& assumptions,
     vector<uint32_t>& unknown,
     const vector<char>& unknown_set,
@@ -43,7 +49,7 @@ void Common::fill_assumptions_backward(
         uint32_t indic = var_to_indic[var];
         assert(indic != var_Undef);
         assumptions.push_back(Lit(indic, false));
-        verb_print(5, "Filled assump with indep: " << var);
+        verb_print(5, "Filled assump with indep: " << var+1);
     }
 
     //Add unknown as assumptions, clean "unknown"
@@ -52,7 +58,7 @@ void Common::fill_assumptions_backward(
         uint32_t var = unknown[i];
         if (unknown_set[var] == 0) continue;
         else unknown[j++] = var;
-        verb_print(5, "Filled assump with unknown: " << var);
+        verb_print(5, "Filled assump with unknown: " << var+1);
 
         assert(var < orig_num_vars);
         uint32_t indic = var_to_indic[var];
@@ -63,7 +69,7 @@ void Common::fill_assumptions_backward(
     verb_print(5, "Filling assumps END, total assumps size: " << assumptions.size());
 }
 
-void Common::order_by_file(const string& fname, vector<uint32_t>& unknown) {
+void Minimize::order_by_file(const string& fname, vector<uint32_t>& unknown) {
     std::set<uint32_t> old_unknown(unknown.begin(), unknown.end());
     unknown.clear();
 
@@ -88,38 +94,43 @@ void Common::order_by_file(const string& fname, vector<uint32_t>& unknown) {
     }
 }
 
-void Common::print_sorted_unknown(const vector<uint32_t>& unknown) const
+void Minimize::print_sorted_unknown(const vector<uint32_t>& unknown) const
 {
     if (conf.verb >= 4) {
-        cout << "Sorted output: "<< endl;
+        cout << "c o Sorted output: "<< endl;
         for (const auto& v: unknown) {
-            cout << "c var: " << v << " occ: " << incidence[v]
+            cout << "c o var: " << v+1 << " occ: " << incidence[v]
             //<< " prop-inc: " << std::setw(6) << incidence_probing[v]
             << endl;
         }
     }
 }
 
-void Common::backward_round() {
+void Minimize::backward_round() {
+#ifndef NDEBUG
     for(const auto& x: seen) assert(x == 0);
-    double start_round_time = cpuTimeTotal();
+#endif
+    double start_round_time = cpuTime();
     //start with empty independent set
     vector<uint32_t> indep;
 
     //Initially, all of samping_set is unknown
     vector<uint32_t> unknown;
-    vector<char> unknown_set;
-    unknown_set.resize(orig_num_vars, 0);
-    for(const auto& x: sampling_set) {
+    vector<char> unknown_set(orig_num_vars, 0);
+    for(const auto& x: sampling_vars) {
         assert(x < orig_num_vars);
-        assert(unknown_set[x] == 0 && "No var should be in 'sampling_set' twice!");
+        assert(unknown_set[x] == 0 && "No var should be in 'sampling_vars' twice!");
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
-    sort_unknown(unknown);
+    sort_unknown(unknown, incidence);
+    /* std::reverse(unknown.begin(), unknown.end()); */
+    /* std::mt19937_64 rand(33); */
+    /* std::shuffle(unknown.begin(), unknown.end(), rand); */
     if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
     print_sorted_unknown(unknown);
     verb_print(1, "[arjun] Start unknown size: " << unknown.size());
+    solver->set_verbosity(0);
 
     vector<Lit> assumptions;
     uint32_t iter = 0;
@@ -128,13 +139,12 @@ void Common::backward_round() {
 
     //Calc mod:
     uint32_t mod = 1;
-    if ((sampling_set.size()) > 20 ) {
-        uint32_t will_do_iters = sampling_set.size();
+    if ((sampling_vars.size()) > 20 ) {
+        uint32_t will_do_iters = sampling_vars.size();
         uint32_t want_printed = 30;
         mod = will_do_iters/want_printed;
         mod = std::max<int>(mod, 1);
     }
-
 
     uint32_t ret_false = 0;
     uint32_t ret_true = 0;
@@ -195,7 +205,7 @@ void Common::backward_round() {
         assert(test_var < orig_num_vars);
         assert(unknown_set[test_var] == 1);
         unknown_set[test_var] = 0;
-//         cout << "Testing: " << test_var << endl;
+        verb_print(5, "[arjun] Testing: " << test_var+1);
 
         //Assumption filling
         assert(test_var != var_Undef);
@@ -336,8 +346,112 @@ void Common::backward_round() {
     }
     update_sampling_set(unknown, unknown_set, indep);
 
-    verb_print(1, "[arjun] backward round finished. U: " <<
-            " I: " << sampling_set.size() << " T: "
+    verb_print(1, COLRED "[arjun] backward round finished. U: " <<
+            " I: " << sampling_vars.size() << " T: "
+        << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
+    if (conf.verb >= 4) solver->print_stats();
+}
+
+void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
+    assert(cnf.not_renumbered() && "TODO -- AIG will need renumbering!");
+    SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
+    double start_round_time = cpuTime();
+    vector<uint32_t> indep;
+    Interpolant interp(conf);
+    interp.solver = solver;
+    interp.fill_picolsat(orig_num_vars);
+    interp.fill_var_to_indic(var_to_indic);
+
+    //Initially, all of samping_set is unknown
+    vector<char> unknown_set(orig_num_vars, 0);
+    vector<uint32_t> unknown;
+    set<uint32_t> dep;
+    for(const auto& x: cnf.opt_sampl_vars) dep.insert(x);
+    for(uint32_t x = 0; x < orig_num_vars; x++) {
+        if (dep.count(x)) {
+            solver->add_clause({Lit(var_to_indic[x], false)});
+            continue;
+        }
+        unknown.push_back(x);
+        unknown_set[x] = 1;
+    }
+    sort_unknown(unknown, incidence);
+    print_sorted_unknown(unknown);
+    verb_print(1, "[arjun] Start unknown size: " << unknown.size());
+    solver->set_verbosity(0);
+
+    vector<Lit> assumptions;
+    uint32_t ret_true = 0;
+    uint32_t ret_false = 0;
+    uint32_t ret_undef = 0;
+    while(true) {
+        // Find a variable to test
+        uint32_t test_var = var_Undef;
+        while(!unknown.empty()) {
+            uint32_t var = unknown.back();
+            if (unknown_set[var]) {
+                test_var = var;
+                unknown.pop_back();
+                break;
+            } else {
+                unknown.pop_back();
+            }
+        }
+
+        if (test_var == var_Undef) {
+            //we are done, backward is finished
+            verb_print(5, "[arjun] we are done, " << __PRETTY_FUNCTION__ << " is finished");
+            break;
+        }
+        assert(test_var < orig_num_vars);
+        assert(unknown_set[test_var]);
+        unknown_set[test_var] = 0;
+        verb_print(3, "Testing: " << test_var+1);
+
+        //Assumption filling
+        assert(test_var != var_Undef);
+        fill_assumptions_backward(assumptions, unknown, unknown_set, indep);
+        assumptions.push_back(Lit(test_var, false));
+        assumptions.push_back(Lit(test_var + orig_num_vars, true));
+        solver->set_no_confl_needed();
+
+        // See if it can be defined by anything
+        lbool ret = l_Undef;
+        solver->set_max_confl(conf.backw_max_confl);
+        ret = solver->solve(&assumptions);
+
+        if (ret == l_False) {
+            ret_false++;
+            verb_print(3, "[arjun] " << __PRETTY_FUNCTION__ << " solve(): False");
+        } else if (ret == l_True) {
+            ret_true++;
+            verb_print(3, "[arjun] " << __PRETTY_FUNCTION__ << " solve(): True");
+        } else if (ret == l_Undef) {
+            verb_print(3, "[arjun] " << __PRETTY_FUNCTION__ << " solve(): Undef");
+            ret_undef++;
+        }
+
+        assert(unknown_set[test_var] == 0);
+        if (ret == l_Undef) {
+            //Timed out, we'll treat is as unknown
+            assert(test_var < orig_num_vars);
+            indep.push_back(test_var);
+        } else if (ret == l_True) {
+            //Independent
+            indep.push_back(test_var);
+        } else if (ret == l_False) {
+            //not independent
+            //i.e. given that all in indep+unkown is equivalent, it's not possible that a1 != b1
+            dep.insert(test_var);
+            interp.generate_interpolant(assumptions, test_var, cnf);
+        }
+    }
+
+    verb_print(3, __PRETTY_FUNCTION__ << " dep size: " << dep.size());
+    verb_print(1, COLRED "[arjun] backward round finished. T: " << ret_true << " U: " << ret_undef
+            << " F: " << ret_false << " I: " << sampling_vars.size() << " T: "
         << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
+
+    cnf.add_aigs_from(interp.get_aig_mng(), interp.get_defs());
 }

@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <iostream>
 #include <vector>
+#include <set>
 #include <fstream>
 #include <string>
 #include <cryptominisat5/dimacsparser.h>
@@ -38,30 +39,26 @@
 #include "arjun.h"
 
 using std::vector;
+using std::set;
 using namespace ArjunNS;
 using namespace CMSat;
 using std::cerr;
 using std::cout;
 using std::endl;
 
-inline double stats_line_percent(double num, double total)
-{
-    if (total == 0) {
-        return 0;
-    } else {
-        return num/total*100.0;
-    }
+inline double stats_line_percent(double num, double total) {
+    if (total == 0) return 0;
+    else return num/total*100.0;
 }
 
-inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
-        const std::string& fname, bool red = true)
-{
-    uint32_t num_cls = simpcnf.cnf.size();
+inline void write_synth(const ArjunNS::SimplifiedCNF& simpcnf, const std::string& fname) {
+    uint32_t num_cls = simpcnf.clauses.size()+simpcnf.red_clauses.size();
     std::ofstream outf;
     outf.open(fname.c_str(), std::ios::out);
     outf << "p cnf " << simpcnf.nvars << " " << num_cls << endl;
 
     //Add projection
+    /* outf << "a "; */
     outf << "c p show ";
     auto sampl = simpcnf.sampl_vars;
     std::sort(sampl.begin(), sampl.end());
@@ -70,57 +67,40 @@ inline void write_simpcnf(const ArjunNS::SimplifiedCNF& simpcnf,
         outf << v+1  << " ";
     }
     outf << "0\n";
-    outf << "c p optshow ";
-    sampl = simpcnf.opt_sampl_vars;
-    std::sort(sampl.begin(), sampl.end());
-    for(const auto& v: sampl) {
-        assert(v < simpcnf.nvars);
-        outf << v+1  << " ";
-    }
+    cout << "c o forall vars: " << simpcnf.sampl_vars.size() << endl;
+    set<uint32_t> e;
+    for(uint32_t i = 0; i < simpcnf.nvars; i++) e.insert(i);
+    for(auto v: simpcnf.sampl_vars) e.erase(v);
+    /* outf << "e "; */
+    outf << "c e ";
+    for(const auto& v: e) outf << v+1  << " ";
     outf << "0\n";
+    cout << "c o exist vars: " << e.size() << endl;
 
-    for(const auto& cl: simpcnf.cnf) outf << cl << " 0\n";
-    if (red) for(const auto& cl: simpcnf.red_cnf) outf << "c red " << cl << " 0\n";
-
-#ifdef WEIGHTED
-    if (simpcnf.weighted) {
-        for(const auto& it: simpcnf.weights) {
-            outf << "c p weight " << it.first << " " << it.second << endl;
-        }
-    }
-#endif
-    mpz_class w = simpcnf.multiplier_weight;
-    outf << "c MUST MULTIPLY BY " << w << endl;
+    for(const auto& cl: simpcnf.clauses) outf << cl << " 0\n";
+    for(const auto& cl: simpcnf.red_clauses) outf << cl << " 0\n";
 }
 
-inline void read_in_a_file(const std::string& filename,
-        Arjun* arjun,
-        const bool recompute_sampling_set,
-        bool& indep_support_given)
-{
+template<typename T> void read_in_a_file(const std::string& filename,
+        T* holder, bool& all_indep, unique_ptr<CMSat::FieldGen>& fg) {
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<FILE*, FN>, ArjunNS::Arjun> parser(arjun, nullptr, 0);
+    DimacsParser<StreamBuffer<FILE*, FN>, T> parser(holder, nullptr, 0, fg);
     #else
     gzFile in = gzopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<gzFile, GZ>, ArjunNS::Arjun> parser(arjun, nullptr, 0);
+    DimacsParser<StreamBuffer<gzFile, GZ>, T> parser(holder, nullptr, 0, fg);
     #endif
 
     if (in == nullptr) {
-        std::cerr
-        << "ERROR! Could not open file '"
-        << filename
-        << "' for reading: " << strerror(errno) << endl;
-
+        std::cerr << "ERROR! Could not open file '" << filename
+            << "' for reading: " << strerror(errno) << endl;
         std::exit(-1);
     }
 
     if (!parser.parse_DIMACS(in, true)) exit(-1);
-    if (!arjun->get_sampl_vars_set() || recompute_sampling_set) {
-        arjun->start_with_clean_sampling_set();
-        indep_support_given = false;
-    } else {
-        indep_support_given = true;
+    if (!holder->get_sampl_vars_set()) {
+        holder->start_with_clean_sampl_vars();
+        all_indep = true;
     }
     #ifndef USE_ZLIB
         fclose(in);

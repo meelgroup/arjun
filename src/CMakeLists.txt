@@ -22,7 +22,11 @@ include_directories(${PROJECT_SOURCE_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CRYPTOMINISAT5_INCLUDE_DIRS})
 include_directories(${SBVA_INCLUDE_DIRS})
-include_directories(${MPFR_INCLUDES})
+include_directories( ${GMP_INCLUDE_DIR} )
+if (SYNTH)
+    include_directories( ${MLPACK_INCLUDE_DIR} )
+endif()
+include_directories(${PROJECT_SOURCE_DIR}/../cadical/src/)
 
 if (NOT WIN32)
     add_cxx_flag_if_supported("-Wno-bitfield-constant-conversion")
@@ -35,27 +39,37 @@ if (NOT WIN32)
     add_cxx_flag_if_supported("-Wdouble-promotion")
     add_cxx_flag_if_supported("-Wshadow")
     add_cxx_flag_if_supported("-Wformat=2")
-    add_cxx_flag_if_supported("-Wextra-semi")
     add_cxx_flag_if_supported("-pedantic")
     #add_cxx_flag_if_supported("-Wdeprecated")
 endif()
 
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/GitSHA1.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp" @ONLY)
 
-add_library(arjun
+set(libfiles
     extend.cpp
     backward.cpp
     simplify.cpp
-    common.cpp
+    minimize.cpp
     arjun.cpp
     puura.cpp
+    ccnr.cpp
+    ccnr_cms.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
 )
+
+if (SYNTH)
+    set(libfiles ${libfiles}
+    manthan.cpp
+    interpolant.cpp)
+endif()
+
+add_library(arjun ${libfiles})
 
 target_link_libraries(arjun
     LINK_PUBLIC ${CRYPTOMINISAT5_LIBRARIES}
     LINK_PUBLIC ${SBVA_LIBRARIES}
-    LINK_PUBLIC ${MPFR_LIBRARIES}
+    LINK_PUBLIC ${GMP_LIBRARY}
+    LINK_PUBLIC ${cadical}
 )
 
 add_executable(arjun-bin main.cpp)
