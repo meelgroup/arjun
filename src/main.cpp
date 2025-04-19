@@ -57,7 +57,8 @@ using std::vector;
 using std::unique_ptr;
 using namespace CMSat;
 
-argparse::ArgumentParser program = argparse::ArgumentParser("arjun");
+argparse::ArgumentParser program = argparse::ArgumentParser("arjun", ArjunNS::Arjun::get_version_sha1(),
+        argparse::default_arguments::help);
 double start_time;
 ArjunInt::Config conf;
 ArjunNS::Arjun* arjun = nullptr;
