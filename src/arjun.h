@@ -89,6 +89,7 @@ inline bool evaluate(const std::vector<CMSat::lbool>& vals, const AIG* aig, cons
         return ret;
     }
     assert(false && "Unknown AIG type");
+    exit(-1);
 }
 
 struct AIGManager {
