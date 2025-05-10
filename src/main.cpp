@@ -304,8 +304,7 @@ int main(int argc, char** argv) {
             cout << program << endl;
             std::exit(0);
         }
-    }
-    catch (const std::exception& err) {
+    } catch (const std::exception& err) {
         std::cerr << err.what() << std::endl;
         std::cerr << program;
         exit(-1);

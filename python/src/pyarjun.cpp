@@ -34,6 +34,7 @@ THE SOFTWARE.
 #include <Python.h>
 #include <structmember.h>
 
+using std::vector;
 
 #define MODULE_NAME "pyarjun"
 #define MODULE_DOC "Arjun independent set minimizer"
@@ -92,7 +93,7 @@ static void setup_solver(Arjun *self, PyObject *args, PyObject *kwds)
     }
 
     self->arjun = new ArjunNS::Arjun;
-    self->arjun->set_verbosity(self->verbose);
+    self->arjun->set_verb(self->verbose);
     self->arjun->set_simp(self->simp);
 
     return;
