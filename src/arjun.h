@@ -585,6 +585,28 @@ struct SimplifiedCNF {
         return *this;
     }
 
+    void check_sanity() const {
+        assert(fg != nullptr);
+
+        // all clauses contain variables that are less than nvars
+        for(const auto& cl: clauses)
+            for(const auto& l: cl) assert(l.var() < nvars);
+        for(const auto& cl: red_clauses)
+            for(const auto& l: cl)  assert(l.var() < nvars);
+
+        std::set<uint32_t> ssampl_vars(sampl_vars.begin(), sampl_vars.end());
+        std::set<uint32_t> sopt_sampl_vars(opt_sampl_vars.begin(), opt_sampl_vars.end());
+
+        // all sampling vars are also opt sampling vars
+        for(const auto& v: ssampl_vars) assert(sopt_sampl_vars.count(v));
+
+        // weights must be in opt sampling vars
+        for(const auto& w: weights) {
+            assert(w.first < nvars);
+            assert(sopt_sampl_vars.count(w.first));
+        }
+    }
+
     void replace_aigs_from(const SimplifiedCNF& other) {
         if (!need_aig) {
             assert(!other.need_aig);
