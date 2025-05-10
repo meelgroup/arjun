@@ -588,21 +588,59 @@ struct SimplifiedCNF {
     void check_sanity() const {
         assert(fg != nullptr);
 
+        auto check = [](const std::vector<CMSat::Lit>& cl, uint32_t _nvars) {
+            for(const auto& l: cl) {
+                if (l.var() >= _nvars) {
+                    std::cout << "ERROR: Found a clause with a variable that has more variables than the number of variables we are supposed to have" << std::endl;
+                    std::cout << "cl: ";
+                    for(const auto& l2: cl) std::cout << l2 << " ";
+                    std::cout << std::endl;
+                    std::cout << "nvars: " << _nvars+1 << std::endl;
+                    exit(-1);
+                }
+                assert(l.var() < _nvars);
+            }
+        };
+
         // all clauses contain variables that are less than nvars
-        for(const auto& cl: clauses)
-            for(const auto& l: cl) assert(l.var() < nvars);
-        for(const auto& cl: red_clauses)
-            for(const auto& l: cl)  assert(l.var() < nvars);
+        for(const auto& cl: clauses) check(cl, nvars);
+        for(const auto& cl: red_clauses) check(cl, nvars);
 
         std::set<uint32_t> ssampl_vars(sampl_vars.begin(), sampl_vars.end());
         std::set<uint32_t> sopt_sampl_vars(opt_sampl_vars.begin(), opt_sampl_vars.end());
 
+        for(const auto& v: sopt_sampl_vars) {
+            if (v >= nvars) {
+                std::cout << "ERROR: Found a sampling var that is greater than the number of variables we are supposed to have" << std::endl;
+                std::cout << "sampling var: " << v+1 << std::endl;
+                std::cout << "nvars: " << nvars+1 << std::endl;
+                exit(-1);
+            }
+            assert(v < nvars);
+        }
+
         // all sampling vars are also opt sampling vars
-        for(const auto& v: ssampl_vars) assert(sopt_sampl_vars.count(v));
+        for(const auto& v: ssampl_vars) {
+            if (!sopt_sampl_vars.count(v)) {
+                std::cout << "ERROR: Found a sampling var that is not an opt sampling var: " << v+1 << std::endl;
+                exit(-1);
+            }
+            assert(sopt_sampl_vars.count(v));
+        }
 
         // weights must be in opt sampling vars
         for(const auto& w: weights) {
+            if (w.first >= nvars) {
+                std::cout << "ERROR: Found a weight that is greater than the number of variables we are supposed to have" << std::endl;
+                std::cout << "weight var: " << w.first+1 << std::endl;
+                std::cout << "nvars: " << nvars+1 << std::endl;
+                exit(-1);
+            }
             assert(w.first < nvars);
+            if (sopt_sampl_vars.count(w.first) == 0) {
+                std::cout << "ERROR: Found a weight that is not an (opt) sampling var: " << w.first+1 << std::endl;
+                exit(-1);
+            }
             assert(sopt_sampl_vars.count(w.first));
         }
     }
