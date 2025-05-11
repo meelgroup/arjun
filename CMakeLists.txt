@@ -437,14 +437,11 @@ macro(arjun_add_public_header LIBTARGET HEADER)
 endmacro()
 
 find_package(cryptominisat5 CONFIG REQUIRED)
-if (cryptominisat5_FOUND)
-    message(STATUS "Found CryptoMiniSat 5.x")
-    message(STATUS "CryptoMiniSat5 dynamic lib: ${CRYPTOMINISAT5_LIBRARIES}")
-    message(STATUS "CryptoMiniSat5 dynamic lib dirs: ${CRYPTOMINISAT5_LIBRARY_DIRS}")
-    message(STATUS "CryptoMiniSat5 static lib:  ${CRYPTOMINISAT5_STATIC_LIBRARIES}")
-    message(STATUS "CryptoMiniSat5 static lib deps: ${CRYPTOMINISAT5_STATIC_LIBRARIES_DEPS}")
-    message(STATUS "CryptoMiniSat5 include dirs: ${CRYPTOMINISAT5_INCLUDE_DIRS}")
-endif()
+message(STATUS "CryptoMiniSat5 dynamic lib: ${CRYPTOMINISAT5_LIBRARIES}")
+message(STATUS "CryptoMiniSat5 dynamic lib dirs: ${CRYPTOMINISAT5_LIBRARY_DIRS}")
+message(STATUS "CryptoMiniSat5 static lib:  ${CRYPTOMINISAT5_STATIC_LIBRARIES}")
+message(STATUS "CryptoMiniSat5 static lib deps: ${CRYPTOMINISAT5_STATIC_LIBRARIES_DEPS}")
+message(STATUS "CryptoMiniSat5 include dirs: ${CRYPTOMINISAT5_INCLUDE_DIRS}")
 
 # -----------------------------------------------------------------------------
 # Provide an export name to be used by targets that wish to export themselves.
@@ -501,7 +498,7 @@ configure_file(arjunConfig.cmake.in
 )
 
 # Export this package to the CMake user package registry
-# Now the user can just use find_package(cryptominisat5) on their system
+# Now the user can just use find_package(arjun) on their system
 export(PACKAGE arjun)
 
 set(DEF_INSTALL_CMAKE_DIR lib/cmake/arjun)
