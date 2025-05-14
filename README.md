@@ -1,3 +1,6 @@
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![build](https://github.com/meelgroup/arjun/workflows/build/badge.svg)
+
 # Arjun
 A minimal independent set calculator and CNF minimizer that uses a combination
 of steps to simplify a CNF such that its count stays the same. Name is taken
