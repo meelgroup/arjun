@@ -586,6 +586,19 @@ struct SimplifiedCNF {
         return *this;
     }
 
+    void clean_idiotic_mccomp_weights() {
+        std::set<uint32_t> sopt_sampl_vars(opt_sampl_vars.begin(), opt_sampl_vars.end());
+        std::set<uint32_t> to_remove;
+        for(const auto& w: weights) {
+            if (sopt_sampl_vars.count(w.first) == 0) to_remove.insert(w.first);
+        }
+        if (to_remove.empty()) return;
+
+        std::cout << "c o WARNING!!!! "
+            << to_remove.size() << " weights removed that weren't in the (opt) sampling set" << std::endl;
+        for(const auto& w: to_remove) weights.erase(w);
+    }
+
     void check_sanity() const {
         assert(fg != nullptr);
 
