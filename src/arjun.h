@@ -623,7 +623,8 @@ struct SimplifiedCNF {
         // all sampling vars are also opt sampling vars
         for(const auto& v: ssampl_vars) {
             if (!sopt_sampl_vars.count(v)) {
-                std::cout << "ERROR: Found a sampling var that is not an opt sampling var: " << v+1 << std::endl;
+                std::cout << "ERROR: Found a sampling var that is not an opt sampling var: "
+                    << v+1 << std::endl;
                 exit(-1);
             }
             assert(sopt_sampl_vars.count(v));
@@ -639,7 +640,9 @@ struct SimplifiedCNF {
             }
             assert(w.first < nvars);
             if (sopt_sampl_vars.count(w.first) == 0) {
-                std::cout << "ERROR: Found a weight that is not an (opt) sampling var: " << w.first+1 << std::endl;
+
+                std::cout << "ERROR: Found a weight that is not an (opt) sampling var: "
+                    << w.first+1 << std::endl;
                 exit(-1);
             }
             assert(sopt_sampl_vars.count(w.first));
