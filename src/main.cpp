@@ -230,6 +230,8 @@ void do_synthesis() {
     SimplifiedCNF cnf(fg);
     cnf.need_aig = true;
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
+    cnf.clean_idiotic_mccomp_weights();
+    cnf.check_sanity();
     assert(cnf.sampl_vars == cnf.opt_sampl_vars && "Synthesis extends opt_sampl_vars, so it must be the same as sampl_vars");
     if (do_pre_manthan) {
         cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
@@ -260,6 +262,8 @@ void do_synthesis() {
 void do_minimize() {
     SimplifiedCNF cnf(fg);
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
+    cnf.clean_idiotic_mccomp_weights();
+    cnf.check_sanity();
 
     if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
     if (do_pre_backbone) arjun->standalone_backbone(cnf);
