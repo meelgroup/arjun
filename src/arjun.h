@@ -640,6 +640,8 @@ struct SimplifiedCNF {
             }
             assert(w.first < nvars);
             if (sopt_sampl_vars.count(w.first) == 0) {
+                // Idiotic but we allow 1/1 weights, even though they are useless
+                if (w.second.pos->is_one() && w.second.neg->is_one()) continue;
 
                 std::cout << "ERROR: Found a weight that is not an (opt) sampling var: "
                     << w.first+1 << std::endl;
