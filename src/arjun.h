@@ -536,6 +536,7 @@ inline unsigned int mpfr_memory_usage(const mpfr_t& x) {
 class FMpfr : public CMSat::Field {
 public:
     mpfr_t val;
+    ~FMpfr() override { mpfr_clear(val); }
     FMpfr() {
         mpfr_init2(val, 256);
         mpfr_set_si(val, 0, MPFR_RNDN);
