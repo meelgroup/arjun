@@ -32,6 +32,7 @@ THE SOFTWARE.
 #include <gmpxx.h>
 #include <cryptominisat5/solvertypesmini.h>
 #include <cryptominisat5/cryptominisat.h>
+#include <mpfr.h>
 
 namespace ArjunNS {
 
@@ -495,7 +496,7 @@ public:
     }
 
     std::unique_ptr<CMSat::Field> one() const override {
-        return std::make_unique<FMpq>(1.0);
+        return std::make_unique<FMpq>(1);
     }
 
     std::unique_ptr<FieldGen> dup() const override {
@@ -506,6 +507,161 @@ public:
         const auto& ad = static_cast<const FMpq&>(a);
         const auto& bd = static_cast<const FMpq&>(b);
         return ad.val > bd.val;
+    }
+
+    bool weighted() const override { return true; }
+};
+
+
+inline unsigned int mpfr_memory_usage(const mpfr_t& x) {
+    // Get the precision of the mpfr_t variable (in bits)
+    mpfr_prec_t precision = mpfr_get_prec(x);
+
+    // Determine the size of a limb (in bits)
+    size_t limb_size = mp_bits_per_limb;
+
+    // Calculate the number of limbs required for the significand
+    size_t num_limbs = (precision + limb_size - 1) / limb_size;
+
+    // Base size of mpfr_t structure
+    unsigned int base_size = sizeof(__mpfr_struct);
+
+    // Size of the mantissa (significand) data
+    unsigned int mantissa_size = num_limbs * sizeof(mp_limb_t);
+
+    // Total memory usage
+    return base_size + mantissa_size;
+}
+
+class FMpfr : public CMSat::Field {
+public:
+    mpfr_t val;
+    FMpfr() {
+        mpfr_init2(val, 256);
+        mpfr_set_si(val, 0, MPFR_RNDN);
+    }
+    FMpfr(const int _val) {
+        mpfr_init2(val, 256);
+        mpfr_set_si(val, _val, MPFR_RNDN);
+    }
+    FMpfr(const double _val) {
+        mpfr_init2(val, 256);
+        mpfr_set_d(val, _val, MPFR_RNDN);
+    }
+    FMpfr(const mpfr_t& _val) {
+        mpfr_init2(val, 256);
+        mpfr_set(val, _val, MPFR_RNDN);
+    }
+    FMpfr(const FMpfr& other) {
+        mpfr_init2(val, 256);
+        mpfr_set(val, other.val, MPFR_RNDN);
+    }
+    const mpfr_t& get_val() const { return val; }
+
+    Field& operator=(const Field& other) override {
+        const auto& od = static_cast<const FMpfr&>(other);
+        mpfr_set(val, od.val, MPFR_RNDN);
+        return *this;
+    }
+
+    Field& operator+=(const Field& other) override {
+        const auto& od = static_cast<const FMpfr&>(other);
+        mpfr_add(val, val, od.val, MPFR_RNDN);
+        return *this;
+    }
+
+    std::unique_ptr<Field> add(const Field& other) override {
+        const auto& od = static_cast<const FMpfr&>(other);
+        mpfr_t res;
+        mpfr_init2(res, 256);
+        mpfr_add(res, val, od.val, MPFR_RNDN);
+        std::unique_ptr<FMpfr> ret = std::make_unique<FMpfr>(res);
+        mpfr_clear(res);
+        return ret;
+    }
+
+    Field& operator-=(const Field& other) override {
+        const auto& od = static_cast<const FMpfr&>(other);
+        mpfr_sub(val, val, od.val, MPFR_RNDN);
+        return *this;
+    }
+
+    Field& operator*=(const Field& other) override {
+        const auto& od = static_cast<const FMpfr&>(other);
+        mpfr_mul(val, val, od.val, MPFR_RNDN);
+        return *this;
+    }
+
+    Field& operator/=(const Field& other) override {
+        const auto& od = static_cast<const FMpfr&>(other);
+        if (mpfr_cmp_si(od.val, 0) == 0)
+            throw std::runtime_error("Division by zero");
+        mpfr_div(val, val, od.val, MPFR_RNDN);
+        return *this;
+    }
+
+    bool operator==(const Field& other) const override {
+        const auto& od = static_cast<const FMpfr&>(other);
+        return mpfr_cmp(val, od.val) == 0;
+    }
+
+    std::ostream& display(std::ostream& os) const override {
+        char* tmp = nullptr;
+        mpfr_asprintf(&tmp, "%.8Re", val);
+        os << tmp;
+        mpfr_free_str(tmp);
+        return os;
+    }
+
+    std::unique_ptr<Field> dup() const override {
+        return std::make_unique<FMpfr>(val);
+    }
+
+    bool is_zero() const override {
+        return mpfr_cmp_si(val, 0) == 0;
+    }
+
+    bool is_one() const override {
+        return mpfr_cmp_si(val, 1) == 0;
+    }
+
+    bool parse(const std::string& str, const uint32_t line_no) override {
+        uint32_t at = 0;
+        FMpq val_pre;
+        if (!val_pre.parse_mpq(str, at, line_no)) return false;
+        skip_whitespace(str, at);
+        mpfr_set_q(val, val_pre.get_val().get_mpq_t(), MPFR_RNDN);
+        return true;
+    }
+
+    void set_zero() override { mpfr_set_si(val, 0, MPFR_RNDN); }
+    void set_one() override { mpfr_set_si(val, 1, MPFR_RNDN); }
+
+
+    uint64_t bytes_used() const override {
+      return sizeof(FMpfr) + mpfr_memory_usage(val);
+    }
+};
+
+class FGenMpfr : public CMSat::FieldGen {
+public:
+    ~FGenMpfr() override = default;
+    std::unique_ptr<CMSat::Field> zero() const override {
+        return std::make_unique<FMpfr>(0);
+    }
+
+    std::unique_ptr<CMSat::Field> one() const override {
+        return std::make_unique<FMpfr>(1);
+    }
+
+    std::unique_ptr<FieldGen> dup() const override {
+        return std::make_unique<FGenMpfr>();
+    }
+
+    bool larger_than(const CMSat::Field& a, const CMSat::Field& b) const override {
+        const auto& ad = static_cast<const FMpfr&>(a);
+        const auto& bd = static_cast<const FMpfr&>(b);
+        return mpfr_cmp(ad.val, bd.val) > 0;
     }
 
     bool weighted() const override { return true; }

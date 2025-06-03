@@ -87,6 +87,7 @@
           sbva,
           zlib,
           gmp,
+          mpfr,
           cadiback,
           pkg-config,
           mlpack,
