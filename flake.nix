@@ -116,6 +116,7 @@
             zlib
             sbva
             gmp
+            mpfr
             cadiback
             mlpack
             armadillo
