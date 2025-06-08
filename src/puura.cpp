@@ -285,7 +285,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->set_max_red_linkin_size(0);
     solver->set_do_subs_with_resolvent_clauses(simp_conf.do_subs_with_resolvent_clauses);
     /* solver->set_timeout_all_calls(100); */
-    solver->set_weaken_time_limitM(2000);
+    solver->set_weaken_time_limitM(8000);
     solver->set_oracle_get_learnts(simp_conf.oracle_vivify_get_learnts);
     solver->set_oracle_removed_is_learnt(1);
     solver->set_oracle_find_bins(conf.oracle_find_bins);
@@ -308,6 +308,8 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     bool backbone_done = cnf.backbone_done;
     if (!backbone_done && simp_conf.do_backbone_puura) {
         solver->backbone_simpl(30*1000ULL, backbone_done);
+        string str_scc = "must-scc-vrepl, must-renumber";
+        solver->simplify(&dont_elim, &str_scc);
     }
     if (backbone_done) {
         if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify";
