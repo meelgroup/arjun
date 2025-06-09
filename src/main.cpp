@@ -165,6 +165,7 @@ void add_arjun_options() {
     myopt("--oraclevivif", simp_conf.oracle_vivify, atoi,"Use oracle to vivify");
     myopt("--oraclevivifgetl", simp_conf.oracle_vivify_get_learnts, atoi,"Use oracle to vivify get learnts");
     myopt("--distill", conf.distill, atoi, "Distill clauses before minimization of indep");
+    myopt("--weakenlim", conf.weaken_limit, atoi, "Limit to weaken BVE resolvents");
     myopt("--bce", etof_conf.do_bce, atoi, "Use blocked clause elimination (BCE) statically");
     myopt("--red", redundant_cls, atoi,"Also dump redundant clauses");
 
