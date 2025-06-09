@@ -285,7 +285,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->set_max_red_linkin_size(0);
     solver->set_do_subs_with_resolvent_clauses(simp_conf.do_subs_with_resolvent_clauses);
     /* solver->set_timeout_all_calls(100); */
-    solver->set_weaken_time_limitM(conf.weaken_limit);
+    solver->set_weaken_time_limitM(simp_conf.weaken_limit);
     solver->set_oracle_get_learnts(simp_conf.oracle_vivify_get_learnts);
     solver->set_oracle_removed_is_learnt(1);
     solver->set_oracle_find_bins(conf.oracle_find_bins);

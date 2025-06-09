@@ -53,7 +53,6 @@ struct Config {
     double cms_glob_mult = -1.0;
     int extend_ccnr = 0;
     int autarkies = 0;
-    int weaken_limit = 8000;
 };
 
 }
