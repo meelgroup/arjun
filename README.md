@@ -20,9 +20,19 @@ treewidth-decomposition is _not_ part of Arjun.
 ## How to Build
 It is strongly recommended to not build, but to use the precompiled
 binaries as in our [release](https://github.com/meelgroup/arjun/releases).
-In case you need to build, please see the [GitHub Actions
-file](https://github.com/meelgroup/arjun/actions) for instructions.
+The second best thing to use is Nix. Simply [install
+nix](https://nixos.org/download/) and then:
+```shell
+git clone https://github.com/meelgroup/arjun
+cd arjun
+nix shell
+```
 
+Then you will have `arjun` binary available and ready to use.
+
+If this is somehow not what you want, you can also build it. See the [GitHub
+Action](https://github.com/meelgroup/arjun/actions/workflows/build.yml) for the
+specific set of steps.
 
 ## How to Use
 Run it on your instance and it will give you a reduced independent set:
