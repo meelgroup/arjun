@@ -23,9 +23,7 @@ binaries as in our [release](https://github.com/meelgroup/arjun/releases).
 The second best thing to use is Nix. Simply [install
 nix](https://nixos.org/download/) and then:
 ```shell
-git clone https://github.com/meelgroup/arjun
-cd arjun
-nix shell
+nix shell github:meelgroup/arjun
 ```
 
 Then you will have `arjun` binary available and ready to use.
