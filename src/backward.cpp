@@ -37,7 +37,7 @@ void Minimize::fill_assumptions_backward(
     vector<Lit>& assumptions,
     vector<uint32_t>& unknown,
     const vector<char>& unknown_set,
-    const vector<uint32_t>& indep)
+    const set<uint32_t>& indep)
 {
     verb_print(5, "Filling assumps BEGIN");
     assumptions.clear();
@@ -112,7 +112,7 @@ void Minimize::backward_round() {
 #endif
     double start_round_time = cpuTime();
     //start with empty independent set
-    vector<uint32_t> indep;
+    set<uint32_t> indep;
 
     //Initially, all of samping_set is unknown
     vector<uint32_t> unknown;
@@ -144,6 +144,13 @@ void Minimize::backward_round() {
         uint32_t want_printed = 30;
         mod = will_do_iters/want_printed;
         mod = std::max<int>(mod, 1);
+    }
+
+    map<uint32_t, vector<vector<uint32_t>>> gates;
+    for(const auto& g: backw_gates) {
+        auto it = gates.find(g.first);
+        if (it == gates.end()) gates[g.first] = {g.second};
+        else it->second.push_back(g.second);
     }
 
     uint32_t ret_false = 0;
@@ -224,6 +231,13 @@ void Minimize::backward_round() {
         } else {
             FastBackwData b;
             b._assumptions = &assumptions;
+            b.assumed_indep.clear();
+            for(const auto& a: assumptions) {
+                if (a.var() < 2*orig_num_vars) continue;
+                auto v = indic_to_var[a.var()];
+                assert(v != var_Undef);
+                b.assumed_indep.insert(v);
+            }
             b.indic_to_var  = &indic_to_var;
             b.orig_num_vars = orig_num_vars;
             b.non_indep_vars = &non_indep_vars;
@@ -232,6 +246,8 @@ void Minimize::backward_round() {
             b.test_indic = &indic_var;
             b.test_var = &test_var;
             b.max_confl = conf.backw_max_confl;
+            cout << "gates.size(): " << gates.size() << endl;
+            b.gates = &gates;
 
             fast_backw_calls++;
             if (conf.verb > 5) {
@@ -239,7 +255,6 @@ void Minimize::backward_round() {
                 cout << "find_fast_backw BEGIN " << endl;
             }
             non_indep_vars.clear();
-            uint32_t indep_vars_last_pos = indep.size();
             ret = solver->find_fast_backw(b);
 
             verb_print(3, "[arjun] non_indep_vars.size(): " << non_indep_vars.size()
@@ -255,11 +270,7 @@ void Minimize::backward_round() {
 
             fast_backw_tot += non_indep_vars.size();
             fast_backw_max = std::max<uint32_t>(non_indep_vars.size(), fast_backw_max);
-            for(uint32_t i = indep_vars_last_pos; i < indep.size(); i ++) {
-                uint32_t var = indep[i];
-                unknown_set[var] = 0;
-            }
-
+            for(uint32_t var: indep) unknown_set[var] = 0;
             for(const auto& var: non_indep_vars) {
                 assert(var < orig_num_vars);
                 unknown_set[var] = 0;
@@ -290,11 +301,11 @@ void Minimize::backward_round() {
             //Timed out, we'll treat is as unknown
             quick_pop_ok = false;
             assert(test_var < orig_num_vars);
-            indep.push_back(test_var);
+            indep.insert(test_var);
         } else if (ret == l_True) {
             //Independent
             quick_pop_ok = false;
-            indep.push_back(test_var);
+            indep.insert(test_var);
         } else if (ret == l_False) {
             //not independent
             //i.e. given that all in indep+unkown is equivalent, it's not possible that a1 != b1
@@ -356,7 +367,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     assert(cnf.not_renumbered() && "TODO -- AIG will need renumbering!");
     SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
     double start_round_time = cpuTime();
-    vector<uint32_t> indep;
+    set<uint32_t> indep;
     Interpolant interp(conf);
     interp.solver = solver;
     interp.fill_picolsat(orig_num_vars);
@@ -435,10 +446,10 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
         if (ret == l_Undef) {
             //Timed out, we'll treat is as unknown
             assert(test_var < orig_num_vars);
-            indep.push_back(test_var);
+            indep.insert(test_var);
         } else if (ret == l_True) {
             //Independent
-            indep.push_back(test_var);
+            indep.insert(test_var);
         } else if (ret == l_False) {
             //not independent
             //i.e. given that all in indep+unkown is equivalent, it's not possible that a1 != b1

@@ -36,7 +36,7 @@ using std::numeric_limits;
 void Minimize::update_sampling_set(
     const vector<uint32_t>& unknown,
     const vector<char>& unknown_set,
-    const vector<uint32_t>& indep
+    const set<uint32_t>& indep
 ) {
     sampling_vars.clear();
     for(const auto& var: unknown) {
@@ -144,6 +144,7 @@ void Minimize::set_up_solver()
     solver->set_distill(conf.distill && conf.simp);
     solver->set_sls(false);
     solver->set_find_xors(false);
+    solver->set_branch_strategy_setup("vmtf");
     if (conf.cms_glob_mult > 0) solver->set_orig_global_timeout_multiplier(conf.cms_glob_mult);
 }
 
@@ -214,11 +215,43 @@ bool Minimize::set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf) {
     return solver->okay();
 }
 
+void Minimize::get_backw_gates() {
+    auto ors = solver->get_recovered_or_gates();
+    for(const auto& g: ors) {
+        pair<uint32_t, vector<uint32_t>> p;
+        p.first = g.rhs.var();
+        for(const auto& l: g.get_lhs()) p.second.push_back(l.var());
+        backw_gates.push_back(p);
+    }
+
+    auto xors = solver->get_recovered_xors(false);
+    for(const auto& x: xors) {
+        for(uint32_t i = 0; i < x.first.size(); i++) {
+            pair<uint32_t, vector<uint32_t>> p;
+            p.first = x.first[i];
+            for(const auto& v: x.first)
+                if (v != p.first) p.second.push_back(v);
+            backw_gates.push_back(p);
+        }
+    }
+
+    auto ites = solver->get_recovered_ite_gates();
+    for(const auto& g: ites) {
+        pair<uint32_t, vector<uint32_t>> p;
+        p.first = g.rhs.var();
+        for(const auto& l: g.lhs) p.second.push_back(l.var());
+        backw_gates.push_back(p);
+    }
+    verb_print(1, "[arjun] Backward gates found: " << backw_gates.size());
+}
+
 bool Minimize::preproc_and_duplicate(const ArjunNS::SimplifiedCNF& orig_cnf) {
     assert(!already_duplicated);
     if (conf.simp && !set_zero_weight_lits(orig_cnf)) return false;
     if (conf.simp && !simplify()) return false;
     get_incidence();
+    get_backw_gates();
+
     duplicate_problem(orig_cnf);
     if (conf.simp && !simplify_bve_only()) return false;
     add_fixed_clauses();

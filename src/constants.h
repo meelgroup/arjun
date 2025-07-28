@@ -39,6 +39,7 @@ using std::cerr;
 using std::string;
 using std::vector;
 using std::setw;
+using std::pair;
 
 #define COLRED "\033[31m"
 #define COLYEL2 "\033[35m"

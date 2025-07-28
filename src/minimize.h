@@ -75,6 +75,8 @@ struct Minimize
 
     //Incidence as counted by clauses it's appeared together with other variables
     vector<uint32_t> incidence;
+    vector<std::pair<uint32_t, vector<uint32_t>>> backw_gates;
+    void get_backw_gates();
 
     vector<Lit> dont_elim;
 
@@ -82,7 +84,7 @@ struct Minimize
     void update_sampling_set(
         const vector<uint32_t>& unknown,
         const vector<char>& unknown_set,
-        const vector<uint32_t>& indep
+        const set<uint32_t>& indep
     );
     bool set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf);
     bool preproc_and_duplicate(const ArjunNS::SimplifiedCNF& orig_cnf);
@@ -114,7 +116,7 @@ struct Minimize
         vector<Lit>& assumptions,
         vector<uint32_t>& unknown,
         const vector<char>& unknown_set,
-        const vector<uint32_t>& indep);
+        const set<uint32_t>& indep);
     void fill_solver(const ArjunNS::SimplifiedCNF& cnf);
     void backward_round();
     void backward_round_synth(ArjunNS::SimplifiedCNF& cnf);
