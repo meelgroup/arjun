@@ -1063,8 +1063,7 @@ struct SimplifiedCNF {
         }
     }
 
-    void write_simpcnf(const std::string& fname, bool red = true) const
-    {
+    void write_simpcnf(const std::string& fname, bool red = true) const {
         uint32_t num_cls = clauses.size();
         std::ofstream outf;
         outf.open(fname.c_str(), std::ios::out);
