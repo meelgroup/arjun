@@ -1006,6 +1006,14 @@ struct SimplifiedCNF {
         return new_set;
     }
 
+    void strip_opt_sampling_vars() {
+        std::set<uint32_t> tmp(sampl_vars.begin(), sampl_vars.end());
+        for(const auto& w: weights) tmp.insert(w.first);
+        sampl_vars.clear();
+        sampl_vars.insert(sampl_vars.begin(), tmp.begin(), tmp.end());
+        opt_sampl_vars = sampl_vars;
+    }
+
     // renumber variables such that sampling set start from 0...N
     void renumber_sampling_vars_for_ganak() {
         assert(sampl_vars.size() <= opt_sampl_vars.size());
