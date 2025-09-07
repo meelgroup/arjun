@@ -124,6 +124,7 @@ struct AIGManager {
         new_aig->l = copy_aig(aig->l, old_id_to_new_aig);
         new_aig->r = copy_aig(aig->r, old_id_to_new_aig);
         aigs.push_back(new_aig);
+        assert(old_id_to_new_aig.count(aig->id) == 0 && "children cannot reference parent");
         old_id_to_new_aig[aig->id] = new_aig;
         return new_aig;
     }
@@ -135,7 +136,6 @@ struct AIGManager {
 
     std::map<uint64_t, AIG*> replace_with(const AIGManager& other) {
         clear();
-
 
         std::map<uint64_t, AIG*> old_id_to_new_aig;
         assert(aigs.empty());
