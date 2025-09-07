@@ -99,6 +99,7 @@ struct AIGManager {
         const_true->type = t_const;
         const_true->neg = false;
         aigs.push_back(const_true);
+        assert(aigs.size() == max_id);
         const_false = new_not(const_true);
     }
 
@@ -112,7 +113,26 @@ struct AIGManager {
     }
     ~AIGManager() { clear(); }
 
-    AIG* copy_aig(AIG* aig, std::map<uint64_t, AIG*>& old_id_to_new_aig) {
+    AIG* copy_aig(AIG* aig, std::vector<uint8_t>& copied) {
+        if (aig == nullptr) return nullptr;
+        assert(aig->invariants());
+        if (copied[aig->id]) return aigs.at(aig->id);
+
+        AIG* new_aig = new AIG(max_id++);
+        new_aig->type = aig->type;
+        new_aig->var = aig->var;
+        new_aig->neg = aig->neg;
+        new_aig->l = copy_aig(aig->l, copied);
+        new_aig->r = copy_aig(aig->r, copied);
+        aigs.push_back(new_aig);
+        assert(copied[aig->id] == 0 && "children cannot reference parent");
+        return new_aig;
+    }
+
+    // copying AIG from other, aig, to here.
+    AIG* copy_aig_here(const AIGManager& other, AIG* aig, std::map<uint64_t, AIG*>& old_id_to_new_aig) {
+        if (aig == other.const_true) return const_true;
+        if (aig == other.const_false) return const_false;
         if (aig == nullptr) return nullptr;
         assert(aig->invariants());
         if (old_id_to_new_aig.count(aig->id)) return old_id_to_new_aig.at(aig->id);
@@ -121,8 +141,8 @@ struct AIGManager {
         new_aig->type = aig->type;
         new_aig->var = aig->var;
         new_aig->neg = aig->neg;
-        new_aig->l = copy_aig(aig->l, old_id_to_new_aig);
-        new_aig->r = copy_aig(aig->r, old_id_to_new_aig);
+        new_aig->l = copy_aig_here(other, aig->l, old_id_to_new_aig);
+        new_aig->r = copy_aig_here(other, aig->r, old_id_to_new_aig);
         aigs.push_back(new_aig);
         assert(old_id_to_new_aig.count(aig->id) == 0 && "children cannot reference parent");
         old_id_to_new_aig[aig->id] = new_aig;
@@ -134,37 +154,35 @@ struct AIGManager {
         return *this;
     }
 
-    std::map<uint64_t, AIG*> replace_with(const AIGManager& other) {
+    void replace_with(const AIGManager& other) {
         clear();
 
-        std::map<uint64_t, AIG*> old_id_to_new_aig;
-        assert(aigs.empty());
-        for (auto aig : other.aigs) copy_aig(aig, old_id_to_new_aig);
-        const_true = old_id_to_new_aig.at(other.const_true->id);
-        const_false = old_id_to_new_aig.at(other.const_false->id);
+        std::vector<uint8_t> copied(other.max_id, 0);
         max_id = other.max_id;
+        assert(aigs.empty());
+        for (auto aig : other.aigs) copy_aig(aig, copied);
+        const_true = copy_aig(other.const_true, copied);
+        const_false = copy_aig(other.const_false, copied);
 
         assert(lit_to_aig.empty());
-        for (auto& it : other.lit_to_aig)
-            lit_to_aig[it.first] = old_id_to_new_aig.at(it.second->id);
-
-        return old_id_to_new_aig;
+        for (const auto& old_map : other.lit_to_aig)
+            lit_to_aig[old_map.first] = aigs.at(old_map.second->id);
     }
 
     AIGManager(const AIGManager& other) { *this = other; }
 
     std::map<uint64_t, AIG*> append_aigs_to(AIGManager& other) const {
         std::map<uint64_t, AIG*> old_id_to_new_aig;
-        for (auto aig : aigs) other.copy_aig(aig, old_id_to_new_aig);
+        for (auto aig : aigs) other.copy_aig_here(*this, aig, old_id_to_new_aig);
         for(auto& it: lit_to_aig) {
-            // NOTE: we may be overriding old ones. It's fine, we can have duplicates
+            if (other.lit_to_aig.count(it.first)) {
+                std::cout << "overriding definition of lit " << it.first << " while appending AIGs" << std::endl;
+            }
+            assert(old_id_to_new_aig.count(it.second->id));
             other.lit_to_aig[it.first] = old_id_to_new_aig.at(it.second->id);
         }
-        // No need to copy const_true and const_false
         return old_id_to_new_aig;
     }
-
-
 
     AIG* new_lit(CMSat::Lit l) {
         return new_lit(l.var(), l.sign());
