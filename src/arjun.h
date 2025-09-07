@@ -131,8 +131,6 @@ struct AIGManager {
 
     // copying AIG from other, aig, to here.
     AIG* copy_aig_here(const AIGManager& other, AIG* aig, std::map<uint64_t, AIG*>& old_id_to_new_aig) {
-        if (aig == other.const_true) return const_true;
-        if (aig == other.const_false) return const_false;
         if (aig == nullptr) return nullptr;
         assert(aig->invariants());
         if (old_id_to_new_aig.count(aig->id)) return old_id_to_new_aig.at(aig->id);
@@ -173,6 +171,8 @@ struct AIGManager {
 
     std::map<uint64_t, AIG*> append_aigs_to(AIGManager& other) const {
         std::map<uint64_t, AIG*> old_id_to_new_aig;
+        old_id_to_new_aig[const_true->id] = other.const_true;
+        old_id_to_new_aig[const_false->id] = other.const_false;
         for (auto aig : aigs) other.copy_aig_here(*this, aig, old_id_to_new_aig);
         for(auto& it: lit_to_aig) {
             if (other.lit_to_aig.count(it.first)) {
@@ -859,17 +859,18 @@ struct SimplifiedCNF {
         }
     }
 
-    void add_aigs_from(const AIGManager& other, const std::map<uint32_t, AIG*>& other_defs) {
+    // Also adds all definitions
+    void add_aigs_and_defs_from(const AIGManager& other, const std::map<uint32_t, AIG*>& other_defs) {
         if (!need_aig) {
             assert(aig_mng.aigs.size() == 2 && defs.empty());
             return;
         }
-        auto old_id_to_new_aig = other.append_aigs_to(aig_mng);
+        auto other_id_to_aig = other.append_aigs_to(aig_mng);
 
         for(const auto& it: other_defs) {
             assert(defs.find(it.first) == defs.end() && "Must not already be defined here");
-            assert(old_id_to_new_aig.count(it.second->id) && "Must have already been copied");
-            defs[it.first] = old_id_to_new_aig[it.second->id];
+            assert(other_id_to_aig.count(it.second->id) && "Must have already been copied");
+            defs[it.first] = other_id_to_aig[it.second->id];
         }
     }
 
