@@ -99,9 +99,18 @@ struct AIGManager {
         const_true->type = t_const;
         const_true->neg = false;
         aigs.push_back(const_true);
-
         const_false = new_not(const_true);
     }
+
+    void clear() {
+        for(auto aig: aigs) delete aig;
+        aigs.clear();
+        lit_to_aig.clear();
+        const_true = nullptr;
+        const_false = nullptr;
+        max_id = 0;
+    }
+    ~AIGManager() { clear(); }
 
     AIG* copy_aig(AIG* aig, std::map<uint64_t, AIG*>& old_id_to_new_aig) {
         if (aig == nullptr) return nullptr;
@@ -125,12 +134,8 @@ struct AIGManager {
     }
 
     std::map<uint64_t, AIG*> replace_with(const AIGManager& other) {
-        for(auto aig: aigs) delete aig;
-        aigs.clear();
-        lit_to_aig.clear();
-        const_true = nullptr;
-        const_false = nullptr;
-        max_id = 0;
+        clear();
+
 
         std::map<uint64_t, AIG*> old_id_to_new_aig;
         assert(aigs.empty());
@@ -146,9 +151,7 @@ struct AIGManager {
         return old_id_to_new_aig;
     }
 
-    AIGManager(const AIGManager& other) {
-        *this = other;
-    }
+    AIGManager(const AIGManager& other) { *this = other; }
 
     std::map<uint64_t, AIG*> append_aigs_to(AIGManager& other) const {
         std::map<uint64_t, AIG*> old_id_to_new_aig;
@@ -161,10 +164,6 @@ struct AIGManager {
         return old_id_to_new_aig;
     }
 
-    ~AIGManager() {
-        for (auto aig : aigs) delete aig;
-        max_id = 0;
-    }
 
 
     AIG* new_lit(CMSat::Lit l) {
