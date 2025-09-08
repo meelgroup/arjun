@@ -362,7 +362,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     interp.fill_picolsat(orig_num_vars);
     interp.fill_var_to_indic(var_to_indic);
 
-    //Initially, all of samping_set is unknown
+    //Initially, all of sampling set is unknown
     vector<char> unknown_set(orig_num_vars, 0);
     vector<uint32_t> unknown;
     set<uint32_t> dep;
