@@ -1157,8 +1157,8 @@ struct SimplifiedCNF {
     void fix_weights(CMSat::SATSolver* solver,
             const std::vector<uint32_t> new_sampl_vars,
             const std::vector<uint32_t>& empty_sampling_vars) {
-        std::set<uint32_t> sampling_vars_set(new_sampl_vars.begin(), new_sampl_vars.end());
-        std::set<uint32_t> opt_sampling_vars_set(opt_sampl_vars.begin(), opt_sampl_vars.end());
+        sampl_vars = std::set<uint32_t>(new_sampl_vars.begin(), new_sampl_vars.end());
+        opt_sampl_vars = std::set<uint32_t>(opt_sampl_vars.begin(), opt_sampl_vars.end());
         bool debug_w = false;
         if (debug_w)
             std::cout << __FUNCTION__ << " [w-debug] orig multiplier_weight: "
@@ -1170,8 +1170,8 @@ struct SimplifiedCNF {
             if (debug_w)
                 std::cout << __FUNCTION__ << " [w-debug] orig unit l: " << l
                     << " w: " << *get_lit_weight(l) << std::endl;
-            sampling_vars_set.erase(l.var());
-            opt_sampling_vars_set.erase(l.var());
+            sampl_vars.erase(l.var());
+            opt_sampl_vars.erase(l.var());
             if (get_weighted()) {
                 *multiplier_weight *= *get_lit_weight(l);
                 if (debug_w)
@@ -1213,22 +1213,17 @@ struct SimplifiedCNF {
                 unset_var_weight(p.first.var());
             }
         }
-        set_sampl_vars(sampling_vars_set, true);
-        set_opt_sampl_vars(opt_sampling_vars_set);
 
         solver->start_getting_constraints(false);
-        sampl_vars = solver->translate_sampl_set(sampling_vars_set, true);
-        opt_sampl_vars = solver->translate_sampl_set(opt_sampling_vars_set, true);
-
+        sampl_vars = solver->translate_sampl_set(sampl_vars, true);
+        opt_sampl_vars = solver->translate_sampl_set(opt_sampl_vars, true);
         auto tmp1 = std::set<uint32_t>(empty_sampling_vars.begin(), empty_sampling_vars.end());
-        auto empty_sampling_vars2 = solver->translate_sampl_set(tmp1, true);
+        auto empties = solver->translate_sampl_set(tmp1, true);
         solver->end_getting_constraints();
 
-        sampling_vars_set = sampl_vars;
-        opt_sampling_vars_set = opt_sampl_vars;
-        for(const auto& v: empty_sampling_vars2) {
-            sampling_vars_set.erase(v);
-            opt_sampling_vars_set.erase(v);
+        for(const auto& v: empties) {
+            sampl_vars.erase(v);
+            opt_sampl_vars.erase(v);
 
             if (debug_w)
                 std::cout << __FUNCTION__ << " [w-debug] empty sampling var: " << v+1 << std::endl;
@@ -1247,11 +1242,9 @@ struct SimplifiedCNF {
                 std::cout << __FUNCTION__ << " [w-debug] empty mul: " << *tmp
                     << " final multiplier_weight: " << *multiplier_weight << std::endl;
         }
-        set_sampl_vars(sampling_vars_set, true);
-        set_opt_sampl_vars(opt_sampling_vars_set);
 
         for(uint32_t i = 0; i < nVars(); i++) {
-            if (opt_sampling_vars_set.count(i) == 0) unset_var_weight(i);
+            if (opt_sampl_vars.count(i) == 0) unset_var_weight(i);
         }
 
         if (debug_w) {
