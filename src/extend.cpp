@@ -164,7 +164,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             cl.push_back(l);
             solver->add_clause(cl);
             interp.add_clause(cl);
-            cnf.opt_sampl_vars.push_back(test_var);
+            cnf.opt_sampl_vars.insert(test_var);
 
         } else if (ret == l_True) {
             // Optimisation: if we see both true and false, then it cannot be independent

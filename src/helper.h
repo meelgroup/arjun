@@ -61,7 +61,6 @@ inline void write_synth(const ArjunNS::SimplifiedCNF& simpcnf, const std::string
     /* outf << "a "; */
     outf << "c p show ";
     auto sampl = simpcnf.sampl_vars;
-    std::sort(sampl.begin(), sampl.end());
     for(const auto& v: sampl) {
         assert(v < simpcnf.nvars);
         outf << v+1  << " ";

@@ -43,13 +43,12 @@ using std::map;
 using namespace ArjunNS;
 
 struct MyTracer : public CaDiCaL::Tracer {
-    MyTracer(uint32_t _orig_num_vars, vector<uint32_t> _opt_sampl_vars, AIGManager* _aig_mng, const ArjunInt::Config& _conf) :
+    MyTracer(uint32_t _orig_num_vars, const set<uint32_t>& _opt_sampl_vars, AIGManager* _aig_mng, const ArjunInt::Config& _conf) :
       conf(_conf),
       aig_mng(_aig_mng),
-      orig_num_vars(_orig_num_vars)
-    {
-      input.insert(_opt_sampl_vars.begin(), _opt_sampl_vars.end());
-    }
+      orig_num_vars(_orig_num_vars),
+      input(_opt_sampl_vars)
+    {}
     const ArjunInt::Config& conf;
     map<uint64_t, vector<Lit>> cls;
     std::map<uint64_t, AIG*> fs_clid;  // clause ID to formula

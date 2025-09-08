@@ -713,8 +713,8 @@ struct SimplifiedCNF {
     bool proj = false;
     bool sampl_vars_set = false;
     bool opt_sampl_vars_set = false;
-    std::vector<uint32_t> sampl_vars;
-    std::vector<uint32_t> opt_sampl_vars; // Filled during synthesis with vars that have been defined already
+    std::set<uint32_t> sampl_vars;
+    std::set<uint32_t> opt_sampl_vars; // Filled during synthesis with vars that have been defined already
 
     uint32_t nvars = 0;
     std::unique_ptr<CMSat::Field> multiplier_weight = nullptr;
@@ -923,8 +923,8 @@ struct SimplifiedCNF {
     void start_with_clean_sampl_vars() {
         assert(sampl_vars.empty());
         assert(opt_sampl_vars.empty());
-        for(uint32_t i = 0; i < nvars; i++) sampl_vars.push_back(i);
-        for(uint32_t i = 0; i < nvars; i++) opt_sampl_vars.push_back(i);
+        for(uint32_t i = 0; i < nvars; i++) sampl_vars.insert(i);
+        for(uint32_t i = 0; i < nvars; i++) opt_sampl_vars.insert(i);
     }
     void add_xor_clause(std::vector<uint32_t>&, bool) { exit(-1); }
     void add_xor_clause(std::vector<CMSat::Lit>&, bool) { exit(-1); }
@@ -940,14 +940,14 @@ struct SimplifiedCNF {
         }
         sampl_vars.clear();
         sampl_vars_set = true;
-        sampl_vars.insert(sampl_vars.begin(), vars.begin(), vars.end());
+        sampl_vars.insert(vars.begin(), vars.end());
         if (!opt_sampl_vars_set) set_opt_sampl_vars(vars);
     }
     const auto& get_sampl_vars() const { return sampl_vars; }
     template<class T> void set_opt_sampl_vars(const T& vars) {
         opt_sampl_vars.clear();
         opt_sampl_vars_set = true;
-        opt_sampl_vars.insert(opt_sampl_vars.begin(), vars.begin(), vars.end());
+        opt_sampl_vars.insert(vars.begin(), vars.end());
     }
 
     void set_multiplier_weight(const std::unique_ptr<CMSat::Field>& m) {
@@ -1025,10 +1025,7 @@ struct SimplifiedCNF {
     }
 
     void strip_opt_sampling_vars() {
-        std::set<uint32_t> tmp(sampl_vars.begin(), sampl_vars.end());
-        for(const auto& w: weights) tmp.insert(w.first);
-        sampl_vars.clear();
-        sampl_vars.insert(sampl_vars.begin(), tmp.begin(), tmp.end());
+        for(const auto& w: weights) sampl_vars.insert(w.first);
         opt_sampl_vars = sampl_vars;
     }
 
@@ -1115,7 +1112,6 @@ struct SimplifiedCNF {
         //Add projection
         outf << "c p show ";
         auto sampl = sampl_vars;
-        std::sort(sampl.begin(), sampl.end());
         for(const auto& v: sampl) {
             assert(v < nvars);
             outf << v+1  << " ";
@@ -1123,7 +1119,6 @@ struct SimplifiedCNF {
         outf << "0\n";
         outf << "c p optshow ";
         sampl = opt_sampl_vars;
-        std::sort(sampl.begin(), sampl.end());
         for(const auto& v: sampl) {
             assert(v < nvars);
             outf << v+1  << " ";
@@ -1218,20 +1213,19 @@ struct SimplifiedCNF {
                 unset_var_weight(p.first.var());
             }
         }
-
         set_sampl_vars(sampling_vars_set, true);
         set_opt_sampl_vars(opt_sampling_vars_set);
 
         solver->start_getting_constraints(false);
-        sampl_vars = solver->translate_sampl_set(new_sampl_vars, true);
-        opt_sampl_vars = solver->translate_sampl_set(opt_sampl_vars, true);
-        auto empty_sampling_vars2 = solver->translate_sampl_set(empty_sampling_vars, true);
+        sampl_vars = solver->translate_sampl_set(sampling_vars_set, true);
+        opt_sampl_vars = solver->translate_sampl_set(opt_sampling_vars_set, true);
+
+        auto tmp1 = std::set<uint32_t>(empty_sampling_vars.begin(), empty_sampling_vars.end());
+        auto empty_sampling_vars2 = solver->translate_sampl_set(tmp1, true);
         solver->end_getting_constraints();
 
-        sampling_vars_set.clear();
-        sampling_vars_set.insert(sampl_vars.begin(), sampl_vars.end());
-        opt_sampling_vars_set.clear();
-        opt_sampling_vars_set.insert(opt_sampl_vars.begin(), opt_sampl_vars.end());
+        sampling_vars_set = sampl_vars;
+        opt_sampling_vars_set = opt_sampl_vars;
         for(const auto& v: empty_sampling_vars2) {
             sampling_vars_set.erase(v);
             opt_sampling_vars_set.erase(v);
@@ -1253,7 +1247,6 @@ struct SimplifiedCNF {
                 std::cout << __FUNCTION__ << " [w-debug] empty mul: " << *tmp
                     << " final multiplier_weight: " << *multiplier_weight << std::endl;
         }
-
         set_sampl_vars(sampling_vars_set, true);
         set_opt_sampl_vars(opt_sampling_vars_set);
 

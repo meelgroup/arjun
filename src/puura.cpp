@@ -243,7 +243,9 @@ void Puura::reverse_bce(SimplifiedCNF& cnf) {
     solver->set_renumber(false);
     solver->set_scc(false);
     set_up_sampl_vars_dont_elim(cnf);
-    solver->set_sampl_vars(cnf.sampl_vars);
+
+    vector<uint32_t> tmp(cnf.sampl_vars.begin(), cnf.sampl_vars.end());
+    solver->set_sampl_vars(tmp);
     solver->reverse_bce();
     delete solver;
 }
@@ -349,7 +351,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     str += string(", must-scc-vrepl, must-renumber,");
     solver->simplify(&dont_elim, &str);
 
-    auto new_sampl_vars = cnf.sampl_vars;
+    std::vector<uint32_t> new_sampl_vars(cnf.sampl_vars.begin(), cnf.sampl_vars.end());
     vector<uint32_t> new_empty_sampl_vars;
     solver->clean_sampl_get_empties(new_sampl_vars, new_empty_sampl_vars);
     if (!cnf.weighted) {
@@ -445,9 +447,6 @@ SimplifiedCNF Puura::get_cnf(
         scnf.red_clauses.push_back(clause);
     }
     solver->end_getting_constraints();
-
-    std::sort(scnf.sampl_vars.begin(), scnf.sampl_vars.end());
-    std::sort(scnf.opt_sampl_vars.begin(), scnf.opt_sampl_vars.end());
 
     if (conf.verb >= 5) {
         std::cout << "w-debug AFTER PURA FINAL sampl_vars    : ";

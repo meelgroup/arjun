@@ -179,7 +179,7 @@ void add_arjun_options() {
     program.add_argument("files").remaining().help("input file and output file");
 }
 
-void print_final_sampl_set(SimplifiedCNF& cnf, const vector<uint32_t>& orig_sampl_vars) {
+void print_final_sampl_set(SimplifiedCNF& cnf, const set<uint32_t>& orig_sampl_vars) {
     cout
     << "c o [arjun] final set size: " << std::setw(7) << cnf.sampl_vars.size()
     << " percent of original: " << std::setw(6) << std::setprecision(3)

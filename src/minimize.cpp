@@ -239,7 +239,8 @@ void Minimize::fill_solver(const ArjunNS::SimplifiedCNF& cnf) {
     solver->new_vars(cnf.nvars);
     for(const auto& cl: cnf.clauses) solver->add_clause(cl);
     for(const auto& cl: cnf.red_clauses) solver->add_red_clause(cl);
-    sampling_vars = cnf.sampl_vars;
+    sampling_vars.clear();
+    sampling_vars.insert(sampling_vars.begin(),cnf.sampl_vars.begin(), cnf.sampl_vars.end());
     if (cnf.opt_sampl_vars_set) {
         if (cnf.sampl_vars != cnf.opt_sampl_vars) {
             cout <<"ERROR: backwards does not support opt sampling set" << endl;
@@ -270,7 +271,7 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf, bool all_indep) {
     if (all_indep) {
         verb_print(2, "[arjun] All variables are independent, filling opt_sampl_vars");
         cnf.opt_sampl_vars.clear();
-        for(uint32_t i = 0; i < cnf.nvars; i++) cnf.opt_sampl_vars.push_back(i);
+        for(uint32_t i = 0; i < cnf.nvars; i++) cnf.opt_sampl_vars.insert(i);
     }
     cnf.fix_weights(solver, sampling_vars, empty_sampling_vars);
 
