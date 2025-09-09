@@ -256,9 +256,8 @@ void do_synthesis() {
     if (cnf.opt_sampl_vars.size() == cnf.nVars()) {
         cout << "c o [arjun] No variables to synthesize" << endl;
         return;
-    } else {
-        cout << "c o [arjun] Num variables to synthesize via manthan:" << (cnf.nVars() - cnf.opt_sampl_vars.size()) << endl;
     }
+    cout << "c o [arjun] Num variables to synthesize via manthan:" << (cnf.nVars() - cnf.opt_sampl_vars.size()) << endl;
     arjun->standalone_manthan(cnf);
 }
 #endif
