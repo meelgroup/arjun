@@ -352,7 +352,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->simplify(&dont_elim, &str);
 
     std::vector<uint32_t> new_sampl_vars(cnf.sampl_vars.begin(), cnf.sampl_vars.end());
-    vector<uint32_t> new_empty_sampl_vars;
+    set<uint32_t> new_empty_sampl_vars;
     solver->clean_sampl_get_empties(new_sampl_vars, new_empty_sampl_vars);
     if (!cnf.weighted) {
         dont_elim.clear();
@@ -381,7 +381,7 @@ SimplifiedCNF Puura::get_cnf(
         SATSolver* solver,
         const SimplifiedCNF& cnf,
         const vector<uint32_t>& new_sampl_vars,
-        const vector<uint32_t>& empty_sampl_vars
+        const set<uint32_t>& empty_sampl_vars
         ) {
     SimplifiedCNF scnf(cnf.fg);
     vector<Lit> clause;

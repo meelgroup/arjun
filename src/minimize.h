@@ -64,7 +64,7 @@ struct Minimize
     CMSat::SATSolver* solver = nullptr;
     bool already_duplicated = false;
     vector<uint32_t> sampling_vars;
-    vector<uint32_t> empty_sampling_vars;
+    set<uint32_t> empty_sampling_vars;
 
     vector<char> seen;
     uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();

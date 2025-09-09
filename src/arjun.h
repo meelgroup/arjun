@@ -1156,9 +1156,8 @@ struct SimplifiedCNF {
 
     void fix_weights(CMSat::SATSolver* solver,
             const std::vector<uint32_t> new_sampl_vars,
-            const std::vector<uint32_t>& empty_sampling_vars) {
+            const std::set<uint32_t>& empty_sampling_vars) {
         sampl_vars = std::set<uint32_t>(new_sampl_vars.begin(), new_sampl_vars.end());
-        opt_sampl_vars = std::set<uint32_t>(opt_sampl_vars.begin(), opt_sampl_vars.end());
         bool debug_w = false;
         if (debug_w)
             std::cout << __FUNCTION__ << " [w-debug] orig multiplier_weight: "
@@ -1217,8 +1216,7 @@ struct SimplifiedCNF {
         solver->start_getting_constraints(false);
         sampl_vars = solver->translate_sampl_set(sampl_vars, true);
         opt_sampl_vars = solver->translate_sampl_set(opt_sampl_vars, true);
-        auto tmp1 = std::set<uint32_t>(empty_sampling_vars.begin(), empty_sampling_vars.end());
-        auto empties = solver->translate_sampl_set(tmp1, true);
+        auto empties = solver->translate_sampl_set(empty_sampling_vars, true);
         solver->end_getting_constraints();
 
         for(const auto& v: empties) {
