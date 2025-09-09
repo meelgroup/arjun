@@ -231,7 +231,10 @@ void do_synthesis() {
     SimplifiedCNF cnf(fg);
     cnf.need_aig = true;
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
-    cnf.clean_idiotic_mccomp_weights();
+    if (cnf.weighted) {
+        cout << "c o [arjun] ERROR: synthesis is not defined over weighted CNFs" << endl;
+        exit(-1);
+    }
     cnf.check_sanity();
     assert(cnf.sampl_vars == cnf.opt_sampl_vars && "Synthesis extends opt_sampl_vars, so it must be the same as sampl_vars");
     if (do_pre_manthan) {
@@ -364,6 +367,9 @@ int main(int argc, char** argv) {
     if (synthesis) {
 #ifdef SYNTH
         do_synthesis();
+#else
+        cout << "c o [arjun] ERROR: synthesis not compiled in" << endl;
+        exit(-1);
 #endif
     } else {
         do_minimize();
