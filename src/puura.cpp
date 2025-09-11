@@ -403,7 +403,7 @@ SimplifiedCNF Puura::get_cnf(
     cnf2.fix_weights(solver, new_sampl_vars, empty_sampl_vars);
 
     solver->start_getting_constraints(false, true);
-    if (cnf.need_aig) get_bve_mapping(cnf, scnf, solver);
+    if (cnf.need_aig) get_bve_into_defs(cnf, scnf, solver);
     if (cnf2.weighted) {
         map<Lit, unique_ptr<Field>> outer_w;
         for(const auto& it: cnf2.weights) {
@@ -466,7 +466,7 @@ SimplifiedCNF Puura::get_cnf(
 
 // We extend the `defs` map in scnf, with the definitions of the elimed vars
 // we just need to map the BVE back to orig vars
-void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSolver* solver) const {
+void Puura::get_bve_into_defs(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSolver* solver) const {
     vector<uint32_t> elimed = solver->get_elimed_vars();
     const auto new_to_orig_var = cnf.get_new_to_orig_var();
 
