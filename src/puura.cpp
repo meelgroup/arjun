@@ -527,6 +527,7 @@ void Puura::get_bve_into_defs(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SAT
 
             for(const auto& l: cl) {
                 if (l.var() == target.var()) continue;
+                assert(scnf.orig_to_new_var.count(l.var()) && "Must be in the map");
                 auto x = scnf.orig_to_new_var[l.var()];
                 assert(x.val == l_Undef);
                 Lit l2 = l ^ x.lit.sign();
