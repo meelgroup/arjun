@@ -464,8 +464,10 @@ SimplifiedCNF Puura::get_cnf(
     return scnf;
 }
 
+// We extend the `defs` map in scnf, with the definitions of the elimed vars
+// we just need to map the BVE back to orig vars
 void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSolver* solver) const {
-    vector<uint32_t> vs = solver->get_elimed_vars();
+    vector<uint32_t> elimed = solver->get_elimed_vars();
     const auto new_to_orig_var = cnf.get_new_to_orig_var();
 
     // We are all in NEW here. So we need to map back to orig, both the
@@ -484,13 +486,13 @@ void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSo
         return ret;
     };
 
-    vector<Lit> vs_orig;
-    for(const auto& v: vs) {
+    vector<Lit> vs_orig_elimed;
+    for(const auto& v: elimed) {
         assert(new_to_orig_var.count(v) && "ust be in the new var set");
-        vs_orig.push_back(new_to_orig_var.at(v));
+        vs_orig_elimed.push_back(new_to_orig_var.at(v));
     }
 
-    for(const auto& target: vs_orig) {
+    for(const auto& target: vs_orig_elimed) {
         vector<vector<Lit>> def;
         def = solver->get_cls_defining_var(target.var());
         def = map_to_orig(def);
