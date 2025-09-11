@@ -756,7 +756,7 @@ struct SimplifiedCNF {
         backbone_done = other.backbone_done;
         weights = other.weights;
         orig_to_new_var = other.orig_to_new_var;
-        replace_aigs_from(other);
+        replace_aigs_and_defs_from(other);
 
         return *this;
     }
@@ -839,7 +839,7 @@ struct SimplifiedCNF {
         }
     }
 
-    void replace_aigs_from(const SimplifiedCNF& other) {
+    void replace_aigs_and_defs_from(const SimplifiedCNF& other) {
         if (!need_aig) {
             assert(!other.need_aig);
             assert(other.aig_mng.aigs.size() == 2 && other.defs.empty());
