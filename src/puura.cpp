@@ -45,6 +45,7 @@ using std::setw;
 using std::setprecision;
 using std::string;
 using std::map;
+using std::pair;
 using std::unique_ptr;
 using std::unique_ptr;
 
@@ -467,6 +468,7 @@ SimplifiedCNF Puura::get_cnf(
 // We extend the `defs` map in scnf, with the definitions of the elimed vars
 // we just need to map the BVE back to orig vars
 void Puura::get_bve_into_defs(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSolver* solver) const {
+    // elimed now contains vars in OLD numbering
     vector<uint32_t> elimed = solver->get_elimed_vars();
     const auto new_to_orig_var = cnf.get_new_to_orig_var();
 
@@ -486,15 +488,17 @@ void Puura::get_bve_into_defs(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SAT
         return ret;
     };
 
-    vector<Lit> vs_orig_elimed;
+    vector<pair<Lit, Lit>> vs_new_cnforig_elimed;
     for(const auto& v: elimed) {
-        assert(new_to_orig_var.count(v) && "ust be in the new var set");
-        vs_orig_elimed.push_back(new_to_orig_var.at(v));
+        assert(new_to_orig_var.count(v) && "Must be in the new var set");
+        vs_new_cnforig_elimed.push_back({Lit(v, false), new_to_orig_var.at(v)});
     }
 
     for(const auto& target: vs_orig_elimed) {
+        const auto n = target.first;
+        const auto o = target.second;
         vector<vector<Lit>> def;
-        def = solver->get_cls_defining_var(target.var());
+        def = solver->get_cls_defining_var(.var());
         def = map_to_orig(def);
 
         uint32_t pos = 0;

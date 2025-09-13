@@ -36,6 +36,7 @@ THE SOFTWARE.
 
 namespace ArjunNS {
 
+static const uint32_t AIG_UNDEF = std::numeric_limits<uint32_t>::max();
 struct FHolder;
 
 enum AIGT {t_and, t_lit, t_const};
@@ -102,6 +103,9 @@ struct AIGManager {
         assert(aigs.size() == max_id);
         const_false = new_not(const_true);
     }
+    bool is_default() const {
+        return aigs.size() == 2 && defs.empty();
+    }
 
     void clear() {
         for(auto aig: aigs) delete aig;
@@ -113,37 +117,39 @@ struct AIGManager {
     }
     ~AIGManager() { clear(); }
 
-    AIG* copy_aig(AIG* aig, std::vector<uint8_t>& copied) {
+    AIG* copy_aig(AIG* aig) {
         if (aig == nullptr) return nullptr;
+
         assert(aig->invariants());
-        if (copied[aig->id]) return aigs.at(aig->id);
+        if (aigs[aig->id]) return aigs.at(aig->id);
 
         AIG* new_aig = new AIG(max_id++);
         new_aig->type = aig->type;
         new_aig->var = aig->var;
         new_aig->neg = aig->neg;
-        new_aig->l = copy_aig(aig->l, copied);
-        new_aig->r = copy_aig(aig->r, copied);
-        aigs.push_back(new_aig);
-        assert(copied[aig->id] == 0 && "children cannot reference parent");
+        new_aig->id = aig->id; // keep the same ID
+        new_aig->l = copy_aig(aig->l);
+        new_aig->r = copy_aig(aig->r);
+        aigs[new_aig->id] = new_aig;
         return new_aig;
     }
 
     // copying AIG from other, aig, to here.
-    AIG* copy_aig_here(const AIGManager& other, AIG* aig, std::map<uint64_t, AIG*>& old_id_to_new_aig) {
-        if (aig == nullptr) return nullptr;
+    AIG* append_aig_to(AIGManager& other, AIG* aig, std::map<uint64_t, uint64_t>& id_to_other_id) const  {
+        assert(aig != nullptr);
         assert(aig->invariants());
-        if (old_id_to_new_aig.count(aig->id)) return old_id_to_new_aig.at(aig->id);
+        if (id_to_other_id.count(aig->id)) return
+            other.aigs[id_to_other_id.at(aig->id)];
 
-        AIG* new_aig = new AIG(max_id++);
+        AIG* new_aig = new AIG(other.max_id++);
         new_aig->type = aig->type;
         new_aig->var = aig->var;
         new_aig->neg = aig->neg;
-        new_aig->l = copy_aig_here(other, aig->l, old_id_to_new_aig);
-        new_aig->r = copy_aig_here(other, aig->r, old_id_to_new_aig);
-        aigs.push_back(new_aig);
-        assert(old_id_to_new_aig.count(aig->id) == 0 && "children cannot reference parent");
-        old_id_to_new_aig[aig->id] = new_aig;
+        new_aig->l = append_aig_to(other, aig->l, id_to_other_id);
+        new_aig->r = append_aig_to(other, aig->r, id_to_other_id);
+        other.aigs.push_back(new_aig);
+        assert(other.aigs.size() == other.max_id);
+        id_to_other_id[aig->id] = new_aig->id;
         return new_aig;
     }
 
@@ -158,30 +164,39 @@ struct AIGManager {
         std::vector<uint8_t> copied(other.max_id, 0);
         max_id = other.max_id;
         assert(aigs.empty());
-        for (auto aig : other.aigs) copy_aig(aig, copied);
-        const_true = copy_aig(other.const_true, copied);
-        const_false = copy_aig(other.const_false, copied);
+        aigs.resize(other.max_id, nullptr);
+
+        const_true = copy_aig(other.const_true);
+        const_false = copy_aig(other.const_false);
+        for (auto aig : other.aigs) copy_aig(aig);
 
         assert(lit_to_aig.empty());
         for (const auto& old_map : other.lit_to_aig)
             lit_to_aig[old_map.first] = aigs.at(old_map.second->id);
+
+        defs = other.defs;
     }
 
     AIGManager(const AIGManager& other) { *this = other; }
 
-    std::map<uint64_t, AIG*> append_aigs_to(AIGManager& other) const {
-        std::map<uint64_t, AIG*> old_id_to_new_aig;
-        old_id_to_new_aig[const_true->id] = other.const_true;
-        old_id_to_new_aig[const_false->id] = other.const_false;
-        for (auto aig : aigs) other.copy_aig_here(*this, aig, old_id_to_new_aig);
+    void append_aigs_to(AIGManager& other) const {
+        std::map<uint64_t, uint64_t> id_to_other_id;
+        id_to_other_id[const_true->id] = other.const_true->id;
+        id_to_other_id[const_false->id] = other.const_false->id;
+        for (auto aig : aigs) append_aig_to(other, aig, id_to_other_id);
         for(auto& it: lit_to_aig) {
             if (other.lit_to_aig.count(it.first)) {
                 std::cout << "overriding definition of lit " << it.first << " while appending AIGs" << std::endl;
             }
-            assert(old_id_to_new_aig.count(it.second->id));
-            other.lit_to_aig[it.first] = old_id_to_new_aig.at(it.second->id);
+            assert(id_to_other_id.count(it.second->id));
+            other.lit_to_aig[it.first] = other.aigs[id_to_other_id.at(it.second->id)];
         }
-        return old_id_to_new_aig;
+
+        for(const auto& it: defs) {
+            assert(defs.find(it.first) == defs.end() && "Must not already be defined here");
+            assert(id_to_other_id.count(it.second) && "Must have already been copied");
+            other.defs[it.first] = id_to_other_id.at(it.second);
+        }
     }
 
     AIG* new_lit(CMSat::Lit l) {
@@ -214,6 +229,7 @@ struct AIGManager {
 
         ret->neg = true;
         aigs.push_back(ret);
+        assert(aigs.size() == max_id);
         return ret;
     }
 
@@ -223,6 +239,7 @@ struct AIGManager {
         ret->l = l;
         ret->r = r;
         aigs.push_back(ret);
+        assert(aigs.size() == max_id);
         return ret;
     }
 
@@ -233,6 +250,7 @@ struct AIGManager {
         ret->l = new_not(l);
         ret->r = new_not(r);
         aigs.push_back(ret);
+        assert(aigs.size() == max_id);
         return ret;
     }
 
@@ -257,6 +275,8 @@ struct AIGManager {
     // Due to copying we don'g guarantee uniqueness
     AIG* const_false = nullptr;
     uint64_t max_id = 0;
+
+    std::map<uint32_t, uint64_t> defs; //definition of variables in terms of AIG id
 };
 
 class FMpz : public CMSat::Field {
@@ -738,7 +758,6 @@ struct SimplifiedCNF {
     std::map<uint32_t, Weight> weights;
     std::map<uint32_t, CMSat::VarMap> orig_to_new_var;
     AIGManager aig_mng;
-    std::map<uint32_t, AIG*> defs; //definition of variables in terms of AIG. ORIGINAL number space
 
     SimplifiedCNF& operator=(const SimplifiedCNF& other) {
         fg = other.fg->dup();
@@ -842,36 +861,22 @@ struct SimplifiedCNF {
     void replace_aigs_and_defs_from(const SimplifiedCNF& other) {
         if (!need_aig) {
             assert(!other.need_aig);
-            assert(other.aig_mng.aigs.size() == 2 && other.defs.empty());
+            assert(other.aig_mng.aigs.size() == 2 && other.aig_mng.defs.empty());
             return;
         }
 
         // Copy AIGs
         aig_mng = other.aig_mng;
-        std::map<uint64_t, AIG*> id_to_aig;
-        for(const auto& aig: aig_mng.aigs) id_to_aig[aig->id] = aig;
-
-        // Copy defs
-        defs.clear();
-        for(const auto& it: other.defs) {
-            assert(id_to_aig.count(it.second->id) && "Must have already been copied");
-            defs[it.first] = id_to_aig[it.second->id];
-        }
     }
 
     // Also adds all definitions
     void add_aigs_and_defs_from(const AIGManager& other, const std::map<uint32_t, AIG*>& other_defs) {
         if (!need_aig) {
-            assert(aig_mng.aigs.size() == 2 && defs.empty());
+            assert(aig_mng.is_default());
             return;
         }
         auto other_id_to_aig = other.append_aigs_to(aig_mng);
 
-        for(const auto& it: other_defs) {
-            assert(defs.find(it.first) == defs.end() && "Must not already be defined here");
-            assert(other_id_to_aig.count(it.second->id) && "Must have already been copied");
-            defs[it.first] = other_id_to_aig[it.second->id];
-        }
     }
 
     SimplifiedCNF(const SimplifiedCNF& other) {
