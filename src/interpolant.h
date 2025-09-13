@@ -79,14 +79,13 @@ public:
     void generate_interpolant(const vector<Lit>& assumptions, uint32_t test_var, SimplifiedCNF& cnf);
     void add_clause(const vector<Lit>& cl);
     const AIGManager& get_aig_mng() const { return aig_mng; }
-    const map<uint32_t, AIG*>& get_defs() const { return defs; }
     bool evaluate(const vector<CMSat::lbool>& vals, uint32_t test_var) {
-        if (!defs.count(test_var)) {
+        if (!aig_mng.defs.count(test_var)) {
             cout << "ERROR: Variable " << test_var+1 << " not defined by this interpolant" << endl;
-            assert(defs.count(test_var) && "Don't query variables that haven't been defined, please");
+            assert(aig_mng.defs.count(test_var) && "Don't query variables that haven't been defined, please");
             exit(-1);
         }
-        return ::evaluate(vals, defs[test_var], defs);
+        return ::evaluate(vals, aig_mng.defs.at(test_var), aig_mng.defs);
     }
 
     // Internal really
@@ -101,6 +100,5 @@ private:
     uint32_t orig_num_vars;
     vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
     AIGManager aig_mng;
-    map<uint32_t, AIG*> defs; // the definitions of the variables
 };
 

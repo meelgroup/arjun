@@ -187,7 +187,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
 
-    cnf.add_aigs_and_defs_from(interp.get_aig_mng(), interp.get_defs());
+    cnf.add_aigs_and_defs_from(interp.get_aig_mng());
 }
 
 void Extend::extend_round(SimplifiedCNF& cnf) {

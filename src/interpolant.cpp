@@ -205,7 +205,7 @@ void Interpolant::generate_interpolant(
     cdcl->disconnect_proof_tracer(&t);
     delete cdcl;
 
-    defs[test_var] = t.out;
+    aig_mng.defs[test_var] = t.out;
     verb_print(1, "definition of var: " << test_var+1 << " is: " << t.out);
     verb_print(1, "----------------------------");
 }

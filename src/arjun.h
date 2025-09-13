@@ -174,7 +174,10 @@ struct AIGManager {
         for (const auto& old_map : other.lit_to_aig)
             lit_to_aig[old_map.first] = aigs.at(old_map.second->id);
 
-        defs = other.defs;
+        for(const auto& it: other.defs) {
+            assert(defs.find(it.first) == defs.end() && "Must not already be defined here");
+            defs[it.first] = aigs[it.second->id];
+        }
     }
 
     AIGManager(const AIGManager& other) { *this = other; }
@@ -194,9 +197,18 @@ struct AIGManager {
 
         for(const auto& it: defs) {
             assert(defs.find(it.first) == defs.end() && "Must not already be defined here");
-            assert(id_to_other_id.count(it.second) && "Must have already been copied");
-            other.defs[it.first] = id_to_other_id.at(it.second);
+            assert(id_to_other_id.count(it.second->id) && "Must have already been copied");
+            other.defs[it.first] = other.aigs[id_to_other_id.at(it.second->id)];
         }
+    }
+
+    bool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var) const {
+        if (defs.find(var) == defs.end()) {
+            std::cout << "ERROR: Variable " << var+1 << " not defined" << std::endl;
+            assert(defs.find(var) != defs.end() && "Must be defined");
+            exit(-1);
+        }
+        return ArjunNS::evaluate(vals, defs.find(var)->second, defs);
     }
 
     AIG* new_lit(CMSat::Lit l) {
@@ -276,7 +288,7 @@ struct AIGManager {
     AIG* const_false = nullptr;
     uint64_t max_id = 0;
 
-    std::map<uint32_t, uint64_t> defs; //definition of variables in terms of AIG id
+    std::map<uint32_t, AIG*> defs; //definition of variables in terms of AIG id
 };
 
 class FMpz : public CMSat::Field {
@@ -869,13 +881,12 @@ struct SimplifiedCNF {
         aig_mng = other.aig_mng;
     }
 
-    // Also adds all definitions
-    void add_aigs_and_defs_from(const AIGManager& other, const std::map<uint32_t, AIG*>& other_defs) {
+    void add_aigs_and_defs_from(const AIGManager& other) {
         if (!need_aig) {
             assert(aig_mng.is_default());
             return;
         }
-        auto other_id_to_aig = other.append_aigs_to(aig_mng);
+        other.append_aigs_to(aig_mng);
 
     }
 
@@ -1275,19 +1286,14 @@ struct SimplifiedCNF {
     }
 
     bool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var) const {
-        if (defs.find(var) == defs.end()) {
-            std::cout << "ERROR: Variable " << var+1 << " not defined" << std::endl;
-            assert(defs.find(var) != defs.end() && "Must be defined");
-            exit(-1);
-        }
-        return ArjunNS::evaluate(vals, defs.find(var)->second, defs);
+        return aig_mng.evaluate(vals, var);
     }
 
     std::set<uint32_t> get_vars_need_definition() const {
         std::set<uint32_t> ret;
         std::set<uint32_t> osv(opt_sampl_vars.begin(), opt_sampl_vars.end());
         for(uint32_t i = 0; i < nvars; i++) {
-            if (defs.find(i) == defs.end() && !osv.count(i))
+            if (aig_mng.defs.find(i) == aig_mng.defs.end() && !osv.count(i))
                 ret.insert(i);
         }
         return ret;
@@ -1300,8 +1306,8 @@ struct SimplifiedCNF {
             if (aig->var == v) return true;
 
             /// Need to be recursive
-            if (defs.find(aig->var) != defs.end()) {
-                AIG* aig2 = defs.at(aig->var);
+            if (aig_mng.defs.find(aig->var) != aig_mng.defs.end()) {
+                AIG* aig2 = aig_mng.defs.at(aig->var);
                 return aig_contains(aig2, v);
             }
             return false;
@@ -1314,23 +1320,24 @@ struct SimplifiedCNF {
         exit(-1);
     }
 
+    // Any definitions that contain v in their AIG,
+    // it cannot depend on
     std::set<uint32_t> get_cannot_depend_on(const uint32_t v) const {
         assert(false && "defs is original number space but v is not... below is broken");
-        if (defs.find(v) != defs.end()) {
+        if (aig_mng.defs.find(v) != aig_mng.defs.end()) {
             std::cout << "ERROR: Variable " << v+1 << " already defined, why query what it cannot depend on???" << std::endl;
             assert(false);
             exit(-1);
         }
-        std::set<uint32_t> osv(opt_sampl_vars.begin(), opt_sampl_vars.end());
-        if (osv.count(v)) {
+        if (opt_sampl_vars.count(v)) {
             std::cout << "ERROR: Variable " << v+1 << " is in opt sampling set, why query what it cannot depend on???" << std::endl;
             assert(false);
             exit(-1);
         }
 
         std::set<uint32_t> ret;
-        for(const auto& it: defs) {
-            if (osv.count(it.first)) {
+        for(const auto& it: aig_mng.defs) {
+            if (opt_sampl_vars.count(it.first)) {
                 // The extended input we can always depend on
                 continue;
             }
