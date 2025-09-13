@@ -91,7 +91,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     for (const auto& v: cnf.opt_sampl_vars) input.insert(v);
     for (uint32_t i = 0; i < cnf.nVars(); i++) {
         assert(false && "beware, defs below is in original numbering, so this won't work below");
-        if (input.count(i) == 0 && !cnf.defs.count(i)) to_define.insert(i);
+        if (input.count(i) == 0 && !cnf.aig_mng.defs.count(i)) to_define.insert(i);
     }
     dependency_mat.resize(cnf.nVars());
     for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);

@@ -404,7 +404,7 @@ SimplifiedCNF Puura::get_cnf(
     cnf2.fix_weights(solver, new_sampl_vars, empty_sampl_vars);
 
     solver->start_getting_constraints(false, true);
-    if (cnf.need_aig) get_bve_into_defs(cnf, scnf, solver);
+    if (cnf.need_aig) get_bve_into_defs(scnf, solver);
     if (cnf2.weighted) {
         map<Lit, unique_ptr<Field>> outer_w;
         for(const auto& it: cnf2.weights) {
@@ -467,46 +467,17 @@ SimplifiedCNF Puura::get_cnf(
 
 // We extend the `defs` map in scnf, with the definitions of the elimed vars
 // we just need to map the BVE back to orig vars
-void Puura::get_bve_into_defs(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSolver* solver) const {
-    // elimed now contains vars in OLD numbering
+void Puura::get_bve_into_defs(SimplifiedCNF& scnf, SATSolver* solver) const {
     vector<uint32_t> elimed = solver->get_elimed_vars();
-    const auto new_to_orig_var = cnf.get_new_to_orig_var();
-
-    // We are all in NEW here. So we need to map back to orig, both the
-    // definition and the target
-    auto map_to_orig = [&new_to_orig_var](const vector<vector<Lit>>& def) {
-        vector<vector<Lit>> ret;
-        for(const auto& cl: def) {
-            vector<Lit> new_cl;
-            for(const auto& l: cl) {
-                assert(new_to_orig_var.count(l.var()) && "Must be in the new var set");
-                const Lit l2 = new_to_orig_var.at(l.var());
-                new_cl.push_back(l2 ^ l.sign());
-            }
-            ret.push_back(new_cl);
-        }
-        return ret;
-    };
-
-    vector<pair<Lit, Lit>> vs_new_cnforig_elimed;
-    for(const auto& v: elimed) {
-        assert(new_to_orig_var.count(v) && "Must be in the new var set");
-        vs_new_cnforig_elimed.push_back({Lit(v, false), new_to_orig_var.at(v)});
-    }
-
-    for(const auto& target: vs_orig_elimed) {
-        const auto n = target.first;
-        const auto o = target.second;
-        vector<vector<Lit>> def;
-        def = solver->get_cls_defining_var(.var());
-        def = map_to_orig(def);
+    for(const auto& target: elimed) {
+        auto def = solver->get_cls_defining_var(target);
 
         uint32_t pos = 0;
         uint32_t neg = 0;
         for(const auto& cl: def) {
             bool found_this_cl = false;
             for(const auto& l: cl) {
-                if (l.var() != target.var()) continue;
+                if (l.var() != target) continue;
                 found_this_cl = true;
                 if (l.sign()) neg++;
                 else pos++;
@@ -522,7 +493,7 @@ void Puura::get_bve_into_defs(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SAT
             // Make sure only one side is used, the smaller side
             bool ok = false;
             for(const auto& l: cl) {
-                if (l.var() == target.var()) {
+                if (l.var() == target) {
                     if (l.sign() == sign) ok = true;
                     break;
                 }
@@ -530,18 +501,15 @@ void Puura::get_bve_into_defs(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SAT
             if (!ok) continue;
 
             for(const auto& l: cl) {
-                if (l.var() == target.var()) continue;
-                assert(scnf.orig_to_new_var.count(l.var()) && "Must be in the map");
-                auto x = scnf.orig_to_new_var[l.var()];
-                assert(x.val == l_Undef);
-                Lit l2 = l ^ x.lit.sign();
-                AIG* aig = scnf.aig_mng.new_lit(~l2);
+                if (l.var() == target) continue;
+                // TODO wait, this is NOT initialized inside get_cnf!!! This will FAIL
+                AIG* aig = scnf.aig_mng.new_lit(l);
                 current = scnf.aig_mng.new_and(current, aig);
             }
             overall = scnf.aig_mng.new_or(overall, current);
         }
-        if (sign ^ target.sign()) overall = scnf.aig_mng.new_not(overall);
-        scnf.defs[target.var()] = overall;
+        if (sign) overall = scnf.aig_mng.new_not(overall);
+        scnf.aig_mng.defs[target] = overall;
     }
 }
 
