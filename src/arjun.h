@@ -954,7 +954,11 @@ struct SimplifiedCNF {
         auto it = weights.find(v);
         if (it != weights.end()) weights.erase(it);
     }
+
     void set_lit_weight(CMSat::Lit lit, const std::unique_ptr<CMSat::Field>& w) {
+        set_lit_weight(lit, *w);
+    }
+    void set_lit_weight(CMSat::Lit lit, const CMSat::Field& w) {
         assert(weighted);
         if (!fg->weighted()) {
           std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
@@ -965,18 +969,18 @@ struct SimplifiedCNF {
         if (it == weights.end()) {
             Weight weight(fg);
             if (lit.sign()) {
-                *weight.neg = *w;
+                *weight.neg = w;
                 *weight.pos = *fg->one();
-                *weight.pos -= *w;}
+                *weight.pos -= w;}
             else {
-                *weight.pos = *w;
+                *weight.pos = w;
                 *weight.neg = *fg->one();
-                *weight.neg -= *w;}
+                *weight.neg -= w;}
             weights[lit.var()] = weight;
             return;
         } else {
-            if (!lit.sign()) *it->second.pos = *w;
-            else *it->second.neg = *w;
+            if (!lit.sign()) *it->second.pos = w;
+            else *it->second.neg = w;
         }
     }
     void set_weighted(bool _weighted) { weighted = _weighted; }
