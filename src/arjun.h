@@ -907,10 +907,10 @@ struct SimplifiedCNF {
         for(uint32_t i = 0; i < nvars; i++) sampl_vars.push_back(i);
         for(uint32_t i = 0; i < nvars; i++) opt_sampl_vars.push_back(i);
     }
-    void add_xor_clause(std::vector<uint32_t>&, bool) { exit(-1); }
-    void add_xor_clause(std::vector<CMSat::Lit>&, bool) { exit(-1); }
-    void add_clause(std::vector<CMSat::Lit>& cl) { clauses.push_back(cl); }
-    void add_red_clause(std::vector<CMSat::Lit>& cl) { red_clauses.push_back(cl); }
+    void add_xor_clause(const std::vector<uint32_t>&, bool) { exit(-1); }
+    void add_xor_clause(const std::vector<CMSat::Lit>&, bool) { exit(-1); }
+    void add_clause(const std::vector<CMSat::Lit>& cl) { clauses.push_back(cl); }
+    void add_red_clause(const std::vector<CMSat::Lit>& cl) { red_clauses.push_back(cl); }
     bool get_sampl_vars_set() const { return sampl_vars_set; }
     bool get_opt_sampl_vars_set() const { return opt_sampl_vars_set; }
     template<class T>
