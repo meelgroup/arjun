@@ -44,8 +44,8 @@
         stdenv.mkDerivation {
           name = "ensmallen";
           src = fetchzip {
-            url = "https://ensmallen.org/files/ensmallen-2.21.1.tar.gz";
-            hash = "sha256-6LZooaR0rmqWgEm0AxmWoVPuIahjOfwSFu5cssc7LA8=";
+            url = "https://ensmallen.org/files/ensmallen-2.22.2.tar.gz";
+            hash = "sha256-awM1Si6AcbAi4bfr2nrcGngcqTYMp9m6g3UPpMC4/Ok=";
           };
           nativeBuildInputs = [ cmake ];
           buildInputs = [ armadillo ];
