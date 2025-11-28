@@ -907,14 +907,33 @@ struct SimplifiedCNF {
         for(uint32_t i = 0; i < nvars; i++) sampl_vars.push_back(i);
         for(uint32_t i = 0; i < nvars; i++) opt_sampl_vars.push_back(i);
     }
+    void check_var(const uint32_t v) const {
+        if (v >= nVars()) {
+            std::cout << "ERROR: Tried to access a variable that is too large" << std::endl;
+            std::cout << "var: " << v+1 << std::endl;
+            std::cout << "nvars: " << nVars() << std::endl;
+            assert(v < nVars());
+            exit(-1);
+        }
+    }
+    void check_clause(const std::vector<CMSat::Lit>& cl) const {
+        for(const auto& l: cl) check_var(l.var());
+    }
     void add_xor_clause(const std::vector<uint32_t>&, bool) { exit(-1); }
     void add_xor_clause(const std::vector<CMSat::Lit>&, bool) { exit(-1); }
-    void add_clause(const std::vector<CMSat::Lit>& cl) { clauses.push_back(cl); }
-    void add_red_clause(const std::vector<CMSat::Lit>& cl) { red_clauses.push_back(cl); }
+    void add_clause(const std::vector<CMSat::Lit>& cl) {
+        check_clause(cl);
+        clauses.push_back(cl);
+    }
+    void add_red_clause(const std::vector<CMSat::Lit>& cl) {
+        check_clause(cl);
+        red_clauses.push_back(cl);
+    }
     bool get_sampl_vars_set() const { return sampl_vars_set; }
     bool get_opt_sampl_vars_set() const { return opt_sampl_vars_set; }
     template<class T>
     void set_sampl_vars(const T& vars, bool ignore = false) {
+        for(const auto& v: vars) check_var(v);
         if (!ignore) {
             assert(sampl_vars.empty());
             assert(sampl_vars_set == false);
@@ -926,6 +945,7 @@ struct SimplifiedCNF {
     }
     const auto& get_sampl_vars() const { return sampl_vars; }
     template<class T> void set_opt_sampl_vars(const T& vars) {
+        for(const auto& v: vars) check_var(v);
         opt_sampl_vars.clear();
         opt_sampl_vars_set = true;
         opt_sampl_vars.insert(opt_sampl_vars.begin(), vars.begin(), vars.end());
@@ -959,6 +979,7 @@ struct SimplifiedCNF {
         set_lit_weight(lit, *w);
     }
     void set_lit_weight(CMSat::Lit lit, const CMSat::Field& w) {
+        check_var(lit.var());
         assert(weighted);
         if (!fg->weighted()) {
           std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
@@ -1118,6 +1139,7 @@ struct SimplifiedCNF {
     }
 
     bool weight_set(uint32_t v) const {
+        check_var(v);
         if (!fg->weighted()) {
           std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
           exit(-1);
@@ -1147,6 +1169,8 @@ struct SimplifiedCNF {
     void fix_weights(CMSat::SATSolver* solver,
             const std::vector<uint32_t> new_sampl_vars,
             const std::vector<uint32_t>& empty_sampling_vars) {
+        for(const auto& v: new_sampl_vars) check_var(v);
+        for(const auto& v: empty_sampling_vars) check_var(v);
         std::set<uint32_t> sampling_vars_set(new_sampl_vars.begin(), new_sampl_vars.end());
         std::set<uint32_t> opt_sampling_vars_set(opt_sampl_vars.begin(), opt_sampl_vars.end());
         bool debug_w = false;
@@ -1271,6 +1295,7 @@ struct SimplifiedCNF {
     }
 
     bool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var) const {
+        check_var(var);
         if (defs.find(var) == defs.end()) {
             std::cout << "ERROR: Variable " << var+1 << " not defined" << std::endl;
             assert(defs.find(var) != defs.end() && "Must be defined");
@@ -1290,6 +1315,7 @@ struct SimplifiedCNF {
     }
 
     bool aig_contains(const AIG* aig, const uint32_t v) const {
+        check_var(v);
         if (aig == nullptr) return false;
         assert(aig->invariants());
         if (aig->type == t_lit) {
