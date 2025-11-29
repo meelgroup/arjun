@@ -105,6 +105,12 @@ jobs:
        sudo cp cadiback/libcadiback.so .
        sudo cp cadical/build/libcadical.so .
 
+    - name: Copy cadiback and cadical libs
+      if: matrix.staticcompile == 'OFF' && contains(matrix.os, 'ubuntu')
+      run: |
+       sudo cp cadiback/libcadiback.so /usr/lib/
+       sudo cp cadical/build/libcadical.so /usr/lib/
+
     - name: Checkout CMS
       uses: actions/checkout@v4
       with:
