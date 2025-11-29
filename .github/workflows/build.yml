@@ -212,6 +212,22 @@ jobs:
     - name: Test
       run: ctest -C ${{matrix.build_type}} --verbose
 
+    - name: Copy cadiback and cadical libs
+      if: contains(matrix.os, 'macos') && matrix.staticcompile == 'OFF'
+      run: |
+       sudo cp cadiback/libcadiback.so .
+       sudo cp cadical/build/libcadical.so .
+
+    - name: run it to check it executes
+      run: |
+        echo "Running version command"
+        ./project/build/arjun --version
+        echo $?
+        echo "Running help command"
+        ./project/build/arjun --help
+        echo $?
+
+
     - name: Upload Artifact - Linux
       if: contains(matrix.os, 'ubuntu') && matrix.staticcompile == 'ON' && !contains(matrix.os, 'arm')
       uses: actions/upload-artifact@v4
