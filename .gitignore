@@ -7,3 +7,5 @@ examples
 neovide_backtraces.log
 /result
 /.ccls-cache
+CLAUDE.md
+.claude

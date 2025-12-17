@@ -72,6 +72,7 @@ int main()
     cnf.add_clause(clause);
 
     vector<uint32_t> proj;
+    proj.reserve(100);
     for(uint32_t i = 0; i < 100; i++) proj.push_back(i);
     cnf.set_sampl_vars(proj);
 

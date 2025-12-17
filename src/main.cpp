@@ -61,7 +61,7 @@ argparse::ArgumentParser program = argparse::ArgumentParser("arjun", ArjunNS::Ar
         argparse::default_arguments::help);
 double start_time;
 ArjunInt::Config conf;
-ArjunNS::Arjun* arjun = nullptr;
+std::unique_ptr<ArjunNS::Arjun> arjun;
 string input_file;
 string elimtofile;
 
@@ -287,7 +287,7 @@ void do_minimize() {
 }
 
 int main(int argc, char** argv) {
-    arjun = new ArjunNS::Arjun;
+    arjun = std::make_unique<ArjunNS::Arjun>();
     #if defined(__GNUC__) && defined(__linux__)
     feenableexcept(FE_INVALID   | FE_DIVBYZERO | FE_OVERFLOW);
     #endif
@@ -312,12 +312,12 @@ int main(int argc, char** argv) {
     } catch (const std::exception& err) {
         std::cerr << err.what() << std::endl;
         std::cerr << program;
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
     if (etof_conf.sbva_tiebreak != 0 && etof_conf.sbva_tiebreak != 1) {
         cout << "Unrecognized tie break: sbva/bva allowed." << endl;
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
     if (conf.verb) {
@@ -334,13 +334,13 @@ int main(int argc, char** argv) {
             break;
         default:
             cout << "c o [arjun] ERROR: Unknown mode" << endl;
-            exit(-1);
+            exit(EXIT_FAILURE);
     }
 
     if (program["version"] == true) exit(0);
 
     start_time = cpuTime();
-    set_config(arjun);
+    set_config(arjun.get());
 
     //parsing the input
     vector<std::string> files;
@@ -349,11 +349,11 @@ int main(int argc, char** argv) {
         if (files.size() >= 3) {
             cout << "ERROR: you can only pass at most 3 positional parameters: an INPUT file"
                 ", optionally an OUTPUT file, and optionally a RECOVER file" << endl;
-            exit(-1);
+            exit(EXIT_FAILURE);
         }
     } catch (std::logic_error& e) {
         cout << "ERROR: you must give at least an input file" << endl;
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
     input_file = files[0];
@@ -371,6 +371,5 @@ int main(int argc, char** argv) {
     cout << "c o [arjun] All done. T: " << std::setprecision(2) << std::fixed
         << (cpuTime() - start_time) << endl;
 
-    delete arjun;
     return 0;
 }

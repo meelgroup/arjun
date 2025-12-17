@@ -69,7 +69,7 @@ void check_duplicated(bool duplicated) {
     if (!duplicated) return;
     cout << "ERROR: manipulating the solver AFTER call to indep support manipulation" << endl;
     assert(false);
-    exit(-1);
+    exit(EXIT_FAILURE);
 }
 
 DLL_PUBLIC Arjun::Arjun() { arjdata = new ArjPrivateData; }
@@ -256,6 +256,7 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
                 etof_conf.sbva_cls_cutoff, etof_conf.sbva_lits_cutoff, etof_conf.sbva_tiebreak);
     if (etof_conf.all_indep) {
         vector<uint32_t> all_vars;
+        all_vars.reserve(cnf.nvars);
         for(uint32_t i = 0; i < cnf.nvars; i++) all_vars.push_back(i);
         cnf.set_opt_sampl_vars(all_vars);
     } else {

@@ -97,7 +97,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     add_all_indics_except(no_need);
 
     // set up interpolant
-    interp.solver = solver;
+    interp.solver = solver.get();
     interp.fill_picolsat(orig_num_vars);
     interp.fill_var_to_indic(var_to_indic);
 
@@ -441,7 +441,7 @@ void Extend::get_incidence() {
 
 void Extend::fill_solver(const SimplifiedCNF& cnf) {
     assert(solver == nullptr);
-    solver = new SATSolver;
+    solver = std::make_unique<SATSolver>();
     solver->set_verbosity(conf.verb);
     solver->set_prefix("c o ");
     solver->set_find_xors(false);

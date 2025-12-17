@@ -85,7 +85,7 @@ public:
         if (!defs.count(test_var)) {
             cout << "ERROR: Variable " << test_var+1 << " not defined by this interpolant" << endl;
             assert(defs.count(test_var) && "Don't query variables that haven't been defined, please");
-            exit(-1);
+            exit(EXIT_FAILURE);
         }
         return ::evaluate(vals, defs[test_var], defs);
     }
