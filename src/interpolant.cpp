@@ -47,7 +47,7 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
   assert(rantec.size() >= 2);
 
   const uint64_t id1 = rantec[0];
-  AIG* aig = fs_clid[id1];
+  auto aig = fs_clid[id1];
   set<Lit> resolvent(cls[id1].begin(),cls[id1].end());
   for(uint32_t i = 1; i < rantec.size(); i++) {
       if (conf.verb >= 2) {
@@ -70,8 +70,8 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
       }
       assert(res_lit != lit_Undef);
       bool input_or_copy = input.count(res_lit.var()) || res_lit.var() >= (uint32_t)orig_num_vars;
-      if (input_or_copy) aig = aig_mng->new_and(aig, fs_clid[id2]);
-      else aig = aig_mng->new_or(aig, fs_clid[id2]);
+      if (input_or_copy) aig = AIG::new_and(aig, fs_clid[id2]);
+      else aig = AIG::new_or(aig, fs_clid[id2]);
   }
   fs_clid[id] = aig;
   verb_print(2, "intermediate formula: " << fs_clid[id]);
@@ -101,8 +101,8 @@ void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int>
           int32_t v = abs(l)-1;
           if (input.count(v)) cl.push_back(pl_to_lit(l));
       }
-      AIG* aig = aig_mng->new_const(false);
-      for(const auto& l: cl) aig = aig_mng->new_or(aig, aig_mng->new_lit(l));
+      auto aig = aig_mng->new_const(false);
+      for(const auto& l: cl) aig = AIG::new_or(aig, aig_mng->new_lit(l));
       fs_clid[id] = aig;
   } else {
       fs_clid[id] = aig_mng->new_const(true);

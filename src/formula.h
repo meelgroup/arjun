@@ -52,7 +52,7 @@ struct FHolder {
         std::vector<std::vector<CMSat::Lit>> clauses;
         CMSat::Lit out = CMSat::lit_Error;
         bool finished = false;
-        AIG* aig = nullptr;
+        std::shared_ptr<AIG> aig = nullptr;
     };
 
     Formula constant_formula(bool value) {
@@ -68,14 +68,14 @@ struct FHolder {
             ret = compose_ite(fleft, fright, branch.out);
             ret.clauses.insert(ret.clauses.end(), branch.clauses.begin(), branch.clauses.end());
         }
-        ret.aig = aig_mng.new_ite(fleft.aig, fright.aig, branch.aig);
+        ret.aig = AIG::new_ite(fleft.aig, fright.aig, branch.aig);
         return ret;
     }
 
     Formula neg(const Formula& f) {
         Formula ret = f;
         if (solver) ret.out = ~f.out;
-        ret.aig = aig_mng.new_not(f.aig);
+        ret.aig = AIG::new_not(f.aig);
         return ret;
     }
 
@@ -98,7 +98,7 @@ struct FHolder {
             ret.clauses.push_back({l, ~fright.out});
             ret.out = l;
         }
-        ret.aig = aig_mng.new_or(fleft.aig, fright.aig);
+        ret.aig = AIG::new_or(fleft.aig, fright.aig);
         return ret;
     }
 

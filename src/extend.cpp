@@ -22,7 +22,6 @@
  THE SOFTWARE.
  */
 
-#include <cmath>
 #include <algorithm>
 #include <cstdint>
 #include <iomanip>

@@ -38,207 +38,191 @@ namespace ArjunNS {
 
 struct FHolder;
 
+class AIG;
+class AIGManager;
+struct SimplifiedCNF;
+using aig_ptr = std::shared_ptr<AIG>;
+
 enum AIGT {t_and, t_lit, t_const};
-struct AIG {
-    AIG(uint64_t _id = 0) : id(_id) {}
-    AIG() = delete;
-    AIGT type = t_const;
-    uint32_t var = std::numeric_limits<uint32_t>::max();
-    bool neg = false;
-    AIG* l = nullptr;
-    AIG* r = nullptr;
-    uint64_t id = 0;
+class AIG {
+public:
+    AIG() = default;
+    ~AIG() = default;
+    AIG(const AIG&) = delete;
+    AIG& operator=(const AIG&) = delete;
 
     bool invariants() const {
         if (type == t_lit) {
-            return l == nullptr && r == nullptr && var != std::numeric_limits<uint32_t>::max();
+            return l == nullptr && r == nullptr && var != none_var;
         }
         if (type == t_const) {
-            return l == nullptr && r == nullptr && var == std::numeric_limits<uint32_t>::max();
+            return l == nullptr && r == nullptr && var == none_var;
         }
         if (type == t_and) {
-            return l != nullptr && r != nullptr && var == std::numeric_limits<uint32_t>::max();
+            return l != nullptr && r != nullptr && var == none_var;
         }
         assert(false && "Unknown AIG type");
         std::exit(EXIT_FAILURE);
     }
-};
 
-inline bool evaluate(const std::vector<CMSat::lbool>& vals, const AIG* aig, const std::map<uint32_t, AIG*>& defs) {
-    assert(aig->invariants());
-    if (aig->type == t_lit) {
-        if (defs.find(aig->var) != defs.end()) {
-            // NOTE: this is highly inefficient, because this should be cached
-            assert(vals.size() < aig->var || vals[aig->var] == CMSat::l_Undef); // Must not be part of input
-            return aig->neg ^ evaluate(vals, defs.at(aig->var), defs);
-        } else {
-            assert(aig->var < vals.size());
-            assert(vals[aig->var] != CMSat::l_Undef);
-            bool ret = vals[aig->var] == CMSat::l_True;
-            ret ^= aig->neg;
-            return ret;
-        }
-    }
-
-    if (aig->type == t_const) return aig->neg == false;
-
-    if (aig->type == t_and) {
-        const bool l = evaluate(vals, aig->l, defs);
-        const bool r = evaluate(vals, aig->r, defs);
-        bool ret = l && r;
-        if (aig->neg) ret = !ret;
-        return ret;
-    }
-    assert(false && "Unknown AIG type");
-    exit(EXIT_FAILURE);
-}
-
-struct AIGManager {
-    AIGManager() {
-        const_true = new AIG(max_id++);
-        const_true->type = t_const;
-        const_true->neg = false;
-        aigs.push_back(const_true);
-        const_false = new_not(const_true);
-    }
-
-    void clear() {
-        for(auto aig: aigs) delete aig;
-        aigs.clear();
-        lit_to_aig.clear();
-        const_true = nullptr;
-        const_false = nullptr;
-        max_id = 0;
-    }
-    ~AIGManager() { clear(); }
-
-    AIG* copy_aig(AIG* aig, std::map<uint64_t, AIG*>& old_id_to_new_aig) {
-        if (aig == nullptr) return nullptr;
+    // vals = input variable assignments
+    // aig = AIG to evaluate
+    // defs = known definitions of variables
+    static bool evaluate(const std::vector<CMSat::lbool>& vals, const aig_ptr& aig, const std::map<uint32_t, aig_ptr>& defs) {
         assert(aig->invariants());
-        if (old_id_to_new_aig.count(aig->id)) return old_id_to_new_aig.at(aig->id);
-
-        AIG* new_aig = new AIG(max_id++);
-        new_aig->type = aig->type;
-        new_aig->var = aig->var;
-        new_aig->neg = aig->neg;
-        new_aig->l = copy_aig(aig->l, old_id_to_new_aig);
-        new_aig->r = copy_aig(aig->r, old_id_to_new_aig);
-        aigs.push_back(new_aig);
-        assert(old_id_to_new_aig.count(aig->id) == 0 && "children cannot reference parent");
-        old_id_to_new_aig[aig->id] = new_aig;
-        return new_aig;
-    }
-
-    AIGManager& operator=(const AIGManager& other) {
-        replace_with(other);
-        return *this;
-    }
-
-    std::map<uint64_t, AIG*> replace_with(const AIGManager& other) {
-        clear();
-
-        std::map<uint64_t, AIG*> old_id_to_new_aig;
-        assert(aigs.empty());
-        for (auto aig : other.aigs) copy_aig(aig, old_id_to_new_aig);
-        const_true = old_id_to_new_aig.at(other.const_true->id);
-        const_false = old_id_to_new_aig.at(other.const_false->id);
-        max_id = other.max_id;
-
-        assert(lit_to_aig.empty());
-        for (auto& it : other.lit_to_aig)
-            lit_to_aig[it.first] = old_id_to_new_aig.at(it.second->id);
-
-        return old_id_to_new_aig;
-    }
-
-    AIGManager(const AIGManager& other) { *this = other; }
-
-    std::map<uint64_t, AIG*> append_aigs_to(AIGManager& other) const {
-        std::map<uint64_t, AIG*> old_id_to_new_aig;
-        for (auto aig : aigs) other.copy_aig(aig, old_id_to_new_aig);
-        for(auto& it: lit_to_aig) {
-            // NOTE: we may be overriding old ones. It's fine, we can have duplicates
-            other.lit_to_aig[it.first] = old_id_to_new_aig.at(it.second->id);
+        if (aig->type == t_lit) {
+            if (defs.find(aig->var) != defs.end()) {
+                // TODO: this is highly inefficient, because this should be cached
+                assert(vals.size() < aig->var || vals[aig->var] == CMSat::l_Undef); // Must not be part of input
+                return aig->neg ^ evaluate(vals, defs.at(aig->var), defs);
+            } else {
+                assert(aig->var < vals.size());
+                assert(vals[aig->var] != CMSat::l_Undef);
+                bool ret = vals[aig->var] == CMSat::l_True;
+                ret ^= aig->neg;
+                return ret;
+            }
         }
-        // No need to copy const_true and const_false
-        return old_id_to_new_aig;
-    }
 
+        if (aig->type == t_const) return aig->neg == false;
 
-
-    AIG* new_lit(CMSat::Lit l) {
-        return new_lit(l.var(), l.sign());
-    }
-
-    AIG* new_lit(uint32_t var, bool neg = false) {
-        if (lit_to_aig.count(CMSat::Lit(var, neg))) {
-            return lit_to_aig.at(CMSat::Lit(var, neg));
+        if (aig->type == t_and) {
+            const bool l = evaluate(vals, aig->l, defs);
+            const bool r = evaluate(vals, aig->r, defs);
+            return aig->neg ^ (l && r);
         }
-        AIG* ret = new AIG(max_id++);
-        ret->type = t_lit;
-        ret->var = var;
-        ret->neg = neg;
-        aigs.push_back(ret);
-        lit_to_aig[CMSat::Lit(var, neg)] = ret;
-
-        return ret;
+        assert(false && "Unknown AIG type");
+        exit(EXIT_FAILURE);
     }
 
-    AIG* new_const(bool val) {
-        return val ? const_true : const_false;
-    }
-
-    AIG* new_not(AIG* a) {
-        AIG* ret = new AIG(max_id++);
+    static aig_ptr new_not(const aig_ptr& a) {
+        auto ret = std::make_shared<AIG>();
         ret->type = t_and;
         ret->l = a;
         ret->r = a;
 
         ret->neg = true;
-        aigs.push_back(ret);
         return ret;
     }
 
-    AIG* new_and(AIG* l, AIG* r) {
-        AIG* ret = new AIG(max_id++);
+    static aig_ptr new_and(const aig_ptr& l, const aig_ptr& r) {
+        auto ret = std::make_shared<AIG>();
         ret->type = t_and;
         ret->l = l;
         ret->r = r;
-        aigs.push_back(ret);
         return ret;
     }
 
-    AIG* new_or(AIG* l, AIG* r) {
-        AIG* ret = new AIG(max_id++);
+    static aig_ptr new_or(const aig_ptr& l, const aig_ptr& r) {
+        auto ret = std::make_shared<AIG>();
         ret->type = t_and;
         ret->neg = true;
         ret->l = new_not(l);
         ret->r = new_not(r);
-        aigs.push_back(ret);
         return ret;
     }
 
-    AIG* new_ite(AIG* l, AIG* r, AIG* b) {
-        return new_or(new_and(b, l), new_and(new_not(b), r));
+    static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, const aig_ptr& b) {
+        return AIG::new_or(AIG::new_and(b, l), AIG::new_and(AIG::new_not(b), r));
     }
 
-    AIG* new_ite(AIG* l, AIG* r, CMSat::Lit b) {
+    friend class AIGManager;
+    friend struct SimplifiedCNF;
+private:
+    AIGT type = t_const;
+    static constexpr uint32_t none_var = std::numeric_limits<uint32_t>::max();
+    uint32_t var = none_var;
+    bool neg = false;
+    aig_ptr l = nullptr;
+    aig_ptr r = nullptr;
+};
+
+class AIGManager {
+public:
+    ~AIGManager() = default;
+    AIGManager() {
+        const_true = std::make_shared<AIG>();
+        const_true->type = t_const;
+        const_true->neg = false;
+        const_false = AIG::new_not(const_true);
+    }
+
+    void clear() {
+        lit_to_aig.clear();
+        const_true = nullptr;
+        const_false = nullptr;
+    }
+
+    AIGManager& operator=(const AIGManager& other) {
+        if (this != &other) {
+            clear();
+            // With shared_ptr, just copy the pointers - no deep copy needed!
+            const_true = other.const_true;
+            const_false = other.const_false;
+            lit_to_aig = other.lit_to_aig;
+        }
+        return *this;
+    }
+
+    AIGManager(const AIGManager& other) {
+        const_true = other.const_true;
+        const_false = other.const_false;
+        lit_to_aig = other.lit_to_aig;
+    }
+
+    // Merge AIGs from another manager into this one
+    // Returns a map from the other manager's AIGs to themselves (for compatibility)
+    std::map<aig_ptr, aig_ptr> append_aigs_from(const AIGManager& other) {
+        std::map<aig_ptr, aig_ptr> identity_map;
+
+        // With shared_ptr, we just share the AIGs - no copying needed
+        for(const auto& it: other.lit_to_aig) {
+            // NOTE: we may be overriding old ones. It's fine, we can have duplicates
+            lit_to_aig[it.first] = it.second;
+            identity_map[it.second] = it.second;
+        }
+
+        return identity_map;
+    }
+
+    aig_ptr new_lit(CMSat::Lit l) {
+        return new_lit(l.var(), l.sign());
+    }
+
+    aig_ptr new_lit(uint32_t var, bool neg = false) {
+        if (lit_to_aig.count(CMSat::Lit(var, neg))) {
+            return lit_to_aig.at(CMSat::Lit(var, neg));
+        }
+        auto ret = std::make_shared<AIG>();
+        ret->type = t_lit;
+        ret->var = var;
+        ret->neg = neg;
+        lit_to_aig[CMSat::Lit(var, neg)] = ret;
+
+        return ret;
+    }
+
+    aig_ptr new_const(bool val) {
+        return val ? const_true : const_false;
+    }
+
+    aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, CMSat::Lit b) {
         auto b_aig = new_lit(b.var(), b.sign());
-        return new_or(new_and(b_aig, l), new_and(new_not(b_aig), r));
+        return AIG::new_or(AIG::new_and(b_aig, l), AIG::new_and(AIG::new_not(b_aig), r));
     }
 
-    std::vector<AIG*> aigs;
+private:
+
     // A map from lit to AIG. This is just a lookup -- it is NOT guaranteed
     // there aren't any other AIGs that are this lit. Due to copying, there may
     // well be. So we DON'T guarantee uniqueness
-    std::map<CMSat::Lit, AIG*> lit_to_aig;
+    std::map<CMSat::Lit, aig_ptr> lit_to_aig;
     // There could be other const true, this is just a good example so we don't always copy
     // Due to copying we don'g guarantee uniqueness
-    AIG* const_true = nullptr;
+    aig_ptr const_true = nullptr;
     // There could be other const false, this is just a good example so we don't always copy
     // Due to copying we don'g guarantee uniqueness
-    AIG* const_false = nullptr;
-    uint64_t max_id = 0;
+    aig_ptr const_false = nullptr;
 };
 
 class FMpz final : public CMSat::Field {
@@ -309,7 +293,7 @@ public:
         return check_end_of_weight(str, at, line_no);
     }
 
-    inline uint64_t helper(const mpz_class& v) const {
+    uint64_t helper(const mpz_class& v) const {
       return v.get_mpz_t()->_mp_alloc * sizeof(mp_limb_t);
     }
 
@@ -720,7 +704,7 @@ struct SimplifiedCNF {
     std::map<uint32_t, Weight> weights;
     std::map<uint32_t, CMSat::VarMap> orig_to_new_var;
     AIGManager aig_mng;
-    std::map<uint32_t, AIG*> defs; //definition of variables in terms of AIG. ORIGINAL number space
+    std::map<uint32_t, aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space
 
     SimplifiedCNF& operator=(const SimplifiedCNF& other) {
         fg = other.fg->dup();
@@ -824,34 +808,26 @@ struct SimplifiedCNF {
     void replace_aigs_from(const SimplifiedCNF& other) {
         if (!need_aig) {
             assert(!other.need_aig);
-            assert(other.aig_mng.aigs.size() == 2 && other.defs.empty());
+            assert(other.defs.empty());
             return;
         }
 
-        // Copy AIGs
+        // With shared_ptr, copying is trivial - just copy the pointers!
         aig_mng = other.aig_mng;
-        std::map<uint64_t, AIG*> id_to_aig;
-        for(const auto& aig: aig_mng.aigs) id_to_aig[aig->id] = aig;
-
-        // Copy defs
-        defs.clear();
-        for(const auto& it: other.defs) {
-            assert(id_to_aig.count(it.second->id) && "Must have already been copied");
-            defs[it.first] = id_to_aig[it.second->id];
-        }
+        defs = other.defs;
     }
 
-    void add_aigs_from(const AIGManager& other, const std::map<uint32_t, AIG*>& other_defs) {
+    void add_aigs_from(const AIGManager& other, const std::map<uint32_t, aig_ptr>& other_defs) {
         if (!need_aig) {
-            assert(aig_mng.aigs.size() == 2 && defs.empty());
+            assert(defs.empty());
             return;
         }
-        auto old_id_to_new_aig = other.append_aigs_to(aig_mng);
+        // With shared_ptr, we can share AIGs directly - no copying needed
+        aig_mng.append_aigs_from(other);
 
         for(const auto& it: other_defs) {
             assert(defs.find(it.first) == defs.end() && "Must not already be defined here");
-            assert(old_id_to_new_aig.count(it.second->id) && "Must have already been copied");
-            defs[it.first] = old_id_to_new_aig[it.second->id];
+            defs[it.first] = it.second;  // Just copy the shared_ptr
         }
     }
 
@@ -1301,7 +1277,7 @@ struct SimplifiedCNF {
             assert(defs.find(var) != defs.end() && "Must be defined");
             exit(EXIT_FAILURE);
         }
-        return ArjunNS::evaluate(vals, defs.find(var)->second, defs);
+        return AIG::evaluate(vals, defs.find(var)->second, defs);
     }
 
     std::set<uint32_t> get_vars_need_definition() const {
@@ -1314,7 +1290,7 @@ struct SimplifiedCNF {
         return ret;
     }
 
-    bool aig_contains(const AIG* aig, const uint32_t v) const {
+    bool aig_contains(const aig_ptr& aig, const uint32_t v) const {
         check_var(v);
         if (aig == nullptr) return false;
         assert(aig->invariants());
@@ -1323,7 +1299,7 @@ struct SimplifiedCNF {
 
             /// Need to be recursive
             if (defs.find(aig->var) != defs.end()) {
-                AIG* aig2 = defs.at(aig->var);
+                const auto& aig2 = defs.at(aig->var);
                 return aig_contains(aig2, v);
             }
             return false;

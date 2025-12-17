@@ -510,9 +510,9 @@ void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSo
         }
         bool sign = neg > pos;
 
-        AIG* overall = scnf.aig_mng.new_const(false);
+        auto overall = scnf.aig_mng.new_const(false);
         for(const auto& cl: def) {
-            AIG* current = scnf.aig_mng.new_const(true);
+            auto current = scnf.aig_mng.new_const(true);
 
             // Make sure only one side is used, the smaller side
             bool ok = false;
@@ -529,12 +529,12 @@ void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSo
                 auto x = scnf.orig_to_new_var[l.var()];
                 assert(x.val == l_Undef);
                 Lit l2 = l ^ x.lit.sign();
-                AIG* aig = scnf.aig_mng.new_lit(~l2);
-                current = scnf.aig_mng.new_and(current, aig);
+                auto aig = scnf.aig_mng.new_lit(~l2);
+                current = AIG::new_and(current, aig);
             }
-            overall = scnf.aig_mng.new_or(overall, current);
+            overall = AIG::new_or(overall, current);
         }
-        if (sign ^ target.sign()) overall = scnf.aig_mng.new_not(overall);
+        if (sign ^ target.sign()) overall = AIG::new_not(overall);
         scnf.defs[target.var()] = overall;
     }
 }
