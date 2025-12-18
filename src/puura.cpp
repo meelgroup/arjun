@@ -469,6 +469,7 @@ SimplifiedCNF Puura::get_cnf(
     return scnf;
 }
 
+// Get back BVE AIGs into scnf.defs
 void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSolver* solver) const {
     vector<uint32_t> vs = solver->get_elimed_vars();
     const auto new_to_orig_var = cnf.get_new_to_orig_var();

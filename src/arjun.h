@@ -706,8 +706,8 @@ struct SimplifiedCNF {
         }
     };
     std::map<uint32_t, Weight> weights;
-    std::map<uint32_t, CMSat::VarMap> orig_to_new_var;
-    AIGManager aig_mng;
+    std::map<uint32_t, CMSat::VarMap> orig_to_new_var; // ORIGINAL number space to NEW number space
+    AIGManager aig_mng; // NEW number space
     std::map<uint32_t, aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space
 
     SimplifiedCNF& operator=(const SimplifiedCNF& other) {
