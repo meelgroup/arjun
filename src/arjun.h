@@ -153,6 +153,10 @@ public:
         const_false = nullptr;
     }
 
+    auto empty() const {
+        return lit_to_aig.empty();
+    }
+
     AIGManager& operator=(const AIGManager& other) {
         if (this != &other) {
             clear();
@@ -722,7 +726,7 @@ struct SimplifiedCNF {
         backbone_done = other.backbone_done;
         weights = other.weights;
         orig_to_new_var = other.orig_to_new_var;
-        replace_aigs_from(other);
+        copy_aigs_from(other);
 
         return *this;
     }
@@ -805,14 +809,13 @@ struct SimplifiedCNF {
         }
     }
 
-    void replace_aigs_from(const SimplifiedCNF& other) {
+    void copy_aigs_from(const SimplifiedCNF& other) {
+        assert(need_aig == other.need_aig && "Both must either need AIGs or not");
         if (!need_aig) {
-            assert(!other.need_aig);
-            assert(other.defs.empty());
+            assert(aig_mng.empty());
+            assert(defs.empty());
             return;
         }
-
-        // With shared_ptr, copying is trivial - just copy the pointers!
         aig_mng = other.aig_mng;
         defs = other.defs;
     }
@@ -852,10 +855,10 @@ struct SimplifiedCNF {
     // Gives an example lit, sometimes good enough
     std::map<uint32_t, CMSat::Lit> get_new_to_orig_var() const {
         std::map<uint32_t, CMSat::Lit> ret;
-        for(const auto& p: orig_to_new_var) {
-            const CMSat::Lit l = p.second.lit;
+        for(const auto& [origv, newv]:  orig_to_new_var) {
+            const CMSat::Lit l = newv.lit;
             if (l != CMSat::lit_Undef) {
-                ret[l.var()] = CMSat::Lit(p.first, l.sign());
+                ret[l.var()] = CMSat::Lit(origv, l.sign());
             }
         }
         return ret;

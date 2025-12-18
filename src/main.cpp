@@ -79,7 +79,7 @@ int synthesis = false;
 int do_revbce = false;
 int do_minim_indep = true;
 string debug_minim;
-int do_pre_manthan = false;
+int do_pre_manthan = true;
 double cms_glob_mult = -1.0;
 int mode = 0;
 unique_ptr<FieldGen> fg = nullptr;

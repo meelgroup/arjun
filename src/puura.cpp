@@ -384,10 +384,12 @@ SimplifiedCNF Puura::get_cnf(
     SimplifiedCNF scnf(cnf.fg);
     vector<Lit> clause;
     bool is_xor, rhs;
+    scnf.need_aig = cnf.need_aig;
     scnf.weighted = cnf.get_weighted();
     scnf.proj = cnf.get_projected();
     scnf.new_vars(solver->simplified_nvars());
-    if (cnf.need_aig) scnf.replace_aigs_from(cnf);
+    scnf.copy_aigs_from(cnf);
+    if (cnf.need_aig) get_bve_mapping(cnf, scnf, solver);
 
     if (conf.verb >= 5) {
         for(const auto& v: new_sampl_vars)
@@ -397,40 +399,42 @@ SimplifiedCNF Puura::get_cnf(
         for(const auto& v: empty_sampl_vars)
             verb_print(5, "[w-debug] get_cnf empty sampl var: " << v+1);
     }
-    auto cnf2 = cnf;
-    cnf2.fix_weights(solver, new_sampl_vars, empty_sampl_vars);
 
-    solver->start_getting_constraints(false, true);
-    if (cnf.need_aig) get_bve_mapping(cnf, scnf, solver);
-    if (cnf2.weighted) {
-        map<Lit, unique_ptr<Field>> outer_w;
-        for(const auto& it: cnf2.weights) {
-            Lit l(it.first, false);
-            outer_w[l] = it.second.pos->dup();
-            outer_w[~l] = it.second.neg->dup();
-            verb_print(5, "[w-debug] outer_w " << l << " w: " << *it.second.pos);
-            verb_print(5, "[w-debug] outer_w " << ~l << " w: " << *it.second.neg);
-        }
+    {// We need to fix weights here via cnf2
+        auto cnf2(cnf);
+        cnf2.fix_weights(solver, new_sampl_vars, empty_sampl_vars);
 
-        auto trans = solver->get_weight_translation();
-        map<Lit, unique_ptr<Field>> inter_w;
-        for(const auto& w: outer_w) {
-            Lit orig = w.first;
-            Lit t = trans[orig.toInt()];
-            inter_w[t] = w.second->dup();
-        }
+        solver->start_getting_constraints(false, true);
+        if (cnf2.weighted) {
+            map<Lit, unique_ptr<Field>> outer_w;
+            for(const auto& [v, w]: cnf2.weights) {
+                const Lit l(v, false);
+                outer_w[l] = w.pos->dup();
+                outer_w[~l] = w.neg->dup();
+                verb_print(5, "[w-debug] outer_w " << l << " w: " << *w.pos);
+                verb_print(5, "[w-debug] outer_w " << ~l << " w: " << *w.neg);
+            }
 
-        for(const auto& myw: inter_w) {
-            if (myw.first.var() >= scnf.nvars) continue;
-            verb_print(5, "[w-debug] int w: " << myw.first << " " << *myw.second);
-            scnf.set_lit_weight(myw.first, myw.second);
+            const auto trans = solver->get_weight_translation();
+            map<Lit, unique_ptr<Field>> inter_w;
+            for(const auto& w: outer_w) {
+                Lit orig = w.first;
+                Lit t = trans[orig.toInt()];
+                inter_w[t] = w.second->dup();
+            }
+
+            for(const auto& myw: inter_w) {
+                if (myw.first.var() >= scnf.nvars) continue;
+                verb_print(5, "[w-debug] int w: " << myw.first << " " << *myw.second);
+                scnf.set_lit_weight(myw.first, myw.second);
+            }
         }
+        *scnf.multiplier_weight = *cnf2.multiplier_weight;
+
+        // Map orig set to new set
+        scnf.set_sampl_vars(solver->translate_sampl_set(cnf2.sampl_vars, false));
+        scnf.set_opt_sampl_vars(solver->translate_sampl_set(cnf2.opt_sampl_vars, false));
     }
-    *scnf.multiplier_weight = *cnf2.multiplier_weight;
-
-    // Map orig set to new set
-    scnf.set_sampl_vars(solver->translate_sampl_set(cnf2.sampl_vars, false));
-    scnf.set_opt_sampl_vars(solver->translate_sampl_set(cnf2.opt_sampl_vars, false));
 
     while(solver->get_next_constraint(clause, is_xor, rhs)) {
         assert(!is_xor); assert(rhs);
