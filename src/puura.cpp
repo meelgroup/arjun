@@ -465,6 +465,7 @@ SimplifiedCNF Puura::get_cnf(
     }
 
     // Now we do the mapping. Otherwise, above will be complicated
+    // This ALSO gets all the fixed values
     scnf.orig_to_new_var = solver->update_var_mapping(cnf.orig_to_new_var);
     return scnf;
 }
