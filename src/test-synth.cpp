@@ -29,6 +29,7 @@
 #include "arjun.h"
 #include <cryptominisat5/dimacsparser.h>
 #include "helper.h"
+#include <random>
 
 #define myopt(name, var, fun, hhelp) \
     program.add_argument(name) \
@@ -50,6 +51,9 @@ using namespace ArjunNS;
 
 int verb = 1;
 int mode = 0;
+int num_samples = 100;
+int seed = 42;
+std::mt19937 mt{};
 
 int main(int argc, char** argv) {
     argparse::ArgumentParser program = argparse::ArgumentParser("test-synth", "1.0",
@@ -58,6 +62,8 @@ int main(int argc, char** argv) {
     // Add options
     myopt2("-v", "--verb", verb, atoi, "Verbosity");
     myopt2("-m", "--mode", mode, atoi, "Field mode (0=FGenMpz, 1=FGenMpq)");
+    myopt("--samples", num_samples, atoi, "Number of samples");
+    myopt("--seed", seed, atoi, "Random seed");
 
     // Add positional argument for input file
     program.add_argument("files").remaining().help("input AIG file");
@@ -69,6 +75,9 @@ int main(int argc, char** argv) {
         std::cerr << program;
         return EXIT_FAILURE;
     }
+    cout << "c o [test-synth] Random seed: " << seed << endl;
+    cout << "c o [test-synth] Number of samples: " << num_samples << endl;
+    mt.seed(seed);
 
     // Get input file
     vector<string> files;
@@ -122,6 +131,12 @@ int main(int argc, char** argv) {
         cout << "c [test-synth] backbone_done: " << cnf.backbone_done << endl;
     }
 
-    read_in_a_file<CMSat::SimplifiedCNF>(cnf_fname, &cnf, cnf.backbone_done, fg);
+    ArjunNS::SimplifiedCNF orig_cnf(fg);
+    orig_cnf.need_aig = true;
+    bool all_indep = false;
+    read_in_a_file(cnf_fname, &orig_cnf, all_indep, fg);
+    for (const auto& def : orig_cnf.defs) {
+        cnf.defs.push_back(def);
+    }
     return 0;
 }
