@@ -65,7 +65,7 @@ std::unique_ptr<ArjunNS::Arjun> arjun;
 string input_file;
 string elimtofile;
 
-SimpConf simp_conf;
+ArjunNS::SimpConf simp_conf;
 ArjunNS::Arjun::ElimToFileConf etof_conf;
 int do_gates = 1;
 int redundant_cls = true;
@@ -178,7 +178,7 @@ void add_arjun_options() {
     program.add_argument("files").remaining().help("input file and output file");
 }
 
-void print_final_sampl_set(SimplifiedCNF& cnf, const vector<uint32_t>& orig_sampl_vars) {
+void print_final_sampl_set(ArjunNS::SimplifiedCNF& cnf, const vector<uint32_t>& orig_sampl_vars) {
     cout
     << "c o [arjun] final set size: " << std::setw(7) << cnf.sampl_vars.size()
     << " percent of original: " << std::setw(6) << std::setprecision(3)
@@ -227,7 +227,7 @@ void set_config(ArjunNS::Arjun* arj) {
 
 #ifdef SYNTH
 void do_synthesis() {
-    SimplifiedCNF cnf(fg);
+    ArjunNS::SimplifiedCNF cnf(fg);
     cnf.need_aig = true;
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
     cnf.clean_idiotic_mccomp_weights();
@@ -258,7 +258,6 @@ void do_synthesis() {
     }
 
     /* cnf.renumber_sampling_vars_for_ganak(); */
-    if (!elimtofile.empty()) write_synth(cnf, elimtofile);
     if (cnf.opt_sampl_vars.size() == cnf.nVars()) {
         cout << "c o [arjun] No variables to synthesize" << endl;
         return;
@@ -270,7 +269,7 @@ void do_synthesis() {
 #endif
 
 void do_minimize() {
-    SimplifiedCNF cnf(fg);
+    ArjunNS::SimplifiedCNF cnf(fg);
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
     cnf.clean_idiotic_mccomp_weights();
     cnf.check_sanity();
@@ -336,7 +335,7 @@ int main(int argc, char** argv) {
 
     switch (mode) {
         case 0:
-            fg = std::make_unique<FGenMpz>();
+            fg = std::make_unique<ArjunNS::FGenMpz>();
             break;
         case 1:
             fg = std::make_unique<ArjunNS::FGenMpq>();

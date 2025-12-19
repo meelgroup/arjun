@@ -9,7 +9,6 @@
  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  copies of the Software, and to permit persons to whom the Software is
  furnished to do so, subject to the following conditions:
-
  The above copyright notice and this permission notice shall be included in
  all copies or substantial portions of the Software.
 
@@ -28,6 +27,8 @@
 #include <vector>
 #include "argparse.hpp"
 #include "arjun.h"
+#include <cryptominisat5/dimacsparser.h>
+#include "helper.h"
 
 #define myopt(name, var, fun, hhelp) \
     program.add_argument(name) \
@@ -77,16 +78,17 @@ int main(int argc, char** argv) {
             cout << "ERROR: you must provide an input file" << endl;
             return EXIT_FAILURE;
         }
-        if (files.size() > 1) {
-            cout << "ERROR: you can only pass one input file" << endl;
+        if (files.size() != 2) {
+            cout << "ERROR: You MUST pass in an AIG and a CNF file" << endl;
             return EXIT_FAILURE;
         }
     } catch (std::logic_error& e) {
-        cout << "ERROR: you must give an input file" << endl;
+        cout << "ERROR: you must give 2 input files" << endl;
         return EXIT_FAILURE;
     }
 
-    string input_file = files[0];
+    string aig_fname = files[0];
+    string cnf_fname = files[1];
 
     // Create field generator
     unique_ptr<CMSat::FieldGen> fg;
@@ -105,13 +107,8 @@ int main(int argc, char** argv) {
     // Create SimplifiedCNF and read the AIG file
     SimplifiedCNF cnf(fg);
 
-    if (verb) {
-        cout << "c [test-synth] Reading AIG file: " << input_file << endl;
-    }
-
-    cnf.read_aig_defs_from_file(input_file);
-
-    // Print statistics
+    if (verb) cout << "c [test-synth] Reading AIG file: " << aig_fname << endl;
+    cnf.read_aig_defs_from_file(aig_fname);
     if (verb) {
         cout << "c [test-synth] Successfully read AIG file" << endl;
         cout << "c [test-synth] Number of variables: " << cnf.nvars << endl;
@@ -125,6 +122,6 @@ int main(int argc, char** argv) {
         cout << "c [test-synth] backbone_done: " << cnf.backbone_done << endl;
     }
 
-    cout << "c [test-synth] All done." << endl;
+    read_in_a_file<CMSat::SimplifiedCNF>(cnf_fname, &cnf, cnf.backbone_done, fg);
     return 0;
 }
