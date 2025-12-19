@@ -23,6 +23,7 @@ THE SOFTWARE.
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <vector>
 #include <string>
@@ -1339,6 +1340,227 @@ struct SimplifiedCNF {
             if (aig_contains(it.second, v)) ret.insert(it.first);
         }
         return ret;
+    }
+
+    // Serialize SimplifiedCNF to binary file
+    void write_aig_defs(std::ofstream& out) const {
+        // Write simple fields
+        out.write((char*)&nvars, sizeof(nvars));
+        out.write((char*)&backbone_done, sizeof(backbone_done));
+        out.write((char*)&proj, sizeof(proj));
+        out.write((char*)&need_aig, sizeof(need_aig));
+
+        // Write sampl_vars
+        uint32_t sz = sampl_vars.size();
+        out.write((char*)&sz, sizeof(sz));
+        out.write((char*)sampl_vars.data(), sz * sizeof(uint32_t));
+
+        // Write opt_sampl_vars
+        sz = opt_sampl_vars.size();
+        out.write((char*)&sz, sizeof(sz));
+        out.write((char*)opt_sampl_vars.data(), sz * sizeof(uint32_t));
+
+        // Write clauses
+        sz = clauses.size();
+        out.write((char*)&sz, sizeof(sz));
+        for (const auto& cl : clauses) {
+            uint32_t cl_sz = cl.size();
+            out.write((char*)&cl_sz, sizeof(cl_sz));
+            for (const auto& lit : cl) {
+                uint32_t v = lit.var();
+                bool sign = lit.sign();
+                out.write((char*)&v, sizeof(v));
+                out.write((char*)&sign, sizeof(sign));
+            }
+        }
+
+        // Write red_clauses
+        sz = red_clauses.size();
+        out.write((char*)&sz, sizeof(sz));
+        for (const auto& cl : red_clauses) {
+            uint32_t cl_sz = cl.size();
+            out.write((char*)&cl_sz, sizeof(cl_sz));
+            for (const auto& lit : cl) {
+                uint32_t v = lit.var();
+                bool sign = lit.sign();
+                out.write((char*)&v, sizeof(v));
+                out.write((char*)&sign, sizeof(sign));
+            }
+        }
+
+        // Write orig_to_new_var
+        sz = orig_to_new_var.size();
+        out.write((char*)&sz, sizeof(sz));
+        for (const auto& [orig, vmap] : orig_to_new_var) {
+            out.write((char*)&orig, sizeof(orig));
+            uint32_t lit_var = vmap.lit.var();
+            bool lit_sign = vmap.lit.sign();
+            out.write((char*)&lit_var, sizeof(lit_var));
+            out.write((char*)&lit_sign, sizeof(lit_sign));
+        }
+
+        // 1. Collect all unique AIG nodes by traversing the DAG
+        std::map<AIG*, uint32_t> node_to_id;
+        std::vector<AIG*> id_to_node;
+        uint32_t next_id = 0;
+
+        std::function<void(const aig_ptr&)> collect = [&](const aig_ptr& aig) {
+            if (!aig || node_to_id.count(aig.get())) return;
+            node_to_id[aig.get()] = next_id++;
+            id_to_node.push_back(aig.get());
+            if (aig->type == t_and) {
+                collect(aig->l);
+                collect(aig->r);
+            }
+        };
+
+        for (const auto& [var, aig] : defs) collect(aig);
+
+        // 2. Write number of nodes
+        uint32_t num_nodes = id_to_node.size();
+        out.write((char*)&num_nodes, sizeof(num_nodes));
+
+        // 3. Write each node (postorder: children before parents)
+        for (AIG* node : id_to_node) {
+            out.write((char*)&node->type, sizeof(node->type));
+            out.write((char*)&node->var, sizeof(node->var));
+            out.write((char*)&node->neg, sizeof(node->neg));
+            if (node->type == t_and) {
+                uint32_t lid = node_to_id[node->l.get()];
+                uint32_t rid = node_to_id[node->r.get()];
+                out.write((char*)&lid, sizeof(lid));
+                out.write((char*)&rid, sizeof(rid));
+            }
+        }
+
+        // 4. Write defs map
+        uint32_t num_defs = defs.size();
+        out.write((char*)&num_defs, sizeof(num_defs));
+        for (const auto& [var, aig] : defs) {
+            out.write((char*)&var, sizeof(var));
+            uint32_t aid = node_to_id[aig.get()];
+            out.write((char*)&aid, sizeof(aid));
+        }
+    }
+
+    // Deserialize SimplifiedCNF from binary file
+    void read_aig_defs(std::ifstream& in) {
+        // Read simple fields
+        in.read((char*)&nvars, sizeof(nvars));
+        in.read((char*)&backbone_done, sizeof(backbone_done));
+        in.read((char*)&proj, sizeof(proj));
+        in.read((char*)&need_aig, sizeof(need_aig));
+
+        // Read sampl_vars
+        uint32_t sz;
+        in.read((char*)&sz, sizeof(sz));
+        sampl_vars.resize(sz);
+        in.read((char*)sampl_vars.data(), sz * sizeof(uint32_t));
+
+        // Read opt_sampl_vars
+        in.read((char*)&sz, sizeof(sz));
+        opt_sampl_vars.resize(sz);
+        in.read((char*)opt_sampl_vars.data(), sz * sizeof(uint32_t));
+
+        // Read clauses
+        in.read((char*)&sz, sizeof(sz));
+        clauses.resize(sz);
+        for (uint32_t i = 0; i < sz; i++) {
+            uint32_t cl_sz;
+            in.read((char*)&cl_sz, sizeof(cl_sz));
+            clauses[i].resize(cl_sz);
+            for (uint32_t j = 0; j < cl_sz; j++) {
+                uint32_t v;
+                bool sign;
+                in.read((char*)&v, sizeof(v));
+                in.read((char*)&sign, sizeof(sign));
+                clauses[i][j] = CMSat::Lit(v, sign);
+            }
+        }
+
+        // Read red_clauses
+        in.read((char*)&sz, sizeof(sz));
+        red_clauses.resize(sz);
+        for (uint32_t i = 0; i < sz; i++) {
+            uint32_t cl_sz;
+            in.read((char*)&cl_sz, sizeof(cl_sz));
+            red_clauses[i].resize(cl_sz);
+            for (uint32_t j = 0; j < cl_sz; j++) {
+                uint32_t v;
+                bool sign;
+                in.read((char*)&v, sizeof(v));
+                in.read((char*)&sign, sizeof(sign));
+                red_clauses[i][j] = CMSat::Lit(v, sign);
+            }
+        }
+
+        // Read orig_to_new_var
+        in.read((char*)&sz, sizeof(sz));
+        orig_to_new_var.clear();
+        for (uint32_t i = 0; i < sz; i++) {
+            uint32_t orig, lit_var;
+            bool lit_sign;
+            in.read((char*)&orig, sizeof(orig));
+            in.read((char*)&lit_var, sizeof(lit_var));
+            in.read((char*)&lit_sign, sizeof(lit_sign));
+            orig_to_new_var[orig] = CMSat::VarMap(CMSat::Lit(lit_var, lit_sign));
+        }
+
+        // Read AIGs
+        uint32_t num_nodes;
+        in.read((char*)&num_nodes, sizeof(num_nodes));
+
+        // Read all nodes
+        std::vector<aig_ptr> id_to_node(num_nodes);
+        for (uint32_t i = 0; i < num_nodes; i++) {
+            auto node = std::make_shared<AIG>();
+            in.read((char*)&node->type, sizeof(node->type));
+            in.read((char*)&node->var, sizeof(node->var));
+            in.read((char*)&node->neg, sizeof(node->neg));
+            if (node->type == t_and) {
+                uint32_t lid, rid;
+                in.read((char*)&lid, sizeof(lid));
+                in.read((char*)&rid, sizeof(rid));
+                assert(id_to_node[lid] != nullptr);
+                assert(id_to_node[rid] != nullptr);
+                node->l = id_to_node[lid];
+                node->r = id_to_node[rid];
+            }
+            id_to_node[i] = node;
+        }
+
+        // Read defs map
+        uint32_t num_defs;
+        in.read((char*)&num_defs, sizeof(num_defs));
+        defs.clear();
+        for (uint32_t i = 0; i < num_defs; i++) {
+            uint32_t var, aid;
+            in.read((char*)&var, sizeof(var));
+            in.read((char*)&aid, sizeof(aid));
+            defs[var] = id_to_node[aid];
+        }
+    }
+
+    // Write AIG defs to file (opens file for you)
+    void write_aig_defs_to_file(const std::string& fname) const {
+        std::ofstream out(fname, std::ios::binary);
+        if (!out) {
+            std::cerr << "ERROR: Cannot open file for writing: " << fname << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        write_aig_defs(out);
+        out.close();
+    }
+
+    // Read AIG defs from file (opens file for you)
+    void read_aig_defs_from_file(const std::string& fname) {
+        std::ifstream in(fname, std::ios::binary);
+        if (!in) {
+            std::cerr << "ERROR: Cannot open file for reading: " << fname << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        read_aig_defs(in);
+        in.close();
     }
 };
 
