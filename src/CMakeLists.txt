@@ -74,6 +74,7 @@ target_link_libraries(arjun
 
 add_executable(arjun-bin main.cpp)
 add_executable(arjun-example example.cpp)
+add_executable(test-synth test-synth.cpp)
 
 IF (ZLIB_FOUND)
     SET(arjun_bin_exec_link_libs ${arjun_bin_exec_link_libs} ${ZLIB_LIBRARY})
@@ -95,6 +96,12 @@ set_target_properties(arjun-example PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 target_link_libraries(arjun-example ${arjun_bin_exec_link_libs} arjun)
+
+set_target_properties(test-synth PROPERTIES
+    OUTPUT_NAME test-synth
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
+target_link_libraries(test-synth ${arjun_bin_exec_link_libs} arjun)
 
 arjun_add_public_header(arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun.h )
 
