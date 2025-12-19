@@ -61,6 +61,8 @@ using std::setw;
 #define SLOW_DEBUG_DO(x) do { } while (0)
 #endif
 
+using std::unique_ptr;
+
 // lit to picolit
 [[nodiscard]] inline int lit_to_pl(const CMSat::Lit l) noexcept {
     int picolit = (l.var()+1) * (l.sign() ? -1 : 1);

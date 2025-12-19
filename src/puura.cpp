@@ -25,6 +25,7 @@
 #include <cryptominisat5/cryptominisat.h>
 #include <cstdint>
 #include <cwchar>
+#include <memory>
 #include <vector>
 #include <iostream>
 #include <iomanip>
@@ -131,7 +132,6 @@ void Puura::backbone(SimplifiedCNF& cnf) {
     }
     verb_print(2, "backbone inserted: " << lits.size() << " T: " << (cpuTime() - my_time));
     verb_print(1, "[arjun-backbone] done, T: " << (cpuTime() - my_time));
-    delete solver;
 }
 
 // TODO: Beware, empty var elim (i.e. all resolvents are tautology) should be done BEFORE this
@@ -215,9 +215,8 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     delete s;
 }
 
-SATSolver* Puura::fill_solver(const SimplifiedCNF& cnf) {
-    SATSolver* solver;
-    solver = new SATSolver;
+std::unique_ptr<SATSolver> Puura::fill_solver(const SimplifiedCNF& cnf) {
+    auto solver = std::make_unique<SATSolver>();
     solver->set_verbosity(conf.verb);
     solver->set_prefix("c o ");
     solver->set_find_xors(false);
@@ -245,10 +244,9 @@ void Puura::reverse_bce(SimplifiedCNF& cnf) {
     set_up_sampl_vars_dont_elim(cnf);
     solver->set_sampl_vars(cnf.sampl_vars);
     solver->reverse_bce();
-    delete solver;
 }
 
-bool Puura::set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, SATSolver* solver) {
+bool Puura::set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, std::unique_ptr<SATSolver>& solver) {
     if (!cnf.get_weighted()) return true;
     for(uint32_t i = 0; i < cnf.nvars; i++) {
         if (cnf.get_lit_weight(Lit(i, false))->is_zero()) {
@@ -369,14 +367,13 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->simplify(&dont_elim, &str);
 
     // Return final one
-    auto ret = get_cnf(solver, cnf, new_sampl_vars, new_empty_sampl_vars);
-    ret.backbone_done = backbone_done;
-    delete solver;
-    return ret;
+    auto ret_cnf = get_cnf(solver, cnf, new_sampl_vars, new_empty_sampl_vars);
+    ret_cnf.backbone_done = backbone_done;
+    return ret_cnf;
 }
 
 SimplifiedCNF Puura::get_cnf(
-        SATSolver* solver,
+        unique_ptr<SATSolver>& solver,
         const SimplifiedCNF& cnf,
         const vector<uint32_t>& new_sampl_vars,
         const vector<uint32_t>& empty_sampl_vars
@@ -471,7 +468,7 @@ SimplifiedCNF Puura::get_cnf(
 }
 
 // Get back BVE AIGs into scnf.defs
-void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSolver* solver) const {
+void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, unique_ptr<SATSolver>& solver) const {
     vector<uint32_t> vs = solver->get_elimed_vars();
     const auto new_to_orig_var = cnf.get_new_to_orig_var();
 

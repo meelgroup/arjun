@@ -1147,7 +1147,7 @@ struct SimplifiedCNF {
         }
     }
 
-    void fix_weights(CMSat::SATSolver* solver,
+    void fix_weights(std::unique_ptr<CMSat::SATSolver>& solver,
             const std::vector<uint32_t> new_sampl_vars,
             const std::vector<uint32_t>& empty_sampling_vars) {
         for(const auto& v: new_sampl_vars) check_var(v);

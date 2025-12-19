@@ -71,7 +71,6 @@ int do_gates = 1;
 int redundant_cls = true;
 int simptofile = true;
 int sampl_start_at_zero = false;
-int debug_synt = false;
 int do_synth_bve = true;
 int do_pre_backbone = 0;
 
@@ -112,7 +111,7 @@ void add_arjun_options() {
         .default_value(synthesis)
         .flag()
         .help("Run synthesis");
-    myopt("--debugsynt", debug_synt, atoi, "Debug synthesis");
+    myopt("--debugsynt", conf.do_debug_synth, atoi, "Debug synthesis");
     myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
     myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
     myopt("--revbce", do_revbce, atoi,"Perform reverse BCE");
@@ -238,15 +237,25 @@ void do_synthesis() {
         cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
         if (do_pre_backbone) arjun->standalone_backbone(cnf);
         if (do_synth_bve) {
-            simp_conf.bve_too_large_resolvent = -1;
+            /* simp_conf.bve_too_large_resolvent = -1; */
             cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
+            if (conf.do_debug_synth) cnf.write_aig_defs_to_file("simplified_cnf.aig");
         }
-        if (etof_conf.do_extend_indep) arjun->standalone_unsat_define(cnf);
+        if (etof_conf.do_extend_indep) {
+            arjun->standalone_unsat_define(cnf);
+            if (conf.do_debug_synth) cnf.write_aig_defs_to_file("unsat_define.aig");
+        }
         /* if (do_revbce) arjun->standalone_rev_bce(cnf); */
-        if (etof_conf.do_unate) arjun->standalone_unate(cnf);
+        if (etof_conf.do_unate) {
+            arjun->standalone_unate(cnf);
+            if (conf.do_debug_synth) cnf.write_aig_defs_to_file("unsat_unate.aig");
+        }
     }
     // TODO
-    if (do_minim_indep) arjun->standalone_minimize_indep_synt(cnf);
+    if (do_minim_indep) {
+        arjun->standalone_minimize_indep_synt(cnf);
+        if (conf.do_debug_synth) cnf.write_aig_defs_to_file("minim_idep_synt.aig");
+    }
 
     /* cnf.renumber_sampling_vars_for_ganak(); */
     if (!elimtofile.empty()) write_synth(cnf, elimtofile);
@@ -364,6 +373,9 @@ int main(int argc, char** argv) {
     if (synthesis) {
 #ifdef SYNTH
         do_synthesis();
+#else
+        cout << "c o [arjun] ERROR: synthesis not enabled in this build" << endl;
+        exit(EXIT_FAILURE);
 #endif
     } else {
         do_minimize();

@@ -273,7 +273,7 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf, bool all_indep) {
         cnf.opt_sampl_vars.clear();
         for(uint32_t i = 0; i < cnf.nvars; i++) cnf.opt_sampl_vars.push_back(i);
     }
-    cnf.fix_weights(solver.get(), sampling_vars, empty_sampling_vars);
+    cnf.fix_weights(solver, sampling_vars, empty_sampling_vars);
 
     // Get back clauses
     const auto eq_lits = solver->get_all_binary_xors();
