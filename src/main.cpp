@@ -111,7 +111,11 @@ void add_arjun_options() {
         .default_value(synthesis)
         .flag()
         .help("Run synthesis");
-    myopt("--debugsynt", conf.do_debug_synth, atoi, "Debug synthesis");
+    program.add_argument("--debugsynth")
+        .action([&](const auto&) {conf.do_debug_synth = 1;})
+        .default_value(conf.do_debug_synth)
+        .flag()
+        .help("Debug synthesis");
     myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
     myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
     myopt("--revbce", do_revbce, atoi,"Perform reverse BCE");
@@ -354,9 +358,9 @@ int main(int argc, char** argv) {
     vector<std::string> files;
     try {
         files = program.get<std::vector<std::string>>("files");
-        if (files.size() >= 3) {
+        if (files.size() > 2) {
             cout << "ERROR: you can only pass at most 3 positional parameters: an INPUT file"
-                ", optionally an OUTPUT file, and optionally a RECOVER file" << endl;
+                ", optionally an OUTPUT file" << endl;
             exit(EXIT_FAILURE);
         }
     } catch (std::logic_error& e) {

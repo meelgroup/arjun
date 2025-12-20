@@ -143,7 +143,7 @@ def run(command, dir):
 def run_synth(solver, fname):
     curr_time = time.time()
     toexec = solver.split()
-    toexec.append(os.getcwd() + "/" + fname)
+    toexec.append(fname)
     out, err = run(toexec, os.getcwd())
     if err is None:
         if options.verbose:
@@ -158,8 +158,12 @@ def run_synth(solver, fname):
 
     aigs = []
     for line in out.split("\n"):
+        line = line.strip()
+        if ("ERROR" in line) or ("Error" in line) or ("error" in line):
+            print("Error line from solver %s: %s" % (solver, line))
+            return True, []
         if line.startswith("c o Wrote AIG defs:"):
-            aigs.append(line[len("c Wrote AIG defs:"):].strip())
+            aigs.append(line[len("c o Wrote AIG defs:"):].strip())
 
     return False, aigs
 
@@ -206,7 +210,7 @@ if __name__ == "__main__":
 
         fname = gen_fuzz(seed)
         add_projection(fname)
-        solver = "./arjun --synth 1 --debugsynt 1"
+        solver = "./arjun --synth --debugsynt --verb 1"
         err, aigs = run_synth(solver, fname)
         if err:
             print("Synthesis failed on file %s" % fname)
