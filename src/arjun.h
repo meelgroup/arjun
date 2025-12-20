@@ -44,7 +44,7 @@ class AIGManager;
 struct SimplifiedCNF;
 using aig_ptr = std::shared_ptr<AIG>;
 
-enum AIGT {t_and, t_lit, t_const};
+enum class AIGT {t_and, t_lit, t_const};
 class AIG {
 public:
     AIG() = default;
@@ -53,13 +53,13 @@ public:
     AIG& operator=(const AIG&) = delete;
 
     bool invariants() const {
-        if (type == t_lit) {
+        if (type == AIGT::t_lit) {
             return l == nullptr && r == nullptr && var != none_var;
         }
-        if (type == t_const) {
+        if (type == AIGT::t_const) {
             return l == nullptr && r == nullptr && var == none_var;
         }
-        if (type == t_and) {
+        if (type == AIGT::t_and) {
             return l != nullptr && r != nullptr && var == none_var;
         }
         assert(false && "Unknown AIG type");
@@ -71,7 +71,7 @@ public:
     // defs = known definitions of variables
     static bool evaluate(const std::vector<CMSat::lbool>& vals, const aig_ptr& aig, const std::map<uint32_t, aig_ptr>& defs) {
         assert(aig->invariants());
-        if (aig->type == t_lit) {
+        if (aig->type == AIGT::t_lit) {
             if (defs.find(aig->var) != defs.end()) {
                 // TODO: this is highly inefficient, because this should be cached
                 assert(vals.size() < aig->var || vals[aig->var] == CMSat::l_Undef); // Must not be part of input
@@ -85,9 +85,9 @@ public:
             }
         }
 
-        if (aig->type == t_const) return aig->neg == false;
+        if (aig->type == AIGT::t_const) return aig->neg == false;
 
-        if (aig->type == t_and) {
+        if (aig->type == AIGT::t_and) {
             const bool l = evaluate(vals, aig->l, defs);
             const bool r = evaluate(vals, aig->r, defs);
             return aig->neg ^ (l && r);
@@ -102,7 +102,7 @@ public:
 
     static aig_ptr new_lit(uint32_t var, bool neg = false) {
         auto ret = std::make_shared<AIG>();
-        ret->type = t_lit;
+        ret->type = AIGT::t_lit;
         ret->var = var;
         ret->neg = neg;
         return ret;
@@ -115,7 +115,7 @@ public:
 
     static aig_ptr new_not(const aig_ptr& a) {
         auto ret = std::make_shared<AIG>();
-        ret->type = t_and;
+        ret->type = AIGT::t_and;
         ret->l = a;
         ret->r = a;
 
@@ -125,7 +125,7 @@ public:
 
     static aig_ptr new_and(const aig_ptr& l, const aig_ptr& r) {
         auto ret = std::make_shared<AIG>();
-        ret->type = t_and;
+        ret->type = AIGT::t_and;
         ret->l = l;
         ret->r = r;
         return ret;
@@ -133,7 +133,7 @@ public:
 
     static aig_ptr new_or(const aig_ptr& l, const aig_ptr& r) {
         auto ret = std::make_shared<AIG>();
-        ret->type = t_and;
+        ret->type = AIGT::t_and;
         ret->neg = true;
         ret->l = new_not(l);
         ret->r = new_not(r);
@@ -144,23 +144,26 @@ public:
         return AIG::new_or(AIG::new_and(b, l), AIG::new_and(AIG::new_not(b), r));
     }
 
+    // marking for traversals
     void unmark_all() {
         if (mark) {
             mark = false;
-            if (type == t_and) {
+            if (type == AIGT::t_and) {
                 l->unmark_all();
                 r->unmark_all();
             }
         }
     }
-
     bool marked() const { return mark; }
     void set_mark() { mark = true; }
 
+
+
+    friend std::ostream& operator<<(std::ostream& out, const aig_ptr& aig);
     friend class AIGManager;
     friend struct SimplifiedCNF;
 private:
-    AIGT type = t_const;
+    AIGT type = AIGT::t_const;
     static constexpr uint32_t none_var = std::numeric_limits<uint32_t>::max();
     uint32_t var = none_var;
     bool neg = false;
@@ -169,12 +172,35 @@ private:
     aig_ptr r = nullptr;
 };
 
+
+inline std::ostream& operator<<(std::ostream& out, const aig_ptr& aig) {
+    if (!aig) {
+        out << "NULL_AIG";
+        return out;
+    }
+    assert(aig->invariants());
+
+    if (aig->type == AIGT::t_lit) {
+        out << (aig->neg ? "~" : "") << "x" << aig->var+1;
+        return out;
+    }
+    if (aig->type == AIGT::t_const) {
+        out << (aig->neg ? "FALSE" : "TRUE");
+        return out;
+    }
+    assert(aig->type == AIGT::t_and);
+    out << (aig->neg ? "~" : "") << "AND(";
+    out << (aig->l) << ", " << (aig->r) << ")";
+    out << ")";
+    return out;
+}
+
 class AIGManager {
 public:
     ~AIGManager() = default;
     AIGManager() {
         const_true = std::make_shared<AIG>();
-        const_true->type = t_const;
+        const_true->type = AIGT::t_const;
         const_true->neg = false;
         const_false = AIG::new_not(const_true);
     }
@@ -1264,7 +1290,7 @@ struct SimplifiedCNF {
         check_var(v);
         if (aig == nullptr) return false;
         assert(aig->invariants());
-        if (aig->type == t_lit) {
+        if (aig->type == AIGT::t_lit) {
             if (aig->var == v) return true;
 
             /// Need to be recursive
@@ -1274,8 +1300,8 @@ struct SimplifiedCNF {
             }
             return false;
         }
-        if (aig->type == t_const) return false;
-        if (aig->type == t_and) {
+        if (aig->type == AIGT::t_const) return false;
+        if (aig->type == AIGT::t_and) {
             return aig_contains(aig->l, v) || aig_contains(aig->r, v);
         }
         assert(false && "Unknown AIG type");
@@ -1373,7 +1399,7 @@ struct SimplifiedCNF {
             if (!aig || node_to_id.count(aig.get())) return;
             node_to_id[aig.get()] = next_id++;
             id_to_node.push_back(aig.get());
-            if (aig->type == t_and) {
+            if (aig->type == AIGT::t_and) {
                 collect(aig->l);
                 collect(aig->r);
             }
@@ -1390,7 +1416,7 @@ struct SimplifiedCNF {
             out.write((char*)&node->type, sizeof(node->type));
             out.write((char*)&node->var, sizeof(node->var));
             out.write((char*)&node->neg, sizeof(node->neg));
-            if (node->type == t_and) {
+            if (node->type == AIGT::t_and) {
                 uint32_t lid = node_to_id[node->l.get()];
                 uint32_t rid = node_to_id[node->r.get()];
                 out.write((char*)&lid, sizeof(lid));
@@ -1482,7 +1508,7 @@ struct SimplifiedCNF {
             in.read((char*)&node->type, sizeof(node->type));
             in.read((char*)&node->var, sizeof(node->var));
             in.read((char*)&node->neg, sizeof(node->neg));
-            if (node->type == t_and) {
+            if (node->type == AIGT::t_and) {
                 uint32_t lid, rid;
                 in.read((char*)&lid, sizeof(lid));
                 in.read((char*)&rid, sizeof(rid));
@@ -1545,26 +1571,25 @@ struct SimplifiedCNF {
 
     void map_aigs_to_orig(std::map<uint32_t, std::shared_ptr<AIG>>& aigs, uint32_t max_num_vars) {
         const auto new_to_orig_var = get_new_to_orig_var();
-        std::function<void(const aig_ptr&)> remap_aig;
-        remap_aig = [&](const aig_ptr& aig) {
+        std::function<void(const aig_ptr&)> remap_aig = [&](const aig_ptr& aig) {
             if (aig == nullptr) return;
             if (aig->marked()) return;
             assert(aig->invariants());
             aig->set_mark();
 
-            if (aig->type == t_lit) {
+            if (aig->type == AIGT::t_lit) {
                 uint32_t v = aig->var;
                 assert(v < max_num_vars);
                 aig->var = new_to_orig_var.at(v).var();
                 aig->neg ^= new_to_orig_var.at(v).sign();
                 return;
             }
-            if (aig->type == t_and) {
+            if (aig->type == AIGT::t_and) {
                 remap_aig(aig->l);
                 remap_aig(aig->r);
                 return;
             }
-            if (aig->type == t_const) return;
+            if (aig->type == AIGT::t_const) return;
             assert(false && "Unknown AIG type");
             exit(EXIT_FAILURE);
         };
@@ -1574,12 +1599,14 @@ struct SimplifiedCNF {
         for(auto& [v, aig]: aigs) remap_aig(aig);
         for(auto& [v, aig]: aigs) {
             auto l = new_to_orig_var.at(v);
-            assert(defs[l.var()] == nullptr && "AIG for original must not exist");
+            if (defs.find(l.var()) != defs.end()) {
+                std::cout << "ERROR: Variable " << l.var()+1
+                    << " already has a definition: " << defs.find(l.var())->second << std::endl;
+            }
+            assert(defs.find(l.var()) == defs.end() && "Variable must not already have a definition");
             if (l.sign()) defs[l.var()] = AIG::new_not(aig);
             else defs[l.var()] = aig;
         }
-
-
     }
 };
 
