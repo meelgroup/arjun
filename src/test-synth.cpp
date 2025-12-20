@@ -84,6 +84,23 @@ vector<lbool> get_random_sol(SATSolver& solver) {
     return model;
 }
 
+void assert_sample_satisfying(const vector<lbool>& sample, SATSolver& solver) {
+    assert(sample.size() == solver.nVars());
+    vector<Lit> assumps;
+    for (uint32_t v = 0; v < sample.size(); v++) {
+        if (sample[v] == l_True) {
+            assumps.push_back(Lit(v, false));
+        } else if (sample[v] == l_False) {
+            assumps.push_back(Lit(v, true));
+        }
+    }
+    auto ret = solver.solve(&assumps);
+    if (ret != l_True) {
+        cout << "ERROR: Sample does not satisfy the CNF!" << endl;
+        exit(EXIT_FAILURE);
+    }
+}
+
 int main(int argc, char** argv) {
     argparse::ArgumentParser program = argparse::ArgumentParser("test-synth", "1.0",
             argparse::default_arguments::help);
@@ -184,7 +201,7 @@ int main(int argc, char** argv) {
             restricted_sample[var] = sample[var];
         }
         auto extended_sample = cnf.extend_sample(restricted_sample);
-        /* assert_sample_satisfying(extended_sample, solver); */
+        assert_sample_satisfying(extended_sample, solver);
     }
 
     return EXIT_SUCCESS;
