@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
     myopt2("-v", "--verb", verb, atoi, "Verbosity");
     myopt2("-m", "--mode", mode, atoi, "Field mode (0=FGenMpz, 1=FGenMpq)");
     myopt("--samples", num_samples, atoi, "Number of samples");
-    myopt("--seed", seed, atoi, "Random seed");
+    myopt2("-s", "--seed", seed, atoi, "Random seed");
 
     // Add positional argument for input file
     program.add_argument("files").remaining().help("input AIG file");

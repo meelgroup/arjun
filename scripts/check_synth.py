@@ -153,12 +153,13 @@ def run_synth(solver, fname):
         return True, []
     diff_time = time.time() - curr_time
     if diff_time > options.maxtime - maxtimediff:
-        print("Too much time to solve with %s, aborted!" % solver.exe)
+        print("Too much time to solve with %s, aborted: " % solver)
         return True, []
 
     aigs = []
     for line in out.split("\n"):
         line = line.strip()
+        # print("Solver output line: %s" % line)
         if ("ERROR" in line) or ("Error" in line) or ("error" in line):
             print("Error line from solver %s: %s" % (solver, line))
             return True, []
@@ -210,7 +211,7 @@ if __name__ == "__main__":
 
         fname = gen_fuzz(seed)
         add_projection(fname)
-        solver = "./arjun --synth --debugsynt --verb 1"
+        solver = "./arjun --synth --debugsynth --verb 1"
         err, aigs = run_synth(solver, fname)
         if err:
             print("Synthesis failed on file %s" % fname)
