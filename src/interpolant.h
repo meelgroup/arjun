@@ -53,9 +53,9 @@ struct MyTracer : public CaDiCaL::Tracer {
     }
     const ArjunInt::Config& conf;
     map<uint64_t, vector<Lit>> cls;
-    std::map<uint64_t, std::shared_ptr<AIG>> fs_clid;  // clause ID to formula
+    std::map<uint64_t, aig_ptr> fs_clid;  // clause ID to formula
     AIGManager* aig_mng = nullptr;
-    std::shared_ptr<AIG> out; // Final output formula
+    aig_ptr out; // Final output formula
     int32_t orig_num_vars;
     set<uint32_t> input;
 
@@ -80,21 +80,14 @@ public:
     void fill_var_to_indic(const vector<uint32_t>& var_to_indic);
     void generate_interpolant(const vector<Lit>& assumptions, uint32_t test_var, SimplifiedCNF& cnf);
     void add_unit_cl(const vector<Lit>& cl);
-    const AIGManager& get_aig_mng() const { return aig_mng; }
-    const map<uint32_t, std::shared_ptr<AIG>>& get_defs() const { return defs; }
-    bool evaluate(const vector<CMSat::lbool>& vals, uint32_t test_var) {
-        if (!defs.count(test_var)) {
-            cout << "ERROR: Variable " << test_var+1 << " not defined by this interpolant" << endl;
-            assert(defs.count(test_var) && "Don't query variables that haven't been defined, please");
-            exit(EXIT_FAILURE);
-        }
-        return AIG::evaluate(vals, defs[test_var], defs);
-    }
+    auto& get_defs() { return defs; }
 
     // Internal really
     CMSat::SATSolver* solver = nullptr;
 
 private:
+    void fix_up_aig(aig_ptr& aig);
+
     PicoSAT* ps = nullptr;
     map<uint32_t, vector<Lit>> cl_map;
     uint32_t cl_num = 0;
@@ -102,7 +95,6 @@ private:
     const ArjunInt::Config conf;
     uint32_t orig_num_vars;
     vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
-    AIGManager aig_mng;
-    map<uint32_t, std::shared_ptr<AIG>> defs; // the definitions of the variables
+    map<uint32_t, std::shared_ptr<AIG>> defs; //definition of variables in terms of AIG. ORIGINAL number space
 };
 

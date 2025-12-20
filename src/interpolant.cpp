@@ -180,7 +180,7 @@ void Interpolant::generate_interpolant(
 
     // CaDiCaL on the core only
     auto cdcl = std::make_unique<Solver>();
-    MyTracer t(orig_num_vars, cnf.opt_sampl_vars, &aig_mng, conf);
+    MyTracer t(orig_num_vars, cnf.opt_sampl_vars, &cnf.aig_mng, conf);
 
     cdcl->connect_proof_tracer(&t, true);
     /* std::stringstream name; */

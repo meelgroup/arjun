@@ -144,6 +144,19 @@ public:
         return AIG::new_or(AIG::new_and(b, l), AIG::new_and(AIG::new_not(b), r));
     }
 
+    void unmark_all() {
+        if (mark) {
+            mark = false;
+            if (type == t_and) {
+                l->unmark_all();
+                r->unmark_all();
+            }
+        }
+    }
+
+    bool marked() const { return mark; }
+    void set_mark() { mark = true; }
+
     friend class AIGManager;
     friend struct SimplifiedCNF;
 private:
@@ -151,6 +164,7 @@ private:
     static constexpr uint32_t none_var = std::numeric_limits<uint32_t>::max();
     uint32_t var = none_var;
     bool neg = false;
+    bool mark = false; // For traversals
     aig_ptr l = nullptr;
     aig_ptr r = nullptr;
 };
@@ -676,9 +690,8 @@ struct SimplifiedCNF {
         }
     };
     std::map<uint32_t, Weight> weights;
-    std::map<uint32_t, CMSat::Lit> orig_to_new_var; // Only makes sense for the CNF we have
-                                                    // maps orig vars to CNF vars
-    AIGManager aig_mng; // in NEW number space
+    std::map<uint32_t, CMSat::Lit> orig_to_new_var; // ONLY maps in the CNF
+    AIGManager aig_mng; // only for const true/false
     std::map<uint32_t, aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space
 
     SimplifiedCNF& operator=(const SimplifiedCNF& other) {
@@ -1528,6 +1541,45 @@ struct SimplifiedCNF {
             ext_sample[v] = val;
         }
         return ext_sample;
+    }
+
+    void map_aigs_to_orig(std::map<uint32_t, std::shared_ptr<AIG>>& aigs, uint32_t max_num_vars) {
+        const auto new_to_orig_var = get_new_to_orig_var();
+        std::function<void(const aig_ptr&)> remap_aig;
+        remap_aig = [&](const aig_ptr& aig) {
+            if (aig == nullptr) return;
+            if (aig->marked()) return;
+            assert(aig->invariants());
+            aig->set_mark();
+
+            if (aig->type == t_lit) {
+                uint32_t v = aig->var;
+                assert(v < max_num_vars);
+                aig->var = new_to_orig_var.at(v).var();
+                aig->neg ^= new_to_orig_var.at(v).sign();
+                return;
+            }
+            if (aig->type == t_and) {
+                remap_aig(aig->l);
+                remap_aig(aig->r);
+                return;
+            }
+            if (aig->type == t_const) return;
+            assert(false && "Unknown AIG type");
+            exit(EXIT_FAILURE);
+        };
+
+
+        for(auto& [v, aig]: aigs) aig->unmark_all();
+        for(auto& [v, aig]: aigs) remap_aig(aig);
+        for(auto& [v, aig]: aigs) {
+            auto l = new_to_orig_var.at(v);
+            assert(defs[l.var()] == nullptr && "AIG for original must not exist");
+            if (l.sign()) defs[l.var()] = AIG::new_not(aig);
+            else defs[l.var()] = aig;
+        }
+
+
     }
 };
 
