@@ -163,6 +163,9 @@ def run_synth(solver, fname):
         if ("ERROR" in line) or ("Error" in line) or ("error" in line):
             print("Error line from solver %s: %s" % (solver, line))
             return True, []
+        if ("assert" in line) or ("Assertion" in line):
+            print("Error line from solver %s: %s" % (solver, line))
+            return True, []
         if line.startswith("c o Wrote AIG defs:"):
             aigs.append(line[len("c o Wrote AIG defs:"):].strip())
 
@@ -217,6 +220,9 @@ if __name__ == "__main__":
             print("Synthesis failed on file %s" % fname)
             exit(-1)
         print("Synthesis succeeded on file %s, produced files: %s" % (fname, str(aigs)))
+        if len(aigs) == 0:
+            print("ERROR: Synthesis produced no output AIGs on file %s" % fname)
+            exit(-1)
 
         for aig in aigs:
             call = "./test-synth -v -s %d %s %s" % (seed, fname, aig)
