@@ -186,9 +186,8 @@ bool Minimize::remove_definable_by_gates() {
         uint32_t num = 0;
         bool all_orig = true;
         for(auto v: x.first) {
-            if (v < orig_num_vars) {
-                num += seen[v];
-            } else {
+            if (v < orig_num_vars) num += seen[v];
+            else {
                 all_orig = false;
                 break;
             }
@@ -216,10 +215,8 @@ bool Minimize::remove_definable_by_gates() {
             }
         }
         if (orgate.rhs.var() < orig_num_vars) num += seen[orgate.rhs.var()];
-        else {
-            all_orig = false;
-            break;
-        }
+        else all_orig = false;
+
         //This one can be used to remove a variable
         if (all_orig && num == orgate.lits.size()+1) {
             rhs_incidence[orgate.rhs.var()]++;

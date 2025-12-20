@@ -134,7 +134,7 @@ void Minimize::get_incidence() {
 void Minimize::set_up_solver()
 {
     assert(solver == nullptr);
-    solver = new SATSolver;
+    solver = std::make_unique<SATSolver>();
     solver->set_up_for_arjun();
     solver->set_prefix("c o ");
     solver->set_renumber(0);
@@ -189,7 +189,8 @@ void check_sanity_sampling_vars(T vars, const uint32_t nvars)
 {
     for(const auto& v: vars) if (v >= nvars) {
         cout << "ERROR: sampling set provided is incorrect, it has a variable in it: " << v+1 << " that is larger than the total number of variables: " << nvars << endl;
-        exit(-1);
+        assert(false);
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -243,7 +244,7 @@ void Minimize::fill_solver(const ArjunNS::SimplifiedCNF& cnf) {
     if (cnf.opt_sampl_vars_set) {
         if (cnf.sampl_vars != cnf.opt_sampl_vars) {
             cout <<"ERROR: backwards does not support opt sampling set" << endl;
-            exit(-1);
+            exit(EXIT_FAILURE);
         }
     }
 }
@@ -272,7 +273,7 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf, bool all_indep) {
         cnf.opt_sampl_vars.clear();
         for(uint32_t i = 0; i < cnf.nvars; i++) cnf.opt_sampl_vars.push_back(i);
     }
-    cnf.fix_weights(solver, sampling_vars, empty_sampling_vars);
+    cnf.fix_weights(solver.get(), sampling_vars, empty_sampling_vars);
 
     // Get back clauses
     const auto eq_lits = solver->get_all_binary_xors();

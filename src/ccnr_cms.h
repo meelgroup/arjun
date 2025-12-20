@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <cstdio>
 #include <utility>
 #include <vector>
+#include <memory>
 
 using std::pair;
 using std::make_pair;
@@ -53,7 +54,7 @@ private:
     void parse_parameters();
     void init_for_round();
     bool init_problem(const vector<vector<CMSat::Lit>>& cls, uint32_t nvars, const vector<uint32_t>& sampling_vars);
-    LSSolver* ls_s = nullptr;
+    std::unique_ptr<LSSolver> ls_s;
     uint32_t cl_num = 0;
 
     void add_this_clause(const vector<CMSat::Lit>& cl);

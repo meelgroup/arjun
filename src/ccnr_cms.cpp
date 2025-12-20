@@ -38,16 +38,16 @@ using CMSat::lbool;
 
 Ganak_ccnr::Ganak_ccnr(uint32_t _verb) {
     conf.verb = _verb;
-    ls_s = new LSSolver();
+    ls_s = std::make_unique<LSSolver>();
     ls_s->set_verbosity(conf.verb);
 }
 
-Ganak_ccnr::~Ganak_ccnr() { delete ls_s; }
+Ganak_ccnr::~Ganak_ccnr() = default;
 
 int Ganak_ccnr::main(const vector<vector<Lit>>& cls, const uint32_t nvars, const vector<uint32_t>& sampling_vars, const int mult) {
     //It might not work well with few number of variables
-    //rnovelty could also die/exit(-1), etc.
-    if (nvars == 0 || cls.size() == 0) {
+    //rnovelty could also die/exit(EXIT_FAILURE), etc.
+    if (nvars == 0 || cls.empty()) {
         verb_print(1, "[ccnr] too few variables & clauses");
         return 0;
     }

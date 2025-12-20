@@ -84,7 +84,7 @@ void Minimize::order_by_file(const string& fname, vector<uint32_t>& unknown) {
             cout << "ERROR: the file '" << fname << "' contains a line we cannot parse to be a variable number" << endl;
             cout << "ERROR line number: " << line_num << std::endl;
             cout << "ERROR: lines should ONLY contain a single variable" << endl;
-            exit(-1);
+            exit(EXIT_FAILURE);
         }
         if (old_unknown.find(a) == old_unknown.end()) {
             cout << "WARNING: the variable " << a << " is in the order file but not in the original order." << endl;
@@ -358,7 +358,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     double start_round_time = cpuTime();
     vector<uint32_t> indep;
     Interpolant interp(conf);
-    interp.solver = solver;
+    interp.solver = solver.get();
     interp.fill_picolsat(orig_num_vars);
     interp.fill_var_to_indic(var_to_indic);
 

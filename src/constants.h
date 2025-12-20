@@ -52,6 +52,9 @@ using std::setw;
 //default
 #define COLDEF "\033[0m"
 
+// #define SLOW_DEBUG
+// #define VERBOSE_DEBUG
+
 #ifdef SLOW_DEBUG
 #define SLOW_DEBUG_DO(x) do { x; } while (0)
 #else
@@ -59,16 +62,19 @@ using std::setw;
 #endif
 
 // lit to picolit
-inline int lit_to_pl(const CMSat::Lit l) {
+[[nodiscard]] inline int lit_to_pl(const CMSat::Lit l) noexcept {
     int picolit = (l.var()+1) * (l.sign() ? -1 : 1);
     return picolit;
 }
-inline CMSat::Lit pl_to_lit(const int l) {
+
+[[nodiscard]] inline CMSat::Lit pl_to_lit(const int l) noexcept {
     uint32_t v = abs(l)-1;
     return CMSat::Lit(v, l < 0);
 }
-inline vector<CMSat::Lit> pl_to_lit_cl(const vector<int>& cl) {
+
+[[nodiscard]] inline vector<CMSat::Lit> pl_to_lit_cl(const vector<int>& cl) {
     vector<CMSat::Lit> ret;
+    ret.reserve(cl.size());
     for(const auto& l: cl) ret.push_back(pl_to_lit(l));
     return ret;
 }
@@ -85,6 +91,21 @@ inline vector<CMSat::Lit> pl_to_lit_cl(const vector<int>& cl) {
         if (arjdata->conf.verb >= a) {\
             std::cout << "c o " << COLDEF << x << COLDEF << std::endl;}\
     } while (0)
+
+#ifdef VERBOSE_DEBUG
+#define VERBOSE_DEBUG_DO(x) do { x; } while (0)
+#else
+#define VERBOSE_DEBUG_DO(x) do { } while (0)
+#endif
+
+#ifdef VERBOSE_DEBUG
+#define debug_print(x) std::cout << COLDEF << x << COLDEF << endl
+#define debug_print_noendl(x) std::cout << x
+#else
+#define debug_print(x) do {} while(0)
+#define debug_print_noendl(x) do {} while (0)
+#endif
+#define debug_print_tmp(x) std::cout << COLDEF << x << COLDEF << endl
 
 #if defined(_MSC_VER)
 #include "cms_windows_includes.h"
@@ -114,7 +135,7 @@ template<class T>
 struct IncidenceSorter ///DESCENDING ORDER (i.e. most likely independent at the top)
 {
     IncidenceSorter(const vector<T>& _inc) : inc(_inc) {}
-    bool operator()(const T a, const T b) {
+    bool operator()(const T a, const T b) const noexcept {
         if (inc[a] != inc[b]) {
             return inc[a] > inc[b];
         }
@@ -129,7 +150,7 @@ template<class T> void sort_unknown(T& unknown, vector<uint32_t>& incidence)
     std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
 }
 
-inline string print_value_kilo_mega(const int64_t value, bool setw = true)
+[[nodiscard]] inline string print_value_kilo_mega(const int64_t value, bool setw = true)
 {
     std::stringstream ss;
     if (value > 20*1000LL*1000LL) {
@@ -152,7 +173,7 @@ inline string print_value_kilo_mega(const int64_t value, bool setw = true)
     return ss.str();
 }
 
-inline double stats_line_percent(double num, double total)
+[[nodiscard]] inline double stats_line_percent(double num, double total) noexcept
 {
     if (total == 0) {
         return 0;

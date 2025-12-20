@@ -134,7 +134,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             if (val == l_True) return "1";
             if (val == l_False) return "0";
             if (val == l_Undef) assert(false);
-            exit(-1);
+            exit(EXIT_FAILURE);
         };
         for(const auto& y: to_define) {
             auto y_hat = y_to_y_hat[y];
@@ -209,7 +209,7 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     auto ret = solver.solve(&assumps);
     assert(ret != l_Undef);
     if (ret == l_True) {
-        auto model = solver.get_model();
+        const auto& model = solver.get_model();
         if (conf.verb >= 3) {
             for(uint32_t i = 0; i < cnf.nVars(); i++)
                 cout << "model i " << setw(5) << i+1 << " : " << model[i] << endl;

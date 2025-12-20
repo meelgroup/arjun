@@ -28,6 +28,7 @@ extern "C" {
 }
 
 #include "interpolant.h"
+#include <memory>
 #include "constants.h"
 
 using namespace CMSat;
@@ -120,12 +121,12 @@ void Interpolant::generate_interpolant(
     if (pret == PICOSAT_SATISFIABLE) {
         cout << "BUG, core should be UNSAT" << endl;
         assert(false);
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
     if (pret == PICOSAT_UNKNOWN) {
         cout << "OOOpps, we should give more time for picosat, got UNKNOWN" << endl;
         assert(false);
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
     release_assert(pret == PICOSAT_UNSATISFIABLE);
 
@@ -161,7 +162,7 @@ void Interpolant::generate_interpolant(
     }
     for(const auto& l: assumptions) mini_cls.push_back({l});
 
-    bool debug_core = true;
+    constexpr bool debug_core = true;
     if (debug_core) {
         std::stringstream name;
         name << "core-" << test_var+1 << ".cnf";
@@ -178,7 +179,7 @@ void Interpolant::generate_interpolant(
     }
 
     // CaDiCaL on the core only
-    CaDiCaL::Solver* cdcl = new Solver();
+    auto cdcl = std::make_unique<Solver>();
     MyTracer t(orig_num_vars, cnf.opt_sampl_vars, &aig_mng, conf);
 
     cdcl->connect_proof_tracer(&t, true);
@@ -194,16 +195,15 @@ void Interpolant::generate_interpolant(
     if (pret == Status::SATISFIABLE) {
         cout << "ERROR: core should be UNSAT" << endl;
         assert(false);
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
     if (pret == Status::UNKNOWN) {
         cout << "ERROR: OOOpps, we should give more time for picosat, got UNKNOWN" << endl;
         assert(false);
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
     release_assert(pret == Status::UNSATISFIABLE);
     cdcl->disconnect_proof_tracer(&t);
-    delete cdcl;
 
     defs[test_var] = t.out;
     verb_print(1, "definition of var: " << test_var+1 << " is: " << t.out);

@@ -493,11 +493,7 @@ void LSSolver::flip(int v) {
       vars[v].score = -orig_score;
     }
     vars[v].last_flip_step = step;
-
-#ifdef SLOW_DEBUG
-    cout << "Done flip(). Checking all clauses" << endl;
-    for (uint32_t i = 0; i < cls.size(); i++) check_clause(i);
-#endif
+    SLOW_DEBUG_DO( for (uint32_t i = 0; i < cls.size(); i++) check_clause(i););
 }
 
 void LSSolver::touch_a_clause(int cl_id) {
@@ -521,7 +517,7 @@ void LSSolver::untouch_a_clause(int cl_id) {
 
 void LSSolver::sat_a_clause(int cl_id) {
     /* cout << "sat_a_clause: cl_id: " << cl_id << endl; */
-    assert(unsat_cls.size() > 0);
+    assert(!unsat_cls.empty());
     if (cls[cl_id].touched_cnt > 0) assert(cls[cl_id].sat_count == 1);
     else assert(cls[cl_id].touched_cnt == 0 && cls[cl_id].sat_count == 0);
 
@@ -627,7 +623,7 @@ void LSSolver::print_solution(bool need_verify) {
             num_cls_touched += touched_flag;
             if (!sat_flag && touched_flag) {
                 cout << "c Error: verify error in cl_id : " << cid << " -- "; print_cl(cid);
-                exit(-1);
+                exit(EXIT_FAILURE);
                 return;
             }
         }

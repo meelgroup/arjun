@@ -60,7 +60,7 @@ struct AIG {
             return l != nullptr && r != nullptr && var == std::numeric_limits<uint32_t>::max();
         }
         assert(false && "Unknown AIG type");
-        std::exit(-1);
+        std::exit(EXIT_FAILURE);
     }
 };
 
@@ -90,7 +90,7 @@ inline bool evaluate(const std::vector<CMSat::lbool>& vals, const AIG* aig, cons
         return ret;
     }
     assert(false && "Unknown AIG type");
-    exit(-1);
+    exit(EXIT_FAILURE);
 }
 
 struct AIGManager {
@@ -767,7 +767,7 @@ struct SimplifiedCNF {
                     for(const auto& l2: cl) std::cout << l2 << " ";
                     std::cout << std::endl;
                     std::cout << "nvars: " << _nvars+1 << std::endl;
-                    exit(-1);
+                    exit(EXIT_FAILURE);
                 }
                 assert(l.var() < _nvars);
             }
@@ -785,7 +785,7 @@ struct SimplifiedCNF {
                 std::cout << "ERROR: Found a sampling var that is greater than the number of variables we are supposed to have" << std::endl;
                 std::cout << "sampling var: " << v+1 << std::endl;
                 std::cout << "nvars: " << nvars+1 << std::endl;
-                exit(-1);
+                exit(EXIT_FAILURE);
             }
             assert(v < nvars);
         }
@@ -795,7 +795,7 @@ struct SimplifiedCNF {
             if (!sopt_sampl_vars.count(v)) {
                 std::cout << "ERROR: Found a sampling var that is not an opt sampling var: "
                     << v+1 << std::endl;
-                exit(-1);
+                exit(EXIT_FAILURE);
             }
             assert(sopt_sampl_vars.count(v));
         }
@@ -806,7 +806,7 @@ struct SimplifiedCNF {
                 std::cout << "ERROR: Found a weight that is greater than the number of variables we are supposed to have" << std::endl;
                 std::cout << "weight var: " << w.first+1 << std::endl;
                 std::cout << "nvars: " << nvars+1 << std::endl;
-                exit(-1);
+                exit(EXIT_FAILURE);
             }
             assert(w.first < nvars);
             if (sopt_sampl_vars.count(w.first) == 0) {
@@ -815,7 +815,7 @@ struct SimplifiedCNF {
 
                 std::cout << "ERROR: Found a weight that is not an (opt) sampling var: "
                     << w.first+1 << std::endl;
-                exit(-1);
+                exit(EXIT_FAILURE);
             }
             assert(sopt_sampl_vars.count(w.first));
         }
@@ -913,14 +913,14 @@ struct SimplifiedCNF {
             std::cout << "var: " << v+1 << std::endl;
             std::cout << "nvars: " << nVars() << std::endl;
             assert(v < nVars());
-            exit(-1);
+            exit(EXIT_FAILURE);
         }
     }
     void check_clause(const std::vector<CMSat::Lit>& cl) const {
         for(const auto& l: cl) check_var(l.var());
     }
-    void add_xor_clause(const std::vector<uint32_t>&, bool) { exit(-1); }
-    void add_xor_clause(const std::vector<CMSat::Lit>&, bool) { exit(-1); }
+    void add_xor_clause(const std::vector<uint32_t>&, bool) { exit(EXIT_FAILURE); }
+    void add_xor_clause(const std::vector<CMSat::Lit>&, bool) { exit(EXIT_FAILURE); }
     void add_clause(const std::vector<CMSat::Lit>& cl) {
         check_clause(cl);
         clauses.push_back(cl);
@@ -959,7 +959,7 @@ struct SimplifiedCNF {
         assert(weighted);
         if (!fg->weighted()) {
           std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
-          exit(-1);
+          exit(EXIT_FAILURE);
         }
         assert(lit.var() < nVars());
         auto it = weights.find(lit.var());
@@ -983,7 +983,7 @@ struct SimplifiedCNF {
         assert(weighted);
         if (!fg->weighted()) {
           std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
-          exit(-1);
+          exit(EXIT_FAILURE);
         }
         assert(lit.var() < nVars());
         auto it = weights.find(lit.var());
@@ -1142,7 +1142,7 @@ struct SimplifiedCNF {
         check_var(v);
         if (!fg->weighted()) {
           std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
-          exit(-1);
+          exit(EXIT_FAILURE);
         }
         return weights.count(v) > 0;
     }
@@ -1150,7 +1150,7 @@ struct SimplifiedCNF {
     void remove_equiv_weights() {
         if (!weighted) return;
 
-        bool debug_w = false;
+        constexpr bool debug_w = false;
         std::set<uint32_t> tmp(opt_sampl_vars.begin(), opt_sampl_vars.end());
         for(uint32_t i = 0; i < nvars; i++) {
             CMSat::Lit l(i, false);
@@ -1173,7 +1173,7 @@ struct SimplifiedCNF {
         for(const auto& v: empty_sampling_vars) check_var(v);
         std::set<uint32_t> sampling_vars_set(new_sampl_vars.begin(), new_sampl_vars.end());
         std::set<uint32_t> opt_sampling_vars_set(opt_sampl_vars.begin(), opt_sampl_vars.end());
-        bool debug_w = false;
+        constexpr bool debug_w = false;
         if (debug_w)
             std::cout << __FUNCTION__ << " [w-debug] orig multiplier_weight: "
                 << *multiplier_weight << std::endl;
@@ -1299,7 +1299,7 @@ struct SimplifiedCNF {
         if (defs.find(var) == defs.end()) {
             std::cout << "ERROR: Variable " << var+1 << " not defined" << std::endl;
             assert(defs.find(var) != defs.end() && "Must be defined");
-            exit(-1);
+            exit(EXIT_FAILURE);
         }
         return ArjunNS::evaluate(vals, defs.find(var)->second, defs);
     }
@@ -1333,7 +1333,7 @@ struct SimplifiedCNF {
             return aig_contains(aig->l, v) || aig_contains(aig->r, v);
         }
         assert(false && "Unknown AIG type");
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
     std::set<uint32_t> get_cannot_depend_on(const uint32_t v) const {
@@ -1341,13 +1341,13 @@ struct SimplifiedCNF {
         if (defs.find(v) != defs.end()) {
             std::cout << "ERROR: Variable " << v+1 << " already defined, why query what it cannot depend on???" << std::endl;
             assert(false);
-            exit(-1);
+            exit(EXIT_FAILURE);
         }
         std::set<uint32_t> osv(opt_sampl_vars.begin(), opt_sampl_vars.end());
         if (osv.count(v)) {
             std::cout << "ERROR: Variable " << v+1 << " is in opt sampling set, why query what it cannot depend on???" << std::endl;
             assert(false);
-            exit(-1);
+            exit(EXIT_FAILURE);
         }
 
         std::set<uint32_t> ret;

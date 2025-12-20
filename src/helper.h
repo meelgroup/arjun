@@ -94,10 +94,10 @@ template<typename T> void read_in_a_file(const std::string& filename,
     if (in == nullptr) {
         std::cerr << "ERROR! Could not open file '" << filename
             << "' for reading: " << strerror(errno) << endl;
-        std::exit(-1);
+        std::exit(EXIT_FAILURE);
     }
 
-    if (!parser.parse_DIMACS(in, true)) exit(-1);
+    if (!parser.parse_DIMACS(in, true)) exit(EXIT_FAILURE);
     if (!holder->get_sampl_vars_set()) {
         holder->start_with_clean_sampl_vars();
         all_indep = true;

@@ -32,6 +32,7 @@
 #include <set>
 #include <vector>
 #include <string>
+#include <memory>
 #ifdef CMS_LOCAL_BUILD
 #include "cryptominisat.h"
 #else
@@ -55,13 +56,13 @@ struct Minimize
     Minimize(const Config& _conf) : conf(_conf) {
         set_up_solver();
     }
-    ~Minimize() { delete solver; }
+    ~Minimize() = default;
 
     void run_minimize_indep(ArjunNS::SimplifiedCNF& cnf, bool all_indep);
     void run_minimize_for_synth(ArjunNS::SimplifiedCNF& cnf);
 
     const Config conf;
-    CMSat::SATSolver* solver = nullptr;
+    std::unique_ptr<CMSat::SATSolver> solver;
     bool already_duplicated = false;
     vector<uint32_t> sampling_vars;
     vector<uint32_t> empty_sampling_vars;
