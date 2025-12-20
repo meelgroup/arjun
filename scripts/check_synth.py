@@ -52,7 +52,7 @@ def unique_file(fname_begin, fname_end=".cnf", max_num_files=2700):
 
 def gen_fuzz_call_brummayer(fuzzer, fname):
     seed = random.randint(0, 1000*1000*1000)
-    call = "{0} -s {1} > {3}".format(fuzzer, seed, fname)
+    call = "{0} -s {1} > {2}".format(fuzzer, seed, fname)
     return call
 
 def add_projection(fname) :
@@ -140,21 +140,17 @@ def run(command, dir):
     return consoleOutput, err
 
 
-def run_synth(solver, fname, seed):
+def run_synth(solver, fname):
     curr_time = time.time()
-    toexec = solver.exe.split()
+    toexec = solver.split()
     toexec.append(os.getcwd() + "/" + fname)
-    if not solver.exact:
-        last = toexec[len(toexec)-1]
-        toexec = toexec[:len(toexec)-1]
-        toexec.extend(["-s", str(seed)])
-        toexec.extend([last])
-    out, err = run(toexec, solver.dir)
+    out, err = run(toexec, os.getcwd())
     if err is None:
         if options.verbose:
             print("No error.")
     else:
         print("Error string is: ", err)
+        return True, []
     diff_time = time.time() - curr_time
     if diff_time > options.maxtime - maxtimediff:
         print("Too much time to solve with %s, aborted!" % solver.exe)
@@ -210,8 +206,8 @@ if __name__ == "__main__":
 
         fname = gen_fuzz(seed)
         add_projection(fname)
-        solver = Solver(exe="./arjun --synth 1", dir=".")
-        err, aigs = run_synth(solver, fname, seed=i)
+        solver = "./arjun --synth 1"
+        err, aigs = run_synth(solver, fname)
         if err:
             print("Synthesis failed on file %s" % fname)
             exit(-1)
