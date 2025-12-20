@@ -89,8 +89,8 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     // [ replaced, replaced_with ]
     /* auto ret1 = solver->get_all_binary_xors(); */
     /* for(const auto& p: ret1) no_need.insert(p.first.var()); */
-    auto ret2 = solver->get_zero_assigned_lits();
-    for(const auto& p: ret2) no_need.insert(p.var());
+    const auto zero_ass = solver->get_zero_assigned_lits();
+    for(const auto& p: zero_ass) no_need.insert(p.var());
     for(const auto& v: cnf.opt_sampl_vars) no_need.insert(v);
     add_all_indics_except(no_need);
 
@@ -99,7 +99,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     interp.fill_picolsat(orig_num_vars);
     interp.fill_var_to_indic(var_to_indic);
 
-    //Initially, all of samping_set is unknown
+    //Initially, all of non-opt sampling set is unknown
     for(const auto& x: seen) assert(x == 0);
     vector<uint32_t> unknown;
     for(uint32_t i = 0; i < orig_num_vars; i++) {

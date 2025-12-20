@@ -149,6 +149,7 @@ struct IncidenceSorter ///DESCENDING ORDER (i.e. most likely independent at the 
 
 template<class T> void sort_unknown(T& unknown, vector<uint32_t>& incidence)
 {
+    assert(!incidence.empty() && "Incidence is filled at fill_solver time");
     std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
 }
 

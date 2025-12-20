@@ -26,7 +26,8 @@ import random
 import resource
 import optparse
 import stat
-import shutil
+import glob
+import re
 from collections import namedtuple
 
 maxtimediff = 1
@@ -171,6 +172,51 @@ def run_synth(solver, fname):
 
     return False, aigs
 
+def del_core_files():
+    items = glob.glob("core-*.cnf")
+    for fname in items:
+        if os.path.isfile(fname):
+            try:
+                os.remove(fname)
+                print(f"Deleted file: {fname}")
+            except OSError as e:
+                print(f"Error deleting {fname}: {e}")
+
+def check_core_files():
+    # Find all items matching the pattern
+    items = glob.glob("core-*.cnf")
+
+    # Filter to ensure NUM is numeric AND it's a regular file
+    pattern = re.compile(r'core-(\d+)\.cnf')
+
+    for fname in items:
+        # Check if it's a file (not a directory, symlink, etc.)
+        if os.path.isfile(fname) and pattern.match(fname):
+            out, err = run(["../../cryptominisat", fname], os.getcwd())
+            if err:
+                print(f"ERROR: cannot run cryptominisat on {fname}: {err}")
+                exit(-1)
+            ok = False
+            for line in out.split("\n"):
+                line = line.strip()
+                if line.startswith("s UNSATISFIABLE"):
+                    print(f"Core file {fname} processed successfully with result: {line}")
+                    ok = True
+                    break
+            if not ok:
+                print(f"ERROR: core file {fname} did not yield UNSATISFIABLE result")
+                exit(-1)
+            try:
+                os.remove(fname)
+                print(f"Deleted file: {fname}")
+            except OSError as e:
+                print(f"Error deleting {fname}: {e}")
+        elif not os.path.isfile(fname) and pattern.match(fname):
+            print(f"Skipping non-file item: {fname} (is directory or special file)")
+        else:
+            print(f"Skipping non-matching item: {fname}")
+
+
 
 def gen_fuzz(seed) :
     fname = unique_file("fuzzTest")
@@ -212,6 +258,8 @@ if __name__ == "__main__":
         else:
             seed = options.rnd_seed
 
+        del_core_files()
+
         fname = gen_fuzz(seed)
         add_projection(fname)
         solver = "./arjun --synth --debugsynth --verb 1"
@@ -223,6 +271,7 @@ if __name__ == "__main__":
         if len(aigs) == 0:
             print("ERROR: Synthesis produced no output AIGs on file %s" % fname)
             exit(-1)
+        check_core_files()
 
         for aig in aigs:
             call = "./test-synth -v -s %d %s %s" % (seed, fname, aig)
