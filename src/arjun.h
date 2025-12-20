@@ -1536,7 +1536,7 @@ struct SimplifiedCNF {
         }
         write_aig_defs(out);
         out.close();
-        std::cout << "c Wrote AIG defs: " << fname << std::endl;
+        std::cout << "c o Wrote AIG defs: " << fname << std::endl;
     }
 
     // Read AIG defs from file (opens file for you)

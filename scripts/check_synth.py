@@ -158,7 +158,7 @@ def run_synth(solver, fname):
 
     aigs = []
     for line in out.split("\n"):
-        if line.startswith("c Wrote AIG defs:"):
+        if line.startswith("c o Wrote AIG defs:"):
             aigs.append(line[len("c Wrote AIG defs:"):].strip())
 
     return False, aigs
@@ -206,7 +206,7 @@ if __name__ == "__main__":
 
         fname = gen_fuzz(seed)
         add_projection(fname)
-        solver = "./arjun --synth 1"
+        solver = "./arjun --synth 1 --debugsynt 1"
         err, aigs = run_synth(solver, fname)
         if err:
             print("Synthesis failed on file %s" % fname)
