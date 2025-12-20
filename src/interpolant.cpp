@@ -165,7 +165,7 @@ void Interpolant::generate_interpolant(
     if (conf.do_debug_synth) {
         std::stringstream name;
         name << "core-" << test_var+1 << ".cnf";
-        verb_print(5, "Writing core to: " << name.str());
+        verb_print(1, "Writing core to: " << name.str());
         auto f = std::ofstream(name.str());
         f << "p cnf " << orig_num_vars*2 << " " << mini_cls.size() << endl;
         f << "c orig_num_vars: " << orig_num_vars << endl;
