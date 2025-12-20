@@ -54,6 +54,8 @@ void Extend::add_all_indics_except(const set<uint32_t>& except) {
         //torem_orig.push_back(Lit(this_indic, false));
         var_to_indic[var] = this_indic;
         var_to_indic[var+orig_num_vars] = this_indic;
+        verb_print(3, "Adding indic var " << this_indic+1
+                << " for orig vars " << var+1 << " and " << var+orig_num_vars+1);
         dont_elim.push_back(Lit(this_indic, false));
         indic_to_var.resize(this_indic+1, var_Undef);
         indic_to_var[this_indic] = var;
@@ -93,6 +95,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     for(const auto& p: zero_ass) no_need.insert(p.var());
     for(const auto& v: cnf.opt_sampl_vars) no_need.insert(v);
     add_all_indics_except(no_need);
+    verb_print(2, "[extend] orig_num_vars: " << orig_num_vars << " nvars: " << solver->nVars());
 
     // set up interpolant
     interp.solver = solver.get();
@@ -161,7 +164,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             Lit l(indic, false);
             cl.push_back(l);
             solver->add_clause(cl);
-            interp.add_clause(cl);
+            interp.add_unit_cl(cl);
             cnf.opt_sampl_vars.push_back(test_var);
 
         } else if (ret == l_True) {
@@ -185,7 +188,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
 
-    cnf.add_aigs_from(interp.get_aig_mng(), interp.get_defs());
+    cnf.add_aigs_from(interp.get_defs());
 }
 
 void Extend::extend_round(SimplifiedCNF& cnf) {

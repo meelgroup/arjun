@@ -452,5 +452,5 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
         << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
 
-    cnf.add_aigs_from(interp.get_aig_mng(), interp.get_defs());
+    cnf.add_aigs_from(interp.get_defs());
 }

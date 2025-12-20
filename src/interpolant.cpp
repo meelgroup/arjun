@@ -102,7 +102,7 @@ void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int>
           if (input.count(v)) cl.push_back(pl_to_lit(l));
       }
       auto aig = aig_mng->new_const(false);
-      for(const auto& l: cl) aig = AIG::new_or(aig, aig_mng->new_lit(l));
+      for(const auto& l: cl) aig = AIG::new_or(aig, AIG::new_lit(l));
       fs_clid[id] = aig;
   } else {
       fs_clid[id] = aig_mng->new_const(true);
@@ -113,6 +113,8 @@ void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int>
 void Interpolant::generate_interpolant(
         const vector<Lit>& assumptions, uint32_t test_var, ArjunNS::SimplifiedCNF& cnf) {
     verb_print(2, "generating unsat proof for: " << test_var+1);
+    verb_print(2, "assumptions: " << assumptions);
+    verb_print(2, "orig_num_vars: " << orig_num_vars);
 
     // FIRST, we get an UNSAT core
     for(const auto& l: assumptions) picosat_assume(ps, lit_to_pl(l));
@@ -155,8 +157,7 @@ void Interpolant::generate_interpolant(
                 }
                 cl.push_back(l);
             }
-            verb_print(2, "cl: " << cl);
-            for(const auto& l: cl) assert(l.var() < orig_num_vars*2);
+            verb_print(3, "[interpolant] picosat says need cl: " << cl);
             mini_cls.push_back(cl);
         }
     }
@@ -231,11 +232,12 @@ void Interpolant::fill_var_to_indic(const vector<uint32_t>& _var_to_indic) {
     var_to_indic = _var_to_indic;
 }
 
-void Interpolant::add_clause(const vector<Lit>& cl) {
+void Interpolant::add_unit_cl(const vector<Lit>& cl) {
     assert(cl.size() == 1);
 
     cl_map[cl_num++] = cl;
     picosat_add(ps, lit_to_pl(cl[0]));
     picosat_add(ps, 0);
+    assert(cl[0].sign() == false);
     set_vals[cl[0].var()] = l_True;
 }

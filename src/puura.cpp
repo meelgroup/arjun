@@ -540,7 +540,7 @@ void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, uniqu
 
             for(const auto& l: cl) {
                 if (l.var() == target) continue;
-                auto aig = scnf.aig_mng.new_lit(~l);
+                auto aig = AIG::new_lit(~l);
                 current = AIG::new_and(current, aig);
             }
             overall = AIG::new_or(overall, current);

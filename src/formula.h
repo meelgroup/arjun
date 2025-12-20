@@ -130,7 +130,7 @@ struct FHolder {
             ret.clauses.push_back({b, ~fresh, r});
             ret.out = Lit(fresh_v, false);
         }
-        ret.aig = aig_mng.new_ite(fleft.aig, fright.aig, branch);
+        ret.aig = AIG::new_ite(fleft.aig, fright.aig, branch);
         return ret;
     }
 

@@ -96,6 +96,23 @@ public:
         exit(EXIT_FAILURE);
     }
 
+    static aig_ptr new_lit(CMSat::Lit l) {
+        return new_lit(l.var(), l.sign());
+    }
+
+    static aig_ptr new_lit(uint32_t var, bool neg = false) {
+        auto ret = std::make_shared<AIG>();
+        ret->type = t_lit;
+        ret->var = var;
+        ret->neg = neg;
+        return ret;
+    }
+
+    static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, CMSat::Lit b) {
+        auto b_aig = new_lit(b.var(), b.sign());
+        return new_or(new_and(b_aig, l), new_and(new_not(b_aig), r));
+    }
+
     static aig_ptr new_not(const aig_ptr& a) {
         auto ret = std::make_shared<AIG>();
         ret->type = t_and;
@@ -149,13 +166,8 @@ public:
     }
 
     void clear() {
-        lit_to_aig.clear();
         const_true = nullptr;
         const_false = nullptr;
-    }
-
-    auto empty() const {
-        return lit_to_aig.empty();
     }
 
     AIGManager& operator=(const AIGManager& other) {
@@ -164,7 +176,6 @@ public:
             // With shared_ptr, just copy the pointers - no deep copy needed!
             const_true = other.const_true;
             const_false = other.const_false;
-            lit_to_aig = other.lit_to_aig;
         }
         return *this;
     }
@@ -172,56 +183,14 @@ public:
     AIGManager(const AIGManager& other) {
         const_true = other.const_true;
         const_false = other.const_false;
-        lit_to_aig = other.lit_to_aig;
-    }
-
-    // Merge AIGs from another manager into this one
-    // Returns a map from the other manager's AIGs to themselves (for compatibility)
-    std::map<aig_ptr, aig_ptr> append_aigs_from(const AIGManager& other) {
-        std::map<aig_ptr, aig_ptr> identity_map;
-
-        // With shared_ptr, we just share the AIGs - no copying needed
-        for(const auto& it: other.lit_to_aig) {
-            // NOTE: we may be overriding old ones. It's fine, we can have duplicates
-            lit_to_aig[it.first] = it.second;
-            identity_map[it.second] = it.second;
-        }
-
-        return identity_map;
-    }
-
-    aig_ptr new_lit(CMSat::Lit l) {
-        return new_lit(l.var(), l.sign());
-    }
-
-    aig_ptr new_lit(uint32_t var, bool neg = false) {
-        if (lit_to_aig.count(CMSat::Lit(var, neg))) {
-            return lit_to_aig.at(CMSat::Lit(var, neg));
-        }
-        auto ret = std::make_shared<AIG>();
-        ret->type = t_lit;
-        ret->var = var;
-        ret->neg = neg;
-        lit_to_aig[CMSat::Lit(var, neg)] = ret;
-
-        return ret;
     }
 
     aig_ptr new_const(bool val) {
         return val ? const_true : const_false;
     }
 
-    aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, CMSat::Lit b) {
-        auto b_aig = new_lit(b.var(), b.sign());
-        return AIG::new_or(AIG::new_and(b_aig, l), AIG::new_and(AIG::new_not(b_aig), r));
-    }
 
 private:
-
-    // A map from lit to AIG. This is just a lookup -- it is NOT guaranteed
-    // there aren't any other AIGs that are this lit. Due to copying, there may
-    // well be. So we DON'T guarantee uniqueness
-    std::map<CMSat::Lit, aig_ptr> lit_to_aig;
     // There could be other const true, this is just a good example so we don't always copy
     // Due to copying we don'g guarantee uniqueness
     aig_ptr const_true = nullptr;
@@ -814,7 +783,6 @@ struct SimplifiedCNF {
     void copy_aigs_from(const SimplifiedCNF& other) {
         assert(need_aig == other.need_aig && "Both must either need AIGs or not");
         if (!need_aig) {
-            assert(aig_mng.empty());
             assert(defs.empty());
             return;
         }
@@ -822,13 +790,11 @@ struct SimplifiedCNF {
         defs = other.defs;
     }
 
-    void add_aigs_from(const AIGManager& other, const std::map<uint32_t, aig_ptr>& other_defs) {
+    void add_aigs_from(const std::map<uint32_t, aig_ptr>& other_defs) {
         if (!need_aig) {
             assert(defs.empty());
             return;
         }
-        // With shared_ptr, we can share AIGs directly - no copying needed
-        aig_mng.append_aigs_from(other);
 
         for(const auto& it: other_defs) {
             assert(defs.find(it.first) == defs.end() && "Must not already be defined here");
