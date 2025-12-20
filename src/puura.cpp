@@ -387,7 +387,10 @@ SimplifiedCNF Puura::get_cnf(
     scnf.new_vars(solver->simplified_nvars());
     scnf.copy_aigs_from(cnf);
     get_fixed_values(cnf, scnf, solver);
+
+    solver->start_getting_constraints(false, true);
     if (cnf.need_aig) get_bve_mapping(cnf, scnf, solver);
+    solver->end_getting_constraints();
 
     if (conf.verb >= 5) {
         for(const auto& v: new_sampl_vars)
@@ -561,7 +564,7 @@ void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, uniqu
             auto orig_lit = new_to_orig_var.at(l.var()) ^ l.sign();
             const auto aig = scnf.defs[orig_target.var()];
             assert(aig != nullptr);
-            assert(scnf.defs[orig_lit.var()]);
+            assert(scnf.defs[orig_lit.var()] == nullptr);
             if (orig_lit.sign()) {
                 scnf.defs[orig_lit.var()] = AIG::new_not(aig);
             } else {
