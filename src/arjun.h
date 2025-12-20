@@ -1600,8 +1600,8 @@ struct SimplifiedCNF {
         for(auto& [v, aig]: aigs) {
             auto l = new_to_orig_var.at(v);
             if (defs.find(l.var()) != defs.end()) {
-                std::cout << "ERROR: Variable " << l.var()+1
-                    << " already has a definition: " << defs.find(l.var())->second << std::endl;
+                /* std::cout << "ERROR: Variable " << l.var()+1 */
+                /*     << " already has a definition: " << defs.find(l.var())->second << std::endl; */
             }
             assert(defs.find(l.var()) == defs.end() && "Variable must not already have a definition");
             if (l.sign()) defs[l.var()] = AIG::new_not(aig);

@@ -74,10 +74,10 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
       else aig = AIG::new_or(aig, fs_clid[id2]);
   }
   fs_clid[id] = aig;
-  verb_print(2, "intermediate formula: " << fs_clid[id]);
+  verb_print(5, "intermediate formula: " << fs_clid[id]);
   if (clause.empty()) {
       out = aig;
-      verb_print(2, "Final formula: " << aig);
+      verb_print(5, "Final formula: " << aig);
   }
 }
 
@@ -206,7 +206,7 @@ void Interpolant::generate_interpolant(
     cdcl->disconnect_proof_tracer(&t);
 
     defs[test_var] = t.out;
-    verb_print(1, "definition of var: " << test_var+1 << " is: " << t.out);
+    verb_print(5, "definition of var: " << test_var+1 << " is: " << t.out);
     verb_print(1, "----------------------------");
 }
 
