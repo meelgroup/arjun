@@ -28,6 +28,7 @@
 #include "argparse.hpp"
 #include "arjun.h"
 #include <cryptominisat5/dimacsparser.h>
+#include "cryptominisat5/solvertypesmini.h"
 #include "helper.h"
 #include <random>
 
@@ -53,7 +54,35 @@ int verb = 1;
 int mode = 0;
 int num_samples = 100;
 int seed = 42;
-std::mt19937 mt{};
+std::mt19937 mt;
+
+void fill_solver_from_cnf(ArjunNS::SimplifiedCNF& cnf, SATSolver& solver) {
+    solver.new_vars(cnf.nvars);
+    for (const auto& clause : cnf.clauses) {
+        solver.add_clause(clause);
+    }
+}
+
+std::pair<bool, vector<lbool>> get_random_sol(ArjunNS::SimplifiedCNF& cnf, SATSolver* solver) {
+    vector<lbool> sample(cnf.nvars, l_Undef);
+    auto ret = solver->solve();
+    if (ret != CMSat::l_True) {
+        cout << "c [test-synth] CNF is unsat!" << endl;
+        return std::make_pair(false, sample);
+    }
+
+    return std::make_pair(true, sample);
+}
+
+vector<lbool> get_random_sol(SATSolver& solver) {
+    auto ret = solver.solve();
+    if (ret != CMSat::l_True) {
+        cout << "ERROR: CNF is UNSAT but we have already tested for that!!!" << endl;
+        exit(EXIT_FAILURE);
+    }
+    const auto& model = solver.get_model();
+    return model;
+}
 
 int main(int argc, char** argv) {
     argparse::ArgumentParser program = argparse::ArgumentParser("test-synth", "1.0",
@@ -113,9 +142,25 @@ int main(int argc, char** argv) {
             return EXIT_FAILURE;
     }
 
-    // Create SimplifiedCNF and read the AIG file
-    SimplifiedCNF cnf(fg);
+    // Read the original CNF file, check satisfiability
+    SATSolver solver;
+    SATSolver rnd_solver;
+    ArjunNS::SimplifiedCNF orig_cnf(fg);
+    orig_cnf.need_aig = true;
+    bool all_indep = false;
+    read_in_a_file(cnf_fname, &orig_cnf, all_indep, fg);
+    fill_solver_from_cnf(orig_cnf, solver);
+    fill_solver_from_cnf(orig_cnf, rnd_solver);
+    rnd_solver.set_up_for_sample_counter(100);
+    auto sat = solver.solve();
+    assert(sat != CMSat::l_Undef && "Solver returned undef on a CNF without assumptions");
+    if (sat != CMSat::l_False) {
+        cout << "c [test-synth] WARNING: Original CNF is unsat! Returning." << endl;
+        return EXIT_SUCCESS;
+    }
 
+    // Read the AIG file
+    SimplifiedCNF cnf(fg);
     if (verb) cout << "c [test-synth] Reading AIG file: " << aig_fname << endl;
     cnf.read_aig_defs_from_file(aig_fname);
     if (verb) {
@@ -131,12 +176,16 @@ int main(int argc, char** argv) {
         cout << "c [test-synth] backbone_done: " << cnf.backbone_done << endl;
     }
 
-    ArjunNS::SimplifiedCNF orig_cnf(fg);
-    orig_cnf.need_aig = true;
-    bool all_indep = false;
-    read_in_a_file(cnf_fname, &orig_cnf, all_indep, fg);
-    for (const auto& def : orig_cnf.defs) {
-        cnf.defs.push_back(def);
+    for(int i = 0; i < num_samples; i++) {
+        auto sample = get_random_sol(rnd_solver);
+        assert(sample.size() == orig_cnf.nvars);
+        vector<lbool> restricted_sample(orig_cnf.nvars, l_Undef);
+        for(const auto& var : orig_cnf.sampl_vars) {
+            restricted_sample[var] = sample[var];
+        }
+        auto extended_sample = cnf.extend_sample(restricted_sample);
+        /* assert_sample_satisfying(extended_sample, solver); */
     }
-    return 0;
+
+    return EXIT_SUCCESS;
 }

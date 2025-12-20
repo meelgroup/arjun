@@ -707,8 +707,8 @@ struct SimplifiedCNF {
         }
     };
     std::map<uint32_t, Weight> weights;
-    std::map<uint32_t, CMSat::VarMap> orig_to_new_var; // ORIGINAL number space to NEW number space
-                                                       // may map to fixed value (True/False)
+    std::map<uint32_t, CMSat::Lit> orig_to_new_var; // Only makes sense for the CNF we have
+                                                    // maps orig vars to CNF vars
     AIGManager aig_mng; // in NEW number space
     std::map<uint32_t, aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space
 
@@ -844,7 +844,7 @@ struct SimplifiedCNF {
     std::map<uint32_t, std::vector<CMSat::Lit>> get_new_to_orig_var_list() const {
         std::map<uint32_t, std::vector<CMSat::Lit>> ret;
         for(const auto& p: orig_to_new_var) {
-            const CMSat::Lit l = p.second.lit;
+            const CMSat::Lit l = p.second;
             if (l != CMSat::lit_Undef) {
                 auto it2 = ret.find(l.var());
                 if (it2 != ret.end()) ret[l.var()] = std::vector<CMSat::Lit>();
@@ -857,8 +857,7 @@ struct SimplifiedCNF {
     // Gives an example lit, sometimes good enough
     std::map<uint32_t, CMSat::Lit> get_new_to_orig_var() const {
         std::map<uint32_t, CMSat::Lit> ret;
-        for(const auto& [origv, newv]:  orig_to_new_var) {
-            const CMSat::Lit l = newv.lit;
+        for(const auto& [origv, l]:  orig_to_new_var) {
             if (l != CMSat::lit_Undef) {
                 ret[l.var()] = CMSat::Lit(origv, l.sign());
             }
@@ -871,14 +870,14 @@ struct SimplifiedCNF {
         nvars+=vars;
         for(uint32_t i = 0; i < vars; i++) {
             const uint32_t v = nvars-vars+i;
-            orig_to_new_var[v] = CMSat::VarMap(CMSat::Lit(v, false));
+            orig_to_new_var[v] = CMSat::Lit(v, false);
         }
         return nvars;
     }
     uint32_t new_var() {
         uint32_t v = nvars;
         nvars++;
-        orig_to_new_var[v] = CMSat::VarMap(CMSat::Lit(v, false));
+        orig_to_new_var[v] = CMSat::Lit(v, false);
         return nvars;
     }
 
@@ -1048,15 +1047,14 @@ struct SimplifiedCNF {
         assert(i == nvars);
 
         // Update var map
-        std::map<uint32_t, CMSat::VarMap> upd_vmap;
-        for(const auto& p: orig_to_new_var) {
-            p.second.invariant();
-            if (p.second.lit != CMSat::lit_Undef) {
-                CMSat::Lit l = p.second.lit;
+        std::map<uint32_t, CMSat::Lit> upd_vmap;
+        for(const auto& [o,n]: orig_to_new_var) {
+            if (n != CMSat::lit_Undef) {
+                CMSat::Lit l = n;
                 l = CMSat::Lit(map_here_to_there[l.var()], l.sign());
-                upd_vmap[p.first] = CMSat::VarMap(l);
+                upd_vmap[o] = l;
             } else {
-                upd_vmap[p.first] = p.second;
+                upd_vmap[o] = n;
             }
         }
         orig_to_new_var = upd_vmap;
@@ -1263,18 +1261,6 @@ struct SimplifiedCNF {
         }
     }
 
-    bool not_renumbered() const {
-        for(uint32_t i = 0; i < nvars; i++) {
-            CMSat::Lit l = CMSat::Lit (i, false);
-            auto it = orig_to_new_var.find(i);
-            assert(it != orig_to_new_var.end());
-            assert(it->second.invariant());
-            if (it->second != CMSat::VarMap(l)) return false;
-
-        }
-        return true;
-    }
-
     bool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var) const {
         check_var(var);
         if (defs.find(var) == defs.end()) {
@@ -1391,10 +1377,10 @@ struct SimplifiedCNF {
         // Write orig_to_new_var
         sz = orig_to_new_var.size();
         out.write((char*)&sz, sizeof(sz));
-        for (const auto& [orig, vmap] : orig_to_new_var) {
+        for (const auto& [orig, n] : orig_to_new_var) {
             out.write((char*)&orig, sizeof(orig));
-            uint32_t lit_var = vmap.lit.var();
-            bool lit_sign = vmap.lit.sign();
+            uint32_t lit_var = n.var();
+            bool lit_sign = n.sign();
             out.write((char*)&lit_var, sizeof(lit_var));
             out.write((char*)&lit_sign, sizeof(lit_sign));
         }
@@ -1503,7 +1489,7 @@ struct SimplifiedCNF {
             in.read((char*)&orig, sizeof(orig));
             in.read((char*)&lit_var, sizeof(lit_var));
             in.read((char*)&lit_sign, sizeof(lit_sign));
-            orig_to_new_var[orig] = CMSat::VarMap(CMSat::Lit(lit_var, lit_sign));
+            orig_to_new_var[orig] = CMSat::Lit(lit_var, lit_sign);
         }
 
         // Read AIGs
@@ -1562,6 +1548,20 @@ struct SimplifiedCNF {
         }
         read_aig_defs(in);
         in.close();
+    }
+    std::vector<CMSat::lbool> extend_sample(const std::vector<CMSat::lbool>& sample) const {
+        assert(sample.size() == nvars);
+        auto ext_sample(sample);
+        assert(sample.size() == nvars);
+        assert(need_aig && "AIG definitions must be present to extend samples");
+        for(const auto& [v, aig]: defs) {
+            assert(aig->invariants());
+            assert(v < nvars);
+            CMSat::lbool val = AIG::evaluate(sample, aig, defs) ? CMSat::l_True : CMSat::l_False;
+            assert(sample[v] == CMSat::l_Undef && "Sample variable already assigned");
+            ext_sample[v] = val;
+        }
+        return ext_sample;
     }
 };
 

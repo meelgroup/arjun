@@ -76,7 +76,6 @@ void Extend::add_all_indics_except(const set<uint32_t>& except) {
 }
 
 void Extend::unsat_define(SimplifiedCNF& cnf) {
-    assert(cnf.not_renumbered() && "Makes interpolant generation much harder, there's no need");
     double start_round_time = cpuTime();
     assert(cnf.sampl_vars.size() == cnf.opt_sampl_vars.size());
     assert(cnf.opt_sampl_vars_set);

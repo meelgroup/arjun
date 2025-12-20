@@ -58,6 +58,10 @@ private:
     void set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf);
     bool set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, std::unique_ptr<SATSolver>& solver);
     void get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, std::unique_ptr<SATSolver>& solver) const;
+    void get_fixed_values(
+        const SimplifiedCNF& cnf,
+        SimplifiedCNF& scnf,
+        unique_ptr<SATSolver>& solver) const;
     SimplifiedCNF get_cnf(
         unique_ptr<SATSolver>& solver,
         const SimplifiedCNF& cnf,

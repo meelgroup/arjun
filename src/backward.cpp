@@ -353,7 +353,6 @@ void Minimize::backward_round() {
 }
 
 void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
-    assert(cnf.not_renumbered() && "TODO -- AIG will need renumbering!");
     SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
     double start_round_time = cpuTime();
     vector<uint32_t> indep;

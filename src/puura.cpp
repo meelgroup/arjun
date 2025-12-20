@@ -386,6 +386,7 @@ SimplifiedCNF Puura::get_cnf(
     scnf.proj = cnf.get_projected();
     scnf.new_vars(solver->simplified_nvars());
     scnf.copy_aigs_from(cnf);
+    get_fixed_values(cnf, scnf, solver);
     if (cnf.need_aig) get_bve_mapping(cnf, scnf, solver);
 
     if (conf.verb >= 5) {
@@ -467,6 +468,20 @@ SimplifiedCNF Puura::get_cnf(
     return scnf;
 }
 
+void Puura::get_fixed_values(
+    const SimplifiedCNF& cnf,
+    SimplifiedCNF& scnf,
+    unique_ptr<SATSolver>& solver) const
+{
+    auto new_to_orig_var = cnf.get_new_to_orig_var();
+    auto fixed = solver->get_zero_assigned_lits();
+    for(const auto& l: fixed) {
+        Lit orig_lit = new_to_orig_var.at(l.var());
+        orig_lit ^= l.sign();
+        scnf.defs[orig_lit.var()] = scnf.aig_mng.new_const(!orig_lit.sign());
+    }
+}
+
 // Get back BVE AIGs into scnf.defs
 void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, unique_ptr<SATSolver>& solver) const {
     vector<uint32_t> vs = solver->get_elimed_vars();
@@ -474,7 +489,7 @@ void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, uniqu
 
     // We are all in NEW here. So we need to map back to orig, both the
     // definition and the target
-    auto map_to_orig = [&new_to_orig_var](const vector<vector<Lit>>& def) {
+    auto map_cl_to_orig = [&new_to_orig_var](const vector<vector<Lit>>& def) {
         vector<vector<Lit>> ret;
         for(const auto& cl: def) {
             vector<Lit> new_cl;
@@ -488,23 +503,16 @@ void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, uniqu
         return ret;
     };
 
-    vector<Lit> vs_orig;
-    for(const auto& v: vs) {
-        assert(new_to_orig_var.count(v) && "ust be in the new var set");
-        vs_orig.push_back(new_to_orig_var.at(v));
-    }
-
-    for(const auto& target: vs_orig) {
-        vector<vector<Lit>> def;
-        def = solver->get_cls_defining_var(target.var());
-        def = map_to_orig(def);
+    for(const auto& target: vs) {
+        auto def = solver->get_cls_defining_var(target);
+        auto orig_def = map_cl_to_orig(def);
 
         uint32_t pos = 0;
         uint32_t neg = 0;
-        for(const auto& cl: def) {
+        for(const auto& cl: orig_def) {
             bool found_this_cl = false;
             for(const auto& l: cl) {
-                if (l.var() != target.var()) continue;
+                if (l.var() != target) continue;
                 found_this_cl = true;
                 if (l.sign()) neg++;
                 else pos++;
@@ -514,13 +522,13 @@ void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, uniqu
         bool sign = neg > pos;
 
         auto overall = scnf.aig_mng.new_const(false);
-        for(const auto& cl: def) {
+        for(const auto& cl: orig_def) {
             auto current = scnf.aig_mng.new_const(true);
 
             // Make sure only one side is used, the smaller side
             bool ok = false;
             for(const auto& l: cl) {
-                if (l.var() == target.var()) {
+                if (l.var() == target) {
                     if (l.sign() == sign) ok = true;
                     break;
                 }
@@ -528,17 +536,39 @@ void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, uniqu
             if (!ok) continue;
 
             for(const auto& l: cl) {
-                if (l.var() == target.var()) continue;
-                auto x = scnf.orig_to_new_var[l.var()];
-                assert(x.val == l_Undef);
-                Lit l2 = l ^ x.lit.sign();
-                auto aig = scnf.aig_mng.new_lit(~l2);
+                if (l.var() == target) continue;
+                auto aig = scnf.aig_mng.new_lit(~l);
                 current = AIG::new_and(current, aig);
             }
             overall = AIG::new_or(overall, current);
         }
-        if (sign ^ target.sign()) overall = AIG::new_not(overall);
-        scnf.defs[target.var()] = overall;
+        if (sign) overall = AIG::new_not(overall);
+        auto orig_target = new_to_orig_var.at(target);
+        if (orig_target.sign()) overall = AIG::new_not(overall);
+        scnf.defs[orig_target.var()] = overall;
+        verb_print(5, "[bve-aig] set aig for var: " << orig_target << " from bve elim");
+    }
+
+    // Finally, set defs for replaced vars that are elimed
+    auto pairs = solver->get_all_binary_xors(); // [replaced, replaced_with]
+    map<uint32_t, vector<Lit>> var_to_lits_it_replaced;
+    for(const auto& [orig, replacement] : pairs) {
+        var_to_lits_it_replaced[replacement.var()].push_back(orig ^ replacement.sign());
+    }
+    for(const auto& target: vs) {
+        for(const auto& l: var_to_lits_it_replaced[target]) {
+            auto orig_target = new_to_orig_var.at(target);
+            auto orig_lit = new_to_orig_var.at(l.var()) ^ l.sign();
+            const auto aig = scnf.defs[orig_target.var()];
+            assert(aig != nullptr);
+            assert(scnf.defs[orig_lit.var()]);
+            if (orig_lit.sign()) {
+                scnf.defs[orig_lit.var()] = AIG::new_not(aig);
+            } else {
+                scnf.defs[orig_lit.var()] = aig;
+            }
+            verb_print(5, "[bve-aig] replaced var: " << orig_lit << " with aig of " << orig_target);
+        }
     }
 }
 
