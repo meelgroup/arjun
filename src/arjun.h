@@ -1672,6 +1672,7 @@ public:
             const std::vector<uint32_t>& empty_sampl_vars,
             uint32_t verb
     ) const {
+        assert(defs_invariant());
         SimplifiedCNF scnf(fg);
         std::vector<CMSat::Lit> clause;
         bool is_xor, rhs;
@@ -1771,6 +1772,7 @@ public:
         // Now we do the mapping. Otherwise, above will be complicated
         // This ALSO gets all the fixed values
         scnf.orig_to_new_var = solver->update_var_mapping(orig_to_new_var);
+        assert(scnf.defs_invariant());
         return scnf;
     }
 
@@ -1785,6 +1787,7 @@ public:
             orig_lit ^= l.sign();
             scnf.defs[orig_lit.var()] = scnf.aig_mng.new_const(!orig_lit.sign());
         }
+        assert(scnf.defs_invariant());
     }
 
     // Get back BVE AIGs into scnf.defs
@@ -1792,6 +1795,7 @@ public:
             const uint32_t verb) const {
         std::vector<uint32_t> vs = solver->get_elimed_vars();
         const auto new_to_orig_var = get_new_to_orig_var();
+        assert(defs_invariant());
 
         // We are all in NEW here. So we need to map back to orig, both the
         // definition and the target
@@ -1879,6 +1883,7 @@ public:
                         << " with aig of " << orig_target << std::endl;
             }
         }
+        assert(scnf.defs_invariant());
     }
     void set_backbone_done(const bool bb_done) {
         backbone_done = bb_done;
