@@ -781,8 +781,7 @@ public:
     bool defs_invariant() const {
         assert(need_aig);
         assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
-        assert(false && "Below neends orig_sampl_vars, because defs is in ORIG variable space");
-        //;for(const auto& v: orig_sampl_vars) assert(defs[v] == nullptr && "Sampling vars must not be defined");
+        for(const auto& v: orig_sampl_vars) assert(defs[v] == nullptr && "Sampling vars must not be defined");
         return true;
     }
 
