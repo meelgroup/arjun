@@ -44,9 +44,8 @@ using namespace ArjunNS;
 
 struct MyTracer : public CaDiCaL::Tracer {
     MyTracer(uint32_t _orig_num_vars, vector<uint32_t> _opt_sampl_vars,
-            AIGManager* _aig_mng, const ArjunInt::Config& _conf) :
+            const ArjunInt::Config& _conf) :
       conf(_conf),
-      aig_mng(_aig_mng),
       orig_num_vars(_orig_num_vars)
     {
       input.insert(_opt_sampl_vars.begin(), _opt_sampl_vars.end());
@@ -54,7 +53,7 @@ struct MyTracer : public CaDiCaL::Tracer {
     const ArjunInt::Config& conf;
     map<uint64_t, vector<Lit>> cls;
     std::map<uint64_t, aig_ptr> fs_clid;  // clause ID to formula
-    AIGManager* aig_mng = nullptr;
+    AIGManager aig_mng;
     aig_ptr out; // Final output formula
     int32_t orig_num_vars;
     set<uint32_t> input;

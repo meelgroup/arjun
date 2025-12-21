@@ -57,10 +57,10 @@ SATSolver* Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
 
     vector<Lit> tmp;
     SATSolver* s = new SATSolver;
-    orig_num_vars = cnf.nvars;
+    orig_num_vars = cnf.nVars();
     s->set_verbosity(0);
     s->set_prefix("c o ");
-    s->new_vars(cnf.nvars*2); // one for orig, one for copy
+    s->new_vars(cnf.nVars()*2); // one for orig, one for copy
     s->set_bve(false);
     s->set_bva(false);
     s->set_no_simplify_at_startup();
@@ -69,7 +69,7 @@ SATSolver* Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
     s->set_find_xors(false);
 
     vector<Lit> zs;
-    for(const auto& cl: cnf.clauses) {
+    for(const auto& cl: cnf.get_clauses()) {
         // F(x)
         s->add_clause(cl);
 
@@ -112,22 +112,24 @@ SATSolver* Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
 
 void Puura::backbone(SimplifiedCNF& cnf) {
     double my_time = cpuTime();
-    if (cnf.weighted) {
-        for(const auto& v: cnf.opt_sampl_vars) {
+    if (cnf.get_weighted()) {
+        for(const auto& v: cnf.get_opt_sampl_vars()) {
             Lit l(v, false);
-            if (cnf.get_lit_weight(l)->is_zero()) cnf.clauses.push_back({~l});
-            if (cnf.get_lit_weight(~l)->is_zero()) cnf.clauses.push_back({l});
+            if (cnf.get_lit_weight(l)->is_zero()) cnf.add_clause({~l});
+            if (cnf.get_lit_weight(~l)->is_zero()) cnf.add_clause({l});
         }
     }
     auto solver = fill_solver(cnf);
     string str = "clean-cls, must-scc-vrepl, full-probe, must-scc-vrepl, must-renumber";
     solver->simplify(nullptr, &str);
     solver->set_verbosity(2);
-    solver->backbone_simpl(20*1000ULL, cnf.backbone_done);
+    bool backbone_done = cnf.get_backbone_done();
+    solver->backbone_simpl(20*1000ULL, backbone_done);
+    cnf.set_backbone_done(backbone_done);
 
     auto lits = solver->get_zero_assigned_lits();
     for(const auto& l: lits) {
-        cnf.clauses.push_back({l});
+        cnf.add_clause({l});
         verb_print(3,"backbone inserting : " << l);
     }
     verb_print(2, "backbone inserted: " << lits.size() << " T: " << (cpuTime() - my_time));
@@ -139,7 +141,7 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     double my_time = cpuTime();
     uint32_t new_units = 0;
     sampl_set.clear();
-    for(const auto& v: cnf.sampl_vars) sampl_set.insert(v);
+    for(const auto& v: cnf.get_sampl_vars()) sampl_set.insert(v);
     verb_print(1, "sampling set size: " << sampl_set.size());
 
     SATSolver* s = setup_f_not_f_indic(cnf);
@@ -194,7 +196,7 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
                         << " T: " << (cpuTime() - my_time));
 
                     cl = {Lit(test, false ^ flip)};
-                    cnf.clauses.push_back(cl);
+                    cnf.add_clause(cl);
                     s->add_clause(cl);
 
                     cl = {Lit(test+orig_num_vars, false ^ flip)};
@@ -223,9 +225,9 @@ std::unique_ptr<SATSolver> Puura::fill_solver(const SimplifiedCNF& cnf) {
     assert(solver->nVars() == 0); // Solver here is empty
 
     // Inject original CNF
-    solver->new_vars(cnf.nvars);
-    for(const auto& cl: cnf.clauses) solver->add_clause(cl);
-    for(const auto& cl: cnf.red_clauses) solver->add_red_clause(cl);
+    solver->new_vars(cnf.nVars());
+    for(const auto& cl: cnf.get_clauses()) solver->add_clause(cl);
+    for(const auto& cl: cnf.get_red_clauses()) solver->add_red_clause(cl);
     return solver;
 }
 
@@ -242,13 +244,13 @@ void Puura::reverse_bce(SimplifiedCNF& cnf) {
     solver->set_renumber(false);
     solver->set_scc(false);
     set_up_sampl_vars_dont_elim(cnf);
-    solver->set_sampl_vars(cnf.sampl_vars);
+    solver->set_sampl_vars(cnf.get_sampl_vars());
     solver->reverse_bce();
 }
 
 bool Puura::set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, std::unique_ptr<SATSolver>& solver) {
     if (!cnf.get_weighted()) return true;
-    for(uint32_t i = 0; i < cnf.nvars; i++) {
+    for(uint32_t i = 0; i < cnf.nVars(); i++) {
         if (cnf.get_lit_weight(Lit(i, false))->is_zero()) {
             solver->add_clause({Lit(i, true)});
         }
@@ -263,9 +265,9 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     const SimplifiedCNF& cnf,
     const SimpConf simp_conf)
 {
-    for(const auto& v: cnf.sampl_vars)
+    for(const auto& v: cnf.get_sampl_vars())
         verb_print(5, "[w-debug] orig sampl var: " << v+1);
-    for(const auto& v: cnf.opt_sampl_vars)
+    for(const auto& v: cnf.get_opt_sampl_vars())
         verb_print(5, "[w-debug] orig opt sampl var: " << v+1);
 
     auto solver = fill_solver(cnf);
@@ -303,7 +305,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 
     // Now doing Oracle
     string str2;
-    bool backbone_done = cnf.backbone_done;
+    bool backbone_done = cnf.get_backbone_done();
     if (!backbone_done && simp_conf.do_backbone_puura) {
         solver->backbone_simpl(30*1000ULL, backbone_done);
         string str_scc = "must-scc-vrepl, must-renumber";
@@ -347,10 +349,10 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     str += string(", must-scc-vrepl, must-renumber,");
     solver->simplify(&dont_elim, &str);
 
-    auto new_sampl_vars = cnf.sampl_vars;
+    auto new_sampl_vars = cnf.get_sampl_vars();
     vector<uint32_t> new_empty_sampl_vars;
     solver->clean_sampl_get_empties(new_sampl_vars, new_empty_sampl_vars);
-    if (!cnf.weighted) {
+    if (!cnf.get_weighted()) {
         dont_elim.clear();
         for(uint32_t v: new_sampl_vars) dont_elim.push_back(Lit(v, false));
     } else {
@@ -367,228 +369,24 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->simplify(&dont_elim, &str);
 
     // Return final one
-    auto ret_cnf = get_cnf(solver, cnf, new_sampl_vars, new_empty_sampl_vars);
-    ret_cnf.backbone_done = backbone_done;
+    auto ret_cnf = cnf.get_cnf(solver, new_sampl_vars, new_empty_sampl_vars, conf.verb);
+    ret_cnf.set_backbone_done(backbone_done);
     return ret_cnf;
 }
 
-SimplifiedCNF Puura::get_cnf(
-        unique_ptr<SATSolver>& solver,
-        const SimplifiedCNF& cnf,
-        const vector<uint32_t>& new_sampl_vars,
-        const vector<uint32_t>& empty_sampl_vars
-) {
-    SimplifiedCNF scnf(cnf.fg);
-    vector<Lit> clause;
-    bool is_xor, rhs;
-    scnf.need_aig = cnf.need_aig;
-    scnf.weighted = cnf.get_weighted();
-    scnf.proj = cnf.get_projected();
-    scnf.new_vars(solver->simplified_nvars());
-    scnf.copy_aigs_from(cnf);
-    get_fixed_values(cnf, scnf, solver);
-
-    solver->start_getting_constraints(false, true);
-    if (cnf.need_aig) get_bve_mapping(cnf, scnf, solver);
-    solver->end_getting_constraints();
-
-    if (conf.verb >= 5) {
-        for(const auto& v: new_sampl_vars)
-            verb_print(5, "[w-debug] get_cnf sampl var: " << v+1);
-        for(const auto& v: cnf.opt_sampl_vars)
-            verb_print(5, "[w-debug] get_cnf opt sampl var: " << v+1);
-        for(const auto& v: empty_sampl_vars)
-            verb_print(5, "[w-debug] get_cnf empty sampl var: " << v+1);
-    }
-
-    {// We need to fix weights here via cnf2
-        auto cnf2(cnf);
-        cnf2.fix_weights(solver, new_sampl_vars, empty_sampl_vars);
-
-        solver->start_getting_constraints(false, true);
-        if (cnf2.weighted) {
-            map<Lit, unique_ptr<Field>> outer_w;
-            for(const auto& [v, w]: cnf2.weights) {
-                const Lit l(v, false);
-                outer_w[l] = w.pos->dup();
-                outer_w[~l] = w.neg->dup();
-                verb_print(5, "[w-debug] outer_w " << l << " w: " << *w.pos);
-                verb_print(5, "[w-debug] outer_w " << ~l << " w: " << *w.neg);
-            }
-
-            const auto trans = solver->get_weight_translation();
-            map<Lit, unique_ptr<Field>> inter_w;
-            for(const auto& w: outer_w) {
-                Lit orig = w.first;
-                Lit t = trans[orig.toInt()];
-                inter_w[t] = w.second->dup();
-            }
-
-            for(const auto& myw: inter_w) {
-                if (myw.first.var() >= scnf.nvars) continue;
-                verb_print(5, "[w-debug] int w: " << myw.first << " " << *myw.second);
-                scnf.set_lit_weight(myw.first, myw.second);
-            }
-        }
-        *scnf.multiplier_weight = *cnf2.multiplier_weight;
-
-        // Map orig set to new set
-        scnf.set_sampl_vars(solver->translate_sampl_set(cnf2.sampl_vars, false));
-        scnf.set_opt_sampl_vars(solver->translate_sampl_set(cnf2.opt_sampl_vars, false));
-    }
-
-    while(solver->get_next_constraint(clause, is_xor, rhs)) {
-        assert(!is_xor); assert(rhs);
-        scnf.clauses.push_back(clause);
-    }
-    solver->end_getting_constraints();
-
-    // RED clauses
-    solver->start_getting_constraints(true, true);
-    while(solver->get_next_constraint(clause, is_xor, rhs)) {
-        assert(!is_xor); assert(rhs);
-        scnf.red_clauses.push_back(clause);
-    }
-    solver->end_getting_constraints();
-
-    std::sort(scnf.sampl_vars.begin(), scnf.sampl_vars.end());
-    std::sort(scnf.opt_sampl_vars.begin(), scnf.opt_sampl_vars.end());
-
-    if (conf.verb >= 5) {
-        std::cout << "w-debug AFTER PURA FINAL sampl_vars    : ";
-        for(const auto& v: scnf.sampl_vars) {
-            std::cout << v+1 << " ";
-        }
-        cout << endl;
-        std::cout << "w-debug AFTER PURA FINAL opt_sampl_vars: ";
-        for(const auto& v: scnf.opt_sampl_vars) std::cout << v+1 << " ";
-        cout << endl;
-    }
-
-    // Now we do the mapping. Otherwise, above will be complicated
-    // This ALSO gets all the fixed values
-    scnf.orig_to_new_var = solver->update_var_mapping(cnf.orig_to_new_var);
-    return scnf;
-}
-
-void Puura::get_fixed_values(
-    const SimplifiedCNF& cnf,
-    SimplifiedCNF& scnf,
-    unique_ptr<SATSolver>& solver) const
-{
-    auto new_to_orig_var = cnf.get_new_to_orig_var();
-    auto fixed = solver->get_zero_assigned_lits();
-    for(const auto& l: fixed) {
-        Lit orig_lit = new_to_orig_var.at(l.var());
-        orig_lit ^= l.sign();
-        scnf.defs[orig_lit.var()] = scnf.aig_mng.new_const(!orig_lit.sign());
-    }
-}
-
-// Get back BVE AIGs into scnf.defs
-void Puura::get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, unique_ptr<SATSolver>& solver) const {
-    vector<uint32_t> vs = solver->get_elimed_vars();
-    const auto new_to_orig_var = cnf.get_new_to_orig_var();
-
-    // We are all in NEW here. So we need to map back to orig, both the
-    // definition and the target
-    auto map_cl_to_orig = [&new_to_orig_var](const vector<vector<Lit>>& def) {
-        vector<vector<Lit>> ret;
-        for(const auto& cl: def) {
-            vector<Lit> new_cl;
-            for(const auto& l: cl) {
-                assert(new_to_orig_var.count(l.var()) && "Must be in the new var set");
-                const Lit l2 = new_to_orig_var.at(l.var());
-                new_cl.push_back(l2 ^ l.sign());
-            }
-            ret.push_back(new_cl);
-        }
-        return ret;
-    };
-
-    for(const auto& target: vs) {
-        auto def = solver->get_cls_defining_var(target);
-        auto orig_def = map_cl_to_orig(def);
-
-        uint32_t pos = 0;
-        uint32_t neg = 0;
-        for(const auto& cl: orig_def) {
-            bool found_this_cl = false;
-            for(const auto& l: cl) {
-                if (l.var() != target) continue;
-                found_this_cl = true;
-                if (l.sign()) neg++;
-                else pos++;
-            }
-            assert(found_this_cl);
-        }
-        bool sign = neg > pos;
-
-        auto overall = scnf.aig_mng.new_const(false);
-        for(const auto& cl: orig_def) {
-            auto current = scnf.aig_mng.new_const(true);
-
-            // Make sure only one side is used, the smaller side
-            bool ok = false;
-            for(const auto& l: cl) {
-                if (l.var() == target) {
-                    if (l.sign() == sign) ok = true;
-                    break;
-                }
-            }
-            if (!ok) continue;
-
-            for(const auto& l: cl) {
-                if (l.var() == target) continue;
-                auto aig = AIG::new_lit(~l);
-                current = AIG::new_and(current, aig);
-            }
-            overall = AIG::new_or(overall, current);
-        }
-        if (sign) overall = AIG::new_not(overall);
-        auto orig_target = new_to_orig_var.at(target);
-        if (orig_target.sign()) overall = AIG::new_not(overall);
-        scnf.defs[orig_target.var()] = overall;
-        verb_print(5, "[bve-aig] set aig for var: " << orig_target << " from bve elim");
-    }
-
-    // Finally, set defs for replaced vars that are elimed
-    auto pairs = solver->get_all_binary_xors(); // [replaced, replaced_with]
-    map<uint32_t, vector<Lit>> var_to_lits_it_replaced;
-    for(const auto& [orig, replacement] : pairs) {
-        var_to_lits_it_replaced[replacement.var()].push_back(orig ^ replacement.sign());
-    }
-    for(const auto& target: vs) {
-        for(const auto& l: var_to_lits_it_replaced[target]) {
-            auto orig_target = new_to_orig_var.at(target);
-            auto orig_lit = new_to_orig_var.at(l.var()) ^ l.sign();
-            const auto aig = scnf.defs[orig_target.var()];
-            assert(aig != nullptr);
-            assert(scnf.defs[orig_lit.var()] == nullptr);
-            if (orig_lit.sign()) {
-                scnf.defs[orig_lit.var()] = AIG::new_not(aig);
-            } else {
-                scnf.defs[orig_lit.var()] = aig;
-            }
-            verb_print(5, "[bve-aig] replaced var: " << orig_lit << " with aig of " << orig_target);
-        }
-    }
-}
-
-void Puura::set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf)
-{
+void Puura::set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf) {
     assert(dont_elim.empty());
-    if (cnf.weighted) {
-        for(uint32_t v: cnf.opt_sampl_vars) {
+    if (cnf.get_weighted()) {
+        for(uint32_t v: cnf.get_opt_sampl_vars()) {
             if (cnf.weight_set(v)) {
                 verb_print(5, "[w-debug] dont_elim due to weight: " << v+1);
                 dont_elim.push_back(Lit(v, false));
             }
         }
     }
-    for(uint32_t v: cnf.sampl_vars) dont_elim.push_back(Lit(v, false));
+    for(uint32_t v: cnf.get_sampl_vars()) dont_elim.push_back(Lit(v, false));
     sampl_set.clear();
-    for(uint32_t v: cnf.sampl_vars) sampl_set.insert(v);
+    for(uint32_t v: cnf.get_sampl_vars()) sampl_set.insert(v);
 }
 
 void Puura::run_sbva(SimplifiedCNF& cnf,
@@ -596,13 +394,13 @@ void Puura::run_sbva(SimplifiedCNF& cnf,
         int sbva_tiebreak)
 {
     if (sbva_steps == 0) return;
-    assert(cnf.opt_sampl_vars_set);
+    assert(cnf.get_opt_sampl_vars_set());
 
     auto my_time = cpuTime();
     verb_print(1,
            std::left << setw(35) << "[arjun-sbva] entering SBVA with"
-           << " vars: " << setw(7) << cnf.nvars << setw(8) << " cls: " << cnf.clauses.size()
-           << " opt sampl: " << cnf.opt_sampl_vars .size());
+           << " vars: " << setw(7) << cnf.nVars() << setw(8) << " cls: " << cnf.get_clauses().size()
+           << " opt sampl: " << cnf.get_opt_sampl_vars() .size());
 
     SBVA::Config sbva_conf;
     sbva_conf.steps = sbva_steps*1e6;
@@ -611,9 +409,9 @@ void Puura::run_sbva(SimplifiedCNF& cnf,
     sbva_conf.preserve_model_cnt = 1;
     if (conf.verb >= 3) sbva_conf.verbosity = 1;
     SBVA::CNF sbva;
-    sbva.init_cnf(cnf.nvars, sbva_conf);
+    sbva.init_cnf(cnf.nVars(), sbva_conf);
     vector<int> tmp;
-    for(const auto& cl: cnf.clauses) {
+    for(const auto& cl: cnf.get_clauses()) {
         tmp.clear();
         for(const auto& l: cl) tmp.push_back((l.var()+1) * (l.sign() ? -1 : 1));
         sbva.add_cl(tmp);
@@ -622,25 +420,13 @@ void Puura::run_sbva(SimplifiedCNF& cnf,
     assert(sbva_tiebreak == 0 || sbva_tiebreak == 1);
     sbva.run(sbva_tiebreak == 1 ? SBVA::Tiebreak::ThreeHop : SBVA::Tiebreak::None);
     uint32_t ncls;
-    auto ret = sbva.get_cnf(cnf.nvars, ncls);
-
-    cnf.clauses.clear();
-    vector<Lit> cl;
-    uint32_t at = 0;
-    while(ret.size() > at) {
-        int l = ret[at++];
-        if (l == 0) {
-            cnf.clauses.push_back(cl);
-            cl.clear();
-            continue;
-        }
-        cl.push_back(Lit(std::abs(l)-1, l < 0));
-    }
-    assert(cl.empty() && "SBVA should have ended with a 0");
+    uint32_t nvars;
+    auto ret = sbva.get_cnf(nvars, ncls);
+    cnf.replace_clauses_with(ret, nvars, ncls);
 
     verb_print(1,
            std::left << setw(35) << "[arjun-sbva] exited SBVA with"
-           << " vars: " << setw(7) << cnf.nvars << setw(8) << " cls: " << cnf.clauses.size());
+           << " vars: " << setw(7) << cnf.nVars() << setw(8) << " cls: " << cnf.get_clauses().size());
     verb_print(1, "[arjun-sbva] steps remainK: " << std::setprecision(2) << std::fixed
            << (double)sbva_conf.steps/1000.0
            << " T-out: " << (sbva_conf.steps <= 0 ? "Yes" : "No")

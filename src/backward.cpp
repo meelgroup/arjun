@@ -365,7 +365,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     vector<char> unknown_set(orig_num_vars, 0);
     vector<uint32_t> unknown;
     set<uint32_t> dep;
-    for(const auto& x: cnf.opt_sampl_vars) dep.insert(x);
+    for(const auto& x: cnf.get_opt_sampl_vars()) dep.insert(x);
     for(uint32_t x = 0; x < orig_num_vars; x++) {
         if (dep.count(x)) {
             solver->add_clause({Lit(var_to_indic[x], false)});

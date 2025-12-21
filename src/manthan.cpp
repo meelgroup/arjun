@@ -54,8 +54,8 @@ using namespace CMSat;
 
 void Manthan::inject_cnf(SATSolver& s) {
     s.new_vars(cnf.nVars());
-    for(const auto& c: cnf.clauses) s.add_clause(c);
-    for(const auto& c: cnf.red_clauses) s.add_red_clause(c);
+    for(const auto& c: cnf.get_clauses()) s.add_clause(c);
+    for(const auto& c: cnf.get_red_clauses()) s.add_red_clause(c);
 }
 
 vector<vector<lbool>> Manthan::get_samples(uint32_t num) {
@@ -88,10 +88,10 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     //       and do the "stupid" fix on that.
     //
     //
-    for (const auto& v: cnf.opt_sampl_vars) input.insert(v);
+    for (const auto& v: cnf.get_opt_sampl_vars()) input.insert(v);
     for (uint32_t i = 0; i < cnf.nVars(); i++) {
         assert(false && "beware, defs below is in original numbering, so this won't work below");
-        if (input.count(i) == 0 && !cnf.defs.count(i)) to_define.insert(i);
+        if (input.count(i) == 0 && !cnf.defined(i)) to_define.insert(i);
     }
     dependency_mat.resize(cnf.nVars());
     for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);
@@ -365,7 +365,7 @@ void Manthan::init_solver_train() {
 
     // Adds ~F(x, y_hat)
     vector<Lit> cl_indics; // if true, clause is satisfied, if false, clause is unsatisfied
-    for(const auto& cl_orig: cnf.clauses) {
+    for(const auto& cl_orig: cnf.get_clauses()) {
         // Replace y with y_hat in the clause
         vector<Lit> cl;
         for(const auto& l: cl_orig) {
@@ -578,9 +578,7 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
 void Manthan::get_incidence() {
     incidence.clear();
     incidence.resize(cnf.nVars(), 0);
-    for(const auto& cl: cnf.clauses) {
-        for(const auto& l: cl) {
-            incidence[l.var()]++;
-        }
+    for(const auto& cl: cnf.get_clauses()) {
+        for(const auto& l: cl) incidence[l.var()]++;
     }
 }

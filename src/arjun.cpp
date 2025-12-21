@@ -22,7 +22,6 @@
  THE SOFTWARE.
  */
 
-#include <limits>
 
 #include <sbva/sbva.h>
 #include "arjun.h"
@@ -37,7 +36,6 @@
 #include "manthan.h"
 #endif
 
-using std::numeric_limits;
 using namespace ArjunInt;
 
 #if defined _WIN32
@@ -157,30 +155,24 @@ DLL_PUBLIC void Arjun::standalone_sbva(SimplifiedCNF& orig,
     puura.run_sbva(orig, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 }
 
-struct Clause {
-    uint32_t at = numeric_limits<uint32_t>::max();
-    vector<Lit> lits;
-    bool red = false;
-};
-
 DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
     // Unfortunately, with opt_sampling_set, we rely on a variables
     // being fully deterministic. So we can't block on them
     // otherwise we'd need to remove those variables from the opt_sampling set
     set<uint32_t> dont_block;
-    for(const auto& v: cnf.sampl_vars) dont_block.insert(v);
-    for(const auto& v: cnf.opt_sampl_vars) dont_block.insert(v);
-    if (dont_block.size() == cnf.nvars) return;
+    for(const auto& v: cnf.get_sampl_vars()) dont_block.insert(v);
+    for(const auto& v: cnf.get_opt_sampl_vars()) dont_block.insert(v);
+    if (dont_block.size() == cnf.nVars()) return;
 
     const double start_time = cpuTime();
-    vector<Clause> cls;
-    vector<vector<uint32_t>> occs(cnf.nvars*2);
+    vector<SimplifiedCNF::BCEClause> cls;
+    vector<vector<uint32_t>> occs(cnf.nVars()*2);
     uint32_t at = 0;
-    for(const auto& cl: cnf.clauses) {
+    for(const auto& cl: cnf.get_clauses()) {
         // UNSAT CNF, just return the CNF
         if (cl.empty()) return;
 
-        Clause c;
+        SimplifiedCNF::BCEClause c;
         c.lits = cl;
         c.at = at;
         c.red = false;
@@ -191,7 +183,7 @@ DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
     }
 
     vector<uint8_t> seen;
-    seen.resize(cnf.nvars*2, 0);
+    seen.resize(cnf.nVars()*2, 0);
 
     uint32_t tot_removed = 0;
     bool removed_one;
@@ -205,7 +197,7 @@ DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
                 if (dont_block.count(l.var())) continue;
                 bool all_blocking = true;
                 for(const auto& cl2_at: occs[(~l).toInt()]) {
-                    const Clause& cl2 = cls[cl2_at];
+                    const SimplifiedCNF::BCEClause& cl2 = cls[cl2_at];
                     if (cl2.red) continue;
                     bool found_blocking_lit = false;
                     for(const auto& l2: cl2.lits) {
@@ -224,12 +216,8 @@ DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
             }
         }
     } while(removed_one);
+    cnf.replace_clauses_with(cls);
 
-    cnf.clauses.clear();
-    for(const auto& cl: cls) {
-        if (!cl.red) cnf.clauses.push_back(cl.lits);
-        else cnf.red_clauses.push_back(cl.lits);
-    }
     verb_print2(1, "[arjun] BCE removed " << tot_removed << " clauses"
         " T: " << (cpuTime() - start_time));
 }
@@ -256,11 +244,11 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
                 etof_conf.sbva_cls_cutoff, etof_conf.sbva_lits_cutoff, etof_conf.sbva_tiebreak);
     if (etof_conf.all_indep) {
         vector<uint32_t> all_vars;
-        all_vars.reserve(cnf.nvars);
-        for(uint32_t i = 0; i < cnf.nvars; i++) all_vars.push_back(i);
+        all_vars.reserve(cnf.nVars());
+        for(uint32_t i = 0; i < cnf.nVars(); i++) all_vars.push_back(i);
         cnf.set_opt_sampl_vars(all_vars);
     } else {
-        if (etof_conf.do_extend_indep && cnf.opt_sampl_vars.size() != cnf.nvars)
+        if (etof_conf.do_extend_indep && cnf.get_opt_sampl_vars().size() != cnf.nVars())
             standalone_extend_sampl_set(cnf);
 
         // BCE shoudl be after extension, as opt_sampl_vars

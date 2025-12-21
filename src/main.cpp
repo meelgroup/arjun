@@ -184,18 +184,18 @@ void add_arjun_options() {
 
 void print_final_sampl_set(ArjunNS::SimplifiedCNF& cnf, const vector<uint32_t>& orig_sampl_vars) {
     cout
-    << "c o [arjun] final set size: " << std::setw(7) << cnf.sampl_vars.size()
+    << "c o [arjun] final set size: " << std::setw(7) << cnf.get_sampl_vars().size()
     << " percent of original: " << std::setw(6) << std::setprecision(3)
     << std::fixed
-    << stats_line_percent(cnf.sampl_vars.size(), orig_sampl_vars.size()) << " %" << endl;
+    << stats_line_percent(cnf.get_sampl_vars().size(), orig_sampl_vars.size()) << " %" << endl;
 
     cout << "c p show ";
-    for(const uint32_t s: cnf.sampl_vars) cout << s+1 << " ";
+    for(const uint32_t s: cnf.get_sampl_vars()) cout << s+1 << " ";
     cout << "0" << endl;
     cout << "c p optshow ";
-    for(const uint32_t s: cnf.opt_sampl_vars) cout << s+1 << " ";
+    for(const uint32_t s: cnf.get_opt_sampl_vars()) cout << s+1 << " ";
     cout << "0" << endl;
-    cout << "c MUST MULTIPLY BY " << *cnf.multiplier_weight << std::endl;
+    cout << "c MUST MULTIPLY BY " << *cnf.get_multiplier_weight() << std::endl;
 }
 
 void set_config(ArjunNS::Arjun* arj) {
@@ -232,11 +232,11 @@ void set_config(ArjunNS::Arjun* arj) {
 #ifdef SYNTH
 void do_synthesis() {
     ArjunNS::SimplifiedCNF cnf(fg);
-    cnf.need_aig = true;
+    cnf.set_need_aig();
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
     cnf.clean_idiotic_mccomp_weights();
     cnf.check_sanity();
-    assert(cnf.sampl_vars == cnf.opt_sampl_vars && "Synthesis extends opt_sampl_vars, so it must be the same as sampl_vars");
+    assert(cnf.get_sampl_vars() == cnf.get_opt_sampl_vars() && "Synthesis extends opt_sampl_vars, so it must be the same as sampl_vars");
     if (do_pre_manthan) {
         cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
         if (do_pre_backbone) arjun->standalone_backbone(cnf);
@@ -262,11 +262,11 @@ void do_synthesis() {
     }
 
     /* cnf.renumber_sampling_vars_for_ganak(); */
-    if (cnf.opt_sampl_vars.size() == cnf.nVars()) {
+    if (cnf.get_opt_sampl_vars().size() == cnf.nVars()) {
         cout << "c o [arjun] No variables to synthesize" << endl;
         return;
     } else {
-        cout << "c o [arjun] Num variables to synthesize via manthan:" << (cnf.nVars() - cnf.opt_sampl_vars.size()) << endl;
+        cout << "c o [arjun] Num variables to synthesize via manthan:" << (cnf.nVars() - cnf.get_opt_sampl_vars().size()) << endl;
     }
     arjun->standalone_manthan(cnf);
 }
@@ -280,7 +280,7 @@ void do_minimize() {
 
     if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
     if (do_pre_backbone) arjun->standalone_backbone(cnf);
-    const auto orig_sampl_vars = cnf.sampl_vars;
+    const auto orig_sampl_vars = cnf.get_sampl_vars();
     if (do_minim_indep) arjun->standalone_minimize_indep(cnf, etof_conf.all_indep);
     if (!debug_minim.empty()) {
         cnf.write_simpcnf(debug_minim, false);

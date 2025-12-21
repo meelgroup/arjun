@@ -101,11 +101,11 @@ void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int>
           int32_t v = abs(l)-1;
           if (input.count(v)) cl.push_back(pl_to_lit(l));
       }
-      auto aig = aig_mng->new_const(false);
+      auto aig = aig_mng.new_const(false);
       for(const auto& l: cl) aig = AIG::new_or(aig, AIG::new_lit(l));
       fs_clid[id] = aig;
   } else {
-      fs_clid[id] = aig_mng->new_const(true);
+      fs_clid[id] = aig_mng.new_const(true);
   }
   verb_print(2, "intermediate formula: " << fs_clid[id]);
 }
@@ -172,15 +172,15 @@ void Interpolant::generate_interpolant(
         f << "c orig_num_vars: " << orig_num_vars << endl;
         f << "c output: " << test_var +1 << endl;
         f << "c output2: " << orig_num_vars+test_var +1 << endl;
-        f << "c num inputs: " << cnf.sampl_vars.size() << endl;
-        f << "c inputs: "; for(const auto& l: cnf.sampl_vars) f << (l+1) << " "; f << endl;
+        f << "c num inputs: " << cnf.get_sampl_vars().size() << endl;
+        f << "c inputs: "; for(const auto& l: cnf.get_sampl_vars()) f << (l+1) << " "; f << endl;
         for(const auto& c: mini_cls) f << c << " 0" << endl;
         f.close();
     }
 
     // CaDiCaL on the core only
     auto cdcl = std::make_unique<Solver>();
-    MyTracer t(orig_num_vars, cnf.opt_sampl_vars, &cnf.aig_mng, conf);
+    MyTracer t(orig_num_vars, cnf.get_opt_sampl_vars(), conf);
 
     cdcl->connect_proof_tracer(&t, true);
     /* std::stringstream name; */

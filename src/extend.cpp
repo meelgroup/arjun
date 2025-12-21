@@ -79,9 +79,9 @@ void Extend::add_all_indics_except(const set<uint32_t>& except) {
 
 void Extend::unsat_define(SimplifiedCNF& cnf) {
     double start_round_time = cpuTime();
-    assert(cnf.sampl_vars.size() == cnf.opt_sampl_vars.size());
-    assert(cnf.opt_sampl_vars_set);
-    uint32_t start_size = cnf.opt_sampl_vars.size();
+    assert(cnf.get_sampl_vars().size() == cnf.get_opt_sampl_vars().size());
+    assert(cnf.get_opt_sampl_vars_set());
+    uint32_t start_size = cnf.get_opt_sampl_vars().size();
     fill_solver(cnf);
     solver->set_verbosity(0);
     solver->set_scc(1);
@@ -93,7 +93,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     /* for(const auto& p: ret1) no_need.insert(p.first.var()); */
     const auto zero_ass = solver->get_zero_assigned_lits();
     for(const auto& p: zero_ass) no_need.insert(p.var());
-    for(const auto& v: cnf.opt_sampl_vars) no_need.insert(v);
+    for(const auto& v: cnf.get_opt_sampl_vars()) no_need.insert(v);
     add_all_indics_except(no_need);
     verb_print(2, "[extend] orig_num_vars: " << orig_num_vars << " nvars: " << solver->nVars());
 
@@ -165,7 +165,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             cl.push_back(l);
             solver->add_clause(cl);
             interp.add_unit_cl(cl);
-            cnf.opt_sampl_vars.push_back(test_var);
+            cnf.add_opt_sampl_var(test_var);
 
         } else if (ret == l_True) {
             // Optimisation: if we see both true and false, then it cannot be independent
@@ -183,7 +183,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
         }
     }
 
-    verb_print(1, "defined via Padoa: " << cnf.opt_sampl_vars.size()-start_size
+    verb_print(1, "defined via Padoa: " << cnf.get_opt_sampl_vars().size()-start_size
             << " SAT: " << sat
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
@@ -192,12 +192,12 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
 }
 
 void Extend::extend_round(SimplifiedCNF& cnf) {
-    assert(cnf.opt_sampl_vars_set = true);
+    assert(cnf.get_opt_sampl_vars_set() == true);
     double start_round_time = cpuTime();
-    const uint32_t orig_size = cnf.opt_sampl_vars.size();
+    const uint32_t orig_size = cnf.get_opt_sampl_vars().size();
     fill_solver(cnf);
     solver->set_verbosity(0);
-    set<uint32_t> opt_sampl(cnf.opt_sampl_vars.begin(), cnf.opt_sampl_vars.end());
+    set<uint32_t> opt_sampl(cnf.get_opt_sampl_vars().begin(), cnf.get_opt_sampl_vars().end());
 
     // we don't care about literal polarities, we treat all gates
     // as if they were OR gates
@@ -420,7 +420,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
 
     verb_print(1, "[arjun-extend] Extend finished "
             << " orig size: " << orig_size
-            << " final size: " << cnf.opt_sampl_vars.size()
+            << " final size: " << cnf.get_opt_sampl_vars().size()
             << " Undef: " << ret_undef
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 4) solver->print_stats();
@@ -449,10 +449,10 @@ void Extend::fill_solver(const SimplifiedCNF& cnf) {
     assert(solver->nVars() == 0); // Solver here is empty
 
     // Inject original CNF
-    orig_num_vars = cnf.nvars;
+    orig_num_vars = cnf.nVars();
     solver->new_vars(orig_num_vars);
-    for(const auto& cl: cnf.clauses) solver->add_clause(cl);
-    for(const auto& cl: cnf.red_clauses) solver->add_red_clause(cl);
+    for(const auto& cl: cnf.get_clauses()) solver->add_clause(cl);
+    for(const auto& cl: cnf.get_red_clauses()) solver->add_red_clause(cl);
     get_incidence();
 
     // Double vars
@@ -461,9 +461,9 @@ void Extend::fill_solver(const SimplifiedCNF& cnf) {
     seen.resize(solver->nVars()*2, 0);
 
     // We only need to double the non-opt-sampling vars
-    for(const auto& v: cnf.opt_sampl_vars) seen[v] = 1;
+    for(const auto& v: cnf.get_opt_sampl_vars()) seen[v] = 1;
     vector<Lit> cl2;
-    for(const auto& cl: cnf.clauses) {
+    for(const auto& cl: cnf.get_clauses()) {
         cl2.clear();
         for (const auto& l: cl) {
             if (seen[l.var()]) cl2.push_back(l);
@@ -471,5 +471,5 @@ void Extend::fill_solver(const SimplifiedCNF& cnf) {
         }
         solver->add_clause(cl2);
     }
-    for(const auto& v: cnf.opt_sampl_vars) seen[v] = 0;
+    for(const auto& v: cnf.get_opt_sampl_vars()) seen[v] = 0;
 }

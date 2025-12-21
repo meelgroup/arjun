@@ -57,14 +57,14 @@ int seed = 42;
 std::mt19937 mt;
 
 void fill_solver_from_cnf(ArjunNS::SimplifiedCNF& cnf, SATSolver& solver) {
-    solver.new_vars(cnf.nvars);
-    for (const auto& clause : cnf.clauses) {
+    solver.new_vars(cnf.nVars());
+    for (const auto& clause : cnf.get_clauses()) {
         solver.add_clause(clause);
     }
 }
 
 std::pair<bool, vector<lbool>> get_random_sol(ArjunNS::SimplifiedCNF& cnf, SATSolver* solver) {
-    vector<lbool> sample(cnf.nvars, l_Undef);
+    vector<lbool> sample(cnf.nVars(), l_Undef);
     auto ret = solver->solve();
     if (ret != CMSat::l_True) {
         cout << "c [test-synth] CNF is unsat!" << endl;
@@ -163,7 +163,7 @@ int main(int argc, char** argv) {
     SATSolver solver;
     SATSolver rnd_solver;
     ArjunNS::SimplifiedCNF orig_cnf(fg);
-    orig_cnf.need_aig = true;
+    orig_cnf.set_need_aig();
     bool all_indep = false;
     read_in_a_file(cnf_fname, &orig_cnf, all_indep, fg);
     fill_solver_from_cnf(orig_cnf, solver);
@@ -182,22 +182,22 @@ int main(int argc, char** argv) {
     cnf.read_aig_defs_from_file(aig_fname);
     if (verb) {
         cout << "c [test-synth] Successfully read AIG file" << endl;
-        cout << "c [test-synth] Number of variables: " << cnf.nvars << endl;
-        cout << "c [test-synth] Number of clauses: " << cnf.clauses.size() << endl;
-        cout << "c [test-synth] Number of red clauses: " << cnf.red_clauses.size() << endl;
-        cout << "c [test-synth] Number of sampl_vars: " << cnf.sampl_vars.size() << endl;
-        cout << "c [test-synth] Number of opt_sampl_vars: " << cnf.opt_sampl_vars.size() << endl;
-        cout << "c [test-synth] Number of AIG defs: " << cnf.defs.size() << endl;
-        cout << "c [test-synth] need_aig: " << cnf.need_aig << endl;
-        cout << "c [test-synth] proj: " << cnf.proj << endl;
-        cout << "c [test-synth] backbone_done: " << cnf.backbone_done << endl;
+        cout << "c [test-synth] Number of variables: " << cnf.nVars() << endl;
+        cout << "c [test-synth] Number of clauses: " << cnf.get_clauses().size() << endl;
+        cout << "c [test-synth] Number of red clauses: " << cnf.get_red_clauses().size() << endl;
+        cout << "c [test-synth] Number of sampl_vars: " << cnf.get_sampl_vars().size() << endl;
+        cout << "c [test-synth] Number of opt_sampl_vars: " << cnf.get_opt_sampl_vars().size() << endl;
+        cout << "c [test-synth] Number of AIG defs: " << cnf.num_defs() << endl;
+        cout << "c [test-synth] need_aig: " << cnf.get_need_aig() << endl;
+        cout << "c [test-synth] projected: " << cnf.is_projected() << endl;
+        cout << "c [test-synth] backbone_done: " << cnf.get_backbone_done() << endl;
     }
 
     for(int i = 0; i < num_samples; i++) {
         auto sample = get_random_sol(rnd_solver);
-        assert(sample.size() == orig_cnf.nvars);
-        vector<lbool> restricted_sample(orig_cnf.nvars, l_Undef);
-        for(const auto& var : orig_cnf.sampl_vars) {
+        assert(sample.size() == orig_cnf.nVars());
+        vector<lbool> restricted_sample(orig_cnf.nVars(), l_Undef);
+        for(const auto& var : orig_cnf.get_sampl_vars()) {
             restricted_sample[var] = sample[var];
         }
         auto extended_sample = cnf.extend_sample(restricted_sample);

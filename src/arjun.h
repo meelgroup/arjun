@@ -41,7 +41,7 @@ struct FHolder;
 
 class AIG;
 class AIGManager;
-struct SimplifiedCNF;
+class SimplifiedCNF;
 using aig_ptr = std::shared_ptr<AIG>;
 
 enum class AIGT {t_and, t_lit, t_const};
@@ -161,7 +161,7 @@ public:
 
     friend std::ostream& operator<<(std::ostream& out, const aig_ptr& aig);
     friend class AIGManager;
-    friend struct SimplifiedCNF;
+    friend class SimplifiedCNF;
 private:
     AIGT type = AIGT::t_const;
     static constexpr uint32_t none_var = std::numeric_limits<uint32_t>::max();
@@ -681,45 +681,12 @@ struct SimpConf {
     int weaken_limit = 8000;
 };
 
-struct SimplifiedCNF {
+class SimplifiedCNF {
+public:
     std::unique_ptr<CMSat::FieldGen> fg = nullptr;
     SimplifiedCNF(const std::unique_ptr<CMSat::FieldGen>& _fg) : fg(_fg->dup()), multiplier_weight(fg->one()) {}
     SimplifiedCNF(const CMSat::FieldGen* _fg) : fg(_fg->dup()), multiplier_weight(fg->one()) {}
     ~SimplifiedCNF() = default;
-
-    bool need_aig = false;
-    std::vector<std::vector<CMSat::Lit>> clauses;
-    std::vector<std::vector<CMSat::Lit>> red_clauses;
-    bool proj = false;
-    bool sampl_vars_set = false;
-    bool opt_sampl_vars_set = false;
-    std::vector<uint32_t> sampl_vars;
-    std::vector<uint32_t> opt_sampl_vars; // Filled during synthesis with vars that have been defined already
-
-    uint32_t nvars = 0;
-    std::unique_ptr<CMSat::Field> multiplier_weight = nullptr;
-    bool weighted = false;
-    bool backbone_done = false;
-    struct Weight {
-        Weight() = default;
-        std::unique_ptr<CMSat::Field> pos;
-        std::unique_ptr<CMSat::Field> neg;
-        Weight(std::unique_ptr<CMSat::FieldGen>& fg) : pos(fg->one()), neg(fg->one()) {}
-
-        Weight(const Weight& other) :
-            pos (other.pos->dup()),
-            neg (other.neg->dup()) {}
-        Weight& operator=(const Weight& other) {
-            pos = other.pos->dup();
-            neg = other.neg->dup();
-            return *this;
-        }
-    };
-    std::map<uint32_t, Weight> weights;
-    std::map<uint32_t, CMSat::Lit> orig_to_new_var; // ONLY maps in the CNF
-    AIGManager aig_mng; // only for const true/false
-    std::map<uint32_t, aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space
-
     SimplifiedCNF& operator=(const SimplifiedCNF& other) {
         fg = other.fg->dup();
         need_aig = other.need_aig;
@@ -736,9 +703,71 @@ struct SimplifiedCNF {
         backbone_done = other.backbone_done;
         weights = other.weights;
         orig_to_new_var = other.orig_to_new_var;
-        copy_aigs_from(other);
+        assert(need_aig == other.need_aig && "Both must either need AIGs or not");
+        if (!need_aig) {
+            assert(defs.empty());
+        } else {
+            aig_mng = other.aig_mng;
+            defs = other.defs;
+        }
+        //debug
+        orig_clauses = other.orig_clauses;
+        orig_nvars = other.orig_nvars;
 
         return *this;
+    }
+    SimplifiedCNF(const SimplifiedCNF& other) {
+        *this = other;
+    }
+
+    const auto& nVars() const { return nvars; }
+    const auto& get_clauses() const { return clauses; }
+    const auto& get_red_clauses() const { return red_clauses; }
+    const auto& get_weights() const { return weights; }
+    const auto& get_sampl_vars() const { return sampl_vars; }
+    const auto& get_opt_sampl_vars() const { return opt_sampl_vars; }
+    const auto& get_backbone_done() const { return backbone_done; }
+    bool is_projected() const { return proj; }
+    bool defined(uint32_t v) const {
+        assert(need_aig);
+        assert(v < nvars);
+        bool found = defs.find(v) != defs.end();
+        if (!found) return false;
+        assert(defs.at(v) != nullptr);
+        return true;
+    }
+    void set_need_aig() {
+        // should be the first thing to set
+        assert(!need_aig);
+        assert(nvars == 0);
+        assert(clauses.empty());
+        assert(red_clauses.empty());
+        assert(defs.empty());
+        assert(opt_sampl_vars.empty());
+        assert(sampl_vars.empty());
+        need_aig = true;
+    }
+    auto get_need_aig() const { return need_aig; }
+    uint32_t num_defs() const {
+        assert(need_aig);
+        defs_invariant();
+        return defs.size();
+    }
+    void defs_invariant() const {
+        assert(need_aig);
+        for(const auto& it: defs) {
+            assert(it.second != nullptr);
+            assert(it.first < nvars);
+        }
+    }
+
+    void set_all_opt_indep() {
+        opt_sampl_vars.clear();
+        for(uint32_t i = 0; i < nvars; i++) opt_sampl_vars.push_back(i);
+    }
+    void add_opt_sampl_var(const uint32_t v) {
+        assert(v < nvars);
+        opt_sampl_vars.push_back(v);
     }
 
     void clean_idiotic_mccomp_weights() {
@@ -819,16 +848,6 @@ struct SimplifiedCNF {
         }
     }
 
-    void copy_aigs_from(const SimplifiedCNF& other) {
-        assert(need_aig == other.need_aig && "Both must either need AIGs or not");
-        if (!need_aig) {
-            assert(defs.empty());
-            return;
-        }
-        aig_mng = other.aig_mng;
-        defs = other.defs;
-    }
-
     void add_aigs_from(const std::map<uint32_t, aig_ptr>& other_defs) {
         if (!need_aig) {
             assert(defs.empty());
@@ -841,9 +860,6 @@ struct SimplifiedCNF {
         }
     }
 
-    SimplifiedCNF(const SimplifiedCNF& other) {
-        *this = other;
-    }
 
     // Gives all the orig lits that map to this variable
     std::map<uint32_t, std::vector<CMSat::Lit>> get_new_to_orig_var_list() const {
@@ -870,7 +886,6 @@ struct SimplifiedCNF {
         return ret;
     }
 
-    uint32_t nVars() const { return nvars; }
     uint32_t new_vars(uint32_t vars) {
         nvars+=vars;
         for(uint32_t i = 0; i < vars; i++) {
@@ -928,7 +943,6 @@ struct SimplifiedCNF {
         sampl_vars.insert(sampl_vars.begin(), vars.begin(), vars.end());
         if (!opt_sampl_vars_set) set_opt_sampl_vars(vars);
     }
-    const auto& get_sampl_vars() const { return sampl_vars; }
     template<class T> void set_opt_sampl_vars(const T& vars) {
         for(const auto& v: vars) check_var(v);
         opt_sampl_vars.clear();
@@ -936,10 +950,23 @@ struct SimplifiedCNF {
         opt_sampl_vars.insert(opt_sampl_vars.begin(), vars.begin(), vars.end());
     }
 
+    template<class T2>
+    void remove_sampling_vars(const T2& zero_assigned) {
+        std::set sampl_vars2(get_sampl_vars().begin(), get_sampl_vars().end());
+        std::set opt_sampl_vars2(get_opt_sampl_vars().begin(), get_opt_sampl_vars().end());
+        for(const auto& l: zero_assigned) {
+            assert(l.var() < nvars);
+            sampl_vars2.erase(l.var());
+            opt_sampl_vars2.erase(l.var());
+        }
+        set_sampl_vars(sampl_vars2, true);
+        set_opt_sampl_vars(opt_sampl_vars2);
+    }
+
     void set_multiplier_weight(const std::unique_ptr<CMSat::Field>& m) {
         *multiplier_weight = *m;
     }
-    const auto& get_multiplier_weight() const { return *multiplier_weight; }
+    const auto& get_multiplier_weight() const { return multiplier_weight; }
     auto get_lit_weight(CMSat::Lit lit) const {
         assert(weighted);
         if (!fg->weighted()) {
@@ -1608,6 +1635,294 @@ struct SimplifiedCNF {
             else defs[l.var()] = aig;
         }
     }
+
+    SimplifiedCNF get_cnf(
+            std::unique_ptr<CMSat::SATSolver>& solver,
+            const std::vector<uint32_t>& new_sampl_vars,
+            const std::vector<uint32_t>& empty_sampl_vars,
+            uint32_t verb
+    ) const {
+        SimplifiedCNF scnf(fg);
+        std::vector<CMSat::Lit> clause;
+        bool is_xor, rhs;
+        scnf.weighted = weighted;
+        scnf.proj = get_projected();
+        scnf.new_vars(solver->simplified_nvars());
+        scnf.aig_mng = aig_mng;
+        scnf.need_aig = need_aig;
+        if (need_aig) {
+            scnf.defs = defs;
+            scnf.aig_mng = aig_mng;
+        }
+        get_fixed_values(scnf, solver);
+
+        solver->start_getting_constraints(false, true);
+        if (need_aig) get_bve_mapping(scnf, solver, verb);
+        solver->end_getting_constraints();
+
+        if (verb >= 5) {
+            for(const auto& v: new_sampl_vars)
+                std::cout << "c o [w-debug] get_cnf sampl var: " << v+1 << std::endl;
+            for(const auto& v: opt_sampl_vars)
+                std::cout << "c o [w-debug] get_cnf opt sampl var: " << v+1 << std::endl;
+            for(const auto& v: empty_sampl_vars)
+                std::cout << "c o [w-debug] get_cnf empty sampl var: " << v+1 << std::endl;
+        }
+
+        {// We need to fix weights here via cnf2
+            auto cnf2(*this);
+            cnf2.fix_weights(solver, new_sampl_vars, empty_sampl_vars);
+
+            solver->start_getting_constraints(false, true);
+            if (cnf2.weighted) {
+                std::map<CMSat::Lit, std::unique_ptr<CMSat::Field>> outer_w;
+                for(const auto& [v, w]: cnf2.weights) {
+                    const CMSat::Lit l(v, false);
+                    outer_w[l] = w.pos->dup();
+                    outer_w[~l] = w.neg->dup();
+                    if (verb >= 5) {
+                        std::cout << "c o [w-debug] outer_w " << l << " w: " << *w.pos << std::endl;
+                        std::cout << "c o [w-debug] outer_w " << ~l << " w: " << *w.neg << std::endl;
+                    }
+                }
+
+                const auto trans = solver->get_weight_translation();
+                std::map<CMSat::Lit, std::unique_ptr<CMSat::Field>> inter_w;
+                for(const auto& w: outer_w) {
+                    CMSat::Lit orig = w.first;
+                    CMSat::Lit t = trans[orig.toInt()];
+                    inter_w[t] = w.second->dup();
+                }
+
+                for(const auto& myw: inter_w) {
+                    if (myw.first.var() >= scnf.nvars) continue;
+                    if (verb >= 5)
+                        std::cout << " c o [w-debug] int w: " << myw.first << " " << *myw.second << std::endl;
+                    scnf.set_lit_weight(myw.first, myw.second);
+                }
+            }
+            *scnf.multiplier_weight = *cnf2.multiplier_weight;
+
+            // Map orig set to new set
+            scnf.set_sampl_vars(solver->translate_sampl_set(cnf2.sampl_vars, false));
+            scnf.set_opt_sampl_vars(solver->translate_sampl_set(cnf2.opt_sampl_vars, false));
+        }
+
+        while(solver->get_next_constraint(clause, is_xor, rhs)) {
+            assert(!is_xor); assert(rhs);
+            scnf.clauses.push_back(clause);
+        }
+        solver->end_getting_constraints();
+
+        // RED clauses
+        solver->start_getting_constraints(true, true);
+        while(solver->get_next_constraint(clause, is_xor, rhs)) {
+            assert(!is_xor); assert(rhs);
+            scnf.red_clauses.push_back(clause);
+        }
+        solver->end_getting_constraints();
+
+        std::sort(scnf.sampl_vars.begin(), scnf.sampl_vars.end());
+        std::sort(scnf.opt_sampl_vars.begin(), scnf.opt_sampl_vars.end());
+
+        if (verb >= 5) {
+            std::cout << "w-debug AFTER PURA FINAL sampl_vars    : ";
+            for(const auto& v: scnf.sampl_vars) {
+                std::cout << v+1 << " ";
+            }
+            std::cout << std::endl;
+            std::cout << "w-debug AFTER PURA FINAL opt_sampl_vars: ";
+            for(const auto& v: scnf.opt_sampl_vars) std::cout << v+1 << " ";
+            std::cout << std::endl;
+        }
+
+        // Now we do the mapping. Otherwise, above will be complicated
+        // This ALSO gets all the fixed values
+        scnf.orig_to_new_var = solver->update_var_mapping(orig_to_new_var);
+        return scnf;
+    }
+
+    void get_fixed_values(
+        SimplifiedCNF& scnf,
+        std::unique_ptr<CMSat::SATSolver>& solver) const
+    {
+        auto new_to_orig_var = get_new_to_orig_var();
+        auto fixed = solver->get_zero_assigned_lits();
+        for(const auto& l: fixed) {
+            CMSat::Lit orig_lit = new_to_orig_var.at(l.var());
+            orig_lit ^= l.sign();
+            scnf.defs[orig_lit.var()] = scnf.aig_mng.new_const(!orig_lit.sign());
+        }
+    }
+
+    // Get back BVE AIGs into scnf.defs
+    void get_bve_mapping(SimplifiedCNF& scnf, std::unique_ptr<CMSat::SATSolver>& solver,
+            const uint32_t verb) const {
+        std::vector<uint32_t> vs = solver->get_elimed_vars();
+        const auto new_to_orig_var = get_new_to_orig_var();
+
+        // We are all in NEW here. So we need to map back to orig, both the
+        // definition and the target
+        auto map_cl_to_orig = [&new_to_orig_var](const std::vector<std::vector<CMSat::Lit>>& def) {
+            std::vector<std::vector<CMSat::Lit>> ret;
+            for(const auto& cl: def) {
+                std::vector<CMSat::Lit> new_cl;
+                for(const auto& l: cl) {
+                    assert(new_to_orig_var.count(l.var()) && "Must be in the new var set");
+                    const CMSat::Lit l2 = new_to_orig_var.at(l.var());
+                    new_cl.push_back(l2 ^ l.sign());
+                }
+                ret.push_back(new_cl);
+            }
+            return ret;
+        };
+
+        for(const auto& target: vs) {
+            auto def = solver->get_cls_defining_var(target);
+            auto orig_def = map_cl_to_orig(def);
+
+            uint32_t pos = 0;
+            uint32_t neg = 0;
+            for(const auto& cl: orig_def) {
+                bool found_this_cl = false;
+                for(const auto& l: cl) {
+                    if (l.var() != target) continue;
+                    found_this_cl = true;
+                    if (l.sign()) neg++;
+                    else pos++;
+                }
+                assert(found_this_cl);
+            }
+            bool sign = neg > pos;
+
+            auto overall = scnf.aig_mng.new_const(false);
+            for(const auto& cl: orig_def) {
+                auto current = scnf.aig_mng.new_const(true);
+
+                // Make sure only one side is used, the smaller side
+                bool ok = false;
+                for(const auto& l: cl) {
+                    if (l.var() == target) {
+                        if (l.sign() == sign) ok = true;
+                        break;
+                    }
+                }
+                if (!ok) continue;
+
+                for(const auto& l: cl) {
+                    if (l.var() == target) continue;
+                    auto aig = AIG::new_lit(~l);
+                    current = AIG::new_and(current, aig);
+                }
+                overall = AIG::new_or(overall, current);
+            }
+            if (sign) overall = AIG::new_not(overall);
+            auto orig_target = new_to_orig_var.at(target);
+            if (orig_target.sign()) overall = AIG::new_not(overall);
+            scnf.defs[orig_target.var()] = overall;
+            if (verb >= 5)
+                std::cout << "c o [bve-aig] set aig for var: " << orig_target << " from bve elim" << std::endl;
+        }
+
+        // Finally, set defs for replaced vars that are elimed
+        auto pairs = solver->get_all_binary_xors(); // [replaced, replaced_with]
+        std::map<uint32_t, std::vector<CMSat::Lit>> var_to_lits_it_replaced;
+        for(const auto& [orig, replacement] : pairs) {
+            var_to_lits_it_replaced[replacement.var()].push_back(orig ^ replacement.sign());
+        }
+        for(const auto& target: vs) {
+            for(const auto& l: var_to_lits_it_replaced[target]) {
+                auto orig_target = new_to_orig_var.at(target);
+                auto orig_lit = new_to_orig_var.at(l.var()) ^ l.sign();
+                const auto aig = scnf.defs[orig_target.var()];
+                assert(aig != nullptr);
+                assert(scnf.defs[orig_lit.var()] == nullptr);
+                if (orig_lit.sign()) {
+                    scnf.defs[orig_lit.var()] = AIG::new_not(aig);
+                } else {
+                    scnf.defs[orig_lit.var()] = aig;
+                }
+                if (verb >= 5)
+                    std::cout << "c o [bve-aig] replaced var: " << orig_lit
+                        << " with aig of " << orig_target << std::endl;
+            }
+        }
+    }
+    void set_backbone_done(const bool bb_done) {
+        backbone_done = bb_done;
+    }
+
+    // Used after SBVA to replace clauses
+    void replace_clauses_with(std::vector<int>& ret, uint32_t new_nvars, uint32_t new_nclauses) {
+        nvars = new_nvars;
+        clauses.clear();
+        std::vector<CMSat::Lit> cl;
+        uint32_t at = 0;
+        while(ret.size() > at) {
+            int l = ret[at++];
+            if (l == 0) {
+                add_clause(cl);
+                cl.clear();
+                continue;
+            }
+            cl.push_back(CMSat::Lit(std::abs(l)-1, l < 0));
+        }
+        assert(cl.empty() && "SBVA should have ended with a 0");
+        assert(clauses.size() == new_nclauses && "Number of clauses mismatch after SBVA");
+    }
+
+    // Used after BCE to replace clauses
+    struct BCEClause {
+        uint32_t at = std::numeric_limits<uint32_t>::max();
+        std::vector<CMSat::Lit> lits;
+        bool red = false;
+    };
+    void replace_clauses_with(std::vector<BCEClause>& cls) {
+        clauses.clear();
+        for(const auto& cl: cls) {
+            if (!cl.red) add_clause(cl.lits);
+            else add_red_clause(cl.lits);
+        }
+    }
+
+private:
+    bool need_aig = false;
+    std::vector<std::vector<CMSat::Lit>> clauses;
+    std::vector<std::vector<CMSat::Lit>> red_clauses;
+    bool proj = false;
+    bool sampl_vars_set = false;
+    bool opt_sampl_vars_set = false;
+    std::vector<uint32_t> sampl_vars;
+    std::vector<uint32_t> opt_sampl_vars; // Filled during synthesis with vars that have been defined already
+
+    uint32_t nvars = 0;
+    std::unique_ptr<CMSat::Field> multiplier_weight = nullptr;
+    bool weighted = false;
+    bool backbone_done = false;
+    struct Weight {
+        Weight() = default;
+        std::unique_ptr<CMSat::Field> pos;
+        std::unique_ptr<CMSat::Field> neg;
+        Weight(std::unique_ptr<CMSat::FieldGen>& fg) : pos(fg->one()), neg(fg->one()) {}
+
+        Weight(const Weight& other) :
+            pos (other.pos->dup()),
+            neg (other.neg->dup()) {}
+        Weight& operator=(const Weight& other) {
+            pos = other.pos->dup();
+            neg = other.neg->dup();
+            return *this;
+        }
+    };
+    std::map<uint32_t, Weight> weights;
+    std::map<uint32_t, CMSat::Lit> orig_to_new_var; // ONLY maps in the CNF
+    AIGManager aig_mng; // only for const true/false
+    std::map<uint32_t, aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space
+
+    // For debug. The very original CNF that was given
+    std::vector<std::vector<CMSat::Lit>> orig_clauses;
+    std::vector<uint32_t> orig_sampl_vars;
+    uint32_t orig_nvars = 0;
 };
 
 struct ArjPrivateData;
