@@ -713,11 +713,16 @@ public:
         weights = other.weights;
         orig_to_new_var = other.orig_to_new_var;
         assert(need_aig == other.need_aig && "Both must either need AIGs or not");
-        if (!need_aig) assert(other.defs.empty());
-        else {
+        if (!need_aig) {
+            assert(other.defs.empty());
+            assert(other.orig_sampl_vars.empty());
+            assert(other.orig_clauses.empty());
+        } else {
             other.defs_invariant();
             aig_mng = other.aig_mng;
             defs = other.defs;
+            orig_clauses = other.orig_clauses;
+            orig_sampl_vars = other.orig_sampl_vars;
         }
 
         return *this;
