@@ -707,6 +707,7 @@ public:
         if (!need_aig) {
             assert(defs.empty());
         } else {
+            assert(defs_invariant());
             aig_mng = other.aig_mng;
             defs = other.defs;
         }
@@ -750,15 +751,16 @@ public:
     auto get_need_aig() const { return need_aig; }
     uint32_t num_defs() const {
         assert(need_aig);
-        defs_invariant();
+        assert(defs_invariant());
         return defs.size();
     }
-    void defs_invariant() const {
+    bool defs_invariant() const {
         assert(need_aig);
         for(const auto& it: defs) {
             assert(it.second != nullptr);
             assert(it.first < nvars);
         }
+        return true;
     }
 
     void set_all_opt_indep() {
