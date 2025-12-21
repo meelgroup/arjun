@@ -731,9 +731,27 @@ public:
     const auto& get_red_clauses() const { return red_clauses; }
     const auto& get_weights() const { return weights; }
     const auto& get_sampl_vars() const { return sampl_vars; }
+    const auto& get_orig_sampl_vars() const { return orig_sampl_vars; }
+    const auto& get_orig_clauses() const { return orig_clauses; }
     const auto& get_opt_sampl_vars() const { return opt_sampl_vars; }
     const auto& get_backbone_done() const { return backbone_done; }
     bool is_projected() const { return proj; }
+
+    template<class T>
+    void set_orig_sampl_vars(const T& vars) {
+        assert(need_aig);
+        assert(orig_sampl_vars.empty());
+        for(const auto& v: vars) orig_sampl_vars.insert(v);
+    }
+    void set_orig_clauses(const std::vector<std::vector<CMSat::Lit>>& cls) {
+        assert(need_aig);
+        assert(orig_clauses.empty());
+        orig_clauses = cls;
+    }
+    void add_orig_clause(const std::vector<CMSat::Lit>& cl) {
+        assert(need_aig);
+        orig_clauses.push_back(cl);
+    }
 
     // ORIG variable
     bool defined(const uint32_t v) const {
@@ -942,6 +960,7 @@ public:
     }
     bool get_sampl_vars_set() const { return sampl_vars_set; }
     bool get_opt_sampl_vars_set() const { return opt_sampl_vars_set; }
+
     template<class T>
     void set_sampl_vars(const T& vars, bool ignore = false) {
         for(const auto& v: vars) check_var(v);
@@ -951,7 +970,7 @@ public:
         }
         sampl_vars.clear();
         sampl_vars_set = true;
-        sampl_vars.insert(sampl_vars.begin(), vars.begin(), vars.end());
+        for(const auto& v: vars) sampl_vars.push_back(v);
         if (!opt_sampl_vars_set) set_opt_sampl_vars(vars);
     }
     template<class T> void set_opt_sampl_vars(const T& vars) {
@@ -1660,6 +1679,8 @@ public:
         if (need_aig) {
             scnf.defs = defs;
             scnf.aig_mng = aig_mng;
+            scnf.set_orig_sampl_vars(orig_sampl_vars);
+            scnf.set_orig_clauses(orig_clauses);
         }
         get_fixed_values(scnf, solver);
 
@@ -1711,7 +1732,7 @@ public:
             *scnf.multiplier_weight = *cnf2.multiplier_weight;
 
             // Map orig set to new set
-            scnf.set_sampl_vars(solver->translate_sampl_set(cnf2.sampl_vars, false));
+            scnf.set_sampl_vars(solver->translate_sampl_set(cnf2.sampl_vars, true));
             scnf.set_opt_sampl_vars(solver->translate_sampl_set(cnf2.opt_sampl_vars, false));
         }
 
@@ -1926,6 +1947,10 @@ private:
     AIGManager aig_mng; // only for const true/false
     std::vector<aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space. Size is the
                                //original number of variables.
+
+    // debug
+    std::set<uint32_t> orig_sampl_vars;
+    std::vector<std::vector<CMSat::Lit>> orig_clauses;
 };
 
 struct ArjPrivateData;

@@ -236,6 +236,8 @@ void do_synthesis() {
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
     cnf.clean_idiotic_mccomp_weights();
     cnf.check_sanity();
+    cnf.set_orig_clauses(cnf.get_clauses());
+    cnf.set_orig_sampl_vars(cnf.get_sampl_vars());
     assert(cnf.get_sampl_vars() == cnf.get_opt_sampl_vars() && "Synthesis extends opt_sampl_vars, so it must be the same as sampl_vars");
     if (do_pre_manthan) {
         cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
