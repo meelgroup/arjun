@@ -69,10 +69,10 @@ public:
     // vals = input variable assignments
     // aig = AIG to evaluate
     // defs = known definitions of variables
-    static bool evaluate(const std::vector<CMSat::lbool>& vals, const aig_ptr& aig, const std::map<uint32_t, aig_ptr>& defs) {
+    static bool evaluate(const std::vector<CMSat::lbool>& vals, const aig_ptr& aig, const std::vector<aig_ptr>& defs) {
         assert(aig->invariants());
         if (aig->type == AIGT::t_lit) {
-            if (defs.find(aig->var) != defs.end()) {
+            if (defs[aig->var] != nullptr) {
                 // TODO: this is highly inefficient, because this should be cached
                 assert(vals.size() < aig->var || vals[aig->var] == CMSat::l_Undef); // Must not be part of input
                 return aig->neg ^ evaluate(vals, defs.at(aig->var), defs);
@@ -157,7 +157,16 @@ public:
     bool marked() const { return mark; }
     void set_mark() { mark = true; }
 
-
+    void get_dependent_vars(std::set<uint32_t>& dep) const {
+        if (type == AIGT::t_lit) {
+            dep.insert(var);
+            return;
+        }
+        if (type == AIGT::t_and) {
+            l->get_dependent_vars(dep);
+            r->get_dependent_vars(dep);
+        }
+    }
 
     friend std::ostream& operator<<(std::ostream& out, const aig_ptr& aig);
     friend class AIGManager;
@@ -704,16 +713,12 @@ public:
         weights = other.weights;
         orig_to_new_var = other.orig_to_new_var;
         assert(need_aig == other.need_aig && "Both must either need AIGs or not");
-        if (!need_aig) {
-            assert(defs.empty());
-        } else {
-            assert(defs_invariant());
+        if (!need_aig) assert(other.defs.empty());
+        else {
+            other.defs_invariant();
             aig_mng = other.aig_mng;
             defs = other.defs;
         }
-        //debug
-        orig_clauses = other.orig_clauses;
-        orig_nvars = other.orig_nvars;
 
         return *this;
     }
@@ -729,10 +734,11 @@ public:
     const auto& get_opt_sampl_vars() const { return opt_sampl_vars; }
     const auto& get_backbone_done() const { return backbone_done; }
     bool is_projected() const { return proj; }
-    bool defined(uint32_t v) const {
+
+    // ORIG variable
+    bool defined(const uint32_t v) const {
         assert(need_aig);
-        assert(v < nvars);
-        bool found = defs.find(v) != defs.end();
+        bool found = defs[v] != nullptr;
         if (!found) return false;
         assert(defs.at(v) != nullptr);
         return true;
@@ -756,9 +762,23 @@ public:
     }
     bool defs_invariant() const {
         assert(need_aig);
-        for(const auto& it: defs) {
-            assert(it.second != nullptr);
-            assert(it.first < nvars);
+        assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
+        assert(false && "Below neends orig_sampl_vars, because defs is in ORIG variable space");
+        //;for(const auto& v: orig_sampl_vars) assert(defs[v] == nullptr && "Sampling vars must not be defined");
+        return true;
+    }
+
+    // this checks that NO unsat-define has been made yet
+    bool all_defined_in_opt_sampl() const {
+        auto opt_sampl_vars_s = std::set<uint32_t>(opt_sampl_vars.begin(), opt_sampl_vars.end());
+        for(const auto& [o, n] : orig_to_new_var) {
+            if (!defined(o)) continue;
+
+            assert(n.var() < nvars);
+            if (!opt_sampl_vars_s.count(n.var())) {
+                std::cout << "Orig variable " << o +1 << " which is new var: " << n.var()+1 << " is defined but not in opt_sampl_vars" << std::endl;
+                return false;
+            }
         }
         return true;
     }
@@ -850,19 +870,6 @@ public:
         }
     }
 
-    void add_aigs_from(const std::map<uint32_t, aig_ptr>& other_defs) {
-        if (!need_aig) {
-            assert(defs.empty());
-            return;
-        }
-
-        for(const auto& it: other_defs) {
-            assert(defs.find(it.first) == defs.end() && "Must not already be defined here");
-            defs[it.first] = it.second;  // Just copy the shared_ptr
-        }
-    }
-
-
     // Gives all the orig lits that map to this variable
     std::map<uint32_t, std::vector<CMSat::Lit>> get_new_to_orig_var_list() const {
         std::map<uint32_t, std::vector<CMSat::Lit>> ret;
@@ -893,6 +900,7 @@ public:
         for(uint32_t i = 0; i < vars; i++) {
             const uint32_t v = nvars-vars+i;
             orig_to_new_var[v] = CMSat::Lit(v, false);
+            defs.push_back(nullptr);
         }
         return nvars;
     }
@@ -900,6 +908,7 @@ public:
         uint32_t v = nvars;
         nvars++;
         orig_to_new_var[v] = CMSat::Lit(v, false);
+        defs.push_back(nullptr);
         return nvars;
     }
 
@@ -1055,6 +1064,7 @@ public:
     // renumber variables such that sampling set start from 0...N
     void renumber_sampling_vars_for_ganak() {
         assert(sampl_vars.size() <= opt_sampl_vars.size());
+        // NOTE: we do not need to update defs, because defs is ORIG to ORIG
 
         // Create mapping
         constexpr uint32_t m = std::numeric_limits<uint32_t>::max();
@@ -1297,19 +1307,19 @@ public:
 
     bool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var) const {
         check_var(var);
-        if (defs.find(var) == defs.end()) {
+        if (defs[var] == nullptr) {
             std::cout << "ERROR: Variable " << var+1 << " not defined" << std::endl;
-            assert(defs.find(var) != defs.end() && "Must be defined");
+            assert(defs[var] != nullptr && "Must be defined");
             exit(EXIT_FAILURE);
         }
-        return AIG::evaluate(vals, defs.find(var)->second, defs);
+        return AIG::evaluate(vals, defs[var], defs);
     }
 
     std::set<uint32_t> get_vars_need_definition() const {
         std::set<uint32_t> ret;
         std::set<uint32_t> osv(opt_sampl_vars.begin(), opt_sampl_vars.end());
-        for(uint32_t i = 0; i < nvars; i++) {
-            if (defs.find(i) == defs.end() && !osv.count(i))
+        for(uint32_t i = 0; i < defs.size(); i++) {
+            if (defs[i] == nullptr && !osv.count(i))
                 ret.insert(i);
         }
         return ret;
@@ -1323,8 +1333,8 @@ public:
             if (aig->var == v) return true;
 
             /// Need to be recursive
-            if (defs.find(aig->var) != defs.end()) {
-                const auto& aig2 = defs.at(aig->var);
+            if (defs[aig->var] != nullptr) {
+                const auto& aig2 = defs[aig->var];
                 return aig_contains(aig2, v);
             }
             return false;
@@ -1339,25 +1349,26 @@ public:
 
     std::set<uint32_t> get_cannot_depend_on(const uint32_t v) const {
         assert(false && "defs is original number space but v is not... below is broken");
-        if (defs.find(v) != defs.end()) {
+        if (defs[v] != nullptr) {
             std::cout << "ERROR: Variable " << v+1 << " already defined, why query what it cannot depend on???" << std::endl;
             assert(false);
             exit(EXIT_FAILURE);
         }
-        std::set<uint32_t> osv(opt_sampl_vars.begin(), opt_sampl_vars.end());
-        if (osv.count(v)) {
+        std::set<uint32_t> opt_sampl_vars_s(opt_sampl_vars.begin(), opt_sampl_vars.end());
+        if (opt_sampl_vars_s.count(v)) {
             std::cout << "ERROR: Variable " << v+1 << " is in opt sampling set, why query what it cannot depend on???" << std::endl;
             assert(false);
             exit(EXIT_FAILURE);
         }
 
         std::set<uint32_t> ret;
-        for(const auto& it: defs) {
-            if (osv.count(it.first)) {
+        for(uint32_t i = 0; i < defs.size(); i++) {
+            if (defs[i] == nullptr) continue;
+            if (opt_sampl_vars_s.count(i)) {
                 // The extended input we can always depend on
                 continue;
             }
-            if (aig_contains(it.second, v)) ret.insert(it.first);
+            if (aig_contains(defs[i], v)) ret.insert(i);
         }
         return ret;
     }
@@ -1434,7 +1445,7 @@ public:
             }
         };
 
-        for (const auto& [var, aig] : defs) collect(aig);
+        for (const auto& aig : defs) collect(aig);
 
         // 2. Write number of nodes
         uint32_t num_nodes = id_to_node.size();
@@ -1456,8 +1467,7 @@ public:
         // 4. Write defs map
         uint32_t num_defs = defs.size();
         out.write((char*)&num_defs, sizeof(num_defs));
-        for (const auto& [var, aig] : defs) {
-            out.write((char*)&var, sizeof(var));
+        for (const auto& aig : defs) {
             uint32_t aid = node_to_id[aig.get()];
             out.write((char*)&aid, sizeof(aid));
         }
@@ -1554,10 +1564,9 @@ public:
         in.read((char*)&num_defs, sizeof(num_defs));
         defs.clear();
         for (uint32_t i = 0; i < num_defs; i++) {
-            uint32_t var, aid;
-            in.read((char*)&var, sizeof(var));
-            in.read((char*)&aid, sizeof(aid));
-            defs[var] = id_to_node[aid];
+            uint32_t aig;
+            in.read((char*)&aig, sizeof(aig));
+            defs[i] = id_to_node[aig];
         }
     }
 
@@ -1588,10 +1597,11 @@ public:
         auto ext_sample(sample);
         assert(sample.size() == nvars);
         assert(need_aig && "AIG definitions must be present to extend samples");
-        for(const auto& [v, aig]: defs) {
-            assert(aig->invariants());
+        for(uint32_t v = 0; v < nvars; v++) {
+            if (defs[v] == nullptr) continue;
+            assert(defs[v]->invariants());
             assert(v < nvars);
-            CMSat::lbool val = AIG::evaluate(sample, aig, defs) ? CMSat::l_True : CMSat::l_False;
+            CMSat::lbool val = AIG::evaluate(sample, defs[v], defs) ? CMSat::l_True : CMSat::l_False;
             assert(sample[v] == CMSat::l_Undef && "Sample variable already assigned");
             ext_sample[v] = val;
         }
@@ -1623,16 +1633,11 @@ public:
             exit(EXIT_FAILURE);
         };
 
-
         for(auto& [v, aig]: aigs) aig->unmark_all();
         for(auto& [v, aig]: aigs) remap_aig(aig);
         for(auto& [v, aig]: aigs) {
             auto l = new_to_orig_var.at(v);
-            if (defs.find(l.var()) != defs.end()) {
-                /* std::cout << "ERROR: Variable " << l.var()+1 */
-                /*     << " already has a definition: " << defs.find(l.var())->second << std::endl; */
-            }
-            assert(defs.find(l.var()) == defs.end() && "Variable must not already have a definition");
+            assert(defs[l.var()] == nullptr && "Variable must not already have a definition");
             if (l.sign()) defs[l.var()] = AIG::new_not(aig);
             else defs[l.var()] = aig;
         }
@@ -1917,14 +1922,10 @@ private:
         }
     };
     std::map<uint32_t, Weight> weights;
-    std::map<uint32_t, CMSat::Lit> orig_to_new_var; // ONLY maps in the CNF
+    std::map<uint32_t, CMSat::Lit> orig_to_new_var; // ONLY maps in the CNF -- does NOT map to vars NOT in the CNF
     AIGManager aig_mng; // only for const true/false
-    std::map<uint32_t, aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space
-
-    // For debug. The very original CNF that was given
-    std::vector<std::vector<CMSat::Lit>> orig_clauses;
-    std::vector<uint32_t> orig_sampl_vars;
-    uint32_t orig_nvars = 0;
+    std::vector<aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space. Size is the
+                               //original number of variables.
 };
 
 struct ArjPrivateData;

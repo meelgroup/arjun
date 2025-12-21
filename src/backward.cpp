@@ -354,6 +354,9 @@ void Minimize::backward_round() {
 
 void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
+    assert(cnf.get_opt_sampl_vars().size() > cnf.get_sampl_vars().size());
+    assert(cnf.all_defined_in_opt_sampl() && "This must be the first time we run backward_round_synth, which defines vars NOT in terms of opt_sampl_vars");
+
     double start_round_time = cpuTime();
     vector<uint32_t> indep;
     Interpolant interp(conf);
@@ -361,7 +364,9 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     interp.fill_picolsat(orig_num_vars);
     interp.fill_var_to_indic(var_to_indic);
 
-    //Initially, all of samping_set is unknown
+    // Initially, all of samping_set is known, we do NOT want to minimize those
+    // Instead, all non-sampling-set vars, get definitions for them
+    // in terms of ANY other variables, but NOT in a self-referential way
     vector<char> unknown_set(orig_num_vars, 0);
     vector<uint32_t> unknown;
     set<uint32_t> dep;
@@ -450,7 +455,20 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     verb_print(1, COLRED "[arjun] backward round finished. T: " << ret_true << " U: " << ret_undef
             << " F: " << ret_false << " I: " << sampling_vars.size() << " T: "
         << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
-    if (conf.verb >= 2) solver->print_stats();
 
-    cnf.add_aigs_from(interp.get_defs());
+    if (conf.verb >= 2) {
+        solver->print_stats();
+        for(const auto& [v, aig]: interp.get_defs()) {
+            verb_print(2, "[synth-unsat-define] var: " << v+1 << " depends on vars: ");
+            assert(aig != nullptr);
+            set<uint32_t> dep_vars;
+            aig->get_dependent_vars(dep_vars);
+            set<uint32_t> opt_sampl(cnf.get_opt_sampl_vars().begin(), cnf.get_opt_sampl_vars().end());
+            for(const auto& dv: dep_vars) {
+                verb_print(2, "[synth-unsat-define] -> dep var: " << dv+1 << " is opt sampl: " << opt_sampl.count(dv) << " is dep: " << dep.count(dv));
+            }
+        }
+    }
+
+    cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);
 }
