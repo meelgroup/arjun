@@ -355,7 +355,7 @@ void Minimize::backward_round() {
 void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
     assert(cnf.get_opt_sampl_vars().size() >= cnf.get_sampl_vars().size());
-    assert(cnf.no_unsat_define_yet() && "This must be the first time we run backward_round_synth, which defines vars NOT in terms of opt_sampl_vars");
+    assert(cnf.no_unsat_define_yet() && "This must be the first time we run backward_round_synth, which defines vars NOT in terms of orig_sampl_vars");
 
     double start_round_time = cpuTime();
     vector<uint32_t> indep;
@@ -374,6 +374,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     for(uint32_t x = 0; x < orig_num_vars; x++) {
         if (dep.count(x)) {
             solver->add_clause({Lit(var_to_indic[x], false)});
+            interp.add_unit_cl({Lit(var_to_indic[x], false)});
             continue;
         }
         unknown.push_back(x);
@@ -459,14 +460,14 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     if (conf.verb >= 2) {
         solver->print_stats();
         for(const auto& [v, aig]: interp.get_defs()) {
-            verb_print(2, "[synth-unsat-define] var: " << v+1 << " depends on vars: ");
             assert(aig != nullptr);
             set<uint32_t> dep_vars;
-            aig->get_dependent_vars(dep_vars);
-            set<uint32_t> opt_sampl(cnf.get_opt_sampl_vars().begin(), cnf.get_opt_sampl_vars().end());
+            AIG::get_dependent_vars(aig, dep_vars);
+            vector<Lit> deps_lits; deps_lits.reserve(dep_vars.size());
             for(const auto& dv: dep_vars) {
-                verb_print(2, "[synth-unsat-define] -> dep var: " << dv+1 << " is opt sampl: " << opt_sampl.count(dv) << " is dep: " << dep.count(dv));
+                deps_lits.push_back(Lit(dv, false));
             }
+            verb_print(2, "[synth-unsat-define] var: " << v+1 << " depends on vars: " << deps_lits);
         }
     }
 

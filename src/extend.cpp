@@ -192,7 +192,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             verb_print(2, "[synth-extend] extend define var: " << v+1 << " depends on vars: ");
             assert(aig != nullptr);
             set<uint32_t> dep_vars;
-            aig->get_dependent_vars(dep_vars);
+            AIG::get_dependent_vars(aig, dep_vars);
             set<uint32_t> opt_sampl(cnf.get_opt_sampl_vars().begin(), cnf.get_opt_sampl_vars().end());
             for(const auto& dv: dep_vars) {
                 verb_print(2, "[synth-extend] -> dep var: " << dv+1 << " in opt sampl: " << opt_sampl.count(dv));

@@ -111,7 +111,7 @@ void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int>
 }
 
 void Interpolant::generate_interpolant(
-        const vector<Lit>& assumptions, uint32_t test_var, ArjunNS::SimplifiedCNF& cnf) {
+        const vector<Lit>& assumptions, uint32_t test_var, const ArjunNS::SimplifiedCNF& cnf) {
     verb_print(2, "generating unsat proof for: " << test_var+1);
     verb_print(2, "assumptions: " << assumptions);
     verb_print(2, "orig_num_vars: " << orig_num_vars);
@@ -121,7 +121,7 @@ void Interpolant::generate_interpolant(
     auto pret = picosat_sat(ps, 10000000);
     verb_print(5, "c pret: " << pret);
     if (pret == PICOSAT_SATISFIABLE) {
-        cout << "BUG, core should be UNSAT" << endl;
+        cout << "BUG, should be UNSAT" << endl;
         assert(false);
         exit(EXIT_FAILURE);
     }

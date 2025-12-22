@@ -145,27 +145,34 @@ public:
     }
 
     // marking for traversals
-    void unmark_all() {
-        if (mark) {
-            mark = false;
-            if (type == AIGT::t_and) {
-                l->unmark_all();
-                r->unmark_all();
+    static void unmark_all(const aig_ptr& aig) {
+        if (!aig) return;
+        if (aig->mark) {
+            aig->mark = false;
+            if (aig->type == AIGT::t_and) {
+                unmark_all(aig->l);
+                unmark_all(aig->r);
             }
         }
     }
     bool marked() const { return mark; }
-    void set_mark() { mark = true; }
+    void set_mark() const { mark = true; }
 
-    void get_dependent_vars(std::set<uint32_t>& dep) const {
-        if (type == AIGT::t_lit) {
-            dep.insert(var);
-            return;
-        }
-        if (type == AIGT::t_and) {
-            l->get_dependent_vars(dep);
-            r->get_dependent_vars(dep);
-        }
+    static void get_dependent_vars(const aig_ptr& aig_orig, std::set<uint32_t>& dep) {
+        unmark_all(aig_orig);
+        std::function<void(const aig_ptr&)> helper =
+            [&](const aig_ptr& aig) {
+                if (aig->marked()) return;
+                if (aig->type == AIGT::t_lit) {
+                    dep.insert(aig->var);
+                }
+                if (aig->type == AIGT::t_and) {
+                    helper(aig->l);
+                    helper(aig->r);
+                }
+                aig->set_mark();
+            };
+        helper(aig_orig);
     }
 
     friend std::ostream& operator<<(std::ostream& out, const aig_ptr& aig);
@@ -176,7 +183,7 @@ private:
     static constexpr uint32_t none_var = std::numeric_limits<uint32_t>::max();
     uint32_t var = none_var;
     bool neg = false;
-    bool mark = false; // For traversals
+    mutable bool mark = false; // For traversals
     aig_ptr l = nullptr;
     aig_ptr r = nullptr;
 };
@@ -814,14 +821,14 @@ public:
     std::set<uint32_t> get_dependent_orig_vars(const aig_ptr& aig) const {
         assert(need_aig);
         std::set<uint32_t> dep;
-        aig->get_dependent_vars(dep);
+        AIG::get_dependent_vars(aig, dep);
         while(true) {
             std::set<uint32_t> new_dep;
             for(const auto& v: dep) {
                 if (!defined(v)) new_dep.insert(v);
                 else {
                     std::set<uint32_t> sub_dep;
-                    defs[v]->get_dependent_vars(sub_dep);
+                    AIG::get_dependent_vars(defs[v], sub_dep);
                     new_dep.insert(sub_dep.begin(), sub_dep.end());
                 }
             }
@@ -1751,7 +1758,7 @@ public:
             exit(EXIT_FAILURE);
         };
 
-        for(auto& [v, aig]: aigs) aig->unmark_all();
+        for(auto& [v, aig]: aigs) AIG::unmark_all(aig);
         for(auto& [v, aig]: aigs) remap_aig(aig);
         for(auto& [v, aig]: aigs) {
             auto l = new_to_orig_var.at(v);
