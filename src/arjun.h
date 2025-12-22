@@ -714,6 +714,7 @@ public:
         orig_to_new_var = other.orig_to_new_var;
         assert(need_aig == other.need_aig && "Both must either need AIGs or not");
         if (!need_aig) {
+            assert(defs.empty());
             assert(other.defs.empty());
             assert(other.orig_sampl_vars.empty());
             assert(other.orig_clauses.empty());
@@ -782,7 +783,7 @@ public:
         return defs.size();
     }
     bool defs_invariant() const {
-        assert(need_aig);
+        if (!need_aig) return true;
         assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
 
         for(const auto& [o, n] : orig_to_new_var) {
@@ -808,6 +809,7 @@ public:
 
     // this checks that NO unsat-define has been made yet
     bool no_unsat_define_yet() const {
+        if (!need_aig) return true;
         auto opt_sampl_vars_s = std::set<uint32_t>(opt_sampl_vars.begin(), opt_sampl_vars.end());
         for(uint32_t i = 0; i < defs.size(); i ++) {
             if (!defined(i)) continue;
@@ -935,7 +937,7 @@ public:
         for(uint32_t i = 0; i < vars; i++) {
             const uint32_t v = nvars-vars+i;
             orig_to_new_var[v] = CMSat::Lit(v, false);
-            defs.push_back(nullptr);
+            if (need_aig) defs.push_back(nullptr);
         }
         return nvars;
     }
@@ -943,7 +945,7 @@ public:
         uint32_t v = nvars;
         nvars++;
         orig_to_new_var[v] = CMSat::Lit(v, false);
-        defs.push_back(nullptr);
+        if (need_aig) defs.push_back(nullptr);
         return nvars;
     }
 
@@ -1291,9 +1293,9 @@ public:
         set_opt_sampl_vars(opt_sampling_vars_set);
 
         solver->start_getting_constraints(false);
-        sampl_vars = solver->translate_sampl_set(new_sampl_vars, true);
-        opt_sampl_vars = solver->translate_sampl_set(opt_sampl_vars, true);
-        auto empty_sampling_vars2 = solver->translate_sampl_set(empty_sampling_vars, true);
+        sampl_vars = solver->translate_sampl_set(new_sampl_vars);
+        opt_sampl_vars = solver->translate_sampl_set(opt_sampl_vars);
+        auto empty_sampling_vars2 = solver->translate_sampl_set(empty_sampling_vars);
         solver->end_getting_constraints();
 
         sampling_vars_set.clear();
@@ -1702,11 +1704,6 @@ public:
             scnf.set_orig_sampl_vars(orig_sampl_vars);
             scnf.set_orig_clauses(orig_clauses);
         }
-        get_fixed_values(scnf, solver);
-
-        solver->start_getting_constraints(false, true);
-        if (need_aig) get_bve_mapping(scnf, solver, verb);
-        solver->end_getting_constraints();
 
         if (verb >= 5) {
             for(const auto& v: new_sampl_vars)
@@ -1720,7 +1717,6 @@ public:
         {// We need to fix weights here via cnf2
             auto cnf2(*this);
             cnf2.fix_weights(solver, new_sampl_vars, empty_sampl_vars);
-
             solver->start_getting_constraints(false, true);
             if (cnf2.weighted) {
                 std::map<CMSat::Lit, std::unique_ptr<CMSat::Field>> outer_w;
@@ -1752,13 +1748,24 @@ public:
             *scnf.multiplier_weight = *cnf2.multiplier_weight;
 
             // Map orig set to new set
-            scnf.set_sampl_vars(solver->translate_sampl_set(cnf2.sampl_vars, true));
-            scnf.set_opt_sampl_vars(solver->translate_sampl_set(cnf2.opt_sampl_vars, false));
+            scnf.set_sampl_vars(solver->translate_sampl_set(cnf2.sampl_vars));
+            scnf.set_opt_sampl_vars(solver->translate_sampl_set(cnf2.opt_sampl_vars));
+            std::sort(scnf.sampl_vars.begin(), scnf.sampl_vars.end());
+            std::sort(scnf.opt_sampl_vars.begin(), scnf.opt_sampl_vars.end());
         }
 
+        // Get clauses
         while(solver->get_next_constraint(clause, is_xor, rhs)) {
             assert(!is_xor); assert(rhs);
             scnf.clauses.push_back(clause);
+        }
+
+        // Get fixed and BVE AIG mapping
+        if (need_aig) {
+            get_fixed_values(scnf, solver);
+            get_bve_mapping(scnf, solver, verb);
+            assert(scnf.defs_invariant());
+            assert(scnf.no_unsat_define_yet());
         }
         solver->end_getting_constraints();
 
@@ -1770,8 +1777,6 @@ public:
         }
         solver->end_getting_constraints();
 
-        std::sort(scnf.sampl_vars.begin(), scnf.sampl_vars.end());
-        std::sort(scnf.opt_sampl_vars.begin(), scnf.opt_sampl_vars.end());
 
         if (verb >= 5) {
             std::cout << "w-debug AFTER PURA FINAL sampl_vars    : ";
@@ -1803,7 +1808,6 @@ public:
             orig_lit ^= l.sign();
             scnf.defs[orig_lit.var()] = scnf.aig_mng.new_const(!orig_lit.sign());
         }
-        assert(scnf.defs_invariant());
     }
 
     // Get back BVE AIGs into scnf.defs
@@ -1900,9 +1904,8 @@ public:
                         << " with aig of " << orig_target << std::endl;
             }
         }
-        assert(scnf.defs_invariant());
-        assert(no_unsat_define_yet());
     }
+
     void set_backbone_done(const bool bb_done) {
         backbone_done = bb_done;
     }
