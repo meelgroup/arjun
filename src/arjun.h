@@ -761,10 +761,8 @@ public:
     // ORIG variable
     bool defined(const uint32_t v) const {
         assert(need_aig);
-        bool found = defs[v] != nullptr;
-        if (!found) return false;
-        assert(defs.at(v) != nullptr);
-        return true;
+        if (defs[v] != nullptr) return true;
+        return false;
     }
     void set_need_aig() {
         // should be the first thing to set
@@ -786,6 +784,13 @@ public:
     bool defs_invariant() const {
         assert(need_aig);
         assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
+
+        for(const auto& [o, n] : orig_to_new_var) {
+            assert(o < defs.size());
+            assert(n != CMSat::lit_Undef && n.var() < nvars);
+            assert(!defined(o));
+        }
+
         for(const auto& v: orig_sampl_vars) {
             if(defs[v] == nullptr) continue;
             if (defs[v]->type == AIGT::t_const) {
@@ -802,14 +807,12 @@ public:
     }
 
     // this checks that NO unsat-define has been made yet
-    bool all_defined_in_opt_sampl() const {
+    bool no_unsat_define_yet() const {
         auto opt_sampl_vars_s = std::set<uint32_t>(opt_sampl_vars.begin(), opt_sampl_vars.end());
-        for(const auto& [o, n] : orig_to_new_var) {
-            if (!defined(o)) continue;
-            assert(o < defs.size());
-            assert(n.var() < nvars);
-            if (!opt_sampl_vars_s.count(n.var())) {
-                std::cout << "Orig variable " << o +1 << " which is new var: " << n.var()+1 << " is defined but not in opt_sampl_vars" << std::endl;
+        for(uint32_t i = 0; i < defs.size(); i ++) {
+            if (!defined(i)) continue;
+            if (!opt_sampl_vars_s.count(i)) {
+                std::cout << "Orig variable " << i +1 << " is defined but not in opt_sampl_vars" << std::endl;
                 return false;
             }
         }
@@ -921,9 +924,8 @@ public:
     std::map<uint32_t, CMSat::Lit> get_new_to_orig_var() const {
         std::map<uint32_t, CMSat::Lit> ret;
         for(const auto& [origv, l]:  orig_to_new_var) {
-            if (l != CMSat::lit_Undef) {
-                ret[l.var()] = CMSat::Lit(origv, l.sign());
-            }
+            assert(l != CMSat::lit_Undef);
+            ret[l.var()] = CMSat::Lit(origv, l.sign());
         }
         return ret;
     }
@@ -1684,7 +1686,7 @@ public:
             uint32_t verb
     ) const {
         assert(defs_invariant());
-        assert(all_defined_in_opt_sampl());
+        assert(no_unsat_define_yet());
 
         SimplifiedCNF scnf(fg);
         std::vector<CMSat::Lit> clause;
@@ -1786,7 +1788,7 @@ public:
         // This ALSO gets all the fixed values
         scnf.orig_to_new_var = solver->update_var_mapping(orig_to_new_var);
         assert(scnf.defs_invariant());
-        assert(scnf.all_defined_in_opt_sampl());
+        assert(scnf.no_unsat_define_yet());
         return scnf;
     }
 
@@ -1810,7 +1812,7 @@ public:
         std::vector<uint32_t> vs = solver->get_elimed_vars();
         const auto new_to_orig_var = get_new_to_orig_var();
         assert(defs_invariant());
-        assert(all_defined_in_opt_sampl());
+        assert(no_unsat_define_yet());
 
         // We are all in NEW here. So we need to map back to orig, both the
         // definition and the target
@@ -1899,7 +1901,7 @@ public:
             }
         }
         assert(scnf.defs_invariant());
-        assert(all_defined_in_opt_sampl());
+        assert(no_unsat_define_yet());
     }
     void set_backbone_done(const bool bb_done) {
         backbone_done = bb_done;

@@ -355,7 +355,7 @@ void Minimize::backward_round() {
 void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
     assert(cnf.get_opt_sampl_vars().size() >= cnf.get_sampl_vars().size());
-    assert(cnf.all_defined_in_opt_sampl() && "This must be the first time we run backward_round_synth, which defines vars NOT in terms of opt_sampl_vars");
+    assert(cnf.no_unsat_define_yet() && "This must be the first time we run backward_round_synth, which defines vars NOT in terms of opt_sampl_vars");
 
     double start_round_time = cpuTime();
     vector<uint32_t> indep;
