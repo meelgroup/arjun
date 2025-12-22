@@ -806,7 +806,7 @@ public:
         auto opt_sampl_vars_s = std::set<uint32_t>(opt_sampl_vars.begin(), opt_sampl_vars.end());
         for(const auto& [o, n] : orig_to_new_var) {
             if (!defined(o)) continue;
-
+            assert(o < defs.size());
             assert(n.var() < nvars);
             if (!opt_sampl_vars_s.count(n.var())) {
                 std::cout << "Orig variable " << o +1 << " which is new var: " << n.var()+1 << " is defined but not in opt_sampl_vars" << std::endl;
@@ -1684,6 +1684,8 @@ public:
             uint32_t verb
     ) const {
         assert(defs_invariant());
+        assert(all_defined_in_opt_sampl());
+
         SimplifiedCNF scnf(fg);
         std::vector<CMSat::Lit> clause;
         bool is_xor, rhs;
@@ -1784,6 +1786,7 @@ public:
         // This ALSO gets all the fixed values
         scnf.orig_to_new_var = solver->update_var_mapping(orig_to_new_var);
         assert(scnf.defs_invariant());
+        assert(scnf.all_defined_in_opt_sampl());
         return scnf;
     }
 
@@ -1807,6 +1810,7 @@ public:
         std::vector<uint32_t> vs = solver->get_elimed_vars();
         const auto new_to_orig_var = get_new_to_orig_var();
         assert(defs_invariant());
+        assert(all_defined_in_opt_sampl());
 
         // We are all in NEW here. So we need to map back to orig, both the
         // definition and the target
@@ -1895,6 +1899,7 @@ public:
             }
         }
         assert(scnf.defs_invariant());
+        assert(all_defined_in_opt_sampl());
     }
     void set_backbone_done(const bool bb_done) {
         backbone_done = bb_done;
