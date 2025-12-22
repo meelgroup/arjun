@@ -786,7 +786,18 @@ public:
     bool defs_invariant() const {
         assert(need_aig);
         assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
-        for(const auto& v: orig_sampl_vars) assert(defs[v] == nullptr && "Sampling vars must not be defined");
+        for(const auto& v: orig_sampl_vars) {
+            if(defs[v] == nullptr) continue;
+            if (defs[v]->type == AIGT::t_const) {
+                std::cout << "Orig sampling var " << v+1 << " is defined to a constant AIG" << std::endl;
+                return false;
+            }
+            if (defs[v]->type == AIGT::t_lit) {
+                std::cout << "Orig sampling var " << v+1 << " is defined to literal:" << defs[v] << std::endl;
+                assert(orig_sampl_vars.count(defs[v]->var));
+                return false;
+            }
+        }
         return true;
     }
 
