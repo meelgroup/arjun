@@ -805,6 +805,8 @@ public:
                 return false;
             }
         }
+        check_cnf_vars();
+        all_vars_accounted_for();
         return check_self_dependency();
     }
 
@@ -842,29 +844,59 @@ public:
         return true;
     }
 
+    void check_cnf_vars() const {
+        if (!need_aig) return;
+        std::set<uint32_t> vars_in_cnf;
+        for(const auto& cl: clauses) {
+            for(const auto& l: cl) {
+                vars_in_cnf.insert(l.var());
+            }
+        }
+        for(const auto& cl: red_clauses) {
+            for(const auto& l: cl) {
+                vars_in_cnf.insert(l.var());
+            }
+        }
+        for(const auto& v: vars_in_cnf) {
+            if (v >= nvars) {
+                std::cout << "ERROR: CNF contains variable " << v+1
+                    << " which is >= nvars " << nvars+1 << std::endl;
+                assert(false && "CNF contains variable >= nvars");
+            }
+            bool in_orig = false;
+            for(const auto& [o, n]: orig_to_new_var) {
+                if (n.var() == v) {
+                    in_orig = true;
+                    break;
+                }
+            }
+            assert(in_orig && "All CNF vars must be in orig_to_new_var");
+        }
+
+    }
+
+    // all vars are either: in orig_sampl_vars, defined, or in the cnf
+    void all_vars_accounted_for() const {
+        assert(need_aig);
+        for(uint32_t v = 0; v < defs.size(); v ++) {
+            if (defined(v)) continue;
+            if (orig_sampl_vars.count(v)) continue;
+            if (orig_to_new_var.count(v)) continue;
+            std::cout << "ERROR: Orig var " << v+1 << " is not defined, not in orig_sampl_vars, and not in cnf" << std::endl;
+            assert(false && "All vars must be accounted for");
+        }
+    }
+
     // this checks that NO unsat-define has been made yet
     bool no_unsat_define_yet() const {
-        defs_invariant();
         if (!need_aig) return true;
         for(uint32_t v = 0; v < defs.size(); v ++) {
             if (!defined(v)) continue;
-            if (!orig_sampl_vars.count(v)) {
-                const auto ret = get_dependent_orig_vars(defs[v]);
-                /* std::cout << "DEBUG: Checking orig var " << v+1 << " defined as " << defs[v] << std::endl; */
-                for(const auto& dep_v: ret) {
-                    std::cout << "DEBUG: orig var " << v+1 << " depends on orig var " << dep_v+1 << std::endl;
-                }
-                for(const auto& dep_v: orig_sampl_vars) {
-                    std::cout << "DEBUG: orig sampl var " << dep_v+1 << std::endl;
-                }
-                for(const auto& dep_v: ret) {
-                    if (!orig_sampl_vars.count(dep_v)) {
-                        std::cout << "Orig var " << v+1 << " is defined to dependent on non-sampling orig var "
-                            << dep_v+1 << std::endl;
-                        return false;
-                    }
-                }
-            }
+            if (!orig_to_new_var.count(v)) continue;
+            // variable is defined but STILL in the CNF
+            // these are unsat-defines
+            // because they depend on variables that are not yet defined
+            return false;
         }
         return true;
     }
