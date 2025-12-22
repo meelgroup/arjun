@@ -783,6 +783,7 @@ public:
         return defs.size();
     }
     bool defs_invariant() const {
+        assert(sampl_vars.size() == opt_sampl_vars.size());
         if (!need_aig) return true;
         assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
 
@@ -795,12 +796,46 @@ public:
         for(const auto& v: orig_sampl_vars) {
             if(defs[v] == nullptr) continue;
             if (defs[v]->type == AIGT::t_const) {
-                std::cout << "Orig sampling var " << v+1 << " is defined to a constant AIG" << std::endl;
+                std::cout << "ERROR: Orig sampling var " << v+1 << " is defined to a constant AIG" << std::endl;
                 return false;
             }
             if (defs[v]->type == AIGT::t_lit) {
-                std::cout << "Orig sampling var " << v+1 << " is defined to literal:" << defs[v] << std::endl;
+                std::cout << "ERROR: Orig sampling var " << v+1 << " is defined to literal:" << defs[v] << std::endl;
                 assert(orig_sampl_vars.count(defs[v]->var));
+                return false;
+            }
+        }
+        return check_self_dependency();
+    }
+
+    // Get the orig vars this AIG depends on
+    std::set<uint32_t> get_dependent_orig_vars(const aig_ptr& aig) const {
+        assert(need_aig);
+        std::set<uint32_t> dep;
+        aig->get_dependent_vars(dep);
+        while(true) {
+            std::set<uint32_t> new_dep;
+            for(const auto& v: dep) {
+                if (!defined(v)) new_dep.insert(v);
+                else {
+                    std::set<uint32_t> sub_dep;
+                    defs[v]->get_dependent_vars(sub_dep);
+                    new_dep.insert(sub_dep.begin(), sub_dep.end());
+                }
+            }
+            if (new_dep.size() == dep.size()) break;
+            dep = new_dep;
+        }
+        return dep;
+    }
+
+    bool check_self_dependency() const {
+        if (!need_aig) return true;
+        for(uint32_t i = 0; i < defs.size(); i ++) {
+            if (!defined(i)) continue;
+            const auto ret = get_dependent_orig_vars(defs[i]);
+            if (ret.count(i)) {
+                std::cout << "ERROR: Orig var " << i+1 << " is defined to dependent on itself" << std::endl;
                 return false;
             }
         }
@@ -809,13 +844,26 @@ public:
 
     // this checks that NO unsat-define has been made yet
     bool no_unsat_define_yet() const {
+        defs_invariant();
         if (!need_aig) return true;
-        auto opt_sampl_vars_s = std::set<uint32_t>(opt_sampl_vars.begin(), opt_sampl_vars.end());
-        for(uint32_t i = 0; i < defs.size(); i ++) {
-            if (!defined(i)) continue;
-            if (!opt_sampl_vars_s.count(i)) {
-                std::cout << "Orig variable " << i +1 << " is defined but not in opt_sampl_vars" << std::endl;
-                return false;
+        for(uint32_t v = 0; v < defs.size(); v ++) {
+            if (!defined(v)) continue;
+            if (!orig_sampl_vars.count(v)) {
+                const auto ret = get_dependent_orig_vars(defs[v]);
+                /* std::cout << "DEBUG: Checking orig var " << v+1 << " defined as " << defs[v] << std::endl; */
+                for(const auto& dep_v: ret) {
+                    std::cout << "DEBUG: orig var " << v+1 << " depends on orig var " << dep_v+1 << std::endl;
+                }
+                for(const auto& dep_v: orig_sampl_vars) {
+                    std::cout << "DEBUG: orig sampl var " << dep_v+1 << std::endl;
+                }
+                for(const auto& dep_v: ret) {
+                    if (!orig_sampl_vars.count(dep_v)) {
+                        std::cout << "Orig var " << v+1 << " is defined to dependent on non-sampling orig var "
+                            << dep_v+1 << std::endl;
+                        return false;
+                    }
+                }
             }
         }
         return true;
@@ -1764,8 +1812,6 @@ public:
         if (need_aig) {
             get_fixed_values(scnf, solver);
             get_bve_mapping(scnf, solver, verb);
-            assert(scnf.defs_invariant());
-            assert(scnf.no_unsat_define_yet());
         }
         solver->end_getting_constraints();
 
@@ -1951,7 +1997,7 @@ private:
     bool sampl_vars_set = false;
     bool opt_sampl_vars_set = false;
     std::vector<uint32_t> sampl_vars;
-    std::vector<uint32_t> opt_sampl_vars; // Filled during synthesis with vars that have been defined already
+    std::vector<uint32_t> opt_sampl_vars; // During synthesis this is EXACTY the same as sampl_vars
 
     uint32_t nvars = 0;
     std::unique_ptr<CMSat::Field> multiplier_weight = nullptr;

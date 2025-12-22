@@ -200,7 +200,8 @@ if (NOT MSVC)
     add_compile_options("$<$<CONFIG:Release>:-g0>")
     add_compile_options("$<$<CONFIG:Release>:-DNDEBUG>")
 
-    add_compile_options("$<$<CONFIG:DEBUG>:-O0>")
+    add_compile_options("$<$<CONFIG:Debug>:-O0>")
+    add_compile_options("$<$<CONFIG:Debug>:-ggdb>")
 
 else()
     # see https://msdn.microsoft.com/en-us/library/fwkeyyhe.aspx for details
@@ -215,7 +216,7 @@ else()
     add_compile_options("$<$<CONFIG:Release>:/NDEBUG>")
     add_compile_options("$<$<CONFIG:Release>:/ZI>")
 
-    add_compile_options("$<$<CONFIG:DEBUG>:/Od>")
+    add_compile_options("$<$<CONFIG:Debug>:/Od>")
 
     if (STATICCOMPILE)
         # We statically link to reduce dependencies
