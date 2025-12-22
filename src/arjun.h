@@ -879,9 +879,9 @@ public:
     void all_vars_accounted_for() const {
         assert(need_aig);
         for(uint32_t v = 0; v < defs.size(); v ++) {
-            if (defined(v)) continue;
-            if (orig_sampl_vars.count(v)) continue;
-            if (orig_to_new_var.count(v)) continue;
+            if (orig_sampl_vars.count(v)) continue; // we'll get this as input
+            if (defined(v)) continue; // already defined
+            if (orig_to_new_var.count(v)) continue; // appears in CNF
             std::cout << "ERROR: Orig var " << v+1 << " is not defined, not in orig_sampl_vars, and not in cnf" << std::endl;
             assert(false && "All vars must be accounted for");
         }
