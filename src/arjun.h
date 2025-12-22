@@ -797,7 +797,8 @@ public:
         for(const auto& [o, n] : orig_to_new_var) {
             assert(o < defs.size());
             assert(n != CMSat::lit_Undef && n.var() < nvars);
-            assert(!defined(o));
+            if (!after_backward_round_synth)
+                assert(!defined(o) && "Before backward round synth, variables in CNF must not be defined");
         }
 
         for(const auto& v: orig_sampl_vars) {
@@ -814,7 +815,9 @@ public:
         }
         check_cnf_vars();
         all_vars_accounted_for();
-        return check_self_dependency();
+        check_self_dependency();
+        no_unsat_define_yet();
+        return true;
     }
 
     // Get the orig vars this AIG depends on
@@ -838,17 +841,16 @@ public:
         return dep;
     }
 
-    bool check_self_dependency() const {
-        if (!need_aig) return true;
+    void check_self_dependency() const {
+        if (!need_aig) return;
         for(uint32_t i = 0; i < defs.size(); i ++) {
             if (!defined(i)) continue;
             const auto ret = get_dependent_orig_vars(defs[i]);
             if (ret.count(i)) {
                 std::cout << "ERROR: Orig var " << i+1 << " is defined to dependent on itself" << std::endl;
-                return false;
+                assert(false && "Orig var defined to depend on itself");
             }
         }
-        return true;
     }
 
     void check_cnf_vars() const {
@@ -895,17 +897,17 @@ public:
     }
 
     // this checks that NO unsat-define has been made yet
-    bool no_unsat_define_yet() const {
-        if (!need_aig) return true;
+    void no_unsat_define_yet() const {
+        if (after_backward_round_synth) return;
+        if (!need_aig) return;
         for(uint32_t v = 0; v < defs.size(); v ++) {
             if (!defined(v)) continue;
             if (!orig_to_new_var.count(v)) continue;
             // variable is defined but STILL in the CNF
             // these are unsat-defines
             // because they depend on variables that are not yet defined
-            return false;
+            assert(false && "No unsat-define should have been made yet");
         }
-        return true;
     }
 
     void set_all_opt_indep() {
@@ -1775,7 +1777,6 @@ public:
             uint32_t verb
     ) const {
         assert(defs_invariant());
-        assert(no_unsat_define_yet());
 
         SimplifiedCNF scnf(fg);
         std::vector<CMSat::Lit> clause;
@@ -1878,7 +1879,6 @@ public:
         // This ALSO gets all the fixed values
         scnf.orig_to_new_var = solver->update_var_mapping(orig_to_new_var);
         assert(scnf.defs_invariant());
-        assert(scnf.no_unsat_define_yet());
         return scnf;
     }
 
@@ -1901,7 +1901,6 @@ public:
         std::vector<uint32_t> vs = solver->get_elimed_vars();
         const auto new_to_orig_var = get_new_to_orig_var();
         assert(defs_invariant());
-        assert(no_unsat_define_yet());
 
         // We are all in NEW here. So we need to map back to orig, both the
         // definition and the target
@@ -2027,8 +2026,13 @@ public:
             else add_red_clause(cl.lits);
         }
     }
+    void set_after_backward_round_synth() {
+        assert(!after_backward_round_synth && "Should only be set once");
+        after_backward_round_synth = true;
+    }
 
 private:
+    bool after_backward_round_synth = false;
     bool need_aig = false;
     std::vector<std::vector<CMSat::Lit>> clauses;
     std::vector<std::vector<CMSat::Lit>> red_clauses;
