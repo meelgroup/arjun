@@ -37,7 +37,7 @@ THE SOFTWARE.
 
 namespace ArjunNS {
 
-struct FHolder;
+class FHolder;
 
 class AIG;
 class AIGManager;
@@ -734,6 +734,7 @@ public:
             defs = other.defs;
             orig_clauses = other.orig_clauses;
             orig_sampl_vars = other.orig_sampl_vars;
+            orig_sampl_vars_set = other.orig_sampl_vars_set;
         }
 
         return *this;
@@ -787,6 +788,10 @@ public:
         assert(defs.empty());
         assert(opt_sampl_vars.empty());
         assert(sampl_vars.empty());
+        assert(orig_sampl_vars_set == false);
+        assert(orig_sampl_vars.empty());
+        assert(sampl_vars_set == false);
+        assert(opt_sampl_vars_set == false);
         need_aig = true;
     }
     auto get_need_aig() const { return need_aig; }
@@ -796,8 +801,9 @@ public:
         return defs.size();
     }
     bool defs_invariant() const {
-        assert(sampl_vars.size() == opt_sampl_vars.size());
         if (!need_aig) return true;
+        assert(orig_sampl_vars_set && "If need_aig, orig_sampl_vars_set must be set");
+        assert(sampl_vars.size() == opt_sampl_vars.size());
         assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
 
         for(const auto& [o, n] : orig_to_new_var) {

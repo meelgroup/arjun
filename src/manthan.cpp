@@ -88,9 +88,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     //       and do the "stupid" fix on that.
     //
     //
-    for (const auto& v: cnf.get_opt_sampl_vars()) input.insert(v);
+    for (const auto& v: cnf.get_sampl_vars()) input.insert(v);
     for (uint32_t i = 0; i < cnf.nVars(); i++) {
-        assert(false && "beware, defs below is in original numbering, so this won't work below");
         if (input.count(i) == 0 && !cnf.defined(i)) to_define.insert(i);
     }
     dependency_mat.resize(cnf.nVars());
@@ -109,14 +108,14 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 
     // Training
     inject_cnf(solver_train);
-    fh.solver = &solver_train;
+    fh = std::make_unique<FHolder>(&solver_train);
 
     // TODO: what the HELL is this last_formula_var?
     /* assert(last_formula_var > solver_train.nVars()); */
     /* while(solver_train.nVars() < last_formula_var) solver_train.new_var(); */
     /* assert(solver_train.nVars() == last_formula_var); */
 
-    verb_print(1, "True lit: " << fh.my_true_lit);
+    verb_print(1, "True lit in solver_train: " << fh->get_true_lit());
     vector<uint32_t> to_train;
     to_train.reserve(to_define.size());
     for(const auto& v: to_define) to_train.push_back(v);
@@ -265,7 +264,7 @@ void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vec
     // when fresh_l is false, confl is satisfied
     verb_print(3, "Original formula for " << y_rep+1 << ":" << endl << fs_var[y_rep]);
     verb_print(2, "Branch formula. When this is true, H is wrong:" << endl << f);
-    fs_var[y_rep] = fh.compose_ite(fh.constant_formula(ctx[y_rep] == l_True), fs_var[y_rep], f);
+    fs_var[y_rep] = fh->compose_ite(fh->constant_formula(ctx[y_rep] == l_True), fs_var[y_rep], f);
     verb_print(3, "repaired formula for " << y_rep+1 << ":" << endl << fs_var[y_rep]);
     verb_print(1, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
     //We fixed the ctx on this variable
@@ -480,7 +479,7 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
         /*     cout << "class "<< i << " prob: " << node->ClassProbabilities()[i] << " --- "; */
         /* } */
         /* cout << endl; */
-        return fh.constant_formula(val);
+        return fh->constant_formula(val);
     } else {
         uint32_t v = node->SplitDimension();
         /* cout << "(learning " << learned_v+1<< ") Node. v: " << v+1 << std::flush; */
@@ -513,7 +512,7 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
         auto form_0 = recur(&node->Child(0), learned_v, depth+1);
         auto form_1 = recur(&node->Child(1), learned_v, depth+1);
         bool val_going_right = node->CalculateDirection(point_1);
-        return fh.compose_ite(form_0, form_1, Lit(v, val_going_right));
+        return fh->compose_ite(form_0, form_1, Lit(v, val_going_right));
     }
     assert(false);
 }

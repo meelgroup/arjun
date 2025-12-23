@@ -41,21 +41,30 @@ using std::set;
 using std::endl;
 using std::cout;
 using CMSat::Lit;
+using CMSat::lit_Error;
+using CMSat::SATSolver;
 using std::map;
 
 namespace ArjunNS {
 
-struct FHolder {
+class FHolder {
+public:
+    FHolder() = delete;
+    FHolder(SATSolver* _solver) : solver(_solver) {
+        solver->new_var();
+        my_true_lit = Lit(solver->nVars()-1, false);
+        solver->add_clause({my_true_lit});
+    }
     struct Formula {
         // TODO: we could have a flag of what has already been inserted into
         // solver_train
-        std::vector<std::vector<CMSat::Lit>> clauses;
-        CMSat::Lit out = CMSat::lit_Error;
+        vector<std::vector<Lit>> clauses;
+        Lit out = lit_Error;
         bool finished = false;
-        std::shared_ptr<AIG> aig = nullptr;
+        aig_ptr aig = nullptr;
     };
 
-    Formula constant_formula(bool value) {
+    Formula constant_formula(const bool value) {
         Formula ret;
         if (solver) ret.out = value ? my_true_lit : ~my_true_lit;
         ret.aig = aig_mng.new_const(value);
@@ -134,8 +143,11 @@ struct FHolder {
         return ret;
     }
 
+    Lit get_true_lit() const { return my_true_lit; }
+
+private:
     AIGManager aig_mng;
-    CMSat::SATSolver* solver;
+    SATSolver* solver;
     Lit my_true_lit;
 };
 

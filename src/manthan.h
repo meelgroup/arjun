@@ -61,7 +61,7 @@ class Manthan {
     private:
         vec point_0;
         vec point_1;
-        uint32_t last_formula_var;
+        /* uint32_t last_formula_var; */
 
         map<uint32_t, uint32_t> y_to_y_hat;
         map<uint32_t, uint32_t> y_hat_to_y;
@@ -96,6 +96,6 @@ class Manthan {
         void train(const vector<vector<lbool>>& samples, uint32_t v);
         vector<vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
 
-        FHolder fh;
+        unique_ptr<FHolder> fh = nullptr;
         std::map<uint32_t, FHolder::Formula> fs_var; // var -> formula
 };
