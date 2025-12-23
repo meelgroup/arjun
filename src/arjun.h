@@ -707,6 +707,7 @@ public:
     SimplifiedCNF(const CMSat::FieldGen* _fg) : fg(_fg->dup()), multiplier_weight(fg->one()) {}
     ~SimplifiedCNF() = default;
     SimplifiedCNF& operator=(const SimplifiedCNF& other) {
+        assert(defs_invariant());
         fg = other.fg->dup();
         need_aig = other.need_aig;
         clauses = other.clauses;
@@ -729,13 +730,13 @@ public:
             assert(other.orig_sampl_vars.empty());
             assert(other.orig_clauses.empty());
         } else {
-            other.defs_invariant();
             aig_mng = other.aig_mng;
             defs = other.defs;
             orig_clauses = other.orig_clauses;
             orig_sampl_vars = other.orig_sampl_vars;
             orig_sampl_vars_set = other.orig_sampl_vars_set;
         }
+        other.defs_invariant();
 
         return *this;
     }
@@ -830,7 +831,7 @@ public:
             }
 
         }
-        check_cnf_vars();
+        check_cnf_sampl_sanity();
         all_vars_accounted_for();
         check_self_dependency();
         no_unsat_define_yet();
@@ -884,6 +885,26 @@ public:
     }
 
     void check_cnf_vars() const {
+        auto check = [](const std::vector<CMSat::Lit>& cl, uint32_t _nvars) {
+            for(const auto& l: cl) {
+                if (l.var() >= _nvars) {
+                    std::cout << "ERROR: Found a clause with a variable that has more variables than the number of variables we are supposed to have" << std::endl;
+                    std::cout << "cl: ";
+                    for(const auto& l2: cl) std::cout << l2 << " ";
+                    std::cout << std::endl;
+                    std::cout << "nvars: " << _nvars+1 << std::endl;
+                    exit(EXIT_FAILURE);
+                }
+                assert(l.var() < _nvars);
+            }
+        };
+
+        // all clauses contain variables that are less than nvars
+        for(const auto& cl: clauses) check(cl, nvars);
+        for(const auto& cl: red_clauses) check(cl, nvars);
+
+
+        // Now check orig_to_new_var covers all vars in the CNF
         if (!need_aig) return;
         std::set<uint32_t> vars_in_cnf;
         for(const auto& cl: clauses) {
@@ -897,11 +918,7 @@ public:
             }
         }
         for(const auto& v: vars_in_cnf) {
-            if (v >= nvars) {
-                std::cout << "ERROR: CNF contains variable " << v+1
-                    << " which is >= nvars " << nvars+1 << std::endl;
-                assert(false && "CNF contains variable >= nvars");
-            }
+            assert(v < nvars); // already checked above
             bool in_orig = false;
             for(const auto& [o, n]: orig_to_new_var) {
                 if (n.var() == v) {
@@ -911,7 +928,6 @@ public:
             }
             assert(in_orig && "All CNF vars must be in orig_to_new_var");
         }
-
     }
 
     // all vars are either: in orig_sampl_vars, defined, or in the cnf
@@ -950,10 +966,10 @@ public:
     }
 
     void clean_idiotic_mccomp_weights() {
-        std::set<uint32_t> sopt_sampl_vars(opt_sampl_vars.begin(), opt_sampl_vars.end());
+        std::set<uint32_t> opt_sampl_vars_s(opt_sampl_vars.begin(), opt_sampl_vars.end());
         std::set<uint32_t> to_remove;
         for(const auto& w: weights) {
-            if (sopt_sampl_vars.count(w.first) == 0) to_remove.insert(w.first);
+            if (opt_sampl_vars_s.count(w.first) == 0) to_remove.insert(w.first);
         }
         if (to_remove.empty()) return;
 
@@ -962,31 +978,15 @@ public:
         for(const auto& w: to_remove) weights.erase(w);
     }
 
-    void check_sanity() const {
+    void check_cnf_sampl_sanity() const {
         assert(fg != nullptr);
 
-        auto check = [](const std::vector<CMSat::Lit>& cl, uint32_t _nvars) {
-            for(const auto& l: cl) {
-                if (l.var() >= _nvars) {
-                    std::cout << "ERROR: Found a clause with a variable that has more variables than the number of variables we are supposed to have" << std::endl;
-                    std::cout << "cl: ";
-                    for(const auto& l2: cl) std::cout << l2 << " ";
-                    std::cout << std::endl;
-                    std::cout << "nvars: " << _nvars+1 << std::endl;
-                    exit(EXIT_FAILURE);
-                }
-                assert(l.var() < _nvars);
-            }
-        };
+        check_cnf_vars();
+        std::set<uint32_t> sampl_vars_s(sampl_vars.begin(), sampl_vars.end());
+        std::set<uint32_t> opt_sampl_vars_s(opt_sampl_vars.begin(), opt_sampl_vars.end());
 
-        // all clauses contain variables that are less than nvars
-        for(const auto& cl: clauses) check(cl, nvars);
-        for(const auto& cl: red_clauses) check(cl, nvars);
-
-        std::set<uint32_t> ssampl_vars(sampl_vars.begin(), sampl_vars.end());
-        std::set<uint32_t> sopt_sampl_vars(opt_sampl_vars.begin(), opt_sampl_vars.end());
-
-        for(const auto& v: sopt_sampl_vars) {
+        // sampling vars less than nvars
+        for(const auto& v: opt_sampl_vars_s) {
             if (v >= nvars) {
                 std::cout << "ERROR: Found a sampling var that is greater than the number of variables we are supposed to have" << std::endl;
                 std::cout << "sampling var: " << v+1 << std::endl;
@@ -997,13 +997,13 @@ public:
         }
 
         // all sampling vars are also opt sampling vars
-        for(const auto& v: ssampl_vars) {
-            if (!sopt_sampl_vars.count(v)) {
+        for(const auto& v: sampl_vars_s) {
+            if (!opt_sampl_vars_s.count(v)) {
                 std::cout << "ERROR: Found a sampling var that is not an opt sampling var: "
                     << v+1 << std::endl;
                 exit(EXIT_FAILURE);
             }
-            assert(sopt_sampl_vars.count(v));
+            assert(opt_sampl_vars_s.count(v));
         }
 
         // weights must be in opt sampling vars
@@ -1015,7 +1015,7 @@ public:
                 exit(EXIT_FAILURE);
             }
             assert(w.first < nvars);
-            if (sopt_sampl_vars.count(w.first) == 0) {
+            if (opt_sampl_vars_s.count(w.first) == 0) {
                 // Idiotic but we allow 1/1 weights, even though they are useless
                 if (w.second.pos->is_one() && w.second.neg->is_one()) continue;
 
@@ -1023,10 +1023,8 @@ public:
                     << w.first+1 << std::endl;
                 exit(EXIT_FAILURE);
             }
-            assert(sopt_sampl_vars.count(w.first));
+            assert(opt_sampl_vars_s.count(w.first));
         }
-
-        defs_invariant();
     }
 
     // Gives all the orig lits that map to this variable

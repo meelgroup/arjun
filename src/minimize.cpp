@@ -48,13 +48,6 @@ void Minimize::update_sampling_set(
 
 }
 
-void Minimize::start_with_clean_sampl_vars() {
-    sampling_vars.clear();
-    for (size_t i = 0; i < solver->nVars(); i++) {
-        sampling_vars.push_back(i);
-    }
-}
-
 void Minimize::add_fixed_clauses(bool all)
 {
     double fix_cl_time = cpuTime();

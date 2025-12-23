@@ -235,9 +235,9 @@ void do_synthesis() {
     cnf.set_need_aig();
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
     cnf.clean_idiotic_mccomp_weights();
-    cnf.check_sanity();
     cnf.set_orig_clauses(cnf.get_clauses());
     cnf.set_orig_sampl_vars(cnf.get_sampl_vars());
+    cnf.defs_invariant();
     assert(cnf.get_sampl_vars() == cnf.get_opt_sampl_vars()
             && "Synthesis extends opt_sampl_vars, so it must be the same as sampl_vars");
     if (do_pre_manthan) {
@@ -279,9 +279,8 @@ void do_minimize() {
     ArjunNS::SimplifiedCNF cnf(fg);
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
     cnf.clean_idiotic_mccomp_weights();
-    cnf.check_sanity();
+    cnf.check_cnf_sampl_sanity();
 
-    if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
     if (do_pre_backbone) arjun->standalone_backbone(cnf);
     const auto orig_sampl_vars = cnf.get_sampl_vars();
     if (do_minim_indep) arjun->standalone_minimize_indep(cnf, etof_conf.all_indep);
