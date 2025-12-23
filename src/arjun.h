@@ -809,15 +809,20 @@ public:
 
         for(const auto& v: orig_sampl_vars) {
             if(defs[v] == nullptr) continue;
-            if (defs[v]->type == AIGT::t_const) {
-                std::cout << "ERROR: Orig sampling var " << v+1 << " is defined to a constant AIG" << std::endl;
-                return false;
+            else if (defs[v]->type == AIGT::t_const) {
+                continue;
             }
-            if (defs[v]->type == AIGT::t_lit) {
-                std::cout << "ERROR: Orig sampling var " << v+1 << " is defined to literal:" << defs[v] << std::endl;
-                assert(orig_sampl_vars.count(defs[v]->var));
-                return false;
+            else if (defs[v]->type == AIGT::t_lit) {
+                assert(orig_sampl_vars.count(defs[v]->var) && "If orig_sampl_var is defined to a literal, that literal must also be an orig_sampl_var");
+                continue;
+            } else {
+                std::cerr << "ERROR: Orig sampl var " << v+1
+                    << " cannot be defined to an AIG other than"
+                    " a const or a lit pointing to another orig_sampl_var, but it is: "
+                    << defs[v] << std::endl;
+                assert(false);
             }
+
         }
         check_cnf_vars();
         all_vars_accounted_for();
