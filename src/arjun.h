@@ -158,12 +158,13 @@ public:
     bool marked() const { return mark; }
     void set_mark() const { mark = true; }
 
-    static void get_dependent_vars(const aig_ptr& aig_orig, std::set<uint32_t>& dep) {
+    static void get_dependent_vars(const aig_ptr& aig_orig, std::set<uint32_t>& dep, uint32_t v) {
         unmark_all(aig_orig);
         std::function<void(const aig_ptr&)> helper =
             [&](const aig_ptr& aig) {
                 if (aig->marked()) return;
                 if (aig->type == AIGT::t_lit) {
+                    assert(aig->var != v && "Variable cannot depend on itself");
                     dep.insert(aig->var);
                 }
                 if (aig->type == AIGT::t_and) {
@@ -218,7 +219,9 @@ public:
         const_true = std::make_shared<AIG>();
         const_true->type = AIGT::t_const;
         const_true->neg = false;
-        const_false = AIG::new_not(const_true);
+        const_false = std::make_shared<AIG>();
+        const_false->type = AIGT::t_const;
+        const_false->neg = true;
     }
 
     void clear() {
@@ -744,7 +747,7 @@ public:
     const auto& get_red_clauses() const { return red_clauses; }
     const auto& get_weights() const { return weights; }
     const auto& get_sampl_vars() const { return sampl_vars; }
-    const auto& get_orig_sampl_vars() const { return orig_sampl_vars; }
+    const auto& get_orig_sampl_vars() const { assert(orig_sampl_vars_set); return orig_sampl_vars; }
     const auto& get_orig_clauses() const { return orig_clauses; }
     const auto& get_opt_sampl_vars() const { return opt_sampl_vars; }
     const auto& get_backbone_done() const { return backbone_done; }
@@ -754,6 +757,8 @@ public:
     void set_orig_sampl_vars(const T& vars) {
         assert(need_aig);
         assert(orig_sampl_vars.empty());
+        assert(!orig_sampl_vars_set);
+        orig_sampl_vars_set = true;
         for(const auto& v: vars) orig_sampl_vars.insert(v);
     }
     void set_orig_clauses(const std::vector<std::vector<CMSat::Lit>>& cls) {
@@ -768,6 +773,7 @@ public:
 
     // ORIG variable
     bool defined(const uint32_t v) const {
+        assert(v < defs.size());
         assert(need_aig);
         if (defs[v] != nullptr) return true;
         return false;
@@ -820,36 +826,49 @@ public:
         return true;
     }
 
-    // Get the orig vars this AIG depends on
-    std::set<uint32_t> get_dependent_orig_vars(const aig_ptr& aig) const {
+    // Get the orig vars this AIG depends on, recursively expanding defined vars
+    std::set<uint32_t> get_dependent_vars_recursive(const aig_ptr& aig, uint32_t orig_v) const {
         assert(need_aig);
         std::set<uint32_t> dep;
-        AIG::get_dependent_vars(aig, dep);
+        AIG::get_dependent_vars(aig, dep, orig_v);
         while(true) {
             std::set<uint32_t> new_dep;
             for(const auto& v: dep) {
                 if (!defined(v)) new_dep.insert(v);
                 else {
                     std::set<uint32_t> sub_dep;
-                    AIG::get_dependent_vars(defs[v], sub_dep);
+                    AIG::get_dependent_vars(defs[v], sub_dep, v);
+                    assert(!sub_dep.count(v) && "Variable cannot depend on itself");
                     new_dep.insert(sub_dep.begin(), sub_dep.end());
                 }
             }
             if (new_dep.size() == dep.size()) break;
             dep = new_dep;
         }
+        assert(!dep.count(orig_v) && "Variable cannot depend on itself");
         return dep;
     }
 
     void check_self_dependency() const {
         if (!need_aig) return;
-        for(uint32_t i = 0; i < defs.size(); i ++) {
-            if (!defined(i)) continue;
-            const auto ret = get_dependent_orig_vars(defs[i]);
-            if (ret.count(i)) {
-                std::cout << "ERROR: Orig var " << i+1 << " is defined to dependent on itself" << std::endl;
-                assert(false && "Orig var defined to depend on itself");
+        for(uint32_t orig_v = 0; orig_v < defs.size(); orig_v ++) {
+            if (orig_sampl_vars.count(orig_v)) {
+                if (!defined(orig_v)) continue;
+                else if (defs[orig_v]->type == AIGT::t_lit) {
+                    assert(defs[orig_v]->var != orig_v && "Variable depends on itself? Also this is an orig sampl var defined to a literal that has the same var?");
+                    assert(orig_sampl_vars.count(defs[orig_v]->var) && "If orig_sampl_var is defined to a literal, that literal must also be an orig_sampl_var");
+                    continue;
+                } else if (defs[orig_v]->type == AIGT::t_const) {
+                    continue;
+                } else {
+                    std::cerr << "ERROR:Orig sampl var " << orig_v+1 << " cannot be defined to an AIG other than literal or const, but it is: " << defs[orig_v] << std::endl;
+                    assert(false);
+                }
             }
+            if (!defined(orig_v)) continue;
+
+            // This checks for self-dependency
+            get_dependent_vars_recursive(defs[orig_v], orig_v);
         }
     }
 
@@ -995,6 +1014,8 @@ public:
             }
             assert(sopt_sampl_vars.count(w.first));
         }
+
+        defs_invariant();
     }
 
     // Gives all the orig lits that map to this variable
@@ -1765,6 +1786,7 @@ public:
         for(auto& [v, aig]: aigs) {
             auto l = new_to_orig_var.at(v);
             assert(defs[l.var()] == nullptr && "Variable must not already have a definition");
+            assert(orig_sampl_vars.count(l.var()) == 0 && "Original sampling var cannot have definition via unsat_define or backward_round_synth");
             if (l.sign()) defs[l.var()] = AIG::new_not(aig);
             else defs[l.var()] = aig;
         }
@@ -1959,6 +1981,8 @@ public:
             }
             if (sign) overall = AIG::new_not(overall);
             auto orig_target = new_to_orig_var.at(target);
+            assert(scnf.get_orig_sampl_vars().count(orig_target.var()) == 0 &&
+                "Elimed variable cannot be in the orig sampling set");
             if (orig_target.sign()) overall = AIG::new_not(overall);
             scnf.defs[orig_target.var()] = overall;
             if (verb >= 5)
@@ -1978,6 +2002,8 @@ public:
                 const auto aig = scnf.defs[orig_target.var()];
                 assert(aig != nullptr);
                 assert(scnf.defs[orig_lit.var()] == nullptr);
+                assert(scnf.get_orig_sampl_vars().count(orig_lit.var()) == 0 &&
+                    "Replaced variable cannot be in the orig sampling set here -- we would have elimed what it got replaced with");
                 if (orig_lit.sign()) {
                     scnf.defs[orig_lit.var()] = AIG::new_not(aig);
                 } else {
@@ -2068,6 +2094,7 @@ private:
                                //original number of variables.
 
     // debug
+    bool orig_sampl_vars_set = false;
     std::set<uint32_t> orig_sampl_vars;
     std::vector<std::vector<CMSat::Lit>> orig_clauses;
 };

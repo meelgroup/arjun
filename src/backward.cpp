@@ -462,7 +462,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
         for(const auto& [v, aig]: interp.get_defs()) {
             assert(aig != nullptr);
             set<uint32_t> dep_vars;
-            AIG::get_dependent_vars(aig, dep_vars);
+            AIG::get_dependent_vars(aig, dep_vars, v);
             vector<Lit> deps_lits; deps_lits.reserve(dep_vars.size());
             for(const auto& dv: dep_vars) {
                 deps_lits.push_back(Lit(dv, false));
