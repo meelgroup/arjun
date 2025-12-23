@@ -729,6 +729,7 @@ public:
             assert(other.orig_sampl_vars.empty());
             assert(other.orig_clauses.empty());
         } else {
+            after_backward_round_synth = other.after_backward_round_synth;
             aig_mng = other.aig_mng;
             defs = other.defs;
             orig_clauses = other.orig_clauses;
@@ -794,7 +795,7 @@ public:
         assert(opt_sampl_vars_set == false);
         need_aig = true;
     }
-    auto get_need_aig() const { return need_aig; }
+    bool get_need_aig() const { return need_aig; }
     uint32_t num_defs() const {
         assert(need_aig && defs_invariant());
         return defs.size();
@@ -834,7 +835,7 @@ public:
         }
         all_vars_accounted_for();
         check_self_dependency();
-        no_unsat_define_yet();
+        no_backward_round_synth_yet();
         return true;
     }
 
@@ -943,7 +944,7 @@ public:
     }
 
     // this checks that NO unsat-define has been made yet
-    void no_unsat_define_yet() const {
+    void no_backward_round_synth_yet() const {
         if (after_backward_round_synth) return;
         if (!need_aig) return;
         for(uint32_t v = 0; v < defs.size(); v ++) {
@@ -2064,6 +2065,9 @@ public:
     void set_after_backward_round_synth() {
         assert(!after_backward_round_synth && "Should only be set once");
         after_backward_round_synth = true;
+    }
+    const auto& get_orig_to_new_var() const {
+        return orig_to_new_var;
     }
 
 private:

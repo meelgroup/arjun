@@ -76,6 +76,7 @@ vector<vector<lbool>> Manthan::get_samples(uint32_t num) {
 }
 
 SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
+    assert(input_cnf.get_need_aig() && input_cnf.defs_invariant());
     uint32_t tot_repaired = 0;
     cnf = input_cnf;
     // Grand master plan
@@ -87,11 +88,34 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     // 5b -- instead, get the conflict from the assumptions, which is a kind of poor "core",
     //       and do the "stupid" fix on that.
     //
-    assert(cnf.get_need_aig() && cnf.defs_invariant());
-    for (const auto& v: cnf.get_sampl_vars()) input.insert(v);
-    for (uint32_t i = 0; i < cnf.nVars(); i++) {
-        if (input.count(i) == 0 && !cnf.defined(i)) to_define.insert(i);
+
+    // CNF is divided into:
+    // input vars -- original sampling vars
+    // defined non-input vars -- vars defined via backward_round_synth
+    // to_define vars -- vars that are not defined yet, and not input
+    for (const auto& v: cnf.get_orig_sampl_vars()) {
+        const auto it = cnf.get_orig_to_new_var().find(v);
+        if (it == cnf.get_orig_to_new_var().end()) continue;
+        assert(it->second.var() < cnf.nVars());
+        input.insert(it->second.var());
     }
+    for (uint32_t v = 0; v < cnf.num_defs(); v++) {
+        if (input.count(v) == 0 && !cnf.defined(v)) {
+            const auto it = cnf.get_orig_to_new_var().find(v);
+            if (it == cnf.get_orig_to_new_var().end()) continue;
+            assert(it->second.var() < cnf.nVars());
+            to_define.insert(it->second.var());
+        }
+    }
+    set<uint32_t> backw_synth_defined_vars;
+    for (uint32_t v = 0; v < cnf.nVars(); v++) {
+        if (input.count(v) == 0 && to_define.count(v) == 0) {
+            backw_synth_defined_vars.insert(v);
+        }
+    }
+    assert(input.size() + to_define.size() + backw_synth_defined_vars.size() == cnf.nVars());
+    assert(false);
+
     dependency_mat.resize(cnf.nVars());
     for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);
     for(const auto& o: to_define) {
