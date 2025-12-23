@@ -354,8 +354,7 @@ void Minimize::backward_round() {
 
 void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
-    assert(cnf.get_opt_sampl_vars().size() >= cnf.get_sampl_vars().size());
-    assert(cnf.defs_invariant());
+    assert(cnf.get_need_aig() && cnf.defs_invariant());
 
     double start_round_time = cpuTime();
     vector<uint32_t> indep;

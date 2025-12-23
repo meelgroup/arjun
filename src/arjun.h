@@ -796,8 +796,7 @@ public:
     }
     auto get_need_aig() const { return need_aig; }
     uint32_t num_defs() const {
-        assert(need_aig);
-        assert(defs_invariant());
+        assert(need_aig && defs_invariant());
         return defs.size();
     }
     bool defs_invariant() const {

@@ -237,9 +237,7 @@ void do_synthesis() {
     cnf.clean_idiotic_mccomp_weights();
     cnf.set_orig_clauses(cnf.get_clauses());
     cnf.set_orig_sampl_vars(cnf.get_sampl_vars());
-    cnf.defs_invariant();
-    assert(cnf.get_sampl_vars() == cnf.get_opt_sampl_vars()
-            && "Synthesis extends opt_sampl_vars, so it must be the same as sampl_vars");
+    assert(cnf.get_need_aig() && cnf.defs_invariant());
     if (do_pre_manthan) {
         cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
         if (do_pre_backbone) arjun->standalone_backbone(cnf);

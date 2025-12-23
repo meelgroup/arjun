@@ -78,8 +78,7 @@ void Extend::add_all_indics_except(const set<uint32_t>& except) {
 }
 
 void Extend::unsat_define(SimplifiedCNF& cnf) {
-    assert(cnf.get_need_aig());
-    assert(cnf.defs_invariant());
+    assert(cnf.get_need_aig() && cnf.defs_invariant());
 
     double start_round_time = cpuTime();
     uint32_t start_size = cnf.get_opt_sampl_vars().size();
