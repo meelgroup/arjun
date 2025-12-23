@@ -245,6 +245,9 @@ void Minimize::fill_solver(const ArjunNS::SimplifiedCNF& cnf) {
 }
 
 void Minimize::run_minimize_for_synth(ArjunNS::SimplifiedCNF& cnf) {
+    assert(cnf.get_need_aig());
+    assert(cnf.defs_invariant());
+
     fill_solver(cnf);
     init();
     get_incidence();

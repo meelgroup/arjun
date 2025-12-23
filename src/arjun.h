@@ -707,7 +707,7 @@ public:
     SimplifiedCNF(const CMSat::FieldGen* _fg) : fg(_fg->dup()), multiplier_weight(fg->one()) {}
     ~SimplifiedCNF() = default;
     SimplifiedCNF& operator=(const SimplifiedCNF& other) {
-        assert(defs_invariant());
+        assert(other.defs_invariant());
         fg = other.fg->dup();
         need_aig = other.need_aig;
         clauses = other.clauses;
@@ -723,7 +723,6 @@ public:
         backbone_done = other.backbone_done;
         weights = other.weights;
         orig_to_new_var = other.orig_to_new_var;
-        assert(need_aig == other.need_aig && "Both must either need AIGs or not");
         if (!need_aig) {
             assert(defs.empty());
             assert(other.defs.empty());
@@ -736,7 +735,7 @@ public:
             orig_sampl_vars = other.orig_sampl_vars;
             orig_sampl_vars_set = other.orig_sampl_vars_set;
         }
-        other.defs_invariant();
+        defs_invariant();
 
         return *this;
     }
@@ -802,8 +801,11 @@ public:
         return defs.size();
     }
     bool defs_invariant() const {
+        check_cnf_sampl_sanity();
+
         if (!need_aig) return true;
         assert(orig_sampl_vars_set && "If need_aig, orig_sampl_vars_set must be set");
+        assert(sampl_vars_set);
         assert(sampl_vars.size() == opt_sampl_vars.size());
         assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
 
@@ -831,7 +833,6 @@ public:
             }
 
         }
-        check_cnf_sampl_sanity();
         all_vars_accounted_for();
         check_self_dependency();
         no_unsat_define_yet();

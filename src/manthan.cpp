@@ -87,7 +87,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     // 5b -- instead, get the conflict from the assumptions, which is a kind of poor "core",
     //       and do the "stupid" fix on that.
     //
-    //
+    assert(cnf.get_need_aig() && "manthan needs AIG definitions");
+    assert(cnf.defs_invariant());
     for (const auto& v: cnf.get_sampl_vars()) input.insert(v);
     for (uint32_t i = 0; i < cnf.nVars(); i++) {
         if (input.count(i) == 0 && !cnf.defined(i)) to_define.insert(i);
