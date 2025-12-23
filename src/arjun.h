@@ -796,10 +796,71 @@ public:
         need_aig = true;
     }
     bool get_need_aig() const { return need_aig; }
-    uint32_t num_defs() const {
-        assert(need_aig && defs_invariant());
-        return defs.size();
+    uint32_t num_defs() const { return defs.size(); }
+
+    auto get_var_types([[maybe_unused]] uint32_t verb) const {
+        assert(need_aig);
+        std::set<uint32_t> input;
+        for (const auto& v: get_orig_sampl_vars()) {
+            const auto it = orig_to_new_var.find(v);
+            if (it == orig_to_new_var.end()) continue;
+            const uint32_t cnf_var = it->second.var();
+            std::cout << "c o input var: " << v+1 << " maps to cnf var "
+                 << cnf_var+1 << std::endl;
+            assert(cnf_var < nVars());
+            input.insert(cnf_var);
+        }
+        assert(input.size() == sampl_vars.size());
+        std::set<uint32_t> to_define;
+        for (uint32_t v = 0; v < num_defs(); v++) {
+            if (!get_orig_sampl_vars().count(v) && !defined(v)) {
+                const auto it = orig_to_new_var.find(v);
+                if (it == orig_to_new_var.end()) continue;
+                const uint32_t cnf_var = it->second.var();
+                std::cout << "c o to_define var: " << v+1 << " maps to cnf var "
+                 << cnf_var+1 << std::endl;
+                assert(cnf_var < nVars());
+                to_define.insert(cnf_var);
+            }
+        }
+        std::set<uint32_t> backw_synth_defined_vars;
+        for (uint32_t v = 0; v < num_defs(); v++) {
+            if (get_orig_sampl_vars().count(v)) continue;
+            if (orig_to_new_var.count(v) == 0) continue;
+            // This var is NOT input and IS in the CNF
+            if (defined(v) == false) continue;
+            const uint32_t cnf_var = orig_to_new_var.at(v).var();
+            assert(cnf_var < nVars());
+            backw_synth_defined_vars.insert(cnf_var);
+        }
+        if (!after_backward_round_synth) {
+            assert(backw_synth_defined_vars.empty() &&
+                    "If we have not done backward round synthesis yet, there should be no backward-synth-defined vars");
+        }
+        /* if (verb >= 1) { */
+            std::cout << "c o [get-var-types] Variable types in CNF:" << std::endl;
+            std::cout << "c o [get-var-types]   Input vars: ";
+            for(const auto& v: input) {
+                std::cout << v+1 << " ";
+            }
+            std::cout << std::endl;
+
+            std::cout << "c o [get-var-types] Input vars: " << input.size() << std::endl;
+            std::cout << "c o [get-var-types] To-define vars: " << to_define.size() << std::endl;
+            std::cout << "c o [get-var-types]   To-define vars: ";
+            for(const auto& v: to_define) {
+                std::cout << v+1 << " ";
+            }
+            std::cout << std::endl;
+
+            std::cout << "c o [get-var-types] Backward-synth-defined vars: "
+                << backw_synth_defined_vars.size() << std::endl;
+            std::cout << "c o [get-var-types] Total vars in CNF: " << nVars() << std::endl;
+        /* } */
+        assert(input.size() + to_define.size() + backw_synth_defined_vars.size() == nVars());
+        return std::make_tuple(input, to_define, backw_synth_defined_vars);
     }
+
     bool defs_invariant() const {
         check_cnf_sampl_sanity();
 
@@ -836,6 +897,7 @@ public:
         all_vars_accounted_for();
         check_self_dependency();
         no_backward_round_synth_yet();
+        get_var_types(0); // just to check assertions inside
         return true;
     }
 
@@ -1910,6 +1972,7 @@ public:
         // Now we do the mapping. Otherwise, above will be complicated
         // This ALSO gets all the fixed values
         scnf.orig_to_new_var = solver->update_var_mapping(orig_to_new_var);
+        assert(false && "TODO: when 2 vars point to the same, we should set one of them to AIG define of the other. NOTE: must prefer orig_sampl_vars to be NOT set as AIG defined");
         assert(scnf.defs_invariant());
         return scnf;
     }
