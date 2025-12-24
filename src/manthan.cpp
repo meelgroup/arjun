@@ -75,6 +75,13 @@ vector<vector<lbool>> Manthan::get_samples(uint32_t num) {
     return solutions;
 }
 
+string Manthan::pr(const lbool val) const {
+    if (val == l_True) return "1";
+    if (val == l_False) return "0";
+    if (val == l_Undef) assert(false);
+    exit(EXIT_FAILURE);
+};
+
 SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     assert(input_cnf.get_need_aig() && input_cnf.defs_invariant());
     uint32_t tot_repaired = 0;
@@ -140,12 +147,6 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         vector<lbool> ctx;
         bool finished = get_counterexample(ctx);
         if (finished) break;
-        auto pr = [=](lbool val) {
-            if (val == l_True) return "1";
-            if (val == l_False) return "0";
-            if (val == l_Undef) assert(false);
-            exit(EXIT_FAILURE);
-        };
         for(const auto& y: to_define) {
             auto y_hat = y_to_y_hat[y];
             if (ctx[y] == ctx[y_hat]) continue;
@@ -528,7 +529,7 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
     assert(false);
 }
 
-void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
+void Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
     verb_print(2, "training variable: " << v+1);
     assert(!samples.empty());
     assert(v < cnf.nVars());
@@ -549,12 +550,12 @@ void Manthan::train(const vector<vector<lbool>>& samples, uint32_t v) {
             // we are learning v.
             if (j == v) {dataset(j, i) = 0; continue;}
             if (dependency_mat[j][v] == 1) { dataset(j, i) = 0; continue;}
-            dataset(j, i) = samples[i][j] == l_True ? 1 : 0;
+            dataset(j, i) = lbool_to_bool(samples[i][j]);
         }
     }
     labels.resize(samples.size());
     for(uint32_t i = 0; i < samples.size(); i++) {
-        labels[i] = samples[i][v] == l_True ? 1 : 0;
+        labels[i] = lbool_to_bool(samples[i][v]);
     }
 
     // Create the RandomForest object and train it on the training data.
