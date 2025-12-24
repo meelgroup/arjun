@@ -2061,13 +2061,14 @@ public:
         for(const auto& target: vs) {
             auto def = solver->get_cls_defining_var(target);
             auto orig_def = map_cl_to_orig(def);
+            auto orig_target = new_to_orig_var.at(target);
 
             uint32_t pos = 0;
             uint32_t neg = 0;
             for(const auto& cl: orig_def) {
                 bool found_this_cl = false;
                 for(const auto& l: cl) {
-                    if (l.var() != target) continue;
+                    if (l.var() != orig_target.var()) continue;
                     found_this_cl = true;
                     if (l.sign()) neg++;
                     else pos++;
@@ -2083,7 +2084,7 @@ public:
                 // Make sure only one side is used, the smaller side
                 bool ok = false;
                 for(const auto& l: cl) {
-                    if (l.var() == target) {
+                    if (l.var() == orig_target.var()) {
                         if (l.sign() == sign) ok = true;
                         break;
                     }
@@ -2091,14 +2092,13 @@ public:
                 if (!ok) continue;
 
                 for(const auto& l: cl) {
-                    if (l.var() == target) continue;
+                    if (l.var() == orig_target.var()) continue;
                     auto aig = AIG::new_lit(~l);
                     current = AIG::new_and(current, aig);
                 }
                 overall = AIG::new_or(overall, current);
             }
             if (sign) overall = AIG::new_not(overall);
-            auto orig_target = new_to_orig_var.at(target);
             assert(scnf.get_orig_sampl_vars().count(orig_target.var()) == 0 &&
                 "Elimed variable cannot be in the orig sampling set");
             if (orig_target.sign()) overall = AIG::new_not(overall);
