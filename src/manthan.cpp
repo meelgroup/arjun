@@ -119,7 +119,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 
     // Training
     inject_cnf(solver_train);
-    fh = std::make_unique<FHolder>(&solver_train);
+    fh = std::make_unique<FHolder>();
 
     // TODO: what the HELL is this last_formula_var?
     /* assert(last_formula_var > solver_train.nVars()); */
@@ -433,8 +433,8 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
         uint32_t ind = solver_train.nVars()-1;
 
         assert(fs_var.count(y));
-        auto func_out = fs_var[y].out;
-        auto y_hat = y_to_y_hat[y];
+        const auto func_out = fs_var[y].out;
+        const auto y_hat = y_to_y_hat[y];
 
         y_hat_to_indic[y_hat] = ind;
         indic_to_y_hat[ind] = y_hat;

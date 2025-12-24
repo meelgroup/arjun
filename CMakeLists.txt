@@ -202,6 +202,7 @@ if (NOT MSVC)
 
     add_compile_options("$<$<CONFIG:Debug>:-O0>")
     add_compile_options("$<$<CONFIG:Debug>:-ggdb>")
+    add_compile_options("$<$<CONFIG:Debug>:-D_GLIBCXX_ASSERTIONS>")
 
 else()
     # see https://msdn.microsoft.com/en-us/library/fwkeyyhe.aspx for details
