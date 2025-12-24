@@ -64,6 +64,8 @@ class Manthan {
         vec point_1;
         /* uint32_t last_formula_var; */
 
+        // y is original output var, i.e. to_define
+        // y_hat is learned var
         map<uint32_t, uint32_t> y_to_y_hat;
         map<uint32_t, uint32_t> y_hat_to_y;
 
@@ -102,10 +104,11 @@ class Manthan {
         vector<vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
 
         unique_ptr<FHolder> fh = nullptr;
-        std::map<uint32_t, FHolder::Formula> fs_var; // var -> formula
+        std::map<uint32_t, FHolder::Formula> var_to_formula; // var -> formula
         string pr(const lbool val) const;
         bool lbool_to_bool(const lbool val) const {
             assert(val != l_Undef);
             return val == l_True;
         }
+        Lit true_lit = lit_Error;
 };

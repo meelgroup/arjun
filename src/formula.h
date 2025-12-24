@@ -49,7 +49,11 @@ namespace ArjunNS {
 
 class FHolder {
 public:
-    FHolder() = default;
+    FHolder() = delete;
+    FHolder(SATSolver* _solver) : solver(_solver) {
+        solver->new_var();
+        my_true_lit = Lit(solver->nVars()-1, false);
+    }
     struct Formula {
         // TODO: we could have a flag of what has already been inserted into
         // solver_train
@@ -138,7 +142,10 @@ public:
         return ret;
     }
 
-    Lit get_true_lit() const { return my_true_lit; }
+    Lit get_true_lit() const {
+        assert(my_true_lit != lit_Error);
+        return my_true_lit;
+    }
 
 private:
     AIGManager aig_mng;
