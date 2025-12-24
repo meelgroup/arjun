@@ -52,6 +52,7 @@ using std::unique_ptr;
 Puura::Puura(const Config& _conf) : conf(_conf) {}
 Puura::~Puura() = default;
 
+// used in synthesis_unate only
 SATSolver* Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
     double my_time = cpuTime();
 
