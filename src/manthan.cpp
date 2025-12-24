@@ -428,8 +428,8 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
         }
     }
 
-    // Relation between y_hat and func_out
-    // when y_hat_to_indic is TRUE, y_hat and func_out are EQUAL
+    // Relation between y_hat and form_out
+    // when y_hat_to_indic is TRUE, y_hat and form_out are EQUAL
     vector<Lit> tmp;
     y_hat_to_indic.clear();
     indic_to_y_hat.clear();
@@ -438,20 +438,20 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
         const uint32_t ind = solver_train.nVars()-1;
 
         assert(var_to_formula.count(y));
-        const auto func_out = var_to_formula[y].out;
+        const auto form_out = var_to_formula[y].out;
         const auto y_hat = y_to_y_hat[y];
 
         y_hat_to_indic[y_hat] = ind;
         indic_to_y_hat[ind] = y_hat;
-        verb_print(2, "->CTX ind: " << ind+1 << " y_hat: " << y_hat+1  << " func_out: " << func_out);
+        verb_print(2, "->CTX ind: " << ind+1 << " y_hat: " << y_hat+1  << " form_out: " << form_out);
 
-        // when indic is TRUE, y_hat and func_out are EQUAL
+        // when indic is TRUE, y_hat and form_out are EQUAL
         auto y_hat_l = Lit(y_hat, false);
         auto ind_l = Lit(ind, false);
         tmp.clear();
         tmp.push_back(~ind_l);
         tmp.push_back(y_hat_l);
-        tmp.push_back(~func_out);
+        tmp.push_back(~form_out);
         solver_train.add_clause(tmp);
         tmp[1] = ~tmp[1];
         tmp[2] = ~tmp[2];
@@ -474,10 +474,10 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
         return false;
     } else {
         assert(ret == l_False);
-        verb_print(1, "Function is good!");
+        verb_print(1, "Formula is good!");
         for(auto& f: var_to_formula) {
             if (!f.second.finished) {
-                verb_print(1, "Marking Function for " << f.first+1 << " as finished");
+                verb_print(1, "Marking Formula for " << f.first+1 << " as finished");
                 f.second.finished = true;
             }
         }
