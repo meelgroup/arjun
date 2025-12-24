@@ -97,11 +97,19 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 
     dependency_mat.resize(cnf.nVars());
     for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);
-    for(const auto& o: to_define) {
-        const auto deps = cnf.get_cannot_depend_on(o);
-        for(const auto& d: deps) {
+    auto backw_deps = cnf.compute_backw_dependencies();
+    for(const auto& [backw_var, dep_set]: backw_deps) assert(backward_defined.count(backw_var) == 1);
+    assert(backw_deps.size() == backward_defined.size());
+    for(const auto& v: to_define) {
+        assert(input.count(v) == 0);
+        assert(backward_defined.count(v) == 0);
+        set<uint32_t> deps_for_var;
+        for(const auto& [backw_var, dep_set]: backw_deps) {
+            if (dep_set.count(v)) deps_for_var.insert(backw_var);
+        }
+        for(const auto& d: deps_for_var) {
             // NOTE: not sure this is the right way, this dependency_mat is a bit mysterious
-            dependency_mat[o][d] = 1;
+            dependency_mat[v][d] = 1;
         }
     }
 

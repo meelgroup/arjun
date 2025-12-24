@@ -798,6 +798,8 @@ public:
     bool get_need_aig() const { return need_aig; }
     uint32_t num_defs() const { return defs.size(); }
 
+    // Returns NEW vars, i.e. < nVars()
+    // It is checked that it is correct and total
     auto get_var_types([[maybe_unused]] uint32_t verb) const {
         assert(need_aig);
         std::set<uint32_t> input;
@@ -837,7 +839,7 @@ public:
             assert(backw_synth_defined_vars.empty() &&
                     "If we have not done backward round synthesis yet, there should be no backward-synth-defined vars");
         }
-        /* if (verb >= 1) { */
+        if (verb >= 1) {
             std::cout << "c o [get-var-types] Variable types in CNF:" << std::endl;
             std::cout << "c o [get-var-types]   Input vars: ";
             for(const auto& v: input) {
@@ -856,7 +858,7 @@ public:
             std::cout << "c o [get-var-types] Backward-synth-defined vars: "
                 << backw_synth_defined_vars.size() << std::endl;
             std::cout << "c o [get-var-types] Total vars in CNF: " << nVars() << std::endl;
-        /* } */
+        }
         assert(input.size() + to_define.size() + backw_synth_defined_vars.size() == nVars());
         return std::make_tuple(input, to_define, backw_synth_defined_vars);
     }
@@ -1567,28 +1569,28 @@ public:
         exit(EXIT_FAILURE);
     }
 
-    std::set<uint32_t> get_cannot_depend_on(const uint32_t v) const {
-        assert(false && "defs is original number space but v is not... below is broken");
-        if (defs[v] != nullptr) {
-            std::cout << "ERROR: Variable " << v+1 << " already defined, why query what it cannot depend on???" << std::endl;
-            assert(false);
-            exit(EXIT_FAILURE);
-        }
-        std::set<uint32_t> opt_sampl_vars_s(opt_sampl_vars.begin(), opt_sampl_vars.end());
-        if (opt_sampl_vars_s.count(v)) {
-            std::cout << "ERROR: Variable " << v+1 << " is in opt sampling set, why query what it cannot depend on???" << std::endl;
-            assert(false);
-            exit(EXIT_FAILURE);
-        }
+    // returns in CNF (new vars) the dependencies of each variable
+    // every LHS element in the map is a backward_defined variable
+    std::map<uint32_t, std::set<uint32_t>> compute_backw_dependencies() {
+        std::map<uint32_t, std::set<uint32_t>> ret;
+        for(uint32_t orig_v = 0; orig_v < defs.size(); orig_v ++) {
+            // Skip orig sampl vars
+            if (orig_sampl_vars.count(orig_v)) continue; // if orig_sampl_var, skip
+            if (defs[orig_v] == nullptr) continue; // if undefined, skip
+            if (orig_to_new_var.count(orig_v) == 0) continue; // if NOT mapped to CNF, skip
+            const CMSat::Lit n = orig_to_new_var.at(orig_v);
+            assert(n != CMSat::lit_Undef);
 
-        std::set<uint32_t> ret;
-        for(uint32_t i = 0; i < defs.size(); i++) {
-            if (defs[i] == nullptr) continue;
-            if (opt_sampl_vars_s.count(i)) {
-                // The extended input we can always depend on
-                continue;
+            // var n IS backward_defined
+            auto ret_orig = get_dependent_vars_recursive(defs[orig_v], orig_v);
+            std::set<uint32_t> ret_new;
+            for(const auto& ov: ret_orig) {
+                if(!orig_to_new_var.count(ov)) continue;
+                const CMSat::Lit nl = orig_to_new_var.at(ov);
+                assert(nl != CMSat::lit_Undef);
+                ret_new.insert(nl.var());
             }
-            if (aig_contains(defs[i], v)) ret.insert(i);
+            ret[n.var()] = ret_new;
         }
         return ret;
     }
