@@ -111,7 +111,7 @@ void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int>
 }
 
 void Interpolant::generate_interpolant(
-        const vector<Lit>& assumptions, uint32_t test_var, const ArjunNS::SimplifiedCNF& cnf) {
+        const vector<Lit>& assumptions, uint32_t test_var, const ArjunNS::SimplifiedCNF& cnf, const set<uint32_t>& input_vars) {
     verb_print(2, "generating unsat proof for: " << test_var+1);
     verb_print(2, "assumptions: " << assumptions);
     verb_print(2, "orig_num_vars: " << orig_num_vars);
@@ -180,7 +180,7 @@ void Interpolant::generate_interpolant(
 
     // CaDiCaL on the core only
     auto cdcl = std::make_unique<Solver>();
-    MyTracer t(orig_num_vars, cnf.get_opt_sampl_vars(), conf);
+    MyTracer t(orig_num_vars, input_vars, conf);
 
     cdcl->connect_proof_tracer(&t, true);
     /* std::stringstream name; */
@@ -207,7 +207,7 @@ void Interpolant::generate_interpolant(
 
     defs[test_var] = t.out;
     verb_print(5, "definition of var: " << test_var+1 << " is: " << t.out);
-    verb_print(1, "----------------------------");
+    verb_print(5, "----------------------------");
 }
 
 void Interpolant::fill_picolsat(uint32_t _orig_num_vars) {

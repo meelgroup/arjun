@@ -277,7 +277,7 @@ void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vec
     verb_print(2, "Branch formula. When this is true, H is wrong:" << endl << f);
     var_to_formula[y_rep] = fh->compose_ite(fh->constant_formula(ctx[y_rep] == l_True), var_to_formula[y_rep], f);
     verb_print(3, "repaired formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
-    verb_print(1, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
+    verb_print(3, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
     //We fixed the ctx on this variable
 }
 

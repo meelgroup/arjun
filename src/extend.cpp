@@ -87,14 +87,13 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     solver->set_scc(1);
 
     // Fill no need
-    set<uint32_t> no_need;
     // [ replaced, replaced_with ]
     /* auto ret1 = solver->get_all_binary_xors(); */
     /* for(const auto& p: ret1) no_need.insert(p.first.var()); */
+    set<uint32_t> input_vars(cnf.get_opt_sampl_vars().begin(), cnf.get_opt_sampl_vars().end());
     const auto zero_ass = solver->get_zero_assigned_lits();
-    for(const auto& p: zero_ass) no_need.insert(p.var());
-    for(const auto& v: cnf.get_opt_sampl_vars()) no_need.insert(v);
-    add_all_indics_except(no_need);
+    for(const auto& p: zero_ass) input_vars.insert(p.var());
+    add_all_indics_except(input_vars);
     verb_print(2, "[extend] orig_num_vars: " << orig_num_vars << " nvars: " << solver->nVars());
 
     // set up interpolant
@@ -106,7 +105,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     for(const auto& x: seen) assert(x == 0);
     vector<uint32_t> unknown;
     for(uint32_t i = 0; i < orig_num_vars; i++) {
-        if (no_need.count(i)) continue;
+        if (input_vars.count(i)) continue;
         unknown.push_back(i);
     }
 
@@ -138,6 +137,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
         //Assumption filling -- assume everything in indep is the same
         assert(test_var != var_Undef);
 
+        input_vars.erase(test_var);
         assumptions.clear();
         uint32_t indic = var_to_indic[test_var];
         assumptions.push_back(Lit(test_var, false));
@@ -159,13 +159,13 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             // Dependent fully on `indep`
             // TODO: run get_conflict and then we know which were
             // actually needed, so we can do an easier generation/check
-            interp.generate_interpolant(assumptions, test_var, cnf);
+            interp.generate_interpolant(assumptions, test_var, cnf, input_vars);
             vector<Lit> cl;
             Lit l(indic, false);
             cl.push_back(l);
             solver->add_clause(cl);
             interp.add_unit_cl(cl);
-
+            input_vars.insert(test_var);
         } else if (ret == l_True) {
             // Optimisation: if we see both true and false, then it cannot be independent
             for(uint32_t v = 0; v < orig_num_vars; v++) {
@@ -185,18 +185,15 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     verb_print(1, "defined via Padoa: " << cnf.get_opt_sampl_vars().size()-start_size
             << " SAT: " << sat
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
-    if (conf.verb >= 2) {
-        solver->print_stats();
-        for(const auto& [v, aig]: interp.get_defs()) {
-            verb_print(2, "[synth-extend] extend define var: " << v+1 << " depends on vars: ");
-            assert(aig != nullptr);
-            set<uint32_t> dep_vars;
-            AIG::get_dependent_vars(aig, dep_vars, v);
-            set<uint32_t> opt_sampl(cnf.get_opt_sampl_vars().begin(), cnf.get_opt_sampl_vars().end());
-            for(const auto& dv: dep_vars) {
-                verb_print(2, "[synth-extend] -> dep var: " << dv+1 << " in opt sampl: " << opt_sampl.count(dv));
-            }
-        }
+    if (conf.verb >= 1) solver->print_stats();
+
+    for(const auto& [v, aig]: interp.get_defs()) {
+        assert(aig != nullptr);
+        set<uint32_t> dep_vars;
+        AIG::get_dependent_vars(aig, dep_vars, v);
+        vector<Lit> deps_lits; deps_lits.reserve(dep_vars.size());
+        for(const auto& dv: dep_vars) deps_lits.push_back(Lit(dv, false));
+        verb_print(1, "[unsat-define] define var: " << v+1 << " depends on vars: " << deps_lits);
     }
 
     cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);

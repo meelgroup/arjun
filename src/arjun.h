@@ -807,8 +807,8 @@ public:
             const auto it = orig_to_new_var.find(v);
             if (it == orig_to_new_var.end()) continue;
             const uint32_t cnf_var = it->second.var();
-            std::cout << "c o input var: " << v+1 << " maps to cnf var "
-                 << cnf_var+1 << std::endl;
+            /* std::cout << "c o input var: " << v+1 << " maps to cnf var " */
+            /*      << cnf_var+1 << std::endl; */
             assert(cnf_var < nVars());
             input.insert(cnf_var);
         }
@@ -819,8 +819,8 @@ public:
                 const auto it = orig_to_new_var.find(v);
                 if (it == orig_to_new_var.end()) continue;
                 const uint32_t cnf_var = it->second.var();
-                std::cout << "c o to_define var: " << v+1 << " maps to cnf var "
-                 << cnf_var+1 << std::endl;
+                /* std::cout << "c o to_define var: " << v+1 << " maps to cnf var " */
+                /*  << cnf_var+1 << std::endl; */
                 assert(cnf_var < nVars());
                 to_define.insert(cnf_var);
             }

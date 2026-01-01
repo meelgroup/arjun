@@ -43,13 +43,13 @@ using std::map;
 using namespace ArjunNS;
 
 struct MyTracer : public CaDiCaL::Tracer {
-    MyTracer(uint32_t _orig_num_vars, vector<uint32_t> _opt_sampl_vars,
+    MyTracer(const uint32_t _orig_num_vars, const set<uint32_t>& input_vars,
             const ArjunInt::Config& _conf) :
       conf(_conf),
-      orig_num_vars(_orig_num_vars)
-    {
-      input.insert(_opt_sampl_vars.begin(), _opt_sampl_vars.end());
-    }
+      orig_num_vars(_orig_num_vars),
+      input(input_vars)
+    {}
+
     const ArjunInt::Config& conf;
     map<uint64_t, vector<Lit>> cls;
     std::map<uint64_t, aig_ptr> fs_clid;  // clause ID to formula
@@ -77,7 +77,7 @@ public:
     }
     void fill_picolsat(uint32_t _orig_num_vars);
     void fill_var_to_indic(const vector<uint32_t>& var_to_indic);
-    void generate_interpolant(const vector<Lit>& assumptions, uint32_t test_var, const SimplifiedCNF& cnf);
+    void generate_interpolant(const vector<Lit>& assumptions, uint32_t test_var, const SimplifiedCNF& cnf, const set<uint32_t>& input_vars);
     void add_unit_cl(const vector<Lit>& cl);
     auto& get_defs() { return defs; }
 

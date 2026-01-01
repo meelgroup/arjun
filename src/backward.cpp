@@ -368,12 +368,15 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     // in terms of ANY other variables, but NOT in a self-referential way
     vector<char> unknown_set(orig_num_vars, 0);
     vector<uint32_t> unknown;
+    set<uint32_t> input_vars;
     set<uint32_t> dep;
     auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb);
     assert(backward_defined.empty());
     for(const auto& x: input) dep.insert(x);
     for(uint32_t x = 0; x < orig_num_vars; x++) {
+        input_vars.insert(x);
         if (dep.count(x)) {
+            indep.push_back(x);
             solver->add_clause({Lit(var_to_indic[x], false)});
             interp.add_unit_cl({Lit(var_to_indic[x], false)});
             continue;
@@ -412,6 +415,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
         assert(test_var < orig_num_vars);
         assert(unknown_set[test_var]);
         unknown_set[test_var] = 0;
+        input_vars.erase(test_var);
         verb_print(3, "Testing: " << test_var+1);
 
         //Assumption filling
@@ -442,14 +446,16 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
             //Timed out, we'll treat is as unknown
             assert(test_var < orig_num_vars);
             indep.push_back(test_var);
+            input_vars.insert(test_var);
         } else if (ret == l_True) {
             //Independent
             indep.push_back(test_var);
+            input_vars.insert(test_var);
         } else if (ret == l_False) {
             //not independent
             //i.e. given that all in indep+unkown is equivalent, it's not possible that a1 != b1
             dep.insert(test_var);
-            interp.generate_interpolant(assumptions, test_var, cnf);
+            interp.generate_interpolant(assumptions, test_var, cnf, input_vars);
         }
     }
 
@@ -458,17 +464,15 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
             << " F: " << ret_false << " I: " << sampling_vars.size() << " T: "
         << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
 
-    if (conf.verb >= 2) {
+    if (conf.verb >= 1) {
         solver->print_stats();
         for(const auto& [v, aig]: interp.get_defs()) {
             assert(aig != nullptr);
             set<uint32_t> dep_vars;
             AIG::get_dependent_vars(aig, dep_vars, v);
             vector<Lit> deps_lits; deps_lits.reserve(dep_vars.size());
-            for(const auto& dv: dep_vars) {
-                deps_lits.push_back(Lit(dv, false));
-            }
-            verb_print(2, "[synth-unsat-define] var: " << v+1 << " depends on vars: " << deps_lits);
+            for(const auto& dv: dep_vars) deps_lits.push_back(Lit(dv, false));
+            verb_print(1, "[backward-round-synth-define] var: " << v+1 << " depends on vars: " << deps_lits); // << " aig: " << aig);
         }
     }
 

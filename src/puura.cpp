@@ -266,6 +266,10 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     const SimplifiedCNF& cnf,
     const SimpConf simp_conf)
 {
+    if (cnf.get_need_aig()) {
+        assert(cnf.defs_invariant());
+        cnf.get_var_types(1);
+    }
     for(const auto& v: cnf.get_sampl_vars())
         verb_print(5, "[w-debug] orig sampl var: " << v+1);
     for(const auto& v: cnf.get_opt_sampl_vars())
