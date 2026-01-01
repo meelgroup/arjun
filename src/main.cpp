@@ -256,6 +256,8 @@ void do_synthesis() {
             if (conf.do_debug_synth) cnf.write_aig_defs_to_file("unsat_unate.aig");
         }
     }
+
+    // backw_round_synth
     if (do_minim_indep) {
         arjun->standalone_minimize_indep_synt(cnf);
         if (conf.do_debug_synth) cnf.write_aig_defs_to_file("minim_idep_synt.aig");

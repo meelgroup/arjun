@@ -76,7 +76,7 @@ class Manthan {
 
         const Config& conf;
         unique_ptr<FieldGen> fg;
-        SATSolver solver_train;
+        SATSolver solver;
 
         // 3 sets of variables, together adding up to the CNF
         set<uint32_t> input;
@@ -92,7 +92,7 @@ class Manthan {
         void inject_unit(SATSolver& s);
         bool repair(const uint32_t v, vector<lbool>& ctx);
         void perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vector<Lit>& conflict);
-        void init_solver_train();
+        void add_not_F_x_yhat();
 
         vector<uint32_t> y_order; //1st only depends on inputs
         void fix_order();

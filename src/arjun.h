@@ -825,19 +825,26 @@ public:
                 to_define.insert(cnf_var);
             }
         }
+        std::set<uint32_t> unsat_defined_vars;
         std::set<uint32_t> backw_synth_defined_vars;
         for (uint32_t v = 0; v < num_defs(); v++) {
             if (get_orig_sampl_vars().count(v)) continue;
             if (orig_to_new_var.count(v) == 0) continue;
             // This var is NOT input and IS in the CNF
             if (defined(v) == false) continue;
+            auto s = get_dependent_vars_recursive(defs[v], v);
+            bool only_input_deps = true;
+            for(const auto& d: s) {
+                if (!get_orig_sampl_vars().count(d)) {
+                    only_input_deps = false;
+                    break;
+                }
+            }
+
             const uint32_t cnf_var = orig_to_new_var.at(v).var();
             assert(cnf_var < nVars());
-            backw_synth_defined_vars.insert(cnf_var);
-        }
-        if (!after_backward_round_synth) {
-            assert(backw_synth_defined_vars.empty() &&
-                    "If we have not done backward round synthesis yet, there should be no backward-synth-defined vars");
+            if (only_input_deps) unsat_defined_vars.insert(cnf_var);
+            else backw_synth_defined_vars.insert(cnf_var);
         }
         if (verb >= 1) {
             std::cout << "c o [get-var-types] Variable types in CNF:" << std::endl;
@@ -855,11 +862,16 @@ public:
             }
             std::cout << std::endl;
 
+            std::cout << "c o [get-var-types] Unsat-defined vars: "
+                << unsat_defined_vars.size() << std::endl;
             std::cout << "c o [get-var-types] Backward-synth-defined vars: "
                 << backw_synth_defined_vars.size() << std::endl;
             std::cout << "c o [get-var-types] Total vars in CNF: " << nVars() << std::endl;
         }
-        assert(input.size() + to_define.size() + backw_synth_defined_vars.size() == nVars());
+        assert(input.size() + to_define.size() + unsat_defined_vars.size() + backw_synth_defined_vars.size() == nVars());
+
+        // unsat-defined vars can be treateed as input vars
+        for(const auto& v: unsat_defined_vars) input.insert(v);
         return std::make_tuple(input, to_define, backw_synth_defined_vars);
     }
 
@@ -872,12 +884,6 @@ public:
         assert(sampl_vars.size() == opt_sampl_vars.size());
         assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
 
-        for(const auto& [o, n] : orig_to_new_var) {
-            assert(o < defs.size());
-            assert(n != CMSat::lit_Undef && n.var() < nvars);
-            if (!after_backward_round_synth)
-                assert(!defined(o) && "Before backward round synth, variables in CNF must not be defined");
-        }
 
         for(const auto& v: orig_sampl_vars) {
             if(defs[v] == nullptr) continue;
@@ -896,9 +902,9 @@ public:
             }
 
         }
+        check_pre_post_backward_round_synth();
         all_vars_accounted_for();
         check_self_dependency();
-        no_backward_round_synth_yet();
         get_var_types(0); // just to check assertions inside
         return true;
     }
@@ -1008,16 +1014,42 @@ public:
     }
 
     // this checks that NO unsat-define has been made yet
-    void no_backward_round_synth_yet() const {
-        if (after_backward_round_synth) return;
+    void check_pre_post_backward_round_synth() const {
         if (!need_aig) return;
-        for(uint32_t v = 0; v < defs.size(); v ++) {
-            if (!defined(v)) continue;
-            if (!orig_to_new_var.count(v)) continue;
-            // variable is defined but STILL in the CNF
-            // these are unsat-defines
-            // because they depend on variables that are not yet defined
-            assert(false && "No unsat-define should have been made yet");
+        std::map<uint32_t, std::set<uint32_t>> dependencies;
+        for(const auto& [o, n] : orig_to_new_var) {
+            assert(o < defs.size());
+            assert(n != CMSat::lit_Undef && n.var() < nvars);
+            if (defined(o)) {
+                auto s = get_dependent_vars_recursive(defs[o], o);
+                dependencies[o] = s;
+                bool only_orig_sampl = true;
+                for(const auto& v: s) {
+                    if (!orig_sampl_vars.count(v)) {
+                        only_orig_sampl = false;
+                        break;
+                    }
+                }
+                if (!after_backward_round_synth && !only_orig_sampl) {
+                    assert(false && "Before backward round synth, variables in CNF must be defined ONLY in terms of orig_sampl_vars");
+                }
+            }
+        }
+        for(const auto& [o, dep] : dependencies) {
+            assert(!orig_sampl_vars.count(o));
+            for(const auto& v: dep) {
+                // o depends on v
+                if (orig_sampl_vars.count(v)) continue;
+                auto it = dependencies.find(v);
+                if (it == dependencies.end()) continue;
+                if (it->second.count(o)) {
+                    // so v cannot depend on o
+                    std::cout << "ERROR: Found a dependency cycle between orig vars "
+                        << o+1 << " and " << v+1 << std::endl;
+                    assert(false && "Dependency cycle found");
+                }
+            }
+
         }
     }
 
@@ -1576,7 +1608,7 @@ public:
         for(uint32_t orig_v = 0; orig_v < defs.size(); orig_v ++) {
             // Skip orig sampl vars
             if (orig_sampl_vars.count(orig_v)) continue; // if orig_sampl_var, skip
-            if (defs[orig_v] == nullptr) continue; // if undefined, skip
+            if (!defined(orig_v)) continue; // if undefined, skip
             if (orig_to_new_var.count(orig_v) == 0) continue; // if NOT mapped to CNF, skip
             const CMSat::Lit n = orig_to_new_var.at(orig_v);
             assert(n != CMSat::lit_Undef);
@@ -1586,10 +1618,12 @@ public:
             std::set<uint32_t> ret_new;
             for(const auto& ov: ret_orig) {
                 if(!orig_to_new_var.count(ov)) continue;
+                if (orig_sampl_vars.count(ov)) continue; //orig sampl vars not included
                 const CMSat::Lit nl = orig_to_new_var.at(ov);
                 assert(nl != CMSat::lit_Undef);
                 ret_new.insert(nl.var());
             }
+            if (ret_new.empty()) continue; //unsat defined
             ret[n.var()] = ret_new;
         }
         return ret;

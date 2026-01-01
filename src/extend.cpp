@@ -165,7 +165,6 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             cl.push_back(l);
             solver->add_clause(cl);
             interp.add_unit_cl(cl);
-            cnf.add_opt_sampl_var(test_var);
 
         } else if (ret == l_True) {
             // Optimisation: if we see both true and false, then it cannot be independent
@@ -201,6 +200,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     }
 
     cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);
+    assert(cnf.get_need_aig() && cnf.defs_invariant());
 }
 
 void Extend::extend_round(SimplifiedCNF& cnf) {
