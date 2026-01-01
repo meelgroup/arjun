@@ -58,6 +58,7 @@ public:
         // TODO: we could have a flag of what has already been inserted into
         // solver_train
         vector<std::vector<Lit>> clauses;
+        bool already_added_to_manthans_solver = false;
         Lit out = lit_Error;
         bool finished = false;
         aig_ptr aig = nullptr;

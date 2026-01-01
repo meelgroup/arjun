@@ -154,7 +154,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         for(const auto& y: to_define) {
             auto y_hat = y_to_y_hat[y];
             if (ctx[y] == ctx[y_hat]) continue;
-            verb_print(1, "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
+            verb_print(3, "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
                     << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]));
         }
         if (conf.verb >= 3) {
@@ -176,14 +176,14 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             }
             assert(y != std::numeric_limits<uint32_t>::max());
             needs_repair.erase(y);
-            verb_print(1, "-------------------");
-            verb_print(1, "repairing: " << y+1);
+            verb_print(3, "-------------------");
+            verb_print(3, "repairing: " << y+1);
             bool done = repair(y, ctx); // beware, this updates ctx on v
             if (done) {
                 num_repaired++;
                 tot_repaired++;
             }
-            verb_print(2, "finished repairing " << y+1 << " : " << std::boolalpha << done);
+            verb_print(3, "finished repairing " << y+1 << " : " << std::boolalpha << done);
         }
         verb_print(1, "Num repaired: " << num_repaired << " tot repaired: " << tot_repaired);
     }
@@ -425,17 +425,18 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     // Inject the formulas into the solver
     // Replace y with y_hat
     // TODO: have flag of what clause has already been added
-    for(const auto& [var, form]: var_to_formula) {
-        for(const auto& cl: form.clauses) {
+    for(auto& [var, form]: var_to_formula) {
+        if (form.already_added_to_manthans_solver) continue;
+        for(auto& cl: form.clauses) {
             vector<Lit> cl2;
             for(const auto& l: cl) {
                 auto v = l.var();
-                if (to_define.count(v)) {
-                    cl2.push_back(Lit(y_to_y_hat[v], l.sign()));
+                if (to_define.count(v)) { cl2.push_back(Lit(y_to_y_hat[v], l.sign()));
                 } else cl2.push_back(l);
             }
             solver.add_clause(cl2);
         }
+        form.already_added_to_manthans_solver = true;
     }
 
     // Relation between y_hat and form_out
