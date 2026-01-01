@@ -117,8 +117,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         }
         for(const auto& d: deps_for_var) {
             assert(input.count(d) == 0);
-            // NOTE: not sure this is the right way, this dependency_mat is a bit mysterious
-            dependency_mat[v][d] = 1;
+            dependency_mat[d][v] = 1;
         }
     }
 
@@ -315,15 +314,20 @@ void Manthan::fix_order() {
 // Fills needs_repair with vars from y (i.e. output)
 // TODO: use MaxSAT solver
 vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
-    verb_print(2, "Finding better ctx...");
     needs_repair.clear();
+    verb_print(2, "Finding better ctx.");
     SATSolver s_ctx;
-    s_ctx.set_up_for_sample_counter(10000);
+    /* s_ctx.set_up_for_sample_counter(10000); */
     inject_cnf(s_ctx);
 
-    // Fix input values
+    // Fix input and backward_defined values
     for(const auto& x: input) {
         assert(ctx[x] != l_Undef && "Input variable must be defined in counterexample");
+        const auto l = Lit(x, ctx[x] == l_False);
+        s_ctx.add_clause({l});
+    }
+    for(const auto& x: backward_defined) {
+        assert(ctx[x] != l_Undef && "Backward variable must be defined in counterexample");
         const auto l = Lit(x, ctx[x] == l_False);
         s_ctx.add_clause({l});
     }
@@ -356,7 +360,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
         assert(ret != l_Undef);
         if (ret == l_True) {
             assert(i > 0 && "We MUST get UNSAT on the 1st run repairing the CTX");
-            verb_print(2, "Improved counterexample, now potentially shorter");
+            verb_print(1, "Improved counterexample, now potentially shorter");
             break;
         }
         auto confl = s_ctx.get_conflict();
@@ -372,7 +376,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     }
     assert(!needs_repair.empty());
 
-    verb_print(2, "Finding better ctx DONE");
+    verb_print(1, "Finding better ctx DONE, needs_repair size now: " << needs_repair.size());
     return s_ctx.get_model();
 }
 
