@@ -81,6 +81,8 @@ def add_projection(fname) :
             num = min(2, len(all_vars))
     else:
         num : int = random.randint(int(len(all_vars)/4), int(len(all_vars)/3))
+
+    num = max(1, num) # at least one variable to project
     for i in range(num):
         proj_set[random.choice(all_vars)] = 1
 

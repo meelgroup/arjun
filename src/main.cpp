@@ -231,9 +231,17 @@ void set_config(ArjunNS::Arjun* arj) {
 
 #ifdef SYNTH
 void do_synthesis() {
+    if (etof_conf.all_indep) {
+        cout << "ERROR: synthesis with --allindep makes no sense" << endl;
+        exit(EXIT_FAILURE);
+    }
     ArjunNS::SimplifiedCNF cnf(fg);
     cnf.set_need_aig();
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
+    if (etof_conf.all_indep) {
+        cout << "ERROR: CNF had no indep set, we cannot do synthesis" << endl;
+        exit(EXIT_FAILURE);
+    }
     cnf.clean_idiotic_mccomp_weights();
     cnf.set_orig_clauses(cnf.get_clauses());
     cnf.set_orig_sampl_vars(cnf.get_sampl_vars());
