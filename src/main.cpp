@@ -229,6 +229,20 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 
+void check_cnf_sat(const ArjunNS::SimplifiedCNF& cnf) {
+    CMSat::SATSolver solver;
+    solver.set_verbosity(0);
+    solver.set_find_xors(false);
+    solver.new_vars(cnf.nVars());
+    for(const auto& cl: cnf.get_clauses()) solver.add_clause(cl);
+    for(const auto& cl: cnf.get_red_clauses()) solver.add_red_clause(cl);
+    CMSat::lbool ret = solver.solve();
+    if (ret == CMSat::l_False) {
+        cout << "c o [arjun] Input CNF is UNSAT!" << endl;
+        exit(EXIT_FAILURE);
+    }
+}
+
 #ifdef SYNTH
 void do_synthesis() {
     if (etof_conf.all_indep) {
@@ -246,6 +260,7 @@ void do_synthesis() {
     cnf.set_orig_clauses(cnf.get_clauses());
     cnf.set_orig_sampl_vars(cnf.get_sampl_vars());
     assert(cnf.get_need_aig() && cnf.defs_invariant());
+    check_cnf_sat(cnf);
     if (do_pre_manthan) {
         cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
         if (do_pre_backbone) arjun->standalone_backbone(cnf);

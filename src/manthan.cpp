@@ -235,7 +235,7 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
         assumps.push_back({l});
     }
 
-    Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
+    const Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
     repair_solver.addClause(lits_to_ints({~repairing})); //assume to wrong value
     ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
 
@@ -372,7 +372,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
         const auto l = Lit(y, ctx[y_hat] == l_False);
         verb_print(2, "[find-better-ctx] put into assumps y= " << l);
         assumps.insert(l);
-        s_ctx.addClause(lits_to_ints({~l}), 1); //want to flip this
+        s_ctx.addClause(lits_to_ints({l}), 1); //want to flip this
     }
 
     /* verb_print(3, "[find-better-ctx] iteration " << i << " with " << ass.size() << " assumptions"); */

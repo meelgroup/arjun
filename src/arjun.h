@@ -814,6 +814,7 @@ public:
         }
         assert(input.size() == sampl_vars.size());
         std::set<uint32_t> to_define;
+        std::set<uint32_t> to_define_orig;
         for (uint32_t v = 0; v < num_defs(); v++) {
             if (!get_orig_sampl_vars().count(v) && !defined(v)) {
                 const auto it = orig_to_new_var.find(v);
@@ -823,6 +824,7 @@ public:
                 /*  << cnf_var+1 << std::endl; */
                 assert(cnf_var < nVars());
                 to_define.insert(cnf_var);
+                to_define_orig.insert(v);
             }
         }
         std::set<uint32_t> unsat_defined_vars;
@@ -856,11 +858,13 @@ public:
             std::cout << std::endl;
 
             std::cout << "c o [get-var-types] Num to-define vars: " << to_define.size() << std::endl;
-            std::cout << "c o [get-var-types]   To-define vars: ";
-            for(const auto& v: to_define) {
-                std::cout << v+1 << " ";
-            }
+            std::cout << "c o [get-var-types]   To-define vars (new): ";
+            for(const auto& v: to_define) std::cout << v+1 << " ";
             std::cout << std::endl;
+            std::cout << "c o [get-var-types]   To-define vars (orig): ";
+            for(const auto& v: to_define_orig) std::cout << v+1 << " ";
+            std::cout << std::endl;
+
 
             std::cout << "c o [get-var-types] Num unsat-defined vars: "
                 << unsat_defined_vars.size() << std::endl;
