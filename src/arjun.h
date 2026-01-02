@@ -2122,6 +2122,8 @@ public:
             auto def = solver->get_cls_defining_var(target);
             auto orig_def = map_cl_to_orig(def);
             auto orig_target = new_to_orig_var.at(target);
+            assert(scnf.get_orig_sampl_vars().count(orig_target.var()) == 0 &&
+                "Elimed variable cannot be in the orig sampling set");
 
             uint32_t pos = 0;
             uint32_t neg = 0;
@@ -2159,8 +2161,6 @@ public:
                 overall = AIG::new_or(overall, current);
             }
             if (sign) overall = AIG::new_not(overall);
-            assert(scnf.get_orig_sampl_vars().count(orig_target.var()) == 0 &&
-                "Elimed variable cannot be in the orig sampling set");
             if (orig_target.sign()) overall = AIG::new_not(overall);
             scnf.defs[orig_target.var()] = overall;
             if (verb >= 5)
