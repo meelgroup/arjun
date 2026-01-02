@@ -368,19 +368,21 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
         auto l = Lit(y, ctx[y_hat] == l_False);
         verb_print(2, "[find-better-ctx] put into assumps y= " << l);
         assumps.insert(l);
-        s_ctx.addClause(lits_to_ints({~l}), 1); //want to flip this
+        s_ctx.addClause(lits_to_ints({l}), 1); //want to flip this
     }
 
     /* verb_print(3, "[find-better-ctx] iteration " << i << " with " << ass.size() << " assumptions"); */
     auto ret = s_ctx.solve();
     assert(ret && "must be satisfiable");
     verb_print(1, "optimum found: " << s_ctx.getCost());
+    assert(s_ctx.getCost() > 0);
     for(const auto&l : assumps) {
-        if (s_ctx.getValue(l.var())+1) {
+        if (s_ctx.getValue(l.var()+1) ^ !l.sign()) {
             verb_print(2, "had to erase y: " << ~l << " because it needs repair");
             needs_repair.insert(l.var());
         }
     }
+    assert(needs_repair.size() == s_ctx.getCost());
     assert(!needs_repair.empty());
 
     verb_print(1, "Finding better ctx DONE, needs_repair size now: " << needs_repair.size());
@@ -388,7 +390,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     for(const auto& v: to_define) {
         better_ctx[v] = s_ctx.getValue(v+1) ? l_True : l_False;
     }
-    return ctx;
+    return better_ctx;
 }
 
 
