@@ -374,6 +374,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
       str = "occ-bve-empty, must-renumber";
       solver->simplify(&dont_elim, &str);
     } else {
+      // TODO: do the empty things for AIG case too, needs new_empty_sampl_vars handling
       str = "must-renumber";
       solver->simplify(&dont_elim, &str);
     }

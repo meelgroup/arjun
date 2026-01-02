@@ -293,11 +293,11 @@ void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vec
     }
     f.out = fresh_l;
     // when fresh_l is false, confl is satisfied
-    verb_print(3, "Original formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
+    verb_print(4, "Original formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
     verb_print(2, "Branch formula. When this is true, H is wrong:" << endl << f);
     var_to_formula[y_rep] = fh->compose_ite(fh->constant_formula(ctx[y_rep] == l_True), var_to_formula[y_rep], f);
-    verb_print(3, "repaired formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
     verb_print(3, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
+    verb_print(4, "repaired formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
     //We fixed the ctx on this variable
 }
 
@@ -346,6 +346,8 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
         const auto l = Lit(x, ctx[x] == l_False);
         s_ctx.addClause(lits_to_ints({l}));
     }
+
+    // TODO not sure this is needed/should be here?
     for(const auto& x: backward_defined) {
         assert(ctx[x] != l_Undef && "Backward variable must be defined in counterexample");
         const auto l = Lit(x, ctx[x] == l_False);
@@ -357,8 +359,8 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
         const auto y_hat = y_to_y_hat[y];
         if (ctx[y] != ctx[y_hat]) continue;
         verb_print(3, "[find-better-ctx] CTX is CORRECT on y=" << y+1 << " y_hat=" << y_hat+1
-             << "ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat]));
-        Lit l = Lit(y, ctx[y_hat] == l_False);
+             << " -- ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat]));
+        const Lit l = Lit(y, ctx[y_hat] == l_False);
         s_ctx.addClause(lits_to_ints({l}));
     }
 
@@ -367,16 +369,16 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     for(const auto& y: to_define) {
         const auto y_hat = y_to_y_hat[y];
         if (ctx[y] == ctx[y_hat]) continue;
-        auto l = Lit(y, ctx[y_hat] == l_False);
+        const auto l = Lit(y, ctx[y_hat] == l_False);
         verb_print(2, "[find-better-ctx] put into assumps y= " << l);
         assumps.insert(l);
-        s_ctx.addClause(lits_to_ints({l}), 1); //want to flip this
+        s_ctx.addClause(lits_to_ints({~l}), 1); //want to flip this
     }
 
     /* verb_print(3, "[find-better-ctx] iteration " << i << " with " << ass.size() << " assumptions"); */
     auto ret = s_ctx.solve();
     assert(ret && "must be satisfiable");
-    verb_print(1, "optimum found: " << s_ctx.getCost());
+    verb_print(1, "optimum found: " << s_ctx.getCost() << " original assumps size: " << assumps.size());
     assert(s_ctx.getCost() > 0);
     for(const auto&l : assumps) {
         if (s_ctx.getValue(l.var()+1) ^ !l.sign()) {
@@ -406,7 +408,7 @@ void Manthan::add_not_F_x_yhat() {
         y_to_y_hat[y] = y_hat;
         y_hat_to_y[y_hat] = y;
         verb_print(2, "mapping -- y: " << y+1 << " y_hat: " << y_hat+1);
-        /* verb_print(2, "formula for y " << y+1 << ":" << endl << var_to_formula[y]); */
+        verb_print(4, "formula for y " << y+1 << ":" << endl << var_to_formula[y]);
     }
 
     // Adds ~F(x, y_hat)
@@ -614,7 +616,7 @@ void Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
             }
         }
     }
-    verb_print(3, "Tentative, trained formula for y " << v+1 << ":" << endl << var_to_formula[v]);
+    verb_print(4, "Tentative, trained formula for y " << v+1 << ":" << endl << var_to_formula[v]);
     verb_print(2,"Done training variable: " << v+1);
     verb_print(2, "------------------------------");
 }

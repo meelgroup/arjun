@@ -848,7 +848,7 @@ public:
         }
         if (verb >= 1) {
             std::cout << "c o [get-var-types] Variable types in CNF:" << std::endl;
-            std::cout << "c o [get-var-types] Num nput vars: " << input.size() << std::endl;
+            std::cout << "c o [get-var-types] Num input vars: " << input.size() << std::endl;
             std::cout << "c o [get-var-types]   Input vars: ";
             for(const auto& v: input) {
                 std::cout << v+1 << " ";
@@ -866,7 +866,8 @@ public:
                 << unsat_defined_vars.size() << std::endl;
             std::cout << "c o [get-var-types] Num backward-synth-defined vars: "
                 << backw_synth_defined_vars.size() << std::endl;
-            std::cout << "c o [get-var-types] Total vars in CNF: " << nVars() << std::endl;
+            std::cout << "c o [get-var-types] Total vars in ORIG CNF: " << defs.size() << std::endl;
+            std::cout << "c o [get-var-types] Total vars in NEW  CNF: " << nVars() << std::endl;
         }
         assert(input.size() + to_define.size() + unsat_defined_vars.size() + backw_synth_defined_vars.size() == nVars());
 
@@ -2027,6 +2028,8 @@ public:
         // This ALSO gets all the fixed values
         scnf.orig_to_new_var = solver->update_var_mapping(orig_to_new_var);
         fix_mapping_after_renumber(scnf, verb);
+        std::cout << "c o solver orig num vars: " << solver->nVars() << " solver simp num vars: "
+            << solver->simplified_nvars() << std::endl;
 
         assert(scnf.defs_invariant());
         return scnf;
@@ -2049,8 +2052,7 @@ public:
 
             std::cout << "c o [get-cnf] Found " << origs.size()
                 << " original vars mapping to new var " << CMSat::Lit(it.first, false) << ": ";
-            for(const auto& o: origs)
-                std::cout << CMSat::Lit(o, false) << " ";
+            for(const auto& o: origs) std::cout << CMSat::Lit(o, false) << " ";
             std::cout << std::endl;
 
             // Find which orig to keep undefined (prefer orig_sampl_vars)
@@ -2061,8 +2063,7 @@ public:
                     break;
                 }
             }
-            if (orig_to_keep == UINT32_MAX)
-                orig_to_keep = origs[0];
+            if (orig_to_keep == UINT32_MAX) orig_to_keep = origs[0];
 
             std::cout << "c o [get-cnf] Keeping orig var " << CMSat::Lit(orig_to_keep, false)
                 << " undefined, defining others by it." << std::endl;
@@ -2070,10 +2071,10 @@ public:
             for(const auto& o: origs) {
                 if (o ==  orig_to_keep) continue;
                 assert(scnf.defs[o] == nullptr);
-                CMSat::Lit n = scnf.orig_to_new_var.at(o);
-                CMSat::Lit n2 = scnf.orig_to_new_var.at(orig_to_keep);
+                const CMSat::Lit n = scnf.orig_to_new_var.at(o);
+                const CMSat::Lit n_keep = scnf.orig_to_new_var.at(orig_to_keep);
                 scnf.orig_to_new_var.erase(o);
-                scnf.defs[o] = AIG::new_lit(CMSat::Lit(orig_to_keep, n.sign() ^ n2.sign()));
+                scnf.defs[o] = AIG::new_lit(CMSat::Lit(orig_to_keep, n.sign() ^ n_keep.sign()));
                 if (verb >= 1)
                     std::cout << "c o [get-cnf] set aig for var: " << CMSat::Lit(o, false)
                         << " to that of " << CMSat::Lit(orig_to_keep, false)
