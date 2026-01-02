@@ -52,6 +52,22 @@ using namespace ArjunInt;
 using namespace ArjunNS;
 using namespace CMSat;
 
+
+int lit_to_int(const Lit& l) {
+    int v = l.var()+1;
+    if (l.sign()) v = -v;
+    return v;
+}
+
+vector<int> lits_to_ints(const vector<Lit>& lits) {
+    vector<int> ret;
+    ret.reserve(lits.size());
+    for(const auto& l: lits) {
+        ret.push_back(lit_to_int(l));
+    }
+    return ret;
+}
+
 // good: qdimacs/small-bug1-fixpoint-10.qdimacs.cnf
 // also good: simplify qdimacs/amba2f9n.sat.qdimacs.cnf then run manthan
 
@@ -199,8 +215,9 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     // F(x,y) & x = ctx(x) && forall_y (y not dependent on v) (y = ctx(y)) & NOT (v = ctx(v))
     // Used to find UNSAT core that will help us repair the function
-    SATSolver repair_solver;
-    inject_cnf(repair_solver);
+    EvalMaxSAT repair_solver;
+    for(uint32_t i = 0; i < cnf.nVars(); i++) repair_solver.newVar();
+    for(const auto& c: cnf.get_clauses()) repair_solver.addClause(lits_to_ints(c));
 
 
     vector<Lit> assumps; assumps.reserve(input.size());
@@ -216,38 +233,36 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     }
 
     Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
-    repair_solver.add_clause({~repairing}); //assume to wrong value
+    repair_solver.addClause(lits_to_ints({~repairing})); //assume to wrong value
     ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
 
     verb_print(2, "adding to solver: " << ~repairing);
     verb_print(2, "setting the to-be-repaired " << repairing << " to wrong.");
     verb_print(2, "solving with assumps: " << assumps);
-    auto ret = repair_solver.solve(&assumps);
-    assert(ret != l_Undef);
-    if (ret == l_True) {
-        const auto& model = repair_solver.get_model();
-        if (conf.verb >= 3) {
-            for(uint32_t i = 0; i < cnf.nVars(); i++)
-                cout << "model i " << setw(5) << i+1 << " : " << model[i] << endl;
-        }
+
+    for(const auto& l: assumps) repair_solver.addClause(lits_to_ints({l}), 1);
+    auto ret = repair_solver.solve();
+    if (!ret) {
+        verb_print(1, "repairing " << y_rep+1 << " is not possible");
+        return false;
+    }
+    assert(ret);
+    if (repair_solver.getCost() == 0) {
         bool reached = false;
         for(const auto&y: y_order) {
             if (y == y_rep) {reached = true; continue;}
             if (!reached) continue;
-            if (model[y] != ctx[y_to_y_hat[y]]) {
-                needs_repair.insert(y);
-            }
+            if (repair_solver.getValue(y+1) != (ctx[y_to_y_hat[y]] == l_True)) needs_repair.insert(y);
         }
         return false;
     }
-    assert(ret == l_False);
-    auto conflict = repair_solver.get_conflict();
-    // TODO: further minimize this conflict, if possible
-    verb_print(2, "conflict: " << conflict);
-    if (conflict.empty()) {
-        verb_print(1, "repairing " << y_rep+1 << " is not possible");
-        return false;
+
+    vector<Lit> conflict;
+    for(const auto&l : assumps) {
+        if (repair_solver.getValue(l.var()+1) ^ !l.sign()) conflict.push_back(l);
     }
+    assert(conflict.size() == repair_solver.getCost());
+    verb_print(3, "conflict: " << conflict);
     perform_repair(y_rep, ctx, conflict);
     return true;
 }
@@ -312,21 +327,6 @@ void Manthan::fix_order() {
             y_order.push_back(y);
         }
     }
-}
-
-int lit_to_int(const Lit& l) {
-    int v = l.var()+1;
-    if (l.sign()) v = -v;
-    return v;
-}
-
-vector<int> lits_to_ints(const vector<Lit>& lits) {
-    vector<int> ret;
-    ret.reserve(lits.size());
-    for(const auto& l: lits) {
-        ret.push_back(lit_to_int(l));
-    }
-    return ret;
 }
 
 // Fills needs_repair with vars from y (i.e. output)
