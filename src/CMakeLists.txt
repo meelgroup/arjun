@@ -74,6 +74,7 @@ target_link_libraries(arjun
     LINK_PUBLIC ${GMP_LIBRARY}
     LINK_PUBLIC ${cadical}
     LINK_PUBLIC ${evalmaxsat}
+    LINK_PUBLIC ${evalmax_cadical}
     LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT}
 )
 

@@ -127,6 +127,10 @@ if (SYNTH)
         PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../EvalMaxSAT/build/lib/EvalMaxSAT/
         NAMES EvalMaxSAT
         REQUIRED)
+    find_library(evalmax_cadical
+        PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../EvalMaxSAT/build/lib/evalmax_cadical/
+        NAMES evalmax_cadical
+        REQUIRED)
 endif()
 
 macro(add_sanitize_option flagname)
