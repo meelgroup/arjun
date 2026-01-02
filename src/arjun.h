@@ -2032,46 +2032,54 @@ public:
         return scnf;
     }
 
-    // TODO this is quadratic
     // when 2 vars point to the same new var, we must set define one by the other.
     // We must prefer orig_sampl_vars to remain undefined, and define the other by it.
     void fix_mapping_after_renumber(SimplifiedCNF& scnf, const uint32_t verb) const {
         std::cout << "c o [get-cnf] Checking for variables mapping to same new var to set AIG definitions..." << std::endl;
-        std::set<uint32_t> origs_to_del;
-        for(const auto& [orig, n]: scnf.orig_to_new_var) {
-            for(const auto& [orig2, n2]: scnf.orig_to_new_var) {
-                if (orig <= orig2) continue;
-                if (n.var() != n2.var()) continue;
-                std::cout << "c o [get-cnf] Found orig vars " << CMSat::Lit(orig, false)
-                    << " and " << CMSat::Lit(orig2, false)
-                    << " both mapping to new var " << n.var()+1 << std::endl;
+        std::map<uint32_t, std::vector<uint32_t>> new_var_to_origs;
+        for(const auto& it: scnf.orig_to_new_var) {
+            auto& orig = it.first;
+            auto& n = it.second;
+            new_var_to_origs[n.var()].push_back(orig);
+        }
 
-                assert(scnf.defs[orig] == nullptr);
-                assert(scnf.defs[orig2] == nullptr);
+        for(const auto& it: new_var_to_origs) {
+            const auto& origs = it.second;
+            if (origs.size() <= 1) continue;
 
-                // orig and orig2 point to the same new var
-                // we need to set one of them to be defined by the other
-                if (scnf.orig_sampl_vars.count(orig) == 0) {
-                    // orig is not in sampl vars, so we can define it by orig2
-                    scnf.defs[orig] = AIG::new_lit(CMSat::Lit(orig2, n.sign() ^ n2.sign()));
-                    if (verb >= 1)
-                        std::cout << "c o [get-cnf] set aig for var: " << CMSat::Lit(orig, false)
-                            << " to that of " << CMSat::Lit(orig2, false)
-                            << " since both map to the same new var " << n << std::endl;
-                    origs_to_del.insert(orig);
-                } else {
-                    // either orig2 is not in sampl vars, or both are in sampl vars,
-                    // Whatever the case, we define orig2 by orig
-                    scnf.defs[orig2] = AIG::new_lit(CMSat::Lit(orig, n.sign() ^ n2.sign()));
-                    if (verb >= 1)
-                        std::cout << "c o [get-cnf] set aig for var: " << CMSat::Lit(orig2, false)
-                            << " to that of " << CMSat::Lit(orig, false)
-                            << " since both map to the same new var " << n << std::endl;
-                    origs_to_del.insert(orig2);
+            std::cout << "c o [get-cnf] Found " << origs.size()
+                << " original vars mapping to new var " << CMSat::Lit(it.first, false) << ": ";
+            for(const auto& o: origs)
+                std::cout << CMSat::Lit(o, false) << " ";
+            std::cout << std::endl;
+
+            // Find which orig to keep undefined (prefer orig_sampl_vars)
+            uint32_t orig_to_keep = UINT32_MAX;
+            for(const auto& o: origs) {
+                if (scnf.orig_sampl_vars.count(o)) {
+                    orig_to_keep = o;
+                    break;
                 }
             }
+            if (orig_to_keep == UINT32_MAX)
+                orig_to_keep = origs[0];
+
+            std::cout << "c o [get-cnf] Keeping orig var " << CMSat::Lit(orig_to_keep, false)
+                << " undefined, defining others by it." << std::endl;
+
+            for(const auto& o: origs) {
+                if (o ==  orig_to_keep) continue;
+                assert(scnf.defs[o] == nullptr);
+                CMSat::Lit n = scnf.orig_to_new_var.at(o);
+                CMSat::Lit n2 = scnf.orig_to_new_var.at(orig_to_keep);
+                scnf.orig_to_new_var.erase(o);
+                scnf.defs[o] = AIG::new_lit(CMSat::Lit(orig_to_keep, n.sign() ^ n2.sign()));
+                if (verb >= 1)
+                    std::cout << "c o [get-cnf] set aig for var: " << CMSat::Lit(o, false)
+                        << " to that of " << CMSat::Lit(orig_to_keep, false)
+                        << " since both map to the same new var " << n << std::endl;
+            }
         }
-        for(const auto& v: origs_to_del) scnf.orig_to_new_var.erase(v);
     }
 
     void get_fixed_values(
