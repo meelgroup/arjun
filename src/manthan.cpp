@@ -262,7 +262,7 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
 
     vector<Lit> conflict;
     for(const auto&l : assumps) {
-        if (repair_solver.getValue(!lit_to_int(l))) conflict.push_back(l);
+        if (!repair_solver.getValue(lit_to_int(l))) conflict.push_back(l);
     }
     assert(conflict.size() == repair_solver.getCost());
     verb_print(1, "repair conflict: " << conflict);
