@@ -330,7 +330,6 @@ vector<int> lits_to_ints(const vector<Lit>& lits) {
 }
 
 // Fills needs_repair with vars from y (i.e. output)
-// TODO: use MaxSAT solver
 vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     needs_repair.clear();
     verb_print(2, "Finding better ctx.");
