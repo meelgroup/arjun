@@ -87,6 +87,7 @@ class Manthan {
         vector<uint32_t> incidence;
         void get_incidence();
         bool get_counterexample(vector<lbool>& ctx);
+        void inject_formulas_into_solver();
         vector<lbool> find_better_ctx(const vector<lbool>& ctx);
         void inject_cnf(SATSolver& s);
         void inject_unit(SATSolver& s);

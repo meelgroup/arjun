@@ -160,24 +160,27 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     for(const auto& v: to_define) to_train.push_back(v);
     sort_unknown(to_train, incidence);
     for(const auto& v: to_train) train(solutions, v); // updates dependency_mat
+    verb_print(2, "[do-manthan] After training: solver_train.nVars() = " << solver.nVars());
 
     add_not_F_x_yhat();
     fix_order();
     // Counterexample-guided repair
     while(true) {
+        inject_formulas_into_solver();
         vector<lbool> ctx;
         bool finished = get_counterexample(ctx);
         for(const auto& val: ctx) assert(val != l_Undef);
         if (finished) break;
         for(const auto& y: to_define) {
-            auto y_hat = y_to_y_hat[y];
+            const auto y_hat = y_to_y_hat[y];
             if (ctx[y] == ctx[y_hat]) continue;
             verb_print(3, "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
                     << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]));
         }
         if (conf.verb >= 3) {
+            cout << "c o [DEBUG] CNF valuation: ";
             for(uint32_t i = 0; i < cnf.nVars(); i++)
-                cout << "val " << setw(4) << i+1 << ": " << pr(ctx[i]) << " -- ";
+                cout << "var " << setw(3) << i+1 << ": " << pr(ctx[i]) << " -- ";
             cout << endl;
         }
         auto better_ctx = find_better_ctx(ctx);
@@ -195,7 +198,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             assert(y != std::numeric_limits<uint32_t>::max());
             needs_repair.erase(y);
             verb_print(3, "-------------------");
-            verb_print(3, "repairing: " << y+1);
+            verb_print(1, "repairing: " << y+1);
             bool done = repair(y, ctx); // beware, this updates ctx on v
             if (done) {
                 num_repaired++;
@@ -219,16 +222,16 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     for(uint32_t i = 0; i < cnf.nVars(); i++) repair_solver.newVar();
     for(const auto& c: cnf.get_clauses()) repair_solver.addClause(lits_to_ints(c));
 
-
     vector<Lit> assumps; assumps.reserve(input.size());
-    for(const auto& x: input)
-        assumps.push_back(Lit(x, ctx[x] == l_False)); //correct value
+    for(const auto& x: input) assumps.push_back(Lit(x, ctx[x] == l_False));
+    for(const auto& x: backward_defined) assumps.push_back(Lit(x, ctx[x] == l_False));
+
     for(const auto& y: y_order) {
         if (y == y_rep) break;
         assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen");
         assert(ctx[y] == ctx[y_to_y_hat[y]]);
-        Lit l = Lit(y, ctx[y] == l_False);
-        verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
+        const Lit l = Lit(y, ctx[y] == l_False);
+        verb_print(1, "assuming " << y+1 << " is " << ctx[y]);
         assumps.push_back({l});
     }
 
@@ -236,9 +239,9 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     repair_solver.addClause(lits_to_ints({~repairing})); //assume to wrong value
     ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
 
-    verb_print(2, "adding to solver: " << ~repairing);
+    verb_print(1, "adding to solver: " << ~repairing);
     verb_print(2, "setting the to-be-repaired " << repairing << " to wrong.");
-    verb_print(2, "solving with assumps: " << assumps);
+    verb_print(1, "solving with assumps: " << assumps);
 
     for(const auto& l: assumps) repair_solver.addClause(lits_to_ints({l}), 1);
     auto ret = repair_solver.solve();
@@ -259,10 +262,10 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
 
     vector<Lit> conflict;
     for(const auto&l : assumps) {
-        if (repair_solver.getValue(l.var()+1) ^ !l.sign()) conflict.push_back(l);
+        if (repair_solver.getValue(!lit_to_int(l))) conflict.push_back(l);
     }
     assert(conflict.size() == repair_solver.getCost());
-    verb_print(3, "conflict: " << conflict);
+    verb_print(1, "repair conflict: " << conflict);
     perform_repair(y_rep, ctx, conflict);
     return true;
 }
@@ -351,7 +354,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
 
     // Fix to_define variables that are correct (y_hat is the learned one)
     for(const auto& y: to_define) {
-        auto y_hat = y_to_y_hat[y];
+        const auto y_hat = y_to_y_hat[y];
         if (ctx[y] != ctx[y_hat]) continue;
         verb_print(3, "[find-better-ctx] CTX is CORRECT on y=" << y+1 << " y_hat=" << y_hat+1
              << "ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat]));
@@ -362,7 +365,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     // Fix to_define variables that are incorrect via assumptions
     set<Lit> assumps;
     for(const auto& y: to_define) {
-        auto y_hat = y_to_y_hat[y];
+        const auto y_hat = y_to_y_hat[y];
         if (ctx[y] == ctx[y_hat]) continue;
         auto l = Lit(y, ctx[y_hat] == l_False);
         verb_print(2, "[find-better-ctx] put into assumps y= " << l);
@@ -377,7 +380,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     assert(s_ctx.getCost() > 0);
     for(const auto&l : assumps) {
         if (s_ctx.getValue(l.var()+1) ^ !l.sign()) {
-            verb_print(2, "had to erase y: " << ~l << " because it needs repair");
+            verb_print(1, "had to erase y: " << ~l << " because it needs repair");
             needs_repair.insert(l.var());
         }
     }
@@ -399,10 +402,11 @@ void Manthan::add_not_F_x_yhat() {
     // Create variables for y_hat
     for(const auto& y: to_define) {
         solver.new_var();
-        uint32_t y_hat = solver.nVars()-1;
+        const uint32_t y_hat = solver.nVars()-1;
         y_to_y_hat[y] = y_hat;
         y_hat_to_y[y_hat] = y;
         verb_print(2, "mapping -- y: " << y+1 << " y_hat: " << y_hat+1);
+        /* verb_print(2, "formula for y " << y+1 << ":" << endl << var_to_formula[y]); */
     }
 
     // Adds ~F(x, y_hat)
@@ -411,9 +415,8 @@ void Manthan::add_not_F_x_yhat() {
         // Replace y with y_hat in the clause
         vector<Lit> cl;
         for(const auto& l: cl_orig) {
-            if (to_define.count(l.var())) {
-                cl.push_back(Lit(y_to_y_hat[l.var()], l.sign()));
-            } else cl.push_back(l);
+            if (to_define.count(l.var())) cl.push_back(Lit(y_to_y_hat[l.var()], l.sign()));
+            else cl.push_back(l);
         }
 
         solver.new_var();
@@ -437,24 +440,24 @@ void Manthan::add_not_F_x_yhat() {
     solver.add_clause(tmp);
 }
 
-bool Manthan::get_counterexample(vector<lbool>& ctx) {
-    // Inject the formulas into the solver
+void Manthan::inject_formulas_into_solver() {
     // Replace y with y_hat
-    // TODO: have flag of what clause has already been added
     for(auto& [var, form]: var_to_formula) {
-        if (form.already_added_to_manthans_solver) continue;
+        /* if (form.already_added_to_manthans_solver) continue; */
         for(auto& cl: form.clauses) {
             vector<Lit> cl2;
             for(const auto& l: cl) {
                 auto v = l.var();
-                if (to_define.count(v)) { cl2.push_back(Lit(y_to_y_hat[v], l.sign()));
-                } else cl2.push_back(l);
+                if (to_define.count(v)) { cl2.push_back(Lit(y_to_y_hat[v], l.sign()));}
+                else cl2.push_back(l);
             }
             solver.add_clause(cl2);
         }
-        form.already_added_to_manthans_solver = true;
+        /* form.already_added_to_manthans_solver = true; */
     }
+}
 
+bool Manthan::get_counterexample(vector<lbool>& ctx) {
     // Relation between y_hat and form_out
     // when y_hat_to_indic is TRUE, y_hat and form_out are EQUAL
     vector<Lit> tmp;
@@ -611,7 +614,7 @@ void Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
             }
         }
     }
-    verb_print(3, "Tentative, trained formula for " << v+1 << ":" << var_to_formula[v]);
+    verb_print(3, "Tentative, trained formula for y " << v+1 << ":" << endl << var_to_formula[v]);
     verb_print(2,"Done training variable: " << v+1);
     verb_print(2, "------------------------------");
 }

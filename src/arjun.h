@@ -848,23 +848,23 @@ public:
         }
         if (verb >= 1) {
             std::cout << "c o [get-var-types] Variable types in CNF:" << std::endl;
+            std::cout << "c o [get-var-types] Num nput vars: " << input.size() << std::endl;
             std::cout << "c o [get-var-types]   Input vars: ";
             for(const auto& v: input) {
                 std::cout << v+1 << " ";
             }
             std::cout << std::endl;
 
-            std::cout << "c o [get-var-types] Input vars: " << input.size() << std::endl;
-            std::cout << "c o [get-var-types] To-define vars: " << to_define.size() << std::endl;
+            std::cout << "c o [get-var-types] Num to-define vars: " << to_define.size() << std::endl;
             std::cout << "c o [get-var-types]   To-define vars: ";
             for(const auto& v: to_define) {
                 std::cout << v+1 << " ";
             }
             std::cout << std::endl;
 
-            std::cout << "c o [get-var-types] Unsat-defined vars: "
+            std::cout << "c o [get-var-types] Num unsat-defined vars: "
                 << unsat_defined_vars.size() << std::endl;
-            std::cout << "c o [get-var-types] Backward-synth-defined vars: "
+            std::cout << "c o [get-var-types] Num backward-synth-defined vars: "
                 << backw_synth_defined_vars.size() << std::endl;
             std::cout << "c o [get-var-types] Total vars in CNF: " << nVars() << std::endl;
         }
