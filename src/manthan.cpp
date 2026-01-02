@@ -26,6 +26,7 @@
 #include <cryptominisat5/cryptominisat.h>
 #include <cryptominisat5/solvertypesmini.h>
 #include "src/arjun.h"
+#include <cstdlib>
 #include <cstdint>
 #include <ios>
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
@@ -37,6 +38,8 @@
 #define MLPACK_PRINT_INFO
 #define MLPACK_PRINT_WARN
 #include <mlpack.hpp>
+
+#include "EvalMaxSAT.h"
 
 using namespace arma;
 using namespace mlpack;
@@ -311,25 +314,40 @@ void Manthan::fix_order() {
     }
 }
 
+int lit_to_int(const Lit& l) {
+    int v = l.var()+1;
+    if (l.sign()) v = -v;
+    return v;
+}
+
+vector<int> lits_to_ints(const vector<Lit>& lits) {
+    vector<int> ret;
+    ret.reserve(lits.size());
+    for(const auto& l: lits) {
+        ret.push_back(lit_to_int(l));
+    }
+    return ret;
+}
+
 // Fills needs_repair with vars from y (i.e. output)
 // TODO: use MaxSAT solver
 vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     needs_repair.clear();
     verb_print(2, "Finding better ctx.");
-    SATSolver s_ctx;
-    /* s_ctx.set_up_for_sample_counter(10000); */
-    inject_cnf(s_ctx);
+    EvalMaxSAT s_ctx;
+    for(uint32_t i = 0; i < cnf.nVars(); i++) s_ctx.newVar();
+    for(const auto& c: cnf.get_clauses()) s_ctx.addClause(lits_to_ints(c));
 
     // Fix input and backward_defined values
     for(const auto& x: input) {
         assert(ctx[x] != l_Undef && "Input variable must be defined in counterexample");
         const auto l = Lit(x, ctx[x] == l_False);
-        s_ctx.add_clause({l});
+        s_ctx.addClause(lits_to_ints({l}));
     }
     for(const auto& x: backward_defined) {
         assert(ctx[x] != l_Undef && "Backward variable must be defined in counterexample");
         const auto l = Lit(x, ctx[x] == l_False);
-        s_ctx.add_clause({l});
+        s_ctx.addClause(lits_to_ints({l}));
     }
 
     // Fix to_define variables that are correct (y_hat is the learned one)
@@ -339,7 +357,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
         verb_print(3, "[find-better-ctx] CTX is CORRECT on y=" << y+1 << " y_hat=" << y_hat+1
              << "ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat]));
         Lit l = Lit(y, ctx[y_hat] == l_False);
-        s_ctx.add_clause({l});
+        s_ctx.addClause(lits_to_ints({l}));
     }
 
     // Fix to_define variables that are incorrect via assumptions
@@ -350,26 +368,15 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
         auto l = Lit(y, ctx[y_hat] == l_False);
         verb_print(2, "[find-better-ctx] put into assumps y= " << l);
         assumps.insert(l);
+        s_ctx.addClause(lits_to_ints({~l}), 1); //want to flip this
     }
 
-    for(uint32_t i = 0;; i++) {
-        vector<Lit> ass(assumps.begin(), assumps.end());
-        verb_print(3, "[find-better-ctx] iteration " << i << " with " << ass.size() << " assumptions");
-
-        lbool ret = s_ctx.solve(&ass);
-        assert(ret != l_Undef);
-        if (ret == l_True) {
-            assert(i > 0 && "We MUST get UNSAT on the 1st run repairing the CTX");
-            verb_print(1, "Improved counterexample, now potentially shorter");
-            break;
-        }
-        auto confl = s_ctx.get_conflict();
-        verb_print(2, "confl sz: " << confl.size());
-        assert(!confl.empty());
-        /* for(const auto&l : confl) cout << "conf: " << l << endl; */
-        for(const auto&l : confl) {
-            assert(assumps.count(~l));
-            assumps.erase(~l);
+    /* verb_print(3, "[find-better-ctx] iteration " << i << " with " << ass.size() << " assumptions"); */
+    auto ret = s_ctx.solve();
+    assert(ret && "must be satisfiable");
+    verb_print(1, "optimum found: " << s_ctx.getCost());
+    for(const auto&l : assumps) {
+        if (s_ctx.getValue(l.var())+1) {
             verb_print(2, "had to erase y: " << ~l << " because it needs repair");
             needs_repair.insert(l.var());
         }
@@ -377,7 +384,11 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     assert(!needs_repair.empty());
 
     verb_print(1, "Finding better ctx DONE, needs_repair size now: " << needs_repair.size());
-    return s_ctx.get_model();
+    vector<lbool> better_ctx(cnf.nVars(), l_Undef);
+    for(const auto& v: to_define) {
+        better_ctx[v] = s_ctx.getValue(v+1) ? l_True : l_False;
+    }
+    return ctx;
 }
 
 
