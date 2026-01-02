@@ -913,19 +913,26 @@ public:
     std::set<uint32_t> get_dependent_vars_recursive(const aig_ptr& aig, uint32_t orig_v) const {
         assert(need_aig);
         std::set<uint32_t> dep;
+        std::map<uint32_t, std::set<uint32_t>> cache;
         AIG::get_dependent_vars(aig, dep, orig_v);
-        while(true) {
+        bool changed = true;
+        while(changed) {
+            changed = false;
             std::set<uint32_t> new_dep;
             for(const auto& v: dep) {
                 if (!defined(v)) new_dep.insert(v);
                 else {
                     std::set<uint32_t> sub_dep;
-                    AIG::get_dependent_vars(defs[v], sub_dep, v);
-                    assert(!sub_dep.count(v) && "Variable cannot depend on itself");
+                    if (cache.count(v)) sub_dep = cache.at(v);
+                    else {
+                        AIG::get_dependent_vars(defs[v], sub_dep, v);
+                        assert(!sub_dep.count(v) && "Variable cannot depend on itself");
+                        cache[v] = sub_dep;
+                    }
                     new_dep.insert(sub_dep.begin(), sub_dep.end());
                 }
             }
-            if (new_dep.size() == dep.size()) break;
+            if (new_dep != dep) changed = true;
             dep = new_dep;
         }
         assert(!dep.count(orig_v) && "Variable cannot depend on itself");
@@ -1031,6 +1038,17 @@ public:
                     }
                 }
                 if (!after_backward_round_synth && !only_orig_sampl) {
+                    std::cout << "ERROR: Found a variable in CNF, orig: " << o+1 << " new: " << n.var()+1
+                        << " that is defined in terms of non-orig-sampl-vars before backward round synth.";
+                    std::cout << std::endl << " in old: ";
+                    for(const auto& v: s) std::cout << v+1 << "( " << (orig_sampl_vars.count(v) ? "o" : "n") << " ) ";
+                    std::cout << std::endl << " in new: ";
+                    for(const auto& v: s) {
+                        auto it = orig_to_new_var.find(v);
+                        if (it == orig_to_new_var.end()) std::cout << "undef ";
+                        else std::cout << it->second.var()+1 << "( " << (orig_sampl_vars.count(v) ? "o" : "n") << " ) ";
+                    }
+                    std::cout << std::endl;
                     assert(false && "Before backward round synth, variables in CNF must be defined ONLY in terms of orig_sampl_vars");
                 }
             }

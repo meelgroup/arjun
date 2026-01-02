@@ -137,7 +137,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
         //Assumption filling -- assume everything in indep is the same
         assert(test_var != var_Undef);
 
-        input_vars.erase(test_var);
+        assert(!input_vars.count(test_var));
         assumptions.clear();
         uint32_t indic = var_to_indic[test_var];
         assumptions.push_back(Lit(test_var, false));
