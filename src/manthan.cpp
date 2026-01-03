@@ -185,6 +185,19 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         }
         auto better_ctx = find_better_ctx(ctx);
         for(const auto& y: to_define) if (!needs_repair.count(y)) ctx[y] = better_ctx[y];
+
+        cout << "c o [DEBUG] Needs repair vars: ";
+        for(const auto& v: needs_repair) cout << v+1 << " ";
+        cout << endl;
+        if (conf.verb >= 3) {
+            cout << "c o [DEBUG] after find_better_ctx, CNF valuation: ";
+            for(uint32_t i = 0; i < cnf.nVars(); i++)
+                cout << "var " << setw(3) << i+1 << ": " << pr(ctx[i]) << " -- ";
+            cout << endl;
+        }
+
+
+
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
         while(!needs_repair.empty()) {
@@ -262,7 +275,7 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
 
     vector<Lit> conflict;
     for(const auto&l : assumps) {
-        if (!repair_solver.getValue(lit_to_int(l))) conflict.push_back(l);
+        if (!repair_solver.getValue(lit_to_int(l))) conflict.push_back(~l);
     }
     assert(conflict.size() == repair_solver.getCost());
     verb_print(1, "repair conflict: " << conflict);
