@@ -168,7 +168,7 @@ int main(int argc, char** argv) {
     rnd_solver.set_up_for_sample_counter(100);
     auto sat = solver.solve();
     assert(sat != CMSat::l_Undef && "Solver returned undef on a CNF without assumptions");
-    if (sat != CMSat::l_False) {
+    if (sat == CMSat::l_False) {
         cout << "c [test-synth] WARNING: Original CNF is unsat! Returning." << endl;
         return EXIT_SUCCESS;
     }
