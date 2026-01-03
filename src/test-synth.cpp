@@ -87,12 +87,9 @@ vector<lbool> get_random_sol(SATSolver& solver) {
 void assert_sample_satisfying(const vector<lbool>& sample, SATSolver& solver) {
     assert(sample.size() == solver.nVars());
     vector<Lit> assumps;
+    assumps.reserve(sample.size());
     for (uint32_t v = 0; v < sample.size(); v++) {
-        if (sample[v] == l_True) {
-            assumps.push_back(Lit(v, false));
-        } else if (sample[v] == l_False) {
-            assumps.push_back(Lit(v, true));
-        }
+        assumps.push_back(Lit(v, sample[v] == l_False));
     }
     auto ret = solver.solve(&assumps);
     if (ret != l_True) {
