@@ -426,6 +426,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             exit(EXIT_FAILURE);
         }
 
+        uint32_t filled_defs = 0;
         for (uint32_t check = 0; check < 100; ++check) {
             auto ret = samp_s.solve();
             assert(ret == l_True);
@@ -435,9 +436,10 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             vector<CMSat::lbool> vals(defs.size(), l_Undef);
             for(const auto& l: orig_sampl_vars) vals[l] = model[l];
 
-            uint32_t filled_defs = 0;
             for(uint32_t v = 0; v < defs.size(); ++v) {
                 if (orig_sampl_vars.count(v)) continue;
+                if (defs[v] == nullptr) continue;
+
                 lbool eval_aig = evaluate(vals, v);
                 if (eval_aig == l_Undef) continue;
                 vals[v] = eval_aig;
@@ -448,9 +450,10 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
                 if (vals[v] != l_Undef) continue;
                 assumptions.push_back(Lit(v, vals[v] == l_False));
             }
-            auto ret2 = s.solve();
+            auto ret2 = s.solve(&assumptions);
             assert(ret2 == l_True);
         }
+        cout << "filled defs total: " << filled_defs << " checks: " << 100 << endl;
     }
 
     DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
@@ -861,7 +864,6 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         }
         return vals;
     }
-
 
     // Used after SBVA to replace clauses
     DLL_PUBLIC void SimplifiedCNF::replace_clauses_with(std::vector<int>& ret, uint32_t new_nvars, uint32_t new_nclauses) {

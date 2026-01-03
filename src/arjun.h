@@ -54,12 +54,18 @@ public:
 
     bool invariants() const {
         if (type == AIGT::t_lit) {
+            if (l != nullptr || r != nullptr) std::cout << "ERROR: AIG literal has children!" << std::endl;
+            if (var == none_var) std::cout << "ERROR: AIG var node doesn't have a var!" << std::endl;
             return l == nullptr && r == nullptr && var != none_var;
         }
         if (type == AIGT::t_const) {
+            if (l != nullptr || r != nullptr) std::cout << "ERROR: AIG const has children!" << std::endl;
+            if (var != none_var) std::cout << "ERROR: AIG const node has var!" << std::endl;
             return l == nullptr && r == nullptr && var == none_var;
         }
         if (type == AIGT::t_and) {
+            if (var != none_var) std::cout << "ERROR: AIG AND node has var!" << std::endl;
+            if (l == nullptr || r == nullptr) std::cout << "ERROR: AIG AND node missing children!" << std::endl;
             return l != nullptr && r != nullptr && var == none_var;
         }
         assert(false && "Unknown AIG type");
