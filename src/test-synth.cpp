@@ -177,6 +177,7 @@ int main(int argc, char** argv) {
     SimplifiedCNF cnf(fg);
     if (verb) cout << "c [test-synth] Reading AIG file: " << aig_fname << endl;
     cnf.read_aig_defs_from_file(aig_fname);
+    cnf.defs_invariant();
     if (verb) {
         cout << "c [test-synth] Successfully read AIG file" << endl;
         cout << "c [test-synth] Number of variables: " << cnf.nVars() << endl;
@@ -197,7 +198,7 @@ int main(int argc, char** argv) {
         for(const auto& var : orig_cnf.get_sampl_vars()) {
             restricted_sample[var] = sample[var];
         }
-        auto extended_sample = cnf.extend_sample(restricted_sample);
+        auto extended_sample = cnf.extend_sample(restricted_sample, true);
         assert_sample_satisfying(extended_sample, solver);
     }
 

@@ -846,6 +846,7 @@ public:
     // It is checked that it is correct and total
     std::tuple<std::set<uint32_t>, std::set<uint32_t>, std::set<uint32_t>> get_var_types([[maybe_unused]] uint32_t verb) const;
 
+    bool check_orig_sampl_vars_undefined() const;
     bool defs_invariant() const;
 
     // Get the orig vars this AIG depends on, recursively expanding defined vars
@@ -1066,7 +1067,7 @@ public:
     // Read AIG defs from file (opens file for you)
     void read_aig_defs_from_file(const std::string& fname);
 
-    std::vector<CMSat::lbool> extend_sample(const std::vector<CMSat::lbool>& sample) const;
+    std::vector<CMSat::lbool> extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed = false) const;
 
     void map_aigs_to_orig(std::map<uint32_t, std::shared_ptr<AIG>>& aigs, uint32_t max_num_vars);
 

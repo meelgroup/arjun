@@ -912,17 +912,16 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         in.close();
     }
 
-    DLL_PUBLIC std::vector<CMSat::lbool> SimplifiedCNF::extend_sample(const std::vector<CMSat::lbool>& sample) const {
+    DLL_PUBLIC std::vector<CMSat::lbool> SimplifiedCNF::extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed) const {
         assert(get_need_aig() && defs_invariant());
         assert(sample.size() == defs.size() && "Sample size must match number of variables");
+        assert(check_orig_sampl_vars_undefined());
 
         for(uint32_t v = 0; v < defs.size(); v++) {
             if (orig_sampl_vars.count(v)) {
-                assert(defs[v] == nullptr && "Original sampling variable cannot have definition");
                 assert(sample[v] != CMSat::l_Undef && "Original sampling variable must be defined in the sample");
-
             } else {
-                assert(defs[v] != nullptr && "Non-original sampling variable must have definition");
+                if (!relaxed) assert(defs[v] != nullptr && "Non-original sampling variable must have definition");
                 assert(sample[v] == CMSat::l_Undef && "Non-original sampling variable must be undefined in the sample");
             }
         }
@@ -1334,21 +1333,10 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         return ret;
     }
 
-    DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
-        check_cnf_sampl_sanity();
-
-        if (!need_aig) return true;
-        assert(orig_sampl_vars_set && "If need_aig, orig_sampl_vars_set must be set");
-        assert(sampl_vars_set);
-        assert(sampl_vars.size() == opt_sampl_vars.size());
-        assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
-
-
+    DLL_PUBLIC bool SimplifiedCNF::check_orig_sampl_vars_undefined() const {
         for(const auto& v: orig_sampl_vars) {
             if(defs[v] == nullptr) continue;
-            else if (defs[v]->type == AIGT::t_const) {
-                continue;
-            }
+            else if (defs[v]->type == AIGT::t_const) continue;
             else if (defs[v]->type == AIGT::t_lit) {
                 assert(orig_sampl_vars.count(defs[v]->var) && "If orig_sampl_var is defined to a literal, that literal must also be an orig_sampl_var");
                 continue;
@@ -1359,8 +1347,20 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
                     << defs[v] << std::endl;
                 assert(false);
             }
-
         }
+        return true;
+    }
+
+    DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
+        check_cnf_sampl_sanity();
+
+        if (!need_aig) return true;
+        assert(orig_sampl_vars_set && "If need_aig, orig_sampl_vars_set must be set");
+        assert(sampl_vars_set);
+        assert(sampl_vars.size() == opt_sampl_vars.size());
+        assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
+
+        check_orig_sampl_vars_undefined();
         check_pre_post_backward_round_synth();
         all_vars_accounted_for();
         check_self_dependency();
