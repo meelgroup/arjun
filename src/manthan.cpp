@@ -671,7 +671,7 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
             for(uint32_t i = 0; i < cnf.nVars(); i++) {
                 if (dependency_mat[v][i] == 1) {
                     // nothing that v depends on can depend on us
-                    verb_print(2, "ERROR. i: " << i+1 << " does not depend on us, because " << v+1 << " depends on it");
+                    /* verb_print(2, "ERROR. i: " << i+1 << " does not depend on us, because " << v+1 << " depends on it"); */
                     assert(dependency_mat[i][learned_v] == 0);
                 }
             }
