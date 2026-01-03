@@ -606,7 +606,6 @@ void Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
     cout << "c o [DEBUG] About to call recur for v " << v+1 << " num children: " << r.NumChildren() << endl;
     var_to_formula[v] = recur(&r, v, 0);
     cout << "c o [DEBUG] Formula for v " << v+1 << ":" << endl << var_to_formula[v] << endl;
-    exit(0);
 
     // Forward dependency update
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
