@@ -92,6 +92,7 @@ class Manthan {
         void inject_cnf(SATSolver& s);
         void inject_unit(SATSolver& s);
         bool repair(const uint32_t v, vector<lbool>& ctx);
+        bool repair_maxsat(const uint32_t v, vector<lbool>& ctx);
         void perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vector<Lit>& conflict);
         void add_not_F_x_yhat();
 

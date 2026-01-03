@@ -196,8 +196,6 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             cout << endl;
         }
 
-
-
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
         while(!needs_repair.empty()) {
@@ -227,8 +225,63 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     return cnf;
 }
 
-// ctx contains both y, and y_hat
 bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
+    // F(x,y) & x = ctx(x) && forall_y (y not dependent on v) (y = ctx(y)) & NOT (v = ctx(v))
+    // Used to find UNSAT core that will help us repair the function
+    SATSolver repair_solver;
+    inject_cnf(repair_solver);
+
+    vector<Lit> assumps; assumps.reserve(input.size());
+    for(const auto& x: input)
+        assumps.push_back(Lit(x, ctx[x] == l_False)); //correct value
+    for(const auto& y: y_order) {
+        if (y == y_rep) break;
+        assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen");
+        assert(ctx[y] == ctx[y_to_y_hat[y]]);
+        Lit l = Lit(y, ctx[y] == l_False);
+        verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
+        assumps.push_back({l});
+    }
+
+    Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
+    repair_solver.add_clause({~repairing}); //assume to wrong value
+    ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
+
+    verb_print(2, "adding to solver: " << ~repairing);
+    verb_print(2, "setting the to-be-repaired " << repairing << " to wrong.");
+    verb_print(3, "solving with assumps: " << assumps);
+    auto ret = repair_solver.solve(&assumps);
+    assert(ret != l_Undef);
+    if (ret == l_True) {
+        const auto& model = repair_solver.get_model();
+        if (conf.verb >= 3) {
+            for(uint32_t i = 0; i < cnf.nVars(); i++)
+                cout << "model i " << setw(5) << i+1 << " : " << model[i] << endl;
+        }
+        bool reached = false;
+        for(const auto&y: y_order) {
+            if (y == y_rep) {reached = true; continue;}
+            if (!reached) continue;
+            if (model[y] != ctx[y_to_y_hat[y]]) {
+                needs_repair.insert(y);
+            }
+        }
+        return false;
+    }
+    assert(ret == l_False);
+    auto conflict = repair_solver.get_conflict();
+    // TODO: further minimize this conflict, if possible
+    verb_print(2, "conflict: " << conflict);
+    if (conflict.empty()) {
+        verb_print(1, "repairing " << y_rep+1 << " is not possible");
+        return false;
+    }
+    perform_repair(y_rep, ctx, conflict);
+    return true;
+}
+
+// ctx contains both y, and y_hat
+bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
     // F(x,y) & x = ctx(x) && forall_y (y not dependent on v) (y = ctx(y)) & NOT (v = ctx(v))
     // Used to find UNSAT core that will help us repair the function
     EvalMaxSAT repair_solver;
@@ -307,7 +360,7 @@ void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vec
     f.out = fresh_l;
     // when fresh_l is false, confl is satisfied
     verb_print(4, "Original formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
-    verb_print(2, "Branch formula. When this is true, H is wrong:" << endl << f);
+    verb_print(4, "Branch formula. When this is true, H is wrong:" << endl << f);
     var_to_formula[y_rep] = fh->compose_ite(fh->constant_formula(ctx[y_rep] == l_True), var_to_formula[y_rep], f);
     verb_print(3, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
     verb_print(4, "repaired formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
@@ -506,7 +559,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     vector<Lit> assumptions;
     assumptions.reserve(y_hat_to_indic.size());
     for(const auto& i: y_hat_to_indic) assumptions.push_back(Lit(i.second, false));
-    verb_print(2, "assumptions: " << assumptions);
+    verb_print(4, "assumptions: " << assumptions);
 
 
     /* solver_train.set_up_for_sample_counter(1000); */
