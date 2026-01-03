@@ -187,18 +187,20 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         bool finished = get_counterexample(ctx);
         for(const auto& val: ctx) assert(val != l_Undef);
         if (finished) break;
-        for(const auto& y: to_define) {
-            const auto y_hat = y_to_y_hat[y];
-            if (ctx[y] == ctx[y_hat]) continue;
-            verb_print(3, "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
-                    << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]));
-        }
+
         if (conf.verb >= 3) {
+            for(const auto& y: to_define) {
+                const auto y_hat = y_to_y_hat[y];
+                if (ctx[y] == ctx[y_hat]) continue;
+                verb_print(3, "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
+                        << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]));
+            }
             cout << "c o [DEBUG] CNF valuation: ";
             for(uint32_t i = 0; i < cnf.nVars(); i++)
                 cout << "var " << setw(3) << i+1 << ": " << pr(ctx[i]) << " -- ";
             cout << endl;
         }
+
         auto better_ctx = find_better_ctx(ctx);
         for(const auto& y: to_define_full) if (!needs_repair.count(y)) ctx[y] = better_ctx[y];
 
@@ -304,7 +306,6 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
 
     vector<Lit> assumps; assumps.reserve(input.size());
     for(const auto& x: input) assumps.push_back(Lit(x, ctx[x] == l_False)); //correct value
-    for(const auto& x: backward_defined) assumps.push_back(Lit(x, ctx[x] == l_False)); //correct value
 
     for(const auto& y: y_order_full) {
         if (y == y_rep) break;
