@@ -67,24 +67,22 @@ public:
 
     Formula constant_formula(const bool value) {
         Formula ret;
-        if (solver) ret.out = value ? my_true_lit : ~my_true_lit;
+        ret.out = value ? my_true_lit : ~my_true_lit;
         ret.aig = aig_mng.new_const(value);
         return ret;
     }
 
     Formula compose_ite(const Formula& fleft, const Formula& fright, const Formula& branch) {
         Formula ret;
-        if (solver) {
-            ret = compose_ite(fleft, fright, branch.out);
-            ret.clauses.insert(ret.clauses.end(), branch.clauses.begin(), branch.clauses.end());
-        }
+        ret = compose_ite(fleft, fright, branch.out);
+        ret.clauses.insert(ret.clauses.end(), branch.clauses.begin(), branch.clauses.end());
         ret.aig = AIG::new_ite(fleft.aig, fright.aig, branch.aig);
         return ret;
     }
 
     Formula neg(const Formula& f) {
         Formula ret = f;
-        if (solver) ret.out = ~f.out;
+        ret.out = ~f.out;
         ret.aig = AIG::new_not(f.aig);
         return ret;
     }
@@ -95,51 +93,47 @@ public:
 
     Formula compose_or(const Formula& fleft, const Formula& fright) {
         Formula ret;
-        if (solver) {
-            ret.clauses = fleft.clauses;
-            for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
+        ret.clauses = fleft.clauses;
+        for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
 
-            solver->new_var();
-            uint32_t fresh_v = solver->nVars()-1;
-            Lit l = Lit(fresh_v, false);
+        solver->new_var();
+        uint32_t fresh_v = solver->nVars()-1;
+        Lit l = Lit(fresh_v, false);
 
-            ret.clauses.push_back({~l, fleft.out, fright.out});
-            ret.clauses.push_back({l, ~fleft.out});
-            ret.clauses.push_back({l, ~fright.out});
-            ret.out = l;
-        }
+        ret.clauses.push_back({~l, fleft.out, fright.out});
+        ret.clauses.push_back({l, ~fleft.out});
+        ret.clauses.push_back({l, ~fright.out});
+        ret.out = l;
         ret.aig = AIG::new_or(fleft.aig, fright.aig);
         return ret;
     }
 
     Formula compose_ite(const Formula& fleft, const Formula& fright, Lit branch) {
         Formula ret;
-        if (solver) {
-            ret.clauses = fleft.clauses;
-            for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
-            solver->new_var();
-            uint32_t fresh_v = solver->nVars()-1;
-            //  branch -> return left
-            // !branch -> return right
-            //
-            //  b -> fresh = left
-            // !b -> fresh = right
-            //
-            // !b V    f V -left
-            // -b V   -f V  left
-            //  b V    f V -right
-            //  b V   -f V  right
-            //
-            Lit b = branch;
-            Lit l = fleft.out;
-            Lit r = fright.out;
-            Lit fresh = Lit(fresh_v, false);
-            ret.clauses.push_back({~b, fresh, ~l});
-            ret.clauses.push_back({~b, ~fresh, l});
-            ret.clauses.push_back({b, fresh, ~r});
-            ret.clauses.push_back({b, ~fresh, r});
-            ret.out = Lit(fresh_v, false);
-        }
+        ret.clauses = fleft.clauses;
+        for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
+        solver->new_var();
+        uint32_t fresh_v = solver->nVars()-1;
+        //  branch -> return left
+        // !branch -> return right
+        //
+        //  b -> fresh = left
+        // !b -> fresh = right
+        //
+        // !b V    f V -left
+        // -b V   -f V  left
+        //  b V    f V -right
+        //  b V   -f V  right
+        //
+        Lit b = branch;
+        Lit l = fleft.out;
+        Lit r = fright.out;
+        Lit fresh = Lit(fresh_v, false);
+        ret.clauses.push_back({~b, fresh, ~l});
+        ret.clauses.push_back({~b, ~fresh, l});
+        ret.clauses.push_back({b, fresh, ~r});
+        ret.clauses.push_back({b, ~fresh, r});
+        ret.out = Lit(fresh_v, false);
         ret.aig = AIG::new_ite(fleft.aig, fright.aig, branch);
         return ret;
     }
