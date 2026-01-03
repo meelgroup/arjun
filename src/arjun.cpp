@@ -432,14 +432,15 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             auto model = samp_s.get_model();
 
             // fill in samp vars
-            vector<CMSat::lbool> vals(defs.size(), l_Undef);
-            for(const auto& l: orig_sampl_vars) vals[l] = model[l];
+            vector<CMSat::lbool> orig_vals(defs.size(), l_Undef);
+            for(const auto& l: orig_sampl_vars) orig_vals[l] = model[l];
+            auto vals = orig_vals;
 
             for(uint32_t v = 0; v < defs.size(); ++v) {
                 if (orig_sampl_vars.count(v)) continue;
                 if (defs[v] == nullptr) continue;
 
-                lbool eval_aig = evaluate(vals, v);
+                lbool eval_aig = evaluate(orig_vals, v);
                 if (eval_aig == l_Undef) continue;
                 /* cout << "[synth-debug] var: " << v+1 << " eval_aig: " << eval_aig << endl; */
                 vals[v] = eval_aig;
