@@ -124,20 +124,27 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 
     dependency_mat.resize(cnf.nVars());
     for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);
+
     auto backw_deps = cnf.compute_backw_dependencies();
     for(const auto& [backw_var, dep_set]: backw_deps) assert(backward_defined.count(backw_var) == 1);
     assert(backw_deps.size() == backward_defined.size());
+
     for(const auto& v: to_define) {
         assert(input.count(v) == 0);
         assert(backward_defined.count(v) == 0);
-        set<uint32_t> deps_for_var;
+        set<uint32_t> depends_on_v;
         for(const auto& [backw_var, dep_set]: backw_deps) {
-            if (dep_set.count(v)) deps_for_var.insert(backw_var);
+            // backw_var depends on dep_set
+            if (dep_set.count(v)) depends_on_v.insert(backw_var);
         }
-        for(const auto& d: deps_for_var) {
+        for(const auto& d: depends_on_v) {
             assert(input.count(d) == 0);
+            assert(to_define.count(d) == 0);
             dependency_mat[d][v] = 1;
-        }
+            // recursive update
+            for(uint32_t i = 0; i < cnf.nVars(); i++)
+                dependency_mat[d][i] |= dependency_mat[v][i];
+            }
     }
 
     // Sampling
@@ -436,30 +443,38 @@ void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vec
 void Manthan::fix_order() {
     verb_print(1, "[manthan] Fixing order...");
     vector<uint32_t> sorted;
-    sorted.reserve(to_define.size());
-    for(const auto& v: to_define) sorted.push_back(v);
+    set<uint32_t> full;
+    full.insert(to_define.begin(), to_define.end());
+    full.insert(backward_defined.begin(), backward_defined.end());
+
+    sorted.reserve(full.size());
+    for(const auto& v: full) sorted.push_back(v);
     sort_unknown(sorted, incidence);
 
     set<uint32_t> already_fixed;
     assert(y_order.empty());
-    while(already_fixed.size() != to_define.size()) {
+    while(already_fixed.size() != full.size()) {
         for(const auto& y: sorted) {
             if (already_fixed.count(y)) continue;
-            verb_print(2, "Trying to add " << y+1 << " to order...");
+            verb_print(3, "Trying to add " << y+1 << " to order. to_define: " << to_define.count(y)
+                    << " backward_defined: " << backward_defined.count(y));
 
             bool ok = true;
-            for(const auto& y2: to_define) {
+            for(const auto& y2: full) {
                 if (y == y2) continue;
                 if (dependency_mat[y][y2] == 0) continue;
                 if (dependency_mat[y][y2] == 1 && already_fixed.count(y2)) continue;
-                verb_print(2, "Bad due to y2: " << y2+1);
+                verb_print(3, "Bad due to y2: " << y2+1 << " to_define: " << to_define.count(y2)
+                        << " backward_defined: " << backward_defined.count(y2));
                 ok = false;
                 break;
             }
             if (!ok) continue;
-            verb_print(2, "Fixed order of " << y+1 << " to: " << y_order.size());
+            verb_print(2, "Fixed order of " << y+1 << " to: " << y_order.size()
+                    << " to_define: " << to_define.count(y)
+                    << " backward_defined: " << backward_defined.count(y) << " NOTE: backward_defined vars are not ACTUALLY added to y_order");
             already_fixed.insert(y);
-            y_order.push_back(y);
+            if (to_define.count(y)) y_order.push_back(y);
         }
     }
 }
