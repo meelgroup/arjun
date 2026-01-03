@@ -111,5 +111,4 @@ class Manthan {
             assert(val != l_Undef);
             return val == l_True;
         }
-        Lit true_lit = lit_Error;
 };

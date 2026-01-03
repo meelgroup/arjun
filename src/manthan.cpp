@@ -503,7 +503,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     if (ret == l_True) {
         verb_print(1, "Counterexample found");
         ctx = solver.get_model();
-        assert(ctx[true_lit.var()] == l_True);
+        assert(ctx[fh->get_true_lit().var()] == l_True);
         return false;
     } else {
         assert(ret == l_False);
