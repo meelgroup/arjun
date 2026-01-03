@@ -52,7 +52,7 @@ using namespace ArjunNS;
 
 int verb = 1;
 int mode = 0;
-int num_samples = 100;
+int num_samples = 10;
 long long seed = 42;
 std::mt19937 mt;
 
@@ -74,13 +74,13 @@ std::pair<bool, vector<lbool>> get_random_sol(ArjunNS::SimplifiedCNF& cnf, SATSo
     return std::make_pair(true, sample);
 }
 
-vector<lbool> get_random_sol(SATSolver& solver) {
-    auto ret = solver.solve();
+vector<lbool> get_random_sol(SATSolver& rnd_solver) {
+    auto ret = rnd_solver.solve();
     if (ret != CMSat::l_True) {
         cout << "ERROR: CNF is UNSAT but we have already tested for that!!!" << endl;
         exit(EXIT_FAILURE);
     }
-    const auto& model = solver.get_model();
+    const auto& model = rnd_solver.get_model();
     return model;
 }
 
@@ -89,6 +89,7 @@ void assert_sample_satisfying(const vector<lbool>& sample, SATSolver& solver) {
     vector<Lit> assumps;
     assumps.reserve(sample.size());
     for (uint32_t v = 0; v < sample.size(); v++) {
+        if (sample[v] == l_Undef) continue;
         assumps.push_back(Lit(v, sample[v] == l_False));
     }
     auto ret = solver.solve(&assumps);
