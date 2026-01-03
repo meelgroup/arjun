@@ -503,6 +503,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     if (ret == l_True) {
         verb_print(1, "Counterexample found");
         ctx = solver.get_model();
+        assert(ctx[true_lit.var()] == l_True);
         return false;
     } else {
         assert(ret == l_False);
@@ -520,7 +521,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
 FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth) {
     /* for(uint32_t i = 0; i < depth; i++) cout << " "; */
     if (node->NumChildren() == 0) {
-        uint32_t val = node->ClassProbabilities()[1] > node->ClassProbabilities()[0];
+        const bool val = node->ClassProbabilities()[1] > node->ClassProbabilities()[0];
         /* cout << "Leaf: "; */
         /* for(uint32_t i = 0; i < node->NumClasses(); i++) { */
         /*     cout << "class "<< i << " prob: " << node->ClassProbabilities()[i] << " --- "; */
@@ -589,9 +590,7 @@ void Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
         }
     }
     labels.resize(samples.size());
-    for(uint32_t i = 0; i < samples.size(); i++) {
-        labels[i] = lbool_to_bool(samples[i][v]);
-    }
+    for(uint32_t i = 0; i < samples.size(); i++) labels[i] = lbool_to_bool(samples[i][v]);
 
     // Create the RandomForest object and train it on the training data.
     DecisionTree<> r(dataset, labels, 2);
@@ -604,7 +603,10 @@ void Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
     verb_print(1, "Training error: " << train_error << "%." << " on v: " << v+1);
     /* r.serialize(cout, 1); */
 
+    cout << "c o [DEBUG] About to call recur for v " << v+1 << " num children: " << r.NumChildren() << endl;
     var_to_formula[v] = recur(&r, v, 0);
+    cout << "c o [DEBUG] Formula for v " << v+1 << ":" << endl << var_to_formula[v] << endl;
+    exit(0);
 
     // Forward dependency update
     for(uint32_t i = 0; i < cnf.nVars(); i++) {

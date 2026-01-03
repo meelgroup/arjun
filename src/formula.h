@@ -160,9 +160,7 @@ private:
 inline std::ostream& operator<<(std::ostream& os, const ArjunNS::FHolder::Formula& f) {
     os << " === Formula out: " << f.out << " === " << endl;
     for (const auto& cl : f.clauses) {
-        for (const auto& l : cl) {
-            os << std::setw(6) << l;
-        }
+        for (const auto& l : cl) os << std::setw(6) << l;
         cout << " 0" << endl;
     }
     os << " === End Formula === ";
