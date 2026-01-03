@@ -77,7 +77,7 @@ void Manthan::inject_cnf(SATSolver& s) {
     for(const auto& c: cnf.get_red_clauses()) s.add_red_clause(c);
 }
 
-vector<vector<lbool>> Manthan::get_samples(uint32_t num) {
+vector<vector<lbool>> Manthan::get_samples(const uint32_t num) {
     vector<vector<lbool>> solutions;
     SATSolver solver_samp;
     solver_samp.set_up_for_sample_counter(1000);
