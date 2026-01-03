@@ -414,7 +414,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         SATSolver s;
         samp_s.set_up_for_sample_counter(1000);
         samp_s.new_vars(defs.size());
-        s.new_vars(nvars);
+        s.new_vars(defs.size());
         for(const auto& cl: orig_clauses) {
             samp_s.add_clause(cl);
             s.add_clause(cl);
@@ -441,7 +441,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
 
                 lbool eval_aig = evaluate(vals, v);
                 if (eval_aig == l_Undef) continue;
-                cout << "[synth-debug] var: " << v+1 << " eval_aig: " << eval_aig << endl;
+                /* cout << "[synth-debug] var: " << v+1 << " eval_aig: " << eval_aig << endl; */
                 vals[v] = eval_aig;
                 filled_defs++;
             }
@@ -1239,7 +1239,15 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
     }
 
     DLL_PUBLIC CMSat::lbool SimplifiedCNF::evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var) const {
-        check_var(var);
+        assert(var < defs.size());
+        assert(vals.size() == defs.size());
+        for(uint32_t i = 0; i < vals.size(); i++) {
+            if (orig_sampl_vars.count(i)) {
+                assert(vals[i] != CMSat::l_Undef && "Original sampling variable must be defined in the sample");
+            } else {
+                assert(vals[i] == CMSat::l_Undef && "Non-original sampling variable must be undefined in the sample");
+            }
+        }
         if (defs[var] == nullptr) {
             std::cout << "ERROR: Variable " << var+1 << " not defined" << std::endl;
             assert(defs[var] != nullptr && "Must be defined");

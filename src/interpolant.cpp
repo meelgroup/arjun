@@ -107,7 +107,7 @@ void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int>
   } else {
       fs_clid[id] = aig_mng.new_const(true);
   }
-  verb_print(2, "intermediate formula: " << fs_clid[id]);
+  verb_print(5, "intermediate formula: " << fs_clid[id]);
 }
 
 void Interpolant::generate_interpolant(
