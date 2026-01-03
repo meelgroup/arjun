@@ -856,7 +856,6 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         in.close();
     }
 
-
     DLL_PUBLIC std::vector<CMSat::lbool> SimplifiedCNF::extend_sample(const std::vector<CMSat::lbool>& sample) const {
         assert(get_need_aig() && defs_invariant());
         assert(sample.size() == defs.size() && "Sample size must match number of variables");

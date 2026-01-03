@@ -171,18 +171,19 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         bool finished = get_counterexample(ctx);
         for(const auto& val: ctx) assert(val != l_Undef);
         if (finished) break;
-        for(const auto& y: to_define) {
-            const auto y_hat = y_to_y_hat[y];
-            if (ctx[y] == ctx[y_hat]) continue;
-            verb_print(3, "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
-                    << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]));
-        }
         if (conf.verb >= 3) {
+            for(const auto& y: to_define) {
+                const auto y_hat = y_to_y_hat[y];
+                if (ctx[y] == ctx[y_hat]) continue;
+                verb_print(3, "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
+                        << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]));
+            }
             cout << "c o [DEBUG] CNF valuation: ";
             for(uint32_t i = 0; i < cnf.nVars(); i++)
                 cout << "var " << setw(3) << i+1 << ": " << pr(ctx[i]) << " -- ";
             cout << endl;
         }
+
         auto better_ctx = find_better_ctx(ctx);
         for(const auto& y: to_define) if (!needs_repair.count(y)) ctx[y] = better_ctx[y];
 
@@ -735,9 +736,9 @@ void Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
     verb_print(1, "Training error: " << train_error << "%." << " on v: " << v+1);
     /* r.serialize(cout, 1); */
 
-    cout << "c o [DEBUG] About to call recur for v " << v+1 << " num children: " << r.NumChildren() << endl;
+    verb_print(2,"[DEBUG] About to call recur for v " << v+1 << " num children: " << r.NumChildren());
     var_to_formula[v] = recur(&r, v, 0);
-    cout << "c o [DEBUG] Formula for v " << v+1 << ":" << endl << var_to_formula[v] << endl;
+    verb_print(3,"[DEBUG] Formula for v " << v+1 << ":" << endl << var_to_formula[v]);
 
     // Forward dependency update
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
