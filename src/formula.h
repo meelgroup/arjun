@@ -104,11 +104,14 @@ public:
         ret.clauses.push_back({l, ~fleft.out});
         ret.clauses.push_back({l, ~fright.out});
         ret.out = l;
+
+        assert(fleft.aig != nullptr);
+        assert(fright.aig != nullptr);
         ret.aig = AIG::new_or(fleft.aig, fright.aig);
         return ret;
     }
 
-    Formula compose_ite(const Formula& fleft, const Formula& fright, Lit branch) {
+    Formula compose_ite(const Formula& fleft, const Formula& fright, const Lit branch) {
         Formula ret;
         ret.clauses = fleft.clauses;
         for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);

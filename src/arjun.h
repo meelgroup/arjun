@@ -139,11 +139,14 @@ public:
     }
 
     static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, CMSat::Lit b) {
-        auto b_aig = new_lit(b.var(), b.sign());
-        return new_or(new_and(b_aig, l), new_and(new_not(b_aig), r));
+        assert(l != nullptr);
+        assert(r != nullptr);
+        auto branch = new_lit(b.var(), b.sign());
+        return new_or(new_and(branch, l), new_and(new_not(branch), r));
     }
 
     static aig_ptr new_not(const aig_ptr& a) {
+        assert(a != nullptr);
         auto ret = std::make_shared<AIG>();
         ret->type = AIGT::t_and;
         ret->l = a;
@@ -154,6 +157,7 @@ public:
     }
 
     static aig_ptr new_and(const aig_ptr& l, const aig_ptr& r) {
+        assert(l != nullptr && r != nullptr);
         auto ret = std::make_shared<AIG>();
         ret->type = AIGT::t_and;
         ret->l = l;
@@ -162,6 +166,7 @@ public:
     }
 
     static aig_ptr new_or(const aig_ptr& l, const aig_ptr& r) {
+        assert(l != nullptr && r != nullptr);
         auto ret = std::make_shared<AIG>();
         ret->type = AIGT::t_and;
         ret->neg = true;
@@ -171,6 +176,9 @@ public:
     }
 
     static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, const aig_ptr& b) {
+        assert(l != nullptr);
+        assert(r != nullptr);
+        assert(b != nullptr);
         return AIG::new_or(AIG::new_and(b, l), AIG::new_and(AIG::new_not(b), r));
     }
 
