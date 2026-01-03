@@ -232,13 +232,14 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     inject_cnf(repair_solver);
 
     vector<Lit> assumps; assumps.reserve(input.size());
-    for(const auto& x: input)
-        assumps.push_back(Lit(x, ctx[x] == l_False)); //correct value
+    for(const auto& x: input) assumps.push_back(Lit(x, ctx[x] == l_False)); //correct value
+    for(const auto& x: backward_defined) assumps.push_back(Lit(x, ctx[x] == l_False)); // TODO is this needed?
+                                                                            //
     for(const auto& y: y_order) {
         if (y == y_rep) break;
         assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen");
         assert(ctx[y] == ctx[y_to_y_hat[y]]);
-        Lit l = Lit(y, ctx[y] == l_False);
+        const Lit l = Lit(y, ctx[y] == l_False);
         verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
         assumps.push_back({l});
     }
@@ -262,9 +263,7 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
         for(const auto&y: y_order) {
             if (y == y_rep) {reached = true; continue;}
             if (!reached) continue;
-            if (model[y] != ctx[y_to_y_hat[y]]) {
-                needs_repair.insert(y);
-            }
+            if (model[y] != ctx[y_to_y_hat[y]]) needs_repair.insert(y);
         }
         return false;
     }
@@ -276,6 +275,7 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
         verb_print(1, "repairing " << y_rep+1 << " is not possible");
         return false;
     }
+    cout << "c o Orig assumps size: " << assumps.size() << " conflict size: " << conflict.size() << endl;
     perform_repair(y_rep, ctx, conflict);
     return true;
 }
@@ -290,7 +290,7 @@ bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
 
     vector<Lit> assumps; assumps.reserve(input.size());
     for(const auto& x: input) assumps.push_back(Lit(x, ctx[x] == l_False));
-    for(const auto& x: backward_defined) assumps.push_back(Lit(x, ctx[x] == l_False));
+    for(const auto& x: backward_defined) assumps.push_back(Lit(x, ctx[x] == l_False)); // TODO is this needed?
 
     for(const auto& y: y_order) {
         if (y == y_rep) break;
@@ -310,6 +310,7 @@ bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
     verb_print(1, "solving with assumps: " << assumps);
 
     for(const auto& l: assumps) repair_solver.addClause(lits_to_ints({l}), 1);
+    cout << "c o Running MaxSAT repair for var " << y_rep+1 << " with " << assumps.size() << "soft clauses " << endl;
     auto ret = repair_solver.solve();
     if (!ret) {
         verb_print(1, "repairing " << y_rep+1 << " is not possible");
@@ -332,6 +333,7 @@ bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
     }
     assert(conflict.size() == repair_solver.getCost());
     verb_print(1, "repair conflict: " << conflict);
+    cout << "c o Orig assumps size: " << assumps.size() << " conflict size: " << conflict.size() << endl;
     perform_repair(y_rep, ctx, conflict);
     return true;
 }
