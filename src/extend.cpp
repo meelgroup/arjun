@@ -108,6 +108,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
         if (input_vars.count(i)) continue;
         unknown.push_back(i);
     }
+    if (unknown.empty()) return;
 
     sort_unknown(unknown, incidence);
     verb_print(1,"[arjun] Start unknown size: " << unknown.size());

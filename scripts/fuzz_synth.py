@@ -284,7 +284,7 @@ if __name__ == "__main__":
             if status != 0:
                 print("Failed fuzzer file generator call: ", call)
                 exit(-1)
-            print("Call for fuzz OK: %s" % (fname, call));
+            print("Call for fuzz OK: %s" % (call));
             os.unlink(aig)
         os.unlink(fname)
 
