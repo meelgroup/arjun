@@ -720,7 +720,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             auto node = std::make_shared<AIG>();
             uint32_t id;
             in.read((char*)&id, sizeof(id));
-            cout << "c o [aig-io] Reading AIG node id: " << id << endl;
+            /* cout << "c o [aig-io] Reading AIG node id: " << id << endl; */
             in.read((char*)&node->type, sizeof(node->type));
             in.read((char*)&node->var, sizeof(node->var));
             in.read((char*)&node->neg, sizeof(node->neg));
@@ -747,11 +747,11 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             uint32_t id;
             in.read((char*)&id, sizeof(id));
             if (id == UINT32_MAX) {
-                cout << "c o [aig-io] Reading def for var: " << i+1 << " aig id: UNDEF" << endl;
+                /* cout << "c o [aig-io] Reading def for var: " << i+1 << " aig id: UNDEF" << endl; */
                 defs[i] = nullptr;
                 continue;
             }
-            cout << "c o [aig-io] Reading def for var: " << i+1 << " aig id: " << id << endl;
+            /* cout << "c o [aig-io] Reading def for var: " << i+1 << " aig id: " << id << endl; */
             assert(id < num_nodes);
             assert(id_to_node[id] != nullptr);
             assert(id_to_node.size() > id);
@@ -845,7 +845,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
                 collect(aig->r);
             }
             order.push_back(id);
-            cout << "writing out AIG node id: " << id << " type: " << aig->type << endl;
+            /* cout << "writing out AIG node id: " << id << " type: " << aig->type << endl; */
         };
 
         for (const auto& aig : defs) collect(aig);
@@ -877,12 +877,12 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         for (const auto& aig : defs) {
             if (aig == nullptr) {
                 uint32_t id = UINT32_MAX;
-                cout << "c o [aig-io] Writing def aig id: UNDEF" << endl;
+                /* cout << "c o [aig-io] Writing def aig id: UNDEF" << endl; */
                 out.write((char*)&id, sizeof(id));
                 continue;
             }
             uint32_t id = node_to_id[aig.get()];
-            cout << "c o [aig-io] Writing def for var aig id: " << id << endl;
+            /* cout << "c o [aig-io] Writing def for var aig id: " << id << endl; */
             out.write((char*)&id, sizeof(id));
         }
         get_var_types(1);
