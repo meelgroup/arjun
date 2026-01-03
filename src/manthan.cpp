@@ -230,6 +230,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     }
     SimplifiedCNF fcnf = cnf;
     fcnf.map_aigs_to_orig(aigs, cnf.nVars());
+    assert(fcnf.get_need_aig() && fcnf.defs_invariant());
     return fcnf;
 }
 
