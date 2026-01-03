@@ -839,19 +839,27 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
 
 
     DLL_PUBLIC std::vector<CMSat::lbool> SimplifiedCNF::extend_sample(const std::vector<CMSat::lbool>& sample) const {
-        assert(sample.size() == nvars);
-        auto ext_sample(sample);
-        assert(sample.size() == nvars);
-        assert(need_aig && "AIG definitions must be present to extend samples");
-        for(uint32_t v = 0; v < nvars; v++) {
-            if (defs[v] == nullptr) continue;
-            assert(defs[v]->invariants());
-            assert(v < nvars);
-            CMSat::lbool val = AIG::evaluate(sample, defs[v], defs) ? CMSat::l_True : CMSat::l_False;
-            assert(sample[v] == CMSat::l_Undef && "Sample variable already assigned");
-            ext_sample[v] = val;
+        assert(get_need_aig() && defs_invariant());
+        assert(sample.size() == defs.size() && "Sample size must match number of variables");
+
+        for(uint32_t v = 0; v < defs.size(); v++) {
+            if (orig_sampl_vars.count(v)) {
+                assert(defs[v] == nullptr && "Original sampling variable cannot have definition");
+                assert(sample[v] != CMSat::l_Undef && "Original sampling variable must be defined in the sample");
+
+            } else {
+                assert(defs[v] != nullptr && "Non-original sampling variable must have definition");
+                assert(sample[v] == CMSat::l_Undef && "Non-original sampling variable must be undefined in the sample");
+            }
         }
-        return ext_sample;
+
+        auto vals(sample);
+        for(uint32_t v = 0; v < defs.size(); v++) {
+            if (defs[v] == nullptr) continue;
+            auto val = AIG::evaluate(sample, defs[v], defs);
+            vals[v] = val;
+        }
+        return vals;
     }
 
 
