@@ -645,7 +645,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         in.read((char*)&weighted, sizeof(weighted));
         in.read((char*)&sampl_vars_set, sizeof(sampl_vars_set));
         in.read((char*)&opt_sampl_vars_set, sizeof(opt_sampl_vars_set));
-        in.read((char*)&backbone_done, sizeof(backbone_done));
+        in.read((char*)&orig_sampl_vars_set, sizeof(orig_sampl_vars_set));
 
         // Read sampl_vars
         uint32_t sz;
@@ -712,11 +712,15 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         // Read AIGs
         uint32_t num_nodes;
         in.read((char*)&num_nodes, sizeof(num_nodes));
+        cout << "c o [aig-io] Reading " << num_nodes << " AIG nodes from file." << endl;
 
         // Read all nodes
-        std::vector<aig_ptr> id_to_node(num_nodes);
+        std::vector<aig_ptr> id_to_node(num_nodes, nullptr);
         for (uint32_t i = 0; i < num_nodes; i++) {
             auto node = std::make_shared<AIG>();
+            uint32_t id;
+            in.read((char*)&id, sizeof(id));
+            cout << "c o [aig-io] Reading AIG node id: " << id << endl;
             in.read((char*)&node->type, sizeof(node->type));
             in.read((char*)&node->var, sizeof(node->var));
             in.read((char*)&node->neg, sizeof(node->neg));
@@ -729,17 +733,28 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
                 node->l = id_to_node[lid];
                 node->r = id_to_node[rid];
             }
-            id_to_node[i] = node;
+            assert(id < num_nodes);
+            id_to_node[id] = node;
         }
 
         // Read defs map
         uint32_t num_defs;
         in.read((char*)&num_defs, sizeof(num_defs));
         defs.clear();
+        defs.resize(num_defs);
         for (uint32_t i = 0; i < num_defs; i++) {
-            uint32_t aig;
-            in.read((char*)&aig, sizeof(aig));
-            defs[i] = id_to_node[aig];
+            uint32_t id;
+            in.read((char*)&id, sizeof(id));
+            if (id == UINT32_MAX) {
+                cout << "c o [aig-io] Reading def for var: " << i+1 << " aig id: UNDEF" << endl;
+                defs.push_back(nullptr);
+                continue;
+            }
+            cout << "c o [aig-io] Reading def for var: " << i+1 << " aig id: " << id << endl;
+            assert(id < num_nodes);
+            assert(id_to_node[id] != nullptr);
+            assert(id_to_node.size() > id);
+            defs[i] = id_to_node[id];
         }
     }
 
@@ -755,7 +770,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         out.write((char*)&weighted, sizeof(weighted));
         out.write((char*)&sampl_vars_set, sizeof(sampl_vars_set));
         out.write((char*)&opt_sampl_vars_set, sizeof(opt_sampl_vars_set));
-        out.write((char*)&backbone_done, sizeof(backbone_done));
+        out.write((char*)&orig_sampl_vars_set, sizeof(orig_sampl_vars_set));
 
         // Write sampl_vars
         uint32_t sz = sampl_vars.size();
@@ -813,27 +828,34 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
 
         // 1. Collect all unique AIG nodes by traversing the DAG
         std::map<AIG*, uint32_t> node_to_id;
-        std::vector<AIG*> id_to_node;
+        std::map<uint32_t, AIG*> id_to_node;
         uint32_t next_id = 0;
+        std::vector<uint32_t> order;
 
         std::function<void(const aig_ptr&)> collect = [&](const aig_ptr& aig) {
             if (!aig || node_to_id.count(aig.get())) return;
-            node_to_id[aig.get()] = next_id++;
-            id_to_node.push_back(aig.get());
+            uint32_t id = next_id++;
+            node_to_id[aig.get()] = id;
+            id_to_node[id] = aig.get();
             if (aig->type == AIGT::t_and) {
                 collect(aig->l);
                 collect(aig->r);
             }
+            order.push_back(id);
+            cout << "writing out AIG node id: " << id << " type: " << aig->type << endl;
         };
 
         for (const auto& aig : defs) collect(aig);
 
         // 2. Write number of nodes
         uint32_t num_nodes = id_to_node.size();
+        cout << "c o [aig-io] Writing " << num_nodes << " AIG nodes to file." << endl;
         out.write((char*)&num_nodes, sizeof(num_nodes));
 
         // 3. Write each node (postorder: children before parents)
-        for (AIG* node : id_to_node) {
+        for (auto id : order) {
+            AIG* node = id_to_node[id];
+            out.write((char*)&id, sizeof(id));
             out.write((char*)&node->type, sizeof(node->type));
             out.write((char*)&node->var, sizeof(node->var));
             out.write((char*)&node->neg, sizeof(node->neg));
@@ -849,8 +871,15 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         uint32_t num_defs = defs.size();
         out.write((char*)&num_defs, sizeof(num_defs));
         for (const auto& aig : defs) {
-            uint32_t aid = node_to_id[aig.get()];
-            out.write((char*)&aid, sizeof(aid));
+            if (aig == nullptr) {
+                uint32_t id = UINT32_MAX;
+                cout << "c o [aig-io] Writing def aig id: UNDEF" << endl;
+                out.write((char*)&id, sizeof(id));
+                continue;
+            }
+            uint32_t id = node_to_id[aig.get()];
+            cout << "c o [aig-io] Writing def for var aig id: " << id << endl;
+            out.write((char*)&id, sizeof(id));
         }
     }
 

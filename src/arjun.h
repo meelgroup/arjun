@@ -23,6 +23,7 @@ THE SOFTWARE.
 #pragma once
 
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -45,6 +46,15 @@ class SimplifiedCNF;
 using aig_ptr = std::shared_ptr<AIG>;
 
 enum class AIGT {t_and, t_lit, t_const};
+inline std::ostream& operator<<(std::ostream& os, const AIGT& value) {
+    switch (value) {
+        case AIGT::t_and:  return os << "t_and";
+        case AIGT::t_lit:  return os << "t_lit";
+        case AIGT::t_const: return os << "t_const";
+        default: assert(false && "Unknown AIGT"); exit(EXIT_FAILURE);
+    }
+}
+
 class AIG {
 public:
     AIG() = default;

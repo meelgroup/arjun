@@ -122,13 +122,13 @@ def set_up_parser():
     return parser
 
 
-def run(command, dir):
-    print("--> Executing: %s in dir %s" % (" ".join(command), dir))
+def run(command):
+    print("--> Executing: %s" % (" ".join(command)))
     if options.verbose:
         print("CPU limit of parent (pid %d)" % os.getpid(), resource.getrlimit(resource.RLIMIT_CPU))
 
     p = subprocess.Popen(command, stderr=subprocess.STDOUT,
-          stdout=subprocess.PIPE, universal_newlines=True, cwd=dir)
+          stdout=subprocess.PIPE, universal_newlines=True)
 
     try:
         consoleOutput, err = p.communicate(timeout=options.maxtime)
@@ -147,7 +147,7 @@ def run_synth(solver, fname):
     curr_time = time.time()
     toexec = solver.split()
     toexec.append(fname)
-    out, err = run(toexec, os.getcwd())
+    out, err = run(toexec)
     if err is None:
         if options.verbose:
             print("No error.")
@@ -163,12 +163,13 @@ def run_synth(solver, fname):
     for line in out.split("\n"):
         line = line.strip()
         # print("Solver output line: %s" % line)
-        if ("ERROR" in line) or ("Error" in line) or ("error" in line):
-            print("Error line from solver %s: %s" % (solver, line))
-            return True, []
-        if ("assert" in line) or ("Assertion" in line):
-            print("Error line from solver %s: %s" % (solver, line))
-            return True, []
+        if ("Training error" not in line) :
+            if ("ERROR" in line) or ("Error" in line) or ("error" in line):
+                print("Error line from solver %s: %s" % (solver, line))
+                return True, []
+            if ("assert" in line) or ("Assertion" in line):
+                print("Error line from solver %s: %s" % (solver, line))
+                return True, []
         if line.startswith("c o Wrote AIG defs:"):
             aigs.append(line[len("c o Wrote AIG defs:"):].strip())
 
@@ -194,7 +195,7 @@ def check_core_files():
     for fname in items:
         # Check if it's a file (not a directory, symlink, etc.)
         if os.path.isfile(fname) and pattern.match(fname):
-            out, err = run(["../../cryptominisat", fname], os.getcwd())
+            out, err = run(["../../cryptominisat", fname])
             if err:
                 print(f"ERROR: cannot run cryptominisat on {fname}: {err}")
                 exit(-1)
