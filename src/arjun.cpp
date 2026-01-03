@@ -740,6 +740,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         // Read defs map
         uint32_t num_defs;
         in.read((char*)&num_defs, sizeof(num_defs));
+        cout << "c o [aig-io] Reading " << num_defs << " AIG defs from file." << endl;
         defs.clear();
         defs.resize(num_defs);
         for (uint32_t i = 0; i < num_defs; i++) {
@@ -747,15 +748,17 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             in.read((char*)&id, sizeof(id));
             if (id == UINT32_MAX) {
                 cout << "c o [aig-io] Reading def for var: " << i+1 << " aig id: UNDEF" << endl;
-                defs.push_back(nullptr);
+                defs[i] = nullptr;
                 continue;
             }
             cout << "c o [aig-io] Reading def for var: " << i+1 << " aig id: " << id << endl;
             assert(id < num_nodes);
             assert(id_to_node[id] != nullptr);
             assert(id_to_node.size() > id);
+            assert(i < num_defs);
             defs[i] = id_to_node[id];
         }
+        get_var_types(1);
     }
 
 
@@ -870,6 +873,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         // 4. Write defs map
         uint32_t num_defs = defs.size();
         out.write((char*)&num_defs, sizeof(num_defs));
+        cout << "c o [aig-io] Writing " << num_defs << " AIG defs to file." << endl;
         for (const auto& aig : defs) {
             if (aig == nullptr) {
                 uint32_t id = UINT32_MAX;
@@ -881,6 +885,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             cout << "c o [aig-io] Writing def for var aig id: " << id << endl;
             out.write((char*)&id, sizeof(id));
         }
+        get_var_types(1);
     }
 
 
