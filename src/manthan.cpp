@@ -220,9 +220,17 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         verb_print(1, "Num repaired: " << num_repaired << " tot repaired: " << tot_repaired);
     }
     verb_print(1, "DONE");
-    exit(0);
 
-    return cnf;
+    // Build final CNF
+    map<uint32_t, aig_ptr> aigs;
+    for(const auto& y: to_define) {
+        assert(var_to_formula.count(y));
+        verb_print(2, "Final formula for " << y+1 << ":" << endl << var_to_formula[y]);
+        aigs[y] = var_to_formula[y].aig;
+    }
+    SimplifiedCNF fcnf = cnf;
+    fcnf.map_aigs_to_orig(aigs, cnf.nVars());
+    return fcnf;
 }
 
 vector<Lit> Manthan::further_minimize_conflict_via_maxsat(const vector<Lit>& conflict, const vector<Lit>& assumps, const Lit& repairing) {
