@@ -645,6 +645,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         in.read((char*)&weighted, sizeof(weighted));
         in.read((char*)&sampl_vars_set, sizeof(sampl_vars_set));
         in.read((char*)&opt_sampl_vars_set, sizeof(opt_sampl_vars_set));
+        in.read((char*)&backbone_done, sizeof(backbone_done));
 
         // Read sampl_vars
         uint32_t sz;
@@ -754,6 +755,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         out.write((char*)&weighted, sizeof(weighted));
         out.write((char*)&sampl_vars_set, sizeof(sampl_vars_set));
         out.write((char*)&opt_sampl_vars_set, sizeof(opt_sampl_vars_set));
+        out.write((char*)&backbone_done, sizeof(backbone_done));
 
         // Write sampl_vars
         uint32_t sz = sampl_vars.size();
