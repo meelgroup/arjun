@@ -244,13 +244,13 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
         assumps.push_back({l});
     }
 
-    Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
+    const Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
     repair_solver.add_clause({~repairing}); //assume to wrong value
     ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
 
     verb_print(2, "adding to solver: " << ~repairing);
     verb_print(2, "setting the to-be-repaired " << repairing << " to wrong.");
-    verb_print(3, "solving with assumps: " << assumps);
+    verb_print(5, "solving with assumps: " << assumps);
     auto ret = repair_solver.solve(&assumps);
     assert(ret != l_Undef);
     if (ret == l_True) {
@@ -269,8 +269,7 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     }
     assert(ret == l_False);
     auto conflict = repair_solver.get_conflict();
-    // TODO: further minimize this conflict, if possible
-    verb_print(2, "conflict: " << conflict);
+    verb_print(2, "initial conflict: " << conflict);
     if (conflict.empty()) {
         verb_print(1, "repairing " << y_rep+1 << " is not possible");
         return false;
@@ -307,7 +306,7 @@ bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
 
     verb_print(1, "adding to solver: " << ~repairing);
     verb_print(2, "setting the to-be-repaired " << repairing << " to wrong.");
-    verb_print(1, "solving with assumps: " << assumps);
+    verb_print(5, "solving with assumps: " << assumps);
 
     for(const auto& l: assumps) repair_solver.addClause(lits_to_ints({l}), 1);
     cout << "c o Running MaxSAT repair for var " << y_rep+1 << " with " << assumps.size() << "soft clauses " << endl;
