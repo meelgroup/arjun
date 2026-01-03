@@ -214,8 +214,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             cout << endl;
         }
 
-        assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
+        assert(!needs_repair.empty());
         while(!needs_repair.empty()) {
             uint32_t y = std::numeric_limits<uint32_t>::max();
             for(const auto& t: y_order) {
@@ -223,10 +223,6 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
                     y = t;
                     break;
                 }
-            }
-            if (y == std::numeric_limits<uint32_t>::max()) {
-                cout << "backward would need repair, skipping" << endl;
-                continue;
             }
             assert(y != std::numeric_limits<uint32_t>::max());
             needs_repair.erase(y);
@@ -237,7 +233,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
                 num_repaired++;
                 tot_repaired++;
             }
-            verb_print(3, "finished repairing " << y+1 << " : " << std::boolalpha << done);
+            verb_print(2, "finished repairing " << y+1 << " : " << std::boolalpha << done);
         }
         verb_print(1, "Num repaired: " << num_repaired << " tot repaired: " << tot_repaired);
     }
@@ -310,7 +306,7 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     for(const auto& y: y_order_full) {
         if (y == y_rep) break;
         assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen");
-        if (!backward_defined.count(y)) assert(ctx[y] == ctx[y_to_y_hat[y]]);
+        assert(ctx[y] == ctx[y_to_y_hat[y]]);
         const Lit l = Lit(y, ctx[y] == l_False);
         verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
         assumps.push_back({l});
@@ -332,10 +328,13 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
                 cout << "model i " << setw(5) << i+1 << " : " << model[i] << endl;
         }
         bool reached = false;
-        for(const auto&y: y_order) {
+        for(const auto&y: y_order_full) {
             if (y == y_rep) {reached = true; continue;}
             if (!reached) continue;
-            if (model[y] != ctx[y_to_y_hat[y]]) needs_repair.insert(y);
+            if (model[y] != ctx[y_to_y_hat[y]]) {
+                verb_print(2, "Due to repairing " << y_rep+1 << ", also need to repair " << y+1);
+                needs_repair.insert(y);
+            }
         }
         return false;
     }
@@ -478,8 +477,8 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     verb_print(1, "optimum found: " << s_ctx.getCost() << " original assumps size: " << assumps.size());
     assert(s_ctx.getCost() > 0);
     for(const auto&l : assumps) {
-        if (s_ctx.getValue(l.var()+1) ^ !l.sign()) {
-            verb_print(1, "had to erase y: " << ~l << " because it needs repair");
+        if (s_ctx.getValue(l.var()+1) ^ !l.sign() && !backward_defined.count(l.var())) {
+            verb_print(1, "y: " << ~l << " needs repair");
             needs_repair.insert(l.var());
         }
     }
