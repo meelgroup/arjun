@@ -69,31 +69,41 @@ public:
     // vals = input variable assignments
     // aig = AIG to evaluate
     // defs = known definitions of variables
-    static bool evaluate(const std::vector<CMSat::lbool>& vals, const aig_ptr& aig, const std::vector<aig_ptr>& defs) {
-        assert(aig->invariants());
-        if (aig->type == AIGT::t_lit) {
-            if (defs[aig->var] != nullptr) {
-                // TODO: this is highly inefficient, because this should be cached
-                assert(vals.size() < aig->var || vals[aig->var] == CMSat::l_Undef); // Must not be part of input
-                return aig->neg ^ evaluate(vals, defs.at(aig->var), defs);
-            } else {
-                assert(aig->var < vals.size());
-                assert(vals[aig->var] != CMSat::l_Undef);
-                bool ret = vals[aig->var] == CMSat::l_True;
-                ret ^= aig->neg;
+    static bool evaluate(const std::vector<CMSat::lbool>& vals, const aig_ptr& a, const std::vector<aig_ptr>& defs) {
+        std::map<aig_ptr, bool> cache;
+
+        std::function<bool(const aig_ptr&)> sub_eval = [&](const aig_ptr& aig) -> bool {
+            if (cache.count(aig)) return cache.at(aig);
+            assert(aig->invariants());
+            if (aig->type == AIGT::t_lit) {
+                if (defs[aig->var] != nullptr) {
+                    assert(aig->var < defs.size());
+                    assert(vals[aig->var] == CMSat::l_Undef);
+                    bool ret = aig->neg ^ sub_eval(defs.at(aig->var));
+                    cache[aig] = ret;
+                    return ret;
+                } else {
+                    assert(aig->var < vals.size());
+                    assert(vals[aig->var] != CMSat::l_Undef);
+                    bool ret = vals[aig->var] == CMSat::l_True;
+                    ret ^= aig->neg;
+                    cache[aig] = ret;
+                    return ret;
+                }
+            }
+
+            if (aig->type == AIGT::t_const) return aig->neg == false;
+
+            if (aig->type == AIGT::t_and) {
+                const bool l = sub_eval(aig->l);
+                const bool r = sub_eval(aig->r);
+                bool ret = aig->neg ^ (l && r);
+                cache[aig] = ret;
                 return ret;
             }
-        }
-
-        if (aig->type == AIGT::t_const) return aig->neg == false;
-
-        if (aig->type == AIGT::t_and) {
-            const bool l = evaluate(vals, aig->l, defs);
-            const bool r = evaluate(vals, aig->r, defs);
-            return aig->neg ^ (l && r);
-        }
-        assert(false && "Unknown AIG type");
-        exit(EXIT_FAILURE);
+            assert(false && "Unknown AIG type");
+        };
+        return sub_eval(a);
     }
 
     static aig_ptr new_lit(CMSat::Lit l) {
