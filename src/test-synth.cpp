@@ -139,8 +139,8 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    string cnf_fname = files[0];
-    string aig_fname = files[1];
+    const string cnf_fname = files[0];
+    const string aig_fname = files[1];
 
     // Create field generator
     unique_ptr<CMSat::FieldGen> fg;
