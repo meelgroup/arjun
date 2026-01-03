@@ -53,7 +53,7 @@ using namespace ArjunNS;
 int verb = 1;
 int mode = 0;
 int num_samples = 100;
-int seed = 42;
+long long seed = 42;
 std::mt19937 mt;
 
 void fill_solver_from_cnf(ArjunNS::SimplifiedCNF& cnf, SATSolver& solver) {
@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
     myopt2("-v", "--verb", verb, atoi, "Verbosity");
     myopt2("-m", "--mode", mode, atoi, "Field mode (0=FGenMpz, 1=FGenMpq)");
     myopt("--samples", num_samples, atoi, "Number of samples");
-    myopt2("-s", "--seed", seed, atoi, "Random seed");
+    myopt2("-s", "--seed", seed, atoll, "Random seed");
 
     // Add positional argument for input file
     program.add_argument("files").remaining().help("input AIG file");
@@ -139,8 +139,8 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    string aig_fname = files[0];
-    string cnf_fname = files[1];
+    string cnf_fname = files[0];
+    string aig_fname = files[1];
 
     // Create field generator
     unique_ptr<CMSat::FieldGen> fg;
