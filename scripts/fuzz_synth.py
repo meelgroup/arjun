@@ -296,7 +296,14 @@ if __name__ == "__main__":
             print("Generated file %s is not UNSAT, skipping synthesis" % fname)
             continue
         # solver = "./arjun --synth --debugsynth --verb 1"
-        solver = "./arjun --verb 2 --synth --synthbve 1 --extend 1 --minimize 0 --debugsynth --samples 10000"
+        solvers = [
+            "./arjun --verb 2 --synth --synthbve 1 --extend 1 --minimize 0 --debugsynth --samples 10000",
+            "./arjun --verb 2 --synth --synthbve 1 --extend 0 --minimize 0 --debugsynth --samples 1",
+            "./arjun --verb 2 --synth --synthbve 0 --extend 1 --minimize 0 --debugsynth --samples 1",
+            "./arjun --verb 2 --synth --synthbve 0 --extend 0 --minimize 0 --debugsynth --samples 1",
+            "./arjun --verb 2 --synth --synthbve 0 --extend 0 --minimize 0 --debugsynth --samples 10000",
+        ]
+        solver = random.choice(solvers)
         err, aigs = run_synth(solver, fname)
         if err:
             print("Synthesis failed on file %s" % fname)
