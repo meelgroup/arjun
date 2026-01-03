@@ -409,6 +409,50 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         }
     }
 
+    DLL_PUBLIC void SimplifiedCNF::random_check_synth_funs() const {
+        std::mt19937 rng(42);
+        std::uniform_int_distribution<uint32_t> dist(0, nvars - 1);
+        SATSolver samp_s;
+        SATSolver s;
+        samp_s.set_up_for_sample_counter(1000);
+        samp_s.new_vars(defs.size());
+        s.new_vars(nvars);
+        for(const auto& cl: orig_clauses) {
+            samp_s.add_clause(cl);
+            s.add_clause(cl);
+        }
+        if (samp_s.solve() == l_False) {
+            std::cout << "ERROR: c o [synth-debug] unsat cnf in random_check_synth_funs" << std::endl;
+            exit(EXIT_FAILURE);
+        }
+
+        for (uint32_t check = 0; check < 100; ++check) {
+            auto ret = samp_s.solve();
+            assert(ret == l_True);
+            auto model = samp_s.get_model();
+
+            // fill in samp vars
+            vector<CMSat::lbool> vals(defs.size(), l_Undef);
+            for(const auto& l: orig_sampl_vars) vals[l] = model[l];
+
+            uint32_t filled_defs = 0;
+            for(uint32_t v = 0; v < defs.size(); ++v) {
+                if (orig_sampl_vars.count(v)) continue;
+                lbool eval_aig = evaluate(vals, v);
+                if (eval_aig == l_Undef) continue;
+                vals[v] = eval_aig;
+                filled_defs++;
+            }
+            vector<Lit> assumptions;
+            for(uint32_t v = 0; v < defs.size(); ++v) {
+                if (vals[v] != l_Undef) continue;
+                assumptions.push_back(Lit(v, vals[v] == l_False));
+            }
+            auto ret2 = s.solve();
+            assert(ret2 == l_True);
+        }
+    }
+
     DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
             std::unique_ptr<CMSat::SATSolver>& solver,
             const std::vector<uint32_t>& new_sampl_vars,
@@ -1181,7 +1225,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         return std::make_tuple(input, to_define, backw_synth_defined_vars);
     }
 
-    DLL_PUBLIC bool SimplifiedCNF::evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var) const {
+    DLL_PUBLIC CMSat::lbool SimplifiedCNF::evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var) const {
         check_var(var);
         if (defs[var] == nullptr) {
             std::cout << "ERROR: Variable " << var+1 << " not defined" << std::endl;
@@ -1231,7 +1275,8 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         check_pre_post_backward_round_synth();
         all_vars_accounted_for();
         check_self_dependency();
-        get_var_types(0); // just to check assertions inside
+        get_var_types(0);
+        random_check_synth_funs();
         return true;
     }
 

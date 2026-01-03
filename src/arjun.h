@@ -69,35 +69,49 @@ public:
     // vals = input variable assignments
     // aig = AIG to evaluate
     // defs = known definitions of variables
-    static bool evaluate(const std::vector<CMSat::lbool>& vals, const aig_ptr& a, const std::vector<aig_ptr>& defs) {
-        std::map<aig_ptr, bool> cache;
+    static CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, const aig_ptr& a, const std::vector<aig_ptr>& defs) {
+        std::map<aig_ptr, CMSat::lbool> cache;
 
-        std::function<bool(const aig_ptr&)> sub_eval = [&](const aig_ptr& aig) -> bool {
+        std::function<CMSat::lbool(const aig_ptr&)> sub_eval = [&](const aig_ptr& aig) -> CMSat::lbool {
             if (cache.count(aig)) return cache.at(aig);
             assert(aig->invariants());
             if (aig->type == AIGT::t_lit) {
                 if (defs[aig->var] != nullptr) {
-                    assert(aig->var < defs.size());
-                    assert(vals[aig->var] == CMSat::l_Undef);
-                    bool ret = aig->neg ^ sub_eval(defs.at(aig->var));
+                    auto ret = sub_eval(defs.at(aig->var));
+                    if (ret == CMSat::l_Undef) {
+                        cache[aig] = CMSat::l_Undef;
+                        return CMSat::l_Undef;
+                    }
+                    ret = ret ^ aig->neg;
                     cache[aig] = ret;
                     return ret;
                 } else {
                     assert(aig->var < vals.size());
-                    assert(vals[aig->var] != CMSat::l_Undef);
-                    bool ret = vals[aig->var] == CMSat::l_True;
-                    ret ^= aig->neg;
+                    auto ret = vals[aig->var];
+                    if (ret == CMSat::l_Undef) {
+                        cache[aig] = CMSat::l_Undef;
+                        return CMSat::l_Undef;
+                    }
+                    ret = ret ^ aig->neg;
                     cache[aig] = ret;
                     return ret;
                 }
             }
 
-            if (aig->type == AIGT::t_const) return aig->neg == false;
+            if (aig->type == AIGT::t_const) return CMSat::boolToLBool(!aig->neg);
 
             if (aig->type == AIGT::t_and) {
-                const bool l = sub_eval(aig->l);
-                const bool r = sub_eval(aig->r);
-                bool ret = aig->neg ^ (l && r);
+                const auto l = sub_eval(aig->l);
+                if (l == CMSat::l_Undef) {
+                    cache[aig] = CMSat::l_Undef;
+                    return CMSat::l_Undef;
+                }
+                const auto r = sub_eval(aig->r);
+                if (r == CMSat::l_Undef) {
+                    cache[aig] = CMSat::l_Undef;
+                    return CMSat::l_Undef;
+                }
+                auto ret = (l && r) ^ aig->neg;
                 cache[aig] = ret;
                 return ret;
             }
@@ -1008,7 +1022,7 @@ public:
             const std::vector<uint32_t> new_sampl_vars,
             const std::vector<uint32_t>& empty_sampling_vars);
 
-    bool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var) const;
+    CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var) const;
     std::set<uint32_t> get_vars_need_definition() const;
     bool aig_contains(const aig_ptr& aig, const uint32_t v) const;
 
@@ -1112,9 +1126,10 @@ private:
     std::vector<aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space. Size is the
                                //original number of variables.
 
-    // debug
+    void random_check_synth_funs() const;
     bool orig_sampl_vars_set = false;
     std::set<uint32_t> orig_sampl_vars;
+    // debug
     std::vector<std::vector<CMSat::Lit>> orig_clauses;
 };
 
