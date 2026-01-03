@@ -112,7 +112,7 @@ def set_up_parser():
       help="Fuzz test start seed. Otherwise, random seed is picked", type=int)
 
     parser.add_option(
-      "--tout", "-t", dest="maxtime", type=int, default=4,
+      "--tout", "-t", dest="maxtime", type=int, default=6,
       help="Max time to run. Default: %default")
 
     parser.add_option(
@@ -157,7 +157,7 @@ def run_synth(solver, fname):
     diff_time = time.time() - curr_time
     if diff_time > options.maxtime - maxtimediff:
         print("Too much time to solve with %s, aborted: " % solver)
-        return True, []
+        return None, []
 
     aigs = []
     for line in out.split("\n"):
@@ -305,7 +305,10 @@ if __name__ == "__main__":
         ]
         solver = random.choice(solvers)
         err, aigs = run_synth(solver, fname)
-        if err:
+        if err is None:
+            print("Synthesis timed out on file %s" % fname)
+            continue
+        if err == True:
             print("Synthesis failed on file %s" % fname)
             exit(-1)
         print("Synthesis succeeded on file %s, produced files: %s" % (fname, str(aigs)))

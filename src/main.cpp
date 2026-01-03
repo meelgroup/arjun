@@ -267,23 +267,23 @@ void do_synthesis() {
         if (do_synth_bve) {
             /* simp_conf.bve_too_large_resolvent = -1; */
             cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
-            if (conf.do_debug_synth) cnf.write_aig_defs_to_file("simplified_cnf.aig");
+            if (conf.do_debug_synth) cnf.write_aig_defs_to_file("1-simplified_cnf.aig");
         }
         if (etof_conf.do_extend_indep) {
             arjun->standalone_unsat_define(cnf);
-            if (conf.do_debug_synth) cnf.write_aig_defs_to_file("unsat_define.aig");
+            if (conf.do_debug_synth) cnf.write_aig_defs_to_file("2-unsat_define.aig");
         }
         /* if (do_revbce) arjun->standalone_rev_bce(cnf); */
         if (etof_conf.do_unate) {
             arjun->standalone_unate(cnf);
-            if (conf.do_debug_synth) cnf.write_aig_defs_to_file("unsat_unate.aig");
+            if (conf.do_debug_synth) cnf.write_aig_defs_to_file("3-unsat_unate.aig");
         }
     }
 
     // backw_round_synth
     if (do_minim_indep) {
         arjun->standalone_minimize_indep_synt(cnf);
-        if (conf.do_debug_synth) cnf.write_aig_defs_to_file("minim_idep_synt.aig");
+        if (conf.do_debug_synth) cnf.write_aig_defs_to_file("4-minim_idep_synt.aig");
     }
 
     /* cnf.renumber_sampling_vars_for_ganak(); */
@@ -295,6 +295,7 @@ void do_synthesis() {
             << (cnf.nVars() - cnf.get_opt_sampl_vars().size()) << endl;
     }
     arjun->standalone_manthan(cnf);
+    if (conf.do_debug_synth) cnf.write_aig_defs_to_file("5-manthan.aig");
 }
 #endif
 

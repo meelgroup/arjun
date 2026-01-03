@@ -202,6 +202,7 @@ int main(int argc, char** argv) {
         auto extended_sample = cnf.extend_sample(restricted_sample, true);
         assert_sample_satisfying(extended_sample, solver);
     }
+    cout << "c [test-synth] OK, all samples satisfied the original CNF!" << endl;
 
     return EXIT_SUCCESS;
 }
