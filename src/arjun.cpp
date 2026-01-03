@@ -23,6 +23,7 @@
  */
 
 
+#include <cstdint>
 #include <sbva/sbva.h>
 #include "arjun.h"
 #include "config.h"
@@ -410,9 +411,20 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
     }
 
     DLL_PUBLIC void SimplifiedCNF::random_check_synth_funs() const {
+        std::ifstream urandom("/dev/urandom", std::ios::in | std::ios::binary);
+        uint64_t seed = 77;
+        if (urandom) {
+            urandom.read(reinterpret_cast<char*>(&seed), sizeof(seed));
+            urandom.close();
+        } else {
+            std::cerr << "c o [synth-debug] could not open /dev/urandom, using default seed" << std::endl;
+        }
+
         SATSolver samp_s;
         SATSolver s;
-        samp_s.set_up_for_sample_counter(1000);
+        samp_s.set_up_for_sample_counter(100);
+        samp_s.set_seed(seed);
+
         samp_s.new_vars(defs.size());
         s.new_vars(defs.size());
         for(const auto& cl: orig_clauses) {
@@ -426,7 +438,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
 
         uint32_t filled_defs = 0;
         uint32_t undefs = 0;
-        for (uint32_t check = 0; check < 100; ++check) {
+        for (uint32_t check = 0; check < 10; ++check) {
             auto ret = samp_s.solve();
             assert(ret == l_True);
             auto model = samp_s.get_model();

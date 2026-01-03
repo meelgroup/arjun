@@ -225,11 +225,15 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     map<uint32_t, aig_ptr> aigs;
     for(const auto& y: to_define) {
         assert(var_to_formula.count(y));
-        verb_print(2, "Final formula for " << y+1 << ":" << endl << var_to_formula[y]);
+        verb_print(3, "Final formula for " << y+1 << ":" << endl << var_to_formula[y]);
         aigs[y] = var_to_formula[y].aig;
     }
     SimplifiedCNF fcnf = cnf;
     fcnf.map_aigs_to_orig(aigs, cnf.nVars());
+    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(conf.verb);
+    for(const auto& v: to_define2) {
+        cout << "ERROR: var " << v+1 << " not defined in final CNF!" << endl;
+    }
     assert(fcnf.get_need_aig() && fcnf.defs_invariant());
     return fcnf;
 }

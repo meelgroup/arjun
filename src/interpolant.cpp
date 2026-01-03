@@ -36,7 +36,7 @@ using namespace CaDiCaL;
 
 void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<int> & clause,
                                const std::vector<uint64_t> & oantec) {
-  if (conf.verb >= 2) {
+  if (conf.verb >= 3) {
       cout << "red ID:" << setw(4) << id;//  << " red: " << (int)red;
       cout << " cl: "; for(const auto& l: clause) cout << l << " "; cout << endl;
       cout << "atec: "; for(const auto& l: oantec) cout << l << " "; cout << endl;
@@ -50,13 +50,13 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
   auto aig = fs_clid[id1];
   set<Lit> resolvent(cls[id1].begin(),cls[id1].end());
   for(uint32_t i = 1; i < rantec.size(); i++) {
-      if (conf.verb >= 2) {
+      if (conf.verb >= 4) {
           cout << "resolvent: "; for(const auto& l: resolvent) cout << l << " "; cout << endl;
       }
 
       const uint64_t id2 = rantec[i];
       const vector<Lit>& cl = cls[id2];
-      verb_print(2, "resolving with: " << cl);
+      verb_print(3, "resolving with: " << cl);
       Lit res_lit = lit_Undef;
       for(const auto& l: cl) {
           if (resolvent.count(~l)) {
@@ -83,7 +83,7 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
 
 void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int> & clause, bool) {
   assert(red == false);
-  if (conf.verb >= 2) {
+  if (conf.verb >= 3) {
       cout << "orig ID:" << setw(4)<< id << " cl: ";
       for(const auto& l: clause) cout << l << " ";
       cout << endl;
@@ -113,8 +113,8 @@ void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int>
 void Interpolant::generate_interpolant(
         const vector<Lit>& assumptions, uint32_t test_var, const ArjunNS::SimplifiedCNF& cnf, const set<uint32_t>& input_vars) {
     verb_print(2, "generating unsat proof for: " << test_var+1);
-    verb_print(2, "assumptions: " << assumptions);
-    verb_print(2, "orig_num_vars: " << orig_num_vars);
+    verb_print(3, "assumptions: " << assumptions);
+    verb_print(3, "orig_num_vars: " << orig_num_vars);
 
     // FIRST, we get an UNSAT core
     for(const auto& l: assumptions) picosat_assume(ps, lit_to_pl(l));
@@ -146,7 +146,7 @@ void Interpolant::generate_interpolant(
     for(uint32_t cl_at = 0; cl_at < cl_num; cl_at++) {
         if (picosat_coreclause(ps, cl_at)) {
             cl.clear();
-            verb_print(2, "cl: " << cl_map[cl_at]);
+            verb_print(3, "cl: " << cl_map[cl_at]);
             for(auto l: cl_map[cl_at]) {
                 // if it's a var that's the image that has been
                 // forced to be equal, then replace
