@@ -641,6 +641,10 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         in.read((char*)&backbone_done, sizeof(backbone_done));
         in.read((char*)&proj, sizeof(proj));
         in.read((char*)&need_aig, sizeof(need_aig));
+        in.read((char*)&after_backward_round_synth, sizeof(after_backward_round_synth));
+        in.read((char*)&weighted, sizeof(weighted));
+        in.read((char*)&sampl_vars_set, sizeof(sampl_vars_set));
+        in.read((char*)&opt_sampl_vars_set, sizeof(opt_sampl_vars_set));
 
         // Read sampl_vars
         uint32_t sz;
@@ -652,6 +656,13 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         in.read((char*)&sz, sizeof(sz));
         opt_sampl_vars.resize(sz);
         in.read((char*)opt_sampl_vars.data(), sz * sizeof(uint32_t));
+
+        // Read orig_sampl_vars
+        in.read((char*)&sz, sizeof(sz));
+        vector<uint32_t> orig_sampl_vars_v(sz);
+        in.read((char*)orig_sampl_vars_v.data(), sz * sizeof(uint32_t));
+        orig_sampl_vars.clear();
+        orig_sampl_vars.insert(orig_sampl_vars_v.begin(), orig_sampl_vars_v.end());
 
         // Read clauses
         in.read((char*)&sz, sizeof(sz));
@@ -669,19 +680,19 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             }
         }
 
-        // Read red_clauses
+        // Read orig_clauses
         in.read((char*)&sz, sizeof(sz));
-        red_clauses.resize(sz);
+        orig_clauses.resize(sz);
         for (uint32_t i = 0; i < sz; i++) {
             uint32_t cl_sz;
             in.read((char*)&cl_sz, sizeof(cl_sz));
-            red_clauses[i].resize(cl_sz);
+            orig_clauses[i].resize(cl_sz);
             for (uint32_t j = 0; j < cl_sz; j++) {
                 uint32_t v;
                 bool sign;
                 in.read((char*)&v, sizeof(v));
                 in.read((char*)&sign, sizeof(sign));
-                red_clauses[i][j] = CMSat::Lit(v, sign);
+                orig_clauses[i][j] = CMSat::Lit(v, sign);
             }
         }
 
@@ -739,6 +750,10 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         out.write((char*)&backbone_done, sizeof(backbone_done));
         out.write((char*)&proj, sizeof(proj));
         out.write((char*)&need_aig, sizeof(need_aig));
+        out.write((char*)&after_backward_round_synth, sizeof(after_backward_round_synth));
+        out.write((char*)&weighted, sizeof(weighted));
+        out.write((char*)&sampl_vars_set, sizeof(sampl_vars_set));
+        out.write((char*)&opt_sampl_vars_set, sizeof(opt_sampl_vars_set));
 
         // Write sampl_vars
         uint32_t sz = sampl_vars.size();
@@ -749,6 +764,11 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         sz = opt_sampl_vars.size();
         out.write((char*)&sz, sizeof(sz));
         out.write((char*)opt_sampl_vars.data(), sz * sizeof(uint32_t));
+
+        // Write orig_sampl_vars
+        sz = orig_sampl_vars.size();
+        out.write((char*)&sz, sizeof(sz));
+        for(const auto& v : orig_sampl_vars) out.write((char*)&v, sizeof(v));
 
         // Write clauses
         sz = clauses.size();
@@ -764,10 +784,10 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             }
         }
 
-        // Write red_clauses
-        sz = red_clauses.size();
+        // Write orig_clauses
+        sz = orig_clauses.size();
         out.write((char*)&sz, sizeof(sz));
-        for (const auto& cl : red_clauses) {
+        for (const auto& cl : orig_clauses) {
             uint32_t cl_sz = cl.size();
             out.write((char*)&cl_sz, sizeof(cl_sz));
             for (const auto& lit : cl) {
