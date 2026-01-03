@@ -113,4 +113,6 @@ class Manthan {
             assert(val != l_Undef);
             return val == l_True;
         }
+
+        AIGManager aig_mng;
 };

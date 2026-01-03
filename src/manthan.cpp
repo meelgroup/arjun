@@ -390,6 +390,8 @@ bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
 void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vector<Lit>& conflict) {
     // not (conflict) -> v = ctx(v)
     FHolder::Formula f;
+
+    // CNF part
     vector<Lit> cl;
     solver.new_var();
     auto fresh_l = Lit(solver.nVars()-1, false);
@@ -409,6 +411,15 @@ void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vec
         f.clauses.push_back(cl);
     }
     f.out = fresh_l;
+
+    // AIG part
+    auto b1 = aig_mng.new_const(true);
+    for(const auto& l: conflict) {
+        auto lit_aig = AIG::new_lit(Lit(l.var(), !l.sign()));
+        b1 = AIG::new_and(b1, lit_aig);
+    }
+    f.aig = b1;
+
     // when fresh_l is false, confl is satisfied
     verb_print(4, "Original formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
     verb_print(4, "Branch formula. When this is true, H is wrong:" << endl << f);

@@ -410,8 +410,6 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
     }
 
     DLL_PUBLIC void SimplifiedCNF::random_check_synth_funs() const {
-        std::mt19937 rng(42);
-        std::uniform_int_distribution<uint32_t> dist(0, nvars - 1);
         SATSolver samp_s;
         SATSolver s;
         samp_s.set_up_for_sample_counter(1000);
@@ -427,6 +425,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         }
 
         uint32_t filled_defs = 0;
+        uint32_t undefs = 0;
         for (uint32_t check = 0; check < 100; ++check) {
             auto ret = samp_s.solve();
             assert(ret == l_True);
@@ -442,18 +441,22 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
 
                 lbool eval_aig = evaluate(vals, v);
                 if (eval_aig == l_Undef) continue;
+                cout << "[synth-debug] var: " << v+1 << " eval_aig: " << eval_aig << endl;
                 vals[v] = eval_aig;
                 filled_defs++;
             }
             vector<Lit> assumptions;
             for(uint32_t v = 0; v < defs.size(); ++v) {
-                if (vals[v] != l_Undef) continue;
+                if (vals[v] == l_Undef) {
+                    undefs++;
+                    continue;
+                }
                 assumptions.push_back(Lit(v, vals[v] == l_False));
             }
             auto ret2 = s.solve(&assumptions);
             assert(ret2 == l_True);
         }
-        cout << "filled defs total: " << filled_defs << " checks: " << 100 << endl;
+        cout << "[CHECK] filled defs total: " << filled_defs << " undefs: " << undefs << " checks: " << 100 << endl;
     }
 
     DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
