@@ -307,9 +307,9 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     vector<Lit> assumps; assumps.reserve(input.size());
     for(const auto& x: input) assumps.push_back(Lit(x, ctx[x] == l_False)); //correct value
     for(const auto& y: y_order) {
-        if (y == y_rep) break;
-        assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen");
-        if (!backward_defined.count(y)) assert(ctx[y] == ctx[y_to_y_hat[y]]);
+        if (y == y_rep) break; // beyond this point we don't care
+        assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen. Otherwise y depends on y_rep, but we will repair y_rep potentially with y_rep");
+        assert(ctx[y] == ctx[y_to_y_hat[y]]);
         const Lit l = Lit(y, ctx[y] == l_False);
         verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
         assumps.push_back({l});
@@ -463,7 +463,8 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
         const auto l = Lit(y, ctx[y_hat] == l_False);
         verb_print(2, "[find-better-ctx] put into assumps y= " << l);
         assumps.insert(l);
-        s_ctx.addClause(lits_to_ints({l}), 1); //want to flip this
+        if (backward_defined.count(y)) s_ctx.addClause(lits_to_ints({l}));
+        else s_ctx.addClause(lits_to_ints({l}), 1); //want to flip this
     }
 
     /* verb_print(3, "[find-better-ctx] iteration " << i << " with " << ass.size() << " assumptions"); */
@@ -586,6 +587,10 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     vector<Lit> assumptions;
     assumptions.reserve(y_hat_to_indic.size());
     for(const auto& i: y_hat_to_indic) assumptions.push_back(Lit(i.second, false));
+    for(const auto& v: backward_defined) {
+        const auto i = y_to_indic[v];
+        solver.add_clause({Lit(i, false)}); // must be correct
+    }
     verb_print(4, "assumptions: " << assumptions);
 
 
