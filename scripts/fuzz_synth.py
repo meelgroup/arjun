@@ -294,6 +294,7 @@ if __name__ == "__main__":
         add_projection(fname)
         if is_unsat(fname):
             print("Generated file %s is not UNSAT, skipping synthesis" % fname)
+            os.unlink(fname)
             continue
         # solver = "./arjun --synth --debugsynth --verb 1"
         solvers = [
@@ -309,6 +310,7 @@ if __name__ == "__main__":
         err, aigs = run_synth(solver, fname)
         if err is None:
             print("Synthesis timed out on file %s" % fname)
+            os.unlink(fname)
             continue
         if err == True:
             print("Synthesis failed on file %s" % fname)
