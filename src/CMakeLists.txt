@@ -24,10 +24,8 @@ include_directories(${CRYPTOMINISAT5_INCLUDE_DIRS})
 include_directories(${SBVA_INCLUDE_DIRS})
 include_directories( ${GMP_INCLUDE_DIR} )
 if (SYNTH)
+    include_directories(${EVALMAXSAT_INCLUDE_DIRS})
     include_directories( ${MLPACK_INCLUDE_DIR} )
-    include_directories(${PROJECT_SOURCE_DIR}/../EvalMaxSAT/lib/EvalMaxSAT/src/)
-    include_directories(${PROJECT_SOURCE_DIR}/../EvalMaxSAT/lib/MaLib/src/)
-    include_directories(${PROJECT_SOURCE_DIR}/../EvalMaxSAT/lib/glucose/src/)
 endif()
 include_directories(${PROJECT_SOURCE_DIR}/../cadical/src/)
 
@@ -73,8 +71,7 @@ target_link_libraries(arjun
     LINK_PUBLIC ${SBVA_LIBRARIES}
     LINK_PUBLIC ${GMP_LIBRARY}
     LINK_PUBLIC ${cadical}
-    LINK_PUBLIC ${evalmaxsat}
-    LINK_PUBLIC ${evalmax_cadical}
+    LINK_PUBLIC ${EVALMAXSAT_LIBRARIES}
     LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT}
 )
 
