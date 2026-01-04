@@ -112,7 +112,7 @@ def set_up_parser():
       help="Fuzz test start seed. Otherwise, random seed is picked", type=int)
 
     parser.add_option(
-      "--tout", "-t", dest="maxtime", type=int, default=9,
+      "--tout", "-t", dest="maxtime", type=int, default=12,
       help="Max time to run. Default: %default")
 
     parser.add_option(
