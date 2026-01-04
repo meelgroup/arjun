@@ -161,9 +161,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             // TODO: run get_conflict and then we know which were
             // actually needed, so we can do an easier generation/check
             interp.generate_interpolant(assumptions, test_var, cnf, input_vars);
-            vector<Lit> cl;
-            Lit l(indic, false);
-            cl.push_back(l);
+            vector<Lit> cl = {Lit(indic, false)};
             solver->add_clause(cl);
             interp.add_unit_cl(cl);
             input_vars.insert(test_var);
