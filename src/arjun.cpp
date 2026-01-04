@@ -438,7 +438,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
 
         uint32_t filled_defs = 0;
         uint32_t undefs = 0;
-        uint32_t num_checks = 100;
+        uint32_t num_checks = 10;
         for (uint32_t check = 0; check < num_checks; ++check) {
             auto ret = samp_s.solve();
             assert(ret == l_True);
