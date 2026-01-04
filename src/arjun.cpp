@@ -1397,9 +1397,10 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
                     if (cache.count(v)) sub_dep = cache.at(v);
                     else {
                         AIG::get_dependent_vars(defs[v], sub_dep, v);
-                        assert(!sub_dep.count(v) && "Variable cannot depend on itself");
                         cache[v] = sub_dep;
                     }
+                    assert(!sub_dep.count(v) && "Variable cannot depend on itself");
+                    assert(!sub_dep.count(orig_v) && "Variable cannot depend on itself");
                     new_dep.insert(sub_dep.begin(), sub_dep.end());
                 }
             }
