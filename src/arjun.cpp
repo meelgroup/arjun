@@ -1125,6 +1125,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
 
 
     DLL_PUBLIC void SimplifiedCNF::renumber_sampling_vars_for_ganak() {
+        assert(!need_aig && "not tested with AIGs");
         assert(sampl_vars.size() <= opt_sampl_vars.size());
         // NOTE: we do not need to update defs, because defs is ORIG to ORIG
 
