@@ -479,6 +479,8 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
         }
     }
 
+    for(const auto& [v, aig]: interp.get_defs()) assert(input.count(v) == 0);
     cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);
     cnf.set_after_backward_round_synth();
+    assert(cnf.get_need_aig() && cnf.defs_invariant());
 }

@@ -846,7 +846,7 @@ public:
     bool defs_invariant() const;
 
     // Get the orig vars this AIG depends on, recursively expanding defined vars
-    std::set<uint32_t> get_dependent_vars_recursive(const aig_ptr& aig, uint32_t orig_v) const;
+    std::set<uint32_t> get_dependent_vars_recursive(const uint32_t orig_v) const;
 
     void check_self_dependency() const;
     void check_cnf_vars() const;

@@ -969,7 +969,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             assert(n != CMSat::lit_Undef);
 
             // var n IS backward_defined
-            auto ret_orig = get_dependent_vars_recursive(defs[orig_v], orig_v);
+            auto ret_orig = get_dependent_vars_recursive(orig_v);
             std::set<uint32_t> ret_new;
             for(const auto& ov: ret_orig) {
                 if(!orig_to_new_var.count(ov)) continue;
@@ -1262,7 +1262,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             if (orig_to_new_var.count(v) == 0) continue;
             // This var is NOT input and IS in the CNF
             if (defined(v) == false) continue;
-            auto s = get_dependent_vars_recursive(defs[v], v);
+            auto s = get_dependent_vars_recursive(v);
             bool only_input_deps = true;
             for(const auto& d: s) {
                 if (!get_orig_sampl_vars().count(d)) {
@@ -1381,11 +1381,13 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
     }
 
     // Get the orig vars this AIG depends on, recursively expanding defined vars
-    DLL_PUBLIC std::set<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const aig_ptr& aig, uint32_t orig_v) const {
+    DLL_PUBLIC std::set<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const uint32_t orig_v) const {
         assert(need_aig);
+        assert(defined(orig_v));
+
         std::set<uint32_t> dep;
         std::map<uint32_t, std::set<uint32_t>> cache;
-        AIG::get_dependent_vars(aig, dep, orig_v);
+        dep.insert(orig_v);
         bool changed = true;
         while(changed) {
             changed = false;
@@ -1436,7 +1438,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             if (!defined(orig_v)) continue;
 
             // This checks for self-dependency
-            get_dependent_vars_recursive(defs[orig_v], orig_v);
+            get_dependent_vars_recursive(orig_v);
         }
     }
 
@@ -1506,7 +1508,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             assert(o < defs.size());
             assert(n != CMSat::lit_Undef && n.var() < nvars);
             if (defined(o)) {
-                auto s = get_dependent_vars_recursive(defs[o], o);
+                auto s = get_dependent_vars_recursive(o);
                 dependencies[o] = s;
                 bool only_orig_sampl = true;
                 for(const auto& v: s) {
