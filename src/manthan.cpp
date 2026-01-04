@@ -167,14 +167,11 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 
     verb_print(2, "True lit in solver_train: " << fh->get_true_lit());
     verb_print(2, "[do-manthan] After fh creation: solver_train.nVars() = " << solver.nVars() << " cnf.nVars() = " << cnf.nVars());
-    vector<uint32_t> to_train;
-    to_train.reserve(to_define.size());
     fix_order();
     for(const auto& v: y_order) {
         if (backward_defined.count(v)) continue;
-        to_train.push_back(v);
+        train(solutions, v); // updates dependency_mat
     }
-    for(const auto& v: to_train) train(solutions, v); // updates dependency_mat
     verb_print(2, "[do-manthan] After training: solver_train.nVars() = " << solver.nVars());
     assert(check_dependency_loop());
 
@@ -244,6 +241,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         }
         verb_print(1, "Num repaired: " << num_repaired << " tot repaired: " << tot_repaired);
     }
+    assert(check_dependency_loop());
     verb_print(1, "DONE");
 
     // Build final CNF
