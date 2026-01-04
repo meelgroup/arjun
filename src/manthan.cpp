@@ -334,64 +334,6 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     return true;
 }
 
-// ctx contains both y, and y_hat
-bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
-    // F(x,y) & x = ctx(x) && forall_y (y not dependent on v) (y = ctx(y)) & NOT (v = ctx(v))
-    // Used to find UNSAT core that will help us repair the function
-    EvalMaxSAT repair_solver;
-    for(uint32_t i = 0; i < cnf.nVars(); i++) repair_solver.newVar();
-    for(const auto& c: cnf.get_clauses()) repair_solver.addClause(lits_to_ints(c));
-
-    vector<Lit> assumps; assumps.reserve(input.size());
-    for(const auto& x: input) assumps.push_back(Lit(x, ctx[x] == l_False));
-    for(const auto& x: backward_defined) assumps.push_back(Lit(x, ctx[x] == l_False)); // TODO is this needed?
-
-    for(const auto& y: y_order) {
-        if (y == y_rep) break;
-        assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen");
-        assert(ctx[y] == ctx[y_to_y_hat[y]]);
-        const Lit l = Lit(y, ctx[y] == l_False);
-        verb_print(1, "assuming " << y+1 << " is " << ctx[y]);
-        assumps.push_back({l});
-    }
-
-    const Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
-    repair_solver.addClause(lits_to_ints({~repairing})); //assume to wrong value
-    ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
-
-    verb_print(1, "adding to solver: " << ~repairing);
-    verb_print(2, "setting the to-be-repaired " << repairing << " to wrong.");
-    verb_print(5, "solving with assumps: " << assumps);
-
-    for(const auto& l: assumps) repair_solver.addClause(lits_to_ints({l}), 1);
-    cout << "c o Running MaxSAT repair for var " << y_rep+1 << " with " << assumps.size() << "soft clauses " << endl;
-    auto ret = repair_solver.solve();
-    if (!ret) {
-        verb_print(1, "repairing " << y_rep+1 << " is not possible");
-        return false;
-    }
-    assert(ret);
-    if (repair_solver.getCost() == 0) {
-        bool reached = false;
-        for(const auto&y: y_order) {
-            if (y == y_rep) {reached = true; continue;}
-            if (!reached) continue;
-            if (repair_solver.getValue(y+1) != (ctx[y_to_y_hat[y]] == l_True)) needs_repair.insert(y);
-        }
-        return false;
-    }
-
-    vector<Lit> conflict;
-    for(const auto&l : assumps) {
-        if (!repair_solver.getValue(lit_to_int(l))) conflict.push_back(~l);
-    }
-    assert(conflict.size() == repair_solver.getCost());
-    verb_print(1, "repair conflict: " << conflict);
-    cout << "c o Orig assumps size: " << assumps.size() << " conflict size: " << conflict.size() << endl;
-    perform_repair(y_rep, ctx, conflict);
-    return true;
-}
-
 void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vector<Lit>& conflict) {
     // not (conflict) -> v = ctx(v)
     FHolder::Formula f;
