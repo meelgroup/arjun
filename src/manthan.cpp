@@ -197,7 +197,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             cout << endl;
         }
 
-        auto better_ctx = find_better_ctx(ctx);
+        auto better_ctx = find_better_ctx(ctx); // fills needs_repair
         for(const auto& y: to_define_full) if (!needs_repair.count(y)) ctx[y] = better_ctx[y];
 
         if (conf.verb >= 2) {
@@ -435,7 +435,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     for(uint32_t i = 0; i < cnf.nVars(); i++) s_ctx.newVar();
     for(const auto& c: cnf.get_clauses()) s_ctx.addClause(lits_to_ints(c));
 
-    // Fix input and backward_defined values
+    // Fix input values
     for(const auto& x: input) {
         assert(ctx[x] != l_Undef && "Input variable must be defined in counterexample");
         const auto l = Lit(x, ctx[x] == l_False);
@@ -553,6 +553,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     vector<Lit> tmp;
     y_hat_to_indic.clear();
     indic_to_y_hat.clear();
+    map<uint32_t, uint32_t> y_to_indic;
     for(const auto& y: to_define_full) {
         solver.new_var();
         const uint32_t ind = solver.nVars()-1;
@@ -563,6 +564,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
 
         y_hat_to_indic[y_hat] = ind;
         indic_to_y_hat[ind] = y_hat;
+        y_to_indic[y] = ind;
         verb_print(3, "->CTX ind: " << ind+1 << " y_hat: " << y_hat+1  << " form_out: " << form_out);
 
         // when indic is TRUE, y_hat and form_out are EQUAL
