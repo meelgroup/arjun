@@ -110,14 +110,16 @@ struct Minimize
     void order_sampl_set_for_simp();
 
     //backward
+    template<typename T>
     void fill_assumptions_backward(
         vector<Lit>& assumptions,
         vector<uint32_t>& unknown,
         const vector<char>& unknown_set,
-        const vector<uint32_t>& indep);
+        const T& indep);
     void fill_solver(const ArjunNS::SimplifiedCNF& cnf);
     void backward_round();
     void backward_round_synth(ArjunNS::SimplifiedCNF& cnf);
+    void add_all_indics_except(const set<uint32_t>& except);
     void order_by_file(const string& fname, vector<uint32_t>& unknown);
     void print_sorted_unknown(const vector<uint32_t>& unknown) const;
 };

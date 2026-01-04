@@ -29,15 +29,17 @@
 #include "src/interpolant.h"
 #include "src/time_mem.h"
 #include <algorithm>
+#include <cstdint>
 #include <set>
 
 using namespace ArjunInt;
 
+template<typename T>
 void Minimize::fill_assumptions_backward(
     vector<Lit>& assumptions,
     vector<uint32_t>& unknown,
     const vector<char>& unknown_set,
-    const vector<uint32_t>& indep)
+    const T& indep)
 {
     verb_print(5, "Filling assumps BEGIN");
     assumptions.clear();
@@ -352,35 +354,75 @@ void Minimize::backward_round() {
     if (conf.verb >= 4) solver->print_stats();
 }
 
+void Minimize::add_all_indics_except(const set<uint32_t>& except) {
+    assert(dont_elim.empty());
+    assert(var_to_indic.empty());
+    assert(indic_to_var.empty());
+
+    var_to_indic.resize(orig_num_vars*2, var_Undef);
+
+    vector<Lit> tmp;
+    for(uint32_t var = 0; var < orig_num_vars; var++) {
+        if (except.count(var)) continue;
+
+        solver->new_var();
+        uint32_t this_indic = solver->nVars()-1;
+        //torem_orig.push_back(Lit(this_indic, false));
+        var_to_indic[var] = this_indic;
+        var_to_indic[var+orig_num_vars] = this_indic;
+        verb_print(3, "Adding indic var " << this_indic+1
+                << " for orig vars " << var+1 << " and " << var+orig_num_vars+1);
+        dont_elim.push_back(Lit(this_indic, false));
+        indic_to_var.resize(this_indic+1, var_Undef);
+        indic_to_var[this_indic] = var;
+
+        // Below two mean var == (var+orig) in case indic is TRUE
+        tmp.clear();
+        tmp.push_back(Lit(var,               false));
+        tmp.push_back(Lit(var+orig_num_vars, true));
+        tmp.push_back(Lit(this_indic,        true));
+        solver->add_clause(tmp);
+
+        tmp.clear();
+        tmp.push_back(Lit(var,               true));
+        tmp.push_back(Lit(var+orig_num_vars, false));
+        tmp.push_back(Lit(this_indic,        true));
+        solver->add_clause(tmp);
+    }
+    seen.clear();
+    seen.resize(indic_to_var.size()*2, 0);
+}
+
 void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
     assert(cnf.get_need_aig() && cnf.defs_invariant());
 
     double start_round_time = cpuTime();
-    vector<uint32_t> indep;
-    Interpolant interp(conf);
-    interp.solver = solver.get();
-    interp.fill_picolsat(orig_num_vars);
-    interp.fill_var_to_indic(var_to_indic);
 
     // Initially, all of samping_set is known, we do NOT want to minimize those
     // Instead, all non-sampling-set vars, get definitions for them
     // in terms of ANY other variables, but NOT in a self-referential way
     vector<char> unknown_set(orig_num_vars, 0);
     vector<uint32_t> unknown;
-    set<uint32_t> input_vars;
-    set<uint32_t> dep;
+    set<uint32_t> pretend_input;
     auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb);
     assert(backward_defined.empty());
-    for(const auto& x: input) dep.insert(x);
+
+    const auto zero_ass = solver->get_zero_assigned_lits();
+    set<uint32_t> input_vars;
+    for(const auto& l: zero_ass) input_vars.insert(l.var());
+    for(const auto& v: input) input_vars.insert(v);
+    add_all_indics_except(input_vars);
+
+    // set up interpolant
+    Interpolant interp(conf);
+    interp.solver = solver.get();
+    interp.fill_picolsat(orig_num_vars);
+    interp.fill_var_to_indic(var_to_indic);
+
     for(uint32_t x = 0; x < orig_num_vars; x++) {
-        input_vars.insert(x);
-        if (dep.count(x)) {
-            indep.push_back(x);
-            solver->add_clause({Lit(var_to_indic[x], false)});
-            interp.add_unit_cl({Lit(var_to_indic[x], false)});
-            continue;
-        }
+        if (input_vars.count(x)) continue;
+        pretend_input.insert(x); // we pretend that all vars are input vars
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
@@ -413,14 +455,16 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
             break;
         }
         assert(test_var < orig_num_vars);
+        const uint32_t indic = var_to_indic[test_var];
+        assert(!input.count(test_var));
         assert(unknown_set[test_var]);
         unknown_set[test_var] = 0;
-        input_vars.erase(test_var);
+        pretend_input.erase(test_var);
         verb_print(3, "Testing: " << test_var+1);
 
         //Assumption filling
         assert(test_var != var_Undef);
-        fill_assumptions_backward(assumptions, unknown, unknown_set, indep);
+        fill_assumptions_backward(assumptions, unknown, unknown_set, pretend_input);
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
         solver->set_no_confl_needed();
@@ -445,24 +489,21 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
         if (ret == l_Undef) {
             //Timed out, we'll treat is as unknown
             assert(test_var < orig_num_vars);
-            indep.push_back(test_var);
-            input_vars.insert(test_var);
+            pretend_input.insert(test_var);
         } else if (ret == l_True) {
             //Independent
-            indep.push_back(test_var);
-            input_vars.insert(test_var);
+            pretend_input.insert(test_var);
         } else if (ret == l_False) {
             //not independent
             //i.e. given that all in indep+unkown is equivalent, it's not possible that a1 != b1
-            dep.insert(test_var);
-            interp.generate_interpolant(assumptions, test_var, cnf, input_vars);
-            vector<Lit> cl = {Lit(var_to_indic[test_var], false)};
-            solver->add_clause(cl);
-            interp.add_unit_cl(cl);
+            interp.generate_interpolant(assumptions, test_var, cnf, pretend_input);
+            /* solver->add_clause({Lit(indic, false)}); */
+            /* interp.add_unit_cl({Lit(indic, false)}); */
+            /* pretend_input.erase(test_var); */
         }
     }
 
-    verb_print(3, __PRETTY_FUNCTION__ << " dep size: " << dep.size());
+    verb_print(3, __PRETTY_FUNCTION__ << " pretend_input size: " << pretend_input.size());
     verb_print(1, COLRED "[arjun] backward round finished. T: " << ret_true << " U: " << ret_undef
             << " F: " << ret_false << " I: " << sampling_vars.size() << " T: "
         << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));

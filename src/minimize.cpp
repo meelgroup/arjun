@@ -252,7 +252,6 @@ void Minimize::run_minimize_for_synth(ArjunNS::SimplifiedCNF& cnf) {
     init();
     get_incidence();
     duplicate_problem(cnf);
-    add_fixed_clauses(true);
     backward_round_synth(cnf);
 }
 
