@@ -23,6 +23,7 @@
  */
 
 #include "manthan.h"
+#include <armadillo>
 #include <cryptominisat5/cryptominisat.h>
 #include <cryptominisat5/solvertypesmini.h>
 #include "src/arjun.h"
@@ -121,6 +122,10 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     // defined non-input vars -- vars defined via backward_round_synth
     // to_define vars -- vars that are not defined yet, and not input
     std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb);
+    if (to_define.empty()) {
+        verb_print(1, "[manthan] No variables to define, returning original CNF");
+        return cnf;
+    }
     to_define_full.clear();
     to_define_full.insert(to_define.begin(), to_define.end());
     to_define_full.insert(backward_defined.begin(), backward_defined.end());
@@ -149,6 +154,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             assert(input.count(d) == 0);
             dependency_mat[d][v] = 1;
         }
+        assert(check_dependency_loop());
     }
 
     // Sampling
@@ -167,6 +173,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     sort_unknown(to_train, incidence);
     for(const auto& v: to_train) train(solutions, v); // updates dependency_mat
     verb_print(2, "[do-manthan] After training: solver_train.nVars() = " << solver.nVars());
+    assert(check_dependency_loop());
 
     add_not_F_x_yhat();
     fix_order();
@@ -193,14 +200,16 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         auto better_ctx = find_better_ctx(ctx);
         for(const auto& y: to_define_full) if (!needs_repair.count(y)) ctx[y] = better_ctx[y];
 
-        cout << "c o [DEBUG] Needs repair vars: ";
-        for(const auto& v: needs_repair) cout << v+1 << " ";
-        cout << endl;
-        if (conf.verb >= 3) {
-            cout << "c o [DEBUG] after find_better_ctx, CNF valuation: ";
-            for(uint32_t i = 0; i < cnf.nVars(); i++)
-                cout << "var " << setw(3) << i+1 << ": " << pr(ctx[i]) << " -- ";
+        if (conf.verb >= 2) {
+            cout << "c o [DEBUG] Needs repair vars: ";
+            for(const auto& v: needs_repair) cout << v+1 << " ";
             cout << endl;
+            if (conf.verb >= 3) {
+                cout << "c o [DEBUG] after find_better_ctx, CNF valuation: ";
+                for(uint32_t i = 0; i < cnf.nVars(); i++)
+                    cout << "var " << setw(3) << i+1 << ": " << pr(ctx[i]) << " -- ";
+                cout << endl;
+            }
         }
 
         assert(!needs_repair.empty());
@@ -212,6 +221,9 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
                     y = t;
                     break;
                 }
+            }
+            if (backward_defined.count(y)) {
+                cout << "c o [WARNING] trying to repair backward-defined var " << y+1 << endl;
             }
             assert(y != std::numeric_limits<uint32_t>::max());
             needs_repair.erase(y);
@@ -353,8 +365,11 @@ void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vec
         cl.push_back(l);
         dependency_mat[y_rep][l.var()] = 1;
         // recursive update
-        for(uint32_t i = 0; i < cnf.nVars(); i++)
+        for(uint32_t i = 0; i < cnf.nVars(); i++) {
+            if (input.count(i)) continue;
             dependency_mat[y_rep][i] |= dependency_mat[l.var()][i];
+        }
+        assert(check_dependency_loop());
     }
     f.clauses.push_back(cl);
     for(const auto& l: conflict) {
@@ -384,19 +399,16 @@ void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vec
 
 void Manthan::fix_order() {
     verb_print(1, "[manthan] Fixing order...");
-    vector<uint32_t> sorted;
-    sorted.reserve(to_define.size());
-    for(const auto& v: to_define) sorted.push_back(v);
-    for(const auto& v: backward_defined) sorted.push_back(v);
+    vector<uint32_t> sorted(to_define_full.begin(), to_define_full.end());
     sort_unknown(sorted, incidence);
-
 
     set<uint32_t> already_fixed;
     assert(y_order.empty());
     while(already_fixed.size() != to_define_full.size()) {
         for(const auto& y: sorted) {
             if (already_fixed.count(y)) continue;
-            verb_print(2, "Trying to add " << y+1 << " to order...");
+            verb_print(2, "Trying to add " << y+1 << " to order. to_define: " << to_define.count(y)
+                 << " backward_defined: " << backward_defined.count(y));
 
             bool ok = true;
             for(const auto& y2: to_define_full) {
@@ -622,12 +634,12 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
             dependency_mat[learned_v][v] = 1;
             verb_print(2, learned_v+1 << " depends on " << v+1);
 
-            // and everything that v depends on
+            // recursive update
             for(uint32_t i = 0 ; i < cnf.nVars(); i++) {
+                if (input.count(i)) continue;
                 dependency_mat[learned_v][i] |= dependency_mat[v][i];
-                if (dependency_mat[v][i])
-                    verb_print(2, "setting " << learned_v+1 << " depends on " << i+1);
             }
+            assert(check_dependency_loop());
         }
 
         /* cout << "  -- all-0 goes -> " << node->CalculateDirection(point_0); */
@@ -692,11 +704,68 @@ void Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
                 if (input.count(j)) continue;
                 dependency_mat[i][j] |= dependency_mat[v][j];
             }
+            assert(check_dependency_loop());
         }
     }
     verb_print(4, "Tentative, trained formula for y " << v+1 << ":" << endl << var_to_formula[v]);
     verb_print(2,"Done training variable: " << v+1);
     verb_print(2, "------------------------------");
+}
+
+bool Manthan::has_dependency_cycle_dfs(const uint32_t node, vector<uint8_t>& color, vector<uint32_t>& path) {
+    color[node] = 1; // Mark as being processed (gray)
+    path.push_back(node);
+
+    for(uint32_t i = 0; i < dependency_mat[node].size(); i++) {
+        if (dependency_mat[node][i] == 0) continue; // No dependency
+
+        if (color[i] == 1) {
+            // Found a back edge - cycle detected
+            path.push_back(i);
+            return true;
+        } else if (color[i] == 0) {
+            if (has_dependency_cycle_dfs(i, color, path)) {
+                return true;
+            }
+        }
+    }
+
+    path.pop_back();
+    color[node] = 2; // Mark as completely processed (black)
+    return false;
+}
+
+bool Manthan::check_dependency_loop() {
+    if (dependency_mat.empty()) return true;
+
+    const uint32_t n = dependency_mat.size();
+    vector<uint8_t> color(n, 0); // 0=white (unvisited), 1=gray (processing), 2=black (done)
+    vector<uint32_t> cycle_path;
+
+    for(uint32_t i = 0; i < n; i++) {
+        if (color[i] == 0) {
+            cycle_path.clear();
+            if (has_dependency_cycle_dfs(i, color, cycle_path)) {
+                // Found a cycle, print it
+                cout << "c o [ERROR] Cycle detected in dependency_mat: ";
+                for(const auto& v: cycle_path) {
+                    cout << v+1 << " -> ";
+                }
+                cout << "(back to " << cycle_path[cycle_path.size()-1]+1 << ")" << endl;
+
+                // Print detailed dependency information
+                cout << "c o [ERROR] Cycle details:" << endl;
+                for(size_t j = 0; j < cycle_path.size()-1; j++) {
+                    uint32_t from = cycle_path[j];
+                    uint32_t to = cycle_path[j+1];
+                    cout << "c o   Variable " << from+1 << " depends on " << to+1 << endl;
+                }
+                return false;
+            }
+            assert(cycle_path.empty());
+        }
+    }
+    return true;
 }
 
 void Manthan::get_incidence() {
