@@ -111,9 +111,8 @@ void Manthan::fill_dependency_mat_with_backward() {
     for(const auto& [backw_var, dep_set]: backw_deps) assert(backward_defined.count(backw_var) == 1);
 
     assert(backw_deps.size() == backward_defined.size());
-    for(const auto& v: to_define) {
+    for(const auto& v: to_define_full) {
         assert(input.count(v) == 0);
-        assert(backward_defined.count(v) == 0);
         set<uint32_t> deps_for_var; // these vars depend on v
         for(const auto& [backw_var, dep_set]: backw_deps) {
             if (dep_set.count(v)) deps_for_var.insert(backw_var);
@@ -130,6 +129,38 @@ void Manthan::fill_dependency_mat_with_backward() {
         }
         assert(check_dependency_loop());
     }
+
+    assert(check_transitive_closure_correctness());
+    assert(check_dependency_loop());
+}
+
+bool Manthan::check_transitive_closure_correctness() const {
+    // Then, compute transitive closure to ensure transitivity
+    // If A depends on B and B depends on C, then A depends on C
+    verb_print(3, "[fill-dep] Checking transitive closure");
+    bool changed = true;
+    while(changed) {
+        changed = false;
+        for(uint32_t i = 0; i < cnf.nVars(); i++) {
+            if (input.count(i)) continue;
+            for(uint32_t j = 0; j < cnf.nVars(); j++) {
+                if (input.count(j)) continue;
+                if (dependency_mat[i][j] == 0) continue;
+
+                // i depends on j, so i should depend on everything j depends on
+                for(uint32_t k = 0; k < cnf.nVars(); k++) {
+                    if (input.count(k)) continue;
+                    if (dependency_mat[j][k] == 1 && dependency_mat[i][k] == 0) {
+                        changed = true;
+                        verb_print(0, "ERROR: [fill-dep] transitive: " << i+1 << " depends on " << k+1
+                            << " (via " << j+1 << ") -- but WE had to add it!!");
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    return true;
 }
 
 void Manthan::fill_var_to_formula_with_backward() {
@@ -145,7 +176,7 @@ void Manthan::fill_var_to_formula_with_backward() {
 
 // This adds (and re-numbers) the deep-copied AIGs to a fresh copy of the CNF, then checks if the CNF
 // has any AIG cycles
-bool Manthan::check_dependency_cycles() const {
+bool Manthan::check_aig_dependency_cycles() const {
     map<uint32_t, aig_ptr> aigs;
     for(const auto& y: to_define) {
         if (var_to_formula.count(y) == 0) continue;
@@ -202,7 +233,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     for(const auto& v: y_order) {
         if (backward_defined.count(v)) continue;
         train(solutions, v); // updates dependency_mat
-        assert(check_dependency_cycles());
+        assert(check_aig_dependency_cycles());
     }
     verb_print(2, "[do-manthan] After training: solver_train.nVars() = " << solver.nVars());
     assert(check_dependency_loop());
@@ -663,7 +694,7 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
     } else {
         uint32_t v = node->SplitDimension();
         /* cout << "(learning " << learned_v+1<< ") Node. v: " << v+1 << std::flush; */
-        if (to_define.count(v)) {
+        if (to_define_full.count(v)) {
             // v does not depend on learned_v!
             assert(dependency_mat[v][learned_v] == 0);
             for(uint32_t i = 0; i < cnf.nVars(); i++) {

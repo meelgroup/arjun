@@ -98,8 +98,6 @@ class Manthan {
         void add_not_F_x_yhat();
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with_backward();
-        bool check_train_correctness() const;
-        bool check_dependency_cycles() const;
 
         vector<uint32_t> y_order; //1st only depends on inputs
         void fix_order();
@@ -123,5 +121,8 @@ class Manthan {
         // debug
         bool check_dependency_loop() const;
         bool has_dependency_cycle_dfs(const uint32_t node, vector<uint8_t>& color, vector<uint32_t>& path) const; // used in check_dependency_loop
+        bool check_train_correctness() const;
+        bool check_aig_dependency_cycles() const;
+        bool check_transitive_closure_correctness() const;
 
 };
