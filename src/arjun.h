@@ -220,6 +220,39 @@ public:
         helper(aig_orig);
     }
 
+    static aig_ptr deep_clone(const aig_ptr& aig) {
+        if (!aig) return nullptr;
+
+        std::map<aig_ptr, aig_ptr> cache;
+        std::function<aig_ptr(const aig_ptr&)> clone_helper =
+            [&](const aig_ptr& node) -> aig_ptr {
+                if (!node) return nullptr;
+
+                // Check cache to avoid cloning the same node multiple times
+                auto it = cache.find(node);
+                if (it != cache.end()) return it->second;
+
+                // Create new AIG node
+                auto cloned = std::make_shared<AIG>();
+                cloned->type = node->type;
+                cloned->var = node->var;
+                cloned->neg = node->neg;
+
+                // Add to cache before recursing to handle cycles
+                cache[node] = cloned;
+
+                // Recursively clone children for AND nodes
+                if (node->type == AIGT::t_and) {
+                    cloned->l = clone_helper(node->l);
+                    cloned->r = clone_helper(node->r);
+                }
+
+                return cloned;
+            };
+
+        return clone_helper(aig);
+    }
+
     friend std::ostream& operator<<(std::ostream& out, const aig_ptr& aig);
     friend class AIGManager;
     friend class SimplifiedCNF;
@@ -848,6 +881,7 @@ public:
     // Get the orig vars this AIG depends on, recursively expanding defined vars
     std::set<uint32_t> get_dependent_vars_recursive(const uint32_t orig_v) const;
 
+    bool check_aig_cycles() const;
     void check_self_dependency() const;
     void check_cnf_vars() const;
 

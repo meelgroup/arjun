@@ -96,6 +96,11 @@ class Manthan {
         vector<Lit> further_minimize_conflict_via_maxsat(const vector<Lit>& conflict, const vector<Lit>& assumps, const Lit& repairing);
         void perform_repair(const uint32_t y_rep, const vector<lbool>& ctx, const vector<Lit>& conflict);
         void add_not_F_x_yhat();
+        void fill_dependency_mat_with_backward();
+        void fill_var_to_formula_with_backward();
+        bool check_train_correctness() const;
+        bool check_dependency_cycles() const;
+        map<uint32_t, double> training_errors;
 
         vector<uint32_t> y_order; //1st only depends on inputs
         void fix_order();
@@ -103,7 +108,7 @@ class Manthan {
 
         void add_sample_clauses(SimplifiedCNF& cnf);
         vector<vector<lbool>> get_samples(const uint32_t num_samples);
-        void train(const vector<vector<lbool>>& samples, const uint32_t v);
+        double train(const vector<vector<lbool>>& samples, const uint32_t v); // returns training error
         vector<vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
 
         unique_ptr<FHolder> fh = nullptr;

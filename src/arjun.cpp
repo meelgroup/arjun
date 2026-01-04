@@ -1374,6 +1374,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         check_orig_sampl_vars_undefined();
         check_pre_post_backward_round_synth();
         all_vars_accounted_for();
+        check_aig_cycles();
         check_self_dependency();
         get_var_types(0);
         random_check_synth_funs();
@@ -1417,6 +1418,65 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             assert(false);
         }
         return dep;
+    }
+
+    DLL_PUBLIC bool SimplifiedCNF::check_aig_cycles() const {
+        assert(need_aig);
+
+        // For cycle detection: 0 = unvisited, 1 = visiting, 2 = visited
+        std::vector<int> state(defs.size(), 0);
+        std::vector<uint32_t> path; // Current path for cycle reporting
+
+        std::function<bool(uint32_t)> dfs = [&](uint32_t v) -> bool {
+            if (state[v] == 2) return false; // Already fully visited
+            if (state[v] == 1) {
+                // Cycle detected!
+                std::cout << "ERROR: Cycle detected in AIG dependencies!" << std::endl;
+                std::cout << "Cycle path: ";
+                bool in_cycle = false;
+                for (const auto& p : path) {
+                    if (p == v) in_cycle = true;
+                    if (in_cycle) std::cout << p+1 << " -> ";
+                }
+                std::cout << v+1 << std::endl;
+                return true;
+            }
+
+            if (!defined(v)) {
+                state[v] = 2;
+                return false;
+            }
+
+            state[v] = 1; // Mark as visiting
+            path.push_back(v);
+
+            // Get immediate dependencies from the AIG
+            std::set<uint32_t> deps;
+            AIG::get_dependent_vars(defs[v], deps, v);
+
+            // Recursively check each dependency
+            for (const auto& dep : deps) {
+                if (dfs(dep)) {
+                    path.pop_back();
+                    return true;
+                }
+            }
+
+            path.pop_back();
+            state[v] = 2; // Mark as fully visited
+            return false;
+        };
+
+        // Check all variables
+        for (uint32_t v = 0; v < defs.size(); v++) {
+            if (state[v] == 0 && defined(v)) {
+                if (dfs(v)) {
+                    std::cout << "ERROR: Cycle found starting from variable " << v+1 << std::endl;
+                    assert(false && "Cycle detected in AIG dependencies");
+                }
+            }
+        }
+        return true;
     }
 
     DLL_PUBLIC void SimplifiedCNF::check_self_dependency() const {

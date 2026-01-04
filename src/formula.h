@@ -65,14 +65,9 @@ public:
         aig_ptr aig = nullptr;
     };
 
-    set<uint32_t> get_dependent_vars(const Formula& f) const {
+    set<uint32_t> get_dependent_vars(const Formula& f, uint32_t v) const {
         set<uint32_t> ret;
-        for(const auto& cl: f.clauses) {
-            for(const auto& l: cl) {
-                ret.insert(l.var());
-            }
-        }
-        ret.erase(f.out.var());
+        AIG::get_dependent_vars(f.aig, ret, v);
         return ret;
     }
 

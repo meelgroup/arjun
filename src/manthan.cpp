@@ -102,6 +102,76 @@ string Manthan::pr(const lbool val) const {
     exit(EXIT_FAILURE);
 };
 
+void Manthan::fill_dependency_mat_with_backward() {
+    dependency_mat.clear();
+    dependency_mat.resize(cnf.nVars());
+    for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);
+
+    auto backw_deps = cnf.compute_backw_dependencies();
+    for(const auto& [backw_var, dep_set]: backw_deps) assert(backward_defined.count(backw_var) == 1);
+
+    assert(backw_deps.size() == backward_defined.size());
+    for(const auto& v: to_define) {
+        assert(input.count(v) == 0);
+        assert(backward_defined.count(v) == 0);
+        set<uint32_t> deps_for_var;
+        for(const auto& [backw_var, dep_set]: backw_deps) {
+            if (dep_set.count(v)) deps_for_var.insert(backw_var);
+        }
+        for(const auto& d: deps_for_var) {
+            assert(input.count(d) == 0);
+            dependency_mat[d][v] = 1;
+
+            // recursive update
+            for(uint32_t i = 0; i < cnf.nVars(); i++) {
+                if (input.count(i)) continue;
+                dependency_mat[d][i] |= dependency_mat[v][i];
+            }
+        }
+        assert(check_dependency_loop());
+    }
+}
+
+void Manthan::fill_var_to_formula_with_backward() {
+    for(const auto& v: backward_defined) {
+        FHolder::Formula f;
+        Lit l = Lit(v, false);
+        f.out = l;
+        f.aig = AIG::new_lit(l);
+        assert(var_to_formula.count(v) == 0);
+        var_to_formula[v] = f;
+    }
+}
+
+// Can only check zero-error trains
+bool Manthan::check_train_correctness() const {
+    map<uint32_t, aig_ptr> aigs;
+    for(const auto& y: to_define) {
+        if (var_to_formula.count(y) == 0) continue;
+        assert(training_errors.count(y));
+        if (training_errors.at(y) > 0) continue;
+        aigs[y] = AIG::deep_clone(var_to_formula.at(y).aig);
+    }
+
+    SimplifiedCNF fcnf = cnf;
+    fcnf.map_aigs_to_orig(aigs, cnf.nVars());
+    assert(fcnf.get_need_aig() && fcnf.defs_invariant());
+    return true;
+}
+
+bool Manthan::check_dependency_cycles() const {
+    map<uint32_t, aig_ptr> aigs;
+    for(const auto& y: to_define) {
+        if (var_to_formula.count(y) == 0) continue;
+        aigs[y] = AIG::deep_clone(var_to_formula.at(y).aig);
+    }
+
+    SimplifiedCNF fcnf = cnf;
+    fcnf.map_aigs_to_orig(aigs, cnf.nVars());
+    assert(fcnf.get_need_aig() && fcnf.check_aig_cycles());
+    return true;
+}
+
 SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     assert(input_cnf.get_need_aig() && input_cnf.defs_invariant());
     uint32_t tot_repaired = 0;
@@ -129,33 +199,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     to_define_full.clear();
     to_define_full.insert(to_define.begin(), to_define.end());
     to_define_full.insert(backward_defined.begin(), backward_defined.end());
-    for(const auto& v: backward_defined) {
-        FHolder::Formula f;
-        Lit l = Lit(v, false);
-        f.out = l;
-        f.aig = AIG::new_lit(l);
-        assert(var_to_formula.count(v) == 0);
-        var_to_formula[v] = f;
-    }
-
-    dependency_mat.resize(cnf.nVars());
-    for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);
-    auto backw_deps = cnf.compute_backw_dependencies();
-    for(const auto& [backw_var, dep_set]: backw_deps) assert(backward_defined.count(backw_var) == 1);
-    assert(backw_deps.size() == backward_defined.size());
-    for(const auto& v: to_define) {
-        assert(input.count(v) == 0);
-        assert(backward_defined.count(v) == 0);
-        set<uint32_t> deps_for_var;
-        for(const auto& [backw_var, dep_set]: backw_deps) {
-            if (dep_set.count(v)) deps_for_var.insert(backw_var);
-        }
-        for(const auto& d: deps_for_var) {
-            assert(input.count(d) == 0);
-            dependency_mat[d][v] = 1;
-        }
-        assert(check_dependency_loop());
-    }
+    fill_var_to_formula_with_backward();
+    fill_dependency_mat_with_backward();
 
     // Sampling
     vector<vector<lbool>> solutions = get_samples(conf.num_samples);
@@ -170,7 +215,10 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     fix_order();
     for(const auto& v: y_order) {
         if (backward_defined.count(v)) continue;
-        train(solutions, v); // updates dependency_mat
+        const double train_error = train(solutions, v); // updates dependency_mat
+        training_errors[v] = train_error;
+        assert(check_dependency_cycles());
+        assert(check_train_correctness());
     }
     verb_print(2, "[do-manthan] After training: solver_train.nVars() = " << solver.nVars());
     assert(check_dependency_loop());
@@ -256,6 +304,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(conf.verb);
     for(const auto& v: to_define2) {
         cout << "ERROR: var " << v+1 << " not defined in final CNF!" << endl;
+        assert(false && "All to-define vars must be defined in final CNF");
     }
     assert(fcnf.get_need_aig() && fcnf.defs_invariant());
     return fcnf;
@@ -631,17 +680,16 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
         uint32_t v = node->SplitDimension();
         /* cout << "(learning " << learned_v+1<< ") Node. v: " << v+1 << std::flush; */
         if (to_define.count(v)) {
-            // v does not depend on us!
-            verb_print(2, "v: " << v+1 << " does not depend on us!");
+            // v does not depend on learned_v!
             assert(dependency_mat[v][learned_v] == 0);
             for(uint32_t i = 0; i < cnf.nVars(); i++) {
                 if (dependency_mat[v][i] == 1) {
-                    // nothing that v depends on can depend on us
-                    /* verb_print(2, "ERROR. i: " << i+1 << " does not depend on us, because " << v+1 << " depends on it"); */
+                    if (input.count(i)) continue;
+                    // nothing that v depends on can depend on learned_v
                     assert(dependency_mat[i][learned_v] == 0);
                 }
             }
-            // we depend on v
+            // set that learned_v depends on v
             dependency_mat[learned_v][v] = 1;
             verb_print(2, learned_v+1 << " depends on " << v+1);
 
@@ -664,7 +712,7 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
     assert(false);
 }
 
-void Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
+double Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
     verb_print(2, "training variable: " << v+1);
     assert(!samples.empty());
     assert(v < cnf.nVars());
@@ -682,14 +730,14 @@ void Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
     set<uint32_t> cannot_depend_on;
     for(uint32_t i = 0; i < samples.size(); i++) {
         assert(samples[i].size() == cnf.nVars());
-        for(uint32_t j = 0; j < cnf.nVars(); j++) {
-            if (dependency_mat[j][v] == 1 || j == v) {
+        for(uint32_t dep_v = 0; dep_v < cnf.nVars(); dep_v++) {
+            if (dependency_mat[dep_v][v] == 1 || dep_v == v) {
                 // we zero it out, so hopefully it will not be used
-                dataset(j, i) = 0;
-                cannot_depend_on.insert(j);
+                dataset(dep_v, i) = 0;
+                cannot_depend_on.insert(dep_v);
                 continue;
             }
-            dataset(j, i) = lbool_to_bool(samples[i][j]);
+            dataset(dep_v, i) = lbool_to_bool(samples[i][dep_v]);
         }
     }
     labels.resize(samples.size());
@@ -709,7 +757,7 @@ void Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
     verb_print(2,"[DEBUG] About to call recur for v " << v+1 << " num children: " << r.NumChildren());
     assert(var_to_formula.count(v) == 0);
     var_to_formula[v] = recur(&r, v, 0);
-    auto dep = fh->get_dependent_vars(var_to_formula[v]);
+    auto dep = fh->get_dependent_vars(var_to_formula[v], v);
     for(const auto& d: dep) {
         if (cannot_depend_on.count(d)) {
             cout << "c o [ERROR] Learned formula for v " << v+1 << " depends on var " << d+1
@@ -733,6 +781,8 @@ void Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
     verb_print(4, "Tentative, trained formula for y " << v+1 << ":" << endl << var_to_formula[v]);
     verb_print(2,"Done training variable: " << v+1);
     verb_print(2, "------------------------------");
+
+    return train_error;
 }
 
 bool Manthan::has_dependency_cycle_dfs(const uint32_t node, vector<uint8_t>& color, vector<uint32_t>& path) const {
