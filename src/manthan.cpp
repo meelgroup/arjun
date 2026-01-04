@@ -339,6 +339,8 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
 }
 
 void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vector<Lit>& conflict) {
+    verb_print(2,"Performing repair on " << y_rep+1 << " with conflict size " << conflict.size());
+    assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
     // not (conflict) -> v = ctx(v)
     FHolder::Formula f;
 

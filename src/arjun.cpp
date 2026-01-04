@@ -1294,8 +1294,16 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
 
             std::cout << "c o [get-var-types] Num unsat-defined vars: "
                 << unsat_defined_vars.size() << std::endl;
+            std::cout << "c o [get-var-types]   Unsat-defined vars: ";
+            for(const auto& v: unsat_defined_vars) std::cout << v+1 << " ";
+            std::cout << std::endl;
+
             std::cout << "c o [get-var-types] Num backward-synth-defined vars: "
                 << backw_synth_defined_vars.size() << std::endl;
+            std::cout << "c o [get-var-types]   Backward-synth-defined vars: ";
+            for(const auto& v: backw_synth_defined_vars) std::cout << v+1 << " ";
+            std::cout << std::endl;
+
             std::cout << "c o [get-var-types] Total vars in ORIG CNF: " << defs.size() << std::endl;
             std::cout << "c o [get-var-types] Total vars in NEW  CNF: " << nVars() << std::endl;
         }
