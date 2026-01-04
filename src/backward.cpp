@@ -456,6 +456,9 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
             //i.e. given that all in indep+unkown is equivalent, it's not possible that a1 != b1
             dep.insert(test_var);
             interp.generate_interpolant(assumptions, test_var, cnf, input_vars);
+            vector<Lit> cl = {Lit(var_to_indic[test_var], false)};
+            solver->add_clause(cl);
+            interp.add_unit_cl(cl);
         }
     }
 
