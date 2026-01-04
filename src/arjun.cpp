@@ -422,7 +422,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
 
         SATSolver samp_s;
         SATSolver s;
-        samp_s.set_up_for_sample_counter(100);
+        samp_s.set_up_for_sample_counter(1000);
         samp_s.set_seed(seed);
 
         samp_s.new_vars(defs.size());
@@ -438,7 +438,8 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
 
         uint32_t filled_defs = 0;
         uint32_t undefs = 0;
-        for (uint32_t check = 0; check < 10; ++check) {
+        uint32_t num_checks = 1000;
+        for (uint32_t check = 0; check < num_checks; ++check) {
             auto ret = samp_s.solve();
             assert(ret == l_True);
             auto model = samp_s.get_model();
@@ -469,7 +470,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             auto ret2 = s.solve(&assumptions);
             assert(ret2 == l_True);
         }
-        cout << "[CHECK] filled defs total: " << filled_defs << " undefs: " << undefs << " checks: " << 100 << endl;
+        cout << "[CHECK] filled defs total: " << filled_defs << " undefs: " << undefs << " checks: " << num_checks << endl;
     }
 
     DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
