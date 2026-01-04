@@ -114,7 +114,7 @@ void Manthan::fill_dependency_mat_with_backward() {
     for(const auto& v: to_define) {
         assert(input.count(v) == 0);
         assert(backward_defined.count(v) == 0);
-        set<uint32_t> deps_for_var;
+        set<uint32_t> deps_for_var; // these vars depend on v
         for(const auto& [backw_var, dep_set]: backw_deps) {
             if (dep_set.count(v)) deps_for_var.insert(backw_var);
         }
