@@ -286,14 +286,6 @@ void do_synthesis() {
         if (conf.do_debug_synth) cnf.write_aig_defs_to_file("4-minim_idep_synt.aig");
     }
 
-    /* cnf.renumber_sampling_vars_for_ganak(); */
-    if (cnf.get_opt_sampl_vars().size() == cnf.nVars()) {
-        cout << "c o [arjun] No variables to synthesize" << endl;
-        return;
-    } else {
-        cout << "c o [arjun] Num variables to synthesize via manthan:"
-            << (cnf.nVars() - cnf.get_opt_sampl_vars().size()) << endl;
-    }
     arjun->standalone_manthan(cnf);
     if (conf.do_debug_synth) cnf.write_aig_defs_to_file("5-manthan.aig");
 }
