@@ -140,7 +140,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
 
         assert(!input_vars.count(test_var));
         assumptions.clear();
-        uint32_t indic = var_to_indic[test_var];
+        const uint32_t indic = var_to_indic[test_var];
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
 
@@ -161,9 +161,8 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             // TODO: run get_conflict and then we know which were
             // actually needed, so we can do an easier generation/check
             interp.generate_interpolant(assumptions, test_var, cnf, input_vars);
-            vector<Lit> cl = {Lit(indic, false)};
-            solver->add_clause(cl);
-            interp.add_unit_cl(cl);
+            solver->add_clause({Lit(indic, false)});
+            interp.add_unit_cl({Lit(indic, false)});
             input_vars.insert(test_var);
         } else if (ret == l_True) {
             // Optimisation: if we see both true and false, then it cannot be independent
