@@ -297,6 +297,7 @@ if __name__ == "__main__":
             continue
         # solver = "./arjun --synth --debugsynth --verb 1"
         solvers = [
+            "./arjun --verb 2 --synth --synthbve 1 --extend 1 --minimize 1 --debugsynth --samples 10000",
             "./arjun --verb 2 --synth --synthbve 1 --extend 1 --minimize 0 --debugsynth --samples 10000",
             "./arjun --verb 2 --synth --synthbve 1 --extend 0 --minimize 1 --debugsynth --samples 1",
             "./arjun --verb 2 --synth --synthbve 0 --extend 1 --minimize 1 --debugsynth --samples 1",
