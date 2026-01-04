@@ -155,11 +155,6 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     inject_cnf(solver);
     fh = std::make_unique<FHolder>(&solver);
 
-    // TODO: what the HELL is this last_formula_var?
-    /* assert(last_formula_var > solver_train.nVars()); */
-    /* while(solver_train.nVars() < last_formula_var) solver_train.new_var(); */
-    /* assert(solver_train.nVars() == last_formula_var); */
-
     verb_print(2, "True lit in solver_train: " << fh->get_true_lit());
     verb_print(2, "[do-manthan] After fh creation: solver_train.nVars() = " << solver.nVars() << " cnf.nVars() = " << cnf.nVars());
     vector<uint32_t> to_train;
