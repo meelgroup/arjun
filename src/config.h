@@ -54,6 +54,7 @@ struct Config {
     int extend_ccnr = 0;
     int autarkies = 0;
     std::string debug_synth;
+    int manthan_maxsat_min_conflict = 0;
 };
 
 }

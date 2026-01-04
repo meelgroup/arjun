@@ -103,21 +103,24 @@ void add_arjun_options() {
 
     myopt("--mode", mode , atoi, "0=counting, 1=weightd counting");
     myopt("--allindep", etof_conf.all_indep , atoi, "All variables can be made part of the indepedent support. Indep support is given ONLY to help the solver.");
-    myopt("--premanthan", do_pre_manthan, atoi, "Run all simplifcation before Manthan");
     myopt("--maxc", conf.backw_max_confl, atoi,"Maximum conflicts per variable in backward mode");
-    myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
+    myopt("--revbce", do_revbce, atoi,"Perform reverse BCE");
+    myopt("--sbva", etof_conf.num_sbva_steps, atoi,"SBVA timeout. 0 = no sbva");
+    myopt("--prebackbone", do_pre_backbone, atoi,"Perform backbone before other things");
+
+    // synth
+    myopt("--samples", conf.num_samples, atoi,"Number of samples");
+    myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
+    myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
     program.add_argument("--synth")
         .action([&](const auto&) {synthesis = 1;})
         .default_value(synthesis)
         .flag()
         .help("Run synthesis");
+    myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
+    myopt("--premanthan", do_pre_manthan, atoi, "Run all simplifcation before Manthan");
     myopt("--debugsynth", conf.debug_synth, string,"Debug synthesis, prefix with this fname");
-    myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
-    myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
-    myopt("--revbce", do_revbce, atoi,"Perform reverse BCE");
-    myopt("--sbva", etof_conf.num_sbva_steps, atoi,"SBVA timeout. 0 = no sbva");
-    myopt("--prebackbone", do_pre_backbone, atoi,"Perform backbone before other things");
-    myopt("--samples", conf.num_samples, atoi,"Number of samples");
+    myopt("--manthanminconfl", conf.manthan_maxsat_min_conflict, atoi,"Manthan should try to minimize conflicts via maxsat when repairing");
 
     // Simplification options for minim
     myopt("--probe", conf.probe_based, atoi,"Do probing during orignal Arjun");
@@ -223,6 +226,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_num_samples(conf.num_samples);
     arj->set_extend_max_confl(conf.extend_max_confl);
     arj->set_oracle_find_bins(conf.oracle_find_bins);
+    arj->set_manthan_maxsat_min_conflict(conf.manthan_maxsat_min_conflict);
 }
 
 void check_cnf_sat(const ArjunNS::SimplifiedCNF& cnf) {

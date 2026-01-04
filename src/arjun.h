@@ -1261,6 +1261,7 @@ public:
     void set_cms_glob_mult(double cms_glob_mult);
     void set_extend_ccnr(int extend_ccnr);
     void set_autarkies(int autarkies);
+    void set_manthan_maxsat_min_conflict(bool val);
 
     //Get config
     uint32_t get_verb() const;
@@ -1287,6 +1288,7 @@ public:
     double get_cms_glob_mult() const;
     int get_extend_ccnr() const;
     int get_autarkies() const;
+    bool get_manthan_maxsat_min_conflict() const;
 
 private:
     ArjPrivateData* arjdata = nullptr;
