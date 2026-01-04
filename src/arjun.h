@@ -118,16 +118,12 @@ public:
 
             if (aig->type == AIGT::t_and) {
                 const auto l = sub_eval(aig->l);
-                if (l == CMSat::l_Undef) {
-                    cache[aig] = CMSat::l_Undef;
-                    return CMSat::l_Undef;
-                }
                 const auto r = sub_eval(aig->r);
-                if (r == CMSat::l_Undef) {
-                    cache[aig] = CMSat::l_Undef;
-                    return CMSat::l_Undef;
-                }
-                auto ret = (l && r) ^ aig->neg;
+                CMSat::lbool ret;
+                if (l ==CMSat::l_Undef && r == CMSat::l_Undef) ret = CMSat::l_Undef;
+                else if (l == CMSat::l_False) ret = CMSat::l_False ^ aig->neg;
+                else if (r == CMSat::l_False) ret = CMSat::l_False ^ aig->neg;
+                else ret = (l && r) ^ aig->neg;
                 cache[aig] = ret;
                 return ret;
             }
