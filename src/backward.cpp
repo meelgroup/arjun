@@ -406,6 +406,10 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     vector<uint32_t> unknown;
     set<uint32_t> pretend_input;
     auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb);
+    if (to_define.empty()) {
+        verb_print(1, "[arjun] No variables to define, returning original CNF");
+        return;
+    }
     assert(backward_defined.empty());
 
     const auto zero_ass = solver->get_zero_assigned_lits();
@@ -455,7 +459,6 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
             break;
         }
         assert(test_var < orig_num_vars);
-        const uint32_t indic = var_to_indic[test_var];
         assert(!input.count(test_var));
         assert(unknown_set[test_var]);
         unknown_set[test_var] = 0;
