@@ -163,7 +163,7 @@ void Interpolant::generate_interpolant(
     }
     for(const auto& l: assumptions) mini_cls.push_back({l});
 
-    if (conf.do_debug_synth) {
+    if (!conf.debug_synth.empty()) {
         std::stringstream name;
         name << "core-" << test_var+1 << ".cnf";
         verb_print(1, "Writing core to: " << name.str());

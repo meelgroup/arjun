@@ -53,7 +53,7 @@ struct Config {
     double cms_glob_mult = -1.0;
     int extend_ccnr = 0;
     int autarkies = 0;
-    int do_debug_synth = 0;
+    std::string debug_synth;
 };
 
 }

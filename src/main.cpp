@@ -111,11 +111,7 @@ void add_arjun_options() {
         .default_value(synthesis)
         .flag()
         .help("Run synthesis");
-    program.add_argument("--debugsynth")
-        .action([&](const auto&) {conf.do_debug_synth = 1;})
-        .default_value(conf.do_debug_synth)
-        .flag()
-        .help("Debug synthesis");
+    myopt("--debugsynth", conf.debug_synth, string,"Debug synthesis, prefix with this fname");
     myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
     myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
     myopt("--revbce", do_revbce, atoi,"Perform reverse BCE");
@@ -267,27 +263,27 @@ void do_synthesis() {
         if (do_synth_bve) {
             /* simp_conf.bve_too_large_resolvent = -1; */
             cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
-            if (conf.do_debug_synth) cnf.write_aig_defs_to_file("1-simplified_cnf.aig");
+            if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-1-simplified_cnf.aig");
         }
         if (etof_conf.do_extend_indep) {
             arjun->standalone_unsat_define(cnf);
-            if (conf.do_debug_synth) cnf.write_aig_defs_to_file("2-unsat_define.aig");
+            if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-2-unsat_define.aig");
         }
         /* if (do_revbce) arjun->standalone_rev_bce(cnf); */
         if (etof_conf.do_unate) {
             arjun->standalone_unate(cnf);
-            if (conf.do_debug_synth) cnf.write_aig_defs_to_file("3-unsat_unate.aig");
+            if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-3-unsat_unate.aig");
         }
     }
 
     // backw_round_synth
     if (do_minim_indep) {
         arjun->standalone_minimize_indep_synt(cnf);
-        if (conf.do_debug_synth) cnf.write_aig_defs_to_file("4-minim_idep_synt.aig");
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-4-minim_idep_synt.aig");
     }
 
     arjun->standalone_manthan(cnf);
-    if (conf.do_debug_synth) cnf.write_aig_defs_to_file("5-manthan.aig");
+    if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");
 }
 #endif
 

@@ -261,6 +261,15 @@ def gen_fuzz(seed) :
         print("Generated fuzz file %s with call: %s" % (fname, call));
     return fname
 
+def cleanup(fname, prefix):
+    os.unlink(fname)
+    directory = "."
+    for file_path in glob.glob(os.path.join(directory, f"{prefix}*.aig")):
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+            print(f"Deleted: {os.path.basename(file_path)}")
+    os.unlink(prefix)
+
 if __name__ == "__main__":
     if os.path.exists("out") and  os.path.isfile("out"):
         print("ERROR: file 'out' exists, but we need a directory named 'out'")
@@ -297,20 +306,22 @@ if __name__ == "__main__":
             os.unlink(fname)
             continue
         # solver = "./arjun --synth --debugsynth --verb 1"
+        prefix = unique_file("fuzzTest")
+        print("Using prefix %s for synthesis output files" % prefix)
         solvers = [
-            "./arjun --verb 2 --synth --synthbve 1 --extend 1 --minimize 1 --debugsynth --samples 10000",
-            "./arjun --verb 2 --synth --synthbve 1 --extend 1 --minimize 0 --debugsynth --samples 10000",
-            "./arjun --verb 2 --synth --synthbve 1 --extend 0 --minimize 1 --debugsynth --samples 1",
-            "./arjun --verb 2 --synth --synthbve 0 --extend 1 --minimize 1 --debugsynth --samples 1",
-            "./arjun --verb 2 --synth --synthbve 0 --extend 0 --minimize 0 --debugsynth --samples 1",
-            "./arjun --verb 2 --synth --synthbve 0 --extend 0 --minimize 1 --debugsynth --samples 10000",
-            "./arjun --verb 2 --synth --synthbve 0 --extend 0 --minimize 0 --debugsynth --samples 10000",
+            "./arjun --verb 2 --synth --synthbve 1 --extend 1 --minimize 1 --debugsynth %s --samples 10000" % prefix,
+            "./arjun --verb 2 --synth --synthbve 1 --extend 1 --minimize 0 --debugsynth %s --samples 10000" % prefix,
+            "./arjun --verb 2 --synth --synthbve 1 --extend 0 --minimize 1 --debugsynth %s --samples 1" % prefix,
+            "./arjun --verb 2 --synth --synthbve 0 --extend 1 --minimize 1 --debugsynth %s --samples 1" % prefix,
+            "./arjun --verb 2 --synth --synthbve 0 --extend 0 --minimize 0 --debugsynth %s --samples 1" % prefix,
+            "./arjun --verb 2 --synth --synthbve 0 --extend 0 --minimize 1 --debugsynth %s --samples 10000" % prefix,
+            "./arjun --verb 2 --synth --synthbve 0 --extend 0 --minimize 0 --debugsynth %s --samples 10000" % prefix,
         ]
         solver = random.choice(solvers)
         err, aigs = run_synth(solver, fname)
         if err is None:
             print("Synthesis timed out on file %s" % fname)
-            os.unlink(fname)
+            cleanup(fname, prefix)
             continue
         if err == True:
             print("Synthesis failed on file %s" % fname)
@@ -330,6 +341,6 @@ if __name__ == "__main__":
                 exit(-1)
             print("Call for fuzz OK: %s" % (call));
             os.unlink(aig)
-        os.unlink(fname)
+        cleanup(fname, prefix)
 
     exit(0)
