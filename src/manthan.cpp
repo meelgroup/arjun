@@ -224,12 +224,15 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             }
             if (backward_defined.count(y)) {
                 cout << "c o [WARNING] trying to repair backward-defined var " << y+1 << endl;
+                ctx[y_to_y_hat[y]] = ctx[y]; // pretend to have fixed the ctx
+                needs_repair.erase(y);
+                continue;
             }
             assert(y != std::numeric_limits<uint32_t>::max());
             needs_repair.erase(y);
             verb_print(3, "-------------------");
             verb_print(1, "repairing: " << y+1);
-            bool done = repair(y, ctx); // beware, this updates ctx on v
+            bool done = repair(y, ctx); // this updates ctx on y
             if (done) {
                 num_repaired++;
                 tot_repaired++;
@@ -350,7 +353,7 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     return true;
 }
 
-void Manthan::perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vector<Lit>& conflict) {
+void Manthan::perform_repair(const uint32_t y_rep, const vector<lbool>& ctx, const vector<Lit>& conflict) {
     verb_print(2,"Performing repair on " << y_rep+1 << " with conflict size " << conflict.size());
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
     // not (conflict) -> v = ctx(v)
