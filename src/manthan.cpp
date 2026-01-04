@@ -121,11 +121,15 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     // defined non-input vars -- vars defined via backward_round_synth
     // to_define vars -- vars that are not defined yet, and not input
     std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb);
+    to_define_full.clear();
+    to_define_full.insert(to_define.begin(), to_define.end());
+    to_define_full.insert(backward_defined.begin(), backward_defined.end());
     for(const auto& v: backward_defined) {
         FHolder::Formula f;
         Lit l = Lit(v, false);
         f.out = l;
         f.aig = AIG::new_lit(l);
+        assert(var_to_formula.count(v) == 0);
         var_to_formula[v] = f;
     }
 
@@ -174,7 +178,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         for(const auto& val: ctx) assert(val != l_Undef);
         if (finished) break;
         if (conf.verb >= 3) {
-            for(const auto& y: to_define) {
+            for(const auto& y: to_define_full) {
                 const auto y_hat = y_to_y_hat[y];
                 if (ctx[y] == ctx[y_hat]) continue;
                 verb_print(3, "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
@@ -187,7 +191,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         }
 
         auto better_ctx = find_better_ctx(ctx);
-        for(const auto& y: to_define) if (!needs_repair.count(y)) ctx[y] = better_ctx[y];
+        for(const auto& y: to_define_full) if (!needs_repair.count(y)) ctx[y] = better_ctx[y];
 
         cout << "c o [DEBUG] Needs repair vars: ";
         for(const auto& v: needs_repair) cout << v+1 << " ";
@@ -287,12 +291,10 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
 
     vector<Lit> assumps; assumps.reserve(input.size());
     for(const auto& x: input) assumps.push_back(Lit(x, ctx[x] == l_False)); //correct value
-    for(const auto& x: backward_defined) assumps.push_back(Lit(x, ctx[x] == l_False)); // TODO is this needed?
-                                                                            //
     for(const auto& y: y_order) {
         if (y == y_rep) break;
         assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen");
-        assert(ctx[y] == ctx[y_to_y_hat[y]]);
+        if (!backward_defined.count(y)) assert(ctx[y] == ctx[y_to_y_hat[y]]);
         const Lit l = Lit(y, ctx[y] == l_False);
         verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
         assumps.push_back({l});
@@ -383,17 +385,19 @@ void Manthan::fix_order() {
     vector<uint32_t> sorted;
     sorted.reserve(to_define.size());
     for(const auto& v: to_define) sorted.push_back(v);
+    for(const auto& v: backward_defined) sorted.push_back(v);
     sort_unknown(sorted, incidence);
+
 
     set<uint32_t> already_fixed;
     assert(y_order.empty());
-    while(already_fixed.size() != to_define.size()) {
+    while(already_fixed.size() != to_define_full.size()) {
         for(const auto& y: sorted) {
             if (already_fixed.count(y)) continue;
             verb_print(2, "Trying to add " << y+1 << " to order...");
 
             bool ok = true;
-            for(const auto& y2: to_define) {
+            for(const auto& y2: to_define_full) {
                 if (y == y2) continue;
                 if (dependency_mat[y][y2] == 0) continue;
                 if (dependency_mat[y][y2] == 1 && already_fixed.count(y2)) continue;
@@ -424,15 +428,8 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
         s_ctx.addClause(lits_to_ints({l}));
     }
 
-    // TODO not sure this is needed/should be here?
-    for(const auto& x: backward_defined) {
-        assert(ctx[x] != l_Undef && "Backward variable must be defined in counterexample");
-        const auto l = Lit(x, ctx[x] == l_False);
-        s_ctx.addClause(lits_to_ints({l}));
-    }
-
     // Fix to_define variables that are correct (y_hat is the learned one)
-    for(const auto& y: to_define) {
+    for(const auto& y: to_define_full) {
         const auto y_hat = y_to_y_hat[y];
         if (ctx[y] != ctx[y_hat]) continue;
         verb_print(3, "[find-better-ctx] CTX is CORRECT on y=" << y+1 << " y_hat=" << y_hat+1
@@ -443,7 +440,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
 
     // Fix to_define variables that are incorrect via assumptions
     set<Lit> assumps;
-    for(const auto& y: to_define) {
+    for(const auto& y: to_define_full) {
         const auto y_hat = y_to_y_hat[y];
         if (ctx[y] == ctx[y_hat]) continue;
         const auto l = Lit(y, ctx[y_hat] == l_False);
@@ -468,7 +465,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
 
     verb_print(1, "Finding better ctx DONE, needs_repair size now: " << needs_repair.size());
     vector<lbool> better_ctx(cnf.nVars(), l_Undef);
-    for(const auto& v: to_define) {
+    for(const auto& v: to_define_full) {
         better_ctx[v] = s_ctx.getValue(v+1) ? l_True : l_False;
     }
     return better_ctx;
@@ -479,7 +476,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
 void Manthan::add_not_F_x_yhat() {
     vector<Lit> tmp;
     // Create variables for y_hat
-    for(const auto& y: to_define) {
+    for(const auto& y: to_define_full) {
         solver.new_var();
         const uint32_t y_hat = solver.nVars()-1;
         y_to_y_hat[y] = y_hat;
@@ -494,7 +491,7 @@ void Manthan::add_not_F_x_yhat() {
         // Replace y with y_hat in the clause
         vector<Lit> cl;
         for(const auto& l: cl_orig) {
-            if (to_define.count(l.var())) cl.push_back(Lit(y_to_y_hat[l.var()], l.sign()));
+            if (to_define_full.count(l.var())) cl.push_back(Lit(y_to_y_hat[l.var()], l.sign()));
             else cl.push_back(l);
         }
 
@@ -527,7 +524,7 @@ void Manthan::inject_formulas_into_solver() {
             vector<Lit> cl2;
             for(const auto& l: cl) {
                 auto v = l.var();
-                if (to_define.count(v)) { cl2.push_back(Lit(y_to_y_hat[v], l.sign()));}
+                if (to_define_full.count(v)) { cl2.push_back(Lit(y_to_y_hat[v], l.sign()));}
                 else cl2.push_back(l);
             }
             solver.add_clause(cl2);
@@ -542,7 +539,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     vector<Lit> tmp;
     y_hat_to_indic.clear();
     indic_to_y_hat.clear();
-    for(const auto& y: to_define) {
+    for(const auto& y: to_define_full) {
         solver.new_var();
         const uint32_t ind = solver.nVars()-1;
 
@@ -681,6 +678,7 @@ void Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
     /* r.serialize(cout, 1); */
 
     verb_print(2,"[DEBUG] About to call recur for v " << v+1 << " num children: " << r.NumChildren());
+    assert(var_to_formula.count(v) == 0);
     var_to_formula[v] = recur(&r, v, 0);
     verb_print(3,"[DEBUG] Formula for v " << v+1 << ":" << endl << var_to_formula[v]);
 

@@ -82,6 +82,7 @@ class Manthan {
         set<uint32_t> input;
         set<uint32_t> to_define;
         set<uint32_t> backward_defined;
+        set<uint32_t> to_define_full;
 
         FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth = 0);
         vector<uint32_t> incidence;
