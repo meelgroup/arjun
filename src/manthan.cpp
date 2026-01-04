@@ -107,7 +107,7 @@ void Manthan::fill_dependency_mat_with_backward() {
     dependency_mat.resize(cnf.nVars());
     for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);
 
-    auto backw_deps = cnf.compute_backw_dependencies();
+    const auto backw_deps = cnf.compute_backw_dependencies();
     for(const auto& [backw_var, dep_set]: backw_deps) assert(backward_defined.count(backw_var) == 1);
 
     assert(backw_deps.size() == backward_defined.size());
@@ -143,6 +143,8 @@ void Manthan::fill_var_to_formula_with_backward() {
     }
 }
 
+// This adds (and re-numbers) the deep-copied AIGs to a fresh copy of the CNF, then checks if the CNF
+// has any AIG cycles
 bool Manthan::check_dependency_cycles() const {
     map<uint32_t, aig_ptr> aigs;
     for(const auto& y: to_define) {
