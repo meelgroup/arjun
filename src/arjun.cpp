@@ -969,7 +969,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             assert(n != CMSat::lit_Undef);
 
             // var n IS backward_defined
-            auto ret_orig = get_dependent_vars_recursive(orig_v);
+            const auto ret_orig = get_dependent_vars_recursive(orig_v);
             std::set<uint32_t> ret_new;
             for(const auto& ov: ret_orig) {
                 if(!orig_to_new_var.count(ov)) continue;
