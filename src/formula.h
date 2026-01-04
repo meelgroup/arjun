@@ -65,6 +65,17 @@ public:
         aig_ptr aig = nullptr;
     };
 
+    set<uint32_t> get_dependent_vars(const Formula& f) const {
+        set<uint32_t> ret;
+        for(const auto& cl: f.clauses) {
+            for(const auto& l: cl) {
+                ret.insert(l.var());
+            }
+        }
+        ret.erase(f.out.var());
+        return ret;
+    }
+
     Formula constant_formula(const bool value) {
         Formula ret;
         ret.out = value ? my_true_lit : ~my_true_lit;

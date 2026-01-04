@@ -169,8 +169,11 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     verb_print(2, "[do-manthan] After fh creation: solver_train.nVars() = " << solver.nVars() << " cnf.nVars() = " << cnf.nVars());
     vector<uint32_t> to_train;
     to_train.reserve(to_define.size());
-    for(const auto& v: to_define) to_train.push_back(v);
-    sort_unknown(to_train, incidence);
+    fix_order();
+    for(const auto& v: y_order) {
+        if (backward_defined.count(v)) continue;
+        to_train.push_back(v);
+    }
     for(const auto& v: to_train) train(solutions, v); // updates dependency_mat
     verb_print(2, "[do-manthan] After training: solver_train.nVars() = " << solver.nVars());
     assert(check_dependency_loop());
@@ -401,12 +404,12 @@ void Manthan::perform_repair(const uint32_t y_rep, const vector<lbool>& ctx, con
 }
 
 void Manthan::fix_order() {
+    y_order.clear();
     verb_print(1, "[manthan] Fixing order...");
     vector<uint32_t> sorted(to_define_full.begin(), to_define_full.end());
     sort_unknown(sorted, incidence);
 
     set<uint32_t> already_fixed;
-    assert(y_order.empty());
     while(already_fixed.size() != to_define_full.size()) {
         for(const auto& y: sorted) {
             if (already_fixed.count(y)) continue;
@@ -678,12 +681,16 @@ void Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
     verb_print(2, "Dataset size: " << dataset.n_rows << " x " << dataset.n_cols);
     // TODO: we fill 0 for the value of v, this MAY come back in the tree,but likely not
 
+    set<uint32_t> cannot_depend_on;
     for(uint32_t i = 0; i < samples.size(); i++) {
         assert(samples[i].size() == cnf.nVars());
         for(uint32_t j = 0; j < cnf.nVars(); j++) {
-            // we are learning v.
-            if (j == v) {dataset(j, i) = 0; continue;}
-            if (dependency_mat[j][v] == 1) { dataset(j, i) = 0; continue;}
+            if (dependency_mat[j][v] == 1 || j == v) {
+                // we zero it out, so hopefully it will not be used
+                dataset(j, i) = 0;
+                cannot_depend_on.insert(j);
+                continue;
+            }
             dataset(j, i) = lbool_to_bool(samples[i][j]);
         }
     }
@@ -704,6 +711,14 @@ void Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
     verb_print(2,"[DEBUG] About to call recur for v " << v+1 << " num children: " << r.NumChildren());
     assert(var_to_formula.count(v) == 0);
     var_to_formula[v] = recur(&r, v, 0);
+    auto dep = fh->get_dependent_vars(var_to_formula[v]);
+    for(const auto& d: dep) {
+        if (cannot_depend_on.count(d)) {
+            cout << "c o [ERROR] Learned formula for v " << v+1 << " depends on var " << d+1
+                 << " which it cannot depend on!" << endl;
+            assert(false);
+        }
+    }
     verb_print(3,"[DEBUG] Formula for v " << v+1 << ":" << endl << var_to_formula[v]);
 
     // Forward dependency update
@@ -722,7 +737,7 @@ void Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
     verb_print(2, "------------------------------");
 }
 
-bool Manthan::has_dependency_cycle_dfs(const uint32_t node, vector<uint8_t>& color, vector<uint32_t>& path) {
+bool Manthan::has_dependency_cycle_dfs(const uint32_t node, vector<uint8_t>& color, vector<uint32_t>& path) const {
     color[node] = 1; // Mark as being processed (gray)
     path.push_back(node);
 
@@ -745,7 +760,7 @@ bool Manthan::has_dependency_cycle_dfs(const uint32_t node, vector<uint8_t>& col
     return false;
 }
 
-bool Manthan::check_dependency_loop() {
+bool Manthan::check_dependency_loop() const {
     if (dependency_mat.empty()) return true;
 
     const uint32_t n = dependency_mat.size();
