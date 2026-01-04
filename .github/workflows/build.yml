@@ -207,6 +207,21 @@ jobs:
         sudo make install
         cd ../..
 
+    - name: Checkout EvalMaxSAT
+      uses: actions/checkout@v4
+      with:
+        repository: meelgroup/EvalMaxSAT
+        ref: master
+        path: EvalMaxSAT
+    - name: Build EvalMaxSAT
+      run: |
+        cd EvalMaxSAT
+        mkdir build
+        cd build
+        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSTATICCOMPILE=${{ matrix.staticcompile }} ..
+        cmake --build . --config ${{matrix.build_type}} -v
+        cd ../..
+
     - uses: actions/checkout@v4
       with:
         path: project
@@ -232,7 +247,6 @@ jobs:
         echo "Running help command"
         ./project/build/arjun --help
         echo $?
-
 
     - name: Upload Artifact - Linux
       if: contains(matrix.os, 'ubuntu') && matrix.staticcompile == 'ON' && !contains(matrix.os, 'arm')
