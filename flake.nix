@@ -11,11 +11,15 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     cryptominisat = {
-      url = "github:msoos/cryptominisat/master";
+      url = "github:msoos/cryptominisat/working-on-synth";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     sbva = {
       url = "github:meelgroup/sbva/master";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    evalmaxsat = {
+      url = "github:meelgroup/EvalMaxSAT/master";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -27,6 +31,7 @@
       cadiback,
       cryptominisat,
       sbva,
+      evalmaxsat,
     }:
     let
       inherit (nixpkgs) lib;
@@ -85,6 +90,7 @@
           fetchFromGitHub,
           cmake,
           sbva,
+          evalmaxsat,
           zlib,
           gmp,
           mpfr,
@@ -115,6 +121,7 @@
           buildInputs = [
             zlib
             sbva
+            evalmaxsat
             gmp
             mpfr
             cadiback
@@ -140,6 +147,7 @@
             cadiback = cadiback.packages.${system}.cadiback;
             cryptominisat5 = cryptominisat.packages.${system}.cryptominisat5;
             sbva = sbva.packages.${system}.sbva;
+            evalmaxsat = evalmaxsat.packages.${system}.evalmaxsat;
           };
         in
         {
