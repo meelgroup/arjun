@@ -100,7 +100,6 @@ class Manthan {
         void fill_var_to_formula_with_backward();
         bool check_train_correctness() const;
         bool check_dependency_cycles() const;
-        map<uint32_t, double> training_errors;
 
         vector<uint32_t> y_order; //1st only depends on inputs
         void fix_order();

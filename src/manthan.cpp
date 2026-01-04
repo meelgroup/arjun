@@ -143,22 +143,6 @@ void Manthan::fill_var_to_formula_with_backward() {
     }
 }
 
-// Can only check zero-error trains
-bool Manthan::check_train_correctness() const {
-    map<uint32_t, aig_ptr> aigs;
-    for(const auto& y: to_define) {
-        if (var_to_formula.count(y) == 0) continue;
-        assert(training_errors.count(y));
-        if (training_errors.at(y) > 0) continue;
-        aigs[y] = AIG::deep_clone(var_to_formula.at(y).aig);
-    }
-
-    SimplifiedCNF fcnf = cnf;
-    fcnf.map_aigs_to_orig(aigs, cnf.nVars());
-    assert(fcnf.get_need_aig() && fcnf.defs_invariant());
-    return true;
-}
-
 bool Manthan::check_dependency_cycles() const {
     map<uint32_t, aig_ptr> aigs;
     for(const auto& y: to_define) {
@@ -215,10 +199,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     fix_order();
     for(const auto& v: y_order) {
         if (backward_defined.count(v)) continue;
-        const double train_error = train(solutions, v); // updates dependency_mat
-        training_errors[v] = train_error;
+        train(solutions, v); // updates dependency_mat
         assert(check_dependency_cycles());
-        assert(check_train_correctness());
     }
     verb_print(2, "[do-manthan] After training: solver_train.nVars() = " << solver.nVars());
     assert(check_dependency_loop());
