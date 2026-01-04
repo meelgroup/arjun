@@ -121,6 +121,13 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     // defined non-input vars -- vars defined via backward_round_synth
     // to_define vars -- vars that are not defined yet, and not input
     std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb);
+    for(const auto& v: backward_defined) {
+        FHolder::Formula f;
+        Lit l = Lit(v, false);
+        f.out = l;
+        f.aig = AIG::new_lit(l);
+        var_to_formula[v] = f;
+    }
 
     dependency_mat.resize(cnf.nVars());
     for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);
