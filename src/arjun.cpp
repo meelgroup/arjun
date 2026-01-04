@@ -956,6 +956,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
 
     // returns in CNF (new vars) the dependencies of each variable
     // every LHS element in the map is a backward_defined variable
+    // input variables are NOT included in the dependencies
     DLL_PUBLIC std::map<uint32_t, std::set<uint32_t>> SimplifiedCNF::compute_backw_dependencies() {
         std::map<uint32_t, std::set<uint32_t>> ret;
         for(uint32_t orig_v = 0; orig_v < defs.size(); orig_v ++) {
@@ -1395,7 +1396,13 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             if (new_dep != dep) changed = true;
             dep = new_dep;
         }
-        assert(!dep.count(orig_v) && "Variable cannot depend on itself");
+        if (dep.count(orig_v)) {
+            cout << "ERROR: Orig variable " << orig_v+1 << " depends on itself!" << std::endl;
+            if (orig_to_new_var.count(orig_v)) {
+                cout << "ERROR: In CNF as variable " << orig_to_new_var.at(orig_v).var()+1 << std::endl;
+            }
+            assert(false);
+        }
         return dep;
     }
 
