@@ -959,16 +959,11 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
     // every LHS element in the map is a backward_defined variable
     // input variables are NOT included in the dependencies
     DLL_PUBLIC std::map<uint32_t, std::set<uint32_t>> SimplifiedCNF::compute_backw_dependencies() {
+        auto [input, to_define, backward_defined] = get_var_types(0);
+        auto new_to_orig_var = get_new_to_orig_var();
         std::map<uint32_t, std::set<uint32_t>> ret;
-        for(uint32_t orig_v = 0; orig_v < defs.size(); orig_v ++) {
-            // Skip orig sampl vars
-            if (orig_sampl_vars.count(orig_v)) continue; // if orig_sampl_var, skip
-            if (!defined(orig_v)) continue; // if undefined, skip
-            if (orig_to_new_var.count(orig_v) == 0) continue; // if NOT mapped to CNF, skip
-            const CMSat::Lit n = orig_to_new_var.at(orig_v);
-            assert(n != CMSat::lit_Undef);
-
-            // var n IS backward_defined
+        for(auto& n: backward_defined) {
+            const auto orig_v = new_to_orig_var.at(n).var();
             const auto ret_orig = get_dependent_vars_recursive(orig_v);
             std::set<uint32_t> ret_new;
             for(const auto& ov: ret_orig) {
@@ -978,8 +973,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
                 assert(nl != CMSat::lit_Undef);
                 ret_new.insert(nl.var());
             }
-            if (ret_new.empty()) continue; //unsat defined
-            ret[n.var()] = ret_new;
+            ret[n] = ret_new;
         }
         return ret;
     }
