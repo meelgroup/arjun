@@ -1233,7 +1233,6 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         std::set<uint32_t> input;
         std::set<uint32_t> input_orig;
         for (const auto& v: get_orig_sampl_vars()) {
-            input_orig.insert(v);
             const auto it = orig_to_new_var.find(v);
             if (it == orig_to_new_var.end()) continue;
             const uint32_t cnf_var = it->second.var();
@@ -1241,6 +1240,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             /*      << cnf_var+1 << std::endl; */
             assert(cnf_var < nVars());
             input.insert(cnf_var);
+            input_orig.insert(v);
         }
         assert(input.size() == sampl_vars.size());
         std::set<uint32_t> to_define;
@@ -1261,9 +1261,16 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         std::set<uint32_t> unsat_defined_vars_orig;
         std::set<uint32_t> backw_synth_defined_vars;
         std::set<uint32_t> backw_synth_defined_vars_orig;
+        std::set<uint32_t> bve_defined_vars_orig;
         for (uint32_t v = 0; v < num_defs(); v++) {
             if (get_orig_sampl_vars().count(v)) continue;
-            if (orig_to_new_var.count(v) == 0) continue;
+            if (!orig_to_new_var.count(v)) {
+                assert(defs[v] != nullptr && "if it is not in the CNF, it must be defined");
+                auto s = get_dependent_vars_recursive(v);
+                bve_defined_vars_orig.insert(v);
+                continue;
+            }
+
             // This var is NOT input and IS in the CNF
             if (!defined(v)) continue;
             auto s = get_dependent_vars_recursive(v);
@@ -1286,6 +1293,20 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             }
         }
         if (verb >= 1) {
+            cout << "orig_to_new: ";
+            for(uint32_t i = 0; i < defs.size(); i++) {
+                cout << i << " -> ";
+                if (orig_to_new_var.count(i) == 0)
+                    cout << "UNMAP";
+                else
+                    cout << orig_to_new_var.at(i);
+
+                if (defined(i)) cout << "[DEF]";
+                else          cout << "[UNDEF]";
+                cout << " ";
+            }
+            cout << endl;
+
             std::cout << "c o [get-var-types] Variable types in CNF:" << std::endl;
             std::cout << "c o [get-var-types] Num input vars: " << input.size() << std::endl;
             std::cout << "c o [get-var-types]   Input vars (new) : ";
@@ -1320,6 +1341,12 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             std::cout << std::endl;
             std::cout << "c o [get-var-types]   Backward-synth-defined vars (orig): ";
             for(const auto& v: backw_synth_defined_vars_orig) std::cout << v+1 << " ";
+            std::cout << std::endl;
+
+            std::cout << "c o [get-var-types] Num bve-defined vars: "
+                << bve_defined_vars_orig.size() << std::endl;
+            std::cout << "c o [get-var-types]   bve-defined vars (orig): ";
+            for(const auto& v: bve_defined_vars_orig) std::cout << v+1 << " ";
             std::cout << std::endl;
 
             std::cout << "c o [get-var-types] Total vars in ORIG CNF: " << defs.size() << std::endl;
