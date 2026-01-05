@@ -1096,29 +1096,6 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         }
     }
 
-    DLL_PUBLIC bool SimplifiedCNF::aig_contains(const aig_ptr& aig, const uint32_t v) const {
-        check_var(v);
-        if (aig == nullptr) return false;
-        assert(aig->invariants());
-        if (aig->type == AIGT::t_lit) {
-            if (aig->var == v) return true;
-
-            /// Need to be recursive
-            if (defs[aig->var] != nullptr) {
-                const auto& aig2 = defs[aig->var];
-                return aig_contains(aig2, v);
-            }
-            return false;
-        }
-        if (aig->type == AIGT::t_const) return false;
-        if (aig->type == AIGT::t_and) {
-            return aig_contains(aig->l, v) || aig_contains(aig->r, v);
-        }
-        assert(false && "Unknown AIG type");
-        exit(EXIT_FAILURE);
-    }
-
-
     DLL_PUBLIC void SimplifiedCNF::renumber_sampling_vars_for_ganak() {
         assert(!need_aig && "not tested with AIGs");
         assert(sampl_vars.size() <= opt_sampl_vars.size());
@@ -1372,16 +1349,6 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             exit(EXIT_FAILURE);
         }
         return AIG::evaluate(vals, defs[var], defs);
-    }
-
-    DLL_PUBLIC std::set<uint32_t> SimplifiedCNF::get_vars_need_definition() const {
-        std::set<uint32_t> ret;
-        std::set<uint32_t> osv(opt_sampl_vars.begin(), opt_sampl_vars.end());
-        for(uint32_t i = 0; i < defs.size(); i++) {
-            if (defs[i] == nullptr && !osv.count(i))
-                ret.insert(i);
-        }
-        return ret;
     }
 
     DLL_PUBLIC bool SimplifiedCNF::check_orig_sampl_vars_undefined() const {

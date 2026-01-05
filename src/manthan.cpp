@@ -237,7 +237,6 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     for(const auto& v: y_order) {
         if (backward_defined.count(v)) continue;
         train(solutions, v); // updates dependency_mat
-        assert(check_aig_dependency_cycles());
     }
     verb_print(2, "[do-manthan] After training: solver_train.nVars() = " << solver.nVars());
     assert(check_map_dependency_cycles());

@@ -1095,8 +1095,6 @@ public:
             const std::vector<uint32_t>& empty_sampling_vars);
 
     CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var) const;
-    std::set<uint32_t> get_vars_need_definition() const;
-    bool aig_contains(const aig_ptr& aig, const uint32_t v) const;
 
     // returns in CNF (new vars) the dependencies of each variable
     // every LHS element in the map is a backward_defined variable
