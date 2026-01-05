@@ -374,7 +374,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         }
     }
 
-    DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(std::map<uint32_t, std::shared_ptr<AIG>>& aigs, uint32_t max_num_vars) {
+    DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const std::map<uint32_t, aig_ptr>& aigs_orig, const uint32_t max_num_vars) {
         const auto new_to_orig_var = get_new_to_orig_var();
         std::function<void(const aig_ptr&)> remap_aig = [&](const aig_ptr& aig) {
             if (aig == nullptr) return;
@@ -1287,19 +1287,21 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             }
         }
         if (verb >= 1) {
-            cout << "orig_to_new: ";
-            for(uint32_t i = 0; i < defs.size(); i++) {
-                cout << i << " -> ";
-                if (orig_to_new_var.count(i) == 0)
-                    cout << "UNMAP";
-                else
-                    cout << orig_to_new_var.at(i);
+            if (verb >= 2) {
+                cout << "orig_to_new: ";
+                for(uint32_t i = 0; i < defs.size(); i++) {
+                    cout << i << " -> ";
+                    if (orig_to_new_var.count(i) == 0)
+                        cout << "UNMAP";
+                    else
+                        cout << orig_to_new_var.at(i);
 
-                if (defined(i)) cout << "[DEF]";
-                else          cout << "[UNDEF]";
-                cout << " ";
+                    if (defined(i)) cout << "[DEF]";
+                    else          cout << "[UNDEF]";
+                    cout << " ";
+                }
+                cout << endl;
             }
-            cout << endl;
 
             std::cout << "c o [get-var-types] Variable types in CNF:" << std::endl;
             std::cout << "c o [get-var-types] Num input vars: " << input.size() << std::endl;

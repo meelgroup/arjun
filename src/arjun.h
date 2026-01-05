@@ -1115,7 +1115,7 @@ public:
 
     std::vector<CMSat::lbool> extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed = false) const;
 
-    void map_aigs_to_orig(std::map<uint32_t, std::shared_ptr<AIG>>& aigs, uint32_t max_num_vars);
+    void map_aigs_to_orig(const std::map<uint32_t, aig_ptr>& aigs, const uint32_t max_num_vars);
 
     SimplifiedCNF get_cnf(
             std::unique_ptr<CMSat::SATSolver>& solver,
