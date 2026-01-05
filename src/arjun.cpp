@@ -1480,7 +1480,13 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
                 bool in_cycle = false;
                 for (const auto& p : path) {
                     if (p == v) in_cycle = true;
-                    if (in_cycle) std::cout << p+1 << " -> ";
+                    if (in_cycle) {
+                        std::cout << p+1;
+                        if (orig_to_new_var.count(p)) {
+                            std::cout << "(CNF var " << orig_to_new_var.at(p).var()+1 << ")";
+                        }
+                        cout << " -> ";
+                    }
                 }
                 std::cout << v+1 << std::endl;
                 return true;

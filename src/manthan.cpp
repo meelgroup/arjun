@@ -707,6 +707,7 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
     } else {
         uint32_t v = node->SplitDimension();
         /* cout << "(learning " << learned_v+1<< ") Node. v: " << v+1 << std::flush; */
+        verb_print(2, learned_v+1 << " depends on " << v+1 << " but NOT adding it, because it is not in to_define_full. input: " << (input.count(v) ? "yes" : "no"));
         if (to_define_full.count(v)) {
             // v does not depend on learned_v!
             assert(dependency_mat[v][learned_v] == 0);
