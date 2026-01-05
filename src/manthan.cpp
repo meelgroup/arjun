@@ -316,6 +316,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     }
     SimplifiedCNF fcnf = cnf;
     fcnf.map_aigs_to_orig(aigs, cnf.nVars());
+    assert(fcnf.check_aig_cycles());
     auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(conf.verb);
     for(const auto& v: to_define2) {
         cout << "ERROR: var " << v+1 << " not defined in final CNF!" << endl;
