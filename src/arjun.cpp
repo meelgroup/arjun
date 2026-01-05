@@ -1368,11 +1368,11 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         if (!need_aig) return true;
         assert(orig_sampl_vars_set && "If need_aig, orig_sampl_vars_set must be set");
         assert(sampl_vars_set);
-        assert(sampl_vars.size() == opt_sampl_vars.size());
+        assert(sampl_vars.size() <= opt_sampl_vars.size() && "We add to opt_sampl_vars via unsat_define in extend.cpp");
         assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
 
         check_orig_sampl_vars_undefined();
-        check_all_sampl_vars_depend_only_on_orig_sampl_vars();
+        check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars();
         check_pre_post_backward_round_synth();
         all_vars_accounted_for();
         check_aig_cycles();
@@ -1561,14 +1561,14 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         }
     }
 
-    DLL_PUBLIC bool SimplifiedCNF::check_all_sampl_vars_depend_only_on_orig_sampl_vars() const {
+    DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars() const {
         assert(need_aig);
 
         // Get reverse mapping from NEW vars to ORIG vars
         const auto new_to_orig_vars = get_new_to_orig_var_list();
 
         // Check each sampling variable
-        for(const auto& new_v : sampl_vars) {
+        for(const auto& new_v : opt_sampl_vars) {
             assert(new_v < nvars);
 
             // Find the orig var(s) that map to this new var

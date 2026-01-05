@@ -163,6 +163,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             interp.generate_interpolant(assumptions, test_var, cnf, input_vars);
             solver->add_clause({Lit(indic, false)});
             interp.add_unit_cl({Lit(indic, false)});
+            cnf.add_opt_sampl_var(test_var);
             input_vars.insert(test_var);
         } else if (ret == l_True) {
             // Optimisation: if we see both true and false, then it cannot be independent

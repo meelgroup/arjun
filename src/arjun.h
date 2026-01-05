@@ -890,7 +890,7 @@ public:
     // It is checked that it is correct and total
     std::tuple<std::set<uint32_t>, std::set<uint32_t>, std::set<uint32_t>> get_var_types([[maybe_unused]] uint32_t verb) const;
 
-    bool check_all_sampl_vars_depend_only_on_orig_sampl_vars() const;
+    bool check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars() const;
     bool check_orig_sampl_vars_undefined() const;
     bool defs_invariant() const;
 
