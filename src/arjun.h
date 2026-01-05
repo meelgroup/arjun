@@ -128,6 +128,7 @@ public:
                 return ret;
             }
             assert(false && "Unknown AIG type");
+            exit(EXIT_FAILURE);
         };
         return sub_eval(a);
     }
@@ -828,7 +829,7 @@ public:
             orig_sampl_vars = other.orig_sampl_vars;
             orig_sampl_vars_set = other.orig_sampl_vars_set;
         }
-        defs_invariant();
+        assert(defs_invariant());
 
         return *this;
     }

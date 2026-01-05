@@ -376,6 +376,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
 
     DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const std::map<uint32_t, aig_ptr>& aigs_orig, const uint32_t max_num_vars) {
         const auto new_to_orig_var = get_new_to_orig_var();
+        auto aigs = AIG::deep_clone_map(aigs_orig);
         std::function<void(const aig_ptr&)> remap_aig = [&](const aig_ptr& aig) {
             if (aig == nullptr) return;
             if (aig->marked()) return;

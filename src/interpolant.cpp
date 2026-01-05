@@ -44,7 +44,7 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
   cls[id] = pl_to_lit_cl(clause);
   auto rantec = oantec;
   std::reverse(rantec.begin(), rantec.end());
-  assert(rantec.size() >= 2);
+  release_assert(rantec.size() >= 2);
 
   const uint64_t id1 = rantec[0];
   auto aig = fs_clid[id1];

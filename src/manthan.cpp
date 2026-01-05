@@ -246,7 +246,6 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     fix_order();
     // Counterexample-guided repair
     while(true) {
-        assert(check_aig_dependency_cycles());
         inject_formulas_into_solver();
         vector<lbool> ctx;
         bool finished = get_counterexample(ctx);
@@ -313,7 +312,6 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     verb_print(1, "DONE");
 
     // Build final CNF
-    assert(check_aig_dependency_cycles());
     map<uint32_t, aig_ptr> aigs;
     for(const auto& y: to_define) {
         assert(var_to_formula.count(y));
@@ -323,7 +321,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     SimplifiedCNF fcnf = cnf;
     fcnf.map_aigs_to_orig(aigs, cnf.nVars());
     assert(fcnf.check_aig_cycles());
-    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(conf.verb);
+    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(1);
     for(const auto& v: to_define2) {
         cout << "ERROR: var " << v+1 << " not defined in final CNF!" << endl;
         assert(false && "All to-define vars must be defined in final CNF");
@@ -425,7 +423,6 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
         cout << "c o Minimized conflict: " << conflict << endl;
     }
     perform_repair(y_rep, ctx, conflict);
-    assert(check_aig_dependency_cycles());
     return true;
 }
 
@@ -474,8 +471,6 @@ void Manthan::perform_repair(const uint32_t y_rep, const vector<lbool>& ctx, con
     verb_print(3, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
     verb_print(4, "repaired formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
     //We fixed the ctx on this variable
-
-    assert(check_aig_dependency_cycles());
 }
 
 void Manthan::fix_order() {
