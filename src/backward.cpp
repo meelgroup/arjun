@@ -399,7 +399,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
 
     double start_round_time = cpuTime();
 
-    // Initially, all of samping_set is known, we do NOT want to minimize those
+    // Initially, all of opt_samping_set is known, we do NOT want to minimize those
     // Instead, all non-sampling-set vars, get definitions for them
     // in terms of ANY other variables, but NOT in a self-referential way
     vector<char> unknown_set(orig_num_vars, 0);
@@ -493,9 +493,13 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
             //Timed out, we'll treat is as unknown
             assert(test_var < orig_num_vars);
             pretend_input.insert(test_var);
+            solver->add_clause({Lit(indic, false)});
+            interp.add_unit_cl({Lit(indic, false)});
         } else if (ret == l_True) {
             //Independent
             pretend_input.insert(test_var);
+            solver->add_clause({Lit(indic, false)});
+            interp.add_unit_cl({Lit(indic, false)});
         } else if (ret == l_False) {
             //not independent
             //i.e. given that all in indep+unkown is equivalent, it's not possible that a1 != b1

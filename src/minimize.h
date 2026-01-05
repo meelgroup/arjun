@@ -117,6 +117,7 @@ struct Minimize
         const vector<char>& unknown_set,
         const T& indep);
     void fill_solver(const ArjunNS::SimplifiedCNF& cnf);
+    void fill_solver_synth(const ArjunNS::SimplifiedCNF& cnf);
     void backward_round();
     void backward_round_synth(ArjunNS::SimplifiedCNF& cnf);
     void add_all_indics_except(const set<uint32_t>& except);

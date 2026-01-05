@@ -244,10 +244,17 @@ void Minimize::fill_solver(const ArjunNS::SimplifiedCNF& cnf) {
     }
 }
 
+void Minimize::fill_solver_synth(const ArjunNS::SimplifiedCNF& cnf) {
+    solver->set_verbosity(conf.verb);
+    solver->new_vars(cnf.nVars());
+    for(const auto& cl: cnf.get_clauses()) solver->add_clause(cl);
+    for(const auto& cl: cnf.get_red_clauses()) solver->add_red_clause(cl);
+    sampling_vars = cnf.get_opt_sampl_vars();
+}
+
 void Minimize::run_minimize_for_synth(ArjunNS::SimplifiedCNF& cnf) {
     assert(cnf.get_need_aig() && cnf.defs_invariant());
-
-    fill_solver(cnf);
+    fill_solver_synth(cnf);
     init();
     get_incidence();
     duplicate_problem(cnf);
