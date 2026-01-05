@@ -471,6 +471,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
         solver->set_no_confl_needed();
+        const uint32_t indic = var_to_indic[test_var];
 
         // See if it can be defined by anything
         lbool ret = l_Undef;
