@@ -29,6 +29,7 @@
 #include "src/arjun.h"
 #include <cstdlib>
 #include <cstdint>
+#include <ensmallen_bits/sgdr/cyclical_decay.hpp>
 #include <ios>
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
 #include <vector>
@@ -177,15 +178,18 @@ void Manthan::fill_var_to_formula_with_backward() {
 // This adds (and re-numbers) the deep-copied AIGs to a fresh copy of the CNF, then checks if the CNF
 // has any AIG cycles
 bool Manthan::check_aig_dependency_cycles() const {
-    map<uint32_t, aig_ptr> aigs;
+    // We need to copy these, so we don't accidentally update the original.
+    // We deep copy them together in one go, to preserve e.g. cycles
+    std::map<uint32_t, aig_ptr> aigs;
     for(const auto& y: to_define) {
-        if (var_to_formula.count(y) == 0) continue;
-        aigs[y] = AIG::deep_clone(var_to_formula.at(y).aig);
+        if (!var_to_formula.count(y)) continue;
+        aigs[y] = var_to_formula.at(y).aig;
     }
+    auto aigs_copy = AIG::deep_clone_map(aigs);
 
     SimplifiedCNF fcnf = cnf;
-    fcnf.map_aigs_to_orig(aigs, cnf.nVars());
-    assert(fcnf.get_need_aig() && fcnf.check_aig_cycles());
+    fcnf.map_aigs_to_orig(aigs_copy, cnf.nVars());
+    assert(fcnf.check_aig_cycles());
     return true;
 }
 
@@ -242,6 +246,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     fix_order();
     // Counterexample-guided repair
     while(true) {
+        assert(check_aig_dependency_cycles());
         inject_formulas_into_solver();
         vector<lbool> ctx;
         bool finished = get_counterexample(ctx);
@@ -308,6 +313,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     verb_print(1, "DONE");
 
     // Build final CNF
+    assert(check_aig_dependency_cycles());
     map<uint32_t, aig_ptr> aigs;
     for(const auto& y: to_define) {
         assert(var_to_formula.count(y));
@@ -365,6 +371,9 @@ vector<Lit> Manthan::further_minimize_conflict_via_maxsat(const vector<Lit>& con
 }
 
 bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
+    assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
+    assert(to_define.count(y_rep) == 1 && "Only to-define vars should be repaired");
+
     // F(x,y) & x = ctx(x) && forall_y (y not dependent on v) (y = ctx(y)) & NOT (v = ctx(v))
     // Used to find UNSAT core that will help us repair the function
     SATSolver repair_solver;
@@ -416,6 +425,7 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
         cout << "c o Minimized conflict: " << conflict << endl;
     }
     perform_repair(y_rep, ctx, conflict);
+    assert(check_aig_dependency_cycles());
     return true;
 }
 
@@ -464,6 +474,8 @@ void Manthan::perform_repair(const uint32_t y_rep, const vector<lbool>& ctx, con
     verb_print(3, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
     verb_print(4, "repaired formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
     //We fixed the ctx on this variable
+
+    assert(check_aig_dependency_cycles());
 }
 
 void Manthan::fix_order() {

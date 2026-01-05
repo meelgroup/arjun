@@ -1286,7 +1286,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             std::cout << std::endl;
 
             std::cout << "c o [get-var-types] Num to-define vars: " << to_define.size() << std::endl;
-            std::cout << "c o [get-var-types]   To-define vars (new): ";
+            std::cout << "c o [get-var-types]   To-define vars (new) : ";
             for(const auto& v: to_define) std::cout << v+1 << " ";
             std::cout << std::endl;
             std::cout << "c o [get-var-types]   To-define vars (orig): ";
@@ -1372,6 +1372,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
 
         check_orig_sampl_vars_undefined();
+        check_all_sampl_vars_depend_only_on_orig_sampl_vars();
         check_pre_post_backward_round_synth();
         all_vars_accounted_for();
         check_aig_cycles();
@@ -1558,6 +1559,61 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
             std::cout << "ERROR: Orig var " << v+1 << " is not defined, not in orig_sampl_vars, and not in cnf" << std::endl;
             assert(false && "All vars must be accounted for");
         }
+    }
+
+    DLL_PUBLIC bool SimplifiedCNF::check_all_sampl_vars_depend_only_on_orig_sampl_vars() const {
+        assert(need_aig);
+
+        // Get reverse mapping from NEW vars to ORIG vars
+        const auto new_to_orig_vars = get_new_to_orig_var_list();
+
+        // Check each sampling variable
+        for(const auto& new_v : sampl_vars) {
+            assert(new_v < nvars);
+
+            // Find the orig var(s) that map to this new var
+            auto it = new_to_orig_vars.find(new_v);
+            if (it == new_to_orig_vars.end()) {
+                std::cout << "ERROR: Sampling variable in CNF (new: " << new_v+1
+                    << ") has no mapping in orig_to_new_var" << std::endl;
+                assert(false && "All sampling vars must have orig mapping");
+            }
+
+            for(const auto& orig_lit : it->second) {
+                const uint32_t orig_v = orig_lit.var();
+
+                // Check if this orig var is an orig_sampl_var
+                if (orig_sampl_vars.count(orig_v)) {
+                    // This is fine - it's an input variable
+                    continue;
+                }
+
+                // This orig var is NOT an orig_sampl_var
+                // If it's defined, it must only depend on orig_sampl_vars
+                assert(defined(orig_v) && "Non-orig-sampl var mapping to sampling var must be defined");
+                /* if (defined(orig_v)) { */
+                const auto deps = get_dependent_vars_recursive(orig_v);
+                bool only_orig_sampl = true;
+                for(const auto& dep_v : deps) {
+                    if (!orig_sampl_vars.count(dep_v)) {
+                        only_orig_sampl = false;
+                        std::cout << "ERROR: Sampling variable (new: " << new_v+1
+                            << ", orig: " << orig_v+1 << ") depends on non-orig-sampl var "
+                            << dep_v+1 << std::endl;
+                        std::cout << "  Dependencies (orig): ";
+                        for(const auto& d : deps) {
+                            std::cout << d+1 << (orig_sampl_vars.count(d) ? "(orig)" : "(NOT-orig)") << " ";
+                        }
+                        std::cout << std::endl;
+                    }
+                }
+                if (!only_orig_sampl) {
+                    assert(false && "All sampling variables must depend only on orig_sampl_vars");
+                }
+                return false;
+            }
+        }
+        return true;
     }
 
     // this checks that NO unsat-define has been made yet

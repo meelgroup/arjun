@@ -220,10 +220,25 @@ public:
         helper(aig_orig);
     }
 
-    static aig_ptr deep_clone(const aig_ptr& aig) {
+    template<typename T>
+    static std::vector<aig_ptr> deep_clone_set(const T& aigs) {
+        std::vector<aig_ptr> ret;
+        std::map<aig_ptr, aig_ptr> cache;
+        for (auto& aig : aigs) ret.push_back(deep_clone(aig, cache));
+        return ret;
+    }
+
+    template<typename T>
+    static T deep_clone_map(const T& aigs) {
+        T ret;
+        std::map<aig_ptr, aig_ptr> cache;
+        for (auto& [x, aig] : aigs) ret[x] = deep_clone(aig, cache);
+        return ret;
+    }
+
+    static aig_ptr deep_clone(const aig_ptr& aig, std::map<aig_ptr, aig_ptr>& cache) {
         if (!aig) return nullptr;
 
-        std::map<aig_ptr, aig_ptr> cache;
         std::function<aig_ptr(const aig_ptr&)> clone_helper =
             [&](const aig_ptr& node) -> aig_ptr {
                 if (!node) return nullptr;
@@ -808,7 +823,7 @@ public:
         } else {
             after_backward_round_synth = other.after_backward_round_synth;
             aig_mng = other.aig_mng;
-            defs = other.defs;
+            defs = AIG::deep_clone_set(other.defs);
             orig_clauses = other.orig_clauses;
             orig_sampl_vars = other.orig_sampl_vars;
             orig_sampl_vars_set = other.orig_sampl_vars_set;
@@ -875,6 +890,7 @@ public:
     // It is checked that it is correct and total
     std::tuple<std::set<uint32_t>, std::set<uint32_t>, std::set<uint32_t>> get_var_types([[maybe_unused]] uint32_t verb) const;
 
+    bool check_all_sampl_vars_depend_only_on_orig_sampl_vars() const;
     bool check_orig_sampl_vars_undefined() const;
     bool defs_invariant() const;
 
