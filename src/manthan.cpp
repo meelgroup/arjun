@@ -128,11 +128,11 @@ void Manthan::fill_dependency_mat_with_backward() {
                 dependency_mat[d][i] |= dependency_mat[v][i];
             }
         }
-        assert(check_dependency_loop());
+        assert(check_map_dependency_cycles());
     }
 
     assert(check_transitive_closure_correctness());
-    assert(check_dependency_loop());
+    assert(check_map_dependency_cycles());
 }
 
 bool Manthan::check_transitive_closure_correctness() const {
@@ -240,7 +240,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         assert(check_aig_dependency_cycles());
     }
     verb_print(2, "[do-manthan] After training: solver_train.nVars() = " << solver.nVars());
-    assert(check_dependency_loop());
+    assert(check_map_dependency_cycles());
 
     add_not_F_x_yhat();
     fix_order();
@@ -309,7 +309,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         }
         verb_print(1, "Num repaired: " << num_repaired << " tot repaired: " << tot_repaired);
     }
-    assert(check_dependency_loop());
+    assert(check_map_dependency_cycles());
     verb_print(1, "DONE");
 
     // Build final CNF
@@ -448,7 +448,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const vector<lbool>& ctx, con
             if (input.count(i)) continue;
             dependency_mat[y_rep][i] |= dependency_mat[l.var()][i];
         }
-        assert(check_dependency_loop());
+        assert(check_map_dependency_cycles());
     }
     f.clauses.push_back(cl);
     for(const auto& l: conflict) {
@@ -726,7 +726,7 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
                 if (input.count(i)) continue;
                 dependency_mat[learned_v][i] |= dependency_mat[v][i];
             }
-            assert(check_dependency_loop());
+            assert(check_map_dependency_cycles());
         }
 
         /* cout << "  -- all-0 goes -> " << node->CalculateDirection(point_0); */
@@ -803,7 +803,7 @@ double Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
                 if (input.count(j)) continue;
                 dependency_mat[i][j] |= dependency_mat[v][j];
             }
-            assert(check_dependency_loop());
+            assert(check_map_dependency_cycles());
         }
     }
     verb_print(4, "Tentative, trained formula for y " << v+1 << ":" << endl << var_to_formula[v]);
@@ -836,7 +836,7 @@ bool Manthan::has_dependency_cycle_dfs(const uint32_t node, vector<uint8_t>& col
     return false;
 }
 
-bool Manthan::check_dependency_loop() const {
+bool Manthan::check_map_dependency_cycles() const {
     if (dependency_mat.empty()) return true;
 
     const uint32_t n = dependency_mat.size();

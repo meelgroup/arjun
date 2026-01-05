@@ -119,7 +119,7 @@ class Manthan {
         AIGManager aig_mng;
 
         // debug
-        bool check_dependency_loop() const;
+        bool check_map_dependency_cycles() const;
         bool has_dependency_cycle_dfs(const uint32_t node, vector<uint8_t>& color, vector<uint32_t>& path) const; // used in check_dependency_loop
         bool check_train_correctness() const;
         bool check_aig_dependency_cycles() const;
