@@ -306,20 +306,27 @@ public:
     template<typename ResultType, typename Visitor>
     static ResultType transform(
         const aig_ptr& aig,
-        Visitor&& visitor
+        Visitor&& visitor,
+        std::map<aig_ptr, ResultType>& cache
     ) {
         assert(aig);
+
+        // Check cache first
+        auto it = cache.find(aig);
+        if (it != cache.end()) return it->second;
 
         ResultType result;
         if (aig->type == AIGT::t_and) {
             // Post-order: process children first
-            ResultType left_result = transform(aig->l, std::forward<Visitor>(visitor));
-            ResultType right_result = transform(aig->r, std::forward<Visitor>(visitor));
+            ResultType left_result = transform<ResultType>(aig->l, std::forward<Visitor>(visitor), cache);
+            ResultType right_result = transform<ResultType>(aig->r, std::forward<Visitor>(visitor), cache);
             result = visitor(aig->type, aig->var, aig->neg, &left_result, &right_result);
         } else {
             // Leaf nodes (t_const or t_lit)
             result = visitor(aig->type, aig->var, aig->neg, nullptr, nullptr);
         }
+
+        cache[aig] = result;
         return result;
     }
 

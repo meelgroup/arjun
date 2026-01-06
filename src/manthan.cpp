@@ -170,31 +170,18 @@ void Manthan::fill_var_to_formula_with_backward() {
         FHolder::Formula f;
 
         // Get the original variable number
-        auto it = new_to_orig.find(v);
-        assert(it != new_to_orig.end());
-
-        const uint32_t v_orig = it->second.var();
+        const uint32_t v_orig = new_to_orig.at(v).var();
         const auto& aig = cnf.get_def(v_orig);
         assert(aig != nullptr);
 
         // Create a lambda to transform AIG to CNF using the transform function
-        map<aig_ptr, Lit> cache;
         std::function<Lit(AIGT, uint32_t, bool, const Lit*, const Lit*)> aig_to_cnf_visitor =
-          [&](AIGT type, const uint32_t var, const bool neg, const Lit* left, const Lit* right) -> Lit {
-            // Check cache to avoid reprocessing
-            auto it = cache.find(aig);
-            if (it != cache.end()) return it->second;
-
+          [&](AIGT type, const uint32_t var_orig, const bool neg, const Lit* left, const Lit* right) -> Lit {
             if (type == AIGT::t_const) {
-                // Constant node
                 return neg ? ~fh->get_true_lit() : fh->get_true_lit();
             }
 
             if (type == AIGT::t_lit) {
-                // Variable node - need to map from ORIG to NEW numbering
-                const uint32_t var_orig = var;
-
-                // Map to NEW numbering
                 const auto& orig_to_new = cnf.get_orig_to_new_var();
                 auto it_map = orig_to_new.find(var_orig);
 
@@ -218,32 +205,34 @@ void Manthan::fill_var_to_formula_with_backward() {
                     assert(it_yhat != y_to_y_hat.end());
                     result_lit = Lit(it_yhat->second, neg);
                 }
-                cache[aig] = result_lit;
                 return result_lit;
             }
 
-            // type == AIGT::t_and
-            assert(left != nullptr && right != nullptr);
-            Lit l_lit = *left;
-            Lit r_lit = *right;
+            if (type != AIGT::t_and) {
+                assert(left != nullptr && right != nullptr);
+                Lit l_lit = *left;
+                Lit r_lit = *right;
 
-            // Create fresh variable for AND gate
-            solver.new_var();
-            Lit and_out = Lit(solver.nVars() - 1, false);
+                // Create fresh variable for AND gate
+                solver.new_var();
+                Lit and_out = Lit(solver.nVars() - 1, false);
 
-            // Generate Tseitin clauses for AND gate
-            // and_out represents (l_lit & r_lit)
-            f.clauses.push_back({~and_out, l_lit});
-            f.clauses.push_back({~and_out, r_lit});
-            f.clauses.push_back({~l_lit, ~r_lit, and_out});
+                // Generate Tseitin clauses for AND gate
+                // and_out represents (l_lit & r_lit)
+                f.clauses.push_back({~and_out, l_lit});
+                f.clauses.push_back({~and_out, r_lit});
+                f.clauses.push_back({~l_lit, ~r_lit, and_out});
 
-            // Apply negation if needed
-            cache[aig] = neg ? ~and_out : and_out;
-            return neg ? ~and_out : and_out;
+                // Apply negation if needed
+                return neg ? ~and_out : and_out;
+            }
+            assert(false && "Unhandled AIG type in visitor");
+            exit(EXIT_FAILURE);
         };
 
         // Recursively generate clauses for the AIG using the transform function
-        Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor);
+        map<aig_ptr, Lit> cache;
+        Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
 
         f.out = out_lit;
         f.aig = AIG::new_lit(v);
