@@ -298,7 +298,12 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             needs_repair.erase(y);
             verb_print(3, "-------------------");
             verb_print(1, "repairing: " << y+1);
-            bool done = repair(y, ctx); // this updates ctx on y
+            bool done;
+            if (conf.manthan_maxsat_min_conflict) {
+                done = repair_maxsat(y, ctx); // this updates ctx on y
+            } else {
+                done = repair(y, ctx); // this updates ctx on y
+            }
             if (done) {
                 num_repaired++;
                 tot_repaired++;
@@ -367,6 +372,69 @@ vector<Lit> Manthan::further_minimize_conflict_via_maxsat(const vector<Lit>& con
     return minimized_conflict;
 }
 
+bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
+    assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
+    assert(to_define.count(y_rep) == 1 && "Only to-define vars should be repaired");
+
+    // F(x,y) & x = ctx(x) && forall_y (y not dependent on v) (y = ctx(y)) & NOT (v = ctx(v))
+    // Used to find UNSAT core that will help us repair the function
+    EvalMaxSAT repair_solver;
+    for(uint32_t i = 0; i < cnf.nVars(); i++) repair_solver.newVar();
+    for(const auto& c: cnf.get_clauses()) repair_solver.addClause(lits_to_ints(c));
+
+    vector<Lit> assumps; assumps.reserve(input.size());
+    for(const auto& x: input) {
+        assumps.push_back(Lit(x, ctx[x] == l_False));
+        repair_solver.addClause(lits_to_ints({assumps.back()}));
+    }
+    for(const auto& y: y_order) {
+        if (y == y_rep) break; // beyond this point we don't care
+        assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen. Otherwise y depends on y_rep, but we will repair y_rep potentially with y_rep");
+        assert(ctx[y] == ctx[y_to_y_hat[y]]);
+        const Lit l = Lit(y, ctx[y] == l_False);
+        verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
+        assumps.push_back({l});
+        repair_solver.addClause(lits_to_ints({assumps.back()}), 1);
+    }
+
+    const Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
+    repair_solver.addClause(lits_to_ints({~repairing})); //assume to wrong value
+    ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
+
+    verb_print(2, "adding to solver: " << ~repairing);
+    verb_print(2, "setting the to-be-repaired " << repairing << " to wrong.");
+    verb_print(5, "solving with assumps: " << assumps);
+    auto ret = repair_solver.solve();
+    if (!ret) {
+        verb_print(1, "repairing " << y_rep+1 << " is not possible");
+        return false;
+    }
+    if (repair_solver.getCost() == 0) {
+        /* if (conf.verb >= 3) { */
+        /*     for(uint32_t i = 0; i < cnf.nVars(); i++) */
+        /*         cout << "model i " << setw(5) << i+1 << " : " << model[i] << endl; */
+        /* } */
+        bool reached = false;
+        for(const auto&y: y_order) {
+            if (y == y_rep) {reached = true; continue;}
+            if (!reached) continue;
+            if (repair_solver.getValue(y+1) != (ctx[y_to_y_hat[y]] == l_True)) needs_repair.insert(y);
+        }
+        return false;
+    }
+
+    vector<Lit> conflict;
+    for(const auto& l: assumps) {
+        if (repair_solver.getValue(lit_to_int(l)) == false) {
+            verb_print(2, "in conflict: " << ~l);
+            conflict.push_back(~l);
+        }
+    }
+    verb_print(2, "initial conflict: " << conflict);
+    perform_repair(y_rep, ctx, conflict);
+    return true;
+}
+
 bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
     assert(to_define.count(y_rep) == 1 && "Only to-define vars should be repaired");
@@ -417,10 +485,10 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
         verb_print(1, "repairing " << y_rep+1 << " is not possible");
         return false;
     }
-    if (conf.manthan_maxsat_min_conflict) {
-        conflict = further_minimize_conflict_via_maxsat(conflict, assumps, repairing);
-        cout << "c o Minimized conflict: " << conflict << endl;
-    }
+    /* if (conf.manthan_maxsat_min_conflict) { */
+    /*     conflict = further_minimize_conflict_via_maxsat(conflict, assumps, repairing); */
+    /*     cout << "c o Minimized conflict: " << conflict << endl; */
+    /* } */
     perform_repair(y_rep, ctx, conflict);
     return true;
 }
@@ -537,7 +605,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
         verb_print(2, "[find-better-ctx] put into assumps y= " << l);
         assumps.insert(l);
         if (backward_defined.count(y)) s_ctx.addClause(lits_to_ints({l}));
-        else s_ctx.addClause(lits_to_ints({l}), 1); //want to flip this
+        else s_ctx.addClause(lits_to_ints({l}), 1); //want to flip this, when l is true, we flipped it (i.e. needs no repair)
     }
 
     /* verb_print(3, "[find-better-ctx] iteration " << i << " with " << ass.size() << " assumptions"); */
@@ -546,8 +614,8 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     verb_print(1, "optimum found: " << s_ctx.getCost() << " original assumps size: " << assumps.size());
     assert(s_ctx.getCost() > 0);
     for(const auto&l : assumps) {
-        if (s_ctx.getValue(l.var()+1) ^ !l.sign()) {
-            verb_print(1, "had to erase y: " << ~l << " because it needs repair");
+        if (!s_ctx.getValue(lit_to_int(l))) {
+            verb_print(1, "y: " << ~l << " needs repair");
             needs_repair.insert(l.var());
         }
     }
