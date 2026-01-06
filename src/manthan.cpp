@@ -326,17 +326,9 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 
         auto better_ctx = find_better_ctx(ctx); // fills needs_repair
         for(const auto& y: to_define_full) if (!needs_repair.count(y)) ctx[y] = better_ctx[y];
-
         if (conf.verb >= 2) {
             cout << "c o [DEBUG] Needs repair vars: ";
-            for(const auto& v: needs_repair) cout << v+1 << " ";
-            cout << endl;
-            if (conf.verb >= 3) {
-                cout << "c o [DEBUG] after find_better_ctx, CNF valuation: ";
-                for(uint32_t i = 0; i < cnf.nVars(); i++)
-                    cout << "var " << setw(3) << i+1 << ": " << pr(ctx[i]) << " -- ";
-                cout << endl;
-            }
+            for(const auto& v: needs_repair) cout << v+1 << " "; cout << endl;
         }
 
         assert(!needs_repair.empty());
@@ -399,6 +391,8 @@ bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
     verb_print(2, "[DEBUG] Starting repair_maxsat for var " << y_rep+1);
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
     assert(to_define.count(y_rep) == 1 && "Only to-define vars should be repaired");
+    assert(y_rep < cnf.nVars());
+    assert(to_define.count(y_rep));
 
     // F(x,y) & x = ctx(x) && forall_y (y not dependent on v) (y = ctx(y)) & NOT (v = ctx(v))
     // Used to find UNSAT core that will help us repair the function
@@ -407,22 +401,30 @@ bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
 
     vector<Lit> assumps;
     for(const auto& x: input) {
-        assumps.push_back(Lit(x, ctx[x] == l_False));
-        repair_solver.addClause(lits_to_ints({assumps.back()}));
+        const Lit l = Lit(x, ctx[x] == l_False);
+        assumps.push_back({l});
+        repair_solver.addClause(lits_to_ints({l}), 1);
+        /* cout << "added input cl: " << std::vector<Lit>{l} << endl; */
     }
+
     for(const auto& y: y_order) {
         if (y == y_rep) break; // beyond this point we don't care
         assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen. Otherwise y depends on y_rep, but we will repair y_rep potentially with y_rep");
-        assert(ctx[y] == ctx[y_to_y_hat[y]]);
+        assert(ctx[y] == ctx[y_to_y_hat[y]]); // they are correct
         const Lit l = Lit(y, ctx[y] == l_False);
         verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
         assumps.push_back({l});
-        repair_solver.addClause(lits_to_ints({assumps.back()}), 1);
+        /* cout << "assumed cl: " << std::vector<Lit>{l} << endl; */
+        repair_solver.addClause(lits_to_ints({assumps.back()}), 1); // keep all these as correct as possible
     }
-    for(const auto& c: cnf.get_clauses()) repair_solver.addClause(lits_to_ints(c));
+    for(const auto& c: cnf.get_clauses()) {
+        repair_solver.addClause(lits_to_ints(c));
+        /* cout << "added CNF cl: " << std::vector<Lit>{c} << endl; */
+    }
 
     const Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
-    repair_solver.addClause(lits_to_ints({~repairing})); //assume to wrong value
+    repair_solver.addClause(lits_to_ints({~repairing})); // we try to fix this one
+    /* cout << "added repairing cl: " << std::vector<Lit>{~repairing} << endl; */
     ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
 
     verb_print(3, "adding to solver: " << ~repairing);
@@ -451,11 +453,10 @@ bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
     vector<Lit> conflict;
     for(const auto& l: assumps) {
         if (!repair_solver.getValue(lit_to_int(l))) {
-            verb_print(2, "in conflict: " << ~l);
             conflict.push_back(~l);
         }
     }
-    verb_print(2, "initial conflict: " << conflict);
+    verb_print(2, "repair_maxsat conflict: " << conflict);
     perform_repair(y_rep, ctx, conflict);
     return true;
 }
@@ -571,7 +572,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
         const auto y_hat = y_to_y_hat[y];
         if (ctx[y] == ctx[y_hat]) continue;
         const auto l = Lit(y, ctx[y_hat] == l_False);
-        verb_print(2, "[find-better-ctx] put into assumps y= " << l);
+        verb_print(3, "[find-better-ctx] put into assumps y= " << l);
         assumps.insert(l);
         s_ctx.addClause(lits_to_ints({l}), 1); //want to flip this, when l is true, we flipped it (i.e. needs no repair)
     }
@@ -594,6 +595,8 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     vector<lbool> better_ctx(cnf.nVars(), l_Undef);
     for(const auto& v: to_define_full) {
         better_ctx[v] = s_ctx.getValue(v+1) ? l_True : l_False;
+        if (better_ctx[v] != ctx[v])
+            verb_print(3, "Updated ctx on v: " << v+1 << " new val: " << better_ctx[v] << " old val: " << ctx[v]);
     }
     return better_ctx;
 }
