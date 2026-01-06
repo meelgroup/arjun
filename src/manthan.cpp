@@ -228,7 +228,6 @@ void Manthan::fill_var_to_formula_with_backward() {
         // Recursively generate clauses for the AIG using the transform function
         map<aig_ptr, Lit> cache;
         Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
-
         f.out = out_lit;
         f.aig = AIG::new_lit(v);
         assert(var_to_formula.count(v) == 0);
@@ -768,8 +767,8 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
         const uint32_t ind = solver.nVars()-1;
 
         assert(var_to_formula.count(y));
-        const auto form_out = var_to_formula[y].out;
-        const auto y_hat = y_to_y_hat[y];
+        const auto& form_out = var_to_formula[y].out;
+        const auto& y_hat = y_to_y_hat[y];
 
         y_hat_to_indic[y_hat] = ind;
         indic_to_y_hat[ind] = y_hat;
@@ -789,15 +788,15 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
         solver.add_clause(tmp);
     }
 
-    vector<Lit> assumptions;
-    assumptions.reserve(y_hat_to_indic.size());
-    for(const auto& i: y_hat_to_indic) assumptions.push_back(Lit(i.second, false));
-    verb_print(4, "assumptions: " << assumptions);
+    vector<Lit> assumps;
+    assumps.reserve(y_hat_to_indic.size());
+    for(const auto& i: y_hat_to_indic) assumps.push_back(Lit(i.second, false));
+    verb_print(4, "assumptions: " << assumps);
 
 
     /* solver.set_up_for_sample_counter(1000); */
     /* solver.simplify(); */
-    auto ret = solver.solve(&assumptions);
+    auto ret = solver.solve(&assumps);
     assert(ret != l_Undef);
     if (ret == l_True) {
         verb_print(1, "Counterexample found");
