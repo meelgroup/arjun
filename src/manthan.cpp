@@ -358,7 +358,6 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             assert(y != std::numeric_limits<uint32_t>::max());
             needs_repair.erase(y);
             verb_print(3, "-------------------");
-            verb_print(1, "repairing: " << y+1);
             bool done;
             if (conf.manthan_maxsat_min_conflict) {
                 done = repair_maxsat(y, ctx); // this updates ctx on y
@@ -397,6 +396,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 }
 
 bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
+    verb_print(2, "[DEBUG] Starting repair_maxsat for var " << y_rep+1);
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
     assert(to_define.count(y_rep) == 1 && "Only to-define vars should be repaired");
 
@@ -597,7 +597,6 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     }
     return better_ctx;
 }
-
 
 // Adds ~F(x, y_hat), fills y_to_y_hat and y_hat_to_y
 void Manthan::add_not_F_x_yhat() {
