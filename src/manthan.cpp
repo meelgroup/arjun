@@ -208,7 +208,7 @@ void Manthan::fill_var_to_formula_with_backward() {
                 return result_lit;
             }
 
-            if (type != AIGT::t_and) {
+            if (type == AIGT::t_and) {
                 assert(left != nullptr && right != nullptr);
                 Lit l_lit = *left;
                 Lit r_lit = *right;
