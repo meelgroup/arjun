@@ -412,9 +412,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     }
     assert(backward_defined.empty());
 
-    const auto zero_ass = solver->get_zero_assigned_lits();
     set<uint32_t> input_vars;
-    for(const auto& l: zero_ass) input_vars.insert(l.var());
     for(const auto& v: input) input_vars.insert(v);
     add_all_indics_except(input_vars);
 

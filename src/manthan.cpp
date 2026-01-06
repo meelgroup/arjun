@@ -85,7 +85,6 @@ vector<vector<lbool>> Manthan::get_samples(const uint32_t num) {
     solver_samp.set_up_for_sample_counter(1000);
     inject_cnf(solver_samp);
     /* solver_samp.set_verbosity(1); */
-    get_incidence();
 
     for (uint32_t i = 0; i < num; i++) {
         solver_samp.solve();
@@ -222,6 +221,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     to_define_full.insert(backward_defined.begin(), backward_defined.end());
     fill_var_to_formula_with_backward();
     fill_dependency_mat_with_backward();
+    get_incidence();
 
     // Sampling
     vector<vector<lbool>> solutions = get_samples(conf.num_samples);
@@ -289,7 +289,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
                 }
             }
             if (backward_defined.count(y)) {
-                cout << "c o [WARNING] trying to repair backward-defined var " << y+1 << endl;
+                /* cout << "c o [WARNING] trying to repair backward-defined var " << y+1 << endl; */
                 ctx[y_to_y_hat[y]] = ctx[y]; // pretend to have fixed the ctx
                 needs_repair.erase(y);
                 continue;
@@ -477,6 +477,7 @@ void Manthan::fix_order() {
     verb_print(1, "[manthan] Fixing order...");
     vector<uint32_t> sorted(to_define_full.begin(), to_define_full.end());
     sort_unknown(sorted, incidence);
+    /* std::reverse(sorted.begin(), sorted.end()); */
 
     set<uint32_t> already_fixed;
     while(already_fixed.size() != to_define_full.size()) {
@@ -701,7 +702,6 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
     } else {
         uint32_t v = node->SplitDimension();
         /* cout << "(learning " << learned_v+1<< ") Node. v: " << v+1 << std::flush; */
-        verb_print(2, learned_v+1 << " depends on " << v+1 << " but NOT adding it, because it is not in to_define_full. input: " << (input.count(v) ? "yes" : "no"));
         if (to_define_full.count(v)) {
             // v does not depend on learned_v!
             assert(dependency_mat[v][learned_v] == 0);
@@ -722,7 +722,8 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
                 dependency_mat[learned_v][i] |= dependency_mat[v][i];
             }
             assert(check_map_dependency_cycles());
-        }
+        } else
+            verb_print(2, learned_v+1 << " depends on " << v+1 << " but NOT adding it, because it is not in to_define_full. input: " << (input.count(v) ? "yes" : "no"));
 
         /* cout << "  -- all-0 goes -> " << node->CalculateDirection(point_0); */
         /* cout << "  -- all-1 goes -> " << node->CalculateDirection(point_1) << endl; */
