@@ -645,7 +645,7 @@ void Manthan::add_not_F_x_yhat() {
 void Manthan::inject_formulas_into_solver() {
     // Replace y with y_hat
     for(auto& [var, form]: var_to_formula) {
-        if (form.already_added_to_manthans_solver) continue;
+        /* if (form.already_added_to_manthans_solver) continue; */
         for(auto& cl: form.clauses) {
             vector<Lit> cl2;
             for(const auto& l: cl) {
@@ -655,7 +655,7 @@ void Manthan::inject_formulas_into_solver() {
             }
             solver.add_clause(cl2);
         }
-        form.already_added_to_manthans_solver = true;
+        /* form.already_added_to_manthans_solver = true; */
     }
 }
 
@@ -685,6 +685,15 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
         tmp.clear();
         tmp.push_back(~ind_l);
         tmp.push_back(y_hat_l);
+        tmp.push_back(~form_out);
+        solver.add_clause(tmp);
+        tmp[1] = ~tmp[1];
+        tmp[2] = ~tmp[2];
+        solver.add_clause(tmp);
+
+        tmp.clear();
+        tmp.push_back(ind_l);
+        tmp.push_back(~y_hat_l);
         tmp.push_back(~form_out);
         solver.add_clause(tmp);
         tmp[1] = ~tmp[1];
