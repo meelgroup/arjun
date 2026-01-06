@@ -183,11 +183,11 @@ void Manthan::fill_var_to_formula_with_backward() {
 
             if (type == AIGT::t_lit) {
                 const auto& orig_to_new = cnf.get_orig_to_new_var();
-                auto it_map = orig_to_new.find(var_orig);
+                const auto it = orig_to_new.find(var_orig);
 
                 Lit lit_new;
-                if (it_map != orig_to_new.end()) {
-                    lit_new = it_map->second;
+                if (it != orig_to_new.end()) {
+                    lit_new = it->second;
                 } else {
                     assert(false);
                     /* const auto& sub_aig = cnf.get_def(var_orig); */
