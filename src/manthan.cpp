@@ -325,10 +325,10 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         }
 
         auto better_ctx = find_better_ctx(ctx); // fills needs_repair
-        for(const auto& y: to_define_full) if (!needs_repair.count(y)) ctx[y] = better_ctx[y];
-        if (conf.verb >= 2) {
-            cout << "c o [DEBUG] Needs repair vars: ";
-            for(const auto& v: needs_repair) cout << v+1 << " "; cout << endl;
+        for(const auto& y: to_define_full) if (!needs_repair.count(y)) {
+            ctx[y] = better_ctx[y];
+            if (conf.verb >= 3 && better_ctx[y] != ctx[y])
+                verb_print(3, "Updated ctx on v: " << y+1 << " new val: " << better_ctx[y] << " old val: " << ctx[y]);
         }
 
         assert(!needs_repair.empty());
@@ -342,7 +342,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
                 }
             }
             if (backward_defined.count(y)) {
-                cout << "c o [WARNING] trying to repair backward-defined var " << y+1 << endl;
+                verb_print(3, "[WARNING] trying to repair backward-defined var " << y+1);
                 ctx[y_to_y_hat[y]] = ctx[y]; // pretend to have fixed the ctx
                 needs_repair.erase(y);
                 continue;
@@ -519,7 +519,7 @@ void Manthan::fix_order() {
     while(already_fixed.size() != to_define_full.size()) {
         for(const auto& y: sorted) {
             if (already_fixed.count(y)) continue;
-            verb_print(2, "Trying to add " << y+1 << " to order. to_define: " << to_define.count(y)
+            verb_print(3, "Trying to add " << y+1 << " to order. to_define: " << to_define.count(y)
                  << " backward_defined: " << backward_defined.count(y));
 
             bool ok = true;
@@ -527,7 +527,7 @@ void Manthan::fix_order() {
                 if (y == y2) continue;
                 if (dependency_mat[y][y2] == 0) continue;
                 if (dependency_mat[y][y2] == 1 && already_fixed.count(y2)) continue;
-                verb_print(2, "Bad due to y2: " << y2+1);
+                verb_print(3, "Bad due to y2: " << y2+1);
                 ok = false;
                 break;
             }
@@ -574,7 +574,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
         const auto l = Lit(y, ctx[y_hat] == l_False);
         verb_print(3, "[find-better-ctx] put into assumps y= " << l);
         assumps.insert(l);
-        s_ctx.addClause(lits_to_ints({l}), 1); //want to flip this, when l is true, we flipped it (i.e. needs no repair)
+        s_ctx.addClause(lits_to_ints({l}), 1); //want to flip valuation to ctx[y_hat], so when l is true, we flipped it (i.e. needs no repair)
     }
 
     /* verb_print(3, "[find-better-ctx] iteration " << i << " with " << ass.size() << " assumptions"); */
@@ -584,20 +584,20 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     assert(s_ctx.getCost() > 0);
     for(const auto&l : assumps) {
         if (!s_ctx.getValue(lit_to_int(l))) {
-            verb_print(1, "y: " << ~l << " needs repair");
             needs_repair.insert(l.var());
         }
     }
     assert(needs_repair.size() == s_ctx.getCost());
     assert(!needs_repair.empty());
+    if (conf.verb >= 2) {
+        cout << "needs repair: ";
+        for(const auto& v: needs_repair) cout << v+1 << " ";
+        std::cout << endl;
+    }
 
     verb_print(1, "Finding better ctx DONE, needs_repair size now: " << needs_repair.size());
     vector<lbool> better_ctx(cnf.nVars(), l_Undef);
-    for(const auto& v: to_define_full) {
-        better_ctx[v] = s_ctx.getValue(v+1) ? l_True : l_False;
-        if (better_ctx[v] != ctx[v])
-            verb_print(3, "Updated ctx on v: " << v+1 << " new val: " << better_ctx[v] << " old val: " << ctx[v]);
-    }
+    for(const auto& v: to_define_full) better_ctx[v] = s_ctx.getValue(v+1) ? l_True : l_False;
     return better_ctx;
 }
 
@@ -610,7 +610,7 @@ void Manthan::add_not_F_x_yhat() {
         const uint32_t y_hat = solver.nVars()-1;
         y_to_y_hat[y] = y_hat;
         y_hat_to_y[y_hat] = y;
-        verb_print(2, "mapping -- y: " << y+1 << " y_hat: " << y_hat+1);
+        verb_print(3, "mapping -- y: " << y+1 << " y_hat: " << y_hat+1);
     }
 
     // Adds ~F(x, y_hat)
@@ -756,7 +756,7 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
             }
             // set that learned_v depends on v
             dependency_mat[learned_v][v] = 1;
-            verb_print(2, learned_v+1 << " depends on " << v+1);
+            verb_print(3, learned_v+1 << " depends on " << v+1);
 
             // recursive update
             for(uint32_t i = 0 ; i < cnf.nVars(); i++) {
@@ -765,7 +765,7 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
             }
             assert(check_map_dependency_cycles());
         } else
-            verb_print(2, learned_v+1 << " depends on " << v+1 << " but NOT adding it, because it is not in to_define_full. input: " << (input.count(v) ? "yes" : "no"));
+            verb_print(3, learned_v+1 << " depends on " << v+1 << " but NOT adding it, because it is not in to_define_full. input: " << (input.count(v) ? "yes" : "no"));
 
         /* cout << "  -- all-0 goes -> " << node->CalculateDirection(point_0); */
         /* cout << "  -- all-1 goes -> " << node->CalculateDirection(point_1) << endl; */
