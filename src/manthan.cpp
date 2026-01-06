@@ -396,43 +396,43 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     return fcnf;
 }
 
-vector<Lit> Manthan::further_minimize_conflict_via_maxsat(const vector<Lit>& conflict, const vector<Lit>& assumps, const Lit& repairing) {
-    // Further minimize the conflict using MaxSAT
-    EvalMaxSAT repair_solver;
-    for(uint32_t i = 0; i < cnf.nVars(); i++) repair_solver.newVar();
-    for(const auto& c: cnf.get_clauses()) repair_solver.addClause(lits_to_ints(c));
-    repair_solver.addClause(lits_to_ints({~repairing})); // assume wrong value
+/* vector<Lit> Manthan::further_minimize_conflict_via_maxsat(const vector<Lit>& conflict, const vector<Lit>& assumps, const Lit& repairing) { */
+/*     // Further minimize the conflict using MaxSAT */
+/*     EvalMaxSAT repair_solver; */
+/*     for(uint32_t i = 0; i < cnf.nVars(); i++) repair_solver.newVar(); */
+/*     for(const auto& c: cnf.get_clauses()) repair_solver.addClause(lits_to_ints(c)); */
+/*     repair_solver.addClause(lits_to_ints({~repairing})); // assume wrong value */
 
-    // Convert conflict to a set for fast lookup
-    set<Lit> conflict_set(conflict.begin(), conflict.end());
+/*     // Convert conflict to a set for fast lookup */
+/*     set<Lit> conflict_set(conflict.begin(), conflict.end()); */
 
-    // Add soft clauses only for assumptions that are in the conflict
-    for(const auto& l: assumps) {
-        if (conflict_set.count(~l)) {
-            repair_solver.addClause(lits_to_ints({l}), 1); // soft clause
-        } else {
-            // Not in conflict, add as hard constraint
-            /* min_solver.addClause(lits_to_ints({l})); */
-        }
-    }
+/*     // Add soft clauses only for assumptions that are in the conflict */
+/*     for(const auto& l: assumps) { */
+/*         if (conflict_set.count(~l)) { */
+/*             repair_solver.addClause(lits_to_ints({l}), 1); // soft clause */
+/*         } else { */
+/*             // Not in conflict, add as hard constraint */
+/*             /1* min_solver.addClause(lits_to_ints({l})); *1/ */
+/*         } */
+/*     } */
 
-    cout << "c o Running MaxSAT minimization with " << conflict_set.size() << " soft clauses" << endl;
-    auto min_ret = repair_solver.solve();
-    cout << "c o cost of minimization: " << repair_solver.getCost() << endl;
-    assert(min_ret);
+/*     cout << "c o Running MaxSAT minimization with " << conflict_set.size() << " soft clauses" << endl; */
+/*     auto min_ret = repair_solver.solve(); */
+/*     cout << "c o cost of minimization: " << repair_solver.getCost() << endl; */
+/*     assert(min_ret); */
 
-    // Extract minimized conflict
-    vector<Lit> minimized_conflict;
-    for(const auto& l: assumps) {
-        if (conflict_set.count(~l) && repair_solver.getValue(lit_to_int(l))) {
-            minimized_conflict.push_back(~l);
-        }
-    }
-    cout << "c o Orig assumps size: " << assumps.size()
-         << " initial conflict size: " << conflict.size()
-         << " minimized conflict size: " << minimized_conflict.size() << endl;
-    return minimized_conflict;
-}
+/*     // Extract minimized conflict */
+/*     vector<Lit> minimized_conflict; */
+/*     for(const auto& l: assumps) { */
+/*         if (conflict_set.count(~l) && repair_solver.getValue(lit_to_int(l))) { */
+/*             minimized_conflict.push_back(~l); */
+/*         } */
+/*     } */
+/*     cout << "c o Orig assumps size: " << assumps.size() */
+/*          << " initial conflict size: " << conflict.size() */
+/*          << " minimized conflict size: " << minimized_conflict.size() << endl; */
+/*     return minimized_conflict; */
+/* } */
 
 bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
@@ -442,7 +442,6 @@ bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
     // Used to find UNSAT core that will help us repair the function
     EvalMaxSAT repair_solver;
     for(uint32_t i = 0; i < cnf.nVars(); i++) repair_solver.newVar();
-    for(const auto& c: cnf.get_clauses()) repair_solver.addClause(lits_to_ints(c));
 
     vector<Lit> assumps;
     for(const auto& x: input) {
@@ -458,6 +457,7 @@ bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
         assumps.push_back({l});
         repair_solver.addClause(lits_to_ints({assumps.back()}), 1);
     }
+    for(const auto& c: cnf.get_clauses()) repair_solver.addClause(lits_to_ints(c));
 
     const Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
     repair_solver.addClause(lits_to_ints({~repairing})); //assume to wrong value
@@ -488,7 +488,7 @@ bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
 
     vector<Lit> conflict;
     for(const auto& l: assumps) {
-        if (repair_solver.getValue(lit_to_int(l)) == false) {
+        if (!repair_solver.getValue(lit_to_int(l))) {
             verb_print(2, "in conflict: " << ~l);
             conflict.push_back(~l);
         }
