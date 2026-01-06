@@ -209,13 +209,12 @@ void Manthan::fill_var_to_formula_with_backward() {
             }
 
             if (type == AIGT::t_and) {
-                assert(left != nullptr && right != nullptr);
                 Lit l_lit = *left;
                 Lit r_lit = *right;
 
                 // Create fresh variable for AND gate
                 solver.new_var();
-                Lit and_out = Lit(solver.nVars() - 1, false);
+                const Lit and_out = Lit(solver.nVars() - 1, false);
 
                 // Generate Tseitin clauses for AND gate
                 // and_out represents (l_lit & r_lit)
