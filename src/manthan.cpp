@@ -359,7 +359,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
                 }
             }
             if (backward_defined.count(y)) {
-                /* cout << "c o [WARNING] trying to repair backward-defined var " << y+1 << endl; */
+                cout << "c o [WARNING] trying to repair backward-defined var " << y+1 << endl;
                 ctx[y_to_y_hat[y]] = ctx[y]; // pretend to have fixed the ctx
                 needs_repair.erase(y);
                 continue;
@@ -649,7 +649,6 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
     verb_print(2, "Finding better ctx.");
     EvalMaxSAT s_ctx;
     for(uint32_t i = 0; i < cnf.nVars(); i++) s_ctx.newVar();
-    for(const auto& c: cnf.get_clauses()) s_ctx.addClause(lits_to_ints(c));
 
     // Fix input values
     for(const auto& x: input) {
@@ -667,6 +666,9 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
         const Lit l = Lit(y, ctx[y_hat] == l_False);
         s_ctx.addClause(lits_to_ints({l}));
     }
+
+    // Add all clauses
+    for(const auto& c: cnf.get_clauses()) s_ctx.addClause(lits_to_ints(c));
 
     // Fix to_define variables that are incorrect via assumptions
     set<Lit> assumps;
