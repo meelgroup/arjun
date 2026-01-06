@@ -269,6 +269,60 @@ public:
         return clone_helper(aig);
     }
 
+    // Generic recursive traversal function that applies a function to each AIG node
+    // The function receives the current node as an aig_ptr
+    // Use cache to avoid visiting the same node multiple times
+    template<typename Func>
+    static void traverse(const aig_ptr& aig, Func&& func) {
+        if (!aig) return;
+        std::set<aig_ptr> visited;
+        traverse_helper(aig, std::forward<Func>(func), visited);
+    }
+
+    template<typename Func>
+    static void traverse_helper(const aig_ptr& node, Func&& func, std::set<aig_ptr>& visited) {
+        if (!node) return;
+
+        // Check if already visited to avoid infinite loops
+        if (visited.count(node)) return;
+        visited.insert(node);
+
+        // Apply the function to the current node
+        func(node);
+
+        // Recursively traverse children for AND nodes
+        if (node->type == AIGT::t_and) {
+            traverse_helper(node->l, std::forward<Func>(func), visited);
+            traverse_helper(node->r, std::forward<Func>(func), visited);
+        }
+    }
+
+    // Transform function that performs post-order traversal and builds up a result
+    // The visitor receives: (type, var, neg, left_result*, right_result*)
+    // - type: the node type (t_const, t_lit, or t_and)
+    // - var: variable number (only meaningful for t_lit)
+    // - neg: negation flag
+    // - left_result, right_result: pointers to children results (nullptr for non-AND nodes)
+    template<typename ResultType, typename Visitor>
+    static ResultType transform(
+        const aig_ptr& aig,
+        Visitor&& visitor
+    ) {
+        assert(aig);
+
+        ResultType result;
+        if (aig->type == AIGT::t_and) {
+            // Post-order: process children first
+            ResultType left_result = transform(aig->l, std::forward<Visitor>(visitor));
+            ResultType right_result = transform(aig->r, std::forward<Visitor>(visitor));
+            result = visitor(aig->type, aig->var, aig->neg, &left_result, &right_result);
+        } else {
+            // Leaf nodes (t_const or t_lit)
+            result = visitor(aig->type, aig->var, aig->neg, nullptr, nullptr);
+        }
+        return result;
+    }
+
     friend std::ostream& operator<<(std::ostream& out, const aig_ptr& aig);
     friend class AIGManager;
     friend class SimplifiedCNF;
@@ -1158,6 +1212,12 @@ public:
     }
     const auto& get_orig_to_new_var() const {
         return orig_to_new_var;
+    }
+
+    // Get AIG definition for a variable (in ORIG numbering)
+    const aig_ptr& get_def(uint32_t v) const {
+        assert(v < defs.size());
+        return defs[v];
     }
 
 private:

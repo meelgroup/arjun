@@ -164,11 +164,89 @@ bool Manthan::check_transitive_closure_correctness() const {
 }
 
 void Manthan::fill_var_to_formula_with_backward() {
+    const auto new_to_orig = cnf.get_new_to_orig_var();
+
     for(const auto& v: backward_defined) {
         FHolder::Formula f;
-        Lit l = Lit(v, false);
-        f.out = l;
-        f.aig = AIG::new_lit(l);
+
+        // Get the original variable number
+        auto it = new_to_orig.find(v);
+        assert(it != new_to_orig.end());
+
+        const uint32_t v_orig = it->second.var();
+        const auto& aig = cnf.get_def(v_orig);
+        assert(aig != nullptr);
+
+        // Create a lambda to transform AIG to CNF using the transform function
+        map<aig_ptr, Lit> cache;
+        std::function<Lit(AIGT, uint32_t, bool, const Lit*, const Lit*)> aig_to_cnf_visitor =
+          [&](AIGT type, const uint32_t var, const bool neg, const Lit* left, const Lit* right) -> Lit {
+            // Check cache to avoid reprocessing
+            auto it = cache.find(aig);
+            if (it != cache.end()) return it->second;
+
+            if (type == AIGT::t_const) {
+                // Constant node
+                return neg ? ~fh->get_true_lit() : fh->get_true_lit();
+            }
+
+            if (type == AIGT::t_lit) {
+                // Variable node - need to map from ORIG to NEW numbering
+                const uint32_t var_orig = var;
+
+                // Map to NEW numbering
+                const auto& orig_to_new = cnf.get_orig_to_new_var();
+                auto it_map = orig_to_new.find(var_orig);
+
+                Lit lit_new;
+                if (it_map != orig_to_new.end()) {
+                    lit_new = it_map->second;
+                } else {
+                    assert(false);
+                    /* const auto& sub_aig = cnf.get_def(var_orig); */
+                    /* lit_new = AIG::transform<Lit>(sub_aig, aig_to_cnf_visitor); */
+                }
+
+                // Check if this is an input variable or needs y_to_y_hat mapping
+                Lit result_lit;
+                if (input.count(lit_new.var())) {
+                    result_lit = lit_new ^ neg;
+                } else {
+                    assert(to_define_full.count(lit_new.var()));
+                    // Non-input variable, use y_to_y_hat
+                    const auto it_yhat = y_to_y_hat.find(lit_new.var());
+                    assert(it_yhat != y_to_y_hat.end());
+                    result_lit = Lit(it_yhat->second, neg);
+                }
+                cache[aig] = result_lit;
+                return result_lit;
+            }
+
+            // type == AIGT::t_and
+            assert(left != nullptr && right != nullptr);
+            Lit l_lit = *left;
+            Lit r_lit = *right;
+
+            // Create fresh variable for AND gate
+            solver.new_var();
+            Lit and_out = Lit(solver.nVars() - 1, false);
+
+            // Generate Tseitin clauses for AND gate
+            // and_out represents (l_lit & r_lit)
+            f.clauses.push_back({~and_out, l_lit});
+            f.clauses.push_back({~and_out, r_lit});
+            f.clauses.push_back({~l_lit, ~r_lit, and_out});
+
+            // Apply negation if needed
+            cache[aig] = neg ? ~and_out : and_out;
+            return neg ? ~and_out : and_out;
+        };
+
+        // Recursively generate clauses for the AIG using the transform function
+        Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor);
+
+        f.out = out_lit;
+        f.aig = AIG::new_lit(v);
         assert(var_to_formula.count(v) == 0);
         var_to_formula[v] = f;
     }
@@ -219,7 +297,6 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     to_define_full.clear();
     to_define_full.insert(to_define.begin(), to_define.end());
     to_define_full.insert(backward_defined.begin(), backward_defined.end());
-    fill_var_to_formula_with_backward();
     fill_dependency_mat_with_backward();
     get_incidence();
 
@@ -242,6 +319,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     assert(check_map_dependency_cycles());
 
     add_not_F_x_yhat();
+    fill_var_to_formula_with_backward();
     fix_order();
     // Counterexample-guided repair
     while(true) {
@@ -382,7 +460,7 @@ bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
     for(uint32_t i = 0; i < cnf.nVars(); i++) repair_solver.newVar();
     for(const auto& c: cnf.get_clauses()) repair_solver.addClause(lits_to_ints(c));
 
-    vector<Lit> assumps; assumps.reserve(input.size());
+    vector<Lit> assumps;
     for(const auto& x: input) {
         assumps.push_back(Lit(x, ctx[x] == l_False));
         repair_solver.addClause(lits_to_ints({assumps.back()}));
@@ -394,15 +472,17 @@ bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
         const Lit l = Lit(y, ctx[y] == l_False);
         verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
         assumps.push_back({l});
-        repair_solver.addClause(lits_to_ints({assumps.back()}), 1);
+        if (backward_defined.count(y)) {
+            repair_solver.addClause(lits_to_ints({assumps.back()}));
+        } else repair_solver.addClause(lits_to_ints({assumps.back()}), 1);
     }
 
     const Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
     repair_solver.addClause(lits_to_ints({~repairing})); //assume to wrong value
     ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
 
-    verb_print(2, "adding to solver: " << ~repairing);
-    verb_print(2, "setting the to-be-repaired " << repairing << " to wrong.");
+    verb_print(3, "adding to solver: " << ~repairing);
+    verb_print(3, "setting the to-be-repaired " << repairing << " to wrong.");
     verb_print(5, "solving with assumps: " << assumps);
     auto ret = repair_solver.solve();
     if (!ret) {
@@ -410,6 +490,7 @@ bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
         return false;
     }
     if (repair_solver.getCost() == 0) {
+        cout << "Repair cost is 0???????" << endl;
         /* if (conf.verb >= 3) { */
         /*     for(uint32_t i = 0; i < cnf.nVars(); i++) */
         /*         cout << "model i " << setw(5) << i+1 << " : " << model[i] << endl; */
@@ -535,7 +616,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const vector<lbool>& ctx, con
     verb_print(4, "Original formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
     verb_print(4, "Branch formula. When this is true, H is wrong:" << endl << f);
     var_to_formula[y_rep] = fh->compose_ite(fh->constant_formula(ctx[y_rep] == l_True), var_to_formula[y_rep], f);
-    verb_print(3, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
+    verb_print(2, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
     verb_print(4, "repaired formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
     //We fixed the ctx on this variable
 }
@@ -641,7 +722,6 @@ void Manthan::add_not_F_x_yhat() {
         y_to_y_hat[y] = y_hat;
         y_hat_to_y[y_hat] = y;
         verb_print(2, "mapping -- y: " << y+1 << " y_hat: " << y_hat+1);
-        verb_print(4, "formula for y " << y+1 << ":" << endl << var_to_formula[y]);
     }
 
     // Adds ~F(x, y_hat)
@@ -728,10 +808,10 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     vector<Lit> assumptions;
     assumptions.reserve(y_hat_to_indic.size());
     for(const auto& i: y_hat_to_indic) assumptions.push_back(Lit(i.second, false));
-    for(const auto& v: backward_defined) {
-        const auto i = y_to_indic[v];
-        solver.add_clause({Lit(i, false)}); // must be correct
-    }
+    /* for(const auto& v: backward_defined) { */
+    /*     const auto i = y_to_indic[v]; */
+    /*     solver.add_clause({Lit(i, false)}); // must be correct */
+    /* } */
     verb_print(4, "assumptions: " << assumptions);
 
 
