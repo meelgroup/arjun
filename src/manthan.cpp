@@ -186,9 +186,8 @@ void Manthan::fill_var_to_formula_with_backward() {
                 const auto it = orig_to_new.find(var_orig);
 
                 Lit lit_new;
-                if (it != orig_to_new.end()) {
-                    lit_new = it->second;
-                } else {
+                if (it != orig_to_new.end()) lit_new = it->second;
+                else {
                     assert(false);
                     /* const auto& sub_aig = cnf.get_def(var_orig); */
                     /* lit_new = AIG::transform<Lit>(sub_aig, aig_to_cnf_visitor); */
@@ -196,25 +195,18 @@ void Manthan::fill_var_to_formula_with_backward() {
 
                 // Check if this is an input variable or needs y_to_y_hat mapping
                 Lit result_lit;
-                if (input.count(lit_new.var())) {
-                    /* cout << "c o backward-defined var " << v+1 << " depends on input var " */
-                    /*      << lit_new.var()+1 << endl; */
-                    result_lit = lit_new ^ neg;
-                } else {
-                    /* cout << "c o backward-defined var " << v+1 << " depends on non-input var " */
-                    /*      << lit_new.var()+1 << endl; */
+                if (input.count(lit_new.var())) result_lit = lit_new ^ neg;
+                else {
                     assert(to_define_full.count(lit_new.var()));
-                    // Non-input variable, use y_to_y_hat
-                    const auto it_yhat = y_to_y_hat.find(lit_new.var());
-                    assert(it_yhat != y_to_y_hat.end());
-                    result_lit = Lit(it_yhat->second, neg);
+                    const uint32_t y_hat = y_to_y_hat.at(lit_new.var());
+                    result_lit = Lit(y_hat, neg);
                 }
                 return result_lit;
             }
 
             if (type == AIGT::t_and) {
-                Lit l_lit = *left;
-                Lit r_lit = *right;
+                const Lit l_lit = *left;
+                const Lit r_lit = *right;
 
                 // Create fresh variable for AND gate
                 solver.new_var();
@@ -750,7 +742,7 @@ void Manthan::add_not_F_x_yhat() {
 void Manthan::inject_formulas_into_solver() {
     // Replace y with y_hat
     for(auto& [var, form]: var_to_formula) {
-        /* if (form.already_added_to_manthans_solver) continue; */
+        if (form.already_added_to_manthans_solver) continue;
         for(auto& cl: form.clauses) {
             vector<Lit> cl2;
             for(const auto& l: cl) {
@@ -760,7 +752,7 @@ void Manthan::inject_formulas_into_solver() {
             }
             solver.add_clause(cl2);
         }
-        /* form.already_added_to_manthans_solver = true; */
+        form.already_added_to_manthans_solver = true;
     }
 }
 
@@ -803,7 +795,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     verb_print(4, "assumptions: " << assumptions);
 
 
-    /* solver_train.set_up_for_sample_counter(1000); */
+    /* solver.set_up_for_sample_counter(1000); */
     /* solver.simplify(); */
     auto ret = solver.solve(&assumptions);
     assert(ret != l_Undef);
