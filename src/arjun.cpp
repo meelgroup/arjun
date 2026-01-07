@@ -1814,6 +1814,10 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         for(const auto& l: cl) check_var(l.var());
     }
 
+    DLL_PUBLIC void SimplifiedCNF::clear_orig_sampl_defs() {
+        for(const auto& v: orig_sampl_vars) defs[v] = nullptr;
+    }
+
 
 set_get_macro(bool, distill)
 set_get_macro(bool, intree)

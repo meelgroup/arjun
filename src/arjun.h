@@ -1226,6 +1226,7 @@ public:
         assert(v < defs.size());
         return defs[v];
     }
+    void clear_orig_sampl_defs();
 
 private:
     bool after_backward_round_synth = false;
