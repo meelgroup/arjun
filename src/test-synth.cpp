@@ -318,9 +318,6 @@ void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
         if (cnf.get_def(v) != nullptr) aig_defined_vars.insert(v);
     }
     cout << "aig_defined_vars size: " << aig_defined_vars.size() << endl;
-    cout << "orig_cnf.nVars(): " << orig_cnf.nVars() << endl;
-    cout << "cnf.orig_sampl_vars.size(): " << cnf.get_orig_sampl_vars().size() << endl;
-    cout << "orig_cnf.get_sampl_vars().size(): " << orig_cnf.get_sampl_vars().size() << endl;
 
     assert(aig_defined_vars.size() == orig_cnf.nVars() - orig_cnf.get_sampl_vars().size());
     assert(cnf.get_orig_sampl_vars().size() == orig_cnf.get_sampl_vars().size());
@@ -474,15 +471,19 @@ int main(int argc, char** argv) {
 
     if (verb) {
         cout << "c [test-synth] Successfully read AIG file" << endl;
-        cout << "c [test-synth] Number of variables: " << cnf.nVars() << endl;
-        cout << "c [test-synth] Number of clauses: " << cnf.get_clauses().size() << endl;
-        cout << "c [test-synth] Number of red clauses: " << cnf.get_red_clauses().size() << endl;
-        cout << "c [test-synth] Number of sampl_vars: " << cnf.get_sampl_vars().size() << endl;
-        cout << "c [test-synth] Number of opt_sampl_vars: " << cnf.get_opt_sampl_vars().size() << endl;
-        cout << "c [test-synth] Number of AIG defs: " << cnf.num_defs() << endl;
+        cout << "c [test-synth] Number of ORIG vars      : " << cnf.num_defs() << endl;
+        cout << "c [test-synth] Number of ORIG sampl vars: " << cnf.get_orig_sampl_vars().size() << endl;
+        cout << "c [test-synth] Number of NEW  vars      : " << cnf.nVars() << endl;
+        cout << "c [test-synth] Number of sampl_vars     : " << cnf.get_sampl_vars().size() << endl;
+        cout << "c [test-synth] Number of opt_sampl_vars : " << cnf.get_opt_sampl_vars().size() << endl;
+        cout << "c [test-synth] Number of NEW  cls     : " << cnf.get_clauses().size() << endl;
+        cout << "c [test-synth] Number of NEW  red  cls: " << cnf.get_red_clauses().size() << endl;
         cout << "c [test-synth] need_aig: " << cnf.get_need_aig() << endl;
         cout << "c [test-synth] projected: " << cnf.is_projected() << endl;
         cout << "c [test-synth] backbone_done: " << cnf.get_backbone_done() << endl;
+        cout << "c [test-synth] ======================================" << endl;
+        cout << "c ORIG CNF vars: " << orig_cnf.nVars() << endl;
+        cout << "c ORIG CNF sampl_vars: " << orig_cnf.get_sampl_vars().size() << endl;
     }
 
     // Check for UNSAT
