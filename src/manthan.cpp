@@ -32,7 +32,6 @@
 #include <ensmallen_bits/sgdr/cyclical_decay.hpp>
 #include <ios>
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
-#include <typeinfo>
 #include <vector>
 #include <ranges>
 #include "constants.h"
@@ -715,7 +714,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     verb_print(4, "assumptions: " << assumps);
 
 
-    /* solver.set_up_for_sample_counter(1000); */
+    solver.set_up_for_sample_counter(1000);
     /* solver.simplify(); */
     auto ret = solver.solve(&assumps);
     assert(ret != l_Undef);
