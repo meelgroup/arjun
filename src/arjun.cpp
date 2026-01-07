@@ -1840,4 +1840,3 @@ set_get_macro(int, num_samples)
 set_get_macro(double, cms_glob_mult)
 set_get_macro(int, extend_ccnr)
 set_get_macro(int, autarkies)
-set_get_macro(bool, manthan_maxsat_min_conflict);

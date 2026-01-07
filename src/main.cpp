@@ -118,7 +118,6 @@ void add_arjun_options() {
         .help("Run synthesis");
     myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
     myopt("--debugsynth", conf.debug_synth, string,"Debug synthesis, prefix with this fname");
-    myopt("--manthanminconfl", conf.manthan_maxsat_min_conflict, atoi,"Manthan should try to minimize conflicts via maxsat when repairing");
 
     // Simplification options for minim
     myopt("--probe", conf.probe_based, atoi,"Do probing during orignal Arjun");
@@ -224,7 +223,6 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_num_samples(conf.num_samples);
     arj->set_extend_max_confl(conf.extend_max_confl);
     arj->set_oracle_find_bins(conf.oracle_find_bins);
-    arj->set_manthan_maxsat_min_conflict(conf.manthan_maxsat_min_conflict);
 }
 
 void check_cnf_sat(const ArjunNS::SimplifiedCNF& cnf) {
