@@ -399,7 +399,10 @@ int main(int argc, char** argv) {
     myopt2("-m", "--mode", mode, atoi, "Field mode (0=FGenMpz, 1=FGenMpq)");
     myopt("--samples", num_samples, atoi, "Number of samples");
     myopt2("-s", "--seed", seed, atoll, "Random seed");
-    myopt2("-u", "--unsat", unsat_verif, atoll, "UNSAT verify");
+    program.add_argument("-u", "--unsat") \
+        .action([&](const auto&) {unsat_verif = true;}) \
+        .flag()
+        .help("UNSAT verify, i.e. all AIGs must be present and correct");
 
     // Add positional argument for input file
     program.add_argument("files").remaining().help("input AIG file");
