@@ -32,6 +32,7 @@
 #include <ensmallen_bits/sgdr/cyclical_decay.hpp>
 #include <ios>
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
+#include <typeinfo>
 #include <vector>
 #include <ranges>
 #include "constants.h"
@@ -325,6 +326,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         }
 
         auto better_ctx = find_better_ctx(ctx); // fills needs_repair
+        verb_print(1, "Finding better ctx DONE, needs_repair size now: " << needs_repair.size());
         for(const auto& y: to_define_full) if (!needs_repair.count(y)) {
             ctx[y] = better_ctx[y];
             if (conf.verb >= 3 && better_ctx[y] != ctx[y])
@@ -574,28 +576,32 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
         const auto l = Lit(y, ctx[y_hat] == l_False);
         verb_print(3, "[find-better-ctx] put into assumps y= " << l);
         assumps.insert(l);
-        s_ctx.addClause(lits_to_ints({l}), 1); //want to flip valuation to ctx[y_hat], so when l is true, we flipped it (i.e. needs no repair)
+        int w = backward_defined.count(y) ? 3: 1;
+        s_ctx.addClause(lits_to_ints({l}), w); //want to flip valuation to ctx[y_hat], so when l is true, we flipped it (i.e. needs no repair)
     }
 
     /* verb_print(3, "[find-better-ctx] iteration " << i << " with " << ass.size() << " assumptions"); */
     auto ret = s_ctx.solve();
     assert(ret && "must be satisfiable");
-    verb_print(1, "optimum found: " << s_ctx.getCost() << " original assumps size: " << assumps.size());
     assert(s_ctx.getCost() > 0);
     for(const auto&l : assumps) {
         if (!s_ctx.getValue(lit_to_int(l))) {
             needs_repair.insert(l.var());
         }
     }
-    assert(needs_repair.size() == s_ctx.getCost());
+    verb_print(1, "optimum found: " << needs_repair.size() << " original assumps size: " << assumps.size());
+    /* assert(needs_repair.size() == s_ctx.getCost()); */
     assert(!needs_repair.empty());
     if (conf.verb >= 2) {
-        cout << "needs repair: ";
-        for(const auto& v: needs_repair) cout << v+1 << " ";
+        cout << "c o needs repair: ";
+        for(const auto& v: needs_repair) {
+            cout << v+1;
+            if (backward_defined.count(v)) cout << "[BW]";
+            cout << " ";
+        }
         std::cout << endl;
     }
 
-    verb_print(1, "Finding better ctx DONE, needs_repair size now: " << needs_repair.size());
     vector<lbool> better_ctx(cnf.nVars(), l_Undef);
     for(const auto& v: to_define_full) better_ctx[v] = s_ctx.getValue(v+1) ? l_True : l_False;
     return better_ctx;
@@ -714,7 +720,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     auto ret = solver.solve(&assumps);
     assert(ret != l_Undef);
     if (ret == l_True) {
-        verb_print(1, "Counterexample found");
+        verb_print(1, COLYEL " *** Counterexample found ***");
         ctx = solver.get_model();
         assert(ctx[fh->get_true_lit().var()] == l_True);
         return false;
