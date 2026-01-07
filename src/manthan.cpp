@@ -472,6 +472,7 @@ bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
         /* cout << "added input cl: " << std::vector<Lit>{l} << endl; */
     }
 
+    // We go through the variables that y_rep does NOT depend on, and assume them to be correct
     for(const auto& y: y_order) {
         if (y == y_rep) break; // beyond this point we don't care
         assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen. Otherwise y depends on y_rep, but we will repair y_rep potentially with y_rep");
@@ -573,6 +574,8 @@ void Manthan::perform_repair(const uint32_t y_rep, const vector<lbool>& ctx, con
     //We fixed the ctx on this variable
 }
 
+// Will order 1st the variables that NOTHING depends on
+// Will order LAST the variables that depends on EVERYTHING
 void Manthan::fix_order() {
     y_order.clear();
     verb_print(1, "[manthan] Fixing order...");
