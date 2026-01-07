@@ -264,1559 +264,1559 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
 }
 
 DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_ptr<CMSat::SATSolver>& solver,
-            const uint32_t verb) const {
-        std::vector<uint32_t> vs = solver->get_elimed_vars();
-        const auto new_to_orig_var = get_new_to_orig_var();
-        assert(defs_invariant());
+        const uint32_t verb) const {
+    std::vector<uint32_t> vs = solver->get_elimed_vars();
+    const auto new_to_orig_var = get_new_to_orig_var();
+    assert(defs_invariant());
 
-        // We are all in NEW here. So we need to map back to orig, both the
-        // definition and the target
-        auto map_cl_to_orig = [&new_to_orig_var](const std::vector<std::vector<CMSat::Lit>>& def) {
-            std::vector<std::vector<CMSat::Lit>> ret;
-            for(const auto& cl: def) {
-                std::vector<CMSat::Lit> new_cl;
-                for(const auto& l: cl) {
-                    assert(new_to_orig_var.count(l.var()) && "Must be in the new var set");
-                    const CMSat::Lit l2 = new_to_orig_var.at(l.var());
-                    new_cl.push_back(l2 ^ l.sign());
-                }
-                ret.push_back(new_cl);
+    // We are all in NEW here. So we need to map back to orig, both the
+    // definition and the target
+    auto map_cl_to_orig = [&new_to_orig_var](const std::vector<std::vector<CMSat::Lit>>& def) {
+        std::vector<std::vector<CMSat::Lit>> ret;
+        for(const auto& cl: def) {
+            std::vector<CMSat::Lit> new_cl;
+            for(const auto& l: cl) {
+                assert(new_to_orig_var.count(l.var()) && "Must be in the new var set");
+                const CMSat::Lit l2 = new_to_orig_var.at(l.var());
+                new_cl.push_back(l2 ^ l.sign());
             }
-            return ret;
-        };
+            ret.push_back(new_cl);
+        }
+        return ret;
+    };
 
-        for(const auto& target: vs) {
-            auto def = solver->get_cls_defining_var(target);
-            auto orig_def = map_cl_to_orig(def);
-            auto orig_target = new_to_orig_var.at(target);
-            assert(scnf.get_orig_sampl_vars().count(orig_target.var()) == 0 &&
-                "Elimed variable cannot be in the orig sampling set");
+    for(const auto& target: vs) {
+        auto def = solver->get_cls_defining_var(target);
+        auto orig_def = map_cl_to_orig(def);
+        auto orig_target = new_to_orig_var.at(target);
+        assert(scnf.get_orig_sampl_vars().count(orig_target.var()) == 0 &&
+            "Elimed variable cannot be in the orig sampling set");
 
-            uint32_t pos = 0;
-            uint32_t neg = 0;
-            for(const auto& cl: orig_def) {
-                bool found_this_cl = false;
-                for(const auto& l: cl) {
-                    if (l.var() != orig_target.var()) continue;
-                    found_this_cl = true;
-                    if (l.sign()) neg++;
-                    else pos++;
-                }
-                assert(found_this_cl);
+        uint32_t pos = 0;
+        uint32_t neg = 0;
+        for(const auto& cl: orig_def) {
+            bool found_this_cl = false;
+            for(const auto& l: cl) {
+                if (l.var() != orig_target.var()) continue;
+                found_this_cl = true;
+                if (l.sign()) neg++;
+                else pos++;
             }
-            bool sign = neg > pos;
-
-            auto overall = scnf.aig_mng.new_const(false);
-            for(const auto& cl: orig_def) {
-                auto current = scnf.aig_mng.new_const(true);
-
-                // Make sure only one side is used, the smaller side
-                bool ok = false;
-                for(const auto& l: cl) {
-                    if (l.var() == orig_target.var()) {
-                        if (l.sign() == sign) ok = true;
-                        break;
-                    }
-                }
-                if (!ok) continue;
-
-                for(const auto& l: cl) {
-                    if (l.var() == orig_target.var()) continue;
-                    auto aig = AIG::new_lit(~l);
-                    current = AIG::new_and(current, aig);
-                }
-                overall = AIG::new_or(overall, current);
-            }
-            if (sign) overall = AIG::new_not(overall);
-            if (orig_target.sign()) overall = AIG::new_not(overall);
-            scnf.defs[orig_target.var()] = overall;
-            if (verb >= 5)
-                std::cout << "c o [bve-aig] set aig for var: " << orig_target << " from bve elim" << std::endl;
+            assert(found_this_cl);
         }
+        bool sign = neg > pos;
 
-        // Finally, set defs for replaced vars that are elimed
-        auto pairs = solver->get_all_binary_xors(); // [replaced, replaced_with]
-        std::map<uint32_t, std::vector<CMSat::Lit>> var_to_lits_it_replaced;
-        for(const auto& [orig, replacement] : pairs) {
-            var_to_lits_it_replaced[replacement.var()].push_back(orig ^ replacement.sign());
-        }
-        for(const auto& target: vs) {
-            for(const auto& l: var_to_lits_it_replaced[target]) {
-                auto orig_target = new_to_orig_var.at(target);
-                auto orig_lit = new_to_orig_var.at(l.var()) ^ l.sign();
-                const auto aig = scnf.defs[orig_target.var()];
-                assert(aig != nullptr);
-                assert(scnf.defs[orig_lit.var()] == nullptr);
-                assert(scnf.get_orig_sampl_vars().count(orig_lit.var()) == 0 &&
-                    "Replaced variable cannot be in the orig sampling set here -- we would have elimed what it got replaced with");
-                if (orig_lit.sign()) {
-                    scnf.defs[orig_lit.var()] = AIG::new_not(aig);
-                } else {
-                    scnf.defs[orig_lit.var()] = aig;
-                }
-                if (verb >= 5)
-                    std::cout << "c o [bve-aig] replaced var: " << orig_lit
-                        << " with aig of " << orig_target << std::endl;
-            }
-        }
-    }
+        auto overall = scnf.aig_mng.new_const(false);
+        for(const auto& cl: orig_def) {
+            auto current = scnf.aig_mng.new_const(true);
 
-    DLL_PUBLIC void SimplifiedCNF::get_fixed_values(
-        SimplifiedCNF& scnf,
-        std::unique_ptr<CMSat::SATSolver>& solver) const
-    {
-        auto new_to_orig_var = get_new_to_orig_var();
-        auto fixed = solver->get_zero_assigned_lits();
-        for(const auto& l: fixed) {
-            CMSat::Lit orig_lit = new_to_orig_var.at(l.var());
-            orig_lit ^= l.sign();
-            scnf.defs[orig_lit.var()] = scnf.aig_mng.new_const(!orig_lit.sign());
-        }
-    }
-
-    DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const std::map<uint32_t, aig_ptr>& aigs_orig, const uint32_t max_num_vars) {
-        const auto new_to_orig_var = get_new_to_orig_var();
-        auto aigs = AIG::deep_clone_map(aigs_orig);
-        std::function<void(const aig_ptr&)> remap_aig = [&](const aig_ptr& aig) {
-            if (aig == nullptr) return;
-            if (aig->marked()) return;
-            assert(aig->invariants());
-            aig->set_mark();
-
-            if (aig->type == AIGT::t_lit) {
-                uint32_t v = aig->var;
-                assert(v < max_num_vars);
-                aig->var = new_to_orig_var.at(v).var();
-                aig->neg ^= new_to_orig_var.at(v).sign();
-                return;
-            }
-            if (aig->type == AIGT::t_and) {
-                remap_aig(aig->l);
-                remap_aig(aig->r);
-                return;
-            }
-            if (aig->type == AIGT::t_const) return;
-            assert(false && "Unknown AIG type");
-            exit(EXIT_FAILURE);
-        };
-
-        for(auto& [v, aig]: aigs) AIG::unmark_all(aig);
-        for(auto& [v, aig]: aigs) remap_aig(aig);
-        for(auto& [v, aig]: aigs) {
-            auto l = new_to_orig_var.at(v);
-            assert(defs[l.var()] == nullptr && "Variable must not already have a definition");
-            assert(orig_sampl_vars.count(l.var()) == 0 && "Original sampling var cannot have definition via unsat_define or backward_round_synth");
-            if (l.sign()) defs[l.var()] = AIG::new_not(aig);
-            else defs[l.var()] = aig;
-        }
-    }
-
-    DLL_PUBLIC void SimplifiedCNF::random_check_synth_funs() const {
-        std::ifstream urandom("/dev/urandom", std::ios::in | std::ios::binary);
-        uint64_t seed = 77;
-        if (urandom) {
-            urandom.read(reinterpret_cast<char*>(&seed), sizeof(seed));
-            urandom.close();
-        } else {
-            std::cerr << "c o [synth-debug] could not open /dev/urandom, using default seed" << std::endl;
-        }
-
-        SATSolver samp_s;
-        SATSolver s;
-        samp_s.set_up_for_sample_counter(1000);
-        samp_s.set_seed(seed);
-
-        samp_s.new_vars(defs.size());
-        s.new_vars(defs.size());
-        for(const auto& cl: orig_clauses) {
-            samp_s.add_clause(cl);
-            s.add_clause(cl);
-        }
-        if (samp_s.solve() == l_False) {
-            std::cout << "ERROR: c o [synth-debug] unsat cnf in random_check_synth_funs" << std::endl;
-            exit(EXIT_FAILURE);
-        }
-
-        uint32_t filled_defs = 0;
-        uint32_t undefs = 0;
-        uint32_t num_checks = 50;
-        for (uint32_t check = 0; check < num_checks; ++check) {
-            auto ret = samp_s.solve();
-            assert(ret == l_True);
-            auto model = samp_s.get_model();
-
-            // fill in samp vars
-            vector<CMSat::lbool> orig_vals(defs.size(), l_Undef);
-            for(const auto& l: orig_sampl_vars) orig_vals[l] = model[l];
-            auto vals = orig_vals;
-
-            for(uint32_t v = 0; v < defs.size(); ++v) {
-                if (orig_sampl_vars.count(v)) continue;
-                if (defs[v] == nullptr) continue;
-
-                lbool eval_aig = evaluate(orig_vals, v);
-                if (eval_aig == l_Undef) continue;
-                /* cout << "[synth-debug] var: " << v+1 << " eval_aig: " << eval_aig << endl; */
-                vals[v] = eval_aig;
-                filled_defs++;
-            }
-            vector<Lit> assumptions;
-            for(uint32_t v = 0; v < defs.size(); ++v) {
-                if (vals[v] == l_Undef) {
-                    undefs++;
-                    continue;
-                }
-                assumptions.push_back(Lit(v, vals[v] == l_False));
-            }
-            auto ret2 = s.solve(&assumptions);
-            assert(ret2 == l_True);
-        }
-        cout << "[CHECK] filled defs total: " << filled_defs << " undefs: " << undefs << " checks: " << num_checks << endl;
-    }
-
-    DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
-            std::unique_ptr<CMSat::SATSolver>& solver,
-            const std::vector<uint32_t>& new_sampl_vars,
-            const std::vector<uint32_t>& empty_sampl_vars,
-            uint32_t verb
-    ) const {
-        assert(defs_invariant());
-
-        SimplifiedCNF scnf(fg);
-        std::vector<CMSat::Lit> clause;
-        bool is_xor, rhs;
-        scnf.weighted = weighted;
-        scnf.proj = get_projected();
-        scnf.new_vars(solver->simplified_nvars());
-        scnf.aig_mng = aig_mng;
-        scnf.need_aig = need_aig;
-        if (need_aig) {
-            scnf.defs = defs;
-            scnf.aig_mng = aig_mng;
-            scnf.set_orig_sampl_vars(orig_sampl_vars);
-            scnf.set_orig_clauses(orig_clauses);
-        }
-
-        if (verb >= 5) {
-            for(const auto& v: new_sampl_vars)
-                std::cout << "c o [w-debug] get_cnf sampl var: " << v+1 << std::endl;
-            for(const auto& v: opt_sampl_vars)
-                std::cout << "c o [w-debug] get_cnf opt sampl var: " << v+1 << std::endl;
-            for(const auto& v: empty_sampl_vars)
-                std::cout << "c o [w-debug] get_cnf empty sampl var: " << v+1 << std::endl;
-        }
-
-        {// We need to fix weights here via cnf2
-            auto cnf2(*this);
-            cnf2.fix_weights(solver, new_sampl_vars, empty_sampl_vars);
-            solver->start_getting_constraints(false, true);
-            if (cnf2.weighted) {
-                std::map<CMSat::Lit, std::unique_ptr<CMSat::Field>> outer_w;
-                for(const auto& [v, w]: cnf2.weights) {
-                    const CMSat::Lit l(v, false);
-                    outer_w[l] = w.pos->dup();
-                    outer_w[~l] = w.neg->dup();
-                    if (verb >= 5) {
-                        std::cout << "c o [w-debug] outer_w " << l << " w: " << *w.pos << std::endl;
-                        std::cout << "c o [w-debug] outer_w " << ~l << " w: " << *w.neg << std::endl;
-                    }
-                }
-
-                const auto trans = solver->get_weight_translation();
-                std::map<CMSat::Lit, std::unique_ptr<CMSat::Field>> inter_w;
-                for(const auto& w: outer_w) {
-                    CMSat::Lit orig = w.first;
-                    CMSat::Lit t = trans[orig.toInt()];
-                    inter_w[t] = w.second->dup();
-                }
-
-                for(const auto& myw: inter_w) {
-                    if (myw.first.var() >= scnf.nvars) continue;
-                    if (verb >= 5)
-                        std::cout << " c o [w-debug] int w: " << myw.first << " " << *myw.second << std::endl;
-                    scnf.set_lit_weight(myw.first, myw.second);
-                }
-            }
-            *scnf.multiplier_weight = *cnf2.multiplier_weight;
-
-            // Map orig set to new set
-            scnf.set_sampl_vars(solver->translate_sampl_set(cnf2.sampl_vars));
-            scnf.set_opt_sampl_vars(solver->translate_sampl_set(cnf2.opt_sampl_vars));
-            std::sort(scnf.sampl_vars.begin(), scnf.sampl_vars.end());
-            std::sort(scnf.opt_sampl_vars.begin(), scnf.opt_sampl_vars.end());
-        }
-
-        // Get clauses
-        while(solver->get_next_constraint(clause, is_xor, rhs)) {
-            assert(!is_xor); assert(rhs);
-            scnf.clauses.push_back(clause);
-        }
-
-        // Get fixed and BVE AIG mapping
-        if (need_aig) {
-            get_fixed_values(scnf, solver);
-            get_bve_mapping(scnf, solver, verb);
-        }
-        solver->end_getting_constraints();
-
-        // RED clauses
-        solver->start_getting_constraints(true, true);
-        while(solver->get_next_constraint(clause, is_xor, rhs)) {
-            assert(!is_xor); assert(rhs);
-            scnf.red_clauses.push_back(clause);
-        }
-        solver->end_getting_constraints();
-
-
-        if (verb >= 5) {
-            std::cout << "w-debug AFTER PURA FINAL sampl_vars    : ";
-            for(const auto& v: scnf.sampl_vars) {
-                std::cout << v+1 << " ";
-            }
-            std::cout << std::endl;
-            std::cout << "w-debug AFTER PURA FINAL opt_sampl_vars: ";
-            for(const auto& v: scnf.opt_sampl_vars) std::cout << v+1 << " ";
-            std::cout << std::endl;
-        }
-
-        // Now we do the mapping. Otherwise, above will be complicated
-        // This ALSO gets all the fixed values
-        scnf.orig_to_new_var = solver->update_var_mapping(orig_to_new_var);
-        fix_mapping_after_renumber(scnf, verb);
-        std::cout << "c o solver orig num vars: " << solver->nVars() << " solver simp num vars: "
-            << solver->simplified_nvars() << std::endl;
-
-        assert(scnf.defs_invariant());
-        return scnf;
-    }
-
-    DLL_PUBLIC void SimplifiedCNF::fix_mapping_after_renumber(SimplifiedCNF& scnf, const uint32_t verb) const {
-        std::cout << "c o [get-cnf] Checking for variables mapping to same new var to set AIG definitions..." << std::endl;
-        std::map<uint32_t, std::vector<uint32_t>> new_var_to_origs;
-        for(const auto& it: scnf.orig_to_new_var) {
-            auto& orig = it.first;
-            auto& n = it.second;
-            new_var_to_origs[n.var()].push_back(orig);
-        }
-
-        for(const auto& it: new_var_to_origs) {
-            const auto& origs = it.second;
-            if (origs.size() <= 1) continue;
-
-            std::cout << "c o [get-cnf] Found " << origs.size()
-                << " original vars mapping to new var " << CMSat::Lit(it.first, false) << ": ";
-            for(const auto& o: origs) std::cout << CMSat::Lit(o, false) << " ";
-            std::cout << std::endl;
-
-            // Find which orig to keep undefined (prefer orig_sampl_vars)
-            uint32_t orig_to_keep = UINT32_MAX;
-            for(const auto& o: origs) {
-                if (scnf.orig_sampl_vars.count(o)) {
-                    orig_to_keep = o;
+            // Make sure only one side is used, the smaller side
+            bool ok = false;
+            for(const auto& l: cl) {
+                if (l.var() == orig_target.var()) {
+                    if (l.sign() == sign) ok = true;
                     break;
                 }
             }
-            if (orig_to_keep == UINT32_MAX) orig_to_keep = origs[0];
+            if (!ok) continue;
 
-            std::cout << "c o [get-cnf] Keeping orig var " << CMSat::Lit(orig_to_keep, false)
-                << " undefined, defining others by it." << std::endl;
-
-            for(const auto& o: origs) {
-                if (o ==  orig_to_keep) continue;
-                assert(scnf.defs[o] == nullptr);
-                const CMSat::Lit n = scnf.orig_to_new_var.at(o);
-                const CMSat::Lit n_keep = scnf.orig_to_new_var.at(orig_to_keep);
-                scnf.orig_to_new_var.erase(o);
-                scnf.defs[o] = AIG::new_lit(CMSat::Lit(orig_to_keep, n.sign() ^ n_keep.sign()));
-                if (verb >= 1)
-                    std::cout << "c o [get-cnf] set aig for var: " << CMSat::Lit(o, false)
-                        << " to that of " << CMSat::Lit(orig_to_keep, false)
-                        << " since both map to the same new var " << n << std::endl;
+            for(const auto& l: cl) {
+                if (l.var() == orig_target.var()) continue;
+                auto aig = AIG::new_lit(~l);
+                current = AIG::new_and(current, aig);
             }
+            overall = AIG::new_or(overall, current);
         }
+        if (sign) overall = AIG::new_not(overall);
+        if (orig_target.sign()) overall = AIG::new_not(overall);
+        scnf.defs[orig_target.var()] = overall;
+        if (verb >= 5)
+            std::cout << "c o [bve-aig] set aig for var: " << orig_target << " from bve elim" << std::endl;
     }
 
-    // Deserialize SimplifiedCNF from binary file
-    DLL_PUBLIC void SimplifiedCNF::read_aig_defs(std::ifstream& in) {
-        // Read simple fields
-        in.read((char*)&nvars, sizeof(nvars));
-        in.read((char*)&backbone_done, sizeof(backbone_done));
-        in.read((char*)&proj, sizeof(proj));
-        in.read((char*)&need_aig, sizeof(need_aig));
-        in.read((char*)&after_backward_round_synth, sizeof(after_backward_round_synth));
-        in.read((char*)&weighted, sizeof(weighted));
-        in.read((char*)&sampl_vars_set, sizeof(sampl_vars_set));
-        in.read((char*)&opt_sampl_vars_set, sizeof(opt_sampl_vars_set));
-        in.read((char*)&orig_sampl_vars_set, sizeof(orig_sampl_vars_set));
-
-        // Read sampl_vars
-        uint32_t sz;
-        in.read((char*)&sz, sizeof(sz));
-        sampl_vars.resize(sz);
-        in.read((char*)sampl_vars.data(), sz * sizeof(uint32_t));
-
-        // Read opt_sampl_vars
-        in.read((char*)&sz, sizeof(sz));
-        opt_sampl_vars.resize(sz);
-        in.read((char*)opt_sampl_vars.data(), sz * sizeof(uint32_t));
-
-        // Read orig_sampl_vars
-        in.read((char*)&sz, sizeof(sz));
-        vector<uint32_t> orig_sampl_vars_v(sz);
-        in.read((char*)orig_sampl_vars_v.data(), sz * sizeof(uint32_t));
-        orig_sampl_vars.clear();
-        orig_sampl_vars.insert(orig_sampl_vars_v.begin(), orig_sampl_vars_v.end());
-
-        // Read clauses
-        in.read((char*)&sz, sizeof(sz));
-        clauses.resize(sz);
-        for (uint32_t i = 0; i < sz; i++) {
-            uint32_t cl_sz;
-            in.read((char*)&cl_sz, sizeof(cl_sz));
-            clauses[i].resize(cl_sz);
-            for (uint32_t j = 0; j < cl_sz; j++) {
-                uint32_t v;
-                bool sign;
-                in.read((char*)&v, sizeof(v));
-                in.read((char*)&sign, sizeof(sign));
-                clauses[i][j] = CMSat::Lit(v, sign);
-            }
-        }
-
-        // Read orig_clauses
-        in.read((char*)&sz, sizeof(sz));
-        orig_clauses.resize(sz);
-        for (uint32_t i = 0; i < sz; i++) {
-            uint32_t cl_sz;
-            in.read((char*)&cl_sz, sizeof(cl_sz));
-            orig_clauses[i].resize(cl_sz);
-            for (uint32_t j = 0; j < cl_sz; j++) {
-                uint32_t v;
-                bool sign;
-                in.read((char*)&v, sizeof(v));
-                in.read((char*)&sign, sizeof(sign));
-                orig_clauses[i][j] = CMSat::Lit(v, sign);
-            }
-        }
-
-        // Read orig_to_new_var
-        in.read((char*)&sz, sizeof(sz));
-        orig_to_new_var.clear();
-        for (uint32_t i = 0; i < sz; i++) {
-            uint32_t orig, lit_var;
-            bool lit_sign;
-            in.read((char*)&orig, sizeof(orig));
-            in.read((char*)&lit_var, sizeof(lit_var));
-            in.read((char*)&lit_sign, sizeof(lit_sign));
-            orig_to_new_var[orig] = CMSat::Lit(lit_var, lit_sign);
-        }
-
-        // Read AIGs
-        uint32_t num_nodes;
-        in.read((char*)&num_nodes, sizeof(num_nodes));
-        cout << "c o [aig-io] Reading " << num_nodes << " AIG nodes from file." << endl;
-
-        // Read all nodes
-        std::vector<aig_ptr> id_to_node(num_nodes, nullptr);
-        for (uint32_t i = 0; i < num_nodes; i++) {
-            auto node = std::make_shared<AIG>();
-            uint32_t id;
-            in.read((char*)&id, sizeof(id));
-            /* cout << "c o [aig-io] Reading AIG node id: " << id << endl; */
-            in.read((char*)&node->type, sizeof(node->type));
-            in.read((char*)&node->var, sizeof(node->var));
-            in.read((char*)&node->neg, sizeof(node->neg));
-            if (node->type == AIGT::t_and) {
-                uint32_t lid, rid;
-                in.read((char*)&lid, sizeof(lid));
-                in.read((char*)&rid, sizeof(rid));
-                assert(id_to_node[lid] != nullptr);
-                assert(id_to_node[rid] != nullptr);
-                node->l = id_to_node[lid];
-                node->r = id_to_node[rid];
-            }
-            assert(id < num_nodes);
-            id_to_node[id] = node;
-        }
-
-        // Read defs map
-        uint32_t num_defs;
-        in.read((char*)&num_defs, sizeof(num_defs));
-        cout << "c o [aig-io] Reading " << num_defs << " AIG defs from file." << endl;
-        defs.clear();
-        defs.resize(num_defs);
-        for (uint32_t i = 0; i < num_defs; i++) {
-            uint32_t id;
-            in.read((char*)&id, sizeof(id));
-            if (id == UINT32_MAX) {
-                /* cout << "c o [aig-io] Reading def for var: " << i+1 << " aig id: UNDEF" << endl; */
-                defs[i] = nullptr;
-                continue;
-            }
-            /* cout << "c o [aig-io] Reading def for var: " << i+1 << " aig id: " << id << endl; */
-            assert(id < num_nodes);
-            assert(id_to_node[id] != nullptr);
-            assert(id_to_node.size() > id);
-            assert(i < num_defs);
-            defs[i] = id_to_node[id];
-        }
-        get_var_types(1);
+    // Finally, set defs for replaced vars that are elimed
+    auto pairs = solver->get_all_binary_xors(); // [replaced, replaced_with]
+    std::map<uint32_t, std::vector<CMSat::Lit>> var_to_lits_it_replaced;
+    for(const auto& [orig, replacement] : pairs) {
+        var_to_lits_it_replaced[replacement.var()].push_back(orig ^ replacement.sign());
     }
-
-
-    // Serialize SimplifiedCNF to binary file
-    DLL_PUBLIC void SimplifiedCNF::write_aig_defs(std::ofstream& out) const {
-        // Write simple fields
-        out.write((char*)&nvars, sizeof(nvars));
-        out.write((char*)&backbone_done, sizeof(backbone_done));
-        out.write((char*)&proj, sizeof(proj));
-        out.write((char*)&need_aig, sizeof(need_aig));
-        out.write((char*)&after_backward_round_synth, sizeof(after_backward_round_synth));
-        out.write((char*)&weighted, sizeof(weighted));
-        out.write((char*)&sampl_vars_set, sizeof(sampl_vars_set));
-        out.write((char*)&opt_sampl_vars_set, sizeof(opt_sampl_vars_set));
-        out.write((char*)&orig_sampl_vars_set, sizeof(orig_sampl_vars_set));
-
-        // Write sampl_vars
-        uint32_t sz = sampl_vars.size();
-        out.write((char*)&sz, sizeof(sz));
-        out.write((char*)sampl_vars.data(), sz * sizeof(uint32_t));
-
-        // Write opt_sampl_vars
-        sz = opt_sampl_vars.size();
-        out.write((char*)&sz, sizeof(sz));
-        out.write((char*)opt_sampl_vars.data(), sz * sizeof(uint32_t));
-
-        // Write orig_sampl_vars
-        sz = orig_sampl_vars.size();
-        out.write((char*)&sz, sizeof(sz));
-        for(const auto& v : orig_sampl_vars) out.write((char*)&v, sizeof(v));
-
-        // Write clauses
-        sz = clauses.size();
-        out.write((char*)&sz, sizeof(sz));
-        for (const auto& cl : clauses) {
-            uint32_t cl_sz = cl.size();
-            out.write((char*)&cl_sz, sizeof(cl_sz));
-            for (const auto& lit : cl) {
-                uint32_t v = lit.var();
-                bool sign = lit.sign();
-                out.write((char*)&v, sizeof(v));
-                out.write((char*)&sign, sizeof(sign));
-            }
-        }
-
-        // Write orig_clauses
-        sz = orig_clauses.size();
-        out.write((char*)&sz, sizeof(sz));
-        for (const auto& cl : orig_clauses) {
-            uint32_t cl_sz = cl.size();
-            out.write((char*)&cl_sz, sizeof(cl_sz));
-            for (const auto& lit : cl) {
-                uint32_t v = lit.var();
-                bool sign = lit.sign();
-                out.write((char*)&v, sizeof(v));
-                out.write((char*)&sign, sizeof(sign));
-            }
-        }
-
-        // Write orig_to_new_var
-        sz = orig_to_new_var.size();
-        out.write((char*)&sz, sizeof(sz));
-        for (const auto& [orig, n] : orig_to_new_var) {
-            out.write((char*)&orig, sizeof(orig));
-            uint32_t lit_var = n.var();
-            bool lit_sign = n.sign();
-            out.write((char*)&lit_var, sizeof(lit_var));
-            out.write((char*)&lit_sign, sizeof(lit_sign));
-        }
-
-        // 1. Collect all unique AIG nodes by traversing the DAG
-        std::map<AIG*, uint32_t> node_to_id;
-        std::map<uint32_t, AIG*> id_to_node;
-        uint32_t next_id = 0;
-        std::vector<uint32_t> order;
-
-        std::function<void(const aig_ptr&)> collect = [&](const aig_ptr& aig) {
-            if (!aig || node_to_id.count(aig.get())) return;
-            uint32_t id = next_id++;
-            node_to_id[aig.get()] = id;
-            id_to_node[id] = aig.get();
-            if (aig->type == AIGT::t_and) {
-                collect(aig->l);
-                collect(aig->r);
-            }
-            order.push_back(id);
-            /* cout << "writing out AIG node id: " << id << " type: " << aig->type << endl; */
-        };
-
-        for (const auto& aig : defs) collect(aig);
-
-        // 2. Write number of nodes
-        uint32_t num_nodes = id_to_node.size();
-        cout << "c o [aig-io] Writing " << num_nodes << " AIG nodes to file." << endl;
-        out.write((char*)&num_nodes, sizeof(num_nodes));
-
-        // 3. Write each node (postorder: children before parents)
-        for (auto id : order) {
-            AIG* node = id_to_node[id];
-            out.write((char*)&id, sizeof(id));
-            out.write((char*)&node->type, sizeof(node->type));
-            out.write((char*)&node->var, sizeof(node->var));
-            out.write((char*)&node->neg, sizeof(node->neg));
-            if (node->type == AIGT::t_and) {
-                uint32_t lid = node_to_id[node->l.get()];
-                uint32_t rid = node_to_id[node->r.get()];
-                out.write((char*)&lid, sizeof(lid));
-                out.write((char*)&rid, sizeof(rid));
-            }
-        }
-
-        // 4. Write defs map
-        uint32_t num_defs = defs.size();
-        out.write((char*)&num_defs, sizeof(num_defs));
-        cout << "c o [aig-io] Writing " << num_defs << " AIG defs to file." << endl;
-        for (const auto& aig : defs) {
-            if (aig == nullptr) {
-                uint32_t id = UINT32_MAX;
-                /* cout << "c o [aig-io] Writing def aig id: UNDEF" << endl; */
-                out.write((char*)&id, sizeof(id));
-                continue;
-            }
-            uint32_t id = node_to_id[aig.get()];
-            /* cout << "c o [aig-io] Writing def for var aig id: " << id << endl; */
-            out.write((char*)&id, sizeof(id));
-        }
-        get_var_types(1);
-    }
-
-
-    // Write AIG defs to file (opens file for you)
-    DLL_PUBLIC void SimplifiedCNF::write_aig_defs_to_file(const std::string& fname) const {
-        std::ofstream out(fname, std::ios::binary);
-        if (!out) {
-            std::cerr << "ERROR: Cannot open file for writing: " << fname << std::endl;
-            exit(EXIT_FAILURE);
-        }
-        write_aig_defs(out);
-        out.close();
-        std::cout << "c o Wrote AIG defs: " << fname << std::endl;
-    }
-
-    // Read AIG defs from file (opens file for you)
-    DLL_PUBLIC void SimplifiedCNF::read_aig_defs_from_file(const std::string& fname) {
-        std::ifstream in(fname, std::ios::binary);
-        if (!in) {
-            std::cerr << "ERROR: Cannot open file for reading: " << fname << std::endl;
-            exit(EXIT_FAILURE);
-        }
-        read_aig_defs(in);
-        in.close();
-    }
-
-    DLL_PUBLIC std::vector<CMSat::lbool> SimplifiedCNF::extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed) const {
-        assert(get_need_aig() && defs_invariant());
-        assert(sample.size() == defs.size() && "Sample size must match number of variables");
-        assert(check_orig_sampl_vars_undefined());
-
-        for(uint32_t v = 0; v < defs.size(); v++) {
-            if (orig_sampl_vars.count(v)) {
-                assert(sample[v] != CMSat::l_Undef && "Original sampling variable must be defined in the sample");
+    for(const auto& target: vs) {
+        for(const auto& l: var_to_lits_it_replaced[target]) {
+            auto orig_target = new_to_orig_var.at(target);
+            auto orig_lit = new_to_orig_var.at(l.var()) ^ l.sign();
+            const auto aig = scnf.defs[orig_target.var()];
+            assert(aig != nullptr);
+            assert(scnf.defs[orig_lit.var()] == nullptr);
+            assert(scnf.get_orig_sampl_vars().count(orig_lit.var()) == 0 &&
+                "Replaced variable cannot be in the orig sampling set here -- we would have elimed what it got replaced with");
+            if (orig_lit.sign()) {
+                scnf.defs[orig_lit.var()] = AIG::new_not(aig);
             } else {
-                if (!relaxed) assert(defs[v] != nullptr && "Non-original sampling variable must have definition");
-                assert(sample[v] == CMSat::l_Undef && "Non-original sampling variable must be undefined in the sample");
+                scnf.defs[orig_lit.var()] = aig;
             }
+            if (verb >= 5)
+                std::cout << "c o [bve-aig] replaced var: " << orig_lit
+                    << " with aig of " << orig_target << std::endl;
         }
+    }
+}
 
-        auto vals(sample);
-        for(uint32_t v = 0; v < defs.size(); v++) {
+DLL_PUBLIC void SimplifiedCNF::get_fixed_values(
+    SimplifiedCNF& scnf,
+    std::unique_ptr<CMSat::SATSolver>& solver) const
+{
+    auto new_to_orig_var = get_new_to_orig_var();
+    auto fixed = solver->get_zero_assigned_lits();
+    for(const auto& l: fixed) {
+        CMSat::Lit orig_lit = new_to_orig_var.at(l.var());
+        orig_lit ^= l.sign();
+        scnf.defs[orig_lit.var()] = scnf.aig_mng.new_const(!orig_lit.sign());
+    }
+}
+
+DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const std::map<uint32_t, aig_ptr>& aigs_orig, const uint32_t max_num_vars) {
+    const auto new_to_orig_var = get_new_to_orig_var();
+    auto aigs = AIG::deep_clone_map(aigs_orig);
+    std::function<void(const aig_ptr&)> remap_aig = [&](const aig_ptr& aig) {
+        if (aig == nullptr) return;
+        if (aig->marked()) return;
+        assert(aig->invariants());
+        aig->set_mark();
+
+        if (aig->type == AIGT::t_lit) {
+            uint32_t v = aig->var;
+            assert(v < max_num_vars);
+            aig->var = new_to_orig_var.at(v).var();
+            aig->neg ^= new_to_orig_var.at(v).sign();
+            return;
+        }
+        if (aig->type == AIGT::t_and) {
+            remap_aig(aig->l);
+            remap_aig(aig->r);
+            return;
+        }
+        if (aig->type == AIGT::t_const) return;
+        assert(false && "Unknown AIG type");
+        exit(EXIT_FAILURE);
+    };
+
+    for(auto& [v, aig]: aigs) AIG::unmark_all(aig);
+    for(auto& [v, aig]: aigs) remap_aig(aig);
+    for(auto& [v, aig]: aigs) {
+        auto l = new_to_orig_var.at(v);
+        assert(defs[l.var()] == nullptr && "Variable must not already have a definition");
+        assert(orig_sampl_vars.count(l.var()) == 0 && "Original sampling var cannot have definition via unsat_define or backward_round_synth");
+        if (l.sign()) defs[l.var()] = AIG::new_not(aig);
+        else defs[l.var()] = aig;
+    }
+}
+
+DLL_PUBLIC void SimplifiedCNF::random_check_synth_funs() const {
+    std::ifstream urandom("/dev/urandom", std::ios::in | std::ios::binary);
+    uint64_t seed = 77;
+    if (urandom) {
+        urandom.read(reinterpret_cast<char*>(&seed), sizeof(seed));
+        urandom.close();
+    } else {
+        std::cerr << "c o [synth-debug] could not open /dev/urandom, using default seed" << std::endl;
+    }
+
+    SATSolver samp_s;
+    SATSolver s;
+    samp_s.set_up_for_sample_counter(1000);
+    samp_s.set_seed(seed);
+
+    samp_s.new_vars(defs.size());
+    s.new_vars(defs.size());
+    for(const auto& cl: orig_clauses) {
+        samp_s.add_clause(cl);
+        s.add_clause(cl);
+    }
+    if (samp_s.solve() == l_False) {
+        std::cout << "ERROR: c o [synth-debug] unsat cnf in random_check_synth_funs" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    uint32_t filled_defs = 0;
+    uint32_t undefs = 0;
+    uint32_t num_checks = 50;
+    for (uint32_t check = 0; check < num_checks; ++check) {
+        auto ret = samp_s.solve();
+        assert(ret == l_True);
+        auto model = samp_s.get_model();
+
+        // fill in samp vars
+        vector<CMSat::lbool> orig_vals(defs.size(), l_Undef);
+        for(const auto& l: orig_sampl_vars) orig_vals[l] = model[l];
+        auto vals = orig_vals;
+
+        for(uint32_t v = 0; v < defs.size(); ++v) {
+            if (orig_sampl_vars.count(v)) continue;
             if (defs[v] == nullptr) continue;
-            auto val = AIG::evaluate(sample, defs[v], defs);
-            vals[v] = val;
-        }
-        return vals;
-    }
 
-    // Used after SBVA to replace clauses
-    DLL_PUBLIC void SimplifiedCNF::replace_clauses_with(std::vector<int>& ret, uint32_t new_nvars, uint32_t new_nclauses) {
-        nvars = new_nvars;
-        clauses.clear();
-        std::vector<CMSat::Lit> cl;
-        uint32_t at = 0;
-        while(ret.size() > at) {
-            int l = ret[at++];
-            if (l == 0) {
-                add_clause(cl);
-                cl.clear();
+            lbool eval_aig = evaluate(orig_vals, v);
+            if (eval_aig == l_Undef) continue;
+            /* cout << "[synth-debug] var: " << v+1 << " eval_aig: " << eval_aig << endl; */
+            vals[v] = eval_aig;
+            filled_defs++;
+        }
+        vector<Lit> assumptions;
+        for(uint32_t v = 0; v < defs.size(); ++v) {
+            if (vals[v] == l_Undef) {
+                undefs++;
                 continue;
             }
-            cl.push_back(CMSat::Lit(std::abs(l)-1, l < 0));
+            assumptions.push_back(Lit(v, vals[v] == l_False));
         }
-        assert(cl.empty() && "SBVA should have ended with a 0");
-        assert(clauses.size() == new_nclauses && "Number of clauses mismatch after SBVA");
+        auto ret2 = s.solve(&assumptions);
+        assert(ret2 == l_True);
+    }
+    cout << "[CHECK] filled defs total: " << filled_defs << " undefs: " << undefs << " checks: " << num_checks << endl;
+}
+
+DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
+        std::unique_ptr<CMSat::SATSolver>& solver,
+        const std::vector<uint32_t>& new_sampl_vars,
+        const std::vector<uint32_t>& empty_sampl_vars,
+        uint32_t verb
+) const {
+    assert(defs_invariant());
+
+    SimplifiedCNF scnf(fg);
+    std::vector<CMSat::Lit> clause;
+    bool is_xor, rhs;
+    scnf.weighted = weighted;
+    scnf.proj = get_projected();
+    scnf.new_vars(solver->simplified_nvars());
+    scnf.aig_mng = aig_mng;
+    scnf.need_aig = need_aig;
+    if (need_aig) {
+        scnf.defs = defs;
+        scnf.aig_mng = aig_mng;
+        scnf.set_orig_sampl_vars(orig_sampl_vars);
+        scnf.set_orig_clauses(orig_clauses);
     }
 
-    // returns in CNF (new vars) the dependencies of each variable
-    // every LHS element in the map is a backward_defined variable
-    // input variables are NOT included in the dependencies
-    DLL_PUBLIC std::map<uint32_t, std::set<uint32_t>> SimplifiedCNF::compute_backw_dependencies() {
-        auto [input, to_define, backward_defined] = get_var_types(0);
-        auto new_to_orig_var = get_new_to_orig_var();
-        std::map<uint32_t, std::set<uint32_t>> ret;
-        for(auto& n: backward_defined) {
-            const auto orig_v = new_to_orig_var.at(n).var();
-            const auto ret_orig = get_dependent_vars_recursive(orig_v);
-            std::set<uint32_t> ret_new;
-            for(const auto& ov: ret_orig) {
-                if(!orig_to_new_var.count(ov)) continue;
-                if (orig_sampl_vars.count(ov)) continue; //orig sampl vars not included
-                const CMSat::Lit nl = orig_to_new_var.at(ov);
-                assert(nl != CMSat::lit_Undef);
-                ret_new.insert(nl.var());
+    if (verb >= 5) {
+        for(const auto& v: new_sampl_vars)
+            std::cout << "c o [w-debug] get_cnf sampl var: " << v+1 << std::endl;
+        for(const auto& v: opt_sampl_vars)
+            std::cout << "c o [w-debug] get_cnf opt sampl var: " << v+1 << std::endl;
+        for(const auto& v: empty_sampl_vars)
+            std::cout << "c o [w-debug] get_cnf empty sampl var: " << v+1 << std::endl;
+    }
+
+    {// We need to fix weights here via cnf2
+        auto cnf2(*this);
+        cnf2.fix_weights(solver, new_sampl_vars, empty_sampl_vars);
+        solver->start_getting_constraints(false, true);
+        if (cnf2.weighted) {
+            std::map<CMSat::Lit, std::unique_ptr<CMSat::Field>> outer_w;
+            for(const auto& [v, w]: cnf2.weights) {
+                const CMSat::Lit l(v, false);
+                outer_w[l] = w.pos->dup();
+                outer_w[~l] = w.neg->dup();
+                if (verb >= 5) {
+                    std::cout << "c o [w-debug] outer_w " << l << " w: " << *w.pos << std::endl;
+                    std::cout << "c o [w-debug] outer_w " << ~l << " w: " << *w.neg << std::endl;
+                }
             }
-            ret[n] = ret_new;
+
+            const auto trans = solver->get_weight_translation();
+            std::map<CMSat::Lit, std::unique_ptr<CMSat::Field>> inter_w;
+            for(const auto& w: outer_w) {
+                CMSat::Lit orig = w.first;
+                CMSat::Lit t = trans[orig.toInt()];
+                inter_w[t] = w.second->dup();
+            }
+
+            for(const auto& myw: inter_w) {
+                if (myw.first.var() >= scnf.nvars) continue;
+                if (verb >= 5)
+                    std::cout << " c o [w-debug] int w: " << myw.first << " " << *myw.second << std::endl;
+                scnf.set_lit_weight(myw.first, myw.second);
+            }
         }
-        return ret;
+        *scnf.multiplier_weight = *cnf2.multiplier_weight;
+
+        // Map orig set to new set
+        scnf.set_sampl_vars(solver->translate_sampl_set(cnf2.sampl_vars));
+        scnf.set_opt_sampl_vars(solver->translate_sampl_set(cnf2.opt_sampl_vars));
+        std::sort(scnf.sampl_vars.begin(), scnf.sampl_vars.end());
+        std::sort(scnf.opt_sampl_vars.begin(), scnf.opt_sampl_vars.end());
     }
 
+    // Get clauses
+    while(solver->get_next_constraint(clause, is_xor, rhs)) {
+        assert(!is_xor); assert(rhs);
+        scnf.clauses.push_back(clause);
+    }
 
-    DLL_PUBLIC void SimplifiedCNF::fix_weights(std::unique_ptr<CMSat::SATSolver>& solver,
-            const std::vector<uint32_t> new_sampl_vars,
-            const std::vector<uint32_t>& empty_sampling_vars) {
-        for(const auto& v: new_sampl_vars) check_var(v);
-        for(const auto& v: empty_sampling_vars) check_var(v);
-        std::set<uint32_t> sampling_vars_set(new_sampl_vars.begin(), new_sampl_vars.end());
-        std::set<uint32_t> opt_sampling_vars_set(opt_sampl_vars.begin(), opt_sampl_vars.end());
-        constexpr bool debug_w = false;
+    // Get fixed and BVE AIG mapping
+    if (need_aig) {
+        get_fixed_values(scnf, solver);
+        get_bve_mapping(scnf, solver, verb);
+    }
+    solver->end_getting_constraints();
+
+    // RED clauses
+    solver->start_getting_constraints(true, true);
+    while(solver->get_next_constraint(clause, is_xor, rhs)) {
+        assert(!is_xor); assert(rhs);
+        scnf.red_clauses.push_back(clause);
+    }
+    solver->end_getting_constraints();
+
+
+    if (verb >= 5) {
+        std::cout << "w-debug AFTER PURA FINAL sampl_vars    : ";
+        for(const auto& v: scnf.sampl_vars) {
+            std::cout << v+1 << " ";
+        }
+        std::cout << std::endl;
+        std::cout << "w-debug AFTER PURA FINAL opt_sampl_vars: ";
+        for(const auto& v: scnf.opt_sampl_vars) std::cout << v+1 << " ";
+        std::cout << std::endl;
+    }
+
+    // Now we do the mapping. Otherwise, above will be complicated
+    // This ALSO gets all the fixed values
+    scnf.orig_to_new_var = solver->update_var_mapping(orig_to_new_var);
+    fix_mapping_after_renumber(scnf, verb);
+    std::cout << "c o solver orig num vars: " << solver->nVars() << " solver simp num vars: "
+        << solver->simplified_nvars() << std::endl;
+
+    assert(scnf.defs_invariant());
+    return scnf;
+}
+
+DLL_PUBLIC void SimplifiedCNF::fix_mapping_after_renumber(SimplifiedCNF& scnf, const uint32_t verb) const {
+    std::cout << "c o [get-cnf] Checking for variables mapping to same new var to set AIG definitions..." << std::endl;
+    std::map<uint32_t, std::vector<uint32_t>> new_var_to_origs;
+    for(const auto& it: scnf.orig_to_new_var) {
+        auto& orig = it.first;
+        auto& n = it.second;
+        new_var_to_origs[n.var()].push_back(orig);
+    }
+
+    for(const auto& it: new_var_to_origs) {
+        const auto& origs = it.second;
+        if (origs.size() <= 1) continue;
+
+        std::cout << "c o [get-cnf] Found " << origs.size()
+            << " original vars mapping to new var " << CMSat::Lit(it.first, false) << ": ";
+        for(const auto& o: origs) std::cout << CMSat::Lit(o, false) << " ";
+        std::cout << std::endl;
+
+        // Find which orig to keep undefined (prefer orig_sampl_vars)
+        uint32_t orig_to_keep = UINT32_MAX;
+        for(const auto& o: origs) {
+            if (scnf.orig_sampl_vars.count(o)) {
+                orig_to_keep = o;
+                break;
+            }
+        }
+        if (orig_to_keep == UINT32_MAX) orig_to_keep = origs[0];
+
+        std::cout << "c o [get-cnf] Keeping orig var " << CMSat::Lit(orig_to_keep, false)
+            << " undefined, defining others by it." << std::endl;
+
+        for(const auto& o: origs) {
+            if (o ==  orig_to_keep) continue;
+            assert(scnf.defs[o] == nullptr);
+            const CMSat::Lit n = scnf.orig_to_new_var.at(o);
+            const CMSat::Lit n_keep = scnf.orig_to_new_var.at(orig_to_keep);
+            scnf.orig_to_new_var.erase(o);
+            scnf.defs[o] = AIG::new_lit(CMSat::Lit(orig_to_keep, n.sign() ^ n_keep.sign()));
+            if (verb >= 1)
+                std::cout << "c o [get-cnf] set aig for var: " << CMSat::Lit(o, false)
+                    << " to that of " << CMSat::Lit(orig_to_keep, false)
+                    << " since both map to the same new var " << n << std::endl;
+        }
+    }
+}
+
+// Deserialize SimplifiedCNF from binary file
+DLL_PUBLIC void SimplifiedCNF::read_aig_defs(std::ifstream& in) {
+    // Read simple fields
+    in.read((char*)&nvars, sizeof(nvars));
+    in.read((char*)&backbone_done, sizeof(backbone_done));
+    in.read((char*)&proj, sizeof(proj));
+    in.read((char*)&need_aig, sizeof(need_aig));
+    in.read((char*)&after_backward_round_synth, sizeof(after_backward_round_synth));
+    in.read((char*)&weighted, sizeof(weighted));
+    in.read((char*)&sampl_vars_set, sizeof(sampl_vars_set));
+    in.read((char*)&opt_sampl_vars_set, sizeof(opt_sampl_vars_set));
+    in.read((char*)&orig_sampl_vars_set, sizeof(orig_sampl_vars_set));
+
+    // Read sampl_vars
+    uint32_t sz;
+    in.read((char*)&sz, sizeof(sz));
+    sampl_vars.resize(sz);
+    in.read((char*)sampl_vars.data(), sz * sizeof(uint32_t));
+
+    // Read opt_sampl_vars
+    in.read((char*)&sz, sizeof(sz));
+    opt_sampl_vars.resize(sz);
+    in.read((char*)opt_sampl_vars.data(), sz * sizeof(uint32_t));
+
+    // Read orig_sampl_vars
+    in.read((char*)&sz, sizeof(sz));
+    vector<uint32_t> orig_sampl_vars_v(sz);
+    in.read((char*)orig_sampl_vars_v.data(), sz * sizeof(uint32_t));
+    orig_sampl_vars.clear();
+    orig_sampl_vars.insert(orig_sampl_vars_v.begin(), orig_sampl_vars_v.end());
+
+    // Read clauses
+    in.read((char*)&sz, sizeof(sz));
+    clauses.resize(sz);
+    for (uint32_t i = 0; i < sz; i++) {
+        uint32_t cl_sz;
+        in.read((char*)&cl_sz, sizeof(cl_sz));
+        clauses[i].resize(cl_sz);
+        for (uint32_t j = 0; j < cl_sz; j++) {
+            uint32_t v;
+            bool sign;
+            in.read((char*)&v, sizeof(v));
+            in.read((char*)&sign, sizeof(sign));
+            clauses[i][j] = CMSat::Lit(v, sign);
+        }
+    }
+
+    // Read orig_clauses
+    in.read((char*)&sz, sizeof(sz));
+    orig_clauses.resize(sz);
+    for (uint32_t i = 0; i < sz; i++) {
+        uint32_t cl_sz;
+        in.read((char*)&cl_sz, sizeof(cl_sz));
+        orig_clauses[i].resize(cl_sz);
+        for (uint32_t j = 0; j < cl_sz; j++) {
+            uint32_t v;
+            bool sign;
+            in.read((char*)&v, sizeof(v));
+            in.read((char*)&sign, sizeof(sign));
+            orig_clauses[i][j] = CMSat::Lit(v, sign);
+        }
+    }
+
+    // Read orig_to_new_var
+    in.read((char*)&sz, sizeof(sz));
+    orig_to_new_var.clear();
+    for (uint32_t i = 0; i < sz; i++) {
+        uint32_t orig, lit_var;
+        bool lit_sign;
+        in.read((char*)&orig, sizeof(orig));
+        in.read((char*)&lit_var, sizeof(lit_var));
+        in.read((char*)&lit_sign, sizeof(lit_sign));
+        orig_to_new_var[orig] = CMSat::Lit(lit_var, lit_sign);
+    }
+
+    // Read AIGs
+    uint32_t num_nodes;
+    in.read((char*)&num_nodes, sizeof(num_nodes));
+    cout << "c o [aig-io] Reading " << num_nodes << " AIG nodes from file." << endl;
+
+    // Read all nodes
+    std::vector<aig_ptr> id_to_node(num_nodes, nullptr);
+    for (uint32_t i = 0; i < num_nodes; i++) {
+        auto node = std::make_shared<AIG>();
+        uint32_t id;
+        in.read((char*)&id, sizeof(id));
+        /* cout << "c o [aig-io] Reading AIG node id: " << id << endl; */
+        in.read((char*)&node->type, sizeof(node->type));
+        in.read((char*)&node->var, sizeof(node->var));
+        in.read((char*)&node->neg, sizeof(node->neg));
+        if (node->type == AIGT::t_and) {
+            uint32_t lid, rid;
+            in.read((char*)&lid, sizeof(lid));
+            in.read((char*)&rid, sizeof(rid));
+            assert(id_to_node[lid] != nullptr);
+            assert(id_to_node[rid] != nullptr);
+            node->l = id_to_node[lid];
+            node->r = id_to_node[rid];
+        }
+        assert(id < num_nodes);
+        id_to_node[id] = node;
+    }
+
+    // Read defs map
+    uint32_t num_defs;
+    in.read((char*)&num_defs, sizeof(num_defs));
+    cout << "c o [aig-io] Reading " << num_defs << " AIG defs from file." << endl;
+    defs.clear();
+    defs.resize(num_defs);
+    for (uint32_t i = 0; i < num_defs; i++) {
+        uint32_t id;
+        in.read((char*)&id, sizeof(id));
+        if (id == UINT32_MAX) {
+            /* cout << "c o [aig-io] Reading def for var: " << i+1 << " aig id: UNDEF" << endl; */
+            defs[i] = nullptr;
+            continue;
+        }
+        /* cout << "c o [aig-io] Reading def for var: " << i+1 << " aig id: " << id << endl; */
+        assert(id < num_nodes);
+        assert(id_to_node[id] != nullptr);
+        assert(id_to_node.size() > id);
+        assert(i < num_defs);
+        defs[i] = id_to_node[id];
+    }
+    get_var_types(1);
+}
+
+
+// Serialize SimplifiedCNF to binary file
+DLL_PUBLIC void SimplifiedCNF::write_aig_defs(std::ofstream& out) const {
+    // Write simple fields
+    out.write((char*)&nvars, sizeof(nvars));
+    out.write((char*)&backbone_done, sizeof(backbone_done));
+    out.write((char*)&proj, sizeof(proj));
+    out.write((char*)&need_aig, sizeof(need_aig));
+    out.write((char*)&after_backward_round_synth, sizeof(after_backward_round_synth));
+    out.write((char*)&weighted, sizeof(weighted));
+    out.write((char*)&sampl_vars_set, sizeof(sampl_vars_set));
+    out.write((char*)&opt_sampl_vars_set, sizeof(opt_sampl_vars_set));
+    out.write((char*)&orig_sampl_vars_set, sizeof(orig_sampl_vars_set));
+
+    // Write sampl_vars
+    uint32_t sz = sampl_vars.size();
+    out.write((char*)&sz, sizeof(sz));
+    out.write((char*)sampl_vars.data(), sz * sizeof(uint32_t));
+
+    // Write opt_sampl_vars
+    sz = opt_sampl_vars.size();
+    out.write((char*)&sz, sizeof(sz));
+    out.write((char*)opt_sampl_vars.data(), sz * sizeof(uint32_t));
+
+    // Write orig_sampl_vars
+    sz = orig_sampl_vars.size();
+    out.write((char*)&sz, sizeof(sz));
+    for(const auto& v : orig_sampl_vars) out.write((char*)&v, sizeof(v));
+
+    // Write clauses
+    sz = clauses.size();
+    out.write((char*)&sz, sizeof(sz));
+    for (const auto& cl : clauses) {
+        uint32_t cl_sz = cl.size();
+        out.write((char*)&cl_sz, sizeof(cl_sz));
+        for (const auto& lit : cl) {
+            uint32_t v = lit.var();
+            bool sign = lit.sign();
+            out.write((char*)&v, sizeof(v));
+            out.write((char*)&sign, sizeof(sign));
+        }
+    }
+
+    // Write orig_clauses
+    sz = orig_clauses.size();
+    out.write((char*)&sz, sizeof(sz));
+    for (const auto& cl : orig_clauses) {
+        uint32_t cl_sz = cl.size();
+        out.write((char*)&cl_sz, sizeof(cl_sz));
+        for (const auto& lit : cl) {
+            uint32_t v = lit.var();
+            bool sign = lit.sign();
+            out.write((char*)&v, sizeof(v));
+            out.write((char*)&sign, sizeof(sign));
+        }
+    }
+
+    // Write orig_to_new_var
+    sz = orig_to_new_var.size();
+    out.write((char*)&sz, sizeof(sz));
+    for (const auto& [orig, n] : orig_to_new_var) {
+        out.write((char*)&orig, sizeof(orig));
+        uint32_t lit_var = n.var();
+        bool lit_sign = n.sign();
+        out.write((char*)&lit_var, sizeof(lit_var));
+        out.write((char*)&lit_sign, sizeof(lit_sign));
+    }
+
+    // 1. Collect all unique AIG nodes by traversing the DAG
+    std::map<AIG*, uint32_t> node_to_id;
+    std::map<uint32_t, AIG*> id_to_node;
+    uint32_t next_id = 0;
+    std::vector<uint32_t> order;
+
+    std::function<void(const aig_ptr&)> collect = [&](const aig_ptr& aig) {
+        if (!aig || node_to_id.count(aig.get())) return;
+        uint32_t id = next_id++;
+        node_to_id[aig.get()] = id;
+        id_to_node[id] = aig.get();
+        if (aig->type == AIGT::t_and) {
+            collect(aig->l);
+            collect(aig->r);
+        }
+        order.push_back(id);
+        /* cout << "writing out AIG node id: " << id << " type: " << aig->type << endl; */
+    };
+
+    for (const auto& aig : defs) collect(aig);
+
+    // 2. Write number of nodes
+    uint32_t num_nodes = id_to_node.size();
+    cout << "c o [aig-io] Writing " << num_nodes << " AIG nodes to file." << endl;
+    out.write((char*)&num_nodes, sizeof(num_nodes));
+
+    // 3. Write each node (postorder: children before parents)
+    for (auto id : order) {
+        AIG* node = id_to_node[id];
+        out.write((char*)&id, sizeof(id));
+        out.write((char*)&node->type, sizeof(node->type));
+        out.write((char*)&node->var, sizeof(node->var));
+        out.write((char*)&node->neg, sizeof(node->neg));
+        if (node->type == AIGT::t_and) {
+            uint32_t lid = node_to_id[node->l.get()];
+            uint32_t rid = node_to_id[node->r.get()];
+            out.write((char*)&lid, sizeof(lid));
+            out.write((char*)&rid, sizeof(rid));
+        }
+    }
+
+    // 4. Write defs map
+    uint32_t num_defs = defs.size();
+    out.write((char*)&num_defs, sizeof(num_defs));
+    cout << "c o [aig-io] Writing " << num_defs << " AIG defs to file." << endl;
+    for (const auto& aig : defs) {
+        if (aig == nullptr) {
+            uint32_t id = UINT32_MAX;
+            /* cout << "c o [aig-io] Writing def aig id: UNDEF" << endl; */
+            out.write((char*)&id, sizeof(id));
+            continue;
+        }
+        uint32_t id = node_to_id[aig.get()];
+        /* cout << "c o [aig-io] Writing def for var aig id: " << id << endl; */
+        out.write((char*)&id, sizeof(id));
+    }
+    get_var_types(1);
+}
+
+
+// Write AIG defs to file (opens file for you)
+DLL_PUBLIC void SimplifiedCNF::write_aig_defs_to_file(const std::string& fname) const {
+    std::ofstream out(fname, std::ios::binary);
+    if (!out) {
+        std::cerr << "ERROR: Cannot open file for writing: " << fname << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    write_aig_defs(out);
+    out.close();
+    std::cout << "c o Wrote AIG defs: " << fname << std::endl;
+}
+
+// Read AIG defs from file (opens file for you)
+DLL_PUBLIC void SimplifiedCNF::read_aig_defs_from_file(const std::string& fname) {
+    std::ifstream in(fname, std::ios::binary);
+    if (!in) {
+        std::cerr << "ERROR: Cannot open file for reading: " << fname << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    read_aig_defs(in);
+    in.close();
+}
+
+DLL_PUBLIC std::vector<CMSat::lbool> SimplifiedCNF::extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed) const {
+    assert(get_need_aig() && defs_invariant());
+    assert(sample.size() == defs.size() && "Sample size must match number of variables");
+    assert(check_orig_sampl_vars_undefined());
+
+    for(uint32_t v = 0; v < defs.size(); v++) {
+        if (orig_sampl_vars.count(v)) {
+            assert(sample[v] != CMSat::l_Undef && "Original sampling variable must be defined in the sample");
+        } else {
+            if (!relaxed) assert(defs[v] != nullptr && "Non-original sampling variable must have definition");
+            assert(sample[v] == CMSat::l_Undef && "Non-original sampling variable must be undefined in the sample");
+        }
+    }
+
+    auto vals(sample);
+    for(uint32_t v = 0; v < defs.size(); v++) {
+        if (defs[v] == nullptr) continue;
+        auto val = AIG::evaluate(sample, defs[v], defs);
+        vals[v] = val;
+    }
+    return vals;
+}
+
+// Used after SBVA to replace clauses
+DLL_PUBLIC void SimplifiedCNF::replace_clauses_with(std::vector<int>& ret, uint32_t new_nvars, uint32_t new_nclauses) {
+    nvars = new_nvars;
+    clauses.clear();
+    std::vector<CMSat::Lit> cl;
+    uint32_t at = 0;
+    while(ret.size() > at) {
+        int l = ret[at++];
+        if (l == 0) {
+            add_clause(cl);
+            cl.clear();
+            continue;
+        }
+        cl.push_back(CMSat::Lit(std::abs(l)-1, l < 0));
+    }
+    assert(cl.empty() && "SBVA should have ended with a 0");
+    assert(clauses.size() == new_nclauses && "Number of clauses mismatch after SBVA");
+}
+
+// returns in CNF (new vars) the dependencies of each variable
+// every LHS element in the map is a backward_defined variable
+// input variables are NOT included in the dependencies
+DLL_PUBLIC std::map<uint32_t, std::set<uint32_t>> SimplifiedCNF::compute_backw_dependencies() {
+    auto [input, to_define, backward_defined] = get_var_types(0);
+    auto new_to_orig_var = get_new_to_orig_var();
+    std::map<uint32_t, std::set<uint32_t>> ret;
+    for(auto& n: backward_defined) {
+        const auto orig_v = new_to_orig_var.at(n).var();
+        const auto ret_orig = get_dependent_vars_recursive(orig_v);
+        std::set<uint32_t> ret_new;
+        for(const auto& ov: ret_orig) {
+            if(!orig_to_new_var.count(ov)) continue;
+            if (orig_sampl_vars.count(ov)) continue; //orig sampl vars not included
+            const CMSat::Lit nl = orig_to_new_var.at(ov);
+            assert(nl != CMSat::lit_Undef);
+            ret_new.insert(nl.var());
+        }
+        ret[n] = ret_new;
+    }
+    return ret;
+}
+
+
+DLL_PUBLIC void SimplifiedCNF::fix_weights(std::unique_ptr<CMSat::SATSolver>& solver,
+        const std::vector<uint32_t> new_sampl_vars,
+        const std::vector<uint32_t>& empty_sampling_vars) {
+    for(const auto& v: new_sampl_vars) check_var(v);
+    for(const auto& v: empty_sampling_vars) check_var(v);
+    std::set<uint32_t> sampling_vars_set(new_sampl_vars.begin(), new_sampl_vars.end());
+    std::set<uint32_t> opt_sampling_vars_set(opt_sampl_vars.begin(), opt_sampl_vars.end());
+    constexpr bool debug_w = false;
+    if (debug_w)
+        std::cout << __FUNCTION__ << " [w-debug] orig multiplier_weight: "
+            << *multiplier_weight << std::endl;
+
+    // Take units
+    for(const auto& l: solver->get_zero_assigned_lits()) {
+        if (l.var() >= nVars()) continue;
         if (debug_w)
-            std::cout << __FUNCTION__ << " [w-debug] orig multiplier_weight: "
-                << *multiplier_weight << std::endl;
-
-        // Take units
-        for(const auto& l: solver->get_zero_assigned_lits()) {
-            if (l.var() >= nVars()) continue;
+            std::cout << __FUNCTION__ << " [w-debug] orig unit l: " << l
+                << " w: " << *get_lit_weight(l) << std::endl;
+        sampling_vars_set.erase(l.var());
+        opt_sampling_vars_set.erase(l.var());
+        if (get_weighted()) {
+            *multiplier_weight *= *get_lit_weight(l);
             if (debug_w)
-                std::cout << __FUNCTION__ << " [w-debug] orig unit l: " << l
-                    << " w: " << *get_lit_weight(l) << std::endl;
-            sampling_vars_set.erase(l.var());
-            opt_sampling_vars_set.erase(l.var());
-            if (get_weighted()) {
-                *multiplier_weight *= *get_lit_weight(l);
-                if (debug_w)
-                    std::cout << __FUNCTION__ << " [w-debug] unit: " << l
-                        << " multiplier_weight: " << *multiplier_weight << std::endl;
-                unset_var_weight(l.var());
-            }
-        }
-
-        // Take bin XORs
-        // [ replaced, replaced_with ]
-        const auto eq_lits = solver->get_all_binary_xors();
-        for(auto p: eq_lits) {
-            if (p.first.var() >= nVars() || p.second.var() >= nVars()) continue;
-            if (debug_w)
-                std::cout << __FUNCTION__ << " [w-debug] repl: " << p.first
-                    << " with " << p.second << std::endl;
-            if (get_weighted()) {
-                auto wp2 = get_lit_weight(p.second);
-                auto wn2 = get_lit_weight(~p.second);
-                auto wp1 = get_lit_weight(p.first);
-                auto wn1 = get_lit_weight(~p.first);
-                if (debug_w) {
-                    std::cout << __FUNCTION__ << " [w-debug] wp1 " << *wp1
-                        << " wn1 " << *wn1 << std::endl;
-                    std::cout << __FUNCTION__ << " [w-debug] wp2 " << *wp2
-                        << " wn2 " << *wn2 << std::endl;
-                }
-                *wp2 *= *wp1;
-                *wn2 *= *wn1;
-                set_lit_weight(p.second, wp2);
-                set_lit_weight(~p.second, wn2);
-                if (debug_w) {
-                    std::cout << __FUNCTION__ << " [w-debug] set lit " << p.second
-                        << " weight to " << *wp2 << std::endl;
-                    std::cout << __FUNCTION__ << " [w-debug] set lit " << ~p.second
-                        << " weight to " << *wn2 << std::endl;
-                }
-                unset_var_weight(p.first.var());
-            }
-        }
-
-        set_sampl_vars(sampling_vars_set, true);
-        set_opt_sampl_vars(opt_sampling_vars_set);
-
-        solver->start_getting_constraints(false);
-        sampl_vars = solver->translate_sampl_set(new_sampl_vars);
-        opt_sampl_vars = solver->translate_sampl_set(opt_sampl_vars);
-        auto empty_sampling_vars2 = solver->translate_sampl_set(empty_sampling_vars);
-        solver->end_getting_constraints();
-
-        sampling_vars_set.clear();
-        sampling_vars_set.insert(sampl_vars.begin(), sampl_vars.end());
-        opt_sampling_vars_set.clear();
-        opt_sampling_vars_set.insert(opt_sampl_vars.begin(), opt_sampl_vars.end());
-        for(const auto& v: empty_sampling_vars2) {
-            sampling_vars_set.erase(v);
-            opt_sampling_vars_set.erase(v);
-
-            if (debug_w)
-                std::cout << __FUNCTION__ << " [w-debug] empty sampling var: " << v+1 << std::endl;
-            auto tmp = fg->zero();
-            if (get_weighted()) {
-                CMSat::Lit l(v, false);
-                *tmp += *get_lit_weight(l);
-                *tmp += *get_lit_weight(~l);
-                unset_var_weight(l.var());
-            } else {
-                *tmp = *fg->one();
-                *tmp += *fg->one();
-            }
-            *multiplier_weight *= *tmp;
-            if (debug_w)
-                std::cout << __FUNCTION__ << " [w-debug] empty mul: " << *tmp
-                    << " final multiplier_weight: " << *multiplier_weight << std::endl;
-        }
-
-        set_sampl_vars(sampling_vars_set, true);
-        set_opt_sampl_vars(opt_sampling_vars_set);
-
-        for(uint32_t i = 0; i < nVars(); i++) {
-            if (opt_sampling_vars_set.count(i) == 0) unset_var_weight(i);
-        }
-
-        if (debug_w) {
-            std::cout << "w-debug FINAL sampl_vars    : ";
-            for(const auto& v: sampl_vars) std::cout << v+1 << " ";
-            std::cout << std::endl;
-            std::cout << "w-debug FINAL opt_sampl_vars: ";
-            for(const auto& v: opt_sampl_vars) {
-                std::cout << v+1 << " ";
-            }
-            std::cout << std::endl;
+                std::cout << __FUNCTION__ << " [w-debug] unit: " << l
+                    << " multiplier_weight: " << *multiplier_weight << std::endl;
+            unset_var_weight(l.var());
         }
     }
 
-    DLL_PUBLIC void SimplifiedCNF::renumber_sampling_vars_for_ganak() {
-        assert(!need_aig && "not tested with AIGs");
-        assert(sampl_vars.size() <= opt_sampl_vars.size());
-        // NOTE: we do not need to update defs, because defs is ORIG to ORIG
+    // Take bin XORs
+    // [ replaced, replaced_with ]
+    const auto eq_lits = solver->get_all_binary_xors();
+    for(auto p: eq_lits) {
+        if (p.first.var() >= nVars() || p.second.var() >= nVars()) continue;
+        if (debug_w)
+            std::cout << __FUNCTION__ << " [w-debug] repl: " << p.first
+                << " with " << p.second << std::endl;
+        if (get_weighted()) {
+            auto wp2 = get_lit_weight(p.second);
+            auto wn2 = get_lit_weight(~p.second);
+            auto wp1 = get_lit_weight(p.first);
+            auto wn1 = get_lit_weight(~p.first);
+            if (debug_w) {
+                std::cout << __FUNCTION__ << " [w-debug] wp1 " << *wp1
+                    << " wn1 " << *wn1 << std::endl;
+                std::cout << __FUNCTION__ << " [w-debug] wp2 " << *wp2
+                    << " wn2 " << *wn2 << std::endl;
+            }
+            *wp2 *= *wp1;
+            *wn2 *= *wn1;
+            set_lit_weight(p.second, wp2);
+            set_lit_weight(~p.second, wn2);
+            if (debug_w) {
+                std::cout << __FUNCTION__ << " [w-debug] set lit " << p.second
+                    << " weight to " << *wp2 << std::endl;
+                std::cout << __FUNCTION__ << " [w-debug] set lit " << ~p.second
+                    << " weight to " << *wn2 << std::endl;
+            }
+            unset_var_weight(p.first.var());
+        }
+    }
 
-        // Create mapping
-        constexpr uint32_t m = std::numeric_limits<uint32_t>::max();
-        std::vector<uint32_t> map_here_to_there(nvars, m);
-        uint32_t i = 0;
-        for(const auto& v: sampl_vars) {
-            assert(v < nvars);
+    set_sampl_vars(sampling_vars_set, true);
+    set_opt_sampl_vars(opt_sampling_vars_set);
+
+    solver->start_getting_constraints(false);
+    sampl_vars = solver->translate_sampl_set(new_sampl_vars);
+    opt_sampl_vars = solver->translate_sampl_set(opt_sampl_vars);
+    auto empty_sampling_vars2 = solver->translate_sampl_set(empty_sampling_vars);
+    solver->end_getting_constraints();
+
+    sampling_vars_set.clear();
+    sampling_vars_set.insert(sampl_vars.begin(), sampl_vars.end());
+    opt_sampling_vars_set.clear();
+    opt_sampling_vars_set.insert(opt_sampl_vars.begin(), opt_sampl_vars.end());
+    for(const auto& v: empty_sampling_vars2) {
+        sampling_vars_set.erase(v);
+        opt_sampling_vars_set.erase(v);
+
+        if (debug_w)
+            std::cout << __FUNCTION__ << " [w-debug] empty sampling var: " << v+1 << std::endl;
+        auto tmp = fg->zero();
+        if (get_weighted()) {
+            CMSat::Lit l(v, false);
+            *tmp += *get_lit_weight(l);
+            *tmp += *get_lit_weight(~l);
+            unset_var_weight(l.var());
+        } else {
+            *tmp = *fg->one();
+            *tmp += *fg->one();
+        }
+        *multiplier_weight *= *tmp;
+        if (debug_w)
+            std::cout << __FUNCTION__ << " [w-debug] empty mul: " << *tmp
+                << " final multiplier_weight: " << *multiplier_weight << std::endl;
+    }
+
+    set_sampl_vars(sampling_vars_set, true);
+    set_opt_sampl_vars(opt_sampling_vars_set);
+
+    for(uint32_t i = 0; i < nVars(); i++) {
+        if (opt_sampling_vars_set.count(i) == 0) unset_var_weight(i);
+    }
+
+    if (debug_w) {
+        std::cout << "w-debug FINAL sampl_vars    : ";
+        for(const auto& v: sampl_vars) std::cout << v+1 << " ";
+        std::cout << std::endl;
+        std::cout << "w-debug FINAL opt_sampl_vars: ";
+        for(const auto& v: opt_sampl_vars) {
+            std::cout << v+1 << " ";
+        }
+        std::cout << std::endl;
+    }
+}
+
+DLL_PUBLIC void SimplifiedCNF::renumber_sampling_vars_for_ganak() {
+    assert(!need_aig && "not tested with AIGs");
+    assert(sampl_vars.size() <= opt_sampl_vars.size());
+    // NOTE: we do not need to update defs, because defs is ORIG to ORIG
+
+    // Create mapping
+    constexpr uint32_t m = std::numeric_limits<uint32_t>::max();
+    std::vector<uint32_t> map_here_to_there(nvars, m);
+    uint32_t i = 0;
+    for(const auto& v: sampl_vars) {
+        assert(v < nvars);
+        map_here_to_there[v] = i;
+        i++;
+    }
+    for(const auto& v: opt_sampl_vars) {
+        assert(v < nvars);
+        if (map_here_to_there[v] == m) {
             map_here_to_there[v] = i;
             i++;
         }
-        for(const auto& v: opt_sampl_vars) {
-            assert(v < nvars);
-            if (map_here_to_there[v] == m) {
-                map_here_to_there[v] = i;
-                i++;
-            }
+    }
+    for(uint32_t x = 0; x < nvars; x++) {
+        if (map_here_to_there[x] == m) {
+            map_here_to_there[x] = i;
+            i++;
         }
-        for(uint32_t x = 0; x < nvars; x++) {
-            if (map_here_to_there[x] == m) {
-                map_here_to_there[x] = i;
-                i++;
-            }
-        }
-        assert(i == nvars);
+    }
+    assert(i == nvars);
 
-        // Update var map
-        std::map<uint32_t, CMSat::Lit> upd_vmap;
-        for(const auto& [o,n]: orig_to_new_var) {
-            if (n != CMSat::lit_Undef) {
-                CMSat::Lit l = n;
-                l = CMSat::Lit(map_here_to_there[l.var()], l.sign());
-                upd_vmap[o] = l;
-            } else {
-                upd_vmap[o] = n;
-            }
-        }
-        orig_to_new_var = upd_vmap;
-
-        // Now we renumber samp_vars, opt_sampl_vars, weights
-        sampl_vars = map_var(sampl_vars, map_here_to_there);
-        opt_sampl_vars = map_var(opt_sampl_vars, map_here_to_there);
-        for(auto& cl: clauses) map_cl(cl, map_here_to_there);
-        for(auto& cl: red_clauses) map_cl(cl, map_here_to_there);
-        if (weighted) {
-            std::map<uint32_t, Weight> new_weights;
-            for(auto& w: weights)
-                new_weights[map_here_to_there[w.first]] = w.second;
-            weights = new_weights;
+    // Update var map
+    std::map<uint32_t, CMSat::Lit> upd_vmap;
+    for(const auto& [o,n]: orig_to_new_var) {
+        if (n != CMSat::lit_Undef) {
+            CMSat::Lit l = n;
+            l = CMSat::Lit(map_here_to_there[l.var()], l.sign());
+            upd_vmap[o] = l;
         } else {
-            assert(weights.empty());
+            upd_vmap[o] = n;
+        }
+    }
+    orig_to_new_var = upd_vmap;
+
+    // Now we renumber samp_vars, opt_sampl_vars, weights
+    sampl_vars = map_var(sampl_vars, map_here_to_there);
+    opt_sampl_vars = map_var(opt_sampl_vars, map_here_to_there);
+    for(auto& cl: clauses) map_cl(cl, map_here_to_there);
+    for(auto& cl: red_clauses) map_cl(cl, map_here_to_there);
+    if (weighted) {
+        std::map<uint32_t, Weight> new_weights;
+        for(auto& w: weights)
+            new_weights[map_here_to_there[w.first]] = w.second;
+        weights = new_weights;
+    } else {
+        assert(weights.empty());
+    }
+}
+
+DLL_PUBLIC void SimplifiedCNF::write_simpcnf(const std::string& fname, bool red) const {
+    uint32_t num_cls = clauses.size();
+    std::ofstream outf;
+    outf.open(fname.c_str(), std::ios::out);
+    outf << "p cnf " << nvars << " " << num_cls << std::endl;
+    if (weighted  &&  proj) outf << "c t pwmc" << std::endl;
+    if (weighted  && !proj) outf << "c t wmc" << std::endl;
+    if (!weighted &&  proj) outf << "c t pmc" << std::endl;
+    if (!weighted && !proj) outf << "c t mc" << std::endl;
+    if (weighted) {
+        for(const auto& it: weights) {
+            outf << "c p weight " << CMSat::Lit(it.first,false) << " "
+                << *it.second.pos << " 0" << std::endl;
+
+            outf << "c p weight " << CMSat::Lit(it.first,true) << " "
+                << *it.second.neg << " 0" << std::endl;
         }
     }
 
-    DLL_PUBLIC void SimplifiedCNF::write_simpcnf(const std::string& fname, bool red) const {
-        uint32_t num_cls = clauses.size();
-        std::ofstream outf;
-        outf.open(fname.c_str(), std::ios::out);
-        outf << "p cnf " << nvars << " " << num_cls << std::endl;
-        if (weighted  &&  proj) outf << "c t pwmc" << std::endl;
-        if (weighted  && !proj) outf << "c t wmc" << std::endl;
-        if (!weighted &&  proj) outf << "c t pmc" << std::endl;
-        if (!weighted && !proj) outf << "c t mc" << std::endl;
-        if (weighted) {
-            for(const auto& it: weights) {
-                outf << "c p weight " << CMSat::Lit(it.first,false) << " "
-                    << *it.second.pos << " 0" << std::endl;
+    for(const auto& cl: clauses) outf << cl << " 0\n";
+    if (red) for(const auto& cl: red_clauses)
+        outf << "c red " << cl << " 0\n";
 
-                outf << "c p weight " << CMSat::Lit(it.first,true) << " "
-                    << *it.second.neg << " 0" << std::endl;
-            }
-        }
-
-        for(const auto& cl: clauses) outf << cl << " 0\n";
-        if (red) for(const auto& cl: red_clauses)
-            outf << "c red " << cl << " 0\n";
-
-        //Add projection
-        outf << "c p show ";
-        auto sampl = sampl_vars;
-        std::sort(sampl.begin(), sampl.end());
-        for(const auto& v: sampl) {
-            assert(v < nvars);
-            outf << v+1  << " ";
-        }
-        outf << "0\n";
-        outf << "c p optshow ";
-        sampl = opt_sampl_vars;
-        std::sort(sampl.begin(), sampl.end());
-        for(const auto& v: sampl) {
-            assert(v < nvars);
-            outf << v+1  << " ";
-        }
-        outf << "0\n";
-        outf << "c MUST MULTIPLY BY " << *multiplier_weight << " 0" << std::endl;
+    //Add projection
+    outf << "c p show ";
+    auto sampl = sampl_vars;
+    std::sort(sampl.begin(), sampl.end());
+    for(const auto& v: sampl) {
+        assert(v < nvars);
+        outf << v+1  << " ";
     }
+    outf << "0\n";
+    outf << "c p optshow ";
+    sampl = opt_sampl_vars;
+    std::sort(sampl.begin(), sampl.end());
+    for(const auto& v: sampl) {
+        assert(v < nvars);
+        outf << v+1  << " ";
+    }
+    outf << "0\n";
+    outf << "c MUST MULTIPLY BY " << *multiplier_weight << " 0" << std::endl;
+}
 
 
-    // Returns NEW vars, i.e. < nVars()
-    // It is checked that it is correct and total
-    DLL_PUBLIC std::tuple<std::set<uint32_t>, std::set<uint32_t>, std::set<uint32_t>>
-        SimplifiedCNF::get_var_types([[maybe_unused]] uint32_t verb) const {
-        assert(need_aig);
-        std::set<uint32_t> input;
-        std::set<uint32_t> input_orig;
-        for (const auto& v: get_orig_sampl_vars()) {
+// Returns NEW vars, i.e. < nVars()
+// It is checked that it is correct and total
+DLL_PUBLIC std::tuple<std::set<uint32_t>, std::set<uint32_t>, std::set<uint32_t>>
+    SimplifiedCNF::get_var_types([[maybe_unused]] uint32_t verb) const {
+    assert(need_aig);
+    std::set<uint32_t> input;
+    std::set<uint32_t> input_orig;
+    for (const auto& v: get_orig_sampl_vars()) {
+        const auto it = orig_to_new_var.find(v);
+        if (it == orig_to_new_var.end()) continue;
+        const uint32_t cnf_var = it->second.var();
+        /* std::cout << "c o input var: " << v+1 << " maps to cnf var " */
+        /*      << cnf_var+1 << std::endl; */
+        assert(cnf_var < nVars());
+        input.insert(cnf_var);
+        input_orig.insert(v);
+    }
+    assert(input.size() == sampl_vars.size());
+    std::set<uint32_t> to_define;
+    std::set<uint32_t> to_define_orig;
+    for (uint32_t v = 0; v < num_defs(); v++) {
+        if (!get_orig_sampl_vars().count(v) && !defined(v)) {
             const auto it = orig_to_new_var.find(v);
-            if (it == orig_to_new_var.end()) continue;
+            assert(it != orig_to_new_var.end() && "if it hasn't been defined, it must be in CNF");
             const uint32_t cnf_var = it->second.var();
-            /* std::cout << "c o input var: " << v+1 << " maps to cnf var " */
-            /*      << cnf_var+1 << std::endl; */
+            /* std::cout << "c o to_define var: " << v+1 << " maps to cnf var " */
+            /*  << cnf_var+1 << std::endl; */
             assert(cnf_var < nVars());
-            input.insert(cnf_var);
-            input_orig.insert(v);
+            to_define.insert(cnf_var);
+            to_define_orig.insert(v);
         }
-        assert(input.size() == sampl_vars.size());
-        std::set<uint32_t> to_define;
-        std::set<uint32_t> to_define_orig;
-        for (uint32_t v = 0; v < num_defs(); v++) {
-            if (!get_orig_sampl_vars().count(v) && !defined(v)) {
-                const auto it = orig_to_new_var.find(v);
-                assert(it != orig_to_new_var.end() && "if it hasn't been defined, it must be in CNF");
-                const uint32_t cnf_var = it->second.var();
-                /* std::cout << "c o to_define var: " << v+1 << " maps to cnf var " */
-                /*  << cnf_var+1 << std::endl; */
-                assert(cnf_var < nVars());
-                to_define.insert(cnf_var);
-                to_define_orig.insert(v);
-            }
-        }
-        std::set<uint32_t> unsat_defined_vars;
-        std::set<uint32_t> unsat_defined_vars_orig;
-        std::set<uint32_t> backw_synth_defined_vars;
-        std::set<uint32_t> backw_synth_defined_vars_orig;
-        std::set<uint32_t> bve_defined_vars_orig;
-        for (uint32_t v = 0; v < num_defs(); v++) {
-            if (get_orig_sampl_vars().count(v)) continue;
-            if (!orig_to_new_var.count(v)) {
-                assert(defs[v] != nullptr && "if it is not in the CNF, it must be defined");
-                auto s = get_dependent_vars_recursive(v);
-                bve_defined_vars_orig.insert(v);
-                continue;
-            }
-
-            // This var is NOT input and IS in the CNF
-            if (!defined(v)) continue;
+    }
+    std::set<uint32_t> unsat_defined_vars;
+    std::set<uint32_t> unsat_defined_vars_orig;
+    std::set<uint32_t> backw_synth_defined_vars;
+    std::set<uint32_t> backw_synth_defined_vars_orig;
+    std::set<uint32_t> bve_defined_vars_orig;
+    for (uint32_t v = 0; v < num_defs(); v++) {
+        if (get_orig_sampl_vars().count(v)) continue;
+        if (!orig_to_new_var.count(v)) {
+            assert(defs[v] != nullptr && "if it is not in the CNF, it must be defined");
             auto s = get_dependent_vars_recursive(v);
-            bool only_input_deps = true;
-            for(const auto& d: s) {
-                if (!get_orig_sampl_vars().count(d)) {
-                    only_input_deps = false;
-                    break;
+            bve_defined_vars_orig.insert(v);
+            continue;
+        }
+
+        // This var is NOT input and IS in the CNF
+        if (!defined(v)) continue;
+        auto s = get_dependent_vars_recursive(v);
+        bool only_input_deps = true;
+        for(const auto& d: s) {
+            if (!get_orig_sampl_vars().count(d)) {
+                only_input_deps = false;
+                break;
+            }
+        }
+
+        const uint32_t cnf_var = orig_to_new_var.at(v).var();
+        assert(cnf_var < nVars());
+        if (only_input_deps) {
+            unsat_defined_vars.insert(cnf_var);
+            unsat_defined_vars_orig.insert(v);
+        } else {
+            backw_synth_defined_vars.insert(cnf_var);
+            backw_synth_defined_vars_orig.insert(v);
+        }
+    }
+    if (verb >= 1) {
+        if (verb >= 2) {
+            cout << "orig_to_new: ";
+            for(uint32_t i = 0; i < defs.size(); i++) {
+                cout << i << " -> ";
+                if (orig_to_new_var.count(i) == 0)
+                    cout << "UNMAP";
+                else
+                    cout << orig_to_new_var.at(i);
+
+                if (defined(i)) cout << "[DEF]";
+                else          cout << "[UNDEF]";
+                cout << " ";
+            }
+            cout << endl;
+        }
+
+        std::cout << "c o [get-var-types] Variable types in CNF:" << std::endl;
+        std::cout << "c o [get-var-types] Num input vars: " << input.size() << std::endl;
+        std::cout << "c o [get-var-types]   Input vars (new) : ";
+        for(const auto& v: input) std::cout << v+1 << " ";
+        std::cout << std::endl;
+        std::cout << "c o [get-var-types]   Input vars (orig): ";
+        for(const auto& v: input_orig) std::cout << v+1 << " ";
+        std::cout << std::endl;
+
+        std::cout << "c o [get-var-types] Num to-define vars: " << to_define.size() << std::endl;
+        std::cout << "c o [get-var-types]   To-define vars (new) : ";
+        for(const auto& v: to_define) std::cout << v+1 << " ";
+        std::cout << std::endl;
+        std::cout << "c o [get-var-types]   To-define vars (orig): ";
+        for(const auto& v: to_define_orig) std::cout << v+1 << " ";
+        std::cout << std::endl;
+
+
+        std::cout << "c o [get-var-types] Num unsat-defined vars: "
+            << unsat_defined_vars.size() << std::endl;
+        std::cout << "c o [get-var-types]   Unsat-defined vars (new) : ";
+        for(const auto& v: unsat_defined_vars) std::cout << v+1 << " ";
+        std::cout << std::endl;
+        std::cout << "c o [get-var-types]   Unsat-defined vars (orig): ";
+        for(const auto& v: unsat_defined_vars_orig) std::cout << v+1 << " ";
+        std::cout << std::endl;
+
+        std::cout << "c o [get-var-types] Num backward-synth-defined vars: "
+            << backw_synth_defined_vars.size() << std::endl;
+        std::cout << "c o [get-var-types]   Backward-synth-defined vars (new) : ";
+        for(const auto& v: backw_synth_defined_vars) std::cout << v+1 << " ";
+        std::cout << std::endl;
+        std::cout << "c o [get-var-types]   Backward-synth-defined vars (orig): ";
+        for(const auto& v: backw_synth_defined_vars_orig) std::cout << v+1 << " ";
+        std::cout << std::endl;
+
+        std::cout << "c o [get-var-types] Num bve-defined vars: "
+            << bve_defined_vars_orig.size() << std::endl;
+        std::cout << "c o [get-var-types]   bve-defined vars (orig): ";
+        for(const auto& v: bve_defined_vars_orig) std::cout << v+1 << " ";
+        std::cout << std::endl;
+
+        std::cout << "c o [get-var-types] Total vars in ORIG CNF: " << defs.size() << std::endl;
+        std::cout << "c o [get-var-types] Total vars in NEW  CNF: " << nVars() << std::endl;
+    }
+    assert(input.size() + to_define.size() + unsat_defined_vars.size() + backw_synth_defined_vars.size() == nVars());
+
+    // unsat-defined vars can be treateed as input vars
+    for(const auto& v: unsat_defined_vars) input.insert(v);
+    return std::make_tuple(input, to_define, backw_synth_defined_vars);
+}
+
+DLL_PUBLIC CMSat::lbool SimplifiedCNF::evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var) const {
+    assert(var < defs.size());
+    assert(vals.size() == defs.size());
+    for(uint32_t i = 0; i < vals.size(); i++) {
+        if (orig_sampl_vars.count(i)) {
+            assert(vals[i] != CMSat::l_Undef && "Original sampling variable must be defined in the sample");
+        } else {
+            assert(vals[i] == CMSat::l_Undef && "Non-original sampling variable must be undefined in the sample");
+        }
+    }
+    if (defs[var] == nullptr) {
+        std::cout << "ERROR: Variable " << var+1 << " not defined" << std::endl;
+        assert(defs[var] != nullptr && "Must be defined");
+        exit(EXIT_FAILURE);
+    }
+    return AIG::evaluate(vals, defs[var], defs);
+}
+
+DLL_PUBLIC bool SimplifiedCNF::check_orig_sampl_vars_undefined() const {
+    for(const auto& v: orig_sampl_vars) {
+        if(defs[v] == nullptr) continue;
+        else if (defs[v]->type == AIGT::t_const) continue;
+        else if (defs[v]->type == AIGT::t_lit) {
+            assert(orig_sampl_vars.count(defs[v]->var) && "If orig_sampl_var is defined to a literal, that literal must also be an orig_sampl_var");
+            continue;
+        } else {
+            std::cerr << "ERROR: Orig sampl var " << v+1
+                << " cannot be defined to an AIG other than"
+                " a const or a lit pointing to another orig_sampl_var, but it is: "
+                << defs[v] << std::endl;
+            assert(false);
+        }
+    }
+    return true;
+}
+
+DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
+    check_cnf_sampl_sanity();
+
+    if (!need_aig) return true;
+    assert(orig_sampl_vars_set && "If need_aig, orig_sampl_vars_set must be set");
+    assert(sampl_vars_set);
+    assert(sampl_vars.size() <= opt_sampl_vars.size() && "We add to opt_sampl_vars via unsat_define in extend.cpp");
+    assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
+
+    check_orig_sampl_vars_undefined();
+    check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars();
+    check_pre_post_backward_round_synth();
+    all_vars_accounted_for();
+    check_aig_cycles();
+    check_self_dependency();
+    get_var_types(0);
+    random_check_synth_funs();
+    return true;
+}
+
+// Get the orig vars this AIG depends on, recursively expanding defined vars
+DLL_PUBLIC std::set<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const uint32_t orig_v) const {
+    assert(need_aig);
+    assert(defined(orig_v));
+
+    std::set<uint32_t> dep;
+    std::map<uint32_t, std::set<uint32_t>> cache;
+    dep.insert(orig_v);
+    bool changed = true;
+    while(changed) {
+        changed = false;
+        std::set<uint32_t> new_dep;
+        for(const auto& v: dep) {
+            if (!defined(v)) new_dep.insert(v);
+            else {
+                std::set<uint32_t> sub_dep;
+                if (cache.count(v)) sub_dep = cache.at(v);
+                else {
+                    AIG::get_dependent_vars(defs[v], sub_dep, v);
+                    cache[v] = sub_dep;
+                }
+                assert(!sub_dep.count(v) && "Variable cannot depend on itself");
+                assert(!sub_dep.count(orig_v) && "Variable cannot depend on itself");
+                new_dep.insert(sub_dep.begin(), sub_dep.end());
+            }
+        }
+        if (new_dep != dep) changed = true;
+        dep = new_dep;
+    }
+    if (dep.count(orig_v)) {
+        cout << "ERROR: Orig variable " << orig_v+1 << " depends on itself!" << std::endl;
+        if (orig_to_new_var.count(orig_v)) {
+            cout << "ERROR: In CNF as variable " << orig_to_new_var.at(orig_v).var()+1 << std::endl;
+        }
+        assert(false);
+    }
+    return dep;
+}
+
+DLL_PUBLIC bool SimplifiedCNF::check_aig_cycles() const {
+    assert(need_aig);
+
+    // For cycle detection: 0 = unvisited, 1 = visiting, 2 = visited
+    std::vector<int> state(defs.size(), 0);
+    std::vector<uint32_t> path; // Current path for cycle reporting
+
+    std::function<bool(uint32_t)> dfs = [&](uint32_t v) -> bool {
+        if (state[v] == 2) return false; // Already fully visited
+        if (state[v] == 1) {
+            // Cycle detected!
+            std::cout << "ERROR: Cycle detected in AIG dependencies!" << std::endl;
+            std::cout << "Cycle path: ";
+            bool in_cycle = false;
+            for (const auto& p : path) {
+                if (p == v) in_cycle = true;
+                if (in_cycle) {
+                    std::cout << p+1;
+                    if (orig_to_new_var.count(p)) {
+                        std::cout << "(CNF var " << orig_to_new_var.at(p).var()+1 << ")";
+                    }
+                    cout << " -> ";
                 }
             }
+            std::cout << v+1 << std::endl;
+            return true;
+        }
 
-            const uint32_t cnf_var = orig_to_new_var.at(v).var();
-            assert(cnf_var < nVars());
-            if (only_input_deps) {
-                unsat_defined_vars.insert(cnf_var);
-                unsat_defined_vars_orig.insert(v);
-            } else {
-                backw_synth_defined_vars.insert(cnf_var);
-                backw_synth_defined_vars_orig.insert(v);
+        if (!defined(v)) {
+            state[v] = 2;
+            return false;
+        }
+
+        state[v] = 1; // Mark as visiting
+        path.push_back(v);
+
+        // Get immediate dependencies from the AIG
+        std::set<uint32_t> deps;
+        AIG::get_dependent_vars(defs[v], deps, v);
+
+        // Recursively check each dependency
+        for (const auto& dep : deps) {
+            if (dfs(dep)) {
+                path.pop_back();
+                return true;
             }
         }
-        if (verb >= 1) {
-            if (verb >= 2) {
-                cout << "orig_to_new: ";
-                for(uint32_t i = 0; i < defs.size(); i++) {
-                    cout << i << " -> ";
-                    if (orig_to_new_var.count(i) == 0)
-                        cout << "UNMAP";
-                    else
-                        cout << orig_to_new_var.at(i);
 
-                    if (defined(i)) cout << "[DEF]";
-                    else          cout << "[UNDEF]";
-                    cout << " ";
-                }
-                cout << endl;
+        path.pop_back();
+        state[v] = 2; // Mark as fully visited
+        return false;
+    };
+
+    // Check all variables
+    for (uint32_t v = 0; v < defs.size(); v++) {
+        if (state[v] == 0 && defined(v)) {
+            if (dfs(v)) {
+                std::cout << "ERROR: Cycle found starting from variable " << v+1 << std::endl;
+                assert(false && "Cycle detected in AIG dependencies");
             }
-
-            std::cout << "c o [get-var-types] Variable types in CNF:" << std::endl;
-            std::cout << "c o [get-var-types] Num input vars: " << input.size() << std::endl;
-            std::cout << "c o [get-var-types]   Input vars (new) : ";
-            for(const auto& v: input) std::cout << v+1 << " ";
-            std::cout << std::endl;
-            std::cout << "c o [get-var-types]   Input vars (orig): ";
-            for(const auto& v: input_orig) std::cout << v+1 << " ";
-            std::cout << std::endl;
-
-            std::cout << "c o [get-var-types] Num to-define vars: " << to_define.size() << std::endl;
-            std::cout << "c o [get-var-types]   To-define vars (new) : ";
-            for(const auto& v: to_define) std::cout << v+1 << " ";
-            std::cout << std::endl;
-            std::cout << "c o [get-var-types]   To-define vars (orig): ";
-            for(const auto& v: to_define_orig) std::cout << v+1 << " ";
-            std::cout << std::endl;
-
-
-            std::cout << "c o [get-var-types] Num unsat-defined vars: "
-                << unsat_defined_vars.size() << std::endl;
-            std::cout << "c o [get-var-types]   Unsat-defined vars (new) : ";
-            for(const auto& v: unsat_defined_vars) std::cout << v+1 << " ";
-            std::cout << std::endl;
-            std::cout << "c o [get-var-types]   Unsat-defined vars (orig): ";
-            for(const auto& v: unsat_defined_vars_orig) std::cout << v+1 << " ";
-            std::cout << std::endl;
-
-            std::cout << "c o [get-var-types] Num backward-synth-defined vars: "
-                << backw_synth_defined_vars.size() << std::endl;
-            std::cout << "c o [get-var-types]   Backward-synth-defined vars (new) : ";
-            for(const auto& v: backw_synth_defined_vars) std::cout << v+1 << " ";
-            std::cout << std::endl;
-            std::cout << "c o [get-var-types]   Backward-synth-defined vars (orig): ";
-            for(const auto& v: backw_synth_defined_vars_orig) std::cout << v+1 << " ";
-            std::cout << std::endl;
-
-            std::cout << "c o [get-var-types] Num bve-defined vars: "
-                << bve_defined_vars_orig.size() << std::endl;
-            std::cout << "c o [get-var-types]   bve-defined vars (orig): ";
-            for(const auto& v: bve_defined_vars_orig) std::cout << v+1 << " ";
-            std::cout << std::endl;
-
-            std::cout << "c o [get-var-types] Total vars in ORIG CNF: " << defs.size() << std::endl;
-            std::cout << "c o [get-var-types] Total vars in NEW  CNF: " << nVars() << std::endl;
         }
-        assert(input.size() + to_define.size() + unsat_defined_vars.size() + backw_synth_defined_vars.size() == nVars());
-
-        // unsat-defined vars can be treateed as input vars
-        for(const auto& v: unsat_defined_vars) input.insert(v);
-        return std::make_tuple(input, to_define, backw_synth_defined_vars);
     }
+    return true;
+}
 
-    DLL_PUBLIC CMSat::lbool SimplifiedCNF::evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var) const {
-        assert(var < defs.size());
-        assert(vals.size() == defs.size());
-        for(uint32_t i = 0; i < vals.size(); i++) {
-            if (orig_sampl_vars.count(i)) {
-                assert(vals[i] != CMSat::l_Undef && "Original sampling variable must be defined in the sample");
-            } else {
-                assert(vals[i] == CMSat::l_Undef && "Non-original sampling variable must be undefined in the sample");
-            }
-        }
-        if (defs[var] == nullptr) {
-            std::cout << "ERROR: Variable " << var+1 << " not defined" << std::endl;
-            assert(defs[var] != nullptr && "Must be defined");
-            exit(EXIT_FAILURE);
-        }
-        return AIG::evaluate(vals, defs[var], defs);
-    }
-
-    DLL_PUBLIC bool SimplifiedCNF::check_orig_sampl_vars_undefined() const {
-        for(const auto& v: orig_sampl_vars) {
-            if(defs[v] == nullptr) continue;
-            else if (defs[v]->type == AIGT::t_const) continue;
-            else if (defs[v]->type == AIGT::t_lit) {
-                assert(orig_sampl_vars.count(defs[v]->var) && "If orig_sampl_var is defined to a literal, that literal must also be an orig_sampl_var");
+DLL_PUBLIC void SimplifiedCNF::check_self_dependency() const {
+    if (!need_aig) return;
+    for(uint32_t orig_v = 0; orig_v < defs.size(); orig_v ++) {
+        if (orig_sampl_vars.count(orig_v)) {
+            if (!defined(orig_v)) continue;
+            else if (defs[orig_v]->type == AIGT::t_lit) {
+                assert(defs[orig_v]->var != orig_v && "Variable depends on itself? Also this is an orig sampl var defined to a literal that has the same var?");
+                assert(orig_sampl_vars.count(defs[orig_v]->var) && "If orig_sampl_var is defined to a literal, that literal must also be an orig_sampl_var");
+                continue;
+            } else if (defs[orig_v]->type == AIGT::t_const) {
                 continue;
             } else {
-                std::cerr << "ERROR: Orig sampl var " << v+1
-                    << " cannot be defined to an AIG other than"
-                    " a const or a lit pointing to another orig_sampl_var, but it is: "
-                    << defs[v] << std::endl;
+                std::cerr << "ERROR:Orig sampl var " << orig_v+1 << " cannot be defined to an AIG other than literal or const, but it is: " << defs[orig_v] << std::endl;
                 assert(false);
             }
         }
-        return true;
+        if (!defined(orig_v)) continue;
+
+        // This checks for self-dependency
+        get_dependent_vars_recursive(orig_v);
     }
+}
 
-    DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
-        check_cnf_sampl_sanity();
-
-        if (!need_aig) return true;
-        assert(orig_sampl_vars_set && "If need_aig, orig_sampl_vars_set must be set");
-        assert(sampl_vars_set);
-        assert(sampl_vars.size() <= opt_sampl_vars.size() && "We add to opt_sampl_vars via unsat_define in extend.cpp");
-        assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
-
-        check_orig_sampl_vars_undefined();
-        check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars();
-        check_pre_post_backward_round_synth();
-        all_vars_accounted_for();
-        check_aig_cycles();
-        check_self_dependency();
-        get_var_types(0);
-        random_check_synth_funs();
-        return true;
-    }
-
-    // Get the orig vars this AIG depends on, recursively expanding defined vars
-    DLL_PUBLIC std::set<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const uint32_t orig_v) const {
-        assert(need_aig);
-        assert(defined(orig_v));
-
-        std::set<uint32_t> dep;
-        std::map<uint32_t, std::set<uint32_t>> cache;
-        dep.insert(orig_v);
-        bool changed = true;
-        while(changed) {
-            changed = false;
-            std::set<uint32_t> new_dep;
-            for(const auto& v: dep) {
-                if (!defined(v)) new_dep.insert(v);
-                else {
-                    std::set<uint32_t> sub_dep;
-                    if (cache.count(v)) sub_dep = cache.at(v);
-                    else {
-                        AIG::get_dependent_vars(defs[v], sub_dep, v);
-                        cache[v] = sub_dep;
-                    }
-                    assert(!sub_dep.count(v) && "Variable cannot depend on itself");
-                    assert(!sub_dep.count(orig_v) && "Variable cannot depend on itself");
-                    new_dep.insert(sub_dep.begin(), sub_dep.end());
-                }
+DLL_PUBLIC void SimplifiedCNF::check_cnf_vars() const {
+    auto check = [](const std::vector<CMSat::Lit>& cl, uint32_t _nvars) {
+        for(const auto& l: cl) {
+            if (l.var() >= _nvars) {
+                std::cout << "ERROR: Found a clause with a variable that has more variables than the number of variables we are supposed to have" << std::endl;
+                std::cout << "cl: ";
+                for(const auto& l2: cl) std::cout << l2 << " ";
+                std::cout << std::endl;
+                std::cout << "nvars: " << _nvars+1 << std::endl;
+                exit(EXIT_FAILURE);
             }
-            if (new_dep != dep) changed = true;
-            dep = new_dep;
+            assert(l.var() < _nvars);
         }
-        if (dep.count(orig_v)) {
-            cout << "ERROR: Orig variable " << orig_v+1 << " depends on itself!" << std::endl;
-            if (orig_to_new_var.count(orig_v)) {
-                cout << "ERROR: In CNF as variable " << orig_to_new_var.at(orig_v).var()+1 << std::endl;
-            }
-            assert(false);
+    };
+
+    // all clauses contain variables that are less than nvars
+    for(const auto& cl: clauses) check(cl, nvars);
+    for(const auto& cl: red_clauses) check(cl, nvars);
+
+
+    // Now check orig_to_new_var covers all vars in the CNF
+    if (!need_aig) return;
+    std::set<uint32_t> vars_in_cnf;
+    for(const auto& cl: clauses) {
+        for(const auto& l: cl) {
+            vars_in_cnf.insert(l.var());
         }
-        return dep;
     }
-
-    DLL_PUBLIC bool SimplifiedCNF::check_aig_cycles() const {
-        assert(need_aig);
-
-        // For cycle detection: 0 = unvisited, 1 = visiting, 2 = visited
-        std::vector<int> state(defs.size(), 0);
-        std::vector<uint32_t> path; // Current path for cycle reporting
-
-        std::function<bool(uint32_t)> dfs = [&](uint32_t v) -> bool {
-            if (state[v] == 2) return false; // Already fully visited
-            if (state[v] == 1) {
-                // Cycle detected!
-                std::cout << "ERROR: Cycle detected in AIG dependencies!" << std::endl;
-                std::cout << "Cycle path: ";
-                bool in_cycle = false;
-                for (const auto& p : path) {
-                    if (p == v) in_cycle = true;
-                    if (in_cycle) {
-                        std::cout << p+1;
-                        if (orig_to_new_var.count(p)) {
-                            std::cout << "(CNF var " << orig_to_new_var.at(p).var()+1 << ")";
-                        }
-                        cout << " -> ";
-                    }
-                }
-                std::cout << v+1 << std::endl;
-                return true;
-            }
-
-            if (!defined(v)) {
-                state[v] = 2;
-                return false;
-            }
-
-            state[v] = 1; // Mark as visiting
-            path.push_back(v);
-
-            // Get immediate dependencies from the AIG
-            std::set<uint32_t> deps;
-            AIG::get_dependent_vars(defs[v], deps, v);
-
-            // Recursively check each dependency
-            for (const auto& dep : deps) {
-                if (dfs(dep)) {
-                    path.pop_back();
-                    return true;
-                }
-            }
-
-            path.pop_back();
-            state[v] = 2; // Mark as fully visited
-            return false;
-        };
-
-        // Check all variables
-        for (uint32_t v = 0; v < defs.size(); v++) {
-            if (state[v] == 0 && defined(v)) {
-                if (dfs(v)) {
-                    std::cout << "ERROR: Cycle found starting from variable " << v+1 << std::endl;
-                    assert(false && "Cycle detected in AIG dependencies");
-                }
+    for(const auto& cl: red_clauses) {
+        for(const auto& l: cl) {
+            vars_in_cnf.insert(l.var());
+        }
+    }
+    for(const auto& v: vars_in_cnf) {
+        assert(v < nvars); // already checked above
+        bool in_orig = false;
+        for(const auto& [o, n]: orig_to_new_var) {
+            if (n.var() == v) {
+                in_orig = true;
+                break;
             }
         }
-        return true;
+        assert(in_orig && "All CNF vars must be in orig_to_new_var");
     }
+}
 
-    DLL_PUBLIC void SimplifiedCNF::check_self_dependency() const {
-        if (!need_aig) return;
-        for(uint32_t orig_v = 0; orig_v < defs.size(); orig_v ++) {
+// all vars are either: in orig_sampl_vars, defined, or in the cnf
+DLL_PUBLIC void SimplifiedCNF::all_vars_accounted_for() const {
+    assert(need_aig);
+    for(uint32_t v = 0; v < defs.size(); v ++) {
+        if (orig_sampl_vars.count(v)) continue; // we'll get this as input
+        if (defined(v)) continue; // already defined
+        if (orig_to_new_var.count(v)) continue; // appears in CNF
+        std::cout << "ERROR: Orig var " << v+1 << " is not defined, not in orig_sampl_vars, and not in cnf" << std::endl;
+        assert(false && "All vars must be accounted for");
+    }
+}
+
+DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars() const {
+    assert(need_aig);
+
+    // Get reverse mapping from NEW vars to ORIG vars
+    const auto new_to_orig_vars = get_new_to_orig_var_list();
+
+    // Check each sampling variable
+    for(const auto& new_v : opt_sampl_vars) {
+        assert(new_v < nvars);
+
+        // Find the orig var(s) that map to this new var
+        auto it = new_to_orig_vars.find(new_v);
+        if (it == new_to_orig_vars.end()) {
+            std::cout << "ERROR: Sampling variable in CNF (new: " << new_v+1
+                << ") has no mapping in orig_to_new_var" << std::endl;
+            assert(false && "All sampling vars must have orig mapping");
+        }
+
+        for(const auto& orig_lit : it->second) {
+            const uint32_t orig_v = orig_lit.var();
+
+            // Check if this orig var is an orig_sampl_var
             if (orig_sampl_vars.count(orig_v)) {
-                if (!defined(orig_v)) continue;
-                else if (defs[orig_v]->type == AIGT::t_lit) {
-                    assert(defs[orig_v]->var != orig_v && "Variable depends on itself? Also this is an orig sampl var defined to a literal that has the same var?");
-                    assert(orig_sampl_vars.count(defs[orig_v]->var) && "If orig_sampl_var is defined to a literal, that literal must also be an orig_sampl_var");
-                    continue;
-                } else if (defs[orig_v]->type == AIGT::t_const) {
-                    continue;
-                } else {
-                    std::cerr << "ERROR:Orig sampl var " << orig_v+1 << " cannot be defined to an AIG other than literal or const, but it is: " << defs[orig_v] << std::endl;
-                    assert(false);
+                // This is fine - it's an input variable
+                continue;
+            }
+
+            // This orig var is NOT an orig_sampl_var
+            // If it's defined, it must only depend on orig_sampl_vars
+            assert(defined(orig_v) && "Non-orig-sampl var mapping to sampling var must be defined");
+            /* if (defined(orig_v)) { */
+            const auto deps = get_dependent_vars_recursive(orig_v);
+            bool only_orig_sampl = true;
+            for(const auto& dep_v : deps) {
+                if (!orig_sampl_vars.count(dep_v)) {
+                    only_orig_sampl = false;
+                    std::cout << "ERROR: Sampling variable (new: " << new_v+1
+                        << ", orig: " << orig_v+1 << ") depends on non-orig-sampl var "
+                        << dep_v+1 << std::endl;
+                    std::cout << "  Dependencies (orig): ";
+                    for(const auto& d : deps) {
+                        std::cout << d+1 << (orig_sampl_vars.count(d) ? "(orig)" : "(NOT-orig)") << " ";
+                    }
+                    std::cout << std::endl;
                 }
             }
-            if (!defined(orig_v)) continue;
-
-            // This checks for self-dependency
-            get_dependent_vars_recursive(orig_v);
+            if (!only_orig_sampl) {
+                assert(false && "All sampling variables must depend only on orig_sampl_vars");
+            }
+            return false;
         }
     }
+    return true;
+}
 
-    DLL_PUBLIC void SimplifiedCNF::check_cnf_vars() const {
-        auto check = [](const std::vector<CMSat::Lit>& cl, uint32_t _nvars) {
-            for(const auto& l: cl) {
-                if (l.var() >= _nvars) {
-                    std::cout << "ERROR: Found a clause with a variable that has more variables than the number of variables we are supposed to have" << std::endl;
-                    std::cout << "cl: ";
-                    for(const auto& l2: cl) std::cout << l2 << " ";
-                    std::cout << std::endl;
-                    std::cout << "nvars: " << _nvars+1 << std::endl;
-                    exit(EXIT_FAILURE);
-                }
-                assert(l.var() < _nvars);
-            }
-        };
-
-        // all clauses contain variables that are less than nvars
-        for(const auto& cl: clauses) check(cl, nvars);
-        for(const auto& cl: red_clauses) check(cl, nvars);
-
-
-        // Now check orig_to_new_var covers all vars in the CNF
-        if (!need_aig) return;
-        std::set<uint32_t> vars_in_cnf;
-        for(const auto& cl: clauses) {
-            for(const auto& l: cl) {
-                vars_in_cnf.insert(l.var());
-            }
-        }
-        for(const auto& cl: red_clauses) {
-            for(const auto& l: cl) {
-                vars_in_cnf.insert(l.var());
-            }
-        }
-        for(const auto& v: vars_in_cnf) {
-            assert(v < nvars); // already checked above
-            bool in_orig = false;
-            for(const auto& [o, n]: orig_to_new_var) {
-                if (n.var() == v) {
-                    in_orig = true;
+// this checks that NO unsat-define has been made yet
+DLL_PUBLIC void SimplifiedCNF::check_pre_post_backward_round_synth() const {
+    if (!need_aig) return;
+    std::map<uint32_t, std::set<uint32_t>> dependencies;
+    for(const auto& [o, n] : orig_to_new_var) {
+        assert(o < defs.size());
+        assert(n != CMSat::lit_Undef && n.var() < nvars);
+        if (defined(o)) {
+            auto s = get_dependent_vars_recursive(o);
+            dependencies[o] = s;
+            bool only_orig_sampl = true;
+            for(const auto& v: s) {
+                if (!orig_sampl_vars.count(v)) {
+                    only_orig_sampl = false;
                     break;
                 }
             }
-            assert(in_orig && "All CNF vars must be in orig_to_new_var");
-        }
-    }
-
-    // all vars are either: in orig_sampl_vars, defined, or in the cnf
-    DLL_PUBLIC void SimplifiedCNF::all_vars_accounted_for() const {
-        assert(need_aig);
-        for(uint32_t v = 0; v < defs.size(); v ++) {
-            if (orig_sampl_vars.count(v)) continue; // we'll get this as input
-            if (defined(v)) continue; // already defined
-            if (orig_to_new_var.count(v)) continue; // appears in CNF
-            std::cout << "ERROR: Orig var " << v+1 << " is not defined, not in orig_sampl_vars, and not in cnf" << std::endl;
-            assert(false && "All vars must be accounted for");
-        }
-    }
-
-    DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars() const {
-        assert(need_aig);
-
-        // Get reverse mapping from NEW vars to ORIG vars
-        const auto new_to_orig_vars = get_new_to_orig_var_list();
-
-        // Check each sampling variable
-        for(const auto& new_v : opt_sampl_vars) {
-            assert(new_v < nvars);
-
-            // Find the orig var(s) that map to this new var
-            auto it = new_to_orig_vars.find(new_v);
-            if (it == new_to_orig_vars.end()) {
-                std::cout << "ERROR: Sampling variable in CNF (new: " << new_v+1
-                    << ") has no mapping in orig_to_new_var" << std::endl;
-                assert(false && "All sampling vars must have orig mapping");
-            }
-
-            for(const auto& orig_lit : it->second) {
-                const uint32_t orig_v = orig_lit.var();
-
-                // Check if this orig var is an orig_sampl_var
-                if (orig_sampl_vars.count(orig_v)) {
-                    // This is fine - it's an input variable
-                    continue;
-                }
-
-                // This orig var is NOT an orig_sampl_var
-                // If it's defined, it must only depend on orig_sampl_vars
-                assert(defined(orig_v) && "Non-orig-sampl var mapping to sampling var must be defined");
-                /* if (defined(orig_v)) { */
-                const auto deps = get_dependent_vars_recursive(orig_v);
-                bool only_orig_sampl = true;
-                for(const auto& dep_v : deps) {
-                    if (!orig_sampl_vars.count(dep_v)) {
-                        only_orig_sampl = false;
-                        std::cout << "ERROR: Sampling variable (new: " << new_v+1
-                            << ", orig: " << orig_v+1 << ") depends on non-orig-sampl var "
-                            << dep_v+1 << std::endl;
-                        std::cout << "  Dependencies (orig): ";
-                        for(const auto& d : deps) {
-                            std::cout << d+1 << (orig_sampl_vars.count(d) ? "(orig)" : "(NOT-orig)") << " ";
-                        }
-                        std::cout << std::endl;
-                    }
-                }
-                if (!only_orig_sampl) {
-                    assert(false && "All sampling variables must depend only on orig_sampl_vars");
-                }
-                return false;
-            }
-        }
-        return true;
-    }
-
-    // this checks that NO unsat-define has been made yet
-    DLL_PUBLIC void SimplifiedCNF::check_pre_post_backward_round_synth() const {
-        if (!need_aig) return;
-        std::map<uint32_t, std::set<uint32_t>> dependencies;
-        for(const auto& [o, n] : orig_to_new_var) {
-            assert(o < defs.size());
-            assert(n != CMSat::lit_Undef && n.var() < nvars);
-            if (defined(o)) {
-                auto s = get_dependent_vars_recursive(o);
-                dependencies[o] = s;
-                bool only_orig_sampl = true;
+            if (!after_backward_round_synth && !only_orig_sampl) {
+                std::cout << "ERROR: Found a variable in CNF, orig: " << o+1 << " new: " << n.var()+1
+                    << " that is defined in terms of non-orig-sampl-vars before backward round synth.";
+                std::cout << std::endl << " in old: ";
+                for(const auto& v: s) std::cout << v+1 << "( " << (orig_sampl_vars.count(v) ? "o" : "n") << " ) ";
+                std::cout << std::endl << " in new: ";
                 for(const auto& v: s) {
-                    if (!orig_sampl_vars.count(v)) {
-                        only_orig_sampl = false;
-                        break;
-                    }
+                    auto it = orig_to_new_var.find(v);
+                    if (it == orig_to_new_var.end()) std::cout << "undef ";
+                    else std::cout << it->second.var()+1 << "( " << (orig_sampl_vars.count(v) ? "o" : "n") << " ) ";
                 }
-                if (!after_backward_round_synth && !only_orig_sampl) {
-                    std::cout << "ERROR: Found a variable in CNF, orig: " << o+1 << " new: " << n.var()+1
-                        << " that is defined in terms of non-orig-sampl-vars before backward round synth.";
-                    std::cout << std::endl << " in old: ";
-                    for(const auto& v: s) std::cout << v+1 << "( " << (orig_sampl_vars.count(v) ? "o" : "n") << " ) ";
-                    std::cout << std::endl << " in new: ";
-                    for(const auto& v: s) {
-                        auto it = orig_to_new_var.find(v);
-                        if (it == orig_to_new_var.end()) std::cout << "undef ";
-                        else std::cout << it->second.var()+1 << "( " << (orig_sampl_vars.count(v) ? "o" : "n") << " ) ";
-                    }
-                    std::cout << std::endl;
-                    assert(false && "Before backward round synth, variables in CNF must be defined ONLY in terms of orig_sampl_vars");
-                }
+                std::cout << std::endl;
+                assert(false && "Before backward round synth, variables in CNF must be defined ONLY in terms of orig_sampl_vars");
             }
         }
-        for(const auto& [o, dep] : dependencies) {
-            assert(!orig_sampl_vars.count(o));
-            for(const auto& v: dep) {
-                // o depends on v
-                if (orig_sampl_vars.count(v)) continue;
-                auto it = dependencies.find(v);
-                if (it == dependencies.end()) continue;
-                if (it->second.count(o)) {
-                    // so v cannot depend on o
-                    std::cout << "ERROR: Found a dependency cycle between orig vars "
-                        << o+1 << " and " << v+1 << std::endl;
-                    assert(false && "Dependency cycle found");
-                }
-            }
-
-        }
     }
-
-    DLL_PUBLIC void SimplifiedCNF::set_all_opt_indep() {
-        opt_sampl_vars.clear();
-        for(uint32_t i = 0; i < nvars; i++) opt_sampl_vars.push_back(i);
-    }
-
-    DLL_PUBLIC void SimplifiedCNF::add_opt_sampl_var(const uint32_t v) {
-        assert(v < nvars);
-        opt_sampl_vars.push_back(v);
-    }
-
-    DLL_PUBLIC void SimplifiedCNF::clean_idiotic_mccomp_weights() {
-        std::set<uint32_t> opt_sampl_vars_s(opt_sampl_vars.begin(), opt_sampl_vars.end());
-        std::set<uint32_t> to_remove;
-        for(const auto& w: weights) {
-            if (opt_sampl_vars_s.count(w.first) == 0) to_remove.insert(w.first);
-        }
-        if (to_remove.empty()) return;
-
-        std::cout << "c o WARNING!!!! "
-            << to_remove.size() << " weights removed that weren't in the (opt) sampling set" << std::endl;
-        for(const auto& w: to_remove) weights.erase(w);
-    }
-
-    DLL_PUBLIC void SimplifiedCNF::check_cnf_sampl_sanity() const {
-        assert(fg != nullptr);
-
-        check_cnf_vars();
-        std::set<uint32_t> sampl_vars_s(sampl_vars.begin(), sampl_vars.end());
-        std::set<uint32_t> opt_sampl_vars_s(opt_sampl_vars.begin(), opt_sampl_vars.end());
-
-        // sampling vars less than nvars
-        for(const auto& v: opt_sampl_vars_s) {
-            if (v >= nvars) {
-                std::cout << "ERROR: Found a sampling var that is greater than the number of variables we are supposed to have" << std::endl;
-                std::cout << "sampling var: " << v+1 << std::endl;
-                std::cout << "nvars: " << nvars+1 << std::endl;
-                exit(EXIT_FAILURE);
-            }
-            assert(v < nvars);
-        }
-
-        // all sampling vars are also opt sampling vars
-        for(const auto& v: sampl_vars_s) {
-            if (!opt_sampl_vars_s.count(v)) {
-                std::cout << "ERROR: Found a sampling var that is not an opt sampling var: "
-                    << v+1 << std::endl;
-                exit(EXIT_FAILURE);
-            }
-            assert(opt_sampl_vars_s.count(v));
-        }
-
-        // weights must be in opt sampling vars
-        for(const auto& w: weights) {
-            if (w.first >= nvars) {
-                std::cout << "ERROR: Found a weight that is greater than the number of variables we are supposed to have" << std::endl;
-                std::cout << "weight var: " << w.first+1 << std::endl;
-                std::cout << "nvars: " << nvars+1 << std::endl;
-                exit(EXIT_FAILURE);
-            }
-            assert(w.first < nvars);
-            if (opt_sampl_vars_s.count(w.first) == 0) {
-                // Idiotic but we allow 1/1 weights, even though they are useless
-                if (w.second.pos->is_one() && w.second.neg->is_one()) continue;
-
-                std::cout << "ERROR: Found a weight that is not an (opt) sampling var: "
-                    << w.first+1 << std::endl;
-                exit(EXIT_FAILURE);
-            }
-            assert(opt_sampl_vars_s.count(w.first));
-        }
-    }
-
-    // Gives all the orig lits that map to this variable
-    DLL_PUBLIC std::map<uint32_t, std::vector<CMSat::Lit>> SimplifiedCNF::get_new_to_orig_var_list() const {
-        std::map<uint32_t, std::vector<CMSat::Lit>> ret;
-        for(const auto& p: orig_to_new_var) {
-            const CMSat::Lit l = p.second;
-            if (l != CMSat::lit_Undef) {
-                auto it2 = ret.find(l.var());
-                if (it2 != ret.end()) ret[l.var()] = std::vector<CMSat::Lit>();
-                ret[l.var()].push_back(CMSat::Lit(p.first, l.sign()));
+    for(const auto& [o, dep] : dependencies) {
+        assert(!orig_sampl_vars.count(o));
+        for(const auto& v: dep) {
+            // o depends on v
+            if (orig_sampl_vars.count(v)) continue;
+            auto it = dependencies.find(v);
+            if (it == dependencies.end()) continue;
+            if (it->second.count(o)) {
+                // so v cannot depend on o
+                std::cout << "ERROR: Found a dependency cycle between orig vars "
+                    << o+1 << " and " << v+1 << std::endl;
+                assert(false && "Dependency cycle found");
             }
         }
-        return ret;
-    }
 
-    // Gives an example lit, sometimes good enough
-    DLL_PUBLIC std::map<uint32_t, CMSat::Lit> SimplifiedCNF::get_new_to_orig_var() const {
-        std::map<uint32_t, CMSat::Lit> ret;
-        for(const auto& [origv, l]:  orig_to_new_var) {
-            assert(l != CMSat::lit_Undef);
-            ret[l.var()] = CMSat::Lit(origv, l.sign());
-        }
-        return ret;
     }
+}
 
-    DLL_PUBLIC uint32_t SimplifiedCNF::new_vars(uint32_t vars) {
-        nvars+=vars;
-        for(uint32_t i = 0; i < vars; i++) {
-            const uint32_t v = nvars-vars+i;
-            orig_to_new_var[v] = CMSat::Lit(v, false);
-            if (need_aig) defs.push_back(nullptr);
-        }
-        return nvars;
-    }
-    DLL_PUBLIC uint32_t SimplifiedCNF::new_var() {
-        uint32_t v = nvars;
-        nvars++;
-        orig_to_new_var[v] = CMSat::Lit(v, false);
-        if (need_aig) defs.push_back(nullptr);
-        return nvars;
-    }
+DLL_PUBLIC void SimplifiedCNF::set_all_opt_indep() {
+    opt_sampl_vars.clear();
+    for(uint32_t i = 0; i < nvars; i++) opt_sampl_vars.push_back(i);
+}
 
-    DLL_PUBLIC void SimplifiedCNF::start_with_clean_sampl_vars() {
-        assert(sampl_vars.empty());
-        assert(opt_sampl_vars.empty());
-        for(uint32_t i = 0; i < nvars; i++) sampl_vars.push_back(i);
-        for(uint32_t i = 0; i < nvars; i++) opt_sampl_vars.push_back(i);
-    }
+DLL_PUBLIC void SimplifiedCNF::add_opt_sampl_var(const uint32_t v) {
+    assert(v < nvars);
+    opt_sampl_vars.push_back(v);
+}
 
-    DLL_PUBLIC void SimplifiedCNF::check_var(const uint32_t v) const {
-        if (v >= nVars()) {
-            std::cout << "ERROR: Tried to access a variable that is too large" << std::endl;
-            std::cout << "var: " << v+1 << std::endl;
-            std::cout << "nvars: " << nVars() << std::endl;
-            assert(v < nVars());
+DLL_PUBLIC void SimplifiedCNF::clean_idiotic_mccomp_weights() {
+    std::set<uint32_t> opt_sampl_vars_s(opt_sampl_vars.begin(), opt_sampl_vars.end());
+    std::set<uint32_t> to_remove;
+    for(const auto& w: weights) {
+        if (opt_sampl_vars_s.count(w.first) == 0) to_remove.insert(w.first);
+    }
+    if (to_remove.empty()) return;
+
+    std::cout << "c o WARNING!!!! "
+        << to_remove.size() << " weights removed that weren't in the (opt) sampling set" << std::endl;
+    for(const auto& w: to_remove) weights.erase(w);
+}
+
+DLL_PUBLIC void SimplifiedCNF::check_cnf_sampl_sanity() const {
+    assert(fg != nullptr);
+
+    check_cnf_vars();
+    std::set<uint32_t> sampl_vars_s(sampl_vars.begin(), sampl_vars.end());
+    std::set<uint32_t> opt_sampl_vars_s(opt_sampl_vars.begin(), opt_sampl_vars.end());
+
+    // sampling vars less than nvars
+    for(const auto& v: opt_sampl_vars_s) {
+        if (v >= nvars) {
+            std::cout << "ERROR: Found a sampling var that is greater than the number of variables we are supposed to have" << std::endl;
+            std::cout << "sampling var: " << v+1 << std::endl;
+            std::cout << "nvars: " << nvars+1 << std::endl;
             exit(EXIT_FAILURE);
         }
+        assert(v < nvars);
     }
 
-    DLL_PUBLIC void SimplifiedCNF::check_clause(const std::vector<CMSat::Lit>& cl) const {
-        for(const auto& l: cl) check_var(l.var());
+    // all sampling vars are also opt sampling vars
+    for(const auto& v: sampl_vars_s) {
+        if (!opt_sampl_vars_s.count(v)) {
+            std::cout << "ERROR: Found a sampling var that is not an opt sampling var: "
+                << v+1 << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        assert(opt_sampl_vars_s.count(v));
     }
 
-    DLL_PUBLIC void SimplifiedCNF::clear_orig_sampl_defs() {
-        for(const auto& v: orig_sampl_vars) defs[v] = nullptr;
+    // weights must be in opt sampling vars
+    for(const auto& w: weights) {
+        if (w.first >= nvars) {
+            std::cout << "ERROR: Found a weight that is greater than the number of variables we are supposed to have" << std::endl;
+            std::cout << "weight var: " << w.first+1 << std::endl;
+            std::cout << "nvars: " << nvars+1 << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        assert(w.first < nvars);
+        if (opt_sampl_vars_s.count(w.first) == 0) {
+            // Idiotic but we allow 1/1 weights, even though they are useless
+            if (w.second.pos->is_one() && w.second.neg->is_one()) continue;
+
+            std::cout << "ERROR: Found a weight that is not an (opt) sampling var: "
+                << w.first+1 << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        assert(opt_sampl_vars_s.count(w.first));
     }
+}
+
+// Gives all the orig lits that map to this variable
+DLL_PUBLIC std::map<uint32_t, std::vector<CMSat::Lit>> SimplifiedCNF::get_new_to_orig_var_list() const {
+    std::map<uint32_t, std::vector<CMSat::Lit>> ret;
+    for(const auto& p: orig_to_new_var) {
+        const CMSat::Lit l = p.second;
+        if (l != CMSat::lit_Undef) {
+            auto it2 = ret.find(l.var());
+            if (it2 != ret.end()) ret[l.var()] = std::vector<CMSat::Lit>();
+            ret[l.var()].push_back(CMSat::Lit(p.first, l.sign()));
+        }
+    }
+    return ret;
+}
+
+// Gives an example lit, sometimes good enough
+DLL_PUBLIC std::map<uint32_t, CMSat::Lit> SimplifiedCNF::get_new_to_orig_var() const {
+    std::map<uint32_t, CMSat::Lit> ret;
+    for(const auto& [origv, l]:  orig_to_new_var) {
+        assert(l != CMSat::lit_Undef);
+        ret[l.var()] = CMSat::Lit(origv, l.sign());
+    }
+    return ret;
+}
+
+DLL_PUBLIC uint32_t SimplifiedCNF::new_vars(uint32_t vars) {
+    nvars+=vars;
+    for(uint32_t i = 0; i < vars; i++) {
+        const uint32_t v = nvars-vars+i;
+        orig_to_new_var[v] = CMSat::Lit(v, false);
+        if (need_aig) defs.push_back(nullptr);
+    }
+    return nvars;
+}
+DLL_PUBLIC uint32_t SimplifiedCNF::new_var() {
+    uint32_t v = nvars;
+    nvars++;
+    orig_to_new_var[v] = CMSat::Lit(v, false);
+    if (need_aig) defs.push_back(nullptr);
+    return nvars;
+}
+
+DLL_PUBLIC void SimplifiedCNF::start_with_clean_sampl_vars() {
+    assert(sampl_vars.empty());
+    assert(opt_sampl_vars.empty());
+    for(uint32_t i = 0; i < nvars; i++) sampl_vars.push_back(i);
+    for(uint32_t i = 0; i < nvars; i++) opt_sampl_vars.push_back(i);
+}
+
+DLL_PUBLIC void SimplifiedCNF::check_var(const uint32_t v) const {
+    if (v >= nVars()) {
+        std::cout << "ERROR: Tried to access a variable that is too large" << std::endl;
+        std::cout << "var: " << v+1 << std::endl;
+        std::cout << "nvars: " << nVars() << std::endl;
+        assert(v < nVars());
+        exit(EXIT_FAILURE);
+    }
+}
+
+DLL_PUBLIC void SimplifiedCNF::check_clause(const std::vector<CMSat::Lit>& cl) const {
+    for(const auto& l: cl) check_var(l.var());
+}
+
+DLL_PUBLIC void SimplifiedCNF::clear_orig_sampl_defs() {
+    for(const auto& v: orig_sampl_vars) defs[v] = nullptr;
+}
 
 
 set_get_macro(bool, distill)
