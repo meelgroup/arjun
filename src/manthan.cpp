@@ -76,7 +76,6 @@ vector<int> lits_to_ints(const vector<Lit>& lits) {
 void Manthan::inject_cnf(SATSolver& s) {
     s.new_vars(cnf.nVars());
     for(const auto& c: cnf.get_clauses()) s.add_clause(c);
-    for(const auto& c: cnf.get_red_clauses()) s.add_red_clause(c);
 }
 
 vector<vector<lbool>> Manthan::get_samples(const uint32_t num) {
@@ -353,12 +352,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             assert(y != std::numeric_limits<uint32_t>::max());
             needs_repair.erase(y);
             verb_print(3, "-------------------");
-            bool done;
-            if (conf.manthan_maxsat_min_conflict) {
-                done = repair_maxsat(y, ctx); // this updates ctx on y
-            } else {
-                done = repair(y, ctx); // this updates ctx on y
-            }
+            bool done = repair(y, ctx); // this updates ctx on y
             if (done) {
                 num_repaired++;
                 tot_repaired++;
@@ -408,6 +402,7 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
         /* cout << "added input cl: " << std::vector<Lit>{l} << endl; */
     }
 
+    // We go through the variables that y_rep does NOT depend on, and assume them to be correct
     for(const auto& y: y_order) {
         if (y == y_rep) break; // beyond this point we don't care
         assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen. Otherwise y depends on y_rep, but we will repair y_rep potentially with y_rep");
@@ -448,81 +443,6 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
         return false;
     }
 
-    perform_repair(y_rep, ctx, conflict);
-    return true;
-}
-
-bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
-    verb_print(2, "[DEBUG] Starting repair_maxsat for var " << y_rep+1);
-    assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
-    assert(to_define.count(y_rep) == 1 && "Only to-define vars should be repaired");
-    assert(y_rep < cnf.nVars());
-    assert(to_define.count(y_rep));
-
-    // F(x,y) & x = ctx(x) && forall_y (y not dependent on v) (y = ctx(y)) & NOT (v = ctx(v))
-    // Used to find UNSAT core that will help us repair the function
-    EvalMaxSAT repair_solver;
-    for(uint32_t i = 0; i < cnf.nVars(); i++) repair_solver.newVar();
-
-    vector<Lit> assumps;
-    for(const auto& x: input) {
-        const Lit l = Lit(x, ctx[x] == l_False);
-        assumps.push_back({l});
-        repair_solver.addClause(lits_to_ints({assumps.back()}), 1);
-        /* cout << "added input cl: " << std::vector<Lit>{l} << endl; */
-    }
-
-    // We go through the variables that y_rep does NOT depend on, and assume them to be correct
-    for(const auto& y: y_order) {
-        if (y == y_rep) break; // beyond this point we don't care
-        assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen. Otherwise y depends on y_rep, but we will repair y_rep potentially with y_rep");
-        assert(ctx[y] == ctx[y_to_y_hat[y]]); // they are correct
-        const Lit l = Lit(y, ctx[y] == l_False);
-        verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
-        assumps.push_back({l});
-        /* cout << "assumed cl: " << std::vector<Lit>{l} << endl; */
-        repair_solver.addClause(lits_to_ints({assumps.back()}), 1); // keep all these as correct as possible
-    }
-    for(const auto& c: cnf.get_clauses()) {
-        repair_solver.addClause(lits_to_ints(c));
-        /* cout << "added CNF cl: " << std::vector<Lit>{c} << endl; */
-    }
-
-    const Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
-    repair_solver.addClause(lits_to_ints({~repairing})); // we try to fix this one
-    /* cout << "added repairing cl: " << std::vector<Lit>{~repairing} << endl; */
-    ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
-
-    verb_print(3, "adding to solver: " << ~repairing);
-    verb_print(3, "setting the to-be-repaired " << repairing << " to wrong.");
-    verb_print(5, "solving with assumps: " << assumps);
-    auto ret = repair_solver.solve();
-    if (!ret) {
-        verb_print(1, "repairing " << y_rep+1 << " is not possible");
-        return false;
-    }
-    if (repair_solver.getCost() == 0) {
-        cout << "Repair cost is 0???????" << endl;
-        /* if (conf.verb >= 3) { */
-        /*     for(uint32_t i = 0; i < cnf.nVars(); i++) */
-        /*         cout << "model i " << setw(5) << i+1 << " : " << model[i] << endl; */
-        /* } */
-        bool reached = false;
-        for(const auto&y: y_order) {
-            if (y == y_rep) {reached = true; continue;}
-            if (!reached) continue;
-            if (repair_solver.getValue(y+1) != (ctx[y_to_y_hat[y]] == l_True)) needs_repair.insert(y);
-        }
-        return false;
-    }
-
-    vector<Lit> conflict;
-    for(const auto& l: assumps) {
-        if (!repair_solver.getValue(lit_to_int(l))) {
-            conflict.push_back(~l);
-        }
-    }
-    verb_print(2, "repair_maxsat conflict: " << conflict);
     perform_repair(y_rep, ctx, conflict);
     return true;
 }
