@@ -76,6 +76,7 @@ vector<int> lits_to_ints(const vector<Lit>& lits) {
 void Manthan::inject_cnf(SATSolver& s) {
     s.new_vars(cnf.nVars());
     for(const auto& c: cnf.get_clauses()) s.add_clause(c);
+    for(const auto& c: cnf.get_red_clauses()) s.add_red_clause(c);
 }
 
 vector<vector<lbool>> Manthan::get_samples(const uint32_t num) {
