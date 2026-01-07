@@ -334,7 +334,9 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
+        uint32_t num_loops_repair = 0;
         while(!needs_repair.empty()) {
+            num_loops_repair++;
             uint32_t y = std::numeric_limits<uint32_t>::max();
             for(const auto& t: y_order) {
                 if (needs_repair.count(t)) {
@@ -363,7 +365,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             }
             verb_print(3, "finished repairing " << y+1 << " : " << std::boolalpha << done);
         }
-        verb_print(1, "Num repaired: " << num_repaired << " tot repaired: " << tot_repaired);
+        verb_print(1, "Num repaired: " << num_repaired << " tot repaired: " << tot_repaired << " num_loops_repair: " << num_loops_repair);
     }
     assert(check_map_dependency_cycles());
     verb_print(1, "DONE");
