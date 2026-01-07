@@ -373,6 +373,34 @@ void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
     }
 }
 
+bool check_cnf_unsat(ArjunNS::SimplifiedCNF& orig_cnf) {
+    SATSolver solver;
+    fill_solver_from_cnf(orig_cnf, solver);
+    auto sat = solver.solve();
+    assert(sat != CMSat::l_Undef && "Solver returned undef on a CNF without assumptions");
+    return sat == CMSat::l_False;
+}
+
+void randomized_sample_verify(ArjunNS::SimplifiedCNF& orig_cnf,
+          ArjunNS::SimplifiedCNF& cnf) {
+    SATSolver solver;
+    fill_solver_from_cnf(orig_cnf, solver);
+    SATSolver rnd_solver;
+    fill_solver_from_cnf(orig_cnf, rnd_solver);
+
+    rnd_solver.set_up_for_sample_counter(100);
+    for(int i = 0; i < num_samples; i++) {
+        auto sample = get_random_sol(rnd_solver);
+        assert(sample.size() == orig_cnf.nVars());
+        vector<lbool> restricted_sample(orig_cnf.nVars(), l_Undef);
+        for(const auto& var : orig_cnf.get_sampl_vars()) {
+            restricted_sample[var] = sample[var];
+        }
+        const auto extended_sample = cnf.extend_sample(restricted_sample, true);
+        assert_sample_satisfying(extended_sample, solver);
+    }
+}
+
 int main(int argc, char** argv) {
     argparse::ArgumentParser program = argparse::ArgumentParser("test-synth", "1.0",
             argparse::default_arguments::help);
@@ -457,32 +485,14 @@ int main(int argc, char** argv) {
         cout << "c [test-synth] backbone_done: " << cnf.get_backbone_done() << endl;
     }
 
+    // Check for UNSAT
+    if (check_cnf_unsat(orig_cnf)) {
+        cout << "c [test-synth] Original CNF is UNSAT, exiting." << endl;
+        return EXIT_SUCCESS;
+    }
+
     if (!unsat_verif) {
-        SATSolver solver;
-        fill_solver_from_cnf(orig_cnf, solver);
-
-        SATSolver rnd_solver;
-        fill_solver_from_cnf(orig_cnf, rnd_solver);
-
-        rnd_solver.set_up_for_sample_counter(100);
-        auto sat = solver.solve();
-        assert(sat != CMSat::l_Undef && "Solver returned undef on a CNF without assumptions");
-        if (sat == CMSat::l_False) {
-            cout << "c [test-synth] WARNING: Original CNF is unsat! Returning." << endl;
-            return EXIT_SUCCESS;
-        }
-
-
-        for(int i = 0; i < num_samples; i++) {
-            auto sample = get_random_sol(rnd_solver);
-            assert(sample.size() == orig_cnf.nVars());
-            vector<lbool> restricted_sample(orig_cnf.nVars(), l_Undef);
-            for(const auto& var : orig_cnf.get_sampl_vars()) {
-                restricted_sample[var] = sample[var];
-            }
-            auto extended_sample = cnf.extend_sample(restricted_sample, true);
-            assert_sample_satisfying(extended_sample, solver);
-        }
+        randomized_sample_verify(orig_cnf, cnf);
     } else {
         unsat_verify(orig_cnf, cnf);
     }

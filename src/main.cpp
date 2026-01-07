@@ -281,10 +281,10 @@ void do_synthesis() {
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-4-minim_idep_synt.aig");
     }
 
-    arjun->standalone_manthan(cnf);
+    auto final_cnf = arjun->standalone_manthan(cnf);
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");
-    cnf.clear_orig_sampl_defs();
-    if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-final.aig");
+    final_cnf.clear_orig_sampl_defs();
+    if (!conf.debug_synth.empty()) final_cnf.write_aig_defs_to_file(conf.debug_synth + "-final.aig");
 }
 #endif
 
