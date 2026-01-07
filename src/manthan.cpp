@@ -305,7 +305,9 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     fill_var_to_formula_with_backward();
     fix_order();
     // Counterexample-guided repair
+    uint32_t num_loops_repair = 0;
     while(true) {
+        num_loops_repair++;
         inject_formulas_into_solver();
         vector<lbool> ctx;
         bool finished = get_counterexample(ctx);
@@ -334,9 +336,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
-        uint32_t num_loops_repair = 0;
         while(!needs_repair.empty()) {
-            num_loops_repair++;
             uint32_t y = std::numeric_limits<uint32_t>::max();
             for(const auto& t: y_order) {
                 if (needs_repair.count(t)) {
@@ -441,9 +441,13 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
         }
         return false;
     }
-
     vector<Lit> conflict = repair_solver.get_conflict();
     verb_print(2, "repair_maxsat conflict: " << conflict);
+    if (conflict.empty()) {
+        verb_print(1, "repairing " << y_rep+1 << " is not possible");
+        return false;
+    }
+
     perform_repair(y_rep, ctx, conflict);
     return true;
 }
@@ -464,7 +468,7 @@ bool Manthan::repair_maxsat(const uint32_t y_rep, vector<lbool>& ctx) {
     for(const auto& x: input) {
         const Lit l = Lit(x, ctx[x] == l_False);
         assumps.push_back({l});
-        repair_solver.addClause(lits_to_ints({l}), 1);
+        repair_solver.addClause(lits_to_ints({assumps.back()}), 1);
         /* cout << "added input cl: " << std::vector<Lit>{l} << endl; */
     }
 
@@ -775,7 +779,7 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
     verb_print(4, "assumptions: " << assumps);
 
 
-    solver.set_up_for_sample_counter(1000);
+    /* solver.set_up_for_sample_counter(1000); */
     /* solver.simplify(); */
     auto ret = solver.solve(&assumps);
     assert(ret != l_Undef);
