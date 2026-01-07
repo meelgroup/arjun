@@ -284,6 +284,7 @@ void do_synthesis() {
     arjun->standalone_manthan(cnf);
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");
     cnf.clear_orig_sampl_defs();
+    if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-final.aig");
 }
 #endif
 

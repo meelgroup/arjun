@@ -21,6 +21,8 @@
  THE SOFTWARE.
  */
 
+#include <armadillo>
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -59,6 +61,7 @@ int mode = 0;
 int num_samples = 2;
 long long seed = 42;
 std::mt19937 mt;
+int unsat_verif = 0;
 
 void fill_solver_from_cnf(ArjunNS::SimplifiedCNF& cnf, SATSolver& solver) {
     solver.new_vars(cnf.nVars());
@@ -163,9 +166,9 @@ void fill_var_to_formula(SATSolver& solver, FHolder& fh,
                                         map<uint32_t, FHolder::Formula>& var_to_formula) {
     if (verb) cout << "c [test-synth] Converting AIGs to formulas..." << endl;
 
-    for(const auto& v: aig_defined_vars) {
+    for(const auto& v_def: aig_defined_vars) {
         FHolder::Formula f;
-        const auto& aig = cnf.get_def(v);
+        const auto& aig = cnf.get_def(v_def);
         assert(aig != nullptr);
 
         // Create a lambda to transform AIG to CNF using the transform function
@@ -215,14 +218,13 @@ void fill_var_to_formula(SATSolver& solver, FHolder& fh,
         map<aig_ptr, Lit> cache;
         Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
         f.out = out_lit;
-        f.aig = AIG::new_lit(v);
-        assert(var_to_formula.count(v) == 0);
-        var_to_formula[v] = f;
+        f.aig = nullptr;
+        assert(var_to_formula.count(v_def) == 0);
+        var_to_formula[v_def] = f;
 
-        if (verb >= 2) cout << "c [test-synth]   Created formula for var " << v+1 << " with "
+        if (verb >= 5) cout << "c [test-synth]   Created formula for var " << v_def+1 << " with "
                            << f.clauses.size() << " clauses, out=" << f.out << endl;
     }
-
     if (verb) cout << "c [test-synth] Converted " << var_to_formula.size() << " AIGs to formulas" << endl;
 }
 
@@ -307,6 +309,70 @@ bool verify_aigs_correct(SATSolver& solver,
     }
 }
 
+void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
+    cout << "c [test-synth] Performing UNSAT verification of AIGs" << endl;
+
+    // Determine which variables are defined by AIGs
+    set<uint32_t> aig_defined_vars;
+    for(uint32_t v = 0; v < orig_cnf.nVars(); v++) {
+        if (cnf.get_def(v) != nullptr) aig_defined_vars.insert(v);
+    }
+    cout << "aig_defined_vars size: " << aig_defined_vars.size() << endl;
+    cout << "orig_cnf.nVars(): " << orig_cnf.nVars() << endl;
+    cout << "cnf.orig_sampl_vars.size(): " << cnf.get_orig_sampl_vars().size() << endl;
+    cout << "orig_cnf.get_sampl_vars().size(): " << orig_cnf.get_sampl_vars().size() << endl;
+
+    assert(aig_defined_vars.size() == orig_cnf.nVars() - orig_cnf.get_sampl_vars().size());
+    assert(cnf.get_orig_sampl_vars().size() == orig_cnf.get_sampl_vars().size());
+
+    if (aig_defined_vars.empty()) {
+        cout << "c [test-synth] WARNING: No AIG-defined variables found!" << endl;
+        exit(EXIT_SUCCESS);
+    }
+
+    if (verb) {
+        cout << "c [test-synth] Found " << aig_defined_vars.size() << " AIG-defined variables" << endl;
+        if (verb >= 2) {
+            cout << "c [test-synth] AIG-defined variables: ";
+            for(const auto& v: aig_defined_vars) cout << v+1 << " ";
+            cout << endl;
+        }
+    }
+
+    // Create verification solver
+    SATSolver verify_solver;
+    verify_solver.new_vars(orig_cnf.nVars());
+    for (const auto& clause : orig_cnf.get_clauses()) verify_solver.add_clause(clause);
+
+    // Create FHolder for formula management
+    FHolder fh(&verify_solver);
+
+    // Map from original variable to y_hat variable
+    map<uint32_t, uint32_t> y_to_y_hat;
+
+    // Step 1: Add ~F(x, y_hat)
+    add_not_F_x_yhat(verify_solver, orig_cnf, aig_defined_vars, y_to_y_hat);
+
+    // Step 2: Fill var_to_formula with backward definitions
+    map<uint32_t, FHolder::Formula> var_to_formula;
+    set<uint32_t> sampling_vars(orig_cnf.get_sampl_vars().begin(), orig_cnf.get_sampl_vars().end());
+    fill_var_to_formula(verify_solver, fh, cnf, aig_defined_vars,
+                                      y_to_y_hat, sampling_vars, var_to_formula);
+
+    // Step 3: Verify AIGs are correct (should be UNSAT)
+    bool aigs_correct = verify_aigs_correct(verify_solver, aig_defined_vars,
+                                            y_to_y_hat, var_to_formula);
+
+    cout << "c [test-synth] ======================================" << endl;
+    if (aigs_correct) {
+        cout << "c [test-synth] SUCCESS: AIGs are verified CORRECT!" << endl;
+        exit(EXIT_SUCCESS);
+    } else {
+        cout << "c [test-synth] FAILURE: AIGs are INCORRECT!" << endl;
+        exit(EXIT_FAILURE);
+    }
+}
+
 int main(int argc, char** argv) {
     argparse::ArgumentParser program = argparse::ArgumentParser("test-synth", "1.0",
             argparse::default_arguments::help);
@@ -316,6 +382,7 @@ int main(int argc, char** argv) {
     myopt2("-m", "--mode", mode, atoi, "Field mode (0=FGenMpz, 1=FGenMpq)");
     myopt("--samples", num_samples, atoi, "Number of samples");
     myopt2("-s", "--seed", seed, atoll, "Random seed");
+    myopt2("-u", "--unsat", unsat_verif, atoll, "UNSAT verify");
 
     // Add positional argument for input file
     program.add_argument("files").remaining().help("input AIG file");
@@ -366,27 +433,17 @@ int main(int argc, char** argv) {
     }
 
     // Read the original CNF file, check satisfiability
-    SATSolver solver;
-    SATSolver rnd_solver;
     ArjunNS::SimplifiedCNF orig_cnf(fg);
     orig_cnf.set_need_aig();
     bool all_indep = false;
     read_in_a_file(cnf_fname, &orig_cnf, all_indep, fg);
-    fill_solver_from_cnf(orig_cnf, solver);
-    fill_solver_from_cnf(orig_cnf, rnd_solver);
-    rnd_solver.set_up_for_sample_counter(100);
-    auto sat = solver.solve();
-    assert(sat != CMSat::l_Undef && "Solver returned undef on a CNF without assumptions");
-    if (sat == CMSat::l_False) {
-        cout << "c [test-synth] WARNING: Original CNF is unsat! Returning." << endl;
-        return EXIT_SUCCESS;
-    }
 
     // Read the AIG file
     SimplifiedCNF cnf(fg);
     if (verb) cout << "c [test-synth] Reading AIG file: " << aig_fname << endl;
     cnf.read_aig_defs_from_file(aig_fname);
     cnf.defs_invariant();
+
     if (verb) {
         cout << "c [test-synth] Successfully read AIG file" << endl;
         cout << "c [test-synth] Number of variables: " << cnf.nVars() << endl;
@@ -400,80 +457,35 @@ int main(int argc, char** argv) {
         cout << "c [test-synth] backbone_done: " << cnf.get_backbone_done() << endl;
     }
 
-    /* for(int i = 0; i < num_samples; i++) { */
-    /*     auto sample = get_random_sol(rnd_solver); */
-    /*     assert(sample.size() == orig_cnf.nVars()); */
-    /*     vector<lbool> restricted_sample(orig_cnf.nVars(), l_Undef); */
-    /*     for(const auto& var : orig_cnf.get_sampl_vars()) { */
-    /*         restricted_sample[var] = sample[var]; */
-    /*     } */
-    /*     auto extended_sample = cnf.extend_sample(restricted_sample, true); */
-    /*     assert_sample_satisfying(extended_sample, solver); */
-    /* } */
-    cout << "c [test-synth] OK, all samples satisfied the original CNF!" << endl;
+    if (!unsat_verif) {
+        SATSolver solver;
+        fill_solver_from_cnf(orig_cnf, solver);
 
-    // Now perform the UNSAT verification of AIGs
-    cout << "c [test-synth] ======================================" << endl;
-    cout << "c [test-synth] Performing UNSAT verification of AIGs" << endl;
-    cout << "c [test-synth] ======================================" << endl;
+        SATSolver rnd_solver;
+        fill_solver_from_cnf(orig_cnf, rnd_solver);
 
-    // Determine which variables are defined by AIGs
-    set<uint32_t> aig_defined_vars;
-    for(uint32_t v = 0; v < orig_cnf.nVars(); v++) {
-        if (cnf.get_def(v) != nullptr) aig_defined_vars.insert(v);
-    }
-    cout << "aig_defined_vars size: " << aig_defined_vars.size() << endl;
-    cout << "orig_cnf.nVars(): " << orig_cnf.nVars() << endl;
-    cout << "cnf.orig_sampl_vars.size(): " << cnf.get_orig_sampl_vars().size() << endl;
-    cout << "orig_cnf.get_sampl_vars().size(): " << orig_cnf.get_sampl_vars().size() << endl;
-
-    assert(aig_defined_vars.size() == orig_cnf.nVars() - orig_cnf.get_sampl_vars().size());
-    assert(cnf.get_orig_sampl_vars().size() == orig_cnf.get_sampl_vars().size());
-
-    if (aig_defined_vars.empty()) {
-        cout << "c [test-synth] WARNING: No AIG-defined variables found!" << endl;
-        return EXIT_SUCCESS;
-    }
-
-    if (verb) {
-        cout << "c [test-synth] Found " << aig_defined_vars.size() << " AIG-defined variables" << endl;
-        if (verb >= 2) {
-            cout << "c [test-synth] AIG-defined variables: ";
-            for(const auto& v: aig_defined_vars) cout << v+1 << " ";
-            cout << endl;
+        rnd_solver.set_up_for_sample_counter(100);
+        auto sat = solver.solve();
+        assert(sat != CMSat::l_Undef && "Solver returned undef on a CNF without assumptions");
+        if (sat == CMSat::l_False) {
+            cout << "c [test-synth] WARNING: Original CNF is unsat! Returning." << endl;
+            return EXIT_SUCCESS;
         }
-    }
 
-    // Create verification solver
-    SATSolver verify_solver;
-    verify_solver.new_vars(orig_cnf.nVars());
-    for (const auto& clause : orig_cnf.get_clauses()) verify_solver.add_clause(clause);
 
-    // Create FHolder for formula management
-    FHolder fh(&verify_solver);
-
-    // Map from original variable to y_hat variable
-    map<uint32_t, uint32_t> y_to_y_hat;
-
-    // Step 1: Add ~F(x, y_hat)
-    add_not_F_x_yhat(verify_solver, orig_cnf, aig_defined_vars, y_to_y_hat);
-
-    // Step 2: Fill var_to_formula with backward definitions
-    map<uint32_t, FHolder::Formula> var_to_formula;
-    set<uint32_t> sampling_vars(orig_cnf.get_sampl_vars().begin(), orig_cnf.get_sampl_vars().end());
-    fill_var_to_formula(verify_solver, fh, cnf, aig_defined_vars,
-                                      y_to_y_hat, sampling_vars, var_to_formula);
-
-    // Step 3: Verify AIGs are correct (should be UNSAT)
-    bool aigs_correct = verify_aigs_correct(verify_solver, aig_defined_vars,
-                                            y_to_y_hat, var_to_formula);
-
-    cout << "c [test-synth] ======================================" << endl;
-    if (aigs_correct) {
-        cout << "c [test-synth] SUCCESS: AIGs are verified CORRECT!" << endl;
-        return EXIT_SUCCESS;
+        for(int i = 0; i < num_samples; i++) {
+            auto sample = get_random_sol(rnd_solver);
+            assert(sample.size() == orig_cnf.nVars());
+            vector<lbool> restricted_sample(orig_cnf.nVars(), l_Undef);
+            for(const auto& var : orig_cnf.get_sampl_vars()) {
+                restricted_sample[var] = sample[var];
+            }
+            auto extended_sample = cnf.extend_sample(restricted_sample, true);
+            assert_sample_satisfying(extended_sample, solver);
+        }
     } else {
-        cout << "c [test-synth] FAILURE: AIGs are INCORRECT!" << endl;
-        return EXIT_FAILURE;
+        unsat_verify(orig_cnf, cnf);
     }
+    cout << "c [test-synth] OK, all samples satisfied the original CNF!" << endl;
+    return EXIT_SUCCESS;
 }
