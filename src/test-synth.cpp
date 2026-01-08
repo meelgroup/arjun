@@ -188,7 +188,7 @@ void fill_var_to_formula(SATSolver& solver, FHolder& fh,
                 // Check if this is an input variable or needs y_to_y_hat mapping
                 Lit result_lit;
                 if (sampling_vars.count(lit.var())) {
-                    result_lit = lit ^ neg;
+                    result_lit = lit;
                 } else {
                     assert(aig_vars.count(lit.var()));
                     const uint32_t y_hat = y_to_y_hat.at(lit.var());
