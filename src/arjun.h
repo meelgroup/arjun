@@ -85,9 +85,7 @@ public:
     // vals = input variable assignments
     // aig = AIG to evaluate
     // defs = known definitions of variables
-    static CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, const aig_ptr& a, const std::vector<aig_ptr>& defs) {
-        std::map<aig_ptr, CMSat::lbool> cache;
-
+    static CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, const aig_ptr& a, const std::vector<aig_ptr>& defs, std::map<aig_ptr, CMSat::lbool>& cache) {
         std::function<CMSat::lbool(const aig_ptr&)> sub_eval = [&](const aig_ptr& aig) -> CMSat::lbool {
             if (cache.count(aig)) return cache.at(aig);
             assert(aig->invariants());
@@ -182,7 +180,7 @@ public:
         return ret;
     }
 
-    static aig_ptr simplify(aig_ptr aig);
+    static aig_ptr simplify(aig_ptr aig, std::set<aig_ptr>& visited);
 
     static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, const aig_ptr& b) {
         assert(l != nullptr);
@@ -191,25 +189,11 @@ public:
         return AIG::new_or(AIG::new_and(b, l), AIG::new_and(AIG::new_not(b), r));
     }
 
-    // marking for traversals
-    static void unmark_all(const aig_ptr& aig) {
-        if (!aig) return;
-        if (aig->mark) {
-            aig->mark = false;
-            if (aig->type == AIGT::t_and) {
-                unmark_all(aig->l);
-                unmark_all(aig->r);
-            }
-        }
-    }
-    bool marked() const { return mark; }
-    void set_mark() const { mark = true; }
-
     static void get_dependent_vars(const aig_ptr& aig_orig, std::set<uint32_t>& dep, uint32_t v) {
-        unmark_all(aig_orig);
+        std::set<aig_ptr> visited;
         std::function<void(const aig_ptr&)> helper =
             [&](const aig_ptr& aig) {
-                if (aig->marked()) return;
+                if (visited.count(aig)) return;
                 if (aig->type == AIGT::t_lit) {
                     assert(aig->var != v && "Variable cannot depend on itself");
                     dep.insert(aig->var);
@@ -218,7 +202,7 @@ public:
                     helper(aig->l);
                     helper(aig->r);
                 }
-                aig->set_mark();
+                visited.insert(aig);
             };
         helper(aig_orig);
     }
@@ -340,7 +324,6 @@ private:
     static constexpr uint32_t none_var = std::numeric_limits<uint32_t>::max();
     uint32_t var = none_var;
     bool neg = false;
-    mutable bool mark = false; // For traversals
     aig_ptr l = nullptr;
     aig_ptr r = nullptr;
 };
@@ -958,7 +941,7 @@ public:
     bool defs_invariant() const;
 
     // Get the orig vars this AIG depends on, recursively expanding defined vars
-    std::set<uint32_t> get_dependent_vars_recursive(const uint32_t orig_v) const;
+    std::set<uint32_t> get_dependent_vars_recursive(const uint32_t orig_v, std::map<uint32_t, std::set<uint32_t>>& cache) const;
 
     bool check_aig_cycles() const;
     void check_self_dependency() const;
@@ -1156,7 +1139,7 @@ public:
             const std::vector<uint32_t> new_sampl_vars,
             const std::vector<uint32_t>& empty_sampling_vars);
 
-    CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var) const;
+    CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var, std::map<aig_ptr, CMSat::lbool>& cache ) const;
 
     // returns in CNF (new vars) the dependencies of each variable
     // every LHS element in the map is a backward_defined variable

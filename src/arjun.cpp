@@ -377,11 +377,13 @@ DLL_PUBLIC void SimplifiedCNF::get_fixed_values(
 DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const std::map<uint32_t, aig_ptr>& aigs_orig, const uint32_t max_num_vars) {
     const auto new_to_orig_var = get_new_to_orig_var();
     auto aigs = AIG::deep_clone_map(aigs_orig);
+    std::set<aig_ptr> visited;
     std::function<void(const aig_ptr&)> remap_aig = [&](const aig_ptr& aig) {
         if (aig == nullptr) return;
-        if (aig->marked()) return;
+        if (visited.count(aig)) return;
+
         assert(aig->invariants());
-        aig->set_mark();
+        visited.insert(aig);
 
         if (aig->type == AIGT::t_lit) {
             uint32_t v = aig->var;
@@ -400,7 +402,6 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const std::map<uint32_t, aig_ptr
         exit(EXIT_FAILURE);
     };
 
-    for(auto& [v, aig]: aigs) AIG::unmark_all(aig);
     for(auto& [v, aig]: aigs) remap_aig(aig);
     for(auto& [v, aig]: aigs) {
         auto l = new_to_orig_var.at(v);
@@ -451,11 +452,12 @@ DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
         for(const auto& l: orig_sampl_vars) orig_vals[l] = model[l];
         auto vals = orig_vals;
 
+        map<aig_ptr, CMSat::lbool> cache;
         for(uint32_t v = 0; v < defs.size(); ++v) {
             if (orig_sampl_vars.count(v)) continue;
             if (defs[v] == nullptr) continue;
 
-            lbool eval_aig = evaluate(orig_vals, v);
+            lbool eval_aig = evaluate(orig_vals, v, cache);
             if (eval_aig == l_Undef) continue;
             /* cout << "[synth-debug] var: " << v+1 << " eval_aig: " << eval_aig << endl; */
             vals[v] = eval_aig;
@@ -471,6 +473,7 @@ DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
         }
         auto ret2 = s.solve(&assumptions);
         release_assert(ret2 == l_True);
+        cout << "c o [synth-debug] check " << check+1 << "/" << num_checks << " successful" << endl;
     }
     cout << "c o [check_synth_funs_randomly] filled defs total: " << filled_defs << " undefs: " << undefs << " checks: " << num_checks << endl;
 }
@@ -764,7 +767,6 @@ DLL_PUBLIC void SimplifiedCNF::read_aig_defs(std::ifstream& in) {
     get_var_types(1);
 }
 
-
 // Serialize SimplifiedCNF to binary file
 DLL_PUBLIC void SimplifiedCNF::write_aig_defs(std::ofstream& out) const {
     // Write simple fields
@@ -891,7 +893,6 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_defs(std::ofstream& out) const {
     get_var_types(1);
 }
 
-
 // Write AIG defs to file (opens file for you)
 DLL_PUBLIC void SimplifiedCNF::write_aig_defs_to_file(const std::string& fname) const {
     std::ofstream out(fname, std::ios::binary);
@@ -930,9 +931,10 @@ DLL_PUBLIC std::vector<CMSat::lbool> SimplifiedCNF::extend_sample(const std::vec
     }
 
     auto vals(sample);
+    map<aig_ptr, CMSat::lbool> cache;
     for(uint32_t v = 0; v < defs.size(); v++) {
         if (defs[v] == nullptr) continue;
-        auto val = AIG::evaluate(sample, defs[v], defs);
+        auto val = AIG::evaluate(sample, defs[v], defs, cache);
         vals[v] = val;
     }
     return vals;
@@ -963,10 +965,11 @@ DLL_PUBLIC void SimplifiedCNF::replace_clauses_with(std::vector<int>& ret, uint3
 DLL_PUBLIC std::map<uint32_t, std::set<uint32_t>> SimplifiedCNF::compute_backw_dependencies() {
     auto [input, to_define, backward_defined] = get_var_types(0);
     auto new_to_orig_var = get_new_to_orig_var();
+    std::map<uint32_t, set<uint32_t>> cache;
     std::map<uint32_t, std::set<uint32_t>> ret;
     for(auto& n: backward_defined) {
         const auto orig_v = new_to_orig_var.at(n).var();
-        const auto ret_orig = get_dependent_vars_recursive(orig_v);
+        const auto ret_orig = get_dependent_vars_recursive(orig_v, cache);
         std::set<uint32_t> ret_new;
         for(const auto& ov: ret_orig) {
             if(!orig_to_new_var.count(ov)) continue;
@@ -1235,18 +1238,19 @@ DLL_PUBLIC std::tuple<std::set<uint32_t>, std::set<uint32_t>, std::set<uint32_t>
     std::set<uint32_t> backw_synth_defined_vars;
     std::set<uint32_t> backw_synth_defined_vars_orig;
     std::set<uint32_t> bve_defined_vars_orig;
+    std::map<uint32_t, set<uint32_t>> cache;
     for (uint32_t v = 0; v < num_defs(); v++) {
         if (get_orig_sampl_vars().count(v)) continue;
         if (!orig_to_new_var.count(v)) {
             assert(defs[v] != nullptr && "if it is not in the CNF, it must be defined");
-            auto s = get_dependent_vars_recursive(v);
+            auto s = get_dependent_vars_recursive(v, cache);
             bve_defined_vars_orig.insert(v);
             continue;
         }
 
         // This var is NOT input and IS in the CNF
         if (!defined(v)) continue;
-        auto s = get_dependent_vars_recursive(v);
+        auto s = get_dependent_vars_recursive(v, cache);
         bool only_input_deps = true;
         for(const auto& d: s) {
             if (!get_orig_sampl_vars().count(d)) {
@@ -1334,7 +1338,7 @@ DLL_PUBLIC std::tuple<std::set<uint32_t>, std::set<uint32_t>, std::set<uint32_t>
     return std::make_tuple(input, to_define, backw_synth_defined_vars);
 }
 
-DLL_PUBLIC CMSat::lbool SimplifiedCNF::evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var) const {
+DLL_PUBLIC CMSat::lbool SimplifiedCNF::evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var, std::map<aig_ptr, CMSat::lbool>& cache) const {
     assert(var < defs.size());
     assert(vals.size() == defs.size());
     for(uint32_t i = 0; i < vals.size(); i++) {
@@ -1349,7 +1353,7 @@ DLL_PUBLIC CMSat::lbool SimplifiedCNF::evaluate(const std::vector<CMSat::lbool>&
         assert(defs[var] != nullptr && "Must be defined");
         exit(EXIT_FAILURE);
     }
-    return AIG::evaluate(vals, defs[var], defs);
+    return AIG::evaluate(vals, defs[var], defs, cache);
 }
 
 DLL_PUBLIC bool SimplifiedCNF::check_orig_sampl_vars_undefined() const {
@@ -1391,41 +1395,25 @@ DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
 }
 
 // Get the orig vars this AIG depends on, recursively expanding defined vars
-DLL_PUBLIC std::set<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const uint32_t orig_v) const {
+DLL_PUBLIC std::set<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const uint32_t orig_v, std::map<uint32_t, set<uint32_t>>& cache) const {
     assert(need_aig);
     assert(defined(orig_v));
 
-    std::set<uint32_t> dep;
-    std::set<uint32_t> visited;
-    dep.insert(orig_v);
-    bool changed = true;
-    while(changed) {
-        changed = false;
-        std::set<uint32_t> new_dep;
-        for(const auto& v: dep) {
-            if (!defined(v)) new_dep.insert(v);
-            else {
-                if (!visited.count(v)) {
-                    std::set<uint32_t> sub_dep;
-                    AIG::get_dependent_vars(defs[v], sub_dep, v);
-                    assert(!sub_dep.count(v) && "Variable cannot depend on itself");
-                    assert(!sub_dep.count(orig_v) && "Variable cannot depend on itself");
-                    new_dep.insert(sub_dep.begin(), sub_dep.end());
-                    visited.insert(v);
-                }
-            }
+    std::function<std::set<uint32_t>(uint32_t)> visit = [&](uint32_t v) -> std::set<uint32_t> {
+        if (!defined(v)) return {v};
+        if (cache.count(v)) return cache.at(v);
+
+        std::set<uint32_t> dep;
+        AIG::get_dependent_vars(defs[v], dep, v);
+        std::set<uint32_t> final_dep;
+        for (const auto& d : dep) {
+            auto sub_dep = visit(d);
+            final_dep.insert(sub_dep.begin(), sub_dep.end());
         }
-        if (new_dep != dep) changed = true;
-        dep = new_dep;
-    }
-    if (dep.count(orig_v)) {
-        cout << "ERROR: Orig variable " << orig_v+1 << " depends on itself!" << std::endl;
-        if (orig_to_new_var.count(orig_v)) {
-            cout << "ERROR: In CNF as variable " << orig_to_new_var.at(orig_v).var()+1 << std::endl;
-        }
-        assert(false);
-    }
-    return dep;
+        cache[v] = final_dep;
+        return final_dep;
+    };
+    return visit(orig_v);
 }
 
 DLL_PUBLIC bool SimplifiedCNF::check_aig_cycles() const {
@@ -1495,6 +1483,7 @@ DLL_PUBLIC bool SimplifiedCNF::check_aig_cycles() const {
 
 DLL_PUBLIC void SimplifiedCNF::check_self_dependency() const {
     if (!need_aig) return;
+    std::map<uint32_t, set<uint32_t>> cache;
     for(uint32_t orig_v = 0; orig_v < defs.size(); orig_v ++) {
         if (orig_sampl_vars.count(orig_v)) {
             if (!defined(orig_v)) continue;
@@ -1512,7 +1501,7 @@ DLL_PUBLIC void SimplifiedCNF::check_self_dependency() const {
         if (!defined(orig_v)) continue;
 
         // This checks for self-dependency
-        get_dependent_vars_recursive(orig_v);
+        get_dependent_vars_recursive(orig_v, cache);
     }
 }
 
@@ -1581,6 +1570,7 @@ DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_samp
     const auto new_to_orig_vars = get_new_to_orig_var_list();
 
     // Check each sampling variable
+    std::map<uint32_t, set<uint32_t>> cache;
     for(const auto& new_v : opt_sampl_vars) {
         release_assert(new_v < nvars);
 
@@ -1605,7 +1595,7 @@ DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_samp
             // If it's defined, it must only depend on orig_sampl_vars
             release_assert(defined(orig_v) && "Non-orig-sampl var mapping to sampling var must be defined");
             /* if (defined(orig_v)) { */
-            const auto deps = get_dependent_vars_recursive(orig_v);
+            const auto deps = get_dependent_vars_recursive(orig_v, cache);
             bool only_orig_sampl = true;
             for(const auto& dep_v : deps) {
                 if (!orig_sampl_vars.count(dep_v)) {
@@ -1632,12 +1622,13 @@ DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_samp
 // this checks that NO unsat-define has been made yet
 DLL_PUBLIC void SimplifiedCNF::check_pre_post_backward_round_synth() const {
     if (!need_aig) return;
+    std::map<uint32_t, set<uint32_t>> cache;
     std::map<uint32_t, std::set<uint32_t>> dependencies;
     for(const auto& [o, n] : orig_to_new_var) {
         release_assert(o < defs.size());
         release_assert(n != CMSat::lit_Undef && n.var() < nvars);
         if (defined(o)) {
-            auto s = get_dependent_vars_recursive(o);
+            auto s = get_dependent_vars_recursive(o, cache);
             dependencies[o] = s;
             bool only_orig_sampl = true;
             for(const auto& v: s) {
@@ -1819,20 +1810,20 @@ DLL_PUBLIC void SimplifiedCNF::clear_orig_sampl_defs() {
 }
 
 DLL_PUBLIC void SimplifiedCNF::simplify_aigs() {
+    set<aig_ptr> visited;
     for(auto& aig: defs) {
-        AIG::unmark_all(aig);
-        aig = AIG::simplify(aig);
+        aig = AIG::simplify(aig, visited);
     }
 }
 
-DLL_PUBLIC  aig_ptr AIG::simplify(aig_ptr aig) {
+DLL_PUBLIC  aig_ptr AIG::simplify(aig_ptr aig, set<aig_ptr>& visited) {
     if (!aig) return nullptr;
-    if (aig->marked()) return aig;
+    if (visited.count(aig)) return aig;
+    visited.insert(aig);
 
-    aig->set_mark();
     if (aig->type == AIGT::t_and) {
-        auto l_simp = simplify(aig->l);
-        auto r_simp = simplify(aig->r);
+        auto l_simp = simplify(aig->l, visited);
+        auto r_simp = simplify(aig->r, visited);
         // AND simplifications
         if (aig->neg) {
             if (l_simp->type == AIGT::t_const && r_simp->type == AIGT::t_const) {
