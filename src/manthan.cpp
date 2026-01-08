@@ -824,9 +824,9 @@ double Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
     /* DecisionTree<> r(dataset, labels, 2); */
     // More conservative (less overfitting)
     DecisionTree<> r(dataset, labels, 2,
-                   20,      // minimumLeafSize: require 20+ samples per leaf
+                   100,      // minimumLeafSize: require 20+ samples per leaf
                    0.001,   // minimumGainSplit: require 0.1% gain to split
-                   10);     // maximumDepth: max 10 levels deep
+                   8);     // maximumDepth: max 10 levels deep
 
     // Compute and print the training error.
     Row<size_t> predictions;
