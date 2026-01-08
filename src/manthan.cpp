@@ -503,7 +503,7 @@ void Manthan::fix_order() {
     verb_print(1, "[manthan] Fixing order...");
     vector<uint32_t> sorted(to_define_full.begin(), to_define_full.end());
     sort_unknown(sorted, incidence);
-    /* std::reverse(sorted.begin(), sorted.end()); */
+    std::reverse(sorted.begin(), sorted.end());
 
     set<uint32_t> already_fixed;
     while(already_fixed.size() != to_define_full.size()) {
@@ -805,7 +805,28 @@ double Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
     for(uint32_t i = 0; i < samples.size(); i++) labels[i] = lbool_to_bool(samples[i][v]);
 
     // Create the RandomForest object and train it on the training data.
-    DecisionTree<> r(dataset, labels, 2);
+    //
+    //  All Available Parameters to Reduce Overfitting:
+      /* 1. minimumLeafSize (default: 10) */
+      /*   - Minimum number of points in each leaf node */
+      /*   - Increase to reduce overfitting (e.g., 20, 50, 100) */
+      /* 2. minimumGainSplit (default: 1e-7) */
+      /*   - Minimum gain required for a node to split */
+      /*   - Increase to reduce overfitting (e.g., 0.001, 0.01, 0.05) */
+      /*   - Must be in range (0, 1) */
+      /* 3. maximumDepth (default: 0 = unlimited) */
+      /*   - Maximum depth of the tree */
+      /*   - Set a limit to reduce overfitting (e.g., 5, 10, 15) */
+      /* 4. dimensionSelector (optional) */
+      /*   - Advanced: Controls which features to consider for splitting */
+      /*   - Can use custom strategies (usually leave as default) */
+
+    /* DecisionTree<> r(dataset, labels, 2); */
+    // More conservative (less overfitting)
+    DecisionTree<> r(dataset, labels, 2,
+                   20,      // minimumLeafSize: require 20+ samples per leaf
+                   0.001,   // minimumGainSplit: require 0.1% gain to split
+                   10);     // maximumDepth: max 10 levels deep
 
     // Compute and print the training error.
     Row<size_t> predictions;
