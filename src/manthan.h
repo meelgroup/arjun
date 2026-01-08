@@ -55,7 +55,9 @@ using namespace ArjunNS;
 class Manthan {
     public:
         Manthan(const Config& _conf, const std::unique_ptr<FieldGen>& _fg):
-            cnf(_fg->dup()), conf(_conf), fg(_fg->dup())  {}
+            cnf(_fg->dup()), conf(_conf), fg(_fg->dup())  {
+                mtrand.seed(42);
+            }
         SimplifiedCNF do_manthan(const SimplifiedCNF& cnf);
         SimplifiedCNF cnf;
 
@@ -124,5 +126,5 @@ class Manthan {
         bool check_train_correctness() const;
         bool check_aig_dependency_cycles() const;
         bool check_transitive_closure_correctness() const;
-
+        std::mt19937 mtrand;
 };

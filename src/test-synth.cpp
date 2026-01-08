@@ -354,7 +354,7 @@ void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
     for(uint32_t v = 0; v < orig_cnf.nVars(); v++) {
         if (cnf.get_def(v) != nullptr) aig_vs.insert(v);
     }
-    cout << "aig_defined_vars size: " << aig_vs.size() << endl;
+    verb_print(2,"aig_defined_vars size: " << aig_vs.size());
 
     release_assert(aig_vs.size() == orig_cnf.nVars() - orig_cnf.get_sampl_vars().size());
     release_assert(cnf.get_orig_sampl_vars().size() == orig_cnf.get_sampl_vars().size());
@@ -437,6 +437,7 @@ void randomized_sample_verify(ArjunNS::SimplifiedCNF& orig_cnf,
         const auto extended_sample = cnf.extend_sample(restricted_sample, true);
         assert_sample_satisfying(extended_sample, solver);
     }
+    verb_print(1, "[test-synth] Randomized success: all " << num_samples << " samples verified.");
 }
 
 void check_aig_contains_no_self_refs(const SimplifiedCNF& cnf) {

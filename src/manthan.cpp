@@ -423,6 +423,7 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     verb_print(3, "setting the to-be-repaired " << repairing << " to wrong.");
     verb_print(5, "solving with assumps: " << assumps);
     auto ret = repair_solver.solve(&assumps);
+    assert(ret != l_Undef);
     if (ret == l_True) {
         cout << "Repair cost is 0???????" << endl;
         /* if (conf.verb >= 3) { */
@@ -443,7 +444,30 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
         verb_print(1, "repairing " << y_rep+1 << " is not possible");
         return false;
     }
-
+    uint32_t removed = 0;
+    if (conflict.size() > 1) {
+        bool removed_any = true;
+        while(removed_any) {
+            std::shuffle(conflict.begin(), conflict.end(), mtrand);
+            removed_any = false;
+            for(const auto& l: conflict) {
+                verb_print(3, "Trying to remove conflict literal: " << l << " val in ctx: " << pr(ctx[l.var()]));
+                vector<Lit> assumps2;
+                for(const auto& l2: conflict) {
+                    if (l2 == l) continue;
+                    assumps2.push_back(~l2);
+                }
+                release_assert(assumps2.size() == conflict.size()-1);
+                auto ret2 = repair_solver.solve(&assumps2);
+                if (ret2 == l_True) continue;
+                conflict = repair_solver.get_conflict();
+                removed_any = true;
+                removed++;
+                break;
+            }
+        }
+    }
+    verb_print(1, "[manthan-repair] minim. Removed: " << removed << " from conflict, now size: " << conflict.size());
     perform_repair(y_rep, ctx, conflict);
     return true;
 }

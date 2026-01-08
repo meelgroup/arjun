@@ -472,7 +472,7 @@ DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
         auto ret2 = s.solve(&assumptions);
         release_assert(ret2 == l_True);
     }
-    cout << "[CHECK] filled defs total: " << filled_defs << " undefs: " << undefs << " checks: " << num_checks << endl;
+    cout << "c o [check_synth_funs_randomly] filled defs total: " << filled_defs << " undefs: " << undefs << " checks: " << num_checks << endl;
 }
 
 DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
