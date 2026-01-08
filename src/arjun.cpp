@@ -1396,7 +1396,7 @@ DLL_PUBLIC std::set<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const 
     assert(defined(orig_v));
 
     std::set<uint32_t> dep;
-    std::map<uint32_t, std::set<uint32_t>> cache;
+    std::set<uint32_t> visited;
     dep.insert(orig_v);
     bool changed = true;
     while(changed) {
@@ -1405,15 +1405,14 @@ DLL_PUBLIC std::set<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const 
         for(const auto& v: dep) {
             if (!defined(v)) new_dep.insert(v);
             else {
-                std::set<uint32_t> sub_dep;
-                if (cache.count(v)) sub_dep = cache.at(v);
-                else {
+                if (!visited.count(v)) {
+                    std::set<uint32_t> sub_dep;
                     AIG::get_dependent_vars(defs[v], sub_dep, v);
-                    cache[v] = sub_dep;
+                    assert(!sub_dep.count(v) && "Variable cannot depend on itself");
+                    assert(!sub_dep.count(orig_v) && "Variable cannot depend on itself");
+                    new_dep.insert(sub_dep.begin(), sub_dep.end());
+                    visited.insert(v);
                 }
-                assert(!sub_dep.count(v) && "Variable cannot depend on itself");
-                assert(!sub_dep.count(orig_v) && "Variable cannot depend on itself");
-                new_dep.insert(sub_dep.begin(), sub_dep.end());
             }
         }
         if (new_dep != dep) changed = true;

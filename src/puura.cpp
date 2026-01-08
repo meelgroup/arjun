@@ -197,7 +197,10 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
                         << " T: " << (cpuTime() - my_time));
 
                     cl = {Lit(test, false ^ flip)};
+                    assert(false && "here comes the AIG and updating CNF");
                     cnf.add_clause(cl);
+                    // AIG UPDATE HERE!!
+
                     s->add_clause(cl);
 
                     cl = {Lit(test+orig_num_vars, false ^ flip)};
