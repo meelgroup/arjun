@@ -182,6 +182,72 @@ public:
         return ret;
     }
 
+    static aig_ptr simplify(aig_ptr aig) {
+        if (!aig) return nullptr;
+        if (aig->type == AIGT::t_and) {
+            auto l_simp = simplify(aig->l);
+            auto r_simp = simplify(aig->r);
+            // AND simplifications
+            if (aig->neg) {
+                if (l_simp->type == AIGT::t_const && r_simp->type == AIGT::t_const) {
+                    if (l_simp->neg || r_simp->neg) {
+                        // !(FALSE & X) = TRUE
+                        // !(X & FALSE) = TRUE
+                        auto c_t = std::make_shared<AIG>();
+                        c_t->type = AIGT::t_const;
+                        c_t->neg = false;
+                        return c_t;
+                    } else {
+                        // !(TRUE & TRUE) = FALSE
+                        auto c_f = std::make_shared<AIG>();
+                        c_f->type = AIGT::t_const;
+                        c_f->neg = true;
+                        return c_f;
+                    }
+                } else if (l_simp->type == AIGT::t_const && l_simp->neg == false) { // ~(TRUE & X) = !X
+                    auto c_f = std::make_shared<AIG>();
+                    c_f->type = r_simp->type;
+                    c_f->neg = !r_simp->neg;
+                    c_f->var = r_simp->var;
+                    c_f->l = r_simp->l;
+                    c_f->r = r_simp->r;
+                    return c_f;
+                } else if (r_simp->type == AIGT::t_const && r_simp->neg == false) { // ~(X & TRUE) = !X
+                    auto c_f = std::make_shared<AIG>();
+                    c_f->type = l_simp->type;
+                    c_f->neg = !l_simp->neg;
+                    c_f->var = l_simp->var;
+                    c_f->l = l_simp->l;
+                    c_f->r = l_simp->r;
+                    return c_f;
+                } else {
+                    aig->l = l_simp;
+                    aig->r = r_simp;
+                    return aig;
+                }
+            } else {
+                if (l_simp->type == AIGT::t_const) {
+                    if (!l_simp->neg) return r_simp; // TRUE & X = X
+                    else return l_simp;              // FALSE & X = FALSE
+                } else if (r_simp->type == AIGT::t_const) {
+                    if (!r_simp->neg) return l_simp; // X & TRUE = X
+                    else return r_simp;              // X & FALSE = FALSE
+                } else if (l_simp == r_simp) {
+                    return l_simp;                   // X & X = X
+                } else if (l_simp->type == AIGT::t_lit && r_simp->type == AIGT::t_lit &&
+                           l_simp->var == r_simp->var &&
+                           l_simp->neg == r_simp->neg) {
+                    return l_simp;
+                } else {
+                    aig->l = l_simp;
+                    aig->r = r_simp;
+                    return aig;
+                }
+            }
+        }
+        return aig;
+    }
+
     static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, const aig_ptr& b) {
         assert(l != nullptr);
         assert(r != nullptr);
@@ -362,7 +428,6 @@ inline std::ostream& operator<<(std::ostream& out, const aig_ptr& aig) {
     assert(aig->type == AIGT::t_and);
     out << (aig->neg ? "~" : "") << "AND(";
     out << (aig->l) << ", " << (aig->r) << ")";
-    out << ")";
     return out;
 }
 
@@ -1227,6 +1292,7 @@ public:
         return defs[v];
     }
     void clear_orig_sampl_defs();
+    void simplify_aigs();
 
 private:
     bool after_backward_round_synth = false;

@@ -1818,6 +1818,10 @@ DLL_PUBLIC void SimplifiedCNF::clear_orig_sampl_defs() {
     for(const auto& v: orig_sampl_vars) defs[v] = nullptr;
 }
 
+DLL_PUBLIC void SimplifiedCNF::simplify_aigs() {
+    for(auto& aig: defs) aig = AIG::simplify(aig);
+}
+
 
 set_get_macro(bool, distill)
 set_get_macro(bool, intree)
