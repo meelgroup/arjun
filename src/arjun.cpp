@@ -1238,13 +1238,18 @@ DLL_PUBLIC std::tuple<std::set<uint32_t>, std::set<uint32_t>, std::set<uint32_t>
     std::set<uint32_t> backw_synth_defined_vars;
     std::set<uint32_t> backw_synth_defined_vars_orig;
     std::set<uint32_t> bve_defined_vars_orig;
+    std::set<uint32_t> forced_vars_orig;
+    std::set<uint32_t> scc_vars_orig;
     std::map<uint32_t, set<uint32_t>> cache;
     for (uint32_t v = 0; v < num_defs(); v++) {
         if (get_orig_sampl_vars().count(v)) continue;
         if (!orig_to_new_var.count(v)) {
+            // Eliminated already from the CNF: either BVE, SCC, or forced
             assert(defs[v] != nullptr && "if it is not in the CNF, it must be defined");
-            auto s = get_dependent_vars_recursive(v, cache);
-            bve_defined_vars_orig.insert(v);
+            const auto s = get_dependent_vars_recursive(v, cache);
+            if (s.empty()) forced_vars_orig.insert(v);
+            else if (s.size() == 1) scc_vars_orig.insert(v);
+            else bve_defined_vars_orig.insert(v);
             continue;
         }
 
@@ -1326,6 +1331,18 @@ DLL_PUBLIC std::tuple<std::set<uint32_t>, std::set<uint32_t>, std::set<uint32_t>
             << bve_defined_vars_orig.size() << std::endl;
         std::cout << "c o [get-var-types]   bve-defined vars (orig): ";
         for(const auto& v: bve_defined_vars_orig) std::cout << v+1 << " ";
+        std::cout << std::endl;
+
+        std::cout << "c o [get-var-types] Num forved vars:      "
+            << forced_vars_orig.size() << std::endl;
+        std::cout << "c o [get-var-types]   forced vars (orig):      ";
+        for(const auto& v: forced_vars_orig) std::cout << v+1 << " ";
+        std::cout << std::endl;
+
+        std::cout << "c o [get-var-types] Num SCC vars:         "
+            << scc_vars_orig.size() << std::endl;
+        std::cout << "c o [get-var-types]   SCC vars (orig):         ";
+        for(const auto& v: scc_vars_orig) std::cout << v+1 << " ";
         std::cout << std::endl;
 
         std::cout << "c o [get-var-types] Total vars in ORIG CNF: " << defs.size() << std::endl;
