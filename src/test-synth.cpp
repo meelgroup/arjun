@@ -241,7 +241,8 @@ bool verify_aigs_correct(SATSolver& solver,
 
     // Inject formulas into solver (make sure it's all x & y_hat, no y!)
     for(auto& [var, form]: var_to_formula) {
-        cout << "adding var formula: " << var+1 << " var_to_formula[var]:" << var_to_formula.at(var).aig << endl;
+        cout << "adding var formula: " << var+1 << endl;
+        /* cout << " var_to_formula[var]:" << var_to_formula.at(var).aig << endl; */
         for(auto& cl: form.clauses) {
             vector<Lit> cl2;
             for(const auto& l: cl) {
