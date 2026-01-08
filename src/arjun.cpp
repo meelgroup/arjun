@@ -1333,7 +1333,7 @@ DLL_PUBLIC std::tuple<std::set<uint32_t>, std::set<uint32_t>, std::set<uint32_t>
         for(const auto& v: bve_defined_vars_orig) std::cout << v+1 << " ";
         std::cout << std::endl;
 
-        std::cout << "c o [get-var-types] Num forved vars:      "
+        std::cout << "c o [get-var-types] Num forced vars:      "
             << forced_vars_orig.size() << std::endl;
         std::cout << "c o [get-var-types]   forced vars (orig):      ";
         for(const auto& v: forced_vars_orig) std::cout << v+1 << " ";

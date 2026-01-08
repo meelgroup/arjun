@@ -359,28 +359,23 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 
     auto new_sampl_vars = cnf.get_sampl_vars();
     vector<uint32_t> new_empty_sampl_vars;
-    if (!cnf.get_need_aig()) {
-      solver->clean_sampl_get_empties(new_sampl_vars, new_empty_sampl_vars);
-      if (!cnf.get_weighted()) {
-          dont_elim.clear();
-          for(uint32_t v: new_sampl_vars) dont_elim.push_back(Lit(v, false));
-      } else {
-          // don't eliminate anything but the empties from opt_sampl_vars
-          set<Lit> tmp(dont_elim.begin(), dont_elim.end());
-          for(uint32_t v: new_empty_sampl_vars) {
-              tmp.erase(Lit(v, false));
-              tmp.erase(Lit(v, true));
-          }
-          dont_elim.clear();
-          for(const auto& l: tmp) dont_elim.push_back(l);
-      }
-      str = "occ-bve-empty, must-renumber";
-      solver->simplify(&dont_elim, &str);
+    solver->clean_sampl_get_empties(new_sampl_vars, new_empty_sampl_vars);
+    if (!cnf.get_weighted()) {
+      dont_elim.clear();
+      for(uint32_t v: new_sampl_vars) dont_elim.push_back(Lit(v, false));
     } else {
-      // TODO: do the empty things for AIG case too, needs new_empty_sampl_vars handling
-      str = "must-renumber";
-      solver->simplify(&dont_elim, &str);
+      // don't eliminate anything but the empties from opt_sampl_vars
+      set<Lit> tmp(dont_elim.begin(), dont_elim.end());
+      for(uint32_t v: new_empty_sampl_vars) {
+          tmp.erase(Lit(v, false));
+          tmp.erase(Lit(v, true));
+      }
+      dont_elim.clear();
+      for(const auto& l: tmp) dont_elim.push_back(l);
     }
+    str = "occ-bve-empty, must-renumber";
+    solver->simplify(&dont_elim, &str);
+    verb_print(1, "[puura] new_empty_sampl_vars size: " << new_empty_sampl_vars.size());
 
     // Return final one
     auto ret_cnf = cnf.get_cnf(solver, new_sampl_vars, new_empty_sampl_vars, conf.verb);
