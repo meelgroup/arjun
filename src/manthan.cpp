@@ -479,9 +479,10 @@ void Manthan::perform_repair(const uint32_t y_rep, const vector<lbool>& ctx, con
     f.out = fresh_l;
 
     // AIG part
-    auto b1 = aig_mng.new_const(true);
-    for(const auto& l: conflict) {
-        auto lit_aig = AIG::new_lit(Lit(l.var(), !l.sign()));
+    assert(!conflict.empty());
+    auto b1 = AIG::new_lit(~conflict[0]);
+    for(size_t i = 1; i < conflict.size(); i++) {
+        auto lit_aig = AIG::new_lit(~conflict[i]);
         b1 = AIG::new_and(b1, lit_aig);
     }
     f.aig = b1;
