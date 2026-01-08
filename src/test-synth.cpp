@@ -512,9 +512,8 @@ int main(int argc, char** argv) {
         return EXIT_SUCCESS;
     }
 
-    if (!unsat_verif) {
-        randomized_sample_verify(orig_cnf, cnf);
-    } else {
+    randomized_sample_verify(orig_cnf, cnf);
+    if (unsat_verif) {
         unsat_verify(orig_cnf, cnf);
     }
     cout << "c [test-synth] OK, all samples satisfied the original CNF!" << endl;
