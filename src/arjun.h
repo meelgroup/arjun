@@ -1029,7 +1029,7 @@ public:
     void check_cnf_vars() const;
 
     // all vars are either: in orig_sampl_vars, defined, or in the cnf
-    void all_vars_accounted_for() const;
+    void check_all_vars_accounted_for() const;
 
     // this checks that NO unsat-define has been made yet
     void check_pre_post_backward_round_synth() const;
@@ -1330,7 +1330,7 @@ private:
     std::vector<aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space. Size is the
                                //original number of variables.
 
-    void random_check_synth_funs() const;
+    void check_synth_funs_randomly() const;
     bool orig_sampl_vars_set = false;
     std::set<uint32_t> orig_sampl_vars;
     // debug

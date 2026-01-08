@@ -55,6 +55,30 @@
         .default_value(var) \
         .help(hhelp)
 
+#if defined(_MSC_VER)
+#include "cms_windows_includes.h"
+#define release_assert(a) \
+    do { \
+    __pragma(warning(push)) \
+    __pragma(warning(disable:4127)) \
+        if (!(a)) {\
+    __pragma(warning(pop)) \
+            fprintf(stderr, "*** ASSERTION FAILURE in %s() [%s:%d]: %s\n", \
+            __FUNCTION__, __FILE__, __LINE__, #a); \
+            abort(); \
+        } \
+    } while (0)
+#else
+#define release_assert(a) \
+    do { \
+        if (!(a)) {\
+            fprintf(stderr, "*** ASSERTION FAILURE in %s() [%s:%d]: %s\n", \
+            __FUNCTION__, __FILE__, __LINE__, #a); \
+            abort(); \
+        } \
+    } while (0)
+#endif
+
 using std::cout;
 using std::endl;
 using std::string;
@@ -100,7 +124,7 @@ vector<lbool> get_random_sol(SATSolver& rnd_solver) {
 }
 
 void assert_sample_satisfying(const vector<lbool>& sample, SATSolver& solver) {
-    assert(sample.size() == solver.nVars());
+    release_assert(sample.size() == solver.nVars());
     vector<Lit> assumps;
     assumps.reserve(sample.size());
     for (uint32_t v = 0; v < sample.size(); v++) {
@@ -181,7 +205,7 @@ void fill_var_to_formula(SATSolver& solver, FHolder& fh,
     for(const auto& v_def: aig_vars) {
         FHolder::Formula f;
         const auto& aig = cnf.get_def(v_def);
-        assert(aig != nullptr);
+        release_assert(aig != nullptr);
 
         // Create a lambda to transform AIG to CNF using the transform function
         std::function<Lit(AIGT, uint32_t, bool, const Lit*, const Lit*)> aig_to_cnf_visitor =
@@ -198,7 +222,7 @@ void fill_var_to_formula(SATSolver& solver, FHolder& fh,
                 if (sampling_vars.count(lit.var())) {
                     result_lit = lit;
                 } else {
-                    assert(aig_vars.count(lit.var()));
+                    release_assert(aig_vars.count(lit.var()));
                     const uint32_t y_hat = y_to_y_hat.at(lit.var());
                     result_lit = Lit(y_hat, neg);
                 }
@@ -222,7 +246,7 @@ void fill_var_to_formula(SATSolver& solver, FHolder& fh,
                 // Apply negation if needed
                 return neg ? ~and_out : and_out;
             }
-            assert(false && "Unhandled AIG type in visitor");
+            release_assert(false && "Unhandled AIG type in visitor");
             exit(EXIT_FAILURE);
         };
 
@@ -231,7 +255,7 @@ void fill_var_to_formula(SATSolver& solver, FHolder& fh,
         const Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
         f.out = out_lit;
         f.aig = aig;
-        assert(var_to_formula.count(v_def) == 0);
+        release_assert(var_to_formula.count(v_def) == 0);
         var_to_formula[v_def] = f;
 
         if (verb >= 5) cout << "c [test-synth]   Created formula for var " << v_def+1 << " with "
@@ -254,7 +278,7 @@ bool verify_aigs_correct(SATSolver& solver,
         for(auto& cl: form.clauses) {
             vector<Lit> cl2;
             for(const auto& l: cl) {
-                assert(!aig_vs.count(l.var()) && "we replaced all aig vars with y_hat already!");
+                release_assert(!aig_vs.count(l.var()) && "we replaced all aig vars with y_hat already!");
                 cl2.push_back(l);
             }
             solver.add_clause(cl2);
@@ -269,7 +293,7 @@ bool verify_aigs_correct(SATSolver& solver,
         solver.new_var();
         const uint32_t ind = solver.nVars()-1;
 
-        assert(var_to_formula.count(y));
+        release_assert(var_to_formula.count(y));
         const auto& form_out = var_to_formula.at(y).out;
         const auto& y_hat = y_to_y_hat.at(y);
 
@@ -310,13 +334,13 @@ bool verify_aigs_correct(SATSolver& solver,
         verb_print(2, "indic force: " << tmp);
     }
     auto ret = solver.solve();
-    assert(ret != l_Undef);
+    release_assert(ret != l_Undef);
 
     if (ret == l_True) {
         if (verb) cout << "c [test-synth] RESULT: SAT - AIGs are INCORRECT (counterexample found)" << endl;
         return false;
     } else {
-        assert(ret == l_False);
+        release_assert(ret == l_False);
         if (verb) cout << "c [test-synth] RESULT: UNSAT - AIGs are CORRECT!" << endl;
         return true;
     }
@@ -332,8 +356,8 @@ void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
     }
     cout << "aig_defined_vars size: " << aig_vs.size() << endl;
 
-    assert(aig_vs.size() == orig_cnf.nVars() - orig_cnf.get_sampl_vars().size());
-    assert(cnf.get_orig_sampl_vars().size() == orig_cnf.get_sampl_vars().size());
+    release_assert(aig_vs.size() == orig_cnf.nVars() - orig_cnf.get_sampl_vars().size());
+    release_assert(cnf.get_orig_sampl_vars().size() == orig_cnf.get_sampl_vars().size());
 
     if (aig_vs.empty()) {
         cout << "c [test-synth] WARNING: No AIG-defined variables found!" << endl;
@@ -391,7 +415,7 @@ bool check_cnf_unsat(ArjunNS::SimplifiedCNF& orig_cnf) {
     SATSolver solver;
     fill_solver_from_cnf(orig_cnf, solver);
     auto sat = solver.solve();
-    assert(sat != CMSat::l_Undef && "Solver returned undef on a CNF without assumptions");
+    release_assert(sat != CMSat::l_Undef && "Solver returned undef on a CNF without assumptions");
     return sat == CMSat::l_False;
 }
 
@@ -405,7 +429,7 @@ void randomized_sample_verify(ArjunNS::SimplifiedCNF& orig_cnf,
     rnd_solver.set_up_for_sample_counter(100);
     for(int i = 0; i < num_samples; i++) {
         auto sample = get_random_sol(rnd_solver);
-        assert(sample.size() == orig_cnf.nVars());
+        release_assert(sample.size() == orig_cnf.nVars());
         vector<lbool> restricted_sample(orig_cnf.nVars(), l_Undef);
         for(const auto& var : orig_cnf.get_sampl_vars()) {
             restricted_sample[var] = sample[var];
@@ -413,6 +437,25 @@ void randomized_sample_verify(ArjunNS::SimplifiedCNF& orig_cnf,
         const auto extended_sample = cnf.extend_sample(restricted_sample, true);
         assert_sample_satisfying(extended_sample, solver);
     }
+}
+
+void check_aig_contains_no_self_refs(const SimplifiedCNF& cnf) {
+    for(uint32_t var = 0; var < cnf.num_defs(); var++) {
+        const auto& aig = cnf.get_def(var);
+        if (aig == nullptr) continue;
+
+        auto visitor = [&](AIGT type, const uint32_t v, const bool,
+                             bool*, bool*) -> bool {
+            if (type == AIGT::t_lit) {
+                release_assert(v != var && "AIG contains self-reference!");
+            }
+            return true;
+        };
+
+        map<aig_ptr, bool> cache;
+        AIG::transform<bool>(aig, visitor, cache);
+    }
+
 }
 
 int main(int argc, char** argv) {
@@ -487,7 +530,7 @@ int main(int argc, char** argv) {
     SimplifiedCNF cnf(fg);
     if (verb) cout << "c [test-synth] Reading AIG file: " << aig_fname << endl;
     cnf.read_aig_defs_from_file(aig_fname);
-    /* cnf.defs_invariant(); */
+    cnf.defs_invariant();
 
     if (verb) {
         cout << "c [test-synth] Successfully read AIG file" << endl;
@@ -512,6 +555,7 @@ int main(int argc, char** argv) {
         return EXIT_SUCCESS;
     }
 
+    check_aig_contains_no_self_refs(cnf);
     randomized_sample_verify(orig_cnf, cnf);
     if (unsat_verif) {
         unsat_verify(orig_cnf, cnf);

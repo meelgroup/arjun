@@ -411,7 +411,7 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const std::map<uint32_t, aig_ptr
     }
 }
 
-DLL_PUBLIC void SimplifiedCNF::random_check_synth_funs() const {
+DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
     std::ifstream urandom("/dev/urandom", std::ios::in | std::ios::binary);
     uint64_t seed = 77;
     if (urandom) {
@@ -419,6 +419,7 @@ DLL_PUBLIC void SimplifiedCNF::random_check_synth_funs() const {
         urandom.close();
     } else {
         std::cerr << "c o [synth-debug] could not open /dev/urandom, using default seed" << std::endl;
+        exit(EXIT_FAILURE);
     }
 
     SATSolver samp_s;
@@ -442,7 +443,7 @@ DLL_PUBLIC void SimplifiedCNF::random_check_synth_funs() const {
     uint32_t num_checks = 50;
     for (uint32_t check = 0; check < num_checks; ++check) {
         auto ret = samp_s.solve();
-        assert(ret == l_True);
+        release_assert(ret == l_True);
         auto model = samp_s.get_model();
 
         // fill in samp vars
@@ -469,7 +470,7 @@ DLL_PUBLIC void SimplifiedCNF::random_check_synth_funs() const {
             assumptions.push_back(Lit(v, vals[v] == l_False));
         }
         auto ret2 = s.solve(&assumptions);
-        assert(ret2 == l_True);
+        release_assert(ret2 == l_True);
     }
     cout << "[CHECK] filled defs total: " << filled_defs << " undefs: " << undefs << " checks: " << num_checks << endl;
 }
@@ -1373,19 +1374,19 @@ DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
     check_cnf_sampl_sanity();
 
     if (!need_aig) return true;
-    assert(orig_sampl_vars_set && "If need_aig, orig_sampl_vars_set must be set");
-    assert(sampl_vars_set);
-    assert(sampl_vars.size() <= opt_sampl_vars.size() && "We add to opt_sampl_vars via unsat_define in extend.cpp");
-    assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
+    release_assert(orig_sampl_vars_set && "If need_aig, orig_sampl_vars_set must be set");
+    release_assert(sampl_vars_set);
+    release_assert(sampl_vars.size() <= opt_sampl_vars.size() && "We add to opt_sampl_vars via unsat_define in extend.cpp");
+    release_assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
 
     check_orig_sampl_vars_undefined();
     check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars();
     check_pre_post_backward_round_synth();
-    all_vars_accounted_for();
+    check_all_vars_accounted_for();
     check_aig_cycles();
     check_self_dependency();
     get_var_types(0);
-    random_check_synth_funs();
+    check_synth_funs_randomly();
     return true;
 }
 
@@ -1429,7 +1430,7 @@ DLL_PUBLIC std::set<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const 
 }
 
 DLL_PUBLIC bool SimplifiedCNF::check_aig_cycles() const {
-    assert(need_aig);
+    release_assert(need_aig);
 
     // For cycle detection: 0 = unvisited, 1 = visiting, 2 = visited
     std::vector<int> state(defs.size(), 0);
@@ -1486,7 +1487,7 @@ DLL_PUBLIC bool SimplifiedCNF::check_aig_cycles() const {
         if (state[v] == 0 && defined(v)) {
             if (dfs(v)) {
                 std::cout << "ERROR: Cycle found starting from variable " << v+1 << std::endl;
-                assert(false && "Cycle detected in AIG dependencies");
+                release_assert(false && "Cycle detected in AIG dependencies");
             }
         }
     }
@@ -1499,14 +1500,14 @@ DLL_PUBLIC void SimplifiedCNF::check_self_dependency() const {
         if (orig_sampl_vars.count(orig_v)) {
             if (!defined(orig_v)) continue;
             else if (defs[orig_v]->type == AIGT::t_lit) {
-                assert(defs[orig_v]->var != orig_v && "Variable depends on itself? Also this is an orig sampl var defined to a literal that has the same var?");
-                assert(orig_sampl_vars.count(defs[orig_v]->var) && "If orig_sampl_var is defined to a literal, that literal must also be an orig_sampl_var");
+                release_assert(defs[orig_v]->var != orig_v && "Variable depends on itself? Also this is an orig sampl var defined to a literal that has the same var?");
+                release_assert(orig_sampl_vars.count(defs[orig_v]->var) && "If orig_sampl_var is defined to a literal, that literal must also be an orig_sampl_var");
                 continue;
             } else if (defs[orig_v]->type == AIGT::t_const) {
                 continue;
             } else {
                 std::cerr << "ERROR:Orig sampl var " << orig_v+1 << " cannot be defined to an AIG other than literal or const, but it is: " << defs[orig_v] << std::endl;
-                assert(false);
+                release_assert(false);
             }
         }
         if (!defined(orig_v)) continue;
@@ -1527,7 +1528,7 @@ DLL_PUBLIC void SimplifiedCNF::check_cnf_vars() const {
                 std::cout << "nvars: " << _nvars+1 << std::endl;
                 exit(EXIT_FAILURE);
             }
-            assert(l.var() < _nvars);
+            release_assert(l.var() < _nvars);
         }
     };
 
@@ -1550,7 +1551,7 @@ DLL_PUBLIC void SimplifiedCNF::check_cnf_vars() const {
         }
     }
     for(const auto& v: vars_in_cnf) {
-        assert(v < nvars); // already checked above
+        release_assert(v < nvars); // already checked above
         bool in_orig = false;
         for(const auto& [o, n]: orig_to_new_var) {
             if (n.var() == v) {
@@ -1558,38 +1559,38 @@ DLL_PUBLIC void SimplifiedCNF::check_cnf_vars() const {
                 break;
             }
         }
-        assert(in_orig && "All CNF vars must be in orig_to_new_var");
+        release_assert(in_orig && "All CNF vars must be in orig_to_new_var");
     }
 }
 
 // all vars are either: in orig_sampl_vars, defined, or in the cnf
-DLL_PUBLIC void SimplifiedCNF::all_vars_accounted_for() const {
-    assert(need_aig);
+DLL_PUBLIC void SimplifiedCNF::check_all_vars_accounted_for() const {
+    release_assert(need_aig);
     for(uint32_t v = 0; v < defs.size(); v ++) {
         if (orig_sampl_vars.count(v)) continue; // we'll get this as input
         if (defined(v)) continue; // already defined
         if (orig_to_new_var.count(v)) continue; // appears in CNF
         std::cout << "ERROR: Orig var " << v+1 << " is not defined, not in orig_sampl_vars, and not in cnf" << std::endl;
-        assert(false && "All vars must be accounted for");
+        release_assert(false && "All vars must be accounted for");
     }
 }
 
 DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars() const {
-    assert(need_aig);
+    release_assert(need_aig);
 
     // Get reverse mapping from NEW vars to ORIG vars
     const auto new_to_orig_vars = get_new_to_orig_var_list();
 
     // Check each sampling variable
     for(const auto& new_v : opt_sampl_vars) {
-        assert(new_v < nvars);
+        release_assert(new_v < nvars);
 
         // Find the orig var(s) that map to this new var
         auto it = new_to_orig_vars.find(new_v);
         if (it == new_to_orig_vars.end()) {
             std::cout << "ERROR: Sampling variable in CNF (new: " << new_v+1
                 << ") has no mapping in orig_to_new_var" << std::endl;
-            assert(false && "All sampling vars must have orig mapping");
+            release_assert(false && "All sampling vars must have orig mapping");
         }
 
         for(const auto& orig_lit : it->second) {
@@ -1603,7 +1604,7 @@ DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_samp
 
             // This orig var is NOT an orig_sampl_var
             // If it's defined, it must only depend on orig_sampl_vars
-            assert(defined(orig_v) && "Non-orig-sampl var mapping to sampling var must be defined");
+            release_assert(defined(orig_v) && "Non-orig-sampl var mapping to sampling var must be defined");
             /* if (defined(orig_v)) { */
             const auto deps = get_dependent_vars_recursive(orig_v);
             bool only_orig_sampl = true;
@@ -1621,7 +1622,7 @@ DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_samp
                 }
             }
             if (!only_orig_sampl) {
-                assert(false && "All sampling variables must depend only on orig_sampl_vars");
+                release_assert(false && "All sampling variables must depend only on orig_sampl_vars");
             }
             return false;
         }
@@ -1634,8 +1635,8 @@ DLL_PUBLIC void SimplifiedCNF::check_pre_post_backward_round_synth() const {
     if (!need_aig) return;
     std::map<uint32_t, std::set<uint32_t>> dependencies;
     for(const auto& [o, n] : orig_to_new_var) {
-        assert(o < defs.size());
-        assert(n != CMSat::lit_Undef && n.var() < nvars);
+        release_assert(o < defs.size());
+        release_assert(n != CMSat::lit_Undef && n.var() < nvars);
         if (defined(o)) {
             auto s = get_dependent_vars_recursive(o);
             dependencies[o] = s;
@@ -1658,12 +1659,12 @@ DLL_PUBLIC void SimplifiedCNF::check_pre_post_backward_round_synth() const {
                     else std::cout << it->second.var()+1 << "( " << (orig_sampl_vars.count(v) ? "o" : "n") << " ) ";
                 }
                 std::cout << std::endl;
-                assert(false && "Before backward round synth, variables in CNF must be defined ONLY in terms of orig_sampl_vars");
+                release_assert(false && "Before backward round synth, variables in CNF must be defined ONLY in terms of orig_sampl_vars");
             }
         }
     }
     for(const auto& [o, dep] : dependencies) {
-        assert(!orig_sampl_vars.count(o));
+        release_assert(!orig_sampl_vars.count(o));
         for(const auto& v: dep) {
             // o depends on v
             if (orig_sampl_vars.count(v)) continue;
@@ -1673,7 +1674,7 @@ DLL_PUBLIC void SimplifiedCNF::check_pre_post_backward_round_synth() const {
                 // so v cannot depend on o
                 std::cout << "ERROR: Found a dependency cycle between orig vars "
                     << o+1 << " and " << v+1 << std::endl;
-                assert(false && "Dependency cycle found");
+                release_assert(false && "Dependency cycle found");
             }
         }
 
@@ -1704,7 +1705,7 @@ DLL_PUBLIC void SimplifiedCNF::clean_idiotic_mccomp_weights() {
 }
 
 DLL_PUBLIC void SimplifiedCNF::check_cnf_sampl_sanity() const {
-    assert(fg != nullptr);
+    release_assert(fg != nullptr);
 
     check_cnf_vars();
     std::set<uint32_t> sampl_vars_s(sampl_vars.begin(), sampl_vars.end());
@@ -1718,7 +1719,7 @@ DLL_PUBLIC void SimplifiedCNF::check_cnf_sampl_sanity() const {
             std::cout << "nvars: " << nvars+1 << std::endl;
             exit(EXIT_FAILURE);
         }
-        assert(v < nvars);
+        release_assert(v < nvars);
     }
 
     // all sampling vars are also opt sampling vars
@@ -1728,7 +1729,7 @@ DLL_PUBLIC void SimplifiedCNF::check_cnf_sampl_sanity() const {
                 << v+1 << std::endl;
             exit(EXIT_FAILURE);
         }
-        assert(opt_sampl_vars_s.count(v));
+        release_assert(opt_sampl_vars_s.count(v));
     }
 
     // weights must be in opt sampling vars
@@ -1739,7 +1740,7 @@ DLL_PUBLIC void SimplifiedCNF::check_cnf_sampl_sanity() const {
             std::cout << "nvars: " << nvars+1 << std::endl;
             exit(EXIT_FAILURE);
         }
-        assert(w.first < nvars);
+        release_assert(w.first < nvars);
         if (opt_sampl_vars_s.count(w.first) == 0) {
             // Idiotic but we allow 1/1 weights, even though they are useless
             if (w.second.pos->is_one() && w.second.neg->is_one()) continue;
@@ -1748,7 +1749,7 @@ DLL_PUBLIC void SimplifiedCNF::check_cnf_sampl_sanity() const {
                 << w.first+1 << std::endl;
             exit(EXIT_FAILURE);
         }
-        assert(opt_sampl_vars_s.count(w.first));
+        release_assert(opt_sampl_vars_s.count(w.first));
     }
 }
 
@@ -1805,7 +1806,7 @@ DLL_PUBLIC void SimplifiedCNF::check_var(const uint32_t v) const {
         std::cout << "ERROR: Tried to access a variable that is too large" << std::endl;
         std::cout << "var: " << v+1 << std::endl;
         std::cout << "nvars: " << nVars() << std::endl;
-        assert(v < nVars());
+        release_assert(v < nVars());
         exit(EXIT_FAILURE);
     }
 }
