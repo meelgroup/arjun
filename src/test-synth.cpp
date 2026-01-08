@@ -36,6 +36,14 @@
 #include <random>
 #include <map>
 
+#define COLDEF "\033[0m"
+
+#define verb_print(a, x) \
+    do { \
+        if (verb >= a) {\
+            std::cout << "c o " << COLDEF << x << COLDEF << std::endl;}\
+    } while (0)
+
 #define myopt(name, var, fun, hhelp) \
     program.add_argument(name) \
         .action([&](const auto& a) {var = std::fun(a.c_str());}) \
@@ -137,28 +145,28 @@ void add_not_F_x_yhat(SATSolver& solver, const SimplifiedCNF& orig_cnf,
         solver.new_var();
         uint32_t v = solver.nVars()-1;
         Lit cl_indic(v, false);
-        cout << "[~F_x_yhat] clause indicator: " << cl_indic << endl;
+        verb_print(2, "[~F_x_yhat] clause indicator: " << cl_indic);
         tmp.clear();
         tmp.push_back(~cl_indic);
         for(const auto&l : cl) tmp.push_back(l);
         solver.add_clause(tmp);
-        cout << "[~F(x, y_hat)] clause: " << tmp << endl;
+        verb_print(2, "[~F(x, y_hat)] clause: " << tmp);
 
         for(const auto&l : cl) {
             tmp.clear();
             tmp.push_back(cl_indic);
             tmp.push_back(~l);
             solver.add_clause(tmp);
-            cout << "[~F(x, y_hat)] clause: " << tmp << endl;
+            verb_print(2, "[~F(x, y_hat)] clause: " << tmp);
         }
         cl_indics.push_back(cl_indic);
     }
     tmp.clear();
     for(const auto& l: cl_indics) tmp.push_back(~l); // at least one is unsatisfied
     solver.add_clause(tmp);
-    cout << "[~F(x, y_hat)] at-least-one-unsat clause: " << tmp << endl;
+    verb_print(2, "[~F(x, y_hat)] at-least-one-unsat clause: " << tmp);
 
-    if (verb) cout << "c [~F(x,y_at)] with " << cl_indics.size() << " clause indicators" << endl;
+    verb_print(2, "c [~F(x,y_at)] with " << cl_indics.size() << " clause indicators");
 }
 
 // Fill var_to_formula by converting AIGs to CNF formulas
@@ -168,7 +176,7 @@ void fill_var_to_formula(SATSolver& solver, FHolder& fh,
                                         const map<uint32_t, uint32_t>& y_to_y_hat,
                                         const set<uint32_t>& sampling_vars,
                                         map<uint32_t, FHolder::Formula>& var_to_formula) {
-    if (verb) cout << "c [var-to-formula] Converting AIGs to formulas..." << endl;
+    verb_print(2, "c [var-to-formula] Converting AIGs to formulas...");
 
     for(const auto& v_def: aig_vars) {
         FHolder::Formula f;
@@ -241,8 +249,8 @@ bool verify_aigs_correct(SATSolver& solver,
 
     // Inject formulas into solver (make sure it's all x & y_hat, no y!)
     for(auto& [var, form]: var_to_formula) {
-        cout << "[formula] adding formula for var: " << var+1 << endl;
-        /* cout << " var_to_formula[var]:" << var_to_formula.at(var).aig << endl; */
+        verb_print(2, "[formula] adding formula for var: " << var+1);
+        verb_print(4, " var_to_formula[var]:" << var_to_formula.at(var).aig);
         for(auto& cl: form.clauses) {
             vector<Lit> cl2;
             for(const auto& l: cl) {
@@ -250,7 +258,7 @@ bool verify_aigs_correct(SATSolver& solver,
                 cl2.push_back(l);
             }
             solver.add_clause(cl2);
-            cout << "[formula] added clause: " << cl2 << endl;
+            verb_print(2, "[formula] added clause: " << cl2);
         }
     }
 
@@ -266,41 +274,40 @@ bool verify_aigs_correct(SATSolver& solver,
         const auto& y_hat = y_to_y_hat.at(y);
 
         y_hat_to_indic[y_hat] = ind;
-        if (verb >= 3) cout << "c [test-synth]   ind: " << ind+1 << " y_hat: " << y_hat+1
-                           << " form_out: " << form_out << endl;
+        verb_print(2, "c [test-synth]   ind: " << ind+1 << " y_hat: " << y_hat+1 << " form_out: " << form_out);
 
         // when indic is TRUE, y_hat and form_out are EQUAL
         auto y_hat_l = Lit(y_hat, false);
         auto ind_l = Lit(ind, false);
-        cout << "adding clauses for y_hat: " << y_hat_l << " ind: " << ind_l << " form_out: " << form_out << endl;
+        verb_print(2, "adding clauses for y_hat: " << y_hat_l << " ind: " << ind_l << " form_out: " << form_out);
         tmp.clear();
         tmp.push_back(~ind_l);
         tmp.push_back(y_hat_l);
         tmp.push_back(~form_out);
         solver.add_clause(tmp);
-        cout << "indic clause: " << tmp << endl;
+        verb_print(2, "indic clause: " << tmp);
         tmp[1] = ~tmp[1];
         tmp[2] = ~tmp[2];
         solver.add_clause(tmp);
-        cout << "indic clause: " << tmp << endl;
+        verb_print(2, "indic clause: " << tmp);
 
         tmp.clear();
         tmp.push_back(ind_l);
         tmp.push_back(~y_hat_l);
         tmp.push_back(~form_out);
         solver.add_clause(tmp);
-        cout << "indic clause: " << tmp << endl;
+        verb_print(2, "indic clause: " << tmp);
         tmp[1] = ~tmp[1];
         tmp[2] = ~tmp[2];
         solver.add_clause(tmp);
-        cout << "indic clause: " << tmp << endl;
+        verb_print(2, "indic clause: " << tmp);
     }
 
     // Assume all indicators are true (all y_hat must equal their computed functions)
     for(const auto& [y_hat, ind]: y_hat_to_indic) {
         tmp = {Lit(ind, false)};
         solver.add_clause(tmp);
-        cout << "indic force: " << tmp << endl;
+        verb_print(2, "indic force: " << tmp);
     }
     auto ret = solver.solve();
     assert(ret != l_Undef);
@@ -346,7 +353,7 @@ void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
     SATSolver verify_solver;
     verify_solver.new_vars(orig_cnf.nVars());
     for (const auto& clause : orig_cnf.get_clauses()) {
-        cout << "adding orig clause: " << clause << endl;
+        verb_print(2, "adding orig clause: " << clause);
         verify_solver.add_clause(clause);
     }
 
@@ -366,7 +373,7 @@ void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
                                       y_to_y_hat, sampling_vars, var_to_formula);
 
     // Step 3: Verify AIGs are correct (should be UNSAT)
-    cout << "true lit: " << fh.get_true_lit() << endl;
+    verb_print(2, "true lit: " << fh.get_true_lit());
     bool aigs_correct = verify_aigs_correct(verify_solver, aig_vs,
                                             y_to_y_hat, var_to_formula);
 
@@ -375,7 +382,7 @@ void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
         cout << "c [test-synth] SUCCESS: AIGs are verified CORRECT!" << endl;
         exit(EXIT_SUCCESS);
     } else {
-        cout << "c [test-synth] FAILURE: AIGs are INCORRECT!" << endl;
+        cout << "c [test-synth] ERROR: AIGs are INCORRECT!" << endl;
         exit(EXIT_FAILURE);
     }
 }
