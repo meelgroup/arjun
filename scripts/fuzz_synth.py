@@ -333,7 +333,10 @@ if __name__ == "__main__":
         check_core_files()
 
         for aig in aigs:
-            call = "./test-synth -v -s %d %s %s" % (seed, fname, aig)
+            if "final" in aig:
+                call = "./test-synth -u -v -s %d %s %s" % (seed, fname, aig)
+            else:
+                call = "./test-synth -v -s %d %s %s" % (seed, fname, aig)
             print("Running check command: ", call)
             status = subprocess.call(call, shell=True)
             if status != 0:
