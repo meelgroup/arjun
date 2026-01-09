@@ -412,9 +412,16 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     }
     assert(backward_defined.empty());
 
-    set<uint32_t> input_vars;
-    for(const auto& v: input) input_vars.insert(v);
-    add_all_indics_except(input_vars);
+    add_all_indics_except(input);
+    for(const auto& v: input) {
+        vector<Lit> cl;
+        cl.push_back(Lit(v, false));
+        cl.push_back(Lit(v+orig_num_vars, true));
+        solver->add_clause(cl);
+        cl[0] = ~cl[0];
+        cl[1] = ~cl[1];
+        solver->add_clause(cl);
+    }
 
     // set up interpolant
     Interpolant interp(conf);
@@ -423,12 +430,13 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     interp.fill_var_to_indic(var_to_indic);
 
     for(uint32_t x = 0; x < orig_num_vars; x++) {
-        if (input_vars.count(x)) continue;
+        if (input.count(x)) continue;
         pretend_input.insert(x); // we pretend that all vars are input vars
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
     sort_unknown(unknown, incidence);
+    /* std::reverse(unknown.begin(), unknown.end()); */
     print_sorted_unknown(unknown);
     verb_print(1, "[arjun] Start unknown size: " << unknown.size());
     solver->set_verbosity(0);
