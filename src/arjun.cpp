@@ -274,13 +274,13 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
 
 DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<CMSat::SATSolver>& solver,
         const uint32_t verb) const {
-    const vector<uint32_t> vs = solver->get_elimed_vars();
+    vector<uint32_t> elimed_vars = solver->get_elimed_vars();
     const auto new_to_orig_var = get_new_to_orig_var();
     assert(defs_invariant());
 
     // We are all in NEW here. So we need to map back to orig, both the
     // definition and the target
-    auto map_cl_to_orig = [&new_to_orig_var](const vector<vector<CMSat::Lit>>& def) {
+    const auto map_cl_to_orig = [&new_to_orig_var](const vector<vector<CMSat::Lit>>& def) {
         vector<vector<CMSat::Lit>> ret;
         for(const auto& cl: def) {
             vector<CMSat::Lit> new_cl;
@@ -294,15 +294,16 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         return ret;
     };
 
-    for(const auto& target: vs) {
-        auto def = solver->get_cls_defining_var(target);
-        auto orig_def = map_cl_to_orig(def);
-        auto orig_target = new_to_orig_var.at(target);
-        if (scnf.get_orig_sampl_vars().count(orig_target.var())) {
+    for(const auto& target: elimed_vars) {
+        const auto def = solver->get_cls_defining_var(target);
+        const auto orig_def = map_cl_to_orig(def);
+        const auto orig_target = new_to_orig_var.at(target);
+        if (orig_sampl_vars.count(orig_target.var())) {
             assert(def.empty() && "When elminating orig sampling vars, they MUST be empty, that's all we allow to be elimed");
             if (verb >= 3) cout << "c o Elimed empty sampling orig var: " << orig_target << endl;
             continue;
         }
+        cout << "c o [bve-aig] setting aig for orig elimed var: " << orig_target << " def size: " << def.size() << endl;
 
         uint32_t pos = 0;
         uint32_t neg = 0;
@@ -343,32 +344,74 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         if (orig_target.sign()) overall = AIG::new_not(overall);
         scnf.defs[orig_target.var()] = overall;
         if (verb >= 5)
-            cout << "c o [bve-aig] set aig for var: " << orig_target << " from bve elim" << endl;
+            cout << "c o [bve-aig] set aig for var: " << orig_target << " from bve elim: " << overall << endl;
     }
 
     // Finally, set defs for replaced vars that are elimed
-    auto pairs = solver->get_all_binary_xors(); // [replaced, replaced_with]
+    const auto pairs = solver->get_all_binary_xors(); // [replaced, replaced_with]
     map<uint32_t, vector<CMSat::Lit>> var_to_lits_it_replaced;
     for(const auto& [orig, replacement] : pairs) {
         var_to_lits_it_replaced[replacement.var()].push_back(orig ^ replacement.sign());
     }
-    for(const auto& target: vs) {
-        for(const auto& l: var_to_lits_it_replaced[target]) {
-            auto orig_target = new_to_orig_var.at(target);
-            auto orig_lit = new_to_orig_var.at(l.var()) ^ l.sign();
-            const auto aig = scnf.defs[orig_target.var()];
-            assert(aig != nullptr);
-            assert(scnf.defs[orig_lit.var()] == nullptr);
-            assert(scnf.get_orig_sampl_vars().count(orig_lit.var()) == 0 &&
-                "Replaced variable cannot be in the orig sampling set here -- we would have elimed what it got replaced with");
-            if (orig_lit.sign()) {
-                scnf.defs[orig_lit.var()] = AIG::new_not(aig);
+
+
+    // Check if any are like [... orig sampl var...] -> replaced by some non-orig sampl var
+    // In these cases, we make SURE the orig sampl var is the one defining the others.
+    vector<uint32_t> add_elimed;
+    for(const auto& elimed: elimed_vars) {
+        const auto orig_replacing = new_to_orig_var.at(elimed);
+        if (orig_sampl_vars.count(orig_replacing.var())) continue;
+
+        Lit bad_lit = lit_Undef;
+        for(const auto& lit_replaced: var_to_lits_it_replaced[elimed]) {
+            const auto orig_replaced = new_to_orig_var.at(lit_replaced.var()) ^ lit_replaced.sign();
+            if (orig_sampl_vars.count(orig_replaced.var())) {
+                bad_lit = lit_replaced;
+                break;
+            }
+        }
+        if (bad_lit == lit_Undef) continue;
+
+        cout << "c o [bve-aig] Flipping around. Offending elimed orig var: " << orig_replacing << endl;
+        const vector<Lit> replaced = var_to_lits_it_replaced.at(elimed);
+        var_to_lits_it_replaced.erase(elimed);
+        vector<Lit> new_replaced;
+        for(const auto& l: replaced) {
+            if (bad_lit != l) new_replaced.push_back(l^bad_lit.sign());
+        }
+        new_replaced.push_back(Lit(elimed, bad_lit.sign()));
+        var_to_lits_it_replaced[bad_lit.var()] = new_replaced;
+        cout << "new replaced: " << new_replaced << endl;
+        scnf.defs[elimed] = nullptr;
+        add_elimed.push_back(bad_lit.var());
+    }
+    for(const auto& v: add_elimed) elimed_vars.push_back(v);
+
+    for(const auto& target: elimed_vars) {
+        for(const auto& lit_replaced: var_to_lits_it_replaced[target]) {
+            const auto orig_replacing = new_to_orig_var.at(target);
+            const auto orig_replaced = new_to_orig_var.at(lit_replaced.var()) ^ lit_replaced.sign();
+            cout << "REPL. orig var replacing: " << orig_replacing << " orig_lit replaced: " << orig_replaced << endl;
+            const auto aig = scnf.defs[orig_replacing.var()];
+            if (orig_sampl_vars.count(orig_replaced.var()) && orig_sampl_vars.count(orig_replacing.var())) {
+                continue;
+            }
+            if (aig == nullptr) {
+                // The orig_replacing MUST be an orig sampling var
+                assert(orig_sampl_vars.count(orig_replacing.var()) &&
+                    "Replaced variable must be an original sampling var here");
+                scnf.defs[orig_replaced.var()] = AIG::new_lit(orig_replacing ^ orig_replaced.sign());
             } else {
-                scnf.defs[orig_lit.var()] = aig;
+                assert(!orig_sampl_vars.count(orig_replacing.var()));
+                assert(aig != nullptr);
+                assert(scnf.defs[orig_replaced.var()] == nullptr);
+                assert(!orig_sampl_vars.count(orig_replaced.var()) &&
+                    "Replaced variable cannot be in the orig sampling set here -- we would have elimed what it got replaced with");
+                if (orig_replaced.sign()) scnf.defs[orig_replaced.var()] = AIG::new_not(aig);
+                else scnf.defs[orig_replaced.var()] = aig;
             }
             if (verb >= 5)
-                cout << "c o [bve-aig] replaced var: " << orig_lit
-                    << " with aig of " << orig_target << endl;
+                cout << "c o [bve-aig] replaced var: " << orig_replaced << " with aig of " << orig_replacing << endl;
         }
     }
 }
