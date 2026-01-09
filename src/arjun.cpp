@@ -354,9 +354,11 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         var_to_lits_it_replaced[replacement.var()].push_back(orig ^ replacement.sign());
     }
 
-
     // Check if any are like [... orig sampl var...] -> replaced by some non-orig sampl var
     // In these cases, we make SURE the orig sampl var is the one defining the others.
+    // ->> Once we flipped it around, we need to add this new replacing var as if it was "elimed"
+    //     since it's an orig var, that's fine, it can always define other vars.
+    // Annoying as hell.
     vector<uint32_t> add_elimed;
     for(const auto& elimed: elimed_vars) {
         const auto orig_replacing = new_to_orig_var.at(elimed);
