@@ -1,4 +1,4 @@
-include(FindPkgConfig)
+find_package(PkgConfig)
 pkg_check_modules(PC_MLPACK "mlpack")
 
 set(MLPACK_DEFINITIONS ${PC_MLPACK_CFLAGS_OTHER})
