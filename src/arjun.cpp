@@ -289,8 +289,11 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, std::unique_
         auto def = solver->get_cls_defining_var(target);
         auto orig_def = map_cl_to_orig(def);
         auto orig_target = new_to_orig_var.at(target);
-        assert(scnf.get_orig_sampl_vars().count(orig_target.var()) == 0 &&
-            "Elimed variable cannot be in the orig sampling set");
+        if (scnf.get_orig_sampl_vars().count(orig_target.var())) {
+            assert(def.empty() && "When elminating orig sampling vars, they MUST be empty, that's all we allow to be elimed");
+            if (verb >= 3) cout << "c o Elimed empty sampling orig var: " << orig_target << endl;
+            continue;
+        }
 
         uint32_t pos = 0;
         uint32_t neg = 0;
