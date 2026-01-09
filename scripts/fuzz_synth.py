@@ -115,10 +115,6 @@ def set_up_parser():
       "--tout", "-t", dest="maxtime", type=int, default=12,
       help="Max time to run. Default: %default")
 
-    parser.add_option(
-      "--only", type=int, dest="only", default=2**40,
-      help="Only run N tests. Default: %default")
-
     return parser
 
 
@@ -281,15 +277,17 @@ if __name__ == "__main__":
     parser = set_up_parser()
     (options, args) = parser.parse_args()
 
+    only = 1
     if options.rnd_seed is None:
         b = os.urandom(8)
         rnd_seed = int.from_bytes(b)
         print("Using seed:", rnd_seed)
+        only = 2**40
     else:
         rnd_seed = options.rnd_seed
     random.seed(rnd_seed)
 
-    for i in range(options.only):
+    for i in range(only):
         if options.rnd_seed is None:
             b = os.urandom(8)
             seed = int.from_bytes(b)
@@ -340,10 +338,9 @@ if __name__ == "__main__":
             print("Running check command: ", call)
             status = subprocess.call(call, shell=True)
             if status != 0:
-                print("Failed fuzzer file generator call: ", call)
+                print("Failed check: ", call)
                 exit(-1)
             print("Call for fuzz OK: %s" % (call));
             os.unlink(aig)
         cleanup(fname, prefix)
-
     exit(0)
