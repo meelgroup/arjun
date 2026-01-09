@@ -374,7 +374,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         }
         if (bad_lit == lit_Undef) continue;
 
-        cout << "c o [bve-aig] Flipping around. Offending elimed orig var: " << orig_replacing << endl;
+        if (verb >= 3) cout << "c o [bve-aig] Flipping around. Offending elimed orig var: " << orig_replacing << endl;
         const vector<Lit> replaced = var_to_lits_it_replaced.at(elimed);
         var_to_lits_it_replaced.erase(elimed);
         vector<Lit> new_replaced;
@@ -383,7 +383,6 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         }
         new_replaced.push_back(Lit(elimed, bad_lit.sign()));
         var_to_lits_it_replaced[bad_lit.var()] = new_replaced;
-        cout << "new replaced: " << new_replaced << endl;
         scnf.defs[elimed] = nullptr;
         add_elimed.push_back(bad_lit.var());
     }
@@ -393,7 +392,8 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         for(const auto& lit_replaced: var_to_lits_it_replaced[target]) {
             const auto orig_replacing = new_to_orig_var.at(target);
             const auto orig_replaced = new_to_orig_var.at(lit_replaced.var()) ^ lit_replaced.sign();
-            cout << "REPL. orig var replacing: " << orig_replacing << " orig_lit replaced: " << orig_replaced << endl;
+            if (verb >= 3)
+                cout << "c o [bve-aig] replacing var: " << orig_replaced << " with aig of " << orig_replacing << endl;
             const auto aig = scnf.defs[orig_replacing.var()];
             if (orig_sampl_vars.count(orig_replaced.var()) && orig_sampl_vars.count(orig_replacing.var())) {
                 continue;
@@ -412,8 +412,6 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
                 if (orig_replaced.sign()) scnf.defs[orig_replaced.var()] = AIG::new_not(aig);
                 else scnf.defs[orig_replaced.var()] = aig;
             }
-            if (verb >= 5)
-                cout << "c o [bve-aig] replaced var: " << orig_replaced << " with aig of " << orig_replacing << endl;
         }
     }
 }
