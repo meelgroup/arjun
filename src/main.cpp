@@ -288,7 +288,11 @@ void do_synthesis() {
     auto final_cnf = arjun->standalone_manthan(cnf);
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");
     final_cnf.clear_orig_sampl_defs();
-    if (!conf.debug_synth.empty()) final_cnf.write_aig_defs_to_file(conf.debug_synth + "-final.aig");
+    if (!conf.debug_synth.empty()) {
+        final_cnf.write_aig_defs_to_file(conf.debug_synth + "-final.aig");
+        cout << "c o [arjun] you can check correctness by running: " << endl;
+        cout << "./test-synth -u -v 1 " << input_file << " " << conf.debug_synth + "-final.aig" << endl;
+    }
 }
 #endif
 
