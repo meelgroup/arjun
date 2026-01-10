@@ -24,12 +24,9 @@ def convert_cnf_simple(input_file, output_file):
 
         if line.startswith('a '):
             parts = line.split()
-            a_vars = [int(x) for x in parts[3:] if x != '0']
+            a_vars = [int(x) for x in parts[1:] if x != '0']
             continue
-
         if line.startswith('e '):
-            parts = line.split()
-            e_vars = [int(x) for x in parts[3:] if x != '0']
             continue
 
         if not line.startswith('c'):
