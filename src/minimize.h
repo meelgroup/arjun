@@ -26,6 +26,7 @@
 
 
 #include "arjun.h"
+#include <optional>
 #include <vector>
 #include <iostream>
 #include <map>
@@ -48,6 +49,7 @@ using std::map;
 using std::set;
 using std::string;
 using std::vector;
+using std::optional;
 
 namespace ArjunInt {
 
@@ -115,7 +117,8 @@ struct Minimize
         vector<Lit>& assumptions,
         vector<uint32_t>& unknown,
         const vector<char>& unknown_set,
-        const T& indep);
+        const T& indep,
+        const optional<set<uint32_t>>& ignore = std::nullopt);
     void fill_solver(const ArjunNS::SimplifiedCNF& cnf);
     void fill_solver_synth(const ArjunNS::SimplifiedCNF& cnf);
     void backward_round();

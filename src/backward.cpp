@@ -30,16 +30,19 @@
 #include "src/time_mem.h"
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <set>
 
 using namespace ArjunInt;
+using std::optional;
 
 template<typename T>
 void Minimize::fill_assumptions_backward(
     vector<Lit>& assumptions,
     vector<uint32_t>& unknown,
     const vector<char>& unknown_set,
-    const T& indep)
+    const T& indep,
+    const optional<set<uint32_t>>& ignore)
 {
     verb_print(5, "Filling assumps BEGIN");
     assumptions.clear();
@@ -47,6 +50,10 @@ void Minimize::fill_assumptions_backward(
     //Add known independent as assumptions
     for(const auto& var: indep) {
         assert(var < orig_num_vars);
+        if (ignore && ignore->count(var)) {
+            verb_print(5, "Skipping indep var: " << var+1);
+            continue;
+        }
 
         uint32_t indic = var_to_indic[var];
         assert(indic != var_Undef);
@@ -404,8 +411,8 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     // in terms of ANY other variables, but NOT in a self-referential way
     vector<char> unknown_set(orig_num_vars, 0);
     vector<uint32_t> unknown;
-    set<uint32_t> pretend_input;
     auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb);
+    set<uint32_t> pretend_input;
     if (to_define.empty()) {
         verb_print(1, "[arjun] No variables to define, returning original CNF");
         return;
@@ -430,8 +437,8 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     interp.fill_var_to_indic(var_to_indic);
 
     for(uint32_t x = 0; x < orig_num_vars; x++) {
-        if (input.count(x)) continue;
         pretend_input.insert(x); // we pretend that all vars are input vars
+        if (input.count(x)) continue;
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
@@ -473,7 +480,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
 
         //Assumption filling
         assert(test_var != var_Undef);
-        fill_assumptions_backward(assumptions, unknown, unknown_set, pretend_input);
+        fill_assumptions_backward(assumptions, unknown, unknown_set, pretend_input, input);
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
         solver->set_no_confl_needed();
