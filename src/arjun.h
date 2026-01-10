@@ -1173,6 +1173,8 @@ public:
     void fix_mapping_after_renumber(SimplifiedCNF& scnf, const uint32_t verb) const;
 
     void get_fixed_values(SimplifiedCNF& scnf, std::unique_ptr<CMSat::SATSolver>& solver) const;
+    void set_fixed_values(const std::vector<CMSat::Lit>& lits);
+
 
     // Get back BVE AIGs into scnf.defs
     void get_bve_mapping(SimplifiedCNF& scnf, std::unique_ptr<CMSat::SATSolver>& solver, const uint32_t verb) const;

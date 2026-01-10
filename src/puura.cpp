@@ -39,13 +39,10 @@
 
 using namespace ArjunNS;
 using namespace CMSat;
-using std::cout;
-using std::endl;
 using std::vector;
 using std::setw;
 using std::setprecision;
 using std::string;
-using std::map;
 using std::unique_ptr;
 using std::unique_ptr;
 
@@ -53,11 +50,11 @@ Puura::Puura(const Config& _conf) : conf(_conf) {}
 Puura::~Puura() = default;
 
 // used in synthesis_unate only
-SATSolver* Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
+unique_ptr<SATSolver> Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
     double my_time = cpuTime();
 
     vector<Lit> tmp;
-    SATSolver* s = new SATSolver;
+    auto s = std::make_unique<SATSolver>();
     orig_num_vars = cnf.nVars();
     s->set_verbosity(0);
     s->set_prefix("c o ");
@@ -77,28 +74,22 @@ SATSolver* Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
         // !F(y)
         s->new_var(); // new var for each clause
         uint32_t zv = s->nVars()-1;
-        Lit z = Lit(zv, false);
+        const Lit z = Lit(zv, false);
 
         // (C shifted) V -z
         tmp.clear();
-        for(auto l: cl) {
-            if (sampl_set.count(l.var())) {
-                tmp.push_back(l);
-            } else {
-                tmp.push_back(Lit(l.var()+orig_num_vars, l.sign()));
-            }
+        for(const auto& l: cl) {
+            if (sampl_set.count(l.var())) tmp.push_back(l);
+            else tmp.push_back(Lit(l.var()+orig_num_vars, l.sign()));
         }
         tmp.push_back(~z);
         s->add_clause(tmp);
 
         // (each -lit in C, shifted) V z
-        for(auto l: cl) {
+        for(const auto& l: cl) {
             tmp.clear();
-            if (sampl_set.count(l.var())) {
-                tmp = {~l,  z};
-            } else {
-                tmp = {Lit(l.var()+orig_num_vars, !l.sign()),  z};
-            }
+            if (sampl_set.count(l.var())) tmp = {~l,  z};
+            else tmp = {Lit(l.var()+orig_num_vars, !l.sign()),  z};
             s->add_clause(tmp);
         }
         zs.push_back(~z);
@@ -106,8 +97,7 @@ SATSolver* Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
 
     // At least ONE clause must be FALSE
     s->add_clause(zs);
-    s->simplify();
-    verb_print(1, "[puura] Built up the solver. T: " << (cpuTime() - my_time));
+    verb_print(1, "[unate] Built up the F and ~F_x_y solver. T: " << (cpuTime() - my_time));
     return s;
 }
 
@@ -142,29 +132,29 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     double my_time = cpuTime();
     uint32_t new_units = 0;
     sampl_set.clear();
-    for(const auto& v: cnf.get_sampl_vars()) sampl_set.insert(v);
-    verb_print(1, "sampling set size: " << sampl_set.size());
+    for(const auto& v: cnf.get_opt_sampl_vars()) sampl_set.insert(v);
+    verb_print(1, "[unate] opt sampling set size: " << sampl_set.size());
 
-    SATSolver* s = setup_f_not_f_indic(cnf);
+    auto s = setup_f_not_f_indic(cnf);
     vector<Lit> assumps;
     vector<Lit> cl;
     uint32_t undefs = 0;
     bool timeout = false;
-    s->set_find_xors(true);
-    s->set_scc(true);
+    s->set_find_xors(false);
+    s->set_scc(false);
     s->set_bve(false);
 
     uint32_t to_test = 0;
-    dont_elim.clear();
-    for(uint32_t test = 0; test < orig_num_vars; test++) {
-        if (s->removed_var(test)) continue;
-        if (sampl_set.count(test)) continue;
-        dont_elim.push_back(Lit(test, false));
-        dont_elim.push_back(Lit(test+orig_num_vars, false));
-        to_test ++;
-    }
-    s->simplify(&dont_elim);
-    s->set_bve(false);
+    /* dont_elim.clear(); */
+    /* for(uint32_t test = 0; test < orig_num_vars; test++) { */
+    /*     if (s->removed_var(test)) continue; */
+    /*     if (sampl_set.count(test)) continue; */
+    /*     dont_elim.push_back(Lit(test, false)); */
+    /*     dont_elim.push_back(Lit(test+orig_num_vars, false)); */
+    /*     to_test ++; */
+    /* } */
+    /* s->simplify(&dont_elim); */
+    /* s->set_bve(false); */
 
     verb_print(1, "[unate] Going to test: " << to_test);
     uint32_t tested_num = 0;
@@ -174,7 +164,7 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
         for(uint32_t test = 0; test < orig_num_vars; test++) {
             if (s->removed_var(test)) continue;
             if (sampl_set.count(test)) continue;
-            if (s->get_sum_conflicts() > 50000) {timeout = true; break;}
+            /* if (s->get_sum_conflicts() > 50000) {timeout = true; break;} */
             tested_num++;
             if (tested_num % 100 == 99) {
                 verb_print(1, "[unate] test no: " << setw(5) << tested_num
@@ -183,21 +173,20 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
                     << " T: " << setprecision(2) << std::fixed << (cpuTime() - my_time));
             }
 
-            assumps.clear();
             for(int flip = 0; flip < 2; flip++) {
+                assumps.clear();
                 assumps.push_back(Lit(test, true ^ flip));
                 assumps.push_back(Lit(test+orig_num_vars, false ^ flip));
-                s->set_max_confl(1500);
+                /* s->set_max_confl(1500); */
                 s->set_no_confl_needed();
-                auto ret = s->solve(&assumps, true);
-                verb_print(4, "[unate] Ret: " << ret << " flip: " << flip);
+                const auto ret = s->solve(&assumps, true);
                 if (ret == l_False) {
-                    verb_print(2, "[unate] test: " << std::setw(3)  << (test+1)
+                    verb_print(1, "[unate] GOOOOOOOD test: " << std::setw(3)  << (test+1)
                         << " FALSE"
                         << " T: " << (cpuTime() - my_time));
 
                     cl = {Lit(test, false ^ flip)};
-                    assert(false && "here comes the AIG and updating CNF");
+                    //assert(false && "here comes the AIG and updating CNF");
                     cnf.add_clause(cl);
                     // AIG UPDATE HERE!!
 
@@ -209,8 +198,6 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
                     break;
                 }
                 if (ret == l_Undef) undefs++;
-                assumps.pop_back();
-                assumps.pop_back();
             }
         }
     } while (new_units > old_units);
@@ -218,7 +205,15 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     verb_print(1, "[unate]" << " new units: " << new_units << " undefs: " << undefs
         << " T-out: " << (int)timeout << " T: " << (cpuTime()-my_time));
 
-    delete s;
+
+    vector<Lit> toset;
+    const auto zero_assigned = s->get_zero_assigned_lits();
+    for(const auto& z: zero_assigned) {
+        if (z.var() > cnf.nVars()) continue;
+        cout << "c o [unate] zero assigned: " << z << endl;
+        toset.push_back(z);
+    }
+    cnf.set_fixed_values(toset);
 }
 
 std::unique_ptr<SATSolver> Puura::fill_solver(const SimplifiedCNF& cnf) {
