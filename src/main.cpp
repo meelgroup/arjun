@@ -258,6 +258,7 @@ void do_synthesis() {
     assert(cnf.get_need_aig() && cnf.defs_invariant());
     check_cnf_sat(cnf);
     cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
+    cnf.get_var_types(1);
     if (do_pre_backbone) arjun->standalone_backbone(cnf);
     if (do_synth_bve) {
         /* simp_conf.bve_too_large_resolvent = -1; */
