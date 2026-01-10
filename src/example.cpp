@@ -84,8 +84,8 @@ int main()
     SimpConf simp_conf;
     auto cnf2 = arjun.standalone_get_simplified_cnf(cnf, simp_conf);
 
-    cout << "p cnf " << cnf2.nvars << " " << cnf2.clauses.size() << endl;
-    for(const auto& cl: cnf2.clauses) {
+    cout << "p cnf " << cnf2.nVars() << " " << cnf2.get_clauses().size() << endl;
+    for(const auto& cl: cnf2.get_clauses()) {
         for(const auto& l: cl) {
             int lit = l.var()+1;
             if (l.sign()) lit *= -1;
@@ -93,7 +93,7 @@ int main()
         }
         cout << "0" << endl;
     }
-    for(const auto& cl: cnf2.clauses) {
+    for(const auto& cl: cnf2.get_clauses()) {
         cout << "c red ";
         for(const auto& l: cl) {
             int lit = l.var()+1;

@@ -43,18 +43,18 @@ using std::map;
 using namespace ArjunNS;
 
 struct MyTracer : public CaDiCaL::Tracer {
-    MyTracer(uint32_t _orig_num_vars, vector<uint32_t> _opt_sampl_vars, AIGManager* _aig_mng, const ArjunInt::Config& _conf) :
+    MyTracer(const uint32_t _orig_num_vars, const set<uint32_t>& input_vars,
+            const ArjunInt::Config& _conf) :
       conf(_conf),
-      aig_mng(_aig_mng),
-      orig_num_vars(_orig_num_vars)
-    {
-      input.insert(_opt_sampl_vars.begin(), _opt_sampl_vars.end());
-    }
+      orig_num_vars(_orig_num_vars),
+      input(input_vars)
+    {}
+
     const ArjunInt::Config& conf;
     map<uint64_t, vector<Lit>> cls;
-    std::map<uint64_t, AIG*> fs_clid;  // clause ID to formula
-    AIGManager* aig_mng = nullptr;
-    AIG* out; // Final output formula
+    std::map<uint64_t, aig_ptr> fs_clid;  // clause ID to formula
+    AIGManager aig_mng;
+    aig_ptr out; // Final output formula
     int32_t orig_num_vars;
     set<uint32_t> input;
 
@@ -77,23 +77,16 @@ public:
     }
     void fill_picolsat(uint32_t _orig_num_vars);
     void fill_var_to_indic(const vector<uint32_t>& var_to_indic);
-    void generate_interpolant(const vector<Lit>& assumptions, uint32_t test_var, SimplifiedCNF& cnf);
-    void add_clause(const vector<Lit>& cl);
-    const AIGManager& get_aig_mng() const { return aig_mng; }
-    const map<uint32_t, AIG*>& get_defs() const { return defs; }
-    bool evaluate(const vector<CMSat::lbool>& vals, uint32_t test_var) {
-        if (!defs.count(test_var)) {
-            cout << "ERROR: Variable " << test_var+1 << " not defined by this interpolant" << endl;
-            assert(defs.count(test_var) && "Don't query variables that haven't been defined, please");
-            exit(EXIT_FAILURE);
-        }
-        return ::evaluate(vals, defs[test_var], defs);
-    }
+    void generate_interpolant(const vector<Lit>& assumptions, uint32_t test_var, const SimplifiedCNF& cnf, const set<uint32_t>& input_vars);
+    void add_unit_cl(const vector<Lit>& cl);
+    auto& get_defs() { return defs; }
 
     // Internal really
     CMSat::SATSolver* solver = nullptr;
 
 private:
+    void fix_up_aig(aig_ptr& aig);
+
     PicoSAT* ps = nullptr;
     map<uint32_t, vector<Lit>> cl_map;
     uint32_t cl_num = 0;
@@ -101,7 +94,6 @@ private:
     const ArjunInt::Config conf;
     uint32_t orig_num_vars;
     vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
-    AIGManager aig_mng;
-    map<uint32_t, AIG*> defs; // the definitions of the variables
+    map<uint32_t, std::shared_ptr<AIG>> defs; //definition of variables in terms of AIG. ORIGINAL number space
 };
 

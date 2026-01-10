@@ -47,6 +47,7 @@ using std::vector;
 using std::set;
 using std::map;
 using std::unique_ptr;
+using std::string;
 
 using namespace ArjunInt;
 using namespace ArjunNS;
@@ -54,15 +55,19 @@ using namespace ArjunNS;
 class Manthan {
     public:
         Manthan(const Config& _conf, const std::unique_ptr<FieldGen>& _fg):
-            cnf(_fg->dup()), conf(_conf), fg(_fg->dup())  {}
+            cnf(_fg->dup()), conf(_conf), fg(_fg->dup())  {
+                mtrand.seed(42);
+            }
         SimplifiedCNF do_manthan(const SimplifiedCNF& cnf);
         SimplifiedCNF cnf;
 
     private:
         vec point_0;
         vec point_1;
-        uint32_t last_formula_var;
+        /* uint32_t last_formula_var; */
 
+        // y is original output var, i.e. to_define
+        // y_hat is learned var
         map<uint32_t, uint32_t> y_to_y_hat;
         map<uint32_t, uint32_t> y_hat_to_y;
 
@@ -73,29 +78,54 @@ class Manthan {
 
         const Config& conf;
         unique_ptr<FieldGen> fg;
-        SATSolver solver_train;
+        SATSolver solver;
+
+        // 3 sets of variables, together adding up to the CNF
         set<uint32_t> input;
         set<uint32_t> to_define;
+        set<uint32_t> backward_defined;
+        set<uint32_t> to_define_full;
+
         FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth = 0);
         vector<uint32_t> incidence;
         void get_incidence();
         bool get_counterexample(vector<lbool>& ctx);
+        void inject_formulas_into_solver();
+        vector<vector<lbool>*> filter_samples(const uint32_t v, const vector<vector<lbool>>& samples);
         vector<lbool> find_better_ctx(const vector<lbool>& ctx);
         void inject_cnf(SATSolver& s);
         void inject_unit(SATSolver& s);
         bool repair(const uint32_t v, vector<lbool>& ctx);
-        void perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vector<Lit>& conflict);
-        void init_solver_train();
+        vector<Lit> further_minimize_conflict_via_maxsat(const vector<Lit>& conflict, const vector<Lit>& assumps, const Lit& repairing);
+        void perform_repair(const uint32_t y_rep, const vector<lbool>& ctx, const vector<Lit>& conflict);
+        void add_not_F_x_yhat();
+        void fill_dependency_mat_with_backward();
+        void fill_var_to_formula_with_backward();
 
         vector<uint32_t> y_order; //1st only depends on inputs
         void fix_order();
 
 
         void add_sample_clauses(SimplifiedCNF& cnf);
-        vector<vector<lbool>> get_samples(uint32_t num_samples);
-        void train(const vector<vector<lbool>>& samples, uint32_t v);
+        vector<vector<lbool>> get_samples(const uint32_t num_samples);
+        double train(const vector<vector<lbool>>& samples, const uint32_t v); // returns training error
         vector<vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
 
-        FHolder fh;
-        std::map<uint32_t, FHolder::Formula> fs_var; // var -> formula
+        unique_ptr<FHolder> fh = nullptr;
+        std::map<uint32_t, FHolder::Formula> var_to_formula; // var -> formula
+        string pr(const lbool val) const;
+        bool lbool_to_bool(const lbool val) const {
+            assert(val != l_Undef);
+            return val == l_True;
+        }
+
+        AIGManager aig_mng;
+
+        // debug
+        bool check_map_dependency_cycles() const;
+        bool has_dependency_cycle_dfs(const uint32_t node, vector<uint8_t>& color, vector<uint32_t>& path) const; // used in check_dependency_loop
+        bool check_train_correctness() const;
+        bool check_aig_dependency_cycles() const;
+        bool check_transitive_closure_correctness() const;
+        std::mt19937 mtrand;
 };

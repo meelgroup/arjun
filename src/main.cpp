@@ -65,13 +65,12 @@ std::unique_ptr<ArjunNS::Arjun> arjun;
 string input_file;
 string elimtofile;
 
-SimpConf simp_conf;
+ArjunNS::SimpConf simp_conf;
 ArjunNS::Arjun::ElimToFileConf etof_conf;
 int do_gates = 1;
 int redundant_cls = true;
 int simptofile = true;
 int sampl_start_at_zero = false;
-int debug_synt = false;
 int do_synth_bve = true;
 int do_pre_backbone = 0;
 
@@ -79,7 +78,6 @@ int synthesis = false;
 int do_revbce = false;
 int do_minim_indep = true;
 string debug_minim;
-int do_pre_manthan = false;
 double cms_glob_mult = -1.0;
 int mode = 0;
 unique_ptr<FieldGen> fg = nullptr;
@@ -104,21 +102,22 @@ void add_arjun_options() {
 
     myopt("--mode", mode , atoi, "0=counting, 1=weightd counting");
     myopt("--allindep", etof_conf.all_indep , atoi, "All variables can be made part of the indepedent support. Indep support is given ONLY to help the solver.");
-    myopt("--premanthan", do_pre_manthan, atoi, "Run all simplifcation before Manthan");
     myopt("--maxc", conf.backw_max_confl, atoi,"Maximum conflicts per variable in backward mode");
-    myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
+    myopt("--revbce", do_revbce, atoi,"Perform reverse BCE");
+    myopt("--sbva", etof_conf.num_sbva_steps, atoi,"SBVA timeout. 0 = no sbva");
+    myopt("--prebackbone", do_pre_backbone, atoi,"Perform backbone before other things");
+
+    // synth
+    myopt("--samples", conf.num_samples, atoi,"Number of samples");
+    myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
+    myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
     program.add_argument("--synth")
         .action([&](const auto&) {synthesis = 1;})
         .default_value(synthesis)
         .flag()
         .help("Run synthesis");
-    myopt("--debugsynt", debug_synt, atoi, "Debug synthesis");
-    myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
-    myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
-    myopt("--revbce", do_revbce, atoi,"Perform reverse BCE");
-    myopt("--sbva", etof_conf.num_sbva_steps, atoi,"SBVA timeout. 0 = no sbva");
-    myopt("--prebackbone", do_pre_backbone, atoi,"Perform backbone before other things");
-    myopt("--samples", conf.num_samples, atoi,"Number of samples");
+    myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
+    myopt("--debugsynth", conf.debug_synth, string,"Debug synthesis, prefix with this fname");
 
     // Simplification options for minim
     myopt("--probe", conf.probe_based, atoi,"Do probing during orignal Arjun");
@@ -179,20 +178,20 @@ void add_arjun_options() {
     program.add_argument("files").remaining().help("input file and output file");
 }
 
-void print_final_sampl_set(SimplifiedCNF& cnf, const vector<uint32_t>& orig_sampl_vars) {
+void print_final_sampl_set(ArjunNS::SimplifiedCNF& cnf, const vector<uint32_t>& orig_sampl_vars) {
     cout
-    << "c o [arjun] final set size: " << std::setw(7) << cnf.sampl_vars.size()
+    << "c o [arjun] final set size: " << std::setw(7) << cnf.get_sampl_vars().size()
     << " percent of original: " << std::setw(6) << std::setprecision(3)
     << std::fixed
-    << stats_line_percent(cnf.sampl_vars.size(), orig_sampl_vars.size()) << " %" << endl;
+    << stats_line_percent(cnf.get_sampl_vars().size(), orig_sampl_vars.size()) << " %" << endl;
 
     cout << "c p show ";
-    for(const uint32_t s: cnf.sampl_vars) cout << s+1 << " ";
+    for(const uint32_t s: cnf.get_sampl_vars()) cout << s+1 << " ";
     cout << "0" << endl;
     cout << "c p optshow ";
-    for(const uint32_t s: cnf.opt_sampl_vars) cout << s+1 << " ";
+    for(const uint32_t s: cnf.get_opt_sampl_vars()) cout << s+1 << " ";
     cout << "0" << endl;
-    cout << "c MUST MULTIPLY BY " << *cnf.multiplier_weight << std::endl;
+    cout << "c MUST MULTIPLY BY " << *cnf.get_multiplier_weight() << std::endl;
 }
 
 void set_config(ArjunNS::Arjun* arj) {
@@ -226,49 +225,86 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 
+void check_cnf_sat(const ArjunNS::SimplifiedCNF& cnf) {
+    CMSat::SATSolver solver;
+    solver.set_verbosity(0);
+    solver.set_find_xors(false);
+    solver.new_vars(cnf.nVars());
+    for(const auto& cl: cnf.get_clauses()) solver.add_clause(cl);
+    for(const auto& cl: cnf.get_red_clauses()) solver.add_red_clause(cl);
+    CMSat::lbool ret = solver.solve();
+    if (ret == CMSat::l_False) {
+        cout << "c o [arjun] Input CNF is UNSAT!" << endl;
+        exit(EXIT_FAILURE);
+    }
+}
+
 #ifdef SYNTH
 void do_synthesis() {
-    SimplifiedCNF cnf(fg);
-    cnf.need_aig = true;
+    if (etof_conf.all_indep) {
+        cout << "ERROR: synthesis with --allindep makes no sense" << endl;
+        exit(EXIT_FAILURE);
+    }
+    ArjunNS::SimplifiedCNF cnf(fg);
+    cnf.set_need_aig();
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
+    if (etof_conf.all_indep) {
+        cout << "ERROR: CNF had no indep set, we cannot do synthesis" << endl;
+        exit(EXIT_FAILURE);
+    }
     cnf.clean_idiotic_mccomp_weights();
-    cnf.check_sanity();
-    assert(cnf.sampl_vars == cnf.opt_sampl_vars && "Synthesis extends opt_sampl_vars, so it must be the same as sampl_vars");
-    if (do_pre_manthan) {
-        cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
-        if (do_pre_backbone) arjun->standalone_backbone(cnf);
-        if (do_synth_bve) {
-            simp_conf.bve_too_large_resolvent = -1;
-            cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
-        }
-        if (etof_conf.do_extend_indep) arjun->standalone_unsat_define(cnf);
-        /* if (do_revbce) arjun->standalone_rev_bce(cnf); */
-        if (etof_conf.do_unate) arjun->standalone_unate(cnf);
+    cnf.set_orig_clauses(cnf.get_clauses());
+    cnf.set_orig_sampl_vars(cnf.get_sampl_vars());
+    assert(cnf.get_need_aig() && cnf.defs_invariant());
+    check_cnf_sat(cnf);
+    cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
+    cnf.get_var_types(1);
+    if (do_pre_backbone) arjun->standalone_backbone(cnf);
+    if (do_synth_bve) {
+        /* simp_conf.bve_too_large_resolvent = -1; */
+        cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
+        cnf.simplify_aigs();
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-1-simplified_cnf.aig");
     }
-    // TODO
-    if (do_minim_indep) arjun->standalone_minimize_indep_synt(cnf);
 
-    /* cnf.renumber_sampling_vars_for_ganak(); */
-    if (!elimtofile.empty()) write_synth(cnf, elimtofile);
-    if (cnf.opt_sampl_vars.size() == cnf.nVars()) {
-        cout << "c o [arjun] No variables to synthesize" << endl;
-        return;
-    } else {
-        cout << "c o [arjun] Num variables to synthesize via manthan:" << (cnf.nVars() - cnf.opt_sampl_vars.size()) << endl;
+    if (etof_conf.do_extend_indep) {
+        arjun->standalone_unsat_define(cnf);
+        cnf.simplify_aigs();
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-2-unsat_define.aig");
     }
-    arjun->standalone_manthan(cnf);
+
+    if (etof_conf.do_unate) {
+        arjun->standalone_unate(cnf);
+        cnf.simplify_aigs();
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-3-unsat_unate.aig");
+    }
+
+    // backw_round_synth
+    if (do_minim_indep) {
+        arjun->standalone_minimize_indep_synt(cnf);
+        cnf.simplify_aigs();
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-4-minim_idep_synt.aig");
+    }
+
+    auto final_cnf = arjun->standalone_manthan(cnf);
+    if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");
+    final_cnf.clear_orig_sampl_defs();
+    if (!conf.debug_synth.empty()) {
+        final_cnf.write_aig_defs_to_file(conf.debug_synth + "-final.aig");
+        cout << "c o [arjun] you can check correctness by running: " << endl;
+        cout << "./test-synth -u -v 1 " << input_file << " " << conf.debug_synth + "-final.aig" << endl;
+    }
 }
 #endif
 
 void do_minimize() {
-    SimplifiedCNF cnf(fg);
+    ArjunNS::SimplifiedCNF cnf(fg);
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
     cnf.clean_idiotic_mccomp_weights();
-    cnf.check_sanity();
+    cnf.check_cnf_sampl_sanity();
 
-    if (cnf.get_projected()) cnf.clear_weights_for_nonprojected_vars();
     if (do_pre_backbone) arjun->standalone_backbone(cnf);
-    const auto orig_sampl_vars = cnf.sampl_vars;
+    const auto orig_sampl_vars = cnf.get_sampl_vars();
     if (do_minim_indep) arjun->standalone_minimize_indep(cnf, etof_conf.all_indep);
     if (!debug_minim.empty()) {
         cnf.write_simpcnf(debug_minim, false);
@@ -327,7 +363,7 @@ int main(int argc, char** argv) {
 
     switch (mode) {
         case 0:
-            fg = std::make_unique<FGenMpz>();
+            fg = std::make_unique<ArjunNS::FGenMpz>();
             break;
         case 1:
             fg = std::make_unique<ArjunNS::FGenMpq>();
@@ -346,9 +382,9 @@ int main(int argc, char** argv) {
     vector<std::string> files;
     try {
         files = program.get<std::vector<std::string>>("files");
-        if (files.size() >= 3) {
+        if (files.size() > 2) {
             cout << "ERROR: you can only pass at most 3 positional parameters: an INPUT file"
-                ", optionally an OUTPUT file, and optionally a RECOVER file" << endl;
+                ", optionally an OUTPUT file" << endl;
             exit(EXIT_FAILURE);
         }
     } catch (std::logic_error& e) {
@@ -364,6 +400,9 @@ int main(int argc, char** argv) {
     if (synthesis) {
 #ifdef SYNTH
         do_synthesis();
+#else
+        cout << "c o [arjun] ERROR: synthesis not enabled in this build" << endl;
+        exit(EXIT_FAILURE);
 #endif
     } else {
         do_minimize();

@@ -3,6 +3,8 @@ name: build
 on:
   pull_request:
     branches: [ "*" ]
+  push:
+    branches: [ "master" ]
 
 jobs:
   build:
@@ -115,7 +117,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: msoos/cryptominisat
-        ref: master
+        ref: working-on-synth
         path: cryptominisat
         submodules: 'true'
     - name: Build CMS
@@ -207,6 +209,21 @@ jobs:
         sudo make install
         cd ../..
 
+    - name: Checkout EvalMaxSAT
+      uses: actions/checkout@v4
+      with:
+        repository: meelgroup/EvalMaxSAT
+        ref: master
+        path: EvalMaxSAT
+    - name: Build EvalMaxSAT
+      run: |
+        cd EvalMaxSAT
+        mkdir build
+        cd build
+        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSTATICCOMPILE=${{ matrix.staticcompile }} ..
+        cmake --build . --config ${{matrix.build_type}} -v
+        cd ../..
+
     - uses: actions/checkout@v4
       with:
         path: project
@@ -233,7 +250,6 @@ jobs:
         ./project/build/arjun --help
         echo $?
 
-
     - name: Upload Artifact - Linux
       if: contains(matrix.os, 'ubuntu') && matrix.staticcompile == 'ON' && !contains(matrix.os, 'arm')
       uses: actions/upload-artifact@v4
@@ -241,6 +257,7 @@ jobs:
         name: arjun-linux-amd64
         path: |
           project/build/arjun
+          project/build/test-synth
           project/build/lib/*
           project/build/include/*
 
@@ -251,16 +268,18 @@ jobs:
         name: arjun-linux-arm64
         path: |
           project/build/arjun
+          project/build/test-synth
           project/build/lib/*
           project/build/include/*
 
     - name: Upload Artifact - Mac arm
-      if: matrix.os == 'macos-14' && matrix.staticcompile == 'ON'
+      if: matrix.os == 'macos-15' && matrix.staticcompile == 'ON'
       uses: actions/upload-artifact@v4
       with:
         name: arjun-mac-arm64
         path: |
           project/build/arjun
+          project/build/test-synth
           project/build/lib/*
           project/build/include/*
 
@@ -271,5 +290,6 @@ jobs:
         name: arjun-mac-x86_64
         path: |
           project/build/arjun
+          project/build/test-synth
           project/build/lib/*
           project/build/include/*

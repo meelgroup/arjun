@@ -142,17 +142,38 @@
         ]
       },
       "locked": {
-        "lastModified": 1765712642,
-        "narHash": "sha256-jVxVtk6+DEpyYcziSKK6IuJlsw8rPHeLryQXJr6ANmE=",
+        "lastModified": 1767357710,
+        "narHash": "sha256-Db3ljlAt9+LAvgB63M5u6uHovBaFDBnOfENz6z1LVkY=",
         "owner": "msoos",
         "repo": "cryptominisat",
-        "rev": "4c377ecab94ca9e9d3b2348204fb0ffe27fe6dec",
+        "rev": "8b9274087855be749e625310f0410f28de57a117",
         "type": "github"
       },
       "original": {
         "owner": "msoos",
-        "ref": "master",
+        "ref": "working-on-synth",
         "repo": "cryptominisat",
+        "type": "github"
+      }
+    },
+    "evalmaxsat": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1767562667,
+        "narHash": "sha256-Am0HYg82BHihLwFq5IstgFASf7UUtKcT1ZvCjWgP4dU=",
+        "owner": "meelgroup",
+        "repo": "EvalMaxSAT",
+        "rev": "cc711fef8485a210848165c251817d1588d2977c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "meelgroup",
+        "ref": "master",
+        "repo": "EvalMaxSAT",
         "type": "github"
       }
     },
@@ -177,6 +198,7 @@
         "cadiback": "cadiback",
         "cadical": "cadical_2",
         "cryptominisat": "cryptominisat",
+        "evalmaxsat": "evalmaxsat",
         "nixpkgs": "nixpkgs",
         "sbva": "sbva"
       }

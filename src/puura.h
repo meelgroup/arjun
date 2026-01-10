@@ -27,10 +27,12 @@
 #include <cryptominisat5/cryptominisat.h>
 #include "src/config.h"
 #include <cstdint>
+#include <memory>
 #include <vector>
 #include <set>
 #include "config.h"
 #include "arjun.h"
+#include "constants.h"
 
 using namespace CMSat;
 using namespace ArjunInt;
@@ -43,7 +45,7 @@ public:
     Puura(const Config& _conf);
     ~Puura();
 
-    SATSolver* fill_solver(const SimplifiedCNF& cnf);
+    std::unique_ptr<SATSolver> fill_solver(const SimplifiedCNF& cnf);
     SimplifiedCNF get_fully_simplified_renumbered_cnf(
         const SimplifiedCNF& cnf, const SimpConf simp_conf);
     void reverse_bce(SimplifiedCNF& cnf);
@@ -53,13 +55,16 @@ public:
     void backbone(SimplifiedCNF& cnf);
 
 private:
-    SATSolver* setup_f_not_f_indic(const SimplifiedCNF& cnf);
+    unique_ptr<SATSolver> setup_f_not_f_indic(const SimplifiedCNF& cnf);
     void set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf);
-    bool set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, SATSolver* solver);
-
-    void get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSolver* solver) const;
+    bool set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, std::unique_ptr<SATSolver>& solver);
+    void get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, std::unique_ptr<SATSolver>& solver) const;
+    void get_fixed_values(
+        const SimplifiedCNF& cnf,
+        SimplifiedCNF& scnf,
+        unique_ptr<SATSolver>& solver) const;
     SimplifiedCNF get_cnf(
-        SATSolver* solver,
+        unique_ptr<SATSolver>& solver,
         const SimplifiedCNF& cnf,
         const vector<uint32_t>& sampl_vars,
         const vector<uint32_t>& empty_sampl_vars);

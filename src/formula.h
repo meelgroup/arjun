@@ -41,41 +41,60 @@ using std::set;
 using std::endl;
 using std::cout;
 using CMSat::Lit;
+using CMSat::lit_Error;
+using CMSat::SATSolver;
 using std::map;
 
 namespace ArjunNS {
 
-struct FHolder {
+struct CL {
+    constexpr CL(const vector<Lit>& _lits) : lits(_lits) {}
+    vector<Lit> lits;
+    bool inserted = false;
+};
+
+class FHolder {
+public:
+    FHolder() = delete;
+    FHolder(SATSolver* _solver) : solver(_solver) {
+        solver->new_var();
+        my_true_lit = Lit(solver->nVars()-1, false);
+        solver->add_clause({my_true_lit});
+    }
     struct Formula {
         // TODO: we could have a flag of what has already been inserted into
         // solver_train
-        std::vector<std::vector<CMSat::Lit>> clauses;
-        CMSat::Lit out = CMSat::lit_Error;
+        vector<CL> clauses;
+        Lit out = lit_Error;
         bool finished = false;
-        AIG* aig = nullptr;
+        aig_ptr aig = nullptr;
     };
 
-    Formula constant_formula(bool value) {
+    set<uint32_t> get_dependent_vars(const Formula& f, uint32_t v) const {
+        set<uint32_t> ret;
+        AIG::get_dependent_vars(f.aig, ret, v);
+        return ret;
+    }
+
+    Formula constant_formula(const bool value) {
         Formula ret;
-        if (solver) ret.out = value ? my_true_lit : ~my_true_lit;
+        ret.out = value ? my_true_lit : ~my_true_lit;
         ret.aig = aig_mng.new_const(value);
         return ret;
     }
 
     Formula compose_ite(const Formula& fleft, const Formula& fright, const Formula& branch) {
         Formula ret;
-        if (solver) {
-            ret = compose_ite(fleft, fright, branch.out);
-            ret.clauses.insert(ret.clauses.end(), branch.clauses.begin(), branch.clauses.end());
-        }
-        ret.aig = aig_mng.new_ite(fleft.aig, fright.aig, branch.aig);
+        ret = compose_ite(fleft, fright, branch.out);
+        ret.clauses.insert(ret.clauses.end(), branch.clauses.begin(), branch.clauses.end());
+        ret.aig = AIG::new_ite(fleft.aig, fright.aig, branch.aig);
         return ret;
     }
 
     Formula neg(const Formula& f) {
         Formula ret = f;
-        if (solver) ret.out = ~f.out;
-        ret.aig = aig_mng.new_not(f.aig);
+        ret.out = ~f.out;
+        ret.aig = AIG::new_not(f.aig);
         return ret;
     }
 
@@ -85,71 +104,73 @@ struct FHolder {
 
     Formula compose_or(const Formula& fleft, const Formula& fright) {
         Formula ret;
-        if (solver) {
-            ret.clauses = fleft.clauses;
-            for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
+        ret.clauses = fleft.clauses;
+        for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
 
-            solver->new_var();
-            uint32_t fresh_v = solver->nVars()-1;
-            Lit l = Lit(fresh_v, false);
+        solver->new_var();
+        uint32_t fresh_v = solver->nVars()-1;
+        Lit l = Lit(fresh_v, false);
 
-            ret.clauses.push_back({~l, fleft.out, fright.out});
-            ret.clauses.push_back({l, ~fleft.out});
-            ret.clauses.push_back({l, ~fright.out});
-            ret.out = l;
-        }
-        ret.aig = aig_mng.new_or(fleft.aig, fright.aig);
+        ret.clauses.push_back(CL({~l, fleft.out, fright.out}));
+        ret.clauses.push_back(CL({l, ~fleft.out}));
+        ret.clauses.push_back(CL({l, ~fright.out}));
+        ret.out = l;
+
+        assert(fleft.aig != nullptr);
+        assert(fright.aig != nullptr);
+        ret.aig = AIG::new_or(fleft.aig, fright.aig);
         return ret;
     }
 
-    Formula compose_ite(const Formula& fleft, const Formula& fright, Lit branch) {
+    Formula compose_ite(const Formula& fleft, const Formula& fright, const Lit branch) {
         Formula ret;
-        if (solver) {
-            ret.clauses = fleft.clauses;
-            for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
-            solver->new_var();
-            uint32_t fresh_v = solver->nVars()-1;
-            //  branch -> return left
-            // !branch -> return right
-            //
-            //  b -> fresh = left
-            // !b -> fresh = right
-            //
-            // !b V    f V -left
-            // -b V   -f V  left
-            //  b V    f V -right
-            //  b V   -f V  right
-            //
-            Lit b = branch;
-            Lit l = fleft.out;
-            Lit r = fright.out;
-            Lit fresh = Lit(fresh_v, false);
-            ret.clauses.push_back({~b, fresh, ~l});
-            ret.clauses.push_back({~b, ~fresh, l});
-            ret.clauses.push_back({b, fresh, ~r});
-            ret.clauses.push_back({b, ~fresh, r});
-            ret.out = Lit(fresh_v, false);
-        }
-        ret.aig = aig_mng.new_ite(fleft.aig, fright.aig, branch);
+        ret.clauses = fleft.clauses;
+        for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
+        solver->new_var();
+        uint32_t fresh_v = solver->nVars()-1;
+        //  branch -> return left
+        // !branch -> return right
+        //
+        //  b -> fresh = left
+        // !b -> fresh = right
+        //
+        // !b V    f V -left
+        // -b V   -f V  left
+        //  b V    f V -right
+        //  b V   -f V  right
+        //
+        Lit b = branch;
+        Lit l = fleft.out;
+        Lit r = fright.out;
+        Lit fresh = Lit(fresh_v, false);
+        ret.clauses.push_back(CL({~b, fresh, ~l}));
+        ret.clauses.push_back(CL({~b, ~fresh, l}));
+        ret.clauses.push_back(CL({b, fresh, ~r}));
+        ret.clauses.push_back(CL({b, ~fresh, r}));
+        ret.out = Lit(fresh_v, false);
+        ret.aig = AIG::new_ite(fleft.aig, fright.aig, branch);
         return ret;
     }
 
+    Lit get_true_lit() const {
+        assert(my_true_lit != lit_Error);
+        return my_true_lit;
+    }
+
+private:
     AIGManager aig_mng;
-    CMSat::SATSolver* solver;
-    Lit my_true_lit;
+    SATSolver* solver = nullptr;
+    Lit my_true_lit = lit_Error;
 };
 
 }
 
 inline std::ostream& operator<<(std::ostream& os, const ArjunNS::FHolder::Formula& f) {
-    os << " ==== Formula: " << f.out << " ==== " << endl;
+    os << " === Formula out: " << f.out << " === " << endl;
     for (const auto& cl : f.clauses) {
-        for (const auto& l : cl) {
-            os << std::setw(6) << l;
-        }
+        for (const auto& l : cl.lits) os << std::setw(6) << l;
         cout << " 0" << endl;
     }
-    os << endl;
-    os << "Output: " << f.out;
+    os << " === End Formula === ";
     return os;
 }
