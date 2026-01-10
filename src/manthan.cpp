@@ -214,9 +214,9 @@ void Manthan::fill_var_to_formula_with_backward() {
 
                 // Generate Tseitin clauses for AND gate
                 // and_out represents (l_lit & r_lit)
-                f.clauses.push_back({~and_out, l_lit});
-                f.clauses.push_back({~and_out, r_lit});
-                f.clauses.push_back({~l_lit, ~r_lit, and_out});
+                f.clauses.push_back(CL({~and_out, l_lit}));
+                f.clauses.push_back(CL({~and_out, r_lit}));
+                f.clauses.push_back(CL({~l_lit, ~r_lit, and_out}));
 
                 // Apply negation if needed
                 return neg ? ~and_out : and_out;
@@ -308,6 +308,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     uint32_t num_loops_repair = 0;
     while(true) {
         num_loops_repair++;
+        if ((num_loops_repair % 50) == 49) solver.simplify();
         inject_formulas_into_solver();
         vector<lbool> ctx;
         bool finished = get_counterexample(ctx);
@@ -666,17 +667,17 @@ void Manthan::add_not_F_x_yhat() {
 void Manthan::inject_formulas_into_solver() {
     // Replace y with y_hat
     for(auto& [var, form]: var_to_formula) {
-        if (form.already_added_to_manthans_solver) continue;
         for(auto& cl: form.clauses) {
+            if (cl.inserted) continue;
             vector<Lit> cl2;
-            for(const auto& l: cl) {
+            for(const auto& l: cl.lits) {
                 auto v = l.var();
                 if (to_define_full.count(v)) { cl2.push_back(Lit(y_to_y_hat[v], l.sign()));}
                 else cl2.push_back(l);
             }
             solver.add_clause(cl2);
+            cl.inserted = true;
         }
-        form.already_added_to_manthans_solver = true;
     }
 }
 
@@ -729,7 +730,6 @@ bool Manthan::get_counterexample(vector<lbool>& ctx) {
 
 
     /* solver.set_up_for_sample_counter(1000); */
-    /* solver.simplify(); */
     auto ret = solver.solve(&assumps);
     assert(ret != l_Undef);
     if (ret == l_True) {

@@ -239,9 +239,9 @@ void fill_var_to_formula(SATSolver& solver, FHolder& fh,
 
                 // Generate Tseitin clauses for AND gate
                 // and_out represents (l_lit & r_lit)
-                f.clauses.push_back({~and_out, l_lit});
-                f.clauses.push_back({~and_out, r_lit});
-                f.clauses.push_back({~l_lit, ~r_lit, and_out});
+                f.clauses.push_back(CL({~and_out, l_lit}));
+                f.clauses.push_back(CL({~and_out, r_lit}));
+                f.clauses.push_back(CL({~l_lit, ~r_lit, and_out}));
 
                 // Apply negation if needed
                 return neg ? ~and_out : and_out;
@@ -277,7 +277,7 @@ bool verify_aigs_correct(SATSolver& solver,
         verb_print(4, " var_to_formula[var]:" << var_to_formula.at(var).aig);
         for(auto& cl: form.clauses) {
             vector<Lit> cl2;
-            for(const auto& l: cl) {
+            for(const auto& l: cl.lits) {
                 release_assert(!aig_vs.count(l.var()) && "we replaced all aig vars with y_hat already!");
                 cl2.push_back(l);
             }

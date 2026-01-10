@@ -47,6 +47,12 @@ using std::map;
 
 namespace ArjunNS {
 
+struct CL {
+    constexpr CL(const vector<Lit>& _lits) : lits(_lits) {}
+    vector<Lit> lits;
+    bool inserted = false;
+};
+
 class FHolder {
 public:
     FHolder() = delete;
@@ -58,8 +64,7 @@ public:
     struct Formula {
         // TODO: we could have a flag of what has already been inserted into
         // solver_train
-        vector<std::vector<Lit>> clauses;
-        bool already_added_to_manthans_solver = false;
+        vector<CL> clauses;
         Lit out = lit_Error;
         bool finished = false;
         aig_ptr aig = nullptr;
@@ -106,9 +111,9 @@ public:
         uint32_t fresh_v = solver->nVars()-1;
         Lit l = Lit(fresh_v, false);
 
-        ret.clauses.push_back({~l, fleft.out, fright.out});
-        ret.clauses.push_back({l, ~fleft.out});
-        ret.clauses.push_back({l, ~fright.out});
+        ret.clauses.push_back(CL({~l, fleft.out, fright.out}));
+        ret.clauses.push_back(CL({l, ~fleft.out}));
+        ret.clauses.push_back(CL({l, ~fright.out}));
         ret.out = l;
 
         assert(fleft.aig != nullptr);
@@ -138,10 +143,10 @@ public:
         Lit l = fleft.out;
         Lit r = fright.out;
         Lit fresh = Lit(fresh_v, false);
-        ret.clauses.push_back({~b, fresh, ~l});
-        ret.clauses.push_back({~b, ~fresh, l});
-        ret.clauses.push_back({b, fresh, ~r});
-        ret.clauses.push_back({b, ~fresh, r});
+        ret.clauses.push_back(CL({~b, fresh, ~l}));
+        ret.clauses.push_back(CL({~b, ~fresh, l}));
+        ret.clauses.push_back(CL({b, fresh, ~r}));
+        ret.clauses.push_back(CL({b, ~fresh, r}));
         ret.out = Lit(fresh_v, false);
         ret.aig = AIG::new_ite(fleft.aig, fright.aig, branch);
         return ret;
@@ -163,7 +168,7 @@ private:
 inline std::ostream& operator<<(std::ostream& os, const ArjunNS::FHolder::Formula& f) {
     os << " === Formula out: " << f.out << " === " << endl;
     for (const auto& cl : f.clauses) {
-        for (const auto& l : cl) os << std::setw(6) << l;
+        for (const auto& l : cl.lits) os << std::setw(6) << l;
         cout << " 0" << endl;
     }
     os << " === End Formula === ";
