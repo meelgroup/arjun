@@ -80,7 +80,7 @@ void Manthan::inject_cnf(SATSolver& s) {
 }
 
 vector<vector<lbool>> Manthan::get_samples(const uint32_t num) {
-    vector<vector<lbool>> solutions;
+    vector<vector<lbool>> samples;
     SATSolver solver_samp;
     solver_samp.set_up_for_sample_counter(100);
     inject_cnf(solver_samp);
@@ -90,9 +90,9 @@ vector<vector<lbool>> Manthan::get_samples(const uint32_t num) {
         solver_samp.solve();
         assert(solver_samp.get_model().size() == cnf.nVars());
         /// TODO: old idea of CMS, make them zero if they are all the last decision and I can do it.
-        solutions.push_back(solver_samp.get_model());
+        samples.push_back(solver_samp.get_model());
     }
-    return solutions;
+    return samples;
 }
 
 string Manthan::pr(const lbool val) const {
@@ -284,8 +284,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     get_incidence();
 
     // Sampling
-    vector<vector<lbool>> solutions = get_samples(conf.num_samples);
-    verb_print(1, "Got " << solutions.size() << " samples");
+    vector<vector<lbool>> samples = get_samples(conf.num_samples);
+    verb_print(1, "Got " << samples.size() << " samples");
 
     // Training
     inject_cnf(solver);
@@ -296,7 +296,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     fix_order();
     for(const auto& v: y_order) {
         if (backward_defined.count(v)) continue;
-        train(solutions, v); // updates dependency_mat
+        train(samples, v); // updates dependency_mat
     }
     verb_print(2, "[do-manthan] After training: solver_train.nVars() = " << solver.nVars());
     assert(check_map_dependency_cycles());
@@ -797,9 +797,49 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
     assert(false);
 }
 
-double Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
+vector<vector<lbool>*> Manthan::filter_samples(const uint32_t v, const vector<vector<lbool>>& samples) {
+    uint32_t num_removed = 0;
+    SATSolver temp_solver;
+    inject_cnf(temp_solver);
+    vector<Lit> assumps;
+    vector<vector<lbool>*> filtered_samples;
+    for(const auto& sample: samples) {
+        assumps.clear();
+        assert(sample.size() == cnf.nVars());
+        for(uint32_t i = 0; i < cnf.nVars(); i++) {
+            assert(sample[i] != l_Undef);
+            const Lit l = Lit(i, sample[i] == l_False);
+            if (i == v) assumps.push_back(~l);
+            else assumps.push_back(l);
+        }
+        auto ret = temp_solver.solve(&assumps);
+        assert(ret != l_Undef);
+        if (ret == l_False) {
+            // sample is good
+            filtered_samples.push_back(const_cast<vector<lbool>*>(&sample));
+        } else num_removed++;
+        verb_print(3, "filtered sample for v " << v+1 << " : " << (ret == l_True ? "removed" : "kept"));
+    }
+    verb_print(2, "[filter_samples] For variable " << v+1 << ", removed "
+            << num_removed << " / " << samples.size()
+            << " samples that had no effect on it.");
+
+    // Make sure we have at least one sample
+    if (filtered_samples.empty())
+        filtered_samples.push_back(const_cast<vector<lbool>*>(&samples[0]));
+
+    return filtered_samples;
+}
+
+double Manthan::train(const vector<vector<lbool>>& orig_samples, const uint32_t v) {
     verb_print(2, "training variable: " << v+1);
-    assert(!samples.empty());
+    assert(!orig_samples.empty());
+    vector<vector<lbool>*> samples;
+    if (true) samples = filter_samples(v, orig_samples);
+    else {
+        for(const auto& s: orig_samples)
+            samples.push_back(const_cast<vector<lbool>*>(&s));
+    }
     assert(v < cnf.nVars());
     point_0.resize(cnf.nVars());
     for(uint32_t i = 0; i < cnf.nVars(); i++) point_0[i] = 0;
@@ -814,7 +854,7 @@ double Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
 
     set<uint32_t> cannot_depend_on;
     for(uint32_t i = 0; i < samples.size(); i++) {
-        assert(samples[i].size() == cnf.nVars());
+        assert(samples[i]->size() == cnf.nVars());
         for(uint32_t dep_v = 0; dep_v < cnf.nVars(); dep_v++) {
             if (dependency_mat[dep_v][v] == 1 || dep_v == v) {
                 // we zero it out, so hopefully it will not be used
@@ -822,11 +862,11 @@ double Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
                 cannot_depend_on.insert(dep_v);
                 continue;
             }
-            dataset(dep_v, i) = lbool_to_bool(samples[i][dep_v]);
+            dataset(dep_v, i) = lbool_to_bool((*samples[i])[dep_v]);
         }
     }
     labels.resize(samples.size());
-    for(uint32_t i = 0; i < samples.size(); i++) labels[i] = lbool_to_bool(samples[i][v]);
+    for(uint32_t i = 0; i < samples.size(); i++) labels[i] = lbool_to_bool((*samples[i])[v]);
 
     // Create the RandomForest object and train it on the training data.
     //
@@ -848,7 +888,7 @@ double Manthan::train(const vector<vector<lbool>>& samples, const uint32_t v) {
     /* DecisionTree<> r(dataset, labels, 2); */
     // More conservative (less overfitting)
     DecisionTree<> r(dataset, labels, 2,
-                   100,      // minimumLeafSize: require 20+ samples per leaf
+                   samples.size()/20,      // minimumLeafSize: require 20+ samples per leaf
                    0.001,   // minimumGainSplit: require 0.1% gain to split
                    8);     // maximumDepth: max 10 levels deep
 
