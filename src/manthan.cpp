@@ -666,7 +666,7 @@ void Manthan::add_not_F_x_yhat() {
 void Manthan::inject_formulas_into_solver() {
     // Replace y with y_hat
     for(auto& [var, form]: var_to_formula) {
-        /* if (form.already_added_to_manthans_solver) continue; */
+        if (form.already_added_to_manthans_solver) continue;
         for(auto& cl: form.clauses) {
             vector<Lit> cl2;
             for(const auto& l: cl) {
@@ -676,7 +676,7 @@ void Manthan::inject_formulas_into_solver() {
             }
             solver.add_clause(cl2);
         }
-        /* form.already_added_to_manthans_solver = true; */
+        form.already_added_to_manthans_solver = true;
     }
 }
 
