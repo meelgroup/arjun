@@ -66,7 +66,7 @@ unique_ptr<SATSolver> Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
     s->set_sls(false);
     s->set_find_xors(false);
 
-    vector<Lit> zs;
+    vector<Lit> not_f_cls;
     for(const auto& cl: cnf.get_clauses()) {
         // F(x)
         s->add_clause(cl);
@@ -92,11 +92,11 @@ unique_ptr<SATSolver> Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
             else tmp = {Lit(l.var()+orig_num_vars, !l.sign()),  z};
             s->add_clause(tmp);
         }
-        zs.push_back(~z);
+        not_f_cls.push_back(~z);
     }
 
     // At least ONE clause must be FALSE
-    s->add_clause(zs);
+    s->add_clause(not_f_cls);
     verb_print(1, "[unate] Built up the F and ~F_x_y solver. T: " << (cpuTime() - my_time));
     return s;
 }
