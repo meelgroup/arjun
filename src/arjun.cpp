@@ -303,7 +303,8 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
             if (verb >= 3) cout << "c o Elimed empty sampling orig var: " << orig_target << endl;
             continue;
         }
-        cout << "c o [bve-aig] setting aig for orig elimed var: " << orig_target << " def size: " << def.size() << endl;
+        if (verb >= 3)
+            cout << "c o [bve-aig] setting aig for orig elimed var: " << orig_target << " def size: " << def.size() << endl;
 
         uint32_t pos = 0;
         uint32_t neg = 0;
