@@ -362,6 +362,10 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     fill_dependency_mat_with_backward();
     get_incidence();
 
+    // Fill repair solver with CNF
+    repair_solver.new_vars(cnf.nVars());
+    inject_cnf(repair_solver, false); // faster to add CNF later
+
     // Sampling
     verb_print(1, "Getting " << mconf.num_samples << " samples...");
     vector<sample> samples = get_samples(mconf.num_samples);
@@ -499,9 +503,6 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
 bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict) {
     // F(x,y) & x = ctx(x) && forall_y (y not dependent on v) (y = ctx(y)) & NOT (v = ctx(v))
     // Used to find UNSAT core that will help us repair the function
-    SATSolver repair_solver;
-    repair_solver.new_vars(cnf.nVars());
-
     vector<Lit> assumps;
     for(const auto& x: input) {
         const Lit l = Lit(x, ctx[x] == l_False);
@@ -521,10 +522,10 @@ bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>
     }
 
     const Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
-    repair_solver.add_clause({~repairing}); // we try to fix this one
+    assumps.push_back({~repairing});
+    /* repair_solver.add_clause({~repairing}); // we try to fix this one */
     /* cout << "added repairing cl: " << std::vector<Lit>{~repairing} << endl; */
     ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
-    inject_cnf(repair_solver, false); // faster to add CNF later
 
     verb_print(3, "adding to solver: " << ~repairing);
     verb_print(3, "setting the to-be-repaired " << repairing << " to wrong.");
@@ -551,14 +552,18 @@ bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>
         verb_print(1, "repairing " << y_rep+1 << " is not possible");
         return false;
     }
+    set<Lit> confl_set(conflict.begin(), conflict.end());
+    assert(confl_set.count(repairing) == 1 && "conflict must contain the repairing lit");
+    confl_set.erase(repairing);
     uint32_t orig_size = conflict.size();
-    if (conflict.size() > 1) minimize_conflict(repair_solver, conflict, assumps);
+    conflict = vector<Lit>(confl_set.begin(), confl_set.end());
+    if (conflict.size() > 1) minimize_conflict(conflict, assumps);
     verb_print(1, "[manthan-repair] minim. Removed: " << (orig_size - conflict.size())
             << " from conflict, now size: " << conflict.size());
     return true;
 }
 
-void Manthan::minimize_conflict(SATSolver& repair_solver, vector<Lit>& conflict, vector<Lit>& assumps) const {
+void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps) {
     bool removed_any = true;
     while(removed_any) {
         std::shuffle(conflict.begin(), conflict.end(), mtrand);

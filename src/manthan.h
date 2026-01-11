@@ -81,6 +81,7 @@ class Manthan {
         const Arjun::ManthanConf& mconf;
         unique_ptr<FieldGen> fg;
         SATSolver solver;
+        SATSolver repair_solver;
 
         // 3 sets of variables, together adding up to the CNF
         set<uint32_t> input;
@@ -100,7 +101,7 @@ class Manthan {
         void inject_unit(SATSolver& s);
         bool repair(const uint32_t v, sample& ctx);
         bool find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict);
-        void minimize_conflict(SATSolver& repair_solver, vector<Lit>& conflict, vector<Lit>& assumps) const;
+        void minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps);
         void perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict);
         void add_not_F_x_yhat();
         void fill_dependency_mat_with_backward();
@@ -132,7 +133,7 @@ class Manthan {
         bool check_train_correctness() const;
         bool check_aig_dependency_cycles() const;
         bool check_transitive_closure_correctness() const;
-        mutable std::mt19937 mtrand;
+        std::mt19937 mtrand;
         vector<uint32_t> updated_y_funcs; // y_hats updated during last round of training
         uint32_t num_loops_repair = 0;
 };
