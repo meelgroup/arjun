@@ -486,7 +486,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     auto ret = repair_solver.solve(&assumps);
     assert(ret != l_Undef);
     if (ret == l_True) {
-        cout << "Repair cost is 0???????" << endl;
+        verb_print(2, "Repair cost is 0 for y: " << y_rep+1);
         /* if (conf.verb >= 3) { */
         /*     for(uint32_t i = 0; i < cnf.nVars(); i++) */
         /*         cout << "model i " << setw(5) << i+1 << " : " << model[i] << endl; */
@@ -528,7 +528,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
             }
         }
     }
-    verb_print(1, "[manthan-repair] minim. Removed: " << removed << " from conflict, now size: " << conflict.size());
+    verb_print(2, "[manthan-repair] minim. Removed: " << removed << " from conflict, now size: " << conflict.size());
     perform_repair(y_rep, ctx, conflict);
     return true;
 }
@@ -663,7 +663,7 @@ sample Manthan::find_better_ctx(const sample& ctx) {
             needs_repair.insert(l.var());
         }
     }
-    verb_print(1, "optimum found: " << needs_repair.size() << " original assumps size: " << assumps.size());
+    verb_print(2, "optimum found: " << needs_repair.size() << " original assumps size: " << assumps.size());
     /* assert(needs_repair.size() == s_ctx.getCost()); */
     assert(!needs_repair.empty());
     if (conf.verb >= 2) {
@@ -857,28 +857,39 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
     assert(false);
 }
 
+// Checks if flipping variable v in sample s satisfies all clauses
+bool Manthan::check_satisfied_all_cls_with_flip(const sample& s, const uint32_t v) const {
+    // Check all clauses
+    for(const auto& cl: cnf.get_clauses()) {
+        bool satisfied = false;
+        for(const auto& l: cl) {
+            uint32_t var = l.var();
+            bool sign = l.sign();
+            lbool val = s[l.var()];
+            assert(val != l_Undef);
+            if (var == v) val = val ^ true;
+            val = val ^ sign;
+            if (val == l_True) {
+                satisfied = true;
+                break;
+            }
+        }
+        if (!satisfied) return false;
+    }
+    // all clauses satisfied
+    return true;
+}
+
 vector<sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& samples) {
     uint32_t num_removed = 0;
-    SATSolver temp_solver;
-    inject_cnf(temp_solver);
-    vector<Lit> assumps;
     vector<sample*> filtered_samples;
     for(const auto& s: samples) {
-        assumps.clear();
-        assert(s.size() == cnf.nVars());
-        for(uint32_t i = 0; i < cnf.nVars(); i++) {
-            assert(s[i] != l_Undef);
-            const Lit l = Lit(i, s[i] == l_False);
-            if (i == v) assumps.push_back(~l);
-            else assumps.push_back(l);
-        }
-        auto ret = temp_solver.solve(&assumps);
-        assert(ret != l_Undef);
-        if (ret == l_False) {
+        bool ret = check_satisfied_all_cls_with_flip(s, v);
+        if (!ret) {
             // sample is good
             filtered_samples.push_back(const_cast<sample*>(&s));
         } else num_removed++;
-        verb_print(3, "filtered sample for v " << v+1 << " : " << (ret == l_True ? "removed" : "kept"));
+        verb_print(3, "filtered sample for v " << v+1 << " : " << (ret ? "removed" : "kept"));
     }
     verb_print(2, "[filter_samples] For variable " << v+1 << ", removed "
             << num_removed << " / " << samples.size()

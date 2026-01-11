@@ -92,6 +92,7 @@ class Manthan {
         void get_incidence();
         bool get_counterexample(sample& ctx);
         void inject_formulas_into_solver();
+        bool check_satisfied_all_cls_with_flip(const sample& s, const uint32_t v) const;
         vector<sample*> filter_samples(const uint32_t v, const vector<sample>& samples);
         sample find_better_ctx(const sample& ctx);
         void inject_cnf(SATSolver& s);
