@@ -106,6 +106,7 @@ void add_arjun_options() {
     myopt("--revbce", do_revbce, atoi,"Perform reverse BCE");
     myopt("--sbva", etof_conf.num_sbva_steps, atoi,"SBVA timeout. 0 = no sbva");
     myopt("--prebackbone", do_pre_backbone, atoi,"Perform backbone before other things");
+    myopt("--seed", conf.seed, atoi, "Random seed");
 
     // synth
     myopt("--samples", conf.num_samples, atoi,"Number of samples");
@@ -218,6 +219,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_no_gates_below(conf.no_gates_below);
     arj->set_probe_based(conf.probe_based);
     arj->set_backw_max_confl(conf.backw_max_confl);
+    arj->set_seed(conf.seed);
     arj->set_gauss_jordan(conf.gauss_jordan);
     arj->set_simp(conf.simp);
     arj->set_num_samples(conf.num_samples);

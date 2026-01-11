@@ -989,17 +989,21 @@ public:
         if (!ignore) {
             assert(sampl_vars.empty());
             assert(sampl_vars_set == false);
+            assert(opt_sampl_vars_set == false);
+            assert(opt_sampl_vars.empty());
         }
         sampl_vars.clear();
         sampl_vars_set = true;
-        for(const auto& v: vars) sampl_vars.push_back(v);
+        std::set<uint32_t> tmp(vars.begin(), vars.end());
+        sampl_vars.insert(sampl_vars.begin(), tmp.begin(), tmp.end());
         if (!opt_sampl_vars_set) set_opt_sampl_vars(vars);
     }
     template<class T> void set_opt_sampl_vars(const T& vars) {
         for(const auto& v: vars) check_var(v);
         opt_sampl_vars.clear();
         opt_sampl_vars_set = true;
-        opt_sampl_vars.insert(opt_sampl_vars.begin(), vars.begin(), vars.end());
+        std::set<uint32_t> tmp(vars.begin(), vars.end());
+        opt_sampl_vars.insert(opt_sampl_vars.begin(), tmp.begin(), tmp.end());
     }
 
     template<class T2>
@@ -1331,6 +1335,7 @@ public:
     void set_cms_glob_mult(double cms_glob_mult);
     void set_extend_ccnr(int extend_ccnr);
     void set_autarkies(int autarkies);
+    void set_seed(uint32_t seed);
 
     //Get config
     uint32_t get_verb() const;
@@ -1357,6 +1362,7 @@ public:
     double get_cms_glob_mult() const;
     int get_extend_ccnr() const;
     int get_autarkies() const;
+    uint32_t get_seed() const;
 
 private:
     ArjPrivateData* arjdata = nullptr;

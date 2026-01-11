@@ -91,6 +91,7 @@ vector<sample> Manthan::get_samples(const uint32_t num) {
     dist[1].resize(cnf.nVars(), 0.0);
 
     SATSolver solver_samp;
+    solver_samp.set_seed(conf.seed);
     solver_samp.set_up_for_sample_counter(100);
     inject_cnf(solver_samp);
     /* solver_samp.set_verbosity(1); */
@@ -390,8 +391,10 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             cout << endl;
         }
 
-        auto better_ctx = find_better_ctx(ctx); // fills needs_repair
-        verb_print(1, "Finding better ctx DONE, needs_repair size now: " << needs_repair.size());
+        uint32_t old_needs_repair_size;;
+        const auto better_ctx = find_better_ctx(ctx, old_needs_repair_size); // fills needs_repair
+        verb_print(1, "Finding better ctx DONE, needs_repair size before vs now: "
+                << setw(3) << old_needs_repair_size << " -- " << setw(4) << needs_repair.size());
         for(const auto& y: to_define_full) if (!needs_repair.count(y)) {
             ctx[y] = better_ctx[y];
             if (conf.verb >= 3 && better_ctx[y] != ctx[y])
@@ -618,8 +621,9 @@ void Manthan::fix_order() {
 }
 
 // Fills needs_repair with vars from y (i.e. output)
-sample Manthan::find_better_ctx(const sample& ctx) {
+sample Manthan::find_better_ctx(const sample& ctx, uint32_t& old_needs_repair_size) {
     needs_repair.clear();
+    old_needs_repair_size = 0;
     verb_print(2, "Finding better ctx.");
     EvalMaxSAT s_ctx;
     for(uint32_t i = 0; i < cnf.nVars(); i++) s_ctx.newVar();
@@ -650,6 +654,7 @@ sample Manthan::find_better_ctx(const sample& ctx) {
         const auto y_hat = y_to_y_hat[y];
         if (ctx[y] == ctx[y_hat]) continue;
         const auto l = Lit(y, ctx[y_hat] == l_False);
+        old_needs_repair_size++;
         verb_print(3, "[find-better-ctx] put into assumps y= " << l);
         assumps.insert(l);
         int w = 1;
