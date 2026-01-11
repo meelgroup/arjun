@@ -48,6 +48,7 @@ using std::set;
 using std::map;
 using std::unique_ptr;
 using std::string;
+using sample = vector<lbool>;
 
 using namespace ArjunInt;
 using namespace ArjunNS;
@@ -89,15 +90,15 @@ class Manthan {
         FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth = 0);
         vector<uint32_t> incidence;
         void get_incidence();
-        bool get_counterexample(vector<lbool>& ctx);
+        bool get_counterexample(sample& ctx);
         void inject_formulas_into_solver();
-        vector<vector<lbool>*> filter_samples(const uint32_t v, const vector<vector<lbool>>& samples);
-        vector<lbool> find_better_ctx(const vector<lbool>& ctx);
+        vector<sample*> filter_samples(const uint32_t v, const vector<sample>& samples);
+        sample find_better_ctx(const sample& ctx);
         void inject_cnf(SATSolver& s);
         void inject_unit(SATSolver& s);
-        bool repair(const uint32_t v, vector<lbool>& ctx);
+        bool repair(const uint32_t v, sample& ctx);
         vector<Lit> further_minimize_conflict_via_maxsat(const vector<Lit>& conflict, const vector<Lit>& assumps, const Lit& repairing);
-        void perform_repair(const uint32_t y_rep, const vector<lbool>& ctx, const vector<Lit>& conflict);
+        void perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict);
         void add_not_F_x_yhat();
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with_backward();
@@ -107,8 +108,8 @@ class Manthan {
 
 
         void add_sample_clauses(SimplifiedCNF& cnf);
-        vector<vector<lbool>> get_samples(const uint32_t num_samples);
-        double train(const vector<vector<lbool>>& samples, const uint32_t v); // returns training error
+        vector<sample> get_samples(const uint32_t num_samples);
+        double train(const vector<sample>& samples, const uint32_t v); // returns training error
         vector<vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
 
         unique_ptr<FHolder> fh = nullptr;

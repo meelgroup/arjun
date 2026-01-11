@@ -33,6 +33,7 @@
 #include <ios>
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
 #include <vector>
+#include <array>
 #include <ranges>
 #include "constants.h"
 
@@ -48,6 +49,7 @@ using namespace mlpack;
 using namespace mlpack::tree;
 
 using std::vector;
+using std::array;
 using std::set;
 
 using namespace ArjunInt;
@@ -79,17 +81,74 @@ void Manthan::inject_cnf(SATSolver& s) {
     for(const auto& c: cnf.get_red_clauses()) s.add_red_clause(c);
 }
 
-vector<vector<lbool>> Manthan::get_samples(const uint32_t num) {
-    vector<vector<lbool>> samples;
+vector<sample> Manthan::get_samples(const uint32_t num) {
+    array<vector<sample>,2> biased_samp;
+    array<vector<double>,2> dist;
+    dist[0].resize(cnf.nVars(), 0.0);
+    dist[1].resize(cnf.nVars(), 0.0);
+
     SATSolver solver_samp;
     solver_samp.set_up_for_sample_counter(100);
     inject_cnf(solver_samp);
     /* solver_samp.set_verbosity(1); */
 
+    // get 500 of each biased 0/1
+    const uint32_t bias_samples = 500;
+    for(int bias = 0; bias <= 1; bias++) {
+        for(const auto& y: to_define) {
+            double bias_w = bias ? 0.9 : 0.1;
+            solver_samp.set_lit_weight(Lit(y, false), bias_w);
+            solver_samp.set_lit_weight(Lit(y, true), 1.0-bias_w);
+        }
+        vector<uint32_t> got_ones(cnf.nVars(), 0);
+        for (uint32_t i = 0; i < bias_samples; i++) {
+            solver_samp.solve();
+            assert(solver_samp.get_model().size() == cnf.nVars());
+            /// TODO: old idea of CMS, make them zero if they are all the last decision and I can do it.
+            biased_samp[bias].push_back(solver_samp.get_model());
+
+            for(const auto& v: to_define) {
+                if (solver_samp.get_model()[v] == l_True) got_ones[v]++;
+            }
+        }
+        //print distribution
+        verb_print(1, "[sampling] Bias " << bias << " distribution for to_define vars:");
+        for(const auto& v: to_define) {
+            dist[bias][v] = (double)got_ones[v]/(double)bias_samples;
+            verb_print(1, "  var " << setw(5) << v+1 << ": "
+                << setw(6) << got_ones[v] << "/" << setw(6) << bias_samples
+                << " = " << std::fixed << std::setprecision(2) << (dist[bias][v] * 100.0) << "%% ones");
+        }
+    }
+
+    // compute bias from p/q as per manthan.py
+    verb_print(1, "[sampling] Final biases for to_define vars:");
+    for(const auto& y: to_define) {
+        double p = dist[1][y];
+        double q = dist[0][y];
+        double bias;
+        if (0.35 < p  && p < 0.65 && 0.35 < q && p < 0.65) {
+          bias = p;
+        } else if (q <= 0.35) {
+          if (q == 0.0) q = 0.001;
+          bias = q;
+        } else {
+          if (p == 1.0) p = 0.99;
+          bias = p;
+        }
+        verb_print(1, "[sampling] For var " << y+1 << ": p=" << std::fixed << std::setprecision(3) << p
+            << " q=" << std::fixed << std::setprecision(3) << q
+            << " -- final bias for var " << y+1 << ": "
+            << std::fixed << std::setprecision(3) << bias);
+        solver_samp.set_lit_weight(Lit(y, false), bias);
+        solver_samp.set_lit_weight(Lit(y, true), 1.0-bias);
+    }
+
+    // get final samples
+    vector<sample> samples;
     for (uint32_t i = 0; i < num; i++) {
         solver_samp.solve();
         assert(solver_samp.get_model().size() == cnf.nVars());
-        /// TODO: old idea of CMS, make them zero if they are all the last decision and I can do it.
         samples.push_back(solver_samp.get_model());
     }
     return samples;
@@ -284,7 +343,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     get_incidence();
 
     // Sampling
-    vector<vector<lbool>> samples = get_samples(conf.num_samples);
+    verb_print(1, "Getting " << conf.num_samples << " samples...");
+    vector<sample> samples = get_samples(conf.num_samples);
     verb_print(1, "Got " << samples.size() << " samples");
 
     // Training
@@ -308,9 +368,9 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     uint32_t num_loops_repair = 0;
     while(true) {
         num_loops_repair++;
-        if ((num_loops_repair % 50) == 49) solver.simplify();
+        if ((num_loops_repair % 400) == 399) solver.simplify();
         inject_formulas_into_solver();
-        vector<lbool> ctx;
+        sample ctx;
         bool finished = get_counterexample(ctx);
         for(const auto& val: ctx) assert(val != l_Undef);
         if (finished) break;
@@ -385,7 +445,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     return fcnf;
 }
 
-bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
+bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     verb_print(2, "[DEBUG] Starting repair NON-MAXSAT for var " << y_rep+1);
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
     assert(to_define.count(y_rep) == 1 && "Only to-define vars should be repaired");
@@ -473,7 +533,7 @@ bool Manthan::repair(const uint32_t y_rep, vector<lbool>& ctx) {
     return true;
 }
 
-void Manthan::perform_repair(const uint32_t y_rep, const vector<lbool>& ctx, const vector<Lit>& conflict) {
+void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict) {
     verb_print(2,"Performing repair on " << y_rep+1 << " with conflict size " << conflict.size());
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
     // not (conflict) -> v = ctx(v)
@@ -555,7 +615,7 @@ void Manthan::fix_order() {
 }
 
 // Fills needs_repair with vars from y (i.e. output)
-vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
+sample Manthan::find_better_ctx(const sample& ctx) {
     needs_repair.clear();
     verb_print(2, "Finding better ctx.");
     EvalMaxSAT s_ctx;
@@ -616,7 +676,7 @@ vector<lbool> Manthan::find_better_ctx(const vector<lbool>& ctx) {
         std::cout << endl;
     }
 
-    vector<lbool> better_ctx(cnf.nVars(), l_Undef);
+    sample better_ctx(cnf.nVars(), l_Undef);
     for(const auto& v: to_define_full) better_ctx[v] = s_ctx.getValue(v+1) ? l_True : l_False;
     return better_ctx;
 }
@@ -681,7 +741,7 @@ void Manthan::inject_formulas_into_solver() {
     }
 }
 
-bool Manthan::get_counterexample(vector<lbool>& ctx) {
+bool Manthan::get_counterexample(sample& ctx) {
     // Relation between y_hat and form_out
     // when y_hat_to_indic is TRUE, y_hat and form_out are EQUAL
     vector<Lit> tmp;
@@ -797,12 +857,12 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
     assert(false);
 }
 
-vector<vector<lbool>*> Manthan::filter_samples(const uint32_t v, const vector<vector<lbool>>& samples) {
+vector<sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& samples) {
     uint32_t num_removed = 0;
     SATSolver temp_solver;
     inject_cnf(temp_solver);
     vector<Lit> assumps;
-    vector<vector<lbool>*> filtered_samples;
+    vector<sample*> filtered_samples;
     for(const auto& sample: samples) {
         assumps.clear();
         assert(sample.size() == cnf.nVars());
@@ -816,7 +876,7 @@ vector<vector<lbool>*> Manthan::filter_samples(const uint32_t v, const vector<ve
         assert(ret != l_Undef);
         if (ret == l_False) {
             // sample is good
-            filtered_samples.push_back(const_cast<vector<lbool>*>(&sample));
+            filtered_samples.push_back(const_cast<sample*>(&sample));
         } else num_removed++;
         verb_print(3, "filtered sample for v " << v+1 << " : " << (ret == l_True ? "removed" : "kept"));
     }
@@ -826,19 +886,19 @@ vector<vector<lbool>*> Manthan::filter_samples(const uint32_t v, const vector<ve
 
     // Make sure we have at least one sample
     if (filtered_samples.empty())
-        filtered_samples.push_back(const_cast<vector<lbool>*>(&samples[0]));
+        filtered_samples.push_back(const_cast<sample*>(&samples[0]));
 
     return filtered_samples;
 }
 
-double Manthan::train(const vector<vector<lbool>>& orig_samples, const uint32_t v) {
+double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     verb_print(2, "training variable: " << v+1);
     assert(!orig_samples.empty());
-    vector<vector<lbool>*> samples;
+    vector<sample*> samples;
     if (true) samples = filter_samples(v, orig_samples);
     else {
         for(const auto& s: orig_samples)
-            samples.push_back(const_cast<vector<lbool>*>(&s));
+            samples.push_back(const_cast<sample*>(&s));
     }
     assert(v < cnf.nVars());
     point_0.resize(cnf.nVars());
