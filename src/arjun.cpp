@@ -986,25 +986,25 @@ DLL_PUBLIC void SimplifiedCNF::read_aig_defs_from_file(const string& fname) {
     in.close();
 }
 
-DLL_PUBLIC vector<CMSat::lbool> SimplifiedCNF::extend_sample(const vector<CMSat::lbool>& sample, const bool relaxed) const {
+DLL_PUBLIC vector<CMSat::lbool> SimplifiedCNF::extend_sample(const vector<CMSat::lbool>& s, const bool relaxed) const {
     assert(get_need_aig() && defs_invariant());
-    assert(sample.size() == defs.size() && "Sample size must match number of variables");
+    assert(s.size() == defs.size() && "Sample size must match number of variables");
     assert(check_orig_sampl_vars_undefined());
 
     for(uint32_t v = 0; v < defs.size(); v++) {
         if (orig_sampl_vars.count(v)) {
-            assert(sample[v] != CMSat::l_Undef && "Original sampling variable must be defined in the sample");
+            assert(s[v] != CMSat::l_Undef && "Original sampling variable must be defined in the sample");
         } else {
             if (!relaxed) assert(defs[v] != nullptr && "Non-original sampling variable must have definition");
-            assert(sample[v] == CMSat::l_Undef && "Non-original sampling variable must be undefined in the sample");
+            assert(s[v] == CMSat::l_Undef && "Non-original sampling variable must be undefined in the sample");
         }
     }
 
-    auto vals(sample);
+    auto vals(s);
     map<aig_ptr, CMSat::lbool> cache;
     for(uint32_t v = 0; v < defs.size(); v++) {
         if (defs[v] == nullptr) continue;
-        auto val = AIG::evaluate(sample, defs[v], defs, cache);
+        auto val = AIG::evaluate(s, defs[v], defs, cache);
         vals[v] = val;
     }
     return vals;
