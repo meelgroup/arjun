@@ -971,9 +971,10 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     /*     const size_t maximumDepth, */
     /*     DimensionSelectionType dimensionSelector) */
     DecisionTree<> r(dataset, labels, 2,
-                   samples.size()/20,      // minimumLeafSize: require 20+ samples per leaf
-                   0.001,   // minimumGainSplit: require 0.1% gain to split
-                   8);     // maximumDepth: max 10 levels deep
+                   20,                 // minimumLeafSize: require 20+ samples per leaf (default 10)
+                   0.001,              // minimumGainSplit: require 0.1% gain to split
+                                       // this should(?) correspond to 0.005 gini gain
+                   0);                 // maximumDepth: max k levels deep (0 = unlimited)
 
     // Compute and print the training error.
     Row<size_t> predictions;
