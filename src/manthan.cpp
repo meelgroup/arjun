@@ -30,6 +30,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <ensmallen_bits/sgdr/cyclical_decay.hpp>
+#include <iomanip>
 #include <ios>
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
 #include <vector>
@@ -51,6 +52,8 @@ using namespace mlpack::tree;
 using std::vector;
 using std::array;
 using std::set;
+using std::setprecision;
+using std::fixed;
 
 using namespace ArjunInt;
 using namespace ArjunNS;
@@ -117,7 +120,7 @@ vector<sample> Manthan::get_samples(const uint32_t num) {
             dist[bias][v] = (double)got_ones[v]/(double)bias_samples;
             verb_print(1, "  var " << setw(5) << v+1 << ": "
                 << setw(6) << got_ones[v] << "/" << setw(6) << bias_samples
-                << " = " << std::fixed << std::setprecision(2) << (dist[bias][v] * 100.0) << "%% ones");
+                << " = " << fixed << setprecision(2) << (dist[bias][v] * 100.0) << "%% ones");
         }
     }
 
@@ -136,10 +139,10 @@ vector<sample> Manthan::get_samples(const uint32_t num) {
           if (p == 1.0) p = 0.99;
           bias = p;
         }
-        verb_print(1, "[sampling] For var " << y+1 << ": p=" << std::fixed << std::setprecision(3) << p
-            << " q=" << std::fixed << std::setprecision(3) << q
+        verb_print(1, "[sampling] For var " << y+1 << ": p=" << fixed << setprecision(3) << p
+            << " q=" << fixed << setprecision(3) << q
             << " -- final bias for var " << y+1 << ": "
-            << std::fixed << std::setprecision(3) << bias);
+            << fixed << setprecision(3) << bias);
         solver_samp.set_lit_weight(Lit(y, false), bias);
         solver_samp.set_lit_weight(Lit(y, true), 1.0-bias);
     }
@@ -891,8 +894,8 @@ vector<sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& 
         } else num_removed++;
         verb_print(3, "filtered sample for v " << v+1 << " : " << (ret ? "removed" : "kept"));
     }
-    verb_print(2, "[filter_samples] For variable " << v+1 << ", removed "
-            << num_removed << " / " << samples.size()
+    verb_print(1, "[filter_samples] For variable " << setw(6) << v+1 << ", removed "
+            << setw(6) << num_removed << " / " << setw(6) << samples.size()
             << " samples that had no effect on it.");
 
     // Make sure we have at least one sample
@@ -980,7 +983,8 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     Row<size_t> predictions;
     r.Classify(dataset, predictions);
     const double train_error = arma::accu(predictions != labels) * 100.0 / (double)labels.n_elem;
-    verb_print(1, "Training error: " << train_error << "%." << " on v: " << v+1);
+    verb_print(1, "Training error: " << setprecision(2) << setw(6) << train_error << "%." << " on v: "
+            << setw(4) << v+1);
     /* r.serialize(cout, 1); */
 
     verb_print(2,"[DEBUG] About to call recur for v " << v+1 << " num children: " << r.NumChildren());
