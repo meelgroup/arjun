@@ -96,10 +96,11 @@ class Manthan {
         bool check_satisfied_all_cls_with_flip(const sample& s, const uint32_t v) const;
         vector<sample*> filter_samples(const uint32_t v, const vector<sample>& samples);
         sample find_better_ctx(const sample& ctx, uint32_t& old_needs_repair_size);
-        void inject_cnf(SATSolver& s, const bool also_vars = true);
+        void inject_cnf(SATSolver& s, const bool also_vars = true) const;
         void inject_unit(SATSolver& s);
         bool repair(const uint32_t v, sample& ctx);
-        void minimize_conflict(SATSolver& repair_solver, vector<Lit>& conflict, vector<Lit>& assumps);
+        bool find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict);
+        void minimize_conflict(SATSolver& repair_solver, vector<Lit>& conflict, vector<Lit>& assumps) const;
         void perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict);
         void add_not_F_x_yhat();
         void fill_dependency_mat_with_backward();
@@ -131,5 +132,5 @@ class Manthan {
         bool check_train_correctness() const;
         bool check_aig_dependency_cycles() const;
         bool check_transitive_closure_correctness() const;
-        std::mt19937 mtrand;
+        mutable std::mt19937 mtrand;
 };

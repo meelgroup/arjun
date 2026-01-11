@@ -78,7 +78,7 @@ vector<int> lits_to_ints(const vector<Lit>& lits) {
 // good: qdimacs/small-bug1-fixpoint-10.qdimacs.cnf
 // also good: simplify qdimacs/amba2f9n.sat.qdimacs.cnf then run manthan
 
-void Manthan::inject_cnf(SATSolver& s, bool also_vars) {
+void Manthan::inject_cnf(SATSolver& s, bool also_vars) const {
     if (also_vars) s.new_vars(cnf.nVars());
     for(const auto& c: cnf.get_clauses()) s.add_clause(c);
     for(const auto& c: cnf.get_red_clauses()) s.add_red_clause(c);
@@ -490,6 +490,14 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     assert(y_rep < cnf.nVars());
     assert(to_define.count(y_rep));
 
+    vector<Lit> conflict;
+    bool ret = find_minim_conflict(y_rep, ctx, conflict);
+    if (!ret) return false;
+    perform_repair(y_rep, ctx, conflict);
+    return true;
+}
+
+bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict) {
     // F(x,y) & x = ctx(x) && forall_y (y not dependent on v) (y = ctx(y)) & NOT (v = ctx(v))
     // Used to find UNSAT core that will help us repair the function
     SATSolver repair_solver;
@@ -538,7 +546,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
         }
         return false;
     }
-    vector<Lit> conflict = repair_solver.get_conflict();
+    conflict = repair_solver.get_conflict();
     verb_print(2, "repair_maxsat conflict: " << conflict);
     if (conflict.empty()) {
         verb_print(1, "repairing " << y_rep+1 << " is not possible");
@@ -548,11 +556,10 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     if (conflict.size() > 1) minimize_conflict(repair_solver, conflict, assumps);
     verb_print(1, "[manthan-repair] minim. Removed: " << (orig_size - conflict.size())
             << " from conflict, now size: " << conflict.size());
-    perform_repair(y_rep, ctx, conflict);
     return true;
 }
 
-void Manthan::minimize_conflict(SATSolver& repair_solver, vector<Lit>& conflict, vector<Lit>& assumps) {
+void Manthan::minimize_conflict(SATSolver& repair_solver, vector<Lit>& conflict, vector<Lit>& assumps) const {
     bool removed_any = true;
     while(removed_any) {
         std::shuffle(conflict.begin(), conflict.end(), mtrand);
