@@ -97,8 +97,6 @@ vector<sample> Manthan::get_samples(const uint32_t num) {
         dist[0].resize(cnf.nVars(), 0.0);
         dist[1].resize(cnf.nVars(), 0.0);
 
-        /* solver_samp.set_verbosity(1); */
-
         // get 500 of each biased 0/1
         const uint32_t bias_samples = 500;
         for(int bias = 0; bias <= 1; bias++) {
