@@ -460,7 +460,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         }
         verb_print(1, "Num repaired: " << num_repaired << " tot repaired: " << tot_repaired << " num_loops_repair: " << num_loops_repair);
     }
-    SLOW_DEBUG_DO(assert(check_map_dependency_cycles()));
+    assert(check_map_dependency_cycles());
     verb_print(1, "DONE");
 
     // Build final CNF
@@ -600,7 +600,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
             if (input.count(i)) continue;
             dependency_mat[y_rep][i] |= dependency_mat[l.var()][i];
         }
-        assert(check_map_dependency_cycles());
+        SLOW_DEBUG_DO(assert(check_map_dependency_cycles()));
     }
     f.clauses.push_back(cl);
     for(const auto& l: conflict) {
@@ -629,6 +629,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     verb_print(2, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
     verb_print(4, "repaired formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
     //We fixed the ctx on this variable
+    assert(check_map_dependency_cycles());
 }
 
 // Will order 1st the variables that NOTHING depends on
@@ -895,7 +896,6 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
                 if (input.count(i)) continue;
                 dependency_mat[learned_v][i] |= dependency_mat[v][i];
             }
-            assert(check_map_dependency_cycles());
         } else
             verb_print(3, learned_v+1 << " depends on " << v+1 << " but NOT adding it, because it is not in to_define_full. input: " << (input.count(v) ? "yes" : "no"));
 
