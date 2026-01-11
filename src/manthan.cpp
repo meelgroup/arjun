@@ -550,15 +550,16 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
         while(removed_any) {
             std::shuffle(conflict.begin(), conflict.end(), mtrand);
             removed_any = false;
-            for(const auto& l: conflict) {
-                verb_print(3, "Trying to remove conflict literal: " << l << " val in ctx: " << pr(ctx[l.var()]));
-                vector<Lit> assumps2;
-                for(const auto& l2: conflict) {
-                    if (l2 == l) continue;
-                    assumps2.push_back(~l2);
+            for(const auto& try_rem: conflict) {
+                verb_print(3, "Trying to remove conflict literal: " << try_rem
+                        << " val in ctx: " << pr(ctx[try_rem.var()]));
+                assumps.clear();
+                for(const auto& l: conflict) {
+                    if (l == try_rem) continue;
+                    assumps.push_back(~l);
                 }
-                release_assert(assumps2.size() == conflict.size()-1);
-                auto ret2 = repair_solver.solve(&assumps2);
+                release_assert(assumps.size() == conflict.size()-1);
+                auto ret2 = repair_solver.solve(&assumps);
                 if (ret2 == l_True) continue;
                 conflict = repair_solver.get_conflict();
                 removed_any = true;
