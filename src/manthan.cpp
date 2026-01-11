@@ -544,33 +544,34 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
         verb_print(1, "repairing " << y_rep+1 << " is not possible");
         return false;
     }
-    uint32_t removed = 0;
-    if (conflict.size() > 1) {
-        bool removed_any = true;
-        while(removed_any) {
-            std::shuffle(conflict.begin(), conflict.end(), mtrand);
-            removed_any = false;
-            for(const auto& try_rem: conflict) {
-                verb_print(3, "Trying to remove conflict literal: " << try_rem
-                        << " val in ctx: " << pr(ctx[try_rem.var()]));
-                assumps.clear();
-                for(const auto& l: conflict) {
-                    if (l == try_rem) continue;
-                    assumps.push_back(~l);
-                }
-                release_assert(assumps.size() == conflict.size()-1);
-                auto ret2 = repair_solver.solve(&assumps);
-                if (ret2 == l_True) continue;
-                conflict = repair_solver.get_conflict();
-                removed_any = true;
-                removed++;
-                break;
-            }
-        }
-    }
-    verb_print(2, "[manthan-repair] minim. Removed: " << removed << " from conflict, now size: " << conflict.size());
+    uint32_t orig_size = conflict.size();
+    if (conflict.size() > 1) minimize_conflict(repair_solver, conflict, assumps);
+    verb_print(1, "[manthan-repair] minim. Removed: " << (orig_size - conflict.size())
+            << " from conflict, now size: " << conflict.size());
     perform_repair(y_rep, ctx, conflict);
     return true;
+}
+
+void Manthan::minimize_conflict(SATSolver& repair_solver, vector<Lit>& conflict, vector<Lit>& assumps) {
+    bool removed_any = true;
+    while(removed_any) {
+        std::shuffle(conflict.begin(), conflict.end(), mtrand);
+        removed_any = false;
+        for(const auto& try_rem: conflict) {
+            verb_print(3, "Trying to remove conflict literal: " << try_rem);
+            assumps.clear();
+            for(const auto& l: conflict) {
+                if (l == try_rem) continue;
+                assumps.push_back(~l);
+            }
+            release_assert(assumps.size() == conflict.size()-1);
+            auto ret2 = repair_solver.solve(&assumps);
+            if (ret2 == l_True) continue;
+            conflict = repair_solver.get_conflict();
+            removed_any = true;
+            break;
+        }
+    }
 }
 
 void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict) {

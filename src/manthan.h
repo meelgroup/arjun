@@ -99,7 +99,7 @@ class Manthan {
         void inject_cnf(SATSolver& s, const bool also_vars = true);
         void inject_unit(SATSolver& s);
         bool repair(const uint32_t v, sample& ctx);
-        vector<Lit> further_minimize_conflict_via_maxsat(const vector<Lit>& conflict, const vector<Lit>& assumps, const Lit& repairing);
+        void minimize_conflict(SATSolver& repair_solver, vector<Lit>& conflict, vector<Lit>& assumps);
         void perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict);
         void add_not_F_x_yhat();
         void fill_dependency_mat_with_backward();
