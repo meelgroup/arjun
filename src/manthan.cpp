@@ -557,7 +557,8 @@ bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>
     confl_set.erase(repairing);
     uint32_t orig_size = conflict.size();
     conflict = vector<Lit>(confl_set.begin(), confl_set.end());
-    if (conflict.size() > 1) minimize_conflict(conflict, assumps);
+    if (conflict.size() > 1 && mconf.do_minimize_conflict)
+        minimize_conflict(conflict, assumps);
     verb_print(1, "[manthan-repair] minim. Removed: " << (orig_size - conflict.size())
             << " from conflict, now size: " << conflict.size());
     return true;
