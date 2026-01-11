@@ -334,6 +334,8 @@ void Manthan::print_y_order_occur() const {
 
 SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     assert(input_cnf.get_need_aig() && input_cnf.defs_invariant());
+    assert(mconf.simplify_every > 0 && "Can't give simplify_every=0");
+
     uint32_t tot_repaired = 0;
     cout << "c o [DEBUG] About to assign cnf = input_cnf" << endl;
     cnf = input_cnf;
@@ -493,6 +495,14 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     assert(y_rep < cnf.nVars());
     assert(to_define.count(y_rep));
 
+    if (num_loops_repair % mconf.simplify_every == (mconf.simplify_every-1)) {
+        vector<Lit> assumps;
+        assumps.reserve(input.size() + to_define_full.size());
+        for(const auto& x: input) assumps.push_back(Lit(x, false));
+        for(const auto& x: to_define_full) assumps.push_back(Lit(x, false));
+        repair_solver.simplify(&assumps);
+    }
+
     vector<Lit> conflict;
     bool ret = find_minim_conflict(y_rep, ctx, conflict);
     if (!ret) return false;
@@ -523,7 +533,6 @@ bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>
 
     const Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
     assumps.push_back({~repairing});
-    /* repair_solver.add_clause({~repairing}); // we try to fix this one */
     /* cout << "added repairing cl: " << std::vector<Lit>{~repairing} << endl; */
     ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
 
@@ -566,10 +575,12 @@ bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>
 
 void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps) {
     bool removed_any = true;
+    set<Lit> failed_removing;
     while(removed_any) {
         std::shuffle(conflict.begin(), conflict.end(), mtrand);
         removed_any = false;
         for(const auto& try_rem: conflict) {
+            if (failed_removing.count(try_rem)) continue;
             verb_print(3, "Trying to remove conflict literal: " << try_rem);
             assumps.clear();
             for(const auto& l: conflict) {
@@ -578,7 +589,10 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps) {
             }
             release_assert(assumps.size() == conflict.size()-1);
             auto ret2 = repair_solver.solve(&assumps);
-            if (ret2 == l_True) continue;
+            if (ret2 == l_True) {
+                failed_removing.insert(try_rem);
+                continue;
+            }
             conflict = repair_solver.get_conflict();
             removed_any = true;
             break;
@@ -847,7 +861,7 @@ bool Manthan::get_counterexample(sample& ctx) {
     assumps.reserve(y_hat_to_indic.size());
     for(const auto& i: y_hat_to_indic) assumps.push_back(Lit(i.second, false));
     verb_print(4, "assumptions: " << assumps);
-    if ((num_loops_repair % 500) == 499) solver.simplify(&assumps);
+    if ((num_loops_repair % mconf.simplify_every) == (mconf.simplify_every-1)) solver.simplify(&assumps);
 
     /* solver.set_up_for_sample_counter(1000); */
     auto ret = solver.solve(&assumps);
