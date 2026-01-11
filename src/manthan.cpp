@@ -400,7 +400,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     add_not_F_x_yhat();
     fill_var_to_formula_with_backward();
     fix_order();
-    for(const auto& y: y_order) updated_y_hats.push_back(y);
+    for(const auto& y: y_order) updated_y_funcs.push_back(y);
     // Counterexample-guided repair
     while(true) {
         num_loops_repair++;
@@ -460,7 +460,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         }
         verb_print(1, "Num repaired: " << num_repaired << " tot repaired: " << tot_repaired << " num_loops_repair: " << num_loops_repair);
     }
-    assert(check_map_dependency_cycles());
+    SLOW_DEBUG_DO(assert(check_map_dependency_cycles()));
     verb_print(1, "DONE");
 
     // Build final CNF
@@ -625,7 +625,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     verb_print(4, "Branch formula. When this is true, H is wrong:" << endl << f);
     var_to_formula[y_rep] = fh->compose_ite(fh->constant_formula(ctx[y_rep] == l_True),
             var_to_formula[y_rep], f);
-    updated_y_hats.push_back(y_rep);
+    updated_y_funcs.push_back(y_rep);
     verb_print(2, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
     verb_print(4, "repaired formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
     //We fixed the ctx on this variable
@@ -799,7 +799,7 @@ bool Manthan::get_counterexample(sample& ctx) {
     // when y_hat_to_indic is TRUE, y_hat and form_out are EQUAL
     vector<Lit> tmp;
     map<uint32_t, uint32_t> y_to_indic;
-    for(const auto& y: updated_y_hats) {
+    for(const auto& y: updated_y_funcs) {
         solver.new_var();
         const uint32_t ind = solver.nVars()-1;
 
@@ -833,7 +833,7 @@ bool Manthan::get_counterexample(sample& ctx) {
         tmp[2] = ~tmp[2];
         solver.add_clause(tmp);
     }
-    updated_y_hats.clear();
+    updated_y_funcs.clear();
 
 
     vector<Lit> assumps;
