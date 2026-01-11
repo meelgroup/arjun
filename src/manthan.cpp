@@ -958,6 +958,18 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
 
     /* DecisionTree<> r(dataset, labels, 2); */
     // More conservative (less overfitting)
+    /* DecisionTree<FitnessFunction, */
+    /*              NumericSplitType, */
+    /*              CategoricalSplitType, */
+    /*              DimensionSelectionType, */
+    /*              NoRecursion>::DecisionTree( */
+    /*     MatType data, */
+    /*     LabelsType labels, */
+    /*     const size_t numClasses, */
+    /*     const size_t minimumLeafSize, */
+    /*     const double minimumGainSplit, */
+    /*     const size_t maximumDepth, */
+    /*     DimensionSelectionType dimensionSelector) */
     DecisionTree<> r(dataset, labels, 2,
                    samples.size()/20,      // minimumLeafSize: require 20+ samples per leaf
                    0.001,   // minimumGainSplit: require 0.1% gain to split
@@ -966,8 +978,7 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     // Compute and print the training error.
     Row<size_t> predictions;
     r.Classify(dataset, predictions);
-    const double train_error =
-      arma::accu(predictions != labels) * 100.0 / (double)labels.n_elem;
+    const double train_error = arma::accu(predictions != labels) * 100.0 / (double)labels.n_elem;
     verb_print(1, "Training error: " << train_error << "%." << " on v: " << v+1);
     /* r.serialize(cout, 1); */
 
