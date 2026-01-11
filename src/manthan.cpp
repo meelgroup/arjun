@@ -441,28 +441,28 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
         while(!needs_repair.empty()) {
-            uint32_t y = std::numeric_limits<uint32_t>::max();
+            uint32_t y_rep = std::numeric_limits<uint32_t>::max();
             for(const auto& t: y_order) {
                 if (needs_repair.count(t)) {
-                    y = t;
+                    y_rep = t;
                     break;
                 }
             }
-            if (backward_defined.count(y)) {
-                verb_print(3, "[WARNING] trying to repair backward-defined var " << y+1);
-                ctx[y_to_y_hat[y]] = ctx[y]; // pretend to have fixed the ctx
-                needs_repair.erase(y);
+            if (backward_defined.count(y_rep)) {
+                verb_print(3, "[WARNING] trying to repair backward-defined var " << y_rep+1);
+                ctx[y_to_y_hat[y_rep]] = ctx[y_rep]; // pretend to have fixed the ctx
+                needs_repair.erase(y_rep);
                 continue;
             }
-            assert(y != std::numeric_limits<uint32_t>::max());
-            needs_repair.erase(y);
+            assert(y_rep != std::numeric_limits<uint32_t>::max());
+            needs_repair.erase(y_rep);
             verb_print(3, "-------------------");
-            bool done = repair(y, ctx); // this updates ctx on y
+            bool done = repair(y_rep, ctx); // this updates ctx on y
             if (done) {
                 num_repaired++;
                 tot_repaired++;
             }
-            verb_print(3, "finished repairing " << y+1 << " : " << std::boolalpha << done);
+            verb_print(3, "finished repairing " << y_rep+1 << " : " << std::boolalpha << done);
         }
         verb_print(1, "Num repaired: " << num_repaired << " tot repaired: " << tot_repaired << " num_loops_repair: " << num_loops_repair);
     }
