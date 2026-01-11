@@ -39,12 +39,11 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
   if (conf.verb >= 3) {
       cout << "red ID:" << setw(4) << id;//  << " red: " << (int)red;
       cout << " cl: "; for(const auto& l: clause) cout << l << " "; cout << endl;
-      cout << "atec: "; for(const auto& l: oantec) cout << l << " "; cout << endl;
+      cout << "antec: "; for(const auto& l: oantec) cout << l << " "; cout << endl;
   }
   cls[id] = pl_to_lit_cl(clause);
   auto rantec = oantec;
   std::reverse(rantec.begin(), rantec.end());
-  release_assert(rantec.size() >= 2);
 
   const uint64_t id1 = rantec[0];
   auto aig = fs_clid[id1];
