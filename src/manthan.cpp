@@ -87,9 +87,8 @@ void Manthan::inject_cnf(SATSolver& s) {
 vector<sample> Manthan::get_samples(const uint32_t num) {
     SATSolver solver_samp;
     solver_samp.set_seed(conf.seed);
-    solver_samp.set_up_for_sample_counter(100);
+    solver_samp.set_up_for_sample_counter(mconf.sampler_fixed_conflicts);
     inject_cnf(solver_samp);
-    vector<sample> samples;
 
     if (mconf.do_biased_sampling) {
         array<vector<sample>,2> biased_samp;
@@ -151,6 +150,7 @@ vector<sample> Manthan::get_samples(const uint32_t num) {
     }
 
     // get final samples
+    vector<sample> samples;
     for (uint32_t i = 0; i < num; i++) {
         solver_samp.solve();
         assert(solver_samp.get_model().size() == cnf.nVars());

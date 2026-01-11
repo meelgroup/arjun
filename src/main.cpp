@@ -116,6 +116,7 @@ void add_arjun_options() {
     myopt("--filtersamples", manthan_conf.do_filter_samples, atoi,"Filter samples from useless ones");
     myopt("--biasedsampling", manthan_conf.do_biased_sampling, atoi,"Biased sampling");
     myopt("--mingainsplit", manthan_conf.minGainSplit, atof,"Minimum gain for a split in decision tree");
+    myopt("--fixedconf", manthan_conf.sampler_fixed_conflicts, atoi,"Restart conflict limit in CMSGen");
 
     myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
     myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
