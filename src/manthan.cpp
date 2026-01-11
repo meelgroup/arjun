@@ -78,8 +78,8 @@ vector<int> lits_to_ints(const vector<Lit>& lits) {
 // good: qdimacs/small-bug1-fixpoint-10.qdimacs.cnf
 // also good: simplify qdimacs/amba2f9n.sat.qdimacs.cnf then run manthan
 
-void Manthan::inject_cnf(SATSolver& s) {
-    s.new_vars(cnf.nVars());
+void Manthan::inject_cnf(SATSolver& s, bool also_vars) {
+    if (also_vars) s.new_vars(cnf.nVars());
     for(const auto& c: cnf.get_clauses()) s.add_clause(c);
     for(const auto& c: cnf.get_red_clauses()) s.add_red_clause(c);
 }
@@ -493,7 +493,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     // F(x,y) & x = ctx(x) && forall_y (y not dependent on v) (y = ctx(y)) & NOT (v = ctx(v))
     // Used to find UNSAT core that will help us repair the function
     SATSolver repair_solver;
-    inject_cnf(repair_solver);
+    repair_solver.new_vars(cnf.nVars());
 
     vector<Lit> assumps;
     for(const auto& x: input) {
@@ -517,6 +517,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     repair_solver.add_clause({~repairing}); // we try to fix this one
     /* cout << "added repairing cl: " << std::vector<Lit>{~repairing} << endl; */
     ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
+    inject_cnf(repair_solver, false); // faster to add CNF later
 
     verb_print(3, "adding to solver: " << ~repairing);
     verb_print(3, "setting the to-be-repaired " << repairing << " to wrong.");

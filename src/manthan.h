@@ -96,7 +96,7 @@ class Manthan {
         bool check_satisfied_all_cls_with_flip(const sample& s, const uint32_t v) const;
         vector<sample*> filter_samples(const uint32_t v, const vector<sample>& samples);
         sample find_better_ctx(const sample& ctx, uint32_t& old_needs_repair_size);
-        void inject_cnf(SATSolver& s);
+        void inject_cnf(SATSolver& s, const bool also_vars = true);
         void inject_unit(SATSolver& s);
         bool repair(const uint32_t v, sample& ctx);
         vector<Lit> further_minimize_conflict_via_maxsat(const vector<Lit>& conflict, const vector<Lit>& assumps, const Lit& repairing);
