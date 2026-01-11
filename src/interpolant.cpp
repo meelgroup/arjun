@@ -42,6 +42,7 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
       cout << "antec: "; for(const auto& l: oantec) cout << l << " "; cout << endl;
   }
   cls[id] = pl_to_lit_cl(clause);
+  release_assert(!oantec.empty());
   auto rantec = oantec;
   std::reverse(rantec.begin(), rantec.end());
 
