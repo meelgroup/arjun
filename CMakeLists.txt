@@ -195,14 +195,12 @@ endif()
 if (NOT MSVC)
     add_compile_options( -g)
 
-    add_compile_options("$<$<CONFIG:RelWithDebInfo>:-O3>")
-
+    add_compile_options("$<$<CONFIG:RelWithDebInfo>:-O2>")
     add_compile_options("$<$<CONFIG:Release>:-O3>")
     add_compile_options("$<$<CONFIG:Release>:-g0>")
     add_compile_options("$<$<CONFIG:Release>:-DNDEBUG>")
 
     add_compile_options("$<$<CONFIG:Debug>:-O0>")
-    add_compile_options("$<$<CONFIG:Debug>:-ggdb>")
     add_compile_options("$<$<CONFIG:Debug>:-D_GLIBCXX_ASSERTIONS>")
 
 else()
