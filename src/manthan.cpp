@@ -863,12 +863,12 @@ vector<sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& 
     inject_cnf(temp_solver);
     vector<Lit> assumps;
     vector<sample*> filtered_samples;
-    for(const auto& sample: samples) {
+    for(const auto& s: samples) {
         assumps.clear();
-        assert(sample.size() == cnf.nVars());
+        assert(s.size() == cnf.nVars());
         for(uint32_t i = 0; i < cnf.nVars(); i++) {
-            assert(sample[i] != l_Undef);
-            const Lit l = Lit(i, sample[i] == l_False);
+            assert(s[i] != l_Undef);
+            const Lit l = Lit(i, s[i] == l_False);
             if (i == v) assumps.push_back(~l);
             else assumps.push_back(l);
         }
@@ -876,7 +876,7 @@ vector<sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& 
         assert(ret != l_Undef);
         if (ret == l_False) {
             // sample is good
-            filtered_samples.push_back(const_cast<sample*>(&sample));
+            filtered_samples.push_back(const_cast<sample*>(&s));
         } else num_removed++;
         verb_print(3, "filtered sample for v " << v+1 << " : " << (ret == l_True ? "removed" : "kept"));
     }
