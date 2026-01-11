@@ -133,4 +133,6 @@ class Manthan {
         bool check_aig_dependency_cycles() const;
         bool check_transitive_closure_correctness() const;
         mutable std::mt19937 mtrand;
+        vector<uint32_t> updated_y_hats; // y_hats updated during last round of training
+        uint32_t num_loops_repair = 0;
 };
