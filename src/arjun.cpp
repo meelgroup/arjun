@@ -1477,7 +1477,7 @@ DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
     check_aig_cycles();
     check_self_dependency();
     get_var_types(0);
-    check_synth_funs_randomly();
+    SLOW_DEBUG_DO(check_synth_funs_randomly());
     return true;
 }
 
