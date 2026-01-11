@@ -141,9 +141,9 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_get_simplified_cnf(
     return puura.get_fully_simplified_renumbered_cnf(cnf, simp_conf);
 }
 #ifdef SYNTH
-DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(const SimplifiedCNF& cnf)
+DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(const SimplifiedCNF& cnf, const ManthanConf& mconf)
 {
-    Manthan manthan(arjdata->conf, cnf.fg);
+    Manthan manthan(arjdata->conf, mconf, cnf.fg);
     return manthan.do_manthan(cnf);
 }
 #endif
@@ -1992,7 +1992,6 @@ set_get_macro(string, specified_order_fname)
 set_get_macro(uint32_t, verb)
 set_get_macro(uint32_t, extend_max_confl)
 set_get_macro(int, oracle_find_bins)
-set_get_macro(int, num_samples)
 set_get_macro(double, cms_glob_mult)
 set_get_macro(int, extend_ccnr)
 set_get_macro(int, autarkies)

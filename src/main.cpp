@@ -67,6 +67,7 @@ string elimtofile;
 
 ArjunNS::SimpConf simp_conf;
 ArjunNS::Arjun::ElimToFileConf etof_conf;
+ArjunNS::Arjun::ManthanConf manthan_conf;
 int do_gates = 1;
 int redundant_cls = true;
 int simptofile = true;
@@ -109,7 +110,13 @@ void add_arjun_options() {
     myopt("--seed", conf.seed, atoi, "Random seed");
 
     // synth
-    myopt("--samples", conf.num_samples, atoi,"Number of samples");
+    myopt("--samples", manthan_conf.num_samples, atoi,"Number of samples");
+    myopt("--maxdepth", manthan_conf.maximumDepth, atoi,"Maximum depth of decision tree");
+    myopt("--minleaf", manthan_conf.minimumLeafSize, atoi,"Minimum leaf size in decision tree");
+    myopt("--filtersamples", manthan_conf.do_filter_samples, atoi,"Filter samples from useless ones");
+    myopt("--biasedsampling", manthan_conf.do_biased_sampling, atoi,"Biased sampling");
+    myopt("--mingainsplit", manthan_conf.minGainSplit, atof,"Minimum gain for a split in decision tree");
+
     myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
     myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
     program.add_argument("--synth")
@@ -222,7 +229,6 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_seed(conf.seed);
     arj->set_gauss_jordan(conf.gauss_jordan);
     arj->set_simp(conf.simp);
-    arj->set_num_samples(conf.num_samples);
     arj->set_extend_max_confl(conf.extend_max_confl);
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
@@ -288,7 +294,7 @@ void do_synthesis() {
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-4-minim_idep_synt.aig");
     }
 
-    auto final_cnf = arjun->standalone_manthan(cnf);
+    auto final_cnf = arjun->standalone_manthan(cnf, manthan_conf);
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");
     final_cnf.clear_orig_sampl_defs();
     if (!conf.debug_synth.empty()) {

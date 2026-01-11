@@ -1297,6 +1297,16 @@ public:
         int sbva_tiebreak = 1;
         bool do_renumber = true;
     };
+    struct ManthanConf {
+        ManthanConf() = default;
+        ManthanConf(const ManthanConf& other) = default;
+        int do_filter_samples = 1;
+        int do_biased_sampling = 0;
+        uint32_t num_samples = 10000;
+        uint32_t minimumLeafSize = 20;
+        double minGainSplit = 0.1;
+        uint32_t maximumDepth = 0;
+    };
     void standalone_elim_to_file(SimplifiedCNF& cnf,
             const ElimToFileConf& etof_conf, const SimpConf& simp_conf);
     SimplifiedCNF standalone_get_simplified_cnf(const SimplifiedCNF& cnf, const SimpConf& simp_conf);
@@ -1306,7 +1316,7 @@ public:
     void standalone_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,
         uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1);
-    SimplifiedCNF standalone_manthan(const SimplifiedCNF& cnf);
+    SimplifiedCNF standalone_manthan(const SimplifiedCNF& cnf, const ManthanConf& manthan_conf);
 
     //Set config
     void set_verb(uint32_t verb);
@@ -1331,7 +1341,6 @@ public:
     void set_weighted(const bool);
     void set_extend_max_confl(uint32_t extend_max_confl);
     void set_oracle_find_bins(int oracle_find_bins);
-    void set_num_samples(int num_samples);
     void set_cms_glob_mult(double cms_glob_mult);
     void set_extend_ccnr(int extend_ccnr);
     void set_autarkies(int autarkies);
@@ -1357,7 +1366,6 @@ public:
     bool get_ite_gate_based() const;
     bool get_irreg_gate_based() const;
     uint32_t get_extend_max_confl() const;
-    int get_num_samples() const;
     int get_oracle_find_bins() const;
     double get_cms_glob_mult() const;
     int get_extend_ccnr() const;

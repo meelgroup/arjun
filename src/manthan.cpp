@@ -85,71 +85,74 @@ void Manthan::inject_cnf(SATSolver& s) {
 }
 
 vector<sample> Manthan::get_samples(const uint32_t num) {
-    array<vector<sample>,2> biased_samp;
-    array<vector<double>,2> dist;
-    dist[0].resize(cnf.nVars(), 0.0);
-    dist[1].resize(cnf.nVars(), 0.0);
-
     SATSolver solver_samp;
     solver_samp.set_seed(conf.seed);
     solver_samp.set_up_for_sample_counter(100);
     inject_cnf(solver_samp);
-    /* solver_samp.set_verbosity(1); */
+    vector<sample> samples;
 
-    // get 500 of each biased 0/1
-    const uint32_t bias_samples = 500;
-    for(int bias = 0; bias <= 1; bias++) {
-        for(const auto& y: to_define) {
-            double bias_w = bias ? 0.9 : 0.1;
-            solver_samp.set_lit_weight(Lit(y, false), bias_w);
-            solver_samp.set_lit_weight(Lit(y, true), 1.0-bias_w);
-        }
-        vector<uint32_t> got_ones(cnf.nVars(), 0);
-        for (uint32_t i = 0; i < bias_samples; i++) {
-            solver_samp.solve();
-            assert(solver_samp.get_model().size() == cnf.nVars());
-            /// TODO: old idea of CMS, make them zero if they are all the last decision and I can do it.
-            biased_samp[bias].push_back(solver_samp.get_model());
+    if (mconf.do_biased_sampling) {
+        array<vector<sample>,2> biased_samp;
+        array<vector<double>,2> dist;
+        dist[0].resize(cnf.nVars(), 0.0);
+        dist[1].resize(cnf.nVars(), 0.0);
 
+        /* solver_samp.set_verbosity(1); */
+
+        // get 500 of each biased 0/1
+        const uint32_t bias_samples = 500;
+        for(int bias = 0; bias <= 1; bias++) {
+            for(const auto& y: to_define) {
+                double bias_w = bias ? 0.9 : 0.1;
+                solver_samp.set_lit_weight(Lit(y, false), bias_w);
+                solver_samp.set_lit_weight(Lit(y, true), 1.0-bias_w);
+            }
+            vector<uint32_t> got_ones(cnf.nVars(), 0);
+            for (uint32_t i = 0; i < bias_samples; i++) {
+                solver_samp.solve();
+                assert(solver_samp.get_model().size() == cnf.nVars());
+                /// TODO: old idea of CMS, make them zero if they are all the last decision and I can do it.
+                biased_samp[bias].push_back(solver_samp.get_model());
+
+                for(const auto& v: to_define) {
+                    if (solver_samp.get_model()[v] == l_True) got_ones[v]++;
+                }
+            }
+            //print distribution
+            verb_print(1, "[sampling] Bias " << bias << " distribution for to_define vars:");
             for(const auto& v: to_define) {
-                if (solver_samp.get_model()[v] == l_True) got_ones[v]++;
+                dist[bias][v] = (double)got_ones[v]/(double)bias_samples;
+                verb_print(1, "  var " << setw(5) << v+1 << ": "
+                    << setw(6) << got_ones[v] << "/" << setw(6) << bias_samples
+                    << " = " << fixed << setprecision(2) << (dist[bias][v] * 100.0) << "%% ones");
             }
         }
-        //print distribution
-        verb_print(1, "[sampling] Bias " << bias << " distribution for to_define vars:");
-        for(const auto& v: to_define) {
-            dist[bias][v] = (double)got_ones[v]/(double)bias_samples;
-            verb_print(1, "  var " << setw(5) << v+1 << ": "
-                << setw(6) << got_ones[v] << "/" << setw(6) << bias_samples
-                << " = " << fixed << setprecision(2) << (dist[bias][v] * 100.0) << "%% ones");
-        }
-    }
 
-    // compute bias from p/q as per manthan.py
-    verb_print(1, "[sampling] Final biases for to_define vars:");
-    for(const auto& y: to_define) {
-        double p = dist[1][y];
-        double q = dist[0][y];
-        double bias;
-        if (0.35 < p  && p < 0.65 && 0.35 < q && p < 0.65) {
-          bias = p;
-        } else if (q <= 0.35) {
-          if (q == 0.0) q = 0.001;
-          bias = q;
-        } else {
-          if (p == 1.0) p = 0.99;
-          bias = p;
+        // compute bias from p/q as per manthan.py
+        verb_print(1, "[sampling] Final biases for to_define vars:");
+        for(const auto& y: to_define) {
+            double p = dist[1][y];
+            double q = dist[0][y];
+            double bias;
+            if (0.35 < p  && p < 0.65 && 0.35 < q && p < 0.65) {
+              bias = p;
+            } else if (q <= 0.35) {
+              if (q == 0.0) q = 0.001;
+              bias = q;
+            } else {
+              if (p == 1.0) p = 0.99;
+              bias = p;
+            }
+            verb_print(1, "[sampling] For var " << y+1 << ": p=" << fixed << setprecision(3) << p
+                << " q=" << fixed << setprecision(3) << q
+                << " -- final bias: "
+                << fixed << setprecision(3) << bias);
+            solver_samp.set_lit_weight(Lit(y, false), bias);
+            solver_samp.set_lit_weight(Lit(y, true), 1.0-bias);
         }
-        verb_print(1, "[sampling] For var " << y+1 << ": p=" << fixed << setprecision(3) << p
-            << " q=" << fixed << setprecision(3) << q
-            << " -- final bias for var " << y+1 << ": "
-            << fixed << setprecision(3) << bias);
-        solver_samp.set_lit_weight(Lit(y, false), bias);
-        solver_samp.set_lit_weight(Lit(y, true), 1.0-bias);
     }
 
     // get final samples
-    vector<sample> samples;
     for (uint32_t i = 0; i < num; i++) {
         solver_samp.solve();
         assert(solver_samp.get_model().size() == cnf.nVars());
@@ -316,6 +319,21 @@ bool Manthan::check_aig_dependency_cycles() const {
     return true;
 }
 
+void Manthan::print_y_order_occur() const {
+    vector<uint32_t> occur_lit(cnf.nVars()*2, 0);
+    for(const auto& cl: cnf.get_clauses()) {
+        for(const auto& l: cl) occur_lit[l.toInt()]++;
+    }
+    for(const auto& y: y_order) {
+        const uint32_t pos = occur_lit[Lit(y, false).toInt()];
+        const uint32_t neg = occur_lit[Lit(y, true).toInt()];
+        verb_print(2, "[y-order] var " << setw(4) << y+1
+            << " BW: " << backward_defined.count(y)
+            << "   pos occur " << setw(6) << pos
+            << "   --  neg occur " << setw(6) << neg);
+    }
+}
+
 SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     assert(input_cnf.get_need_aig() && input_cnf.defs_invariant());
     uint32_t tot_repaired = 0;
@@ -347,8 +365,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     get_incidence();
 
     // Sampling
-    verb_print(1, "Getting " << conf.num_samples << " samples...");
-    vector<sample> samples = get_samples(conf.num_samples);
+    verb_print(1, "Getting " << mconf.num_samples << " samples...");
+    vector<sample> samples = get_samples(mconf.num_samples);
     verb_print(1, "Got " << samples.size() << " samples");
 
     // Training
@@ -358,6 +376,22 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     verb_print(2, "True lit in solver_train: " << fh->get_true_lit());
     verb_print(2, "[do-manthan] After fh creation: solver_train.nVars() = " << solver.nVars() << " cnf.nVars() = " << cnf.nVars());
     fix_order();
+    print_y_order_occur();
+    verb_print(1, "[do-manthan] Starting training. Manthan Config. "
+        << "do_filter_samples=" << mconf.do_filter_samples
+        << ", num_samples=" << mconf.num_samples
+        << ", minimumLeafSize=" << mconf.minimumLeafSize
+        << ", minGainSplit=" << mconf.minGainSplit
+        << ", maximumDepth=" << mconf.maximumDepth);
+        /* << ", train_error_threshold=" << mconf.train_error_threshold */
+        /* << ", max_num_nodes=" << mconf.max_num_nodes */
+        /* << ", num_epochs=" << mconf.num_epochs */
+        /* << ", batch_size=" << mconf.batch_size */
+        /* << ", learning_rate=" << mconf.learning_rate */
+        /* << ", weight_decay=" << mconf.weight_decay */
+        /* << ", step_size=" << mconf.step_size */
+        /* << ", lr_decay_factor=" << mconf.lr_decay_factor */
+        /* << ", use_sgdr=" << std::boolalpha << mconf.use_sgdr */ // stochastic gradient descent with restarts
     for(const auto& v: y_order) {
         if (backward_defined.count(v)) continue;
         train(samples, v); // updates dependency_mat
@@ -540,7 +574,8 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
 }
 
 void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict) {
-    verb_print(2,"Performing repair on " << y_rep+1 << " with conflict size " << conflict.size());
+    verb_print(1,"Performing repair on " << setw(5) << y_rep+1
+            << " with conflict size " << setw(3) << conflict.size());
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
     // not (conflict) -> v = ctx(v)
     FHolder::Formula f;
@@ -594,7 +629,7 @@ void Manthan::fix_order() {
     verb_print(1, "[manthan] Fixing order...");
     vector<uint32_t> sorted(to_define_full.begin(), to_define_full.end());
     sort_unknown(sorted, incidence);
-    std::reverse(sorted.begin(), sorted.end());
+    /* std::reverse(sorted.begin(), sorted.end()); */
 
     set<uint32_t> already_fixed;
     while(already_fixed.size() != to_define_full.size()) {
@@ -613,7 +648,8 @@ void Manthan::fix_order() {
                 break;
             }
             if (!ok) continue;
-            verb_print(2, "Fixed order of " << y+1 << " to: " << y_order.size());
+            verb_print(2, "Fixed order of " << setw(5) << y+1 << " to: " << setw(5) << y_order.size()
+                    << " BW: " << backward_defined.count(y));
             already_fixed.insert(y);
             y_order.push_back(y);
         }
@@ -658,7 +694,7 @@ sample Manthan::find_better_ctx(const sample& ctx, uint32_t& old_needs_repair_si
         verb_print(3, "[find-better-ctx] put into assumps y= " << l);
         assumps.insert(l);
         int w = 1;
-        /* if (backward_defined.count(y)) w = 3; */
+        if (backward_defined.count(y)) w = 3;
         s_ctx.addClause(lits_to_ints({l}), w); //want to flip valuation to ctx[y_hat], so when l is true, we flipped it (i.e. needs no repair)
     }
 
@@ -897,7 +933,6 @@ vector<sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& 
             // sample is good
             filtered_samples.push_back(const_cast<sample*>(&s));
         } else num_removed++;
-        verb_print(3, "filtered sample for v " << v+1 << " : " << (ret ? "removed" : "kept"));
     }
     verb_print(1, "[filter_samples] For variable " << setw(6) << v+1 << ", removed "
             << setw(6) << num_removed << " / " << setw(6) << samples.size()
@@ -914,7 +949,7 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     verb_print(2, "training variable: " << v+1);
     assert(!orig_samples.empty());
     vector<sample*> samples;
-    if (true) samples = filter_samples(v, orig_samples);
+    if (mconf.do_filter_samples) samples = filter_samples(v, orig_samples);
     else {
         for(const auto& s: orig_samples)
             samples.push_back(const_cast<sample*>(&s));
@@ -979,10 +1014,9 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     /*     const size_t maximumDepth, */
     /*     DimensionSelectionType dimensionSelector) */
     DecisionTree<> r(dataset, labels, 2,
-                   20,                 // minimumLeafSize: require 20+ samples per leaf (default 10)
-                   0.001,              // minimumGainSplit: require 0.1% gain to split
-                                       // this should(?) correspond to 0.005 gini gain
-                   0);                 // maximumDepth: max k levels deep (0 = unlimited)
+                   mconf.minimumLeafSize,  // minimumLeafSize: require 20+ samples per leaf (default 10)
+                   mconf.minGainSplit,     // minimumGainSplit: require k ratio gain to split
+                   mconf.maximumDepth);    // maximumDepth: max k levels deep (0 = unlimited)
 
     // Compute and print the training error.
     Row<size_t> predictions;

@@ -55,8 +55,8 @@ using namespace ArjunNS;
 
 class Manthan {
     public:
-        Manthan(const Config& _conf, const std::unique_ptr<FieldGen>& _fg):
-            cnf(_fg->dup()), conf(_conf), fg(_fg->dup())  {
+        Manthan(const Config& _conf, const Arjun::ManthanConf& _mconf, const std::unique_ptr<FieldGen>& _fg):
+            cnf(_fg->dup()), conf(_conf), mconf(_mconf), fg(_fg->dup()) {
                 mtrand.seed(42);
             }
         SimplifiedCNF do_manthan(const SimplifiedCNF& cnf);
@@ -78,6 +78,7 @@ class Manthan {
         set<uint32_t> needs_repair;
 
         const Config& conf;
+        const Arjun::ManthanConf& mconf;
         unique_ptr<FieldGen> fg;
         SATSolver solver;
 
@@ -103,6 +104,7 @@ class Manthan {
         void add_not_F_x_yhat();
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with_backward();
+        void print_y_order_occur() const;
 
         vector<uint32_t> y_order; //1st only depends on inputs
         void fix_order();
