@@ -1187,6 +1187,8 @@ public:
         backbone_done = bb_done;
     }
 
+    std::vector<std::vector<uint32_t>> find_disconnected() const;
+
     // Used after SBVA to replace clauses
     void replace_clauses_with(std::vector<int>& ret, uint32_t new_nvars, uint32_t new_nclauses);
 

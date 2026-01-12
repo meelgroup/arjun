@@ -1974,6 +1974,94 @@ DLL_PUBLIC  aig_ptr AIG::simplify(aig_ptr aig, set<aig_ptr>& visited) {
     return aig;
 }
 
+DLL_PUBLIC vector<vector<uint32_t>> SimplifiedCNF::find_disconnected() const {
+  vector<int> var_to_bag(nvars, -1);
+  map<int, vector<int>> bag_to_vars;
+  int bag_id = 0;
+  set<int> bags;
+
+  auto move_to_bag = [&](int bid, int v) {
+    if (var_to_bag[v] == bid) return;
+    if (var_to_bag[v] == -1) {
+      var_to_bag[v] = bid;
+      bag_to_vars[bid].push_back(v);
+      return;
+    }
+    assert (var_to_bag[v] != bid);
+    int old_bid = var_to_bag[v];
+    for(const auto& vv: bag_to_vars[old_bid]) var_to_bag[vv] = bid;
+    bag_to_vars[bid].insert(bag_to_vars[bid].end(), bag_to_vars[old_bid].begin(), bag_to_vars[old_bid].end());
+    bag_to_vars.erase(old_bid);
+    bags.erase(old_bid);
+  };
+
+  for(const auto& cl: clauses) {
+    if (cl.size() == 0) continue;
+    set<int> vars_in_cl;
+    for(const auto& l: cl) vars_in_cl.insert(l.var());
+
+    bool found = false;
+    for(const auto& v: vars_in_cl) {
+      if (var_to_bag[v] != -1) {
+        found = true;
+        int bid = var_to_bag[v];
+        for(const auto& vv: vars_in_cl) move_to_bag(bid, vv);
+        break;
+      }
+    }
+    if (!found) {
+      bag_to_vars[bag_id] = vector<int>();
+      for(const auto& v: vars_in_cl) {
+        var_to_bag[v] = bag_id;
+        bag_to_vars[bag_id].push_back(v);
+      }
+      bags.insert(bag_id);
+      bag_id++;
+    }
+  }
+  for(uint32_t i = 0; i < nvars; i++) {
+    if (var_to_bag[i] == -1) {
+      bag_to_vars[bag_id] = vector<int>();
+      bag_to_vars[bag_id].push_back(i);
+      var_to_bag[i] = bag_id;
+      bags.insert(bag_id);
+      bag_id++;
+    }
+  }
+
+  vector<vector<uint32_t>> res;
+  for(const auto& b: bags) {
+    /* cout << "c Found bag " << b << " with vars: "; */
+    /* for(const auto& v: bag_to_vars[b]) cout << v << " "; */
+    /* cout << endl; */
+    vector<uint32_t> bag_vars;
+    for(const auto& v: bag_to_vars[b]) bag_vars.push_back(v);
+    res.push_back(bag_vars);
+  }
+
+  // Check
+  uint32_t total_vars = 0;
+  for(const auto& b: bags) total_vars += bag_to_vars[b].size();
+  /* cout << "c Found " << bags.size() << " bags with total vars: " << total_vars << endl; */
+  /* cout << "c Total vars in formula: " << dat.nvars << endl; */
+  vector<int> count_vars(nvars, 0);
+  for(const auto& b: bags) {
+    assert(bag_to_vars[b].size() > 0);
+    for(const auto& v: bag_to_vars[b]) count_vars[v]++;
+  }
+  for(uint32_t i = 0; i < nvars; i++) {
+    if (count_vars[i] != 1) {
+      cout << "c ERROR: var " << i << " occurs in " << count_vars[i] << " bags" << endl;
+      cout << "var_to_bag[" << i << "] = " << var_to_bag[i] << endl;
+      release_assert(false);
+    }
+  }
+  release_assert(total_vars == nvars);
+
+  for(auto& b: res) std::sort(b.begin(), b.end());
+  return res;
+}
+
 
 set_get_macro(bool, distill)
 set_get_macro(bool, intree)
