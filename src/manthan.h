@@ -102,6 +102,7 @@ class Manthan {
         bool repair(const uint32_t v, sample& ctx);
         bool find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict);
         void minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps);
+        uint32_t find_next_repair_var(sample& ctx);
         void perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict);
         void add_not_F_x_yhat();
         void fill_dependency_mat_with_backward();

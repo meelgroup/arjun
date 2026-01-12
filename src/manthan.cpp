@@ -35,6 +35,7 @@
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
 #include <vector>
 #include <array>
+#include <algorithm>
 #include <ranges>
 #include "constants.h"
 
@@ -335,6 +336,8 @@ void Manthan::print_y_order_occur() const {
 SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     assert(input_cnf.get_need_aig() && input_cnf.defs_invariant());
     assert(mconf.simplify_every > 0 && "Can't give simplify_every=0");
+    const auto ret = input_cnf.find_disconnected();
+    verb_print(1, "[manthan] Found " << ret.size() << " disconnected components");
 
     uint32_t tot_repaired = 0;
     cout << "c o [DEBUG] About to assign cnf = input_cnf" << endl;
@@ -441,31 +444,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
         while(!needs_repair.empty()) {
-            uint32_t y_rep = std::numeric_limits<uint32_t>::max();
-            for(const auto& t: y_order) {
-                if (needs_repair.count(t)) {
-                    y_rep = t;
-                    break;
-                }
-            }
-            if (backward_defined.count(y_rep)) {
-                verb_print(3, "[WARNING] trying to repair backward-defined var " << y_rep+1);
-                ctx[y_to_y_hat[y_rep]] = ctx[y_rep]; // pretend to have fixed the ctx
-                needs_repair.erase(y_rep);
-                continue;
-            }
-            if (conf.verb >= 2) {
-                cout << "c o needs repair: ";
-                for(const auto& y: y_order) if (needs_repair.count(y)) {
-                    cout << y+1;
-                    if (backward_defined.count(y)) cout << "[BW]";
-                    cout << " ";
-                }
-                std::cout << endl;
-            }
-            assert(y_rep != std::numeric_limits<uint32_t>::max());
-            needs_repair.erase(y_rep);
-            verb_print(3, "-------------------");
+            auto y_rep = find_next_repair_var(ctx); // updates ctx on backward-defined vars
+            if (y_rep == std::numeric_limits<uint32_t>::max()) break;
             bool done = repair(y_rep, ctx); // this updates ctx on y
             if (done) {
                 num_repaired++;
@@ -495,6 +475,38 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     }
     assert(fcnf.get_need_aig() && fcnf.defs_invariant());
     return fcnf;
+}
+
+uint32_t Manthan::find_next_repair_var(sample& ctx) {
+    while(!needs_repair.empty()) {
+        uint32_t y_rep = std::numeric_limits<uint32_t>::max();
+        for(const auto& t: y_order) {
+            if (needs_repair.count(t)) {
+                y_rep = t;
+                break;
+            }
+        }
+        if (backward_defined.count(y_rep)) {
+            verb_print(3, "[WARNING] trying to repair backward-defined var " << y_rep+1);
+            ctx[y_to_y_hat[y_rep]] = ctx[y_rep]; // pretend to have fixed the ctx
+            needs_repair.erase(y_rep);
+            continue;
+        }
+        if (conf.verb >= 2) {
+            cout << "c o needs repair: ";
+            for(const auto& y: y_order) if (needs_repair.count(y)) {
+                cout << y+1;
+                if (backward_defined.count(y)) cout << "[BW]";
+                cout << " ";
+            }
+            std::cout << endl;
+        }
+        assert(y_rep != std::numeric_limits<uint32_t>::max());
+        needs_repair.erase(y_rep);
+        verb_print(3, "-------------------");
+        return y_rep;
+    }
+    return std::numeric_limits<uint32_t>::max();
 }
 
 bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
