@@ -454,6 +454,15 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
                 needs_repair.erase(y_rep);
                 continue;
             }
+            if (conf.verb >= 2) {
+                cout << "c o needs repair: ";
+                for(const auto& y: y_order) if (needs_repair.count(y)) {
+                    cout << y+1;
+                    if (backward_defined.count(y)) cout << "[BW]";
+                    cout << " ";
+                }
+                std::cout << endl;
+            }
             assert(y_rep != std::numeric_limits<uint32_t>::max());
             needs_repair.erase(y_rep);
             verb_print(3, "-------------------");
@@ -489,7 +498,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 }
 
 bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
-    verb_print(2, "[DEBUG] Starting repair NON-MAXSAT for var " << y_rep+1);
+    verb_print(2, "[DEBUG] Starting repair for var " << y_rep+1
+            << (backward_defined.count(y_rep) ? "[BW]" : ""));
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
     assert(to_define.count(y_rep) == 1 && "Only to-define vars should be repaired");
     assert(y_rep < cnf.nVars());
@@ -740,15 +750,6 @@ sample Manthan::find_better_ctx(const sample& ctx, uint32_t& old_needs_repair_si
     verb_print(2, "optimum found: " << needs_repair.size() << " original assumps size: " << assumps.size());
     /* assert(needs_repair.size() == s_ctx.getCost()); */
     assert(!needs_repair.empty());
-    if (conf.verb >= 2) {
-        cout << "c o needs repair: ";
-        for(const auto& v: needs_repair) {
-            cout << v+1;
-            if (backward_defined.count(v)) cout << "[BW]";
-            cout << " ";
-        }
-        std::cout << endl;
-    }
 
     sample better_ctx(cnf.nVars(), l_Undef);
     for(const auto& v: to_define_full) better_ctx[v] = s_ctx.getValue(v+1) ? l_True : l_False;
