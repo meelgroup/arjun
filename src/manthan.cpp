@@ -564,7 +564,7 @@ bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>
     cout << "The value for y_rep (in y_hat) was: " << ctx[y_to_y_hat[y_rep]] << endl;
 
     assert(ctx[y_rep] != ctx[y_to_y_hat[y_rep]] && "before repair, y and y_hat must be different");
-    const Lit repairing = Lit(y_rep, ctx[y_rep] == l_False);
+    const Lit repairing = Lit(y_rep, ctx[y_to_y_hat[y_rep]] == l_True);
     assumps.push_back({~repairing});
     /* cout << "added repairing cl: " << std::vector<Lit>{~repairing} << endl; */
 
