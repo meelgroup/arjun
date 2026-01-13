@@ -91,6 +91,7 @@ class Manthan {
 
         FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth = 0);
         vector<uint32_t> incidence;
+        void print_cnf_debug_info(const sample& ctx) const;
         void get_incidence();
         bool get_counterexample(sample& ctx);
         void inject_formulas_into_solver();

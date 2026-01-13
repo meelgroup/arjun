@@ -333,6 +333,21 @@ void Manthan::print_y_order_occur() const {
     }
 }
 
+void Manthan::print_cnf_debug_info(const sample& ctx) const {
+    if (conf.verb >= 3) {
+        for(const auto& y: to_define_full) {
+            const auto y_hat = y_to_y_hat.at(y);
+            if (ctx[y] == ctx[y_hat]) continue;
+            verb_print(3, "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
+                    << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]));
+        }
+        cout << "c o [DEBUG] CNF valuation: ";
+        for(uint32_t i = 0; i < cnf.nVars(); i++)
+            cout << "var " << setw(3) << i+1 << ": " << pr(ctx[i]) << " -- ";
+        cout << endl;
+    }
+}
+
 SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     assert(input_cnf.get_need_aig() && input_cnf.defs_invariant());
     assert(mconf.simplify_every > 0 && "Can't give simplify_every=0");
@@ -418,18 +433,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         bool finished = get_counterexample(ctx);
         for(const auto& val: ctx) assert(val != l_Undef);
         if (finished) break;
-        if (conf.verb >= 3) {
-            for(const auto& y: to_define_full) {
-                const auto y_hat = y_to_y_hat[y];
-                if (ctx[y] == ctx[y_hat]) continue;
-                verb_print(3, "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
-                        << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]));
-            }
-            cout << "c o [DEBUG] CNF valuation: ";
-            for(uint32_t i = 0; i < cnf.nVars(); i++)
-                cout << "var " << setw(3) << i+1 << ": " << pr(ctx[i]) << " -- ";
-            cout << endl;
-        }
+        print_cnf_debug_info(ctx);
 
         uint32_t old_needs_repair_size;;
         const auto better_ctx = find_better_ctx(ctx, old_needs_repair_size); // fills needs_repair
