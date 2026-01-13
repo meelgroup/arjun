@@ -448,7 +448,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
         while(!needs_repair.empty()) {
-            auto y_rep = find_next_repair_var(ctx); // updates ctx on backward-defined vars
+            const auto y_rep = find_next_repair_var(ctx); // updates ctx on backward-defined vars
             if (y_rep == std::numeric_limits<uint32_t>::max()) break;
             bool done = repair(y_rep, ctx); // this updates ctx on y
             if (done) {
