@@ -1272,7 +1272,6 @@ DLL_PUBLIC void SimplifiedCNF::write_simpcnf(const string& fname, bool red) cons
     outf << "c MUST MULTIPLY BY " << *multiplier_weight << " 0" << endl;
 }
 
-
 // Returns NEW vars, i.e. < nVars()
 // It is checked that it is correct and total
 DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
