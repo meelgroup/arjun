@@ -740,17 +740,25 @@ sample Manthan::find_better_ctx(const sample& ctx, uint32_t& old_needs_repair_si
     // Add all clauses
     for(const auto& c: cnf.get_clauses()) s_ctx.addClause(lits_to_ints(c));
 
+    map<uint32_t, uint32_t> y_to_y_order_pos;
+    for(size_t i = 0; i < y_order.size(); i++) {
+        y_to_y_order_pos[y_order[i]] = y_order.size()-i;
+    }
+
     // Fix to_define variables that are incorrect via assumptions
     set<Lit> assumps;
-    for(const auto& y: to_define_full) {
+    int a = 1;
+    for(const auto& y: y_order) {
         const auto y_hat = y_to_y_hat[y];
         if (ctx[y] == ctx[y_hat]) continue;
         const auto l = Lit(y, ctx[y_hat] == l_False);
         old_needs_repair_size++;
         verb_print(3, "[find-better-ctx] put into assumps y= " << l);
         assumps.insert(l);
-        int w = 1;
-        if (backward_defined.count(y)) w = 3;
+        /* int w = 1; */
+        int w = y_to_y_order_pos[y]*100;
+        /* if (backward_defined.count(y)) w *= 2; */
+        /* if (w == 0) w = 1; */
         s_ctx.addClause(lits_to_ints({l}), w); //want to flip valuation to ctx[y_hat], so when l is true, we flipped it (i.e. needs no repair)
     }
 
