@@ -1032,7 +1032,7 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     point_1.resize(cnf.nVars());
     for(uint32_t i = 0; i < cnf.nVars(); i++) point_1[i] = 1;
 
-    Mat<size_t> dataset;
+    Mat<uint8_t> dataset;
     Row<size_t> labels;
     dataset.resize(cnf.nVars(), samples.size());
     verb_print(2, "Dataset size: " << dataset.n_rows << " x " << dataset.n_cols);
@@ -1119,7 +1119,7 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
                 if (input.count(j)) continue;
                 dependency_mat[i][j] |= dependency_mat[v][j];
             }
-            assert(check_map_dependency_cycles());
+            SLOW_DEBUG_DO(assert(check_map_dependency_cycles()));
         }
     }
     verb_print(4, "Tentative, trained formula for y " << v+1 << ":" << endl << var_to_formula[v]);
