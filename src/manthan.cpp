@@ -747,7 +747,6 @@ sample Manthan::find_better_ctx(const sample& ctx, uint32_t& old_needs_repair_si
 
     // Fix to_define variables that are incorrect via assumptions
     set<Lit> assumps;
-    int a = 1;
     for(const auto& y: y_order) {
         const auto y_hat = y_to_y_hat[y];
         if (ctx[y] == ctx[y_hat]) continue;
