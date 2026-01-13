@@ -49,6 +49,12 @@
         .action([&](const auto& a) {var = std::fun(a.c_str());}) \
         .default_value(var) \
         .help(hhelp)
+#define myflag(name, var, hhelp) \
+    program.add_argument(name) \
+        .action([&](const auto&) {var = 1;}) \
+        .default_value(var) \
+        .flag() \
+        .help(hhelp)
 
 using std::cout;
 using std::endl;
@@ -119,14 +125,11 @@ void add_arjun_options() {
     myopt("--fixedconf", manthan_conf.sampler_fixed_conflicts, atoi,"Restart conflict limit in CMSGen");
     myopt("--minimconfl", manthan_conf.do_minimize_conflict, atoi,"Minimize conflict size when repairing");
     myopt("--simpevery", manthan_conf.simplify_every, atoi,"Simplify solvers inside Manthan every K loops");
+    myopt("--manthancnf", manthan_conf.write_manthan_cnf, string, "Write Manthan CNF to this file");
 
     myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
     myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
-    program.add_argument("--synth")
-        .action([&](const auto&) {synthesis = 1;})
-        .default_value(synthesis)
-        .flag()
-        .help("Run synthesis");
+    myflag("---synth", synthesis, "Run synthesis");
     myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
     myopt("--debugsynth", conf.debug_synth, string,"Debug synthesis, prefix with this fname");
 

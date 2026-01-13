@@ -1311,6 +1311,7 @@ public:
         uint32_t sampler_fixed_conflicts = 100;
         int do_minimize_conflict = 1;
         uint32_t simplify_every = 1000;
+        std::string write_manthan_cnf;
     };
     void standalone_elim_to_file(SimplifiedCNF& cnf,
             const ElimToFileConf& etof_conf, const SimpConf& simp_conf);

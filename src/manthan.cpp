@@ -357,7 +357,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     uint32_t tot_repaired = 0;
     cout << "c o [DEBUG] About to assign cnf = input_cnf" << endl;
     cnf = input_cnf;
-    cnf.write_simpcnf("manthan-initial.cnf");
+    if (!mconf.write_manthan_cnf.empty()) cnf.write_simpcnf(mconf.write_manthan_cnf);
     // Grand master plan
     // 1. Get 10k samples
     // 2. Run ML to get a tree one-by-one and thereby generate an order
