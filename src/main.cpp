@@ -129,7 +129,7 @@ void add_arjun_options() {
 
     myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
     myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
-    myflag("---synth", synthesis, "Run synthesis");
+    myflag("--synth", synthesis, "Run synthesis");
     myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
     myopt("--debugsynth", conf.debug_synth, string,"Debug synthesis, prefix with this fname");
 
