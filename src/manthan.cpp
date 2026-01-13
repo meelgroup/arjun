@@ -558,27 +558,19 @@ bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>
         const Lit l = Lit(y, ctx[y] == l_False);
         verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
         assumps.push_back({l});
-        cout << "assumed cl: " << std::vector<Lit>{l} << endl;
+        /* cout << "assumed cl: " << std::vector<Lit>{l} << endl; */
     }
-    cout << "The value for y_rep (in y) was: " << ctx[y_rep] << endl;
-    cout << "The value for y_rep (in y_hat) was: " << ctx[y_to_y_hat[y_rep]] << endl;
 
     assert(ctx[y_rep] != ctx[y_to_y_hat[y_rep]] && "before repair, y and y_hat must be different");
     const Lit repairing = Lit(y_rep, ctx[y_to_y_hat[y_rep]] == l_True);
     assumps.push_back({~repairing});
     /* cout << "added repairing cl: " << std::vector<Lit>{~repairing} << endl; */
 
-    verb_print(2, "assuming reverse: " << ~repairing);
-    /* verb_print(3, "setting the to-be-repaired " << repairing << " to wrong."); */
-    /* verb_print(2, "solving with assumps: " << assumps); */
+    verb_print(2, "assuming reverse for y_rep: " << ~repairing);
     auto ret = repair_solver.solve(&assumps);
     assert(ret != l_Undef);
     if (ret == l_True) {
         verb_print(2, "Repair cost is 0 for y: " << y_rep+1);
-        /* if (conf.verb >= 3) { */
-        /*     for(uint32_t i = 0; i < cnf.nVars(); i++) */
-        /*         cout << "model i " << setw(5) << i+1 << " : " << model[i] << endl; */
-        /* } */
         for(uint32_t i = 0; i < cnf.nVars(); i++) {
             ctx[i] = repair_solver.get_model()[i];
         }
