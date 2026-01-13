@@ -357,6 +357,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     uint32_t tot_repaired = 0;
     cout << "c o [DEBUG] About to assign cnf = input_cnf" << endl;
     cnf = input_cnf;
+    cnf.write_simpcnf("manthan-initial.cnf");
     // Grand master plan
     // 1. Get 10k samples
     // 2. Run ML to get a tree one-by-one and thereby generate an order
@@ -965,33 +966,44 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
 }
 
 // Checks if flipping variable v in sample s satisfies all clauses
-bool Manthan::check_satisfied_all_cls_with_flip(const sample& s, const uint32_t v) const {
-    // Check all clauses
+vector<sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& samples) {
+    auto check_satisfied_all_cls_with_flip = [=](const sample& s, const uint32_t v, const vector<vector<Lit>*>& clause_ptrs) -> bool {
+        // Check all clauses
+        for(const auto& cl: clause_ptrs) {
+            bool satisfied = false;
+            for(const auto& l: *cl) {
+                uint32_t var = l.var();
+                bool sign = l.sign();
+                lbool val = s[l.var()];
+                assert(val != l_Undef);
+                if (var == v) val = val ^ true;
+                val = val ^ sign;
+                if (val == l_True) {
+                    satisfied = true;
+                    break;
+                }
+            }
+            if (!satisfied) return false;
+        }
+        // all clauses satisfied
+        return true;
+    };
+
+    uint32_t num_removed = 0;
+    vector<sample*> filtered_samples;
+    vector<vector<Lit>*> clause_ptrs;
     for(const auto& cl: cnf.get_clauses()) {
-        bool satisfied = false;
+        bool found = false;
         for(const auto& l: cl) {
-            uint32_t var = l.var();
-            bool sign = l.sign();
-            lbool val = s[l.var()];
-            assert(val != l_Undef);
-            if (var == v) val = val ^ true;
-            val = val ^ sign;
-            if (val == l_True) {
-                satisfied = true;
+            if (l.var() == v) {
+                found = true;
                 break;
             }
         }
-        if (!satisfied) return false;
+        if (found) clause_ptrs.push_back(const_cast<vector<Lit>*>(&cl));
     }
-    // all clauses satisfied
-    return true;
-}
-
-vector<sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& samples) {
-    uint32_t num_removed = 0;
-    vector<sample*> filtered_samples;
     for(const auto& s: samples) {
-        bool ret = check_satisfied_all_cls_with_flip(s, v);
+        bool ret = check_satisfied_all_cls_with_flip(s, v, clause_ptrs);
         if (!ret) {
             // sample is good
             filtered_samples.push_back(const_cast<sample*>(&s));
