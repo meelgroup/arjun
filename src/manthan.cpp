@@ -854,7 +854,6 @@ bool Manthan::get_counterexample(sample& ctx) {
     // Relation between y_hat and form_out
     // when y_hat_to_indic is TRUE, y_hat and form_out are EQUAL
     vector<Lit> tmp;
-    map<uint32_t, uint32_t> y_to_indic;
     for(const auto& y: updated_y_funcs) {
         solver.new_var();
         const uint32_t ind = solver.nVars()-1;
@@ -865,7 +864,6 @@ bool Manthan::get_counterexample(sample& ctx) {
 
         y_hat_to_indic[y_hat] = ind;
         indic_to_y_hat[ind] = y_hat;
-        y_to_indic[y] = ind;
         verb_print(3, "->CTX ind: " << ind+1 << " y_hat: " << y_hat+1  << " form_out: " << form_out);
 
         // when indic is TRUE, y_hat and form_out are EQUAL
@@ -890,7 +888,6 @@ bool Manthan::get_counterexample(sample& ctx) {
         solver.add_clause(tmp);
     }
     updated_y_funcs.clear();
-
 
     vector<Lit> assumps;
     assumps.reserve(y_hat_to_indic.size());
@@ -967,7 +964,7 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
 
 // Checks if flipping variable v in sample s satisfies all clauses
 vector<sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& samples) {
-    auto check_satisfied_all_cls_with_flip = [=](const sample& s, const uint32_t v, const vector<vector<Lit>*>& clause_ptrs) -> bool {
+    auto check_satisfied_all_cls_with_flip = [](const sample& s, const uint32_t v2, const vector<vector<Lit>*>& clause_ptrs) -> bool {
         // Check all clauses
         for(const auto& cl: clause_ptrs) {
             bool satisfied = false;
@@ -976,7 +973,7 @@ vector<sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& 
                 bool sign = l.sign();
                 lbool val = s[l.var()];
                 assert(val != l_Undef);
-                if (var == v) val = val ^ true;
+                if (var == v2) val = val ^ true;
                 val = val ^ sign;
                 if (val == l_True) {
                     satisfied = true;
@@ -1009,7 +1006,7 @@ vector<sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& 
             filtered_samples.push_back(const_cast<sample*>(&s));
         } else num_removed++;
     }
-    verb_print(1, "[filter_samples] For variable " << setw(6) << v+1 << ", removed "
+    verb_print(2, "[filter_samples] For variable " << setw(6) << v+1 << ", removed "
             << setw(6) << num_removed << " / " << setw(6) << samples.size()
             << " samples that had no effect on it.");
 
