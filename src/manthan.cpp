@@ -125,7 +125,7 @@ vector<sample> Manthan::get_samples(const uint32_t num) {
                 dist[bias][v] = (double)got_ones[v]/(double)bias_samples;
                 verb_print(1, "  var " << setw(5) << v+1 << ": "
                     << setw(6) << got_ones[v] << "/" << setw(6) << bias_samples
-                    << " = " << fixed << setprecision(0) << (dist[bias][v] * 100.0) << setprecision(2) << "%% ones");
+                    << " = " << fixed << setprecision(0) << (dist[bias][v] * 100.0) << setprecision(2) << "% ones");
             }
         }
 
