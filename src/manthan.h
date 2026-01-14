@@ -97,7 +97,8 @@ class Manthan {
         void inject_formulas_into_solver();
         bool check_satisfied_all_cls_with_flip(const sample& s, const uint32_t v) const;
         vector<sample*> filter_samples(const uint32_t v, const vector<sample>& samples);
-        sample find_better_ctx(const sample& ctx, uint32_t& old_needs_repair_size);
+        sample find_better_ctx_maxsat(const sample& ctx, uint32_t& old_needs_repair_size);
+        sample find_better_ctx_normal(const sample& ctx, uint32_t& old_needs_repair_size);
         void inject_cnf(SATSolver& s, const bool also_vars = true) const;
         void inject_unit(SATSolver& s);
         bool repair(const uint32_t v, sample& ctx);
@@ -143,4 +144,5 @@ class Manthan {
         // stats
         uint32_t num_loops_repair = 0;
         uint64_t conflict_sizes_sum = 0;
+        uint64_t needs_repair_sum = 0;
 };

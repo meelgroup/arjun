@@ -442,6 +442,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
                     << "   loops: "<< setw(4) << num_loops_repair
                     << "   avg conflicts/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
                     << "   avg confl sz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
+                    << "   avg needs rep sz: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
                     << "   T: " << setprecision(2) << fixed << setw(7) << cpuTime()-repair_time
                     << "   repair/s: " << setprecision(4) << (double)tot_repaired/(cpuTime()-repair_time+0.0001) << setprecision(2));
         }
@@ -456,9 +457,16 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         print_cnf_debug_info(ctx);
 
         uint32_t old_needs_repair_size;;
-        const auto better_ctx = find_better_ctx(ctx, old_needs_repair_size); // fills needs_repair
+        vector<lbool> better_ctx;
+        if (mconf.do_maxsat_better_ctx) {
+          better_ctx = find_better_ctx_maxsat(ctx, old_needs_repair_size); // fills needs_repair
+        } else {
+          better_ctx = find_better_ctx_normal(ctx, old_needs_repair_size); // fills needs_repair
+        }
+        needs_repair_sum += needs_repair.size();
+
         verb_print(2, "[manthan] Finding better ctx DONE, needs_repair size before vs now: "
-                << setw(3) << old_needs_repair_size << " -- " << setw(4) << needs_repair.size());
+              << setw(3) << old_needs_repair_size << " -- " << setw(4) << needs_repair.size());
         for(const auto& y: to_define_full) if (!needs_repair.count(y)) {
             ctx[y] = better_ctx[y];
             if (conf.verb >= 3 && better_ctx[y] != ctx[y])
@@ -748,7 +756,7 @@ void Manthan::fix_order() {
 }
 
 // Fills needs_repair with vars from y (i.e. output)
-sample Manthan::find_better_ctx(const sample& ctx, uint32_t& old_needs_repair_size) {
+sample Manthan::find_better_ctx_maxsat(const sample& ctx, uint32_t& old_needs_repair_size) {
     needs_repair.clear();
     old_needs_repair_size = 0;
     verb_print(2, "Finding better ctx.");
@@ -812,6 +820,97 @@ sample Manthan::find_better_ctx(const sample& ctx, uint32_t& old_needs_repair_si
     sample better_ctx(cnf.nVars(), l_Undef);
     for(const auto& v: to_define_full) better_ctx[v] = s_ctx.getValue(v+1) ? l_True : l_False;
     return better_ctx;
+}
+
+// Fills needs_repair with vars from y (i.e. output) using normal SAT solver with assumptions
+sample Manthan::find_better_ctx_normal(const sample& ctx, uint32_t& old_needs_repair_size) {
+    SATSolver ctx_solver;
+    ctx_solver.new_vars(cnf.nVars());
+
+    needs_repair.clear();
+    old_needs_repair_size = 0;
+    verb_print(2, "Finding better ctx using normal SAT solver.");
+
+    // Fix input values
+    for(const auto& x: input) {
+        assert(ctx[x] != l_Undef && "Input variable must be defined in counterexample");
+        const auto l = Lit(x, ctx[x] == l_False);
+        ctx_solver.add_clause({l});
+    }
+
+    map<uint32_t, uint32_t> y_to_y_order_pos;
+    for(size_t i = 0; i < y_order.size(); i++) {
+        y_to_y_order_pos[y_order[i]] = y_order.size()-i;
+    }
+
+    // For to_define variables, separate into correct and incorrect
+    vector<std::pair<Lit, uint32_t>> incorrect_lits; // pair of literal and weight
+    for(const auto& y: to_define_full) {
+        const auto y_hat = y_to_y_hat[y];
+        const Lit l = Lit(y, ctx[y_hat] == l_False); // literal that makes y match y_hat
+
+        if (ctx[y] == ctx[y_hat]) {
+            // Already correct, make this a fixed assumption
+            verb_print(3, "[find-better-ctx-normal] CTX is CORRECT on y=" << y+1 << " y_hat=" << y_hat+1
+                 << " -- ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat]));
+            ctx_solver.add_clause({l});
+        } else {
+            // Incorrect, we want to try to fix this
+            old_needs_repair_size++;
+            uint32_t weight = y_to_y_order_pos[y];
+            incorrect_lits.push_back({l, weight});
+            verb_print(3, "[find-better-ctx-normal] CTX is INCORRECT on y=" << y+1
+                 << " ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat])
+                 << " weight=" << weight);
+        }
+    }
+    inject_cnf(ctx_solver, false);
+
+    // Sort incorrect lits by weight (higher weight = higher priority to fix)
+    std::sort(incorrect_lits.begin(), incorrect_lits.end(),
+              [](const auto& a, const auto& b) { return a.second > b.second; });
+
+    // Iteratively find a minimal CTX
+    set<uint32_t> cannot_fix; // variables we cannot fix
+    vector<Lit> assumps;
+    while (true) {
+        assumps.clear();
+        for(const auto& [lit, weight]: incorrect_lits) {
+            if (cannot_fix.count(lit.var()) == 0) assumps.push_back(lit);
+        }
+        auto ret = ctx_solver.solve(&assumps);
+        if (ret == l_True) {
+            // Success! Extract the model
+            verb_print(2, "[find-better-ctx-normal] Found satisfying assignment. "
+                       << "Could not fix " << cannot_fix.size() << " variables.");
+            sample better_ctx(cnf.nVars(), l_Undef);
+            for(const auto& v: to_define_full) {
+                better_ctx[v] = ctx_solver.get_model()[v];
+                const auto y_hat = y_to_y_hat[v];
+                if (better_ctx[v] != ctx[y_hat]) {
+                    needs_repair.insert(v);
+                }
+            }
+            verb_print(2, "Optimum found: " << needs_repair.size()
+                       << " variables need repair (original: " << old_needs_repair_size << ")");
+            assert(!needs_repair.empty() || cannot_fix.empty());
+            return better_ctx;
+        } else {
+            auto conflict = ctx_solver.get_conflict();
+            assert(!conflict.empty() && "Got UNSAT with empty conflict!");
+            verb_print(3, "[find-better-ctx-normal] UNSAT, conflict size: " << conflict.size());
+
+            // Find which soft assumptions are in the conflict
+            set<Lit> conflict_set(conflict.begin(), conflict.end());
+            for(const auto& [lit, weight]: incorrect_lits) {
+                if (conflict_set.count(~lit) && !cannot_fix.count(lit.var())) {
+                    verb_print(3, "[find-better-ctx-normal] Giving up on fixing var " << lit.var()+1);
+                    cannot_fix.insert(lit.var());
+                    break; // Remove one at a time
+                }
+            }
+        }
+    }
 }
 
 // Adds ~F(x, y_hat), fills y_to_y_hat and y_hat_to_y

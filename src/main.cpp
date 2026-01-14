@@ -126,6 +126,8 @@ void add_arjun_options() {
     myopt("--minimconfl", manthan_conf.do_minimize_conflict, atoi,"Minimize conflict size when repairing");
     myopt("--simpevery", manthan_conf.simplify_every, atoi,"Simplify solvers inside Manthan every K loops");
     myopt("--manthancnf", manthan_conf.write_manthan_cnf, string, "Write Manthan CNF to this file");
+    myopt("--maxsat", manthan_conf.do_maxsat_better_ctx, atoi, "Use maxsat to find better counterexamples during Manthan");
+
 
     myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
     myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
