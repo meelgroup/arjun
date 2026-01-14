@@ -139,5 +139,8 @@ class Manthan {
         bool check_transitive_closure_correctness() const;
         std::mt19937 mtrand;
         vector<uint32_t> updated_y_funcs; // y_hats updated during last round of training
+
+        // stats
         uint32_t num_loops_repair = 0;
+        uint64_t conflict_sizes_sum = 0;
 };

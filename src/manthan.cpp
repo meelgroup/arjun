@@ -125,12 +125,12 @@ vector<sample> Manthan::get_samples(const uint32_t num) {
                 dist[bias][v] = (double)got_ones[v]/(double)bias_samples;
                 verb_print(1, "  var " << setw(5) << v+1 << ": "
                     << setw(6) << got_ones[v] << "/" << setw(6) << bias_samples
-                    << " = " << fixed << setprecision(2) << (dist[bias][v] * 100.0) << "%% ones");
+                    << " = " << fixed << setprecision(0) << (dist[bias][v] * 100.0) << setprecision(2) << "%% ones");
             }
         }
 
         // compute bias from p/q as per manthan.py
-        verb_print(1, "[sampling] Final biases for to_define vars:");
+        verb_print(2, "[sampling] Final biases for to_define vars:");
         for(const auto& y: to_define) {
             double p = dist[1][y];
             double q = dist[0][y];
@@ -160,8 +160,8 @@ vector<sample> Manthan::get_samples(const uint32_t num) {
         assert(solver_samp.get_model().size() == cnf.nVars());
         samples.push_back(solver_samp.get_model());
     }
-    verb_print(1, "[manthan] Got " << samples.size() << " samples. T: "
-        << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
+    verb_print(1, "[manthan] Got " << samples.size() << " samples. Biased: " << (bool)mconf.do_biased_sampling
+            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
     return samples;
 }
 
@@ -433,16 +433,20 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     fill_var_to_formula_with_backward();
     fix_order();
     for(const auto& y: y_order) updated_y_funcs.push_back(y);
+
     // Counterexample-guided repair
-    bool repaired = true;
+    bool at_least_one_repaired = true;
     while(true) {
-        if (num_loops_repair %  100 == 99) {
-            verb_print(1, "[manthan] repaired so far: " << tot_repaired
-                    << " loops: "<< num_loops_repair << " T: " << setprecision(2) << fixed
-                    << cpuTime()-repair_time << " -- repair/s: " << (double)tot_repaired/(cpuTime()-repair_time+0.0001));
+        if (num_loops_repair %  40 == 39) {
+            verb_print(1, "[manthan] repaired so far: " << setw(4) << tot_repaired
+                    << "   loops: "<< setw(4) << num_loops_repair
+                    << "   avg conflicts/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
+                    << "   avg confl sz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
+                    << "   T: " << setprecision(2) << fixed << setw(7) << cpuTime()-repair_time
+                    << "   repair/s: " << setprecision(4) << (double)tot_repaired/(cpuTime()-repair_time+0.0001) << setprecision(2));
         }
-        assert(repaired);
-        repaired = false;
+        assert(at_least_one_repaired);
+        at_least_one_repaired = false;
         num_loops_repair++;
         inject_formulas_into_solver();
         sample ctx;
@@ -468,7 +472,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
             if (y_rep == std::numeric_limits<uint32_t>::max()) break;
             bool done = repair(y_rep, ctx); // this updates ctx on y
             if (done) {
-                repaired = true;
+                at_least_one_repaired = true;
                 num_repaired++;
                 tot_repaired++;
             }
@@ -659,6 +663,8 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     verb_print(2, "[manthan] Performing repair on " << setw(5) << y_rep+1
             << " with conflict size " << setw(3) << conflict.size());
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
+    conflict_sizes_sum += conflict.size();
+
     // not (conflict) -> v = ctx(v)
     FHolder::Formula f;
 
@@ -923,7 +929,7 @@ bool Manthan::get_counterexample(sample& ctx) {
         return false;
     } else {
         assert(ret == l_False);
-        verb_print(1, "Formula is good!");
+        verb_print(2, "Formula is good!");
         for(auto& f: var_to_formula) {
             if (!f.second.finished) {
                 verb_print(2, "Marking Formula for " << f.first+1 << " as finished");
