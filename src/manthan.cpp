@@ -160,7 +160,7 @@ vector<sample> Manthan::get_samples(const uint32_t num) {
         assert(solver_samp.get_model().size() == cnf.nVars());
         samples.push_back(solver_samp.get_model());
     }
-    verb_print(1, "[manthan] Got " << samples.size() << " samples. Biased: " << (bool)mconf.do_biased_sampling
+    verb_print(1, COLYEL "[manthan] Got " << samples.size() << " samples. Biased: " << (bool)mconf.do_biased_sampling
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
     return samples;
 }
@@ -425,7 +425,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         if (backward_defined.count(v)) continue;
         train(samples, v); // updates dependency_mat
     }
-    verb_print(2, "[manthan] training done. T: " << std::setprecision(2) << std::fixed << (cpuTime() - train_start_time) << " seconds");
+    verb_print(1, COLYEL "[manthan] training done. T: " << std::setprecision(2) << std::fixed << (cpuTime() - train_start_time) << " seconds");
     assert(check_map_dependency_cycles());
 
     const double repair_time = cpuTime();
@@ -438,7 +438,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     bool at_least_one_repaired = true;
     while(true) {
         if (num_loops_repair %  40 == 39) {
-            verb_print(1, "[manthan] repaired so far: " << setw(4) << tot_repaired
+            verb_print(1, "[manthan] repaired so far: " << setw(6) << tot_repaired
                     << "   loops: "<< setw(4) << num_loops_repair
                     << "   avg conflicts/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
                     << "   avg confl sz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
