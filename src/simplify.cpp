@@ -22,12 +22,10 @@
  THE SOFTWARE.
  */
 
-#include <cmath>
 #include <algorithm>
 #include "minimize.h"
 #include "constants.h"
 #include "time_mem.h"
-#include "ccnr_cms.h"
 
 using std::pair;
 using namespace ArjunInt;
@@ -93,7 +91,6 @@ bool Minimize::simplify() {
     remove_zero_assigned_literals();
     get_empty_occs();
     if (conf.irreg_gate_based && use_gates) remove_definable_by_irreg_gates();
-    if (sampling_vars.size() > 10 && conf.autarkies > 0) run_autarkies();
 
     solver->set_verbosity(std::max<int>(conf.verb-2, 0));
 
@@ -446,56 +443,3 @@ void Minimize::remove_eq_literals() {
         << (orig_sampling_set_size - sampling_vars.size())
         << " new size: " << sampling_vars.size());
 }
-
-void Minimize::run_autarkies() {
-    double my_time = cpuTime();
-    int ret = 1;
-    int at = 0;
-    uint32_t set = 0;
-    while (ret) {
-        const vector<vector<Lit>> cnf;
-        string s = string("clean-cls, must-scc-vrepl");
-        if (solver->simplify(nullptr, &s) == l_False) return;
-
-        vector<uint32_t> units;
-        solver->start_getting_constraints(false);
-        vector<vector<Lit>> cls;
-        bool is_xor, rhs;
-        uint32_t nvars = solver->nVars();
-        vector<Lit> cl;
-        while(solver->get_next_constraint(cl, is_xor, rhs)) {
-            assert(!is_xor); assert(rhs);
-            if (cl.size() == 1) units.push_back(cl[0].var());
-            else cls.push_back(cl);
-        }
-        solver->end_getting_constraints();
-        std::ofstream f("autarky-" + std::to_string(at) + ".cnf");
-        f << "p cnf " << nvars << " " << cls.size() << endl;
-        for(const auto& c: cls) {
-            for(const auto& l: c) f << l << " ";
-            f << "0" << endl;
-        }
-        f.close();
-
-        ArjunCCNR::Ganak_ccnr ccnr(conf.verb);
-        vector<uint32_t> notouch_vars(sampling_vars);
-        for(auto v: units) notouch_vars.push_back(v);
-
-        ret = ccnr.main(cls, nvars, notouch_vars, conf.autarkies);
-        if (ret == 1) {
-            auto model = ccnr.get_model();
-            for(uint32_t i = 0; i < model.size(); i++) {
-                if (model[i] != l_Undef) {
-                    auto lit = Lit(i, model[i] == l_False);
-                    solver->add_clause({lit});
-                    set++;
-                    /* cout << "c [AUTARKY] at " << at << " set " << lit << endl; */
-                }
-            }
-        }
-        at++;
-    }
-
-    verb_print(1, "[arjun-simp] AUTARY set:" << set << " T: " << (cpuTime() - my_time));
-}
-

@@ -53,8 +53,6 @@ set(libfiles
     minimize.cpp
     arjun.cpp
     puura.cpp
-    ccnr.cpp
-    ccnr_cms.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
 )
 

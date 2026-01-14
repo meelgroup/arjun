@@ -50,8 +50,6 @@ struct Config {
     bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;
-    int extend_ccnr = 0;
-    int autarkies = 0;
     std::string debug_synth;
     uint32_t seed = 42;
 };

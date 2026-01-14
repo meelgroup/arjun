@@ -102,7 +102,6 @@ struct Minimize
     void remove_definable_by_irreg_gates();
     void remove_zero_assigned_literals(bool print = true);
     void remove_eq_literals();
-    void run_autarkies();
     void get_empty_occs();
     bool probe_all();
     void empty_out_indep_set_if_unsat();

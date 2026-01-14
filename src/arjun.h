@@ -1349,8 +1349,6 @@ public:
     void set_extend_max_confl(uint32_t extend_max_confl);
     void set_oracle_find_bins(int oracle_find_bins);
     void set_cms_glob_mult(double cms_glob_mult);
-    void set_extend_ccnr(int extend_ccnr);
-    void set_autarkies(int autarkies);
     void set_seed(uint32_t seed);
 
     //Get config
@@ -1375,8 +1373,6 @@ public:
     uint32_t get_extend_max_confl() const;
     int get_oracle_find_bins() const;
     double get_cms_glob_mult() const;
-    int get_extend_ccnr() const;
-    int get_autarkies() const;
     uint32_t get_seed() const;
 
 private:
