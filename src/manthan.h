@@ -89,7 +89,7 @@ class Manthan {
         set<uint32_t> backward_defined;
         set<uint32_t> to_define_full;
 
-        FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth = 0);
+        FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& var_remap, uint32_t depth = 0);
         vector<uint32_t> incidence;
         void print_cnf_debug_info(const sample& ctx) const;
         void get_incidence();
@@ -116,6 +116,7 @@ class Manthan {
 
         void add_sample_clauses(SimplifiedCNF& cnf);
         vector<sample> get_samples(const uint32_t num_samples);
+        void sort_all_samples(vector<sample>& samples);
         double train(const vector<sample>& samples, const uint32_t v); // returns training error
         vector<vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
 

@@ -59,6 +59,7 @@ using std::fixed;
 using namespace ArjunInt;
 using namespace ArjunNS;
 using namespace CMSat;
+constexpr uint32_t MAX_UINT32_T = std::numeric_limits<uint32_t>::max();
 
 
 int lit_to_int(const Lit& l) {
@@ -395,7 +396,6 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     // Training
     inject_cnf(solver);
     fh = std::make_unique<FHolder>(&solver);
-
     verb_print(2, "True lit in solver_train: " << fh->get_true_lit());
     verb_print(2, "[do-manthan] After fh creation: solver_train.nVars() = " << solver.nVars() << " cnf.nVars() = " << cnf.nVars());
     fix_order();
@@ -415,6 +415,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         /* << ", step_size=" << mconf.step_size */
         /* << ", lr_decay_factor=" << mconf.lr_decay_factor */
         /* << ", use_sgdr=" << std::boolalpha << mconf.use_sgdr */ // stochastic gradient descent with restarts
+    sort_all_samples(samples);
     for(const auto& v: y_order) {
         if (backward_defined.count(v)) continue;
         train(samples, v); // updates dependency_mat
@@ -916,7 +917,7 @@ bool Manthan::get_counterexample(sample& ctx) {
     }
 }
 
-FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth) {
+FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& var_remap, uint32_t depth) {
     /* for(uint32_t i = 0; i < depth; i++) cout << " "; */
     if (node->NumChildren() == 0) {
         const bool val = node->ClassProbabilities()[1] > node->ClassProbabilities()[0];
@@ -928,6 +929,8 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
         return fh->constant_formula(val);
     } else {
         uint32_t v = node->SplitDimension();
+        v = var_remap[v];
+        assert(v != MAX_UINT32_T);
         /* cout << "(learning " << learned_v+1<< ") Node. v: " << v+1 << std::flush; */
         if (to_define_full.count(v)) {
             // v does not depend on learned_v!
@@ -954,8 +957,8 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
         /* cout << "  -- all-0 goes -> " << node->CalculateDirection(point_0); */
         /* cout << "  -- all-1 goes -> " << node->CalculateDirection(point_1) << endl; */
         assert(node->NumChildren() == 2);
-        auto form_0 = recur(&node->Child(0), learned_v, depth+1);
-        auto form_1 = recur(&node->Child(1), learned_v, depth+1);
+        auto form_0 = recur(&node->Child(0), learned_v, var_remap, depth+1);
+        auto form_1 = recur(&node->Child(1), learned_v, var_remap, depth+1);
         bool val_going_right = node->CalculateDirection(point_1);
         return fh->compose_ite(form_0, form_1, Lit(v, val_going_right));
     }
@@ -1017,6 +1020,16 @@ vector<sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& 
     return filtered_samples;
 }
 
+void Manthan::sort_all_samples(vector<sample>& samples) {
+    std::sort(samples.begin(), samples.end(),
+        [this](const sample& a, const sample& b) {
+            for(const auto& v: input) {
+                if (a[v] != b[v]) return a[v] == l_False;
+            }
+            return false; // equal
+        });
+}
+
 double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     verb_print(2, "training variable: " << v+1);
     assert(!orig_samples.empty());
@@ -1034,24 +1047,33 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
 
     Mat<uint8_t> dataset;
     Row<size_t> labels;
-    dataset.resize(cnf.nVars(), samples.size());
-    verb_print(2, "Dataset size: " << dataset.n_rows << " x " << dataset.n_cols);
-    // TODO: we fill 0 for the value of v, this MAY come back in the tree,but likely not
 
-    set<uint32_t> cannot_depend_on;
+    vector<uint32_t> var_remap(cnf.nVars(), MAX_UINT32_T);
+    vector<uint32_t> used_vars;
+    verb_print(2, "Dataset size: " << dataset.n_rows << " x " << dataset.n_cols);
+
+    set<uint32_t> added;
+    for(const auto& dep_v: input) {
+        used_vars.push_back(dep_v);
+        var_remap[dep_v] = used_vars.size()-1;
+        added.insert(dep_v);
+    }
+    for(uint32_t dep_v = 0; dep_v < cnf.nVars(); dep_v++) {
+        if (dependency_mat[dep_v][v] == 1 || dep_v == v || added.count(dep_v)) continue;
+        used_vars.push_back(dep_v);
+        var_remap[dep_v] = used_vars.size()-1;
+    }
+    dataset.resize(used_vars.size(), samples.size());
+
     for(uint32_t i = 0; i < samples.size(); i++) {
         assert(samples[i]->size() == cnf.nVars());
-        for(uint32_t dep_v = 0; dep_v < cnf.nVars(); dep_v++) {
-            if (dependency_mat[dep_v][v] == 1 || dep_v == v) {
-                // we zero it out, so hopefully it will not be used
-                dataset(dep_v, i) = 0;
-                cannot_depend_on.insert(dep_v);
-                continue;
-            }
-            dataset(dep_v, i) = lbool_to_bool((*samples[i])[dep_v]);
+        for(uint32_t k = 0; k < used_vars.size(); k++) {
+            const uint32_t dep_v = used_vars[k];
+            dataset(k, i) = lbool_to_bool((*samples[i])[dep_v]);
         }
     }
     labels.resize(samples.size());
+
     for(uint32_t i = 0; i < samples.size(); i++) labels[i] = lbool_to_bool((*samples[i])[v]);
 
     // Create the RandomForest object and train it on the training data.
@@ -1100,16 +1122,7 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
 
     verb_print(2,"[DEBUG] About to call recur for v " << v+1 << " num children: " << r.NumChildren());
     assert(var_to_formula.count(v) == 0);
-    var_to_formula[v] = recur(&r, v, 0);
-    auto dep = fh->get_dependent_vars(var_to_formula[v], v);
-    for(const auto& d: dep) {
-        if (cannot_depend_on.count(d)) {
-            cout << "c o [ERROR] Learned formula for v " << v+1 << " depends on var " << d+1
-                 << " which it cannot depend on!" << endl;
-            assert(false);
-        }
-    }
-    verb_print(3,"[DEBUG] Formula for v " << v+1 << ":" << endl << var_to_formula[v]);
+    var_to_formula[v] = recur(&r, v, var_remap);
 
     // Forward dependency update
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
