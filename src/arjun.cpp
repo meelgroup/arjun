@@ -836,7 +836,6 @@ DLL_PUBLIC void SimplifiedCNF::read_aig_defs(ifstream& in) {
         assert(i < num_defs);
         defs[i] = id_to_node[id];
     }
-    get_var_types(1);
 }
 
 // Serialize SimplifiedCNF to binary file
@@ -962,7 +961,6 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_defs(ofstream& out) const {
         /* cout << "c o [aig-io] Writing def for var aig id: " << id << endl; */
         out.write((char*)&id, sizeof(id));
     }
-    get_var_types(1);
 }
 
 // Write AIG defs to file (opens file for you)
@@ -1364,57 +1362,70 @@ DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
 
         cout << "c o [get-var-types] Variable types in CNF:" << endl;
         cout << "c o [get-var-types] Num input vars: " << input.size() << endl;
-        cout << "c o [get-var-types]   Input vars (new) : ";
-        for(const auto& v: input) cout << v+1 << " ";
-        cout << endl;
-        cout << "c o [get-var-types]   Input vars (orig): ";
-        for(const auto& v: input_orig) cout << v+1 << " ";
-        cout << endl;
+        if (verb >= 2) {
+            cout << "c o [get-var-types]   Input vars (new) : ";
+            for(const auto& v: input) cout << v+1 << " ";
+            cout << endl;
+            cout << "c o [get-var-types]   Input vars (orig): ";
+            for(const auto& v: input_orig) cout << v+1 << " ";
+            cout << endl;
+        }
 
         cout << "c o [get-var-types] Num to-define vars: " << to_define.size() << endl;
-        cout << "c o [get-var-types]   To-define vars (new) : ";
-        for(const auto& v: to_define) cout << v+1 << " ";
-        cout << endl;
-        cout << "c o [get-var-types]   To-define vars (orig): ";
-        for(const auto& v: to_define_orig) cout << v+1 << " ";
-        cout << endl;
-
+        if (verb >= 2) {
+            cout << "c o [get-var-types]   To-define vars (new) : ";
+            for(const auto& v: to_define) cout << v+1 << " ";
+            cout << endl;
+            cout << "c o [get-var-types]   To-define vars (orig): ";
+            for(const auto& v: to_define_orig) cout << v+1 << " ";
+            cout << endl;
+        }
 
         cout << "c o [get-var-types] Num unsat-defined vars: "
             << unsat_defined_vars.size() << endl;
-        cout << "c o [get-var-types]   Unsat-defined vars (new) : ";
-        for(const auto& v: unsat_defined_vars) cout << v+1 << " ";
-        cout << endl;
-        cout << "c o [get-var-types]   Unsat-defined vars (orig): ";
-        for(const auto& v: unsat_defined_vars_orig) cout << v+1 << " ";
-        cout << endl;
+        if (verb >= 2) {
+            cout << "c o [get-var-types]   Unsat-defined vars (new) : ";
+            for(const auto& v: unsat_defined_vars) cout << v+1 << " ";
+            cout << endl;
+            cout << "c o [get-var-types]   Unsat-defined vars (orig): ";
+            for(const auto& v: unsat_defined_vars_orig) cout << v+1 << " ";
+            cout << endl;
+        }
 
         cout << "c o [get-var-types] Num backward-synth-defined vars: "
             << backw_synth_defined_vars.size() << endl;
-        cout << "c o [get-var-types]   Backward-synth-defined vars (new) : ";
-        for(const auto& v: backw_synth_defined_vars) cout << v+1 << " ";
-        cout << endl;
-        cout << "c o [get-var-types]   Backward-synth-defined vars (orig): ";
-        for(const auto& v: backw_synth_defined_vars_orig) cout << v+1 << " ";
-        cout << endl;
+        if (verb >= 2) {
+            cout << "c o [get-var-types]   Backward-synth-defined vars (new) : ";
+            for(const auto& v: backw_synth_defined_vars) cout << v+1 << " ";
+            cout << endl;
+            cout << "c o [get-var-types]   Backward-synth-defined vars (orig): ";
+            for(const auto& v: backw_synth_defined_vars_orig) cout << v+1 << " ";
+            cout << endl;
+        }
 
         cout << "c o [get-var-types] Num bve-defined vars: "
             << bve_defined_vars_orig.size() << endl;
-        cout << "c o [get-var-types]   bve-defined vars (orig): ";
-        for(const auto& v: bve_defined_vars_orig) cout << v+1 << " ";
-        cout << endl;
+        if (verb >= 2) {
+            cout << "c o [get-var-types]   bve-defined vars (orig): ";
+            for(const auto& v: bve_defined_vars_orig) cout << v+1 << " ";
+            cout << endl;
+        }
 
         cout << "c o [get-var-types] Num forced vars:      "
             << forced_vars_orig.size() << endl;
-        cout << "c o [get-var-types]   forced vars (orig):      ";
-        for(const auto& v: forced_vars_orig) cout << v+1 << " ";
-        cout << endl;
+        if (verb >= 2) {
+            cout << "c o [get-var-types]   forced vars (orig):      ";
+            for(const auto& v: forced_vars_orig) cout << v+1 << " ";
+            cout << endl;
+        }
 
         cout << "c o [get-var-types] Num SCC vars:         "
             << scc_vars_orig.size() << endl;
-        cout << "c o [get-var-types]   SCC vars (orig):         ";
-        for(const auto& v: scc_vars_orig) cout << v+1 << " ";
-        cout << endl;
+        if (verb >= 2) {
+            cout << "c o [get-var-types]   SCC vars (orig):         ";
+            for(const auto& v: scc_vars_orig) cout << v+1 << " ";
+            cout << endl;
+        }
 
         cout << "c o [get-var-types] Total vars in ORIG CNF: " << defs.size() << endl;
         cout << "c o [get-var-types] Total vars in NEW  CNF: " << nVars() << endl;

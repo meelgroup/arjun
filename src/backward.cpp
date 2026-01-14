@@ -534,7 +534,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
             AIG::get_dependent_vars(aig, dep_vars, v);
             vector<Lit> deps_lits; deps_lits.reserve(dep_vars.size());
             for(const auto& dv: dep_vars) deps_lits.push_back(Lit(dv, false));
-            verb_print(1, "[backward-round-synth-define] var: " << v+1 << " depends on vars: " << deps_lits); // << " aig: " << aig);
+            verb_print(2, "[backward-round-synth-define] var: " << v+1 << " depends on vars: " << deps_lits); // << " aig: " << aig);
         }
     }
 

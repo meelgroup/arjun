@@ -253,12 +253,15 @@ void Minimize::fill_solver_synth(const ArjunNS::SimplifiedCNF& cnf) {
 }
 
 void Minimize::run_minimize_for_synth(ArjunNS::SimplifiedCNF& cnf) {
+    const double start_time = cpuTime();
     assert(cnf.get_need_aig() && cnf.defs_invariant());
     fill_solver_synth(cnf);
     init();
     get_incidence();
     duplicate_problem(cnf);
     backward_round_synth(cnf);
+    verb_print(1, COLRED "[arjun] run_minimize_for_synth finished "
+        << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time));
 }
 
 void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf, bool all_indep) {

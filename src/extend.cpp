@@ -78,6 +78,7 @@ void Extend::add_all_indics_except(const set<uint32_t>& except) {
 }
 
 void Extend::unsat_define(SimplifiedCNF& cnf) {
+    const double my_time = cpuTime();
     assert(cnf.get_need_aig() && cnf.defs_invariant());
 
     double start_round_time = cpuTime();
@@ -184,19 +185,22 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     verb_print(1, "defined via Padoa: " << cnf.get_opt_sampl_vars().size()-start_size
             << " SAT: " << sat
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
-    if (conf.verb >= 1) solver->print_stats();
-
-    for(const auto& [v, aig]: interp.get_defs()) {
-        assert(aig != nullptr);
-        set<uint32_t> dep_vars;
-        AIG::get_dependent_vars(aig, dep_vars, v);
-        vector<Lit> deps_lits; deps_lits.reserve(dep_vars.size());
-        for(const auto& dv: dep_vars) deps_lits.push_back(Lit(dv, false));
-        verb_print(1, "[unsat-define] define var: " << v+1 << " depends on vars: " << deps_lits);
+    if (conf.verb >= 2) solver->print_stats();
+    if (conf.verb >= 3) {
+        for(const auto& [v, aig]: interp.get_defs()) {
+            assert(aig != nullptr);
+            set<uint32_t> dep_vars;
+            AIG::get_dependent_vars(aig, dep_vars, v);
+            vector<Lit> deps_lits; deps_lits.reserve(dep_vars.size());
+            for(const auto& dv: dep_vars) deps_lits.push_back(Lit(dv, false));
+            verb_print(3, "[unsat-define] define var: " << v+1 << " depends on vars: " << deps_lits);
+        }
     }
 
     cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);
     assert(cnf.get_need_aig() && cnf.defs_invariant());
+    verb_print(1, "[arjun-extend] unsat_define done T: "
+            << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
 }
 
 void Extend::extend_round(SimplifiedCNF& cnf) {

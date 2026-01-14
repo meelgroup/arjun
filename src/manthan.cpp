@@ -38,6 +38,7 @@
 #include <algorithm>
 #include <ranges>
 #include "constants.h"
+#include "time_mem.h"
 
 // These ask mlpack to give more info & warnings
 #define MLPACK_PRINT_INFO
@@ -87,6 +88,7 @@ void Manthan::inject_cnf(SATSolver& s, bool also_vars) const {
 }
 
 vector<sample> Manthan::get_samples(const uint32_t num) {
+    const double my_time = cpuTime();
     SATSolver solver_samp;
     solver_samp.set_seed(conf.seed);
     solver_samp.set_up_for_sample_counter(mconf.sampler_fixed_conflicts);
@@ -118,7 +120,7 @@ vector<sample> Manthan::get_samples(const uint32_t num) {
                 }
             }
             //print distribution
-            verb_print(1, "[sampling] Bias " << bias << " distribution for to_define vars:");
+            verb_print(2, "[sampling] Bias " << bias << " distribution for to_define vars:");
             for(const auto& v: to_define) {
                 dist[bias][v] = (double)got_ones[v]/(double)bias_samples;
                 verb_print(1, "  var " << setw(5) << v+1 << ": "
@@ -142,7 +144,7 @@ vector<sample> Manthan::get_samples(const uint32_t num) {
               if (p == 1.0) p = 0.99;
               bias = p;
             }
-            verb_print(1, "[sampling] For var " << y+1 << ": p=" << fixed << setprecision(3) << p
+            verb_print(2, "[sampling] For var " << y+1 << ": p=" << fixed << setprecision(3) << p
                 << " q=" << fixed << setprecision(3) << q
                 << " -- final bias: "
                 << fixed << setprecision(3) << bias);
@@ -158,6 +160,8 @@ vector<sample> Manthan::get_samples(const uint32_t num) {
         assert(solver_samp.get_model().size() == cnf.nVars());
         samples.push_back(solver_samp.get_model());
     }
+    verb_print(1, "[manthan] Got " << samples.size() << " samples. T: "
+        << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
     return samples;
 }
 
@@ -352,6 +356,7 @@ void Manthan::print_cnf_debug_info(const sample& ctx) const {
 SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     assert(input_cnf.get_need_aig() && input_cnf.defs_invariant());
     assert(mconf.simplify_every > 0 && "Can't give simplify_every=0");
+    const double my_time = cpuTime();
     const auto ret = input_cnf.find_disconnected();
     verb_print(1, "[manthan] Found " << ret.size() << " disconnected components");
 
@@ -389,18 +394,17 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     inject_cnf(repair_solver, false); // faster to add CNF later
 
     // Sampling
-    verb_print(1, "Getting " << mconf.num_samples << " samples...");
+    verb_print(1, "[manthan] Getting " << mconf.num_samples << " samples...");
     vector<sample> samples = get_samples(mconf.num_samples);
-    verb_print(1, "Got " << samples.size() << " samples");
 
     // Training
     inject_cnf(solver);
     fh = std::make_unique<FHolder>(&solver);
     verb_print(2, "True lit in solver_train: " << fh->get_true_lit());
-    verb_print(2, "[do-manthan] After fh creation: solver_train.nVars() = " << solver.nVars() << " cnf.nVars() = " << cnf.nVars());
+    verb_print(2, "[manthan] After fh creation: solver_train.nVars() = " << solver.nVars() << " cnf.nVars() = " << cnf.nVars());
     fix_order();
     print_y_order_occur();
-    verb_print(1, "[do-manthan] Starting training. Manthan Config. "
+    verb_print(1, "[manthan] Starting training. Manthan Config. "
         << "do_filter_samples=" << mconf.do_filter_samples
         << ", num_samples=" << mconf.num_samples
         << ", minimumLeafSize=" << mconf.minimumLeafSize
@@ -416,13 +420,15 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         /* << ", lr_decay_factor=" << mconf.lr_decay_factor */
         /* << ", use_sgdr=" << std::boolalpha << mconf.use_sgdr */ // stochastic gradient descent with restarts
     sort_all_samples(samples);
+    const double train_start_time = cpuTime();
     for(const auto& v: y_order) {
         if (backward_defined.count(v)) continue;
         train(samples, v); // updates dependency_mat
     }
-    verb_print(2, "[do-manthan] After training: solver_train.nVars() = " << solver.nVars());
+    verb_print(2, "[manthan] training done. T: " << std::setprecision(2) << std::fixed << (cpuTime() - train_start_time) << " seconds");
     assert(check_map_dependency_cycles());
 
+    const double repair_time = cpuTime();
     add_not_F_x_yhat();
     fill_var_to_formula_with_backward();
     fix_order();
@@ -430,6 +436,11 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     // Counterexample-guided repair
     bool repaired = true;
     while(true) {
+        if (num_loops_repair %  100 == 99) {
+            verb_print(1, "[manthan] repaired so far: " << tot_repaired
+                    << " loops: "<< num_loops_repair << " T: " << setprecision(2) << fixed
+                    << cpuTime()-repair_time << " -- repair/s: " << (double)tot_repaired/(cpuTime()-repair_time+0.0001));
+        }
         assert(repaired);
         repaired = false;
         num_loops_repair++;
@@ -442,7 +453,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 
         uint32_t old_needs_repair_size;;
         const auto better_ctx = find_better_ctx(ctx, old_needs_repair_size); // fills needs_repair
-        verb_print(1, "Finding better ctx DONE, needs_repair size before vs now: "
+        verb_print(2, "[manthan] Finding better ctx DONE, needs_repair size before vs now: "
                 << setw(3) << old_needs_repair_size << " -- " << setw(4) << needs_repair.size());
         for(const auto& y: to_define_full) if (!needs_repair.count(y)) {
             ctx[y] = better_ctx[y];
@@ -461,12 +472,12 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
                 num_repaired++;
                 tot_repaired++;
             }
-            verb_print(3, "finished repairing " << y_rep+1 << " : " << std::boolalpha << done);
+            verb_print(3, "[manthan] finished repairing " << y_rep+1 << " : " << std::boolalpha << done);
         }
-        verb_print(1, "Num repaired: " << num_repaired << " tot repaired: " << tot_repaired << " num_loops_repair: " << num_loops_repair);
+        verb_print(2, "[manthan] Num repaired: " << num_repaired << " tot repaired: " << tot_repaired << " num_loops_repair: " << num_loops_repair);
     }
     assert(check_map_dependency_cycles());
-    verb_print(1, "DONE");
+    verb_print(1, "[manthan] DONE");
 
     // Build final CNF
     map<uint32_t, aig_ptr> aigs;
@@ -477,14 +488,20 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     }
     SimplifiedCNF fcnf = cnf;
     fcnf.map_aigs_to_orig(aigs, cnf.nVars());
+    assert(verify_final_cnf(fcnf));
+    verb_print(1, COLRED "[manthan] Total time in manthan: " << cpuTime()-my_time << " seconds");
+    return fcnf;
+}
+
+bool Manthan::verify_final_cnf(const SimplifiedCNF& fcnf) const {
     assert(fcnf.check_aig_cycles());
-    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(1);
+    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0);
     for(const auto& v: to_define2) {
         cout << "ERROR: var " << v+1 << " not defined in final CNF!" << endl;
         assert(false && "All to-define vars must be defined in final CNF");
     }
     assert(fcnf.get_need_aig() && fcnf.defs_invariant());
-    return fcnf;
+    return true;
 }
 
 uint32_t Manthan::find_next_repair_var(sample& ctx) {
@@ -606,7 +623,7 @@ bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>
     conflict = vector<Lit>(confl_set.begin(), confl_set.end());
     if (conflict.size() > 1 && mconf.do_minimize_conflict)
         minimize_conflict(conflict, assumps);
-    verb_print(1, "[manthan-repair] minim. Removed: " << (orig_size - conflict.size())
+    verb_print(2, "[manthan] minim. Removed: " << (orig_size - conflict.size())
             << " from conflict, now size: " << conflict.size());
     return true;
 }
@@ -639,7 +656,7 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps) {
 }
 
 void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict) {
-    verb_print(1,"Performing repair on " << setw(5) << y_rep+1
+    verb_print(2, "[manthan] Performing repair on " << setw(5) << y_rep+1
             << " with conflict size " << setw(3) << conflict.size());
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
     // not (conflict) -> v = ctx(v)
@@ -900,7 +917,7 @@ bool Manthan::get_counterexample(sample& ctx) {
     auto ret = solver.solve(&assumps);
     assert(ret != l_Undef);
     if (ret == l_True) {
-        verb_print(1, COLYEL " *** Counterexample found ***");
+        verb_print(2, COLYEL "[manthan] *** Counterexample found ***");
         ctx = solver.get_model();
         assert(ctx[fh->get_true_lit().var()] == l_True);
         return false;
@@ -909,7 +926,7 @@ bool Manthan::get_counterexample(sample& ctx) {
         verb_print(1, "Formula is good!");
         for(auto& f: var_to_formula) {
             if (!f.second.finished) {
-                verb_print(1, "Marking Formula for " << f.first+1 << " as finished");
+                verb_print(2, "Marking Formula for " << f.first+1 << " as finished");
                 f.second.finished = true;
             }
         }

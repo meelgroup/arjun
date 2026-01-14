@@ -264,6 +264,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     const SimplifiedCNF& cnf,
     const SimpConf simp_conf)
 {
+    const double my_time = cpuTime();
     if (cnf.get_need_aig()) {
         assert(cnf.defs_invariant());
         cnf.get_var_types(1);
@@ -375,6 +376,9 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     // Return final one
     auto ret_cnf = cnf.get_cnf(solver, new_sampl_vars, new_empty_sampl_vars, conf.verb);
     ret_cnf.set_backbone_done(backbone_done);
+    verb_print(1, COLRED "[puura] final vars: " << ret_cnf.nVars()
+        << " final cls: " << ret_cnf.get_clauses().size()
+        << " T: " << setprecision(2) << setw(2) << (cpuTime() - my_time));
     return ret_cnf;
 }
 

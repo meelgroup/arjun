@@ -114,6 +114,7 @@ class Manthan {
         void fix_order();
 
 
+        bool verify_final_cnf(const SimplifiedCNF& fcnf) const;
         void add_sample_clauses(SimplifiedCNF& cnf);
         vector<sample> get_samples(const uint32_t num_samples);
         void sort_all_samples(vector<sample>& samples);
