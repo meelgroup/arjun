@@ -26,10 +26,11 @@ THE SOFTWARE.
 #include <cstdlib>
 #include <ostream>
 #include <vector>
-#include "ccnr_mersenne.hpp"
+#include <random>
 
 using std::vector;
 using std::abs;
+using uni_dist = std::uniform_int_distribution<uint32_t>;
 
 namespace ArjunCCNR {
 
@@ -130,7 +131,11 @@ class LSSolver {
   private:
     void check_invariants() const;
     void check_unsat_cls() const;
-    Mersenne random_gen;
+    std::mt19937_64 random_gen;
+    uni_dist dist60{0, 59};
+    uni_dist dist2{0, 1};
+    uni_dist dist100{0, 99};
+    uni_dist dist15{0, 14};
 
     // Config
     int64_t max_steps;

@@ -35,7 +35,6 @@ using std::cout;
 using std::endl;
 using std::string;
 
-
 LSSolver::LSSolver() {
     max_tries = 1000LL*1000LL;
     max_steps = 1*100 * 1000;
@@ -78,7 +77,7 @@ bool LSSolver::local_search(int64_t mems_limit , const char* prefix) {
     bool result = false;
     for (int t = 0; t < max_tries && !result; t++) {
         initialize();
-        int cutoff =  random_gen.next(60);
+        int cutoff =  dist60(random_gen);
         for (step = 0; step < max_steps && !result; step++) {
             if (unsat_cls.empty() && !touched_cls.empty()) {
                 cout << "YAY" << endl;
@@ -91,7 +90,7 @@ bool LSSolver::local_search(int64_t mems_limit , const char* prefix) {
             }
 
             update_clause_weights();
-            if (random_gen.next(100) <= cutoff) {
+            if ((int)dist100(random_gen) <= cutoff) {
               int ret = unset_a_clause();
               if (ret == -1) {
                 cout << prefix << "[ccnr] no cls to unset, restart" << endl;
@@ -134,13 +133,13 @@ void LSSolver::initialize() {
     unsat_cls.clear();
     unsat_vars.clear();
     touched_cls.clear();
-    int perc = random_gen.next(15);
+    int perc = dist15(random_gen);
     for (auto &i: idx_in_unsat_cls) i = 0;
     for (auto &i: idx_in_unsat_vars) i = 0;
     for (int v = 1; v <= num_vars; v++) {
       if (!indep_map[v]) {
-        if (random_gen.next(100) < perc) {
-          sol[v] = random_gen.next(2);
+        if ((int)dist100(random_gen) < perc) {
+          sol[v] = dist2(random_gen);
         } else {
           sol[v] = 2;
         }
@@ -213,7 +212,8 @@ int LSSolver::unset_a_clause() {
     bool ok = false;
     int cid;
     while (!ok && tries < 100) {
-      cid = unsat_cls[random_gen.next(unsat_cls.size())];
+      uni_dist d{0, (uint32_t)(unsat_cls.size()-1)};
+      cid = unsat_cls[d(random_gen)];
       assert(cid < (int)cls.size());
 
       const clause& cl = cls[cid];
@@ -242,7 +242,8 @@ int LSSolver::pick_var() {
     bool ok = false;
     int cid;
     while (!ok && tries < 100) {
-      cid = unsat_cls[random_gen.next(unsat_cls.size())];
+      uni_dist d{0, (uint32_t)(unsat_cls.size()-1)};
+      cid = unsat_cls[d(random_gen)];
       assert(cid < (int)cls.size());
 
       const clause& cl = cls[cid];
@@ -409,7 +410,7 @@ void LSSolver::flip(int v) {
     if (sol[v] == 2) {
         // set to some value
         touch = true;
-        sol[v] = random_gen.next(2);
+        sol[v] = dist2(random_gen);
         /* cout << "CHG setting var " << v << " new val: " << (int)sol[v] << endl; */
     } else {
         //flip
