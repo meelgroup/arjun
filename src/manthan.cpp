@@ -42,8 +42,8 @@
 #include "ccnr/ccnr.h"
 
 // These ask mlpack to give more info & warnings
-#define MLPACK_PRINT_INFO
-#define MLPACK_PRINT_WARN
+//#define MLPACK_PRINT_INFO
+//#define MLPACK_PRINT_WARN
 #include <mlpack.hpp>
 
 #include "EvalMaxSAT.h"
@@ -425,15 +425,6 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     cout << "c o [DEBUG] About to assign cnf = input_cnf" << endl;
     cnf = input_cnf;
     if (!mconf.write_manthan_cnf.empty()) cnf.write_simpcnf(mconf.write_manthan_cnf);
-    // Grand master plan
-    // 1. Get 10k samples
-    // 2. Run ML to get a tree one-by-one and thereby generate an order
-    // 3. Find counterexample
-    // 4. Make counterexample as close to being good as possible. Originally maxsat, but we can try greedy
-    // 5a -- we could fix solutions one-by-one but that's slow
-    // 5b -- instead, get the conflict from the assumptions, which is a kind of poor "core",
-    //       and do the "stupid" fix on that.
-    //
 
     // CNF is divided into:
     // input vars -- original sampling vars
