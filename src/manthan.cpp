@@ -525,10 +525,12 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 
         uint32_t old_needs_repair_size;;
         vector<lbool> better_ctx;
-        if (mconf.do_maxsat_better_ctx) {
-          better_ctx = find_better_ctx_maxsat(ctx, old_needs_repair_size); // fills needs_repair
+        if (mconf.do_maxsat_better_ctx == -1) {
+            better_ctx = ctx;
+        } else if (mconf.do_maxsat_better_ctx == 1) {
+          better_ctx = find_better_ctx_maxsat(ctx, old_needs_repair_size);
         } else {
-          better_ctx = find_better_ctx_normal(ctx, old_needs_repair_size); // fills needs_repair
+          better_ctx = find_better_ctx_normal(ctx, old_needs_repair_size);
         }
         needs_repair_sum += needs_repair.size();
 
@@ -1092,6 +1094,11 @@ bool Manthan::get_counterexample(sample& ctx) {
         verb_print(2, COLYEL "[manthan] *** Counterexample found ***");
         ctx = solver.get_model();
         assert(ctx[fh->get_true_lit().var()] == l_True);
+        for(const auto& y: y_order) {
+            const auto y_hat = y_to_y_hat[y];
+            if (ctx[y] == ctx[y_hat]) continue;
+            needs_repair.insert(y);
+        }
         return false;
     } else {
         assert(ret == l_False);
