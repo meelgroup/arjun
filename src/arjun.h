@@ -1307,7 +1307,7 @@ public:
         uint32_t num_samples = 10000;
         uint32_t num_samples_ccnr = 3000;
         uint32_t minimumLeafSize = 20;
-        double minGainSplit = 0.1;
+        double minGainSplit = 1.0;
         uint32_t maximumDepth = 0;
         uint32_t sampler_fixed_conflicts = 100;
         int do_minimize_conflict = 1;
