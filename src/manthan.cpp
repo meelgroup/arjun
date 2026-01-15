@@ -783,8 +783,9 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
 // Will order 1st the variables that NOTHING depends on
 // Will order LAST the variables that depends on EVERYTHING
 void Manthan::fix_order() {
+    double my_time = cpuTime();
     y_order.clear();
-    verb_print(1, "[manthan] Fixing order...");
+    verb_print(2, "[manthan] Fixing order...");
     vector<uint32_t> sorted(to_define_full.begin(), to_define_full.end());
     sort_unknown(sorted, incidence);
     /* std::reverse(sorted.begin(), sorted.end()); */
@@ -812,6 +813,8 @@ void Manthan::fix_order() {
             y_order.push_back(y);
         }
     }
+    verb_print(1, "[manthan] Fixed order. T: " << setprecision(2) << fixed << (cpuTime() - my_time)
+            << " Final order size: " << y_order.size());
 }
 
 // Fills needs_repair with vars from y (i.e. output)
@@ -1033,6 +1036,9 @@ void Manthan::inject_formulas_into_solver() {
 }
 
 bool Manthan::get_counterexample(sample& ctx) {
+    if (num_loops_repair == 1)
+        verb_print(1, "[manthan] Getting counterexample for the first time...");
+
     // Relation between y_hat and form_out
     // when y_hat_to_indic is TRUE, y_hat and form_out are EQUAL
     vector<Lit> tmp;
