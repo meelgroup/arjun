@@ -295,6 +295,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->set_oracle_find_bins(conf.oracle_find_bins);
     if (!simp_conf.appmc) {
         solver->set_min_bva_gain(simp_conf.bve_grow_iter1);
+        solver->set_bve_nonstop(simp_conf.bve_grow_nonstop);
         solver->set_occ_based_lit_rem_time_limitM(500);
         solver->set_bve_too_large_resolvent(simp_conf.bve_too_large_resolvent);
     } else {
@@ -328,6 +329,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     // Now more expensive BVE, also RED linked in to occur
     if (!simp_conf.appmc) {
         solver->set_min_bva_gain(simp_conf.bve_grow_iter2);
+        solver->set_bve_nonstop(simp_conf.bve_grow_nonstop);
         solver->set_varelim_check_resolvent_subs(true);
     }
     solver->set_max_red_linkin_size(20);

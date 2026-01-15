@@ -153,15 +153,8 @@ void add_arjun_options() {
 
     // AppMC
     program.add_argument("--appmc")
-        .action([&](const auto&) {
-                simp_conf.appmc = true;
-                simp_conf.oracle_vivify = true;
-                simp_conf.oracle_sparsify = false;
-                simp_conf.oracle_vivify_get_learnts = 1;
-                simp_conf.iter1 = 2;
-                simp_conf.iter2 = 0;
-                })
         .flag()
+        .action([&](const auto&) {simp_conf.appmc = true;})
         .help("Set CNF simplification options for appmc");
 
     // Detailed Configuration
@@ -174,6 +167,7 @@ void add_arjun_options() {
     myopt("--iter1grow", simp_conf.bve_grow_iter1, atoi,"Puura BVE grow rate allowed before Oracle");
     myopt("--iter2", simp_conf.iter2, atoi,"Puura iterations after oracle");
     myopt("--iter2grow", simp_conf.bve_grow_iter2, atoi,"Puura BVE grow rate allowed after Oracle");
+    myopt("--bvegrownonstop", simp_conf.bve_grow_nonstop, atoi,"Do not stop BVE if nothing got eliminated, keep going until grow factor limit");
     myopt("--bveresolvmaxsz", simp_conf.bve_too_large_resolvent, atoi,"Puura BVE max resolvent size in literals. -1 == no limit");
     myopt("--oraclesparsify", simp_conf.oracle_sparsify, atoi,"Use Oracle to sparsify");
     myopt("--oraclevivif", simp_conf.oracle_vivify, atoi,"Use oracle to vivify");
@@ -362,6 +356,26 @@ int main(int argc, char** argv) {
         std::cerr << err.what() << std::endl;
         std::cerr << program;
         exit(EXIT_FAILURE);
+    }
+
+    if (simp_conf.appmc) {
+        assert(!synthesis && "Cannot use synthesis and appmc simplification at the same time");
+        cout << "c o [arjun] Setting defaults for AppMC CNF simplification" << endl;
+        simp_conf.appmc = true;
+        if (!program.is_used("--oraclevivif")) simp_conf.oracle_vivify = true;
+        if (!program.is_used("--oraclesparsify")) simp_conf.oracle_sparsify = false;
+        if (!program.is_used("--oraclevivifgetl")) simp_conf.oracle_vivify_get_learnts = 1;
+        if (!program.is_used("--iter1")) simp_conf.iter1 = 2;
+        if (!program.is_used("--iter2")) simp_conf.iter2 = 0;
+    }
+
+    if (synthesis) {
+        assert(!simp_conf.appmc && "Cannot use synthesis and appmc simplification at the same time");
+        cout << "c o [arjun] Setting defaults for synthesis mode" << endl;
+        if (!program.is_used("--bveresolvmaxsz")) simp_conf.bve_too_large_resolvent = 1000;
+        if (!program.is_used("--iter1grow")) simp_conf.bve_grow_iter1 = 200;
+        if (!program.is_used("--iter2grow")) simp_conf.bve_grow_iter2 = 2000;
+        if (!program.is_used("--bvegrownonstop")) simp_conf.bve_grow_nonstop = true;
     }
 
     if (etof_conf.sbva_tiebreak != 0 && etof_conf.sbva_tiebreak != 1) {
