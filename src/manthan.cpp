@@ -24,7 +24,6 @@
 
 #include "manthan.h"
 #include <armadillo>
-#include <ccnr.h>
 #include <cryptominisat5/cryptominisat.h>
 #include <cryptominisat5/solvertypesmini.h>
 #include "src/arjun.h"
