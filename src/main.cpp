@@ -117,6 +117,7 @@ void add_arjun_options() {
 
     // synth
     myopt("--samples", manthan_conf.num_samples, atoi,"Number of samples");
+    myopt("--samplesccnr", manthan_conf.num_samples_ccnr, atoi,"Number of samples from CCNR");
     myopt("--maxdepth", manthan_conf.maximumDepth, atoi,"Maximum depth of decision tree");
     myopt("--minleaf", manthan_conf.minimumLeafSize, atoi,"Minimum leaf size in decision tree");
     myopt("--filtersamples", manthan_conf.do_filter_samples, atoi,"Filter samples from useless ones");

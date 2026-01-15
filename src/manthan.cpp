@@ -24,6 +24,7 @@
 
 #include "manthan.h"
 #include <armadillo>
+#include <ccnr.h>
 #include <cryptominisat5/cryptominisat.h>
 #include <cryptominisat5/solvertypesmini.h>
 #include "src/arjun.h"
@@ -39,6 +40,7 @@
 #include <ranges>
 #include "constants.h"
 #include "time_mem.h"
+#include "ccnr/ccnr.h"
 
 // These ask mlpack to give more info & warnings
 #define MLPACK_PRINT_INFO
@@ -162,6 +164,66 @@ vector<sample> Manthan::get_samples(const uint32_t num) {
     }
     verb_print(1, COLYEL "[manthan] Got " << samples.size() << " samples. Biased: " << (bool)mconf.do_biased_sampling
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
+    return samples;
+}
+
+vector<sample> Manthan::get_samples_ccnr(const uint32_t num) {
+    const double my_time = cpuTime();
+
+    vector<sample> samples;
+    ::Arjun::CCNR::ls_solver ls_s(true);
+    uint32_t cl_num = 0;
+    ls_s._num_vars = cnf.nVars();
+    ls_s._num_clauses = cnf.get_clauses().size();
+    ls_s.make_space();
+    vector<int> yals_lits;
+
+    auto add_this_clause = [&](const vector<Lit>& cl) -> bool {
+        yals_lits.clear();
+        for(auto lit : cl) {
+            int l = lit.var()+1;
+            l *= lit.sign() ? -1 : 1;
+            yals_lits.push_back(l);
+        }
+
+        for(auto& lit: yals_lits) {
+            ls_s._clauses[cl_num].literals.push_back(::Arjun::CCNR::lit(lit, cl_num));
+        }
+        cl_num++;
+        return true;
+    };
+
+    for(const auto& cl: cnf.get_clauses()) add_this_clause(cl);
+
+    //Shrink the space if we have to
+    assert(ls_s._num_clauses >= (int)cl_num);
+    ls_s._num_clauses = (int)cl_num;
+    ls_s.make_space();
+
+    for (int c=0; c < ls_s._num_clauses; c++) {
+        for(auto& item: ls_s._clauses[c].literals) {
+            int v = item.var_num;
+            ls_s._vars[v].literals.push_back(item);
+        }
+    }
+    ls_s.build_neighborhood();
+
+
+    sample s;
+    long long int mems = 1ULL*2*1000*1000ULL;
+    for(uint32_t si = 0; si < num; si++) {
+        ls_s.reset_mems();
+        int res = ls_s.local_search(nullptr, mems, "c o", 50LL*1000);
+        if (res) {
+          s.clear();
+          s.resize(cnf.nVars(), l_Undef);
+          for(uint32_t i = 0; i < cnf.nVars(); i++) s[i] = ls_s._solution[i+1] ? l_True : l_False;
+          samples.push_back(s);
+        }
+    }
+
+    verb_print(1, COLYEL "[manthan-ccnr] Got " << samples.size() << " / " << num << " samples. T: "
+            << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
     return samples;
 }
 
@@ -396,6 +458,11 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     // Sampling
     verb_print(1, "[manthan] Getting " << mconf.num_samples << " samples...");
     vector<sample> samples = get_samples(mconf.num_samples);
+    {
+        vector<sample> samples2 = get_samples_ccnr(mconf.num_samples_ccnr);
+        samples.insert(samples.end(), samples2.begin(), samples2.end());
+    }
+
 
     // Training
     inject_cnf(solver);
