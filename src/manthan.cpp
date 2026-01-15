@@ -171,7 +171,7 @@ vector<sample> Manthan::get_samples_ccnr(const uint32_t num) {
     const double my_time = cpuTime();
 
     vector<sample> samples;
-    ::Arjun::CCNR::ls_solver ls_s(true);
+    ::Arjun::CCNR::ls_solver ls_s(true, conf.seed);
     uint32_t cl_num = 0;
     ls_s._num_vars = cnf.nVars();
     ls_s._num_clauses = cnf.get_clauses().size();
@@ -1210,6 +1210,7 @@ vector<sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& 
 }
 
 void Manthan::sort_all_samples(vector<sample>& samples) {
+    if (samples.size() <= 1) return;
     std::sort(samples.begin(), samples.end(),
         [this](const sample& a, const sample& b) {
             for(const auto& v: input) {
@@ -1217,6 +1218,20 @@ void Manthan::sort_all_samples(vector<sample>& samples) {
             }
             return false; // equal
         });
+
+    vector<sample> samples2;
+    samples2.push_back(samples[0]);
+    for(size_t i = 1; i < samples.size(); i++) {
+        for(const auto& v: input) {
+            if (samples[i][v] != samples2.back()[v]) {
+                samples2.push_back(samples[i]);
+                break;
+            }
+        }
+    }
+    verb_print(1, "[sort_all_samples] Reduced samples from " << samples.size()
+            << " to " << samples2.size() << " by removing duplicates on input vars.");
+    samples = samples2;
 }
 
 double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {

@@ -37,15 +37,15 @@ using std::string;
 
 
 //constructor with default setting.
-ls_solver::ls_solver(const bool aspiration)
+ls_solver::ls_solver(const bool aspiration, const uint32_t seed)
 {
     _max_tries = 100;
-    _random_seed = 1;
     _swt_threshold = 50;
     _swt_p = 0.3;
     _swt_q = 0.7;
     _aspiration = aspiration;
     verbosity = 0;
+    _random_gen.seed(seed);
 }
 
 /**********************************build instance*******************************/
@@ -94,7 +94,6 @@ bool ls_solver::local_search(
     , int64_t _max_steps
 ) {
     bool result = false;
-    _random_gen.seed(_random_seed);
     _best_found_cost = _num_clauses;
     _conflict_ct.clear();
     _conflict_ct.resize(_num_vars+1,0);

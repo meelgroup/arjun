@@ -87,7 +87,7 @@ struct clause {
 class ls_solver
 {
    public:
-    ls_solver(const bool aspiration);
+    ls_solver(const bool aspiration, uint32_t seed);
     bool local_search(
         const vector<bool> *init_solution = 0
         , long long int _mems_limit = 100*1000*1000
@@ -134,7 +134,6 @@ class ls_solver
 
     //aiding data structure
     Mersenne _random_gen; //random generator
-    int _random_seed;
 
     ///////////////////////////
     //algorithmic parameters
