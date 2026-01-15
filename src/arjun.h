@@ -1303,7 +1303,7 @@ public:
         ManthanConf() = default;
         ManthanConf(const ManthanConf& other) = default;
         int do_filter_samples = 1;
-        int do_biased_sampling = 1;
+        int do_biased_sampling = 0;
         uint32_t num_samples = 10000;
         uint32_t num_samples_ccnr = 3000;
         uint32_t minimumLeafSize = 20;
