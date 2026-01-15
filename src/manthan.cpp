@@ -507,7 +507,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         if (num_loops_repair %  40 == 39) {
             verb_print(1, "[manthan] repaired so far: " << setw(6) << tot_repaired
                     << "   loops: "<< setw(4) << num_loops_repair
-                    << "   avg conflicts/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
+                    << "   avg repairs/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
                     << "   avg confl sz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
                     << "   avg needs rep sz: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
                     << "   T: " << setprecision(2) << fixed << setw(7) << cpuTime()-repair_time
