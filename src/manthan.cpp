@@ -210,9 +210,9 @@ vector<sample> Manthan::get_samples_ccnr(const uint32_t num) {
 
 
     sample s;
-    long long int mems = 1ULL*2*1000*1000ULL;
+    long long int mems = num*100*1000ULL;
     for(uint32_t si = 0; si < num; si++) {
-        ls_s.reset_mems();
+        /* ls_s.reset_mems(); */
         int res = ls_s.local_search(nullptr, mems, "c o", 50LL*1000);
         if (res) {
           s.clear();
@@ -222,7 +222,7 @@ vector<sample> Manthan::get_samples_ccnr(const uint32_t num) {
         }
     }
 
-    verb_print(1, COLYEL "[manthan-ccnr] Got " << samples.size() << " / " << num << " samples. T: "
+    verb_print(1, COLYEL "[manthan] ccnr got " << samples.size() << " / " << num << " samples. T: "
             << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
     return samples;
 }
