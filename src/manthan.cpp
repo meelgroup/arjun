@@ -114,7 +114,6 @@ vector<sample> Manthan::get_samples(const uint32_t num) {
             for (uint32_t i = 0; i < bias_samples; i++) {
                 solver_samp.solve();
                 assert(solver_samp.get_model().size() == cnf.nVars());
-                /// TODO: old idea of CMS, make them zero if they are all the last decision and I can do it.
                 biased_samp[bias].push_back(solver_samp.get_model());
 
                 for(const auto& v: to_define) {
@@ -823,6 +822,8 @@ void Manthan::perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit
 }
 
 void Manthan::recompute_all_y_hat(sample& ctx) {
+    // TODO
+    assert(false && "This is incorrect for now...");
     inject_formulas_into_solver();
     vector<Lit> assumps(input.size());
     for(const auto& x: input) {
