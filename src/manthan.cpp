@@ -1205,10 +1205,6 @@ vector<sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& 
             << setw(6) << num_removed << " / " << setw(6) << samples.size()
             << " samples that had no effect on it.");
 
-    // Make sure we have at least one sample
-    if (filtered_samples.empty())
-        filtered_samples.push_back(const_cast<sample*>(&samples[0]));
-
     return filtered_samples;
 }
 
@@ -1239,7 +1235,7 @@ void Manthan::sort_all_samples(vector<sample>& samples) {
 
 double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     verb_print(2, "training variable: " << v+1);
-    assert(!orig_samples.empty());
+    /* assert(!orig_samples.empty()); */
     vector<sample*> samples;
     if (mconf.do_filter_samples) samples = filter_samples(v, orig_samples);
     else {
@@ -1277,56 +1273,60 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
         }
     }
     labels.resize(samples.size());
-
     for(uint32_t i = 0; i < samples.size(); i++) labels[i] = lbool_to_bool((*samples[i])[v]);
+    double train_error;
+    if (samples.empty()) {
+        var_to_formula[v] = fh->constant_formula(true);
+        train_error = 0.0;
+    } else {
+        // Create the RandomForest object and train it on the training data.
+        //
+        //  All Available Parameters to Reduce Overfitting:
+          /* 1. minimumLeafSize (default: 10) */
+          /*   - Minimum number of points in each leaf node */
+          /*   - Increase to reduce overfitting (e.g., 20, 50, 100) */
+          /* 2. minimumGainSplit (default: 1e-7) */
+          /*   - Minimum gain required for a node to split */
+          /*   - Increase to reduce overfitting (e.g., 0.001, 0.01, 0.05) */
+          /*   - Must be in range (0, 1) */
+          /* 3. maximumDepth (default: 0 = unlimited) */
+          /*   - Maximum depth of the tree */
+          /*   - Set a limit to reduce overfitting (e.g., 5, 10, 15) */
+          /* 4. dimensionSelector (optional) */
+          /*   - Advanced: Controls which features to consider for splitting */
+          /*   - Can use custom strategies (usually leave as default) */
 
-    // Create the RandomForest object and train it on the training data.
-    //
-    //  All Available Parameters to Reduce Overfitting:
-      /* 1. minimumLeafSize (default: 10) */
-      /*   - Minimum number of points in each leaf node */
-      /*   - Increase to reduce overfitting (e.g., 20, 50, 100) */
-      /* 2. minimumGainSplit (default: 1e-7) */
-      /*   - Minimum gain required for a node to split */
-      /*   - Increase to reduce overfitting (e.g., 0.001, 0.01, 0.05) */
-      /*   - Must be in range (0, 1) */
-      /* 3. maximumDepth (default: 0 = unlimited) */
-      /*   - Maximum depth of the tree */
-      /*   - Set a limit to reduce overfitting (e.g., 5, 10, 15) */
-      /* 4. dimensionSelector (optional) */
-      /*   - Advanced: Controls which features to consider for splitting */
-      /*   - Can use custom strategies (usually leave as default) */
+        /* DecisionTree<> r(dataset, labels, 2); */
+        // More conservative (less overfitting)
+        /* DecisionTree<FitnessFunction, */
+        /*              NumericSplitType, */
+        /*              CategoricalSplitType, */
+        /*              DimensionSelectionType, */
+        /*              NoRecursion>::DecisionTree( */
+        /*     MatType data, */
+        /*     LabelsType labels, */
+        /*     const size_t numClasses, */
+        /*     const size_t minimumLeafSize, */
+        /*     const double minimumGainSplit, */
+        /*     const size_t maximumDepth, */
+        /*     DimensionSelectionType dimensionSelector) */
+        DecisionTree<> r(dataset, labels, 2,
+                       mconf.minimumLeafSize,  // minimumLeafSize: require 20+ samples per leaf (default 10)
+                       mconf.minGainSplit,     // minimumGainSplit: require k ratio gain to split
+                       mconf.maximumDepth);    // maximumDepth: max k levels deep (0 = unlimited)
 
-    /* DecisionTree<> r(dataset, labels, 2); */
-    // More conservative (less overfitting)
-    /* DecisionTree<FitnessFunction, */
-    /*              NumericSplitType, */
-    /*              CategoricalSplitType, */
-    /*              DimensionSelectionType, */
-    /*              NoRecursion>::DecisionTree( */
-    /*     MatType data, */
-    /*     LabelsType labels, */
-    /*     const size_t numClasses, */
-    /*     const size_t minimumLeafSize, */
-    /*     const double minimumGainSplit, */
-    /*     const size_t maximumDepth, */
-    /*     DimensionSelectionType dimensionSelector) */
-    DecisionTree<> r(dataset, labels, 2,
-                   mconf.minimumLeafSize,  // minimumLeafSize: require 20+ samples per leaf (default 10)
-                   mconf.minGainSplit,     // minimumGainSplit: require k ratio gain to split
-                   mconf.maximumDepth);    // maximumDepth: max k levels deep (0 = unlimited)
+        // Compute and print the training error.
+        Row<size_t> predictions;
+        r.Classify(dataset, predictions);
+        train_error = arma::accu(predictions != labels) * 100.0 / (double)labels.n_elem;
+        verb_print(1, "Training error: " << setprecision(2) << setw(6) << train_error << "%." << " on v: "
+                << setw(4) << v+1);
+        /* r.serialize(cout, 1); */
 
-    // Compute and print the training error.
-    Row<size_t> predictions;
-    r.Classify(dataset, predictions);
-    const double train_error = arma::accu(predictions != labels) * 100.0 / (double)labels.n_elem;
-    verb_print(1, "Training error: " << setprecision(2) << setw(6) << train_error << "%." << " on v: "
-            << setw(4) << v+1);
-    /* r.serialize(cout, 1); */
-
-    verb_print(2,"[DEBUG] About to call recur for v " << v+1 << " num children: " << r.NumChildren());
-    assert(var_to_formula.count(v) == 0);
-    var_to_formula[v] = recur(&r, v, used_vars);
+        verb_print(2,"[DEBUG] About to call recur for v " << v+1 << " num children: " << r.NumChildren());
+        assert(var_to_formula.count(v) == 0);
+        var_to_formula[v] = recur(&r, v, used_vars);
+    }
 
     // Forward dependency update
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
