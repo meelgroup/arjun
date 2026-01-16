@@ -306,16 +306,30 @@ if __name__ == "__main__":
         # solver = "./arjun --synth --debugsynth --verb 1"
         prefix = unique_file("fuzzTest")
         print("Using prefix %s for synthesis output files" % prefix)
-        solvers = [
-            "./arjun --verb 2 --synth --synthbve 1 --extend 1 --minimize 1 --debugsynth %s --samples 10000" % prefix,
-            "./arjun --verb 2 --synth --synthbve 1 --extend 1 --minimize 0 --debugsynth %s --samples 10000" % prefix,
-            "./arjun --verb 2 --synth --synthbve 1 --extend 0 --minimize 1 --debugsynth %s --samples 1" % prefix,
-            "./arjun --verb 2 --synth --synthbve 0 --extend 1 --minimize 1 --debugsynth %s --samples 1" % prefix,
-            "./arjun --verb 2 --synth --synthbve 0 --extend 0 --minimize 0 --debugsynth %s --samples 1" % prefix,
-            "./arjun --verb 2 --synth --synthbve 0 --extend 0 --minimize 1 --debugsynth %s --samples 10000" % prefix,
-            "./arjun --verb 2 --synth --synthbve 0 --extend 0 --minimize 0 --debugsynth %s --samples 10000" % prefix,
+        solver = "./arjun --verb 2 --synth --debugsynth %s " % prefix
+        opts = [
+            " --synthbve"
+            , " --extend"
+            , " --minimize"
+            , " --maxsat"
+            , " --minimconfl"
+            , " --filtersamples"
+            , " --biasedsampling"
         ]
-        solver = random.choice(solvers)
+        for o in opts:
+            val = random.choice([0, 1])
+            solver += o + " " + str(val)
+
+        solver += " --bveresolvmaxsz " + str(random.randint(2, 20))
+        solver += " --iter1grow " + str(random.randint(0, 5))
+        solver += " --iter2grow " + str(random.choice([0, 10, 100]))
+        solver += " --samplesccnr " + random.choice(["0", "100", "10000"])
+        solver += " --samples " + random.choice(["0", "100", "10000"])
+        solver += " --mingainsplit " + random.choice(["0.1", "0.001", "5"])
+        solver += " --simpevery " + random.choice(["1", "100", "10000"])
+        solver += " --maxdepth " + random.choice(["2", "10"])
+        solver += " --minleaf " + random.choice(["2", "10"])
+
         err, aigs = run_synth(solver, fname)
         if err is None:
             print("Synthesis timed out on file %s" % fname)
