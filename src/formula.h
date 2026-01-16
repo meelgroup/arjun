@@ -171,6 +171,7 @@ inline std::ostream& operator<<(std::ostream& os, const ArjunNS::FHolder::Formul
         for (const auto& l : cl.lits) os << std::setw(6) << l;
         cout << " 0" << endl;
     }
+    os << "AIG: " << f.aig << std::endl;
     os << " === End Formula === ";
     return os;
 }
