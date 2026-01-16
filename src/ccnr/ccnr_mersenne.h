@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 #pragma once
 
-namespace ArjunCCNR {
+namespace Arjun::CCNR {
 
 class Mersenne
 {

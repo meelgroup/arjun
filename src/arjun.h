@@ -23,6 +23,8 @@ THE SOFTWARE.
 #pragma once
 
 #include <cstdint>
+#include <cstdlib>
+#include <functional>
 #include <memory>
 #include <vector>
 #include <string>
@@ -36,209 +38,362 @@ THE SOFTWARE.
 
 namespace ArjunNS {
 
-struct FHolder;
+class FHolder;
 
-enum AIGT {t_and, t_lit, t_const};
-struct AIG {
-    AIG(uint64_t _id = 0) : id(_id) {}
-    AIG() = delete;
-    AIGT type = t_const;
-    uint32_t var = std::numeric_limits<uint32_t>::max();
-    bool neg = false;
-    AIG* l = nullptr;
-    AIG* r = nullptr;
-    uint64_t id = 0;
+class AIG;
+class AIGManager;
+class SimplifiedCNF;
+using aig_ptr = std::shared_ptr<AIG>;
+
+enum class AIGT {t_and, t_lit, t_const};
+inline std::ostream& operator<<(std::ostream& os, const AIGT& value) {
+    switch (value) {
+        case AIGT::t_and:  return os << "t_and";
+        case AIGT::t_lit:  return os << "t_lit";
+        case AIGT::t_const: return os << "t_const";
+        default: assert(false && "Unknown AIGT"); exit(EXIT_FAILURE);
+    }
+}
+
+class AIG {
+public:
+    AIG() = default;
+    ~AIG() = default;
+    AIG(const AIG&) = delete;
+    AIG& operator=(const AIG&) = delete;
 
     bool invariants() const {
-        if (type == t_lit) {
-            return l == nullptr && r == nullptr && var != std::numeric_limits<uint32_t>::max();
+        if (type == AIGT::t_lit) {
+            if (l != nullptr || r != nullptr) std::cout << "ERROR: AIG literal has children!" << std::endl;
+            if (var == none_var) std::cout << "ERROR: AIG var node doesn't have a var!" << std::endl;
+            return l == nullptr && r == nullptr && var != none_var;
         }
-        if (type == t_const) {
-            return l == nullptr && r == nullptr && var == std::numeric_limits<uint32_t>::max();
+        if (type == AIGT::t_const) {
+            if (l != nullptr || r != nullptr) std::cout << "ERROR: AIG const has children!" << std::endl;
+            if (var != none_var) std::cout << "ERROR: AIG const node has var!" << std::endl;
+            return l == nullptr && r == nullptr && var == none_var;
         }
-        if (type == t_and) {
-            return l != nullptr && r != nullptr && var == std::numeric_limits<uint32_t>::max();
+        if (type == AIGT::t_and) {
+            if (var != none_var) std::cout << "ERROR: AIG AND node has var!" << std::endl;
+            if (l == nullptr || r == nullptr) std::cout << "ERROR: AIG AND node missing children!" << std::endl;
+            return l != nullptr && r != nullptr && var == none_var;
         }
         assert(false && "Unknown AIG type");
         std::exit(EXIT_FAILURE);
     }
-};
 
-inline bool evaluate(const std::vector<CMSat::lbool>& vals, const AIG* aig, const std::map<uint32_t, AIG*>& defs) {
-    assert(aig->invariants());
-    if (aig->type == t_lit) {
-        if (defs.find(aig->var) != defs.end()) {
-            // NOTE: this is highly inefficient, because this should be cached
-            assert(vals.size() < aig->var || vals[aig->var] == CMSat::l_Undef); // Must not be part of input
-            return aig->neg ^ evaluate(vals, defs.at(aig->var), defs);
-        } else {
-            assert(aig->var < vals.size());
-            assert(vals[aig->var] != CMSat::l_Undef);
-            bool ret = vals[aig->var] == CMSat::l_True;
-            ret ^= aig->neg;
-            return ret;
-        }
+    // vals = input variable assignments
+    // aig = AIG to evaluate
+    // defs = known definitions of variables
+    static CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, const aig_ptr& a, const std::vector<aig_ptr>& defs, std::map<aig_ptr, CMSat::lbool>& cache) {
+        std::function<CMSat::lbool(const aig_ptr&)> sub_eval = [&](const aig_ptr& aig) -> CMSat::lbool {
+            if (cache.count(aig)) return cache.at(aig);
+            assert(aig->invariants());
+            if (aig->type == AIGT::t_lit) {
+                if (defs[aig->var] != nullptr) {
+                    auto ret = sub_eval(defs.at(aig->var));
+                    if (ret == CMSat::l_Undef) {
+                        cache[aig] = CMSat::l_Undef;
+                        return CMSat::l_Undef;
+                    }
+                    ret = ret ^ aig->neg;
+                    cache[aig] = ret;
+                    return ret;
+                } else {
+                    assert(aig->var < vals.size());
+                    auto ret = vals[aig->var];
+                    if (ret == CMSat::l_Undef) {
+                        cache[aig] = CMSat::l_Undef;
+                        return CMSat::l_Undef;
+                    }
+                    ret = ret ^ aig->neg;
+                    cache[aig] = ret;
+                    return ret;
+                }
+            }
+
+            if (aig->type == AIGT::t_const) return CMSat::boolToLBool(!aig->neg);
+
+            if (aig->type == AIGT::t_and) {
+                const auto l = sub_eval(aig->l);
+                const auto r = sub_eval(aig->r);
+                CMSat::lbool ret;
+                if (l ==CMSat::l_Undef && r == CMSat::l_Undef) ret = CMSat::l_Undef;
+                else if (l == CMSat::l_False) ret = CMSat::l_False ^ aig->neg;
+                else if (r == CMSat::l_False) ret = CMSat::l_False ^ aig->neg;
+                else ret = (l && r) ^ aig->neg;
+                cache[aig] = ret;
+                return ret;
+            }
+            assert(false && "Unknown AIG type");
+            exit(EXIT_FAILURE);
+        };
+        return sub_eval(a);
     }
 
-    if (aig->type == t_const) return aig->neg == false;
-
-    if (aig->type == t_and) {
-        const bool l = evaluate(vals, aig->l, defs);
-        const bool r = evaluate(vals, aig->r, defs);
-        bool ret = l && r;
-        if (aig->neg) ret = !ret;
-        return ret;
-    }
-    assert(false && "Unknown AIG type");
-    exit(EXIT_FAILURE);
-}
-
-struct AIGManager {
-    AIGManager() {
-        const_true = new AIG(max_id++);
-        const_true->type = t_const;
-        const_true->neg = false;
-        aigs.push_back(const_true);
-        const_false = new_not(const_true);
-    }
-
-    void clear() {
-        for(auto aig: aigs) delete aig;
-        aigs.clear();
-        lit_to_aig.clear();
-        const_true = nullptr;
-        const_false = nullptr;
-        max_id = 0;
-    }
-    ~AIGManager() { clear(); }
-
-    AIG* copy_aig(AIG* aig, std::map<uint64_t, AIG*>& old_id_to_new_aig) {
-        if (aig == nullptr) return nullptr;
-        assert(aig->invariants());
-        if (old_id_to_new_aig.count(aig->id)) return old_id_to_new_aig.at(aig->id);
-
-        AIG* new_aig = new AIG(max_id++);
-        new_aig->type = aig->type;
-        new_aig->var = aig->var;
-        new_aig->neg = aig->neg;
-        new_aig->l = copy_aig(aig->l, old_id_to_new_aig);
-        new_aig->r = copy_aig(aig->r, old_id_to_new_aig);
-        aigs.push_back(new_aig);
-        assert(old_id_to_new_aig.count(aig->id) == 0 && "children cannot reference parent");
-        old_id_to_new_aig[aig->id] = new_aig;
-        return new_aig;
-    }
-
-    AIGManager& operator=(const AIGManager& other) {
-        replace_with(other);
-        return *this;
-    }
-
-    std::map<uint64_t, AIG*> replace_with(const AIGManager& other) {
-        clear();
-
-        std::map<uint64_t, AIG*> old_id_to_new_aig;
-        assert(aigs.empty());
-        for (auto aig : other.aigs) copy_aig(aig, old_id_to_new_aig);
-        const_true = old_id_to_new_aig.at(other.const_true->id);
-        const_false = old_id_to_new_aig.at(other.const_false->id);
-        max_id = other.max_id;
-
-        assert(lit_to_aig.empty());
-        for (auto& it : other.lit_to_aig)
-            lit_to_aig[it.first] = old_id_to_new_aig.at(it.second->id);
-
-        return old_id_to_new_aig;
-    }
-
-    AIGManager(const AIGManager& other) { *this = other; }
-
-    std::map<uint64_t, AIG*> append_aigs_to(AIGManager& other) const {
-        std::map<uint64_t, AIG*> old_id_to_new_aig;
-        for (auto aig : aigs) other.copy_aig(aig, old_id_to_new_aig);
-        for(auto& it: lit_to_aig) {
-            // NOTE: we may be overriding old ones. It's fine, we can have duplicates
-            other.lit_to_aig[it.first] = old_id_to_new_aig.at(it.second->id);
-        }
-        // No need to copy const_true and const_false
-        return old_id_to_new_aig;
-    }
-
-
-
-    AIG* new_lit(CMSat::Lit l) {
+    static aig_ptr new_lit(CMSat::Lit l) {
         return new_lit(l.var(), l.sign());
     }
 
-    AIG* new_lit(uint32_t var, bool neg = false) {
-        if (lit_to_aig.count(CMSat::Lit(var, neg))) {
-            return lit_to_aig.at(CMSat::Lit(var, neg));
-        }
-        AIG* ret = new AIG(max_id++);
-        ret->type = t_lit;
+    static aig_ptr new_lit(uint32_t var, bool neg = false) {
+        auto ret = std::make_shared<AIG>();
+        ret->type = AIGT::t_lit;
         ret->var = var;
         ret->neg = neg;
-        aigs.push_back(ret);
-        lit_to_aig[CMSat::Lit(var, neg)] = ret;
-
         return ret;
     }
 
-    AIG* new_const(bool val) {
-        return val ? const_true : const_false;
+    static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, CMSat::Lit b) {
+        assert(l != nullptr);
+        assert(r != nullptr);
+        auto branch = new_lit(b.var(), b.sign());
+        return new_or(new_and(branch, l), new_and(new_not(branch), r));
     }
 
-    AIG* new_not(AIG* a) {
-        AIG* ret = new AIG(max_id++);
-        ret->type = t_and;
+    static aig_ptr new_not(const aig_ptr& a) {
+        assert(a != nullptr);
+        auto ret = std::make_shared<AIG>();
+        ret->type = AIGT::t_and;
         ret->l = a;
         ret->r = a;
 
         ret->neg = true;
-        aigs.push_back(ret);
         return ret;
     }
 
-    AIG* new_and(AIG* l, AIG* r) {
-        AIG* ret = new AIG(max_id++);
-        ret->type = t_and;
+    static aig_ptr new_and(const aig_ptr& l, const aig_ptr& r) {
+        assert(l != nullptr && r != nullptr);
+        auto ret = std::make_shared<AIG>();
+        ret->type = AIGT::t_and;
         ret->l = l;
         ret->r = r;
-        aigs.push_back(ret);
         return ret;
     }
 
-    AIG* new_or(AIG* l, AIG* r) {
-        AIG* ret = new AIG(max_id++);
-        ret->type = t_and;
+    static aig_ptr new_or(const aig_ptr& l, const aig_ptr& r) {
+        assert(l != nullptr && r != nullptr);
+        auto ret = std::make_shared<AIG>();
+        ret->type = AIGT::t_and;
         ret->neg = true;
         ret->l = new_not(l);
         ret->r = new_not(r);
-        aigs.push_back(ret);
         return ret;
     }
 
-    AIG* new_ite(AIG* l, AIG* r, AIG* b) {
-        return new_or(new_and(b, l), new_and(new_not(b), r));
+    static aig_ptr simplify(aig_ptr aig, std::set<aig_ptr>& visited);
+
+    static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, const aig_ptr& b) {
+        assert(l != nullptr);
+        assert(r != nullptr);
+        assert(b != nullptr);
+        return AIG::new_or(AIG::new_and(b, l), AIG::new_and(AIG::new_not(b), r));
     }
 
-    AIG* new_ite(AIG* l, AIG* r, CMSat::Lit b) {
-        auto b_aig = new_lit(b.var(), b.sign());
-        return new_or(new_and(b_aig, l), new_and(new_not(b_aig), r));
+    static void get_dependent_vars(const aig_ptr& aig_orig, std::set<uint32_t>& dep, uint32_t v) {
+        std::set<aig_ptr> visited;
+        std::function<void(const aig_ptr&)> helper =
+            [&](const aig_ptr& aig) {
+                if (visited.count(aig)) return;
+                if (aig->type == AIGT::t_lit) {
+                    assert(aig->var != v && "Variable cannot depend on itself");
+                    dep.insert(aig->var);
+                }
+                if (aig->type == AIGT::t_and) {
+                    helper(aig->l);
+                    helper(aig->r);
+                }
+                visited.insert(aig);
+            };
+        helper(aig_orig);
     }
 
-    std::vector<AIG*> aigs;
-    // A map from lit to AIG. This is just a lookup -- it is NOT guaranteed
-    // there aren't any other AIGs that are this lit. Due to copying, there may
-    // well be. So we DON'T guarantee uniqueness
-    std::map<CMSat::Lit, AIG*> lit_to_aig;
+    template<typename T>
+    static std::vector<aig_ptr> deep_clone_set(const T& aigs) {
+        std::vector<aig_ptr> ret;
+        std::map<aig_ptr, aig_ptr> cache;
+        for (auto& aig : aigs) ret.push_back(deep_clone(aig, cache));
+        return ret;
+    }
+
+    template<typename T>
+    static T deep_clone_map(const T& aigs) {
+        T ret;
+        std::map<aig_ptr, aig_ptr> cache;
+        for (auto& [x, aig] : aigs) ret[x] = deep_clone(aig, cache);
+        return ret;
+    }
+
+    static aig_ptr deep_clone(const aig_ptr& aig, std::map<aig_ptr, aig_ptr>& cache) {
+        if (!aig) return nullptr;
+
+        std::function<aig_ptr(const aig_ptr&)> clone_helper =
+            [&](const aig_ptr& node) -> aig_ptr {
+                if (!node) return nullptr;
+
+                // Check cache to avoid cloning the same node multiple times
+                auto it = cache.find(node);
+                if (it != cache.end()) return it->second;
+
+                // Create new AIG node
+                auto cloned = std::make_shared<AIG>();
+                cloned->type = node->type;
+                cloned->var = node->var;
+                cloned->neg = node->neg;
+
+                // Add to cache before recursing to handle cycles
+                cache[node] = cloned;
+
+                // Recursively clone children for AND nodes
+                if (node->type == AIGT::t_and) {
+                    cloned->l = clone_helper(node->l);
+                    cloned->r = clone_helper(node->r);
+                }
+
+                return cloned;
+            };
+
+        return clone_helper(aig);
+    }
+
+    // Generic recursive traversal function that applies a function to each AIG node
+    // The function receives the current node as an aig_ptr
+    // Use cache to avoid visiting the same node multiple times
+    template<typename Func>
+    static void traverse(const aig_ptr& aig, Func&& func) {
+        if (!aig) return;
+        std::set<aig_ptr> visited;
+        traverse_helper(aig, std::forward<Func>(func), visited);
+    }
+
+    template<typename Func>
+    static void traverse_helper(const aig_ptr& node, Func&& func, std::set<aig_ptr>& visited) {
+        if (!node) return;
+
+        // Check if already visited to avoid infinite loops
+        if (visited.count(node)) return;
+        visited.insert(node);
+
+        // Apply the function to the current node
+        func(node);
+
+        // Recursively traverse children for AND nodes
+        if (node->type == AIGT::t_and) {
+            traverse_helper(node->l, std::forward<Func>(func), visited);
+            traverse_helper(node->r, std::forward<Func>(func), visited);
+        }
+    }
+
+    // Transform function that performs post-order traversal and builds up a result
+    // The visitor receives: (type, var, neg, left_result*, right_result*)
+    // - type: the node type (t_const, t_lit, or t_and)
+    // - var: variable number (only meaningful for t_lit)
+    // - neg: negation flag
+    // - left_result, right_result: pointers to children results (nullptr for non-AND nodes)
+    template<typename ResultType, typename Visitor>
+    static ResultType transform(
+        const aig_ptr& aig,
+        Visitor&& visitor,
+        std::map<aig_ptr, ResultType>& cache
+    ) {
+        assert(aig);
+
+        // Check cache first
+        auto it = cache.find(aig);
+        if (it != cache.end()) return it->second;
+
+        ResultType result;
+        if (aig->type == AIGT::t_and) {
+            // Post-order: process children first
+            ResultType left_result = transform<ResultType>(aig->l, std::forward<Visitor>(visitor), cache);
+            ResultType right_result = transform<ResultType>(aig->r, std::forward<Visitor>(visitor), cache);
+            result = visitor(aig->type, aig->var, aig->neg, &left_result, &right_result);
+        } else {
+            // Leaf nodes (t_const or t_lit)
+            result = visitor(aig->type, aig->var, aig->neg, nullptr, nullptr);
+        }
+
+        cache[aig] = result;
+        return result;
+    }
+
+    friend std::ostream& operator<<(std::ostream& out, const aig_ptr& aig);
+    friend class AIGManager;
+    friend class SimplifiedCNF;
+private:
+    AIGT type = AIGT::t_const;
+    static constexpr uint32_t none_var = std::numeric_limits<uint32_t>::max();
+    uint32_t var = none_var;
+    bool neg = false;
+    aig_ptr l = nullptr;
+    aig_ptr r = nullptr;
+};
+
+
+inline std::ostream& operator<<(std::ostream& out, const aig_ptr& aig) {
+    if (!aig) {
+        out << "NULL_AIG";
+        return out;
+    }
+    assert(aig->invariants());
+
+    if (aig->type == AIGT::t_lit) {
+        out << (aig->neg ? "~" : "") << "x" << aig->var+1;
+        return out;
+    }
+    if (aig->type == AIGT::t_const) {
+        out << (aig->neg ? "FALSE" : "TRUE");
+        return out;
+    }
+    assert(aig->type == AIGT::t_and);
+    out << (aig->neg ? "~" : "") << "AND(";
+    out << (aig->l) << ", " << (aig->r) << ")";
+    return out;
+}
+
+class AIGManager {
+public:
+    ~AIGManager() = default;
+    AIGManager() {
+        const_true = std::make_shared<AIG>();
+        const_true->type = AIGT::t_const;
+        const_true->neg = false;
+        const_false = std::make_shared<AIG>();
+        const_false->type = AIGT::t_const;
+        const_false->neg = true;
+    }
+
+    void clear() {
+        const_true = nullptr;
+        const_false = nullptr;
+    }
+
+    AIGManager& operator=(const AIGManager& other) {
+        if (this != &other) {
+            clear();
+            // With shared_ptr, just copy the pointers - no deep copy needed!
+            const_true = other.const_true;
+            const_false = other.const_false;
+        }
+        return *this;
+    }
+
+    AIGManager(const AIGManager& other) {
+        const_true = other.const_true;
+        const_false = other.const_false;
+    }
+
+    aig_ptr new_const(bool val) {
+        return val ? const_true : const_false;
+    }
+
+
+private:
     // There could be other const true, this is just a good example so we don't always copy
     // Due to copying we don'g guarantee uniqueness
-    AIG* const_true = nullptr;
+    aig_ptr const_true = nullptr;
     // There could be other const false, this is just a good example so we don't always copy
     // Due to copying we don'g guarantee uniqueness
-    AIG* const_false = nullptr;
-    uint64_t max_id = 0;
+    aig_ptr const_false = nullptr;
 };
 
 class FMpz final : public CMSat::Field {
@@ -309,7 +464,7 @@ public:
         return check_end_of_weight(str, at, line_no);
     }
 
-    inline uint64_t helper(const mpz_class& v) const {
+    uint64_t helper(const mpz_class& v) const {
       return v.get_mpz_t()->_mp_alloc * sizeof(mp_limb_t);
     }
 
@@ -676,6 +831,7 @@ struct SimpConf {
     int iter2 = 2;
     int bve_grow_iter1 = 0;
     int bve_grow_iter2 = 6;
+    bool bve_grow_nonstop = false;
     bool appmc = false;
     int bve_too_large_resolvent = 12;
     int do_subs_with_resolvent_clauses = 1;
@@ -683,46 +839,14 @@ struct SimpConf {
     int weaken_limit = 8000;
 };
 
-struct SimplifiedCNF {
+class SimplifiedCNF {
+public:
     std::unique_ptr<CMSat::FieldGen> fg = nullptr;
     SimplifiedCNF(const std::unique_ptr<CMSat::FieldGen>& _fg) : fg(_fg->dup()), multiplier_weight(fg->one()) {}
     SimplifiedCNF(const CMSat::FieldGen* _fg) : fg(_fg->dup()), multiplier_weight(fg->one()) {}
     ~SimplifiedCNF() = default;
-
-    bool need_aig = false;
-    std::vector<std::vector<CMSat::Lit>> clauses;
-    std::vector<std::vector<CMSat::Lit>> red_clauses;
-    bool proj = false;
-    bool sampl_vars_set = false;
-    bool opt_sampl_vars_set = false;
-    std::vector<uint32_t> sampl_vars;
-    std::vector<uint32_t> opt_sampl_vars; // Filled during synthesis with vars that have been defined already
-
-    uint32_t nvars = 0;
-    std::unique_ptr<CMSat::Field> multiplier_weight = nullptr;
-    bool weighted = false;
-    bool backbone_done = false;
-    struct Weight {
-        Weight() = default;
-        std::unique_ptr<CMSat::Field> pos;
-        std::unique_ptr<CMSat::Field> neg;
-        Weight(std::unique_ptr<CMSat::FieldGen>& fg) : pos(fg->one()), neg(fg->one()) {}
-
-        Weight(const Weight& other) :
-            pos (other.pos->dup()),
-            neg (other.neg->dup()) {}
-        Weight& operator=(const Weight& other) {
-            pos = other.pos->dup();
-            neg = other.neg->dup();
-            return *this;
-        }
-    };
-    std::map<uint32_t, Weight> weights;
-    std::map<uint32_t, CMSat::VarMap> orig_to_new_var;
-    AIGManager aig_mng;
-    std::map<uint32_t, AIG*> defs; //definition of variables in terms of AIG. ORIGINAL number space
-
     SimplifiedCNF& operator=(const SimplifiedCNF& other) {
+        assert(other.defs_invariant());
         fg = other.fg->dup();
         need_aig = other.need_aig;
         clauses = other.clauses;
@@ -738,187 +862,115 @@ struct SimplifiedCNF {
         backbone_done = other.backbone_done;
         weights = other.weights;
         orig_to_new_var = other.orig_to_new_var;
-        replace_aigs_from(other);
+        if (!need_aig) {
+            assert(defs.empty());
+            assert(other.defs.empty());
+            assert(other.orig_sampl_vars.empty());
+            assert(other.orig_clauses.empty());
+        } else {
+            after_backward_round_synth = other.after_backward_round_synth;
+            aig_mng = other.aig_mng;
+            defs = AIG::deep_clone_set(other.defs);
+            orig_clauses = other.orig_clauses;
+            orig_sampl_vars = other.orig_sampl_vars;
+            orig_sampl_vars_set = other.orig_sampl_vars_set;
+        }
+        assert(defs_invariant());
 
         return *this;
     }
-
-    void clean_idiotic_mccomp_weights() {
-        std::set<uint32_t> sopt_sampl_vars(opt_sampl_vars.begin(), opt_sampl_vars.end());
-        std::set<uint32_t> to_remove;
-        for(const auto& w: weights) {
-            if (sopt_sampl_vars.count(w.first) == 0) to_remove.insert(w.first);
-        }
-        if (to_remove.empty()) return;
-
-        std::cout << "c o WARNING!!!! "
-            << to_remove.size() << " weights removed that weren't in the (opt) sampling set" << std::endl;
-        for(const auto& w: to_remove) weights.erase(w);
-    }
-
-    void check_sanity() const {
-        assert(fg != nullptr);
-
-        auto check = [](const std::vector<CMSat::Lit>& cl, uint32_t _nvars) {
-            for(const auto& l: cl) {
-                if (l.var() >= _nvars) {
-                    std::cout << "ERROR: Found a clause with a variable that has more variables than the number of variables we are supposed to have" << std::endl;
-                    std::cout << "cl: ";
-                    for(const auto& l2: cl) std::cout << l2 << " ";
-                    std::cout << std::endl;
-                    std::cout << "nvars: " << _nvars+1 << std::endl;
-                    exit(EXIT_FAILURE);
-                }
-                assert(l.var() < _nvars);
-            }
-        };
-
-        // all clauses contain variables that are less than nvars
-        for(const auto& cl: clauses) check(cl, nvars);
-        for(const auto& cl: red_clauses) check(cl, nvars);
-
-        std::set<uint32_t> ssampl_vars(sampl_vars.begin(), sampl_vars.end());
-        std::set<uint32_t> sopt_sampl_vars(opt_sampl_vars.begin(), opt_sampl_vars.end());
-
-        for(const auto& v: sopt_sampl_vars) {
-            if (v >= nvars) {
-                std::cout << "ERROR: Found a sampling var that is greater than the number of variables we are supposed to have" << std::endl;
-                std::cout << "sampling var: " << v+1 << std::endl;
-                std::cout << "nvars: " << nvars+1 << std::endl;
-                exit(EXIT_FAILURE);
-            }
-            assert(v < nvars);
-        }
-
-        // all sampling vars are also opt sampling vars
-        for(const auto& v: ssampl_vars) {
-            if (!sopt_sampl_vars.count(v)) {
-                std::cout << "ERROR: Found a sampling var that is not an opt sampling var: "
-                    << v+1 << std::endl;
-                exit(EXIT_FAILURE);
-            }
-            assert(sopt_sampl_vars.count(v));
-        }
-
-        // weights must be in opt sampling vars
-        for(const auto& w: weights) {
-            if (w.first >= nvars) {
-                std::cout << "ERROR: Found a weight that is greater than the number of variables we are supposed to have" << std::endl;
-                std::cout << "weight var: " << w.first+1 << std::endl;
-                std::cout << "nvars: " << nvars+1 << std::endl;
-                exit(EXIT_FAILURE);
-            }
-            assert(w.first < nvars);
-            if (sopt_sampl_vars.count(w.first) == 0) {
-                // Idiotic but we allow 1/1 weights, even though they are useless
-                if (w.second.pos->is_one() && w.second.neg->is_one()) continue;
-
-                std::cout << "ERROR: Found a weight that is not an (opt) sampling var: "
-                    << w.first+1 << std::endl;
-                exit(EXIT_FAILURE);
-            }
-            assert(sopt_sampl_vars.count(w.first));
-        }
-    }
-
-    void replace_aigs_from(const SimplifiedCNF& other) {
-        if (!need_aig) {
-            assert(!other.need_aig);
-            assert(other.aig_mng.aigs.size() == 2 && other.defs.empty());
-            return;
-        }
-
-        // Copy AIGs
-        aig_mng = other.aig_mng;
-        std::map<uint64_t, AIG*> id_to_aig;
-        for(const auto& aig: aig_mng.aigs) id_to_aig[aig->id] = aig;
-
-        // Copy defs
-        defs.clear();
-        for(const auto& it: other.defs) {
-            assert(id_to_aig.count(it.second->id) && "Must have already been copied");
-            defs[it.first] = id_to_aig[it.second->id];
-        }
-    }
-
-    void add_aigs_from(const AIGManager& other, const std::map<uint32_t, AIG*>& other_defs) {
-        if (!need_aig) {
-            assert(aig_mng.aigs.size() == 2 && defs.empty());
-            return;
-        }
-        auto old_id_to_new_aig = other.append_aigs_to(aig_mng);
-
-        for(const auto& it: other_defs) {
-            assert(defs.find(it.first) == defs.end() && "Must not already be defined here");
-            assert(old_id_to_new_aig.count(it.second->id) && "Must have already been copied");
-            defs[it.first] = old_id_to_new_aig[it.second->id];
-        }
-    }
-
     SimplifiedCNF(const SimplifiedCNF& other) {
         *this = other;
     }
 
-    // Gives all the orig lits that map to this variable
-    std::map<uint32_t, std::vector<CMSat::Lit>> get_new_to_orig_var_list() const {
-        std::map<uint32_t, std::vector<CMSat::Lit>> ret;
-        for(const auto& p: orig_to_new_var) {
-            const CMSat::Lit l = p.second.lit;
-            if (l != CMSat::lit_Undef) {
-                auto it2 = ret.find(l.var());
-                if (it2 != ret.end()) ret[l.var()] = std::vector<CMSat::Lit>();
-                ret[l.var()].push_back(CMSat::Lit(p.first, l.sign()));
-            }
-        }
-        return ret;
+    const auto& nVars() const { return nvars; }
+    const auto& get_clauses() const { return clauses; }
+    const auto& get_red_clauses() const { return red_clauses; }
+    const auto& get_weights() const { return weights; }
+    const auto& get_sampl_vars() const { return sampl_vars; }
+    const auto& get_orig_sampl_vars() const { assert(orig_sampl_vars_set); return orig_sampl_vars; }
+    const auto& get_orig_clauses() const { return orig_clauses; }
+    const auto& get_opt_sampl_vars() const { return opt_sampl_vars; }
+    const auto& get_backbone_done() const { return backbone_done; }
+    bool is_projected() const { return proj; }
+
+    template<class T>
+    void set_orig_sampl_vars(const T& vars) {
+        assert(need_aig);
+        assert(orig_sampl_vars.empty());
+        assert(!orig_sampl_vars_set);
+        orig_sampl_vars_set = true;
+        for(const auto& v: vars) orig_sampl_vars.insert(v);
     }
+    void set_orig_clauses(const std::vector<std::vector<CMSat::Lit>>& cls) {
+        assert(need_aig);
+        assert(orig_clauses.empty());
+        orig_clauses = cls;
+    }
+
+    // ORIG variable
+    bool defined(const uint32_t v) const {
+        assert(v < defs.size());
+        assert(need_aig);
+        if (defs[v] != nullptr) return true;
+        return false;
+    }
+    void set_need_aig() {
+        // should be the first thing to set
+        assert(!need_aig);
+        assert(nvars == 0);
+        assert(clauses.empty());
+        assert(red_clauses.empty());
+        assert(defs.empty());
+        assert(opt_sampl_vars.empty());
+        assert(sampl_vars.empty());
+        assert(orig_sampl_vars_set == false);
+        assert(orig_sampl_vars.empty());
+        assert(sampl_vars_set == false);
+        assert(opt_sampl_vars_set == false);
+        need_aig = true;
+    }
+    bool get_need_aig() const { return need_aig; }
+    uint32_t num_defs() const { return defs.size(); }
+
+    // Returns NEW vars, i.e. < nVars()
+    // It is checked that it is correct and total
+    std::tuple<std::set<uint32_t>, std::set<uint32_t>, std::set<uint32_t>> get_var_types([[maybe_unused]] uint32_t verb) const;
+
+    bool check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars() const;
+    bool check_orig_sampl_vars_undefined() const;
+    bool defs_invariant() const;
+
+    // Get the orig vars this AIG depends on, recursively expanding defined vars
+    std::set<uint32_t> get_dependent_vars_recursive(const uint32_t orig_v, std::map<uint32_t, std::set<uint32_t>>& cache) const;
+
+    bool check_aig_cycles() const;
+    void check_self_dependency() const;
+    void check_cnf_vars() const;
+
+    // all vars are either: in orig_sampl_vars, defined, or in the cnf
+    void check_all_vars_accounted_for() const;
+
+    // this checks that NO unsat-define has been made yet
+    void check_pre_post_backward_round_synth() const;
+
+    void set_all_opt_indep();
+    void add_opt_sampl_var(const uint32_t v);
+    void clean_idiotic_mccomp_weights();
+    void check_cnf_sampl_sanity() const;
+
+    // Gives all the orig lits that map to this variable
+    std::map<uint32_t, std::vector<CMSat::Lit>> get_new_to_orig_var_list() const;
 
     // Gives an example lit, sometimes good enough
-    std::map<uint32_t, CMSat::Lit> get_new_to_orig_var() const {
-        std::map<uint32_t, CMSat::Lit> ret;
-        for(const auto& p: orig_to_new_var) {
-            const CMSat::Lit l = p.second.lit;
-            if (l != CMSat::lit_Undef) {
-                ret[l.var()] = CMSat::Lit(p.first, l.sign());
-            }
-        }
-        return ret;
-    }
+    std::map<uint32_t, CMSat::Lit> get_new_to_orig_var() const;
 
-    uint32_t nVars() const { return nvars; }
-    uint32_t new_vars(uint32_t vars) {
-        nvars+=vars;
-        for(uint32_t i = 0; i < vars; i++) {
-            const uint32_t v = nvars-vars+i;
-            orig_to_new_var[v] = CMSat::VarMap(CMSat::Lit(v, false));
-        }
-        return nvars;
-    }
-    uint32_t new_var() {
-        uint32_t v = nvars;
-        nvars++;
-        orig_to_new_var[v] = CMSat::VarMap(CMSat::Lit(v, false));
-        return nvars;
-    }
+    uint32_t new_vars(uint32_t vars);
+    uint32_t new_var();
 
-    void start_with_clean_sampl_vars() {
-        assert(sampl_vars.empty());
-        assert(opt_sampl_vars.empty());
-        for(uint32_t i = 0; i < nvars; i++) sampl_vars.push_back(i);
-        for(uint32_t i = 0; i < nvars; i++) opt_sampl_vars.push_back(i);
-    }
-    void check_var(const uint32_t v) const {
-        if (v >= nVars()) {
-            std::cout << "ERROR: Tried to access a variable that is too large" << std::endl;
-            std::cout << "var: " << v+1 << std::endl;
-            std::cout << "nvars: " << nVars() << std::endl;
-            assert(v < nVars());
-            exit(EXIT_FAILURE);
-        }
-    }
-    void check_clause(const std::vector<CMSat::Lit>& cl) const {
-        for(const auto& l: cl) check_var(l.var());
-    }
+    void start_with_clean_sampl_vars();
+    void check_var(const uint32_t v) const;
+    void check_clause(const std::vector<CMSat::Lit>& cl) const;
     void add_xor_clause(const std::vector<uint32_t>&, bool) { exit(EXIT_FAILURE); }
     void add_xor_clause(const std::vector<CMSat::Lit>&, bool) { exit(EXIT_FAILURE); }
     void add_clause(const std::vector<CMSat::Lit>& cl) {
@@ -931,30 +983,47 @@ struct SimplifiedCNF {
     }
     bool get_sampl_vars_set() const { return sampl_vars_set; }
     bool get_opt_sampl_vars_set() const { return opt_sampl_vars_set; }
+
     template<class T>
     void set_sampl_vars(const T& vars, bool ignore = false) {
         for(const auto& v: vars) check_var(v);
         if (!ignore) {
             assert(sampl_vars.empty());
             assert(sampl_vars_set == false);
+            assert(opt_sampl_vars_set == false);
+            assert(opt_sampl_vars.empty());
         }
         sampl_vars.clear();
         sampl_vars_set = true;
-        sampl_vars.insert(sampl_vars.begin(), vars.begin(), vars.end());
+        std::set<uint32_t> tmp(vars.begin(), vars.end());
+        sampl_vars.insert(sampl_vars.begin(), tmp.begin(), tmp.end());
         if (!opt_sampl_vars_set) set_opt_sampl_vars(vars);
     }
-    const auto& get_sampl_vars() const { return sampl_vars; }
     template<class T> void set_opt_sampl_vars(const T& vars) {
         for(const auto& v: vars) check_var(v);
         opt_sampl_vars.clear();
         opt_sampl_vars_set = true;
-        opt_sampl_vars.insert(opt_sampl_vars.begin(), vars.begin(), vars.end());
+        std::set<uint32_t> tmp(vars.begin(), vars.end());
+        opt_sampl_vars.insert(opt_sampl_vars.begin(), tmp.begin(), tmp.end());
+    }
+
+    template<class T2>
+    void remove_sampling_vars(const T2& zero_assigned) {
+        std::set sampl_vars2(get_sampl_vars().begin(), get_sampl_vars().end());
+        std::set opt_sampl_vars2(get_opt_sampl_vars().begin(), get_opt_sampl_vars().end());
+        for(const auto& l: zero_assigned) {
+            assert(l.var() < nvars);
+            sampl_vars2.erase(l.var());
+            opt_sampl_vars2.erase(l.var());
+        }
+        set_sampl_vars(sampl_vars2, true);
+        set_opt_sampl_vars(opt_sampl_vars2);
     }
 
     void set_multiplier_weight(const std::unique_ptr<CMSat::Field>& m) {
         *multiplier_weight = *m;
     }
-    const auto& get_multiplier_weight() const { return *multiplier_weight; }
+    const auto& get_multiplier_weight() const { return multiplier_weight; }
     auto get_lit_weight(CMSat::Lit lit) const {
         assert(weighted);
         if (!fg->weighted()) {
@@ -1039,104 +1108,9 @@ struct SimplifiedCNF {
     }
 
     // renumber variables such that sampling set start from 0...N
-    void renumber_sampling_vars_for_ganak() {
-        assert(sampl_vars.size() <= opt_sampl_vars.size());
+    void renumber_sampling_vars_for_ganak();
 
-        // Create mapping
-        constexpr uint32_t m = std::numeric_limits<uint32_t>::max();
-        std::vector<uint32_t> map_here_to_there(nvars, m);
-        uint32_t i = 0;
-        for(const auto& v: sampl_vars) {
-            assert(v < nvars);
-            map_here_to_there[v] = i;
-            i++;
-        }
-        for(const auto& v: opt_sampl_vars) {
-            assert(v < nvars);
-            if (map_here_to_there[v] == m) {
-                map_here_to_there[v] = i;
-                i++;
-            }
-        }
-        for(uint32_t x = 0; x < nvars; x++) {
-            if (map_here_to_there[x] == m) {
-                map_here_to_there[x] = i;
-                i++;
-            }
-        }
-        assert(i == nvars);
-
-        // Update var map
-        std::map<uint32_t, CMSat::VarMap> upd_vmap;
-        for(const auto& p: orig_to_new_var) {
-            p.second.invariant();
-            if (p.second.lit != CMSat::lit_Undef) {
-                CMSat::Lit l = p.second.lit;
-                l = CMSat::Lit(map_here_to_there[l.var()], l.sign());
-                upd_vmap[p.first] = CMSat::VarMap(l);
-            } else {
-                upd_vmap[p.first] = p.second;
-            }
-        }
-        orig_to_new_var = upd_vmap;
-
-        // Now we renumber samp_vars, opt_sampl_vars, weights
-        sampl_vars = map_var(sampl_vars, map_here_to_there);
-        opt_sampl_vars = map_var(opt_sampl_vars, map_here_to_there);
-        for(auto& cl: clauses) map_cl(cl, map_here_to_there);
-        for(auto& cl: red_clauses) map_cl(cl, map_here_to_there);
-        if (weighted) {
-            std::map<uint32_t, Weight> new_weights;
-            for(auto& w: weights)
-                new_weights[map_here_to_there[w.first]] = w.second;
-            weights = new_weights;
-        } else {
-            assert(weights.empty());
-        }
-    }
-
-    void write_simpcnf(const std::string& fname, bool red = true) const {
-        uint32_t num_cls = clauses.size();
-        std::ofstream outf;
-        outf.open(fname.c_str(), std::ios::out);
-        outf << "p cnf " << nvars << " " << num_cls << std::endl;
-        if (weighted  &&  proj) outf << "c t pwmc" << std::endl;
-        if (weighted  && !proj) outf << "c t wmc" << std::endl;
-        if (!weighted &&  proj) outf << "c t pmc" << std::endl;
-        if (!weighted && !proj) outf << "c t mc" << std::endl;
-        if (weighted) {
-            for(const auto& it: weights) {
-                outf << "c p weight " << CMSat::Lit(it.first,false) << " "
-                    << *it.second.pos << " 0" << std::endl;
-
-                outf << "c p weight " << CMSat::Lit(it.first,true) << " "
-                    << *it.second.neg << " 0" << std::endl;
-            }
-        }
-
-        for(const auto& cl: clauses) outf << cl << " 0\n";
-        if (red) for(const auto& cl: red_clauses)
-            outf << "c red " << cl << " 0\n";
-
-        //Add projection
-        outf << "c p show ";
-        auto sampl = sampl_vars;
-        std::sort(sampl.begin(), sampl.end());
-        for(const auto& v: sampl) {
-            assert(v < nvars);
-            outf << v+1  << " ";
-        }
-        outf << "0\n";
-        outf << "c p optshow ";
-        sampl = opt_sampl_vars;
-        std::sort(sampl.begin(), sampl.end());
-        for(const auto& v: sampl) {
-            assert(v < nvars);
-            outf << v+1  << " ";
-        }
-        outf << "0\n";
-        outf << "c MUST MULTIPLY BY " << *multiplier_weight << " 0" << std::endl;
-    }
+    void write_simpcnf(const std::string& fname, bool red = true) const;
 
     bool weight_set(uint32_t v) const {
         check_var(v);
@@ -1166,200 +1140,129 @@ struct SimplifiedCNF {
         }
     }
 
-    void fix_weights(CMSat::SATSolver* solver,
+    void fix_weights(std::unique_ptr<CMSat::SATSolver>& solver,
             const std::vector<uint32_t> new_sampl_vars,
-            const std::vector<uint32_t>& empty_sampling_vars) {
-        for(const auto& v: new_sampl_vars) check_var(v);
-        for(const auto& v: empty_sampling_vars) check_var(v);
-        std::set<uint32_t> sampling_vars_set(new_sampl_vars.begin(), new_sampl_vars.end());
-        std::set<uint32_t> opt_sampling_vars_set(opt_sampl_vars.begin(), opt_sampl_vars.end());
-        constexpr bool debug_w = false;
-        if (debug_w)
-            std::cout << __FUNCTION__ << " [w-debug] orig multiplier_weight: "
-                << *multiplier_weight << std::endl;
+            const std::vector<uint32_t>& empty_sampling_vars);
 
-        // Take units
-        for(const auto& l: solver->get_zero_assigned_lits()) {
-            if (l.var() >= nVars()) continue;
-            if (debug_w)
-                std::cout << __FUNCTION__ << " [w-debug] orig unit l: " << l
-                    << " w: " << *get_lit_weight(l) << std::endl;
-            sampling_vars_set.erase(l.var());
-            opt_sampling_vars_set.erase(l.var());
-            if (get_weighted()) {
-                *multiplier_weight *= *get_lit_weight(l);
-                if (debug_w)
-                    std::cout << __FUNCTION__ << " [w-debug] unit: " << l
-                        << " multiplier_weight: " << *multiplier_weight << std::endl;
-                unset_var_weight(l.var());
-            }
-        }
+    CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var, std::map<aig_ptr, CMSat::lbool>& cache ) const;
 
-        // Take bin XORs
-        // [ replaced, replaced_with ]
-        const auto eq_lits = solver->get_all_binary_xors();
-        for(auto p: eq_lits) {
-            if (p.first.var() >= nVars() || p.second.var() >= nVars()) continue;
-            if (debug_w)
-                std::cout << __FUNCTION__ << " [w-debug] repl: " << p.first
-                    << " with " << p.second << std::endl;
-            if (get_weighted()) {
-                auto wp2 = get_lit_weight(p.second);
-                auto wn2 = get_lit_weight(~p.second);
-                auto wp1 = get_lit_weight(p.first);
-                auto wn1 = get_lit_weight(~p.first);
-                if (debug_w) {
-                    std::cout << __FUNCTION__ << " [w-debug] wp1 " << *wp1
-                        << " wn1 " << *wn1 << std::endl;
-                    std::cout << __FUNCTION__ << " [w-debug] wp2 " << *wp2
-                        << " wn2 " << *wn2 << std::endl;
-                }
-                *wp2 *= *wp1;
-                *wn2 *= *wn1;
-                set_lit_weight(p.second, wp2);
-                set_lit_weight(~p.second, wn2);
-                if (debug_w) {
-                    std::cout << __FUNCTION__ << " [w-debug] set lit " << p.second
-                        << " weight to " << *wp2 << std::endl;
-                    std::cout << __FUNCTION__ << " [w-debug] set lit " << ~p.second
-                        << " weight to " << *wn2 << std::endl;
-                }
-                unset_var_weight(p.first.var());
-            }
-        }
+    // returns in CNF (new vars) the dependencies of each variable
+    // every LHS element in the map is a backward_defined variable
+    std::map<uint32_t, std::set<uint32_t>> compute_backw_dependencies();
 
-        set_sampl_vars(sampling_vars_set, true);
-        set_opt_sampl_vars(opt_sampling_vars_set);
+    // Serialize SimplifiedCNF to binary file
+    void write_aig_defs(std::ofstream& out) const;
 
-        solver->start_getting_constraints(false);
-        sampl_vars = solver->translate_sampl_set(new_sampl_vars, true);
-        opt_sampl_vars = solver->translate_sampl_set(opt_sampl_vars, true);
-        auto empty_sampling_vars2 = solver->translate_sampl_set(empty_sampling_vars, true);
-        solver->end_getting_constraints();
+    // Deserialize SimplifiedCNF from binary file
+    void read_aig_defs(std::ifstream& in);
 
-        sampling_vars_set.clear();
-        sampling_vars_set.insert(sampl_vars.begin(), sampl_vars.end());
-        opt_sampling_vars_set.clear();
-        opt_sampling_vars_set.insert(opt_sampl_vars.begin(), opt_sampl_vars.end());
-        for(const auto& v: empty_sampling_vars2) {
-            sampling_vars_set.erase(v);
-            opt_sampling_vars_set.erase(v);
+    // Write AIG defs to file (opens file for you)
+    void write_aig_defs_to_file(const std::string& fname) const;
 
-            if (debug_w)
-                std::cout << __FUNCTION__ << " [w-debug] empty sampling var: " << v+1 << std::endl;
-            auto tmp = fg->zero();
-            if (get_weighted()) {
-                CMSat::Lit l(v, false);
-                *tmp += *get_lit_weight(l);
-                *tmp += *get_lit_weight(~l);
-                unset_var_weight(l.var());
-            } else {
-                *tmp = *fg->one();
-                *tmp += *fg->one();
-            }
-            *multiplier_weight *= *tmp;
-            if (debug_w)
-                std::cout << __FUNCTION__ << " [w-debug] empty mul: " << *tmp
-                    << " final multiplier_weight: " << *multiplier_weight << std::endl;
-        }
+    // Read AIG defs from file (opens file for you)
+    void read_aig_defs_from_file(const std::string& fname);
 
-        set_sampl_vars(sampling_vars_set, true);
-        set_opt_sampl_vars(opt_sampling_vars_set);
+    std::vector<CMSat::lbool> extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed = false) const;
 
-        for(uint32_t i = 0; i < nVars(); i++) {
-            if (opt_sampling_vars_set.count(i) == 0) unset_var_weight(i);
-        }
+    void map_aigs_to_orig(const std::map<uint32_t, aig_ptr>& aigs, const uint32_t max_num_vars);
 
-        if (debug_w) {
-            std::cout << "w-debug FINAL sampl_vars    : ";
-            for(const auto& v: sampl_vars) std::cout << v+1 << " ";
-            std::cout << std::endl;
-            std::cout << "w-debug FINAL opt_sampl_vars: ";
-            for(const auto& v: opt_sampl_vars) {
-                std::cout << v+1 << " ";
-            }
-            std::cout << std::endl;
-        }
+    SimplifiedCNF get_cnf(
+            std::unique_ptr<CMSat::SATSolver>& solver,
+            const std::vector<uint32_t>& new_sampl_vars,
+            const std::vector<uint32_t>& empty_sampl_vars,
+            uint32_t verb
+    ) const;
+
+    // when 2 vars point to the same new var, we must set define one by the other.
+    // We must prefer orig_sampl_vars to remain undefined, and define the other by it.
+    void fix_mapping_after_renumber(SimplifiedCNF& scnf, const uint32_t verb) const;
+
+    void get_fixed_values(SimplifiedCNF& scnf, std::unique_ptr<CMSat::SATSolver>& solver) const;
+    void set_fixed_values(const std::vector<CMSat::Lit>& lits);
+
+
+    // Get back BVE AIGs into scnf.defs
+    void get_bve_mapping(SimplifiedCNF& scnf, std::unique_ptr<CMSat::SATSolver>& solver, const uint32_t verb) const;
+
+    void set_backbone_done(const bool bb_done) {
+        backbone_done = bb_done;
     }
 
-    bool not_renumbered() const {
-        for(uint32_t i = 0; i < nvars; i++) {
-            CMSat::Lit l = CMSat::Lit (i, false);
-            auto it = orig_to_new_var.find(i);
-            assert(it != orig_to_new_var.end());
-            assert(it->second.invariant());
-            if (it->second != CMSat::VarMap(l)) return false;
+    std::vector<std::vector<uint32_t>> find_disconnected() const;
 
+    // Used after SBVA to replace clauses
+    void replace_clauses_with(std::vector<int>& ret, uint32_t new_nvars, uint32_t new_nclauses);
+
+    // Used after BCE to replace clauses
+    struct BCEClause {
+        uint32_t at = std::numeric_limits<uint32_t>::max();
+        std::vector<CMSat::Lit> lits;
+        bool red = false;
+    };
+    void replace_clauses_with(std::vector<BCEClause>& cls) {
+        clauses.clear();
+        for(const auto& cl: cls) {
+            if (!cl.red) add_clause(cl.lits);
+            else add_red_clause(cl.lits);
         }
-        return true;
+    }
+    void set_after_backward_round_synth() {
+        assert(!after_backward_round_synth && "Should only be set once");
+        after_backward_round_synth = true;
+    }
+    const auto& get_orig_to_new_var() const {
+        return orig_to_new_var;
     }
 
-    bool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var) const {
-        check_var(var);
-        if (defs.find(var) == defs.end()) {
-            std::cout << "ERROR: Variable " << var+1 << " not defined" << std::endl;
-            assert(defs.find(var) != defs.end() && "Must be defined");
-            exit(EXIT_FAILURE);
-        }
-        return ArjunNS::evaluate(vals, defs.find(var)->second, defs);
+    // Get AIG definition for a variable (in ORIG numbering)
+    const aig_ptr& get_def(uint32_t v) const {
+        assert(v < defs.size());
+        return defs[v];
     }
+    void clear_orig_sampl_defs();
+    void simplify_aigs();
 
-    std::set<uint32_t> get_vars_need_definition() const {
-        std::set<uint32_t> ret;
-        std::set<uint32_t> osv(opt_sampl_vars.begin(), opt_sampl_vars.end());
-        for(uint32_t i = 0; i < nvars; i++) {
-            if (defs.find(i) == defs.end() && !osv.count(i))
-                ret.insert(i);
-        }
-        return ret;
-    }
+private:
+    bool after_backward_round_synth = false;
+    bool need_aig = false;
+    std::vector<std::vector<CMSat::Lit>> clauses;
+    std::vector<std::vector<CMSat::Lit>> red_clauses;
+    bool proj = false;
+    bool sampl_vars_set = false;
+    bool opt_sampl_vars_set = false;
+    std::vector<uint32_t> sampl_vars;
+    std::vector<uint32_t> opt_sampl_vars; // During synthesis this is EXACTY the same as sampl_vars
 
-    bool aig_contains(const AIG* aig, const uint32_t v) const {
-        check_var(v);
-        if (aig == nullptr) return false;
-        assert(aig->invariants());
-        if (aig->type == t_lit) {
-            if (aig->var == v) return true;
+    uint32_t nvars = 0;
+    std::unique_ptr<CMSat::Field> multiplier_weight = nullptr;
+    bool weighted = false;
+    bool backbone_done = false;
+    struct Weight {
+        Weight() = default;
+        std::unique_ptr<CMSat::Field> pos;
+        std::unique_ptr<CMSat::Field> neg;
+        Weight(std::unique_ptr<CMSat::FieldGen>& fg) : pos(fg->one()), neg(fg->one()) {}
 
-            /// Need to be recursive
-            if (defs.find(aig->var) != defs.end()) {
-                AIG* aig2 = defs.at(aig->var);
-                return aig_contains(aig2, v);
-            }
-            return false;
+        Weight(const Weight& other) :
+            pos (other.pos->dup()),
+            neg (other.neg->dup()) {}
+        Weight& operator=(const Weight& other) {
+            pos = other.pos->dup();
+            neg = other.neg->dup();
+            return *this;
         }
-        if (aig->type == t_const) return false;
-        if (aig->type == t_and) {
-            return aig_contains(aig->l, v) || aig_contains(aig->r, v);
-        }
-        assert(false && "Unknown AIG type");
-        exit(EXIT_FAILURE);
-    }
+    };
+    std::map<uint32_t, Weight> weights;
+    std::map<uint32_t, CMSat::Lit> orig_to_new_var; // ONLY maps in the CNF -- does NOT map to vars NOT in the CNF
+    AIGManager aig_mng; // only for const true/false
+    std::vector<aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space. Size is the
+                               //original number of variables.
 
-    std::set<uint32_t> get_cannot_depend_on(const uint32_t v) const {
-        assert(false && "defs is original number space but v is not... below is broken");
-        if (defs.find(v) != defs.end()) {
-            std::cout << "ERROR: Variable " << v+1 << " already defined, why query what it cannot depend on???" << std::endl;
-            assert(false);
-            exit(EXIT_FAILURE);
-        }
-        std::set<uint32_t> osv(opt_sampl_vars.begin(), opt_sampl_vars.end());
-        if (osv.count(v)) {
-            std::cout << "ERROR: Variable " << v+1 << " is in opt sampling set, why query what it cannot depend on???" << std::endl;
-            assert(false);
-            exit(EXIT_FAILURE);
-        }
-
-        std::set<uint32_t> ret;
-        for(const auto& it: defs) {
-            if (osv.count(it.first)) {
-                // The extended input we can always depend on
-                continue;
-            }
-            if (aig_contains(it.second, v)) ret.insert(it.first);
-        }
-        return ret;
-    }
+    void check_synth_funs_randomly() const;
+    bool orig_sampl_vars_set = false;
+    std::set<uint32_t> orig_sampl_vars;
+    // debug
+    std::vector<std::vector<CMSat::Lit>> orig_clauses;
 };
 
 struct ArjPrivateData;
@@ -1397,6 +1300,22 @@ public:
         int sbva_tiebreak = 1;
         bool do_renumber = true;
     };
+    struct ManthanConf {
+        ManthanConf() = default;
+        ManthanConf(const ManthanConf& other) = default;
+        int do_filter_samples = 1;
+        int do_biased_sampling = 0;
+        uint32_t num_samples = 10000;
+        uint32_t num_samples_ccnr = 3000;
+        uint32_t minimumLeafSize = 20;
+        double minGainSplit = 1.0;
+        uint32_t maximumDepth = 0;
+        uint32_t sampler_fixed_conflicts = 100;
+        int do_minimize_conflict = 1;
+        uint32_t simplify_every = 1000;
+        std::string write_manthan_cnf;
+        int do_maxsat_better_ctx = 0;
+    };
     void standalone_elim_to_file(SimplifiedCNF& cnf,
             const ElimToFileConf& etof_conf, const SimpConf& simp_conf);
     SimplifiedCNF standalone_get_simplified_cnf(const SimplifiedCNF& cnf, const SimpConf& simp_conf);
@@ -1406,7 +1325,7 @@ public:
     void standalone_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,
         uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1);
-    SimplifiedCNF standalone_manthan(const SimplifiedCNF& cnf);
+    SimplifiedCNF standalone_manthan(const SimplifiedCNF& cnf, const ManthanConf& manthan_conf);
 
     //Set config
     void set_verb(uint32_t verb);
@@ -1431,10 +1350,9 @@ public:
     void set_weighted(const bool);
     void set_extend_max_confl(uint32_t extend_max_confl);
     void set_oracle_find_bins(int oracle_find_bins);
-    void set_num_samples(int num_samples);
     void set_cms_glob_mult(double cms_glob_mult);
     void set_extend_ccnr(int extend_ccnr);
-    void set_autarkies(int autarkies);
+    void set_seed(uint32_t seed);
 
     //Get config
     uint32_t get_verb() const;
@@ -1456,11 +1374,10 @@ public:
     bool get_ite_gate_based() const;
     bool get_irreg_gate_based() const;
     uint32_t get_extend_max_confl() const;
-    int get_num_samples() const;
     int get_oracle_find_bins() const;
     double get_cms_glob_mult() const;
     int get_extend_ccnr() const;
-    int get_autarkies() const;
+    uint32_t get_seed() const;
 
 private:
     ArjPrivateData* arjdata = nullptr;

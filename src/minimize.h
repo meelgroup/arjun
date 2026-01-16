@@ -26,6 +26,7 @@
 
 
 #include "arjun.h"
+#include <optional>
 #include <vector>
 #include <iostream>
 #include <map>
@@ -48,6 +49,7 @@ using std::map;
 using std::set;
 using std::string;
 using std::vector;
+using std::optional;
 
 namespace ArjunInt {
 
@@ -88,7 +90,6 @@ struct Minimize
     bool set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf);
     bool preproc_and_duplicate(const ArjunNS::SimplifiedCNF& orig_cnf);
     void add_fixed_clauses(bool all = false);
-    void start_with_clean_sampl_vars();
     void duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf);
     void get_incidence();
     void set_up_solver();
@@ -101,7 +102,6 @@ struct Minimize
     void remove_definable_by_irreg_gates();
     void remove_zero_assigned_literals(bool print = true);
     void remove_eq_literals();
-    void run_autarkies();
     void get_empty_occs();
     bool probe_all();
     void empty_out_indep_set_if_unsat();
@@ -111,14 +111,18 @@ struct Minimize
     void order_sampl_set_for_simp();
 
     //backward
+    template<typename T>
     void fill_assumptions_backward(
         vector<Lit>& assumptions,
         vector<uint32_t>& unknown,
         const vector<char>& unknown_set,
-        const vector<uint32_t>& indep);
+        const T& indep,
+        const optional<set<uint32_t>>& ignore = std::nullopt);
     void fill_solver(const ArjunNS::SimplifiedCNF& cnf);
+    void fill_solver_synth(const ArjunNS::SimplifiedCNF& cnf);
     void backward_round();
     void backward_round_synth(ArjunNS::SimplifiedCNF& cnf);
+    void add_all_indics_except(const set<uint32_t>& except);
     void order_by_file(const string& fname, vector<uint32_t>& unknown);
     void print_sorted_unknown(const vector<uint32_t>& unknown) const;
 };

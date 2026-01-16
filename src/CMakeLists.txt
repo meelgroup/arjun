@@ -24,6 +24,7 @@ include_directories(${CRYPTOMINISAT5_INCLUDE_DIRS})
 include_directories(${SBVA_INCLUDE_DIRS})
 include_directories( ${GMP_INCLUDE_DIR} )
 if (SYNTH)
+    include_directories(${EVALMAXSAT_INCLUDE_DIRS})
     include_directories( ${MLPACK_INCLUDE_DIR} )
 endif()
 include_directories(${PROJECT_SOURCE_DIR}/../cadical/src/)
@@ -52,8 +53,7 @@ set(libfiles
     minimize.cpp
     arjun.cpp
     puura.cpp
-    ccnr.cpp
-    ccnr_cms.cpp
+    ccnr/ccnr.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
 )
 
@@ -70,10 +70,13 @@ target_link_libraries(arjun
     LINK_PUBLIC ${SBVA_LIBRARIES}
     LINK_PUBLIC ${GMP_LIBRARY}
     LINK_PUBLIC ${cadical}
+    LINK_PUBLIC ${EVALMAXSAT_LIBRARIES}
+    LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT}
 )
 
 add_executable(arjun-bin main.cpp)
 add_executable(arjun-example example.cpp)
+add_executable(test-synth test-synth.cpp)
 
 IF (ZLIB_FOUND)
     SET(arjun_bin_exec_link_libs ${arjun_bin_exec_link_libs} ${ZLIB_LIBRARY})
@@ -95,6 +98,12 @@ set_target_properties(arjun-example PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 target_link_libraries(arjun-example ${arjun_bin_exec_link_libs} arjun)
+
+set_target_properties(test-synth PROPERTIES
+    OUTPUT_NAME test-synth
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
+target_link_libraries(test-synth ${arjun_bin_exec_link_libs} arjun)
 
 arjun_add_public_header(arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun.h )
 

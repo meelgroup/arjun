@@ -22,7 +22,6 @@
  THE SOFTWARE.
  */
 
-#include <cmath>
 #include <algorithm>
 #include <cstdint>
 #include <iomanip>
@@ -55,6 +54,8 @@ void Extend::add_all_indics_except(const set<uint32_t>& except) {
         //torem_orig.push_back(Lit(this_indic, false));
         var_to_indic[var] = this_indic;
         var_to_indic[var+orig_num_vars] = this_indic;
+        verb_print(3, "Adding indic var " << this_indic+1
+                << " for orig vars " << var+1 << " and " << var+orig_num_vars+1);
         dont_elim.push_back(Lit(this_indic, false));
         indic_to_var.resize(this_indic+1, var_Undef);
         indic_to_var[this_indic] = var;
@@ -77,37 +78,38 @@ void Extend::add_all_indics_except(const set<uint32_t>& except) {
 }
 
 void Extend::unsat_define(SimplifiedCNF& cnf) {
-    assert(cnf.not_renumbered() && "Makes interpolant generation much harder, there's no need");
+    const double my_time = cpuTime();
+    assert(cnf.get_need_aig() && cnf.defs_invariant());
+
     double start_round_time = cpuTime();
-    assert(cnf.sampl_vars.size() == cnf.opt_sampl_vars.size());
-    assert(cnf.opt_sampl_vars_set);
-    uint32_t start_size = cnf.opt_sampl_vars.size();
+    uint32_t start_size = cnf.get_opt_sampl_vars().size();
     fill_solver(cnf);
     solver->set_verbosity(0);
     solver->set_scc(1);
 
     // Fill no need
-    set<uint32_t> no_need;
     // [ replaced, replaced_with ]
     /* auto ret1 = solver->get_all_binary_xors(); */
     /* for(const auto& p: ret1) no_need.insert(p.first.var()); */
-    auto ret2 = solver->get_zero_assigned_lits();
-    for(const auto& p: ret2) no_need.insert(p.var());
-    for(const auto& v: cnf.opt_sampl_vars) no_need.insert(v);
-    add_all_indics_except(no_need);
+    set<uint32_t> input_vars(cnf.get_opt_sampl_vars().begin(), cnf.get_opt_sampl_vars().end());
+    const auto zero_ass = solver->get_zero_assigned_lits();
+    for(const auto& p: zero_ass) input_vars.insert(p.var());
+    add_all_indics_except(input_vars);
+    verb_print(2, "[extend] orig_num_vars: " << orig_num_vars << " nvars: " << solver->nVars());
 
     // set up interpolant
     interp.solver = solver.get();
     interp.fill_picolsat(orig_num_vars);
     interp.fill_var_to_indic(var_to_indic);
 
-    //Initially, all of samping_set is unknown
+    //Initially, all of non-opt sampling set is unknown
     for(const auto& x: seen) assert(x == 0);
     vector<uint32_t> unknown;
     for(uint32_t i = 0; i < orig_num_vars; i++) {
-        if (no_need.count(i)) continue;
+        if (input_vars.count(i)) continue;
         unknown.push_back(i);
     }
+    if (unknown.empty()) return;
 
     sort_unknown(unknown, incidence);
     verb_print(1,"[arjun] Start unknown size: " << unknown.size());
@@ -137,8 +139,9 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
         //Assumption filling -- assume everything in indep is the same
         assert(test_var != var_Undef);
 
+        assert(!input_vars.count(test_var));
         assumptions.clear();
-        uint32_t indic = var_to_indic[test_var];
+        const uint32_t indic = var_to_indic[test_var];
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
 
@@ -158,14 +161,11 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             // Dependent fully on `indep`
             // TODO: run get_conflict and then we know which were
             // actually needed, so we can do an easier generation/check
-            interp.generate_interpolant(assumptions, test_var, cnf);
-            vector<Lit> cl;
-            Lit l(indic, false);
-            cl.push_back(l);
-            solver->add_clause(cl);
-            interp.add_clause(cl);
-            cnf.opt_sampl_vars.push_back(test_var);
-
+            interp.generate_interpolant(assumptions, test_var, cnf, input_vars);
+            solver->add_clause({Lit(indic, false)});
+            interp.add_unit_cl({Lit(indic, false)});
+            cnf.add_opt_sampl_var(test_var);
+            input_vars.insert(test_var);
         } else if (ret == l_True) {
             // Optimisation: if we see both true and false, then it cannot be independent
             for(uint32_t v = 0; v < orig_num_vars; v++) {
@@ -182,21 +182,34 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
         }
     }
 
-    verb_print(1, "defined via Padoa: " << cnf.opt_sampl_vars.size()-start_size
+    verb_print(1, "defined via Padoa: " << cnf.get_opt_sampl_vars().size()-start_size
             << " SAT: " << sat
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
+    if (conf.verb >= 3) {
+        for(const auto& [v, aig]: interp.get_defs()) {
+            assert(aig != nullptr);
+            set<uint32_t> dep_vars;
+            AIG::get_dependent_vars(aig, dep_vars, v);
+            vector<Lit> deps_lits; deps_lits.reserve(dep_vars.size());
+            for(const auto& dv: dep_vars) deps_lits.push_back(Lit(dv, false));
+            verb_print(3, "[unsat-define] define var: " << v+1 << " depends on vars: " << deps_lits);
+        }
+    }
 
-    cnf.add_aigs_from(interp.get_aig_mng(), interp.get_defs());
+    cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);
+    assert(cnf.get_need_aig() && cnf.defs_invariant());
+    verb_print(1, "[arjun-extend] unsat_define done T: "
+            << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
 }
 
 void Extend::extend_round(SimplifiedCNF& cnf) {
-    assert(cnf.opt_sampl_vars_set = true);
+    assert(cnf.get_opt_sampl_vars_set() == true);
     double start_round_time = cpuTime();
-    const uint32_t orig_size = cnf.opt_sampl_vars.size();
+    const uint32_t orig_size = cnf.get_opt_sampl_vars().size();
     fill_solver(cnf);
     solver->set_verbosity(0);
-    set<uint32_t> opt_sampl(cnf.opt_sampl_vars.begin(), cnf.opt_sampl_vars.end());
+    set<uint32_t> opt_sampl(cnf.get_opt_sampl_vars().begin(), cnf.get_opt_sampl_vars().end());
 
     // we don't care about literal polarities, we treat all gates
     // as if they were OR gates
@@ -298,7 +311,6 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     uint32_t ret_undef = 0;
     set<uint32_t> unknown_set(unknown.begin(), unknown.end());
     uint32_t num_done = 0;
-
 
     if (conf.extend_ccnr >= 0) {
         double ccnr_time = cpuTime();
@@ -419,7 +431,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
 
     verb_print(1, "[arjun-extend] Extend finished "
             << " orig size: " << orig_size
-            << " final size: " << cnf.opt_sampl_vars.size()
+            << " final size: " << cnf.get_opt_sampl_vars().size()
             << " Undef: " << ret_undef
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 4) solver->print_stats();
@@ -448,10 +460,10 @@ void Extend::fill_solver(const SimplifiedCNF& cnf) {
     assert(solver->nVars() == 0); // Solver here is empty
 
     // Inject original CNF
-    orig_num_vars = cnf.nvars;
+    orig_num_vars = cnf.nVars();
     solver->new_vars(orig_num_vars);
-    for(const auto& cl: cnf.clauses) solver->add_clause(cl);
-    for(const auto& cl: cnf.red_clauses) solver->add_red_clause(cl);
+    for(const auto& cl: cnf.get_clauses()) solver->add_clause(cl);
+    for(const auto& cl: cnf.get_red_clauses()) solver->add_red_clause(cl);
     get_incidence();
 
     // Double vars
@@ -460,9 +472,9 @@ void Extend::fill_solver(const SimplifiedCNF& cnf) {
     seen.resize(solver->nVars()*2, 0);
 
     // We only need to double the non-opt-sampling vars
-    for(const auto& v: cnf.opt_sampl_vars) seen[v] = 1;
+    for(const auto& v: cnf.get_opt_sampl_vars()) seen[v] = 1;
     vector<Lit> cl2;
-    for(const auto& cl: cnf.clauses) {
+    for(const auto& cl: cnf.get_clauses()) {
         cl2.clear();
         for (const auto& l: cl) {
             if (seen[l.var()]) cl2.push_back(l);
@@ -470,5 +482,5 @@ void Extend::fill_solver(const SimplifiedCNF& cnf) {
         }
         solver->add_clause(cl2);
     }
-    for(const auto& v: cnf.opt_sampl_vars) seen[v] = 0;
+    for(const auto& v: cnf.get_opt_sampl_vars()) seen[v] = 0;
 }

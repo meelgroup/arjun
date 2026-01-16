@@ -78,6 +78,7 @@ project (arjun)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 enable_language( CXX )
 enable_language( C )
@@ -122,6 +123,7 @@ if (SYNTH)
         PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../cadical/build/
         NAMES cadical
         REQUIRED)
+    find_package(EvalMaxSAT REQUIRED)
 endif()
 
 macro(add_sanitize_option flagname)
@@ -193,13 +195,13 @@ endif()
 if (NOT MSVC)
     add_compile_options( -g)
 
-    add_compile_options("$<$<CONFIG:RelWithDebInfo>:-O3>")
-
+    add_compile_options("$<$<CONFIG:RelWithDebInfo>:-O2>")
     add_compile_options("$<$<CONFIG:Release>:-O3>")
     add_compile_options("$<$<CONFIG:Release>:-g0>")
     add_compile_options("$<$<CONFIG:Release>:-DNDEBUG>")
 
-    add_compile_options("$<$<CONFIG:DEBUG>:-O0>")
+    add_compile_options("$<$<CONFIG:Debug>:-O0>")
+    add_compile_options("$<$<CONFIG:Debug>:-D_GLIBCXX_ASSERTIONS>")
 
 else()
     # see https://msdn.microsoft.com/en-us/library/fwkeyyhe.aspx for details
@@ -214,7 +216,7 @@ else()
     add_compile_options("$<$<CONFIG:Release>:/NDEBUG>")
     add_compile_options("$<$<CONFIG:Release>:/ZI>")
 
-    add_compile_options("$<$<CONFIG:DEBUG>:/Od>")
+    add_compile_options("$<$<CONFIG:Debug>:/Od>")
 
     if (STATICCOMPILE)
         # We statically link to reduce dependencies
