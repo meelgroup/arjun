@@ -635,12 +635,12 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     bool ret = find_conflict(y_rep, ctx, conflict);
     if (ret) {
         perform_repair(y_rep, ctx, conflict);
+        verb_print(2, "After repair, ctx (y AND y_hat!) updated, needs_repair changed. New size: " << needs_repair.size());
         // TODO so we can do more than one repair before getting new ctx
         /* recompute_all_y_hat(ctx); */
         return true;
     }
     update_needs_repair_beyond(y_rep, ctx);
-    verb_print(2, "After repair, ctx (y AND y_hat!) updated, needs_repair changed. New size: " << needs_repair.size());
     print_needs_repair_vars();
     return ret;
 }
