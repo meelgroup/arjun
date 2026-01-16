@@ -682,8 +682,10 @@ bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>
         ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
     }
     conflict = repair_solver.get_conflict();
+    auto it = std::find(conflict.begin(), conflict.end(), repairing);
+    assert(it != conflict.end() && "repairing literal must be in conflict");
     verb_print(2, "repair_maxsat conflict: " << conflict);
-    if (conflict.empty()) {
+    if (conflict.size() == 1) {
         verb_print(1, "repairing " << y_rep+1 << " is not possible");
         return false;
     }
@@ -706,13 +708,13 @@ bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>
 
 void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, const Lit repairing) {
     bool removed_any = true;
-    set<Lit> failed_removing;
-    failed_removing.insert(repairing);
+    set<Lit> dont_remove;
+    dont_remove.insert(repairing);
     while(removed_any) {
         std::shuffle(conflict.begin(), conflict.end(), mtrand);
         removed_any = false;
         for(const auto& try_rem: conflict) {
-            if (failed_removing.count(try_rem)) continue;
+            if (dont_remove.count(try_rem)) continue;
             verb_print(3, "Trying to remove conflict literal: " << try_rem);
             assumps.clear();
             for(const auto& l: conflict) {
@@ -722,7 +724,7 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
             release_assert(assumps.size() == conflict.size()-1);
             auto ret2 = repair_solver.solve(&assumps);
             if (ret2 == l_True) {
-                failed_removing.insert(try_rem);
+                dont_remove.insert(try_rem);
                 continue;
             }
             conflict = repair_solver.get_conflict();
