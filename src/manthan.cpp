@@ -687,13 +687,14 @@ bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>
         verb_print(1, "repairing " << y_rep+1 << " is not possible");
         return false;
     }
-    set<Lit> confl_set(conflict.begin(), conflict.end());
-    assert(confl_set.count(repairing) == 1 && "conflict must contain the repairing lit");
-    confl_set.erase(repairing);
     uint32_t orig_size = conflict.size();
-    conflict = vector<Lit>(confl_set.begin(), confl_set.end());
     if (conflict.size() > 1 && mconf.do_minimize_conflict)
-        minimize_conflict(conflict, assumps);
+        minimize_conflict(conflict, assumps, repairing);
+
+    auto now_end = std::remove_if(conflict.begin(), conflict.end(),
+                [&](const Lit l){ return l == repairing; });
+    assert(now_end != conflict.end() && "repairing literal must be in conflict");
+    conflict.erase(now_end, conflict.end());
     if (conflict.empty()) {
         verb_print(1, "repairing " << y_rep+1 << " is not possible after minimization");
         return false;
@@ -703,9 +704,10 @@ bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>
     return true;
 }
 
-void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps) {
+void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, const Lit repairing) {
     bool removed_any = true;
     set<Lit> failed_removing;
+    failed_removing.insert(repairing);
     while(removed_any) {
         std::shuffle(conflict.begin(), conflict.end(), mtrand);
         removed_any = false;
