@@ -425,6 +425,14 @@ void Manthan::print_needs_repair_vars() const {
     }
 }
 
+uint32_t Manthan::calc_non_bw_needs_repair() const {
+    uint32_t cnt = 0;
+    for(const auto& y: needs_repair) {
+        if (backward_defined.count(y) == 0) cnt++;
+    }
+    return cnt;
+}
+
 SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     assert(input_cnf.get_need_aig() && input_cnf.defs_invariant());
     assert(mconf.simplify_every > 0 && "Can't give simplify_every=0");
@@ -526,29 +534,20 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         print_needs_repair_vars();
 
         const uint32_t old_needs_repair_size = needs_repair.size();
-        vector<lbool> better_ctx;
-        if (needs_repair.size() == 1 || mconf.do_maxsat_better_ctx == -1) {
-            better_ctx = ctx;
+        if (calc_non_bw_needs_repair() == 1 || mconf.do_maxsat_better_ctx == -1) {
+          // Nothing to do
         } else if (mconf.do_maxsat_better_ctx == 1) {
-          better_ctx = find_better_ctx_maxsat(ctx);
+          find_better_ctx_maxsat(ctx);
         } else {
-          better_ctx = find_better_ctx_normal(ctx);
+          find_better_ctx_normal(ctx);
         }
-        needs_repair_sum += needs_repair.size();
-
+        needs_repair.clear();
+        for(const auto& y: to_define_full) if (ctx[y] != ctx[y_to_y_hat[y]])
+            needs_repair.insert(y);
         verb_print(2, "[manthan] Finding better ctx DONE, needs_repair size before vs now: "
               << setw(3) << old_needs_repair_size << " -- " << setw(4) << needs_repair.size());
         print_needs_repair_vars();
-        for(const auto& y: to_define_full) if (!needs_repair.count(y)) {
-            ctx[y] = better_ctx[y];
-            if (conf.verb >= 3) {
-                if (better_ctx[y] != ctx[y])
-                    verb_print(3, "Updated ctx on v: " << y+1 << " new val: " << better_ctx[y] << " old val: " << ctx[y]);
-                else
-                    verb_print(3, "Not updating ctx on v: " << y+1 << (backward_defined.count(y) ? "[BW]" : "")
-                            << " val: " << ctx[y]);
-            }
-        }
+        needs_repair_sum += needs_repair.size();
 
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
@@ -607,15 +606,6 @@ uint32_t Manthan::find_next_repair_var(sample& ctx) {
             ctx[y_to_y_hat[y_rep]] = ctx[y_rep]; // pretend to have fixed the ctx
             needs_repair.erase(y_rep);
             continue;
-        }
-        if (conf.verb >= 2) {
-            cout << "c o needs repair: ";
-            for(const auto& y: y_order) if (needs_repair.count(y)) {
-                cout << y+1;
-                if (backward_defined.count(y)) cout << "[BW]";
-                cout << " ";
-            }
-            std::cout << endl;
         }
         assert(y_rep != std::numeric_limits<uint32_t>::max());
         needs_repair.erase(y_rep);
@@ -695,6 +685,8 @@ bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>
                 needs_repair.erase(y);
             }
         }
+        verb_print(2, "After zero-cost repair, ctx updated, needs_repair changed. New size: " << needs_repair.size());
+        print_needs_repair_vars();
         return false;
     } else {
         ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
@@ -854,13 +846,12 @@ void Manthan::fix_order() {
             y_order.push_back(y);
         }
     }
+    assert(y_order.size() == to_define_full.size());
     verb_print(1, "[manthan] Fixed order. T: " << setprecision(2) << fixed << (cpuTime() - my_time)
             << " Final order size: " << y_order.size());
 }
 
-// Fills needs_repair with vars from y (i.e. output)
-sample Manthan::find_better_ctx_maxsat(const sample& ctx) {
-    needs_repair.clear();
+void Manthan::find_better_ctx_maxsat(sample& ctx) {
     verb_print(2, "Finding better ctx.");
     EvalMaxSAT s_ctx;
     for(uint32_t i = 0; i < cnf.nVars(); i++) s_ctx.newVar();
@@ -909,27 +900,15 @@ sample Manthan::find_better_ctx_maxsat(const sample& ctx) {
     auto ret = s_ctx.solve();
     assert(ret && "must be satisfiable");
     assert(s_ctx.getCost() > 0);
-    for(const auto&l : assumps) {
-        if (!s_ctx.getValue(lit_to_int(l))) {
-            needs_repair.insert(l.var());
-        }
-    }
     verb_print(2, "optimum found: " << needs_repair.size() << " original assumps size: " << assumps.size());
-    /* assert(needs_repair.size() == s_ctx.getCost()); */
-    assert(!needs_repair.empty());
 
-    sample better_ctx(cnf.nVars(), l_Undef);
-    for(const auto& v: to_define_full) better_ctx[v] = s_ctx.getValue(v+1) ? l_True : l_False;
-    return better_ctx;
+    for(const auto& v: to_define_full) ctx[v] = s_ctx.getValue(v+1) ? l_True : l_False;
 }
 
 // Fills needs_repair with vars from y (i.e. output) using normal SAT solver with assumptions
-sample Manthan::find_better_ctx_normal(const sample& ctx) {
+void Manthan::find_better_ctx_normal(sample& ctx) {
     SATSolver ctx_solver;
     ctx_solver.new_vars(cnf.nVars());
-    const auto old_needs_repair_size = needs_repair.size();
-
-    needs_repair.clear();
     verb_print(2, "Finding better ctx using normal SAT solver.");
 
     // Fix input values
@@ -964,6 +943,7 @@ sample Manthan::find_better_ctx_normal(const sample& ctx) {
                  << " weight=" << weight);
         }
     }
+    assert(incorrect_lits.size() == needs_repair.size());
     inject_cnf(ctx_solver, false);
 
     // Sort incorrect lits by weight (higher weight = higher priority to fix)
@@ -983,18 +963,10 @@ sample Manthan::find_better_ctx_normal(const sample& ctx) {
             // Success! Extract the model
             verb_print(2, "[find-better-ctx-normal] Found satisfying assignment. "
                        << "Could not fix " << cannot_fix.size() << " variables.");
-            sample better_ctx(cnf.nVars(), l_Undef);
             for(const auto& v: to_define_full) {
-                better_ctx[v] = ctx_solver.get_model()[v];
-                const auto y_hat = y_to_y_hat[v];
-                if (better_ctx[v] != ctx[y_hat]) {
-                    needs_repair.insert(v);
-                }
+                ctx[v] = ctx_solver.get_model()[v];
             }
-            verb_print(2, "Optimum found: " << needs_repair.size()
-                       << " variables need repair (original: " << old_needs_repair_size << ")");
-            assert(!needs_repair.empty() || cannot_fix.empty());
-            return better_ctx;
+            return;
         } else {
             auto conflict = ctx_solver.get_conflict();
             assert(!conflict.empty() && "Got UNSAT with empty conflict!");
@@ -1128,11 +1100,8 @@ bool Manthan::get_counterexample(sample& ctx) {
         verb_print(2, COLYEL "[manthan] *** Counterexample found ***");
         ctx = solver.get_model();
         assert(ctx[fh->get_true_lit().var()] == l_True);
-        for(const auto& y: y_order) {
-            const auto y_hat = y_to_y_hat[y];
-            if (ctx[y] == ctx[y_hat]) continue;
+        for(const auto& y: to_define_full) if (ctx[y] != ctx[y_to_y_hat[y]])
             needs_repair.insert(y);
-        }
         return false;
     } else {
         assert(ret == l_False);

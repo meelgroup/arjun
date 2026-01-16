@@ -91,6 +91,7 @@ class Manthan {
 
         FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& var_remap, uint32_t depth = 0);
         vector<uint32_t> incidence;
+        uint32_t calc_non_bw_needs_repair() const;
         void print_needs_repair_vars() const;
         void print_cnf_debug_info(const sample& ctx) const;
         void get_incidence();
@@ -98,8 +99,8 @@ class Manthan {
         void inject_formulas_into_solver();
         bool check_satisfied_all_cls_with_flip(const sample& s, const uint32_t v) const;
         vector<sample*> filter_samples(const uint32_t v, const vector<sample>& samples);
-        sample find_better_ctx_maxsat(const sample& ctx);
-        sample find_better_ctx_normal(const sample& ctx);
+        void find_better_ctx_maxsat(sample& ctx);
+        void find_better_ctx_normal(sample& ctx);
         void inject_cnf(SATSolver& s, const bool also_vars = true) const;
         void inject_unit(SATSolver& s);
         bool repair(const uint32_t v, sample& ctx);
