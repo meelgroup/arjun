@@ -559,6 +559,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
                 at_least_one_repaired = true;
                 num_repaired++;
                 tot_repaired++;
+                break; // we don't recompute y_hats, so we'd be doing WRONG repairs.
             }
             verb_print(3, "[manthan] finished repairing " << y_rep+1 << " : " << std::boolalpha << done);
         }
@@ -632,13 +633,20 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     }
 
     vector<Lit> conflict;
-    bool ret = find_minim_conflict(y_rep, ctx, conflict);
-    if (!ret) return false;
-    perform_repair(y_rep, ctx, conflict);
-    return true;
+    bool ret = find_conflict(y_rep, ctx, conflict);
+    if (ret) {
+        perform_repair(y_rep, ctx, conflict);
+        // TODO so we can do more than one repair before getting new ctx
+        /* recompute_all_y_hat(ctx); */
+        return true;
+    }
+    update_needs_repair_beyond(y_rep, ctx);
+    verb_print(2, "After repair, ctx (y AND y_hat!) updated, needs_repair changed. New size: " << needs_repair.size());
+    print_needs_repair_vars();
+    return ret;
 }
 
-bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict) {
+bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict) {
     // F(x,y) & x = ctx(x) && forall_y (y not dependent on v) (y = ctx(y)) & NOT (v = ctx(v))
     // Used to find UNSAT core that will help us repair the function
     vector<Lit> assumps;
@@ -672,21 +680,9 @@ bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>
         for(uint32_t i = 0; i < cnf.nVars(); i++) {
             ctx[i] = repair_solver.get_model()[i];
         }
+        assert(ctx[y_rep] == ctx[y_to_y_hat[y_rep]]);
         /* ctx[y_rep] = ctx[y_rep] ^ true; */
-        ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
-        // TODO: recompute y_hat values!!!
-        bool reached = false;
-        for(const auto&y: y_order) {
-            if (y == y_rep) {reached = true; continue;}
-            if (!reached) continue;
-            if (repair_solver.get_model()[y] != ctx[y_to_y_hat[y]]) {
-                needs_repair.insert(y);
-            } else {
-                needs_repair.erase(y);
-            }
-        }
-        verb_print(2, "After zero-cost repair, ctx updated, needs_repair changed. New size: " << needs_repair.size());
-        print_needs_repair_vars();
+        /* ctx[y_to_y_hat[y_rep]] = ctx[y_rep]; */
         return false;
     } else {
         ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
@@ -720,6 +716,19 @@ bool Manthan::find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>
     verb_print(2, "[manthan] minim. Removed: " << (orig_size - conflict.size())
             << " from conflict, now size: " << conflict.size());
     return true;
+}
+
+void Manthan::update_needs_repair_beyond(const uint32_t y_rep, const sample& ctx) {
+    bool reached = false;
+    for(const auto&y: y_order) {
+        if (y == y_rep) {reached = true; continue;}
+        if (!reached) continue;
+        if (repair_solver.get_model()[y] != ctx[y_to_y_hat[y]]) {
+            needs_repair.insert(y);
+        } else {
+            needs_repair.erase(y);
+        }
+    }
 }
 
 void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, const Lit to_repair) {
@@ -756,7 +765,7 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
     }
 }
 
-void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict) {
+void Manthan::perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit>& conflict) {
     verb_print(2, "[manthan] Performing repair on " << setw(5) << y_rep+1
             << " with conflict size " << setw(3) << conflict.size());
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
@@ -811,6 +820,21 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     verb_print(4, "repaired formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
     //We fixed the ctx on this variable
     assert(check_map_dependency_cycles());
+}
+
+void Manthan::recompute_all_y_hat(sample& ctx) {
+    inject_formulas_into_solver();
+    vector<Lit> assumps(input.size());
+    for(const auto& x: input) {
+        Lit l(x, ctx[x] == l_False);
+        assumps.push_back(l);
+    }
+    auto ret = solver.solve(&assumps);
+    assert(ret == l_True);
+    for(const auto& y: to_define_full) {
+        const auto y_hat = y_to_y_hat.at(y);
+        ctx[y_hat] = solver.get_model()[y_hat];
+    }
 }
 
 // Will order 1st the variables that NOTHING depends on
@@ -1100,6 +1124,7 @@ bool Manthan::get_counterexample(sample& ctx) {
         verb_print(2, COLYEL "[manthan] *** Counterexample found ***");
         ctx = solver.get_model();
         assert(ctx[fh->get_true_lit().var()] == l_True);
+        needs_repair.clear();
         for(const auto& y: to_define_full) if (ctx[y] != ctx[y_to_y_hat[y]])
             needs_repair.insert(y);
         return false;

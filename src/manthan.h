@@ -104,14 +104,16 @@ class Manthan {
         void inject_cnf(SATSolver& s, const bool also_vars = true) const;
         void inject_unit(SATSolver& s);
         bool repair(const uint32_t v, sample& ctx);
-        bool find_minim_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict);
+        bool find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict);
         void minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, const Lit repairing);
         uint32_t find_next_repair_var(sample& ctx);
-        void perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict);
+        void perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit>& conflict);
         void add_not_F_x_yhat();
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with_backward();
         void print_y_order_occur() const;
+        void recompute_all_y_hat(sample& ctx);
+        void update_needs_repair_beyond(const uint32_t y_rep, const sample& ctx);
 
         vector<uint32_t> y_order; //1st only depends on inputs
         void fix_order();
