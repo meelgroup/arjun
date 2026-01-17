@@ -311,7 +311,6 @@ if __name__ == "__main__":
             " --synthbve"
             , " --extend"
             , " --minimize"
-            , " --maxsat"
             , " --minimconfl"
             , " --filtersamples"
             , " --biasedsampling"
@@ -330,6 +329,7 @@ if __name__ == "__main__":
         solver += " --simpevery " + random.choice(["1", "100", "10000"])
         solver += " --maxdepth " + random.choice(["2", "10"])
         solver += " --minleaf " + random.choice(["2", "10"])
+        solver += " --maxsat " + random.choice(["0", "1", "-1"])
 
         err, aigs = run_synth(solver, fname)
         if err is None:
