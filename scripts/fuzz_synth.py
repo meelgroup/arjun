@@ -315,6 +315,7 @@ if __name__ == "__main__":
             , " --minimconfl"
             , " --filtersamples"
             , " --biasedsampling"
+            , " --uniqsamp"
         ]
         for o in opts:
             val = random.choice([0, 1])

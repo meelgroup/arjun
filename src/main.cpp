@@ -128,6 +128,7 @@ void add_arjun_options() {
     myopt("--simpevery", manthan_conf.simplify_every, atoi,"Simplify solvers inside Manthan every K loops");
     myopt("--manthancnf", manthan_conf.write_manthan_cnf, string, "Write Manthan CNF to this file");
     myopt("--maxsat", manthan_conf.do_maxsat_better_ctx, atoi, "Use maxsat to find better counterexamples during Manthan");
+    myopt("--uniqsamp", manthan_conf.do_unique_input_samples, atoi, "Unique samples on input vars");
 
 
     myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
