@@ -88,9 +88,13 @@ class Manthan {
         set<uint32_t> to_define;
         set<uint32_t> backward_defined;
         set<uint32_t> to_define_full;
+        set<uint32_t> helpers;
+        set<uint32_t> y_hats;
 
+        void create_vars_for_y_hats();
         FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& var_remap, uint32_t depth = 0);
         vector<uint32_t> incidence;
+        bool check_functions_for_y_vars() const;
         bool ctx_is_sat(const sample& ctx) const;
         uint32_t calc_non_bw_needs_repair() const;
         void print_needs_repair_vars() const;

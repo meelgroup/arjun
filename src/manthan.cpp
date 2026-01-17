@@ -342,6 +342,7 @@ void Manthan::fill_var_to_formula_with_backward() {
                 // Create fresh variable for AND gate
                 solver.new_var();
                 const Lit and_out = Lit(solver.nVars() - 1, false);
+                helpers.insert(and_out.var());
 
                 // Generate Tseitin clauses for AND gate
                 // and_out represents (l_lit & r_lit)
@@ -364,6 +365,7 @@ void Manthan::fill_var_to_formula_with_backward() {
         assert(var_to_formula.count(v) == 0);
         var_to_formula[v] = f;
     }
+    assert(check_functions_for_y_vars());
 }
 
 // This adds (and re-numbers) the deep-copied AIGs to a fresh copy of the CNF, then checks if the CNF
@@ -447,6 +449,22 @@ bool Manthan::ctx_is_sat(const sample& ctx) const {
     return true;
 }
 
+bool Manthan::check_functions_for_y_vars() const {
+    for(const auto& [v, f]  : var_to_formula) {
+        for(const auto& cl: f.clauses) {
+            for(const auto& l: cl.lits) {
+                const uint32_t var = l.var();
+                if (input.count(var)) continue;
+                bool is_y_hat = y_hats.count(var) == 1;
+                bool is_helper = helpers.count(var) == 1;
+                bool is_true = var == fh->get_true_lit().var();
+                assert(is_y_hat || is_helper || is_true);
+            }
+        }
+    }
+    return true;
+}
+
 SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     assert(input_cnf.get_need_aig() && input_cnf.defs_invariant());
     assert(mconf.simplify_every > 0 && "Can't give simplify_every=0");
@@ -494,6 +512,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     verb_print(2, "[manthan] After fh creation: solver_train.nVars() = " << solver.nVars() << " cnf.nVars() = " << cnf.nVars());
     fix_order();
     print_y_order_occur();
+    create_vars_for_y_hats();
     verb_print(1, "[manthan] Starting training. Manthan Config. "
         << "do_filter_samples=" << mconf.do_filter_samples
         << ", num_samples=" << mconf.num_samples
@@ -517,6 +536,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     }
     verb_print(1, COLYEL "[manthan] training done. T: " << std::setprecision(2) << std::fixed << (cpuTime() - train_start_time) << " seconds");
     assert(check_map_dependency_cycles());
+    assert(check_functions_for_y_vars());
 
     const double repair_time = cpuTime();
     add_not_F_x_yhat();
@@ -559,6 +579,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
           find_better_ctx_normal(ctx);
         }
         assert(ctx_is_sat(ctx));
+        assert(check_functions_for_y_vars());
         needs_repair.clear(); for(const auto& y: to_define_full) if (ctx[y] != ctx[y_to_y_hat[y]])
             needs_repair.insert(y);
         verb_print(2, "[manthan] Finding better ctx DONE, needs_repair size before vs now: "
@@ -786,6 +807,7 @@ void Manthan::perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit
     vector<Lit> cl;
     solver.new_var();
     auto fresh_l = Lit(solver.nVars()-1, false);
+    helpers.insert(fresh_l.var());
     cl.push_back(fresh_l);
     for(const auto& l: conflict) {
         cl.push_back(l);
@@ -822,7 +844,7 @@ void Manthan::perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit
     verb_print(4, "Original formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
     verb_print(4, "Branch formula. When this is true, H is wrong:" << endl << f);
     var_to_formula[y_rep] = fh->compose_ite(fh->constant_formula(ctx[y_rep] == l_True),
-            var_to_formula[y_rep], f);
+            var_to_formula[y_rep], f, helpers);
     updated_y_funcs.push_back(y_rep);
     verb_print(2, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
     verb_print(4, "repaired formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
@@ -1017,17 +1039,20 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
     }
 }
 
-// Adds ~F(x, y_hat), fills y_to_y_hat and y_hat_to_y
-void Manthan::add_not_F_x_yhat() {
-    vector<Lit> tmp;
-    // Create variables for y_hat
+void Manthan::create_vars_for_y_hats() {
     for(const auto& y: to_define_full) {
         solver.new_var();
         const uint32_t y_hat = solver.nVars()-1;
         y_to_y_hat[y] = y_hat;
         y_hat_to_y[y_hat] = y;
+        y_hats.insert(y_hat);
         verb_print(3, "mapping -- y: " << y+1 << " y_hat: " << y_hat+1);
     }
+}
+
+// Adds ~F(x, y_hat), fills y_to_y_hat and y_hat_to_y
+void Manthan::add_not_F_x_yhat() {
+    vector<Lit> tmp;
 
     // Adds ~F(x, y_hat)
     vector<Lit> cl_indics; // if true, clause is satisfied, if false, clause is unsatisfied
@@ -1040,20 +1065,20 @@ void Manthan::add_not_F_x_yhat() {
         }
 
         solver.new_var();
-        uint32_t v = solver.nVars()-1;
-        Lit cl_indic(v, false);
+        uint32_t cl_ind_v = solver.nVars()-1;
+        Lit cl_ind(cl_ind_v, false);
         tmp.clear();
-        tmp.push_back(~cl_indic);
+        tmp.push_back(~cl_ind);
         for(const auto&l : cl) tmp.push_back(l);
         solver.add_clause(tmp);
 
         for(const auto&l : cl) {
             tmp.clear();
-            tmp.push_back(cl_indic);
+            tmp.push_back(cl_ind);
             tmp.push_back(~l);
             solver.add_clause(tmp);
         }
-        cl_indics.push_back(cl_indic);
+        cl_indics.push_back(cl_ind);
     }
     tmp.clear();
     for(const auto& l: cl_indics) tmp.push_back(~l); // at least one is unsatisfied
@@ -1185,8 +1210,11 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
                 if (input.count(i)) continue;
                 dependency_mat[learned_v][i] |= dependency_mat[v][i];
             }
-        } else
-            verb_print(3, learned_v+1 << " depends on " << v+1 << " but NOT adding it, because it is not in to_define_full. input: " << (input.count(v) ? "yes" : "no"));
+            v = y_to_y_hat.at(v);
+        } else {
+            // it's input, so no need to update dependency matrix
+            assert(input.count(v) && "If not to_define_full, must be input");
+        }
 
         /* cout << "  -- all-0 goes -> " << node->CalculateDirection(point_0); */
         /* cout << "  -- all-1 goes -> " << node->CalculateDirection(point_1) << endl; */
@@ -1194,7 +1222,7 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
         auto form_0 = recur(&node->Child(0), learned_v, used_vars, depth+1);
         auto form_1 = recur(&node->Child(1), learned_v, used_vars, depth+1);
         bool val_going_right = node->CalculateDirection(point_1);
-        return fh->compose_ite(form_0, form_1, Lit(v, val_going_right));
+        return fh->compose_ite(form_0, form_1, Lit(v, val_going_right), helpers);
     }
     assert(false);
 }

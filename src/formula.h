@@ -83,9 +83,9 @@ public:
         return ret;
     }
 
-    Formula compose_ite(const Formula& fleft, const Formula& fright, const Formula& branch) {
+    Formula compose_ite(const Formula& fleft, const Formula& fright, const Formula& branch, set<uint32_t>& helpers) {
         Formula ret;
-        ret = compose_ite(fleft, fright, branch.out);
+        ret = compose_ite(fleft, fright, branch.out, helpers);
         ret.clauses.insert(ret.clauses.end(), branch.clauses.begin(), branch.clauses.end());
         ret.aig = AIG::new_ite(fleft.aig, fright.aig, branch.aig);
         return ret;
@@ -122,12 +122,13 @@ public:
         return ret;
     }
 
-    Formula compose_ite(const Formula& fleft, const Formula& fright, const Lit branch) {
+    Formula compose_ite(const Formula& fleft, const Formula& fright, const Lit branch, set<uint32_t>& helpers) {
         Formula ret;
         ret.clauses = fleft.clauses;
         for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
         solver->new_var();
-        uint32_t fresh_v = solver->nVars()-1;
+        const uint32_t fresh_v = solver->nVars()-1;
+        helpers.insert(fresh_v);
         //  branch -> return left
         // !branch -> return right
         //
