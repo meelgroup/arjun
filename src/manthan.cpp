@@ -434,6 +434,7 @@ bool Manthan::ctx_is_sat(const sample& ctx) const {
     }
     const auto ret = s.solve();
     assert(ret == l_True);
+    verb_print(2,  "[DEBUG] ctx is sat");
     return ret == l_True;
 }
 
@@ -495,7 +496,7 @@ bool Manthan::ctx_y_hat_compute(const sample& ctx) const {
         }
     }
     assert(incorrect.empty());
-
+    verb_print(2,  "[DEBUG] y_hat ctx is right");
     return true;
 }
 
@@ -641,7 +642,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
         while(!needs_repair.empty()) {
-            auto y_rep = find_next_repair_var();
+            auto y_rep = find_next_repair_var(ctx);
             bool done = repair(y_rep, ctx); // this updates ctx
             if (done) {
                 at_least_one_repaired = true;
@@ -683,18 +684,19 @@ bool Manthan::verify_final_cnf(const SimplifiedCNF& fcnf) const {
     return true;
 }
 
-uint32_t Manthan::find_next_repair_var() {
+uint32_t Manthan::find_next_repair_var(const sample& ctx) const {
     assert(!needs_repair.empty());
     uint32_t y_rep = std::numeric_limits<uint32_t>::max();
-    for(const auto& t: y_order) {
-        if (needs_repair.count(t)) {
-            y_rep = t;
+    for(const auto& y: y_order) {
+        if (needs_repair.count(y)) {
+            assert(ctx[y] != ctx[y_to_y_hat.at(y)]);
+            y_rep = y;
             break;
         }
+        assert(ctx[y] == ctx[y_to_y_hat.at(y)]);
     }
     assert(y_rep != std::numeric_limits<uint32_t>::max());
     assert(!backward_defined.count(y_rep) && "If all y_hat has been recomputed, the first wrong CANNOT be a BW var");
-    needs_repair.erase(y_rep);
     return y_rep;
 }
 
@@ -723,7 +725,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
         /* recompute_all_y_hat(ctx); */
         return true;
     }
-    update_needs_repair_beyond(y_rep, ctx);
+    compute_needs_repair(ctx);
     print_needs_repair_vars();
     return ret;
 }
@@ -756,9 +758,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     assert(ret != l_Undef);
     if (ret == l_True) {
         verb_print(2, "Repair cost is 0 for y: " << y_rep+1);
-        for(uint32_t i = 0; i < cnf.nVars(); i++) {
-            ctx[i] = repair_solver.get_model()[i];
-        }
+        for(const auto& y: to_define_full) ctx[y] = repair_solver.get_model()[y];
         assert(ctx[y_rep] == ctx[y_to_y_hat[y_rep]]);
         return false;
     }
@@ -793,16 +793,11 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     return true;
 }
 
-void Manthan::update_needs_repair_beyond(const uint32_t y_rep, const sample& ctx) {
-    bool reached = false;
+void Manthan::compute_needs_repair(const sample& ctx) {
+    assert(ctx[fh->get_true_lit().var()] == l_True);
+    needs_repair.clear();
     for(const auto&y: y_order) {
-        if (y == y_rep) {reached = true; continue;}
-        if (!reached) continue;
-        if (repair_solver.get_model()[y] != ctx[y_to_y_hat[y]]) {
-            needs_repair.insert(y);
-        } else {
-            needs_repair.erase(y);
-        }
+        if (ctx[y] != ctx[y_to_y_hat[y]]) needs_repair.insert(y);
     }
 }
 
@@ -1198,9 +1193,7 @@ bool Manthan::get_counterexample(sample& ctx) {
     if (ret == l_True) {
         verb_print(2, COLYEL "[manthan] *** Counterexample found ***");
         ctx = solver.get_model();
-        assert(ctx[fh->get_true_lit().var()] == l_True);
-        for(const auto& y: to_define_full) if (ctx[y] != ctx[y_to_y_hat[y]])
-            needs_repair.insert(y);
+        compute_needs_repair(ctx);
         return false;
     } else {
         assert(ret == l_False);
