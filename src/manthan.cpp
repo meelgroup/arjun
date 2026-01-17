@@ -937,7 +937,7 @@ void Manthan::fix_order() {
 }
 
 void Manthan::find_better_ctx_maxsat(sample& ctx) {
-    verb_print(2, "Finding better ctx.");
+    verb_print(2, "Finding better ctx via maxsat.");
     EvalMaxSAT s_ctx;
     for(uint32_t i = 0; i < cnf.nVars(); i++) s_ctx.newVar();
 
@@ -992,7 +992,7 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
 void Manthan::find_better_ctx_normal(sample& ctx) {
     SATSolver ctx_solver;
     ctx_solver.new_vars(cnf.nVars());
-    verb_print(2, "Finding better ctx using normal SAT solver.");
+    verb_print(2, "Finding better ctx via normal SAT solver.");
 
     // Fix input values
     for(const auto& x: input) {
