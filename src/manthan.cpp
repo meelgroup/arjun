@@ -440,9 +440,6 @@ bool Manthan::ctx_is_sat(const sample& ctx) const {
 
 bool Manthan::ctx_y_hat_compute(const sample& ctx) const {
     SATSolver s;
-    // Fragile, same var order as the other solver, i.e. "solver"
-    /* inject_cnf(s); */
-    /* add_not_F_x_yhat(s); */
     while (s.nVars() < solver.nVars()) s.new_var();
 
     // add true lit
