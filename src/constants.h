@@ -52,8 +52,8 @@ using std::setw;
 //default
 #define COLDEF "\033[0m"
 
-// #define SLOW_DEBUG
-// #define VERBOSE_DEBUG
+/* #define SLOW_DEBUG */
+/* #define VERBOSE_DEBUG */
 
 #ifdef SLOW_DEBUG
 #define SLOW_DEBUG_DO(x) do { x; } while (0)
