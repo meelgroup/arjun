@@ -1360,7 +1360,7 @@ DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
 
                 if (defined(i)) cout << "[DEF]";
                 else          cout << "[UNDEF]";
-                cout << " ";
+                cout << ", ";
             }
             cout << endl;
         }
