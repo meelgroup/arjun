@@ -621,7 +621,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         SLOW_DEBUG_DO(assert(ctx_y_hat_compute(ctx)));
 
         const uint32_t old_needs_repair_size = needs_repair.size();
-        if (calc_non_bw_needs_repair() == 1 || mconf.do_maxsat_better_ctx == -1) {
+        if (mconf.do_maxsat_better_ctx == -1) {
           // Nothing to do
         } else if (mconf.do_maxsat_better_ctx == 1) {
           find_better_ctx_maxsat(ctx);
