@@ -463,7 +463,7 @@ bool Manthan::ctx_y_hat_compute(const sample& ctx) const {
 
     // Add input
     for(const auto& x: input) {
-        const auto val = solver.get_model()[x];
+        const auto val = ctx[x];
         s.add_clause({Lit(x, val == l_False)});
     }
 
@@ -491,15 +491,22 @@ bool Manthan::ctx_y_hat_compute(const sample& ctx) const {
     const auto ret = s.solve();
     assert(ret == l_True);
     const auto& model = s.get_model();
-    for(const auto& y: to_define_full) {
+    vector<uint32_t> incorrect;
+    for(const auto& y: y_order) {
         const uint32_t y_hat = y_to_y_hat.at(y);
 
         const auto ctx_y_hat = ctx[y];
         const auto val_y_hat = model[y_hat];
         assert(ctx_y_hat != l_Undef);
         assert(val_y_hat != l_Undef);
-        assert(ctx_y_hat == val_y_hat);
+        if (ctx_y_hat != val_y_hat) {
+            incorrect.push_back(y);
+            verb_print(1, "ERROR: ctx for y_hat " << setw(5) << y+1 << ": ctx has "
+                << setw(4) << pr(ctx_y_hat) << " but computed y_hat has "
+                << setw(4) << pr(val_y_hat));
+        }
     }
+    assert(incorrect.empty());
 
     return true;
 }
@@ -621,10 +628,10 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         sample ctx;
         bool finished = get_counterexample(ctx);
         if (finished) break;
-        SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
-        SLOW_DEBUG_DO(assert(ctx_y_hat_compute(ctx)));
         print_cnf_debug_info(ctx);
         print_needs_repair_vars();
+        SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
+        SLOW_DEBUG_DO(assert(ctx_y_hat_compute(ctx)));
 
         const uint32_t old_needs_repair_size = needs_repair.size();
         if (calc_non_bw_needs_repair() == 1 || mconf.do_maxsat_better_ctx == -1) {
