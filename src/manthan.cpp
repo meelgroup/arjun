@@ -365,7 +365,7 @@ void Manthan::fill_var_to_formula_with_backward() {
         assert(var_to_formula.count(v) == 0);
         var_to_formula[v] = f;
     }
-    assert(check_functions_for_y_vars());
+    SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
 }
 
 // This adds (and re-numbers) the deep-copied AIGs to a fresh copy of the CNF, then checks if the CNF
@@ -436,6 +436,7 @@ uint32_t Manthan::calc_non_bw_needs_repair() const {
 }
 
 bool Manthan::ctx_is_sat(const sample& ctx) const {
+    assert(ctx.size() > cnf.nVars());
     for(const auto& val: ctx) assert(val != l_Undef);
 
     SATSolver s;
@@ -536,7 +537,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     }
     verb_print(1, COLYEL "[manthan] training done. T: " << std::setprecision(2) << std::fixed << (cpuTime() - train_start_time) << " seconds");
     assert(check_map_dependency_cycles());
-    assert(check_functions_for_y_vars());
+    SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
 
     const double repair_time = cpuTime();
     add_not_F_x_yhat();
@@ -565,8 +566,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         inject_formulas_into_solver();
         sample ctx;
         bool finished = get_counterexample(ctx);
-        assert(ctx_is_sat(ctx));
         if (finished) break;
+        SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
         print_cnf_debug_info(ctx);
         print_needs_repair_vars();
 
@@ -578,8 +579,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         } else {
           find_better_ctx_normal(ctx);
         }
-        assert(ctx_is_sat(ctx));
-        assert(check_functions_for_y_vars());
+        SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
+        SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
         needs_repair.clear(); for(const auto& y: to_define_full) if (ctx[y] != ctx[y_to_y_hat[y]])
             needs_repair.insert(y);
         verb_print(2, "[manthan] Finding better ctx DONE, needs_repair size before vs now: "
