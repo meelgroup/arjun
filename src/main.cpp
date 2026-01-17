@@ -115,27 +115,29 @@ void add_arjun_options() {
     myopt("--prebackbone", do_pre_backbone, atoi,"Perform backbone before other things");
     myopt("--seed", conf.seed, atoi, "Random seed");
 
-    // synth
-    myopt("--samples", manthan_conf.num_samples, atoi,"Number of samples");
-    myopt("--samplesccnr", manthan_conf.num_samples_ccnr, atoi,"Number of samples from CCNR");
-    myopt("--maxdepth", manthan_conf.maximumDepth, atoi,"Maximum depth of decision tree");
-    myopt("--minleaf", manthan_conf.minimumLeafSize, atoi,"Minimum leaf size in decision tree");
-    myopt("--filtersamples", manthan_conf.do_filter_samples, atoi,"Filter samples from useless ones");
-    myopt("--biasedsampling", manthan_conf.do_biased_sampling, atoi,"Biased sampling");
-    myopt("--mingainsplit", manthan_conf.minGainSplit, atof,"Minimum gain for a split in decision tree");
-    myopt("--fixedconf", manthan_conf.sampler_fixed_conflicts, atoi,"Restart conflict limit in CMSGen");
+    // synth main
+    myflag("--synth", synthesis, "Run synthesis");
+    myopt("--maxsat", manthan_conf.do_maxsat_better_ctx, atoi, "Use maxsat to find better counterexamples during Manthan");
+    myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
+    myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
     myopt("--minimconfl", manthan_conf.do_minimize_conflict, atoi,"Minimize conflict size when repairing");
     myopt("--simpevery", manthan_conf.simplify_every, atoi,"Simplify solvers inside Manthan every K loops");
-    myopt("--manthancnf", manthan_conf.write_manthan_cnf, string, "Write Manthan CNF to this file");
-    myopt("--maxsat", manthan_conf.do_maxsat_better_ctx, atoi, "Use maxsat to find better counterexamples during Manthan");
-    myopt("--uniqsamp", manthan_conf.do_unique_input_samples, atoi, "Unique samples on input vars");
-
-
     myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
-    myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
-    myflag("--synth", synthesis, "Run synthesis");
-    myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
+    // synth -- sampling
+    myopt("--samples", manthan_conf.num_samples, atoi,"Number of samples");
+    myopt("--samplesccnr", manthan_conf.num_samples_ccnr, atoi,"Number of samples from CCNR");
+    myopt("--uniqsamp", manthan_conf.do_unique_input_samples, atoi, "Unique samples on input vars");
+    myopt("--filtersamples", manthan_conf.do_filter_samples, atoi,"Filter samples from useless ones");
+    myopt("--biasedsampling", manthan_conf.do_biased_sampling, atoi,"Biased sampling");
+    myopt("--fixedconf", manthan_conf.sampler_fixed_conflicts, atoi,"Restart conflict limit in CMSGen");
+    // synth -- decision tree
+    myopt("--maxdepth", manthan_conf.maximumDepth, atoi,"Maximum depth of decision tree");
+    myopt("--minleaf", manthan_conf.minimumLeafSize, atoi,"Minimum leaf size in decision tree");
+    myopt("--mingainsplit", manthan_conf.minGainSplit, atof,"Minimum gain for a split in decision tree");
+    // synth -- debug
+    myopt("--manthancnf", manthan_conf.write_manthan_cnf, string, "Write Manthan CNF to this file");
     myopt("--debugsynth", conf.debug_synth, string,"Debug synthesis, prefix with this fname");
+
 
     // Simplification options for minim
     myopt("--probe", conf.probe_based, atoi,"Do probing during orignal Arjun");
