@@ -642,13 +642,15 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         uint32_t num_repaired = 0;
         while(!needs_repair.empty()) {
             auto y_rep = find_next_repair_var();
-            bool done = repair(y_rep, ctx); // this updates ctx on y
+            bool done = repair(y_rep, ctx); // this updates ctx
             if (done) {
                 at_least_one_repaired = true;
                 num_repaired++;
                 tot_repaired++;
                 break; // we don't recompute y_hats, so we'd be doing WRONG repairs.
             }
+            SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
+            SLOW_DEBUG_DO(assert(ctx_y_hat_compute(ctx)));
             verb_print(3, "[manthan] finished repairing " << y_rep+1 << " : " << std::boolalpha << done);
         }
         verb_print(2, "[manthan] Num repaired: " << num_repaired << " tot repaired: " << tot_repaired << " num_loops_repair: " << num_loops_repair);
@@ -733,7 +735,6 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     for(const auto& x: input) {
         const Lit l = Lit(x, ctx[x] == l_False);
         assumps.push_back({l});
-        /* cout << "assumed input cl: " << std::vector<Lit>{l} << endl; */
     }
 
     // We go through the variables that y_rep does NOT depend on, and assume them to be correct
@@ -744,13 +745,11 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         const Lit l = Lit(y, ctx[y] == l_False);
         verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
         assumps.push_back({l});
-        /* cout << "assumed cl: " << std::vector<Lit>{l} << endl; */
     }
 
     assert(ctx[y_rep] != ctx[y_to_y_hat[y_rep]] && "before repair, y and y_hat must be different");
     const Lit to_repair = Lit(y_rep, ctx[y_to_y_hat[y_rep]] == l_True);
     assumps.push_back({~to_repair});
-    /* cout << "added to_repair cl: " << std::vector<Lit>{~to_repair} << endl; */
 
     verb_print(2, "assuming reverse for y_rep: " << ~to_repair);
     auto ret = repair_solver.solve(&assumps);
@@ -761,8 +760,6 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
             ctx[i] = repair_solver.get_model()[i];
         }
         assert(ctx[y_rep] == ctx[y_to_y_hat[y_rep]]);
-        /* ctx[y_rep] = ctx[y_rep] ^ true; */
-        /* ctx[y_to_y_hat[y_rep]] = ctx[y_rep]; */
         return false;
     }
     conflict = repair_solver.get_conflict();
