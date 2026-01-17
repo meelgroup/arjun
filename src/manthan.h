@@ -96,6 +96,7 @@ class Manthan {
         vector<uint32_t> incidence;
         bool check_functions_for_y_vars() const;
         bool ctx_is_sat(const sample& ctx) const;
+        Lit map_y_to_y_hat(const Lit& l) const;
         bool ctx_y_hat_compute(const sample& ctx) const;
         uint32_t calc_non_bw_needs_repair() const;
         void print_needs_repair_vars() const;
@@ -118,7 +119,6 @@ class Manthan {
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with_backward();
         void print_y_order_occur() const;
-        void recompute_all_y_hat(sample& ctx);
         void update_needs_repair_beyond(const uint32_t y_rep, const sample& ctx);
 
         vector<uint32_t> y_order; //1st only depends on inputs

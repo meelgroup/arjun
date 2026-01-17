@@ -316,22 +316,9 @@ void Manthan::fill_var_to_formula_with_backward() {
                 const auto& orig_to_new = cnf.get_orig_to_new_var();
                 const auto it = orig_to_new.find(var_orig);
 
-                Lit lit_new;
-                if (it != orig_to_new.end()) lit_new = it->second;
-                else {
-                    assert(false);
-                    /* const auto& sub_aig = cnf.get_def(var_orig); */
-                    /* lit_new = AIG::transform<Lit>(sub_aig, aig_to_cnf_visitor); */
-                }
-
-                // Check if this is an input variable or needs y_to_y_hat mapping
-                Lit result_lit;
-                if (input.count(lit_new.var())) result_lit = lit_new ^ neg;
-                else {
-                    assert(to_define_full.count(lit_new.var()));
-                    const uint32_t y_hat = y_to_y_hat.at(lit_new.var());
-                    result_lit = Lit(y_hat, neg);
-                }
+                assert(it != orig_to_new.end() && "Variable in AIG not found in CNF mapping");
+                const Lit lit_new = it->second ^ neg;
+                const Lit result_lit = map_y_to_y_hat(lit_new);
                 return result_lit;
             }
 
@@ -359,9 +346,9 @@ void Manthan::fill_var_to_formula_with_backward() {
 
         // Recursively generate clauses for the AIG using the transform function
         map<aig_ptr, Lit> cache;
-        Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
+        const Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
         f.out = out_lit;
-        f.aig = AIG::new_lit(v);
+        f.aig = nullptr; // not really important
         assert(var_to_formula.count(v) == 0);
         var_to_formula[v] = f;
     }
@@ -776,8 +763,6 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         /* ctx[y_rep] = ctx[y_rep] ^ true; */
         /* ctx[y_to_y_hat[y_rep]] = ctx[y_rep]; */
         return false;
-    } else {
-        ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
     }
     conflict = repair_solver.get_conflict();
     assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end() &&
@@ -857,6 +842,14 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
     }
 }
 
+Lit Manthan::map_y_to_y_hat(const Lit& l) const {
+    const uint32_t var = l.var();
+    if (input.count(var)) return l;
+    assert(to_define_full.count(var));
+    const uint32_t y_hat = y_to_y_hat.at(var);
+    return Lit(y_hat, l.sign());
+}
+
 void Manthan::perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit>& conflict) {
     verb_print(2, "[manthan] Performing repair on " << setw(5) << y_rep+1
             << " with conflict size " << setw(3) << conflict.size());
@@ -873,7 +866,7 @@ void Manthan::perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit
     helpers.insert(fresh_l.var());
     cl.push_back(fresh_l);
     for(const auto& l: conflict) {
-        cl.push_back(l);
+        cl.push_back(map_y_to_y_hat(l));
         dependency_mat[y_rep][l.var()] = 1;
         // recursive update
         for(uint32_t i = 0; i < cnf.nVars(); i++) {
@@ -886,7 +879,7 @@ void Manthan::perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit
     for(const auto& l: conflict) {
         cl.clear();
         cl.push_back(~fresh_l);
-        cl.push_back(~l);
+        cl.push_back(~(map_y_to_y_hat(l)));
         f.clauses.push_back(cl);
     }
     f.out = fresh_l;
@@ -913,23 +906,6 @@ void Manthan::perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit
     verb_print(4, "repaired formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
     //We fixed the ctx on this variable
     assert(check_map_dependency_cycles());
-}
-
-void Manthan::recompute_all_y_hat(sample& ctx) {
-    // TODO
-    assert(false && "This is incorrect for now...");
-    inject_formulas_into_solver();
-    vector<Lit> assumps(input.size());
-    for(const auto& x: input) {
-        Lit l(x, ctx[x] == l_False);
-        assumps.push_back(l);
-    }
-    auto ret = solver.solve(&assumps);
-    assert(ret == l_True);
-    for(const auto& y: to_define_full) {
-        const auto y_hat = y_to_y_hat.at(y);
-        ctx[y_hat] = solver.get_model()[y_hat];
-    }
 }
 
 // Will order 1st the variables that NOTHING depends on
