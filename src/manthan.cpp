@@ -433,6 +433,20 @@ uint32_t Manthan::calc_non_bw_needs_repair() const {
     return cnt;
 }
 
+bool Manthan::ctx_is_sat(const sample& ctx) const {
+    for(const auto& val: ctx) assert(val != l_Undef);
+
+    SATSolver s;
+    inject_cnf(s);
+    for(uint32_t i = 0; i < cnf.nVars(); i++) {
+        const auto val = ctx[i];
+        s.add_clause({Lit(i, val == l_False)});
+    }
+    const auto ret = s.solve();
+    assert(ret == l_True);
+    return true;
+}
+
 SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     assert(input_cnf.get_need_aig() && input_cnf.defs_invariant());
     assert(mconf.simplify_every > 0 && "Can't give simplify_every=0");
@@ -531,7 +545,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         inject_formulas_into_solver();
         sample ctx;
         bool finished = get_counterexample(ctx);
-        for(const auto& val: ctx) assert(val != l_Undef);
+        assert(ctx_is_sat(ctx));
         if (finished) break;
         print_cnf_debug_info(ctx);
         print_needs_repair_vars();
@@ -544,8 +558,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         } else {
           find_better_ctx_normal(ctx);
         }
-        needs_repair.clear();
-        for(const auto& y: to_define_full) if (ctx[y] != ctx[y_to_y_hat[y]])
+        assert(ctx_is_sat(ctx));
+        needs_repair.clear(); for(const auto& y: to_define_full) if (ctx[y] != ctx[y_to_y_hat[y]])
             needs_repair.insert(y);
         verb_print(2, "[manthan] Finding better ctx DONE, needs_repair size before vs now: "
               << setw(3) << old_needs_repair_size << " -- " << setw(4) << needs_repair.size());
@@ -630,7 +644,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     bool ret = find_conflict(y_rep, ctx, conflict);
     if (ret) {
         perform_repair(y_rep, ctx, conflict);
-        verb_print(2, "After repair, ctx (y AND y_hat!) updated, needs_repair changed. New size: " << needs_repair.size());
+        verb_print(2, "[manthan] repaired var " << y_rep+1 << " getting new CTX, because we don't yet know how to update y_hats");
         // TODO so we can do more than one repair before getting new ctx
         /* recompute_all_y_hat(ctx); */
         return true;

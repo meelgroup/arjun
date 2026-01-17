@@ -91,6 +91,7 @@ class Manthan {
 
         FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& var_remap, uint32_t depth = 0);
         vector<uint32_t> incidence;
+        bool ctx_is_sat(const sample& ctx) const;
         uint32_t calc_non_bw_needs_repair() const;
         void print_needs_repair_vars() const;
         void print_cnf_debug_info(const sample& ctx) const;
