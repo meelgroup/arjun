@@ -96,6 +96,7 @@ class Manthan {
         vector<uint32_t> incidence;
         bool check_functions_for_y_vars() const;
         bool ctx_is_sat(const sample& ctx) const;
+        bool ctx_y_hat_compute(const sample& ctx) const;
         uint32_t calc_non_bw_needs_repair() const;
         void print_needs_repair_vars() const;
         void print_cnf_debug_info(const sample& ctx) const;
@@ -113,7 +114,7 @@ class Manthan {
         void minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, const Lit repairing);
         uint32_t find_next_repair_var();
         void perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit>& conflict);
-        void add_not_F_x_yhat();
+        void add_not_F_x_yhat(SATSolver& s) const;
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with_backward();
         void print_y_order_occur() const;

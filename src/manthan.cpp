@@ -447,6 +447,60 @@ bool Manthan::ctx_is_sat(const sample& ctx) const {
     }
     const auto ret = s.solve();
     assert(ret == l_True);
+    return ret == l_True;
+}
+
+bool Manthan::ctx_y_hat_compute(const sample& ctx) const {
+    SATSolver s;
+    // Fragile, same var order as the other solver, i.e. "solver"
+    /* inject_cnf(s); */
+    /* add_not_F_x_yhat(s); */
+    while (s.nVars() < solver.nVars()) s.new_var();
+
+    // add true lit
+    Lit l = fh->get_true_lit();
+    s.add_clause({l});
+
+    // Add input
+    for(const auto& x: input) {
+        const auto val = solver.get_model()[x];
+        s.add_clause({Lit(x, val == l_False)});
+    }
+
+
+    // Add y_hat definitions
+    vector<Lit> tmp;
+    for(const auto& [y, f]: var_to_formula) {
+        for(const auto& cl: f.clauses) {
+            s.add_clause(cl.lits);
+        }
+
+        // make y_hat == f.out
+        auto form_out = f.out;
+        const auto& y_hat = y_to_y_hat.at(y);
+        auto y_hat_l = Lit(y_hat, false);
+        tmp.clear();
+        tmp.push_back(y_hat_l);
+        tmp.push_back(~form_out);
+        s.add_clause(tmp);
+        tmp[1] = ~tmp[1];
+        tmp[2] = ~tmp[2];
+        s.add_clause(tmp);
+    }
+
+    const auto ret = s.solve();
+    assert(ret == l_True);
+    const auto& model = s.get_model();
+    for(const auto& y: to_define_full) {
+        const uint32_t y_hat = y_to_y_hat.at(y);
+
+        const auto ctx_y_hat = ctx[y];
+        const auto val_y_hat = model[y_hat];
+        assert(ctx_y_hat != l_Undef);
+        assert(val_y_hat != l_Undef);
+        assert(ctx_y_hat == val_y_hat);
+    }
+
     return true;
 }
 
@@ -509,11 +563,12 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     // Training
     inject_cnf(solver);
     fh = std::make_unique<FHolder>(&solver);
+    create_vars_for_y_hats();
+    add_not_F_x_yhat(solver);
     verb_print(2, "True lit in solver_train: " << fh->get_true_lit());
     verb_print(2, "[manthan] After fh creation: solver_train.nVars() = " << solver.nVars() << " cnf.nVars() = " << cnf.nVars());
     fix_order();
     print_y_order_occur();
-    create_vars_for_y_hats();
     verb_print(1, "[manthan] Starting training. Manthan Config. "
         << "do_filter_samples=" << mconf.do_filter_samples
         << ", num_samples=" << mconf.num_samples
@@ -537,10 +592,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     }
     verb_print(1, COLYEL "[manthan] training done. T: " << std::setprecision(2) << std::fixed << (cpuTime() - train_start_time) << " seconds");
     assert(check_map_dependency_cycles());
-    SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
 
     const double repair_time = cpuTime();
-    add_not_F_x_yhat();
     fill_var_to_formula_with_backward();
     fix_order();
     for(const auto& v: to_define_full) {
@@ -550,6 +603,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 
     // Counterexample-guided repair
     bool at_least_one_repaired = true;
+    SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
     while(true) {
         if (num_loops_repair %  40 == 39) {
             verb_print(1, "[manthan] repaired so far: " << setw(6) << tot_repaired
@@ -568,6 +622,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         bool finished = get_counterexample(ctx);
         if (finished) break;
         SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
+        SLOW_DEBUG_DO(assert(ctx_y_hat_compute(ctx)));
         print_cnf_debug_info(ctx);
         print_needs_repair_vars();
 
@@ -580,7 +635,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
           find_better_ctx_normal(ctx);
         }
         SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
-        SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
+        SLOW_DEBUG_DO(assert(ctx_y_hat_compute(ctx)));
         needs_repair.clear(); for(const auto& y: to_define_full) if (ctx[y] != ctx[y_to_y_hat[y]])
             needs_repair.insert(y);
         verb_print(2, "[manthan] Finding better ctx DONE, needs_repair size before vs now: "
@@ -1052,7 +1107,7 @@ void Manthan::create_vars_for_y_hats() {
 }
 
 // Adds ~F(x, y_hat), fills y_to_y_hat and y_hat_to_y
-void Manthan::add_not_F_x_yhat() {
+void Manthan::add_not_F_x_yhat(SATSolver& s) const {
     vector<Lit> tmp;
 
     // Adds ~F(x, y_hat)
@@ -1061,32 +1116,34 @@ void Manthan::add_not_F_x_yhat() {
         // Replace y with y_hat in the clause
         vector<Lit> cl;
         for(const auto& l: cl_orig) {
-            if (to_define_full.count(l.var())) cl.push_back(Lit(y_to_y_hat[l.var()], l.sign()));
+            if (to_define_full.count(l.var())) cl.push_back(Lit(y_to_y_hat.at(l.var()), l.sign()));
             else cl.push_back(l);
         }
 
-        solver.new_var();
+        s.new_var();
         uint32_t cl_ind_v = solver.nVars()-1;
         Lit cl_ind(cl_ind_v, false);
         tmp.clear();
         tmp.push_back(~cl_ind);
         for(const auto&l : cl) tmp.push_back(l);
-        solver.add_clause(tmp);
+        s.add_clause(tmp);
 
         for(const auto&l : cl) {
             tmp.clear();
             tmp.push_back(cl_ind);
             tmp.push_back(~l);
-            solver.add_clause(tmp);
+            s.add_clause(tmp);
         }
         cl_indics.push_back(cl_ind);
     }
     tmp.clear();
     for(const auto& l: cl_indics) tmp.push_back(~l); // at least one is unsatisfied
-    solver.add_clause(tmp);
+    s.add_clause(tmp);
 }
 
 void Manthan::inject_formulas_into_solver() {
+    SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
+
     // Replace y with y_hat
     for(auto& [var, form]: var_to_formula) {
         for(auto& cl: form.clauses) {
