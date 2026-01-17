@@ -1287,44 +1287,51 @@ DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
         input.insert(cnf_var);
         input_orig.insert(v);
     }
+    struct P {
+        P(uint32_t _o, uint32_t _n) : o(_o), n(_n) {}
+        uint32_t o;
+        uint32_t n;
+
+        bool operator<(const P& other) const {
+            assert(o != other.o);
+            assert(n != other.n);
+            return n < other.n;
+        }
+    };
     assert(input.size() == sampl_vars.size());
-    set<uint32_t> to_define;
-    set<uint32_t> to_define_orig;
-    for (uint32_t v = 0; v < num_defs(); v++) {
-        if (!get_orig_sampl_vars().count(v) && !defined(v)) {
-            const auto it = orig_to_new_var.find(v);
+    set<P> to_define;
+    for (uint32_t orig = 0; orig < num_defs(); orig++) {
+        if (!get_orig_sampl_vars().count(orig) && !defined(orig)) {
+            const auto it = orig_to_new_var.find(orig);
             assert(it != orig_to_new_var.end() && "if it hasn't been defined, it must be in CNF");
-            const uint32_t cnf_var = it->second.var();
+            const uint32_t new_var = it->second.var();
             /* cout << "c o to_define var: " << v+1 << " maps to cnf var " */
             /*  << cnf_var+1 << endl; */
-            assert(cnf_var < nVars());
-            to_define.insert(cnf_var);
-            to_define_orig.insert(v);
+            assert(new_var < nVars());
+            to_define.insert({orig, new_var});
         }
     }
-    set<uint32_t> unsat_defined_vars;
-    set<uint32_t> unsat_defined_vars_orig;
-    set<uint32_t> backw_synth_defined_vars;
-    set<uint32_t> backw_synth_defined_vars_orig;
+    set<P> unsat_defined_vars;
+    set<P> backw_synth_defined_vars;
     set<uint32_t> bve_defined_vars_orig;
     set<uint32_t> forced_vars_orig;
     set<uint32_t> scc_vars_orig;
     map<uint32_t, set<uint32_t>> cache;
-    for (uint32_t v = 0; v < num_defs(); v++) {
-        if (get_orig_sampl_vars().count(v)) continue;
-        if (!orig_to_new_var.count(v)) {
+    for (uint32_t orig = 0; orig < num_defs(); orig++) {
+        if (get_orig_sampl_vars().count(orig)) continue;
+        if (!orig_to_new_var.count(orig)) {
             // Eliminated already from the CNF: either BVE, SCC, or forced
-            assert(defs[v] != nullptr && "if it is not in the CNF, it must be defined");
-            const auto s = get_dependent_vars_recursive(v, cache);
-            if (s.empty()) forced_vars_orig.insert(v);
-            else if (s.size() == 1) scc_vars_orig.insert(v);
-            else bve_defined_vars_orig.insert(v);
+            assert(defs[orig] != nullptr && "if it is not in the CNF, it must be defined");
+            const auto s = get_dependent_vars_recursive(orig, cache);
+            if (s.empty()) forced_vars_orig.insert(orig);
+            else if (s.size() == 1) scc_vars_orig.insert(orig);
+            else bve_defined_vars_orig.insert(orig);
             continue;
         }
 
         // This var is NOT input and IS in the CNF
-        if (!defined(v)) continue;
-        auto s = get_dependent_vars_recursive(v, cache);
+        if (!defined(orig)) continue;
+        auto s = get_dependent_vars_recursive(orig, cache);
         bool only_input_deps = true;
         for(const auto& d: s) {
             if (!get_orig_sampl_vars().count(d)) {
@@ -1333,14 +1340,12 @@ DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
             }
         }
 
-        const uint32_t cnf_var = orig_to_new_var.at(v).var();
-        assert(cnf_var < nVars());
+        const uint32_t new_var = orig_to_new_var.at(orig).var();
+        assert(new_var < nVars());
         if (only_input_deps) {
-            unsat_defined_vars.insert(cnf_var);
-            unsat_defined_vars_orig.insert(v);
+            unsat_defined_vars.insert({orig,new_var});
         } else {
-            backw_synth_defined_vars.insert(cnf_var);
-            backw_synth_defined_vars_orig.insert(v);
+            backw_synth_defined_vars.insert({orig,new_var});
         }
     }
     if (verb >= 1) {
@@ -1374,10 +1379,10 @@ DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
         cout << "c o [get-var-types] Num to-define vars: " << to_define.size() << endl;
         if (verb >= 2) {
             cout << "c o [get-var-types]   To-define vars (new) : ";
-            for(const auto& v: to_define) cout << v+1 << " ";
+            for(const auto& v: to_define) cout << v.n+1 << " ";
             cout << endl;
             cout << "c o [get-var-types]   To-define vars (orig): ";
-            for(const auto& v: to_define_orig) cout << v+1 << " ";
+            for(const auto& v: to_define) cout << v.o+1 << " ";
             cout << endl;
         }
 
@@ -1385,10 +1390,10 @@ DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
             << unsat_defined_vars.size() << endl;
         if (verb >= 2) {
             cout << "c o [get-var-types]   Unsat-defined vars (new) : ";
-            for(const auto& v: unsat_defined_vars) cout << v+1 << " ";
+            for(const auto& v: unsat_defined_vars) cout << v.n+1 << " ";
             cout << endl;
             cout << "c o [get-var-types]   Unsat-defined vars (orig): ";
-            for(const auto& v: unsat_defined_vars_orig) cout << v+1 << " ";
+            for(const auto& v: unsat_defined_vars) cout << v.o+1 << " ";
             cout << endl;
         }
 
@@ -1396,10 +1401,10 @@ DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
             << backw_synth_defined_vars.size() << endl;
         if (verb >= 2) {
             cout << "c o [get-var-types]   Backward-synth-defined vars (new) : ";
-            for(const auto& v: backw_synth_defined_vars) cout << v+1 << " ";
+            for(const auto& v: backw_synth_defined_vars) cout << v.n+1 << " ";
             cout << endl;
             cout << "c o [get-var-types]   Backward-synth-defined vars (orig): ";
-            for(const auto& v: backw_synth_defined_vars_orig) cout << v+1 << " ";
+            for(const auto& v: backw_synth_defined_vars) cout << v.o+1 << " ";
             cout << endl;
         }
 
@@ -1433,8 +1438,15 @@ DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
     assert(input.size() + to_define.size() + unsat_defined_vars.size() + backw_synth_defined_vars.size() == nVars());
 
     // unsat-defined vars can be treateed as input vars
-    for(const auto& v: unsat_defined_vars) input.insert(v);
-    return make_tuple(input, to_define, backw_synth_defined_vars);
+    for(const auto& v: unsat_defined_vars) input.insert(v.n);
+
+    /// Convert
+    set<uint32_t> backw_synth_defined_new;
+    for(const auto& v: backw_synth_defined_vars) backw_synth_defined_new.insert(v.n);
+    set<uint32_t> to_define_new;
+    for(const auto& v: to_define) to_define_new.insert(v.n);
+
+    return make_tuple(input, to_define_new, backw_synth_defined_new);
 }
 
 DLL_PUBLIC CMSat::lbool SimplifiedCNF::evaluate(const vector<CMSat::lbool>& vals, uint32_t var, map<aig_ptr, CMSat::lbool>& cache) const {
