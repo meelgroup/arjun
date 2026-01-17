@@ -495,15 +495,15 @@ bool Manthan::ctx_y_hat_compute(const sample& ctx) const {
     for(const auto& y: y_order) {
         const uint32_t y_hat = y_to_y_hat.at(y);
 
-        const auto ctx_y_hat = ctx[y];
-        const auto val_y_hat = model[y_hat];
+        const auto ctx_y_hat = ctx[y_hat];
+        const auto model_y_hat = model[y_hat];
         assert(ctx_y_hat != l_Undef);
-        assert(val_y_hat != l_Undef);
-        if (ctx_y_hat != val_y_hat) {
+        assert(model_y_hat != l_Undef);
+        if (ctx_y_hat != model_y_hat) {
             incorrect.push_back(y);
-            verb_print(1, "ERROR: ctx for y_hat " << setw(5) << y+1 << ": ctx has "
+            verb_print(0, "ERROR: ctx for y_hat " << setw(5) << y+1 << ": ctx has "
                 << setw(4) << pr(ctx_y_hat) << " but computed y_hat has "
-                << setw(4) << pr(val_y_hat));
+                << setw(4) << pr(model_y_hat));
         }
     }
     assert(incorrect.empty());
