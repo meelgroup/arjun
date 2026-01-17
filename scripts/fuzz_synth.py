@@ -306,7 +306,12 @@ if __name__ == "__main__":
         # solver = "./arjun --synth --debugsynth --verb 1"
         prefix = unique_file("fuzzTest")
         print("Using prefix %s for synthesis output files" % prefix)
-        solver = "./arjun --verb 2 --synth --debugsynth %s " % prefix
+        solver = "./arjun --verb 2 --debugsynth %s " % prefix
+        if random.choice([True, False]):
+            solver += "--synth "
+        else:
+            solver += "--synthmore "
+
         opts = [
             " --synthbve"
             , " --extend"

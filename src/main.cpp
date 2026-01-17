@@ -116,7 +116,8 @@ void add_arjun_options() {
     myopt("--seed", conf.seed, atoi, "Random seed");
 
     // synth main
-    myflag("--synth", synthesis, "Run synthesis");
+    myflag("--synth", synthesis, "Run ynthesis");
+    myflag("--synthmore", synthesis, "Run synthesis");
     myopt("--maxsat", manthan_conf.do_maxsat_better_ctx, atoi, "Use maxsat to find better counterexamples during Manthan");
     myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
     myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
@@ -372,7 +373,11 @@ int main(int argc, char** argv) {
         if (!program.is_used("--iter2")) simp_conf.iter2 = 0;
     }
 
-    if (synthesis) {
+    if (program.is_used("--synth")) {
+        assert(!simpconf.appmc && "Cannot use synthesis and appmc simplification at the same time");
+    }
+
+    if (program.is_used("--synthmore")) {
         assert(!simp_conf.appmc && "Cannot use synthesis and appmc simplification at the same time");
         cout << "c o [arjun] Setting defaults for synthesis mode" << endl;
         if (!program.is_used("--bveresolvmaxsz")) simp_conf.bve_too_large_resolvent = 1000;
