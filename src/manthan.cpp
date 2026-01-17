@@ -924,7 +924,7 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
         verb_print(3, "[find-better-ctx] put into assumps y= " << l);
         assumps.insert(l);
         /* int w = 1; */
-        int w = y_to_y_order_pos[y]*100;
+        int w = y_to_y_order_pos[y];
         /* if (backward_defined.count(y)) w *= 2; */
         /* if (w == 0) w = 1; */
         s_ctx.addClause(lits_to_ints({l}), w); //want to flip valuation to ctx[y_hat], so when l is true, we flipped it (i.e. needs no repair)
@@ -934,8 +934,6 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
     auto ret = s_ctx.solve();
     assert(ret && "must be satisfiable");
     assert(s_ctx.getCost() > 0);
-    verb_print(2, "optimum found: " << needs_repair.size() << " original assumps size: " << assumps.size());
-
     for(const auto& v: to_define_full) ctx[v] = s_ctx.getValue(v+1) ? l_True : l_False;
 }
 
@@ -1080,6 +1078,7 @@ void Manthan::inject_formulas_into_solver() {
 }
 
 bool Manthan::get_counterexample(sample& ctx) {
+    needs_repair.clear();
     if (num_loops_repair == 1)
         verb_print(1, "[manthan] Getting counterexample for the first time...");
 
@@ -1125,6 +1124,7 @@ bool Manthan::get_counterexample(sample& ctx) {
     vector<Lit> assumps;
     assumps.reserve(y_hat_to_indic.size());
     for(const auto& i: y_hat_to_indic) assumps.push_back(Lit(i.second, false));
+    assert(assumps.size() == y_order.size());
     verb_print(4, "assumptions: " << assumps);
     if ((num_loops_repair % mconf.simplify_every) == (mconf.simplify_every-1)) solver.simplify(&assumps);
 
@@ -1135,7 +1135,6 @@ bool Manthan::get_counterexample(sample& ctx) {
         verb_print(2, COLYEL "[manthan] *** Counterexample found ***");
         ctx = solver.get_model();
         assert(ctx[fh->get_true_lit().var()] == l_True);
-        needs_repair.clear();
         for(const auto& y: to_define_full) if (ctx[y] != ctx[y_to_y_hat[y]])
             needs_repair.insert(y);
         return false;
