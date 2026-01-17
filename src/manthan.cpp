@@ -457,7 +457,8 @@ bool Manthan::ctx_y_hat_compute(const sample& ctx) const {
 
     // Add y_hat definitions
     vector<Lit> tmp;
-    for(const auto& [y, f]: var_to_formula) {
+    for(const auto& y: y_order) {
+        const auto& f = var_to_formula.at(y);
         for(const auto& cl: f.clauses) {
             s.add_clause(cl.lits);
         }
@@ -470,8 +471,8 @@ bool Manthan::ctx_y_hat_compute(const sample& ctx) const {
         tmp.push_back(y_hat_l);
         tmp.push_back(~form_out);
         s.add_clause(tmp);
-        tmp[1] = ~tmp[1];
-        tmp[2] = ~tmp[2];
+        tmp[0] = ~tmp.at(0);
+        tmp[1] = ~tmp.at(1);
         s.add_clause(tmp);
     }
 
@@ -1452,7 +1453,7 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
             SLOW_DEBUG_DO(assert(check_map_dependency_cycles()));
         }
     }
-    verb_print(4, "Tentative, trained formula for y " << v+1 << ":" << endl << var_to_formula[v]);
+    verb_print(2, "Trained formula for y " << v+1 << ":" << endl << var_to_formula[v]);
     verb_print(2,"Done training variable: " << v+1);
     verb_print(2, "------------------------------");
 
