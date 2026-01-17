@@ -442,7 +442,8 @@ DLL_PUBLIC void SimplifiedCNF::set_fixed_values(const vector<Lit>& lits)
     }
 }
 
-DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const map<uint32_t, aig_ptr>& aigs_orig, const uint32_t max_num_vars) {
+DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const map<uint32_t, aig_ptr>& aigs_orig, const uint32_t max_num_vars,
+        const map<uint32_t, uint32_t>* back_map) {
     const auto new_to_orig_var = get_new_to_orig_var();
     auto aigs = AIG::deep_clone_map(aigs_orig);
     set<aig_ptr> visited;
@@ -455,6 +456,9 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const map<uint32_t, aig_ptr>& ai
 
         if (aig->type == AIGT::t_lit) {
             uint32_t v = aig->var;
+            if (back_map != nullptr) {
+                if(back_map->count(v)) v = back_map->at(v);
+            }
             assert(v < max_num_vars);
             aig->var = new_to_orig_var.at(v).var();
             aig->neg ^= new_to_orig_var.at(v).sign();

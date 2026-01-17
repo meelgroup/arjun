@@ -369,7 +369,7 @@ bool Manthan::check_aig_dependency_cycles() const {
     auto aigs_copy = AIG::deep_clone_map(aigs);
 
     SimplifiedCNF fcnf = cnf;
-    fcnf.map_aigs_to_orig(aigs_copy, cnf.nVars());
+    fcnf.map_aigs_to_orig(aigs_copy, cnf.nVars(), &y_hat_to_y);
     assert(fcnf.check_aig_cycles());
     return true;
 }
@@ -662,10 +662,11 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     for(const auto& y: to_define) {
         assert(var_to_formula.count(y));
         verb_print(3, "Final formula for " << y+1 << ":" << endl << var_to_formula[y]);
+        assert(var_to_formula[y].aig != nullptr);
         aigs[y] = var_to_formula[y].aig;
     }
     SimplifiedCNF fcnf = cnf;
-    fcnf.map_aigs_to_orig(aigs, cnf.nVars());
+    fcnf.map_aigs_to_orig(aigs, cnf.nVars(), &y_hat_to_y);
     assert(verify_final_cnf(fcnf));
     verb_print(1, COLRED "[manthan] Total time in manthan: " << cpuTime()-my_time << " seconds");
     return fcnf;
@@ -877,6 +878,7 @@ void Manthan::perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit
 
     // AIG part
     aig_ptr b1 = nullptr;
+    for(const auto& l: conflict) assert(l.var() < cnf.nVars());
     if (conflict.empty()) b1 = aig_mng.new_const(true);
     else {
         b1 = AIG::new_lit(~conflict[0]);
