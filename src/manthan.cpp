@@ -417,7 +417,8 @@ void Manthan::print_cnf_debug_info(const sample& ctx) const {
 void Manthan::print_needs_repair_vars() const {
     if (conf.verb >= 2) {
         cout << "c o [manthan] needs repair vars: ";
-        for(const auto& y: needs_repair) {
+        for(const auto& y: y_order) {
+            if (needs_repair.count(y) == 0) continue;
             cout << y+1 << (backward_defined.count(y) ? "[BW]" : "") << " ";
         }
         cout << endl;
@@ -507,7 +508,10 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     add_not_F_x_yhat();
     fill_var_to_formula_with_backward();
     fix_order();
-    for(const auto& y: y_order) updated_y_funcs.push_back(y);
+    for(const auto& v: to_define_full) {
+        assert(var_to_formula.count(v) && "All must have a tentative definition");
+        updated_y_funcs.push_back(v);
+    }
 
     // Counterexample-guided repair
     bool at_least_one_repaired = true;
@@ -551,8 +555,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
         while(!needs_repair.empty()) {
-            const auto y_rep = find_next_repair_var(ctx); // updates ctx on backward-defined vars
-            if (y_rep == std::numeric_limits<uint32_t>::max()) break;
+            auto y_rep = find_next_repair_var();
             bool done = repair(y_rep, ctx); // this updates ctx on y
             if (done) {
                 at_least_one_repaired = true;
@@ -592,27 +595,19 @@ bool Manthan::verify_final_cnf(const SimplifiedCNF& fcnf) const {
     return true;
 }
 
-uint32_t Manthan::find_next_repair_var(sample& ctx) {
-    while(!needs_repair.empty()) {
-        uint32_t y_rep = std::numeric_limits<uint32_t>::max();
-        for(const auto& t: y_order) {
-            if (needs_repair.count(t)) {
-                y_rep = t;
-                break;
-            }
+uint32_t Manthan::find_next_repair_var() {
+    assert(!needs_repair.empty());
+    uint32_t y_rep = std::numeric_limits<uint32_t>::max();
+    for(const auto& t: y_order) {
+        if (needs_repair.count(t)) {
+            y_rep = t;
+            break;
         }
-        if (backward_defined.count(y_rep)) {
-            verb_print(3, "[WARNING] trying to repair backward-defined var " << y_rep+1);
-            ctx[y_to_y_hat[y_rep]] = ctx[y_rep]; // pretend to have fixed the ctx
-            needs_repair.erase(y_rep);
-            continue;
-        }
-        assert(y_rep != std::numeric_limits<uint32_t>::max());
-        needs_repair.erase(y_rep);
-        verb_print(3, "-------------------");
-        return y_rep;
     }
-    return std::numeric_limits<uint32_t>::max();
+    assert(y_rep != std::numeric_limits<uint32_t>::max());
+    assert(!backward_defined.count(y_rep) && "If all y_hat has been recomputed, the first wrong CANNOT be a BW var");
+    needs_repair.erase(y_rep);
+    return y_rep;
 }
 
 bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
@@ -690,7 +685,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end() &&
         "to_repair literal must be in conflict");
 
-    verb_print(2, "repair_maxsat conflict: " << conflict);
+    verb_print(2, "find_conflict conflict: " << conflict);
     if (conflict.size() == 1) {
         verb_print(2, "[manthan] conflict size 1, must flip value, always");
         conflict.clear();
@@ -1082,6 +1077,7 @@ bool Manthan::get_counterexample(sample& ctx) {
         const uint32_t ind = solver.nVars()-1;
 
         assert(var_to_formula.count(y));
+        for(const auto& cl: var_to_formula[y].clauses) assert(cl.inserted && "All clauses must have been inserted");
         const auto& form_out = var_to_formula[y].out;
         const auto& y_hat = y_to_y_hat[y];
 
