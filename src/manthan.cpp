@@ -301,7 +301,8 @@ void Manthan::fill_var_to_formula_with_backward() {
         FHolder::Formula f;
 
         // Get the original variable number
-        const uint32_t v_orig = new_to_orig.at(v).var();
+        const auto orig = new_to_orig.at(v);
+        const uint32_t v_orig = orig.var();
         const auto& aig = cnf.get_def(v_orig);
         assert(aig != nullptr);
 
@@ -347,7 +348,7 @@ void Manthan::fill_var_to_formula_with_backward() {
         // Recursively generate clauses for the AIG using the transform function
         map<aig_ptr, Lit> cache;
         const Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
-        f.out = out_lit;
+        f.out = out_lit ^ orig.sign();
         f.aig = nullptr; // not really important
         assert(var_to_formula.count(v) == 0);
         var_to_formula[v] = f;
