@@ -522,6 +522,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     verb_print(1, "[manthan] Found " << ret.size() << " disconnected components");
 
     uint32_t tot_repaired = 0;
+    uint32_t repair_failed = 0;
     cout << "c o [DEBUG] About to assign cnf = input_cnf" << endl;
     cnf = input_cnf;
     if (!mconf.write_manthan_cnf.empty()) cnf.write_simpcnf(mconf.write_manthan_cnf);
@@ -584,7 +585,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         if (backward_defined.count(v)) continue;
         train(samples, v); // updates dependency_mat
     }
-    verb_print(1, COLYEL "[manthan] training done. T: " << std::setprecision(2) << std::fixed << (cpuTime() - train_start_time) << " seconds");
+    verb_print(1, COLYEL "[manthan] training done. T: " << setw(6) << std::setprecision(2) << std::fixed << (cpuTime() - train_start_time) << " train/var: "
+        << std::setprecision(2) << std::fixed << (cpuTime() - train_start_time)/(double)to_define.size());
     assert(check_map_dependency_cycles());
 
     const double repair_time = cpuTime();
@@ -600,13 +602,14 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
     while(true) {
         if (num_loops_repair %  40 == 39) {
-            verb_print(1, "[manthan] repaired so far: " << setw(6) << tot_repaired
+            verb_print(1, "[manthan] rep: " << setw(6) << tot_repaired
                     << "   loops: "<< setw(4) << num_loops_repair
-                    << "   avg repairs/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
+                    << "   avg rep/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
                     << "   avg confl sz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
                     << "   avg needs rep sz: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
+                    << "   avg try/repair: " << setw(6) << fixed << setprecision(2) << (double)(tot_repaired+repair_failed)/(num_loops_repair+0.0001)
                     << "   T: " << setprecision(2) << fixed << setw(7) << cpuTime()-repair_time
-                    << "   repair/s: " << setprecision(4) << (double)tot_repaired/(cpuTime()-repair_time+0.0001) << setprecision(2));
+                    << "   rep/s: " << setprecision(4) << (double)tot_repaired/(cpuTime()-repair_time+0.0001) << setprecision(2));
         }
         assert(at_least_one_repaired);
         at_least_one_repaired = false;
@@ -647,6 +650,8 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
                 num_repaired++;
                 tot_repaired++;
                 break; // we don't recompute y_hats, so we'd be doing WRONG repairs.
+            } else {
+                repair_failed++;
             }
             SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
             SLOW_DEBUG_DO(assert(ctx_y_hat_compute(ctx)));
@@ -966,7 +971,10 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
 
     map<uint32_t, uint32_t> y_to_y_order_pos;
     for(size_t i = 0; i < y_order.size(); i++) {
-        y_to_y_order_pos[y_order[i]] = y_order.size()-i;
+        if (!mconf.maxsat_order)
+            y_to_y_order_pos[y_order[i]] = i+1;
+        else
+            y_to_y_order_pos[y_order[i]] = y_order.size()-i;
     }
 
     // Fix to_define variables that are incorrect via assumptions
@@ -1006,7 +1014,10 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
 
     map<uint32_t, uint32_t> y_to_y_order_pos;
     for(size_t i = 0; i < y_order.size(); i++) {
-        y_to_y_order_pos[y_order[i]] = y_order.size()-i;
+        if (mconf.maxsat_order)
+            y_to_y_order_pos[y_order[i]] = i+1;
+        else
+            y_to_y_order_pos[y_order[i]] = y_order.size()-i;
     }
 
     // For to_define variables, separate into correct and incorrect

@@ -1315,6 +1315,7 @@ public:
         uint32_t simplify_every = 1000;
         std::string write_manthan_cnf;
         int do_maxsat_better_ctx = 0;
+        int maxsat_order = 1;
         int do_unique_input_samples = 1;
     };
     void standalone_elim_to_file(SimplifiedCNF& cnf,
