@@ -57,7 +57,6 @@ using std::array;
 using std::set;
 using std::setprecision;
 using std::fixed;
-using std::erase_if;
 
 using namespace ArjunInt;
 using namespace ArjunNS;
@@ -136,7 +135,7 @@ vector<sample> Manthan::get_samples(const uint32_t num) {
             double p = dist[1][y];
             double q = dist[0][y];
             double bias;
-            if (0.35 < p  && p < 0.65 && 0.35 < q && p < 0.65) {
+            if (0.35 < p && p < 0.65 && 0.35 < q && q < 0.65) {
               bias = p;
             } else if (q <= 0.35) {
               if (q == 0.0) q = 0.001;
@@ -207,11 +206,9 @@ vector<sample> Manthan::get_samples_ccnr(const uint32_t num) {
     }
     ls_s.build_neighborhood();
 
-
     sample s;
     long long int mems = num*100*1000ULL;
     for(uint32_t si = 0; si < num; si++) {
-        /* ls_s.reset_mems(); */
         int res = ls_s.local_search(nullptr, mems, "c o", 50LL*1000);
         if (res) {
           s.clear();
@@ -523,7 +520,6 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
 
     uint32_t tot_repaired = 0;
     uint32_t repair_failed = 0;
-    cout << "c o [DEBUG] About to assign cnf = input_cnf" << endl;
     cnf = input_cnf;
     if (!mconf.write_manthan_cnf.empty()) cnf.write_simpcnf(mconf.write_manthan_cnf);
 
@@ -570,15 +566,6 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         << ", minimumLeafSize=" << mconf.minimumLeafSize
         << ", minGainSplit=" << mconf.minGainSplit
         << ", maximumDepth=" << mconf.maximumDepth);
-        /* << ", train_error_threshold=" << mconf.train_error_threshold */
-        /* << ", max_num_nodes=" << mconf.max_num_nodes */
-        /* << ", num_epochs=" << mconf.num_epochs */
-        /* << ", batch_size=" << mconf.batch_size */
-        /* << ", learning_rate=" << mconf.learning_rate */
-        /* << ", weight_decay=" << mconf.weight_decay */
-        /* << ", step_size=" << mconf.step_size */
-        /* << ", lr_decay_factor=" << mconf.lr_decay_factor */
-        /* << ", use_sgdr=" << std::boolalpha << mconf.use_sgdr */ // stochastic gradient descent with restarts
     sort_all_samples(samples);
     const double train_start_time = cpuTime();
     for(const auto& v: y_order) {
@@ -985,14 +972,10 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
         const auto l = Lit(y, ctx[y_hat] == l_False);
         verb_print(3, "[find-better-ctx] put into assumps y= " << l);
         assumps.insert(l);
-        /* int w = 1; */
         int w = y_to_y_order_pos[y];
-        /* if (backward_defined.count(y)) w *= 2; */
-        /* if (w == 0) w = 1; */
-        s_ctx.addClause(lits_to_ints({l}), w); //want to flip valuation to ctx[y_hat], so when l is true, we flipped it (i.e. needs no repair)
+        s_ctx.addClause(lits_to_ints({l}), w); // want to flip valuation to ctx[y_hat]
     }
 
-    /* verb_print(3, "[find-better-ctx] iteration " << i << " with " << ass.size() << " assumptions"); */
     auto ret = s_ctx.solve();
     assert(ret && "must be satisfiable");
     assert(s_ctx.getCost() > 0);
@@ -1358,10 +1341,8 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
             samples.push_back(const_cast<sample*>(&s));
     }
     assert(v < cnf.nVars());
-    point_0.resize(cnf.nVars());
-    for(uint32_t i = 0; i < cnf.nVars(); i++) point_0[i] = 0;
-    point_1.resize(cnf.nVars());
-    for(uint32_t i = 0; i < cnf.nVars(); i++) point_1[i] = 1;
+    point_0.zeros(cnf.nVars());
+    point_1.ones(cnf.nVars());
 
     Mat<uint8_t> dataset;
     Row<size_t> labels;
