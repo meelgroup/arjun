@@ -550,7 +550,6 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
         samples.insert(samples.end(), samples2.begin(), samples2.end());
     }
 
-
     // Training
     inject_cnf(solver);
     fh = std::make_unique<FHolder>(&solver);
