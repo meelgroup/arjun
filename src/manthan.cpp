@@ -1366,9 +1366,9 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     }
     labels.resize(samples.size());
     for(uint32_t i = 0; i < samples.size(); i++) labels[i] = lbool_to_bool((*samples[i])[v]);
-    uint32_t num_ones = arma::accu(labels);
-    verb_print(1, "Labels distribution for v " << setw(5) <<  v+1 << ": " << setw(6) << num_ones << " ones and "
-            << setw(6) << (labels.n_elem - num_ones) << " zeros");
+    const auto num_ones = arma::accu(labels);
+    verb_print(2, "Labels distribution for v " << setw(5) <<  v+1 << ": " << setw(6) << num_ones << " ones and "
+            << setw(6) << (samples.size() - num_ones) << " zeros");
     double train_error;
     if (samples.empty()) {
         var_to_formula[v] = fh->constant_formula(true);
@@ -1421,7 +1421,9 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
         uint32_t max_depth = 0;
         var_to_formula[v] = recur(&r, v, used_vars, 0, max_depth);
         verb_print(1, "Training error: " << setprecision(2) << setw(6) << train_error << "%."
-                << " depth: " << setw(6) << max_depth << " on v: " << setw(4) << v+1);
+                << " depth: " << setw(6) << max_depth
+                << " ones: " << setprecision(0) << fixed << setw(5) << (double)num_ones/samples.size()*100.0 << "%"
+                << " on v: " << setprecision(2) << setw(4) << v+1);
     }
 
     // Forward dependency update

@@ -1307,9 +1307,9 @@ public:
         int do_biased_sampling = 0;
         uint32_t num_samples = 10000;
         uint32_t num_samples_ccnr = 3000;
-        uint32_t minimumLeafSize = 20;
-        double minGainSplit = 1.0;
-        uint32_t maximumDepth = 0;
+        uint32_t minimumLeafSize = 10;
+        double minGainSplit = 0.03;
+        uint32_t maximumDepth = 5;
         uint32_t sampler_fixed_conflicts = 100;
         int do_minimize_conflict = 1;
         uint32_t simplify_every = 1000;
