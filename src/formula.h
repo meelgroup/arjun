@@ -66,7 +66,6 @@ public:
         // solver_train
         vector<CL> clauses;
         Lit out = lit_Error;
-        bool finished = false;
         aig_ptr aig = nullptr;
     };
 

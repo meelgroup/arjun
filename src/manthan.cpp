@@ -1190,12 +1190,6 @@ bool Manthan::get_counterexample(sample& ctx) {
     } else {
         assert(ret == l_False);
         verb_print(2, "Formula is good!");
-        for(auto& f: var_to_formula) {
-            if (!f.second.finished) {
-                verb_print(2, "Marking Formula for " << f.first+1 << " as finished");
-                f.second.finished = true;
-            }
-        }
         return true;
     }
 }
