@@ -92,8 +92,8 @@ vector<sample> Manthan::get_samples(const uint32_t num) {
     const double my_time = cpuTime();
     SATSolver solver_samp;
     solver_samp.set_seed(conf.seed);
-    solver_samp.set_up_for_sample_counter(mconf.sampler_fixed_conflicts);
     inject_cnf(solver_samp);
+    solver_samp.set_up_for_sample_counter(mconf.sampler_fixed_conflicts);
 
     if (mconf.do_biased_sampling) {
         array<vector<sample>,2> biased_samp;
@@ -660,7 +660,7 @@ SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
     SimplifiedCNF fcnf = cnf;
     fcnf.map_aigs_to_orig(aigs, cnf.nVars(), &y_hat_to_y);
     assert(verify_final_cnf(fcnf));
-    verb_print(1, COLRED "[manthan] Total time in manthan: " << cpuTime()-my_time << " seconds");
+    verb_print(1, COLRED "[manthan] Done. Repairs: " << tot_repaired << " repair failed: " << repair_failed << " T: " << cpuTime()-my_time);
     return fcnf;
 }
 
@@ -1202,7 +1202,8 @@ bool Manthan::get_counterexample(sample& ctx) {
     }
 }
 
-FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& used_vars, uint32_t depth) {
+FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& used_vars, uint32_t depth, uint32_t& max_depth) {
+    max_depth = std::max(max_depth, depth);
     /* for(uint32_t i = 0; i < depth; i++) cout << " "; */
     if (node->NumChildren() == 0) {
         const bool val = node->ClassProbabilities()[1] > node->ClassProbabilities()[0];
@@ -1245,8 +1246,8 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
         /* cout << "  -- all-0 goes -> " << node->CalculateDirection(point_0); */
         /* cout << "  -- all-1 goes -> " << node->CalculateDirection(point_1) << endl; */
         assert(node->NumChildren() == 2);
-        auto form_0 = recur(&node->Child(0), learned_v, used_vars, depth+1);
-        auto form_1 = recur(&node->Child(1), learned_v, used_vars, depth+1);
+        auto form_0 = recur(&node->Child(0), learned_v, used_vars, depth+1, max_depth);
+        auto form_1 = recur(&node->Child(1), learned_v, used_vars, depth+1, max_depth);
         bool val_going_right = node->CalculateDirection(point_1);
         return fh->compose_ite(form_0, form_1, Lit(v, val_going_right), helpers);
     }
@@ -1347,16 +1348,11 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     Mat<uint8_t> dataset;
     Row<size_t> labels;
 
-    vector<uint32_t> used_vars;
-
-    set<uint32_t> added;
-    for(const auto& dep_v: input) {
-        used_vars.push_back(dep_v);
-        added.insert(dep_v);
-    }
-    for(uint32_t dep_v = 0; dep_v < cnf.nVars(); dep_v++) {
-        if (dependency_mat[dep_v][v] == 1 || dep_v == v || added.count(dep_v)) continue;
-        used_vars.push_back(dep_v);
+    vector<uint32_t> used_vars(input.begin(), input.end());
+    for(const auto& y: y_order) {
+        if (y == v) break;
+        assert(dependency_mat[y][v] != 1);
+        used_vars.push_back(y);
     }
     dataset.resize(used_vars.size(), samples.size());
     verb_print(2, "Dataset size: " << dataset.n_rows << " x " << dataset.n_cols);
@@ -1370,6 +1366,9 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     }
     labels.resize(samples.size());
     for(uint32_t i = 0; i < samples.size(); i++) labels[i] = lbool_to_bool((*samples[i])[v]);
+    uint32_t num_ones = arma::accu(labels);
+    verb_print(1, "Labels distribution for v " << setw(5) <<  v+1 << ": " << setw(6) << num_ones << " ones and "
+            << setw(6) << (labels.n_elem - num_ones) << " zeros");
     double train_error;
     if (samples.empty()) {
         var_to_formula[v] = fh->constant_formula(true);
@@ -1415,13 +1414,14 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
         Row<size_t> predictions;
         r.Classify(dataset, predictions);
         train_error = arma::accu(predictions != labels) * 100.0 / (double)labels.n_elem;
-        verb_print(1, "Training error: " << setprecision(2) << setw(6) << train_error << "%." << " on v: "
-                << setw(4) << v+1);
         /* r.serialize(cout, 1); */
 
         verb_print(2,"[DEBUG] About to call recur for v " << v+1 << " num children: " << r.NumChildren());
         assert(var_to_formula.count(v) == 0);
-        var_to_formula[v] = recur(&r, v, used_vars);
+        uint32_t max_depth = 0;
+        var_to_formula[v] = recur(&r, v, used_vars, 0, max_depth);
+        verb_print(1, "Training error: " << setprecision(2) << setw(6) << train_error << "%."
+                << " depth: " << setw(6) << max_depth << " on v: " << setw(4) << v+1);
     }
 
     // Forward dependency update

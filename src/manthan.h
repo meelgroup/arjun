@@ -92,7 +92,7 @@ class Manthan {
         set<uint32_t> y_hats;
 
         void create_vars_for_y_hats();
-        FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& var_remap, uint32_t depth = 0);
+        FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& var_remap, uint32_t depth, uint32_t& max_depth);
         vector<uint32_t> incidence;
         bool check_functions_for_y_vars() const;
         bool ctx_is_sat(const sample& ctx) const;
