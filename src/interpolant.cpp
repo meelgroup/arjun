@@ -118,7 +118,7 @@ void Interpolant::generate_interpolant(
 
     // FIRST, we get an UNSAT core
     for(const auto& l: assumptions) picosat_assume(ps, lit_to_pl(l));
-    auto pret = picosat_sat(ps, 10000000);
+    auto pret = picosat_sat(ps, -1);
     verb_print(5, "c pret: " << pret);
     if (pret == PICOSAT_SATISFIABLE) {
         cout << "BUG, should be UNSAT" << endl;
