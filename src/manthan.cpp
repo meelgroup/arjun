@@ -511,16 +511,15 @@ bool Manthan::check_functions_for_y_vars() const {
     return true;
 }
 
-SimplifiedCNF Manthan::do_manthan(const SimplifiedCNF& input_cnf) {
-    assert(input_cnf.get_need_aig() && input_cnf.defs_invariant());
+SimplifiedCNF Manthan::do_manthan() {
+    assert(cnf.get_need_aig() && cnf.defs_invariant());
     assert(mconf.simplify_every > 0 && "Can't give simplify_every=0");
     const double my_time = cpuTime();
-    const auto ret = input_cnf.find_disconnected();
+    const auto ret = cnf.find_disconnected();
     verb_print(1, "[manthan] Found " << ret.size() << " disconnected components");
 
     uint32_t tot_repaired = 0;
     uint32_t repair_failed = 0;
-    cnf = input_cnf;
     if (!mconf.write_manthan_cnf.empty()) cnf.write_simpcnf(mconf.write_manthan_cnf);
 
     // CNF is divided into:

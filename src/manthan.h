@@ -55,12 +55,12 @@ using namespace ArjunNS;
 
 class Manthan {
     public:
-        Manthan(const Config& _conf, const Arjun::ManthanConf& _mconf, const std::unique_ptr<FieldGen>& _fg):
-            cnf(_fg->dup()), conf(_conf), mconf(_mconf), fg(_fg->dup()) {
+        Manthan(const Config& _conf, const Arjun::ManthanConf& _mconf, const SimplifiedCNF& _cnf):
+            cnf(_cnf), conf(_conf), mconf(_mconf) {
                 mtrand.seed(42);
             }
-        SimplifiedCNF do_manthan(const SimplifiedCNF& cnf);
-        SimplifiedCNF cnf;
+        SimplifiedCNF do_manthan();
+        const SimplifiedCNF& cnf;
 
     private:
         vec point_0;

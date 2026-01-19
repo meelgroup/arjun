@@ -1148,7 +1148,7 @@ public:
 
     // returns in CNF (new vars) the dependencies of each variable
     // every LHS element in the map is a backward_defined variable
-    std::map<uint32_t, std::set<uint32_t>> compute_backw_dependencies();
+    std::map<uint32_t, std::set<uint32_t>> compute_backw_dependencies() const;
 
     // Serialize SimplifiedCNF to binary file
     void write_aig_defs(std::ofstream& out) const;

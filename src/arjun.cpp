@@ -143,8 +143,8 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_get_simplified_cnf(
 #ifdef SYNTH
 DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(const SimplifiedCNF& cnf, const ManthanConf& mconf)
 {
-    Manthan manthan(arjdata->conf, mconf, cnf.fg);
-    return manthan.do_manthan(cnf);
+    Manthan manthan(arjdata->conf, mconf, cnf);
+    return manthan.do_manthan();
 }
 #endif
 
@@ -1036,7 +1036,7 @@ DLL_PUBLIC void SimplifiedCNF::replace_clauses_with(vector<int>& ret, uint32_t n
 // returns in CNF (new vars) the dependencies of each variable
 // every LHS element in the map is a backward_defined variable
 // input variables are NOT included in the dependencies
-DLL_PUBLIC map<uint32_t, set<uint32_t>> SimplifiedCNF::compute_backw_dependencies() {
+DLL_PUBLIC map<uint32_t, set<uint32_t>> SimplifiedCNF::compute_backw_dependencies() const {
     auto [input, to_define, backward_defined] = get_var_types(0);
     auto new_to_orig_var = get_new_to_orig_var();
     map<uint32_t, set<uint32_t>> cache;
