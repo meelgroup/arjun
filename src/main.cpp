@@ -136,6 +136,7 @@ void add_arjun_options() {
     myopt("--maxdepth", manthan_conf.maximumDepth, atoi,"Maximum depth of decision tree");
     myopt("--minleaf", manthan_conf.minimumLeafSize, atoi,"Minimum leaf size in decision tree");
     myopt("--mingainsplit", manthan_conf.minGainSplit, atof,"Minimum gain for a split in decision tree");
+    myopt("--learnuseall", manthan_conf.do_use_all_variables_as_features, atoi,"Use all variables as features in decision tree learning. 0 = only inputs");
     // synth -- debug
     myopt("--manthancnf", manthan_conf.write_manthan_cnf, string, "Write Manthan CNF to this file");
     myopt("--debugsynth", conf.debug_synth, string,"Debug synthesis, prefix with this fname");

@@ -1349,10 +1349,12 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     Row<size_t> labels;
 
     vector<uint32_t> used_vars(input.begin(), input.end());
-    for(const auto& y: y_order) {
-        if (y == v) break;
-        assert(dependency_mat[y][v] != 1);
-        used_vars.push_back(y);
+    if (mconf.do_use_all_variables_as_features) {
+        for(const auto& y: y_order) {
+            if (y == v) break;
+            assert(dependency_mat[y][v] != 1);
+            used_vars.push_back(y);
+        }
     }
     dataset.resize(used_vars.size(), samples.size());
     verb_print(2, "Dataset size: " << dataset.n_rows << " x " << dataset.n_cols);

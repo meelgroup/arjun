@@ -1317,6 +1317,7 @@ public:
         int do_maxsat_better_ctx = 0;
         int maxsat_order = 1;
         int do_unique_input_samples = 1;
+        int do_use_all_variables_as_features = 1;
     };
     void standalone_elim_to_file(SimplifiedCNF& cnf,
             const ElimToFileConf& etof_conf, const SimpConf& simp_conf);
