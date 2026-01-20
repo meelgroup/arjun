@@ -169,6 +169,7 @@ void add_arjun_options() {
     myopt("--findbins", conf.oracle_find_bins, atoi,"How aggressively find binaries via oracle");
     myopt("--sbvabreak",  etof_conf.sbva_tiebreak, atoi,"SBVA tie break: 1=sbva or 0=bva");
     myopt("--gaussj", conf.gauss_jordan, atoi,"Use XOR finding and Gauss-Jordan elimination");
+    myopt("--bve", simp_conf.do_bve, atoi,"Perform BVE during CNF simplification");
     myopt("--iter1", simp_conf.iter1, atoi,"Puura iterations before oracle");
     myopt("--iter1grow", simp_conf.bve_grow_iter1, atoi,"Puura BVE grow rate allowed before Oracle");
     myopt("--iter2", simp_conf.iter2, atoi,"Puura iterations after oracle");

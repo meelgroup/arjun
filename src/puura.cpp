@@ -293,6 +293,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->set_oracle_get_learnts(simp_conf.oracle_vivify_get_learnts);
     solver->set_oracle_removed_is_learnt(1);
     solver->set_oracle_find_bins(conf.oracle_find_bins);
+    solver->set_bve(simp_conf.do_bve);
     if (!simp_conf.appmc) {
         solver->set_min_bva_gain(simp_conf.bve_grow_iter1);
         solver->set_bve_nonstop(simp_conf.bve_grow_nonstop);
