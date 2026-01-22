@@ -61,8 +61,6 @@ using std::fixed;
 using namespace ArjunInt;
 using namespace ArjunNS;
 using namespace CMSat;
-constexpr uint32_t MAX_UINT32_T = std::numeric_limits<uint32_t>::max();
-
 
 int lit_to_int(const Lit& l) {
     int v = l.var()+1;
