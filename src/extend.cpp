@@ -80,9 +80,9 @@ void Extend::add_all_indics_except(const set<uint32_t>& except) {
 void Extend::unsat_define(SimplifiedCNF& cnf) {
     const double my_time = cpuTime();
     assert(cnf.get_need_aig() && cnf.defs_invariant());
+    auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb | slow_debug_enabled, "start unsat_define");
 
     double start_round_time = cpuTime();
-    uint32_t start_size = cnf.get_opt_sampl_vars().size();
     fill_solver(cnf);
     solver->set_verbosity(0);
     solver->set_scc(1);
@@ -113,7 +113,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
 
     sort_unknown(unknown, incidence);
     verb_print(1,"[arjun] Start unknown size: " << unknown.size());
-    uint32_t sat = 0;
+    uint32_t num_sat = 0;
     set<uint32_t> unknown_set(unknown.begin(), unknown.end());
 
     vector<Lit> assumptions;
@@ -153,7 +153,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
         num_done++;
 
         if (ret == l_False) verb_print(5, "[arjun] extend solve(): False");
-        else if (ret == l_True) {verb_print(5, "[arjun] extend solve(): True");sat++;}
+        else if (ret == l_True) {verb_print(5, "[arjun] extend solve(): True");num_sat++;}
         else if (ret == l_Undef) verb_print(5, "[arjun] extend solve(): Undef");
 
         if (ret == l_False) {
@@ -178,13 +178,10 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             }
             // Not fully dependent
         } else {
-            // Unknown
+            // SAT or Unknown
         }
     }
 
-    verb_print(1, "defined via Padoa: " << cnf.get_opt_sampl_vars().size()-start_size
-            << " SAT: " << sat
-            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
     if (conf.verb >= 3) {
         for(const auto& [v, aig]: interp.get_defs()) {
@@ -199,8 +196,11 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
 
     cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);
     assert(cnf.get_need_aig() && cnf.defs_invariant());
-    verb_print(1, "[arjun-extend] unsat_define done T: "
-            << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
+    auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | slow_debug_enabled, "end unsat_define");
+    verb_print(1, COLRED "[extend] Done. unsat_define "
+            << " defined: " << to_define.size()-to_define2.size()
+            << " still to define: " << to_define2.size()
+            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
 }
 
 void Extend::extend_round(SimplifiedCNF& cnf) {

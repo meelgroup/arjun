@@ -130,9 +130,9 @@ void Puura::backbone(SimplifiedCNF& cnf) {
 void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     double my_time = cpuTime();
     uint32_t new_units = 0;
+    std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb, "start synthesis_unate");
     sampl_set.clear();
     for(const auto& v: cnf.get_opt_sampl_vars()) sampl_set.insert(v);
-    verb_print(1, "[unate] opt sampling set size: " << sampl_set.size());
 
     auto s = setup_f_not_f_indic(cnf);
     vector<Lit> assumps;
@@ -184,9 +184,6 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
         }
     } while (new_units > old_units);
 
-    verb_print(1, "[unate]" << " new units: " << new_units << " undefs: " << undefs
-        << " T-out: " << (int)timeout << " T: " << (cpuTime()-my_time));
-
 
     const auto zero_assigned = s->get_zero_assigned_lits();
     uint32_t num_assigned = 0;
@@ -195,7 +192,13 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
         verb_print(3, "[unate] zero assigned: " << z);
         num_assigned++;
     }
-    verb_print(1, "[unate] total zero assigned: " << num_assigned << " T: " << (cpuTime() - my_time));
+    auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0, "start synthesis_unate");
+    verb_print(1, COLRED "[unate] Done. synthesis_unate total zero assigned: " << num_assigned
+        << " new units: " << new_units << " undefs: " << undefs
+        << " defined: " << to_define.size() - to_define2.size()
+        << " still to define: " << to_define2.size()
+        << " T-out: " << (int)timeout
+        << " T: " << (cpuTime() - my_time));
     cnf.get_fixed_values(cnf, s);
 }
 
@@ -250,7 +253,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     const double my_time = cpuTime();
     if (cnf.get_need_aig()) {
         assert(cnf.defs_invariant());
-        cnf.get_var_types(1);
+        std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb | slow_debug_enabled, "start get_fully_simplified_renumbered_cnf");
     }
     for(const auto& v: cnf.get_sampl_vars())
         verb_print(5, "[w-debug] orig sampl var: " << v+1);
@@ -362,9 +365,18 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     // Return final one
     auto ret_cnf = cnf.get_cnf(solver, new_sampl_vars, new_empty_sampl_vars, conf.verb);
     ret_cnf.set_backbone_done(backbone_done);
-    verb_print(1, COLRED "[puura] final vars: " << ret_cnf.nVars()
-        << " final cls: " << ret_cnf.get_clauses().size()
-        << " T: " << setprecision(2) << setw(2) << (cpuTime() - my_time));
+    if (cnf.get_need_aig()) {
+        auto [input_vars2, to_define2, backward_defined2] = ret_cnf.get_var_types(0 | slow_debug_enabled, "end get_fully_simplified_renumbered_cnf");
+        verb_print(1, COLRED "[puura] Done. final vars: " << ret_cnf.nVars()
+            << " final cls: " << ret_cnf.get_clauses().size()
+            << " defined: " << to_define.size() - to_define2.size()
+            << " still to define: " << to_define2.size()
+            << " T: " << setprecision(2) << setw(2) << (cpuTime() - my_time));
+    } else {
+        verb_print(1, COLRED "[puura] Done. final vars: " << ret_cnf.nVars()
+            << " final cls: " << ret_cnf.get_clauses().size()
+            << " T: " << setprecision(2) << setw(2) << (cpuTime() - my_time));
+    }
     return ret_cnf;
 }
 

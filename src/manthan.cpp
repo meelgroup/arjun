@@ -524,7 +524,7 @@ SimplifiedCNF Manthan::do_manthan() {
     // input vars -- original sampling vars
     // defined non-input vars -- vars defined via backward_round_synth
     // to_define vars -- vars that are not defined yet, and not input
-    std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb);
+    std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb | slow_debug_enabled, "start do_manthan");
     if (to_define.empty()) {
         verb_print(1, "[manthan] No variables to define, returning original CNF");
         return cnf;
@@ -540,12 +540,17 @@ SimplifiedCNF Manthan::do_manthan() {
     inject_cnf(repair_solver, false); // faster to add CNF later
 
     // Sampling
+    double samp_start_time = cpuTime();
     verb_print(1, "[manthan] Getting " << mconf.num_samples << " samples...");
     vector<sample> samples = get_samples(mconf.num_samples);
     {
         vector<sample> samples2 = get_samples_ccnr(mconf.num_samples_ccnr);
         samples.insert(samples.end(), samples2.begin(), samples2.end());
     }
+    const double sampl_time = cpuTime() - samp_start_time;
+    verb_print(1, COLYEL "[manthan] Got " << samples.size() << " samples. T: "
+        << std::setprecision(2) << std::fixed << sampl_time
+        << " samp/var: " << std::setprecision(2) << std::fixed << sampl_time/(double)to_define.size());
 
     // Training
     inject_cnf(solver);
@@ -568,11 +573,12 @@ SimplifiedCNF Manthan::do_manthan() {
         if (backward_defined.count(v)) continue;
         train(samples, v); // updates dependency_mat
     }
-    verb_print(1, COLYEL "[manthan] training done. T: " << setw(6) << std::setprecision(2) << std::fixed << (cpuTime() - train_start_time) << " train/var: "
+    const double train_time = cpuTime() - train_start_time;
+    verb_print(1, COLYEL "[manthan] training done. T: " << setw(6) << std::setprecision(2) << std::fixed << train_time << " train/var: "
         << std::setprecision(2) << std::fixed << (cpuTime() - train_start_time)/(double)to_define.size());
     assert(check_map_dependency_cycles());
 
-    const double repair_time = cpuTime();
+    const double repair_start_time = cpuTime();
     fill_var_to_formula_with_backward();
     fix_order();
     for(const auto& v: to_define_full) {
@@ -591,8 +597,8 @@ SimplifiedCNF Manthan::do_manthan() {
                     << "   avg confl sz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
                     << "   avg needs rep sz: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
                     << "   avg try/repair: " << setw(6) << fixed << setprecision(2) << (double)(tot_repaired+repair_failed)/(num_loops_repair+0.0001)
-                    << "   T: " << setprecision(2) << fixed << setw(7) << cpuTime()-repair_time
-                    << "   rep/s: " << setprecision(4) << (double)tot_repaired/(cpuTime()-repair_time+0.0001) << setprecision(2));
+                    << "   T: " << setprecision(2) << fixed << setw(7) << cpuTime()-repair_start_time
+                    << "   rep/s: " << setprecision(4) << (double)tot_repaired/(cpuTime()-repair_start_time+0.0001) << setprecision(2));
         }
         assert(at_least_one_repaired);
         at_least_one_repaired = false;
@@ -642,8 +648,17 @@ SimplifiedCNF Manthan::do_manthan() {
         }
         verb_print(2, "[manthan] Num repaired: " << num_repaired << " tot repaired: " << tot_repaired << " num_loops_repair: " << num_loops_repair);
     }
+    const double repair_time = cpuTime() - repair_start_time;
     assert(check_map_dependency_cycles());
-    verb_print(1, "[manthan] DONE");
+    verb_print(1, "[manthan] rep: " << setw(6) << tot_repaired
+        << "   loops: "<< setw(4) << num_loops_repair
+        << "   avg rep/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
+        << "   avg confl sz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
+        << "   avg needs rep sz: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
+        << "   avg try/repair: " << setw(6) << fixed << setprecision(2) << (double)(tot_repaired+repair_failed)/(num_loops_repair+0.0001)
+        << "   T: " << setprecision(2) << fixed << setw(7) << repair_time
+        << "   rep/s: " << setw(7) << setprecision(3) << (double)tot_repaired/(repair_time+0.0001) << setprecision(2)
+        << " DONE");
 
     // Build final CNF
     map<uint32_t, aig_ptr> aigs;
@@ -656,13 +671,21 @@ SimplifiedCNF Manthan::do_manthan() {
     SimplifiedCNF fcnf = cnf;
     fcnf.map_aigs_to_orig(aigs, cnf.nVars(), &y_hat_to_y);
     assert(verify_final_cnf(fcnf));
-    verb_print(1, COLRED "[manthan] Done. Repairs: " << tot_repaired << " repair failed: " << repair_failed << " T: " << cpuTime()-my_time);
+    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0 | slow_debug_enabled, "end do_manthan");
+    verb_print(1, COLRED "[manthan] Done. manthan"
+        << " sampl time: " << std::setprecision(2) << std::fixed << sampl_time
+        << " train time: " << std::setprecision(2) << std::fixed << train_time
+        << " repair time: " << std::setprecision(2) << std::fixed << repair_time
+        << " Repairs: " << tot_repaired << " repair failed: " << repair_failed
+        << " defined: " << to_define.size() - to_define2.size()
+        << " still to define: " << to_define2.size()
+        << " T: " << cpuTime()-my_time);
     return fcnf;
 }
 
 bool Manthan::verify_final_cnf(const SimplifiedCNF& fcnf) const {
     assert(fcnf.check_aig_cycles());
-    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0);
+    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0 | slow_debug_enabled, "verify_final_cnf");
     for(const auto& v: to_define2) {
         cout << "ERROR: var " << v+1 << " not defined in final CNF!" << endl;
         assert(false && "All to-define vars must be defined in final CNF");
@@ -1430,7 +1453,7 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
         }
     }
     verb_print(2, "Trained formula for y " << v+1 << ":" << endl << var_to_formula[v]);
-    verb_print(2,"Done training variable: " << v+1);
+    verb_print(2, "Done training variable: " << v+1);
     verb_print(2, "------------------------------");
 
     return train_error;

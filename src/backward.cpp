@@ -404,14 +404,20 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
     assert(cnf.get_need_aig() && cnf.defs_invariant());
 
-    double start_round_time = cpuTime();
+    const double start_time = cpuTime();
+    assert(cnf.get_need_aig() && cnf.defs_invariant());
+    fill_solver_synth(cnf);
+    init();
+    get_incidence();
+    duplicate_problem(cnf);
+
 
     // Initially, all of opt_samping_set is known, we do NOT want to minimize those
     // Instead, all non-sampling-set vars, get definitions for them
     // in terms of ANY other variables, but NOT in a self-referential way
     vector<char> unknown_set(orig_num_vars, 0);
     vector<uint32_t> unknown;
-    auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb);
+    auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb | slow_debug_enabled, "start backward_round_synth");
     set<uint32_t> pretend_input;
     if (to_define.empty()) {
         verb_print(1, "[arjun] No variables to define, returning original CNF");
@@ -520,11 +526,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
             interp.generate_interpolant(assumptions, test_var, cnf, pretend_input);
         }
     }
-
     verb_print(3, __PRETTY_FUNCTION__ << " pretend_input size: " << pretend_input.size());
-    verb_print(1, COLRED "[arjun] backward round finished. T: " << ret_true << " U: " << ret_undef
-            << " F: " << ret_false << " I: " << sampling_vars.size() << " T: "
-        << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
 
     if (conf.verb >= 1) {
         solver->print_stats();
@@ -541,5 +543,12 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     for(const auto& [v, aig]: interp.get_defs()) assert(input.count(v) == 0);
     cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);
     cnf.set_after_backward_round_synth();
+    auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | slow_debug_enabled, "end backward_round_synth");
+
+    verb_print(1, COLRED "[backward] Done. backward_round_synth finished "
+        << " TR: " << ret_true << " UN: " << ret_undef << " FA: " << ret_false
+        << " defined: " << to_define.size()-to_define2.size()
+        << " still to define: " << to_define2.size()
+        << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time));
     assert(cnf.get_need_aig() && cnf.defs_invariant());
 }

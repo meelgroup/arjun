@@ -57,8 +57,10 @@ using std::setw;
 
 #ifdef SLOW_DEBUG
 #define SLOW_DEBUG_DO(x) do { x; } while (0)
+constexpr int slow_debug_enabled = 10;
 #else
 #define SLOW_DEBUG_DO(x) do { } while (0)
+constexpr int slow_debug_enabled = 0;
 #endif
 
 using std::unique_ptr;

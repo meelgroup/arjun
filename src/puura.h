@@ -57,8 +57,8 @@ public:
 private:
     unique_ptr<SATSolver> setup_f_not_f_indic(const SimplifiedCNF& cnf);
     void set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf);
-    bool set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, std::unique_ptr<SATSolver>& solver);
-    void get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, std::unique_ptr<SATSolver>& solver) const;
+    bool set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, unique_ptr<SATSolver>& solver);
+    void get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, unique_ptr<SATSolver>& solver) const;
     SimplifiedCNF get_cnf(
         unique_ptr<SATSolver>& solver,
         const SimplifiedCNF& cnf,
@@ -66,6 +66,10 @@ private:
         const vector<uint32_t>& empty_sampl_vars);
 
     const Config& conf;
+
+    set<uint32_t> input;
+    set<uint32_t> to_define;
+    set<uint32_t> backward_defined;
 
     vector<uint32_t> var_to_indic;
     uint32_t orig_num_vars;

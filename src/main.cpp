@@ -22,6 +22,7 @@
  THE SOFTWARE.
  */
 
+#include "src/constants.h"
 #include <memory>
 #if defined(__GNUC__) && defined(__linux__)
 #include <cfenv>
@@ -272,7 +273,7 @@ void do_synthesis() {
     assert(cnf.get_need_aig() && cnf.defs_invariant());
     check_cnf_sat(cnf);
     cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
-    cnf.get_var_types(1);
+    cnf.get_var_types(0 | slow_debug_enabled, "start do_synthesis");
     if (do_pre_backbone) arjun->standalone_backbone(cnf);
     if (do_synth_bve) {
         /* simp_conf.bve_too_large_resolvent = -1; */
@@ -293,17 +294,17 @@ void do_synthesis() {
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-3-unsat_unate.aig");
     }
 
-    // backw_round_synth
     if (do_minim_indep) {
-        arjun->standalone_minimize_indep_synt(cnf);
+        arjun->standalone_backward_round_synth(cnf);
         cnf.simplify_aigs();
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-4-minim_idep_synt.aig");
     }
 
-    auto final_cnf = arjun->standalone_manthan(cnf, manthan_conf);
+    cnf = arjun->standalone_manthan(cnf, manthan_conf);
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");
-    final_cnf.clear_orig_sampl_defs();
     if (!conf.debug_synth.empty()) {
+        auto final_cnf = cnf;
+        final_cnf.clear_orig_sampl_defs(); // final should not have orig sampl set defined
         final_cnf.write_aig_defs_to_file(conf.debug_synth + "-final.aig");
         cout << "c o [arjun] you can check correctness by running: " << endl;
         cout << "./test-synth -u -v 1 " << input_file << " " << conf.debug_synth + "-final.aig" << endl;

@@ -41,11 +41,6 @@ using std::cerr;
 using std::cout;
 using std::endl;
 
-inline double stats_line_percent(double num, double total) {
-    if (total == 0) return 0;
-    else return num/total*100.0;
-}
-
 template<typename T> void read_in_a_file(const std::string& filename,
         T* holder, bool& all_indep, unique_ptr<CMSat::FieldGen>& fg) {
     #ifndef USE_ZLIB

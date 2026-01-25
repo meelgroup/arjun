@@ -117,9 +117,9 @@ DLL_PUBLIC void Arjun::standalone_minimize_indep(SimplifiedCNF& cnf, bool all_in
 }
 
 #ifdef SYNTH
-DLL_PUBLIC void Arjun::standalone_minimize_indep_synt(SimplifiedCNF& cnf) {
+DLL_PUBLIC void Arjun::standalone_backward_round_synth(SimplifiedCNF& cnf) {
     Minimize common(arjdata->conf);
-    common.run_minimize_for_synth(cnf);
+    common.backward_round_synth(cnf);
 }
 #endif
 
@@ -1028,7 +1028,7 @@ DLL_PUBLIC void SimplifiedCNF::replace_clauses_with(vector<int>& ret, uint32_t n
 // every LHS element in the map is a backward_defined variable
 // input variables are NOT included in the dependencies
 DLL_PUBLIC map<uint32_t, set<uint32_t>> SimplifiedCNF::compute_backw_dependencies() const {
-    auto [input, to_define, backward_defined] = get_var_types(0);
+    auto [input, to_define, backward_defined] = get_var_types(0, "start compute_backw_dependencies");
     auto new_to_orig_var = get_new_to_orig_var();
     map<uint32_t, set<uint32_t>> cache;
     map<uint32_t, set<uint32_t>> ret;
@@ -1268,7 +1268,7 @@ DLL_PUBLIC void SimplifiedCNF::write_simpcnf(const string& fname, bool red) cons
 // Returns NEW vars, i.e. < nVars()
 // It is checked that it is correct and total
 DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
-    SimplifiedCNF::get_var_types([[maybe_unused]] uint32_t verb) const {
+    SimplifiedCNF::get_var_types([[maybe_unused]] uint32_t verb, const string& str) const {
     assert(need_aig);
     set<uint32_t> input;
     set<uint32_t> input_orig;
@@ -1345,7 +1345,7 @@ DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
     }
     if (verb >= 1) {
         if (verb >= 2) {
-            cout << "orig_to_new: ";
+            cout << "c o " << str << " orig_to_new: ";
             for(uint32_t i = 0; i < defs.size(); i++) {
                 cout << i << " -> ";
                 if (orig_to_new_var.count(i) == 0)
@@ -1360,75 +1360,75 @@ DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
             cout << endl;
         }
 
-        cout << "c o [get-var-types] Variable types in CNF:" << endl;
-        cout << "c o [get-var-types] Num input vars: " << input.size() << endl;
+        cout << "c o " << str << " [get-var-types] Variable types in CNF:" << endl;
+        cout << "c o " << str << " [get-var-types] Num input vars: " << input.size() << endl;
         if (verb >= 2) {
-            cout << "c o [get-var-types]   Input vars (new) : ";
+            cout << "c o " << str << " [get-var-types]   Input vars (new) : ";
             for(const auto& v: input) cout << v+1 << " ";
             cout << endl;
-            cout << "c o [get-var-types]   Input vars (orig): ";
+            cout << "c o " << str << " [get-var-types]   Input vars (orig): ";
             for(const auto& v: input_orig) cout << v+1 << " ";
             cout << endl;
         }
 
-        cout << "c o [get-var-types] Num to-define vars: " << to_define.size() << endl;
+        cout << "c o " << str << " [get-var-types] Num to-define vars: " << to_define.size() << endl;
         if (verb >= 2) {
-            cout << "c o [get-var-types]   To-define vars (new) : ";
+            cout << "c o " << str << " [get-var-types]   To-define vars (new) : ";
             for(const auto& v: to_define) cout << v.n+1 << " ";
             cout << endl;
-            cout << "c o [get-var-types]   To-define vars (orig): ";
+            cout << "c o " << str << " [get-var-types]   To-define vars (orig): ";
             for(const auto& v: to_define) cout << v.o+1 << " ";
             cout << endl;
         }
 
-        cout << "c o [get-var-types] Num unsat-defined vars: "
+        cout << "c o " << str << " [get-var-types] Num unsat-defined vars: "
             << unsat_defined_vars.size() << endl;
         if (verb >= 2) {
-            cout << "c o [get-var-types]   Unsat-defined vars (new) : ";
+            cout << "c o " << str << " [get-var-types]   Unsat-defined vars (new) : ";
             for(const auto& v: unsat_defined_vars) cout << v.n+1 << " ";
             cout << endl;
-            cout << "c o [get-var-types]   Unsat-defined vars (orig): ";
+            cout << "c o " << str << " [get-var-types]   Unsat-defined vars (orig): ";
             for(const auto& v: unsat_defined_vars) cout << v.o+1 << " ";
             cout << endl;
         }
 
-        cout << "c o [get-var-types] Num backward-synth-defined vars: "
+        cout << "c o " << str << " [get-var-types] Num backward-synth-defined vars: "
             << backw_synth_defined_vars.size() << endl;
         if (verb >= 2) {
-            cout << "c o [get-var-types]   Backward-synth-defined vars (new) : ";
+            cout << "c o " << str << " [get-var-types]   Backward-synth-defined vars (new) : ";
             for(const auto& v: backw_synth_defined_vars) cout << v.n+1 << " ";
             cout << endl;
-            cout << "c o [get-var-types]   Backward-synth-defined vars (orig): ";
+            cout << "c o " << str << " [get-var-types]   Backward-synth-defined vars (orig): ";
             for(const auto& v: backw_synth_defined_vars) cout << v.o+1 << " ";
             cout << endl;
         }
 
-        cout << "c o [get-var-types] Num bve-defined vars: "
+        cout << "c o " << str << " [get-var-types] Num bve-defined vars: "
             << bve_defined_vars_orig.size() << endl;
         if (verb >= 2) {
-            cout << "c o [get-var-types]   bve-defined vars (orig): ";
+            cout << "c o " << str << " [get-var-types]   bve-defined vars (orig): ";
             for(const auto& v: bve_defined_vars_orig) cout << v+1 << " ";
             cout << endl;
         }
 
-        cout << "c o [get-var-types] Num forced vars:      "
+        cout << "c o " << str << " [get-var-types] Num forced vars:      "
             << forced_vars_orig.size() << endl;
         if (verb >= 2) {
-            cout << "c o [get-var-types]   forced vars (orig):      ";
+            cout << "c o " << str << " [get-var-types]   forced vars (orig):      ";
             for(const auto& v: forced_vars_orig) cout << v+1 << " ";
             cout << endl;
         }
 
-        cout << "c o [get-var-types] Num SCC vars:         "
+        cout << "c o " << str << " [get-var-types] Num SCC vars:         "
             << scc_vars_orig.size() << endl;
         if (verb >= 2) {
-            cout << "c o [get-var-types]   SCC vars (orig):         ";
+            cout << "c o " << str << " [get-var-types]   SCC vars (orig):         ";
             for(const auto& v: scc_vars_orig) cout << v+1 << " ";
             cout << endl;
         }
 
-        cout << "c o [get-var-types] Total vars in ORIG CNF: " << defs.size() << endl;
-        cout << "c o [get-var-types] Total vars in NEW  CNF: " << nVars() << endl;
+        cout << "c o " << str << " [get-var-types] Total vars in ORIG CNF: " << defs.size() << endl;
+        cout << "c o " << str << " [get-var-types] Total vars in NEW  CNF: " << nVars() << endl;
     }
     assert(input.size() + to_define.size() + unsat_defined_vars.size() + backw_synth_defined_vars.size() == nVars());
 
@@ -1495,7 +1495,7 @@ DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
     check_all_vars_accounted_for();
     check_aig_cycles();
     check_self_dependency();
-    get_var_types(0);
+    get_var_types(0, "defs_invariant");
     SLOW_DEBUG_DO(check_synth_funs_randomly());
     return true;
 }

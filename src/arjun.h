@@ -937,7 +937,8 @@ public:
 
     // Returns NEW vars, i.e. < nVars()
     // It is checked that it is correct and total
-    std::tuple<std::set<uint32_t>, std::set<uint32_t>, std::set<uint32_t>> get_var_types([[maybe_unused]] uint32_t verb) const;
+    std::tuple<std::set<uint32_t>, std::set<uint32_t>, std::set<uint32_t>>
+        get_var_types([[maybe_unused]] uint32_t verb, const std::string& str = "") const;
 
     bool check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars() const;
     bool check_orig_sampl_vars_undefined() const;
@@ -1285,7 +1286,7 @@ public:
 
     // Perform indep set calculation
     void standalone_minimize_indep(SimplifiedCNF& cnf, bool all_indep);
-    void standalone_minimize_indep_synt(SimplifiedCNF& cnf);
+    void standalone_backward_round_synth(SimplifiedCNF& cnf);
     void standalone_extend_sampl_set(SimplifiedCNF& cnf);
     void standalone_unsat_define(SimplifiedCNF& cnf);
     void standalone_unate(SimplifiedCNF& cnf);
