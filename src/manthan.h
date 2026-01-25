@@ -115,7 +115,7 @@ class Manthan {
         void minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, const Lit repairing);
         uint32_t find_next_repair_var(const sample& ctx) const;
         void perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit>& conflict);
-        void add_not_F_x_yhat(SATSolver& s) const;
+        void add_not_f_x_yhat(SATSolver& s) const;
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with_backward();
         void print_y_order_occur() const;

@@ -551,7 +551,7 @@ SimplifiedCNF Manthan::do_manthan() {
     inject_cnf(solver);
     fh = std::make_unique<FHolder>(&solver);
     create_vars_for_y_hats();
-    add_not_F_x_yhat(solver);
+    add_not_f_x_yhat(solver);
     verb_print(2, "True lit in solver_train: " << fh->get_true_lit());
     verb_print(2, "[manthan] After fh creation: solver_train.nVars() = " << solver.nVars() << " cnf.nVars() = " << cnf.nVars());
     fix_order();
@@ -1073,7 +1073,7 @@ void Manthan::create_vars_for_y_hats() {
 }
 
 // Adds ~F(x, y_hat), fills y_to_y_hat and y_hat_to_y
-void Manthan::add_not_F_x_yhat(SATSolver& s) const {
+void Manthan::add_not_f_x_yhat(SATSolver& s) const {
     vector<Lit> tmp;
 
     // Adds ~F(x, y_hat)

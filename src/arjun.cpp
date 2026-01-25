@@ -426,6 +426,7 @@ DLL_PUBLIC void SimplifiedCNF::get_fixed_values(
     auto new_to_orig_var = get_new_to_orig_var();
     auto fixed = solver->get_zero_assigned_lits();
     for(const auto& l: fixed) {
+        if (l.var() >= nVars()) continue;
         CMSat::Lit orig_lit = new_to_orig_var.at(l.var());
         orig_lit ^= l.sign();
         scnf.defs[orig_lit.var()] = scnf.aig_mng.new_const(!orig_lit.sign());

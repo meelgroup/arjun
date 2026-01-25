@@ -139,7 +139,7 @@ void assert_sample_satisfying(const vector<lbool>& sample, SATSolver& solver) {
 }
 
 // Add ~F(x, y_hat) to the solver - at least one clause must be unsatisfied when using y_hat
-void add_not_F_x_yhat(SATSolver& solver, const SimplifiedCNF& orig_cnf,
+void add_not_f_x_yhat(SATSolver& solver, const SimplifiedCNF& orig_cnf,
                       const set<uint32_t>& aig_vs,
                       map<uint32_t, uint32_t>& y_to_y_hat) {
     if (verb) cout << "c [F_x_yhat] Adding ~F(x, y_hat)..." << endl;
@@ -388,7 +388,7 @@ void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
     map<uint32_t, uint32_t> y_to_y_hat;
 
     // Step 1: Add ~F(x, y_hat)
-    add_not_F_x_yhat(verify_solver, orig_cnf, aig_vs, y_to_y_hat);
+    add_not_f_x_yhat(verify_solver, orig_cnf, aig_vs, y_to_y_hat);
 
     // Step 2: Fill var_to_formula with backward definitions
     map<uint32_t, FHolder::Formula> var_to_formula;
