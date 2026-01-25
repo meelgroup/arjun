@@ -545,7 +545,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     cnf.set_after_backward_round_synth();
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | slow_debug_enabled, "end backward_round_synth");
 
-    verb_print(1, COLRED "[backward] Done. backward_round_synth finished "
+    verb_print(1, COLRED "[backward] Done. "
         << " TR: " << ret_true << " UN: " << ret_undef << " FA: " << ret_false
         << " defined: " << to_define.size()-to_define2.size()
         << " still to define: " << to_define2.size()

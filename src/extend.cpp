@@ -197,7 +197,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);
     assert(cnf.get_need_aig() && cnf.defs_invariant());
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | slow_debug_enabled, "end unsat_define");
-    verb_print(1, COLRED "[extend] Done. unsat_define "
+    verb_print(1, COLRED "[extend] Done. "
             << " defined: " << to_define.size()-to_define2.size()
             << " still to define: " << to_define2.size()
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - my_time));

@@ -624,7 +624,7 @@ SimplifiedCNF Manthan::do_manthan() {
         SLOW_DEBUG_DO(assert(ctx_y_hat_compute(ctx)));
         needs_repair.clear(); for(const auto& y: to_define_full) if (ctx[y] != ctx[y_to_y_hat[y]])
             needs_repair.insert(y);
-        verb_print(2, "[manthan] Finding better ctx DONE, needs_repair size before vs now: "
+        verb_print(2, "[manthan] finding better ctx done, needs_repair size before vs now: "
               << setw(3) << old_needs_repair_size << " -- " << setw(4) << needs_repair.size());
         print_needs_repair_vars();
         needs_repair_sum += needs_repair.size();
@@ -672,11 +672,11 @@ SimplifiedCNF Manthan::do_manthan() {
     fcnf.map_aigs_to_orig(aigs, cnf.nVars(), &y_hat_to_y);
     assert(verify_final_cnf(fcnf));
     auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0 | slow_debug_enabled, "end do_manthan");
-    verb_print(1, COLRED "[manthan] Done. manthan"
-        << " sampl time: " << std::setprecision(2) << std::fixed << sampl_time
-        << " train time: " << std::setprecision(2) << std::fixed << train_time
-        << " repair time: " << std::setprecision(2) << std::fixed << repair_time
-        << " Repairs: " << tot_repaired << " repair failed: " << repair_failed
+    verb_print(1, COLRED "[manthan] Done. "
+        << " sampl T: " << std::setprecision(2) << std::fixed << sampl_time
+        << " train T: " << std::setprecision(2) << std::fixed << train_time
+        << " repair T: " << std::setprecision(2) << std::fixed << repair_time
+        << " eepairs: " << tot_repaired << " repair failed: " << repair_failed
         << " defined: " << to_define.size() - to_define2.size()
         << " still to define: " << to_define2.size()
         << " T: " << cpuTime()-my_time);
