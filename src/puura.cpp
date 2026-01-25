@@ -127,7 +127,6 @@ void Puura::backbone(SimplifiedCNF& cnf) {
     verb_print(1, "[arjun-backbone] done, T: " << (cpuTime() - my_time));
 }
 
-// TODO: Beware, empty var elim (i.e. all resolvents are tautology) should be done BEFORE this
 void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     double my_time = cpuTime();
     uint32_t new_units = 0;
