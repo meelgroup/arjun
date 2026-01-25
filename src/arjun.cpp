@@ -433,16 +433,6 @@ DLL_PUBLIC void SimplifiedCNF::get_fixed_values(
     }
 }
 
-DLL_PUBLIC void SimplifiedCNF::set_fixed_values(const vector<Lit>& lits)
-{
-    auto new_to_orig_var = get_new_to_orig_var();
-    for(const auto& l: lits) {
-        CMSat::Lit orig_lit = new_to_orig_var.at(l.var());
-        orig_lit ^= l.sign();
-        defs[orig_lit.var()] = aig_mng.new_const(!orig_lit.sign());
-    }
-}
-
 DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const map<uint32_t, aig_ptr>& aigs_orig, const uint32_t max_num_vars,
         const map<uint32_t, uint32_t>* back_map) {
     const auto new_to_orig_var = get_new_to_orig_var();

@@ -144,19 +144,6 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     s->set_scc(false);
     s->set_bve(false);
 
-    uint32_t to_test = 0;
-    /* dont_elim.clear(); */
-    /* for(uint32_t test = 0; test < orig_num_vars; test++) { */
-    /*     if (s->removed_var(test)) continue; */
-    /*     if (sampl_set.count(test)) continue; */
-    /*     dont_elim.push_back(Lit(test, false)); */
-    /*     dont_elim.push_back(Lit(test+orig_num_vars, false)); */
-    /*     to_test ++; */
-    /* } */
-    /* s->simplify(&dont_elim); */
-    /* s->set_bve(false); */
-
-    verb_print(1, "[unate] Going to test: " << to_test);
     uint32_t tested_num = 0;
     uint32_t old_units;
     do {
@@ -166,7 +153,7 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
             if (sampl_set.count(test)) continue;
             /* if (s->get_sum_conflicts() > 50000) {timeout = true; break;} */
             tested_num++;
-            if (tested_num % 100 == 99) {
+            if (tested_num % 600 == 599) {
                 verb_print(1, "[unate] test no: " << setw(5) << tested_num
                     << " confl K: " << setw(4) << s->get_sum_conflicts()/1000
                     << " new units: " << setw(4) << new_units
@@ -181,17 +168,13 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
                 s->set_no_confl_needed();
                 const auto ret = s->solve(&assumps, true);
                 if (ret == l_False) {
-                    verb_print(1, "[unate] GOOOOOOOD test: " << std::setw(3)  << (test+1)
+                    verb_print(2, "[unate] GOOOOOOOD test: " << std::setw(3)  << (test+1)
                         << " FALSE"
                         << " T: " << (cpuTime() - my_time));
 
                     cl = {Lit(test, false ^ flip)};
-                    //assert(false && "here comes the AIG and updating CNF");
                     cnf.add_clause(cl);
-                    // AIG UPDATE HERE!!
-
                     s->add_clause(cl);
-
                     cl = {Lit(test+orig_num_vars, false ^ flip)};
                     s->add_clause(cl);
                     new_units++;
@@ -206,14 +189,15 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
         << " T-out: " << (int)timeout << " T: " << (cpuTime()-my_time));
 
 
-    vector<Lit> toset;
     const auto zero_assigned = s->get_zero_assigned_lits();
+    uint32_t num_assigned = 0;
     for(const auto& z: zero_assigned) {
         if (z.var() > cnf.nVars()) continue;
-        cout << "c o [unate] zero assigned: " << z << endl;
-        toset.push_back(z);
+        verb_print(3, "[unate] zero assigned: " << z);
+        num_assigned++;
     }
-    cnf.set_fixed_values(toset);
+    verb_print(1, "[unate] total zero assigned: " << num_assigned << " T: " << (cpuTime() - my_time));
+    cnf.get_fixed_values(cnf, s);
 }
 
 std::unique_ptr<SATSolver> Puura::fill_solver(const SimplifiedCNF& cnf) {
