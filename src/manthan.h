@@ -156,4 +156,6 @@ class Manthan {
         uint32_t num_loops_repair = 0;
         uint64_t conflict_sizes_sum = 0;
         uint64_t needs_repair_sum = 0;
+        uint32_t tot_repaired = 0;
+        uint32_t repair_failed = 0;
 };

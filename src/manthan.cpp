@@ -516,8 +516,6 @@ SimplifiedCNF Manthan::do_manthan() {
     const auto ret = cnf.find_disconnected();
     verb_print(1, "[manthan] Found " << ret.size() << " disconnected components");
 
-    uint32_t tot_repaired = 0;
-    uint32_t repair_failed = 0;
     if (!mconf.write_manthan_cnf.empty()) cnf.write_simpcnf(mconf.write_manthan_cnf);
 
     // CNF is divided into:
