@@ -211,6 +211,7 @@ public:
     static std::vector<aig_ptr> deep_clone_set(const T& aigs) {
         std::vector<aig_ptr> ret;
         std::map<aig_ptr, aig_ptr> cache;
+        ret.reserve(aigs.size());
         for (auto& aig : aigs) ret.push_back(deep_clone(aig, cache));
         return ret;
     }
