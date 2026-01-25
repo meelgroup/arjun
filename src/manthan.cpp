@@ -674,7 +674,7 @@ SimplifiedCNF Manthan::do_manthan() {
         << " sampl T: " << std::setprecision(2) << std::fixed << sampl_time
         << " train T: " << std::setprecision(2) << std::fixed << train_time
         << " repair T: " << std::setprecision(2) << std::fixed << repair_time
-        << " eepairs: " << tot_repaired << " repair failed: " << repair_failed
+        << " repairs: " << tot_repaired << " repair failed: " << repair_failed
         << " defined: " << to_define.size() - to_define2.size()
         << " still to define: " << to_define2.size()
         << " T: " << cpuTime()-my_time);
