@@ -35,6 +35,8 @@ def find_arjun_time(fname):
     rapairs_failed = None
     manthan_defined = None
 
+    arjun_time = None
+
     # parsing these:
     # c o [puura] Done. final vars: 1868 final cls: 5184 defined: 1642 still to define: 1654 T: 0.77
     # c o [extend] Done. unsat_define  defined: 834 still to define: 820 T: 0.38
@@ -61,23 +63,22 @@ def find_arjun_time(fname):
               if match:
                 cms_sha1 = match.group(1)
 
-            # c o start get_fully_simplified_renumbered_cnf [get-var-types] Num input vars: 214
-            if input_vars is None and "[get-var-types] Num input vars:" in line:
-              match = re.search(r'Num input vars:\s*(\d+)', line)
-              if match:
-                input_vars = int(match.group(1))
 
-            # c o start get_fully_simplified_renumbered_cnf [get-var-types] Num to-define vars: 3296
-            if start_to_define_vars is None and "[get-var-types] Num to-define vars:" in line:
-              match = re.search(r'Num to-define vars:\s*(\d+)', line)
-              if match:
-                start_to_define_vars = int(match.group(1))
+            if "start do_synthesis" in line:
+                if input_vars is None and "[get-var-types] Num input vars:" in line:
+                  match = re.search(r'Num input vars:\s*(\d+)', line)
+                  if match:
+                    input_vars = int(match.group(1))
 
-            # c o start get_fully_simplified_renumbered_cnf [get-var-types] Total vars in ORIG CNF: 3510
-            if orig_total_vars is None and "[get-var-types] Total vars in ORIG CNF:" in line:
-              match = re.search(r'Total vars in ORIG CNF:\s*(\d+)', line)
-              if match:
-                orig_total_vars = int(match.group(1))
+                if start_to_define_vars is None and "[get-var-types] Num to-define vars:" in line:
+                  match = re.search(r'Num to-define vars:\s*(\d+)', line)
+                  if match:
+                    start_to_define_vars = int(match.group(1))
+
+                if orig_total_vars is None and "[get-var-types] Total vars in ORIG CNF:" in line:
+                  match = re.search(r'Total vars in ORIG CNF:\s*(\d+)', line)
+                  if match:
+                    orig_total_vars = int(match.group(1))
 
             # c o [puura] Done. final vars: 1868 final cls: 5184 defined: 1642 still to define: 1654 T: 0.77
             if puura_time is None and "c o [puura] Done." in line:
@@ -131,13 +132,20 @@ def find_arjun_time(fname):
               if matches:
                 manthan_time = float(matches[-1])
 
+            # c o [arjun] All done. T: 53.52
+            if arjun_time is None and "c o [arjun] All done." in line:
+              match = re.search(r'T:\s*([\d.]+)', line)
+              if match:
+                arjun_time = float(match.group(1))
+
     return (arjun_sha1, sbva_sha1, cms_sha1,
             input_vars, start_to_define_vars, orig_total_vars,
             puura_time, puura_defined,
             extend_time, extend_defined,
             backward_time, backward_defined,
             manthan_sampling_time, manthan_training_time, manthan_repair_time,
-            manthan_time, repairs, rapairs_failed, manthan_defined)
+            manthan_time, repairs, rapairs_failed, manthan_defined,
+            arjun_time)
 
 
 def timeout_parse(fname):
@@ -229,6 +237,7 @@ def fill_row(f):
     toprint += add("repairs", f)
     toprint += add("repairs_failed", f)
     toprint += add("manthan_defined", f)
+    toprint += add("arjun_time", f)
     toprint = toprint[:-1]  # remove last ,
 
     return toprint
@@ -269,7 +278,8 @@ def read_file(fname):
          extend_time, extend_defined,
          backward_time, backward_defined,
          manthan_sampling_time, manthan_training_time, manthan_repair_time,
-         manthan_time, repairs, rapairs_failed, manthan_defined) = find_arjun_time(fname)
+         manthan_time, repairs, rapairs_failed, manthan_defined,
+         arjun_time) = find_arjun_time(fname)
         files[base]["arjun_sha1"] = arjun_sha1
         files[base]["sbva_sha1"] = sbva_sha1
         files[base]["cms_sha1"] = cms_sha1
@@ -289,6 +299,7 @@ def read_file(fname):
         files[base]["repairs"] = repairs
         files[base]["repairs_failed"] = rapairs_failed
         files[base]["manthan_defined"] = manthan_defined
+        files[base]["arjun_time"] = arjun_time
         return
 
 
@@ -300,7 +311,7 @@ if __name__ == "__main__":
         read_file(f)
 
     with open("mydata.csv", "w") as out:
-        cols = "solver,dirname,fname,timeout_t,timeout_mem,timeout_call,page_faults,signal,arjun_sha1,sbva_sha1,cms_sha1,input_vars,start_to_define_vars,orig_total_vars,puura_time,puura_defined,extend_time,extend_defined,backward_time,backward_defined,manthan_sampling_time,manthan_training_time,manthan_repair_time,manthan_time,repairs,repairs_failed,manthan_defined"
+        cols = "solver,dirname,fname,timeout_t,timeout_mem,timeout_call,page_faults,signal,arjun_sha1,sbva_sha1,cms_sha1,input_vars,start_to_define_vars,orig_total_vars,puura_time,puura_defined,extend_time,extend_defined,backward_time,backward_defined,manthan_sampling_time,manthan_training_time,manthan_repair_time,manthan_time,repairs,repairs_failed,manthan_defined,arjun_time"
         out.write(cols+"\n")
         for _, f in files.items():
             toprint = fill_row(f)

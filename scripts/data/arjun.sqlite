@@ -33,7 +33,9 @@ CREATE TABLE data (
   manthan_time FLOAT,
   repairs INT,
   repairs_failed INT,
-  manthan_defined INT
+  manthan_defined INT,
+
+  arjun_time FLOAT
 );
 .mode csv
 .import --skip 1 mydata.csv data
@@ -58,3 +60,4 @@ UPDATE data SET manthan_time = NULL WHERE manthan_time = '';
 UPDATE data SET repairs = NULL WHERE repairs = '';
 UPDATE data SET repairs_failed = NULL WHERE repairs_failed = '';
 UPDATE data SET manthan_defined = NULL WHERE manthan_defined = '';
+UPDATE data SET arjun_time = NULL WHERE arjun_time = '';
