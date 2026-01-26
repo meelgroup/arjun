@@ -114,6 +114,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     sort_unknown(unknown, incidence);
     verb_print(1,"[arjun] Start unknown size: " << unknown.size());
     uint32_t num_sat = 0;
+    uint32_t num_unknown = 0;
     set<uint32_t> unknown_set(unknown.begin(), unknown.end());
 
     vector<Lit> assumptions;
@@ -154,7 +155,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
 
         if (ret == l_False) verb_print(5, "[arjun] extend solve(): False");
         else if (ret == l_True) {verb_print(5, "[arjun] extend solve(): True");num_sat++;}
-        else if (ret == l_Undef) verb_print(5, "[arjun] extend solve(): Undef");
+        else if (ret == l_Undef) {verb_print(5, "[arjun] extend solve(): Undef"); num_unknown++;}
 
         if (ret == l_False) {
             num_unsat++;
@@ -198,6 +199,8 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     assert(cnf.get_need_aig() && cnf.defs_invariant());
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | slow_debug_enabled, "end unsat_define");
     verb_print(1, COLRED "[extend] Done. "
+            << " True: " << num_sat
+            << " Unkn: " << num_unknown
             << " defined: " << to_define.size()-to_define2.size()
             << " still to define: " << to_define2.size()
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
