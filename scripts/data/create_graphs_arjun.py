@@ -4,6 +4,10 @@ import os
 import sqlite3
 import re
 
+## mini test problems
+# benchmarks-qdimacs/itc-b13-fixpoint-3.qdimacs.cnf
+# benchmarks-qdimacs/bobsmcodic_all_bit_differing_from_cycle.qdimacs.cnf
+
 
 def convert_to_cactus(fname, fname2):
     # print("fname:" , fname)
