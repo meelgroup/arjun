@@ -33,6 +33,7 @@
 #include "cryptominisat5/solvertypesmini.h"
 #include "helper.h"
 #include "formula.h"
+#include "metasolver.h"
 #include <random>
 #include <map>
 
@@ -139,7 +140,7 @@ void assert_sample_satisfying(const vector<lbool>& sample, SATSolver& solver) {
 }
 
 // Add ~F(x, y_hat) to the solver - at least one clause must be unsatisfied when using y_hat
-void add_not_f_x_yhat(SATSolver& solver, const SimplifiedCNF& orig_cnf,
+void add_not_f_x_yhat(ArjunInt::MetaSolver& solver, const SimplifiedCNF& orig_cnf,
                       const set<uint32_t>& aig_vs,
                       map<uint32_t, uint32_t>& y_to_y_hat) {
     if (verb) cout << "c [F_x_yhat] Adding ~F(x, y_hat)..." << endl;
@@ -194,7 +195,7 @@ void add_not_f_x_yhat(SATSolver& solver, const SimplifiedCNF& orig_cnf,
 }
 
 // Fill var_to_formula by converting AIGs to CNF formulas
-void fill_var_to_formula(SATSolver& solver, FHolder& fh,
+void fill_var_to_formula(ArjunInt::MetaSolver& solver, FHolder& fh,
                                         const SimplifiedCNF& cnf,
                                         const set<uint32_t>& aig_vars,
                                         const map<uint32_t, uint32_t>& y_to_y_hat,
@@ -265,7 +266,7 @@ void fill_var_to_formula(SATSolver& solver, FHolder& fh,
 }
 
 // Check if the AIGs are correct by verifying UNSAT
-bool verify_aigs_correct(SATSolver& solver,
+bool verify_aigs_correct(ArjunInt::MetaSolver& solver,
                         const set<uint32_t>& aig_vs,
                         const map<uint32_t, uint32_t>& y_to_y_hat,
                         const map<uint32_t, FHolder::Formula>& var_to_formula) {
@@ -374,7 +375,7 @@ void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
     }
 
     // Create verification solver
-    SATSolver verify_solver;
+    ArjunInt::MetaSolver verify_solver;
     verify_solver.new_vars(orig_cnf.nVars());
     for (const auto& clause : orig_cnf.get_clauses()) {
         verb_print(2, "adding orig clause: " << clause);

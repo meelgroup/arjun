@@ -24,6 +24,7 @@
 
 #include "arjun.h"
 #include "config.h"
+#include "metasolver.h"
 #include <cryptominisat5/solvertypesmini.h>
 
 #include <cstdint>
@@ -56,7 +57,8 @@ using namespace ArjunNS;
 class Manthan {
     public:
         Manthan(const Config& _conf, const Arjun::ManthanConf& _mconf, const SimplifiedCNF& _cnf):
-            cnf(_cnf), conf(_conf), mconf(_mconf) {
+            cnf(_cnf), conf(_conf), mconf(_mconf),
+            cex_solver(static_cast<SolverType>(_mconf.ctx_solver_type)) {
                 mtrand.seed(42);
             }
         SimplifiedCNF do_manthan();
@@ -80,7 +82,7 @@ class Manthan {
         const Config& conf;
         const Arjun::ManthanConf& mconf;
         unique_ptr<FieldGen> fg;
-        SATSolver cex_solver;
+        MetaSolver cex_solver;
         SATSolver repair_solver;
 
         // 3 sets of variables, together adding up to the CNF
@@ -108,14 +110,15 @@ class Manthan {
         vector<sample*> filter_samples(const uint32_t v, const vector<sample>& samples);
         void find_better_ctx_maxsat(sample& ctx);
         void find_better_ctx_normal(sample& ctx);
-        void inject_cnf(SATSolver& s, const bool also_vars = true) const;
+        template<typename S>
+        void inject_cnf(S& s, const bool also_vars = true) const;
         void inject_unit(SATSolver& s);
         bool repair(const uint32_t v, sample& ctx);
         bool find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict);
         void minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, const Lit repairing);
         uint32_t find_next_repair_var(const sample& ctx) const;
         void perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit>& conflict);
-        void add_not_f_x_yhat(SATSolver& s) const;
+        void add_not_f_x_yhat(MetaSolver& s);
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with_backward();
         void print_y_order_occur() const;

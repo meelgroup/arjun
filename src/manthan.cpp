@@ -80,7 +80,8 @@ vector<int> lits_to_ints(const vector<Lit>& lits) {
 // good: qdimacs/small-bug1-fixpoint-10.qdimacs.cnf
 // also good: simplify qdimacs/amba2f9n.sat.qdimacs.cnf then run manthan
 
-void Manthan::inject_cnf(SATSolver& s, bool also_vars) const {
+template<typename S>
+void Manthan::inject_cnf(S& s, bool also_vars) const {
     if (also_vars) s.new_vars(cnf.nVars());
     for(const auto& c: cnf.get_clauses()) s.add_clause(c);
     for(const auto& c: cnf.get_red_clauses()) s.add_red_clause(c);
@@ -1098,7 +1099,7 @@ void Manthan::create_vars_for_y_hats() {
 }
 
 // Adds ~F(x, y_hat), fills y_to_y_hat and y_hat_to_y
-void Manthan::add_not_f_x_yhat(SATSolver& s) const {
+void Manthan::add_not_f_x_yhat(MetaSolver& s) {
     vector<Lit> tmp;
 
     // Adds ~F(x, y_hat)
