@@ -80,7 +80,7 @@ class Manthan {
         const Config& conf;
         const Arjun::ManthanConf& mconf;
         unique_ptr<FieldGen> fg;
-        SATSolver solver;
+        SATSolver cex_solver;
         SATSolver repair_solver;
 
         // 3 sets of variables, together adding up to the CNF
@@ -97,7 +97,7 @@ class Manthan {
         bool check_functions_for_y_vars() const;
         bool ctx_is_sat(const sample& ctx) const;
         Lit map_y_to_y_hat(const Lit& l) const;
-        bool ctx_y_hat_compute(const sample& ctx) const;
+        bool ctx_y_hat_correct(const sample& ctx) const;
         uint32_t calc_non_bw_needs_repair() const;
         void print_needs_repair_vars() const;
         void print_cnf_debug_info(const sample& ctx) const;
