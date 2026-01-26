@@ -11,7 +11,7 @@ def convert_to_cactus(fname, fname2):
     f = open(fname, "r")
     text = f.read()
     mylines = text.splitlines()
-    i = 0;
+    i = 0
     time = []
     for line in mylines:
       time.append(float(line.split()[0]))

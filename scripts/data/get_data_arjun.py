@@ -180,7 +180,8 @@ def timeout_parse(fname):
                 if "doalarm 3600" in call:
                   call = call.split("doalarm 3600")[1]
 
-                if "./arjun" in call: solver = "arjun"
+                if "./arjun" in call:
+                    solver = "arjun"
 
                 call = call.replace("././arjun ", "")
                 call = call.strip()
