@@ -86,7 +86,9 @@ void Manthan::inject_cnf(SATSolver& s, bool also_vars) const {
     for(const auto& c: cnf.get_red_clauses()) s.add_red_clause(c);
 }
 
-vector<sample> Manthan::get_samples(const uint32_t num) {
+vector<sample> Manthan::get_cmsgen_samples(const uint32_t num) {
+    verb_print(1, "[manthan] Getting " << num << " CMSGen samples...");
+
     const double my_time = cpuTime();
     SATSolver solver_samp;
     solver_samp.set_seed(conf.seed);
@@ -158,13 +160,14 @@ vector<sample> Manthan::get_samples(const uint32_t num) {
         assert(solver_samp.get_model().size() == cnf.nVars());
         samples.push_back(solver_samp.get_model());
     }
-    verb_print(1, COLYEL "[manthan] Got " << samples.size() << " samples. Biased: " << (bool)mconf.do_biased_sampling
-            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
+    verb_print(1, "[manthan] CMSGen got " << samples.size() << " samples. Biased: " << (bool)mconf.do_biased_sampling
+            << " T: " << setprecision(2) << std::fixed << (cpuTime() - my_time));
     return samples;
 }
 
 vector<sample> Manthan::get_samples_ccnr(const uint32_t num) {
     const double my_time = cpuTime();
+    verb_print(1, "[manthan] Getting " << num << " CCNR samples...");
 
     vector<sample> samples;
     ::Arjun::CCNR::ls_solver ls_s(true, conf.seed);
@@ -216,8 +219,8 @@ vector<sample> Manthan::get_samples_ccnr(const uint32_t num) {
         }
     }
 
-    verb_print(1, COLYEL "[manthan] ccnr got " << samples.size() << " / " << num << " samples. T: "
-            << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
+    verb_print(1, "[manthan] CCNR got " << samples.size() << " / " << num << " samples. T: "
+            << setprecision(2) << std::fixed << (cpuTime() - my_time));
     return samples;
 }
 
@@ -539,16 +542,15 @@ SimplifiedCNF Manthan::do_manthan() {
 
     // Sampling
     double samp_start_time = cpuTime();
-    verb_print(1, "[manthan] Getting " << mconf.num_samples << " samples...");
-    vector<sample> samples = get_samples(mconf.num_samples);
+    vector<sample> samples = get_cmsgen_samples(mconf.num_samples);
     {
         vector<sample> samples2 = get_samples_ccnr(mconf.num_samples_ccnr);
         samples.insert(samples.end(), samples2.begin(), samples2.end());
     }
     const double sampl_time = cpuTime() - samp_start_time;
-    verb_print(1, COLYEL "[manthan] Got " << samples.size() << " samples. T: "
-        << std::setprecision(2) << std::fixed << sampl_time
-        << " samp/var: " << std::setprecision(2) << std::fixed << sampl_time/(double)to_define.size());
+    verb_print(1, COLYEL "[manthan] Got " << setw(8) << samples.size() << " samples."
+        << " samp/var: " << setw(8) << setprecision(2) << std::fixed << sampl_time/(double)to_define.size()
+        << " T: " << setprecision(2) << std::fixed << sampl_time);
 
     // Training
     inject_cnf(solver);
@@ -572,8 +574,8 @@ SimplifiedCNF Manthan::do_manthan() {
         train(samples, v); // updates dependency_mat
     }
     const double train_time = cpuTime() - train_start_time;
-    verb_print(1, COLYEL "[manthan] training done. T: " << setw(6) << std::setprecision(2) << std::fixed << train_time << " train/var: "
-        << std::setprecision(2) << std::fixed << (cpuTime() - train_start_time)/(double)to_define.size());
+    verb_print(1, COLYEL "[manthan] training done. T: " << setw(6) << setprecision(2) << std::fixed << train_time << " train/var: "
+        << setprecision(2) << std::fixed << (cpuTime() - train_start_time)/(double)to_define.size());
     assert(check_map_dependency_cycles());
 
     const double repair_start_time = cpuTime();
@@ -648,7 +650,7 @@ SimplifiedCNF Manthan::do_manthan() {
     }
     const double repair_time = cpuTime() - repair_start_time;
     assert(check_map_dependency_cycles());
-    verb_print(1, "[manthan] rep: " << setw(6) << tot_repaired
+    verb_print(1, COLYEL "[manthan] rep: " << setw(6) << tot_repaired
         << "   loops: "<< setw(4) << num_loops_repair
         << "   avg rep/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
         << "   avg confl sz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
@@ -671,9 +673,9 @@ SimplifiedCNF Manthan::do_manthan() {
     assert(verify_final_cnf(fcnf));
     auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0 | slow_debug_enabled, "end do_manthan");
     verb_print(1, COLRED "[manthan] Done. "
-        << " sampl T: " << std::setprecision(2) << std::fixed << sampl_time
-        << " train T: " << std::setprecision(2) << std::fixed << train_time
-        << " repair T: " << std::setprecision(2) << std::fixed << repair_time
+        << " sampl T: " << setprecision(2) << std::fixed << sampl_time
+        << " train T: " << setprecision(2) << std::fixed << train_time
+        << " repair T: " << setprecision(2) << std::fixed << repair_time
         << " repairs: " << tot_repaired << " repair failed: " << repair_failed
         << " defined: " << to_define.size() - to_define2.size()
         << " still to define: " << to_define2.size()

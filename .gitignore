@@ -10,3 +10,5 @@ neovide_backtraces.log
 CLAUDE.md
 .claude
 perf*
+output
+out/
