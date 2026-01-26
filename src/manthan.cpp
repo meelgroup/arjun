@@ -577,8 +577,9 @@ SimplifiedCNF Manthan::do_manthan() {
         train(samples, v); // updates dependency_mat
     }
     const double train_time = cpuTime() - train_start_time;
-    verb_print(1, COLYEL "[manthan] training done. T: " << setw(6) << setprecision(2) << std::fixed << train_time << " train/var: "
-        << setprecision(2) << std::fixed << (cpuTime() - train_start_time)/(double)to_define.size());
+    verb_print(1, COLYEL "[manthan] training done."
+            << " train/var: " << setw(6) << setprecision(2) << std::fixed << (cpuTime() - train_start_time)/(double)to_define.size()
+            << " T: " << setw(6) << setprecision(2) << std::fixed << train_time);
     assert(check_map_dependency_cycles());
 
     const double repair_start_time = cpuTime();
