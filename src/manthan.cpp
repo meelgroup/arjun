@@ -1005,15 +1005,15 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
 
 // Fills needs_repair with vars from y (i.e. output) using normal SAT solver with assumptions
 void Manthan::find_better_ctx_normal(sample& ctx) {
-    SATSolver ctx_solver;
-    ctx_solver.new_vars(cnf.nVars());
+    SATSolver s;
+    s.new_vars(cnf.nVars());
     verb_print(2, "Finding better ctx via normal SAT solver.");
 
     // Fix input values
     for(const auto& x: input) {
         assert(ctx[x] != l_Undef && "Input variable must be defined in counterexample");
         const auto l = Lit(x, ctx[x] == l_False);
-        ctx_solver.add_clause({l});
+        s.add_clause({l});
     }
 
     map<uint32_t, uint32_t> y_to_y_order_pos;
@@ -1034,7 +1034,7 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
             // Already correct, make this a fixed assumption
             verb_print(3, "[find-better-ctx-normal] CTX is CORRECT on y=" << y+1 << " y_hat=" << y_hat+1
                  << " -- ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat]));
-            ctx_solver.add_clause({l});
+            s.add_clause({l});
         } else {
             // Incorrect, we want to try to fix this
             uint32_t weight = y_to_y_order_pos[y];
@@ -1045,7 +1045,7 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
         }
     }
     assert(incorrect_lits.size() == needs_repair.size());
-    inject_cnf(ctx_solver, false);
+    inject_cnf(s, false);
 
     // Sort incorrect lits by weight (higher weight = higher priority to fix)
     std::sort(incorrect_lits.begin(), incorrect_lits.end(),
@@ -1059,17 +1059,17 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
         for(const auto& [lit, weight]: incorrect_lits) {
             if (cannot_fix.count(lit.var()) == 0) assumps.push_back(lit);
         }
-        auto ret = ctx_solver.solve(&assumps);
+        auto ret = s.solve(&assumps);
         if (ret == l_True) {
             // Success! Extract the model
             verb_print(2, "[find-better-ctx-normal] Found satisfying assignment. "
                        << "Could not fix " << cannot_fix.size() << " variables.");
             for(const auto& v: to_define_full) {
-                ctx[v] = ctx_solver.get_model()[v];
+                ctx[v] = s.get_model()[v];
             }
             return;
         } else {
-            auto conflict = ctx_solver.get_conflict();
+            auto conflict = s.get_conflict();
             assert(!conflict.empty() && "Got UNSAT with empty conflict!");
             verb_print(3, "[find-better-ctx-normal] UNSAT, conflict size: " << conflict.size());
 
