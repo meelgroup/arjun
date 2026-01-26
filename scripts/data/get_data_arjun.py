@@ -45,6 +45,7 @@ def find_arjun_time(fname):
 
     with open(fname, "r") as f:
         for line in f:
+            line = strip_ansi(line.strip())
             # c o Arjun SHA1: 8bc2e1402ab782c8ab62aa4d5ffe40eb317691a1
             if arjun_sha1 is None and "c o Arjun SHA1:" in line:
               match = re.search(r'Arjun SHA1:\s*(\w+)', line)
@@ -317,4 +318,4 @@ if __name__ == "__main__":
             toprint = fill_row(f)
             out.write(toprint+"\n")
 
-    os.system("sqlite3 mydb.sql < arjun.sqlite")
+    os.system("sqlite3 mydb.sql < arjun.sql")

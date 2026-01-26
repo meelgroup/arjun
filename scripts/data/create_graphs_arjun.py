@@ -130,13 +130,13 @@ def generate_todos():
               continue
 
             fname = "run-"+dir+".csv"
-            with open("gencsv.sqlite", "w") as f:
+            with open("gencsv.sql", "w") as f:
                 f.write(".headers off\n")
                 f.write(".mode csv\n");
                 f.write(".output "+fname+"\n")
                 f.write("select arjun_time from data where dirname='"+dir+"' and arjun_sha1='"+ver+"'\n and arjun_time is not NULL "+fname_like)
-            os.system("sqlite3 mydb.sql < gencsv.sqlite")
-            os.unlink("gencsv.sqlite")
+            os.system("sqlite3 mydb.sql < gencsv.sql")
+            os.unlink("gencsv.sql")
 
             fname2 = fname + ".gnuplotdata"
             num_solved = convert_to_cactus(fname, fname2)
@@ -156,7 +156,7 @@ for only_counted in [False, True]:
     counted_req = " and arjun_time is not NULL "
   else:
     print("::: --------- Data based on ALSO NOT FINISHED benchmarks ------- :::")
-  with open("gen_table.sqlite", "w") as f:
+  with open("gen_table.sql", "w") as f:
     f.write(".mode table\n")
     # f.write(".mode colum\n")
     # f.write(".headers off\n")
@@ -198,13 +198,13 @@ for only_counted in [False, True]:
         CAST(avg(manthan_defined) AS INTEGER) as 'avg-manthan-def',\
         sum(fname is not null) as 'nfiles'\
         from data where dirname IN ("+dirs+") and arjun_sha1 IN ("+vers+") "+fname_like+" "+counted_req+"group by dirname order by solved asc")
-  os.system("sqlite3 mydb.sql < gen_table.sqlite")
-  os.unlink("gen_table.sqlite")
+  os.system("sqlite3 mydb.sql < gen_table.sql")
+  os.unlink("gen_table.sql")
 
 # median table
 if True:
   for dir,ver in table_todo:
-    with open("gen_table.sqlite", "w") as f:
+    with open("gen_table.sql", "w") as f:
       f.write(".mode table\n")
       f.write("select '"+dir+"', '"+ver+"'");
       for col in "indep_sz", "opt_indep_sz", "orig_proj_sz", "new_nvars", "arjun_mem_mb":
@@ -228,8 +228,8 @@ if True:
           where dirname IN ('"+dir+"') and arjun_sha1 IN ('"+ver+"') \
           and "+col+" is not null "+fname_like+" and "+col+">0) / 2) as median_"+col+" \
       ")
-    os.system("sqlite3 mydb.sql < gen_table.sqlite")
-    os.unlink("gen_table.sqlite")
+    os.system("sqlite3 mydb.sql < gen_table.sql")
+    os.unlink("gen_table.sql")
 
 gnuplotfn = "run-all.gnuplot"
 with open(gnuplotfn, "w") as f:
