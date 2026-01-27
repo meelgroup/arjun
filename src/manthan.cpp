@@ -77,8 +77,9 @@ vector<int> lits_to_ints(const vector<Lit>& lits) {
     return ret;
 }
 
-// good: qdimacs/small-bug1-fixpoint-10.qdimacs.cnf
-// also good: simplify qdimacs/amba2f9n.sat.qdimacs.cnf then run manthan
+// good: benchmarks-qdimacs/small-bug1-fixpoint-10.qdimacs.cnf
+// also good: simplify benchmarks-qdimacs/amba2f9n.sat.qdimacs.cnf
+// slow: benchmarks-qdimacs/bobsmcodic_all_bit_differing_from_cycle.qdimacs.cnf
 
 template<typename S>
 void Manthan::inject_cnf(S& s, bool also_vars) const {
@@ -1220,7 +1221,7 @@ bool Manthan::get_counterexample(sample& ctx) {
     }
     assert(assumps.size() == y_order.size() - backward_defined.size());
     verb_print(4, "assumptions: " << assumps);
-    cex_solver.set_verbosity(1);
+    cex_solver.set_verbosity(conf.verb <= 0 ? 0 : conf.verb-1);
     if (num_loops_repair == 1 || (num_loops_repair % mconf.simplify_every) == (mconf.simplify_every-1))
         cex_solver.simplify(&assumps);
 
