@@ -745,6 +745,8 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
 }
 
 bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict) {
+    const double repair_solver_start_time = cpuTime();
+
     // F(x,y) & x = ctx(x) && forall_y (y not dependent on v) (y = ctx(y)) & NOT (v = ctx(v))
     // Used to find UNSAT core that will help us repair the function
     vector<Lit> assumps;
@@ -769,6 +771,9 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
 
     verb_print(2, "assuming reverse for y_rep: " << ~to_repair);
     auto ret = repair_solver.solve(&assumps);
+    verb_print(2, "repair_solver finished "
+            << " with result: " << (ret == l_True ? "SAT" : (ret == l_False ? "UNSAT" : "UNKNOWN"))
+            << " in T: " << cpuTime()-repair_solver_start_time);
     assert(ret != l_Undef);
     if (ret == l_True) {
         verb_print(2, "Repair cost is 0 for y: " << y_rep+1);
@@ -788,6 +793,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     }
 
     uint32_t orig_size = conflict.size();
+    const double minimize_start_time = cpuTime();
     if (conflict.size() > 1 && mconf.do_minimize_conflict) {
         minimize_conflict(conflict, assumps, to_repair);
         assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end() &&
@@ -803,7 +809,8 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
                 [&](const Lit l){ return l == to_repair; });
     conflict.erase(now_end, conflict.end());
     verb_print(2, "[manthan] minim. Removed: " << (orig_size - conflict.size())
-            << " from conflict, now size: " << conflict.size());
+            << " from conflict, now size: " << conflict.size()
+            << " T: " << cpuTime()-minimize_start_time);
     return true;
 }
 
