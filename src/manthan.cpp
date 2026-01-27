@@ -1154,6 +1154,7 @@ void Manthan::inject_formulas_into_solver() {
 }
 
 bool Manthan::get_counterexample(sample& ctx) {
+    const double my_time_start = cpuTime();
     needs_repair.clear();
     if (num_loops_repair == 1)
         verb_print(1, "[manthan] Getting counterexample for the first time...");
@@ -1202,10 +1203,13 @@ bool Manthan::get_counterexample(sample& ctx) {
     for(const auto& i: y_hat_to_indic) assumps.push_back(Lit(i.second, false));
     assert(assumps.size() == y_order.size());
     verb_print(4, "assumptions: " << assumps);
-    if ((num_loops_repair % mconf.simplify_every) == (mconf.simplify_every-1)) cex_solver.simplify(&assumps);
+    if ((num_loops_repair % mconf.simplify_every) == (mconf.simplify_every-1))
+        cex_solver.simplify(&assumps);
 
     /* solver.set_up_for_sample_counter(1000); */
     auto ret = cex_solver.solve(&assumps);
+    if (num_loops_repair == 1)
+        verb_print(1, "[manthan] First cex found in T:" << setprecision(2) << cpuTime() - my_time_start);
     assert(ret != l_Undef);
     if (ret == l_True) {
         verb_print(2, COLYEL "[manthan] *** Counterexample found ***");
