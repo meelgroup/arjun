@@ -44,10 +44,16 @@ public:
     explicit MetaSolver(SolverType type = SolverType::cms) : solver_type(type) {
         if (solver_type == SolverType::cms) {
             cms = std::make_unique<CMSat::SATSolver>();
+            cms->set_prefix("c o ");
         } else {
             cadical = std::make_unique<CaDiCaL::Solver>();
             cadical_nvars = 0;
+            cadical->prefix("c o ");
         }
+    }
+
+    void set_verbosity(int v) {
+        if (solver_type == SolverType::cms) cms->set_verbosity(v);
     }
 
     // Variable management

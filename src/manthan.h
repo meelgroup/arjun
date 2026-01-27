@@ -77,6 +77,7 @@ class Manthan {
         // when indic is TRUE, y_hat and func_out are EQUAL
         map<uint32_t, uint32_t> y_hat_to_indic;
         map<uint32_t, uint32_t> indic_to_y_hat;
+        map<uint32_t, uint32_t> indic_to_y;
         set<uint32_t> needs_repair;
 
         const Config& conf;

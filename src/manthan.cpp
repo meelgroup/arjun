@@ -1173,6 +1173,7 @@ bool Manthan::get_counterexample(sample& ctx) {
 
         y_hat_to_indic[y_hat] = ind;
         indic_to_y_hat[ind] = y_hat;
+        indic_to_y[ind] = y;
         verb_print(3, "->CTX ind: " << ind+1 << " y_hat: " << y_hat+1  << " form_out: " << form_out);
 
         // when indic is TRUE, y_hat and form_out are EQUAL
@@ -1195,15 +1196,25 @@ bool Manthan::get_counterexample(sample& ctx) {
         tmp[1] = ~tmp[1];
         tmp[2] = ~tmp[2];
         cex_solver.add_clause(tmp);
+
+        if (backward_defined.count(y)) {
+            verb_print(3, "backward defined y, forcing indic to TRUE, since it must be correct");
+            cex_solver.add_clause({Lit(ind, false)});
+        }
     }
     updated_y_funcs.clear();
 
     vector<Lit> assumps;
     assumps.reserve(y_hat_to_indic.size());
-    for(const auto& i: y_hat_to_indic) assumps.push_back(Lit(i.second, false));
-    assert(assumps.size() == y_order.size());
+    for(const auto& [y_hat, ind]: y_hat_to_indic) {
+        uint32_t y = indic_to_y[ind];
+        if (backward_defined.count(y)) continue; // already forced to true
+        assumps.push_back(Lit(ind, false));
+    }
+    assert(assumps.size() == y_order.size() - backward_defined.size());
     verb_print(4, "assumptions: " << assumps);
-    if ((num_loops_repair % mconf.simplify_every) == (mconf.simplify_every-1))
+    cex_solver.set_verbosity(1);
+    if (num_loops_repair == 1 || (num_loops_repair % mconf.simplify_every) == (mconf.simplify_every-1))
         cex_solver.simplify(&assumps);
 
     /* solver.set_up_for_sample_counter(1000); */
