@@ -1220,7 +1220,7 @@ bool Manthan::get_counterexample(sample& ctx) {
     /* solver.set_up_for_sample_counter(1000); */
     auto ret = cex_solver.solve(&assumps);
     if (num_loops_repair == 1)
-        verb_print(1, "[manthan] First cex found in T:" << setprecision(2) << cpuTime() - my_time_start);
+        verb_print(1, "[manthan] First cex found in T: " << setprecision(2) << cpuTime() - my_time_start);
     assert(ret != l_Undef);
     if (ret == l_True) {
         verb_print(2, COLYEL "[manthan] *** Counterexample found ***");
