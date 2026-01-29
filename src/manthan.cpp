@@ -842,6 +842,8 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
             auto ret2 = repair_solver.solve(&assumps);
             if (ret2 == l_True) {
                 dont_remove.insert(try_rem);
+                verb_print(3, "[manthan] conf minim. Cannot remove conflict literal: "
+                        << setw(5) << try_rem << " -- it leads to SAT");
                 continue;
             }
             const uint32_t sz_before = conflict.size();
@@ -853,7 +855,7 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
                 continue;
             }
             removed_any = true;
-            verb_print(3, "Removed conflict literal: " << try_rem
+            verb_print(3, "[manthan] conf minim. Removed conflict literal: " << setw(5) << try_rem
                 << " sz ch: " << sz_before - conflict.size());
             break;
         }
