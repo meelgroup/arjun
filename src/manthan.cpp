@@ -79,7 +79,8 @@ vector<int> lits_to_ints(const vector<Lit>& lits) {
 
 // good: benchmarks-qdimacs/small-bug1-fixpoint-10.qdimacs.cnf
 // also good: simplify benchmarks-qdimacs/amba2f9n.sat.qdimacs.cnf
-// slow: benchmarks-qdimacs/bobsmcodic_all_bit_differing_from_cycle.qdimacs.cnf
+// slow (actually, correct on 1st try at 4e7a4cea5b8a994044466578751ff229b514e747 with --bve 0 --ctxsolver 1 --samples 1000):
+//     benchmarks-qdimacs/bobsmcodic_all_bit_differing_from_cycle.qdimacs.cnf
 
 template<typename S>
 void Manthan::inject_cnf(S& s, bool also_vars) const {
