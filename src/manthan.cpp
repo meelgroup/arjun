@@ -844,6 +844,7 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
                 dont_remove.insert(try_rem);
                 continue;
             }
+            const uint32_t sz_before = conflict.size();
             conflict = repair_solver.get_conflict();
             auto it = std::find(conflict.begin(), conflict.end(), to_repair);
             if (it == conflict.end()) {
@@ -852,6 +853,8 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
                 continue;
             }
             removed_any = true;
+            verb_print(3, "Removed conflict literal: " << try_rem
+                << " sz ch: " << sz_before - conflict.size());
             break;
         }
     }
