@@ -1326,6 +1326,8 @@ public:
         int do_unique_input_samples = 1;
         int do_use_all_variables_as_features = 1;
         int ctx_solver_type = 1;
+        int repair_solver_type = 1;
+        int repair_cache_size = 1000;
     };
     void standalone_elim_to_file(SimplifiedCNF& cnf,
             const ElimToFileConf& etof_conf, const SimpConf& simp_conf);

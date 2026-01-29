@@ -126,7 +126,10 @@ void add_arjun_options() {
     myopt("--simpevery", manthan_conf.simplify_every, atoi,"Simplify solvers inside Manthan every K loops");
     myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
     myopt("--maxsatorder", manthan_conf.maxsat_order, atoi,"Which order to use to try to fix vars? 0 = normal, 1 = reverse");
+    // solver config
     myopt("--ctxsolver", manthan_conf.ctx_solver_type, atoi,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
+    myopt("--repairsolver", manthan_conf.repair_solver_type, atoi,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
+    myopt("--repaircache", manthan_conf.repair_cache_size, atoi,"Repair cache size. 0 = no cache");
     // synth -- sampling
     myopt("--samples", manthan_conf.num_samples, atoi,"Number of samples");
     myopt("--samplesccnr", manthan_conf.num_samples_ccnr, atoi,"Number of samples from CCNR");

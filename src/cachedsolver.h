@@ -43,12 +43,16 @@ using std::make_unique;
 
 namespace ArjunInt {
 
-constexpr size_t max_cache_size = 1000;
-
 class CachedSolver {
 public:
-    explicit CachedSolver(SolverType type = SolverType::cms)
-        : solver(make_unique<MetaSolver>(type)), rng(42) {}
+    explicit CachedSolver(SolverType type = SolverType::cms, int _max_cache_size = 10000)
+        : solver(make_unique<MetaSolver>(type)), rng(42),
+        max_cache_size(_max_cache_size) {
+            if (_max_cache_size < 0) {
+                std::cout << "ERROR: negative cache size given to CachedSolver" << std::endl;
+                exit(EXIT_FAILURE);
+            }
+        }
 
     void set_verbosity(int v) { solver->set_verbosity(v); }
     void new_var() {
@@ -73,6 +77,11 @@ public:
     }
 
     vector<lbool>* add_solution(const vector<lbool>& model) {
+        if (max_cache_size == 0) {
+            cache.resize(1);
+            cache[0] = model;
+            return &cache[0];
+        }
         if (cache.size() >= max_cache_size) {
             std::shuffle(cache.begin(), cache.end(), rng);
             cache.resize(max_cache_size / 2);
@@ -87,6 +96,7 @@ public:
     }
 
     bool find_in_cache(vector<Lit>* assumps) {
+        if (max_cache_size == 0) return false;
         if (assumps == nullptr || assumps->empty()) {
             if (!cache.empty()) {
                 solution = &cache[0];
@@ -156,6 +166,7 @@ private:
     vector<vector<lbool>> cache;
     unique_ptr<MetaSolver> solver;
     std::mt19937 rng;
+    size_t max_cache_size;
 };
 
 } // namespace ArjunInt
