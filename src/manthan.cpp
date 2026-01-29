@@ -601,7 +601,7 @@ SimplifiedCNF Manthan::do_manthan() {
                     << "   avg rep/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
                     << "   avg confl sz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
                     << "   avg needs rep sz: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
-                    << "   avg try/repair: " << setw(6) << fixed << setprecision(2) << (double)(tot_repaired+repair_failed)/(num_loops_repair+0.0001)
+                    << "   cache-hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
                     << "   T: " << setprecision(2) << fixed << setw(7) << cpuTime()-repair_start_time
                     << "   rep/s: " << setprecision(4) << (double)tot_repaired/(cpuTime()-repair_start_time+0.0001) << setprecision(2));
         }
@@ -809,9 +809,11 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     auto now_end = std::remove_if(conflict.begin(), conflict.end(),
                 [&](const Lit l){ return l == to_repair; });
     conflict.erase(now_end, conflict.end());
-    verb_print(2, "[manthan] minim. Removed: " << (orig_size - conflict.size())
-            << " from conflict, now size: " << conflict.size()
-            << " T: " << cpuTime()-minimize_start_time);
+    verb_print(2, "[manthan] minim. Removed: " << setw(3) << (orig_size - conflict.size())
+            << " from conflict, now size: " << setw(3) << conflict.size()
+            << " repair cache size: " << setw(8) << repair_solver.cache_size()/1000 << "K"
+            << " repair cache hit rate: " << setw(5) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
+            << " T: " << setw(5) << setprecision(2) << cpuTime()-minimize_start_time);
     return true;
 }
 

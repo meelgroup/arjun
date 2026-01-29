@@ -25,6 +25,7 @@
 #include "arjun.h"
 #include "config.h"
 #include "metasolver.h"
+#include "cachedsolver.h"
 #include <cryptominisat5/solvertypesmini.h>
 
 #include <cstdint>
@@ -84,7 +85,7 @@ class Manthan {
         const Arjun::ManthanConf& mconf;
         unique_ptr<FieldGen> fg;
         MetaSolver cex_solver;
-        SATSolver repair_solver;
+        CachedSolver repair_solver;
 
         // 3 sets of variables, together adding up to the CNF
         set<uint32_t> input;

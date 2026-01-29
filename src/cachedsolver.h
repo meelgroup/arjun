@@ -24,21 +24,33 @@
 
 #pragma once
 
+#include "cryptominisat5/solvertypesmini.h"
 #include "metasolver.h"
 #include <map>
-#include <algorithm>
+#include <random>
+#include "constants.h"
+
+#include <map>
+#include <vector>
+#include <memory>
+
+using std::vector;
+using std::map;
+using std::unique_ptr;
+using CMSat::Lit;
+using CMSat::lbool;
+using std::make_unique;
 
 namespace ArjunInt {
+
+constexpr size_t max_cache_size = 1000;
 
 class CachedSolver {
 public:
     explicit CachedSolver(SolverType type = SolverType::cms)
-        : solver(std::make_unique<MetaSolver>(type)) {}
+        : solver(make_unique<MetaSolver>(type)), rng(42) {}
 
-    void set_verbosity(int v) {
-        solver->set_verbosity(v);
-    }
-
+    void set_verbosity(int v) { solver->set_verbosity(v); }
     void new_var() {
         clear_cache();
         solver->new_var();
@@ -49,103 +61,101 @@ public:
         solver->new_vars(num);
     }
 
-    uint32_t nVars() const {
-        return solver->nVars();
-    }
-
-    void add_clause(const std::vector<CMSat::Lit>& cl) {
+    uint32_t nVars() const { return solver->nVars(); }
+    void add_clause(const vector<Lit>& cl) {
         clear_cache();
         solver->add_clause(cl);
     }
 
-    void add_red_clause(const std::vector<CMSat::Lit>& cl) {
+    void add_red_clause(const vector<Lit>& cl) {
         clear_cache();
         solver->add_red_clause(cl);
     }
 
+    vector<lbool>* add_solution(const vector<lbool>& model) {
+        if (cache.size() >= max_cache_size) {
+            std::shuffle(cache.begin(), cache.end(), rng);
+            cache.resize(max_cache_size / 2);
+        }
+        vector<lbool> sol(model);
+        cache.push_back(std::move(sol));
+        return &cache.back();
+    }
+
     CMSat::lbool solve() {
-        return solver->solve();
+        return solve(nullptr);
     }
 
-    CMSat::lbool solve(std::vector<CMSat::Lit>* assumps) {
-        if (assumps == nullptr) {
-            return solver->solve();
+    bool find_in_cache(vector<Lit>* assumps) {
+        if (assumps == nullptr || assumps->empty()) {
+            if (!cache.empty()) {
+                solution = &cache[0];
+                cache_hits++;
+                return true;
+            }
+            return false;
         }
 
-        std::vector<CMSat::Lit> key = *assumps;
-        std::sort(key.begin(), key.end());
-
-        auto it = cache.find(key);
-        if (it != cache.end()) {
-            cached_result = it->second;
-            return cached_result.result;
+        for (const auto& sol : cache) {
+            bool match = true;
+            for (const auto& l : *assumps) {
+                if (sol[l.var()] != CMSat::boolToLBool(!l.sign())) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) {
+                solution = (vector<lbool>*)(&sol);
+                cache_hits++;
+                return true;
+            }
         }
-
-        CMSat::lbool result = solver->solve(assumps);
-
-        CachedResult entry;
-        entry.result = result;
-        if (result == CMSat::l_True) {
-            entry.model = solver->get_model();
-        } else if (result == CMSat::l_False) {
-            entry.conflict = solver->get_conflict();
-        }
-        cache[key] = entry;
-        cached_result = entry;
-
-        return result;
+        cache_misses++;
+        return false;
     }
 
-    const std::vector<CMSat::lbool>& get_model() const {
-        if (!cached_result.model.empty()) {
-            return cached_result.model;
+    CMSat::lbool solve(vector<Lit>* assumps) {
+        if (find_in_cache(assumps)) {
+            return CMSat::l_True;
+        }
+
+        solution = nullptr;
+        auto ret = solver->solve(assumps);
+        if (ret == CMSat::l_True) {
+            solution = add_solution(solver->get_model());
+        }
+        return ret;
+
+    }
+
+    const vector<CMSat::lbool>& get_model() const {
+        if (solution != nullptr) {
+            return *solution;
         }
         return solver->get_model();
     }
 
-    std::vector<CMSat::Lit> get_conflict() const {
-        if (!cached_result.conflict.empty()) {
-            return cached_result.conflict;
-        }
-        return solver->get_conflict();
+    double get_cache_hit_rate() const {
+        const uint64_t total = cache_hits + cache_misses;
+        if (total == 0) return 0.0;
+        return static_cast<double>(cache_hits) / static_cast<double>(total);
     }
 
-    void simplify(std::vector<CMSat::Lit>* assumps) {
-        clear_cache();
-        solver->simplify(assumps);
-    }
-
-    SolverType get_solver_type() const {
-        return solver->get_solver_type();
-    }
-
-    CMSat::SATSolver* get_cms() {
-        return solver->get_cms();
-    }
-
-    CaDiCaL::Solver* get_cadical() {
-        return solver->get_cadical();
-    }
-
-    void clear_cache() {
-        cache.clear();
-        cached_result = CachedResult();
-    }
-
-    size_t cache_size() const {
-        return cache.size();
-    }
+    vector<Lit> get_conflict() const { return solver->get_conflict(); }
+    void simplify(vector<Lit>* assumps) { solver->simplify(assumps); }
+    SolverType get_solver_type() const { return solver->get_solver_type(); }
+    CMSat::SATSolver* get_cms() { return solver->get_cms(); }
+    CaDiCaL::Solver* get_cadical() { return solver->get_cadical(); }
+    void clear_cache() { cache.clear(); }
+    size_t cache_size() const { return cache.size(); }
 
 private:
-    struct CachedResult {
-        CMSat::lbool result = CMSat::l_Undef;
-        std::vector<CMSat::lbool> model;
-        std::vector<CMSat::Lit> conflict;
-    };
-
-    std::unique_ptr<MetaSolver> solver;
-    std::map<std::vector<CMSat::Lit>, CachedResult> cache;
-    mutable CachedResult cached_result;
+    uint64_t cache_hits = 0;
+    uint64_t cache_misses = 0;
+    const vector<lbool>* solution = nullptr;
+    vector<vector<lbool>> cache;
+    unique_ptr<MetaSolver> solver;
+    std::mt19937 rng;
 };
 
 } // namespace ArjunInt
