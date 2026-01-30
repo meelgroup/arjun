@@ -661,7 +661,7 @@ SimplifiedCNF Manthan::do_manthan() {
         << "   avg rep/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
         << "   avg confl sz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
         << "   avg needs rep sz: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
-        << "   avg try/repair: " << setw(6) << fixed << setprecision(2) << (double)(tot_repaired+repair_failed)/(num_loops_repair+0.0001)
+        << "   cache-hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
         << "   T: " << setprecision(2) << fixed << setw(7) << repair_time
         << "   rep/s: " << setw(7) << setprecision(3) << (double)tot_repaired/(repair_time+0.0001) << setprecision(2)
         << " DONE");
