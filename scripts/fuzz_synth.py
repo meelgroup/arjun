@@ -320,6 +320,7 @@ if __name__ == "__main__":
             , " --filtersamples"
             , " --biasedsampling"
             , " --uniqsamp"
+            , " --unate"
         ]
         for o in opts:
             val = random.choice([0, 1])
