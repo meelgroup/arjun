@@ -56,9 +56,9 @@ unique_ptr<SATSolver> Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
     vector<Lit> tmp;
     auto s = std::make_unique<SATSolver>();
     orig_num_vars = cnf.nVars();
+    s->new_vars(cnf.nVars()*2); // one for orig, one for copy
     s->set_verbosity(0);
     s->set_prefix("c o ");
-    s->new_vars(cnf.nVars()*2); // one for orig, one for copy
     s->set_bve(false);
     s->set_bva(false);
     s->set_no_simplify_at_startup();
@@ -73,6 +73,7 @@ unique_ptr<SATSolver> Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
 
         // !F(y)
         s->new_var(); // new var for each clause
+                      // z is true iff clause is TRUE
         uint32_t zv = s->nVars()-1;
         const Lit z = Lit(zv, false);
 
@@ -137,7 +138,6 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     auto s = setup_f_not_f_indic(cnf);
     vector<Lit> assumps;
     vector<Lit> cl;
-    uint32_t undefs = 0;
     bool timeout = false;
     s->set_find_xors(false);
     s->set_scc(false);
@@ -179,27 +179,17 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
                     new_units++;
                     break;
                 }
-                if (ret == l_Undef) undefs++;
             }
         }
     } while (new_units > old_units);
 
-
-    const auto zero_assigned = s->get_zero_assigned_lits();
-    uint32_t num_assigned = 0;
-    for(const auto& z: zero_assigned) {
-        if (z.var() > cnf.nVars()) continue;
-        verb_print(3, "[unate] zero assigned: " << z);
-        num_assigned++;
-    }
+    cnf.get_fixed_values(cnf, s);
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0, "start synthesis_unate");
-    verb_print(1, COLRED "[unate] Done. synthesis_unate total zero assigned: " << num_assigned
-        << " new units: " << new_units << " undefs: " << undefs
+    verb_print(1, COLRED "[unate] Done. synthesis_unate found: " << new_units
         << " defined: " << to_define.size() - to_define2.size()
         << " still to define: " << to_define2.size()
         << " T-out: " << (int)timeout
         << " T: " << (cpuTime() - my_time));
-    cnf.get_fixed_values(cnf, s);
 }
 
 std::unique_ptr<SATSolver> Puura::fill_solver(const SimplifiedCNF& cnf) {
