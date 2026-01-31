@@ -321,6 +321,8 @@ if __name__ == "__main__":
             , " --biasedsampling"
             , " --uniqsamp"
             , " --unate"
+            , " --ctxsolver"
+            , " --repairsolver"
         ]
         for o in opts:
             val = random.choice([0, 1])
@@ -336,6 +338,7 @@ if __name__ == "__main__":
         solver += " --maxdepth " + random.choice(["2", "10"])
         solver += " --minleaf " + random.choice(["2", "10"])
         solver += " --maxsat " + random.choice(["0", "1", "-1"])
+        solver += " --repaircache " + " " + random.choice(["0", "100", "1000"])
 
         err, aigs = run_synth(solver, fname)
         if err is None:
