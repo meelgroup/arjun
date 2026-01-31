@@ -148,11 +148,10 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     do {
         old_units = new_units;
         for(uint32_t test = 0; test < orig_num_vars; test++) {
-            if (s->removed_var(test)) continue;
             if (sampl_set.count(test)) continue;
             /* if (s->get_sum_conflicts() > 50000) {timeout = true; break;} */
             tested_num++;
-            if (tested_num % 600 == 599) {
+            if (tested_num % 300 == 299) {
                 verb_print(1, "[unate] test no: " << setw(5) << tested_num
                     << " confl K: " << setw(4) << s->get_sum_conflicts()/1000
                     << " new units: " << setw(4) << new_units
@@ -161,20 +160,19 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
 
             for(int flip = 0; flip < 2; flip++) {
                 assumps.clear();
-                assumps.push_back(Lit(test, true ^ flip));
-                assumps.push_back(Lit(test+orig_num_vars, false ^ flip));
+                assumps.push_back(Lit(test, flip));
+                assumps.push_back(Lit(test+orig_num_vars, !flip));
                 /* s->set_max_confl(1500); */
                 s->set_no_confl_needed();
                 const auto ret = s->solve(&assumps, true);
-                if (ret == l_False) {
-                    verb_print(2, "[unate] GOOOOOOOD test: " << std::setw(3)  << (test+1)
-                        << " FALSE"
+                if (ret == l_True) {
+                    verb_print(2, "[unate] good test: " << std::setw(3)  << (test+1)
                         << " T: " << (cpuTime() - my_time));
 
-                    cl = {Lit(test, false ^ flip)};
+                    cl = {Lit(test, flip)};
                     cnf.add_clause(cl);
                     s->add_clause(cl);
-                    cl = {Lit(test+orig_num_vars, false ^ flip)};
+                    cl = {Lit(test+orig_num_vars, flip)};
                     s->add_clause(cl);
                     new_units++;
                     break;
@@ -185,7 +183,8 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
 
     cnf.get_fixed_values(cnf, s);
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0, "start synthesis_unate");
-    verb_print(1, COLRED "[unate] Done. synthesis_unate found: " << new_units
+    verb_print(1, COLRED "[unate] Done. synthesis_unate"
+        << " tested: " << tested_num
         << " defined: " << to_define.size() - to_define2.size()
         << " still to define: " << to_define2.size()
         << " T-out: " << (int)timeout
