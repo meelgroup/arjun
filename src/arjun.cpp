@@ -427,7 +427,7 @@ DLL_PUBLIC void SimplifiedCNF::get_fixed_values(
     auto fixed = solver->get_zero_assigned_lits();
     for(const auto& l: fixed) {
         if (l.var() >= nVars()) continue;
-        CMSat::Lit orig_lit = new_to_orig_var.at(l.var());
+        Lit orig_lit = new_to_orig_var.at(l.var());
         orig_lit ^= l.sign();
         scnf.defs[orig_lit.var()] = scnf.aig_mng.new_const(!orig_lit.sign());
     }
@@ -1733,6 +1733,7 @@ DLL_PUBLIC void SimplifiedCNF::check_pre_post_backward_round_synth() const {
     for(const auto& [o, n] : orig_to_new_var) {
         release_assert(o < defs.size());
         release_assert(n != CMSat::lit_Undef && n.var() < nvars);
+        if (orig_sampl_vars.count(o)) continue; // don't care about orig sampling vars
         if (defined(o)) {
             auto s = get_dependent_vars_recursive(o, cache);
             dependencies[o] = s;
