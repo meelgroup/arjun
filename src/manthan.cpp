@@ -537,8 +537,9 @@ void Manthan::bve_and_substitute() {
                     if (later_in_order(v, l.var())) {
                         aig = AIG::new_lit(~l);
                         set_depends_on(v, l);
-                    } else aig = aig_mng.new_const(l.sign());
-                    current = AIG::new_and(current, aig);
+                        current = AIG::new_and(current, aig);
+                    };
+                    //else -- TODO recursive substitution
                 }
                 overall = AIG::new_or(overall, current);
             }
