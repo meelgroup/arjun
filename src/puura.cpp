@@ -76,8 +76,7 @@ unique_ptr<SATSolver> Puura::setup_f_not_f(const SimplifiedCNF& cnf) {
         // !F(y)
         s->new_var(); // new var for each clause
                       // z is true iff clause is TRUE
-        uint32_t zv = s->nVars()-1;
-        const Lit z = Lit(zv, false);
+        const Lit z = Lit(s->nVars()-1, false);
 
         // (C shifted) V -z
         tmp.clear();
@@ -142,6 +141,36 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     for(const auto& v: cnf.get_opt_sampl_vars()) sampl_set.insert(v);
 
     auto s = setup_f_not_f(cnf);
+    var_to_indic.clear();
+    var_to_indic.resize(cnf.nVars(), var_Undef);
+    for(uint32_t i = 0; i < orig_num_vars; i++) {
+        if (input.count(i)) continue;
+        s->new_var();
+        const Lit ind_l = Lit(s->nVars()-1, false);
+
+        // when indic is TRUE, they are equal
+        const auto y = Lit (i, false);
+        const auto y_hat = Lit(i + orig_num_vars, false);
+        vector<Lit> tmp;
+        tmp.push_back(~ind_l);
+        tmp.push_back(y_hat);
+        tmp.push_back(~y);
+        s->add_clause(tmp);
+        tmp[1] = ~tmp[1];
+        tmp[2] = ~tmp[2];
+        s->add_clause(tmp);
+
+        tmp.clear();
+        tmp.push_back(ind_l);
+        tmp.push_back(~y_hat);
+        tmp.push_back(~y);
+        s->add_clause(tmp);
+        tmp[1] = ~tmp[1];
+        tmp[2] = ~tmp[2];
+        s->add_clause(tmp);
+        var_to_indic[i] = ind_l.var();
+    }
+
     vector<Lit> assumps;
     vector<Lit> cl;
     bool timeout = false;
@@ -165,8 +194,16 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
             assumps.clear();
             assumps.push_back(Lit(test, !flip));
             assumps.push_back(Lit(test+orig_num_vars, flip));
+            for(uint32_t i = 0; i < cnf.nVars(); i++) {
+                if (i == test) continue;
+                if (sampl_set.count(i)) continue;
+                auto ind = var_to_indic[i];
+                assert(ind != var_Undef);
+                assumps.push_back(Lit(ind, false));
+            }
             s->set_no_confl_needed();
             const auto ret = s->solve(&assumps, true);
+            cout << "assmp sz: " << assumps.size() << " ret: " << ret << endl;
             if (ret == l_False) {
                 verb_print(2, "[unate] good test: " << std::setw(3)  << (test+1)
                     << " T: " << fixed << setprecision(2) << (cpuTime() - my_time));
