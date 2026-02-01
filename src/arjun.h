@@ -161,12 +161,13 @@ public:
         return ret;
     }
 
-    static aig_ptr new_and(const aig_ptr& l, const aig_ptr& r) {
+    static aig_ptr new_and(const aig_ptr& l, const aig_ptr& r, bool neg = false) {
         assert(l != nullptr && r != nullptr);
         auto ret = std::make_shared<AIG>();
         ret->type = AIGT::t_and;
         ret->l = l;
         ret->r = r;
+        ret->neg = neg;
         return ret;
     }
 

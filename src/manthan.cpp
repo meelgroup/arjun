@@ -517,9 +517,12 @@ bool Manthan::check_functions_for_y_vars() const {
 // Prefer FALSE, i.e. it should be false unless we have evidence otherwise
 // Hence, we only care about clauses where v appears positively
 void Manthan::bve_and_substitute() {
-    map<uint32_t, aig_ptr> v_to_aig;
+    auto rev_order = y_order;
+    std::reverse(rev_order.begin(), rev_order.end());
+
     for(const auto& v: y_order) {
         if (!to_define.count(v)) continue;
+        FHolder::Formula f;
 
         auto overall = aig_mng.new_const(false);
         for(const auto& cl: cnf.get_clauses()) {
@@ -536,22 +539,58 @@ void Manthan::bve_and_substitute() {
                 for(const auto& l: cl) {
                     if (l.var() == v) continue;
                     aig_ptr aig = nullptr;
-                    if (later_in_order(v, l.var())) {
+                    if (input.count(l.var())) {
+                        aig = AIG::new_lit(l);
+                        current = AIG::new_and(current, aig);
+                        continue;
+                    } else if (later_in_order(v, l.var())) {
                         aig = AIG::new_lit(~l);
                         set_depends_on(v, l);
                         current = AIG::new_and(current, aig);
-                    };
-                    //else -- TODO recursive substitution
+                    } else {
+                        assert(var_to_formula.count(l.var()) == 1);
+                        aig = var_to_formula.at(l.var()).aig;
+                        if (l.sign()) aig = AIG::new_not(aig);
+                        std::map<aig_ptr, aig_ptr> cache;
+                        auto aig2 = AIG::deep_clone(aig, cache);
+                        map<aig_ptr, aig_ptr> cache_aig;
+                        auto aig3 = AIG::transform<aig_ptr>(
+                          aig2,
+                          [&](AIGT type, const uint32_t var, const bool neg, const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
+                            if (type == AIGT::t_const) {
+                                return neg ? aig_mng.new_const(false) : aig_mng.new_const(true);
+                            }
+                            if (type == AIGT::t_lit) {
+                                aig_ptr l_aig = nullptr;
+                                if (later_in_order(v, var)) {
+                                    l_aig = AIG::new_lit(Lit(var, neg));
+                                    set_depends_on(v, var);
+                                } else {
+                                    l_aig = aig_mng.new_const(true);
+                                }
+                                return l_aig;
+                            }
+                            if (type == AIGT::t_and) {
+                                return AIG::new_and(*left, *right, neg);
+                            }
+                            assert(false && "Unhandled AIG type in visitor");
+                            exit(EXIT_FAILURE);
+                          }, cache_aig);
+                        current = AIG::new_and(current, aig3);
+                    }
                 }
                 overall = AIG::new_or(overall, current);
             }
         }
-        v_to_aig[v] = overall;
+        f.aig = overall;
+        var_to_formula[v] = f;
     }
-    assert(v_to_aig.size() == to_define.size());
 
-    for(auto& [v, aig]: v_to_aig) {
-        FHolder::Formula f;
+    for(const auto& v: y_order) {
+        if (!to_define.count(v)) continue;
+        FHolder::Formula& f = var_to_formula.at(v);
+        assert(f.out == lit_Error);
+        assert(f.clauses.empty());
 
         // Create a lambda to transform AIG to CNF using the transform function
         std::function<Lit(AIGT, uint32_t, bool, const Lit*, const Lit*)> aig_to_cnf_visitor =
@@ -590,11 +629,9 @@ void Manthan::bve_and_substitute() {
 
         // Recursively generate clauses for the AIG using the transform function
         map<aig_ptr, Lit> cache;
-        const Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
+        const Lit out_lit = AIG::transform<Lit>(f.aig, aig_to_cnf_visitor, cache);
         f.out = out_lit;
-        f.aig = aig;
         assert(var_to_formula.count(v) == 0);
-        var_to_formula[v] = f;
     }
 }
 
