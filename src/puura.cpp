@@ -174,13 +174,11 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     vector<Lit> assumps;
     vector<Lit> cl;
     bool timeout = false;
-    s->set_find_xors(false);
-    s->set_scc(false);
     s->set_bve(false);
 
     uint32_t tested_num = 0;
     for(uint32_t test: to_define) {
-        if (s->removed_var(test)) continue;
+        /* if (s->removed_var(test)) continue; */
         /* if (s->get_sum_conflicts() > 50000) {timeout = true; break;} */
         tested_num++;
         if (tested_num % 300 == 299) {
