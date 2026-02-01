@@ -518,6 +518,39 @@ bool Manthan::check_functions_for_y_vars() const {
     return true;
 }
 
+void Manthan::full_train() {
+    // Sampling
+    verb_print(1, "[manthan] Starting training. Manthan Config. "
+        << "do_filter_samples=" << mconf.do_filter_samples
+        << ", num_samples=" << mconf.num_samples
+        << ", minimumLeafSize=" << mconf.minimumLeafSize
+        << ", minGainSplit=" << mconf.minGainSplit
+        << ", maximumDepth=" << mconf.maximumDepth);
+    double samp_start_time = cpuTime();
+    vector<sample> samples = get_cmsgen_samples(mconf.num_samples);
+    {
+        vector<sample> samples2 = get_samples_ccnr(mconf.num_samples_ccnr);
+        samples.insert(samples.end(), samples2.begin(), samples2.end());
+    }
+    sampl_time = cpuTime() - samp_start_time;
+    verb_print(1, COLYEL "[manthan] Got " << setw(8) << samples.size() << " samples."
+        << " samp/var: " << setw(8) << setprecision(2) << std::fixed << sampl_time/(double)to_define.size()
+        << " T: " << setprecision(2) << std::fixed << sampl_time);
+    sort_all_samples(samples);
+
+    // Training
+    const double train_start_time = cpuTime();
+    for(const auto& v: y_order) {
+        if (backward_defined.count(v)) continue;
+        train(samples, v); // updates dependency_mat
+    }
+    train_time = cpuTime() - train_start_time;
+    verb_print(1, COLYEL "[manthan] training done."
+            << " train/var: " << setw(6) << setprecision(2) << std::fixed << (cpuTime() - train_start_time)/(double)to_define.size()
+            << " T: " << setw(6) << setprecision(2) << std::fixed << train_time);
+    assert(check_map_dependency_cycles());
+}
+
 SimplifiedCNF Manthan::do_manthan() {
     assert(cnf.get_need_aig() && cnf.defs_invariant());
     assert(mconf.simplify_every > 0 && "Can't give simplify_every=0");
@@ -546,44 +579,18 @@ SimplifiedCNF Manthan::do_manthan() {
     repair_solver.new_vars(cnf.nVars());
     inject_cnf(repair_solver, false); // faster to add CNF later
 
-    // Sampling
-    double samp_start_time = cpuTime();
-    vector<sample> samples = get_cmsgen_samples(mconf.num_samples);
-    {
-        vector<sample> samples2 = get_samples_ccnr(mconf.num_samples_ccnr);
-        samples.insert(samples.end(), samples2.begin(), samples2.end());
-    }
-    const double sampl_time = cpuTime() - samp_start_time;
-    verb_print(1, COLYEL "[manthan] Got " << setw(8) << samples.size() << " samples."
-        << " samp/var: " << setw(8) << setprecision(2) << std::fixed << sampl_time/(double)to_define.size()
-        << " T: " << setprecision(2) << std::fixed << sampl_time);
 
-    // Training
+    // Set up cex_solver
     inject_cnf(cex_solver);
     fh = std::make_unique<FHolder>(&cex_solver);
     create_vars_for_y_hats();
     add_not_f_x_yhat(cex_solver);
     verb_print(2, "True lit in solver_train: " << fh->get_true_lit());
     verb_print(2, "[manthan] After fh creation: solver_train.nVars() = " << cex_solver.nVars() << " cnf.nVars() = " << cnf.nVars());
+
     fix_order();
     print_y_order_occur();
-    verb_print(1, "[manthan] Starting training. Manthan Config. "
-        << "do_filter_samples=" << mconf.do_filter_samples
-        << ", num_samples=" << mconf.num_samples
-        << ", minimumLeafSize=" << mconf.minimumLeafSize
-        << ", minGainSplit=" << mconf.minGainSplit
-        << ", maximumDepth=" << mconf.maximumDepth);
-    sort_all_samples(samples);
-    const double train_start_time = cpuTime();
-    for(const auto& v: y_order) {
-        if (backward_defined.count(v)) continue;
-        train(samples, v); // updates dependency_mat
-    }
-    const double train_time = cpuTime() - train_start_time;
-    verb_print(1, COLYEL "[manthan] training done."
-            << " train/var: " << setw(6) << setprecision(2) << std::fixed << (cpuTime() - train_start_time)/(double)to_define.size()
-            << " T: " << setw(6) << setprecision(2) << std::fixed << train_time);
-    assert(check_map_dependency_cycles());
+    full_train();
 
     const double repair_start_time = cpuTime();
     fill_var_to_formula_with_backward();

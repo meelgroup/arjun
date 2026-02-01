@@ -96,6 +96,7 @@ class Manthan {
         set<uint32_t> helpers;
         set<uint32_t> y_hats;
 
+        void full_train();
         void create_vars_for_y_hats();
         FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& var_remap, uint32_t depth, uint32_t& max_depth);
         vector<uint32_t> incidence;
@@ -164,4 +165,7 @@ class Manthan {
         uint64_t needs_repair_sum = 0;
         uint32_t tot_repaired = 0;
         uint32_t repair_failed = 0;
+
+        double sampl_time = 0;
+        double train_time = 0;
 };
