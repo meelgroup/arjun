@@ -599,7 +599,7 @@ SimplifiedCNF Manthan::do_manthan() {
     while(true) {
         if (num_loops_repair %  40 == 39) {
             verb_print(1, "[manthan] rep: " << setw(6) << tot_repaired
-                    << "   loops: "<< setw(4) << num_loops_repair
+                    << "   loops: "<< setw(6) << num_loops_repair
                     << "   avg rep/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
                     << "   avg confl sz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
                     << "   avg needs rep sz: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
@@ -658,7 +658,7 @@ SimplifiedCNF Manthan::do_manthan() {
     const double repair_time = cpuTime() - repair_start_time;
     assert(check_map_dependency_cycles());
     verb_print(1, COLYEL "[manthan] rep: " << setw(6) << tot_repaired
-        << "   loops: "<< setw(4) << num_loops_repair
+        << "   loops: "<< setw(6) << num_loops_repair
         << "   avg rep/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
         << "   avg confl sz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
         << "   avg needs rep sz: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
