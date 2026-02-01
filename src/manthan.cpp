@@ -312,11 +312,7 @@ void Manthan::fill_var_to_formula_with_backward() {
             }
 
             if (type == AIGT::t_lit) {
-                const auto& orig_to_new = cnf.get_orig_to_new_var();
-                const auto it = orig_to_new.find(var_orig);
-
-                assert(it != orig_to_new.end() && "Variable in AIG not found in CNF mapping");
-                const Lit lit_new = it->second ^ neg;
+                const Lit lit_new = cnf.orig_to_new_lit(Lit(var_orig, neg));
                 const Lit result_lit = map_y_to_y_hat(lit_new);
                 return result_lit;
             }
@@ -347,7 +343,22 @@ void Manthan::fill_var_to_formula_with_backward() {
         map<aig_ptr, Lit> cache;
         const Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
         f.out = out_lit ^ orig.sign();
-        f.aig = nullptr; // not really important
+        map<aig_ptr, aig_ptr> aig_cache;
+        f.aig = AIG::transform<aig_ptr>(aig,
+          [&](AIGT type, const uint32_t var, const bool neg, const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
+            if (type == AIGT::t_const) {
+                return neg ? aig_mng.new_const(false) : aig_mng.new_const(true);
+            }
+            if (type == AIGT::t_lit) {
+                const auto l = cnf.orig_to_new_lit(Lit(var, neg));
+                return AIG::new_lit(l);
+            }
+            if (type == AIGT::t_and) {
+                return AIG::new_and(*left, *right, neg);
+            }
+            assert(false && "Unhandled AIG type in visitor");
+            exit(EXIT_FAILURE);
+          }, aig_cache);
         assert(var_to_formula.count(v) == 0);
         var_to_formula[v] = f;
     }
@@ -514,16 +525,54 @@ bool Manthan::check_functions_for_y_vars() const {
     return true;
 }
 
+aig_ptr Manthan::one_level_substitute(Lit l, const uint32_t v, map<uint32_t, aig_ptr>& transformed) {
+    if (!transformed.count(l.var())) {
+        assert(var_to_formula.count(l.var()) == 1);
+        auto aig = var_to_formula.at(l.var()).aig;
+        std::map<aig_ptr, aig_ptr> cache;
+        auto aig2 = AIG::deep_clone(aig, cache);
+        map<aig_ptr, aig_ptr> cache_aig;
+        auto aig3 = AIG::transform<aig_ptr>(
+          aig2,
+          [&](AIGT type, const uint32_t var, const bool neg, const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
+            if (type == AIGT::t_const) {
+                return neg ? aig_mng.new_const(false) : aig_mng.new_const(true);
+            }
+            if (type == AIGT::t_lit) {
+                aig_ptr l_aig = nullptr;
+                if (later_in_order(v, var)) {
+                    l_aig = AIG::new_lit(Lit(var, neg));
+                    set_depends_on(v, var);
+                } else {
+                    l_aig = aig_mng.new_const(true);
+                }
+                return l_aig;
+            }
+            if (type == AIGT::t_and) {
+                return AIG::new_and(*left, *right, neg);
+            }
+            assert(false && "Unhandled AIG type in visitor");
+            exit(EXIT_FAILURE);
+          }, cache_aig);
+        transformed[l.var()] = aig3;
+    }
+    auto aig = transformed.at(l.var());
+    if (l.sign()) aig = AIG::new_not(aig);
+    return aig;
+}
+
 // Prefer FALSE, i.e. it should be false unless we have evidence otherwise
 // Hence, we only care about clauses where v appears positively
 void Manthan::bve_and_substitute() {
     auto rev_order = y_order;
     std::reverse(rev_order.begin(), rev_order.end());
 
-    for(const auto& v: y_order) {
+    for(const auto& v: rev_order) {
         if (!to_define.count(v)) continue;
-        FHolder::Formula f;
+        assert(var_to_formula.count(v) == 0);
 
+        FHolder::Formula f;
+        map<uint32_t, aig_ptr> transformed;
         auto overall = aig_mng.new_const(false);
         for(const auto& cl: cnf.get_clauses()) {
             bool todo = false;
@@ -539,44 +588,19 @@ void Manthan::bve_and_substitute() {
                 for(const auto& l: cl) {
                     if (l.var() == v) continue;
                     aig_ptr aig = nullptr;
-                    if (input.count(l.var())) {
-                        aig = AIG::new_lit(l);
-                        current = AIG::new_and(current, aig);
-                        continue;
-                    } else if (later_in_order(v, l.var())) {
+                    if (later_in_order(v, l.var())) {
                         aig = AIG::new_lit(~l);
                         set_depends_on(v, l);
                         current = AIG::new_and(current, aig);
+                    } else if (v == l.var()) {
+                        assert(false);
                     } else {
-                        assert(var_to_formula.count(l.var()) == 1);
-                        aig = var_to_formula.at(l.var()).aig;
-                        if (l.sign()) aig = AIG::new_not(aig);
-                        std::map<aig_ptr, aig_ptr> cache;
-                        auto aig2 = AIG::deep_clone(aig, cache);
-                        map<aig_ptr, aig_ptr> cache_aig;
-                        auto aig3 = AIG::transform<aig_ptr>(
-                          aig2,
-                          [&](AIGT type, const uint32_t var, const bool neg, const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
-                            if (type == AIGT::t_const) {
-                                return neg ? aig_mng.new_const(false) : aig_mng.new_const(true);
-                            }
-                            if (type == AIGT::t_lit) {
-                                aig_ptr l_aig = nullptr;
-                                if (later_in_order(v, var)) {
-                                    l_aig = AIG::new_lit(Lit(var, neg));
-                                    set_depends_on(v, var);
-                                } else {
-                                    l_aig = aig_mng.new_const(true);
-                                }
-                                return l_aig;
-                            }
-                            if (type == AIGT::t_and) {
-                                return AIG::new_and(*left, *right, neg);
-                            }
-                            assert(false && "Unhandled AIG type in visitor");
-                            exit(EXIT_FAILURE);
-                          }, cache_aig);
-                        current = AIG::new_and(current, aig3);
+                        if (mconf.bve_deep_substitute) {
+                            aig = one_level_substitute(l, v, transformed);
+                            current = AIG::new_and(current, aig);
+                        } else {
+                            //keep current as-is, since we A ND with TRUE
+                        }
                     }
                 }
                 overall = AIG::new_or(overall, current);
@@ -631,7 +655,6 @@ void Manthan::bve_and_substitute() {
         map<aig_ptr, Lit> cache;
         const Lit out_lit = AIG::transform<Lit>(f.aig, aig_to_cnf_visitor, cache);
         f.out = out_lit;
-        assert(var_to_formula.count(v) == 0);
     }
 }
 
@@ -707,11 +730,11 @@ SimplifiedCNF Manthan::do_manthan() {
 
     fix_order();
     print_y_order_occur();
+    fill_var_to_formula_with_backward();
     if (!mconf.manthan_bve) full_train();
     else bve_and_substitute();
 
     const double repair_start_time = cpuTime();
-    fill_var_to_formula_with_backward();
     for(const auto& v: to_define_full) {
         assert(var_to_formula.count(v) && "All must have a tentative definition");
         updated_y_funcs.push_back(v);

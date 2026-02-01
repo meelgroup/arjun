@@ -98,6 +98,8 @@ class Manthan {
 
         void full_train();
         void bve_and_substitute();
+        aig_ptr one_level_substitute(const Lit l, const uint32_t v, map<uint32_t, aig_ptr>& transformed);
+
         void create_vars_for_y_hats();
         FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& var_remap, uint32_t depth, uint32_t& max_depth);
         vector<uint32_t> incidence;

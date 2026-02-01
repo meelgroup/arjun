@@ -1217,6 +1217,13 @@ public:
         return orig_to_new_var;
     }
 
+    const CMSat::Lit orig_to_new_lit(const CMSat::Lit l) const {
+        assert(l.var() < defs.size());
+        assert(orig_to_new_var.count(l.var()));
+        CMSat::Lit k = orig_to_new_var.at(l.var());
+        return k ^ l.sign();
+    }
+
     // Get AIG definition for a variable (in ORIG numbering)
     const aig_ptr& get_def(uint32_t v) const {
         assert(v < defs.size());
@@ -1324,6 +1331,7 @@ public:
         int repair_cache_size = 1000;
         int backward_synth_reverse_order = 0;
         int manthan_bve = 0;
+        int bve_deep_substitute = 0;
     };
 
     /// Standalone functions

@@ -126,6 +126,7 @@ void add_arjun_options() {
     myopt("--simpevery", mconf.simplify_every, atoi,"Simplify solvers inside Manthan every K loops");
     myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
     myopt("--mbve", mconf.manthan_bve, atoi,"Use BVE with constants instead of training");
+    myopt("--bvedeep", mconf.bve_deep_substitute, atoi,"In Manthan BVE, do deep substitution");
     // Order
     myopt("--maxsatorder", mconf.maxsat_order, atoi,"Which order to use to try to fix vars? 0 = normal, 1 = reverse");
     myopt("--backwsynthorder", mconf.backward_synth_reverse_order, atoi,"Which order to use to try to do backward? 0 = normal, 1 = reverse");
