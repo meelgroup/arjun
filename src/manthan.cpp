@@ -552,13 +552,13 @@ void Manthan::bve_and_substitute() {
 
         // Create a lambda to transform AIG to CNF using the transform function
         std::function<Lit(AIGT, uint32_t, bool, const Lit*, const Lit*)> aig_to_cnf_visitor =
-          [&](AIGT type, const uint32_t var_orig, const bool neg, const Lit* left, const Lit* right) -> Lit {
+          [&](AIGT type, const uint32_t var, const bool neg, const Lit* left, const Lit* right) -> Lit {
             if (type == AIGT::t_const) {
                 return neg ? ~fh->get_true_lit() : fh->get_true_lit();
             }
 
             if (type == AIGT::t_lit) {
-                Lit l(var_orig, neg);
+                Lit l(var, neg);
                 const Lit result_lit = map_y_to_y_hat(l);
                 return result_lit;
             }
