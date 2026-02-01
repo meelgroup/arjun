@@ -55,9 +55,15 @@ using std::setw;
 /* #define SLOW_DEBUG */
 /* #define VERBOSE_DEBUG */
 
+#ifdef VERBOSE_DEBUG
+constexpr int verbose_debug_enabled = 10;
+#else
+constexpr int verbose_debug_enabled = 0;
+#endif
+
 #ifdef SLOW_DEBUG
 #define SLOW_DEBUG_DO(x) do { x; } while (0)
-constexpr int slow_debug_enabled = 10;
+constexpr int slow_debug_enabled = 1;
 #else
 #define SLOW_DEBUG_DO(x) do { } while (0)
 constexpr int slow_debug_enabled = 0;

@@ -40,8 +40,10 @@
 using namespace ArjunNS;
 using namespace CMSat;
 using std::vector;
+using std::map;
 using std::setw;
 using std::setprecision;
+using std::fixed;
 using std::string;
 using std::unique_ptr;
 using std::unique_ptr;
@@ -50,7 +52,7 @@ Puura::Puura(const Config& _conf) : conf(_conf) {}
 Puura::~Puura() = default;
 
 // used in synthesis_unate only
-unique_ptr<SATSolver> Puura::setup_f_not_f_indic(const SimplifiedCNF& cnf) {
+unique_ptr<SATSolver> Puura::setup_f_not_f(const SimplifiedCNF& cnf) {
     double my_time = cpuTime();
 
     vector<Lit> tmp;
@@ -132,10 +134,14 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     double my_time = cpuTime();
     uint32_t new_units = 0;
     std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb, "start synthesis_unate");
+    if (to_define.empty()) {
+        verb_print(1, "[unate] No variables to define, skipping");
+        return;
+    }
     sampl_set.clear();
     for(const auto& v: cnf.get_opt_sampl_vars()) sampl_set.insert(v);
 
-    auto s = setup_f_not_f_indic(cnf);
+    auto s = setup_f_not_f(cnf);
     vector<Lit> assumps;
     vector<Lit> cl;
     bool timeout = false;
@@ -144,42 +150,37 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     s->set_bve(false);
 
     uint32_t tested_num = 0;
-    uint32_t old_units;
-    do {
-        old_units = new_units;
-        for(uint32_t test = 0; test < orig_num_vars; test++) {
-            if (sampl_set.count(test)) continue;
-            /* if (s->get_sum_conflicts() > 50000) {timeout = true; break;} */
-            tested_num++;
-            if (tested_num % 300 == 299) {
-                verb_print(1, "[unate] test no: " << setw(5) << tested_num
-                    << " confl K: " << setw(4) << s->get_sum_conflicts()/1000
-                    << " new units: " << setw(4) << new_units
-                    << " T: " << setprecision(2) << std::fixed << (cpuTime() - my_time));
-            }
+    for(uint32_t test: to_define) {
+        if (s->removed_var(test)) continue;
+        /* if (s->get_sum_conflicts() > 50000) {timeout = true; break;} */
+        tested_num++;
+        if (tested_num % 300 == 299) {
+            verb_print(1, "[unate] test no: " << setw(5) << tested_num
+                << " confl K: " << setw(4) << s->get_sum_conflicts()/1000
+                << " new units: " << setw(4) << new_units
+                << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
+        }
 
-            for(int flip = 0; flip < 2; flip++) {
-                assumps.clear();
-                assumps.push_back(Lit(test, flip));
-                assumps.push_back(Lit(test+orig_num_vars, !flip));
-                /* s->set_max_confl(1500); */
-                s->set_no_confl_needed();
-                const auto ret = s->solve(&assumps, true);
-                if (ret == l_True) {
-                    verb_print(2, "[unate] good test: " << std::setw(3)  << (test+1)
-                        << " T: " << (cpuTime() - my_time));
+        for(int flip = 0; flip < 2; flip++) {
+            assumps.clear();
+            assumps.push_back(Lit(test, !flip));
+            assumps.push_back(Lit(test+orig_num_vars, flip));
+            s->set_no_confl_needed();
+            const auto ret = s->solve(&assumps, true);
+            if (ret == l_False) {
+                verb_print(2, "[unate] good test: " << std::setw(3)  << (test+1)
+                    << " T: " << fixed << setprecision(2) << (cpuTime() - my_time));
 
-                    cl = {Lit(test, flip)};
-                    cnf.add_clause(cl);
-                    s->add_clause(cl);
-                    cl = {Lit(test+orig_num_vars, flip)};
-                    s->add_clause(cl);
-                    new_units++;
-                    break;
-                }
+                cl = {Lit(test, flip)};
+                cnf.add_clause(cl);
+                s->add_clause(cl);
+                cl = {Lit(test+orig_num_vars, flip)};
+                s->add_clause(cl);
+                new_units++;
+                break;
             }
         }
-    } while (new_units > old_units);
+    }
 
     cnf.get_fixed_values(cnf, s);
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0, "start synthesis_unate");
@@ -242,7 +243,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     const double my_time = cpuTime();
     if (cnf.get_need_aig()) {
         assert(cnf.defs_invariant());
-        std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb | slow_debug_enabled, "start get_fully_simplified_renumbered_cnf");
+        std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start get_fully_simplified_renumbered_cnf");
     }
     for(const auto& v: cnf.get_sampl_vars())
         verb_print(5, "[w-debug] orig sampl var: " << v+1);
@@ -355,7 +356,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     auto ret_cnf = cnf.get_cnf(solver, new_sampl_vars, new_empty_sampl_vars, conf.verb);
     ret_cnf.set_backbone_done(backbone_done);
     if (cnf.get_need_aig()) {
-        auto [input_vars2, to_define2, backward_defined2] = ret_cnf.get_var_types(0 | slow_debug_enabled, "end get_fully_simplified_renumbered_cnf");
+        auto [input_vars2, to_define2, backward_defined2] = ret_cnf.get_var_types(0 | verbose_debug_enabled, "end get_fully_simplified_renumbered_cnf");
         verb_print(1, COLRED "[puura] Done. final vars: " << ret_cnf.nVars()
             << " final cls: " << ret_cnf.get_clauses().size()
             << " defined: " << to_define.size() - to_define2.size()

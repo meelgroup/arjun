@@ -417,7 +417,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     // in terms of ANY other variables, but NOT in a self-referential way
     vector<char> unknown_set(orig_num_vars, 0);
     vector<uint32_t> unknown;
-    auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb | slow_debug_enabled, "start backward_round_synth");
+    auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start backward_round_synth");
     set<uint32_t> pretend_input;
     if (to_define.empty()) {
         verb_print(1, "[arjun] No variables to define, returning original CNF");
@@ -543,7 +543,7 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     for(const auto& [v, aig]: interp.get_defs()) assert(input.count(v) == 0);
     cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);
     cnf.set_after_backward_round_synth();
-    auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | slow_debug_enabled, "end backward_round_synth");
+    auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end backward_round_synth");
 
     verb_print(1, COLRED "[backward] Done. "
         << " TR: " << ret_true << " UN: " << ret_undef << " FA: " << ret_false

@@ -55,7 +55,7 @@ public:
     void backbone(SimplifiedCNF& cnf);
 
 private:
-    unique_ptr<SATSolver> setup_f_not_f_indic(const SimplifiedCNF& cnf);
+    unique_ptr<SATSolver> setup_f_not_f(const SimplifiedCNF& cnf);
     void set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf);
     bool set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, unique_ptr<SATSolver>& solver);
     void get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, unique_ptr<SATSolver>& solver) const;

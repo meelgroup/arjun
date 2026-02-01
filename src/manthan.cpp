@@ -531,7 +531,7 @@ SimplifiedCNF Manthan::do_manthan() {
     // input vars -- original sampling vars
     // defined non-input vars -- vars defined via backward_round_synth
     // to_define vars -- vars that are not defined yet, and not input
-    std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb | slow_debug_enabled, "start do_manthan");
+    std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_manthan");
     if (to_define.empty()) {
         verb_print(1, "[manthan] No variables to define, returning original CNF");
         return cnf;
@@ -678,7 +678,7 @@ SimplifiedCNF Manthan::do_manthan() {
     SimplifiedCNF fcnf = cnf;
     fcnf.map_aigs_to_orig(aigs, cnf.nVars(), &y_hat_to_y);
     assert(verify_final_cnf(fcnf));
-    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0 | slow_debug_enabled, "end do_manthan");
+    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0 | verbose_debug_enabled, "end do_manthan");
     verb_print(1, COLRED "[manthan] Done. "
         << " sampl T: " << setprecision(2) << std::fixed << sampl_time
         << " train T: " << setprecision(2) << std::fixed << train_time
@@ -692,7 +692,7 @@ SimplifiedCNF Manthan::do_manthan() {
 
 bool Manthan::verify_final_cnf(const SimplifiedCNF& fcnf) const {
     assert(fcnf.check_aig_cycles());
-    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0 | slow_debug_enabled, "verify_final_cnf");
+    auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0 | verbose_debug_enabled, "verify_final_cnf");
     for(const auto& v: to_define2) {
         cout << "ERROR: var " << v+1 << " not defined in final CNF!" << endl;
         assert(false && "All to-define vars must be defined in final CNF");
