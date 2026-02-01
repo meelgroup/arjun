@@ -344,21 +344,25 @@ void Manthan::fill_var_to_formula_with_backward() {
         const Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
         f.out = out_lit ^ orig.sign();
         map<aig_ptr, aig_ptr> aig_cache;
-        f.aig = AIG::transform<aig_ptr>(aig,
-          [&](AIGT type, const uint32_t var, const bool neg, const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
-            if (type == AIGT::t_const) {
-                return neg ? aig_mng.new_const(false) : aig_mng.new_const(true);
-            }
-            if (type == AIGT::t_lit) {
-                const auto l = cnf.orig_to_new_lit(Lit(var, neg));
-                return AIG::new_lit(l);
-            }
-            if (type == AIGT::t_and) {
-                return AIG::new_and(*left, *right, neg);
-            }
-            assert(false && "Unhandled AIG type in visitor");
-            exit(EXIT_FAILURE);
-          }, aig_cache);
+        if (mconf.bve_deep_substitute) {
+            f.aig = AIG::transform<aig_ptr>(aig,
+              [&](AIGT type, const uint32_t var, const bool neg, const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
+                if (type == AIGT::t_const) {
+                    return neg ? aig_mng.new_const(false) : aig_mng.new_const(true);
+                }
+                if (type == AIGT::t_lit) {
+                    const auto l = cnf.orig_to_new_lit(Lit(var, neg));
+                    return AIG::new_lit(l);
+                }
+                if (type == AIGT::t_and) {
+                    return AIG::new_and(*left, *right, neg);
+                }
+                assert(false && "Unhandled AIG type in visitor");
+                exit(EXIT_FAILURE);
+              }, aig_cache);
+        } else {
+            f.aig = nullptr; // we won't need it.
+        }
         assert(var_to_formula.count(v) == 0);
         var_to_formula[v] = f;
     }
@@ -606,7 +610,9 @@ void Manthan::bve_and_substitute() {
                 overall = AIG::new_or(overall, current);
             }
         }
-        f.aig = overall;
+
+        set<aig_ptr> visited;
+        f.aig = AIG::simplify(overall, visited);
         var_to_formula[v] = f;
     }
 
