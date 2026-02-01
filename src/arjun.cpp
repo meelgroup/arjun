@@ -425,10 +425,12 @@ DLL_PUBLIC void SimplifiedCNF::get_fixed_values(
 {
     auto new_to_orig_var = get_new_to_orig_var();
     auto fixed = solver->get_zero_assigned_lits();
+    assert(solver->okay());
     for(const auto& l: fixed) {
         if (l.var() >= nVars()) continue;
         Lit orig_lit = new_to_orig_var.at(l.var());
         orig_lit ^= l.sign();
+        assert(scnf.defs[orig_lit.var()] == nullptr && "Variable must not already have a definition");
         scnf.defs[orig_lit.var()] = scnf.aig_mng.new_const(!orig_lit.sign());
     }
 }

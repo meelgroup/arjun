@@ -286,16 +286,16 @@ void do_synthesis() {
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-1-simplified_cnf.aig");
     }
 
-    if (etof_conf.do_extend_indep) {
-        arjun->standalone_unsat_define(cnf);
-        cnf.simplify_aigs();
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-2-unsat_define.aig");
-    }
-
     if (etof_conf.do_unate) {
         arjun->standalone_unate(cnf);
         cnf.simplify_aigs();
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-3-unsat_unate.aig");
+    }
+
+    if (etof_conf.do_extend_indep) {
+        arjun->standalone_unsat_define(cnf);
+        cnf.simplify_aigs();
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-2-unsat_define.aig");
     }
 
     if (do_minim_indep) {

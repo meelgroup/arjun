@@ -159,7 +159,8 @@ vector<sample> Manthan::get_cmsgen_samples(const uint32_t num) {
     // get final samples
     vector<sample> samples;
     for (uint32_t i = 0; i < num; i++) {
-        solver_samp.solve();
+        auto ret = solver_samp.solve();
+        assert(ret == l_True);
         assert(solver_samp.get_model().size() == cnf.nVars());
         samples.push_back(solver_samp.get_model());
     }
