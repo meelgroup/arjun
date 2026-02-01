@@ -323,6 +323,7 @@ if __name__ == "__main__":
             , " --unate"
             , " --ctxsolver"
             , " --repairsolver"
+            , " --mbve"
         ]
         for o in opts:
             val = random.choice([0, 1])
