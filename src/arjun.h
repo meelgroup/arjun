@@ -1322,6 +1322,7 @@ public:
         int repair_solver_type = 1;
         int repair_cache_size = 1000;
         int backward_synth_reverse_order = 0;
+        int manthan_bve = 0;
     };
 
     /// Standalone functions

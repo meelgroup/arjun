@@ -97,6 +97,7 @@ class Manthan {
         set<uint32_t> y_hats;
 
         void full_train();
+        void bve_and_substitute();
         void create_vars_for_y_hats();
         FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& var_remap, uint32_t depth, uint32_t& max_depth);
         vector<uint32_t> incidence;
@@ -129,7 +130,20 @@ class Manthan {
         void compute_needs_repair(const sample& ctx);
 
         vector<uint32_t> y_order; //1st only depends on inputs
+        vector<int> order_val; // inputs have order -1, everything else as per y_order
         void fix_order();
+        bool later_in_order(const uint32_t a, const uint32_t b) const {
+            SLOW_DEBUG_DO({
+                assert(order_val.size() > a);
+                assert(order_val.size() > b);
+            });
+            return order_val[a] > order_val[b];
+        }
+
+        void set_depends_on(const uint32_t a, const uint32_t b);
+        inline void set_depends_on(const uint32_t a, const Lit b) {
+            set_depends_on(a, b.var());
+        }
 
 
         bool verify_final_cnf(const SimplifiedCNF& fcnf) const;

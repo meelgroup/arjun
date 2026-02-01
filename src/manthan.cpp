@@ -252,13 +252,7 @@ void Manthan::fill_dependency_mat_with_backward() {
         }
         for(const auto& d: deps_for_var) {
             assert(input.count(d) == 0);
-            dependency_mat[d][v] = 1;
-
-            // recursive update
-            for(uint32_t i = 0; i < cnf.nVars(); i++) {
-                if (input.count(i)) continue;
-                dependency_mat[d][i] |= dependency_mat[v][i];
-            }
+            set_depends_on(d, v);
         }
         assert(check_map_dependency_cycles());
     }
@@ -518,6 +512,89 @@ bool Manthan::check_functions_for_y_vars() const {
     return true;
 }
 
+// Prefer FALSE, i.e. it should be false unless we have evidence otherwise
+// Hence, we only care about clauses where v appears positively
+void Manthan::bve_and_substitute() {
+    map<uint32_t, aig_ptr> v_to_aig;
+    for(const auto& v: y_order) {
+        if (!to_define.count(v)) continue;
+
+        auto overall = aig_mng.new_const(false);
+        for(const auto& cl: cnf.get_clauses()) {
+            bool todo = false;
+            for(const auto& l: cl) {
+                if (l.var() == v && !l.sign()) {
+                    todo = true;
+                    break;
+                }
+            }
+
+            if (todo) {
+                auto current = aig_mng.new_const(true);
+                for(const auto& l: cl) {
+                    if (l.var() == v) continue;
+                    aig_ptr aig = nullptr;
+                    if (later_in_order(v, l.var())) {
+                        aig = AIG::new_lit(~l);
+                        set_depends_on(v, l);
+                    } else aig = aig_mng.new_const(l.sign());
+                    current = AIG::new_and(current, aig);
+                }
+                overall = AIG::new_or(overall, current);
+            }
+        }
+        v_to_aig[v] = overall;
+    }
+    assert(v_to_aig.size() == to_define.size());
+
+    for(auto& [v, aig]: v_to_aig) {
+        FHolder::Formula f;
+
+        // Create a lambda to transform AIG to CNF using the transform function
+        std::function<Lit(AIGT, uint32_t, bool, const Lit*, const Lit*)> aig_to_cnf_visitor =
+          [&](AIGT type, const uint32_t var_orig, const bool neg, const Lit* left, const Lit* right) -> Lit {
+            if (type == AIGT::t_const) {
+                return neg ? ~fh->get_true_lit() : fh->get_true_lit();
+            }
+
+            if (type == AIGT::t_lit) {
+                Lit l(var_orig, neg);
+                const Lit result_lit = map_y_to_y_hat(l);
+                return result_lit;
+            }
+
+            if (type == AIGT::t_and) {
+                const Lit l_lit = *left;
+                const Lit r_lit = *right;
+
+                // Create fresh variable for AND gate
+                cex_solver.new_var();
+                const Lit and_out = Lit(cex_solver.nVars() - 1, false);
+                helpers.insert(and_out.var());
+
+                // Generate Tseitin clauses for AND gate
+                // and_out represents (l_lit & r_lit)
+                f.clauses.push_back(CL({~and_out, l_lit}));
+                f.clauses.push_back(CL({~and_out, r_lit}));
+                f.clauses.push_back(CL({~l_lit, ~r_lit, and_out}));
+
+                // Apply negation if needed
+                return neg ? ~and_out : and_out;
+            }
+            assert(false && "Unhandled AIG type in visitor");
+            exit(EXIT_FAILURE);
+        };
+
+        // Recursively generate clauses for the AIG using the transform function
+        map<aig_ptr, Lit> cache;
+        const Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
+        f.out = out_lit;
+        f.aig = aig;
+        assert(var_to_formula.count(v) == 0);
+        var_to_formula[v] = f;
+    }
+}
+
 void Manthan::full_train() {
     // Sampling
     verb_print(1, "[manthan] Starting training. Manthan Config. "
@@ -590,11 +667,11 @@ SimplifiedCNF Manthan::do_manthan() {
 
     fix_order();
     print_y_order_occur();
-    full_train();
+    if (!mconf.manthan_bve) full_train();
+    else bve_and_substitute();
 
     const double repair_start_time = cpuTime();
     fill_var_to_formula_with_backward();
-    fix_order();
     for(const auto& v: to_define_full) {
         assert(var_to_formula.count(v) && "All must have a tentative definition");
         updated_y_funcs.push_back(v);
@@ -881,6 +958,18 @@ Lit Manthan::map_y_to_y_hat(const Lit& l) const {
     return Lit(y_hat, l.sign());
 }
 
+// Update dependency matrix to say that a depends on b
+void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
+    verb_print(3, a+1 << " depends on " << b+1);
+    dependency_mat[a][b] = 1;
+    // recursive update
+    for(uint32_t i = 0; i < cnf.nVars(); i++) {
+        if (input.count(i)) continue;
+        dependency_mat[a][i] |= dependency_mat[b][i];
+    }
+    SLOW_DEBUG_DO(assert(check_map_dependency_cycles()));
+}
+
 void Manthan::perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit>& conflict) {
     verb_print(2, "[manthan] Performing repair on " << setw(5) << y_rep+1
             << " with conflict size " << setw(3) << conflict.size());
@@ -898,13 +987,7 @@ void Manthan::perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit
     cl.push_back(fresh_l);
     for(const auto& l: conflict) {
         cl.push_back(map_y_to_y_hat(l));
-        dependency_mat[y_rep][l.var()] = 1;
-        // recursive update
-        for(uint32_t i = 0; i < cnf.nVars(); i++) {
-            if (input.count(i)) continue;
-            dependency_mat[y_rep][i] |= dependency_mat[l.var()][i];
-        }
-        SLOW_DEBUG_DO(assert(check_map_dependency_cycles()));
+        set_depends_on(y_rep, l);
     }
     f.clauses.push_back(cl);
     for(const auto& l: conflict) {
@@ -950,6 +1033,8 @@ void Manthan::fix_order() {
     sort_unknown(sorted, incidence);
     /* std::reverse(sorted.begin(), sorted.end()); */
 
+    order_val.resize(cnf.nVars(), -2);
+    for(const auto& x: input) order_val[x] = -1;
     set<uint32_t> already_fixed;
     while(already_fixed.size() != to_define_full.size()) {
         for(const auto& y: sorted) {
@@ -973,6 +1058,10 @@ void Manthan::fix_order() {
             y_order.push_back(y);
         }
     }
+
+    for(uint32_t i = 0; i < y_order.size(); i++) order_val[y_order[i]] = i;
+    for(const auto& v: order_val) assert(v != -2);
+
     assert(y_order.size() == to_define_full.size());
     verb_print(1, "[manthan] Fixed order. T: " << setprecision(2) << fixed << (cpuTime() - my_time)
             << " Final order size: " << y_order.size());
@@ -1286,15 +1375,7 @@ FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, 
                     assert(dependency_mat[i][learned_v] == 0);
                 }
             }
-            // set that learned_v depends on v
-            dependency_mat[learned_v][v] = 1;
-            verb_print(3, learned_v+1 << " depends on " << v+1);
-
-            // recursive update
-            for(uint32_t i = 0 ; i < cnf.nVars(); i++) {
-                if (input.count(i)) continue;
-                dependency_mat[learned_v][i] |= dependency_mat[v][i];
-            }
+            set_depends_on(learned_v, v);
             v = y_to_y_hat.at(v);
         } else {
             // it's input, so no need to update dependency matrix
