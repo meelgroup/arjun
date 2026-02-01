@@ -117,9 +117,9 @@ DLL_PUBLIC void Arjun::standalone_minimize_indep(SimplifiedCNF& cnf, bool all_in
 }
 
 #ifdef SYNTH
-DLL_PUBLIC void Arjun::standalone_backward_round_synth(SimplifiedCNF& cnf) {
+DLL_PUBLIC void Arjun::standalone_backward_round_synth(SimplifiedCNF& cnf, const ManthanConf& mconf) {
     Minimize common(arjdata->conf);
-    common.backward_round_synth(cnf);
+    common.backward_round_synth(cnf, mconf);
 }
 #endif
 

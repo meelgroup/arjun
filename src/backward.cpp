@@ -400,7 +400,7 @@ void Minimize::add_all_indics_except(const set<uint32_t>& except) {
     seen.resize(indic_to_var.size()*2, 0);
 }
 
-void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
+void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf& mconf) {
     SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
     assert(cnf.get_need_aig() && cnf.defs_invariant());
 
@@ -449,7 +449,8 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
         unknown_set[x] = 1;
     }
     sort_unknown(unknown, incidence);
-    /* std::reverse(unknown.begin(), unknown.end()); */
+    if (mconf.backward_synth_reverse_order)
+        std::reverse(unknown.begin(), unknown.end());
     print_sorted_unknown(unknown);
     verb_print(1, "[arjun] Start unknown size: " << unknown.size());
     solver->set_verbosity(0);

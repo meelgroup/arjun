@@ -1284,13 +1284,6 @@ public:
     static std::string get_solver_version_sha1();
     static std::string get_solver_thanks_info(const char* prefix);
 
-    // Perform indep set calculation
-    void standalone_minimize_indep(SimplifiedCNF& cnf, bool all_indep);
-    void standalone_backward_round_synth(SimplifiedCNF& cnf);
-    void standalone_extend_sampl_set(SimplifiedCNF& cnf);
-    void standalone_unsat_define(SimplifiedCNF& cnf);
-    void standalone_unate(SimplifiedCNF& cnf);
-
     struct ElimToFileConf {
         bool all_indep = false;
         bool do_extend_indep = true;
@@ -1328,7 +1321,15 @@ public:
         int ctx_solver_type = 1;
         int repair_solver_type = 1;
         int repair_cache_size = 1000;
+        int backward_synth_reverse_order = 0;
     };
+
+    /// Standalone functions
+    void standalone_minimize_indep(SimplifiedCNF& cnf, bool all_indep);
+    void standalone_backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf& manthan_conf);
+    void standalone_extend_sampl_set(SimplifiedCNF& cnf);
+    void standalone_unsat_define(SimplifiedCNF& cnf);
+    void standalone_unate(SimplifiedCNF& cnf);
     void standalone_elim_to_file(SimplifiedCNF& cnf,
             const ElimToFileConf& etof_conf, const SimpConf& simp_conf);
     SimplifiedCNF standalone_get_simplified_cnf(const SimplifiedCNF& cnf, const SimpConf& simp_conf);

@@ -74,7 +74,7 @@ string elimtofile;
 
 ArjunNS::SimpConf simp_conf;
 ArjunNS::Arjun::ElimToFileConf etof_conf;
-ArjunNS::Arjun::ManthanConf manthan_conf;
+ArjunNS::Arjun::ManthanConf mconf;
 int do_gates = 1;
 int redundant_cls = true;
 int simptofile = true;
@@ -119,31 +119,33 @@ void add_arjun_options() {
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
     myflag("--synthmore", synthesis, "Run synthesis, with more aggressive BVE options");
-    myopt("--maxsat", manthan_conf.do_maxsat_better_ctx, atoi, "Use maxsat to find better counterexamples during Manthan");
+    myopt("--maxsat", mconf.do_maxsat_better_ctx, atoi, "Use maxsat to find better counterexamples during Manthan");
     myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
     myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
-    myopt("--minimconfl", manthan_conf.do_minimize_conflict, atoi,"Minimize conflict size when repairing");
-    myopt("--simpevery", manthan_conf.simplify_every, atoi,"Simplify solvers inside Manthan every K loops");
+    myopt("--minimconfl", mconf.do_minimize_conflict, atoi,"Minimize conflict size when repairing");
+    myopt("--simpevery", mconf.simplify_every, atoi,"Simplify solvers inside Manthan every K loops");
     myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
-    myopt("--maxsatorder", manthan_conf.maxsat_order, atoi,"Which order to use to try to fix vars? 0 = normal, 1 = reverse");
+    // Order
+    myopt("--maxsatorder", mconf.maxsat_order, atoi,"Which order to use to try to fix vars? 0 = normal, 1 = reverse");
+    myopt("--backwsynthorder", mconf.backward_synth_reverse_order, atoi,"Which order to use to try to do backward? 0 = normal, 1 = reverse");
     // solver config
-    myopt("--ctxsolver", manthan_conf.ctx_solver_type, atoi,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
-    myopt("--repairsolver", manthan_conf.repair_solver_type, atoi,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
-    myopt("--repaircache", manthan_conf.repair_cache_size, atoi,"Repair cache size. 0 = no cache");
+    myopt("--ctxsolver", mconf.ctx_solver_type, atoi,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
+    myopt("--repairsolver", mconf.repair_solver_type, atoi,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
+    myopt("--repaircache", mconf.repair_cache_size, atoi,"Repair cache size. 0 = no cache");
     // synth -- sampling
-    myopt("--samples", manthan_conf.num_samples, atoi,"Number of samples");
-    myopt("--samplesccnr", manthan_conf.num_samples_ccnr, atoi,"Number of samples from CCNR");
-    myopt("--uniqsamp", manthan_conf.do_unique_input_samples, atoi, "Unique samples on input vars");
-    myopt("--filtersamples", manthan_conf.do_filter_samples, atoi,"Filter samples from useless ones");
-    myopt("--biasedsampling", manthan_conf.do_biased_sampling, atoi,"Biased sampling");
-    myopt("--fixedconf", manthan_conf.sampler_fixed_conflicts, atoi,"Restart conflict limit in CMSGen");
+    myopt("--samples", mconf.num_samples, atoi,"Number of samples");
+    myopt("--samplesccnr", mconf.num_samples_ccnr, atoi,"Number of samples from CCNR");
+    myopt("--uniqsamp", mconf.do_unique_input_samples, atoi, "Unique samples on input vars");
+    myopt("--filtersamples", mconf.do_filter_samples, atoi,"Filter samples from useless ones");
+    myopt("--biasedsampling", mconf.do_biased_sampling, atoi,"Biased sampling");
+    myopt("--fixedconf", mconf.sampler_fixed_conflicts, atoi,"Restart conflict limit in CMSGen");
     // synth -- decision tree
-    myopt("--maxdepth", manthan_conf.maximumDepth, atoi,"Maximum depth of decision tree");
-    myopt("--minleaf", manthan_conf.minimumLeafSize, atoi,"Minimum leaf size in decision tree");
-    myopt("--mingainsplit", manthan_conf.minGainSplit, atof,"Minimum gain for a split in decision tree");
-    myopt("--learnuseall", manthan_conf.do_use_all_variables_as_features, atoi,"Use all variables as features in decision tree learning. 0 = only inputs");
+    myopt("--maxdepth", mconf.maximumDepth, atoi,"Maximum depth of decision tree");
+    myopt("--minleaf", mconf.minimumLeafSize, atoi,"Minimum leaf size in decision tree");
+    myopt("--mingainsplit", mconf.minGainSplit, atof,"Minimum gain for a split in decision tree");
+    myopt("--learnuseall", mconf.do_use_all_variables_as_features, atoi,"Use all variables as features in decision tree learning. 0 = only inputs");
     // synth -- debug
-    myopt("--manthancnf", manthan_conf.write_manthan_cnf, string, "Write Manthan CNF to this file");
+    myopt("--manthancnf", mconf.write_manthan_cnf, string, "Write Manthan CNF to this file");
     myopt("--debugsynth", conf.debug_synth, string,"Debug synthesis, prefix with this fname");
 
 
@@ -299,12 +301,12 @@ void do_synthesis() {
     }
 
     if (do_minim_indep) {
-        arjun->standalone_backward_round_synth(cnf);
+        arjun->standalone_backward_round_synth(cnf, mconf);
         cnf.simplify_aigs();
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-4-minim_idep_synt.aig");
     }
 
-    cnf = arjun->standalone_manthan(cnf, manthan_conf);
+    cnf = arjun->standalone_manthan(cnf, mconf);
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");
     if (!conf.debug_synth.empty()) {
         auto final_cnf = cnf;
