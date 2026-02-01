@@ -633,7 +633,7 @@ SimplifiedCNF Manthan::do_manthan() {
     assert(mconf.simplify_every > 0 && "Can't give simplify_every=0");
     const double my_time = cpuTime();
     const auto ret = cnf.find_disconnected();
-    verb_print(1, "[manthan] Found " << ret.size() << " disconnected components");
+    verb_print(1, "[manthan] Found " << ret.size() << " components");
 
     if (!mconf.write_manthan_cnf.empty()) cnf.write_simpcnf(mconf.write_manthan_cnf);
 
