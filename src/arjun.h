@@ -1305,7 +1305,7 @@ public:
         //uint32_t num_samples_ccnr = 0;
         //uint32_t minimumLeafSize = 5;
         //double minGainSplit = 0.01;
-        uint32_t num_samples = 10000;
+        uint32_t num_samples = 1000;
         uint32_t num_samples_ccnr = 3000;
         uint32_t minimumLeafSize = 10;
         double minGainSplit = 0.03;
