@@ -1295,7 +1295,7 @@ public:
         bool all_indep = false;
         bool do_extend_indep = true;
         bool do_bce = true;
-        bool do_unate = true;
+        bool do_unate = false;
         int num_sbva_steps = 1;
         uint32_t sbva_cls_cutoff = 4;
         uint32_t sbva_lits_cutoff = 5;
