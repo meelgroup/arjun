@@ -1968,7 +1968,10 @@ aig_ptr AIG::simplify_cse(aig_ptr aig, map<AIGKey, aig_ptr>& cse_map, map<aig_pt
     if (cache.count(aig)) return cache.at(aig);
 
     auto cse_lookup = [&](const AIGT type, const uint32_t var, const bool neg, const aig_ptr l, const aig_ptr r) -> aig_ptr {
-        AIGKey key(type, var, neg, l, r);
+        auto ll = l;
+        auto rr = r;
+        if (ll < rr) std::swap(ll, rr);
+        AIGKey key(type, var, neg, ll, rr);
         auto it = cse_map.find(key);
         if (it != cse_map.end()) {
             cache[aig] = it->second;
@@ -1978,8 +1981,8 @@ aig_ptr AIG::simplify_cse(aig_ptr aig, map<AIGKey, aig_ptr>& cse_map, map<aig_pt
         node->type = type;
         node->var = var;
         node->neg = neg;
-        node->l = l;
-        node->r = r;
+        node->l = ll;
+        node->r = rr;
         cse_map[key] = node;
         cache[aig] = node;
         return node;
