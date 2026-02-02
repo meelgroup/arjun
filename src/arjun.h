@@ -1314,7 +1314,7 @@ public:
         //uint32_t minimumLeafSize = 5;
         //double minGainSplit = 0.01;
         uint32_t num_samples = 1000;
-        uint32_t num_samples_ccnr = 3000;
+        uint32_t num_samples_ccnr = 0;
         uint32_t minimumLeafSize = 10;
         double minGainSplit = 0.03;
         uint32_t maximumDepth = 5;
@@ -1332,6 +1332,7 @@ public:
         int backward_synth_reverse_order = 0;
         int manthan_bve = 0;
         int bve_deep_substitute = 0;
+        int manthan_bve_order = 0;
     };
 
     /// Standalone functions
