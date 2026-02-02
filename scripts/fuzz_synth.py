@@ -324,6 +324,7 @@ if __name__ == "__main__":
             , " --ctxsolver"
             , " --repairsolver"
             , " --mbve"
+            , " --mbveorder"
         ]
         for o in opts:
             val = random.choice([0, 1])
