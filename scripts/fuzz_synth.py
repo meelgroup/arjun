@@ -61,14 +61,16 @@ def add_projection(fname) :
     with open(fname, "r") as f:
         for line in f:
             line = line.strip()
-            if len(line) < 3:continue
+            if len(line) < 3:
+                continue
             if line[0] == "p":
                 line = line.split(" ")
                 assert line[1].strip() == "cnf"
                 vars = int(line[2])
 
     all_vars = []
-    for i in range(vars): all_vars.append(i+1)
+    for i in range(vars):
+        all_vars.append(i+1)
     proj = []
     proj_set = {}
     if vars == 0:
@@ -254,7 +256,7 @@ def gen_fuzz(seed) :
         print("Failed fuzzer file generator call: ", call)
         exit(-1)
     else:
-        print("Generated fuzz file %s with call: %s" % (fname, call));
+        print("Generated fuzz file %s with call: %s" % (fname, call))
     return fname
 
 def cleanup(fname, prefix):
@@ -347,7 +349,7 @@ if __name__ == "__main__":
             print("Synthesis timed out on file %s" % fname)
             cleanup(fname, prefix)
             continue
-        if err == True:
+        if err:
             print("Synthesis failed on file %s" % fname)
             exit(-1)
         print("Synthesis succeeded on file %s, produced files: %s" % (fname, str(aigs)))
@@ -366,7 +368,7 @@ if __name__ == "__main__":
             if status != 0:
                 print("Failed check: ", call)
                 exit(-1)
-            print("Call for fuzz OK: %s" % (call));
+            print("Call for fuzz OK: %s" % (call))
             os.unlink(aig)
         cleanup(fname, prefix)
     exit(0)
