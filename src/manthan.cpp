@@ -626,8 +626,7 @@ void Manthan::bve_and_substitute() {
             if (sign) overall = AIG::new_not(overall);
         }
 
-        set<aig_ptr> visited;
-        f.aig = AIG::simplify(overall, visited);
+        f.aig = AIG::simplify(overall);
         var_to_formula[v] = f;
     }
 

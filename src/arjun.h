@@ -184,16 +184,7 @@ public:
     // Key for CSE: (type, var, neg, left_ptr, right_ptr)
     using AIGKey = std::tuple<AIGT, uint32_t, bool, AIG*, AIG*>;
 
-    static aig_ptr simplify(aig_ptr aig, std::set<aig_ptr>& visited);
-
-    // Helper to look up or insert into CSE map
-    static aig_ptr cse_lookup(std::map<AIGKey, aig_ptr>& cse_map, const aig_ptr& node) {
-        AIGKey key(node->type, node->var, node->neg, node->l.get(), node->r.get());
-        auto it = cse_map.find(key);
-        if (it != cse_map.end()) return it->second;
-        cse_map[key] = node;
-        return node;
-    }
+    static aig_ptr simplify(aig_ptr aig);
 
     static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, const aig_ptr& b) {
         assert(l != nullptr);
@@ -334,7 +325,7 @@ public:
     friend class AIGManager;
     friend class SimplifiedCNF;
 private:
-    static aig_ptr simplify(aig_ptr aig, std::set<aig_ptr>& visited, std::map<AIGKey, aig_ptr>& cse_map);
+    static aig_ptr simplify(aig_ptr aig, std::map<aig_ptr, aig_ptr>& cache, std::map<AIGKey, aig_ptr>& cse_map);
 
     AIGT type = AIGT::t_const;
     static constexpr uint32_t none_var = std::numeric_limits<uint32_t>::max();

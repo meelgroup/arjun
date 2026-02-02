@@ -1939,11 +1939,9 @@ DLL_PUBLIC void SimplifiedCNF::simplify_aigs(const uint32_t verb) {
     for(const auto& aig: defs) count_aig_nodes(aig, counted);
     const size_t before = counted.size();
 
-    set<aig_ptr> visited;
     map<AIG::AIGKey, aig_ptr> cse_map;
-    for(auto& aig: defs) {
-        aig = AIG::simplify(aig, visited, cse_map);
-    }
+    map<aig_ptr, aig_ptr> cache;
+    for(auto& aig: defs) aig = AIG::simplify(aig, cache, cse_map);
 
     counted.clear();
     for(const auto& aig: defs) count_aig_nodes(aig, counted);
@@ -1957,24 +1955,33 @@ DLL_PUBLIC void SimplifiedCNF::simplify_aigs(const uint32_t verb) {
     }
 }
 
-DLL_PUBLIC aig_ptr AIG::simplify(aig_ptr aig, set<aig_ptr>& visited) {
+DLL_PUBLIC aig_ptr AIG::simplify(aig_ptr aig) {
     map<AIGKey, aig_ptr> cse_map;
-    return simplify(aig, visited, cse_map);
+    map<aig_ptr, aig_ptr> cache;
+    return simplify(aig, cache, cse_map);
 }
 
-aig_ptr AIG::simplify(aig_ptr aig, set<aig_ptr>& visited, map<AIGKey, aig_ptr>& cse_map) {
+aig_ptr AIG::simplify(aig_ptr aig, map<aig_ptr, aig_ptr>& cache, map<AIGKey, aig_ptr>& cse_map) {
     if (!aig) return nullptr;
-    if (visited.count(aig)) return aig;
-    visited.insert(aig);
+    if (cache.count(aig)) return cache.at(aig);
+
+    auto cse_lookup = [&](const aig_ptr& node) {
+        /* AIGKey key(node->type, node->var, node->neg, node->l.get(), node->r.get()); */
+        /* auto it = cse_map.find(key); */
+        /* if (it != cse_map.end()) return it->second; */
+        /* cse_map[key] = node; */
+        cache[aig] = node;
+        return node;
+    };
 
     // CSE for constants and literals
     if (aig->type == AIGT::t_const || aig->type == AIGT::t_lit) {
-        return cse_lookup(cse_map, aig);
+        return aig;
     }
 
     if (aig->type == AIGT::t_and) {
-        auto l_simp = simplify(aig->l, visited, cse_map);
-        auto r_simp = simplify(aig->r, visited, cse_map);
+        auto l_simp = simplify(aig->l, cache, cse_map);
+        auto r_simp = simplify(aig->r, cache, cse_map);
         // AND simplifications
         if (aig->neg) {
             if (l_simp->type == AIGT::t_const && r_simp->type == AIGT::t_const) {
@@ -1983,13 +1990,13 @@ aig_ptr AIG::simplify(aig_ptr aig, set<aig_ptr>& visited, map<AIGKey, aig_ptr>& 
                     auto c_t = make_shared<AIG>();
                     c_t->type = AIGT::t_const;
                     c_t->neg = false;
-                    return cse_lookup(cse_map, c_t);
+                    return cse_lookup(c_t);
                 } else {
                     // !(TRUE & TRUE) = FALSE
                     auto c_f = make_shared<AIG>();
                     c_f->type = AIGT::t_const;
                     c_f->neg = true;
-                    return cse_lookup(cse_map, c_f);
+                    return cse_lookup(c_f);
                 }
             } else if ( // ~(X & FALSE) = TRUE
                     (r_simp->type == AIGT::t_const && r_simp->neg) ||
@@ -1997,7 +2004,7 @@ aig_ptr AIG::simplify(aig_ptr aig, set<aig_ptr>& visited, map<AIGKey, aig_ptr>& 
                 auto c_t = make_shared<AIG>();
                 c_t->type = AIGT::t_const;
                 c_t->neg = false;
-                return cse_lookup(cse_map, c_t);
+                return cse_lookup(c_t);
             } else if (l_simp->type == AIGT::t_const && l_simp->neg == false) { // ~(TRUE & X) = !X
                 auto c_f = make_shared<AIG>();
                 c_f->type = r_simp->type;
@@ -2005,7 +2012,7 @@ aig_ptr AIG::simplify(aig_ptr aig, set<aig_ptr>& visited, map<AIGKey, aig_ptr>& 
                 c_f->var = r_simp->var;
                 c_f->l = r_simp->l;
                 c_f->r = r_simp->r;
-                return cse_lookup(cse_map, c_f);
+                return cse_lookup(c_f);
             } else if (r_simp->type == AIGT::t_const && r_simp->neg == false) { // ~(X & TRUE) = !X
                 auto c_f = make_shared<AIG>();
                 c_f->type = l_simp->type;
@@ -2013,7 +2020,7 @@ aig_ptr AIG::simplify(aig_ptr aig, set<aig_ptr>& visited, map<AIGKey, aig_ptr>& 
                 c_f->var = l_simp->var;
                 c_f->l = l_simp->l;
                 c_f->r = l_simp->r;
-                return cse_lookup(cse_map, c_f);
+                return cse_lookup(c_f);
             } else {
                 // Build new AND node with simplified children, apply CSE
                 auto new_and = make_shared<AIG>();
@@ -2021,21 +2028,21 @@ aig_ptr AIG::simplify(aig_ptr aig, set<aig_ptr>& visited, map<AIGKey, aig_ptr>& 
                 new_and->neg = true;
                 new_and->l = l_simp;
                 new_and->r = r_simp;
-                return cse_lookup(cse_map, new_and);
+                return cse_lookup(new_and);
             }
         } else {
             if (l_simp->type == AIGT::t_const) {
-                if (!l_simp->neg) return r_simp; // TRUE & X = X
-                else return l_simp;              // FALSE & X = FALSE
+                if (!l_simp->neg) return cse_lookup(r_simp); // TRUE & X = X
+                else return cse_lookup(l_simp); // FALSE & X = FALSE
             } else if (r_simp->type == AIGT::t_const) {
-                if (!r_simp->neg) return l_simp; // X & TRUE = X
-                else return r_simp;              // X & FALSE = FALSE
+                if (!r_simp->neg) return cse_lookup(l_simp); // X & TRUE = X
+                else return cse_lookup(r_simp); // X & FALSE = FALSE
             } else if (l_simp == r_simp) {
-                return l_simp;                   // X & X = X
+                return cse_lookup(l_simp);                   // X & X = X
             } else if (l_simp->type == AIGT::t_lit && r_simp->type == AIGT::t_lit &&
                        l_simp->var == r_simp->var &&
                        l_simp->neg == r_simp->neg) {
-                return l_simp;
+                return cse_lookup(l_simp);
             } else {
                 // Build new AND node with simplified children, apply CSE
                 auto new_and = make_shared<AIG>();
@@ -2043,10 +2050,11 @@ aig_ptr AIG::simplify(aig_ptr aig, set<aig_ptr>& visited, map<AIGKey, aig_ptr>& 
                 new_and->neg = false;
                 new_and->l = l_simp;
                 new_and->r = r_simp;
-                return cse_lookup(cse_map, new_and);
+                return cse_lookup(new_and);
             }
         }
     }
+    // cache[aig] already set to aig as sentinel, which is correct for fallback
     return aig;
 }
 
