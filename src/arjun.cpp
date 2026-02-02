@@ -1949,6 +1949,12 @@ DLL_PUBLIC  aig_ptr AIG::simplify(aig_ptr aig, set<aig_ptr>& visited) {
                     c_f->neg = true;
                     return c_f;
                 }
+            } else if ((l_simp->type == AIGT::t_const && l_simp->neg) ||
+                       (r_simp->type == AIGT::t_const && r_simp->neg)) { // ~(FALSE & X) = TRUE
+                auto c_t = make_shared<AIG>();
+                c_t->type = AIGT::t_const;
+                c_t->neg = false;
+                return c_t;
             } else if (l_simp->type == AIGT::t_const && l_simp->neg == false) { // ~(TRUE & X) = !X
                 auto c_f = make_shared<AIG>();
                 c_f->type = r_simp->type;
