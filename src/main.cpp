@@ -287,28 +287,25 @@ void do_synthesis() {
     if (do_synth_bve) {
         /* simp_conf.bve_too_large_resolvent = -1; */
         cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
-        cnf.simplify_aigs();
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-1-simplified_cnf.aig");
     }
 
     if (etof_conf.do_unate) {
         arjun->standalone_unate(cnf);
-        cnf.simplify_aigs();
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-3-unsat_unate.aig");
     }
 
     if (etof_conf.do_extend_indep) {
         arjun->standalone_unsat_define(cnf);
-        cnf.simplify_aigs();
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-2-unsat_define.aig");
     }
 
     if (do_minim_indep) {
         arjun->standalone_backward_round_synth(cnf, mconf);
-        cnf.simplify_aigs();
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-4-minim_idep_synt.aig");
     }
 
+    cnf.simplify_aigs();
     cnf = arjun->standalone_manthan(cnf, mconf);
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");
     if (!conf.debug_synth.empty()) {
