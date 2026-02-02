@@ -1244,9 +1244,11 @@ public:
         return defs[v];
     }
     void clear_orig_sampl_defs();
-    void simplify_aigs();
+    void simplify_aigs(const uint32_t verb = 0);
+    size_t count_aig_nodes(const aig_ptr& aig) const;
 
 private:
+    static void count_aig_nodes(const aig_ptr& aig, std::set<aig_ptr>& counted);
     bool after_backward_round_synth = false;
     bool need_aig = false;
     std::vector<std::vector<CMSat::Lit>> clauses;

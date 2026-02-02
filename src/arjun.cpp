@@ -1917,11 +1917,43 @@ DLL_PUBLIC void SimplifiedCNF::clear_orig_sampl_defs() {
     for(const auto& v: orig_sampl_vars) defs[v] = nullptr;
 }
 
-DLL_PUBLIC void SimplifiedCNF::simplify_aigs() {
+
+DLL_PUBLIC size_t SimplifiedCNF::count_aig_nodes(const aig_ptr& aig) const {
+    set<aig_ptr> counted;
+    count_aig_nodes(aig, counted);
+    return counted.size();
+}
+
+void SimplifiedCNF::count_aig_nodes(const aig_ptr& aig, set<aig_ptr>& counted) {
+    if (!aig) return;
+    if (counted.count(aig)) return;
+    counted.insert(aig);
+    if (aig->type == AIGT::t_and) {
+        count_aig_nodes(aig->l, counted);
+        count_aig_nodes(aig->r, counted);
+    }
+}
+
+DLL_PUBLIC void SimplifiedCNF::simplify_aigs(const uint32_t verb) {
+    set<aig_ptr> counted;
+    for(const auto& aig: defs) count_aig_nodes(aig, counted);
+    const size_t before = counted.size();
+
     set<aig_ptr> visited;
     map<AIG::AIGKey, aig_ptr> cse_map;
     for(auto& aig: defs) {
         aig = AIG::simplify(aig, visited, cse_map);
+    }
+
+    counted.clear();
+    for(const auto& aig: defs) count_aig_nodes(aig, counted);
+    const size_t after = counted.size();
+
+    if (verb >= 0) {
+        cout << "c [synth] AIG simplify: before " << before/1000 << "k nodes"
+             << ", after " << after/1000 << "k nodes"
+             << ", diff " << ((int64_t)before - (int64_t)after)/1000  << "k nodes"
+             << endl;
     }
 }
 
