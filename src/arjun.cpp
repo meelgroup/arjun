@@ -343,8 +343,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
             }
             overall = AIG::new_or(overall, current);
         }
-        if (sign) overall = AIG::new_not(overall);
-        if (orig_target.sign()) overall = AIG::new_not(overall);
+        if (sign ^ orig_target.sign()) overall = AIG::new_not(overall);
         scnf.defs[orig_target.var()] = overall;
         if (verb >= 5)
             cout << "c o [bve-aig] set aig for var: " << orig_target << " from bve elim: " << overall << endl;
