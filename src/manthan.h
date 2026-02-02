@@ -131,9 +131,12 @@ class Manthan {
         void print_y_order_occur() const;
         void compute_needs_repair(const sample& ctx);
 
+        // ordering
         vector<uint32_t> y_order; //1st only depends on inputs
         vector<int> order_val; // inputs have order -1, everything else as per y_order
-        void fix_order();
+        void order_vars();
+        void learn_order();
+        void bve_order();
         bool later_in_order(const uint32_t a, const uint32_t b) const {
             SLOW_DEBUG_DO({
                 assert(order_val.size() > a);
@@ -141,7 +144,6 @@ class Manthan {
             });
             return order_val[a] > order_val[b];
         }
-
         void set_depends_on(const uint32_t a, const uint32_t b);
         inline void set_depends_on(const uint32_t a, const Lit b) {
             set_depends_on(a, b.var());

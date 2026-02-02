@@ -578,37 +578,51 @@ void Manthan::bve_and_substitute() {
         FHolder::Formula f;
         map<uint32_t, aig_ptr> transformed;
         auto overall = aig_mng.new_const(false);
+
+        // For optimizing which side of the BVE to take
+        /* uint32_t num_pos = 0; */
+        /* uint32_t num_neg = 0; */
+        /* for(const auto& cl: cnf.get_clauses()) { */
+        /*     for(const auto& l: cl) { */
+        /*         if (l.var() == v) { */
+        /*             if (l.sign()) num_neg++; */
+        /*             else num_pos++; */
+        /*             break; */
+        /*         } */
+        /*     } */
+        /* } */
+        /* bool sign = (num_pos >= num_neg); */
+        bool sign = false;
         for(const auto& cl: cnf.get_clauses()) {
             bool todo = false;
             for(const auto& l: cl) {
-                if (l.var() == v && !l.sign()) {
+                if (l.var() == v && l.sign() == sign) {
                     todo = true;
                     break;
                 }
             }
-
-            if (todo) {
-                auto current = aig_mng.new_const(true);
-                for(const auto& l: cl) {
-                    if (l.var() == v) continue;
-                    aig_ptr aig = nullptr;
-                    if (later_in_order(v, l.var())) {
-                        aig = AIG::new_lit(~l);
-                        set_depends_on(v, l);
+            if (!todo) continue;
+            auto current = aig_mng.new_const(true);
+            for(const auto& l: cl) {
+                if (l.var() == v) continue;
+                aig_ptr aig = nullptr;
+                if (later_in_order(v, l.var())) {
+                    aig = AIG::new_lit(~l);
+                    set_depends_on(v, l);
+                    current = AIG::new_and(current, aig);
+                } else if (v == l.var()) {
+                    assert(false);
+                } else {
+                    if (mconf.bve_deep_substitute) {
+                        aig = one_level_substitute(l, v, transformed);
                         current = AIG::new_and(current, aig);
-                    } else if (v == l.var()) {
-                        assert(false);
                     } else {
-                        if (mconf.bve_deep_substitute) {
-                            aig = one_level_substitute(l, v, transformed);
-                            current = AIG::new_and(current, aig);
-                        } else {
-                            //keep current as-is, since we A ND with TRUE
-                        }
+                        //keep current as-is, since we AND with TRUE
                     }
                 }
-                overall = AIG::new_or(overall, current);
             }
+            overall = AIG::new_or(overall, current);
+            if (sign) overall = AIG::new_not(overall);
         }
 
         set<aig_ptr> visited;
@@ -734,8 +748,7 @@ SimplifiedCNF Manthan::do_manthan() {
     verb_print(2, "True lit in solver_train: " << fh->get_true_lit());
     verb_print(2, "[manthan] After fh creation: solver_train.nVars() = " << cex_solver.nVars() << " cnf.nVars() = " << cnf.nVars());
 
-    fix_order();
-    print_y_order_occur();
+    order_vars();
     fill_var_to_formula_with_backward();
     if (!mconf.manthan_bve) full_train();
     else bve_and_substitute();
@@ -1094,16 +1107,14 @@ void Manthan::perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit
 
 // Will order 1st the variables that NOTHING depends on
 // Will order LAST the variables that depends on EVERYTHING
-void Manthan::fix_order() {
+void Manthan::learn_order() {
+    assert(y_order.empty());
     double my_time = cpuTime();
-    y_order.clear();
-    verb_print(2, "[manthan] Fixing order...");
+    verb_print(2, "[manthan] Fixing LEARN order...");
     vector<uint32_t> sorted(to_define_full.begin(), to_define_full.end());
     sort_unknown(sorted, incidence);
     /* std::reverse(sorted.begin(), sorted.end()); */
 
-    order_val.resize(cnf.nVars(), -2);
-    for(const auto& x: input) order_val[x] = -1;
     set<uint32_t> already_fixed;
     while(already_fixed.size() != to_define_full.size()) {
         for(const auto& y: sorted) {
@@ -1128,12 +1139,107 @@ void Manthan::fix_order() {
         }
     }
 
-    for(uint32_t i = 0; i < y_order.size(); i++) order_val[y_order[i]] = i;
-    for(const auto& v: order_val) assert(v != -2);
-
     assert(y_order.size() == to_define_full.size());
     verb_print(1, "[manthan] Fixed order. T: " << setprecision(2) << fixed << (cpuTime() - my_time)
             << " Final order size: " << y_order.size());
+}
+
+void Manthan::order_vars() {
+    assert(order_val.empty());
+    assert(y_order.empty());
+    const double my_time = cpuTime();
+    verb_print(2, "[manthan] Fixing order " << (mconf.manthan_bve ? "[BVE]" : "[LEARN]") << "...");
+
+    if (mconf.manthan_bve) bve_order();
+    else learn_order();
+
+    // fill order_val
+    order_val.resize(cnf.nVars(), -2);
+    for(const auto& x: input) order_val[x] = -1;
+    for(uint32_t i = 0; i < y_order.size(); i++) order_val[y_order[i]] = i;
+    for(const auto& v: order_val) assert(v != -2);
+
+    verb_print(1, "[manthan] Fixed order. T: " << setprecision(2) << fixed << (cpuTime() - my_time)
+            << " Final order size: " << y_order.size());
+    print_y_order_occur();
+}
+
+// We'll deal with clauses that are TRUE for to_define -- TODO optimize later to pick best of  false/true
+//
+// Finds the order that minimizes dependencies that need to be broken by BVE system
+void Manthan::bve_order() {
+    assert(y_order.empty());
+    auto depends_on = dependency_mat;
+
+    for(const auto& v: to_define) {
+        // For optimizing which side of the BVE to take
+        /* uint32_t num_pos = 0; */
+        /* uint32_t num_neg = 0; */
+        /* for(const auto& cl: cnf.get_clauses()) { */
+        /*     for(const auto& l: cl) { */
+        /*         if (l.var()) { */
+        /*             if (l.sign()) num_neg++; */
+        /*             else num_pos++; */
+        /*         } */
+        /*     } */
+        /* } */
+        /* bool sign = (num_pos >= num_neg); */
+        bool sign = false;
+        for(const auto& cl: cnf.get_clauses()) {
+            bool todo = false;
+            for(const auto& l: cl) {
+                if (l.var() == v && l.sign() == sign) {
+                    todo = true;
+                    break;
+                }
+            }
+            if (!todo) continue;
+            for(const auto& l: cl) {
+                if (l.var() == v) continue;
+                if (input.count(l.var())) continue;
+                depends_on[v][l.var()] = 1;
+            }
+        }
+    }
+
+    uint32_t total_break = 0;
+    set<uint32_t> already_fixed;
+    while(y_order.size() != to_define_full.size()) {
+        uint32_t smallest = std::numeric_limits<uint32_t>::max();
+        uint32_t smallest_var = std::numeric_limits<uint32_t>::max();
+        for(const auto& y: to_define_full) {
+            if (already_fixed.count(y)) continue;
+
+            uint32_t cnt = 0;
+            for(uint32_t v = 0; v < cnf.nVars(); v++) {
+                if (input.count(v)) continue;
+                if (already_fixed.count(v)) continue;
+                if (depends_on[y][v] == 1) cnt++;
+            }
+            if (backward_defined.count(y)) {
+                if (cnt == 0) {
+                    smallest = cnt;
+                    smallest_var = y;
+                }
+            } else {
+                if (cnt < smallest) {
+                    smallest = cnt;
+                    smallest_var = y;
+                }
+            }
+        }
+        assert(smallest_var != std::numeric_limits<uint32_t>::max());
+        verb_print(1, "Fixed order of " << setw(5) << smallest_var+1 << " to: " << setw(5) << y_order.size() << " cnt: " << smallest
+                << " BW: " << backward_defined.count(smallest_var));
+        total_break += smallest;
+
+        assert(!already_fixed.count(smallest_var));
+        already_fixed.insert(smallest_var);
+        y_order.push_back(smallest_var);
+    }
+    cout << "[manthan] BVE order total breaks: " << total_break << endl;
+    assert(y_order.size() == to_define_full.size());
+
 }
 
 void Manthan::find_better_ctx_maxsat(sample& ctx) {
