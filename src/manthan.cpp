@@ -83,6 +83,7 @@ vector<int> lits_to_ints(const vector<Lit>& lits) {
 //     benchmarks-qdimacs/bobsmcodic_all_bit_differing_from_cycle.qdimacs.cnf
 // LOTS of repairs, fast, but does not terminate: benchmarks-qdimacs/query01_query42_1344n.qdimacs.cnf
 // many repairs, does finish: benchmarks-qdimacs/stmt32_329_378.qdimacs.cnf
+// many-many repairs, does finish: benchmarks-qdimacs/sdlx-fixpoint-10.qdimacs.cnf
 
 template<typename S>
 void Manthan::inject_cnf(S& s, bool also_vars) const {
@@ -1150,7 +1151,7 @@ void Manthan::order_vars() {
     const double my_time = cpuTime();
     verb_print(2, "[manthan] Fixing order " << (mconf.manthan_bve ? "[BVE]" : "[LEARN]") << "...");
 
-    if (mconf.manthan_bve) bve_order();
+    if (mconf.manthan_bve_order) bve_order();
     else learn_order();
 
     // fill order_val

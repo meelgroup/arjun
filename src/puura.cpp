@@ -195,7 +195,7 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
             for(uint32_t i = 0; i < cnf.nVars(); i++) {
                 if (i == test) continue;
                 if (sampl_set.count(i)) continue;
-                auto ind = var_to_indic[i];
+                auto ind = var_to_indic.at(i);
                 assert(ind != var_Undef);
                 assumps.push_back(Lit(ind, false));
             }
