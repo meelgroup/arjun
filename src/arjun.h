@@ -182,7 +182,7 @@ public:
     }
 
     // Key for CSE: (type, var, neg, left_ptr, right_ptr)
-    using AIGKey = std::tuple<AIGT, uint32_t, bool, AIG*, AIG*>;
+    using AIGKey = std::tuple<AIGT, uint32_t, bool, aig_ptr, aig_ptr>;
 
     static aig_ptr simplify(aig_ptr aig);
 
@@ -325,7 +325,8 @@ public:
     friend class AIGManager;
     friend class SimplifiedCNF;
 private:
-    static aig_ptr simplify(aig_ptr aig, std::map<aig_ptr, aig_ptr>& cache, std::map<AIGKey, aig_ptr>& cse_map);
+    static aig_ptr simplify(aig_ptr aig, std::map<aig_ptr, aig_ptr>& cache);
+    static aig_ptr simplify_cse(aig_ptr aig, std::map<AIGKey, aig_ptr>& cse_map, std::map<aig_ptr, aig_ptr>& cache);
 
     AIGT type = AIGT::t_const;
     static constexpr uint32_t none_var = std::numeric_limits<uint32_t>::max();
