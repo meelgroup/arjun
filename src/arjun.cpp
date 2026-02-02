@@ -1919,42 +1919,53 @@ DLL_PUBLIC void SimplifiedCNF::clear_orig_sampl_defs() {
 
 DLL_PUBLIC void SimplifiedCNF::simplify_aigs() {
     set<aig_ptr> visited;
+    map<AIG::AIGKey, aig_ptr> cse_map;
     for(auto& aig: defs) {
-        aig = AIG::simplify(aig, visited);
+        aig = AIG::simplify(aig, visited, cse_map);
     }
 }
 
-DLL_PUBLIC  aig_ptr AIG::simplify(aig_ptr aig, set<aig_ptr>& visited) {
+DLL_PUBLIC aig_ptr AIG::simplify(aig_ptr aig, set<aig_ptr>& visited) {
+    map<AIGKey, aig_ptr> cse_map;
+    return simplify(aig, visited, cse_map);
+}
+
+aig_ptr AIG::simplify(aig_ptr aig, set<aig_ptr>& visited, map<AIGKey, aig_ptr>& cse_map) {
     if (!aig) return nullptr;
     if (visited.count(aig)) return aig;
     visited.insert(aig);
 
+    // CSE for constants and literals
+    if (aig->type == AIGT::t_const || aig->type == AIGT::t_lit) {
+        return cse_lookup(cse_map, aig);
+    }
+
     if (aig->type == AIGT::t_and) {
-        auto l_simp = simplify(aig->l, visited);
-        auto r_simp = simplify(aig->r, visited);
+        auto l_simp = simplify(aig->l, visited, cse_map);
+        auto r_simp = simplify(aig->r, visited, cse_map);
         // AND simplifications
         if (aig->neg) {
             if (l_simp->type == AIGT::t_const && r_simp->type == AIGT::t_const) {
                 if (l_simp->neg || r_simp->neg) {
-                    // !(FALSE & X) = TRUE
-                    // !(X & FALSE) = TRUE
+                    // !(FALSE & X) = TRUE, !(X & FALSE) = TRUE
                     auto c_t = make_shared<AIG>();
                     c_t->type = AIGT::t_const;
                     c_t->neg = false;
-                    return c_t;
+                    return cse_lookup(cse_map, c_t);
                 } else {
                     // !(TRUE & TRUE) = FALSE
                     auto c_f = make_shared<AIG>();
                     c_f->type = AIGT::t_const;
                     c_f->neg = true;
-                    return c_f;
+                    return cse_lookup(cse_map, c_f);
                 }
-            } else if ((l_simp->type == AIGT::t_const && l_simp->neg) ||
-                       (r_simp->type == AIGT::t_const && r_simp->neg)) { // ~(FALSE & X) = TRUE
+            } else if ( // ~(X & FALSE) = TRUE
+                    (r_simp->type == AIGT::t_const && r_simp->neg) ||
+                    (l_simp->type == AIGT::t_const && l_simp->neg)) {
                 auto c_t = make_shared<AIG>();
                 c_t->type = AIGT::t_const;
                 c_t->neg = false;
-                return c_t;
+                return cse_lookup(cse_map, c_t);
             } else if (l_simp->type == AIGT::t_const && l_simp->neg == false) { // ~(TRUE & X) = !X
                 auto c_f = make_shared<AIG>();
                 c_f->type = r_simp->type;
@@ -1962,7 +1973,7 @@ DLL_PUBLIC  aig_ptr AIG::simplify(aig_ptr aig, set<aig_ptr>& visited) {
                 c_f->var = r_simp->var;
                 c_f->l = r_simp->l;
                 c_f->r = r_simp->r;
-                return c_f;
+                return cse_lookup(cse_map, c_f);
             } else if (r_simp->type == AIGT::t_const && r_simp->neg == false) { // ~(X & TRUE) = !X
                 auto c_f = make_shared<AIG>();
                 c_f->type = l_simp->type;
@@ -1970,11 +1981,15 @@ DLL_PUBLIC  aig_ptr AIG::simplify(aig_ptr aig, set<aig_ptr>& visited) {
                 c_f->var = l_simp->var;
                 c_f->l = l_simp->l;
                 c_f->r = l_simp->r;
-                return c_f;
+                return cse_lookup(cse_map, c_f);
             } else {
-                aig->l = l_simp;
-                aig->r = r_simp;
-                return aig;
+                // Build new AND node with simplified children, apply CSE
+                auto new_and = make_shared<AIG>();
+                new_and->type = AIGT::t_and;
+                new_and->neg = true;
+                new_and->l = l_simp;
+                new_and->r = r_simp;
+                return cse_lookup(cse_map, new_and);
             }
         } else {
             if (l_simp->type == AIGT::t_const) {
@@ -1990,9 +2005,13 @@ DLL_PUBLIC  aig_ptr AIG::simplify(aig_ptr aig, set<aig_ptr>& visited) {
                        l_simp->neg == r_simp->neg) {
                 return l_simp;
             } else {
-                aig->l = l_simp;
-                aig->r = r_simp;
-                return aig;
+                // Build new AND node with simplified children, apply CSE
+                auto new_and = make_shared<AIG>();
+                new_and->type = AIGT::t_and;
+                new_and->neg = false;
+                new_and->l = l_simp;
+                new_and->r = r_simp;
+                return cse_lookup(cse_map, new_and);
             }
         }
     }
