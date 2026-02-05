@@ -40,7 +40,6 @@
 using namespace ArjunNS;
 using namespace CMSat;
 using std::vector;
-using std::map;
 using std::setw;
 using std::setprecision;
 using std::fixed;
@@ -99,7 +98,9 @@ unique_ptr<SATSolver> Puura::setup_f_not_f(const SimplifiedCNF& cnf) {
 
     // At least ONE clause must be FALSE
     s->add_clause(not_f_cls);
-    verb_print(1, "[unate] Built up the F and ~F_x_y solver. T: " << (cpuTime() - my_time));
+
+    verb_print(1, "[unate] Built up the F and ~F_x_y solver. T: "
+            << fixed << setprecision(2) << (cpuTime() - my_time));
     return s;
 }
 
@@ -127,6 +128,30 @@ void Puura::backbone(SimplifiedCNF& cnf) {
     }
     verb_print(2, "backbone inserted: " << lits.size() << " T: " << (cpuTime() - my_time));
     verb_print(1, "[arjun-backbone] done, T: " << (cpuTime() - my_time));
+}
+
+void Puura::dump_cnf(SATSolver& s, const string& name) {
+    vector<vector<Lit>> cls;
+    vector<Lit> cl;
+    s.start_getting_constraints(false);
+    bool is_xor, rhs;
+    while(s.get_next_constraint(cl, is_xor, rhs)) {
+        assert(!is_xor); assert(rhs);
+        cls.push_back(cl);
+    }
+    s.end_getting_constraints();
+
+    std::ofstream f(name);
+    f << "p cnf " << s.nVars() << " " << cls.size() << endl;
+
+    f << "c p show ";
+    for(const auto& l: sampl_set) f << l << " ";
+    f << " 0" << endl;
+
+    for(const auto& c: cls) f << c << " 0" << endl;
+    f.close();
+    cout << "c o DEBUG dumped CNF to " << name << " with " << cls.size() << " clauses and "
+        << s.nVars() << " vars" << endl;
 }
 
 void Puura::synthesis_unate(SimplifiedCNF& cnf) {
@@ -170,6 +195,7 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
         s->add_clause(tmp);
         var_to_indic[i] = ind_l.var();
     }
+    if (conf.verb >= 3) dump_cnf(*s, "unate-start.cnf");
 
     vector<Lit> assumps;
     vector<Lit> cl;
@@ -177,7 +203,10 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     s->set_bve(false);
 
     uint32_t tested_num = 0;
+    vector<Lit> unates;
     for(uint32_t test: to_define) {
+        assert(sampl_set.count(test) == 0);
+        verb_print(3, "[unate] testing var: " << test+1);
         /* if (s->removed_var(test)) continue; */
         /* if (s->get_sum_conflicts() > 50000) {timeout = true; break;} */
         tested_num++;
@@ -201,15 +230,19 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
             }
             s->set_no_confl_needed();
             const auto ret = s->solve(&assumps, true);
-            cout << "assmp sz: " << assumps.size() << " ret: " << ret << endl;
             if (ret == l_False) {
                 verb_print(2, "[unate] good test: " << std::setw(3)  << (test+1)
                     << " T: " << fixed << setprecision(2) << (cpuTime() - my_time));
 
-                cl = {Lit(test, flip)};
-                cnf.add_clause(cl);
-                s->add_clause(cl);
-                cl = {Lit(test+orig_num_vars, flip)};
+                Lit l = {Lit(test, flip)};
+                unates.push_back(l);
+                cnf.add_clause({l});
+                /* cl = {Lit(test, flip)}; */
+                /* cnf.add_clause(cl); */
+                /* s->add_clause(cl); */
+                /* cout << "unate adding clause: " << cl << endl; */
+                l = Lit(test+orig_num_vars, flip);
+                cl = {l};
                 s->add_clause(cl);
                 new_units++;
                 break;
@@ -217,7 +250,7 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
         }
     }
 
-    cnf.get_fixed_values(cnf, s);
+    cnf.add_fixed_values(unates);
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0, "start synthesis_unate");
     verb_print(1, COLRED "[unate] Done. synthesis_unate"
         << " tested: " << tested_num

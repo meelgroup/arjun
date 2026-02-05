@@ -322,7 +322,7 @@ if __name__ == "__main__":
             , " --filtersamples"
             , " --biasedsampling"
             , " --uniqsamp"
-            # , " --unate"
+            , " --unate"
             , " --ctxsolver"
             , " --repairsolver"
             , " --mbve"

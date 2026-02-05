@@ -55,6 +55,7 @@ public:
     void backbone(SimplifiedCNF& cnf);
 
 private:
+    void dump_cnf(SATSolver& s, const string& name);
     unique_ptr<SATSolver> setup_f_not_f(const SimplifiedCNF& cnf);
     void set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf);
     bool set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, unique_ptr<SATSolver>& solver);

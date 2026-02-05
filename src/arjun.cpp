@@ -434,6 +434,18 @@ DLL_PUBLIC void SimplifiedCNF::get_fixed_values(
     }
 }
 
+DLL_PUBLIC void SimplifiedCNF::add_fixed_values(const vector<Lit>& fixed) {
+    auto new_to_orig_var = get_new_to_orig_var();
+    for(const auto& l: fixed) {
+        if (l.var() >= nVars()) continue;
+        Lit orig_lit = new_to_orig_var.at(l.var());
+        orig_lit ^= l.sign();
+        assert(defs[orig_lit.var()] == nullptr && "Variable must not already have a definition");
+        defs[orig_lit.var()] = aig_mng.new_const(!orig_lit.sign());
+    }
+}
+
+
 DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const map<uint32_t, aig_ptr>& aigs_orig, const uint32_t max_num_vars,
         const map<uint32_t, uint32_t>* back_map) {
     const auto new_to_orig_var = get_new_to_orig_var();
@@ -505,7 +517,7 @@ DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
 
     uint32_t filled_defs = 0;
     uint32_t undefs = 0;
-    uint32_t num_checks = 50;
+    uint32_t num_checks = 500;
     for (uint32_t check = 0; check < num_checks; ++check) {
         auto ret = samp_s.solve();
         release_assert(ret == l_True);
@@ -1950,7 +1962,7 @@ DLL_PUBLIC void SimplifiedCNF::simplify_aigs(const uint32_t verb) {
     for(const auto& aig: defs) count_aig_nodes(aig, counted);
     const size_t after = counted.size();
 
-    if (verb >= 0) {
+    if (verb >= 1) {
         cout << "c [synth] AIG simplify: before " << before/1000 << "k nodes"
              << ", after " << after/1000 << "k nodes"
              << ", diff " << ((int64_t)before - (int64_t)after)/1000  << "k nodes"
