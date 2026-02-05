@@ -84,6 +84,7 @@ vector<int> lits_to_ints(const vector<Lit>& lits) {
 // LOTS of repairs, fast, but does not terminate: benchmarks-qdimacs/query01_query42_1344n.qdimacs.cnf
 // many repairs, does finish: benchmarks-qdimacs/stmt32_329_378.qdimacs.cnf
 // many-many repairs, does finish: benchmarks-qdimacs/sdlx-fixpoint-10.qdimacs.cnf
+// no repair, learning/mbve does it: rankfunc57_unsigned_64.qdimacs.cnf
 
 template<typename S>
 void Manthan::inject_cnf(S& s, bool also_vars) const {
@@ -396,7 +397,7 @@ void Manthan::print_y_order_occur() const {
     for(const auto& y: y_order) {
         const uint32_t pos = occur_lit[Lit(y, false).toInt()];
         const uint32_t neg = occur_lit[Lit(y, true).toInt()];
-        verb_print(2, "[y-order] var " << setw(4) << y+1
+        verb_print(2, "[manthan] y-order var " << setw(4) << y+1
             << " BW: " << backward_defined.count(y)
             << "   pos occur " << setw(6) << pos
             << "   --  neg occur " << setw(6) << neg);
