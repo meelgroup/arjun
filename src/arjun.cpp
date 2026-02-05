@@ -710,15 +710,16 @@ DLL_PUBLIC void SimplifiedCNF::fix_mapping_after_renumber(SimplifiedCNF& scnf, c
 
         for(const auto& o: origs) {
             if (o ==  orig_to_keep) continue;
-            assert(scnf.defs[o] == nullptr);
             const CMSat::Lit n = scnf.orig_to_new_var.at(o);
             const CMSat::Lit n_keep = scnf.orig_to_new_var.at(orig_to_keep);
             scnf.orig_to_new_var.erase(o);
-            scnf.defs[o] = AIG::new_lit(CMSat::Lit(orig_to_keep, n.sign() ^ n_keep.sign()));
-            if (verb >= 2)
-                cout << "c o [get-cnf] set aig for var: " << CMSat::Lit(o, false)
+            if (need_aig) {
+                assert(scnf.defs[o] == nullptr);
+                scnf.defs[o] = AIG::new_lit(CMSat::Lit(orig_to_keep, n.sign() ^ n_keep.sign()));
+                if (verb >= 2) cout << "c o [get-cnf] set aig for var: " << CMSat::Lit(o, false)
                     << " to that of " << CMSat::Lit(orig_to_keep, false)
                     << " since both map to the same new var " << n << endl;
+            }
         }
     }
 }
