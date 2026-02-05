@@ -169,7 +169,7 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     var_to_indic.clear();
     var_to_indic.resize(cnf.nVars(), var_Undef);
     for(uint32_t i = 0; i < orig_num_vars; i++) {
-        if (input.count(i)) continue;
+        if (sampl_set.count(i)) continue;
         s->new_var();
         const Lit ind_l = Lit(s->nVars()-1, false);
 
