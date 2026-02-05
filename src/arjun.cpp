@@ -322,7 +322,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         }
         bool sign = neg > pos;
 
-        auto overall = scnf.aig_mng.new_const(false);
+        aig_ptr overall = nullptr;
         for(const auto& cl: orig_def) {
             auto current = scnf.aig_mng.new_const(true);
 
@@ -341,9 +341,12 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
                 auto aig = AIG::new_lit(~l);
                 current = AIG::new_and(current, aig);
             }
-            overall = AIG::new_or(overall, current);
+            if (overall == nullptr) overall = current;
+            else overall = AIG::new_or(overall, current);
         }
+        if (overall == nullptr) overall = scnf.aig_mng.new_const(false);
         if (sign ^ orig_target.sign()) overall = AIG::new_not(overall);
+
         scnf.defs[orig_target.var()] = overall;
         if (verb >= 5)
             cout << "c o [bve-aig] set aig for var: " << orig_target << " from bve elim: " << overall << endl;

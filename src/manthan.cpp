@@ -579,22 +579,26 @@ void Manthan::bve_and_substitute() {
 
         FHolder::Formula f;
         map<uint32_t, aig_ptr> transformed;
-        auto overall = aig_mng.new_const(false);
 
         // For optimizing which side of the BVE to take
-        /* uint32_t num_pos = 0; */
-        /* uint32_t num_neg = 0; */
-        /* for(const auto& cl: cnf.get_clauses()) { */
-        /*     for(const auto& l: cl) { */
-        /*         if (l.var() == v) { */
-        /*             if (l.sign()) num_neg++; */
-        /*             else num_pos++; */
-        /*             break; */
-        /*         } */
-        /*     } */
-        /* } */
-        /* bool sign = (num_pos >= num_neg); */
-        bool sign = false;
+        uint32_t num_pos = 0;
+        uint32_t num_neg = 0;
+        for(const auto& cl: cnf.get_clauses()) {
+            for(const auto& l: cl) {
+                if (l.var() == v) {
+                    if (l.sign()) num_neg++;
+                    else num_pos++;
+                    break;
+                }
+            }
+        }
+        verb_print(2, "[manthan] bve var " << setw(5) << v+1
+            << " pos occur: " << setw(6) << num_pos
+            << " neg occur: " << setw(6) << num_neg);
+
+        const bool sign = (num_pos >= num_neg);
+        /* const bool sign = false; */
+        aig_ptr overall = nullptr;
         for(const auto& cl: cnf.get_clauses()) {
             bool todo = false;
             for(const auto& l: cl) {
@@ -623,9 +627,11 @@ void Manthan::bve_and_substitute() {
                     }
                 }
             }
-            overall = AIG::new_or(overall, current);
-            if (sign) overall = AIG::new_not(overall);
+            if (overall == nullptr) overall = current;
+            else overall = AIG::new_or(overall, current);
         }
+        if (overall == nullptr) overall = aig_mng.new_const(true);
+        if (sign) overall = AIG::new_not(overall);
 
         f.aig = AIG::simplify(overall);
         var_to_formula[v] = f;
