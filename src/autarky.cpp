@@ -37,10 +37,11 @@ Autarky::Autarky(const Config& _conf) : conf(_conf) {}
 
 // Following paper https://sun.iwu.edu/~mliffito/publications/sat08_liffiton_autarkies.pdf
 // "Searching for Autarkies to Trim Unsatisfiable Clause Sets"
-void Autarky::do_autarky(SimplifiedCNF& cnf)
-{
+void Autarky::do_autarky(SimplifiedCNF& cnf) {
     double start_time = cpuTime();
     s.set_verbosity(conf.verb);
+    s.new_vars(cnf.nVars());
+
     vector<LitSub> lit_sub(cnf.nVars());
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
         LitSub ls;
@@ -128,5 +129,23 @@ void Autarky::do_autarky(SimplifiedCNF& cnf)
         s.add_clause(cl);
     }
 
+    auto ret = s.solve();
+    assert(ret != l_Undef);
+    if (ret == l_False) {
+        cout << "No autarky found. T: " << (cpuTime() - start_time) << endl;
+        exit(EXIT_SUCCESS);
+        return;
+    }
+    assert(ret == l_True);
+    auto model = s.get_model();
 
+    vector<uint32_t> autarky_vars;
+    for(const auto& l: var_sel) {
+        if (model[l.var()] == l_True)
+            autarky_vars.push_back(l.var());
+    }
+    for(const auto& v: autarky_vars) {
+        cout << "Autarky  for var: " << v+1 << " val: " << model[v] << endl;
+    }
+    exit(EXIT_SUCCESS);
 }

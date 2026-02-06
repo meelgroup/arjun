@@ -35,6 +35,7 @@
 #include "extend.h"
 #include "time_mem.h"
 #include "constants.h"
+#include "autarky.h"
 #ifdef SYNTH
 #include "manthan.h"
 #endif
@@ -114,6 +115,11 @@ DLL_PUBLIC string Arjun::get_compilation_env() {
 DLL_PUBLIC void Arjun::standalone_minimize_indep(SimplifiedCNF& cnf, bool all_indep) {
     Minimize common(arjdata->conf);
     common.run_minimize_indep(cnf, all_indep);
+}
+
+DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {
+    Autarky autarky(arjdata->conf);
+    autarky.do_autarky(cnf);
 }
 
 #ifdef SYNTH
