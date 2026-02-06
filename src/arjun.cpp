@@ -2112,6 +2112,8 @@ aig_ptr AIG::simplify(aig_ptr aig, map<aig_ptr, aig_ptr>& cache) {
                        l_simp->var == r_simp->var &&
                        l_simp->neg == r_simp->neg) {
                 return cache_set(l_simp);
+            } else if (l_simp == r_simp) {
+                return cache_set(l_simp);                   // X & X = X
             } else {
                 // Build new AND node with simplified children, apply CSE
                 auto new_and = make_shared<AIG>();
