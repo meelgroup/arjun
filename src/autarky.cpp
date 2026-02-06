@@ -40,7 +40,7 @@ Autarky::Autarky(const Config& _conf) : conf(_conf) {}
 void Autarky::do_autarky(SimplifiedCNF& cnf) {
     double start_time = cpuTime();
     s.set_verbosity(conf.verb);
-    s.new_vars(cnf.nVars());
+    s.new_vars(cnf.nVars()); // orig set of vars
 
     vector<LitSub> lit_sub(cnf.nVars());
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
@@ -59,7 +59,7 @@ void Autarky::do_autarky(SimplifiedCNF& cnf) {
     }
 
     vector<Lit> var_sel(cnf.nVars());
-    for(uint32_t i = 0; i < s.nVars(); i++) {
+    for(uint32_t i = 0; i < cnf.nVars(); i++) {
         s.new_var();
         var_sel[i] = Lit(s.nVars()-1, false);
     }
@@ -140,9 +140,10 @@ void Autarky::do_autarky(SimplifiedCNF& cnf) {
     auto model = s.get_model();
 
     vector<uint32_t> autarky_vars;
-    for(const auto& l: var_sel) {
+    for(uint32_t i = 0; i < cnf.nVars(); i++) {
+        const Lit l = var_sel[i];
         if (model[l.var()] == l_True)
-            autarky_vars.push_back(l.var());
+            autarky_vars.push_back(i);
     }
     for(const auto& v: autarky_vars) {
         cout << "Autarky  for var: " << v+1 << " val: " << model[v] << endl;
