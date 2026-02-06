@@ -746,7 +746,6 @@ SimplifiedCNF Manthan::do_manthan() {
     repair_solver.new_vars(cnf.nVars());
     inject_cnf(repair_solver, false); // faster to add CNF later
 
-
     // Set up cex_solver
     inject_cnf(cex_solver);
     fh = std::make_unique<FHolder>(&cex_solver);
