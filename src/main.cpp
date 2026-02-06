@@ -311,6 +311,7 @@ void do_synthesis() {
     if (!conf.debug_synth.empty()) {
         auto final_cnf = cnf;
         final_cnf.simplify_aigs();
+        final_cnf.simplify_aigs();
         final_cnf.clear_orig_sampl_defs(); // final should not have orig sampl set defined
         final_cnf.write_aig_defs_to_file(conf.debug_synth + "-final.aig");
         cout << "c o [arjun] you can check correctness by running: " << endl;
