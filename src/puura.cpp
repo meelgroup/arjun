@@ -199,7 +199,6 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
 
     vector<Lit> assumps;
     vector<Lit> cl;
-    bool timeout = false;
     s->set_bve(false);
 
     uint32_t tested_num = 0;
@@ -208,7 +207,6 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
         assert(sampl_set.count(test) == 0);
         verb_print(3, "[unate] testing var: " << test+1);
         /* if (s->removed_var(test)) continue; */
-        /* if (s->get_sum_conflicts() > 50000) {timeout = true; break;} */
         tested_num++;
         if (tested_num % 300 == 299) {
             verb_print(1, "[unate] test no: " << setw(5) << tested_num
@@ -221,7 +219,6 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
             assumps.clear();
             assumps.push_back(Lit(test, !flip));
             assumps.push_back(Lit(test+orig_num_vars, flip));
-            verb_print(3, "[unate] assumps : " << assumps);
             for(uint32_t i = 0; i < cnf.nVars(); i++) {
                 if (i == test) continue;
                 if (sampl_set.count(i)) continue;
@@ -229,6 +226,7 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
                 assert(ind != var_Undef);
                 assumps.push_back(Lit(ind, false));
             }
+            verb_print(3, "[unate] assumps : " << assumps);
             s->set_no_confl_needed();
             const auto ret = s->solve(&assumps, true);
             if (ret == l_False) {
@@ -242,7 +240,6 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
                 /* cl = {Lit(test, flip)}; */
                 /* cnf.add_clause(cl); */
                 /* s->add_clause(cl); */
-                /* cout << "unate adding clause: " << cl << endl; */
                 l = Lit(test+orig_num_vars, flip);
                 cl = {l};
                 s->add_clause(cl);
@@ -258,7 +255,6 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
         << " tested: " << tested_num
         << " defined: " << to_define.size() - to_define2.size()
         << " still to define: " << to_define2.size()
-        << " T-out: " << (int)timeout
         << " T: " << (cpuTime() - my_time));
 }
 

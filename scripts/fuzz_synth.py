@@ -54,6 +54,9 @@ def unique_file(fname_begin, fname_end=".cnf", max_num_files=2700):
 def gen_fuzz_call_brummayer(fuzzer, fname):
     seed = random.randint(0, 1000*1000*1000)
     call = "{0} -s {1} > {2}".format(fuzzer, seed, fname)
+
+    # if we want smaller CNFs
+    # call = "{0} -s {1} -i 2 -I 4 > {2}".format(fuzzer, seed, fname)
     return call
 
 def add_projection(fname) :

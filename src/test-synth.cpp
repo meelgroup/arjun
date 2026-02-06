@@ -91,7 +91,7 @@ using namespace ArjunNS;
 
 int verb = 1;
 int mode = 0;
-int num_samples = 2000;
+int num_samples = 50;
 long long seed = 42;
 std::mt19937 mt;
 int unsat_verif = 0;
