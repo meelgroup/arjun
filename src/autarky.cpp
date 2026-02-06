@@ -39,7 +39,7 @@ Autarky::Autarky(const Config& _conf) : conf(_conf) {}
 // "Searching for Autarkies to Trim Unsatisfiable Clause Sets"
 void Autarky::do_autarky(SimplifiedCNF& cnf) {
     double start_time = cpuTime();
-    s.set_verbosity(conf.verb);
+    s.set_verbosity(0);
     s.new_vars(cnf.nVars()); // orig set of vars
 
     vector<LitSub> lit_sub(cnf.nVars());
@@ -128,6 +128,11 @@ void Autarky::do_autarky(SimplifiedCNF& cnf) {
         cl.push_back(Lit(i, true));
         s.add_clause(cl);
     }
+
+    // At least one variable must be enabled
+    cl.clear();
+    for(uint32_t i = 0; i < cnf.nVars(); i++) cl.push_back(var_sel[i]);
+    s.add_clause(cl);
 
     auto ret = s.solve();
     assert(ret != l_Undef);
