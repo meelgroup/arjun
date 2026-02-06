@@ -83,6 +83,7 @@ int do_synth_bve = true;
 int do_pre_backbone = 0;
 
 int synthesis = false;
+int do_unate = false;
 int do_autarky = false;
 int do_revbce = false;
 int do_minim_indep = true;
@@ -125,7 +126,8 @@ void add_arjun_options() {
     myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
     myopt("--minimconfl", mconf.do_minimize_conflict, atoi,"Minimize conflict size when repairing");
     myopt("--simpevery", mconf.simplify_every, atoi,"Simplify solvers inside Manthan every K loops");
-    myopt("--unate", etof_conf.do_unate, atoi,"Perform unate analysis");
+    myopt("--unate", do_unate, atoi,"Perform unate analysis");
+    myopt("--autarky", do_autarky, atoi,"Perform unate analysis");
     myopt("--mbve", mconf.manthan_bve, atoi,"Use BVE with constants instead of training");
     myopt("--bvedeep", mconf.bve_deep_substitute, atoi,"In Manthan BVE, do deep substitution");
     myopt("--mbveorder", mconf.manthan_bve_order, atoi,"Order BVE vars in Manthan to optimize BVE");
@@ -294,7 +296,7 @@ void do_synthesis() {
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-1-simplified_cnf.aig");
     }
 
-    if (etof_conf.do_unate) {
+    if (do_unate) {
         arjun->standalone_unate(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-3-unsat_unate.aig");
     }
