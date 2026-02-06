@@ -76,7 +76,7 @@ void Autarky::do_autarky(SimplifiedCNF& cnf) {
             if (l.sign()) cl.push_back(lit_sub[l.var()].neg);
             else cl.push_back(lit_sub[l.var()].pos);
         }
-        cl.push_back(cl_sel[i]);
+        cl.push_back(~cl_sel[i]);
         s.add_clause(cl);
 
 
