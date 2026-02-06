@@ -310,10 +310,12 @@ void do_synthesis() {
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");
     if (!conf.debug_synth.empty()) {
         auto final_cnf = cnf;
+        final_cnf.simplify_aigs();
         final_cnf.clear_orig_sampl_defs(); // final should not have orig sampl set defined
         final_cnf.write_aig_defs_to_file(conf.debug_synth + "-final.aig");
         cout << "c o [arjun] you can check correctness by running: " << endl;
         cout << "./test-synth -u -v 1 " << input_file << " " << conf.debug_synth + "-final.aig" << endl;
+        if (conf.verb >= 3) final_cnf.write_aig_defs_to_file_txt(conf.debug_synth + "-final.txt");
     }
 }
 #endif

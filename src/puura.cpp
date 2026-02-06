@@ -221,6 +221,7 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
             assumps.clear();
             assumps.push_back(Lit(test, !flip));
             assumps.push_back(Lit(test+orig_num_vars, flip));
+            verb_print(3, "[unate] assumps : " << assumps);
             for(uint32_t i = 0; i < cnf.nVars(); i++) {
                 if (i == test) continue;
                 if (sampl_set.count(i)) continue;
@@ -231,12 +232,13 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
             s->set_no_confl_needed();
             const auto ret = s->solve(&assumps, true);
             if (ret == l_False) {
-                verb_print(2, "[unate] good test: " << std::setw(3)  << (test+1)
-                    << " T: " << fixed << setprecision(2) << (cpuTime() - my_time));
 
                 Lit l = {Lit(test, flip)};
                 unates.push_back(l);
                 cnf.add_clause({l});
+                verb_print(2, "[unate] good test. Setting: " << std::setw(3)  << l
+                    << " T: " << fixed << setprecision(2) << (cpuTime() - my_time));
+
                 /* cl = {Lit(test, flip)}; */
                 /* cnf.add_clause(cl); */
                 /* s->add_clause(cl); */

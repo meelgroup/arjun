@@ -975,7 +975,6 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_defs(ofstream& out) const {
     }
 }
 
-// Write AIG defs to file (opens file for you)
 DLL_PUBLIC void SimplifiedCNF::write_aig_defs_to_file(const string& fname) const {
     ofstream out(fname, ios::binary);
     if (!out) {
@@ -985,6 +984,26 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_defs_to_file(const string& fname) const
     write_aig_defs(out);
     out.close();
     cout << "c o Wrote AIG defs: " << fname << endl;
+}
+
+
+DLL_PUBLIC void SimplifiedCNF::write_aig_defs_to_file_txt(const string& fname) const {
+    ofstream out(fname);
+    if (!out) {
+        cerr << "ERROR: Cannot open file for writing: " << fname << endl;
+        exit(EXIT_FAILURE);
+    }
+    for(uint32_t i = 0; i < defs.size(); i++) {
+        auto def = defs[i];
+        out << "var " << i+1 << ": ";
+        if (def == nullptr) {
+            out << "input\n";
+        } else {
+            out << def << "\n";
+        }
+    }
+    out.close();
+    cout << "c o Wrote TXT AIG defs: " << fname << endl;
 }
 
 // Read AIG defs from file (opens file for you)

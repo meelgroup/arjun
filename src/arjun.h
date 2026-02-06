@@ -1160,17 +1160,15 @@ public:
     // every LHS element in the map is a backward_defined variable
     std::map<uint32_t, std::set<uint32_t>> compute_backw_dependencies() const;
 
-    // Serialize SimplifiedCNF to binary file
-    void write_aig_defs(std::ofstream& out) const;
 
-    // Deserialize SimplifiedCNF from binary file
+    // Binary, packed writing
+    void write_aig_defs_to_file(const std::string& fname) const;
+    void read_aig_defs_from_file(const std::string& fname);
+    void write_aig_defs(std::ofstream& out) const;
     void read_aig_defs(std::ifstream& in);
 
-    // Write AIG defs to file (opens file for you)
-    void write_aig_defs_to_file(const std::string& fname) const;
-
-    // Read AIG defs from file (opens file for you)
-    void read_aig_defs_from_file(const std::string& fname);
+    // human-readable writing
+    void write_aig_defs_to_file_txt(const std::string& fname) const;
 
     std::vector<CMSat::lbool> extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed = false) const;
 

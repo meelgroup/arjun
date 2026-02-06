@@ -91,7 +91,7 @@ using namespace ArjunNS;
 
 int verb = 1;
 int mode = 0;
-int num_samples = 2;
+int num_samples = 2000;
 long long seed = 42;
 std::mt19937 mt;
 int unsat_verif = 0;
@@ -420,6 +420,14 @@ bool check_cnf_unsat(ArjunNS::SimplifiedCNF& orig_cnf) {
     return sat == CMSat::l_False;
 }
 
+void print_sample(const vector<lbool>& sample) {
+    for(auto v : sample) {
+        if (v == l_Undef) cout << "U ";
+        else if (v == l_True) cout << "T ";
+        else cout << "F ";
+    }
+}
+
 void randomized_sample_verify(ArjunNS::SimplifiedCNF& orig_cnf,
           ArjunNS::SimplifiedCNF& cnf) {
     SATSolver solver;
@@ -430,11 +438,14 @@ void randomized_sample_verify(ArjunNS::SimplifiedCNF& orig_cnf,
     rnd_solver.set_up_for_sample_counter(100);
     for(int i = 0; i < num_samples; i++) {
         auto sample = get_random_sol(rnd_solver);
+
         release_assert(sample.size() == orig_cnf.nVars());
         vector<lbool> restricted_sample(orig_cnf.nVars(), l_Undef);
         for(const auto& var : orig_cnf.get_sampl_vars()) {
             restricted_sample[var] = sample[var];
         }
+        if (verb >= 3) { cout << "sample           : "; print_sample(sample); cout << endl; }
+        if (verb >= 3) { cout << "restricted sample: "; print_sample(restricted_sample); cout << endl; }
         const auto extended_sample = cnf.extend_sample(restricted_sample, true);
         assert_sample_satisfying(extended_sample, solver);
     }
