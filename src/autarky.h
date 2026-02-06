@@ -50,6 +50,6 @@ private:
         Lit pos = lit_Undef;
         Lit neg = lit_Undef;
     };
-    MetaSolver s;
+    SATSolver s;
     const Config conf;
 };

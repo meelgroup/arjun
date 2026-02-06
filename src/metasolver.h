@@ -31,6 +31,9 @@
 #include <vector>
 #include <cassert>
 
+using std::unique_ptr;
+using std::vector;
+
 namespace ArjunInt {
 
 enum class SolverType {
@@ -42,7 +45,7 @@ enum class SolverType {
 class MetaSolver {
 public:
     explicit MetaSolver(SolverType type = SolverType::cadical) : solver_type(type) {
-        if (solver_type == SolverType::cadical) {
+        if (solver_type == SolverType::cms) {
             cms = std::make_unique<CMSat::SATSolver>();
             cms->set_prefix("c o ");
         } else {
@@ -73,7 +76,7 @@ public:
     }
 
     // Clause management
-    void add_clause(const std::vector<CMSat::Lit>& cl) {
+    void add_clause(const vector<CMSat::Lit>& cl) {
         if (solver_type == SolverType::cms) cms->add_clause(cl);
         else {
             for (const auto& l : cl) cadical->add(lit_to_cadical(l));
@@ -81,7 +84,7 @@ public:
         }
     }
 
-    void add_red_clause(const std::vector<CMSat::Lit>& cl) {
+    void add_red_clause(const vector<CMSat::Lit>& cl) {
         if (solver_type == SolverType::cms) cms->add_red_clause(cl);
         else {
             // CaDiCaL doesn't distinguish redundant clauses, so skip
@@ -113,7 +116,7 @@ public:
         }
     }
 
-    CMSat::lbool solve(std::vector<CMSat::Lit>* assumps) {
+    CMSat::lbool solve(vector<CMSat::Lit>* assumps) {
         if (solver_type == SolverType::cms) return cms->solve(assumps);
         else {
             if (assumps)
@@ -143,40 +146,29 @@ public:
     }
 
     // Model/Conflict access
-    const std::vector<CMSat::lbool>& get_model() const {
+    const vector<CMSat::lbool>& get_model() const {
         if (solver_type == SolverType::cms) return cms->get_model();
         else return cadical_model;
     }
 
-    std::vector<CMSat::Lit> get_conflict() const {
+    vector<CMSat::Lit> get_conflict() const {
         if (solver_type == SolverType::cms) return cms->get_conflict();
         else return cadical_conflict;
     }
 
-    void simplify(std::vector<CMSat::Lit>* assumps) {
+    void simplify(vector<CMSat::Lit>* assumps) {
         if (solver_type == SolverType::cms) cms->simplify(assumps);
     }
 
     SolverType get_solver_type() const { return solver_type; }
 
-    // Access underlying solver for special operations
-    CMSat::SATSolver* get_cms() {
-        assert(solver_type == SolverType::cms);
-        return cms.get();
-    }
-
-    CaDiCaL::Solver* get_cadical() {
-        assert(solver_type == SolverType::cadical);
-        return cadical.get();
-    }
-
 private:
     SolverType solver_type;
-    std::unique_ptr<CMSat::SATSolver> cms;
-    std::unique_ptr<CaDiCaL::Solver> cadical;
+    unique_ptr<CMSat::SATSolver> cms = nullptr;
+    unique_ptr<CaDiCaL::Solver> cadical = nullptr;
     uint32_t cadical_nvars = 0;
-    mutable std::vector<CMSat::lbool> cadical_model;
-    mutable std::vector<CMSat::Lit> cadical_conflict;
+    mutable vector<CMSat::lbool> cadical_model;
+    mutable vector<CMSat::Lit> cadical_conflict;
 
     // Convert CMSat::Lit to CaDiCaL int format
     // CaDiCaL uses 1-indexed variables, positive for positive literal, negative for negated

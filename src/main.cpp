@@ -286,10 +286,6 @@ void do_synthesis() {
     check_cnf_sat(cnf);
     cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
     cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
-    if (do_autarky) {
-        arjun->standalone_autarky(cnf);
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-0-autarky.aig");
-    }
     if (do_synth_bve) {
         /* simp_conf.bve_too_large_resolvent = -1; */
         cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
@@ -299,6 +295,11 @@ void do_synthesis() {
     if (do_unate) {
         arjun->standalone_unate(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-3-unsat_unate.aig");
+    }
+
+    if (do_autarky) {
+        arjun->standalone_autarky(cnf);
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-0-autarky.aig");
     }
 
     if (etof_conf.do_extend_indep) {

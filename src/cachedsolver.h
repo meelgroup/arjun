@@ -154,8 +154,6 @@ public:
     vector<Lit> get_conflict() const { return solver->get_conflict(); }
     void simplify(vector<Lit>* assumps) { solver->simplify(assumps); }
     SolverType get_solver_type() const { return solver->get_solver_type(); }
-    CMSat::SATSolver* get_cms() { return solver->get_cms(); }
-    CaDiCaL::Solver* get_cadical() { return solver->get_cadical(); }
     void clear_cache() { cache.clear(); }
     size_t cache_size() const { return cache.size(); }
 
