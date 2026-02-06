@@ -55,13 +55,13 @@ void Autarky::do_autarky(SimplifiedCNF& cnf) {
     vector<Lit> cl_sel(cnf.get_clauses().size());
     for(uint32_t i = 0; i < cnf.get_clauses().size(); i++) {
         s.new_var();
-        cl_sel[i] = Lit(cnf.nVars()-1, false);
+        cl_sel[i] = Lit(s.nVars()-1, false);
     }
 
     vector<Lit> var_sel(cnf.nVars());
-    for(uint32_t i = 0; i < cnf.nVars(); i++) {
+    for(uint32_t i = 0; i < s.nVars(); i++) {
         s.new_var();
-        var_sel[i] = Lit(cnf.nVars()-1, false);
+        var_sel[i] = Lit(s.nVars()-1, false);
     }
 
     vector<Lit> cl;
