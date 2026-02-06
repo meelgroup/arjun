@@ -45,7 +45,7 @@ namespace ArjunInt {
 
 class CachedSolver {
 public:
-    explicit CachedSolver(SolverType type = SolverType::cms, int _max_cache_size = 10000)
+    explicit CachedSolver(SolverType type = SolverType::cadical, int _max_cache_size = 10000)
         : solver(make_unique<MetaSolver>(type)), rng(42),
         max_cache_size(_max_cache_size) {
             if (_max_cache_size < 0) {

@@ -41,8 +41,8 @@ enum class SolverType {
 // MetaSolver wraps either CryptoMiniSat or CaDiCaL, providing a unified interface
 class MetaSolver {
 public:
-    explicit MetaSolver(SolverType type = SolverType::cms) : solver_type(type) {
-        if (solver_type == SolverType::cms) {
+    explicit MetaSolver(SolverType type = SolverType::cadical) : solver_type(type) {
+        if (solver_type == SolverType::cadical) {
             cms = std::make_unique<CMSat::SATSolver>();
             cms->set_prefix("c o ");
         } else {
