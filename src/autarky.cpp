@@ -64,6 +64,7 @@ void Autarky::do_autarky(SimplifiedCNF& cnf) {
         var_sel[i] = Lit(s.nVars()-1, false);
     }
 
+    // Sampling variables should not be part of the autarky
     for(const auto& v: cnf.get_sampl_vars()) s.add_clause({~var_sel[v]});
 
     vector<Lit> cl;
