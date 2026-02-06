@@ -64,6 +64,8 @@ void Autarky::do_autarky(SimplifiedCNF& cnf) {
         var_sel[i] = Lit(s.nVars()-1, false);
     }
 
+    for(const auto& v: cnf.get_sampl_vars()) s.add_clause({~var_sel[v]});
+
     vector<Lit> cl;
     for(uint32_t i = 0; i < cnf.get_clauses().size(); i++) {
         const auto& ocl = cnf.get_clauses()[i];
