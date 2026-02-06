@@ -67,6 +67,7 @@ void Autarky::do_autarky(SimplifiedCNF& cnf) {
     vector<Lit> cl;
     for(uint32_t i = 0; i < cnf.get_clauses().size(); i++) {
         const auto& ocl = cnf.get_clauses()[i];
+        s.add_clause(ocl);
 
         //1. We replace every literal in the formula with a literal-substitute; x_j in the formula becomes x1_j , while ¬xj is replaced with x0_j .
         //2. Each clause Ci is augmented with a clause-selector yi to form a new clause C′ i = (yi → Ci) = (¬yi ∨ Ci)
@@ -79,8 +80,8 @@ void Autarky::do_autarky(SimplifiedCNF& cnf) {
         s.add_clause(cl);
 
 
-        // We add clauses to require that a clause be enabled (yi = TRUE) if
-        // any one of its variables is enabled. Thus, for any xj present in clause Ci,
+        // We add clauses to require that a clause be enabled (y_i = TRUE) if
+        // any one of its variables is enabled. Thus, for any x_j present in clause C_i,
         // we add a clause (x+_j → y_i) = (¬x+_j ∨ y_i).
         for(const auto& l: ocl) {
             s.add_clause({~var_sel[l.var()], cl_sel[i]});
@@ -88,8 +89,8 @@ void Autarky::do_autarky(SimplifiedCNF& cnf) {
     }
 
     /*
-    We create a variable-selector x+ j for every variable xj .
-    When x+ j is TRUE, xj will be enabled, and it is disabled otherwise.
+    We create a variable-selector x+_j for every variable x_j .
+    When x+_j is TRUE, x_j will be enabled, and it is disabled otherwise.
     For every variable xj , we add clauses to relate its variable-selector x+_j ,
     its two literal-substitutes x0_j and x1_j , and the value of the variable itself, x_j .
     In short, we want each literal- substitute to be TRUE when the variable is enabled (x+_j is TRUE)
