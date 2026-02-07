@@ -1992,7 +1992,7 @@ DLL_PUBLIC void SimplifiedCNF::simplify_aigs(const uint32_t verb) {
     const size_t after = counted.size();
 
     if (verb >= 1) {
-        cout << "c [synth] AIG simplify: before " << before/1000 << "k nodes"
+        cout << "c o [synth] AIG simplify: before " << before/1000 << "k nodes"
              << ", after " << after/1000 << "k nodes"
              << ", diff " << ((int64_t)before - (int64_t)after)/1000  << "k nodes"
              << endl;
