@@ -68,7 +68,6 @@ def gnuplot_name_cleanup(name: str) -> str:
     name = re.sub(r'\"', '', name)
     # replace multiple underscores or dashes with a single one
     name = re.sub(r'_', '=', name)
-    print(name)
     return name
 
 
@@ -182,19 +181,19 @@ for only_counted in [False, True]:
         CAST(ROUND(avg(repairs/1000.0),0) AS INTEGER) as 'av repairsK',\
         sum(arjun_time is not null) as 'solved',\
         CAST(ROUND(sum(coalesce(arjun_time, 3600))/COUNT(*),0) AS INTEGER) as 'PAR2',\
-        CAST(avg(input_vars) AS INTEGER) as 'avg-inputs',\
+        CAST(avg(input_vars) AS INTEGER) as 'avg-inp',\
         CAST(avg(start_to_define_vars) AS INTEGER) as 'avg-to-def',\
         CAST(avg(orig_total_vars) AS INTEGER) as 'avg-vars',\
-        CAST(ROUND(avg(puura_time), 2) AS REAL) as 'avg-puura-time',\
+        CAST(ROUND(avg(puura_time), 2) AS REAL) as 'avg-puura-T',\
         CAST(avg(puura_defined) AS INTEGER) as 'avg-puura-def',\
-        CAST(ROUND(avg(extend_time), 2) AS REAL) as 'avg-extend-time',\
+        CAST(ROUND(avg(extend_time), 2) AS REAL) as 'avg-extend-T',\
         CAST(avg(extend_defined) AS INTEGER) as 'avg-extend-def',\
-        CAST(ROUND(avg(backward_time), 2) AS REAL) as 'avg-backward-time',\
-        CAST(avg(backward_defined) AS INTEGER) as 'avg-backward-def',\
-        CAST(ROUND(avg(manthan_sampling_time), 2) AS REAL) as 'avg-mant-samp-time',\
-        CAST(ROUND(avg(manthan_training_time), 2) AS REAL) as 'avg-mant-train-time',\
-        CAST(ROUND(avg(manthan_repair_time), 2) AS REAL) as 'avg-mant-repair-time',\
-        CAST(ROUND(avg(manthan_time), 2) AS REAL) as 'avg-manthan-time',\
+        CAST(ROUND(avg(backward_time), 2) AS REAL) as 'avg-backw-T',\
+        CAST(avg(backward_defined) AS INTEGER) as 'avg-backw-def',\
+        CAST(ROUND(avg(manthan_sampling_time), 2) AS REAL) as 'avg-mant-samp-T',\
+        CAST(ROUND(avg(manthan_training_time), 2) AS REAL) as 'avg-mant-tr-T',\
+        CAST(ROUND(avg(manthan_repair_time), 2) AS REAL) as 'avg-mant-rep-T',\
+        CAST(ROUND(avg(manthan_time), 2) AS REAL) as 'avg-manth-T',\
         CAST(avg(repairs) AS INTEGER) as 'avg-repairs',\
         CAST(avg(repairs_failed) AS INTEGER) as 'avg-repairs-fail',\
         CAST(avg(manthan_defined) AS INTEGER) as 'avg-manthan-def',\
@@ -208,28 +207,30 @@ if True:
   for dir,ver in table_todo:
     with open("gen_table.sql", "w") as f:
       f.write(".mode table\n")
-      f.write("select '"+dir+"', '"+ver+"'");
-      for col in "indep_sz", "opt_indep_sz", "orig_proj_sz", "new_nvars", "arjun_mem_mb":
+      f.write("select '"+dir+"'")
+      for col in "repairs", "timeout_mem":
         f.write(", (SELECT "+col+" as 'median_"+col+"'\
         FROM data\
-        where dirname IN ('"+dir+"') and arjun_sha1 IN ('"+ver+"') and "+col+" is not null"+fname_like+"\
+        where dirname IN ('"+dir+"') and "+col+" is not null"+fname_like+"\
         ORDER BY "+col+"\
         LIMIT 1\
         OFFSET (SELECT COUNT("+col+") FROM data\
-          where dirname IN ('"+dir+"') and arjun_sha1 IN ('"+ver+"') \
+          where dirname IN ('"+dir+"') \
           and "+col+" is not null) / 2) as median_"+col+" \
       ")
-      for col in "gates_extended", "padoa_extended":
-        f.write(", (SELECT "+col+" as 'median_"+col+"_NOZERO'\
-        FROM data\
-        where dirname IN ('"+dir+"') and arjun_sha1 IN ('"+ver+"') and "+col+" is not null "+fname_like+"\
-                    and "+col+">0\
-        ORDER BY "+col+"\
-        LIMIT 1\
-        OFFSET (SELECT COUNT("+col+") FROM data\
-          where dirname IN ('"+dir+"') and arjun_sha1 IN ('"+ver+"') \
-          and "+col+" is not null "+fname_like+" and "+col+">0) / 2) as median_"+col+" \
-      ")
+
+      # median for data where the value is > 0, to avoid having the median be 0
+      # for col in "gates_extended", "padoa_extended":
+      #   f.write(", (SELECT "+col+" as 'median_"+col+"_NOZERO'\
+      #   FROM data\
+      #   where dirname IN ('"+dir+"') and arjun_sha1 IN ('"+ver+"') and "+col+" is not null "+fname_like+"\
+      #               and "+col+">0\
+      #   ORDER BY "+col+"\
+      #   LIMIT 1\
+      #   OFFSET (SELECT COUNT("+col+") FROM data\
+      #     where dirname IN ('"+dir+"') and arjun_sha1 IN ('"+ver+"') \
+      #     and "+col+" is not null "+fname_like+" and "+col+">0) / 2) as median_"+col+" \
+      # ")
     os.system("sqlite3 mydb.sql < gen_table.sql")
     os.unlink("gen_table.sql")
 
