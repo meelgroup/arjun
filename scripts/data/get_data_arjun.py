@@ -159,6 +159,7 @@ def timeout_parse(fname):
     with open(fname, "r") as f:
         for line in f:
             line = line.strip()
+            print(line)
             if "Command terminated by signal" in line:
               signal = int(line.split()[4])
             if "Minor (reclaiming a frame) page faults:" in line:
@@ -186,6 +187,8 @@ def timeout_parse(fname):
                 call = call.replace("././arjun ", "")
                 call = call.strip()
 
+    assert mem is not None, "mem should not be None, something went wrong with parsing memory"
+    assert t is not None, "t should not be None, something went wrong with parsing time"
     if signal is not None:
       t = None
     if signal is None:
@@ -306,8 +309,7 @@ def read_file(fname):
 
 
 if __name__ == "__main__":
-    file_list = glob.glob("out-arjun-*/*cnf*")
-    file_list.extend(glob.glob("out-others-*/*cnf*"))
+    file_list = glob.glob("out-synth-*/*cnf*")
     files = {}
     for f in file_list:
         read_file(f)

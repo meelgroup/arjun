@@ -4,7 +4,7 @@ CREATE TABLE data (
   dirname STRING NOT NULL,
   fname STRING NOT NULL,
 
-  timeout_t FLOAT NOT NULL,
+  timeout_t FLOAT,
   timeout_mem FLOAT NOT NULL,
   timeout_call TEXT NOT NULL,
   page_faults INT NOT NULL,
@@ -40,10 +40,6 @@ CREATE TABLE data (
 .mode csv
 .import --skip 1 mydata.csv data
 UPDATE data SET timeout_t = NULL WHERE timeout_t = '';
-UPDATE data SET timeout_mem = NULL WHERE timeout_mem = '';
-UPDATE data SET timeout_call = NULL WHERE timeout_call = '';
-UPDATE data SET page_faults = NULL WHERE page_faults = '';
-UPDATE data SET signal = NULL WHERE signal = '';
 UPDATE data SET input_vars = NULL WHERE input_vars = '';
 UPDATE data SET start_to_define_vars = NULL WHERE start_to_define_vars = '';
 UPDATE data SET orig_total_vars = NULL WHERE orig_total_vars = '';
