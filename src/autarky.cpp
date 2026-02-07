@@ -41,7 +41,9 @@ Autarky::Autarky(const Config& _conf) : conf(_conf) {}
 // "Searching for Autarkies to Trim Unsatisfiable Clause Sets"
 void Autarky::find_autarkies(SimplifiedCNF& cnf) {
     const double start_time = cpuTime();
-    std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb, "start find_autarkies");
+    if (cnf.get_need_aig()) {
+        std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb, "start find_autarkies");
+    }
 
     s.set_verbosity(0);
     s.new_vars(cnf.nVars()); // orig set of vars
