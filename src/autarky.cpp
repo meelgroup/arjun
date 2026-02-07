@@ -174,6 +174,8 @@ void Autarky::find_autarkies(SimplifiedCNF& cnf) {
             s.add_clause({l});
             cnf.add_clause({l});
             autarkies.push_back(l);
+
+            // Don't find the same autarky again
             s.add_clause({~var_sel[v]});
         }
     }
