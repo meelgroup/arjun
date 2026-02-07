@@ -147,14 +147,19 @@ void Autarky::find_autarkies(SimplifiedCNF& cnf) {
     uint32_t autaries = 0;
     uint32_t tot_autarkies = 0;
     vector<Lit> autarkies;
-    while(true) {
+    bool timeout = false;
+    while(true && s.get_sum_conflicts() < 30000) {
+        s.set_max_confl(10000);
         auto ret = s.solve();
-        assert(ret != l_Undef);
         if (ret == l_False) break;
+        if (ret == l_Undef) {
+            timeout = true;
+            break;
+        }
 
         assert(ret == l_True);
         autaries++;
-        auto model = s.get_model();
+        const auto& model = s.get_model();
 
         vector<uint32_t> autarky_vars;
         for(uint32_t i = 0; i < cnf.nVars(); i++) {
@@ -169,6 +174,7 @@ void Autarky::find_autarkies(SimplifiedCNF& cnf) {
             s.add_clause({l});
             cnf.add_clause({l});
             autarkies.push_back(l);
+            s.add_clause({~var_sel[v]});
         }
     }
 
@@ -180,7 +186,9 @@ void Autarky::find_autarkies(SimplifiedCNF& cnf) {
             << " still to define: " << to_define2.size()
             << " T: " << (cpuTime() - start_time));
     } else {
-        verb_print(1, "[arjun] Found " << autaries << " autarkies. Total autarky vars: " << tot_autarkies
+        verb_print(1, COLRED "[autarky] Found autarkies: " << autaries
+            << " autarky vars: " << tot_autarkies
+            << " T-out: " << (timeout ? "Y" : "N")
             << " T: " << fixed << setprecision(2) << (cpuTime() - start_time));
     }
 }

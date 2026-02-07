@@ -32,7 +32,6 @@
 #include "config.h"
 #include "arjun.h"
 #include "src/formula.h"
-#include "src/metasolver.h"
 
 using namespace CMSat;
 using namespace ArjunInt;
@@ -56,7 +55,7 @@ private:
         Lit pos = lit_Undef;
         Lit neg = lit_Undef;
     };
-    MetaSolver s;
+    SATSolver s;
     const Config conf;
 
 };
