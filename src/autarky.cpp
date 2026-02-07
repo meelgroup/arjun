@@ -31,14 +31,16 @@
 using namespace ArjunNS;
 using namespace CMSat;
 using std::vector;
+using std::fixed;
+using std::setprecision;
+
 
 Autarky::Autarky(const Config& _conf) : conf(_conf) {}
-
 
 // Following paper https://sun.iwu.edu/~mliffito/publications/sat08_liffiton_autarkies.pdf
 // "Searching for Autarkies to Trim Unsatisfiable Clause Sets"
 void Autarky::do_autarky(SimplifiedCNF& cnf) {
-    double start_time = cpuTime();
+    const double start_time = cpuTime();
     s.set_verbosity(0);
     s.new_vars(cnf.nVars()); // orig set of vars
 
@@ -138,24 +140,29 @@ void Autarky::do_autarky(SimplifiedCNF& cnf) {
     for(uint32_t i = 0; i < cnf.nVars(); i++) cl.push_back(var_sel[i]);
     s.add_clause(cl);
 
-    auto ret = s.solve();
-    assert(ret != l_Undef);
-    if (ret == l_False) {
-        cout << "No autarky found. T: " << (cpuTime() - start_time) << endl;
-        exit(EXIT_SUCCESS);
-        return;
-    }
-    assert(ret == l_True);
-    auto model = s.get_model();
+    uint32_t autaries = 0;
+    uint32_t tot_autarkies = 0;
+    bool found_autarky = true;
+    while(found_autarky) {
+        auto ret = s.solve();
+        assert(ret != l_Undef);
+        if (ret == l_False) break;
 
-    vector<uint32_t> autarky_vars;
-    for(uint32_t i = 0; i < cnf.nVars(); i++) {
-        const Lit l = var_sel[i];
-        if (model[l.var()] == l_True)
-            autarky_vars.push_back(i);
+        assert(ret == l_True);
+        autaries++;
+        auto model = s.get_model();
+
+        vector<uint32_t> autarky_vars;
+        for(uint32_t i = 0; i < cnf.nVars(); i++) {
+            const Lit l = var_sel[i];
+            if (model[l.var()] == l_True)
+                autarky_vars.push_back(i);
+        }
+        for(const auto& v: autarky_vars) {
+            tot_autarkies++;
+            verb_print(2, "Found autarky var: " << v+1 << " val: " << model[v]);
+        }
     }
-    for(const auto& v: autarky_vars) {
-        cout << "Autarky  for var: " << v+1 << " val: " << model[v] << endl;
-    }
-    exit(EXIT_SUCCESS);
+    verb_print(1, "[arjun] Found " << autaries << " autarkies. Total autarky vars: " << tot_autarkies
+        << " T: " << fixed << setprecision(2) << (cpuTime() - start_time));
 }

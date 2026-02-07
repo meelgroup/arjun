@@ -249,6 +249,7 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
         const ElimToFileConf& etof_conf, const SimpConf& simp_conf) {
     cnf.remove_equiv_weights();
     cnf = standalone_get_simplified_cnf(cnf, simp_conf);
+    if (etof_conf.do_autarky) standalone_autarky(cnf);
     cnf.remove_equiv_weights();
     auto simp_conf2 = simp_conf;
     simp_conf2.bve_grow_iter1 = 0;
