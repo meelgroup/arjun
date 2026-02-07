@@ -35,7 +35,8 @@ CREATE TABLE data (
   repairs_failed INT,
   manthan_defined INT,
 
-  arjun_time FLOAT
+  arjun_time FLOAT,
+  mem_out INT
 );
 .mode csv
 .import --skip 1 mydata.csv data

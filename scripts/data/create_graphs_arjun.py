@@ -52,7 +52,7 @@ def get_dirs(ver : str):
     ret = []
     con = sqlite3.connect("mydb.sql")
     cur = con.cursor()
-    res = cur.execute("SELECT dirname, arjun_call FROM data where arjun_sha1='"+ver+"' group by dirname")
+    res = cur.execute("SELECT dirname, timeout_call FROM data where arjun_sha1='"+ver+"' group by dirname")
     for a in res:
         call = a[1]
         call = re.sub("././arjun", "", call)
@@ -88,7 +88,7 @@ def generate_todos():
     # sharpsat: out-arjun-6318929.pbs101-7
 
     only_dirs = [
-        "out-synth-XXX"
+        "out-synth-984148"
     ]
     # only_dirs = ["out-synth-6828273"]
     # not_calls = ["--minimize 0 ", "--bve 0"]
@@ -100,6 +100,8 @@ def generate_todos():
     # not_calls = ["restart"]
     not_calls = []
     only_versions = get_versions()
+    fname2_s = []
+    table_todo = []
 
 
     for ver in only_versions :
@@ -170,7 +172,7 @@ for only_counted in [False, True]:
     extra = ""
     f.write("select \
         replace(dirname,'out-arjun-mc','') as dirname,\
-        replace(arjun_call,'././arjun_','') as call,\
+        replace(timeout_call,'././arjun_','') as call,\
         sum(mem_out) as 'mem out', \
         sum(signal == 11) as 'sigSEGV', \
         sum(signal == 6) as 'sigABRT', \

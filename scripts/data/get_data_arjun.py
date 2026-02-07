@@ -10,6 +10,8 @@ def strip_ansi(text):
 
 
 def find_arjun_time(fname):
+    mem_out = 0
+    solved = False
     arjun_sha1 = None
     sbva_sha1 = None
     cms_sha1 = None
@@ -46,6 +48,12 @@ def find_arjun_time(fname):
     with open(fname, "r") as f:
         for line in f:
             line = strip_ansi(line.strip())
+
+            if "bad_alloc" in line:
+                mem_out = 1
+            elif line.startswith("c o [arjun] All done."):
+                solved = True
+
             # c o Arjun SHA1: 8bc2e1402ab782c8ab62aa4d5ffe40eb317691a1
             if arjun_sha1 is None and "c o Arjun SHA1:" in line:
               match = re.search(r'Arjun SHA1:\s*(\w+)', line)
@@ -146,7 +154,7 @@ def find_arjun_time(fname):
             backward_time, backward_defined,
             manthan_sampling_time, manthan_training_time, manthan_repair_time,
             manthan_time, repairs, rapairs_failed, manthan_defined,
-            arjun_time)
+            arjun_time, mem_out, solved)
 
 
 def timeout_parse(fname):
@@ -159,7 +167,6 @@ def timeout_parse(fname):
     with open(fname, "r") as f:
         for line in f:
             line = line.strip()
-            print(line)
             if "Command terminated by signal" in line:
               signal = int(line.split()[4])
             if "Minor (reclaiming a frame) page faults:" in line:
@@ -203,46 +210,16 @@ def add(name, f):
         return "%s," % (f[name])
 
 
-def fill_row(f):
-    toprint = ""
-    toprint += "%s," % f["solver"]
-    toprint += f["dirname"] + ","
-    toprint += f["fname"] + ","
-
+def fill_row(cols, f):
     # check solver parsed
     if "solver" not in f:
         print("oops, solver not found, that's wrong")
         print(f)
         exit(-1)
 
-    #timeout_t, timeout_mem, timeout_call
-    toprint += add("timeout_t", f)
-    toprint += add("timeout_mem", f)
-    toprint += add("timeout_call", f)
-    toprint += add("page_faults", f)
-    toprint += add("signal", f)
-
-    # arjun data
-    toprint += add("arjun_sha1", f)
-    toprint += add("sbva_sha1", f)
-    toprint += add("cms_sha1", f)
-    toprint += add("input_vars", f)
-    toprint += add("start_to_define_vars", f)
-    toprint += add("orig_total_vars", f)
-    toprint += add("puura_time", f)
-    toprint += add("puura_defined", f)
-    toprint += add("extend_time", f)
-    toprint += add("extend_defined", f)
-    toprint += add("backward_time", f)
-    toprint += add("backward_defined", f)
-    toprint += add("manthan_sampling_time", f)
-    toprint += add("manthan_training_time", f)
-    toprint += add("manthan_repair_time", f)
-    toprint += add("manthan_time", f)
-    toprint += add("repairs", f)
-    toprint += add("repairs_failed", f)
-    toprint += add("manthan_defined", f)
-    toprint += add("arjun_time", f)
+    toprint = ""
+    for col in cols.split(","):
+        toprint += add(col, f)
     toprint = toprint[:-1]  # remove last ,
 
     return toprint
@@ -275,7 +252,7 @@ def read_file(fname):
           files[base]["solver"] = timeout_solver
         return
 
-    if  fname.endswith(".out_synth"):
+    if  fname.endswith(".out_arjun"):
         files[base]["solver"] = "arjun"
         (arjun_sha1, sbva_sha1, cms_sha1,
          input_vars, start_to_define_vars, orig_total_vars,
@@ -284,7 +261,7 @@ def read_file(fname):
          backward_time, backward_defined,
          manthan_sampling_time, manthan_training_time, manthan_repair_time,
          manthan_time, repairs, rapairs_failed, manthan_defined,
-         arjun_time) = find_arjun_time(fname)
+         arjun_time, mem_out, solved) = find_arjun_time(fname)
         files[base]["arjun_sha1"] = arjun_sha1
         files[base]["sbva_sha1"] = sbva_sha1
         files[base]["cms_sha1"] = cms_sha1
@@ -305,6 +282,9 @@ def read_file(fname):
         files[base]["repairs_failed"] = rapairs_failed
         files[base]["manthan_defined"] = manthan_defined
         files[base]["arjun_time"] = arjun_time
+        files[base]["mem_out"] = mem_out
+        if not solved:
+          files[base]["timeout_t"] = None
         return
 
 
@@ -315,10 +295,10 @@ if __name__ == "__main__":
         read_file(f)
 
     with open("mydata.csv", "w") as out:
-        cols = "solver,dirname,fname,timeout_t,timeout_mem,timeout_call,page_faults,signal,arjun_sha1,sbva_sha1,cms_sha1,input_vars,start_to_define_vars,orig_total_vars,puura_time,puura_defined,extend_time,extend_defined,backward_time,backward_defined,manthan_sampling_time,manthan_training_time,manthan_repair_time,manthan_time,repairs,repairs_failed,manthan_defined,arjun_time"
+        cols = "solver,dirname,fname,timeout_t,timeout_mem,timeout_call,page_faults,signal,arjun_sha1,sbva_sha1,cms_sha1,input_vars,start_to_define_vars,orig_total_vars,puura_time,puura_defined,extend_time,extend_defined,backward_time,backward_defined,manthan_sampling_time,manthan_training_time,manthan_repair_time,manthan_time,repairs,repairs_failed,manthan_defined,arjun_time,mem_out"
         out.write(cols+"\n")
         for _, f in files.items():
-            toprint = fill_row(f)
+            toprint = fill_row(cols, f)
             out.write(toprint+"\n")
 
     os.system("sqlite3 mydb.sql < arjun.sql")
