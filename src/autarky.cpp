@@ -161,6 +161,9 @@ void Autarky::do_autarky(SimplifiedCNF& cnf) {
         for(const auto& v: autarky_vars) {
             tot_autarkies++;
             verb_print(2, "Found autarky var: " << v+1 << " val: " << model[v]);
+            const Lit l = Lit(v, model[v] == l_False);
+            s.add_clause({l});
+            cnf.add_clause({l});
         }
     }
     verb_print(1, "[arjun] Found " << autaries << " autarkies. Total autarky vars: " << tot_autarkies
