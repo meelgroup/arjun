@@ -311,7 +311,8 @@ void do_synthesis() {
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-4-minim_idep_synt.aig");
     }
 
-    cnf.simplify_aigs();
+    cnf.simplify_aigs(conf.verb);
+    cnf.simplify_aigs(conf.verb);
     cnf = arjun->standalone_manthan(cnf, mconf);
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");
     if (!conf.debug_synth.empty()) {

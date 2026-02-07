@@ -633,7 +633,7 @@ void Manthan::bve_and_substitute() {
         if (overall == nullptr) overall = aig_mng.new_const(true);
         if (sign) overall = AIG::new_not(overall);
 
-        f.aig = AIG::simplify(overall);
+        f.aig = AIG::simplify(AIG::simplify(overall));
         var_to_formula[v] = f;
     }
 

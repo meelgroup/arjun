@@ -1976,6 +1976,7 @@ void SimplifiedCNF::count_aig_nodes(const aig_ptr& aig, set<aig_ptr>& counted) {
 }
 
 DLL_PUBLIC void SimplifiedCNF::simplify_aigs(const uint32_t verb) {
+    const double my_time = cpuTime();
     set<aig_ptr> counted;
     for(const auto& aig: defs) count_aig_nodes(aig, counted);
     const size_t before = counted.size();
@@ -1995,6 +1996,7 @@ DLL_PUBLIC void SimplifiedCNF::simplify_aigs(const uint32_t verb) {
         cout << "c o [synth] AIG simplify: before " << before/1000 << "k nodes"
              << ", after " << after/1000 << "k nodes"
              << ", diff " << ((int64_t)before - (int64_t)after)/1000  << "k nodes"
+             << " T: " << std::setprecision(2) << std::fixed << cpuTime() - my_time
              << endl;
     }
 }
