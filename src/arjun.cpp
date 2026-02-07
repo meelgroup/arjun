@@ -119,7 +119,7 @@ DLL_PUBLIC void Arjun::standalone_minimize_indep(SimplifiedCNF& cnf, bool all_in
 
 DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {
     Autarky autarky(arjdata->conf);
-    autarky.do_autarky(cnf);
+    autarky.find_autarkies(cnf);
 }
 
 #ifdef SYNTH

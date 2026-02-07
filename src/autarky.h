@@ -31,6 +31,7 @@
 #include <set>
 #include "config.h"
 #include "arjun.h"
+#include "src/formula.h"
 #include "src/metasolver.h"
 
 using namespace CMSat;
@@ -43,13 +44,19 @@ class Autarky {
 public:
     Autarky(const Config& _conf);
 
-    void do_autarky(SimplifiedCNF& cnf);
+    void find_autarkies(SimplifiedCNF& cnf);
 
 private:
+    /// For synthesis stats
+    set<uint32_t> input;
+    set<uint32_t> to_define;
+    set<uint32_t> backward_defined;
+
     struct LitSub {
         Lit pos = lit_Undef;
         Lit neg = lit_Undef;
     };
-    SATSolver s;
+    MetaSolver s;
     const Config conf;
+
 };

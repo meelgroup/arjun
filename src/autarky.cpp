@@ -39,8 +39,10 @@ Autarky::Autarky(const Config& _conf) : conf(_conf) {}
 
 // Following paper https://sun.iwu.edu/~mliffito/publications/sat08_liffiton_autarkies.pdf
 // "Searching for Autarkies to Trim Unsatisfiable Clause Sets"
-void Autarky::do_autarky(SimplifiedCNF& cnf) {
+void Autarky::find_autarkies(SimplifiedCNF& cnf) {
     const double start_time = cpuTime();
+    std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb, "start find_autarkies");
+
     s.set_verbosity(0);
     s.new_vars(cnf.nVars()); // orig set of vars
 
@@ -142,8 +144,8 @@ void Autarky::do_autarky(SimplifiedCNF& cnf) {
 
     uint32_t autaries = 0;
     uint32_t tot_autarkies = 0;
-    bool found_autarky = true;
-    while(found_autarky) {
+    vector<Lit> autarkies;
+    while(true) {
         auto ret = s.solve();
         assert(ret != l_Undef);
         if (ret == l_False) break;
@@ -158,14 +160,25 @@ void Autarky::do_autarky(SimplifiedCNF& cnf) {
             if (model[l.var()] == l_True)
                 autarky_vars.push_back(i);
         }
+        verb_print(2, "[autarky] Found autarky of size: " << autarky_vars.size());
         for(const auto& v: autarky_vars) {
             tot_autarkies++;
-            verb_print(2, "Found autarky var: " << v+1 << " val: " << model[v]);
             const Lit l = Lit(v, model[v] == l_False);
             s.add_clause({l});
             cnf.add_clause({l});
+            autarkies.push_back(l);
         }
     }
-    verb_print(1, "[arjun] Found " << autaries << " autarkies. Total autarky vars: " << tot_autarkies
-        << " T: " << fixed << setprecision(2) << (cpuTime() - start_time));
+
+    if (cnf.get_need_aig()) {
+        cnf.add_fixed_values(autarkies);
+        auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0, "end find_autarkies");
+        verb_print(1, COLRED "[autarky] Done. do_autarky"
+            << " defined: " << to_define.size() - to_define2.size()
+            << " still to define: " << to_define2.size()
+            << " T: " << (cpuTime() - start_time));
+    } else {
+        verb_print(1, "[arjun] Found " << autaries << " autarkies. Total autarky vars: " << tot_autarkies
+            << " T: " << fixed << setprecision(2) << (cpuTime() - start_time));
+    }
 }
