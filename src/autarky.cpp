@@ -184,8 +184,10 @@ void Autarky::find_autarkies(SimplifiedCNF& cnf) {
         cnf.add_fixed_values(autarkies);
         auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0, "end find_autarkies");
         verb_print(1, COLRED "[autarky] Done. do_autarky"
+            << " found autarkies: " << autaries
             << " defined: " << to_define.size() - to_define2.size()
             << " still to define: " << to_define2.size()
+            << " T-out: " << (timeout ? "Y" : "N")
             << " T: " << (cpuTime() - start_time));
     } else {
         verb_print(1, COLRED "[autarky] Found autarkies: " << autaries
