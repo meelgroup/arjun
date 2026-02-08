@@ -911,6 +911,7 @@ public:
     const auto& get_orig_clauses() const { return orig_clauses; }
     const auto& get_opt_sampl_vars() const { return opt_sampl_vars; }
     const auto& get_backbone_done() const { return backbone_done; }
+    bool synth_done() const;
     bool is_projected() const { return proj; }
 
     template<class T>

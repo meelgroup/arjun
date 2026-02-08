@@ -285,35 +285,35 @@ void do_synthesis() {
     check_cnf_sat(cnf);
     cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
     cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
-    if (do_synth_bve) {
+    if (do_synth_bve && !cnf.synth_done()) {
         /* simp_conf.bve_too_large_resolvent = -1; */
         cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-1-simplified_cnf.aig");
     }
 
-    if (do_unate) {
+    if (do_unate && !cnf.synth_done()) {
         arjun->standalone_unate(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-3-unsat_unate.aig");
     }
 
-    if (etof_conf.do_autarky) {
+    if (etof_conf.do_autarky && !cnf.synth_done()) {
         arjun->standalone_autarky(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-0-autarky.aig");
     }
 
-    if (etof_conf.do_extend_indep) {
+    if (etof_conf.do_extend_indep && !cnf.synth_done()) {
         arjun->standalone_unsat_define(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-2-extend_synth.aig");
+        cnf.simplify_aigs(conf.verb);
     }
 
-    if (do_minim_indep) {
+    if (do_minim_indep && !cnf.synth_done()) {
         arjun->standalone_backward_round_synth(cnf, mconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-4-minim_idep_synt.aig");
+        cnf.simplify_aigs(conf.verb);
     }
 
-    cnf.simplify_aigs(conf.verb);
-    cnf.simplify_aigs(conf.verb);
-    cnf = arjun->standalone_manthan(cnf, mconf);
+    if (!cnf.synth_done()) cnf = arjun->standalone_manthan(cnf, mconf);
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");
     if (!conf.debug_synth.empty()) {
         auto final_cnf = cnf;

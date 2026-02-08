@@ -1524,6 +1524,15 @@ DLL_PUBLIC bool SimplifiedCNF::check_orig_sampl_vars_undefined() const {
     return true;
 }
 
+DLL_PUBLIC bool SimplifiedCNF::synth_done() const {
+    if (!need_aig) return true;
+    for(uint32_t v = 0; v < defs.size(); v++) {
+        if (orig_sampl_vars.count(v)) continue;
+        if (!defined(v)) return false;
+    }
+    return true;
+}
+
 DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
     check_cnf_sampl_sanity();
 
