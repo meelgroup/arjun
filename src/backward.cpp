@@ -437,7 +437,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     }
 
     // set up interpolant
-    Interpolant interp(conf);
+    Interpolant interp(conf, cnf.nVars());
     interp.solver = solver.get();
     interp.fill_picolsat(orig_num_vars);
     interp.fill_var_to_indic(var_to_indic);
@@ -531,8 +531,10 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
 
     if (conf.verb >= 1) {
         solver->print_stats();
-        for(const auto& [v, aig]: interp.get_defs()) {
-            assert(aig != nullptr);
+        for(uint32_t v = 0; v < interp.get_defs().size(); v++) {
+            auto& aig = interp.get_defs()[v];
+            if (aig == nullptr) continue;
+
             set<uint32_t> dep_vars;
             AIG::get_dependent_vars(aig, dep_vars, v);
             vector<Lit> deps_lits; deps_lits.reserve(dep_vars.size());
@@ -541,7 +543,11 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
         }
     }
 
-    for(const auto& [v, aig]: interp.get_defs()) assert(input.count(v) == 0);
+    for(uint32_t v = 0; v < cnf.nVars(); v++) {
+        const auto& aig = interp.get_defs()[v];
+        if (aig == nullptr) continue;
+        assert(input.count(v) == 0);
+    }
     cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);
     cnf.set_after_backward_round_synth();
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end backward_round_synth");

@@ -43,12 +43,11 @@ using namespace ArjunInt;
 using namespace ArjunNS;
 
 struct Extend {
-    Extend(const Config& _conf) : interp(_conf), conf(_conf) {}
+    Extend(const Config& _conf) : conf(_conf) {}
     ~Extend() = default;
 
     void add_all_indics_except(const set<uint32_t>& except);
     std::unique_ptr<SATSolver> solver;
-    Interpolant interp;
     uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
 
     //assert indic[var] to TRUE to force var==var+orig_num_vars

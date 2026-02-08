@@ -184,7 +184,6 @@ public:
     // Key for CSE: (type, var, neg, left_ptr, right_ptr)
     using AIGKey = std::tuple<AIGT, uint32_t, bool, aig_ptr, aig_ptr>;
 
-    static aig_ptr simplify(aig_ptr aig);
 
     static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, const aig_ptr& b) {
         assert(l != nullptr);
@@ -211,12 +210,17 @@ public:
         helper(aig_orig);
     }
 
-    template<typename T>
-    static std::vector<aig_ptr> deep_clone_set(const T& aigs) {
+    static std::vector<aig_ptr> deep_clone_vec(const std::vector<aig_ptr>& aigs) {
         std::vector<aig_ptr> ret;
         std::map<aig_ptr, aig_ptr> cache;
         ret.reserve(aigs.size());
-        for (auto& aig : aigs) ret.push_back(deep_clone(aig, cache));
+        for (auto& aig : aigs) {
+            if (aig == nullptr) {
+                ret.push_back(nullptr);
+                continue;
+            }
+            ret.push_back(deep_clone(aig, cache));
+        }
         return ret;
     }
 
@@ -320,13 +324,19 @@ public:
         cache[aig] = result;
         return result;
     }
+    static size_t count_aig_nodes(const aig_ptr& aig);
+    static void simplify_aigs(uint32_t verb, std::vector<aig_ptr>& defs);
+    static aig_ptr simplify_aig(aig_ptr aig);
 
     friend std::ostream& operator<<(std::ostream& out, const aig_ptr& aig);
     friend class AIGManager;
     friend class SimplifiedCNF;
+
 private:
+    static aig_ptr simplify(aig_ptr aig);
     static aig_ptr simplify(aig_ptr aig, std::map<aig_ptr, aig_ptr>& cache);
     static aig_ptr simplify_cse(aig_ptr aig, std::map<AIGKey, aig_ptr>& cse_map, std::map<aig_ptr, aig_ptr>& cache);
+    static void count_aig_nodes(const aig_ptr& aig, std::set<aig_ptr>& counted);
 
     AIGT type = AIGT::t_const;
     static constexpr uint32_t none_var = std::numeric_limits<uint32_t>::max();
@@ -879,7 +889,7 @@ public:
         } else {
             after_backward_round_synth = other.after_backward_round_synth;
             aig_mng = other.aig_mng;
-            defs = AIG::deep_clone_set(other.defs);
+            defs = AIG::deep_clone_vec(other.defs);
             orig_clauses = other.orig_clauses;
             orig_sampl_vars = other.orig_sampl_vars;
             orig_sampl_vars_set = other.orig_sampl_vars_set;
@@ -1172,7 +1182,7 @@ public:
 
     std::vector<CMSat::lbool> extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed = false) const;
 
-    void map_aigs_to_orig(const std::map<uint32_t, aig_ptr>& aigs, const uint32_t max_num_vars, const std::map<uint32_t, uint32_t>* back_map = nullptr);
+    void map_aigs_to_orig(const std::vector<aig_ptr>& aigs, const uint32_t max_num_vars, const std::map<uint32_t, uint32_t>* back_map = nullptr);
 
     SimplifiedCNF get_cnf(
             std::unique_ptr<CMSat::SATSolver>& solver,
@@ -1234,11 +1244,12 @@ public:
         return defs[v];
     }
     void clear_orig_sampl_defs();
-    void simplify_aigs(const uint32_t verb = 0);
-    size_t count_aig_nodes(const aig_ptr& aig) const;
+    void simplify_aigs(const uint32_t verb = 0) {
+        assert(need_aig);
+        AIG::simplify_aigs(verb, defs);
+    }
 
 private:
-    static void count_aig_nodes(const aig_ptr& aig, std::set<aig_ptr>& counted);
     bool after_backward_round_synth = false;
     bool need_aig = false;
     std::vector<std::vector<CMSat::Lit>> clauses;

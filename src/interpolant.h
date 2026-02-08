@@ -65,12 +65,13 @@ struct MyTracer : public CaDiCaL::Tracer {
 
 class Interpolant {
 public:
-    Interpolant(const ArjunInt::Config& _conf) :
+    Interpolant(const ArjunInt::Config& _conf, const uint32_t num_vars) :
         conf(_conf) {
         assert(ps == nullptr);
         ps = picosat_init();
         int pret = picosat_enable_trace_generation(ps);
         release_assert(pret != 0 && "Traces cannot be generated in PicoSAT");
+        defs.resize(num_vars, nullptr);
     }
     ~Interpolant() {
         picosat_reset(ps);
@@ -94,6 +95,6 @@ private:
     const ArjunInt::Config conf;
     uint32_t orig_num_vars;
     vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
-    map<uint32_t, std::shared_ptr<AIG>> defs; //definition of variables in terms of AIG. ORIGINAL number space
+    vector<aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space
 };
 

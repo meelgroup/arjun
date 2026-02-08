@@ -27,6 +27,7 @@
 #include <iomanip>
 
 #include "src/arjun.h"
+#include "src/interpolant.h"
 #include "src/time_mem.h"
 #include "extend.h"
 #include "constants.h"
@@ -98,6 +99,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     verb_print(2, "[extend] orig_num_vars: " << orig_num_vars << " nvars: " << solver->nVars());
 
     // set up interpolant
+    Interpolant interp(conf, cnf.nVars());
     interp.solver = solver.get();
     interp.fill_picolsat(orig_num_vars);
     interp.fill_var_to_indic(var_to_indic);
@@ -167,6 +169,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             interp.add_unit_cl({Lit(indic, false)});
             cnf.add_opt_sampl_var(test_var);
             input_vars.insert(test_var);
+            /* cout << "mem usage: " << memUsedTotal()/(1024*1024) << " MB" << endl; */
         } else if (ret == l_True) {
             // Optimisation: if we see both true and false, then it cannot be independent
             for(uint32_t v = 0; v < orig_num_vars; v++) {
@@ -185,8 +188,10 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
 
     if (conf.verb >= 2) solver->print_stats();
     if (conf.verb >= 3) {
-        for(const auto& [v, aig]: interp.get_defs()) {
-            assert(aig != nullptr);
+        for(uint32_t v = 0; v < cnf.nVars(); v++) {
+            auto& aig = interp.get_defs()[v];
+            if (aig == nullptr) continue;
+
             set<uint32_t> dep_vars;
             AIG::get_dependent_vars(aig, dep_vars, v);
             vector<Lit> deps_lits; deps_lits.reserve(dep_vars.size());

@@ -454,11 +454,10 @@ DLL_PUBLIC void SimplifiedCNF::add_fixed_values(const vector<Lit>& fixed) {
     }
 }
 
-
-DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const map<uint32_t, aig_ptr>& aigs_orig, const uint32_t max_num_vars,
+DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig, const uint32_t max_num_vars,
         const map<uint32_t, uint32_t>* back_map) {
     const auto new_to_orig_var = get_new_to_orig_var();
-    auto aigs = AIG::deep_clone_map(aigs_orig);
+    auto aigs = AIG::deep_clone_vec(aigs_orig);
     set<aig_ptr> visited;
     function<void(const aig_ptr&)> remap_aig = [&](const aig_ptr& aig) {
         if (aig == nullptr) return;
@@ -487,8 +486,11 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const map<uint32_t, aig_ptr>& ai
         exit(EXIT_FAILURE);
     };
 
-    for(auto& [v, aig]: aigs) remap_aig(aig);
-    for(auto& [v, aig]: aigs) {
+    for(auto& aig: aigs) remap_aig(aig);
+    for(uint32_t v = 0; v < defs.size(); ++v) {
+        auto& aig = defs[v];
+        if (aig == nullptr) continue;
+
         auto l = new_to_orig_var.at(v);
         assert(defs[l.var()] == nullptr && "Variable must not already have a definition");
         assert(orig_sampl_vars.count(l.var()) == 0 && "Original sampling var cannot have definition via unsat_define or backward_round_synth");
@@ -1959,13 +1961,13 @@ DLL_PUBLIC void SimplifiedCNF::clear_orig_sampl_defs() {
 }
 
 
-DLL_PUBLIC size_t SimplifiedCNF::count_aig_nodes(const aig_ptr& aig) const {
+DLL_PUBLIC size_t AIG::count_aig_nodes(const aig_ptr& aig) {
     set<aig_ptr> counted;
     count_aig_nodes(aig, counted);
     return counted.size();
 }
 
-void SimplifiedCNF::count_aig_nodes(const aig_ptr& aig, set<aig_ptr>& counted) {
+DLL_PUBLIC void AIG::count_aig_nodes(const aig_ptr& aig, set<aig_ptr>& counted) {
     if (!aig) return;
     if (counted.count(aig)) return;
     counted.insert(aig);
@@ -1975,7 +1977,23 @@ void SimplifiedCNF::count_aig_nodes(const aig_ptr& aig, set<aig_ptr>& counted) {
     }
 }
 
-DLL_PUBLIC void SimplifiedCNF::simplify_aigs(const uint32_t verb) {
+DLL_PUBLIC aig_ptr AIG::simplify_aig(aig_ptr aig) {
+    // Simplify AIG
+    {
+        map<aig_ptr, aig_ptr> cache;
+        aig = simplify(aig, cache);
+    }
+
+    // Perform CSE
+    {
+        map<AIGKey, aig_ptr> cse_map;
+        map<aig_ptr, aig_ptr> cache;
+        aig = simplify_cse(aig, cse_map, cache);
+    }
+    return aig;
+}
+
+DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
     const double my_time = cpuTime();
     size_t before;
     size_t after;
@@ -1983,19 +2001,20 @@ DLL_PUBLIC void SimplifiedCNF::simplify_aigs(const uint32_t verb) {
     {
         set<aig_ptr> counted;
         for(const auto& aig: defs) count_aig_nodes(aig, counted);
-       before = counted.size();
+        before = counted.size();
     }
 
-    // simplify
+    // simplify the AIGs
     {
         map<aig_ptr, aig_ptr> cache;
-        for(auto& aig: defs) aig = AIG::simplify(aig, cache);
+        for(auto& aig: defs) aig = simplify(aig, cache);
     }
 
+    // perform CSE
     {
-        map<AIG::AIGKey, aig_ptr> cse_map;
+        map<AIGKey, aig_ptr> cse_map;
         map<aig_ptr, aig_ptr> cache2;
-        for(auto& aig: defs) aig = AIG::simplify_cse(aig, cse_map, cache2);
+        for(auto& aig: defs) aig = simplify_cse(aig, cse_map, cache2);
     }
 
     //after calc
@@ -2064,7 +2083,6 @@ aig_ptr AIG::simplify(aig_ptr aig, map<aig_ptr, aig_ptr>& cache) {
         return node;
     };
 
-    // CSE for constants and literals
     if (aig->type == AIGT::t_const || aig->type == AIGT::t_lit) {
         return aig;
     }

@@ -376,12 +376,12 @@ void Manthan::fill_var_to_formula_with_backward() {
 bool Manthan::check_aig_dependency_cycles() const {
     // We need to copy these, so we don't accidentally update the original.
     // We deep copy them together in one go, to preserve e.g. cycles
-    std::map<uint32_t, aig_ptr> aigs;
+    vector<aig_ptr> aigs(cnf.nVars(), nullptr);
     for(const auto& y: to_define) {
         if (!var_to_formula.count(y)) continue;
         aigs[y] = var_to_formula.at(y).aig;
     }
-    auto aigs_copy = AIG::deep_clone_map(aigs);
+    auto aigs_copy = AIG::deep_clone_vec(aigs);
 
     SimplifiedCNF fcnf = cnf;
     fcnf.map_aigs_to_orig(aigs_copy, cnf.nVars(), &y_hat_to_y);
@@ -630,7 +630,7 @@ void Manthan::bve_and_substitute() {
         if (overall == nullptr) overall = aig_mng.new_const(true);
         if (sign) overall = AIG::new_not(overall);
 
-        f.aig = AIG::simplify(AIG::simplify(overall));
+        f.aig = AIG::simplify_aig(AIG::simplify_aig(overall));
         var_to_formula[y] = f;
     }
 
@@ -837,7 +837,7 @@ SimplifiedCNF Manthan::do_manthan() {
         << " DONE");
 
     // Build final CNF
-    map<uint32_t, aig_ptr> aigs;
+    vector<aig_ptr> aigs(cnf.nVars(), nullptr);
     for(const auto& y: to_define) {
         assert(var_to_formula.count(y));
         verb_print(3, "Final formula for " << y+1 << ":" << endl << var_to_formula[y]);
