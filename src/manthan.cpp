@@ -1080,6 +1080,8 @@ Lit Manthan::map_y_to_y_hat(const Lit& l) const {
 
 // Update dependency matrix to say that a depends on b
 void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
+    if (dependency_mat[a][b]) return;
+
     verb_print(3, a+1 << " depends on " << b+1);
     dependency_mat[a][b] = 1;
     // recursive update
