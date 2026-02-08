@@ -1977,20 +1977,33 @@ void SimplifiedCNF::count_aig_nodes(const aig_ptr& aig, set<aig_ptr>& counted) {
 
 DLL_PUBLIC void SimplifiedCNF::simplify_aigs(const uint32_t verb) {
     const double my_time = cpuTime();
-    set<aig_ptr> counted;
-    for(const auto& aig: defs) count_aig_nodes(aig, counted);
-    const size_t before = counted.size();
+    size_t before;
+    size_t after;
+    // before calc
+    {
+        set<aig_ptr> counted;
+        for(const auto& aig: defs) count_aig_nodes(aig, counted);
+       before = counted.size();
+    }
 
-    map<aig_ptr, aig_ptr> cache;
-    for(auto& aig: defs) aig = AIG::simplify(aig, cache);
+    // simplify
+    {
+        map<aig_ptr, aig_ptr> cache;
+        for(auto& aig: defs) aig = AIG::simplify(aig, cache);
+    }
 
-    map<AIG::AIGKey, aig_ptr> cse_map;
-    map<aig_ptr, aig_ptr> cache2;
-    for(auto& aig: defs) aig = AIG::simplify_cse(aig, cse_map, cache2);
+    {
+        map<AIG::AIGKey, aig_ptr> cse_map;
+        map<aig_ptr, aig_ptr> cache2;
+        for(auto& aig: defs) aig = AIG::simplify_cse(aig, cse_map, cache2);
+    }
 
-    counted.clear();
-    for(const auto& aig: defs) count_aig_nodes(aig, counted);
-    const size_t after = counted.size();
+    //after calc
+    {
+        set<aig_ptr> counted;
+        for(const auto& aig: defs) count_aig_nodes(aig, counted);
+        after = counted.size();
+    }
 
     if (verb >= 1) {
         cout << "c o [synth] AIG simplify: before " << before/1000 << "k nodes"
