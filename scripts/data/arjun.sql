@@ -6,6 +6,7 @@ CREATE TABLE data (
 
   timeout_t FLOAT,
   timeout_mem FLOAT NOT NULL,
+  timeout_call_full TEXT NOT NULL,
   timeout_call TEXT NOT NULL,
   page_faults INT NOT NULL,
   signal INT NOT NULL,

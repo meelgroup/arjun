@@ -3,6 +3,7 @@
 import os
 import sqlite3
 import re
+import subprocess
 
 
 def convert_to_cactus(fname, fname2):
@@ -173,7 +174,7 @@ for only_counted in [False, True]:
     extra = ""
     f.write("select \
         replace(dirname,'out-arjun-mc','') as dirname,\
-        replace(timeout_call,'././arjun_','') as call,\
+        timeout_call as call,\
         sum(mem_out) as 'mem out', \
         sum(signal == 11) as 'sigSEGV', \
         sum(signal == 6) as 'sigABRT', \
@@ -194,14 +195,18 @@ for only_counted in [False, True]:
         CAST(ROUND(avg(manthan_training_time), 2) AS REAL) as 'av-mant-tr-T',\
         CAST(ROUND(avg(manthan_repair_time), 2) AS REAL) as 'av-mant-rep-T',\
         CAST(ROUND(avg(manthan_time), 2) AS REAL) as 'av-manth-T',\
-        CAST(ROUND(avg(repairs/1000.0),0) AS INTEGER) as 'av repairsK',\
+        CAST(ROUND(avg(repairs),0) AS INTEGER) as 'av-repairs',\
         CAST(avg(manthan_defined) AS INTEGER) as 'av-manthan-def',\
         sum(fname is not null) as 'nfiles'\
         from data where dirname IN ("+dirs+") and arjun_sha1 IN ("+vers+") "+fname_like+" "+counted_req+"group by dirname order by solved asc")
 # CAST(ROUND(avg(manthan_sampling_time), 2) AS REAL) as 'avg-mant-samp-T',\
 # CAST(avg(repairs_failed) AS INTEGER) as 'avg-repairs-fail',\
 # CAST(avg(repairs) AS INTEGER) as 'avg-repairs',\
-  os.system("sqlite3 mydb.sql < gen_table.sql")
+  command = "sqlite3 mydb.sql < gen_table.sql"
+  p = subprocess.Popen(command, stderr=subprocess.STDOUT,stdout=subprocess.PIPE, shell=True)
+  output, _ = p.communicate()
+  for line in output.decode().splitlines():
+      print(line)
   os.unlink("gen_table.sql")
 
 # median table
@@ -276,7 +281,7 @@ if os.path.exists("run.png"):
 
 os.system("gnuplot "+gnuplotfn)
 os.system("epstopdf run.eps run.pdf")
-os.system("pdftoppm -png run.pdf run")
+os.system("pdftoppm -r 250 -png run.pdf run") # -r controls DPI, default 150
 print("okular run.eps")
 os.system("okular run.eps")
 

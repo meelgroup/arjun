@@ -161,6 +161,7 @@ def timeout_parse(fname):
     t = None
     signal = None
     mem = None
+    call_full = None
     call = None
     solver = None
     page_faults = None
@@ -176,23 +177,21 @@ def timeout_parse(fname):
             if "Maximum resident set size (kbytes)" in line:
                 mem = float(line.split()[5])/(1000) # get it in MB
             if "Command being timed" in line:
-                call= " ".join(line.split()[3:])
-                if "mc2022" in call:
-                    call = call.split("mc2022_")[0]
-                elif "mc2023" in call:
-                    call = call.split("mc2023_")[0]
-                else:
-                  call = " ".join(call.split()[:-1])
-
-                call = call.replace(" -t real", "")
-                if "doalarm 3600" in call:
-                  call = call.split("doalarm 3600")[1]
-
-                if "./arjun" in call:
+                call_full= " ".join(line.split()[3:])
+                call_full = " ".join(call_full.split()[:-1])
+                if "./arjun" in call_full:
                     solver = "arjun"
+                call_full = call_full.strip()
 
-                call = call.replace("././arjun ", "")
-                call = call.strip()
+
+    assert call_full is not None, "call should not be None, something went wrong with parsing call"
+    call = re.sub(r'arjun[^ ]* ', 'arjun', call_full)
+    call = re.sub(r'./doalarm -t real 3600 ', '', call)
+    call = re.sub(r'././', '', call)
+    call = re.sub(r'--verb .', '', call)
+    print("call_full: %s call: %s" % (call_full, call))
+    call = call.strip("\"")
+    call_full = call_full.strip("\"")
 
     assert mem is not None, "mem should not be None, something went wrong with parsing memory"
     assert t is not None, "t should not be None, something went wrong with parsing time"
@@ -200,14 +199,20 @@ def timeout_parse(fname):
       t = None
     if signal is None:
       signal = ""
-    return [t, mem, call, solver, page_faults, signal]
+    return [t, mem, call_full, call, solver, page_faults, signal]
+
+def is_number(value):
+    return isinstance(value, (int, float))
 
 
 def add(name, f):
     if name not in f or f[name] is None:
         return ","
     else:
-        return "%s," % (f[name])
+        if is_number(f[name]):
+            return "%s," % (f[name])
+        else:
+            return "\"%s\"," % (f[name])
 
 
 def fill_row(cols, f):
@@ -242,9 +247,10 @@ def read_file(fname):
     # print("Dealing with dir: %s fname: %s" % (dirname, full_fname))
 
     if ".timeout_" in fname:
-        timeout_t, timeout_mem, timeout_call, timeout_solver, page_faults, signal = timeout_parse(fname)
+        timeout_t, timeout_mem, timeout_call_full, timeout_call, timeout_solver, page_faults, signal = timeout_parse(fname)
         files[base]["timeout_t"] = timeout_t
         files[base]["timeout_mem"] = timeout_mem
+        files[base]["timeout_call_full"] = timeout_call_full
         files[base]["timeout_call"] = timeout_call
         files[base]["page_faults"] = page_faults
         files[base]["signal"] = signal
@@ -295,7 +301,7 @@ if __name__ == "__main__":
         read_file(f)
 
     with open("mydata.csv", "w") as out:
-        cols = "solver,dirname,fname,timeout_t,timeout_mem,timeout_call,page_faults,signal,arjun_sha1,sbva_sha1,cms_sha1,input_vars,start_to_define_vars,orig_total_vars,puura_time,puura_defined,extend_time,extend_defined,backward_time,backward_defined,manthan_sampling_time,manthan_training_time,manthan_repair_time,manthan_time,repairs,repairs_failed,manthan_defined,arjun_time,mem_out"
+        cols = "solver,dirname,fname,timeout_t,timeout_mem,timeout_call_full,timeout_call,page_faults,signal,arjun_sha1,sbva_sha1,cms_sha1,input_vars,start_to_define_vars,orig_total_vars,puura_time,puura_defined,extend_time,extend_defined,backward_time,backward_defined,manthan_sampling_time,manthan_training_time,manthan_repair_time,manthan_time,repairs,repairs_failed,manthan_defined,arjun_time,mem_out"
         out.write(cols+"\n")
         for _, f in files.items():
             toprint = fill_row(cols, f)
