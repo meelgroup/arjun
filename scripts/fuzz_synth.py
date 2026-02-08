@@ -56,7 +56,7 @@ def gen_fuzz_call_brummayer(fuzzer, fname):
     call = "{0} -s {1} > {2}".format(fuzzer, seed, fname)
 
     # if we want bigger CNFs
-    call = "{0} -s {1} -i 14 -I 30 > {2}".format(fuzzer, seed, fname)
+    # call = "{0} -s {1} -i 14 -I 30 > {2}".format(fuzzer, seed, fname)
 
     # if we want smaller CNFs
     # call = "{0} -s {1} -i 2 -I 4 > {2}".format(fuzzer, seed, fname)
