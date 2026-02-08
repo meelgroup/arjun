@@ -487,8 +487,8 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig
     };
 
     for(auto& aig: aigs) remap_aig(aig);
-    for(uint32_t v = 0; v < defs.size(); ++v) {
-        auto& aig = defs[v];
+    for(uint32_t v = 0; v < aigs.size(); ++v) {
+        auto& aig = aigs[v];
         if (aig == nullptr) continue;
 
         auto l = new_to_orig_var.at(v);
