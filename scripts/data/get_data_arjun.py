@@ -116,8 +116,20 @@ def find_arjun_time(fname):
               if match:
                 backward_time = float(match.group(1))
 
+            # temporarily parse the NON-done lines, in case we don't get done.
+            #  c o [manthan] rep:   1319   loops:   1319   avg rep/loop:  1.0   avg confl sz:  12.86   avg needs rep sz:   1.76   cache-hit:  53%   T:    1.83   rep/s: 718.8093
+            if "c o [manthan] rep:" in line:
+              match = re.search(r'T:\s*([\d.]+)', line)
+              if match:
+                manthan_time = float(match.group(1))
+                # print("manthan time: %d" % manthan_time)
+              match = re.search(r'rep:\s*([\d.]+)', line)
+              if match:
+                repairs = int(match.group(1))
+                # print("manthan repairs: %d" % repairs)
+
             # c o [manthan] Done.  sampl T: 3.72 train T: 44.99 repair T: 0.71 repairs: 75 repair failed: 0 defined: 158 still to define: 0 T: 51.05
-            if manthan_time is None and "c o [manthan] Done." in line:
+            if "c o [manthan] Done." in line:
               match = re.search(r'sampl T:\s*([\d.]+)', line)
               if match:
                 manthan_sampling_time = float(match.group(1))
@@ -307,4 +319,4 @@ if __name__ == "__main__":
             toprint = fill_row(cols, f)
             out.write(toprint+"\n")
 
-    os.system("sqlite3 mydb.sqlte < arjun.sql")
+    os.system("sqlite3 mydb.sqlite < arjun.sql")
