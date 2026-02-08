@@ -87,7 +87,9 @@ def generate_todos():
     # sharpsat: out-arjun-6318929.pbs101-7
 
     only_dirs = [
-        "out-synth-984148"
+        # "out-synth-984148" # bug in sibFPE for oracle, autarkies
+        "out-synth-984881-" # fix bug in sibFPE, autarkies
+
     ]
     # only_dirs = ["out-synth-6828273"]
     # not_calls = ["--minimize 0 ", "--bve 0"]
@@ -178,27 +180,27 @@ for only_counted in [False, True]:
         sum(signal == 14) as 'sigALRM', \
         sum(signal == 8) as 'sigFPE', \
         CAST(ROUND(avg(timeout_mem), 0) AS INTEGER) as 'av memKB',\
-        CAST(ROUND(avg(repairs/1000.0),0) AS INTEGER) as 'av repairsK',\
         sum(arjun_time is not null) as 'solved',\
         CAST(ROUND(sum(coalesce(arjun_time, 3600))/COUNT(*),0) AS INTEGER) as 'PAR2',\
-        CAST(avg(input_vars) AS INTEGER) as 'avg-inp',\
-        CAST(avg(start_to_define_vars) AS INTEGER) as 'avg-to-def',\
-        CAST(avg(orig_total_vars) AS INTEGER) as 'avg-vars',\
-        CAST(ROUND(avg(puura_time), 2) AS REAL) as 'avg-puura-T',\
-        CAST(avg(puura_defined) AS INTEGER) as 'avg-puura-def',\
-        CAST(ROUND(avg(extend_time), 2) AS REAL) as 'avg-extend-T',\
-        CAST(avg(extend_defined) AS INTEGER) as 'avg-extend-def',\
-        CAST(ROUND(avg(backward_time), 2) AS REAL) as 'avg-backw-T',\
-        CAST(avg(backward_defined) AS INTEGER) as 'avg-backw-def',\
-        CAST(ROUND(avg(manthan_sampling_time), 2) AS REAL) as 'avg-mant-samp-T',\
-        CAST(ROUND(avg(manthan_training_time), 2) AS REAL) as 'avg-mant-tr-T',\
-        CAST(ROUND(avg(manthan_repair_time), 2) AS REAL) as 'avg-mant-rep-T',\
-        CAST(ROUND(avg(manthan_time), 2) AS REAL) as 'avg-manth-T',\
-        CAST(avg(repairs) AS INTEGER) as 'avg-repairs',\
-        CAST(avg(repairs_failed) AS INTEGER) as 'avg-repairs-fail',\
-        CAST(avg(manthan_defined) AS INTEGER) as 'avg-manthan-def',\
+        CAST(avg(input_vars) AS INTEGER) as 'av-inp',\
+        CAST(avg(start_to_define_vars) AS INTEGER) as 'av-to-def',\
+        CAST(avg(orig_total_vars) AS INTEGER) as 'av-vars',\
+        CAST(ROUND(avg(puura_time), 2) AS REAL) as 'av-puura-T',\
+        CAST(avg(puura_defined) AS INTEGER) as 'av-puura-def',\
+        CAST(ROUND(avg(extend_time), 2) AS REAL) as 'av-extend-T',\
+        CAST(avg(extend_defined) AS INTEGER) as 'av-extend-def',\
+        CAST(ROUND(avg(backward_time), 2) AS REAL) as 'av-backw-T',\
+        CAST(avg(backward_defined) AS INTEGER) as 'av-backw-def',\
+        CAST(ROUND(avg(manthan_training_time), 2) AS REAL) as 'av-mant-tr-T',\
+        CAST(ROUND(avg(manthan_repair_time), 2) AS REAL) as 'av-mant-rep-T',\
+        CAST(ROUND(avg(manthan_time), 2) AS REAL) as 'av-manth-T',\
+        CAST(ROUND(avg(repairs/1000.0),0) AS INTEGER) as 'av repairsK',\
+        CAST(avg(manthan_defined) AS INTEGER) as 'av-manthan-def',\
         sum(fname is not null) as 'nfiles'\
         from data where dirname IN ("+dirs+") and arjun_sha1 IN ("+vers+") "+fname_like+" "+counted_req+"group by dirname order by solved asc")
+# CAST(ROUND(avg(manthan_sampling_time), 2) AS REAL) as 'avg-mant-samp-T',\
+# CAST(avg(repairs_failed) AS INTEGER) as 'avg-repairs-fail',\
+# CAST(avg(repairs) AS INTEGER) as 'avg-repairs',\
   os.system("sqlite3 mydb.sql < gen_table.sql")
   os.unlink("gen_table.sql")
 
