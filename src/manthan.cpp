@@ -1174,6 +1174,7 @@ void Manthan::order_vars() {
 //
 // Finds the order that minimizes dependencies that need to be broken by BVE system
 void Manthan::bve_order() {
+    const double my_time = cpuTime();
     assert(y_order.empty());
     auto depends_on = dependency_mat;
 
@@ -1243,9 +1244,8 @@ void Manthan::bve_order() {
         already_fixed.insert(smallest_var);
         y_order.push_back(smallest_var);
     }
-    cout << "[manthan] BVE order total breaks: " << total_break << endl;
+    verb_print(2, "[manthan] BVE order total breaks: " << total_break << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
     assert(y_order.size() == to_define_full.size());
-
 }
 
 void Manthan::find_better_ctx_maxsat(sample& ctx) {
