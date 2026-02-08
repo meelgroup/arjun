@@ -570,12 +570,9 @@ aig_ptr Manthan::one_level_substitute(Lit l, const uint32_t v, map<uint32_t, aig
 // Prefer FALSE, i.e. it should be false unless we have evidence otherwise
 // Hence, we only care about clauses where v appears positively
 void Manthan::bve_and_substitute() {
-    auto rev_order = y_order;
-    std::reverse(rev_order.begin(), rev_order.end());
-
-    for(const auto& v: rev_order) {
-        if (!to_define.count(v)) continue;
-        assert(var_to_formula.count(v) == 0);
+    for(const auto& y: y_order) {
+        if (!to_define.count(y)) continue;
+        assert(var_to_formula.count(y) == 0);
 
         FHolder::Formula f;
         map<uint32_t, aig_ptr> transformed;
@@ -585,14 +582,14 @@ void Manthan::bve_and_substitute() {
         uint32_t num_neg = 0;
         for(const auto& cl: cnf.get_clauses()) {
             for(const auto& l: cl) {
-                if (l.var() == v) {
+                if (l.var() == y) {
                     if (l.sign()) num_neg++;
                     else num_pos++;
                     break;
                 }
             }
         }
-        verb_print(2, "[manthan] bve var " << setw(5) << v+1
+        verb_print(2, "[manthan] bve var " << setw(5) << y+1
             << " pos occur: " << setw(6) << num_pos
             << " neg occur: " << setw(6) << num_neg);
 
@@ -602,7 +599,7 @@ void Manthan::bve_and_substitute() {
         for(const auto& cl: cnf.get_clauses()) {
             bool todo = false;
             for(const auto& l: cl) {
-                if (l.var() == v && l.sign() == sign) {
+                if (l.var() == y && l.sign() == sign) {
                     todo = true;
                     break;
                 }
@@ -610,17 +607,17 @@ void Manthan::bve_and_substitute() {
             if (!todo) continue;
             auto current = aig_mng.new_const(true);
             for(const auto& l: cl) {
-                if (l.var() == v) continue;
+                if (l.var() == y) continue;
                 aig_ptr aig = nullptr;
-                if (later_in_order(v, l.var())) {
+                if (later_in_order(y, l.var())) {
                     aig = AIG::new_lit(~l);
-                    set_depends_on(v, l);
+                    set_depends_on(y, l);
                     current = AIG::new_and(current, aig);
-                } else if (v == l.var()) {
+                } else if (y == l.var()) {
                     assert(false);
                 } else {
                     if (mconf.bve_deep_substitute) {
-                        aig = one_level_substitute(l, v, transformed);
+                        aig = one_level_substitute(l, y, transformed);
                         current = AIG::new_and(current, aig);
                     } else {
                         //keep current as-is, since we AND with TRUE
@@ -634,7 +631,7 @@ void Manthan::bve_and_substitute() {
         if (sign) overall = AIG::new_not(overall);
 
         f.aig = AIG::simplify(AIG::simplify(overall));
-        var_to_formula[v] = f;
+        var_to_formula[y] = f;
     }
 
     for(const auto& v: y_order) {
@@ -1180,18 +1177,18 @@ void Manthan::bve_order() {
 
     for(const auto& v: to_define) {
         // For optimizing which side of the BVE to take
-        /* uint32_t num_pos = 0; */
-        /* uint32_t num_neg = 0; */
-        /* for(const auto& cl: cnf.get_clauses()) { */
-        /*     for(const auto& l: cl) { */
-        /*         if (l.var()) { */
-        /*             if (l.sign()) num_neg++; */
-        /*             else num_pos++; */
-        /*         } */
-        /*     } */
-        /* } */
-        /* bool sign = (num_pos >= num_neg); */
-        bool sign = false;
+        uint32_t num_pos = 0;
+        uint32_t num_neg = 0;
+        for(const auto& cl: cnf.get_clauses()) {
+            for(const auto& l: cl) {
+                if (l.var()) {
+                    if (l.sign()) num_neg++;
+                    else num_pos++;
+                }
+            }
+        }
+        bool sign = (num_pos >= num_neg);
+        /* bool sign = false; */
         for(const auto& cl: cnf.get_clauses()) {
             bool todo = false;
             for(const auto& l: cl) {
