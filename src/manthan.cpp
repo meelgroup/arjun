@@ -570,6 +570,29 @@ aig_ptr Manthan::one_level_substitute(Lit l, const uint32_t v, map<uint32_t, aig
 // Prefer FALSE, i.e. it should be false unless we have evidence otherwise
 // Hence, we only care about clauses where v appears positively
 void Manthan::bve_and_substitute() {
+    const double start_time = cpuTime();
+    map<Lit, aig_ptr> lit_to_aig;
+
+    auto get_aig = [&](const Lit l) {
+      if (lit_to_aig.count(l)) return lit_to_aig.at(l);
+      aig_ptr aig = AIG::new_lit(l);
+      lit_to_aig[l] = aig;
+      return aig;
+    };
+    vector<vector<uint32_t>> lit_to_cls(cnf.nVars()*2);
+    for(uint32_t i = 0; i < cnf.nVars(); i++) {
+        lit_to_cls[Lit(i, false).toInt()].clear();
+        lit_to_cls[Lit(i, true).toInt()].clear();
+    }
+    for(uint32_t i = 0; i < cnf.get_clauses().size(); i++) {
+        const auto& cl = cnf.get_clauses()[i];
+        for(const auto& l: cl) {
+            if (!to_define.count(l.var())) continue; // no need for these
+            lit_to_cls[l.toInt()].push_back(i);
+        }
+    }
+
+    uint32_t num_done = 0;
     for(const auto& y: y_order) {
         if (!to_define.count(y)) continue;
         assert(var_to_formula.count(y) == 0);
@@ -596,7 +619,8 @@ void Manthan::bve_and_substitute() {
         const bool sign = (num_pos >= num_neg);
         /* const bool sign = false; */
         aig_ptr overall = nullptr;
-        for(const auto& cl: cnf.get_clauses()) {
+        for(const auto& at: lit_to_cls[Lit(y, sign).toInt()]) {
+            const auto& cl = cnf.get_clauses()[at];
             bool todo = false;
             for(const auto& l: cl) {
                 if (l.var() == y && l.sign() == sign) {
@@ -605,33 +629,44 @@ void Manthan::bve_and_substitute() {
                 }
             }
             if (!todo) continue;
-            auto current = aig_mng.new_const(true);
+            aig_ptr current = nullptr; //aig_mng.new_const(true);
             for(const auto& l: cl) {
                 if (l.var() == y) continue;
                 aig_ptr aig = nullptr;
                 if (later_in_order(y, l.var())) {
-                    aig = AIG::new_lit(~l);
+                    aig = get_aig(~l);
                     set_depends_on(y, l);
-                    current = AIG::new_and(current, aig);
+                    if (current == nullptr) current = aig;
+                    else current = AIG::new_and(current, aig);
                 } else if (y == l.var()) {
                     assert(false);
                 } else {
                     if (mconf.bve_deep_substitute) {
+                        assert(false && "not tested");
                         aig = one_level_substitute(l, y, transformed);
-                        current = AIG::new_and(current, aig);
+                        if (current == nullptr) current = aig;
+                        else current = AIG::new_and(current, aig);
                     } else {
                         //keep current as-is, since we AND with TRUE
                     }
                 }
             }
+            if (current == nullptr) current = aig_mng.new_const(true);
             if (overall == nullptr) overall = current;
             else overall = AIG::new_or(overall, current);
         }
         if (overall == nullptr) overall = aig_mng.new_const(true);
         if (sign) overall = AIG::new_not(overall);
 
-        f.aig = AIG::simplify_aig(AIG::simplify_aig(overall));
+        f.aig = overall;
         var_to_formula[y] = f;
+        num_done++;
+        if (num_done % 50 == 49) {
+            verb_print(1, "[manthan] done with BVE funs: " << setw(6) << num_done
+                << " var/s: " << setw(6) << fixed << setprecision(2) << num_done/(cpuTime()-start_time)
+                << " T: " << setw(5) << (cpuTime()-start_time)
+                << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
+        }
     }
 
     for(const auto& v: y_order) {
@@ -1143,8 +1178,6 @@ void Manthan::learn_order() {
     }
 
     assert(y_order.size() == to_define_full.size());
-    verb_print(1, "[manthan] Fixed order. T: " << setprecision(2) << fixed << (cpuTime() - my_time)
-            << " Final order size: " << y_order.size());
 }
 
 void Manthan::order_vars() {
