@@ -36,7 +36,7 @@ def convert_to_cactus(fname, fname2):
 
 def get_versions():
     vers = []
-    con = sqlite3.connect("mydb.sql")
+    con = sqlite3.connect("mydb.sqlite")
     cur = con.cursor()
     res = cur.execute("""
                       SELECT arjun_sha1
@@ -51,7 +51,7 @@ def get_versions():
 
 def get_dirs(ver : str):
     ret = []
-    con = sqlite3.connect("mydb.sql")
+    con = sqlite3.connect("mydb.sqlite")
     cur = con.cursor()
     res = cur.execute("SELECT dirname, timeout_call FROM data where arjun_sha1='"+ver+"' group by dirname")
     for a in res:
@@ -139,7 +139,7 @@ def generate_todos():
                 f.write(".mode csv\n");
                 f.write(".output "+fname+"\n")
                 f.write("select arjun_time from data where dirname='"+dir+"' and arjun_sha1='"+ver+"'\n and arjun_time is not NULL "+fname_like)
-            os.system("sqlite3 mydb.sql < gencsv.sql")
+            os.system("sqlite3 mydb.sqlite < gencsv.sql")
             os.unlink("gencsv.sql")
 
             fname2 = fname + ".gnuplotdata"
@@ -202,7 +202,7 @@ for only_counted in [False, True]:
 # CAST(ROUND(avg(manthan_sampling_time), 2) AS REAL) as 'avg-mant-samp-T',\
 # CAST(avg(repairs_failed) AS INTEGER) as 'avg-repairs-fail',\
 # CAST(avg(repairs) AS INTEGER) as 'avg-repairs',\
-  command = "sqlite3 mydb.sql < gen_table.sql"
+  command = "sqlite3 mydb.sqlite < gen_table.sql"
   p = subprocess.Popen(command, stderr=subprocess.STDOUT,stdout=subprocess.PIPE, shell=True)
   output, _ = p.communicate()
   for line in output.decode().splitlines():
@@ -238,7 +238,7 @@ if True:
       #     where dirname IN ('"+dir+"') and arjun_sha1 IN ('"+ver+"') \
       #     and "+col+" is not null "+fname_like+" and "+col+">0) / 2) as median_"+col+" \
       # ")
-    os.system("sqlite3 mydb.sql < gen_table.sql")
+    os.system("sqlite3 mydb.sqlite < gen_table.sql")
     os.unlink("gen_table.sql")
 
 gnuplotfn = "run-all.gnuplot"

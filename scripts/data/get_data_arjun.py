@@ -307,4 +307,4 @@ if __name__ == "__main__":
             toprint = fill_row(cols, f)
             out.write(toprint+"\n")
 
-    os.system("sqlite3 mydb.sql < arjun.sql")
+    os.system("sqlite3 mydb.sqlte < arjun.sql")
