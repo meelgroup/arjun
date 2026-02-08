@@ -42,13 +42,23 @@ using namespace CMSat;
 using namespace ArjunInt;
 using namespace ArjunNS;
 
-struct Extend {
+class Extend {
+public:
     Extend(const Config& _conf) : conf(_conf) {}
-    ~Extend() = default;
+    void extend_round(SimplifiedCNF& cnf);
+    void extend_synth(SimplifiedCNF& cnf);
 
-    void add_all_indics_except(const set<uint32_t>& except);
-    std::unique_ptr<SATSolver> solver;
-    uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
+private:
+    void fill_solver(const SimplifiedCNF& cnf);
+    void get_incidence();
+    vector<uint32_t> incidence;
+
+    template<class T>
+    void fill_assumptions_extend(
+        vector<Lit>& assumptions,
+        const T& indep);
+
+    Config conf;
 
     //assert indic[var] to TRUE to force var==var+orig_num_vars
     vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
@@ -56,16 +66,7 @@ struct Extend {
     vector<Lit> dont_elim;
     vector<char> seen;
 
-    template<class T>
-    void fill_assumptions_extend(
-        vector<Lit>& assumptions,
-        const T& indep);
-    void extend_round(SimplifiedCNF& cnf);
-
-    void unsat_define(SimplifiedCNF& cnf);
-    Config conf;
-
-    void fill_solver(const SimplifiedCNF& cnf);
-    void get_incidence();
-    vector<uint32_t> incidence;
+    void add_all_indics_except(const set<uint32_t>& except);
+    std::unique_ptr<SATSolver> solver;
+    uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
 };

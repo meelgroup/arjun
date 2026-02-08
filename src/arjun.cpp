@@ -131,7 +131,7 @@ DLL_PUBLIC void Arjun::standalone_backward_round_synth(SimplifiedCNF& cnf, const
 
 DLL_PUBLIC void Arjun::standalone_unsat_define(SimplifiedCNF& cnf) {
     Extend extend(arjdata->conf);
-    extend.unsat_define(cnf);
+    extend.extend_synth(cnf);
 }
 
 DLL_PUBLIC void Arjun::standalone_extend_sampl_set(SimplifiedCNF& cnf)
@@ -493,7 +493,7 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig
 
         auto l = new_to_orig_var.at(v);
         assert(defs[l.var()] == nullptr && "Variable must not already have a definition");
-        assert(orig_sampl_vars.count(l.var()) == 0 && "Original sampling var cannot have definition via unsat_define or backward_round_synth");
+        assert(orig_sampl_vars.count(l.var()) == 0 && "Original sampling var cannot have definition via extend_synth or backward_round_synth");
         if (l.sign()) defs[l.var()] = AIG::new_not(aig);
         else defs[l.var()] = aig;
     }
@@ -1530,7 +1530,7 @@ DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
     if (!need_aig) return true;
     release_assert(orig_sampl_vars_set && "If need_aig, orig_sampl_vars_set must be set");
     release_assert(sampl_vars_set);
-    release_assert(sampl_vars.size() <= opt_sampl_vars.size() && "We add to opt_sampl_vars via unsat_define in extend.cpp");
+    release_assert(sampl_vars.size() <= opt_sampl_vars.size() && "We add to opt_sampl_vars via extend_synth in extend.cpp");
     release_assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
 
     check_orig_sampl_vars_undefined();

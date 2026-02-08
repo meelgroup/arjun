@@ -41,7 +41,7 @@ def find_arjun_time(fname):
 
     # parsing these:
     # c o [puura] Done. final vars: 1868 final cls: 5184 defined: 1642 still to define: 1654 T: 0.77
-    # c o [extend] Done. unsat_define  defined: 834 still to define: 820 T: 0.38
+    # c o [extend] Done. extend_synth  defined: 834 still to define: 820 T: 0.38
     # c o [backward] Done. backward_round_synth finished  TR: 158 UN: 0 FA: 662 defined: 662 still to define: 158 T: 0.73
     # c o [manthan] Done.  sampl T: 3.72 train T: 44.99 repair T: 0.71 repairs: 75 repair failed: 0 defined: 158 still to define: 0 T: 51.05
 
@@ -98,7 +98,7 @@ def find_arjun_time(fname):
               if match:
                 puura_time = float(match.group(1))
 
-            # c o [extend] Done. unsat_define  defined: 834 still to define: 820 T: 0.38
+            # c o [extend] Done. extend_synth  defined: 834 still to define: 820 T: 0.38
             if extend_time is None and "c o [extend] Done." in line:
               match = re.search(r'defined:\s*(\d+)', line)
               if match:

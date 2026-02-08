@@ -78,10 +78,10 @@ void Extend::add_all_indics_except(const set<uint32_t>& except) {
     seen.resize(indic_to_var.size()*2, 0);
 }
 
-void Extend::unsat_define(SimplifiedCNF& cnf) {
+void Extend::extend_synth(SimplifiedCNF& cnf) {
     const double my_time = cpuTime();
     assert(cnf.get_need_aig() && cnf.defs_invariant());
-    auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start unsat_define");
+    auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start extend_synth");
 
     double start_round_time = cpuTime();
     fill_solver(cnf);
@@ -114,7 +114,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     if (unknown.empty()) return;
 
     sort_unknown(unknown, incidence);
-    verb_print(1,"[arjun] Start unknown size: " << unknown.size());
+    verb_print(1,"[extend] Start unknown size: " << unknown.size());
     uint32_t num_sat = 0;
     uint32_t num_unknown = 0;
     set<uint32_t> unknown_set(unknown.begin(), unknown.end());
@@ -124,7 +124,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     uint32_t num_unsat = 0;
     while(!unknown.empty()) {
         if (num_done % 100 == 99) {
-            verb_print(1, "[padoa] done: " << setw(4) << num_done
+            verb_print(1, "[extend] done: " << setw(4) << num_done
                     << " unsat: " << setw(4) << num_unsat
                     << " left: " << setw(4) << unknown.size()
                     << " T: " << std::setprecision(2) << std::fixed << setw(6)
@@ -155,9 +155,9 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
         ret = solver->solve(&assumptions);
         num_done++;
 
-        if (ret == l_False) verb_print(5, "[arjun] extend solve(): False");
-        else if (ret == l_True) {verb_print(5, "[arjun] extend solve(): True");num_sat++;}
-        else if (ret == l_Undef) {verb_print(5, "[arjun] extend solve(): Undef"); num_unknown++;}
+        if (ret == l_False) verb_print(5, "[extend] extend solve(): False");
+        else if (ret == l_True) {verb_print(5, "[extend] extend solve(): True");num_sat++;}
+        else if (ret == l_Undef) {verb_print(5, "[extend] extend solve(): Undef"); num_unknown++;}
 
         if (ret == l_False) {
             num_unsat++;
@@ -201,7 +201,7 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
 
     cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);
     assert(cnf.get_need_aig() && cnf.defs_invariant());
-    auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end unsat_define");
+    auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end extend_synth");
     verb_print(1, COLRED "[extend] Done. "
             << " True: " << num_sat
             << " Unkn: " << num_unknown

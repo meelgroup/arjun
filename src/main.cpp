@@ -303,7 +303,7 @@ void do_synthesis() {
 
     if (etof_conf.do_extend_indep) {
         arjun->standalone_unsat_define(cnf);
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-2-unsat_define.aig");
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-2-extend_synth.aig");
     }
 
     if (do_minim_indep) {
