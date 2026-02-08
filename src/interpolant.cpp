@@ -94,6 +94,7 @@ void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int>
   for(const auto& l : clause) {
       if (abs(l)-1 >= orig_num_vars) {formula_a = false; break;}
   }
+
   if (formula_a) {
       // output of formula is equal to the set of inputs being satisfied or not in this CL
       vector<Lit> cl;
@@ -103,8 +104,8 @@ void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int>
       }
       aig_ptr aig = nullptr;
       for(const auto& l: cl) {
-          if (aig == nullptr) aig = AIG::new_lit(l);
-          else aig = AIG::new_or(aig, AIG::new_lit(l));
+          if (aig == nullptr) aig = get_aig(l);
+          else aig = AIG::new_or(aig, get_aig(l));
       }
       if (aig == nullptr) aig = aig_mng.new_const(false);
       fs_clid[id] = aig;
@@ -184,7 +185,7 @@ void Interpolant::generate_interpolant(
 
     // CaDiCaL on the core only
     auto cdcl = std::make_unique<Solver>();
-    MyTracer t(orig_num_vars, input_vars, conf);
+    MyTracer t(orig_num_vars, input_vars, conf, lit_to_aig);
 
     cdcl->connect_proof_tracer(&t, true);
     /* std::stringstream name; */

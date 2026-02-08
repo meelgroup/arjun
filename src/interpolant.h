@@ -44,10 +44,11 @@ using namespace ArjunNS;
 
 struct MyTracer : public CaDiCaL::Tracer {
     MyTracer(const uint32_t _orig_num_vars, const set<uint32_t>& input_vars,
-            const ArjunInt::Config& _conf) :
+            const ArjunInt::Config& _conf, map<Lit, aig_ptr>& _lit_to_aig) :
       conf(_conf),
       orig_num_vars(_orig_num_vars),
-      input(input_vars)
+      input(input_vars),
+      lit_to_aig(_lit_to_aig)
     {}
 
     const ArjunInt::Config& conf;
@@ -57,6 +58,14 @@ struct MyTracer : public CaDiCaL::Tracer {
     aig_ptr out; // Final output formula
     int32_t orig_num_vars;
     set<uint32_t> input;
+    map<Lit, aig_ptr>& lit_to_aig;
+
+    aig_ptr get_aig(const Lit l) {
+      if (lit_to_aig.count(l)) return lit_to_aig[l];
+      aig_ptr aig = AIG::new_lit(l);
+      lit_to_aig[l] = aig;
+      return aig;
+  };
 
     void add_derived_clause (uint64_t id, bool red, const std::vector<int> & clause,
                                    const std::vector<uint64_t> & oantec) override;
@@ -87,6 +96,7 @@ public:
 
 private:
     void fix_up_aig(aig_ptr& aig);
+    map<Lit, aig_ptr> lit_to_aig; // cache
 
     PicoSAT* ps = nullptr;
     map<uint32_t, vector<Lit>> cl_map;
