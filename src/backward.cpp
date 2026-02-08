@@ -420,7 +420,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start backward_round_synth");
     set<uint32_t> pretend_input;
     if (to_define.empty()) {
-        verb_print(1, "[backward] No variables to define, returning original CNF");
+        verb_print(1, "[backw-synth] No variables to define, returning original CNF");
         return;
     }
     assert(backward_defined.empty());
@@ -460,6 +460,17 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     uint32_t ret_false = 0;
     uint32_t ret_undef = 0;
     while(true) {
+        uint32_t num_done = ret_true + ret_false + ret_undef;
+        if (num_done % 100 == 99) {
+            verb_print(1, "[backw-synth] done: " << setw(4) << num_done
+                    << " unsat: " << setw(4) << ret_false
+                    << " left: " << setw(4) << unknown.size()
+                    << " T: " << std::setprecision(2) << std::fixed << setw(6)
+                    << (cpuTime() - start_time)
+                    << " var/s: " << setw(6) << (double)num_done/(cpuTime() - start_time)
+                    << " mem: " << memUsedTotal()/(1024*1024) << " MB");
+        }
+
         // Find a variable to test
         uint32_t test_var = var_Undef;
         while(!unknown.empty()) {
@@ -475,7 +486,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
 
         if (test_var == var_Undef) {
             //we are done, backward is finished
-            verb_print(5, "[arjun] we are done, " << __PRETTY_FUNCTION__ << " is finished");
+            verb_print(5, "[backw-synth] we are done, " << __PRETTY_FUNCTION__ << " is finished");
             break;
         }
         assert(test_var < orig_num_vars);
@@ -500,12 +511,12 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
 
         if (ret == l_False) {
             ret_false++;
-            verb_print(3, "[arjun] " << __PRETTY_FUNCTION__ << " solve(): False");
+            verb_print(3, "[backw-synth] " << __PRETTY_FUNCTION__ << " solve(): False");
         } else if (ret == l_True) {
             ret_true++;
-            verb_print(3, "[arjun] " << __PRETTY_FUNCTION__ << " solve(): True");
+            verb_print(3, "[backw-synth] " << __PRETTY_FUNCTION__ << " solve(): True");
         } else if (ret == l_Undef) {
-            verb_print(3, "[arjun] " << __PRETTY_FUNCTION__ << " solve(): Undef");
+            verb_print(3, "[backw-synth] " << __PRETTY_FUNCTION__ << " solve(): Undef");
             ret_undef++;
         }
 
@@ -539,7 +550,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
             AIG::get_dependent_vars(aig, dep_vars, v);
             vector<Lit> deps_lits; deps_lits.reserve(dep_vars.size());
             for(const auto& dv: dep_vars) deps_lits.push_back(Lit(dv, false));
-            verb_print(2, "[backward-round-synth-define] var: " << v+1 << " depends on vars: " << deps_lits); // << " aig: " << aig);
+            verb_print(2, "[backw-synth] var: " << v+1 << " depends on vars: " << deps_lits); // << " aig: " << aig);
         }
     }
 
@@ -556,6 +567,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
         << " TR: " << ret_true << " UN: " << ret_undef << " FA: " << ret_false
         << " defined: " << to_define.size()-to_define2.size()
         << " still to define: " << to_define2.size()
-        << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time));
+        << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time)
+        << " mem: " << memUsedTotal()/(1024*1024) << " MB");
     assert(cnf.get_need_aig() && cnf.defs_invariant());
 }

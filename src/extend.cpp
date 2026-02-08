@@ -129,8 +129,8 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
                     << " left: " << setw(4) << unknown.size()
                     << " T: " << std::setprecision(2) << std::fixed << setw(6)
                     << (cpuTime() - start_round_time)
-                    << " var/s: " << setw(6) << (double)num_done/(cpuTime() - start_round_time));
-
+                    << " var/s: " << setw(6) << (double)num_done/(cpuTime() - start_round_time)
+                    << " mem: " << memUsedTotal()/(1024*1024) << " MB");
         }
         uint32_t test_var = unknown.back();
         unknown.pop_back();
@@ -169,7 +169,6 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             interp.add_unit_cl({Lit(indic, false)});
             cnf.add_opt_sampl_var(test_var);
             input_vars.insert(test_var);
-            /* cout << "mem usage: " << memUsedTotal()/(1024*1024) << " MB" << endl; */
         } else if (ret == l_True) {
             // Optimisation: if we see both true and false, then it cannot be independent
             for(uint32_t v = 0; v < orig_num_vars; v++) {
@@ -441,7 +440,8 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             << " orig size: " << orig_size
             << " final size: " << cnf.get_opt_sampl_vars().size()
             << " Undef: " << ret_undef
-            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
+            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
+            << " mem: " << memUsedTotal()/(1024*1024) << " MB");
     if (conf.verb >= 4) solver->print_stats();
 }
 
