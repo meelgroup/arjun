@@ -1084,12 +1084,14 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 
     verb_print(3, a+1 << " depends on " << b+1);
     dependency_mat[a][b] = 1;
+#ifdef SLOW_DEBUG
     // recursive update
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
         if (input.count(i)) continue;
         dependency_mat[a][i] |= dependency_mat[b][i];
     }
-    SLOW_DEBUG_DO(assert(check_map_dependency_cycles()));
+    assert(check_map_dependency_cycles());
+#endif
 }
 
 void Manthan::perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit>& conflict) {
