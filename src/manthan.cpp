@@ -663,7 +663,7 @@ void Manthan::bve_and_substitute() {
         num_done++;
         if (num_done % 50 == 49) {
             verb_print(1, "[manthan] done with BVE funs: " << setw(6) << num_done
-                << " var/s: " << setw(6) << fixed << setprecision(2) << num_done/(cpuTime()-start_time)
+                << " var/s: " << setw(6) << fixed << setprecision(2) << safe_div(num_done,(cpuTime()-start_time))
                 << " T: " << setw(5) << (cpuTime()-start_time)
                 << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
         }
@@ -745,7 +745,7 @@ void Manthan::full_train() {
     }
     train_time = cpuTime() - train_start_time;
     verb_print(1, COLYEL "[manthan] training done."
-            << " train/var: " << setw(6) << setprecision(2) << std::fixed << (cpuTime() - train_start_time)/(double)to_define.size()
+            << " var/s: " << setw(6) << setprecision(2) << std::fixed << safe_div(to_define.size(), cpuTime() - train_start_time)
             << " T: " << setw(6) << setprecision(2) << std::fixed << train_time);
     assert(check_map_dependency_cycles());
 }
@@ -809,7 +809,7 @@ SimplifiedCNF Manthan::do_manthan() {
                     << "   avg needs rep sz: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
                     << "   cache-hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
                     << "   T: " << setprecision(2) << fixed << setw(7) << cpuTime()-repair_start_time
-                    << "   rep/s: " << setprecision(4) << (double)tot_repaired/(cpuTime()-repair_start_time+0.0001) << setprecision(2));
+                    << "   rep/s: " << setprecision(4) << safe_div(tot_repaired,cpuTime()-repair_start_time) << setprecision(2));
         }
         assert(at_least_one_repaired);
         at_least_one_repaired = false;

@@ -468,7 +468,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
                     << " left: " << setw(4) << unknown.size()
                     << " T: " << std::setprecision(2) << std::fixed << setw(6)
                     << (cpuTime() - start_time)
-                    << " var/s: " << setw(6) << (double)num_done/(cpuTime() - start_time)
+                    << " var/s: " << setw(6) << safe_div(num_done, cpuTime() - start_time)
                     << " mem: " << memUsedTotal()/(1024*1024) << " MB");
         }
 

@@ -71,6 +71,14 @@ constexpr int slow_debug_enabled = 0;
 
 using std::unique_ptr;
 
+inline double safe_div(double a, double b) noexcept {
+    if (b == 0) {
+        return 0;
+    } else {
+        return a/b;
+    }
+}
+
 // lit to picolit
 [[nodiscard]] inline int lit_to_pl(const CMSat::Lit l) noexcept {
     int picolit = (l.var()+1) * (l.sign() ? -1 : 1);

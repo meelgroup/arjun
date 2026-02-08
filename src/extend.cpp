@@ -130,7 +130,7 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
                     << " left: " << setw(4) << unknown.size()
                     << " T: " << std::setprecision(2) << std::fixed << setw(6)
                     << (cpuTime() - start_round_time)
-                    << " var/s: " << setw(6) << (double)num_done/(cpuTime() - start_round_time)
+                    << " var/s: " << setw(6) << safe_div(num_done,cpuTime() - start_round_time)
                     << " mem: " << memUsedTotal()/(1024*1024) << " MB");
         }
         uint32_t test_var = unknown.back();
