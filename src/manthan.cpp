@@ -640,7 +640,7 @@ void Manthan::bve_and_substitute() {
         assert(f.out == lit_Error);
         assert(f.clauses.empty());
 
-        // Create a lambda to transform AIG to CNF using the transform function
+        // Transform AIG to CNF using the transform function
         std::function<Lit(AIGT, uint32_t, bool, const Lit*, const Lit*)> aig_to_cnf_visitor =
           [&](AIGT type, const uint32_t var, const bool neg, const Lit* left, const Lit* right) -> Lit {
             if (type == AIGT::t_const) {

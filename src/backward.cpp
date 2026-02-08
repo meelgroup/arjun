@@ -420,7 +420,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start backward_round_synth");
     set<uint32_t> pretend_input;
     if (to_define.empty()) {
-        verb_print(1, "[arjun] No variables to define, returning original CNF");
+        verb_print(1, "[backward] No variables to define, returning original CNF");
         return;
     }
     assert(backward_defined.empty());
