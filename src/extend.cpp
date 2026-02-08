@@ -114,7 +114,8 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
     if (unknown.empty()) return;
 
     sort_unknown(unknown, incidence);
-    verb_print(1,"[extend] Start unknown size: " << unknown.size());
+    verb_print(1,"[extend] Start unknown size: " << unknown.size()
+                    << " mem: " << memUsedTotal()/(1024*1024) << " MB");
     uint32_t num_sat = 0;
     uint32_t num_unknown = 0;
     set<uint32_t> unknown_set(unknown.begin(), unknown.end());

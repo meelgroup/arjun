@@ -138,7 +138,7 @@ void Minimize::backward_round() {
     /* std::shuffle(unknown.begin(), unknown.end(), rand); */
     if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
     print_sorted_unknown(unknown);
-    verb_print(1, "[arjun] Start unknown size: " << unknown.size());
+    verb_print(1, "[backward] Start unknown size: " << unknown.size());
     solver->set_verbosity(0);
 
     vector<Lit> assumptions;
@@ -452,7 +452,8 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     if (mconf.backward_synth_reverse_order)
         std::reverse(unknown.begin(), unknown.end());
     print_sorted_unknown(unknown);
-    verb_print(1, "[arjun] Start unknown size: " << unknown.size());
+    verb_print(1, "[backward] Start unknown size: " << unknown.size()
+                    << " mem: " << memUsedTotal()/(1024*1024) << " MB");
     solver->set_verbosity(0);
 
     vector<Lit> assumptions;

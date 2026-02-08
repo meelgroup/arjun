@@ -380,11 +380,6 @@ public:
         const_false->neg = true;
     }
 
-    void clear() {
-        const_true = nullptr;
-        const_false = nullptr;
-    }
-
     AIGManager& operator=(const AIGManager& other) {
         if (this != &other) {
             clear();
@@ -400,12 +395,17 @@ public:
         const_false = other.const_false;
     }
 
-    aig_ptr new_const(bool val) {
+    aig_ptr new_const(bool val) const {
         return val ? const_true : const_false;
     }
 
 
 private:
+    void clear() {
+        const_true = nullptr;
+        const_false = nullptr;
+    }
+
     // There could be other const true, this is just a good example so we don't always copy
     // Due to copying we don'g guarantee uniqueness
     aig_ptr const_true = nullptr;
@@ -1248,6 +1248,7 @@ public:
         assert(need_aig);
         AIG::simplify_aigs(verb, defs);
     }
+    const auto& get_aig_mng() const { return aig_mng; }
 
 private:
     bool after_backward_round_synth = false;

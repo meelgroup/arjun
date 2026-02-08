@@ -44,8 +44,9 @@ using namespace ArjunNS;
 
 struct MyTracer : public CaDiCaL::Tracer {
     MyTracer(const uint32_t _orig_num_vars, const set<uint32_t>& input_vars,
-            const ArjunInt::Config& _conf, map<Lit, aig_ptr>& _lit_to_aig) :
+            const ArjunInt::Config& _conf, map<Lit, aig_ptr>& _lit_to_aig, const AIGManager& _aig_mng) :
       conf(_conf),
+      aig_mng(_aig_mng),
       orig_num_vars(_orig_num_vars),
       input(input_vars),
       lit_to_aig(_lit_to_aig)
@@ -54,18 +55,30 @@ struct MyTracer : public CaDiCaL::Tracer {
     const ArjunInt::Config& conf;
     map<uint64_t, vector<Lit>> cls;
     std::map<uint64_t, aig_ptr> fs_clid;  // clause ID to formula
-    AIGManager aig_mng;
+    const AIGManager& aig_mng;
     aig_ptr out; // Final output formula
     int32_t orig_num_vars;
     set<uint32_t> input;
+
+    // AIG cache
     map<Lit, aig_ptr>& lit_to_aig;
 
     aig_ptr get_aig(const Lit l) {
-      if (lit_to_aig.count(l)) return lit_to_aig[l];
+      if (lit_to_aig.count(l)) return lit_to_aig.at(l);
       aig_ptr aig = AIG::new_lit(l);
       lit_to_aig[l] = aig;
       return aig;
-  };
+    };
+
+    aig_ptr get_aig(const vector<Lit>& cl) {
+      aig_ptr aig = nullptr;
+      for(const auto& l: cl) {
+          if (aig == nullptr) aig = get_aig(l);
+          else aig = AIG::new_or(aig, get_aig(l));
+      }
+      if (aig == nullptr) aig = aig_mng.new_const(false);
+      return aig;
+    };
 
     void add_derived_clause (uint64_t id, bool red, const std::vector<int> & clause,
                                    const std::vector<uint64_t> & oantec) override;
@@ -96,7 +109,9 @@ public:
 
 private:
     void fix_up_aig(aig_ptr& aig);
-    map<Lit, aig_ptr> lit_to_aig; // cache
+
+    // AIG cache
+    map<Lit, aig_ptr> lit_to_aig;
 
     PicoSAT* ps = nullptr;
     map<uint32_t, vector<Lit>> cl_map;
