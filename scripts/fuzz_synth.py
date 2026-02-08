@@ -55,6 +55,9 @@ def gen_fuzz_call_brummayer(fuzzer, fname):
     seed = random.randint(0, 1000*1000*1000)
     call = "{0} -s {1} > {2}".format(fuzzer, seed, fname)
 
+    # if we want bigger CNFs
+    call = "{0} -s {1} -i 14 -I 30 > {2}".format(fuzzer, seed, fname)
+
     # if we want smaller CNFs
     # call = "{0} -s {1} -i 2 -I 4 > {2}".format(fuzzer, seed, fname)
     return call
@@ -142,6 +145,31 @@ def run(command):
         print("CPU limit of parent (pid %d) after child finished executing" % os.getpid(),
             resource.getrlimit(resource.RLIMIT_CPU))
     return consoleOutput, err
+
+def run_check(command, final):
+    ok = False
+
+    p = subprocess.Popen(command, stderr=subprocess.STDOUT,
+          stdout=subprocess.PIPE, universal_newlines=True)
+    try:
+        consoleOutput, err = p.communicate()
+    except:
+        p.kill()
+        print("ERROR: check process failed")
+        exit(-1)
+
+    if err is not None:
+        print("Error string is: ", err)
+        exit(-1)
+
+    for line in consoleOutput.split("\n"):
+        if "CORRECT" in line:
+            print("Check output: %s" % line)
+            ok = True
+
+    if not ok and final:
+        print("ERROR: check process did not report CORRECT")
+        exit(-1)
 
 
 def run_synth(solver, fname):
@@ -362,16 +390,13 @@ if __name__ == "__main__":
         check_core_files()
 
         for aig in aigs:
-            if "final" in aig:
+            final = "final" in aig
+            if final:
                 call = "./test-synth -u -v -s %d %s %s" % (seed, fname, aig)
             else:
                 call = "./test-synth -v -s %d %s %s" % (seed, fname, aig)
             print("Running check command: ", call)
-            status = subprocess.call(call, shell=True)
-            if status != 0:
-                print("Failed check: ", call)
-                exit(-1)
-            print("Call for fuzz OK: %s" % (call))
+            run_check(call.split(), final)
             os.unlink(aig)
         cleanup(fname, prefix)
     exit(0)
