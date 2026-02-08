@@ -70,7 +70,9 @@ struct MyTracer : public CaDiCaL::Tracer {
       return aig;
     };
 
-    aig_ptr get_aig(const vector<Lit>& cl) {
+    aig_ptr get_aig(const vector<Lit>& unsorted_cl) {
+      vector<Lit> cl = unsorted_cl;
+      std::sort(cl.begin(), cl.end());
       aig_ptr aig = nullptr;
       for(const auto& l: cl) {
           if (aig == nullptr) aig = get_aig(l);
