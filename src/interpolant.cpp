@@ -101,8 +101,12 @@ void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int>
           int32_t v = abs(l)-1;
           if (input.count(v)) cl.push_back(pl_to_lit(l));
       }
-      auto aig = aig_mng.new_const(false);
-      for(const auto& l: cl) aig = AIG::new_or(aig, AIG::new_lit(l));
+      aig_ptr aig = nullptr;
+      for(const auto& l: cl) {
+          if (aig == nullptr) aig = AIG::new_lit(l);
+          else aig = AIG::new_or(aig, AIG::new_lit(l));
+      }
+      if (aig == nullptr) aig = aig_mng.new_const(false);
       fs_clid[id] = aig;
   } else {
       fs_clid[id] = aig_mng.new_const(true);
