@@ -1433,9 +1433,10 @@ void Manthan::add_not_f_x_yhat(MetaSolver& s) {
 
     // Adds ~F(x, y_hat)
     vector<Lit> cl_indics; // if true, clause is satisfied, if false, clause is unsatisfied
+    vector<Lit> cl;
     for(const auto& cl_orig: cnf.get_clauses()) {
         // Replace y with y_hat in the clause
-        vector<Lit> cl;
+        cl.clear();
         for(const auto& l: cl_orig) {
             if (to_define_full.count(l.var())) cl.push_back(Lit(y_to_y_hat.at(l.var()), l.sign()));
             else cl.push_back(l);
