@@ -81,6 +81,7 @@ int simptofile = true;
 int sampl_start_at_zero = false;
 int do_synth_bve = true;
 int do_pre_backbone = 0;
+int manthan_rep_mult = 1;
 
 int synthesis = false;
 int do_unate = false;
@@ -128,6 +129,7 @@ void add_arjun_options() {
     myopt("--unate", do_unate, atoi,"Perform unate analysis");
     myopt("--autarky", etof_conf.do_autarky, atoi,"Perform unate analysis");
     myopt("--mbve", mconf.manthan_bve, atoi,"Use BVE with constants instead of training");
+    myopt("--mtryrepmult", manthan_rep_mult, atoi,"Repair tries will be multiplied by this");
     myopt("--bvedeep", mconf.bve_deep_substitute, atoi,"In Manthan BVE, do deep substitution");
     myopt("--mbveorder", mconf.manthan_bve_order, atoi,"Order BVE vars in Manthan to optimize BVE");
     // Order
@@ -320,13 +322,11 @@ void do_synthesis() {
         mconf.num_samples = 0;
         mconf.num_samples_ccnr = 0;
         mconf.manthan_bve = 0;
-        cnf = arjun->standalone_manthan(cnf, mconf, 20);
+        cnf = arjun->standalone_manthan(cnf, mconf, 20*manthan_rep_mult);
         if (!cnf.synth_done()) {
             mconf = mconf_orig;
-            mconf.num_samples = 1000;
-            mconf.num_samples_ccnr = 0;
             mconf.manthan_bve = 0;
-            cnf = arjun->standalone_manthan(cnf, mconf, 100);
+            cnf = arjun->standalone_manthan(cnf, mconf, 100*manthan_rep_mult);
         }
         if (!cnf.synth_done()) {
             mconf = mconf_orig;
