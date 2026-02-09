@@ -715,6 +715,10 @@ void Manthan::bve_and_substitute() {
         const Lit out_lit = AIG::transform<Lit>(f.aig, aig_to_cnf_visitor, cache);
         f.out = out_lit;
     }
+
+    assert(check_aig_dependency_cycles());
+    verb_print(1, COLYEL "[manthan] BVE and substitute done. T: " << setw(5) << (cpuTime()-start_time)
+        << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
 }
 
 void Manthan::full_train() {
