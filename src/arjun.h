@@ -1369,7 +1369,7 @@ public:
     void standalone_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,
         uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1);
-    SimplifiedCNF standalone_manthan(const SimplifiedCNF& cnf, const ManthanConf& manthan_conf);
+    SimplifiedCNF standalone_manthan(const SimplifiedCNF& cnf, const ManthanConf& manthan_conf, uint32_t max_repairs);
     void standalone_autarky(SimplifiedCNF& cnf);
 
     //Set config

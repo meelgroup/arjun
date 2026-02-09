@@ -750,7 +750,7 @@ void Manthan::full_train() {
     assert(check_map_dependency_cycles());
 }
 
-SimplifiedCNF Manthan::do_manthan() {
+SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
     assert(cnf.get_need_aig() && cnf.defs_invariant());
     assert(mconf.simplify_every > 0 && "Can't give simplify_every=0");
     const double my_time = cpuTime();
@@ -800,6 +800,7 @@ SimplifiedCNF Manthan::do_manthan() {
     // Counterexample-guided repair
     bool at_least_one_repaired = true;
     SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
+
     while(true) {
         if (num_loops_repair %  40 == 39) {
             verb_print(1, "[manthan] rep: " << setw(6) << tot_repaired
@@ -816,8 +817,20 @@ SimplifiedCNF Manthan::do_manthan() {
         num_loops_repair++;
         inject_formulas_into_solver();
         sample ctx;
-        bool finished = get_counterexample(ctx);
+        const bool finished = get_counterexample(ctx);
         if (finished) break;
+        if (tot_repaired > max_repairs) {
+            const double repair_time = cpuTime() - repair_start_time;
+            verb_print(1, COLRED "[manthan] Reached max repairs without finishing "
+                << "   loops: "<< setw(6) << num_loops_repair
+                << "   avg rep/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
+                << "   avg confl sz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
+                << "   avg needs rep sz: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
+                << "   cache-hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
+                << "   T: " << setprecision(2) << fixed << setw(7) << repair_time
+                << "   rep/s: " << setw(7) << setprecision(3) << (double)tot_repaired/(repair_time+0.0001) << setprecision(2));
+                return cnf;
+        }
         print_cnf_debug_info(ctx);
         print_needs_repair_vars();
         SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
@@ -859,6 +872,7 @@ SimplifiedCNF Manthan::do_manthan() {
         }
         verb_print(2, "[manthan] Num repaired: " << num_repaired << " tot repaired: " << tot_repaired << " num_loops_repair: " << num_loops_repair);
     }
+
     const double repair_time = cpuTime() - repair_start_time;
     assert(check_map_dependency_cycles());
     verb_print(1, COLYEL "[manthan] rep: " << setw(6) << tot_repaired

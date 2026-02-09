@@ -313,7 +313,28 @@ void do_synthesis() {
         cnf.simplify_aigs(conf.verb);
     }
 
-    if (!cnf.synth_done()) cnf = arjun->standalone_manthan(cnf, mconf);
+    auto mconf_orig = mconf;
+    if (!cnf.synth_done()) {
+        mconf = mconf_orig;
+        mconf.manthan_bve = 0;
+        mconf.num_samples = 0;
+        mconf.num_samples_ccnr = 0;
+        mconf.manthan_bve = 0;
+        cnf = arjun->standalone_manthan(cnf, mconf, 20);
+        if (!cnf.synth_done()) {
+            mconf = mconf_orig;
+            mconf.num_samples = 1000;
+            mconf.num_samples_ccnr = 0;
+            mconf.manthan_bve = 0;
+            cnf = arjun->standalone_manthan(cnf, mconf, 100);
+        }
+        if (!cnf.synth_done()) {
+            mconf = mconf_orig;
+            mconf.manthan_bve = 1;
+            cnf = arjun->standalone_manthan(cnf, mconf, std::numeric_limits<uint32_t>::max());
+            release_assert(cnf.synth_done() && "Manthan should have finished synthesis, but it did not!");
+        }
+    }
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");
     if (!conf.debug_synth.empty()) {
         auto final_cnf = cnf;
