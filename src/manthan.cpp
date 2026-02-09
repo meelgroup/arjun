@@ -81,10 +81,10 @@ vector<int> lits_to_ints(const vector<Lit>& lits) {
 // also good (some repair): benchmarks-qdimacs/amba2f9n.sat.qdimacs.cnf
 // slow (actually, correct on 1st try at 4e7a4cea5b8a994044466578751ff229b514e747 with --bve 0 --ctxsolver 1 --samples 1000):
 //     benchmarks-qdimacs/bobsmcodic_all_bit_differing_from_cycle.qdimacs.cnf
-// LOTS of repairs, fast, but does not terminate: benchmarks-qdimacs/query01_query42_1344n.qdimacs.cnf
 // many repairs, does finish: benchmarks-qdimacs/stmt32_329_378.qdimacs.cnf
 // many-many repairs, does finish: benchmarks-qdimacs/sdlx-fixpoint-10.qdimacs.cnf
 // no repair, learning/mbve does it: rankfunc57_unsigned_64.qdimacs.cnf
+// interesting, does not finish, but fast: benchmarks-qdimacs/query48_exquery_1344n.qdimacs.cnf
 
 template<typename S>
 void Manthan::inject_cnf(S& s, bool also_vars) const {
@@ -662,8 +662,9 @@ void Manthan::bve_and_substitute() {
         var_to_formula[y] = f;
         num_done++;
         if (num_done % 50 == 49) {
-            verb_print(1, "[manthan] done with BVE funs: " << setw(6) << num_done
-                << " var/s: " << setw(6) << fixed << setprecision(2) << safe_div(num_done,(cpuTime()-start_time))
+            verb_print(1, "[manthan] done with BVE "
+                << " funs: " << setw(6) << num_done
+                << " funs/s: " << setw(6) << fixed << setprecision(2) << safe_div(num_done,(cpuTime()-start_time))
                 << " T: " << setw(5) << (cpuTime()-start_time)
                 << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
         }
@@ -717,7 +718,10 @@ void Manthan::bve_and_substitute() {
     }
 
     assert(check_aig_dependency_cycles());
-    verb_print(1, COLYEL "[manthan] BVE and substitute done. T: " << setw(5) << (cpuTime()-start_time)
+    verb_print(1, COLYEL "[manthan] BVE and substitute done."
+        << " funs: " << setw(6) << to_define.size()
+        << " funs/s: " << setw(6) << fixed << setprecision(2) << safe_div(num_done,(cpuTime()-start_time))
+        << " T: " << setw(5) << (cpuTime()-start_time)
         << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
 }
 
@@ -748,9 +752,11 @@ void Manthan::full_train() {
         train(samples, v); // updates dependency_mat
     }
     train_time = cpuTime() - train_start_time;
-    verb_print(1, COLYEL "[manthan] training done."
-            << " var/s: " << setw(6) << setprecision(2) << std::fixed << safe_div(to_define.size(), cpuTime() - train_start_time)
-            << " T: " << setw(6) << setprecision(2) << std::fixed << train_time);
+    verb_print(1, COLYEL "[manthan] Training done."
+            << " funs: " << setw(6) << to_define.size()
+            << " fun/s: " << setw(6) << setprecision(2) << std::fixed << safe_div(to_define.size(), cpuTime() - train_start_time)
+            << " T: " << setw(6) << setprecision(2) << std::fixed << train_time
+            << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
     assert(check_map_dependency_cycles());
 }
 

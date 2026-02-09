@@ -318,12 +318,14 @@ void do_synthesis() {
     auto mconf_orig = mconf;
     if (!cnf.synth_done()) {
         mconf = mconf_orig;
+        // Learning with no samples
         mconf.manthan_bve = 0;
         mconf.num_samples = 0;
         mconf.num_samples_ccnr = 0;
         mconf.manthan_bve = 0;
         cnf = arjun->standalone_manthan(cnf, mconf, 20*manthan_rep_mult);
         if (!cnf.synth_done()) {
+            // Learning with (larger) samples size
             mconf = mconf_orig;
             mconf.manthan_bve = 0;
             cnf = arjun->standalone_manthan(cnf, mconf, 100*manthan_rep_mult);
