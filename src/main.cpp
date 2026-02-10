@@ -320,7 +320,7 @@ void do_synthesis() {
         mconf = mconf_orig;
         // Learning with no samples
         mconf.manthan_bve = 0;
-        mconf.num_samples = 0;
+        mconf.num_samples = 1;
         mconf.num_samples_ccnr = 0;
         mconf.manthan_bve = 0;
         cnf = arjun->standalone_manthan(cnf, mconf, 20*manthan_rep_mult);

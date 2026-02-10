@@ -1774,7 +1774,7 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
 
         /* DecisionTree<> r(dataset, labels, 2); */
         // More conservative (less overfitting)
-        /* DecisionTree<FitnessFunction, */
+        /* DecisionTree<FitnessFunction,  -- default is GiniGain */
         /*              NumericSplitType, */
         /*              CategoricalSplitType, */
         /*              DimensionSelectionType, */
