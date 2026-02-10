@@ -105,17 +105,13 @@ class Manthan {
         void create_vars_for_y_hats();
         FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& var_remap, uint32_t depth, uint32_t& max_depth);
         vector<uint32_t> incidence;
-        bool check_functions_for_y_vars() const;
-        bool ctx_is_sat(const sample& ctx) const;
         Lit map_y_to_y_hat(const Lit& l) const;
-        bool ctx_y_hat_correct(const sample& ctx) const;
         uint32_t calc_non_bw_needs_repair() const;
         void print_needs_repair_vars() const;
         void print_cnf_debug_info(const sample& ctx) const;
         void get_incidence();
         bool get_counterexample(sample& ctx);
         void inject_formulas_into_solver();
-        bool check_satisfied_all_cls_with_flip(const sample& s, const uint32_t v) const;
         vector<sample*> filter_samples(const uint32_t v, const vector<sample>& samples);
         void find_better_ctx_maxsat(sample& ctx);
         void find_better_ctx_normal(sample& ctx);
@@ -126,12 +122,13 @@ class Manthan {
         bool find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict);
         void minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, const Lit repairing);
         uint32_t find_next_repair_var(const sample& ctx) const;
-        void perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit>& conflict);
+        void perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict);
         void add_not_f_x_yhat(MetaSolver& s);
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with_backward();
         void print_y_order_occur() const;
         void compute_needs_repair(const sample& ctx);
+        void recompute_all_y_hat(sample& ctx, const uint32_t y_rep);
 
         // ordering
         vector<uint32_t> y_order; //1st only depends on inputs
@@ -171,11 +168,14 @@ class Manthan {
         AIGManager aig_mng;
 
         // debug
+        bool ctx_y_hat_correct(const sample& ctx) const;
+        bool ctx_is_sat(const sample& ctx) const;
         bool check_map_dependency_cycles() const;
         bool has_dependency_cycle_dfs(const uint32_t node, vector<uint8_t>& color, vector<uint32_t>& path) const; // used in check_dependency_loop
         bool check_train_correctness() const;
         bool check_aig_dependency_cycles() const;
         bool check_transitive_closure_correctness() const;
+        bool check_functions_for_y_vars() const;
         std::mt19937 mtrand;
         vector<uint32_t> updated_y_funcs; // y_hats updated during last round of training
 

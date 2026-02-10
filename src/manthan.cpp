@@ -867,7 +867,6 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
                 at_least_one_repaired = true;
                 num_repaired++;
                 tot_repaired++;
-                break; // we don't recompute y_hats, so we'd be doing WRONG repairs.
             } else {
                 repair_failed++;
             }
@@ -960,10 +959,8 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     bool ret = find_conflict(y_rep, ctx, conflict);
     if (ret) {
         perform_repair(y_rep, ctx, conflict);
-        verb_print(2, "[manthan] repaired var " << y_rep+1 << " getting new CTX, because we don't yet know how to update y_hats");
-        // TODO so we can do more than one repair before getting new ctx
-        /* recompute_all_y_hat(ctx); */
-        return true;
+        ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
+        recompute_all_y_hat(ctx, y_rep);
     }
     compute_needs_repair(ctx);
     print_needs_repair_vars();
@@ -1105,7 +1102,7 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 #endif
 }
 
-void Manthan::perform_repair(const uint32_t y_rep, sample& ctx, const vector<Lit>& conflict) {
+void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict) {
     verb_print(2, "[manthan] Performing repair on " << setw(5) << y_rep+1
             << " with conflict size " << setw(3) << conflict.size());
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
@@ -1874,6 +1871,26 @@ void Manthan::get_incidence() {
     for(const auto& cl: cnf.get_clauses()) {
         for(const auto& l: cl) incidence[l.var()]++;
     }
+}
+
+void Manthan::recompute_all_y_hat(sample& ctx, const uint32_t y_rep) {
+    vector<aig_ptr> defs(ctx.size(), nullptr);
+    bool found = false;
+    map<aig_ptr, lbool> cache;
+    for (const auto& y : y_order) {
+        // Only need to recompute after y_rep
+        if (!found && y == y_rep) {
+            found = true;
+            continue;
+        }
+        assert(var_to_formula.count(v));
+        const auto& aig = var_to_formula.at(y).aig;
+        assert(aig != nullptr);
+        lbool val = AIG::evaluate(ctx, aig, defs, cache);
+        assert(val != l_Undef);
+        ctx[y_to_y_hat.at(y)] = val;
+    }
+    verb_print(2, "Recomputed all y_hat values in ctx.");
 }
 
 void Manthan::compute_needs_repair(const sample& ctx) {
