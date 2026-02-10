@@ -132,6 +132,7 @@ void add_arjun_options() {
     myopt("--mtryrepmult", manthan_rep_mult, atoi,"Repair tries will be multiplied by this");
     myopt("--bvedeep", mconf.bve_deep_substitute, atoi,"In Manthan BVE, do deep substitution");
     myopt("--mbveorder", mconf.manthan_bve_order, atoi,"Order BVE vars in Manthan to optimize BVE");
+    myopt("--moneperloop", mconf.one_repair_per_loop, atoi,"One repair per CEX loop");
     // Order
     myopt("--maxsatorder", mconf.maxsat_order, atoi,"Which order to use to try to fix vars? 0 = normal, 1 = reverse");
     myopt("--backwsynthorder", mconf.backward_synth_reverse_order, atoi,"Which order to use to try to do backward? 0 = normal, 1 = reverse");

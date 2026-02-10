@@ -1350,6 +1350,7 @@ public:
         int manthan_bve = 0;
         int bve_deep_substitute = 0;
         int manthan_bve_order = 0;
+        int one_repair_per_loop = 0;
     };
 
     /// Standalone functions

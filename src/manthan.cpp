@@ -872,6 +872,7 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
                 at_least_one_repaired = true;
                 num_repaired++;
                 tot_repaired++;
+                if (mconf.one_repair_per_loop) break;
             } else {
                 repair_failed++;
             }
@@ -964,9 +965,11 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     bool ret = find_conflict(y_rep, ctx, conflict);
     if (ret) {
         perform_repair(y_rep, ctx, conflict);
-        ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
-        inject_formulas_into_solver();
-        recompute_all_y_hat_cnf(ctx, y_rep);
+        if (!mconf.one_repair_per_loop) {
+            ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
+            inject_formulas_into_solver();
+            recompute_all_y_hat_cnf(ctx, y_rep);
+        }
     }
     compute_needs_repair(ctx);
     print_needs_repair_vars();
