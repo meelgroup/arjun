@@ -120,7 +120,7 @@ class Manthan {
         void find_better_ctx_maxsat(sample& ctx);
         void find_better_ctx_normal(sample& ctx);
         template<typename S>
-        void inject_cnf(S& s, const bool also_vars = true) const;
+        void inject_cnf(S& s) const;
         void inject_unit(SATSolver& s);
         bool repair(const uint32_t v, sample& ctx);
         bool find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict);

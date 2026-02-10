@@ -87,8 +87,8 @@ vector<int> lits_to_ints(const vector<Lit>& lits) {
 // interesting, does not finish, but fast: benchmarks-qdimacs/query48_exquery_1344n.qdimacs.cnf
 
 template<typename S>
-void Manthan::inject_cnf(S& s, bool also_vars) const {
-    if (also_vars) s.new_vars(cnf.nVars());
+void Manthan::inject_cnf(S& s) const {
+    s.new_vars(cnf.nVars());
     for(const auto& c: cnf.get_clauses()) s.add_clause(c);
     for(const auto& c: cnf.get_red_clauses()) s.add_red_clause(c);
 }
@@ -784,11 +784,7 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
     fill_dependency_mat_with_backward();
     get_incidence();
 
-    // Fill repair solver with CNF
-    repair_solver.new_vars(cnf.nVars());
-    inject_cnf(repair_solver, false); // faster to add CNF later
-
-    // Set up cex_solver
+    inject_cnf(repair_solver);
     inject_cnf(cex_solver);
     fh = std::make_unique<FHolder>(&cex_solver);
     create_vars_for_y_hats();
@@ -1399,7 +1395,7 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
         }
     }
     assert(incorrect_lits.size() == needs_repair.size());
-    inject_cnf(s, false);
+    for(const auto& c: cnf.get_clauses()) s.add_clause(c);
 
     // Sort incorrect lits by weight (higher weight = higher priority to fix)
     std::sort(incorrect_lits.begin(), incorrect_lits.end(),
