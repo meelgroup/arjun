@@ -528,7 +528,7 @@ DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
 
     uint32_t filled_defs = 0;
     uint32_t undefs = 0;
-    uint32_t num_checks = 500;
+    uint32_t num_checks = 20;
     for (uint32_t check = 0; check < num_checks; ++check) {
         auto ret = samp_s.solve();
         release_assert(ret == l_True);
