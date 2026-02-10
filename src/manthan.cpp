@@ -852,8 +852,7 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
         }
         SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
         SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
-        needs_repair.clear(); for(const auto& y: to_define_full) if (ctx[y] != ctx[y_to_y_hat[y]])
-            needs_repair.insert(y);
+        compute_needs_repair(ctx);
         verb_print(2, "[manthan] finding better ctx done, needs_repair size before vs now: "
               << setw(3) << old_needs_repair_size << " -- " << setw(4) << needs_repair.size());
         print_needs_repair_vars();
@@ -1041,14 +1040,6 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
             << " repair cache hit rate: " << setw(5) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
             << " T: " << setw(5) << setprecision(2) << cpuTime()-minimize_start_time);
     return true;
-}
-
-void Manthan::compute_needs_repair(const sample& ctx) {
-    assert(ctx[fh->get_true_lit().var()] == l_True);
-    needs_repair.clear();
-    for(const auto&y: y_order) {
-        if (ctx[y] != ctx[y_to_y_hat[y]]) needs_repair.insert(y);
-    }
 }
 
 void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, const Lit to_repair) {
@@ -1883,4 +1874,11 @@ void Manthan::get_incidence() {
     for(const auto& cl: cnf.get_clauses()) {
         for(const auto& l: cl) incidence[l.var()]++;
     }
+}
+
+void Manthan::compute_needs_repair(const sample& ctx) {
+    assert(ctx[fh->get_true_lit().var()] == l_True);
+    needs_repair.clear(); for(const auto& y: to_define_full)
+        if (ctx[y] != ctx[y_to_y_hat[y]])
+    needs_repair.insert(y);
 }
