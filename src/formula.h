@@ -35,7 +35,7 @@
 #include <iostream>
 #include <iomanip>
 #include "arjun.h"
-#include "metasolver.h"
+#include "src/metasolver2.h"
 using std::vector;
 using std::setw;
 using std::set;
@@ -48,18 +48,17 @@ using std::map;
 
 namespace ArjunNS {
 
-using ArjunInt::MetaSolver;
-
 struct CL {
     constexpr CL(const vector<Lit>& _lits) : lits(_lits) {}
     vector<Lit> lits;
     bool inserted = false;
 };
 
+template<typename T>
 class FHolder {
 public:
     FHolder() = delete;
-    FHolder(MetaSolver* _solver) : solver(_solver) {
+    FHolder(T* _solver) : solver(_solver) {
         solver->new_var();
         my_true_lit = Lit(solver->nVars()-1, false);
         solver->add_clause({my_true_lit});
@@ -162,13 +161,14 @@ public:
 
 private:
     AIGManager aig_mng;
-    MetaSolver* solver = nullptr;
+    T* solver = nullptr;
     Lit my_true_lit = lit_Error;
 };
 
 }
 
-inline std::ostream& operator<<(std::ostream& os, const ArjunNS::FHolder::Formula& f) {
+
+inline std::ostream& operator<<(std::ostream& os, const ArjunNS::FHolder<ArjunInt::MetaSolver2>::Formula& f) {
     os << " === Formula out: " << f.out << " === " << endl;
     for (const auto& cl : f.clauses) {
         for (const auto& l : cl.lits) os << std::setw(6) << l;

@@ -38,8 +38,6 @@ THE SOFTWARE.
 
 namespace ArjunNS {
 
-class FHolder;
-
 class AIG;
 class AIGManager;
 class SimplifiedCNF;

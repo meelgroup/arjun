@@ -38,6 +38,7 @@
 #include <algorithm>
 #include <ranges>
 #include "constants.h"
+#include "src/metasolver2.h"
 #include "time_mem.h"
 #include "ccnr/ccnr.h"
 
@@ -298,7 +299,7 @@ void Manthan::fill_var_to_formula_with_backward() {
     const auto new_to_orig = cnf.get_new_to_orig_var();
 
     for(const auto& v: backward_defined) {
-        FHolder::Formula f;
+        FHolder<MetaSolver2>::Formula f;
 
         // Get the original variable number
         const auto orig = new_to_orig.at(v);
@@ -597,7 +598,7 @@ void Manthan::bve_and_substitute() {
         if (!to_define.count(y)) continue;
         assert(var_to_formula.count(y) == 0);
 
-        FHolder::Formula f;
+        FHolder<MetaSolver2>::Formula f;
         map<uint32_t, aig_ptr> transformed;
 
         // For optimizing which side of the BVE to take
@@ -672,7 +673,7 @@ void Manthan::bve_and_substitute() {
 
     for(const auto& v: y_order) {
         if (!to_define.count(v)) continue;
-        FHolder::Formula& f = var_to_formula.at(v);
+        FHolder<MetaSolver2>::Formula& f = var_to_formula.at(v);
         assert(f.out == lit_Error);
         assert(f.clauses.empty());
 
@@ -785,10 +786,14 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
     get_incidence();
 
     inject_cnf(repair_solver);
-    inject_cnf(cex_solver);
-    fh = std::make_unique<FHolder>(&cex_solver);
+    {
+        cex_solver.new_vars(cnf.nVars());
+        for(const auto& c: cnf.get_clauses()) cex_solver.add_clause(c, true);
+        for(const auto& c: cnf.get_red_clauses()) cex_solver.add_red_clause(c, true);
+    }
+    fh = std::make_unique<FHolder<MetaSolver2>>(&cex_solver);
     create_vars_for_y_hats();
-    add_not_f_x_yhat(cex_solver);
+    add_not_f_x_yhat();
     verb_print(2, "True lit in solver_train: " << fh->get_true_lit());
     verb_print(2, "[manthan] After fh creation: solver_train.nVars() = " << cex_solver.nVars() << " cnf.nVars() = " << cnf.nVars());
 
@@ -960,7 +965,8 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     if (ret) {
         perform_repair(y_rep, ctx, conflict);
         ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
-        recompute_all_y_hat(ctx, y_rep);
+        inject_formulas_into_solver();
+        recompute_all_y_hat_cnf(ctx, y_rep);
     }
     compute_needs_repair(ctx);
     print_needs_repair_vars();
@@ -1109,7 +1115,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     conflict_sizes_sum += conflict.size();
 
     // not (conflict) -> v = ctx(v)
-    FHolder::Formula f;
+    FHolder<MetaSolver2>::Formula f;
 
     // CNF part
     vector<Lit> cl;
@@ -1159,7 +1165,6 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
 // Will order LAST the variables that depends on EVERYTHING
 void Manthan::learn_order() {
     assert(y_order.empty());
-    double my_time = cpuTime();
     verb_print(2, "[manthan] Fixing LEARN order...");
     vector<uint32_t> sorted(to_define_full.begin(), to_define_full.end());
     sort_unknown(sorted, incidence);
@@ -1436,7 +1441,7 @@ void Manthan::create_vars_for_y_hats() {
 }
 
 // Adds ~F(x, y_hat), fills y_to_y_hat and y_hat_to_y
-void Manthan::add_not_f_x_yhat(MetaSolver& s) {
+void Manthan::add_not_f_x_yhat() {
     vector<Lit> tmp;
 
     // Adds ~F(x, y_hat)
@@ -1450,32 +1455,33 @@ void Manthan::add_not_f_x_yhat(MetaSolver& s) {
             else cl.push_back(l);
         }
 
-        s.new_var();
+        cex_solver.new_var();
         uint32_t cl_ind_v = cex_solver.nVars()-1;
         Lit cl_ind(cl_ind_v, false);
         tmp.clear();
         tmp.push_back(~cl_ind);
         for(const auto&l : cl) tmp.push_back(l);
-        s.add_clause(tmp);
+        cex_solver.add_clause(tmp, true);
 
         for(const auto&l : cl) {
             tmp.clear();
             tmp.push_back(cl_ind);
             tmp.push_back(~l);
-            s.add_clause(tmp);
+            cex_solver.add_clause(tmp, true);
         }
         cl_indics.push_back(cl_ind);
     }
     tmp.clear();
     for(const auto& l: cl_indics) tmp.push_back(~l); // at least one is unsatisfied
-    s.add_clause(tmp);
+    cex_solver.add_clause(tmp, true);
 }
 
 void Manthan::inject_formulas_into_solver() {
     SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
 
     // Replace y with y_hat
-    for(auto& [var, form]: var_to_formula) {
+    for(auto& k: updated_y_funcs) {
+        auto& form = var_to_formula.at(k);
         for(auto& cl: form.clauses) {
             if (cl.inserted) continue;
             vector<Lit> cl2;
@@ -1488,13 +1494,6 @@ void Manthan::inject_formulas_into_solver() {
             cl.inserted = true;
         }
     }
-}
-
-bool Manthan::get_counterexample(sample& ctx) {
-    const double my_time_start = cpuTime();
-    needs_repair.clear();
-    if (num_loops_repair == 1)
-        verb_print(1, "[manthan] Getting counterexample for the first time...");
 
     // Relation between y_hat and form_out
     // when y_hat_to_indic is TRUE, y_hat and form_out are EQUAL
@@ -1540,6 +1539,13 @@ bool Manthan::get_counterexample(sample& ctx) {
         }
     }
     updated_y_funcs.clear();
+}
+
+bool Manthan::get_counterexample(sample& ctx) {
+    const double my_time_start = cpuTime();
+    needs_repair.clear();
+    if (num_loops_repair == 1)
+        verb_print(1, "[manthan] Getting counterexample for the first time...");
 
     vector<Lit> assumps;
     assumps.reserve(y_hat_to_indic.size());
@@ -1573,7 +1579,7 @@ bool Manthan::get_counterexample(sample& ctx) {
     }
 }
 
-FHolder::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& used_vars, uint32_t depth, uint32_t& max_depth) {
+FHolder<MetaSolver2>::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& used_vars, uint32_t depth, uint32_t& max_depth) {
     max_depth = std::max(max_depth, depth);
     /* for(uint32_t i = 0; i < depth; i++) cout << " "; */
     if (node->NumChildren() == 0) {
@@ -1873,7 +1879,28 @@ void Manthan::get_incidence() {
     }
 }
 
-void Manthan::recompute_all_y_hat(sample& ctx, const uint32_t y_rep) {
+void Manthan::recompute_all_y_hat_cnf(sample& ctx, const uint32_t y_rep) {
+    vector<Lit> assumps;
+    assumps.reserve(input.size() + y_order.size() + y_hat_to_indic.size());
+    for(const auto& x: input) {
+        assumps.push_back(Lit(x, ctx[x] == l_False));
+    }
+    for(const auto& [y_hat, ind]: y_hat_to_indic) {
+        uint32_t y = indic_to_y[ind];
+        if (backward_defined.count(y)) continue; // already forced to true
+        assumps.push_back(Lit(ind, false));
+    }
+
+    lbool ret = cex_solver.solve(&assumps, 1);
+    assert(ret == l_True);
+    const auto& m = cex_solver.get_model(1);
+    for(const auto& y: y_order) {
+        uint32_t y_hat = y_to_y_hat.at(y);
+        ctx[y_hat] = m[y_hat];
+    }
+}
+
+void Manthan::recompute_all_y_hat_aig(sample& ctx, const uint32_t y_rep) {
     vector<aig_ptr> defs(ctx.size(), nullptr);
     bool found = false;
     map<aig_ptr, lbool> cache;
@@ -1883,7 +1910,7 @@ void Manthan::recompute_all_y_hat(sample& ctx, const uint32_t y_rep) {
             found = true;
             continue;
         }
-        assert(var_to_formula.count(v));
+        assert(var_to_formula.count(y));
         const auto& aig = var_to_formula.at(y).aig;
         assert(aig != nullptr);
         lbool val = AIG::evaluate(ctx, aig, defs, cache);

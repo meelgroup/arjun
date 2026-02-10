@@ -140,7 +140,8 @@ void assert_sample_satisfying(const vector<lbool>& sample, SATSolver& solver) {
 }
 
 // Add ~F(x, y_hat) to the solver - at least one clause must be unsatisfied when using y_hat
-void add_not_f_x_yhat(ArjunInt::MetaSolver& solver, const SimplifiedCNF& orig_cnf,
+template<typename T>
+void add_not_f_x_yhat(T& solver, const SimplifiedCNF& orig_cnf,
                       const set<uint32_t>& aig_vs,
                       map<uint32_t, uint32_t>& y_to_y_hat) {
     if (verb) cout << "c [F_x_yhat] Adding ~F(x, y_hat)..." << endl;
@@ -195,16 +196,17 @@ void add_not_f_x_yhat(ArjunInt::MetaSolver& solver, const SimplifiedCNF& orig_cn
 }
 
 // Fill var_to_formula by converting AIGs to CNF formulas
-void fill_var_to_formula(ArjunInt::MetaSolver& solver, FHolder& fh,
+template<typename T>
+void fill_var_to_formula(T& solver, FHolder<T>& fh,
                                         const SimplifiedCNF& cnf,
                                         const set<uint32_t>& aig_vars,
                                         const map<uint32_t, uint32_t>& y_to_y_hat,
                                         const set<uint32_t>& sampling_vars,
-                                        map<uint32_t, FHolder::Formula>& var_to_formula) {
+                                        map<uint32_t, typename FHolder<T>::Formula>& var_to_formula) {
     verb_print(2, "c [var-to-formula] Converting AIGs to formulas...");
 
     for(const auto& v_def: aig_vars) {
-        FHolder::Formula f;
+        typename FHolder<T>::Formula f;
         const auto& aig = cnf.get_def(v_def);
         release_assert(aig != nullptr);
 
@@ -266,10 +268,11 @@ void fill_var_to_formula(ArjunInt::MetaSolver& solver, FHolder& fh,
 }
 
 // Check if the AIGs are correct by verifying UNSAT
-bool verify_aigs_correct(ArjunInt::MetaSolver& solver,
+template<typename T>
+bool verify_aigs_correct(T& solver,
                         const set<uint32_t>& aig_vs,
                         const map<uint32_t, uint32_t>& y_to_y_hat,
-                        const map<uint32_t, FHolder::Formula>& var_to_formula) {
+                        const map<uint32_t, typename FHolder<T>::Formula>& var_to_formula) {
     if (verb) cout << "c [test-synth] Verifying AIGs are correct..." << endl;
 
     // Inject formulas into solver (make sure it's all x & y_hat, no y!)
@@ -392,7 +395,7 @@ void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
     add_not_f_x_yhat(verify_solver, orig_cnf, aig_vs, y_to_y_hat);
 
     // Step 2: Fill var_to_formula with backward definitions
-    map<uint32_t, FHolder::Formula> var_to_formula;
+    map<uint32_t, FHolder<ArjunInt::MetaSolver>::Formula> var_to_formula;
     set<uint32_t> sampling_vars(orig_cnf.get_sampl_vars().begin(), orig_cnf.get_sampl_vars().end());
     fill_var_to_formula(verify_solver, fh, cnf, aig_vs,
                                       y_to_y_hat, sampling_vars, var_to_formula);
