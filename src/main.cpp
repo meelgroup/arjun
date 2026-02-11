@@ -82,6 +82,7 @@ int sampl_start_at_zero = false;
 int do_synth_bve = true;
 int do_pre_backbone = 0;
 int manthan_rep_mult = 1;
+int manthan_strategy = 0;
 
 int synthesis = false;
 int do_unate = false;
@@ -129,10 +130,12 @@ void add_arjun_options() {
     myopt("--unate", do_unate, atoi,"Perform unate analysis");
     myopt("--autarky", etof_conf.do_autarky, atoi,"Perform unate analysis");
     myopt("--mbve", mconf.manthan_bve, atoi,"Use BVE with constants instead of training");
-    myopt("--mtryrepmult", manthan_rep_mult, atoi,"Repair tries will be multiplied by this");
     myopt("--bvedeep", mconf.bve_deep_substitute, atoi,"In Manthan BVE, do deep substitution");
     myopt("--mbveorder", mconf.manthan_bve_order, atoi,"Order BVE vars in Manthan to optimize BVE");
     myopt("--moneperloop", mconf.one_repair_per_loop, atoi,"One repair per CEX loop");
+    // Strategy
+    myopt("--mtryrepmult", manthan_rep_mult, atoi,"Repair tries will be multiplied by this");
+    myopt("--mstrategy", manthan_strategy, atoi,"Go directly to strategy N");
     // Order
     myopt("--maxsatorder", mconf.maxsat_order, atoi,"Which order to use to try to fix vars? 0 = normal, 1 = reverse");
     myopt("--backwsynthorder", mconf.backward_synth_reverse_order, atoi,"Which order to use to try to do backward? 0 = normal, 1 = reverse");
@@ -317,27 +320,38 @@ void do_synthesis() {
     }
 
     auto mconf_orig = mconf;
-    if (!cnf.synth_done()) {
+    uint32_t tries;
+    if (manthan_strategy > 3) {
+        cout << "ERROR: unknown strategy " << manthan_strategy << endl;
+        exit(EXIT_FAILURE);
+    }
+    if (!cnf.synth_done() && (manthan_strategy == 0 || manthan_strategy == 1)) {
         mconf = mconf_orig;
         // Learning with no samples
         mconf.manthan_bve = 0;
         mconf.num_samples = 1;
         mconf.num_samples_ccnr = 0;
         mconf.manthan_bve = 0;
-        cnf = arjun->standalone_manthan(cnf, mconf, 20*manthan_rep_mult);
-        if (!cnf.synth_done()) {
-            // Learning with (larger) samples size
-            mconf = mconf_orig;
-            mconf.manthan_bve = 0;
-            cnf = arjun->standalone_manthan(cnf, mconf, 100*manthan_rep_mult);
-        }
-        if (!cnf.synth_done()) {
-            mconf = mconf_orig;
-            mconf.manthan_bve = 1;
-            cnf = arjun->standalone_manthan(cnf, mconf, std::numeric_limits<uint32_t>::max());
-            release_assert(cnf.synth_done() && "Manthan should have finished synthesis, but it did not!");
-        }
+        tries = 20*manthan_rep_mult;
+        if (manthan_strategy == 1) tries = std::numeric_limits<uint32_t>::max();
+        cnf = arjun->standalone_manthan(cnf, mconf, tries);
     }
+    if (!cnf.synth_done() && manthan_strategy == 0 || manthan_strategy == 2) {
+        // Learning with (larger) samples size
+        mconf = mconf_orig;
+        mconf.manthan_bve = 0;
+        tries = 100*manthan_rep_mult;
+        if (manthan_strategy == 2) tries = std::numeric_limits<uint32_t>::max();
+        cnf = arjun->standalone_manthan(cnf, mconf, tries);
+    }
+    if (!cnf.synth_done() && manthan_strategy == 0 || manthan_strategy == 3) {
+        mconf = mconf_orig;
+        mconf.manthan_bve = 1;
+        tries = std::numeric_limits<uint32_t>::max();
+        cnf = arjun->standalone_manthan(cnf, mconf, tries);
+        release_assert(cnf.synth_done() && "Manthan should have finished synthesis, but it did not!");
+    }
+    release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");
     if (!conf.debug_synth.empty()) {
         auto final_cnf = cnf;
