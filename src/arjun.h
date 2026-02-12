@@ -705,26 +705,28 @@ inline unsigned int mpfr_memory_usage(const mpfr_t& x) {
 
 class FMpfr final : public CMSat::Field {
 public:
+    uint16_t prec;
     mpfr_t val;
     ~FMpfr() final { mpfr_clear(val); }
-    FMpfr() {
-        mpfr_init2(val, 256);
+    FMpfr() = delete;
+    explicit FMpfr(uint16_t _prec) : prec(_prec) {
+        mpfr_init2(val, prec);
         mpfr_set_si(val, 0, MPFR_RNDN);
     }
-    FMpfr(const int _val) {
-        mpfr_init2(val, 256);
+    explicit FMpfr(const int _val, uint16_t _prec) : prec(_prec) {
+        mpfr_init2(val, prec);
         mpfr_set_si(val, _val, MPFR_RNDN);
     }
-    FMpfr(const double _val) {
-        mpfr_init2(val, 256);
+    explicit FMpfr(const double _val, uint16_t _prec) : prec(_prec) {
+        mpfr_init2(val, prec);
         mpfr_set_d(val, _val, MPFR_RNDN);
     }
-    FMpfr(const mpfr_t& _val) {
-        mpfr_init2(val, 256);
+    explicit FMpfr(const mpfr_t& _val, uint16_t _prec) : prec(_prec) {
+        mpfr_init2(val, prec);
         mpfr_set(val, _val, MPFR_RNDN);
     }
-    FMpfr(const FMpfr& other) {
-        mpfr_init2(val, 256);
+    explicit FMpfr(const FMpfr& other, uint16_t _prec) : prec(_prec) {
+        mpfr_init2(val, prec);
         mpfr_set(val, other.val, MPFR_RNDN);
     }
     const mpfr_t& get_val() const { return val; }
@@ -744,9 +746,9 @@ public:
     std::unique_ptr<Field> add(const Field& other) final {
         const auto& od = static_cast<const FMpfr&>(other);
         mpfr_t res;
-        mpfr_init2(res, 256);
+        mpfr_init2(res, prec);
         mpfr_add(res, val, od.val, MPFR_RNDN);
-        std::unique_ptr<FMpfr> ret = std::make_unique<FMpfr>(res);
+        std::unique_ptr<FMpfr> ret = std::make_unique<FMpfr>(res, prec);
         mpfr_clear(res);
         return ret;
     }
@@ -785,7 +787,7 @@ public:
     }
 
     std::unique_ptr<Field> dup() const final {
-        return std::make_unique<FMpfr>(val);
+        return std::make_unique<FMpfr>(val, prec);
     }
 
     bool is_zero() const final {
@@ -816,17 +818,26 @@ public:
 
 class FGenMpfr final : public CMSat::FieldGen {
 public:
+    uint16_t prec;
     ~FGenMpfr() final = default;
+    FGenMpfr(const FGenMpfr& other) : prec(other.prec) {}
+    FGenMpfr& operator=(const FGenMpfr& other) {
+        if (this != &other) {
+            prec = other.prec;
+        }
+        return *this;
+    }
+    FGenMpfr(uint16_t _prec = 256) : prec(_prec) {}
     std::unique_ptr<CMSat::Field> zero() const final {
-        return std::make_unique<FMpfr>(0);
+        return std::make_unique<FMpfr>(0, prec);
     }
 
     std::unique_ptr<CMSat::Field> one() const final {
-        return std::make_unique<FMpfr>(1);
+        return std::make_unique<FMpfr>(1, prec);
     }
 
     std::unique_ptr<FieldGen> dup() const final {
-        return std::make_unique<FGenMpfr>();
+        return std::make_unique<FGenMpfr>(prec);
     }
 
     bool larger_than(const CMSat::Field& a, const CMSat::Field& b) const final {
