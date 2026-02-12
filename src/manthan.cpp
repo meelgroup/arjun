@@ -1221,6 +1221,7 @@ void Manthan::learn_order() {
     assert(y_order.size() == to_define_full.size());
 }
 
+// TODO: Try tree decomposition-based ordering.
 void Manthan::cluster_order() {
     assert(y_order.empty());
     verb_print(2, "[manthan] Fixing CLUSTER order...");
