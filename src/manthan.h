@@ -99,6 +99,8 @@ class Manthan {
         set<uint32_t> helpers;
         set<uint32_t> y_hats;
 
+        map<uint32_t, set<uint32_t>> primal_graph;
+        void build_primal_graph();
         void full_train();
         void bve_and_substitute();
         aig_ptr one_level_substitute(const Lit l, const uint32_t v, map<uint32_t, aig_ptr>& transformed);
@@ -138,6 +140,7 @@ class Manthan {
         void order_vars();
         void learn_order();
         void bve_order();
+        void cluster_order();
         bool later_in_order(const uint32_t a, const uint32_t b) const {
             SLOW_DEBUG_DO({
                 assert(order_val.size() > a);

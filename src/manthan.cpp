@@ -398,7 +398,7 @@ void Manthan::print_y_order_occur() const {
     for(const auto& y: y_order) {
         const uint32_t pos = occur_lit[Lit(y, false).toInt()];
         const uint32_t neg = occur_lit[Lit(y, true).toInt()];
-        verb_print(2, "[manthan] y-order var " << setw(4) << y+1
+        verb_print(1, "[manthan] y-order var " << setw(4) << y+1
             << " BW: " << backward_defined.count(y)
             << "   pos occur " << setw(6) << pos
             << "   --  neg occur " << setw(6) << neg);
@@ -724,6 +724,27 @@ void Manthan::bve_and_substitute() {
         << " funs/s: " << setw(6) << fixed << setprecision(2) << safe_div(num_done,(cpuTime()-start_time))
         << " T: " << setw(5) << (cpuTime()-start_time)
         << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
+}
+
+void Manthan::build_primal_graph() {
+    primal_graph.clear();
+    for (const auto& v : to_define) primal_graph[v]; // ensure node exists even if isolated
+    for (const auto& cl : cnf.get_clauses()) {
+        vector<uint32_t> y_in_cl;
+        for (const auto& l : cl) {
+            if (to_define.count(l.var())) y_in_cl.push_back(l.var());
+        }
+        for (uint32_t i = 0; i < y_in_cl.size(); i++) {
+            for (uint32_t j = i + 1; j < y_in_cl.size(); j++) {
+                primal_graph[y_in_cl[i]].insert(y_in_cl[j]);
+                primal_graph[y_in_cl[j]].insert(y_in_cl[i]);
+            }
+        }
+    }
+    uint32_t num_edges = 0;
+    for (const auto& [v, adj] : primal_graph) num_edges += adj.size();
+    verb_print(1, "[manthan] Primal graph: " << primal_graph.size() << " nodes, "
+            << num_edges / 2 << " edges");
 }
 
 void Manthan::full_train() {
@@ -1200,14 +1221,113 @@ void Manthan::learn_order() {
     assert(y_order.size() == to_define_full.size());
 }
 
+void Manthan::cluster_order() {
+    assert(y_order.empty());
+    verb_print(2, "[manthan] Fixing CLUSTER order...");
+
+    // Step 1: Build primal graph
+    build_primal_graph();
+
+    // Step 2: Find connected components via BFS
+    map<uint32_t, uint32_t> var_to_comp; // var -> component id
+    vector<vector<uint32_t>> components;  // component id -> list of vars
+    set<uint32_t> visited;
+    for (const auto& v : to_define_full) {
+        if (visited.count(v)) continue;
+        uint32_t comp_id = components.size();
+        components.emplace_back();
+        // BFS
+        std::queue<uint32_t> q;
+        q.push(v);
+        visited.insert(v);
+        while (!q.empty()) {
+            uint32_t cur = q.front(); q.pop();
+            var_to_comp[cur] = comp_id;
+            components[comp_id].push_back(cur);
+            for (const auto& nb : primal_graph[cur]) {
+                if (visited.count(nb)) continue;
+                visited.insert(nb);
+                q.push(nb);
+            }
+        }
+    }
+    verb_print(1, "[manthan] Cluster order: " << components.size() << " components");
+
+    // Step 3: Sort vars within each component by incidence (descending)
+    for (auto& comp : components) sort_unknown(comp, incidence);
+
+    // Step 4: Build inter-component dependency graph
+    // comp_deps[a] contains set of component ids that a depends on
+    vector<set<uint32_t>> comp_deps(components.size());
+    for (uint32_t ci = 0; ci < components.size(); ci++) {
+        for (const auto& v : components[ci]) {
+            for (const auto& v2 : to_define_full) {
+                if (v == v2) continue;
+                if (dependency_mat[v][v2] == 0) continue;
+                uint32_t cj = var_to_comp[v2];
+                if (ci != cj) comp_deps[ci].insert(cj);
+            }
+        }
+    }
+
+    // Step 5: Topological sort on component dependency graph
+    vector<uint32_t> comp_order;
+    set<uint32_t> comp_fixed;
+    while (comp_order.size() != components.size()) {
+        for (uint32_t ci = 0; ci < components.size(); ci++) {
+            if (comp_fixed.count(ci)) continue;
+            bool ok = true;
+            for (const auto& dep : comp_deps[ci]) {
+                if (!comp_fixed.count(dep)) { ok = false; break; }
+            }
+            if (!ok) continue;
+            comp_fixed.insert(ci);
+            comp_order.push_back(ci);
+        }
+    }
+
+    // Step 6: Within each component, do dependency-respecting ordering (like learn_order)
+    set<uint32_t> already_fixed;
+    for (const auto& ci : comp_order) {
+        const auto& sorted = components[ci];
+        uint32_t comp_size = sorted.size();
+        uint32_t fixed_in_comp = 0;
+        while (fixed_in_comp < comp_size) {
+            for (const auto& y : sorted) {
+                if (already_fixed.count(y)) continue;
+                bool ok = true;
+                for (const auto& y2 : to_define_full) {
+                    if (y == y2) continue;
+                    if (dependency_mat[y][y2] == 0) continue;
+                    if (dependency_mat[y][y2] == 1 && already_fixed.count(y2)) continue;
+                    ok = false;
+                    break;
+                }
+                if (!ok) continue;
+                verb_print(2, "Fixed order of " << setw(5) << y+1 << " to: " << setw(5) << y_order.size()
+                        << " BW: " << backward_defined.count(y) << " cluster: " << ci);
+                already_fixed.insert(y);
+                y_order.push_back(y);
+                fixed_in_comp++;
+            }
+        }
+    }
+
+    assert(y_order.size() == to_define_full.size());
+}
+
 void Manthan::order_vars() {
     assert(order_val.empty());
     assert(y_order.empty());
     const double my_time = cpuTime();
     verb_print(2, "[manthan] Fixing order " << (mconf.manthan_bve ? "[BVE]" : "[LEARN]") << "...");
 
-    if (mconf.manthan_bve_order) bve_order();
-    else learn_order();
+    switch(mconf.manthan_order) {
+        case 0: learn_order(); break;
+        case 1: cluster_order(); break;
+        case 2: bve_order(); break;
+        default: release_assert(false && "Invalid manthan_order");
+    }
 
     // fill order_val
     order_val.resize(cnf.nVars(), -2);
