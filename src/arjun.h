@@ -827,7 +827,7 @@ public:
         }
         return *this;
     }
-    FGenMpfr(uint16_t _prec = 256) : prec(_prec) {}
+    FGenMpfr(uint16_t _prec) : prec(_prec) {}
     std::unique_ptr<CMSat::Field> zero() const final {
         return std::make_unique<FMpfr>(0, prec);
     }
