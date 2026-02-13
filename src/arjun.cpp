@@ -674,7 +674,7 @@ DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
     // This ALSO gets all the fixed values
     scnf.orig_to_new_var = solver->update_var_mapping(orig_to_new_var);
     fix_mapping_after_renumber(scnf, verb);
-    cout << "c o solver orig num vars: " << solver->nVars() << " solver simp num vars: "
+    if (verb) cout << "c o solver orig num vars: " << solver->nVars() << " solver simp num vars: "
         << solver->simplified_nvars() << endl;
 
     assert(scnf.defs_invariant());
