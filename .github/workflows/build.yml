@@ -250,7 +250,6 @@ jobs:
         ./project/build/arjun --help
         echo $?
 
-
     - name: Check licenses
       if: contains(matrix.os, 'ubuntu')
       run: |
