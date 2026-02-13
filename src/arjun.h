@@ -721,12 +721,12 @@ public:
         mpfr_set_d(val, _val, MPFR_RNDN);
     }
     explicit FMpfr(const mpfr_t& _val) {
-        const auto prec = mpfr_get_prec(val);
+        const auto prec = mpfr_get_prec(_val);
         mpfr_init2(val, prec);
         mpfr_set(val, _val, MPFR_RNDN);
     }
     explicit FMpfr(const FMpfr& other) {
-        const auto prec = mpfr_get_prec(val);
+        const auto prec = mpfr_get_prec(other.val);
         mpfr_init2(val, prec);
         mpfr_set(val, other.val, MPFR_RNDN);
     }
