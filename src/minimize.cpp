@@ -166,8 +166,7 @@ bool Minimize:: simplify_bve_only() {
     return true;
 }
 
-bool Minimize::run_gauss_jordan()
-{
+bool Minimize::run_gauss_jordan() {
     if (conf.gauss_jordan && conf.simp) {
         string str = "occ-xor";
         solver->set_bve(0);
@@ -180,8 +179,7 @@ bool Minimize::run_gauss_jordan()
 }
 
 template <class T>
-void check_sanity_sampling_vars(T vars, const uint32_t nvars)
-{
+void check_sanity_sampling_vars(T vars, const uint32_t nvars) {
     for(const auto& v: vars) if (v >= nvars) {
         cout << "ERROR: sampling set provided is incorrect, it has a variable in it: " << v+1 << " that is larger than the total number of variables: " << nvars << endl;
         assert(false);
