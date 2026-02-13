@@ -705,27 +705,28 @@ inline unsigned int mpfr_memory_usage(const mpfr_t& x) {
 
 class FMpfr final : public CMSat::Field {
 public:
-    uint16_t prec;
     mpfr_t val;
     ~FMpfr() final { mpfr_clear(val); }
     FMpfr() = delete;
-    explicit FMpfr(uint16_t _prec) : prec(_prec) {
+    explicit FMpfr(int prec) {
         mpfr_init2(val, prec);
         mpfr_set_si(val, 0, MPFR_RNDN);
     }
-    explicit FMpfr(const int _val, uint16_t _prec) : prec(_prec) {
+    explicit FMpfr(const int _val, uint16_t prec) {
         mpfr_init2(val, prec);
         mpfr_set_si(val, _val, MPFR_RNDN);
     }
-    explicit FMpfr(const double _val, uint16_t _prec) : prec(_prec) {
+    explicit FMpfr(const double _val, uint16_t prec) {
         mpfr_init2(val, prec);
         mpfr_set_d(val, _val, MPFR_RNDN);
     }
-    explicit FMpfr(const mpfr_t& _val, uint16_t _prec) : prec(_prec) {
+    explicit FMpfr(const mpfr_t& _val) {
+        const auto prec = mpfr_get_prec(val);
         mpfr_init2(val, prec);
         mpfr_set(val, _val, MPFR_RNDN);
     }
-    explicit FMpfr(const FMpfr& other, uint16_t _prec) : prec(_prec) {
+    explicit FMpfr(const FMpfr& other) {
+        const auto prec = mpfr_get_prec(val);
         mpfr_init2(val, prec);
         mpfr_set(val, other.val, MPFR_RNDN);
     }
@@ -746,9 +747,10 @@ public:
     std::unique_ptr<Field> add(const Field& other) final {
         const auto& od = static_cast<const FMpfr&>(other);
         mpfr_t res;
+        const auto prec = mpfr_get_prec(val);
         mpfr_init2(res, prec);
         mpfr_add(res, val, od.val, MPFR_RNDN);
-        std::unique_ptr<FMpfr> ret = std::make_unique<FMpfr>(res, prec);
+        std::unique_ptr<FMpfr> ret = std::make_unique<FMpfr>(res);
         mpfr_clear(res);
         return ret;
     }
@@ -787,7 +789,7 @@ public:
     }
 
     std::unique_ptr<Field> dup() const final {
-        return std::make_unique<FMpfr>(val, prec);
+        return std::make_unique<FMpfr>(val);
     }
 
     bool is_zero() const final {
