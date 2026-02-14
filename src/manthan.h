@@ -101,7 +101,7 @@ class Manthan {
         set<uint32_t> y_hats;
 
         map<uint32_t, set<uint32_t>> primal_graph;
-        TWD::Graph build_primal_graph();
+        std::unique_ptr<TWD::Graph> build_primal_graph();
         void full_train();
         void bve_and_substitute();
         aig_ptr one_level_substitute(const Lit l, const uint32_t v, map<uint32_t, aig_ptr>& transformed);

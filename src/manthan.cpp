@@ -60,6 +60,7 @@ using std::array;
 using std::set;
 using std::setprecision;
 using std::fixed;
+using std::make_unique;
 
 using namespace ArjunInt;
 using namespace ArjunNS;
@@ -728,10 +729,10 @@ void Manthan::bve_and_substitute() {
         << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
 }
 
-TWD::Graph Manthan::build_primal_graph() {
-    TWD::Graph primal(cnf.nVars());
+std::unique_ptr<TWD::Graph> Manthan::build_primal_graph() {
+    auto primal = make_unique<TWD::Graph>(cnf.nVars());
     for(const auto& cl: cnf.get_clauses()) {
-        for(const auto& l: cl) primal.addEdge(l.var(), l.var());
+        for(const auto& l: cl) primal->addEdge(l.var(), l.var());
     }
 
     uint32_t num_edges = 0;
@@ -1230,13 +1231,13 @@ bool Manthan::cluster_order() {
 
     if (mconf.do_td_contract) {
       for(const auto& i: input) {
-        primal.contract(i, mconf.td_max_edges*100);
-        if (primal.numEdges() > mconf.td_max_edges*100 ) break;
+        primal->contract(i, mconf.td_max_edges*100);
+        if (primal->numEdges() > mconf.td_max_edges*100 ) break;
       }
     }
 
-    if (primal.numEdges() > mconf.td_max_edges) {
-        verb_print(1, "[td] Too many edges, " << primal.numEdges() << " skipping TD");
+    if (primal->numEdges() > mconf.td_max_edges) {
+        verb_print(1, "[td] Too many edges, " << primal->numEdges() << " skipping TD");
         return false;
     }
 
@@ -1250,7 +1251,7 @@ bool Manthan::cluster_order() {
         idx++;
     }
     for(uint32_t v = 0; v < cnf.nVars(); v++) {
-        const auto& adj = primal.get_adj_list()[v];
+        const auto& adj = primal->get_adj_list()[v];
         if (!to_define_full.count(v)) {
             assert(adj.empty() && "Should have been contracted away");
             continue;
@@ -1260,17 +1261,18 @@ bool Manthan::cluster_order() {
             primal_contr.addEdge(old_to_new[v], old_to_new[n]);
         }
     }
+    primal.reset();
 
     // run FlowCutter
     verb_print(2, "[td-cmp] FlowCutter is running...");
     TWD::IFlowCutter fc(primal_contr.numNodes(), primal_contr.numEdges(), 0);
-    fc.importGraph(primal);
+    fc.importGraph(primal_contr);
 
     // Notice that this graph returned is VERY different
     uint64_t td_steps = 1e5;
     int td_lookahead_iters = 10;
     auto tdec = TWD::TreeDecomposition(fc.constructTD(td_steps, td_lookahead_iters));
-    tdec.centroid(primal.numNodes(), conf.verb);
+    tdec.centroid(primal_contr.numNodes(), conf.verb);
     const auto td_width = tdec.width()-1;
     verb_print(2, "[td] FlowCutter FINISHED, TD width: " << td_width);
 
