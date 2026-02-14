@@ -35,6 +35,7 @@
 #include <vector>
 #include <set>
 #include "formula.h"
+#include <treedecomp/TreeDecomposition.hpp>
 
 
 /* #define MLPACK_PRINT_INFO */
@@ -100,7 +101,7 @@ class Manthan {
         set<uint32_t> y_hats;
 
         map<uint32_t, set<uint32_t>> primal_graph;
-        void build_primal_graph();
+        TWD::Graph build_primal_graph();
         void full_train();
         void bve_and_substitute();
         aig_ptr one_level_substitute(const Lit l, const uint32_t v, map<uint32_t, aig_ptr>& transformed);
@@ -108,6 +109,8 @@ class Manthan {
         void create_vars_for_y_hats();
         FHolder<MetaSolver2>::Formula recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& var_remap, uint32_t depth, uint32_t& max_depth);
         vector<uint32_t> incidence;
+        vector<double> td_score;
+
         Lit map_y_to_y_hat(const Lit& l) const;
         uint32_t calc_non_bw_needs_repair() const;
         void print_needs_repair_vars() const;
@@ -140,7 +143,10 @@ class Manthan {
         void order_vars();
         void learn_order();
         void bve_order();
-        void cluster_order();
+        bool cluster_order();
+        void compute_td_score_using_adj(const uint32_t nodes,
+            const std::vector<std::vector<int>>& bags,
+            const std::vector<std::vector<int>>& adj);
         bool later_in_order(const uint32_t a, const uint32_t b) const {
             SLOW_DEBUG_DO({
                 assert(order_val.size() > a);

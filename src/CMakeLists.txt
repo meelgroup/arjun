@@ -28,6 +28,7 @@ if (SYNTH)
     include_directories( ${MLPACK_INCLUDE_DIR} )
 endif()
 include_directories(${PROJECT_SOURCE_DIR}/../cadical/src/)
+include_directories( ${TREEDECOMP_INCLUDE_DIRS} )
 
 if (NOT WIN32)
     add_cxx_flag_if_supported("-Wno-bitfield-constant-conversion")
@@ -73,6 +74,7 @@ target_link_libraries(arjun
     LINK_PUBLIC ${cadical}
     LINK_PUBLIC ${EVALMAXSAT_LIBRARIES}
     LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT}
+    LINK_PUBLIC ${TREEDECOMP_LIBRARIES}
 )
 
 add_executable(arjun-bin main.cpp)

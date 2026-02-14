@@ -33,6 +33,8 @@
 #include <iomanip>
 #include <ios>
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
+#include <treedecomp/IFlowCutter.hpp>
+#include <treedecomp/graph.hpp>
 #include <vector>
 #include <array>
 #include <algorithm>
@@ -726,25 +728,17 @@ void Manthan::bve_and_substitute() {
         << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
 }
 
-void Manthan::build_primal_graph() {
-    primal_graph.clear();
-    for (const auto& v : to_define) primal_graph[v]; // ensure node exists even if isolated
-    for (const auto& cl : cnf.get_clauses()) {
-        vector<uint32_t> y_in_cl;
-        for (const auto& l : cl) {
-            if (to_define.count(l.var())) y_in_cl.push_back(l.var());
-        }
-        for (uint32_t i = 0; i < y_in_cl.size(); i++) {
-            for (uint32_t j = i + 1; j < y_in_cl.size(); j++) {
-                primal_graph[y_in_cl[i]].insert(y_in_cl[j]);
-                primal_graph[y_in_cl[j]].insert(y_in_cl[i]);
-            }
-        }
+TWD::Graph Manthan::build_primal_graph() {
+    TWD::Graph primal(cnf.nVars());
+    for(const auto& cl: cnf.get_clauses()) {
+        for(const auto& l: cl) primal.addEdge(l.var(), l.var());
     }
+
     uint32_t num_edges = 0;
     for (const auto& [v, adj] : primal_graph) num_edges += adj.size();
     verb_print(1, "[manthan] Primal graph: " << primal_graph.size() << " nodes, "
             << num_edges / 2 << " edges");
+    return primal;
 }
 
 void Manthan::full_train() {
@@ -1191,7 +1185,13 @@ void Manthan::learn_order() {
     assert(y_order.empty());
     verb_print(2, "[manthan] Fixing LEARN order...");
     vector<uint32_t> sorted(to_define_full.begin(), to_define_full.end());
-    sort_unknown(sorted, incidence);
+    vector<double> score(cnf.nVars(), 0.0);
+    auto mysorter = [&](const uint32_t a, const uint32_t b) -> bool {
+        if (td_score[a] != td_score[b]) return td_score[a] > td_score[b];
+        if (incidence[a] != incidence[b]) return incidence[a] > incidence[b];
+        return a < b;
+    };
+    std::sort(sorted.begin(), sorted.end(), mysorter);
     /* std::reverse(sorted.begin(), sorted.end()); */
 
     set<uint32_t> already_fixed;
@@ -1221,103 +1221,151 @@ void Manthan::learn_order() {
     assert(y_order.size() == to_define_full.size());
 }
 
-// TODO: Make this into a tree decomposition-based ordering. And add the backward defined vars too!
-void Manthan::cluster_order() {
+bool Manthan::cluster_order() {
     assert(y_order.empty());
     verb_print(2, "[manthan] Fixing CLUSTER order...");
 
     // Step 1: Build primal graph
-    build_primal_graph();
+    auto primal = build_primal_graph();
 
-    // Step 2: Find connected components via BFS
-    map<uint32_t, uint32_t> var_to_comp; // var -> component id
-    vector<vector<uint32_t>> components;  // component id -> list of vars
-    set<uint32_t> visited;
-    for (const auto& v : to_define_full) {
-        if (visited.count(v)) continue;
-        uint32_t comp_id = components.size();
-        components.emplace_back();
-        // BFS
-        std::queue<uint32_t> q;
-        q.push(v);
-        visited.insert(v);
-        while (!q.empty()) {
-            uint32_t cur = q.front(); q.pop();
-            var_to_comp[cur] = comp_id;
-            components[comp_id].push_back(cur);
-            for (const auto& nb : primal_graph[cur]) {
-                if (visited.count(nb)) continue;
-                visited.insert(nb);
-                q.push(nb);
-            }
-        }
+    if (mconf.do_td_contract) {
+      for(const auto& i: input) {
+        primal.contract(i, mconf.td_max_edges*100);
+        if (primal.numEdges() > mconf.td_max_edges*100 ) break;
+      }
     }
-    verb_print(1, "[manthan] Cluster order: " << components.size() << " components");
 
-    // Step 3: Sort vars within each component by incidence (descending)
-    for (auto& comp : components) sort_unknown(comp, incidence);
+    if (primal.numEdges() > mconf.td_max_edges) {
+        verb_print(1, "[td] Too many edges, " << primal.numEdges() << " skipping TD");
+        return false;
+    }
 
-    // Step 4: Build inter-component dependency graph
-    // comp_deps[a] contains set of component ids that a depends on
-    vector<set<uint32_t>> comp_deps(components.size());
-    for (uint32_t ci = 0; ci < components.size(); ci++) {
-        for (const auto& v : components[ci]) {
-            for (const auto& v2 : to_define_full) {
-                if (v == v2) continue;
-                if (dependency_mat[v][v2] == 0) continue;
-                uint32_t cj = var_to_comp[v2];
-                if (ci != cj) comp_deps[ci].insert(cj);
-            }
+    map<uint32_t, uint32_t> old_to_new;
+    map<uint32_t, uint32_t> new_to_old;
+    TWD::Graph primal_contr(to_define_full.size());
+    uint32_t idx = 0;
+    for(const auto& v: to_define_full) {
+        old_to_new[v] = idx;
+        new_to_old[idx] = v;
+        idx++;
+    }
+    for(uint32_t v = 0; v < cnf.nVars(); v++) {
+        const auto& adj = primal.get_adj_list()[v];
+        if (!to_define_full.count(v)) {
+            assert(adj.empty() && "Should have been contracted away");
+            continue;
+        }
+        for(const auto& n: adj) {
+            assert(to_define_full.count(n) && "Input vars should have been contracted away");
+            primal_contr.addEdge(old_to_new[v], old_to_new[n]);
         }
     }
 
-    // Step 5: Topological sort on component dependency graph
-    vector<uint32_t> comp_order;
-    set<uint32_t> comp_fixed;
-    while (comp_order.size() != components.size()) {
-        for (uint32_t ci = 0; ci < components.size(); ci++) {
-            if (comp_fixed.count(ci)) continue;
-            bool ok = true;
-            for (const auto& dep : comp_deps[ci]) {
-                if (!comp_fixed.count(dep)) { ok = false; break; }
-            }
-            if (!ok) continue;
-            comp_fixed.insert(ci);
-            comp_order.push_back(ci);
-        }
+    // run FlowCutter
+    verb_print(2, "[td-cmp] FlowCutter is running...");
+    TWD::IFlowCutter fc(primal_contr.numNodes(), primal_contr.numEdges(), 0);
+    fc.importGraph(primal);
+
+    // Notice that this graph returned is VERY different
+    uint64_t td_steps = 1e5;
+    int td_lookahead_iters = 10;
+    auto tdec = TWD::TreeDecomposition(fc.constructTD(td_steps, td_lookahead_iters));
+    tdec.centroid(primal.numNodes(), conf.verb);
+    const auto td_width = tdec.width()-1;
+    verb_print(2, "[td] FlowCutter FINISHED, TD width: " << td_width);
+
+    const auto& bags = tdec.Bags();
+    if (td_width <= 0) {
+      verb_print(1, "[td] TD width is 0, ignoring TD");
+      return false;
     }
 
-    // Step 6: Within each component, do dependency-respecting ordering (like learn_order)
-    set<uint32_t> already_fixed;
-    for (const auto& ci : comp_order) {
-        const auto& sorted = components[ci];
-        uint32_t comp_size = sorted.size();
-        uint32_t fixed_in_comp = 0;
-        while (fixed_in_comp < comp_size) {
-            for (const auto& y : sorted) {
-                if (already_fixed.count(y)) continue;
-                bool ok = true;
-                for (const auto& y2 : to_define_full) {
-                    if (y == y2) continue;
-                    if (dependency_mat[y][y2] == 0) continue;
-                    if (dependency_mat[y][y2] == 1 && already_fixed.count(y2)) continue;
-                    ok = false;
-                    break;
-                }
-                if (!ok) continue;
-                verb_print(2, "Fixed order of " << setw(5) << y+1 << " to: " << setw(5) << y_order.size()
-                        << " BW: " << backward_defined.count(y) << " cluster: " << ci);
-                already_fixed.insert(y);
-                y_order.push_back(y);
-                fixed_in_comp++;
-            }
-        }
+    verb_print(2, "[td] Calculated TD width: " << td_width-1);
+    const auto& adj = tdec.get_adj_list();
+    /* if (conf.verb >= 3) { */
+      for(uint32_t i = 0; i < bags.size(); i++) {
+        const auto& b = bags[i];
+        cout << "bag id: " << setw(3) << i << " contains: ";
+        for(const auto& bb: b) cout << setw(4) << bb << " ";
+        cout << endl;
+      }
+      for(uint32_t i = 0; i < adj.size(); i++) {
+        const auto& a = adj[i];
+        cout << "bag " << setw(3) << i << " is adjacent to bags: ";
+        for(const auto& nn: a) cout << setw(3) << nn << " ";
+        cout << endl;
+      }
+    /* } */
+    int max_dist = 0;
+    std::vector<int> dists = tdec.distanceFromCentroid(tdec.numNodes());
+    for(uint32_t i = 0; i < (uint32_t)tdec.numNodes(); i++)
+        max_dist = std::max(max_dist, dists[i]);
+
+    if (max_dist == 0) {
+        verb_print(1, "All projected vars are the same distance, ignoring TD");
+        return false;
     }
+    assert(to_define_full.size() == (uint32_t)primal_contr.numNodes());
+    compute_td_score_using_adj(to_define_full.size(), bags, adj);
 
     assert(y_order.size() == to_define_full.size());
+    return true;
+}
+
+void Manthan::compute_td_score_using_adj(const uint32_t nodes,
+    const std::vector<std::vector<int>>& bags,
+    const std::vector<std::vector<int>>& adj) {
+  SLOW_DEBUG_DO(
+    vector<int> check(nodes, 0);
+    for(const auto& b:  bags) for(const auto&v: b) {
+      assert(v < (int)nodes);
+      check[v]++;
+    }
+    for(uint32_t i = 0; i < nodes; i++) {
+      if (check[i] == 0) cout << "ERROR: vertex " << i << " is not in any bag!" << endl;
+    }
+    assert(std::all_of(check.begin(), check.end(), [](int i) { return i > 0; }));
+  );
+
+  sspp::TreeDecomposition dec(bags.size(), nodes);
+  for(uint32_t i = 0; i < bags.size();i++) dec.setBag(i, bags[i]);
+  for(uint32_t i = 0; i < adj.size(); i++)
+    for(const auto& nn: adj[i]) dec.addEdge(i, nn);
+
+  int centroid = -1;
+  auto ord = dec.getOrd(centroid);
+  verb_print(1, "[td] centroid bag id: " << centroid << " bag size: " << bags[centroid].size());
+  if (!mconf.td_visualize_dot_file.empty()) {
+    dec.visualizeTree(mconf.td_visualize_dot_file);
+    cout << "c o [td] Wrote tree decomposition to file: " << mconf.td_visualize_dot_file << endl;
+    cout << "c o [td] You can convert it to pdf using the command: dot -Tpdf " << mconf.td_visualize_dot_file << " -o td_tree.pdf" << endl;
+  }
+
+  assert(ord.size() == nodes);
+  int max_ord = 0;
+  int min_ord = std::numeric_limits<int>::max();
+  for (uint32_t i = 0; i < nodes; i++) {
+    max_ord = std::max(max_ord, ord[i]);
+    min_ord = std::min(min_ord, ord[i]);
+  }
+  max_ord -= min_ord;
+  assert(max_ord >= 1);
+
+  // Calc td score
+  for (uint32_t i = 0; i < nodes; i++) {
+    // Normalize
+    double val = max_ord - (ord[i]-min_ord);
+    val /= (double)max_ord;
+    assert(val > -0.01 && val < 1.01);
+
+    assert(i+1 < td_score.size());
+    td_score[i+1] = val;
+  }
 }
 
 void Manthan::order_vars() {
+    assert(td_score.empty());
+    td_score.resize(cnf.nVars(), 0.0);
     assert(order_val.empty());
     assert(y_order.empty());
     const double my_time = cpuTime();
@@ -1325,7 +1373,9 @@ void Manthan::order_vars() {
 
     switch(mconf.manthan_order) {
         case 0: learn_order(); break;
-        case 1: cluster_order(); break;
+        case 1: cluster_order();
+                learn_order();
+                break;
         case 2: bve_order(); break;
         default: release_assert(false && "Invalid manthan_order");
     }

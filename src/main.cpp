@@ -131,7 +131,7 @@ void add_arjun_options() {
     myopt("--autarky", etof_conf.do_autarky, atoi,"Perform unate analysis");
     myopt("--mbve", mconf.manthan_bve, atoi,"Use BVE with constants instead of training");
     myopt("--bvedeep", mconf.bve_deep_substitute, atoi,"In Manthan BVE, do deep substitution");
-    myopt("--morder", mconf.manthan_order, atoi,"Order vars: indicence (0), cluster-incidence (1), BVE (2)");
+    myopt("--mrder", mconf.manthan_order, atoi,"Order vars: indicence (0), cluster-incidence (1), BVE (2)");
     myopt("--moneperloop", mconf.one_repair_per_loop, atoi,"One repair per CEX loop");
     // Strategy
     myopt("--mtryrepmult", manthan_rep_mult, atoi,"Repair tries will be multiplied by this");
