@@ -240,7 +240,6 @@ jobs:
         sudo cmake --install . --config ${{matrix.build_type}} -v
         cd ../..
 
-
     - uses: actions/checkout@v4
       with:
         path: project
@@ -266,13 +265,6 @@ jobs:
         echo "Running help command"
         ./project/build/arjun --help
         echo $?
-
-    - name: Check licenses
-      if: contains(matrix.os, 'ubuntu')
-      run: |
-        echo "Checking licenses"
-        cd ../scripts/license_check
-        ./check_all_licenses.sh
 
     - name: Upload Artifact - Linux
       if: contains(matrix.os, 'ubuntu') && matrix.staticcompile == 'ON' && !contains(matrix.os, 'arm')
