@@ -735,10 +735,8 @@ std::unique_ptr<TWD::Graph> Manthan::build_primal_graph() {
         for(const auto& l: cl) primal->addEdge(l.var(), l.var());
     }
 
-    uint32_t num_edges = 0;
-    for (const auto& [v, adj] : primal_graph) num_edges += adj.size();
-    verb_print(1, "[manthan] Primal graph: " << primal_graph.size() << " nodes, "
-            << num_edges / 2 << " edges");
+    verb_print(1, "[manthan] Primal graph nodes: " << primal->numNodes()
+            << " edges: " << primal->numEdges());
     return primal;
 }
 
@@ -1228,6 +1226,10 @@ bool Manthan::cluster_order() {
 
     // Step 1: Build primal graph
     auto primal = build_primal_graph();
+    if (primal->numEdges() == 0) {
+        verb_print(1, "[td] Primal graph has no edges, skipping TD");
+        return false;
+    }
 
     if (mconf.do_td_contract) {
       for(const auto& i: input) {
@@ -1250,6 +1252,7 @@ bool Manthan::cluster_order() {
         new_to_old[idx] = v;
         idx++;
     }
+    assert(idx == to_define_full.size());
     for(uint32_t v = 0; v < cnf.nVars(); v++) {
         const auto& adj = primal->get_adj_list()[v];
         if (!to_define_full.count(v)) {
@@ -1262,6 +1265,10 @@ bool Manthan::cluster_order() {
         }
     }
     primal.reset();
+    if (primal_contr.numEdges() == 0) {
+        verb_print(1, "[td] Contracted primal graph has no edges, skipping TD");
+        return false;
+    }
 
     // run FlowCutter
     verb_print(2, "[td-cmp] FlowCutter is running...");
@@ -1308,7 +1315,7 @@ bool Manthan::cluster_order() {
         return false;
     }
     assert(to_define_full.size() == (uint32_t)primal_contr.numNodes());
-    compute_td_score_using_adj(to_define_full.size(), bags, adj);
+    compute_td_score_using_adj(to_define_full.size(), bags, adj, new_to_old);
 
     assert(y_order.size() == to_define_full.size());
     return true;
@@ -1316,7 +1323,8 @@ bool Manthan::cluster_order() {
 
 void Manthan::compute_td_score_using_adj(const uint32_t nodes,
     const std::vector<std::vector<int>>& bags,
-    const std::vector<std::vector<int>>& adj) {
+    const std::vector<std::vector<int>>& adj,
+    const map<uint32_t, uint32_t>& new_to_old) {
   SLOW_DEBUG_DO(
     vector<int> check(nodes, 0);
     for(const auto& b:  bags) for(const auto&v: b) {
@@ -1355,13 +1363,12 @@ void Manthan::compute_td_score_using_adj(const uint32_t nodes,
 
   // Calc td score
   for (uint32_t i = 0; i < nodes; i++) {
-    // Normalize
     double val = max_ord - (ord[i]-min_ord);
     val /= (double)max_ord;
     assert(val > -0.01 && val < 1.01);
-
     assert(i+1 < td_score.size());
-    td_score[i+1] = val;
+    uint32_t old_i = new_to_old.at(i);
+    td_score[old_i] = val;
   }
 }
 

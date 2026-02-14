@@ -100,7 +100,6 @@ class Manthan {
         set<uint32_t> helpers;
         set<uint32_t> y_hats;
 
-        map<uint32_t, set<uint32_t>> primal_graph;
         std::unique_ptr<TWD::Graph> build_primal_graph();
         void full_train();
         void bve_and_substitute();
@@ -146,7 +145,7 @@ class Manthan {
         bool cluster_order();
         void compute_td_score_using_adj(const uint32_t nodes,
             const std::vector<std::vector<int>>& bags,
-            const std::vector<std::vector<int>>& adj);
+            const std::vector<std::vector<int>>& adj, const map<uint32_t, uint32_t>& new_to_old);
         bool later_in_order(const uint32_t a, const uint32_t b) const {
             SLOW_DEBUG_DO({
                 assert(order_val.size() > a);
