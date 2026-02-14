@@ -73,7 +73,7 @@ using namespace CMSat;
 //     benchmarks-qdimacs/bobsmcodic_all_bit_differing_from_cycle.qdimacs.cnf
 // many repairs, does finish: benchmarks-qdimacs/stmt32_329_378.qdimacs.cnf
 // many-many repairs, does finish: benchmarks-qdimacs/sdlx-fixpoint-10.qdimacs.cnf
-// no repair, learning/mbve does it: rankfunc57_unsigned_64.qdimacs.cnf
+// no repair, learning/mbve does it: benchmarks-qdimacs/rankfunc57_unsigned_64.qdimacs.cnf
 // interesting, does not finish, but fast: benchmarks-qdimacs/query48_exquery_1344n.qdimacs.cnf
 
 int lit_to_int(const Lit& l) {
@@ -404,6 +404,7 @@ void Manthan::print_y_order_occur() const {
         const uint32_t neg = occur_lit[Lit(y, true).toInt()];
         verb_print(1, "[manthan] y-order var " << setw(4) << y+1
             << " BW: " << backward_defined.count(y)
+            << "   td_score " << setw(6) << fixed << setprecision(2) << td_score.at(y)
             << "   pos occur " << setw(6) << pos
             << "   --  neg occur " << setw(6) << neg);
     }
@@ -1193,7 +1194,7 @@ void Manthan::learn_order() {
     vector<uint32_t> sorted(to_define_full.begin(), to_define_full.end());
     vector<double> score(cnf.nVars(), 0.0);
     auto mysorter = [&](const uint32_t a, const uint32_t b) -> bool {
-        if (td_score[a] != td_score[b]) return td_score[a] > td_score[b];
+        if (td_score[a] != td_score[b]) return td_score[a] < td_score[b];
         if (incidence[a] != incidence[b]) return incidence[a] > incidence[b];
         return a < b;
     };
@@ -1253,7 +1254,7 @@ bool Manthan::cluster_order() {
     map<uint32_t, uint32_t> new_to_old;
     std::unique_ptr<TWD::Graph> primal_alt = nullptr;
     uint32_t nodes;
-    if (true) {
+    if (mconf.do_td_contract) {
         primal_alt = make_unique<TWD::Graph>(to_define_full.size());
         nodes = to_define_full.size();
         uint32_t idx = 0;
