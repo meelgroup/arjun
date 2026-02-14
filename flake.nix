@@ -22,6 +22,10 @@
       url = "github:meelgroup/EvalMaxSAT/master";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    treedecomp = {
+      url = "github:meelgroup/treedecomp/main";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
   outputs =
     {
@@ -32,6 +36,7 @@
       cryptominisat,
       sbva,
       evalmaxsat,
+      treedecomp,
     }:
     let
       inherit (nixpkgs) lib;
@@ -102,6 +107,7 @@
           ensmallen,
           cadical,
           cryptominisat5,
+          treedecomp,
         }:
         stdenv.mkDerivation {
           name = "arjun";
@@ -131,6 +137,7 @@
             ensmallen
             cadical
             cryptominisat5
+            treedecomp
           ];
         };
     in
@@ -148,6 +155,7 @@
             cryptominisat5 = cryptominisat.packages.${system}.cryptominisat5;
             sbva = sbva.packages.${system}.sbva;
             evalmaxsat = evalmaxsat.packages.${system}.evalmaxsat;
+            treedecomp = treedecomp.packages.${system}.treedecomp;
           };
         in
         {
