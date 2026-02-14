@@ -733,7 +733,13 @@ void Manthan::bve_and_substitute() {
 std::unique_ptr<TWD::Graph> Manthan::build_primal_graph() {
     auto primal = make_unique<TWD::Graph>(cnf.nVars());
     for(const auto& cl: cnf.get_clauses()) {
-        for(const auto& l: cl) primal->addEdge(l.var(), l.var());
+      for(uint32_t i = 0; i < cl.size(); i++) {
+        for(uint32_t i2 = i+1; i2 < cl.size(); i2++) {
+            assert(cl[i].var() != cl[i2].var() &&
+                    "Tree decomposition cannot handle repeated variables in a clause");
+          primal->addEdge(cl[i].var(), cl[i2].var());
+        }
+      }
     }
 
     verb_print(1, "[manthan] Primal graph nodes: " << primal->numNodes()
@@ -1327,7 +1333,7 @@ bool Manthan::cluster_order() {
         verb_print(1, "All projected vars are the same distance, ignoring TD");
         return false;
     }
-    assert(to_define_full.size() == (uint32_t)primal_alt.numNodes());
+    assert(to_define_full.size() == (uint32_t)primal_alt->numNodes());
     compute_td_score_using_adj(to_define_full.size(), bags, adj, new_to_old);
 
     assert(y_order.size() == to_define_full.size());
