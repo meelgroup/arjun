@@ -1274,6 +1274,12 @@ bool Manthan::cluster_order() {
             return false;
         }
     } else {
+        uint32_t idx = 0;
+        for(uint32_t v = 0; v < cnf.nVars(); v++) {
+            old_to_new[v] = idx;
+            new_to_old[idx] = v;
+            idx++;
+        }
         primal_alt = std::move(primal);
     }
 
