@@ -1359,7 +1359,7 @@ public:
         int ctx_solver_type = 1;
         int repair_solver_type = 1;
         int repair_cache_size = 1000;
-        int backward_synth_reverse_order = 0;
+        int backward_synth_order = 0;
         int manthan_bve = 0;
         int bve_deep_substitute = 0;
         int manthan_order = 0;

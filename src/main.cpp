@@ -131,14 +131,14 @@ void add_arjun_options() {
     myopt("--autarky", etof_conf.do_autarky, atoi,"Perform unate analysis");
     myopt("--mbve", mconf.manthan_bve, atoi,"Use BVE with constants instead of training");
     myopt("--bvedeep", mconf.bve_deep_substitute, atoi,"In Manthan BVE, do deep substitution");
-    myopt("--mrder", mconf.manthan_order, atoi,"Order vars: indicence (0), cluster-incidence (1), BVE (2)");
     myopt("--moneperloop", mconf.one_repair_per_loop, atoi,"One repair per CEX loop");
     // Strategy
     myopt("--mtryrepmult", manthan_rep_mult, atoi,"Repair tries will be multiplied by this");
     myopt("--mstrategy", manthan_strategy, atoi,"Go directly to strategy N");
     // Order
-    myopt("--maxsatorder", mconf.maxsat_order, atoi,"Which order to use to try to fix vars? 0 = normal, 1 = reverse");
-    myopt("--backwsynthorder", mconf.backward_synth_reverse_order, atoi,"Which order to use to try to do backward? 0 = normal, 1 = reverse");
+    myopt("--morder", mconf.manthan_order, atoi,"Order vars: indicence (0), cluster-incidence (1), BVE (2)");
+    myopt("--maxsatorder", mconf.maxsat_order, atoi,"Which order to use to try to fix vars? 0 = norm, 1 = rev");
+    myopt("--mbackwsynthorder", mconf.backward_synth_order, atoi,"Which order to use to try to do backward? 0 = normal, 1 = reverse");
     // solver config
     myopt("--ctxsolver", mconf.ctx_solver_type, atoi,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
     myopt("--repairsolver", mconf.repair_solver_type, atoi,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
