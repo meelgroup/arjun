@@ -838,8 +838,8 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
             verb_print(1, "[manthan] rep: " << setw(6) << tot_repaired
                     << "   loops: "<< setw(6) << num_loops_repair
                     << "   avg rep/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
-                    << "   avg confl sz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
-                    << "   avg needs rep sz: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
+                    << "   avg conflsz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
+                    << "   avg need rep: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
                     << "   cache-hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
                     << "   T: " << setprecision(2) << fixed << setw(7) << cpuTime()-repair_start_time
                     << "   rep/s: " << setprecision(4) << safe_div(tot_repaired,cpuTime()-repair_start_time) << setprecision(2));
@@ -856,8 +856,8 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
             verb_print(1, COLRED "[manthan] Reached max repairs without finishing "
                 << "   loops: "<< setw(6) << num_loops_repair
                 << "   avg rep/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
-                << "   avg confl sz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
-                << "   avg needs rep sz: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
+                << "   avg conflsz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
+                << "   avg need rep: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
                 << "   cache-hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
                 << "   T: " << setprecision(2) << fixed << setw(7) << repair_time
                 << "   rep/s: " << setw(7) << setprecision(3) << (double)tot_repaired/(repair_time+0.0001) << setprecision(2));
@@ -909,8 +909,8 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
     verb_print(1, COLYEL "[manthan] rep: " << setw(6) << tot_repaired
         << "   loops: "<< setw(6) << num_loops_repair
         << "   avg rep/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
-        << "   avg confl sz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
-        << "   avg needs rep sz: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
+        << "   avg conflsz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
+        << "   avg need rep: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
         << "   cache-hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
         << "   T: " << setprecision(2) << fixed << setw(7) << repair_time
         << "   rep/s: " << setw(7) << setprecision(3) << (double)tot_repaired/(repair_time+0.0001) << setprecision(2)
@@ -1252,8 +1252,10 @@ bool Manthan::cluster_order() {
     map<uint32_t, uint32_t> old_to_new;
     map<uint32_t, uint32_t> new_to_old;
     std::unique_ptr<TWD::Graph> primal_alt = nullptr;
+    uint32_t nodes;
     if (true) {
         primal_alt = make_unique<TWD::Graph>(to_define_full.size());
+        nodes = to_define_full.size();
         uint32_t idx = 0;
         for(const auto& v: to_define_full) {
             old_to_new[v] = idx;
@@ -1280,6 +1282,7 @@ bool Manthan::cluster_order() {
             return false;
         }
     } else {
+        nodes = cnf.nVars();
         uint32_t idx = 0;
         for(uint32_t v = 0; v < cnf.nVars(); v++) {
             old_to_new[v] = idx;
@@ -1296,7 +1299,7 @@ bool Manthan::cluster_order() {
 
     // Notice that this graph returned is VERY different
     uint64_t td_steps = 1e5;
-    int td_lookahead_iters = 10;
+    int td_lookahead_iters = 900;
     auto tdec = TWD::TreeDecomposition(fc.constructTD(td_steps, td_lookahead_iters));
     tdec.centroid(primal_alt->numNodes(), conf.verb);
     const auto td_width = tdec.width()-1;
@@ -1310,20 +1313,20 @@ bool Manthan::cluster_order() {
 
     verb_print(2, "[td] Calculated TD width: " << td_width-1);
     const auto& adj = tdec.get_adj_list();
-    /* if (conf.verb >= 3) { */
+    if (conf.verb >= 3) {
       for(uint32_t i = 0; i < bags.size(); i++) {
         const auto& b = bags[i];
-        cout << "bag id: " << setw(3) << i << " contains: ";
+        cout << "c o [td] bag id: " << setw(3) << i << " contains: ";
         for(const auto& bb: b) cout << setw(4) << bb << " ";
         cout << endl;
       }
       for(uint32_t i = 0; i < adj.size(); i++) {
         const auto& a = adj[i];
-        cout << "bag " << setw(3) << i << " is adjacent to bags: ";
+        cout << "c o [td] bag " << setw(3) << i << " is adjacent to bags: ";
         for(const auto& nn: a) cout << setw(3) << nn << " ";
         cout << endl;
       }
-    /* } */
+    }
     int max_dist = 0;
     std::vector<int> dists = tdec.distanceFromCentroid(tdec.numNodes());
     for(uint32_t i = 0; i < (uint32_t)tdec.numNodes(); i++)
@@ -1334,9 +1337,7 @@ bool Manthan::cluster_order() {
         return false;
     }
     assert(to_define_full.size() == (uint32_t)primal_alt->numNodes());
-    compute_td_score_using_adj(to_define_full.size(), bags, adj, new_to_old);
-
-    assert(y_order.size() == to_define_full.size());
+    compute_td_score_using_adj(nodes, bags, adj, new_to_old);
     return true;
 }
 
@@ -1386,7 +1387,7 @@ void Manthan::compute_td_score_using_adj(const uint32_t nodes,
     val /= (double)max_ord;
     assert(val > -0.01 && val < 1.01);
     assert(i+1 < td_score.size());
-    uint32_t old_i = new_to_old.at(i);
+    const uint32_t old_i = new_to_old.at(i);
     td_score[old_i] = val;
   }
 }
