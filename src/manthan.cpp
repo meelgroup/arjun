@@ -32,6 +32,7 @@
 #include <ensmallen_bits/sgdr/cyclical_decay.hpp>
 #include <iomanip>
 #include <ios>
+#include <memory>
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
 #include <treedecomp/IFlowCutter.hpp>
 #include <treedecomp/graph.hpp>
@@ -1224,7 +1225,6 @@ bool Manthan::cluster_order() {
     assert(y_order.empty());
     verb_print(2, "[manthan] Fixing CLUSTER order...");
 
-    // Step 1: Build primal graph
     auto primal = build_primal_graph();
     if (primal->numEdges() == 0) {
         verb_print(1, "[td] Primal graph has no edges, skipping TD");
@@ -1245,41 +1245,48 @@ bool Manthan::cluster_order() {
 
     map<uint32_t, uint32_t> old_to_new;
     map<uint32_t, uint32_t> new_to_old;
-    TWD::Graph primal_contr(to_define_full.size());
-    uint32_t idx = 0;
-    for(const auto& v: to_define_full) {
-        old_to_new[v] = idx;
-        new_to_old[idx] = v;
-        idx++;
-    }
-    assert(idx == to_define_full.size());
-    for(uint32_t v = 0; v < cnf.nVars(); v++) {
-        const auto& adj = primal->get_adj_list()[v];
-        if (!to_define_full.count(v)) {
-            assert(adj.empty() && "Should have been contracted away");
-            continue;
+    std::unique_ptr<TWD::Graph> primal_alt = nullptr;
+    if (true) {
+        primal_alt = make_unique<TWD::Graph>(to_define_full.size());
+        uint32_t idx = 0;
+        for(const auto& v: to_define_full) {
+            old_to_new[v] = idx;
+            new_to_old[idx] = v;
+            idx++;
         }
-        for(const auto& n: adj) {
-            assert(to_define_full.count(n) && "Input vars should have been contracted away");
-            primal_contr.addEdge(old_to_new[v], old_to_new[n]);
+        assert(idx == to_define_full.size());
+        for(uint32_t v = 0; v < cnf.nVars(); v++) {
+            const auto& adj = primal->get_adj_list()[v];
+            if (!to_define_full.count(v)) {
+                assert(adj.empty() && "Should have been contracted away");
+                continue;
+            }
+            for(const auto& n: adj) {
+                assert(to_define_full.count(n) && "Input vars should have been contracted away");
+                primal_alt->addEdge(old_to_new[v], old_to_new[n]);
+            }
         }
-    }
-    primal.reset();
-    if (primal_contr.numEdges() == 0) {
-        verb_print(1, "[td] Contracted primal graph has no edges, skipping TD");
-        return false;
+        primal.reset();
+        verb_print(1, "[manthan] Contracted primal graph nodes: " << primal_alt->numNodes()
+                << " edges: " << primal_alt->numEdges());
+        if (primal_alt->numEdges() == 0) {
+            verb_print(1, "[td] Contracted primal graph has no edges, skipping TD");
+            return false;
+        }
+    } else {
+        primal_alt = std::move(primal);
     }
 
     // run FlowCutter
     verb_print(2, "[td-cmp] FlowCutter is running...");
-    TWD::IFlowCutter fc(primal_contr.numNodes(), primal_contr.numEdges(), 0);
-    fc.importGraph(primal_contr);
+    TWD::IFlowCutter fc(primal_alt->numNodes(), primal_alt->numEdges(), conf.verb);
+    fc.importGraph(*primal_alt);
 
     // Notice that this graph returned is VERY different
     uint64_t td_steps = 1e5;
     int td_lookahead_iters = 10;
     auto tdec = TWD::TreeDecomposition(fc.constructTD(td_steps, td_lookahead_iters));
-    tdec.centroid(primal_contr.numNodes(), conf.verb);
+    tdec.centroid(primal_alt->numNodes(), conf.verb);
     const auto td_width = tdec.width()-1;
     verb_print(2, "[td] FlowCutter FINISHED, TD width: " << td_width);
 
@@ -1314,7 +1321,7 @@ bool Manthan::cluster_order() {
         verb_print(1, "All projected vars are the same distance, ignoring TD");
         return false;
     }
-    assert(to_define_full.size() == (uint32_t)primal_contr.numNodes());
+    assert(to_define_full.size() == (uint32_t)primal_alt.numNodes());
     compute_td_score_using_adj(to_define_full.size(), bags, adj, new_to_old);
 
     assert(y_order.size() == to_define_full.size());
