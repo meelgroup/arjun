@@ -67,6 +67,15 @@ using namespace ArjunInt;
 using namespace ArjunNS;
 using namespace CMSat;
 
+// good: benchmarks-qdimacs/small-bug1-fixpoint-10.qdimacs.cnf
+// also good (some repair): benchmarks-qdimacs/amba2f9n.sat.qdimacs.cnf
+// slow (actually, correct on 1st try at 4e7a4cea5b8a994044466578751ff229b514e747 with --bve 0 --ctxsolver 1 --samples 1000):
+//     benchmarks-qdimacs/bobsmcodic_all_bit_differing_from_cycle.qdimacs.cnf
+// many repairs, does finish: benchmarks-qdimacs/stmt32_329_378.qdimacs.cnf
+// many-many repairs, does finish: benchmarks-qdimacs/sdlx-fixpoint-10.qdimacs.cnf
+// no repair, learning/mbve does it: rankfunc57_unsigned_64.qdimacs.cnf
+// interesting, does not finish, but fast: benchmarks-qdimacs/query48_exquery_1344n.qdimacs.cnf
+
 int lit_to_int(const Lit& l) {
     int v = l.var()+1;
     if (l.sign()) v = -v;
@@ -81,15 +90,6 @@ vector<int> lits_to_ints(const vector<Lit>& lits) {
     }
     return ret;
 }
-
-// good: benchmarks-qdimacs/small-bug1-fixpoint-10.qdimacs.cnf
-// also good (some repair): benchmarks-qdimacs/amba2f9n.sat.qdimacs.cnf
-// slow (actually, correct on 1st try at 4e7a4cea5b8a994044466578751ff229b514e747 with --bve 0 --ctxsolver 1 --samples 1000):
-//     benchmarks-qdimacs/bobsmcodic_all_bit_differing_from_cycle.qdimacs.cnf
-// many repairs, does finish: benchmarks-qdimacs/stmt32_329_378.qdimacs.cnf
-// many-many repairs, does finish: benchmarks-qdimacs/sdlx-fixpoint-10.qdimacs.cnf
-// no repair, learning/mbve does it: rankfunc57_unsigned_64.qdimacs.cnf
-// interesting, does not finish, but fast: benchmarks-qdimacs/query48_exquery_1344n.qdimacs.cnf
 
 template<typename S>
 void Manthan::inject_cnf(S& s) const {
