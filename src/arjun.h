@@ -1020,6 +1020,13 @@ public:
     void set_sampl_vars(const T& vars, bool ignore = false) {
         for(const auto& v: vars) check_var(v);
         if (!ignore) {
+            if (sampl_vars_set) {
+              std::cout << "ERROR: Sampling variables have already been set, you can't set them twice!"
+                << std::endl;
+              std::cout << "       Maybe you have two 'c p show' lines in your file?" << std::endl;
+              exit(EXIT_FAILURE);
+            }
+            assert(!sampl_vars_set && "Sampling variables have already been set!");
             assert(sampl_vars.empty());
             assert(sampl_vars_set == false);
             assert(opt_sampl_vars_set == false);
