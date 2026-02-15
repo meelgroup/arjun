@@ -1186,8 +1186,6 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     assert(check_map_dependency_cycles());
 }
 
-// Will order 1st the variables that NOTHING depends on
-// Will order LAST the variables that depends on EVERYTHING
 void Manthan::learn_order() {
     assert(y_order.empty());
     verb_print(2, "[manthan] Fixing LEARN order...");
@@ -1393,6 +1391,8 @@ void Manthan::compute_td_score_using_adj(const uint32_t nodes,
   }
 }
 
+// Will order 1st the variables that NOTHING depends on
+// Will order LAST the variables that depends on EVERYTHING
 void Manthan::order_vars() {
     assert(td_score.empty());
     td_score.resize(cnf.nVars(), 0.0);
@@ -1421,8 +1421,6 @@ void Manthan::order_vars() {
     print_y_order_occur();
 }
 
-// We'll deal with clauses that are TRUE for to_define -- TODO optimize later to pick best of  false/true
-//
 // Finds the order that minimizes dependencies that need to be broken by BVE system
 void Manthan::bve_order() {
     const double my_time = cpuTime();
