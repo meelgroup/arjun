@@ -1913,9 +1913,6 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
             samples.push_back(const_cast<sample*>(&s));
     }
     assert(v < cnf.nVars());
-    point_0.zeros(cnf.nVars());
-    point_1.ones(cnf.nVars());
-
     Mat<uint8_t> dataset;
     Row<size_t> labels;
 

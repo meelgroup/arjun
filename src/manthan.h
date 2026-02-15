@@ -71,10 +71,6 @@ class Manthan {
         const SimplifiedCNF& cnf;
 
     private:
-        vec point_0;
-        vec point_1;
-        /* uint32_t last_formula_var; */
-
         // y is original output var, i.e. to_define
         // y_hat is learned var
         map<uint32_t, uint32_t> y_to_y_hat;
@@ -96,7 +92,7 @@ class Manthan {
         set<uint32_t> input;
         set<uint32_t> to_define;
         set<uint32_t> backward_defined;
-        set<uint32_t> to_define_full;
+        set<uint32_t> to_define_full; // to_define + backward_defined
 
         // To help us account for every variable in the formulas' clauses
         set<uint32_t> helpers; // used for ITE
