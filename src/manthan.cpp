@@ -349,26 +349,7 @@ void Manthan::fill_var_to_formula_with_backward() {
         map<aig_ptr, Lit> cache;
         const Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
         f.out = out_lit ^ orig.sign();
-        map<aig_ptr, aig_ptr> aig_cache;
-        if (mconf.bve_deep_substitute) {
-            f.aig = AIG::transform<aig_ptr>(aig,
-              [&](AIGT type, const uint32_t var, const bool neg, const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
-                if (type == AIGT::t_const) {
-                    return neg ? aig_mng.new_const(false) : aig_mng.new_const(true);
-                }
-                if (type == AIGT::t_lit) {
-                    const auto l = cnf.orig_to_new_lit(Lit(var, neg));
-                    return AIG::new_lit(l);
-                }
-                if (type == AIGT::t_and) {
-                    return AIG::new_and(*left, *right, neg);
-                }
-                assert(false && "Unhandled AIG type in visitor");
-                exit(EXIT_FAILURE);
-              }, aig_cache);
-        } else {
-            f.aig = nullptr; // we won't need it.
-        }
+        f.aig = nullptr; // we won't need it.
         assert(var_to_formula.count(v) == 0);
         var_to_formula[v] = f;
     }
@@ -622,8 +603,10 @@ void Manthan::bve_and_substitute() {
             << " neg occur: " << setw(6) << num_neg);
 
         const bool sign = (num_pos >= num_neg);
-        /* const bool sign = false; */
         aig_ptr overall = nullptr;
+        vector<Lit> branch_results;
+        bool has_true_branch = false;
+        vector<Lit> big_cl;
         for(const auto& at: lit_to_cls[Lit(y, sign).toInt()]) {
             const auto& cl = cnf.get_clauses()[at];
             bool todo = false;
@@ -635,6 +618,7 @@ void Manthan::bve_and_substitute() {
             }
             if (!todo) continue;
             aig_ptr current = nullptr; //aig_mng.new_const(true);
+            vector<Lit> and_inputs;
             for(const auto& l: cl) {
                 if (l.var() == y) continue;
                 aig_ptr aig = nullptr;
@@ -643,28 +627,70 @@ void Manthan::bve_and_substitute() {
                     set_depends_on(y, l);
                     if (current == nullptr) current = aig;
                     else current = AIG::new_and(current, aig);
+                    and_inputs.push_back(map_y_to_y_hat(~l));
                 } else if (y == l.var()) {
                     assert(false);
                 } else {
-                    if (mconf.bve_deep_substitute) {
-                        assert(false && "not tested");
-                        aig = one_level_substitute(l, y, transformed);
-                        if (current == nullptr) current = aig;
-                        else current = AIG::new_and(current, aig);
-                    } else {
-                        //keep current as-is, since we AND with TRUE
-                    }
+                    //keep current as-is, since we AND with TRUE
                 }
             }
             if (current == nullptr) current = aig_mng.new_const(true);
             if (overall == nullptr) overall = current;
             else overall = AIG::new_or(overall, current);
+
+            // Direct multi-input Tseitin for AND branch
+            Lit branch_lit;
+            if (and_inputs.empty()) {
+                // No inputs → branch is TRUE
+                has_true_branch = true;
+                branch_lit = fh->get_true_lit();
+            } else if (and_inputs.size() == 1) {
+                branch_lit = and_inputs[0];
+            } else {
+                big_cl.clear();
+                cex_solver.new_var();
+                const Lit and_out = Lit(cex_solver.nVars() - 1, false);
+                helpers.insert(and_out.var());
+                // ~and_out => ai for each i
+                for (const auto& ai : and_inputs) {
+                    f.clauses.push_back(CL({~and_out, ai}));
+                }
+                // a1 & a2 & ... & ak => and_out
+                for (const auto& ai : and_inputs) big_cl.push_back(~ai);
+                big_cl.push_back(and_out);
+                f.clauses.push_back(CL(big_cl));
+                branch_lit = and_out;
+            }
+            branch_results.push_back(branch_lit);
         }
         if (overall == nullptr) overall = aig_mng.new_const(true);
         if (sign) overall = AIG::new_not(overall);
-
         f.aig = overall;
+
+        // Direct multi-input Tseitin for OR of branches
+        Lit result_lit;
+        if (has_true_branch || branch_results.empty()) {
+            result_lit = fh->get_true_lit();
+        } else if (branch_results.size() == 1) {
+            result_lit = branch_results[0];
+        } else {
+            cex_solver.new_var();
+            Lit or_out = Lit(cex_solver.nVars() - 1, false);
+            helpers.insert(or_out.var());
+            // bi => or_out for each i
+            for (const auto& bi : branch_results) {
+                f.clauses.push_back(CL({~bi, or_out}));
+            }
+            // or_out => b1 | b2 | ... | bm
+            big_cl.clear();
+            big_cl.push_back(~or_out);
+            for (const auto& bi : branch_results) big_cl.push_back(bi);
+            f.clauses.push_back(CL(big_cl));
+            result_lit = or_out;
+        }
+        f.out = sign ? ~result_lit : result_lit;
         var_to_formula[y] = f;
+
         num_done++;
         if (num_done % 50 == 49) {
             verb_print(1, "[manthan] done with BVE "
@@ -673,53 +699,6 @@ void Manthan::bve_and_substitute() {
                 << " T: " << setw(5) << (cpuTime()-start_time)
                 << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
         }
-    }
-
-    for(const auto& v: y_order) {
-        if (!to_define.count(v)) continue;
-        FHolder<MetaSolver2>::Formula& f = var_to_formula.at(v);
-        assert(f.out == lit_Error);
-        assert(f.clauses.empty());
-
-        // Transform AIG to CNF using the transform function
-        std::function<Lit(AIGT, uint32_t, bool, const Lit*, const Lit*)> aig_to_cnf_visitor =
-          [&](AIGT type, const uint32_t var, const bool neg, const Lit* left, const Lit* right) -> Lit {
-            if (type == AIGT::t_const) {
-                return neg ? ~fh->get_true_lit() : fh->get_true_lit();
-            }
-
-            if (type == AIGT::t_lit) {
-                Lit l(var, neg);
-                const Lit result_lit = map_y_to_y_hat(l);
-                return result_lit;
-            }
-
-            if (type == AIGT::t_and) {
-                const Lit l_lit = *left;
-                const Lit r_lit = *right;
-
-                // Create fresh variable for AND gate
-                cex_solver.new_var();
-                const Lit and_out = Lit(cex_solver.nVars() - 1, false);
-                helpers.insert(and_out.var());
-
-                // Generate Tseitin clauses for AND gate
-                // and_out represents (l_lit & r_lit)
-                f.clauses.push_back(CL({~and_out, l_lit}));
-                f.clauses.push_back(CL({~and_out, r_lit}));
-                f.clauses.push_back(CL({~l_lit, ~r_lit, and_out}));
-
-                // Apply negation if needed
-                return neg ? ~and_out : and_out;
-            }
-            assert(false && "Unhandled AIG type in visitor");
-            exit(EXIT_FAILURE);
-        };
-
-        // Recursively generate clauses for the AIG using the transform function
-        map<aig_ptr, Lit> cache;
-        const Lit out_lit = AIG::transform<Lit>(f.aig, aig_to_cnf_visitor, cache);
-        f.out = out_lit;
     }
 
     assert(check_aig_dependency_cycles());
