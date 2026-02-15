@@ -876,7 +876,7 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
         const bool finished = get_counterexample(ctx);
         if (finished) break;
         if (tot_repaired > max_repairs) {
-            print_stats("Reached max repairs without finishing", COLRED);
+            print_stats("", COLRED, " Reached max repairs");
             return cnf;
         }
         print_cnf_debug_info(ctx);
@@ -1921,6 +1921,8 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
             samples.push_back(const_cast<sample*>(&s));
     }
     assert(v < cnf.nVars());
+    point_0.zeros(cnf.nVars());
+    point_1.zeros(cnf.nVars());
     arma::Mat<uint8_t> dataset;
     arma::Row<size_t> labels;
 
