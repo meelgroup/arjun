@@ -990,7 +990,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
         if (!mconf.one_repair_per_loop) {
             ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
             inject_formulas_into_solver();
-            recompute_all_y_hat_cnf(ctx, y_rep);
+            recompute_all_y_hat_cnf(ctx);
         }
     }
     compute_needs_repair(ctx);
@@ -2081,7 +2081,7 @@ void Manthan::get_incidence() {
     }
 }
 
-void Manthan::recompute_all_y_hat_cnf(sample& ctx, const uint32_t y_rep) {
+void Manthan::recompute_all_y_hat_cnf(sample& ctx) {
     vector<Lit> assumps;
     assumps.reserve(input.size() + y_order.size() + y_hat_to_indic.size());
     for(const auto& x: input) {

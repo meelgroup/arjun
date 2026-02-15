@@ -133,7 +133,7 @@ class Manthan {
         void fill_var_to_formula_with_backward();
         void print_y_order_occur() const;
         void compute_needs_repair(const sample& ctx);
-        void recompute_all_y_hat_cnf(sample& ctx, const uint32_t y_rep);
+        void recompute_all_y_hat_cnf(sample& ctx);
         void recompute_all_y_hat_aig(sample& ctx, const uint32_t y_rep);
 
         // ordering
