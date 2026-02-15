@@ -97,8 +97,10 @@ class Manthan {
         set<uint32_t> to_define;
         set<uint32_t> backward_defined;
         set<uint32_t> to_define_full;
-        set<uint32_t> helpers;
-        set<uint32_t> y_hats;
+
+        // To help us account for every variable in the formulas' clauses
+        set<uint32_t> helpers; // used for ITE
+        set<uint32_t> y_hats; // the potential y_hats (due to ITE chains, some are "old" and unused)
 
         std::unique_ptr<TWD::Graph> build_primal_graph();
         void full_train();
