@@ -103,8 +103,7 @@ void Minimize::order_by_file(const string& fname, vector<uint32_t>& unknown) {
     }
 }
 
-void Minimize::print_sorted_unknown(const vector<uint32_t>& unknown) const
-{
+void Minimize::print_sorted_unknown(const vector<uint32_t>& unknown) const {
     if (conf.verb >= 4) {
         cout << "c o Sorted output: "<< endl;
         for (const auto& v: unknown) {
