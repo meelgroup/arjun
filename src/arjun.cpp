@@ -25,8 +25,10 @@
 
 #include <cstdint>
 #include <limits>
-#include <sbva/sbva.h>
+#include <iomanip>
 #include <sstream>
+#include <sbva/sbva.h>
+
 #include "arjun.h"
 #include "config.h"
 #include "minimize.h"
@@ -500,7 +502,7 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig
 }
 
 DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
-    ifstream urandom("/dev/urandom", ios::in | ios::binary);
+    ifstream urandom("/dev/urandom", std::ios::in | std::ios::binary);
     uint64_t seed = 77;
     if (urandom) {
         urandom.read(reinterpret_cast<char*>(&seed), sizeof(seed));
@@ -984,7 +986,7 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_defs(ofstream& out) const {
 }
 
 DLL_PUBLIC void SimplifiedCNF::write_aig_defs_to_file(const string& fname) const {
-    ofstream out(fname, ios::binary);
+    ofstream out(fname, std::ios::binary);
     if (!out) {
         cerr << "ERROR: Cannot open file for writing: " << fname << endl;
         exit(EXIT_FAILURE);
@@ -1016,7 +1018,7 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_defs_to_file_txt(const string& fname) c
 
 // Read AIG defs from file (opens file for you)
 DLL_PUBLIC void SimplifiedCNF::read_aig_defs_from_file(const string& fname) {
-    ifstream in(fname, ios::binary);
+    ifstream in(fname, std::ios::binary);
     if (!in) {
         cerr << "ERROR: Cannot open file for reading: " << fname << endl;
         exit(EXIT_FAILURE);
@@ -1269,7 +1271,7 @@ DLL_PUBLIC void SimplifiedCNF::renumber_sampling_vars_for_ganak() {
 DLL_PUBLIC void SimplifiedCNF::write_simpcnf(const string& fname, bool red) const {
     uint32_t num_cls = clauses.size();
     ofstream outf;
-    outf.open(fname.c_str(), ios::out);
+    outf.open(fname.c_str(), std::ios::out);
     outf << "p cnf " << nvars << " " << num_cls << endl;
     if (weighted  &&  proj) outf << "c t pwmc" << endl;
     if (weighted  && !proj) outf << "c t wmc" << endl;

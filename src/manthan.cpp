@@ -27,6 +27,7 @@
 #include <cryptominisat5/cryptominisat.h>
 #include <cryptominisat5/solvertypesmini.h>
 #include "src/arjun.h"
+#include <cstddef>
 #include <cstdlib>
 #include <cstdint>
 #include <ensmallen_bits/sgdr/cyclical_decay.hpp>
@@ -52,10 +53,8 @@
 
 #include "EvalMaxSAT.h"
 
-using namespace arma;
-using namespace mlpack;
-using namespace mlpack::tree;
-
+using std::min;
+using std::sort;
 using std::vector;
 using std::array;
 using std::set;
@@ -783,12 +782,44 @@ void Manthan::full_train() {
     assert(check_map_dependency_cycles());
 }
 
+void Manthan::print_repair_stats(string txt, string color, string extra) const {
+    vector<uint32_t> rep(cnf.nVars());
+    for(uint32_t i = 0; i < cnf.nVars(); i++) rep[i] = i;
+    sort(rep.begin(), rep.end(), [&] (const auto& a, const auto& b) {
+        return repaired_vars_count[a] > repaired_vars_count[b];
+    });
+
+    for(size_t i = 0; i < min((size_t)10, (size_t)rep.size()); i++) {
+        const auto& v = rep[i];
+        if (repaired_vars_count[v] == 0) break;
+        verb_print(1, color << "[manthan] repaired var " << setw(5) << v+1
+            << " count: " << setw(6) << repaired_vars_count[v]);
+    }
+}
+
+void Manthan::print_stats(string txt, string color, string extra) const {
+    const double repair_time = cpuTime() - repair_start_time;
+    verb_print(1, color << "[manthan]" << txt
+            << " rep: " << setw(6) << tot_repaired
+            << "   loops: "<< setw(6) << num_loops_repair
+            << "   avg rep/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
+            << "   avg conflsz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
+            << "   avg need rep: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
+            << "   cache-hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
+            << "   T: " << setprecision(2) << fixed << setw(7) << repair_time
+            << "   rep/s: " << setprecision(4) << safe_div(tot_repaired,repair_time) << setprecision(2)
+            << extra);
+        if (num_loops_repair %  40 == 39) {
+        }
+}
+
 SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
     assert(cnf.get_need_aig() && cnf.defs_invariant());
     assert(mconf.simplify_every > 0 && "Can't give simplify_every=0");
     const double my_time = cpuTime();
     const auto ret = cnf.find_disconnected();
     verb_print(1, "[manthan] Found " << ret.size() << " components");
+    repaired_vars_count.resize(cnf.nVars(), 0);
 
     if (!mconf.write_manthan_cnf.empty()) cnf.write_simpcnf(mconf.write_manthan_cnf);
 
@@ -824,7 +855,7 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
     if (!mconf.manthan_bve) full_train();
     else bve_and_substitute();
 
-    const double repair_start_time = cpuTime();
+    repair_start_time = cpuTime();
     for(const auto& v: to_define_full) {
         assert(var_to_formula.count(v) && "All must have a tentative definition");
         updated_y_funcs.push_back(v);
@@ -835,16 +866,8 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
     SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
 
     while(true) {
-        if (num_loops_repair %  40 == 39) {
-            verb_print(1, "[manthan] rep: " << setw(6) << tot_repaired
-                    << "   loops: "<< setw(6) << num_loops_repair
-                    << "   avg rep/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
-                    << "   avg conflsz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
-                    << "   avg need rep: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
-                    << "   cache-hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
-                    << "   T: " << setprecision(2) << fixed << setw(7) << cpuTime()-repair_start_time
-                    << "   rep/s: " << setprecision(4) << safe_div(tot_repaired,cpuTime()-repair_start_time) << setprecision(2));
-        }
+        if (num_loops_repair %  40 == 39) print_stats();
+        if (num_loops_repair %  100 == 99) print_repair_stats();
         assert(at_least_one_repaired);
         at_least_one_repaired = false;
         num_loops_repair++;
@@ -853,16 +876,8 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
         const bool finished = get_counterexample(ctx);
         if (finished) break;
         if (tot_repaired > max_repairs) {
-            const double repair_time = cpuTime() - repair_start_time;
-            verb_print(1, COLRED "[manthan] Reached max repairs without finishing "
-                << "   loops: "<< setw(6) << num_loops_repair
-                << "   avg rep/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
-                << "   avg conflsz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
-                << "   avg need rep: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
-                << "   cache-hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
-                << "   T: " << setprecision(2) << fixed << setw(7) << repair_time
-                << "   rep/s: " << setw(7) << setprecision(3) << (double)tot_repaired/(repair_time+0.0001) << setprecision(2));
-                return cnf;
+            print_stats("Reached max repairs without finishing", COLRED);
+            return cnf;
         }
         print_cnf_debug_info(ctx);
         print_needs_repair_vars();
@@ -904,18 +919,9 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
         }
         verb_print(2, "[manthan] Num repaired: " << num_repaired << " tot repaired: " << tot_repaired << " num_loops_repair: " << num_loops_repair);
     }
-
     const double repair_time = cpuTime() - repair_start_time;
     assert(check_map_dependency_cycles());
-    verb_print(1, COLYEL "[manthan] rep: " << setw(6) << tot_repaired
-        << "   loops: "<< setw(6) << num_loops_repair
-        << "   avg rep/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
-        << "   avg conflsz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
-        << "   avg need rep: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
-        << "   cache-hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
-        << "   T: " << setprecision(2) << fixed << setw(7) << repair_time
-        << "   rep/s: " << setw(7) << setprecision(3) << (double)tot_repaired/(repair_time+0.0001) << setprecision(2)
-        << " DONE");
+    print_stats("", COLYEL, " DONE");
 
     // Build final CNF
     vector<aig_ptr> aigs(cnf.nVars(), nullptr);
@@ -984,6 +990,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     }
 
     vector<Lit> conflict;
+    repaired_vars_count[y_rep]++;
     bool ret = find_conflict(y_rep, ctx, conflict);
     if (ret) {
         perform_repair(y_rep, ctx, conflict);
@@ -1781,7 +1788,8 @@ bool Manthan::get_counterexample(sample& ctx) {
     }
 }
 
-FHolder<MetaSolver2>::Formula Manthan::recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& used_vars, uint32_t depth, uint32_t& max_depth) {
+FHolder<MetaSolver2>::Formula Manthan::recur(mlpack::tree::DecisionTree<>* node,
+        const uint32_t learned_v, const vector<uint32_t>& used_vars, uint32_t depth, uint32_t& max_depth) {
     max_depth = std::max(max_depth, depth);
     /* for(uint32_t i = 0; i < depth; i++) cout << " "; */
     if (node->NumChildren() == 0) {
@@ -1913,8 +1921,8 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
             samples.push_back(const_cast<sample*>(&s));
     }
     assert(v < cnf.nVars());
-    Mat<uint8_t> dataset;
-    Row<size_t> labels;
+    arma::Mat<uint8_t> dataset;
+    arma::Row<size_t> labels;
 
     vector<uint32_t> used_vars(input.begin(), input.end());
     if (mconf.do_use_all_variables_as_features) {
@@ -1975,13 +1983,13 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
         /*     const double minimumGainSplit, */
         /*     const size_t maximumDepth, */
         /*     DimensionSelectionType dimensionSelector) */
-        DecisionTree<> r(dataset, labels, 2,
+        mlpack::DecisionTree<> r(dataset, labels, 2,
                        mconf.minimumLeafSize,  // minimumLeafSize: require 20+ samples per leaf (default 10)
                        mconf.minGainSplit,     // minimumGainSplit: require k ratio gain to split
                        mconf.maximumDepth);    // maximumDepth: max k levels deep (0 = unlimited)
 
         // Compute and print the training error.
-        Row<size_t> predictions;
+        arma::Row<size_t> predictions;
         r.Classify(dataset, predictions);
         train_error = arma::accu(predictions != labels) * 100.0 / (double)labels.n_elem;
         /* r.serialize(cout, 1); */

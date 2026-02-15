@@ -42,9 +42,6 @@
 /* #define MLPACK_PRINT_WARN */
 #include <mlpack.hpp>
 
-using namespace arma;
-using namespace mlpack;
-using namespace mlpack::tree;
 using namespace CMSat;
 
 using std::vector;
@@ -102,9 +99,11 @@ class Manthan {
         void full_train();
         void bve_and_substitute();
         aig_ptr one_level_substitute(const Lit l, const uint32_t v, map<uint32_t, aig_ptr>& transformed);
+        arma::vec point_0;
+        arma::vec point_1;
 
         void create_vars_for_y_hats();
-        FHolder<MetaSolver2>::Formula recur(DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& var_remap, uint32_t depth, uint32_t& max_depth);
+        FHolder<MetaSolver2>::Formula recur(mlpack::tree::DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& var_remap, uint32_t depth, uint32_t& max_depth);
         vector<uint32_t> incidence;
         vector<double> td_score;
 
@@ -188,11 +187,15 @@ class Manthan {
         vector<uint32_t> updated_y_funcs; // y_hats updated during last round of training
 
         // stats
+        double repair_start_time;
+        void print_stats(string txt = "", string color = "", string extra = "") const;
+        void print_repair_stats(string txt = "", string color = "", string extra = "") const;
         uint32_t num_loops_repair = 0;
         uint64_t conflict_sizes_sum = 0;
         uint64_t needs_repair_sum = 0;
         uint32_t tot_repaired = 0;
         uint32_t repair_failed = 0;
+        vector<uint32_t> repaired_vars_count; // for each y, how many times it was repaired
 
         double sampl_time = 0;
         double train_time = 0;
