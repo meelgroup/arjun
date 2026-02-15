@@ -1308,6 +1308,20 @@ DLL_PUBLIC void SimplifiedCNF::write_simpcnf(const string& fname, bool red) cons
         outf << v+1  << " ";
     }
     outf << "0\n";
+    set<uint32_t> set_opt_sampl_vars(opt_sampl_vars.begin(), opt_sampl_vars.end());
+    vector<uint32_t> existential;
+    for(uint32_t v = 0; v < nvars; v++) {
+        if (set_opt_sampl_vars.count(v) == 0) {
+            existential.push_back(v);
+        }
+    }
+    outf << "c p exist ";
+    sort(existential.begin(), existential.end());
+    for(const auto& v: existential) {
+        assert(v < nvars);
+        outf << v+1  << " ";
+    }
+    outf << "0\n";
     outf << "c MUST MULTIPLY BY " << *multiplier_weight << " 0" << endl;
 }
 
