@@ -1338,7 +1338,7 @@ public:
         uint32_t sbva_lits_cutoff = 5;
         int sbva_tiebreak = 1;
         bool do_renumber = true;
-        bool do_autarky = false;
+        bool do_autarky = true;
     };
     struct ManthanConf {
         ManthanConf() = default;

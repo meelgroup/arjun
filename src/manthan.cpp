@@ -1284,7 +1284,7 @@ bool Manthan::cluster_order() {
 
     // Notice that this graph returned is VERY different
     uint64_t td_steps = 1e5;
-    int td_lookahead_iters = 900;
+    int td_lookahead_iters = 300;
     auto tdec = TWD::TreeDecomposition(fc.constructTD(td_steps, td_lookahead_iters));
     tdec.centroid(primal_alt->numNodes(), conf.verb);
     const auto td_width = tdec.width()-1;
