@@ -1419,7 +1419,7 @@ void Manthan::bve_order() {
         uint32_t num_neg = 0;
         for(const auto& cl: cnf.get_clauses()) {
             for(const auto& l: cl) {
-                if (l.var()) {
+                if (l.var() == v) {
                     if (l.sign()) num_neg++;
                     else num_pos++;
                 }
