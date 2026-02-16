@@ -108,7 +108,6 @@ class Manthan {
         vector<double> td_score;
 
         Lit map_y_to_y_hat(const Lit& l) const;
-        uint32_t calc_non_bw_needs_repair() const;
         void print_needs_repair_vars() const;
         void print_cnf_debug_info(const sample& ctx) const;
         void get_incidence();
@@ -119,7 +118,6 @@ class Manthan {
         void find_better_ctx_normal(sample& ctx);
         template<typename S>
         void inject_cnf(S& s) const;
-        void inject_unit(SATSolver& s);
         bool repair(const uint32_t v, sample& ctx);
         bool find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict);
         void minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, const Lit repairing);
@@ -157,7 +155,6 @@ class Manthan {
 
 
         bool verify_final_cnf(const SimplifiedCNF& fcnf) const;
-        void add_sample_clauses(SimplifiedCNF& cnf);
         vector<sample> get_cmsgen_samples(const uint32_t num_samples);
         vector<sample> get_samples_ccnr(const uint32_t num_samples);
         void sort_all_samples(vector<sample>& samples);
@@ -179,7 +176,6 @@ class Manthan {
         bool ctx_is_sat(const sample& ctx) const;
         bool check_map_dependency_cycles() const;
         bool has_dependency_cycle_dfs(const uint32_t node, vector<uint8_t>& color, vector<uint32_t>& path) const; // used in check_dependency_loop
-        bool check_train_correctness() const;
         bool check_aig_dependency_cycles() const;
         bool check_transitive_closure_correctness() const;
         bool check_functions_for_y_vars() const;

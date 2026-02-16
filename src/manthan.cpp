@@ -107,7 +107,6 @@ vector<sample> Manthan::get_cmsgen_samples(const uint32_t num) {
     solver_samp.set_up_for_sample_counter(mconf.sampler_fixed_conflicts);
 
     if (mconf.do_biased_sampling) {
-        array<vector<sample>,2> biased_samp;
         array<vector<double>,2> dist;
         dist[0].resize(cnf.nVars(), 0.0);
         dist[1].resize(cnf.nVars(), 0.0);
@@ -124,7 +123,6 @@ vector<sample> Manthan::get_cmsgen_samples(const uint32_t num) {
             for (uint32_t i = 0; i < bias_samples; i++) {
                 solver_samp.solve();
                 assert(solver_samp.get_model().size() == cnf.nVars());
-                biased_samp[bias].push_back(solver_samp.get_model());
 
                 for(const auto& v: to_define) {
                     if (solver_samp.get_model()[v] == l_True) got_ones[v]++;
@@ -409,14 +407,6 @@ void Manthan::print_needs_repair_vars() const {
         }
         cout << endl;
     }
-}
-
-uint32_t Manthan::calc_non_bw_needs_repair() const {
-    uint32_t cnt = 0;
-    for(const auto& y: needs_repair) {
-        if (backward_defined.count(y) == 0) cnt++;
-    }
-    return cnt;
 }
 
 // debug
@@ -1164,7 +1154,6 @@ void Manthan::learn_order() {
     assert(y_order.empty());
     verb_print(2, "[manthan] Fixing LEARN order...");
     vector<uint32_t> sorted(to_define_full.begin(), to_define_full.end());
-    vector<double> score(cnf.nVars(), 0.0);
     auto mysorter = [&](const uint32_t a, const uint32_t b) -> bool {
         if (td_score[a] != td_score[b]) return td_score[a] < td_score[b];
         if (incidence[a] != incidence[b]) return incidence[a] > incidence[b];
@@ -1410,6 +1399,7 @@ void Manthan::bve_order() {
                 if (l.var() == v) {
                     if (l.sign()) num_neg++;
                     else num_pos++;
+                    break;
                 }
             }
         }
@@ -1505,13 +1495,11 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
     }
 
     // Fix to_define variables that are incorrect via assumptions
-    set<Lit> assumps;
     for(const auto& y: y_order) {
         const auto y_hat = y_to_y_hat[y];
         if (ctx[y] == ctx[y_hat]) continue;
         const auto l = Lit(y, ctx[y_hat] == l_False);
         verb_print(3, "[find-better-ctx] put into assumps y= " << l);
-        assumps.insert(l);
         int w = y_to_y_order_pos[y];
         s_ctx.addClause(lits_to_ints({l}), w); // want to flip valuation to ctx[y_hat]
     }
