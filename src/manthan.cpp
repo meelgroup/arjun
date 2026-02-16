@@ -846,7 +846,6 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
 
     while(true) {
         if (num_loops_repair %  40 == 39) print_stats();
-        if (num_loops_repair %  100 == 99) print_repair_stats();
         assert(at_least_one_repaired);
         at_least_one_repaired = false;
         num_loops_repair++;
@@ -900,6 +899,7 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
     }
     const double repair_time = cpuTime() - repair_start_time;
     assert(check_map_dependency_cycles());
+    print_repair_stats();
     print_stats("", COLYEL, " DONE");
 
     // Build final CNF

@@ -438,8 +438,8 @@ int main(int argc, char** argv) {
         assert(!simp_conf.appmc && "Cannot use synthesis and appmc simplification at the same time");
         cout << "c o [arjun] Setting defaults for synthesis mode" << endl;
         if (!program.is_used("--bveresolvmaxsz")) simp_conf.bve_too_large_resolvent = 1000;
-        if (!program.is_used("--iter1grow")) simp_conf.bve_grow_iter1 = 200;
-        if (!program.is_used("--iter2grow")) simp_conf.bve_grow_iter2 = 2000;
+        /* if (!program.is_used("--iter1grow")) simp_conf.bve_grow_iter1 = 200; */
+        if (!program.is_used("--iter2grow")) simp_conf.bve_grow_iter2 = 500;
         if (!program.is_used("--bvegrownonstop")) simp_conf.bve_grow_nonstop = true;
     }
 
