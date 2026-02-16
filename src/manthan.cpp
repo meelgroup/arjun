@@ -273,24 +273,19 @@ bool Manthan::check_transitive_closure_correctness() const {
     // Then, compute transitive closure to ensure transitivity
     // If A depends on B and B depends on C, then A depends on C
     verb_print(3, "[fill-dep] Checking transitive closure");
-    bool changed = true;
-    while(changed) {
-        changed = false;
-        for(uint32_t i = 0; i < cnf.nVars(); i++) {
-            if (input.count(i)) continue;
-            for(uint32_t j = 0; j < cnf.nVars(); j++) {
-                if (input.count(j)) continue;
-                if (dependency_mat[i][j] == 0) continue;
+    for(uint32_t i = 0; i < cnf.nVars(); i++) {
+        if (input.count(i)) continue;
+        for(uint32_t j = 0; j < cnf.nVars(); j++) {
+            if (input.count(j)) continue;
+            if (dependency_mat[i][j] == 0) continue;
 
-                // i depends on j, so i should depend on everything j depends on
-                for(uint32_t k = 0; k < cnf.nVars(); k++) {
-                    if (input.count(k)) continue;
-                    if (dependency_mat[j][k] == 1 && dependency_mat[i][k] == 0) {
-                        changed = true;
-                        verb_print(0, "ERROR: [fill-dep] transitive: " << i+1 << " depends on " << k+1
-                            << " (via " << j+1 << ") -- but WE had to add it!!");
-                        return false;
-                    }
+            // i depends on j, so i should depend on everything j depends on
+            for(uint32_t k = 0; k < cnf.nVars(); k++) {
+                if (input.count(k)) continue;
+                if (dependency_mat[j][k] == 1 && dependency_mat[i][k] == 0) {
+                    verb_print(0, "ERROR: [fill-dep] transitive: " << i+1 << " depends on " << k+1
+                        << " (via " << j+1 << ") -- but WE had to add it!!");
+                    return false;
                 }
             }
         }
@@ -566,10 +561,6 @@ void Manthan::bve_and_substitute() {
       return aig;
     };
     vector<vector<uint32_t>> lit_to_cls(cnf.nVars()*2);
-    for(uint32_t i = 0; i < cnf.nVars(); i++) {
-        lit_to_cls[Lit(i, false).toInt()].clear();
-        lit_to_cls[Lit(i, true).toInt()].clear();
-    }
     for(uint32_t i = 0; i < cnf.get_clauses().size(); i++) {
         const auto& cl = cnf.get_clauses()[i];
         for(const auto& l: cl) {
@@ -692,7 +683,7 @@ void Manthan::bve_and_substitute() {
         var_to_formula[y] = f;
 
         num_done++;
-        if (num_done % 50 == 49) {
+        if (num_done % 50 == 0 && num_done > 0) {
             verb_print(1, "[manthan] done with BVE "
                 << " funs: " << setw(6) << num_done
                 << " funs/s: " << setw(6) << fixed << setprecision(2) << safe_div(num_done,(cpuTime()-start_time))
@@ -761,7 +752,7 @@ void Manthan::full_train() {
     assert(check_map_dependency_cycles());
 }
 
-void Manthan::print_repair_stats(string txt, string color, string extra) const {
+void Manthan::print_repair_stats([[maybe_unused]] string txt, string color, [[maybe_unused]] string extra) const {
     vector<uint32_t> rep(cnf.nVars());
     for(uint32_t i = 0; i < cnf.nVars(); i++) rep[i] = i;
     sort(rep.begin(), rep.end(), [&] (const auto& a, const auto& b) {
@@ -788,8 +779,6 @@ void Manthan::print_stats(string txt, string color, string extra) const {
             << "   T: " << setprecision(2) << fixed << setw(7) << repair_time
             << "   rep/s: " << setprecision(4) << safe_div(tot_repaired,repair_time) << setprecision(2)
             << extra);
-        if (num_loops_repair %  40 == 39) {
-        }
 }
 
 SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
@@ -958,7 +947,6 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
     assert(to_define.count(y_rep) == 1 && "Only to-define vars should be repaired");
     assert(y_rep < cnf.nVars());
-    assert(to_define.count(y_rep));
 
     if (num_loops_repair % mconf.simplify_every == (mconf.simplify_every-1)) {
         vector<Lit> assumps;
@@ -1813,8 +1801,8 @@ FHolder<MetaSolver2>::Formula Manthan::recur(mlpack::tree::DecisionTree<>* node,
 }
 
 // Checks if flipping variable v in sample s satisfies all clauses
-vector<sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& samples) {
-    auto check_satisfied_all_cls_with_flip = [](const sample& s, const uint32_t v2, const vector<vector<Lit>*>& clause_ptrs) -> bool {
+vector<const sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& samples) {
+    auto check_satisfied_all_cls_with_flip = [](const sample& s, const uint32_t v2, const vector<const vector<Lit>*>& clause_ptrs) -> bool {
         // Check all clauses
         for(const auto& cl: clause_ptrs) {
             bool satisfied = false;
@@ -1837,8 +1825,8 @@ vector<sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& 
     };
 
     uint32_t num_removed = 0;
-    vector<sample*> filtered_samples;
-    vector<vector<Lit>*> clause_ptrs;
+    vector<const sample*> filtered_samples;
+    vector<const vector<Lit>*> clause_ptrs;
     for(const auto& cl: cnf.get_clauses()) {
         bool found = false;
         for(const auto& l: cl) {
@@ -1847,13 +1835,13 @@ vector<sample*> Manthan::filter_samples(const uint32_t v, const vector<sample>& 
                 break;
             }
         }
-        if (found) clause_ptrs.push_back(const_cast<vector<Lit>*>(&cl));
+        if (found) clause_ptrs.push_back(&cl);
     }
     for(const auto& s: samples) {
         bool ret = check_satisfied_all_cls_with_flip(s, v, clause_ptrs);
         if (!ret) {
             // sample is good
-            filtered_samples.push_back(const_cast<sample*>(&s));
+            filtered_samples.push_back(&s);
         } else num_removed++;
     }
     verb_print(2, "[filter_samples] For variable " << setw(6) << v+1 << ", removed "
@@ -1893,11 +1881,11 @@ void Manthan::sort_all_samples(vector<sample>& samples) {
 double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     verb_print(2, "training variable: " << v+1);
     /* assert(!orig_samples.empty()); */
-    vector<sample*> samples;
+    vector<const sample*> samples;
     if (mconf.do_filter_samples) samples = filter_samples(v, orig_samples);
     else {
         for(const auto& s: orig_samples)
-            samples.push_back(const_cast<sample*>(&s));
+            samples.push_back(&s);
     }
     assert(v < cnf.nVars());
     point_0.zeros(cnf.nVars());
@@ -2110,7 +2098,8 @@ void Manthan::recompute_all_y_hat_aig(sample& ctx, const uint32_t y_rep) {
 
 void Manthan::compute_needs_repair(const sample& ctx) {
     assert(ctx[fh->get_true_lit().var()] == l_True);
-    needs_repair.clear(); for(const auto& y: to_define_full)
-        if (ctx[y] != ctx[y_to_y_hat[y]])
-    needs_repair.insert(y);
+    needs_repair.clear();
+    for(const auto& y: to_define_full) {
+        if (ctx[y] != ctx[y_to_y_hat[y]]) needs_repair.insert(y);
+    }
 }

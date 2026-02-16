@@ -114,7 +114,7 @@ class Manthan {
         void get_incidence();
         bool get_counterexample(sample& ctx);
         void inject_formulas_into_solver();
-        vector<sample*> filter_samples(const uint32_t v, const vector<sample>& samples);
+        vector<const sample*> filter_samples(const uint32_t v, const vector<sample>& samples);
         void find_better_ctx_maxsat(sample& ctx);
         void find_better_ctx_normal(sample& ctx);
         template<typename S>
