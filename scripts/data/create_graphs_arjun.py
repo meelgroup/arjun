@@ -89,7 +89,10 @@ def generate_todos():
 
     only_dirs = [
         # "out-synth-984148" # bug in sibFPE for oracle, autarkies
-        "out-synth-984881-" # fix bug in sibFPE, autarkies
+        "out-synth-984881-0/", # fix bug in sibFPE, autarkies
+        "out-synth-1017598-5/", # too many fixes to name
+        "out-synth-1017598-1/", # too many fixes to name
+        "out-synth-1017598-", # too many fixes to name
 
     ]
     # only_dirs = ["out-synth-6828273"]
@@ -243,7 +246,7 @@ if True:
 
 gnuplotfn = "run-all.gnuplot"
 with open(gnuplotfn, "w") as f:
-    f.write("set term postscript eps color lw 1 \"Helvetica\" 12 size 9,5\n")
+    f.write("set term postscript eps color lw 1 \"Helvetica\" 12 size 8,4\n")
     f.write("set output \"run.eps\"\n")
     f.write("set title \"Counter arjun\"\n")
     f.write("set notitle\n")
@@ -254,7 +257,7 @@ with open(gnuplotfn, "w") as f:
     f.write("set ylabel  \"Instances synthetized\"\n")
     f.write("set xlabel \"Time (s)\"\n")
     # f.write("plot [:][10:]\\\n")
-    f.write("plot [:][10:]\\\n")
+    f.write("plot [:][250:]\\\n")
     i = 0
     # f.write(" \"runkcbox-prearjun.csv.gnuplotdata\" u 2:1 with linespoints  title \"KCBox\",\\\n")
     # f.write(" \"runsharptd-prearjun.csv.gnuplotdata\" u 2:1 with linespoints  title \"SharptTD\",\\\n")
