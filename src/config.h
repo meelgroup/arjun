@@ -46,6 +46,7 @@ struct Config {
     double no_gates_below = 0.01;
     std::string specified_order_fname;
     uint32_t backw_max_confl = 20000;
+    uint32_t unate_max_confl = 100;
     uint32_t extend_max_confl = 1000;
     bool weighted = false;
     int oracle_find_bins = 6;

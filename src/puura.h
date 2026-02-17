@@ -52,6 +52,7 @@ public:
     void run_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak);
     void synthesis_unate(SimplifiedCNF& cnf);
+    void synthesis_unate_def(SimplifiedCNF& cnf);
     void backbone(SimplifiedCNF& cnf);
 
 private:
@@ -77,4 +78,3 @@ private:
     set<uint32_t> sampl_set;
     vector<Lit> dont_elim;
 };
-

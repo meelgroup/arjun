@@ -157,7 +157,7 @@ void Puura::dump_cnf(SATSolver& s, const string& name) {
 void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     double my_time = cpuTime();
     uint32_t new_units = 0;
-    std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb, "start synthesis_unate");
+    std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_unate");
     if (to_define.empty()) {
         verb_print(1, "[unate] No variables to define, skipping");
         return;
@@ -228,6 +228,7 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
             }
             verb_print(3, "[unate] assumps : " << assumps);
             s->set_no_confl_needed();
+            s->set_max_confl(conf.unate_max_confl);
             const auto ret = s->solve(&assumps, true);
             if (ret == l_False) {
 
@@ -250,8 +251,177 @@ void Puura::synthesis_unate(SimplifiedCNF& cnf) {
     }
 
     cnf.add_fixed_values(unates);
-    auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0, "start synthesis_unate");
+    auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end do_unate");
     verb_print(1, COLRED "[unate] Done. synthesis_unate"
+        << " tested: " << tested_num
+        << " defined: " << to_define.size() - to_define2.size()
+        << " still to define: " << to_define2.size()
+        << " T: " << (cpuTime() - my_time));
+}
+
+void Puura::synthesis_unate_def(SimplifiedCNF& cnf) {
+    double my_time = cpuTime();
+    uint32_t new_units = 0;
+    std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_unate_def");
+    if (to_define.empty()) {
+        verb_print(1, "[unate_def] No variables to define, skipping");
+        return;
+    }
+    sampl_set.clear();
+    for(const auto& v: cnf.get_opt_sampl_vars()) sampl_set.insert(v);
+
+    auto s = setup_f_not_f(cnf);
+
+    // I := all non-sampling variables that are already defined.
+    set<uint32_t> already_defined;
+    for(uint32_t v = 0; v < cnf.nVars(); v++) {
+        if (sampl_set.count(v)) continue;
+        if (to_define.count(v)) continue;
+        already_defined.insert(v);
+    }
+
+    // Add copied-side definition constraints: i' <-> H_i(X, Y') for all i in I.
+    const auto new_to_orig = cnf.get_new_to_orig_var();
+    Lit true_lit = lit_Undef;
+    auto get_true_lit = [&]() -> Lit {
+        if (true_lit == lit_Undef) {
+            s->new_var();
+            true_lit = Lit(s->nVars()-1, false);
+            s->add_clause({true_lit});
+        }
+        return true_lit;
+    };
+    for(const auto& i_new: already_defined) {
+        assert(new_to_orig.count(i_new) > 0);
+        const Lit orig = new_to_orig.at(i_new);
+        const auto& aig = cnf.get_def(orig.var());
+        assert(aig != nullptr && "Already-defined var must have an AIG definition");
+
+        std::vector<Lit> tmp;
+        std::function<Lit(AIGT, uint32_t, bool, const Lit*, const Lit*)> aig_to_copy_visitor =
+          [&](AIGT type, const uint32_t var_orig, const bool neg, const Lit* left, const Lit* right) -> Lit {
+            if (type == AIGT::t_const) {
+                return neg ? ~get_true_lit() : get_true_lit();
+            }
+            if (type == AIGT::t_lit) {
+                const Lit lit_new = cnf.orig_to_new_lit(Lit(var_orig, neg));
+                if (sampl_set.count(lit_new.var())) return lit_new;
+                assert(lit_new.var() < orig_num_vars);
+                return Lit(lit_new.var() + orig_num_vars, lit_new.sign());
+            }
+            if (type == AIGT::t_and) {
+                const Lit l_lit = *left;
+                const Lit r_lit = *right;
+                s->new_var();
+                const Lit and_out = Lit(s->nVars() - 1, false);
+                tmp.clear();
+                tmp = {~and_out, l_lit};
+                s->add_clause(tmp);
+                tmp = {~and_out, r_lit};
+                s->add_clause(tmp);
+                tmp = {~l_lit, ~r_lit, and_out};
+                s->add_clause(tmp);
+                return neg ? ~and_out : and_out;
+            }
+            assert(false && "Unhandled AIG type in synthesis_unate_def");
+            exit(EXIT_FAILURE);
+          };
+
+        std::map<aig_ptr, Lit> cache;
+        const Lit out_lit = AIG::transform<Lit>(aig, aig_to_copy_visitor, cache);
+
+        // new_to_orig stores whether CNF var is sign-flipped wrt orig var.
+        const Lit out_in_new_space = out_lit ^ orig.sign();
+        const Lit i_copy = Lit(i_new + orig_num_vars, false);
+        s->add_clause({~i_copy, out_in_new_space});
+        s->add_clause({i_copy, ~out_in_new_space});
+    }
+
+    verb_print(2, "[unate_def] already-defined vars in CNF: " << already_defined.size());
+
+    var_to_indic.clear();
+    var_to_indic.resize(cnf.nVars(), var_Undef);
+    for(uint32_t i = 0; i < orig_num_vars; i++) {
+        if (sampl_set.count(i)) continue;
+        if (already_defined.count(i)) continue;
+        s->new_var();
+        const Lit ind_l = Lit(s->nVars()-1, false);
+
+        // when indic is TRUE, they are equal
+        const auto y = Lit (i, false);
+        const auto y_hat = Lit(i + orig_num_vars, false);
+        vector<Lit> tmp;
+        tmp.push_back(~ind_l);
+        tmp.push_back(y_hat);
+        tmp.push_back(~y);
+        s->add_clause(tmp);
+        tmp[1] = ~tmp[1];
+        tmp[2] = ~tmp[2];
+        s->add_clause(tmp);
+
+        tmp.clear();
+        tmp.push_back(ind_l);
+        tmp.push_back(~y_hat);
+        tmp.push_back(~y);
+        s->add_clause(tmp);
+        tmp[1] = ~tmp[1];
+        tmp[2] = ~tmp[2];
+        s->add_clause(tmp);
+        var_to_indic[i] = ind_l.var();
+    }
+    if (conf.verb >= 3) dump_cnf(*s, "unate_def-start.cnf");
+
+    vector<Lit> assumps;
+    vector<Lit> cl;
+    s->set_bve(false);
+
+    uint32_t tested_num = 0;
+    vector<Lit> unates;
+    for(uint32_t test: to_define) {
+        assert(sampl_set.count(test) == 0);
+        verb_print(3, "[unate_def] testing var: " << test+1);
+        tested_num++;
+        if (tested_num % 300 == 299) {
+            verb_print(1, "[unate_def] test no: " << setw(5) << tested_num
+                << " confl K: " << setw(4) << s->get_sum_conflicts()/1000
+                << " new units: " << setw(4) << new_units
+                << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
+        }
+
+        for(int flip = 0; flip < 2; flip++) {
+            assumps.clear();
+            assumps.push_back(Lit(test, !flip));
+            assumps.push_back(Lit(test+orig_num_vars, flip));
+            for(uint32_t i = 0; i < cnf.nVars(); i++) {
+                if (i == test) continue;
+                if (sampl_set.count(i)) continue;
+                if (already_defined.count(i)) continue;
+                auto ind = var_to_indic.at(i);
+                assert(ind != var_Undef);
+                assumps.push_back(Lit(ind, false));
+            }
+            verb_print(3, "[unate_def] assumps : " << assumps);
+            s->set_no_confl_needed();
+            s->set_max_confl(conf.backw_max_confl);
+            const auto ret = s->solve(&assumps, true);
+            if (ret == l_False) {
+                Lit l = {Lit(test, flip)};
+                unates.push_back(l);
+                cnf.add_clause({l});
+                verb_print(2, "[unate_def] good test. Setting: " << std::setw(3)  << l
+                    << " T: " << fixed << setprecision(2) << (cpuTime() - my_time));
+                l = Lit(test+orig_num_vars, flip);
+                cl = {l};
+                s->add_clause(cl);
+                new_units++;
+                break;
+            }
+        }
+    }
+
+    cnf.add_fixed_values(unates);
+    auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end do_unate_def");
+    verb_print(1, COLRED "[unate_def] Done. synthesis_unate_def"
         << " tested: " << tested_num
         << " defined: " << to_define.size() - to_define2.size()
         << " still to define: " << to_define2.size()
@@ -338,7 +508,6 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->set_bve(simp_conf.do_bve);
     if (!simp_conf.appmc) {
         solver->set_min_bva_gain(simp_conf.bve_grow_iter1);
-        solver->set_bve_nonstop(simp_conf.bve_grow_nonstop);
         solver->set_occ_based_lit_rem_time_limitM(500);
         solver->set_bve_too_large_resolvent(simp_conf.bve_too_large_resolvent);
     } else {
@@ -372,7 +541,6 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     // Now more expensive BVE, also RED linked in to occur
     if (!simp_conf.appmc) {
         solver->set_min_bva_gain(simp_conf.bve_grow_iter2);
-        solver->set_bve_nonstop(simp_conf.bve_grow_nonstop);
         solver->set_varelim_check_resolvent_subs(true);
     }
     solver->set_max_red_linkin_size(20);
