@@ -86,6 +86,7 @@ int manthan_strategy = 0;
 
 int synthesis = false;
 int do_unate = false;
+int do_unate_def = false;
 int do_revbce = false;
 int do_minim_indep = true;
 string debug_minim;
@@ -128,6 +129,7 @@ void add_arjun_options() {
     myopt("--minimconfl", mconf.do_minimize_conflict, atoi,"Minimize conflict size when repairing");
     myopt("--simpevery", mconf.simplify_every, atoi,"Simplify solvers inside Manthan every K loops");
     myopt("--unate", do_unate, atoi,"Perform unate analysis");
+    myopt("--unatedef", do_unate_def, atoi,"Perform definition-aware unate analysis");
     myopt("--autarky", etof_conf.do_autarky, atoi,"Perform unate analysis");
     myopt("--mbve", mconf.manthan_bve, atoi,"Use BVE with constants instead of training");
     myopt("--moneperloop", mconf.one_repair_per_loop, atoi,"One repair per CEX loop");
@@ -296,9 +298,26 @@ void do_synthesis() {
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-1-simplified_cnf.aig");
     }
 
+    if (etof_conf.do_extend_indep && !cnf.synth_done()) {
+        arjun->standalone_unsat_define(cnf);
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-2-extend_synth.aig");
+        cnf.simplify_aigs(conf.verb);
+    }   
+ 
+     if (do_minim_indep && !cnf.synth_done()) {
+        arjun->standalone_backward_round_synth(cnf, mconf);
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-4-minim_idep_synt.aig");
+        cnf.simplify_aigs(conf.verb);
+    }   
+    
+
     if (do_unate && !cnf.synth_done()) {
         arjun->standalone_unate(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-3-unsat_unate.aig");
+    }
+    if (do_unate_def && !cnf.synth_done()) {
+        arjun->standalone_unate_def(cnf);
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-3-unsat_unate_def.aig");
     }
 
     if (etof_conf.do_autarky && !cnf.synth_done()) {
@@ -306,17 +325,9 @@ void do_synthesis() {
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-0-autarky.aig");
     }
 
-    if (etof_conf.do_extend_indep && !cnf.synth_done()) {
-        arjun->standalone_unsat_define(cnf);
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-2-extend_synth.aig");
-        cnf.simplify_aigs(conf.verb);
-    }
 
-    if (do_minim_indep && !cnf.synth_done()) {
-        arjun->standalone_backward_round_synth(cnf, mconf);
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-4-minim_idep_synt.aig");
-        cnf.simplify_aigs(conf.verb);
-    }
+
+
 
     auto mconf_orig = mconf;
     uint32_t tries;
