@@ -713,7 +713,7 @@ void Manthan::full_train() {
         << "do_filter_samples=" << mconf.do_filter_samples
         << ", num_samples=" << mconf.num_samples
         << ", minimumLeafSize=" << mconf.minimumLeafSize
-        << ", minGainSplit=" << mconf.minGainSplit
+        << ", minGainSplit=" << setprecision(6) << mconf.minGainSplit << setprecision(2)
         << ", maximumDepth=" << mconf.maximumDepth);
     double samp_start_time = cpuTime();
     vector<sample> samples = get_cmsgen_samples(mconf.num_samples);
@@ -742,7 +742,7 @@ void Manthan::full_train() {
     assert(check_map_dependency_cycles());
 }
 
-void Manthan::print_repair_stats([[maybe_unused]] string txt, string color, [[maybe_unused]] string extra) const {
+void Manthan::print_repair_stats([[maybe_unused]] const string& txt, const string& color, [[maybe_unused]] const string& extra) const {
     vector<uint32_t> rep(cnf.nVars());
     for(uint32_t i = 0; i < cnf.nVars(); i++) rep[i] = i;
     sort(rep.begin(), rep.end(), [&] (const auto& a, const auto& b) {
@@ -757,7 +757,7 @@ void Manthan::print_repair_stats([[maybe_unused]] string txt, string color, [[ma
     }
 }
 
-void Manthan::print_stats(string txt, string color, string extra) const {
+void Manthan::print_stats(const string& txt, const string& color, const string& extra) const {
     const double repair_time = cpuTime() - repair_start_time;
     verb_print(1, color << "[manthan]" << txt
             << " rep: " << setw(6) << tot_repaired
