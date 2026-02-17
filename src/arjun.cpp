@@ -38,6 +38,7 @@
 #include "time_mem.h"
 #include "constants.h"
 #include "autarky.h"
+#include "unate_def.h"
 #ifdef SYNTH
 #include "manthan.h"
 #endif
@@ -164,14 +165,14 @@ DLL_PUBLIC void Arjun::standalone_rev_bce(SimplifiedCNF& cnf)
 
 DLL_PUBLIC void Arjun::standalone_unate(SimplifiedCNF& cnf)
 {
-    Puura puura(arjdata->conf);
-    puura.synthesis_unate(cnf);
+    Unate unate(arjdata->conf);
+    unate.synthesis_unate(cnf);
 }
 
 DLL_PUBLIC void Arjun::standalone_unate_def(SimplifiedCNF& cnf)
 {
-    Puura puura(arjdata->conf);
-    puura.synthesis_unate_def(cnf);
+    Unate unate(arjdata->conf);
+    unate.synthesis_unate_def(cnf);
 }
 
 DLL_PUBLIC void Arjun::standalone_sbva(SimplifiedCNF& orig,

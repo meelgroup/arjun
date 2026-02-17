@@ -33,6 +33,7 @@
 #include <cstdint>
 #include <iomanip>
 #include <sstream>
+#include <fstream>
 using std::cout;
 using std::endl;
 using std::cerr;
@@ -70,6 +71,31 @@ constexpr int slow_debug_enabled = 0;
 #endif
 
 using std::unique_ptr;
+
+template<typename LIT, typename T, typename T2>
+inline void dump_cnf(T2& s, const string& name, const T& sampl_set) {
+    vector<vector<LIT>> cls;
+    vector<LIT> cl;
+    s.start_getting_constraints(false);
+    bool is_xor, rhs;
+    while(s.get_next_constraint(cl, is_xor, rhs)) {
+        assert(!is_xor); assert(rhs);
+        cls.push_back(cl);
+    }
+    s.end_getting_constraints();
+
+    std::ofstream f(name);
+    f << "p cnf " << s.nVars() << " " << cls.size() << endl;
+
+    f << "c p show ";
+    for(const auto& l: sampl_set) f << l << " ";
+    f << " 0" << endl;
+
+    for(const auto& c: cls) f << c << " 0" << endl;
+    f.close();
+    cout << "c o DEBUG dumped CNF to " << name << " with " << cls.size() << " clauses and "
+        << s.nVars() << " vars" << endl;
+}
 
 inline double safe_div(double a, double b) noexcept {
     if (b == 0) {
