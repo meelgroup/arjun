@@ -639,8 +639,8 @@ DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
         *scnf.multiplier_weight = *cnf2.multiplier_weight;
 
         // Map orig set to new set
-        scnf.set_sampl_vars(solver->translate_sampl_set(cnf2.sampl_vars, false));
-        scnf.set_opt_sampl_vars(solver->translate_sampl_set(cnf2.opt_sampl_vars, false));
+        scnf.set_sampl_vars(solver->translate_sampl_set(cnf2.sampl_vars));
+        scnf.set_opt_sampl_vars(solver->translate_sampl_set(cnf2.opt_sampl_vars));
         sort(scnf.sampl_vars.begin(), scnf.sampl_vars.end());
         sort(scnf.opt_sampl_vars.begin(), scnf.opt_sampl_vars.end());
     }
@@ -680,23 +680,7 @@ DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
 
     // Now we do the mapping. Otherwise, above will be complicated
     // This ALSO gets all the fixed values
-    map<uint32_t, CMSat::VarMap> orig_to_new_var_vmap;
-    for(const auto& [orig, n]: orig_to_new_var) {
-        orig_to_new_var_vmap[orig] = CMSat::VarMap(n);
-    }
-    const auto upd_vmap = solver->update_var_mapping(orig_to_new_var_vmap);
-    scnf.orig_to_new_var.clear();
-    for(const auto& [orig, vm]: upd_vmap) {
-        if (vm.lit != lit_Undef) {
-            scnf.orig_to_new_var[orig] = vm.lit;
-            continue;
-        }
-
-        assert(vm.val != l_Undef);
-        if (need_aig && scnf.defs[orig] == nullptr) {
-            scnf.defs[orig] = scnf.aig_mng.new_const(vm.val == l_True);
-        }
-    }
+    scnf.orig_to_new_var = solver->update_var_mapping(orig_to_new_var);
     fix_mapping_after_renumber(scnf, verb);
     if (verb) cout << "c o solver orig num vars: " << solver->nVars() << " solver simp num vars: "
         << solver->simplified_nvars() << endl;
@@ -1183,9 +1167,9 @@ DLL_PUBLIC void SimplifiedCNF::fix_weights(unique_ptr<CMSat::SATSolver>& solver,
     set_opt_sampl_vars(opt_sampling_vars_set);
 
     solver->start_getting_constraints(false);
-    sampl_vars = solver->translate_sampl_set(new_sampl_vars, false);
-    opt_sampl_vars = solver->translate_sampl_set(opt_sampl_vars, false);
-    auto empty_sampling_vars2 = solver->translate_sampl_set(empty_sampling_vars, false);
+    sampl_vars = solver->translate_sampl_set(new_sampl_vars);
+    opt_sampl_vars = solver->translate_sampl_set(opt_sampl_vars);
+    auto empty_sampling_vars2 = solver->translate_sampl_set(empty_sampling_vars);
     solver->end_getting_constraints();
 
     sampling_vars_set.clear();
