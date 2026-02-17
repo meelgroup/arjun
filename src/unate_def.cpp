@@ -346,7 +346,7 @@ unique_ptr<SATSolver> Unate::setup_f_not_f(const SimplifiedCNF& cnf) {
     // At least ONE clause must be FALSE
     s->add_clause(not_f_cls);
 
-    verb_print(1, "[unate] Built up the F and ~F_x_y solver. T: "
+    verb_print(1, "[unate/def] Built up the F and ~F_x_y solver. T: "
             << fixed << setprecision(2) << (cpuTime() - my_time));
     return s;
 }
