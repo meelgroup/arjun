@@ -342,7 +342,7 @@ void do_synthesis() {
         if (manthan_strategy == 1) tries = std::numeric_limits<uint32_t>::max();
         cnf = arjun->standalone_manthan(cnf, mconf, tries);
     }
-    if (!cnf.synth_done() && manthan_strategy == 0 || manthan_strategy == 2) {
+    if (!cnf.synth_done() && (manthan_strategy == 0 || manthan_strategy == 2)) {
         // Learning with (larger) samples size
         mconf = mconf_orig;
         mconf.manthan_bve = 0;
@@ -350,7 +350,7 @@ void do_synthesis() {
         if (manthan_strategy == 2) tries = std::numeric_limits<uint32_t>::max();
         cnf = arjun->standalone_manthan(cnf, mconf, tries);
     }
-    if (!cnf.synth_done() && manthan_strategy == 0 || manthan_strategy == 3) {
+    if (!cnf.synth_done() && (manthan_strategy == 0 || manthan_strategy == 3)) {
         mconf = mconf_orig;
         mconf.manthan_bve = 1;
         tries = std::numeric_limits<uint32_t>::max();
