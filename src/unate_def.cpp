@@ -44,14 +44,6 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
 
     auto s = setup_f_not_f(cnf);
 
-    // I := all non-sampling variables that are already defined.
-    set<uint32_t> already_defined;
-    for(uint32_t v = 0; v < cnf.nVars(); v++) {
-        if (sampl_set.count(v)) continue;
-        if (to_define.count(v)) continue;
-        already_defined.insert(v);
-    }
-
     // Add copied-side definition constraints: i' <-> H_i(X, Y') for all i in I.
     const auto new_to_orig = cnf.get_new_to_orig_var();
     Lit true_lit = lit_Undef;
@@ -63,7 +55,9 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         }
         return true_lit;
     };
-    for(const auto& i_new: already_defined) {
+    for(const auto& i_new: backward_defined) {
+        if (sampl_set.count(i_new)) continue;
+
         assert(new_to_orig.count(i_new) > 0);
         const Lit orig = new_to_orig.at(i_new);
         const auto& aig = cnf.get_def(orig.var());
@@ -109,13 +103,13 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         s->add_clause({i_copy, ~out_in_new_space});
     }
 
-    verb_print(2, "[unate_def] already-defined vars in CNF: " << already_defined.size());
+    verb_print(2, "[unate_def] already-defined vars in CNF: " << backward_defined.size());
 
-    var_to_indic.clear();
+    assert(var_to_indic.empty());
     var_to_indic.resize(cnf.nVars(), var_Undef);
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
         if (sampl_set.count(i)) continue;
-        if (already_defined.count(i)) continue;
+        if (backward_defined.count(i)) continue;
         s->new_var();
         const Lit ind_l = Lit(s->nVars()-1, false);
 
@@ -167,7 +161,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
             for(uint32_t i = 0; i < cnf.nVars(); i++) {
                 if (i == test) continue;
                 if (sampl_set.count(i)) continue;
-                if (already_defined.count(i)) continue;
+                if (backward_defined.count(i)) continue;
                 auto ind = var_to_indic.at(i);
                 assert(ind != var_Undef);
                 assumps.push_back(Lit(ind, false));
@@ -305,7 +299,6 @@ void Unate::synthesis_unate(SimplifiedCNF& cnf) {
         << " T: " << (cpuTime() - my_time));
 }
 
-// used in synthesis_unate only
 unique_ptr<SATSolver> Unate::setup_f_not_f(const SimplifiedCNF& cnf) {
     double my_time = cpuTime();
 
