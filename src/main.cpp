@@ -132,6 +132,7 @@ void add_arjun_options() {
     myopt("--unatedef", do_unate_def, atoi,"Perform definition-aware unate analysis");
     myopt("--autarky", etof_conf.do_autarky, atoi,"Perform unate analysis");
     myopt("--mbve", mconf.manthan_bve, atoi,"Use BVE with constants instead of training");
+    myopt("--monflyorder", mconf.manthan_on_the_fly_order, atoi,"Use on-the-fly training order and post-training topological order");
     myopt("--moneperloop", mconf.one_repair_per_loop, atoi,"One repair per CEX loop");
     // Strategy
     myopt("--mtryrepmult", manthan_rep_mult, atoi,"Repair tries will be multiplied by this");
