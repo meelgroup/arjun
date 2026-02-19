@@ -134,6 +134,7 @@ class Manthan {
         // ordering
         vector<uint32_t> y_order; //1st only depends on inputs
         vector<int> order_val; // inputs have order -1, everything else as per y_order
+        void topological_sort_order();
         void order_vars();
         void learn_order();
         void bve_order();

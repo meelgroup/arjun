@@ -1353,7 +1353,7 @@ public:
         uint32_t num_samples = 5000;
         uint32_t num_samples_ccnr = 0;
         uint32_t minimumLeafSize = 10;
-        double minGainSplit = 0.001;
+        double minGainSplit = 0.003;
         uint32_t maximumDepth = 0;
         uint32_t sampler_fixed_conflicts = 100;
         int do_minimize_conflict = 1;
@@ -1369,6 +1369,7 @@ public:
         int backward_synth_order = 0;
         int manthan_bve = 0;
         int manthan_order = 0;
+        int manthan_on_the_fly_order = 0;
         int one_repair_per_loop = 0;
         int do_td_contract = 1; // contract over the input variables
         int td_max_edges = 70000;
