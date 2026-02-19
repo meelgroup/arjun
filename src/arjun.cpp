@@ -458,7 +458,7 @@ DLL_PUBLIC void SimplifiedCNF::add_fixed_values(const vector<Lit>& fixed) {
         if (l.var() >= nVars()) continue;
         Lit orig_lit = new_to_orig_var.at(l.var());
         orig_lit ^= l.sign();
-        if (defs[orig_lit.var()] != nullptr) continue;
+        assert(defs[orig_lit.var()] == nullptr && "Variable must not already have a definition");
         defs[orig_lit.var()] = aig_mng.new_const(!orig_lit.sign());
     }
 }
