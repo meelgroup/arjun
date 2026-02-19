@@ -817,15 +817,10 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
         fill_var_to_formula_with_backward();
         bve_and_substitute();
     } else {
-        if (mconf.manthan_on_the_fly_order) {
-            fill_var_to_formula_with_backward();
-            full_train();
-            topological_sort_order();
-        } else {
-            order_vars();
-            fill_var_to_formula_with_backward();
-            full_train();
-        }
+        if (!mconf.manthan_on_the_fly_order) order_vars();
+        fill_var_to_formula_with_backward();
+        full_train();
+        if (mconf.manthan_on_the_fly_order) topological_sort_order();
     }
 
     repair_start_time = cpuTime();
