@@ -727,11 +727,11 @@ void Manthan::full_train() {
         << " T: " << setprecision(2) << std::fixed << sampl_time);
     sort_all_samples(samples);
 
-    // Training
+    // Training -- updates depenndency_mat
     const double train_start_time = cpuTime();
     for(const auto& v: y_order) {
         if (backward_defined.count(v)) continue;
-        train(samples, v); // updates dependency_mat
+        train(samples, v);
     }
     train_time = cpuTime() - train_start_time;
     verb_print(1, COLYEL "[manthan] Training done."
@@ -808,18 +808,19 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
     verb_print(2, "True lit in solver_train: " << fh->get_true_lit());
     verb_print(2, "[manthan] After fh creation: solver_train.nVars() = " << cex_solver.nVars() << " cnf.nVars() = " << cnf.nVars());
 
-    order_vars();
+    // Order & train
+    pre_order_vars();
     fill_var_to_formula_with_backward();
-    if (!mconf.manthan_bve) full_train();
-    else bve_and_substitute();
+    if (mconf.manthan_bve) bve_and_substitute();
+    else full_train();
+    post_order_vars();
 
+    // Counterexample-guided repair
     repair_start_time = cpuTime();
     for(const auto& v: to_define_full) {
         assert(var_to_formula.count(v) && "All must have a tentative definition");
         updated_y_funcs.push_back(v);
     }
-
-    // Counterexample-guided repair
     bool at_least_one_repaired = true;
     SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
 
@@ -1348,9 +1349,54 @@ void Manthan::compute_td_score_using_adj(const uint32_t nodes,
   }
 }
 
+void Manthan::topological_sort_order() {
+    y_order.clear();
+    assert(y_order.empty());
+    if (td_score.empty()) td_score.resize(cnf.nVars(), 0.0);
+    vector<uint32_t> indeg(cnf.nVars(), 0);
+    for(const auto& a: to_define_full) {
+        for(const auto& b: to_define_full) {
+            if (a == b) continue;
+            if (dependency_mat[a][b] == 1) indeg[a]++;
+        }
+    }
+
+    set<uint32_t> ready;
+    for(const auto& v: to_define_full) {
+        if (indeg[v] == 0) ready.insert(v);
+    }
+
+    while(!ready.empty()) {
+        const uint32_t v = *ready.begin();
+        ready.erase(ready.begin());
+        y_order.push_back(v);
+
+        for(const auto& dep: to_define_full) {
+            if (dependency_mat[dep][v] == 0) continue;
+            assert(indeg[dep] > 0);
+            indeg[dep]--;
+            if (indeg[dep] == 0) ready.insert(dep);
+        }
+    }
+
+    release_assert(y_order.size() == to_define_full.size() && "Topological ordering failed, dependency cycle?");
+    order_val.clear();
+    order_val.resize(cnf.nVars(), -2);
+    for(const auto& x: input) order_val[x] = -1;
+    for(uint32_t i = 0; i < y_order.size(); i++) order_val[y_order[i]] = i;
+    for(const auto& vv: order_val) assert(vv != -2);
+    verb_print(1, "[manthan] Fixed order [TOPO] Final order size: " << y_order.size());
+    print_y_order_occur();
+}
+
+void Manthan::post_order_vars() {
+    if (mconf.manthan_on_the_fly_order)
+        topological_sort_order();
+}
+
 // Will order 1st the variables that NOTHING depends on
 // Will order LAST the variables that depends on EVERYTHING
-void Manthan::order_vars() {
+void Manthan::pre_order_vars() {
     assert(td_score.empty());
     td_score.resize(cnf.nVars(), 0.0);
     assert(order_val.empty());
@@ -1862,6 +1908,42 @@ void Manthan::sort_all_samples(vector<sample>& samples) {
 
 double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     verb_print(2, "training variable: " << v+1);
+
+    vector<uint32_t> used_vars(input.begin(), input.end());
+    if (mconf.do_use_all_variables_as_features) {
+        if (!mconf.manthan_on_the_fly_order) {
+            for(const auto& y: y_order) {
+                if (y == v) break;
+                assert(dependency_mat[y][v] != 1);
+                used_vars.push_back(y);
+            }
+        } else {
+            auto reaches = [&](const uint32_t from, const uint32_t to) -> bool {
+                if (from == to) return true;
+                vector<uint8_t> seen(cnf.nVars(), 0);
+                vector<uint32_t> st;
+                st.push_back(from);
+                seen[from] = 1;
+                while(!st.empty()) {
+                    const uint32_t cur = st.back();
+                    st.pop_back();
+                    for(uint32_t nxt = 0; nxt < cnf.nVars(); nxt++) {
+                        if (dependency_mat[cur][nxt] == 0) continue;
+                        if (nxt == to) return true;
+                        if (seen[nxt]) continue;
+                        seen[nxt] = 1;
+                        st.push_back(nxt);
+                    }
+                }
+                return false;
+            };
+            for(const auto& y: to_define_full) {
+                if (y == v) continue;
+                if (reaches(y, v)) continue;
+                used_vars.push_back(y);
+            }
+        }
+    }
     /* assert(!orig_samples.empty()); */
     vector<const sample*> samples;
     if (mconf.do_filter_samples) samples = filter_samples(v, orig_samples);
@@ -1875,14 +1957,6 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     arma::Mat<uint8_t> dataset;
     arma::Row<size_t> labels;
 
-    vector<uint32_t> used_vars(input.begin(), input.end());
-    if (mconf.do_use_all_variables_as_features) {
-        for(const auto& y: y_order) {
-            if (y == v) break;
-            assert(dependency_mat[y][v] != 1);
-            used_vars.push_back(y);
-        }
-    }
     dataset.resize(used_vars.size(), samples.size());
     verb_print(2, "Dataset size: " << dataset.n_rows << " x " << dataset.n_cols);
 

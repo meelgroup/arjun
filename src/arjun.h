@@ -1346,13 +1346,10 @@ public:
         int do_filter_samples = 1;
         int do_biased_sampling = 0;
         /// Also to try:
-        //uint32_t num_samples = 1000;
-        //uint32_t num_samples_ccnr = 0;
-        //uint32_t minimumLeafSize = 5;
-        //double minGainSplit = 0.01;
         uint32_t num_samples = 5000;
         uint32_t num_samples_ccnr = 0;
         uint32_t minimumLeafSize = 10;
+        // TODO experiment with 0.003
         double minGainSplit = 0.001;
         uint32_t maximumDepth = 0;
         uint32_t sampler_fixed_conflicts = 100;
@@ -1369,6 +1366,7 @@ public:
         int backward_synth_order = 0;
         int manthan_bve = 0;
         int manthan_order = 0;
+        int manthan_on_the_fly_order = 0;
         int one_repair_per_loop = 0;
         int do_td_contract = 1; // contract over the input variables
         int td_max_edges = 70000;
