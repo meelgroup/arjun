@@ -1086,6 +1086,12 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 }
 
 void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict) {
+    if (conflict.empty()) {
+        verb_print(2, "[manthan] conflict empty for " << setw(5) << y_rep+1 << ", unconditionally fixing it to " << ctx[y_rep]);
+        var_to_formula[y_rep] = fh->constant_formula(ctx[y_rep] == l_True);
+        updated_y_funcs.push_back(y_rep);
+        return;
+    }
     verb_print(2, "[manthan] Performing repair on " << setw(5) << y_rep+1
             << " with conflict size " << setw(3) << conflict.size());
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
