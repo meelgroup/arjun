@@ -1349,6 +1349,7 @@ public:
         uint32_t num_samples = 5000;
         uint32_t num_samples_ccnr = 0;
         uint32_t minimumLeafSize = 10;
+        // TODO experiment with 0.003
         double minGainSplit = 0.001;
         uint32_t maximumDepth = 0;
         uint32_t sampler_fixed_conflicts = 100;
