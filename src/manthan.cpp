@@ -1004,12 +1004,6 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         "to_repair literal must be in conflict");
 
     verb_print(2, "find_conflict conflict: " << conflict);
-    if (conflict.size() == 1) {
-        verb_print(2, "[manthan] conflict size 1, must flip value, always");
-        conflict.clear();
-        return true;
-    }
-
     uint32_t orig_size = conflict.size();
     const double minimize_start_time = cpuTime();
     if (conflict.size() > 1 && mconf.do_minimize_conflict) {
@@ -1017,12 +1011,6 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end() &&
             "to_repair literal must be in conflict");
     }
-    if (conflict.size() == 1) {
-        verb_print(2, "[manthan] conflict size 1, must flip value, always");
-        conflict.clear();
-        return true;
-    }
-
     auto now_end = std::remove_if(conflict.begin(), conflict.end(),
                 [&](const Lit l){ return l == to_repair; });
     conflict.erase(now_end, conflict.end());
