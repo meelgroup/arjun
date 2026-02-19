@@ -729,13 +729,9 @@ void Manthan::full_train() {
 
     // Training -- updates depenndency_mat
     const double train_start_time = cpuTime();
-    if (mconf.manthan_on_the_fly_order) {
-        for(const auto& v: to_define) train(samples, v);
-    } else {
-        for(const auto& v: y_order) {
-            if (backward_defined.count(v)) continue;
-            train(samples, v);
-        }
+    for(const auto& v: y_order) {
+        if (backward_defined.count(v)) continue;
+        train(samples, v);
     }
     train_time = cpuTime() - train_start_time;
     verb_print(1, COLYEL "[manthan] Training done."
@@ -1354,6 +1350,7 @@ void Manthan::compute_td_score_using_adj(const uint32_t nodes,
 }
 
 void Manthan::topological_sort_order() {
+    y_order.clear();
     assert(y_order.empty());
     if (td_score.empty()) td_score.resize(cnf.nVars(), 0.0);
     vector<uint32_t> indeg(cnf.nVars(), 0);
@@ -1400,7 +1397,6 @@ void Manthan::post_order_vars() {
 // Will order 1st the variables that NOTHING depends on
 // Will order LAST the variables that depends on EVERYTHING
 void Manthan::pre_order_vars() {
-    if (mconf.manthan_on_the_fly_order) return; // no pre-order in on-the-fly mode
     assert(td_score.empty());
     td_score.resize(cnf.nVars(), 0.0);
     assert(order_val.empty());
@@ -1912,18 +1908,6 @@ void Manthan::sort_all_samples(vector<sample>& samples) {
 
 double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     verb_print(2, "training variable: " << v+1);
-    /* assert(!orig_samples.empty()); */
-    vector<const sample*> samples;
-    if (mconf.do_filter_samples) samples = filter_samples(v, orig_samples);
-    else {
-        for(const auto& s: orig_samples)
-            samples.push_back(&s);
-    }
-    assert(v < cnf.nVars());
-    point_0.zeros(cnf.nVars());
-    point_1.zeros(cnf.nVars());
-    arma::Mat<uint8_t> dataset;
-    arma::Row<size_t> labels;
 
     vector<uint32_t> used_vars(input.begin(), input.end());
     if (mconf.do_use_all_variables_as_features) {
@@ -1960,6 +1944,19 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
             }
         }
     }
+    /* assert(!orig_samples.empty()); */
+    vector<const sample*> samples;
+    if (mconf.do_filter_samples) samples = filter_samples(v, orig_samples);
+    else {
+        for(const auto& s: orig_samples)
+            samples.push_back(&s);
+    }
+    assert(v < cnf.nVars());
+    point_0.zeros(cnf.nVars());
+    point_1.zeros(cnf.nVars());
+    arma::Mat<uint8_t> dataset;
+    arma::Row<size_t> labels;
+
     dataset.resize(used_vars.size(), samples.size());
     verb_print(2, "Dataset size: " << dataset.n_rows << " x " << dataset.n_cols);
 
