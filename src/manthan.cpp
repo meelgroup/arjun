@@ -1004,7 +1004,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end() &&
         "to_repair literal must be in conflict");
 
-    verb_print(2, "find_conflict conflict: " << conflict);
+    verb_print(2, "find_conflict sz: " << setw(5) << conflict.size() << " conflict: " << conflict);
     uint32_t orig_size = conflict.size();
     const double minimize_start_time = cpuTime();
     if (conflict.size() > 1 && mconf.do_minimize_conflict) {
@@ -1042,21 +1042,32 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
             auto ret2 = repair_solver.solve(&assumps);
             if (ret2 == l_True) {
                 dont_remove.insert(try_rem);
-                verb_print(3, "[manthan] conf minim. Cannot remove conflict literal: "
-                        << setw(5) << try_rem << " -- it leads to SAT");
+                verb_print(3, "[manthan] conf minim. Cannot remove conflict literal (it leads to SAT): "
+                        << try_rem
+                        << " -- BW: " << backward_defined.count(try_rem.var())
+                        << " -- input: " << input.count(try_rem.var()));
                 continue;
             }
+
+            // Check if returned conflict is sane
             const uint32_t sz_before = conflict.size();
-            conflict = repair_solver.get_conflict();
-            auto it = std::find(conflict.begin(), conflict.end(), to_repair);
-            if (it == conflict.end()) {
+            auto conflict2 = repair_solver.get_conflict();
+            auto it = std::find(conflict2.begin(), conflict2.end(), to_repair);
+            if (it == conflict2.end()) {
                 // leads to conflict without literal to repair
+                verb_print(3, "[manthan] conf minim. Cannot remove conflict literal (it leads to conflict without to_repair): "
+                        << try_rem
+                        << " -- BW: " << backward_defined.count(try_rem.var())
+                        << " -- input: " << input.count(try_rem.var()));
                 dont_remove.insert(try_rem);
                 continue;
             }
+
+            // OK, sane. Remove and restart
             removed_any = true;
             verb_print(3, "[manthan] conf minim. Removed conflict literal: " << setw(5) << try_rem
                 << " sz ch: " << sz_before - conflict.size());
+            conflict = conflict2;
             break;
         }
     }
