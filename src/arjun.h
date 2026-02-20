@@ -262,6 +262,52 @@ public:
         return clone_helper(aig);
     }
 
+    // Iteratively collect nodes reachable from 'root' to avoid recursion on deep AIGs.
+    static void collect_nodes_iterative(const aig_ptr& root, std::set<const AIG*>& out_nodes) {
+        if (!root) return;
+        std::vector<aig_ptr> todo;
+        todo.push_back(root);
+        while (!todo.empty()) {
+            const auto node = todo.back();
+            todo.pop_back();
+            if (!node) continue;
+            const auto raw = node.get();
+            if (!out_nodes.insert(raw).second) continue;
+            if (node->type == AIGT::t_and) {
+                if (node->l) todo.push_back(node->l);
+                if (node->r) todo.push_back(node->r);
+            }
+        }
+    }
+
+    // Iteratively release a graph rooted at 'root'. If keep_nodes is provided, nodes in
+    // that set are preserved and not traversed into.
+    static void release_graph_iterative(aig_ptr& root, const std::set<const AIG*>* keep_nodes = nullptr) {
+        if (!root) return;
+        if (keep_nodes != nullptr && keep_nodes->count(root.get()) == 1) return;
+
+        std::vector<aig_ptr> todo;
+        std::set<const AIG*> seen;
+        todo.push_back(root);
+        while (!todo.empty()) {
+            auto node = todo.back();
+            todo.pop_back();
+            if (!node) continue;
+
+            const auto raw = node.get();
+            if (keep_nodes != nullptr && keep_nodes->count(raw) == 1) continue;
+            if (!seen.insert(raw).second) continue;
+
+            if (node->type == AIGT::t_and) {
+                if (node->l) todo.push_back(node->l);
+                if (node->r) todo.push_back(node->r);
+                node->l.reset();
+                node->r.reset();
+            }
+        }
+        root.reset();
+    }
+
     // Generic recursive traversal function that applies a function to each AIG node
     // The function receives the current node as an aig_ptr
     // Use cache to avoid visiting the same node multiple times

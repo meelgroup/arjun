@@ -63,6 +63,18 @@ struct MyTracer : public CaDiCaL::Tracer {
     // AIG cache
     map<Lit, aig_ptr>& lit_to_aig;
 
+    ~MyTracer() override {
+      // Preserve the output cone (kept by Interpolant::defs) and iteratively
+      // release other proof AIGs to avoid recursive shared_ptr teardown.
+      std::set<const AIG*> keep_nodes;
+      AIG::collect_nodes_iterative(out, keep_nodes);
+      for (auto& [id, aig] : fs_clid) {
+          (void)id;
+          AIG::release_graph_iterative(aig, &keep_nodes);
+      }
+      fs_clid.clear();
+    }
+
     aig_ptr get_aig(const Lit l) {
       if (lit_to_aig.count(l)) return lit_to_aig.at(l);
       aig_ptr aig = AIG::new_lit(l);
@@ -124,4 +136,3 @@ private:
     vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
     vector<aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space
 };
-
