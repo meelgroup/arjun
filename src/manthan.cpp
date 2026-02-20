@@ -968,14 +968,6 @@ uint32_t Manthan::find_next_repair_var(const sample& ctx) const {
 bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     verb_print(2, "[DEBUG] Starting repair for var " << y_rep+1
             << (backward_defined.count(y_rep) ? "[BW]" : ""));
-    if (!mconf.manthan_full_formula) {
-        if (backward_defined.count(y_rep)) {
-            // BW vars may appear in repair candidates; in static mode skip them.
-            needs_repair.erase(y_rep);
-            return false;
-        }
-        assert(to_define.count(y_rep) == 1 && "Only to-define vars should be repaired");
-    }
     assert(y_rep < cnf.nVars());
 
     if (num_loops_repair % mconf.simplify_every == (mconf.simplify_every-1)) {
@@ -1144,9 +1136,6 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict) {
     verb_print(2, "[manthan] Performing repair on " << setw(5) << y_rep+1
             << " with conflict size " << setw(3) << conflict.size());
-    if (!mconf.manthan_full_formula) {
-        assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
-    }
     conflict_sizes_sum += conflict.size();
 
     // not (conflict) -> v = ctx(v)
