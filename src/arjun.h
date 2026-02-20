@@ -899,6 +899,7 @@ public:
             assert(other.orig_clauses.empty());
         } else {
             after_backward_round_synth = other.after_backward_round_synth;
+            allow_pre_backward_non_orig_deps = other.allow_pre_backward_non_orig_deps;
             aig_mng = other.aig_mng;
             defs = AIG::deep_clone_vec(other.defs);
             orig_clauses = other.orig_clauses;
@@ -1246,6 +1247,9 @@ public:
         assert(!after_backward_round_synth && "Should only be set once");
         after_backward_round_synth = true;
     }
+    void set_allow_pre_backward_non_orig_deps(const bool allow = true) {
+        allow_pre_backward_non_orig_deps = allow;
+    }
     const auto& get_orig_to_new_var() const {
         return orig_to_new_var;
     }
@@ -1262,6 +1266,7 @@ public:
         assert(v < defs.size());
         return defs[v];
     }
+    uint32_t import_definitions_from(const SimplifiedCNF& other, bool overwrite = false);
     void clear_orig_sampl_defs();
     void simplify_aigs(const uint32_t verb = 0) {
         assert(need_aig);
@@ -1271,6 +1276,7 @@ public:
 
 private:
     bool after_backward_round_synth = false;
+    bool allow_pre_backward_non_orig_deps = false;
     bool need_aig = false;
     std::vector<std::vector<CMSat::Lit>> clauses;
     std::vector<std::vector<CMSat::Lit>> red_clauses;
@@ -1370,6 +1376,7 @@ public:
         int manthan_bve = 0;
         int manthan_order = 0;
         int manthan_on_the_fly_order = 0;
+        int manthan_full_formula = 0;
         int one_repair_per_loop = 0;
         int do_td_contract = 1; // contract over the input variables
         int td_max_edges = 70000;

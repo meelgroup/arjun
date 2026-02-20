@@ -342,7 +342,27 @@ void Manthan::fill_var_to_formula_with_backward() {
         map<aig_ptr, Lit> cache;
         const Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
         f.out = out_lit ^ orig.sign();
-        f.aig = nullptr; // we won't need it.
+
+        // Also keep an AIG in CNF variable space. This is required if a
+        // backward-defined variable is later repaired (e.g. full-formula mode).
+        map<aig_ptr, aig_ptr> aig_cache;
+        auto aig_to_cnf_aig_visitor =
+          [&](AIGT type, const uint32_t var_orig, const bool neg, const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
+            if (type == AIGT::t_const) {
+                return neg ? aig_mng.new_const(false) : aig_mng.new_const(true);
+            }
+            if (type == AIGT::t_lit) {
+                const Lit lit_new = cnf.orig_to_new_lit(Lit(var_orig, neg));
+                return AIG::new_lit(lit_new);
+            }
+            if (type == AIGT::t_and) {
+                assert(left != nullptr && right != nullptr);
+                return AIG::new_and(*left, *right, neg);
+            }
+            assert(false && "Unhandled AIG type in AIG visitor");
+            exit(EXIT_FAILURE);
+          };
+        f.aig = AIG::transform<aig_ptr>(aig, aig_to_cnf_aig_visitor, aig_cache);
         assert(var_to_formula.count(v) == 0);
         var_to_formula[v] = f;
     }
@@ -942,15 +962,19 @@ uint32_t Manthan::find_next_repair_var(const sample& ctx) const {
         assert(ctx[y] == ctx[y_to_y_hat.at(y)]);
     }
     assert(y_rep != std::numeric_limits<uint32_t>::max());
-    assert(!backward_defined.count(y_rep) && "If all y_hat has been recomputed, the first wrong CANNOT be a BW var");
+    if (!mconf.manthan_full_formula) {
+        assert(!backward_defined.count(y_rep) && "If all y_hat has been recomputed, the first wrong CANNOT be a BW var");
+    }
     return y_rep;
 }
 
 bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     verb_print(2, "[DEBUG] Starting repair for var " << y_rep+1
             << (backward_defined.count(y_rep) ? "[BW]" : ""));
-    assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
-    assert(to_define.count(y_rep) == 1 && "Only to-define vars should be repaired");
+    if (!mconf.manthan_full_formula) {
+        assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
+        assert(to_define.count(y_rep) == 1 && "Only to-define vars should be repaired");
+    }
     assert(y_rep < cnf.nVars());
 
     if (num_loops_repair % mconf.simplify_every == (mconf.simplify_every-1)) {
@@ -969,7 +993,11 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
         if (!mconf.one_repair_per_loop) {
             ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
             inject_formulas_into_solver();
-            recompute_all_y_hat_cnf(ctx);
+            if (mconf.manthan_full_formula) {
+                recompute_all_y_hat_aig(ctx, y_rep);
+            } else {
+                recompute_all_y_hat_cnf(ctx);
+            }
         }
     }
     compute_needs_repair(ctx);
@@ -1115,7 +1143,9 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict) {
     verb_print(2, "[manthan] Performing repair on " << setw(5) << y_rep+1
             << " with conflict size " << setw(3) << conflict.size());
-    assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
+    if (!mconf.manthan_full_formula) {
+        assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
+    }
     conflict_sizes_sum += conflict.size();
 
     // not (conflict) -> v = ctx(v)

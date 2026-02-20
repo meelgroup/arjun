@@ -416,11 +416,11 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     vector<uint32_t> unknown;
     auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start backward_round_synth");
     set<uint32_t> pretend_input;
+    (void) backward_defined;
     if (to_define.empty()) {
         verb_print(1, "[backw-synth] No variables to define, returning original CNF");
         return;
     }
-    assert(backward_defined.empty());
 
     add_all_indics_except(input);
     for(const auto& v: input) {
@@ -439,9 +439,11 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     interp.fill_picolsat(orig_num_vars);
     interp.fill_var_to_indic(var_to_indic);
 
-    for(uint32_t x = 0; x < orig_num_vars; x++) {
-        pretend_input.insert(x); // we pretend that all vars are input vars
-        if (input.count(x)) continue;
+    // Start from currently known inputs and only process still-undefined vars.
+    // Already-defined vars with non-input dependencies can exist when
+    // running on full CNF with imported BVE definitions.
+    for(const auto& x: input) pretend_input.insert(x);
+    for(const auto& x: to_define) {
         unknown.push_back(x);
         unknown_set[x] = 1;
     }

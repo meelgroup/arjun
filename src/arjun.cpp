@@ -501,7 +501,10 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig
         if (aig == nullptr) continue;
 
         auto l = new_to_orig_var.at(v);
-        assert(defs[l.var()] == nullptr && "Variable must not already have a definition");
+        if (defs[l.var()] != nullptr) {
+            if (allow_pre_backward_non_orig_deps) continue;
+            assert(defs[l.var()] == nullptr && "Variable must not already have a definition");
+        }
         assert(orig_sampl_vars.count(l.var()) == 0 && "Original sampling var cannot have definition via extend_synth or backward_round_synth");
         if (l.sign()) defs[l.var()] = AIG::new_not(aig);
         else defs[l.var()] = aig;
@@ -1782,20 +1785,22 @@ DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_samp
             for(const auto& dep_v : deps) {
                 if (!orig_sampl_vars.count(dep_v)) {
                     only_orig_sampl = false;
-                    cout << "ERROR: Sampling variable (new: " << new_v+1
-                        << ", orig: " << orig_v+1 << ") depends on non-orig-sampl var "
-                        << dep_v+1 << endl;
-                    cout << "  Dependencies (orig): ";
-                    for(const auto& d : deps) {
-                        cout << d+1 << (orig_sampl_vars.count(d) ? "(orig)" : "(NOT-orig)") << " ";
+                    if (!allow_pre_backward_non_orig_deps) {
+                        cout << "ERROR: Sampling variable (new: " << new_v+1
+                            << ", orig: " << orig_v+1 << ") depends on non-orig-sampl var "
+                            << dep_v+1 << endl;
+                        cout << "  Dependencies (orig): ";
+                        for(const auto& d : deps) {
+                            cout << d+1 << (orig_sampl_vars.count(d) ? "(orig)" : "(NOT-orig)") << " ";
+                        }
+                        cout << endl;
                     }
-                    cout << endl;
                 }
             }
-            if (!only_orig_sampl) {
+            if (!only_orig_sampl && !allow_pre_backward_non_orig_deps) {
                 release_assert(false && "All sampling variables must depend only on orig_sampl_vars");
             }
-            return false;
+            if (!only_orig_sampl) continue;
         }
     }
     return true;
@@ -1817,23 +1822,29 @@ DLL_PUBLIC void SimplifiedCNF::check_pre_post_backward_round_synth() const {
             for(const auto& v: s) {
                 if (!orig_sampl_vars.count(v)) {
                     only_orig_sampl = false;
-                    break;
+
+                    // Before backward-round, any non-orig dependency must stay
+                    // undefined and mapped in CNF, so backward-round can constrain
+                    // it via equality assumptions.
+                    if (!after_backward_round_synth) {
+                        if (defined(v)) {
+                            cout << "ERROR: Orig var " << o+1
+                                << " depends on non-orig var " << v+1
+                                << " that is already defined before backward-round" << endl;
+                            release_assert(false &&
+                                "Before backward round synth, non-orig deps must be undefined");
+                        }
+                        if (!orig_to_new_var.count(v)) {
+                            cout << "ERROR: Orig var " << o+1
+                                << " depends on non-orig var " << v+1
+                                << " that is not present in CNF before backward-round" << endl;
+                            release_assert(false &&
+                                "Before backward round synth, non-orig deps must be mappable to CNF vars");
+                        }
+                    }
                 }
             }
-            if (!after_backward_round_synth && !only_orig_sampl) {
-                cout << "ERROR: Found a variable in CNF, orig: " << o+1 << " new: " << n.var()+1
-                    << " that is defined in terms of non-orig-sampl-vars before backward round synth.";
-                cout << endl << " in old: ";
-                for(const auto& v: s) cout << v+1 << "( " << (orig_sampl_vars.count(v) ? "o" : "n") << " ) ";
-                cout << endl << " in new: ";
-                for(const auto& v: s) {
-                    auto it = orig_to_new_var.find(v);
-                    if (it == orig_to_new_var.end()) cout << "undef ";
-                    else cout << it->second.var()+1 << "( " << (orig_sampl_vars.count(v) ? "o" : "n") << " ) ";
-                }
-                cout << endl;
-                release_assert(false && "Before backward round synth, variables in CNF must be defined ONLY in terms of orig_sampl_vars");
-            }
+            (void) only_orig_sampl;
         }
     }
     for(const auto& [o, dep] : dependencies) {
@@ -1990,6 +2001,22 @@ DLL_PUBLIC void SimplifiedCNF::check_clause(const vector<CMSat::Lit>& cl) const 
 
 DLL_PUBLIC void SimplifiedCNF::clear_orig_sampl_defs() {
     for(const auto& v: orig_sampl_vars) defs[v] = nullptr;
+}
+
+DLL_PUBLIC uint32_t SimplifiedCNF::import_definitions_from(const SimplifiedCNF& other, const bool overwrite) {
+    assert(need_aig);
+    assert(other.get_need_aig());
+    assert(defs.size() == other.defs.size() && "Both CNFs must use the same ORIG variable space");
+    std::map<aig_ptr, aig_ptr> cache;
+    uint32_t imported = 0;
+    for (uint32_t v = 0; v < defs.size(); v++) {
+        if (other.defs[v] == nullptr) continue;
+        if (defs[v] != nullptr && !overwrite) continue;
+        defs[v] = AIG::deep_clone(other.defs[v], cache);
+        imported++;
+    }
+    assert(defs_invariant());
+    return imported;
 }
 
 

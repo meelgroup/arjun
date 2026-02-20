@@ -133,6 +133,7 @@ void add_arjun_options() {
     myopt("--autarky", etof_conf.do_autarky, atoi,"Perform unate analysis");
     myopt("--mbve", mconf.manthan_bve, atoi,"Use BVE with constants instead of training");
     myopt("--monflyorder", mconf.manthan_on_the_fly_order, atoi,"Use on-the-fly training order and post-training topological order");
+    myopt("--mfullformula", mconf.manthan_full_formula, atoi, "Keep full formula for Manthan (skip pre-Manthan CNF simplification)");
     myopt("--moneperloop", mconf.one_repair_per_loop, atoi,"One repair per CEX loop");
     // Strategy
     myopt("--mtryrepmult", manthan_rep_mult, atoi,"Repair tries will be multiplied by this");
@@ -294,9 +295,17 @@ void do_synthesis() {
     cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
     cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
     if (do_synth_bve && !cnf.synth_done()) {
-        /* simp_conf.bve_too_large_resolvent = -1; */
-        cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
+        if (!mconf.manthan_full_formula) {
+            /* simp_conf.bve_too_large_resolvent = -1; */
+            cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
+            if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
+        } else {
+            auto simplified_cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
+            const uint32_t imported_defs = cnf.import_definitions_from(simplified_cnf);
+            cnf.set_allow_pre_backward_non_orig_deps(true);
+            cout << "c o [synth] --mfullformula=1, kept full CNF and imported "
+                 << imported_defs << " defs from simplification pass" << endl;
+        }
     }
 
     if (etof_conf.do_autarky && !cnf.synth_done()) {

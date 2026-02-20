@@ -20,12 +20,13 @@
 
 include_directories(${PROJECT_SOURCE_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
-include_directories(${CRYPTOMINISAT5_INCLUDE_DIRS})
+include_directories(BEFORE ${PROJECT_SOURCE_DIR}/deps/local/include)
+include_directories(BEFORE ${CRYPTOMINISAT5_INCLUDE_DIRS})
 include_directories(${SBVA_INCLUDE_DIRS})
 include_directories( ${GMP_INCLUDE_DIR} )
 if (SYNTH)
-    include_directories(${EVALMAXSAT_INCLUDE_DIRS})
-    include_directories( ${MLPACK_INCLUDE_DIR} )
+    include_directories(SYSTEM ${EVALMAXSAT_INCLUDE_DIRS})
+    include_directories(SYSTEM ${MLPACK_INCLUDE_DIR})
 endif()
 include_directories(${PROJECT_SOURCE_DIR}/../cadical/src/)
 include_directories( ${TREEDECOMP_INCLUDE_DIRS} )
@@ -67,6 +68,8 @@ if (SYNTH)
 endif()
 
 add_library(arjun ${libfiles})
+target_include_directories(arjun BEFORE PRIVATE ${CRYPTOMINISAT5_INCLUDE_DIRS})
+target_compile_options(arjun PRIVATE -I${PROJECT_SOURCE_DIR}/deps/local/include)
 
 target_link_libraries(arjun
     LINK_PUBLIC ${CRYPTOMINISAT5_LIBRARIES}
