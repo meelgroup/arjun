@@ -969,7 +969,11 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     verb_print(2, "[DEBUG] Starting repair for var " << y_rep+1
             << (backward_defined.count(y_rep) ? "[BW]" : ""));
     if (!mconf.manthan_full_formula) {
-        assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
+        if (backward_defined.count(y_rep)) {
+            // BW vars may appear in repair candidates; in static mode skip them.
+            needs_repair.erase(y_rep);
+            return false;
+        }
         assert(to_define.count(y_rep) == 1 && "Only to-define vars should be repaired");
     }
     assert(y_rep < cnf.nVars());
