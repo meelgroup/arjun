@@ -28,6 +28,7 @@ import optparse
 import stat
 import glob
 import re
+import sys
 from collections import namedtuple
 
 maxtimediff = 1
@@ -53,7 +54,7 @@ def unique_file(fname_begin, fname_end=".cnf", max_num_files=2700):
 
 def gen_fuzz_call_brummayer(fuzzer, fname):
     seed = random.randint(0, 1000*1000*1000)
-    call = "{0} -s {1} > {2}".format(fuzzer, seed, fname)
+    call = "python3 {0} -s {1} > {2}".format(fuzzer, seed, fname)
 
     # if we want bigger CNFs
     # call = "{0} -s {1} -i 14 -I 30 > {2}".format(fuzzer, seed, fname)
@@ -123,6 +124,14 @@ def set_up_parser():
       "--tout", "-t", dest="maxtime", type=int, default=12,
       help="Max time to run. Default: %default")
 
+    parser.add_option(
+      "--mformula", dest="mfullformula", type=int, default=-1,
+      help="Set Manthan full-formula mode for fuzzing: 0/1. Default: -1 (random)")
+
+    parser.add_option(
+      "--mfullformula", dest="mfullformula", type=int,
+      help="Alias of --mformula")
+
     return parser
 
 
@@ -131,8 +140,10 @@ def run(command):
     if options.verbose:
         print("CPU limit of parent (pid %d)" % os.getpid(), resource.getrlimit(resource.RLIMIT_CPU))
 
+    env = get_exec_env()
+
     p = subprocess.Popen(command, stderr=subprocess.STDOUT,
-          stdout=subprocess.PIPE, universal_newlines=True)
+          stdout=subprocess.PIPE, universal_newlines=True, env=env)
 
     try:
         consoleOutput, err = p.communicate(timeout=options.maxtime)
@@ -146,11 +157,28 @@ def run(command):
             resource.getrlimit(resource.RLIMIT_CPU))
     return consoleOutput, err
 
+def get_exec_env():
+    env = os.environ.copy()
+    lib_dirs = []
+    for d in [
+        "../deps/local/lib",
+        "deps/local/lib",
+        "../../cadiback",
+        "../../count_fuzzer",
+    ]:
+        if os.path.isdir(d):
+            lib_dirs.append(os.path.abspath(d))
+    if lib_dirs:
+        lib_path_var = "DYLD_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
+        old = env.get(lib_path_var, "")
+        env[lib_path_var] = ":".join(lib_dirs + ([old] if old else []))
+    return env
+
 def run_check(command, final):
     ok = False
 
     p = subprocess.Popen(command, stderr=subprocess.STDOUT,
-          stdout=subprocess.PIPE, universal_newlines=True)
+          stdout=subprocess.PIPE, universal_newlines=True, env=get_exec_env())
     try:
         consoleOutput, err = p.communicate()
     except:
@@ -170,6 +198,19 @@ def run_check(command, final):
     if not ok and final:
         print("ERROR: check process did not report CORRECT")
         exit(-1)
+
+def get_unsat_solver_bin():
+    candidates = [
+        "../deps/local/bin/cryptominisat5",
+        "../../cryptominisat/build/cryptominisat5",
+        "../../cryptominisat",
+    ]
+    for cand in candidates:
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+    print("ERROR: could not find an executable CryptoMiniSat binary for SAT/UNSAT checks.")
+    print("Tried: %s" % ", ".join(candidates))
+    exit(-1)
 
 
 def run_synth(solver, fname):
@@ -224,7 +265,7 @@ def check_core_files():
     for fname in items:
         # Check if it's a file (not a directory, symlink, etc.)
         if os.path.isfile(fname) and pattern.match(fname):
-            out, err = run(["../../cryptominisat", fname])
+            out, err = run([get_unsat_solver_bin(), fname])
             if err:
                 print(f"ERROR: cannot run cryptominisat on {fname}: {err}")
                 exit(-1)
@@ -249,7 +290,7 @@ def check_core_files():
             print(f"Skipping non-matching item: {fname}")
 
 def is_unsat(fname) :
-    unsat_check = "../../cryptominisat/build/cryptominisat5"
+    unsat_check = get_unsat_solver_bin()
     curr_time = time.time()
     toexec = unsat_check.split()
     toexec.append(fname)
@@ -309,6 +350,9 @@ if __name__ == "__main__":
     # parse options
     parser = set_up_parser()
     (options, args) = parser.parse_args()
+    if options.mfullformula not in (-1, 0, 1):
+        print("ERROR: --mformula/--mfullformula must be one of -1, 0, 1")
+        exit(-1)
 
     only = 1
     if options.rnd_seed is None:
@@ -362,6 +406,12 @@ if __name__ == "__main__":
         for o in opts:
             val = random.choice([0, 1])
             solver += o + " " + str(val)
+
+        if options.mfullformula == -1:
+            mfullformula = random.choice([0, 1])
+        else:
+            mfullformula = options.mfullformula
+        solver += " --mfullformula " + str(mfullformula)
 
         solver += " --morder " + str(random.randint(0, 2))
         solver += " --mstrategy " + str(random.randint(0, 3))
