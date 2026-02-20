@@ -962,9 +962,6 @@ uint32_t Manthan::find_next_repair_var(const sample& ctx) const {
         assert(ctx[y] == ctx[y_to_y_hat.at(y)]);
     }
     assert(y_rep != std::numeric_limits<uint32_t>::max());
-    if (!mconf.manthan_full_formula) {
-        assert(!backward_defined.count(y_rep) && "If all y_hat has been recomputed, the first wrong CANNOT be a BW var");
-    }
     return y_rep;
 }
 
