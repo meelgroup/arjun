@@ -1751,10 +1751,6 @@ void Manthan::inject_formulas_into_solver() {
         tmp[2] = ~tmp[2];
         cex_solver.add_clause(tmp);
 
-        if (backward_defined.count(y)) {
-            verb_print(3, "backward defined y, forcing indic to TRUE, since it must be correct");
-            cex_solver.add_clause({Lit(ind, false)});
-        }
     }
     updated_y_funcs.clear();
 }
@@ -1767,12 +1763,13 @@ bool Manthan::get_counterexample(sample& ctx) {
 
     vector<Lit> assumps;
     assumps.reserve(y_hat_to_indic.size());
+    // Do not special-case BW indicators here.
+    // This routine is for cex generation: forcing/skipping BW indicators can
+    // hide valid y vs y_hat mismatches and produce misleading behavior.
     for(const auto& [y_hat, ind]: y_hat_to_indic) {
-        uint32_t y = indic_to_y[ind];
-        if (backward_defined.count(y)) continue; // already forced to true
         assumps.push_back(Lit(ind, false));
     }
-    assert(assumps.size() == y_order.size() - backward_defined.size());
+    assert(assumps.size() == y_order.size());
     verb_print(4, "assumptions: " << assumps);
     cex_solver.set_verbosity(conf.verb <= 0 ? 0 : conf.verb-1);
     if (num_loops_repair == 1 || (num_loops_repair % mconf.simplify_every) == (mconf.simplify_every-1))
@@ -2130,9 +2127,8 @@ void Manthan::recompute_all_y_hat_cnf(sample& ctx) {
     for(const auto& x: input) {
         assumps.push_back(Lit(x, ctx[x] == l_False));
     }
+    // Keep this consistent with get_counterexample(): no BW-only shortcuts.
     for(const auto& [y_hat, ind]: y_hat_to_indic) {
-        uint32_t y = indic_to_y[ind];
-        if (backward_defined.count(y)) continue; // already forced to true
         assumps.push_back(Lit(ind, false));
     }
 
