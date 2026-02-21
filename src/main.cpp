@@ -294,18 +294,12 @@ void do_synthesis() {
     check_cnf_sat(cnf);
     cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
     cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
+    ArjunNS::SimplifiedCNF full_formula_cnf = cnf;
+    const bool keep_full_for_manthan = (mconf.manthan_full_formula != 0);
     if (do_synth_bve && !cnf.synth_done()) {
-        if (!mconf.manthan_full_formula) {
-            /* simp_conf.bve_too_large_resolvent = -1; */
-            cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
-            if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
-        } else {
-            auto simplified_cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
-            const uint32_t imported_defs = cnf.import_definitions_from(simplified_cnf);
-            cnf.set_allow_pre_backward_non_orig_deps(true);
-            cout << "c o [synth] --mfullformula=1, kept full CNF and imported "
-                 << imported_defs << " defs from simplification pass" << endl;
-        }
+        /* simp_conf.bve_too_large_resolvent = -1; */
+        cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
     }
 
     if (etof_conf.do_autarky && !cnf.synth_done()) {
@@ -333,6 +327,15 @@ void do_synthesis() {
     if (do_unate_def && !cnf.synth_done()) {
         arjun->standalone_unate_def(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate_def.aig");
+    }
+
+    if (keep_full_for_manthan && !cnf.synth_done()) {
+        const uint32_t imported_defs = full_formula_cnf.import_definitions_from(cnf);
+        full_formula_cnf.set_allow_pre_backward_non_orig_deps(true);
+        cout << "c o [synth] --mfullformula=1, pre-Manthan passes ran on simplified CNF; "
+             << "switching to full CNF and imported " << imported_defs
+             << " defs before Manthan" << endl;
+        cnf = full_formula_cnf;
     }
 
     auto mconf_orig = mconf;
