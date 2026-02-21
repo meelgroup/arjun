@@ -96,6 +96,13 @@ long long seed = 42;
 std::mt19937 mt;
 int unsat_verif = 0;
 
+
+set<uint32_t> aig_vs;
+map<uint32_t, uint32_t> y_to_y_hat;
+map<uint32_t, uint32_t> y_hat_to_y;
+set<uint32_t> helper_vars;
+set<uint32_t> orig_sampling_vars;
+
 void fill_solver_from_cnf(ArjunNS::SimplifiedCNF& cnf, SATSolver& solver) {
     solver.new_vars(cnf.nVars());
     for (const auto& clause : cnf.get_clauses()) {
@@ -141,9 +148,7 @@ void assert_sample_satisfying(const vector<lbool>& sample, SATSolver& solver) {
 
 // Add ~F(x, y_hat) to the solver - at least one clause must be unsatisfied when using y_hat
 template<typename T>
-void add_not_f_x_yhat(T& solver, const SimplifiedCNF& orig_cnf,
-                      const set<uint32_t>& aig_vs,
-                      map<uint32_t, uint32_t>& y_to_y_hat) {
+void add_not_f_x_yhat(T& solver, const SimplifiedCNF& orig_cnf) {
     if (verb) cout << "c [F_x_yhat] Adding ~F(x, y_hat)..." << endl;
 
     vector<Lit> tmp;
@@ -152,6 +157,7 @@ void add_not_f_x_yhat(T& solver, const SimplifiedCNF& orig_cnf,
         solver.new_var();
         const uint32_t y_hat = solver.nVars()-1;
         y_to_y_hat[y] = y_hat;
+        y_hat_to_y[y_hat] = y;
         if (verb >= 2) cout << "c [~F_x_yhat]   y: " << y+1 << " -> y_hat: " << y_hat+1 << endl;
     }
 
@@ -197,15 +203,10 @@ void add_not_f_x_yhat(T& solver, const SimplifiedCNF& orig_cnf,
 
 // Fill var_to_formula by converting AIGs to CNF formulas
 template<typename T>
-void fill_var_to_formula(T& solver, FHolder<T>& fh,
-                                        const SimplifiedCNF& cnf,
-                                        const set<uint32_t>& aig_vars,
-                                        const map<uint32_t, uint32_t>& y_to_y_hat,
-                                        const set<uint32_t>& sampling_vars,
-                                        map<uint32_t, typename FHolder<T>::Formula>& var_to_formula) {
+void fill_var_to_formula(T& solver, FHolder<T>& fh, const SimplifiedCNF& cnf, map<uint32_t, typename FHolder<T>::Formula>& var_to_formula) {
     verb_print(2, "c [var-to-formula] Converting AIGs to formulas...");
 
-    for(const auto& v_def: aig_vars) {
+    for(const auto& v_def: aig_vs) {
         typename FHolder<T>::Formula f;
         const auto& aig = cnf.get_def(v_def);
         release_assert(aig != nullptr);
@@ -222,10 +223,10 @@ void fill_var_to_formula(T& solver, FHolder<T>& fh,
 
                 // Check if this is an input variable or needs y_to_y_hat mapping
                 Lit result_lit;
-                if (sampling_vars.count(lit.var())) {
+                if (orig_sampling_vars.count(lit.var())) {
                     result_lit = lit;
                 } else {
-                    release_assert(aig_vars.count(lit.var()));
+                    release_assert(aig_vs.count(lit.var()));
                     const uint32_t y_hat = y_to_y_hat.at(lit.var());
                     result_lit = Lit(y_hat, neg);
                 }
@@ -239,6 +240,7 @@ void fill_var_to_formula(T& solver, FHolder<T>& fh,
                 // Create fresh variable for AND gate
                 solver.new_var();
                 const Lit and_out = Lit(solver.nVars() - 1, false);
+                helper_vars.insert(and_out.var());
 
                 // Generate Tseitin clauses for AND gate
                 // and_out represents (l_lit & r_lit)
@@ -267,12 +269,8 @@ void fill_var_to_formula(T& solver, FHolder<T>& fh,
     if (verb) cout << "c [test-synth] Converted " << var_to_formula.size() << " AIGs to formulas" << endl;
 }
 
-// Check if the AIGs are correct by verifying UNSAT
 template<typename T>
-bool verify_aigs_correct(T& solver,
-                        const set<uint32_t>& aig_vs,
-                        const map<uint32_t, uint32_t>& y_to_y_hat,
-                        const map<uint32_t, typename FHolder<T>::Formula>& var_to_formula) {
+bool verify_aigs_correct(T& solver, const map<uint32_t, typename FHolder<T>::Formula>& var_to_formula) {
     if (verb) cout << "c [test-synth] Verifying AIGs are correct..." << endl;
 
     // Inject formulas into solver (make sure it's all x & y_hat, no y!)
@@ -282,7 +280,7 @@ bool verify_aigs_correct(T& solver,
         for(auto& cl: form.clauses) {
             vector<Lit> cl2;
             for(const auto& l: cl.lits) {
-                release_assert(!aig_vs.count(l.var()) && "we replaced all aig vars with y_hat already!");
+                release_assert(y_hat_to_y.count(l.var()) || orig_sampling_vars.count(l.var()) || helper_vars.count(l.var()));
                 cl2.push_back(l);
             }
             solver.add_clause(cl2);
@@ -353,14 +351,26 @@ bool verify_aigs_correct(T& solver,
 void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
     cout << "c [test-synth] Performing UNSAT verification of AIGs" << endl;
 
+    orig_sampling_vars.clear();
+    orig_sampling_vars = std::set<uint32_t>(orig_cnf.get_sampl_vars().begin(), orig_cnf.get_sampl_vars().end());
+    y_to_y_hat.clear();
+    y_hat_to_y.clear();
+    helper_vars.clear();
+    aig_vs.clear();
+    map<uint32_t, FHolder<ArjunInt::MetaSolver>::Formula> var_to_formula;
+
     // Determine which variables are defined by AIGs
-    set<uint32_t> aig_vs;
-    for(uint32_t v = 0; v < orig_cnf.nVars(); v++) {
+    for(uint32_t v = 0; v < cnf.get_orig_num_vars(); v++) {
+        if (orig_sampling_vars.count(v)) {
+            assert(cnf.get_def(v) == nullptr && "orig sampling vars should not be defined by AIGs");
+        }
         if (cnf.get_def(v) != nullptr) aig_vs.insert(v);
     }
     verb_print(2,"aig_defined_vars size: " << aig_vs.size());
+    verb_print(2,"orig_cnf nVars: " << orig_cnf.nVars());
+    verb_print(2,"orig_sampling_vars size: " << orig_sampling_vars.size());
 
-    release_assert(aig_vs.size() == orig_cnf.nVars() - orig_cnf.get_sampl_vars().size());
+    release_assert(aig_vs.size() >= orig_cnf.nVars() - orig_sampling_vars.size() && "Due to BVA, could be more");
     release_assert(cnf.get_orig_sampl_vars().size() == orig_cnf.get_sampl_vars().size());
 
     if (aig_vs.empty()) {
@@ -385,25 +395,12 @@ void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
         verify_solver.add_clause(clause);
     }
 
-    // Create FHolder for formula management
     FHolder fh(&verify_solver);
-
-    // Map from original variable to y_hat variable
-    map<uint32_t, uint32_t> y_to_y_hat;
-
-    // Step 1: Add ~F(x, y_hat)
-    add_not_f_x_yhat(verify_solver, orig_cnf, aig_vs, y_to_y_hat);
-
-    // Step 2: Fill var_to_formula with backward definitions
-    map<uint32_t, FHolder<ArjunInt::MetaSolver>::Formula> var_to_formula;
-    set<uint32_t> sampling_vars(orig_cnf.get_sampl_vars().begin(), orig_cnf.get_sampl_vars().end());
-    fill_var_to_formula(verify_solver, fh, cnf, aig_vs,
-                                      y_to_y_hat, sampling_vars, var_to_formula);
-
-    // Step 3: Verify AIGs are correct (should be UNSAT)
     verb_print(2, "true lit: " << fh.get_true_lit());
-    bool aigs_correct = verify_aigs_correct(verify_solver, aig_vs,
-                                            y_to_y_hat, var_to_formula);
+
+    add_not_f_x_yhat(verify_solver, orig_cnf);
+    fill_var_to_formula(verify_solver, fh, cnf, var_to_formula);
+    bool aigs_correct = verify_aigs_correct(verify_solver, var_to_formula);
 
     cout << "c [test-synth] ======================================" << endl;
     if (aigs_correct) {
@@ -449,7 +446,12 @@ void randomized_sample_verify(ArjunNS::SimplifiedCNF& orig_cnf,
         }
         if (verb >= 3) { cout << "sample           : "; print_sample(sample); cout << endl; }
         if (verb >= 3) { cout << "restricted sample: "; print_sample(restricted_sample); cout << endl; }
-        const auto extended_sample = cnf.extend_sample(restricted_sample, true);
+
+        // We get back an extended sample. This MAY contain extra vars. Due to BVA
+        // These are not needed, and are cut away
+        auto extended_sample = cnf.extend_sample(restricted_sample, true);
+        assert(extended_sample.size() >= orig_cnf.nVars());
+        extended_sample.resize(orig_cnf.nVars());
         assert_sample_satisfying(extended_sample, solver);
     }
     verb_print(1, "[test-synth] Randomized success: all " << num_samples << " samples verified.");
@@ -471,7 +473,6 @@ void check_aig_contains_no_self_refs(const SimplifiedCNF& cnf) {
         map<aig_ptr, bool> cache;
         AIG::transform<bool>(aig, visitor, cache);
     }
-
 }
 
 int main(int argc, char** argv) {

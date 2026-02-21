@@ -246,15 +246,12 @@ void Manthan::fill_dependency_mat_with_backward() {
     dependency_mat.resize(cnf.nVars());
     for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);
 
-    const auto backw_deps = cnf.compute_backw_dependencies();
-    for(const auto& [backw_var, dep_set]: backw_deps) assert(backward_defined.count(backw_var) == 1);
-
-    assert(backw_deps.size() == backward_defined.size());
+    const auto deps = cnf.compute_dependencies(backward_defined);
     for(const auto& v: to_define_full) {
         assert(input.count(v) == 0);
         set<uint32_t> deps_for_var; // these vars depend on v
-        for(const auto& [backw_var, dep_set]: backw_deps) {
-            if (dep_set.count(v)) deps_for_var.insert(backw_var);
+        for(const auto& [var, dep_set]: deps) {
+            if (dep_set.count(v)) deps_for_var.insert(var);
         }
         for(const auto& d: deps_for_var) {
             assert(input.count(d) == 0);
@@ -291,10 +288,10 @@ bool Manthan::check_transitive_closure_correctness() const {
     return true;
 }
 
-void Manthan::fill_var_to_formula_with_backward() {
+void Manthan::fill_var_to_formula_with(set<uint32_t>& vars) {
     const auto new_to_orig = cnf.get_new_to_orig_var();
 
-    for(const auto& v: backward_defined) {
+    for(const auto& v: vars) {
         FHolder<MetaSolver2>::Formula f;
 
         // Get the original variable number
@@ -771,12 +768,50 @@ void Manthan::print_stats(const string& txt, const string& color, const string& 
             << extra);
 }
 
+void Manthan::add_xor_var() {
+    const auto& sampl_vars = cnf.get_sampl_vars();
+    if (sampl_vars.empty()) return;
+
+    // sampl_vars are in NEW space; AIGs stored in defs[] use ORIG space.
+    // new_var() creates vars with orig == new (orig_to_new_var[v] = Lit(v,false)),
+    // so intermediate XOR vars can use their index directly in AIGs.
+    const auto new_to_orig = cnf.get_new_to_orig_var();
+
+    // XOR(a, b) = OR(AND(a, NOT b), AND(NOT a, b))
+    auto xor_of = [](const aig_ptr& a, const aig_ptr& b) -> aig_ptr {
+        return AIG::new_or(
+            AIG::new_and(a, AIG::new_not(b)),
+            AIG::new_and(AIG::new_not(a), b));
+    };
+
+    // Start with the orig-space literal for the first sampling var
+    Lit orig_lit = new_to_orig.at(sampl_vars[0]);
+    aig_ptr prev = AIG::new_lit(orig_lit);
+
+    for (size_t i = 1; i < sampl_vars.size(); i++) {
+        orig_lit = new_to_orig.at(sampl_vars[i]);
+        aig_ptr cur = AIG::new_lit(orig_lit);
+        // new_var() gives orig == new for freshly created vars
+        cnf.new_var();
+        const uint32_t v = cnf.nVars() - 1;
+        const Lit v_orig = cnf.get_new_to_orig_var().at(v);
+        assert(v_orig.sign() == false);
+        cnf.set_def(v_orig.var(), xor_of(prev, cur));
+        helper_functions.insert(v);
+        verb_print(2, "[manthan] Added XOR internal var: " << v+1 << " orig v: " << v_orig.var()+1);
+        prev = AIG::new_lit(v_orig);
+    }
+
+    verb_print(1, "[manthan] Added " << sampl_vars.size() - 1 << " XOR vars as BVA input vars");
+}
+
 SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
     assert(cnf.get_need_aig() && cnf.defs_invariant());
     assert(mconf.simplify_every > 0 && "Can't give simplify_every=0");
     const double my_time = cpuTime();
     const auto ret = cnf.find_disconnected();
     verb_print(1, "[manthan] Found " << ret.size() << " components");
+    if (mconf.bva_xor_vars) add_xor_var();
     repaired_vars_count.resize(cnf.nVars(), 0);
 
     if (!mconf.write_manthan_cnf.empty()) cnf.write_simpcnf(mconf.write_manthan_cnf);
@@ -790,6 +825,14 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
         verb_print(1, "[manthan] No variables to define, returning original CNF");
         return cnf;
     }
+    for(const auto& v: helper_functions) {
+        if (!input.count(v)) {
+            cout << "ERROR: helper function var " << v+1 << " is not detected as an input var" << endl;
+            release_assert(false);
+        }
+    }
+
+    // Extend to_define_full to to_define + backward_defined
     to_define_full.clear();
     to_define_full.insert(to_define.begin(), to_define.end());
     to_define_full.insert(backward_defined.begin(), backward_defined.end());
@@ -810,7 +853,9 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
 
     // Order & train
     pre_order_vars();
-    fill_var_to_formula_with_backward();
+    fill_var_to_formula_with(backward_defined);
+    fill_var_to_formula_with(helper_functions);
+
     if (mconf.manthan_bve) bve_and_substitute();
     else full_train();
     post_order_vars();
@@ -1095,6 +1140,11 @@ Lit Manthan::map_y_to_y_hat(const Lit& l) const {
 
 // Update dependency matrix to say that a depends on b
 void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
+    assert(!input.count(a) && "we are not interested in what input vars depend on");
+    if (input.count(b)) {
+       //We are not interested if a var depends on the input
+       return;
+    }
     if (dependency_mat[a][b]) return;
 
     verb_print(3, a+1 << " depends on " << b+1);
@@ -1760,8 +1810,8 @@ void Manthan::inject_formulas_into_solver() {
         tmp[2] = ~tmp[2];
         cex_solver.add_clause(tmp);
 
-        if (backward_defined.count(y)) {
-            verb_print(3, "backward defined y, forcing indic to TRUE, since it must be correct");
+        if (mconf.force_bw_equal && backward_defined.count(y) && !helper_functions.count(y)) {
+            verb_print(3, "backward defined y (except helper function), forcing indic to TRUE, since it must be correct");
             cex_solver.add_clause({Lit(ind, false)});
         }
     }
@@ -1778,12 +1828,15 @@ bool Manthan::get_counterexample(sample& ctx) {
     assumps.reserve(y_hat_to_indic.size());
     for(const auto& [y_hat, ind]: y_hat_to_indic) {
         uint32_t y = indic_to_y[ind];
-        if (backward_defined.count(y)) continue; // already forced to true
+        if (mconf.force_bw_equal && backward_defined.count(y) && !helper_functions.count(y))
+            continue; // already forced to true
         assumps.push_back(Lit(ind, false));
     }
-    assert(assumps.size() == y_order.size() - backward_defined.size());
+    if (mconf.force_bw_equal) assert(assumps.size() == y_order.size() - backward_defined.size());
+    else assert(assumps.size() == y_order.size());
+
     verb_print(4, "assumptions: " << assumps);
-    cex_solver.set_verbosity(conf.verb <= 0 ? 0 : conf.verb-1);
+    cex_solver.set_verbosity(conf.verb <= 2 ? 0 : conf.verb-1);
     if (num_loops_repair == 1 || (num_loops_repair % mconf.simplify_every) == (mconf.simplify_every-1))
         cex_solver.simplify(&assumps);
 

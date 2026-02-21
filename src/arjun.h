@@ -918,6 +918,10 @@ public:
     const auto& get_red_clauses() const { return red_clauses; }
     const auto& get_weights() const { return weights; }
     const auto& get_sampl_vars() const { return sampl_vars; }
+    auto get_orig_num_vars() const {
+        assert(defs.size() >= nvars);
+        return defs.size();
+    }
     const auto& get_orig_sampl_vars() const { assert(orig_sampl_vars_set); return orig_sampl_vars; }
     const auto& get_orig_clauses() const { return orig_clauses; }
     const auto& get_opt_sampl_vars() const { return opt_sampl_vars; }
@@ -1185,10 +1189,9 @@ public:
 
     CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var, std::map<aig_ptr, CMSat::lbool>& cache ) const;
 
-    // returns in CNF (new vars) the dependencies of each variable
-    // every LHS element in the map is a backward_defined variable
-    std::map<uint32_t, std::set<uint32_t>> compute_backw_dependencies() const;
-
+    // returns in CNF (NEW VARS) the dependencies of each variable
+    // input is also NEW VARS
+    std::map<uint32_t, std::set<uint32_t>> compute_dependencies(const std::set<uint32_t>& vars) const;
 
     // Binary, packed writing
     void write_aig_defs_to_file(const std::string& fname) const;
@@ -1262,6 +1265,9 @@ public:
         assert(v < defs.size());
         return defs[v];
     }
+
+    void set_def(const uint32_t v_orig, const aig_ptr& def);
+
     void clear_orig_sampl_defs();
     void simplify_aigs(const uint32_t verb = 0) {
         assert(need_aig);
@@ -1371,6 +1377,8 @@ public:
         int do_td_contract = 1; // contract over the input variables
         int td_max_edges = 70000;
         std::string td_visualize_dot_file = "";
+        int force_bw_equal = 1;
+        int bva_xor_vars = 0;
     };
 
     /// Standalone functions

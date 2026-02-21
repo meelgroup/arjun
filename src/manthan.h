@@ -57,14 +57,14 @@ using namespace ArjunNS;
 class Manthan {
     public:
         Manthan(const Config& _conf, const Arjun::ManthanConf& _mconf, const SimplifiedCNF& _cnf) :
-            cnf(_cnf), conf(_conf), mconf(_mconf)
+            conf(_conf), mconf(_mconf)
             , cex_solver(static_cast<SolverType>(_mconf.ctx_solver_type))
             , repair_solver(static_cast<SolverType>(_mconf.repair_solver_type), _mconf.repair_cache_size)
+            , cnf(_cnf)
         {
                 mtrand.seed(42);
         }
         SimplifiedCNF do_manthan(const uint32_t max_repairs);
-        const SimplifiedCNF& cnf;
 
     private:
         // y is original output var, i.e. to_define
@@ -89,6 +89,7 @@ class Manthan {
         set<uint32_t> to_define;
         set<uint32_t> backward_defined;
         set<uint32_t> to_define_full; // to_define + backward_defined
+        set<uint32_t> helper_functions; // these are in BW, but we definitely want them
 
         // To help us account for every variable in the formulas' clauses
         set<uint32_t> helpers; // used for ITE
@@ -124,7 +125,7 @@ class Manthan {
         void perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict);
         void add_not_f_x_yhat();
         void fill_dependency_mat_with_backward();
-        void fill_var_to_formula_with_backward();
+        void fill_var_to_formula_with(set<uint32_t>& vars);
         void print_y_order_occur() const;
         void compute_needs_repair(const sample& ctx);
         void recompute_all_y_hat_cnf(sample& ctx);
@@ -162,15 +163,17 @@ class Manthan {
         double train(const vector<sample>& samples, const uint32_t v); // returns training error
         vector<vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
 
+        // Formulas
+        void add_xor_var();
         unique_ptr<FHolder<MetaSolver2>> fh = nullptr;
         std::map<uint32_t, FHolder<MetaSolver2>::Formula> var_to_formula; // var -> formula
+
+        // helper functions
         string pr(const lbool val) const;
         bool lbool_to_bool(const lbool val) const {
             assert(val != l_Undef);
             return val == l_True;
         }
-
-        AIGManager aig_mng;
 
         // debug
         bool is_unsat(const vector<Lit>& conflict, uint32_t y_rep, const sample& ctx) const;
@@ -194,7 +197,10 @@ class Manthan {
         uint32_t tot_repaired = 0;
         uint32_t repair_failed = 0;
         vector<uint32_t> repaired_vars_count; // for each y, how many times it was repaired
-
         double sampl_time = 0;
         double train_time = 0;
+
+        // Main stuff
+        SimplifiedCNF cnf;
+        AIGManager aig_mng;
 };

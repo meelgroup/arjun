@@ -468,6 +468,7 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig
     const auto new_to_orig_var = get_new_to_orig_var();
     auto aigs = AIG::deep_clone_vec(aigs_orig);
     set<aig_ptr> visited;
+
     function<void(const aig_ptr&)> remap_aig = [&](const aig_ptr& aig) {
         if (aig == nullptr) return;
         if (visited.count(aig)) return;
@@ -1034,12 +1035,15 @@ DLL_PUBLIC void SimplifiedCNF::read_aig_defs_from_file(const string& fname) {
     in.close();
 }
 
+// In this case, *this is the CNF that has been processed. "s" is the original CNF
+// Notice that *this can have a "defs" that is LARGER than the original CNF
+// Since we can add vars via BVA
 DLL_PUBLIC vector<CMSat::lbool> SimplifiedCNF::extend_sample(const vector<CMSat::lbool>& s, const bool relaxed) const {
     assert(get_need_aig() && defs_invariant());
-    assert(s.size() == defs.size() && "Sample size must match number of variables");
+    assert(s.size() <= defs.size() && "Sample size must be at least the number of variables. BVA could add vars");
     assert(check_orig_sampl_vars_undefined());
 
-    for(uint32_t v = 0; v < defs.size(); v++) {
+    for(uint32_t v = 0; v < s.size(); v++) {
         if (orig_sampl_vars.count(v)) {
             assert(s[v] != CMSat::l_Undef && "Original sampling variable must be defined in the sample");
         } else {
@@ -1048,7 +1052,9 @@ DLL_PUBLIC vector<CMSat::lbool> SimplifiedCNF::extend_sample(const vector<CMSat:
         }
     }
 
-    auto vals(s);
+    vector<lbool> vals(defs.size(), l_Undef);
+    for(const auto& v: orig_sampl_vars) vals[v] = s[v];
+
     map<aig_ptr, CMSat::lbool> cache;
     for(uint32_t v = 0; v < defs.size(); v++) {
         if (defs[v] == nullptr) continue;
@@ -1080,12 +1086,11 @@ DLL_PUBLIC void SimplifiedCNF::replace_clauses_with(vector<int>& ret, uint32_t n
 // returns in CNF (new vars) the dependencies of each variable
 // every LHS element in the map is a backward_defined variable
 // input variables are NOT included in the dependencies
-DLL_PUBLIC map<uint32_t, set<uint32_t>> SimplifiedCNF::compute_backw_dependencies() const {
-    auto [input, to_define, backward_defined] = get_var_types(0, "start compute_backw_dependencies");
+DLL_PUBLIC map<uint32_t, set<uint32_t>> SimplifiedCNF::compute_dependencies(const set<uint32_t>& vars) const {
     auto new_to_orig_var = get_new_to_orig_var();
     map<uint32_t, set<uint32_t>> cache;
     map<uint32_t, set<uint32_t>> ret;
-    for(auto& n: backward_defined) {
+    for(auto& n: vars) {
         const auto orig_v = new_to_orig_var.at(n).var();
         const auto ret_orig = get_dependent_vars_recursive(orig_v, cache);
         set<uint32_t> ret_new;
@@ -1332,6 +1337,19 @@ DLL_PUBLIC void SimplifiedCNF::write_simpcnf(const string& fname, bool red) cons
     outf << "c MUST MULTIPLY BY " << *multiplier_weight << " 0" << endl;
 }
 
+void SimplifiedCNF::set_def(const uint32_t v_orig, const aig_ptr& def) {
+    assert(need_aig);
+    assert(v_orig < defs.size());
+    assert(defs[v_orig] == nullptr);
+    defs[v_orig] = def;
+    /* std::cout << "setting def for orig var " << v_orig << " to: " << def << std::endl; */
+    /* map<uint32_t, set<uint32_t>> cache; */
+    /* auto s = get_dependent_vars_recursive(v_orig, cache); */
+    /* cout << "Dependent vars: "; */
+    /* for(const auto& d: s) cout << d+1 << " "; */
+    /* cout << endl; */
+}
+
 // Returns NEW vars, i.e. < nVars()
 // It is checked that it is correct and total
 DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
@@ -1373,7 +1391,7 @@ DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
             to_define.insert({orig, new_var});
         }
     }
-    set<P> unsat_defined_vars;
+    set<P> extend_defined_vars;
     set<P> backw_synth_defined_vars;
     set<uint32_t> bve_defined_vars_orig;
     set<uint32_t> forced_vars_orig;
@@ -1405,7 +1423,7 @@ DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
         const uint32_t new_var = orig_to_new_var.at(orig).var();
         assert(new_var < nVars());
         if (only_input_deps) {
-            unsat_defined_vars.insert({orig,new_var});
+            extend_defined_vars.insert({orig,new_var});
         } else {
             backw_synth_defined_vars.insert({orig,new_var});
         }
@@ -1448,14 +1466,14 @@ DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
             cout << endl;
         }
 
-        cout << "c o " << str << " [get-var-types] Num unsat-defined vars: "
-            << unsat_defined_vars.size() << endl;
+        cout << "c o " << str << " [get-var-types] Num extend-defined vars: "
+            << extend_defined_vars.size() << endl;
         if (verb >= 2) {
-            cout << "c o " << str << " [get-var-types]   Unsat-defined vars (new) : ";
-            for(const auto& v: unsat_defined_vars) cout << v.n+1 << " ";
+            cout << "c o " << str << " [get-var-types]   extend-defined vars (new) : ";
+            for(const auto& v: extend_defined_vars) cout << v.n+1 << " ";
             cout << endl;
-            cout << "c o " << str << " [get-var-types]   Unsat-defined vars (orig): ";
-            for(const auto& v: unsat_defined_vars) cout << v.o+1 << " ";
+            cout << "c o " << str << " [get-var-types]   extend-defined vars (orig): ";
+            for(const auto& v: extend_defined_vars) cout << v.o+1 << " ";
             cout << endl;
         }
 
@@ -1497,10 +1515,10 @@ DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
         cout << "c o " << str << " [get-var-types] Total vars in ORIG CNF: " << defs.size() << endl;
         cout << "c o " << str << " [get-var-types] Total vars in NEW  CNF: " << nVars() << endl;
     }
-    assert(input.size() + to_define.size() + unsat_defined_vars.size() + backw_synth_defined_vars.size() == nVars());
+    assert(input.size() + to_define.size() + extend_defined_vars.size() + backw_synth_defined_vars.size() == nVars());
 
-    // unsat-defined vars can be treateed as input vars
-    for(const auto& v: unsat_defined_vars) input.insert(v.n);
+    // extend-defined vars can be treateed as input vars
+    for(const auto& v: extend_defined_vars) input.insert(v.n);
 
     /// Convert
     set<uint32_t> backw_synth_defined_new;
@@ -1954,16 +1972,16 @@ DLL_PUBLIC uint32_t SimplifiedCNF::new_vars(uint32_t vars) {
     nvars+=vars;
     for(uint32_t i = 0; i < vars; i++) {
         const uint32_t v = nvars-vars+i;
-        orig_to_new_var[v] = CMSat::Lit(v, false);
-        if (need_aig) defs.push_back(nullptr);
+        orig_to_new_var[defs.size()] = CMSat::Lit(v, false);
+        defs.push_back(nullptr);
     }
     return nvars;
 }
 DLL_PUBLIC uint32_t SimplifiedCNF::new_var() {
-    uint32_t v = nvars;
+    const uint32_t v = nvars;
     nvars++;
-    orig_to_new_var[v] = CMSat::Lit(v, false);
-    if (need_aig) defs.push_back(nullptr);
+    orig_to_new_var[defs.size()] = CMSat::Lit(v, false);
+    defs.push_back(nullptr);
     return nvars;
 }
 

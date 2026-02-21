@@ -134,6 +134,10 @@ void add_arjun_options() {
     myopt("--mbve", mconf.manthan_bve, atoi,"Use BVE with constants instead of training");
     myopt("--monflyorder", mconf.manthan_on_the_fly_order, atoi,"Use on-the-fly training order and post-training topological order");
     myopt("--moneperloop", mconf.one_repair_per_loop, atoi,"One repair per CEX loop");
+
+    // repairing on vars
+    myopt("--bwequal", mconf.force_bw_equal, atoi,"Force BW vars' indicators to be TRUE -- prevents repairing with them, but faster to repair");
+    myopt("--bvaxor", mconf.bva_xor_vars, atoi,"Add XOR over input vars as BVA vars, so we can repair with them");
     // Strategy
     myopt("--mtryrepmult", manthan_rep_mult, atoi,"Repair tries will be multiplied by this");
     myopt("--mstrategy", manthan_strategy, atoi,"Go directly to strategy N");
