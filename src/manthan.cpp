@@ -932,7 +932,6 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
             }
         }
     }
-
     to_define_full.clear();
     if (candidate_mode) {
         input.clear();
