@@ -89,7 +89,8 @@ class Manthan {
         set<uint32_t> input;
         set<uint32_t> to_define;
         set<uint32_t> backward_defined;
-        set<uint32_t> to_define_full; // to_define + backward_defined
+        set<uint32_t> to_define_full; // all vars represented by y/y_hat inside manthan
+        set<uint32_t> fixed_defined; // checked vars that are pre-defined and not repaired
 
         // To help us account for every variable in the formulas' clauses
         set<uint32_t> helpers; // used for ITE

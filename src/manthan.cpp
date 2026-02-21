@@ -294,7 +294,8 @@ bool Manthan::check_transitive_closure_correctness() const {
 void Manthan::fill_var_to_formula_with_backward() {
     const auto new_to_orig = cnf.get_new_to_orig_var();
 
-    for(const auto& v: backward_defined) {
+    for(const auto& v: to_define_full) {
+        if (to_define.count(v)) continue;
         FHolder<MetaSolver2>::Formula f;
 
         // Get the original variable number
@@ -421,9 +422,14 @@ void Manthan::print_cnf_debug_info(const sample& ctx) const {
 void Manthan::print_needs_repair_vars() const {
     if (conf.verb >= 2) {
         cout << "c o [manthan] needs repair vars: ";
-        for(const auto& y: y_order) {
-            if (needs_repair.count(y) == 0) continue;
-            cout << y+1 << (backward_defined.count(y) ? "[BW]" : "") << " ";
+        for(const auto& y: needs_repair) {
+            if (backward_defined.count(y)) {
+                cout << y+1 << "[BW] ";
+            } else if (fixed_defined.count(y)) {
+                cout << y+1 << "[DEF] ";
+            } else {
+                cout << y+1 << " ";
+            }
         }
         cout << endl;
     }
@@ -753,7 +759,7 @@ void Manthan::full_train() {
         for(const auto& v: to_define) train(samples, v); // updates dependency_mat
     } else {
         for(const auto& v: y_order) {
-            if (backward_defined.count(v)) continue;
+            if (!to_define.count(v)) continue;
             train(samples, v); // updates dependency_mat
         }
     }
@@ -817,6 +823,19 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
     to_define_full.clear();
     to_define_full.insert(to_define.begin(), to_define.end());
     to_define_full.insert(backward_defined.begin(), backward_defined.end());
+    fixed_defined.clear();
+    const auto& orig_sampl_vars = cnf.get_orig_sampl_vars();
+    for(const auto& [orig_v, new_lit]: cnf.get_orig_to_new_var()) {
+        if (orig_sampl_vars.count(orig_v)) continue;
+        if (!cnf.defined(orig_v)) continue;
+        const uint32_t new_v = new_lit.var();
+        assert(new_v < cnf.nVars());
+        if (!to_define_full.count(new_v)) {
+            to_define_full.insert(new_v);
+            fixed_defined.insert(new_v);
+            input.erase(new_v);
+        }
+    }
     fill_dependency_mat_with_backward();
     get_incidence();
 
@@ -952,17 +971,24 @@ bool Manthan::verify_final_cnf(const SimplifiedCNF& fcnf) const {
 
 uint32_t Manthan::find_next_repair_var(const sample& ctx) const {
     assert(!needs_repair.empty());
-    uint32_t y_rep = std::numeric_limits<uint32_t>::max();
+    // Prefer to-define vars in learned order.
     for(const auto& y: y_order) {
         if (needs_repair.count(y)) {
             assert(ctx[y] != ctx[y_to_y_hat.at(y)]);
-            y_rep = y;
-            break;
+            return y;
         }
         assert(ctx[y] == ctx[y_to_y_hat.at(y)]);
     }
-    assert(y_rep != std::numeric_limits<uint32_t>::max());
-    return y_rep;
+
+    // Fallback: allow any differing checked variable.
+    for(const auto& y: to_define_full) {
+        if (needs_repair.count(y)) {
+            assert(ctx[y] != ctx[y_to_y_hat.at(y)]);
+            return y;
+        }
+    }
+    assert(false && "needs_repair not empty, but no candidate found");
+    return std::numeric_limits<uint32_t>::max();
 }
 
 bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
@@ -1111,9 +1137,9 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
 
 Lit Manthan::map_y_to_y_hat(const Lit& l) const {
     const uint32_t var = l.var();
-    if (input.count(var)) return l;
-    assert(to_define_full.count(var));
-    const uint32_t y_hat = y_to_y_hat.at(var);
+    const auto it = y_to_y_hat.find(var);
+    if (it == y_to_y_hat.end()) return l;
+    const uint32_t y_hat = it->second;
     return Lit(y_hat, l.sign());
 }
 
@@ -1547,14 +1573,15 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
         s_ctx.addClause(lits_to_ints({l}));
     }
 
-    // Fix to_define variables that are correct (y_hat is the learned one)
+    // Fix pre-defined vars, and to_define vars that are already correct.
     for(const auto& y: to_define_full) {
         const auto y_hat = y_to_y_hat[y];
-        if (ctx[y] != ctx[y_hat]) continue;
-        verb_print(3, "[find-better-ctx] CTX is CORRECT on y=" << y+1 << " y_hat=" << y_hat+1
-             << " -- ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat]));
-        const Lit l = Lit(y, ctx[y_hat] == l_False);
-        s_ctx.addClause(lits_to_ints({l}));
+        if (fixed_defined.count(y) || ctx[y] == ctx[y_hat]) {
+            verb_print(3, "[find-better-ctx] CTX fixed on y=" << y+1 << " y_hat=" << y_hat+1
+                 << " -- ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat]));
+            const Lit l = Lit(y, ctx[y_hat] == l_False);
+            s_ctx.addClause(lits_to_ints({l}));
+        }
     }
 
     // Add all clauses
@@ -1575,6 +1602,7 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
         const auto l = Lit(y, ctx[y_hat] == l_False);
         verb_print(3, "[find-better-ctx] put into assumps y= " << l);
         int w = y_to_y_order_pos[y];
+        if (fixed_defined.count(y)) w = std::max(1, w/8);
         s_ctx.addClause(lits_to_ints({l}), w); // want to flip valuation to ctx[y_hat]
     }
 
@@ -1605,27 +1633,26 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
             y_to_y_order_pos[y_order[i]] = y_order.size()-i;
     }
 
-    // For to_define variables, separate into correct and incorrect
+    // Variables already matching y_hat are fixed as hard clauses; mismatches are soft targets.
     vector<std::pair<Lit, uint32_t>> incorrect_lits; // pair of literal and weight
     for(const auto& y: to_define_full) {
         const auto y_hat = y_to_y_hat[y];
         const Lit l = Lit(y, ctx[y_hat] == l_False); // literal that makes y match y_hat
 
         if (ctx[y] == ctx[y_hat]) {
-            // Already correct, make this a fixed assumption
-            verb_print(3, "[find-better-ctx-normal] CTX is CORRECT on y=" << y+1 << " y_hat=" << y_hat+1
-                 << " -- ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat]));
             s.add_clause({l});
+            verb_print(3, "[find-better-ctx-normal] Hard-fixed y=" << y+1
+                 << " ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat]));
         } else {
-            // Incorrect, we want to try to fix this
+            assert(y_to_y_order_pos.count(y));
             uint32_t weight = y_to_y_order_pos[y];
+            if (fixed_defined.count(y)) weight = std::max(1u, weight/8);
             incorrect_lits.push_back({l, weight});
-            verb_print(3, "[find-better-ctx-normal] CTX is INCORRECT on y=" << y+1
+            verb_print(3, "[find-better-ctx-normal] Soft target on y=" << y+1
                  << " ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat])
                  << " weight=" << weight);
         }
     }
-    assert(incorrect_lits.size() == needs_repair.size());
     for(const auto& c: cnf.get_clauses()) s.add_clause(c);
 
     // Sort incorrect lits by weight (higher weight = higher priority to fix)
@@ -1689,8 +1716,7 @@ void Manthan::add_not_f_x_yhat() {
         // Replace y with y_hat in the clause
         cl.clear();
         for(const auto& l: cl_orig) {
-            if (to_define_full.count(l.var())) cl.push_back(Lit(y_to_y_hat.at(l.var()), l.sign()));
-            else cl.push_back(l);
+            cl.push_back(map_y_to_y_hat(l));
         }
 
         cex_solver.new_var();
@@ -1724,9 +1750,7 @@ void Manthan::inject_formulas_into_solver() {
             if (cl.inserted) continue;
             vector<Lit> cl2;
             for(const auto& l: cl.lits) {
-                auto v = l.var();
-                if (to_define_full.count(v)) { cl2.push_back(Lit(y_to_y_hat[v], l.sign()));}
-                else cl2.push_back(l);
+                cl2.push_back(map_y_to_y_hat(l));
             }
             cex_solver.add_clause(cl2);
             cl.inserted = true;
@@ -1789,7 +1813,7 @@ bool Manthan::get_counterexample(sample& ctx) {
     for(const auto& [y_hat, ind]: y_hat_to_indic) {
         assumps.push_back(Lit(ind, false));
     }
-    assert(assumps.size() == y_order.size());
+    assert(assumps.size() == to_define_full.size());
     verb_print(4, "assumptions: " << assumps);
     cex_solver.set_verbosity(conf.verb <= 0 ? 0 : conf.verb-1);
     if (num_loops_repair == 1 || (num_loops_repair % mconf.simplify_every) == (mconf.simplify_every-1))
