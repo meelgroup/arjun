@@ -175,6 +175,7 @@ class Manthan {
         AIGManager aig_mng;
 
         // debug
+        bool is_unsat(const vector<Lit>& conflict, uint32_t y_rep, const sample& ctx) const;
         bool ctx_y_hat_correct(const sample& ctx) const;
         bool ctx_is_sat(const sample& ctx) const;
         bool check_map_dependency_cycles() const;
