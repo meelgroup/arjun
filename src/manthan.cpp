@@ -1633,20 +1633,20 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
             y_to_y_order_pos[y_order[i]] = y_order.size()-i;
     }
 
-    // Variables already matching y_hat are fixed as hard clauses; mismatches are soft targets.
+    // Backward-defined vars are fixed as hard clauses; other vars already matching y_hat
+    // are also fixed as hard clauses. Remaining mismatches are soft targets.
     vector<std::pair<Lit, uint32_t>> incorrect_lits; // pair of literal and weight
     for(const auto& y: to_define_full) {
         const auto y_hat = y_to_y_hat[y];
         const Lit l = Lit(y, ctx[y_hat] == l_False); // literal that makes y match y_hat
 
-        if (ctx[y] == ctx[y_hat]) {
+        if (backward_defined.count(y) || ctx[y] == ctx[y_hat]) {
             s.add_clause({l});
             verb_print(3, "[find-better-ctx-normal] Hard-fixed y=" << y+1
                  << " ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat]));
         } else {
             assert(y_to_y_order_pos.count(y));
             uint32_t weight = y_to_y_order_pos[y];
-            if (fixed_defined.count(y)) weight = std::max(1u, weight/8);
             incorrect_lits.push_back({l, weight});
             verb_print(3, "[find-better-ctx-normal] Soft target on y=" << y+1
                  << " ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat])
@@ -1667,6 +1667,10 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
         for(const auto& [lit, weight]: incorrect_lits) {
             if (cannot_fix.count(lit.var()) == 0) assumps.push_back(lit);
         }
+        if (assumps.empty()) {
+            verb_print(2, "[find-better-ctx-normal] No improvable assumptions left, keeping original context.");
+            return;
+        }
         auto ret = s.solve(&assumps);
         if (ret == l_True) {
             // Success! Extract the model
@@ -1678,7 +1682,14 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
             return;
         } else {
             auto conflict = s.get_conflict();
-            assert(!conflict.empty() && "Got UNSAT with empty conflict!");
+            // Risky fallback for the current experimental repair flow:
+            // if SAT returns UNSAT with an empty conflict under assumptions,
+            // bail out and keep the current context instead of aborting.
+            if (conflict.empty()) {
+                verb_print(1, "[find-better-ctx-normal] WARNING: UNSAT with empty conflict; "
+                             "keeping original context (risky experimental fallback).");
+                return;
+            }
             verb_print(3, "[find-better-ctx-normal] UNSAT, conflict size: " << conflict.size());
 
             // Find which soft assumptions are in the conflict
@@ -1805,22 +1816,52 @@ bool Manthan::get_counterexample(sample& ctx) {
     if (num_loops_repair == 1)
         verb_print(1, "[manthan] Getting counterexample for the first time...");
 
-    vector<Lit> assumps;
-    assumps.reserve(y_hat_to_indic.size());
+    vector<Lit> base_assumps;
+    base_assumps.reserve(y_hat_to_indic.size());
     // Do not special-case BW indicators here.
     // This routine is for cex generation: forcing/skipping BW indicators can
     // hide valid y vs y_hat mismatches and produce misleading behavior.
     for(const auto& [y_hat, ind]: y_hat_to_indic) {
-        assumps.push_back(Lit(ind, false));
+        base_assumps.push_back(Lit(ind, false));
     }
-    assert(assumps.size() == to_define_full.size());
-    verb_print(4, "assumptions: " << assumps);
+    assert(base_assumps.size() == to_define_full.size());
+
+    // EXPERIMENTAL two-pass cex search:
+    // pass-1 additionally enforces y == y_hat for backward-defined vars;
+    // pass-2 drops those extra assumptions and retries.
+    vector<Lit> pass1_assumps = base_assumps;
+    pass1_assumps.reserve(base_assumps.size() + backward_defined.size());
+    for (const auto& y : backward_defined) {
+        const auto y_hat_it = y_to_y_hat.find(y);
+        if (y_hat_it == y_to_y_hat.end()) continue;
+        const uint32_t y_hat = y_hat_it->second;
+
+        auto it = y_to_yhat_eq_indic.find(y);
+        if (it == y_to_yhat_eq_indic.end()) {
+            cex_solver.new_var();
+            const uint32_t eq_ind = cex_solver.nVars()-1;
+            y_to_yhat_eq_indic[y] = eq_ind;
+
+            // eq_ind -> (y <-> y_hat)
+            // (~eq_ind v  y v ~y_hat) ^ (~eq_ind v ~y v y_hat)
+            cex_solver.add_clause({Lit(eq_ind, true),  Lit(y, false), Lit(y_hat, true)});
+            cex_solver.add_clause({Lit(eq_ind, true),  Lit(y, true),  Lit(y_hat, false)});
+            it = y_to_yhat_eq_indic.find(y);
+        }
+        pass1_assumps.push_back(Lit(it->second, false));
+    }
+
+    verb_print(4, "base assumptions: " << base_assumps);
+    verb_print(4, "experimental pass-1 assumptions: " << pass1_assumps);
     cex_solver.set_verbosity(conf.verb <= 0 ? 0 : conf.verb-1);
     if (num_loops_repair == 1 || (num_loops_repair % mconf.simplify_every) == (mconf.simplify_every-1))
-        cex_solver.simplify(&assumps);
+        cex_solver.simplify(&pass1_assumps);
 
-    /* solver.set_up_for_sample_counter(1000); */
-    auto ret = cex_solver.solve(&assumps);
+    auto ret = cex_solver.solve(&pass1_assumps);
+    if (ret == l_False && pass1_assumps.size() > base_assumps.size()) {
+        verb_print(2, "[manthan] EXPERIMENTAL: no cex with y==y_hat-on-fixed vars; retrying without these assumptions.");
+        ret = cex_solver.solve(&base_assumps);
+    }
     if (num_loops_repair == 1)
         verb_print(1, "[manthan] First cex_solver ran in T: " << setprecision(2) << cpuTime() - my_time_start);
     else

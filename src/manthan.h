@@ -77,6 +77,8 @@ class Manthan {
         map<uint32_t, uint32_t> y_hat_to_indic;
         map<uint32_t, uint32_t> indic_to_y_hat;
         map<uint32_t, uint32_t> indic_to_y;
+        // EXPERIMENTAL: when eq-indic is TRUE, y and y_hat are forced equal.
+        map<uint32_t, uint32_t> y_to_yhat_eq_indic;
         set<uint32_t> needs_repair;
 
         const Config& conf;
