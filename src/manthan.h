@@ -56,8 +56,7 @@ using namespace ArjunNS;
 
 class Manthan {
     public:
-        Manthan(const Config& _conf, const Arjun::ManthanConf& _mconf, const SimplifiedCNF& _cnf)
-             :
+        Manthan(const Config& _conf, const Arjun::ManthanConf& _mconf, const SimplifiedCNF& _cnf) :
             cnf(_cnf), conf(_conf), mconf(_mconf)
             , cex_solver(static_cast<SolverType>(_mconf.ctx_solver_type))
             , repair_solver(static_cast<SolverType>(_mconf.repair_solver_type), _mconf.repair_cache_size)
