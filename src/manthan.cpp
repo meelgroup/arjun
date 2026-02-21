@@ -932,6 +932,17 @@ uint32_t Manthan::find_next_repair_var(const sample& ctx) const {
     return y_rep;
 }
 
+bool Manthan::is_unsat(const vector<Lit>& conflict, uint32_t y_rep, const sample& ctx) const {
+    SATSolver s;
+    s.new_vars(cnf.nVars());
+    for(const auto& c: cnf.get_clauses()) s.add_clause(c);
+    for(const auto& l: conflict) s.add_clause({~l});
+    const Lit to_repair = Lit(y_rep, ctx[y_to_y_hat.at(y_rep)] == l_True);
+    s.add_clause({~to_repair});
+    const auto ret = s.solve();
+    return ret == l_False;
+}
+
 bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     verb_print(2, "[DEBUG] Starting repair for var " << y_rep+1
             << (backward_defined.count(y_rep) ? "[BW]" : ""));
@@ -951,6 +962,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     repaired_vars_count[y_rep]++;
     bool ret = find_conflict(y_rep, ctx, conflict);
     if (ret) {
+        SLOW_DEBUG_DO(assert(is_unsat(conflict, y_rep, ctx)));
         perform_repair(y_rep, ctx, conflict);
         if (!mconf.one_repair_per_loop) {
             ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
