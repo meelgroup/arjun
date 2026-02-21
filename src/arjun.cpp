@@ -311,6 +311,75 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         return ret;
     };
 
+    // Collect literal-variable dependencies from an AIG without recursion.
+    const auto get_aig_lit_deps = [](const aig_ptr& root) {
+        set<uint32_t> deps;
+        if (!root) return deps;
+        set<const AIG*> seen;
+        vector<aig_ptr> todo;
+        todo.push_back(root);
+        while(!todo.empty()) {
+            const auto cur = todo.back();
+            todo.pop_back();
+            if (!cur) continue;
+            if (!seen.insert(cur.get()).second) continue;
+            if (cur->type == AIGT::t_lit) {
+                deps.insert(cur->var);
+                continue;
+            }
+            if (cur->type == AIGT::t_and) {
+                todo.push_back(cur->l);
+                todo.push_back(cur->r);
+            }
+        }
+        return deps;
+    };
+
+    // Checks whether definition of `start_var` (transitively) depends on `query_var`.
+    map<std::pair<uint32_t, uint32_t>, bool> dep_memo;
+    function<bool(uint32_t, uint32_t, set<uint32_t>&)> depends_on_query =
+        [&](const uint32_t start_var, const uint32_t query_var, set<uint32_t>& in_stack) -> bool
+    {
+        const auto key = std::make_pair(start_var, query_var);
+        const auto it_memo = dep_memo.find(key);
+        if (it_memo != dep_memo.end()) return it_memo->second;
+
+        if (start_var == query_var) {
+            dep_memo[key] = true;
+            return true;
+        }
+        if (start_var >= scnf.defs.size() || scnf.defs[start_var] == nullptr) {
+            dep_memo[key] = false;
+            return false;
+        }
+        if (in_stack.count(start_var)) {
+            // Existing cycle elsewhere; conservatively report no new evidence here.
+            dep_memo[key] = false;
+            return false;
+        }
+
+        in_stack.insert(start_var);
+        const auto deps = get_aig_lit_deps(scnf.defs[start_var]);
+        if (deps.count(query_var)) {
+            in_stack.erase(start_var);
+            dep_memo[key] = true;
+            return true;
+        }
+
+        for (const auto dep_var : deps) {
+            if (dep_var >= scnf.defs.size() || scnf.defs[dep_var] == nullptr) continue;
+            if (depends_on_query(dep_var, query_var, in_stack)) {
+                in_stack.erase(start_var);
+                dep_memo[key] = true;
+                return true;
+            }
+        }
+
+        in_stack.erase(start_var);
+        dep_memo[key] = false;
+        return false;
+    };
+
     for(const auto& target: elimed_vars) {
         const auto def = solver->get_cls_defining_var(target);
         const auto orig_def = map_cl_to_orig(def);
@@ -362,6 +431,28 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         if (overall == nullptr) overall = scnf.aig_mng.new_const(false);
         if (sign ^ orig_target.sign()) overall = AIG::new_not(overall);
 
+        // Avoid introducing cyclic definitions (e.g. x := f(y), while y := g(x)).
+        bool introduces_cycle = false;
+        const auto deps = get_aig_lit_deps(overall);
+        for (const auto dep_var : deps) {
+            if (dep_var == orig_target.var()) {
+                introduces_cycle = true;
+                break;
+            }
+            set<uint32_t> in_stack;
+            if (depends_on_query(dep_var, orig_target.var(), in_stack)) {
+                introduces_cycle = true;
+                break;
+            }
+        }
+        if (introduces_cycle) {
+            if (verb >= 1) {
+                cout << "c o [bve-aig] skipping cyclic def for orig elimed var: "
+                     << orig_target << endl;
+            }
+            continue;
+        }
+
         scnf.defs[orig_target.var()] = overall;
         if (verb >= 5)
             cout << "c o [bve-aig] set aig for var: " << orig_target << " from bve elim: " << overall << endl;
@@ -403,10 +494,33 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         }
         new_replaced.push_back(Lit(elimed, bad_lit.sign()));
         var_to_lits_it_replaced[bad_lit.var()] = new_replaced;
-        scnf.defs[elimed] = nullptr;
+        // `elimed` is in NEW var space; defs are indexed in ORIG var space.
+        scnf.defs[orig_replacing.var()] = nullptr;
         add_elimed.push_back(bad_lit.var());
     }
     for(const auto& v: add_elimed) elimed_vars.push_back(v);
+
+    auto aig_depends_on_var = [](const aig_ptr& root, const uint32_t var) {
+        if (!root) return false;
+        set<const AIG*> seen;
+        vector<aig_ptr> todo;
+        todo.push_back(root);
+        while(!todo.empty()) {
+            const auto cur = todo.back();
+            todo.pop_back();
+            if (!cur) continue;
+            if (!seen.insert(cur.get()).second) continue;
+            if (cur->type == AIGT::t_lit) {
+                if (cur->var == var) return true;
+                continue;
+            }
+            if (cur->type == AIGT::t_and) {
+                todo.push_back(cur->l);
+                todo.push_back(cur->r);
+            }
+        }
+        return false;
+    };
 
     for(const auto& target: elimed_vars) {
         for(const auto& lit_replaced: var_to_lits_it_replaced[target]) {
@@ -418,17 +532,30 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
             if (orig_sampl_vars.count(orig_replaced.var()) && orig_sampl_vars.count(orig_replacing.var())) {
                 continue;
             }
+
+            // Never introduce an explicit self-dependency through replacement.
+            if (orig_replaced.var() == orig_replacing.var()) continue;
+
             if (aig == nullptr) {
                 // The orig_replacing MUST be an orig sampling var
                 assert(orig_sampl_vars.count(orig_replacing.var()) &&
                     "Replaced variable must be an original sampling var here");
+                // Let BVE mapping take precedence over any pre-existing definition.
                 scnf.defs[orig_replaced.var()] = AIG::new_lit(orig_replacing ^ orig_replaced.sign());
             } else {
                 assert(!orig_sampl_vars.count(orig_replacing.var()));
                 assert(aig != nullptr);
-                assert(scnf.defs[orig_replaced.var()] == nullptr);
+                // Let BVE mapping take precedence over any pre-existing definition.
                 assert(!orig_sampl_vars.count(orig_replaced.var()) &&
                     "Replaced variable cannot be in the orig sampling set here -- we would have elimed what it got replaced with");
+                if (aig_depends_on_var(aig, orig_replaced.var())) {
+                    if (verb >= 1) {
+                        cout << "c o [bve-aig] skipping replacement " << orig_replaced
+                             << " := def(" << orig_replacing
+                             << ") because it would create a dependency cycle" << endl;
+                    }
+                    continue;
+                }
                 if (orig_replaced.sign()) scnf.defs[orig_replaced.var()] = AIG::new_not(aig);
                 else scnf.defs[orig_replaced.var()] = aig;
             }
@@ -447,7 +574,7 @@ DLL_PUBLIC void SimplifiedCNF::get_fixed_values(
         if (l.var() >= nVars()) continue;
         Lit orig_lit = new_to_orig_var.at(l.var());
         orig_lit ^= l.sign();
-        assert(scnf.defs[orig_lit.var()] == nullptr && "Variable must not already have a definition");
+        // Fixed assignments from simplification take precedence.
         scnf.defs[orig_lit.var()] = scnf.aig_mng.new_const(!orig_lit.sign());
     }
 }
@@ -1560,21 +1687,54 @@ DLL_PUBLIC bool SimplifiedCNF::synth_done() const {
 }
 
 DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
+#ifndef NDEBUG
+    auto dbg = [](const char* msg) {
+        cerr << "c o [defs-invariant-debug] " << msg << endl;
+    };
+    dbg("check_cnf_sampl_sanity");
+#endif
     check_cnf_sampl_sanity();
 
     if (!need_aig) return true;
+#ifndef NDEBUG
+    dbg("orig_sampl_vars_set/sampl_vars_set/release_asserts");
+#endif
     release_assert(orig_sampl_vars_set && "If need_aig, orig_sampl_vars_set must be set");
     release_assert(sampl_vars_set);
     release_assert(sampl_vars.size() <= opt_sampl_vars.size() && "We add to opt_sampl_vars via extend_synth in extend.cpp");
     release_assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
 
+#ifndef NDEBUG
+    dbg("check_orig_sampl_vars_undefined");
+#endif
     check_orig_sampl_vars_undefined();
+#ifndef NDEBUG
+    dbg("check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars");
+#endif
     check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars();
+#ifndef NDEBUG
+    dbg("check_pre_post_backward_round_synth");
+#endif
     check_pre_post_backward_round_synth();
+#ifndef NDEBUG
+    dbg("check_all_vars_accounted_for");
+#endif
     check_all_vars_accounted_for();
+#ifndef NDEBUG
+    dbg("check_aig_cycles");
+#endif
     check_aig_cycles();
+#ifndef NDEBUG
+    dbg("check_self_dependency");
+#endif
     check_self_dependency();
+#ifndef NDEBUG
+    dbg("get_var_types");
+#endif
     get_var_types(0, "defs_invariant");
+#ifndef NDEBUG
+    dbg("done");
+#endif
     SLOW_DEBUG_DO(check_synth_funs_randomly());
     return true;
 }
@@ -1584,9 +1744,24 @@ DLL_PUBLIC set<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const uint3
     assert(need_aig);
     assert(defined(orig_v));
 
+    set<uint32_t> in_progress;
+    vector<uint32_t> call_path;
     function<set<uint32_t>(uint32_t)> visit = [&](uint32_t v) -> set<uint32_t> {
         if (!defined(v)) return {v};
         if (cache.count(v)) return cache.at(v);
+        if (in_progress.count(v)) {
+            cerr << "ERROR: Cycle while expanding dependencies. Path: ";
+            bool print = false;
+            for (const auto& p : call_path) {
+                if (p == v) print = true;
+                if (print) cerr << (p+1) << " -> ";
+            }
+            cerr << (v+1) << endl;
+            release_assert(false && "Cycle detected in get_dependent_vars_recursive");
+        }
+
+        in_progress.insert(v);
+        call_path.push_back(v);
 
         set<uint32_t> dep;
         AIG::get_dependent_vars(defs[v], dep, v);
@@ -1596,6 +1771,8 @@ DLL_PUBLIC set<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const uint3
             final_dep.insert(sub_dep.begin(), sub_dep.end());
         }
         cache[v] = final_dep;
+        call_path.pop_back();
+        in_progress.erase(v);
         return final_dep;
     };
     return visit(orig_v);

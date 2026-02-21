@@ -1614,16 +1614,7 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
 
 // Fills needs_repair with vars from y (i.e. output) using normal SAT solver with assumptions
 void Manthan::find_better_ctx_normal(sample& ctx) {
-    SATSolver s;
-    s.new_vars(cnf.nVars());
     verb_print(2, "Finding better ctx via normal SAT solver.");
-
-    // Fix input values
-    for(const auto& x: input) {
-        assert(ctx[x] != l_Undef && "Input variable must be defined in counterexample");
-        const auto l = Lit(x, ctx[x] == l_False);
-        s.add_clause({l});
-    }
 
     map<uint32_t, uint32_t> y_to_y_order_pos;
     for(size_t i = 0; i < y_order.size(); i++) {
@@ -1633,75 +1624,115 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
             y_to_y_order_pos[y_order[i]] = y_order.size()-i;
     }
 
-    // Backward-defined vars are fixed as hard clauses; other vars already matching y_hat
-    // are also fixed as hard clauses. Remaining mismatches are soft targets.
-    vector<std::pair<Lit, uint32_t>> incorrect_lits; // pair of literal and weight
-    for(const auto& y: to_define_full) {
-        const auto y_hat = y_to_y_hat[y];
-        const Lit l = Lit(y, ctx[y_hat] == l_False); // literal that makes y match y_hat
+    const uint32_t very_high_defined_weight = 1000000000u;
+    enum class CtxPassResult {
+        found_model,
+        empty_conflict_unsat,
+        no_improvement
+    };
+    auto run_ctx_pass = [&](const bool aggressive_defined_hardfix) -> CtxPassResult {
+        SATSolver s;
+        s.new_vars(cnf.nVars());
 
-        if (backward_defined.count(y) || ctx[y] == ctx[y_hat]) {
+        // Fix input values
+        for(const auto& x: input) {
+            assert(ctx[x] != l_Undef && "Input variable must be defined in counterexample");
+            const auto l = Lit(x, ctx[x] == l_False);
             s.add_clause({l});
-            verb_print(3, "[find-better-ctx-normal] Hard-fixed y=" << y+1
-                 << " ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat]));
-        } else {
-            assert(y_to_y_order_pos.count(y));
-            uint32_t weight = y_to_y_order_pos[y];
-            incorrect_lits.push_back({l, weight});
-            verb_print(3, "[find-better-ctx-normal] Soft target on y=" << y+1
-                 << " ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat])
-                 << " weight=" << weight);
         }
-    }
-    for(const auto& c: cnf.get_clauses()) s.add_clause(c);
 
-    // Sort incorrect lits by weight (higher weight = higher priority to fix)
-    std::sort(incorrect_lits.begin(), incorrect_lits.end(),
-              [](const auto& a, const auto& b) { return a.second > b.second; });
+        // Vars already matching y_hat are fixed as hard clauses.
+        // In aggressive mode, mismatching pre-defined vars are also hard-fixed.
+        vector<std::pair<Lit, uint32_t>> incorrect_lits; // pair of literal and weight
+        for(const auto& y: to_define_full) {
+            const auto y_hat = y_to_y_hat[y];
+            const Lit l = Lit(y, ctx[y_hat] == l_False); // literal that makes y match y_hat
+            const bool is_pre_defined = backward_defined.count(y) || fixed_defined.count(y);
 
-    // Iteratively find a minimal CTX
-    set<uint32_t> cannot_fix; // variables we cannot fix
-    vector<Lit> assumps;
-    while (true) {
-        assumps.clear();
-        for(const auto& [lit, weight]: incorrect_lits) {
-            if (cannot_fix.count(lit.var()) == 0) assumps.push_back(lit);
-        }
-        if (assumps.empty()) {
-            verb_print(2, "[find-better-ctx-normal] No improvable assumptions left, keeping original context.");
-            return;
-        }
-        auto ret = s.solve(&assumps);
-        if (ret == l_True) {
-            // Success! Extract the model
-            verb_print(2, "[find-better-ctx-normal] Found satisfying assignment. "
-                       << "Could not fix " << cannot_fix.size() << " variables.");
-            for(const auto& v: to_define_full) {
-                ctx[v] = s.get_model()[v];
+            if (ctx[y] == ctx[y_hat]) {
+                s.add_clause({l});
+                verb_print(3, "[find-better-ctx-normal] Hard-fixed y=" << y+1
+                     << " ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat]));
+            } else if (aggressive_defined_hardfix && is_pre_defined) {
+                s.add_clause({l});
+                verb_print(3, "[find-better-ctx-normal] Aggressive hard-fixed defined y=" << y+1
+                     << " ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat]));
+            } else {
+                assert(y_to_y_order_pos.count(y));
+                uint32_t weight = y_to_y_order_pos[y];
+                if (is_pre_defined) weight = very_high_defined_weight;
+                incorrect_lits.push_back({l, weight});
+                verb_print(3, "[find-better-ctx-normal] Soft target on y=" << y+1
+                     << " ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat])
+                     << " weight=" << weight);
             }
-            return;
-        } else {
+        }
+        for(const auto& c: cnf.get_clauses()) s.add_clause(c);
+
+        // Sort incorrect lits by weight (higher weight = higher priority to fix)
+        std::sort(incorrect_lits.begin(), incorrect_lits.end(),
+                  [](const auto& a, const auto& b) { return a.second > b.second; });
+
+        // Iteratively find a minimal CTX
+        set<uint32_t> cannot_fix; // variables we cannot fix
+        vector<Lit> assumps;
+        while (true) {
+            assumps.clear();
+            for(const auto& [lit, weight]: incorrect_lits) {
+                (void)weight;
+                if (cannot_fix.count(lit.var()) == 0) assumps.push_back(lit);
+            }
+            if (assumps.empty()) {
+                // Either everything is hard-fixed in this mode, or we already gave up all soft targets.
+                auto ret = s.solve();
+                if (ret == l_True) {
+                    for(const auto& v: to_define_full) ctx[v] = s.get_model()[v];
+                    return CtxPassResult::found_model;
+                }
+                return CtxPassResult::empty_conflict_unsat;
+            }
+
+            auto ret = s.solve(&assumps);
+            if (ret == l_True) {
+                // Success! Extract the model
+                verb_print(2, "[find-better-ctx-normal] Found satisfying assignment. "
+                           << "Could not fix " << cannot_fix.size() << " variables.");
+                for(const auto& v: to_define_full) ctx[v] = s.get_model()[v];
+                return CtxPassResult::found_model;
+            }
+
             auto conflict = s.get_conflict();
-            // Risky fallback for the current experimental repair flow:
-            // if SAT returns UNSAT with an empty conflict under assumptions,
-            // bail out and keep the current context instead of aborting.
-            if (conflict.empty()) {
-                verb_print(1, "[find-better-ctx-normal] WARNING: UNSAT with empty conflict; "
-                             "keeping original context (risky experimental fallback).");
-                return;
-            }
+            if (conflict.empty()) return CtxPassResult::empty_conflict_unsat;
             verb_print(3, "[find-better-ctx-normal] UNSAT, conflict size: " << conflict.size());
 
             // Find which soft assumptions are in the conflict
             set<Lit> conflict_set(conflict.begin(), conflict.end());
+            bool dropped_one = false;
             for(const auto& [lit, weight]: incorrect_lits) {
+                (void)weight;
                 if (conflict_set.count(~lit) && !cannot_fix.count(lit.var())) {
                     verb_print(3, "[find-better-ctx-normal] Giving up on fixing var " << lit.var()+1);
                     cannot_fix.insert(lit.var());
+                    dropped_one = true;
                     break; // Remove one at a time
                 }
             }
+            if (!dropped_one) return CtxPassResult::no_improvement;
         }
+    };
+
+    auto pass_result = run_ctx_pass(true);
+    if (pass_result == CtxPassResult::empty_conflict_unsat) {
+        verb_print(1, "[find-better-ctx-normal] Aggressive defined-hardfix got empty conflict; "
+                     "retrying with weighted-defined soft targets.");
+        pass_result = run_ctx_pass(false);
+    }
+    if (pass_result == CtxPassResult::found_model) return;
+    if (pass_result == CtxPassResult::empty_conflict_unsat) {
+        verb_print(1, "[find-better-ctx-normal] WARNING: UNSAT with empty conflict; "
+                     "keeping original context (risky experimental fallback).");
+    } else {
+        verb_print(2, "[find-better-ctx-normal] No improvable assumptions left, keeping original context.");
     }
 }
 

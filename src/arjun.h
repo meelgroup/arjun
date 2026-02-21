@@ -191,21 +191,31 @@ public:
     }
 
     static void get_dependent_vars(const aig_ptr& aig_orig, std::set<uint32_t>& dep, uint32_t v) {
-        std::set<aig_ptr> visited;
-        std::function<void(const aig_ptr&)> helper =
-            [&](const aig_ptr& aig) {
-                if (visited.count(aig)) return;
-                if (aig->type == AIGT::t_lit) {
-                    assert(aig->var != v && "Variable cannot depend on itself");
-                    dep.insert(aig->var);
-                }
-                if (aig->type == AIGT::t_and) {
-                    helper(aig->l);
-                    helper(aig->r);
-                }
-                visited.insert(aig);
-            };
-        helper(aig_orig);
+        if (!aig_orig) return;
+
+        // Iterative walk avoids stack overflows on very deep AIGs.
+        std::set<const AIG*> visited;
+        std::vector<aig_ptr> todo;
+        todo.push_back(aig_orig);
+
+        while(!todo.empty()) {
+            aig_ptr aig = todo.back();
+            todo.pop_back();
+            if (!aig) continue;
+            if (!visited.insert(aig.get()).second) continue;
+
+            if (aig->type == AIGT::t_lit) {
+                assert(aig->var != v && "Variable cannot depend on itself");
+                dep.insert(aig->var);
+                continue;
+            }
+            if (aig->type == AIGT::t_and) {
+                todo.push_back(aig->l);
+                todo.push_back(aig->r);
+                continue;
+            }
+            assert(aig->type == AIGT::t_const);
+        }
     }
 
     static std::vector<aig_ptr> deep_clone_vec(const std::vector<aig_ptr>& aigs) {
