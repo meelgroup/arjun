@@ -1166,6 +1166,8 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
 
     // We go through the variables that y_rep does NOT depend on, and assume them to be correct
     for(const auto& y: y_order) {
+        // BW will be updated, as it can must depend on vars other than inputs
+        if (!mconf.silent_var_update && backward_defined.count(y)) continue;
         if (y == y_rep) break; // beyond this point we don't care
         assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen. Otherwise y depends on y_rep, but we will repair y_rep potentially with y_rep");
         assert(ctx[y] == ctx[y_to_y_hat[y]]); // they are correct
@@ -1307,6 +1309,26 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     // not (conflict) -> v = ctx(v)
     FHolder<MetaSolver2>::Formula f;
 
+    auto lit_to_lit = [&] (const Lit l) {
+        if (input.count(l.var()) || backward_defined.count(l.var())) {
+            return map_y_to_y_hat(l);
+        } else {
+            assert(var_to_formula.count(l.var()));
+            auto f2 = var_to_formula.at(l.var());
+            return l.sign() ? ~f2.out : f2.out;
+        }
+    };
+
+    auto lit_to_aig = [&] (const Lit l) {
+        if (input.count(l.var()) || backward_defined.count(l.var())) {
+            return AIG::new_lit(map_y_to_y_hat(l));
+        } else {
+            assert(var_to_formula.count(l.var()));
+            auto f2 = var_to_formula.at(l.var());
+            return l.sign() ? AIG::new_not(f2.aig) : f2.aig;
+        }
+    };
+
     // CNF part
     vector<Lit> cl;
     cex_solver.new_var();
@@ -1314,14 +1336,21 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     helpers.insert(fresh_l.var());
     cl.push_back(fresh_l);
     for(const auto& l: conflict) {
-        cl.push_back(map_y_to_y_hat(l));
+        Lit l2;
+        if (!mconf.silent_var_update) l2 = lit_to_lit(l);
+        else l2 = map_y_to_y_hat(l);
+        cl.push_back(l2);
         set_depends_on(y_rep, l);
     }
     f.clauses.push_back(cl);
+
     for(const auto& l: conflict) {
+        Lit l2;
+        if (!mconf.silent_var_update) l2 = lit_to_lit(l);
+        else l2 = map_y_to_y_hat(l);
         cl.clear();
         cl.push_back(~fresh_l);
-        cl.push_back(~(map_y_to_y_hat(l)));
+        cl.push_back(~l2);
         f.clauses.push_back(cl);
     }
     f.out = fresh_l;
@@ -1331,9 +1360,12 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     for(const auto& l: conflict) assert(l.var() < cnf.nVars());
     if (conflict.empty()) b1 = aig_mng.new_const(true);
     else {
-        b1 = AIG::new_lit(~conflict[0]);
+        if (!mconf.silent_var_update) b1 = lit_to_aig(~conflict[0]);
+        else b1 = AIG::new_lit(~conflict[0]);
         for(size_t i = 1; i < conflict.size(); i++) {
-            auto lit_aig = AIG::new_lit(~conflict[i]);
+            aig_ptr lit_aig;
+            if (!mconf.silent_var_update) lit_aig = lit_to_aig(~conflict[i]);
+            else lit_aig = AIG::new_lit(~conflict[i]);
             b1 = AIG::new_and(b1, lit_aig);
         }
     }

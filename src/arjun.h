@@ -1380,6 +1380,7 @@ public:
         std::string td_visualize_dot_file = "";
         int force_bw_equal = 1;
         int bva_xor_vars = 0;
+        int silent_var_update = 1;
     };
 
     /// Standalone functions
