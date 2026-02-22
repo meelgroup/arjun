@@ -387,7 +387,7 @@ void do_synthesis() {
 
     auto mconf_orig = mconf;
     uint32_t tries;
-    if (manthan_strategy > 3) {
+    if (manthan_strategy > 4) {
         cout << "ERROR: unknown strategy " << manthan_strategy << endl;
         exit(EXIT_FAILURE);
     }
@@ -408,6 +408,7 @@ void do_synthesis() {
         tries = 20*manthan_rep_mult;
         if (manthan_strategy == 1) tries = std::numeric_limits<uint32_t>::max();
         cnf = arjun->standalone_manthan(cnf, mconf, tries);
+        if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 1");
     }
     if (!candidate_all_specified && !cnf.synth_done() && (manthan_strategy == 0 || manthan_strategy == 2)) {
         // Learning with (larger) samples size
@@ -416,13 +417,27 @@ void do_synthesis() {
         tries = 100*manthan_rep_mult;
         if (manthan_strategy == 2) tries = std::numeric_limits<uint32_t>::max();
         cnf = arjun->standalone_manthan(cnf, mconf, tries);
+        if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 2");
     }
-    if (!candidate_all_specified && !cnf.synth_done() && (manthan_strategy == 0 || manthan_strategy == 3)) {
+    if (!cnf.synth_done() && (manthan_strategy == 0 || manthan_strategy == 3)) {
+        // Learning, no BW, only input var learning, no silent update
+        mconf = mconf_orig;
+        mconf.manthan_bve = 0;
+        mconf.force_bw_equal = 1;
+        mconf.silent_var_update = 0;
+        mconf.do_use_all_variables_as_features = 0;
+        tries = 100*manthan_rep_mult;
+        if (manthan_strategy == 3) tries = std::numeric_limits<uint32_t>::max();
+        cnf = arjun->standalone_manthan(cnf, mconf, tries);
+        if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 3");
+    }
+    if (!cnf.synth_done() && (manthan_strategy == 0 || manthan_strategy == 4)) {
+        // BVE strategy
         mconf = mconf_orig;
         mconf.manthan_bve = 1;
         tries = std::numeric_limits<uint32_t>::max();
         cnf = arjun->standalone_manthan(cnf, mconf, tries);
-        release_assert(cnf.synth_done() && "Manthan should have finished synthesis, but it did not!");
+        if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 4");
     }
     release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");

@@ -361,6 +361,7 @@ if __name__ == "__main__":
             , " --bwequal"
             , " --bvaxor"
             , " --silentupdate"
+            , " --monflyorder"
         ]
         for o in opts:
             val = random.choice([0, 1])
