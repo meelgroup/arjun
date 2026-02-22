@@ -892,6 +892,7 @@ public:
         backbone_done = other.backbone_done;
         weights = other.weights;
         orig_to_new_var = other.orig_to_new_var;
+        preserve_existing_defs = other.preserve_existing_defs;
         if (!need_aig) {
             assert(defs.empty());
             assert(other.defs.empty());
@@ -1204,7 +1205,8 @@ public:
 
     std::vector<CMSat::lbool> extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed = false) const;
 
-    void map_aigs_to_orig(const std::vector<aig_ptr>& aigs, const uint32_t max_num_vars, const std::map<uint32_t, uint32_t>* back_map = nullptr);
+    void map_aigs_to_orig(const std::vector<aig_ptr>& aigs, const uint32_t max_num_vars,
+        const std::map<uint32_t, uint32_t>* back_map = nullptr, bool overwrite_existing = false);
 
     SimplifiedCNF get_cnf(
             std::unique_ptr<CMSat::SATSolver>& solver,
@@ -1274,8 +1276,11 @@ public:
         AIG::simplify_aigs(verb, defs);
     }
     const auto& get_aig_mng() const { return aig_mng; }
+    void set_preserve_existing_defs(bool b) { preserve_existing_defs = b; }
+    bool get_preserve_existing_defs() const { return preserve_existing_defs; }
 
 private:
+    bool preserve_existing_defs = false;
     bool after_backward_round_synth = false;
     bool need_aig = false;
     std::vector<std::vector<CMSat::Lit>> clauses;

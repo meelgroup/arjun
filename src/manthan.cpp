@@ -1069,7 +1069,7 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
         aigs[y] = var_to_formula[y].aig;
     }
     SimplifiedCNF fcnf = cnf;
-    fcnf.map_aigs_to_orig(aigs, cnf.nVars(), &y_hat_to_y);
+    fcnf.map_aigs_to_orig(aigs, cnf.nVars(), &y_hat_to_y, candidate_mode);
     assert(verify_final_cnf(fcnf));
     auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0 | verbose_debug_enabled, "end do_manthan");
     verb_print(1, COLRED "[manthan] Done. "
@@ -2122,9 +2122,11 @@ vector<const sample*> Manthan::filter_samples(const uint32_t v, const vector<sam
 
 void Manthan::sort_all_samples(vector<sample>& samples) {
     if (samples.size() <= 1) return;
+    set<uint32_t> unique_key_vars = input;
+    unique_key_vars.insert(backward_defined.begin(), backward_defined.end());
     std::sort(samples.begin(), samples.end(),
-        [this](const sample& a, const sample& b) {
-            for(const auto& v: input) {
+        [&unique_key_vars](const sample& a, const sample& b) {
+            for(const auto& v: unique_key_vars) {
                 if (a[v] != b[v]) return a[v] == l_False;
             }
             return false; // equal
@@ -2134,7 +2136,7 @@ void Manthan::sort_all_samples(vector<sample>& samples) {
         vector<sample> samples2;
         samples2.push_back(samples[0]);
         for(size_t i = 1; i < samples.size(); i++) {
-            for(const auto& v: input) {
+            for(const auto& v: unique_key_vars) {
                 if (samples[i][v] != samples2.back()[v]) {
                     samples2.push_back(samples[i]);
                     break;
@@ -2142,7 +2144,7 @@ void Manthan::sort_all_samples(vector<sample>& samples) {
             }
         }
         verb_print(1, "[sort_all_samples] Reduced samples from " << samples.size()
-                << " to " << samples2.size() << " by removing duplicates on input vars.");
+                << " to " << samples2.size() << " by removing duplicates on input+predefined vars.");
         samples = samples2;
     }
 }

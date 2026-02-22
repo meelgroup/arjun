@@ -343,16 +343,21 @@ void do_synthesis() {
     cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
     cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
     if (!candidate_defs_file.empty()) {
+        cnf.set_preserve_existing_defs(true);
         import_candidate_functions(cnf, candidate_defs_file);
         cnf.get_var_types(conf.verb | verbose_debug_enabled, "after importing candidate functions");
     }
-    const bool candidate_all_specified = (!candidate_defs_file.empty() && cnf.synth_done());
+    const bool has_candidate_funs = !candidate_defs_file.empty();
+    const bool candidate_all_specified = (has_candidate_funs && cnf.synth_done());
     if (candidate_all_specified) {
         cout << "c o [synth] all non-input functions provided by candidate file;"
              << " skipping synth preprocessing and starting from counterexample checks" << endl;
     }
+    if (has_candidate_funs && do_synth_bve) {
+        cout << "c o [synth] candidate functions supplied; skipping --synthbve preprocessing" << endl;
+    }
 
-    if (!candidate_all_specified && do_synth_bve && !cnf.synth_done()) {
+    if (!has_candidate_funs && !candidate_all_specified && do_synth_bve && !cnf.synth_done()) {
         /* simp_conf.bve_too_large_resolvent = -1; */
         cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
@@ -386,40 +391,52 @@ void do_synthesis() {
     }
 
     auto mconf_orig = mconf;
+    int effective_strategy = manthan_strategy;
+    if (has_candidate_funs && effective_strategy == 4) {
+        cout << "c o [synth] candidate functions supplied; ignoring --mstrategy 4 (BVE-only), using strategy 2" << endl;
+        effective_strategy = 2;
+    }
     uint32_t tries;
-    if (manthan_strategy > 4) {
-        cout << "ERROR: unknown strategy " << manthan_strategy << endl;
+    if (effective_strategy > 4) {
+        cout << "ERROR: unknown strategy " << effective_strategy << endl;
         exit(EXIT_FAILURE);
     }
-    if (candidate_all_specified) {
+    const bool all_defined_before_manthan = cnf.synth_done();
+    if (all_defined_before_manthan) {
         mconf = mconf_orig;
+        if (!candidate_all_specified) {
+            cout << "c o [synth] all non-input functions are already defined;"
+                 << " running final counterexample check before returning" << endl;
+        }
         mconf.start_from_candidate_cex = 1;
         mconf.manthan_bve = 0;
         if (mconf.manthan_order == 2) mconf.manthan_order = 0;
         tries = std::numeric_limits<uint32_t>::max();
         cnf = arjun->standalone_manthan(cnf, mconf, tries);
-    } else if (!cnf.synth_done() && (manthan_strategy == 0 || manthan_strategy == 1)) {
+    } else if (!cnf.synth_done() && (effective_strategy == 0 || effective_strategy == 1)) {
         mconf = mconf_orig;
         // Learning with no samples
         mconf.manthan_bve = 0;
+        if (has_candidate_funs && mconf.manthan_order == 2) mconf.manthan_order = 0;
         mconf.num_samples = 1;
         mconf.num_samples_ccnr = 0;
         mconf.manthan_bve = 0;
         tries = 20*manthan_rep_mult;
-        if (manthan_strategy == 1) tries = std::numeric_limits<uint32_t>::max();
+        if (effective_strategy == 1) tries = std::numeric_limits<uint32_t>::max();
         cnf = arjun->standalone_manthan(cnf, mconf, tries);
         if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 1");
     }
-    if (!candidate_all_specified && !cnf.synth_done() && (manthan_strategy == 0 || manthan_strategy == 2)) {
+    if (!candidate_all_specified && !cnf.synth_done() && (effective_strategy == 0 || effective_strategy == 2)) {
         // Learning with (larger) samples size
         mconf = mconf_orig;
         mconf.manthan_bve = 0;
+        if (has_candidate_funs && mconf.manthan_order == 2) mconf.manthan_order = 0;
         tries = 100*manthan_rep_mult;
-        if (manthan_strategy == 2) tries = std::numeric_limits<uint32_t>::max();
+        if (effective_strategy == 2) tries = std::numeric_limits<uint32_t>::max();
         cnf = arjun->standalone_manthan(cnf, mconf, tries);
         if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 2");
     }
-    if (!cnf.synth_done() && (manthan_strategy == 0 || manthan_strategy == 3)) {
+    if (!cnf.synth_done() && (effective_strategy == 0 || effective_strategy == 3)) {
         // Learning, no BW, only input var learning, no silent update
         mconf = mconf_orig;
         mconf.manthan_bve = 0;
@@ -427,11 +444,11 @@ void do_synthesis() {
         mconf.silent_var_update = 0;
         mconf.do_use_all_variables_as_features = 0;
         tries = 100*manthan_rep_mult;
-        if (manthan_strategy == 3) tries = std::numeric_limits<uint32_t>::max();
+        if (effective_strategy == 3) tries = std::numeric_limits<uint32_t>::max();
         cnf = arjun->standalone_manthan(cnf, mconf, tries);
         if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 3");
     }
-    if (!cnf.synth_done() && (manthan_strategy == 0 || manthan_strategy == 4)) {
+    if (!has_candidate_funs && !cnf.synth_done() && (effective_strategy == 0 || effective_strategy == 4)) {
         // BVE strategy
         mconf = mconf_orig;
         mconf.manthan_bve = 1;

@@ -447,7 +447,10 @@ DLL_PUBLIC void SimplifiedCNF::get_fixed_values(
         if (l.var() >= nVars()) continue;
         Lit orig_lit = new_to_orig_var.at(l.var());
         orig_lit ^= l.sign();
-        assert(scnf.defs[orig_lit.var()] == nullptr && "Variable must not already have a definition");
+        if (scnf.defs[orig_lit.var()] != nullptr) {
+            if (scnf.preserve_existing_defs) continue;
+            assert(false && "Variable must not already have a definition");
+        }
         scnf.defs[orig_lit.var()] = scnf.aig_mng.new_const(!orig_lit.sign());
     }
 }
@@ -458,13 +461,16 @@ DLL_PUBLIC void SimplifiedCNF::add_fixed_values(const vector<Lit>& fixed) {
         if (l.var() >= nVars()) continue;
         Lit orig_lit = new_to_orig_var.at(l.var());
         orig_lit ^= l.sign();
-        assert(defs[orig_lit.var()] == nullptr && "Variable must not already have a definition");
+        if (defs[orig_lit.var()] != nullptr) {
+            if (preserve_existing_defs) continue;
+            assert(false && "Variable must not already have a definition");
+        }
         defs[orig_lit.var()] = aig_mng.new_const(!orig_lit.sign());
     }
 }
 
 DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig, const uint32_t max_num_vars,
-        const map<uint32_t, uint32_t>* back_map) {
+        const map<uint32_t, uint32_t>* back_map, const bool overwrite_existing) {
     const auto new_to_orig_var = get_new_to_orig_var();
     auto aigs = AIG::deep_clone_vec(aigs_orig);
     set<aig_ptr> visited;
@@ -502,7 +508,16 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig
         if (aig == nullptr) continue;
 
         auto l = new_to_orig_var.at(v);
-        assert(defs[l.var()] == nullptr && "Variable must not already have a definition");
+        if (defs[l.var()] != nullptr) {
+            if (overwrite_existing) {
+                // Explicitly requested by caller (candidate verification path).
+            } else if (preserve_existing_defs) {
+                // Candidate-provided defs are authoritative.
+                continue;
+            } else {
+                assert(false && "Variable must not already have a definition");
+            }
+        }
         assert(orig_sampl_vars.count(l.var()) == 0 && "Original sampling var cannot have definition via extend_synth or backward_round_synth");
         if (l.sign()) defs[l.var()] = AIG::new_not(aig);
         else defs[l.var()] = aig;
@@ -591,6 +606,7 @@ DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
     scnf.new_vars(solver->simplified_nvars());
     scnf.aig_mng = aig_mng;
     scnf.need_aig = need_aig;
+    scnf.preserve_existing_defs = preserve_existing_defs;
     if (need_aig) {
         scnf.defs = defs;
         scnf.aig_mng = aig_mng;
