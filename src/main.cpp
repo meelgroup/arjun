@@ -138,6 +138,7 @@ void add_arjun_options() {
     // repairing on vars
     myopt("--bwequal", mconf.force_bw_equal, atoi,"Force BW vars' indicators to be TRUE -- prevents repairing with them, but faster to repair");
     myopt("--bvaxor", mconf.bva_xor_vars, atoi,"Add XOR over input vars as BVA vars, so we can repair with them");
+    myopt("--silentupdate", mconf.silent_var_update, atoi,"Silently update variables while repairing");
     // Strategy
     myopt("--mtryrepmult", manthan_rep_mult, atoi,"Repair tries will be multiplied by this");
     myopt("--mstrategy", manthan_strategy, atoi,"Go directly to strategy N");
