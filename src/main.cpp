@@ -446,7 +446,7 @@ void do_synthesis() {
         tries = 100*manthan_rep_mult;
         if (effective_strategy == 3) tries = std::numeric_limits<uint32_t>::max();
         cnf = arjun->standalone_manthan(cnf, mconf, tries);
-        if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 4");
+        if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 3");
     }
     if (!has_candidate_funs && !cnf.synth_done() && (effective_strategy == 0 || effective_strategy == 4)) {
         // BVE strategy
@@ -454,7 +454,7 @@ void do_synthesis() {
         mconf.manthan_bve = 1;
         tries = std::numeric_limits<uint32_t>::max();
         cnf = arjun->standalone_manthan(cnf, mconf, tries);
-        if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 3");
+        if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 4");
     }
     release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");
