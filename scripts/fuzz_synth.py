@@ -361,6 +361,7 @@ if __name__ == "__main__":
             , " --bwequal"
             , " --bvaxor"
             , " --silentupdate"
+            , " --learnuseall"
             , " --monflyorder"
         ]
         for o in opts:
