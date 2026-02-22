@@ -397,8 +397,8 @@ void do_synthesis() {
         effective_strategy = 2;
     }
     uint32_t tries;
-    if (effective_strategy > 4) {
-        cout << "ERROR: unknown strategy " << effective_strategy << endl;
+    if (manthan_strategy > 4) {
+        cout << "ERROR: unknown strategy " << manthan_strategy << endl;
         exit(EXIT_FAILURE);
     }
     const bool all_defined_before_manthan = cnf.synth_done();
