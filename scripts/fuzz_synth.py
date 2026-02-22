@@ -358,6 +358,9 @@ if __name__ == "__main__":
             , " --repairsolver"
             , " --mbve"
             , " --unatedef"
+            , " --bwequal"
+            , " --bvaxor"
+            , " --silentupdate"
         ]
         for o in opts:
             val = random.choice([0, 1])
