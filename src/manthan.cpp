@@ -2227,7 +2227,7 @@ void Manthan::recompute_all_y_hat_cnf(sample& ctx) {
     }
     for(const auto& [y_hat, ind]: y_hat_to_indic) {
         uint32_t y = indic_to_y[ind];
-        if (backward_defined.count(y)) continue; // already forced to true
+        if (mconf.force_bw_equal && backward_defined.count(y)) continue;
         assumps.push_back(Lit(ind, false));
     }
 
