@@ -81,7 +81,7 @@ int simptofile = true;
 int sampl_start_at_zero = false;
 int do_synth_bve = true;
 int do_pre_backbone = 0;
-int manthan_rep_mult = 1;
+int manthan_rep_mult = 4;
 int manthan_strategy = 0;
 
 int synthesis = false;
