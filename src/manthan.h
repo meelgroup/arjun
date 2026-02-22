@@ -89,7 +89,7 @@ class Manthan {
         set<uint32_t> input;
         set<uint32_t> to_define;
         set<uint32_t> backward_defined;
-        set<uint32_t> to_define_full; // to_define + backward_defined
+        set<uint32_t> to_define_full; // vars represented by y/y_hat in Manthan
 
         // To help us account for every variable in the formulas' clauses
         set<uint32_t> helpers; // used for ITE
@@ -125,7 +125,8 @@ class Manthan {
         void perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict);
         void add_not_f_x_yhat();
         void fill_dependency_mat_with_backward();
-        void fill_var_to_formula_with_backward();
+        void fill_dependency_mat_from_all_defined();
+        void fill_var_to_formula_with_backward(bool include_to_define);
         void print_y_order_occur() const;
         void compute_needs_repair(const sample& ctx);
         void recompute_all_y_hat_cnf(sample& ctx);

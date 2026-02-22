@@ -1368,6 +1368,7 @@ public:
         int manthan_order = 0;
         int manthan_on_the_fly_order = 0;
         int one_repair_per_loop = 0;
+        int start_from_candidate_cex = 0;
         int do_td_contract = 1; // contract over the input variables
         int td_max_edges = 70000;
         std::string td_visualize_dot_file = "";

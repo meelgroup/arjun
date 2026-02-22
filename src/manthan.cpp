@@ -267,6 +267,35 @@ void Manthan::fill_dependency_mat_with_backward() {
     assert(check_map_dependency_cycles());
 }
 
+void Manthan::fill_dependency_mat_from_all_defined() {
+    dependency_mat.clear();
+    dependency_mat.resize(cnf.nVars());
+    for(auto& m: dependency_mat) m.resize(cnf.nVars(), 0);
+
+    map<uint32_t, set<uint32_t>> cache;
+    const auto new_to_orig = cnf.get_new_to_orig_var();
+    const auto& orig_to_new = cnf.get_orig_to_new_var();
+    const auto& orig_inputs = cnf.get_orig_sampl_vars();
+
+    for (const auto& y_new : to_define_full) {
+        assert(input.count(y_new) == 0);
+        const uint32_t y_orig = new_to_orig.at(y_new).var();
+        const auto deps_orig = cnf.get_dependent_vars_recursive(y_orig, cache);
+        for (const auto& d_orig : deps_orig) {
+            if (orig_inputs.count(d_orig)) continue;
+            const auto it = orig_to_new.find(d_orig);
+            if (it == orig_to_new.end()) continue;
+            const uint32_t d_new = it->second.var();
+            if (d_new == y_new) continue;
+            if (input.count(d_new)) continue;
+            set_depends_on(y_new, d_new);
+        }
+    }
+
+    assert(check_transitive_closure_correctness());
+    assert(check_map_dependency_cycles());
+}
+
 bool Manthan::check_transitive_closure_correctness() const {
     // Then, compute transitive closure to ensure transitivity
     // If A depends on B and B depends on C, then A depends on C
@@ -291,10 +320,11 @@ bool Manthan::check_transitive_closure_correctness() const {
     return true;
 }
 
-void Manthan::fill_var_to_formula_with_backward() {
+void Manthan::fill_var_to_formula_with_backward(const bool include_to_define) {
     const auto new_to_orig = cnf.get_new_to_orig_var();
 
-    for(const auto& v: backward_defined) {
+    for(const auto& v: to_define_full) {
+        if (!include_to_define && to_define.count(v)) continue;
         FHolder<MetaSolver2>::Formula f;
 
         // Get the original variable number
@@ -342,7 +372,31 @@ void Manthan::fill_var_to_formula_with_backward() {
         map<aig_ptr, Lit> cache;
         const Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
         f.out = out_lit ^ orig.sign();
-        f.aig = nullptr; // we won't need it.
+
+        if (include_to_define) {
+            // Candidate mode needs AIGs for final map-back of to_define vars.
+            map<aig_ptr, aig_ptr> aig_cache;
+            auto aig_to_cnf_aig_visitor =
+              [&](AIGT type, const uint32_t var_orig, const bool neg, const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
+                if (type == AIGT::t_const) {
+                    return neg ? aig_mng.new_const(false) : aig_mng.new_const(true);
+                }
+                if (type == AIGT::t_lit) {
+                    const Lit lit_new = cnf.orig_to_new_lit(Lit(var_orig, neg));
+                    return AIG::new_lit(lit_new);
+                }
+                if (type == AIGT::t_and) {
+                    assert(left != nullptr && right != nullptr);
+                    return AIG::new_and(*left, *right, neg);
+                }
+                assert(false && "Unhandled AIG type in AIG visitor");
+                exit(EXIT_FAILURE);
+              };
+            f.aig = AIG::transform<aig_ptr>(aig, aig_to_cnf_aig_visitor, aig_cache);
+        } else {
+            // Normal mode keeps previous behavior for backward-defined vars.
+            f.aig = nullptr;
+        }
         assert(var_to_formula.count(v) == 0);
         var_to_formula[v] = f;
     }
@@ -786,14 +840,39 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
     // defined non-input vars -- vars defined via backward_round_synth
     // to_define vars -- vars that are not defined yet, and not input
     std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_manthan");
-    if (to_define.empty()) {
-        verb_print(1, "[manthan] No variables to define, returning original CNF");
-        return cnf;
-    }
+
+    const bool candidate_mode = (mconf.start_from_candidate_cex != 0);
     to_define_full.clear();
-    to_define_full.insert(to_define.begin(), to_define.end());
-    to_define_full.insert(backward_defined.begin(), backward_defined.end());
-    fill_dependency_mat_with_backward();
+    if (candidate_mode) {
+        input.clear();
+        to_define.clear();
+        backward_defined.clear();
+
+        const auto& orig_inputs = cnf.get_orig_sampl_vars();
+        for (const auto& [orig_v, new_l] : cnf.get_orig_to_new_var()) {
+            if (orig_inputs.count(orig_v)) {
+                input.insert(new_l.var());
+                continue;
+            }
+            if (!cnf.defined(orig_v)) continue;
+            to_define.insert(new_l.var());
+        }
+
+        to_define_full = to_define;
+        if (to_define_full.empty()) {
+            verb_print(1, "[manthan] Candidate mode requested but no candidate-defined vars found");
+            return cnf;
+        }
+        fill_dependency_mat_from_all_defined();
+    } else {
+        if (to_define.empty()) {
+            verb_print(1, "[manthan] No variables to define, returning original CNF");
+            return cnf;
+        }
+        to_define_full.insert(to_define.begin(), to_define.end());
+        to_define_full.insert(backward_defined.begin(), backward_defined.end());
+        fill_dependency_mat_with_backward();
+    }
     get_incidence();
 
     inject_cnf(repair_solver);
@@ -809,11 +888,18 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
     verb_print(2, "[manthan] After fh creation: solver_train.nVars() = " << cex_solver.nVars() << " cnf.nVars() = " << cnf.nVars());
 
     // Order & train
-    pre_order_vars();
-    fill_var_to_formula_with_backward();
-    if (mconf.manthan_bve) bve_and_substitute();
-    else full_train();
-    post_order_vars();
+    if (candidate_mode) {
+        fill_var_to_formula_with_backward(true);
+        verb_print(1, "[manthan] Candidate mode: skipping training/BVE substitution, starting with counterexample checks");
+        pre_order_vars();
+        post_order_vars();
+    } else {
+        pre_order_vars();
+        fill_var_to_formula_with_backward(false);
+        if (mconf.manthan_bve) bve_and_substitute();
+        else full_train();
+        post_order_vars();
+    }
 
     // Counterexample-guided repair
     repair_start_time = cpuTime();
