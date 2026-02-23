@@ -154,19 +154,20 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
                 << " new units: " << setw(4) << new_units
                 << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
         }
-
+        for(uint32_t i = 0; i < cnf.nVars(); i++) {
+            if (i == test) continue;
+            if (sampl_set.count(i)) continue;
+            if (backward_defined.count(i)) continue;
+            auto ind = var_to_indic.at(i);
+            assert(ind != var_Undef);
+            // Add indicator literals as hard clauses for this test.
+            s->add_clause({Lit(ind, false)});
+        }
         for(int flip = 0; flip < 2; flip++) {
             assumps.clear();
             assumps.push_back(Lit(test, !flip));
             assumps.push_back(Lit(test+cnf.nVars(), flip));
-            for(uint32_t i = 0; i < cnf.nVars(); i++) {
-                if (i == test) continue;
-                if (sampl_set.count(i)) continue;
-                if (backward_defined.count(i)) continue;
-                auto ind = var_to_indic.at(i);
-                assert(ind != var_Undef);
-                assumps.push_back(Lit(ind, false));
-            }
+
             verb_print(3, "[unate_def] assumps : " << assumps);
             s->set_no_confl_needed();
             s->set_max_confl(conf.backw_max_confl);
