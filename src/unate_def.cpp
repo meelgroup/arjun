@@ -139,6 +139,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
 
     vector<Lit> assumps;
     vector<Lit> cl;
+    set<uint32_t> already_tested;
     s->set_bve(false);
 
     uint32_t tested_num = 0;
@@ -154,18 +155,19 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
                 << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
         }
 
+        assumps.clear();
+        for(uint32_t i = 0; i < cnf.nVars(); i++) {
+            if (i == test) continue;
+            if (already_tested.count(i)) continue;
+            if (sampl_set.count(i)) continue;
+            if (backward_defined.count(i)) continue;
+            auto ind = var_to_indic.at(i);
+            assert(ind != var_Undef);
+            assumps.push_back(Lit(ind, false));
+        }
         for(int flip = 0; flip < 2; flip++) {
-            assumps.clear();
             assumps.push_back(Lit(test, !flip));
             assumps.push_back(Lit(test+cnf.nVars(), flip));
-            for(uint32_t i = 0; i < cnf.nVars(); i++) {
-                if (i == test) continue;
-                if (sampl_set.count(i)) continue;
-                if (backward_defined.count(i)) continue;
-                auto ind = var_to_indic.at(i);
-                assert(ind != var_Undef);
-                assumps.push_back(Lit(ind, false));
-            }
             verb_print(3, "[unate_def] assumps : " << assumps);
             s->set_no_confl_needed();
             s->set_max_confl(conf.backw_max_confl);
@@ -182,7 +184,11 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
                 new_units++;
                 break;
             }
+            assumps.pop_back();
+            assumps.pop_back();
         }
+        already_tested.insert(test);
+        s->add_clause({Lit(var_to_indic.at(test), false)});
     }
 
     cnf.add_fixed_values(unates);
