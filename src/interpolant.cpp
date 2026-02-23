@@ -48,7 +48,19 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
 
   const uint64_t id1 = rantec[0];
   auto aig = fs_clid[id1];
+  release_assert(aig != nullptr);
   set<Lit> resolvent(cls[id1].begin(),cls[id1].end());
+  std::vector<aig_ptr> same_op_terms;
+  bool same_op_is_and = false;
+  bool same_op_started = false;
+
+  auto flush_terms = [&]() {
+      if (!same_op_started) return;
+      aig = combine_balanced(std::move(same_op_terms), same_op_is_and);
+      same_op_terms.clear();
+      same_op_started = false;
+  };
+
   for(uint32_t i = 1; i < rantec.size(); i++) {
       if (conf.verb >= 4) {
           cout << "resolvent: "; for(const auto& l: resolvent) cout << l << " "; cout << endl;
@@ -70,9 +82,24 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
       }
       assert(res_lit != lit_Undef);
       bool input_or_copy = input.count(res_lit.var()) || res_lit.var() >= (uint32_t)orig_num_vars;
-      if (input_or_copy) aig = AIG::new_and(aig, fs_clid[id2]);
-      else aig = AIG::new_or(aig, fs_clid[id2]);
+      auto rhs = fs_clid[id2];
+      release_assert(rhs != nullptr);
+      if (!same_op_started) {
+          same_op_started = true;
+          same_op_is_and = input_or_copy;
+          same_op_terms.push_back(aig);
+          same_op_terms.push_back(rhs);
+      } else if (same_op_is_and == input_or_copy) {
+          same_op_terms.push_back(rhs);
+      } else {
+          flush_terms();
+          same_op_started = true;
+          same_op_is_and = input_or_copy;
+          same_op_terms.push_back(aig);
+          same_op_terms.push_back(rhs);
+      }
   }
+  flush_terms();
   fs_clid[id] = aig;
   verb_print(5, "intermediate formula: " << fs_clid[id]);
   if (clause.empty()) {
@@ -179,8 +206,8 @@ void Interpolant::generate_interpolant(
     }
 
     // CaDiCaL on the core only
-    auto cdcl = std::make_unique<Solver>();
     MyTracer t(orig_num_vars, input_vars, conf, lit_to_aig, cnf.get_aig_mng());
+    auto cdcl = std::make_unique<Solver>();
 
     cdcl->connect_proof_tracer(&t, true);
     /* std::stringstream name; */
@@ -204,6 +231,7 @@ void Interpolant::generate_interpolant(
     }
     release_assert(pret == Status::UNSATISFIABLE);
     cdcl->disconnect_proof_tracer(&t);
+    cdcl.reset();
 
     defs[test_var] = t.out;
     verb_print(5, "definition of var: " << test_var+1 << " is: " << t.out);
