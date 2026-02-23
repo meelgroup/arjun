@@ -34,6 +34,7 @@ extern "C" {
 #include "formula.h"
 #include <vector>
 #include <map>
+#include <utility>
 #include <cstdint>
 #include <cadical.hpp>
 #include <tracer.hpp>
@@ -63,6 +64,21 @@ struct MyTracer : public CaDiCaL::Tracer {
     // AIG cache
     map<Lit, aig_ptr>& lit_to_aig;
 
+    static aig_ptr combine_balanced(std::vector<aig_ptr> terms, bool use_and) {
+      release_assert(!terms.empty());
+      while (terms.size() > 1) {
+          std::vector<aig_ptr> next;
+          next.reserve((terms.size()+1)/2);
+          for(uint32_t i = 0; i < terms.size(); i += 2) {
+              if (i+1 >= terms.size()) next.push_back(terms[i]);
+              else if (use_and) next.push_back(AIG::new_and(terms[i], terms[i+1]));
+              else next.push_back(AIG::new_or(terms[i], terms[i+1]));
+          }
+          terms = std::move(next);
+      }
+      return terms[0];
+    }
+
     aig_ptr get_aig(const Lit l) {
       if (lit_to_aig.count(l)) return lit_to_aig.at(l);
       aig_ptr aig = AIG::new_lit(l);
@@ -73,13 +89,12 @@ struct MyTracer : public CaDiCaL::Tracer {
     aig_ptr get_aig(const vector<Lit>& unsorted_cl) {
       vector<Lit> cl = unsorted_cl;
       std::sort(cl.begin(), cl.end());
-      aig_ptr aig = nullptr;
-      for(const auto& l: cl) {
-          if (aig == nullptr) aig = get_aig(l);
-          else aig = AIG::new_or(aig, get_aig(l));
-      }
-      if (aig == nullptr) aig = aig_mng.new_const(false);
-      return aig;
+      if (cl.empty()) return aig_mng.new_const(false);
+
+      std::vector<aig_ptr> leaves;
+      leaves.reserve(cl.size());
+      for(const auto& l: cl) leaves.push_back(get_aig(l));
+      return combine_balanced(std::move(leaves), false);
     };
 
     void add_derived_clause (uint64_t id, bool red, const std::vector<int> & clause,
@@ -124,4 +139,3 @@ private:
     vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
     vector<aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space
 };
-
