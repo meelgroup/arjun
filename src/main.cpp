@@ -83,6 +83,7 @@ int do_synth_bve = true;
 int do_pre_backbone = 0;
 int manthan_rep_mult = 4;
 int manthan_strategy = 0;
+constexpr uint32_t unate_def_backward_rerun_threshold = 8;
 
 int synthesis = false;
 int do_unate = false;
@@ -386,8 +387,28 @@ void do_synthesis() {
     }
 
     if (!candidate_all_specified && do_unate_def && !cnf.synth_done()) {
+        uint32_t unate_def_newly_defined = 0;
+        auto [input_before_unate_def, to_define_before_unate_def, backward_before_unate_def] =
+            cnf.get_var_types(0 | verbose_debug_enabled, "pre_unate_def_count");
         arjun->standalone_unate_def(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate_def.aig");
+        auto [input_after_unate_def, to_define_after_unate_def, backward_after_unate_def] =
+            cnf.get_var_types(0 | verbose_debug_enabled, "post_unate_def_count");
+        (void)input_after_unate_def;
+        (void)backward_after_unate_def;
+        if (to_define_before_unate_def.size() >= to_define_after_unate_def.size()) {
+            unate_def_newly_defined += to_define_before_unate_def.size() - to_define_after_unate_def.size();
+        }
+
+        if (do_minim_indep && !cnf.synth_done()
+            && unate_def_newly_defined >= unate_def_backward_rerun_threshold) {
+            cout << "c o [synth] unate_def defined " << unate_def_newly_defined
+                << " vars (threshold " << unate_def_backward_rerun_threshold
+                << "), rerunning backward synthesis" << endl;
+            arjun->standalone_backward_round_synth(cnf, mconf);
+            if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-minim_idep_synt-post_unate_def.aig");
+            cnf.simplify_aigs(conf.verb);
+        }
     }
 
     auto mconf_orig = mconf;

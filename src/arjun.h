@@ -1248,7 +1248,6 @@ public:
         }
     }
     void set_after_backward_round_synth() {
-        assert(!after_backward_round_synth && "Should only be set once");
         after_backward_round_synth = true;
     }
     const auto& get_orig_to_new_var() const {
