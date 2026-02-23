@@ -24,6 +24,7 @@
 
 #include "unate_def.h"
 #include "constants.h"
+#include "src/cachedsolver.h"
 #include "time_mem.h"
 #include <iomanip>
 
@@ -135,12 +136,11 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         s->add_clause(tmp);
         var_to_indic[i] = ind_l.var();
     }
-    if (conf.verb >= 3) dump_cnf<Lit>(*s, "unate_def-start.cnf", sampl_set);
+    /* if (conf.verb >= 3) dump_cnf<Lit>(*s, "unate_def-start.cnf", sampl_set); */
 
     vector<Lit> assumps;
     vector<Lit> cl;
     set<uint32_t> already_tested;
-    s->set_bve(false);
 
     uint32_t tested_num = 0;
     vector<Lit> unates;
@@ -150,7 +150,6 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         tested_num++;
         if (tested_num % 300 == 299) {
             verb_print(1, "[unate_def] test no: " << setw(5) << tested_num
-                << " confl K: " << setw(4) << s->get_sum_conflicts()/1000
                 << " new units: " << setw(4) << new_units
                 << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
         }
@@ -169,9 +168,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
             assumps.push_back(Lit(test, !flip));
             assumps.push_back(Lit(test+cnf.nVars(), flip));
             verb_print(3, "[unate_def] assumps : " << assumps);
-            s->set_no_confl_needed();
-            s->set_max_confl(conf.backw_max_confl);
-            const auto ret = s->solve(&assumps, true);
+            const auto ret = s->solve(&assumps);
             if (ret == l_False) {
                 Lit l = {Lit(test, flip)};
                 unates.push_back(l);
@@ -191,13 +188,20 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         s->add_clause({Lit(var_to_indic.at(test), false)});
     }
 
+    double total_time = cpuTime() - my_time;
+    verb_print(1, COLYEL "[unate_def] "
+            << " units: " << setw(7) << new_units
+            << " tested: " << setw(7) << tested_num
+            << " tests/s: " << setprecision(2) << fixed << setw(6) << safe_div(tested_num, total_time)
+            << " cache useful: " << setprecision(2) << fixed << s->get_cache_hit_rate() * 100 << "%");
+
     cnf.add_fixed_values(unates);
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end do_unate_def");
     verb_print(1, COLRED "[unate_def] Done. synthesis_unate_def"
         << " tested: " << tested_num
         << " defined: " << to_define.size() - to_define2.size()
         << " still to define: " << to_define2.size()
-        << " T: " << (cpuTime() - my_time));
+        << " T: " << total_time);
 }
 
 void Unate::synthesis_unate(SimplifiedCNF& cnf) {
@@ -241,11 +245,10 @@ void Unate::synthesis_unate(SimplifiedCNF& cnf) {
         s->add_clause(tmp);
         var_to_indic[i] = ind_l.var();
     }
-    if (conf.verb >= 3) dump_cnf<Lit>(*s, "unate-start.cnf", sampl_set);
+    /* if (conf.verb >= 3) dump_cnf<Lit>(*s, "unate-start.cnf", sampl_set); */
 
     vector<Lit> assumps;
     vector<Lit> cl;
-    s->set_bve(false);
 
     uint32_t tested_num = 0;
     vector<Lit> unates;
@@ -256,7 +259,6 @@ void Unate::synthesis_unate(SimplifiedCNF& cnf) {
         tested_num++;
         if (tested_num % 300 == 299) {
             verb_print(1, "[unate] test no: " << setw(5) << tested_num
-                << " confl K: " << setw(4) << s->get_sum_conflicts()/1000
                 << " new units: " << setw(4) << new_units
                 << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
         }
@@ -273,9 +275,7 @@ void Unate::synthesis_unate(SimplifiedCNF& cnf) {
                 assumps.push_back(Lit(ind, false));
             }
             verb_print(3, "[unate] assumps : " << assumps);
-            s->set_no_confl_needed();
-            s->set_max_confl(conf.unate_max_confl);
-            const auto ret = s->solve(&assumps, true);
+            const auto ret = s->solve(&assumps);
             if (ret == l_False) {
 
                 Lit l = {Lit(test, flip)};
@@ -305,20 +305,13 @@ void Unate::synthesis_unate(SimplifiedCNF& cnf) {
         << " T: " << (cpuTime() - my_time));
 }
 
-unique_ptr<SATSolver> Unate::setup_f_not_f(const SimplifiedCNF& cnf) {
+unique_ptr<ArjunInt::CachedSolver> Unate::setup_f_not_f(const SimplifiedCNF& cnf) {
     double my_time = cpuTime();
 
     vector<Lit> tmp;
-    auto s = std::make_unique<SATSolver>();
+    auto s = std::make_unique<ArjunInt::CachedSolver>();
     s->new_vars(cnf.nVars()*2); // one for orig, one for copy
     s->set_verbosity(0);
-    s->set_prefix("c o ");
-    s->set_bve(false);
-    s->set_bva(false);
-    s->set_no_simplify_at_startup();
-    s->set_simplify(false);
-    s->set_sls(false);
-    s->set_find_xors(false);
 
     vector<Lit> not_f_cls;
     for(const auto& cl: cnf.get_clauses()) {

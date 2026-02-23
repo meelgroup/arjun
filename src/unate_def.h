@@ -31,6 +31,7 @@
 #include <cryptominisat5/cryptominisat.h>
 #include "arjun.h"
 #include "config.h"
+#include "src/cachedsolver.h"
 
 using namespace ArjunNS;
 using namespace CMSat;
@@ -57,5 +58,5 @@ class Unate {
 
         vector<uint32_t> var_to_indic; // for each var, the indicator
                                        // variable in the SAT solver that is true iff the var is equal to its copy (i.e. not flipped)
-        unique_ptr<SATSolver> setup_f_not_f(const SimplifiedCNF& cnf);
+        unique_ptr<ArjunInt::CachedSolver> setup_f_not_f(const SimplifiedCNF& cnf);
 };
