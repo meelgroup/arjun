@@ -40,8 +40,6 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         verb_print(1, "[unate_def] No variables to define, skipping");
         return;
     }
-    sampl_set = input; // This treats both sampling set, and opt sampling set as input
-
     auto s = setup_f_not_f(cnf);
 
     // Add copied-side definition constraints: i' <-> H_i(X, Y') for all i in I.
@@ -55,8 +53,9 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         }
         return true_lit;
     };
+
     for(const auto& i_new: backward_defined) {
-        if (sampl_set.count(i_new)) continue;
+        if (input.count(i_new)) continue;
 
         assert(new_to_orig.count(i_new) > 0);
         const Lit orig = new_to_orig.at(i_new);
@@ -71,7 +70,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
             }
             if (type == AIGT::t_lit) {
                 const Lit lit_new = cnf.orig_to_new_lit(Lit(var_orig, neg));
-                if (sampl_set.count(lit_new.var())) return lit_new;
+                if (input.count(lit_new.var())) return lit_new;
                 assert(lit_new.var() < cnf.nVars());
                 return Lit(lit_new.var() + cnf.nVars(), lit_new.sign());
             }
@@ -108,7 +107,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     assert(var_to_indic.empty());
     var_to_indic.resize(cnf.nVars(), var_Undef);
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
-        if (sampl_set.count(i)) continue;
+        if (input.count(i)) continue;
         if (backward_defined.count(i)) continue;
         s->new_var();
         const Lit ind_l = Lit(s->nVars()-1, false);
@@ -135,7 +134,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         s->add_clause(tmp);
         var_to_indic[i] = ind_l.var();
     }
-    /* if (conf.verb >= 3) dump_cnf<Lit>(*s, "unate_def-start.cnf", sampl_set); */
+    /* if (conf.verb >= 3) dump_cnf<Lit>(*s, "unate_def-start.cnf", input); */
 
     vector<Lit> assumps;
     vector<Lit> cl;
@@ -144,7 +143,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     uint32_t tested_num = 0;
     vector<Lit> unates;
     for(uint32_t test: to_define) {
-        assert(sampl_set.count(test) == 0);
+        assert(input.count(test) == 0);
         verb_print(3, "[unate_def] testing var: " << test+1);
         tested_num++;
         if (tested_num % 300 == 299) {
@@ -152,13 +151,12 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
                 << " new units: " << setw(4) << new_units
                 << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
         }
-        if (assumps.empty()) return true;
 
         assumps.clear();
         for(uint32_t i = 0; i < cnf.nVars(); i++) {
             if (i == test) continue;
             if (already_tested.count(i)) continue;
-            if (sampl_set.count(i)) continue;
+            if (input.count(i)) continue;
             if (backward_defined.count(i)) continue;
             auto ind = var_to_indic.at(i);
             assert(ind != var_Undef);
@@ -212,14 +210,12 @@ void Unate::synthesis_unate(SimplifiedCNF& cnf) {
         verb_print(1, "[unate] No variables to define, skipping");
         return;
     }
-    // Treat extend-defined variables as inputs too (as classified by get_var_types()).
-    sampl_set = input;
 
     auto s = setup_f_not_f(cnf);
     var_to_indic.clear();
     var_to_indic.resize(cnf.nVars(), var_Undef);
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
-        if (sampl_set.count(i)) continue;
+        if (input.count(i)) continue;
         s->new_var();
         const Lit ind_l = Lit(s->nVars()-1, false);
 
@@ -245,7 +241,7 @@ void Unate::synthesis_unate(SimplifiedCNF& cnf) {
         s->add_clause(tmp);
         var_to_indic[i] = ind_l.var();
     }
-    /* if (conf.verb >= 3) dump_cnf<Lit>(*s, "unate-start.cnf", sampl_set); */
+    /* if (conf.verb >= 3) dump_cnf<Lit>(*s, "unate-start.cnf", input); */
 
     vector<Lit> assumps;
     vector<Lit> cl;
@@ -253,7 +249,7 @@ void Unate::synthesis_unate(SimplifiedCNF& cnf) {
     uint32_t tested_num = 0;
     vector<Lit> unates;
     for(uint32_t test: to_define) {
-        assert(sampl_set.count(test) == 0);
+        assert(input.count(test) == 0);
         verb_print(3, "[unate] testing var: " << test+1);
         /* if (s->removed_var(test)) continue; */
         tested_num++;
@@ -269,7 +265,7 @@ void Unate::synthesis_unate(SimplifiedCNF& cnf) {
             assumps.push_back(Lit(test+cnf.nVars(), flip));
             for(uint32_t i = 0; i < cnf.nVars(); i++) {
                 if (i == test) continue;
-                if (sampl_set.count(i)) continue;
+                if (input.count(i)) continue;
                 auto ind = var_to_indic.at(i);
                 assert(ind != var_Undef);
                 assumps.push_back(Lit(ind, false));
@@ -323,7 +319,7 @@ unique_ptr<ArjunInt::CachedSolver> Unate::setup_f_not_f(const SimplifiedCNF& cnf
         // (C shifted) V -z
         tmp.clear();
         for(const auto& l: cl) {
-            if (sampl_set.count(l.var())) tmp.push_back(l);
+            if (input.count(l.var())) tmp.push_back(l);
             else tmp.push_back(Lit(l.var()+cnf.nVars(), l.sign()));
         }
         tmp.push_back(~z);
@@ -332,7 +328,7 @@ unique_ptr<ArjunInt::CachedSolver> Unate::setup_f_not_f(const SimplifiedCNF& cnf
         // (each -lit in C, shifted) V z
         for(const auto& l: cl) {
             tmp.clear();
-            if (sampl_set.count(l.var())) tmp = {~l,  z};
+            if (input.count(l.var())) tmp = {~l,  z};
             else tmp = {Lit(l.var()+cnf.nVars(), !l.sign()),  z};
             s->add_clause(tmp);
         }
