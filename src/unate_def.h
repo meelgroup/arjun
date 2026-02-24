@@ -50,8 +50,6 @@ class Unate {
     private:
 
         ArjunInt::Config conf;
-        set<uint32_t> sampl_set;
-
         set<uint32_t> input;
         set<uint32_t> to_define;
         set<uint32_t> backward_defined;
