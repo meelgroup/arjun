@@ -138,53 +138,115 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     }
     if (conf.verb >= 3) dump_cnf<Lit>(*s, "unate_def-start.cnf", sampl_set);
 
-    vector<Lit> assumps;
-    vector<Lit> cl;
+    vector<uint32_t> indic_to_var;
+    indic_to_var.resize(s->nVars(), var_Undef);
+    vector<char> still_open(cnf.nVars(), 0);
+    vector<char> counted_test(cnf.nVars(), 0);
+    for (const auto test: to_define) {
+        const auto ind = var_to_indic.at(test);
+        assert(ind != var_Undef);
+        assert(ind < indic_to_var.size());
+        indic_to_var[ind] = test;
+        still_open[test] = 1;
+    }
     s->set_bve(false);
 
     uint32_t tested_num = 0;
     vector<Lit> unates;
-    for(uint32_t test: to_define) {
-        assert(sampl_set.count(test) == 0);
-        verb_print(3, "[unate_def] testing var: " << test+1);
-        tested_num++;
-        if (tested_num % 300 == 299) {
-            verb_print(1, "[unate_def] test no: " << setw(5) << tested_num
-                << " confl K: " << setw(4) << s->get_sum_conflicts()/1000
-                << " new units: " << setw(4) << new_units
-                << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
-        }
-        for(uint32_t i = 0; i < cnf.nVars(); i++) {
-            if (i == test) continue;
-            if (sampl_set.count(i)) continue;
-            if (backward_defined.count(i)) continue;
-            auto ind = var_to_indic.at(i);
-            assert(ind != var_Undef);
-            // Add indicator literals as hard clauses for this test.
-            s->add_clause({Lit(ind, false)});
-        }
-        for(int flip = 0; flip < 2; flip++) {
-            assumps.clear();
-            assumps.push_back(Lit(test, !flip));
-            assumps.push_back(Lit(test+cnf.nVars(), flip));
-
-            verb_print(3, "[unate_def] assumps : " << assumps);
-            s->set_no_confl_needed();
-            s->set_max_confl(conf.backw_max_confl);
-            const auto ret = s->solve(&assumps, true);
-            if (ret == l_False) {
-                Lit l = {Lit(test, flip)};
-                unates.push_back(l);
-                cnf.add_clause({l});
-                verb_print(2, "[unate_def] good test. Setting: " << std::setw(3)  << l
-                    << " T: " << fixed << setprecision(2) << (cpuTime() - my_time));
-                l = Lit(test+cnf.nVars(), flip);
-                cl = {l};
-                s->add_clause(cl);
-                new_units++;
-                break;
+    auto run_unate_batch = [&](const bool test_var_sign) -> bool {
+        vector<Lit> assumps;
+        assumps.reserve(to_define.size());
+        for (const auto test: to_define) {
+            if (!still_open[test]) continue;
+            assert(sampl_set.count(test) == 0);
+            if (!counted_test[test]) {
+                counted_test[test] = 1;
+                tested_num++;
+                if (tested_num % 300 == 299) {
+                    verb_print(1, "[unate_def] test no: " << setw(5) << tested_num
+                        << " confl K: " << setw(4) << s->get_sum_conflicts()/1000
+                        << " new units: " << setw(4) << new_units
+                        << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
+                }
             }
+            verb_print(3, "[unate_def] testing var: " << test+1 << " pass: " << (test_var_sign ? 1 : 0));
+            const auto ind = var_to_indic.at(test);
+            assert(ind != var_Undef);
+            assumps.push_back(Lit(ind, false));
         }
+        if (assumps.empty()) return true;
+
+        vector<uint32_t> indep_vars;
+        vector<uint32_t> non_indep_vars;
+        uint32_t test_var = var_Undef;
+        uint32_t test_indic = var_Undef;
+        const Lit seed_indic = assumps.back();
+        assumps.pop_back();
+        test_indic = seed_indic.var();
+        if (test_indic >= indic_to_var.size()) {
+            verb_print(1, "[unate_def] seeded test indicator out of bounds: " << test_indic
+                << " indic_to_var size: " << indic_to_var.size());
+            return false;
+        }
+        test_var = indic_to_var.at(test_indic);
+        if (test_var == var_Undef || test_var >= cnf.nVars()) {
+            verb_print(1, "[unate_def] seeded test variable invalid: " << test_var
+                << " for indicator: " << test_indic);
+            return false;
+        }
+        assumps.push_back(Lit(test_var, test_var_sign));
+        assumps.push_back(Lit(test_var + cnf.nVars(), !test_var_sign));
+        FastBackwData b;
+        b._assumptions = &assumps;
+        b.indic_to_var = &indic_to_var;
+        b.orig_num_vars = cnf.nVars();
+        b.non_indep_vars = &non_indep_vars;
+        b.indep_vars = &indep_vars;
+        b.fast_backw_on = true;
+        b.test_var = &test_var;
+        b.test_indic = &test_indic;
+        b.max_confl = conf.backw_max_confl;
+        b.test_var_sign = test_var_sign;
+
+        s->set_no_confl_needed();
+        const auto ret = s->find_fast_backw(b);
+        if (ret == l_False) {
+            verb_print(1, "[unate_def] find_fast_backw hit global UNSAT unexpectedly in pass " << (test_var_sign ? 1 : 0));
+            return false;
+        }
+        assert(ret == l_True);
+        for (const auto var: non_indep_vars) {
+            if (var >= cnf.nVars()) {
+                verb_print(1, "[unate_def] non_indep var out of bounds: " << var
+                    << " nVars: " << cnf.nVars());
+                return false;
+            }
+            if (!still_open[var]) continue;
+            // fast_backw assumes y with sign=test_var_sign, y' with sign=!test_var_sign
+            // This corresponds to original unate flip = !test_var_sign.
+            const bool flip = !test_var_sign;
+            Lit l = Lit(var, flip);
+            unates.push_back(l);
+            cnf.add_clause({l});
+            verb_print(2, "[unate_def] good test. Setting: " << std::setw(3)  << l
+                << " T: " << fixed << setprecision(2) << (cpuTime() - my_time));
+            s->add_clause({Lit(var + cnf.nVars(), flip)});
+            const auto ind = var_to_indic.at(var);
+            if (ind == var_Undef) {
+                verb_print(1, "[unate_def] missing indicator for var: " << var);
+                return false;
+            }
+            s->add_clause({Lit(ind, false)});
+            still_open[var] = 0;
+            new_units++;
+        }
+        return true;
+    };
+
+    bool batch_ok = run_unate_batch(false);
+    if (batch_ok) batch_ok = run_unate_batch(true);
+    if (!batch_ok) {
+        verb_print(1, "[unate_def] batched unate run aborted early due to unexpected UNSAT");
     }
 
     cnf.add_fixed_values(unates);
