@@ -284,9 +284,6 @@ void Unate::synthesis_unate(SimplifiedCNF& cnf) {
                 verb_print(2, "[unate] good test. Setting: " << std::setw(3)  << l
                     << " T: " << fixed << setprecision(2) << (cpuTime() - my_time));
 
-                /* cl = {Lit(test, flip)}; */
-                /* cnf.add_clause(cl); */
-                /* s->add_clause(cl); */
                 l = Lit(test+cnf.nVars(), flip);
                 cl = {l};
                 s->add_clause(cl);
