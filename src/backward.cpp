@@ -415,12 +415,23 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     vector<char> unknown_set(orig_num_vars, 0);
     vector<uint32_t> unknown;
     auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start backward_round_synth");
+    const auto new_to_orig_var = cnf.get_new_to_orig_var();
+    map<uint32_t, set<uint32_t>> dep_cache;
+    map<uint32_t, set<uint32_t>> backward_depends_on_orig;
     set<uint32_t> pretend_input;
     if (to_define.empty()) {
         verb_print(1, "[backw-synth] No variables to define, returning original CNF");
         return;
     }
-    assert(backward_defined.empty());
+    if (!backward_defined.empty()) {
+        verb_print(1, "[backw-synth] Rerun mode: respecting pre-defined backward vars: "
+            << backward_defined.size());
+        for (const auto& b_new : backward_defined) {
+            assert(new_to_orig_var.count(b_new));
+            const uint32_t b_orig = new_to_orig_var.at(b_new).var();
+            backward_depends_on_orig[b_new] = cnf.get_dependent_vars_recursive(b_orig, dep_cache);
+        }
+    }
 
     add_all_indics_except(input);
     for(const auto& v: input) {
@@ -439,9 +450,8 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     interp.fill_picolsat(orig_num_vars);
     interp.fill_var_to_indic(var_to_indic);
 
-    for(uint32_t x = 0; x < orig_num_vars; x++) {
-        pretend_input.insert(x); // we pretend that all vars are input vars
-        if (input.count(x)) continue;
+    for(uint32_t x = 0; x < orig_num_vars; x++) pretend_input.insert(x); // we pretend that all vars are input vars
+    for(const auto& x: to_define) {
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
@@ -489,6 +499,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
         }
         assert(test_var < orig_num_vars);
         assert(!input.count(test_var));
+        assert(!backward_defined.count(test_var));
         assert(unknown_set[test_var]);
         unknown_set[test_var] = 0;
         pretend_input.erase(test_var);
@@ -496,7 +507,16 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
 
         //Assumption filling
         assert(test_var != var_Undef);
-        fill_assumptions_backward(assumptions, unknown, unknown_set, pretend_input, input);
+        set<uint32_t> ignore_assumps = input;
+        if (!backward_defined.empty()) {
+            assert(new_to_orig_var.count(test_var));
+            const uint32_t test_orig = new_to_orig_var.at(test_var).var();
+            for (const auto& b_new : backward_defined) {
+                const auto& deps = backward_depends_on_orig.at(b_new);
+                if (deps.count(test_orig)) ignore_assumps.insert(b_new);
+            }
+        }
+        fill_assumptions_backward(assumptions, unknown, unknown_set, pretend_input, ignore_assumps);
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
         solver->set_no_confl_needed();
@@ -556,6 +576,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
         const auto& aig = interp.get_defs()[v];
         if (aig == nullptr) continue;
         assert(input.count(v) == 0);
+        assert(backward_defined.count(v) == 0);
     }
     cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);
     cnf.set_after_backward_round_synth();

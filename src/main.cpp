@@ -83,6 +83,7 @@ int do_synth_bve = true;
 int do_pre_backbone = 0;
 int manthan_rep_mult = 4;
 int manthan_strategy = 0;
+constexpr uint32_t unate_def_backward_rerun_threshold = 8;
 
 int synthesis = false;
 int do_unate = false;
@@ -90,6 +91,7 @@ int do_unate_def = false;
 int do_revbce = false;
 int do_minim_indep = true;
 string debug_minim;
+string candidate_defs_file;
 double cms_glob_mult = -1.0;
 int mode = 0;
 unique_ptr<FieldGen> fg = nullptr;
@@ -165,6 +167,7 @@ void add_arjun_options() {
     // synth -- debug
     myopt("--manthancnf", mconf.write_manthan_cnf, string, "Write Manthan CNF to this file");
     myopt("--debugsynth", conf.debug_synth, string,"Debug synthesis, prefix with this fname");
+    myopt("--candidatefuns", candidate_defs_file, string, "Load candidate functions from AIG-defs file");
 
 
     // Simplification options for minim
@@ -278,6 +281,48 @@ void check_cnf_sat(const ArjunNS::SimplifiedCNF& cnf) {
     }
 }
 
+void import_candidate_functions(ArjunNS::SimplifiedCNF& cnf, const string& fname) {
+    ArjunNS::SimplifiedCNF cand(fg);
+    cand.read_aig_defs_from_file(fname);
+    if (!cand.get_need_aig()) {
+        cout << "ERROR: candidate file does not contain AIG data: " << fname << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    vector<ArjunNS::aig_ptr> aigs(cnf.nVars(), nullptr);
+    std::map<uint32_t, uint32_t> orig_to_current_new;
+    uint32_t imported = 0;
+    uint32_t skipped_already_defined = 0;
+    uint32_t skipped_missing = 0;
+    const auto& orig_inputs = cnf.get_orig_sampl_vars();
+    for (const auto& [orig_v, new_lit] : cnf.get_orig_to_new_var()) {
+        orig_to_current_new[orig_v] = new_lit.var();
+        if (orig_inputs.count(orig_v)) continue;
+        if (cnf.defined(orig_v)) {
+            skipped_already_defined++;
+            continue;
+        }
+        if (orig_v >= cand.num_defs()) {
+            skipped_missing++;
+            continue;
+        }
+        const auto& cand_aig = cand.get_def(orig_v);
+        if (cand_aig == nullptr) {
+            skipped_missing++;
+            continue;
+        }
+        aigs[new_lit.var()] = cand_aig;
+        imported++;
+    }
+
+    cnf.map_aigs_to_orig(aigs, cnf.nVars(), &orig_to_current_new);
+    cnf.simplify_aigs(conf.verb);
+    cout << "c o [synth] imported candidate defs from '" << fname << "'"
+         << " imported: " << imported
+         << " skipped-already-defined: " << skipped_already_defined
+         << " skipped-missing: " << skipped_missing << endl;
+}
+
 #ifdef SYNTH
 void do_synthesis() {
     if (etof_conf.all_indep) {
@@ -298,73 +343,139 @@ void do_synthesis() {
     check_cnf_sat(cnf);
     cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
     cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
-    if (do_synth_bve && !cnf.synth_done()) {
+    if (!candidate_defs_file.empty()) {
+        cnf.set_preserve_existing_defs(true);
+        import_candidate_functions(cnf, candidate_defs_file);
+        cnf.get_var_types(conf.verb | verbose_debug_enabled, "after importing candidate functions");
+    }
+    const bool has_candidate_funs = !candidate_defs_file.empty();
+    const bool candidate_all_specified = (has_candidate_funs && cnf.synth_done());
+    if (candidate_all_specified) {
+        cout << "c o [synth] all non-input functions provided by candidate file;"
+             << " skipping synth preprocessing and starting from counterexample checks" << endl;
+    }
+    if (has_candidate_funs && do_synth_bve) {
+        cout << "c o [synth] candidate functions supplied; skipping --synthbve preprocessing" << endl;
+    }
+
+    if (!has_candidate_funs && !candidate_all_specified && do_synth_bve && !cnf.synth_done()) {
         /* simp_conf.bve_too_large_resolvent = -1; */
         cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
     }
 
-    if (etof_conf.do_autarky && !cnf.synth_done()) {
+    if (!candidate_all_specified && etof_conf.do_autarky && !cnf.synth_done()) {
         arjun->standalone_autarky(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-autarky.aig");
     }
 
-    if (etof_conf.do_extend_indep && !cnf.synth_done()) {
+    if (!candidate_all_specified && etof_conf.do_extend_indep && !cnf.synth_done()) {
         arjun->standalone_unsat_define(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-extend_synth.aig");
         cnf.simplify_aigs(conf.verb);
     }
 
-     if (do_minim_indep && !cnf.synth_done()) {
+     if (!candidate_all_specified && do_minim_indep && !cnf.synth_done()) {
         arjun->standalone_backward_round_synth(cnf, mconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-minim_idep_synt.aig");
         cnf.simplify_aigs(conf.verb);
     }
 
-    if (do_unate && !cnf.synth_done()) {
+    if (!candidate_all_specified && do_unate && !cnf.synth_done()) {
         arjun->standalone_unate(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate.aig");
     }
 
-    if (do_unate_def && !cnf.synth_done()) {
+    if (!candidate_all_specified && do_unate_def && !cnf.synth_done()) {
+        uint32_t unate_def_newly_defined = 0;
+        auto [input_before_unate_def, to_define_before_unate_def, backward_before_unate_def] =
+            cnf.get_var_types(0 | verbose_debug_enabled, "pre_unate_def_count");
         arjun->standalone_unate_def(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate_def.aig");
+        auto [input_after_unate_def, to_define_after_unate_def, backward_after_unate_def] =
+            cnf.get_var_types(0 | verbose_debug_enabled, "post_unate_def_count");
+        (void)input_after_unate_def;
+        (void)backward_after_unate_def;
+        if (to_define_before_unate_def.size() >= to_define_after_unate_def.size()) {
+            unate_def_newly_defined += to_define_before_unate_def.size() - to_define_after_unate_def.size();
+        }
+
+        if (do_minim_indep && !cnf.synth_done()
+            && unate_def_newly_defined >= unate_def_backward_rerun_threshold) {
+            cout << "c o [synth] unate_def defined " << unate_def_newly_defined
+                << " vars (threshold " << unate_def_backward_rerun_threshold
+                << "), rerunning backward synthesis" << endl;
+            arjun->standalone_backward_round_synth(cnf, mconf);
+            if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-minim_idep_synt-post_unate_def.aig");
+            cnf.simplify_aigs(conf.verb);
+        }
     }
 
     auto mconf_orig = mconf;
+    int effective_strategy = manthan_strategy;
+    if (has_candidate_funs && effective_strategy == 4) {
+        cout << "c o [synth] candidate functions supplied; ignoring --mstrategy 4 (BVE-only), using strategy 2" << endl;
+        effective_strategy = 2;
+    }
     uint32_t tries;
     if (manthan_strategy > 4) {
         cout << "ERROR: unknown strategy " << manthan_strategy << endl;
         exit(EXIT_FAILURE);
     }
-    if (!cnf.synth_done() && (manthan_strategy == 0 || manthan_strategy == 1)) {
+    const bool all_defined_before_manthan = cnf.synth_done();
+    if (all_defined_before_manthan) {
+        mconf = mconf_orig;
+        if (!candidate_all_specified) {
+            cout << "c o [synth] all non-input functions are already defined;"
+                 << " running final counterexample check before returning" << endl;
+        }
+        mconf.start_from_candidate_cex = 1;
+        mconf.manthan_bve = 0;
+        if (mconf.manthan_order == 2) mconf.manthan_order = 0;
+        tries = std::numeric_limits<uint32_t>::max();
+        cnf = arjun->standalone_manthan(cnf, mconf, tries);
+    } else if (!cnf.synth_done() && (effective_strategy == 0 || effective_strategy == 1)) {
         mconf = mconf_orig;
         // Learning with no samples
         mconf.manthan_bve = 0;
+        if (has_candidate_funs && mconf.manthan_order == 2) mconf.manthan_order = 0;
         mconf.num_samples = 1;
         mconf.num_samples_ccnr = 0;
         mconf.manthan_bve = 0;
         tries = 20*manthan_rep_mult;
-        if (manthan_strategy == 1) tries = std::numeric_limits<uint32_t>::max();
+        if (effective_strategy == 1) tries = std::numeric_limits<uint32_t>::max();
         cnf = arjun->standalone_manthan(cnf, mconf, tries);
         if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 1");
     }
-    if (!cnf.synth_done() && (manthan_strategy == 0 || manthan_strategy == 2)) {
+    if (!candidate_all_specified && !cnf.synth_done() && (effective_strategy == 0 || effective_strategy == 2)) {
         // Learning with (larger) samples size
         mconf = mconf_orig;
         mconf.manthan_bve = 0;
+        if (has_candidate_funs && mconf.manthan_order == 2) mconf.manthan_order = 0;
         tries = 100*manthan_rep_mult;
-        if (manthan_strategy == 2) tries = std::numeric_limits<uint32_t>::max();
+        if (effective_strategy == 2) tries = std::numeric_limits<uint32_t>::max();
         cnf = arjun->standalone_manthan(cnf, mconf, tries);
         if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 2");
     }
-    if (!cnf.synth_done() && (manthan_strategy == 0 || manthan_strategy == 3)) {
+    if (!cnf.synth_done() && (effective_strategy == 0 || effective_strategy == 3)) {
+        // Learning, no BW, only input var learning, no silent update
+        mconf = mconf_orig;
+        mconf.manthan_bve = 0;
+        mconf.force_bw_equal = 1;
+        mconf.silent_var_update = 0;
+        mconf.do_use_all_variables_as_features = 0;
+        tries = 100*manthan_rep_mult;
+        if (effective_strategy == 3) tries = std::numeric_limits<uint32_t>::max();
+        cnf = arjun->standalone_manthan(cnf, mconf, tries);
+        if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 3");
+    }
+    if (!has_candidate_funs && !cnf.synth_done() && (effective_strategy == 0 || effective_strategy == 4)) {
         // BVE strategy
         mconf = mconf_orig;
         mconf.manthan_bve = 1;
         tries = std::numeric_limits<uint32_t>::max();
         cnf = arjun->standalone_manthan(cnf, mconf, tries);
-        if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 3");
+        if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 4");
     }
     release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");

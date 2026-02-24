@@ -40,8 +40,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         verb_print(1, "[unate_def] No variables to define, skipping");
         return;
     }
-    sampl_set.clear();
-    for(const auto& v: cnf.get_opt_sampl_vars()) sampl_set.insert(v);
+    sampl_set = input; // This treats both sampling set, and opt sampling set as input
 
     auto s = setup_f_not_f(cnf);
 
@@ -153,6 +152,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
                 << " new units: " << setw(4) << new_units
                 << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
         }
+        if (assumps.empty()) return true;
 
         assumps.clear();
         for(uint32_t i = 0; i < cnf.nVars(); i++) {
@@ -212,8 +212,8 @@ void Unate::synthesis_unate(SimplifiedCNF& cnf) {
         verb_print(1, "[unate] No variables to define, skipping");
         return;
     }
-    sampl_set.clear();
-    for(const auto& v: cnf.get_opt_sampl_vars()) sampl_set.insert(v);
+    // Treat extend-defined variables as inputs too (as classified by get_var_types()).
+    sampl_set = input;
 
     auto s = setup_f_not_f(cnf);
     var_to_indic.clear();
