@@ -24,7 +24,7 @@
 
 #include "unate_def.h"
 #include "constants.h"
-#include "src/cachedsolver.h"
+#include "src/metasolver.h"
 #include "time_mem.h"
 #include <iomanip>
 
@@ -190,8 +190,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     verb_print(1, COLYEL "[unate_def] "
             << " units: " << setw(7) << new_units
             << " tested: " << setw(7) << tested_num
-            << " tests/s: " << setprecision(2) << fixed << setw(6) << safe_div(tested_num, total_time)
-            << " cache useful: " << setprecision(2) << fixed << s->get_cache_hit_rate() * 100 << "%");
+            << " tests/s: " << setprecision(2) << fixed << setw(6) << safe_div(tested_num, total_time));
 
     cnf.add_fixed_values(unates);
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end do_unate_def");
@@ -298,11 +297,11 @@ void Unate::synthesis_unate(SimplifiedCNF& cnf) {
         << " T: " << (cpuTime() - my_time));
 }
 
-unique_ptr<ArjunInt::CachedSolver> Unate::setup_f_not_f(const SimplifiedCNF& cnf) {
+unique_ptr<ArjunInt::MetaSolver> Unate::setup_f_not_f(const SimplifiedCNF& cnf) {
     double my_time = cpuTime();
 
     vector<Lit> tmp;
-    auto s = std::make_unique<ArjunInt::CachedSolver>();
+    auto s = std::make_unique<ArjunInt::MetaSolver>();
     s->new_vars(cnf.nVars()*2); // one for orig, one for copy
     s->set_verbosity(0);
 
