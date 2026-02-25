@@ -85,7 +85,7 @@ struct MyTracer : public CaDiCaL::Tracer {
       aig_ptr aig = AIG::new_lit(l);
       lit_to_aig[l] = aig;
       return aig;
-    };
+    }
 
     aig_ptr get_aig(const vector<Lit>& unsorted_cl) {
       vector<Lit> cl = unsorted_cl;
@@ -95,7 +95,7 @@ struct MyTracer : public CaDiCaL::Tracer {
       leaves.reserve(cl.size());
       for (const auto& l: cl) leaves.push_back(get_aig(l));
       return combine_balanced<AIG::new_or>(leaves);
-    };
+    }
 
     void add_derived_clause (uint64_t id, bool red, const std::vector<int> & clause,
                                    const std::vector<uint64_t> & oantec) override;

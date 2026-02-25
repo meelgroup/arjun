@@ -22,7 +22,6 @@
  THE SOFTWARE.
  */
 
-#include "src/constants.h"
 extern "C" {
 #include <cryptominisat5/mpicosat.h>
 }
@@ -43,8 +42,7 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
   }
   cls[id] = pl_to_lit_cl(clause);
   release_assert(!oantec.empty());
-  auto rantec = oantec;
-  std::reverse(rantec.begin(), rantec.end());
+  const vector<uint64_t> rantec(oantec.rbegin(), oantec.rend());
 
   const uint64_t id1 = rantec[0];
   auto aig = fs_clid[id1];
@@ -83,18 +81,9 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
       assert(res_lit != lit_Undef);
       const bool input_or_copy = input.count(res_lit.var()) || res_lit.var() >= (uint32_t)orig_num_vars;
 
-      if (batch.empty()) {
-          batch_is_and = input_or_copy;
-          batch.push_back(aig);
-          batch.push_back(fs_clid[id2]);
-      } else if (batch_is_and == input_or_copy) {
-          batch.push_back(fs_clid[id2]);
-      } else {
-          flush_batch();
-          batch_is_and = input_or_copy;
-          batch.push_back(aig);
-          batch.push_back(fs_clid[id2]);
-      }
+      if (!batch.empty() && batch_is_and != input_or_copy) flush_batch();
+      if (batch.empty()) { batch_is_and = input_or_copy; batch.push_back(aig); }
+      batch.push_back(fs_clid[id2]);
   }
   flush_batch();
   fs_clid[id] = aig;
@@ -114,12 +103,12 @@ void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int>
   }
   cls[id] = pl_to_lit_cl(clause);
 
-  bool formula_a = true;
+  bool all_in_part_a = true;
   for(const auto& l : clause) {
-      if (abs(l)-1 >= orig_num_vars) {formula_a = false; break;}
+      if (abs(l)-1 >= orig_num_vars) {all_in_part_a = false; break;}
   }
 
-  if (formula_a) {
+  if (all_in_part_a) {
       // output of formula is equal to the set of inputs being satisfied or not in this CL
       vector<Lit> cl;
       for(const auto& l: clause) {
@@ -144,16 +133,8 @@ void Interpolant::generate_interpolant(
     for(const auto& l: assumptions) picosat_assume(ps, lit_to_pl(l));
     auto pret = picosat_sat(ps, -1);
     verb_print(5, "c pret: " << pret);
-    if (pret == PICOSAT_SATISFIABLE) {
-        cout << "BUG, should be UNSAT" << endl;
-        assert(false);
-        exit(EXIT_FAILURE);
-    }
-    if (pret == PICOSAT_UNKNOWN) {
-        cout << "OOOpps, we should give more time for picosat, got UNKNOWN" << endl;
-        assert(false);
-        exit(EXIT_FAILURE);
-    }
+    release_assert(pret != PICOSAT_SATISFIABLE && "BUG, should be UNSAT");
+    release_assert(pret != PICOSAT_UNKNOWN && "picosat returned UNKNOWN");
     release_assert(pret == PICOSAT_UNSATISFIABLE);
 
     // NEXT we generate the small CNF that is UNSAT and is simplified
@@ -207,25 +188,14 @@ void Interpolant::generate_interpolant(
     MyTracer t(orig_num_vars, input_vars, conf, lit_to_aig, cnf.get_aig_mng());
 
     cdcl->connect_proof_tracer(&t, true);
-    /* std::stringstream name; */
-    /* name << "core-" << test_var+1 << ".cnf.trace"; */
-    /* FILE* core = fopen(name.str().c_str(), "w"); */
     for(const auto& c: mini_cls) {
         for(const auto& l: c) cdcl->add(lit_to_pl(l));
         cdcl->add(0);
     }
     pret = cdcl->solve();
     verb_print(3, "c CaDiCaL ret: " << pret);
-    if (pret == Status::SATISFIABLE) {
-        cout << "ERROR: core should be UNSAT" << endl;
-        assert(false);
-        exit(EXIT_FAILURE);
-    }
-    if (pret == Status::UNKNOWN) {
-        cout << "ERROR: OOOpps, we should give more time for picosat, got UNKNOWN" << endl;
-        assert(false);
-        exit(EXIT_FAILURE);
-    }
+    release_assert(pret != Status::SATISFIABLE && "ERROR: core should be UNSAT");
+    release_assert(pret != Status::UNKNOWN && "CaDiCaL returned UNKNOWN");
     release_assert(pret == Status::UNSATISFIABLE);
     cdcl->disconnect_proof_tracer(&t);
 
