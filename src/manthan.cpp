@@ -457,7 +457,7 @@ bool Manthan::check_aig_dependency_cycles() const {
     auto aigs_copy = AIG::deep_clone_vec(aigs);
 
     SimplifiedCNF fcnf = cnf;
-    fcnf.map_aigs_to_orig(aigs_copy, cnf.nVars(), &y_hat_to_y);
+    fcnf.map_aigs_to_orig(aigs_copy, cnf.nVars(), y_hat_to_y);
     assert(fcnf.check_aig_cycles());
     return true;
 }
@@ -1068,7 +1068,7 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
         aigs[y] = var_to_formula[y].aig;
     }
     SimplifiedCNF fcnf = cnf;
-    fcnf.map_aigs_to_orig(aigs, cnf.nVars(), &y_hat_to_y, candidate_mode);
+    fcnf.map_aigs_to_orig(aigs, cnf.nVars(), y_hat_to_y, candidate_mode);
     assert(verify_final_cnf(fcnf));
     auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0 | verbose_debug_enabled, "end do_manthan");
     verb_print(1, COLRED "[manthan] Done. "
@@ -1875,7 +1875,7 @@ void Manthan::create_vars_for_y_hats() {
         cex_solver.new_var();
         const uint32_t y_hat = cex_solver.nVars()-1;
         y_to_y_hat[y] = y_hat;
-        y_hat_to_y[y_hat] = y;
+        y_hat_to_y[y_hat] = Lit(y, false);
         y_hats.insert(y_hat);
         verb_print(3, "mapping -- y: " << y+1 << " y_hat: " << y_hat+1);
     }
