@@ -30,6 +30,7 @@ THE SOFTWARE.
 #include <string>
 #include <map>
 #include <set>
+#include <optional>
 #include <fstream>
 #include <gmpxx.h>
 #include <cryptominisat5/solvertypesmini.h>
