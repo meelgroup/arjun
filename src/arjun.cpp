@@ -464,7 +464,7 @@ DLL_PUBLIC void SimplifiedCNF::add_fixed_values(const vector<Lit>& fixed) {
 }
 
 DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig, const uint32_t max_num_vars,
-        const map<uint32_t, uint32_t>* back_map) {
+            std::optional<std::reference_wrapper<const std::map<uint32_t, CMSat::Lit>>> back_map) {
     const auto new_to_orig_var = get_new_to_orig_var();
     auto aigs = AIG::deep_clone_vec(aigs_orig);
     set<aig_ptr> visited;
@@ -477,13 +477,15 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig
         visited.insert(aig);
 
         if (aig->type == AIGT::t_lit) {
-            uint32_t v = aig->var;
-            if (back_map != nullptr) {
-                if(back_map->count(v)) v = back_map->at(v);
+            Lit l = Lit(aig->var, false);
+            if (back_map.has_value()) {
+                if(back_map->get().count(l.var()))
+                    l = back_map->get().at(l.var()) ^ l.sign();
             }
-            assert(v < max_num_vars);
-            aig->var = new_to_orig_var.at(v).var();
-            aig->neg ^= new_to_orig_var.at(v).sign();
+            assert(l.var() < max_num_vars);
+            l = new_to_orig_var.at(l.var()) ^ l.sign();
+            aig->var = l.var();
+            aig->neg ^= l.sign();
             return;
         }
         if (aig->type == AIGT::t_and) {

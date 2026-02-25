@@ -70,7 +70,7 @@ class Manthan {
         // y is original output var, i.e. to_define
         // y_hat is learned var
         map<uint32_t, uint32_t> y_to_y_hat;
-        map<uint32_t, uint32_t> y_hat_to_y;
+        map<uint32_t, Lit> y_hat_to_y;
 
         // when indic is TRUE, y_hat and func_out are EQUAL
         map<uint32_t, uint32_t> y_hat_to_indic;
