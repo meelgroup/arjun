@@ -1275,7 +1275,7 @@ public:
         AIG::simplify_aigs(verb, defs);
     }
     const auto& get_aig_mng() const { return aig_mng; }
-    void import_candidate_functions(const string& fname, int verb);
+    void import_candidate_functions(const std::string& fname, int verb);
 
 private:
     bool after_backward_round_synth = false;
