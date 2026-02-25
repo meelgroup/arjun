@@ -48,20 +48,20 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
 
   const uint64_t id1 = rantec[0];
   auto aig = fs_clid[id1];
-  release_assert(aig != nullptr);
-  set<Lit> resolvent(cls[id1].begin(),cls[id1].end());
-  std::vector<aig_ptr> same_op_terms;
-  bool same_op_is_and = false;
-  bool same_op_started = false;
+  set<Lit> resolvent(cls[id1].begin(), cls[id1].end());
 
-  auto flush_terms = [&]() {
-      if (!same_op_started) return;
-      aig = combine_balanced(std::move(same_op_terms), same_op_is_and);
-      same_op_terms.clear();
-      same_op_started = false;
+  // Batch consecutive same-op steps for balanced tree construction,
+  // avoiding O(n)-depth AIGs that cause stack overflow on large proofs.
+  std::vector<aig_ptr> batch;
+  bool batch_is_and = false;
+  auto flush_batch = [&]() {
+      if (batch.empty()) return;
+      if (batch_is_and) aig = combine_balanced<AIG::new_and>(batch);
+      else              aig = combine_balanced<AIG::new_or>(batch);
+      batch.clear();
   };
 
-  for(uint32_t i = 1; i < rantec.size(); i++) {
+  for (uint32_t i = 1; i < rantec.size(); i++) {
       if (conf.verb >= 4) {
           cout << "resolvent: "; for(const auto& l: resolvent) cout << l << " "; cout << endl;
       }
@@ -81,25 +81,22 @@ void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<i
           }
       }
       assert(res_lit != lit_Undef);
-      bool input_or_copy = input.count(res_lit.var()) || res_lit.var() >= (uint32_t)orig_num_vars;
-      auto rhs = fs_clid[id2];
-      release_assert(rhs != nullptr);
-      if (!same_op_started) {
-          same_op_started = true;
-          same_op_is_and = input_or_copy;
-          same_op_terms.push_back(aig);
-          same_op_terms.push_back(rhs);
-      } else if (same_op_is_and == input_or_copy) {
-          same_op_terms.push_back(rhs);
+      const bool input_or_copy = input.count(res_lit.var()) || res_lit.var() >= (uint32_t)orig_num_vars;
+
+      if (batch.empty()) {
+          batch_is_and = input_or_copy;
+          batch.push_back(aig);
+          batch.push_back(fs_clid[id2]);
+      } else if (batch_is_and == input_or_copy) {
+          batch.push_back(fs_clid[id2]);
       } else {
-          flush_terms();
-          same_op_started = true;
-          same_op_is_and = input_or_copy;
-          same_op_terms.push_back(aig);
-          same_op_terms.push_back(rhs);
+          flush_batch();
+          batch_is_and = input_or_copy;
+          batch.push_back(aig);
+          batch.push_back(fs_clid[id2]);
       }
   }
-  flush_terms();
+  flush_batch();
   fs_clid[id] = aig;
   verb_print(5, "intermediate formula: " << fs_clid[id]);
   if (clause.empty()) {
