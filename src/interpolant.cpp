@@ -231,7 +231,6 @@ void Interpolant::generate_interpolant(
     }
     release_assert(pret == Status::UNSATISFIABLE);
     cdcl->disconnect_proof_tracer(&t);
-    cdcl.reset();
 
     defs[test_var] = t.out;
     verb_print(5, "definition of var: " << test_var+1 << " is: " << t.out);
