@@ -26,7 +26,7 @@
 #include <armadillo>
 #include <cryptominisat5/cryptominisat.h>
 #include <cryptominisat5/solvertypesmini.h>
-#include "src/arjun.h"
+#include "arjun.h"
 #include <cstddef>
 #include <cstdlib>
 #include <cstdint>
@@ -42,7 +42,7 @@
 #include <algorithm>
 #include <ranges>
 #include "constants.h"
-#include "src/metasolver2.h"
+#include "metasolver2.h"
 #include "time_mem.h"
 #include "ccnr/ccnr.h"
 
@@ -75,18 +75,10 @@ using namespace CMSat;
 // no repair, learning/mbve does it: benchmarks-qdimacs/rankfunc57_unsigned_64.qdimacs.cnf
 // interesting, does not finish, but fast: benchmarks-qdimacs/query48_exquery_1344n.qdimacs.cnf
 
-int lit_to_int(const Lit& l) {
-    int v = l.var()+1;
-    if (l.sign()) v = -v;
-    return v;
-}
-
 vector<int> lits_to_ints(const vector<Lit>& lits) {
     vector<int> ret;
     ret.reserve(lits.size());
-    for(const auto& l: lits) {
-        ret.push_back(lit_to_int(l));
-    }
+    for(const auto& l: lits) ret.push_back(lit_to_pl(l));
     return ret;
 }
 
@@ -187,19 +179,13 @@ vector<sample> Manthan::get_samples_ccnr(const uint32_t num) {
     ls_s.make_space();
     vector<int> yals_lits;
 
-    auto add_this_clause = [&](const vector<Lit>& cl) -> bool {
+    auto add_this_clause = [&](const vector<Lit>& cl) {
         yals_lits.clear();
-        for(auto lit : cl) {
-            int l = lit.var()+1;
-            l *= lit.sign() ? -1 : 1;
-            yals_lits.push_back(l);
-        }
-
+        for(auto lit : cl) yals_lits.push_back(lit_to_pl(lit));
         for(auto& lit: yals_lits) {
             ls_s._clauses[cl_num].literals.push_back(::Arjun::CCNR::lit(lit, cl_num));
         }
         cl_num++;
-        return true;
     };
 
     for(const auto& cl: cnf.get_clauses()) add_this_clause(cl);
@@ -239,7 +225,7 @@ string Manthan::pr(const lbool val) const {
     if (val == l_False) return "0";
     if (val == l_Undef) assert(false);
     exit(EXIT_FAILURE);
-};
+}
 
 void Manthan::fill_dependency_mat_with_backward() {
     dependency_mat.clear();
@@ -331,8 +317,7 @@ void Manthan::fill_var_to_formula_with(set<uint32_t>& vars) {
                 // Apply negation if needed
                 return neg ? ~and_out : and_out;
             }
-            assert(false && "Unhandled AIG type in visitor");
-            exit(EXIT_FAILURE);
+            release_assert(false && "Unhandled AIG type in visitor");
         };
 
         // Recursively generate clauses for the AIG using the transform function
@@ -525,8 +510,7 @@ aig_ptr Manthan::one_level_substitute(Lit l, const uint32_t v, map<uint32_t, aig
             if (type == AIGT::t_and) {
                 return AIG::new_and(*left, *right, neg);
             }
-            assert(false && "Unhandled AIG type in visitor");
-            exit(EXIT_FAILURE);
+            release_assert(false && "Unhandled AIG type in visitor");
           }, cache_aig);
         transformed[l.var()] = aig3;
     }
@@ -1028,7 +1012,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     vector<Lit> assumps;
     for(const auto& x: input) {
         const Lit l = Lit(x, ctx[x] == l_False);
-        assumps.push_back({l});
+        assumps.push_back(l);
     }
 
     // We go through the variables that y_rep does NOT depend on, and assume them to be correct
@@ -1040,7 +1024,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         assert(ctx[y] == ctx[y_to_y_hat[y]]); // they are correct
         const Lit l = Lit(y, ctx[y] == l_False);
         verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
-        assumps.push_back({l});
+        assumps.push_back(l);
     }
 
     assert(ctx[y_rep] != ctx[y_to_y_hat[y_rep]] && "before repair, y and y_hat must be different");
