@@ -281,46 +281,6 @@ void check_cnf_sat(const ArjunNS::SimplifiedCNF& cnf) {
     }
 }
 
-void import_candidate_functions(ArjunNS::SimplifiedCNF& cnf, const string& fname) {
-    ArjunNS::SimplifiedCNF cand(fg);
-    cand.read_aig_defs_from_file(fname);
-    if (!cand.get_need_aig()) {
-        cout << "ERROR: candidate file does not contain AIG data: " << fname << endl;
-        exit(EXIT_FAILURE);
-    }
-
-    vector<ArjunNS::aig_ptr> aigs(cnf.nVars(), nullptr);
-    uint32_t imported = 0;
-    uint32_t skipped_already_defined = 0;
-    uint32_t skipped_missing = 0;
-    const auto& orig_inputs = cnf.get_orig_sampl_vars();
-    for (const auto& [orig_v, new_lit] : cnf.get_orig_to_new_var()) {
-        if (orig_inputs.count(orig_v)) continue;
-        if (cnf.defined(orig_v)) {
-            skipped_already_defined++;
-            continue;
-        }
-        if (orig_v >= cand.num_defs()) {
-            skipped_missing++;
-            continue;
-        }
-        const auto& cand_aig = cand.get_def(orig_v);
-        if (cand_aig == nullptr) {
-            skipped_missing++;
-            continue;
-        }
-        aigs[new_lit.var()] = cand_aig;
-        imported++;
-    }
-
-    cnf.map_aigs_to_orig(aigs, cnf.nVars(), cnf.get_orig_to_new_var());
-    cnf.simplify_aigs(conf.verb);
-    cout << "c o [synth] imported candidate defs from '" << fname << "'"
-         << " imported: " << imported
-         << " skipped-already-defined: " << skipped_already_defined
-         << " skipped-missing: " << skipped_missing << endl;
-}
-
 #ifdef SYNTH
 void do_synthesis() {
     if (etof_conf.all_indep) {
@@ -343,7 +303,8 @@ void do_synthesis() {
     cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
     if (!candidate_defs_file.empty()) {
         cnf.set_preserve_existing_defs(true);
-        import_candidate_functions(cnf, candidate_defs_file);
+        cnf.import_candidate_functions(candidate_defs_file, conf.verb);
+        cnf.simplify_aigs(conf.verb);
         cnf.get_var_types(conf.verb | verbose_debug_enabled, "after importing candidate functions");
     }
     const bool has_candidate_funs = !candidate_defs_file.empty();

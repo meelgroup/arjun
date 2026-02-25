@@ -592,6 +592,46 @@ DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
     cout << "c o [check_synth_funs_randomly] filled defs total: " << filled_defs << " undefs: " << undefs << " checks: " << num_checks << endl;
 }
 
+DLL_PUBLIC void SimplifiedCNF::import_candidate_functions(const string& fname, int verb) {
+    ArjunNS::SimplifiedCNF cand(fg);
+    cand.read_aig_defs_from_file(fname);
+    if (!cand.get_need_aig()) {
+        cout << "ERROR: candidate file does not contain AIG data: " << fname << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    vector<ArjunNS::aig_ptr> aigs(nVars(), nullptr);
+    uint32_t imported = 0;
+    uint32_t skipped_already_defined = 0;
+    uint32_t skipped_missing = 0;
+    const auto& orig_inputs = get_orig_sampl_vars();
+    for (const auto& [orig_v, new_lit] : get_orig_to_new_var()) {
+        if (orig_inputs.count(orig_v)) continue;
+        if (defined(orig_v)) {
+            skipped_already_defined++;
+            continue;
+        }
+        if (orig_v >= cand.num_defs()) {
+            skipped_missing++;
+            continue;
+        }
+        const auto& cand_aig = cand.get_def(orig_v);
+        if (cand_aig == nullptr) {
+            skipped_missing++;
+            continue;
+        }
+        aigs[new_lit.var()] = cand_aig;
+        imported++;
+    }
+
+    map_aigs_to_orig(aigs, nVars(), get_orig_to_new_var());
+    if (verb)
+        cout << "c o [synth] imported candidate defs from '" << fname << "'"
+             << " imported: " << imported
+             << " skipped-already-defined: " << skipped_already_defined
+             << " skipped-missing: " << skipped_missing << endl;
+}
+
 DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
         unique_ptr<CMSat::SATSolver>& solver,
         const vector<uint32_t>& new_sampl_vars,

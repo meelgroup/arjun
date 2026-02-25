@@ -1277,6 +1277,7 @@ public:
     const auto& get_aig_mng() const { return aig_mng; }
     void set_preserve_existing_defs(bool b) { preserve_existing_defs = b; }
     bool get_preserve_existing_defs() const { return preserve_existing_defs; }
+    void import_candidate_functions(const std::string& fname, int verb = 0);
 
 private:
     bool preserve_existing_defs = false;
