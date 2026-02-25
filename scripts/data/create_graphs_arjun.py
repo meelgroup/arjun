@@ -93,12 +93,13 @@ def generate_todos():
         # "out-synth-1017598-5/", # too many fixes to name
         "out-synth-1017598-1/", # too many fixes to name
         # "out-synth-1017598-", # too many fixes to name
-        "out-synth-1043577-", # no_silent, BVA, Kuldeep ideas, 3+4 strategy etc
-        # "out-synth-1043577-1/", strategy 0
+        # "out-synth-1043577-", # no_silent, BVA, Kuldeep ideas, 3+4 strategy etc
+        "out-synth-1043577-", #strategy 0, multiplier
         # "out-synth-1043577-13", strategy 1
         # "out-synth-1043577-14"  strategy 2,
         # "out-synth-1043577-15"  strategy 3,
         # "out-synth-1043577-16"  strategy 4,
+        # "out-synth-1044613-", # bva synth off, on-the-fly order
 
     ]
     # only_dirs = ["out-synth-6828273"]
@@ -258,12 +259,12 @@ with open(gnuplotfn, "w") as f:
     f.write("set notitle\n")
     f.write("set key bottom right\n")
     # f.write("set xtics 200\n")
-    f.write("unset logscale x\n")
+    f.write("set logscale x\n")
     f.write("unset logscale y\n")
     f.write("set ylabel  \"Instances synthetized\"\n")
     f.write("set xlabel \"Time (s)\"\n")
     # f.write("plot [:][10:]\\\n")
-    f.write("plot [:][250:]\\\n")
+    f.write("plot [:][150:]\\\n")
     i = 0
     # f.write(" \"runkcbox-prearjun.csv.gnuplotdata\" u 2:1 with linespoints  title \"KCBox\",\\\n")
     # f.write(" \"runsharptd-prearjun.csv.gnuplotdata\" u 2:1 with linespoints  title \"SharptTD\",\\\n")
