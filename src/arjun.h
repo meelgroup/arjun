@@ -154,7 +154,6 @@ public:
         ret->type = AIGT::t_and;
         ret->l = a;
         ret->r = a;
-
         ret->neg = true;
         return ret;
     }
@@ -169,13 +168,13 @@ public:
         return ret;
     }
 
-    static aig_ptr new_or(const aig_ptr& l, const aig_ptr& r) {
+    static aig_ptr new_or(const aig_ptr& l, const aig_ptr& r, bool neg = false) {
         assert(l != nullptr && r != nullptr);
         auto ret = std::make_shared<AIG>();
         ret->type = AIGT::t_and;
-        ret->neg = true;
         ret->l = new_not(l);
         ret->r = new_not(r);
+        ret->neg = true ^ neg;
         return ret;
     }
 

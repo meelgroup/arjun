@@ -63,6 +63,23 @@ struct MyTracer : public CaDiCaL::Tracer {
     // AIG cache
     map<Lit, aig_ptr>& lit_to_aig;
 
+    // Balanced binary tree reduction using Op (AIG::new_and or AIG::new_or).
+    // Avoids deep recursion/stack overflow compared to linear left-to-right folding.
+    template<aig_ptr (*Op)(const aig_ptr&, const aig_ptr&, bool neg)>
+    static aig_ptr combine_balanced(vector<aig_ptr> terms) {
+        release_assert(!terms.empty());
+        vector<aig_ptr> next;
+        while (terms.size() > 1) {
+            next.clear();
+            for (size_t i = 0; i < terms.size(); i += 2) {
+                if (i + 1 >= terms.size()) next.push_back(terms[i]);
+                else next.push_back(Op(terms[i], terms[i + 1], false));
+            }
+            terms = next;
+        }
+        return terms[0];
+    }
+
     aig_ptr get_aig(const Lit l) {
       if (lit_to_aig.count(l)) return lit_to_aig.at(l);
       aig_ptr aig = AIG::new_lit(l);
@@ -73,13 +90,11 @@ struct MyTracer : public CaDiCaL::Tracer {
     aig_ptr get_aig(const vector<Lit>& unsorted_cl) {
       vector<Lit> cl = unsorted_cl;
       std::sort(cl.begin(), cl.end());
-      aig_ptr aig = nullptr;
-      for(const auto& l: cl) {
-          if (aig == nullptr) aig = get_aig(l);
-          else aig = AIG::new_or(aig, get_aig(l));
-      }
-      if (aig == nullptr) aig = aig_mng.new_const(false);
-      return aig;
+      if (cl.empty()) return aig_mng.new_const(false);
+      vector<aig_ptr> leaves;
+      leaves.reserve(cl.size());
+      for (const auto& l: cl) leaves.push_back(get_aig(l));
+      return combine_balanced<AIG::new_or>(leaves);
     };
 
     void add_derived_clause (uint64_t id, bool red, const std::vector<int> & clause,
