@@ -290,13 +290,11 @@ void import_candidate_functions(ArjunNS::SimplifiedCNF& cnf, const string& fname
     }
 
     vector<ArjunNS::aig_ptr> aigs(cnf.nVars(), nullptr);
-    std::map<uint32_t, uint32_t> orig_to_current_new;
     uint32_t imported = 0;
     uint32_t skipped_already_defined = 0;
     uint32_t skipped_missing = 0;
     const auto& orig_inputs = cnf.get_orig_sampl_vars();
     for (const auto& [orig_v, new_lit] : cnf.get_orig_to_new_var()) {
-        orig_to_current_new[orig_v] = new_lit.var();
         if (orig_inputs.count(orig_v)) continue;
         if (cnf.defined(orig_v)) {
             skipped_already_defined++;
@@ -315,7 +313,7 @@ void import_candidate_functions(ArjunNS::SimplifiedCNF& cnf, const string& fname
         imported++;
     }
 
-    cnf.map_aigs_to_orig(aigs, cnf.nVars(), &orig_to_current_new);
+    cnf.map_aigs_to_orig(aigs, cnf.nVars(), cnf.get_orig_to_new_var());
     cnf.simplify_aigs(conf.verb);
     cout << "c o [synth] imported candidate defs from '" << fname << "'"
          << " imported: " << imported
