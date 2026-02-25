@@ -90,14 +90,6 @@ std::unique_ptr<SATSolver> Puura::fill_solver(const SimplifiedCNF& cnf) {
     return solver;
 }
 
-bool replace(std::string& str, const std::string& from, const std::string& to) {
-    size_t start_pos = str.find(from);
-    if(start_pos == std::string::npos)
-        return false;
-    str.replace(start_pos, from.length(), to);
-    return true;
-}
-
 void Puura::reverse_bce(SimplifiedCNF& cnf) {
     auto solver = fill_solver(cnf);
     solver->set_renumber(false);
