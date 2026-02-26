@@ -78,7 +78,11 @@ target_link_libraries(arjun
     LINK_PUBLIC ${TREEDECOMP_LIBRARIES}
 )
 
-add_executable(arjun-bin main.cpp)
+if (SYNTH)
+    add_executable(arjun-bin main.cpp synth.cpp)
+else()
+    add_executable(arjun-bin main.cpp)
+endif()
 add_executable(arjun-example example.cpp)
 add_executable(test-synth test-synth.cpp)
 

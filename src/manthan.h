@@ -64,7 +64,7 @@ class Manthan {
         {
                 mtrand.seed(42);
         }
-        SimplifiedCNF do_manthan(const uint32_t max_repairs);
+        SimplifiedCNF do_manthan();
 
     private:
         // y is original output var, i.e. to_define
@@ -157,8 +157,8 @@ class Manthan {
 
 
         bool verify_final_cnf(const SimplifiedCNF& fcnf) const;
-        vector<sample> get_cmsgen_samples(const uint32_t num_samples);
-        vector<sample> get_samples_ccnr(const uint32_t num_samples);
+        vector<sample> get_cmsgen_samples(const uint32_t samples);
+        vector<sample> get_samples_ccnr(const uint32_t samples);
         void sort_all_samples(vector<sample>& samples);
         double train(const vector<sample>& samples, const uint32_t v); // returns training error
         vector<vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b

@@ -98,7 +98,7 @@ vector<sample> Manthan::get_cmsgen_samples(const uint32_t num) {
     inject_cnf(solver_samp);
     solver_samp.set_up_for_sample_counter(mconf.sampler_fixed_conflicts);
 
-    if (mconf.do_biased_sampling) {
+    if (mconf.biased_sampling) {
         array<vector<double>,2> dist;
         dist[0].resize(cnf.nVars(), 0.0);
         dist[1].resize(cnf.nVars(), 0.0);
@@ -162,7 +162,7 @@ vector<sample> Manthan::get_cmsgen_samples(const uint32_t num) {
         assert(solver_samp.get_model().size() == cnf.nVars());
         samples.push_back(solver_samp.get_model());
     }
-    verb_print(1, "[manthan] CMSGen got " << samples.size() << " samples. Biased: " << (bool)mconf.do_biased_sampling
+    verb_print(1, "[manthan] CMSGen got " << samples.size() << " samples. Biased: " << (bool)mconf.biased_sampling
             << " T: " << setprecision(2) << std::fixed << (cpuTime() - my_time));
     return samples;
 }
@@ -691,15 +691,15 @@ std::unique_ptr<TWD::Graph> Manthan::build_primal_graph() {
 void Manthan::full_train() {
     // Sampling
     verb_print(1, "[manthan] Starting training. Manthan Config. "
-        << "do_filter_samples=" << mconf.do_filter_samples
-        << ", num_samples=" << mconf.num_samples
-        << ", minimumLeafSize=" << mconf.minimumLeafSize
-        << ", minGainSplit=" << setprecision(6) << mconf.minGainSplit << setprecision(2)
-        << ", maximumDepth=" << mconf.maximumDepth);
+        << "do_filter_samples=" << mconf.filter_samples
+        << ", samples=" << mconf.samples
+        << ", minimumLeafSize=" << mconf.min_leaf_size
+        << ", minGainSplit=" << setprecision(6) << mconf.min_gain_split << setprecision(2)
+        << ", maximumDepth=" << mconf.max_depth);
     double samp_start_time = cpuTime();
-    vector<sample> samples = get_cmsgen_samples(mconf.num_samples);
+    vector<sample> samples = get_cmsgen_samples(mconf.samples);
     {
-        vector<sample> samples2 = get_samples_ccnr(mconf.num_samples_ccnr);
+        vector<sample> samples2 = get_samples_ccnr(mconf.samples_ccnr);
         samples.insert(samples.end(), samples2.begin(), samples2.end());
     }
     sampl_time = cpuTime() - samp_start_time;
@@ -789,7 +789,7 @@ void Manthan::add_xor_var() {
     verb_print(1, "[manthan] Added " << sampl_vars.size() - 1 << " XOR vars as BVA input vars");
 }
 
-SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
+SimplifiedCNF Manthan::do_manthan() {
     assert(cnf.get_need_aig() && cnf.defs_invariant());
     assert(mconf.simplify_every > 0 && "Can't give simplify_every=0");
     const double my_time = cpuTime();
@@ -862,7 +862,7 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
         sample ctx;
         const bool finished = get_counterexample(ctx);
         if (finished) break;
-        if (tot_repaired > max_repairs) {
+        if (tot_repaired > mconf.max_repairs) {
             print_stats("", COLRED, " Reached max repairs");
             return cnf;
         }
@@ -872,9 +872,9 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
         SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
 
         const uint32_t old_needs_repair_size = needs_repair.size();
-        if (mconf.do_maxsat_better_ctx == -1) {
+        if (mconf.maxsat_better_ctx == -1) {
           // Nothing to do
-        } else if (mconf.do_maxsat_better_ctx == 1) {
+        } else if (mconf.maxsat_better_ctx == 1) {
           find_better_ctx_maxsat(ctx);
         } else {
           find_better_ctx_normal(ctx);
@@ -1050,7 +1050,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     verb_print(2, "find_conflict sz: " << setw(5) << conflict.size() << " conflict: " << conflict);
     uint32_t orig_size = conflict.size();
     const double minimize_start_time = cpuTime();
-    if (conflict.size() > 1 && mconf.do_minimize_conflict) {
+    if (conflict.size() > 1 && mconf.minimize_conflict) {
         minimize_conflict(conflict, assumps, to_repair);
         assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end() &&
             "to_repair literal must be in conflict");
@@ -2002,7 +2002,7 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     verb_print(2, "training variable: " << v+1);
 
     vector<uint32_t> used_vars(input.begin(), input.end());
-    if (mconf.do_use_all_variables_as_features) {
+    if (mconf.use_all_vars_as_feats) {
         if (!mconf.manthan_on_the_fly_order) {
             for(const auto& y: y_order) {
                 if (y == v) break;
@@ -2038,7 +2038,7 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
     }
     /* assert(!orig_samples.empty()); */
     vector<const sample*> samples;
-    if (mconf.do_filter_samples) samples = filter_samples(v, orig_samples);
+    if (mconf.filter_samples) samples = filter_samples(v, orig_samples);
     else {
         for(const auto& s: orig_samples)
             samples.push_back(&s);
@@ -2101,9 +2101,9 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
         /*     const size_t maximumDepth, */
         /*     DimensionSelectionType dimensionSelector) */
         mlpack::DecisionTree<> r(dataset, labels, 2,
-                       mconf.minimumLeafSize,  // minimumLeafSize: require 20+ samples per leaf (default 10)
-                       mconf.minGainSplit,     // minimumGainSplit: require k ratio gain to split
-                       mconf.maximumDepth);    // maximumDepth: max k levels deep (0 = unlimited)
+                       mconf.min_leaf_size,  // minimumLeafSize: require 20+ samples per leaf (default 10)
+                       mconf.min_gain_split,     // minimumGainSplit: require k ratio gain to split
+                       mconf.max_depth);    // maximumDepth: max k levels deep (0 = unlimited)
 
         // Compute and print the training error.
         arma::Row<size_t> predictions;

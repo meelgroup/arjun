@@ -150,10 +150,10 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_get_simplified_cnf(
     return puura.get_fully_simplified_renumbered_cnf(cnf, simp_conf);
 }
 #ifdef SYNTH
-DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(const SimplifiedCNF& cnf, const ManthanConf& mconf, uint32_t max_repairs)
+DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(const SimplifiedCNF& cnf, const ManthanConf& mconf)
 {
     Manthan manthan(arjdata->conf, mconf, cnf);
-    return manthan.do_manthan(max_repairs);
+    return manthan.do_manthan();
 }
 #endif
 
