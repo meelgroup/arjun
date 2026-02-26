@@ -1386,6 +1386,7 @@ public:
         int force_bw_equal = 1;
         int bva_xor_vars = 0;
         int silent_var_update = 1;
+        int inv_learnt = 0;
         uint32_t max_repairs = std::numeric_limits<uint32_t>::max();
     };
 

@@ -76,6 +76,7 @@ const std::map<string, ParamDef> param_table = {
     {"force_bw_equal",           {PT::Int,    [](MC& c, const string& v) { c.force_bw_equal           = parse_val<int>(v); }}},
     {"bva_xor_vars",             {PT::Int,    [](MC& c, const string& v) { c.bva_xor_vars             = parse_val<int>(v); }}},
     {"silent_var_update",        {PT::Int,    [](MC& c, const string& v) { c.silent_var_update        = parse_val<int>(v); }}},
+    {"inv_learnt",               {PT::Int,    [](MC& c, const string& v) { c.inv_learnt               = parse_val<int>(v); }}},
 };
 } // namespace
 

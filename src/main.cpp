@@ -166,6 +166,7 @@ void add_arjun_options() {
     myopt("--mbve", mconf.manthan_bve, fc_int,"Use BVE with constants instead of training");
     myopt("--monflyorder", mconf.manthan_on_the_fly_order, fc_int,"Use on-the-fly training order and post-training topological order");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
+    myopt("--minvertlearn", mconf.inv_learnt, fc_int,"Invert learnt functions");
 
     // repairing on vars
     myopt("--bwequal", mconf.force_bw_equal, fc_int,"Force BW vars' indicators to be TRUE -- prevents repairing with them, but faster to repair");

@@ -2066,7 +2066,7 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
             << setw(6) << (samples.size() - num_ones) << " zeros");
     double train_error;
     if (samples.empty()) {
-        var_to_formula[v] = fh->constant_formula(true);
+        var_to_formula[v] = fh->constant_formula(!mconf.inv_learnt);
         train_error = 0.0;
     } else {
         // Create the RandomForest object and train it on the training data.
@@ -2115,6 +2115,8 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
         assert(var_to_formula.count(v) == 0);
         uint32_t max_depth = 0;
         var_to_formula[v] = recur(&r, v, used_vars, 0, max_depth);
+        if (mconf.inv_learnt)
+            var_to_formula[v] = fh->neg(var_to_formula[v]);
         verb_print(1, "Training error: " << setprecision(2) << setw(6) << train_error << "%."
                 << " depth: " << setw(6) << max_depth
                 << " ones: " << setprecision(0) << fixed << setw(5) << (double)num_ones/samples.size()*100.0 << "%"
