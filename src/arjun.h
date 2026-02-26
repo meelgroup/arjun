@@ -892,15 +892,17 @@ public:
         backbone_done = other.backbone_done;
         weights = other.weights;
         orig_to_new_var = other.orig_to_new_var;
+        if (!other.need_aig) {
+            for(const auto& d: other.defs)
+                assert(d == nullptr);
+        }
+        defs = AIG::deep_clone_vec(other.defs);
         if (!need_aig) {
-            assert(defs.empty());
-            assert(other.defs.empty());
             assert(other.orig_sampl_vars.empty());
             assert(other.orig_clauses.empty());
         } else {
             after_backward_round_synth = other.after_backward_round_synth;
             aig_mng = other.aig_mng;
-            defs = AIG::deep_clone_vec(other.defs);
             orig_clauses = other.orig_clauses;
             orig_sampl_vars = other.orig_sampl_vars;
             orig_sampl_vars_set = other.orig_sampl_vars_set;
@@ -1308,10 +1310,12 @@ private:
         }
     };
     std::map<uint32_t, Weight> weights;
-    std::map<uint32_t, CMSat::Lit> orig_to_new_var; // ONLY maps in the CNF -- does NOT map to vars NOT in the CNF
+    std::map<uint32_t, CMSat::Lit> orig_to_new_var; // ONLY maps in the CNF
+                                                    // does NOT map to vars NOT in the CNF
     AIGManager aig_mng; // only for const true/false
-    std::vector<aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space. Size is the
-                               //original number of variables.
+    std::vector<aig_ptr> defs; //Definition of variables in terms of AIG. ORIGINAL number space.
+                               //Size is the original number of variables, ALWAYS
+                               //Full of nullptr-s in case synthesis is not needed
 
     void check_synth_funs_randomly() const;
     bool orig_sampl_vars_set = false;
