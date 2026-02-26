@@ -91,15 +91,16 @@ def generate_todos():
         # "out-synth-984148" # bug in sibFPE for oracle, autarkies
         # "out-synth-984881-0/", # fix bug in sibFPE, autarkies
         # "out-synth-1017598-5/", # too many fixes to name
-        "out-synth-1017598-1/", # too many fixes to name
+        # "out-synth-1017598-1/", # too many fixes to name
         # "out-synth-1017598-", # too many fixes to name
         # "out-synth-1043577-", # no_silent, BVA, Kuldeep ideas, 3+4 strategy etc
-        "out-synth-1043577-", #strategy 0, multiplier
+        "out-synth-1043577-1/", #strategy 0, multiplier
         # "out-synth-1043577-13", strategy 1
         # "out-synth-1043577-14"  strategy 2,
         # "out-synth-1043577-15"  strategy 3,
         # "out-synth-1043577-16"  strategy 4,
         # "out-synth-1044613-", # bva synth off, on-the-fly order
+        "out-synth-1063296-", # try different learning parameters
 
     ]
     # only_dirs = ["out-synth-6828273"]
