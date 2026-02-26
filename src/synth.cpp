@@ -48,34 +48,34 @@ template<typename T> bool validate_val(const string& v) {
     return e == std::errc{} && p == v.data()+v.size();
 }
 
-using ParamType = SynthRunner::ParamType;
-struct ParamDef { ParamType type; std::function<void(MC&, const string&)> setter; };
+using PT = SynthRunner::ParamType;
+struct ParamDef { PT type; std::function<void(MC&, const string&)> setter; };
 
 const std::map<string, ParamDef> param_table = {
-    {"max_repairs",              {ParamType::UInt,   [](MC& c, const string& v) { c.max_repairs              = parse_val<uint32_t>(v); }}},
-    {"samples",                  {ParamType::UInt,   [](MC& c, const string& v) { c.samples                  = parse_val<uint32_t>(v); }}},
-    {"samples_ccnr",             {ParamType::UInt,   [](MC& c, const string& v) { c.samples_ccnr             = parse_val<uint32_t>(v); }}},
-    {"min_gain_split",           {ParamType::Double, [](MC& c, const string& v) { c.min_gain_split           = parse_val<double>(v); }}},
-    {"max_depth",                {ParamType::UInt,   [](MC& c, const string& v) { c.max_depth                = parse_val<uint32_t>(v); }}},
-    {"sampler_fixed_conflicts",  {ParamType::UInt,   [](MC& c, const string& v) { c.sampler_fixed_conflicts  = parse_val<uint32_t>(v); }}},
-    {"min_leaf_size",            {ParamType::UInt,   [](MC& c, const string& v) { c.min_leaf_size            = parse_val<uint32_t>(v); }}},
-    {"filter_samples",           {ParamType::Int,    [](MC& c, const string& v) { c.filter_samples           = parse_val<int>(v); }}},
-    {"biased_sampling",          {ParamType::Int,    [](MC& c, const string& v) { c.biased_sampling          = parse_val<int>(v); }}},
-    {"minimize_conflict",        {ParamType::Int,    [](MC& c, const string& v) { c.minimize_conflict        = parse_val<int>(v); }}},
-    {"simplify_every",           {ParamType::UInt,   [](MC& c, const string& v) { c.simplify_every           = parse_val<uint32_t>(v); }}},
-    {"maxsat_better_ctx",        {ParamType::Int,    [](MC& c, const string& v) { c.maxsat_better_ctx        = parse_val<int>(v); }}},
-    {"maxsat_order",             {ParamType::Int,    [](MC& c, const string& v) { c.maxsat_order             = parse_val<int>(v); }}},
-    {"use_all_vars_as_feats",    {ParamType::Int,    [](MC& c, const string& v) { c.use_all_vars_as_feats    = parse_val<int>(v); }}},
-    {"ctx_solver_type",          {ParamType::Int,    [](MC& c, const string& v) { c.ctx_solver_type          = parse_val<int>(v); }}},
-    {"repair_solver_type",       {ParamType::Int,    [](MC& c, const string& v) { c.repair_solver_type       = parse_val<int>(v); }}},
-    {"repair_cache_size",        {ParamType::Int,    [](MC& c, const string& v) { c.repair_cache_size        = parse_val<int>(v); }}},
-    {"backward_synth_order",     {ParamType::Int,    [](MC& c, const string& v) { c.backward_synth_order     = parse_val<int>(v); }}},
-    {"manthan_order",            {ParamType::Int,    [](MC& c, const string& v) { c.manthan_order            = parse_val<int>(v); }}},
-    {"manthan_on_the_fly_order", {ParamType::Int,    [](MC& c, const string& v) { c.manthan_on_the_fly_order = parse_val<int>(v); }}},
-    {"one_repair_per_loop",      {ParamType::Int,    [](MC& c, const string& v) { c.one_repair_per_loop      = parse_val<int>(v); }}},
-    {"force_bw_equal",           {ParamType::Int,    [](MC& c, const string& v) { c.force_bw_equal           = parse_val<int>(v); }}},
-    {"bva_xor_vars",             {ParamType::Int,    [](MC& c, const string& v) { c.bva_xor_vars             = parse_val<int>(v); }}},
-    {"silent_var_update",        {ParamType::Int,    [](MC& c, const string& v) { c.silent_var_update        = parse_val<int>(v); }}},
+    {"max_repairs",              {PT::UInt,   [](MC& c, const string& v) { c.max_repairs              = parse_val<uint32_t>(v); }}},
+    {"samples",                  {PT::UInt,   [](MC& c, const string& v) { c.samples                  = parse_val<uint32_t>(v); }}},
+    {"samples_ccnr",             {PT::UInt,   [](MC& c, const string& v) { c.samples_ccnr             = parse_val<uint32_t>(v); }}},
+    {"min_gain_split",           {PT::Double, [](MC& c, const string& v) { c.min_gain_split           = parse_val<double>(v); }}},
+    {"max_depth",                {PT::UInt,   [](MC& c, const string& v) { c.max_depth                = parse_val<uint32_t>(v); }}},
+    {"sampler_fixed_conflicts",  {PT::UInt,   [](MC& c, const string& v) { c.sampler_fixed_conflicts  = parse_val<uint32_t>(v); }}},
+    {"min_leaf_size",            {PT::UInt,   [](MC& c, const string& v) { c.min_leaf_size            = parse_val<uint32_t>(v); }}},
+    {"filter_samples",           {PT::Int,    [](MC& c, const string& v) { c.filter_samples           = parse_val<int>(v); }}},
+    {"biased_sampling",          {PT::Int,    [](MC& c, const string& v) { c.biased_sampling          = parse_val<int>(v); }}},
+    {"minimize_conflict",        {PT::Int,    [](MC& c, const string& v) { c.minimize_conflict        = parse_val<int>(v); }}},
+    {"simplify_every",           {PT::UInt,   [](MC& c, const string& v) { c.simplify_every           = parse_val<uint32_t>(v); }}},
+    {"maxsat_better_ctx",        {PT::Int,    [](MC& c, const string& v) { c.maxsat_better_ctx        = parse_val<int>(v); }}},
+    {"maxsat_order",             {PT::Int,    [](MC& c, const string& v) { c.maxsat_order             = parse_val<int>(v); }}},
+    {"use_all_vars_as_feats",    {PT::Int,    [](MC& c, const string& v) { c.use_all_vars_as_feats    = parse_val<int>(v); }}},
+    {"ctx_solver_type",          {PT::Int,    [](MC& c, const string& v) { c.ctx_solver_type          = parse_val<int>(v); }}},
+    {"repair_solver_type",       {PT::Int,    [](MC& c, const string& v) { c.repair_solver_type       = parse_val<int>(v); }}},
+    {"repair_cache_size",        {PT::Int,    [](MC& c, const string& v) { c.repair_cache_size        = parse_val<int>(v); }}},
+    {"backward_synth_order",     {PT::Int,    [](MC& c, const string& v) { c.backward_synth_order     = parse_val<int>(v); }}},
+    {"manthan_order",            {PT::Int,    [](MC& c, const string& v) { c.manthan_order            = parse_val<int>(v); }}},
+    {"manthan_on_the_fly_order", {PT::Int,    [](MC& c, const string& v) { c.manthan_on_the_fly_order = parse_val<int>(v); }}},
+    {"one_repair_per_loop",      {PT::Int,    [](MC& c, const string& v) { c.one_repair_per_loop      = parse_val<int>(v); }}},
+    {"force_bw_equal",           {PT::Int,    [](MC& c, const string& v) { c.force_bw_equal           = parse_val<int>(v); }}},
+    {"bva_xor_vars",             {PT::Int,    [](MC& c, const string& v) { c.bva_xor_vars             = parse_val<int>(v); }}},
+    {"silent_var_update",        {PT::Int,    [](MC& c, const string& v) { c.silent_var_update        = parse_val<int>(v); }}},
 };
 } // namespace
 
