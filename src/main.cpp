@@ -97,7 +97,10 @@ static int fc_int(const std::string& s) {
     return val;
 }
 static double fc_double(const std::string& s) {
-    return std::stod(s);
+    size_t pos;
+    double val = std::stod(s, &pos);
+    if (pos != s.size()) throw std::invalid_argument("trailing characters in double: " + s);
+    return val;
 }
 static const std::string& fc_string(const std::string& s) { return s; }
 
