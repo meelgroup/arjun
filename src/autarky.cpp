@@ -29,6 +29,7 @@
 #include "constants.h"
 
 using namespace ArjunNS;
+using namespace ArjunInt;
 using namespace CMSat;
 using std::vector;
 using std::fixed;

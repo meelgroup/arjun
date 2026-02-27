@@ -187,7 +187,7 @@ SynthStrategy SynthRunner::parse_one_strategy(const string& raw) {
         }
     }
 
-    if (strat.type != "learn" && strat.type != "bve") {
+    if (strat.type != "learn" && strat.type != "bve" && strat.type != "const") {
         cout << "ERROR: unknown strategy type '" << strat.type << "'. Use 'learn' or 'bve'." << endl;
         exit(EXIT_FAILURE);
     }
@@ -209,7 +209,20 @@ vector<SynthStrategy> SynthRunner::parse_mstrategy(const string& s) {
 ArjunNS::Arjun::ManthanConf SynthRunner::apply_strategy(const ArjunNS::Arjun::ManthanConf& base,
         const SynthStrategy& strat) {
     auto mconf = base;
-    mconf.manthan_bve = (strat.type == "bve") ? 1 : 0;
+    if (strat.type == "learn") {
+#ifndef EXTRA_SYNTH
+        cout << "ERROR: strategy type 'learn' is only supported in EXTRA_SYNTH mode!" << endl;
+        exit(EXIT_FAILURE);
+#endif
+        mconf.manthan_base = 0;
+    } else if (strat.type == "const") {
+        mconf.manthan_base = 1;
+    } else if (strat.type == "bve") {
+        mconf.manthan_base = 2;
+    } else {
+        cout << "ERROR: unknown strategy type '" << strat.type << "'" << endl;
+        exit(EXIT_FAILURE);
+    }
 
     for (const auto& [k, v] : strat.overrides)
         param_table.at(k).setter(mconf, v);
@@ -242,13 +255,11 @@ void SynthRunner::run_manthan_strategies(
             mconf.max_repairs = std::numeric_limits<uint32_t>::max();
 
         verb_print(1, "Running Manthan strategy " << i+1 << "/" << strategies.size()
-            << " type=" << strat.type
-            << " tries=" << (is_last ? std::string("unlimited") : std::to_string(mconf.max_repairs)));
+            << " -- " << strat.raw << " with max_repairs="
+            << (mconf.max_repairs ? std::string("unlimited") : std::to_string(mconf.max_repairs)));
         cnf = arjun->standalone_manthan(cnf, mconf);
         if (cnf.synth_done()) {
-            verb_print(1,"Manthan finished with "
-                    << (mconf.max_repairs == std::numeric_limits<uint32_t>::max() ? "unlimited" : std::to_string(mconf.max_repairs))
-                    << " repairs for strategy " << i << "/" << strategies.size()-1
+            verb_print(1,"Manthan finished with strategy " << i << "/" << strategies.size()-1
                     << " -- " << strat.raw);
             break;
         }

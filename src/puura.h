@@ -40,6 +40,8 @@ using namespace ArjunNS;
 using std::vector;
 using std::set;
 
+namespace ArjunInt {
+
 class Puura {
 public:
     Puura(const Config& _conf);
@@ -75,3 +77,4 @@ private:
     set<uint32_t> sampl_set;
     vector<Lit> dont_elim;
 };
+}

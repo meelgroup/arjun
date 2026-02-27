@@ -37,6 +37,8 @@
 #include <random>
 #include <map>
 
+using namespace ArjunInt;
+
 #define COLDEF "\033[0m"
 
 #define verb_print(a, x) \

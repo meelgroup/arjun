@@ -39,9 +39,7 @@
 #include "constants.h"
 #include "autarky.h"
 #include "unate_def.h"
-#ifdef SYNTH
 #include "manthan.h"
-#endif
 
 using namespace ArjunInt;
 
@@ -125,12 +123,10 @@ DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {
     autarky.find_autarkies(cnf);
 }
 
-#ifdef SYNTH
 DLL_PUBLIC void Arjun::standalone_backward_round_synth(SimplifiedCNF& cnf, const ManthanConf& mconf) {
     Minimize common(arjdata->conf);
     common.backward_round_synth(cnf, mconf);
 }
-#endif
 
 DLL_PUBLIC void Arjun::standalone_unsat_define(SimplifiedCNF& cnf) {
     Extend extend(arjdata->conf);
@@ -149,13 +145,12 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_get_simplified_cnf(
     Puura puura(arjdata->conf);
     return puura.get_fully_simplified_renumbered_cnf(cnf, simp_conf);
 }
-#ifdef SYNTH
+
 DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(const SimplifiedCNF& cnf, const ManthanConf& mconf)
 {
     Manthan manthan(arjdata->conf, mconf, cnf);
     return manthan.do_manthan();
 }
-#endif
 
 DLL_PUBLIC void Arjun::standalone_rev_bce(SimplifiedCNF& cnf)
 {

@@ -32,6 +32,7 @@ extern "C" {
 
 using namespace CMSat;
 using namespace CaDiCaL;
+using namespace ArjunInt;
 
 void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<int> & clause,
                                const std::vector<uint64_t> & oantec) {

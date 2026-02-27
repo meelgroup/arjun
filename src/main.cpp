@@ -40,9 +40,7 @@
 #include "arjun.h"
 #include "config.h"
 #include "helper.h"
-#ifdef SYNTH
 #include "synth.h"
-#endif
 
 using std::cout;
 using std::endl;
@@ -68,7 +66,7 @@ int simptofile = true;
 int sampl_start_at_zero = false;
 int do_synth_bve = true;
 int do_pre_backbone = 0;
-string mstrategy = "learn(samples=1,max_repairs=80),learn(max_repairs=400),bve";
+string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_learnt=1),bve";
 
 int synthesis = false;
 int do_unate = false;
@@ -164,7 +162,6 @@ void add_arjun_options() {
     myopt("--unate", do_unate, fc_int,"Perform unate analysis");
     myopt("--unatedef", do_unate_def, fc_int,"Perform definition-aware unate analysis");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform unate analysis");
-    myopt("--mbve", mconf.manthan_bve, fc_int,"Use BVE with constants instead of training");
     myopt("--monflyorder", mconf.manthan_on_the_fly_order, fc_int,"Use on-the-fly training order and post-training topological order");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
     myopt("--minvertlearn", mconf.inv_learnt, fc_int,"Invert learnt functions");
@@ -316,7 +313,6 @@ void check_cnf_sat(const ArjunNS::SimplifiedCNF& cnf) {
     }
 }
 
-#ifdef SYNTH
 void do_synthesis() {
     if (etof_conf.all_indep) {
         cout << "ERROR: synthesis with --allindep makes no sense" << endl;
@@ -380,7 +376,6 @@ void do_synthesis() {
         if (conf.verb >= 3) final_cnf.write_aig_defs_to_file_txt(conf.debug_synth + "-final.txt");
     }
 }
-#endif
 
 void do_minimize() {
     ArjunNS::SimplifiedCNF cnf(fg);
@@ -507,12 +502,7 @@ int main(int argc, char** argv) {
     if (!elimtofile.empty())
         cout << "c o [arjun] Output file: " << elimtofile << endl;
     if (synthesis) {
-#ifdef SYNTH
         do_synthesis();
-#else
-        cout << "c o [arjun] ERROR: synthesis not enabled in this build" << endl;
-        exit(EXIT_FAILURE);
-#endif
     } else {
         do_minimize();
     }
