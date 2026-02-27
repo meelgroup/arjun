@@ -2070,40 +2070,10 @@ double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
         train_error = 0.0;
     } else {
         // Create the RandomForest object and train it on the training data.
-        //
-        //  All Available Parameters to Reduce Overfitting:
-          /* 1. minimumLeafSize (default: 10) */
-          /*   - Minimum number of points in each leaf node */
-          /*   - Increase to reduce overfitting (e.g., 20, 50, 100) */
-          /* 2. minimumGainSplit (default: 1e-7) */
-          /*   - Minimum gain required for a node to split */
-          /*   - Increase to reduce overfitting (e.g., 0.001, 0.01, 0.05) */
-          /*   - Must be in range (0, 1) */
-          /* 3. maximumDepth (default: 0 = unlimited) */
-          /*   - Maximum depth of the tree */
-          /*   - Set a limit to reduce overfitting (e.g., 5, 10, 15) */
-          /* 4. dimensionSelector (optional) */
-          /*   - Advanced: Controls which features to consider for splitting */
-          /*   - Can use custom strategies (usually leave as default) */
-
-        /* DecisionTree<> r(dataset, labels, 2); */
-        // More conservative (less overfitting)
-        /* DecisionTree<FitnessFunction,  -- default is GiniGain */
-        /*              NumericSplitType, */
-        /*              CategoricalSplitType, */
-        /*              DimensionSelectionType, */
-        /*              NoRecursion>::DecisionTree( */
-        /*     MatType data, */
-        /*     LabelsType labels, */
-        /*     const size_t numClasses, */
-        /*     const size_t minimumLeafSize, */
-        /*     const double minimumGainSplit, */
-        /*     const size_t maximumDepth, */
-        /*     DimensionSelectionType dimensionSelector) */
         mlpack::DecisionTree<> r(dataset, labels, 2,
-                       mconf.min_leaf_size,  // minimumLeafSize: require 20+ samples per leaf (default 10)
-                       mconf.min_gain_split,     // minimumGainSplit: require k ratio gain to split
-                       mconf.max_depth);    // maximumDepth: max k levels deep (0 = unlimited)
+            mconf.min_leaf_size,  // minimumLeafSize: require 20+ samples per leaf (default 10)
+            mconf.min_gain_split,     // minimumGainSplit: require k ratio gain to split
+            mconf.max_depth);    // maximumDepth: max k levels deep (0 = unlimited)
 
         // Compute and print the training error.
         arma::Row<size_t> predictions;
