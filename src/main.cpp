@@ -97,9 +97,7 @@ static int fc_int(const std::string& s) {
     return val;
 }
 static double fc_double(const std::string& s) {
-    double val = 0.0;
-    std::from_chars(s.data(), s.data() + s.size(), val);
-    return val;
+    return std::stod(s);
 }
 static const std::string& fc_string(const std::string& s) { return s; }
 

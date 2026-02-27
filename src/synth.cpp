@@ -42,10 +42,17 @@ using MC = ArjunNS::Arjun::ManthanConf;
 template<typename T> T parse_val(const string& s) {
     T v{}; std::from_chars(s.data(), s.data() + s.size(), v); return v;
 }
+template<> double parse_val<double>(const string& s) {
+    return std::stod(s);
+}
 
 template<typename T> bool validate_val(const string& v) {
     T x; auto [p,e] = std::from_chars(v.data(), v.data()+v.size(), x);
     return e == std::errc{} && p == v.data()+v.size();
+}
+template<> bool validate_val<double>(const string& v) {
+    try { size_t pos; std::stod(v, &pos); return pos == v.size(); }
+    catch (...) { return false; }
 }
 
 using PT = SynthRunner::ParamType;
