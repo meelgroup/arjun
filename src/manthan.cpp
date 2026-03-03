@@ -29,7 +29,6 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstdint>
-#include <ensmallen_bits/sgdr/cyclical_decay.hpp>
 #include <iomanip>
 #include <ios>
 #include <memory>
@@ -45,6 +44,7 @@
 #include "ccnr/ccnr.h"
 
 #ifdef EXTRA_SYNTH
+#include <ensmallen_bits/sgdr/cyclical_decay.hpp>
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
 #include "EvalMaxSAT.h"
 #include "manthan_learn.h"
