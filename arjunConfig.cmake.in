@@ -1,8 +1,8 @@
-# Config file for the @EXPORT_TYPE@ cryptominisat Package
+# Config file for the @EXPORT_TYPE@ arjun package
 # It defines the following variables
-#  ARJUN_INCLUDE_DIRS - include directories for cryptominisat5
+#  ARJUN_INCLUDE_DIRS - include directories for arjun
 #  ARJUN_LIBRARIES    - libraries to link against
-#  ARJUN_EXECUTABLE   - the cryptominisat executable
+#  ARJUN_EXECUTABLE   - the arjun executable
 
 # Compute paths
 get_filename_component(ARJUN_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
