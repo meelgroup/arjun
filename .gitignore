@@ -12,3 +12,8 @@ CLAUDE.md
 perf*
 output
 out/
+html/*.js
+html/*.css
+html/*.wasm
+html/*.ts
+
