@@ -1,5 +1,5 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
 
 rm -rf CMake* src cmake* ganak* sharp* Make*
