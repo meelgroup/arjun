@@ -94,13 +94,15 @@ def generate_todos():
         # "out-synth-1017598-1/", # too many fixes to name
         # "out-synth-1017598-", # too many fixes to name
         # "out-synth-1043577-", # no_silent, BVA, Kuldeep ideas, 3+4 strategy etc
-        "out-synth-1043577-1/", #strategy 0, multiplier
+        # "out-synth-1043577-1/", #strategy 0, multiplier
         # "out-synth-1043577-13", strategy 1
         # "out-synth-1043577-14"  strategy 2,
         # "out-synth-1043577-15"  strategy 3,
         # "out-synth-1043577-16"  strategy 4,
         # "out-synth-1044613-", # bva synth off, on-the-fly order
-        "out-synth-1063296-", # try different learning parameters
+        # "out-synth-1063296-", # try different learning parameters
+        "out-synth-1063296-9/", # best learning parameter
+        "out-synth-1068169-", # new strategy system
 
     ]
     # only_dirs = ["out-synth-6828273"]
