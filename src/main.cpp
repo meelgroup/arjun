@@ -28,6 +28,7 @@
 #include <cfenv>
 #endif
 
+#include <charconv>
 #include <iostream>
 #include <iomanip>
 #include <vector>
@@ -39,23 +40,7 @@
 #include "arjun.h"
 #include "config.h"
 #include "helper.h"
-
-#define myopt(name, var, fun, hhelp) \
-    program.add_argument(name) \
-        .action([&](const auto& a) {var = std::fun(a.c_str());}) \
-        .default_value(var) \
-        .help(hhelp)
-#define myopt2(name1, name2, var, fun, hhelp) \
-    program.add_argument(name1, name2) \
-        .action([&](const auto& a) {var = std::fun(a.c_str());}) \
-        .default_value(var) \
-        .help(hhelp)
-#define myflag(name, var, hhelp) \
-    program.add_argument(name) \
-        .action([&](const auto&) {var = 1;}) \
-        .default_value(var) \
-        .flag() \
-        .help(hhelp)
+#include "synth.h"
 
 using std::cout;
 using std::endl;
@@ -81,8 +66,7 @@ int simptofile = true;
 int sampl_start_at_zero = false;
 int do_synth_bve = true;
 int do_pre_backbone = 0;
-int manthan_rep_mult = 4;
-int manthan_strategy = 0;
+string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_learnt=1),bve";
 
 int synthesis = false;
 int do_unate = false;
@@ -105,82 +89,133 @@ string print_version() {
     return ss.str();
 }
 
+static int fc_int(const std::string& s) {
+    int val = 0;
+    std::from_chars(s.data(), s.data() + s.size(), val);
+    return val;
+}
+static double fc_double(const std::string& s) {
+    size_t pos;
+    double val = std::stod(s, &pos);
+    if (pos != s.size()) throw std::invalid_argument("trailing characters in double: " + s);
+    return val;
+}
+static const std::string& fc_string(const std::string& s) { return s; }
+
+template<typename T, typename F>
+void myopt(const char* name, T& var, F fun, const char* hhelp) {
+    using r = std::decay_t<std::invoke_result_t<F, const std::string&>>;
+    static_assert(std::is_floating_point_v<r> == std::is_floating_point_v<T>,
+        "Floating-point mismatch: use fc_double for floating-point vars, fc_int for integral vars");
+    static_assert(std::is_integral_v<r> == std::is_integral_v<T>,
+        "Integral/string mismatch: use fc_int for integral vars, fc_string for string vars");
+    program.add_argument(name)
+        .action([&var, fun](const auto& a) { var = fun(a); })
+        .default_value(var)
+        .help(hhelp);
+}
+template<typename T, typename F>
+void myopt2(const char* name1, const char* name2, T& var, F fun, const char* hhelp) {
+    using r = std::decay_t<std::invoke_result_t<F, const std::string&>>;
+    static_assert(std::is_floating_point_v<r> == std::is_floating_point_v<T>,
+        "Floating-point mismatch: use fc_double for floating-point vars, fc_int for integral vars");
+    static_assert(std::is_integral_v<r> == std::is_integral_v<T>,
+        "Integral/string mismatch: use fc_int for integral vars, fc_string for string vars");
+    program.add_argument(name1, name2)
+        .action([&var, fun](const auto& a) { var = fun(a); })
+        .default_value(var)
+        .help(hhelp);
+}
+template<typename T>
+void myflag(const char* name, T& var, const char* hhelp) {
+    static_assert(std::is_same_v<T, int>, "myflag var must be int");
+    program.add_argument(name)
+        .action([&var](const auto&) { var = 1; })
+        .default_value(var)
+        .flag()
+        .help(hhelp);
+}
+
 void add_arjun_options() {
-    myopt2("-v", "--verb", conf.verb, atoi, "Verbosity");
+    myopt2("-v", "--verb", conf.verb, fc_int, "Verbosity");
     program.add_argument("-v", "--version") \
         .action([&](const auto&) {print_version(); exit(0);}) \
         .flag()
         .help("Print version and exit");
 
-    myopt("--mode", mode , atoi, "0=counting, 1=weightd counting");
-    myopt("--allindep", etof_conf.all_indep , atoi, "All variables can be made part of the indepedent support. Indep support is given ONLY to help the solver.");
-    myopt("--maxc", conf.backw_max_confl, atoi,"Maximum conflicts per variable in backward mode");
-    myopt("--revbce", do_revbce, atoi,"Perform reverse BCE");
-    myopt("--sbva", etof_conf.num_sbva_steps, atoi,"SBVA timeout. 0 = no sbva");
-    myopt("--prebackbone", do_pre_backbone, atoi,"Perform backbone before other things");
-    myopt("--seed", conf.seed, atoi, "Random seed");
+    myopt("--mode", mode , fc_int, "0=counting, 1=weightd counting");
+    myopt("--allindep", etof_conf.all_indep , fc_int, "All variables can be made part of the indepedent support. Indep support is given ONLY to help the solver.");
+    myopt("--maxc", conf.backw_max_confl, fc_int,"Maximum conflicts per variable in backward mode");
+    myopt("--revbce", do_revbce, fc_int,"Perform reverse BCE");
+    myopt("--sbva", etof_conf.num_sbva_steps, fc_int,"SBVA timeout. 0 = no sbva");
+    myopt("--prebackbone", do_pre_backbone, fc_int,"Perform backbone before other things");
+    myopt("--seed", conf.seed, fc_int, "Random seed");
 
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
     myflag("--synthmore", synthesis, "Run synthesis, with more aggressive BVE options");
-    myopt("--maxsat", mconf.do_maxsat_better_ctx, atoi, "Use maxsat to find better counterexamples during Manthan");
-    myopt("--synthbve", do_synth_bve, atoi,"Perform BVE for synthesis");
-    myopt("--extend", etof_conf.do_extend_indep, atoi,"Extend independent set just before CNF dumping");
-    myopt("--minimconfl", mconf.do_minimize_conflict, atoi,"Minimize conflict size when repairing");
-    myopt("--simpevery", mconf.simplify_every, atoi,"Simplify solvers inside Manthan every K loops");
-    myopt("--unate", do_unate, atoi,"Perform unate analysis");
-    myopt("--unatedef", do_unate_def, atoi,"Perform definition-aware unate analysis");
-    myopt("--autarky", etof_conf.do_autarky, atoi,"Perform unate analysis");
-    myopt("--mbve", mconf.manthan_bve, atoi,"Use BVE with constants instead of training");
-    myopt("--monflyorder", mconf.manthan_on_the_fly_order, atoi,"Use on-the-fly training order and post-training topological order");
-    myopt("--moneperloop", mconf.one_repair_per_loop, atoi,"One repair per CEX loop");
+    myopt("--maxsat", mconf.maxsat_better_ctx, fc_int, "Use maxsat to find better counterexamples during Manthan");
+    myopt("--synthbve", do_synth_bve, fc_int,"Perform BVE for synthesis");
+    myopt("--extend", etof_conf.do_extend_indep, fc_int,"Extend independent set just before CNF dumping");
+    myopt("--minimconfl", mconf.minimize_conflict, fc_int,"Minimize conflict size when repairing");
+    myopt("--simpevery", mconf.simplify_every, fc_int,"Simplify solvers inside Manthan every K loops");
+    myopt("--unate", do_unate, fc_int,"Perform unate analysis");
+    myopt("--unatedef", do_unate_def, fc_int,"Perform definition-aware unate analysis");
+    myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform unate analysis");
+    myopt("--monflyorder", mconf.manthan_on_the_fly_order, fc_int,"Use on-the-fly training order and post-training topological order");
+    myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
+    myopt("--minvertlearn", mconf.inv_learnt, fc_int,"Invert learnt functions");
 
     // repairing on vars
-    myopt("--bwequal", mconf.force_bw_equal, atoi,"Force BW vars' indicators to be TRUE -- prevents repairing with them, but faster to repair");
-    myopt("--bvaxor", mconf.bva_xor_vars, atoi,"Add XOR over input vars as BVA vars, so we can repair with them");
-    myopt("--silentupdate", mconf.silent_var_update, atoi,"Silently update variables while repairing");
+    myopt("--bwequal", mconf.force_bw_equal, fc_int,"Force BW vars' indicators to be TRUE -- prevents repairing with them, but faster to repair");
+    myopt("--bvaxor", mconf.bva_xor_vars, fc_int,"Add XOR over input vars as BVA vars, so we can repair with them");
+    myopt("--silentupdate", mconf.silent_var_update, fc_int,"Silently update variables while repairing");
     // Strategy
-    myopt("--mtryrepmult", manthan_rep_mult, atoi,"Repair tries will be multiplied by this");
-    myopt("--mstrategy", manthan_strategy, atoi,"Go directly to strategy N");
+    myopt("--mstrategy", mstrategy, fc_string,
+        "Comma-separated synthesis strategy list, e.g. "
+        "\"learn(samples=1,max_repairs=100),learn(max_repairs=800),bve\". "
+        "Each non-last strategy runs for 20*max_repairs tries; the last runs unlimited. "
+        "Params: manthan_bve, samples, samples_ccnr, minGainSplit, "
+        "maximumDepth, sampler_fixed_conflicts, and other ManthanConf fields.");
     // Order
-    myopt("--morder", mconf.manthan_order, atoi,"Order vars: indicence (0), cluster-incidence (1), BVE (2)");
-    myopt("--maxsatorder", mconf.maxsat_order, atoi,"Which order to use to try to fix vars? 0 = norm, 1 = rev");
-    myopt("--mbackwsynthorder", mconf.backward_synth_order, atoi,"Which order to use to try to do backward? 0 = normal, 1 = reverse");
+    myopt("--morder", mconf.manthan_order, fc_int,"Order vars: indicence (0), cluster-incidence (1), BVE (2)");
+    myopt("--maxsatorder", mconf.maxsat_order, fc_int,"Which order to use to try to fix vars? 0 = norm, 1 = rev");
+    myopt("--mbackwsynthorder", mconf.backward_synth_order, fc_int,"Which order to use to try to do backward? 0 = normal, 1 = reverse");
     // solver config
-    myopt("--ctxsolver", mconf.ctx_solver_type, atoi,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
-    myopt("--repairsolver", mconf.repair_solver_type, atoi,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
-    myopt("--repaircache", mconf.repair_cache_size, atoi,"Repair cache size. 0 = no cache");
+    myopt("--ctxsolver", mconf.ctx_solver_type, fc_int,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
+    myopt("--repairsolver", mconf.repair_solver_type, fc_int,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
+    myopt("--repaircache", mconf.repair_cache_size, fc_int,"Repair cache size. 0 = no cache");
     // synth -- sampling
-    myopt("--samples", mconf.num_samples, atoi,"Number of samples");
-    myopt("--samplesccnr", mconf.num_samples_ccnr, atoi,"Number of samples from CCNR");
-    myopt("--uniqsamp", mconf.do_unique_input_samples, atoi, "Unique samples on input vars");
-    myopt("--filtersamples", mconf.do_filter_samples, atoi,"Filter samples from useless ones");
-    myopt("--biasedsampling", mconf.do_biased_sampling, atoi,"Biased sampling");
-    myopt("--fixedconf", mconf.sampler_fixed_conflicts, atoi,"Restart conflict limit in CMSGen");
+    myopt("--samples", mconf.samples, fc_int,"Number of samples");
+    myopt("--samplesccnr", mconf.samples_ccnr, fc_int,"Number of samples from CCNR");
+    myopt("--uniqsamp", mconf.do_unique_input_samples, fc_int, "Unique samples on input vars");
+    myopt("--filtersamples", mconf.filter_samples, fc_int,"Filter samples from useless ones");
+    myopt("--biasedsampling", mconf.biased_sampling, fc_int,"Biased sampling");
+    myopt("--fixedconf", mconf.sampler_fixed_conflicts, fc_int,"Restart conflict limit in CMSGen");
     // synth -- decision tree
-    myopt("--maxdepth", mconf.maximumDepth, atoi,"Maximum depth of decision tree");
-    myopt("--minleaf", mconf.minimumLeafSize, atoi,"Minimum leaf size in decision tree");
-    myopt("--mingainsplit", mconf.minGainSplit, atof,"Minimum gain for a split in decision tree");
-    myopt("--learnuseall", mconf.do_use_all_variables_as_features, atoi,"Use all variables as features in decision tree learning. 0 = only inputs");
+    myopt("--maxdepth", mconf.max_depth, fc_int,"Maximum depth of decision tree");
+    myopt("--minleaf", mconf.min_leaf_size, fc_int,"Minimum leaf size in decision tree");
+    myopt("--mingainsplit", mconf.min_gain_split, fc_double,"Minimum gain for a split in decision tree");
+    myopt("--learnuseall", mconf.use_all_vars_as_feats, fc_int,"Use all variables as features in decision tree learning. 0 = only inputs");
     // synth -- debug
-    myopt("--manthancnf", mconf.write_manthan_cnf, string, "Write Manthan CNF to this file");
-    myopt("--debugsynth", conf.debug_synth, string,"Debug synthesis, prefix with this fname");
+    myopt("--manthancnf", mconf.write_manthan_cnf, fc_string, "Write Manthan CNF to this file");
+    myopt("--debugsynth", conf.debug_synth, fc_string,"Debug synthesis, prefix with this fname");
 
 
     // Simplification options for minim
-    myopt("--probe", conf.probe_based, atoi,"Do probing during orignal Arjun");
-    myopt("--bvepresimp", conf.bve_pre_simplify, atoi,"simplify");
-    myopt("--simp", conf.simp, atoi,"Do ~ sort of simplification during indep minimixation");
-    myopt("--probe", conf.probe_based, atoi,"Use simple probing to set (and define) some variables");
-    myopt("--intree", conf.intree, atoi,"intree");
+    myopt("--probe", conf.probe_based, fc_int,"Do probing during orignal Arjun");
+    myopt("--bvepresimp", conf.bve_pre_simplify, fc_int,"simplify");
+    myopt("--simp", conf.simp, fc_int,"Do ~ sort of simplification during indep minimixation");
+    myopt("--probe", conf.probe_based, fc_int,"Use simple probing to set (and define) some variables");
+    myopt("--intree", conf.intree, fc_int,"intree");
 
     // Gate options
-    myopt("--gates", do_gates, atoi,"Turn on/off all gate-based definability");
-    myopt("--nogatebelow", conf.no_gates_below, atof,"Don't use gates below this incidence relative position (1.0-0.0) to minimize the independent set. Gates are not very accurate, but can save a LOT of time. We use them to get rid of most of the uppert part of the sampling set only. Default is 99% is free-for-all, the last 1% we test. At 1.0 we test everything, at 0.0 we try using gates for everything.");
-    myopt("--orgate", conf.or_gate_based, atoi,"Use 3-long gate detection in SAT solver to define variables");
-    myopt("--irreggate", conf.irreg_gate_based, atoi,"Use irregular gate-based removal of vars from indep set");
-    myopt("--itegate", conf.ite_gate_based, atoi,"Use ITE gate detection in SAT solver to define some variables");
-    myopt("--xorgate", conf.xor_gates_based, atoi,"Use XOR detection in SAT solver to define some variables");
+    myopt("--gates", do_gates, fc_int,"Turn on/off all gate-based definability");
+    myopt("--nogatebelow", conf.no_gates_below, fc_double,"Don't use gates below this incidence relative position (1.0-0.0) to minimize the independent set. Gates are not very accurate, but can save a LOT of time. We use them to get rid of most of the uppert part of the sampling set only. Default is 99% is free-for-all, the last 1% we test. At 1.0 we test everything, at 0.0 we try using gates for everything.");
+    myopt("--orgate", conf.or_gate_based, fc_int,"Use 3-long gate detection in SAT solver to define variables");
+    myopt("--irreggate", conf.irreg_gate_based, fc_int,"Use irregular gate-based removal of vars from indep set");
+    myopt("--itegate", conf.ite_gate_based, fc_int,"Use ITE gate detection in SAT solver to define some variables");
+    myopt("--xorgate", conf.xor_gates_based, fc_int,"Use XOR detection in SAT solver to define some variables");
 
     // AppMC
     program.add_argument("--appmc")
@@ -189,32 +224,32 @@ void add_arjun_options() {
         .help("Set CNF simplification options for appmc");
 
     // Detailed Configuration
-    myopt("--sbvaclcut", etof_conf.sbva_cls_cutoff, atoi,"SBVA heuristic cutoff. Higher -> only appied to more clauses");
-    myopt("--sbvalitcut", etof_conf.sbva_lits_cutoff, atoi,"SBVA heuristic cutoff. Higher -> only appied to larger clauses");
-    myopt("--findbins", conf.oracle_find_bins, atoi,"How aggressively find binaries via oracle");
-    myopt("--sbvabreak",  etof_conf.sbva_tiebreak, atoi,"SBVA tie break: 1=sbva or 0=bva");
-    myopt("--gaussj", conf.gauss_jordan, atoi,"Use XOR finding and Gauss-Jordan elimination");
-    myopt("--bve", simp_conf.do_bve, atoi,"Perform BVE during CNF simplification");
-    myopt("--iter1", simp_conf.iter1, atoi,"Puura iterations before oracle");
-    myopt("--iter1grow", simp_conf.bve_grow_iter1, atoi,"Puura BVE grow rate allowed before Oracle");
-    myopt("--iter2", simp_conf.iter2, atoi,"Puura iterations after oracle");
-    myopt("--iter2grow", simp_conf.bve_grow_iter2, atoi,"Puura BVE grow rate allowed after Oracle");
-    myopt("--bvegrownonstop", simp_conf.bve_grow_nonstop, atoi,"Do not stop BVE if nothing got eliminated, keep going until grow factor limit");
-    myopt("--bveresolvmaxsz", simp_conf.bve_too_large_resolvent, atoi,"Puura BVE max resolvent size in literals. -1 == no limit");
-    myopt("--oraclesparsify", simp_conf.oracle_sparsify, atoi,"Use Oracle to sparsify");
-    myopt("--oraclevivif", simp_conf.oracle_vivify, atoi,"Use oracle to vivify");
-    myopt("--oraclevivifgetl", simp_conf.oracle_vivify_get_learnts, atoi,"Use oracle to vivify get learnts");
-    myopt("--distill", conf.distill, atoi, "Distill clauses before minimization of indep");
-    myopt("--weakenlim", simp_conf.weaken_limit, atoi, "Limit to weaken BVE resolvents");
-    myopt("--bce", etof_conf.do_bce, atoi, "Use blocked clause elimination (BCE) statically");
-    myopt("--red", redundant_cls, atoi,"Also dump redundant clauses");
+    myopt("--sbvaclcut", etof_conf.sbva_cls_cutoff, fc_int,"SBVA heuristic cutoff. Higher -> only appied to more clauses");
+    myopt("--sbvalitcut", etof_conf.sbva_lits_cutoff, fc_int,"SBVA heuristic cutoff. Higher -> only appied to larger clauses");
+    myopt("--findbins", conf.oracle_find_bins, fc_int,"How aggressively find binaries via oracle");
+    myopt("--sbvabreak",  etof_conf.sbva_tiebreak, fc_int,"SBVA tie break: 1=sbva or 0=bva");
+    myopt("--gaussj", conf.gauss_jordan, fc_int,"Use XOR finding and Gauss-Jordan elimination");
+    myopt("--bve", simp_conf.do_bve, fc_int,"Perform BVE during CNF simplification");
+    myopt("--iter1", simp_conf.iter1, fc_int,"Puura iterations before oracle");
+    myopt("--iter1grow", simp_conf.bve_grow_iter1, fc_int,"Puura BVE grow rate allowed before Oracle");
+    myopt("--iter2", simp_conf.iter2, fc_int,"Puura iterations after oracle");
+    myopt("--iter2grow", simp_conf.bve_grow_iter2, fc_int,"Puura BVE grow rate allowed after Oracle");
+    myopt("--bvegrownonstop", simp_conf.bve_grow_nonstop, fc_int,"Do not stop BVE if nothing got eliminated, keep going until grow factor limit");
+    myopt("--bveresolvmaxsz", simp_conf.bve_too_large_resolvent, fc_int,"Puura BVE max resolvent size in literals. -1 == no limit");
+    myopt("--oraclesparsify", simp_conf.oracle_sparsify, fc_int,"Use Oracle to sparsify");
+    myopt("--oraclevivif", simp_conf.oracle_vivify, fc_int,"Use oracle to vivify");
+    myopt("--oraclevivifgetl", simp_conf.oracle_vivify_get_learnts, fc_int,"Use oracle to vivify get learnts");
+    myopt("--distill", conf.distill, fc_int, "Distill clauses before minimization of indep");
+    myopt("--weakenlim", simp_conf.weaken_limit, fc_int, "Limit to weaken BVE resolvents");
+    myopt("--bce", etof_conf.do_bce, fc_int, "Use blocked clause elimination (BCE) statically");
+    myopt("--red", redundant_cls, fc_int,"Also dump redundant clauses");
 
     // Debug
-    myopt("--renumber", etof_conf.do_renumber, atoi,"Renumber variables to start from 1...N in CNF.");
-    myopt("--specifiedorder", conf.specified_order_fname, string, "Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY");
-    myopt("--minimize", do_minim_indep, atoi,"Minimize indep set");
-    myopt("--debugminim", debug_minim, string,"Create this file that is the CNF after indep set minimization");
-    myopt("--cmsmult", conf.cms_glob_mult, atof,"Multiply timeouts in CMS by this. Default is -1, which means no change. Useful for debugging");
+    myopt("--renumber", etof_conf.do_renumber, fc_int,"Renumber variables to start from 1...N in CNF.");
+    myopt("--specifiedorder", conf.specified_order_fname, fc_string, "Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY");
+    myopt("--minimize", do_minim_indep, fc_int,"Minimize indep set");
+    myopt("--debugminim", debug_minim, fc_string,"Create this file that is the CNF after indep set minimization");
+    myopt("--cmsmult", conf.cms_glob_mult, fc_double,"Multiply timeouts in CMS by this. Default is -1, which means no change. Useful for debugging");
 
     program.add_argument("files").remaining().help("input file and output file");
 }
@@ -278,7 +313,6 @@ void check_cnf_sat(const ArjunNS::SimplifiedCNF& cnf) {
     }
 }
 
-#ifdef SYNTH
 void do_synthesis() {
     if (etof_conf.all_indep) {
         cout << "ERROR: synthesis with --allindep makes no sense" << endl;
@@ -298,74 +332,37 @@ void do_synthesis() {
     check_cnf_sat(cnf);
     cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
     cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
+
     if (do_synth_bve && !cnf.synth_done()) {
-        /* simp_conf.bve_too_large_resolvent = -1; */
         cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
     }
-
     if (etof_conf.do_autarky && !cnf.synth_done()) {
         arjun->standalone_autarky(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-autarky.aig");
     }
-
     if (etof_conf.do_extend_indep && !cnf.synth_done()) {
         arjun->standalone_unsat_define(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-extend_synth.aig");
         cnf.simplify_aigs(conf.verb);
     }
-
-     if (do_minim_indep && !cnf.synth_done()) {
+    if (do_minim_indep && !cnf.synth_done()) {
         arjun->standalone_backward_round_synth(cnf, mconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-minim_idep_synt.aig");
         cnf.simplify_aigs(conf.verb);
     }
-
     if (do_unate && !cnf.synth_done()) {
         arjun->standalone_unate(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate.aig");
     }
-
     if (do_unate_def && !cnf.synth_done()) {
         arjun->standalone_unate_def(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate_def.aig");
     }
 
-    auto mconf_orig = mconf;
-    uint32_t tries;
-    if (manthan_strategy > 4) {
-        cout << "ERROR: unknown strategy " << manthan_strategy << endl;
-        exit(EXIT_FAILURE);
-    }
-    if (!cnf.synth_done() && (manthan_strategy == 0 || manthan_strategy == 1)) {
-        mconf = mconf_orig;
-        // Learning with no samples
-        mconf.manthan_bve = 0;
-        mconf.num_samples = 1;
-        mconf.num_samples_ccnr = 0;
-        mconf.manthan_bve = 0;
-        tries = 20*manthan_rep_mult;
-        if (manthan_strategy == 1) tries = std::numeric_limits<uint32_t>::max();
-        cnf = arjun->standalone_manthan(cnf, mconf, tries);
-        if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 1");
-    }
-    if (!cnf.synth_done() && (manthan_strategy == 0 || manthan_strategy == 2)) {
-        // Learning with (larger) samples size
-        mconf = mconf_orig;
-        mconf.manthan_bve = 0;
-        tries = 100*manthan_rep_mult;
-        if (manthan_strategy == 2) tries = std::numeric_limits<uint32_t>::max();
-        cnf = arjun->standalone_manthan(cnf, mconf, tries);
-        if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 2");
-    }
-    if (!cnf.synth_done() && (manthan_strategy == 0 || manthan_strategy == 3)) {
-        // BVE strategy
-        mconf = mconf_orig;
-        mconf.manthan_bve = 1;
-        tries = std::numeric_limits<uint32_t>::max();
-        cnf = arjun->standalone_manthan(cnf, mconf, tries);
-        if (cnf.synth_done()) verb_print(1, "Manthan finished with strategy 3");
-    }
+    SynthRunner synth_runner(conf, arjun);
+    auto strategies = synth_runner.parse_mstrategy(mstrategy);
+    synth_runner.run_manthan_strategies(cnf, mconf, strategies);
     release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");
     if (!conf.debug_synth.empty()) {
@@ -379,7 +376,6 @@ void do_synthesis() {
         if (conf.verb >= 3) final_cnf.write_aig_defs_to_file_txt(conf.debug_synth + "-final.txt");
     }
 }
-#endif
 
 void do_minimize() {
     ArjunNS::SimplifiedCNF cnf(fg);
@@ -506,12 +502,7 @@ int main(int argc, char** argv) {
     if (!elimtofile.empty())
         cout << "c o [arjun] Output file: " << elimtofile << endl;
     if (synthesis) {
-#ifdef SYNTH
         do_synthesis();
-#else
-        cout << "c o [arjun] ERROR: synthesis not enabled in this build" << endl;
-        exit(EXIT_FAILURE);
-#endif
     } else {
         do_minimize();
     }

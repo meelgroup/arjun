@@ -92,7 +92,7 @@ SET(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 
 # static compilation
-option(SYNTH "Also build synthesis" ON)
+option(EXTRA_SYNTH "Also build synthesis" ON)
 option(BUILD_SHARED_LIBS "Build the shared library" ON)
 option(STATICCOMPILE "Compile to static executable" OFF)
 if (STATICCOMPILE)
@@ -117,8 +117,8 @@ find_package (sbva REQUIRED)
 find_package(treedecomp CONFIG REQUIRED)
 message(STATUS "Found SBVA includes at: ${SBVA_INCLUDE_DIRS}")
 find_package(GMP REQUIRED)
-if (SYNTH)
-    add_definitions(-DSYNTH)
+if (EXTRA_SYNTH)
+    add_definitions(-DEXTRA_SYNTH)
     find_package(MLPACK REQUIRED)
     find_library(cadical
         PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../cadical/build/

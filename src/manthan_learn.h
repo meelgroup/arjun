@@ -22,42 +22,42 @@
  THE SOFTWARE.
  */
 
-
 #pragma once
 
-#include <cryptominisat5/cryptominisat.h>
-#include "src/config.h"
+#include "manthan.h"
+#include <cstdint>
 #include <vector>
-#include <set>
-#include "config.h"
-#include "arjun.h"
-#include "src/formula.h"
+#include <string>
 
-using namespace CMSat;
-using namespace ArjunNS;
 using std::vector;
-using std::set;
+using std::uint32_t;
+using std::string;
+using sample = vector<lbool>;
+
+// These ask mlpack to give more info & warnings
+//#define MLPACK_PRINT_INFO
+//#define MLPACK_PRINT_WARN
+#include <mlpack.hpp>
 
 namespace ArjunInt {
 
-class Autarky {
+class ManthanLearn {
 public:
-    Autarky(const Config& _conf);
-
-    void find_autarkies(SimplifiedCNF& cnf);
-
+    ManthanLearn(Manthan& _manthan, const Config& _conf, const ArjunNS::Arjun::ManthanConf& _mconf) :
+        m(_manthan), conf(_conf), mconf(_mconf) {
+            point_0.zeros(m.cnf.nVars());
+            point_1.zeros(m.cnf.nVars());
+        }
+    void full_train();
 private:
-    /// For synthesis stats
-    set<uint32_t> input;
-    set<uint32_t> to_define;
-    set<uint32_t> backward_defined;
+    double train(const vector<sample>& orig_samples, const uint32_t v);
+    FHolder<MetaSolver2>::Formula recur(
+            mlpack::tree::DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& var_remap, uint32_t depth, uint32_t& max_depth);
+    arma::vec point_0;
+    arma::vec point_1;
 
-    struct LitSub {
-        Lit pos = lit_Undef;
-        Lit neg = lit_Undef;
-    };
-    SATSolver s;
-    const Config conf;
-
+    Manthan& m;
+    const Config& conf;
+    const ArjunNS::Arjun::ManthanConf& mconf;
 };
 }

@@ -3,8 +3,7 @@
 
  Copyright (c) 2020, Mate Soos and Kuldeep S. Meel. All rights reserved.
 
- Permission is hereby granted, free of charge, to any person obtaining a copy
- of this software and associated documentation files (the "Software"), to deal
+ Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal
  in the Software without restriction, including without limitation the rights
  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  copies of the Software, and to permit persons to whom the Software is
@@ -34,7 +33,6 @@
 #include <iomanip>
 #include <ios>
 #include <memory>
-#include <mlpack/methods/decision_tree/decision_tree.hpp>
 #include <treedecomp/IFlowCutter.hpp>
 #include <treedecomp/graph.hpp>
 #include <vector>
@@ -46,12 +44,11 @@
 #include "time_mem.h"
 #include "ccnr/ccnr.h"
 
-// These ask mlpack to give more info & warnings
-//#define MLPACK_PRINT_INFO
-//#define MLPACK_PRINT_WARN
-#include <mlpack.hpp>
-
+#ifdef EXTRA_SYNTH
+#include <mlpack/methods/decision_tree/decision_tree.hpp>
 #include "EvalMaxSAT.h"
+#include "manthan_learn.h"
+#endif
 
 using std::min;
 using std::sort;
@@ -75,13 +72,6 @@ using namespace CMSat;
 // no repair, learning/mbve does it: benchmarks-qdimacs/rankfunc57_unsigned_64.qdimacs.cnf
 // interesting, does not finish, but fast: benchmarks-qdimacs/query48_exquery_1344n.qdimacs.cnf
 
-vector<int> lits_to_ints(const vector<Lit>& lits) {
-    vector<int> ret;
-    ret.reserve(lits.size());
-    for(const auto& l: lits) ret.push_back(lit_to_pl(l));
-    return ret;
-}
-
 template<typename S>
 void Manthan::inject_cnf(S& s) const {
     s.new_vars(cnf.nVars());
@@ -98,7 +88,7 @@ vector<sample> Manthan::get_cmsgen_samples(const uint32_t num) {
     inject_cnf(solver_samp);
     solver_samp.set_up_for_sample_counter(mconf.sampler_fixed_conflicts);
 
-    if (mconf.do_biased_sampling) {
+    if (mconf.biased_sampling) {
         array<vector<double>,2> dist;
         dist[0].resize(cnf.nVars(), 0.0);
         dist[1].resize(cnf.nVars(), 0.0);
@@ -162,7 +152,7 @@ vector<sample> Manthan::get_cmsgen_samples(const uint32_t num) {
         assert(solver_samp.get_model().size() == cnf.nVars());
         samples.push_back(solver_samp.get_model());
     }
-    verb_print(1, "[manthan] CMSGen got " << samples.size() << " samples. Biased: " << (bool)mconf.do_biased_sampling
+    verb_print(1, "[manthan] CMSGen got " << samples.size() << " samples. Biased: " << (bool)mconf.biased_sampling
             << " T: " << setprecision(2) << std::fixed << (cpuTime() - my_time));
     return samples;
 }
@@ -357,7 +347,7 @@ void Manthan::print_y_order_occur() const {
     for(const auto& y: y_order) {
         const uint32_t pos = occur_lit[Lit(y, false).toInt()];
         const uint32_t neg = occur_lit[Lit(y, true).toInt()];
-        verb_print(1, "[manthan] y-order var " << setw(4) << y+1
+        verb_print(2, "[manthan] y-order var " << setw(4) << y+1
             << " BW: " << backward_defined.count(y)
             << "   td_score " << setw(6) << fixed << setprecision(2) << td_score.at(y)
             << "   pos occur " << setw(6) << pos
@@ -688,41 +678,6 @@ std::unique_ptr<TWD::Graph> Manthan::build_primal_graph() {
     return primal;
 }
 
-void Manthan::full_train() {
-    // Sampling
-    verb_print(1, "[manthan] Starting training. Manthan Config. "
-        << "do_filter_samples=" << mconf.do_filter_samples
-        << ", num_samples=" << mconf.num_samples
-        << ", minimumLeafSize=" << mconf.minimumLeafSize
-        << ", minGainSplit=" << setprecision(6) << mconf.minGainSplit << setprecision(2)
-        << ", maximumDepth=" << mconf.maximumDepth);
-    double samp_start_time = cpuTime();
-    vector<sample> samples = get_cmsgen_samples(mconf.num_samples);
-    {
-        vector<sample> samples2 = get_samples_ccnr(mconf.num_samples_ccnr);
-        samples.insert(samples.end(), samples2.begin(), samples2.end());
-    }
-    sampl_time = cpuTime() - samp_start_time;
-    verb_print(1, COLYEL "[manthan] Got " << setw(8) << samples.size() << " samples."
-        << " samp/var: " << setw(8) << setprecision(2) << std::fixed << sampl_time/(double)to_define.size()
-        << " T: " << setprecision(2) << std::fixed << sampl_time);
-    sort_all_samples(samples);
-
-    // Training -- updates depenndency_mat
-    const double train_start_time = cpuTime();
-    for(const auto& v: y_order) {
-        if (backward_defined.count(v)) continue;
-        train(samples, v);
-    }
-    train_time = cpuTime() - train_start_time;
-    verb_print(1, COLYEL "[manthan] Training done."
-            << " funs: " << setw(6) << to_define.size()
-            << " fun/s: " << setw(6) << setprecision(2) << std::fixed << safe_div(to_define.size(), cpuTime() - train_start_time)
-            << " T: " << setw(6) << setprecision(2) << std::fixed << train_time
-            << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
-    assert(check_map_dependency_cycles());
-}
-
 void Manthan::print_repair_stats([[maybe_unused]] const string& txt, const string& color, [[maybe_unused]] const string& extra) const {
     vector<uint32_t> rep(cnf.nVars());
     for(uint32_t i = 0; i < cnf.nVars(); i++) rep[i] = i;
@@ -789,7 +744,26 @@ void Manthan::add_xor_var() {
     verb_print(1, "[manthan] Added " << sampl_vars.size() - 1 << " XOR vars as BVA input vars");
 }
 
-SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
+void Manthan::const_functions() {
+    vector<sample> samples = get_cmsgen_samples(1);
+    for(const auto& y: Manthan::y_order) {
+        if (!to_define.count(y)) continue;
+
+        vector<const sample*> filt_s = filter_samples(y, samples);
+        assert(var_to_formula.count(y) == 0);
+        bool val;
+        if (filt_s.empty()) {
+            val = true;
+        } else {
+            val = samples[0][y] == l_True;
+        }
+        if (mconf.inv_learnt) val = !val;
+        verb_print(3, "[manthan] const function for var " << y+1 << " is " << val);
+        var_to_formula[y] = fh->constant_formula(samples[0][y] == l_True);
+    }
+}
+
+SimplifiedCNF Manthan::do_manthan() {
     assert(cnf.get_need_aig() && cnf.defs_invariant());
     assert(mconf.simplify_every > 0 && "Can't give simplify_every=0");
     const double my_time = cpuTime();
@@ -840,8 +814,19 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
     fill_var_to_formula_with(backward_defined);
     fill_var_to_formula_with(helper_functions);
 
-    if (mconf.manthan_bve) bve_and_substitute();
-    else full_train();
+    if (mconf.manthan_base == 0) {
+#ifdef EXTRA_SYNTH
+        ManthanLearn learn(*this, conf, mconf);
+        learn.full_train();
+#else
+        cout << "ERROR: manthan_base is set to 2 but we are not in EXTRA_SYNTH mode!" << endl;
+        exit(EXIT_FAILURE);
+#endif
+    } if (mconf.manthan_base == 1) {
+        const_functions();
+    } else if (mconf.manthan_base == 2) {
+        bve_and_substitute();
+    }
     post_order_vars();
 
     // Counterexample-guided repair
@@ -862,7 +847,7 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
         sample ctx;
         const bool finished = get_counterexample(ctx);
         if (finished) break;
-        if (tot_repaired > max_repairs) {
+        if (tot_repaired > mconf.max_repairs) {
             print_stats("", COLRED, " Reached max repairs");
             return cnf;
         }
@@ -872,10 +857,15 @@ SimplifiedCNF Manthan::do_manthan(const uint32_t max_repairs) {
         SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
 
         const uint32_t old_needs_repair_size = needs_repair.size();
-        if (mconf.do_maxsat_better_ctx == -1) {
+        if (mconf.maxsat_better_ctx == -1) {
           // Nothing to do
-        } else if (mconf.do_maxsat_better_ctx == 1) {
+        } else if (mconf.maxsat_better_ctx == 1) {
+        #ifdef EXTRA_SYNTH
           find_better_ctx_maxsat(ctx);
+        #else
+            cout << "ERROR: maxsat_better_ctx is set to 1 but we are not in EXTRA_SYNTH mode!" << endl;
+            exit(EXIT_FAILURE);
+        #endif
         } else {
           find_better_ctx_normal(ctx);
         }
@@ -1050,7 +1040,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     verb_print(2, "find_conflict sz: " << setw(5) << conflict.size() << " conflict: " << conflict);
     uint32_t orig_size = conflict.size();
     const double minimize_start_time = cpuTime();
-    if (conflict.size() > 1 && mconf.do_minimize_conflict) {
+    if (conflict.size() > 1 && mconf.minimize_conflict) {
         minimize_conflict(conflict, assumps, to_repair);
         assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end() &&
             "to_repair literal must be in conflict");
@@ -1491,7 +1481,7 @@ void Manthan::pre_order_vars() {
     assert(order_val.empty());
     assert(y_order.empty());
     const double my_time = cpuTime();
-    verb_print(2, "[manthan] Fixing order " << (mconf.manthan_bve ? "[BVE]" : "[LEARN]") << "...");
+    verb_print(2, "[manthan] Fixing order " << (mconf.manthan_base ? "[BVE]" : "[LEARN]") << "...");
 
     switch(mconf.manthan_order) {
         case 0: learn_order(); break;
@@ -1590,6 +1580,7 @@ void Manthan::bve_order() {
     assert(y_order.size() == to_define_full.size());
 }
 
+#ifdef EXTRA_SYNTH
 void Manthan::find_better_ctx_maxsat(sample& ctx) {
     verb_print(2, "Finding better ctx via maxsat.");
     EvalMaxSAT s_ctx;
@@ -1638,6 +1629,7 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
     assert(s_ctx.getCost() > 0);
     for(const auto& v: to_define_full) ctx[v] = s_ctx.getValue(v+1) ? l_True : l_False;
 }
+#endif
 
 // Fills needs_repair with vars from y (i.e. output) using normal SAT solver with assumptions
 void Manthan::find_better_ctx_normal(sample& ctx) {
@@ -1780,7 +1772,7 @@ void Manthan::inject_formulas_into_solver() {
             vector<Lit> cl2;
             for(const auto& l: cl.lits) {
                 auto v = l.var();
-                if (to_define_full.count(v)) { cl2.push_back(Lit(y_to_y_hat[v], l.sign()));}
+                if (to_define_full.count(v)) { cl2.push_back(Lit(y_to_y_hat.at(v), l.sign()));}
                 else cl2.push_back(l);
             }
             cex_solver.add_clause(cl2);
@@ -1798,7 +1790,7 @@ void Manthan::inject_formulas_into_solver() {
         assert(var_to_formula.count(y));
         for(const auto& cl: var_to_formula[y].clauses) assert(cl.inserted && "All clauses must have been inserted");
         const auto& form_out = var_to_formula[y].out;
-        const auto& y_hat = y_to_y_hat[y];
+        const auto& y_hat = y_to_y_hat.at(y);
 
         y_hat_to_indic[y_hat] = ind;
         indic_to_y_hat[ind] = y_hat;
@@ -1867,57 +1859,13 @@ bool Manthan::get_counterexample(sample& ctx) {
         verb_print(2, COLYEL "[manthan] *** Counterexample found ***");
         ctx = cex_solver.get_model();
         compute_needs_repair(ctx);
+        assert(!needs_repair.empty() && "If we found a counterexample, there must be something to repair!");
         return false;
     } else {
         assert(ret == l_False);
         verb_print(2, "Formula is good!");
         return true;
     }
-}
-
-FHolder<MetaSolver2>::Formula Manthan::recur(mlpack::tree::DecisionTree<>* node,
-        const uint32_t learned_v, const vector<uint32_t>& used_vars, uint32_t depth, uint32_t& max_depth) {
-    max_depth = std::max(max_depth, depth);
-    /* for(uint32_t i = 0; i < depth; i++) cout << " "; */
-    if (node->NumChildren() == 0) {
-        const bool val = node->ClassProbabilities()[1] > node->ClassProbabilities()[0];
-        /* cout << "Leaf: "; */
-        /* for(uint32_t i = 0; i < node->NumClasses(); i++) { */
-        /*     cout << "class "<< i << " prob: " << node->ClassProbabilities()[i] << " --- "; */
-        /* } */
-        /* cout << endl; */
-        return fh->constant_formula(val);
-    } else {
-        uint32_t v = node->SplitDimension();
-        assert(v < used_vars.size());
-        v = used_vars[v];
-        /* cout << "(learning " << learned_v+1<< ") Node. v: " << v+1 << std::flush; */
-        if (to_define_full.count(v)) {
-            // v does not depend on learned_v!
-            assert(dependency_mat[v][learned_v] == 0);
-            for(uint32_t i = 0; i < cnf.nVars(); i++) {
-                if (dependency_mat[v][i] == 1) {
-                    if (input.count(i)) continue;
-                    // nothing that v depends on can depend on learned_v
-                    assert(dependency_mat[i][learned_v] == 0);
-                }
-            }
-            set_depends_on(learned_v, v);
-            v = y_to_y_hat.at(v);
-        } else {
-            // it's input, so no need to update dependency matrix
-            assert(input.count(v) && "If not to_define_full, must be input");
-        }
-
-        /* cout << "  -- all-0 goes -> " << node->CalculateDirection(point_0); */
-        /* cout << "  -- all-1 goes -> " << node->CalculateDirection(point_1) << endl; */
-        assert(node->NumChildren() == 2);
-        auto form_0 = recur(&node->Child(0), learned_v, used_vars, depth+1, max_depth);
-        auto form_1 = recur(&node->Child(1), learned_v, used_vars, depth+1, max_depth);
-        bool val_going_right = node->CalculateDirection(point_1);
-        return fh->compose_ite(form_0, form_1, Lit(v, val_going_right), helpers);
-    }
-    assert(false);
 }
 
 // Checks if flipping variable v in sample s satisfies all clauses
@@ -1996,147 +1944,6 @@ void Manthan::sort_all_samples(vector<sample>& samples) {
                 << " to " << samples2.size() << " by removing duplicates on input vars.");
         samples = samples2;
     }
-}
-
-double Manthan::train(const vector<sample>& orig_samples, const uint32_t v) {
-    verb_print(2, "training variable: " << v+1);
-
-    vector<uint32_t> used_vars(input.begin(), input.end());
-    if (mconf.do_use_all_variables_as_features) {
-        if (!mconf.manthan_on_the_fly_order) {
-            for(const auto& y: y_order) {
-                if (y == v) break;
-                assert(dependency_mat[y][v] != 1);
-                used_vars.push_back(y);
-            }
-        } else {
-            auto reaches = [&](const uint32_t from, const uint32_t to) -> bool {
-                if (from == to) return true;
-                vector<uint8_t> seen(cnf.nVars(), 0);
-                vector<uint32_t> st;
-                st.push_back(from);
-                seen[from] = 1;
-                while(!st.empty()) {
-                    const uint32_t cur = st.back();
-                    st.pop_back();
-                    for(uint32_t nxt = 0; nxt < cnf.nVars(); nxt++) {
-                        if (dependency_mat[cur][nxt] == 0) continue;
-                        if (nxt == to) return true;
-                        if (seen[nxt]) continue;
-                        seen[nxt] = 1;
-                        st.push_back(nxt);
-                    }
-                }
-                return false;
-            };
-            for(const auto& y: to_define_full) {
-                if (y == v) continue;
-                if (reaches(y, v)) continue;
-                used_vars.push_back(y);
-            }
-        }
-    }
-    /* assert(!orig_samples.empty()); */
-    vector<const sample*> samples;
-    if (mconf.do_filter_samples) samples = filter_samples(v, orig_samples);
-    else {
-        for(const auto& s: orig_samples)
-            samples.push_back(&s);
-    }
-    assert(v < cnf.nVars());
-    point_0.zeros(cnf.nVars());
-    point_1.zeros(cnf.nVars());
-    arma::Mat<uint8_t> dataset;
-    arma::Row<size_t> labels;
-
-    dataset.resize(used_vars.size(), samples.size());
-    verb_print(2, "Dataset size: " << dataset.n_rows << " x " << dataset.n_cols);
-
-    for(uint32_t i = 0; i < samples.size(); i++) {
-        assert(samples[i]->size() == cnf.nVars());
-        for(uint32_t k = 0; k < used_vars.size(); k++) {
-            const uint32_t dep_v = used_vars[k];
-            dataset(k, i) = lbool_to_bool((*samples[i])[dep_v]);
-        }
-    }
-    labels.resize(samples.size());
-    for(uint32_t i = 0; i < samples.size(); i++) labels[i] = lbool_to_bool((*samples[i])[v]);
-    const auto num_ones = arma::accu(labels);
-    verb_print(2, "Labels distribution for v " << setw(5) <<  v+1 << ": " << setw(6) << num_ones << " ones and "
-            << setw(6) << (samples.size() - num_ones) << " zeros");
-    double train_error;
-    if (samples.empty()) {
-        var_to_formula[v] = fh->constant_formula(true);
-        train_error = 0.0;
-    } else {
-        // Create the RandomForest object and train it on the training data.
-        //
-        //  All Available Parameters to Reduce Overfitting:
-          /* 1. minimumLeafSize (default: 10) */
-          /*   - Minimum number of points in each leaf node */
-          /*   - Increase to reduce overfitting (e.g., 20, 50, 100) */
-          /* 2. minimumGainSplit (default: 1e-7) */
-          /*   - Minimum gain required for a node to split */
-          /*   - Increase to reduce overfitting (e.g., 0.001, 0.01, 0.05) */
-          /*   - Must be in range (0, 1) */
-          /* 3. maximumDepth (default: 0 = unlimited) */
-          /*   - Maximum depth of the tree */
-          /*   - Set a limit to reduce overfitting (e.g., 5, 10, 15) */
-          /* 4. dimensionSelector (optional) */
-          /*   - Advanced: Controls which features to consider for splitting */
-          /*   - Can use custom strategies (usually leave as default) */
-
-        /* DecisionTree<> r(dataset, labels, 2); */
-        // More conservative (less overfitting)
-        /* DecisionTree<FitnessFunction,  -- default is GiniGain */
-        /*              NumericSplitType, */
-        /*              CategoricalSplitType, */
-        /*              DimensionSelectionType, */
-        /*              NoRecursion>::DecisionTree( */
-        /*     MatType data, */
-        /*     LabelsType labels, */
-        /*     const size_t numClasses, */
-        /*     const size_t minimumLeafSize, */
-        /*     const double minimumGainSplit, */
-        /*     const size_t maximumDepth, */
-        /*     DimensionSelectionType dimensionSelector) */
-        mlpack::DecisionTree<> r(dataset, labels, 2,
-                       mconf.minimumLeafSize,  // minimumLeafSize: require 20+ samples per leaf (default 10)
-                       mconf.minGainSplit,     // minimumGainSplit: require k ratio gain to split
-                       mconf.maximumDepth);    // maximumDepth: max k levels deep (0 = unlimited)
-
-        // Compute and print the training error.
-        arma::Row<size_t> predictions;
-        r.Classify(dataset, predictions);
-        train_error = arma::accu(predictions != labels) * 100.0 / (double)labels.n_elem;
-        /* r.serialize(cout, 1); */
-
-        verb_print(2,"[DEBUG] About to call recur for v " << v+1 << " num children: " << r.NumChildren());
-        assert(var_to_formula.count(v) == 0);
-        uint32_t max_depth = 0;
-        var_to_formula[v] = recur(&r, v, used_vars, 0, max_depth);
-        verb_print(1, "Training error: " << setprecision(2) << setw(6) << train_error << "%."
-                << " depth: " << setw(6) << max_depth
-                << " ones: " << setprecision(0) << fixed << setw(5) << (double)num_ones/samples.size()*100.0 << "%"
-                << " on v: " << setprecision(2) << setw(4) << v+1);
-    }
-
-    // Forward dependency update
-    for(uint32_t i = 0; i < cnf.nVars(); i++) {
-        if (input.count(i)) continue;
-        if (dependency_mat[i][v]) {
-            for(uint32_t j = 0; j < cnf.nVars(); j++) {
-                if (input.count(j)) continue;
-                dependency_mat[i][j] |= dependency_mat[v][j];
-            }
-            SLOW_DEBUG_DO(assert(check_map_dependency_cycles()));
-        }
-    }
-    verb_print(2, "Trained formula for y " << v+1 << ":" << endl << var_to_formula[v]);
-    verb_print(2, "Done training variable: " << v+1);
-    verb_print(2, "------------------------------");
-
-    return train_error;
 }
 
 bool Manthan::has_dependency_cycle_dfs(const uint32_t node, vector<uint8_t>& color, vector<uint32_t>& path) const {

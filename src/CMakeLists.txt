@@ -23,7 +23,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CRYPTOMINISAT5_INCLUDE_DIRS})
 include_directories(${SBVA_INCLUDE_DIRS})
 include_directories( ${GMP_INCLUDE_DIR} )
-if (SYNTH)
+if (EXTRA_SYNTH)
     include_directories(${EVALMAXSAT_INCLUDE_DIRS})
     include_directories( ${MLPACK_INCLUDE_DIR} )
 endif()
@@ -58,12 +58,12 @@ set(libfiles
     autarky.cpp
     ccnr/ccnr.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
+    manthan.cpp
+    interpolant.cpp
 )
 
-if (SYNTH)
-    set(libfiles ${libfiles}
-    manthan.cpp
-    interpolant.cpp)
+if (EXTRA_SYNTH)
+    list(APPEND libfiles manthan_learn.cpp)
 endif()
 
 add_library(arjun ${libfiles})
@@ -78,7 +78,7 @@ target_link_libraries(arjun
     LINK_PUBLIC ${TREEDECOMP_LIBRARIES}
 )
 
-add_executable(arjun-bin main.cpp)
+add_executable(arjun-bin main.cpp synth.cpp)
 add_executable(arjun-example example.cpp)
 add_executable(test-synth test-synth.cpp)
 
@@ -91,10 +91,20 @@ set_target_properties(arjun PROPERTIES
     VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
     SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
 )
-set_target_properties(arjun-bin PROPERTIES
-    OUTPUT_NAME arjun
-    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
-    INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set_target_properties(arjun-bin PROPERTIES
+      OUTPUT_NAME arjun
+      RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+      INSTALL_RPATH_USE_LINK_PATH TRUE
+      LINK_FLAGS "-s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -s EXPORTED_RUNTIME_METHODS='[\"callMain\", \"ccall\", \"cwrap\", \"FS\", \"print\"]' -s FORCE_FILESYSTEM=1"
+    )
+else()
+    set_target_properties(arjun-bin PROPERTIES
+        OUTPUT_NAME arjun
+        RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+        INSTALL_RPATH_USE_LINK_PATH TRUE)
+    endif()
 target_link_libraries(arjun-bin ${arjun_bin_exec_link_libs} arjun)
 
 set_target_properties(arjun-example PROPERTIES

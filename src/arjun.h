@@ -1355,28 +1355,28 @@ public:
     struct ManthanConf {
         ManthanConf() = default;
         ManthanConf(const ManthanConf& other) = default;
-        int do_filter_samples = 1;
-        int do_biased_sampling = 0;
+        int filter_samples = 1;
+        int biased_sampling = 0;
         /// Also to try:
-        uint32_t num_samples = 5000;
-        uint32_t num_samples_ccnr = 0;
-        uint32_t minimumLeafSize = 10;
+        uint32_t samples = 5000;
+        uint32_t samples_ccnr = 0;
+        uint32_t min_leaf_size = 10;
         // TODO experiment with 0.003
-        double minGainSplit = 0.001;
-        uint32_t maximumDepth = 0;
+        double min_gain_split = 0.001;
+        uint32_t max_depth = 0;
         uint32_t sampler_fixed_conflicts = 100;
-        int do_minimize_conflict = 1;
+        int minimize_conflict = 1;
         uint32_t simplify_every = 1000;
         std::string write_manthan_cnf;
-        int do_maxsat_better_ctx = 0;
+        int maxsat_better_ctx = 0;
         int maxsat_order = 1;
         int do_unique_input_samples = 1;
-        int do_use_all_variables_as_features = 1;
+        int use_all_vars_as_feats = 1;
         int ctx_solver_type = 1;
         int repair_solver_type = 1;
         int repair_cache_size = 1000;
         int backward_synth_order = 0;
-        int manthan_bve = 0;
+        int manthan_base = 0;
         int manthan_order = 0;
         int manthan_on_the_fly_order = 0;
         int one_repair_per_loop = 0;
@@ -1386,6 +1386,8 @@ public:
         int force_bw_equal = 1;
         int bva_xor_vars = 0;
         int silent_var_update = 1;
+        int inv_learnt = 0;
+        uint32_t max_repairs = std::numeric_limits<uint32_t>::max();
     };
 
     /// Standalone functions
@@ -1404,7 +1406,7 @@ public:
     void standalone_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,
         uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1);
-    SimplifiedCNF standalone_manthan(const SimplifiedCNF& cnf, const ManthanConf& manthan_conf, uint32_t max_repairs);
+    SimplifiedCNF standalone_manthan(const SimplifiedCNF& cnf, const ManthanConf& manthan_conf);
     void standalone_autarky(SimplifiedCNF& cnf);
 
     //Set config

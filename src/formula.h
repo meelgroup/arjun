@@ -24,12 +24,7 @@
 
 #pragma once
 
-#ifdef CMS_LOCAL_BUILD
-#include "cryptominisat.h"
-#else
 #include <cryptominisat5/cryptominisat.h>
-#endif
-
 #include <vector>
 #include <set>
 #include <iostream>
@@ -46,7 +41,7 @@ using CMSat::lit_Error;
 using CMSat::SATSolver;
 using std::map;
 
-namespace ArjunNS {
+namespace ArjunInt {
 
 struct CL {
     constexpr CL(const vector<Lit>& _lits) : lits(_lits) {}
@@ -68,12 +63,12 @@ public:
         // solver_train
         vector<CL> clauses;
         Lit out = lit_Error;
-        aig_ptr aig = nullptr;
+        ArjunNS::aig_ptr aig = nullptr;
     };
 
     set<uint32_t> get_dependent_vars(const Formula& f, uint32_t v) const {
         set<uint32_t> ret;
-        AIG::get_dependent_vars(f.aig, ret, v);
+        ArjunNS::AIG::get_dependent_vars(f.aig, ret, v);
         return ret;
     }
 
@@ -88,14 +83,14 @@ public:
         Formula ret;
         ret = compose_ite(fleft, fright, branch.out, helpers);
         ret.clauses.insert(ret.clauses.end(), branch.clauses.begin(), branch.clauses.end());
-        ret.aig = AIG::new_ite(fleft.aig, fright.aig, branch.aig);
+        ret.aig = ArjunNS::AIG::new_ite(fleft.aig, fright.aig, branch.aig);
         return ret;
     }
 
     Formula neg(const Formula& f) {
         Formula ret = f;
         ret.out = ~f.out;
-        ret.aig = AIG::new_not(f.aig);
+        ret.aig = ArjunNS::AIG::new_not(f.aig);
         return ret;
     }
 
@@ -119,7 +114,7 @@ public:
 
         assert(fleft.aig != nullptr);
         assert(fright.aig != nullptr);
-        ret.aig = AIG::new_or(fleft.aig, fright.aig);
+        ret.aig = ArjunNS::AIG::new_or(fleft.aig, fright.aig);
         return ret;
     }
 
@@ -150,7 +145,7 @@ public:
         ret.clauses.push_back(CL({b, fresh, ~r}));
         ret.clauses.push_back(CL({b, ~fresh, r}));
         ret.out = Lit(fresh_v, false);
-        ret.aig = AIG::new_ite(fleft.aig, fright.aig, branch);
+        ret.aig = ArjunNS::AIG::new_ite(fleft.aig, fright.aig, branch);
         return ret;
     }
 
@@ -160,15 +155,12 @@ public:
     }
 
 private:
-    AIGManager aig_mng;
+    ArjunNS::AIGManager aig_mng;
     T* solver = nullptr;
     Lit my_true_lit = lit_Error;
 };
 
-}
-
-
-inline std::ostream& operator<<(std::ostream& os, const ArjunNS::FHolder<ArjunInt::MetaSolver2>::Formula& f) {
+inline std::ostream& operator<<(std::ostream& os, const FHolder<ArjunInt::MetaSolver2>::Formula& f) {
     os << " === Formula out: " << f.out << " === " << endl;
     for (const auto& cl : f.clauses) {
         for (const auto& l : cl.lits) os << std::setw(6) << l;
@@ -177,4 +169,6 @@ inline std::ostream& operator<<(std::ostream& os, const ArjunNS::FHolder<ArjunIn
     os << "AIG: " << f.aig << std::endl;
     os << " === End Formula === ";
     return os;
+}
+
 }

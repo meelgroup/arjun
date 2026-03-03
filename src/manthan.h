@@ -22,6 +22,8 @@
  THE SOFTWARE.
  */
 
+#pragma once
+
 #include "arjun.h"
 #include "config.h"
 #include "metasolver.h"
@@ -35,12 +37,7 @@
 #include <vector>
 #include <set>
 #include "formula.h"
-#include <treedecomp/TreeDecomposition.hpp>
-
-
-/* #define MLPACK_PRINT_INFO */
-/* #define MLPACK_PRINT_WARN */
-#include <mlpack.hpp>
+#include "treedecomp/TreeDecomposition.hpp"
 
 using namespace CMSat;
 
@@ -54,6 +51,9 @@ using sample = vector<lbool>;
 using namespace ArjunInt;
 using namespace ArjunNS;
 
+namespace ArjunInt {
+class ManthanLearn;
+
 class Manthan {
     public:
         Manthan(const Config& _conf, const Arjun::ManthanConf& _mconf, const SimplifiedCNF& _cnf) :
@@ -64,7 +64,8 @@ class Manthan {
         {
                 mtrand.seed(42);
         }
-        SimplifiedCNF do_manthan(const uint32_t max_repairs);
+        SimplifiedCNF do_manthan();
+        friend class ManthanLearn;
 
     private:
         // y is original output var, i.e. to_define
@@ -96,14 +97,11 @@ class Manthan {
         set<uint32_t> y_hats; // the potential y_hats (due to ITE chains, some are "old" and unused)
 
         std::unique_ptr<TWD::Graph> build_primal_graph();
-        void full_train();
+        void const_functions();
         void bve_and_substitute();
         aig_ptr one_level_substitute(const Lit l, const uint32_t v, map<uint32_t, aig_ptr>& transformed);
-        arma::vec point_0;
-        arma::vec point_1;
 
         void create_vars_for_y_hats();
-        FHolder<MetaSolver2>::Formula recur(mlpack::tree::DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& var_remap, uint32_t depth, uint32_t& max_depth);
         vector<uint32_t> incidence;
         vector<double> td_score;
 
@@ -155,10 +153,8 @@ class Manthan {
             set_depends_on(a, b.var());
         }
 
-
-        bool verify_final_cnf(const SimplifiedCNF& fcnf) const;
-        vector<sample> get_cmsgen_samples(const uint32_t num_samples);
-        vector<sample> get_samples_ccnr(const uint32_t num_samples);
+        vector<sample> get_cmsgen_samples(const uint32_t samples);
+        vector<sample> get_samples_ccnr(const uint32_t samples);
         void sort_all_samples(vector<sample>& samples);
         double train(const vector<sample>& samples, const uint32_t v); // returns training error
         vector<vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
@@ -174,8 +170,15 @@ class Manthan {
             assert(val != l_Undef);
             return val == l_True;
         }
+        vector<int> lits_to_ints(const vector<Lit>& lits) {
+            vector<int> ret;
+            ret.reserve(lits.size());
+            for(const auto& l: lits) ret.push_back(lit_to_pl(l));
+            return ret;
+        }
 
         // debug
+        bool verify_final_cnf(const SimplifiedCNF& fcnf) const;
         bool is_unsat(const vector<Lit>& conflict, uint32_t y_rep, const sample& ctx) const;
         bool ctx_y_hat_correct(const sample& ctx) const;
         bool ctx_is_sat(const sample& ctx) const;
@@ -204,3 +207,4 @@ class Manthan {
         SimplifiedCNF cnf;
         AIGManager aig_mng;
 };
+}

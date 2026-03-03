@@ -42,6 +42,8 @@ using std::vector;
 using std::map;
 using namespace ArjunNS;
 
+namespace ArjunInt {
+
 struct MyTracer : public CaDiCaL::Tracer {
     MyTracer(const uint32_t _orig_num_vars, const set<uint32_t>& input_vars,
             const ArjunInt::Config& _conf, map<Lit, aig_ptr>& _lit_to_aig, const AIGManager& _aig_mng) :
@@ -139,4 +141,4 @@ private:
     vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
     vector<aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space
 };
-
+}
