@@ -4,6 +4,9 @@
 #  ARJUN_LIBRARIES    - libraries to link against
 #  ARJUN_EXECUTABLE   - the arjun executable
 
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
 # Compute paths
 get_filename_component(ARJUN_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
 set(ARJUN_INCLUDE_DIRS "@CONF_INCLUDE_DIRS@")
