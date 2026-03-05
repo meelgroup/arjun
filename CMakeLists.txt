@@ -99,6 +99,7 @@ if((${CMAKE_SYSTEM_NAME} MATCHES "Linux") OR (${CMAKE_SYSTEM_NAME} MATCHES "Darw
 endif()
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
 
 include(CheckCXXCompilerFlag)
 include(CheckCCompilerFlag)
