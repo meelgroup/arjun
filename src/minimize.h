@@ -34,11 +34,7 @@
 #include <vector>
 #include <string>
 #include <memory>
-#ifdef CMS_LOCAL_BUILD
-#include "cryptominisat.h"
-#else
 #include <cryptominisat5/cryptominisat.h>
-#endif
 
 #include "config.h"
 
