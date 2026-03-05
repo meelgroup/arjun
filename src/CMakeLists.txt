@@ -62,29 +62,31 @@ target_include_directories(arjun
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/../cadical/src/
+    ${SBVA_INCLUDE_DIRS}
+    ${TREEDECOMP_INCLUDE_DIRS}
   PUBLIC
     ${CRYPTOMINISAT5_INCLUDE_DIRS}
-    ${SBVA_INCLUDE_DIRS}
     ${GMP_INCLUDE_DIR}
-    ${TREEDECOMP_INCLUDE_DIRS}
 )
 
 if(EXTRA_SYNTH)
-    target_include_directories(arjun PUBLIC
-        ${EVALMAXSAT_INCLUDE_DIRS}
-        ${MLPACK_INCLUDE_DIR}
+    target_include_directories(arjun
+        PRIVATE
+            ${EVALMAXSAT_INCLUDE_DIRS}
+            ${MLPACK_INCLUDE_DIR}
     )
 endif()
 
 target_link_libraries(arjun
-  PUBLIC
+  PRIVATE
     Threads::Threads
-    ${CRYPTOMINISAT5_LIBRARIES}
     ${SBVA_LIBRARIES}
-    ${GMP_LIBRARY}
     ${cadical}
     ${EVALMAXSAT_LIBRARIES}
     ${TREEDECOMP_LIBRARIES}
+  PUBLIC
+    ${GMP_LIBRARY}
+    ${CRYPTOMINISAT5_LIBRARIES}
 )
 
 set_target_properties(arjun PROPERTIES
@@ -98,7 +100,7 @@ add_executable(test-synth test-synth.cpp)
 
 target_link_libraries(arjun-bin PRIVATE arjun)
 target_link_libraries(arjun-example PRIVATE arjun)
-target_link_libraries(test-synth PRIVATE arjun)
+target_link_libraries(test-synth PRIVATE arjun ${cadical})
 
 target_include_directories(arjun-bin PRIVATE
     ${PROJECT_SOURCE_DIR}

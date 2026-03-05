@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.15 FATAL_ERROR)
 
 # CMP0104 (CUDA architectures default) was introduced in 3.18; guard needed
 if(POLICY CMP0104)
@@ -58,6 +58,8 @@ foreach(build_config ${build_types})
     endforeach()
 endforeach()
 
+set(CMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY ON)
+set(CMAKE_EXPORT_PACKAGE_REGISTRY OFF)
 project(arjun)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_C_STANDARD 99)
@@ -295,17 +297,22 @@ endif()
 # -----------------------------------------------------------------------------
 # Dependencies
 # -----------------------------------------------------------------------------
+set(sbva_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../sbva/build")
 find_package(sbva REQUIRED)
+
+set(treedecomp_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../treedecomp/build")
 find_package(treedecomp CONFIG REQUIRED)
 message(STATUS "Found SBVA includes at: ${SBVA_INCLUDE_DIRS}")
 find_package(GMP REQUIRED)
 if(EXTRA_SYNTH)
     add_compile_definitions(EXTRA_SYNTH)
     find_package(MLPACK REQUIRED)
+    set(cadical_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cadical/build")
     find_library(cadical
-        PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../cadical/build/
+        PATHS ${cadical_DIR}
         NAMES cadical
         REQUIRED)
+    set(EvalMaxSAT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../EvalMaxSAT/build")
     find_package(EvalMaxSAT REQUIRED)
 endif()
 
@@ -322,6 +329,7 @@ if(NOT NOZLIB AND NOT (STATICCOMPILE AND WIN32))
     endif()
 endif()
 
+set(cryptominisat5_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cryptominisat/build")
 find_package(cryptominisat5 CONFIG REQUIRED)
 message(STATUS "CryptoMiniSat5 dynamic lib: ${CRYPTOMINISAT5_LIBRARIES}")
 message(STATUS "CryptoMiniSat5 dynamic lib dirs: ${CRYPTOMINISAT5_LIBRARY_DIRS}")
