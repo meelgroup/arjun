@@ -79,7 +79,6 @@ endif()
 
 target_link_libraries(arjun
   PRIVATE
-    Threads::Threads
     ${SBVA_LIBRARIES}
     ${cadical}
     ${EVALMAXSAT_LIBRARIES}
