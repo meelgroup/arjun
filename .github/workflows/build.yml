@@ -17,6 +17,7 @@ jobs:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-15, macos-15-intel]
         build_type: [Release]
         staticcompile: [ON, OFF]
+        extra_synth: [ON, OFF]
 
     steps:
     - uses: actions/setup-python@v5
@@ -145,6 +146,7 @@ jobs:
         cd ../..
 
     - name: Checkout cereal
+      if: matrix.extra_synth == 'ON'
       run: |
         wget https://github.com/USCiLab/cereal/archive/v1.3.2.tar.gz
     - name: Build cereal
@@ -180,6 +182,7 @@ jobs:
         cd ..
 
     - name: Checkout ensmallen
+      if: matrix.extra_synth == 'ON'
       run: |
         wget https://ensmallen.org/files/ensmallen-2.22.2.tar.gz
     - name: Build ensmallen
@@ -194,6 +197,7 @@ jobs:
         cd ../..
 
     - name: Checkout mlpack
+      if: matrix.extra_synth == 'ON'
       uses: actions/checkout@v4
       with:
         repository: mlpack/mlpack
@@ -210,6 +214,7 @@ jobs:
         cd ../..
 
     - name: Checkout EvalMaxSAT
+      if: matrix.extra_synth == 'ON'
       uses: actions/checkout@v4
       with:
         repository: meelgroup/EvalMaxSAT
@@ -251,6 +256,7 @@ jobs:
         cmake \
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
         -DSTATICCOMPILE=${{ matrix.staticcompile }} \
+        -DEXTRA_SYNTH=${{ matrix.extra_synth }} \
         -S ..
         cmake --build . --config ${{matrix.build_type}} -v
 

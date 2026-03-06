@@ -79,7 +79,7 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 
 # static compilation
-option(EXTRA_SYNTH "Also build synthesis" ON)
+option(EXTRA_SYNTH "Also build extra parts of synthesis: learning, MaxSAT solver" OFF)
 option(BUILD_SHARED_LIBS "Build the shared library" ON)
 option(STATICCOMPILE "Compile to static executable" OFF)
 if(STATICCOMPILE)
