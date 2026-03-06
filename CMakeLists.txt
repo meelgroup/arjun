@@ -484,6 +484,8 @@ export(
 # Create arjunConfig file
 set(EXPORT_TYPE "Build-tree")
 set(CONF_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include")
+set(SBVA_CMAKE_DIR_FOR_CONFIG "${sbva_DIR}")
+set(TREEDECOMP_CMAKE_DIR_FOR_CONFIG "${treedecomp_DIR}")
 configure_file(arjunConfig.cmake.in
     "${CMAKE_CURRENT_BINARY_DIR}/${ARJUN_CONFIG_FILENAME}" @ONLY
 )
@@ -495,6 +497,8 @@ export(PACKAGE arjun)
 # Create arjunConfig file
 set(EXPORT_TYPE "installed")
 set(CONF_INCLUDE_DIRS "${CMAKE_INSTALL_PREFIX}/include")
+set(SBVA_CMAKE_DIR_FOR_CONFIG "")      # installed sbva is found via system paths
+set(TREEDECOMP_CMAKE_DIR_FOR_CONFIG "") # installed treedecomp is found via system paths
 configure_file(arjunConfig.cmake.in
    "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_FILES_DIRECTORY}/${ARJUN_CONFIG_FILENAME}" @ONLY
 )

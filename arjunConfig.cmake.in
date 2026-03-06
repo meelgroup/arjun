@@ -4,6 +4,21 @@
 get_filename_component(ARJUN_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
 set(ARJUN_INCLUDE_DIRS "@CONF_INCLUDE_DIRS@")
 
+include(CMakeFindDependencyMacro)
+
+# sbva and treedecomp are private static deps of arjun; their imported targets must
+# be defined before arjunTargets.cmake is loaded so that $<LINK_ONLY:sbva> etc.
+# resolve to full library paths rather than bare -lsbva flags.
+if(NOT "@SBVA_CMAKE_DIR_FOR_CONFIG@" STREQUAL "")
+    set(sbva_DIR "@SBVA_CMAKE_DIR_FOR_CONFIG@")
+endif()
+find_dependency(sbva REQUIRED)
+
+if(NOT "@TREEDECOMP_CMAKE_DIR_FOR_CONFIG@" STREQUAL "")
+    set(treedecomp_DIR "@TREEDECOMP_CMAKE_DIR_FOR_CONFIG@")
+endif()
+find_dependency(treedecomp REQUIRED CONFIG)
+
 # Our library dependencies (contains definitions for IMPORTED targets)
 include("${ARJUN_CMAKE_DIR}/@ARJUN_TARGETS_FILENAME@")
 
