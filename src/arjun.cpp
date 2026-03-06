@@ -1061,6 +1061,88 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_defs_to_file_txt(const string& fname) c
     cout << "c o Wrote TXT AIG defs: " << fname << endl;
 }
 
+DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) const {
+    assert(get_need_aig() && defs_invariant());
+
+    ofstream fout(fname);
+    if (!fout) {
+        cerr << "ERROR: Cannot open file for writing: " << fname << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    // Collect all unique AIG nodes in topological (post) order: children before parents
+    map<const AIG*, uint32_t> node_to_id;
+    vector<AIG*> topo_order;
+    uint32_t next_id = 0;
+
+    function<void(const aig_ptr&)> collect = [&](const aig_ptr& aig) {
+        if (!aig || node_to_id.count(aig.get())) return;
+        if (aig->type == AIGT::t_and) {
+            collect(aig->l);
+            collect(aig->r);
+        }
+        node_to_id[aig.get()] = next_id++;
+        topo_order.push_back(aig.get());
+    };
+    for (const auto& aig : defs) collect(aig);
+
+    // Returns a Verilog expression for a raw AIG node pointer
+    auto node_expr = [&](AIG* aig) -> string {
+        if (aig->type == AIGT::t_const) return aig->neg ? "1'b0" : "1'b1";
+        if (aig->type == AIGT::t_lit)
+            return string(aig->neg ? "~" : "") + "x" + std::to_string(aig->var + 1);
+        // t_and -> its intermediate wire
+        return "_n" + std::to_string(node_to_id[aig]);
+    };
+
+    // Collect output variables (defs[v] != nullptr)
+    vector<uint32_t> outputs;
+    for (uint32_t v = 0; v < defs.size(); v++)
+        if (defs[v] != nullptr) outputs.push_back(v);
+
+    // Module header
+    fout << "module aig_defs(\n";
+    bool first = true;
+    for (const auto& v : orig_sampl_vars) {
+        if (!first) fout << ",\n";
+        fout << "    input wire x" << (v + 1);
+        first = false;
+    }
+    for (const auto& v : outputs) {
+        if (!first) fout << ",\n";
+        fout << "    output wire x" << (v + 1);
+        first = false;
+    }
+    fout << "\n);\n\n";
+
+    // Intermediate AND-node wires and assigns (topological order)
+    for (const auto* node : topo_order) {
+        if (node->type != AIGT::t_and) continue;
+        const uint32_t id = node_to_id[node];
+        const string l_str = node_expr(node->l.get());
+        const string r_str = node_expr(node->r.get());
+        fout << "    wire _n" << id << ";\n";
+        if (node->l.get() == node->r.get()) {
+            // new_not pattern: l == r, neg == true => ~l
+            fout << "    assign _n" << id << " = ~" << l_str << ";\n";
+        } else if (node->neg) {
+            fout << "    assign _n" << id << " = ~(" << l_str << " & " << r_str << ");\n";
+        } else {
+            fout << "    assign _n" << id << " = " << l_str << " & " << r_str << ";\n";
+        }
+    }
+
+    fout << "\n";
+
+    // Output assignments
+    for (const auto& v : outputs)
+        fout << "    assign x" << (v + 1) << " = " << node_expr(defs[v].get()) << ";\n";
+
+    fout << "\nendmodule\n";
+    fout.close();
+    cout << "c o Wrote Verilog AIG: " << fname << endl;
+}
+
 // Read AIG defs from file (opens file for you)
 DLL_PUBLIC void SimplifiedCNF::read_aig_defs_from_file(const string& fname) {
     ifstream in(fname, std::ios::binary);

@@ -1204,6 +1204,9 @@ public:
     // human-readable writing
     void write_aig_defs_to_file_txt(const std::string& fname) const;
 
+    // Verilog writing
+    void write_aig_def_to_verilog(const std::string& fname) const;
+
     std::vector<CMSat::lbool> extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed = false) const;
 
     void map_aigs_to_orig(const std::vector<aig_ptr>& aigs, const uint32_t max_num_vars,

@@ -55,7 +55,7 @@ double start_time;
 ArjunInt::Config conf;
 std::unique_ptr<ArjunNS::Arjun> arjun;
 string input_file;
-string elimtofile;
+string output_file;
 
 ArjunNS::SimpConf simp_conf;
 ArjunNS::Arjun::ElimToFileConf etof_conf;
@@ -364,7 +364,11 @@ void do_synthesis() {
     auto strategies = synth_runner.parse_mstrategy(mstrategy);
     synth_runner.run_manthan_strategies(cnf, mconf, strategies);
     release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
-    if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-5-manthan.aig");
+    if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
+    if (!output_file.empty()) {
+        cnf.write_aig_def_to_verilog(output_file);
+        cout << "c o [arjun] dumped synthesized functions to verlog file '" << output_file << "'" << endl;
+    }
     if (!conf.debug_synth.empty()) {
         auto final_cnf = cnf;
         final_cnf.simplify_aigs();
@@ -393,10 +397,10 @@ void do_minimize() {
         cnf2.write_simpcnf(debug_minim+"-renum", false);
     }
 
-    if (!elimtofile.empty()) {
+    if (!output_file.empty()) {
         arjun->standalone_elim_to_file(cnf, etof_conf, simp_conf);
-        cnf.write_simpcnf(elimtofile, redundant_cls);
-        cout << "c o [arjun] dumped simplified problem to '" << elimtofile << "'" << endl;
+        cnf.write_simpcnf(output_file, redundant_cls);
+        cout << "c o [arjun] dumped simplified problem to '" << output_file << "'" << endl;
     } else {
         print_final_sampl_set(cnf, orig_sampl_vars);
     }
@@ -497,10 +501,10 @@ int main(int argc, char** argv) {
     }
 
     input_file = files[0];
-    if (files.size() >= 2) elimtofile = files[1];
+    if (files.size() >= 2) output_file = files[1];
     cout << "c o [arjun] Input file: " << input_file << endl;
-    if (!elimtofile.empty())
-        cout << "c o [arjun] Output file: " << elimtofile << endl;
+    if (!output_file.empty())
+        cout << "c o [arjun] Output file: " << output_file << endl;
     if (synthesis) {
         do_synthesis();
     } else {
