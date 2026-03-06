@@ -43,11 +43,10 @@
 #include "ccnr/ccnr.h"
 
 #ifdef EXTRA_SYNTH
-#include <ensmallen_bits/sgdr/cyclical_decay.hpp>
+#include <armadillo>
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
 #include "EvalMaxSAT.h"
 #include "manthan_learn.h"
-#include <armadillo>
 #endif
 
 using std::min;
