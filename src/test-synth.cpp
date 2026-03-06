@@ -21,7 +21,6 @@
  THE SOFTWARE.
  */
 
-#include <armadillo>
 #include <cstdlib>
 #include <iostream>
 #include <memory>

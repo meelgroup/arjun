@@ -304,14 +304,14 @@ set(treedecomp_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../treedecomp/build")
 find_package(treedecomp CONFIG REQUIRED)
 message(STATUS "Found SBVA includes at: ${SBVA_INCLUDE_DIRS}")
 find_package(GMP REQUIRED)
+set(cadical_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cadical/build")
+find_library(cadical
+    PATHS ${cadical_DIR}
+    NAMES cadical
+    REQUIRED)
 if(EXTRA_SYNTH)
     add_compile_definitions(EXTRA_SYNTH)
     find_package(MLPACK REQUIRED)
-    set(cadical_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cadical/build")
-    find_library(cadical
-        PATHS ${cadical_DIR}
-        NAMES cadical
-        REQUIRED)
     set(EvalMaxSAT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../EvalMaxSAT/build")
     find_package(EvalMaxSAT REQUIRED)
 endif()

@@ -22,7 +22,6 @@
  */
 
 #include "manthan.h"
-#include <armadillo>
 #include <cryptominisat5/cryptominisat.h>
 #include <cryptominisat5/solvertypesmini.h>
 #include "arjun.h"
@@ -48,6 +47,7 @@
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
 #include "EvalMaxSAT.h"
 #include "manthan_learn.h"
+#include <armadillo>
 #endif
 
 using std::min;

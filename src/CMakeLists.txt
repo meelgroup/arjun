@@ -99,7 +99,7 @@ add_executable(test-synth test-synth.cpp)
 
 target_link_libraries(arjun-bin PRIVATE arjun)
 target_link_libraries(arjun-example PRIVATE arjun)
-target_link_libraries(test-synth PRIVATE arjun ${cadical})
+target_link_libraries(test-synth PRIVATE arjun ${cadical} ${CRYPTOMINISAT5_LIBRARIES})
 
 target_include_directories(arjun-bin PRIVATE
     ${PROJECT_SOURCE_DIR}
