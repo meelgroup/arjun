@@ -311,6 +311,7 @@ find_library(cadical
     REQUIRED)
 if(EXTRA_SYNTH)
     add_compile_definitions(EXTRA_SYNTH)
+    find_package(Armadillo REQUIRED)
     find_package(MLPACK REQUIRED)
     set(EvalMaxSAT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../EvalMaxSAT/build")
     find_package(EvalMaxSAT REQUIRED)
