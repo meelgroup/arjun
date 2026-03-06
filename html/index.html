@@ -174,9 +174,15 @@ c p show 1 2 0
                         try {
                             console.log('Running with args:', e.data.args);
                             Module.FS.writeFile('/input.cnf', e.data.input);
-                            var args = ['--verb', '1', '--synth'].concat(e.data.extraArgs || []).concat(['/input.cnf']);
+                            var args = ['--verb', '1', '--synth'].concat(e.data.extraArgs || []).concat(['/input.cnf', '/output.v']);
                             Module.callMain(args);
-                            postMessage({ type: 'done' });
+                            var outputFile = null;
+                            try {
+                                outputFile = Module.FS.readFile('/output.v', { encoding: 'utf8' });
+                            } catch (readErr) {
+                                console.log('No output.v generated:', readErr);
+                            }
+                            postMessage({ type: 'done', outputV: outputFile });
                         } catch (e) {
                             postMessage({ type: 'error', content: e.toString() });
                         }
@@ -187,6 +193,58 @@ c p show 1 2 0
             const blob = new Blob([workerCode], { type: 'application/javascript' });
             return URL.createObjectURL(blob);
         }
+
+        // ANSI escape code → HTML converter
+        (function() {
+            const ANSI_COLORS = {
+                0:  null,         // reset
+                1:  'bold',
+                30: '#555',       // black (dark gray)
+                31: '#c00',       // red
+                32: '#0a0',       // green
+                33: '#990',       // yellow
+                34: '#00c',       // blue
+                35: '#909',       // magenta
+                36: '#099',       // cyan
+                37: '#ccc',       // white
+                90: '#888',       // bright black
+                91: '#f44',       // bright red
+                92: '#4f4',       // bright green
+                93: '#ff4',       // bright yellow
+                94: '#44f',       // bright blue
+                95: '#f4f',       // bright magenta
+                96: '#4ff',       // bright cyan
+                97: '#fff',       // bright white
+            };
+            window.ansiToHtml = function(text) {
+                let result = '';
+                let openSpans = 0;
+                const parts = text.split(/\x1b\[([0-9;]*)m/);
+                for (let i = 0; i < parts.length; i++) {
+                    if (i % 2 === 0) {
+                        // literal text
+                        result += parts[i].replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                    } else {
+                        // escape sequence codes
+                        const codes = parts[i].split(';').map(Number);
+                        for (const code of codes) {
+                            if (code === 0) {
+                                while (openSpans-- > 0) result += '</span>';
+                                openSpans = 0;
+                            } else if (code === 1) {
+                                result += '<span style="font-weight:bold">';
+                                openSpans++;
+                            } else if (ANSI_COLORS[code]) {
+                                result += `<span style="color:${ANSI_COLORS[code]}">`;
+                                openSpans++;
+                            }
+                        }
+                    }
+                }
+                while (openSpans-- > 0) result += '</span>';
+                return result;
+            };
+        })();
 
         // Main execution logic
         function parseExtraArgs(str) {
@@ -221,7 +279,7 @@ c p show 1 2 0
                 return;
             }
 
-            outputDiv.textContent = 'Initializing...\n';
+            outputDiv.innerHTML = 'Initializing...\n';
             document.getElementById('run-button').disabled = true;
             document.getElementById('status').textContent = 'Running...';
 
@@ -235,7 +293,7 @@ c p show 1 2 0
                 switch (e.data.type) {
                     case 'output':
                         console.log('Output:', e.data.content);
-                        outputDiv.textContent += e.data.content + '\n';
+                        outputDiv.innerHTML += ansiToHtml(e.data.content) + '\n';
                         outputDiv.scrollTop = outputDiv.scrollHeight;
                         break;
                     case 'ready':
@@ -251,6 +309,21 @@ c p show 1 2 0
                         document.getElementById('run-button').disabled = false;
                         worker.terminate();
                         URL.revokeObjectURL(workerUrl);
+                        if (e.data.outputV) {
+                            var blob = new Blob([e.data.outputV], { type: 'text/plain' });
+                            var url = URL.createObjectURL(blob);
+                            var a = document.getElementById('download-link');
+                            if (!a) {
+                                a = document.createElement('a');
+                                a.id = 'download-link';
+                                a.style.marginLeft = '10px';
+                                document.getElementById('run-button').parentNode.appendChild(a);
+                            }
+                            a.href = url;
+                            a.download = 'output.v';
+                            a.textContent = 'Download output.v';
+                            a.style.display = 'inline';
+                        }
                         break;
                     case 'error':
                         outputDiv.textContent += 'Error: ' + e.data.content + '\n';
