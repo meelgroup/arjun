@@ -174,7 +174,7 @@ c p show 1 2 0
                         try {
                             console.log('Running with args:', e.data.args);
                             Module.FS.writeFile('/input.cnf', e.data.input);
-                            var args = ['--verb', '1', '--synth'].concat(e.data.extraArgs || []).concat(['/input.cnf', '/output.v']);
+                            var args = ['--synth'].concat(e.data.extraArgs || []).concat(['/input.cnf', '/output.v']);
                             Module.callMain(args);
                             var outputFile = null;
                             try {
