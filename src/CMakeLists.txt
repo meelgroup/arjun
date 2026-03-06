@@ -132,6 +132,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_link_options(arjun-bin PRIVATE
       "SHELL:-s WASM=1"
       "SHELL:-s ALLOW_MEMORY_GROWTH=1"
+      "SHELL:-s STACK_SIZE=10388608"
       "SHELL:-s EXPORTED_RUNTIME_METHODS='[\"callMain\", \"ccall\", \"cwrap\", \"FS\", \"print\"]'"
       "SHELL:-s FORCE_FILESYSTEM=1"
     )
