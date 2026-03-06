@@ -72,6 +72,7 @@ target_include_directories(arjun
 if(EXTRA_SYNTH)
     target_include_directories(arjun
         PRIVATE
+            ${ARMADILLO_INCLUDE_DIRS}
             ${EVALMAXSAT_INCLUDE_DIRS}
             ${MLPACK_INCLUDE_DIR}
     )
