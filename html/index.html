@@ -86,19 +86,19 @@
 <body>
     <div class="container">
         <h1>Arjun Functional Synthesis in Your Browser</h1>
-        <div>Copy your CNF formula in the input box below and click "Run
+        <div>Copy your CNF/DIMACS formula in the input box below and click "Run
             arjun.js" to run the Functional Synthesis engine in your browser.
             The output will be displayed below the input box. Format
             description is available <a
                 href="https://jix.github.io/varisat/manual/0.2.0/formats/dimacs.html">here</a></div>
-            You need to have "c p show ... 0" for all the variables that are inputs
         <div>
             <label for="extra-args">Extra command line arguments:</label>
             <input type="text" id="extra-args"
                 value='--mstrategy "const(max_repairs=400),const(max_repairs=400,inv_learnt=1),bve"'
                 style="width:100%;padding:8px;box-sizing:border-box;font-family:monospace;border:1px solid #ddd;border-radius:4px;">
         </div>
-
+        <div>
+            To only do the repair loop, use options: "--verb 10 --bve 0 --synthbve 0 --unate 0 --autarky 0 --unatedef 0 --extend 0 --minimize 0 --samples 0"
         <div>
             <label for="input-content">CNF:</label>
             <textarea id="input-content">p cnf 3 3
@@ -118,8 +118,15 @@ c p show 1 2 0
             </div>
         </div>
 
+        <div id="download-section" style="display:none">
+            <h2 style="margin-bottom:8px">Download</h2>
+            <a id="download-link" download="output.v">
+                <button>Download output.v</button>
+            </a>
+        </div>
+
         <div>
-            <label for="output">Output:</label>
+            <h2 style="margin-bottom:8px">Output</h2>
             <div id="output">Ready - enter your input and click "Run arjun.js"</div>
         </div>
     </div>
@@ -312,17 +319,8 @@ c p show 1 2 0
                         if (e.data.outputV) {
                             var blob = new Blob([e.data.outputV], { type: 'text/plain' });
                             var url = URL.createObjectURL(blob);
-                            var a = document.getElementById('download-link');
-                            if (!a) {
-                                a = document.createElement('a');
-                                a.id = 'download-link';
-                                a.style.marginLeft = '10px';
-                                document.getElementById('run-button').parentNode.appendChild(a);
-                            }
-                            a.href = url;
-                            a.download = 'output.v';
-                            a.textContent = 'Download output.v';
-                            a.style.display = 'inline';
+                            document.getElementById('download-link').href = url;
+                            document.getElementById('download-section').style.display = 'block';
                         }
                         break;
                     case 'error':
