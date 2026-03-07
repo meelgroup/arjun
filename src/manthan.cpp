@@ -754,11 +754,11 @@ void Manthan::const_functions() {
         if (filt_s.empty()) {
             val = true;
         } else {
-            val = samples[0][y] == l_True;
+            val = (*filt_s[0])[y] == l_True;
         }
         if (mconf.inv_learnt) val = !val;
         verb_print(3, "[manthan] const function for var " << y+1 << " is " << val);
-        var_to_formula[y] = fh->constant_formula(samples[0][y] == l_True);
+        var_to_formula[y] = fh->constant_formula(val);
     }
 }
 
