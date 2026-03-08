@@ -121,8 +121,20 @@ c p show 1 2 0
         <div id="download-section" style="display:none">
             <h2 style="margin-bottom:8px">Download Verilog Output</h2>
             <a id="download-link" download="output.v">
-                <button>Download output.v</button>
+                <button>Download Verilog output</button>
             </a>
+            <h3 style="margin-top:16px;margin-bottom:8px">Verilog output:</h3>
+            <div id="output-v-content" style="
+                height: 300px;
+                overflow-y: auto;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 10px;
+                background-color: #f9f9f9;
+                font-family: monospace;
+                font-size: 13px;
+                white-space: pre;
+            "></div>
         </div>
 
         <div>
@@ -320,6 +332,7 @@ c p show 1 2 0
                             var blob = new Blob([e.data.outputV], { type: 'text/plain' });
                             var url = URL.createObjectURL(blob);
                             document.getElementById('download-link').href = url;
+                            document.getElementById('output-v-content').textContent = e.data.outputV;
                             document.getElementById('download-section').style.display = 'block';
                         }
                         break;
