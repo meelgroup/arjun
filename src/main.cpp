@@ -236,6 +236,7 @@ void add_arjun_options() {
     myopt("--iter2grow", simp_conf.bve_grow_iter2, fc_int,"Puura BVE grow rate allowed after Oracle");
     myopt("--bvegrownonstop", simp_conf.bve_grow_nonstop, fc_int,"Do not stop BVE if nothing got eliminated, keep going until grow factor limit");
     myopt("--bveresolvmaxsz", simp_conf.bve_too_large_resolvent, fc_int,"Puura BVE max resolvent size in literals. -1 == no limit");
+    myopt("--oraclemult", simp_conf.oracle_mult, fc_double,"Oracle multiplier for timeout (i.e. steps-out)");
     myopt("--oraclesparsify", simp_conf.oracle_sparsify, fc_int,"Use Oracle to sparsify");
     myopt("--oraclevivif", simp_conf.oracle_vivify, fc_int,"Use oracle to vivify");
     myopt("--oraclevivifgetl", simp_conf.oracle_vivify_get_learnts, fc_int,"Use oracle to vivify get learnts");
