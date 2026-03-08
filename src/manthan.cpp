@@ -1336,7 +1336,7 @@ bool Manthan::cluster_order() {
     uint64_t td_steps = 1e5;
     int td_lookahead_iters = 300;
     auto tdec = TWD::TreeDecomposition(fc.constructTD(td_steps, td_lookahead_iters));
-    tdec.centroid(primal_alt->numNodes(), conf.verb);
+    tdec.centroid(conf.verb);
     const auto td_width = tdec.width()-1;
     verb_print(2, "[td] FlowCutter FINISHED, TD width: " << td_width);
 
@@ -1363,7 +1363,7 @@ bool Manthan::cluster_order() {
       }
     }
     int max_dist = 0;
-    std::vector<int> dists = tdec.distanceFromCentroid(tdec.numNodes());
+    std::vector<int> dists = tdec.distanceFromCentroid();
     for(uint32_t i = 0; i < (uint32_t)tdec.numNodes(); i++)
         max_dist = std::max(max_dist, dists[i]);
 
