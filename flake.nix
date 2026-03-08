@@ -76,8 +76,8 @@
           src = fetchFromGitHub {
             "owner" = "mlpack";
             "repo" = "mlpack";
-            "rev" = "4.4.0";
-            "hash" = "sha256-EPz8qPTUAldS+k5/qkZf8EKXKjnxElfJxlTEMLPhTQE=";
+            "rev" = "4.7.0";
+            "hash" = "sha256-ABlNudv+Cdj77iOkoVMYsnTWV1eeIgzSdABMDqFmwOE=";
           };
           nativeBuildInputs = [
             pkg-config
