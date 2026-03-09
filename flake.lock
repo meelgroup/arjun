@@ -142,11 +142,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1772998529,
-        "narHash": "sha256-M2IfWNBsF57e9WalSjAKksrdB606L0AHZX6zI1Pcw6E=",
+        "lastModified": 1773008152,
+        "narHash": "sha256-XtWtLScV4RsgvW5dn7Cwa75xW7Kra7DTC/I/Nmigxjw=",
         "owner": "msoos",
         "repo": "cryptominisat",
-        "rev": "5d652c65399aabf95b19d682c11ccbbc3da06bf1",
+        "rev": "470bdfc9b3559ac7ebd83fe828264b70c617e86a",
         "type": "github"
       },
       "original": {
