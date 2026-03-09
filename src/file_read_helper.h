@@ -36,7 +36,6 @@
 
 using std::vector;
 using std::set;
-using namespace CMSat;
 using std::cerr;
 using std::cout;
 using std::endl;
@@ -45,10 +44,12 @@ template<typename T> void read_in_a_file(const std::string& filename,
         T* holder, bool& all_indep, unique_ptr<CMSat::FieldGen>& fg) {
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<FILE*, FN>, T> parser(holder, nullptr, 0, fg);
+    CMSat::DimacsParser<CMSat::StreamBuffer<FILE*, CMSat::FN>, T> parser(holder, nullptr, 0, fg);
     #else
-    gzFile in = gzopen(filename.c_str(), "rb");
-    DimacsParser<StreamBuffer<gzFile, GZ>, T> parser(holder, nullptr, 0, fg);
+    gzFile in;
+    if (filename == "-") in = gzdopen(fileno(stdin), "rb");
+    else in = gzopen(filename.c_str(), "rb");
+    CMSat::DimacsParser<CMSat::StreamBuffer<gzFile, CMSat::GZ>, T> parser(holder, nullptr, 0, fg);
     #endif
 
     if (in == nullptr) {
@@ -56,15 +57,30 @@ template<typename T> void read_in_a_file(const std::string& filename,
             << "' for reading: " << strerror(errno) << endl;
         std::exit(EXIT_FAILURE);
     }
-
     if (!parser.parse_DIMACS(in, true)) exit(EXIT_FAILURE);
-    if (!holder->get_sampl_vars_set()) {
-        holder->start_with_clean_sampl_vars();
-        all_indep = true;
-    }
     #ifndef USE_ZLIB
         fclose(in);
     #else
         gzclose(in);
     #endif
+
+    if (!holder->get_sampl_vars_set()) {
+        holder->start_with_clean_sampl_vars();
+        all_indep = true;
+    } else {
+        // Check if CNF has all vars as indep. Then its's all_indep
+        set<uint32_t> tmp;
+        for(auto const& s: holder->get_sampl_vars()) {
+            if (s >= holder->nVars()) {
+                cout << "ERROR: Sampling var " << s+1 << " is larger than number of vars in formula: "
+                    << holder->nVars() << endl;
+                exit(EXIT_FAILURE);
+            }
+            tmp.insert(s);
+        }
+        if (tmp.size() == holder->nVars()) all_indep = true;
+        if (!holder->get_opt_sampl_vars_set()) {
+            holder->set_opt_sampl_vars(holder->get_sampl_vars());
+        }
+    }
 }

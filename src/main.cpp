@@ -34,12 +34,11 @@
 #include <vector>
 #include <string>
 #include "argparse.hpp"
-#include <cryptominisat5/dimacsparser.h>
 
 #include "time_mem.h"
 #include "arjun.h"
 #include "config.h"
-#include "helper.h"
+#include "file_read_helper.h"
 #include "synth.h"
 
 using std::cout;
@@ -327,6 +326,8 @@ void do_synthesis() {
         exit(EXIT_FAILURE);
     }
     cnf.clean_idiotic_mccomp_weights();
+    cnf.check_cnf_sampl_sanity();
+    cnf.check_cnf_vars();
     cnf.set_orig_clauses(cnf.get_clauses());
     cnf.set_orig_sampl_vars(cnf.get_sampl_vars());
     assert(cnf.get_need_aig() && cnf.defs_invariant());

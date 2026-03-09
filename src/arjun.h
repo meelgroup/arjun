@@ -1025,7 +1025,6 @@ public:
 
     template<class T>
     void set_sampl_vars(const T& vars, bool ignore = false) {
-        for(const auto& v: vars) check_var(v);
         if (!ignore) {
             if (sampl_vars_set) {
               std::cout << "ERROR: Sampling variables have already been set, you can't set them twice!"
@@ -1046,7 +1045,6 @@ public:
         if (!opt_sampl_vars_set) set_opt_sampl_vars(vars);
     }
     template<class T> void set_opt_sampl_vars(const T& vars) {
-        for(const auto& v: vars) check_var(v);
         opt_sampl_vars.clear();
         opt_sampl_vars_set = true;
         std::set<uint32_t> tmp(vars.begin(), vars.end());

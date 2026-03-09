@@ -30,11 +30,18 @@
 #include "arjun.h"
 #include <cryptominisat5/dimacsparser.h>
 #include "cryptominisat5/solvertypesmini.h"
-#include "helper.h"
+#include "file_read_helper.h"
 #include "formula.h"
 #include "metasolver.h"
 #include <random>
 #include <map>
+
+using CMSat::SATSolver;
+using CMSat::Lit;
+using CMSat::lbool;
+using CMSat::l_True;
+using CMSat::l_False;
+using CMSat::l_Undef;
 
 using namespace ArjunInt;
 
