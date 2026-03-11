@@ -440,7 +440,10 @@ int main(int argc, char** argv) {
     }
 
     if (simp_conf.appmc) {
-        assert(!synthesis && "Cannot use synthesis and appmc simplification at the same time");
+        if (synthesis) {
+            cout << "ERROR: Cannot use synthesis and appmc simplification at the same time" << endl;
+            exit(EXIT_FAILURE);
+        }
         cout << "c o [arjun] Setting defaults for AppMC CNF simplification" << endl;
         simp_conf.appmc = true;
         if (!program.is_used("--oraclevivif")) simp_conf.oracle_vivify = true;
@@ -451,11 +454,17 @@ int main(int argc, char** argv) {
     }
 
     if (program.is_used("--synth")) {
-        assert(!simp_conf.appmc && "Cannot use synthesis and appmc simplification at the same time");
+        if (simp_conf.appmc) {
+            cout << "ERROR: Cannot use synthesis and appmc simplification at the same time" << endl;
+            exit(EXIT_FAILURE);
+        }
     }
 
     if (program.is_used("--synthmore")) {
-        assert(!simp_conf.appmc && "Cannot use synthesis and appmc simplification at the same time");
+        if (simp_conf.appmc) {
+            cout << "ERROR: Cannot use synthesis and appmc simplification at the same time" << endl;
+            exit(EXIT_FAILURE);
+        }
         cout << "c o [arjun] Setting defaults for synthesis mode" << endl;
         if (!program.is_used("--bveresolvmaxsz")) simp_conf.bve_too_large_resolvent = 1000;
         /* if (!program.is_used("--iter1grow")) simp_conf.bve_grow_iter1 = 200; */
@@ -495,7 +504,7 @@ int main(int argc, char** argv) {
     try {
         files = program.get<std::vector<std::string>>("files");
         if (files.size() > 2) {
-            cout << "ERROR: you can only pass at most 3 positional parameters: an INPUT file"
+            cout << "ERROR: you can only pass at most 2 positional parameters: an INPUT file"
                 ", optionally an OUTPUT file" << endl;
             exit(EXIT_FAILURE);
         }

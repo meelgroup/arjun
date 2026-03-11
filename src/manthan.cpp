@@ -818,10 +818,10 @@ SimplifiedCNF Manthan::do_manthan() {
         ManthanLearn learn(*this, conf, mconf);
         learn.full_train();
 #else
-        cout << "ERROR: manthan_base is set to 2 but we are not in EXTRA_SYNTH mode!" << endl;
+        cout << "ERROR: manthan_base is set to 0 but we are not in EXTRA_SYNTH mode!" << endl;
         exit(EXIT_FAILURE);
 #endif
-    } if (mconf.manthan_base == 1) {
+    } else if (mconf.manthan_base == 1) {
         const_functions();
     } else if (mconf.manthan_base == 2) {
         bve_and_substitute();
