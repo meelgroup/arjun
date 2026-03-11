@@ -987,6 +987,10 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
             inject_formulas_into_solver();
             recompute_all_y_hat_cnf(ctx);
         }
+    } else {
+        // Cost 0: find_conflict updated ctx[y] but not ctx[y_hat]
+        // Recompute y_hat values so compute_needs_repair is correct
+        recompute_all_y_hat_cnf(ctx);
     }
     compute_needs_repair(ctx);
     print_needs_repair_vars();
@@ -1124,14 +1128,12 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 
     verb_print(3, a+1 << " depends on " << b+1);
     dependency_mat[a][b] = 1;
-#ifdef SLOW_DEBUG
-    // recursive update
+    // transitive closure update
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
         if (input.count(i)) continue;
         dependency_mat[a][i] |= dependency_mat[b][i];
     }
-    assert(check_map_dependency_cycles());
-#endif
+    SLOW_DEBUG_DO(assert(check_map_dependency_cycles()));
 }
 
 void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict) {
@@ -1421,8 +1423,8 @@ void Manthan::compute_td_score_using_adj(const uint32_t nodes,
     double val = max_ord - (ord[i]-min_ord);
     val /= (double)max_ord;
     assert(val > -0.01 && val < 1.01);
-    assert(i+1 < td_score.size());
     const uint32_t old_i = new_to_old.at(i);
+    assert(old_i < td_score.size());
     td_score[old_i] = val;
   }
 }
@@ -1645,7 +1647,7 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
 
     map<uint32_t, uint32_t> y_to_y_order_pos;
     for(size_t i = 0; i < y_order.size(); i++) {
-        if (mconf.maxsat_order)
+        if (!mconf.maxsat_order)
             y_to_y_order_pos[y_order[i]] = i+1;
         else
             y_to_y_order_pos[y_order[i]] = y_order.size()-i;

@@ -46,7 +46,7 @@ public:
     ManthanLearn(Manthan& _manthan, const Config& _conf, const ArjunNS::Arjun::ManthanConf& _mconf) :
         m(_manthan), conf(_conf), mconf(_mconf) {
             point_0.zeros(m.cnf.nVars());
-            point_1.zeros(m.cnf.nVars());
+            point_1.ones(m.cnf.nVars());
         }
     void full_train();
 private:
