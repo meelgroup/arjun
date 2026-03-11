@@ -160,7 +160,7 @@ void add_arjun_options() {
     myopt("--simpevery", mconf.simplify_every, fc_int,"Simplify solvers inside Manthan every K loops");
     myopt("--unate", do_unate, fc_int,"Perform unate analysis");
     myopt("--unatedef", do_unate_def, fc_int,"Perform definition-aware unate analysis");
-    myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform unate analysis");
+    myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
     myopt("--monflyorder", mconf.manthan_on_the_fly_order, fc_int,"Use on-the-fly training order and post-training topological order");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
     myopt("--minvertlearn", mconf.inv_learnt, fc_int,"Invert learnt functions");
@@ -174,15 +174,15 @@ void add_arjun_options() {
         "Comma-separated synthesis strategy list, e.g. "
         "\"learn(samples=1,max_repairs=100),learn(max_repairs=800),bve\". "
         "Each non-last strategy runs for 20*max_repairs tries; the last runs unlimited. "
-        "Params: manthan_bve, samples, samples_ccnr, minGainSplit, "
-        "maximumDepth, sampler_fixed_conflicts, and other ManthanConf fields.");
+        "Params: max_repairs, samples, samples_ccnr, min_gain_split, "
+        "max_depth, sampler_fixed_conflicts, and other ManthanConf fields.");
     // Order
     myopt("--morder", mconf.manthan_order, fc_int,"Order vars: indicence (0), cluster-incidence (1), BVE (2)");
     myopt("--maxsatorder", mconf.maxsat_order, fc_int,"Which order to use to try to fix vars? 0 = norm, 1 = rev");
     myopt("--mbackwsynthorder", mconf.backward_synth_order, fc_int,"Which order to use to try to do backward? 0 = normal, 1 = reverse");
     // solver config
     myopt("--ctxsolver", mconf.ctx_solver_type, fc_int,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
-    myopt("--repairsolver", mconf.repair_solver_type, fc_int,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
+    myopt("--repairsolver", mconf.repair_solver_type, fc_int,"Repair solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
     myopt("--repaircache", mconf.repair_cache_size, fc_int,"Repair cache size. 0 = no cache");
     // synth -- sampling
     myopt("--samples", mconf.samples, fc_int,"Number of samples");
@@ -373,7 +373,7 @@ void do_synthesis() {
     }
     if (!output_file.empty()) {
         cnf.write_aig_def_to_verilog(output_file);
-        cout << "c o [arjun] dumped synthesized functions to verlog file '" << output_file << "'" << endl;
+        cout << "c o [arjun] dumped synthesized functions to verilog file '" << output_file << "'" << endl;
     }
     if (!conf.debug_synth.empty()) {
         auto final_cnf = cnf;
