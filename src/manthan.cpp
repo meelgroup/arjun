@@ -1128,12 +1128,14 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 
     verb_print(3, a+1 << " depends on " << b+1);
     dependency_mat[a][b] = 1;
+#ifdef SLOW_DEBUG
     // transitive closure update
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
         if (input.count(i)) continue;
         dependency_mat[a][i] |= dependency_mat[b][i];
     }
-    SLOW_DEBUG_DO(assert(check_map_dependency_cycles()));
+    assert(check_map_dependency_cycles());
+#endif
 }
 
 void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict) {
@@ -1609,7 +1611,7 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
 
     map<uint32_t, uint32_t> y_to_y_order_pos;
     for(size_t i = 0; i < y_order.size(); i++) {
-        if (!mconf.maxsat_order)
+        if (mconf.maxsat_order)
             y_to_y_order_pos[y_order[i]] = i+1;
         else
             y_to_y_order_pos[y_order[i]] = y_order.size()-i;
@@ -1647,7 +1649,7 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
 
     map<uint32_t, uint32_t> y_to_y_order_pos;
     for(size_t i = 0; i < y_order.size(); i++) {
-        if (!mconf.maxsat_order)
+        if (mconf.maxsat_order)
             y_to_y_order_pos[y_order[i]] = i+1;
         else
             y_to_y_order_pos[y_order[i]] = y_order.size()-i;
