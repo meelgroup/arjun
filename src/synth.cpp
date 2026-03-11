@@ -188,7 +188,7 @@ SynthStrategy SynthRunner::parse_one_strategy(const string& raw) {
     }
 
     if (strat.type != "learn" && strat.type != "bve" && strat.type != "const") {
-        cout << "ERROR: unknown strategy type '" << strat.type << "'. Use 'learn' or 'bve'." << endl;
+        cout << "ERROR: unknown strategy type '" << strat.type << "'. Use 'learn', 'bve', or 'const'." << endl;
         exit(EXIT_FAILURE);
     }
     return strat;
@@ -256,10 +256,10 @@ void SynthRunner::run_manthan_strategies(
 
         verb_print(1, "Running Manthan strategy " << i+1 << "/" << strategies.size()
             << " -- " << strat.raw << " with max_repairs="
-            << (mconf.max_repairs ? std::string("unlimited") : std::to_string(mconf.max_repairs)));
+            << (mconf.max_repairs == std::numeric_limits<uint32_t>::max() ? std::string("unlimited") : std::to_string(mconf.max_repairs)));
         cnf = arjun->standalone_manthan(cnf, mconf);
         if (cnf.synth_done()) {
-            verb_print(1,"Manthan finished with strategy " << i << "/" << strategies.size()-1
+            verb_print(1,"Manthan finished with strategy " << i+1 << "/" << strategies.size()
                     << " -- " << strat.raw);
             break;
         }
