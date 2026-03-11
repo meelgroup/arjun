@@ -197,6 +197,7 @@ jobs:
       run: |
         wget https://github.com/mlpack/ensmallen/archive/refs/tags/2.22.2.tar.gz
     - name: Build ensmallen
+      if: matrix.extra_synth == 'ON'
       run: |
         tar xvf 2.22.2.tar.gz
         cd ensmallen-2.22.2
