@@ -1098,7 +1098,7 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
             // OK, sane. Remove and restart
             removed_any = true;
             verb_print(3, "[manthan] conf minim. Removed conflict literal: " << setw(5) << try_rem
-                << " sz ch: " << sz_before - conflict.size());
+                << " sz ch: " << sz_before - conflict2.size());
             conflict = conflict2;
             break;
         }
@@ -1346,7 +1346,7 @@ bool Manthan::cluster_order() {
       return false;
     }
 
-    verb_print(2, "[td] Calculated TD width: " << td_width-1);
+    verb_print(2, "[td] Calculated TD width: " << td_width);
     const auto& adj = tdec.get_adj_list();
     if (conf.verb >= 3) {
       for(uint32_t i = 0; i < bags.size(); i++) {
@@ -1480,7 +1480,7 @@ void Manthan::pre_order_vars() {
     assert(order_val.empty());
     assert(y_order.empty());
     const double my_time = cpuTime();
-    verb_print(2, "[manthan] Fixing order " << (mconf.manthan_base ? "[BVE]" : "[LEARN]") << "...");
+    verb_print(2, "[manthan] Fixing order " << (mconf.manthan_base == 0 ? "[LEARN]" : (mconf.manthan_base == 1 ? "[CONST]" : "[BVE]")) << "...");
 
     switch(mconf.manthan_order) {
         case 0: learn_order(); break;

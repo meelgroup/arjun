@@ -32,7 +32,7 @@
 #include "config.h"
 
 struct SynthStrategy {
-    std::string type;   // "learn" or "bve"
+    std::string type;   // "learn", "bve", or "const"
     std::string raw;    // original strategy string as parsed
     std::map<std::string, std::string> overrides; // param name -> string value
 };
