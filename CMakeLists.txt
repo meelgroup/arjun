@@ -297,14 +297,14 @@ endif()
 # -----------------------------------------------------------------------------
 # Dependencies
 # -----------------------------------------------------------------------------
-set(sbva_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../sbva/build")
+set(sbva_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../sbva/build" CACHE PATH "Directory where sbva is built/installed")
 find_package(sbva REQUIRED)
 
-set(treedecomp_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../treedecomp/build")
+set(treedecomp_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../treedecomp/build" CACHE PATH "Directory where treedecomp is built/installed")
 find_package(treedecomp CONFIG REQUIRED)
 message(STATUS "Found SBVA includes at: ${SBVA_INCLUDE_DIRS}")
 find_package(GMP REQUIRED)
-set(cadical_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cadical/build")
+set(cadical_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cadical/build" CACHE PATH "Directory where CaDiCal is built/installed")
 find_library(cadical
     PATHS ${cadical_DIR}
     NAMES cadical
@@ -314,7 +314,7 @@ if(EXTRA_SYNTH)
     find_path(ARMADILLO_INCLUDE_DIRS armadillo REQUIRED)
     include_directories(${ARMADILLO_INCLUDE_DIRS})
     find_package(MLPACK REQUIRED)
-    set(EvalMaxSAT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../EvalMaxSAT/build")
+    set(EvalMaxSAT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../EvalMaxSAT/build" CACHE PATH "Directory where EvalMaxSAT is built/installed")
     find_package(EvalMaxSAT REQUIRED)
 endif()
 
@@ -331,7 +331,7 @@ if(NOT NOZLIB AND NOT (STATICCOMPILE AND WIN32))
     endif()
 endif()
 
-set(cryptominisat5_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cryptominisat/build")
+set(cryptominisat5_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cryptominisat/build" CACHE PATH "Directory where CryptoMiniSat5 is built/installed")
 find_package(cryptominisat5 CONFIG REQUIRED)
 message(STATUS "CryptoMiniSat5 dynamic lib: ${CRYPTOMINISAT5_LIBRARIES}")
 message(STATUS "CryptoMiniSat5 dynamic lib dirs: ${CRYPTOMINISAT5_LIBRARY_DIRS}")
