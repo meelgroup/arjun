@@ -153,6 +153,7 @@ double ManthanLearn::train(const vector<sample>& orig_samples, const uint32_t v)
         assert(m.var_to_formula.count(v) == 0);
         uint32_t max_depth = 0;
         m.var_to_formula[v] = recur(&r, v, used_vars, 0, max_depth);
+        SLOW_DEBUG_DO(verify_aig_error_rate(samples, v, train_error));
         if (mconf.inv_learnt)
             m.var_to_formula[v] = m.fh->neg(m.var_to_formula[v]);
         verb_print(1, "Training error: " << setprecision(2) << setw(6) << train_error << "%."
@@ -177,6 +178,35 @@ double ManthanLearn::train(const vector<sample>& orig_samples, const uint32_t v)
     verb_print(2, "------------------------------");
 
     return train_error;
+}
+
+void ManthanLearn::verify_aig_error_rate(
+        const vector<const sample*>& samples, const uint32_t v, const double train_error) {
+    const auto& aig = m.var_to_formula.at(v).aig;
+
+    // Determine max var index: samples cover [0, nVars()), y_hat vars may go beyond
+    uint32_t max_var = m.cnf.nVars();
+    for (const auto& [y, y_hat] : m.y_to_y_hat)
+        max_var = std::max(max_var, y_hat + 1);
+
+    const vector<aig_ptr> defs(max_var, nullptr);
+
+    uint32_t wrong = 0;
+    for (const auto* s : samples) {
+        // Build vals: real sample values, then overlay y_hat slots with y's sample value
+        vector<CMSat::lbool> vals(max_var, CMSat::l_Undef);
+        for (uint32_t i = 0; i < m.cnf.nVars(); i++) vals[i] = (*s)[i];
+        for (const auto& [y, y_hat] : m.y_to_y_hat) vals.at(y_hat) = (*s)[y];
+
+        std::map<aig_ptr, CMSat::lbool> cache;
+        const CMSat::lbool result = ArjunNS::AIG::evaluate(vals, aig, defs, cache);
+        if (result != (*s)[v]) wrong++;
+    }
+
+    const double aig_error = wrong * 100.0 / (double)samples.size();
+    verb_print(1, "[verify] AIG error: " << setprecision(4) << aig_error
+            << "% ML error: " << train_error << "% on v: " << v+1);
+    assert(std::abs(aig_error - train_error) <= 0.01);
 }
 
 FHolder<MetaSolver2>::Formula ManthanLearn::recur(mlpack::tree::DecisionTree<>* node,
