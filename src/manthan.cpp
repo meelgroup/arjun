@@ -1132,11 +1132,9 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 
     verb_print(3, a+1 << " depends on " << b+1);
     dependency_mat[a][b] = 1;
-    // transitive closure update
-    for(uint32_t i = 0; i < cnf.nVars(); i++) {
-        if (input.count(i)) continue;
-        dependency_mat[a][i] |= dependency_mat[b][i];
-    }
+    // Intentionally no transitive-closure propagation here.
+    // The synthesis/repair setup enforces a loop-free dependency structure by design,
+    // so direct dependency edges are sufficient and recursive closure updates are unnecessary.
 #ifdef SLOW_DEBUG
     assert(check_map_dependency_cycles());
 #endif
