@@ -309,10 +309,11 @@ def gen_mstrategy():
     uint_params = ["samples", "samples_ccnr", "max_depth", "sampler_fixed_conflicts",
                    "min_leaf_size", "simplify_every"]
     int_params  = ["filter_samples", "biased_sampling", "minimize_conflict", "maxsat_better_ctx",
-                   "maxsat_order", "use_all_vars_as_feats", "ctx_solver_type", "repair_solver_type",
+                   "maxsat_order", "use_all_vars_as_feats",
                    "repair_cache_size", "backward_synth_order", "manthan_order",
                    "manthan_on_the_fly_order", "one_repair_per_loop", "force_bw_equal",
                    "bva_xor_vars", "silent_var_update", "inv_learnt"]
+    #  "ctx_solver_type", "repair_solver_type",
     double_params = ["min_gain_split"]
 
     def gen_uint():
@@ -324,10 +325,10 @@ def gen_mstrategy():
     def gen_double():
         return str(random.choice([0.001, 0.1, 0.5, 1.0, 5.0]))
 
-    def gen_strategy(must_have_max_repairs):
+    def gen_strategy(must_have_max_repairs, must_not_have_max_repairs=False):
         stype = random.choice(types)
         params = {}
-        if must_have_max_repairs or random.choice([True, False]):
+        if must_have_max_repairs or (not must_not_have_max_repairs and random.choice([True, False])):
             params["max_repairs"] = str(random.choice([10, 100, 400, 1000]))
         for p in random.sample(uint_params, random.randint(0, 2)):
             params.setdefault(p, gen_uint())
@@ -343,7 +344,8 @@ def gen_mstrategy():
     n = random.randint(1, 3)
     strategies = []
     for i in range(n):
-        strategies.append(gen_strategy(must_have_max_repairs=(i < n - 1)))
+        strategies.append(gen_strategy(must_have_max_repairs=(i < n - 1),
+                                       must_not_have_max_repairs=(i == n - 1)))
     return ",".join(strategies)
 
 
