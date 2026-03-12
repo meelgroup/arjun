@@ -160,6 +160,10 @@ SynthStrategy SynthRunner::parse_one_strategy(const string& raw) {
             cout << "ERROR: missing closing ')' in strategy: " << raw << endl;
             exit(EXIT_FAILURE);
         }
+        if (rparen != s.size() - 1) {
+            cout << "ERROR: unexpected characters after ')' in strategy: " << raw << endl;
+            exit(EXIT_FAILURE);
+        }
         string params_str = s.substr(paren_pos + 1, rparen - paren_pos - 1);
         for (const auto& param : split_top_level(params_str)) {
             if (param.empty()) continue;
