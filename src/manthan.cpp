@@ -846,7 +846,7 @@ SimplifiedCNF Manthan::do_manthan() {
         sample ctx;
         const bool finished = get_counterexample(ctx);
         if (finished) break;
-        if (tot_repaired > mconf.max_repairs) {
+        if (tot_repaired >= mconf.max_repairs) {
             print_stats("", COLRED, " Reached max repairs");
             return cnf;
         }
@@ -885,6 +885,10 @@ SimplifiedCNF Manthan::do_manthan() {
                 at_least_one_repaired = true;
                 num_repaired++;
                 tot_repaired++;
+                if (tot_repaired >= mconf.max_repairs) {
+                    print_stats("", COLRED, " Reached max repairs");
+                    return cnf;
+                }
                 if (mconf.one_repair_per_loop) break;
             } else {
                 repair_failed++;
@@ -1128,12 +1132,12 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 
     verb_print(3, a+1 << " depends on " << b+1);
     dependency_mat[a][b] = 1;
-#ifdef SLOW_DEBUG
     // transitive closure update
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
         if (input.count(i)) continue;
         dependency_mat[a][i] |= dependency_mat[b][i];
     }
+#ifdef SLOW_DEBUG
     assert(check_map_dependency_cycles());
 #endif
 }
