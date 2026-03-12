@@ -764,7 +764,6 @@ void Manthan::const_functions() {
 
 SimplifiedCNF Manthan::do_manthan() {
     assert(cnf.get_need_aig() && cnf.defs_invariant());
-    assert(mconf.simplify_every > 0 && "Can't give simplify_every=0");
     const double my_time = cpuTime();
     const auto ret = cnf.find_disconnected();
     verb_print(1, "[manthan] Found " << ret.size() << " components");
@@ -972,7 +971,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     assert(to_define.count(y_rep) == 1 && "Only to-define vars should be repaired");
     assert(y_rep < cnf.nVars());
 
-    if (num_loops_repair % mconf.simplify_every == (mconf.simplify_every-1)) {
+    if (mconf.simplify_every > 0 && num_loops_repair % mconf.simplify_every == (mconf.simplify_every-1)) {
         vector<Lit> assumps;
         assumps.reserve(input.size() + to_define_full.size());
         for(const auto& x: input) assumps.push_back(Lit(x, false));
@@ -1855,7 +1854,8 @@ bool Manthan::get_counterexample(sample& ctx) {
 
     verb_print(4, "assumptions: " << assumps);
     cex_solver.set_verbosity(conf.verb <= 2 ? 0 : conf.verb-1);
-    if (num_loops_repair == 1 || (num_loops_repair % mconf.simplify_every) == (mconf.simplify_every-1))
+    if (num_loops_repair == 1 || (
+                mconf.simplify_every > 0 && num_loops_repair % mconf.simplify_every) == (mconf.simplify_every-1))
         cex_solver.simplify(&assumps);
 
     /* solver.set_up_for_sample_counter(1000); */

@@ -249,6 +249,11 @@ void SynthRunner::run_manthan_strategies(
             exit(EXIT_FAILURE);
         }
     }
+    if (!strategies.empty() && strategies.back().overrides.count("max_repairs") != 0) {
+        cout << "ERROR: the last strategy (" << strategies.back().raw
+             << ") must not set max_repairs (it must always run to completion)" << endl;
+        exit(EXIT_FAILURE);
+    }
     if (cnf.synth_done()) return;
     for (size_t i = 0; i < strategies.size(); i++) {
         const auto& strat = strategies[i];

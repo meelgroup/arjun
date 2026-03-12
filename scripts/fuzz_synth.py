@@ -144,7 +144,7 @@ def run(command):
     if options.verbose:
         print("CPU limit of parent (pid %d) after child finished executing" % os.getpid(),
             resource.getrlimit(resource.RLIMIT_CPU))
-    return consoleOutput, err
+    return consoleOutput, err, p.returncode
 
 def run_check(command, final):
     ok = False
@@ -176,7 +176,7 @@ def run_synth(solver, fname):
     curr_time = time.time()
     toexec = solver.split()
     toexec.append(fname)
-    out, err = run(toexec)
+    out, err, returncode = run(toexec)
     if err is None:
         if options.verbose:
             print("No error.")
@@ -187,6 +187,9 @@ def run_synth(solver, fname):
     if diff_time > options.maxtime - maxtimediff:
         print("Too much time to solve with %s, aborted: " % solver)
         return None, []
+    if returncode != 0 and not out.startswith("TIMEOUT"):
+        print("Solver crashed with exit code %d (signal %d)" % (returncode, -returncode))
+        return True, []
 
     aigs = []
     for line in out.split("\n"):
@@ -224,7 +227,7 @@ def check_core_files():
     for fname in items:
         # Check if it's a file (not a directory, symlink, etc.)
         if os.path.isfile(fname) and pattern.match(fname):
-            out, err = run(["../../cryptominisat", fname])
+            out, err, _ = run(["../../cryptominisat", fname])
             if err:
                 print(f"ERROR: cannot run cryptominisat on {fname}: {err}")
                 exit(-1)
@@ -253,7 +256,7 @@ def is_unsat(fname) :
     curr_time = time.time()
     toexec = unsat_check.split()
     toexec.append(fname)
-    out, err = run(toexec)
+    out, err, _ = run(toexec)
     if err is None:
         if options.verbose:
             print("No error.")
@@ -298,6 +301,51 @@ def cleanup(fname, prefix):
             os.remove(file_path)
             print(f"Deleted: {os.path.basename(file_path)}")
     os.unlink(prefix)
+
+def gen_mstrategy():
+    # Valid types: "const" and "bve". ("learn" requires EXTRA_SYNTH, so skip it.)
+    types = ["const", "bve"]
+
+    uint_params = ["samples", "samples_ccnr", "max_depth", "sampler_fixed_conflicts",
+                   "min_leaf_size", "simplify_every"]
+    int_params  = ["filter_samples", "biased_sampling", "minimize_conflict", "maxsat_better_ctx",
+                   "maxsat_order", "use_all_vars_as_feats", "ctx_solver_type", "repair_solver_type",
+                   "repair_cache_size", "backward_synth_order", "manthan_order",
+                   "manthan_on_the_fly_order", "one_repair_per_loop", "force_bw_equal",
+                   "bva_xor_vars", "silent_var_update", "inv_learnt"]
+    double_params = ["min_gain_split"]
+
+    def gen_uint():
+        return str(random.choice([0, 1, 10, 100, 400, 1000]))
+
+    def gen_int():
+        return str(random.choice([0, 1, 2]))
+
+    def gen_double():
+        return str(random.choice([0.001, 0.1, 0.5, 1.0, 5.0]))
+
+    def gen_strategy(must_have_max_repairs):
+        stype = random.choice(types)
+        params = {}
+        if must_have_max_repairs or random.choice([True, False]):
+            params["max_repairs"] = str(random.choice([10, 100, 400, 1000]))
+        for p in random.sample(uint_params, random.randint(0, 2)):
+            params.setdefault(p, gen_uint())
+        for p in random.sample(int_params, random.randint(0, 2)):
+            params.setdefault(p, gen_int())
+        for p in random.sample(double_params, random.randint(0, 1)):
+            params.setdefault(p, gen_double())
+        if not params:
+            return stype
+        param_str = ",".join("%s=%s" % (k, v) for k, v in params.items())
+        return "%s(%s)" % (stype, param_str)
+
+    n = random.randint(1, 3)
+    strategies = []
+    for i in range(n):
+        strategies.append(gen_strategy(must_have_max_repairs=(i < n - 1)))
+    return ",".join(strategies)
+
 
 if __name__ == "__main__":
     if os.path.exists("out") and  os.path.isfile("out"):
@@ -356,7 +404,6 @@ if __name__ == "__main__":
             , " --unate"
             , " --ctxsolver"
             , " --repairsolver"
-            , " --mbve"
             , " --unatedef"
             , " --bwequal"
             , " --bvaxor"
@@ -369,7 +416,6 @@ if __name__ == "__main__":
             solver += o + " " + str(val)
 
         solver += " --morder " + str(random.randint(0, 2))
-        solver += " --mstrategy " + str(random.randint(0, 3))
         solver += " --bveresolvmaxsz " + str(random.randint(2, 20))
         solver += " --iter1grow " + str(random.randint(0, 5))
         solver += " --iter2grow " + str(random.choice([0, 10, 100]))
@@ -381,6 +427,9 @@ if __name__ == "__main__":
         solver += " --minleaf " + random.choice(["2", "10"])
         solver += " --maxsat " + random.choice(["0", "1", "-1"])
         solver += " --repaircache " + " " + random.choice(["0", "100", "1000"])
+
+
+        solver += " --mstrategy " + gen_mstrategy()
 
         err, aigs = run_synth(solver, fname)
         if err is None:
