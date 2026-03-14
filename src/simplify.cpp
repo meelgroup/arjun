@@ -115,6 +115,7 @@ void Minimize::empty_out_indep_set_if_unsat() {
 bool Minimize::probe_all()
 {
     double my_time = cpuTime();
+    if (sampling_vars.empty()) return true;
     order_sampl_set_for_simp();
     auto old_size = sampling_vars.size();
     string s("clean-cls, must-scc-vrepl");
