@@ -62,7 +62,7 @@ void Puura::backbone(SimplifiedCNF& cnf) {
     auto solver = fill_solver(cnf);
     string str = "clean-cls, must-scc-vrepl, full-probe, must-scc-vrepl, must-renumber";
     solver->simplify(nullptr, &str);
-    solver->set_verbosity(2);
+    solver->set_verbosity(conf.verb);
     bool backbone_done = cnf.get_backbone_done();
     solver->backbone_simpl(20*1000ULL, backbone_done);
     cnf.set_backbone_done(backbone_done);
