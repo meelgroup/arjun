@@ -511,6 +511,7 @@ public:
     }
 
     bool weighted() const final { return false; }
+    bool exact() const final { return true; }
 };
 
 class FMpq final : public CMSat::Field {
@@ -680,6 +681,7 @@ public:
     }
 
     bool weighted() const final { return true; }
+    bool exact() const final { return true; }
 };
 
 
@@ -849,6 +851,7 @@ public:
     }
 
     bool weighted() const final { return true; }
+    bool exact() const final { return false; }
 };
 
 struct SimpConf {
