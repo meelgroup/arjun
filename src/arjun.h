@@ -1245,10 +1245,12 @@ public:
         uint32_t at = std::numeric_limits<uint32_t>::max();
         std::vector<CMSat::Lit> lits;
         bool red = false;
+        bool to_remove = false;
     };
     void replace_clauses_with(std::vector<BCEClause>& cls) {
         clauses.clear();
         for(const auto& cl: cls) {
+            if (cl.to_remove) continue;
             if (!cl.red) add_clause(cl.lits);
             else add_red_clause(cl.lits);
         }
@@ -1283,6 +1285,7 @@ public:
     }
     const auto& get_aig_mng() const { return aig_mng; }
     void import_candidate_functions(const std::string& fname, int verb = 0);
+    void check_red_cls_deriveable() const;
 
 private:
     bool after_backward_round_synth = false;

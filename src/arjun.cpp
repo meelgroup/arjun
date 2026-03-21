@@ -205,6 +205,7 @@ DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
     }
 
     vector<uint8_t> seen;
+    vector<uint64_t> also_must_remove;
     seen.resize(cnf.nVars()*2, 0);
 
     uint32_t tot_removed = 0;
@@ -213,6 +214,9 @@ DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
         removed_one = false;
         for(auto& cl: cls) {
             if (cl.red) continue;
+            if (cl.to_remove) continue;
+
+            also_must_remove.clear();
             bool can_remove = false;
             for(const auto& l: cl.lits) seen[l.toInt()] = true;
             for(const auto& l: cl.lits) {
@@ -220,7 +224,11 @@ DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
                 bool all_blocking = true;
                 for(const auto& cl2_at: occs[(~l).toInt()]) {
                     const SimplifiedCNF::BCEClause& cl2 = cls[cl2_at];
-                    if (cl2.red) continue;
+                    if (cl2.to_remove) continue;
+                    if (cl2.red) {
+                        also_must_remove.push_back(cl2_at);
+                        continue;
+                    }
                     bool found_blocking_lit = false;
                     for(const auto& l2: cl2.lits) {
                         if (l2 == ~l) continue;
@@ -232,7 +240,8 @@ DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
             }
             for(const auto& l: cl.lits) seen[l.toInt()] = 0;
             if (can_remove) {
-                cl.red = true;
+                cl.to_remove = true;
+                for(const auto& i: also_must_remove) cls[i].to_remove = true;
                 removed_one = true;
                 tot_removed++;
             }
@@ -251,6 +260,7 @@ DLL_PUBLIC void Arjun::standalone_backbone(SimplifiedCNF& cnf) {
 
 DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
         const ElimToFileConf& etof_conf, const SimpConf& simp_conf) {
+    SLOW_DEBUG_DO(cnf.check_red_cls_deriveable());
     cnf.remove_equiv_weights();
     cnf = standalone_get_simplified_cnf(cnf, simp_conf);
     if (etof_conf.do_autarky) standalone_autarky(cnf);
@@ -282,6 +292,7 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     }
     cnf.remove_equiv_weights();
     if (etof_conf.do_renumber) cnf.renumber_sampling_vars_for_ganak();
+    SLOW_DEBUG_DO(cnf.check_red_cls_deriveable());
 }
 
 DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<CMSat::SATSolver>& solver,
@@ -2129,6 +2140,24 @@ DLL_PUBLIC void SimplifiedCNF::clear_orig_sampl_defs() {
     for(const auto& v: orig_sampl_vars) defs[v] = nullptr;
 }
 
+DLL_PUBLIC void SimplifiedCNF::check_red_cls_deriveable() const {
+  auto debug_sat = std::make_unique<CMSat::SATSolver>();
+  debug_sat->set_prefix("c o ");
+  debug_sat->new_vars(nVars());
+
+  for(const auto& cl: red_clauses) {
+    vector<CMSat::Lit> assumps;
+    assumps.reserve(cl.size());
+    for(const auto& l: cl) assumps.push_back(~l);
+    auto ret = debug_sat->solve(&assumps);
+    assert(ret != CMSat::l_Undef);
+    if (ret != CMSat::l_False) {
+      cout << "ERROR: clause: " << cl << " is not deriveable from irredundant clauses!" << endl;
+      cout << "       did you inject a redundant clause that is not a consequence of irredundant clauses?" << endl;
+      exit(EXIT_FAILURE);
+    }
+  }
+}
 
 DLL_PUBLIC size_t AIG::count_aig_nodes(const aig_ptr& aig) {
     set<aig_ptr> counted;

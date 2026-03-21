@@ -116,6 +116,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     const SimplifiedCNF& cnf,
     const SimpConf simp_conf)
 {
+    SLOW_DEBUG_DO(cnf.check_red_cls_deriveable());
     const double my_time = cpuTime();
     if (cnf.get_need_aig()) {
         assert(cnf.defs_invariant());
@@ -244,6 +245,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
             << " final cls: " << ret_cnf.get_clauses().size()
             << " T: " << setprecision(2) << setw(2) << (cpuTime() - my_time));
     }
+    SLOW_DEBUG_DO(ret_cnf.check_red_cls_deriveable());
     return ret_cnf;
 }
 
