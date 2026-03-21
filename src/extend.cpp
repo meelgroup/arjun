@@ -376,7 +376,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
         /* cout << "num_done: " << num_done << " unknown_set.size(): " << unknown_set.size() << " confl: " << (double)solver->get_sum_conflicts()/((double)num_done*conf.extend_max_confl) << endl; */
 
         assert(test_var < orig_num_vars);
-        verb_print(5, "Testing: " << test_var);
+        verb_print(5, "Testing: " << test_var+1);
 
         //Assumption filling
         assert(test_var != var_Undef);
@@ -390,11 +390,11 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
         solver->set_max_confl(conf.extend_max_confl);
         ret = solver->solve(&assumptions);
         if (ret == l_False) {
-            verb_print(5, "[arjun] extend solve(): False");
+            verb_print(5, "[arjun] extend solve(): False var: " << test_var+1);
         } else if (ret == l_True) {
-            verb_print(5, "[arjun] extend solve(): True");
+            verb_print(5, "[arjun] extend solve(): True var: " << test_var+1);
         } else if (ret == l_Undef) {
-            verb_print(5, "[arjun] extend solve(): Undef");
+            verb_print(5, "[arjun] extend solve(): Undef var: " << test_var+1);
             ret_undef++;
         }
 
