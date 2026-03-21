@@ -1241,18 +1241,18 @@ public:
     void replace_clauses_with(std::vector<int>& ret, uint32_t new_nvars, uint32_t new_nclauses);
 
     // Used after BCE to replace clauses
+    // DELETES ALL REDUNDANT CLAUSES!!!
     struct BCEClause {
         uint32_t at = std::numeric_limits<uint32_t>::max();
         std::vector<CMSat::Lit> lits;
-        bool red = false;
         bool to_remove = false;
     };
     void replace_clauses_with(std::vector<BCEClause>& cls) {
         clauses.clear();
+        red_clauses.clear(); // Yes, it's necessary
         for(const auto& cl: cls) {
             if (cl.to_remove) continue;
-            if (!cl.red) add_clause(cl.lits);
-            else add_red_clause(cl.lits);
+            add_clause(cl.lits);
         }
     }
     void set_after_backward_round_synth() {
@@ -1352,7 +1352,7 @@ public:
     struct ElimToFileConf {
         bool all_indep = false;
         bool do_extend_indep = true;
-        bool do_bce = true;
+        bool do_bce = false;
         int num_sbva_steps = 1;
         uint32_t sbva_cls_cutoff = 4;
         uint32_t sbva_lits_cutoff = 5;

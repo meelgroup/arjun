@@ -178,7 +178,13 @@ DLL_PUBLIC void Arjun::standalone_sbva(SimplifiedCNF& orig,
     puura.run_sbva(orig, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
 }
 
+// DELETES ALL REDUNDANT CLAUSES!!!
+// This is a must, because it's impossible to ascertain
+// which redundant clauses are actually deriveable from the irred clauses
+// after deletion. Sad.
 DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
+    SLOW_DEBUG_DO(cnf.check_red_cls_deriveable());
+
     // Unfortunately, with opt_sampling_set, we rely on a variables
     // being fully deterministic. So we can't block on them
     // otherwise we'd need to remove those variables from the opt_sampling set
@@ -192,13 +198,15 @@ DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
     vector<vector<uint32_t>> occs(cnf.nVars()*2);
     uint32_t at = 0;
     for(const auto& cl: cnf.get_clauses()) {
-        // UNSAT CNF, just return the CNF
-        if (cl.empty()) return;
+        if (cl.empty()) {
+            // Empty clause, CNF is unsat, skip BCE
+            return;
+        }
 
         SimplifiedCNF::BCEClause c;
         c.lits = cl;
         c.at = at;
-        c.red = false;
+        assert(cls.size() == at);
         cls.push_back(c);
         for(const auto& l: cl) occs[l.toInt()].push_back(at);
         assert(cl.size() > 1 && "CNF must be simplified for BCE");
@@ -206,7 +214,6 @@ DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
     }
 
     vector<uint8_t> seen;
-    vector<uint64_t> also_must_remove;
     seen.resize(cnf.nVars()*2, 0);
 
     uint32_t tot_removed = 0;
@@ -214,10 +221,8 @@ DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
     do {
         removed_one = false;
         for(auto& cl: cls) {
-            if (cl.red) continue;
             if (cl.to_remove) continue;
 
-            also_must_remove.clear();
             bool can_remove = false;
             for(const auto& l: cl.lits) seen[l.toInt()] = true;
             for(const auto& l: cl.lits) {
@@ -226,10 +231,6 @@ DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
                 for(const auto& cl2_at: occs[(~l).toInt()]) {
                     const SimplifiedCNF::BCEClause& cl2 = cls[cl2_at];
                     if (cl2.to_remove) continue;
-                    if (cl2.red) {
-                        also_must_remove.push_back(cl2_at);
-                        continue;
-                    }
                     bool found_blocking_lit = false;
                     for(const auto& l2: cl2.lits) {
                         if (l2 == ~l) continue;
@@ -242,7 +243,6 @@ DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
             for(const auto& l: cl.lits) seen[l.toInt()] = 0;
             if (can_remove) {
                 cl.to_remove = true;
-                for(const auto& i: also_must_remove) cls[i].to_remove = true;
                 removed_one = true;
                 tot_removed++;
             }
@@ -252,6 +252,7 @@ DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
 
     verb_print2(1, "[arjun] BCE removed " << tot_removed << " clauses"
         " T: " << (cpuTime() - start_time));
+    SLOW_DEBUG_DO(cnf.check_red_cls_deriveable());
 }
 
 DLL_PUBLIC void Arjun::standalone_backbone(SimplifiedCNF& cnf) {
