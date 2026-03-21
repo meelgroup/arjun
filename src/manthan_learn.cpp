@@ -170,7 +170,7 @@ double ManthanLearn::train(const vector<sample>& orig_samples, const uint32_t v)
                 if (m.input.count(j)) continue;
                 m.dependency_mat[i][j] |= m.dependency_mat[v][j];
             }
-            SLOW_DEBUG_DO(assert(check_map_dependency_cycles()));
+            SLOW_DEBUG_DO(assert(m.check_map_dependency_cycles()));
         }
     }
     verb_print(2, "Trained formula for y " << v+1 << ":" << endl << m.var_to_formula[v]);
