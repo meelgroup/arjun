@@ -40,6 +40,7 @@
 #include "autarky.h"
 #include "unate_def.h"
 #include "manthan.h"
+#include <metasolver.h>
 
 using namespace ArjunInt;
 
@@ -2141,9 +2142,10 @@ DLL_PUBLIC void SimplifiedCNF::clear_orig_sampl_defs() {
 }
 
 DLL_PUBLIC void SimplifiedCNF::check_red_cls_deriveable() const {
-  auto debug_sat = std::make_unique<CMSat::SATSolver>();
-  debug_sat->set_prefix("c o ");
+  auto debug_sat = std::make_unique<MetaSolver>();
   debug_sat->new_vars(nVars());
+  debug_sat->set_verbosity(0);
+  for(const auto& cl: clauses) debug_sat->add_clause(cl);
 
   for(const auto& cl: red_clauses) {
     vector<CMSat::Lit> assumps;
