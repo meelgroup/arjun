@@ -140,6 +140,12 @@ DLL_PUBLIC void Arjun::standalone_extend_sampl_set(SimplifiedCNF& cnf)
     extend.extend_round(cnf);
 }
 
+DLL_PUBLIC bool Arjun::standalone_check_extend(const SimplifiedCNF& cnf)
+{
+    Extend extend(arjdata->conf);
+    return extend.check_extend(cnf);
+}
+
 DLL_PUBLIC SimplifiedCNF Arjun::standalone_get_simplified_cnf(
                 const SimplifiedCNF& cnf, const SimpConf& simp_conf)
 {

@@ -1402,6 +1402,7 @@ public:
     void standalone_minimize_indep(SimplifiedCNF& cnf, bool all_indep);
     void standalone_backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf& manthan_conf);
     void standalone_extend_sampl_set(SimplifiedCNF& cnf);
+    bool standalone_check_extend(const SimplifiedCNF& cnf);
     void standalone_unsat_define(SimplifiedCNF& cnf);
     void standalone_unate(SimplifiedCNF& cnf);
     void standalone_unate_def(SimplifiedCNF& cnf);

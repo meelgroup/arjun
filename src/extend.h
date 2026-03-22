@@ -47,6 +47,7 @@ public:
     Extend(const Config& _conf) : conf(_conf) {}
     void extend_round(SimplifiedCNF& cnf);
     void extend_synth(SimplifiedCNF& cnf);
+    bool check_extend(const SimplifiedCNF& cnf);
 
 private:
     void fill_solver(const SimplifiedCNF& cnf);

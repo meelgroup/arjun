@@ -436,6 +436,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
         }
     }
     cnf.set_opt_sampl_vars(opt_sampl);
+    SLOW_DEBUG_DO(assert(check_extend(cnf)));
 
     verb_print(1, "[arjun-extend] Extend finished "
             << " orig size: " << orig_size
@@ -444,6 +445,84 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
             << " mem: " << memUsedTotal()/(1024*1024) << " MB");
     if (conf.verb >= 4) solver->print_stats();
+}
+
+// Checks that every variable in opt_sampl_vars that is NOT in sampl_vars
+// is functionally determined by sampl_vars given the clauses.
+// The construction doubles the formula and shares sampl_vars across both copies;
+// then for each extra opt_sampl var v, asks: can v differ across two satisfying
+// assignments that agree on all sampl_vars? Should be UNSAT if extend was correct.
+bool Extend::check_extend(const SimplifiedCNF& cnf) {
+    const auto& sampl_vars = cnf.get_sampl_vars();
+    const auto& opt_sampl  = cnf.get_opt_sampl_vars();
+    const uint32_t nv = cnf.nVars();
+
+    set<uint32_t> sampl_set(sampl_vars.begin(), sampl_vars.end());
+    set<uint32_t> opt_set(opt_sampl.begin(), opt_sampl.end());
+
+    // Check that sampl_vars ⊆ opt_sampl_vars (basic sanity)
+    for (const auto& v : sampl_vars) {
+        if (!opt_set.count(v)) {
+            verb_print(1, "[check-extend] FAIL: sampl_var " << v+1
+                << " is missing from opt_sampl_vars!");
+            return false;
+        }
+    }
+
+    // Build doubled formula:
+    //   vars 0..nv-1         = copy 1
+    //   vars nv..2*nv-1      = copy 2  (except sampl_vars which are SHARED with copy 1)
+    SATSolver chk;
+    chk.set_verbosity(0);
+    chk.new_vars(nv * 2);
+
+    // Copy 1: original clauses and red clauses verbatim
+    for (const auto& cl : cnf.get_clauses())     chk.add_clause(cl);
+    for (const auto& cl : cnf.get_red_clauses()) chk.add_red_clause(cl);
+
+    // Copy 2: sampl_vars kept as-is, all other vars shifted by nv
+    vector<Lit> cl2;
+    auto add_doubled = [&](const vector<Lit>& cl, bool red) {
+        cl2.clear();
+        for (const auto& l : cl) {
+            if (sampl_set.count(l.var()))
+                cl2.push_back(l);                          // shared
+            else
+                cl2.push_back(Lit(l.var() + nv, l.sign())); // doubled
+        }
+        if (red) chk.add_red_clause(cl2);
+        else     chk.add_clause(cl2);
+    };
+    for (const auto& cl : cnf.get_clauses())     add_doubled(cl, false);
+    for (const auto& cl : cnf.get_red_clauses()) add_doubled(cl, true);
+
+    bool ok = true;
+    uint32_t num_checked = 0;
+    for (const auto& v : opt_sampl) {
+        if (sampl_set.count(v)) continue; // already in base set, nothing to check
+
+        // Assumption: v=true in copy 1, v=false in copy 2  →  should be UNSAT
+        vector<Lit> assumptions = {Lit(v, false), Lit(v + nv, true)};
+        lbool ret = chk.solve(&assumptions);
+        num_checked++;
+
+        if (ret == l_False) {
+            verb_print(4, "[check-extend] OK  var " << v+1
+                << " is determined by sampl_vars");
+        } else {
+            verb_print(1, "[check-extend] FAIL var " << v+1
+                << " is in opt_sampl_vars but NOT determined by sampl_vars!"
+                << " (solver returned " << (ret == l_True ? "SAT" : "UNDEF") << ")");
+            ok = false;
+        }
+    }
+
+    if (ok)
+        verb_print(2, "[check-extend] PASS: all " << num_checked
+            << " extra opt_sampl_vars are correctly determined by sampl_vars");
+    else
+        verb_print(1, "[check-extend] FAIL: some opt_sampl_vars are NOT determined by sampl_vars!");
+    return ok;
 }
 
 void Extend::get_incidence() {
