@@ -454,20 +454,19 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
 // assignments that agree on all sampl_vars? Should be UNSAT if extend was correct.
 bool Extend::check_extend(const SimplifiedCNF& cnf) {
     const auto& sampl_vars = cnf.get_sampl_vars();
-    const auto& opt_sampl  = cnf.get_opt_sampl_vars();
+    const auto& opt_sampl_vars  = cnf.get_opt_sampl_vars();
     const uint32_t nv = cnf.nVars();
 
     set<uint32_t> sampl_set(sampl_vars.begin(), sampl_vars.end());
-    set<uint32_t> opt_set(opt_sampl.begin(), opt_sampl.end());
+    set<uint32_t> opt_sampl_set(opt_sampl_vars.begin(), opt_sampl_vars.end());
 
     // Check that sampl_vars ⊆ opt_sampl_vars (basic sanity)
     for (const auto& v : sampl_vars) {
-        if (!opt_set.count(v)) {
+        if (!opt_sampl_set.count(v)) {
             verb_print(1, "[check-extend] FAIL: sampl_var " << v+1
                 << " is missing from opt_sampl_vars!");
             return false;
-        }
-    }
+        } }
 
     // Build doubled formula:
     //   vars 0..nv-1         = copy 1
@@ -476,13 +475,12 @@ bool Extend::check_extend(const SimplifiedCNF& cnf) {
     chk.set_verbosity(0);
     chk.new_vars(nv * 2);
 
-    // Copy 1: original clauses and red clauses verbatim
+    // Copy 1: original clauses verbatim
     for (const auto& cl : cnf.get_clauses())     chk.add_clause(cl);
-    for (const auto& cl : cnf.get_red_clauses()) chk.add_red_clause(cl);
 
     // Copy 2: sampl_vars kept as-is, all other vars shifted by nv
     vector<Lit> cl2;
-    auto add_doubled = [&](const vector<Lit>& cl, bool red) {
+    auto add_doubled = [&](const vector<Lit>& cl) {
         cl2.clear();
         for (const auto& l : cl) {
             if (sampl_set.count(l.var()))
@@ -490,20 +488,19 @@ bool Extend::check_extend(const SimplifiedCNF& cnf) {
             else
                 cl2.push_back(Lit(l.var() + nv, l.sign())); // doubled
         }
-        if (red) chk.add_red_clause(cl2);
-        else     chk.add_clause(cl2);
+        chk.add_clause(cl2);
     };
-    for (const auto& cl : cnf.get_clauses())     add_doubled(cl, false);
-    for (const auto& cl : cnf.get_red_clauses()) add_doubled(cl, true);
+    for (const auto& cl : cnf.get_clauses()) add_doubled(cl);
 
     bool ok = true;
     uint32_t num_checked = 0;
-    for (const auto& v : opt_sampl) {
+    for (const auto& v : opt_sampl_vars) {
         if (sampl_set.count(v)) continue; // already in base set, nothing to check
 
         // Assumption: v=true in copy 1, v=false in copy 2  →  should be UNSAT
         vector<Lit> assumptions = {Lit(v, false), Lit(v + nv, true)};
         lbool ret = chk.solve(&assumptions);
+        assert(ret != l_Undef);
         num_checked++;
 
         if (ret == l_False) {
