@@ -76,6 +76,12 @@ jobs:
       if: contains(matrix.os, 'ubuntu')
       run: sudo apt-get update && sudo apt-get install -yq help2man libgmp-dev libmpfr-dev perl
 
+    - name: Setup ccache
+      uses: hendrikmuhs/ccache-action@v1
+      with:
+        key: ${{ matrix.os }}-${{ matrix.build_type }}-${{ matrix.staticcompile }}-${{ matrix.extra_synth }}
+        max-size: 500M
+
     - name: Checkout Cadical
       uses: actions/checkout@v4
       with:
@@ -125,7 +131,7 @@ jobs:
       run: |
         cd cryptominisat
         mkdir build &&cd build
-        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DENABLE_TESTING=OFF -DSTATICCOMPILE=${{ matrix.staticcompile }} ..
+        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DENABLE_TESTING=OFF -DSTATICCOMPILE=${{ matrix.staticcompile }} -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
         cmake --build . --config ${{matrix.build_type}} -v
         cd ../..
 
@@ -141,7 +147,7 @@ jobs:
         mkdir build
         cd build
         ln -s ../scripts/*.sh .
-        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DENABLE_TESTING=OFF -DSTATICCOMPILE=${{ matrix.staticcompile }} ..
+        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DENABLE_TESTING=OFF -DSTATICCOMPILE=${{ matrix.staticcompile }} -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
         cmake --build . --config ${{matrix.build_type}} -v
         sudo make install
         cd ../..
@@ -221,7 +227,7 @@ jobs:
         cd mlpack
         mkdir build
         cd build
-        cmake -DBUILD_SHARED_LIBS=ON -DBUILD_CLI_EXECUTABLES=OFF ..
+        cmake -DBUILD_SHARED_LIBS=ON -DBUILD_CLI_EXECUTABLES=OFF -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
         cmake --build . --config ${{matrix.build_type}} -v
         sudo make install
         cd ../..
@@ -239,7 +245,7 @@ jobs:
         cd EvalMaxSAT
         mkdir build
         cd build
-        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSTATICCOMPILE=${{ matrix.staticcompile }} ..
+        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSTATICCOMPILE=${{ matrix.staticcompile }} -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
         cmake --build . --config ${{matrix.build_type}} -v
         cd ../..
 
@@ -254,7 +260,7 @@ jobs:
         cd treedecomp
         mkdir build
         cd build
-        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSTATICCOMPILE=${{ matrix.staticcompile }} ..
+        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSTATICCOMPILE=${{ matrix.staticcompile }} -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
         cmake --build . --config ${{matrix.build_type}} -v
         sudo cmake --install . --config ${{matrix.build_type}} -v
         cd ../..
@@ -271,6 +277,8 @@ jobs:
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
         -DSTATICCOMPILE=${{ matrix.staticcompile }} \
         -DEXTRA_SYNTH=${{ matrix.extra_synth }} \
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
         -S ..
         cmake --build . --config ${{matrix.build_type}} -v
 
