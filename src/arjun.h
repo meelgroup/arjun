@@ -117,9 +117,8 @@ public:
                 const auto l = sub_eval(aig->l);
                 const auto r = sub_eval(aig->r);
                 CMSat::lbool ret;
-                if (l ==CMSat::l_Undef && r == CMSat::l_Undef) ret = CMSat::l_Undef;
-                else if (l == CMSat::l_False) ret = CMSat::l_False ^ aig->neg;
-                else if (r == CMSat::l_False) ret = CMSat::l_False ^ aig->neg;
+                if (l == CMSat::l_False || r == CMSat::l_False) ret = CMSat::l_False ^ aig->neg;
+                else if (l == CMSat::l_Undef || r == CMSat::l_Undef) ret = CMSat::l_Undef;
                 else ret = (l && r) ^ aig->neg;
                 cache[aig] = ret;
                 return ret;
