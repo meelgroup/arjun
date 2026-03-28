@@ -202,10 +202,9 @@ void add_arjun_options() {
 
 
     // Simplification options for minim
-    myopt("--probe", conf.probe_based, fc_int,"Do probing during orignal Arjun");
+    myopt("--probe", conf.probe_based, fc_int,"Use simple probing to set (and define) some variables");
     myopt("--bvepresimp", conf.bve_pre_simplify, fc_int,"simplify");
     myopt("--simp", conf.simp, fc_int,"Do ~ sort of simplification during indep minimixation");
-    myopt("--probe", conf.probe_based, fc_int,"Use simple probing to set (and define) some variables");
     myopt("--intree", conf.intree, fc_int,"intree");
 
     // Gate options
