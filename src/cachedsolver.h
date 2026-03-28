@@ -24,7 +24,7 @@
 
 #pragma once
 
-#include "cryptominisat5/solvertypesmini.h"
+#include <cryptominisat5/solvertypesmini.h>
 #include "metasolver.h"
 #include <map>
 #include <random>

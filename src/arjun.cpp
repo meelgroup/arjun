@@ -40,7 +40,7 @@
 #include "autarky.h"
 #include "unate_def.h"
 #include "manthan.h"
-#include <metasolver.h>
+#include "metasolver.h"
 
 using namespace ArjunInt;
 using namespace ArjunNS;

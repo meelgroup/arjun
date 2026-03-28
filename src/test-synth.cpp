@@ -29,7 +29,7 @@
 #include "argparse.hpp"
 #include "arjun.h"
 #include <cryptominisat5/dimacsparser.h>
-#include "cryptominisat5/solvertypesmini.h"
+#include <cryptominisat5/solvertypesmini.h>
 #include "file_read_helper.h"
 #include "formula.h"
 #include "metasolver.h"
