@@ -2088,8 +2088,6 @@ DLL_PUBLIC map<uint32_t, vector<CMSat::Lit>> SimplifiedCNF::get_new_to_orig_var_
     for(const auto& p: orig_to_new_var) {
         const CMSat::Lit l = p.second;
         if (l != CMSat::lit_Undef) {
-            auto it2 = ret.find(l.var());
-            if (it2 != ret.end()) ret[l.var()] = vector<CMSat::Lit>();
             ret[l.var()].push_back(CMSat::Lit(p.first, l.sign()));
         }
     }
