@@ -497,7 +497,6 @@ void Extend::get_incidence() {
 
     incidence.clear();
     incidence.resize(orig_num_vars, 0);
-    assert(solver->nVars() == orig_num_vars);
     vector<uint32_t> inc = solver->get_lit_incidence();
     assert(inc.size() == orig_num_vars*2);
     for(uint32_t i = 0; i < orig_num_vars; i++) {

@@ -149,7 +149,7 @@ void Autarky::find_autarkies(SimplifiedCNF& cnf) {
     uint32_t tot_autarkies = 0;
     vector<Lit> autarkies;
     bool timeout = false;
-    while(true && s.get_sum_conflicts() < 60000) {
+    while(s.get_sum_conflicts() < 60000) {
         s.set_max_confl(30000);
         auto ret = s.solve();
         if (ret == l_False) break;

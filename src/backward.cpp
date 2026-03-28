@@ -374,12 +374,10 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     assert(cnf.get_need_aig() && cnf.defs_invariant());
 
     const double start_time = cpuTime();
-    assert(cnf.get_need_aig() && cnf.defs_invariant());
     fill_solver_synth(cnf);
     init();
     get_incidence();
     duplicate_problem(cnf);
-
 
     // Initially, all of opt_samping_set is known, we do NOT want to minimize those
     // Instead, all non-sampling-set vars, get definitions for them
