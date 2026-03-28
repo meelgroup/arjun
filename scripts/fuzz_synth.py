@@ -383,7 +383,7 @@ if __name__ == "__main__":
         fname = gen_fuzz(seed)
         add_projection(fname)
         if is_unsat(fname):
-            print("Generated file %s is not UNSAT, skipping synthesis" % fname)
+            print("Generated file %s is UNSAT, skipping synthesis" % fname)
             os.unlink(fname)
             continue
         # solver = "./arjun --synth --debugsynth --verb 1"
