@@ -31,9 +31,6 @@
 #include <vector>
 #include <cassert>
 
-using std::unique_ptr;
-using std::vector;
-
 namespace ArjunInt {
 
 enum class SolverType {
@@ -78,7 +75,7 @@ public:
     }
 
     // Clause management
-    void add_clause(const vector<CMSat::Lit>& cl) {
+    void add_clause(const std::vector<CMSat::Lit>& cl) {
         if (solver_type == SolverType::cms) cms->add_clause(cl);
         else {
             for (const auto& l : cl) cadical->add(lit_to_cadical(l));
@@ -86,7 +83,7 @@ public:
         }
     }
 
-    void add_red_clause(const vector<CMSat::Lit>& cl) {
+    void add_red_clause(const std::vector<CMSat::Lit>& cl) {
         if (solver_type == SolverType::cms) cms->add_red_clause(cl);
         else {
             // CaDiCaL doesn't distinguish redundant clauses, so skip
@@ -118,7 +115,7 @@ public:
         }
     }
 
-    CMSat::lbool solve(vector<CMSat::Lit>* assumps) {
+    CMSat::lbool solve(std::vector<CMSat::Lit>* assumps) {
         if (solver_type == SolverType::cms) return cms->solve(assumps);
         else {
             if (assumps)
@@ -148,17 +145,17 @@ public:
     }
 
     // Model/Conflict access
-    const vector<CMSat::lbool>& get_model() const {
+    const std::vector<CMSat::lbool>& get_model() const {
         if (solver_type == SolverType::cms) return cms->get_model();
         else return cadical_model;
     }
 
-    vector<CMSat::Lit> get_conflict() const {
+    std::vector<CMSat::Lit> get_conflict() const {
         if (solver_type == SolverType::cms) return cms->get_conflict();
         else return cadical_conflict;
     }
 
-    void simplify(vector<CMSat::Lit>* assumps) {
+    void simplify(std::vector<CMSat::Lit>* assumps) {
         if (solver_type == SolverType::cms) cms->simplify(assumps);
     }
 
@@ -166,11 +163,11 @@ public:
 
 private:
     SolverType solver_type;
-    unique_ptr<CMSat::SATSolver> cms = nullptr;
-    unique_ptr<CaDiCaL::Solver> cadical = nullptr;
+    std::unique_ptr<CMSat::SATSolver> cms = nullptr;
+    std::unique_ptr<CaDiCaL::Solver> cadical = nullptr;
     uint32_t cadical_nvars = 0;
-    mutable vector<CMSat::lbool> cadical_model;
-    mutable vector<CMSat::Lit> cadical_conflict;
+    mutable std::vector<CMSat::lbool> cadical_model;
+    mutable std::vector<CMSat::Lit> cadical_conflict;
 
     // Convert CMSat::Lit to CaDiCaL int format
     // CaDiCaL uses 1-indexed variables, positive for positive literal, negative for negated

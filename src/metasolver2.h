@@ -32,9 +32,6 @@
 #include <vector>
 #include <cassert>
 
-using std::unique_ptr;
-using std::vector;
-
 namespace ArjunInt {
 
 class MetaSolver2 {
@@ -66,12 +63,12 @@ public:
     }
 
     // Clause management
-    void add_clause(const vector<CMSat::Lit>& cl, bool only_to_solver_0 = false) {
+    void add_clause(const std::vector<CMSat::Lit>& cl, bool only_to_solver_0 = false) {
         solver[0]->add_clause(cl);
         if (!only_to_solver_0) solver[1]->add_clause(cl);
     }
 
-    void add_red_clause(const vector<CMSat::Lit>& cl, bool only_to_solver_0 = false) {
+    void add_red_clause(const std::vector<CMSat::Lit>& cl, bool only_to_solver_0 = false) {
         solver[0]->add_red_clause(cl);
         if (!only_to_solver_0) solver[1]->add_red_clause(cl);
     }
@@ -81,21 +78,21 @@ public:
         return solver[num]->solve();
     }
 
-    CMSat::lbool solve(vector<CMSat::Lit>* assumps, uint32_t num = 0) {
+    CMSat::lbool solve(std::vector<CMSat::Lit>* assumps, uint32_t num = 0) {
         return solver[num]->solve(assumps);
     }
 
-    const vector<CMSat::lbool>& get_model(uint32_t num = 0) const {
+    const std::vector<CMSat::lbool>& get_model(uint32_t num = 0) const {
         assert(num < 2);
         return solver[num]->get_model();
     }
 
-    vector<CMSat::Lit> get_conflict(uint32_t num = 0) const {
+    std::vector<CMSat::Lit> get_conflict(uint32_t num = 0) const {
         assert(num < 2);
         return solver[num]->get_conflict();
     }
 
-    void simplify(vector<CMSat::Lit>* assumps) {
+    void simplify(std::vector<CMSat::Lit>* assumps) {
         solver[0]->simplify(assumps);
         solver[1]->simplify(assumps);
     }
@@ -103,7 +100,7 @@ public:
     SolverType get_solver_type() const { return solver_type; }
 
 private:
-    std::array<unique_ptr<MetaSolver>,2> solver;
+    std::array<std::unique_ptr<MetaSolver>,2> solver;
     SolverType solver_type;
 };
 
