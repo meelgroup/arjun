@@ -31,7 +31,6 @@
 #include <iostream>
 #include <map>
 #include <set>
-#include <vector>
 #include <string>
 #include <memory>
 #include <cryptominisat5/cryptominisat.h>
