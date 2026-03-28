@@ -33,6 +33,13 @@
 #include "constants.h"
 
 using namespace ArjunInt;
+using namespace CMSat;
+using namespace ArjunNS;
+using std::vector;
+using std::set;
+using std::string;
+using std::cout;
+using std::endl;
 using std::numeric_limits;
 
 void Minimize::update_sampling_set(

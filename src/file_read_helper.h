@@ -34,14 +34,8 @@
 #include <zlib.h>
 #endif
 
-using std::vector;
-using std::set;
-using std::cerr;
-using std::cout;
-using std::endl;
-
 template<typename T> void read_in_a_file(const std::string& filename,
-        T* holder, bool& all_indep, unique_ptr<CMSat::FieldGen>& fg) {
+        T* holder, bool& all_indep, std::unique_ptr<CMSat::FieldGen>& fg) {
     #ifndef USE_ZLIB
     FILE * in = fopen(filename.c_str(), "rb");
     CMSat::DimacsParser<CMSat::StreamBuffer<FILE*, CMSat::FN>, T> parser(holder, nullptr, 0, fg);
@@ -54,7 +48,7 @@ template<typename T> void read_in_a_file(const std::string& filename,
 
     if (in == nullptr) {
         std::cerr << "ERROR! Could not open file '" << filename
-            << "' for reading: " << strerror(errno) << endl;
+            << "' for reading: " << strerror(errno) << std::endl;
         std::exit(EXIT_FAILURE);
     }
     if (!parser.parse_DIMACS(in, true)) exit(EXIT_FAILURE);
@@ -69,11 +63,11 @@ template<typename T> void read_in_a_file(const std::string& filename,
         all_indep = true;
     } else {
         // Check if CNF has all vars as indep. Then its's all_indep
-        set<uint32_t> tmp;
+        std::set<uint32_t> tmp;
         for(auto const& s: holder->get_sampl_vars()) {
             if (s >= holder->nVars()) {
-                cout << "ERROR: Sampling var " << s+1 << " is larger than number of vars in formula: "
-                    << holder->nVars() << endl;
+                std::cout << "ERROR: Sampling var " << s+1 << " is larger than number of vars in formula: "
+                    << holder->nVars() << std::endl;
                 exit(EXIT_FAILURE);
             }
             tmp.insert(s);

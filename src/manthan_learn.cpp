@@ -31,7 +31,13 @@
 using std::setprecision;
 using std::fixed;
 using std::setw;
+using std::vector;
+using std::string;
+using std::cout;
+using std::endl;
 using namespace ArjunInt;
+using namespace ArjunNS;
+using namespace CMSat;
 
 void ManthanLearn::full_train() {
     // Sampling

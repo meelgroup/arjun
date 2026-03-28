@@ -43,6 +43,17 @@
 #include <metasolver.h>
 
 using namespace ArjunInt;
+using namespace ArjunNS;
+using namespace CMSat;
+using std::vector;
+using std::set;
+using std::map;
+using std::string;
+using std::unique_ptr;
+using std::cout;
+using std::cerr;
+using std::endl;
+using std::setw;
 
 #if defined _WIN32
     #define DLL_PUBLIC __declspec(dllexport)

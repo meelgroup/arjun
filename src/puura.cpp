@@ -38,6 +38,11 @@
 #include "constants.h"
 
 using namespace ArjunNS;
+using namespace ArjunInt;
+using namespace CMSat;
+using std::vector;
+using std::set;
+using std::unique_ptr;
 using namespace CMSat;
 using std::vector;
 using std::setw;

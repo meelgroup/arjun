@@ -54,9 +54,16 @@ using std::sort;
 using std::vector;
 using std::array;
 using std::set;
+using std::map;
+using std::unique_ptr;
+using std::string;
 using std::setprecision;
 using std::fixed;
 using std::make_unique;
+using std::cout;
+using std::cerr;
+using std::endl;
+using std::setw;
 
 using namespace ArjunInt;
 using namespace ArjunNS;

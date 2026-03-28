@@ -38,15 +38,12 @@ extern "C" {
 #include <cadical.hpp>
 #include <tracer.hpp>
 
-using std::vector;
-using std::map;
-using namespace ArjunNS;
-
 namespace ArjunInt {
 
 struct MyTracer : public CaDiCaL::Tracer {
-    MyTracer(const uint32_t _orig_num_vars, const set<uint32_t>& input_vars,
-            const ArjunInt::Config& _conf, map<Lit, aig_ptr>& _lit_to_aig, const AIGManager& _aig_mng) :
+    MyTracer(const uint32_t _orig_num_vars, const std::set<uint32_t>& input_vars,
+            const Config& _conf, std::map<CMSat::Lit, ArjunNS::aig_ptr>& _lit_to_aig,
+            const ArjunNS::AIGManager& _aig_mng) :
       conf(_conf),
       aig_mng(_aig_mng),
       orig_num_vars(_orig_num_vars),
@@ -54,23 +51,23 @@ struct MyTracer : public CaDiCaL::Tracer {
       lit_to_aig(_lit_to_aig)
     {}
 
-    const ArjunInt::Config& conf;
-    map<uint64_t, vector<Lit>> cls;
-    std::map<uint64_t, aig_ptr> fs_clid;  // clause ID to formula
-    const AIGManager& aig_mng;
-    aig_ptr out; // Final output formula
+    const Config& conf;
+    std::map<uint64_t, std::vector<CMSat::Lit>> cls;
+    std::map<uint64_t, ArjunNS::aig_ptr> fs_clid;  // clause ID to formula
+    const ArjunNS::AIGManager& aig_mng;
+    ArjunNS::aig_ptr out; // Final output formula
     int32_t orig_num_vars;
-    set<uint32_t> input;
+    std::set<uint32_t> input;
 
     // AIG cache
-    map<Lit, aig_ptr>& lit_to_aig;
+    std::map<CMSat::Lit, ArjunNS::aig_ptr>& lit_to_aig;
 
     // Balanced binary tree reduction using Op (AIG::new_and or AIG::new_or).
     // Avoids deep recursion/stack overflow compared to linear left-to-right folding.
-    template<aig_ptr (*Op)(const aig_ptr&, const aig_ptr&, bool neg)>
-    static aig_ptr combine_balanced(vector<aig_ptr> terms) {
+    template<ArjunNS::aig_ptr (*Op)(const ArjunNS::aig_ptr&, const ArjunNS::aig_ptr&, bool neg)>
+    static ArjunNS::aig_ptr combine_balanced(std::vector<ArjunNS::aig_ptr> terms) {
         release_assert(!terms.empty());
-        vector<aig_ptr> next;
+        std::vector<ArjunNS::aig_ptr> next;
         while (terms.size() > 1) {
             next.clear();
             for (size_t i = 0; i < terms.size(); i += 2) {
@@ -82,21 +79,21 @@ struct MyTracer : public CaDiCaL::Tracer {
         return terms[0];
     }
 
-    aig_ptr get_aig(const Lit l) {
+    ArjunNS::aig_ptr get_aig(const CMSat::Lit l) {
       if (lit_to_aig.count(l)) return lit_to_aig.at(l);
-      aig_ptr aig = AIG::new_lit(l);
+      ArjunNS::aig_ptr aig = ArjunNS::AIG::new_lit(l);
       lit_to_aig[l] = aig;
       return aig;
     }
 
-    aig_ptr get_aig(const vector<Lit>& unsorted_cl) {
-      vector<Lit> cl = unsorted_cl;
+    ArjunNS::aig_ptr get_aig(const std::vector<CMSat::Lit>& unsorted_cl) {
+      std::vector<CMSat::Lit> cl = unsorted_cl;
       std::sort(cl.begin(), cl.end());
       if (cl.empty()) return aig_mng.new_const(false);
-      vector<aig_ptr> leaves;
+      std::vector<ArjunNS::aig_ptr> leaves;
       leaves.reserve(cl.size());
       for (const auto& l: cl) leaves.push_back(get_aig(l));
-      return combine_balanced<AIG::new_or>(leaves);
+      return combine_balanced<ArjunNS::AIG::new_or>(leaves);
     }
 
     void add_derived_clause (uint64_t id, bool red, const std::vector<int> & clause,
@@ -106,7 +103,7 @@ struct MyTracer : public CaDiCaL::Tracer {
 
 class Interpolant {
 public:
-    Interpolant(const ArjunInt::Config& _conf, const uint32_t num_vars) :
+    Interpolant(const Config& _conf, const uint32_t num_vars) :
         conf(_conf) {
         assert(ps == nullptr);
         ps = picosat_init();
@@ -118,27 +115,28 @@ public:
         picosat_reset(ps);
     }
     void fill_picolsat(uint32_t _orig_num_vars);
-    void fill_var_to_indic(const vector<uint32_t>& var_to_indic);
-    void generate_interpolant(const vector<Lit>& assumptions, uint32_t test_var, const SimplifiedCNF& cnf, const set<uint32_t>& input_vars);
-    void add_unit_cl(const vector<Lit>& cl);
+    void fill_var_to_indic(const std::vector<uint32_t>& var_to_indic);
+    void generate_interpolant(const std::vector<CMSat::Lit>& assumptions, uint32_t test_var,
+        const ArjunNS::SimplifiedCNF& cnf, const std::set<uint32_t>& input_vars);
+    void add_unit_cl(const std::vector<CMSat::Lit>& cl);
     auto& get_defs() { return defs; }
 
     // Internal really
     CMSat::SATSolver* solver = nullptr;
 
 private:
-    void fix_up_aig(aig_ptr& aig);
+    void fix_up_aig(ArjunNS::aig_ptr& aig);
 
     // AIG cache
-    map<Lit, aig_ptr> lit_to_aig;
+    std::map<CMSat::Lit, ArjunNS::aig_ptr> lit_to_aig;
 
     PicoSAT* ps = nullptr;
-    map<uint32_t, vector<Lit>> cl_map;
+    std::map<uint32_t, std::vector<CMSat::Lit>> cl_map;
     uint32_t cl_num = 0;
-    vector<CMSat::lbool> set_vals;
-    const ArjunInt::Config conf;
+    std::vector<CMSat::lbool> set_vals;
+    const Config conf;
     uint32_t orig_num_vars;
-    vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
-    vector<aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space
+    std::vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
+    std::vector<ArjunNS::aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space
 };
 }

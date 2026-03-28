@@ -29,8 +29,13 @@
 #include <iomanip>
 
 using namespace ArjunNS;
+using namespace CMSat;
 using std::setprecision;
 using std::fixed;
+using std::setw;
+using std::vector;
+using std::set;
+using std::unique_ptr;
 
 void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     double my_time = cpuTime();

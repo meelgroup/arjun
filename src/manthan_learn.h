@@ -29,10 +29,6 @@
 #include <vector>
 #include <string>
 
-using std::vector;
-using std::uint32_t;
-using std::string;
-using sample = vector<lbool>;
 
 // These ask mlpack to give more info & warnings
 //#define MLPACK_PRINT_INFO
@@ -50,10 +46,10 @@ public:
         }
     void full_train();
 private:
-    double train(const vector<sample>& orig_samples, const uint32_t v);
-    void verify_aig_error_rate(const vector<const sample*>& samples, uint32_t v, double train_error);
+    double train(const std::vector<sample>& orig_samples, const uint32_t v);
+    void verify_aig_error_rate(const std::vector<const sample*>& samples, uint32_t v, double train_error);
     FHolder<MetaSolver2>::Formula recur(
-            mlpack::tree::DecisionTree<>* node, const uint32_t learned_v, const vector<uint32_t>& var_remap, uint32_t depth, uint32_t& max_depth);
+            mlpack::tree::DecisionTree<>* node, const uint32_t learned_v, const std::vector<uint32_t>& var_remap, uint32_t depth, uint32_t& max_depth);
     arma::vec point_0;
     arma::vec point_1;
 

@@ -31,21 +31,11 @@
 #include <iomanip>
 #include "arjun.h"
 #include "metasolver2.h"
-using std::vector;
-using std::setw;
-using std::set;
-using std::endl;
-using std::cout;
-using CMSat::Lit;
-using CMSat::lit_Error;
-using CMSat::SATSolver;
-using std::map;
-
 namespace ArjunInt {
 
 struct CL {
-    constexpr CL(const vector<Lit>& _lits) : lits(_lits) {}
-    vector<Lit> lits;
+    constexpr CL(const std::vector<CMSat::Lit>& _lits) : lits(_lits) {}
+    std::vector<CMSat::Lit> lits;
     bool inserted = false;
 };
 
@@ -55,19 +45,19 @@ public:
     FHolder() = delete;
     FHolder(T* _solver) : solver(_solver) {
         solver->new_var();
-        my_true_lit = Lit(solver->nVars()-1, false);
+        my_true_lit = CMSat::Lit(solver->nVars()-1, false);
         solver->add_clause({my_true_lit});
     }
     struct Formula {
         // TODO: we could have a flag of what has already been inserted into
         // solver_train
-        vector<CL> clauses;
-        Lit out = lit_Error;
+        std::vector<CL> clauses;
+        CMSat::Lit out = CMSat::lit_Error;
         ArjunNS::aig_ptr aig = nullptr;
     };
 
-    set<uint32_t> get_dependent_vars(const Formula& f, uint32_t v) const {
-        set<uint32_t> ret;
+    std::set<uint32_t> get_dependent_vars(const Formula& f, uint32_t v) const {
+        std::set<uint32_t> ret;
         ArjunNS::AIG::get_dependent_vars(f.aig, ret, v);
         return ret;
     }
@@ -79,7 +69,7 @@ public:
         return ret;
     }
 
-    Formula compose_ite(const Formula& fleft, const Formula& fright, const Formula& branch, set<uint32_t>& helpers) {
+    Formula compose_ite(const Formula& fleft, const Formula& fright, const Formula& branch, std::set<uint32_t>& helpers) {
         Formula ret;
         ret = compose_ite(fleft, fright, branch.out, helpers);
         ret.clauses.insert(ret.clauses.end(), branch.clauses.begin(), branch.clauses.end());
@@ -105,7 +95,7 @@ public:
 
         solver->new_var();
         uint32_t fresh_v = solver->nVars()-1;
-        Lit l = Lit(fresh_v, false);
+        CMSat::Lit l = CMSat::Lit(fresh_v, false);
 
         ret.clauses.push_back(CL({~l, fleft.out, fright.out}));
         ret.clauses.push_back(CL({l, ~fleft.out}));
@@ -118,7 +108,7 @@ public:
         return ret;
     }
 
-    Formula compose_ite(const Formula& fleft, const Formula& fright, const Lit branch, set<uint32_t>& helpers) {
+    Formula compose_ite(const Formula& fleft, const Formula& fright, const CMSat::Lit branch, std::set<uint32_t>& helpers) {
         Formula ret;
         ret.clauses = fleft.clauses;
         for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
@@ -136,35 +126,35 @@ public:
         //  b V    f V -right
         //  b V   -f V  right
         //
-        Lit b = branch;
-        Lit l = fleft.out;
-        Lit r = fright.out;
-        Lit fresh = Lit(fresh_v, false);
+        CMSat::Lit b = branch;
+        CMSat::Lit l = fleft.out;
+        CMSat::Lit r = fright.out;
+        CMSat::Lit fresh = CMSat::Lit(fresh_v, false);
         ret.clauses.push_back(CL({~b, fresh, ~l}));
         ret.clauses.push_back(CL({~b, ~fresh, l}));
         ret.clauses.push_back(CL({b, fresh, ~r}));
         ret.clauses.push_back(CL({b, ~fresh, r}));
-        ret.out = Lit(fresh_v, false);
+        ret.out = CMSat::Lit(fresh_v, false);
         ret.aig = ArjunNS::AIG::new_ite(fleft.aig, fright.aig, branch);
         return ret;
     }
 
-    Lit get_true_lit() const {
-        assert(my_true_lit != lit_Error);
+    CMSat::Lit get_true_lit() const {
+        assert(my_true_lit != CMSat::lit_Error);
         return my_true_lit;
     }
 
 private:
     ArjunNS::AIGManager aig_mng;
     T* solver = nullptr;
-    Lit my_true_lit = lit_Error;
+    CMSat::Lit my_true_lit = CMSat::lit_Error;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const FHolder<ArjunInt::MetaSolver2>::Formula& f) {
-    os << " === Formula out: " << f.out << " === " << endl;
+    os << " === Formula out: " << f.out << " === " << std::endl;
     for (const auto& cl : f.clauses) {
         for (const auto& l : cl.lits) os << std::setw(6) << l;
-        cout << " 0" << endl;
+        std::cout << " 0" << std::endl;
     }
     os << "AIG: " << f.aig << std::endl;
     os << " === End Formula === ";

@@ -36,7 +36,11 @@
 
 using namespace ArjunInt;
 using namespace ArjunNS;
+using namespace CMSat;
 using namespace CaDiCaL;
+using std::vector;
+using std::set;
+using std::map;
 using std::setw;
 
 void Extend::add_all_indics_except(const set<uint32_t>& except) {

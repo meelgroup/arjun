@@ -32,30 +32,25 @@
 #include "arjun.h"
 #include "formula.h"
 
-using namespace CMSat;
-using namespace ArjunNS;
-using std::vector;
-using std::set;
-
 namespace ArjunInt {
 
 class Autarky {
 public:
     Autarky(const Config& _conf);
 
-    void find_autarkies(SimplifiedCNF& cnf);
+    void find_autarkies(ArjunNS::SimplifiedCNF& cnf);
 
 private:
     /// For synthesis stats
-    set<uint32_t> input;
-    set<uint32_t> to_define;
-    set<uint32_t> backward_defined;
+    std::set<uint32_t> input;
+    std::set<uint32_t> to_define;
+    std::set<uint32_t> backward_defined;
 
     struct LitSub {
-        Lit pos = lit_Undef;
-        Lit neg = lit_Undef;
+        CMSat::Lit pos = CMSat::lit_Undef;
+        CMSat::Lit neg = CMSat::lit_Undef;
     };
-    SATSolver s;
+    CMSat::SATSolver s;
     const Config conf;
 
 };

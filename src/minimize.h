@@ -37,15 +37,6 @@
 
 #include "config.h"
 
-using namespace CMSat;
-using std::cout;
-using std::endl;
-using std::map;
-using std::set;
-using std::string;
-using std::vector;
-using std::optional;
-
 namespace ArjunInt {
 
 struct Minimize
@@ -60,26 +51,26 @@ struct Minimize
     const Config conf;
     std::unique_ptr<CMSat::SATSolver> solver;
     bool already_duplicated = false;
-    vector<uint32_t> sampling_vars;
-    vector<uint32_t> empty_sampling_vars;
+    std::vector<uint32_t> sampling_vars;
+    std::vector<uint32_t> empty_sampling_vars;
 
-    vector<char> seen;
+    std::vector<char> seen;
     uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
 
     //assert indic[var] to TRUE to force var==var+orig_num_vars
-    vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
-    vector<uint32_t> indic_to_var; //maps an INDICATOR VAR to ORIG VAR
+    std::vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
+    std::vector<uint32_t> indic_to_var; //maps an INDICATOR VAR to ORIG VAR
 
     //Incidence as counted by clauses it's appeared together with other variables
-    vector<uint32_t> incidence;
+    std::vector<uint32_t> incidence;
 
-    vector<Lit> dont_elim;
+    std::vector<CMSat::Lit> dont_elim;
 
     void init();
     void update_sampling_set(
-        const vector<uint32_t>& unknown,
-        const vector<char>& unknown_set,
-        const vector<uint32_t>& indep
+        const std::vector<uint32_t>& unknown,
+        const std::vector<char>& unknown_set,
+        const std::vector<uint32_t>& indep
     );
     bool set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf);
     bool preproc_and_duplicate(const ArjunNS::SimplifiedCNF& orig_cnf);
@@ -90,7 +81,7 @@ struct Minimize
     ArjunNS::SimplifiedCNF get_init_cnf();
 
     //simp
-    vector<uint32_t> toClear;
+    std::vector<uint32_t> toClear;
     bool simplify();
     bool remove_definable_by_gates();
     void remove_definable_by_irreg_gates();
@@ -107,18 +98,18 @@ struct Minimize
     //backward
     template<typename T>
     void fill_assumptions_backward(
-        vector<Lit>& assumptions,
-        vector<uint32_t>& unknown,
-        const vector<char>& unknown_set,
+        std::vector<CMSat::Lit>& assumptions,
+        std::vector<uint32_t>& unknown,
+        const std::vector<char>& unknown_set,
         const T& indep,
-        const optional<set<uint32_t>>& ignore = std::nullopt);
+        const std::optional<std::set<uint32_t>>& ignore = std::nullopt);
     void fill_solver(const ArjunNS::SimplifiedCNF& cnf);
     void fill_solver_synth(const ArjunNS::SimplifiedCNF& cnf);
     void backward_round();
     void backward_round_synth(ArjunNS::SimplifiedCNF& cnf, const ArjunNS::Arjun::ManthanConf& mconf);
-    void add_all_indics_except(const set<uint32_t>& except);
-    void order_by_file(const string& fname, vector<uint32_t>& unknown);
-    void print_sorted_unknown(const vector<uint32_t>& unknown) const;
+    void add_all_indics_except(const std::set<uint32_t>& except);
+    void order_by_file(const std::string& fname, std::vector<uint32_t>& unknown);
+    void print_sorted_unknown(const std::vector<uint32_t>& unknown) const;
 };
 
 }

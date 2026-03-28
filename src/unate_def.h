@@ -33,28 +33,21 @@
 #include "config.h"
 #include "metasolver.h"
 
-using namespace ArjunNS;
-using namespace CMSat;
-
-using std::vector;
-using std::set;
-using std::unique_ptr;
-
 class Unate {
     public:
         Unate(const ArjunInt::Config& _conf) : conf(_conf) {}
         ~Unate() = default;
 
-        void synthesis_unate_def(SimplifiedCNF& cnf);
-        void synthesis_unate(SimplifiedCNF& cnf);
+        void synthesis_unate_def(ArjunNS::SimplifiedCNF& cnf);
+        void synthesis_unate(ArjunNS::SimplifiedCNF& cnf);
     private:
 
         ArjunInt::Config conf;
-        set<uint32_t> input;
-        set<uint32_t> to_define;
-        set<uint32_t> backward_defined;
+        std::set<uint32_t> input;
+        std::set<uint32_t> to_define;
+        std::set<uint32_t> backward_defined;
 
-        vector<uint32_t> var_to_indic; // for each var, the indicator
-                                       // variable in the SAT solver that is true iff the var is equal to its copy (i.e. not flipped)
-        unique_ptr<ArjunInt::MetaSolver> setup_f_not_f(const SimplifiedCNF& cnf);
+        std::vector<uint32_t> var_to_indic; // for each var, the indicator
+                                            // variable in the SAT solver that is true iff the var is equal to its copy (i.e. not flipped)
+        std::unique_ptr<ArjunInt::MetaSolver> setup_f_not_f(const ArjunNS::SimplifiedCNF& cnf);
 };

@@ -34,12 +34,6 @@
 #include <iomanip>
 #include <sstream>
 #include <fstream>
-using std::cout;
-using std::endl;
-using std::cerr;
-using std::string;
-using std::vector;
-using std::setw;
 
 #define COLRED "\033[31m"
 #define COLYEL2 "\033[35m"
@@ -70,12 +64,10 @@ constexpr int slow_debug_enabled = 1;
 constexpr int slow_debug_enabled = 0;
 #endif
 
-using std::unique_ptr;
-
 template<typename LIT, typename T, typename T2>
-inline void dump_cnf(T2& s, const string& name, const T& sampl_set) {
-    vector<vector<LIT>> cls;
-    vector<LIT> cl;
+inline void dump_cnf(T2& s, const std::string& name, const T& sampl_set) {
+    std::vector<std::vector<LIT>> cls;
+    std::vector<LIT> cl;
     s.start_getting_constraints(false);
     bool is_xor, rhs;
     while(s.get_next_constraint(cl, is_xor, rhs)) {
@@ -85,16 +77,16 @@ inline void dump_cnf(T2& s, const string& name, const T& sampl_set) {
     s.end_getting_constraints();
 
     std::ofstream f(name);
-    f << "p cnf " << s.nVars() << " " << cls.size() << endl;
+    f << "p cnf " << s.nVars() << " " << cls.size() << std::endl;
 
     f << "c p show ";
     for(const auto& l: sampl_set) f << l << " ";
-    f << " 0" << endl;
+    f << " 0" << std::endl;
 
-    for(const auto& c: cls) f << c << " 0" << endl;
+    for(const auto& c: cls) f << c << " 0" << std::endl;
     f.close();
-    cout << "c o DEBUG dumped CNF to " << name << " with " << cls.size() << " clauses and "
-        << s.nVars() << " vars" << endl;
+    std::cout << "c o DEBUG dumped CNF to " << name << " with " << cls.size() << " clauses and "
+        << s.nVars() << " vars" << std::endl;
 }
 
 inline double safe_div(double a, double b) noexcept {
@@ -116,8 +108,8 @@ inline double safe_div(double a, double b) noexcept {
     return CMSat::Lit(v, l < 0);
 }
 
-[[nodiscard]] inline vector<CMSat::Lit> pl_to_lit_cl(const vector<int>& cl) {
-    vector<CMSat::Lit> ret;
+[[nodiscard]] inline std::vector<CMSat::Lit> pl_to_lit_cl(const std::vector<int>& cl) {
+    std::vector<CMSat::Lit> ret;
     ret.reserve(cl.size());
     for(const auto& l: cl) ret.push_back(pl_to_lit(l));
     return ret;
@@ -143,13 +135,13 @@ inline double safe_div(double a, double b) noexcept {
 #endif
 
 #ifdef VERBOSE_DEBUG
-#define debug_print(x) std::cout << COLDEF << x << COLDEF << endl
+#define debug_print(x) std::cout << COLDEF << x << COLDEF << std::endl
 #define debug_print_noendl(x) std::cout << x
 #else
 #define debug_print(x) do {} while(0)
 #define debug_print_noendl(x) do {} while (0)
 #endif
-#define debug_print_tmp(x) std::cout << COLDEF << x << COLDEF << endl
+#define debug_print_tmp(x) std::cout << COLDEF << x << COLDEF << std::endl
 
 #if defined(_MSC_VER)
 #include "cms_windows_includes.h"
@@ -178,7 +170,7 @@ inline double safe_div(double a, double b) noexcept {
 template<class T>
 struct IncidenceSorter ///DESCENDING ORDER (i.e. most likely independent at the top)
 {
-    IncidenceSorter(const vector<T>& _inc) : inc(_inc) {}
+    IncidenceSorter(const std::vector<T>& _inc) : inc(_inc) {}
     bool operator()(const T a, const T b) const noexcept {
         if (inc[a] != inc[b]) {
             return inc[a] > inc[b];
@@ -186,16 +178,16 @@ struct IncidenceSorter ///DESCENDING ORDER (i.e. most likely independent at the 
         return a < b;
     }
 
-    const vector<T>& inc;
+    const std::vector<T>& inc;
 };
 
-template<typename T, typename  T2> void sort_unknown(T& unknown, vector<T2>& incidence)
+template<typename T, typename  T2> void sort_unknown(T& unknown, std::vector<T2>& incidence)
 {
     assert(!incidence.empty() && "Incidence is filled at fill_solver time");
     std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
 }
 
-[[nodiscard]] inline string print_value_kilo_mega(const int64_t value, bool setw = true)
+[[nodiscard]] inline std::string print_value_kilo_mega(const int64_t value, bool setw = true)
 {
     std::stringstream ss;
     if (value > 20*1000LL*1000LL) {
