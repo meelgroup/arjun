@@ -95,53 +95,12 @@ public:
     // Solving
     CMSat::lbool solve() {
         if (solver_type == SolverType::cms) return cms->solve();
-        else {
-            auto status = cadical->solve();
-            cadical_model.clear();
-            cadical_conflict.clear();
-            if (status == CaDiCaL::Status::SATISFIABLE) {
-                cadical_model.resize(cadical_nvars);
-                for (uint32_t i = 0; i < cadical_nvars; i++) {
-                    int val = cadical->val(i + 1);
-                    if (val > 0) cadical_model[i] = CMSat::l_True;
-                    else if (val < 0) cadical_model[i] = CMSat::l_False;
-                    else cadical_model[i] = CMSat::l_Undef;
-                }
-                return CMSat::l_True;
-            } else if (status == CaDiCaL::Status::UNSATISFIABLE) {
-                return CMSat::l_False;
-            }
-            return CMSat::l_Undef;
-        }
+        return cadical_solve(nullptr);
     }
 
     CMSat::lbool solve(std::vector<CMSat::Lit>* assumps) {
         if (solver_type == SolverType::cms) return cms->solve(assumps);
-        else {
-            if (assumps)
-                for (const auto& l : *assumps) cadical->assume(lit_to_cadical(l));
-            auto status = cadical->solve();
-            cadical_model.clear();
-            cadical_conflict.clear();
-            if (status == CaDiCaL::Status::SATISFIABLE) {
-                cadical_model.resize(cadical_nvars);
-                for (uint32_t i = 0; i < cadical_nvars; i++) {
-                    int val = cadical->val(i + 1);
-                    if (val > 0) cadical_model[i] = CMSat::l_True;
-                    else if (val < 0) cadical_model[i] = CMSat::l_False;
-                    else cadical_model[i] = CMSat::l_Undef;
-                }
-                return CMSat::l_True;
-            } else if (status == CaDiCaL::Status::UNSATISFIABLE) {
-                if (assumps) {
-                    for (const auto& l : *assumps) {
-                        if (cadical->failed(lit_to_cadical(l))) cadical_conflict.push_back(~l);
-                    }
-                }
-                return CMSat::l_False;
-            }
-            return CMSat::l_Undef;
-        }
+        return cadical_solve(assumps);
     }
 
     // Model/Conflict access
@@ -168,6 +127,32 @@ private:
     uint32_t cadical_nvars = 0;
     mutable std::vector<CMSat::lbool> cadical_model;
     mutable std::vector<CMSat::Lit> cadical_conflict;
+
+    CMSat::lbool cadical_solve(std::vector<CMSat::Lit>* assumps) {
+        if (assumps)
+            for (const auto& l : *assumps) cadical->assume(lit_to_cadical(l));
+        auto status = cadical->solve();
+        cadical_model.clear();
+        cadical_conflict.clear();
+        if (status == CaDiCaL::Status::SATISFIABLE) {
+            cadical_model.resize(cadical_nvars);
+            for (uint32_t i = 0; i < cadical_nvars; i++) {
+                int val = cadical->val(i + 1);
+                if (val > 0) cadical_model[i] = CMSat::l_True;
+                else if (val < 0) cadical_model[i] = CMSat::l_False;
+                else cadical_model[i] = CMSat::l_Undef;
+            }
+            return CMSat::l_True;
+        } else if (status == CaDiCaL::Status::UNSATISFIABLE) {
+            if (assumps) {
+                for (const auto& l : *assumps) {
+                    if (cadical->failed(lit_to_cadical(l))) cadical_conflict.push_back(~l);
+                }
+            }
+            return CMSat::l_False;
+        }
+        return CMSat::l_Undef;
+    }
 
     // Convert CMSat::Lit to CaDiCaL int format
     // CaDiCaL uses 1-indexed variables, positive for positive literal, negative for negated
