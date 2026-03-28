@@ -26,12 +26,11 @@
 #pragma once
 
 #include <cryptominisat5/cryptominisat.h>
-#include "src/config.h"
+#include "config.h"
 #include <vector>
 #include <set>
-#include "config.h"
 #include "arjun.h"
-#include "src/formula.h"
+#include "formula.h"
 
 using namespace CMSat;
 using namespace ArjunNS;
