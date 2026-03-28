@@ -24,7 +24,7 @@
 
 #pragma once
 
-#include "src/metasolver.h"
+#include "metasolver.h"
 #include <cryptominisat5/cryptominisat.h>
 #include <cryptominisat5/solvertypesmini.h>
 #include <cadical.hpp>

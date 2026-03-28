@@ -28,7 +28,7 @@
 #include <vector>
 #include <limits>
 
-#include "src/arjun.h"
+#include "arjun.h"
 #include "time_mem.h"
 #include "constants.h"
 

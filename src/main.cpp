@@ -22,7 +22,7 @@
  THE SOFTWARE.
  */
 
-#include "src/constants.h"
+#include "constants.h"
 #include <memory>
 #if defined(__GNUC__) && defined(__linux__)
 #include <cfenv>

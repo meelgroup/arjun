@@ -24,7 +24,7 @@
 
 #include "unate_def.h"
 #include "constants.h"
-#include "src/metasolver.h"
+#include "metasolver.h"
 #include "time_mem.h"
 #include <iomanip>
 

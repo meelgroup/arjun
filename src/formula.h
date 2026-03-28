@@ -30,7 +30,7 @@
 #include <iostream>
 #include <iomanip>
 #include "arjun.h"
-#include "src/metasolver2.h"
+#include "metasolver2.h"
 using std::vector;
 using std::setw;
 using std::set;

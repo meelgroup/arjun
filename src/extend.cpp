@@ -26,9 +26,9 @@
 #include <cstdint>
 #include <iomanip>
 
-#include "src/arjun.h"
-#include "src/interpolant.h"
-#include "src/time_mem.h"
+#include "arjun.h"
+#include "interpolant.h"
+#include "time_mem.h"
 #include "extend.h"
 #include "constants.h"
 #include <cryptominisat5/solvertypesmini.h>

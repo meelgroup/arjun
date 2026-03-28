@@ -31,7 +31,7 @@
 #include <cryptominisat5/cryptominisat.h>
 #include "arjun.h"
 #include "config.h"
-#include "src/metasolver.h"
+#include "metasolver.h"
 
 using namespace ArjunNS;
 using namespace CMSat;
