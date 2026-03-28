@@ -1951,7 +1951,6 @@ DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_samp
             if (!only_orig_sampl) {
                 release_assert(false && "All sampling variables must depend only on orig_sampl_vars");
             }
-            return false;
         }
     }
     return true;
