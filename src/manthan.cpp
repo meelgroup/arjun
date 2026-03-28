@@ -781,7 +781,7 @@ SimplifiedCNF Manthan::do_manthan() {
     // input vars -- original sampling vars
     // defined non-input vars -- vars defined via backward_round_synth
     // to_define vars -- vars that are not defined yet, and not input
-    std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_manthan");
+    cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_manthan").unpack_to(input, to_define, backward_defined);
     if (to_define.empty()) {
         verb_print(1, "[manthan] No variables to define, returning original CNF");
         return cnf;

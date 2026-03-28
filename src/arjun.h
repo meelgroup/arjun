@@ -872,6 +872,16 @@ struct SimpConf {
     int weaken_limit = 8000;
 };
 
+struct VarTypes {
+    std::set<uint32_t> input;
+    std::set<uint32_t> to_define;
+    std::set<uint32_t> backward_defined;
+
+    void unpack_to(std::set<uint32_t>& i, std::set<uint32_t>& t, std::set<uint32_t>& b) {
+        i = std::move(input); t = std::move(to_define); b = std::move(backward_defined);
+    }
+};
+
 class SimplifiedCNF {
 public:
     std::unique_ptr<CMSat::FieldGen> fg = nullptr;
@@ -975,8 +985,7 @@ public:
 
     // Returns NEW vars, i.e. < nVars()
     // It is checked that it is correct and total
-    std::tuple<std::set<uint32_t>, std::set<uint32_t>, std::set<uint32_t>>
-        get_var_types([[maybe_unused]] uint32_t verb, const std::string& str = "") const;
+    VarTypes get_var_types([[maybe_unused]] uint32_t verb, const std::string& str = "") const;
 
     bool check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars() const;
     bool check_orig_sampl_vars_undefined() const;

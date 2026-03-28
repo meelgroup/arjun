@@ -122,7 +122,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     const double my_time = cpuTime();
     if (cnf.get_need_aig()) {
         assert(cnf.defs_invariant());
-        std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start get_fully_simplified_renumbered_cnf");
+        cnf.get_var_types(conf.verb | verbose_debug_enabled, "start get_fully_simplified_renumbered_cnf").unpack_to(input, to_define, backward_defined);
     }
     for(const auto& v: cnf.get_sampl_vars())
         verb_print(5, "[w-debug] orig sampl var: " << v+1);

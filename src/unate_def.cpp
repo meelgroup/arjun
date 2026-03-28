@@ -40,7 +40,7 @@ using std::unique_ptr;
 void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     double my_time = cpuTime();
     uint32_t new_units = 0;
-    std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_unate_def");
+    cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_unate_def").unpack_to(input, to_define, backward_defined);
     if (to_define.empty()) {
         verb_print(1, "[unate_def] No variables to define, skipping");
         return;
@@ -209,7 +209,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
 void Unate::synthesis_unate(SimplifiedCNF& cnf) {
     double my_time = cpuTime();
     uint32_t new_units = 0;
-    std::tie(input, to_define, backward_defined) = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_unate");
+    cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_unate").unpack_to(input, to_define, backward_defined);
     if (to_define.empty()) {
         verb_print(1, "[unate] No variables to define, skipping");
         return;

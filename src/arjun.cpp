@@ -1504,7 +1504,7 @@ void SimplifiedCNF::set_def(const uint32_t v_orig, const aig_ptr& def) {
 
 // Returns NEW vars, i.e. < nVars()
 // It is checked that it is correct and total
-DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
+DLL_PUBLIC VarTypes
     SimplifiedCNF::get_var_types([[maybe_unused]] uint32_t verb, const string& str) const {
     assert(need_aig);
     set<uint32_t> input;
@@ -1678,7 +1678,7 @@ DLL_PUBLIC tuple<set<uint32_t>, set<uint32_t>, set<uint32_t>>
     set<uint32_t> to_define_new;
     for(const auto& v: to_define) to_define_new.insert(v.n);
 
-    return make_tuple(input, to_define_new, backw_synth_defined_new);
+    return VarTypes{input, to_define_new, backw_synth_defined_new};
 }
 
 DLL_PUBLIC CMSat::lbool SimplifiedCNF::evaluate(const vector<CMSat::lbool>& vals, uint32_t var, map<aig_ptr, CMSat::lbool>& cache) const {
