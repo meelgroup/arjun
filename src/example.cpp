@@ -93,7 +93,7 @@ int main()
         }
         cout << "0" << endl;
     }
-    for(const auto& cl: cnf2.get_clauses()) {
+    for(const auto& cl: cnf2.get_red_clauses()) {
         cout << "c red ";
         for(const auto& l: cl) {
             int lit = l.var()+1;
