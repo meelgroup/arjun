@@ -262,11 +262,11 @@ def is_unsat(fname) :
             print("No error.")
     else:
         print("Error string is: ", err)
-        return True, []
+        return True
     diff_time = time.time() - curr_time
     if diff_time > options.maxtime - maxtimediff:
-        print("Too much time to solve with %s, aborted: " % solver)
-        return True, []
+        print("Too much time to solve with %s, aborted: " % unsat_check)
+        return True
 
     for line in out.split("\n"):
         line = line.strip()
