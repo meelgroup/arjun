@@ -35,7 +35,6 @@ using namespace CaDiCaL;
 using namespace ArjunInt;
 using namespace ArjunNS;
 using std::vector;
-using std::map;
 using std::set;
 using std::cout;
 using std::endl;

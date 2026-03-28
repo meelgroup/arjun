@@ -40,7 +40,6 @@ using std::set;
 using std::string;
 using std::cout;
 using std::endl;
-using std::numeric_limits;
 
 void Minimize::update_sampling_set(
     const vector<uint32_t>& unknown,

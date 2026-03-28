@@ -47,7 +47,6 @@ using namespace CMSat;
 using std::vector;
 using std::setw;
 using std::setprecision;
-using std::fixed;
 using std::string;
 using std::unique_ptr;
 
