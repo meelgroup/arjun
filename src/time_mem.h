@@ -21,8 +21,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ***********************************************************/
 
-#ifndef TIME_MEM_H
-#define TIME_MEM_H
+#pragma once
 #include <cassert>
 #include <ctime>
 #include <cstdint>
@@ -128,5 +127,3 @@ static inline size_t memUsedTotal()
     return 0;
 }
 #endif
-
-#endif //TIME_MEM_H
