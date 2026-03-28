@@ -34,14 +34,9 @@ namespace ArjunInt {
 
 class CachedSolver {
 public:
-    explicit CachedSolver(SolverType type = SolverType::cadical, int _max_cache_size = 10000)
+    explicit CachedSolver(SolverType type = SolverType::cadical, size_t _max_cache_size = 10000)
         : solver(std::make_unique<MetaSolver>(type)), rng(42),
-        max_cache_size(_max_cache_size) {
-            if (_max_cache_size < 0) {
-                std::cout << "ERROR: negative cache size given to CachedSolver" << std::endl;
-                exit(EXIT_FAILURE);
-            }
-        }
+        max_cache_size(_max_cache_size) {}
 
     void set_verbosity(int v) { solver->set_verbosity(v); }
     void new_var() {
@@ -95,7 +90,7 @@ public:
             return false;
         }
 
-        for (const auto& sol : cache) {
+        for (auto& sol : cache) {
             bool match = true;
             for (const auto& l : *assumps) {
                 if (sol[l.var()] != CMSat::boolToLBool(!l.sign())) {
@@ -104,7 +99,7 @@ public:
                 }
             }
             if (match) {
-                solution = (std::vector<CMSat::lbool>*)(&sol);
+                solution = &sol;
                 cache_hits++;
                 return true;
             }
@@ -149,7 +144,7 @@ public:
 private:
     uint64_t cache_hits = 0;
     uint64_t cache_misses = 0;
-    const std::vector<CMSat::lbool>* solution = nullptr;
+    std::vector<CMSat::lbool>* solution = nullptr;
     std::vector<std::vector<CMSat::lbool>> cache;
     std::unique_ptr<MetaSolver> solver;
     std::mt19937 rng;
