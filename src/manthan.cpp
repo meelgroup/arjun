@@ -29,7 +29,6 @@
 #include <cstdlib>
 #include <cstdint>
 #include <iomanip>
-#include <ios>
 #include <memory>
 #include <treedecomp/IFlowCutter.hpp>
 #include <treedecomp/graph.hpp>
