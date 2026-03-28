@@ -137,7 +137,7 @@ void myflag(const char* name, T& var, const char* hhelp) {
 
 void add_arjun_options() {
     myopt2("-v", "--verb", conf.verb, fc_int, "Verbosity");
-    program.add_argument("-v", "--version") \
+    program.add_argument("--version") \
         .action([&](const auto&) {print_version(); exit(0);}) \
         .flag()
         .help("Print version and exit");
