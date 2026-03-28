@@ -1855,7 +1855,7 @@ bool Manthan::get_counterexample(sample& ctx) {
     verb_print(4, "assumptions: " << assumps);
     cex_solver.set_verbosity(conf.verb <= 2 ? 0 : conf.verb-1);
     if (num_loops_repair == 1 || (
-                mconf.simplify_every > 0 && num_loops_repair % mconf.simplify_every) == (mconf.simplify_every-1))
+                mconf.simplify_every > 0 && (num_loops_repair % mconf.simplify_every) == (mconf.simplify_every-1)))
         cex_solver.simplify(&assumps);
 
     /* solver.set_up_for_sample_counter(1000); */
