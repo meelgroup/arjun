@@ -365,42 +365,8 @@ void Minimize::backward_round() {
 }
 
 void Minimize::add_all_indics_except(const set<uint32_t>& except) {
-    assert(dont_elim.empty());
-    assert(var_to_indic.empty());
-    assert(indic_to_var.empty());
-
-    var_to_indic.resize(orig_num_vars*2, var_Undef);
-
-    vector<Lit> tmp;
-    for(uint32_t var = 0; var < orig_num_vars; var++) {
-        if (except.count(var)) continue;
-
-        solver->new_var();
-        uint32_t this_indic = solver->nVars()-1;
-        //torem_orig.push_back(Lit(this_indic, false));
-        var_to_indic[var] = this_indic;
-        var_to_indic[var+orig_num_vars] = this_indic;
-        verb_print(3, "Adding indic var " << this_indic+1
-                << " for orig vars " << var+1 << " and " << var+orig_num_vars+1);
-        dont_elim.push_back(Lit(this_indic, false));
-        indic_to_var.resize(this_indic+1, var_Undef);
-        indic_to_var[this_indic] = var;
-
-        // Below two mean var == (var+orig) in case indic is TRUE
-        tmp.clear();
-        tmp.push_back(Lit(var,               false));
-        tmp.push_back(Lit(var+orig_num_vars, true));
-        tmp.push_back(Lit(this_indic,        true));
-        solver->add_clause(tmp);
-
-        tmp.clear();
-        tmp.push_back(Lit(var,               true));
-        tmp.push_back(Lit(var+orig_num_vars, false));
-        tmp.push_back(Lit(this_indic,        true));
-        solver->add_clause(tmp);
-    }
-    seen.clear();
-    seen.resize(indic_to_var.size()*2, 0);
+    ::add_all_indics_except(*solver, orig_num_vars, except,
+        var_to_indic, indic_to_var, dont_elim, seen, conf.verb);
 }
 
 void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf& mconf) {

@@ -26,6 +26,7 @@
 
 #include <cryptominisat5/solvertypesmini.h>
 #include <iostream>
+#include <set>
 #include <string>
 #include <vector>
 #include <algorithm>
@@ -216,4 +217,53 @@ template<typename T, typename  T2> void sort_unknown(T& unknown, std::vector<T2>
     } else {
         return num/total*100.0;
     }
+}
+
+// Create indicator variables encoding "var == var+orig_num_vars" when the
+// indicator is TRUE, for every variable NOT in `except`.  Used by both
+// Minimize and Extend to set up the duplicated-formula reasoning.
+template<typename Solver>
+inline void add_all_indics_except(
+    Solver& solver,
+    uint32_t orig_num_vars,
+    const std::set<uint32_t>& except,
+    std::vector<uint32_t>& var_to_indic,
+    std::vector<uint32_t>& indic_to_var,
+    std::vector<CMSat::Lit>& dont_elim,
+    std::vector<char>& seen,
+    [[maybe_unused]] int verb)
+{
+    assert(dont_elim.empty());
+    assert(var_to_indic.empty());
+    assert(indic_to_var.empty());
+
+    var_to_indic.resize(orig_num_vars*2, CMSat::var_Undef);
+
+    std::vector<CMSat::Lit> tmp;
+    for(uint32_t var = 0; var < orig_num_vars; var++) {
+        if (except.count(var)) continue;
+
+        solver.new_var();
+        uint32_t this_indic = solver.nVars()-1;
+        var_to_indic[var] = this_indic;
+        var_to_indic[var+orig_num_vars] = this_indic;
+        dont_elim.push_back(CMSat::Lit(this_indic, false));
+        indic_to_var.resize(this_indic+1, CMSat::var_Undef);
+        indic_to_var[this_indic] = var;
+
+        // var == (var+orig) when indic is TRUE
+        tmp.clear();
+        tmp.push_back(CMSat::Lit(var,               false));
+        tmp.push_back(CMSat::Lit(var+orig_num_vars, true));
+        tmp.push_back(CMSat::Lit(this_indic,        true));
+        solver.add_clause(tmp);
+
+        tmp.clear();
+        tmp.push_back(CMSat::Lit(var,               true));
+        tmp.push_back(CMSat::Lit(var+orig_num_vars, false));
+        tmp.push_back(CMSat::Lit(this_indic,        true));
+        solver.add_clause(tmp);
+    }
+    seen.clear();
+    seen.resize(indic_to_var.size()*2, 0);
 }
