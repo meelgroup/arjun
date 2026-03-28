@@ -31,7 +31,6 @@ extern "C" {
 #include "constants.h"
 #include "arjun.h"
 #include "config.h"
-#include "formula.h"
 #include <vector>
 #include <map>
 #include <cstdint>

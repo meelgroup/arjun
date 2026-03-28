@@ -27,10 +27,8 @@
 
 #include <cryptominisat5/cryptominisat.h>
 #include "config.h"
-#include <vector>
 #include <set>
 #include "arjun.h"
-#include "formula.h"
 
 namespace ArjunInt {
 

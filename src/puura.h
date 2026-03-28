@@ -31,7 +31,6 @@
 #include <vector>
 #include <set>
 #include "arjun.h"
-#include "constants.h"
 
 namespace ArjunInt {
 

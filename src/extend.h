@@ -25,15 +25,12 @@
 #pragma once
 
 #include <cstdint>
-#include <sys/types.h>
 #include <vector>
-#include <map>
 #include <set>
 #include <memory>
 #include <cryptominisat5/cryptominisat.h>
 #include "config.h"
 #include "arjun.h"
-#include "interpolant.h"
 
 class Extend {
 public:

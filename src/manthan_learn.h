@@ -25,9 +25,6 @@
 #pragma once
 
 #include "manthan.h"
-#include <cstdint>
-#include <vector>
-#include <string>
 
 
 // These ask mlpack to give more info & warnings
