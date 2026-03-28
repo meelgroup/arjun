@@ -1141,9 +1141,12 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
         const string l_str = node_expr(node->l.get());
         const string r_str = node_expr(node->r.get());
         fout << "    wire _n" << id << ";\n";
-        if (node->l.get() == node->r.get()) {
+        if (node->l.get() == node->r.get() && node->neg) {
             // new_not pattern: l == r, neg == true => ~l
             fout << "    assign _n" << id << " = ~" << l_str << ";\n";
+        } else if (node->l.get() == node->r.get() && !node->neg) {
+            // l == r, neg == false => l & l = l
+            fout << "    assign _n" << id << " = " << l_str << ";\n";
         } else if (node->neg) {
             fout << "    assign _n" << id << " = ~(" << l_str << " & " << r_str << ");\n";
         } else {
