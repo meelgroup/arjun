@@ -188,8 +188,7 @@ template <class T>
 void check_sanity_sampling_vars(T vars, const uint32_t nvars) {
     for(const auto& v: vars) if (v >= nvars) {
         cout << "ERROR: sampling set provided is incorrect, it has a variable in it: " << v+1 << " that is larger than the total number of variables: " << nvars << endl;
-        assert(false);
-        exit(EXIT_FAILURE);
+        release_assert(false && "sampling var exceeds total variable count");
     }
 }
 

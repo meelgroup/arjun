@@ -90,8 +90,7 @@ using std::numeric_limits;
 void check_duplicated(bool duplicated) {
     if (!duplicated) return;
     cout << "ERROR: manipulating the solver AFTER call to indep support manipulation" << endl;
-    assert(false);
-    exit(EXIT_FAILURE);
+    release_assert(false && "solver manipulation after indep support manipulation");
 }
 
 DLL_PUBLIC Arjun::Arjun() { arjdata = new ArjPrivateData; }

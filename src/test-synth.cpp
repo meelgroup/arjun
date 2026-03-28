@@ -260,7 +260,6 @@ void fill_var_to_formula(T& solver, FHolder<T>& fh, const SimplifiedCNF& cnf, ma
                 return neg ? ~and_out : and_out;
             }
             release_assert(false && "Unhandled AIG type in visitor");
-            exit(EXIT_FAILURE);
         };
 
         // Recursively generate clauses for the AIG using the transform function

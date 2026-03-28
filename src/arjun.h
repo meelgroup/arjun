@@ -50,7 +50,7 @@ inline std::ostream& operator<<(std::ostream& os, const AIGT& value) {
         case AIGT::t_and:  return os << "t_and";
         case AIGT::t_lit:  return os << "t_lit";
         case AIGT::t_const: return os << "t_const";
-        default: assert(false && "Unknown AIGT"); exit(EXIT_FAILURE);
+        default: assert(false && "Unknown AIGT"); std::abort();
     }
 }
 
@@ -77,8 +77,7 @@ public:
             if (l == nullptr || r == nullptr) std::cout << "ERROR: AIG AND node missing children!" << std::endl;
             return l != nullptr && r != nullptr && var == none_var;
         }
-        assert(false && "Unknown AIG type");
-        std::exit(EXIT_FAILURE);
+        assert(false && "Unknown AIG type"); std::abort();
     }
 
     // vals = input variable assignments
@@ -123,8 +122,7 @@ public:
                 cache[aig] = ret;
                 return ret;
             }
-            assert(false && "Unknown AIG type");
-            exit(EXIT_FAILURE);
+            assert(false && "Unknown AIG type"); std::abort();
         };
         return sub_eval(a);
     }

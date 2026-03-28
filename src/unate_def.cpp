@@ -93,8 +93,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
                 s->add_clause(tmp);
                 return neg ? ~and_out : and_out;
             }
-            assert(false && "Unhandled AIG type in synthesis_unate_def");
-            exit(EXIT_FAILURE);
+            release_assert(false && "Unhandled AIG type in synthesis_unate_def");
           };
 
         std::map<aig_ptr, Lit> cache;

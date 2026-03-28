@@ -217,8 +217,8 @@ vector<sample> Manthan::get_samples_ccnr(const uint32_t num) {
 string Manthan::pr(const lbool val) const {
     if (val == l_True) return "1";
     if (val == l_False) return "0";
-    if (val == l_Undef) assert(false);
-    exit(EXIT_FAILURE);
+    release_assert(false && "pr() called with l_Undef");
+    return "?"; // unreachable, silences compiler warning
 }
 
 void Manthan::fill_dependency_mat_with_backward() {
