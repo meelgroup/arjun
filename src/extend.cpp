@@ -314,34 +314,21 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
         if (unknown_set.count(test_var) == 0) continue;
         unknown_set.erase(test_var);
         num_done++;
-        if (num_done == 300 && unknown_set.size() > 1000) {
-            verb_print(1, "[arjun] extend: too many to do, after 300 still lots left. Lowering conflict limit");
-            // Too many to do, to expensive
-            conf.extend_max_confl /= 2;
-        }
-        if (num_done == 500 && unknown_set.size() > 1000) {
-            verb_print(1, "[arjun] extend: too many to do, after 500 still lots left. Lowering conflict limit");
-            // Too many to do, to expensive
-            conf.extend_max_confl /= 2;
-        }
-        if (num_done == 1000 && unknown_set.size() > 2000) {
-            verb_print(1, "[arjun] extend: too many to do, after 1000 still lots left. Lowering conflict limit");
-            // Too many to do, to expensive
-            conf.extend_max_confl /= 4;
-        }
-        if (num_done == 3000 && unknown_set.size() > 3000) {
-            verb_print(1, "[arjun] extend: too many to do, after 3000 still lots left. Lowering conflict limit");
-            // Too many to do, to expensive
-            conf.extend_max_confl /= 4;
-        }
-        if (num_done == 6000 && unknown_set.size() > 3000) {
-            verb_print(1, "[arjun] extend: too many to do, after 6000 still lots left. Lowering conflict limit");
-            // Too many to do, to expensive
-            conf.extend_max_confl /= 4;
-        }
-        if (num_done == 15000 && unknown_set.size() > 3000) {
-            verb_print(1, "[arjun] extend: too many to do, after 15000 still lots left. BREAKING");
-            break;
+        // Progressively reduce conflict limit when there are too many unknowns
+        // {done_threshold, remaining_threshold, divisor (0 = break)}
+        static constexpr struct { uint32_t done; uint32_t remaining; uint32_t divisor; } throttle_steps[] = {
+            {  300, 1000, 2}, {  500, 1000, 2}, { 1000, 2000, 4},
+            { 3000, 3000, 4}, { 6000, 3000, 4}, {15000, 3000, 0},
+        };
+        for (const auto& [done_thr, rem_thr, divisor] : throttle_steps) {
+            if (num_done != done_thr || unknown_set.size() <= rem_thr) continue;
+            if (divisor == 0) {
+                verb_print(1, "[arjun] extend: after " << done_thr << " still lots left. BREAKING");
+                goto done;
+            }
+            verb_print(1, "[arjun] extend: after " << done_thr
+                << " still lots left. Lowering conflict limit by /" << divisor);
+            conf.extend_max_confl /= divisor;
         }
         /* cout << "num_done: " << num_done << " unknown_set.size(): " << unknown_set.size() << " confl: " << (double)solver->get_sum_conflicts()/((double)num_done*conf.extend_max_confl) << endl; */
 
@@ -405,6 +392,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             }
         }
     }
+    done:
     cnf.set_opt_sampl_vars(opt_sampl);
     SLOW_DEBUG_DO(assert(check_extend(cnf)));
 
