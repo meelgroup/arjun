@@ -64,7 +64,6 @@
         {
           stdenv,
           fetchFromGitHub,
-          lsd,
           cmake,
           armadillo,
           ensmallen,
