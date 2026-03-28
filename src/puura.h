@@ -25,12 +25,11 @@
 #pragma once
 
 #include <cryptominisat5/cryptominisat.h>
-#include "src/config.h"
+#include "config.h"
 #include <cstdint>
 #include <memory>
 #include <vector>
 #include <set>
-#include "config.h"
 #include "arjun.h"
 #include "constants.h"
 
