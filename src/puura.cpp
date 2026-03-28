@@ -45,7 +45,6 @@ using std::setprecision;
 using std::fixed;
 using std::string;
 using std::unique_ptr;
-using std::unique_ptr;
 
 Puura::Puura(const Config& _conf) : conf(_conf) {}
 Puura::~Puura() = default;
