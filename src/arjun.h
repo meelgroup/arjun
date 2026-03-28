@@ -1187,7 +1187,7 @@ public:
     }
 
     void fix_weights(std::unique_ptr<CMSat::SATSolver>& solver,
-            const std::vector<uint32_t> new_sampl_vars,
+            const std::vector<uint32_t>& new_sampl_vars,
             const std::vector<uint32_t>& empty_sampling_vars);
 
     CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var, std::map<aig_ptr, CMSat::lbool>& cache ) const;

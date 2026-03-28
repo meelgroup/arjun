@@ -1246,7 +1246,7 @@ DLL_PUBLIC map<uint32_t, set<uint32_t>> SimplifiedCNF::compute_dependencies(cons
 
 
 DLL_PUBLIC void SimplifiedCNF::fix_weights(unique_ptr<CMSat::SATSolver>& solver,
-        const vector<uint32_t> new_sampl_vars,
+        const vector<uint32_t>& new_sampl_vars,
         const vector<uint32_t>& empty_sampling_vars) {
     for(const auto& v: new_sampl_vars) check_var(v);
     for(const auto& v: empty_sampling_vars) check_var(v);
