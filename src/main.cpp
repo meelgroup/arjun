@@ -33,6 +33,7 @@
 #include <iomanip>
 #include <vector>
 #include <string>
+#include <filesystem>
 #include "argparse.hpp"
 
 #include "time_mem.h"
@@ -200,6 +201,7 @@ void add_arjun_options() {
     myopt("--manthancnf", mconf.write_manthan_cnf, fc_string, "Write Manthan CNF to this file");
     myopt("--debugsynth", conf.debug_synth, fc_string,"Debug synthesis, prefix with this fname");
     myflag("--checkrepair", mconf.check_repair, "Check that error formula count decreases monotonically after each repair iteration (uses ganak)");
+    myopt("--ganakbin", mconf.ganak_binary, fc_string, "Path to ganak binary (for --checkrepair)");
 
 
     // Simplification options for minim
@@ -470,6 +472,27 @@ int main(int argc, char** argv) {
         /* if (!program.is_used("--iter1grow")) simp_conf.bve_grow_iter1 = 200; */
         if (!program.is_used("--iter2grow")) simp_conf.bve_grow_iter2 = 500;
         if (!program.is_used("--bvegrownonstop")) simp_conf.bve_grow_nonstop = true;
+    }
+
+    // Default ganak binary: look next to arjun binary, or in ../ganak/build/
+    if (mconf.check_repair && mconf.ganak_binary.empty()) {
+        namespace fs = std::filesystem;
+        fs::path arjun_path = fs::canonical(fs::path(argv[0])).parent_path();
+        // Try sibling directory convention: ../../ganak/build/ganak
+        fs::path candidate = arjun_path / "../../ganak/build/ganak";
+        if (fs::exists(candidate)) {
+            mconf.ganak_binary = fs::canonical(candidate).string();
+        } else {
+            // Try same directory
+            candidate = arjun_path / "ganak";
+            if (fs::exists(candidate)) {
+                mconf.ganak_binary = fs::canonical(candidate).string();
+            } else {
+                // Fall back to PATH
+                mconf.ganak_binary = "ganak";
+            }
+        }
+        if (conf.verb) cout << "c o [checkrepair] Using ganak binary: " << mconf.ganak_binary << endl;
     }
 
     if (etof_conf.sbva_tiebreak != 0 && etof_conf.sbva_tiebreak != 1) {

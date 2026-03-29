@@ -64,7 +64,6 @@ target_include_directories(arjun
     ${PROJECT_SOURCE_DIR}/../cadical/src/
     ${SBVA_INCLUDE_DIRS}
     ${TREEDECOMP_INCLUDE_DIRS}
-    ${GANAK_INCLUDE_DIR}
   PUBLIC
     ${CRYPTOMINISAT5_INCLUDE_DIRS}
     ${GMP_INCLUDE_DIR}
@@ -85,7 +84,6 @@ target_link_libraries(arjun
     ${cadical}
     ${EVALMAXSAT_LIBRARIES}
     ${TREEDECOMP_LIBRARIES}
-    ${GANAK_LIBRARY}
   PUBLIC
     ${GMP_LIBRARY}
     ${CRYPTOMINISAT5_LIBRARIES}

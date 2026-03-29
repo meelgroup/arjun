@@ -1406,6 +1406,7 @@ public:
         int inv_learnt = 0;
         uint32_t max_repairs = std::numeric_limits<uint32_t>::max();
         int check_repair = 0;
+        std::string ganak_binary;
     };
 
     /// Standalone functions

@@ -310,11 +310,6 @@ find_library(cadical
     NAMES cadical
     REQUIRED)
 
-set(ganak_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../ganak/build" CACHE PATH "Directory where ganak is built/installed")
-find_path(GANAK_INCLUDE_DIR ganak/ganak.hpp PATHS "${ganak_DIR}/include" REQUIRED)
-find_library(GANAK_LIBRARY NAMES ganak PATHS "${ganak_DIR}/lib" REQUIRED)
-message(STATUS "Found ganak include: ${GANAK_INCLUDE_DIR}")
-message(STATUS "Found ganak library: ${GANAK_LIBRARY}")
 if(EXTRA_SYNTH)
     add_compile_definitions(EXTRA_SYNTH)
     find_path(ARMADILLO_INCLUDE_DIRS armadillo REQUIRED)

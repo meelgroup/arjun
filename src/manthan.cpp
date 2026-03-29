@@ -40,8 +40,9 @@
 #include "metasolver2.h"
 #include "time_mem.h"
 #include "ccnr/ccnr.h"
-#include <ganak/ganak.hpp>
-#include <ganak/counter_config.hpp>
+#include <fstream>
+#include <cstdio>
+#include <filesystem>
 
 #ifdef EXTRA_SYNTH
 #include <armadillo>
@@ -907,19 +908,19 @@ SimplifiedCNF Manthan::do_manthan() {
 
         // Check that error formula count is monotonically decreasing
         if (mconf.check_repair) {
-            auto cnt = count_error_formula();
-            if (prev_error_count) {
-                if (!fg_counting->larger_than(*prev_error_count, *cnt) && !(*prev_error_count == *cnt)) {
+            int64_t cnt = count_error_formula();
+            if (cnt >= 0 && prev_error_count >= 0) {
+                if (cnt > prev_error_count) {
                     cout << "c o ERROR [manthan-checkrepair] Error count INCREASED! prev: "
-                         << *prev_error_count << " curr: " << *cnt << endl;
-                } else if (*prev_error_count == *cnt) {
-                    verb_print(1, "[manthan-checkrepair] Error count UNCHANGED: " << *cnt);
+                         << prev_error_count << " curr: " << cnt << endl;
+                } else if (cnt == prev_error_count) {
+                    verb_print(1, "[manthan-checkrepair] Error count UNCHANGED: " << cnt);
                 } else {
                     verb_print(1, "[manthan-checkrepair] Error count decreased: "
-                        << *prev_error_count << " -> " << *cnt << " (good)");
+                        << prev_error_count << " -> " << cnt << " (good)");
                 }
             }
-            prev_error_count = std::move(cnt);
+            if (cnt >= 0) prev_error_count = cnt;
         }
     }
     const double repair_time = cpuTime() - repair_start_time;
@@ -2139,7 +2140,7 @@ Lit Manthan::tseitin_encode_aig(
     return result;
 }
 
-unique_ptr<CMSat::Field> Manthan::count_error_formula() {
+int64_t Manthan::count_error_formula() {
     const double count_start = cpuTime();
 
     // Build variable mapping: y -> y_hat for counting formula
@@ -2216,26 +2217,61 @@ unique_ptr<CMSat::Field> Manthan::count_error_formula() {
     }
 
     // 4. Set up ganak and count
-    if (!fg_counting) fg_counting = std::make_unique<FGenMpz>();
-    auto fg_dup = fg_counting->dup();
-    GanakInt::CounterConfiguration ganak_conf;
-    ganak_conf.verb = conf.verb >= 3 ? conf.verb - 2 : 0;
-    Ganak counter(ganak_conf, fg_dup);
-    counter.new_vars(next_var);
+    // 4. Write DIMACS to temp file and invoke ganak subprocess
+    auto tmp_path = std::filesystem::temp_directory_path() / "arjun_checkrepair.cnf";
+    string tmp_fname = tmp_path.string();
+    {
+        std::ofstream out(tmp_fname);
+        out << "p cnf " << next_var << " " << clauses.size() << "\n";
+        // Write independent support (input vars, 1-based)
+        out << "c p show ";
+        for (const auto& x : input) out << (x + 1) << " ";
+        out << "0\n";
+        // Write clauses
+        for (const auto& cl : clauses) {
+            for (const auto& l : cl) {
+                out << (l.sign() ? -((int)l.var() + 1) : (int)l.var() + 1) << " ";
+            }
+            out << "0\n";
+        }
+    }
 
-    // Independent support = input variables (1-based for ganak)
-    set<uint32_t> indep;
-    for (const auto& x : input) indep.insert(x + 1);
-    counter.set_indep_support(indep);
+    verb_print(2, "[manthan-checkrepair] Wrote error formula: "
+        << next_var << " vars, " << clauses.size() << " clauses to " << tmp_fname);
 
-    // Add all clauses (convert CMS Lit to Ganak Lit)
-    for (const auto& cl : clauses) counter.add_irred_cl(cms_to_ganak_cl(cl));
+    // Run ganak
+    string cmd = mconf.ganak_binary + " " + tmp_fname + " 2>&1";
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) {
+        cout << "c o ERROR [manthan-checkrepair] Failed to run ganak: " << cmd << endl;
+        std::filesystem::remove(tmp_path);
+        return -1;
+    }
 
-    auto cnt = counter.count();
+    int64_t count = -1;
+    char buf[4096];
+    while (fgets(buf, sizeof(buf), pipe)) {
+        string line(buf);
+        // Parse "c s exact arb int <count>"
+        if (line.find("c s exact arb int") != string::npos) {
+            auto pos = line.rfind(' ');
+            if (pos != string::npos) {
+                try { count = std::stoll(line.substr(pos + 1)); }
+                catch (...) { count = -1; }
+            }
+        }
+    }
+    int ret = pclose(pipe);
+    std::filesystem::remove(tmp_path);
 
-    verb_print(1, "[manthan-checkrepair] Error formula count: " << *cnt
+    if (ret != 0 || count < 0) {
+        cout << "c o ERROR [manthan-checkrepair] ganak failed (ret=" << ret << " count=" << count << ")" << endl;
+        return -1;
+    }
+
+    verb_print(1, "[manthan-checkrepair] Error formula count: " << count
         << "  vars: " << next_var << "  clauses: " << clauses.size()
         << "  T: " << fixed << setprecision(2) << (cpuTime() - count_start));
 
-    return cnt;
+    return count;
 }
