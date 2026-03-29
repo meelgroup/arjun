@@ -106,6 +106,11 @@ DLL_PUBLIC void Arjun::standalone_minimize_indep(SimplifiedCNF& cnf, bool all_in
     common.run_minimize_indep(cnf, all_indep);
 }
 
+DLL_PUBLIC void Arjun::standalone_minimize_indep_info(SimplifiedCNF& cnf, bool all_indep, Arjun::IndepInfo& info) {
+    Minimize common(arjdata->conf);
+    common.run_minimize_indep_info(cnf, all_indep, info);
+}
+
 #ifdef SYNTH
 DLL_PUBLIC void Arjun::standalone_minimize_indep_synt(SimplifiedCNF& cnf) {
     Minimize common(arjdata->conf);
