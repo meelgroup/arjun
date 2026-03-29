@@ -1026,7 +1026,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     // When free_inputs is non-empty, skip those inputs to get a more general conflict
     vector<Lit> assumps;
     for(const auto& x: input) {
-        if (!free_inputs.empty() && free_inputs.count(x)) continue;
+        if (!free_inputs.count(x)) continue;
         const Lit l = Lit(x, ctx[x] == l_False);
         assumps.push_back(l);
     }
