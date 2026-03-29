@@ -171,9 +171,11 @@ def main():
     options, _ = parser.parse_args()
 
     if options.seed is not None:
-        random.seed(options.seed)
+        rnd_seed = options.seed
     else:
-        random.seed(42)
+        rnd_seed = int.from_bytes(os.urandom(8))
+        print("Using random seed: %d" % rnd_seed)
+    random.seed(rnd_seed)
 
     if not os.path.isfile(ARJUN):
         print("ERROR: arjun binary not found at %s" % ARJUN)
