@@ -123,6 +123,10 @@ def set_up_parser():
       "--tout", "-t", dest="maxtime", type=int, default=12,
       help="Max time to run. Default: %default")
 
+    parser.add_option(
+      "--num", "-n", dest="num", type=int, default=None,
+      help="Number of fuzz iterations to run. Default: unlimited")
+
     return parser
 
 
@@ -360,17 +364,17 @@ if __name__ == "__main__":
     parser = set_up_parser()
     (options, args) = parser.parse_args()
 
-    only = 1
     if options.rnd_seed is None:
         b = os.urandom(8)
         rnd_seed = int.from_bytes(b)
         print("Using seed:", rnd_seed)
-        only = 2**40
     else:
         rnd_seed = options.rnd_seed
     random.seed(rnd_seed)
 
-    for i in range(only):
+    i = 0
+    while options.num is None or i < options.num:
+        i += 1
         if options.rnd_seed is None:
             b = os.urandom(8)
             seed = int.from_bytes(b)
