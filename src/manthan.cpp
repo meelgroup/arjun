@@ -43,6 +43,7 @@
 #include <fstream>
 #include <cstdio>
 #include <filesystem>
+#include <unistd.h>
 
 #ifdef EXTRA_SYNTH
 #include <armadillo>
@@ -2220,7 +2221,8 @@ bool Manthan::count_error_formula(mpz_class& out_count) {
 
     // 4. Set up ganak and count
     // 4. Write DIMACS to temp file and invoke ganak subprocess
-    auto tmp_path = std::filesystem::temp_directory_path() / "arjun_checkrepair.cnf";
+    auto tmp_path = std::filesystem::temp_directory_path() /
+        ("arjun_checkrepair_" + std::to_string(getpid()) + ".cnf");
     string tmp_fname = tmp_path.string();
     {
         std::ofstream out(tmp_fname);
