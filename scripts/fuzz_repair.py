@@ -109,7 +109,8 @@ def is_unsat(fname):
 
 
 def run_arjun_checkrepair(fname, seed, timeout):
-    """Run arjun with --synth --checkrepair and analyze output."""
+    """Run arjun with --synth --checkrepair and analyze output.
+    Returns (result_dict_or_string, output_or_None, cmd_list)."""
     cmd = [
         ARJUN,
         "--synth",
@@ -132,16 +133,12 @@ def run_arjun_checkrepair(fname, seed, timeout):
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return "timeout", None
+        return "timeout", None, cmd
 
     output = result.stdout + (result.stderr or "")
 
     if result.returncode != 0:
-        # Check for assertion failures / crashes
-        for line in output.split("\n"):
-            if "assert" in line.lower() or "Assertion" in line:
-                return "crash", output
-        return "error", output
+        return "crash", output, cmd
 
     # Look for checkrepair output
     increased = False
@@ -166,7 +163,7 @@ def run_arjun_checkrepair(fname, seed, timeout):
         "decreased": decreased_count,
         "unchanged": unchanged_count,
         "output": output,
-    }, None
+    }, None, cmd
 
 
 def main():
@@ -241,7 +238,7 @@ def main():
 
             stats["total"] += 1
             t_start = time.time()
-            result, error_output = run_arjun_checkrepair(
+            result, error_output, cmd = run_arjun_checkrepair(
                 fname, seed, options.timeout)
             elapsed = time.time() - t_start
 
@@ -250,14 +247,22 @@ def main():
                 stats["timeout"] += 1
                 continue
 
-            if result == "crash" or result == "error":
-                print("CRASH/ERROR (%.1fs)" % elapsed)
+            if result == "crash":
+                print("CRASH (%.1fs)" % elapsed)
                 stats["crash"] += 1
+                # Copy the CNF to current directory so it survives tmpdir cleanup
+                import shutil
+                saved = "crash_%d.cnf" % seed
+                shutil.copy2(fname, saved)
+                # Build reproduce command with the saved file instead of the temp path
+                reproduce_cmd = cmd[:-1] + [saved]
+                print("\nArjun crashed. Saved CNF to: %s" % os.path.abspath(saved))
+                print("Reproduce with:\n  %s" % " ".join(reproduce_cmd))
                 if error_output:
+                    print("\nLast lines of output:")
                     lines = error_output.strip().split("\n")
-                    for line in lines[-10:]:
+                    for line in lines[-15:]:
                         print("  | %s" % line)
-                print("\nAborting: arjun crashed or returned non-zero exit code.")
                 sys.exit(1)
 
             info = result
