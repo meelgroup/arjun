@@ -107,7 +107,7 @@ class Manthan {
         template<typename S>
         void inject_cnf(S& s) const;
         bool repair(const uint32_t v, sample& ctx, const std::set<uint32_t>& free_inputs = {});
-        void collect_extra_cex(const sample& ctx, std::vector<sample>& all_cex, std::set<uint32_t>& free_inputs);
+        std::pair<sample, std::set<uint32_t>> collect_extra_cex(const sample& ctx);
         bool find_conflict(const uint32_t y_rep, sample& ctx, std::vector<CMSat::Lit>& conflict,
                            const std::set<uint32_t>& free_inputs = {});
         void minimize_conflict(std::vector<CMSat::Lit>& conflict, std::vector<CMSat::Lit>& assumps, const CMSat::Lit repairing);

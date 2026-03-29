@@ -865,11 +865,8 @@ SimplifiedCNF Manthan::do_manthan() {
         SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
 
         // Collect additional counterexamples to identify free inputs and pick best cex
-        vector<sample> all_cex;
-        set<uint32_t> free_inputs;
-        collect_extra_cex(ctx, all_cex, free_inputs);
-        // Use the best counterexample (fewest needs_repair) as primary ctx
-        ctx = all_cex[0];
+        auto [best_ctx, free_inputs] = collect_extra_cex(ctx);
+        ctx = best_ctx;
         compute_needs_repair(ctx);
 
         const uint32_t old_needs_repair_size = needs_repair.size();
@@ -1879,18 +1876,16 @@ void Manthan::inject_formulas_into_solver() {
     updated_y_funcs.clear();
 }
 
-void Manthan::collect_extra_cex(const sample& ctx,
-        vector<sample>& all_cex, set<uint32_t>& free_inputs) {
-    all_cex.clear();
-    free_inputs.clear();
-    all_cex.push_back(ctx);
-    if (mconf.multi_cex_k <= 1) return;
+std::pair<sample, set<uint32_t>> Manthan::collect_extra_cex(const sample& ctx) {
+    set<uint32_t> free_inputs;
+    if (mconf.multi_cex_k <= 1) return {ctx, free_inputs};
 
     // Collect additional counterexamples by blocking previous ones
+    vector<sample> all_cex = {ctx};
     vector<uint32_t> block_acts;
     for(int i = 0; i < mconf.multi_cex_k - 1; i++) {
         // Add activation-gated blocking clause: act OR (x1_flip OR x2_flip OR ...)
-        // When act is not assumed, solver can set act=true → clause trivially satisfied
+        // When act is not assumed, solver can set act=true -> clause trivially satisfied
         // When we assume ~act, blocking is active
         cex_solver.new_var();
         uint32_t act = cex_solver.nVars()-1;
@@ -1898,7 +1893,6 @@ void Manthan::collect_extra_cex(const sample& ctx,
         vector<Lit> block_cl;
         block_cl.push_back(Lit(act, false)); // positive act
         for(const auto& x: input) {
-            // push literal that is TRUE when x differs from all_cex.back()[x]
             block_cl.push_back(Lit(x, all_cex.back()[x] == l_True));
         }
         cex_solver.add_clause(block_cl);
@@ -1918,7 +1912,7 @@ void Manthan::collect_extra_cex(const sample& ctx,
         all_cex.push_back(cex_solver.get_model());
     }
 
-    if (all_cex.size() <= 1) return;
+    if (all_cex.size() <= 1) return {ctx, free_inputs};
 
     // Identify free inputs: those that vary across counterexamples
     for(const auto& x: input) {
@@ -1931,7 +1925,7 @@ void Manthan::collect_extra_cex(const sample& ctx,
         }
     }
 
-    // Pick the counterexample with fewest needs_repair variables as primary ctx
+    // Pick the counterexample with fewest needs_repair variables
     size_t best_idx = 0;
     uint32_t best_nr = std::numeric_limits<uint32_t>::max();
     for(size_t i = 0; i < all_cex.size(); i++) {
@@ -1943,13 +1937,12 @@ void Manthan::collect_extra_cex(const sample& ctx,
         if (nr < best_nr) { best_nr = nr; best_idx = i; }
     }
     if (best_idx != 0) {
-        verb_print(2, "[manthan] Switching to cex " << best_idx << " with " << best_nr
-                << " needs_repair (was " << best_nr << ")");
-        std::swap(all_cex[0], all_cex[best_idx]);
+        verb_print(2, "[manthan] Switching to cex " << best_idx << " with " << best_nr << " needs_repair");
     }
 
     verb_print(2, "[manthan] Collected " << all_cex.size() << " counterexamples, "
             << free_inputs.size() << "/" << input.size() << " inputs are free");
+    return {all_cex[best_idx], free_inputs};
 }
 
 bool Manthan::get_counterexample(sample& ctx) {
