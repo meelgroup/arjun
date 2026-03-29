@@ -908,19 +908,21 @@ SimplifiedCNF Manthan::do_manthan() {
 
         // Check that error formula count is monotonically decreasing
         if (mconf.check_repair) {
-            int64_t cnt = count_error_formula();
-            if (cnt >= 0 && prev_error_count >= 0) {
-                if (cnt > prev_error_count) {
-                    cout << "c o ERROR [manthan-checkrepair] Error count INCREASED! prev: "
-                         << prev_error_count << " curr: " << cnt << endl;
-                } else if (cnt == prev_error_count) {
-                    verb_print(1, "[manthan-checkrepair] Error count UNCHANGED: " << cnt);
-                } else {
-                    verb_print(1, "[manthan-checkrepair] Error count decreased: "
-                        << prev_error_count << " -> " << cnt << " (good)");
+            mpz_class cnt;
+            if (count_error_formula(cnt)) {
+                if (prev_error_count >= 0) {
+                    if (cnt > prev_error_count) {
+                        cout << "c o ERROR [manthan-checkrepair] Error count INCREASED! prev: "
+                             << prev_error_count << " curr: " << cnt << endl;
+                    } else if (cnt == prev_error_count) {
+                        verb_print(1, "[manthan-checkrepair] Error count UNCHANGED: " << cnt);
+                    } else {
+                        verb_print(1, "[manthan-checkrepair] Error count decreased: "
+                            << prev_error_count << " -> " << cnt << " (good)");
+                    }
                 }
+                prev_error_count = cnt;
             }
-            if (cnt >= 0) prev_error_count = cnt;
         }
     }
     const double repair_time = cpuTime() - repair_start_time;
@@ -2140,7 +2142,7 @@ Lit Manthan::tseitin_encode_aig(
     return result;
 }
 
-int64_t Manthan::count_error_formula() {
+bool Manthan::count_error_formula(mpz_class& out_count) {
     const double count_start = cpuTime();
 
     // Build variable mapping: y -> y_hat for counting formula
@@ -2239,39 +2241,48 @@ int64_t Manthan::count_error_formula() {
     verb_print(2, "[manthan-checkrepair] Wrote error formula: "
         << next_var << " vars, " << clauses.size() << " clauses to " << tmp_fname);
 
-    // Run ganak
-    string cmd = mconf.ganak_binary + " " + tmp_fname + " 2>&1";
+    // Run ganak with minimal verbosity
+    string cmd = mconf.ganak_binary + " --verb 0 " + tmp_fname + " 2>&1";
     FILE* pipe = popen(cmd.c_str(), "r");
     if (!pipe) {
         cout << "c o ERROR [manthan-checkrepair] Failed to run ganak: " << cmd << endl;
         std::filesystem::remove(tmp_path);
-        return -1;
+        return false;
     }
 
-    int64_t count = -1;
+    bool found_count = false;
     char buf[4096];
     while (fgets(buf, sizeof(buf), pipe)) {
         string line(buf);
-        // Parse "c s exact arb int <count>"
-        if (line.find("c s exact arb int") != string::npos) {
-            auto pos = line.rfind(' ');
-            if (pos != string::npos) {
-                try { count = std::stoll(line.substr(pos + 1)); }
-                catch (...) { count = -1; }
+        // Parse "c s exact arb int <count>" (count can be arbitrarily large)
+        const string prefix = "c s exact arb int ";
+        auto pos = line.find(prefix);
+        if (pos != string::npos) {
+            string count_str = line.substr(pos + prefix.size());
+            // Trim whitespace/newline
+            while (!count_str.empty() && (count_str.back() == '\n' || count_str.back() == '\r' || count_str.back() == ' '))
+                count_str.pop_back();
+            if (!count_str.empty()) {
+                try {
+                    out_count = mpz_class(count_str);
+                    found_count = true;
+                } catch (...) {
+                    cout << "c o ERROR [manthan-checkrepair] Failed to parse count: '" << count_str << "'" << endl;
+                }
             }
         }
     }
     int ret = pclose(pipe);
     std::filesystem::remove(tmp_path);
 
-    if (ret != 0 || count < 0) {
-        cout << "c o ERROR [manthan-checkrepair] ganak failed (ret=" << ret << " count=" << count << ")" << endl;
-        return -1;
+    if (ret != 0 || !found_count) {
+        cout << "c o ERROR [manthan-checkrepair] ganak failed (ret=" << ret << ")" << endl;
+        return false;
     }
 
-    verb_print(1, "[manthan-checkrepair] Error formula count: " << count
+    verb_print(1, "[manthan-checkrepair] Error formula count: " << out_count
         << "  vars: " << next_var << "  clauses: " << clauses.size()
         << "  T: " << fixed << setprecision(2) << (cpuTime() - count_start));
 
-    return count;
+    return true;
 }

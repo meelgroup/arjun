@@ -168,7 +168,8 @@ class Manthan {
         }
 
         // error formula counting via ganak subprocess
-        int64_t count_error_formula();
+        // Returns true on success and stores result in out_count
+        bool count_error_formula(mpz_class& out_count);
         CMSat::Lit tseitin_encode_aig(
             const ArjunNS::aig_ptr& aig,
             const std::map<uint32_t, uint32_t>& count_y_to_y_hat,
@@ -176,7 +177,7 @@ class Manthan {
             uint32_t& next_var,
             CMSat::Lit true_lit,
             std::map<ArjunNS::aig_ptr, CMSat::Lit>& cache);
-        int64_t prev_error_count = -1;
+        mpz_class prev_error_count = -1; // -1 means no previous count
 
         // debug
         bool verify_final_cnf(const ArjunNS::SimplifiedCNF& fcnf) const;
