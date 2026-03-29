@@ -1393,7 +1393,7 @@ public:
     // Perform indep set calculation
     void standalone_minimize_indep(SimplifiedCNF& cnf, bool all_indep);
     void standalone_minimize_indep_synt(SimplifiedCNF& cnf);
-    void standalone_minimize_indep_info(SimplifiedCNF& cnf, bool all_indep, IndepInfo& info);
+    IndepInfo standalone_minimize_indep_info(SimplifiedCNF& cnf, bool all_indep);
     void standalone_extend_sampl_set(SimplifiedCNF& cnf);
     void standalone_unsat_define(SimplifiedCNF& cnf);
     void standalone_unate(SimplifiedCNF& cnf);
