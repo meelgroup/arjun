@@ -1385,9 +1385,15 @@ public:
     static std::string get_solver_version_sha1();
     static std::string get_solver_thanks_info(const char* prefix);
 
+    struct IndepInfo {
+        std::vector<std::pair<CMSat::Lit, CMSat::Lit>> eq_lits;
+        std::vector<CMSat::Lit> backbone;
+        std::vector<uint32_t> free_vars;
+    };
     // Perform indep set calculation
     void standalone_minimize_indep(SimplifiedCNF& cnf, bool all_indep);
     void standalone_minimize_indep_synt(SimplifiedCNF& cnf);
+    void standalone_minimize_indep_info(SimplifiedCNF& cnf, bool all_indep, IndepInfo& info);
     void standalone_extend_sampl_set(SimplifiedCNF& cnf);
     void standalone_unsat_define(SimplifiedCNF& cnf);
     void standalone_unate(SimplifiedCNF& cnf);
