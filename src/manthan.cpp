@@ -863,6 +863,14 @@ SimplifiedCNF Manthan::do_manthan() {
         SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
         SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
 
+        // Collect additional counterexamples to identify free inputs and pick best cex
+        vector<sample> all_cex;
+        set<uint32_t> free_inputs;
+        collect_extra_cex(ctx, all_cex, free_inputs);
+        // Use the best counterexample (fewest needs_repair) as primary ctx
+        ctx = all_cex[0];
+        compute_needs_repair(ctx);
+
         const uint32_t old_needs_repair_size = needs_repair.size();
         if (mconf.maxsat_better_ctx == -1) {
           // Nothing to do
@@ -883,11 +891,6 @@ SimplifiedCNF Manthan::do_manthan() {
               << setw(3) << old_needs_repair_size << " -- " << setw(4) << needs_repair.size());
         print_needs_repair_vars();
         needs_repair_sum += needs_repair.size();
-
-        // Collect additional counterexamples to identify free inputs
-        vector<sample> all_cex;
-        set<uint32_t> free_inputs;
-        collect_extra_cex(ctx, all_cex, free_inputs);
 
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
@@ -1924,6 +1927,24 @@ void Manthan::collect_extra_cex(const sample& ctx,
             }
         }
     }
+
+    // Pick the counterexample with fewest needs_repair variables as primary ctx
+    size_t best_idx = 0;
+    uint32_t best_nr = std::numeric_limits<uint32_t>::max();
+    for(size_t i = 0; i < all_cex.size(); i++) {
+        uint32_t nr = 0;
+        for(const auto& y: to_define_full) {
+            if (all_cex[i][y] != all_cex[i][y_to_y_hat[y]]) nr++;
+        }
+        verb_print(3, "[manthan] cex " << i << " has " << nr << " vars needing repair");
+        if (nr < best_nr) { best_nr = nr; best_idx = i; }
+    }
+    if (best_idx != 0) {
+        verb_print(2, "[manthan] Switching to cex " << best_idx << " with " << best_nr
+                << " needs_repair (was " << best_nr << ")");
+        std::swap(all_cex[0], all_cex[best_idx]);
+    }
+
     verb_print(2, "[manthan] Collected " << all_cex.size() << " counterexamples, "
             << free_inputs.size() << "/" << input.size() << " inputs are free");
 }
