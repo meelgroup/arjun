@@ -1913,6 +1913,9 @@ std::pair<sample, set<uint32_t>> Manthan::collect_extra_cex(const sample& ctx) {
         all_cex.push_back(cex_solver.get_model());
     }
 
+    // Force activation vars to true, permanently satisfying (disabling) blocking clauses
+    for(auto a: block_acts) cex_solver.add_clause({Lit(a, false)});
+
     if (all_cex.size() <= 1) return {ctx, free_inputs};
 
     // Identify free inputs: those that vary across counterexamples
