@@ -906,24 +906,7 @@ SimplifiedCNF Manthan::do_manthan() {
         }
         verb_print(2, "[manthan] Num repaired: " << num_repaired << " tot repaired: " << tot_repaired << " num_loops_repair: " << num_loops_repair);
 
-        // Check that error formula count is monotonically decreasing
-        if (mconf.check_repair) {
-            mpz_class cnt;
-            if (count_error_formula(cnt)) {
-                if (prev_error_count >= 0) {
-                    if (cnt > prev_error_count) {
-                        cout << "c o ERROR [manthan-checkrepair] Error count INCREASED! prev: "
-                             << prev_error_count << " curr: " << cnt << endl;
-                    } else if (cnt == prev_error_count) {
-                        verb_print(1, "[manthan-checkrepair] Error count UNCHANGED: " << cnt);
-                    } else {
-                        verb_print(1, "[manthan-checkrepair] Error count decreased: "
-                            << prev_error_count << " -> " << cnt << " (good)");
-                    }
-                }
-                prev_error_count = cnt;
-            }
-        }
+        if (mconf.check_repair) check_repair_monotonic();
     }
     const double repair_time = cpuTime() - repair_start_time;
     assert(check_map_dependency_cycles());
@@ -2094,6 +2077,23 @@ void Manthan::compute_needs_repair(const sample& ctx) {
     for(const auto& y: to_define_full) {
         if (ctx[y] != ctx[y_to_y_hat[y]]) needs_repair.insert(y);
     }
+}
+
+void Manthan::check_repair_monotonic() {
+    mpz_class cnt;
+    if (!count_error_formula(cnt)) return;
+
+    if (prev_error_count >= 0) {
+        assert(cnt <= prev_error_count &&
+            "Error formula count must monotonically decrease during repair");
+        if (cnt == prev_error_count) {
+            verb_print(1, "[manthan-checkrepair] Error count UNCHANGED: " << cnt);
+        } else {
+            verb_print(1, "[manthan-checkrepair] Error count decreased: "
+                << prev_error_count << " -> " << cnt << " (good)");
+        }
+    }
+    prev_error_count = cnt;
 }
 
 Lit Manthan::tseitin_encode_aig(

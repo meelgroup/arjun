@@ -257,7 +257,8 @@ def main():
                     lines = error_output.strip().split("\n")
                     for line in lines[-10:]:
                         print("  | %s" % line)
-                continue
+                print("\nAborting: arjun crashed or returned non-zero exit code.")
+                sys.exit(1)
 
             info = result
             counts = info["counts"]

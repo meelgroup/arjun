@@ -168,7 +168,7 @@ class Manthan {
         }
 
         // error formula counting via ganak subprocess
-        // Returns true on success and stores result in out_count
+        void check_repair_monotonic();
         bool count_error_formula(mpz_class& out_count);
         CMSat::Lit tseitin_encode_aig(
             const ArjunNS::aig_ptr& aig,
