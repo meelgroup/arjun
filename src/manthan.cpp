@@ -2084,14 +2084,14 @@ void Manthan::check_repair_monotonic() {
     if (!count_error_formula(cnt)) return;
 
     if (prev_error_count >= 0) {
-        assert(cnt <= prev_error_count &&
-            "Error formula count must monotonically decrease during repair");
-        if (cnt == prev_error_count) {
-            verb_print(1, "[manthan-checkrepair] Error count UNCHANGED: " << cnt);
-        } else {
-            verb_print(1, "[manthan-checkrepair] Error count decreased: "
-                << prev_error_count << " -> " << cnt << " (good)");
+        if (cnt >= prev_error_count) {
+            cout << "c o ERROR [manthan-checkrepair] Error count did NOT strictly decrease: "
+                 << prev_error_count << " -> " << cnt << endl;
         }
+        assert(cnt < prev_error_count &&
+            "Error formula count must strictly decrease after each repair iteration");
+        verb_print(1, "[manthan-checkrepair] Error count decreased: "
+            << prev_error_count << " -> " << cnt << " (good)");
     }
     prev_error_count = cnt;
 }
