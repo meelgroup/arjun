@@ -37,6 +37,8 @@ THE SOFTWARE.
 #include <cryptominisat5/cryptominisat.h>
 #include <mpfr.h>
 
+namespace ArjunInt { class Manthan; }
+
 namespace ArjunNS {
 
 class AIG;
@@ -326,6 +328,7 @@ public:
     friend std::ostream& operator<<(std::ostream& out, const aig_ptr& aig);
     friend class AIGManager;
     friend class SimplifiedCNF;
+    friend class ArjunInt::Manthan;
 
 private:
     static aig_ptr simplify(aig_ptr aig);
@@ -1402,6 +1405,7 @@ public:
         int silent_var_update = 1;
         int inv_learnt = 0;
         uint32_t max_repairs = std::numeric_limits<uint32_t>::max();
+        int check_repair = 0;
     };
 
     /// Standalone functions

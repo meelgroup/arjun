@@ -40,6 +40,8 @@
 #include "metasolver2.h"
 #include "time_mem.h"
 #include "ccnr/ccnr.h"
+#include <ganak/ganak.hpp>
+#include <ganak/counter_config.hpp>
 
 #ifdef EXTRA_SYNTH
 #include <armadillo>
@@ -902,6 +904,23 @@ SimplifiedCNF Manthan::do_manthan() {
             verb_print(3, "[manthan] finished repairing " << y_rep+1 << " : " << std::boolalpha << done);
         }
         verb_print(2, "[manthan] Num repaired: " << num_repaired << " tot repaired: " << tot_repaired << " num_loops_repair: " << num_loops_repair);
+
+        // Check that error formula count is monotonically decreasing
+        if (mconf.check_repair) {
+            auto cnt = count_error_formula();
+            if (prev_error_count) {
+                if (!fg_counting->larger_than(*prev_error_count, *cnt) && !(*prev_error_count == *cnt)) {
+                    cout << "c o ERROR [manthan-checkrepair] Error count INCREASED! prev: "
+                         << *prev_error_count << " curr: " << *cnt << endl;
+                } else if (*prev_error_count == *cnt) {
+                    verb_print(1, "[manthan-checkrepair] Error count UNCHANGED: " << *cnt);
+                } else {
+                    verb_print(1, "[manthan-checkrepair] Error count decreased: "
+                        << *prev_error_count << " -> " << *cnt << " (good)");
+                }
+            }
+            prev_error_count = std::move(cnt);
+        }
     }
     const double repair_time = cpuTime() - repair_start_time;
     assert(check_map_dependency_cycles());
@@ -2072,4 +2091,151 @@ void Manthan::compute_needs_repair(const sample& ctx) {
     for(const auto& y: to_define_full) {
         if (ctx[y] != ctx[y_to_y_hat[y]]) needs_repair.insert(y);
     }
+}
+
+Lit Manthan::tseitin_encode_aig(
+    const aig_ptr& aig,
+    const map<uint32_t, uint32_t>& count_y_to_y_hat,
+    vector<vector<Lit>>& clauses,
+    uint32_t& next_var,
+    Lit true_lit,
+    map<aig_ptr, Lit>& cache)
+{
+    auto it = cache.find(aig);
+    if (it != cache.end()) return it->second;
+
+    Lit result = lit_Error;
+    if (aig->type == AIGT::t_const) {
+        // const node: value is TRUE XOR neg
+        result = aig->neg ? ~true_lit : true_lit;
+    } else if (aig->type == AIGT::t_lit) {
+        // Leaf: map to_define_full vars to y_hat, others stay as-is
+        uint32_t v = aig->var;
+        auto map_it = count_y_to_y_hat.find(v);
+        if (map_it != count_y_to_y_hat.end()) v = map_it->second;
+        result = Lit(v, aig->neg);
+    } else {
+        assert(aig->type == AIGT::t_and);
+        Lit left_lit = tseitin_encode_aig(aig->l, count_y_to_y_hat, clauses, next_var, true_lit, cache);
+        Lit right_lit = tseitin_encode_aig(aig->r, count_y_to_y_hat, clauses, next_var, true_lit, cache);
+
+        // Allocate gate variable for: gate = left AND right
+        uint32_t gate_var = next_var++;
+        Lit gate = Lit(gate_var, false);
+
+        // Tseitin: gate <-> (left AND right)
+        // ~gate OR left
+        clauses.push_back({~gate, left_lit});
+        // ~gate OR right
+        clauses.push_back({~gate, right_lit});
+        // gate OR ~left OR ~right
+        clauses.push_back({gate, ~left_lit, ~right_lit});
+
+        // Apply negation
+        result = aig->neg ? ~gate : gate;
+    }
+
+    cache[aig] = result;
+    return result;
+}
+
+unique_ptr<CMSat::Field> Manthan::count_error_formula() {
+    const double count_start = cpuTime();
+
+    // Build variable mapping: y -> y_hat for counting formula
+    map<uint32_t, uint32_t> count_y_to_y_hat;
+    uint32_t next_var = cnf.nVars();
+    for (const auto& y : to_define_full) {
+        count_y_to_y_hat[y] = next_var++;
+    }
+
+    // Allocate a true literal
+    uint32_t true_var = next_var++;
+    Lit true_lit(true_var, false);
+
+    vector<vector<Lit>> clauses;
+
+    // Force true literal
+    clauses.push_back({true_lit});
+
+    // 1. Add F(x, y) - original CNF clauses
+    for (const auto& cl : cnf.get_clauses()) clauses.push_back(cl);
+    for (const auto& cl : cnf.get_red_clauses()) clauses.push_back(cl);
+
+    // 2. Add ~F(x, y_hat) - negation of F with y -> y_hat substitution
+    // For each clause, create indicator: ind_i <-> clause_i[y->y_hat] is satisfied
+    // Then add: at least one clause is NOT satisfied
+    vector<Lit> neg_clause;
+    for (const auto& cl_orig : cnf.get_clauses()) {
+        // Substitute y -> y_hat
+        vector<Lit> cl_subst;
+        for (const auto& l : cl_orig) {
+            auto it = count_y_to_y_hat.find(l.var());
+            if (it != count_y_to_y_hat.end())
+                cl_subst.push_back(Lit(it->second, l.sign()));
+            else
+                cl_subst.push_back(l);
+        }
+
+        // Create clause indicator: cl_ind <-> OR(cl_subst)
+        uint32_t cl_ind_var = next_var++;
+        Lit cl_ind(cl_ind_var, false);
+
+        // cl_ind -> OR(cl_subst): ~cl_ind OR l1 OR l2 OR ...
+        vector<Lit> impl_cl = {~cl_ind};
+        for (const auto& l : cl_subst) impl_cl.push_back(l);
+        clauses.push_back(impl_cl);
+
+        // OR(cl_subst) -> cl_ind: for each li, ~li -> cl_ind, i.e., cl_ind OR ~li
+        for (const auto& l : cl_subst) {
+            clauses.push_back({cl_ind, ~l});
+        }
+
+        // We want: at least one clause unsatisfied, i.e., at least one ~cl_ind
+        neg_clause.push_back(~cl_ind);
+    }
+    clauses.push_back(neg_clause);
+
+    // 3. Add synthesized function definitions: y_hat = f(x)
+    // For each y, Tseitin-encode the AIG and equate to y_hat
+    map<aig_ptr, Lit> tseitin_cache;
+    for (const auto& y : to_define_full) {
+        assert(var_to_formula.count(y));
+        const auto& aig = var_to_formula.at(y).aig;
+        assert(aig != nullptr);
+
+        Lit func_out = tseitin_encode_aig(aig, count_y_to_y_hat, clauses, next_var, true_lit, tseitin_cache);
+        uint32_t y_hat = count_y_to_y_hat.at(y);
+        Lit y_hat_lit(y_hat, false);
+
+        // y_hat <-> func_out
+        // y_hat OR ~func_out
+        clauses.push_back({y_hat_lit, ~func_out});
+        // ~y_hat OR func_out
+        clauses.push_back({~y_hat_lit, func_out});
+    }
+
+    // 4. Set up ganak and count
+    if (!fg_counting) fg_counting = std::make_unique<FGenMpz>();
+    auto fg_dup = fg_counting->dup();
+    GanakInt::CounterConfiguration ganak_conf;
+    ganak_conf.verb = conf.verb >= 3 ? conf.verb - 2 : 0;
+    Ganak counter(ganak_conf, fg_dup);
+    counter.new_vars(next_var);
+
+    // Independent support = input variables (1-based for ganak)
+    set<uint32_t> indep;
+    for (const auto& x : input) indep.insert(x + 1);
+    counter.set_indep_support(indep);
+
+    // Add all clauses (convert CMS Lit to Ganak Lit)
+    for (const auto& cl : clauses) counter.add_irred_cl(cms_to_ganak_cl(cl));
+
+    auto cnt = counter.count();
+
+    verb_print(1, "[manthan-checkrepair] Error formula count: " << *cnt
+        << "  vars: " << next_var << "  clauses: " << clauses.size()
+        << "  T: " << fixed << setprecision(2) << (cpuTime() - count_start));
+
+    return cnt;
 }

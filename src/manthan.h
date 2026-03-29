@@ -167,6 +167,18 @@ class Manthan {
             return ret;
         }
 
+        // error formula counting via ganak
+        std::unique_ptr<CMSat::Field> count_error_formula();
+        CMSat::Lit tseitin_encode_aig(
+            const ArjunNS::aig_ptr& aig,
+            const std::map<uint32_t, uint32_t>& count_y_to_y_hat,
+            std::vector<std::vector<CMSat::Lit>>& clauses,
+            uint32_t& next_var,
+            CMSat::Lit true_lit,
+            std::map<ArjunNS::aig_ptr, CMSat::Lit>& cache);
+        std::unique_ptr<CMSat::Field> prev_error_count;
+        std::unique_ptr<CMSat::FieldGen> fg_counting;
+
         // debug
         bool verify_final_cnf(const ArjunNS::SimplifiedCNF& fcnf) const;
         bool is_unsat(const std::vector<CMSat::Lit>& conflict, uint32_t y_rep, const sample& ctx) const;
