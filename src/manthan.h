@@ -200,6 +200,8 @@ class Manthan {
         void print_repair_stats(const std::string& txt = "", const std::string& color = "", const std::string& extra = "") const;
         uint32_t num_loops_repair = 0;
         uint64_t conflict_sizes_sum = 0;
+        uint32_t generalized_repair_ok = 0;
+        uint32_t generalized_repair_fallback = 0;
         uint64_t needs_repair_sum = 0;
         uint32_t tot_repaired = 0;
         uint32_t repair_failed = 0;

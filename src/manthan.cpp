@@ -710,6 +710,7 @@ void Manthan::print_stats(const string& txt, const string& color, const string& 
             << "   avg conflsz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
             << "   avg need rep: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
             << "   cache-hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
+            << "   gen-ok: " << generalized_repair_ok << " gen-fb: " << generalized_repair_fallback
             << "   T: " << setprecision(2) << fixed << setw(7) << repair_time
             << "   rep/s: " << setprecision(4) << safe_div(tot_repaired,repair_time) << setprecision(2)
             << extra);
@@ -1059,6 +1060,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
 
     // If SAT with free inputs, fall back to assuming all inputs
     if (ret == l_True && !free_inputs.empty()) {
+        generalized_repair_fallback++;
         verb_print(2, "Generalized repair SAT, falling back to full input assumptions");
         assumps.clear();
         for(const auto& x: input) {
@@ -1080,6 +1082,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         assert(ctx[y_rep] == ctx[y_to_y_hat[y_rep]]);
         return false;
     }
+    if (!free_inputs.empty()) generalized_repair_ok++;
     conflict = repair_solver.get_conflict();
     assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end() &&
         "to_repair literal must be in conflict");
