@@ -164,6 +164,7 @@ void add_arjun_options() {
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
     myopt("--monflyorder", mconf.manthan_on_the_fly_order, fc_int,"Use on-the-fly training order and post-training topological order");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
+    myopt("--multicex", mconf.multi_cex_k, fc_int,"Number of counterexamples to collect for generalized repair (1=off)");
     myopt("--minvertlearn", mconf.inv_learnt, fc_int,"Invert learnt functions");
 
     // repairing on vars

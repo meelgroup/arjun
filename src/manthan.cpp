@@ -884,11 +884,16 @@ SimplifiedCNF Manthan::do_manthan() {
         print_needs_repair_vars();
         needs_repair_sum += needs_repair.size();
 
+        // Collect additional counterexamples to identify free inputs
+        vector<sample> all_cex;
+        set<uint32_t> free_inputs;
+        collect_extra_cex(ctx, all_cex, free_inputs);
+
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
         while(!needs_repair.empty()) {
             auto y_rep = find_next_repair_var(ctx);
-            bool done = repair(y_rep, ctx); // this updates ctx
+            bool done = repair(y_rep, ctx, free_inputs); // this updates ctx
             if (done) {
                 at_least_one_repaired = true;
                 num_repaired++;
@@ -975,7 +980,7 @@ bool Manthan::is_unsat(const vector<Lit>& conflict, uint32_t y_rep, const sample
     return ret == l_False;
 }
 
-bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
+bool Manthan::repair(const uint32_t y_rep, sample& ctx, const set<uint32_t>& free_inputs) {
     verb_print(2, "[DEBUG] Starting repair for var " << y_rep+1
             << (backward_defined.count(y_rep) ? "[BW]" : ""));
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
@@ -992,7 +997,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
 
     vector<Lit> conflict;
     repaired_vars_count[y_rep]++;
-    bool ret = find_conflict(y_rep, ctx, conflict);
+    bool ret = find_conflict(y_rep, ctx, conflict, free_inputs);
     if (ret) {
         SLOW_DEBUG_DO(assert(is_unsat(conflict, y_rep, ctx)));
         perform_repair(y_rep, ctx, conflict);
@@ -1011,13 +1016,16 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     return ret;
 }
 
-bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict) {
+bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict,
+                            const set<uint32_t>& free_inputs) {
     const double repair_solver_start_time = cpuTime();
 
     // F(x,y) & x = ctx(x) && forall_y (y not dependent on v) (y = ctx(y)) & NOT (v = ctx(v))
     // Used to find UNSAT core that will help us repair the function
+    // When free_inputs is non-empty, skip those inputs to get a more general conflict
     vector<Lit> assumps;
     for(const auto& x: input) {
+        if (!free_inputs.empty() && free_inputs.count(x)) continue;
         const Lit l = Lit(x, ctx[x] == l_False);
         assumps.push_back(l);
     }
@@ -1038,12 +1046,31 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     const Lit to_repair = Lit(y_rep, ctx[y_to_y_hat[y_rep]] == l_True);
     assumps.push_back({~to_repair});
 
-    verb_print(2, "assuming reverse for y_rep: " << ~to_repair);
+    verb_print(2, "assuming reverse for y_rep: " << ~to_repair
+            << (free_inputs.empty() ? "" : " (free_inputs: " + std::to_string(free_inputs.size()) + ")"));
     auto ret = repair_solver.solve(&assumps);
     verb_print(2, "repair_solver finished "
             << " with result: " << (ret == l_True ? "SAT" : (ret == l_False ? "UNSAT" : "UNKNOWN"))
             << " in T: " << cpuTime()-repair_solver_start_time);
     assert(ret != l_Undef);
+
+    // If SAT with free inputs, fall back to assuming all inputs
+    if (ret == l_True && !free_inputs.empty()) {
+        verb_print(2, "Generalized repair SAT, falling back to full input assumptions");
+        assumps.clear();
+        for(const auto& x: input) {
+            assumps.push_back(Lit(x, ctx[x] == l_False));
+        }
+        for(const auto& y: y_order) {
+            if (!mconf.silent_var_update && backward_defined.count(y)) continue;
+            if (y == y_rep) break;
+            assumps.push_back(Lit(y, ctx[y] == l_False));
+        }
+        assumps.push_back({~to_repair});
+        ret = repair_solver.solve(&assumps);
+        assert(ret != l_Undef);
+    }
+
     if (ret == l_True) {
         verb_print(2, "Repair cost is 0 for y: " << y_rep+1);
         for(const auto& y: to_define_full) ctx[y] = repair_solver.get_model()[y];
@@ -1844,6 +1871,61 @@ void Manthan::inject_formulas_into_solver() {
         }
     }
     updated_y_funcs.clear();
+}
+
+void Manthan::collect_extra_cex(const sample& ctx,
+        vector<sample>& all_cex, set<uint32_t>& free_inputs) {
+    all_cex.clear();
+    free_inputs.clear();
+    all_cex.push_back(ctx);
+    if (mconf.multi_cex_k <= 1) return;
+
+    // Collect additional counterexamples by blocking previous ones
+    vector<uint32_t> block_acts;
+    for(int i = 0; i < mconf.multi_cex_k - 1; i++) {
+        // Add activation-gated blocking clause: act OR (x1_flip OR x2_flip OR ...)
+        // When act is not assumed, solver can set act=true → clause trivially satisfied
+        // When we assume ~act, blocking is active
+        cex_solver.new_var();
+        uint32_t act = cex_solver.nVars()-1;
+        block_acts.push_back(act);
+        vector<Lit> block_cl;
+        block_cl.push_back(Lit(act, false)); // positive act
+        for(const auto& x: input) {
+            // push literal that is TRUE when x differs from all_cex.back()[x]
+            block_cl.push_back(Lit(x, all_cex.back()[x] == l_True));
+        }
+        cex_solver.add_clause(block_cl);
+
+        // Build assumptions: activate all blocking clauses + indicator assumptions
+        vector<Lit> assumps;
+        for(auto a: block_acts) assumps.push_back(Lit(a, true)); // ~act activates blocking
+        for(const auto& [y_hat, ind]: y_hat_to_indic) {
+            uint32_t y = indic_to_y[ind];
+            if (mconf.force_bw_equal && backward_defined.count(y) && !helper_functions.count(y))
+                continue;
+            assumps.push_back(Lit(ind, false));
+        }
+
+        auto ret = cex_solver.solve(&assumps);
+        if (ret != l_True) break;
+        all_cex.push_back(cex_solver.get_model());
+    }
+
+    if (all_cex.size() <= 1) return;
+
+    // Identify free inputs: those that vary across counterexamples
+    for(const auto& x: input) {
+        lbool val = all_cex[0][x];
+        for(size_t i = 1; i < all_cex.size(); i++) {
+            if (all_cex[i][x] != val) {
+                free_inputs.insert(x);
+                break;
+            }
+        }
+    }
+    verb_print(2, "[manthan] Collected " << all_cex.size() << " counterexamples, "
+            << free_inputs.size() << "/" << input.size() << " inputs are free");
 }
 
 bool Manthan::get_counterexample(sample& ctx) {
