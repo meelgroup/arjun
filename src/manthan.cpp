@@ -1889,6 +1889,7 @@ std::pair<sample, set<uint32_t>> Manthan::collect_extra_cex(const sample& ctx) {
         // When we assume ~act, blocking is active
         cex_solver.new_var();
         uint32_t act = cex_solver.nVars()-1;
+        helpers.insert(act);
         block_acts.push_back(act);
         vector<Lit> block_cl;
         block_cl.push_back(Lit(act, false)); // positive act
