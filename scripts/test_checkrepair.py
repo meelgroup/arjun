@@ -11,21 +11,57 @@ import sys
 import random
 import tempfile
 import re
+import optparse
+
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 FUZZER = os.path.join(SCRIPT_DIR, "cnf-fuzz-brummayer.py")
 ARJUN = os.path.join(SCRIPT_DIR, "..", "build", "arjun")
 CMS = os.path.join(SCRIPT_DIR, "..", "..", "cryptominisat", "build", "cryptominisat5")
 
-NUM_RUNS = 30
-TIMEOUT = 120  # seconds per run
+
+def set_up_parser():
+    usage = "usage: %prog [options]"
+    desc = ("Generate random CNFs, run arjun --synth --checkrepair, and "
+            "verify the error formula count monotonically decreases.")
+
+    parser = optparse.OptionParser(usage=usage, description=desc)
+
+    parser.add_option(
+        "--num", "-n", type=int, default=30, dest="num_runs",
+        help="Number of test runs (default: %default)")
+
+    parser.add_option(
+        "--seed", type=int, default=None, dest="seed",
+        help="Random seed for reproducibility (default: random)")
+
+    parser.add_option(
+        "--minvars", type=int, default=3, dest="min_vars",
+        help="Minimum number of input variables for the CNF generator "
+             "(passed as -i to cnf-fuzz-brummayer, default: %default)")
+
+    parser.add_option(
+        "--maxvars", type=int, default=8, dest="max_vars",
+        help="Maximum number of input variables for the CNF generator "
+             "(passed as -I to cnf-fuzz-brummayer, default: %default)")
+
+    parser.add_option(
+        "--timeout", "-t", type=int, default=120, dest="timeout",
+        help="Timeout per arjun run in seconds (default: %default)")
+
+    parser.add_option(
+        "--verbose", "-v", action="store_true", default=False, dest="verbose",
+        help="Print detailed output including arjun's checkrepair lines")
+
+    return parser
 
 
-def generate_cnf(fname, seed):
-    """Generate a small random CNF using the Brummayer fuzzer."""
-    cmd = f"{sys.executable} {FUZZER} -s {seed} -i 3 -I 8"
+def generate_cnf(fname, seed, min_vars, max_vars):
+    """Generate a random CNF using the Brummayer fuzzer."""
+    cmd = [sys.executable, FUZZER, "-s", str(seed),
+           "-i", str(min_vars), "-I", str(max_vars)]
     with open(fname, "w") as f:
-        subprocess.run(cmd.split(), stdout=f, check=True)
+        subprocess.run(cmd, stdout=f, check=True)
 
 
 def add_projection(fname):
@@ -40,7 +76,7 @@ def add_projection(fname):
                 break
 
     if num_vars == 0:
-        print(f"ERROR: No 'p cnf' header in {fname}")
+        print("ERROR: No 'p cnf' header in %s" % fname)
         return None
 
     all_vars = list(range(1, num_vars + 1))
@@ -70,7 +106,7 @@ def is_unsat(fname):
     return None  # unknown
 
 
-def run_arjun_checkrepair(fname, seed):
+def run_arjun_checkrepair(fname, seed, timeout):
     """Run arjun with --synth --checkrepair and analyze output."""
     cmd = [
         ARJUN,
@@ -92,7 +128,7 @@ def run_arjun_checkrepair(fname, seed):
 
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=TIMEOUT)
+            cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return "timeout", None
 
@@ -132,13 +168,19 @@ def run_arjun_checkrepair(fname, seed):
 
 
 def main():
-    random.seed(42)
+    parser = set_up_parser()
+    options, _ = parser.parse_args()
+
+    if options.seed is not None:
+        random.seed(options.seed)
+    else:
+        random.seed(42)
 
     if not os.path.isfile(ARJUN):
-        print(f"ERROR: arjun binary not found at {ARJUN}")
+        print("ERROR: arjun binary not found at %s" % ARJUN)
         sys.exit(1)
     if not os.path.isfile(FUZZER):
-        print(f"ERROR: fuzzer not found at {FUZZER}")
+        print("ERROR: fuzzer not found at %s" % FUZZER)
         sys.exit(1)
 
     stats = {
@@ -151,20 +193,32 @@ def main():
         "bad_increased": 0,
     }
 
-    print(f"Running {NUM_RUNS} tests with --checkrepair...\n")
+    num = options.num_runs
+    print("Running %d tests with --checkrepair "
+          "(vars %d-%d, timeout %ds)...\n"
+          % (num, options.min_vars, options.max_vars, options.timeout))
 
     with tempfile.TemporaryDirectory(prefix="checkrepair_") as tmpdir:
-        for i in range(NUM_RUNS):
+        for i in range(num):
             seed = random.randint(0, 10**9)
-            fname = os.path.join(tmpdir, f"test_{i}.cnf")
+            fname = os.path.join(tmpdir, "test_%d.cnf" % i)
 
-            print(f"[{i+1}/{NUM_RUNS}] seed={seed} ", end="", flush=True)
+            print("[%d/%d] seed=%d " % (i + 1, num, seed), end="", flush=True)
 
-            generate_cnf(fname, seed)
+            generate_cnf(fname, seed, options.min_vars, options.max_vars)
             proj = add_projection(fname)
             if proj is None:
                 print("SKIP (bad CNF)")
                 continue
+
+            if options.verbose:
+                # Count vars/clauses for context
+                with open(fname) as f:
+                    for line in f:
+                        if line.startswith("p cnf"):
+                            print("(%s, proj=%d) " % (
+                                line.strip(), len(proj)), end="", flush=True)
+                            break
 
             sat_status = is_unsat(fname)
             if sat_status is True:
@@ -176,7 +230,8 @@ def main():
                 continue
 
             stats["total"] += 1
-            result, error_output = run_arjun_checkrepair(fname, seed)
+            result, error_output = run_arjun_checkrepair(
+                fname, seed, options.timeout)
 
             if result == "timeout":
                 print("TIMEOUT")
@@ -184,44 +239,46 @@ def main():
                 continue
 
             if result == "crash" or result == "error":
-                print(f"CRASH/ERROR")
+                print("CRASH/ERROR")
                 stats["crash"] += 1
                 if error_output:
-                    # Print last 10 lines of output for debugging
                     lines = error_output.strip().split("\n")
                     for line in lines[-10:]:
-                        print(f"  | {line}")
+                        print("  | %s" % line)
                 continue
 
             info = result
             counts = info["counts"]
 
             if len(counts) == 0:
-                print(f"OK (no repair iterations, solved immediately)")
+                print("OK (no repair iterations, solved immediately)")
                 stats["no_repair"] += 1
             elif info["increased"]:
-                print(f"BAD - count INCREASED! counts={counts}")
+                print("BAD - count INCREASED! counts=%s" % counts)
                 stats["bad_increased"] += 1
-                # Print relevant output lines
                 for line in info["output"].split("\n"):
                     if "checkrepair" in line:
-                        print(f"  | {line.strip()}")
+                        print("  | %s" % line.strip())
             else:
-                print(f"OK (counts={counts}, "
-                      f"decreased={info['decreased']}, "
-                      f"unchanged={info['unchanged']})")
+                print("OK (counts=%s, decreased=%d, unchanged=%d)"
+                      % (counts, info["decreased"], info["unchanged"]))
                 stats["ok_decreased"] += 1
 
-    print(f"\n{'='*60}")
-    print(f"Results:")
-    print(f"  Total runs with repair: {stats['total']}")
-    print(f"  Skipped (UNSAT):        {stats['skipped_unsat']}")
-    print(f"  Timeout:                {stats['timeout']}")
-    print(f"  Crash/Error:            {stats['crash']}")
-    print(f"  No repair needed:       {stats['no_repair']}")
-    print(f"  OK (monotone decrease): {stats['ok_decreased']}")
-    print(f"  BAD (count increased):  {stats['bad_increased']}")
-    print(f"{'='*60}")
+            if options.verbose:
+                for line in info["output"].split("\n"):
+                    if "checkrepair" in line:
+                        print("  | %s" % line.strip())
+
+    print("\n" + "=" * 60)
+    print("Results:")
+    print("  Total runs with repair: %d" % stats["total"])
+    print("  Skipped (UNSAT):        %d" % stats["skipped_unsat"])
+    print("  Timeout:                %d" % stats["timeout"])
+    print("  Crash/Error:            %d" % stats["crash"])
+    print("  No repair needed:       %d" % stats["no_repair"])
+    print("  OK (monotone decrease): %d" % stats["ok_decreased"])
+    print("  BAD (count increased):  %d" % stats["bad_increased"])
+    print("=" * 60)
 
     if stats["bad_increased"] > 0:
         print("\nWARNING: Some runs had increasing error counts!")
