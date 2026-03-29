@@ -12,6 +12,8 @@ import random
 import tempfile
 import re
 import optparse
+import time
+import itertools
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -28,8 +30,8 @@ def set_up_parser():
     parser = optparse.OptionParser(usage=usage, description=desc)
 
     parser.add_option(
-        "--num", "-n", type=int, default=30, dest="num_runs",
-        help="Number of test runs (default: %default)")
+        "--num", "-n", type=int, default=-1, dest="num_runs",
+        help="Number of test runs, -1 for infinite (default: %default)")
 
     parser.add_option(
         "--seed", type=int, default=None, dest="seed",
@@ -194,16 +196,24 @@ def main():
     }
 
     num = options.num_runs
-    print("Running %d tests with --checkrepair "
-          "(vars %d-%d, timeout %ds)...\n"
-          % (num, options.min_vars, options.max_vars, options.timeout))
+    if num == -1:
+        print("Running indefinitely with --checkrepair "
+              "(vars %d-%d, timeout %ds)...\n"
+              % (options.min_vars, options.max_vars, options.timeout))
+        counter = itertools.count(1)
+    else:
+        print("Running %d tests with --checkrepair "
+              "(vars %d-%d, timeout %ds)...\n"
+              % (num, options.min_vars, options.max_vars, options.timeout))
+        counter = range(1, num + 1)
 
     with tempfile.TemporaryDirectory(prefix="checkrepair_") as tmpdir:
-        for i in range(num):
+        for i in counter:
             seed = random.randint(0, 10**9)
             fname = os.path.join(tmpdir, "test_%d.cnf" % i)
+            label = "[%d]" % i if num == -1 else "[%d/%d]" % (i, num)
 
-            print("[%d/%d] seed=%d " % (i + 1, num, seed), end="", flush=True)
+            print("%s seed=%d " % (label, seed), end="", flush=True)
 
             generate_cnf(fname, seed, options.min_vars, options.max_vars)
             proj = add_projection(fname)
@@ -230,16 +240,18 @@ def main():
                 continue
 
             stats["total"] += 1
+            t_start = time.time()
             result, error_output = run_arjun_checkrepair(
                 fname, seed, options.timeout)
+            elapsed = time.time() - t_start
 
             if result == "timeout":
-                print("TIMEOUT")
+                print("TIMEOUT (%.1fs)" % elapsed)
                 stats["timeout"] += 1
                 continue
 
             if result == "crash" or result == "error":
-                print("CRASH/ERROR")
+                print("CRASH/ERROR (%.1fs)" % elapsed)
                 stats["crash"] += 1
                 if error_output:
                     lines = error_output.strip().split("\n")
@@ -251,17 +263,21 @@ def main():
             counts = info["counts"]
 
             if len(counts) == 0:
-                print("OK (no repair iterations, solved immediately)")
+                print("OK (no repair iterations, solved immediately) "
+                      "(%.1fs)" % elapsed)
                 stats["no_repair"] += 1
             elif info["increased"]:
-                print("BAD - count INCREASED! counts=%s" % counts)
+                print("BAD - count INCREASED! counts=%s (%.1fs)"
+                      % (counts, elapsed))
                 stats["bad_increased"] += 1
                 for line in info["output"].split("\n"):
                     if "checkrepair" in line:
                         print("  | %s" % line.strip())
             else:
-                print("OK (counts=%s, decreased=%d, unchanged=%d)"
-                      % (counts, info["decreased"], info["unchanged"]))
+                print("OK (counts=%s, decreased=%d, unchanged=%d) "
+                      "(%.1fs)"
+                      % (counts, info["decreased"], info["unchanged"],
+                         elapsed))
                 stats["ok_decreased"] += 1
 
             if options.verbose:
