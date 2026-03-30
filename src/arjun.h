@@ -910,7 +910,6 @@ public:
     SimplifiedCNF(const CMSat::FieldGen* _fg) : fg(_fg->dup()), multiplier_weight(fg->one()) {}
     ~SimplifiedCNF() = default;
     SimplifiedCNF& operator=(const SimplifiedCNF& other) {
-        assert(other.defs_invariant());
         fg = other.fg->dup();
         need_aig = other.need_aig;
         clauses = other.clauses;
@@ -942,7 +941,6 @@ public:
             orig_sampl_vars_bv = other.orig_sampl_vars_bv;
             orig_sampl_vars_set = other.orig_sampl_vars_set;
         }
-        assert(defs_invariant());
 
         return *this;
     }

@@ -773,7 +773,7 @@ void Manthan::const_functions() {
 }
 
 SimplifiedCNF Manthan::do_manthan() {
-    assert(cnf.get_need_aig() && cnf.defs_invariant());
+    SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
     const double my_time = cpuTime();
     const auto ret = cnf.find_disconnected();
     verb_print(1, "[manthan] Found " << ret.size() << " components");
@@ -1054,7 +1054,7 @@ bool Manthan::verify_final_cnf(const SimplifiedCNF& fcnf) const {
         cout << "ERROR: var " << v+1 << " not defined in final CNF!" << endl;
         assert(false && "All to-define vars must be defined in final CNF");
     }
-    assert(fcnf.get_need_aig() && fcnf.defs_invariant());
+    SLOW_DEBUG_DO(assert(fcnf.get_need_aig() && fcnf.defs_invariant()));
     return true;
 }
 

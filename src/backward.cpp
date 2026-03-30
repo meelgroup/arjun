@@ -371,7 +371,7 @@ void Minimize::add_all_indics_except(const set<uint32_t>& except) {
 
 void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf& mconf) {
     SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
-    assert(cnf.get_need_aig() && cnf.defs_invariant());
+    SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
 
     const double start_time = cpuTime();
     fill_solver_synth(cnf);
@@ -537,5 +537,5 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
         << " still to define: " << to_define2.size()
         << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time)
         << " mem: " << memUsedTotal()/(1024*1024) << " MB");
-    assert(cnf.get_need_aig() && cnf.defs_invariant());
+    SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
 }

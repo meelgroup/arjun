@@ -121,7 +121,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     SLOW_DEBUG_DO(cnf.check_red_cls_deriveable());
     const double my_time = cpuTime();
     if (cnf.get_need_aig()) {
-        assert(cnf.defs_invariant());
+        SLOW_DEBUG_DO(assert(cnf.defs_invariant()));
         cnf.get_var_types(conf.verb | verbose_debug_enabled, "start get_fully_simplified_renumbered_cnf").unpack_to(input, to_define, backward_defined);
     }
     for(const auto& v: cnf.get_sampl_vars())

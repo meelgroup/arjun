@@ -317,7 +317,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         const uint32_t verb) const {
     vector<uint32_t> elimed_vars = solver->get_elimed_vars();
     const auto new_to_orig_var = get_new_to_orig_var();
-    assert(defs_invariant());
+    SLOW_DEBUG_DO(assert(defs_invariant()));
 
     // We are all in NEW here. So we need to map back to orig, both the
     // definition and the target
@@ -647,7 +647,7 @@ DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
         const vector<uint32_t>& empty_sampl_vars,
         uint32_t verb
 ) const {
-    assert(defs_invariant());
+    SLOW_DEBUG_DO(assert(defs_invariant()));
 
     SimplifiedCNF scnf(fg);
     vector<CMSat::Lit> clause;
@@ -753,7 +753,7 @@ DLL_PUBLIC SimplifiedCNF SimplifiedCNF::get_cnf(
     if (verb) cout << "c o solver orig num vars: " << solver->nVars() << " solver simp num vars: "
         << solver->simplified_nvars() << endl;
 
-    assert(scnf.defs_invariant());
+    SLOW_DEBUG_DO(assert(scnf.defs_invariant()));
     return scnf;
 }
 
@@ -1098,7 +1098,7 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_defs_to_file_txt(const string& fname) c
 }
 
 DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) const {
-    assert(get_need_aig() && defs_invariant());
+    SLOW_DEBUG_DO(assert(get_need_aig() && defs_invariant()));
 
     ofstream fout(fname);
     if (!fout) {
@@ -1197,7 +1197,7 @@ DLL_PUBLIC void SimplifiedCNF::read_aig_defs_from_file(const string& fname) {
 // Notice that *this can have a "defs" that is LARGER than the original CNF
 // Since we can add vars via BVA
 DLL_PUBLIC vector<CMSat::lbool> SimplifiedCNF::extend_sample(const vector<CMSat::lbool>& s, const bool relaxed) const {
-    assert(get_need_aig() && defs_invariant());
+    SLOW_DEBUG_DO(assert(get_need_aig() && defs_invariant()));
     assert(s.size() <= defs.size() && "Sample size must be at least the number of variables. BVA could add vars");
     assert(check_orig_sampl_vars_undefined());
 

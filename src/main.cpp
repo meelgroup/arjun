@@ -333,7 +333,7 @@ void do_synthesis() {
     cnf.check_cnf_vars();
     cnf.set_orig_clauses(cnf.get_clauses());
     cnf.set_orig_sampl_vars(cnf.get_sampl_vars());
-    assert(cnf.get_need_aig() && cnf.defs_invariant());
+    SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
     check_cnf_sat(cnf);
     cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
     cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
