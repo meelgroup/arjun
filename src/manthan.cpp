@@ -944,6 +944,77 @@ SimplifiedCNF Manthan::do_manthan() {
                 }
                 verb_print(2, "[manthan] Extra cex " << ci << " repaired " << extra_repaired << " vars");
             }
+
+            // Collect fresh CEXs after processing pre-collected ones for continued progress
+            const double fresh_start_time = cpuTime();
+            const double fresh_time_budget = std::max(2.0, (cpuTime() - repair_start_time) * 0.5);
+            for (int fresh_round = 0; fresh_round < mconf.multi_cex_k; fresh_round++) {
+                if (tot_repaired >= mconf.max_repairs) break;
+                if (cpuTime() - fresh_start_time > fresh_time_budget) {
+                    verb_print(2, "[manthan] Fresh round time budget exhausted after " << fresh_round << " rounds");
+                    break;
+                }
+                inject_formulas_into_solver();
+                sample fresh_ctx;
+                bool done = get_counterexample(fresh_ctx);
+                if (done) { at_least_one_repaired = true; break; }
+
+                // Collect extra CEXs for this fresh round to get better free_inputs
+                auto [fresh_cexs, fresh_free_inputs] = collect_extra_cex(fresh_ctx);
+                fresh_ctx = fresh_cexs[0];
+                // Merge fresh free_inputs with original free_inputs
+                for (const auto& x : fresh_free_inputs) free_inputs.insert(x);
+
+                fresh_ctx.resize(cex_solver.nVars(), l_Undef);
+                recompute_all_y_hat_cnf(fresh_ctx);
+                compute_needs_repair(fresh_ctx);
+                if (needs_repair.empty()) continue;
+
+                uint32_t fresh_repaired = 0;
+                while(!needs_repair.empty()) {
+                    auto y_rep = find_next_repair_var(fresh_ctx);
+                    bool d = repair(y_rep, fresh_ctx, free_inputs);
+                    if (d) {
+                        at_least_one_repaired = true;
+                        fresh_repaired++;
+                        num_repaired++;
+                        tot_repaired++;
+                        if (tot_repaired >= mconf.max_repairs) break;
+                    } else {
+                        repair_failed++;
+                    }
+                    SLOW_DEBUG_DO(assert(ctx_is_sat(fresh_ctx)));
+                    SLOW_DEBUG_DO(assert(ctx_y_hat_correct(fresh_ctx)));
+                }
+
+                // Also process the extra CEXs from this fresh round
+                for (size_t ci = 1; ci < fresh_cexs.size(); ci++) {
+                    if (tot_repaired >= mconf.max_repairs) break;
+                    auto extra_ctx = fresh_cexs[ci];
+                    extra_ctx.resize(cex_solver.nVars(), l_Undef);
+                    recompute_all_y_hat_cnf(extra_ctx);
+                    compute_needs_repair(extra_ctx);
+                    if (needs_repair.empty()) continue;
+                    while(!needs_repair.empty()) {
+                        auto y_rep = find_next_repair_var(extra_ctx);
+                        bool d = repair(y_rep, extra_ctx, free_inputs);
+                        if (d) {
+                            at_least_one_repaired = true;
+                            fresh_repaired++;
+                            num_repaired++;
+                            tot_repaired++;
+                            if (tot_repaired >= mconf.max_repairs) break;
+                        } else {
+                            repair_failed++;
+                        }
+                        SLOW_DEBUG_DO(assert(ctx_is_sat(extra_ctx)));
+                        SLOW_DEBUG_DO(assert(ctx_y_hat_correct(extra_ctx)));
+                    }
+                }
+
+                verb_print(2, "[manthan] Fresh round " << fresh_round << " repaired " << fresh_repaired << " vars");
+                if (fresh_repaired == 0) break; // no progress, stop
+            }
         }
 
         if (mconf.check_repair) check_repair_monotonic();
