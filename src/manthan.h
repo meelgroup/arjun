@@ -52,7 +52,7 @@ class Manthan {
             , repair_solver(static_cast<SolverType>(_mconf.repair_solver_type), _mconf.repair_cache_size)
             , cnf(_cnf)
         {
-                mtrand.seed(42);
+                mtrand.seed(conf.seed);
         }
         ArjunNS::SimplifiedCNF do_manthan();
         friend class ManthanLearn;
