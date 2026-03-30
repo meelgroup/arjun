@@ -38,14 +38,38 @@ def set_up_parser():
         help="Random seed for reproducibility (default: random)")
 
     parser.add_option(
-        "--minvars", type=int, default=3, dest="min_vars",
+        "--minvars", type=int, default=8, dest="min_vars",
         help="Minimum number of input variables for the CNF generator "
              "(passed as -i to cnf-fuzz-brummayer, default: %default)")
 
     parser.add_option(
-        "--maxvars", type=int, default=8, dest="max_vars",
+        "--maxvars", type=int, default=20, dest="max_vars",
         help="Maximum number of input variables for the CNF generator "
              "(passed as -I to cnf-fuzz-brummayer, default: %default)")
+
+    parser.add_option(
+        "--minrefs", type=int, default=1, dest="min_refs",
+        help="Minimum references per variable -- higher values create "
+             "deeper circuits with more clauses "
+             "(passed as -r to cnf-fuzz-brummayer, default: %default)")
+
+    parser.add_option(
+        "--minrandcls", type=int, default=1, dest="min_rand_cls_pct",
+        help="Minimum percentage of random clauses to add on top of "
+             "structural clauses (0-100, default: %default)")
+
+    parser.add_option(
+        "--maxrandcls", type=int, default=10, dest="max_rand_cls_pct",
+        help="Maximum percentage of random clauses to add on top of "
+             "structural clauses (0-100, default: %default)")
+
+    parser.add_option(
+        "--mincllen", type=int, default=2, dest="min_clause_len",
+        help="Minimum random clause length (default: %default)")
+
+    parser.add_option(
+        "--maxcllen", type=int, default=6, dest="max_clause_len",
+        help="Maximum random clause length (default: %default)")
 
     parser.add_option(
         "--timeout", "-t", type=int, default=120, dest="timeout",
@@ -58,10 +82,15 @@ def set_up_parser():
     return parser
 
 
-def generate_cnf(fname, seed, min_vars, max_vars):
+def generate_cnf(fname, seed, options):
     """Generate a random CNF using the Brummayer fuzzer."""
     cmd = [sys.executable, FUZZER, "-s", str(seed),
-           "-i", str(min_vars), "-I", str(max_vars)]
+           "-i", str(options.min_vars), "-I", str(options.max_vars),
+           "-r", str(options.min_refs),
+           "-p", str(options.min_rand_cls_pct),
+           "-P", str(options.max_rand_cls_pct),
+           "-l", str(options.min_clause_len),
+           "-L", str(options.max_clause_len)]
     with open(fname, "w") as f:
         subprocess.run(cmd, stdout=f, check=True)
 
@@ -195,15 +224,16 @@ def main():
     }
 
     num = options.num_runs
+    desc = ("vars %d-%d, refs %d, rand-cls %d-%d%%, cl-len %d-%d, timeout %ds"
+            % (options.min_vars, options.max_vars, options.min_refs,
+               options.min_rand_cls_pct, options.max_rand_cls_pct,
+               options.min_clause_len, options.max_clause_len,
+               options.timeout))
     if num == -1:
-        print("Running indefinitely with --checkrepair "
-              "(vars %d-%d, timeout %ds)...\n"
-              % (options.min_vars, options.max_vars, options.timeout))
+        print("Running indefinitely with --checkrepair (%s)...\n" % desc)
         counter = itertools.count(1)
     else:
-        print("Running %d tests with --checkrepair "
-              "(vars %d-%d, timeout %ds)...\n"
-              % (num, options.min_vars, options.max_vars, options.timeout))
+        print("Running %d tests with --checkrepair (%s)...\n" % (num, desc))
         counter = range(1, num + 1)
 
     with tempfile.TemporaryDirectory(prefix="checkrepair_") as tmpdir:
@@ -214,7 +244,7 @@ def main():
 
             print("%s seed=%d " % (label, seed), end="", flush=True)
 
-            generate_cnf(fname, seed, options.min_vars, options.max_vars)
+            generate_cnf(fname, seed, options)
             proj = add_projection(fname)
             if proj is None:
                 print("SKIP (bad CNF)")
