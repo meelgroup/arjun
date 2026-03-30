@@ -339,7 +339,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         const auto def = solver->get_cls_defining_var(target);
         const auto orig_def = map_cl_to_orig(def);
         const auto orig_target = new_to_orig_var.at(target);
-        if (orig_sampl_vars.count(orig_target.var())) {
+        if (orig_sampl_vars_bv[orig_target.var()]) {
             assert(def.empty() && "When elminating orig sampling vars, they MUST be empty, that's all we allow to be elimed");
             if (verb >= 3) cout << "c o Elimed empty sampling orig var: " << orig_target << endl;
             continue;
@@ -406,12 +406,12 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
     vector<uint32_t> add_elimed;
     for(const auto& elimed: elimed_vars) {
         const auto orig_replacing = new_to_orig_var.at(elimed);
-        if (orig_sampl_vars.count(orig_replacing.var())) continue;
+        if (orig_sampl_vars_bv[orig_replacing.var()]) continue;
 
         Lit bad_lit = lit_Undef;
         for(const auto& lit_replaced: var_to_lits_it_replaced[elimed]) {
             const auto orig_replaced = new_to_orig_var.at(lit_replaced.var()) ^ lit_replaced.sign();
-            if (orig_sampl_vars.count(orig_replaced.var())) {
+            if (orig_sampl_vars_bv[orig_replaced.var()]) {
                 bad_lit = lit_replaced;
                 break;
             }
@@ -439,19 +439,19 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
             if (verb >= 3)
                 cout << "c o [bve-aig] replacing var: " << orig_replaced << " with aig of " << orig_replacing << endl;
             const auto aig = scnf.defs[orig_replacing.var()];
-            if (orig_sampl_vars.count(orig_replaced.var()) && orig_sampl_vars.count(orig_replacing.var())) {
+            if (orig_sampl_vars_bv[orig_replaced.var()] && orig_sampl_vars_bv[orig_replacing.var()]) {
                 continue;
             }
             if (aig == nullptr) {
                 // The orig_replacing MUST be an orig sampling var
-                assert(orig_sampl_vars.count(orig_replacing.var()) &&
+                assert(orig_sampl_vars_bv[orig_replacing.var()] &&
                     "Replaced variable must be an original sampling var here");
                 scnf.defs[orig_replaced.var()] = AIG::new_lit(orig_replacing ^ orig_replaced.sign());
             } else {
-                assert(!orig_sampl_vars.count(orig_replacing.var()));
+                assert(!orig_sampl_vars_bv[orig_replacing.var()]);
                 assert(aig != nullptr);
                 assert(scnf.defs[orig_replaced.var()] == nullptr);
-                assert(!orig_sampl_vars.count(orig_replaced.var()) &&
+                assert(!orig_sampl_vars_bv[orig_replaced.var()] &&
                     "Replaced variable cannot be in the orig sampling set here -- we would have elimed what it got replaced with");
                 if (orig_replaced.sign()) scnf.defs[orig_replaced.var()] = AIG::new_not(aig);
                 else scnf.defs[orig_replaced.var()] = aig;
@@ -529,7 +529,7 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig
 
         auto l = new_to_orig_var.at(v);
         assert(defs[l.var()] == nullptr && "Variable must not already have a definition");
-        assert(orig_sampl_vars.count(l.var()) == 0 && "Original sampling var cannot have definition via extend_synth or backward_round_synth");
+        assert(!orig_sampl_vars_bv[l.var()] && "Original sampling var cannot have definition via extend_synth or backward_round_synth");
         if (l.sign()) defs[l.var()] = AIG::new_not(aig);
         else defs[l.var()] = aig;
     }
@@ -577,7 +577,7 @@ DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
 
         map<aig_ptr, CMSat::lbool> cache;
         for(uint32_t v = 0; v < defs.size(); ++v) {
-            if (orig_sampl_vars.count(v)) continue;
+            if (orig_sampl_vars_bv[v]) continue;
             if (defs[v] == nullptr) continue;
 
             lbool eval_aig = evaluate(orig_vals, v, cache);
@@ -781,7 +781,7 @@ DLL_PUBLIC void SimplifiedCNF::fix_mapping_after_renumber(SimplifiedCNF& scnf, c
         // Find which orig to keep undefined (prefer orig_sampl_vars)
         uint32_t orig_to_keep = UINT32_MAX;
         for(const auto& o: origs) {
-            if (scnf.orig_sampl_vars.count(o)) {
+            if (scnf.orig_sampl_vars_bv[o]) {
                 orig_to_keep = o;
                 break;
             }
@@ -931,6 +931,13 @@ DLL_PUBLIC void SimplifiedCNF::read_aig_defs(ifstream& in) {
         assert(id_to_node.size() > id);
         assert(i < num_defs);
         defs[i] = id_to_node[id];
+    }
+
+    // Populate bitvector for O(1) lookup
+    orig_sampl_vars_bv.assign(defs.size(), false);
+    for (const auto& v : orig_sampl_vars) {
+        assert(v < defs.size());
+        orig_sampl_vars_bv[v] = true;
     }
 }
 
@@ -1195,7 +1202,7 @@ DLL_PUBLIC vector<CMSat::lbool> SimplifiedCNF::extend_sample(const vector<CMSat:
     assert(check_orig_sampl_vars_undefined());
 
     for(uint32_t v = 0; v < s.size(); v++) {
-        if (orig_sampl_vars.count(v)) {
+        if (orig_sampl_vars_bv[v]) {
             assert(s[v] != CMSat::l_Undef && "Original sampling variable must be defined in the sample");
         } else {
             if (!relaxed) assert(defs[v] != nullptr && "Non-original sampling variable must have definition");
@@ -1239,15 +1246,18 @@ DLL_PUBLIC void SimplifiedCNF::replace_clauses_with(vector<int>& ret, uint32_t n
 // input variables are NOT included in the dependencies
 DLL_PUBLIC map<uint32_t, set<uint32_t>> SimplifiedCNF::compute_dependencies(const set<uint32_t>& vars) const {
     auto new_to_orig_var = get_new_to_orig_var();
-    map<uint32_t, set<uint32_t>> cache;
+    const uint32_t ndefs = defs.size();
+    vector<vector<bool>> bv_cache(ndefs);
+    vector<uint8_t> bv_state(ndefs, 0);
     map<uint32_t, set<uint32_t>> ret;
     for(auto& n: vars) {
         const auto orig_v = new_to_orig_var.at(n).var();
-        const auto ret_orig = get_dependent_vars_recursive(orig_v, cache);
+        get_dependent_vars_recursive_bv(orig_v, bv_cache, bv_state);
         set<uint32_t> ret_new;
-        for(const auto& ov: ret_orig) {
+        for (uint32_t ov = 0; ov < ndefs; ov++) {
+            if (bv_cache[orig_v].empty() || !bv_cache[orig_v][ov]) continue;
             if(!orig_to_new_var.count(ov)) continue;
-            if (orig_sampl_vars.count(ov)) continue; //orig sampl vars not included
+            if (orig_sampl_vars_bv[ov]) continue; //orig sampl vars not included
             const CMSat::Lit nl = orig_to_new_var.at(ov);
             assert(nl != CMSat::lit_Undef);
             ret_new.insert(nl.var());
@@ -1506,6 +1516,10 @@ void SimplifiedCNF::set_def(const uint32_t v_orig, const aig_ptr& def) {
 DLL_PUBLIC VarTypes
     SimplifiedCNF::get_var_types([[maybe_unused]] uint32_t verb, const string& str) const {
     assert(need_aig);
+    const uint32_t n = defs.size();
+    vector<vector<bool>> bv_cache(n);
+    vector<uint8_t> bv_state(n, 0);
+
     set<uint32_t> input;
     set<uint32_t> input_orig;
     for (const auto& v: get_orig_sampl_vars()) {
@@ -1532,7 +1546,7 @@ DLL_PUBLIC VarTypes
     assert(input.size() == sampl_vars.size());
     set<P> to_define;
     for (uint32_t orig = 0; orig < num_defs(); orig++) {
-        if (!get_orig_sampl_vars().count(orig) && !defined(orig)) {
+        if (!orig_sampl_vars_bv[orig] && !defined(orig)) {
             const auto it = orig_to_new_var.find(orig);
             assert(it != orig_to_new_var.end() && "if it hasn't been defined, it must be in CNF");
             const uint32_t new_var = it->second.var();
@@ -1547,25 +1561,27 @@ DLL_PUBLIC VarTypes
     set<uint32_t> bve_defined_vars_orig;
     set<uint32_t> forced_vars_orig;
     set<uint32_t> scc_vars_orig;
-    map<uint32_t, set<uint32_t>> cache;
     for (uint32_t orig = 0; orig < num_defs(); orig++) {
-        if (get_orig_sampl_vars().count(orig)) continue;
+        if (orig_sampl_vars_bv[orig]) continue;
         if (!orig_to_new_var.count(orig)) {
             // Eliminated already from the CNF: either BVE, SCC, or forced
             assert(defs[orig] != nullptr && "if it is not in the CNF, it must be defined");
-            const auto s = get_dependent_vars_recursive(orig, cache);
-            if (s.empty()) forced_vars_orig.insert(orig);
-            else if (s.size() == 1) scc_vars_orig.insert(orig);
+            get_dependent_vars_recursive_bv(orig, bv_cache, bv_state);
+            // Count set bits in cache[orig]
+            uint32_t dep_count = 0;
+            for (uint32_t i = 0; i < n; i++) if (!bv_cache[orig].empty() && bv_cache[orig][i]) dep_count++;
+            if (dep_count == 0) forced_vars_orig.insert(orig);
+            else if (dep_count == 1) scc_vars_orig.insert(orig);
             else bve_defined_vars_orig.insert(orig);
             continue;
         }
 
         // This var is NOT input and IS in the CNF
         if (!defined(orig)) continue;
-        auto s = get_dependent_vars_recursive(orig, cache);
+        get_dependent_vars_recursive_bv(orig, bv_cache, bv_state);
         bool only_input_deps = true;
-        for(const auto& d: s) {
-            if (!get_orig_sampl_vars().count(d)) {
+        for (uint32_t d = 0; d < n; d++) {
+            if (!bv_cache[orig].empty() && bv_cache[orig][d] && !orig_sampl_vars_bv[d]) {
                 only_input_deps = false;
                 break;
             }
@@ -1684,7 +1700,7 @@ DLL_PUBLIC CMSat::lbool SimplifiedCNF::evaluate(const vector<CMSat::lbool>& vals
     assert(var < defs.size());
     assert(vals.size() == defs.size());
     for(uint32_t i = 0; i < vals.size(); i++) {
-        if (orig_sampl_vars.count(i)) {
+        if (orig_sampl_vars_bv[i]) {
             assert(vals[i] != CMSat::l_Undef && "Original sampling variable must be defined in the sample");
         } else {
             assert(vals[i] == CMSat::l_Undef && "Non-original sampling variable must be undefined in the sample");
@@ -1703,7 +1719,7 @@ DLL_PUBLIC bool SimplifiedCNF::check_orig_sampl_vars_undefined() const {
         if(defs[v] == nullptr) continue;
         else if (defs[v]->type == AIGT::t_const) continue;
         else if (defs[v]->type == AIGT::t_lit) {
-            assert(orig_sampl_vars.count(defs[v]->var) && "If orig_sampl_var is defined to a literal, that literal must also be an orig_sampl_var");
+            assert(orig_sampl_vars_bv[defs[v]->var] && "If orig_sampl_var is defined to a literal, that literal must also be an orig_sampl_var");
             continue;
         } else {
             cerr << "ERROR: Orig sampl var " << v+1
@@ -1719,7 +1735,7 @@ DLL_PUBLIC bool SimplifiedCNF::check_orig_sampl_vars_undefined() const {
 DLL_PUBLIC bool SimplifiedCNF::synth_done() const {
     if (!need_aig) return true;
     for(uint32_t v = 0; v < defs.size(); v++) {
-        if (orig_sampl_vars.count(v)) continue;
+        if (orig_sampl_vars_bv[v]) continue;
         if (!defined(v)) return false;
     }
     return true;
@@ -1765,6 +1781,47 @@ DLL_PUBLIC set<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const uint3
         return final_dep;
     };
     return visit(orig_v);
+}
+
+DLL_PUBLIC void SimplifiedCNF::get_dependent_vars_recursive_bv(
+        const uint32_t orig_v,
+        vector<vector<bool>>& cache,
+        vector<uint8_t>& state) const {
+    assert(need_aig);
+    assert(defined(orig_v));
+    const uint32_t n = defs.size();
+
+    function<void(uint32_t)> visit = [&](uint32_t v) {
+        if (state[v] == 2) return; // already done
+        assert(state[v] != 1 && "Cycle detected in dependency graph");
+
+        if (!defined(v)) {
+            // Leaf: depends only on itself
+            if (cache[v].empty()) cache[v].assign(n, false);
+            cache[v][v] = true;
+            state[v] = 2;
+            return;
+        }
+
+        state[v] = 1; // in-progress
+        if (cache[v].empty()) cache[v].assign(n, false);
+
+        // Get immediate deps
+        vector<bool> imm_dep(n, false);
+        AIG::get_dependent_vars_bv(defs[v], imm_dep, v);
+
+        // Recurse into each immediate dep and OR their results
+        for (uint32_t d = 0; d < n; d++) {
+            if (!imm_dep[d]) continue;
+            visit(d);
+            // OR cache[d] into cache[v]
+            for (uint32_t i = 0; i < n; i++) {
+                if (cache[d][i]) cache[v][i] = true;
+            }
+        }
+        state[v] = 2; // done
+    };
+    visit(orig_v);
 }
 
 DLL_PUBLIC bool SimplifiedCNF::check_aig_cycles() const {
@@ -1834,13 +1891,16 @@ DLL_PUBLIC bool SimplifiedCNF::check_aig_cycles() const {
 
 DLL_PUBLIC void SimplifiedCNF::check_self_dependency() const {
     if (!need_aig) return;
-    map<uint32_t, set<uint32_t>> cache;
-    for(uint32_t orig_v = 0; orig_v < defs.size(); orig_v ++) {
-        if (orig_sampl_vars.count(orig_v)) {
+    const uint32_t n = defs.size();
+    vector<vector<bool>> cache(n);
+    vector<uint8_t> state(n, 0);
+
+    for(uint32_t orig_v = 0; orig_v < n; orig_v ++) {
+        if (orig_sampl_vars_bv[orig_v]) {
             if (!defined(orig_v)) continue;
             else if (defs[orig_v]->type == AIGT::t_lit) {
                 release_assert(defs[orig_v]->var != orig_v && "Variable depends on itself? Also this is an orig sampl var defined to a literal that has the same var?");
-                release_assert(orig_sampl_vars.count(defs[orig_v]->var) && "If orig_sampl_var is defined to a literal, that literal must also be an orig_sampl_var");
+                release_assert(orig_sampl_vars_bv[defs[orig_v]->var] && "If orig_sampl_var is defined to a literal, that literal must also be an orig_sampl_var");
                 continue;
             } else if (defs[orig_v]->type == AIGT::t_const) {
                 continue;
@@ -1852,7 +1912,7 @@ DLL_PUBLIC void SimplifiedCNF::check_self_dependency() const {
         if (!defined(orig_v)) continue;
 
         // This checks for self-dependency
-        get_dependent_vars_recursive(orig_v, cache);
+        get_dependent_vars_recursive_bv(orig_v, cache, state);
     }
 }
 
@@ -1906,7 +1966,7 @@ DLL_PUBLIC void SimplifiedCNF::check_cnf_vars() const {
 DLL_PUBLIC void SimplifiedCNF::check_all_vars_accounted_for() const {
     release_assert(need_aig);
     for(uint32_t v = 0; v < defs.size(); v ++) {
-        if (orig_sampl_vars.count(v)) continue; // we'll get this as input
+        if (orig_sampl_vars_bv[v]) continue; // we'll get this as input
         if (defined(v)) continue; // already defined
         if (orig_to_new_var.count(v)) continue; // appears in CNF
         cout << "ERROR: Orig var " << v+1 << " is not defined, not in orig_sampl_vars, and not in cnf" << endl;
@@ -1916,12 +1976,14 @@ DLL_PUBLIC void SimplifiedCNF::check_all_vars_accounted_for() const {
 
 DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars() const {
     release_assert(need_aig);
+    const uint32_t n = defs.size();
+    vector<vector<bool>> cache(n);
+    vector<uint8_t> state(n, 0);
 
     // Get reverse mapping from NEW vars to ORIG vars
     const auto new_to_orig_vars = get_new_to_orig_var_list();
 
     // Check each sampling variable
-    map<uint32_t, set<uint32_t>> cache;
     for(const auto& new_v : opt_sampl_vars) {
         release_assert(new_v < nvars);
 
@@ -1937,7 +1999,7 @@ DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_samp
             const uint32_t orig_v = orig_lit.var();
 
             // Check if this orig var is an orig_sampl_var
-            if (orig_sampl_vars.count(orig_v)) {
+            if (orig_sampl_vars_bv[orig_v]) {
                 // This is fine - it's an input variable
                 continue;
             }
@@ -1945,18 +2007,19 @@ DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_samp
             // This orig var is NOT an orig_sampl_var
             // If it's defined, it must only depend on orig_sampl_vars
             release_assert(defined(orig_v) && "Non-orig-sampl var mapping to sampling var must be defined");
-            /* if (defined(orig_v)) { */
-            const auto deps = get_dependent_vars_recursive(orig_v, cache);
+            get_dependent_vars_recursive_bv(orig_v, cache, state);
             bool only_orig_sampl = true;
-            for(const auto& dep_v : deps) {
-                if (!orig_sampl_vars.count(dep_v)) {
+            for (uint32_t dep_v = 0; dep_v < n; dep_v++) {
+                if (!cache[orig_v].empty() && cache[orig_v][dep_v] && !orig_sampl_vars_bv[dep_v]) {
                     only_orig_sampl = false;
                     cout << "ERROR: Sampling variable (new: " << new_v+1
                         << ", orig: " << orig_v+1 << ") depends on non-orig-sampl var "
                         << dep_v+1 << endl;
                     cout << "  Dependencies (orig): ";
-                    for(const auto& d : deps) {
-                        cout << d+1 << (orig_sampl_vars.count(d) ? "(orig)" : "(NOT-orig)") << " ";
+                    for (uint32_t d = 0; d < n; d++) {
+                        if (!cache[orig_v].empty() && cache[orig_v][d]) {
+                            cout << d+1 << (orig_sampl_vars_bv[d] ? "(orig)" : "(NOT-orig)") << " ";
+                        }
                     }
                     cout << endl;
                 }
@@ -1972,53 +2035,62 @@ DLL_PUBLIC bool SimplifiedCNF::check_all_opt_sampl_vars_depend_only_on_orig_samp
 // this checks that NO unsat-define has been made yet
 DLL_PUBLIC void SimplifiedCNF::check_pre_post_backward_round_synth() const {
     if (!need_aig) return;
-    map<uint32_t, set<uint32_t>> cache;
-    map<uint32_t, set<uint32_t>> dependencies;
-    for(const auto& [o, n] : orig_to_new_var) {
-        release_assert(o < defs.size());
-        release_assert(n != CMSat::lit_Undef && n.var() < nvars);
-        if (orig_sampl_vars.count(o)) continue; // don't care about orig sampling vars
+    const uint32_t n = defs.size();
+    vector<vector<bool>> cache(n);
+    vector<uint8_t> state(n, 0);
+
+    // Track which orig vars in CNF are defined (for cycle check at end)
+    vector<uint32_t> defined_in_cnf;
+    for(const auto& [o, nl] : orig_to_new_var) {
+        release_assert(o < n);
+        release_assert(nl != CMSat::lit_Undef && nl.var() < nvars);
+        if (orig_sampl_vars_bv[o]) continue; // don't care about orig sampling vars
         if (defined(o)) {
-            auto s = get_dependent_vars_recursive(o, cache);
-            dependencies[o] = s;
+            get_dependent_vars_recursive_bv(o, cache, state);
+            defined_in_cnf.push_back(o);
             bool only_orig_sampl = true;
-            for(const auto& v: s) {
-                if (!orig_sampl_vars.count(v)) {
+            for (uint32_t v = 0; v < n; v++) {
+                if (!cache[o].empty() && cache[o][v] && !orig_sampl_vars_bv[v]) {
                     only_orig_sampl = false;
                     break;
                 }
             }
             if (!after_backward_round_synth && !only_orig_sampl) {
-                cout << "ERROR: Found a variable in CNF, orig: " << o+1 << " new: " << n.var()+1
+                cout << "ERROR: Found a variable in CNF, orig: " << o+1 << " new: " << nl.var()+1
                     << " that is defined in terms of non-orig-sampl-vars before backward round synth.";
                 cout << endl << " in old: ";
-                for(const auto& v: s) cout << v+1 << "( " << (orig_sampl_vars.count(v) ? "o" : "n") << " ) ";
+                for (uint32_t v = 0; v < n; v++) {
+                    if (!cache[o].empty() && cache[o][v])
+                        cout << v+1 << "( " << (orig_sampl_vars_bv[v] ? "o" : "n") << " ) ";
+                }
                 cout << endl << " in new: ";
-                for(const auto& v: s) {
-                    auto it = orig_to_new_var.find(v);
-                    if (it == orig_to_new_var.end()) cout << "undef ";
-                    else cout << it->second.var()+1 << "( " << (orig_sampl_vars.count(v) ? "o" : "n") << " ) ";
+                for (uint32_t v = 0; v < n; v++) {
+                    if (!cache[o].empty() && cache[o][v]) {
+                        auto it = orig_to_new_var.find(v);
+                        if (it == orig_to_new_var.end()) cout << "undef ";
+                        else cout << it->second.var()+1 << "( " << (orig_sampl_vars_bv[v] ? "o" : "n") << " ) ";
+                    }
                 }
                 cout << endl;
                 release_assert(false && "Before backward round synth, variables in CNF must be defined ONLY in terms of orig_sampl_vars");
             }
         }
     }
-    for(const auto& [o, dep] : dependencies) {
-        release_assert(!orig_sampl_vars.count(o));
-        for(const auto& v: dep) {
+    // Cycle check: for each pair of defined vars, check no mutual dependency
+    for (const auto& o : defined_in_cnf) {
+        release_assert(!orig_sampl_vars_bv[o]);
+        for (uint32_t v = 0; v < n; v++) {
+            if (cache[o].empty() || !cache[o][v]) continue;
             // o depends on v
-            if (orig_sampl_vars.count(v)) continue;
-            auto it = dependencies.find(v);
-            if (it == dependencies.end()) continue;
-            if (it->second.count(o)) {
+            if (orig_sampl_vars_bv[v]) continue;
+            if (cache[v].empty()) continue;
+            if (cache[v][o]) {
                 // so v cannot depend on o
                 cout << "ERROR: Found a dependency cycle between orig vars "
                     << o+1 << " and " << v+1 << endl;
                 release_assert(false && "Dependency cycle found");
             }
         }
-
     }
 }
 
@@ -2123,6 +2195,8 @@ DLL_PUBLIC uint32_t SimplifiedCNF::new_vars(uint32_t vars) {
         orig_to_new_var[defs.size()] = CMSat::Lit(v, false);
         defs.push_back(nullptr);
     }
+    if (orig_sampl_vars_bv.size() < defs.size())
+        orig_sampl_vars_bv.resize(defs.size(), false);
     return nvars;
 }
 DLL_PUBLIC uint32_t SimplifiedCNF::new_var() {
@@ -2130,6 +2204,8 @@ DLL_PUBLIC uint32_t SimplifiedCNF::new_var() {
     nvars++;
     orig_to_new_var[defs.size()] = CMSat::Lit(v, false);
     defs.push_back(nullptr);
+    if (orig_sampl_vars_bv.size() < defs.size())
+        orig_sampl_vars_bv.resize(defs.size(), false);
     return nvars;
 }
 

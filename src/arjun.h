@@ -30,6 +30,7 @@ THE SOFTWARE.
 #include <string>
 #include <map>
 #include <set>
+#include <unordered_set>
 #include <optional>
 #include <fstream>
 #include <gmpxx.h>
@@ -203,6 +204,25 @@ public:
                     helper(aig->r);
                 }
                 visited.insert(aig);
+            };
+        helper(aig_orig);
+    }
+
+    // Bitvector version: dep[var] = true for each dependent var
+    static void get_dependent_vars_bv(const aig_ptr& aig_orig, std::vector<bool>& dep, uint32_t v) {
+        std::unordered_set<AIG*> visited;
+        std::function<void(const aig_ptr&)> helper =
+            [&](const aig_ptr& aig) {
+                if (visited.count(aig.get())) return;
+                if (aig->type == AIGT::t_lit) {
+                    assert(aig->var != v && "Variable cannot depend on itself");
+                    dep[aig->var] = true;
+                }
+                if (aig->type == AIGT::t_and) {
+                    helper(aig->l);
+                    helper(aig->r);
+                }
+                visited.insert(aig.get());
             };
         helper(aig_orig);
     }
@@ -919,6 +939,7 @@ public:
             aig_mng = other.aig_mng;
             orig_clauses = other.orig_clauses;
             orig_sampl_vars = other.orig_sampl_vars;
+            orig_sampl_vars_bv = other.orig_sampl_vars_bv;
             orig_sampl_vars_set = other.orig_sampl_vars_set;
         }
         assert(defs_invariant());
@@ -927,6 +948,59 @@ public:
     }
     SimplifiedCNF(const SimplifiedCNF& other) {
         *this = other;
+    }
+
+    SimplifiedCNF(SimplifiedCNF&& other) noexcept :
+        fg(std::move(other.fg)),
+        need_aig(other.need_aig),
+        clauses(std::move(other.clauses)),
+        red_clauses(std::move(other.red_clauses)),
+        proj(other.proj),
+        sampl_vars_set(other.sampl_vars_set),
+        opt_sampl_vars_set(other.opt_sampl_vars_set),
+        sampl_vars(std::move(other.sampl_vars)),
+        opt_sampl_vars(std::move(other.opt_sampl_vars)),
+        nvars(other.nvars),
+        multiplier_weight(std::move(other.multiplier_weight)),
+        weighted(other.weighted),
+        backbone_done(other.backbone_done),
+        weights(std::move(other.weights)),
+        orig_to_new_var(std::move(other.orig_to_new_var)),
+        aig_mng(std::move(other.aig_mng)),
+        defs(std::move(other.defs)),
+        orig_sampl_vars_set(other.orig_sampl_vars_set),
+        orig_sampl_vars(std::move(other.orig_sampl_vars)),
+        orig_sampl_vars_bv(std::move(other.orig_sampl_vars_bv)),
+        orig_clauses(std::move(other.orig_clauses))
+    {
+        after_backward_round_synth = other.after_backward_round_synth;
+    }
+
+    SimplifiedCNF& operator=(SimplifiedCNF&& other) noexcept {
+        if (this == &other) return *this;
+        fg = std::move(other.fg);
+        need_aig = other.need_aig;
+        clauses = std::move(other.clauses);
+        red_clauses = std::move(other.red_clauses);
+        proj = other.proj;
+        sampl_vars_set = other.sampl_vars_set;
+        opt_sampl_vars_set = other.opt_sampl_vars_set;
+        sampl_vars = std::move(other.sampl_vars);
+        opt_sampl_vars = std::move(other.opt_sampl_vars);
+        nvars = other.nvars;
+        multiplier_weight = std::move(other.multiplier_weight);
+        weighted = other.weighted;
+        backbone_done = other.backbone_done;
+        weights = std::move(other.weights);
+        orig_to_new_var = std::move(other.orig_to_new_var);
+        defs = std::move(other.defs);
+        after_backward_round_synth = other.after_backward_round_synth;
+        aig_mng = std::move(other.aig_mng);
+        orig_clauses = std::move(other.orig_clauses);
+        orig_sampl_vars = std::move(other.orig_sampl_vars);
+        orig_sampl_vars_bv = std::move(other.orig_sampl_vars_bv);
+        orig_sampl_vars_set = other.orig_sampl_vars_set;
+        return *this;
     }
 
     const auto& nVars() const { return nvars; }
@@ -952,6 +1026,11 @@ public:
         assert(!orig_sampl_vars_set);
         orig_sampl_vars_set = true;
         for(const auto& v: vars) orig_sampl_vars.insert(v);
+        orig_sampl_vars_bv.assign(defs.size(), false);
+        for(const auto& v: orig_sampl_vars) {
+            assert(v < defs.size());
+            orig_sampl_vars_bv[v] = true;
+        }
     }
     void set_orig_clauses(const std::vector<std::vector<CMSat::Lit>>& cls) {
         assert(need_aig);
@@ -994,6 +1073,11 @@ public:
 
     // Get the orig vars this AIG depends on, recursively expanding defined vars
     std::set<uint32_t> get_dependent_vars_recursive(const uint32_t orig_v, std::map<uint32_t, std::set<uint32_t>>& cache) const;
+
+    // Bitvector version: cache[v] is a bitvector of size defs.size() over orig var space
+    // state[v]: 0=unvisited, 1=in-progress, 2=done
+    void get_dependent_vars_recursive_bv(uint32_t orig_v,
+        std::vector<std::vector<bool>>& cache, std::vector<uint8_t>& state) const;
 
     bool check_aig_cycles() const;
     void check_self_dependency() const;
@@ -1325,6 +1409,8 @@ private:
             neg = other.neg->dup();
             return *this;
         }
+        Weight(Weight&&) noexcept = default;
+        Weight& operator=(Weight&&) noexcept = default;
     };
     std::map<uint32_t, Weight> weights;
     std::map<uint32_t, CMSat::Lit> orig_to_new_var; // ONLY maps in the CNF
@@ -1337,6 +1423,7 @@ private:
     void check_synth_funs_randomly() const;
     bool orig_sampl_vars_set = false;
     std::set<uint32_t> orig_sampl_vars;
+    std::vector<bool> orig_sampl_vars_bv; // bitvector for O(1) lookup, size = defs.size()
     // debug
     std::vector<std::vector<CMSat::Lit>> orig_clauses;
 };
