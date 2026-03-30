@@ -865,8 +865,8 @@ SimplifiedCNF Manthan::do_manthan() {
         SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
 
         // Collect additional counterexamples to identify free inputs and pick best cex
-        auto [best_ctx, free_inputs] = collect_extra_cex(ctx);
-        ctx = best_ctx;
+        auto [all_cexs, free_inputs] = collect_extra_cex(ctx);
+        ctx = all_cexs[0]; // best CEX (fewest needs_repair)
         compute_needs_repair(ctx);
 
         const uint32_t old_needs_repair_size = needs_repair.size();
@@ -1876,9 +1876,9 @@ void Manthan::inject_formulas_into_solver() {
     updated_y_funcs.clear();
 }
 
-std::pair<sample, set<uint32_t>> Manthan::collect_extra_cex(const sample& ctx) {
+std::pair<vector<sample>, set<uint32_t>> Manthan::collect_extra_cex(const sample& ctx) {
     set<uint32_t> free_inputs;
-    if (mconf.multi_cex_k <= 1) return {ctx, free_inputs};
+    if (mconf.multi_cex_k <= 1) return {{ctx}, free_inputs};
 
     // Collect additional counterexamples by blocking previous ones
     vector<sample> all_cex = {ctx};
@@ -1916,7 +1916,7 @@ std::pair<sample, set<uint32_t>> Manthan::collect_extra_cex(const sample& ctx) {
     // Force activation vars to true, permanently satisfying (disabling) blocking clauses
     for(auto a: block_acts) cex_solver.add_clause({Lit(a, false)});
 
-    if (all_cex.size() <= 1) return {ctx, free_inputs};
+    if (all_cex.size() <= 1) return {{ctx}, free_inputs};
 
     // Identify free inputs: those that vary across counterexamples
     for(const auto& x: input) {
@@ -1942,11 +1942,12 @@ std::pair<sample, set<uint32_t>> Manthan::collect_extra_cex(const sample& ctx) {
     }
     if (best_idx != 0) {
         verb_print(2, "[manthan] Switching to cex " << best_idx << " with " << best_nr << " needs_repair");
+        std::swap(all_cex[0], all_cex[best_idx]);
     }
 
     verb_print(2, "[manthan] Collected " << all_cex.size() << " counterexamples, "
             << free_inputs.size() << "/" << input.size() << " inputs are free");
-    return {all_cex[best_idx], free_inputs};
+    return {all_cex, free_inputs};
 }
 
 bool Manthan::get_counterexample(sample& ctx) {
