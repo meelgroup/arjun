@@ -913,6 +913,39 @@ SimplifiedCNF Manthan::do_manthan() {
         }
         verb_print(2, "[manthan] Num repaired: " << num_repaired << " tot repaired: " << tot_repaired << " num_loops_repair: " << num_loops_repair);
 
+        // Process additional collected counterexamples for stronger repair
+        if (!mconf.one_repair_per_loop && all_cexs.size() > 1) {
+            for (size_t ci = 1; ci < all_cexs.size(); ci++) {
+                if (tot_repaired >= mconf.max_repairs) break;
+                auto extra_ctx = all_cexs[ci];
+                extra_ctx.resize(cex_solver.nVars(), l_Undef);
+                recompute_all_y_hat_cnf(extra_ctx);
+                compute_needs_repair(extra_ctx);
+                if (needs_repair.empty()) {
+                    verb_print(2, "[manthan] Extra cex " << ci << " already satisfied after primary repairs");
+                    continue;
+                }
+                verb_print(2, "[manthan] Extra cex " << ci << " has " << needs_repair.size() << " vars needing repair");
+                uint32_t extra_repaired = 0;
+                while(!needs_repair.empty()) {
+                    auto y_rep = find_next_repair_var(extra_ctx);
+                    bool done = repair(y_rep, extra_ctx, free_inputs);
+                    if (done) {
+                        at_least_one_repaired = true;
+                        extra_repaired++;
+                        num_repaired++;
+                        tot_repaired++;
+                        if (tot_repaired >= mconf.max_repairs) break;
+                    } else {
+                        repair_failed++;
+                    }
+                    SLOW_DEBUG_DO(assert(ctx_is_sat(extra_ctx)));
+                    SLOW_DEBUG_DO(assert(ctx_y_hat_correct(extra_ctx)));
+                }
+                verb_print(2, "[manthan] Extra cex " << ci << " repaired " << extra_repaired << " vars");
+            }
+        }
+
         if (mconf.check_repair) check_repair_monotonic();
     }
     const double repair_time = cpuTime() - repair_start_time;
