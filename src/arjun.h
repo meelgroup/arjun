@@ -1490,7 +1490,7 @@ public:
         int silent_var_update = 1;
         int inv_learnt = 0;
         uint32_t max_repairs = std::numeric_limits<uint32_t>::max();
-        int multi_cex_k = 20; // number of counterexamples to collect for generalized repair
+        int multi_cex_k = 5; // number of counterexamples to collect for generalized repair
         int check_repair = 0;
         std::string ganak_binary;
     };

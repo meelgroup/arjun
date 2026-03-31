@@ -106,10 +106,9 @@ class Manthan {
         void find_better_ctx_normal(sample& ctx);
         template<typename S>
         void inject_cnf(S& s) const;
-        bool repair(const uint32_t v, sample& ctx, const std::set<uint32_t>& free_inputs = {});
-        std::pair<std::vector<sample>, std::set<uint32_t>> collect_extra_cex(const sample& ctx);
-        bool find_conflict(const uint32_t y_rep, sample& ctx, std::vector<CMSat::Lit>& conflict,
-                           const std::set<uint32_t>& free_inputs = {});
+        bool repair(const uint32_t v, sample& ctx);
+        std::vector<sample> collect_extra_cex(const sample& ctx);
+        bool find_conflict(const uint32_t y_rep, sample& ctx, std::vector<CMSat::Lit>& conflict);
         void minimize_conflict(std::vector<CMSat::Lit>& conflict, std::vector<CMSat::Lit>& assumps, const CMSat::Lit repairing);
         uint32_t find_next_repair_var(const sample& ctx) const;
         void perform_repair(const uint32_t y_rep, const sample& ctx, const std::vector<CMSat::Lit>& conflict);
