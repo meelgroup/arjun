@@ -928,8 +928,9 @@ SimplifiedCNF Manthan::do_manthan() {
         assert(var_to_formula[y].aig != nullptr);
         aigs[y] = var_to_formula[y].aig;
     }
-    SimplifiedCNF fcnf = cnf;
-    fcnf.map_aigs_to_orig(aigs, cnf.nVars(), y_hat_to_y);
+    const uint32_t cnf_nvars = cnf.nVars();
+    SimplifiedCNF fcnf = std::move(cnf);
+    fcnf.map_aigs_to_orig(aigs, cnf_nvars, y_hat_to_y);
     assert(verify_final_cnf(fcnf));
     auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0 | verbose_debug_enabled, "end do_manthan");
     verb_print(1, COLRED "[manthan] Done. "
