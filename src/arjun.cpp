@@ -163,12 +163,6 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_get_simplified_cnf(
     return puura.get_fully_simplified_renumbered_cnf(cnf, simp_conf);
 }
 
-DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(const SimplifiedCNF& cnf, const ManthanConf& mconf)
-{
-    Manthan manthan(arjdata->conf, mconf, cnf);
-    return manthan.do_manthan();
-}
-
 DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const ManthanConf& mconf)
 {
     Manthan manthan(arjdata->conf, mconf, std::move(cnf));
