@@ -54,6 +54,14 @@ class Manthan {
         {
                 mtrand.seed(conf.seed);
         }
+        Manthan(const Config& _conf, const ArjunNS::Arjun::ManthanConf& _mconf, ArjunNS::SimplifiedCNF&& _cnf) :
+            conf(_conf), mconf(_mconf)
+            , cex_solver(static_cast<SolverType>(_mconf.ctx_solver_type))
+            , repair_solver(static_cast<SolverType>(_mconf.repair_solver_type), _mconf.repair_cache_size)
+            , cnf(std::move(_cnf))
+        {
+                mtrand.seed(42);
+        }
         ArjunNS::SimplifiedCNF do_manthan();
         friend class ManthanLearn;
 

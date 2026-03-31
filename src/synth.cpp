@@ -266,7 +266,7 @@ void SynthRunner::run_manthan_strategies(
         verb_print(1, "Running Manthan strategy " << i+1 << "/" << strategies.size()
             << " -- " << strat.raw << " with max_repairs="
             << (mconf.max_repairs == std::numeric_limits<uint32_t>::max() ? std::string("unlimited") : std::to_string(mconf.max_repairs)));
-        cnf = arjun->standalone_manthan(cnf, mconf);
+        cnf = arjun->standalone_manthan(std::move(cnf), mconf);
         if (cnf.synth_done()) {
             verb_print(1,"Manthan finished with strategy " << i+1 << "/" << strategies.size()
                     << " -- " << strat.raw);
