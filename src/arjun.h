@@ -30,7 +30,6 @@ THE SOFTWARE.
 #include <string>
 #include <map>
 #include <set>
-#include <unordered_set>
 #include <optional>
 #include <fstream>
 #include <gmpxx.h>
@@ -210,7 +209,7 @@ public:
 
     // Bitvector version: dep[var] = true for each dependent var
     static void get_dependent_vars_bv(const aig_ptr& aig_orig, std::vector<bool>& dep, uint32_t v) {
-        std::unordered_set<AIG*> visited;
+        std::set<AIG*> visited;
         std::function<void(const aig_ptr&)> helper =
             [&](const aig_ptr& aig) {
                 if (visited.count(aig.get())) return;
