@@ -1026,6 +1026,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     // Used to find UNSAT core that will help us repair the function
     // When free_inputs is non-empty, skip those inputs to get a more general conflict
     vector<Lit> assumps;
+    assumps.reserve(input.size() + y_order.size() + 1);
     for(const auto& x: input) {
         if (free_inputs.count(x)) continue; // skip free inputs for more general conflict
         const Lit l = Lit(x, ctx[x] == l_False);
@@ -1893,6 +1894,7 @@ std::pair<vector<sample>, set<uint32_t>> Manthan::collect_extra_cex(const sample
         helpers.insert(act);
         block_acts.push_back(act);
         vector<Lit> block_cl;
+        block_cl.reserve(1 + input.size());
         block_cl.push_back(Lit(act, false)); // positive act
         for(const auto& x: input) {
             block_cl.push_back(Lit(x, all_cex.back()[x] == l_True));
@@ -1901,6 +1903,7 @@ std::pair<vector<sample>, set<uint32_t>> Manthan::collect_extra_cex(const sample
 
         // Build assumptions: activate all blocking clauses + indicator assumptions
         vector<Lit> assumps;
+        assumps.reserve(block_acts.size() + y_hat_to_indic.size());
         for(auto a: block_acts) assumps.push_back(Lit(a, true)); // ~act activates blocking
         for(const auto& [y_hat, ind]: y_hat_to_indic) {
             uint32_t y = indic_to_y[ind];
