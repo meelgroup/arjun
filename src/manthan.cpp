@@ -1256,11 +1256,18 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     }
     f.aig = b1;
 
-    // when fresh_l is false, confl is satisfied
+    // when fresh_l is true, confl is satisfied → guard is active → use constant
     verb_print(4, "Original formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
     verb_print(4, "Branch formula. When this is true, H is wrong:" << endl << f);
-    var_to_formula[y_rep] = fh->compose_ite(fh->constant_formula(ctx[y_rep] == l_True),
-            var_to_formula[y_rep], f, helpers);
+
+    // ITE(guard, TRUE, old) simplifies to OR(guard, old)
+    // ITE(guard, FALSE, old) simplifies to AND(NOT(guard), old)
+    // These create flatter AIGs with fewer nodes than the generic ITE encoding.
+    if (ctx[y_rep] == l_True) {
+        var_to_formula[y_rep] = fh->compose_or(f, var_to_formula[y_rep]);
+    } else {
+        var_to_formula[y_rep] = fh->compose_and(fh->neg(f), var_to_formula[y_rep]);
+    }
     updated_y_funcs.push_back(y_rep);
     verb_print(2, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
     verb_print(4, "repaired formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
