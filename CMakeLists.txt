@@ -298,7 +298,7 @@ endif()
 # Dependencies
 # -----------------------------------------------------------------------------
 set(sbva_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../sbva/build" CACHE PATH "Directory where sbva is built/installed")
-find_package(sbva REQUIRED)
+find_package(sbva CONFIG REQUIRED)
 
 set(treedecomp_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../treedecomp/build" CACHE PATH "Directory where treedecomp is built/installed")
 find_package(treedecomp CONFIG REQUIRED)

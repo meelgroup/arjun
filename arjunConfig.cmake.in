@@ -12,7 +12,7 @@ include(CMakeFindDependencyMacro)
 if(NOT "@SBVA_CMAKE_DIR_FOR_CONFIG@" STREQUAL "")
     set(sbva_DIR "@SBVA_CMAKE_DIR_FOR_CONFIG@")
 endif()
-find_dependency(sbva REQUIRED)
+find_dependency(sbva REQUIRED CONFIG)
 
 if(NOT "@TREEDECOMP_CMAKE_DIR_FOR_CONFIG@" STREQUAL "")
     set(treedecomp_DIR "@TREEDECOMP_CMAKE_DIR_FOR_CONFIG@")
