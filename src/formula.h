@@ -84,8 +84,28 @@ public:
         return ret;
     }
 
+    // Direct AND encoding: out ↔ (left AND right).
+    // Avoids the double-negation overhead of neg(compose_or(neg, neg))
+    // which creates ~7 AIG nodes; this creates just 1.
     Formula compose_and(const Formula& fleft, const Formula& fright) {
-        return neg(compose_or(neg(fleft), neg(fright)));
+        Formula ret;
+        ret.clauses = fleft.clauses;
+        for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
+
+        solver->new_var();
+        uint32_t fresh_v = solver->nVars()-1;
+        CMSat::Lit l = CMSat::Lit(fresh_v, false);
+
+        // l ↔ (fleft.out AND fright.out)
+        ret.clauses.push_back(CL({~l, fleft.out}));
+        ret.clauses.push_back(CL({~l, fright.out}));
+        ret.clauses.push_back(CL({l, ~fleft.out, ~fright.out}));
+        ret.out = l;
+
+        assert(fleft.aig != nullptr);
+        assert(fright.aig != nullptr);
+        ret.aig = ArjunNS::AIG::new_and(fleft.aig, fright.aig);
+        return ret;
     }
 
     Formula compose_or(const Formula& fleft, const Formula& fright) {
