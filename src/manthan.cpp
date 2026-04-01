@@ -1085,8 +1085,10 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         // For hot variables, do extra minimization passes with different orderings.
         // The greedy removal depends on iteration order; additional passes
         // with different shuffles can find additional removable literals.
+        // Scale extra passes with hotness: 1 pass for moderate, 2 for very hot.
         if (repaired_vars_count[y_rep] >= 10 && conflict.size() > 3) {
-            for (int extra = 0; extra < 2 && conflict.size() > 2; extra++) {
+            int max_extra = (repaired_vars_count[y_rep] >= 30) ? 2 : 1;
+            for (int extra = 0; extra < max_extra && conflict.size() > 2; extra++) {
                 auto saved = conflict;
                 minimize_conflict(conflict, assumps, to_repair);
                 assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end());
