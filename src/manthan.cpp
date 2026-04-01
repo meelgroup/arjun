@@ -866,13 +866,13 @@ SimplifiedCNF Manthan::do_manthan() {
 
         // Collect additional counterexamples to identify free inputs and pick best cex
         auto all_cexs = collect_extra_cex(ctx);
-        ctx = all_cexs[0]; // best CEX (fewest needs_repair)
+        ctx = all_cexs[0]; // best CEX (lowest weighted repair cost)
         compute_needs_repair(ctx);
 
         const uint32_t old_needs_repair_size = needs_repair.size();
         // Only run find_better_ctx if there are enough wrong vars to justify it.
-        // With <= 5 wrong vars, the overhead of creating a fresh solver isn't worth it.
-        if (needs_repair.size() <= 5 || mconf.maxsat_better_ctx == -1) {
+        // With <= 10 wrong vars, the overhead of creating a fresh solver isn't worth it.
+        if (needs_repair.size() <= 10 || mconf.maxsat_better_ctx == -1) {
           // Skip optimization for small needs_repair
         } else if (mconf.maxsat_better_ctx == 1) {
         #ifdef EXTRA_SYNTH
