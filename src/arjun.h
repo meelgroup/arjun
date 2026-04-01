@@ -150,6 +150,15 @@ public:
 
     static aig_ptr new_not(const aig_ptr& a) {
         assert(a != nullptr);
+        // Double negation elimination: NOT(NOT(x)) = x
+        // NOT is encoded as AND(x,x,neg=true), so detect this pattern.
+        if (a->type == AIGT::t_and && a->l == a->r && a->neg) {
+            return a->l;
+        }
+        // Literal negation folding: NOT(lit(v,neg)) = lit(v,!neg)
+        if (a->type == AIGT::t_lit) {
+            return new_lit(a->var, !a->neg);
+        }
         auto ret = std::make_shared<AIG>();
         ret->type = AIGT::t_and;
         ret->l = a;
@@ -160,6 +169,8 @@ public:
 
     static aig_ptr new_and(const aig_ptr& l, const aig_ptr& r, bool neg = false) {
         assert(l != nullptr && r != nullptr);
+        // Identity: AND(x, x) = x
+        if (l == r) return neg ? new_not(l) : l;
         auto ret = std::make_shared<AIG>();
         ret->type = AIGT::t_and;
         ret->l = l;
@@ -170,6 +181,8 @@ public:
 
     static aig_ptr new_or(const aig_ptr& l, const aig_ptr& r, bool neg = false) {
         assert(l != nullptr && r != nullptr);
+        // OR(a, b) = NOT(AND(NOT(a), NOT(b)))
+        // With double-negation elimination in new_not, this is efficient.
         auto ret = std::make_shared<AIG>();
         ret->type = AIGT::t_and;
         ret->l = new_not(l);
