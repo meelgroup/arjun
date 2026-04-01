@@ -870,8 +870,10 @@ SimplifiedCNF Manthan::do_manthan() {
         compute_needs_repair(ctx);
 
         const uint32_t old_needs_repair_size = needs_repair.size();
-        if (mconf.maxsat_better_ctx == -1) {
-          // Nothing to do
+        // Only run find_better_ctx if there are enough wrong vars to justify it.
+        // With <= 5 wrong vars, the overhead of creating a fresh solver isn't worth it.
+        if (needs_repair.size() <= 5 || mconf.maxsat_better_ctx == -1) {
+          // Skip optimization for small needs_repair
         } else if (mconf.maxsat_better_ctx == 1) {
         #ifdef EXTRA_SYNTH
           find_better_ctx_maxsat(ctx);
