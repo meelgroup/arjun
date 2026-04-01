@@ -85,9 +85,13 @@ public:
     }
 
     // Direct AND encoding: out ↔ (left AND right).
-    // Avoids the double-negation overhead of neg(compose_or(neg, neg))
-    // which creates ~7 AIG nodes; this creates just 1.
     Formula compose_and(const Formula& fleft, const Formula& fright) {
+        // AND(FALSE, x) = FALSE, AND(x, FALSE) = FALSE
+        if (fleft.out == ~my_true_lit && fleft.clauses.empty()) return fleft;
+        if (fright.out == ~my_true_lit && fright.clauses.empty()) return fright;
+        // AND(TRUE, x) = x, AND(x, TRUE) = x
+        if (fleft.out == my_true_lit && fleft.clauses.empty()) return fright;
+        if (fright.out == my_true_lit && fright.clauses.empty()) return fleft;
         Formula ret;
         ret.clauses = fleft.clauses;
         for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
