@@ -1906,19 +1906,23 @@ vector<sample> Manthan::collect_extra_cex(const sample& ctx) {
 
     if (all_cex.size() <= 1) return {ctx};
 
-    // Pick the counterexample with fewest needs_repair variables
+    // Pick the CEX with lowest weighted repair cost.
+    // Variables that have been repaired many times are more expensive to
+    // repair again, so we prefer CEXes where those vars are correct.
     size_t best_idx = 0;
-    uint32_t best_nr = std::numeric_limits<uint32_t>::max();
+    uint64_t best_cost = std::numeric_limits<uint64_t>::max();
     for(size_t i = 0; i < all_cex.size(); i++) {
-        uint32_t nr = 0;
+        uint64_t cost = 0;
         for(const auto& y: to_define_full) {
-            if (all_cex[i][y] != all_cex[i][y_to_y_hat[y]]) nr++;
+            if (all_cex[i][y] != all_cex[i][y_to_y_hat[y]]) {
+                cost += 1 + repaired_vars_count[y];
+            }
         }
-        verb_print(3, "[manthan] cex " << i << " has " << nr << " vars needing repair");
-        if (nr < best_nr) { best_nr = nr; best_idx = i; }
+        verb_print(3, "[manthan] cex " << i << " has weighted repair cost " << cost);
+        if (cost < best_cost) { best_cost = cost; best_idx = i; }
     }
     if (best_idx != 0) {
-        verb_print(2, "[manthan] Switching to cex " << best_idx << " with " << best_nr << " needs_repair");
+        verb_print(2, "[manthan] Switching to cex " << best_idx << " with cost " << best_cost);
         std::swap(all_cex[0], all_cex[best_idx]);
     }
 
