@@ -27,6 +27,7 @@
 #include <limits>
 #include <iomanip>
 #include <sstream>
+#include <unordered_set>
 #include <sbva/sbva.h>
 
 #include "arjun.h"
@@ -53,7 +54,7 @@ using std::unique_ptr;
 using std::cout;
 using std::cerr;
 using std::endl;
-using std::setw;
+using std::unordered_set;
 
 #if defined _WIN32
     #define DLL_PUBLIC __declspec(dllexport)
@@ -1875,7 +1876,6 @@ DLL_PUBLIC void SimplifiedCNF::check_cnf_vars() const {
     for(const auto& cl: clauses) check(cl, nvars);
     for(const auto& cl: red_clauses) check(cl, nvars);
 
-
     // Now check orig_to_new_var covers all vars in the CNF
     if (!need_aig) return;
     set<uint32_t> vars_in_cnf;
@@ -2049,8 +2049,8 @@ DLL_PUBLIC void SimplifiedCNF::check_cnf_sampl_sanity() const {
     release_assert(fg != nullptr);
 
     check_cnf_vars();
-    set<uint32_t> sampl_vars_s(sampl_vars.begin(), sampl_vars.end());
-    set<uint32_t> opt_sampl_vars_s(opt_sampl_vars.begin(), opt_sampl_vars.end());
+    std::unordered_set<uint32_t> sampl_vars_s(sampl_vars.begin(), sampl_vars.end());
+    std::unordered_set<uint32_t> opt_sampl_vars_s(opt_sampl_vars.begin(), opt_sampl_vars.end());
 
     // sampling vars less than nvars
     for(const auto& v: opt_sampl_vars_s) {
