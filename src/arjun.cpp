@@ -130,6 +130,11 @@ DLL_PUBLIC void Arjun::standalone_minimize_indep(SimplifiedCNF& cnf, bool all_in
     common.run_minimize_indep(cnf, all_indep);
 }
 
+DLL_PUBLIC Arjun::IndepInfo Arjun::standalone_minimize_indep_info(SimplifiedCNF& cnf, bool all_indep) {
+    Minimize common(arjdata->conf);
+    return common.run_minimize_indep_info(cnf, all_indep);
+}
+
 DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {
     Autarky autarky(arjdata->conf);
     autarky.find_autarkies(cnf);

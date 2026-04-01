@@ -1358,6 +1358,7 @@ private:
     std::vector<std::vector<CMSat::Lit>> orig_clauses;
 };
 
+
 struct ArjPrivateData;
 #ifdef _WIN32
 class __declspec(dllexport) Arjun
@@ -1427,7 +1428,15 @@ public:
         std::string ganak_binary;
     };
 
+    struct IndepInfo {
+        std::vector<std::pair<CMSat::Lit, CMSat::Lit>> eq_lits;
+        std::vector<CMSat::Lit> backbone;
+        std::vector<uint32_t> free_vars;
+    };
+
     /// Standalone functions
+    ///
+    IndepInfo standalone_minimize_indep_info(SimplifiedCNF& cnf, bool all_indep);
     void standalone_minimize_indep(SimplifiedCNF& cnf, bool all_indep);
     void standalone_backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf& manthan_conf);
     void standalone_extend_sampl_set(SimplifiedCNF& cnf);

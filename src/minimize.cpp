@@ -301,3 +301,24 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf, bool all_indep) {
     verb_print(1, "[arjun] run_minimize_indep finished "
         << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time));
 }
+
+
+ArjunNS::Arjun::IndepInfo Minimize::run_minimize_indep_info(ArjunNS::SimplifiedCNF& cnf, bool all_indep)
+{
+    run_minimize_indep(cnf, all_indep);
+
+    ArjunNS::Arjun::IndepInfo info;
+    std::vector<std::pair<Lit, Lit>> raw_eq = solver->get_all_binary_xors();
+    for (auto& p : raw_eq) {
+        if (p.first.var()  >= cnf.nVars()) continue;
+        if (p.second.var() >= cnf.nVars()) continue;
+        info.eq_lits.push_back(p);
+    }
+
+    info.backbone = solver->get_zero_assigned_lits();
+    auto pred = [&](const CMSat::Lit& l) { return l.var() >= cnf.nVars(); };
+    std::erase_if(info.backbone, pred);
+
+    info.free_vars = empty_sampling_vars;
+    return info;
+}
