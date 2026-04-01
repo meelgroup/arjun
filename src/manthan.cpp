@@ -869,6 +869,23 @@ SimplifiedCNF Manthan::do_manthan() {
         ctx = all_cexs[0]; // best CEX (lowest weighted repair cost)
         compute_needs_repair(ctx);
 
+        // Compute free inputs: inputs that differ across multiple CEXs.
+        // These can be excluded from find_conflict assumptions to get
+        // more general conflicts covering the full input subspace.
+        free_inputs.clear();
+        if (all_cexs.size() > 1) {
+            for (const auto& x : input) {
+                for (size_t i = 1; i < all_cexs.size(); i++) {
+                    if (all_cexs[i][x] != all_cexs[0][x]) {
+                        free_inputs.insert(x);
+                        break;
+                    }
+                }
+            }
+            verb_print(2, "[manthan] multi-cex free inputs: " << free_inputs.size()
+                    << " / " << input.size() << " from " << all_cexs.size() << " cexs");
+        }
+
         const uint32_t old_needs_repair_size = needs_repair.size();
         // Only run find_better_ctx if there are enough wrong vars to justify it.
         // With <= 10 wrong vars, the overhead of creating a fresh solver isn't worth it.
@@ -1039,6 +1056,11 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     for(const auto& x: input) {
         // Skip inputs that the AIG for y_rep doesn't depend on
         if (!aig_dep_vars.empty() && !aig_dep_vars.count(x)) {
+            skipped_inputs++;
+            continue;
+        }
+        // Skip inputs that differ across multiple counterexamples (free inputs)
+        if (free_inputs.count(x)) {
             skipped_inputs++;
             continue;
         }
