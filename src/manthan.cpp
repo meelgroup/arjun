@@ -1719,7 +1719,14 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
     assert(incorrect_lits.size() == needs_repair.size());
     for(const auto& c: cnf.get_clauses()) s.add_clause(c);
 
-    // Sort incorrect lits by weight (higher weight = higher priority to fix)
+    // Sort incorrect lits by weight (higher weight = higher priority to fix).
+    // Additionally boost weight for variables that were repaired in this session,
+    // as they are known to be important for correctness.
+    for (auto& [lit, weight] : incorrect_lits) {
+        if (repaired_vars_count[lit.var()] > 0) {
+            weight += repaired_vars_count[lit.var()];
+        }
+    }
     std::sort(incorrect_lits.begin(), incorrect_lits.end(),
               [](const auto& a, const auto& b) { return a.second > b.second; });
 
