@@ -1949,15 +1949,21 @@ vector<sample> Manthan::collect_extra_cex(const sample& ctx) {
     if (all_cex.size() <= 1) return {ctx};
 
     // Pick the CEX with lowest weighted repair cost.
-    // Variables that have been repaired many times are more expensive to
-    // repair again, so we prefer CEXes where those vars are correct.
+    // Variables early in y_order are repaired first, and their repairs
+    // cascade to affect later variables. Give them much higher weight
+    // so we prefer CEXes where early variables are correct.
     size_t best_idx = 0;
     uint64_t best_cost = std::numeric_limits<uint64_t>::max();
     for(size_t i = 0; i < all_cex.size(); i++) {
         uint64_t cost = 0;
-        for(const auto& y: to_define_full) {
+        uint32_t rank = 0;
+        for(const auto& y: y_order) {
+            rank++;
             if (all_cex[i][y] != all_cex[i][y_to_y_hat[y]]) {
-                cost += 1 + repaired_vars_count[y];
+                // Quadratic weight by order position: early vars matter much more.
+                // Also boost by repair count for frequently-repaired vars.
+                uint64_t pos_weight = (y_order.size() - rank + 1);
+                cost += pos_weight * pos_weight + repaired_vars_count[y] * 10;
             }
         }
         verb_print(3, "[manthan] cex " << i << " has weighted repair cost " << cost);
