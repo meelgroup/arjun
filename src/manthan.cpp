@@ -1023,12 +1023,30 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
 bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict) {
     const double repair_solver_start_time = cpuTime();
 
+    // Find which input variables the AIG for y_rep actually depends on.
+    // Any input not in the AIG's dependency set is a don't-care and can be
+    // excluded from assumptions, producing a more general (shorter) conflict.
+    set<uint32_t> aig_dep_vars;
+    if (mconf.minimize_conflict) {
+        const auto& aig = var_to_formula.at(y_rep).aig;
+        assert(aig != nullptr);
+        AIG::get_dependent_vars(aig, aig_dep_vars, y_rep);
+    }
+
+    uint32_t skipped_inputs = 0;
     vector<Lit> assumps;
     assumps.reserve(input.size() + y_order.size() + 1);
     for(const auto& x: input) {
+        // Skip inputs that the AIG for y_rep doesn't depend on
+        if (!aig_dep_vars.empty() && !aig_dep_vars.count(x)) {
+            skipped_inputs++;
+            continue;
+        }
         const Lit l = Lit(x, ctx[x] == l_False);
         assumps.push_back(l);
     }
+    verb_print(2, "[manthan] skipped " << skipped_inputs << " / " << input.size()
+            << " inputs for y_rep=" << y_rep+1);
 
     // We go through the variables that y_rep does NOT depend on, and assume them to be correct
     for(const auto& y: y_order) {
@@ -1054,23 +1072,45 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     assert(ret != l_Undef);
 
     if (ret == l_True) {
-        verb_print(2, "Repair cost is 0 for y: " << y_rep+1);
-        // Only update y_rep and variables after it in the order.
-        // Variables before y_rep are already correct (y == y_hat) and must
-        // stay that way for subsequent repairs in this loop iteration.
-        // This avoids perturbing correct earlier variables and eliminates
-        // the need to recompute y_hat values (since formulas and inputs
-        // haven't changed).
-        bool found_yrep = false;
-        const auto& model = repair_solver.get_model();
-        for(const auto& y: y_order) {
-            if (y == y_rep) found_yrep = true;
-            if (found_yrep) ctx[y] = model[y];
+        if (skipped_inputs > 0) {
+            // SAT with reduced inputs - retry with all inputs to get proper cost-0 repair
+            assumps.clear();
+            for(const auto& x: input) assumps.push_back(Lit(x, ctx[x] == l_False));
+            for(const auto& y: y_order) {
+                if (!mconf.silent_var_update && backward_defined.count(y)) continue;
+                if (y == y_rep) break;
+                assumps.push_back(Lit(y, ctx[y] == l_False));
+            }
+            assumps.push_back({~to_repair});
+            ret = repair_solver.solve(&assumps);
+            assert(ret != l_Undef);
+            if (ret == l_True) {
+                verb_print(2, "Repair cost is 0 for y: " << y_rep+1);
+                bool found_yrep = false;
+                const auto& model = repair_solver.get_model();
+                for(const auto& y: y_order) {
+                    if (y == y_rep) found_yrep = true;
+                    if (found_yrep) ctx[y] = model[y];
+                }
+                assert(ctx[y_rep] == ctx[y_to_y_hat[y_rep]]);
+                return false;
+            }
+            // UNSAT with all inputs - extract conflict normally
+            conflict = repair_solver.get_conflict();
+        } else {
+            verb_print(2, "Repair cost is 0 for y: " << y_rep+1);
+            bool found_yrep = false;
+            const auto& model = repair_solver.get_model();
+            for(const auto& y: y_order) {
+                if (y == y_rep) found_yrep = true;
+                if (found_yrep) ctx[y] = model[y];
+            }
+            assert(ctx[y_rep] == ctx[y_to_y_hat[y_rep]]);
+            return false;
         }
-        assert(ctx[y_rep] == ctx[y_to_y_hat[y_rep]]);
-        return false;
+    } else {
+        conflict = repair_solver.get_conflict();
     }
-    conflict = repair_solver.get_conflict();
     assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end() &&
         "to_repair literal must be in conflict");
 
