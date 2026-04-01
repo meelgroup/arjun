@@ -70,6 +70,22 @@ public:
     }
 
     Formula compose_ite(const Formula& fleft, const Formula& fright, const Formula& branch, std::set<uint32_t>& helpers) {
+        // ITE(branch, TRUE, x) = OR(branch, x)
+        if (fleft.out == my_true_lit && fleft.clauses.empty()) {
+            return compose_or(branch, fright);
+        }
+        // ITE(branch, FALSE, x) = AND(NOT(branch), x)
+        if (fleft.out == ~my_true_lit && fleft.clauses.empty()) {
+            return compose_and(neg(branch), fright);
+        }
+        // ITE(branch, x, TRUE) = OR(NOT(branch), x)
+        if (fright.out == my_true_lit && fright.clauses.empty()) {
+            return compose_or(neg(branch), fleft);
+        }
+        // ITE(branch, x, FALSE) = AND(branch, x)
+        if (fright.out == ~my_true_lit && fright.clauses.empty()) {
+            return compose_and(branch, fleft);
+        }
         Formula ret;
         ret = compose_ite(fleft, fright, branch.out, helpers);
         ret.clauses.insert(ret.clauses.end(), branch.clauses.begin(), branch.clauses.end());
