@@ -109,6 +109,7 @@ class Manthan {
         bool repair(const uint32_t v, sample& ctx);
         std::vector<sample> collect_extra_cex(const sample& ctx);
         bool find_conflict(const uint32_t y_rep, sample& ctx, std::vector<CMSat::Lit>& conflict);
+        std::set<uint32_t> free_inputs; // inputs that differ across multi-cex, can be skipped
         void minimize_conflict(std::vector<CMSat::Lit>& conflict, std::vector<CMSat::Lit>& assumps, const CMSat::Lit repairing);
         uint32_t find_next_repair_var(const sample& ctx) const;
         void perform_repair(const uint32_t y_rep, const sample& ctx, const std::vector<CMSat::Lit>& conflict);
