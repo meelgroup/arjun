@@ -109,6 +109,13 @@ public:
     }
 
     Formula compose_or(const Formula& fleft, const Formula& fright) {
+        // OR(TRUE, x) = TRUE
+        if (fleft.out == my_true_lit && fleft.clauses.empty()) return fleft;
+        if (fright.out == my_true_lit && fright.clauses.empty()) return fright;
+        // OR(FALSE, x) = x, OR(x, FALSE) = x
+        if (fleft.out == ~my_true_lit && fleft.clauses.empty()) return fright;
+        if (fright.out == ~my_true_lit && fright.clauses.empty()) return fleft;
+
         Formula ret;
         ret.clauses = fleft.clauses;
         for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
