@@ -1,7 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-set -e
-
-rm -rf lib* Test* tests* include tests CM* cmake* arjun Makefile rjun-src
-cmake -DENABLE_TESTING=ON ..
-make -j26
+rm -rf .cmake lib* Test* tests* include tests CM* cmake* arjun Makefile rjun-src
+cmake -DENABLE_TESTING=ON -DEXTRA_SYNTH=ON ..
+make -j$(nproc)

@@ -1,7 +1,9 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
 rm -rf lib* Test* tests* include tests CM* cmake* arjun Makefile rjun-src
-emcmake cmake -DCMAKE_INSTALL_PREFIX=$EMINSTALL -DSYNTH=OFF ..
-emmake make -j26
+emcmake cmake -DSTATICCOMPILE=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSTATICCOMPILE=ON "-DCMAKE_INSTALL_PREFIX=${EMINSTALL}" -DEXTRA_SYNTH=OFF ..
+emmake make -j$(nproc)
 emmake make install
+cp arjun.wasm ../html
+cp "${EMINSTALL}/bin/arjun.js" ../html

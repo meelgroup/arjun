@@ -25,48 +25,39 @@
 #pragma once
 
 #include <cstdint>
-#include <sys/types.h>
 #include <vector>
-#include <map>
 #include <set>
 #include <memory>
 #include <cryptominisat5/cryptominisat.h>
 #include "config.h"
 #include "arjun.h"
-#include "interpolant.h"
 
-using std::vector;
-using std::map;
-using std::set;
-using namespace CMSat;
-using namespace ArjunInt;
-using namespace ArjunNS;
+class Extend {
+public:
+    Extend(const ArjunInt::Config& _conf) : conf(_conf) {}
+    void extend_round(ArjunNS::SimplifiedCNF& cnf);
+    void extend_synth(ArjunNS::SimplifiedCNF& cnf);
+    bool check_extend(const ArjunNS::SimplifiedCNF& cnf);
 
-struct Extend {
-    Extend(const Config& _conf) : interp(_conf), conf(_conf) {}
-    ~Extend() = default;
-
-    void add_all_indics_except(const set<uint32_t>& except);
-    std::unique_ptr<SATSolver> solver;
-    Interpolant interp;
-    uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
-
-    //assert indic[var] to TRUE to force var==var+orig_num_vars
-    vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
-    vector<uint32_t> indic_to_var; //maps an INDICATOR VAR to ORIG VAR
-    vector<Lit> dont_elim;
-    vector<char> seen;
+private:
+    void fill_solver(const ArjunNS::SimplifiedCNF& cnf);
+    void get_incidence();
+    std::vector<uint32_t> incidence;
 
     template<class T>
     void fill_assumptions_extend(
-        vector<Lit>& assumptions,
+        std::vector<CMSat::Lit>& assumptions,
         const T& indep);
-    void extend_round(SimplifiedCNF& cnf);
 
-    void unsat_define(SimplifiedCNF& cnf);
-    Config conf;
+    ArjunInt::Config conf;
 
-    void fill_solver(const SimplifiedCNF& cnf);
-    void get_incidence();
-    vector<uint32_t> incidence;
+    //assert indic[var] to TRUE to force var==var+orig_num_vars
+    std::vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
+    std::vector<uint32_t> indic_to_var; //maps an INDICATOR VAR to ORIG VAR
+    std::vector<CMSat::Lit> dont_elim;
+    std::vector<char> seen;
+
+    void add_all_indics_except(const std::set<uint32_t>& except);
+    std::unique_ptr<CMSat::SATSolver> solver;
+    uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
 };

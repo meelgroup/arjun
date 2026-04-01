@@ -22,80 +22,194 @@
  THE SOFTWARE.
  */
 
+#pragma once
+
 #include "arjun.h"
 #include "config.h"
+#include "constants.h"
+#include "metasolver.h"
+#include "metasolver2.h"
+#include "cachedsolver.h"
 #include <cryptominisat5/solvertypesmini.h>
 
 #include <cstdint>
 #include <memory>
-#include <sys/types.h>
 #include <vector>
 #include <set>
 #include "formula.h"
+#include "treedecomp/TreeDecomposition.hpp"
 
+namespace ArjunInt {
 
-/* #define MLPACK_PRINT_INFO */
-/* #define MLPACK_PRINT_WARN */
-#include <mlpack.hpp>
-
-using namespace arma;
-using namespace mlpack;
-using namespace mlpack::tree;
-using namespace CMSat;
-
-using std::vector;
-using std::set;
-using std::map;
-using std::unique_ptr;
-
-using namespace ArjunInt;
-using namespace ArjunNS;
+using sample = std::vector<CMSat::lbool>;
+class ManthanLearn;
 
 class Manthan {
     public:
-        Manthan(const Config& _conf, const std::unique_ptr<FieldGen>& _fg):
-            cnf(_fg->dup()), conf(_conf), fg(_fg->dup())  {}
-        SimplifiedCNF do_manthan(const SimplifiedCNF& cnf);
-        SimplifiedCNF cnf;
+        Manthan(const Config& _conf, const ArjunNS::Arjun::ManthanConf& _mconf, ArjunNS::SimplifiedCNF&& _cnf) :
+            conf(_conf), mconf(_mconf)
+            , cex_solver(static_cast<SolverType>(_mconf.ctx_solver_type))
+            , repair_solver(static_cast<SolverType>(_mconf.repair_solver_type), _mconf.repair_cache_size)
+            , cnf(std::move(_cnf))
+        {
+                mtrand.seed(42);
+        }
+        ArjunNS::SimplifiedCNF do_manthan();
+        friend class ManthanLearn;
 
     private:
-        vec point_0;
-        vec point_1;
-        uint32_t last_formula_var;
-
-        map<uint32_t, uint32_t> y_to_y_hat;
-        map<uint32_t, uint32_t> y_hat_to_y;
+        // y is original output var, i.e. to_define
+        // y_hat is learned var
+        std::map<uint32_t, uint32_t> y_to_y_hat;
+        std::map<uint32_t, CMSat::Lit> y_hat_to_y;
 
         // when indic is TRUE, y_hat and func_out are EQUAL
-        map<uint32_t, uint32_t> y_hat_to_indic;
-        map<uint32_t, uint32_t> indic_to_y_hat;
-        set<uint32_t> needs_repair;
+        std::map<uint32_t, uint32_t> y_hat_to_indic;
+        std::map<uint32_t, uint32_t> indic_to_y_hat;
+        std::map<uint32_t, uint32_t> indic_to_y;
+        std::set<uint32_t> needs_repair;
 
         const Config& conf;
-        unique_ptr<FieldGen> fg;
-        SATSolver solver_train;
-        set<uint32_t> input;
-        set<uint32_t> to_define;
-        FHolder::Formula recur(DecisionTree<>* node, const uint32_t learned_v, uint32_t depth = 0);
-        vector<uint32_t> incidence;
+        const ArjunNS::Arjun::ManthanConf& mconf;
+        std::unique_ptr<CMSat::FieldGen> fg;
+        MetaSolver2 cex_solver;
+        CachedSolver repair_solver;
+
+        // 3 sets of variables, together adding up to the CNF
+        std::set<uint32_t> input;
+        std::set<uint32_t> to_define;
+        std::set<uint32_t> backward_defined;
+        std::set<uint32_t> to_define_full; // to_define + backward_defined
+        std::set<uint32_t> helper_functions; // these are in BW, but we definitely want them
+
+        // To help us account for every variable in the formulas' clauses
+        std::set<uint32_t> helpers; // used for ITE
+        std::set<uint32_t> y_hats; // the potential y_hats (due to ITE chains, some are "old" and unused)
+
+        std::unique_ptr<TWD::Graph> build_primal_graph();
+        void const_functions();
+        void bve_and_substitute();
+        ArjunNS::aig_ptr one_level_substitute(const CMSat::Lit l, const uint32_t v, std::map<uint32_t, ArjunNS::aig_ptr>& transformed);
+
+        void create_vars_for_y_hats();
+        std::vector<uint32_t> incidence;
+        std::vector<double> td_score;
+
+        CMSat::Lit map_y_to_y_hat(const CMSat::Lit& l) const;
+        void print_needs_repair_vars() const;
+        void print_cnf_debug_info(const sample& ctx) const;
         void get_incidence();
-        bool get_counterexample(vector<lbool>& ctx);
-        vector<lbool> find_better_ctx(const vector<lbool>& ctx);
-        void inject_cnf(SATSolver& s);
-        void inject_unit(SATSolver& s);
-        bool repair(const uint32_t v, vector<lbool>& ctx);
-        void perform_repair(const uint32_t y_rep, vector<lbool>& ctx, const vector<Lit>& conflict);
-        void init_solver_train();
+        bool get_counterexample(sample& ctx);
+        void inject_formulas_into_solver();
+        std::vector<const sample*> filter_samples(const uint32_t v, const std::vector<sample>& samples);
+        void find_better_ctx_maxsat(sample& ctx);
+        void find_better_ctx_normal(sample& ctx);
+        template<typename S>
+        void inject_cnf(S& s) const;
+        bool repair(const uint32_t v, sample& ctx);
+        std::vector<sample> collect_extra_cex(const sample& ctx);
+        bool find_conflict(const uint32_t y_rep, sample& ctx, std::vector<CMSat::Lit>& conflict);
+        void minimize_conflict(std::vector<CMSat::Lit>& conflict, std::vector<CMSat::Lit>& assumps, const CMSat::Lit repairing);
+        uint32_t find_next_repair_var(const sample& ctx) const;
+        void perform_repair(const uint32_t y_rep, const sample& ctx, const std::vector<CMSat::Lit>& conflict);
+        void add_not_f_x_yhat();
+        void fill_dependency_mat_with_backward();
+        void fill_var_to_formula_with(std::set<uint32_t>& vars);
+        void print_y_order_occur() const;
+        void compute_needs_repair(const sample& ctx);
+        void recompute_all_y_hat_cnf(sample& ctx);
+        void recompute_all_y_hat_aig(sample& ctx, const uint32_t y_rep);
 
-        vector<uint32_t> y_order; //1st only depends on inputs
-        void fix_order();
+        // ordering
+        std::vector<uint32_t> y_order; //1st only depends on inputs
+        std::vector<int> order_val; // inputs have order -1, everything else as per y_order
+        void topological_sort_order();
+        void pre_order_vars();
+        void post_order_vars();
+        void learn_order();
+        void bve_order();
+        bool cluster_order();
+        void compute_td_score_using_adj(const uint32_t nodes,
+            const std::vector<std::vector<int>>& bags,
+            const std::vector<std::vector<int>>& adj, const std::map<uint32_t, uint32_t>& new_to_old);
+        bool later_in_order(const uint32_t a, const uint32_t b) const {
+            SLOW_DEBUG_DO({
+                assert(order_val.size() > a);
+                assert(order_val.size() > b);
+            });
+            return order_val[a] > order_val[b];
+        }
+        void set_depends_on(const uint32_t a, const uint32_t b);
+        inline void set_depends_on(const uint32_t a, const CMSat::Lit b) {
+            set_depends_on(a, b.var());
+        }
 
+        std::vector<sample> get_cmsgen_samples(const uint32_t samples);
+        std::vector<sample> get_samples_ccnr(const uint32_t samples);
+        void sort_all_samples(std::vector<sample>& samples);
+        double train(const std::vector<sample>& samples, const uint32_t v); // returns training error
+        std::vector<std::vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
 
-        void add_sample_clauses(SimplifiedCNF& cnf);
-        vector<vector<lbool>> get_samples(uint32_t num_samples);
-        void train(const vector<vector<lbool>>& samples, uint32_t v);
-        vector<vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
+        // Formulas
+        void add_xor_var();
+        std::unique_ptr<FHolder<MetaSolver2>> fh = nullptr;
+        std::map<uint32_t, FHolder<MetaSolver2>::Formula> var_to_formula; // var -> formula
 
-        FHolder fh;
-        std::map<uint32_t, FHolder::Formula> fs_var; // var -> formula
+        // helper functions
+        std::string pr(const CMSat::lbool val) const;
+        bool lbool_to_bool(const CMSat::lbool val) const {
+            assert(val != CMSat::l_Undef);
+            return val == CMSat::l_True;
+        }
+        std::vector<int> lits_to_ints(const std::vector<CMSat::Lit>& lits) {
+            std::vector<int> ret;
+            ret.reserve(lits.size());
+            for(const auto& l: lits) ret.push_back(lit_to_pl(l));
+            return ret;
+        }
+
+        // error formula counting via ganak subprocess
+        void check_repair_monotonic();
+        bool count_error_formula(mpz_class& out_count);
+        CMSat::Lit tseitin_encode_aig(
+            const ArjunNS::aig_ptr& aig,
+            const std::map<uint32_t, uint32_t>& count_y_to_y_hat,
+            std::vector<std::vector<CMSat::Lit>>& clauses,
+            uint32_t& next_var,
+            CMSat::Lit true_lit,
+            std::map<ArjunNS::aig_ptr, CMSat::Lit>& cache);
+        mpz_class prev_error_count = -1; // -1 means no previous count
+
+        // debug
+        bool verify_final_cnf(const ArjunNS::SimplifiedCNF& fcnf) const;
+        bool is_unsat(const std::vector<CMSat::Lit>& conflict, uint32_t y_rep, const sample& ctx) const;
+        bool ctx_y_hat_correct(const sample& ctx) const;
+        bool ctx_is_sat(const sample& ctx) const;
+        bool check_map_dependency_cycles() const;
+        bool has_dependency_cycle_dfs(const uint32_t node, std::vector<uint8_t>& color, std::vector<uint32_t>& path) const; // used in check_dependency_loop
+        bool check_aig_dependency_cycles() const;
+        bool check_transitive_closure_correctness() const;
+        bool check_functions_for_y_vars() const;
+        std::mt19937 mtrand;
+        std::vector<uint32_t> updated_y_funcs; // y_hats updated during last round of training
+
+        // stats
+        double repair_start_time;
+        void print_stats(const std::string& txt = "", const std::string& color = "", const std::string& extra = "") const;
+        void print_repair_stats(const std::string& txt = "", const std::string& color = "", const std::string& extra = "") const;
+        uint32_t num_loops_repair = 0;
+        uint64_t conflict_sizes_sum = 0;
+        uint32_t generalized_repair_ok = 0;
+        uint32_t generalized_repair_fallback = 0;
+        uint64_t needs_repair_sum = 0;
+        uint32_t tot_repaired = 0;
+        uint32_t repair_failed = 0;
+        std::vector<uint32_t> repaired_vars_count; // for each y, how many times it was repaired
+        double sampl_time = 0;
+        double train_time = 0;
+
+        // Main stuff
+        ArjunNS::SimplifiedCNF cnf;
+        ArjunNS::AIGManager aig_mng;
 };
+}

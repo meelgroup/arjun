@@ -24,132 +24,188 @@
 
 #pragma once
 
-#ifdef CMS_LOCAL_BUILD
-#include "cryptominisat.h"
-#else
 #include <cryptominisat5/cryptominisat.h>
-#endif
-
 #include <vector>
 #include <set>
 #include <iostream>
 #include <iomanip>
 #include "arjun.h"
-using std::vector;
-using std::setw;
-using std::set;
-using std::endl;
-using std::cout;
-using CMSat::Lit;
-using std::map;
+#include "metasolver2.h"
+namespace ArjunInt {
 
-namespace ArjunNS {
+struct CL {
+    constexpr CL(const std::vector<CMSat::Lit>& _lits) : lits(_lits) {}
+    std::vector<CMSat::Lit> lits;
+    bool inserted = false;
+};
 
-struct FHolder {
+template<typename T>
+class FHolder {
+public:
+    FHolder() = delete;
+    FHolder(T* _solver) : solver(_solver) {
+        solver->new_var();
+        my_true_lit = CMSat::Lit(solver->nVars()-1, false);
+        solver->add_clause({my_true_lit});
+    }
     struct Formula {
         // TODO: we could have a flag of what has already been inserted into
         // solver_train
-        std::vector<std::vector<CMSat::Lit>> clauses;
+        std::vector<CL> clauses;
         CMSat::Lit out = CMSat::lit_Error;
-        bool finished = false;
-        AIG* aig = nullptr;
+        ArjunNS::aig_ptr aig = nullptr;
     };
 
-    Formula constant_formula(bool value) {
+    std::set<uint32_t> get_dependent_vars(const Formula& f, uint32_t v) const {
+        std::set<uint32_t> ret;
+        ArjunNS::AIG::get_dependent_vars(f.aig, ret, v);
+        return ret;
+    }
+
+    Formula constant_formula(const bool value) {
         Formula ret;
-        if (solver) ret.out = value ? my_true_lit : ~my_true_lit;
+        ret.out = value ? my_true_lit : ~my_true_lit;
         ret.aig = aig_mng.new_const(value);
         return ret;
     }
 
-    Formula compose_ite(const Formula& fleft, const Formula& fright, const Formula& branch) {
-        Formula ret;
-        if (solver) {
-            ret = compose_ite(fleft, fright, branch.out);
-            ret.clauses.insert(ret.clauses.end(), branch.clauses.begin(), branch.clauses.end());
+    Formula compose_ite(const Formula& fleft, const Formula& fright, const Formula& branch, std::set<uint32_t>& helpers) {
+        // ITE(branch, TRUE, x) = OR(branch, x)
+        if (fleft.out == my_true_lit && fleft.clauses.empty()) {
+            return compose_or(branch, fright);
         }
-        ret.aig = aig_mng.new_ite(fleft.aig, fright.aig, branch.aig);
+        // ITE(branch, FALSE, x) = AND(NOT(branch), x)
+        if (fleft.out == ~my_true_lit && fleft.clauses.empty()) {
+            return compose_and(neg(branch), fright);
+        }
+        // ITE(branch, x, TRUE) = OR(NOT(branch), x)
+        if (fright.out == my_true_lit && fright.clauses.empty()) {
+            return compose_or(neg(branch), fleft);
+        }
+        // ITE(branch, x, FALSE) = AND(branch, x)
+        if (fright.out == ~my_true_lit && fright.clauses.empty()) {
+            return compose_and(branch, fleft);
+        }
+        Formula ret;
+        ret = compose_ite(fleft, fright, branch.out, helpers);
+        ret.clauses.insert(ret.clauses.end(), branch.clauses.begin(), branch.clauses.end());
+        ret.aig = ArjunNS::AIG::new_ite(fleft.aig, fright.aig, branch.aig);
         return ret;
     }
 
     Formula neg(const Formula& f) {
         Formula ret = f;
-        if (solver) ret.out = ~f.out;
-        ret.aig = aig_mng.new_not(f.aig);
+        ret.out = ~f.out;
+        ret.aig = ArjunNS::AIG::new_not(f.aig);
         return ret;
     }
 
+    // Direct AND encoding: out ↔ (left AND right).
     Formula compose_and(const Formula& fleft, const Formula& fright) {
-        return neg(compose_or(neg(fleft), neg(fright)));
+        // AND(FALSE, x) = FALSE, AND(x, FALSE) = FALSE
+        if (fleft.out == ~my_true_lit && fleft.clauses.empty()) return fleft;
+        if (fright.out == ~my_true_lit && fright.clauses.empty()) return fright;
+        // AND(TRUE, x) = x, AND(x, TRUE) = x
+        if (fleft.out == my_true_lit && fleft.clauses.empty()) return fright;
+        if (fright.out == my_true_lit && fright.clauses.empty()) return fleft;
+        Formula ret;
+        ret.clauses = fleft.clauses;
+        for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
+
+        solver->new_var();
+        uint32_t fresh_v = solver->nVars()-1;
+        CMSat::Lit l = CMSat::Lit(fresh_v, false);
+
+        // l ↔ (fleft.out AND fright.out)
+        ret.clauses.push_back(CL({~l, fleft.out}));
+        ret.clauses.push_back(CL({~l, fright.out}));
+        ret.clauses.push_back(CL({l, ~fleft.out, ~fright.out}));
+        ret.out = l;
+
+        assert(fleft.aig != nullptr);
+        assert(fright.aig != nullptr);
+        ret.aig = ArjunNS::AIG::new_and(fleft.aig, fright.aig);
+        return ret;
     }
 
     Formula compose_or(const Formula& fleft, const Formula& fright) {
+        // OR(TRUE, x) = TRUE
+        if (fleft.out == my_true_lit && fleft.clauses.empty()) return fleft;
+        if (fright.out == my_true_lit && fright.clauses.empty()) return fright;
+        // OR(FALSE, x) = x, OR(x, FALSE) = x
+        if (fleft.out == ~my_true_lit && fleft.clauses.empty()) return fright;
+        if (fright.out == ~my_true_lit && fright.clauses.empty()) return fleft;
+
         Formula ret;
-        if (solver) {
-            ret.clauses = fleft.clauses;
-            for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
+        ret.clauses = fleft.clauses;
+        for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
 
-            solver->new_var();
-            uint32_t fresh_v = solver->nVars()-1;
-            Lit l = Lit(fresh_v, false);
+        solver->new_var();
+        uint32_t fresh_v = solver->nVars()-1;
+        CMSat::Lit l = CMSat::Lit(fresh_v, false);
 
-            ret.clauses.push_back({~l, fleft.out, fright.out});
-            ret.clauses.push_back({l, ~fleft.out});
-            ret.clauses.push_back({l, ~fright.out});
-            ret.out = l;
-        }
-        ret.aig = aig_mng.new_or(fleft.aig, fright.aig);
+        ret.clauses.push_back(CL({~l, fleft.out, fright.out}));
+        ret.clauses.push_back(CL({l, ~fleft.out}));
+        ret.clauses.push_back(CL({l, ~fright.out}));
+        ret.out = l;
+
+        assert(fleft.aig != nullptr);
+        assert(fright.aig != nullptr);
+        ret.aig = ArjunNS::AIG::new_or(fleft.aig, fright.aig);
         return ret;
     }
 
-    Formula compose_ite(const Formula& fleft, const Formula& fright, Lit branch) {
+    Formula compose_ite(const Formula& fleft, const Formula& fright, const CMSat::Lit branch, std::set<uint32_t>& helpers) {
         Formula ret;
-        if (solver) {
-            ret.clauses = fleft.clauses;
-            for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
-            solver->new_var();
-            uint32_t fresh_v = solver->nVars()-1;
-            //  branch -> return left
-            // !branch -> return right
-            //
-            //  b -> fresh = left
-            // !b -> fresh = right
-            //
-            // !b V    f V -left
-            // -b V   -f V  left
-            //  b V    f V -right
-            //  b V   -f V  right
-            //
-            Lit b = branch;
-            Lit l = fleft.out;
-            Lit r = fright.out;
-            Lit fresh = Lit(fresh_v, false);
-            ret.clauses.push_back({~b, fresh, ~l});
-            ret.clauses.push_back({~b, ~fresh, l});
-            ret.clauses.push_back({b, fresh, ~r});
-            ret.clauses.push_back({b, ~fresh, r});
-            ret.out = Lit(fresh_v, false);
-        }
-        ret.aig = aig_mng.new_ite(fleft.aig, fright.aig, branch);
+        ret.clauses = fleft.clauses;
+        for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
+        solver->new_var();
+        const uint32_t fresh_v = solver->nVars()-1;
+        helpers.insert(fresh_v);
+        //  branch -> return left
+        // !branch -> return right
+        //
+        //  b -> fresh = left
+        // !b -> fresh = right
+        //
+        // !b V    f V -left
+        // -b V   -f V  left
+        //  b V    f V -right
+        //  b V   -f V  right
+        //
+        CMSat::Lit b = branch;
+        CMSat::Lit l = fleft.out;
+        CMSat::Lit r = fright.out;
+        CMSat::Lit fresh = CMSat::Lit(fresh_v, false);
+        ret.clauses.push_back(CL({~b, fresh, ~l}));
+        ret.clauses.push_back(CL({~b, ~fresh, l}));
+        ret.clauses.push_back(CL({b, fresh, ~r}));
+        ret.clauses.push_back(CL({b, ~fresh, r}));
+        ret.out = CMSat::Lit(fresh_v, false);
+        ret.aig = ArjunNS::AIG::new_ite(fleft.aig, fright.aig, branch);
         return ret;
     }
 
-    AIGManager aig_mng;
-    CMSat::SATSolver* solver;
-    Lit my_true_lit;
+    CMSat::Lit get_true_lit() const {
+        assert(my_true_lit != CMSat::lit_Error);
+        return my_true_lit;
+    }
+
+private:
+    ArjunNS::AIGManager aig_mng;
+    T* solver = nullptr;
+    CMSat::Lit my_true_lit = CMSat::lit_Error;
 };
 
+inline std::ostream& operator<<(std::ostream& os, const FHolder<ArjunInt::MetaSolver2>::Formula& f) {
+    os << " === Formula out: " << f.out << " === " << std::endl;
+    for (const auto& cl : f.clauses) {
+        for (const auto& l : cl.lits) os << std::setw(6) << l;
+        std::cout << " 0" << std::endl;
+    }
+    os << "AIG: " << f.aig << std::endl;
+    os << " === End Formula === ";
+    return os;
 }
 
-inline std::ostream& operator<<(std::ostream& os, const ArjunNS::FHolder::Formula& f) {
-    os << " ==== Formula: " << f.out << " ==== " << endl;
-    for (const auto& cl : f.clauses) {
-        for (const auto& l : cl) {
-            os << std::setw(6) << l;
-        }
-        cout << " 0" << endl;
-    }
-    os << endl;
-    os << "Output: " << f.out;
-    return os;
 }

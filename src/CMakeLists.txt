@@ -18,17 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-include_directories(${PROJECT_SOURCE_DIR})
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
-include_directories(${CRYPTOMINISAT5_INCLUDE_DIRS})
-include_directories(${SBVA_INCLUDE_DIRS})
-include_directories( ${GMP_INCLUDE_DIR} )
-if (SYNTH)
-    include_directories( ${MLPACK_INCLUDE_DIR} )
-endif()
-include_directories(${PROJECT_SOURCE_DIR}/../cadical/src/)
-
-if (NOT WIN32)
+if(NOT WIN32)
     add_cxx_flag_if_supported("-Wno-bitfield-constant-conversion")
     #add_cxx_flag_if_supported("-Wduplicated-cond")
     #add_cxx_flag_if_supported("-Wduplicated-branches")
@@ -52,51 +42,122 @@ set(libfiles
     minimize.cpp
     arjun.cpp
     puura.cpp
-    ccnr.cpp
-    ccnr_cms.cpp
+    unate_def.cpp
+    autarky.cpp
+    ccnr/ccnr.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
+    manthan.cpp
+    interpolant.cpp
 )
 
-if (SYNTH)
-    set(libfiles ${libfiles}
-    manthan.cpp
-    interpolant.cpp)
+if(EXTRA_SYNTH)
+    list(APPEND libfiles manthan_learn.cpp)
 endif()
 
 add_library(arjun ${libfiles})
 
-target_link_libraries(arjun
-    LINK_PUBLIC ${CRYPTOMINISAT5_LIBRARIES}
-    LINK_PUBLIC ${SBVA_LIBRARIES}
-    LINK_PUBLIC ${GMP_LIBRARY}
-    LINK_PUBLIC ${cadical}
+target_include_directories(arjun
+  PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/../cadical/src/
+    ${SBVA_INCLUDE_DIRS}
+    ${TREEDECOMP_INCLUDE_DIRS}
+  PUBLIC
+    ${CRYPTOMINISAT5_INCLUDE_DIRS}
+    ${GMP_INCLUDE_DIR}
 )
 
-add_executable(arjun-bin main.cpp)
-add_executable(arjun-example example.cpp)
+if(EXTRA_SYNTH)
+    target_include_directories(arjun
+        PRIVATE
+            ${ARMADILLO_INCLUDE_DIRS}
+            ${EVALMAXSAT_INCLUDE_DIRS}
+            ${MLPACK_INCLUDE_DIR}
+    )
+endif()
 
-IF (ZLIB_FOUND)
-    SET(arjun_bin_exec_link_libs ${arjun_bin_exec_link_libs} ${ZLIB_LIBRARY})
-ENDIF()
+target_link_libraries(arjun
+  PRIVATE
+    ${SBVA_LIBRARIES}
+    ${cadical}
+    ${EVALMAXSAT_LIBRARIES}
+    ${TREEDECOMP_LIBRARIES}
+  PUBLIC
+    ${GMP_LIBRARY}
+    ${CRYPTOMINISAT5_LIBRARIES}
+)
 
 set_target_properties(arjun PROPERTIES
-    PUBLIC_HEADER "${arjun_public_headers}"
     VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
     SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
 )
-set_target_properties(arjun-bin PROPERTIES
-    OUTPUT_NAME arjun
-    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
-    INSTALL_RPATH_USE_LINK_PATH TRUE)
-target_link_libraries(arjun-bin ${arjun_bin_exec_link_libs} arjun)
+
+add_executable(arjun-bin main.cpp synth.cpp)
+add_executable(arjun-example example.cpp)
+add_executable(test-synth test-synth.cpp)
+
+target_link_libraries(arjun-bin PRIVATE arjun)
+target_link_libraries(arjun-example PRIVATE arjun)
+target_link_libraries(test-synth PRIVATE arjun ${cadical} ${CRYPTOMINISAT5_LIBRARIES})
+
+target_include_directories(arjun-bin PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_include_directories(arjun-example PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_include_directories(test-synth PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/../cadical/src/
+)
+
+if(ZLIB_FOUND)
+    foreach(tgt arjun-bin arjun-example test-synth)
+        target_include_directories(${tgt} PRIVATE ${ZLIB_INCLUDE_DIR})
+        target_link_libraries(${tgt} PRIVATE ${ZLIB_LIBRARY})
+    endforeach()
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set_target_properties(arjun-bin PROPERTIES
+      OUTPUT_NAME arjun
+      RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+      INSTALL_RPATH_USE_LINK_PATH TRUE
+    )
+    target_link_options(arjun-bin PRIVATE
+      "SHELL:-s WASM=1"
+      "SHELL:-s ALLOW_MEMORY_GROWTH=1"
+      "SHELL:-s STACK_SIZE=10MB"
+      "SHELL:-s EXPORTED_RUNTIME_METHODS='[\"callMain\", \"ccall\", \"cwrap\", \"FS\", \"print\"]'"
+      "SHELL:-s FORCE_FILESYSTEM=1"
+    )
+else()
+    set_target_properties(arjun-bin PROPERTIES
+        OUTPUT_NAME arjun
+        RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+        INSTALL_RPATH_USE_LINK_PATH TRUE)
+endif()
 
 set_target_properties(arjun-example PROPERTIES
     OUTPUT_NAME example
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
-target_link_libraries(arjun-example ${arjun_bin_exec_link_libs} arjun)
 
-arjun_add_public_header(arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun.h )
+set_target_properties(test-synth PROPERTIES
+    OUTPUT_NAME test-synth
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+arjun_add_public_header(arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun.h)
+
+# Public headers are fully known now; the CopyPublicHeaders target below reads
+# this property, so it must be set before that target is created.
+get_target_property(arjun_public_headers arjun PUBLIC_HEADER)
 
 # -----------------------------------------------------------------------------
 # Copy public headers into build directory include directory.
@@ -105,7 +166,6 @@ arjun_add_public_header(arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun.h )
 # -----------------------------------------------------------------------------
 set(HEADER_DEST "${PROJECT_BINARY_DIR}/include/arjun")
 add_custom_target(CopyPublicHeaders ALL)
-get_target_property(arjun_public_headers arjun PUBLIC_HEADER)
 foreach(public_header ${arjun_public_headers})
     get_filename_component(HEADER_NAME ${public_header} NAME)
     add_custom_command(TARGET CopyPublicHeaders PRE_BUILD

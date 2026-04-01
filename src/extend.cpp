@@ -22,13 +22,13 @@
  THE SOFTWARE.
  */
 
-#include <cmath>
 #include <algorithm>
 #include <cstdint>
 #include <iomanip>
 
-#include "src/arjun.h"
-#include "src/time_mem.h"
+#include "arjun.h"
+#include "interpolant.h"
+#include "time_mem.h"
 #include "extend.h"
 #include "constants.h"
 #include <cryptominisat5/solvertypesmini.h>
@@ -36,82 +36,58 @@
 
 using namespace ArjunInt;
 using namespace ArjunNS;
+using namespace CMSat;
 using namespace CaDiCaL;
+using std::vector;
+using std::set;
+using std::map;
 using std::setw;
 
 void Extend::add_all_indics_except(const set<uint32_t>& except) {
-    assert(dont_elim.empty());
-    assert(var_to_indic.empty());
-    assert(indic_to_var.empty());
-
-    var_to_indic.resize(orig_num_vars*2, var_Undef);
-
-    vector<Lit> tmp;
-    for(uint32_t var = 0; var < orig_num_vars; var++) {
-        if (except.count(var)) continue;
-
-        solver->new_var();
-        uint32_t this_indic = solver->nVars()-1;
-        //torem_orig.push_back(Lit(this_indic, false));
-        var_to_indic[var] = this_indic;
-        var_to_indic[var+orig_num_vars] = this_indic;
-        dont_elim.push_back(Lit(this_indic, false));
-        indic_to_var.resize(this_indic+1, var_Undef);
-        indic_to_var[this_indic] = var;
-
-        // Below two mean var == (var+orig) in case indic is TRUE
-        tmp.clear();
-        tmp.push_back(Lit(var,               false));
-        tmp.push_back(Lit(var+orig_num_vars, true));
-        tmp.push_back(Lit(this_indic,        true));
-        solver->add_clause(tmp);
-
-        tmp.clear();
-        tmp.push_back(Lit(var,               true));
-        tmp.push_back(Lit(var+orig_num_vars, false));
-        tmp.push_back(Lit(this_indic,        true));
-        solver->add_clause(tmp);
-    }
-    seen.clear();
-    seen.resize(indic_to_var.size()*2, 0);
+    ::add_all_indics_except(*solver, orig_num_vars, except,
+        var_to_indic, indic_to_var, dont_elim, seen, conf.verb);
 }
 
-void Extend::unsat_define(SimplifiedCNF& cnf) {
-    assert(cnf.not_renumbered() && "Makes interpolant generation much harder, there's no need");
+void Extend::extend_synth(SimplifiedCNF& cnf) {
+    const double my_time = cpuTime();
+    SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
+    auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start extend_synth");
+
     double start_round_time = cpuTime();
-    assert(cnf.sampl_vars.size() == cnf.opt_sampl_vars.size());
-    assert(cnf.opt_sampl_vars_set);
-    uint32_t start_size = cnf.opt_sampl_vars.size();
     fill_solver(cnf);
     solver->set_verbosity(0);
     solver->set_scc(1);
 
     // Fill no need
-    set<uint32_t> no_need;
     // [ replaced, replaced_with ]
     /* auto ret1 = solver->get_all_binary_xors(); */
     /* for(const auto& p: ret1) no_need.insert(p.first.var()); */
-    auto ret2 = solver->get_zero_assigned_lits();
-    for(const auto& p: ret2) no_need.insert(p.var());
-    for(const auto& v: cnf.opt_sampl_vars) no_need.insert(v);
-    add_all_indics_except(no_need);
+    set<uint32_t> input_vars(cnf.get_opt_sampl_vars().begin(), cnf.get_opt_sampl_vars().end());
+    const auto zero_ass = solver->get_zero_assigned_lits();
+    for(const auto& p: zero_ass) input_vars.insert(p.var());
+    add_all_indics_except(input_vars);
+    verb_print(2, "[extend] orig_num_vars: " << orig_num_vars << " nvars: " << solver->nVars());
 
     // set up interpolant
+    Interpolant interp(conf, cnf.nVars());
     interp.solver = solver.get();
     interp.fill_picolsat(orig_num_vars);
     interp.fill_var_to_indic(var_to_indic);
 
-    //Initially, all of samping_set is unknown
+    //Initially, all of non-opt sampling set is unknown
     for(const auto& x: seen) assert(x == 0);
     vector<uint32_t> unknown;
     for(uint32_t i = 0; i < orig_num_vars; i++) {
-        if (no_need.count(i)) continue;
+        if (input_vars.count(i)) continue;
         unknown.push_back(i);
     }
+    if (unknown.empty()) return;
 
     sort_unknown(unknown, incidence);
-    verb_print(1,"[arjun] Start unknown size: " << unknown.size());
-    uint32_t sat = 0;
+    verb_print(1,"[extend] Start unknown size: " << unknown.size()
+                    << " mem: " << memUsedTotal()/(1024*1024) << " MB");
+    uint32_t num_sat = 0;
+    uint32_t num_unknown = 0;
     set<uint32_t> unknown_set(unknown.begin(), unknown.end());
 
     vector<Lit> assumptions;
@@ -119,13 +95,13 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
     uint32_t num_unsat = 0;
     while(!unknown.empty()) {
         if (num_done % 100 == 99) {
-            verb_print(1, "[padoa] done: " << setw(4) << num_done
+            verb_print(1, "[extend] done: " << setw(4) << num_done
                     << " unsat: " << setw(4) << num_unsat
                     << " left: " << setw(4) << unknown.size()
                     << " T: " << std::setprecision(2) << std::fixed << setw(6)
                     << (cpuTime() - start_round_time)
-                    << " var/s: " << setw(6) << (double)num_done/(cpuTime() - start_round_time));
-
+                    << " var/s: " << setw(6) << safe_div(num_done,cpuTime() - start_round_time)
+                    << " mem: " << memUsedTotal()/(1024*1024) << " MB");
         }
         uint32_t test_var = unknown.back();
         unknown.pop_back();
@@ -137,8 +113,9 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
         //Assumption filling -- assume everything in indep is the same
         assert(test_var != var_Undef);
 
+        assert(!input_vars.count(test_var));
         assumptions.clear();
-        uint32_t indic = var_to_indic[test_var];
+        const uint32_t indic = var_to_indic[test_var];
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
 
@@ -149,23 +126,20 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
         ret = solver->solve(&assumptions);
         num_done++;
 
-        if (ret == l_False) verb_print(5, "[arjun] extend solve(): False");
-        else if (ret == l_True) {verb_print(5, "[arjun] extend solve(): True");sat++;}
-        else if (ret == l_Undef) verb_print(5, "[arjun] extend solve(): Undef");
+        if (ret == l_False) verb_print(5, "[extend] extend solve(): False");
+        else if (ret == l_True) {verb_print(5, "[extend] extend solve(): True");num_sat++;}
+        else if (ret == l_Undef) {verb_print(5, "[extend] extend solve(): Undef"); num_unknown++;}
 
         if (ret == l_False) {
             num_unsat++;
             // Dependent fully on `indep`
             // TODO: run get_conflict and then we know which were
             // actually needed, so we can do an easier generation/check
-            interp.generate_interpolant(assumptions, test_var, cnf);
-            vector<Lit> cl;
-            Lit l(indic, false);
-            cl.push_back(l);
-            solver->add_clause(cl);
-            interp.add_clause(cl);
-            cnf.opt_sampl_vars.push_back(test_var);
-
+            interp.generate_interpolant(assumptions, test_var, cnf, input_vars);
+            solver->add_clause({Lit(indic, false)});
+            interp.add_unit_cl({Lit(indic, false)});
+            cnf.add_opt_sampl_var(test_var);
+            input_vars.insert(test_var);
         } else if (ret == l_True) {
             // Optimisation: if we see both true and false, then it cannot be independent
             for(uint32_t v = 0; v < orig_num_vars; v++) {
@@ -178,25 +152,42 @@ void Extend::unsat_define(SimplifiedCNF& cnf) {
             }
             // Not fully dependent
         } else {
-            // Unknown
+            // SAT or Unknown
         }
     }
 
-    verb_print(1, "defined via Padoa: " << cnf.opt_sampl_vars.size()-start_size
-            << " SAT: " << sat
-            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
     if (conf.verb >= 2) solver->print_stats();
+    if (conf.verb >= 3) {
+        for(uint32_t v = 0; v < cnf.nVars(); v++) {
+            auto& aig = interp.get_defs()[v];
+            if (aig == nullptr) continue;
 
-    cnf.add_aigs_from(interp.get_aig_mng(), interp.get_defs());
+            set<uint32_t> dep_vars;
+            AIG::get_dependent_vars(aig, dep_vars, v);
+            vector<Lit> deps_lits; deps_lits.reserve(dep_vars.size());
+            for(const auto& dv: dep_vars) deps_lits.push_back(Lit(dv, false));
+            verb_print(3, "[unsat-define] define var: " << v+1 << " depends on vars: " << deps_lits);
+        }
+    }
+
+    cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);
+    SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
+    auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end extend_synth");
+    verb_print(1, COLRED "[extend] Done. "
+            << " True: " << num_sat
+            << " Unkn: " << num_unknown
+            << " defined: " << to_define.size()-to_define2.size()
+            << " still to define: " << to_define2.size()
+            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
 }
 
 void Extend::extend_round(SimplifiedCNF& cnf) {
-    assert(cnf.opt_sampl_vars_set = true);
+    assert(cnf.get_opt_sampl_vars_set() == true);
     double start_round_time = cpuTime();
-    const uint32_t orig_size = cnf.opt_sampl_vars.size();
+    const uint32_t orig_size = cnf.get_opt_sampl_vars().size();
     fill_solver(cnf);
     solver->set_verbosity(0);
-    set<uint32_t> opt_sampl(cnf.opt_sampl_vars.begin(), cnf.opt_sampl_vars.end());
+    set<uint32_t> opt_sampl(cnf.get_opt_sampl_vars().begin(), cnf.get_opt_sampl_vars().end());
 
     // we don't care about literal polarities, we treat all gates
     // as if they were OR gates
@@ -299,7 +290,6 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     set<uint32_t> unknown_set(unknown.begin(), unknown.end());
     uint32_t num_done = 0;
 
-
     if (conf.extend_ccnr >= 0) {
         double ccnr_time = cpuTime();
         auto ret = solver->many_sls(conf.extend_ccnr*1000LL*1000LL, 5);
@@ -324,39 +314,26 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
         if (unknown_set.count(test_var) == 0) continue;
         unknown_set.erase(test_var);
         num_done++;
-        if (num_done == 300 && unknown_set.size() > 1000) {
-            verb_print(1, "[arjun] extend: too many to do, after 100 still lots left. Lowering conflict limit");
-            // Too many to do, to expensive
-            conf.extend_max_confl /= 2;
-        }
-        if (num_done == 500 && unknown_set.size() > 1000) {
-            verb_print(1, "[arjun] extend: too many to do, after 1000 still lots left. Lowering conflict limit");
-            // Too many to do, to expensive
-            conf.extend_max_confl /= 2;
-        }
-        if (num_done == 1000 && unknown_set.size() > 2000) {
-            verb_print(1, "[arjun] extend: too many to do, after 2000 still lots left. Lowering conflict limit");
-            // Too many to do, to expensive
-            conf.extend_max_confl /= 4;
-        }
-        if (num_done == 3000 && unknown_set.size() > 3000) {
-            verb_print(1, "[arjun] extend: too many to do, after 3000 still lots left. Lowering conflict limit");
-            // Too many to do, to expensive
-            conf.extend_max_confl /= 4;
-        }
-        if (num_done == 6000 && unknown_set.size() > 3000) {
-            verb_print(1, "[arjun] extend: too many to do, after 6000 still lots left. Lowering conflict limit");
-            // Too many to do, to expensive
-            conf.extend_max_confl /= 4;
-        }
-        if (num_done == 15000 && unknown_set.size() > 3000) {
-            verb_print(1, "[arjun] extend: too many to do, after 9000 still lots left. BREAKING");
-            break;
+        // Progressively reduce conflict limit when there are too many unknowns
+        // {done_threshold, remaining_threshold, divisor (0 = break)}
+        static constexpr struct { uint32_t done; uint32_t remaining; uint32_t divisor; } throttle_steps[] = {
+            {  300, 1000, 2}, {  500, 1000, 2}, { 1000, 2000, 4},
+            { 3000, 3000, 4}, { 6000, 3000, 4}, {15000, 3000, 0},
+        };
+        for (const auto& [done_thr, rem_thr, divisor] : throttle_steps) {
+            if (num_done != done_thr || unknown_set.size() <= rem_thr) continue;
+            if (divisor == 0) {
+                verb_print(1, "[arjun] extend: after " << done_thr << " still lots left. BREAKING");
+                goto done;
+            }
+            verb_print(1, "[arjun] extend: after " << done_thr
+                << " still lots left. Lowering conflict limit by /" << divisor);
+            conf.extend_max_confl /= divisor;
         }
         /* cout << "num_done: " << num_done << " unknown_set.size(): " << unknown_set.size() << " confl: " << (double)solver->get_sum_conflicts()/((double)num_done*conf.extend_max_confl) << endl; */
 
         assert(test_var < orig_num_vars);
-        verb_print(5, "Testing: " << test_var);
+        verb_print(5, "Testing: " << test_var+1);
 
         //Assumption filling
         assert(test_var != var_Undef);
@@ -370,11 +347,11 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
         solver->set_max_confl(conf.extend_max_confl);
         ret = solver->solve(&assumptions);
         if (ret == l_False) {
-            verb_print(5, "[arjun] extend solve(): False");
+            verb_print(5, "[arjun] extend solve(): False var: " << test_var+1);
         } else if (ret == l_True) {
-            verb_print(5, "[arjun] extend solve(): True");
+            verb_print(5, "[arjun] extend solve(): True var: " << test_var+1);
         } else if (ret == l_Undef) {
-            verb_print(5, "[arjun] extend solve(): Undef");
+            verb_print(5, "[arjun] extend solve(): Undef var: " << test_var+1);
             ret_undef++;
         }
 
@@ -415,14 +392,92 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             }
         }
     }
+    done:
     cnf.set_opt_sampl_vars(opt_sampl);
+    SLOW_DEBUG_DO(assert(check_extend(cnf)));
 
     verb_print(1, "[arjun-extend] Extend finished "
             << " orig size: " << orig_size
-            << " final size: " << cnf.opt_sampl_vars.size()
+            << " final size: " << cnf.get_opt_sampl_vars().size()
             << " Undef: " << ret_undef
-            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
+            << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time)
+            << " mem: " << memUsedTotal()/(1024*1024) << " MB");
     if (conf.verb >= 4) solver->print_stats();
+}
+
+// Checks that every variable in opt_sampl_vars that is NOT in sampl_vars
+// is functionally determined by sampl_vars given the clauses.
+// The construction doubles the formula and shares sampl_vars across both copies;
+// then for each extra opt_sampl var v, asks: can v differ across two satisfying
+// assignments that agree on all sampl_vars? Should be UNSAT if extend was correct.
+bool Extend::check_extend(const SimplifiedCNF& cnf) {
+    const auto& sampl_vars = cnf.get_sampl_vars();
+    const auto& opt_sampl_vars  = cnf.get_opt_sampl_vars();
+    const uint32_t nv = cnf.nVars();
+
+    set<uint32_t> sampl_set(sampl_vars.begin(), sampl_vars.end());
+    set<uint32_t> opt_sampl_set(opt_sampl_vars.begin(), opt_sampl_vars.end());
+
+    // Check that sampl_vars ⊆ opt_sampl_vars (basic sanity)
+    for (const auto& v : sampl_vars) {
+        if (!opt_sampl_set.count(v)) {
+            verb_print(1, "[check-extend] FAIL: sampl_var " << v+1
+                << " is missing from opt_sampl_vars!");
+            return false;
+        } }
+
+    // Build doubled formula:
+    //   vars 0..nv-1         = copy 1
+    //   vars nv..2*nv-1      = copy 2  (except sampl_vars which are SHARED with copy 1)
+    SATSolver chk;
+    chk.set_verbosity(0);
+    chk.new_vars(nv * 2);
+
+    // Copy 1: original clauses verbatim
+    for (const auto& cl : cnf.get_clauses())     chk.add_clause(cl);
+
+    // Copy 2: sampl_vars kept as-is, all other vars shifted by nv
+    vector<Lit> cl2;
+    auto add_doubled = [&](const vector<Lit>& cl) {
+        cl2.clear();
+        for (const auto& l : cl) {
+            if (sampl_set.count(l.var()))
+                cl2.push_back(l);                          // shared
+            else
+                cl2.push_back(Lit(l.var() + nv, l.sign())); // doubled
+        }
+        chk.add_clause(cl2);
+    };
+    for (const auto& cl : cnf.get_clauses()) add_doubled(cl);
+
+    bool ok = true;
+    uint32_t num_checked = 0;
+    for (const auto& v : opt_sampl_vars) {
+        if (sampl_set.count(v)) continue; // already in base set, nothing to check
+
+        // Assumption: v=true in copy 1, v=false in copy 2  →  should be UNSAT
+        vector<Lit> assumptions = {Lit(v, false), Lit(v + nv, true)};
+        lbool ret = chk.solve(&assumptions);
+        assert(ret != l_Undef);
+        num_checked++;
+
+        if (ret == l_False) {
+            verb_print(4, "[check-extend] OK  var " << v+1
+                << " is determined by sampl_vars");
+        } else {
+            verb_print(1, "[check-extend] FAIL var " << v+1
+                << " is in opt_sampl_vars but NOT determined by sampl_vars!"
+                << " (solver returned " << (ret == l_True ? "SAT" : "UNDEF") << ")");
+            ok = false;
+        }
+    }
+
+    if (ok)
+        verb_print(2, "[check-extend] PASS: all " << num_checked
+            << " extra opt_sampl_vars are correctly determined by sampl_vars");
+    else
+        verb_print(1, "[check-extend] FAIL: some opt_sampl_vars are NOT determined by sampl_vars!");
+    return ok;
 }
 
 void Extend::get_incidence() {
@@ -430,7 +485,6 @@ void Extend::get_incidence() {
 
     incidence.clear();
     incidence.resize(orig_num_vars, 0);
-    assert(solver->nVars() == orig_num_vars);
     vector<uint32_t> inc = solver->get_lit_incidence();
     assert(inc.size() == orig_num_vars*2);
     for(uint32_t i = 0; i < orig_num_vars; i++) {
@@ -448,10 +502,10 @@ void Extend::fill_solver(const SimplifiedCNF& cnf) {
     assert(solver->nVars() == 0); // Solver here is empty
 
     // Inject original CNF
-    orig_num_vars = cnf.nvars;
+    orig_num_vars = cnf.nVars();
     solver->new_vars(orig_num_vars);
-    for(const auto& cl: cnf.clauses) solver->add_clause(cl);
-    for(const auto& cl: cnf.red_clauses) solver->add_red_clause(cl);
+    for(const auto& cl: cnf.get_clauses()) solver->add_clause(cl);
+    for(const auto& cl: cnf.get_red_clauses()) solver->add_red_clause(cl);
     get_incidence();
 
     // Double vars
@@ -460,9 +514,9 @@ void Extend::fill_solver(const SimplifiedCNF& cnf) {
     seen.resize(solver->nVars()*2, 0);
 
     // We only need to double the non-opt-sampling vars
-    for(const auto& v: cnf.opt_sampl_vars) seen[v] = 1;
+    for(const auto& v: cnf.get_opt_sampl_vars()) seen[v] = 1;
     vector<Lit> cl2;
-    for(const auto& cl: cnf.clauses) {
+    for(const auto& cl: cnf.get_clauses()) {
         cl2.clear();
         for (const auto& l: cl) {
             if (seen[l.var()]) cl2.push_back(l);
@@ -470,5 +524,5 @@ void Extend::fill_solver(const SimplifiedCNF& cnf) {
         }
         solver->add_clause(cl2);
     }
-    for(const auto& v: cnf.opt_sampl_vars) seen[v] = 0;
+    for(const auto& v: cnf.get_opt_sampl_vars()) seen[v] = 0;
 }

@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
-rm -rf lib* Test* tests* include tests CM* cmake* arjun
-cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTING=ON ..
-make -j6
+rm -rf .cmake lib* Test* tests* include tests CM* cmake* arjun
+cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTING=ON -DEXTRA_SYNTH=ON ..
+make -j$(nproc)
 make test

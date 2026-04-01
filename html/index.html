@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="Arjun in your browser">
+    <meta name="keywords" content="Arjun, Functional Synthesis, WebAssembly, JavaScript, Emscripten">
+    <meta name="author" content="Mate Soos">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arjun in your browser</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 200px;
+            padding: 10px;
+            box-sizing: border-box;
+            font-family: monospace;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #output {
+            border: 1px solid #ddd;
+            padding: 15px;
+            min-height: 100px;
+            white-space: pre-wrap;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+            font-family: monospace;
+            overflow-y: auto;
+            max-height: 400px;
+        }
+        .status {
+            font-style: italic;
+            color: #666;
+            margin-left: 10px;
+        }
+        label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+        }
+        .progress-container {
+            width: 100%;
+            background-color: #f1f1f1;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        #progress-bar {
+            height: 10px;
+            background-color: #4CAF50;
+            border-radius: 4px;
+            width: 0%;
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Arjun Functional Synthesis in Your Browser</h1>
+        <div>Copy your CNF/DIMACS formula in the input box below and click "Run
+            arjun.js" to run the Functional Synthesis engine in your browser.
+            The output will be displayed below the input box. Format
+            description is available <a
+                href="https://jix.github.io/varisat/manual/0.2.0/formats/dimacs.html">here</a></div>
+        <div>
+            <label for="extra-args">Extra command line arguments:</label>
+            <input type="text" id="extra-args"
+                value='--mstrategy "const(max_repairs=400),const(max_repairs=400,inv_learnt=1),bve"'
+                style="width:100%;padding:8px;box-sizing:border-box;font-family:monospace;border:1px solid #ddd;border-radius:4px;">
+        </div>
+        <div>
+            To only do the repair loop, use options: "--verb 10 --bve 0 --synthbve 0 --unate 0 --autarky 0 --unatedef 0 --extend 0 --minimize 0 --samples 0"
+        <div>
+            <label for="input-content">CNF:</label>
+            <textarea id="input-content">p cnf 3 3
+-1 -2 3 0
+1 -3 0
+2 -3 0
+c p show 1 2 0
+</textarea>
+        </div>
+
+        <div>
+            <button id="run-button">Run arjun.js</button>
+            <button id="cancel-button">Cancel</button>
+            <span id="status" class="status">Loading WebAssembly module...</span>
+            <div class="progress-container">
+                <div id="progress-bar"></div>
+            </div>
+        </div>
+
+        <div id="download-section" style="display:none">
+            <h2 style="margin-bottom:8px">Download Verilog Output</h2>
+            <a id="download-link" download="output.v">
+                <button>Download Verilog output</button>
+            </a>
+            <h3 style="margin-top:16px;margin-bottom:8px">Verilog output:</h3>
+            <div id="output-v-content" style="
+                height: 300px;
+                overflow-y: auto;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 10px;
+                background-color: #f9f9f9;
+                font-family: monospace;
+                font-size: 13px;
+                white-space: pre;
+            "></div>
+        </div>
+
+        <div>
+            <h2 style="margin-bottom:8px">Output</h2>
+            <div id="output">Ready - enter your input and click "Run arjun.js"</div>
+        </div>
+    </div>
+
+    <script>
+        // Main thread Module configuration
+        var Module = {
+            noInitialRun: true,
+            stdin: function() { return null; },
+            onRuntimeInitialized: function() {
+                document.getElementById('status').textContent = 'Ready';
+                document.getElementById('run-button').disabled = false;
+            }
+        };
+
+        // Create worker with proper WASM loading
+        function createEmscriptenWorker() {
+            const workerCode = `
+                var Module = {
+                    noInitialRun: true,
+                    stdin: function() { return null; },
+                    print: function(text) {
+                        postMessage({ type: 'output', content: text });
+                    },
+                    printErr: function(text) {
+                        console.error('Error:', text);
+                        //postMessage({ type: 'output', content: 'ERROR: ' + text });
+                    },
+                    onRuntimeInitialized: function() {
+                        postMessage({ type: 'ready' });
+                    },
+                    locateFile: function(path) {
+                        console.log('Locating file:', path);
+                        // Resolve correct path for WASM file
+                        if (path.endsWith('.wasm')) {
+                            return self.workerOptions.wasmPath || 'arjun.wasm';
+                        }
+                        return path;
+                    }
+                };
+
+                // This will be replaced by the Emscripten-generated code
+                var wasmBinary;
+
+                onmessage = function(e) {
+                    if (e.data.type === 'init') {
+                        console.log('Initializing worker with options:', e.data.options);
+                        self.workerOptions = e.data.options;
+                        importScripts(e.data.options.jsPath);
+                    }
+                    else if (e.data.type === 'run') {
+                        try {
+                            console.log('Running with args:', e.data.args);
+                            Module.FS.writeFile('/input.cnf', e.data.input);
+                            var args = ['--synth'].concat(e.data.extraArgs || []).concat(['/input.cnf', '/output.v']);
+                            Module.callMain(args);
+                            var outputFile = null;
+                            try {
+                                outputFile = Module.FS.readFile('/output.v', { encoding: 'utf8' });
+                            } catch (readErr) {
+                                console.log('No output.v generated:', readErr);
+                            }
+                            postMessage({ type: 'done', outputV: outputFile });
+                        } catch (e) {
+                            postMessage({ type: 'error', content: e.toString() });
+                        }
+                    }
+                };
+            `;
+
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            return URL.createObjectURL(blob);
+        }
+
+        // ANSI escape code → HTML converter
+        (function() {
+            const ANSI_COLORS = {
+                0:  null,         // reset
+                1:  'bold',
+                30: '#555',       // black (dark gray)
+                31: '#c00',       // red
+                32: '#0a0',       // green
+                33: '#990',       // yellow
+                34: '#00c',       // blue
+                35: '#909',       // magenta
+                36: '#099',       // cyan
+                37: '#ccc',       // white
+                90: '#888',       // bright black
+                91: '#f44',       // bright red
+                92: '#4f4',       // bright green
+                93: '#ff4',       // bright yellow
+                94: '#44f',       // bright blue
+                95: '#f4f',       // bright magenta
+                96: '#4ff',       // bright cyan
+                97: '#fff',       // bright white
+            };
+            window.ansiToHtml = function(text) {
+                let result = '';
+                let openSpans = 0;
+                const parts = text.split(/\x1b\[([0-9;]*)m/);
+                for (let i = 0; i < parts.length; i++) {
+                    if (i % 2 === 0) {
+                        // literal text
+                        result += parts[i].replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                    } else {
+                        // escape sequence codes
+                        const codes = parts[i].split(';').map(Number);
+                        for (const code of codes) {
+                            if (code === 0) {
+                                while (openSpans-- > 0) result += '</span>';
+                                openSpans = 0;
+                            } else if (code === 1) {
+                                result += '<span style="font-weight:bold">';
+                                openSpans++;
+                            } else if (ANSI_COLORS[code]) {
+                                result += `<span style="color:${ANSI_COLORS[code]}">`;
+                                openSpans++;
+                            }
+                        }
+                    }
+                }
+                while (openSpans-- > 0) result += '</span>';
+                return result;
+            };
+        })();
+
+        // Main execution logic
+        function parseExtraArgs(str) {
+            // Shell-like tokenizer: handles "quoted strings" and unquoted tokens
+            const args = [];
+            let i = 0;
+            while (i < str.length) {
+                while (i < str.length && str[i] === ' ') i++;
+                if (i >= str.length) break;
+                if (str[i] === '"') {
+                    i++;
+                    let start = i;
+                    while (i < str.length && str[i] !== '"') i++;
+                    args.push(str.slice(start, i));
+                    if (i < str.length) i++; // skip closing quote
+                } else {
+                    let start = i;
+                    while (i < str.length && str[i] !== ' ') i++;
+                    args.push(str.slice(start, i));
+                }
+            }
+            return args;
+        }
+
+        document.getElementById('run-button').addEventListener('click', async function() {
+            const inputContent = document.getElementById('input-content').value;
+            const outputDiv = document.getElementById('output');
+            const extraArgs = parseExtraArgs(document.getElementById('extra-args').value);
+
+            if (!inputContent.trim()) {
+                outputDiv.textContent = 'Error: Please enter input content';
+                return;
+            }
+
+            outputDiv.innerHTML = 'Initializing...\n';
+            document.getElementById('run-button').disabled = true;
+            document.getElementById('status').textContent = 'Running...';
+
+            // Get absolute URL for WASM file
+            const wasmPath = new URL('arjun.wasm', window.location.href).href;
+            const jsPath = new URL('arjun.js', window.location.href).href;
+            const workerUrl = createEmscriptenWorker();
+            const worker = new Worker(workerUrl);
+
+            worker.onmessage = function(e) {
+                switch (e.data.type) {
+                    case 'output':
+                        console.log('Output:', e.data.content);
+                        outputDiv.innerHTML += ansiToHtml(e.data.content) + '\n';
+                        outputDiv.scrollTop = outputDiv.scrollHeight;
+                        break;
+                    case 'ready':
+                        //console.log('ready. Sending input:', inputContent);
+                        worker.postMessage({
+                            type: 'run',
+                            input: inputContent,
+                            extraArgs: extraArgs
+                        });
+                        break;
+                    case 'done':
+                        document.getElementById('status').textContent = 'Completed';
+                        document.getElementById('run-button').disabled = false;
+                        worker.terminate();
+                        URL.revokeObjectURL(workerUrl);
+                        if (e.data.outputV) {
+                            var blob = new Blob([e.data.outputV], { type: 'text/plain' });
+                            var url = URL.createObjectURL(blob);
+                            document.getElementById('download-link').href = url;
+                            document.getElementById('output-v-content').textContent = e.data.outputV;
+                            document.getElementById('download-section').style.display = 'block';
+                        }
+                        break;
+                    case 'error':
+                        outputDiv.textContent += 'Error: ' + e.data.content + '\n';
+                        document.getElementById('status').textContent = 'Failed';
+                        document.getElementById('run-button').disabled = false;
+                        worker.terminate();
+                        URL.revokeObjectURL(workerUrl);
+                        break;
+                }
+            };
+
+            // Initialize worker with proper paths
+            worker.postMessage({
+                type: 'init',
+                options: {
+                    jsPath: jsPath,
+                    wasmPath: wasmPath
+                }
+            });
+        });
+
+        // Load arjun.js in main thread
+        const script = document.createElement('script');
+        script.src = 'arjun.js';
+        document.body.appendChild(script);
+    </script>
+</body>
+</html>

@@ -9,3 +9,11 @@ neovide_backtraces.log
 /.ccls-cache
 CLAUDE.md
 .claude
+perf*
+output
+out/
+html/*.js
+html/*.css
+html/*.wasm
+html/*.ts
+

@@ -21,8 +21,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ***********************************************************/
 
-#ifndef TIME_MEM_H
-#define TIME_MEM_H
+#pragma once
 #include <cassert>
 #include <ctime>
 #include <cstdint>
@@ -80,14 +79,11 @@ static inline double cpuTimeTotal(void)
 // size and resident set size, and return the results in KB.
 //
 // On failure, returns 0.0, 0.0
-static inline uint64_t memUsedTotal(double& vm_usage)
+static inline uint64_t memUsedTotal()
 {
-   //double& vm_usage
    using std::ios_base;
    using std::ifstream;
    using std::string;
-
-   vm_usage     = 0.0;
 
    // 'file' stat seems to give the most reliable results
    //
@@ -113,27 +109,21 @@ static inline uint64_t memUsedTotal(double& vm_usage)
    stat_stream.close();
 
    long page_size_kb = sysconf(_SC_PAGE_SIZE); // in case x86-64 is configured to use 2MB pages
-   vm_usage     = vsize;
    double resident_set = (double)rss * (double)page_size_kb;
 
    return resident_set;
 }
 #elif defined(__FreeBSD__)
 #include <sys/types.h>
-inline uint64_t memUsedTotal(double& vm_usage)
+inline uint64_t memUsedTotal()
 {
-    vm_usage = 0;
-
     struct rusage ru;
     getrusage(RUSAGE_SELF, &ru);
     return ru.ru_maxrss*1024;
 }
 #else //Windows
-static inline size_t memUsedTotal(double& vm_usage)
+static inline size_t memUsedTotal()
 {
-    vm_usage = 0;
     return 0;
 }
 #endif
-
-#endif //TIME_MEM_H

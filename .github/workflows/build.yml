@@ -17,6 +17,7 @@ jobs:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-15, macos-15-intel]
         build_type: [Release]
         staticcompile: [ON, OFF]
+        extra_synth: [ON, OFF]
 
     steps:
     - uses: actions/setup-python@v5
@@ -33,7 +34,7 @@ jobs:
         wget https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz
         tar xf gmp-6.3.0.tar.xz
         cd gmp-6.3.0
-        ./configure --enable-static -enable-cxx --enable-shared --with-pic
+        ./configure --enable-static --enable-cxx --enable-shared --with-pic
         make -j8
         sudo make install
         cd ..
@@ -66,14 +67,20 @@ jobs:
         wget https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.1.tar.xz
         tar xf mpfr-4.2.1.tar.xz
         cd mpfr-4.2.1
-        ./configure --enable-static -enable-cxx --enable-shared
+        ./configure --enable-static --enable-cxx --enable-shared
         make -j8
         sudo make install
         cd ..
 
     - name: Install dependencies for Linux
       if: contains(matrix.os, 'ubuntu')
-      run: sudo apt-get update && sudo apt-get install -yq help2man libgmp-dev libmpfr-dev
+      run: sudo apt-get update && sudo apt-get install -yq help2man libgmp-dev libmpfr-dev perl
+
+    - name: Setup ccache
+      uses: hendrikmuhs/ccache-action@v1
+      with:
+        key: ${{ matrix.os }}-${{ matrix.build_type }}-${{ matrix.staticcompile }}-${{ matrix.extra_synth }}
+        max-size: 500M
 
     - name: Checkout Cadical
       uses: actions/checkout@v4
@@ -84,7 +91,7 @@ jobs:
     - name: Build Cadical
       run: |
         cd cadical
-        CXXFLAGS=-fPIC ./configure --competition
+        CXXFLAGS=-fPIC CXX="ccache c++" ./configure --competition
         make -j8
         cd ..
 
@@ -97,7 +104,7 @@ jobs:
     - name: Build Cadiback
       run: |
         cd cadiback
-        CXX=c++ ./configure
+        CXX="ccache c++" ./configure
         make -j8
         cd ..
 
@@ -124,7 +131,7 @@ jobs:
       run: |
         cd cryptominisat
         mkdir build &&cd build
-        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DENABLE_TESTING=OFF -DSTATICCOMPILE=${{ matrix.staticcompile }} ..
+        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DENABLE_TESTING=OFF -DSTATICCOMPILE=${{ matrix.staticcompile }} -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
         cmake --build . --config ${{matrix.build_type}} -v
         cd ../..
 
@@ -140,16 +147,15 @@ jobs:
         mkdir build
         cd build
         ln -s ../scripts/*.sh .
-        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DENABLE_TESTING=OFF -DSTATICCOMPILE=${{ matrix.staticcompile }} ..
+        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DENABLE_TESTING=OFF -DSTATICCOMPILE=${{ matrix.staticcompile }} -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
         cmake --build . --config ${{matrix.build_type}} -v
         sudo make install
         cd ../..
 
-    - name: Checkout cereal
+    - name: Checkout & build  cereal
+      if: matrix.extra_synth == 'ON'
       run: |
         wget https://github.com/USCiLab/cereal/archive/v1.3.2.tar.gz
-    - name: Build cereal
-      run: |
         tar xvf v1.3.2.tar.gz
         # Fix cereal compilation on clang 19+; see
         # https://github.com/USCiLab/cereal/pull/835
@@ -163,51 +169,100 @@ jobs:
         cd cereal-1.3.2
         mkdir build
         cd build
-        cmake -DJUST_INSTALL_CEREAL=ON ..
+        cmake -DJUST_INSTALL_CEREAL=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
         make -j6
         sudo make install
         cd ..
 
-    - name: Checkout armadillo
+    - name: Checkout armadillo dynamic
+      if: matrix.extra_synth == 'ON' && matrix.staticcompile == 'OFF'
       run: |
         wget https://sourceforge.net/projects/arma/files/armadillo-14.0.2.tar.xz
-    - name: Build armadillo
-      run: |
         tar xvf armadillo-14.0.2.tar.xz
         cd armadillo-14.0.2/
-        ./configure
+        mkdir build && cd build
+        cmake -DBUILD_SHARED_LIBS=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
         make -j6
         sudo make install
-        cd ..
+        cd ../..
 
-    - name: Checkout ensmallen
+    - name: Checkout armadillo static
+      if: matrix.extra_synth == 'ON' && matrix.staticcompile == 'ON'
+      run: |
+        wget https://sourceforge.net/projects/arma/files/armadillo-14.0.2.tar.xz
+        tar xvf armadillo-14.0.2.tar.xz
+        cd armadillo-14.0.2/
+        mkdir build && cd build
+        cmake -DBUILD_SHARED_LIBS=OFF -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+        make -j6
+        sudo make install
+        cd ../..
+
+    - name: Checkout & build ensmallen
+      if: matrix.extra_synth == 'ON'
       run: |
         wget https://github.com/mlpack/ensmallen/archive/refs/tags/2.22.2.tar.gz
     - name: Build ensmallen
+      if: matrix.extra_synth == 'ON'
       run: |
         tar xvf 2.22.2.tar.gz
         cd ensmallen-2.22.2
         mkdir build
         cd build
-        cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
+        cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
         cmake --build . --config ${{matrix.build_type}} -v
         sudo cmake --install . --config ${{matrix.build_type}} -v
         cd ../..
 
     - name: Checkout mlpack
+      if: matrix.extra_synth == 'ON'
       uses: actions/checkout@v4
       with:
         repository: mlpack/mlpack
         ref: 4.6.2
         path: mlpack
     - name: Build mlpack
+      if: matrix.extra_synth == 'ON'
       run: |
         cd mlpack
         mkdir build
         cd build
-        cmake -DBUILD_SHARED_LIBS=ON -DBUILD_CLI_EXECUTABLES=OFF ..
+        cmake -DBUILD_SHARED_LIBS=ON -DBUILD_CLI_EXECUTABLES=OFF -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
         cmake --build . --config ${{matrix.build_type}} -v
         sudo make install
+        cd ../..
+
+    - name: Checkout EvalMaxSAT
+      if: matrix.extra_synth == 'ON'
+      uses: actions/checkout@v4
+      with:
+        repository: meelgroup/EvalMaxSAT
+        ref: master
+        path: EvalMaxSAT
+    - name: Build EvalMaxSAT
+      if: matrix.extra_synth == 'ON'
+      run: |
+        cd EvalMaxSAT
+        mkdir build
+        cd build
+        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSTATICCOMPILE=${{ matrix.staticcompile }} -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+        cmake --build . --config ${{matrix.build_type}} -v
+        cd ../..
+
+    - name: Checkout treedecomp
+      uses: actions/checkout@v4
+      with:
+        repository: meelgroup/treedecomp
+        ref: main
+        path: treedecomp
+    - name: Build treedecomp
+      run: |
+        cd treedecomp
+        mkdir build
+        cd build
+        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSTATICCOMPILE=${{ matrix.staticcompile }} -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+        cmake --build . --config ${{matrix.build_type}} -v
+        sudo cmake --install . --config ${{matrix.build_type}} -v
         cd ../..
 
     - uses: actions/checkout@v4
@@ -221,6 +276,9 @@ jobs:
         cmake \
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
         -DSTATICCOMPILE=${{ matrix.staticcompile }} \
+        -DEXTRA_SYNTH=${{ matrix.extra_synth }} \
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
         -S ..
         cmake --build . --config ${{matrix.build_type}} -v
 
@@ -236,43 +294,46 @@ jobs:
         ./project/build/arjun --help
         echo $?
 
-
     - name: Upload Artifact - Linux
-      if: contains(matrix.os, 'ubuntu') && matrix.staticcompile == 'ON' && !contains(matrix.os, 'arm')
+      if: contains(matrix.os, 'ubuntu') && matrix.staticcompile == 'ON' && !contains(matrix.os, 'arm') && matrix.extra_synth == 'ON'
       uses: actions/upload-artifact@v4
       with:
         name: arjun-linux-amd64
         path: |
           project/build/arjun
+          project/build/test-synth
           project/build/lib/*
           project/build/include/*
 
     - name: Upload Artifact - Linux arm
-      if: contains(matrix.os, 'ubuntu') && matrix.staticcompile == 'ON' && contains(matrix.os, 'arm')
+      if: contains(matrix.os, 'ubuntu') && matrix.staticcompile == 'ON' && contains(matrix.os, 'arm') && matrix.extra_synth == 'ON'
       uses: actions/upload-artifact@v4
       with:
         name: arjun-linux-arm64
         path: |
           project/build/arjun
+          project/build/test-synth
           project/build/lib/*
           project/build/include/*
 
     - name: Upload Artifact - Mac arm
-      if: matrix.os == 'macos-14' && matrix.staticcompile == 'ON'
+      if: matrix.os == 'macos-15' && matrix.staticcompile == 'ON' && matrix.extra_synth == 'ON'
       uses: actions/upload-artifact@v4
       with:
         name: arjun-mac-arm64
         path: |
           project/build/arjun
+          project/build/test-synth
           project/build/lib/*
           project/build/include/*
 
     - name: Upload Artifact - Mac x86
-      if: matrix.os == 'macos-15-intel' && matrix.staticcompile == 'ON'
+      if: matrix.os == 'macos-15-intel' && matrix.staticcompile == 'ON' && matrix.extra_synth == 'ON'
       uses: actions/upload-artifact@v4
       with:
         name: arjun-mac-x86_64
         path: |
           project/build/arjun
+          project/build/test-synth
           project/build/lib/*
           project/build/include/*

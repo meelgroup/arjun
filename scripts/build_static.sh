@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
 rm -rf lib* Test* tests* include tests CM* cmake* arjun
 cmake -DSTATICCOMPILE=ON ..
-make -j12
+make -j$(nproc)
 strip arjun

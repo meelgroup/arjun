@@ -24,20 +24,31 @@
 
 #include "constants.h"
 #include "minimize.h"
-#include "constants.h"
 #include "interpolant.h"
-#include "src/interpolant.h"
-#include "src/time_mem.h"
+#include "time_mem.h"
 #include <algorithm>
+#include <cstdint>
+#include <optional>
 #include <set>
 
 using namespace ArjunInt;
+using namespace CMSat;
+using namespace ArjunNS;
+using std::vector;
+using std::set;
+using std::string;
+using std::cout;
+using std::endl;
+using std::optional;
+using std::setw;
 
+template<typename T>
 void Minimize::fill_assumptions_backward(
     vector<Lit>& assumptions,
     vector<uint32_t>& unknown,
     const vector<char>& unknown_set,
-    const vector<uint32_t>& indep)
+    const T& indep,
+    const optional<set<uint32_t>>& ignore)
 {
     verb_print(5, "Filling assumps BEGIN");
     assumptions.clear();
@@ -45,6 +56,10 @@ void Minimize::fill_assumptions_backward(
     //Add known independent as assumptions
     for(const auto& var: indep) {
         assert(var < orig_num_vars);
+        if (ignore && ignore->count(var)) {
+            verb_print(5, "Skipping indep var: " << var+1);
+            continue;
+        }
 
         uint32_t indic = var_to_indic[var];
         assert(indic != var_Undef);
@@ -94,8 +109,7 @@ void Minimize::order_by_file(const string& fname, vector<uint32_t>& unknown) {
     }
 }
 
-void Minimize::print_sorted_unknown(const vector<uint32_t>& unknown) const
-{
+void Minimize::print_sorted_unknown(const vector<uint32_t>& unknown) const {
     if (conf.verb >= 4) {
         cout << "c o Sorted output: "<< endl;
         for (const auto& v: unknown) {
@@ -107,9 +121,7 @@ void Minimize::print_sorted_unknown(const vector<uint32_t>& unknown) const
 }
 
 void Minimize::backward_round() {
-#ifndef NDEBUG
-    for(const auto& x: seen) assert(x == 0);
-#endif
+    SLOW_DEBUG_DO( for(const auto& x: seen) assert(x == 0));
     double start_round_time = cpuTime();
     //start with empty independent set
     vector<uint32_t> indep;
@@ -129,7 +141,7 @@ void Minimize::backward_round() {
     /* std::shuffle(unknown.begin(), unknown.end(), rand); */
     if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
     print_sorted_unknown(unknown);
-    verb_print(1, "[arjun] Start unknown size: " << unknown.size());
+    verb_print(1, "[backward] Start unknown size: " << unknown.size());
     solver->set_verbosity(0);
 
     vector<Lit> assumptions;
@@ -352,32 +364,63 @@ void Minimize::backward_round() {
     if (conf.verb >= 4) solver->print_stats();
 }
 
-void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
-    assert(cnf.not_renumbered() && "TODO -- AIG will need renumbering!");
+void Minimize::add_all_indics_except(const set<uint32_t>& except) {
+    ::add_all_indics_except(*solver, orig_num_vars, except,
+        var_to_indic, indic_to_var, dont_elim, seen, conf.verb);
+}
+
+void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf& mconf) {
     SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
-    double start_round_time = cpuTime();
-    vector<uint32_t> indep;
-    Interpolant interp(conf);
+    SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
+
+    const double start_time = cpuTime();
+    fill_solver_synth(cnf);
+    init();
+    get_incidence();
+    duplicate_problem(cnf);
+
+    // Initially, all of opt_samping_set is known, we do NOT want to minimize those
+    // Instead, all non-sampling-set vars, get definitions for them
+    // in terms of ANY other variables, but NOT in a self-referential way
+    vector<char> unknown_set(orig_num_vars, 0);
+    vector<uint32_t> unknown;
+    auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start backward_round_synth");
+    set<uint32_t> pretend_input;
+    if (to_define.empty()) {
+        verb_print(1, "[backw-synth] No variables to define, returning original CNF");
+        return;
+    }
+    assert(backward_defined.empty());
+
+    add_all_indics_except(input);
+    for(const auto& v: input) {
+        vector<Lit> cl;
+        cl.push_back(Lit(v, false));
+        cl.push_back(Lit(v+orig_num_vars, true));
+        solver->add_clause(cl);
+        cl[0] = ~cl[0];
+        cl[1] = ~cl[1];
+        solver->add_clause(cl);
+    }
+
+    // set up interpolant
+    Interpolant interp(conf, cnf.nVars());
     interp.solver = solver.get();
     interp.fill_picolsat(orig_num_vars);
     interp.fill_var_to_indic(var_to_indic);
 
-    //Initially, all of samping_set is unknown
-    vector<char> unknown_set(orig_num_vars, 0);
-    vector<uint32_t> unknown;
-    set<uint32_t> dep;
-    for(const auto& x: cnf.opt_sampl_vars) dep.insert(x);
     for(uint32_t x = 0; x < orig_num_vars; x++) {
-        if (dep.count(x)) {
-            solver->add_clause({Lit(var_to_indic[x], false)});
-            continue;
-        }
+        pretend_input.insert(x); // we pretend that all vars are input vars
+        if (input.count(x)) continue;
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
     sort_unknown(unknown, incidence);
+    if (mconf.backward_synth_order)
+        std::reverse(unknown.begin(), unknown.end());
     print_sorted_unknown(unknown);
-    verb_print(1, "[arjun] Start unknown size: " << unknown.size());
+    verb_print(1, "[backward] Start unknown size: " << unknown.size()
+                    << " mem: " << memUsedTotal()/(1024*1024) << " MB");
     solver->set_verbosity(0);
 
     vector<Lit> assumptions;
@@ -385,6 +428,17 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
     uint32_t ret_false = 0;
     uint32_t ret_undef = 0;
     while(true) {
+        uint32_t num_done = ret_true + ret_false + ret_undef;
+        if (num_done % 100 == 99) {
+            verb_print(1, "[backw-synth] done: " << setw(4) << num_done
+                    << " unsat: " << setw(4) << ret_false
+                    << " left: " << setw(4) << unknown.size()
+                    << " T: " << std::setprecision(2) << std::fixed << setw(6)
+                    << (cpuTime() - start_time)
+                    << " var/s: " << setw(6) << safe_div(num_done, cpuTime() - start_time)
+                    << " mem: " << memUsedTotal()/(1024*1024) << " MB");
+        }
+
         // Find a variable to test
         uint32_t test_var = var_Undef;
         while(!unknown.empty()) {
@@ -400,20 +454,23 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
 
         if (test_var == var_Undef) {
             //we are done, backward is finished
-            verb_print(5, "[arjun] we are done, " << __PRETTY_FUNCTION__ << " is finished");
+            verb_print(5, "[backw-synth] we are done, " << __PRETTY_FUNCTION__ << " is finished");
             break;
         }
         assert(test_var < orig_num_vars);
+        assert(!input.count(test_var));
         assert(unknown_set[test_var]);
         unknown_set[test_var] = 0;
+        pretend_input.erase(test_var);
         verb_print(3, "Testing: " << test_var+1);
 
         //Assumption filling
         assert(test_var != var_Undef);
-        fill_assumptions_backward(assumptions, unknown, unknown_set, indep);
+        fill_assumptions_backward(assumptions, unknown, unknown_set, pretend_input, input);
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
         solver->set_no_confl_needed();
+        const uint32_t indic = var_to_indic[test_var];
 
         // See if it can be defined by anything
         lbool ret = l_Undef;
@@ -422,12 +479,12 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
 
         if (ret == l_False) {
             ret_false++;
-            verb_print(3, "[arjun] " << __PRETTY_FUNCTION__ << " solve(): False");
+            verb_print(3, "[backw-synth] " << __PRETTY_FUNCTION__ << " solve(): False");
         } else if (ret == l_True) {
             ret_true++;
-            verb_print(3, "[arjun] " << __PRETTY_FUNCTION__ << " solve(): True");
+            verb_print(3, "[backw-synth] " << __PRETTY_FUNCTION__ << " solve(): True");
         } else if (ret == l_Undef) {
-            verb_print(3, "[arjun] " << __PRETTY_FUNCTION__ << " solve(): Undef");
+            verb_print(3, "[backw-synth] " << __PRETTY_FUNCTION__ << " solve(): Undef");
             ret_undef++;
         }
 
@@ -435,23 +492,50 @@ void Minimize::backward_round_synth(ArjunNS::SimplifiedCNF& cnf) {
         if (ret == l_Undef) {
             //Timed out, we'll treat is as unknown
             assert(test_var < orig_num_vars);
-            indep.push_back(test_var);
+            pretend_input.insert(test_var);
+            solver->add_clause({Lit(indic, false)});
+            interp.add_unit_cl({Lit(indic, false)});
         } else if (ret == l_True) {
             //Independent
-            indep.push_back(test_var);
+            pretend_input.insert(test_var);
+            solver->add_clause({Lit(indic, false)});
+            interp.add_unit_cl({Lit(indic, false)});
         } else if (ret == l_False) {
             //not independent
             //i.e. given that all in indep+unkown is equivalent, it's not possible that a1 != b1
-            dep.insert(test_var);
-            interp.generate_interpolant(assumptions, test_var, cnf);
+            interp.generate_interpolant(assumptions, test_var, cnf, pretend_input);
+        }
+    }
+    verb_print(3, __PRETTY_FUNCTION__ << " pretend_input size: " << pretend_input.size());
+
+    if (conf.verb >= 1) {
+        solver->print_stats();
+        for(uint32_t v = 0; v < interp.get_defs().size(); v++) {
+            auto& aig = interp.get_defs()[v];
+            if (aig == nullptr) continue;
+
+            set<uint32_t> dep_vars;
+            AIG::get_dependent_vars(aig, dep_vars, v);
+            vector<Lit> deps_lits; deps_lits.reserve(dep_vars.size());
+            for(const auto& dv: dep_vars) deps_lits.push_back(Lit(dv, false));
+            verb_print(2, "[backw-synth] var: " << v+1 << " depends on vars: " << deps_lits); // << " aig: " << aig);
         }
     }
 
-    verb_print(3, __PRETTY_FUNCTION__ << " dep size: " << dep.size());
-    verb_print(1, COLRED "[arjun] backward round finished. T: " << ret_true << " U: " << ret_undef
-            << " F: " << ret_false << " I: " << sampling_vars.size() << " T: "
-        << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
-    if (conf.verb >= 2) solver->print_stats();
+    for(uint32_t v = 0; v < cnf.nVars(); v++) {
+        const auto& aig = interp.get_defs()[v];
+        if (aig == nullptr) continue;
+        assert(input.count(v) == 0);
+    }
+    cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);
+    cnf.set_after_backward_round_synth();
+    auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end backward_round_synth");
 
-    cnf.add_aigs_from(interp.get_aig_mng(), interp.get_defs());
+    verb_print(1, COLRED "[backward] Done. "
+        << " TR: " << ret_true << " UN: " << ret_undef << " FA: " << ret_false
+        << " defined: " << to_define.size()-to_define2.size()
+        << " still to define: " << to_define2.size()
+        << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time)
+        << " mem: " << memUsedTotal()/(1024*1024) << " MB");
+    SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
 }

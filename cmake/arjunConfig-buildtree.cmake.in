@@ -1,0 +1,21 @@
+# Config file for the Build-tree arjun package (not relocatable).
+set(ARJUN_INCLUDE_DIRS "@CMAKE_CURRENT_BINARY_DIR@/include")
+
+include(CMakeFindDependencyMacro)
+
+if(NOT "@SBVA_CMAKE_DIR_FOR_CONFIG@" STREQUAL "")
+    set(sbva_DIR "@SBVA_CMAKE_DIR_FOR_CONFIG@")
+endif()
+find_dependency(sbva REQUIRED CONFIG)
+
+if(NOT "@TREEDECOMP_CMAKE_DIR_FOR_CONFIG@" STREQUAL "")
+    set(treedecomp_DIR "@TREEDECOMP_CMAKE_DIR_FOR_CONFIG@")
+endif()
+find_dependency(treedecomp REQUIRED CONFIG)
+
+include("${CMAKE_CURRENT_LIST_DIR}/arjunTargets.cmake")
+set(ARJUN_LIBRARIES arjun)
+set(ARJUN_STATIC_LIBRARIES arjun)
+set(ARJUN_VERSION_MAJOR @PROJECT_VERSION_MAJOR@)
+set(ARJUN_VERSION_MINOR @PROJECT_VERSION_MINOR@)
+set(ARJUN_EXECUTABLE arjun)

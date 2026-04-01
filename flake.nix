@@ -11,11 +11,19 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     cryptominisat = {
-      url = "github:msoos/cryptominisat/master";
+      url = "github:msoos/cryptominisat/working-on-synth";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     sbva = {
       url = "github:meelgroup/sbva/master";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    evalmaxsat = {
+      url = "github:meelgroup/EvalMaxSAT/master";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    treedecomp = {
+      url = "github:meelgroup/treedecomp/main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -27,6 +35,8 @@
       cadiback,
       cryptominisat,
       sbva,
+      evalmaxsat,
+      treedecomp,
     }:
     let
       inherit (nixpkgs) lib;
@@ -54,7 +64,6 @@
         {
           stdenv,
           fetchFromGitHub,
-          lsd,
           cmake,
           armadillo,
           ensmallen,
@@ -66,8 +75,8 @@
           src = fetchFromGitHub {
             "owner" = "mlpack";
             "repo" = "mlpack";
-            "rev" = "4.4.0";
-            "hash" = "sha256-EPz8qPTUAldS+k5/qkZf8EKXKjnxElfJxlTEMLPhTQE=";
+            "rev" = "4.7.0";
+            "hash" = "sha256-ABlNudv+Cdj77iOkoVMYsnTWV1eeIgzSdABMDqFmwOE=";
           };
           nativeBuildInputs = [
             pkg-config
@@ -85,6 +94,7 @@
           fetchFromGitHub,
           cmake,
           sbva,
+          evalmaxsat,
           zlib,
           gmp,
           mpfr,
@@ -96,6 +106,7 @@
           ensmallen,
           cadical,
           cryptominisat5,
+          treedecomp,
         }:
         stdenv.mkDerivation {
           name = "arjun";
@@ -115,6 +126,7 @@
           buildInputs = [
             zlib
             sbva
+            evalmaxsat
             gmp
             mpfr
             cadiback
@@ -124,6 +136,7 @@
             ensmallen
             cadical
             cryptominisat5
+            treedecomp
           ];
         };
     in
@@ -140,6 +153,8 @@
             cadiback = cadiback.packages.${system}.cadiback;
             cryptominisat5 = cryptominisat.packages.${system}.cryptominisat5;
             sbva = sbva.packages.${system}.sbva;
+            evalmaxsat = evalmaxsat.packages.${system}.evalmaxsat;
+            treedecomp = treedecomp.packages.${system}.treedecomp;
           };
         in
         {

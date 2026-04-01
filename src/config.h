@@ -46,13 +46,14 @@ struct Config {
     double no_gates_below = 0.01;
     std::string specified_order_fname;
     uint32_t backw_max_confl = 20000;
+    uint32_t unate_max_confl = 100;
     uint32_t extend_max_confl = 1000;
     bool weighted = false;
-    uint32_t num_samples = 10000;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;
     int extend_ccnr = 0;
-    int autarkies = 0;
+    std::string debug_synth;
+    uint32_t seed = 42;
 };
 
 }

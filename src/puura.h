@@ -25,50 +25,48 @@
 #pragma once
 
 #include <cryptominisat5/cryptominisat.h>
-#include "src/config.h"
+#include "config.h"
 #include <cstdint>
+#include <memory>
 #include <vector>
 #include <set>
-#include "config.h"
 #include "arjun.h"
 
-using namespace CMSat;
-using namespace ArjunInt;
-using namespace ArjunNS;
-using std::vector;
-using std::set;
+namespace ArjunInt {
 
 class Puura {
 public:
     Puura(const Config& _conf);
     ~Puura();
 
-    SATSolver* fill_solver(const SimplifiedCNF& cnf);
-    SimplifiedCNF get_fully_simplified_renumbered_cnf(
-        const SimplifiedCNF& cnf, const SimpConf simp_conf);
-    void reverse_bce(SimplifiedCNF& cnf);
-    void run_sbva(SimplifiedCNF& orig,
+    std::unique_ptr<CMSat::SATSolver> fill_solver(const ArjunNS::SimplifiedCNF& cnf);
+    ArjunNS::SimplifiedCNF get_fully_simplified_renumbered_cnf(
+        const ArjunNS::SimplifiedCNF& cnf, const ArjunNS::SimpConf simp_conf);
+    void reverse_bce(ArjunNS::SimplifiedCNF& cnf);
+    void run_sbva(ArjunNS::SimplifiedCNF& orig,
         int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak);
-    void synthesis_unate(SimplifiedCNF& cnf);
-    void backbone(SimplifiedCNF& cnf);
+    void backbone(ArjunNS::SimplifiedCNF& cnf);
 
 private:
-    SATSolver* setup_f_not_f_indic(const SimplifiedCNF& cnf);
-    void set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf);
-    bool set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, SATSolver* solver);
-
-    void get_bve_mapping(const SimplifiedCNF& cnf, SimplifiedCNF& scnf, SATSolver* solver) const;
-    SimplifiedCNF get_cnf(
-        SATSolver* solver,
-        const SimplifiedCNF& cnf,
-        const vector<uint32_t>& sampl_vars,
-        const vector<uint32_t>& empty_sampl_vars);
+    std::unique_ptr<CMSat::SATSolver> setup_f_not_f(const ArjunNS::SimplifiedCNF& cnf);
+    void set_up_sampl_vars_dont_elim(const ArjunNS::SimplifiedCNF& cnf);
+    bool set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf, std::unique_ptr<CMSat::SATSolver>& solver);
+    void get_bve_mapping(const ArjunNS::SimplifiedCNF& cnf, ArjunNS::SimplifiedCNF& scnf, std::unique_ptr<CMSat::SATSolver>& solver) const;
+    ArjunNS::SimplifiedCNF get_cnf(
+        std::unique_ptr<CMSat::SATSolver>& solver,
+        const ArjunNS::SimplifiedCNF& cnf,
+        const std::vector<uint32_t>& sampl_vars,
+        const std::vector<uint32_t>& empty_sampl_vars);
 
     const Config& conf;
 
-    vector<uint32_t> var_to_indic;
-    uint32_t orig_num_vars;
-    set<uint32_t> sampl_set;
-    vector<Lit> dont_elim;
-};
+    std::set<uint32_t> input;
+    std::set<uint32_t> to_define;
+    std::set<uint32_t> backward_defined;
 
+    std::vector<uint32_t> var_to_indic;
+    uint32_t orig_num_vars;
+    std::set<uint32_t> sampl_set;
+    std::vector<CMSat::Lit> dont_elim;
+};
+}
