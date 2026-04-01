@@ -1011,9 +1011,9 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
             recompute_all_y_hat_cnf(ctx);
         }
     } else {
-        // Cost 0: find_conflict updated ctx[y] but not ctx[y_hat]
-        // Recompute y_hat values so compute_needs_repair is correct
-        recompute_all_y_hat_cnf(ctx);
+        // Cost 0: find_conflict updated ctx[y] for y_rep and later vars only.
+        // Formulas and inputs haven't changed, so y_hat values are still valid.
+        // No recomputation needed.
     }
     compute_needs_repair(ctx);
     print_needs_repair_vars();
@@ -1055,7 +1055,18 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
 
     if (ret == l_True) {
         verb_print(2, "Repair cost is 0 for y: " << y_rep+1);
-        for(const auto& y: to_define_full) ctx[y] = repair_solver.get_model()[y];
+        // Only update y_rep and variables after it in the order.
+        // Variables before y_rep are already correct (y == y_hat) and must
+        // stay that way for subsequent repairs in this loop iteration.
+        // This avoids perturbing correct earlier variables and eliminates
+        // the need to recompute y_hat values (since formulas and inputs
+        // haven't changed).
+        bool found_yrep = false;
+        const auto& model = repair_solver.get_model();
+        for(const auto& y: y_order) {
+            if (y == y_rep) found_yrep = true;
+            if (found_yrep) ctx[y] = model[y];
+        }
         assert(ctx[y_rep] == ctx[y_to_y_hat[y_rep]]);
         return false;
     }
@@ -1085,6 +1096,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
                 }
             }
         }
+
     }
     auto now_end = std::remove_if(conflict.begin(), conflict.end(),
                 [&](const Lit l){ return l == to_repair; });
