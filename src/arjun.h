@@ -144,6 +144,8 @@ public:
     static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, CMSat::Lit b) {
         assert(l != nullptr);
         assert(r != nullptr);
+        // ITE(b, x, x) = x
+        if (l == r) return l;
         auto branch = new_lit(b.var(), b.sign());
         return new_or(new_and(branch, l), new_and(new_not(branch), r));
     }
@@ -199,6 +201,10 @@ public:
         assert(l != nullptr);
         assert(r != nullptr);
         assert(b != nullptr);
+        // Simplifications: ITE(TRUE, l, r) = l, ITE(FALSE, l, r) = r
+        if (b->type == AIGT::t_const) return b->neg ? r : l;
+        // ITE(b, x, x) = x
+        if (l == r) return l;
         return AIG::new_or(AIG::new_and(b, l), AIG::new_and(AIG::new_not(b), r));
     }
 
