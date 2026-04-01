@@ -11,7 +11,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     cryptominisat = {
-      url = "github:msoos/cryptominisat/working-on-synth";
+      url = "github:msoos/cryptominisat/master";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     sbva = {
