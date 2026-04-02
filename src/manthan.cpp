@@ -1439,6 +1439,16 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
         var_to_formula[y_rep] = fh->compose_and(fh->neg(f), var_to_formula[y_rep]);
     }
     updated_y_funcs.push_back(y_rep);
+
+    // For hot variables (repaired many times), periodically simplify the AIG
+    // to prevent unbounded growth. The simplification does constant folding
+    // and common sub-expression elimination.
+    if (repaired_vars_count[y_rep] > 0 && repaired_vars_count[y_rep] % 50 == 0) {
+        var_to_formula[y_rep].aig = AIG::simplify_aig(var_to_formula[y_rep].aig);
+        verb_print(2, "[manthan] Simplified AIG for hot var " << y_rep+1
+            << " (repaired " << repaired_vars_count[y_rep] << " times)");
+    }
+
     verb_print(2, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
     verb_print(4, "repaired formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
     //We fixed the ctx on this variable
