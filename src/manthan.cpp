@@ -874,8 +874,15 @@ SimplifiedCNF Manthan::do_manthan() {
         SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
         SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
 
-        // Collect additional counterexamples to identify free inputs and pick best cex
+        // Collect additional counterexamples to identify free inputs and pick best cex.
+        // When input-only conflicts dominate, reduce CEX collection since free input
+        // detection is less critical (input-only conflicts are already general).
+        const int saved_multi_cex_k = mconf.multi_cex_k;
+        if (generalized_repair_ok > 20 && generalized_repair_ok > tot_repaired * 3 / 4) {
+            const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k = min(mconf.multi_cex_k, 2);
+        }
         auto all_cexs = collect_extra_cex(ctx);
+        const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k = saved_multi_cex_k;
         ctx = all_cexs[0]; // best CEX (lowest weighted repair cost)
         compute_needs_repair(ctx);
 
