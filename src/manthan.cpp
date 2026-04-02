@@ -779,6 +779,7 @@ SimplifiedCNF Manthan::do_manthan() {
     verb_print(1, "[manthan] Found " << ret.size() << " components");
     if (mconf.bva_xor_vars) add_xor_var();
     repaired_vars_count.resize(cnf.nVars(), 0);
+    var_conflict_freq.resize(cnf.nVars(), 0);
 
     if (!mconf.write_manthan_cnf.empty()) cnf.write_simpcnf(mconf.write_manthan_cnf);
 
@@ -1178,7 +1179,14 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
     set<Lit> dont_remove;
     dont_remove.insert(to_repair);
     while(removed_any) {
-        std::shuffle(conflict.begin(), conflict.end(), mtrand);
+        // Sort by conflict frequency: try removing least-frequent vars first,
+        // as they are more likely to be removable from the conflict.
+        std::sort(conflict.begin(), conflict.end(),
+            [this](const Lit& a, const Lit& b) {
+                uint32_t fa = (a.var() < var_conflict_freq.size()) ? var_conflict_freq[a.var()] : 0;
+                uint32_t fb = (b.var() < var_conflict_freq.size()) ? var_conflict_freq[b.var()] : 0;
+                return fa < fb;
+            });
         removed_any = false;
         for(const auto& try_rem: conflict) {
             if (dont_remove.count(try_rem)) continue;
@@ -1256,6 +1264,11 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 }
 
 void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict) {
+    // Track conflict variable frequency for smarter minimization ordering
+    for (const auto& l : conflict) {
+        if (l.var() < var_conflict_freq.size()) var_conflict_freq[l.var()]++;
+    }
+
     if (conflict.empty()) {
         verb_print(2, "[manthan] conflict empty for " << setw(5) << y_rep+1 << ", unconditionally fixing it to " << ctx[y_rep]);
         var_to_formula[y_rep] = fh->constant_formula(ctx[y_rep] == l_True);
