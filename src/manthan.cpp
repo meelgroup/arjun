@@ -1196,6 +1196,34 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end() &&
             "to_repair literal must be in conflict");
 
+        // After minimization, try dropping ALL y-variables from the conflict.
+        // If the remaining input-only conflict is still UNSAT, the repair is
+        // more general (independent of intermediate variable values).
+        {
+            bool has_y_vars = false;
+            for (const auto& l : conflict) {
+                if (l != to_repair && !input.count(l.var())) { has_y_vars = true; break; }
+            }
+            if (has_y_vars) {
+                assumps.clear();
+                for (const auto& l : conflict) {
+                    if (l == to_repair || input.count(l.var())) assumps.push_back(~l);
+                }
+                if (!assumps.empty()) {
+                    auto ret3 = repair_solver.solve(&assumps);
+                    if (ret3 == l_False) {
+                        auto conflict3 = repair_solver.get_conflict();
+                        if (std::find(conflict3.begin(), conflict3.end(), to_repair) != conflict3.end()) {
+                            verb_print(2, "[manthan] Dropped y-vars from conflict: "
+                                << conflict.size() << " -> " << conflict3.size());
+                            conflict = conflict3;
+                            generalized_repair_ok++;
+                        }
+                    }
+                }
+            }
+        }
+
         // For hot variables, do extra minimization passes with different orderings.
         // The greedy removal depends on iteration order; additional passes
         // with different shuffles can find additional removable literals.
