@@ -716,6 +716,47 @@ void Manthan::print_stats(const string& txt, const string& color, const string& 
             << extra);
 }
 
+void Manthan::print_detailed_stats() const {
+    const double repair_time = cpuTime() - repair_start_time;
+    const double accounted = time_cex_finding + time_collect_extra_cex + time_find_better_ctx
+        + time_find_conflict + time_perform_repair + time_inject_formulas + time_recompute_y_hat;
+    verb_print(1, COLCYN "[manthan-stats] === DETAILED TIMING BREAKDOWN ===");
+    verb_print(1, COLCYN "[manthan-stats] Total repair time:     " << fixed << setprecision(2) << repair_time << "s");
+    verb_print(1, COLCYN "[manthan-stats]   cex_finding:         " << fixed << setprecision(2) << time_cex_finding << "s (" << setprecision(1) << safe_div(time_cex_finding, repair_time)*100.0 << "%)");
+    verb_print(1, COLCYN "[manthan-stats]   collect_extra_cex:   " << fixed << setprecision(2) << time_collect_extra_cex << "s (" << setprecision(1) << safe_div(time_collect_extra_cex, repair_time)*100.0 << "%)");
+    verb_print(1, COLCYN "[manthan-stats]   find_better_ctx:     " << fixed << setprecision(2) << time_find_better_ctx << "s (" << setprecision(1) << safe_div(time_find_better_ctx, repair_time)*100.0 << "%)");
+    verb_print(1, COLCYN "[manthan-stats]   find_conflict:       " << fixed << setprecision(2) << time_find_conflict << "s (" << setprecision(1) << safe_div(time_find_conflict, repair_time)*100.0 << "%)");
+    verb_print(1, COLCYN "[manthan-stats]   perform_repair:      " << fixed << setprecision(2) << time_perform_repair << "s (" << setprecision(1) << safe_div(time_perform_repair, repair_time)*100.0 << "%)");
+    verb_print(1, COLCYN "[manthan-stats]   inject_formulas:     " << fixed << setprecision(2) << time_inject_formulas << "s (" << setprecision(1) << safe_div(time_inject_formulas, repair_time)*100.0 << "%)");
+    verb_print(1, COLCYN "[manthan-stats]   recompute_y_hat:     " << fixed << setprecision(2) << time_recompute_y_hat << "s (" << setprecision(1) << safe_div(time_recompute_y_hat, repair_time)*100.0 << "%)");
+    verb_print(1, COLCYN "[manthan-stats]   unaccounted:         " << fixed << setprecision(2) << (repair_time - accounted) << "s (" << setprecision(1) << safe_div(repair_time - accounted, repair_time)*100.0 << "%)");
+    verb_print(1, COLCYN "[manthan-stats] === CONFLICT STATS ===");
+    verb_print(1, COLCYN "[manthan-stats]   input-only conflicts: " << input_only_conflict_count
+        << "  avg sz: " << fixed << setprecision(1) << safe_div(input_only_conflict_sizes_sum, input_only_conflict_count));
+    verb_print(1, COLCYN "[manthan-stats]   full conflicts:       " << full_conflict_count
+        << "  avg sz: " << fixed << setprecision(1) << safe_div(full_conflict_sizes_sum, full_conflict_count));
+    verb_print(1, COLCYN "[manthan-stats]   cost-zero repairs:    " << cost_zero_repairs);
+    verb_print(1, COLCYN "[manthan-stats]   repair_failed:        " << repair_failed);
+    verb_print(1, COLCYN "[manthan-stats]   cex_solver calls:     " << cex_solver_calls);
+    verb_print(1, COLCYN "[manthan-stats]   repair_solver calls:  " << repair_solver_calls);
+
+    // Print top 20 most repaired vars with their AIG sizes
+    vector<uint32_t> rep(cnf.nVars());
+    for(uint32_t i = 0; i < cnf.nVars(); i++) rep[i] = i;
+    sort(rep.begin(), rep.end(), [&] (const auto& a, const auto& b) {
+        return repaired_vars_count[a] > repaired_vars_count[b];
+    });
+    verb_print(1, COLCYN "[manthan-stats] === TOP REPAIRED VARS ===");
+    for(size_t i = 0; i < min((size_t)20, (size_t)rep.size()); i++) {
+        const auto& v = rep[i];
+        if (repaired_vars_count[v] == 0) break;
+        verb_print(1, COLCYN "[manthan-stats]   var " << setw(5) << v+1
+            << "  repairs: " << setw(6) << repaired_vars_count[v]
+            << "  cnf_clauses: " << setw(6) << (var_to_formula.count(v) ? var_to_formula.at(v).clauses.size() : 0)
+            << "  conflict_freq: " << setw(6) << (v < var_conflict_freq.size() ? var_conflict_freq[v] : 0));
+    }
+}
+
 void Manthan::add_xor_var() {
     const auto& sampl_vars = cnf.get_sampl_vars();
     if (sampl_vars.empty()) return;
@@ -858,12 +899,20 @@ SimplifiedCNF Manthan::do_manthan() {
 
     while(true) {
         if (num_loops_repair %  40 == 39) print_stats();
+        if (num_loops_repair %  200 == 199) print_detailed_stats();
         assert(at_least_one_repaired);
         at_least_one_repaired = false;
         num_loops_repair++;
+
+        double t0 = cpuTime();
         inject_formulas_into_solver();
+        time_inject_formulas += cpuTime() - t0;
+
+        t0 = cpuTime();
         sample ctx;
         const bool finished = get_counterexample(ctx);
+        time_cex_finding += cpuTime() - t0;
+        cex_solver_calls++;
         if (finished) break;
         if (tot_repaired >= mconf.max_repairs) {
             print_stats("", COLRED, " Reached max repairs");
@@ -877,6 +926,7 @@ SimplifiedCNF Manthan::do_manthan() {
         // Collect additional counterexamples to identify free inputs and pick best cex.
         // When input-only conflicts dominate, reduce CEX collection since free input
         // detection is less critical (input-only conflicts are already general).
+        t0 = cpuTime();
         const int saved_multi_cex_k = mconf.multi_cex_k;
         if (generalized_repair_ok > 20 && generalized_repair_ok > tot_repaired * 3 / 4) {
             const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k = min(mconf.multi_cex_k, 2);
@@ -884,8 +934,10 @@ SimplifiedCNF Manthan::do_manthan() {
         auto all_cexs = collect_extra_cex(ctx);
         const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k = saved_multi_cex_k;
         ctx = all_cexs[0]; // best CEX (lowest weighted repair cost)
+        time_collect_extra_cex += cpuTime() - t0;
         compute_needs_repair(ctx);
 
+        t0 = cpuTime();
         const uint32_t old_needs_repair_size = needs_repair.size();
         // Only run find_better_ctx if there are enough wrong vars to justify it.
         // With <= 10 wrong vars, the overhead of creating a fresh solver isn't worth it.
@@ -905,6 +957,7 @@ SimplifiedCNF Manthan::do_manthan() {
         } else {
           find_better_ctx_normal(ctx);
         }
+        time_find_better_ctx += cpuTime() - t0;
         SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
         SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
         compute_needs_repair(ctx);
@@ -941,6 +994,7 @@ SimplifiedCNF Manthan::do_manthan() {
     const double repair_time = cpuTime() - repair_start_time;
     assert(check_map_dependency_cycles());
     print_repair_stats();
+    print_detailed_stats();
     print_stats("", COLYEL, " DONE");
 
     // Build final CNF
@@ -1022,16 +1076,45 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
 
     vector<Lit> conflict;
     repaired_vars_count[y_rep]++;
+
+    double t0 = cpuTime();
     bool ret = find_conflict(y_rep, ctx, conflict);
+    time_find_conflict += cpuTime() - t0;
+    repair_solver_calls++;
+
     if (ret) {
         SLOW_DEBUG_DO(assert(is_unsat(conflict, y_rep, ctx)));
+
+        t0 = cpuTime();
         perform_repair(y_rep, ctx, conflict);
+        time_perform_repair += cpuTime() - t0;
+
         if (!mconf.one_repair_per_loop) {
             ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
+
+            t0 = cpuTime();
             inject_formulas_into_solver();
+            time_inject_formulas += cpuTime() - t0;
+
+            t0 = cpuTime();
             recompute_all_y_hat_cnf(ctx);
+            time_recompute_y_hat += cpuTime() - t0;
+        }
+
+        // Track conflict type
+        bool is_input_only = true;
+        for (const auto& l : conflict) {
+            if (!input.count(l.var())) { is_input_only = false; break; }
+        }
+        if (is_input_only) {
+            input_only_conflict_count++;
+            input_only_conflict_sizes_sum += conflict.size();
+        } else {
+            full_conflict_count++;
+            full_conflict_sizes_sum += conflict.size();
         }
     } else {
+        cost_zero_repairs++;
         // Cost 0: find_conflict updated ctx[y] for y_rep and later vars only.
         // Formulas and inputs haven't changed, so y_hat values are still valid.
         // No recomputation needed.

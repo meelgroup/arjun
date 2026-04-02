@@ -198,6 +198,7 @@ class Manthan {
         double repair_start_time;
         void print_stats(const std::string& txt = "", const std::string& color = "", const std::string& extra = "") const;
         void print_repair_stats(const std::string& txt = "", const std::string& color = "", const std::string& extra = "") const;
+        void print_detailed_stats() const;
         uint32_t num_loops_repair = 0;
         uint64_t conflict_sizes_sum = 0;
         uint32_t generalized_repair_ok = 0;
@@ -208,6 +209,23 @@ class Manthan {
         std::vector<uint32_t> repaired_vars_count; // for each y, how many times it was repaired
         double sampl_time = 0;
         double train_time = 0;
+
+        // detailed timing stats
+        double time_cex_finding = 0;
+        double time_collect_extra_cex = 0;
+        double time_find_better_ctx = 0;
+        double time_find_conflict = 0;
+        double time_minimize_conflict = 0;
+        double time_perform_repair = 0;
+        double time_inject_formulas = 0;
+        double time_recompute_y_hat = 0;
+        uint64_t input_only_conflict_sizes_sum = 0;
+        uint64_t full_conflict_sizes_sum = 0;
+        uint32_t input_only_conflict_count = 0;
+        uint32_t full_conflict_count = 0;
+        uint32_t cost_zero_repairs = 0;
+        uint32_t cex_solver_calls = 0;
+        uint32_t repair_solver_calls = 0;
 
         // Main stuff
         ArjunNS::SimplifiedCNF cnf;
