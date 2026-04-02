@@ -1210,10 +1210,14 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
     set<Lit> dont_remove;
     dont_remove.insert(to_repair);
     while(removed_any) {
-        // Sort by conflict frequency: try removing least-frequent vars first,
-        // as they are more likely to be removable from the conflict.
+        // Sort to try removing the most beneficial literals first:
+        // 1. y-variables before inputs (removing y-vars reduces dependencies)
+        // 2. Within each category, least-frequent vars first (more likely removable)
         std::sort(conflict.begin(), conflict.end(),
             [this](const Lit& a, const Lit& b) {
+                bool a_is_input = input.count(a.var()) > 0;
+                bool b_is_input = input.count(b.var()) > 0;
+                if (a_is_input != b_is_input) return !a_is_input; // y-vars first
                 uint32_t fa = (a.var() < var_conflict_freq.size()) ? var_conflict_freq[a.var()] : 0;
                 uint32_t fb = (b.var() < var_conflict_freq.size()) ? var_conflict_freq[b.var()] : 0;
                 return fa < fb;
