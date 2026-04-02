@@ -1140,7 +1140,9 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     verb_print(2, "find_conflict sz: " << setw(5) << conflict.size() << " conflict: " << conflict);
     uint32_t orig_size = conflict.size();
     const double minimize_start_time = cpuTime();
-    if (conflict.size() > 1 && mconf.minimize_conflict) {
+    // Skip minimization for already-small conflicts (< 10 literals).
+    // The SAT calls for minimization aren't worth it when the conflict is tiny.
+    if (conflict.size() > 10 && mconf.minimize_conflict) {
         minimize_conflict(conflict, assumps, to_repair);
         assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end() &&
             "to_repair literal must be in conflict");
