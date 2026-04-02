@@ -1051,8 +1051,40 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         AIG::get_dependent_vars(aig, aig_dep_vars, y_rep);
     }
 
-    uint32_t skipped_inputs = 0;
+    assert(ctx[y_rep] != ctx[y_to_y_hat[y_rep]] && "before repair, y and y_hat must be different");
+    const Lit to_repair = Lit(y_rep, ctx[y_to_y_hat[y_rep]] == l_True);
+
+    // Try input-only conflict first: assume only input vars + ~to_repair, without
+    // fixing earlier y-variables. If UNSAT, the conflict is strictly more general:
+    // it shows the formula is wrong for these inputs regardless of y-variable values.
+    // This makes each repair cover a much larger portion of the input space.
+    bool found_input_only = false;
     vector<Lit> assumps;
+    {
+        vector<Lit> input_assumps;
+        input_assumps.reserve(input.size() + 1);
+        for (const auto& x : input) {
+            if (!aig_dep_vars.empty() && !aig_dep_vars.count(x)) continue;
+            if (free_inputs.count(x)) continue;
+            input_assumps.push_back(Lit(x, ctx[x] == l_False));
+        }
+        input_assumps.push_back({~to_repair});
+        auto input_ret = repair_solver.solve(&input_assumps);
+        if (input_ret == l_False) {
+            conflict = repair_solver.get_conflict();
+            if (std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end()) {
+                verb_print(2, "[manthan] Found INPUT-ONLY conflict sz " << conflict.size()
+                    << " for y_rep=" << y_rep+1);
+                generalized_repair_ok++;
+                found_input_only = true;
+                assumps = std::move(input_assumps);
+            }
+        }
+    }
+
+    if (!found_input_only) {
+    uint32_t skipped_inputs = 0;
+    assumps.clear();
     assumps.reserve(input.size() + y_order.size() + 1);
     for(const auto& x: input) {
         // Skip inputs that the AIG for y_rep doesn't depend on
@@ -1083,8 +1115,6 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         assumps.push_back(l);
     }
 
-    assert(ctx[y_rep] != ctx[y_to_y_hat[y_rep]] && "before repair, y and y_hat must be different");
-    const Lit to_repair = Lit(y_rep, ctx[y_to_y_hat[y_rep]] == l_True);
     assumps.push_back({~to_repair});
 
     verb_print(2, "assuming reverse for y_rep: " << ~to_repair);
@@ -1134,6 +1164,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     } else {
         conflict = repair_solver.get_conflict();
     }
+    } // end if (!found_input_only)
     assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end() &&
         "to_repair literal must be in conflict");
 
