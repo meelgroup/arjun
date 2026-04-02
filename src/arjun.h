@@ -199,6 +199,45 @@ public:
             return neg ? new_not(l) : l;
         }
 
+        // Absorption: AND(a, AND(a, b)) = AND(a, b)
+        // If r is AND(a, b) with no negation and one child is l
+        if (r->type == AIGT::t_and && !r->neg && (r->l == l || r->r == l)) {
+            return neg ? new_not(r) : r;
+        }
+        if (l->type == AIGT::t_and && !l->neg && (l->l == r || l->r == r)) {
+            return neg ? new_not(l) : l;
+        }
+
+        // Absorption: AND(a, OR(a, b)) = a
+        // OR(a, b) is encoded as AND(NOT(a), NOT(b), neg=true)
+        // So if r is t_and with neg=true (it's an OR), check if one of its
+        // children (which are negated) matches NOT(l)
+        if (r->type == AIGT::t_and && r->neg) {
+            // r = NOT(AND(r->l, r->r)) = OR(NOT(r->l), NOT(r->r))
+            // We need: l == NOT(r->l) or l == NOT(r->r)
+            // NOT(r->l) for a literal is: same var, opposite neg
+            if (r->l == l || r->r == l) {
+                // l appears as a child of r's AND, which means NOT(l) appears in the OR
+                // This is not absorption, skip
+            } else if (r->l->type == AIGT::t_lit && l->type == AIGT::t_lit &&
+                       r->l->var == l->var && r->l->neg != l->neg) {
+                // l = NOT(r->l), so OR contains l as a disjunct → AND(l, OR(l,...)) = l
+                return neg ? new_not(l) : l;
+            } else if (r->r->type == AIGT::t_lit && l->type == AIGT::t_lit &&
+                       r->r->var == l->var && r->r->neg != l->neg) {
+                return neg ? new_not(l) : l;
+            }
+        }
+        if (l->type == AIGT::t_and && l->neg) {
+            if (l->l->type == AIGT::t_lit && r->type == AIGT::t_lit &&
+                       l->l->var == r->var && l->l->neg != r->neg) {
+                return neg ? new_not(r) : r;
+            } else if (l->r->type == AIGT::t_lit && r->type == AIGT::t_lit &&
+                       l->r->var == r->var && l->r->neg != r->neg) {
+                return neg ? new_not(r) : r;
+            }
+        }
+
         auto ret = std::make_shared<AIG>();
         ret->type = AIGT::t_and;
         ret->l = l;
