@@ -1085,6 +1085,20 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     if (ret) {
         SLOW_DEBUG_DO(assert(is_unsat(conflict, y_rep, ctx)));
 
+        // Add the repair conflict as a learned clause to the repair solver.
+        // The conflict {l1, l2, ..., ln} (with to_repair already removed) means:
+        // under the CNF, ~l1 AND ~l2 AND ... AND ~to_repair → FALSE.
+        // So (l1 OR l2 OR ... OR to_repair) is a valid clause.
+        // We add it as redundant to help the solver reason faster.
+        if (!conflict.empty()) {
+            const Lit to_repair = Lit(y_rep, ctx[y_to_y_hat[y_rep]] == l_True);
+            vector<Lit> learned_cl;
+            learned_cl.reserve(conflict.size() + 1);
+            for (const auto& l : conflict) learned_cl.push_back(l);
+            learned_cl.push_back(to_repair);
+            repair_solver.add_red_clause(learned_cl);
+        }
+
         t0 = cpuTime();
         perform_repair(y_rep, ctx, conflict);
         time_perform_repair += cpuTime() - t0;
@@ -2453,7 +2467,7 @@ void Manthan::recompute_all_y_hat_aig(sample& ctx, const uint32_t y_rep) {
         if (!found) continue; // skip vars before y_rep
         if (!var_to_formula.count(y)) continue; // skip vars without formulas
         const auto& aig = var_to_formula.at(y).aig;
-        if (aig == nullptr) continue;
+        assert(aig != nullptr && "All formulas should have AIGs for evaluation");
         lbool val = AIG::evaluate(ctx, aig, defs, cache);
         if (val == l_Undef) continue;
         ctx[y_to_y_hat.at(y)] = val;
