@@ -1361,7 +1361,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     verb_print(2, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
     verb_print(4, "repaired formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
     //We fixed the ctx on this variable
-    assert(check_map_dependency_cycles());
+    SLOW_DEBUG_DO(assert(check_map_dependency_cycles()));
 }
 
 void Manthan::learn_order() {
