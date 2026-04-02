@@ -28,9 +28,42 @@ nix shell github:meelgroup/arjun
 
 Then you will have `arjun` binary available and ready to use.
 
-If this is somehow not what you want, you can also build it. See the [GitHub
-Action](https://github.com/meelgroup/arjun/actions/workflows/build.yml) for the
-specific set of steps.
+### Building from source
+
+Arjun depends on [CaDiCaL](https://github.com/meelgroup/cadical),
+[CryptoMiniSat](https://github.com/meelgroup/cryptominisat),
+[SBVA](https://github.com/meelgroup/SBVA), and
+[treedecomp](https://github.com/meelgroup/treedecomp).
+
+**Automatic download and build (easiest):** if you do not specify where any
+dependency lives, CMake will automatically clone and build it inside the `deps/`
+subdirectory of your build directory:
+
+```shell
+mkdir build && cd build
+cmake ..
+make -j8
+```
+
+**Using pre-built dependencies:** pass `-D<dep>_DIR=<path>` for any dependency
+you have already built. CMake will then use that copy instead of fetching it:
+
+```shell
+mkdir build && cd build
+cmake .. \
+    -Dcadical_DIR=/path/to/cadical/build \
+    -Dcryptominisat5_DIR=/path/to/cryptominisat/build \
+    -Dsbva_DIR=/path/to/sbva/build \
+    -Dtreedecomp_DIR=/path/to/treedecomp/build
+make -j8
+```
+
+You can mix and match: omit any `-D<dep>_DIR` flag and that dependency will be
+fetched and built automatically.
+
+For CaDiCaL you can also set `-Dcadical_SRC_DIR=<path>` to point to the
+CaDiCaL source directory (needed for `cadical.hpp`) if it differs from
+`<cadical_DIR>/../src`.
 
 ## How to Use
 Run it on your instance and it will give you a reduced independent set:

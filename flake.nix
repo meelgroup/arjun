@@ -3,27 +3,27 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
     cadical = {
-      url = "github:meelgroup/cadical/master";
+      url = "path:../cadical";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     cadiback = {
-      url = "github:meelgroup/cadiback/main";
+      url = "path:../cadiback";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     cryptominisat = {
-      url = "github:msoos/cryptominisat/master";
+      url = "path:../cryptominisat";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     sbva = {
-      url = "github:meelgroup/sbva/master";
+      url = "path:../sbva";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     evalmaxsat = {
-      url = "github:meelgroup/EvalMaxSAT/master";
+      url = "path:../EvalMaxSAT";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     treedecomp = {
-      url = "github:meelgroup/treedecomp/main";
+      url = "path:../treedecomp";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };

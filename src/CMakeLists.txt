@@ -61,11 +61,11 @@ target_include_directories(arjun
     ${PROJECT_SOURCE_DIR}
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${PROJECT_SOURCE_DIR}/../cadical/src/
+    ${cadical_SRC_DIR}
     ${SBVA_INCLUDE_DIRS}
     ${TREEDECOMP_INCLUDE_DIRS}
   PUBLIC
-    ${CRYPTOMINISAT5_INCLUDE_DIRS}
+    $<BUILD_INTERFACE:${CRYPTOMINISAT5_INCLUDE_DIRS}>
     ${GMP_INCLUDE_DIR}
 )
 
@@ -113,7 +113,7 @@ target_include_directories(arjun-example PRIVATE
 target_include_directories(test-synth PRIVATE
     ${PROJECT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${PROJECT_SOURCE_DIR}/../cadical/src/
+    ${cadical_SRC_DIR}
 )
 
 if(ZLIB_FOUND)
