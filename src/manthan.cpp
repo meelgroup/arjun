@@ -1206,6 +1206,32 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
 }
 
 void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, const Lit to_repair) {
+    // Quick batch removal: try keeping only the to_repair literal and the
+    // first/last halves of the conflict. If UNSAT, we dramatically reduce
+    // the conflict in a single SAT call instead of O(n) individual calls.
+    if (conflict.size() > 6) {
+        // Try keeping just the first half + to_repair
+        for (size_t keep = conflict.size() / 2; keep >= 2; keep /= 2) {
+            assumps.clear();
+            uint32_t kept = 0;
+            for (const auto& l : conflict) {
+                if (l == to_repair || kept < keep) {
+                    assumps.push_back(~l);
+                    if (l != to_repair) kept++;
+                }
+            }
+            auto ret = repair_solver.solve(&assumps);
+            if (ret == l_False) {
+                auto conflict2 = repair_solver.get_conflict();
+                if (std::find(conflict2.begin(), conflict2.end(), to_repair) != conflict2.end()) {
+                    verb_print(3, "[manthan] batch minim: " << conflict.size() << " -> " << conflict2.size());
+                    conflict = conflict2;
+                    break;
+                }
+            }
+        }
+    }
+
     bool removed_any = true;
     set<Lit> dont_remove;
     dont_remove.insert(to_repair);
