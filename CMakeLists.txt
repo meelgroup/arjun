@@ -512,6 +512,7 @@ if(EXTRA_SYNTH)
                 COMMAND ${CMAKE_COMMAND} -S "${_evalmaxsat_src}" -B "${_evalmaxsat_build}"
                     -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                     -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+                    -DBUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}
                 RESULT_VARIABLE _evalmaxsat_cfg_ret
             )
             if(NOT _evalmaxsat_cfg_ret EQUAL 0)
