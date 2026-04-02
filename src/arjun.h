@@ -173,6 +173,32 @@ public:
         assert(l != nullptr && r != nullptr);
         // Identity: AND(x, x) = x
         if (l == r) return neg ? new_not(l) : l;
+
+        // Constant folding: AND(TRUE, x) = x, AND(FALSE, x) = FALSE
+        if (l->type == AIGT::t_const) {
+            if (l->neg) return neg ? new_not(l) : l; // AND(FALSE, x) = FALSE
+            return neg ? new_not(r) : r; // AND(TRUE, x) = x
+        }
+        if (r->type == AIGT::t_const) {
+            if (r->neg) return neg ? new_not(r) : r; // AND(x, FALSE) = FALSE
+            return neg ? new_not(l) : l; // AND(x, TRUE) = x
+        }
+
+        // Complementary literals: AND(v, ~v) = FALSE
+        if (l->type == AIGT::t_lit && r->type == AIGT::t_lit &&
+            l->var == r->var && l->neg != r->neg) {
+            auto c = std::make_shared<AIG>();
+            c->type = AIGT::t_const;
+            c->neg = !neg; // AND gives FALSE, neg flips to TRUE
+            return c;
+        }
+
+        // Identical literals: AND(v, v) = v (by value, not just pointer)
+        if (l->type == AIGT::t_lit && r->type == AIGT::t_lit &&
+            l->var == r->var && l->neg == r->neg) {
+            return neg ? new_not(l) : l;
+        }
+
         auto ret = std::make_shared<AIG>();
         ret->type = AIGT::t_and;
         ret->l = l;
@@ -183,6 +209,34 @@ public:
 
     static aig_ptr new_or(const aig_ptr& l, const aig_ptr& r, bool neg = false) {
         assert(l != nullptr && r != nullptr);
+        // Identity: OR(x, x) = x
+        if (l == r) return neg ? new_not(l) : l;
+
+        // Constant folding: OR(TRUE, x) = TRUE, OR(FALSE, x) = x
+        if (l->type == AIGT::t_const) {
+            if (!l->neg) return neg ? new_not(l) : l; // OR(TRUE, x) = TRUE
+            return neg ? new_not(r) : r; // OR(FALSE, x) = x
+        }
+        if (r->type == AIGT::t_const) {
+            if (!r->neg) return neg ? new_not(r) : r; // OR(x, TRUE) = TRUE
+            return neg ? new_not(l) : l; // OR(x, FALSE) = x
+        }
+
+        // Complementary literals: OR(v, ~v) = TRUE
+        if (l->type == AIGT::t_lit && r->type == AIGT::t_lit &&
+            l->var == r->var && l->neg != r->neg) {
+            auto c = std::make_shared<AIG>();
+            c->type = AIGT::t_const;
+            c->neg = neg; // OR gives TRUE, neg flips to FALSE
+            return c;
+        }
+
+        // Identical literals: OR(v, v) = v (by value, not just pointer)
+        if (l->type == AIGT::t_lit && r->type == AIGT::t_lit &&
+            l->var == r->var && l->neg == r->neg) {
+            return neg ? new_not(l) : l;
+        }
+
         // OR(a, b) = NOT(AND(NOT(a), NOT(b)))
         // With double-negation elimination in new_not, this is efficient.
         auto ret = std::make_shared<AIG>();
