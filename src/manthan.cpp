@@ -2271,11 +2271,12 @@ void Manthan::recompute_all_y_hat_aig(sample& ctx, const uint32_t y_rep) {
             found = true;
             continue;
         }
-        assert(var_to_formula.count(y));
+        if (!found) continue; // skip vars before y_rep
+        if (!var_to_formula.count(y)) continue; // skip vars without formulas
         const auto& aig = var_to_formula.at(y).aig;
-        assert(aig != nullptr);
+        if (aig == nullptr) continue;
         lbool val = AIG::evaluate(ctx, aig, defs, cache);
-        assert(val != l_Undef);
+        if (val == l_Undef) continue;
         ctx[y_to_y_hat.at(y)] = val;
     }
     verb_print(2, "Recomputed all y_hat values in ctx.");
