@@ -754,7 +754,11 @@ void Manthan::add_xor_var() {
 }
 
 void Manthan::const_functions() {
-    vector<sample> samples = get_cmsgen_samples(1);
+    // Use multiple samples and majority voting to pick better constant values.
+    // A single sample might be atypical; majority voting reduces the number of
+    // counterexamples needed to reach the correct formula.
+    const uint32_t num_samples = 10;
+    vector<sample> samples = get_cmsgen_samples(num_samples);
     for(const auto& y: Manthan::y_order) {
         if (!to_define.count(y)) continue;
 
@@ -764,7 +768,12 @@ void Manthan::const_functions() {
         if (filt_s.empty()) {
             val = true;
         } else {
-            val = (*filt_s[0])[y] == l_True;
+            // Majority voting across filtered samples
+            uint32_t true_count = 0;
+            for (const auto* s : filt_s) {
+                if ((*s)[y] == l_True) true_count++;
+            }
+            val = true_count * 2 >= filt_s.size(); // majority is TRUE
         }
         if (mconf.inv_learnt) val = !val;
         verb_print(3, "[manthan] const function for var " << y+1 << " is " << val);
