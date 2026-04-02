@@ -1,29 +1,29 @@
 {
-  description = "minimal independent set calculator and CNF minimizer";
+  description = "Minimal independent set calculator and CNF minimizer";
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
     cadical = {
-      url = "path:../cadical";
+      url = "github:meelgroup/cadical/master";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     cadiback = {
-      url = "path:../cadiback";
+      url = "github:meelgroup/cadiback/main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     cryptominisat = {
-      url = "path:../cryptominisat";
+      url = "github:msoos/cryptominisat/master";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     sbva = {
-      url = "path:../sbva";
+      url = "github:meelgroup/sbva/master";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     evalmaxsat = {
-      url = "path:../EvalMaxSAT";
+      url = "github:meelgroup/EvalMaxSAT/master";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     treedecomp = {
-      url = "path:../treedecomp";
+      url = "github:meelgroup/treedecomp/main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -122,6 +122,14 @@
           };
           nativeBuildInputs = [
             cmake
+            pkg-config
+          ];
+          cmakeFlags = [
+            "-Dcadical_DIR=${cadical}/lib"
+            "-Dcadical_SRC_DIR=${cadical}/include"
+            "-Dcryptominisat5_DIR=${cryptominisat5}/lib/cmake/cryptominisat5"
+            "-Dsbva_DIR=${sbva}/lib/cmake/sbva"
+            "-Dtreedecomp_DIR=${treedecomp}/lib/cmake/treedecomp"
           ];
           buildInputs = [
             zlib

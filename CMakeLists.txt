@@ -376,6 +376,7 @@ if(NOT cryptominisat5_DIR)
             COMMAND ${CMAKE_COMMAND} -S "${_cms_src}" -B "${_cms_build}"
                 -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                 -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+                -DBUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}
             RESULT_VARIABLE _cms_cfg_ret
         )
         if(NOT _cms_cfg_ret EQUAL 0)
@@ -421,6 +422,7 @@ if(NOT sbva_DIR)
             COMMAND ${CMAKE_COMMAND} -S "${_sbva_src}" -B "${_sbva_build}"
                 -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                 -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+                -DBUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}
             RESULT_VARIABLE _sbva_cfg_ret
         )
         if(NOT _sbva_cfg_ret EQUAL 0)
@@ -462,6 +464,7 @@ if(NOT treedecomp_DIR)
             COMMAND ${CMAKE_COMMAND} -S "${_tdec_src}" -B "${_tdec_build}"
                 -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                 -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+                -DBUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}
             RESULT_VARIABLE _tdec_cfg_ret
         )
         if(NOT _tdec_cfg_ret EQUAL 0)
