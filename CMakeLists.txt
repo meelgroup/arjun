@@ -82,6 +82,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 option(EXTRA_SYNTH "Also build extra parts of synthesis: learning, MaxSAT solver" OFF)
 option(BUILD_SHARED_LIBS "Build the shared library" ON)
 
+# Find Threads before restricting CMAKE_FIND_LIBRARY_SUFFIXES to .a,
+# otherwise FindThreads fails in manylinux/static build environments.
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+
 if((${CMAKE_SYSTEM_NAME} MATCHES "Linux") OR (${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
     if(NOT BUILD_SHARED_LIBS)
         message(STATUS "Compiling statically")
@@ -93,8 +98,6 @@ if((${CMAKE_SYSTEM_NAME} MATCHES "Linux") OR (${CMAKE_SYSTEM_NAME} MATCHES "Darw
         message(STATUS "Compiling for dynamic library use")
     endif()
 endif()
-
-find_package(Threads REQUIRED)
 
 include(CheckCXXCompilerFlag)
 include(CheckCCompilerFlag)
