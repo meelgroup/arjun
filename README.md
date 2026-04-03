@@ -65,6 +65,33 @@ For CaDiCaL you can also set `-Dcadical_SRC_DIR=<path>` to point to the
 CaDiCaL source directory (needed for `cadical.hpp`) if it differs from
 `<cadical_DIR>/../src`.
 
+### Building statically
+
+To build a static binary, you first need to build GMP with static library support:
+
+```shell
+wget https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz
+tar xf gmp-6.3.0.tar.xz
+cd gmp-6.3.0
+./configure --enable-static --enable-cxx --enable-shared --with-pic
+make -j8
+sudo make install
+cd ..
+```
+
+Then point CMake to the installed GMP static libraries (note: use `/usr/local/lib/`,
+not a custom build directory, as those may be compiled for the wrong architecture):
+
+```shell
+mkdir build && cd build
+cmake -DBUILD_SHARED_LIBS=OFF \
+    -DGMP_LIBRARY=/usr/local/lib/libgmp.a \
+    -DGMPXX_LIBRARY=/usr/local/lib/libgmpxx.a \
+    -DGMP_INCLUDE_DIR=/usr/local/include \
+    ..
+make -j8
+```
+
 ## How to Use
 Run it on your instance and it will give you a reduced independent set:
 
