@@ -1084,7 +1084,8 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     assert(to_define.count(y_rep) == 1 && "Only to-define vars should be repaired");
     assert(y_rep < cnf.nVars());
 
-    if (mconf.simplify_every > 0 && num_loops_repair % mconf.simplify_every == (mconf.simplify_every-1)) {
+    if (mconf.simplify_every > 0 && (num_loops_repair % mconf.simplify_every == (mconf.simplify_every-1)
+            || tot_repaired % 1000 == 999)) {
         vector<Lit> assumps;
         assumps.reserve(input.size() + to_define_full.size());
         for(const auto& x: input) assumps.push_back(Lit(x, false));
