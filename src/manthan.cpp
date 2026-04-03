@@ -1353,6 +1353,34 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         }
 
     }
+    // Cap very large conflicts to prevent formula bloat. A conflict of 40+
+    // literals creates 40+ clauses per repair, leading to 100K+ clause formulas.
+    // Try keeping a subset and verify it's still UNSAT.
+    if (conflict.size() > 40) {
+        // Sort: to_repair first, then inputs (more general), then y-vars by freq
+        std::sort(conflict.begin(), conflict.end(),
+            [&](const Lit& a, const Lit& b) {
+                if (a == to_repair) return true;
+                if (b == to_repair) return false;
+                bool a_inp = input.count(a.var()) > 0;
+                bool b_inp = input.count(b.var()) > 0;
+                if (a_inp != b_inp) return a_inp;
+                return false;
+            });
+        assumps.clear();
+        for (size_t i = 0; i < 30 && i < conflict.size(); i++) {
+            assumps.push_back(~conflict[i]);
+        }
+        auto ret_cap = repair_solver.solve(&assumps);
+        if (ret_cap == l_False) {
+            auto capped = repair_solver.get_conflict();
+            if (std::find(capped.begin(), capped.end(), to_repair) != capped.end()) {
+                verb_print(2, "[manthan] Capped conflict: " << conflict.size() << " -> " << capped.size());
+                conflict = capped;
+            }
+        }
+    }
+
     auto now_end = std::remove_if(conflict.begin(), conflict.end(),
                 [&](const Lit l){ return l == to_repair; });
     conflict.erase(now_end, conflict.end());
