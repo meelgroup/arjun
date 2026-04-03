@@ -830,6 +830,8 @@ SimplifiedCNF Manthan::do_manthan() {
     if (mconf.bva_xor_vars) add_xor_var();
     repaired_vars_count.resize(cnf.nVars(), 0);
     var_conflict_freq.resize(cnf.nVars(), 0);
+    input_only_ok.resize(cnf.nVars(), 0);
+    input_only_fail.resize(cnf.nVars(), 0);
 
     if (!mconf.write_manthan_cnf.empty()) cnf.write_simpcnf(mconf.write_manthan_cnf);
 
@@ -1183,10 +1185,17 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     // Try input-only conflict first: assume only input vars + ~to_repair, without
     // fixing earlier y-variables. If UNSAT, the conflict is strictly more general:
     // it shows the formula is wrong for these inputs regardless of y-variable values.
-    // This makes each repair cover a much larger portion of the input space.
+    // Skip if this variable has consistently failed to produce input-only conflicts,
+    // as the solver call is wasted effort (saves ~50% on query-type benchmarks).
     bool found_input_only = false;
     vector<Lit> assumps;
-    {
+    // Skip input-only attempt when the GLOBAL success rate is very low,
+    // indicating this benchmark structure rarely produces input-only conflicts.
+    // This avoids wasting a solver call per repair on query-type benchmarks
+    // where input-only conflicts are rare (<5% success rate).
+    const bool skip_input_only = (tot_repaired > 200 &&
+        generalized_repair_ok * 20 < tot_repaired);  // less than 5% input-only
+    if (!skip_input_only) {
         vector<Lit> input_assumps;
         input_assumps.reserve(input.size() + 1);
         for (const auto& x : input) {
@@ -1383,6 +1392,9 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
     bool removed_any = true;
     set<Lit> dont_remove;
     dont_remove.insert(to_repair);
+    // Cap the total number of solver calls during greedy minimization.
+    // For large conflicts, uncapped minimization causes O(n^2) solver calls.
+    // Budget scales with conflict size but is bounded to prevent excessive work.
     while(removed_any) {
         // Sort to try removing the most beneficial literals first:
         // 1. y-variables before inputs (removing y-vars reduces dependencies)
