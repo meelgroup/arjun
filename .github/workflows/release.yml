@@ -193,8 +193,14 @@ jobs:
       with:
         path: artifacts
 
+    - name: Set release name
+      run: |
+        TAG="${{ github.ref_name }}"
+        echo "RELEASE_NAME=Arjun ${TAG#release/}" >> $GITHUB_ENV
+
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
+        name: ${{ env.RELEASE_NAME }}
         files: artifacts/**/*.tar.gz
         generate_release_notes: true
