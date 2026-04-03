@@ -943,6 +943,12 @@ SimplifiedCNF Manthan::do_manthan() {
         if (needs_repair.size() <= 3) {
             const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k = 1;
         }
+        // When cost-zero dominates, extra CEXes provide little value since
+        // most repairs will be cost-zero regardless of which CEX we use
+        if (cost_zero_repairs > tot_repaired * 3 && tot_repaired > 100) {
+            const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k =
+                min(mconf.multi_cex_k, 2);
+        }
         auto all_cexs = collect_extra_cex(ctx);
         const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k = saved_multi_cex_k;
         ctx = all_cexs[0]; // best CEX (lowest weighted repair cost)
