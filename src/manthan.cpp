@@ -968,6 +968,7 @@ SimplifiedCNF Manthan::do_manthan() {
 
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
+        uint32_t consecutive_cost_zero = 0;
         while(!needs_repair.empty()) {
             auto y_rep = find_next_repair_var(ctx);
             bool done = repair(y_rep, ctx); // this updates ctx
@@ -975,6 +976,7 @@ SimplifiedCNF Manthan::do_manthan() {
                 at_least_one_repaired = true;
                 num_repaired++;
                 tot_repaired++;
+                consecutive_cost_zero = 0;
                 if (tot_repaired >= mconf.max_repairs) {
                     print_stats("", COLRED, " Reached max repairs");
                     return cnf;
@@ -982,6 +984,12 @@ SimplifiedCNF Manthan::do_manthan() {
                 if (mconf.one_repair_per_loop) break;
             } else {
                 repair_failed++;
+                consecutive_cost_zero++;
+                // After 3 consecutive cost-zero repairs, break to get a fresh
+                // counterexample rather than continuing to hit cost-zero cases.
+                // This saves repair solver calls for variables whose formulas
+                // are already correct for the current input pattern.
+                if (consecutive_cost_zero >= 3 && num_repaired > 0) break;
             }
             SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
             SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
