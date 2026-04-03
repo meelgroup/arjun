@@ -932,9 +932,14 @@ SimplifiedCNF Manthan::do_manthan() {
         if (generalized_repair_ok > 20 && generalized_repair_ok > tot_repaired * 3 / 4) {
             const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k = min(mconf.multi_cex_k, 2);
         }
-        // When deep into repair (solver slow), reduce extra CEXes to save time
+        // When deep into repair (solver slow), reduce extra CEXes to save time.
+        // Also reduce when few vars need repair, as multiple CEXes provide less value.
         if (tot_repaired > 2000) {
             const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k = min(mconf.multi_cex_k, 2);
+        }
+        compute_needs_repair(ctx);
+        if (needs_repair.size() <= 3) {
+            const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k = 1;
         }
         auto all_cexs = collect_extra_cex(ctx);
         const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k = saved_multi_cex_k;
