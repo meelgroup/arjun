@@ -23,7 +23,7 @@ set(GMP_PC_ADD_CFLAGS "-I${GMP_INCLUDE_DIR}")
 # linker rejects .so files.
 set(_gmp_old_suffixes "${CMAKE_FIND_LIBRARY_SUFFIXES}")
 if(NOT STATICCOMPILE)
-    set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ".so" ".dylib" ${CMAKE_FIND_LIBRARY_SUFFIXES})
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ".so" ".dylib" ".a" ${CMAKE_FIND_LIBRARY_SUFFIXES})
 endif()
 
 find_library(
