@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-rm -rf .cmake lib* Test* tests* include tests CM* cmake* arjun Makefile rjun-src deps _deps
+rm -rf .cmake
+rm -rf lib*
+rm -rf Test*
+rm -rf tests*
+rm -rf include
+rm -rf tests
+rm -rf CM*
+rm -rf cmake*
+rm -rf arjun
+rm -rf Makefile
+rm -rf rjun-src
+rm -rf deps
+rm -rf _deps
 emcmake cmake -DSTATICCOMPILE=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSTATICCOMPILE=ON "-DCMAKE_INSTALL_PREFIX=${EMINSTALL}" -DEXTRA_SYNTH=OFF \
     -Dcadical_DIR=../../cadical/build \
     -Dcryptominisat5_DIR=../../cryptominisat/build \
