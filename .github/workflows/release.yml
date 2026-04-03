@@ -172,6 +172,18 @@ jobs:
         -S ..
         cmake --build . --config ${{matrix.build_type}} -v
 
+    - name: Test
+      run: ctest -C ${{matrix.build_type}} --verbose
+
+    - name: run it to check it executes
+      run: |
+        echo "Running version command"
+        ./project/build/arjun --version
+        echo $?
+        echo "Running help command"
+        ./project/build/arjun --help
+        echo $?
+
     - name: Determine artifact name
       id: artifact
       shell: bash
