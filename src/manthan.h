@@ -208,6 +208,8 @@ class Manthan {
         uint32_t tot_repaired = 0;
         uint32_t repair_failed = 0;
         std::vector<uint32_t> repaired_vars_count; // for each y, how many times it was repaired
+        std::vector<uint32_t> input_only_ok; // per-var: consecutive input-only successes
+        std::vector<uint32_t> input_only_fail; // per-var: consecutive input-only failures
         double sampl_time = 0;
         double train_time = 0;
 
