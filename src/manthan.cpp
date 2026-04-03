@@ -997,11 +997,12 @@ SimplifiedCNF Manthan::do_manthan() {
             } else {
                 repair_failed++;
                 consecutive_cost_zero++;
-                // After 3 consecutive cost-zero repairs, break to get a fresh
-                // counterexample rather than continuing to hit cost-zero cases.
-                // This saves repair solver calls for variables whose formulas
-                // are already correct for the current input pattern.
-                if (consecutive_cost_zero >= 3 && num_repaired > 0) break;
+                // After consecutive cost-zero repairs, break to get a fresh
+                // counterexample. Adaptive threshold: break sooner when the
+                // cost-zero rate is high (saving more solver calls).
+                const uint32_t cz_threshold = (cost_zero_repairs > tot_repaired * 3) ? 1 :
+                    (cost_zero_repairs > tot_repaired * 2) ? 2 : 3;
+                if (consecutive_cost_zero >= cz_threshold && num_repaired > 0) break;
             }
             SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
             SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
