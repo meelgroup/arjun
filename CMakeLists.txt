@@ -372,11 +372,20 @@ if(NOT cryptominisat5_DIR)
     endif()
     if(NOT EXISTS "${_cms_build}/cryptominisat5Config.cmake")
         message(STATUS "CryptoMiniSat5: configuring and building in ${_cms_build}")
+        set(_cms_extra_args "")
+        if(STATICCOMPILE)
+            list(APPEND _cms_extra_args
+                "-DCMAKE_FIND_LIBRARY_SUFFIXES=.a"
+                "-DGMP_LIBRARY=${GMP_LIBRARY}"
+                "-DGMPXX_LIBRARY=${GMPXX_LIBRARY}"
+            )
+        endif()
         execute_process(
             COMMAND ${CMAKE_COMMAND} -S "${_cms_src}" -B "${_cms_build}"
                 -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                 -DCMAKE_POSITION_INDEPENDENT_CODE=ON
                 -DBUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}
+                ${_cms_extra_args}
             RESULT_VARIABLE _cms_cfg_ret
         )
         if(NOT _cms_cfg_ret EQUAL 0)
