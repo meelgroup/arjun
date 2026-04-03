@@ -124,37 +124,6 @@ jobs:
         sudo make install
         cd ../..
 
-    - name: Checkout EvalMaxSAT
-      uses: actions/checkout@v4
-      with:
-        repository: meelgroup/EvalMaxSAT
-        ref: master
-        path: EvalMaxSAT
-    - name: Build EvalMaxSAT
-      run: |
-        cd EvalMaxSAT
-        mkdir build
-        cd build
-        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DBUILD_SHARED_LIBS=OFF -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
-        cmake --build . --config ${{matrix.build_type}} -v
-        cd ../..
-
-    - name: Checkout treedecomp
-      uses: actions/checkout@v4
-      with:
-        repository: meelgroup/treedecomp
-        ref: main
-        path: treedecomp
-    - name: Build treedecomp
-      run: |
-        cd treedecomp
-        mkdir build
-        cd build
-        cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DBUILD_SHARED_LIBS=OFF -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
-        cmake --build . --config ${{matrix.build_type}} -v
-        sudo cmake --install . --config ${{matrix.build_type}} -v
-        cd ../..
-
     - uses: actions/checkout@v4
       with:
         path: project
