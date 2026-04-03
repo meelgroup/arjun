@@ -1309,7 +1309,8 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         // After minimization, try dropping ALL y-variables from the conflict.
         // If the remaining input-only conflict is still UNSAT, the repair is
         // more general (independent of intermediate variable values).
-        {
+        // Skip for very large conflicts (unlikely to succeed and expensive).
+        if (conflict.size() <= 25) {
             bool has_y_vars = false;
             for (const auto& l : conflict) {
                 if (l != to_repair && !input.count(l.var())) { has_y_vars = true; break; }
