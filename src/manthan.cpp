@@ -1395,6 +1395,12 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
     // Cap the total number of solver calls during greedy minimization.
     // For large conflicts, uncapped minimization causes O(n^2) solver calls.
     // Budget scales with conflict size but is bounded to prevent excessive work.
+    // For large conflicts (>20 lits), cap the number of solver calls to prevent
+    // O(n^2) minimization cost. Small conflicts are minimized without limit.
+    const uint32_t minim_budget = (conflict.size() > 20) ?
+        min((uint32_t)(conflict.size() * 4), (uint32_t)150) :
+        std::numeric_limits<uint32_t>::max();
+    uint32_t minim_calls = 0;
     while(removed_any) {
         // Sort to try removing the most beneficial literals first:
         // 1. y-variables before inputs (removing y-vars reduces dependencies)
@@ -1410,6 +1416,7 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
             });
         removed_any = false;
         for(const auto& try_rem: conflict) {
+            if (minim_calls >= minim_budget) { removed_any = false; break; }
             if (dont_remove.count(try_rem)) continue;
             verb_print(3, "Trying to remove conflict literal: " << try_rem);
             assumps.clear();
@@ -1418,6 +1425,7 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
                 assumps.push_back(~l);
             }
             release_assert(assumps.size() == conflict.size()-1);
+            minim_calls++;
             auto ret2 = repair_solver.solve(&assumps);
             if (ret2 == l_True) {
                 dont_remove.insert(try_rem);
