@@ -926,9 +926,14 @@ SimplifiedCNF Manthan::do_manthan() {
         // Collect additional counterexamples to identify free inputs and pick best cex.
         // When input-only conflicts dominate, reduce CEX collection since free input
         // detection is less critical (input-only conflicts are already general).
+        // Also reduce when solver is slow (late in repair) to avoid expensive calls.
         t0 = cpuTime();
         const int saved_multi_cex_k = mconf.multi_cex_k;
         if (generalized_repair_ok > 20 && generalized_repair_ok > tot_repaired * 3 / 4) {
+            const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k = min(mconf.multi_cex_k, 2);
+        }
+        // When deep into repair (solver slow), reduce extra CEXes to save time
+        if (tot_repaired > 2000) {
             const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k = min(mconf.multi_cex_k, 2);
         }
         auto all_cexs = collect_extra_cex(ctx);
@@ -1135,6 +1140,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
             full_conflict_count++;
             full_conflict_sizes_sum += conflict.size();
         }
+
     } else {
         cost_zero_repairs++;
         // Cost 0: find_conflict updated ctx[y] for y_rep and later vars only.
