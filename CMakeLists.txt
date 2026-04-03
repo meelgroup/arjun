@@ -81,10 +81,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 # static compilation
 option(EXTRA_SYNTH "Also build extra parts of synthesis: learning, MaxSAT solver" OFF)
 option(BUILD_SHARED_LIBS "Build the shared library" ON)
-option(STATICCOMPILE "Compile to static executable" OFF)
-if(STATICCOMPILE)
-    set(BUILD_SHARED_LIBS OFF)
-endif()
 
 if((${CMAKE_SYSTEM_NAME} MATCHES "Linux") OR (${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
     if(NOT BUILD_SHARED_LIBS)
@@ -151,7 +147,7 @@ else()
 
     add_compile_options("$<$<CONFIG:Debug>:/Od>")
 
-    if(STATICCOMPILE)
+    if(NOT BUILD_SHARED_LIBS)
         # We statically link to reduce dependencies
         foreach(flag_var CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
             # /MD -- Causes the application to use the multithread-specific and DLL-specific version of the run-time library.
@@ -373,7 +369,7 @@ if(NOT cryptominisat5_DIR)
     if(NOT EXISTS "${_cms_build}/cryptominisat5Config.cmake")
         message(STATUS "CryptoMiniSat5: configuring and building in ${_cms_build}")
         set(_cms_extra_args "")
-        if(STATICCOMPILE)
+        if(NOT BUILD_SHARED_LIBS)
             list(APPEND _cms_extra_args
                 "-DCMAKE_FIND_LIBRARY_SUFFIXES=.a"
                 "-DGMP_LIBRARY=${GMP_LIBRARY}"
@@ -544,7 +540,7 @@ endif()
 option(NOZLIB "Don't use zlib" OFF)
 
 # cannot currently compile static zlib under Windows
-if(NOT NOZLIB AND NOT (STATICCOMPILE AND WIN32))
+if(NOT NOZLIB AND NOT (NOT BUILD_SHARED_LIBS AND WIN32))
     find_package(ZLIB)
     if(ZLIB_FOUND)
         message(STATUS "OK, Found ZLIB!")

@@ -14,7 +14,7 @@ rm -rf Makefile
 rm -rf rjun-src
 rm -rf deps
 rm -rf _deps
-emcmake cmake -DSTATICCOMPILE=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSTATICCOMPILE=ON "-DCMAKE_INSTALL_PREFIX=${EMINSTALL}" -DEXTRA_SYNTH=OFF \
+emcmake cmake -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=RelWithDebInfo "-DCMAKE_INSTALL_PREFIX=${EMINSTALL}" -DEXTRA_SYNTH=OFF \
     -Dcadical_DIR=../../cadical/build \
     -Dcryptominisat5_DIR=../../cryptominisat/build \
     -Dsbva_DIR=../../sbva/build \
