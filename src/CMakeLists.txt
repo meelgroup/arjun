@@ -80,8 +80,9 @@ target_link_libraries(arjun
     PkgConfig::MPFR
     cryptominisat5
     sbva
-    cadical
     treedecomp
+  PRIVATE
+    cadical
 )
 
 set_target_properties(arjun PROPERTIES
