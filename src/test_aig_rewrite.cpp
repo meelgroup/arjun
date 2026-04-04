@@ -305,6 +305,43 @@ void test_complex_ite_chain() {
     check(count_nodes(r2) == 1, "ITE(a,b,b) is single node");
 }
 
+void test_deep_or_chain_flattening() {
+    // Build a deeply nested OR chain: OR(g0, OR(g1, OR(g2, ... OR(g_{n-1}, base))))
+    // This mimics what happens after many ITE repairs with TRUE value
+    const uint32_t n = 10;
+    auto base = AIG::new_lit(n); // base variable
+    aig_ptr chain = base;
+    for (uint32_t i = 0; i < n; i++) {
+        chain = AIG::new_or(AIG::new_lit(i), chain);
+    }
+
+    size_t nodes_before = count_nodes(chain);
+
+    AIGRewriter rw;
+    auto r = rw.rewrite(chain);
+    check(functionally_equal(chain, r, n + 1), "deep OR chain flattening functional");
+
+    size_t nodes_after = count_nodes(r);
+    // A balanced OR tree of 11 inputs needs ~10 AND nodes (for the OR encoding)
+    // The linear chain has ~20 nodes (each OR = 2 nodes due to NOT encoding)
+    check(nodes_after <= nodes_before, "deep OR chain nodes reduced or equal");
+    cout << "  OR chain nodes: " << nodes_before << " -> " << nodes_after << endl;
+}
+
+void test_deep_and_chain_flattening() {
+    const uint32_t n = 10;
+    auto base = AIG::new_lit(n);
+    aig_ptr chain = base;
+    for (uint32_t i = 0; i < n; i++) {
+        chain = AIG::new_and(AIG::new_not(AIG::new_lit(i)), chain);
+    }
+
+    AIGRewriter rw;
+    auto r = rw.rewrite(chain);
+    check(functionally_equal(chain, r, n + 1), "deep AND chain flattening functional");
+    check(count_nodes(r) <= count_nodes(chain), "deep AND chain node count reduced or equal");
+}
+
 int main() {
     cout << "=== AIG Rewriter Tests ===" << endl;
 
@@ -322,6 +359,8 @@ int main() {
     test_rewrite_preserves_null();
     test_distribution();
     test_complex_ite_chain();
+    test_deep_or_chain_flattening();
+    test_deep_and_chain_flattening();
 
     cout << endl << "Results: " << tests_passed << " passed, " << tests_failed << " failed" << endl;
     return tests_failed > 0 ? 1 : 0;
