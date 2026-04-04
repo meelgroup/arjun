@@ -600,6 +600,50 @@ bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
     CMSat::Lit t_lit = encode_node(*other_x);
     CMSat::Lit e_lit = encode_node(*other_y);
 
+    // Degenerate cases.
+    //   ITE(s, t, t) = t
+    //   ITE(s, s, e) = s ∨ e           (s=1 → 1; s=0 → e)
+    //   ITE(s, ¬s, e) = ¬s ∧ e         (s=1 → 0; s=0 → e)
+    //   ITE(s, t, s) = s ∧ t           (s=1 → t; s=0 → 0)
+    //   ITE(s, t, ¬s) = ¬s ∨ t         (s=1 → t; s=0 → 1)
+    auto emit_or2 = [&](CMSat::Lit a, CMSat::Lit b) -> CMSat::Lit {
+        std::vector<CMSat::Lit> inp = {a, b};
+        bool cst = false;
+        if (normalize_or_inputs(inp, cst)) return get_true_lit();
+        if (inp.empty()) return ~get_true_lit();
+        if (inp.size() == 1) return inp[0];
+        auto it = or_group_cse.find(inp);
+        if (it != or_group_cse.end()) return it->second;
+        CMSat::Lit h = new_helper();
+        or_group_cse[inp] = h;
+        emit_or_equiv(h, inp);
+        return h;
+    };
+    auto emit_and2 = [&](CMSat::Lit a, CMSat::Lit b) -> CMSat::Lit {
+        std::vector<CMSat::Lit> inp = {a, b};
+        bool cst = false;
+        if (normalize_and_inputs(inp, cst)) return ~get_true_lit();
+        if (inp.empty()) return get_true_lit();
+        if (inp.size() == 1) return inp[0];
+        auto it = and_group_cse.find(inp);
+        if (it != and_group_cse.end()) return it->second;
+        CMSat::Lit h = new_helper();
+        and_group_cse[inp] = h;
+        emit_and_equiv(h, inp);
+        return h;
+    };
+    if (t_lit == e_lit) { out = t_lit; return true; }
+    if (s_lit == t_lit)  { out = emit_or2(s_lit, e_lit);  return true; }
+    if (s_lit == ~t_lit) { out = emit_and2(~s_lit, e_lit); return true; }
+    if (s_lit == e_lit)  { out = emit_and2(s_lit, t_lit); return true; }
+    if (s_lit == ~e_lit) { out = emit_or2(~s_lit, t_lit); return true; }
+
+    // Canonicalize: if selector is negative, flip (s,t,e) to (¬s,e,t) so
+    // the CSE key is invariant under this symmetry.
+    if (s_lit.sign()) {
+        s_lit = ~s_lit;
+        std::swap(t_lit, e_lit);
+    }
     auto pack = [](CMSat::Lit l) { return (l.var() << 1) | (l.sign() ? 1u : 0u); };
     IteKey key{pack(s_lit), pack(t_lit), pack(e_lit)};
     auto it_ite = ite_cse.find(key);
