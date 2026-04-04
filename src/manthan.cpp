@@ -1717,12 +1717,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     // to prevent unbounded growth. Use the full rewriter for very hot variables,
     // and the simpler simplifier for moderately hot ones.
     if (repaired_vars_count[y_rep] > 0 && repaired_vars_count[y_rep] % 50 == 0) {
-        if (repaired_vars_count[y_rep] >= 200) {
-            AIGRewriter rewriter;
-            var_to_formula[y_rep].aig = rewriter.rewrite(var_to_formula[y_rep].aig);
-        } else {
-            var_to_formula[y_rep].aig = AIG::simplify_aig(var_to_formula[y_rep].aig);
-        }
+        var_to_formula[y_rep].aig = AIG::simplify_aig(var_to_formula[y_rep].aig);
         verb_print(2, "[manthan] Simplified AIG for hot var " << y_rep+1
             << " (repaired " << repaired_vars_count[y_rep] << " times)");
     }
