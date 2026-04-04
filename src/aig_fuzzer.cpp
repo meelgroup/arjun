@@ -319,6 +319,7 @@ struct FuzzerStats {
     uint64_t rewrite_all_tests = 0;
     uint64_t simplify_tests = 0;
     uint64_t double_rewrite_tests = 0;
+    uint64_t chain_tests = 0;
     uint64_t nodes_before_total = 0;
     uint64_t nodes_after_total = 0;
     uint64_t rewrite_reduced = 0;
@@ -333,6 +334,7 @@ struct FuzzerStats {
         cout << "  rewrite_all:    " << rewrite_all_tests << endl;
         cout << "  simplify_aig:   " << simplify_tests << endl;
         cout << "  double_rewrite: " << double_rewrite_tests << endl;
+        cout << "  chain_rewrite:  " << chain_tests << endl;
         cout << "Avg nodes: " << std::fixed << std::setprecision(1)
              << (total_tests > 0 ? (double)nodes_before_total / total_tests : 0)
              << " -> "
@@ -347,11 +349,12 @@ struct FuzzerStats {
 };
 
 static void print_usage(const char* prog) {
-    cout << "Usage: " << prog << " [--num N] [--seed S] [--vars V] [--depth D] [--verbose]" << endl;
+    cout << "Usage: " << prog << " [--num N] [--seed S] [--vars V] [--depth D] [--nodes N] [--verbose]" << endl;
     cout << "  --num N     Number of iterations (0 = infinite, default)" << endl;
     cout << "  --seed S    Random seed (default: random)" << endl;
     cout << "  --vars V    Max input variables (default: 8)" << endl;
     cout << "  --depth D   Max AIG depth (default: 10)" << endl;
+    cout << "  --nodes N   Max nodes per AIG (default: 50)" << endl;
     cout << "  --verbose   Print each AIG before/after" << endl;
 }
 
@@ -360,6 +363,7 @@ int main(int argc, char** argv) {
     uint64_t seed = std::random_device{}();
     uint32_t max_vars = 8;
     uint32_t max_depth = 10;
+    uint32_t max_nodes_cfg = 50;
     bool verbose = false;
 
     for (int i = 1; i < argc; i++) {
@@ -371,6 +375,8 @@ int main(int argc, char** argv) {
             max_vars = std::stoul(argv[++i]);
         } else if (strcmp(argv[i], "--depth") == 0 && i + 1 < argc) {
             max_depth = std::stoul(argv[++i]);
+        } else if (strcmp(argv[i], "--nodes") == 0 && i + 1 < argc) {
+            max_nodes_cfg = std::stoul(argv[++i]);
         } else if (strcmp(argv[i], "--verbose") == 0) {
             verbose = true;
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
@@ -385,9 +391,10 @@ int main(int argc, char** argv) {
 
     cout << "AIG Rewriter Fuzzer" << endl;
     cout << "Seed: " << seed << "  Max vars: " << max_vars
-         << "  Max depth: " << max_depth << endl;
+         << "  Max depth: " << max_depth << "  Max nodes: " << max_nodes_cfg << endl;
     cout << "Reproduce: aig-fuzzer --seed " << seed
-         << " --vars " << max_vars << " --depth " << max_depth << endl;
+         << " --vars " << max_vars << " --depth " << max_depth
+         << " --nodes " << max_nodes_cfg << endl;
     if (num_iters > 0) cout << "Running " << num_iters << " iterations" << endl;
     else cout << "Running indefinitely (Ctrl-C to stop)" << endl;
     cout << endl;
@@ -399,7 +406,7 @@ int main(int argc, char** argv) {
     for (uint64_t iter = 0; num_iters == 0 || iter < num_iters; iter++) {
         uint32_t num_vars = 2 + rng() % (max_vars - 1);
         uint32_t depth = 3 + rng() % (max_depth - 2);
-        uint32_t max_nodes = 8 + rng() % 40;
+        uint32_t max_nodes = 8 + rng() % max_nodes_cfg;
         uint32_t test_type = rng() % 6; // 0=rewrite, 1=rewrite_all, 2=simplify_aig, 3=double_rewrite, 4=simplify_aigs, 5=chain_rewrite
 
         if (test_type == 0 || test_type == 3) {
@@ -524,7 +531,7 @@ int main(int argc, char** argv) {
                 return 1;
 
             size_t nodes_after = AIG::count_aig_nodes(simplified);
-            stats.rewrite_tests++;
+            stats.chain_tests++;
             stats.nodes_before_total += nodes_before;
             stats.nodes_after_total += nodes_after;
             if (nodes_after < nodes_before) stats.rewrite_reduced++;
