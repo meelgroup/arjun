@@ -313,10 +313,6 @@ if(NOT TARGET cadical)
     if(cadical_DIR)
         find_package(cadical CONFIG REQUIRED HINTS "${cadical_DIR}")
         message(STATUS "CaDiCaL: using pre-built at ${cadical_DIR}")
-    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../cadical/CMakeLists.txt")
-        add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../cadical"
-                         "${CMAKE_CURRENT_BINARY_DIR}/cadical-build")
-        message(STATUS "CaDiCaL: using sibling repo")
     else()
         FetchContent_Declare(cadical
             GIT_REPOSITORY https://github.com/meelgroup/cadical
@@ -328,154 +324,52 @@ if(NOT TARGET cadical)
 endif()
 
 # ---- CryptoMiniSat5 (cmake-based) ----
-set(cryptominisat5_DIR "" CACHE PATH "Directory where CryptoMiniSat5 is built. Auto-fetched if empty.")
-if(NOT cryptominisat5_DIR)
-    set(_cms_src "${CMAKE_BINARY_DIR}/deps/cryptominisat")
-    set(_cms_build "${_cms_src}/build")
-    FetchContent_Declare(cryptominisat5_src
-        GIT_REPOSITORY https://github.com/msoos/cryptominisat
-        GIT_TAG        master
-        SOURCE_DIR     "${_cms_src}"
-        GIT_SHALLOW    TRUE
-    )
-    FetchContent_GetProperties(cryptominisat5_src)
-    if(NOT cryptominisat5_src_POPULATED)
-        message(STATUS "CryptoMiniSat5: fetching from msoos/cryptominisat master")
-        FetchContent_Populate(cryptominisat5_src)
-    endif()
-    if(NOT EXISTS "${_cms_build}/cryptominisat5Config.cmake")
-        message(STATUS "CryptoMiniSat5: configuring and building in ${_cms_build}")
-        # Pass CaDiCaL location if it was built in this project
-        set(_cadical_arg "")
-        if(TARGET cadical)
-            get_target_property(_cadical_binary_dir cadical BINARY_DIR)
-            if(_cadical_binary_dir)
-                set(_cadical_arg "-Dcadical_DIR=${_cadical_binary_dir}")
-            endif()
-        endif()
-        execute_process(
-            COMMAND ${CMAKE_COMMAND} -S "${_cms_src}" -B "${_cms_build}"
-                -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-                -DBUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}
-                ${_cadical_arg}
-            RESULT_VARIABLE _cms_cfg_ret
-        )
-        if(NOT _cms_cfg_ret EQUAL 0)
-            message(FATAL_ERROR "CryptoMiniSat5 cmake configure failed (exit ${_cms_cfg_ret})")
-        endif()
-        execute_process(
-            COMMAND ${CMAKE_COMMAND} --build "${_cms_build}" -j8
-            RESULT_VARIABLE _cms_build_ret
-        )
-        if(NOT _cms_build_ret EQUAL 0)
-            message(FATAL_ERROR "CryptoMiniSat5 build failed (exit ${_cms_build_ret})")
-        endif()
-        # After building CryptoMiniSat, we need to make cadiback target available
-        # CryptoMiniSat builds cadiback as a dependency, so we can find it in its build tree
-        set(_cadiback_dir "${_cms_build}/_deps/cadiback-build")
-        if(EXISTS "${_cadiback_dir}/cadibackConfig.cmake")
-            find_package(cadiback CONFIG REQUIRED HINTS "${_cadiback_dir}" NO_DEFAULT_PATH)
-        endif()
+set(cryptominisat5_DIR "" CACHE PATH "cryptominisat5 install/build prefix (contains lib/cmake/cryptominisat5/). Auto-resolved if empty.")
+if(NOT TARGET cryptominisat5)
+    if(cryptominisat5_DIR)
+        find_package(cryptominisat5 CONFIG REQUIRED HINTS "${cryptominisat5_DIR}")
+        message(STATUS "CryptoMiniSat5: using pre-built at ${cryptominisat5_DIR}")
     else()
-        # If CryptoMiniSat was already built, still need to find cadiback
-        set(_cadiback_dir "${_cms_build}/_deps/cadiback-build")
-        if(EXISTS "${_cadiback_dir}/cadibackConfig.cmake")
-            find_package(cadiback CONFIG QUIET HINTS "${_cadiback_dir}" NO_DEFAULT_PATH)
-        endif()
+        FetchContent_Declare(cryptominisat5
+            GIT_REPOSITORY https://github.com/msoos/cryptominisat
+            GIT_TAG        master
+            GIT_SHALLOW    TRUE)
+        FetchContent_MakeAvailable(cryptominisat5)
+        message(STATUS "CryptoMiniSat5: fetched from GitHub")
     endif()
-    set(cryptominisat5_DIR "${_cms_build}" CACHE PATH "Directory where CryptoMiniSat5 is built" FORCE)
-    message(STATUS "CryptoMiniSat5: using auto-built ${cryptominisat5_DIR}")
 endif()
-find_package(cryptominisat5 CONFIG REQUIRED)
-message(STATUS "CryptoMiniSat5 dynamic lib: ${CRYPTOMINISAT5_LIBRARIES}")
-message(STATUS "CryptoMiniSat5 dynamic lib dirs: ${CRYPTOMINISAT5_LIBRARY_DIRS}")
-message(STATUS "CryptoMiniSat5 static lib:  ${CRYPTOMINISAT5_STATIC_LIBRARIES}")
-message(STATUS "CryptoMiniSat5 static lib deps: ${CRYPTOMINISAT5_STATIC_LIBRARIES_DEPS}")
-message(STATUS "CryptoMiniSat5 include dirs: ${CRYPTOMINISAT5_INCLUDE_DIRS}")
 
 # ---- SBVA (cmake-based) ----
-set(sbva_DIR "" CACHE PATH "Directory where sbva is built. Auto-fetched if empty.")
-if(NOT sbva_DIR)
-    set(_sbva_src "${CMAKE_BINARY_DIR}/deps/sbva")
-    set(_sbva_build "${_sbva_src}/build")
-    FetchContent_Declare(sbva_src
-        GIT_REPOSITORY https://github.com/meelgroup/SBVA.git
-        GIT_TAG        master
-        SOURCE_DIR     "${_sbva_src}"
-        GIT_SHALLOW    TRUE
-    )
-    FetchContent_GetProperties(sbva_src)
-    if(NOT sbva_src_POPULATED)
-        message(STATUS "SBVA: fetching from meelgroup/SBVA master")
-        FetchContent_Populate(sbva_src)
+set(sbva_DIR "" CACHE PATH "sbva install/build prefix (contains lib/cmake/sbva/). Auto-resolved if empty.")
+if(NOT TARGET sbva)
+    if(sbva_DIR)
+        find_package(sbva CONFIG REQUIRED HINTS "${sbva_DIR}")
+        message(STATUS "SBVA: using pre-built at ${sbva_DIR}")
+    else()
+        FetchContent_Declare(sbva
+            GIT_REPOSITORY https://github.com/meelgroup/SBVA.git
+            GIT_TAG        master
+            GIT_SHALLOW    TRUE)
+        FetchContent_MakeAvailable(sbva)
+        message(STATUS "SBVA: fetched from GitHub")
     endif()
-    if(NOT EXISTS "${_sbva_build}/sbvaConfig.cmake")
-        message(STATUS "SBVA: configuring and building in ${_sbva_build}")
-        execute_process(
-            COMMAND ${CMAKE_COMMAND} -S "${_sbva_src}" -B "${_sbva_build}"
-                -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-                -DBUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}
-            RESULT_VARIABLE _sbva_cfg_ret
-        )
-        if(NOT _sbva_cfg_ret EQUAL 0)
-            message(FATAL_ERROR "SBVA cmake configure failed (exit ${_sbva_cfg_ret})")
-        endif()
-        execute_process(
-            COMMAND ${CMAKE_COMMAND} --build "${_sbva_build}" -j8
-            RESULT_VARIABLE _sbva_build_ret
-        )
-        if(NOT _sbva_build_ret EQUAL 0)
-            message(FATAL_ERROR "SBVA build failed (exit ${_sbva_build_ret})")
-        endif()
-    endif()
-    set(sbva_DIR "${_sbva_build}" CACHE PATH "Directory where sbva is built" FORCE)
-    message(STATUS "SBVA: using auto-built ${sbva_DIR}")
 endif()
-find_package(sbva CONFIG REQUIRED)
-message(STATUS "Found SBVA includes at: ${SBVA_INCLUDE_DIRS}")
 
 # ---- treedecomp (cmake-based) ----
-set(treedecomp_DIR "" CACHE PATH "Directory where treedecomp is built. Auto-fetched if empty.")
-if(NOT treedecomp_DIR)
-    set(_tdec_src "${CMAKE_BINARY_DIR}/deps/treedecomp")
-    set(_tdec_build "${_tdec_src}/build")
-    FetchContent_Declare(treedecomp_src
-        GIT_REPOSITORY https://github.com/meelgroup/treedecomp.git
-        GIT_TAG        main
-        SOURCE_DIR     "${_tdec_src}"
-        GIT_SHALLOW    TRUE
-    )
-    FetchContent_GetProperties(treedecomp_src)
-    if(NOT treedecomp_src_POPULATED)
-        message(STATUS "treedecomp: fetching from meelgroup/treedecomp main")
-        FetchContent_Populate(treedecomp_src)
+set(treedecomp_DIR "" CACHE PATH "treedecomp install/build prefix (contains lib/cmake/treedecomp/). Auto-resolved if empty.")
+if(NOT TARGET treedecomp)
+    if(treedecomp_DIR)
+        find_package(treedecomp CONFIG REQUIRED HINTS "${treedecomp_DIR}")
+        message(STATUS "treedecomp: using pre-built at ${treedecomp_DIR}")
+    else()
+        FetchContent_Declare(treedecomp
+            GIT_REPOSITORY https://github.com/meelgroup/treedecomp.git
+            GIT_TAG        main
+            GIT_SHALLOW    TRUE)
+        FetchContent_MakeAvailable(treedecomp)
+        message(STATUS "treedecomp: fetched from GitHub")
     endif()
-    if(NOT EXISTS "${_tdec_build}/treedecompConfig.cmake")
-        message(STATUS "treedecomp: configuring and building in ${_tdec_build}")
-        execute_process(
-            COMMAND ${CMAKE_COMMAND} -S "${_tdec_src}" -B "${_tdec_build}"
-                -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-                -DBUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}
-            RESULT_VARIABLE _tdec_cfg_ret
-        )
-        if(NOT _tdec_cfg_ret EQUAL 0)
-            message(FATAL_ERROR "treedecomp cmake configure failed (exit ${_tdec_cfg_ret})")
-        endif()
-        execute_process(
-            COMMAND ${CMAKE_COMMAND} --build "${_tdec_build}" -j8
-            RESULT_VARIABLE _tdec_build_ret
-        )
-        if(NOT _tdec_build_ret EQUAL 0)
-            message(FATAL_ERROR "treedecomp build failed (exit ${_tdec_build_ret})")
-        endif()
-    endif()
-    set(treedecomp_DIR "${_tdec_build}" CACHE PATH "Directory where treedecomp is built" FORCE)
-    message(STATUS "treedecomp: using auto-built ${treedecomp_DIR}")
 endif()
-find_package(treedecomp CONFIG REQUIRED)
 
 if(EXTRA_SYNTH)
     add_compile_definitions(EXTRA_SYNTH)
@@ -485,45 +379,20 @@ if(EXTRA_SYNTH)
     message(STATUS "Found ensmallen include dirs: ${ensmallen_INCLUDE_DIRS}")
     find_package(MLPACK REQUIRED)
     # ---- EvalMaxSAT (cmake-based, EXTRA_SYNTH only) ----
-    set(EvalMaxSAT_DIR "" CACHE PATH "Directory where EvalMaxSAT is built. Auto-fetched if empty.")
-    if(NOT EvalMaxSAT_DIR)
-        set(_evalmaxsat_src "${CMAKE_BINARY_DIR}/deps/EvalMaxSAT")
-        set(_evalmaxsat_build "${_evalmaxsat_src}/build")
-        FetchContent_Declare(evalmaxsat_src
-            GIT_REPOSITORY https://github.com/meelgroup/EvalMaxSAT.git
-            GIT_TAG        master
-            SOURCE_DIR     "${_evalmaxsat_src}"
-            GIT_SHALLOW    TRUE
-        )
-        FetchContent_GetProperties(evalmaxsat_src)
-        if(NOT evalmaxsat_src_POPULATED)
-            message(STATUS "EvalMaxSAT: fetching from meelgroup/EvalMaxSAT master")
-            FetchContent_Populate(evalmaxsat_src)
+    set(EvalMaxSAT_DIR "" CACHE PATH "EvalMaxSAT install/build prefix (contains lib/cmake/EvalMaxSAT/). Auto-resolved if empty.")
+    if(NOT TARGET EvalMaxSAT)
+        if(EvalMaxSAT_DIR)
+            find_package(EvalMaxSAT CONFIG REQUIRED HINTS "${EvalMaxSAT_DIR}")
+            message(STATUS "EvalMaxSAT: using pre-built at ${EvalMaxSAT_DIR}")
+        else()
+            FetchContent_Declare(EvalMaxSAT
+                GIT_REPOSITORY https://github.com/meelgroup/EvalMaxSAT.git
+                GIT_TAG        master
+                GIT_SHALLOW    TRUE)
+            FetchContent_MakeAvailable(EvalMaxSAT)
+            message(STATUS "EvalMaxSAT: fetched from GitHub")
         endif()
-        if(NOT EXISTS "${_evalmaxsat_build}/EvalMaxSATConfig.cmake")
-            message(STATUS "EvalMaxSAT: configuring and building in ${_evalmaxsat_build}")
-            execute_process(
-                COMMAND ${CMAKE_COMMAND} -S "${_evalmaxsat_src}" -B "${_evalmaxsat_build}"
-                    -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                    -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-                    -DBUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}
-                RESULT_VARIABLE _evalmaxsat_cfg_ret
-            )
-            if(NOT _evalmaxsat_cfg_ret EQUAL 0)
-                message(FATAL_ERROR "EvalMaxSAT cmake configure failed (exit ${_evalmaxsat_cfg_ret})")
-            endif()
-            execute_process(
-                COMMAND ${CMAKE_COMMAND} --build "${_evalmaxsat_build}" -j8
-                RESULT_VARIABLE _evalmaxsat_build_ret
-            )
-            if(NOT _evalmaxsat_build_ret EQUAL 0)
-                message(FATAL_ERROR "EvalMaxSAT build failed (exit ${_evalmaxsat_build_ret})")
-            endif()
-        endif()
-        set(EvalMaxSAT_DIR "${_evalmaxsat_build}" CACHE PATH "Directory where EvalMaxSAT is built" FORCE)
-        message(STATUS "EvalMaxSAT: using auto-built ${EvalMaxSAT_DIR}")
     endif()
-    find_package(EvalMaxSAT REQUIRED)
 endif()
 
 option(NOZLIB "Don't use zlib" OFF)
@@ -652,7 +521,7 @@ configure_file(
     IMMEDIATE @ONLY
 )
 
-add_custom_target(uninstall
+add_custom_target(uninstall_arjun
     COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake
 )
 
@@ -682,8 +551,6 @@ export(
 )
 
 # Build-tree config (absolute paths, for use without installation)
-set(SBVA_CMAKE_DIR_FOR_CONFIG "${sbva_DIR}")
-set(TREEDECOMP_CMAKE_DIR_FOR_CONFIG "${treedecomp_DIR}")
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/arjunConfig-buildtree.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/${ARJUN_CONFIG_FILENAME}"

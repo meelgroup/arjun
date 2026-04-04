@@ -3,14 +3,10 @@ set(ARJUN_INCLUDE_DIRS "@CMAKE_CURRENT_BINARY_DIR@/include")
 
 include(CMakeFindDependencyMacro)
 
-if(NOT "@SBVA_CMAKE_DIR_FOR_CONFIG@" STREQUAL "")
-    set(sbva_DIR "@SBVA_CMAKE_DIR_FOR_CONFIG@")
-endif()
+# Dependencies are already available in the same CMake scope when arjun
+# was built via add_subdirectory or FetchContent. If using this config
+# from an external project, they should be found via standard mechanisms.
 find_dependency(sbva REQUIRED CONFIG)
-
-if(NOT "@TREEDECOMP_CMAKE_DIR_FOR_CONFIG@" STREQUAL "")
-    set(treedecomp_DIR "@TREEDECOMP_CMAKE_DIR_FOR_CONFIG@")
-endif()
 find_dependency(treedecomp REQUIRED CONFIG)
 
 include("${CMAKE_CURRENT_LIST_DIR}/arjunTargets.cmake")
