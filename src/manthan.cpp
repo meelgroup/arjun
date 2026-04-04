@@ -926,8 +926,13 @@ SimplifiedCNF Manthan::do_manthan() {
         // rebuild). This discards dead indicator variables, old equivalence clauses,
         // and forced blocking clause activations that accumulate during repair.
         bool did_rebuild = false;
-        if (nvars_at_last_rebuild > 0 && cex_solver.nVars() > nvars_at_last_rebuild * 2
-                && num_loops_repair > 200) {
+        // Count total formula clauses to decide if rebuild is worthwhile.
+        // Only rebuild when formulas are bloated (>50K total clauses) AND solver
+        // has grown significantly (1.5x since last rebuild).
+        uint64_t total_formula_clauses = 0;
+        for (const auto& [y, form] : var_to_formula) total_formula_clauses += form.clauses.size();
+        if (nvars_at_last_rebuild > 0 && cex_solver.nVars() > nvars_at_last_rebuild * 3 / 2
+                && total_formula_clauses > 100000 && num_loops_repair > 200) {
             for (auto& [y, form] : var_to_formula) {
                 if (form.aig) form.aig = AIG::simplify_aig(form.aig);
             }
