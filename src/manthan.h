@@ -109,10 +109,12 @@ class Manthan {
         bool repair(const uint32_t v, sample& ctx);
         std::vector<sample> collect_extra_cex(const sample& ctx);
         bool find_conflict(const uint32_t y_rep, sample& ctx, std::vector<CMSat::Lit>& conflict);
+        std::vector<uint32_t> var_conflict_freq; // how often each var appears in conflicts
         void minimize_conflict(std::vector<CMSat::Lit>& conflict, std::vector<CMSat::Lit>& assumps, const CMSat::Lit repairing);
         uint32_t find_next_repair_var(const sample& ctx) const;
         void perform_repair(const uint32_t y_rep, const sample& ctx, const std::vector<CMSat::Lit>& conflict);
         void add_not_f_x_yhat();
+        void rebuild_cex_solver();
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with(std::set<uint32_t>& vars);
         void print_y_order_occur() const;
@@ -192,11 +194,14 @@ class Manthan {
         bool check_functions_for_y_vars() const;
         std::mt19937 mtrand;
         std::vector<uint32_t> updated_y_funcs; // y_hats updated during last round of training
+        std::set<uint32_t> needs_reencode; // formulas modified since last rebuild
+        uint32_t nvars_at_last_rebuild = 0; // nVars at last rebuild for growth tracking
 
         // stats
         double repair_start_time;
         void print_stats(const std::string& txt = "", const std::string& color = "", const std::string& extra = "") const;
         void print_repair_stats(const std::string& txt = "", const std::string& color = "", const std::string& extra = "") const;
+        void print_detailed_stats() const;
         uint32_t num_loops_repair = 0;
         uint64_t conflict_sizes_sum = 0;
         uint32_t generalized_repair_ok = 0;
@@ -205,8 +210,27 @@ class Manthan {
         uint32_t tot_repaired = 0;
         uint32_t repair_failed = 0;
         std::vector<uint32_t> repaired_vars_count; // for each y, how many times it was repaired
+        std::vector<uint32_t> input_only_ok; // per-var: consecutive input-only successes
+        std::vector<uint32_t> input_only_fail; // per-var: consecutive input-only failures
         double sampl_time = 0;
         double train_time = 0;
+
+        // detailed timing stats
+        double time_cex_finding = 0;
+        double time_collect_extra_cex = 0;
+        double time_find_better_ctx = 0;
+        double time_find_conflict = 0;
+        double time_minimize_conflict = 0;
+        double time_perform_repair = 0;
+        double time_inject_formulas = 0;
+        double time_recompute_y_hat = 0;
+        uint64_t input_only_conflict_sizes_sum = 0;
+        uint64_t full_conflict_sizes_sum = 0;
+        uint32_t input_only_conflict_count = 0;
+        uint32_t full_conflict_count = 0;
+        uint32_t cost_zero_repairs = 0;
+        uint32_t cex_solver_calls = 0;
+        uint32_t repair_solver_calls = 0;
 
         // Main stuff
         ArjunNS::SimplifiedCNF cnf;
