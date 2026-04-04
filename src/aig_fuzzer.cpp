@@ -392,7 +392,7 @@ int main(int argc, char** argv) {
     cout << "AIG Rewriter Fuzzer" << endl;
     cout << "Seed: " << seed << "  Max vars: " << max_vars
          << "  Max depth: " << max_depth << "  Max nodes: " << max_nodes_cfg << endl;
-    cout << "Reproduce: aig-fuzzer --seed " << seed
+    cout << "Reproduce: fuzz_aig --seed " << seed
          << " --vars " << max_vars << " --depth " << max_depth
          << " --nodes " << max_nodes_cfg << endl;
     if (num_iters > 0) cout << "Running " << num_iters << " iterations" << endl;
