@@ -82,19 +82,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 option(EXTRA_SYNTH "Also build extra parts of synthesis: learning, MaxSAT solver" OFF)
 option(BUILD_SHARED_LIBS "Build the shared library" ON)
 
-# Find Threads before restricting CMAKE_FIND_LIBRARY_SUFFIXES to .a,
-# otherwise FindThreads fails in manylinux/static build environments.
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
-
-if((${CMAKE_SYSTEM_NAME} MATCHES "Linux") OR (${CMAKE_SYSTEM_NAME} MATCHES "Darwin"))
-    if(NOT BUILD_SHARED_LIBS)
-        message(STATUS "Compiling statically")
-        set(CMAKE_FIND_LIBRARY_SUFFIXES ".a" ".so" ".dylib")
-    else()
-        message(STATUS "Compiling for dynamic library use")
-    endif()
-endif()
 
 include(CheckCXXCompilerFlag)
 include(CheckCCompilerFlag)
@@ -302,7 +291,8 @@ endif()
 pkg_check_modules(GMP REQUIRED IMPORTED_TARGET gmp)
 find_library(GMPXX_LIBRARY NAMES gmpxx HINTS ${GMP_LIBRARY_DIRS})
 if(GMPXX_LIBRARY)
-    set_property(TARGET PkgConfig::GMP APPEND PROPERTY INTERFACE_LINK_LIBRARIES "${GMPXX_LIBRARY}")
+    get_property(_gmp_iface_libs TARGET PkgConfig::GMP PROPERTY INTERFACE_LINK_LIBRARIES)
+    set_property(TARGET PkgConfig::GMP PROPERTY INTERFACE_LINK_LIBRARIES "${GMPXX_LIBRARY}" ${_gmp_iface_libs})
 endif()
 pkg_check_modules(MPFR REQUIRED IMPORTED_TARGET mpfr)
 
