@@ -30,6 +30,7 @@
 
 #include "arjun.h"
 #include <cryptominisat5/solvertypesmini.h>
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <functional>
@@ -97,6 +98,12 @@ private:
 
     void collect_and(const aig_ptr& n, std::vector<CMSat::Lit>& out);
     void collect_disjuncts_of_neg(const aig_ptr& n, std::vector<CMSat::Lit>& out);
+
+    // Post-process a k-ary AND input list: dedup, detect trivial constants.
+    // Returns true if the group is a constant (out_const set to the constant).
+    // Otherwise updates inputs in place.
+    bool normalize_and_inputs(std::vector<CMSat::Lit>& inputs, bool& out_const);
+    bool normalize_or_inputs(std::vector<CMSat::Lit>& inputs, bool& out_const);
 
     void emit_and_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
     void emit_or_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
@@ -257,6 +264,24 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
             inputs.push_back(encode_node(n->l));
             inputs.push_back(encode_node(n->r));
         }
+        bool is_const = false;
+        if (normalize_and_inputs(inputs, is_const)) {
+            // AND short-circuited to FALSE.
+            CMSat::Lit t = get_true_lit();
+            CMSat::Lit result = ~t;
+            cache[n] = result;
+            return result;
+        }
+        if (inputs.empty()) {
+            // Everything folded out as TRUE.
+            CMSat::Lit t = get_true_lit();
+            cache[n] = t;
+            return t;
+        }
+        if (inputs.size() == 1) {
+            cache[n] = inputs[0];
+            return inputs[0];
+        }
         CMSat::Lit h = new_helper();
         emit_and_equiv(h, inputs);
         stats.kary_and_count++;
@@ -273,6 +298,23 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
             inputs.push_back(~encode_node(n->l));
             inputs.push_back(~encode_node(n->r));
         }
+        bool is_const = false;
+        if (normalize_or_inputs(inputs, is_const)) {
+            // OR short-circuited to TRUE.
+            CMSat::Lit t = get_true_lit();
+            cache[n] = t;
+            return t;
+        }
+        if (inputs.empty()) {
+            CMSat::Lit t = get_true_lit();
+            CMSat::Lit result = ~t;
+            cache[n] = result;
+            return result;
+        }
+        if (inputs.size() == 1) {
+            cache[n] = inputs[0];
+            return inputs[0];
+        }
         CMSat::Lit h = new_helper();
         emit_or_equiv(h, inputs);
         stats.kary_or_count++;
@@ -282,6 +324,12 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
     }
 }
 
+// collect_and(n, out): n is a conjunct of the enclosing k-ary AND; append its
+// contribution. Flattens through:
+//   (a) positive t_and nodes (direct child ANDs), and
+//   (b) NOT-wrappers of inner OR gates via De Morgan:
+//       n = AND(G, G, neg=true) where G = AND(x, y, neg=true) (an OR gate)
+//       means n = NOT(OR(¬x, ¬y)) = AND(x, y), so x and y are both conjuncts.
 template<class Solver>
 void AIGToCNF<Solver>::collect_and(const aig_ptr& n, std::vector<CMSat::Lit>& out) {
     if (n->type == AIGT::t_and && !n->neg
@@ -293,9 +341,33 @@ void AIGToCNF<Solver>::collect_and(const aig_ptr& n, std::vector<CMSat::Lit>& ou
         collect_and(n->r, out);
         return;
     }
+    // De Morgan: NOT-wrapper of an OR gate flattens into a positive AND of the
+    // OR's raw children (which are already the negations of the disjuncts).
+    if (n->type == AIGT::t_and && n->neg && n->l == n->r
+        && fanout[n] <= 1
+        && cache.find(n) == cache.end())
+    {
+        const aig_ptr& inner = n->l;
+        if (inner && inner->type == AIGT::t_and && inner->neg
+            && inner->l != inner->r
+            && fanout[inner] <= 1
+            && cache.find(inner) == cache.end())
+        {
+            collect_and(inner->l, out);
+            collect_and(inner->r, out);
+            return;
+        }
+    }
     out.push_back(encode_node(n));
 }
 
+// collect_disjuncts_of_neg(n, out): n is the raw AIG child of an outer OR
+// gate (AND with neg=true), representing ¬disjunct. Append lits for the
+// disjuncts hidden behind n, flattening through:
+//   (a) positive t_and (¬(AND) = OR by De Morgan, so its two children
+//       contribute ¬child as further disjuncts), and
+//   (b) NOT-wrappers of inner OR gates (so ¬n is a further OR, whose
+//       disjuncts should be merged into the outer OR).
 template<class Solver>
 void AIGToCNF<Solver>::collect_disjuncts_of_neg(const aig_ptr& n, std::vector<CMSat::Lit>& out) {
     if (n->type == AIGT::t_and && !n->neg
@@ -307,7 +379,85 @@ void AIGToCNF<Solver>::collect_disjuncts_of_neg(const aig_ptr& n, std::vector<CM
         collect_disjuncts_of_neg(n->r, out);
         return;
     }
+    // NOT-wrapper of an inner OR gate: ¬n = inner OR, flatten its disjuncts.
+    if (n->type == AIGT::t_and && n->neg && n->l == n->r
+        && fanout[n] <= 1
+        && cache.find(n) == cache.end())
+    {
+        const aig_ptr& inner = n->l;
+        if (inner && inner->type == AIGT::t_and && inner->neg
+            && inner->l != inner->r
+            && fanout[inner] <= 1
+            && cache.find(inner) == cache.end())
+        {
+            collect_disjuncts_of_neg(inner->l, out);
+            collect_disjuncts_of_neg(inner->r, out);
+            return;
+        }
+    }
     out.push_back(~encode_node(n));
+}
+
+// Dedup and constant-folding on a k-ary AND input list. Removes duplicate
+// literals and short-circuits to FALSE if x and ¬x both appear (returns
+// true with out_const=false). Also folds TRUE-literals out and FALSE-literal
+// to constant FALSE.
+template<class Solver>
+bool AIGToCNF<Solver>::normalize_and_inputs(std::vector<CMSat::Lit>& inputs, bool& out_const) {
+    CMSat::Lit tlit;
+    bool has_tlit = my_has_true_lit;
+    if (has_tlit) tlit = my_true_lit;
+
+    // Sort by var,sign for dedup and complementary detection.
+    std::sort(inputs.begin(), inputs.end(),
+        [](CMSat::Lit a, CMSat::Lit b) {
+            if (a.var() != b.var()) return a.var() < b.var();
+            return a.sign() < b.sign();
+        });
+    std::vector<CMSat::Lit> out;
+    out.reserve(inputs.size());
+    for (size_t i = 0; i < inputs.size(); i++) {
+        CMSat::Lit l = inputs[i];
+        // Remove TRUE-literal contributions.
+        if (has_tlit && l == tlit) continue;
+        // Short-circuit on FALSE-literal.
+        if (has_tlit && l == ~tlit) { out_const = false; return true; }
+        // Dedup consecutive identical lits.
+        if (!out.empty() && out.back() == l) continue;
+        // Complementary pair (same var, opposite sign) = AND of x and ¬x = FALSE.
+        if (!out.empty() && out.back().var() == l.var()) {
+            out_const = false; return true;
+        }
+        out.push_back(l);
+    }
+    inputs.swap(out);
+    return false;
+}
+
+template<class Solver>
+bool AIGToCNF<Solver>::normalize_or_inputs(std::vector<CMSat::Lit>& inputs, bool& out_const) {
+    CMSat::Lit tlit;
+    bool has_tlit = my_has_true_lit;
+    if (has_tlit) tlit = my_true_lit;
+    std::sort(inputs.begin(), inputs.end(),
+        [](CMSat::Lit a, CMSat::Lit b) {
+            if (a.var() != b.var()) return a.var() < b.var();
+            return a.sign() < b.sign();
+        });
+    std::vector<CMSat::Lit> out;
+    out.reserve(inputs.size());
+    for (size_t i = 0; i < inputs.size(); i++) {
+        CMSat::Lit l = inputs[i];
+        if (has_tlit && l == ~tlit) continue; // FALSE contributes nothing.
+        if (has_tlit && l == tlit) { out_const = true; return true; } // TRUE short-circuit.
+        if (!out.empty() && out.back() == l) continue; // dedup.
+        if (!out.empty() && out.back().var() == l.var()) { // x ∨ ¬x = TRUE.
+            out_const = true; return true;
+        }
+        out.push_back(l);
+    }
+    inputs.swap(out);
+    return false;
 }
 
 // ITE pattern: (s ∧ t) ∨ (¬s ∧ e)  where s is a literal. In this AIG,
