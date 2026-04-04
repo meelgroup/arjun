@@ -13,6 +13,21 @@
 #include <set>
 #include <cstdint>
 
+// Visibility export macros for proper symbol visibility with -fvisibility=hidden
+#if defined(_WIN32) || defined(__CYGWIN__)
+  #ifdef arjun_EXPORTS
+    #define ARJUN_PUBLIC __declspec(dllexport)
+  #else
+    #define ARJUN_PUBLIC __declspec(dllimport)
+  #endif
+#else
+  #if defined(arjun_EXPORTS)
+    #define ARJUN_PUBLIC __attribute__((visibility("default")))
+  #else
+    #define ARJUN_PUBLIC
+  #endif
+#endif
+
 namespace ArjunNS {
 
 // Statistics for AIG rewriting
@@ -33,7 +48,7 @@ struct AIGRewriteStats {
     void clear();
 };
 
-class AIGRewriter {
+class ARJUN_PUBLIC AIGRewriter {
 public:
     AIGRewriter() = default;
 
