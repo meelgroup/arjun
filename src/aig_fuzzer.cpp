@@ -325,6 +325,8 @@ struct FuzzerStats {
     uint64_t rewrite_reduced = 0;
     uint64_t rewrite_same = 0;
     uint64_t rewrite_grew = 0;
+    uint64_t total_rewrites = 0;
+    double rewrite_time_s = 0;
     double total_time_ms = 0;
 
     void print() const {
@@ -422,7 +424,11 @@ int main(int argc, char** argv) {
             }
 
             AIGRewriter rw;
+            auto t0 = std::chrono::steady_clock::now();
             aig_ptr simplified = rw.rewrite(orig);
+            auto t1 = std::chrono::steady_clock::now();
+            stats.rewrite_time_s += std::chrono::duration<double>(t1 - t0).count();
+            stats.total_rewrites++;
 
             if (!verify_rewrite(orig, simplified, num_vars, seed, iter, "rewrite"))
                 return 1;
@@ -433,7 +439,11 @@ int main(int argc, char** argv) {
             // Double-rewrite: rewrite the already-rewritten AIG
             if (test_type == 3) {
                 AIGRewriter rw2;
+                auto t2 = std::chrono::steady_clock::now();
                 aig_ptr double_simplified = rw2.rewrite(simplified);
+                auto t3 = std::chrono::steady_clock::now();
+                stats.rewrite_time_s += std::chrono::duration<double>(t3 - t2).count();
+                stats.total_rewrites++;
                 if (!verify_rewrite(orig, double_simplified, num_vars, seed, iter, "double_rewrite"))
                     return 1;
 
@@ -458,7 +468,11 @@ int main(int argc, char** argv) {
             vector<aig_ptr> to_rewrite = originals; // copy
 
             AIGRewriter rw;
+            auto t0 = std::chrono::steady_clock::now();
             rw.rewrite_all(to_rewrite, 0);
+            auto t1 = std::chrono::steady_clock::now();
+            stats.rewrite_time_s += std::chrono::duration<double>(t1 - t0).count();
+            stats.total_rewrites += batch_size;
 
             size_t total_before = 0, total_after = 0;
             for (uint32_t j = 0; j < batch_size; j++) {
@@ -479,7 +493,11 @@ int main(int argc, char** argv) {
             if (!orig) continue;
 
             size_t nodes_before = AIG::count_aig_nodes(orig);
+            auto t0 = std::chrono::steady_clock::now();
             aig_ptr simplified = AIG::simplify_aig(orig);
+            auto t1 = std::chrono::steady_clock::now();
+            stats.rewrite_time_s += std::chrono::duration<double>(t1 - t0).count();
+            stats.total_rewrites++;
             if (!verify_rewrite(orig, simplified, num_vars, seed, iter, "simplify_aig"))
                 return 1;
 
@@ -497,7 +515,11 @@ int main(int argc, char** argv) {
             vector<aig_ptr> originals = gen_random_aig_batch(rng, num_vars, batch_size);
             vector<aig_ptr> to_simplify = originals;
 
+            auto t0 = std::chrono::steady_clock::now();
             AIG::simplify_aigs(0, to_simplify);
+            auto t1 = std::chrono::steady_clock::now();
+            stats.rewrite_time_s += std::chrono::duration<double>(t1 - t0).count();
+            stats.total_rewrites += batch_size;
 
             size_t total_before = 0, total_after = 0;
             for (uint32_t j = 0; j < batch_size; j++) {
@@ -526,7 +548,11 @@ int main(int argc, char** argv) {
             size_t nodes_before = AIG::count_aig_nodes(orig);
 
             AIGRewriter rw;
+            auto t0 = std::chrono::steady_clock::now();
             aig_ptr simplified = rw.rewrite(orig);
+            auto t1 = std::chrono::steady_clock::now();
+            stats.rewrite_time_s += std::chrono::duration<double>(t1 - t0).count();
+            stats.total_rewrites++;
             if (!verify_rewrite(orig, simplified, num_vars, seed, iter, "chain_rewrite"))
                 return 1;
 
@@ -545,6 +571,8 @@ int main(int argc, char** argv) {
         if (iter % 500 == 0 && iter > 0) {
             auto now = std::chrono::steady_clock::now();
             double elapsed = std::chrono::duration<double>(now - t_global_start).count();
+            double rw_kps = stats.rewrite_time_s > 0
+                ? stats.total_rewrites / stats.rewrite_time_s / 1000.0 : 0;
             cout << "[" << iter << "] All OK ("
                  << std::fixed << std::setprecision(0) << iter / elapsed << " iter/s). "
                  << "Avg nodes: " << std::setprecision(1)
@@ -554,6 +582,8 @@ int main(int argc, char** argv) {
                  << "  reduced:" << stats.rewrite_reduced
                  << " same:" << stats.rewrite_same
                  << " grew:" << stats.rewrite_grew
+                 << "  rw_time:" << std::setprecision(2) << stats.rewrite_time_s << "s"
+                 << " (" << std::setprecision(1) << rw_kps << "k rewrites/s)"
                  << endl;
         } else if (iter < 10) {
             size_t nb = stats.nodes_before_total;
