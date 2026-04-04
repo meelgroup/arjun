@@ -47,6 +47,7 @@ set(libfiles
     ccnr/ccnr.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
     manthan.cpp
+    aig_rewrite.cpp
     interpolant.cpp
 )
 
@@ -93,10 +94,12 @@ set_target_properties(arjun PROPERTIES
 add_executable(arjun-bin main.cpp synth.cpp)
 add_executable(arjun-example example.cpp)
 add_executable(test-synth test-synth.cpp)
+add_executable(test-aig-rewrite test_aig_rewrite.cpp)
 
 target_link_libraries(arjun-bin PRIVATE arjun)
 target_link_libraries(arjun-example PRIVATE arjun)
 target_link_libraries(test-synth PRIVATE arjun cadical cryptominisat5)
+target_link_libraries(test-aig-rewrite PRIVATE arjun)
 
 target_include_directories(arjun-bin PRIVATE
     ${PROJECT_SOURCE_DIR}
