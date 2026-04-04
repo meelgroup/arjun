@@ -250,6 +250,19 @@ static void report_failure(const char* method, const aig_ptr& orig, const aig_pt
     }
 }
 
+// Check all AIG node invariants recursively
+static bool check_invariants(const aig_ptr& aig, uint64_t seed, uint64_t iter, const char* method) {
+    bool ok = true;
+    AIG::traverse(aig, [&](const aig_ptr& node) {
+        if (!node->invariants()) {
+            cerr << "INVARIANT FAILURE (" << method << ") at iter " << iter
+                 << " seed " << seed << ": " << node << endl;
+            ok = false;
+        }
+    });
+    return ok;
+}
+
 // Verify a single AIG transformation
 static bool verify_rewrite(const aig_ptr& orig, const aig_ptr& simplified,
                            uint32_t num_vars, uint64_t seed, uint64_t iter,
@@ -259,6 +272,10 @@ static bool verify_rewrite(const aig_ptr& orig, const aig_ptr& simplified,
         cerr << "ERROR: " << method << " returned null at iter " << iter << endl;
         return false;
     }
+
+    // Check structural invariants of the output
+    if (!check_invariants(simplified, seed, iter, method))
+        return false;
 
     size_t nb = AIG::count_aig_nodes(orig);
     size_t na = AIG::count_aig_nodes(simplified);
@@ -361,7 +378,7 @@ int main(int argc, char** argv) {
         uint32_t num_vars = 2 + rng() % (max_vars - 1);
         uint32_t depth = 3 + rng() % (max_depth - 2);
         uint32_t max_nodes = 8 + rng() % 40;
-        uint32_t test_type = rng() % 4; // 0=rewrite, 1=rewrite_all, 2=simplify_aig, 3=double_rewrite
+        uint32_t test_type = rng() % 5; // 0=rewrite, 1=rewrite_all, 2=simplify_aig, 3=double_rewrite, 4=simplify_aigs
 
         if (test_type == 0 || test_type == 3) {
             // Single AIG rewrite (and optionally double-rewrite)
@@ -427,7 +444,7 @@ int main(int argc, char** argv) {
             stats.nodes_before_total += total_before;
             stats.nodes_after_total += total_after;
 
-        } else {
+        } else if (test_type == 2) {
             // simplify_aig (the static method)
             aig_ptr orig = gen_random_aig(rng, num_vars, depth, max_nodes);
             if (!orig) continue;
@@ -444,6 +461,32 @@ int main(int argc, char** argv) {
             if (nodes_after < nodes_before) stats.rewrite_reduced++;
             else if (nodes_after == nodes_before) stats.rewrite_same++;
             else stats.rewrite_grew++;
+
+        } else {
+            // simplify_aigs (vector version)
+            uint32_t batch_size = 2 + rng() % 5;
+            vector<aig_ptr> originals = gen_random_aig_batch(rng, num_vars, batch_size);
+            vector<aig_ptr> to_simplify = originals;
+
+            AIG::simplify_aigs(0, to_simplify);
+
+            size_t total_before = 0, total_after = 0;
+            for (uint32_t j = 0; j < batch_size; j++) {
+                if (!originals[j]) continue;
+                if (!to_simplify[j]) {
+                    // simplify_aigs can set entries to nullptr for constants
+                    // Check if original was a constant
+                    continue;
+                }
+                if (!verify_rewrite(originals[j], to_simplify[j], num_vars, seed, iter, "simplify_aigs"))
+                    return 1;
+                total_before += AIG::count_aig_nodes(originals[j]);
+                total_after += AIG::count_aig_nodes(to_simplify[j]);
+            }
+
+            stats.simplify_tests++;
+            stats.nodes_before_total += total_before;
+            stats.nodes_after_total += total_after;
         }
 
         stats.total_tests++;
