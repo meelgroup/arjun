@@ -103,6 +103,64 @@ static aig_ptr gen_random_aig(std::mt19937& rng, uint32_t num_vars,
     return pool[start + rng() % (pool.size() - start)];
 }
 
+// Manthan-style generator: nested ITE trees whose selector branches are ANDs
+// of many literals (mimicking how manthan builds a Skolem function from a DNF
+// cover of a CEX clause). The "then" and "else" arms are recursively built
+// from the same pattern so we get deep ITE chains.
+static aig_ptr gen_manthan_aig(std::mt19937& rng, uint32_t num_vars,
+                                uint32_t depth, uint32_t max_branch_width)
+{
+    // Base case: leaf is a literal (or constant).
+    if (depth == 0) {
+        uint32_t pick = rng() % 10;
+        if (pick == 0) return aig_mng.new_const(true);
+        if (pick == 1) return aig_mng.new_const(false);
+        return AIG::new_lit(rng() % num_vars, rng() % 2);
+    }
+
+    // Build the "branch": an AND of k random literals (1..max_branch_width).
+    uint32_t k = 1 + rng() % std::max<uint32_t>(1u, max_branch_width);
+    // Sometimes force a large AND-of-literals branch (the manthan common case).
+    if (rng() % 3 == 0) k = std::max<uint32_t>(k, 3u + rng() % std::max<uint32_t>(1u, max_branch_width));
+    aig_ptr branch = AIG::new_lit(rng() % num_vars, rng() % 2);
+    for (uint32_t i = 1; i < k; i++) {
+        aig_ptr lit = AIG::new_lit(rng() % num_vars, rng() % 2);
+        branch = AIG::new_and(branch, lit);
+    }
+    // Sometimes negate the branch overall.
+    if (rng() % 5 == 0) branch = AIG::new_not(branch);
+
+    // Recursively build "then" and "else" arms.
+    aig_ptr then_arm = gen_manthan_aig(rng, num_vars, depth - 1, max_branch_width);
+    aig_ptr else_arm = gen_manthan_aig(rng, num_vars, depth - 1, max_branch_width);
+
+    // ITE pattern: (branch ∧ then) ∨ (¬branch ∧ else)
+    aig_ptr ite = AIG::new_or(
+        AIG::new_and(branch, then_arm),
+        AIG::new_and(AIG::new_not(branch), else_arm));
+    return ite;
+}
+
+// "DNF cover" generator: OR of several (AND of literals) * subformula branches.
+// Directly models the inner loop of manthan.cpp around line 590-616.
+static aig_ptr gen_dnf_cover_aig(std::mt19937& rng, uint32_t num_vars,
+                                   uint32_t num_branches, uint32_t max_branch_width)
+{
+    aig_ptr overall = nullptr;
+    for (uint32_t b = 0; b < num_branches; b++) {
+        uint32_t k = 1 + rng() % std::max<uint32_t>(1u, max_branch_width);
+        aig_ptr cur = AIG::new_lit(rng() % num_vars, rng() % 2);
+        for (uint32_t i = 1; i < k; i++) {
+            cur = AIG::new_and(cur, AIG::new_lit(rng() % num_vars, rng() % 2));
+        }
+        if (overall == nullptr) overall = cur;
+        else overall = AIG::new_or(overall, cur);
+    }
+    if (overall == nullptr) overall = aig_mng.new_const(true);
+    if (rng() % 3 == 0) overall = AIG::new_not(overall);
+    return overall;
+}
+
 // Deep chain — good for stressing k-ary AND/OR fusion.
 static aig_ptr gen_chain_aig(std::mt19937& rng, uint32_t num_vars, uint32_t chain_len) {
     aig_ptr chain = AIG::new_lit(rng() % num_vars, rng() % 2);
@@ -303,13 +361,22 @@ static bool run_one(const aig_ptr& aig, uint32_t num_vars,
     Lit opt_out = enc.encode(aig);
     const auto& es = enc.get_stats();
 
-    if (verbose) {
-        cout << "  nodes=" << AIG::count_aig_nodes(aig)
-             << " naive: cls=" << ns.clauses << " helpers=" << ns.helpers
-             << "  opt: cls=" << es.clauses_added << " helpers=" << es.helpers_added
+    {
+        size_t nodes = AIG::count_aig_nodes(aig);
+        double cls_ratio = ns.clauses > 0 ? (double)es.clauses_added / ns.clauses : 1.0;
+        double hlp_ratio = ns.helpers > 0 ? (double)es.helpers_added / ns.helpers : 1.0;
+        cout << "[" << std::setw(6) << iter << "] "
+             << "nodes=" << std::setw(4) << nodes
+             << "  naive(cls/hlp)=" << std::setw(4) << ns.clauses
+             << "/" << std::setw(3) << ns.helpers
+             << "  opt=" << std::setw(4) << es.clauses_added
+             << "/" << std::setw(3) << es.helpers_added
+             << "  ratio=" << std::fixed << std::setprecision(2) << cls_ratio
+             << "/" << hlp_ratio
              << "  kAND=" << es.kary_and_count
              << " kOR=" << es.kary_or_count
              << " ITE=" << es.ite_patterns
+             << " XOR=" << es.xor_patterns
              << endl;
     }
 
@@ -395,15 +462,35 @@ int main(int argc, char** argv) {
         uint32_t max_nodes = 8 + rng() % max_nodes_cfg;
 
         aig_ptr aig;
-        uint32_t shape = rng() % 3;
-        if (shape == 0) {
+        // Weight: make manthan-style AIGs the common case, since that's the
+        // real workload. ~50% manthan/dnf, 50% other shapes.
+        uint32_t shape = rng() % 10;
+        if (shape < 3) {
+            // Nested ITE with AND-of-literals branches (manthan-style Skolem).
+            uint32_t d = 2 + rng() % 5;
+            uint32_t bw = 2 + rng() % 6;
+            aig = gen_manthan_aig(rng, num_vars, d, bw);
+        } else if (shape < 5) {
+            // DNF-cover (OR of ANDs-of-lits).
+            uint32_t nb = 2 + rng() % 8;
+            uint32_t bw = 2 + rng() % 6;
+            aig = gen_dnf_cover_aig(rng, num_vars, nb, bw);
+        } else if (shape < 7) {
             aig = gen_random_aig(rng, num_vars, depth, max_nodes);
-        } else if (shape == 1) {
+        } else if (shape < 8) {
             aig = gen_chain_aig(rng, num_vars, 5 + rng() % 25);
-        } else {
+        } else if (shape < 9) {
             // Simplify a random AIG first, to exercise the encoder on
             // "real-looking" compact AIGs.
             aig_ptr raw = gen_random_aig(rng, num_vars, depth, max_nodes);
+            if (raw) {
+                AIGRewriter rw;
+                aig = rw.rewrite(raw);
+            }
+        } else {
+            // Simplify a manthan-style AIG: this is the closest to what the
+            // real pipeline hands to the encoder.
+            aig_ptr raw = gen_manthan_aig(rng, num_vars, 2 + rng() % 4, 2 + rng() % 6);
             if (raw) {
                 AIGRewriter rw;
                 aig = rw.rewrite(raw);
