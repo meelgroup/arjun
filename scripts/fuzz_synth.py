@@ -486,6 +486,9 @@ if __name__ == "__main__":
             continue
         if err:
             print("Synthesis failed on file %s" % fname)
+            print("=" * 60)
+            print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
+            print("=" * 60)
             exit(-1)
         print("Synthesis succeeded on file %s, produced files: %s" % (fname, str(aigs)))
         if len(aigs) == 0:
