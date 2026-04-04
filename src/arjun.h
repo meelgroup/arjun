@@ -43,6 +43,7 @@ namespace ArjunNS {
 
 class AIG;
 class AIGManager;
+class AIGRewriter;
 class SimplifiedCNF;
 using aig_ptr = std::shared_ptr<AIG>;
 
@@ -439,6 +440,7 @@ public:
 
     friend std::ostream& operator<<(std::ostream& out, const aig_ptr& aig);
     friend class AIGManager;
+    friend class AIGRewriter;
     friend class SimplifiedCNF;
     friend class ArjunInt::Manthan;
 
