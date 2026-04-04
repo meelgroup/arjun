@@ -99,6 +99,13 @@ public:
 
     SolverType get_solver_type() const { return solver_type; }
 
+    // Reset both solver instances, discarding all variables and clauses.
+    // The new solvers start empty with 0 variables.
+    void reset() {
+        solver[0] = std::make_unique<MetaSolver>(solver_type);
+        solver[1] = std::make_unique<MetaSolver>(solver_type);
+    }
+
 private:
     std::array<std::unique_ptr<MetaSolver>,2> solver;
     SolverType solver_type;
