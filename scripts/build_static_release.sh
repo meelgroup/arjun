@@ -18,11 +18,12 @@ rm -rf rjun-src
 rm -rf deps
 rm -rf _deps
 cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
-    -DGMPXX_LIBRARY=/usr/local/lib/libgmpxx.a \
+    -Dcadiback_DIR="${SOLVERS_DIR}/cadiback/build" \
+    -Dcadical_DIR="${SOLVERS_DIR}/cadical/build" \
     -Dcryptominisat5_DIR="${SOLVERS_DIR}/cryptominisat/build" \
     -Dsbva_DIR="${SOLVERS_DIR}/sbva/build" \
     -Dtreedecomp_DIR="${SOLVERS_DIR}/treedecomp/build" \
-    -Dcadical_DIR="${SOLVERS_DIR}/cadical/build" \
+    -DGMPXX_LIBRARY=/usr/local/lib/libgmpxx.a \
     ..
 make -j$(nproc)
 strip arjun
