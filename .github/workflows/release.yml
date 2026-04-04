@@ -173,6 +173,8 @@ jobs:
         mkdir -p dist
         cp project/build/arjun dist/
         cp project/build/test-synth dist/ 2>/dev/null || true
+        cp -r project/build/lib dist/ 2>/dev/null || true
+        cp -r project/build/include dist/ 2>/dev/null || true
         tar czf ${{ steps.artifact.outputs.name }}.tar.gz -C dist .
 
     - name: Upload artifact for release job
