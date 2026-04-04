@@ -241,6 +241,23 @@ static bool check_equivalence_eval(const aig_ptr& orig, const aig_ptr& simplifie
     return true;
 }
 
+// Random evaluation check: evaluate on 10 random input assignments
+static bool check_equivalence_random_eval(const aig_ptr& orig, const aig_ptr& simplified,
+                                           uint32_t num_vars, std::mt19937& rng)
+{
+    vector<aig_ptr> defs(num_vars, nullptr);
+    for (uint32_t trial = 0; trial < 10; trial++) {
+        vector<lbool> vals(num_vars);
+        for (uint32_t v = 0; v < num_vars; v++)
+            vals[v] = (rng() % 2) ? l_True : l_False;
+        map<aig_ptr, lbool> c1, c2;
+        lbool r1 = AIG::evaluate(vals, orig, defs, c1);
+        lbool r2 = AIG::evaluate(vals, simplified, defs, c2);
+        if (r1 != r2) return false;
+    }
+    return true;
+}
+
 static void report_failure(const char* method, const aig_ptr& orig, const aig_ptr& simplified,
                            uint32_t num_vars, uint64_t seed, uint64_t iter,
                            size_t nodes_before, size_t nodes_after)
@@ -288,7 +305,7 @@ static bool check_invariants(const aig_ptr& aig, uint64_t seed, uint64_t iter, c
 // Verify a single AIG transformation
 static bool verify_rewrite(const aig_ptr& orig, const aig_ptr& simplified,
                            uint32_t num_vars, uint64_t seed, uint64_t iter,
-                           const char* method)
+                           const char* method, std::mt19937& rng)
 {
     if (!simplified) {
         cerr << "ERROR: " << method << " returned null at iter " << iter << endl;
@@ -307,6 +324,10 @@ static bool verify_rewrite(const aig_ptr& orig, const aig_ptr& simplified,
         return false;
     }
     if (!check_equivalence_eval(orig, simplified, num_vars)) {
+        report_failure(method, orig, simplified, num_vars, seed, iter, nb, na);
+        return false;
+    }
+    if (!check_equivalence_random_eval(orig, simplified, num_vars, rng)) {
         report_failure(method, orig, simplified, num_vars, seed, iter, nb, na);
         return false;
     }
@@ -430,7 +451,7 @@ int main(int argc, char** argv) {
             stats.rewrite_time_s += std::chrono::duration<double>(t1 - t0).count();
             stats.total_rewrites++;
 
-            if (!verify_rewrite(orig, simplified, num_vars, seed, iter, "rewrite"))
+            if (!verify_rewrite(orig, simplified, num_vars, seed, iter, "rewrite", rng))
                 return 1;
 
             size_t nodes_after = AIG::count_aig_nodes(simplified);
@@ -444,11 +465,11 @@ int main(int argc, char** argv) {
                 auto t3 = std::chrono::steady_clock::now();
                 stats.rewrite_time_s += std::chrono::duration<double>(t3 - t2).count();
                 stats.total_rewrites++;
-                if (!verify_rewrite(orig, double_simplified, num_vars, seed, iter, "double_rewrite"))
+                if (!verify_rewrite(orig, double_simplified, num_vars, seed, iter, "double_rewrite", rng))
                     return 1;
 
                 // Also check the double-rewritten is equivalent to single-rewritten
-                if (!verify_rewrite(simplified, double_simplified, num_vars, seed, iter, "double_vs_single"))
+                if (!verify_rewrite(simplified, double_simplified, num_vars, seed, iter, "double_vs_single", rng))
                     return 1;
 
                 nodes_after = AIG::count_aig_nodes(double_simplified);
@@ -477,7 +498,7 @@ int main(int argc, char** argv) {
             size_t total_before = 0, total_after = 0;
             for (uint32_t j = 0; j < batch_size; j++) {
                 if (!originals[j] || !to_rewrite[j]) continue;
-                if (!verify_rewrite(originals[j], to_rewrite[j], num_vars, seed, iter, "rewrite_all"))
+                if (!verify_rewrite(originals[j], to_rewrite[j], num_vars, seed, iter, "rewrite_all", rng))
                     return 1;
                 total_before += AIG::count_aig_nodes(originals[j]);
                 total_after += AIG::count_aig_nodes(to_rewrite[j]);
@@ -498,7 +519,7 @@ int main(int argc, char** argv) {
             auto t1 = std::chrono::steady_clock::now();
             stats.rewrite_time_s += std::chrono::duration<double>(t1 - t0).count();
             stats.total_rewrites++;
-            if (!verify_rewrite(orig, simplified, num_vars, seed, iter, "simplify_aig"))
+            if (!verify_rewrite(orig, simplified, num_vars, seed, iter, "simplify_aig", rng))
                 return 1;
 
             size_t nodes_after = AIG::count_aig_nodes(simplified);
@@ -529,7 +550,7 @@ int main(int argc, char** argv) {
                     // Check if original was a constant
                     continue;
                 }
-                if (!verify_rewrite(originals[j], to_simplify[j], num_vars, seed, iter, "simplify_aigs"))
+                if (!verify_rewrite(originals[j], to_simplify[j], num_vars, seed, iter, "simplify_aigs", rng))
                     return 1;
                 total_before += AIG::count_aig_nodes(originals[j]);
                 total_after += AIG::count_aig_nodes(to_simplify[j]);
@@ -553,7 +574,7 @@ int main(int argc, char** argv) {
             auto t1 = std::chrono::steady_clock::now();
             stats.rewrite_time_s += std::chrono::duration<double>(t1 - t0).count();
             stats.total_rewrites++;
-            if (!verify_rewrite(orig, simplified, num_vars, seed, iter, "chain_rewrite"))
+            if (!verify_rewrite(orig, simplified, num_vars, seed, iter, "chain_rewrite", rng))
                 return 1;
 
             size_t nodes_after = AIG::count_aig_nodes(simplified);
