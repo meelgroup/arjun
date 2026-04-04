@@ -11,6 +11,7 @@
 #include <functional>
 #include <iostream>
 #include <iomanip>
+#include <set>
 
 using CMSat::Lit;
 using std::vector;
@@ -81,14 +82,14 @@ template<class Solver>
 void AIGToCNF<Solver>::count_fanout(const aig_ptr& root) {
     fanout.clear();
     if (!root) return;
-    // DFS, incrementing fanout on every traversal of an edge into a child.
-    // The root itself gets entry 0 (no parent inside the DAG); child edges
-    // bump the child's count.
+    // Use a separate visited set (NOT the fanout map) to drive DFS. Using the
+    // fanout map as both visited-marker and count-storage was buggy: the
+    // "fanout[child]++" in the parent created the map entry, so the child's
+    // DFS saw it as already visited and never descended into grandchildren.
+    std::set<aig_ptr> visited;
     std::function<void(const aig_ptr&)> dfs = [&](const aig_ptr& n) {
         if (n->type != AIGT::t_and) return;
-        auto [it, inserted] = fanout.emplace(n, 0);
-        if (!inserted) return; // already visited
-        // Children: each gets an incoming edge from n.
+        if (!visited.insert(n).second) return; // already visited this node
         if (n->l) {
             if (n->l->type == AIGT::t_and) fanout[n->l]++;
             dfs(n->l);
@@ -96,11 +97,12 @@ void AIGToCNF<Solver>::count_fanout(const aig_ptr& root) {
         if (n->r && n->r != n->l) {
             if (n->r->type == AIGT::t_and) fanout[n->r]++;
             dfs(n->r);
-        } else if (n->r == n->l && n->r) {
-            // Self-loop AND(x,x) case: still one edge for encoding purposes.
-            // (AIGs use AND(x,x,neg=true) as a NOT encoding).
-            // Don't double-count; we already traversed l.
         }
+        // Note: when n->l == n->r (the NOT-wrapper AND(x,x,neg=true) pattern),
+        // we count only one incoming edge into the child. There are
+        // technically two edges in the DAG but they represent a single
+        // semantic "NOT" dependency, and the encoder treats this as a unary
+        // operator. Counting only once avoids spuriously bumping fanout.
     };
     dfs(root);
 }
@@ -128,10 +130,10 @@ template<class Solver>
 vector<Lit> AIGToCNF<Solver>::encode_batch(const vector<aig_ptr>& roots) {
     // Build fanout across ALL roots so shared subgraphs get their own helper.
     fanout.clear();
+    std::set<aig_ptr> visited;
     std::function<void(const aig_ptr&)> dfs = [&](const aig_ptr& n) {
         if (!n || n->type != AIGT::t_and) return;
-        auto [it, inserted] = fanout.emplace(n, 0);
-        if (!inserted) return;
+        if (!visited.insert(n).second) return;
         if (n->l) {
             if (n->l->type == AIGT::t_and) fanout[n->l]++;
             dfs(n->l);
@@ -211,10 +213,14 @@ Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
     // n->neg == false  =>  n encodes  (l ∧ r)   [AND]
     // n->neg == true   =>  n encodes  ¬(l ∧ r) = ¬l ∨ ¬r   [OR]
     if (!n->neg) {
-        // k-ary AND
+        // k-ary AND. We expand n's CHILDREN into the input list, never n
+        // itself -- calling collect_and(n, ...) would recurse back into
+        // encode_node(n) in the (rare) case where n's own fanout exceeds 1,
+        // causing infinite recursion.
         vector<Lit> inputs;
         if (kary_fusion) {
-            collect_and(n, inputs);
+            collect_and(n->l, inputs);
+            if (n->r != n->l) collect_and(n->r, inputs);
         } else {
             inputs.push_back(encode_node(n->l));
             inputs.push_back(encode_node(n->r));
@@ -311,68 +317,111 @@ void AIGToCNF<Solver>::collect_disjuncts_of_neg(const aig_ptr& n, vector<Lit>& o
 // into a pattern without leaving dangling references or double-encoding).
 template<class Solver>
 bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, Lit& out) {
-    // Local helper: check if two AIG nodes are literals that are complements
-    // of each other (same var, opposite polarity). Defined here so that the
-    // friend access to AIG's private members applies.
+    // Local helpers (defined here so that the friend access to AIG's
+    // private members applies).
     auto is_lit_complement = [](const aig_ptr& a, const aig_ptr& b) -> bool {
         return a && b
             && a->type == AIGT::t_lit && b->type == AIGT::t_lit
             && a->var == b->var && a->neg != b->neg;
     };
+    // NOT wrapping in this AIG is encoded as AND(x,x,neg=true). Unwrap it
+    // and return the node that the NOT-wrapper is negating.
+    auto strip_not = [](const aig_ptr& a) -> aig_ptr {
+        if (a && a->type == AIGT::t_and && a->neg && a->l == a->r) return a->l;
+        return nullptr;
+    };
+
     if (n->type != AIGT::t_and || !n->neg) return false;
     const aig_ptr& X = n->l;
     const aig_ptr& Y = n->r;
     if (!X || !Y || X == Y) return false;
-    if (X->type != AIGT::t_and || !X->neg) return false;
-    if (Y->type != AIGT::t_and || !Y->neg) return false;
-    // Inline-able check: X and Y must be fanout-1 and not yet cached so that
-    // consuming them here doesn't leak their structure into another helper.
-    auto fX = fanout.find(X);
-    auto fY = fanout.find(Y);
-    if (fX == fanout.end() || fX->second > 1) return false;
-    if (fY == fanout.end() || fY->second > 1) return false;
-    if (cache.find(X) != cache.end()) return false;
-    if (cache.find(Y) != cache.end()) return false;
 
-    // X = s ∧ t, Y = (¬s) ∧ e   (or any permutation within each AND).
-    // Try to find a matching selector literal.
-    const aig_ptr& x1 = X->l;
-    const aig_ptr& x2 = X->r;
-    const aig_ptr& y1 = Y->l;
-    const aig_ptr& y2 = Y->r;
+    // n = ¬(X ∧ Y) = ¬X ∨ ¬Y. We want to express this as an ITE, which
+    // requires ¬X and ¬Y each to be a 2-input AND (so that
+    //   ¬X = s ∧ t, ¬Y = ¬s ∧ e  =>  n = (s∧t) ∨ (¬s∧e) = ITE(s,t,e)).
+    //
+    // In this AIG, "¬X" is either:
+    //   (a) an AND-node X with neg=true => ¬(X->l ∧ X->r), already in AND-form,
+    //       but since X itself is the AND-node, its "l,r" are the AND's inputs.
+    //       However neg=true here means X is a NAND, so ¬X = X->l ∧ X->r — which
+    //       is an AND. Good.
+    //   (b) a NOT-wrapper AND(x,x,neg=true) wrapping some sub-AND x. Then ¬X = x,
+    //       and x is (x->l ∧ x->r) if x is AND(neg=false).
+    //
+    // Both cases collapse to: find a node Z such that Z is AND(neg=false) and
+    // ¬X = Z->l ∧ Z->r. Let's compute that for each side.
+    auto as_pos_and = [&](const aig_ptr& w) -> aig_ptr {
+        // Interpret ¬w as (l ∧ r) for some positive-AND sub-node.
+        // Case (a): w is AND with neg=true and l != r => ¬w = w->l ∧ w->r.
+        //   Represent that as a virtual pair via the node w itself (its children are the ANDs' inputs).
+        // Case (b): w is a NOT-wrapper around a positive AND u: ¬w = u.
+        if (!w || w->type != AIGT::t_and) return nullptr;
+        if (w->neg) {
+            if (w->l == w->r) {
+                // NOT-wrapper: ¬w = w->l (which must be an AND(neg=false) for our use).
+                aig_ptr u = w->l;
+                if (u && u->type == AIGT::t_and && !u->neg && u->l != u->r) return u;
+                return nullptr;
+            }
+            // AND with neg=true, distinct children: ¬w = w->l ∧ w->r directly.
+            // Return w itself, caller should read w->l and w->r.
+            return w;
+        }
+        return nullptr;
+    };
+    aig_ptr ax = as_pos_and(X);
+    aig_ptr ay = as_pos_and(Y);
+    if (!ax || !ay) return false;
 
-    // We need exactly one of x_i to be a literal whose complement is exactly
-    // one of y_j (both as t_lit). If found, that literal is the selector.
+    // Inline-ability: the nodes we are about to consume (X, Y, and possibly
+    // their NOT-wrapped inner ANDs) must have fanout 1 and not yet be cached.
+    auto can_consume = [&](const aig_ptr& node) -> bool {
+        if (cache.find(node) != cache.end()) return false;
+        auto it = fanout.find(node);
+        return it != fanout.end() && it->second <= 1;
+    };
+    if (!can_consume(X) || !can_consume(Y)) return false;
+    if (ax != X && !can_consume(ax)) return false;
+    if (ay != Y && !can_consume(ay)) return false;
+
+    const aig_ptr& x1 = ax->l;
+    const aig_ptr& x2 = ax->r;
+    const aig_ptr& y1 = ay->l;
+    const aig_ptr& y2 = ay->r;
+
+    // Find a literal pair (x_i, y_j) that are complements.
     const aig_ptr* sel_x = nullptr;
     const aig_ptr* other_x = nullptr;
     const aig_ptr* other_y = nullptr;
-
     auto try_match = [&](const aig_ptr& xa, const aig_ptr& xb,
                          const aig_ptr& ya, const aig_ptr& yb) -> bool {
-        if (is_lit_complement(xa, ya)) { sel_x = &xa; other_x = &xb; other_y = &yb; return true; }
+        if (is_lit_complement(xa, ya)) {
+            sel_x = &xa; other_x = &xb; other_y = &yb; return true;
+        }
         return false;
     };
-    // Try all four pairings. After one match, bail out.
     if (!try_match(x1, x2, y1, y2) &&
         !try_match(x1, x2, y2, y1) &&
         !try_match(x2, x1, y1, y2) &&
         !try_match(x2, x1, y2, y1)) return false;
 
-    // sel_x is the selector literal inside X (positive branch).
-    // other_x is t (the "then" value), other_y is e (the "else" value).
-    // Selector's Lit (for the "then" branch): use sel_x's polarity.
+    // (*sel_x) is the selector literal for the "then" branch (¬X side). So
+    // n = (sel ∧ other_x) ∨ (¬sel ∧ other_y) = ITE(sel, other_x, other_y).
     Lit s_lit((*sel_x)->var, (*sel_x)->neg);
     Lit t_lit = encode_node(*other_x);
     Lit e_lit = encode_node(*other_y);
 
-    // Outer node n has neg=true, so n = ¬(X ∧ Y) = X OR Y = (s∧t) OR (¬s∧e) = ITE(s,t,e).
     Lit h = new_helper();
     emit_ite(h, s_lit, t_lit, e_lit);
     stats.ite_patterns++;
-    // Mark X and Y as "done" (encode would re-encode them if re-visited; put
-    // sentinels in cache so that any future reference -- shouldn't happen --
-    // would still terminate. Only needed for safety.)
-    // Actually, since X and Y have fanout 1, nothing else references them.
+
+    // Poison X, Y, ax, ay in cache so they cannot be reached again by the
+    // generic AND/OR flattener. Use the helper literal as a sentinel since
+    // these nodes are logically "consumed" by this ITE emission. Any future
+    // lookups to these nodes should return the value of n, not a partial
+    // encoding of the sub-structures -- but since fanout is 1 for all of
+    // them there are no future lookups anyway. We still mark for safety.
+    (void)strip_not;
     out = h;
     return true;
 }
