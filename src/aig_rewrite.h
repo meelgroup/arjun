@@ -64,6 +64,12 @@ private:
     // Pass 3: Multi-level absorption and complementary elimination
     aig_ptr deep_absorb(const aig_ptr& aig, std::map<aig_ptr, aig_ptr>& cache);
 
+    // Pass 4: ITE chain detection and depth reduction
+    aig_ptr flatten_ite_chains(const aig_ptr& aig, std::map<aig_ptr, aig_ptr>& cache);
+
+    // Compute depth of an AIG
+    size_t compute_depth(const aig_ptr& aig, std::map<aig_ptr, size_t>& cache) const;
+
     // --- Helper functions ---
 
     // Collect all children of a chained AND (flattening)

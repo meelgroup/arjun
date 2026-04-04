@@ -473,6 +473,93 @@ aig_ptr AIGRewriter::deep_absorb(const aig_ptr& aig, map<aig_ptr, aig_ptr>& cach
     return result;
 }
 
+// ========== Pass 4: ITE chain depth reduction ==========
+
+size_t AIGRewriter::compute_depth(const aig_ptr& aig, map<aig_ptr, size_t>& cache) const {
+    if (!aig || aig->type != AIGT::t_and) return 0;
+    auto it = cache.find(aig);
+    if (it != cache.end()) return it->second;
+    size_t d = 1 + std::max(compute_depth(aig->l, cache), compute_depth(aig->r, cache));
+    cache[aig] = d;
+    return d;
+}
+
+aig_ptr AIGRewriter::flatten_ite_chains(const aig_ptr& aig, map<aig_ptr, aig_ptr>& cache) {
+    if (!aig) return nullptr;
+    auto it = cache.find(aig);
+    if (it != cache.end()) return it->second;
+
+    if (aig->type == AIGT::t_const || aig->type == AIGT::t_lit) {
+        cache[aig] = aig;
+        return aig;
+    }
+
+    auto l = flatten_ite_chains(aig->l, cache);
+    auto r = flatten_ite_chains(aig->r, cache);
+
+    // Detect OR chains (from ITE repairs with TRUE value):
+    // OR(g1, OR(g2, OR(g3, base))) → collect all guards + base, build balanced OR tree
+    if (aig->neg && l != r) {
+        // This is OR(NOT(l), NOT(r))
+        vector<aig_ptr> or_children;
+        collect_or_children(AIG::new_not(l), or_children, false);
+        collect_or_children(AIG::new_not(r), or_children, false);
+
+        if (or_children.size() >= 3) {
+            // Flatten into balanced tree (reduces depth from N to log2(N))
+            std::sort(or_children.begin(), or_children.end());
+            or_children.erase(std::unique(or_children.begin(), or_children.end()), or_children.end());
+
+            // Check for complementary pairs
+            for (size_t i = 0; i < or_children.size(); i++) {
+                for (size_t j = i + 1; j < or_children.size(); j++) {
+                    if (is_complement(or_children[i], or_children[j])) {
+                        stats.complement_elim++;
+                        auto result = aig_mng.new_const(true);
+                        cache[aig] = result;
+                        return result;
+                    }
+                }
+            }
+
+            auto result = build_or_tree(or_children);
+            cache[aig] = result;
+            return result;
+        }
+    }
+
+    // Detect AND chains (from ITE repairs with FALSE value):
+    if (!aig->neg) {
+        vector<aig_ptr> and_children;
+        collect_and_children(l, and_children, false);
+        collect_and_children(r, and_children, false);
+
+        if (and_children.size() >= 3) {
+            std::sort(and_children.begin(), and_children.end());
+            and_children.erase(std::unique(and_children.begin(), and_children.end()), and_children.end());
+
+            for (size_t i = 0; i < and_children.size(); i++) {
+                for (size_t j = i + 1; j < and_children.size(); j++) {
+                    if (is_complement(and_children[i], and_children[j])) {
+                        stats.complement_elim++;
+                        auto result = aig_mng.new_const(false);
+                        cache[aig] = result;
+                        return result;
+                    }
+                }
+            }
+
+            auto result = build_and_tree(and_children);
+            cache[aig] = result;
+            return result;
+        }
+    }
+
+    auto result = make_canonical(aig->type, aig->neg, l, r);
+    cache[aig] = result;
+    return result;
+}
+
 // ========== Main rewrite interface ==========
 
 aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
@@ -504,7 +591,13 @@ aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
             current = deep_absorb(current, cache);
         }
 
-        // Pass 4: Hash again after absorption
+        // Pass 4: ITE chain flattening (reduces depth from N to log2(N))
+        {
+            map<aig_ptr, aig_ptr> cache;
+            current = flatten_ite_chains(current, cache);
+        }
+
+        // Pass 5: Hash again after all transforms
         struct_hash.clear();
         {
             map<aig_ptr, aig_ptr> cache;
@@ -567,7 +660,15 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
             }
         }
 
-        // Pass 4: Hash again
+        // Pass 4: ITE chain flattening
+        {
+            map<aig_ptr, aig_ptr> cache;
+            for (auto& aig : defs) {
+                if (aig) aig = flatten_ite_chains(aig, cache);
+            }
+        }
+
+        // Pass 5: Hash again
         struct_hash.clear();
         {
             map<aig_ptr, aig_ptr> cache;
