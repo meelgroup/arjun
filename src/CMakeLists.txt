@@ -63,9 +63,6 @@ target_include_directories(arjun
     ${CMAKE_CURRENT_SOURCE_DIR}
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
-    $<BUILD_INTERFACE:${cryptominisat5_BINARY_DIR}/include>
-    $<BUILD_INTERFACE:${sbva_BINARY_DIR}/include>
-    $<BUILD_INTERFACE:${treedecomp_BINARY_DIR}/include>
 )
 
 if(EXTRA_SYNTH)
