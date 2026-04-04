@@ -297,6 +297,45 @@ aig_ptr AIGRewriter::simplify_pass(const aig_ptr& aig, map<aig_ptr, aig_ptr>& ca
         // This is NOT the distribution pattern. Skip for now.
     }
 
+    // --- OR subsumption: OR(a, AND(~a, b)) = OR(a, b) ---
+    // Dual of AND subsumption. When neg=true this is an OR gate: OR(NOT(l), NOT(r))
+    if (neg) {
+        // OR children are NOT(l) and NOT(r)
+        aig_ptr or_l = AIG::new_not(l);
+        aig_ptr or_r = AIG::new_not(r);
+
+        // Check if or_r is AND(~or_l, something) → remove ~or_l from the AND
+        if (or_r->type == AIGT::t_and && !or_r->neg) {
+            if (is_complement(or_l, or_r->l)) {
+                stats.absorption++;
+                auto result = AIG::new_or(or_l, or_r->r);
+                cache[aig] = result;
+                return result;
+            }
+            if (is_complement(or_l, or_r->r)) {
+                stats.absorption++;
+                auto result = AIG::new_or(or_l, or_r->l);
+                cache[aig] = result;
+                return result;
+            }
+        }
+        // Check if or_l is AND(~or_r, something)
+        if (or_l->type == AIGT::t_and && !or_l->neg) {
+            if (is_complement(or_r, or_l->l)) {
+                stats.absorption++;
+                auto result = AIG::new_or(or_r, or_l->r);
+                cache[aig] = result;
+                return result;
+            }
+            if (is_complement(or_r, or_l->r)) {
+                stats.absorption++;
+                auto result = AIG::new_or(or_r, or_l->l);
+                cache[aig] = result;
+                return result;
+            }
+        }
+    }
+
     // --- Resolution: AND(OR(a,b), OR(a,~b)) = a ---
     // When both children are OR gates sharing one term, and the other terms are complements
     if (!neg && is_or(l) && is_or(r)) {
