@@ -307,6 +307,15 @@ if(POLICY CMP0169)
     cmake_policy(SET CMP0169 OLD)
 endif()
 
+# ---- CaDiBack (cmake-based) ----
+set(cadiback_DIR "" CACHE PATH "cadiback install/build prefix (contains cadibackConfig.cmake). Auto-resolved if empty.")
+if(NOT TARGET cadiback)
+    if(cadiback_DIR)
+        find_package(cadiback CONFIG REQUIRED HINTS "${cadiback_DIR}")
+        message(STATUS "CaDiBack: using pre-built at ${cadiback_DIR}")
+    endif()
+endif()
+
 # ---- CaDiCaL (cmake-based) ----
 set(cadical_DIR "" CACHE PATH "cadical install/build prefix (contains lib/cmake/cadical/). Auto-resolved if empty.")
 if(NOT TARGET cadical)
@@ -460,7 +469,7 @@ if(GIT_EXECUTABLE)
 else()
   set(GIT_SHA1 "GIT-hash-notfound")
 endif()
-set(ARJUN_FULL_VERSION "2.6.1")
+set(ARJUN_FULL_VERSION "2.7.0")
 
 string(REPLACE "." ";" ARJUN_FULL_VERSION_LIST ${ARJUN_FULL_VERSION})
 SetVersionNumber("PROJECT" ${ARJUN_FULL_VERSION_LIST})

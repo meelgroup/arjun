@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+SOLVERS_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+
 rm -rf .cmake
 rm -rf lib*
 rm -rf Test*
@@ -16,11 +18,11 @@ rm -rf rjun-src
 rm -rf deps
 rm -rf _deps
 cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_TESTING=ON -DEXTRA_SYNTH=ON \
-    -Dcadical_DIR=../../cadical/build \
-    -Dcryptominisat5_DIR=../../cryptominisat/build \
-    -Dsbva_DIR=../../sbva/build \
-    -Dtreedecomp_DIR=../../treedecomp/build \
-    -DEvalMaxSAT_DIR=../../EvalMaxSAT/build \
+    -Dcadical_DIR="${SOLVERS_DIR}/cadical/build" \
+    -Dcryptominisat5_DIR="${SOLVERS_DIR}/cryptominisat/build" \
+    -Dsbva_DIR="${SOLVERS_DIR}/sbva/build" \
+    -Dtreedecomp_DIR="${SOLVERS_DIR}/treedecomp/build" \
+    -DEvalMaxSAT_DIR="${SOLVERS_DIR}/EvalMaxSAT/build" \
     ..
 make -j$(nproc)
 make test
