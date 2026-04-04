@@ -2351,9 +2351,20 @@ void Manthan::rebuild_cex_solver() {
         }
     };
 
+    // Tally pre-rebuild clause counts for reporting.
+    uint64_t total_clauses_in = 0;
+    uint64_t total_aig_nodes = 0;
+    for (const auto& [y, form] : var_to_formula) {
+        total_clauses_in += form.clauses.size();
+        if (form.aig) total_aig_nodes += ArjunNS::AIG::count_aig_nodes(form.aig);
+    }
+
     helpers.clear();
     uint64_t total_clauses_out = 0;
     uint64_t total_helpers_out = 0;
+    uint64_t total_ite_patterns = 0;
+    uint64_t total_kary_and = 0;
+    uint64_t total_kary_or = 0;
     for (auto& [y, form] : var_to_formula) {
         if (form.aig == nullptr) {
             for (auto& cl : form.clauses) cl.inserted = false;
@@ -2367,12 +2378,21 @@ void Manthan::rebuild_cex_solver() {
         // so we don't waste a var+unit-clause per formula.
         enc.set_true_lit(fh->get_true_lit());
         new_f.out = enc.encode(new_f.aig);
-        total_clauses_out += enc.get_stats().clauses_added;
-        total_helpers_out += enc.get_stats().helpers_added;
+        const auto& es = enc.get_stats();
+        total_clauses_out += es.clauses_added;
+        total_helpers_out += es.helpers_added;
+        total_ite_patterns += es.ite_patterns;
+        total_kary_and += es.kary_and_count;
+        total_kary_or += es.kary_or_count;
         form = new_f;
     }
-    verb_print(2, "[manthan] rebuild re-encode: total_clauses=" << total_clauses_out
-        << " total_helpers=" << total_helpers_out);
+    verb_print(1, COLCYN "[manthan] rebuild re-encode: "
+        << "clauses " << total_clauses_in << " -> " << total_clauses_out
+        << "  (helpers " << total_helpers_out
+        << ", kAND " << total_kary_and
+        << ", kOR " << total_kary_or
+        << ", ITE " << total_ite_patterns
+        << ", aig_nodes " << total_aig_nodes << ")");
 
     // 7. Mark ALL formulas for re-injection and create fresh indicators
     updated_y_funcs.clear();
