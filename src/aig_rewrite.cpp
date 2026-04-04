@@ -459,6 +459,77 @@ aig_ptr AIGRewriter::deep_absorb(const aig_ptr& aig, map<aig_ptr, aig_ptr>& cach
             return result;
         }
 
+        // Cross-level subsumption: for each OR child, check if any AND sibling
+        // or its complement appears in the OR, enabling absorption or subsumption.
+        // AND(a, OR(a, b)) = a  (absorption: OR child containing AND sibling)
+        // AND(a, OR(~a, b)) = AND(a, b)  (subsumption: OR child containing complement)
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            for (size_t i = 0; i < children.size(); i++) {
+                if (!is_or(children[i])) continue;
+                // Collect OR children
+                vector<aig_ptr> or_kids;
+                collect_or_children(children[i], or_kids, false);
+                if (or_kids.size() < 2) continue;
+
+                // Check each AND sibling against OR children
+                bool absorbed = false;
+                for (size_t j = 0; j < children.size() && !absorbed; j++) {
+                    if (i == j) continue;
+                    // Absorption: AND(a, OR(a, ...)) = a → remove the OR child entirely
+                    for (const auto& ok : or_kids) {
+                        if (ok == children[j]) {
+                            stats.absorption++;
+                            children.erase(children.begin() + i);
+                            absorbed = true;
+                            changed = true;
+                            break;
+                        }
+                    }
+                }
+                if (absorbed) break;
+
+                // Subsumption: AND(a, OR(~a, b, c)) = AND(a, OR(b, c))
+                vector<aig_ptr> new_or_kids;
+                bool or_changed = false;
+                for (const auto& ok : or_kids) {
+                    bool subsumed = false;
+                    for (size_t j = 0; j < children.size(); j++) {
+                        if (i == j) continue;
+                        if (is_complement(ok, children[j])) {
+                            subsumed = true;
+                            stats.complement_elim++;
+                            break;
+                        }
+                    }
+                    if (!subsumed) new_or_kids.push_back(ok);
+                    else or_changed = true;
+                }
+                if (or_changed) {
+                    if (new_or_kids.empty()) {
+                        // OR() with no children = FALSE, AND(..., FALSE) = FALSE
+                        auto result = aig_mng.new_const(false);
+                        cache[aig] = result;
+                        return result;
+                    }
+                    children[i] = build_or_tree(new_or_kids);
+                    changed = true;
+                    break;
+                }
+            }
+        }
+
+        // Re-sort and re-deduplicate after subsumption changes
+        std::sort(children.begin(), children.end());
+        children.erase(std::unique(children.begin(), children.end()), children.end());
+
+        if (children.empty()) {
+            auto result = aig_mng.new_const(true);
+            cache[aig] = result;
+            return result;
+        }
+
         auto result = build_and_tree(children);
         cache[aig] = result;
         return result;
