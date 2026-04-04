@@ -345,11 +345,20 @@ if(NOT cryptominisat5_DIR)
     endif()
     if(NOT EXISTS "${_cms_build}/cryptominisat5Config.cmake")
         message(STATUS "CryptoMiniSat5: configuring and building in ${_cms_build}")
+        # Pass CaDiCaL location if it was built in this project
+        set(_cadical_arg "")
+        if(TARGET cadical)
+            get_target_property(_cadical_binary_dir cadical BINARY_DIR)
+            if(_cadical_binary_dir)
+                set(_cadical_arg "-Dcadical_DIR=${_cadical_binary_dir}")
+            endif()
+        endif()
         execute_process(
             COMMAND ${CMAKE_COMMAND} -S "${_cms_src}" -B "${_cms_build}"
                 -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                 -DCMAKE_POSITION_INDEPENDENT_CODE=ON
                 -DBUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}
+                ${_cadical_arg}
             RESULT_VARIABLE _cms_cfg_ret
         )
         if(NOT _cms_cfg_ret EQUAL 0)
@@ -361,6 +370,18 @@ if(NOT cryptominisat5_DIR)
         )
         if(NOT _cms_build_ret EQUAL 0)
             message(FATAL_ERROR "CryptoMiniSat5 build failed (exit ${_cms_build_ret})")
+        endif()
+        # After building CryptoMiniSat, we need to make cadiback target available
+        # CryptoMiniSat builds cadiback as a dependency, so we can find it in its build tree
+        set(_cadiback_dir "${_cms_build}/_deps/cadiback-build")
+        if(EXISTS "${_cadiback_dir}/cadibackConfig.cmake")
+            find_package(cadiback CONFIG REQUIRED HINTS "${_cadiback_dir}" NO_DEFAULT_PATH)
+        endif()
+    else()
+        # If CryptoMiniSat was already built, still need to find cadiback
+        set(_cadiback_dir "${_cms_build}/_deps/cadiback-build")
+        if(EXISTS "${_cadiback_dir}/cadibackConfig.cmake")
+            find_package(cadiback CONFIG QUIET HINTS "${_cadiback_dir}" NO_DEFAULT_PATH)
         endif()
     endif()
     set(cryptominisat5_DIR "${_cms_build}" CACHE PATH "Directory where CryptoMiniSat5 is built" FORCE)
