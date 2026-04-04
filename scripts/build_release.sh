@@ -17,7 +17,6 @@ rm -rf deps
 rm -rf _deps
 cmake -DENABLE_TESTING=ON -DCMAKE_BUILD_TYPE=Release -DEXTRA_SYNTH=ON \
     -Dcadical_DIR=../../cadical/build \
-    -Dcadiback_DIR=../../cadiback/build \
     -Dcryptominisat5_DIR=../../cryptominisat/build \
     -Dsbva_DIR=../../sbva/build \
     -Dtreedecomp_DIR=../../treedecomp/build \

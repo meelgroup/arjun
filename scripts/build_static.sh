@@ -21,7 +21,6 @@ cmake -DBUILD_SHARED_LIBS=OFF \
     -Dsbva_DIR=../../sbva/build \
     -Dtreedecomp_DIR=../../treedecomp/build \
     -Dcadical_DIR=../../cadical/build \
-    -Dcadiback_DIR=../../cadiback/build \
     ..
 make -j$(nproc)
 strip arjun

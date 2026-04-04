@@ -20,7 +20,6 @@ cmake -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DENABLE_TESTING=ON 
     -Dtreedecomp_DIR=../../treedecomp/build \
     -DEvalMaxSAT_DIR=../../EvalMaxSAT/build \
     -Dcadical_DIR=../../cadical/build \
-    -Dcadiback_DIR=../../cadiback/build \
     ..
 make -j$(nproc)
 make test
