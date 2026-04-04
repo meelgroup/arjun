@@ -2200,19 +2200,25 @@ DLL_PUBLIC void AIG::count_aig_nodes(const aig_ptr& aig, set<aig_ptr>& counted) 
 }
 
 DLL_PUBLIC aig_ptr AIG::simplify_aig(aig_ptr aig) {
+    const size_t original_nodes = count_aig_nodes(aig);
+    aig_ptr result = aig;
+
     // Simplify AIG
     {
         map<aig_ptr, aig_ptr> cache;
-        aig = simplify(aig, cache);
+        result = simplify(result, cache);
     }
 
     // Perform CSE
     {
         map<AIGKey, aig_ptr> cse_map;
         map<aig_ptr, aig_ptr> cache;
-        aig = simplify_cse(aig, cse_map, cache);
+        result = simplify_cse(result, cse_map, cache);
     }
-    return aig;
+
+    // Never return a result larger than the original
+    if (count_aig_nodes(result) > original_nodes) return aig;
+    return result;
 }
 
 DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
@@ -2226,6 +2232,13 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
         before = counted.size();
     }
 
+    // Save originals and per-AIG node counts for revert
+    vector<aig_ptr> originals = defs;
+    vector<size_t> original_node_counts(defs.size());
+    for (size_t i = 0; i < defs.size(); i++) {
+        original_node_counts[i] = count_aig_nodes(defs[i]);
+    }
+
     // simplify the AIGs
     {
         map<aig_ptr, aig_ptr> cache;
@@ -2237,6 +2250,13 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
         map<AIGKey, aig_ptr> cse_map;
         map<aig_ptr, aig_ptr> cache2;
         for(auto& aig: defs) aig = simplify_cse(aig, cse_map, cache2);
+    }
+
+    // Revert individual AIGs that grew
+    for (size_t i = 0; i < defs.size(); i++) {
+        if (count_aig_nodes(defs[i]) > original_node_counts[i]) {
+            defs[i] = originals[i];
+        }
     }
 
     //after calc

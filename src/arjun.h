@@ -43,7 +43,9 @@ namespace ArjunNS {
 
 class AIG;
 class AIGManager;
+class AIGRewriter;
 class SimplifiedCNF;
+template<class Solver> class AIGToCNF;
 using aig_ptr = std::shared_ptr<AIG>;
 
 enum class AIGT {t_and, t_lit, t_const};
@@ -173,6 +175,71 @@ public:
         assert(l != nullptr && r != nullptr);
         // Identity: AND(x, x) = x
         if (l == r) return neg ? new_not(l) : l;
+
+        // Constant folding: AND(TRUE, x) = x, AND(FALSE, x) = FALSE
+        if (l->type == AIGT::t_const) {
+            if (l->neg) return neg ? new_not(l) : l; // AND(FALSE, x) = FALSE
+            return neg ? new_not(r) : r; // AND(TRUE, x) = x
+        }
+        if (r->type == AIGT::t_const) {
+            if (r->neg) return neg ? new_not(r) : r; // AND(x, FALSE) = FALSE
+            return neg ? new_not(l) : l; // AND(x, TRUE) = x
+        }
+
+        // Complementary literals: AND(v, ~v) = FALSE
+        if (l->type == AIGT::t_lit && r->type == AIGT::t_lit &&
+            l->var == r->var && l->neg != r->neg) {
+            auto c = std::make_shared<AIG>();
+            c->type = AIGT::t_const;
+            c->neg = !neg; // AND gives FALSE, neg flips to TRUE
+            return c;
+        }
+
+        // Identical literals: AND(v, v) = v (by value, not just pointer)
+        if (l->type == AIGT::t_lit && r->type == AIGT::t_lit &&
+            l->var == r->var && l->neg == r->neg) {
+            return neg ? new_not(l) : l;
+        }
+
+        // Absorption: AND(a, AND(a, b)) = AND(a, b)
+        // If r is AND(a, b) with no negation and one child is l
+        if (r->type == AIGT::t_and && !r->neg && (r->l == l || r->r == l)) {
+            return neg ? new_not(r) : r;
+        }
+        if (l->type == AIGT::t_and && !l->neg && (l->l == r || l->r == r)) {
+            return neg ? new_not(l) : l;
+        }
+
+        // Absorption: AND(a, OR(a, b)) = a
+        // OR(a, b) is encoded as AND(NOT(a), NOT(b), neg=true)
+        // So if r is t_and with neg=true (it's an OR), check if one of its
+        // children (which are negated) matches NOT(l)
+        if (r->type == AIGT::t_and && r->neg) {
+            // r = NOT(AND(r->l, r->r)) = OR(NOT(r->l), NOT(r->r))
+            // We need: l == NOT(r->l) or l == NOT(r->r)
+            // NOT(r->l) for a literal is: same var, opposite neg
+            if (r->l == l || r->r == l) {
+                // l appears as a child of r's AND, which means NOT(l) appears in the OR
+                // This is not absorption, skip
+            } else if (r->l->type == AIGT::t_lit && l->type == AIGT::t_lit &&
+                       r->l->var == l->var && r->l->neg != l->neg) {
+                // l = NOT(r->l), so OR contains l as a disjunct → AND(l, OR(l,...)) = l
+                return neg ? new_not(l) : l;
+            } else if (r->r->type == AIGT::t_lit && l->type == AIGT::t_lit &&
+                       r->r->var == l->var && r->r->neg != l->neg) {
+                return neg ? new_not(l) : l;
+            }
+        }
+        if (l->type == AIGT::t_and && l->neg) {
+            if (l->l->type == AIGT::t_lit && r->type == AIGT::t_lit &&
+                       l->l->var == r->var && l->l->neg != r->neg) {
+                return neg ? new_not(r) : r;
+            } else if (l->r->type == AIGT::t_lit && r->type == AIGT::t_lit &&
+                       l->r->var == r->var && l->r->neg != r->neg) {
+                return neg ? new_not(r) : r;
+            }
+        }
+
         auto ret = std::make_shared<AIG>();
         ret->type = AIGT::t_and;
         ret->l = l;
@@ -183,6 +250,34 @@ public:
 
     static aig_ptr new_or(const aig_ptr& l, const aig_ptr& r, bool neg = false) {
         assert(l != nullptr && r != nullptr);
+        // Identity: OR(x, x) = x
+        if (l == r) return neg ? new_not(l) : l;
+
+        // Constant folding: OR(TRUE, x) = TRUE, OR(FALSE, x) = x
+        if (l->type == AIGT::t_const) {
+            if (!l->neg) return neg ? new_not(l) : l; // OR(TRUE, x) = TRUE
+            return neg ? new_not(r) : r; // OR(FALSE, x) = x
+        }
+        if (r->type == AIGT::t_const) {
+            if (!r->neg) return neg ? new_not(r) : r; // OR(x, TRUE) = TRUE
+            return neg ? new_not(l) : l; // OR(x, FALSE) = x
+        }
+
+        // Complementary literals: OR(v, ~v) = TRUE
+        if (l->type == AIGT::t_lit && r->type == AIGT::t_lit &&
+            l->var == r->var && l->neg != r->neg) {
+            auto c = std::make_shared<AIG>();
+            c->type = AIGT::t_const;
+            c->neg = neg; // OR gives TRUE, neg flips to FALSE
+            return c;
+        }
+
+        // Identical literals: OR(v, v) = v (by value, not just pointer)
+        if (l->type == AIGT::t_lit && r->type == AIGT::t_lit &&
+            l->var == r->var && l->neg == r->neg) {
+            return neg ? new_not(l) : l;
+        }
+
         // OR(a, b) = NOT(AND(NOT(a), NOT(b)))
         // With double-negation elimination in new_not, this is efficient.
         auto ret = std::make_shared<AIG>();
@@ -346,8 +441,10 @@ public:
 
     friend std::ostream& operator<<(std::ostream& out, const aig_ptr& aig);
     friend class AIGManager;
+    friend class AIGRewriter;
     friend class SimplifiedCNF;
     friend class ArjunInt::Manthan;
+    template<class Solver> friend class AIGToCNF;
 
 private:
     static aig_ptr simplify(aig_ptr aig);
@@ -1426,6 +1523,38 @@ public:
         int multi_cex_k = 5; // number of counterexamples to collect for generalized repair
         int check_repair = 0;
         std::string ganak_binary;
+
+        // Hard-coded cutoffs now configurable
+        uint32_t bias_samples = 500;        // biased sampling: number of samples per bias direction
+        uint32_t const_vote_samples = 10;   // const_functions: majority voting samples
+        uint32_t stats_every = 40;          // print stats every N repair loops
+        uint32_t detailed_stats_every = 200;// print detailed stats every N repair loops
+        uint32_t rebuild_min_loops = 200;   // min repair loops before allowing cex_solver rebuild
+        uint32_t rebuild_min_clauses = 100000; // min total formula clauses before rebuild
+        uint32_t rebuild_growth_num = 3;    // rebuild when nVars > nvars_at_last * growth_num/growth_den
+        uint32_t rebuild_growth_den = 2;
+        uint32_t reduce_cex_gen_ok = 20;    // reduce multi_cex when generalized_repair_ok > this
+        uint32_t reduce_cex_tot_rep = 2000; // reduce multi_cex when tot_repaired > this
+        uint32_t reduce_cex_need_rep = 3;   // set multi_cex_k=1 when needs_repair <= this
+        uint32_t reduce_cex_cz_min_rep = 100; // min tot_repaired for cost-zero cex reduction
+        uint32_t skip_better_ctx_min = 10;  // skip find_better_ctx when needs_repair <= this
+        uint32_t skip_better_ctx_freq = 3;  // skip find_better_ctx every N loops (when gen_ok dominates)
+        uint32_t simplify_repair_every = 1000; // also simplify repair_solver every N tot_repaired
+        uint32_t skip_input_only_min_rep = 200; // min tot_repaired before skipping input-only attempt
+        uint32_t skip_input_only_ratio = 20;    // skip when gen_ok * ratio < tot_repaired
+        uint32_t conflict_drop_y_max = 25;  // max conflict size to try dropping y-vars
+        uint32_t extra_minim_hot = 10;      // extra minimization when repaired_count >= this
+        uint32_t extra_minim_very_hot = 30; // 2 extra passes when repaired_count >= this
+        uint32_t conflict_cap = 40;         // cap very large conflicts to this size
+        uint32_t conflict_cap_keep = 30;    // keep this many literals when capping
+        uint32_t batch_minim_min = 6;       // min conflict size for batch minimization
+        uint32_t minim_budget_threshold = 20; // conflict size above which budget is capped
+        uint32_t minim_budget_max = 150;    // max minimization solver calls
+        uint32_t minim_budget_mult = 4;     // budget = conflict.size * mult (up to max)
+        uint32_t aig_simplify_every = 50;   // simplify AIG for hot vars every N repairs
+        uint64_t td_steps = 100000;         // tree decomposition FlowCutter steps
+        uint32_t td_lookahead_iters = 300;  // tree decomposition FlowCutter lookahead
+        uint32_t better_ctx_remove_all = 5; // remove-all threshold in find_better_ctx_normal
     };
 
     struct IndepInfo {
