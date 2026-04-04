@@ -297,22 +297,30 @@ aig_ptr AIGRewriter::simplify_pass(const aig_ptr& aig, map<aig_ptr, aig_ptr>& ca
         // This is NOT the distribution pattern. Skip for now.
     }
 
-    // --- Distribution: AND(OR(a,b), OR(a,c)) = OR(a, AND(b,c)) ---
-    // When both children are OR gates with a common child
+    // --- Resolution: AND(OR(a,b), OR(a,~b)) = a ---
+    // When both children are OR gates sharing one term, and the other terms are complements
     if (!neg && is_or(l) && is_or(r)) {
-        // l = OR(NOT(l->l), NOT(l->r)), r = OR(NOT(r->l), NOT(r->r))
         aig_ptr l_ch1 = AIG::new_not(l->l);
         aig_ptr l_ch2 = AIG::new_not(l->r);
         aig_ptr r_ch1 = AIG::new_not(r->l);
         aig_ptr r_ch2 = AIG::new_not(r->r);
 
-        // Check all 4 combinations for common child
+        // Check all 4 pairings for resolution: common + complementary pair
         aig_ptr common = nullptr, lb = nullptr, rc = nullptr;
         if (l_ch1 == r_ch1)      { common = l_ch1; lb = l_ch2; rc = r_ch2; }
         else if (l_ch1 == r_ch2) { common = l_ch1; lb = l_ch2; rc = r_ch1; }
         else if (l_ch2 == r_ch1) { common = l_ch2; lb = l_ch1; rc = r_ch2; }
         else if (l_ch2 == r_ch2) { common = l_ch2; lb = l_ch1; rc = r_ch1; }
 
+        if (common && is_complement(lb, rc)) {
+            // Resolution: AND(OR(a,b), OR(a,~b)) = a
+            stats.complement_elim++;
+            auto result = neg ? AIG::new_not(common) : common;
+            cache[aig] = result;
+            return result;
+        }
+
+        // --- Distribution: AND(OR(a,b), OR(a,c)) = OR(a, AND(b,c)) ---
         if (common) {
             stats.and_or_distrib++;
             auto result = AIG::new_or(common, AIG::new_and(lb, rc));
