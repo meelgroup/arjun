@@ -66,8 +66,6 @@ target_include_directories(arjun
     ${TREEDECOMP_INCLUDE_DIRS}
   PUBLIC
     $<BUILD_INTERFACE:${CRYPTOMINISAT5_INCLUDE_DIRS}>
-    ${GMP_INCLUDE_DIR}
-    ${MPFR_INCLUDE_DIR}
 )
 
 if(EXTRA_SYNTH)
@@ -86,8 +84,8 @@ target_link_libraries(arjun
     ${EVALMAXSAT_LIBRARIES}
     ${TREEDECOMP_LIBRARIES}
   PUBLIC
-    ${GMP_LIBRARY}
-    ${MPFR_LIBRARY}
+    PkgConfig::GMP
+    PkgConfig::MPFR
     ${CRYPTOMINISAT5_LIBRARIES}
 )
 

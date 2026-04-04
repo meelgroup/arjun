@@ -292,8 +292,19 @@ endif()
 # -----------------------------------------------------------------------------
 # Dependencies
 # -----------------------------------------------------------------------------
-find_package(GMP REQUIRED)
-find_package(MPFR REQUIRED)
+find_package(PkgConfig REQUIRED)
+if(APPLE)
+    execute_process(COMMAND brew --prefix OUTPUT_VARIABLE _homebrew_prefix OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(_homebrew_prefix)
+        set(ENV{PKG_CONFIG_PATH} "${_homebrew_prefix}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+    endif()
+endif()
+pkg_check_modules(GMP REQUIRED IMPORTED_TARGET gmp)
+find_library(GMPXX_LIBRARY NAMES gmpxx HINTS ${GMP_LIBRARY_DIRS})
+if(GMPXX_LIBRARY)
+    set_property(TARGET PkgConfig::GMP APPEND PROPERTY INTERFACE_LINK_LIBRARIES "${GMPXX_LIBRARY}")
+endif()
+pkg_check_modules(MPFR REQUIRED IMPORTED_TARGET mpfr)
 
 include(FetchContent)
 # FetchContent_Populate with declared details is deprecated in CMake 3.30+ (CMP0169).
@@ -368,20 +379,11 @@ if(NOT cryptominisat5_DIR)
     endif()
     if(NOT EXISTS "${_cms_build}/cryptominisat5Config.cmake")
         message(STATUS "CryptoMiniSat5: configuring and building in ${_cms_build}")
-        set(_cms_extra_args "")
-        if(NOT BUILD_SHARED_LIBS)
-            list(APPEND _cms_extra_args
-                "-DCMAKE_FIND_LIBRARY_SUFFIXES=.a"
-                "-DGMP_LIBRARY=${GMP_LIBRARY}"
-                "-DGMPXX_LIBRARY=${GMPXX_LIBRARY}"
-            )
-        endif()
         execute_process(
             COMMAND ${CMAKE_COMMAND} -S "${_cms_src}" -B "${_cms_build}"
                 -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                 -DCMAKE_POSITION_INDEPENDENT_CODE=ON
                 -DBUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}
-                ${_cms_extra_args}
             RESULT_VARIABLE _cms_cfg_ret
         )
         if(NOT _cms_cfg_ret EQUAL 0)
