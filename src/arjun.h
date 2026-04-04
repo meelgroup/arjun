@@ -45,6 +45,7 @@ class AIG;
 class AIGManager;
 class AIGRewriter;
 class SimplifiedCNF;
+template<class Solver> class AIGToCNF;
 using aig_ptr = std::shared_ptr<AIG>;
 
 enum class AIGT {t_and, t_lit, t_const};
@@ -443,6 +444,7 @@ public:
     friend class AIGRewriter;
     friend class SimplifiedCNF;
     friend class ArjunInt::Manthan;
+    template<class Solver> friend class AIGToCNF;
 
 private:
     static aig_ptr simplify(aig_ptr aig);
