@@ -100,6 +100,28 @@ static aig_ptr gen_random_aig(
     return pool[start + rng() % (pool.size() - start)];
 }
 
+// Generate a deeply nested chain AIG (stress test for flattening)
+static aig_ptr gen_chain_aig(std::mt19937& rng, uint32_t num_vars, uint32_t chain_len) {
+    aig_ptr chain = AIG::new_lit(rng() % num_vars, rng() % 2);
+    for (uint32_t i = 0; i < chain_len; i++) {
+        aig_ptr leaf = AIG::new_lit(rng() % num_vars, rng() % 2);
+        uint32_t op = rng() % 4;
+        switch (op) {
+            case 0: chain = AIG::new_and(chain, leaf); break;
+            case 1: chain = AIG::new_or(chain, leaf); break;
+            case 2: chain = AIG::new_and(leaf, chain); break;
+            case 3: chain = AIG::new_or(leaf, chain); break;
+        }
+    }
+    // Optionally wrap in NOT or ITE
+    if (rng() % 3 == 0) chain = AIG::new_not(chain);
+    if (rng() % 4 == 0) {
+        aig_ptr other = AIG::new_lit(rng() % num_vars, rng() % 2);
+        chain = AIG::new_ite(chain, other, Lit(rng() % num_vars, rng() % 2));
+    }
+    return chain;
+}
+
 // Generate multiple random AIGs that share substructure
 static vector<aig_ptr> gen_random_aig_batch(
     std::mt19937& rng,
@@ -378,7 +400,7 @@ int main(int argc, char** argv) {
         uint32_t num_vars = 2 + rng() % (max_vars - 1);
         uint32_t depth = 3 + rng() % (max_depth - 2);
         uint32_t max_nodes = 8 + rng() % 40;
-        uint32_t test_type = rng() % 5; // 0=rewrite, 1=rewrite_all, 2=simplify_aig, 3=double_rewrite, 4=simplify_aigs
+        uint32_t test_type = rng() % 6; // 0=rewrite, 1=rewrite_all, 2=simplify_aig, 3=double_rewrite, 4=simplify_aigs, 5=chain_rewrite
 
         if (test_type == 0 || test_type == 3) {
             // Single AIG rewrite (and optionally double-rewrite)
@@ -462,7 +484,7 @@ int main(int argc, char** argv) {
             else if (nodes_after == nodes_before) stats.rewrite_same++;
             else stats.rewrite_grew++;
 
-        } else {
+        } else if (test_type == 4) {
             // simplify_aigs (vector version)
             uint32_t batch_size = 2 + rng() % 5;
             vector<aig_ptr> originals = gen_random_aig_batch(rng, num_vars, batch_size);
@@ -487,6 +509,27 @@ int main(int argc, char** argv) {
             stats.simplify_tests++;
             stats.nodes_before_total += total_before;
             stats.nodes_after_total += total_after;
+
+        } else {
+            // Chain rewrite: deeply nested AND/OR chains
+            uint32_t chain_len = 5 + rng() % 25;
+            aig_ptr orig = gen_chain_aig(rng, num_vars, chain_len);
+            if (!orig) continue;
+
+            size_t nodes_before = AIG::count_aig_nodes(orig);
+
+            AIGRewriter rw;
+            aig_ptr simplified = rw.rewrite(orig);
+            if (!verify_rewrite(orig, simplified, num_vars, seed, iter, "chain_rewrite"))
+                return 1;
+
+            size_t nodes_after = AIG::count_aig_nodes(simplified);
+            stats.rewrite_tests++;
+            stats.nodes_before_total += nodes_before;
+            stats.nodes_after_total += nodes_after;
+            if (nodes_after < nodes_before) stats.rewrite_reduced++;
+            else if (nodes_after == nodes_before) stats.rewrite_same++;
+            else stats.rewrite_grew++;
         }
 
         stats.total_tests++;
