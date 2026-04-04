@@ -460,16 +460,29 @@ bool AIGToCNF<Solver>::normalize_or_inputs(std::vector<CMSat::Lit>& inputs, bool
     return false;
 }
 
-// ITE pattern: (s ∧ t) ∨ (¬s ∧ e)  where s is a literal. In this AIG,
-// n = AND(X, Y, neg=true); each of X, Y either is a NAND(a,b) directly
-// (which equals a AND b under the outer negation) or a NOT-wrapper
-// AND(u, u, neg=true) that wraps a positive AND u.
+// ITE pattern: (s ∧ t) ∨ (¬s ∧ e). In this AIG,
+// n = AND(X, Y, neg=true); each of X, Y is either a positive t_and (X, Y is
+// a NAND — so equals a positive AND under the outer negation) or a
+// NOT-wrapper AND(u, u, neg=true) that wraps a positive AND u.
+// The selector s can be a literal OR any sub-AIG (typically an AND of
+// many literals — the common manthan case). For non-literal selectors
+// we detect the complement via pointer equality of the positive AND with
+// its NOT-wrapper.
 template<class Solver>
 bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
     auto is_lit_complement = [](const aig_ptr& a, const aig_ptr& b) -> bool {
         return a && b
             && a->type == AIGT::t_lit && b->type == AIGT::t_lit
             && a->var == b->var && a->neg != b->neg;
+    };
+    // For non-literal nodes, detect that one is the NOT-wrapper of the
+    // other: either (a) a is t_and NOT-wrapper (l==r, neg=true) of b, or
+    // (b) b is t_and NOT-wrapper of a.
+    auto is_sub_complement = [](const aig_ptr& a, const aig_ptr& b) -> bool {
+        if (!a || !b) return false;
+        if (a->type == AIGT::t_and && a->neg && a->l == a->r && a->l == b) return true;
+        if (b->type == AIGT::t_and && b->neg && b->l == b->r && b->l == a) return true;
+        return false;
     };
 
     if (n->type != AIGT::t_and || !n->neg) return false;
@@ -508,12 +521,19 @@ bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
     const aig_ptr& y2 = ay->r;
 
     const aig_ptr* sel_x = nullptr;
+    const aig_ptr* sel_y = nullptr;
     const aig_ptr* other_x = nullptr;
     const aig_ptr* other_y = nullptr;
+    bool matched_lit = false;
     auto try_match = [&](const aig_ptr& xa, const aig_ptr& xb,
                          const aig_ptr& ya, const aig_ptr& yb) -> bool {
         if (is_lit_complement(xa, ya)) {
-            sel_x = &xa; other_x = &xb; other_y = &yb; return true;
+            sel_x = &xa; sel_y = &ya; other_x = &xb; other_y = &yb;
+            matched_lit = true; return true;
+        }
+        if (is_sub_complement(xa, ya)) {
+            sel_x = &xa; sel_y = &ya; other_x = &xb; other_y = &yb;
+            matched_lit = false; return true;
         }
         return false;
     };
@@ -522,7 +542,25 @@ bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
         !try_match(x2, x1, y1, y2) &&
         !try_match(x2, x1, y2, y1)) return false;
 
-    CMSat::Lit s_lit((*sel_x)->var, (*sel_x)->neg);
+    CMSat::Lit s_lit;
+    if (matched_lit) {
+        s_lit = CMSat::Lit((*sel_x)->var, (*sel_x)->neg);
+    } else {
+        // Encode the selector sub-AIG. Use the positive form (whichever of
+        // sel_x/sel_y is NOT a NOT-wrapper) so that s_lit's polarity
+        // matches the "then" side.
+        const aig_ptr& sx = *sel_x;
+        const aig_ptr& sy = *sel_y;
+        // Identify the positive side: it is the one that is NOT a
+        // NOT-wrapper (AND(u,u,neg=true)) of the other.
+        bool sx_is_wrapper = (sx->type == AIGT::t_and && sx->neg && sx->l == sx->r && sx->l == sy);
+        const aig_ptr& pos_sel = sx_is_wrapper ? sy : sx;
+        s_lit = encode_node(pos_sel);
+        // If sel_x happens to be the NOT-wrapper, the "then" branch is
+        // actually behind sel_y, i.e., we need to flip: the branch we
+        // called "other_x" is paired with the *negation* of pos_sel.
+        if (sx_is_wrapper) s_lit = ~s_lit;
+    }
     CMSat::Lit t_lit = encode_node(*other_x);
     CMSat::Lit e_lit = encode_node(*other_y);
 
