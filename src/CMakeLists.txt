@@ -61,31 +61,29 @@ target_include_directories(arjun
     ${PROJECT_SOURCE_DIR}
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${SBVA_INCLUDE_DIRS}
-    ${TREEDECOMP_INCLUDE_DIRS}
   PUBLIC
-    $<BUILD_INTERFACE:${CRYPTOMINISAT5_INCLUDE_DIRS}>
+    $<BUILD_INTERFACE:${cryptominisat5_BINARY_DIR}/include>
+    $<BUILD_INTERFACE:${sbva_BINARY_DIR}/include>
+    $<BUILD_INTERFACE:${treedecomp_BINARY_DIR}/include>
 )
 
 if(EXTRA_SYNTH)
     target_include_directories(arjun
         PRIVATE
             ${ARMADILLO_INCLUDE_DIRS}
-            ${EVALMAXSAT_INCLUDE_DIRS}
             ${MLPACK_INCLUDE_DIR}
     )
+    target_link_libraries(arjun PRIVATE EvalMaxSAT)
 endif()
 
 target_link_libraries(arjun
-  PRIVATE
-    ${SBVA_LIBRARIES}
-    cadical
-    ${EVALMAXSAT_LIBRARIES}
-    ${TREEDECOMP_LIBRARIES}
   PUBLIC
     PkgConfig::GMP
     PkgConfig::MPFR
-    ${CRYPTOMINISAT5_LIBRARIES}
+    cryptominisat5
+    sbva
+    cadical
+    treedecomp
 )
 
 set_target_properties(arjun PROPERTIES
@@ -99,7 +97,7 @@ add_executable(test-synth test-synth.cpp)
 
 target_link_libraries(arjun-bin PRIVATE arjun)
 target_link_libraries(arjun-example PRIVATE arjun)
-target_link_libraries(test-synth PRIVATE arjun cadical ${CRYPTOMINISAT5_LIBRARIES})
+target_link_libraries(test-synth PRIVATE arjun cadical cryptominisat5)
 
 target_include_directories(arjun-bin PRIVATE
     ${PROJECT_SOURCE_DIR}
