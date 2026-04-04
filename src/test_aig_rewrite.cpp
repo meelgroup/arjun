@@ -268,6 +268,43 @@ void test_rewrite_preserves_null() {
     check(r == nullptr, "rewrite(nullptr) = nullptr");
 }
 
+void test_distribution() {
+    auto a = AIG::new_lit(0);
+    auto b = AIG::new_lit(1);
+    auto c = AIG::new_lit(2);
+
+    AIGRewriter rw;
+
+    // AND(OR(a,b), OR(a,c)) = OR(a, AND(b,c))
+    auto a_or_b = AIG::new_or(a, b);
+    auto a_or_c = AIG::new_or(a, c);
+    auto both = AIG::new_and(a_or_b, a_or_c);
+    auto r = rw.rewrite(both);
+    check(functionally_equal(both, r, 3), "distribution AND(OR(a,b),OR(a,c)) functional");
+    check(count_nodes(r) <= count_nodes(both), "distribution reduces or preserves nodes");
+}
+
+void test_complex_ite_chain() {
+    auto a = AIG::new_lit(0);
+    auto b = AIG::new_lit(1);
+    auto c = AIG::new_lit(2);
+    auto d = AIG::new_lit(3);
+
+    AIGRewriter rw;
+
+    // Build a chain of ITEs that should simplify
+    auto ite1 = AIG::new_ite(b, c, a);         // ITE(a, b, c)
+    auto ite2 = AIG::new_ite(ite1, d, a);      // ITE(a, ite1, d)
+    auto r = rw.rewrite(ite2);
+    check(functionally_equal(ite2, r, 4), "complex ITE chain functional");
+
+    // ITE(a, b, b) should already be b
+    auto trivial = AIG::new_ite(b, b, a);
+    auto r2 = rw.rewrite(trivial);
+    check(functionally_equal(trivial, r2, 3), "ITE(a,b,b)=b functional");
+    check(count_nodes(r2) == 1, "ITE(a,b,b) is single node");
+}
+
 int main() {
     cout << "=== AIG Rewriter Tests ===" << endl;
 
@@ -283,6 +320,8 @@ int main() {
     test_large_and_chain();
     test_double_negation();
     test_rewrite_preserves_null();
+    test_distribution();
+    test_complex_ite_chain();
 
     cout << endl << "Results: " << tests_passed << " passed, " << tests_failed << " failed" << endl;
     return tests_failed > 0 ? 1 : 0;
