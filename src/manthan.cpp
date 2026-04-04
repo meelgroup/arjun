@@ -102,8 +102,8 @@ vector<sample> Manthan::get_cmsgen_samples(const uint32_t num) {
         dist[0].resize(cnf.nVars(), 0.0);
         dist[1].resize(cnf.nVars(), 0.0);
 
-        // get 500 of each biased 0/1
-        const uint32_t bias_samples = 500;
+        // get biased samples in each direction
+        const uint32_t bias_samples = mconf.bias_samples;
         for(int bias = 0; bias <= 1; bias++) {
             for(const auto& y: to_define) {
                 double bias_w = bias ? 0.9 : 0.1;
@@ -853,7 +853,7 @@ void Manthan::const_functions() {
     // Use multiple samples and majority voting to pick better constant values.
     // A single sample might be atypical; majority voting reduces the number of
     // counterexamples needed to reach the correct formula.
-    const uint32_t num_samples = 10;
+    const uint32_t num_samples = mconf.const_vote_samples;
     vector<sample> samples = get_cmsgen_samples(num_samples);
     for(const auto& y: Manthan::y_order) {
         if (!to_define.count(y)) continue;
@@ -956,8 +956,8 @@ SimplifiedCNF Manthan::do_manthan() {
     SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
 
     while(true) {
-        if (num_loops_repair %  40 == 39) print_stats();
-        if (num_loops_repair %  200 == 199) print_detailed_stats();
+        if (mconf.stats_every > 0 && num_loops_repair % mconf.stats_every == mconf.stats_every - 1) print_stats();
+        if (mconf.detailed_stats_every > 0 && num_loops_repair % mconf.detailed_stats_every == mconf.detailed_stats_every - 1) print_detailed_stats();
         assert(at_least_one_repaired);
         at_least_one_repaired = false;
         num_loops_repair++;
@@ -971,8 +971,9 @@ SimplifiedCNF Manthan::do_manthan() {
         // has grown significantly (1.5x since last rebuild).
         uint64_t total_formula_clauses = 0;
         for (const auto& [y, form] : var_to_formula) total_formula_clauses += form.clauses.size();
-        if (nvars_at_last_rebuild > 0 && cex_solver.nVars() > nvars_at_last_rebuild * 3 / 2
-                && total_formula_clauses > 100000 && num_loops_repair > 200) {
+        if (nvars_at_last_rebuild > 0 && mconf.rebuild_growth_den > 0
+                && cex_solver.nVars() > nvars_at_last_rebuild * mconf.rebuild_growth_num / mconf.rebuild_growth_den
+                && total_formula_clauses > mconf.rebuild_min_clauses && num_loops_repair > mconf.rebuild_min_loops) {
             // Use the serious AIG rewriter to compress formulas before rebuild.
             // This is much more powerful than AIG::simplify_aig because it does
             // multi-level absorption, chain flattening, and structural hashing.
@@ -1018,21 +1019,21 @@ SimplifiedCNF Manthan::do_manthan() {
         // Also reduce when solver is slow (late in repair) to avoid expensive calls.
         t0 = cpuTime();
         const int saved_multi_cex_k = mconf.multi_cex_k;
-        if (generalized_repair_ok > 20 && generalized_repair_ok > tot_repaired * 3 / 4) {
+        if (generalized_repair_ok > mconf.reduce_cex_gen_ok && generalized_repair_ok > tot_repaired * 3 / 4) {
             const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k = min(mconf.multi_cex_k, 2);
         }
         // When deep into repair (solver slow), reduce extra CEXes to save time.
         // Also reduce when few vars need repair, as multiple CEXes provide less value.
-        if (tot_repaired > 2000) {
+        if (tot_repaired > mconf.reduce_cex_tot_rep) {
             const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k = min(mconf.multi_cex_k, 2);
         }
         compute_needs_repair(ctx);
-        if (needs_repair.size() <= 3) {
+        if (needs_repair.size() <= mconf.reduce_cex_need_rep) {
             const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k = 1;
         }
         // When cost-zero dominates, extra CEXes provide little value since
         // most repairs will be cost-zero regardless of which CEX we use
-        if (cost_zero_repairs > tot_repaired * 3 && tot_repaired > 100) {
+        if (cost_zero_repairs > tot_repaired * 3 && tot_repaired > mconf.reduce_cex_cz_min_rep) {
             const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k =
                 min(mconf.multi_cex_k, 2);
         }
@@ -1048,9 +1049,9 @@ SimplifiedCNF Manthan::do_manthan() {
         // With <= 10 wrong vars, the overhead of creating a fresh solver isn't worth it.
         // Also skip every other iteration when input-only conflicts dominate, since
         // the repair quality doesn't depend on which specific y-vars are wrong.
-        const bool skip_better_ctx = (num_loops_repair % 3 != 0) &&
-            (generalized_repair_ok > 20 && generalized_repair_ok > tot_repaired * 3 / 4);
-        if (needs_repair.size() <= 10 || mconf.maxsat_better_ctx == -1 || skip_better_ctx) {
+        const bool skip_better_ctx = (mconf.skip_better_ctx_freq > 0 && num_loops_repair % mconf.skip_better_ctx_freq != 0) &&
+            (generalized_repair_ok > mconf.reduce_cex_gen_ok && generalized_repair_ok > tot_repaired * 3 / 4);
+        if (needs_repair.size() <= mconf.skip_better_ctx_min || mconf.maxsat_better_ctx == -1 || skip_better_ctx) {
           // Skip optimization
         } else if (mconf.maxsat_better_ctx == 1) {
         #ifdef EXTRA_SYNTH
@@ -1181,7 +1182,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     assert(y_rep < cnf.nVars());
 
     if (mconf.simplify_every > 0 && (num_loops_repair % mconf.simplify_every == (mconf.simplify_every-1)
-            || tot_repaired % 1000 == 999)) {
+            || (mconf.simplify_repair_every > 0 && tot_repaired % mconf.simplify_repair_every == mconf.simplify_repair_every - 1))) {
         vector<Lit> assumps;
         assumps.reserve(input.size() + to_define_full.size());
         for(const auto& x: input) assumps.push_back(Lit(x, false));
@@ -1287,8 +1288,8 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     // indicating this benchmark structure rarely produces input-only conflicts.
     // This avoids wasting a solver call per repair on query-type benchmarks
     // where input-only conflicts are rare (<5% success rate).
-    const bool skip_input_only = (tot_repaired > 200 &&
-        generalized_repair_ok * 20 < tot_repaired);  // less than 5% input-only
+    const bool skip_input_only = (tot_repaired > mconf.skip_input_only_min_rep &&
+        generalized_repair_ok * mconf.skip_input_only_ratio < tot_repaired);
     if (!skip_input_only) {
         vector<Lit> input_assumps;
         input_assumps.reserve(input.size() + 1);
@@ -1403,7 +1404,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         // If the remaining input-only conflict is still UNSAT, the repair is
         // more general (independent of intermediate variable values).
         // Skip for very large conflicts (unlikely to succeed and expensive).
-        if (conflict.size() <= 25) {
+        if (conflict.size() <= mconf.conflict_drop_y_max) {
             bool has_y_vars = false;
             for (const auto& l : conflict) {
                 if (l != to_repair && !input.count(l.var())) { has_y_vars = true; break; }
@@ -1432,8 +1433,8 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         // The greedy removal depends on iteration order; additional passes
         // with different shuffles can find additional removable literals.
         // Scale extra passes with hotness: 1 pass for moderate, 2 for very hot.
-        if (repaired_vars_count[y_rep] >= 10 && conflict.size() > 3) {
-            int max_extra = (repaired_vars_count[y_rep] >= 30) ? 2 : 1;
+        if (repaired_vars_count[y_rep] >= mconf.extra_minim_hot && conflict.size() > 3) {
+            int max_extra = (repaired_vars_count[y_rep] >= mconf.extra_minim_very_hot) ? 2 : 1;
             for (int extra = 0; extra < max_extra && conflict.size() > 2; extra++) {
                 auto saved = conflict;
                 minimize_conflict(conflict, assumps, to_repair);
@@ -1449,7 +1450,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     // Cap very large conflicts to prevent formula bloat. A conflict of 40+
     // literals creates 40+ clauses per repair, leading to 100K+ clause formulas.
     // Try keeping a subset and verify it's still UNSAT.
-    if (conflict.size() > 40) {
+    if (conflict.size() > mconf.conflict_cap) {
         // Sort: to_repair first, then inputs (more general), then y-vars by freq
         std::sort(conflict.begin(), conflict.end(),
             [&](const Lit& a, const Lit& b) {
@@ -1461,7 +1462,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
                 return false;
             });
         assumps.clear();
-        for (size_t i = 0; i < 30 && i < conflict.size(); i++) {
+        for (size_t i = 0; i < mconf.conflict_cap_keep && i < conflict.size(); i++) {
             assumps.push_back(~conflict[i]);
         }
         auto ret_cap = repair_solver.solve(&assumps);
@@ -1489,7 +1490,7 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
     // Quick batch removal: try keeping only the to_repair literal and the
     // first/last halves of the conflict. If UNSAT, we dramatically reduce
     // the conflict in a single SAT call instead of O(n) individual calls.
-    if (conflict.size() > 6) {
+    if (conflict.size() > mconf.batch_minim_min) {
         // Try keeping just the first half + to_repair
         for (size_t keep = conflict.size() / 2; keep >= 2; keep /= 2) {
             assumps.clear();
@@ -1520,8 +1521,8 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
     // Budget scales with conflict size but is bounded to prevent excessive work.
     // For large conflicts (>20 lits), cap the number of solver calls to prevent
     // O(n^2) minimization cost. Small conflicts are minimized without limit.
-    const uint32_t minim_budget = (conflict.size() > 20) ?
-        min((uint32_t)(conflict.size() * 4), (uint32_t)150) :
+    const uint32_t minim_budget = (conflict.size() > mconf.minim_budget_threshold) ?
+        min((uint32_t)(conflict.size() * mconf.minim_budget_mult), mconf.minim_budget_max) :
         std::numeric_limits<uint32_t>::max();
     uint32_t minim_calls = 0;
     while(removed_any) {
@@ -1716,7 +1717,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     // For hot variables (repaired many times), periodically simplify the AIG
     // to prevent unbounded growth. Use the full rewriter for very hot variables,
     // and the simpler simplifier for moderately hot ones.
-    if (repaired_vars_count[y_rep] > 0 && repaired_vars_count[y_rep] % 50 == 0) {
+    if (mconf.aig_simplify_every > 0 && repaired_vars_count[y_rep] > 0 && repaired_vars_count[y_rep] % mconf.aig_simplify_every == 0) {
         var_to_formula[y_rep].aig = AIG::simplify_aig(var_to_formula[y_rep].aig);
         verb_print(2, "[manthan] Simplified AIG for hot var " << y_rep+1
             << " (repaired " << repaired_vars_count[y_rep] << " times)");
@@ -1838,8 +1839,8 @@ bool Manthan::cluster_order() {
     fc.importGraph(*primal_alt);
 
     // Notice that this graph returned is VERY different
-    uint64_t td_steps = 1e5;
-    int td_lookahead_iters = 300;
+    uint64_t td_steps = mconf.td_steps;
+    int td_lookahead_iters = mconf.td_lookahead_iters;
     auto tdec = TWD::TreeDecomposition(fc.constructTD(td_steps, td_lookahead_iters));
     tdec.centroid(conf.verb);
     const auto td_width = tdec.width()-1;
@@ -2222,7 +2223,7 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
                 if (conflict_set.count(~lit) && !cannot_fix.count(lit.var()))
                     num_conflicting++;
             }
-            bool remove_all = (num_conflicting > 5);
+            bool remove_all = (num_conflicting > mconf.better_ctx_remove_all);
             for(const auto& [lit, weight]: incorrect_lits) {
                 if (conflict_set.count(~lit) && !cannot_fix.count(lit.var())) {
                     verb_print(3, "[find-better-ctx-normal] Giving up on fixing var " << lit.var()+1);
