@@ -121,7 +121,7 @@ target_include_directories(fuzz_aig PRIVATE
 )
 
 if(ZLIB_FOUND)
-    foreach(tgt arjun-bin arjun-example test-synth fuzz_aig)
+    foreach(tgt arjun-bin arjun-example test-synth fuzz_aig test-aig-rewrite)
         target_include_directories(${tgt} PRIVATE ${ZLIB_INCLUDE_DIR})
         target_link_libraries(${tgt} PRIVATE ${ZLIB_LIBRARY})
     endforeach()
