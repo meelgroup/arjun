@@ -23,6 +23,7 @@
 
 #include "manthan.h"
 #include "aig_rewrite.h"
+#include "aig_to_cnf.h"
 #include <cryptominisat5/cryptominisat.h>
 #include <cryptominisat5/solvertypesmini.h>
 #include "arjun.h"
@@ -2328,7 +2329,31 @@ void Manthan::rebuild_cex_solver() {
     // Tseitin encodings. This is the core compression: a formula that accumulated
     // 100K+ clauses through thousands of ITE repairs gets re-encoded from its
     // simplified AIG into a much smaller set of clauses.
+    //
+    // We use the AIGToCNF encoder (k-ary AND/OR fusion, ITE pattern detection,
+    // De Morgan flattening), which typically cuts clauses and helpers ~50%
+    // compared to the previous naive pairwise Tseitin loop. Clauses land in
+    // the new Formula's clause list (rather than directly in cex_solver --
+    // inject_formulas_into_solver below pushes them out), while fresh helper
+    // variables ARE allocated from cex_solver so they use unique ids.
+    struct CexClauseSink {
+        MetaSolver2& solver;
+        std::vector<CL>& clauses;
+        std::set<uint32_t>& helpers_set;
+        uint32_t first_new_var;
+        void new_var() {
+            solver.new_var();
+            helpers_set.insert(solver.nVars() - 1);
+        }
+        uint32_t nVars() const { return solver.nVars(); }
+        void add_clause(const std::vector<Lit>& cl) {
+            clauses.emplace_back(cl);
+        }
+    };
+
     helpers.clear();
+    uint64_t total_clauses_out = 0;
+    uint64_t total_helpers_out = 0;
     for (auto& [y, form] : var_to_formula) {
         if (form.aig == nullptr) {
             for (auto& cl : form.clauses) cl.inserted = false;
@@ -2336,33 +2361,18 @@ void Manthan::rebuild_cex_solver() {
         }
         FHolder<MetaSolver2>::Formula new_f;
         new_f.aig = form.aig;
-        map<aig_ptr, Lit> encode_cache;
-        std::function<Lit(const aig_ptr&)> encode = [&](const aig_ptr& a) -> Lit {
-            auto it = encode_cache.find(a);
-            if (it != encode_cache.end()) return it->second;
-            Lit result = lit_Error;
-            if (a->type == AIGT::t_const) {
-                result = a->neg ? ~fh->get_true_lit() : fh->get_true_lit();
-            } else if (a->type == AIGT::t_lit) {
-                result = Lit(a->var, a->neg);
-            } else {
-                assert(a->type == AIGT::t_and);
-                Lit left_l = encode(a->l);
-                Lit right_l = encode(a->r);
-                cex_solver.new_var();
-                Lit gate = Lit(cex_solver.nVars()-1, false);
-                helpers.insert(gate.var());
-                new_f.clauses.push_back(CL({~gate, left_l}));
-                new_f.clauses.push_back(CL({~gate, right_l}));
-                new_f.clauses.push_back(CL({gate, ~left_l, ~right_l}));
-                result = a->neg ? ~gate : gate;
-            }
-            encode_cache[a] = result;
-            return result;
-        };
-        new_f.out = encode(new_f.aig);
+        CexClauseSink sink{cex_solver, new_f.clauses, helpers, cex_solver.nVars()};
+        ArjunNS::AIGToCNF<CexClauseSink> enc(sink);
+        // Re-use FHolder's already-asserted true literal for t_const nodes
+        // so we don't waste a var+unit-clause per formula.
+        enc.set_true_lit(fh->get_true_lit());
+        new_f.out = enc.encode(new_f.aig);
+        total_clauses_out += enc.get_stats().clauses_added;
+        total_helpers_out += enc.get_stats().helpers_added;
         form = new_f;
     }
+    verb_print(2, "[manthan] rebuild re-encode: total_clauses=" << total_clauses_out
+        << " total_helpers=" << total_helpers_out);
 
     // 7. Mark ALL formulas for re-injection and create fresh indicators
     updated_y_funcs.clear();
