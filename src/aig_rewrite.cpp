@@ -568,7 +568,11 @@ aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
     if (!aig) return nullptr;
     struct_hash.clear();
 
+    const aig_ptr original = aig;
+    const size_t original_nodes = count_nodes(original);
     aig_ptr current = aig;
+    aig_ptr best = aig;
+    size_t best_nodes = original_nodes;
     const int MAX_PASSES = 5;
 
     for (int pass = 0; pass < MAX_PASSES; pass++) {
@@ -609,11 +613,18 @@ aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
         stats.total_passes++;
         size_t after = count_nodes(current);
 
+        // Track best result seen across passes
+        if (after < best_nodes) {
+            best = current;
+            best_nodes = after;
+        }
+
         // Stop if no progress
         if (after >= before) break;
     }
 
-    return current;
+    // Never return a result larger than the original
+    return best;
 }
 
 void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
@@ -626,6 +637,13 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
         set<aig_ptr> counted;
         for (const auto& aig : defs) AIG::count_aig_nodes(aig, counted);
         stats.nodes_before = counted.size();
+    }
+
+    // Save original AIGs so we can revert individual ones that grew
+    vector<aig_ptr> originals = defs;
+    vector<size_t> original_node_counts(defs.size());
+    for (size_t i = 0; i < defs.size(); i++) {
+        original_node_counts[i] = AIG::count_aig_nodes(defs[i]);
     }
 
     const int MAX_PASSES = 5;
@@ -688,6 +706,14 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
         }
 
         if (after_pass >= before_pass) break;
+    }
+
+    // Revert individual AIGs that grew compared to their original
+    for (size_t i = 0; i < defs.size(); i++) {
+        size_t after_count = AIG::count_aig_nodes(defs[i]);
+        if (after_count > original_node_counts[i]) {
+            defs[i] = originals[i];
+        }
     }
 
     // Count nodes after
