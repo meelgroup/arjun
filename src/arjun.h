@@ -1521,6 +1521,38 @@ public:
         int multi_cex_k = 5; // number of counterexamples to collect for generalized repair
         int check_repair = 0;
         std::string ganak_binary;
+
+        // Hard-coded cutoffs now configurable
+        uint32_t bias_samples = 500;        // biased sampling: number of samples per bias direction
+        uint32_t const_vote_samples = 10;   // const_functions: majority voting samples
+        uint32_t stats_every = 40;          // print stats every N repair loops
+        uint32_t detailed_stats_every = 200;// print detailed stats every N repair loops
+        uint32_t rebuild_min_loops = 200;   // min repair loops before allowing cex_solver rebuild
+        uint32_t rebuild_min_clauses = 100000; // min total formula clauses before rebuild
+        uint32_t rebuild_growth_num = 3;    // rebuild when nVars > nvars_at_last * growth_num/growth_den
+        uint32_t rebuild_growth_den = 2;
+        uint32_t reduce_cex_gen_ok = 20;    // reduce multi_cex when generalized_repair_ok > this
+        uint32_t reduce_cex_tot_rep = 2000; // reduce multi_cex when tot_repaired > this
+        uint32_t reduce_cex_need_rep = 3;   // set multi_cex_k=1 when needs_repair <= this
+        uint32_t reduce_cex_cz_min_rep = 100; // min tot_repaired for cost-zero cex reduction
+        uint32_t skip_better_ctx_min = 10;  // skip find_better_ctx when needs_repair <= this
+        uint32_t skip_better_ctx_freq = 3;  // skip find_better_ctx every N loops (when gen_ok dominates)
+        uint32_t simplify_repair_every = 1000; // also simplify repair_solver every N tot_repaired
+        uint32_t skip_input_only_min_rep = 200; // min tot_repaired before skipping input-only attempt
+        uint32_t skip_input_only_ratio = 20;    // skip when gen_ok * ratio < tot_repaired
+        uint32_t conflict_drop_y_max = 25;  // max conflict size to try dropping y-vars
+        uint32_t extra_minim_hot = 10;      // extra minimization when repaired_count >= this
+        uint32_t extra_minim_very_hot = 30; // 2 extra passes when repaired_count >= this
+        uint32_t conflict_cap = 40;         // cap very large conflicts to this size
+        uint32_t conflict_cap_keep = 30;    // keep this many literals when capping
+        uint32_t batch_minim_min = 6;       // min conflict size for batch minimization
+        uint32_t minim_budget_threshold = 20; // conflict size above which budget is capped
+        uint32_t minim_budget_max = 150;    // max minimization solver calls
+        uint32_t minim_budget_mult = 4;     // budget = conflict.size * mult (up to max)
+        uint32_t aig_simplify_every = 50;   // simplify AIG for hot vars every N repairs
+        uint64_t td_steps = 100000;         // tree decomposition FlowCutter steps
+        uint32_t td_lookahead_iters = 300;  // tree decomposition FlowCutter lookahead
+        uint32_t better_ctx_remove_all = 5; // remove-all threshold in find_better_ctx_normal
     };
 
     struct IndepInfo {
