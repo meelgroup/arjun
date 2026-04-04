@@ -311,7 +311,18 @@ def gen_mstrategy():
     types = ["const", "bve"]
 
     uint_params = ["samples", "samples_ccnr", "max_depth", "sampler_fixed_conflicts",
-                   "min_leaf_size", "simplify_every"]
+                   "min_leaf_size", "simplify_every",
+                   "bias_samples", "const_vote_samples", "stats_every",
+                   "detailed_stats_every", "rebuild_min_loops", "rebuild_min_clauses",
+                   "rebuild_growth_num", "rebuild_growth_den",
+                   "reduce_cex_gen_ok", "reduce_cex_tot_rep", "reduce_cex_need_rep",
+                   "reduce_cex_cz_min_rep", "skip_better_ctx_min", "skip_better_ctx_freq",
+                   "simplify_repair_every", "skip_input_only_min_rep", "skip_input_only_ratio",
+                   "conflict_drop_y_max", "extra_minim_hot", "extra_minim_very_hot",
+                   "conflict_cap", "conflict_cap_keep", "batch_minim_min",
+                   "minim_budget_threshold", "minim_budget_max", "minim_budget_mult",
+                   "aig_simplify_every", "td_steps", "td_lookahead_iters",
+                   "better_ctx_remove_all"]
     int_params  = ["filter_samples", "biased_sampling", "minimize_conflict", "maxsat_better_ctx",
                    "maxsat_order", "use_all_vars_as_feats",
                    "repair_cache_size", "backward_synth_order", "manthan_order",
@@ -434,6 +445,37 @@ if __name__ == "__main__":
         solver += " --maxsat " + random.choice(["0", "1", "-1"])
         solver += " --repaircache " + " " + random.choice(["0", "100", "1000"])
 
+        # Hard-coded cutoff constants (very low and very high values)
+        solver += " --biassamples " + random.choice(["1", "5", "50", "500", "5000"])
+        solver += " --constvotesamples " + random.choice(["1", "2", "10", "100"])
+        solver += " --statsevery " + random.choice(["0", "1", "10", "40", "1000"])
+        solver += " --detailedstatsevery " + random.choice(["0", "1", "10", "200", "5000"])
+        solver += " --rebuildminloops " + random.choice(["1", "5", "50", "200", "10000"])
+        solver += " --rebuildminclauses " + random.choice(["1", "100", "1000", "100000", "1000000"])
+        solver += " --rebuildgrownum " + random.choice(["1", "2", "3", "5", "10"])
+        solver += " --rebuildgrowden " + random.choice(["1", "2", "3", "5"])
+        solver += " --reducecexgenok " + random.choice(["1", "5", "20", "100", "10000"])
+        solver += " --reducecextotrep " + random.choice(["1", "10", "100", "2000", "100000"])
+        solver += " --reducecexneedrep " + random.choice(["0", "1", "3", "10", "1000"])
+        solver += " --reducecexczminrep " + random.choice(["1", "10", "100", "10000"])
+        solver += " --skipbctxmin " + random.choice(["0", "1", "5", "10", "1000"])
+        solver += " --skipbctxfreq " + random.choice(["0", "1", "2", "3", "10"])
+        solver += " --simprepevery " + random.choice(["0", "1", "10", "1000", "100000"])
+        solver += " --skipinputminrep " + random.choice(["1", "10", "200", "10000"])
+        solver += " --skipinputratio " + random.choice(["1", "5", "20", "100"])
+        solver += " --confldropy " + random.choice(["1", "5", "25", "100", "10000"])
+        solver += " --extraminimhot " + random.choice(["1", "5", "10", "100", "10000"])
+        solver += " --extraminimvhot " + random.choice(["1", "10", "30", "100", "10000"])
+        solver += " --conflcap " + random.choice(["5", "10", "40", "200", "100000"])
+        solver += " --conflcapkeep " + random.choice(["2", "5", "30", "100", "100000"])
+        solver += " --batchminimmin " + random.choice(["1", "3", "6", "20", "10000"])
+        solver += " --minimbudgetthresh " + random.choice(["1", "5", "20", "100", "10000"])
+        solver += " --minimbudgetmax " + random.choice(["1", "10", "150", "1000", "100000"])
+        solver += " --minimbudgetmult " + random.choice(["1", "2", "4", "10", "100"])
+        solver += " --aigsimpevery " + random.choice(["0", "1", "5", "50", "10000"])
+        solver += " --tdsteps " + random.choice(["100", "1000", "100000", "1000000"])
+        solver += " --tdlookahead " + random.choice(["1", "10", "300", "1000"])
+        solver += " --bctxremoveall " + random.choice(["1", "3", "5", "20", "10000"])
 
         solver += " --mstrategy " + gen_mstrategy()
 
