@@ -22,6 +22,7 @@
  */
 
 #include "manthan.h"
+#include "aig_rewrite.h"
 #include <cryptominisat5/cryptominisat.h>
 #include <cryptominisat5/solvertypesmini.h>
 #include "arjun.h"
@@ -933,8 +934,20 @@ SimplifiedCNF Manthan::do_manthan() {
         for (const auto& [y, form] : var_to_formula) total_formula_clauses += form.clauses.size();
         if (nvars_at_last_rebuild > 0 && cex_solver.nVars() > nvars_at_last_rebuild * 3 / 2
                 && total_formula_clauses > 100000 && num_loops_repair > 200) {
-            for (auto& [y, form] : var_to_formula) {
-                if (form.aig) form.aig = AIG::simplify_aig(form.aig);
+            // Use the serious AIG rewriter to compress formulas before rebuild.
+            // This is much more powerful than AIG::simplify_aig because it does
+            // multi-level absorption, chain flattening, and structural hashing.
+            {
+                AIGRewriter rewriter;
+                vector<aig_ptr> aigs;
+                for (auto& [y, form] : var_to_formula) {
+                    if (form.aig) aigs.push_back(form.aig);
+                }
+                rewriter.rewrite_all(aigs, conf.verb);
+                size_t idx = 0;
+                for (auto& [y, form] : var_to_formula) {
+                    if (form.aig) form.aig = aigs[idx++];
+                }
             }
             rebuild_cex_solver();
             nvars_at_last_rebuild = cex_solver.nVars();
@@ -1662,10 +1675,15 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     needs_reencode.insert(y_rep);
 
     // For hot variables (repaired many times), periodically simplify the AIG
-    // to prevent unbounded growth. The simplification does constant folding
-    // and common sub-expression elimination.
+    // to prevent unbounded growth. Use the full rewriter for very hot variables,
+    // and the simpler simplifier for moderately hot ones.
     if (repaired_vars_count[y_rep] > 0 && repaired_vars_count[y_rep] % 50 == 0) {
-        var_to_formula[y_rep].aig = AIG::simplify_aig(var_to_formula[y_rep].aig);
+        if (repaired_vars_count[y_rep] >= 200) {
+            AIGRewriter rewriter;
+            var_to_formula[y_rep].aig = rewriter.rewrite(var_to_formula[y_rep].aig);
+        } else {
+            var_to_formula[y_rep].aig = AIG::simplify_aig(var_to_formula[y_rep].aig);
+        }
         verb_print(2, "[manthan] Simplified AIG for hot var " << y_rep+1
             << " (repaired " << repaired_vars_count[y_rep] << " times)");
     }
