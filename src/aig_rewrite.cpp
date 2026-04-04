@@ -281,6 +281,44 @@ aig_ptr AIGRewriter::simplify_pass(const aig_ptr& aig, map<aig_ptr, aig_ptr>& ca
         }
     }
 
+    // --- Distribution: OR(AND(a,b), AND(a,c)) = AND(a, OR(b,c)) ---
+    // This is when neg=true (OR gate): OR(l', r') where l'=NOT(l), r'=NOT(r)
+    // If both l and r are AND gates, check for common factor
+    if (neg && l->type == AIGT::t_and && !l->neg && r->type == AIGT::t_and && !r->neg) {
+        // neg=true means this is OR(NOT(l), NOT(r)) = OR(NOT(AND(ll,lr)), NOT(AND(rl,rr)))
+        // Actually no - neg on the outer AND means NOT(AND(l,r)) = OR(NOT(l), NOT(r))
+        // But l and r are the AND children. So this node = NOT(AND(l, r)).
+        // l = AND(ll, lr), r = AND(rl, rr)
+        // NOT(AND(AND(ll,lr), AND(rl,rr)))
+        // = OR(NOT(AND(ll,lr)), NOT(AND(rl,rr)))
+        // = OR(OR(~ll,~lr), OR(~rl,~rr))
+        // This is NOT the distribution pattern. Skip for now.
+    }
+
+    // --- Distribution: AND(OR(a,b), OR(a,c)) = OR(a, AND(b,c)) ---
+    // When both children are OR gates with a common child
+    if (!neg && is_or(l) && is_or(r)) {
+        // l = OR(NOT(l->l), NOT(l->r)), r = OR(NOT(r->l), NOT(r->r))
+        aig_ptr l_ch1 = AIG::new_not(l->l);
+        aig_ptr l_ch2 = AIG::new_not(l->r);
+        aig_ptr r_ch1 = AIG::new_not(r->l);
+        aig_ptr r_ch2 = AIG::new_not(r->r);
+
+        // Check all 4 combinations for common child
+        aig_ptr common = nullptr, lb = nullptr, rc = nullptr;
+        if (l_ch1 == r_ch1)      { common = l_ch1; lb = l_ch2; rc = r_ch2; }
+        else if (l_ch1 == r_ch2) { common = l_ch1; lb = l_ch2; rc = r_ch1; }
+        else if (l_ch2 == r_ch1) { common = l_ch2; lb = l_ch1; rc = r_ch2; }
+        else if (l_ch2 == r_ch2) { common = l_ch2; lb = l_ch1; rc = r_ch1; }
+
+        if (common) {
+            stats.and_or_distrib++;
+            auto result = AIG::new_or(common, AIG::new_and(lb, rc));
+            cache[aig] = result;
+            return result;
+        }
+    }
+
     // --- Rebuild with simplified children ---
     auto result = make_canonical(AIGT::t_and, neg, l, r);
     cache[aig] = result;
