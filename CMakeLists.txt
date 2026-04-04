@@ -293,6 +293,7 @@ endif()
 # Dependencies
 # -----------------------------------------------------------------------------
 find_package(GMP REQUIRED)
+find_package(MPFR REQUIRED)
 
 include(FetchContent)
 # FetchContent_Populate with declared details is deprecated in CMake 3.30+ (CMP0169).

@@ -67,6 +67,7 @@ target_include_directories(arjun
   PUBLIC
     $<BUILD_INTERFACE:${CRYPTOMINISAT5_INCLUDE_DIRS}>
     ${GMP_INCLUDE_DIR}
+    ${MPFR_INCLUDE_DIR}
 )
 
 if(EXTRA_SYNTH)
@@ -86,6 +87,7 @@ target_link_libraries(arjun
     ${TREEDECOMP_LIBRARIES}
   PUBLIC
     ${GMP_LIBRARY}
+    ${MPFR_LIBRARY}
     ${CRYPTOMINISAT5_LIBRARIES}
 )
 
