@@ -61,7 +61,9 @@ aig_ptr AIGRewriter::strip_not(const aig_ptr& a) const {
 }
 
 bool AIGRewriter::is_or(const aig_ptr& a) const {
-    return a && a->type == AIGT::t_and && a->neg;
+    // OR(a,b) = AND(NOT(a), NOT(b), neg=true) where l != r
+    // NOT(x) = AND(x, x, neg=true) where l == r -- this is NOT an OR
+    return a && a->type == AIGT::t_and && a->neg && a->l != a->r;
 }
 
 size_t AIGRewriter::count_nodes(const aig_ptr& aig) const {
