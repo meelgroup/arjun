@@ -97,7 +97,7 @@ vector<sample> Manthan::get_cmsgen_samples(const uint32_t num) {
     inject_cnf(solver_samp);
     solver_samp.set_up_for_sample_counter(mconf.sampler_fixed_conflicts);
 
-    if (mconf.biased_sampling) {
+    if (mconf.biased_sampling && mconf.bias_samples > 0) {
         array<vector<double>,2> dist;
         dist[0].resize(cnf.nVars(), 0.0);
         dist[1].resize(cnf.nVars(), 0.0);
@@ -853,7 +853,7 @@ void Manthan::const_functions() {
     // Use multiple samples and majority voting to pick better constant values.
     // A single sample might be atypical; majority voting reduces the number of
     // counterexamples needed to reach the correct formula.
-    const uint32_t num_samples = mconf.const_vote_samples;
+    const uint32_t num_samples = std::max(mconf.const_vote_samples, (uint32_t)1);
     vector<sample> samples = get_cmsgen_samples(num_samples);
     for(const auto& y: Manthan::y_order) {
         if (!to_define.count(y)) continue;
