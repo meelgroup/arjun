@@ -322,7 +322,22 @@ void Manthan::fill_var_to_formula_with(set<uint32_t>& vars) {
         map<aig_ptr, Lit> cache;
         const Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
         f.out = out_lit ^ orig.sign();
-        f.aig = nullptr; // we won't need it.
+
+        // Build AIG in y_hat variable space for possible rebuild re-encoding
+        map<aig_ptr, aig_ptr> aig_remap_cache;
+        f.aig = AIG::transform<aig_ptr>(aig,
+          [&](AIGT type, const uint32_t var_orig2, const bool neg2,
+              const aig_ptr* left2, const aig_ptr* right2) -> aig_ptr {
+            if (type == AIGT::t_const) return aig_mng.new_const(!neg2);
+            if (type == AIGT::t_lit) {
+                const Lit lit_new = cnf.orig_to_new_lit(Lit(var_orig2, neg2));
+                const Lit result_lit = map_y_to_y_hat(lit_new);
+                return AIG::new_lit(result_lit);
+            }
+            if (type == AIGT::t_and) return AIG::new_and(*left2, *right2, neg2);
+            release_assert(false && "Unhandled AIG type");
+          }, aig_remap_cache);
+        if (orig.sign()) f.aig = AIG::new_not(f.aig);
         assert(var_to_formula.count(v) == 0);
         var_to_formula[v] = f;
     }
@@ -892,6 +907,7 @@ SimplifiedCNF Manthan::do_manthan() {
 
     // Counterexample-guided repair
     repair_start_time = cpuTime();
+    nvars_at_last_rebuild = cex_solver.nVars();
     for(const auto& v: to_define_full) {
         assert(var_to_formula.count(v) && "All must have a tentative definition");
         updated_y_funcs.push_back(v);
@@ -906,8 +922,22 @@ SimplifiedCNF Manthan::do_manthan() {
         at_least_one_repaired = false;
         num_loops_repair++;
 
+        // Rebuild the cex_solver when it has grown significantly (>3x since last
+        // rebuild). This discards dead indicator variables, old equivalence clauses,
+        // and forced blocking clause activations that accumulate during repair.
+        bool did_rebuild = false;
+        if (nvars_at_last_rebuild > 0 && cex_solver.nVars() > nvars_at_last_rebuild * 3
+                && num_loops_repair > 500) {
+            for (auto& [y, form] : var_to_formula) {
+                if (form.aig) form.aig = AIG::simplify_aig(form.aig);
+            }
+            rebuild_cex_solver();
+            nvars_at_last_rebuild = cex_solver.nVars();
+            did_rebuild = true;
+        }
+
         double t0 = cpuTime();
-        inject_formulas_into_solver();
+        if (!did_rebuild) inject_formulas_into_solver();
         time_inject_formulas += cpuTime() - t0;
 
         t0 = cpuTime();
@@ -1538,6 +1568,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
         verb_print(2, "[manthan] conflict empty for " << setw(5) << y_rep+1 << ", unconditionally fixing it to " << ctx[y_rep]);
         var_to_formula[y_rep] = fh->constant_formula(ctx[y_rep] == l_True);
         updated_y_funcs.push_back(y_rep);
+        needs_reencode.insert(y_rep);
         return;
     }
     verb_print(2, "[manthan] Performing repair on " << setw(5) << y_rep+1
@@ -1623,6 +1654,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
         var_to_formula[y_rep] = fh->compose_and(fh->neg(f), var_to_formula[y_rep]);
     }
     updated_y_funcs.push_back(y_rep);
+    needs_reencode.insert(y_rep);
 
     // For hot variables (repaired many times), periodically simplify the AIG
     // to prevent unbounded growth. The simplification does constant folding
@@ -2190,6 +2222,71 @@ void Manthan::add_not_f_x_yhat() {
     tmp.clear();
     for(const auto& l: cl_indics) tmp.push_back(~l); // at least one is unsatisfied
     cex_solver.add_clause(tmp, true);
+}
+
+void Manthan::rebuild_cex_solver() {
+    const double rebuild_start = cpuTime();
+    const uint32_t old_nvars = cex_solver.nVars();
+
+    // Strategy: keep all variable positions the same (no remapping needed).
+    // Create a fresh solver with the same number of variables, re-add only
+    // the essential clauses: original CNF, ~F(x,y_hat), true_lit, and
+    // fresh Tseitin encodings of all current formulas from their AIGs.
+
+    // Save old true_lit position before destroying fh
+    const Lit old_true = fh->get_true_lit();
+
+    // 1. Reset solvers
+    cex_solver.reset();
+
+    // 2. Allocate enough variables to cover all referenced positions.
+    // This covers: cnf vars, old true_lit, y_hat positions.
+    // This is much less than old_nvars which includes all accumulated
+    // gate/indicator/helper variables from previous repairs.
+    // Allocate same variable space as the old solver. We keep existing formula
+    // clauses (no re-encoding), so all variable positions must remain valid.
+    // The benefit is discarding dead indicator variables, old blocking clause
+    // activation vars, and old (superseded) indicator equivalence clauses.
+    cex_solver.new_vars(old_nvars);
+
+    // 3. Re-add original CNF clauses
+    for(const auto& c: cnf.get_clauses()) cex_solver.add_clause(c, true);
+    for(const auto& c: cnf.get_red_clauses()) cex_solver.add_red_clause(c, true);
+
+    // 4. Force old true_lit to true (BW-defined formula clauses reference it).
+    // Then recreate FHolder which creates a new true_lit variable.
+    cex_solver.add_clause({old_true});
+    fh = std::make_unique<FHolder<MetaSolver2>>(&cex_solver);
+
+    // 5. Recreate ~F(x, y_hat) encoding (uses y_to_y_hat which is unchanged)
+    add_not_f_x_yhat();
+
+    // 6. Keep existing formula clauses but reset their inserted flags so
+    // they'll be re-added to the fresh solver during inject_formulas_into_solver.
+    // No re-encoding needed - we keep the same variable positions.
+    // The benefit: dead indicator variables, old equivalence clauses, and
+    // old blocking clause activations are all discarded.
+    for (auto& [y, form] : var_to_formula) {
+        for (auto& cl : form.clauses) cl.inserted = false;
+    }
+
+    // 7. Mark ALL formulas for re-injection and create fresh indicators
+    updated_y_funcs.clear();
+    y_hat_to_indic.clear();
+    indic_to_y_hat.clear();
+    indic_to_y.clear();
+    for (const auto& y : to_define_full) {
+        if (var_to_formula.count(y)) {
+            updated_y_funcs.push_back(y);
+        }
+    }
+
+    // 8. Inject all formulas and create indicators
+    inject_formulas_into_solver();
+
+    needs_reencode.clear();
+    verb_print(1, COLCYN "[manthan] Rebuilt cex_solver. nVars: " << old_nvars
+        << " T: " << fixed << setprecision(2) << (cpuTime() - rebuild_start));
 }
 
 void Manthan::inject_formulas_into_solver() {

@@ -194,6 +194,8 @@ class Manthan {
         bool check_functions_for_y_vars() const;
         std::mt19937 mtrand;
         std::vector<uint32_t> updated_y_funcs; // y_hats updated during last round of training
+        std::set<uint32_t> needs_reencode; // formulas modified since last rebuild
+        uint32_t nvars_at_last_rebuild = 0; // nVars at last rebuild for growth tracking
 
         // stats
         double repair_start_time;
