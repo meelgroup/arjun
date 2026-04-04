@@ -16,6 +16,7 @@ rm -rf deps
 rm -rf _deps
 emcmake cmake -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=RelWithDebInfo "-DCMAKE_INSTALL_PREFIX=${EMINSTALL}" -DEXTRA_SYNTH=OFF \
     -Dcadical_DIR=../../cadical/build \
+    -Dcadiback_DIR=../../cadiback/build \
     -Dcryptominisat5_DIR=../../cryptominisat/build \
     -Dsbva_DIR=../../sbva/build \
     -Dtreedecomp_DIR=../../treedecomp/build \

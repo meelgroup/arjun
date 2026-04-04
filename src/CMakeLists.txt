@@ -61,7 +61,6 @@ target_include_directories(arjun
     ${PROJECT_SOURCE_DIR}
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${cadical_SRC_DIR}
     ${SBVA_INCLUDE_DIRS}
     ${TREEDECOMP_INCLUDE_DIRS}
   PUBLIC
@@ -80,7 +79,7 @@ endif()
 target_link_libraries(arjun
   PRIVATE
     ${SBVA_LIBRARIES}
-    ${cadical}
+    cadical
     ${EVALMAXSAT_LIBRARIES}
     ${TREEDECOMP_LIBRARIES}
   PUBLIC
@@ -100,7 +99,7 @@ add_executable(test-synth test-synth.cpp)
 
 target_link_libraries(arjun-bin PRIVATE arjun)
 target_link_libraries(arjun-example PRIVATE arjun)
-target_link_libraries(test-synth PRIVATE arjun ${cadical} ${CRYPTOMINISAT5_LIBRARIES})
+target_link_libraries(test-synth PRIVATE arjun cadical ${CRYPTOMINISAT5_LIBRARIES})
 
 target_include_directories(arjun-bin PRIVATE
     ${PROJECT_SOURCE_DIR}
@@ -113,7 +112,6 @@ target_include_directories(arjun-example PRIVATE
 target_include_directories(test-synth PRIVATE
     ${PROJECT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${cadical_SRC_DIR}
 )
 
 if(ZLIB_FOUND)

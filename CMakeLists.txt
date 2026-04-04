@@ -307,58 +307,25 @@ if(POLICY CMP0169)
     cmake_policy(SET CMP0169 OLD)
 endif()
 
-# ---- CaDiCaL (non-cmake, needs bash configure+make) ----
-set(cadical_DIR "" CACHE PATH "Directory where CaDiCaL is built (contains libcadical.a). Auto-fetched if empty.")
-if(NOT cadical_DIR)
-    set(_cadical_src "${CMAKE_BINARY_DIR}/deps/cadical")
-    set(_cadical_lib "${_cadical_src}/build/libcadical.a")
-    FetchContent_Declare(cadical_src
-        GIT_REPOSITORY https://github.com/meelgroup/cadical
-        GIT_TAG        master
-        SOURCE_DIR     "${_cadical_src}"
-    )
-    FetchContent_GetProperties(cadical_src)
-    if(NOT cadical_src_POPULATED)
-        message(STATUS "CaDiCaL: fetching from meelgroup/cadical master")
-        FetchContent_Populate(cadical_src)
+# ---- CaDiCaL (cmake-based) ----
+set(cadical_DIR "" CACHE PATH "cadical install/build prefix (contains lib/cmake/cadical/). Auto-resolved if empty.")
+if(NOT TARGET cadical)
+    if(cadical_DIR)
+        find_package(cadical CONFIG REQUIRED HINTS "${cadical_DIR}")
+        message(STATUS "CaDiCaL: using pre-built at ${cadical_DIR}")
+    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../cadical/CMakeLists.txt")
+        add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../cadical"
+                         "${CMAKE_CURRENT_BINARY_DIR}/cadical-build")
+        message(STATUS "CaDiCaL: using sibling repo")
+    else()
+        FetchContent_Declare(cadical
+            GIT_REPOSITORY https://github.com/meelgroup/cadical
+            GIT_TAG        master
+            GIT_SHALLOW    TRUE)
+        FetchContent_MakeAvailable(cadical)
+        message(STATUS "CaDiCaL: fetched from GitHub")
     endif()
-    if(NOT EXISTS "${_cadical_lib}")
-        message(STATUS "CaDiCaL: building in ${_cadical_src}")
-        execute_process(
-            COMMAND bash -c "CXXFLAGS=-fPIC ./configure --no-contracts --no-tracing --fp"
-            WORKING_DIRECTORY "${_cadical_src}"
-            RESULT_VARIABLE _cadical_cfg_ret
-        )
-        if(NOT _cadical_cfg_ret EQUAL 0)
-            message(FATAL_ERROR "CaDiCaL configure failed (exit ${_cadical_cfg_ret})")
-        endif()
-        execute_process(
-            COMMAND make -j8
-            WORKING_DIRECTORY "${_cadical_src}"
-            RESULT_VARIABLE _cadical_make_ret
-        )
-        if(NOT _cadical_make_ret EQUAL 0)
-            message(FATAL_ERROR "CaDiCaL build failed (exit ${_cadical_make_ret})")
-        endif()
-    endif()
-    set(cadical_DIR "${_cadical_src}/build" CACHE PATH "Directory where CaDiCaL is built" FORCE)
-    set(cadical_SRC_DIR "${_cadical_src}/src" CACHE PATH "CaDiCaL source dir (for cadical.hpp)" FORCE)
-    message(STATUS "CaDiCaL: using auto-built ${cadical_DIR}")
 endif()
-if(NOT cadical_SRC_DIR)
-    get_filename_component(_cadical_parent "${cadical_DIR}" DIRECTORY)
-    set(cadical_SRC_DIR "${_cadical_parent}/src" CACHE PATH "CaDiCaL source dir (for cadical.hpp)")
-endif()
-# cadical's Makefile produces both libcadical.so and libcadical.a.
-# Force .a to avoid picking up the shared library on macOS.
-set(_saved_lib_suffixes ${CMAKE_FIND_LIBRARY_SUFFIXES})
-set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
-find_library(cadical
-    PATHS ${cadical_DIR}
-    NAMES cadical
-    REQUIRED NO_DEFAULT_PATH)
-set(CMAKE_FIND_LIBRARY_SUFFIXES ${_saved_lib_suffixes})
-message(STATUS "CaDiCaL: lib=${cadical}  headers=${cadical_SRC_DIR}")
 
 # ---- CryptoMiniSat5 (cmake-based) ----
 set(cryptominisat5_DIR "" CACHE PATH "Directory where CryptoMiniSat5 is built. Auto-fetched if empty.")
