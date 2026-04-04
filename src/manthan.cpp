@@ -766,11 +766,50 @@ void Manthan::print_detailed_stats() const {
     for(size_t i = 0; i < min((size_t)20, (size_t)rep.size()); i++) {
         const auto& v = rep[i];
         if (repaired_vars_count[v] == 0) break;
+        size_t aig_sz = 0;
+        size_t aig_depth = 0;
+        if (var_to_formula.count(v) && var_to_formula.at(v).aig) {
+            aig_sz = AIG::count_aig_nodes(var_to_formula.at(v).aig);
+            // Compute depth
+            std::function<size_t(const aig_ptr&, std::map<aig_ptr,size_t>&)> get_depth =
+                [&](const aig_ptr& a, std::map<aig_ptr,size_t>& dc) -> size_t {
+                    if (!a || a->type != AIGT::t_and) return 0;
+                    auto it = dc.find(a);
+                    if (it != dc.end()) return it->second;
+                    size_t d = 1 + std::max(get_depth(a->l, dc), get_depth(a->r, dc));
+                    dc[a] = d;
+                    return d;
+                };
+            std::map<aig_ptr,size_t> dc;
+            aig_depth = get_depth(var_to_formula.at(v).aig, dc);
+        }
         verb_print(1, COLCYN "[manthan-stats]   var " << setw(5) << v+1
             << "  repairs: " << setw(6) << repaired_vars_count[v]
-            << "  cnf_clauses: " << setw(6) << (var_to_formula.count(v) ? var_to_formula.at(v).clauses.size() : 0)
-            << "  conflict_freq: " << setw(6) << (v < var_conflict_freq.size() ? var_conflict_freq[v] : 0));
+            << "  cnf_cl: " << setw(7) << (var_to_formula.count(v) ? var_to_formula.at(v).clauses.size() : 0)
+            << "  aig_nodes: " << setw(7) << aig_sz
+            << "  aig_depth: " << setw(5) << aig_depth
+            << "  confl_freq: " << setw(5) << (v < var_conflict_freq.size() ? var_conflict_freq[v] : 0));
     }
+
+    // Aggregate AIG stats
+    uint64_t total_aig_nodes = 0, total_clauses = 0, max_aig_nodes = 0;
+    {
+        set<aig_ptr> all_counted;
+        for (const auto& [v, form] : var_to_formula) {
+            total_clauses += form.clauses.size();
+            if (form.aig) {
+                size_t sz = AIG::count_aig_nodes(form.aig);
+                AIG::count_aig_nodes(form.aig, all_counted);
+                max_aig_nodes = std::max(max_aig_nodes, (uint64_t)sz);
+            }
+        }
+        total_aig_nodes = all_counted.size();
+    }
+    verb_print(1, COLCYN "[manthan-stats] === AIG STATS ===");
+    verb_print(1, COLCYN "[manthan-stats]   total unique AIG nodes: " << total_aig_nodes);
+    verb_print(1, COLCYN "[manthan-stats]   max AIG nodes (single var): " << max_aig_nodes);
+    verb_print(1, COLCYN "[manthan-stats]   total formula clauses: " << total_clauses);
+    verb_print(1, COLCYN "[manthan-stats]   cex_solver nVars: " << cex_solver.nVars());
 }
 
 void Manthan::add_xor_var() {
