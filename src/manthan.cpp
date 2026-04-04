@@ -926,8 +926,8 @@ SimplifiedCNF Manthan::do_manthan() {
         // rebuild). This discards dead indicator variables, old equivalence clauses,
         // and forced blocking clause activations that accumulate during repair.
         bool did_rebuild = false;
-        if (nvars_at_last_rebuild > 0 && cex_solver.nVars() > nvars_at_last_rebuild * 3
-                && num_loops_repair > 500) {
+        if (nvars_at_last_rebuild > 0 && cex_solver.nVars() > nvars_at_last_rebuild * 2
+                && num_loops_repair > 200) {
             for (auto& [y, form] : var_to_formula) {
                 if (form.aig) form.aig = AIG::simplify_aig(form.aig);
             }
@@ -2243,11 +2243,16 @@ void Manthan::rebuild_cex_solver() {
     // This covers: cnf vars, old true_lit, y_hat positions.
     // This is much less than old_nvars which includes all accumulated
     // gate/indicator/helper variables from previous repairs.
-    // Allocate same variable space as the old solver. We keep existing formula
-    // clauses (no re-encoding), so all variable positions must remain valid.
-    // The benefit is discarding dead indicator variables, old blocking clause
-    // activation vars, and old (superseded) indicator equivalence clauses.
-    cex_solver.new_vars(old_nvars);
+    // Allocate only enough for essential positions (cnf vars, true_lit, y_hat).
+    // Formula gate variables will be freshly created during re-encoding.
+    // On successive rebuilds, min_vars stays the same since y_hat positions
+    // are fixed, so the total variable count stabilizes.
+    uint32_t min_vars = cnf.nVars();
+    min_vars = std::max(min_vars, old_true.var() + 1);
+    for (const auto& [y, y_hat] : y_to_y_hat) {
+        min_vars = std::max(min_vars, y_hat + 1);
+    }
+    cex_solver.new_vars(min_vars);
 
     // 3. Re-add original CNF clauses
     for(const auto& c: cnf.get_clauses()) cex_solver.add_clause(c, true);
@@ -2261,13 +2266,44 @@ void Manthan::rebuild_cex_solver() {
     // 5. Recreate ~F(x, y_hat) encoding (uses y_to_y_hat which is unchanged)
     add_not_f_x_yhat();
 
-    // 6. Keep existing formula clauses but reset their inserted flags so
-    // they'll be re-added to the fresh solver during inject_formulas_into_solver.
-    // No re-encoding needed - we keep the same variable positions.
-    // The benefit: dead indicator variables, old equivalence clauses, and
-    // old blocking clause activations are all discarded.
+    // 6. Re-encode ALL formulas from their (simplified) AIGs into fresh compact
+    // Tseitin encodings. This is the core compression: a formula that accumulated
+    // 100K+ clauses through thousands of ITE repairs gets re-encoded from its
+    // simplified AIG into a much smaller set of clauses.
+    helpers.clear();
     for (auto& [y, form] : var_to_formula) {
-        for (auto& cl : form.clauses) cl.inserted = false;
+        if (form.aig == nullptr) {
+            for (auto& cl : form.clauses) cl.inserted = false;
+            continue;
+        }
+        FHolder<MetaSolver2>::Formula new_f;
+        new_f.aig = form.aig;
+        map<aig_ptr, Lit> encode_cache;
+        std::function<Lit(const aig_ptr&)> encode = [&](const aig_ptr& a) -> Lit {
+            auto it = encode_cache.find(a);
+            if (it != encode_cache.end()) return it->second;
+            Lit result = lit_Error;
+            if (a->type == AIGT::t_const) {
+                result = a->neg ? ~fh->get_true_lit() : fh->get_true_lit();
+            } else if (a->type == AIGT::t_lit) {
+                result = Lit(a->var, a->neg);
+            } else {
+                assert(a->type == AIGT::t_and);
+                Lit left_l = encode(a->l);
+                Lit right_l = encode(a->r);
+                cex_solver.new_var();
+                Lit gate = Lit(cex_solver.nVars()-1, false);
+                helpers.insert(gate.var());
+                new_f.clauses.push_back(CL({~gate, left_l}));
+                new_f.clauses.push_back(CL({~gate, right_l}));
+                new_f.clauses.push_back(CL({gate, ~left_l, ~right_l}));
+                result = a->neg ? ~gate : gate;
+            }
+            encode_cache[a] = result;
+            return result;
+        };
+        new_f.out = encode(new_f.aig);
+        form = new_f;
     }
 
     // 7. Mark ALL formulas for re-injection and create fresh indicators
