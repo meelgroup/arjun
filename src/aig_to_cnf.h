@@ -88,6 +88,27 @@ private:
     std::map<aig_ptr, uint32_t> fanout;
     std::map<aig_ptr, CMSat::Lit> cache;
 
+    // Content-hashed caches for structural CSE across AIG pointers that
+    // happen to encode the same gate. Keyed on the (sorted) literal inputs.
+    using LitKey = std::vector<CMSat::Lit>;
+    struct LitKeyCmp {
+        bool operator()(const LitKey& a, const LitKey& b) const {
+            if (a.size() != b.size()) return a.size() < b.size();
+            for (size_t i = 0; i < a.size(); i++) {
+                if (a[i] != b[i]) {
+                    if (a[i].var() != b[i].var()) return a[i].var() < b[i].var();
+                    return a[i].sign() < b[i].sign();
+                }
+            }
+            return false;
+        }
+    };
+    std::map<LitKey, CMSat::Lit, LitKeyCmp> and_group_cse;
+    std::map<LitKey, CMSat::Lit, LitKeyCmp> or_group_cse;
+    // ITE CSE: key is (s, t, e).
+    using IteKey = std::tuple<uint32_t, uint32_t, uint32_t>; // var*2+sign
+    std::map<IteKey, CMSat::Lit> ite_cse;
+
     void count_fanout(const aig_ptr& root);
     CMSat::Lit encode_node(const aig_ptr& n);
     CMSat::Lit get_true_lit();
@@ -282,10 +303,18 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
             cache[n] = inputs[0];
             return inputs[0];
         }
+        // Content-hashed CSE: structurally identical AND groups share a helper.
+        auto it_cse = and_group_cse.find(inputs);
+        if (it_cse != and_group_cse.end()) {
+            stats.cache_hits++;
+            cache[n] = it_cse->second;
+            return it_cse->second;
+        }
         CMSat::Lit h = new_helper();
         emit_and_equiv(h, inputs);
         stats.kary_and_count++;
         stats.kary_and_width_total += inputs.size();
+        and_group_cse[inputs] = h;
         cache[n] = h;
         return h;
     } else {
@@ -315,7 +344,14 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
             cache[n] = inputs[0];
             return inputs[0];
         }
+        auto it_cse = or_group_cse.find(inputs);
+        if (it_cse != or_group_cse.end()) {
+            stats.cache_hits++;
+            cache[n] = it_cse->second;
+            return it_cse->second;
+        }
         CMSat::Lit h = new_helper();
+        or_group_cse[inputs] = h;
         emit_or_equiv(h, inputs);
         stats.kary_or_count++;
         stats.kary_or_width_total += inputs.size();
@@ -564,8 +600,19 @@ bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
     CMSat::Lit t_lit = encode_node(*other_x);
     CMSat::Lit e_lit = encode_node(*other_y);
 
+    auto pack = [](CMSat::Lit l) { return (l.var() << 1) | (l.sign() ? 1u : 0u); };
+    IteKey key{pack(s_lit), pack(t_lit), pack(e_lit)};
+    auto it_ite = ite_cse.find(key);
+    if (it_ite != ite_cse.end()) {
+        stats.cache_hits++;
+        out = it_ite->second;
+        stats.ite_patterns++;
+        return true;
+    }
+
     CMSat::Lit h = new_helper();
     emit_ite(h, s_lit, t_lit, e_lit);
+    ite_cse[key] = h;
     stats.ite_patterns++;
     out = h;
     return true;
