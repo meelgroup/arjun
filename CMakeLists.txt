@@ -281,6 +281,10 @@ endif()
 # -----------------------------------------------------------------------------
 # Dependencies
 # -----------------------------------------------------------------------------
+# When building statically, prefer .a over .so for all find_library/find_package calls
+if(NOT BUILD_SHARED_LIBS)
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+endif()
 find_package(PkgConfig REQUIRED)
 if(APPLE)
     execute_process(COMMAND brew --prefix OUTPUT_VARIABLE _homebrew_prefix OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
@@ -345,10 +349,15 @@ if(NOT cadical_SRC_DIR)
     get_filename_component(_cadical_parent "${cadical_DIR}" DIRECTORY)
     set(cadical_SRC_DIR "${_cadical_parent}/src" CACHE PATH "CaDiCaL source dir (for cadical.hpp)")
 endif()
+# cadical's Makefile produces both libcadical.so and libcadical.a.
+# Force .a to avoid picking up the shared library on macOS.
+set(_saved_lib_suffixes ${CMAKE_FIND_LIBRARY_SUFFIXES})
+set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
 find_library(cadical
     PATHS ${cadical_DIR}
     NAMES cadical
     REQUIRED NO_DEFAULT_PATH)
+set(CMAKE_FIND_LIBRARY_SUFFIXES ${_saved_lib_suffixes})
 message(STATUS "CaDiCaL: lib=${cadical}  headers=${cadical_SRC_DIR}")
 
 # ---- CryptoMiniSat5 (cmake-based) ----
