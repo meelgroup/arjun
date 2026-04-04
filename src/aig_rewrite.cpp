@@ -520,7 +520,63 @@ aig_ptr AIGRewriter::deep_absorb(const aig_ptr& aig, map<aig_ptr, aig_ptr>& cach
             }
         }
 
-        // Re-sort and re-deduplicate after subsumption changes
+        // Multi-child resolution: AND(OR(a,b,c), OR(a,b,~c)) = AND(OR(a,b))
+        // For each pair of OR children, if they differ in exactly one term
+        // and those terms are complements, replace both with the common terms.
+        {
+            bool res_changed = true;
+            while (res_changed) {
+                res_changed = false;
+                for (size_t i = 0; i < children.size() && !res_changed; i++) {
+                    if (!is_or(children[i])) continue;
+                    vector<aig_ptr> or_i;
+                    collect_or_children(children[i], or_i, false);
+                    std::sort(or_i.begin(), or_i.end());
+
+                    for (size_t j = i + 1; j < children.size() && !res_changed; j++) {
+                        if (!is_or(children[j])) continue;
+                        vector<aig_ptr> or_j;
+                        collect_or_children(children[j], or_j, false);
+                        std::sort(or_j.begin(), or_j.end());
+
+                        if (or_i.size() != or_j.size()) continue;
+
+                        // Find differing positions
+                        vector<aig_ptr> common;
+                        aig_ptr diff_i = nullptr, diff_j = nullptr;
+                        int diffs = 0;
+                        // Both sorted by pointer - walk them together
+                        // But they may not be identical sets, so just compare element-by-element
+                        for (size_t k = 0; k < or_i.size(); k++) {
+                            if (or_i[k] == or_j[k]) {
+                                common.push_back(or_i[k]);
+                            } else {
+                                diffs++;
+                                diff_i = or_i[k];
+                                diff_j = or_j[k];
+                            }
+                        }
+                        if (diffs == 1 && is_complement(diff_i, diff_j)) {
+                            stats.complement_elim++;
+                            if (common.empty()) {
+                                // OR() resolved to TRUE, AND(..., TRUE) = AND(rest)
+                                children.erase(children.begin() + j);
+                                children.erase(children.begin() + i);
+                            } else if (common.size() == 1) {
+                                children[i] = common[0];
+                                children.erase(children.begin() + j);
+                            } else {
+                                children[i] = build_or_tree(common);
+                                children.erase(children.begin() + j);
+                            }
+                            res_changed = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Re-sort and re-deduplicate after subsumption/resolution changes
         std::sort(children.begin(), children.end());
         children.erase(std::unique(children.begin(), children.end()), children.end());
 
