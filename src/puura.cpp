@@ -161,8 +161,12 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 
     // occ-cl-rem-with-orgates not used -- should test and add, probably to 2nd iter
     // eqlit-find from oracle not used (too slow?)
-    string str("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, occ-ternary-res, clean-cls, distill-cls, distill-bins, ");
+    // D: occ-ternary-res moved before occ-bve (ternary->binary enables more SCC equivalences for BVE)
+    // B: distill-cls-onlyrem added after occ-bve (removes clauses subsumed after variable elimination)
+    string str("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
     if (simp_conf.appmc) str = string("must-scc-vrepl, full-probe, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
+    // C: iter2 uses a separate string with extra occ-backw-sub at the end (catches clauses subsumed by BVE resolvents)
+    string str_iter2 = str + string("occ-backw-sub, ");
     for (int i = 0; i < simp_conf.iter1; i++) solver->simplify(&dont_elim, &str);
 
     // Now doing Oracle
@@ -195,7 +199,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
             solver->set_picosat_gate_limitK(400);
             solver->set_picosat_confl_limit(1000);
         }
-        solver->simplify(&dont_elim, &str);
+        solver->simplify(&dont_elim, &str_iter2);
     }
 
     // Final cleanup -- renumbering, disconnected component removing, etc.
@@ -207,6 +211,12 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
         if (backbone_done) s = "oracle-vivif-fast, oracle-sparsify-fast";
         else s = "oracle-vivif-sparsify-mustfinish";
         solver->simplify(&dont_elim, &s);
+    }
+    // F: conservative BVE after oracle-extra (oracle may create new elimination opportunities)
+    if (simp_conf.oracle_extra && !simp_conf.appmc) {
+        solver->set_min_bva_gain(0);
+        string s_bve = "occ-bve";
+        solver->simplify(&dont_elim, &s_bve);
     }
 
     str += string(", must-scc-vrepl, must-renumber,");
