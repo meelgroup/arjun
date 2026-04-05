@@ -36,6 +36,8 @@
 #include <functional>
 #include <map>
 #include <set>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace ArjunNS {
@@ -111,8 +113,15 @@ private:
     bool demorgan_flatten = true;  // flatten k-ary through NOT-wrappers
     bool normalize_inputs = true;  // dedup / complementary / const fold
 
-    std::map<aig_ptr, uint32_t> fanout;
-    std::map<aig_ptr, CMSat::Lit> cache;
+    // Hash on shared_ptr raw pointer for O(1) fanout/cache lookups. std::map
+    // showed up as the hottest path on 500k-node manthan AIGs.
+    struct AigPtrHash {
+        size_t operator()(const aig_ptr& p) const noexcept {
+            return std::hash<AIG*>{}(p.get());
+        }
+    };
+    std::unordered_map<aig_ptr, uint32_t, AigPtrHash> fanout;
+    std::unordered_map<aig_ptr, CMSat::Lit, AigPtrHash> cache;
 
     // Content-hashed caches for structural CSE across AIG pointers that
     // happen to encode the same gate. Keyed on the (sorted) literal inputs.
@@ -196,7 +205,7 @@ void AIGToCNF<Solver>::count_fanout(const aig_ptr& root) {
     // DFS saw it as already visited and never descended into grandchildren.
     fanout.clear();
     if (!root) return;
-    std::set<aig_ptr> visited;
+    std::unordered_set<aig_ptr, AigPtrHash> visited;
     std::function<void(const aig_ptr&)> dfs = [&](const aig_ptr& n) {
         if (n->type != AIGT::t_and) return;
         if (!visited.insert(n).second) return;
@@ -232,7 +241,7 @@ CMSat::Lit AIGToCNF<Solver>::encode(const aig_ptr& root, bool force_helper) {
 template<class Solver>
 std::vector<CMSat::Lit> AIGToCNF<Solver>::encode_batch(const std::vector<aig_ptr>& roots) {
     fanout.clear();
-    std::set<aig_ptr> visited;
+    std::unordered_set<aig_ptr, AigPtrHash> visited;
     std::function<void(const aig_ptr&)> dfs = [&](const aig_ptr& n) {
         if (!n || n->type != AIGT::t_and) return;
         if (!visited.insert(n).second) return;
