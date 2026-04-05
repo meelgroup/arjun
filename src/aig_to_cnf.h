@@ -92,6 +92,14 @@ public:
     void set_ite_sub_selector(bool b) { ite_sub_selector = b; }
     void set_demorgan_flatten(bool b) { demorgan_flatten = b; }
     void set_normalize_inputs(bool b) { normalize_inputs = b; }
+    // Cap the maximum width of a k-ary AND/OR group. Above the cap we
+    // fall back to pairwise Tseitin (3-clause chunks of width ≤ 3).
+    // The SAT solver's watched-literal propagation handles many narrow
+    // clauses more efficiently than one very wide clause, and on the
+    // manthan incremental-solver workload the wide backward clause
+    // produced by k-ary fusion was observed to hurt post-rebuild
+    // repair throughput. Default is a high cap (effectively unbounded).
+    void set_max_kary_width(uint32_t w) { max_kary_width = w; }
 
 private:
     Solver& solver;
@@ -112,6 +120,7 @@ private:
     bool ite_sub_selector = true;  // allow non-literal sub-AIG ITE selectors
     bool demorgan_flatten = true;  // flatten k-ary through NOT-wrappers
     bool normalize_inputs = true;  // dedup / complementary / const fold
+    uint32_t max_kary_width = 1u << 30; // effectively unbounded by default
 
     // Hash on shared_ptr raw pointer for O(1) fanout/cache lookups. std::map
     // showed up as the hottest path on 500k-node manthan AIGs.
@@ -348,6 +357,36 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
                 return it_cse->second;
             }
         }
+        // Width cap: if the k-ary group exceeds max_kary_width, split it
+        // into pairwise Tseitin chunks (each ≤ max_kary_width wide). Each
+        // chunk produces a helper with a backward clause of at most
+        // max_kary_width+1 literals, avoiding the single very wide
+        // clause that k-ary fusion would otherwise emit.
+        if (inputs.size() > max_kary_width) {
+            std::vector<CMSat::Lit> current = std::move(inputs);
+            while (current.size() > max_kary_width) {
+                std::vector<CMSat::Lit> next;
+                next.reserve((current.size() + max_kary_width - 1) / max_kary_width);
+                for (size_t i = 0; i < current.size(); i += max_kary_width) {
+                    size_t end = std::min(current.size(), i + max_kary_width);
+                    if (end - i == 1) { next.push_back(current[i]); continue; }
+                    std::vector<CMSat::Lit> chunk(current.begin() + i, current.begin() + end);
+                    CMSat::Lit hc = new_helper();
+                    emit_and_equiv(hc, chunk);
+                    stats.kary_and_count++;
+                    stats.kary_and_width_total += chunk.size();
+                    next.push_back(hc);
+                }
+                current = std::move(next);
+            }
+            if (current.size() == 1) { cache[n] = current[0]; return current[0]; }
+            CMSat::Lit h = new_helper();
+            emit_and_equiv(h, current);
+            stats.kary_and_count++;
+            stats.kary_and_width_total += current.size();
+            cache[n] = h;
+            return h;
+        }
         CMSat::Lit h = new_helper();
         emit_and_equiv(h, inputs);
         stats.kary_and_count++;
@@ -391,6 +430,31 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
                 cache[n] = it_cse->second;
                 return it_cse->second;
             }
+        }
+        if (inputs.size() > max_kary_width) {
+            std::vector<CMSat::Lit> current = std::move(inputs);
+            while (current.size() > max_kary_width) {
+                std::vector<CMSat::Lit> next;
+                next.reserve((current.size() + max_kary_width - 1) / max_kary_width);
+                for (size_t i = 0; i < current.size(); i += max_kary_width) {
+                    size_t end = std::min(current.size(), i + max_kary_width);
+                    if (end - i == 1) { next.push_back(current[i]); continue; }
+                    std::vector<CMSat::Lit> chunk(current.begin() + i, current.begin() + end);
+                    CMSat::Lit hc = new_helper();
+                    emit_or_equiv(hc, chunk);
+                    stats.kary_or_count++;
+                    stats.kary_or_width_total += chunk.size();
+                    next.push_back(hc);
+                }
+                current = std::move(next);
+            }
+            if (current.size() == 1) { cache[n] = current[0]; return current[0]; }
+            CMSat::Lit h = new_helper();
+            emit_or_equiv(h, current);
+            stats.kary_or_count++;
+            stats.kary_or_width_total += current.size();
+            cache[n] = h;
+            return h;
         }
         CMSat::Lit h = new_helper();
         if (group_cse) or_group_cse[inputs] = h;

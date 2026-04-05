@@ -2365,6 +2365,8 @@ void Manthan::rebuild_cex_solver() {
     uint64_t total_ite_patterns = 0;
     uint64_t total_kary_and = 0;
     uint64_t total_kary_or = 0;
+    uint64_t total_kary_and_width = 0;
+    uint64_t total_kary_or_width = 0;
     uint64_t total_dedup_const = 0;
     uint64_t total_demorgan_flat = 0;
     uint64_t total_ite_sub_sel = 0;
@@ -2383,6 +2385,13 @@ void Manthan::rebuild_cex_solver() {
         // Re-use FHolder's already-asserted true literal for t_const nodes
         // so we don't waste a var+unit-clause per formula.
         enc.set_true_lit(fh->get_true_lit());
+        // The k-ary width cap (set_max_kary_width) was evaluated on
+        // sdlx-fixpoint-5: width=3 ballooned clauses 1.9x (worse),
+        // width=8 produced ~28% more clauses and *slower* post-rebuild
+        // repair rate than the uncapped encoding. The wide-backward-clause
+        // hypothesis was wrong; the post-rebuild slowdown is driven by
+        // lost SAT solver state (learnt clauses, VSIDS activity), not by
+        // clause structure. Leave the encoder uncapped here.
         new_f.out = enc.encode(new_f.aig);
         const auto& es = enc.get_stats();
         total_clauses_out += es.clauses_added;
@@ -2390,6 +2399,8 @@ void Manthan::rebuild_cex_solver() {
         total_ite_patterns += es.ite_patterns;
         total_kary_and += es.kary_and_count;
         total_kary_or += es.kary_or_count;
+        total_kary_and_width += es.kary_and_width_total;
+        total_kary_or_width += es.kary_or_width_total;
         total_dedup_const += es.dedup_const_and + es.dedup_const_or;
         total_demorgan_flat += es.demorgan_and_flat + es.demorgan_or_flat;
         total_ite_sub_sel += es.ite_sub_sel;
@@ -2399,11 +2410,15 @@ void Manthan::rebuild_cex_solver() {
     }
     const double enc_time_s = std::chrono::duration<double>(
         std::chrono::steady_clock::now() - t_enc_start).count();
+    const double avg_kand_w = total_kary_and > 0
+        ? (double)total_kary_and_width / total_kary_and : 0.0;
+    const double avg_kor_w = total_kary_or > 0
+        ? (double)total_kary_or_width / total_kary_or : 0.0;
     verb_print(1, COLCYN "[manthan] rebuild re-encode: "
         << "clauses " << total_clauses_in << " -> " << total_clauses_out
         << "  (helpers " << total_helpers_out
-        << ", kAND " << total_kary_and
-        << ", kOR " << total_kary_or
+        << ", kAND " << total_kary_and << "/w" << std::fixed << std::setprecision(1) << avg_kand_w
+        << ", kOR " << total_kary_or << "/w" << std::fixed << std::setprecision(1) << avg_kor_w
         << ", ITE " << total_ite_patterns
         << ", aig_nodes " << total_aig_nodes
         << ")  T: " << std::fixed << std::setprecision(2) << enc_time_s);

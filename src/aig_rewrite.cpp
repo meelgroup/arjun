@@ -410,6 +410,55 @@ aig_ptr AIGRewriter::deep_absorb(const aig_ptr& aig, AigPtrMap& cache) {
     auto l = deep_absorb(aig->l, cache);
     auto r = deep_absorb(aig->r, cache);
 
+    // Fast path: deep_absorb's flattening and cross-level subsumption rules
+    // can only fire when at least one child is a "real" gate -- a positive
+    // AND (flattenable into the parent) or an OR gate (cross-level
+    // absorption / subsumption). When neither child is such a gate the
+    // expensive collect/sort/pairwise-subsumption pipeline is guaranteed
+    // to do nothing beyond what make_canonical does, so skip it.
+    //
+    // On real manthan workloads this fires for the vast majority of nodes
+    // (leaves of branch-ANDs are literals) and cuts deep_absorb's cost
+    // from the dominant phase of aig-rewrite to a small fraction.
+    auto is_proper_and = [](const aig_ptr& n) {
+        return n && n->type == AIGT::t_and && !n->neg && n->l != n->r;
+    };
+    bool l_and = is_proper_and(l), r_and = is_proper_and(r);
+    bool l_or  = is_or(l),          r_or  = is_or(r);
+    if (!l_and && !r_and && !l_or && !r_or) {
+        // Cheap local rules (simplify_pass would normally catch these,
+        // but recursion may have produced new literal/constant children
+        // that expose them for the first time).
+        if (aig->type == AIGT::t_and && !aig->neg) {
+            if (l == r) {
+                stats.idempotent_elim++;
+                cache[aig] = l;
+                return l;
+            }
+            if (is_complement(l, r)) {
+                stats.complement_elim++;
+                auto result = aig_mng.new_const(false);
+                cache[aig] = result;
+                return result;
+            }
+            if (l->type == AIGT::t_const) {
+                stats.const_prop++;
+                auto result = l->neg ? l : r; // FALSE&x=FALSE, TRUE&x=x
+                cache[aig] = result;
+                return result;
+            }
+            if (r->type == AIGT::t_const) {
+                stats.const_prop++;
+                auto result = r->neg ? r : l;
+                cache[aig] = result;
+                return result;
+            }
+        }
+        auto result = make_canonical(aig->type, aig->neg, l, r);
+        cache[aig] = result;
+        return result;
+    }
+
     // For AND gates (not negated), flatten and deduplicate children
     if (aig->type == AIGT::t_and && !aig->neg) {
         vector<aig_ptr> children;
@@ -420,14 +469,24 @@ aig_ptr AIGRewriter::deep_absorb(const aig_ptr& aig, AigPtrMap& cache) {
         std::sort(children.begin(), children.end());
         children.erase(std::unique(children.begin(), children.end()), children.end());
 
-        // Check for complementary pairs
-        for (size_t i = 0; i < children.size(); i++) {
-            for (size_t j = i + 1; j < children.size(); j++) {
-                if (is_complement(children[i], children[j])) {
-                    stats.complement_elim++;
-                    auto result = aig_mng.new_const(false);
-                    cache[aig] = result;
-                    return result;
+        // Quadratic-width guard. On real manthan workloads we see absorption
+        // fire <0.01% of nodes, but the O(k²) complement check and cubic
+        // cross-level subsumption below blow up on wide flattened groups
+        // (observed 4-5s on 572k-node AIGs with almost zero rewrites). Cap
+        // the expensive analyses to small groups where they matter.
+        constexpr size_t kDeepAbsorbWideGroup = 16;
+        const bool wide_group = children.size() > kDeepAbsorbWideGroup;
+
+        // Check for complementary pairs (skip for wide groups)
+        if (!wide_group) {
+            for (size_t i = 0; i < children.size(); i++) {
+                for (size_t j = i + 1; j < children.size(); j++) {
+                    if (is_complement(children[i], children[j])) {
+                        stats.complement_elim++;
+                        auto result = aig_mng.new_const(false);
+                        cache[aig] = result;
+                        return result;
+                    }
                 }
             }
         }
@@ -465,7 +524,7 @@ aig_ptr AIGRewriter::deep_absorb(const aig_ptr& aig, AigPtrMap& cache) {
         // or its complement appears in the OR, enabling absorption or subsumption.
         // AND(a, OR(a, b)) = a  (absorption: OR child containing AND sibling)
         // AND(a, OR(~a, b)) = AND(a, b)  (subsumption: OR child containing complement)
-        bool changed = true;
+        bool changed = !wide_group;
         while (changed) {
             changed = false;
             for (size_t i = 0; i < children.size(); i++) {
@@ -525,7 +584,7 @@ aig_ptr AIGRewriter::deep_absorb(const aig_ptr& aig, AigPtrMap& cache) {
         // Multi-child resolution: AND(OR(a,b,c), OR(a,b,~c)) = AND(OR(a,b))
         // For each pair of OR children, if they differ in exactly one term
         // and those terms are complements, replace both with the common terms.
-        {
+        if (!wide_group) {
             bool res_changed = true;
             while (res_changed) {
                 res_changed = false;
@@ -604,14 +663,20 @@ aig_ptr AIGRewriter::deep_absorb(const aig_ptr& aig, AigPtrMap& cache) {
         std::sort(children.begin(), children.end());
         children.erase(std::unique(children.begin(), children.end()), children.end());
 
-        // Check for complementary pairs → TRUE
-        for (size_t i = 0; i < children.size(); i++) {
-            for (size_t j = i + 1; j < children.size(); j++) {
-                if (is_complement(children[i], children[j])) {
-                    stats.complement_elim++;
-                    auto result = aig_mng.new_const(true);
-                    cache[aig] = result;
-                    return result;
+        // Quadratic-width guard (same rationale as the AND path above).
+        constexpr size_t kDeepAbsorbWideGroupOr = 16;
+        const bool wide_or_group = children.size() > kDeepAbsorbWideGroupOr;
+
+        // Check for complementary pairs → TRUE (skip for wide groups)
+        if (!wide_or_group) {
+            for (size_t i = 0; i < children.size(); i++) {
+                for (size_t j = i + 1; j < children.size(); j++) {
+                    if (is_complement(children[i], children[j])) {
+                        stats.complement_elim++;
+                        auto result = aig_mng.new_const(true);
+                        cache[aig] = result;
+                        return result;
+                    }
                 }
             }
         }
@@ -644,7 +709,7 @@ aig_ptr AIGRewriter::deep_absorb(const aig_ptr& aig, AigPtrMap& cache) {
         // OR sibling or its complement appears in the AND, enabling simplification.
         // OR(a, AND(a, b)) = a  (absorption: AND child containing OR sibling)
         // OR(a, AND(~a, b)) = OR(a, b)  (subsumption: AND child containing complement)
-        bool changed_or = true;
+        bool changed_or = !wide_or_group;
         while (changed_or) {
             changed_or = false;
             for (size_t i = 0; i < children.size(); i++) {

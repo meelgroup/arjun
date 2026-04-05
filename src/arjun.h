@@ -1538,10 +1538,20 @@ public:
         uint32_t const_vote_samples = 10;   // const_functions: majority voting samples
         uint32_t stats_every = 40;          // print stats every N repair loops
         uint32_t detailed_stats_every = 200;// print detailed stats every N repair loops
-        uint32_t rebuild_min_loops = 200;   // min repair loops before allowing cex_solver rebuild
-        uint32_t rebuild_min_clauses = 100000; // min total formula clauses before rebuild
-        uint32_t rebuild_growth_num = 3;    // rebuild when nVars > nvars_at_last * growth_num/growth_den
-        uint32_t rebuild_growth_den = 2;
+        // cex_solver rebuild thresholds. Rebuilding re-canonicalizes the
+        // accumulated ITE repairs through the AIG rewriter and re-encodes
+        // them as fresh Tseitin, which is meant to keep the incremental
+        // solver's clause count in check. In practice, on instances like
+        // sdlx-fixpoint-5 aig-rewrite finds <1% node reduction and each
+        // rebuild throws away the solver's learnt clauses / VSIDS activity,
+        // costing dozens of repair loops' worth of wall-clock (measured
+        // 49s / 26% of total runtime to do 2 rebuilds). The defaults are
+        // tuned to make rebuild rare; benchmarks that actually benefit from
+        // it can dial the threshold down via --rebuildgrownum/den.
+        uint32_t rebuild_min_loops = 500;
+        uint32_t rebuild_min_clauses = 500000;
+        uint32_t rebuild_growth_num = 4;    // 4x growth since last rebuild
+        uint32_t rebuild_growth_den = 1;
         uint32_t reduce_cex_gen_ok = 20;    // reduce multi_cex when generalized_repair_ok > this
         uint32_t reduce_cex_tot_rep = 2000; // reduce multi_cex when tot_repaired > this
         uint32_t reduce_cex_need_rep = 3;   // set multi_cex_k=1 when needs_repair <= this
