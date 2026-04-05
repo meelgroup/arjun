@@ -114,6 +114,20 @@ const std::map<string, ParamDef> param_table = {
     {"td_steps",                 {PT::UInt,   [](MC& c, const string& v) { c.td_steps                 = parse_val<uint64_t>(v); }}},
     {"td_lookahead_iters",       {PT::UInt,   [](MC& c, const string& v) { c.td_lookahead_iters       = parse_val<uint32_t>(v); }}},
     {"better_ctx_remove_all",    {PT::UInt,   [](MC& c, const string& v) { c.better_ctx_remove_all    = parse_val<uint32_t>(v); }}},
+    {"td_max_edges",             {PT::UInt,   [](MC& c, const string& v) { c.td_max_edges             = parse_val<uint32_t>(v); }}},
+    {"do_td_contract",           {PT::Int,    [](MC& c, const string& v) { c.do_td_contract           = parse_val<int>(v); }}},
+    {"ccnr_mems_per_sample",     {PT::UInt,   [](MC& c, const string& v) { c.ccnr_mems_per_sample     = parse_val<uint64_t>(v); }}},
+    {"ccnr_per_call_limit",      {PT::UInt,   [](MC& c, const string& v) { c.ccnr_per_call_limit      = parse_val<uint32_t>(v); }}},
+    {"bias_w_high",              {PT::Double, [](MC& c, const string& v) { c.bias_w_high              = parse_val<double>(v); }}},
+    {"bias_p_low",               {PT::Double, [](MC& c, const string& v) { c.bias_p_low               = parse_val<double>(v); }}},
+    {"bias_p_high",              {PT::Double, [](MC& c, const string& v) { c.bias_p_high              = parse_val<double>(v); }}},
+    {"reduce_cex_gen_ratio_num", {PT::UInt,   [](MC& c, const string& v) { c.reduce_cex_gen_ratio_num = parse_val<uint32_t>(v); }}},
+    {"reduce_cex_gen_ratio_den", {PT::UInt,   [](MC& c, const string& v) { c.reduce_cex_gen_ratio_den = parse_val<uint32_t>(v); }}},
+    {"cz_high_ratio",            {PT::UInt,   [](MC& c, const string& v) { c.cz_high_ratio            = parse_val<uint32_t>(v); }}},
+    {"cz_low_ratio",             {PT::UInt,   [](MC& c, const string& v) { c.cz_low_ratio             = parse_val<uint32_t>(v); }}},
+    {"cz_threshold_high",        {PT::UInt,   [](MC& c, const string& v) { c.cz_threshold_high        = parse_val<uint32_t>(v); }}},
+    {"cz_threshold_mid",         {PT::UInt,   [](MC& c, const string& v) { c.cz_threshold_mid         = parse_val<uint32_t>(v); }}},
+    {"cz_threshold_low",         {PT::UInt,   [](MC& c, const string& v) { c.cz_threshold_low         = parse_val<uint32_t>(v); }}},
 };
 } // namespace
 

@@ -107,7 +107,7 @@ vector<sample> Manthan::get_cmsgen_samples(const uint32_t num) {
         const uint32_t bias_samples = mconf.bias_samples;
         for(int bias = 0; bias <= 1; bias++) {
             for(const auto& y: to_define) {
-                double bias_w = bias ? 0.9 : 0.1;
+                double bias_w = bias ? mconf.bias_w_high : (1.0 - mconf.bias_w_high);
                 solver_samp.set_lit_weight(Lit(y, false), bias_w);
                 solver_samp.set_lit_weight(Lit(y, true), 1.0-bias_w);
             }
@@ -136,9 +136,9 @@ vector<sample> Manthan::get_cmsgen_samples(const uint32_t num) {
             double p = dist[1][y];
             double q = dist[0][y];
             double bias;
-            if (0.35 < p && p < 0.65 && 0.35 < q && q < 0.65) {
+            if (mconf.bias_p_low < p && p < mconf.bias_p_high && mconf.bias_p_low < q && q < mconf.bias_p_high) {
               bias = p;
-            } else if (q <= 0.35) {
+            } else if (q <= mconf.bias_p_low) {
               if (q == 0.0) q = 0.001;
               bias = q;
             } else {
@@ -204,9 +204,9 @@ vector<sample> Manthan::get_samples_ccnr(const uint32_t num) {
     ls_s.build_neighborhood();
 
     sample s;
-    long long int mems = num*100*1000ULL;
+    long long int mems = (long long int)(num * mconf.ccnr_mems_per_sample);
     for(uint32_t si = 0; si < num; si++) {
-        int res = ls_s.local_search(nullptr, mems, "c o", 50LL*1000);
+        int res = ls_s.local_search(nullptr, mems, "c o", (long long int)mconf.ccnr_per_call_limit);
         if (res) {
           s.clear();
           s.resize(cnf.nVars(), l_Undef);
@@ -1020,7 +1020,7 @@ SimplifiedCNF Manthan::do_manthan() {
         // Also reduce when solver is slow (late in repair) to avoid expensive calls.
         t0 = cpuTime();
         const int saved_multi_cex_k = mconf.multi_cex_k;
-        if (generalized_repair_ok > mconf.reduce_cex_gen_ok && generalized_repair_ok > tot_repaired * 3 / 4) {
+        if (generalized_repair_ok > mconf.reduce_cex_gen_ok && generalized_repair_ok * mconf.reduce_cex_gen_ratio_den > tot_repaired * mconf.reduce_cex_gen_ratio_num) {
             const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k = min(mconf.multi_cex_k, 2);
         }
         // When deep into repair (solver slow), reduce extra CEXes to save time.
@@ -1034,7 +1034,7 @@ SimplifiedCNF Manthan::do_manthan() {
         }
         // When cost-zero dominates, extra CEXes provide little value since
         // most repairs will be cost-zero regardless of which CEX we use
-        if (cost_zero_repairs > tot_repaired * 3 && tot_repaired > mconf.reduce_cex_cz_min_rep) {
+        if (cost_zero_repairs > tot_repaired * mconf.cz_high_ratio && tot_repaired > mconf.reduce_cex_cz_min_rep) {
             const_cast<ArjunNS::Arjun::ManthanConf&>(mconf).multi_cex_k =
                 min(mconf.multi_cex_k, 2);
         }
@@ -1051,7 +1051,7 @@ SimplifiedCNF Manthan::do_manthan() {
         // Also skip every other iteration when input-only conflicts dominate, since
         // the repair quality doesn't depend on which specific y-vars are wrong.
         const bool skip_better_ctx = (mconf.skip_better_ctx_freq > 0 && num_loops_repair % mconf.skip_better_ctx_freq != 0) &&
-            (generalized_repair_ok > mconf.reduce_cex_gen_ok && generalized_repair_ok > tot_repaired * 3 / 4);
+            (generalized_repair_ok > mconf.reduce_cex_gen_ok && generalized_repair_ok * mconf.reduce_cex_gen_ratio_den > tot_repaired * mconf.reduce_cex_gen_ratio_num);
         if (needs_repair.size() <= mconf.skip_better_ctx_min || mconf.maxsat_better_ctx == -1 || skip_better_ctx) {
           // Skip optimization
         } else if (mconf.maxsat_better_ctx == 1) {
@@ -1095,8 +1095,8 @@ SimplifiedCNF Manthan::do_manthan() {
                 // After consecutive cost-zero repairs, break to get a fresh
                 // counterexample. Adaptive threshold: break sooner when the
                 // cost-zero rate is high (saving more solver calls).
-                const uint32_t cz_threshold = (cost_zero_repairs > tot_repaired * 3) ? 1 :
-                    (cost_zero_repairs > tot_repaired * 2) ? 2 : 3;
+                const uint32_t cz_threshold = (cost_zero_repairs > tot_repaired * mconf.cz_high_ratio) ? mconf.cz_threshold_high :
+                    (cost_zero_repairs > tot_repaired * mconf.cz_low_ratio) ? mconf.cz_threshold_mid : mconf.cz_threshold_low;
                 if (consecutive_cost_zero >= cz_threshold && num_repaired > 0) break;
             }
             SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
@@ -1878,7 +1878,9 @@ bool Manthan::cluster_order() {
         verb_print(1, "All projected vars are the same distance, ignoring TD");
         return false;
     }
-    assert(to_define_full.size() == (uint32_t)primal_alt->numNodes());
+    // When do_td_contract=1, primal_alt only contains to-define vars.
+    // When do_td_contract=0, primal_alt contains all cnf vars (including inputs).
+    if (mconf.do_td_contract) assert(to_define_full.size() == (uint32_t)primal_alt->numNodes());
     compute_td_score_using_adj(nodes, bags, adj, new_to_old);
     return true;
 }

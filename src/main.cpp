@@ -229,6 +229,20 @@ void add_arjun_options() {
     myopt("--tdsteps", mconf.td_steps, fc_int, "Tree decomposition FlowCutter steps");
     myopt("--tdlookahead", mconf.td_lookahead_iters, fc_int, "Tree decomposition FlowCutter lookahead iterations");
     myopt("--bctxremoveall", mconf.better_ctx_remove_all, fc_int, "Remove-all threshold in find_better_ctx_normal");
+    myopt("--tdcontract", mconf.do_td_contract, fc_int, "Contract input variables before tree decomposition");
+    myopt("--tdmaxedges", mconf.td_max_edges, fc_int, "Skip TD when primal graph exceeds this many edges");
+    myopt("--ccnrmemspersample", mconf.ccnr_mems_per_sample, fc_int, "CCNR total memory budget per sample");
+    myopt("--ccnrpercalllimit", mconf.ccnr_per_call_limit, fc_int, "CCNR per-call step limit for local_search");
+    myopt("--biaswgh", mconf.bias_w_high, fc_double, "Bias weight for positive sampling direction (1-this for negative)");
+    myopt("--biasplow", mconf.bias_p_low, fc_double, "Lower probability threshold for mid-range bias selection");
+    myopt("--biasphigh", mconf.bias_p_high, fc_double, "Upper probability threshold for mid-range bias selection");
+    myopt("--reducecexgenrationum", mconf.reduce_cex_gen_ratio_num, fc_int, "Numerator of gen_ok/tot_repaired threshold for CEX reduction");
+    myopt("--reducecexgenratioden", mconf.reduce_cex_gen_ratio_den, fc_int, "Denominator of gen_ok/tot_repaired threshold for CEX reduction");
+    myopt("--czhighratio", mconf.cz_high_ratio, fc_int, "cost_zero > tot_repaired * this triggers tightest cz_threshold");
+    myopt("--czlowratio", mconf.cz_low_ratio, fc_int, "cost_zero > tot_repaired * this triggers medium cz_threshold");
+    myopt("--czthreshhigh", mconf.cz_threshold_high, fc_int, "Consecutive cost-zero break count when high cz ratio");
+    myopt("--czthreshmid", mconf.cz_threshold_mid, fc_int, "Consecutive cost-zero break count when medium cz ratio");
+    myopt("--czthreshlow", mconf.cz_threshold_low, fc_int, "Consecutive cost-zero break count when low cz ratio");
     // synth -- debug
     myopt("--manthancnf", mconf.write_manthan_cnf, fc_string, "Write Manthan CNF to this file");
     myopt("--debugsynth", conf.debug_synth, fc_string,"Debug synthesis, prefix with this fname");

@@ -322,14 +322,19 @@ def gen_mstrategy():
                    "conflict_cap", "conflict_cap_keep", "batch_minim_min",
                    "minim_budget_threshold", "minim_budget_max", "minim_budget_mult",
                    "aig_simplify_every", "td_steps", "td_lookahead_iters",
-                   "better_ctx_remove_all"]
-    int_params  = ["filter_samples", "biased_sampling", "minimize_conflict", "maxsat_better_ctx",
+                   "better_ctx_remove_all",
+                   "td_max_edges", "ccnr_mems_per_sample", "ccnr_per_call_limit",
+                   "reduce_cex_gen_ratio_num", "reduce_cex_gen_ratio_den",
+                   "cz_high_ratio", "cz_low_ratio",
+                   "cz_threshold_high", "cz_threshold_mid", "cz_threshold_low"]
+    int_params  = ["filter_samples", "biased_sampling", "minimize_conflict",
+                   # maxsat_better_ctx=1 requires EXTRA_SYNTH — omit from strategies
                    "maxsat_order", "use_all_vars_as_feats",
                    "repair_cache_size", "backward_synth_order", "manthan_order",
                    "manthan_on_the_fly_order", "one_repair_per_loop", "force_bw_equal",
-                   "bva_xor_vars", "silent_var_update", "inv_learnt"]
+                   "bva_xor_vars", "silent_var_update", "inv_learnt", "do_td_contract"]
     #  "ctx_solver_type", "repair_solver_type",
-    double_params = ["min_gain_split"]
+    double_params = ["min_gain_split", "bias_w_high", "bias_p_low", "bias_p_high"]
 
     def gen_uint():
         return str(random.choice([0, 1, 10, 100, 400, 1000]))
@@ -338,7 +343,7 @@ def gen_mstrategy():
         return str(random.choice([0, 1, 2]))
 
     def gen_double():
-        return str(random.choice([0.001, 0.1, 0.5, 1.0, 5.0]))
+        return str(random.choice([0.0, 0.001, 0.1, 0.35, 0.5, 0.65, 0.9, 1.0]))
 
     def gen_strategy(must_have_max_repairs, must_not_have_max_repairs=False):
         stype = random.choice(types)
@@ -442,7 +447,7 @@ if __name__ == "__main__":
         solver += " --simpevery " + random.choice(["1", "100", "10000"])
         solver += " --maxdepth " + random.choice(["2", "10"])
         solver += " --minleaf " + random.choice(["2", "10"])
-        solver += " --maxsat " + random.choice(["0", "1", "-1"])
+        solver += " --maxsat " + random.choice(["0", "-1"])  # skip 1 (requires EXTRA_SYNTH)
         solver += " --repaircache " + " " + random.choice(["0", "100", "1000"])
 
         # Hard-coded cutoff constants (very low and very high values)
@@ -476,6 +481,20 @@ if __name__ == "__main__":
         solver += " --tdsteps " + random.choice(["100", "1000", "100000", "1000000"])
         solver += " --tdlookahead " + random.choice(["1", "10", "300", "1000"])
         solver += " --bctxremoveall " + random.choice(["1", "3", "5", "20", "10000"])
+        solver += " --tdcontract " + random.choice(["0", "1"])
+        solver += " --tdmaxedges " + random.choice(["1", "10", "100", "1000", "70000", "10000000"])
+        solver += " --ccnrmemspersample " + random.choice(["0", "1", "100", "1000", "100000", "10000000"])
+        solver += " --ccnrpercalllimit " + random.choice(["0", "1", "100", "1000", "50000", "10000000"])
+        solver += " --biaswgh " + random.choice(["0.0", "0.1", "0.5", "0.9", "1.0"])
+        solver += " --biasplow " + random.choice(["0.0", "0.1", "0.35", "0.5"])
+        solver += " --biasphigh " + random.choice(["0.5", "0.65", "0.9", "1.0"])
+        solver += " --reducecexgenrationum " + random.choice(["0", "1", "3", "10", "1000"])
+        solver += " --reducecexgenratioden " + random.choice(["1", "2", "4", "10", "1000"])
+        solver += " --czhighratio " + random.choice(["0", "1", "3", "10", "1000"])
+        solver += " --czlowratio " + random.choice(["0", "1", "2", "5", "100"])
+        solver += " --czthreshhigh " + random.choice(["0", "1", "2", "5", "1000"])
+        solver += " --czthreshmid " + random.choice(["0", "1", "2", "5", "1000"])
+        solver += " --czthreshlow " + random.choice(["0", "1", "2", "5", "1000"])
 
         solver += " --mstrategy " + gen_mstrategy()
 

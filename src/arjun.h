@@ -1574,6 +1574,21 @@ public:
         uint64_t td_steps = 100000;         // tree decomposition FlowCutter steps
         uint32_t td_lookahead_iters = 300;  // tree decomposition FlowCutter lookahead
         uint32_t better_ctx_remove_all = 5; // remove-all threshold in find_better_ctx_normal
+        // CCNR sampling constants
+        uint64_t ccnr_mems_per_sample = 100000; // total CCNR mem budget per sample
+        uint32_t ccnr_per_call_limit = 50000;   // per-call step limit for CCNR local_search
+        // Biased sampling thresholds/weights (from Manthan paper)
+        double bias_w_high = 0.9;           // weight for "positive" bias direction
+        double bias_p_low = 0.35;           // lower threshold for mid-range bias selection
+        double bias_p_high = 0.65;          // upper threshold for mid-range bias selection
+        // Ratios used in CEX reduction heuristics
+        uint32_t reduce_cex_gen_ratio_num = 3; // numerator of gen_ok / tot_repaired ratio
+        uint32_t reduce_cex_gen_ratio_den = 4; // denominator of gen_ok / tot_repaired ratio
+        uint32_t cz_high_ratio = 3;         // cost_zero > tot_repaired * cz_high_ratio triggers tight threshold
+        uint32_t cz_low_ratio = 2;          // cost_zero > tot_repaired * cz_low_ratio triggers medium threshold
+        uint32_t cz_threshold_high = 1;     // consecutive cost-zero break threshold (high ratio)
+        uint32_t cz_threshold_mid = 2;      // consecutive cost-zero break threshold (medium ratio)
+        uint32_t cz_threshold_low = 3;      // consecutive cost-zero break threshold (low ratio)
     };
 
     struct IndepInfo {
