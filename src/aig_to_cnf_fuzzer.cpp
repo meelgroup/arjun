@@ -141,6 +141,44 @@ static aig_ptr gen_manthan_aig(std::mt19937& rng, uint32_t num_vars,
     return ite;
 }
 
+// LINEAR deep ITE-chain generator: this is the actual manthan workload
+// shape. Each repair adds one more ITE on top of the current formula:
+//   f_{i+1} = ITE(branch_i, repair_i, f_i)
+// where branch_i is an AND of many literals. After ~200-500 repairs the
+// chain depth is hundreds -- matching the "aig_depth: 200+" values in
+// real genbuf8b4n.sat runs.
+static aig_ptr gen_deep_ite_chain_aig(std::mt19937& rng, uint32_t num_vars,
+                                       uint32_t chain_depth,
+                                       uint32_t max_branch_width)
+{
+    // Start with a literal base.
+    aig_ptr f = AIG::new_lit(rng() % num_vars, rng() % 2);
+    for (uint32_t step = 0; step < chain_depth; step++) {
+        // Build the branch: AND of k random literals. Width distribution
+        // is biased towards ~max_branch_width/2 with occasional wide ANDs.
+        uint32_t k = 1 + rng() % std::max<uint32_t>(1u, max_branch_width);
+        if (rng() % 4 == 0) k = std::max<uint32_t>(k, max_branch_width);
+        aig_ptr branch = AIG::new_lit(rng() % num_vars, rng() % 2);
+        for (uint32_t i = 1; i < k; i++) {
+            branch = AIG::new_and(branch, AIG::new_lit(rng() % num_vars, rng() % 2));
+        }
+        // Repair value: usually a literal, occasionally a small AND.
+        aig_ptr repair;
+        if (rng() % 5 == 0) {
+            repair = AIG::new_and(
+                AIG::new_lit(rng() % num_vars, rng() % 2),
+                AIG::new_lit(rng() % num_vars, rng() % 2));
+        } else {
+            repair = AIG::new_lit(rng() % num_vars, rng() % 2);
+        }
+        // ITE(branch, repair, f)
+        f = AIG::new_or(
+            AIG::new_and(branch, repair),
+            AIG::new_and(AIG::new_not(branch), f));
+    }
+    return f;
+}
+
 // "DNF cover" generator: OR of several (AND of literals) * subformula branches.
 // Directly models the inner loop of manthan.cpp around line 590-616.
 static aig_ptr gen_dnf_cover_aig(std::mt19937& rng, uint32_t num_vars,
@@ -409,6 +447,181 @@ static bool run_one(const aig_ptr& aig, uint32_t num_vars,
     return true;
 }
 
+// -----------------------------------------------------------------------------
+// Per-feature measurement: encode the same set of AIGs with each feature
+// individually disabled, compare clause count and wall-clock vs baseline.
+// -----------------------------------------------------------------------------
+
+enum class Feature {
+    NONE,               // baseline: all features on
+    NORMALIZE_INPUTS,   // dedup/complementary/const fold in k-ary groups
+    GROUP_CSE,          // content-hashed CSE for AND/OR/ITE groups
+    DEMORGAN_FLATTEN,   // flatten k-ary through NOT-wrappers
+    ITE_SUB_SELECTOR,   // ITE detection with non-literal sub-AIG selectors
+    DETECT_ITE,         // ITE detection entirely
+    KARY_FUSION,        // k-ary AND/OR fusion
+};
+
+static const char* feature_name(Feature f) {
+    switch (f) {
+        case Feature::NONE:             return "baseline (all on)";
+        case Feature::NORMALIZE_INPUTS: return "normalize_inputs";
+        case Feature::GROUP_CSE:        return "group_cse";
+        case Feature::DEMORGAN_FLATTEN: return "demorgan_flatten";
+        case Feature::ITE_SUB_SELECTOR: return "ite_sub_selector";
+        case Feature::DETECT_ITE:       return "detect_ite";
+        case Feature::KARY_FUSION:      return "kary_fusion";
+    }
+    return "?";
+}
+
+struct MeasureResult {
+    uint64_t clauses = 0;
+    uint64_t helpers = 0;
+    double encode_time_s = 0.0;
+};
+
+// Encode all aigs with a single feature disabled and collect totals.
+static MeasureResult run_measure_pass(const std::vector<aig_ptr>& aigs,
+                                       const std::vector<uint32_t>& nvars,
+                                       Feature disabled)
+{
+    MeasureResult r;
+    for (size_t i = 0; i < aigs.size(); i++) {
+        const aig_ptr& aig = aigs[i];
+        if (!aig) continue;
+        SATSolver solver;
+        solver.set_verbosity(0);
+        solver.new_vars(nvars[i]);
+        AIGToCNF<SATSolver> enc(solver);
+        switch (disabled) {
+            case Feature::NONE: break;
+            case Feature::NORMALIZE_INPUTS: enc.set_normalize_inputs(false); break;
+            case Feature::GROUP_CSE:        enc.set_group_cse(false); break;
+            case Feature::DEMORGAN_FLATTEN: enc.set_demorgan_flatten(false); break;
+            case Feature::ITE_SUB_SELECTOR: enc.set_ite_sub_selector(false); break;
+            case Feature::DETECT_ITE:       enc.set_detect_ite(false); break;
+            case Feature::KARY_FUSION:      enc.set_kary_fusion(false); break;
+        }
+        auto t0 = std::chrono::steady_clock::now();
+        enc.encode(aig);
+        auto t1 = std::chrono::steady_clock::now();
+        r.encode_time_s += std::chrono::duration<double>(t1 - t0).count();
+        const auto& s = enc.get_stats();
+        r.clauses += s.clauses_added;
+        r.helpers += s.helpers_added;
+    }
+    return r;
+}
+
+static int run_measure_mode(uint64_t seed, uint64_t num_iters,
+                             uint32_t max_vars, uint32_t max_depth,
+                             uint32_t max_nodes_cfg)
+{
+    // Pre-generate a fixed set of AIGs -- the measurement must be on an
+    // identical corpus for every feature toggle, otherwise random variance
+    // dwarfs the effect we're trying to see.
+    std::mt19937 rng(seed);
+    std::vector<aig_ptr> aigs;
+    std::vector<uint32_t> nvars;
+    aigs.reserve(num_iters);
+    nvars.reserve(num_iters);
+    cout << "Generating " << num_iters << " AIGs (seed " << seed << ")..." << std::endl;
+    for (uint64_t iter = 0; iter < num_iters; iter++) {
+        uint32_t num_vars = 2 + rng() % (max_vars - 1);
+        uint32_t depth = 3 + rng() % (max_depth - 2);
+        uint32_t max_nodes = 8 + rng() % max_nodes_cfg;
+        aig_ptr aig;
+        uint32_t shape = rng() % 10;
+        if (shape < 4) {
+            uint32_t d = 50 + rng() % 450;
+            if (rng() % 20 == 0) d = 500 + rng() % 500;
+            uint32_t bw = 2 + rng() % 8;
+            aig = gen_deep_ite_chain_aig(rng, num_vars, d, bw);
+        } else if (shape < 6) {
+            uint32_t nb = 2 + rng() % 8;
+            uint32_t bw = 2 + rng() % 6;
+            aig = gen_dnf_cover_aig(rng, num_vars, nb, bw);
+        } else if (shape < 7) {
+            aig = gen_manthan_aig(rng, num_vars, 2 + rng() % 4, 2 + rng() % 6);
+        } else if (shape < 8) {
+            aig = gen_random_aig(rng, num_vars, depth, max_nodes);
+        } else if (shape < 9) {
+            aig = gen_chain_aig(rng, num_vars, 5 + rng() % 25);
+        } else {
+            uint32_t d = 50 + rng() % 200;
+            uint32_t bw = 2 + rng() % 6;
+            aig_ptr raw = gen_deep_ite_chain_aig(rng, num_vars, d, bw);
+            if (raw) { AIGRewriter rw; aig = rw.rewrite(raw); }
+        }
+        if (!aig) continue;
+        aigs.push_back(aig);
+        nvars.push_back(num_vars);
+    }
+    cout << "Generated " << aigs.size() << " AIGs." << std::endl;
+
+    // Warm up once to touch caches, then measure baseline twice and take the
+    // best to reduce jitter.
+    run_measure_pass(aigs, nvars, Feature::NONE);
+    auto best_of_2 = [&](Feature f) {
+        auto a = run_measure_pass(aigs, nvars, f);
+        auto b = run_measure_pass(aigs, nvars, f);
+        if (b.encode_time_s < a.encode_time_s) a.encode_time_s = b.encode_time_s;
+        return a;
+    };
+    MeasureResult baseline = best_of_2(Feature::NONE);
+
+    cout << "\n=== Feature contribution (disabling each one) ===" << std::endl;
+    cout << "Baseline (all on): "
+         << baseline.clauses << " clauses, "
+         << baseline.helpers << " helpers, "
+         << std::fixed << std::setprecision(3) << baseline.encode_time_s
+         << "s encode time" << std::endl;
+    cout << std::endl;
+    cout << std::left << std::setw(22) << "Feature disabled"
+         << std::right << std::setw(12) << "+clauses"
+         << std::setw(10) << "+helpers"
+         << std::setw(12) << "time delta"
+         << std::setw(14) << "ms/k-cls-saved"
+         << std::endl;
+    cout << std::string(70, '-') << std::endl;
+    Feature features[] = {
+        Feature::NORMALIZE_INPUTS,
+        Feature::GROUP_CSE,
+        Feature::DEMORGAN_FLATTEN,
+        Feature::ITE_SUB_SELECTOR,
+        Feature::DETECT_ITE,
+        Feature::KARY_FUSION,
+    };
+    for (Feature f : features) {
+        MeasureResult r = best_of_2(f);
+        int64_t extra_clauses = (int64_t)r.clauses - (int64_t)baseline.clauses;
+        int64_t extra_helpers = (int64_t)r.helpers - (int64_t)baseline.helpers;
+        double time_delta_ms = (baseline.encode_time_s - r.encode_time_s) * 1000.0;
+        // Cost-benefit: ms of baseline time spent per 1000 clauses saved by
+        // this feature. Lower is better (cheap feature that saves clauses).
+        double cost_per_ksaved = extra_clauses > 0
+            ? (time_delta_ms / (extra_clauses / 1000.0))
+            : 0.0;
+        cout << std::left << std::setw(22) << feature_name(f)
+             << std::right << std::setw(12) << extra_clauses
+             << std::setw(10) << extra_helpers
+             << std::setw(10) << std::fixed << std::setprecision(1)
+             << time_delta_ms << "ms"
+             << std::setw(14) << std::fixed << std::setprecision(2)
+             << cost_per_ksaved
+             << std::endl;
+    }
+    cout << std::endl;
+    cout << "Columns: +clauses/+helpers = additional clauses/helpers emitted"
+         << " when this feature is DISABLED.\n"
+         << "time delta = baseline - disabled (positive means the feature"
+         << " itself costs time).\n"
+         << "ms/k-cls-saved = how many ms the feature spends to save 1000"
+         << " clauses (lower is better)." << std::endl;
+    return 0;
+}
+
 static void print_usage(const char* prog) {
     cout << "Usage: " << prog
          << " [--num N] [--seed S] [--vars V] [--depth D] [--nodes N] [--verbose]" << endl;
@@ -427,6 +640,7 @@ int main(int argc, char** argv) {
     uint32_t max_depth = 10;
     uint32_t max_nodes_cfg = 50;
     bool verbose = false;
+    bool measure_mode = false;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--num") == 0 && i + 1 < argc) num_iters = std::stoull(argv[++i]);
@@ -435,12 +649,18 @@ int main(int argc, char** argv) {
         else if (strcmp(argv[i], "--depth") == 0 && i + 1 < argc) max_depth = std::stoul(argv[++i]);
         else if (strcmp(argv[i], "--nodes") == 0 && i + 1 < argc) max_nodes_cfg = std::stoul(argv[++i]);
         else if (strcmp(argv[i], "--verbose") == 0) verbose = true;
+        else if (strcmp(argv[i], "--measure") == 0) measure_mode = true;
         else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]); return 0;
         } else {
             cerr << "Unknown option: " << argv[i] << endl;
             print_usage(argv[0]); return 1;
         }
+    }
+
+    if (measure_mode) {
+        if (num_iters == 0) num_iters = 200;
+        return run_measure_mode(seed, num_iters, max_vars, max_depth, max_nodes_cfg);
     }
 
     cout << "fuzz_aig_to_cnf" << endl;
@@ -462,35 +682,37 @@ int main(int argc, char** argv) {
         uint32_t max_nodes = 8 + rng() % max_nodes_cfg;
 
         aig_ptr aig;
-        // Weight: make manthan-style AIGs the common case, since that's the
-        // real workload. ~50% manthan/dnf, 50% other shapes.
+        // Weight the shape distribution so the deep linear ITE chain --
+        // the *actual* manthan Skolem-function shape with aig_depth 200+
+        // -- is the dominant case.
         uint32_t shape = rng() % 10;
-        if (shape < 3) {
-            // Nested ITE with AND-of-literals branches (manthan-style Skolem).
-            uint32_t d = 2 + rng() % 5;
-            uint32_t bw = 2 + rng() % 6;
-            aig = gen_manthan_aig(rng, num_vars, d, bw);
-        } else if (shape < 5) {
+        if (shape < 4) {
+            // Deep linear ITE chain (primary manthan workload).
+            // Depth 50..500 with occasional very deep chains.
+            uint32_t d = 50 + rng() % 450;
+            if (rng() % 20 == 0) d = 500 + rng() % 500; // very deep
+            uint32_t bw = 2 + rng() % 8;
+            aig = gen_deep_ite_chain_aig(rng, num_vars, d, bw);
+        } else if (shape < 6) {
             // DNF-cover (OR of ANDs-of-lits).
             uint32_t nb = 2 + rng() % 8;
             uint32_t bw = 2 + rng() % 6;
             aig = gen_dnf_cover_aig(rng, num_vars, nb, bw);
         } else if (shape < 7) {
-            aig = gen_random_aig(rng, num_vars, depth, max_nodes);
+            // Shallow manthan-style tree (exponential, keep depth tiny).
+            uint32_t d = 2 + rng() % 4;
+            uint32_t bw = 2 + rng() % 6;
+            aig = gen_manthan_aig(rng, num_vars, d, bw);
         } else if (shape < 8) {
-            aig = gen_chain_aig(rng, num_vars, 5 + rng() % 25);
+            aig = gen_random_aig(rng, num_vars, depth, max_nodes);
         } else if (shape < 9) {
-            // Simplify a random AIG first, to exercise the encoder on
-            // "real-looking" compact AIGs.
-            aig_ptr raw = gen_random_aig(rng, num_vars, depth, max_nodes);
-            if (raw) {
-                AIGRewriter rw;
-                aig = rw.rewrite(raw);
-            }
+            aig = gen_chain_aig(rng, num_vars, 5 + rng() % 25);
         } else {
-            // Simplify a manthan-style AIG: this is the closest to what the
-            // real pipeline hands to the encoder.
-            aig_ptr raw = gen_manthan_aig(rng, num_vars, 2 + rng() % 4, 2 + rng() % 6);
+            // Simplify a deep ITE chain first to exercise the encoder on
+            // rewritten AIGs (closest to the real pipeline).
+            uint32_t d = 50 + rng() % 200;
+            uint32_t bw = 2 + rng() % 6;
+            aig_ptr raw = gen_deep_ite_chain_aig(rng, num_vars, d, bw);
             if (raw) {
                 AIGRewriter rw;
                 aig = rw.rewrite(raw);

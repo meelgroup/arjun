@@ -2365,6 +2365,12 @@ void Manthan::rebuild_cex_solver() {
     uint64_t total_ite_patterns = 0;
     uint64_t total_kary_and = 0;
     uint64_t total_kary_or = 0;
+    uint64_t total_dedup_const = 0;
+    uint64_t total_demorgan_flat = 0;
+    uint64_t total_ite_sub_sel = 0;
+    uint64_t total_ite_degenerate = 0;
+    uint64_t num_formulas_encoded = 0;
+    const auto t_enc_start = std::chrono::steady_clock::now();
     for (auto& [y, form] : var_to_formula) {
         if (form.aig == nullptr) {
             for (auto& cl : form.clauses) cl.inserted = false;
@@ -2384,15 +2390,29 @@ void Manthan::rebuild_cex_solver() {
         total_ite_patterns += es.ite_patterns;
         total_kary_and += es.kary_and_count;
         total_kary_or += es.kary_or_count;
+        total_dedup_const += es.dedup_const_and + es.dedup_const_or;
+        total_demorgan_flat += es.demorgan_and_flat + es.demorgan_or_flat;
+        total_ite_sub_sel += es.ite_sub_sel;
+        total_ite_degenerate += es.ite_degenerate;
+        num_formulas_encoded++;
         form = new_f;
     }
+    const double enc_time_s = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - t_enc_start).count();
     verb_print(1, COLCYN "[manthan] rebuild re-encode: "
         << "clauses " << total_clauses_in << " -> " << total_clauses_out
         << "  (helpers " << total_helpers_out
         << ", kAND " << total_kary_and
         << ", kOR " << total_kary_or
         << ", ITE " << total_ite_patterns
-        << ", aig_nodes " << total_aig_nodes << ")");
+        << ", aig_nodes " << total_aig_nodes
+        << ")  T: " << std::fixed << std::setprecision(2) << enc_time_s);
+    verb_print(1, COLCYN "[manthan] rebuild re-encode features: "
+        << "dedup_const " << total_dedup_const
+        << "  demorgan_flat " << total_demorgan_flat
+        << "  ite_sub_sel " << total_ite_sub_sel
+        << "  ite_degen " << total_ite_degenerate
+        << "  forms " << num_formulas_encoded);
 
     // 7. Mark ALL formulas for re-injection and create fresh indicators
     updated_y_funcs.clear();

@@ -55,6 +55,19 @@ struct AIG2CNFStats {
     uint64_t const_nodes = 0;
     uint64_t lit_nodes = 0;
 
+    // Contribution counters: how often each feature fires.
+    uint64_t cse_and_hits = 0;       // AND group content-hash CSE hits
+    uint64_t cse_or_hits = 0;        // OR group CSE hits
+    uint64_t cse_ite_hits = 0;       // ITE CSE hits
+    uint64_t dedup_const_and = 0;    // AND folded to constant via dedup/complementary
+    uint64_t dedup_const_or = 0;
+    uint64_t demorgan_and_flat = 0;  // De Morgan NOT-wrapper flatten in collect_and
+    uint64_t demorgan_or_flat = 0;   // ... in collect_disjuncts_of_neg
+    uint64_t ite_sub_sel = 0;        // ITE with non-literal sub-AIG selector
+    uint64_t ite_degenerate = 0;     // ITE degenerate-case fold
+
+    double encode_time_s = 0.0;
+
     void clear() { *this = AIG2CNFStats(); }
     void print(int verb = 1) const;
 };
@@ -73,6 +86,10 @@ public:
     void set_detect_ite(bool b) { detect_ite = b; }
     void set_detect_xor(bool b) { detect_xor = b; }
     void set_kary_fusion(bool b) { kary_fusion = b; }
+    void set_group_cse(bool b) { group_cse = b; }
+    void set_ite_sub_selector(bool b) { ite_sub_selector = b; }
+    void set_demorgan_flatten(bool b) { demorgan_flatten = b; }
+    void set_normalize_inputs(bool b) { normalize_inputs = b; }
 
 private:
     Solver& solver;
@@ -81,9 +98,18 @@ private:
     CMSat::Lit my_true_lit = CMSat::Lit(0, false);
     bool my_has_true_lit = false;
 
+    // Feature toggles. All ON except group_cse: the fuzzer --measure mode
+    // showed that content-hashed CSE across AND/OR/ITE groups costs more
+    // encode time than it saves via the resulting smaller CNF, and the
+    // helpers it merges across sub-formulas can hurt downstream SAT
+    // propagation in the manthan pipeline.
     bool detect_ite = true;
     bool detect_xor = true;
     bool kary_fusion = true;
+    bool group_cse = false;        // (default off) structural CSE for groups
+    bool ite_sub_selector = true;  // allow non-literal sub-AIG ITE selectors
+    bool demorgan_flatten = true;  // flatten k-ary through NOT-wrappers
+    bool normalize_inputs = true;  // dedup / complementary / const fold
 
     std::map<aig_ptr, uint32_t> fanout;
     std::map<aig_ptr, CMSat::Lit> cache;
@@ -285,36 +311,39 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
             inputs.push_back(encode_node(n->l));
             inputs.push_back(encode_node(n->r));
         }
-        bool is_const = false;
-        if (normalize_and_inputs(inputs, is_const)) {
-            // AND short-circuited to FALSE.
-            CMSat::Lit t = get_true_lit();
-            CMSat::Lit result = ~t;
-            cache[n] = result;
-            return result;
+        if (normalize_inputs) {
+            bool is_const = false;
+            if (normalize_and_inputs(inputs, is_const)) {
+                // AND short-circuited to FALSE.
+                stats.dedup_const_and++;
+                CMSat::Lit t = get_true_lit();
+                CMSat::Lit result = ~t;
+                cache[n] = result;
+                return result;
+            }
+            if (inputs.empty()) {
+                CMSat::Lit t = get_true_lit();
+                cache[n] = t;
+                return t;
+            }
+            if (inputs.size() == 1) {
+                cache[n] = inputs[0];
+                return inputs[0];
+            }
         }
-        if (inputs.empty()) {
-            // Everything folded out as TRUE.
-            CMSat::Lit t = get_true_lit();
-            cache[n] = t;
-            return t;
-        }
-        if (inputs.size() == 1) {
-            cache[n] = inputs[0];
-            return inputs[0];
-        }
-        // Content-hashed CSE: structurally identical AND groups share a helper.
-        auto it_cse = and_group_cse.find(inputs);
-        if (it_cse != and_group_cse.end()) {
-            stats.cache_hits++;
-            cache[n] = it_cse->second;
-            return it_cse->second;
+        if (group_cse) {
+            auto it_cse = and_group_cse.find(inputs);
+            if (it_cse != and_group_cse.end()) {
+                stats.cse_and_hits++;
+                cache[n] = it_cse->second;
+                return it_cse->second;
+            }
         }
         CMSat::Lit h = new_helper();
         emit_and_equiv(h, inputs);
         stats.kary_and_count++;
         stats.kary_and_width_total += inputs.size();
-        and_group_cse[inputs] = h;
+        if (group_cse) and_group_cse[inputs] = h;
         cache[n] = h;
         return h;
     } else {
@@ -327,31 +356,35 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
             inputs.push_back(~encode_node(n->l));
             inputs.push_back(~encode_node(n->r));
         }
-        bool is_const = false;
-        if (normalize_or_inputs(inputs, is_const)) {
-            // OR short-circuited to TRUE.
-            CMSat::Lit t = get_true_lit();
-            cache[n] = t;
-            return t;
+        if (normalize_inputs) {
+            bool is_const = false;
+            if (normalize_or_inputs(inputs, is_const)) {
+                stats.dedup_const_or++;
+                CMSat::Lit t = get_true_lit();
+                cache[n] = t;
+                return t;
+            }
+            if (inputs.empty()) {
+                CMSat::Lit t = get_true_lit();
+                CMSat::Lit result = ~t;
+                cache[n] = result;
+                return result;
+            }
+            if (inputs.size() == 1) {
+                cache[n] = inputs[0];
+                return inputs[0];
+            }
         }
-        if (inputs.empty()) {
-            CMSat::Lit t = get_true_lit();
-            CMSat::Lit result = ~t;
-            cache[n] = result;
-            return result;
-        }
-        if (inputs.size() == 1) {
-            cache[n] = inputs[0];
-            return inputs[0];
-        }
-        auto it_cse = or_group_cse.find(inputs);
-        if (it_cse != or_group_cse.end()) {
-            stats.cache_hits++;
-            cache[n] = it_cse->second;
-            return it_cse->second;
+        if (group_cse) {
+            auto it_cse = or_group_cse.find(inputs);
+            if (it_cse != or_group_cse.end()) {
+                stats.cse_or_hits++;
+                cache[n] = it_cse->second;
+                return it_cse->second;
+            }
         }
         CMSat::Lit h = new_helper();
-        or_group_cse[inputs] = h;
+        if (group_cse) or_group_cse[inputs] = h;
         emit_or_equiv(h, inputs);
         stats.kary_or_count++;
         stats.kary_or_width_total += inputs.size();
@@ -379,7 +412,8 @@ void AIGToCNF<Solver>::collect_and(const aig_ptr& n, std::vector<CMSat::Lit>& ou
     }
     // De Morgan: NOT-wrapper of an OR gate flattens into a positive AND of the
     // OR's raw children (which are already the negations of the disjuncts).
-    if (n->type == AIGT::t_and && n->neg && n->l == n->r
+    if (demorgan_flatten
+        && n->type == AIGT::t_and && n->neg && n->l == n->r
         && fanout[n] <= 1
         && cache.find(n) == cache.end())
     {
@@ -389,6 +423,7 @@ void AIGToCNF<Solver>::collect_and(const aig_ptr& n, std::vector<CMSat::Lit>& ou
             && fanout[inner] <= 1
             && cache.find(inner) == cache.end())
         {
+            stats.demorgan_and_flat++;
             collect_and(inner->l, out);
             collect_and(inner->r, out);
             return;
@@ -416,7 +451,8 @@ void AIGToCNF<Solver>::collect_disjuncts_of_neg(const aig_ptr& n, std::vector<CM
         return;
     }
     // NOT-wrapper of an inner OR gate: ¬n = inner OR, flatten its disjuncts.
-    if (n->type == AIGT::t_and && n->neg && n->l == n->r
+    if (demorgan_flatten
+        && n->type == AIGT::t_and && n->neg && n->l == n->r
         && fanout[n] <= 1
         && cache.find(n) == cache.end())
     {
@@ -426,6 +462,7 @@ void AIGToCNF<Solver>::collect_disjuncts_of_neg(const aig_ptr& n, std::vector<CM
             && fanout[inner] <= 1
             && cache.find(inner) == cache.end())
         {
+            stats.demorgan_or_flat++;
             collect_disjuncts_of_neg(inner->l, out);
             collect_disjuncts_of_neg(inner->r, out);
             return;
@@ -567,7 +604,7 @@ bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
             sel_x = &xa; sel_y = &ya; other_x = &xb; other_y = &yb;
             matched_lit = true; return true;
         }
-        if (is_sub_complement(xa, ya)) {
+        if (ite_sub_selector && is_sub_complement(xa, ya)) {
             sel_x = &xa; sel_y = &ya; other_x = &xb; other_y = &yb;
             matched_lit = false; return true;
         }
@@ -582,6 +619,7 @@ bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
     if (matched_lit) {
         s_lit = CMSat::Lit((*sel_x)->var, (*sel_x)->neg);
     } else {
+        stats.ite_sub_sel++;
         // Encode the selector sub-AIG. Use the positive form (whichever of
         // sel_x/sel_y is NOT a NOT-wrapper) so that s_lit's polarity
         // matches the "then" side.
@@ -608,55 +646,69 @@ bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
     //   ITE(s, t, ¬s) = ¬s ∨ t         (s=1 → t; s=0 → 1)
     auto emit_or2 = [&](CMSat::Lit a, CMSat::Lit b) -> CMSat::Lit {
         std::vector<CMSat::Lit> inp = {a, b};
-        bool cst = false;
-        if (normalize_or_inputs(inp, cst)) return get_true_lit();
-        if (inp.empty()) return ~get_true_lit();
-        if (inp.size() == 1) return inp[0];
-        auto it = or_group_cse.find(inp);
-        if (it != or_group_cse.end()) return it->second;
+        if (normalize_inputs) {
+            bool cst = false;
+            if (normalize_or_inputs(inp, cst)) return get_true_lit();
+            if (inp.empty()) return ~get_true_lit();
+            if (inp.size() == 1) return inp[0];
+        }
+        if (group_cse) {
+            auto it = or_group_cse.find(inp);
+            if (it != or_group_cse.end()) return it->second;
+        }
         CMSat::Lit h = new_helper();
-        or_group_cse[inp] = h;
+        if (group_cse) or_group_cse[inp] = h;
         emit_or_equiv(h, inp);
         return h;
     };
     auto emit_and2 = [&](CMSat::Lit a, CMSat::Lit b) -> CMSat::Lit {
         std::vector<CMSat::Lit> inp = {a, b};
-        bool cst = false;
-        if (normalize_and_inputs(inp, cst)) return ~get_true_lit();
-        if (inp.empty()) return get_true_lit();
-        if (inp.size() == 1) return inp[0];
-        auto it = and_group_cse.find(inp);
-        if (it != and_group_cse.end()) return it->second;
+        if (normalize_inputs) {
+            bool cst = false;
+            if (normalize_and_inputs(inp, cst)) return ~get_true_lit();
+            if (inp.empty()) return get_true_lit();
+            if (inp.size() == 1) return inp[0];
+        }
+        if (group_cse) {
+            auto it = and_group_cse.find(inp);
+            if (it != and_group_cse.end()) return it->second;
+        }
         CMSat::Lit h = new_helper();
-        and_group_cse[inp] = h;
+        if (group_cse) and_group_cse[inp] = h;
         emit_and_equiv(h, inp);
         return h;
     };
-    if (t_lit == e_lit) { out = t_lit; return true; }
-    if (s_lit == t_lit)  { out = emit_or2(s_lit, e_lit);  return true; }
-    if (s_lit == ~t_lit) { out = emit_and2(~s_lit, e_lit); return true; }
-    if (s_lit == e_lit)  { out = emit_and2(s_lit, t_lit); return true; }
-    if (s_lit == ~e_lit) { out = emit_or2(~s_lit, t_lit); return true; }
+    if (t_lit == e_lit) { stats.ite_degenerate++; out = t_lit; return true; }
+    if (s_lit == t_lit)  { stats.ite_degenerate++; out = emit_or2(s_lit, e_lit);  return true; }
+    if (s_lit == ~t_lit) { stats.ite_degenerate++; out = emit_and2(~s_lit, e_lit); return true; }
+    if (s_lit == e_lit)  { stats.ite_degenerate++; out = emit_and2(s_lit, t_lit); return true; }
+    if (s_lit == ~e_lit) { stats.ite_degenerate++; out = emit_or2(~s_lit, t_lit); return true; }
 
-    // Canonicalize: if selector is negative, flip (s,t,e) to (¬s,e,t) so
-    // the CSE key is invariant under this symmetry.
-    if (s_lit.sign()) {
-        s_lit = ~s_lit;
-        std::swap(t_lit, e_lit);
-    }
-    auto pack = [](CMSat::Lit l) { return (l.var() << 1) | (l.sign() ? 1u : 0u); };
-    IteKey key{pack(s_lit), pack(t_lit), pack(e_lit)};
-    auto it_ite = ite_cse.find(key);
-    if (it_ite != ite_cse.end()) {
-        stats.cache_hits++;
-        out = it_ite->second;
+    if (group_cse) {
+        // Canonicalize: flip (s,t,e) to (¬s,e,t) when selector is negative.
+        if (s_lit.sign()) {
+            s_lit = ~s_lit;
+            std::swap(t_lit, e_lit);
+        }
+        auto pack = [](CMSat::Lit l) { return (l.var() << 1) | (l.sign() ? 1u : 0u); };
+        IteKey key{pack(s_lit), pack(t_lit), pack(e_lit)};
+        auto it_ite = ite_cse.find(key);
+        if (it_ite != ite_cse.end()) {
+            stats.cse_ite_hits++;
+            out = it_ite->second;
+            stats.ite_patterns++;
+            return true;
+        }
+        CMSat::Lit h = new_helper();
+        emit_ite(h, s_lit, t_lit, e_lit);
+        ite_cse[key] = h;
         stats.ite_patterns++;
+        out = h;
         return true;
     }
 
     CMSat::Lit h = new_helper();
     emit_ite(h, s_lit, t_lit, e_lit);
-    ite_cse[key] = h;
     stats.ite_patterns++;
     out = h;
     return true;
