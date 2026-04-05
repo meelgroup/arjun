@@ -622,6 +622,75 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
     return 0;
 }
 
+// -----------------------------------------------------------------------------
+// Benchmark AIGRewriter::rewrite_all on a batch of deep-chain AIGs -- the
+// path that was measured at ~15s on the manthan genbuf8b4n rebuild step.
+// -----------------------------------------------------------------------------
+static int run_bench_rewrite_mode(uint64_t seed, uint64_t num_aigs,
+                                    uint32_t max_vars, uint32_t chain_depth)
+{
+    std::mt19937 rng(seed);
+    std::vector<aig_ptr> aigs;
+    aigs.reserve(num_aigs);
+    cout << "Generating " << num_aigs << " deep-chain AIGs "
+         << "(seed " << seed << ", depth " << chain_depth
+         << ", vars " << max_vars << ")..." << std::endl;
+    auto t_gen = std::chrono::steady_clock::now();
+    size_t total_raw_nodes = 0;
+    for (uint64_t i = 0; i < num_aigs; i++) {
+        uint32_t num_vars = 4 + rng() % max_vars;
+        uint32_t bw = 2 + rng() % 6;
+        aig_ptr a = gen_deep_ite_chain_aig(rng, num_vars, chain_depth, bw);
+        if (a) {
+            aigs.push_back(a);
+            total_raw_nodes += ArjunNS::AIG::count_aig_nodes(a);
+        }
+    }
+    double gen_s = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - t_gen).count();
+    cout << "Generated " << aigs.size() << " AIGs, "
+         << total_raw_nodes << " total nodes, T: "
+         << std::fixed << std::setprecision(2) << gen_s << "s" << std::endl;
+
+    cout << "\nRunning AIGRewriter::rewrite_all..." << std::endl;
+    auto t_rw = std::chrono::steady_clock::now();
+    AIGRewriter rewriter;
+    rewriter.rewrite_all(aigs, 1);
+    double rw_s = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - t_rw).count();
+    cout << "rewrite_all wall-clock: " << std::fixed << std::setprecision(2)
+         << rw_s << "s" << std::endl;
+
+    // Also verify the AIG->CNF encoder still produces correct output.
+    cout << "\nVerifying AIG->CNF encoding on rewritten AIGs..." << std::endl;
+    uint64_t total_clauses = 0, total_helpers = 0;
+    auto t_enc = std::chrono::steady_clock::now();
+    for (const auto& a : aigs) {
+        if (!a) continue;
+        CMSat::SATSolver s;
+        s.set_verbosity(0);
+        // Pre-allocate enough solver vars for the highest lit var used
+        // by this AIG. AIG::get_dependent_vars does a full DFS collecting
+        // literal vars; it's enough for sizing.
+        std::set<uint32_t> vars_seen;
+        // Use the sentinel none_var (=UINT32_MAX) as the "self" guard so
+        // the assertion inside get_dependent_vars cannot fire.
+        AIG::get_dependent_vars(a, vars_seen,
+            std::numeric_limits<uint32_t>::max());
+        s.new_vars(vars_seen.empty() ? 1u : *vars_seen.rbegin() + 1);
+        AIGToCNF<CMSat::SATSolver> enc(s);
+        enc.encode(a);
+        total_clauses += enc.get_stats().clauses_added;
+        total_helpers += enc.get_stats().helpers_added;
+    }
+    double enc_s = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - t_enc).count();
+    cout << "AIG->CNF encode wall-clock: " << std::fixed << std::setprecision(2)
+         << enc_s << "s  (total clauses " << total_clauses
+         << ", helpers " << total_helpers << ")" << std::endl;
+    return 0;
+}
+
 static void print_usage(const char* prog) {
     cout << "Usage: " << prog
          << " [--num N] [--seed S] [--vars V] [--depth D] [--nodes N] [--verbose]" << endl;
@@ -641,6 +710,8 @@ int main(int argc, char** argv) {
     uint32_t max_nodes_cfg = 50;
     bool verbose = false;
     bool measure_mode = false;
+    bool bench_rewrite_mode = false;
+    uint32_t bench_chain_depth = 300;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--num") == 0 && i + 1 < argc) num_iters = std::stoull(argv[++i]);
@@ -650,6 +721,8 @@ int main(int argc, char** argv) {
         else if (strcmp(argv[i], "--nodes") == 0 && i + 1 < argc) max_nodes_cfg = std::stoul(argv[++i]);
         else if (strcmp(argv[i], "--verbose") == 0) verbose = true;
         else if (strcmp(argv[i], "--measure") == 0) measure_mode = true;
+        else if (strcmp(argv[i], "--bench-rewrite") == 0) bench_rewrite_mode = true;
+        else if (strcmp(argv[i], "--chain-depth") == 0 && i + 1 < argc) bench_chain_depth = std::stoul(argv[++i]);
         else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]); return 0;
         } else {
@@ -661,6 +734,10 @@ int main(int argc, char** argv) {
     if (measure_mode) {
         if (num_iters == 0) num_iters = 200;
         return run_measure_mode(seed, num_iters, max_vars, max_depth, max_nodes_cfg);
+    }
+    if (bench_rewrite_mode) {
+        if (num_iters == 0) num_iters = 100;
+        return run_bench_rewrite_mode(seed, num_iters, max_vars, bench_chain_depth);
     }
 
     cout << "fuzz_aig_to_cnf" << endl;

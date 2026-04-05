@@ -2199,6 +2199,45 @@ DLL_PUBLIC void AIG::count_aig_nodes(const aig_ptr& aig, set<aig_ptr>& counted) 
     }
 }
 
+DLL_PUBLIC size_t AIG::count_aig_nodes_fast(
+        const std::vector<aig_ptr>& roots,
+        std::unordered_set<const AIG*>& scratch)
+{
+    scratch.clear();
+    std::vector<const AIG*> stack;
+    stack.reserve(256);
+    for (const auto& r : roots) if (r) stack.push_back(r.get());
+    while (!stack.empty()) {
+        const AIG* n = stack.back(); stack.pop_back();
+        if (!scratch.insert(n).second) continue;
+        if (n->type == AIGT::t_and) {
+            if (n->l) stack.push_back(n->l.get());
+            if (n->r && n->r != n->l) stack.push_back(n->r.get());
+        }
+    }
+    return scratch.size();
+}
+
+DLL_PUBLIC size_t AIG::count_aig_nodes_fast(
+        const aig_ptr& root,
+        std::unordered_set<const AIG*>& scratch)
+{
+    scratch.clear();
+    if (!root) return 0;
+    std::vector<const AIG*> stack;
+    stack.reserve(64);
+    stack.push_back(root.get());
+    while (!stack.empty()) {
+        const AIG* n = stack.back(); stack.pop_back();
+        if (!scratch.insert(n).second) continue;
+        if (n->type == AIGT::t_and) {
+            if (n->l) stack.push_back(n->l.get());
+            if (n->r && n->r != n->l) stack.push_back(n->r.get());
+        }
+    }
+    return scratch.size();
+}
+
 DLL_PUBLIC aig_ptr AIG::simplify_aig(aig_ptr aig) {
     const size_t original_nodes = count_aig_nodes(aig);
     aig_ptr result = aig;

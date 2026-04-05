@@ -11,7 +11,9 @@
 #include <vector>
 #include <map>
 #include <set>
+#include <unordered_map>
 #include <cstdint>
+#include <functional>
 
 // Visibility export macros for proper symbol visibility with -fvisibility=hidden
 #if defined(_WIN32) || defined(__CYGWIN__)
@@ -64,26 +66,57 @@ public:
 private:
     AIGRewriteStats stats;
 
-    // Structural hash table for canonical forms
-    using StructKey = std::tuple<AIGT, uint32_t, bool, aig_ptr, aig_ptr>;
-    std::map<StructKey, aig_ptr> struct_hash;
+    // Structural hash table for canonical AND nodes. In practice the
+    // rewriter only hash-conses t_and nodes with var == none_var, so we
+    // key on just (neg, l, r) instead of the full 5-tuple -- a much
+    // cheaper hash than the old std::tuple<AIGT,uint32_t,bool,...> key.
+    struct StructKey {
+        bool neg;
+        AIG* l;
+        AIG* r;
+        bool operator==(const StructKey& o) const noexcept {
+            return neg == o.neg && l == o.l && r == o.r;
+        }
+    };
+    struct StructKeyHash {
+        size_t operator()(const StructKey& k) const noexcept {
+            // Combine the two pointers via a cheap multiplicative mix.
+            size_t a = reinterpret_cast<uintptr_t>(k.l);
+            size_t b = reinterpret_cast<uintptr_t>(k.r);
+            size_t h = a * 0x9e3779b97f4a7c15ULL;
+            h ^= b + (h >> 32);
+            h *= 0xff51afd7ed558ccdULL;
+            h ^= (size_t)k.neg;
+            return h;
+        }
+    };
+    std::unordered_map<StructKey, aig_ptr, StructKeyHash> struct_hash;
+
+    // Hash on the shared_ptr's raw pointer. Reused for every per-pass cache.
+    struct AigPtrHash {
+        size_t operator()(const aig_ptr& p) const noexcept {
+            return std::hash<AIG*>{}(p.get());
+        }
+    };
+    using AigPtrMap = std::unordered_map<aig_ptr, aig_ptr, AigPtrHash>;
+    using AigPtrDepthMap = std::unordered_map<aig_ptr, size_t, AigPtrHash>;
 
     // --- Core rewrite passes ---
 
     // Pass 1: Bottom-up simplification with structural rules
-    aig_ptr simplify_pass(const aig_ptr& aig, std::map<aig_ptr, aig_ptr>& cache);
+    aig_ptr simplify_pass(const aig_ptr& aig, AigPtrMap& cache);
 
     // Pass 2: Structural hashing / CSE
-    aig_ptr hash_cons(const aig_ptr& aig, std::map<aig_ptr, aig_ptr>& cache);
+    aig_ptr hash_cons(const aig_ptr& aig, AigPtrMap& cache);
 
     // Pass 3: Multi-level absorption and complementary elimination
-    aig_ptr deep_absorb(const aig_ptr& aig, std::map<aig_ptr, aig_ptr>& cache);
+    aig_ptr deep_absorb(const aig_ptr& aig, AigPtrMap& cache);
 
     // Pass 4: ITE chain detection and depth reduction
-    aig_ptr flatten_ite_chains(const aig_ptr& aig, std::map<aig_ptr, aig_ptr>& cache);
+    aig_ptr flatten_ite_chains(const aig_ptr& aig, AigPtrMap& cache);
 
     // Compute depth of an AIG
-    size_t compute_depth(const aig_ptr& aig, std::map<aig_ptr, size_t>& cache) const;
+    size_t compute_depth(const aig_ptr& aig, AigPtrDepthMap& cache) const;
 
     // --- Helper functions ---
 

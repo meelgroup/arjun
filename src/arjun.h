@@ -30,6 +30,7 @@ THE SOFTWARE.
 #include <string>
 #include <map>
 #include <set>
+#include <unordered_set>
 #include <optional>
 #include <fstream>
 #include <gmpxx.h>
@@ -436,6 +437,14 @@ public:
         return result;
     }
     static size_t count_aig_nodes(const aig_ptr& aig);
+    // Fast variant: iterative DFS with unordered_set<AIG*>. Shared
+    // structure across the input vector is counted only once. Used by the
+    // rewriter's hot paths where the std::set<aig_ptr> version was the
+    // dominant cost on large (500k+ node) AIGs.
+    static size_t count_aig_nodes_fast(const std::vector<aig_ptr>& roots,
+                                        std::unordered_set<const AIG*>& scratch);
+    static size_t count_aig_nodes_fast(const aig_ptr& root,
+                                        std::unordered_set<const AIG*>& scratch);
     static void simplify_aigs(uint32_t verb, std::vector<aig_ptr>& defs);
     static aig_ptr simplify_aig(aig_ptr aig);
 

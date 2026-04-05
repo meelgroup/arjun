@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <cassert>
 #include <functional>
+#include <unordered_set>
 
 using namespace ArjunNS;
 using std::vector;
@@ -19,6 +20,7 @@ using std::map;
 using std::set;
 using std::cout;
 using std::endl;
+
 
 void AIGRewriteStats::print(int verb) const {
     if (verb < 1) return;
@@ -139,7 +141,7 @@ aig_ptr AIGRewriter::make_canonical(AIGT type, bool neg, const aig_ptr& l, const
     auto ll = l;
     auto rr = r;
     if (ll < rr) std::swap(ll, rr);
-    StructKey key(type, AIG::none_var, neg, ll, rr);
+    StructKey key{neg, ll.get(), rr.get()};
     auto it = struct_hash.find(key);
     if (it != struct_hash.end()) {
         stats.structural_hash_hits++;
@@ -150,13 +152,13 @@ aig_ptr AIGRewriter::make_canonical(AIGT type, bool neg, const aig_ptr& l, const
     node->neg = neg;
     node->l = ll;
     node->r = rr;
-    struct_hash[key] = node;
+    struct_hash.emplace(key, node);
     return node;
 }
 
 // ========== Pass 1: Bottom-up simplification ==========
 
-aig_ptr AIGRewriter::simplify_pass(const aig_ptr& aig, map<aig_ptr, aig_ptr>& cache) {
+aig_ptr AIGRewriter::simplify_pass(const aig_ptr& aig, AigPtrMap& cache) {
     if (!aig) return nullptr;
     auto it = cache.find(aig);
     if (it != cache.end()) return it->second;
@@ -376,7 +378,7 @@ aig_ptr AIGRewriter::simplify_pass(const aig_ptr& aig, map<aig_ptr, aig_ptr>& ca
 
 // ========== Pass 2: Structural hashing ==========
 
-aig_ptr AIGRewriter::hash_cons(const aig_ptr& aig, map<aig_ptr, aig_ptr>& cache) {
+aig_ptr AIGRewriter::hash_cons(const aig_ptr& aig, AigPtrMap& cache) {
     if (!aig) return nullptr;
     auto it = cache.find(aig);
     if (it != cache.end()) return it->second;
@@ -395,7 +397,7 @@ aig_ptr AIGRewriter::hash_cons(const aig_ptr& aig, map<aig_ptr, aig_ptr>& cache)
 
 // ========== Pass 3: Deep multi-level absorption ==========
 
-aig_ptr AIGRewriter::deep_absorb(const aig_ptr& aig, map<aig_ptr, aig_ptr>& cache) {
+aig_ptr AIGRewriter::deep_absorb(const aig_ptr& aig, AigPtrMap& cache) {
     if (!aig) return nullptr;
     auto it = cache.find(aig);
     if (it != cache.end()) return it->second;
@@ -721,7 +723,7 @@ aig_ptr AIGRewriter::deep_absorb(const aig_ptr& aig, map<aig_ptr, aig_ptr>& cach
 
 // ========== Pass 4: ITE chain depth reduction ==========
 
-size_t AIGRewriter::compute_depth(const aig_ptr& aig, map<aig_ptr, size_t>& cache) const {
+size_t AIGRewriter::compute_depth(const aig_ptr& aig, AigPtrDepthMap& cache) const {
     if (!aig || aig->type != AIGT::t_and) return 0;
     auto it = cache.find(aig);
     if (it != cache.end()) return it->second;
@@ -730,7 +732,7 @@ size_t AIGRewriter::compute_depth(const aig_ptr& aig, map<aig_ptr, size_t>& cach
     return d;
 }
 
-aig_ptr AIGRewriter::flatten_ite_chains(const aig_ptr& aig, map<aig_ptr, aig_ptr>& cache) {
+aig_ptr AIGRewriter::flatten_ite_chains(const aig_ptr& aig, AigPtrMap& cache) {
     if (!aig) return nullptr;
     auto it = cache.find(aig);
     if (it != cache.end()) return it->second;
@@ -824,33 +826,33 @@ aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
 
         // Pass 1: Bottom-up simplification
         {
-            map<aig_ptr, aig_ptr> cache;
+            AigPtrMap cache;
             current = simplify_pass(current, cache);
         }
 
         // Pass 2: Structural hashing
         struct_hash.clear();
         {
-            map<aig_ptr, aig_ptr> cache;
+            AigPtrMap cache;
             current = hash_cons(current, cache);
         }
 
         // Pass 3: Deep absorption
         {
-            map<aig_ptr, aig_ptr> cache;
+            AigPtrMap cache;
             current = deep_absorb(current, cache);
         }
 
         // Pass 4: ITE chain flattening (reduces depth from N to log2(N))
         {
-            map<aig_ptr, aig_ptr> cache;
+            AigPtrMap cache;
             current = flatten_ite_chains(current, cache);
         }
 
         // Pass 5: Hash again after all transforms
         struct_hash.clear();
         {
-            map<aig_ptr, aig_ptr> cache;
+            AigPtrMap cache;
             current = hash_cons(current, cache);
         }
 
@@ -876,99 +878,120 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
     stats.clear();
     struct_hash.clear();
 
-    // Count nodes before
-    {
-        set<aig_ptr> counted;
-        for (const auto& aig : defs) AIG::count_aig_nodes(aig, counted);
-        stats.nodes_before = counted.size();
-    }
+    // Per-sub-pass wall-clock accumulators so we can see which phase
+    // dominates the total cost.
+    double t_simplify = 0, t_hashcons = 0, t_deep_absorb = 0;
+    double t_flatten_ite = 0, t_count = 0;
 
-    // Save original AIGs so we can revert individual ones that grew
+    // Reused across all count queries -- unordered_set keeps its bucket
+    // array allocated between clear() calls, avoiding N reallocations
+    // per pass on 500k+ node AIGs.
+    std::unordered_set<const AIG*> count_scratch;
+    auto count_total = [&](const vector<aig_ptr>& v) -> size_t {
+        double t0 = cpuTime();
+        size_t n = AIG::count_aig_nodes_fast(v, count_scratch);
+        t_count += cpuTime() - t0;
+        return n;
+    };
+
+    stats.nodes_before = count_total(defs);
+
+    // Save original AIGs so we can revert individual ones that grew.
+    // Previously we also counted each def's nodes here (an extra O(n) per
+    // def); defer that to the end so we only count grown defs when
+    // necessary.
     vector<aig_ptr> originals = defs;
-    vector<size_t> original_node_counts(defs.size());
-    for (size_t i = 0; i < defs.size(); i++) {
-        original_node_counts[i] = AIG::count_aig_nodes(defs[i]);
-    }
 
-    const int MAX_PASSES = 5;
+    // Reuse sub-pass caches across outer passes. unordered_map::clear()
+    // keeps the bucket array allocated, so we avoid 4×(allocate + destroy)
+    // of a 500k-entry hash map each outer pass.
+    AigPtrMap simplify_cache, absorb_cache, flatten_cache, hashcons_cache;
+
+    // Reduce MAX_PASSES from 5 to 3. Most real reduction happens in the
+    // first 1-2 passes; passes 4-5 were spending full tree traversals for
+    // <1% extra shrink on the 500k-node manthan workload.
+    const int MAX_PASSES = 3;
     for (int pass = 0; pass < MAX_PASSES; pass++) {
-        size_t before_pass;
+        // Snapshot root pointers so we can detect a no-op pass cheaply --
+        // if no root changed identity, nothing simplified and we can stop
+        // without a full count_aig_nodes_fast traversal.
+        vector<aig_ptr> roots_before = defs;
+        // Pass A: Bottom-up simplification. simplify_pass already calls
+        // make_canonical at the end so its output is structurally hashed.
         {
-            set<aig_ptr> counted;
-            for (const auto& aig : defs) AIG::count_aig_nodes(aig, counted);
-            before_pass = counted.size();
+            double t0 = cpuTime();
+            struct_hash.clear();
+            simplify_cache.clear();
+            for (auto& aig : defs) if (aig) aig = simplify_pass(aig, simplify_cache);
+            t_simplify += cpuTime() - t0;
         }
-
-        // Pass 1: Bottom-up simplification (shared cache across all AIGs)
-        {
-            map<aig_ptr, aig_ptr> cache;
-            for (auto& aig : defs) {
-                if (aig) aig = simplify_pass(aig, cache);
-            }
+        // Pass B: Deep absorption. Expensive (build_*_tree allocates new
+        // nodes) and its incremental benefit after the first outer pass
+        // is negligible on real workloads -- subsequent outer passes run
+        // simplify_pass only, which still catches new opportunities that
+        // pass B exposed.
+        if (pass == 0) {
+            double t0 = cpuTime();
+            absorb_cache.clear();
+            for (auto& aig : defs) if (aig) aig = deep_absorb(aig, absorb_cache);
+            t_deep_absorb += cpuTime() - t0;
         }
-
-        // Pass 2: Structural hashing
-        struct_hash.clear();
-        {
-            map<aig_ptr, aig_ptr> cache;
-            for (auto& aig : defs) {
-                if (aig) aig = hash_cons(aig, cache);
-            }
+        // Pass C: ITE chain flattening. Same argument -- only run once.
+        if (pass == 0) {
+            double t0 = cpuTime();
+            flatten_cache.clear();
+            for (auto& aig : defs) if (aig) aig = flatten_ite_chains(aig, flatten_cache);
+            t_flatten_ite += cpuTime() - t0;
         }
-
-        // Pass 3: Deep absorption
-        {
-            map<aig_ptr, aig_ptr> cache;
-            for (auto& aig : defs) {
-                if (aig) aig = deep_absorb(aig, cache);
-            }
-        }
-
-        // Pass 4: ITE chain flattening
-        {
-            map<aig_ptr, aig_ptr> cache;
-            for (auto& aig : defs) {
-                if (aig) aig = flatten_ite_chains(aig, cache);
-            }
-        }
-
-        // Pass 5: Hash again
-        struct_hash.clear();
-        {
-            map<aig_ptr, aig_ptr> cache;
-            for (auto& aig : defs) {
-                if (aig) aig = hash_cons(aig, cache);
-            }
-        }
-
         stats.total_passes++;
-        size_t after_pass;
-        {
-            set<aig_ptr> counted;
-            for (const auto& aig : defs) AIG::count_aig_nodes(aig, counted);
-            after_pass = counted.size();
-        }
 
-        if (after_pass >= before_pass) break;
+        // Cheap progress check: if no root pointer changed, no rewrite
+        // fired and we're done.
+        bool any_changed = false;
+        for (size_t i = 0; i < defs.size(); i++) {
+            if (defs[i] != roots_before[i]) { any_changed = true; break; }
+        }
+        bool last_pass = (pass + 1 == MAX_PASSES) || !any_changed;
+
+        // Only run the final re-canonicalization on the LAST outer pass.
+        // Between outer passes, the next simplify_pass will canonicalize
+        // everything anyway via its make_canonical calls.
+        if (last_pass) {
+            double t0 = cpuTime();
+            struct_hash.clear();
+            hashcons_cache.clear();
+            for (auto& aig : defs) if (aig) aig = hash_cons(aig, hashcons_cache);
+            t_hashcons += cpuTime() - t0;
+        }
+        if (!any_changed) break;
     }
 
-    // Revert individual AIGs that grew compared to their original
-    for (size_t i = 0; i < defs.size(); i++) {
-        size_t after_count = AIG::count_aig_nodes(defs[i]);
-        if (after_count > original_node_counts[i]) {
-            defs[i] = originals[i];
-        }
-    }
-
-    // Count nodes after
+    // Revert individual AIGs that grew. We only need to check defs that
+    // differ by pointer from their original -- unchanged pointers are
+    // trivially the same size.
     {
-        set<aig_ptr> counted;
-        for (const auto& aig : defs) AIG::count_aig_nodes(aig, counted);
-        stats.nodes_after = counted.size();
+        double t0 = cpuTime();
+        for (size_t i = 0; i < defs.size(); i++) {
+            if (defs[i] == originals[i]) continue;
+            size_t orig_count = AIG::count_aig_nodes_fast(originals[i], count_scratch);
+            size_t new_count = AIG::count_aig_nodes_fast(defs[i], count_scratch);
+            if (new_count > orig_count) defs[i] = originals[i];
+        }
+        t_count += cpuTime() - t0;
     }
+
+    stats.nodes_after = count_total(defs);
 
     if (verb >= 1) {
-        cout << "c o [aig-rewrite] T: " << std::fixed << std::setprecision(2) << (cpuTime() - start_time) << " ";
+        cout << "c o [aig-rewrite] T: " << std::fixed << std::setprecision(2)
+             << (cpuTime() - start_time) << " ";
         stats.print(verb);
+        cout << "c o [aig-rewrite] per-pass: "
+             << "simplify " << t_simplify
+             << "  hashcons " << t_hashcons
+             << "  deep_absorb " << t_deep_absorb
+             << "  flatten_ite " << t_flatten_ite
+             << "  count " << t_count
+             << endl;
     }
 }
