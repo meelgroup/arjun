@@ -18,7 +18,8 @@ TIMEOUT = 1800  # seconds used for PAR2 / scatter timeout
 
 # ---- Configuration: which dirs to include (prefix match) ----
 only_dirs = [
-    "out-synth-1286344-",
+    "out-synth-1068169-0",
+    "out-synth-1286344-0",
 ]
 # -------------------------------------------------------------
 
@@ -76,7 +77,7 @@ def gnuplot_name_cleanup(name: str) -> str:
     return name
 
 
-def convert_to_cactus(fname, fname2):
+def convert_to_cdf(fname, fname2):
     with open(fname, "r") as f:
         times = sorted(float(line.split()[0]) for line in f if line.strip())
     with open(fname2, "w") as f2:
@@ -125,7 +126,7 @@ def build_csv_data(versions, matched_dirs, only_calls, not_calls, not_versions,
             con.close()
 
             fname2 = fname + ".gnuplotdata"
-            num_solved = convert_to_cactus(fname, fname2)
+            num_solved = convert_to_cdf(fname, fname2)
             fname2_s.append([fname2, call, ver[:10], num_solved, dir])
             table_todo.append([dir, ver])
 
@@ -329,10 +330,10 @@ def _gp_str(s):
 
 # ---- Cactus plot ----
 
-def generate_cactus(fname2_s):
-    gnuplotfn = "cactus.gnuplot"
-    pdf_file  = "cactus.pdf"
-    png_file  = "cactus.png"
+def generate_cdf(fname2_s):
+    gnuplotfn = "cdf.gnuplot"
+    pdf_file  = "cdf.pdf"
+    png_file  = "cdf.png"
 
     def plot_lines():
         lines = []
@@ -350,7 +351,7 @@ def generate_cactus(fname2_s):
         ]:
             f.write(f'set terminal {term}\n')
             f.write(f'set output "{out}"\n')
-            f.write('set title "Arjun synthesis: instances solved vs. time"\n')
+            f.write('set title "Arjun synthesis CDF: instances solved vs. time"\n')
             f.write('set key top left\n')
             f.write('set logscale x\n')
             f.write('unset logscale y\n')
@@ -364,7 +365,7 @@ def generate_cactus(fname2_s):
             f.write('\n\n')
 
     _gnuplot_run(gnuplotfn, pdf_file, png_file,
-                 "Cactus plot: instances synthesised vs. time")
+                 "CDF: instances synthesised vs. time")
 
 
 # ---- Scatter plots ----
@@ -444,7 +445,7 @@ def scatter_plot_time_pairs(matched_dirs, fname_like, verbose=False):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate cactus/scatter plots and tables for arjun synthesis data")
+        description="Generate CDF/scatter plots and tables for arjun synthesis data")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Print progress information")
     parser.add_argument("--full", action="store_true",
@@ -483,9 +484,9 @@ def main():
     print_instance_stats_table(table_todo, fname_like)
 
     if fname2_s:
-        generate_cactus(fname2_s)
+        generate_cdf(fname2_s)
     else:
-        print(f"{RED}No cactus data (no solved instances?){RESET}")
+        print(f"{RED}No CDF data (no solved instances?){RESET}")
 
     scatter_plot_time_pairs(matched_dirs, fname_like, verbose=args.verbose)
 
