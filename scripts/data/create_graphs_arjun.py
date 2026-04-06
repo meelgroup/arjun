@@ -1,311 +1,494 @@
 #!/usr/bin/python3
 
+import argparse
+import base64
+import itertools
 import os
 import sqlite3
 import re
-import subprocess
 
+BLUE  = "\033[94m"
+GREEN = "\033[92m"
+RED   = "\033[91m"
+RESET = "\033[0m"
 
-def convert_to_cactus(fname, fname2):
-    # print("fname:" , fname)
-    f2 = open(fname2, "w")
-    f = open(fname, "r")
-    text = f.read()
-    mylines = text.splitlines()
-    i = 0
-    time = []
-    for line in mylines:
-      time.append(float(line.split()[0]))
-      i += 1
+DB = "data.sqlite3"
+TABLE = "arjun"
+TIMEOUT = 1800  # seconds used for PAR2 / scatter timeout
 
-    lastnum = -1
-    for a in range(0, 3600, 1):
-      num = 0
-      for t in time:
-        #print "t: %f a: %d" %(t, a)
-        if (t < a) :
-          num += 1
-
-      if (lastnum != num):
-          f2.write("%d \t%d\n" %(num, a))
-      lastnum = num
-    f.close()
-    f2.close()
-    return len(mylines)
+# ---- Configuration: which dirs to include (prefix match) ----
+only_dirs = [
+    "out-synth-1286344-",
+]
+# -------------------------------------------------------------
 
 
 def get_versions():
-    vers = []
-    con = sqlite3.connect("mydb.sqlite")
+    con = sqlite3.connect(DB)
     cur = con.cursor()
-    res = cur.execute("""
-                      SELECT arjun_sha1
-                      FROM data
-                      where arjun_sha1 is not NULL and arjun_sha1 != '' group by arjun_sha1""")
-    for a in res:
-        vers.append(a[0])
-
+    res = cur.execute(f"""
+        SELECT arjun_sha1 FROM {TABLE}
+        WHERE arjun_sha1 IS NOT NULL AND arjun_sha1 != ''
+        GROUP BY arjun_sha1""")
+    vers = [row[0] for row in res]
     con.close()
     return vers
 
 
-def get_dirs(ver : str):
-    ret = []
-    con = sqlite3.connect("mydb.sqlite")
+def get_matching_dirs(only_dirs_list):
+    """Return all dirnames from DB that start with any prefix in only_dirs_list.
+    Returns all dirnames if only_dirs_list is empty."""
+    con = sqlite3.connect(DB)
     cur = con.cursor()
-    res = cur.execute("SELECT dirname, timeout_call FROM data where arjun_sha1='"+ver+"' group by dirname")
-    for a in res:
-        call = a[1]
-        call = re.sub("././arjun", "", call)
-        call = re.sub(" mc2022.*cnf.*", "", call)
-        ret.append([a[0], call])
+    res = cur.execute(f"SELECT DISTINCT dirname FROM {TABLE} ORDER BY dirname")
+    all_dirs = [row[0] for row in res]
+    con.close()
+    if not only_dirs_list:
+        return all_dirs
+    return [d for d in all_dirs if any(d.startswith(p) for p in only_dirs_list)]
 
+
+def _dir_call_label(call: str) -> str:
+    """Strip binary name and CNF filename from a raw timeout_call string."""
+    call = re.sub(r'^\./arjun\S*\s+', '', call)
+    call = re.sub(r'\s+\S+\.(?:qdimacs\.cnf|cnf)\S*\s*$', '', call)
+    return call.strip()
+
+
+def get_dirs(ver: str):
+    ret = []
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    res = cur.execute(
+        f"SELECT dirname, MIN(timeout_call) FROM {TABLE}"
+        f" WHERE arjun_sha1=? GROUP BY dirname",
+        (ver,))
+    for row in res:
+        call = _dir_call_label(row[1] or "")
+        ret.append([row[0], call])
     con.close()
     return ret
 
 
 def gnuplot_name_cleanup(name: str) -> str:
-    # remove all non-alphanumeric characters except for underscores and dashes
-    name = re.sub(r'\"', '', name)
-    # replace multiple underscores or dashes with a single one
+    name = re.sub(r'"', '', name)
     name = re.sub(r'_', '=', name)
     return name
 
 
-def generate_todos():
-    fname_like = ""
-    # fname_like = " and (fname like '%track1%' or fname like '%track2%') "
+def convert_to_cactus(fname, fname2):
+    with open(fname, "r") as f:
+        times = sorted(float(line.split()[0]) for line in f if line.strip())
+    with open(fname2, "w") as f2:
+        for i, t in enumerate(times):
+            f2.write(f"{i+1} \t{t}\n")
+    return len(times)
 
 
-    not_calls = []
-    # not_calls = ["ExactMC"]
-    # not_versions = ["sharpsat", "gpmc", "6368237b"]
-    # only_calls = ["--ignore 1 --arjun 1 --maxcache 3500 --vivif 1 --decide 2 --sbva 1000"]
-    # not_versions = ["arjun"]
-    # not_calls = ["forcebranch", "target"] # "cachetime"
-    # exactm: out-arjun-6318929.pbs101-5/
-    # exactmc2: out-arjun-6328707.pbs101-7
-    # sharpsat: out-arjun-6318929.pbs101-7
-
-    only_dirs = [
-        # "out-synth-984148" # bug in sibFPE for oracle, autarkies
-        # "out-synth-984881-0/", # fix bug in sibFPE, autarkies
-        # "out-synth-1017598-5/", # too many fixes to name
-        # "out-synth-1017598-1/", # too many fixes to name
-        # "out-synth-1017598-", # too many fixes to name
-        # "out-synth-1043577-", # no_silent, BVA, Kuldeep ideas, 3+4 strategy etc
-        # "out-synth-1043577-1/", #strategy 0, multiplier
-        # "out-synth-1043577-13", strategy 1
-        # "out-synth-1043577-14"  strategy 2,
-        # "out-synth-1043577-15"  strategy 3,
-        # "out-synth-1043577-16"  strategy 4,
-        # "out-synth-1044613-", # bva synth off, on-the-fly order
-        # "out-synth-1063296-", # try different learning parameters
-        "out-synth-1063296-9/", # best learning parameter
-        "out-synth-1068169-", # new strategy system
-
-    ]
-    # only_dirs = ["out-synth-6828273"]
-    # not_calls = ["--minimize 0 ", "--bve 0"]
-    # not_calls = ["--satsolver 0"]
-    not_versions = []
-    # only_dirs = []
-    # only_calls = ["--synth"]
-    only_calls = []
-    # not_calls = ["restart"]
-    not_calls = []
-    only_versions = get_versions()
+def build_csv_data(versions, matched_dirs, only_calls, not_calls, not_versions,
+                   fname_like, verbose=False):
     fname2_s = []
     table_todo = []
+    matched_dirs_set = set(matched_dirs)
 
-
-    for ver in only_versions :
-        dirs_call = get_dirs(ver)
-        for dir,call in dirs_call:
+    for ver in versions:
+        for dir, call in get_dirs(ver):
             bad = False
-            for not_call in not_calls:
-              if not_call in call:
+            for nc in not_calls:
+                if nc in call:
+                    bad = True
+            for nv in not_versions:
+                if nv in ver:
+                    bad = True
+            if only_calls:
+                if not any(oc in call for oc in only_calls):
+                    bad = True
+            if dir not in matched_dirs_set:
                 bad = True
-            for not_version in not_versions:
-              if not_version in ver:
-                bad = True
-            if len(only_calls) != 0:
-              inside = False
-              for only_call in only_calls:
-                if only_call in call:
-                  inside = True
-              if not inside: bad = True
-
-            if len(only_dirs) != 0:
-              inside = False
-              for only_dir in only_dirs:
-                if only_dir in (dir+"/"):
-                  inside = True
-              if not inside: bad = True
-
             if bad:
-              continue
+                if verbose:
+                    print(f"  Skipping dir={dir} ver={ver}")
+                continue
+            if verbose:
+                print(f"  Processing dir={dir} ver={ver} call={call!r}")
 
-            fname = "run-"+dir+".csv"
-            with open("gencsv.sql", "w") as f:
-                f.write(".headers off\n")
-                f.write(".mode csv\n");
-                f.write(".output "+fname+"\n")
-                f.write("select arjun_time from data where dirname='"+dir+"' and arjun_sha1='"+ver+"'\n and arjun_time is not NULL "+fname_like)
-            os.system("sqlite3 mydb.sqlite < gencsv.sql")
-            os.unlink("gencsv.sql")
+            fname = "run-" + dir + ".csv"
+            con = sqlite3.connect(DB)
+            cur = con.cursor()
+            res = cur.execute(
+                f"SELECT arjun_time FROM {TABLE}"
+                f" WHERE dirname=? AND arjun_sha1=? AND arjun_time IS NOT NULL{fname_like}",
+                (dir, ver))
+            with open(fname, "w") as f:
+                for row in res:
+                    f.write(f"{row[0]}\n")
+            con.close()
 
             fname2 = fname + ".gnuplotdata"
             num_solved = convert_to_cactus(fname, fname2)
             fname2_s.append([fname2, call, ver[:10], num_solved, dir])
             table_todo.append([dir, ver])
 
-    return (fname2_s, table_todo, fname_like)
+    return fname2_s, table_todo
 
 
-fname2_s, table_todo, fname_like = generate_todos()
+# ---- Table helpers ----
 
-# summary table
-for only_counted in [False, True]:
-  counted_req = ""
-  if only_counted:
-    print("::: --------- Data based on ONLY benchmarks that are FINISHED ------- :::")
-    counted_req = " and arjun_time is not NULL "
-  else:
-    print("::: --------- Data based on ALSO NOT FINISHED benchmarks ------- :::")
-  with open("gen_table.sql", "w") as f:
-    f.write(".mode table\n")
-    # f.write(".mode colum\n")
-    # f.write(".headers off\n")
-    dirs = ""
-    vers = ""
-    for dir,ver in table_todo:
-      dirs += "'" + dir + "',"
-      vers += "'" + ver + "',"
-    dirs = dirs[:-1]
-    vers = vers[:-1]
-    extra = ""
-    f.write("select \
-        replace(dirname,'out-arjun-mc','') as dirname,\
-        timeout_call as call,\
-        sum(mem_out) as 'mem out', \
-        sum(signal == 11) as 'sigSEGV', \
-        sum(signal == 6) as 'sigABRT', \
-        sum(signal == 14) as 'sigALRM', \
-        sum(signal == 8) as 'sigFPE', \
-        CAST(ROUND(avg(timeout_mem), 0) AS INTEGER) as 'av memKB',\
-        sum(arjun_time is not null) as 'solved',\
-        CAST(ROUND(sum(coalesce(arjun_time, 3600))/COUNT(*),0) AS INTEGER) as 'PAR2',\
-        CAST(avg(input_vars) AS INTEGER) as 'av-inp',\
-        CAST(avg(start_to_define_vars) AS INTEGER) as 'av-to-def',\
-        CAST(avg(orig_total_vars) AS INTEGER) as 'av-vars',\
-        CAST(ROUND(avg(puura_time), 2) AS REAL) as 'av-puura-T',\
-        CAST(avg(puura_defined) AS INTEGER) as 'av-puura-def',\
-        CAST(ROUND(avg(extend_time), 2) AS REAL) as 'av-extend-T',\
-        CAST(avg(extend_defined) AS INTEGER) as 'av-extend-def',\
-        CAST(ROUND(avg(backward_time), 2) AS REAL) as 'av-backw-T',\
-        CAST(avg(backward_defined) AS INTEGER) as 'av-backw-def',\
-        CAST(ROUND(avg(manthan_training_time), 2) AS REAL) as 'av-mant-tr-T',\
-        CAST(ROUND(avg(manthan_repair_time), 2) AS REAL) as 'av-mant-rep-T',\
-        CAST(ROUND(avg(manthan_time), 2) AS REAL) as 'av-manth-T',\
-        CAST(ROUND(avg(repairs),0) AS INTEGER) as 'av-repairs',\
-        CAST(avg(manthan_defined) AS INTEGER) as 'av-manthan-def',\
-        sum(fname is not null) as 'nfiles'\
-        from data where dirname IN ("+dirs+") and arjun_sha1 IN ("+vers+") "+fname_like+" "+counted_req+"group by dirname order by solved asc")
-# CAST(ROUND(avg(manthan_sampling_time), 2) AS REAL) as 'avg-mant-samp-T',\
-# CAST(avg(repairs_failed) AS INTEGER) as 'avg-repairs-fail',\
-# CAST(avg(repairs) AS INTEGER) as 'avg-repairs',\
-  command = "sqlite3 mydb.sqlite < gen_table.sql"
-  p = subprocess.Popen(command, stderr=subprocess.STDOUT,stdout=subprocess.PIPE, shell=True)
-  output, _ = p.communicate()
-  for line in output.decode().splitlines():
-      print(line)
-  os.unlink("gen_table.sql")
-
-# median table
-if True:
-  for dir,ver in table_todo:
-    with open("gen_table.sql", "w") as f:
-      f.write(".mode table\n")
-      f.write("select '"+dir+"'")
-      for col in "repairs", "timeout_mem":
-        f.write(", (SELECT "+col+" as 'median_"+col+"'\
-        FROM data\
-        where dirname IN ('"+dir+"') and "+col+" is not null"+fname_like+"\
-        ORDER BY "+col+"\
-        LIMIT 1\
-        OFFSET (SELECT COUNT("+col+") FROM data\
-          where dirname IN ('"+dir+"') \
-          and "+col+" is not null) / 2) as median_"+col+" \
-      ")
-
-      # median for data where the value is > 0, to avoid having the median be 0
-      # for col in "gates_extended", "padoa_extended":
-      #   f.write(", (SELECT "+col+" as 'median_"+col+"_NOZERO'\
-      #   FROM data\
-      #   where dirname IN ('"+dir+"') and arjun_sha1 IN ('"+ver+"') and "+col+" is not null "+fname_like+"\
-      #               and "+col+">0\
-      #   ORDER BY "+col+"\
-      #   LIMIT 1\
-      #   OFFSET (SELECT COUNT("+col+") FROM data\
-      #     where dirname IN ('"+dir+"') and arjun_sha1 IN ('"+ver+"') \
-      #     and "+col+" is not null "+fname_like+" and "+col+">0) / 2) as median_"+col+" \
-      # ")
-    os.system("sqlite3 mydb.sqlite < gen_table.sql")
-    os.unlink("gen_table.sql")
-
-gnuplotfn = "run-all.gnuplot"
-with open(gnuplotfn, "w") as f:
-    f.write("set term postscript eps color lw 1 \"Helvetica\" 12 size 8,4\n")
-    f.write("set output \"run.eps\"\n")
-    f.write("set title \"Counter arjun\"\n")
-    f.write("set notitle\n")
-    f.write("set key bottom right\n")
-    # f.write("set xtics 200\n")
-    f.write("set logscale x\n")
-    f.write("unset logscale y\n")
-    f.write("set ylabel  \"Instances synthetized\"\n")
-    f.write("set xlabel \"Time (s)\"\n")
-    # f.write("plot [:][10:]\\\n")
-    f.write("plot [:][150:]\\\n")
-    i = 0
-    # f.write(" \"runkcbox-prearjun.csv.gnuplotdata\" u 2:1 with linespoints  title \"KCBox\",\\\n")
-    # f.write(" \"runsharptd-prearjun.csv.gnuplotdata\" u 2:1 with linespoints  title \"SharptTD\",\\\n")
-    towrite = ""
-    for fn,call,ver,num_solved,dir in fname2_s:
-        # if "restart" not in call and num_solved > 142:
-        if True:
-            call = gnuplot_name_cleanup(call)
-            dir  = gnuplot_name_cleanup(dir)
-            ver  = gnuplot_name_cleanup(ver)
-            oneline = "\""+fn+"\" u 2:1 with linespoints  title \""+ver+"-"+dir+"-"+call+"\""
-            towrite += oneline
-            towrite +=",\\\n"
-    towrite = towrite[:(len(towrite)-4)]
-    f.write(towrite)
+def _print_table(headers, str_rows):
+    if not str_rows:
+        return
+    widths = [max(len(h), max((len(r[i]) for r in str_rows), default=0))
+              for i, h in enumerate(headers)]
+    sep = "+-" + "-+-".join("-" * w for w in widths) + "-+"
+    fmt = "| " + " | ".join(f"{{:<{w}}}" for w in widths) + " |"
+    print(sep)
+    print(fmt.format(*headers))
+    print(sep)
+    for row in str_rows:
+        print(fmt.format(*row))
+    print(sep)
 
 
-if os.path.exists("run.eps"):
-  os.unlink("run.eps")
-if os.path.exists("run.pdf"):
-  os.unlink("run.pdf")
-if os.path.exists("run.png"):
-  os.unlink("run.png")
-
-os.system("gnuplot "+gnuplotfn)
-os.system("epstopdf run.eps run.pdf")
-os.system("pdftoppm -r 250 -png run.pdf run") # -r controls DPI, default 150
-print("okular run.eps")
-os.system("okular run.eps")
+def _sqlite_run(query, title=None):
+    if title:
+        print(f"\n{BLUE}{title}{RESET}")
+    with open("_tmp_query.sqlite", "w") as f:
+        f.write(".mode table\n")
+        f.write(query + "\n")
+    os.system(f"sqlite3 {DB} < _tmp_query.sqlite")
+    os.unlink("_tmp_query.sqlite")
 
 
-#### examples
-# .mode table
-# old = out-arjun-mccomp2324-14675861-0 -- mccomp2025
-# new= out-arjun-mccomp2324-15010600-0 -- td start from 0
+def print_summary_tables(table_todo, fname_like, full=False):
+    if not table_todo:
+        return
+    dirs = ",".join("'" + d + "'" for d, _ in table_todo)
+    vers = ",".join("'" + v + "'" for _, v in table_todo)
 
-# old = "out-arjun-mccomp2324-21349-0", # TRILLIUM, arjun_7d97636055e_9104724fa_26d64aac (i.e. old run that was the fastest)
-# new = "out-arjun-mccomp2324-35541-0", # TRILLIUM, fixing td starting from 0, now cutting disjoint components at toplevel for correct centroid
+    # Strip CNF filename and leading binary name from call
+    call_expr = "TRIM(REPLACE(REPLACE(MIN(timeout_call), ' '||MIN(fname), ''), './arjun ', ''))"
 
-# select a1.dirname, a1.fname, a1.arjun_time as "old time", a2.dirname, a2.arjun_time as "new time" from data as a1, data as a2 where  a1.fname=a2.fname and a1.arjun_time is not null and a1.arjun_time is not null and a1.dirname like 'out-arjun-mccomp2324-21349-0' and a2.dirname like 'out-arjun-mccomp2324-35541-0' and a1.arjun_time < a2.arjun_time-100 and a1.arjun_time > 10 order by a1.arjun_time desc limit 50;
+    compact_cols = [
+        ("replace(dirname,'out-synth-','out-')",                         "dirname"),
+        (call_expr,                                                       "call"),
+        ("sum(arjun_time is not null)",                                  "solved"),
+        (f"CAST(ROUND(sum(coalesce(arjun_time,{TIMEOUT}))/COUNT(*),0) AS INTEGER)", "PAR2"),
+        ("CAST(ROUND(avg(timeout_mem),0) AS INTEGER)",                   "av memMB"),
+        ("sum(mem_out)",                                                 "mem_out"),
+        ("sum(signal == 11)",                                            "sigSEGV"),
+        ("sum(signal == 6)",                                             "sigABRT"),
+        ("sum(signal == 14)",                                            "sigALRM"),
+        ("CAST(avg(input_vars) AS INTEGER)",                             "av-inp"),
+        ("CAST(avg(start_to_define_vars) AS INTEGER)",                   "av-to-def"),
+        ("CAST(ROUND(avg(puura_time), 2) AS REAL)",                      "av-puura-T"),
+        ("CAST(avg(puura_defined) AS INTEGER)",                          "av-puura-def"),
+        ("sum(fname is not null)",                                       "nfiles"),
+    ]
+    full_only_cols = [
+        ("CAST(ROUND(avg(extend_time), 2) AS REAL)",                     "av-ext-T"),
+        ("CAST(avg(extend_defined) AS INTEGER)",                         "av-ext-def"),
+        ("CAST(ROUND(avg(backward_time), 2) AS REAL)",                   "av-backw-T"),
+        ("CAST(avg(backward_defined) AS INTEGER)",                       "av-backw-def"),
+        ("CAST(ROUND(avg(manthan_training_time),2) AS REAL)",            "av-mant-tr-T"),
+        ("CAST(ROUND(avg(manthan_repair_time),2) AS REAL)",              "av-mant-rep-T"),
+        ("CAST(ROUND(avg(manthan_time), 2) AS REAL)",                    "av-manth-T"),
+        ("CAST(ROUND(avg(repairs),0) AS INTEGER)",                       "av-repairs"),
+        ("CAST(avg(manthan_defined) AS INTEGER)",                        "av-manthan-def"),
+    ]
 
+    cols = compact_cols + (full_only_cols if full else [])
+    select_clause = ",\n        ".join(f"{expr} as '{alias}'" for expr, alias in cols)
+
+    for only_counted in [False, True]:
+        title = ("Data based on ONLY SOLVED benchmarks"
+                 if only_counted else "Data including UNSOLVED benchmarks")
+        counted_req = " AND arjun_time IS NOT NULL" if only_counted else ""
+        _sqlite_run(
+            f"select\n        {select_clause}\n"
+            f"        from {TABLE}"
+            f" where dirname IN ({dirs}) and arjun_sha1 IN ({vers})"
+            f"{fname_like}{counted_req} group by dirname order by solved asc",
+            title=title)
+
+
+def _median_sq(col, dir, ver, fname_like):
+    base = f"dirname='{dir}' AND arjun_sha1='{ver}' AND {col} IS NOT NULL{fname_like}"
+    return (f"(SELECT {col} FROM {TABLE} WHERE {base}"
+            f" ORDER BY {col} LIMIT 1"
+            f" OFFSET (SELECT COUNT({col}) FROM {TABLE} WHERE {base}) / 2)")
+
+
+def _avg_sq(col, dir, ver, fname_like):
+    base = f"dirname='{dir}' AND arjun_sha1='{ver}' AND {col} IS NOT NULL{fname_like}"
+    return f"(SELECT CAST(ROUND(AVG({col}),0) AS INTEGER) FROM {TABLE} WHERE {base})"
+
+
+def print_median_tables(table_todo, fname_like):
+    if not table_todo:
+        return
+    plain_cols = ["repairs", "timeout_mem", "arjun_time", "manthan_time"]
+    union_parts = []
+    for i, (dir, ver) in enumerate(table_todo):
+        alias_suffix = " as dirname" if i == 0 else ""
+        ver_alias    = " as ver"     if i == 0 else ""
+        parts = [f"replace('{dir}','out-synth-','out-'){alias_suffix}",
+                 f"'{ver[:10]}'{ver_alias}"]
+        for col in plain_cols:
+            parts.append(f"{_median_sq(col, dir, ver, fname_like)} as med_{col}")
+        union_parts.append("SELECT " + ", ".join(parts))
+    _sqlite_run("\nUNION ALL\n".join(union_parts), title="Median values per directory")
+
+
+def print_instance_stats_table(table_todo, fname_like):
+    if not table_todo:
+        return
+    metrics = [
+        ("input_vars",           "inp_vars"),
+        ("start_to_define_vars", "to_define"),
+        ("puura_defined",        "puura_def"),
+        ("extend_defined",       "ext_def"),
+        ("backward_defined",     "back_def"),
+        ("manthan_defined",      "mant_def"),
+    ]
+    union_parts = []
+    for i, (dir, ver) in enumerate(table_todo):
+        alias_suffix = " as dirname" if i == 0 else ""
+        parts = [f"replace('{dir}','out-synth-','out-'){alias_suffix}"]
+        for col, alias in metrics:
+            parts.append(f"{_median_sq(col, dir, ver, fname_like)} as med_{alias}")
+            parts.append(f"{_avg_sq(col, dir, ver, fname_like)} as avg_{alias}")
+        count_sq = (f"(SELECT COUNT(*) FROM {TABLE}"
+                    f" WHERE dirname='{dir}' AND arjun_sha1='{ver}'{fname_like})")
+        parts.append(f"{count_sq} as n_inst")
+        union_parts.append("SELECT " + ", ".join(parts))
+    _sqlite_run("\nUNION ALL\n".join(union_parts),
+                title="Instance stats: variable counts and synthesis phase results (median/avg)")
+
+
+def print_signal_warnings(table_todo, fname_like):
+    dirs = ",".join("'" + d + "'" for d, _ in table_todo)
+    vers = ",".join("'" + v + "'" for _, v in table_todo)
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    cur.execute(
+        f"SELECT COUNT(*) FROM {TABLE}"
+        f" WHERE dirname IN ({dirs}) AND arjun_sha1 IN ({vers})"
+        f" AND signal=6 AND (mem_out IS NULL OR mem_out=0){fname_like}")
+    count = cur.fetchone()[0]
+    if count > 0:
+        print(f"\n{RED}WARNING: {count} instance(s) with sigABRT (signal=6){RESET}")
+        cur.execute(
+            f"SELECT dirname, fname, timeout_mem FROM {TABLE}"
+            f" WHERE dirname IN ({dirs}) AND arjun_sha1 IN ({vers})"
+            f" AND signal=6 AND (mem_out IS NULL OR mem_out=0){fname_like}"
+            f" ORDER BY dirname, fname")
+        rows = cur.fetchall()
+        str_rows = [(d, f, f"{m:.1f}" if m is not None else "N/A") for d, f, m in rows]
+        _print_table(["dirname", "fname", "memMB"], str_rows)
+    con.close()
+
+
+# ---- Plot helpers ----
+
+def _png_dimensions(png_file):
+    try:
+        with open(png_file, "rb") as fh:
+            fh.seek(16)
+            w = int.from_bytes(fh.read(4), "big")
+            h = int.from_bytes(fh.read(4), "big")
+        return w, h
+    except Exception:
+        return 800, 600
+
+
+def _display_png(png_file):
+    if os.path.exists(png_file):
+        with open(png_file, "rb") as fh:
+            img_b64 = base64.b64encode(fh.read()).decode()
+        w, h = _png_dimensions(png_file)
+        print(f"\033]1337;File=inline=1;width={w}px;height={h}px:{img_b64}\a")
+
+
+def _gnuplot_run(gp_file, pdf_file, png_file, console_title):
+    for path in [pdf_file, png_file]:
+        if os.path.exists(path):
+            os.unlink(path)
+    os.system(f"gnuplot {gp_file}")
+    print(f"\n{BLUE}{console_title}{RESET}")
+    print(f"  PDF: {pdf_file}  PNG: {png_file}")
+    _display_png(png_file)
+
+
+def _safe(s):
+    return re.sub(r'[^a-zA-Z0-9_-]', '_', s)
+
+
+def _gp_str(s):
+    return s.replace('"', '\\"')
+
+
+# ---- Cactus plot ----
+
+def generate_cactus(fname2_s):
+    gnuplotfn = "cactus.gnuplot"
+    pdf_file  = "cactus.pdf"
+    png_file  = "cactus.png"
+
+    def plot_lines():
+        lines = []
+        for fn, call, _, _, dir in fname2_s:
+            label = gnuplot_name_cleanup(dir)
+            if call:
+                label += "-" + gnuplot_name_cleanup(call)
+            lines.append(f'"{fn}" u 2:1 with linespoints title "{label}"')
+        return ",\\\n".join(lines)
+
+    with open(gnuplotfn, "w") as f:
+        for term, out in [
+            ('pdfcairo size 20cm,15cm background "#d0d0d0"', pdf_file),
+            ('pngcairo size 800,600 background "#d0d0d0"',   png_file),
+        ]:
+            f.write(f'set terminal {term}\n')
+            f.write(f'set output "{out}"\n')
+            f.write('set title "Arjun synthesis: instances solved vs. time"\n')
+            f.write('set key top left\n')
+            f.write('set logscale x\n')
+            f.write('unset logscale y\n')
+            f.write(f'set xrange [0.001:{TIMEOUT}]\n')
+            f.write('set yrange [0:]\n')
+            f.write('set ylabel "Instances synthesised"\n')
+            f.write('set xlabel "Time (s)"\n')
+            f.write('set grid\n')
+            f.write('plot \\\n')
+            f.write(plot_lines())
+            f.write('\n\n')
+
+    _gnuplot_run(gnuplotfn, pdf_file, png_file,
+                 "Cactus plot: instances synthesised vs. time")
+
+
+# ---- Scatter plots ----
+
+def scatter_plot_time_pairs(matched_dirs, fname_like, verbose=False):
+    """For every pair of matched dirs, plot arjun_time scatter (NULL -> TIMEOUT)."""
+    pairs = list(itertools.combinations(matched_dirs, 2))
+    if not pairs:
+        return
+
+    # Build short label per dir
+    dir_label = {}
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    for d in matched_dirs:
+        cur.execute(f"SELECT MIN(timeout_call) FROM {TABLE} WHERE dirname=?", (d,))
+        row = cur.fetchone()
+        dir_label[d] = _dir_call_label(row[0] or "") if row and row[0] else d
+
+    for dir1, dir2 in pairs:
+        cur.execute(
+            f"SELECT a.fname,"
+            f" COALESCE(a.arjun_time, {TIMEOUT}),"
+            f" COALESCE(b.arjun_time, {TIMEOUT})"
+            f" FROM {TABLE} a JOIN {TABLE} b ON a.fname = b.fname"
+            f" WHERE a.dirname = '{dir1}' AND b.dirname = '{dir2}'"
+            f"{fname_like}")
+        rows = cur.fetchall()
+
+        if not rows:
+            if verbose:
+                print(f"  scatter: no common fnames for {dir1} vs {dir2}")
+            continue
+
+        safe1 = _safe(dir1)
+        safe2 = _safe(dir2)
+        dat_file = f"scatter_{safe1}_vs_{safe2}.dat"
+        pdf_file = f"scatter_{safe1}_vs_{safe2}.pdf"
+        png_file = f"scatter_{safe1}_vs_{safe2}.png"
+        gp_file  = f"scatter_{safe1}_vs_{safe2}.gnuplot"
+
+        with open(dat_file, "w") as f:
+            f.write(f"# col1={dir1}  col2={dir2}\n")
+            for _, t1, t2 in rows:
+                f.write(f"{t1}\t{t2}\n")
+
+        lbl1 = _gp_str(f"{dir1} [{dir_label[dir1]}]")
+        lbl2 = _gp_str(f"{dir2} [{dir_label[dir2]}]")
+        title = _gp_str(f"Arjun synth time: {dir1} vs {dir2}")
+
+        with open(gp_file, "w") as f:
+            for term, out in [
+                (f'pdfcairo size 15cm,15cm background "#d0d0d0"', pdf_file),
+                (f'pngcairo size 600,600 background "#d0d0d0"',   png_file),
+            ]:
+                f.write(f'set terminal {term}\n')
+                f.write(f'set output "{out}"\n')
+                f.write(f'set title "{title}"\n')
+                f.write(f'set xlabel "{lbl1} time (s)"\n')
+                f.write(f'set ylabel "{lbl2} time (s)"\n')
+                f.write( 'set logscale xy\n')
+                f.write(f'set xrange [0.001:{TIMEOUT * 1.1}]\n')
+                f.write(f'set yrange [0.001:{TIMEOUT * 1.1}]\n')
+                f.write( 'set grid\n')
+                f.write( 'set key off\n')
+                f.write(f'set arrow 1 from 0.001,0.001 to {TIMEOUT},{TIMEOUT}'
+                        f' nohead lc rgb "gray50" lw 1\n')
+                f.write(f'plot "{dat_file}" using 1:2 with points pt 7 ps 0.5'
+                        f' lc rgb "blue" notitle\n')
+                f.write( 'unset arrow 1\n\n')
+
+        _gnuplot_run(gp_file, pdf_file, png_file,
+                     f"Scatter: {dir1} vs {dir2} (n={len(rows)})")
+
+    con.close()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate cactus/scatter plots and tables for arjun synthesis data")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="Print progress information")
+    parser.add_argument("--full", action="store_true",
+                        help="Print full summary table (default: compact)")
+    parser.add_argument("--fname", nargs="+", metavar="PATTERN", default=[],
+                        help="Filter by fname pattern(s), e.g. --fname '%%amba%%'")
+    args = parser.parse_args()
+
+    if args.fname:
+        clauses = " or ".join(f"fname like '{p}'" for p in args.fname)
+        fname_like = f" AND ({clauses}) "
+    else:
+        fname_like = ""
+
+    versions = get_versions()
+    matched_dirs = get_matching_dirs(only_dirs)
+    if args.verbose:
+        print(f"Found {len(versions)} version(s) in database")
+        print(f"Matched {len(matched_dirs)} dir(s): {matched_dirs}")
+
+    not_calls    = []
+    only_calls   = []
+    not_versions = []
+
+    fname2_s, table_todo = build_csv_data(
+        versions, matched_dirs, only_calls, not_calls, not_versions,
+        fname_like, verbose=args.verbose)
+
+    if not table_todo:
+        print(f"{RED}No matching data found.{RESET}")
+        return
+
+    print_signal_warnings(table_todo, fname_like)
+    print_summary_tables(table_todo, fname_like, full=args.full)
+    print_median_tables(table_todo, fname_like)
+    print_instance_stats_table(table_todo, fname_like)
+
+    if fname2_s:
+        generate_cactus(fname2_s)
+    else:
+        print(f"{RED}No cactus data (no solved instances?){RESET}")
+
+    scatter_plot_time_pairs(matched_dirs, fname_like, verbose=args.verbose)
+
+
+if __name__ == "__main__":
+    main()
