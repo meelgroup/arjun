@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SOLVERS_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+SAT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 
 rm -rf .cmake
 rm -rf lib*
@@ -18,12 +18,15 @@ rm -rf rjun-src
 rm -rf deps
 rm -rf _deps
 cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
-    -Dcadiback_DIR="${SOLVERS_DIR}/cadiback/build" \
-    -Dcadical_DIR="${SOLVERS_DIR}/cadical/build" \
-    -Dcryptominisat5_DIR="${SOLVERS_DIR}/cryptominisat/build" \
-    -Dsbva_DIR="${SOLVERS_DIR}/sbva/build" \
-    -Dtreedecomp_DIR="${SOLVERS_DIR}/treedecomp/build" \
     -DGMPXX_LIBRARY=/usr/local/lib/libgmpxx.a \
+    -Dcryptominisat5_DIR="${SAT_DIR}/cryptominisat/build" \
+    -Dsbva_DIR="${SAT_DIR}/sbva/build" \
+    -DEvalMaxSAT_DIR="${SAT_DIR}/EvalMaxSAT/build" \
+    -Dtreedecomp_DIR="${SAT_DIR}/treedecomp/build" \
+    -Darjun_DIR="${SAT_DIR}/arjun/build" \
+    -Dapproxmc_DIR="${SAT_DIR}/approxmc/build" \
+    -Dcadical_DIR="${SAT_DIR}/cadical/build" \
+    -Dcadiback_DIR="${SAT_DIR}/cadiback/build" \
     ..
 make -j$(nproc)
 strip arjun

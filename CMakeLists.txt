@@ -81,6 +81,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 # static compilation
 option(EXTRA_SYNTH "Also build extra parts of synthesis: learning, MaxSAT solver" OFF)
 option(BUILD_SHARED_LIBS "Build the shared library" ON)
+# STATIC_BINARY controls whether the arjun executable is linked fully statically.
+# Defaults to ON when BUILD_SHARED_LIBS=OFF, but can be set to OFF independently.
+if(NOT BUILD_SHARED_LIBS)
+    option(STATIC_BINARY "Link the arjun binary fully statically" ON)
+else()
+    option(STATIC_BINARY "Link the arjun binary fully statically" OFF)
+endif()
+
+if(STATIC_BINARY AND ${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+    message(STATUS "Linking arjun binary statically")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
+endif()
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
@@ -291,6 +303,10 @@ if(APPLE)
     if(_homebrew_prefix)
         set(ENV{PKG_CONFIG_PATH} "${_homebrew_prefix}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
     endif()
+endif()
+# Ensure /usr/local/lib/pkgconfig is searched (for locally-installed libraries).
+if(EXISTS "/usr/local/lib/pkgconfig")
+    set(ENV{PKG_CONFIG_PATH} "/usr/local/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
 endif()
 pkg_check_modules(GMP REQUIRED IMPORTED_TARGET gmp)
 find_library(GMPXX_LIBRARY NAMES gmpxx HINTS ${GMP_LIBRARY_DIRS})
