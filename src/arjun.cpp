@@ -777,7 +777,7 @@ DLL_PUBLIC void SimplifiedCNF::fix_mapping_after_renumber(SimplifiedCNF& scnf, c
         const auto& origs = it.second;
         if (origs.size() <= 1) continue;
 
-        if (verb >= 2) {
+        if (verb >= 3) {
             cout << "c o [get-cnf] Found " << origs.size()
                 << " original vars mapping to new var " << CMSat::Lit(it.first, false) << ": ";
             for(const auto& o: origs) cout << CMSat::Lit(o, false) << " ";
@@ -794,7 +794,7 @@ DLL_PUBLIC void SimplifiedCNF::fix_mapping_after_renumber(SimplifiedCNF& scnf, c
         }
         if (orig_to_keep == UINT32_MAX) orig_to_keep = origs[0];
 
-        if (verb >= 2)
+        if (verb >= 3)
             cout << "c o [get-cnf] Keeping orig var " << CMSat::Lit(orig_to_keep, false)
                 << " undefined, defining others by it." << endl;
 
@@ -806,7 +806,7 @@ DLL_PUBLIC void SimplifiedCNF::fix_mapping_after_renumber(SimplifiedCNF& scnf, c
             if (need_aig) {
                 assert(scnf.defs[o] == nullptr);
                 scnf.defs[o] = AIG::new_lit(CMSat::Lit(orig_to_keep, n.sign() ^ n_keep.sign()));
-                if (verb >= 2) cout << "c o [get-cnf] set aig for var: " << CMSat::Lit(o, false)
+                if (verb >= 3) cout << "c o [get-cnf] set aig for var: " << CMSat::Lit(o, false)
                     << " to that of " << CMSat::Lit(orig_to_keep, false)
                     << " since both map to the same new var " << n << endl;
             }
