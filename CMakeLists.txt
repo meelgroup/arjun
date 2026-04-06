@@ -469,7 +469,7 @@ if(GIT_EXECUTABLE)
 else()
   set(GIT_SHA1 "GIT-hash-notfound")
 endif()
-set(ARJUN_FULL_VERSION "2.7.0")
+set(ARJUN_FULL_VERSION "2.7.1")
 
 string(REPLACE "." ";" ARJUN_FULL_VERSION_LIST ${ARJUN_FULL_VERSION})
 SetVersionNumber("PROJECT" ${ARJUN_FULL_VERSION_LIST})
