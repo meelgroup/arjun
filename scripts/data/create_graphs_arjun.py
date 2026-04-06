@@ -328,7 +328,7 @@ def _gp_str(s):
     return s.replace('"', '\\"')
 
 
-# ---- Cactus plot ----
+# ---- CDF plot ----
 
 def generate_cdf(fname2_s):
     gnuplotfn = "cdf.gnuplot"
