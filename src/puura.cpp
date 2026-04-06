@@ -163,64 +163,11 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     // eqlit-find from oracle not used (too slow?)
     // D: occ-ternary-res moved before occ-bve (ternary->binary enables more SCC equivalences for BVE)
     // B: distill-cls-onlyrem added after occ-bve (removes clauses subsumed after variable elimination)
-    //
-    // Puura pipeline ordering (simp_conf.puura_order):
-    //   0 = default (current production order, changes B/C/D/F applied)
-    //   1 = "oracle-lite": iter1=3, oracle_extra disabled (saves ~22% of preproc time
-    //       since oracle occurrence-1 is near-useless per data)
-    //   2 = "front-loaded kill": cheap high-lps steps (~200K lps) moved before occ-bve,
-    //       dead weight stripped (sub-impl, distill-bins, full-probe, clean-cls), iter1=3
-    //   3 = "no aggressive iter2": iter2=1, bve_grow_iter2=0 (skip +4.9M-lit bloat from
-    //       grow=6 pass), compensate with post-oracle distill-cls-onlyrem
-    //   4 = "synergy reorder": distill-cls/occ-ternary-res before occ-bve, dead weight
-    //       stripped, extra must-scc-vrepl between ternary-res and BVE, post-oracle distill
-    string str;
-    string str_iter2;
-    int local_iter1 = simp_conf.iter1;
-    int local_iter2 = simp_conf.iter2;
-    int local_bve_grow_iter2 = simp_conf.bve_grow_iter2;
-    bool local_oracle_extra = simp_conf.oracle_extra;
-    bool do_post_oracle_distill = false;
-
-    if (simp_conf.appmc) {
-        str = string("must-scc-vrepl, full-probe, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
-        str_iter2 = str + string("occ-backw-sub, ");
-    } else {
-        switch (simp_conf.puura_order) {
-            case 0: // default
-                str = string("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
-                // C: iter2 uses a separate string with extra occ-backw-sub at the end
-                str_iter2 = str + string("occ-backw-sub, ");
-                break;
-            case 1: // oracle-lite
-                str = string("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
-                str_iter2 = str + string("occ-backw-sub, ");
-                local_iter1 = 3;
-                local_oracle_extra = false;
-                break;
-            case 2: // front-loaded kill
-                str = string("must-scc-vrepl, sub-cls-with-bin, occ-rem-with-orgates, occ-backw-sub, distill-cls-onlyrem, occ-resolv-subs, occ-ternary-res, must-scc-vrepl, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, distill-cls, ");
-                str_iter2 = str + string("occ-backw-sub, ");
-                local_iter1 = 3;
-                break;
-            case 3: // no aggressive iter2
-                str = string("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
-                str_iter2 = str + string("occ-backw-sub, ");
-                local_iter2 = 1;
-                local_bve_grow_iter2 = 0;
-                do_post_oracle_distill = true;
-                break;
-            case 4: // synergy reorder
-                str = string("must-scc-vrepl, sub-cls-with-bin, occ-rem-with-orgates, occ-backw-sub, occ-resolv-subs, occ-ternary-res, must-scc-vrepl, distill-cls, distill-cls-onlyrem, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, ");
-                str_iter2 = str + string("occ-backw-sub, ");
-                do_post_oracle_distill = true;
-                break;
-            default:
-                std::cout << "ERROR: unknown puura_order = " << simp_conf.puura_order << std::endl;
-                exit(-1);
-        }
-    }
-    for (int i = 0; i < local_iter1; i++) solver->simplify(&dont_elim, &str);
+    string str("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
+    if (simp_conf.appmc) str = string("must-scc-vrepl, full-probe, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
+    // C: iter2 uses a separate string with extra occ-backw-sub at the end (catches clauses subsumed by BVE resolvents)
+    string str_iter2 = str + string("occ-backw-sub, ");
+    for (int i = 0; i < simp_conf.iter1; i++) solver->simplify(&dont_elim, &str);
 
     // Now doing Oracle
     string str2;
@@ -242,25 +189,17 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 
     // Now more expensive BVE, also RED linked in to occur
     if (!simp_conf.appmc) {
-        solver->set_min_bva_gain(local_bve_grow_iter2);
+        solver->set_min_bva_gain(simp_conf.bve_grow_iter2);
         solver->set_bve_nonstop(simp_conf.bve_grow_nonstop);
         solver->set_varelim_check_resolvent_subs(true);
     }
     solver->set_max_red_linkin_size(20);
-    for (int i = 0; i < local_iter2; i++) {
+    for (int i = 0; i < simp_conf.iter2; i++) {
         if (i >= 1) {
             solver->set_picosat_gate_limitK(400);
             solver->set_picosat_confl_limit(1000);
         }
         solver->simplify(&dont_elim, &str_iter2);
-    }
-
-    // Post-oracle lightweight distill (configs 3 and 4):
-    // distill-cls-onlyrem runs at 2541 lps and cannot add lits, so it's a safe
-    // cheap cleanup after the oracle changed the formula structure.
-    if (do_post_oracle_distill && !simp_conf.appmc) {
-        string s_dist = "distill-cls-onlyrem";
-        solver->simplify(&dont_elim, &s_dist);
     }
 
     // Final cleanup -- renumbering, disconnected component removing, etc.

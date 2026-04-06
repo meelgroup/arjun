@@ -996,9 +996,6 @@ struct SimpConf {
     int do_subs_with_resolvent_clauses = 1;
     bool do_backbone_puura = true;
     int weaken_limit = 8000;
-    // Puura pipeline ordering: 0=default, 1=oracle-lite, 2=front-loaded-kill,
-    // 3=no-aggressive-iter2, 4=synergy-reorder
-    int puura_order = 0;
 };
 
 struct VarTypes {
