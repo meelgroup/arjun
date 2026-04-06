@@ -166,24 +166,14 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     //
     // Puura pipeline ordering (simp_conf.puura_order):
     //   0 = default (current production order, changes B/C/D/F applied)
-    //   --- first generation experiments (all vs 1282000 baseline) ---
-    //   1 = "oracle-lite": iter1=3, oracle_extra disabled
-    //   2 = "front-loaded kill": cheap high-lps steps before occ-bve, dead weight stripped, iter1=3
-    //   3 = "no aggressive iter2": iter2=1, bve_grow_iter2=0, post-oracle distill
+    //   1 = "oracle-lite": iter1=3, oracle_extra disabled (saves ~22% of preproc time
+    //       since oracle occurrence-1 is near-useless per data)
+    //   2 = "front-loaded kill": cheap high-lps steps (~200K lps) moved before occ-bve,
+    //       dead weight stripped (sub-impl, distill-bins, full-probe, clean-cls), iter1=3
+    //   3 = "no aggressive iter2": iter2=1, bve_grow_iter2=0 (skip +4.9M-lit bloat from
+    //       grow=6 pass), compensate with post-oracle distill-cls-onlyrem
     //   4 = "synergy reorder": distill-cls/occ-ternary-res before occ-bve, dead weight
     //       stripped, extra must-scc-vrepl between ternary-res and BVE, post-oracle distill
-    //   --- second generation experiments (targeted, conservative) ---
-    //   5 = "dead weight stripped": identical to config 0 but remove confirmed 0-effect steps
-    //       (sub-impl, distill-bins, full-probe, clean-cls). Saves ~843s/batch. No reordering.
-    //   6 = "oracle_extra=off only": single change from config 0, oracle_extra disabled.
-    //       Saves ~17.6K seconds. The clean test that config 1 couldn't provide (config 1
-    //       confounded this with iter1=3).
-    //   7 = "mid-iter2 oracle": run oracle-vivif-fast between iter2 pass 1 and pass 2.
-    //       BVE pass 1 kills 93% of vars; oracle on the smaller formula may find more
-    //       sparsifications before BVE pass 2 exploits them. Costs ~3K extra seconds.
-    //   8 = "oracle_extra=off + iter2=3": disable oracle_extra (save 17.6K), add 3rd iter2
-    //       pass (spend 8K). Net save ~9.6K arjun seconds. Tests if extra BVE pass compensates
-    //       for loss of oracle_extra cleanup.
     string str;
     string str_iter2;
     int local_iter1 = simp_conf.iter1;
@@ -191,7 +181,6 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     int local_bve_grow_iter2 = simp_conf.bve_grow_iter2;
     bool local_oracle_extra = simp_conf.oracle_extra;
     bool do_post_oracle_distill = false;
-    bool do_mid_iter2_oracle = false;
 
     if (simp_conf.appmc) {
         str = string("must-scc-vrepl, full-probe, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
@@ -225,39 +214,6 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
                 str = string("must-scc-vrepl, sub-cls-with-bin, occ-rem-with-orgates, occ-backw-sub, occ-resolv-subs, occ-ternary-res, must-scc-vrepl, distill-cls, distill-cls-onlyrem, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, ");
                 str_iter2 = str + string("occ-backw-sub, ");
                 do_post_oracle_distill = true;
-                break;
-            case 5: // dead weight stripped
-                // Identical to config 0 except sub-impl (39s, 0 lits), distill-bins (530s, 0 lits),
-                // full-probe (247s, 0 lits), clean-cls (27s, ~0 lits) are removed.
-                // Isolates dead-weight-removal from the reordering done in config 4.
-                str = string("must-scc-vrepl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, distill-cls, ");
-                str_iter2 = str + string("occ-backw-sub, ");
-                break;
-            case 6: // oracle_extra=off only
-                // Single change from config 0: disable oracle_extra.
-                // Saves ~17.6K oracle seconds (occ1 oracle calls at 3-48 lps are near-useless).
-                // Config 1 tested this paired with iter1=3; this is the clean isolated test.
-                str = string("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
-                str_iter2 = str + string("occ-backw-sub, ");
-                local_oracle_extra = false;
-                break;
-            case 7: // mid-iter2 oracle
-                // Same pipeline as config 0. After iter2 pass 1 (which kills 93% of BVE vars),
-                // run oracle-vivif-fast on the reduced formula before iter2 pass 2.
-                // Hypothesis: oracle on the post-first-BVE formula finds sparsifications that
-                // BVE pass 2 can exploit. Costs ~3K extra seconds.
-                str = string("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
-                str_iter2 = str + string("occ-backw-sub, ");
-                do_mid_iter2_oracle = true;
-                break;
-            case 8: // oracle_extra=off + iter2=3
-                // Disable oracle_extra (save ~17.6K), add 3rd iter2 pass (spend ~8K).
-                // Net save ~9.6K arjun seconds. Tests if extra aggressive BVE+cleanup compensates
-                // for the loss of oracle_extra's formula cleanup.
-                str = string("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
-                str_iter2 = str + string("occ-backw-sub, ");
-                local_oracle_extra = false;
-                local_iter2 = 3;
                 break;
             default:
                 std::cout << "ERROR: unknown puura_order = " << simp_conf.puura_order << std::endl;
@@ -297,12 +253,6 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
             solver->set_picosat_confl_limit(1000);
         }
         solver->simplify(&dont_elim, &str_iter2);
-        // Config 7: after first iter2 pass, run oracle-vivif-fast on the reduced formula
-        // before pass 2 (backbone_done formulas only; non-backbone-done still get oracle later).
-        if (do_mid_iter2_oracle && i == 0 && backbone_done) {
-            string s_mid = "oracle-vivif-fast";
-            solver->simplify(&dont_elim, &s_mid);
-        }
     }
 
     // Post-oracle lightweight distill (configs 3 and 4):
