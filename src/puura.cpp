@@ -173,7 +173,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     string str2;
     bool backbone_done = cnf.get_backbone_done();
     if (!backbone_done && simp_conf.do_backbone_puura) {
-        solver->backbone_simpl(30*1000ULL, backbone_done);
+        solver->backbone_simpl(simp_conf.backbone_max_confl, backbone_done);
         string str_scc = "must-scc-vrepl, must-renumber";
         solver->simplify(&dont_elim, &str_scc);
     }

@@ -995,6 +995,7 @@ struct SimpConf {
     int bve_too_large_resolvent = 12;
     int do_subs_with_resolvent_clauses = 1;
     bool do_backbone_puura = true;
+    int64_t backbone_max_confl = -1;
     int weaken_limit = 8000;
 };
 
