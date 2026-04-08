@@ -196,6 +196,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     for(const auto& g: ites) {
         if (g.rhs.var() >= orig_num_vars) continue;
         vector<Lit> tmp (g.lhs.begin(), g.lhs.end());
+        std::sort(tmp.begin(), tmp.end());
         OrGate og(g.rhs, tmp, 0);
         all_gates.push_back(og);
     }
@@ -214,6 +215,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
         for(const auto& rhs: g.first) {
             vector<Lit> tmp;
             for(const auto& l: g.first) if (l != rhs) tmp.push_back(Lit(l, false));
+            std::sort(tmp.begin(), tmp.end());
             OrGate og(Lit(rhs, false), tmp, 0);
             all_gates.push_back(og);
         }
