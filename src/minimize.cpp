@@ -260,7 +260,8 @@ void Minimize::run_minimize_indep(ArjunNS::SimplifiedCNF& cnf, bool all_indep) {
     fill_solver(cnf);
     init();
     if (!preproc_and_duplicate(cnf)) goto end;
-    backward_round();
+    if (conf.fast_backw) backward_round();
+    else backward_round_slow();
 
     end:
     if (all_indep) {
