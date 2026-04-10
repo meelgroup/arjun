@@ -1632,6 +1632,7 @@ public:
     void set_probe_based(bool probe_based);
     void set_backward(bool backward);
     void set_backw_max_confl(uint32_t backw_max_confl);
+    void set_fast_backw(int fast_backw);
     void set_gauss_jordan(bool gauss_jordan);
     void set_find_xors(bool find_xors);
     void set_ite_gate_based(bool ite_gate_based);
@@ -1662,6 +1663,7 @@ public:
     bool get_probe_based() const;
     bool get_backward() const;
     uint32_t get_backw_max_confl() const;
+    int get_fast_backw() const;
     bool get_gauss_jordan() const;
     bool get_find_xors() const;
     bool get_ite_gate_based() const;

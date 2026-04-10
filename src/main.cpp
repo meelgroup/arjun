@@ -341,6 +341,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_no_gates_below(conf.no_gates_below);
     arj->set_probe_based(conf.probe_based);
     arj->set_backw_max_confl(conf.backw_max_confl);
+    arj->set_fast_backw(conf.fast_backw);
     arj->set_seed(conf.seed);
     arj->set_gauss_jordan(conf.gauss_jordan);
     arj->set_simp(conf.simp);
