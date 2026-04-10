@@ -162,7 +162,7 @@ void Minimize::backward_round_slow() {
     sort_unknown(unknown, incidence);
     if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
     print_sorted_unknown(unknown);
-    verb_print(1, "[backward] Start unknown size: " << unknown.size());
+    verb_print(1, "[backward SLOW] Start unknown size: " << unknown.size());
 
     vector<sspp::Lit> assumps;
     uint32_t iter = 0;
@@ -313,7 +313,7 @@ void Minimize::backward_round() {
     /* std::shuffle(unknown.begin(), unknown.end(), rand); */
     if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
     print_sorted_unknown(unknown);
-    verb_print(1, "[backward] Start unknown size: " << unknown.size());
+    verb_print(1, "[backward FAST] Start unknown size: " << unknown.size());
     solver->set_verbosity(0);
 
     vector<Lit> assumptions;
@@ -584,7 +584,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     if (mconf.backward_synth_order)
         std::reverse(unknown.begin(), unknown.end());
     print_sorted_unknown(unknown);
-    verb_print(1, "[backward] Start unknown size: " << unknown.size()
+    verb_print(1, "[backward SYNTH] Start unknown size: " << unknown.size()
                     << " mem: " << memUsedTotal()/(1024*1024) << " MB");
     solver->set_verbosity(0);
 
@@ -696,7 +696,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     cnf.set_after_backward_round_synth();
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end backward_round_synth");
 
-    verb_print(1, COLRED "[backward] Done. "
+    verb_print(1, COLRED "[backward SYNTH] Done. "
         << " TR: " << ret_true << " UN: " << ret_undef << " FA: " << ret_false
         << " defined: " << to_define.size()-to_define2.size()
         << " still to define: " << to_define2.size()
