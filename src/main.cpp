@@ -146,6 +146,7 @@ void add_arjun_options() {
     myopt("--mode", mode , fc_int, "0=counting, 1=weightd counting");
     myopt("--allindep", etof_conf.all_indep , fc_int, "All variables can be made part of the indepedent support. Indep support is given ONLY to help the solver.");
     myopt("--maxc", conf.backw_max_confl, fc_int,"Maximum conflicts per variable in backward mode");
+    myopt("--backwfast", conf.fast_backw, fc_int,"Fast backward");
     myopt("--revbce", do_revbce, fc_int,"Perform reverse BCE");
     myopt("--sbva", etof_conf.num_sbva_steps, fc_int,"SBVA timeout. 0 = no sbva");
     myopt("--prebackbone", do_pre_backbone, fc_int,"Perform backbone before other things");

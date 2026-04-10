@@ -26,6 +26,7 @@
 #include "minimize.h"
 #include "interpolant.h"
 #include "time_mem.h"
+#include <oracle/oracle.h>
 #include <algorithm>
 #include <cstdint>
 #include <optional>
@@ -120,11 +121,34 @@ void Minimize::print_sorted_unknown(const vector<uint32_t>& unknown) const {
     }
 }
 
+static inline sspp::Lit cms_to_sspp(const Lit& l) {
+    return l.sign() ? ((l.var()+1)*2+1) : ((l.var()+1)*2);
+}
+
 void Minimize::backward_round_slow() {
     SLOW_DEBUG_DO( for(const auto& x: seen) assert(x == 0));
     double start_round_time = cpuTime();
     //start with empty independent set
     vector<uint32_t> indep;
+
+    // Build oracle from the CMS solver's current clauses. The oracle uses
+    // 1-indexed vars internally, so cms var V maps to oracle var V+1.
+    vector<vector<sspp::Lit>> ocls;
+    {
+        vector<Lit> cl;
+        bool is_xor, rhs;
+        solver->start_getting_constraints(false);
+        while(solver->get_next_constraint(cl, is_xor, rhs)) {
+            assert(!is_xor); assert(rhs);
+            vector<sspp::Lit> ocl;
+            ocl.reserve(cl.size());
+            for(const auto& l: cl) ocl.push_back(cms_to_sspp(l));
+            ocls.push_back(std::move(ocl));
+        }
+        solver->end_getting_constraints();
+    }
+    sspp::oracle::Oracle oracle(solver->nVars(), ocls);
+    oracle.SetVerbosity(0);
 
     //Initially, all of samping_set is unknown
     vector<uint32_t> unknown;
@@ -136,15 +160,11 @@ void Minimize::backward_round_slow() {
         unknown_set[x] = 1;
     }
     sort_unknown(unknown, incidence);
-    /* std::reverse(unknown.begin(), unknown.end()); */
-    /* std::mt19937_64 rand(33); */
-    /* std::shuffle(unknown.begin(), unknown.end(), rand); */
     if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
     print_sorted_unknown(unknown);
     verb_print(1, "[backward] Start unknown size: " << unknown.size());
-    solver->set_verbosity(0);
 
-    vector<Lit> assumptions;
+    vector<sspp::Lit> assumps;
     uint32_t iter = 0;
     uint32_t not_indep = 0;
     double my_time = cpuTime();
@@ -161,103 +181,77 @@ void Minimize::backward_round_slow() {
     uint32_t ret_false = 0;
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
-    bool quick_pop_ok = false;
-    uint32_t indic_var = var_Undef;
+    const int64_t mems_per_call = (int64_t)conf.backw_max_confl*1000ULL;
     while(true) {
         uint32_t test_var = var_Undef;
-        if (quick_pop_ok) {
-            //Remove 2 last
-            assumptions.pop_back();
-            assumptions.pop_back();
-
-            //No more left, try again with full
-            if (assumptions.empty()) {
-                verb_print(5, "[arjun] No more left, try again with full");
+        while(!unknown.empty()) {
+            uint32_t var = unknown[unknown.size()-1];
+            if (unknown_set[var]) {
+                test_var = var;
+                unknown.pop_back();
                 break;
+            } else {
+                unknown.pop_back();
             }
+        }
 
-            indic_var = assumptions[assumptions.size()-1].var();
-            assumptions.pop_back();
-            assert(indic_var < indic_to_var.size());
-            test_var = indic_to_var[indic_var];
-            assert(test_var != var_Undef);
-            assert(test_var < orig_num_vars);
-
-            //something is messed up
-            if (!unknown_set[test_var]) {
-                quick_pop_ok = false;
-                continue;
-            }
-            uint32_t last_unkn = unknown[unknown.size()-1];
-            assert(last_unkn == test_var);
-            unknown.pop_back();
-        } else {
-            while(!unknown.empty()) {
-                uint32_t var = unknown[unknown.size()-1];
-                if (unknown_set[var]) {
-                    test_var = var;
-                    unknown.pop_back();
-                    break;
-                } else {
-                    unknown.pop_back();
-                }
-            }
-
-            if (test_var == var_Undef) {
-                //we are done, backward is finished
-                verb_print(5, "[arjun] we are done, backward is finished");
-                break;
-            }
-            indic_var = var_to_indic[test_var];
+        if (test_var == var_Undef) {
+            //we are done, backward is finished
+            verb_print(5, "[arjun] we are done, backward is finished");
+            break;
         }
         assert(test_var < orig_num_vars);
         assert(unknown_set[test_var] == 1);
         unknown_set[test_var] = 0;
         verb_print(5, "[arjun] Testing: " << test_var+1);
 
-        //Assumption filling
-        assert(test_var != var_Undef);
-        if (!quick_pop_ok) {
-            fill_assumptions_backward(assumptions, unknown, unknown_set, indep);
+        // Build assumps: still-unknown indicators + test_var pair.
+        // Known-indep indicators are already frozen in the oracle (see below),
+        // so we don't need to pass them here.
+        assumps.clear();
+        uint32_t j = 0;
+        for (uint32_t i = 0; i < unknown.size(); i++) {
+            uint32_t var = unknown[i];
+            if (unknown_set[var] == 0) continue;
+            unknown[j++] = var;
+            uint32_t indic = var_to_indic[var];
+            assert(indic != var_Undef);
+            assumps.push_back(cms_to_sspp(Lit(indic, false)));
         }
-        assumptions.push_back(Lit(test_var, false));
-        assumptions.push_back(Lit(test_var + orig_num_vars, true));
+        unknown.resize(j);
+        assumps.push_back(cms_to_sspp(Lit(test_var, false)));
+        assumps.push_back(cms_to_sspp(Lit(test_var + orig_num_vars, true)));
 
-        solver->set_no_confl_needed();
-
-        lbool ret = l_Undef;
-        solver->set_max_confl(conf.backw_max_confl);
-        ret = solver->solve(&assumptions);
-        if (ret == l_False) {
+        oracle.reset_mems();
+        sspp::oracle::TriState ret = oracle.Solve(assumps, true, mems_per_call);
+        if (ret.isFalse()) {
             ret_false++;
             verb_print(5, "[arjun] backw solve(): False");
-        } else if (ret == l_True) {
+        } else if (ret.isTrue()) {
             ret_true++;
             verb_print(5, "[arjun] backw solve(): True");
-        } else if (ret == l_Undef) {
+        } else {
             verb_print(5, "[arjun] backw solve(): Undef");
             ret_undef++;
         }
 
         assert(unknown_set[test_var] == 0);
-        if (ret == l_Undef) {
-            //Timed out, we'll treat is as unknown
-            quick_pop_ok = false;
+        if (ret.isUnknown() || ret.isTrue()) {
+            // Independent (or timed out → treat as independent).
+            // Freeze its indicator so the oracle can internally simplify
+            // clauses involving it and we never need to pass it again.
             assert(test_var < orig_num_vars);
             indep.push_back(test_var);
-        } else if (ret == l_True) {
-            //Independent
-            quick_pop_ok = false;
-            indep.push_back(test_var);
-        } else if (ret == l_False) {
+            uint32_t indic = var_to_indic[test_var];
+            oracle.SetAssumpLit(cms_to_sspp(Lit(indic, false)), true);
+        } else {
             //not independent
             //i.e. given that all in indep+unkown is equivalent, it's not possible that a1 != b1
+            assert(ret.isFalse());
             not_indep++;
-            quick_pop_ok = true;
         }
 
         if (iter % mod == (mod-1) && conf.verb) {
-            //solver->remove_and_clean_all();
             cout
             << "c [arjun] iter: " << std::setw(5) << iter;
             if (mod == 1) {
@@ -295,7 +289,7 @@ void Minimize::backward_round_slow() {
     verb_print(1, COLRED "[arjun] backward round finished. U: " <<
             " I: " << sampling_vars.size() << " T: "
         << std::setprecision(2) << std::fixed << (cpuTime() - start_round_time));
-    if (conf.verb >= 4) solver->print_stats();
+    if (conf.verb >= 4) oracle.PrintStats();
 }
 
 void Minimize::backward_round() {
