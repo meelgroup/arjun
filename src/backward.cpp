@@ -223,7 +223,7 @@ void Minimize::backward_round_slow() {
         assumps.push_back(cms_to_sspp(Lit(test_var + orig_num_vars, true)));
 
         oracle.reset_mems();
-        sspp::oracle::TriState ret = oracle.Solve(assumps, true, mems_per_call);
+        sspp::oracle::TriState ret = oracle.Solve(assumps, false, mems_per_call);
         if (ret.isFalse()) {
             ret_false++;
             verb_print(5, "[arjun] backw solve(): False");
