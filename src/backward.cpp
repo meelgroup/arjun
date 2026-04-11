@@ -128,8 +128,6 @@ static inline sspp::Lit cms_to_sspp(const Lit& l) {
 void Minimize::backward_round_slow() {
     SLOW_DEBUG_DO( for(const auto& x: seen) assert(x == 0));
     double start_round_time = cpuTime();
-    //start with empty independent set
-    vector<uint32_t> indep;
 
     // Build oracle from the CMS solver's current clauses. The oracle uses
     // 1-indexed vars internally, so cms var V maps to oracle var V+1.
@@ -165,12 +163,13 @@ void Minimize::backward_round_slow() {
     print_sorted_unknown(unknown);
     verb_print(1, "[backward SLOW] Start unknown size: " << unknown.size());
 
-    // Pre-compute sspp positive indicator literal per CMS var, so the hot
-    // assumption-build loop is one indexed load instead of two lookups +
-    // a Lit construction + cms_to_sspp. Same for the test_var pair.
+    // Pre-compute oracle Lits per CMS var:
+    //  - indic_pos_sspp[v]      — positive indicator literal (for the assumption stack)
+    //  - test_pos_sspp[v]       — v=TRUE  (test pair, half 1)
+    //  - test_dual_neg_sspp[v]  — (v+N)=FALSE (test pair, half 2)
     vector<sspp::Lit> indic_pos_sspp(orig_num_vars, 0);
-    vector<sspp::Lit> test_pos_sspp(orig_num_vars, 0);    // var = TRUE
-    vector<sspp::Lit> test_dual_neg_sspp(orig_num_vars, 0); // var+N = FALSE
+    vector<sspp::Lit> test_pos_sspp(orig_num_vars, 0);
+    vector<sspp::Lit> test_dual_neg_sspp(orig_num_vars, 0);
     for (const auto& v : unknown) {
         uint32_t indic = var_to_indic[v];
         assert(indic != var_Undef);
@@ -178,155 +177,110 @@ void Minimize::backward_round_slow() {
         test_pos_sspp[v] = cms_to_sspp(Lit(v, false));
         test_dual_neg_sspp[v] = cms_to_sspp(Lit(v + orig_num_vars, true));
     }
-
-    vector<sspp::Lit> assumps;
-    indep.reserve(unknown.size());
-    uint32_t iter = 0;
-    uint32_t not_indep = 0;
-    double my_time = cpuTime();
-
-    //Calc mod:
-    uint32_t mod = 1;
-    if ((sampling_vars.size()) > 20 ) {
-        uint32_t will_do_iters = sampling_vars.size();
-        uint32_t want_printed = 30;
-        mod = will_do_iters/want_printed;
-        mod = std::max<int>(mod, 1);
+    // indic-var (oracle) -> caller's CMS var index. The oracle stores indic
+    // var as oracle var index `indic+1` (1-based). We need a lookup from
+    // *oracle var* (= indic+1) to caller var.
+    vector<int> oracle_indic_to_var(solver->nVars()+2, -1);
+    for (uint32_t v = 0; v < orig_num_vars; v++) {
+        uint32_t indic = var_to_indic[v];
+        if (indic == var_Undef) continue;
+        oracle_indic_to_var[indic+1] = (int)v;  // oracle var = indic+1
     }
 
-    uint32_t ret_false = 0;
-    uint32_t ret_true = 0;
-    uint32_t ret_undef = 0;
-    uint64_t cache_hits_local = 0;
-    int64_t mems_used_local = 0;
-    int64_t mems_used_unsat_local = 0;
-    int64_t mems_used_to_local = 0;
-    uint32_t to_calls_local = 0;
-    uint32_t unsat_calls_local = 0;
-    const int64_t mems_per_call = (int64_t)conf.backw_max_confl*1000ULL;
-    double last_print_time = cpuTime();
-    assumps.reserve(unknown.size()+2);
-    while(true) {
-        uint32_t test_var = var_Undef;
-        while(!unknown.empty()) {
-            uint32_t var = unknown[unknown.size()-1];
-            if (unknown_set[var]) {
-                test_var = var;
-                unknown.pop_back();
-                break;
-            } else {
-                unknown.pop_back();
+    // Build the initial assumption stack: all indic_pos lits, in the
+    // sort_unknown order (so popping from the back tests in incidence order).
+    // The first test_var is unknown.back(); we pop it from the indic stack
+    // and push its test pair on top.
+    vector<sspp::Lit> assumptions;
+    assumptions.reserve(unknown.size() + 2);
+    for (size_t i = 0; i < unknown.size(); i++) {
+        const uint32_t v = unknown[i];
+        // Skip the last var here — it becomes the first test_var instead of
+        // an indicator decision.
+        if (i + 1 == unknown.size()) break;
+        assumptions.push_back(indic_pos_sspp[v]);
+    }
+    int initial_test_var = -1;
+    int initial_test_indic = -1;
+    if (!unknown.empty()) {
+        initial_test_var = (int)unknown.back();
+        initial_test_indic = (int)var_to_indic[initial_test_var] + 1;  // oracle 1-based
+        assumptions.push_back(test_pos_sspp[initial_test_var]);
+        assumptions.push_back(test_dual_neg_sspp[initial_test_var]);
+    }
+
+    vector<int> indep_oracle_vars;       // caller-side var indices
+    vector<int> non_indep_oracle_vars;
+    int test_var_oracle = initial_test_var;
+    int test_indic_oracle = initial_test_indic;
+
+    sspp::oracle::SlowBackwData data;
+    data._assumptions = &assumptions;
+    data.indic_to_var = &oracle_indic_to_var;
+    data.test_pos_lit = &test_pos_sspp;
+    data.test_dual_neg_lit = &test_dual_neg_sspp;
+    data.indep_vars = &indep_oracle_vars;
+    data.non_indep_vars = &non_indep_oracle_vars;
+    data.test_indic = &test_indic_oracle;
+    data.test_var = &test_var_oracle;
+    data.max_confl = (int64_t)conf.backw_max_confl;
+
+    // The single mega-call relies on the per-test conflict budget
+    // (data.max_confl) for per-test cutoffs. Give it a generous mems budget
+    // so it isn't artificially cut off — if learning saturates and the
+    // adaptive halving kicks in, the per-test budgets will shrink.
+    const int64_t mems_per_call = (int64_t)1000LL*1000LL*1000LL*1000LL;
+
+    if (!unknown.empty()) {
+        oracle.reset_mems();
+        // Single mega-call: SlowBackwSolve runs the entire backward round in
+        // one persistent solve session and returns when done (or unsat or
+        // mems exceeded — handled below).
+        sspp::oracle::TriState ret = oracle.SlowBackwSolve(data, mems_per_call);
+        if (ret.isFalse()) {
+            verb_print(1, "[arjun] [backward SLOW] formula UNSAT, all indep set cleared");
+            indep_oracle_vars.clear();
+            non_indep_oracle_vars.clear();
+        }
+        // ret.isUnknown() (mems budget exceeded) — anything still in
+        // assumptions[indep_size..size()-2] is left unclassified; treat them
+        // as independent (conservative fallback).
+        if (ret.isUnknown()) {
+            verb_print(1, "[arjun] [backward SLOW] mems budget exceeded, "
+                "treating remaining as independent");
+            for (size_t i = indep_oracle_vars.size(); i < assumptions.size(); i++) {
+                const sspp::Lit ind = assumptions[i];
+                if (ind <= 1) continue;  // skip test pair
+                const int oracle_var = ind / 2;
+                if (oracle_var <= 0 || oracle_var >= (int)oracle_indic_to_var.size()) continue;
+                const int real_var = oracle_indic_to_var[oracle_var];
+                if (real_var < 0) continue;
+                indep_oracle_vars.push_back(real_var);
             }
         }
-
-        if (test_var == var_Undef) {
-            //we are done, backward is finished
-            verb_print(5, "[arjun] we are done, backward is finished");
-            break;
-        }
-        assert(test_var < orig_num_vars);
-        assert(unknown_set[test_var] == 1);
-        unknown_set[test_var] = 0;
-        verb_print(5, "[arjun] Testing: " << test_var+1);
-
-        // Build assumps: still-unknown indicators + test_var pair.
-        // Known-indep indicators are already frozen in the oracle (see below),
-        // so we don't need to pass them here. The slow backward never marks
-        // a var as `unknown_set==0` while it's still in `unknown` (popping
-        // is the only path that clears the flag), so the old compaction
-        // loop here was dead code — replaced with a tight push loop.
-        assumps.clear();
-        for (const auto& var : unknown) {
-            assumps.push_back(indic_pos_sspp[var]);
-        }
-        assumps.push_back(test_pos_sspp[test_var]);
-        assumps.push_back(test_dual_neg_sspp[test_var]);
-
-        oracle.reset_mems();
-        const int64_t cache_useful_before = oracle.getStats().cache_useful;
-        // Cache lookup never hits in slow backward (assumption sets are too
-        // specific) — disable to skip the per-call linear scan over entries.
-        sspp::oracle::TriState ret = oracle.Solve(assumps, false, mems_per_call);
-        const int64_t this_mems = oracle.getStats().mems;
-        mems_used_local += this_mems;
-        if (oracle.getStats().cache_useful > cache_useful_before) cache_hits_local++;
-        if (ret.isFalse()) {
-            ret_false++;
-            unsat_calls_local++;
-            mems_used_unsat_local += this_mems;
-            verb_print(5, "[arjun] backw solve(): False");
-        } else if (ret.isTrue()) {
-            ret_true++;
-            verb_print(5, "[arjun] backw solve(): True");
-        } else {
-            verb_print(5, "[arjun] backw solve(): Undef");
-            ret_undef++;
-            to_calls_local++;
-            mems_used_to_local += this_mems;
-        }
-
-        assert(unknown_set[test_var] == 0);
-        if (ret.isUnknown() || ret.isTrue()) {
-            // Independent (or timed out → treat as independent).
-            // Freeze its indicator so the oracle can internally simplify
-            // clauses involving it and we never need to pass it again.
-            assert(test_var < orig_num_vars);
-            indep.push_back(test_var);
-            uint32_t indic = var_to_indic[test_var];
-            oracle.SetAssumpLit(cms_to_sspp(Lit(indic, false)), true);
-        } else {
-            //not independent
-            //i.e. given that all in indep+unkown is equivalent, it's not possible that a1 != b1
-            assert(ret.isFalse());
-            not_indep++;
-        }
-
-        // Print every `mod` iters OR every 10 wall-seconds, whichever comes
-        // first — keeps long stretches visible without spamming fast ones.
-        bool do_print = (iter % mod == (mod-1)) && conf.verb;
-        if (conf.verb && (cpuTime() - last_print_time) > 10.0) do_print = true;
-        if (do_print) {
-            cout
-            << "c [arjun] iter: " << std::setw(5) << iter;
-            cout
-            << " T/F/U: ";
-            std::stringstream ss;
-            ss << ret_true << "/" << ret_false << "/" << ret_undef;
-            cout << std::setw(10) << std::left << ss.str() << std::right;
-            ret_true = 0;
-            ret_false = 0;
-            ret_undef = 0;
-            cout
-            << " by: " << std::setw(3) << 1
-            << " U: " << std::setw(7) << unknown.size()
-            << " I: " << std::setw(7) << indep.size()
-            << " N: " << std::setw(7) << not_indep
-            ;
-            cout << " T: "
-            << std::setprecision(2) << std::fixed << (cpuTime() - my_time)
-            << " ch: " << std::setw(4) << cache_hits_local
-            << " avgM: " << std::setw(5) << print_value_kilo_mega(
-                mems_used_local / std::max<uint32_t>(mod, 1u), false)
-            << " usM: " << std::setw(5) << print_value_kilo_mega(
-                unsat_calls_local ? mems_used_unsat_local/unsat_calls_local : 0, false)
-            << " toM: " << std::setw(5) << print_value_kilo_mega(
-                to_calls_local ? mems_used_to_local/to_calls_local : 0, false)
-            << endl;
-            my_time = cpuTime();
-            last_print_time = cpuTime();
-            cache_hits_local = 0;
-            mems_used_local = 0;
-            mems_used_unsat_local = 0;
-            mems_used_to_local = 0;
-            unsat_calls_local = 0;
-            to_calls_local = 0;
-        }
-        iter++;
-
-        if (iter % 500 == 499) {
-            update_sampling_set(unknown, unknown_set, indep);
-        }
     }
+
+    // Translate results back to arjun's data structures.
+    vector<uint32_t> indep;
+    indep.reserve(indep_oracle_vars.size());
+    for (auto v : indep_oracle_vars) indep.push_back((uint32_t)v);
+    for (auto v : non_indep_oracle_vars) {
+        // Mark removed in unknown_set
+        if ((uint32_t)v < orig_num_vars) unknown_set[v] = 0;
+    }
+    for (auto v : indep_oracle_vars) {
+        if ((uint32_t)v < orig_num_vars) unknown_set[v] = 0;
+    }
+
+    // Compact unknown to only those still flagged
+    {
+        vector<uint32_t> new_unknown;
+        for (auto v : unknown) {
+            if (unknown_set[v]) new_unknown.push_back(v);
+        }
+        unknown = std::move(new_unknown);
+    }
+
     update_sampling_set(unknown, unknown_set, indep);
 
     verb_print(1, COLRED "[arjun] backward round finished. U: " <<
