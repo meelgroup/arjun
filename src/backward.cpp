@@ -164,7 +164,19 @@ void Minimize::backward_round_slow() {
         solver->end_getting_constraints();
     }
     sspp::oracle::Oracle oracle(solver->nVars(), ocls, ored);
-    oracle.SetVerbosity(0);
+    oracle.SetVerbosity(conf.verb >= 2 ? 2 : 0);
+
+    // Inprocess the seed clause database once before the main solve.
+    // Vivification shortens learned clauses by removing literals the
+    // rest of the formula already implies away, which cuts propagation
+    // work and glue for every subsequent test.
+    {
+        double viv_start = cpuTime();
+        int removed = oracle.Vivify(500LL*1000LL*1000LL);
+        verb_print(1, "[backward SLOW] Vivify removed " << removed
+                << " lits T: " << std::setprecision(2) << std::fixed
+                << (cpuTime() - viv_start));
+    }
 
     //Initially, all of samping_set is unknown
     vector<uint32_t> unknown;
