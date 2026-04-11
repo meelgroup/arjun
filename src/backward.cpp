@@ -232,7 +232,9 @@ void Minimize::backward_round_slow() {
 
         oracle.reset_mems();
         const int64_t cache_useful_before = oracle.getStats().cache_useful;
-        sspp::oracle::TriState ret = oracle.Solve(assumps, true, mems_per_call);
+        // Cache lookup never hits in slow backward (assumption sets are too
+        // specific) — disable to skip the per-call linear scan over entries.
+        sspp::oracle::TriState ret = oracle.Solve(assumps, false, mems_per_call);
         const int64_t this_mems = oracle.getStats().mems;
         mems_used_local += this_mems;
         if (oracle.getStats().cache_useful > cache_useful_before) cache_hits_local++;
