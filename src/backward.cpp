@@ -181,7 +181,10 @@ void Minimize::backward_round_slow() {
     uint32_t ret_false = 0;
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
+    uint64_t cache_hits_local = 0;
     const int64_t mems_per_call = (int64_t)conf.backw_max_confl*1000ULL;
+    double last_print_time = cpuTime();
+    assumps.reserve(unknown.size()+2);
     while(true) {
         uint32_t test_var = var_Undef;
         while(!unknown.empty()) {
@@ -223,7 +226,9 @@ void Minimize::backward_round_slow() {
         assumps.push_back(cms_to_sspp(Lit(test_var + orig_num_vars, true)));
 
         oracle.reset_mems();
-        sspp::oracle::TriState ret = oracle.Solve(assumps, false, mems_per_call);
+        const int64_t cache_useful_before = oracle.getStats().cache_useful;
+        sspp::oracle::TriState ret = oracle.Solve(assumps, true, mems_per_call);
+        if (oracle.getStats().cache_useful > cache_useful_before) cache_hits_local++;
         if (ret.isFalse()) {
             ret_false++;
             verb_print(5, "[arjun] backw solve(): False");
@@ -251,22 +256,21 @@ void Minimize::backward_round_slow() {
             not_indep++;
         }
 
-        if (iter % mod == (mod-1) && conf.verb) {
+        // Print every `mod` iters OR every 10 wall-seconds, whichever comes
+        // first — keeps long stretches visible without spamming fast ones.
+        bool do_print = (iter % mod == (mod-1)) && conf.verb;
+        if (conf.verb && (cpuTime() - last_print_time) > 10.0) do_print = true;
+        if (do_print) {
             cout
             << "c [arjun] iter: " << std::setw(5) << iter;
-            if (mod == 1) {
-                cout
-                << " ret: " << std::setw(8) << ret;
-            } else {
-                cout
-                << " T/F/U: ";
-                std::stringstream ss;
-                ss << ret_true << "/" << ret_false << "/" << ret_undef;
-                cout << std::setw(10) << std::left << ss.str() << std::right;
-                ret_true = 0;
-                ret_false = 0;
-                ret_undef = 0;
-            }
+            cout
+            << " T/F/U: ";
+            std::stringstream ss;
+            ss << ret_true << "/" << ret_false << "/" << ret_undef;
+            cout << std::setw(10) << std::left << ss.str() << std::right;
+            ret_true = 0;
+            ret_false = 0;
+            ret_undef = 0;
             cout
             << " by: " << std::setw(3) << 1
             << " U: " << std::setw(7) << unknown.size()
@@ -275,8 +279,11 @@ void Minimize::backward_round_slow() {
             ;
             cout << " T: "
             << std::setprecision(2) << std::fixed << (cpuTime() - my_time)
+            << " ch: " << std::setw(5) << cache_hits_local
             << endl;
             my_time = cpuTime();
+            last_print_time = cpuTime();
+            cache_hits_local = 0;
         }
         iter++;
 
