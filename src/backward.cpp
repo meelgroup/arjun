@@ -182,6 +182,11 @@ void Minimize::backward_round_slow() {
     uint32_t ret_true = 0;
     uint32_t ret_undef = 0;
     uint64_t cache_hits_local = 0;
+    int64_t mems_used_local = 0;
+    int64_t mems_used_unsat_local = 0;
+    int64_t mems_used_to_local = 0;
+    uint32_t to_calls_local = 0;
+    uint32_t unsat_calls_local = 0;
     const int64_t mems_per_call = (int64_t)conf.backw_max_confl*1000ULL;
     double last_print_time = cpuTime();
     assumps.reserve(unknown.size()+2);
@@ -228,9 +233,13 @@ void Minimize::backward_round_slow() {
         oracle.reset_mems();
         const int64_t cache_useful_before = oracle.getStats().cache_useful;
         sspp::oracle::TriState ret = oracle.Solve(assumps, true, mems_per_call);
+        const int64_t this_mems = oracle.getStats().mems;
+        mems_used_local += this_mems;
         if (oracle.getStats().cache_useful > cache_useful_before) cache_hits_local++;
         if (ret.isFalse()) {
             ret_false++;
+            unsat_calls_local++;
+            mems_used_unsat_local += this_mems;
             verb_print(5, "[arjun] backw solve(): False");
         } else if (ret.isTrue()) {
             ret_true++;
@@ -238,6 +247,8 @@ void Minimize::backward_round_slow() {
         } else {
             verb_print(5, "[arjun] backw solve(): Undef");
             ret_undef++;
+            to_calls_local++;
+            mems_used_to_local += this_mems;
         }
 
         assert(unknown_set[test_var] == 0);
@@ -279,11 +290,22 @@ void Minimize::backward_round_slow() {
             ;
             cout << " T: "
             << std::setprecision(2) << std::fixed << (cpuTime() - my_time)
-            << " ch: " << std::setw(5) << cache_hits_local
+            << " ch: " << std::setw(4) << cache_hits_local
+            << " avgM: " << std::setw(5) << print_value_kilo_mega(
+                mems_used_local / std::max<uint32_t>(mod, 1u), false)
+            << " usM: " << std::setw(5) << print_value_kilo_mega(
+                unsat_calls_local ? mems_used_unsat_local/unsat_calls_local : 0, false)
+            << " toM: " << std::setw(5) << print_value_kilo_mega(
+                to_calls_local ? mems_used_to_local/to_calls_local : 0, false)
             << endl;
             my_time = cpuTime();
             last_print_time = cpuTime();
             cache_hits_local = 0;
+            mems_used_local = 0;
+            mems_used_unsat_local = 0;
+            mems_used_to_local = 0;
+            unsat_calls_local = 0;
+            to_calls_local = 0;
         }
         iter++;
 
