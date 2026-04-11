@@ -167,12 +167,16 @@ void Minimize::backward_round_slow() {
 
     // Pre-compute sspp positive indicator literal per CMS var, so the hot
     // assumption-build loop is one indexed load instead of two lookups +
-    // a Lit construction + cms_to_sspp.
+    // a Lit construction + cms_to_sspp. Same for the test_var pair.
     vector<sspp::Lit> indic_pos_sspp(orig_num_vars, 0);
+    vector<sspp::Lit> test_pos_sspp(orig_num_vars, 0);    // var = TRUE
+    vector<sspp::Lit> test_dual_neg_sspp(orig_num_vars, 0); // var+N = FALSE
     for (const auto& v : unknown) {
         uint32_t indic = var_to_indic[v];
         assert(indic != var_Undef);
         indic_pos_sspp[v] = cms_to_sspp(Lit(indic, false));
+        test_pos_sspp[v] = cms_to_sspp(Lit(v, false));
+        test_dual_neg_sspp[v] = cms_to_sspp(Lit(v + orig_num_vars, true));
     }
 
     vector<sspp::Lit> assumps;
@@ -235,8 +239,8 @@ void Minimize::backward_round_slow() {
         for (const auto& var : unknown) {
             assumps.push_back(indic_pos_sspp[var]);
         }
-        assumps.push_back(cms_to_sspp(Lit(test_var, false)));
-        assumps.push_back(cms_to_sspp(Lit(test_var + orig_num_vars, true)));
+        assumps.push_back(test_pos_sspp[test_var]);
+        assumps.push_back(test_dual_neg_sspp[test_var]);
 
         oracle.reset_mems();
         const int64_t cache_useful_before = oracle.getStats().cache_useful;
