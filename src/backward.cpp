@@ -153,6 +153,7 @@ void Minimize::backward_round_slow() {
     //Initially, all of samping_set is unknown
     vector<uint32_t> unknown;
     vector<char> unknown_set(orig_num_vars, 0);
+    unknown.reserve(sampling_vars.size());
     for(const auto& x: sampling_vars) {
         assert(x < orig_num_vars);
         assert(unknown_set[x] == 0 && "No var should be in 'sampling_vars' twice!");
@@ -164,7 +165,18 @@ void Minimize::backward_round_slow() {
     print_sorted_unknown(unknown);
     verb_print(1, "[backward SLOW] Start unknown size: " << unknown.size());
 
+    // Pre-compute sspp positive indicator literal per CMS var, so the hot
+    // assumption-build loop is one indexed load instead of two lookups +
+    // a Lit construction + cms_to_sspp.
+    vector<sspp::Lit> indic_pos_sspp(orig_num_vars, 0);
+    for (const auto& v : unknown) {
+        uint32_t indic = var_to_indic[v];
+        assert(indic != var_Undef);
+        indic_pos_sspp[v] = cms_to_sspp(Lit(indic, false));
+    }
+
     vector<sspp::Lit> assumps;
+    indep.reserve(unknown.size());
     uint32_t iter = 0;
     uint32_t not_indep = 0;
     double my_time = cpuTime();
@@ -215,18 +227,14 @@ void Minimize::backward_round_slow() {
 
         // Build assumps: still-unknown indicators + test_var pair.
         // Known-indep indicators are already frozen in the oracle (see below),
-        // so we don't need to pass them here.
+        // so we don't need to pass them here. The slow backward never marks
+        // a var as `unknown_set==0` while it's still in `unknown` (popping
+        // is the only path that clears the flag), so the old compaction
+        // loop here was dead code — replaced with a tight push loop.
         assumps.clear();
-        uint32_t j = 0;
-        for (uint32_t i = 0; i < unknown.size(); i++) {
-            uint32_t var = unknown[i];
-            if (unknown_set[var] == 0) continue;
-            unknown[j++] = var;
-            uint32_t indic = var_to_indic[var];
-            assert(indic != var_Undef);
-            assumps.push_back(cms_to_sspp(Lit(indic, false)));
+        for (const auto& var : unknown) {
+            assumps.push_back(indic_pos_sspp[var]);
         }
-        unknown.resize(j);
         assumps.push_back(cms_to_sspp(Lit(test_var, false)));
         assumps.push_back(cms_to_sspp(Lit(test_var + orig_num_vars, true)));
 
