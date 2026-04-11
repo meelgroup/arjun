@@ -131,11 +131,15 @@ void Minimize::backward_round_slow() {
 
     // Build oracle from the CMS solver's current clauses. The oracle uses
     // 1-indexed vars internally, so cms var V maps to oracle var V+1.
+    // We pass BOTH irredundant and redundant (learned) clauses so the
+    // oracle starts with all the learning CMS has accumulated during
+    // simplification — matches what the FAST path benefits from.
     vector<vector<sspp::Lit>> ocls;
+    vector<vector<sspp::Lit>> ored;
     {
         vector<Lit> cl;
         bool is_xor, rhs;
-        solver->start_getting_constraints(false);
+        solver->start_getting_constraints(false);  // irred
         while(solver->get_next_constraint(cl, is_xor, rhs)) {
             assert(!is_xor); assert(rhs);
             vector<sspp::Lit> ocl;
@@ -144,8 +148,20 @@ void Minimize::backward_round_slow() {
             ocls.push_back(std::move(ocl));
         }
         solver->end_getting_constraints();
+        // Learned clauses with low glue are reusable — pull them in too.
+        solver->start_getting_constraints(true /*red*/, false,
+                std::numeric_limits<uint32_t>::max() /*max len*/,
+                6 /*max glue*/);
+        while(solver->get_next_constraint(cl, is_xor, rhs)) {
+            if (is_xor) continue;
+            vector<sspp::Lit> ocl;
+            ocl.reserve(cl.size());
+            for(const auto& l: cl) ocl.push_back(cms_to_sspp(l));
+            ored.push_back(std::move(ocl));
+        }
+        solver->end_getting_constraints();
     }
-    sspp::oracle::Oracle oracle(solver->nVars(), ocls);
+    sspp::oracle::Oracle oracle(solver->nVars(), ocls, ored);
     oracle.SetVerbosity(0);
 
     //Initially, all of samping_set is unknown
