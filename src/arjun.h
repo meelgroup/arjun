@@ -1633,6 +1633,8 @@ public:
     void set_backward(bool backward);
     void set_backw_max_confl(uint32_t backw_max_confl);
     void set_fast_backw(int fast_backw);
+    void set_slow_bve(int slow_bve);
+    void set_slow_bve_grow(int slow_bve_grow);
     void set_gauss_jordan(bool gauss_jordan);
     void set_find_xors(bool find_xors);
     void set_ite_gate_based(bool ite_gate_based);
@@ -1664,6 +1666,8 @@ public:
     bool get_backward() const;
     uint32_t get_backw_max_confl() const;
     int get_fast_backw() const;
+    int get_slow_bve() const;
+    int get_slow_bve_grow() const;
     bool get_gauss_jordan() const;
     bool get_find_xors() const;
     bool get_ite_gate_based() const;

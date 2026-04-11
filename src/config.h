@@ -46,6 +46,8 @@ struct Config {
     double no_gates_below = 0.01;
     std::string specified_order_fname;
     uint32_t backw_max_confl = 20000;
+    int slow_bve = 0;  // opt-in BVE pass over the slow backward oracle
+    int slow_bve_grow = 0;  // grow cap for the opt-in BVE pass
     uint32_t unate_max_confl = 100;
     uint32_t extend_max_confl = 1000;
     bool weighted = false;

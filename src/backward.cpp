@@ -166,6 +166,34 @@ void Minimize::backward_round_slow() {
     sspp::oracle::Oracle oracle(solver->nVars(), ocls, ored);
     oracle.SetVerbosity(conf.verb >= 2 ? 2 : 0);
 
+    // Opt-in bounded variable elimination. Gated by --slowbve because
+    // BVE is destructive and only safe for variables the caller is
+    // sure will never appear in the independent support.
+    //
+    // Eliminable set = variables NOT in sampling_vars and NOT their
+    // duals (sampling_vars[i] + orig_num_vars) and NOT the indicator
+    // vars. These are internal formula vars (Tseitin helpers etc.) —
+    // arjun's independence test never queries them directly.
+    if (conf.slow_bve) {
+        std::vector<bool> eliminable(solver->nVars() + 2, false);
+        std::vector<char> in_sampling(orig_num_vars, 0);
+        for (uint32_t v : sampling_vars) in_sampling[v] = 1;
+        for (uint32_t v = 0; v < orig_num_vars; v++) {
+            if (in_sampling[v]) continue;
+            // Oracle uses 1-indexed vars.
+            eliminable[v + 1] = true;                    // primary copy
+            eliminable[v + orig_num_vars + 1] = true;    // dual copy
+        }
+        // Explicitly forbid eliminating indicator vars (which live
+        // above 2*orig_num_vars). We only flagged below 2*orig_num_vars
+        // so those remain false by construction.
+        double bve_start = cpuTime();
+        int elim = oracle.BVE(eliminable, conf.slow_bve_grow, 1000LL*1000LL*1000LL);
+        verb_print(1, "[backward SLOW] BVE eliminated " << elim
+                << " vars T: " << std::setprecision(2) << std::fixed
+                << (cpuTime() - bve_start));
+    }
+
     // Inprocess the seed clause database once before the main solve.
     // Vivification shortens learned clauses by removing literals the
     // rest of the formula already implies away, which cuts propagation
