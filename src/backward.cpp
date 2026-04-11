@@ -149,9 +149,11 @@ void Minimize::backward_round_slow() {
         }
         solver->end_getting_constraints();
         // Learned clauses with low glue are reusable — pull them in too.
+        // Higher glue clauses tend not to survive the oracle's reduction
+        // anyway and add to import time. Cap glue at 4 for the seed.
         solver->start_getting_constraints(true /*red*/, false,
                 std::numeric_limits<uint32_t>::max() /*max len*/,
-                6 /*max glue*/);
+                4 /*max glue*/);
         while(solver->get_next_constraint(cl, is_xor, rhs)) {
             if (is_xor) continue;
             vector<sspp::Lit> ocl;
