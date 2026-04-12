@@ -202,13 +202,11 @@ void Minimize::backward_round_slow() {
                 << " lits T: " << std::setprecision(2) << std::fixed
                 << (cpuTime() - t0));
     }
-    {
-        double t0 = cpuTime();
-        int scc_elim = oracle.SCCEquivLitElim();
-        verb_print(1, "[backward SLOW] SCC equiv-lit eliminated " << scc_elim
-                << " vars T: " << std::setprecision(2) << std::fixed
-                << (cpuTime() - t0));
-    }
+    // SCC equiv-lit elimination is available via Oracle::SCCEquivLitElim()
+    // but currently disabled in the default flow: it removes binary
+    // clauses that provide propagation paths the backward algorithm
+    // relies on (447 indep vs 423 baseline on track4_166). Can be
+    // re-enabled with a protected-vars mask for indicator vars.
 
     //Initially, all of samping_set is unknown
     vector<uint32_t> unknown;
