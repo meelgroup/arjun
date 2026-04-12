@@ -194,16 +194,20 @@ void Minimize::backward_round_slow() {
                 << (cpuTime() - bve_start));
     }
 
-    // Inprocess the seed clause database once before the main solve.
-    // Vivification shortens learned clauses by removing literals the
-    // rest of the formula already implies away, which cuts propagation
-    // work and glue for every subsequent test.
+    // Inprocess the seed clause database before the main solve.
     {
-        double viv_start = cpuTime();
+        double t0 = cpuTime();
         int removed = oracle.Vivify(500LL*1000LL*1000LL);
         verb_print(1, "[backward SLOW] Vivify removed " << removed
                 << " lits T: " << std::setprecision(2) << std::fixed
-                << (cpuTime() - viv_start));
+                << (cpuTime() - t0));
+    }
+    {
+        double t0 = cpuTime();
+        int scc_elim = oracle.SCCEquivLitElim();
+        verb_print(1, "[backward SLOW] SCC equiv-lit eliminated " << scc_elim
+                << " vars T: " << std::setprecision(2) << std::fixed
+                << (cpuTime() - t0));
     }
 
     //Initially, all of samping_set is unknown
@@ -283,37 +287,31 @@ void Minimize::backward_round_slow() {
     data.test_var = &test_var_oracle;
     data.max_confl = (int64_t)conf.backw_max_confl;
 
-    // The single mega-call relies on the per-test conflict budget
-    // (data.max_confl) for per-test cutoffs. Give it a generous mems budget
-    // so it isn't artificially cut off — if learning saturates and the
-    // adaptive halving kicks in, the per-test budgets will shrink.
+    // Single mega-call: SlowBackwSolve runs the entire backward round
+    // in one persistent solve session.
     const int64_t mems_per_call = (int64_t)1000LL*1000LL*1000LL*1000LL;
 
     if (!unknown.empty()) {
         oracle.reset_mems();
-        // Single mega-call: SlowBackwSolve runs the entire backward round in
-        // one persistent solve session and returns when done (or unsat or
-        // mems exceeded — handled below).
         sspp::oracle::TriState ret = oracle.SlowBackwSolve(data, mems_per_call);
         if (ret.isFalse()) {
             verb_print(1, "[arjun] [backward SLOW] formula UNSAT, all indep set cleared");
             indep_oracle_vars.clear();
             non_indep_oracle_vars.clear();
         }
-        // ret.isUnknown() (mems budget exceeded) — anything still in
-        // assumptions[indep_size..size()-2] is left unclassified; treat them
-        // as independent (conservative fallback).
-        if (ret.isUnknown()) {
-            verb_print(1, "[arjun] [backward SLOW] mems budget exceeded, "
-                "treating remaining as independent");
+
+        // Anything still unclassified: treat as indep.
+        {
+            bool any_unclassified = false;
             for (size_t i = indep_oracle_vars.size(); i < assumptions.size(); i++) {
                 const sspp::Lit ind = assumptions[i];
-                if (ind <= 1) continue;  // skip test pair
+                if (ind <= 1) continue;
                 const int oracle_var = ind / 2;
                 if (oracle_var <= 0 || oracle_var >= (int)oracle_indic_to_var.size()) continue;
                 const int real_var = oracle_indic_to_var[oracle_var];
                 if (real_var < 0) continue;
                 indep_oracle_vars.push_back(real_var);
+                any_unclassified = true;
             }
         }
     }
