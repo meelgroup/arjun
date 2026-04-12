@@ -163,6 +163,28 @@ void Minimize::backward_round_slow() {
         }
         solver->end_getting_constraints();
     }
+    // Count unique vars in the imported clauses to measure space waste.
+    {
+        std::vector<char> seen_var(solver->nVars() + 2, 0);
+        int used = 0;
+        for (const auto& cl : ocls) for (auto l : cl) {
+            int v = l / 2;
+            if (v > 0 && v <= (int)solver->nVars() && !seen_var[v]) {
+                seen_var[v] = 1; used++;
+            }
+        }
+        for (const auto& cl : ored) for (auto l : cl) {
+            int v = l / 2;
+            if (v > 0 && v <= (int)solver->nVars() && !seen_var[v]) {
+                seen_var[v] = 1; used++;
+            }
+        }
+        verb_print(1, "[backward SLOW] Oracle vars: " << solver->nVars()
+                << " allocated, " << used << " used in clauses ("
+                << (100*used/std::max((uint32_t)1,solver->nVars())) << "%)"
+                << " irred_cls: " << ocls.size()
+                << " red_cls: " << ored.size());
+    }
     sspp::oracle::Oracle oracle(solver->nVars(), ocls, ored);
     oracle.SetVerbosity(conf.verb >= 2 ? 2 : 0);
 
@@ -192,6 +214,25 @@ void Minimize::backward_round_slow() {
         verb_print(1, "[backward SLOW] BVE eliminated " << elim
                 << " vars T: " << std::setprecision(2) << std::fixed
                 << (cpuTime() - bve_start));
+
+        // After BVE, run SCC to find new equivalences exposed by
+        // the resolution. Protected mask: all sampling indicators
+        // + all sampling vars + duals must NOT be replaced.
+        {
+            std::vector<bool> scc_prot(solver->nVars() + 2, false);
+            for (uint32_t v : sampling_vars) {
+                if (v >= orig_num_vars) continue;
+                uint32_t indic = var_to_indic[v];
+                if (indic != var_Undef) scc_prot[indic + 1] = true;
+                scc_prot[v + 1] = true;
+                scc_prot[v + orig_num_vars + 1] = true;
+            }
+            double scc_start = cpuTime();
+            int scc_elim = oracle.SCCEquivLitElim(scc_prot);
+            verb_print(1, "[backward SLOW] post-BVE SCC eliminated " << scc_elim
+                    << " vars T: " << std::setprecision(2) << std::fixed
+                    << (cpuTime() - scc_start));
+        }
     }
 
     // Inprocess the seed clause database before the main solve.
@@ -202,11 +243,6 @@ void Minimize::backward_round_slow() {
                 << " lits T: " << std::setprecision(2) << std::fixed
                 << (cpuTime() - t0));
     }
-    // SCC equiv-lit elimination is available via Oracle::SCCEquivLitElim()
-    // but currently disabled in the default flow: it removes binary
-    // clauses that provide propagation paths the backward algorithm
-    // relies on (447 indep vs 423 baseline on track4_166). Can be
-    // re-enabled with a protected-vars mask for indicator vars.
 
     //Initially, all of samping_set is unknown
     vector<uint32_t> unknown;
