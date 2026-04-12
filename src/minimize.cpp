@@ -150,7 +150,7 @@ void Minimize::set_up_solver()
 
 bool Minimize:: simplify_bve_only() {
     //BVE ***ONLY***, don't eliminate the original variables
-    solver->set_intree_probe(false);
+    solver->set_intree_probe(true);
     solver->set_distill(false);
     for(uint32_t var: sampling_vars) {
         dont_elim.push_back(Lit(var, false));
@@ -162,7 +162,7 @@ bool Minimize:: simplify_bve_only() {
     if (conf.simp) {
         solver->set_bve(1);
         solver->set_verbosity(conf.verb);
-        string str("occ-bve");
+        string str("occ-bve, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, intree-probe,occ-resolv-subs, distill-cls-onlyrem, must-scc-vrepl");
         if (solver->simplify(&dont_elim, &str) == l_False) return false;
         verb_print(1, "[arjun] CMS::simplify() with *only* BVE finished. T: "
             << cpuTime() - simp_bve_time);
