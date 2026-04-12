@@ -26,6 +26,7 @@
 #include "minimize.h"
 #include "interpolant.h"
 #include "time_mem.h"
+#include <random>
 #include <algorithm>
 #include <cstdint>
 #include <optional>
@@ -120,10 +121,6 @@ void Minimize::print_sorted_unknown(const vector<uint32_t>& unknown) const {
     }
 }
 
-void Minimize::backward_round_slow() {
-    cout << "c [arjun] slow backward is no longer available; use fast backward (--fastbackw)" << endl;
-}
-
 void Minimize::backward_round() {
     SLOW_DEBUG_DO( for(const auto& x: seen) assert(x == 0));
     double start_round_time = cpuTime();
@@ -142,7 +139,7 @@ void Minimize::backward_round() {
     sort_unknown(unknown, incidence);
     /* std::reverse(unknown.begin(), unknown.end()); */
     /* std::mt19937_64 rand(33); */
-    /* std::shuffle(unknown.begin(), unknown.end(), rand); */
+    /* std::shuffle(unknown.begin(), unknown.end(), std::mt19937(33)); */
     if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
     print_sorted_unknown(unknown);
     verb_print(1, "[backward FAST] Start unknown size: " << unknown.size());

@@ -167,24 +167,15 @@ inline double safe_div(double a, double b) noexcept {
     } while (0)
 #endif
 
-template<class T>
-struct IncidenceSorter ///DESCENDING ORDER (i.e. most likely independent at the top)
-{
-    IncidenceSorter(const std::vector<T>& _inc) : inc(_inc) {}
-    bool operator()(const T a, const T b) const noexcept {
-        if (inc[a] != inc[b]) {
-            return inc[a] > inc[b];
-        }
-        return a < b;
-    }
-
-    const std::vector<T>& inc;
-};
-
-template<typename T, typename  T2> void sort_unknown(T& unknown, std::vector<T2>& incidence)
+template<typename T, typename  T2> void sort_unknown(T& unknown, const std::vector<T2>& incidence)
 {
     assert(!incidence.empty() && "Incidence is filled at fill_solver time");
-    std::sort(unknown.begin(), unknown.end(), IncidenceSorter<uint32_t>(incidence));
+    std::sort(unknown.begin(), unknown.end(), [&](uint32_t a, const uint32_t b) -> bool {
+        if (incidence[a] != incidence[b]) {
+            return incidence[a] > incidence[b];
+        }
+        return a < b;
+        });
 }
 
 [[nodiscard]] inline std::string print_value_kilo_mega(const int64_t value, bool setw = true)

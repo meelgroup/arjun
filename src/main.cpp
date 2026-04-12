@@ -146,9 +146,6 @@ void add_arjun_options() {
     myopt("--mode", mode , fc_int, "0=counting, 1=weightd counting");
     myopt("--allindep", etof_conf.all_indep , fc_int, "All variables can be made part of the indepedent support. Indep support is given ONLY to help the solver.");
     myopt("--maxc", conf.backw_max_confl, fc_int,"Maximum conflicts per variable in backward mode");
-    myopt("--backwfast", conf.fast_backw, fc_int,"Fast backward");
-    myopt("--slowbve", conf.slow_bve, fc_int,"Opt-in BVE pass on the slow backward oracle (0=off, 1=on)");
-    myopt("--slowbvegrow", conf.slow_bve_grow, fc_int,"Grow cap for --slowbve");
     myopt("--revbce", do_revbce, fc_int,"Perform reverse BCE");
     myopt("--sbva", etof_conf.num_sbva_steps, fc_int,"SBVA timeout. 0 = no sbva");
     myopt("--prebackbone", do_pre_backbone, fc_int,"Perform backbone before other things");
@@ -343,9 +340,6 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_no_gates_below(conf.no_gates_below);
     arj->set_probe_based(conf.probe_based);
     arj->set_backw_max_confl(conf.backw_max_confl);
-    arj->set_fast_backw(conf.fast_backw);
-    arj->set_slow_bve(conf.slow_bve);
-    arj->set_slow_bve_grow(conf.slow_bve_grow);
     arj->set_seed(conf.seed);
     arj->set_gauss_jordan(conf.gauss_jordan);
     arj->set_simp(conf.simp);
