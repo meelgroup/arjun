@@ -32,6 +32,7 @@ namespace ArjunInt {
 struct Config {
     int verb = 1;
     int simp = 2;
+    int backw_type = 0;
     int distill = 1;
     int intree = 1;
     int bve_pre_simplify = 1;

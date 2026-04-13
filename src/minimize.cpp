@@ -178,7 +178,9 @@ bool Minimize:: simplify_bve_only() {
     if (conf.simp) {
         solver->set_bve(1);
         solver->set_verbosity(conf.verb);
-        string str("occ-bve, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, intree-probe,occ-resolv-subs, distill-cls-onlyrem, must-scc-vrepl");
+        string str;
+        if (conf.backw_type == 0) str = "occ-bve";
+        else str = "occ-bve, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, intree-probe,occ-resolv-subs, distill-cls-onlyrem, must-scc-vrepl";
         if (solver->simplify(&dont_elim, &str) == l_False) return false;
         verb_print(1, "[arjun] CMS::simplify() with *only* BVE finished. T: "
             << cpuTime() - simp_bve_time);

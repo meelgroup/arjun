@@ -1640,6 +1640,7 @@ public:
     //void set_polar_mode(CMSat::PolarityMode mode);
     void set_no_gates_below(double no_gates_below);
     void set_specified_order_fname(std::string specified_order_fname);
+    void set_backw_type(uint32_t backw_type);
     void set_backw_order(int backw_order);
     void set_backw_order_stats(int backw_order_stats);
     void set_weighted(const bool);
@@ -1655,6 +1656,7 @@ public:
     std::string get_specified_order_fname() const;
     int get_backw_order() const;
     int get_backw_order_stats() const;
+    uint32_t get_backw_type() const;
     double get_no_gates_below() const;
     int get_simp() const;
     bool get_distill() const;
