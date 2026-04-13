@@ -190,6 +190,17 @@ static const char* order_name(int id) {
         case 59: return "borda(min,invsz,bin) + eps*min";
         case 60: return "borda(min,invsz,bin) * 100 + min";
         case 61: return "weighted quantized (q=20)";
+        // Neighbors of the rank-based winner #46 (borda min+bin equal, I=351):
+        case 62: return "borda 2:1 (min,bin)";
+        case 63: return "borda 1:2 (min,bin)";
+        case 64: return "borda 3:1 (min,bin)";
+        case 65: return "borda 1:3 (min,bin)";
+        case 66: return "borda(min,bin) + 0.1*rank(invsz)";
+        case 67: return "borda(min,bin) + 0.01*rank(invsz)";
+        case 68: return "borda(min,bin) + 0.1*rank(pn)";
+        case 69: return "borda(min,bin,pn) 2:2:1";
+        case 70: return "borda(min,bin,pn) 1:1:1";
+        case 71: return "borda(min,bin) - 0.1*rank(long)";
         default: return "unknown";
     }
 }
@@ -358,6 +369,17 @@ static vector<double> compute_score(int id, const vector<VarFeats>& f, uint32_t 
                      s[v] = rank_min[v] + rank_inv[v] + rank_bin[v] + 1e-6 * (double)x.mn(); break;
             case 60: ensure_ranks();
                      s[v] = (rank_min[v] + rank_inv[v] + rank_bin[v]) * 100 + (double)x.mn(); break;
+            // Neighbors of #46 (borda min+bin equal):
+            case 62: ensure_ranks(); s[v] = 2*rank_min[v] +   rank_bin[v]; break;
+            case 63: ensure_ranks(); s[v] =   rank_min[v] + 2*rank_bin[v]; break;
+            case 64: ensure_ranks(); s[v] = 3*rank_min[v] +   rank_bin[v]; break;
+            case 65: ensure_ranks(); s[v] =   rank_min[v] + 3*rank_bin[v]; break;
+            case 66: ensure_ranks(); s[v] = rank_min[v] + rank_bin[v] + 0.1*rank_inv[v]; break;
+            case 67: ensure_ranks(); s[v] = rank_min[v] + rank_bin[v] + 0.01*rank_inv[v]; break;
+            case 68: ensure_ranks(); s[v] = rank_min[v] + rank_bin[v] + 0.1*rank_pn[v]; break;
+            case 69: ensure_ranks(); s[v] = 2*rank_min[v] + 2*rank_bin[v] + rank_pn[v]; break;
+            case 70: ensure_ranks(); s[v] = rank_min[v] + rank_bin[v] + rank_pn[v]; break;
+            case 71: ensure_ranks(); s[v] = rank_min[v] + rank_bin[v] - 0.1*rank_long[v]; break;
             default: s[v] = (double)x.mn();
         }
     }
