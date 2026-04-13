@@ -45,9 +45,9 @@ struct Config {
     double no_gates_below = 0.01;
     std::string specified_order_fname;
     // Static ordering for backward elimination. See backward.cpp for the
-    // available strategies. 16 = weighted(0.5*min(p,n) + 0.3*inv_sz_sum
-    // + 0.2*bin) — best on mc2024_track4_128 (I=353 vs 371 baseline).
-    int backw_order = 16;
+    // available strategies. 41 = weighted(0.55*min(p,n) + 0.25*inv_sz_sum
+    // + 0.20*bin) — best on mc2024_track4_128 (I=351 vs 371 baseline).
+    int backw_order = 41;
     int backw_order_stats = 0; // print extra ordering statistics
     uint32_t backw_max_confl = 20000;
     uint32_t unate_max_confl = 100;
