@@ -117,6 +117,12 @@ static const char* order_name(int id) {
         case 33: return "weighted(0.4,0.3,0.2,0.1bin*invsz)";
         case 34: return "weighted+sumlong(0.4,0.3,0.2,0.1)";
         case 35: return "log(min)+log(invsz)+log(bin)";
+        case 36: return "weighted(0.55,0.30,0.15)";
+        case 37: return "weighted(0.45,0.30,0.25)";
+        case 38: return "weighted(0.50,0.35,0.15)";
+        case 39: return "weighted(0.50,0.25,0.25)";
+        case 40: return "weighted(0.50,0.30,0.20) [seed+1]";
+        case 41: return "weighted(0.55,0.25,0.20)";
         default: return "unknown";
     }
 }
@@ -220,6 +226,22 @@ static vector<double> compute_score(int id, const vector<VarFeats>& f, uint32_t 
             case 35: s[v] = std::log2((double)x.mn() + 1.0)
                           + std::log2(x.inv_sz_sum + 1.0)
                           + std::log2((double)x.bin + 1.0); break;
+            // Fine-grained perturbations of the winner (#16: 0.5/0.3/0.2):
+            case 36: s[v] = 0.55 * (double)x.mn()/max_min + 0.30 * x.inv_sz_sum/max_inv
+                          + 0.15 * (double)x.bin/max_bin; break;
+            case 37: s[v] = 0.45 * (double)x.mn()/max_min + 0.30 * x.inv_sz_sum/max_inv
+                          + 0.25 * (double)x.bin/max_bin; break;
+            case 38: s[v] = 0.50 * (double)x.mn()/max_min + 0.35 * x.inv_sz_sum/max_inv
+                          + 0.15 * (double)x.bin/max_bin; break;
+            case 39: s[v] = 0.50 * (double)x.mn()/max_min + 0.25 * x.inv_sz_sum/max_inv
+                          + 0.25 * (double)x.bin/max_bin; break;
+            // Same weights as #16, but keep the rest of the round config;
+            // result is identical to #16 (no real RNG dependence) — kept as
+            // a sanity-check slot so future tweaks have a baseline.
+            case 40: s[v] = 0.50 * (double)x.mn()/max_min + 0.30 * x.inv_sz_sum/max_inv
+                          + 0.20 * (double)x.bin/max_bin; break;
+            case 41: s[v] = 0.55 * (double)x.mn()/max_min + 0.25 * x.inv_sz_sum/max_inv
+                          + 0.20 * (double)x.bin/max_bin; break;
             default: s[v] = (double)x.mn();
         }
     }
