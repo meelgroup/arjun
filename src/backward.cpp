@@ -108,6 +108,15 @@ static const char* order_name(int id) {
         case 24: return "log(p*n+1)*1e6 + bin";
         case 25: return "p*n + invsz tiebreak";
         case 26: return "min(p,n)+sqrt(bin)";
+        case 27: return "weighted(0.6,0.3,0.1)";
+        case 28: return "weighted(0.4,0.4,0.2)";
+        case 29: return "weighted(0.5,0.5,0.0)";
+        case 30: return "weighted(0.7,0.2,0.1)";
+        case 31: return "weighted(0.3,0.4,0.3)";
+        case 32: return "weighted(0.5,0.3,0.2,p*n)";
+        case 33: return "weighted(0.4,0.3,0.2,0.1bin*invsz)";
+        case 34: return "weighted+sumlong(0.4,0.3,0.2,0.1)";
+        case 35: return "log(min)+log(invsz)+log(bin)";
         default: return "unknown";
     }
 }
@@ -183,6 +192,34 @@ static vector<double> compute_score(int id, const vector<VarFeats>& f, uint32_t 
             case 25: s[v] = (double)x.pos*(double)x.neg * 1e6 + x.inv_sz_sum * 1e3; break;
             // min(p,n) + sqrt(bin) — combine the two top winners gently
             case 26: s[v] = (double)x.mn() + std::sqrt((double)x.bin); break;
+            // Weighted-combo variations to optimize around #16:
+            case 27: s[v] = 0.6 * (double)x.mn()/max_min + 0.3 * x.inv_sz_sum/max_inv
+                          + 0.1 * (double)x.bin/max_bin; break;
+            case 28: s[v] = 0.4 * (double)x.mn()/max_min + 0.4 * x.inv_sz_sum/max_inv
+                          + 0.2 * (double)x.bin/max_bin; break;
+            case 29: s[v] = 0.5 * (double)x.mn()/max_min + 0.5 * x.inv_sz_sum/max_inv;
+                     break;
+            case 30: s[v] = 0.7 * (double)x.mn()/max_min + 0.2 * x.inv_sz_sum/max_inv
+                          + 0.1 * (double)x.bin/max_bin; break;
+            case 31: s[v] = 0.3 * (double)x.mn()/max_min + 0.4 * x.inv_sz_sum/max_inv
+                          + 0.3 * (double)x.bin/max_bin; break;
+            // Like 16 but using p*n as the balance signal
+            case 32: s[v] = 0.5 * ((double)x.pos*(double)x.neg)/(max_min*max_min)
+                          + 0.3 * x.inv_sz_sum/max_inv
+                          + 0.2 * (double)x.bin/max_bin; break;
+            // 4-feature combo: also include longcls negatively (more long cls -> less constrained)
+            case 33: s[v] = 0.4 * (double)x.mn()/max_min
+                          + 0.3 * x.inv_sz_sum/max_inv
+                          + 0.2 * (double)x.bin/max_bin
+                          - 0.1 * (double)x.longcls/max_long; break;
+            case 34: s[v] = 0.4 * (double)x.mn()/max_min
+                          + 0.3 * x.inv_sz_sum/max_inv
+                          + 0.2 * (double)x.bin/max_bin
+                          + 0.1 * (double)x.sum()/max_sum; break;
+            // Log-scale combo: reduce dynamic range so no single feature dominates
+            case 35: s[v] = std::log2((double)x.mn() + 1.0)
+                          + std::log2(x.inv_sz_sum + 1.0)
+                          + std::log2((double)x.bin + 1.0); break;
             default: s[v] = (double)x.mn();
         }
     }
