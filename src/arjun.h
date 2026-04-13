@@ -1640,6 +1640,8 @@ public:
     //void set_polar_mode(CMSat::PolarityMode mode);
     void set_no_gates_below(double no_gates_below);
     void set_specified_order_fname(std::string specified_order_fname);
+    void set_backw_order(int backw_order);
+    void set_backw_order_stats(int backw_order_stats);
     void set_weighted(const bool);
     void set_extend_max_confl(uint32_t extend_max_confl);
     void set_oracle_find_bins(int oracle_find_bins);
@@ -1651,6 +1653,8 @@ public:
     uint32_t get_verb() const;
     bool get_do_unate() const;
     std::string get_specified_order_fname() const;
+    int get_backw_order() const;
+    int get_backw_order_stats() const;
     double get_no_gates_below() const;
     int get_simp() const;
     bool get_distill() const;

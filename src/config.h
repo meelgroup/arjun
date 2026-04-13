@@ -44,6 +44,8 @@ struct Config {
     int gauss_jordan = 0;
     double no_gates_below = 0.01;
     std::string specified_order_fname;
+    int backw_order = 0; // see backward.cpp for available orderings
+    int backw_order_stats = 0; // print extra ordering statistics
     uint32_t backw_max_confl = 20000;
     uint32_t unate_max_confl = 100;
     uint32_t extend_max_confl = 1000;
