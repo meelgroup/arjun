@@ -33,6 +33,7 @@
 #include <set>
 #include <numeric>
 #include <functional>
+#include <map>
 
 using namespace ArjunInt;
 using namespace CMSat;
@@ -201,6 +202,18 @@ static const char* order_name(int id) {
         case 69: return "borda(min,bin,pn) 2:2:1";
         case 70: return "borda(min,bin,pn) 1:1:1";
         case 71: return "borda(min,bin) - 0.1*rank(long)";
+        // Tie-breakers that use COMPLETE secondary rankings to split the
+        // ~343 var tie-blob that (min=2,bin=5) creates in #46.
+        case 72: return "borda(min,bin) + rank(sum) tiebreak";
+        case 73: return "borda(min,bin) + rank(invsz) tiebreak";
+        case 74: return "borda(min,bin) + rank(pn) tiebreak";
+        case 75: return "borda(min,bin) + rank(max) tiebreak";
+        case 76: return "borda all 7 features equal";
+        case 77: return "borda(min,bin,sum) equal";
+        case 78: return "borda(min,bin,invsz,sum) equal";
+        case 79: return "borda(min,bin,max) equal";
+        case 80: return "3*rank(min)+3*rank(bin)+rank(sum)+rank(invsz)";
+        case 81: return "5*rank(min)+5*rank(bin)+rank(sum)";
         default: return "unknown";
     }
 }
@@ -380,6 +393,27 @@ static vector<double> compute_score(int id, const vector<VarFeats>& f, uint32_t 
             case 69: ensure_ranks(); s[v] = 2*rank_min[v] + 2*rank_bin[v] + rank_pn[v]; break;
             case 70: ensure_ranks(); s[v] = rank_min[v] + rank_bin[v] + rank_pn[v]; break;
             case 71: ensure_ranks(); s[v] = rank_min[v] + rank_bin[v] - 0.1*rank_long[v]; break;
+            // Rank(min)+rank(bin) as primary, other rank as secondary (small multiplier):
+            // 2N^2 dominates 2N, so primary always wins; tiebreaks use full rank info.
+            case 72: ensure_ranks();
+                     s[v] = (rank_min[v] + rank_bin[v]) * (2.0*N) + rank_sum[v]; break;
+            case 73: ensure_ranks();
+                     s[v] = (rank_min[v] + rank_bin[v]) * (2.0*N) + rank_inv[v]; break;
+            case 74: ensure_ranks();
+                     s[v] = (rank_min[v] + rank_bin[v]) * (2.0*N) + rank_pn[v];  break;
+            case 75: ensure_ranks();
+                     s[v] = (rank_min[v] + rank_bin[v]) * (2.0*N) + rank_max[v]; break;
+            // Borda across many features (more features -> fewer ties):
+            case 76: ensure_ranks();
+                     s[v] = rank_min[v] + rank_bin[v] + rank_inv[v] + rank_sum[v]
+                          + rank_pn[v] + rank_max[v] + rank_long[v]; break;
+            case 77: ensure_ranks(); s[v] = rank_min[v] + rank_bin[v] + rank_sum[v]; break;
+            case 78: ensure_ranks(); s[v] = rank_min[v] + rank_bin[v] + rank_inv[v] + rank_sum[v]; break;
+            case 79: ensure_ranks(); s[v] = rank_min[v] + rank_bin[v] + rank_max[v]; break;
+            case 80: ensure_ranks();
+                     s[v] = 3*rank_min[v] + 3*rank_bin[v] + rank_sum[v] + rank_inv[v]; break;
+            case 81: ensure_ranks();
+                     s[v] = 5*rank_min[v] + 5*rank_bin[v] + rank_sum[v]; break;
             default: s[v] = (double)x.mn();
         }
     }
@@ -522,6 +556,23 @@ void Minimize::backward_round() {
             << ") Start unknown size: " << unknown.size());
 
     if (conf.backw_order_stats) {
+        // Score-tie histogram: shows how many vars share each distinct score
+        // under the chosen ordering. A score with many ties means the
+        // ordering is fragile *among those vars* — tiebreaker changes (even
+        // epsilon perturbations to the weighted formula) shuffle that group.
+        std::map<double, uint32_t> tie_hist;
+        for (auto v : unknown) tie_hist[score[v]]++;
+        uint32_t singletons = 0, big_groups = 0, biggest = 0;
+        for (auto& [sc, cnt] : tie_hist) {
+            if (cnt == 1) singletons++;
+            else if (cnt >= 10) big_groups++;
+            biggest = std::max(biggest, cnt);
+        }
+        cout << "c o [bw-order:stability] distinct_scores=" << tie_hist.size()
+             << " singletons=" << singletons
+             << " groups>=10=" << big_groups
+             << " biggest_tie=" << biggest << endl;
+
         vector<double> mn(orig_num_vars, 0), sum_s(orig_num_vars, 0),
                        binc(orig_num_vars, 0), invs(orig_num_vars, 0);
         for (uint32_t v = 0; v < orig_num_vars; v++) {
