@@ -44,7 +44,10 @@ struct Config {
     int gauss_jordan = 0;
     double no_gates_below = 0.01;
     std::string specified_order_fname;
-    int backw_order = 0; // see backward.cpp for available orderings
+    // Static ordering for backward elimination. See backward.cpp for the
+    // available strategies. 16 = weighted(0.5*min(p,n) + 0.3*inv_sz_sum
+    // + 0.2*bin) — best on mc2024_track4_128 (I=353 vs 371 baseline).
+    int backw_order = 16;
     int backw_order_stats = 0; // print extra ordering statistics
     uint32_t backw_max_confl = 20000;
     uint32_t unate_max_confl = 100;
