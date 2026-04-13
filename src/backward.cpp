@@ -95,6 +95,13 @@ static const char* order_name(int id) {
         case 11: return "neighbors-desc";
         case 12: return "min-desc + bin tiebreak";
         case 13: return "log(min)-then-bin";
+        case 14: return "min-desc + sum-tiebreak";
+        case 15: return "min-desc + invsz-tiebreak";
+        case 16: return "weighted(min,invsz,bin)";
+        case 17: return "log(min)-then-sum";
+        case 18: return "min-desc + p*n-tiebreak";
+        case 19: return "sqrt(p*n)-desc";
+        case 20: return "min/(longcls+1)-desc";
         default: return "unknown";
     }
 }
@@ -103,6 +110,15 @@ static vector<double> compute_score(int id, const vector<VarFeats>& f, uint32_t 
     const uint32_t N = f.size();
     vector<double> s(N, 0.0);
     std::mt19937_64 rng(seed);
+    // Precompute maxes for normalization-based combos.
+    double max_min = 1, max_sum = 1, max_inv = 1, max_bin = 1, max_long = 1;
+    for (uint32_t v = 0; v < N; v++) {
+        max_min  = std::max(max_min, (double)f[v].mn());
+        max_sum  = std::max(max_sum, (double)f[v].sum());
+        max_inv  = std::max(max_inv, f[v].inv_sz_sum);
+        max_bin  = std::max(max_bin, (double)f[v].bin);
+        max_long = std::max(max_long, (double)f[v].longcls);
+    }
     for (uint32_t v = 0; v < N; v++) {
         const auto& x = f[v];
         switch (id) {
@@ -127,6 +143,26 @@ static vector<double> compute_score(int id, const vector<VarFeats>& f, uint32_t 
                 s[v] = std::floor(lm) * 1e6 + (double)x.bin;
                 break;
             }
+            // min(p,n) primary, sum() tiebreak (when many vars share min)
+            case 14: s[v] = (double)x.mn() * 1e6 + (double)x.sum(); break;
+            // min(p,n) primary, inv_sz_sum tiebreak
+            case 15: s[v] = (double)x.mn() * 1e6 + x.inv_sz_sum * 1e3; break;
+            // weighted normalized combination
+            case 16: s[v] = 0.5 * (double)x.mn()/max_min
+                          + 0.3 * x.inv_sz_sum/max_inv
+                          + 0.2 * (double)x.bin/max_bin; break;
+            // log-binned min, sum tiebreak
+            case 17: {
+                double lm = x.mn() > 0 ? std::log2((double)x.mn()) : 0.0;
+                s[v] = std::floor(lm) * 1e9 + (double)x.sum();
+                break;
+            }
+            // min(p,n) primary, p*n tiebreak
+            case 18: s[v] = (double)x.mn() * 1e9 + (double)x.pos*(double)x.neg; break;
+            // sqrt(p*n) — geometric mean of pos/neg, like a soft min
+            case 19: s[v] = std::sqrt((double)x.pos * (double)x.neg); break;
+            // min divided by long-clause count: prefer balanced AND constrained
+            case 20: s[v] = (double)x.mn() / ((double)x.longcls + 1.0); break;
             default: s[v] = (double)x.mn();
         }
     }
