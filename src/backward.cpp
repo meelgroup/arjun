@@ -296,8 +296,6 @@ void Minimize::backward_round() {
             << ") Start unknown size: " << unknown.size());
 
     if (conf.backw_order_stats) {
-        // Stats over the *unknown* set only.
-        vector<uint32_t> all = unknown;
         vector<double> mn(orig_num_vars, 0), sum_s(orig_num_vars, 0),
                        binc(orig_num_vars, 0), invs(orig_num_vars, 0);
         for (uint32_t v = 0; v < orig_num_vars; v++) {
@@ -306,10 +304,10 @@ void Minimize::backward_round() {
             binc[v] = feats[v].bin;
             invs[v] = feats[v].inv_sz_sum;
         }
-        print_score_quartiles("min(p,n)", mn, all);
-        print_score_quartiles("sum",      sum_s, all);
-        print_score_quartiles("bin",      binc, all);
-        print_score_quartiles("invsz",    invs, all);
+        print_score_quartiles("min(p,n)", mn, unknown);
+        print_score_quartiles("sum",      sum_s, unknown);
+        print_score_quartiles("bin",      binc, unknown);
+        print_score_quartiles("invsz",    invs, unknown);
     }
     // Snapshot of vars eligible at start of round, for end-of-round breakdown.
     vector<uint32_t> initial_unknown = unknown;
