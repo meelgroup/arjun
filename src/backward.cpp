@@ -102,6 +102,12 @@ static const char* order_name(int id) {
         case 18: return "min-desc + p*n-tiebreak";
         case 19: return "sqrt(p*n)-desc";
         case 20: return "min/(longcls+1)-desc";
+        case 21: return "p*n + bin tiebreak";
+        case 22: return "bin + p*n tiebreak";
+        case 23: return "p*n + 0.5*bin (norm)";
+        case 24: return "log(p*n+1)*1e6 + bin";
+        case 25: return "p*n + invsz tiebreak";
+        case 26: return "min(p,n)+sqrt(bin)";
         default: return "unknown";
     }
 }
@@ -163,6 +169,20 @@ static vector<double> compute_score(int id, const vector<VarFeats>& f, uint32_t 
             case 19: s[v] = std::sqrt((double)x.pos * (double)x.neg); break;
             // min divided by long-clause count: prefer balanced AND constrained
             case 20: s[v] = (double)x.mn() / ((double)x.longcls + 1.0); break;
+            // pos*neg primary, binary count tiebreak
+            case 21: s[v] = (double)x.pos*(double)x.neg * 1e6 + (double)x.bin; break;
+            // binary count primary, pos*neg tiebreak
+            case 22: s[v] = (double)x.bin * 1e9 + (double)x.pos*(double)x.neg; break;
+            // normalized weighted combination of p*n and bin
+            case 23: s[v] = (double)x.pos*(double)x.neg/(max_min*max_min)
+                          + 0.5 * (double)x.bin/max_bin; break;
+            // log(p*n+1) primary, bin tiebreak
+            case 24: s[v] = std::log2((double)x.pos*(double)x.neg + 1.0) * 1e6
+                          + (double)x.bin; break;
+            // p*n primary, inv_sz_sum tiebreak
+            case 25: s[v] = (double)x.pos*(double)x.neg * 1e6 + x.inv_sz_sum * 1e3; break;
+            // min(p,n) + sqrt(bin) — combine the two top winners gently
+            case 26: s[v] = (double)x.mn() + std::sqrt((double)x.bin); break;
             default: s[v] = (double)x.mn();
         }
     }
