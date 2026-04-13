@@ -32,6 +32,7 @@
 #include <optional>
 #include <set>
 #include <numeric>
+#include <functional>
 
 using namespace ArjunInt;
 using namespace CMSat;
@@ -254,8 +255,8 @@ void Minimize::backward_round() {
         print_score_quartiles("bin",      binc, all);
         print_score_quartiles("invsz",    invs, all);
     }
-    // Stash for end-of-round per-quartile breakdown.
-    vector<VarFeats> feats_for_stats = feats;
+    // Snapshot of vars eligible at start of round, for end-of-round breakdown.
+    vector<uint32_t> initial_unknown = unknown;
     solver->set_verbosity(0);
 
     vector<Lit> assumptions;
@@ -464,6 +465,37 @@ void Minimize::backward_round() {
         }
     }
     update_sampling_set(unknown, unknown_set, indep);
+
+    if (conf.backw_order_stats) {
+        // Per-feature-quartile breakdown of "ended up indep" vs not. Computed
+        // over the initial-unknown set so it tells us which features actually
+        // predict membership in the final independent set.
+        std::set<uint32_t> indep_set(sampling_vars.begin(), sampling_vars.end());
+        auto report = [&](const string& name, std::function<double(const VarFeats&)> get) {
+            vector<std::pair<double, uint32_t>> by_score;
+            for (auto v : initial_unknown) by_score.emplace_back(get(feats[v]), v);
+            std::sort(by_score.begin(), by_score.end());
+            const uint32_t N = by_score.size();
+            if (N == 0) return;
+            uint32_t buckets = 4;
+            cout << "c o [bw-stats:" << name << "] indep-count per quartile (low->high):";
+            for (uint32_t b = 0; b < buckets; b++) {
+                uint32_t lo = (uint64_t)b * N / buckets;
+                uint32_t hi = (uint64_t)(b+1) * N / buckets;
+                uint32_t cnt = 0;
+                for (uint32_t i = lo; i < hi; i++) if (indep_set.count(by_score[i].second)) cnt++;
+                cout << " " << cnt << "/" << (hi-lo);
+            }
+            cout << endl;
+        };
+        report("min(p,n)", [](const VarFeats& f){ return (double)f.mn(); });
+        report("sum",      [](const VarFeats& f){ return (double)f.sum(); });
+        report("bin",      [](const VarFeats& f){ return (double)f.bin; });
+        report("longcls",  [](const VarFeats& f){ return (double)f.longcls; });
+        report("invsz",    [](const VarFeats& f){ return f.inv_sz_sum; });
+        report("balance",  [](const VarFeats& f){ return -(double)f.bal(); });
+        report("p*n",      [](const VarFeats& f){ return (double)f.pos*(double)f.neg; });
+    }
 
     verb_print(1, COLRED "[arjun] backward round finished. U: " <<
             " I: " << sampling_vars.size() << " T: "
