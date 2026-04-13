@@ -50,7 +50,7 @@ struct Config {
     // parameter-free (no continuous weights to hand-tune), and uses integer
     // ranks so tiny feature-value differences do not move the ordering.
     int backw_order = 46;
-    int backw_order_stats = 0; // print extra ordering statistics
+    int backw_order_stats = 1; // print extra ordering statistics
     uint32_t backw_max_confl = 20000;
     uint32_t unate_max_confl = 100;
     uint32_t extend_max_confl = 1000;
