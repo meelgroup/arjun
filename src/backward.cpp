@@ -67,6 +67,52 @@ static void print_score_quartiles(const string& name, const vector<double>& scor
          << endl;
 }
 
+// Return a vector where ranks[v] = the rank of variable v in `val` (ascending),
+// averaged in case of ties. Unknown-only vars use N (effective ranks 0..N-1);
+// others get 0 and are ignored downstream.
+static vector<double> make_ranks(const vector<double>& val, const vector<uint32_t>& vars) {
+    const uint32_t N = vars.size();
+    vector<std::pair<double, uint32_t>> pairs; pairs.reserve(N);
+    for (auto v : vars) pairs.emplace_back(val[v], v);
+    std::sort(pairs.begin(), pairs.end());
+    vector<double> ranks(val.size(), 0.0);
+    // Assign average ranks on ties so equal values get the same numeric score.
+    uint32_t i = 0;
+    while (i < N) {
+        uint32_t j = i;
+        while (j < N && pairs[j].first == pairs[i].first) j++;
+        const double avg_rank = (double)(i + j - 1) / 2.0;
+        for (uint32_t k = i; k < j; k++) ranks[pairs[k].second] = avg_rank;
+        i = j;
+    }
+    return ranks;
+}
+
+// Quantize a continuous value into `buckets` bins (0..buckets-1) based on
+// quantiles of the observed distribution over `vars`. Returns per-variable
+// bucket in a vector indexed by var.
+static vector<double> bucketize(const vector<double>& val, const vector<uint32_t>& vars,
+                                uint32_t buckets) {
+    const uint32_t N = vars.size();
+    vector<double> sorted_vals; sorted_vals.reserve(N);
+    for (auto v : vars) sorted_vals.push_back(val[v]);
+    std::sort(sorted_vals.begin(), sorted_vals.end());
+    // Bucket boundaries: cut points at quantiles.
+    vector<double> cuts(buckets - 1);
+    for (uint32_t b = 1; b < buckets; b++) {
+        uint32_t idx = (uint64_t)b * N / buckets;
+        if (idx >= N) idx = N - 1;
+        cuts[b-1] = sorted_vals[idx];
+    }
+    vector<double> out(val.size(), 0.0);
+    for (auto v : vars) {
+        uint32_t b = 0;
+        while (b < buckets - 1 && val[v] > cuts[b]) b++;
+        out[v] = (double)b;
+    }
+    return out;
+}
+
 // Rank vars by `score`: HIGHER score => place at FRONT of `unknown` (so it is
 // tested LAST, i.e. ends up in independent set). LOWER score => placed at
 // BACK and tested first (i.e. is the first candidate to be removed/defined).
@@ -123,11 +169,33 @@ static const char* order_name(int id) {
         case 39: return "weighted(0.50,0.25,0.25)";
         case 40: return "weighted(0.50,0.30,0.20) [seed+1]";
         case 41: return "weighted(0.55,0.25,0.20)";
+        // --- Rank-based (Borda) orderings: naturally stable under weight perturbation ---
+        case 42: return "borda(min,invsz,bin) equal";
+        case 43: return "borda 3:2:1 (min,invsz,bin)";
+        case 44: return "borda 2:1:1 (min,invsz,bin)";
+        case 45: return "borda(min,invsz) equal";
+        case 46: return "borda(min,bin) equal";
+        case 47: return "borda(min,invsz,bin,sum) equal";
+        case 48: return "borda 4:2:1 (min,invsz,bin)";
+        case 49: return "borda 3:3:2 (min,invsz,bin)";
+        case 50: return "borda 3:2:2 (min,invsz,bin)";
+        case 51: return "lex(min,invsz,bin) buckets=8";
+        case 52: return "lex(min,invsz,bin) buckets=16";
+        case 53: return "lex(min,invsz,bin) buckets=32";
+        case 54: return "lex(min,bin,invsz) buckets=8";
+        case 55: return "min-desc + rank(invsz) tiebreak";
+        case 56: return "min-desc + rank(invsz,bin) tiebreaks";
+        case 57: return "borda 2:1:1(min,invsz,bin) - rank(long)";
+        case 58: return "borda(min,p*n,bin) 3:2:1";
+        case 59: return "borda(min,invsz,bin) + eps*min";
+        case 60: return "borda(min,invsz,bin) * 100 + min";
+        case 61: return "weighted quantized (q=20)";
         default: return "unknown";
     }
 }
 
-static vector<double> compute_score(int id, const vector<VarFeats>& f, uint32_t seed) {
+static vector<double> compute_score(int id, const vector<VarFeats>& f, uint32_t seed,
+        const vector<uint32_t>& unknown) {
     const uint32_t N = f.size();
     vector<double> s(N, 0.0);
     std::mt19937_64 rng(seed);
@@ -140,6 +208,31 @@ static vector<double> compute_score(int id, const vector<VarFeats>& f, uint32_t 
         max_bin  = std::max(max_bin, (double)f[v].bin);
         max_long = std::max(max_long, (double)f[v].longcls);
     }
+    // Ranks computed over the unknown set (used by rank-based strategies 42+).
+    // They are LAZILY computed on first use to avoid the O(N log N) cost when
+    // a non-rank strategy is selected.
+    vector<double> rank_min, rank_sum, rank_inv, rank_bin, rank_long, rank_pn, rank_max;
+    auto ensure_ranks = [&]() {
+        if (!rank_min.empty()) return;
+        vector<double> vmin(f.size()), vsum(f.size()), vinv(f.size()),
+                       vbin(f.size()), vlong(f.size()), vpn(f.size()), vmax(f.size());
+        for (uint32_t v = 0; v < N; v++) {
+            vmin[v]  = (double)f[v].mn();
+            vsum[v]  = (double)f[v].sum();
+            vinv[v]  = f[v].inv_sz_sum;
+            vbin[v]  = (double)f[v].bin;
+            vlong[v] = (double)f[v].longcls;
+            vpn[v]   = (double)f[v].pos * (double)f[v].neg;
+            vmax[v]  = (double)f[v].mx();
+        }
+        rank_min  = make_ranks(vmin,  unknown);
+        rank_sum  = make_ranks(vsum,  unknown);
+        rank_inv  = make_ranks(vinv,  unknown);
+        rank_bin  = make_ranks(vbin,  unknown);
+        rank_long = make_ranks(vlong, unknown);
+        rank_pn   = make_ranks(vpn,   unknown);
+        rank_max  = make_ranks(vmax,  unknown);
+    };
     for (uint32_t v = 0; v < N; v++) {
         const auto& x = f[v];
         switch (id) {
@@ -242,8 +335,60 @@ static vector<double> compute_score(int id, const vector<VarFeats>& f, uint32_t 
                           + 0.20 * (double)x.bin/max_bin; break;
             case 41: s[v] = 0.55 * (double)x.mn()/max_min + 0.25 * x.inv_sz_sum/max_inv
                           + 0.20 * (double)x.bin/max_bin; break;
+            // --- Rank-based (Borda) orderings ---
+            case 42: ensure_ranks(); s[v] = rank_min[v] + rank_inv[v] + rank_bin[v]; break;
+            case 43: ensure_ranks(); s[v] = 3*rank_min[v] + 2*rank_inv[v] + 1*rank_bin[v]; break;
+            case 44: ensure_ranks(); s[v] = 2*rank_min[v] + 1*rank_inv[v] + 1*rank_bin[v]; break;
+            case 45: ensure_ranks(); s[v] = rank_min[v] + rank_inv[v]; break;
+            case 46: ensure_ranks(); s[v] = rank_min[v] + rank_bin[v]; break;
+            case 47: ensure_ranks(); s[v] = rank_min[v] + rank_inv[v] + rank_bin[v] + rank_sum[v]; break;
+            case 48: ensure_ranks(); s[v] = 4*rank_min[v] + 2*rank_inv[v] + rank_bin[v]; break;
+            case 49: ensure_ranks(); s[v] = 3*rank_min[v] + 3*rank_inv[v] + 2*rank_bin[v]; break;
+            case 50: ensure_ranks(); s[v] = 3*rank_min[v] + 2*rank_inv[v] + 2*rank_bin[v]; break;
+            // Cases 51-54, 61 handled below via bucketize (needs full unknown pass).
+            case 51: case 52: case 53: case 54: case 61: break;
+            // min-desc with rank(invsz) tiebreak: primary same as default #0 at
+            // the top, but tie-clusters (same min) ordered by invsz rank.
+            case 55: ensure_ranks(); s[v] = (double)x.mn() * 1e7 + rank_inv[v]; break;
+            case 56: ensure_ranks(); s[v] = (double)x.mn() * 1e10 + rank_inv[v] * 1e4 + rank_bin[v]; break;
+            case 57: ensure_ranks();
+                     s[v] = 2*rank_min[v] + rank_inv[v] + rank_bin[v] - 0.5*rank_long[v]; break;
+            case 58: ensure_ranks(); s[v] = 3*rank_min[v] + 2*rank_pn[v] + rank_bin[v]; break;
+            case 59: ensure_ranks();
+                     s[v] = rank_min[v] + rank_inv[v] + rank_bin[v] + 1e-6 * (double)x.mn(); break;
+            case 60: ensure_ranks();
+                     s[v] = (rank_min[v] + rank_inv[v] + rank_bin[v]) * 100 + (double)x.mn(); break;
             default: s[v] = (double)x.mn();
         }
+    }
+    // Lex orderings: primary bucket from min, secondary from invsz, tertiary bin.
+    // Using integer buckets makes the score invariant to small perturbations.
+    auto lex_score = [&](uint32_t buckets, bool swap_bin_inv) -> vector<double> {
+        vector<double> vmin(N), vinv(N), vbin(N);
+        for (uint32_t v = 0; v < N; v++) { vmin[v]=f[v].mn(); vinv[v]=f[v].inv_sz_sum; vbin[v]=f[v].bin; }
+        auto bmin = bucketize(vmin, unknown, buckets);
+        auto binv = bucketize(vinv, unknown, buckets);
+        auto bbin = bucketize(vbin, unknown, buckets);
+        vector<double> out(N, 0.0);
+        const double m2 = buckets * buckets;
+        for (auto v : unknown) {
+            if (swap_bin_inv) out[v] = bmin[v]*m2 + bbin[v]*buckets + binv[v];
+            else              out[v] = bmin[v]*m2 + binv[v]*buckets + bbin[v];
+        }
+        return out;
+    };
+    if (id == 51) s = lex_score(8, false);
+    else if (id == 52) s = lex_score(16, false);
+    else if (id == 53) s = lex_score(32, false);
+    else if (id == 54) s = lex_score(8, true);
+    else if (id == 61) {
+        // Quantize each of (min, invsz, bin) into 20 bins, then weighted sum.
+        vector<double> vmin(N), vinv(N), vbin(N);
+        for (uint32_t v = 0; v < N; v++) { vmin[v]=f[v].mn(); vinv[v]=f[v].inv_sz_sum; vbin[v]=f[v].bin; }
+        auto bmin = bucketize(vmin, unknown, 20);
+        auto binv = bucketize(vinv, unknown, 20);
+        auto bbin = bucketize(vbin, unknown, 20);
+        for (auto v : unknown) s[v] = 0.55*bmin[v] + 0.25*binv[v] + 0.20*bbin[v];
     }
     return s;
 }
@@ -347,7 +492,7 @@ void Minimize::backward_round() {
     // (BEFORE problem duplication, so describing the original CNF only).
     const vector<VarFeats>& feats = var_feats;
     assert(feats.size() == orig_num_vars && "var_feats must be filled by get_incidence()");
-    vector<double> score = compute_score(conf.backw_order, feats, conf.seed);
+    vector<double> score = compute_score(conf.backw_order, feats, conf.seed, unknown);
     apply_score_order(unknown, score);
     if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
     print_sorted_unknown(unknown);
