@@ -130,6 +130,28 @@ void Minimize::get_incidence() {
         Lit l = Lit(i, true);
         incidence[l.var()] = std::min(inc[l.toInt()],inc[(~l).toInt()]);
     }
+
+    // Walk irred clauses once to collect richer per-variable features.
+    var_feats.clear();
+    var_feats.resize(orig_num_vars);
+    for(uint32_t v = 0; v < orig_num_vars; v++) {
+        var_feats[v].pos = inc[Lit(v, false).toInt()];
+        var_feats[v].neg = inc[Lit(v, true).toInt()];
+    }
+    solver->start_getting_constraints(false);
+    vector<CMSat::Lit> cl; bool is_xor; bool rhs;
+    while (solver->get_next_constraint(cl, is_xor, rhs)) {
+        const uint32_t sz = cl.size();
+        const double inv_sz = sz ? 1.0 / (double)sz : 0.0;
+        for (const auto& l : cl) {
+            if (l.var() >= orig_num_vars) continue;
+            auto& vf = var_feats[l.var()];
+            if (sz <= 2) vf.bin++; else vf.longcls++;
+            vf.inv_sz_sum += inv_sz;
+            vf.neighbors += (sz > 0 ? sz - 1 : 0);
+        }
+    }
+    solver->end_getting_constraints();
 }
 
 void Minimize::set_up_solver()

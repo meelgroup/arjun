@@ -31,6 +31,7 @@
 #include <cstdint>
 #include <optional>
 #include <set>
+#include <numeric>
 
 using namespace ArjunInt;
 using namespace CMSat;
@@ -42,6 +43,96 @@ using std::cout;
 using std::endl;
 using std::optional;
 using std::setw;
+
+namespace {
+using VarFeats = Minimize::VarFeats;
+
+// Print quartile statistics about an ordering's per-variable score and
+// (optionally) report which quartile each var ended up in (indep vs not).
+static void print_score_quartiles(const string& name, const vector<double>& scores,
+        const vector<uint32_t>& order) {
+    if (order.empty()) return;
+    vector<double> s; s.reserve(order.size());
+    for (auto v : order) s.push_back(scores[v]);
+    std::sort(s.begin(), s.end());
+    auto q = [&](double frac) { return s[(size_t)(frac * (s.size()-1))]; };
+    cout << "c o [bw-order:" << name << "] N=" << order.size()
+         << " min=" << s.front()
+         << " q25=" << q(0.25)
+         << " med=" << q(0.5)
+         << " q75=" << q(0.75)
+         << " max=" << s.back()
+         << " mean=" << (std::accumulate(s.begin(), s.end(), 0.0) / s.size())
+         << endl;
+}
+
+// Rank vars by `score`: HIGHER score => place at FRONT of `unknown` (so it is
+// tested LAST, i.e. ends up in independent set). LOWER score => placed at
+// BACK and tested first (i.e. is the first candidate to be removed/defined).
+// Tie-break: lower var id at front (deterministic, mimics existing tiebreaker).
+static void apply_score_order(vector<uint32_t>& unknown, const vector<double>& score) {
+    std::sort(unknown.begin(), unknown.end(), [&](uint32_t a, uint32_t b) {
+        if (score[a] != score[b]) return score[a] > score[b];
+        return a < b;
+    });
+}
+
+// Compute a per-variable score from a chosen strategy id, then sort.
+static const char* order_name(int id) {
+    switch(id) {
+        case 0: return "min(p,n)-desc";
+        case 1: return "sum-desc";
+        case 2: return "max(p,n)-desc";
+        case 3: return "min(p,n)-asc";
+        case 4: return "sum-asc";
+        case 5: return "balance+min";
+        case 6: return "binary-desc";
+        case 7: return "invsz-desc";
+        case 8: return "longcls-desc";
+        case 9: return "p*n-desc";
+        case 10: return "random";
+        case 11: return "neighbors-desc";
+        case 12: return "min-desc + bin tiebreak";
+        case 13: return "log(min)-then-bin";
+        default: return "unknown";
+    }
+}
+
+static vector<double> compute_score(int id, const vector<VarFeats>& f, uint32_t seed) {
+    const uint32_t N = f.size();
+    vector<double> s(N, 0.0);
+    std::mt19937_64 rng(seed);
+    for (uint32_t v = 0; v < N; v++) {
+        const auto& x = f[v];
+        switch (id) {
+            case 0: s[v] = (double)x.mn(); break;
+            case 1: s[v] = (double)x.sum(); break;
+            case 2: s[v] = (double)x.mx(); break;
+            case 3: s[v] = -(double)x.mn(); break;
+            case 4: s[v] = -(double)x.sum(); break;
+            // balance+min: prefer balanced & high-incidence at front
+            case 5: s[v] = (double)x.mn() - 0.25 * (double)x.bal(); break;
+            case 6: s[v] = (double)x.bin; break;
+            case 7: s[v] = x.inv_sz_sum; break;
+            case 8: s[v] = (double)x.longcls; break;
+            case 9: s[v] = (double)x.pos * (double)x.neg; break;
+            case 10: s[v] = (double)(rng() & 0xffffffu); break;
+            case 11: s[v] = (double)x.neighbors; break;
+            // min(p,n) primary, binary count secondary (small linear weight)
+            case 12: s[v] = (double)x.mn() * 1000.0 + (double)x.bin; break;
+            // log-binned min, ties broken by binary count
+            case 13: {
+                double lm = x.mn() > 0 ? std::log2((double)x.mn()) : 0.0;
+                s[v] = std::floor(lm) * 1e6 + (double)x.bin;
+                break;
+            }
+            default: s[v] = (double)x.mn();
+        }
+    }
+    return s;
+}
+
+} // namespace
 
 template<typename T>
 void Minimize::fill_assumptions_backward(
@@ -136,13 +227,35 @@ void Minimize::backward_round() {
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
-    sort_unknown(unknown, incidence);
-    /* std::reverse(unknown.begin(), unknown.end()); */
-    /* std::mt19937_64 rand(33); */
-    /* std::shuffle(unknown.begin(), unknown.end(), std::mt19937(33)); */
+    // Use richer per-variable features computed at get_incidence() time
+    // (BEFORE problem duplication, so describing the original CNF only).
+    const vector<VarFeats>& feats = var_feats;
+    assert(feats.size() == orig_num_vars && "var_feats must be filled by get_incidence()");
+    vector<double> score = compute_score(conf.backw_order, feats, conf.seed);
+    apply_score_order(unknown, score);
     if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
     print_sorted_unknown(unknown);
-    verb_print(1, "[backward FAST] Start unknown size: " << unknown.size());
+    verb_print(1, "[backward FAST] order=" << conf.backw_order << " (" << order_name(conf.backw_order)
+            << ") Start unknown size: " << unknown.size());
+
+    if (conf.backw_order_stats) {
+        // Stats over the *unknown* set only.
+        vector<uint32_t> all = unknown;
+        vector<double> mn(orig_num_vars, 0), sum_s(orig_num_vars, 0),
+                       binc(orig_num_vars, 0), invs(orig_num_vars, 0);
+        for (uint32_t v = 0; v < orig_num_vars; v++) {
+            mn[v] = feats[v].mn();
+            sum_s[v] = feats[v].sum();
+            binc[v] = feats[v].bin;
+            invs[v] = feats[v].inv_sz_sum;
+        }
+        print_score_quartiles("min(p,n)", mn, all);
+        print_score_quartiles("sum",      sum_s, all);
+        print_score_quartiles("bin",      binc, all);
+        print_score_quartiles("invsz",    invs, all);
+    }
+    // Stash for end-of-round per-quartile breakdown.
+    vector<VarFeats> feats_for_stats = feats;
     solver->set_verbosity(0);
 
     vector<Lit> assumptions;
