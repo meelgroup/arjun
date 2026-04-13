@@ -124,34 +124,28 @@ void Minimize::get_incidence() {
     incidence.clear();
     incidence.resize(orig_num_vars, 0);
     assert(solver->nVars() == orig_num_vars);
-    vector<uint32_t> inc = solver->get_lit_incidence();
-    assert(inc.size() == orig_num_vars*2);
-    for(uint32_t i = 0; i < orig_num_vars; i++) {
-        Lit l = Lit(i, true);
-        incidence[l.var()] = std::min(inc[l.toInt()],inc[(~l).toInt()]);
-    }
 
-    // Walk irred clauses once to collect richer per-variable features.
+    // Pull richer per-variable features from CryptoMiniSat. These are computed
+    // over the *current simplified* CNF (not the user-visible non-simplified
+    // form returned by start_getting_constraints), so they reflect the same
+    // formula the backward round will be reasoning about.
+    auto feats = solver->get_var_feats();
+    assert(feats.pos.size() >= orig_num_vars);
     var_feats.clear();
     var_feats.resize(orig_num_vars);
     for(uint32_t v = 0; v < orig_num_vars; v++) {
-        var_feats[v].pos = inc[Lit(v, false).toInt()];
-        var_feats[v].neg = inc[Lit(v, true).toInt()];
+        var_feats[v].pos        = feats.pos[v];
+        var_feats[v].neg        = feats.neg[v];
+        var_feats[v].bin        = feats.bin[v];
+        var_feats[v].longcls    = feats.longcls[v];
+        var_feats[v].inv_sz_sum = feats.inv_sz_sum[v];
+        // neighbors == sum_{cl containing v} (|cl|-1)
+        // which equals (pos+neg) of all distinct literal slots minus self-occurrences.
+        // Approximate as: bin*1 + longcls average size... we don't have per-cl size sum
+        // available cheaply — store sum of pos+neg as a coarse proxy.
+        var_feats[v].neighbors  = feats.bin[v] + 3ULL * feats.longcls[v];
+        incidence[v] = std::min(feats.pos[v], feats.neg[v]);
     }
-    solver->start_getting_constraints(false);
-    vector<CMSat::Lit> cl; bool is_xor; bool rhs;
-    while (solver->get_next_constraint(cl, is_xor, rhs)) {
-        const uint32_t sz = cl.size();
-        const double inv_sz = sz ? 1.0 / (double)sz : 0.0;
-        for (const auto& l : cl) {
-            if (l.var() >= orig_num_vars) continue;
-            auto& vf = var_feats[l.var()];
-            if (sz <= 2) vf.bin++; else vf.longcls++;
-            vf.inv_sz_sum += inv_sz;
-            vf.neighbors += (sz > 0 ? sz - 1 : 0);
-        }
-    }
-    solver->end_getting_constraints();
 }
 
 void Minimize::set_up_solver()
