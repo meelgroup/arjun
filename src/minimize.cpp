@@ -166,7 +166,7 @@ void Minimize::set_up_solver()
 
 bool Minimize:: simplify_bve_only() {
     //BVE ***ONLY***, don't eliminate the original variables
-    solver->set_intree_probe(true);
+    solver->set_intree_probe(false);
     solver->set_distill(false);
     for(uint32_t var: sampling_vars) {
         dont_elim.push_back(Lit(var, false));
