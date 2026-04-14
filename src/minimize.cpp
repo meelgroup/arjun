@@ -180,7 +180,7 @@ bool Minimize:: simplify_bve_only() {
         solver->set_verbosity(conf.verb);
         string str;
         if (conf.backw_type == 0) str = "occ-bve";
-        else str = "occ-bve, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, intree-probe,occ-resolv-subs, distill-cls-onlyrem, must-scc-vrepl";
+        else str = "oracle-sparsify-fast, distill-cls-onlyrem, occ-bve, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, intree-probe,occ-resolv-subs, must-scc-vrepl, distill-cls-onlyrem";
         if (solver->simplify(&dont_elim, &str) == l_False) return false;
         verb_print(1, "[arjun] CMS::simplify() with *only* BVE finished. T: "
             << cpuTime() - simp_bve_time);
