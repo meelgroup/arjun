@@ -199,6 +199,13 @@ aig_ptr AIGRewriter::simplify_pass(const aig_ptr& aig, AigPtrMap& cache) {
     // --- Identity: AND(x, x) = x ---
     if (l == r) {
         stats.idempotent_elim++;
+        // Push NOT through inner AND: NOT(AND(a,b,k)) = AND(a,b,!k).
+        // new_not only collapses NOT(NOT(x)); this handles NOT(NAND)=AND etc.
+        if (neg && l->type == AIGT::t_and && l->l != l->r) {
+            auto result = make_canonical(AIGT::t_and, !l->neg, l->l, l->r);
+            cache[aig] = result;
+            return result;
+        }
         auto result = neg ? AIG::new_not(l) : l;
         cache[aig] = result;
         return result;

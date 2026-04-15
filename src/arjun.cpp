@@ -42,6 +42,7 @@
 #include "unate_def.h"
 #include "manthan.h"
 #include "metasolver.h"
+#include "aig_rewrite.h"
 
 using namespace ArjunInt;
 using namespace ArjunNS;
@@ -2258,6 +2259,12 @@ DLL_PUBLIC aig_ptr AIG::simplify_aig(aig_ptr aig) {
     // Never return a result larger than the original
     if (count_aig_nodes(result) > original_nodes) return aig;
     return result;
+}
+
+DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb) {
+    assert(need_aig);
+    AIGRewriter rw;
+    rw.rewrite_all(defs, verb);
 }
 
 DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {

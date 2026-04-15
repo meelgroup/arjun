@@ -424,6 +424,7 @@ void do_synthesis() {
         cnf.simplify_aigs();
     }
     if (!output_file.empty()) {
+        cnf.rewrite_aigs(conf.verb);
         cnf.write_aig_def_to_verilog(output_file);
         cout << "c o [arjun] dumped synthesized functions to verilog file '" << output_file << "'" << endl;
     }
