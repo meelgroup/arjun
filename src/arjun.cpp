@@ -1124,8 +1124,11 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
 
     // Collect output variables (defs[v] != nullptr)
     vector<uint32_t> outputs;
-    for (uint32_t v = 0; v < defs.size(); v++)
-        if (defs[v] != nullptr) outputs.push_back(v);
+    for (uint32_t v = 0; v < defs.size(); v++) {
+        if (defs[v] == nullptr) continue;
+        if (orig_sampl_vars.count(v)) continue;
+        outputs.push_back(v);
+    }
 
     // Fanout count: children from other AND nodes + uses as an output root.
     // AND nodes with fanout 1 are inlined into their sole user instead of
