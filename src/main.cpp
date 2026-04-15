@@ -295,8 +295,6 @@ void add_arjun_options() {
     // Debug
     myopt("--renumber", etof_conf.do_renumber, fc_int,"Renumber variables to start from 1...N in CNF.");
     myopt("--specifiedorder", conf.specified_order_fname, fc_string, "Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY");
-    myopt("--backworder", conf.backw_order, fc_int, "Static ordering for backward elimination. 0=min(pos,neg)-desc (default), 1=sum-desc, 2=max-desc, 3=min-asc, 4=sum-asc, 5=balance-then-min, 6=binary-cls-desc, 7=clause-size-weighted-desc, 8=long-cls-desc, 9=pos*neg-desc, 10=random");
-    myopt("--backworderstats", conf.backw_order_stats, fc_int, "Print extra statistics about the backward ordering and which vars end up in the independent set");
     myopt("--minimize", do_minim_indep, fc_int,"Minimize indep set");
     myopt("--debugminim", debug_minim, fc_string,"Create this file that is the CNF after indep set minimization");
     myopt("--cmsmult", conf.cms_glob_mult, fc_double,"Multiply timeouts in CMS by this. Default is -1, which means no change. Useful for debugging");
@@ -324,8 +322,6 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_verb(conf.verb);
     arj->set_distill(conf.distill);
     arj->set_specified_order_fname(conf.specified_order_fname);
-    arj->set_backw_order(conf.backw_order);
-    arj->set_backw_order_stats(conf.backw_order_stats);
     arj->set_intree(conf.intree);
     arj->set_bve_pre_simplify(conf.bve_pre_simplify);
     arj->set_cms_glob_mult(conf.cms_glob_mult);

@@ -124,25 +124,11 @@ void Minimize::get_incidence() {
     incidence.clear();
     incidence.resize(orig_num_vars, 0);
     assert(solver->nVars() == orig_num_vars);
-
-    // Pull richer per-variable features from CryptoMiniSat. These are computed
-    // over the *simplified* CNF
-    auto feats = solver->get_var_feats();
-    assert(feats.pos.size() >= orig_num_vars);
-    var_feats.clear();
-    var_feats.resize(orig_num_vars);
-    for(uint32_t v = 0; v < orig_num_vars; v++) {
-        var_feats[v].pos        = feats.pos[v];
-        var_feats[v].neg        = feats.neg[v];
-        var_feats[v].bin        = feats.bin[v];
-        var_feats[v].longcls    = feats.longcls[v];
-        var_feats[v].inv_sz_sum = feats.inv_sz_sum[v];
-        // neighbors == sum_{cl containing v} (|cl|-1)
-        // which equals (pos+neg) of all distinct literal slots minus self-occurrences.
-        // Approximate as: bin*1 + longcls average size... we don't have per-cl size sum
-        // available cheaply — store sum of pos+neg as a coarse proxy.
-        var_feats[v].neighbors  = feats.bin[v] + 3ULL * feats.longcls[v];
-        incidence[v] = std::min(feats.pos[v], feats.neg[v]);
+    vector<uint32_t> inc = solver->get_lit_incidence();
+    assert(inc.size() == orig_num_vars*2);
+    for(uint32_t i = 0; i < orig_num_vars; i++) {
+        Lit l = Lit(i, true);
+        incidence[l.var()] = std::min(inc[l.toInt()], inc[(~l).toInt()]);
     }
 }
 

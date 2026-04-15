@@ -44,11 +44,6 @@ struct Config {
     int gauss_jordan = 0;
     double no_gates_below = 0.01;
     std::string specified_order_fname;
-    // 0 = min(pos, neg), default
-    // 9 = (pos * neg)
-    // 46 (Borda rank(min(p,n)) + rank(bin))
-    int backw_order = 0;
-    int backw_order_stats = 1; // print extra ordering statistics
     uint32_t backw_max_confl = 20000;
     uint32_t unate_max_confl = 100;
     uint32_t extend_max_confl = 30000;

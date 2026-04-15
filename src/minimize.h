@@ -63,22 +63,6 @@ struct Minimize
     //Incidence as counted by clauses it's appeared together with other variables
     std::vector<uint32_t> incidence;
 
-    // Richer per-variable features computed at get_incidence() time, BEFORE
-    // problem duplication, so they describe the original CNF only.
-    struct VarFeats {
-        uint32_t pos = 0;
-        uint32_t neg = 0;
-        uint32_t bin = 0;        // # binary clauses containing the var
-        uint32_t longcls = 0;    // # clauses of size >= 3 containing the var
-        double inv_sz_sum = 0.0; // sum_{cl} 1/|cl| over containing clauses
-        uint64_t neighbors = 0;  // sum over containing cls of (|cl|-1)
-        uint32_t mn() const { return std::min(pos, neg); }
-        uint32_t mx() const { return std::max(pos, neg); }
-        uint32_t sum() const { return pos + neg; }
-        uint32_t bal() const { return mx() - mn(); }
-    };
-    std::vector<VarFeats> var_feats;
-
     std::vector<CMSat::Lit> dont_elim;
 
     void init();
