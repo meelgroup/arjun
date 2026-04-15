@@ -31,6 +31,7 @@
 #include "time_mem.h"
 #include "extend.h"
 #include "constants.h"
+#include "metasolver.h"
 #include <cryptominisat5/solvertypesmini.h>
 #include "formula.h"
 
@@ -266,12 +267,47 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     for(const auto& p: ret2) no_need.insert(p.var());
     add_all_indics_except(no_need);
 
+    // Build a MetaSolver mirror for the main solve loop. CMS `solver` is
+    // kept only for the gate/xor/SLS preprocessing above.
+    MetaSolver csolver;
+    csolver.set_verbosity(0);
+    csolver.new_vars(orig_num_vars);
+    for (const auto& ccl: cnf.get_clauses()) csolver.add_clause(ccl);
+    csolver.new_vars(orig_num_vars);
+    {
+        vector<char> mirror_seen(orig_num_vars, 0);
+        for (const auto& v: cnf.get_opt_sampl_vars()) mirror_seen[v] = 1;
+        vector<Lit> dcl;
+        for (const auto& ccl: cnf.get_clauses()) {
+            dcl.clear();
+            for (const auto& l: ccl) {
+                if (mirror_seen[l.var()]) dcl.push_back(l);
+                else dcl.push_back(Lit(l.var()+orig_num_vars, l.sign()));
+            }
+            csolver.add_clause(dcl);
+        }
+    }
+    // Replicate indicator variables and their equivalence clauses at the
+    // same variable IDs used by the CMS solver.
+    {
+        vector<Lit> tmp;
+        for (uint32_t v = 0; v < orig_num_vars; v++) {
+            if (var_to_indic[v] == var_Undef) continue;
+            const uint32_t indic = var_to_indic[v];
+            while (csolver.nVars() <= indic) csolver.new_var();
+            tmp = {Lit(v, false), Lit(v+orig_num_vars, true), Lit(indic, true)};
+            csolver.add_clause(tmp);
+            tmp = {Lit(v, true), Lit(v+orig_num_vars, false), Lit(indic, true)};
+            csolver.add_clause(tmp);
+        }
+    }
+
     vector<Lit> cl;
     for(const auto& v: opt_sampl) {
         if (var_to_indic[v] == var_Undef) continue;
         cl.clear();
         cl.push_back(Lit(var_to_indic[v], false));
-        solver->add_clause(cl);
+        csolver.add_clause(cl);
     }
 
     //Initially, all of vars are unknown, except sampling set & replaced & set
@@ -319,7 +355,8 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
         // Progressively reduce conflict limit when there are too many unknowns
         // {done_threshold, remaining_threshold, divisor (0 = break)}
         static constexpr struct { uint32_t done; uint32_t remaining; uint32_t divisor; } throttle_steps[] = {
-            {  300, 1000, 2}, {  500, 1000, 2}, { 1000, 2000, 4},
+            {  100, 700, 3},
+            {  300, 1000, 3}, {  500, 1000, 2}, { 1000, 2000, 4},
             { 3000, 3000, 4}, { 6000, 3000, 4}, {15000, 3000, 0},
         };
         for (const auto& [done_thr, rem_thr, divisor] : throttle_steps) {
@@ -343,11 +380,9 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
         assumptions.push_back(Lit(test_var, false));
         assumptions.push_back(Lit(test_var + orig_num_vars, true));
 
-        solver->set_no_confl_needed();
-
         lbool ret = l_Undef;
-        solver->set_max_confl(conf.extend_max_confl);
-        ret = solver->solve(&assumptions);
+        csolver.set_max_confl(conf.extend_max_confl);
+        ret = csolver.solve(&assumptions);
         if (ret == l_False) {
             verb_print(5, "[arjun] extend solve(): False var: " << test_var+1);
         } else if (ret == l_True) {
@@ -364,7 +399,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             for(uint32_t v = 0; v < orig_num_vars; v++) {
                 if (!unknown_set.count(v)) continue;
                 uint32_t other_v = v + orig_num_vars;
-                if (solver->get_model()[other_v] != solver->get_model()[v]) {
+                if (csolver.get_model()[other_v] != csolver.get_model()[v]) {
                     verb_print(5,"TRUE erasing v: " << v + 1);
                     unknown_set.erase(v);
                 }
@@ -375,7 +410,7 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
             opt_sampl.insert(test_var);
             cl.clear();
             cl.push_back(Lit(var_to_indic[test_var], false));
-            solver->add_clause(cl);
+            csolver.add_clause(cl);
 
             for(const auto& ind: var_to_gate_ind[test_var]) {
                 const auto& g = all_gates[ind];
