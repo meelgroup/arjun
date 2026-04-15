@@ -126,9 +126,7 @@ void Minimize::get_incidence() {
     assert(solver->nVars() == orig_num_vars);
 
     // Pull richer per-variable features from CryptoMiniSat. These are computed
-    // over the *current simplified* CNF (not the user-visible non-simplified
-    // form returned by start_getting_constraints), so they reflect the same
-    // formula the backward round will be reasoning about.
+    // over the *simplified* CNF
     auto feats = solver->get_var_feats();
     assert(feats.pos.size() >= orig_num_vars);
     var_feats.clear();
@@ -166,7 +164,7 @@ void Minimize::set_up_solver()
 
 bool Minimize:: simplify_bve_only() {
     //BVE ***ONLY***, don't eliminate the original variables
-    solver->set_intree_probe(conf.backw_type);
+    solver->set_intree_probe(false);
     solver->set_distill(false);
     for(uint32_t var: sampling_vars) {
         dont_elim.push_back(Lit(var, false));
@@ -178,9 +176,7 @@ bool Minimize:: simplify_bve_only() {
     if (conf.simp) {
         solver->set_bve(1);
         solver->set_verbosity(conf.verb);
-        string str;
-        if (conf.backw_type == 0) str = "occ-bve";
-        else str = "oracle-sparsify-fast, distill-cls-onlyrem, occ-bve, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, intree-probe,occ-resolv-subs, must-scc-vrepl, distill-cls-onlyrem";
+        string str("occ-bve");
         if (solver->simplify(&dont_elim, &str) == l_False) return false;
         verb_print(1, "[arjun] CMS::simplify() with *only* BVE finished. T: "
             << cpuTime() - simp_bve_time);

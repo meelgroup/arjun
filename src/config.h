@@ -32,7 +32,6 @@ namespace ArjunInt {
 struct Config {
     int verb = 1;
     int simp = 2;
-    int backw_type = 0;
     int distill = 1;
     int intree = 1;
     int bve_pre_simplify = 1;
@@ -45,24 +44,10 @@ struct Config {
     int gauss_jordan = 0;
     double no_gates_below = 0.01;
     std::string specified_order_fname;
-    // Static ordering for backward elimination. See backward.cpp for the
-    // available strategies. 9 = (pos * neg) desc — parameter-free and
-    // well-balanced across benchmarks:
-    //   mc2024_track4_128:  I=362 (vs 371 old min-only default, 351 #46)
-    //   mc2024_track2-159:  I=1805 (vs 1805 old default, 1809 #46)
-    // #46 beats #9 by 11 on track4 but regresses track2 by 4; #9 is a
-    // safer default that Pareto-dominates the legacy default on both.
-    //
-    // #46 (Borda rank(min(p,n)) + rank(bin)) is the best second choice:
-    // same quality as #9 on most benchmarks and strictly better on
-    // mc2024_track4_128 (351 vs 362), using only integer ranks so the
-    // scoring is invariant to feature-value scale. It is the right pick
-    // when a specific family is known to favour strong min+bin emphasis
-    // (track4-like). The downside is a small regression on track2-like
-    // families, which is why #9 is the default — it has the same target
-    // signal (balanced pos/neg) as #46's rank(min), but smoother within
-    // ties so it does not regress sibling benchmarks.
-    int backw_order = 9;
+    // 0 = min(pos, neg), default
+    // 9 = (pos * neg)
+    // 46 (Borda rank(min(p,n)) + rank(bin))
+    int backw_order = 0;
     int backw_order_stats = 1; // print extra ordering statistics
     uint32_t backw_max_confl = 20000;
     uint32_t unate_max_confl = 100;

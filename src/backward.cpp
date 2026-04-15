@@ -570,8 +570,6 @@ void Minimize::backward_round() {
         unknown.push_back(x);
         unknown_set[x] = 1;
     }
-    // Use richer per-variable features computed at get_incidence() time
-    // (BEFORE problem duplication, so describing the original CNF only).
     const vector<VarFeats>& feats = var_feats;
     assert(feats.size() == orig_num_vars && "var_feats must be filled by get_incidence()");
     vector<double> score = compute_score(conf.backw_order, feats, conf.seed, unknown);
