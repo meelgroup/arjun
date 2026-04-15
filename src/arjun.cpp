@@ -1122,19 +1122,42 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
     };
     for (const auto& aig : defs) collect(aig);
 
-    // Returns a Verilog expression for a raw AIG node pointer
-    auto node_expr = [&](AIG* aig) -> string {
-        if (aig->type == AIGT::t_const) return aig->neg ? "1'b0" : "1'b1";
-        if (aig->type == AIGT::t_lit)
-            return string(aig->neg ? "~" : "") + "x" + std::to_string(aig->var + 1);
-        // t_and -> its intermediate wire
-        return "_n" + std::to_string(node_to_id[aig]);
-    };
-
     // Collect output variables (defs[v] != nullptr)
     vector<uint32_t> outputs;
     for (uint32_t v = 0; v < defs.size(); v++)
         if (defs[v] != nullptr) outputs.push_back(v);
+
+    // Fanout count: children from other AND nodes + uses as an output root.
+    // AND nodes with fanout 1 are inlined into their sole user instead of
+    // being emitted as a named wire.
+    map<const AIG*, uint32_t> fanout;
+    for (const auto* node : topo_order) {
+        if (node->type != AIGT::t_and) continue;
+        if (node->l) fanout[node->l.get()]++;
+        // Only count r separately when it's a distinct pointer; NOT/idem
+        // nodes have l == r and would otherwise inflate fanout to 2.
+        if (node->r && node->r.get() != node->l.get()) fanout[node->r.get()]++;
+    }
+    for (const auto& v : outputs) fanout[defs[v].get()]++;
+
+    // Inlined RHS (no outer parens); set of those that are a bare `a & b`
+    // compound and need parenthesizing when further composed.
+    map<const AIG*, string> inline_expr;
+    set<const AIG*> inline_compound;
+    auto node_expr_raw = [&](AIG* aig) -> string {
+        if (aig->type == AIGT::t_const) return aig->neg ? "1'b0" : "1'b1";
+        if (aig->type == AIGT::t_lit)
+            return string(aig->neg ? "~" : "") + "x" + std::to_string(aig->var + 1);
+        auto it = inline_expr.find(aig);
+        if (it != inline_expr.end()) return it->second;
+        return "_n" + std::to_string(node_to_id[aig]);
+    };
+    // Wrap in parens if this node is an inlined bare `a & b`.
+    auto node_expr_paren = [&](AIG* aig) -> string {
+        string s = node_expr_raw(aig);
+        if (inline_compound.count(aig)) return "(" + s + ")";
+        return s;
+    };
 
     // Module header
     fout << "module aig_defs(\n";
@@ -1151,31 +1174,42 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
     }
     fout << "\n);\n\n";
 
-    // Intermediate AND-node wires and assigns (topological order)
+    // Build a node's RHS in unparenthesized form, and note whether it is a
+    // bare `a & b` (callers must parenthesize it if composing further).
+    auto build_rhs = [&](const AIG* node, bool& is_compound) -> string {
+        is_compound = false;
+        // For NOT/idem patterns the child needs parens only if compound.
+        if (node->l.get() == node->r.get() && node->neg)
+            return "~" + node_expr_paren(node->l.get());
+        if (node->l.get() == node->r.get() && !node->neg)
+            return node_expr_raw(node->l.get());
+        const string l_str = node_expr_paren(node->l.get());
+        const string r_str = node_expr_paren(node->r.get());
+        string core = l_str + " & " + r_str;
+        if (node->neg) return "~(" + core + ")";
+        is_compound = true;
+        return core;
+    };
+
     for (const auto* node : topo_order) {
         if (node->type != AIGT::t_and) continue;
-        const uint32_t id = node_to_id[node];
-        const string l_str = node_expr(node->l.get());
-        const string r_str = node_expr(node->r.get());
-        fout << "    wire _n" << id << ";\n";
-        if (node->l.get() == node->r.get() && node->neg) {
-            // new_not pattern: l == r, neg == true => ~l
-            fout << "    assign _n" << id << " = ~" << l_str << ";\n";
-        } else if (node->l.get() == node->r.get() && !node->neg) {
-            // l == r, neg == false => l & l = l
-            fout << "    assign _n" << id << " = " << l_str << ";\n";
-        } else if (node->neg) {
-            fout << "    assign _n" << id << " = ~(" << l_str << " & " << r_str << ");\n";
-        } else {
-            fout << "    assign _n" << id << " = " << l_str << " & " << r_str << ";\n";
+        bool is_compound = false;
+        string rhs = build_rhs(node, is_compound);
+        if (fanout[node] == 1) {
+            inline_expr[node] = rhs;
+            if (is_compound) inline_compound.insert(node);
+            continue;
         }
+        const uint32_t id = node_to_id[node];
+        fout << "    wire _n" << id << ";\n";
+        fout << "    assign _n" << id << " = " << rhs << ";\n";
     }
 
     fout << "\n";
 
     // Output assignments
     for (const auto& v : outputs)
-        fout << "    assign x" << (v + 1) << " = " << node_expr(defs[v].get()) << ";\n";
+        fout << "    assign x" << (v + 1) << " = " << node_expr_raw(defs[v].get()) << ";\n";
 
     fout << "\nendmodule\n";
     fout.close();

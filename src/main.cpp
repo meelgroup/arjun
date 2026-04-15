@@ -421,10 +421,9 @@ void do_synthesis() {
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
     if (!output_file.empty() || !conf.debug_synth.empty()) {
         cnf.simplify_aigs();
-        cnf.simplify_aigs();
+        cnf.rewrite_aigs(conf.verb);
     }
     if (!output_file.empty()) {
-        cnf.rewrite_aigs(conf.verb);
         cnf.write_aig_def_to_verilog(output_file);
         cout << "c o [arjun] dumped synthesized functions to verilog file '" << output_file << "'" << endl;
     }

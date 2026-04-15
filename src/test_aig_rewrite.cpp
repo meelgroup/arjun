@@ -262,6 +262,65 @@ void test_double_negation() {
     check(count_nodes(r) == 1, "NOT(NOT(a)) is single node");
 }
 
+void test_not_through_and() {
+    auto a = AIG::new_lit(0);
+    auto b = AIG::new_lit(1);
+    auto c = AIG::new_lit(2);
+
+    AIGRewriter rw;
+
+    // NOT(AND(a,b)) should simplify to NAND(a,b) = AND(a,b,neg=true).
+    // Original shape: outer-NOT node + inner-AND node + 2 lits = 4 nodes.
+    // Expected shape: single AND(neg=true) + 2 lits = 3 nodes.
+    {
+        auto and_ab = AIG::new_and(a, b);
+        auto not_and = AIG::new_not(and_ab);
+        auto r = rw.rewrite(not_and);
+        check(functionally_equal(not_and, r, 2), "NOT(AND(a,b)) functional");
+        check(count_nodes(r) == 3, "NOT(AND(a,b)) collapses outer NOT into inner");
+    }
+
+    // NOT(NAND(a,b)) should simplify to AND(a,b) (neg flipped).
+    {
+        auto nand_ab = AIG::new_and(a, b, /*neg=*/true);
+        auto not_nand = AIG::new_not(nand_ab);
+        auto r = rw.rewrite(not_nand);
+        check(functionally_equal(not_nand, r, 2), "NOT(NAND(a,b)) functional");
+        check(count_nodes(r) == 3, "NOT(NAND(a,b)) = AND(a,b) is 3 nodes");
+    }
+
+    // NOT(AND(a, AND(b,c))): outer NOT should fold into outer AND's neg,
+    // giving NAND(a, AND(b,c)) with no extra inverter layer.
+    {
+        auto and_bc = AIG::new_and(b, c);
+        auto and_abc = AIG::new_and(a, and_bc);
+        auto before = count_nodes(AIG::new_not(and_abc));
+        auto not_abc = AIG::new_not(and_abc);
+        auto r = rw.rewrite(not_abc);
+        check(functionally_equal(not_abc, r, 3), "NOT(AND(a,AND(b,c))) functional");
+        check(count_nodes(r) < before, "NOT(AND(a,AND(b,c))) strictly smaller");
+    }
+
+    // Double NOT through AND: NOT(NOT(AND(a,b))) must collapse back to AND(a,b).
+    // This tests interplay of new_not's NOT-NOT rule and the new NOT-through-AND rule.
+    {
+        auto and_ab = AIG::new_and(a, b);
+        auto double_not = AIG::new_not(AIG::new_not(and_ab));
+        auto r = rw.rewrite(double_not);
+        check(functionally_equal(and_ab, r, 2), "NOT(NOT(AND(a,b))) = AND(a,b)");
+        check(count_nodes(r) == 3, "NOT(NOT(AND(a,b))) is 3 nodes");
+    }
+
+    // NOT applied to NOT-shaped AND (l==r) must NOT trigger the new rule
+    // (the new rule guards l->l != l->r). new_not's double-NOT rule handles it.
+    {
+        auto not_a = AIG::new_not(a);
+        auto r = rw.rewrite(AIG::new_not(not_a));
+        check(functionally_equal(a, r, 1), "NOT(NOT(lit)) = lit functional");
+        check(count_nodes(r) == 1, "NOT(NOT(lit)) is 1 node");
+    }
+}
+
 void test_rewrite_preserves_null() {
     AIGRewriter rw;
     auto r = rw.rewrite(nullptr);
@@ -356,6 +415,7 @@ int main() {
     test_multi_aig_sharing();
     test_large_and_chain();
     test_double_negation();
+    test_not_through_and();
     test_rewrite_preserves_null();
     test_distribution();
     test_complex_ite_chain();
