@@ -180,8 +180,15 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     bool backbone_done = cnf.get_backbone_done();
     if (!backbone_done && simp_conf.do_backbone_puura) {
         solver->backbone_simpl(simp_conf.backbone_max_confl, backbone_done);
-        string str_scc = "must-scc-vrepl, must-renumber";
-        solver->simplify(&dont_elim, &str_scc);
+        // N: after backbone_simpl sets units and adds bins, run the trio
+        //    sub-impl + sub-cls-with-bin + distill-cls-onlyrem so the new
+        //    binaries collapse against the existing ones, the new units
+        //    strengthen/drop clauses via sub-cls-with-bin, and distill
+        //    removes anything that's now a tautology. Previously only
+        //    must-scc-vrepl ran, and oracle-vivif then paid full price to
+        //    vivify clauses a unit would have satisfied for free.
+        string str_post_backbone = "must-scc-vrepl, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, must-renumber";
+        solver->simplify(&dont_elim, &str_post_backbone);
     }
     if (backbone_done) {
         if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify";
