@@ -290,12 +290,20 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     cnf = standalone_get_simplified_cnf(cnf, simp_conf);
     if (etof_conf.do_autarky) standalone_autarky(cnf);
     cnf.remove_equiv_weights();
+    // Second simp is the "cleanup after autarky" pass. Autarky often finds
+    // nothing on unprojected MC benchmarks, in which case this pass exists to
+    // give oracle-vivif one more go against the smaller post-BVE CNF and to
+    // let a second iter2 round of BVE+subsumption pick up whatever became
+    // eliminable now that oracle removed clauses. Keep grow at 0 so we don't
+    // undo the aggressive iter1/iter2 BVE from simp 1, but loosen the 4-lit
+    // resolvent cap (which had blocked literally every candidate in practice)
+    // and do one more iter2 round.
     auto simp_conf2 = simp_conf;
     simp_conf2.bve_grow_iter1 = 0;
     simp_conf2.bve_grow_iter2 = 0;
     simp_conf2.iter1 = 1;
-    simp_conf2.iter2 = 1;
-    simp_conf2.bve_too_large_resolvent = 4;
+    simp_conf2.iter2 = 2;
+    simp_conf2.bve_too_large_resolvent = 8;
     cnf = standalone_get_simplified_cnf(cnf, simp_conf2);
     if (etof_conf.num_sbva_steps > 0)
         standalone_sbva(cnf, etof_conf.num_sbva_steps,
