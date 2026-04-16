@@ -163,7 +163,10 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     // eqlit-find from oracle not used (too slow?)
     // D: occ-ternary-res moved before occ-bve (ternary->binary enables more SCC equivalences for BVE)
     // B: distill-cls-onlyrem added after occ-bve (removes clauses subsumed after variable elimination)
-    string str("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
+    // K: must-scc-vrepl between occ-ternary-res and occ-bve so BVE sees the
+    //    var-substitutions implied by the new binaries ternary-res produced.
+    //    Without it, BVE is still reasoning against the old var IDs.
+    string str("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, must-scc-vrepl, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
     if (simp_conf.appmc) str = string("must-scc-vrepl, full-probe, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
     // C: iter2 uses a separate string with extra occ-backw-sub at the end (catches clauses subsumed by BVE resolvents)
     string str_iter2 = str + string("occ-backw-sub, ");
