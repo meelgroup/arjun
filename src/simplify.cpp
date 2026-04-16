@@ -75,6 +75,7 @@ bool Minimize::simplify() {
         if (solver->simplify() == l_False) return false;
         solver->set_intree_probe(conf.intree);
         remove_zero_assigned_literals();
+        remove_eq_literals();
         verb_print(1,"[arjun-simp] CMS::simplify() with no BVE finished."
             << " T: " << (cpuTime() - simp_time));
     }
