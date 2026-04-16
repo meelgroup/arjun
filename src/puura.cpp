@@ -219,8 +219,12 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
         solver->simplify(&dont_elim, &s);
     }
     // F: conservative BVE after oracle-extra (oracle may create new elimination opportunities)
+    // M: let the extra BVE grow up to the same iter2 bound. min_bva_gain(0) let
+    //    BVE exit after a single pass with grow=0, which missed any BVE
+    //    candidate whose resolvents would have been clean at grow>0 even
+    //    though oracle-sparsify just removed clauses that would make them fit.
     if (simp_conf.oracle_extra && !simp_conf.appmc) {
-        solver->set_min_bva_gain(0);
+        solver->set_min_bva_gain(simp_conf.bve_grow_iter2);
         string s_bve = "occ-bve";
         solver->simplify(&dont_elim, &s_bve);
     }
