@@ -240,7 +240,12 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     //    produced resolvents; sub-impl + sub-cls-with-bin + distill-cls-onlyrem
     //    collapse the redundant bins and trim satisfied literals before we
     //    renumber and hand the CNF back.
-    str += string(", must-scc-vrepl, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, must-renumber,");
+    // Q: intree-probe on the now-fully-simplified CNF. On a formula as small
+    //    as what we hand off, intree-probe's hyper-binary-resolution step can
+    //    still find a handful of new implications/failed lits from tree
+    //    traversal that the whole preceding pipeline missed, and it's cheap
+    //    at this scale.
+    str += string(", must-scc-vrepl, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, intree-probe, must-scc-vrepl, must-renumber,");
     solver->simplify(&dont_elim, &str);
 
     auto new_sampl_vars = cnf.get_sampl_vars();
