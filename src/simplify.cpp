@@ -68,6 +68,12 @@ bool Minimize::simplify() {
         std::string s;
         if (conf.simp == 1) s = "intree-probe";
         else s = "str-impl, intree-probe,occ-ternary-res, occ-backw-sub, distill-litrem, must-distill-cls, distill-bins, oracle-vivif-veryfast";
+        // oracle-sparsify-fast shrinks the eventual indep set by a lot, but
+        // its resolvents bloat the CNF and confuse backward on large sampling
+        // sets. Gate it to small-to-medium sizes where the trade is favorable.
+        if (conf.simp >= 2 && sampling_vars.size() < 700) {
+            s += ", oracle-sparsify-fast, sub-impl";
+        }
         if (solver->simplify(nullptr, &s) == l_False) return false;
         if (conf.simp >= 3) {
             if (solver->simplify(nullptr, &s) == l_False) return false;
