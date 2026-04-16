@@ -236,7 +236,11 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
         solver->simplify(&dont_elim, &s_bve);
     }
 
-    str += string(", must-scc-vrepl, must-renumber,");
+    // P: same cleanup-after-BVE pattern as the N post-backbone fix: BVE just
+    //    produced resolvents; sub-impl + sub-cls-with-bin + distill-cls-onlyrem
+    //    collapse the redundant bins and trim satisfied literals before we
+    //    renumber and hand the CNF back.
+    str += string(", must-scc-vrepl, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, must-renumber,");
     solver->simplify(&dont_elim, &str);
 
     auto new_sampl_vars = cnf.get_sampl_vars();
