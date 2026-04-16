@@ -162,7 +162,7 @@ bool Minimize:: simplify_bve_only() {
     if (conf.simp) {
         solver->set_bve(1);
         solver->set_verbosity(conf.verb);
-        string str("occ-bve");
+        string str("sub-impl, occ-bve");
         if (solver->simplify(&dont_elim, &str) == l_False) return false;
         verb_print(1, "[arjun] CMS::simplify() with *only* BVE finished. T: "
             << cpuTime() - simp_bve_time);
