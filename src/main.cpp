@@ -287,6 +287,7 @@ void add_arjun_options() {
     myopt("--oraclesparsify", simp_conf.oracle_sparsify, fc_int,"Use Oracle to sparsify");
     myopt("--oraclevivif", simp_conf.oracle_vivify, fc_int,"Use oracle to vivify");
     myopt("--oraclevivifgetl", simp_conf.oracle_vivify_get_learnts, fc_int,"Use oracle to vivify get learnts");
+    myopt("--oracleextra", simp_conf.oracle_extra, fc_int,"Run an extra oracle-vivif-fast + oracle-sparsify-fast + occ-bve pass at the end of Puura's strategy");
     myopt("--distill", conf.distill, fc_int, "Distill clauses before minimization of indep");
     myopt("--weakenlim", simp_conf.weaken_limit, fc_int, "Limit to weaken BVE resolvents");
     myopt("--bce", etof_conf.do_bce, fc_int, "Use blocked clause elimination (BCE) statically");
