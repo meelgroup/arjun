@@ -305,9 +305,25 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     simp_conf2.iter2 = 2;
     simp_conf2.bve_too_large_resolvent = 8;
     cnf = standalone_get_simplified_cnf(cnf, simp_conf2);
-    if (etof_conf.num_sbva_steps > 0)
+    if (etof_conf.num_sbva_steps > 0) {
         standalone_sbva(cnf, etof_conf.num_sbva_steps,
                 etof_conf.sbva_cls_cutoff, etof_conf.sbva_lits_cutoff, etof_conf.sbva_tiebreak);
+        // Cheap post-SBVA tidy: SBVA's new aux vars sometimes enable cheap
+        // sub-impl / bin subsumption / distill cleanups the second simp run
+        // had no way to see. Keep it tight (no oracle, no BVE).
+        auto simp_conf3 = simp_conf;
+        simp_conf3.bve_grow_iter1 = 0;
+        simp_conf3.bve_grow_iter2 = 0;
+        simp_conf3.iter1 = 1;
+        simp_conf3.iter2 = 0;
+        simp_conf3.bve_too_large_resolvent = 8;
+        simp_conf3.do_bve = false;
+        simp_conf3.oracle_vivify = false;
+        simp_conf3.oracle_sparsify = false;
+        simp_conf3.oracle_extra = false;
+        simp_conf3.do_backbone_puura = false;
+        cnf = standalone_get_simplified_cnf(cnf, simp_conf3);
+    }
     if (etof_conf.all_indep) {
         vector<uint32_t> all_vars;
         all_vars.reserve(cnf.nVars());
