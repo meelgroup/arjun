@@ -300,7 +300,7 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     // and do one more iter2 round.
     auto simp_conf2 = simp_conf;
     simp_conf2.bve_grow_iter1 = 0;
-    simp_conf2.bve_grow_iter2 = 0;
+    simp_conf2.bve_grow_iter2 = 2;
     simp_conf2.iter1 = 1;
     simp_conf2.iter2 = 2;
     simp_conf2.bve_too_large_resolvent = 8;
