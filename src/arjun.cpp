@@ -317,7 +317,7 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
         simp_conf3.iter1 = 1;
         simp_conf3.iter2 = 0;
         simp_conf3.bve_too_large_resolvent = 8;
-        simp_conf3.do_bve = false;
+        simp_conf3.do_bve = true;
         simp_conf3.oracle_vivify = false;
         simp_conf3.oracle_sparsify = false;
         simp_conf3.oracle_extra = false;
