@@ -42,6 +42,7 @@ using std::endl;
 using std::optional;
 using std::setw;
 
+
 template<typename T>
 void Minimize::fill_assumptions_backward(
     vector<Lit>& assumptions,
@@ -136,12 +137,9 @@ void Minimize::backward_round() {
         unknown_set[x] = 1;
     }
     sort_unknown(unknown, incidence);
-    /* std::reverse(unknown.begin(), unknown.end()); */
-    /* std::mt19937_64 rand(33); */
-    /* std::shuffle(unknown.begin(), unknown.end(), rand); */
     if (!conf.specified_order_fname.empty()) order_by_file(conf.specified_order_fname, unknown);
     print_sorted_unknown(unknown);
-    verb_print(1, "[backward] Start unknown size: " << unknown.size());
+    verb_print(1, "[backward FAST] Start unknown size: " << unknown.size());
     solver->set_verbosity(0);
 
     vector<Lit> assumptions;
@@ -230,62 +228,57 @@ void Minimize::backward_round() {
         solver->set_no_confl_needed();
 
         lbool ret = l_Undef;
-        if (!conf.fast_backw) {
-            solver->set_max_confl(conf.backw_max_confl);
-            ret = solver->solve(&assumptions);
-        } else {
-            FastBackwData b;
-            b._assumptions = &assumptions;
-            b.indic_to_var  = &indic_to_var;
-            b.orig_num_vars = orig_num_vars;
-            b.non_indep_vars = &non_indep_vars;
-            b.indep_vars = &indep;
-            b.fast_backw_on = true;
-            b.test_indic = &indic_var;
-            b.test_var = &test_var;
-            b.max_confl = conf.backw_max_confl;
+        FastBackwData b;
+        b._assumptions = &assumptions;
+        b.indic_to_var  = &indic_to_var;
+        b.orig_num_vars = orig_num_vars;
+        b.non_indep_vars = &non_indep_vars;
+        b.indep_vars = &indep;
+        b.fast_backw_on = true;
+        b.test_indic = &indic_var;
+        b.test_var = &test_var;
+        b.max_confl = conf.backw_max_confl;
 
-            fast_backw_calls++;
-            if (conf.verb > 5) {
-                cout << "test var is: " << test_var << endl;
-                cout << "find_fast_backw BEGIN " << endl;
-            }
-            non_indep_vars.clear();
-            uint32_t indep_vars_last_pos = indep.size();
-            ret = solver->find_fast_backw(b);
-
-            verb_print(3, "[arjun] non_indep_vars.size(): " << non_indep_vars.size()
-                << " indep.size(): " << indep.size() << " ret: " << ret << " test_var: " << test_var);
-            if (ret == l_False) {
-                verb_print(5, "[arjun] Problem is UNSAT");
-                for(auto& x: unknown_set) x = 0;
-                unknown.clear();
-                indep.clear();
-                assumptions.clear();
-                break;
-            }
-
-            fast_backw_tot += non_indep_vars.size();
-            fast_backw_max = std::max<uint32_t>(non_indep_vars.size(), fast_backw_max);
-            for(uint32_t i = indep_vars_last_pos; i < indep.size(); i ++) {
-                uint32_t var = indep[i];
-                unknown_set[var] = 0;
-            }
-
-            for(const auto& var: non_indep_vars) {
-                assert(var < orig_num_vars);
-                unknown_set[var] = 0;
-                not_indep++;
-            }
-            quick_pop_ok = false;
-
-            //We have finished it all off
-            if (test_var == var_Undef) {
-                assert(indic_var == var_Undef);
-                continue;
-            }
-            unknown_set[test_var] = 0;
+        fast_backw_calls++;
+        if (conf.verb > 5) {
+            cout << "test var is: " << test_var << endl;
+            cout << "find_fast_backw BEGIN " << endl;
         }
+        non_indep_vars.clear();
+        uint32_t indep_vars_last_pos = indep.size();
+        ret = solver->find_fast_backw(b);
+
+        verb_print(3, "[arjun] non_indep_vars.size(): " << non_indep_vars.size()
+            << " indep.size(): " << indep.size() << " ret: " << ret << " test_var: " << test_var);
+        if (ret == l_False) {
+            verb_print(5, "[arjun] Problem is UNSAT");
+            for(auto& x: unknown_set) x = 0;
+            unknown.clear();
+            indep.clear();
+            assumptions.clear();
+            break;
+        }
+
+        fast_backw_tot += non_indep_vars.size();
+        fast_backw_max = std::max<uint32_t>(non_indep_vars.size(), fast_backw_max);
+        for(uint32_t i = indep_vars_last_pos; i < indep.size(); i ++) {
+            uint32_t var = indep[i];
+            unknown_set[var] = 0;
+        }
+
+        for(const auto& var: non_indep_vars) {
+            assert(var < orig_num_vars);
+            unknown_set[var] = 0;
+            not_indep++;
+        }
+        quick_pop_ok = false;
+
+        //We have finished it all off
+        if (test_var == var_Undef) {
+            assert(indic_var == var_Undef);
+            continue;
+        }
+        unknown_set[test_var] = 0;
         if (ret == l_False) {
             ret_false++;
             verb_print(5, "[arjun] backw solve(): False");
@@ -337,11 +330,9 @@ void Minimize::backward_round() {
             << " I: " << std::setw(7) << indep.size()
             << " N: " << std::setw(7) << not_indep
             ;
-            if (conf.fast_backw) {
-                cout << " backb avg:" << std::setprecision(1) << std::setw(7)
-                << (double)fast_backw_tot/(double)fast_backw_calls
-                << " backb max:" << std::setw(7) << fast_backw_max;
-            }
+            cout << " backb avg:" << std::setprecision(1) << std::setw(7)
+            << (double)fast_backw_tot/(double)fast_backw_calls
+            << " backb max:" << std::setw(7) << fast_backw_max;
             cout << " T: "
             << std::setprecision(2) << std::fixed << (cpuTime() - my_time)
             << endl;
@@ -419,7 +410,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     if (mconf.backward_synth_order)
         std::reverse(unknown.begin(), unknown.end());
     print_sorted_unknown(unknown);
-    verb_print(1, "[backward] Start unknown size: " << unknown.size()
+    verb_print(1, "[backward SYNTH] Start unknown size: " << unknown.size()
                     << " mem: " << memUsedTotal()/(1024*1024) << " MB");
     solver->set_verbosity(0);
 
@@ -531,7 +522,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     cnf.set_after_backward_round_synth();
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end backward_round_synth");
 
-    verb_print(1, COLRED "[backward] Done. "
+    verb_print(1, COLRED "[backward SYNTH] Done. "
         << " TR: " << ret_true << " UN: " << ret_undef << " FA: " << ret_false
         << " defined: " << to_define.size()-to_define2.size()
         << " still to define: " << to_define2.size()

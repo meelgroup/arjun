@@ -42,6 +42,7 @@
 #include "unate_def.h"
 #include "manthan.h"
 #include "metasolver.h"
+#include "aig_rewrite.h"
 
 using namespace ArjunInt;
 using namespace ArjunNS;
@@ -289,12 +290,20 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     cnf = standalone_get_simplified_cnf(cnf, simp_conf);
     if (etof_conf.do_autarky) standalone_autarky(cnf);
     cnf.remove_equiv_weights();
+    // Second simp is the "cleanup after autarky" pass. Autarky often finds
+    // nothing on unprojected MC benchmarks, in which case this pass exists to
+    // give oracle-vivif one more go against the smaller post-BVE CNF and to
+    // let a second iter2 round of BVE+subsumption pick up whatever became
+    // eliminable now that oracle removed clauses. Keep grow at 0 so we don't
+    // undo the aggressive iter1/iter2 BVE from simp 1, but loosen the 4-lit
+    // resolvent cap (which had blocked literally every candidate in practice)
+    // and do one more iter2 round.
     auto simp_conf2 = simp_conf;
     simp_conf2.bve_grow_iter1 = 0;
     simp_conf2.bve_grow_iter2 = 0;
     simp_conf2.iter1 = 1;
-    simp_conf2.iter2 = 1;
-    simp_conf2.bve_too_large_resolvent = 4;
+    simp_conf2.iter2 = 2;
+    simp_conf2.bve_too_large_resolvent = 8;
     cnf = standalone_get_simplified_cnf(cnf, simp_conf2);
     if (etof_conf.num_sbva_steps > 0)
         standalone_sbva(cnf, etof_conf.num_sbva_steps,
@@ -777,7 +786,7 @@ DLL_PUBLIC void SimplifiedCNF::fix_mapping_after_renumber(SimplifiedCNF& scnf, c
         const auto& origs = it.second;
         if (origs.size() <= 1) continue;
 
-        if (verb >= 2) {
+        if (verb >= 3) {
             cout << "c o [get-cnf] Found " << origs.size()
                 << " original vars mapping to new var " << CMSat::Lit(it.first, false) << ": ";
             for(const auto& o: origs) cout << CMSat::Lit(o, false) << " ";
@@ -794,7 +803,7 @@ DLL_PUBLIC void SimplifiedCNF::fix_mapping_after_renumber(SimplifiedCNF& scnf, c
         }
         if (orig_to_keep == UINT32_MAX) orig_to_keep = origs[0];
 
-        if (verb >= 2)
+        if (verb >= 3)
             cout << "c o [get-cnf] Keeping orig var " << CMSat::Lit(orig_to_keep, false)
                 << " undefined, defining others by it." << endl;
 
@@ -806,7 +815,7 @@ DLL_PUBLIC void SimplifiedCNF::fix_mapping_after_renumber(SimplifiedCNF& scnf, c
             if (need_aig) {
                 assert(scnf.defs[o] == nullptr);
                 scnf.defs[o] = AIG::new_lit(CMSat::Lit(orig_to_keep, n.sign() ^ n_keep.sign()));
-                if (verb >= 2) cout << "c o [get-cnf] set aig for var: " << CMSat::Lit(o, false)
+                if (verb >= 3) cout << "c o [get-cnf] set aig for var: " << CMSat::Lit(o, false)
                     << " to that of " << CMSat::Lit(orig_to_keep, false)
                     << " since both map to the same new var " << n << endl;
             }
@@ -1121,19 +1130,45 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
     };
     for (const auto& aig : defs) collect(aig);
 
-    // Returns a Verilog expression for a raw AIG node pointer
-    auto node_expr = [&](AIG* aig) -> string {
+    // Collect output variables (defs[v] != nullptr)
+    vector<uint32_t> outputs;
+    for (uint32_t v = 0; v < defs.size(); v++) {
+        if (defs[v] == nullptr) continue;
+        if (orig_sampl_vars.count(v)) continue;
+        outputs.push_back(v);
+    }
+
+    // Fanout count: children from other AND nodes + uses as an output root.
+    // AND nodes with fanout 1 are inlined into their sole user instead of
+    // being emitted as a named wire.
+    map<const AIG*, uint32_t> fanout;
+    for (const auto* node : topo_order) {
+        if (node->type != AIGT::t_and) continue;
+        if (node->l) fanout[node->l.get()]++;
+        // Only count r separately when it's a distinct pointer; NOT/idem
+        // nodes have l == r and would otherwise inflate fanout to 2.
+        if (node->r && node->r.get() != node->l.get()) fanout[node->r.get()]++;
+    }
+    for (const auto& v : outputs) fanout[defs[v].get()]++;
+
+    // Inlined RHS (no outer parens); set of those that are a bare `a & b`
+    // compound and need parenthesizing when further composed.
+    map<const AIG*, string> inline_expr;
+    set<const AIG*> inline_compound;
+    auto node_expr_raw = [&](AIG* aig) -> string {
         if (aig->type == AIGT::t_const) return aig->neg ? "1'b0" : "1'b1";
         if (aig->type == AIGT::t_lit)
             return string(aig->neg ? "~" : "") + "x" + std::to_string(aig->var + 1);
-        // t_and -> its intermediate wire
+        auto it = inline_expr.find(aig);
+        if (it != inline_expr.end()) return it->second;
         return "_n" + std::to_string(node_to_id[aig]);
     };
-
-    // Collect output variables (defs[v] != nullptr)
-    vector<uint32_t> outputs;
-    for (uint32_t v = 0; v < defs.size(); v++)
-        if (defs[v] != nullptr) outputs.push_back(v);
+    // Wrap in parens if this node is an inlined bare `a & b`.
+    auto node_expr_paren = [&](AIG* aig) -> string {
+        string s = node_expr_raw(aig);
+        if (inline_compound.count(aig)) return "(" + s + ")";
+        return s;
+    };
 
     // Module header
     fout << "module aig_defs(\n";
@@ -1150,31 +1185,42 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
     }
     fout << "\n);\n\n";
 
-    // Intermediate AND-node wires and assigns (topological order)
+    // Build a node's RHS in unparenthesized form, and note whether it is a
+    // bare `a & b` (callers must parenthesize it if composing further).
+    auto build_rhs = [&](const AIG* node, bool& is_compound) -> string {
+        is_compound = false;
+        // For NOT/idem patterns the child needs parens only if compound.
+        if (node->l.get() == node->r.get() && node->neg)
+            return "~" + node_expr_paren(node->l.get());
+        if (node->l.get() == node->r.get() && !node->neg)
+            return node_expr_raw(node->l.get());
+        const string l_str = node_expr_paren(node->l.get());
+        const string r_str = node_expr_paren(node->r.get());
+        string core = l_str + " & " + r_str;
+        if (node->neg) return "~(" + core + ")";
+        is_compound = true;
+        return core;
+    };
+
     for (const auto* node : topo_order) {
         if (node->type != AIGT::t_and) continue;
-        const uint32_t id = node_to_id[node];
-        const string l_str = node_expr(node->l.get());
-        const string r_str = node_expr(node->r.get());
-        fout << "    wire _n" << id << ";\n";
-        if (node->l.get() == node->r.get() && node->neg) {
-            // new_not pattern: l == r, neg == true => ~l
-            fout << "    assign _n" << id << " = ~" << l_str << ";\n";
-        } else if (node->l.get() == node->r.get() && !node->neg) {
-            // l == r, neg == false => l & l = l
-            fout << "    assign _n" << id << " = " << l_str << ";\n";
-        } else if (node->neg) {
-            fout << "    assign _n" << id << " = ~(" << l_str << " & " << r_str << ");\n";
-        } else {
-            fout << "    assign _n" << id << " = " << l_str << " & " << r_str << ";\n";
+        bool is_compound = false;
+        string rhs = build_rhs(node, is_compound);
+        if (fanout[node] == 1) {
+            inline_expr[node] = rhs;
+            if (is_compound) inline_compound.insert(node);
+            continue;
         }
+        const uint32_t id = node_to_id[node];
+        fout << "    wire _n" << id << ";\n";
+        fout << "    assign _n" << id << " = " << rhs << ";\n";
     }
 
     fout << "\n";
 
     // Output assignments
     for (const auto& v : outputs)
-        fout << "    assign x" << (v + 1) << " = " << node_expr(defs[v].get()) << ";\n";
+        fout << "    assign x" << (v + 1) << " = " << node_expr_raw(defs[v].get()) << ";\n";
 
     fout << "\nendmodule\n";
     fout.close();
@@ -2199,20 +2245,71 @@ DLL_PUBLIC void AIG::count_aig_nodes(const aig_ptr& aig, set<aig_ptr>& counted) 
     }
 }
 
+DLL_PUBLIC size_t AIG::count_aig_nodes_fast(
+        const std::vector<aig_ptr>& roots,
+        std::unordered_set<const AIG*>& scratch)
+{
+    scratch.clear();
+    std::vector<const AIG*> stack;
+    stack.reserve(256);
+    for (const auto& r : roots) if (r) stack.push_back(r.get());
+    while (!stack.empty()) {
+        const AIG* n = stack.back(); stack.pop_back();
+        if (!scratch.insert(n).second) continue;
+        if (n->type == AIGT::t_and) {
+            if (n->l) stack.push_back(n->l.get());
+            if (n->r && n->r != n->l) stack.push_back(n->r.get());
+        }
+    }
+    return scratch.size();
+}
+
+DLL_PUBLIC size_t AIG::count_aig_nodes_fast(
+        const aig_ptr& root,
+        std::unordered_set<const AIG*>& scratch)
+{
+    scratch.clear();
+    if (!root) return 0;
+    std::vector<const AIG*> stack;
+    stack.reserve(64);
+    stack.push_back(root.get());
+    while (!stack.empty()) {
+        const AIG* n = stack.back(); stack.pop_back();
+        if (!scratch.insert(n).second) continue;
+        if (n->type == AIGT::t_and) {
+            if (n->l) stack.push_back(n->l.get());
+            if (n->r && n->r != n->l) stack.push_back(n->r.get());
+        }
+    }
+    return scratch.size();
+}
+
 DLL_PUBLIC aig_ptr AIG::simplify_aig(aig_ptr aig) {
+    const size_t original_nodes = count_aig_nodes(aig);
+    aig_ptr result = aig;
+
     // Simplify AIG
     {
         map<aig_ptr, aig_ptr> cache;
-        aig = simplify(aig, cache);
+        result = simplify(result, cache);
     }
 
     // Perform CSE
     {
         map<AIGKey, aig_ptr> cse_map;
         map<aig_ptr, aig_ptr> cache;
-        aig = simplify_cse(aig, cse_map, cache);
+        result = simplify_cse(result, cse_map, cache);
     }
-    return aig;
+
+    // Never return a result larger than the original
+    if (count_aig_nodes(result) > original_nodes) return aig;
+    return result;
+}
+
+DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb) {
+    assert(need_aig);
+    AIGRewriter rw;
+    rw.rewrite_all(defs, verb);
 }
 
 DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
@@ -2226,6 +2323,13 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
         before = counted.size();
     }
 
+    // Save originals and per-AIG node counts for revert
+    vector<aig_ptr> originals = defs;
+    vector<size_t> original_node_counts(defs.size());
+    for (size_t i = 0; i < defs.size(); i++) {
+        original_node_counts[i] = count_aig_nodes(defs[i]);
+    }
+
     // simplify the AIGs
     {
         map<aig_ptr, aig_ptr> cache;
@@ -2237,6 +2341,13 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
         map<AIGKey, aig_ptr> cse_map;
         map<aig_ptr, aig_ptr> cache2;
         for(auto& aig: defs) aig = simplify_cse(aig, cse_map, cache2);
+    }
+
+    // Revert individual AIGs that grew
+    for (size_t i = 0; i < defs.size(); i++) {
+        if (count_aig_nodes(defs[i]) > original_node_counts[i]) {
+            defs[i] = originals[i];
+        }
     }
 
     //after calc

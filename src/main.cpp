@@ -198,6 +198,51 @@ void add_arjun_options() {
     myopt("--minleaf", mconf.min_leaf_size, fc_int,"Minimum leaf size in decision tree");
     myopt("--mingainsplit", mconf.min_gain_split, fc_double,"Minimum gain for a split in decision tree");
     myopt("--learnuseall", mconf.use_all_vars_as_feats, fc_int,"Use all variables as features in decision tree learning. 0 = only inputs");
+    // synth -- cutoff/tuning constants
+    myopt("--biassamples", mconf.bias_samples, fc_int, "Number of biased samples per direction");
+    myopt("--constvotesamples", mconf.const_vote_samples, fc_int, "Majority voting samples for const_functions");
+    myopt("--statsevery", mconf.stats_every, fc_int, "Print stats every N repair loops");
+    myopt("--detailedstatsevery", mconf.detailed_stats_every, fc_int, "Print detailed stats every N repair loops");
+    myopt("--rebuildminloops", mconf.rebuild_min_loops, fc_int, "Min repair loops before cex_solver rebuild");
+    myopt("--rebuildminclauses", mconf.rebuild_min_clauses, fc_int, "Min total formula clauses before rebuild");
+    myopt("--rebuildgrownum", mconf.rebuild_growth_num, fc_int, "Rebuild growth numerator");
+    myopt("--rebuildgrowden", mconf.rebuild_growth_den, fc_int, "Rebuild growth denominator");
+    myopt("--reducecexgenok", mconf.reduce_cex_gen_ok, fc_int, "Reduce multi_cex when gen_repair_ok > this");
+    myopt("--reducecextotrep", mconf.reduce_cex_tot_rep, fc_int, "Reduce multi_cex when tot_repaired > this");
+    myopt("--reducecexneedrep", mconf.reduce_cex_need_rep, fc_int, "Set multi_cex_k=1 when needs_repair <= this");
+    myopt("--reducecexczminrep", mconf.reduce_cex_cz_min_rep, fc_int, "Min tot_repaired for cost-zero cex reduction");
+    myopt("--skipbctxmin", mconf.skip_better_ctx_min, fc_int, "Skip find_better_ctx when needs_repair <= this");
+    myopt("--skipbctxfreq", mconf.skip_better_ctx_freq, fc_int, "Skip find_better_ctx every N loops when gen_ok dominates");
+    myopt("--simprepevery", mconf.simplify_repair_every, fc_int, "Simplify repair_solver every N tot_repaired");
+    myopt("--skipinputminrep", mconf.skip_input_only_min_rep, fc_int, "Min tot_repaired before skipping input-only conflict");
+    myopt("--skipinputratio", mconf.skip_input_only_ratio, fc_int, "Skip input-only when gen_ok * ratio < tot_repaired");
+    myopt("--confldropy", mconf.conflict_drop_y_max, fc_int, "Max conflict size to try dropping y-vars");
+    myopt("--extraminimhot", mconf.extra_minim_hot, fc_int, "Extra minimization when var repaired >= this many times");
+    myopt("--extraminimvhot", mconf.extra_minim_very_hot, fc_int, "2 extra minim passes when var repaired >= this");
+    myopt("--conflcap", mconf.conflict_cap, fc_int, "Cap very large conflicts above this size");
+    myopt("--conflcapkeep", mconf.conflict_cap_keep, fc_int, "Keep this many literals when capping conflicts");
+    myopt("--batchminimmin", mconf.batch_minim_min, fc_int, "Min conflict size for batch minimization");
+    myopt("--minimbudgetthresh", mconf.minim_budget_threshold, fc_int, "Conflict size above which minim budget is capped");
+    myopt("--minimbudgetmax", mconf.minim_budget_max, fc_int, "Max minimization solver calls");
+    myopt("--minimbudgetmult", mconf.minim_budget_mult, fc_int, "Minim budget = conflict.size * mult (up to max)");
+    myopt("--aigsimpevery", mconf.aig_simplify_every, fc_int, "Simplify AIG for hot vars every N repairs");
+    myopt("--tdsteps", mconf.td_steps, fc_int, "Tree decomposition FlowCutter steps");
+    myopt("--tdlookahead", mconf.td_lookahead_iters, fc_int, "Tree decomposition FlowCutter lookahead iterations");
+    myopt("--bctxremoveall", mconf.better_ctx_remove_all, fc_int, "Remove-all threshold in find_better_ctx_normal");
+    myopt("--tdcontract", mconf.do_td_contract, fc_int, "Contract input variables before tree decomposition");
+    myopt("--tdmaxedges", mconf.td_max_edges, fc_int, "Skip TD when primal graph exceeds this many edges");
+    myopt("--ccnrmemspersample", mconf.ccnr_mems_per_sample, fc_int, "CCNR total memory budget per sample");
+    myopt("--ccnrpercalllimit", mconf.ccnr_per_call_limit, fc_int, "CCNR per-call step limit for local_search");
+    myopt("--biaswgh", mconf.bias_w_high, fc_double, "Bias weight for positive sampling direction (1-this for negative)");
+    myopt("--biasplow", mconf.bias_p_low, fc_double, "Lower probability threshold for mid-range bias selection");
+    myopt("--biasphigh", mconf.bias_p_high, fc_double, "Upper probability threshold for mid-range bias selection");
+    myopt("--reducecexgenrationum", mconf.reduce_cex_gen_ratio_num, fc_int, "Numerator of gen_ok/tot_repaired threshold for CEX reduction");
+    myopt("--reducecexgenratioden", mconf.reduce_cex_gen_ratio_den, fc_int, "Denominator of gen_ok/tot_repaired threshold for CEX reduction");
+    myopt("--czhighratio", mconf.cz_high_ratio, fc_int, "cost_zero > tot_repaired * this triggers tightest cz_threshold");
+    myopt("--czlowratio", mconf.cz_low_ratio, fc_int, "cost_zero > tot_repaired * this triggers medium cz_threshold");
+    myopt("--czthreshhigh", mconf.cz_threshold_high, fc_int, "Consecutive cost-zero break count when high cz ratio");
+    myopt("--czthreshmid", mconf.cz_threshold_mid, fc_int, "Consecutive cost-zero break count when medium cz ratio");
+    myopt("--czthreshlow", mconf.cz_threshold_low, fc_int, "Consecutive cost-zero break count when low cz ratio");
     // synth -- debug
     myopt("--manthancnf", mconf.write_manthan_cnf, fc_string, "Write Manthan CNF to this file");
     myopt("--debugsynth", conf.debug_synth, fc_string,"Debug synthesis, prefix with this fname");
@@ -242,6 +287,7 @@ void add_arjun_options() {
     myopt("--oraclesparsify", simp_conf.oracle_sparsify, fc_int,"Use Oracle to sparsify");
     myopt("--oraclevivif", simp_conf.oracle_vivify, fc_int,"Use oracle to vivify");
     myopt("--oraclevivifgetl", simp_conf.oracle_vivify_get_learnts, fc_int,"Use oracle to vivify get learnts");
+    myopt("--oracleextra", simp_conf.oracle_extra, fc_int,"Run an extra oracle-vivif-fast + oracle-sparsify-fast + occ-bve pass at the end of Puura's strategy");
     myopt("--distill", conf.distill, fc_int, "Distill clauses before minimization of indep");
     myopt("--weakenlim", simp_conf.weaken_limit, fc_int, "Limit to weaken BVE resolvents");
     myopt("--bce", etof_conf.do_bce, fc_int, "Use blocked clause elimination (BCE) statically");
@@ -372,7 +418,7 @@ void do_synthesis() {
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
     if (!output_file.empty() || !conf.debug_synth.empty()) {
         cnf.simplify_aigs();
-        cnf.simplify_aigs();
+        cnf.rewrite_aigs(conf.verb);
     }
     if (!output_file.empty()) {
         cnf.write_aig_def_to_verilog(output_file);

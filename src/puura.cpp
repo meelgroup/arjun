@@ -161,17 +161,34 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
 
     // occ-cl-rem-with-orgates not used -- should test and add, probably to 2nd iter
     // eqlit-find from oracle not used (too slow?)
-    string str("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, occ-ternary-res, clean-cls, distill-cls, distill-bins, ");
+    // D: occ-ternary-res moved before occ-bve (ternary->binary enables more SCC equivalences for BVE)
+    // B: distill-cls-onlyrem added after occ-bve (removes clauses subsumed after variable elimination)
+    // K: must-scc-vrepl between occ-ternary-res and occ-bve so BVE sees the
+    //    var-substitutions implied by the new binaries ternary-res produced.
+    //    Without it, BVE is still reasoning against the old var IDs.
+    // L: sub-impl right after occ-bve. BVE produces new binary resolvents, and
+    //    sub-impl cleans out the transitively-redundant ones cheaply (it's
+    //    just walking implications) before distill sees them.
+    string str("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, must-scc-vrepl, occ-bve, sub-impl, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
     if (simp_conf.appmc) str = string("must-scc-vrepl, full-probe, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
+    // C: iter2 uses a separate string with extra occ-backw-sub at the end (catches clauses subsumed by BVE resolvents)
+    string str_iter2 = str + string("occ-backw-sub, ");
     for (int i = 0; i < simp_conf.iter1; i++) solver->simplify(&dont_elim, &str);
 
     // Now doing Oracle
     string str2;
     bool backbone_done = cnf.get_backbone_done();
     if (!backbone_done && simp_conf.do_backbone_puura) {
-        solver->backbone_simpl(30*1000ULL, backbone_done);
-        string str_scc = "must-scc-vrepl, must-renumber";
-        solver->simplify(&dont_elim, &str_scc);
+        solver->backbone_simpl(simp_conf.backbone_max_confl, backbone_done);
+        // N: after backbone_simpl sets units and adds bins, run the trio
+        //    sub-impl + sub-cls-with-bin + distill-cls-onlyrem so the new
+        //    binaries collapse against the existing ones, the new units
+        //    strengthen/drop clauses via sub-cls-with-bin, and distill
+        //    removes anything that's now a tautology. Previously only
+        //    must-scc-vrepl ran, and oracle-vivif then paid full price to
+        //    vivify clauses a unit would have satisfied for free.
+        string str_post_backbone = "must-scc-vrepl, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, must-renumber";
+        solver->simplify(&dont_elim, &str_post_backbone);
     }
     if (backbone_done) {
         if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify";
@@ -195,7 +212,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
             solver->set_picosat_gate_limitK(400);
             solver->set_picosat_confl_limit(1000);
         }
-        solver->simplify(&dont_elim, &str);
+        solver->simplify(&dont_elim, &str_iter2);
     }
 
     // Final cleanup -- renumbering, disconnected component removing, etc.
@@ -208,8 +225,27 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
         else s = "oracle-vivif-sparsify-mustfinish";
         solver->simplify(&dont_elim, &s);
     }
+    // F: conservative BVE after oracle-extra (oracle may create new elimination opportunities)
+    // M: let the extra BVE grow up to the same iter2 bound. min_bva_gain(0) let
+    //    BVE exit after a single pass with grow=0, which missed any BVE
+    //    candidate whose resolvents would have been clean at grow>0 even
+    //    though oracle-sparsify just removed clauses that would make them fit.
+    if (simp_conf.oracle_extra && !simp_conf.appmc) {
+        solver->set_min_bva_gain(simp_conf.bve_grow_iter2);
+        string s_bve = "occ-bve";
+        solver->simplify(&dont_elim, &s_bve);
+    }
 
-    str += string(", must-scc-vrepl, must-renumber,");
+    // P: same cleanup-after-BVE pattern as the N post-backbone fix: BVE just
+    //    produced resolvents; sub-impl + sub-cls-with-bin + distill-cls-onlyrem
+    //    collapse the redundant bins and trim satisfied literals before we
+    //    renumber and hand the CNF back.
+    // Q: intree-probe on the now-fully-simplified CNF. On a formula as small
+    //    as what we hand off, intree-probe's hyper-binary-resolution step can
+    //    still find a handful of new implications/failed lits from tree
+    //    traversal that the whole preceding pipeline missed, and it's cheap
+    //    at this scale.
+    str += string(", must-scc-vrepl, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, intree-probe, must-scc-vrepl, must-renumber,");
     solver->simplify(&dont_elim, &str);
 
     auto new_sampl_vars = cnf.get_sampl_vars();

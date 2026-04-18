@@ -102,7 +102,7 @@ void Minimize::add_fixed_clauses(bool all)
 
 void Minimize::duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf) {
     assert(!already_duplicated);
-    solver->set_verbosity(std::max<int>(conf.verb-2, 0));
+    solver->set_verbosity(conf.verb);
 
     //Duplicate the already simplified problem
     verb_print(1, "[arjun] Duplicating CNF...");
@@ -128,7 +128,7 @@ void Minimize::get_incidence() {
     assert(inc.size() == orig_num_vars*2);
     for(uint32_t i = 0; i < orig_num_vars; i++) {
         Lit l = Lit(i, true);
-        incidence[l.var()] = std::min(inc[l.toInt()],inc[(~l).toInt()]);
+        incidence[l.var()] = std::min(inc[l.toInt()], inc[(~l).toInt()]);
     }
 }
 
@@ -140,7 +140,7 @@ void Minimize::set_up_solver()
     solver->set_prefix("c o ");
     solver->set_renumber(0);
     solver->set_bve(0);
-    solver->set_verbosity(std::max(conf.verb-2, 0));
+    solver->set_verbosity(conf.verb);
     solver->set_intree_probe(conf.intree && conf.simp);
     solver->set_distill(conf.distill && conf.simp);
     solver->set_sls(false);
@@ -161,7 +161,7 @@ bool Minimize:: simplify_bve_only() {
 
     if (conf.simp) {
         solver->set_bve(1);
-        solver->set_verbosity(std::max(conf.verb-2, 0));
+        solver->set_verbosity(conf.verb);
         string str("occ-bve");
         if (solver->simplify(&dont_elim, &str) == l_False) return false;
         verb_print(1, "[arjun] CMS::simplify() with *only* BVE finished. T: "

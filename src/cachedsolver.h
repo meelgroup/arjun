@@ -136,6 +136,7 @@ public:
     }
 
     std::vector<CMSat::Lit> get_conflict() const { return solver->get_conflict(); }
+    void set_max_confl(int64_t max_confl) { solver->set_max_confl(max_confl); }
     void simplify(std::vector<CMSat::Lit>* assumps) { solver->simplify(assumps); }
     SolverType get_solver_type() const { return solver->get_solver_type(); }
     void clear_cache() { cache.clear(); }

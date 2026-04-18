@@ -32,7 +32,6 @@ namespace ArjunInt {
 struct Config {
     int verb = 1;
     int simp = 2;
-    int fast_backw = 1;
     int distill = 1;
     int intree = 1;
     int bve_pre_simplify = 1;
@@ -47,7 +46,7 @@ struct Config {
     std::string specified_order_fname;
     uint32_t backw_max_confl = 20000;
     uint32_t unate_max_confl = 100;
-    uint32_t extend_max_confl = 1000;
+    uint32_t extend_max_confl = 30000;
     bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;

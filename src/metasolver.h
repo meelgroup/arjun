@@ -118,6 +118,11 @@ public:
         if (solver_type == SolverType::cms) cms->simplify(assumps);
     }
 
+    void set_max_confl(int64_t max_confl) {
+        if (solver_type == SolverType::cms) cms->set_max_confl(max_confl);
+        else cadical->limit("conflicts", static_cast<int>(max_confl));
+    }
+
     SolverType get_solver_type() const { return solver_type; }
 
 private:
