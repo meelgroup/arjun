@@ -69,9 +69,7 @@ bool AIGRewriter::is_or(const aig_ptr& a) const {
 }
 
 size_t AIGRewriter::count_nodes(const aig_ptr& aig) const {
-    set<aig_ptr> counted;
-    AIG::count_aig_nodes(aig, counted);
-    return counted.size();
+    return AIG::count_aig_nodes(aig);
 }
 
 // Collect all AND-children by flattening nested AND nodes

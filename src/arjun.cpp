@@ -2226,20 +2226,19 @@ DLL_PUBLIC void SimplifiedCNF::check_red_cls_deriveable() const {
     }
   }
 }
-
-DLL_PUBLIC size_t AIG::count_aig_nodes(const aig_ptr& aig) {
-    set<aig_ptr> counted;
+DLL_PUBLIC size_t AIG::count_aig_nodes(const AIG* aig) {
+    unordered_set<const AIG*> counted;
     count_aig_nodes(aig, counted);
     return counted.size();
 }
 
-DLL_PUBLIC void AIG::count_aig_nodes(const aig_ptr& aig, set<aig_ptr>& counted) {
+DLL_PUBLIC void AIG::count_aig_nodes(const AIG* aig, unordered_set<const AIG*>& counted) {
     if (!aig) return;
     if (counted.count(aig)) return;
     counted.insert(aig);
     if (aig->type == AIGT::t_and) {
-        count_aig_nodes(aig->l, counted);
-        count_aig_nodes(aig->r, counted);
+        count_aig_nodes(aig->l.get(), counted);
+        count_aig_nodes(aig->r.get(), counted);
     }
 }
 
@@ -2316,8 +2315,8 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
     size_t after;
     // before calc
     {
-        set<aig_ptr> counted;
-        for(const auto& aig: defs) count_aig_nodes(aig, counted);
+        unordered_set<const AIG*> counted;
+        for(const auto& aig: defs) count_aig_nodes(aig.get(), counted);
         before = counted.size();
     }
 
@@ -2350,8 +2349,8 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
 
     //after calc
     {
-        set<aig_ptr> counted;
-        for(const auto& aig: defs) count_aig_nodes(aig, counted);
+        unordered_set<const AIG*> counted;
+        for(const auto& aig: defs) count_aig_nodes(aig.get(), counted);
         after = counted.size();
     }
 

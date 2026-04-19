@@ -66,6 +66,7 @@ using std::sort;
 using std::vector;
 using std::array;
 using std::set;
+using std::unordered_set;
 using std::map;
 using std::unique_ptr;
 using std::string;
@@ -802,12 +803,12 @@ void Manthan::print_detailed_stats() const {
     // Aggregate AIG stats
     uint64_t total_aig_nodes = 0, total_clauses = 0, max_aig_nodes = 0;
     {
-        set<aig_ptr> all_counted;
+        unordered_set<const AIG*> all_counted;
         for (const auto& [v, form] : var_to_formula) {
             total_clauses += form.clauses.size();
             if (form.aig) {
-                size_t sz = AIG::count_aig_nodes(form.aig);
-                AIG::count_aig_nodes(form.aig, all_counted);
+                size_t sz = AIG::count_aig_nodes(form.aig.get());
+                AIG::count_aig_nodes(form.aig.get(), all_counted);
                 max_aig_nodes = std::max(max_aig_nodes, (uint64_t)sz);
             }
         }
@@ -1181,8 +1182,8 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
             || (mconf.simplify_repair_every > 0 && tot_repaired % mconf.simplify_repair_every == mconf.simplify_repair_every - 1))) {
         vector<Lit> assumps;
         assumps.reserve(input.size() + to_define_full.size());
-        for(const auto& x: input) assumps.push_back(Lit(x, false));
-        for(const auto& x: to_define_full) assumps.push_back(Lit(x, false));
+        for(const auto& x: input) assumps.emplace_back(x, false);
+        for(const auto& x: to_define_full) assumps.emplace_back(x, false);
         repair_solver.simplify(&assumps);
     }
 
@@ -2379,6 +2380,13 @@ void Manthan::rebuild_cex_solver() {
         // Re-use FHolder's already-asserted true literal for t_const nodes
         // so we don't waste a var+unit-clause per formula.
         enc.set_true_lit(fh->get_true_lit());
+        // The k-ary width cap (set_max_kary_width) was evaluated on
+        // sdlx-fixpoint-5: width=3 ballooned clauses 1.9x (worse),
+        // width=8 produced ~28% more clauses and *slower* post-rebuild
+        // repair rate than the uncapped encoding. The wide-backward-clause
+        // hypothesis was wrong; the post-rebuild slowdown is driven by
+        // lost SAT solver state (learnt clauses, VSIDS activity), not by
+        // clause structure. Leave the encoder uncapped here.
         new_f.out = enc.encode(new_f.aig);
         const auto& es = enc.get_stats();
         total_clauses_out += es.clauses_added;

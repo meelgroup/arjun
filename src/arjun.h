@@ -436,7 +436,8 @@ public:
         cache[aig] = result;
         return result;
     }
-    static size_t count_aig_nodes(const aig_ptr& aig);
+    static size_t count_aig_nodes(const aig_ptr aig) { return count_aig_nodes(aig.get()); }
+    static size_t count_aig_nodes(const AIG* aig);
     // Fast variant: iterative DFS with unordered_set<AIG*>. Shared
     // structure across the input vector is counted only once. Used by the
     // rewriter's hot paths where the std::set<aig_ptr> version was the
@@ -459,7 +460,7 @@ private:
     static aig_ptr simplify(aig_ptr aig);
     static aig_ptr simplify(aig_ptr aig, std::map<aig_ptr, aig_ptr>& cache);
     static aig_ptr simplify_cse(aig_ptr aig, std::map<AIGKey, aig_ptr>& cse_map, std::map<aig_ptr, aig_ptr>& cache);
-    static void count_aig_nodes(const aig_ptr& aig, std::set<aig_ptr>& counted);
+    static void count_aig_nodes(const AIG* aig, std::unordered_set<const AIG*>& counted);
 
     AIGT type = AIGT::t_const;
     static constexpr uint32_t none_var = std::numeric_limits<uint32_t>::max();
