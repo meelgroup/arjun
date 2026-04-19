@@ -235,6 +235,16 @@ string Manthan::pr(const lbool val) const {
     return "?"; // unreachable, silences compiler warning
 }
 
+void Manthan::rebuild_var_bytemaps() {
+    const uint32_t nv = cnf.nVars();
+    is_input.assign(nv, 0);
+    is_backward_defined.assign(nv, 0);
+    is_to_define_full.assign(nv, 0);
+    for (const auto& v : input) is_input[v] = 1;
+    for (const auto& v : backward_defined) is_backward_defined[v] = 1;
+    for (const auto& v : to_define_full) is_to_define_full[v] = 1;
+}
+
 void Manthan::fill_dependency_mat_with_backward() {
     dependency_mat.clear();
     dependency_mat.resize(cnf.nVars());
@@ -943,6 +953,7 @@ SimplifiedCNF Manthan::do_manthan() {
     to_define_full.clear();
     to_define_full.insert(to_define.begin(), to_define.end());
     to_define_full.insert(backward_defined.begin(), backward_defined.end());
+    rebuild_var_bytemaps();
     fill_dependency_mat_with_backward();
     get_incidence();
 
@@ -1238,7 +1249,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
         // Track conflict type
         bool is_input_only = true;
         for (const auto& l : conflict) {
-            if (!input.count(l.var())) { is_input_only = false; break; }
+            if (!is_input[l.var()]) { is_input_only = false; break; }
         }
         if (is_input_only) {
             input_only_conflict_count++;
@@ -1428,12 +1439,12 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         if (conflict.size() <= mconf.conflict_drop_y_max) {
             bool has_y_vars = false;
             for (const auto& l : conflict) {
-                if (l != to_repair && !input.count(l.var())) { has_y_vars = true; break; }
+                if (l != to_repair && !is_input[l.var()]) { has_y_vars = true; break; }
             }
             if (has_y_vars) {
                 assumps.clear();
                 for (const auto& l : conflict) {
-                    if (l == to_repair || input.count(l.var())) assumps.push_back(~l);
+                    if (l == to_repair || is_input[l.var()]) assumps.push_back(~l);
                 }
                 if (!assumps.empty()) {
                     auto ret3 = repair_solver.solve(&assumps);
@@ -1477,8 +1488,8 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
             [&](const Lit& a, const Lit& b) {
                 if (a == to_repair) return true;
                 if (b == to_repair) return false;
-                bool a_inp = input.count(a.var()) > 0;
-                bool b_inp = input.count(b.var()) > 0;
+                bool a_inp = is_input[a.var()];
+                bool b_inp = is_input[b.var()];
                 if (a_inp != b_inp) return a_inp;
                 return false;
             });
@@ -1552,8 +1563,8 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
         // 2. Within each category, least-frequent vars first (more likely removable)
         std::sort(conflict.begin(), conflict.end(),
             [this](const Lit& a, const Lit& b) {
-                bool a_is_input = input.count(a.var()) > 0;
-                bool b_is_input = input.count(b.var()) > 0;
+                bool a_is_input = is_input[a.var()];
+                bool b_is_input = is_input[b.var()];
                 if (a_is_input != b_is_input) return !a_is_input; // y-vars first
                 uint32_t fa = (a.var() < var_conflict_freq.size()) ? var_conflict_freq[a.var()] : 0;
                 uint32_t fb = (b.var() < var_conflict_freq.size()) ? var_conflict_freq[b.var()] : 0;
@@ -1659,7 +1670,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     FHolder<MetaSolver2>::Formula f;
 
     auto lit_to_lit = [&] (const Lit l) {
-        if (input.count(l.var()) || backward_defined.count(l.var())) {
+        if (is_input[l.var()] || is_backward_defined[l.var()]) {
             return map_y_to_y_hat(l);
         }
         assert(var_to_formula.count(l.var()));
@@ -1668,7 +1679,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     };
 
     auto lit_to_aig = [&] (const Lit l) {
-        if (input.count(l.var()) || backward_defined.count(l.var())) {
+        if (is_input[l.var()] || is_backward_defined[l.var()]) {
             return AIG::new_lit(map_y_to_y_hat(l));
         }
         assert(var_to_formula.count(l.var()));

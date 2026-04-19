@@ -83,6 +83,14 @@ class Manthan {
         std::set<uint32_t> to_define_full; // to_define + backward_defined
         std::set<uint32_t> helper_functions; // these are in BW, but we definitely want them
 
+        // Byte-map mirrors of the sets above for O(1) membership tests in hot
+        // paths (sort comparators in minimize_conflict / find_conflict, etc.).
+        // Sized to cnf.nVars(); kept in sync with the sets via rebuild_var_bytemaps().
+        std::vector<uint8_t> is_input;
+        std::vector<uint8_t> is_backward_defined;
+        std::vector<uint8_t> is_to_define_full;
+        void rebuild_var_bytemaps();
+
         // To help us account for every variable in the formulas' clauses
         std::set<uint32_t> helpers; // used for ITE
         std::set<uint32_t> y_hats; // the potential y_hats (due to ITE chains, some are "old" and unused)
