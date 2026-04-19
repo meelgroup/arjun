@@ -2170,7 +2170,7 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
         } else {
             // Incorrect, we want to try to fix this
             uint32_t weight = y_to_y_order_pos[y];
-            incorrect_lits.push_back({l, weight});
+            incorrect_lits.emplace_back(l, weight);
             verb_print(3, "[find-better-ctx-normal] CTX is INCORRECT on y=" << y+1
                  << " ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat])
                  << " weight=" << weight);
