@@ -66,7 +66,7 @@ public:
     AIG(const AIG&) = delete;
     AIG& operator=(const AIG&) = delete;
 
-    bool invariants() const {
+    [[nodiscard]] bool invariants() const {
         if (type == AIGT::t_lit) {
             if (l != nullptr || r != nullptr) std::cout << "ERROR: AIG literal has children!" << std::endl;
             if (var == none_var) std::cout << "ERROR: AIG var node doesn't have a var!" << std::endl;
@@ -609,7 +609,7 @@ public:
       return v.get_mpz_t()->_mp_alloc * sizeof(mp_limb_t);
     }
 
-    uint64_t bytes_used() const final {
+    [[nodiscard]] uint64_t bytes_used() const final {
       return sizeof(FMpz) + helper(val);
     }
 };
@@ -629,7 +629,7 @@ public:
         return std::make_unique<FGenMpz>();
     }
 
-    bool larger_than(const CMSat::Field& a, const CMSat::Field& b) const final {
+    [[nodiscard]] bool larger_than(const CMSat::Field& a, const CMSat::Field& b) const final {
         const auto& ad = static_cast<const FMpz&>(a);
         const auto& bd = static_cast<const FMpz&>(b);
         return ad.val > bd.val;
@@ -1212,10 +1212,9 @@ public:
         assert(lit.var() < nVars());
         auto it = weights.find(lit.var());
         if (it == weights.end()) return std::unique_ptr<CMSat::Field>(fg->one());
-        else {
-            if (!lit.sign()) return std::unique_ptr<CMSat::Field>(it->second.pos->dup());
-            return std::unique_ptr<CMSat::Field>(it->second.neg->dup());
-        }
+        if (!lit.sign())
+            return std::unique_ptr<CMSat::Field>(it->second.pos->dup());
+        return std::unique_ptr<CMSat::Field>(it->second.neg->dup());
     }
     void unset_var_weight(uint32_t v) {
         assert(v < nVars());
@@ -1247,15 +1246,17 @@ public:
                 *weight.neg -= w;}
             weights[lit.var()] = weight;
             return;
-        } else {
-            if (!lit.sign()) *it->second.pos = w;
-            else *it->second.neg = w;
         }
+        if (!lit.sign())
+            *it->second.pos = w;
+        else
+            *it->second.neg = w;
+
     }
     void set_weighted(bool _weighted) { weighted = _weighted; }
     void set_projected(bool _projected) { proj = _projected; }
-    bool get_weighted() const { return weighted; }
-    bool get_projected() const { return proj; }
+    [[nodiscard]] bool get_weighted() const { return weighted; }
+    [[nodiscard]] bool get_projected() const { return proj; }
     void clear_weights_for_nonprojected_vars() {
         if (!weighted) return;
         std::set<uint32_t> tmp(sampl_vars.begin(), sampl_vars.end());
@@ -1264,17 +1265,17 @@ public:
         }
     }
 
-    std::vector<CMSat::Lit>& map_cl(std::vector<CMSat::Lit>& cl, const std::vector<uint32_t>& v_map) {
+    std::vector<CMSat::Lit>& map_cl(std::vector<CMSat::Lit>& cl, const std::vector<uint32_t>& v_map) const {
             for(auto& l: cl) l = CMSat::Lit(v_map[l.var()], l.sign());
             return cl;
     }
-    std::vector<uint32_t>& map_var(std::vector<uint32_t>& cl, const std::vector<uint32_t>& v_map) {
+    std::vector<uint32_t>& map_var(std::vector<uint32_t>& cl, const std::vector<uint32_t>& v_map) const {
         for(auto& l: cl) l = v_map[l];
         return cl;
     }
-    std::set<uint32_t> map_var(const std::set<uint32_t>& cl, const std::vector<uint32_t>& v_map) {
+    std::set<uint32_t> map_var(const std::set<uint32_t>& cl, const std::vector<uint32_t>& v_map) const {
         std::set<uint32_t> new_set;
-        for(auto& l: cl) new_set.insert(v_map[l]);
+        for(const auto& l: cl) new_set.insert(v_map[l]);
         return new_set;
     }
 
@@ -1291,7 +1292,7 @@ public:
 
     void write_simpcnf(const std::string& fname, bool red = true) const;
 
-    bool weight_set(uint32_t v) const {
+    [[nodiscard]] bool weight_set(uint32_t v) const {
         check_var(v);
         if (!fg->weighted()) {
           std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
@@ -1327,7 +1328,7 @@ public:
 
     // returns in CNF (NEW VARS) the dependencies of each variable
     // input is also NEW VARS
-    std::map<uint32_t, std::set<uint32_t>> compute_dependencies(const std::set<uint32_t>& vars) const;
+    [[nodiscard]] std::map<uint32_t, std::set<uint32_t>> compute_dependencies(const std::set<uint32_t>& vars) const;
 
     // Binary, packed writing
     void write_aig_defs_to_file(const std::string& fname) const;
@@ -1341,7 +1342,7 @@ public:
     // Verilog writing
     void write_aig_def_to_verilog(const std::string& fname) const;
 
-    std::vector<CMSat::lbool> extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed = false) const;
+    [[nodiscard]] std::vector<CMSat::lbool> extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed = false) const;
 
     void map_aigs_to_orig(const std::vector<aig_ptr>& aigs, const uint32_t max_num_vars,
             std::optional<std::reference_wrapper<const std::map<uint32_t, CMSat::Lit>>> back_map = std::nullopt);
@@ -1367,7 +1368,7 @@ public:
         backbone_done = bb_done;
     }
 
-    std::vector<std::vector<uint32_t>> find_disconnected() const;
+    [[nodiscard]] std::vector<std::vector<uint32_t>> find_disconnected() const;
 
     // Used after SBVA to replace clauses
     void replace_clauses_with(std::vector<int>& ret, uint32_t new_nvars, uint32_t new_nclauses);
@@ -1391,11 +1392,11 @@ public:
         assert(!after_backward_round_synth && "Should only be set once");
         after_backward_round_synth = true;
     }
-    const auto& get_orig_to_new_var() const {
+    [[nodiscard]] const auto& get_orig_to_new_var() const {
         return orig_to_new_var;
     }
 
-    const CMSat::Lit orig_to_new_lit(const CMSat::Lit l) const {
+    [[nodiscard]] CMSat::Lit orig_to_new_lit(const CMSat::Lit l) const {
         assert(l.var() < defs.size());
         assert(orig_to_new_var.count(l.var()));
         CMSat::Lit k = orig_to_new_var.at(l.var());
@@ -1403,7 +1404,7 @@ public:
     }
 
     // Get AIG definition for a variable (in ORIG numbering)
-    const aig_ptr& get_def(uint32_t v) const {
+    [[nodiscard]] const aig_ptr& get_def(uint32_t v) const {
         assert(v < defs.size());
         return defs[v];
     }
@@ -1416,7 +1417,7 @@ public:
         AIG::simplify_aigs(verb, defs);
     }
     void rewrite_aigs(const uint32_t verb = 0);
-    const auto& get_aig_mng() const { return aig_mng; }
+    [[nodiscard]] const auto& get_aig_mng() const { return aig_mng; }
     void import_candidate_functions(const std::string& fname, int verb = 0);
     void check_red_cls_deriveable() const;
 
