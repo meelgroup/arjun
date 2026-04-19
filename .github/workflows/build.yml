@@ -23,6 +23,10 @@ jobs:
           # (armadillo/ensmallen/mlpack/EvalMaxSAT) that EXTRA_SYNTH needs.
           - os: windows-latest
             extra_synth: ON
+          # Windows only builds statically: the shared build scatters DLLs
+          # across _deps subdirs so arjun.exe can't find them at runtime.
+          - os: windows-latest
+            build_shared_libs: ON
 
     steps:
     - name: Set up MSYS2
