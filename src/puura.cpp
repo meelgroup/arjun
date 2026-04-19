@@ -279,11 +279,11 @@ void Puura::set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf) {
         for(uint32_t v: cnf.get_opt_sampl_vars()) {
             if (cnf.weight_set(v)) {
                 verb_print(5, "[w-debug] dont_elim due to weight: " << v+1);
-                dont_elim.push_back(Lit(v, false));
+                dont_elim.emplace_back(v, false);
             }
         }
     }
-    for(uint32_t v: cnf.get_sampl_vars()) dont_elim.push_back(Lit(v, false));
+    for(uint32_t v: cnf.get_sampl_vars()) dont_elim.emplace_back(v, false);
     sampl_set.clear();
     for(uint32_t v: cnf.get_sampl_vars()) sampl_set.insert(v);
 }
