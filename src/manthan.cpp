@@ -295,55 +295,33 @@ bool Manthan::check_transitive_closure_correctness() const {
 void Manthan::fill_var_to_formula_with(set<uint32_t>& vars) {
     const auto new_to_orig = cnf.get_new_to_orig_var();
 
+    // Routes AIGToCNF clauses into the per-formula clause list while allocating
+    // helper vars in cex_solver (same pattern as the rebuild sink below).
+    struct CexClauseSink {
+        MetaSolver2& solver;
+        std::vector<CL>& clauses;
+        std::set<uint32_t>& helpers_set;
+        void new_var() {
+            solver.new_var();
+            helpers_set.insert(solver.nVars() - 1);
+        }
+        [[nodiscard]] uint32_t nVars() const { return solver.nVars(); }
+        void add_clause(const std::vector<Lit>& cl) {
+            clauses.emplace_back(cl);
+        }
+    };
+
     for(const auto& v: vars) {
         FHolder<MetaSolver2>::Formula f;
 
-        // Get the original variable number
         const auto orig = new_to_orig.at(v);
         const uint32_t v_orig = orig.var();
         const auto& aig = cnf.get_def(v_orig);
         assert(aig != nullptr);
 
-        // Create a lambda to transform AIG to CNF using the transform function
-        std::function<Lit(AIGT, uint32_t, bool, const Lit*, const Lit*)> aig_to_cnf_visitor =
-          [&](AIGT type, const uint32_t var_orig, const bool neg, const Lit* left, const Lit* right) -> Lit {
-            if (type == AIGT::t_const) {
-                return neg ? ~fh->get_true_lit() : fh->get_true_lit();
-            }
-
-            if (type == AIGT::t_lit) {
-                const Lit lit_new = cnf.orig_to_new_lit(Lit(var_orig, neg));
-                const Lit result_lit = map_y_to_y_hat(lit_new);
-                return result_lit;
-            }
-
-            if (type == AIGT::t_and) {
-                const Lit l_lit = *left;
-                const Lit r_lit = *right;
-
-                // Create fresh variable for AND gate
-                cex_solver.new_var();
-                const Lit and_out = Lit(cex_solver.nVars() - 1, false);
-                helpers.insert(and_out.var());
-
-                // Generate Tseitin clauses for AND gate
-                // and_out represents (l_lit & r_lit)
-                f.clauses.push_back(CL({~and_out, l_lit}));
-                f.clauses.push_back(CL({~and_out, r_lit}));
-                f.clauses.push_back(CL({~l_lit, ~r_lit, and_out}));
-
-                // Apply negation if needed
-                return neg ? ~and_out : and_out;
-            }
-            release_assert(false && "Unhandled AIG type in visitor");
-        };
-
-        // Recursively generate clauses for the AIG using the transform function
-        map<aig_ptr, Lit> cache;
-        const Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
-        f.out = out_lit ^ orig.sign();
-
-        // Build AIG in y_hat variable space for possible rebuild re-encoding
+        // Remap the AIG from original var space into y_hat space and bake in
+        // orig.sign(). AIGToCNF consumes raw AIG lit vars, so the y_hat remap
+        // must live in the AIG rather than a visit-time hook.
         map<aig_ptr, aig_ptr> aig_remap_cache;
         f.aig = AIG::transform<aig_ptr>(aig,
           [&](AIGT type, const uint32_t var_orig2, const bool neg2,
@@ -358,6 +336,15 @@ void Manthan::fill_var_to_formula_with(set<uint32_t>& vars) {
             release_assert(false && "Unhandled AIG type");
           }, aig_remap_cache);
         if (orig.sign()) f.aig = AIG::new_not(f.aig);
+
+        // Encode via the optimized AIGToCNF encoder (k-ary AND/OR fusion, ITE
+        // pattern detection, De Morgan flattening, dedup/constant folding)
+        // rather than naive pairwise Tseitin.
+        CexClauseSink sink{cex_solver, f.clauses, helpers};
+        ArjunNS::AIGToCNF<CexClauseSink> enc(sink);
+        enc.set_true_lit(fh->get_true_lit());
+        f.out = enc.encode(f.aig);
+
         assert(var_to_formula.count(v) == 0);
         var_to_formula[v] = f;
     }
