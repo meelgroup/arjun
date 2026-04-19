@@ -225,26 +225,12 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
         else s = "oracle-vivif-sparsify-mustfinish";
         solver->simplify(&dont_elim, &s);
     }
-    // F: conservative BVE after oracle-extra (oracle may create new elimination opportunities)
-    // M: let the extra BVE grow up to the same iter2 bound. min_bva_gain(0) let
-    //    BVE exit after a single pass with grow=0, which missed any BVE
-    //    candidate whose resolvents would have been clean at grow>0 even
-    //    though oracle-sparsify just removed clauses that would make them fit.
     if (simp_conf.oracle_extra && !simp_conf.appmc) {
-        solver->set_min_bva_gain(simp_conf.bve_grow_iter2);
+        solver->set_min_bva_gain(0);
         string s_bve = "occ-bve";
         solver->simplify(&dont_elim, &s_bve);
     }
 
-    // P: same cleanup-after-BVE pattern as the N post-backbone fix: BVE just
-    //    produced resolvents; sub-impl + sub-cls-with-bin + distill-cls-onlyrem
-    //    collapse the redundant bins and trim satisfied literals before we
-    //    renumber and hand the CNF back.
-    // Q: intree-probe on the now-fully-simplified CNF. On a formula as small
-    //    as what we hand off, intree-probe's hyper-binary-resolution step can
-    //    still find a handful of new implications/failed lits from tree
-    //    traversal that the whole preceding pipeline missed, and it's cheap
-    //    at this scale.
     str += string(", must-scc-vrepl, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, intree-probe, must-scc-vrepl, must-renumber,");
     solver->simplify(&dont_elim, &str);
 
@@ -253,7 +239,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     solver->clean_sampl_get_empties(new_sampl_vars, new_empty_sampl_vars);
     if (!cnf.get_weighted()) {
       dont_elim.clear();
-      for(uint32_t v: new_sampl_vars) dont_elim.push_back(Lit(v, false));
+      for(uint32_t v: new_sampl_vars) dont_elim.emplace_back(v, false);
     } else {
       // don't eliminate anything but the empties from opt_sampl_vars
       set<Lit> tmp(dont_elim.begin(), dont_elim.end());
