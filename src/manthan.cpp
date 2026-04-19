@@ -511,7 +511,7 @@ aig_ptr Manthan::one_level_substitute(Lit l, const uint32_t v, map<uint32_t, aig
     if (!transformed.count(l.var())) {
         assert(var_to_formula.count(l.var()) == 1);
         auto aig = var_to_formula.at(l.var()).aig;
-        std::map<aig_ptr, aig_ptr> cache;
+        std::unordered_map<const AIG*, aig_ptr> cache;
         auto aig2 = AIG::deep_clone(aig, cache);
         map<aig_ptr, aig_ptr> cache_aig;
         auto aig3 = AIG::transform<aig_ptr>(

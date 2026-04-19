@@ -56,6 +56,7 @@ using std::cout;
 using std::cerr;
 using std::endl;
 using std::unordered_set;
+using std::unordered_map;
 
 #if defined _WIN32
     #define DLL_PUBLIC __declspec(dllexport)
@@ -2234,11 +2235,15 @@ DLL_PUBLIC size_t AIG::count_aig_nodes(const AIG* aig) {
 
 DLL_PUBLIC void AIG::count_aig_nodes(const AIG* aig, unordered_set<const AIG*>& counted) {
     if (!aig) return;
-    if (counted.count(aig)) return;
-    counted.insert(aig);
-    if (aig->type == AIGT::t_and) {
-        count_aig_nodes(aig->l.get(), counted);
-        count_aig_nodes(aig->r.get(), counted);
+    std::vector<const AIG*> stack;
+    stack.push_back(aig);
+    while (!stack.empty()) {
+        const AIG* n = stack.back(); stack.pop_back();
+        if (!counted.insert(n).second) continue;
+        if (n->type == AIGT::t_and) {
+            if (n->l) stack.push_back(n->l.get());
+            if (n->r && n->r != n->l) stack.push_back(n->r.get());
+        }
     }
 }
 
@@ -2287,14 +2292,14 @@ DLL_PUBLIC aig_ptr AIG::simplify_aig(aig_ptr aig) {
 
     // Simplify AIG
     {
-        map<aig_ptr, aig_ptr> cache;
+        unordered_map<const AIG*, aig_ptr> cache;
         result = simplify(result, cache);
     }
 
     // Perform CSE
     {
         map<AIGKey, aig_ptr> cse_map;
-        map<aig_ptr, aig_ptr> cache;
+        unordered_map<const AIG*, aig_ptr> cache;
         result = simplify_cse(result, cse_map, cache);
     }
 
@@ -2329,14 +2334,14 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
 
     // simplify the AIGs
     {
-        map<aig_ptr, aig_ptr> cache;
+        unordered_map<const AIG*, aig_ptr> cache;
         for(auto& aig: defs) aig = simplify(aig, cache);
     }
 
     // perform CSE
     {
         map<AIGKey, aig_ptr> cse_map;
-        map<aig_ptr, aig_ptr> cache2;
+        unordered_map<const AIG*, aig_ptr> cache2;
         for(auto& aig: defs) aig = simplify_cse(aig, cse_map, cache2);
     }
 
@@ -2364,13 +2369,14 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
 }
 
 DLL_PUBLIC aig_ptr AIG::simplify(aig_ptr aig) {
-    map<aig_ptr, aig_ptr> cache;
+    unordered_map<const AIG*, aig_ptr> cache;
     return simplify(aig, cache);
 }
 
-aig_ptr AIG::simplify_cse(aig_ptr aig, map<AIGKey, aig_ptr>& cse_map, map<aig_ptr, aig_ptr>& cache) {
+aig_ptr AIG::simplify_cse(aig_ptr aig, map<AIGKey, aig_ptr>& cse_map, unordered_map<const AIG*, aig_ptr>& cache) {
     if (!aig) return nullptr;
-    if (cache.count(aig)) return cache.at(aig);
+    auto cache_it = cache.find(aig.get());
+    if (cache_it != cache.end()) return cache_it->second;
 
     auto cse_lookup = [&](const AIGT type, const uint32_t var, const bool neg, const aig_ptr l, const aig_ptr r) -> aig_ptr {
         auto ll = l;
@@ -2379,7 +2385,7 @@ aig_ptr AIG::simplify_cse(aig_ptr aig, map<AIGKey, aig_ptr>& cse_map, map<aig_pt
         AIGKey key(type, var, neg, ll, rr);
         auto it = cse_map.find(key);
         if (it != cse_map.end()) {
-            cache[aig] = it->second;
+            cache[aig.get()] = it->second;
             return it->second;
         }
         auto node = make_shared<AIG>();
@@ -2389,7 +2395,7 @@ aig_ptr AIG::simplify_cse(aig_ptr aig, map<AIGKey, aig_ptr>& cse_map, map<aig_pt
         node->l = ll;
         node->r = rr;
         cse_map[key] = node;
-        cache[aig] = node;
+        cache[aig.get()] = node;
         return node;
     };
 
@@ -2404,12 +2410,13 @@ aig_ptr AIG::simplify_cse(aig_ptr aig, map<AIGKey, aig_ptr>& cse_map, map<aig_pt
     release_assert(false && "Unknown AIG type in simplify_cse");
 }
 
-aig_ptr AIG::simplify(aig_ptr aig, map<aig_ptr, aig_ptr>& cache) {
+aig_ptr AIG::simplify(aig_ptr aig, unordered_map<const AIG*, aig_ptr>& cache) {
     if (!aig) return nullptr;
-    if (cache.count(aig)) return cache.at(aig);
+    auto cache_it = cache.find(aig.get());
+    if (cache_it != cache.end()) return cache_it->second;
 
     auto cache_set = [&](const aig_ptr& node) {
-        cache[aig] = node;
+        cache[aig.get()] = node;
         return node;
     };
 

@@ -30,6 +30,7 @@ THE SOFTWARE.
 #include <string>
 #include <map>
 #include <set>
+#include <unordered_map>
 #include <unordered_set>
 #include <optional>
 #include <fstream>
@@ -353,7 +354,7 @@ public:
 
     static std::vector<aig_ptr> deep_clone_vec(const std::vector<aig_ptr>& aigs) {
         std::vector<aig_ptr> ret;
-        std::map<aig_ptr, aig_ptr> cache;
+        std::unordered_map<const AIG*, aig_ptr> cache;
         ret.reserve(aigs.size());
         for (const auto& aig : aigs) {
             if (aig == nullptr) {
@@ -368,12 +369,12 @@ public:
     template<typename T>
     static T deep_clone_map(const T& aigs) {
         T ret;
-        std::map<aig_ptr, aig_ptr> cache;
+        std::unordered_map<const AIG*, aig_ptr> cache;
         for (auto& [x, aig] : aigs) ret[x] = deep_clone(aig, cache);
         return ret;
     }
 
-    static aig_ptr deep_clone(const aig_ptr& aig, std::map<aig_ptr, aig_ptr>& cache) {
+    static aig_ptr deep_clone(const aig_ptr& aig, std::unordered_map<const AIG*, aig_ptr>& cache) {
         if (!aig) return nullptr;
 
         std::function<aig_ptr(const aig_ptr&)> clone_helper =
@@ -381,7 +382,7 @@ public:
                 if (!node) return nullptr;
 
                 // Check cache to avoid cloning the same node multiple times
-                auto it = cache.find(node);
+                auto it = cache.find(node.get());
                 if (it != cache.end()) return it->second;
 
                 // Create new AIG node
@@ -391,7 +392,7 @@ public:
                 cloned->neg = node->neg;
 
                 // Add to cache before recursing to handle cycles
-                cache[node] = cloned;
+                cache[node.get()] = cloned;
 
                 // Recursively clone children for AND nodes
                 if (node->type == AIGT::t_and) {
@@ -487,8 +488,8 @@ public:
 
 private:
     static aig_ptr simplify(aig_ptr aig);
-    static aig_ptr simplify(aig_ptr aig, std::map<aig_ptr, aig_ptr>& cache);
-    static aig_ptr simplify_cse(aig_ptr aig, std::map<AIGKey, aig_ptr>& cse_map, std::map<aig_ptr, aig_ptr>& cache);
+    static aig_ptr simplify(aig_ptr aig, std::unordered_map<const AIG*, aig_ptr>& cache);
+    static aig_ptr simplify_cse(aig_ptr aig, std::map<AIGKey, aig_ptr>& cse_map, std::unordered_map<const AIG*, aig_ptr>& cache);
     static void count_aig_nodes(const AIG* aig, std::unordered_set<const AIG*>& counted);
 
     AIGT type = AIGT::t_const;
