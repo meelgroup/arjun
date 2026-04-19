@@ -297,7 +297,7 @@ void Manthan::fill_var_to_formula_with(set<uint32_t>& vars) {
 
     // Routes AIGToCNF clauses into the per-formula clause list while allocating
     // helper vars in cex_solver (same pattern as the rebuild sink below).
-    struct CexClauseSink {
+    struct FormulaClauseSink {
         MetaSolver2& solver;
         std::vector<CL>& clauses;
         std::set<uint32_t>& helpers_set;
@@ -340,8 +340,8 @@ void Manthan::fill_var_to_formula_with(set<uint32_t>& vars) {
         // Encode via the optimized AIGToCNF encoder (k-ary AND/OR fusion, ITE
         // pattern detection, De Morgan flattening, dedup/constant folding)
         // rather than naive pairwise Tseitin.
-        CexClauseSink sink{cex_solver, f.clauses, helpers};
-        ArjunNS::AIGToCNF<CexClauseSink> enc(sink);
+        FormulaClauseSink sink{cex_solver, f.clauses, helpers};
+        ArjunNS::AIGToCNF<FormulaClauseSink> enc(sink);
         enc.set_true_lit(fh->get_true_lit());
         f.out = enc.encode(f.aig);
 
@@ -2353,7 +2353,7 @@ void Manthan::rebuild_cex_solver() {
     // the new Formula's clause list (rather than directly in cex_solver --
     // inject_formulas_into_solver below pushes them out), while fresh helper
     // variables ARE allocated from cex_solver so they use unique ids.
-    struct CexClauseSink {
+    struct FormulaClauseSink {
         MetaSolver2& solver;
         std::vector<CL>& clauses;
         std::set<uint32_t>& helpers_set;
@@ -2397,8 +2397,8 @@ void Manthan::rebuild_cex_solver() {
         }
         FHolder<MetaSolver2>::Formula new_f;
         new_f.aig = form.aig;
-        CexClauseSink sink{cex_solver, new_f.clauses, helpers, cex_solver.nVars()};
-        ArjunNS::AIGToCNF<CexClauseSink> enc(sink);
+        FormulaClauseSink sink{cex_solver, new_f.clauses, helpers, cex_solver.nVars()};
+        ArjunNS::AIGToCNF<FormulaClauseSink> enc(sink);
         // Re-use FHolder's already-asserted true literal for t_const nodes
         // so we don't waste a var+unit-clause per formula.
         enc.set_true_lit(fh->get_true_lit());
