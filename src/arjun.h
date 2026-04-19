@@ -306,9 +306,11 @@ public:
     }
 
     static void get_dependent_vars(const aig_ptr& aig_orig, std::set<uint32_t>& dep, uint32_t v) {
-        std::unordered_set<const AIG*> visited;
+        const uint64_t epoch = next_visit_epoch();
         std::vector<const AIG*> stack;
-        if (visited.insert(aig_orig.get()).second) stack.push_back(aig_orig.get());
+        const AIG* root = aig_orig.get();
+        root->visit_epoch = epoch;
+        stack.push_back(root);
         while (!stack.empty()) {
             const AIG* a = stack.back();
             stack.pop_back();
@@ -316,25 +318,29 @@ public:
                 assert(a->var != v && "Variable cannot depend on itself");
                 dep.insert(a->var);
             } else if (a->type == AIGT::t_and) {
-                if (visited.insert(a->l.get()).second) stack.push_back(a->l.get());
-                if (visited.insert(a->r.get()).second) stack.push_back(a->r.get());
+                const AIG* la = a->l.get();
+                const AIG* ra = a->r.get();
+                if (la->visit_epoch != epoch) { la->visit_epoch = epoch; stack.push_back(la); }
+                if (ra->visit_epoch != epoch) { ra->visit_epoch = epoch; stack.push_back(ra); }
             }
         }
     }
 
     // Fast variant: writes into caller-owned scratch buffers to avoid
     // per-call heap allocation. is_dep is a bitmap indexed by var id;
-    // dep_list receives the vars newly marked. visited and stack must be
-    // empty on entry (or cleared by the caller) and are left dirty on exit
-    // so the caller can reuse their capacity. Nodes are marked visited at
-    // push time so each DAG node is pushed at most once.
+    // dep_list receives the vars newly marked. stack is used for DFS and
+    // left dirty on exit so the caller can reuse its capacity. Visited
+    // state is tracked via AIG::visit_epoch; each call bumps the epoch.
     static void get_dependent_vars(const aig_ptr& aig_orig,
                                    std::vector<char>& is_dep,
                                    std::vector<uint32_t>& dep_list,
-                                   std::unordered_set<const AIG*>& visited,
                                    std::vector<const AIG*>& stack,
                                    uint32_t v) {
-        if (visited.insert(aig_orig.get()).second) stack.push_back(aig_orig.get());
+        const uint64_t epoch = next_visit_epoch();
+        stack.clear();
+        const AIG* root = aig_orig.get();
+        root->visit_epoch = epoch;
+        stack.push_back(root);
         while (!stack.empty()) {
             const AIG* a = stack.back();
             stack.pop_back();
@@ -346,8 +352,10 @@ public:
                     dep_list.push_back(a->var);
                 }
             } else if (a->type == AIGT::t_and) {
-                if (visited.insert(a->l.get()).second) stack.push_back(a->l.get());
-                if (visited.insert(a->r.get()).second) stack.push_back(a->r.get());
+                const AIG* la = a->l.get();
+                const AIG* ra = a->r.get();
+                if (la->visit_epoch != epoch) { la->visit_epoch = epoch; stack.push_back(la); }
+                if (ra->visit_epoch != epoch) { ra->visit_epoch = epoch; stack.push_back(ra); }
             }
         }
     }
@@ -468,14 +476,16 @@ public:
     }
     static size_t count_aig_nodes(const aig_ptr aig) { return count_aig_nodes(aig.get()); }
     static size_t count_aig_nodes(const AIG* aig);
-    // Fast variant: iterative DFS with unordered_set<AIG*>. Shared
+    // Fast variant: iterative DFS using AIG::visit_epoch marking. Shared
     // structure across the input vector is counted only once. Used by the
     // rewriter's hot paths where the std::set<aig_ptr> version was the
     // dominant cost on large (500k+ node) AIGs.
-    static size_t count_aig_nodes_fast(const std::vector<aig_ptr>& roots,
-                                        std::unordered_set<const AIG*>& scratch);
-    static size_t count_aig_nodes_fast(const aig_ptr& root,
-                                        std::unordered_set<const AIG*>& scratch);
+    static size_t count_aig_nodes_fast(const std::vector<aig_ptr>& roots);
+    static size_t count_aig_nodes_fast(const aig_ptr& root);
+    // Batch-counting helper: marks newly seen nodes against `epoch` and
+    // adds their count to `count`. Callers obtain `epoch` once via
+    // next_visit_epoch() and then invoke this for each root to union-count.
+    static void count_aig_nodes_batch(const AIG* aig, uint64_t epoch, size_t& count);
     static void simplify_aigs(uint32_t verb, std::vector<aig_ptr>& defs);
     static aig_ptr simplify_aig(aig_ptr aig);
 
@@ -490,7 +500,6 @@ private:
     static aig_ptr simplify(aig_ptr aig);
     static aig_ptr simplify(aig_ptr aig, std::unordered_map<const AIG*, aig_ptr>& cache);
     static aig_ptr simplify_cse(aig_ptr aig, std::map<AIGKey, aig_ptr>& cse_map, std::unordered_map<const AIG*, aig_ptr>& cache);
-    static void count_aig_nodes(const AIG* aig, std::unordered_set<const AIG*>& counted);
 
     AIGT type = AIGT::t_const;
     static constexpr uint32_t none_var = std::numeric_limits<uint32_t>::max();
@@ -498,6 +507,16 @@ private:
     bool neg = false;
     aig_ptr l = nullptr;
     aig_ptr r = nullptr;
+
+    // Epoch-based visited marker used by DFS traversals (get_dependent_vars,
+    // count_aig_nodes, ...) in place of an unordered_set<const AIG*>. A
+    // traversal bumps the global counter once via next_visit_epoch() and
+    // then marks nodes by assignment; membership is an integer compare.
+    mutable uint64_t visit_epoch = 0;
+    static uint64_t next_visit_epoch() {
+        static uint64_t counter = 0;
+        return ++counter;
+    }
 };
 
 

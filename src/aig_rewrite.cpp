@@ -953,13 +953,9 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
     double t_simplify = 0, t_hashcons = 0, t_deep_absorb = 0;
     double t_flatten_ite = 0, t_count = 0;
 
-    // Reused across all count queries -- unordered_set keeps its bucket
-    // array allocated between clear() calls, avoiding N reallocations
-    // per pass on 500k+ node AIGs.
-    std::unordered_set<const AIG*> count_scratch;
     auto count_total = [&](const vector<aig_ptr>& v) -> size_t {
         double t0 = cpuTime();
-        size_t n = AIG::count_aig_nodes_fast(v, count_scratch);
+        size_t n = AIG::count_aig_nodes_fast(v);
         t_count += cpuTime() - t0;
         return n;
     };
@@ -1043,8 +1039,8 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
         double t0 = cpuTime();
         for (size_t i = 0; i < defs.size(); i++) {
             if (defs[i] == originals[i]) continue;
-            size_t orig_count = AIG::count_aig_nodes_fast(originals[i], count_scratch);
-            size_t new_count = AIG::count_aig_nodes_fast(defs[i], count_scratch);
+            size_t orig_count = AIG::count_aig_nodes_fast(originals[i]);
+            size_t new_count = AIG::count_aig_nodes_fast(defs[i]);
             if (new_count > orig_count) defs[i] = originals[i];
         }
         t_count += cpuTime() - t0;

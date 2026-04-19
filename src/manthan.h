@@ -110,10 +110,10 @@ class Manthan {
         std::vector<sample> collect_extra_cex(const sample& ctx);
         bool find_conflict(const uint32_t y_rep, sample& ctx, std::vector<CMSat::Lit>& conflict);
         // Reusable scratch for AIG::get_dependent_vars inside find_conflict;
-        // avoids per-call heap allocations for the set/visited structures.
+        // avoids per-call heap allocations for bitmap/stack. Visited state
+        // is tracked via AIG::visit_epoch (no scratch needed).
         std::vector<char> aig_dep_is_dep;
         std::vector<uint32_t> aig_dep_list;
-        std::unordered_set<const ArjunNS::AIG*> aig_dep_visited;
         std::vector<const ArjunNS::AIG*> aig_dep_stack;
         std::vector<uint32_t> var_conflict_freq; // how often each var appears in conflicts
         void minimize_conflict(std::vector<CMSat::Lit>& conflict, std::vector<CMSat::Lit>& assumps, const CMSat::Lit repairing);

@@ -803,16 +803,17 @@ void Manthan::print_detailed_stats() const {
     // Aggregate AIG stats
     uint64_t total_aig_nodes = 0, total_clauses = 0, max_aig_nodes = 0;
     {
-        unordered_set<const AIG*> all_counted;
+        const uint64_t epoch = AIG::next_visit_epoch();
+        size_t union_count = 0;
         for (const auto& [v, form] : var_to_formula) {
             total_clauses += form.clauses.size();
             if (form.aig) {
                 size_t sz = AIG::count_aig_nodes(form.aig.get());
-                AIG::count_aig_nodes(form.aig.get(), all_counted);
+                AIG::count_aig_nodes_batch(form.aig.get(), epoch, union_count);
                 max_aig_nodes = std::max(max_aig_nodes, (uint64_t)sz);
             }
         }
-        total_aig_nodes = all_counted.size();
+        total_aig_nodes = union_count;
     }
     verb_print(1, COLCYN "[manthan-stats] === AIG STATS ===");
     verb_print(1, COLCYN "[manthan-stats]   total unique AIG nodes: " << total_aig_nodes);
@@ -1267,13 +1268,12 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     // Reset marks left by the previous call before reusing the scratch bitmap.
     for (const uint32_t prev_v : aig_dep_list) aig_dep_is_dep[prev_v] = 0;
     aig_dep_list.clear();
-    aig_dep_visited.clear();
     aig_dep_stack.clear();
     if (mconf.minimize_conflict) {
         const auto& aig = var_to_formula.at(y_rep).aig;
         assert(aig != nullptr);
         AIG::get_dependent_vars(aig, aig_dep_is_dep, aig_dep_list,
-                                aig_dep_visited, aig_dep_stack, y_rep);
+                                aig_dep_stack, y_rep);
     }
     const bool have_aig_deps = !aig_dep_list.empty();
 

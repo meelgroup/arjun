@@ -2228,62 +2228,46 @@ DLL_PUBLIC void SimplifiedCNF::check_red_cls_deriveable() const {
   }
 }
 DLL_PUBLIC size_t AIG::count_aig_nodes(const AIG* aig) {
-    unordered_set<const AIG*> counted;
-    count_aig_nodes(aig, counted);
-    return counted.size();
+    if (!aig) return 0;
+    const uint64_t epoch = next_visit_epoch();
+    size_t count = 0;
+    count_aig_nodes_batch(aig, epoch, count);
+    return count;
 }
 
-DLL_PUBLIC void AIG::count_aig_nodes(const AIG* aig, unordered_set<const AIG*>& counted) {
+DLL_PUBLIC void AIG::count_aig_nodes_batch(const AIG* aig, uint64_t epoch, size_t& count) {
     if (!aig) return;
+    if (aig->visit_epoch == epoch) return;
     std::vector<const AIG*> stack;
+    aig->visit_epoch = epoch;
     stack.push_back(aig);
     while (!stack.empty()) {
         const AIG* n = stack.back(); stack.pop_back();
-        if (!counted.insert(n).second) continue;
+        ++count;
         if (n->type == AIGT::t_and) {
-            if (n->l) stack.push_back(n->l.get());
-            if (n->r && n->r != n->l) stack.push_back(n->r.get());
+            const AIG* ln = n->l.get();
+            const AIG* rn = n->r.get();
+            if (ln && ln->visit_epoch != epoch) { ln->visit_epoch = epoch; stack.push_back(ln); }
+            if (rn && rn != ln && rn->visit_epoch != epoch) { rn->visit_epoch = epoch; stack.push_back(rn); }
         }
     }
 }
 
-DLL_PUBLIC size_t AIG::count_aig_nodes_fast(
-        const std::vector<aig_ptr>& roots,
-        std::unordered_set<const AIG*>& scratch)
-{
-    scratch.clear();
-    std::vector<const AIG*> stack;
-    stack.reserve(256);
-    for (const auto& r : roots) if (r) stack.push_back(r.get());
-    while (!stack.empty()) {
-        const AIG* n = stack.back(); stack.pop_back();
-        if (!scratch.insert(n).second) continue;
-        if (n->type == AIGT::t_and) {
-            if (n->l) stack.push_back(n->l.get());
-            if (n->r && n->r != n->l) stack.push_back(n->r.get());
-        }
+DLL_PUBLIC size_t AIG::count_aig_nodes_fast(const std::vector<aig_ptr>& roots) {
+    const uint64_t epoch = next_visit_epoch();
+    size_t count = 0;
+    for (const auto& r : roots) {
+        if (r) count_aig_nodes_batch(r.get(), epoch, count);
     }
-    return scratch.size();
+    return count;
 }
 
-DLL_PUBLIC size_t AIG::count_aig_nodes_fast(
-        const aig_ptr& root,
-        std::unordered_set<const AIG*>& scratch)
-{
-    scratch.clear();
+DLL_PUBLIC size_t AIG::count_aig_nodes_fast(const aig_ptr& root) {
     if (!root) return 0;
-    std::vector<const AIG*> stack;
-    stack.reserve(64);
-    stack.push_back(root.get());
-    while (!stack.empty()) {
-        const AIG* n = stack.back(); stack.pop_back();
-        if (!scratch.insert(n).second) continue;
-        if (n->type == AIGT::t_and) {
-            if (n->l) stack.push_back(n->l.get());
-            if (n->r && n->r != n->l) stack.push_back(n->r.get());
-        }
-    }
-    return scratch.size();
+    const uint64_t epoch = next_visit_epoch();
+    size_t count = 0;
+    count_aig_nodes_batch(root.get(), epoch, count);
+    return count;
 }
 
 DLL_PUBLIC aig_ptr AIG::simplify_aig(aig_ptr aig) {
@@ -2320,9 +2304,10 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
     size_t after;
     // before calc
     {
-        unordered_set<const AIG*> counted;
-        for(const auto& aig: defs) count_aig_nodes(aig.get(), counted);
-        before = counted.size();
+        const uint64_t epoch = next_visit_epoch();
+        size_t count = 0;
+        for(const auto& aig: defs) count_aig_nodes_batch(aig.get(), epoch, count);
+        before = count;
     }
 
     // Save originals and per-AIG node counts for revert
@@ -2354,9 +2339,10 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
 
     //after calc
     {
-        unordered_set<const AIG*> counted;
-        for(const auto& aig: defs) count_aig_nodes(aig.get(), counted);
-        after = counted.size();
+        const uint64_t epoch = next_visit_epoch();
+        size_t count = 0;
+        for(const auto& aig: defs) count_aig_nodes_batch(aig.get(), epoch, count);
+        after = count;
     }
 
     if (verb >= 1) {
