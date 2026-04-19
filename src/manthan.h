@@ -35,6 +35,7 @@
 #include <memory>
 #include <vector>
 #include <set>
+#include <unordered_map>
 #include <unordered_set>
 #include "formula.h"
 #include "treedecomp/TreeDecomposition.hpp"
@@ -115,6 +116,14 @@ class Manthan {
         std::vector<char> aig_dep_is_dep;
         std::vector<uint32_t> aig_dep_list;
         std::vector<const ArjunNS::AIG*> aig_dep_stack;
+        // Memoized dependency list per y_rep. Keyed by the raw AIG pointer of
+        // var_to_formula[y_rep].aig at the time of caching; a pointer mismatch
+        // (happens when perform_repair rewrites the formula) triggers recompute.
+        struct DepCacheEntry {
+            const ArjunNS::AIG* aig_ptr;
+            std::vector<uint32_t> dep_list;
+        };
+        std::unordered_map<uint32_t, DepCacheEntry> dep_cache;
         std::vector<uint32_t> var_conflict_freq; // how often each var appears in conflicts
         void minimize_conflict(std::vector<CMSat::Lit>& conflict, std::vector<CMSat::Lit>& assumps, const CMSat::Lit repairing);
         uint32_t find_next_repair_var(const sample& ctx) const;

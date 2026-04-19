@@ -1272,8 +1272,26 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     if (mconf.minimize_conflict) {
         const auto& aig = var_to_formula.at(y_rep).aig;
         assert(aig != nullptr);
-        AIG::get_dependent_vars(aig, aig_dep_is_dep, aig_dep_list,
-                                aig_dep_stack, y_rep);
+        const ArjunNS::AIG* aig_raw = aig.get();
+        auto it = dep_cache.find(y_rep);
+        if (it != dep_cache.end() && it->second.aig_ptr == aig_raw) {
+            // Cache hit: reuse memoized dep_list, just repopulate the bitmap.
+            const auto& cached = it->second.dep_list;
+            for (const uint32_t dv : cached) {
+                if (dv >= aig_dep_is_dep.size()) aig_dep_is_dep.resize(dv + 1, 0);
+                aig_dep_is_dep[dv] = 1;
+                aig_dep_list.push_back(dv);
+            }
+        } else {
+            AIG::get_dependent_vars(aig, aig_dep_is_dep, aig_dep_list,
+                                    aig_dep_stack, y_rep);
+            if (it != dep_cache.end()) {
+                it->second.aig_ptr = aig_raw;
+                it->second.dep_list = aig_dep_list;
+            } else {
+                dep_cache.emplace(y_rep, DepCacheEntry{aig_raw, aig_dep_list});
+            }
+        }
     }
     const bool have_aig_deps = !aig_dep_list.empty();
 
