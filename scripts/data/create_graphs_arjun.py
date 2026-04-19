@@ -15,11 +15,13 @@ RESET = "\033[0m"
 DB = "data.sqlite3"
 TABLE = "arjun"
 TIMEOUT = 1800  # seconds used for PAR2 / scatter timeout
+TMP_DIR = "tmp"
 
 # ---- Configuration: which dirs to include (prefix match) ----
 only_dirs = [
-    "out-synth-1068169-0",
-    "out-synth-1286344-0",
+    # "out-synth-1068169-0",
+    "out-synth-1286344-",
+    # "out-synth-1296625-",
 ]
 # -------------------------------------------------------------
 
@@ -113,7 +115,7 @@ def build_csv_data(versions, matched_dirs, only_calls, not_calls, not_versions,
             if verbose:
                 print(f"  Processing dir={dir} ver={ver} call={call!r}")
 
-            fname = "run-" + dir + ".csv"
+            fname = os.path.join(TMP_DIR, "run-" + dir + ".csv")
             con = sqlite3.connect(DB)
             cur = con.cursor()
             res = cur.execute(
@@ -153,11 +155,12 @@ def _print_table(headers, str_rows):
 def _sqlite_run(query, title=None):
     if title:
         print(f"\n{BLUE}{title}{RESET}")
-    with open("_tmp_query.sqlite", "w") as f:
+    query_file = os.path.join(TMP_DIR, "_tmp_query.sqlite")
+    with open(query_file, "w") as f:
         f.write(".mode table\n")
         f.write(query + "\n")
-    os.system(f"sqlite3 {DB} < _tmp_query.sqlite")
-    os.unlink("_tmp_query.sqlite")
+    os.system(f"sqlite3 {DB} < {query_file}")
+    os.unlink(query_file)
 
 
 def print_summary_tables(table_todo, fname_like, full=False):
@@ -331,9 +334,9 @@ def _gp_str(s):
 # ---- CDF plot ----
 
 def generate_cdf(fname2_s):
-    gnuplotfn = "cdf.gnuplot"
-    pdf_file  = "cdf.pdf"
-    png_file  = "cdf.png"
+    gnuplotfn = os.path.join(TMP_DIR, "cdf.gnuplot")
+    pdf_file  = os.path.join(TMP_DIR, "cdf.pdf")
+    png_file  = os.path.join(TMP_DIR, "cdf.png")
 
     def plot_lines():
         lines = []
@@ -402,10 +405,10 @@ def scatter_plot_time_pairs(matched_dirs, fname_like, verbose=False):
 
         safe1 = _safe(dir1)
         safe2 = _safe(dir2)
-        dat_file = f"scatter_{safe1}_vs_{safe2}.dat"
-        pdf_file = f"scatter_{safe1}_vs_{safe2}.pdf"
-        png_file = f"scatter_{safe1}_vs_{safe2}.png"
-        gp_file  = f"scatter_{safe1}_vs_{safe2}.gnuplot"
+        dat_file = os.path.join(TMP_DIR, f"scatter_{safe1}_vs_{safe2}.dat")
+        pdf_file = os.path.join(TMP_DIR, f"scatter_{safe1}_vs_{safe2}.pdf")
+        png_file = os.path.join(TMP_DIR, f"scatter_{safe1}_vs_{safe2}.png")
+        gp_file  = os.path.join(TMP_DIR, f"scatter_{safe1}_vs_{safe2}.gnuplot")
 
         with open(dat_file, "w") as f:
             f.write(f"# col1={dir1}  col2={dir2}\n")
@@ -453,6 +456,8 @@ def main():
     parser.add_argument("--fname", nargs="+", metavar="PATTERN", default=[],
                         help="Filter by fname pattern(s), e.g. --fname '%%amba%%'")
     args = parser.parse_args()
+
+    os.makedirs(TMP_DIR, exist_ok=True)
 
     if args.fname:
         clauses = " or ".join(f"fname like '{p}'" for p in args.fname)
