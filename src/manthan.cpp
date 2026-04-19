@@ -889,12 +889,11 @@ void Manthan::rebuild_cex_solver_if_needed(uint64_t total_formula_clauses, bool&
             && cex_solver.nVars() > nvars_at_last_rebuild * mconf.rebuild_growth_num / mconf.rebuild_growth_den
             && total_formula_clauses > mconf.rebuild_min_clauses && num_loops_repair > mconf.rebuild_min_loops)
     {
-        cout << "Rebuilding because: "
+        verb_print(1, "Rebuilding because: "
              << "current vars " << cex_solver.nVars() << " > last rebuild vars " << nvars_at_last_rebuild
              << " * growth factor " << (double)mconf.rebuild_growth_num / mconf.rebuild_growth_den
              << " and total formula clauses " << total_formula_clauses << " > min clauses " << mconf.rebuild_min_clauses
-             << " and loops " << num_loops_repair << " > min loops " << mconf.rebuild_min_loops
-             << endl;
+             << " and loops " << num_loops_repair << " > min loops " << mconf.rebuild_min_loops);
         // Rewrite AIGs
         AIGRewriter rewriter;
         vector<aig_ptr> aigs;
