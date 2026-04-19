@@ -82,7 +82,7 @@ public:
     std::vector<CMSat::Lit> encode_batch(const std::vector<aig_ptr>& roots);
 
     void set_true_lit(CMSat::Lit t) { my_true_lit = t; my_has_true_lit = true; }
-    const AIG2CNFStats& get_stats() const { return stats; }
+    [[nodiscard]] const AIG2CNFStats& get_stats() const { return stats; }
 
     void set_detect_ite(bool b) { detect_ite = b; }
     void set_detect_xor(bool b) { detect_xor = b; }
@@ -393,76 +393,75 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
         if (group_cse) and_group_cse[inputs] = h;
         cache[n] = h;
         return h;
+    }
+    // k-ary OR via ¬(l ∧ r) = ¬l ∨ ¬r
+    std::vector<CMSat::Lit> inputs;
+    if (kary_fusion) {
+        collect_disjuncts_of_neg(n->l, inputs);
+        collect_disjuncts_of_neg(n->r, inputs);
     } else {
-        // k-ary OR via ¬(l ∧ r) = ¬l ∨ ¬r
-        std::vector<CMSat::Lit> inputs;
-        if (kary_fusion) {
-            collect_disjuncts_of_neg(n->l, inputs);
-            collect_disjuncts_of_neg(n->r, inputs);
-        } else {
-            inputs.push_back(~encode_node(n->l));
-            inputs.push_back(~encode_node(n->r));
+        inputs.push_back(~encode_node(n->l));
+        inputs.push_back(~encode_node(n->r));
+    }
+    if (normalize_inputs) {
+        bool is_const = false;
+        if (normalize_or_inputs(inputs, is_const)) {
+            stats.dedup_const_or++;
+            CMSat::Lit t = get_true_lit();
+            cache[n] = t;
+            return t;
         }
-        if (normalize_inputs) {
-            bool is_const = false;
-            if (normalize_or_inputs(inputs, is_const)) {
-                stats.dedup_const_or++;
-                CMSat::Lit t = get_true_lit();
-                cache[n] = t;
-                return t;
-            }
-            if (inputs.empty()) {
-                CMSat::Lit t = get_true_lit();
-                CMSat::Lit result = ~t;
-                cache[n] = result;
-                return result;
-            }
-            if (inputs.size() == 1) {
-                cache[n] = inputs[0];
-                return inputs[0];
-            }
+        if (inputs.empty()) {
+            CMSat::Lit t = get_true_lit();
+            CMSat::Lit result = ~t;
+            cache[n] = result;
+            return result;
         }
-        if (group_cse) {
-            auto it_cse = or_group_cse.find(inputs);
-            if (it_cse != or_group_cse.end()) {
-                stats.cse_or_hits++;
-                cache[n] = it_cse->second;
-                return it_cse->second;
-            }
+        if (inputs.size() == 1) {
+            cache[n] = inputs[0];
+            return inputs[0];
         }
-        if (inputs.size() > max_kary_width) {
-            std::vector<CMSat::Lit> current = std::move(inputs);
-            while (current.size() > max_kary_width) {
-                std::vector<CMSat::Lit> next;
-                next.reserve((current.size() + max_kary_width - 1) / max_kary_width);
-                for (size_t i = 0; i < current.size(); i += max_kary_width) {
-                    size_t end = std::min(current.size(), i + max_kary_width);
-                    if (end - i == 1) { next.push_back(current[i]); continue; }
-                    std::vector<CMSat::Lit> chunk(current.begin() + i, current.begin() + end);
-                    CMSat::Lit hc = new_helper();
-                    emit_or_equiv(hc, chunk);
-                    stats.kary_or_count++;
-                    stats.kary_or_width_total += chunk.size();
-                    next.push_back(hc);
-                }
-                current = std::move(next);
-            }
-            if (current.size() == 1) { cache[n] = current[0]; return current[0]; }
-            CMSat::Lit h = new_helper();
-            emit_or_equiv(h, current);
-            stats.kary_or_count++;
-            stats.kary_or_width_total += current.size();
-            cache[n] = h;
-            return h;
+    }
+    if (group_cse) {
+        auto it_cse = or_group_cse.find(inputs);
+        if (it_cse != or_group_cse.end()) {
+            stats.cse_or_hits++;
+            cache[n] = it_cse->second;
+            return it_cse->second;
         }
+    }
+    if (inputs.size() > max_kary_width) {
+        std::vector<CMSat::Lit> current = std::move(inputs);
+        while (current.size() > max_kary_width) {
+            std::vector<CMSat::Lit> next;
+            next.reserve((current.size() + max_kary_width - 1) / max_kary_width);
+            for (size_t i = 0; i < current.size(); i += max_kary_width) {
+                size_t end = std::min(current.size(), i + max_kary_width);
+                if (end - i == 1) { next.push_back(current[i]); continue; }
+                std::vector<CMSat::Lit> chunk(current.begin() + i, current.begin() + end);
+                CMSat::Lit hc = new_helper();
+                emit_or_equiv(hc, chunk);
+                stats.kary_or_count++;
+                stats.kary_or_width_total += chunk.size();
+                next.push_back(hc);
+            }
+            current = std::move(next);
+        }
+        if (current.size() == 1) { cache[n] = current[0]; return current[0]; }
         CMSat::Lit h = new_helper();
-        if (group_cse) or_group_cse[inputs] = h;
-        emit_or_equiv(h, inputs);
+        emit_or_equiv(h, current);
         stats.kary_or_count++;
-        stats.kary_or_width_total += inputs.size();
+        stats.kary_or_width_total += current.size();
         cache[n] = h;
         return h;
     }
+    CMSat::Lit h = new_helper();
+    if (group_cse) or_group_cse[inputs] = h;
+    emit_or_equiv(h, inputs);
+    stats.kary_or_count++;
+    stats.kary_or_width_total += inputs.size();
+    cache[n] = h;
+    return h;
 }
 
 // collect_and(n, out): n is a conjunct of the enclosing k-ary AND; append its
