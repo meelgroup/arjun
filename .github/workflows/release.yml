@@ -13,15 +13,33 @@ jobs:
       fail-fast: true
 
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15, macos-15-intel]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15, macos-15-intel, windows-latest]
         build_type: [Release]
 
     steps:
+    - name: Set up MSYS2
+      if: contains(matrix.os, 'windows')
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-ninja
+          mingw-w64-x86_64-gmp
+          mingw-w64-x86_64-mpfr
+          mingw-w64-x86_64-zlib
+          mingw-w64-x86_64-pkgconf
+          make
+
     - uses: actions/setup-python@v5
+      if: "!contains(matrix.os, 'windows')"
       with:
         python-version: '3.10'
 
     - name: Install python dependencies
+      if: "!contains(matrix.os, 'windows')"
       run: |
         pip install numpy lit
 
@@ -63,12 +81,14 @@ jobs:
       run: sudo apt-get update && sudo apt-get install -yq help2man libgmp-dev libmpfr-dev perl
 
     - name: Setup ccache
+      if: "!contains(matrix.os, 'windows')"
       uses: hendrikmuhs/ccache-action@v1
       with:
         key: release-${{ matrix.os }}-${{ matrix.build_type }}
         max-size: 500M
 
     - name: Checkout & build cereal
+      if: "!contains(matrix.os, 'windows')"
       run: |
         wget https://github.com/USCiLab/cereal/archive/v1.3.2.tar.gz
         tar xvf v1.3.2.tar.gz
@@ -86,6 +106,7 @@ jobs:
         cd ..
 
     - name: Checkout armadillo static
+      if: "!contains(matrix.os, 'windows')"
       run: |
         wget https://sourceforge.net/projects/arma/files/armadillo-14.0.2.tar.xz
         tar xvf armadillo-14.0.2.tar.xz
@@ -97,6 +118,7 @@ jobs:
         cd ../..
 
     - name: Checkout & build ensmallen
+      if: "!contains(matrix.os, 'windows')"
       run: |
         wget https://github.com/mlpack/ensmallen/archive/refs/tags/2.22.2.tar.gz
         tar xvf 2.22.2.tar.gz
@@ -109,12 +131,14 @@ jobs:
         cd ../..
 
     - name: Checkout mlpack
+      if: "!contains(matrix.os, 'windows')"
       uses: actions/checkout@v4
       with:
         repository: mlpack/mlpack
         ref: 4.6.2
         path: mlpack
     - name: Build mlpack
+      if: "!contains(matrix.os, 'windows')"
       run: |
         cd mlpack
         mkdir build
@@ -128,7 +152,8 @@ jobs:
       with:
         path: project
         submodules: 'true'
-    - name: Build project
+    - name: Build project (non-Windows)
+      if: "!contains(matrix.os, 'windows')"
       run: |
         cd project
         mkdir -p build && cd build
@@ -141,16 +166,44 @@ jobs:
         -S ..
         cmake --build . --config ${{matrix.build_type}} -v
 
+    - name: Build project (Windows)
+      if: contains(matrix.os, 'windows')
+      shell: msys2 {0}
+      run: |
+        cd project
+        mkdir -p build && cd build
+        cmake \
+        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DEXTRA_SYNTH=OFF \
+        -G Ninja \
+        -S ..
+        cmake --build . --config ${{matrix.build_type}} -v
+
     - name: Test
+      if: "!contains(matrix.os, 'windows')"
       run: ctest -C ${{matrix.build_type}} --verbose
 
-    - name: run it to check it executes
+    - name: run it to check it executes (non-Windows)
+      if: "!contains(matrix.os, 'windows')"
       run: |
         echo "Running version command"
         ./project/build/arjun --version
         echo $?
         echo "Running help command"
         ./project/build/arjun --help
+        echo $?
+
+    - name: run it to check it executes (Windows)
+      if: contains(matrix.os, 'windows')
+      shell: msys2 {0}
+      run: |
+        EXE=./project/build/arjun.exe
+        echo "Running: $EXE --version"
+        $EXE --version
+        echo $?
+        echo "Running: $EXE --help"
+        $EXE --help
         echo $?
 
     - name: Determine artifact name
@@ -166,13 +219,27 @@ jobs:
           echo "name=arjun-mac-arm64" >> "$GITHUB_OUTPUT"
         elif [[ "$OS" == "macos-15-intel" ]]; then
           echo "name=arjun-mac-x86_64" >> "$GITHUB_OUTPUT"
+        elif [[ "$OS" == "windows-latest" ]]; then
+          echo "name=arjun-windows-x86_64" >> "$GITHUB_OUTPUT"
         fi
 
-    - name: Package artifact
+    - name: Package artifact (non-Windows)
+      if: "!contains(matrix.os, 'windows')"
       run: |
         mkdir -p dist
         cp project/build/arjun dist/
         cp project/build/test-synth dist/ 2>/dev/null || true
+        cp -r project/build/lib dist/ 2>/dev/null || true
+        cp -r project/build/include dist/ 2>/dev/null || true
+        tar czf ${{ steps.artifact.outputs.name }}.tar.gz -C dist .
+
+    - name: Package artifact (Windows)
+      if: contains(matrix.os, 'windows')
+      shell: msys2 {0}
+      run: |
+        mkdir -p dist
+        cp project/build/arjun.exe dist/
+        cp project/build/test-synth.exe dist/ 2>/dev/null || true
         cp -r project/build/lib dist/ 2>/dev/null || true
         cp -r project/build/include dist/ 2>/dev/null || true
         tar czf ${{ steps.artifact.outputs.name }}.tar.gz -C dist .
