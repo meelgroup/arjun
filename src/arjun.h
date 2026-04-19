@@ -305,10 +305,10 @@ public:
     }
 
     static void get_dependent_vars(const aig_ptr& aig_orig, std::set<uint32_t>& dep, uint32_t v) {
-        std::set<aig_ptr> visited;
+        std::unordered_set<AIG*> visited;
         std::function<void(const aig_ptr&)> helper =
             [&](const aig_ptr& aig) {
-                if (visited.count(aig)) return;
+                if (visited.count(aig.get())) return;
                 if (aig->type == AIGT::t_lit) {
                     assert(aig->var != v && "Variable cannot depend on itself");
                     dep.insert(aig->var);
@@ -317,7 +317,7 @@ public:
                     helper(aig->l);
                     helper(aig->r);
                 }
-                visited.insert(aig);
+                visited.insert(aig.get());
             };
         helper(aig_orig);
     }

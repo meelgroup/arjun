@@ -902,7 +902,6 @@ void Manthan::rebuild_cex_solver_if_needed(uint64_t total_formula_clauses, bool&
             if (form.aig) form.aig = aigs[idx++];
         }
 
-        // Rebuild
         rebuild_cex_solver();
         nvars_at_last_rebuild = cex_solver.nVars();
         did_rebuild = true;
@@ -2340,7 +2339,7 @@ void Manthan::rebuild_cex_solver() {
             solver.new_var();
             helpers_set.insert(solver.nVars() - 1);
         }
-        uint32_t nVars() const { return solver.nVars(); }
+        [[nodiscard]] uint32_t nVars() const { return solver.nVars(); }
         void add_clause(const std::vector<Lit>& cl) {
             clauses.emplace_back(cl);
         }
@@ -2380,13 +2379,6 @@ void Manthan::rebuild_cex_solver() {
         // Re-use FHolder's already-asserted true literal for t_const nodes
         // so we don't waste a var+unit-clause per formula.
         enc.set_true_lit(fh->get_true_lit());
-        // The k-ary width cap (set_max_kary_width) was evaluated on
-        // sdlx-fixpoint-5: width=3 ballooned clauses 1.9x (worse),
-        // width=8 produced ~28% more clauses and *slower* post-rebuild
-        // repair rate than the uncapped encoding. The wide-backward-clause
-        // hypothesis was wrong; the post-rebuild slowdown is driven by
-        // lost SAT solver state (learnt clauses, VSIDS activity), not by
-        // clause structure. Leave the encoder uncapped here.
         new_f.out = enc.encode(new_f.aig);
         const auto& es = enc.get_stats();
         total_clauses_out += es.clauses_added;
