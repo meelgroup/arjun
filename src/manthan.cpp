@@ -45,7 +45,14 @@
 #include <fstream>
 #include <cstdio>
 #include <filesystem>
-#include <unistd.h>
+#ifdef _WIN32
+#  include <process.h>
+#  define getpid _getpid
+#  define popen  _popen
+#  define pclose _pclose
+#else
+#  include <unistd.h>
+#endif
 
 #ifdef EXTRA_SYNTH
 #include <armadillo>
@@ -2709,7 +2716,8 @@ bool Manthan::has_dependency_cycle_dfs(const uint32_t node, vector<uint8_t>& col
             // Found a back edge - cycle detected
             path.push_back(i);
             return true;
-        } else if (color[i] == 0) {
+        }
+        if (color[i] == 0) {
             if (has_dependency_cycle_dfs(i, color, path)) {
                 return true;
             }

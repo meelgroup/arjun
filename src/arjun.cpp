@@ -440,7 +440,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         for(const auto& l: replaced) {
             if (bad_lit != l) new_replaced.push_back(l^bad_lit.sign());
         }
-        new_replaced.push_back(Lit(elimed, bad_lit.sign()));
+        new_replaced.emplace_back(elimed, bad_lit.sign());
         var_to_lits_it_replaced[bad_lit.var()] = new_replaced;
         scnf.defs[elimed] = nullptr;
         add_elimed.push_back(bad_lit.var());
@@ -607,7 +607,7 @@ DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
                 undefs++;
                 continue;
             }
-            assumptions.push_back(Lit(v, vals[v] == l_False));
+            assumptions.emplace_back(v, vals[v] == l_False);
         }
         auto ret2 = s.solve(&assumptions);
         release_assert(ret2 == l_True);
@@ -777,8 +777,8 @@ DLL_PUBLIC void SimplifiedCNF::fix_mapping_after_renumber(SimplifiedCNF& scnf, c
         cout << "c o [get-cnf] Checking for variables mapping to same new var to set AIG definitions..." << endl;
     map<uint32_t, vector<uint32_t>> new_var_to_origs;
     for(const auto& it: scnf.orig_to_new_var) {
-        auto& orig = it.first;
-        auto& n = it.second;
+        const auto& orig = it.first;
+        const auto& n = it.second;
         new_var_to_origs[n.var()].push_back(orig);
     }
 
@@ -1280,7 +1280,7 @@ DLL_PUBLIC void SimplifiedCNF::replace_clauses_with(vector<int>& ret, uint32_t n
             cl.clear();
             continue;
         }
-        cl.push_back(CMSat::Lit(abs(l)-1, l < 0));
+        cl.emplace_back(abs(l)-1, l < 0);
     }
     assert(cl.empty() && "SBVA should have ended with a 0");
     assert(clauses.size() == new_nclauses && "Number of clauses mismatch after SBVA");
@@ -1784,12 +1784,11 @@ DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
     release_assert(sampl_vars_set);
     release_assert(sampl_vars.size() <= opt_sampl_vars.size() && "We add to opt_sampl_vars via extend_synth in extend.cpp");
     release_assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
-
-    check_orig_sampl_vars_undefined();
-    check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars();
-    check_pre_post_backward_round_synth();
+    assert(check_orig_sampl_vars_undefined());
+    assert(check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars());
+    assert(check_pre_post_backward_round_synth());
     check_all_vars_accounted_for();
-    check_aig_cycles();
+    assert(check_aig_cycles());
     check_self_dependency();
     get_var_types(0, "defs_invariant");
     SLOW_DEBUG_DO(check_synth_funs_randomly());
@@ -1889,16 +1888,16 @@ DLL_PUBLIC void SimplifiedCNF::check_self_dependency() const {
     for(uint32_t orig_v = 0; orig_v < defs.size(); orig_v ++) {
         if (orig_sampl_vars.count(orig_v)) {
             if (!defined(orig_v)) continue;
-            else if (defs[orig_v]->type == AIGT::t_lit) {
+            if (defs[orig_v]->type == AIGT::t_lit) {
                 release_assert(defs[orig_v]->var != orig_v && "Variable depends on itself? Also this is an orig sampl var defined to a literal that has the same var?");
                 release_assert(orig_sampl_vars.count(defs[orig_v]->var) && "If orig_sampl_var is defined to a literal, that literal must also be an orig_sampl_var");
                 continue;
-            } else if (defs[orig_v]->type == AIGT::t_const) {
-                continue;
-            } else {
-                cerr << "ERROR:Orig sampl var " << orig_v+1 << " cannot be defined to an AIG other than literal or const, but it is: " << defs[orig_v] << endl;
-                release_assert(false);
             }
+            if (defs[orig_v]->type == AIGT::t_const) {
+                continue;
+            }
+            cerr << "ERROR:Orig sampl var " << orig_v+1 << " cannot be defined to an AIG other than literal or const, but it is: " << defs[orig_v] << endl;
+            release_assert(false);
         }
         if (!defined(orig_v)) continue;
 
@@ -2150,7 +2149,7 @@ DLL_PUBLIC map<uint32_t, vector<CMSat::Lit>> SimplifiedCNF::get_new_to_orig_var_
     for(const auto& p: orig_to_new_var) {
         const CMSat::Lit l = p.second;
         if (l != CMSat::lit_Undef) {
-            ret[l.var()].push_back(CMSat::Lit(p.first, l.sign()));
+            ret[l.var()].emplace_back(p.first, l.sign());
         }
     }
     return ret;
@@ -2431,21 +2430,22 @@ aig_ptr AIG::simplify(aig_ptr aig, map<aig_ptr, aig_ptr>& cache) {
                     c_t->type = AIGT::t_const;
                     c_t->neg = false;
                     return cache_set(c_t);
-                } else {
-                    // !(TRUE & TRUE) = FALSE
-                    auto c_f = make_shared<AIG>();
-                    c_f->type = AIGT::t_const;
-                    c_f->neg = true;
-                    return cache_set(c_f);
                 }
-            } else if ( // ~(X & FALSE) = TRUE
+                // !(TRUE & TRUE) = FALSE
+                auto c_f = make_shared<AIG>();
+                c_f->type = AIGT::t_const;
+                c_f->neg = true;
+                return cache_set(c_f);
+            }
+            if ( // ~(X & FALSE) = TRUE
                     (r_simp->type == AIGT::t_const && r_simp->neg) ||
                     (l_simp->type == AIGT::t_const && l_simp->neg)) {
                 auto c_t = make_shared<AIG>();
                 c_t->type = AIGT::t_const;
                 c_t->neg = false;
                 return cache_set(c_t);
-            } else if (l_simp->type == AIGT::t_const && l_simp->neg == false) { // ~(TRUE & X) = !X
+            }
+            if (l_simp->type == AIGT::t_const && !l_simp->neg) { // ~(TRUE & X) = !X
                 auto c_f = make_shared<AIG>();
                 c_f->type = r_simp->type;
                 c_f->neg = !r_simp->neg;
@@ -2453,7 +2453,8 @@ aig_ptr AIG::simplify(aig_ptr aig, map<aig_ptr, aig_ptr>& cache) {
                 c_f->l = r_simp->l;
                 c_f->r = r_simp->r;
                 return cache_set(c_f);
-            } else if (r_simp->type == AIGT::t_const && r_simp->neg == false) { // ~(X & TRUE) = !X
+            }
+            if (r_simp->type == AIGT::t_const && !r_simp->neg) { // ~(X & TRUE) = !X
                 auto c_f = make_shared<AIG>();
                 c_f->type = l_simp->type;
                 c_f->neg = !l_simp->neg;
@@ -2461,40 +2462,40 @@ aig_ptr AIG::simplify(aig_ptr aig, map<aig_ptr, aig_ptr>& cache) {
                 c_f->l = l_simp->l;
                 c_f->r = l_simp->r;
                 return cache_set(c_f);
-            } else {
-                // Build new AND node with simplified children, apply CSE
-                auto new_and = make_shared<AIG>();
-                new_and->type = AIGT::t_and;
-                new_and->neg = true;
-                new_and->l = l_simp;
-                new_and->r = r_simp;
-                return cache_set(new_and);
-            }
-        } else {
-            if (l_simp->type == AIGT::t_const) {
-                if (!l_simp->neg) return cache_set(r_simp); // TRUE & X = X
-                else return cache_set(l_simp); // FALSE & X = FALSE
-            } else if (r_simp->type == AIGT::t_const) {
-                if (!r_simp->neg) return cache_set(l_simp); // X & TRUE = X
-                else return cache_set(r_simp); // X & FALSE = FALSE
-            } else if (l_simp == r_simp) {
-                return cache_set(l_simp);                   // X & X = X
-            } else if (l_simp->type == AIGT::t_lit && r_simp->type == AIGT::t_lit &&
-                       l_simp->var == r_simp->var &&
-                       l_simp->neg == r_simp->neg) {
-                return cache_set(l_simp);
-            } else if (l_simp == r_simp) {
-                return cache_set(l_simp);                   // X & X = X
-            } else {
-                // Build new AND node with simplified children, apply CSE
-                auto new_and = make_shared<AIG>();
-                new_and->type = AIGT::t_and;
-                new_and->neg = false;
-                new_and->l = l_simp;
-                new_and->r = r_simp;
-                return cache_set(new_and);
-            }
+            }                  // Build new AND node with simplified children, apply CSE
+            auto new_and = make_shared<AIG>();
+            new_and->type = AIGT::t_and;
+            new_and->neg = true;
+            new_and->l = l_simp;
+            new_and->r = r_simp;
+            return cache_set(new_and);
         }
+        if (l_simp->type == AIGT::t_const) {
+            if (!l_simp->neg) return cache_set(r_simp); // TRUE & X = X
+            return cache_set(l_simp); // FALSE & X = FALSE
+        }
+        if (r_simp->type == AIGT::t_const) {
+            if (!r_simp->neg) return cache_set(l_simp); // X & TRUE = X
+            return cache_set(r_simp); // X & FALSE = FALSE
+        }
+        if (l_simp == r_simp) {
+            return cache_set(l_simp);                   // X & X = X
+        }
+        if (l_simp->type == AIGT::t_lit && r_simp->type == AIGT::t_lit &&
+                   l_simp->var == r_simp->var &&
+                   l_simp->neg == r_simp->neg) {
+            return cache_set(l_simp);
+        }
+        if (l_simp == r_simp) {
+            return cache_set(l_simp);                   // X & X = X
+        }
+        // Build new AND node with simplified children, apply CSE
+        auto new_and = make_shared<AIG>();
+        new_and->type = AIGT::t_and;
+        new_and->neg = false;
+        new_and->l = l_simp;
+        new_and->r = r_simp;
+        return cache_set(new_and);
     }
     // cache[aig] already set to aig as sentinel, which is correct for fallback
     return aig;
