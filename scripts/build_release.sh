@@ -2,8 +2,6 @@
 
 set -euo pipefail
 
-SOLVERS_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-
 rm -rf .cmake
 rm -rf lib*
 rm -rf Test*
@@ -14,11 +12,14 @@ rm -rf CM*
 rm -rf cmake*
 rm -rf arjun
 rm -rf Makefile
-rm -rf rjun-src
+rm -rf src
 rm -rf deps
 rm -rf _deps
-cmake -DENABLE_TESTING=ON -DCMAKE_BUILD_TYPE=Release -DEXTRA_SYNTH=ON \
+SOLVERS_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+cmake -DENABLE_TESTING=ON -DCMAKE_BUILD_TYPE=Release \
+    -DEXTRA_SYNTH=ON \
     -Dcadical_DIR="${SOLVERS_DIR}/cadical/build" \
+    -Dcadiback_DIR="${SOLVERS_DIR}/cadiback/build" \
     -Dcryptominisat5_DIR="${SOLVERS_DIR}/cryptominisat/build" \
     -Dsbva_DIR="${SOLVERS_DIR}/sbva/build" \
     -Dtreedecomp_DIR="${SOLVERS_DIR}/treedecomp/build" \

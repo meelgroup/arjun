@@ -66,7 +66,7 @@ public:
     AIG(const AIG&) = delete;
     AIG& operator=(const AIG&) = delete;
 
-    bool invariants() const {
+    [[nodiscard]] bool invariants() const {
         if (type == AIGT::t_lit) {
             if (l != nullptr || r != nullptr) std::cout << "ERROR: AIG literal has children!" << std::endl;
             if (var == none_var) std::cout << "ERROR: AIG var node doesn't have a var!" << std::endl;
@@ -102,17 +102,16 @@ public:
                     ret = ret ^ aig->neg;
                     cache[aig] = ret;
                     return ret;
-                } else {
-                    assert(aig->var < vals.size());
-                    auto ret = vals[aig->var];
-                    if (ret == CMSat::l_Undef) {
-                        cache[aig] = CMSat::l_Undef;
-                        return CMSat::l_Undef;
-                    }
-                    ret = ret ^ aig->neg;
-                    cache[aig] = ret;
-                    return ret;
                 }
+                assert(aig->var < vals.size());
+                auto ret = vals[aig->var];
+                if (ret == CMSat::l_Undef) {
+                    cache[aig] = CMSat::l_Undef;
+                    return CMSat::l_Undef;
+                }
+                ret = ret ^ aig->neg;
+                cache[aig] = ret;
+                return ret;
             }
 
             if (aig->type == AIGT::t_const) return CMSat::boolToLBool(!aig->neg);
@@ -235,7 +234,8 @@ public:
             if (l->l->type == AIGT::t_lit && r->type == AIGT::t_lit &&
                        l->l->var == r->var && l->l->neg != r->neg) {
                 return neg ? new_not(r) : r;
-            } else if (l->r->type == AIGT::t_lit && r->type == AIGT::t_lit &&
+            }
+            if (l->r->type == AIGT::t_lit && r->type == AIGT::t_lit &&
                        l->r->var == r->var && l->r->neg != r->neg) {
                 return neg ? new_not(r) : r;
             }
@@ -326,7 +326,7 @@ public:
         std::vector<aig_ptr> ret;
         std::map<aig_ptr, aig_ptr> cache;
         ret.reserve(aigs.size());
-        for (auto& aig : aigs) {
+        for (const auto& aig : aigs) {
             if (aig == nullptr) {
                 ret.push_back(nullptr);
                 continue;
@@ -518,7 +518,7 @@ public:
         const_false = other.const_false;
     }
 
-    aig_ptr new_const(bool val) const {
+    [[nodiscard]] aig_ptr new_const(bool val) const {
         return val ? const_true : const_false;
     }
 
@@ -590,9 +590,9 @@ public:
         return os;
     }
 
-    std::unique_ptr<Field> dup() const final { return std::make_unique<FMpz>(val); }
-    bool is_zero() const final { return val == 0; }
-    bool is_one() const final { return val == 1; }
+    [[nodiscard]] std::unique_ptr<Field> dup() const final { return std::make_unique<FMpz>(val); }
+    [[nodiscard]] bool is_zero() const final { return val == 0; }
+    [[nodiscard]] bool is_one() const final { return val == 1; }
     void set_zero() final { val = 0; }
     void set_one() final { val = 1; }
 
@@ -609,7 +609,7 @@ public:
       return v.get_mpz_t()->_mp_alloc * sizeof(mp_limb_t);
     }
 
-    uint64_t bytes_used() const final {
+    [[nodiscard]] uint64_t bytes_used() const final {
       return sizeof(FMpz) + helper(val);
     }
 };
@@ -617,26 +617,26 @@ public:
 class FGenMpz final : public CMSat::FieldGen {
 public:
     ~FGenMpz() final = default;
-    std::unique_ptr<CMSat::Field> zero() const final {
+    [[nodiscard]] std::unique_ptr<CMSat::Field> zero() const final {
         return std::make_unique<FMpz>(0);
     }
 
-    std::unique_ptr<CMSat::Field> one() const final {
+    [[nodiscard]] std::unique_ptr<CMSat::Field> one() const final {
         return std::make_unique<FMpz>(1);
     }
 
-    std::unique_ptr<FieldGen> dup() const final {
+    [[nodiscard]] std::unique_ptr<FieldGen> dup() const final {
         return std::make_unique<FGenMpz>();
     }
 
-    bool larger_than(const CMSat::Field& a, const CMSat::Field& b) const final {
+    [[nodiscard]] bool larger_than(const CMSat::Field& a, const CMSat::Field& b) const final {
         const auto& ad = static_cast<const FMpz&>(a);
         const auto& bd = static_cast<const FMpz&>(b);
         return ad.val > bd.val;
     }
 
-    bool weighted() const final { return false; }
-    bool exact() const final { return true; }
+    [[nodiscard]] bool weighted() const final { return false; }
+    [[nodiscard]] bool exact() const final { return true; }
 };
 
 class FMpq final : public CMSat::Field {
@@ -647,7 +647,7 @@ public:
     FMpq(const mpz_class& _val) : val(_val) {}
     FMpq(const mpq_class& _val) : val(_val) {}
     FMpq(const FMpq& other) : val(other.val) {}
-    const mpq_class& get_val() const { return val; }
+    [[nodiscard]] const mpq_class &get_val() const { return val; }
 
     Field& operator=(const Field& other) final {
         const auto& od = static_cast<const FMpq&>(other);
@@ -695,15 +695,15 @@ public:
         return os;
     }
 
-    std::unique_ptr<Field> dup() const final {
+    [[nodiscard]] std::unique_ptr<Field> dup() const final {
         return std::make_unique<FMpq>(val);
     }
 
-    bool is_zero() const final {
+    [[nodiscard]] bool is_zero() const final {
         return val == 0;
     }
 
-    bool is_one() const final {
+    [[nodiscard]] bool is_one() const final {
         return val == 1;
     }
 
@@ -716,11 +716,11 @@ public:
     void set_zero() final { val = 0; }
     void set_one() final { val = 1; }
 
-    inline uint64_t helper(const mpz_class& v) const {
+    [[nodiscard]] inline uint64_t helper(const mpz_class& v) const {
       return v.get_mpz_t()->_mp_alloc * sizeof(mp_limb_t);
     }
 
-    uint64_t bytes_used() const final {
+    [[nodiscard]] uint64_t bytes_used() const final {
       return sizeof(FMpq) +
           helper(val.get_num()) + helper(val.get_den());
     }
@@ -787,26 +787,26 @@ public:
 class FGenMpq final : public CMSat::FieldGen {
 public:
     ~FGenMpq() final = default;
-    std::unique_ptr<CMSat::Field> zero() const final {
+    [[nodiscard]] std::unique_ptr<CMSat::Field> zero() const final {
         return std::make_unique<FMpq>(0);
     }
 
-    std::unique_ptr<CMSat::Field> one() const final {
+    [[nodiscard]] std::unique_ptr<CMSat::Field> one() const final {
         return std::make_unique<FMpq>(1);
     }
 
-    std::unique_ptr<FieldGen> dup() const final {
+    [[nodiscard]] std::unique_ptr<FieldGen> dup() const final {
         return std::make_unique<FGenMpq>();
     }
 
-    bool larger_than(const CMSat::Field& a, const CMSat::Field& b) const final {
+    [[nodiscard]] bool larger_than(const CMSat::Field& a, const CMSat::Field& b) const final {
         const auto& ad = static_cast<const FMpq&>(a);
         const auto& bd = static_cast<const FMpq&>(b);
         return ad.val > bd.val;
     }
 
-    bool weighted() const final { return true; }
-    bool exact() const final { return true; }
+    [[nodiscard]] bool weighted() const final { return true; }
+    [[nodiscard]] bool exact() const final { return true; }
 };
 
 
@@ -857,7 +857,7 @@ public:
         mpfr_init2(val, prec);
         mpfr_set(val, other.val, MPFR_RNDN);
     }
-    const mpfr_t& get_val() const { return val; }
+    [[nodiscard]] const mpfr_t& get_val() const { return val; }
 
     Field& operator=(const Field& other) final {
         const auto& od = static_cast<const FMpfr&>(other);
@@ -915,15 +915,15 @@ public:
         return os;
     }
 
-    std::unique_ptr<Field> dup() const final {
+    [[nodiscard]] std::unique_ptr<Field> dup() const final {
         return std::make_unique<FMpfr>(val);
     }
 
-    bool is_zero() const final {
+    [[nodiscard]] bool is_zero() const final {
         return mpfr_cmp_si(val, 0) == 0;
     }
 
-    bool is_one() const final {
+    [[nodiscard]] bool is_one() const final {
         return mpfr_cmp_si(val, 1) == 0;
     }
 
@@ -940,7 +940,7 @@ public:
     void set_one() final { mpfr_set_si(val, 1, MPFR_RNDN); }
 
 
-    uint64_t bytes_used() const final {
+    [[nodiscard]] uint64_t bytes_used() const final {
       return sizeof(FMpfr) + mpfr_memory_usage(val);
     }
 };
@@ -957,26 +957,26 @@ public:
         return *this;
     }
     FGenMpfr(mpfr_prec_t _prec) : prec(_prec) {}
-    std::unique_ptr<CMSat::Field> zero() const final {
+    [[nodiscard]] std::unique_ptr<CMSat::Field> zero() const final {
         return std::make_unique<FMpfr>((long)0, prec);
     }
 
-    std::unique_ptr<CMSat::Field> one() const final {
-        return std::make_unique<FMpfr>((long)1, prec);
+    [[nodiscard]] std::unique_ptr<CMSat::Field> one() const final {
+      return std::make_unique<FMpfr>((long)1, prec);
     }
 
-    std::unique_ptr<FieldGen> dup() const final {
+    [[nodiscard]] std::unique_ptr<FieldGen> dup() const final {
         return std::make_unique<FGenMpfr>(prec);
     }
 
-    bool larger_than(const CMSat::Field& a, const CMSat::Field& b) const final {
+    [[nodiscard]] bool larger_than(const CMSat::Field& a, const CMSat::Field& b) const final {
         const auto& ad = static_cast<const FMpfr&>(a);
         const auto& bd = static_cast<const FMpfr&>(b);
         return mpfr_cmp(ad.val, bd.val) > 0;
     }
 
-    bool weighted() const final { return true; }
-    bool exact() const final { return false; }
+    [[nodiscard]] bool weighted() const final { return true; }
+    [[nodiscard]] bool exact() const final { return false; }
 };
 
 struct SimpConf {
@@ -1053,21 +1053,21 @@ public:
         *this = other;
     }
 
-    const auto& nVars() const { return nvars; }
-    const auto& get_clauses() const { return clauses; }
-    const auto& get_red_clauses() const { return red_clauses; }
-    const auto& get_weights() const { return weights; }
-    const auto& get_sampl_vars() const { return sampl_vars; }
-    auto get_orig_num_vars() const {
+    [[nodiscard]] const auto& nVars() const { return nvars; }
+    [[nodiscard]] const auto& get_clauses() const { return clauses; }
+    [[nodiscard]] const auto& get_red_clauses() const { return red_clauses; }
+    [[nodiscard]] const auto& get_weights() const { return weights; }
+    [[nodiscard]] const auto& get_sampl_vars() const { return sampl_vars; }
+    [[nodiscard]] auto get_orig_num_vars() const {
         assert(defs.size() >= nvars);
         return defs.size();
     }
-    const auto& get_orig_sampl_vars() const { assert(orig_sampl_vars_set); return orig_sampl_vars; }
-    const auto& get_orig_clauses() const { return orig_clauses; }
-    const auto& get_opt_sampl_vars() const { return opt_sampl_vars; }
-    const auto& get_backbone_done() const { return backbone_done; }
-    bool synth_done() const;
-    bool is_projected() const { return proj; }
+    [[nodiscard]] const auto& get_orig_sampl_vars() const { assert(orig_sampl_vars_set); return orig_sampl_vars; }
+    [[nodiscard]] const auto& get_orig_clauses() const { return orig_clauses; }
+    [[nodiscard]] const auto& get_opt_sampl_vars() const { return opt_sampl_vars; }
+    [[nodiscard]] const auto& get_backbone_done() const { return backbone_done; }
+    [[nodiscard]] bool synth_done() const;
+    [[nodiscard]] bool is_projected() const { return proj; }
 
     template<class T>
     void set_orig_sampl_vars(const T& vars) {
@@ -1084,11 +1084,10 @@ public:
     }
 
     // ORIG variable
-    bool defined(const uint32_t v) const {
+    [[nodiscard]] bool defined(const uint32_t v) const {
         assert(v < defs.size());
         assert(need_aig);
-        if (defs[v] != nullptr) return true;
-        return false;
+        return defs[v] != nullptr;
     }
     void set_need_aig() {
         // should be the first thing to set
@@ -1105,21 +1104,21 @@ public:
         assert(opt_sampl_vars_set == false);
         need_aig = true;
     }
-    bool get_need_aig() const { return need_aig; }
-    uint32_t num_defs() const { return defs.size(); }
+    [[nodiscard]] bool get_need_aig() const { return need_aig; }
+    [[nodiscard]] uint32_t num_defs() const { return defs.size(); }
 
     // Returns NEW vars, i.e. < nVars()
     // It is checked that it is correct and total
-    VarTypes get_var_types([[maybe_unused]] uint32_t verb, const std::string& str = "") const;
+    [[nodiscard]] VarTypes get_var_types([[maybe_unused]] uint32_t verb, const std::string& str = "") const;
 
-    bool check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars() const;
-    bool check_orig_sampl_vars_undefined() const;
-    bool defs_invariant() const;
+    [[nodiscard]] bool check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars() const;
+    [[nodiscard]] bool check_orig_sampl_vars_undefined() const;
+    [[nodiscard]] bool defs_invariant() const;
 
     // Get the orig vars this AIG depends on, recursively expanding defined vars
     std::set<uint32_t> get_dependent_vars_recursive(const uint32_t orig_v, std::map<uint32_t, std::set<uint32_t>>& cache) const;
 
-    bool check_aig_cycles() const;
+    [[nodiscard]] bool check_aig_cycles() const;
     void check_self_dependency() const;
     void check_cnf_vars() const;
 
@@ -1135,10 +1134,10 @@ public:
     void check_cnf_sampl_sanity() const;
 
     // Gives all the orig lits that map to this variable
-    std::map<uint32_t, std::vector<CMSat::Lit>> get_new_to_orig_var_list() const;
+    [[nodiscard]] std::map<uint32_t, std::vector<CMSat::Lit>> get_new_to_orig_var_list() const;
 
     // Gives an example lit, sometimes good enough
-    std::map<uint32_t, CMSat::Lit> get_new_to_orig_var() const;
+    [[nodiscard]] std::map<uint32_t, CMSat::Lit> get_new_to_orig_var() const;
 
     uint32_t new_vars(uint32_t vars);
     uint32_t new_var();
@@ -1146,8 +1145,8 @@ public:
     void start_with_clean_sampl_vars();
     void check_var(const uint32_t v) const;
     void check_clause(const std::vector<CMSat::Lit>& cl) const;
-    void add_xor_clause(const std::vector<uint32_t>&, bool) { exit(EXIT_FAILURE); }
-    void add_xor_clause(const std::vector<CMSat::Lit>&, bool) { exit(EXIT_FAILURE); }
+    void add_xor_clause(const std::vector<uint32_t>&, bool) const { exit(EXIT_FAILURE); }
+    void add_xor_clause(const std::vector<CMSat::Lit>&, bool) const { exit(EXIT_FAILURE); }
     void add_clause(const std::vector<CMSat::Lit>& cl) {
         check_clause(cl);
         clauses.push_back(cl);
@@ -1156,8 +1155,8 @@ public:
         check_clause(cl);
         red_clauses.push_back(cl);
     }
-    bool get_sampl_vars_set() const { return sampl_vars_set; }
-    bool get_opt_sampl_vars_set() const { return opt_sampl_vars_set; }
+    [[nodiscard]] bool get_sampl_vars_set() const { return sampl_vars_set; }
+    [[nodiscard]] bool get_opt_sampl_vars_set() const { return opt_sampl_vars_set; }
 
     template<class T>
     void set_sampl_vars(const T& vars, bool ignore = false) {
@@ -1203,8 +1202,8 @@ public:
     void set_multiplier_weight(const std::unique_ptr<CMSat::Field>& m) {
         *multiplier_weight = *m;
     }
-    const auto& get_multiplier_weight() const { return multiplier_weight; }
-    auto get_lit_weight(CMSat::Lit lit) const {
+    [[nodiscard]] const auto& get_multiplier_weight() const { return multiplier_weight; }
+    [[nodiscard]] auto get_lit_weight(CMSat::Lit lit) const {
         assert(weighted);
         if (!fg->weighted()) {
           std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
@@ -1213,10 +1212,9 @@ public:
         assert(lit.var() < nVars());
         auto it = weights.find(lit.var());
         if (it == weights.end()) return std::unique_ptr<CMSat::Field>(fg->one());
-        else {
-            if (!lit.sign()) return std::unique_ptr<CMSat::Field>(it->second.pos->dup());
-            else return std::unique_ptr<CMSat::Field>(it->second.neg->dup());
-        }
+        if (!lit.sign())
+            return std::unique_ptr<CMSat::Field>(it->second.pos->dup());
+        return std::unique_ptr<CMSat::Field>(it->second.neg->dup());
     }
     void unset_var_weight(uint32_t v) {
         assert(v < nVars());
@@ -1248,15 +1246,17 @@ public:
                 *weight.neg -= w;}
             weights[lit.var()] = weight;
             return;
-        } else {
-            if (!lit.sign()) *it->second.pos = w;
-            else *it->second.neg = w;
         }
+        if (!lit.sign())
+            *it->second.pos = w;
+        else
+            *it->second.neg = w;
+
     }
     void set_weighted(bool _weighted) { weighted = _weighted; }
     void set_projected(bool _projected) { proj = _projected; }
-    bool get_weighted() const { return weighted; }
-    bool get_projected() const { return proj; }
+    [[nodiscard]] bool get_weighted() const { return weighted; }
+    [[nodiscard]] bool get_projected() const { return proj; }
     void clear_weights_for_nonprojected_vars() {
         if (!weighted) return;
         std::set<uint32_t> tmp(sampl_vars.begin(), sampl_vars.end());
@@ -1265,17 +1265,17 @@ public:
         }
     }
 
-    std::vector<CMSat::Lit>& map_cl(std::vector<CMSat::Lit>& cl, const std::vector<uint32_t>& v_map) {
+    [[nodiscard]] std::vector<CMSat::Lit>& map_cl(std::vector<CMSat::Lit>& cl, const std::vector<uint32_t>& v_map) const {
             for(auto& l: cl) l = CMSat::Lit(v_map[l.var()], l.sign());
             return cl;
     }
-    std::vector<uint32_t>& map_var(std::vector<uint32_t>& cl, const std::vector<uint32_t>& v_map) {
+    [[nodiscard]] std::vector<uint32_t>& map_var(std::vector<uint32_t>& cl, const std::vector<uint32_t>& v_map) const {
         for(auto& l: cl) l = v_map[l];
         return cl;
     }
-    std::set<uint32_t> map_var(const std::set<uint32_t>& cl, const std::vector<uint32_t>& v_map) {
+    [[nodiscard]] std::set<uint32_t> map_var(const std::set<uint32_t>& cl, const std::vector<uint32_t>& v_map) const {
         std::set<uint32_t> new_set;
-        for(auto& l: cl) new_set.insert(v_map[l]);
+        for(const auto& l: cl) new_set.insert(v_map[l]);
         return new_set;
     }
 
@@ -1292,7 +1292,7 @@ public:
 
     void write_simpcnf(const std::string& fname, bool red = true) const;
 
-    bool weight_set(uint32_t v) const {
+    [[nodiscard]] bool weight_set(uint32_t v) const {
         check_var(v);
         if (!fg->weighted()) {
           std::cout << "ERROR: Formula is weighted but the field is not weighted!" << std::endl;
@@ -1328,7 +1328,7 @@ public:
 
     // returns in CNF (NEW VARS) the dependencies of each variable
     // input is also NEW VARS
-    std::map<uint32_t, std::set<uint32_t>> compute_dependencies(const std::set<uint32_t>& vars) const;
+    [[nodiscard]] std::map<uint32_t, std::set<uint32_t>> compute_dependencies(const std::set<uint32_t>& vars) const;
 
     // Binary, packed writing
     void write_aig_defs_to_file(const std::string& fname) const;
@@ -1342,7 +1342,7 @@ public:
     // Verilog writing
     void write_aig_def_to_verilog(const std::string& fname) const;
 
-    std::vector<CMSat::lbool> extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed = false) const;
+    [[nodiscard]] std::vector<CMSat::lbool> extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed = false) const;
 
     void map_aigs_to_orig(const std::vector<aig_ptr>& aigs, const uint32_t max_num_vars,
             std::optional<std::reference_wrapper<const std::map<uint32_t, CMSat::Lit>>> back_map = std::nullopt);
@@ -1368,7 +1368,7 @@ public:
         backbone_done = bb_done;
     }
 
-    std::vector<std::vector<uint32_t>> find_disconnected() const;
+    [[nodiscard]] std::vector<std::vector<uint32_t>> find_disconnected() const;
 
     // Used after SBVA to replace clauses
     void replace_clauses_with(std::vector<int>& ret, uint32_t new_nvars, uint32_t new_nclauses);
@@ -1392,11 +1392,11 @@ public:
         assert(!after_backward_round_synth && "Should only be set once");
         after_backward_round_synth = true;
     }
-    const auto& get_orig_to_new_var() const {
+    [[nodiscard]] const auto& get_orig_to_new_var() const {
         return orig_to_new_var;
     }
 
-    const CMSat::Lit orig_to_new_lit(const CMSat::Lit l) const {
+    [[nodiscard]] CMSat::Lit orig_to_new_lit(const CMSat::Lit l) const {
         assert(l.var() < defs.size());
         assert(orig_to_new_var.count(l.var()));
         CMSat::Lit k = orig_to_new_var.at(l.var());
@@ -1404,7 +1404,7 @@ public:
     }
 
     // Get AIG definition for a variable (in ORIG numbering)
-    const aig_ptr& get_def(uint32_t v) const {
+    [[nodiscard]] const aig_ptr& get_def(uint32_t v) const {
         assert(v < defs.size());
         return defs[v];
     }
@@ -1417,7 +1417,7 @@ public:
         AIG::simplify_aigs(verb, defs);
     }
     void rewrite_aigs(const uint32_t verb = 0);
-    const auto& get_aig_mng() const { return aig_mng; }
+    [[nodiscard]] const auto& get_aig_mng() const { return aig_mng; }
     void import_candidate_functions(const std::string& fname, int verb = 0);
     void check_red_cls_deriveable() const;
 
@@ -1558,8 +1558,6 @@ public:
         uint32_t reduce_cex_tot_rep = 2000; // reduce multi_cex when tot_repaired > this
         uint32_t reduce_cex_need_rep = 3;   // set multi_cex_k=1 when needs_repair <= this
         uint32_t reduce_cex_cz_min_rep = 100; // min tot_repaired for cost-zero cex reduction
-        uint32_t skip_better_ctx_min = 10;  // skip find_better_ctx when needs_repair <= this
-        uint32_t skip_better_ctx_freq = 3;  // skip find_better_ctx every N loops (when gen_ok dominates)
         uint32_t simplify_repair_every = 1000; // also simplify repair_solver every N tot_repaired
         uint32_t skip_input_only_min_rep = 200; // min tot_repaired before skipping input-only attempt
         uint32_t skip_input_only_ratio = 20;    // skip when gen_ok * ratio < tot_repaired
@@ -1649,29 +1647,29 @@ public:
     void set_seed(uint32_t seed);
 
     //Get config
-    uint32_t get_verb() const;
-    bool get_do_unate() const;
-    std::string get_specified_order_fname() const;
-    double get_no_gates_below() const;
-    int get_simp() const;
-    bool get_distill() const;
-    bool get_intree() const;
-    bool get_bve_pre_simplify() const;
-    uint32_t get_incidence_count() const;
-    bool get_or_gate_based() const;
-    bool get_xor_gates_based() const;
-    bool get_probe_based() const;
-    bool get_backward() const;
-    uint32_t get_backw_max_confl() const;
-    bool get_gauss_jordan() const;
-    bool get_find_xors() const;
-    bool get_ite_gate_based() const;
-    bool get_irreg_gate_based() const;
-    uint32_t get_extend_max_confl() const;
-    int get_oracle_find_bins() const;
-    double get_cms_glob_mult() const;
-    int get_extend_ccnr() const;
-    uint32_t get_seed() const;
+    [[nodiscard]] uint32_t get_verb() const;
+    [[nodiscard]] bool get_do_unate() const;
+    [[nodiscard]] std::string get_specified_order_fname() const;
+    [[nodiscard]] double get_no_gates_below() const;
+    [[nodiscard]] int get_simp() const;
+    [[nodiscard]] bool get_distill() const;
+    [[nodiscard]] bool get_intree() const;
+    [[nodiscard]] bool get_bve_pre_simplify() const;
+    [[nodiscard]] uint32_t get_incidence_count() const;
+    [[nodiscard]] bool get_or_gate_based() const;
+    [[nodiscard]] bool get_xor_gates_based() const;
+    [[nodiscard]] bool get_probe_based() const;
+    [[nodiscard]] bool get_backward() const;
+    [[nodiscard]] uint32_t get_backw_max_confl() const;
+    [[nodiscard]] bool get_gauss_jordan() const;
+    [[nodiscard]] bool get_find_xors() const;
+    [[nodiscard]] bool get_ite_gate_based() const;
+    [[nodiscard]] bool get_irreg_gate_based() const;
+    [[nodiscard]] uint32_t get_extend_max_confl() const;
+    [[nodiscard]] int get_oracle_find_bins() const;
+    [[nodiscard]] double get_cms_glob_mult() const;
+    [[nodiscard]] int get_extend_ccnr() const;
+    [[nodiscard]] uint32_t get_seed() const;
 
 private:
     ArjPrivateData* arjdata = nullptr;

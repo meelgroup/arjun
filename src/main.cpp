@@ -70,7 +70,7 @@ string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_learnt=1),b
 
 int synthesis = false;
 int do_unate = false;
-int do_unate_def = false;
+int do_unate_def = true;
 int do_revbce = false;
 int do_minim_indep = true;
 string debug_minim;
@@ -139,7 +139,7 @@ void myflag(const char* name, T& var, const char* hhelp) {
 void add_arjun_options() {
     myopt2("-v", "--verb", conf.verb, fc_int, "Verbosity");
     program.add_argument("--version") \
-        .action([&](const auto&) {print_version(); exit(0);}) \
+        .action([&](const auto&) {cout << print_version() << endl; exit(0);}) \
         .flag()
         .help("Print version and exit");
 
@@ -211,8 +211,6 @@ void add_arjun_options() {
     myopt("--reducecextotrep", mconf.reduce_cex_tot_rep, fc_int, "Reduce multi_cex when tot_repaired > this");
     myopt("--reducecexneedrep", mconf.reduce_cex_need_rep, fc_int, "Set multi_cex_k=1 when needs_repair <= this");
     myopt("--reducecexczminrep", mconf.reduce_cex_cz_min_rep, fc_int, "Min tot_repaired for cost-zero cex reduction");
-    myopt("--skipbctxmin", mconf.skip_better_ctx_min, fc_int, "Skip find_better_ctx when needs_repair <= this");
-    myopt("--skipbctxfreq", mconf.skip_better_ctx_freq, fc_int, "Skip find_better_ctx every N loops when gen_ok dominates");
     myopt("--simprepevery", mconf.simplify_repair_every, fc_int, "Simplify repair_solver every N tot_repaired");
     myopt("--skipinputminrep", mconf.skip_input_only_min_rep, fc_int, "Min tot_repaired before skipping input-only conflict");
     myopt("--skipinputratio", mconf.skip_input_only_ratio, fc_int, "Skip input-only when gen_ok * ratio < tot_repaired");
@@ -382,7 +380,8 @@ void do_synthesis() {
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
     check_cnf_sat(cnf);
     cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
-    cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
+    if (conf.verb)
+        cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
 
     if (do_synth_bve && !cnf.synth_done()) {
         cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);

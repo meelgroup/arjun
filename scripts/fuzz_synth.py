@@ -463,8 +463,6 @@ if __name__ == "__main__":
         solver += " --reducecextotrep " + random.choice(["1", "10", "100", "2000", "100000"])
         solver += " --reducecexneedrep " + random.choice(["0", "1", "3", "10", "1000"])
         solver += " --reducecexczminrep " + random.choice(["1", "10", "100", "10000"])
-        solver += " --skipbctxmin " + random.choice(["0", "1", "5", "10", "1000"])
-        solver += " --skipbctxfreq " + random.choice(["0", "1", "2", "3", "10"])
         solver += " --simprepevery " + random.choice(["0", "1", "10", "1000", "100000"])
         solver += " --skipinputminrep " + random.choice(["1", "10", "200", "10000"])
         solver += " --skipinputratio " + random.choice(["1", "5", "20", "100"])

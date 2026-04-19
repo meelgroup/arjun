@@ -114,6 +114,7 @@ class Manthan {
         uint32_t find_next_repair_var(const sample& ctx) const;
         void perform_repair(const uint32_t y_rep, const sample& ctx, const std::vector<CMSat::Lit>& conflict);
         void add_not_f_x_yhat();
+        void rebuild_cex_solver_if_needed(uint64_t total_formula_clauses, bool& did_rebuild);
         void rebuild_cex_solver();
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with(std::set<uint32_t>& vars);
@@ -183,15 +184,15 @@ class Manthan {
         mpz_class prev_error_count = -1; // -1 means no previous count
 
         // debug
-        bool verify_final_cnf(const ArjunNS::SimplifiedCNF& fcnf) const;
-        bool is_unsat(const std::vector<CMSat::Lit>& conflict, uint32_t y_rep, const sample& ctx) const;
-        bool ctx_y_hat_correct(const sample& ctx) const;
-        bool ctx_is_sat(const sample& ctx) const;
-        bool check_map_dependency_cycles() const;
-        bool has_dependency_cycle_dfs(const uint32_t node, std::vector<uint8_t>& color, std::vector<uint32_t>& path) const; // used in check_dependency_loop
-        bool check_aig_dependency_cycles() const;
-        bool check_transitive_closure_correctness() const;
-        bool check_functions_for_y_vars() const;
+        [[nodiscard]] bool verify_final_cnf(const ArjunNS::SimplifiedCNF& fcnf) const;
+        [[nodiscard]] bool is_unsat(const std::vector<CMSat::Lit>& conflict, uint32_t y_rep, const sample& ctx) const;
+        [[nodiscard]] bool ctx_y_hat_correct(const sample& ctx) const;
+        [[nodiscard]] bool ctx_is_sat(const sample& ctx) const;
+        [[nodiscard]] bool check_map_dependency_cycles() const;
+        [[nodiscard]] bool has_dependency_cycle_dfs(const uint32_t node, std::vector<uint8_t>& color, std::vector<uint32_t>& path) const; // used in check_dependency_loop
+        [[nodiscard]] bool check_aig_dependency_cycles() const;
+        [[nodiscard]] bool check_transitive_closure_correctness() const;
+        [[nodiscard]] bool check_functions_for_y_vars() const;
         std::mt19937 mtrand;
         std::vector<uint32_t> updated_y_funcs; // y_hats updated during last round of training
         std::set<uint32_t> needs_reencode; // formulas modified since last rebuild

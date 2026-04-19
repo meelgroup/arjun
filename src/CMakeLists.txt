@@ -91,6 +91,13 @@ set_target_properties(arjun PROPERTIES
     VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
     SOVERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
 )
+# On MinGW both DLL and EXE import libs share the libarjun.dll.a name,
+# so the arjun library and arjun-bin executable (OUTPUT_NAME=arjun)
+# collide on the import lib. Rename the library's output on Windows to
+# avoid the clash.
+if(WIN32)
+    set_target_properties(arjun PROPERTIES OUTPUT_NAME arjunwin)
+endif()
 
 add_executable(arjun-bin main.cpp synth.cpp)
 add_executable(arjun-example example.cpp)

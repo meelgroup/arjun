@@ -39,7 +39,7 @@ public:
     Puura(const Config& _conf);
     ~Puura();
 
-    std::unique_ptr<CMSat::SATSolver> fill_solver(const ArjunNS::SimplifiedCNF& cnf);
+    [[nodiscard]] std::unique_ptr<CMSat::SATSolver> fill_solver(const ArjunNS::SimplifiedCNF& cnf) const;
     ArjunNS::SimplifiedCNF get_fully_simplified_renumbered_cnf(
         const ArjunNS::SimplifiedCNF& cnf, const ArjunNS::SimpConf simp_conf);
     void reverse_bce(ArjunNS::SimplifiedCNF& cnf);
