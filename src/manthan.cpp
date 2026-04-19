@@ -1264,12 +1264,18 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     // Find which input variables the AIG for y_rep actually depends on.
     // Any input not in the AIG's dependency set is a don't-care and can be
     // excluded from assumptions, producing a more general (shorter) conflict.
-    set<uint32_t> aig_dep_vars;
+    // Reset marks left by the previous call before reusing the scratch bitmap.
+    for (const uint32_t prev_v : aig_dep_list) aig_dep_is_dep[prev_v] = 0;
+    aig_dep_list.clear();
+    aig_dep_visited.clear();
+    aig_dep_stack.clear();
     if (mconf.minimize_conflict) {
         const auto& aig = var_to_formula.at(y_rep).aig;
         assert(aig != nullptr);
-        AIG::get_dependent_vars(aig, aig_dep_vars, y_rep);
+        AIG::get_dependent_vars(aig, aig_dep_is_dep, aig_dep_list,
+                                aig_dep_visited, aig_dep_stack, y_rep);
     }
+    const bool have_aig_deps = !aig_dep_list.empty();
 
     assert(ctx[y_rep] != ctx[y_to_y_hat[y_rep]] && "before repair, y and y_hat must be different");
     const Lit to_repair = Lit(y_rep, ctx[y_to_y_hat[y_rep]] == l_True);
@@ -1291,7 +1297,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         vector<Lit> input_assumps;
         input_assumps.reserve(input.size() + 1);
         for (const auto& x : input) {
-            if (!aig_dep_vars.empty() && !aig_dep_vars.count(x)) continue;
+            if (have_aig_deps && (x >= aig_dep_is_dep.size() || !aig_dep_is_dep[x])) continue;
             input_assumps.push_back(Lit(x, ctx[x] == l_False));
         }
         input_assumps.push_back({~to_repair});
@@ -1314,7 +1320,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     assumps.reserve(input.size() + y_order.size() + 1);
     for(const auto& x: input) {
         // Skip inputs that the AIG for y_rep doesn't depend on
-        if (!aig_dep_vars.empty() && !aig_dep_vars.count(x)) {
+        if (have_aig_deps && (x >= aig_dep_is_dep.size() || !aig_dep_is_dep[x])) {
             skipped_inputs++;
             continue;
         }

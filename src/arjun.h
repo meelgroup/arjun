@@ -305,21 +305,50 @@ public:
     }
 
     static void get_dependent_vars(const aig_ptr& aig_orig, std::set<uint32_t>& dep, uint32_t v) {
-        std::unordered_set<AIG*> visited;
-        std::function<void(const aig_ptr&)> helper =
-            [&](const aig_ptr& aig) {
-                if (visited.count(aig.get())) return;
-                if (aig->type == AIGT::t_lit) {
-                    assert(aig->var != v && "Variable cannot depend on itself");
-                    dep.insert(aig->var);
+        std::unordered_set<const AIG*> visited;
+        std::vector<const AIG*> stack;
+        if (visited.insert(aig_orig.get()).second) stack.push_back(aig_orig.get());
+        while (!stack.empty()) {
+            const AIG* a = stack.back();
+            stack.pop_back();
+            if (a->type == AIGT::t_lit) {
+                assert(a->var != v && "Variable cannot depend on itself");
+                dep.insert(a->var);
+            } else if (a->type == AIGT::t_and) {
+                if (visited.insert(a->l.get()).second) stack.push_back(a->l.get());
+                if (visited.insert(a->r.get()).second) stack.push_back(a->r.get());
+            }
+        }
+    }
+
+    // Fast variant: writes into caller-owned scratch buffers to avoid
+    // per-call heap allocation. is_dep is a bitmap indexed by var id;
+    // dep_list receives the vars newly marked. visited and stack must be
+    // empty on entry (or cleared by the caller) and are left dirty on exit
+    // so the caller can reuse their capacity. Nodes are marked visited at
+    // push time so each DAG node is pushed at most once.
+    static void get_dependent_vars(const aig_ptr& aig_orig,
+                                   std::vector<char>& is_dep,
+                                   std::vector<uint32_t>& dep_list,
+                                   std::unordered_set<const AIG*>& visited,
+                                   std::vector<const AIG*>& stack,
+                                   uint32_t v) {
+        if (visited.insert(aig_orig.get()).second) stack.push_back(aig_orig.get());
+        while (!stack.empty()) {
+            const AIG* a = stack.back();
+            stack.pop_back();
+            if (a->type == AIGT::t_lit) {
+                assert(a->var != v && "Variable cannot depend on itself");
+                if (a->var >= is_dep.size()) is_dep.resize(a->var + 1, 0);
+                if (!is_dep[a->var]) {
+                    is_dep[a->var] = 1;
+                    dep_list.push_back(a->var);
                 }
-                if (aig->type == AIGT::t_and) {
-                    helper(aig->l);
-                    helper(aig->r);
-                }
-                visited.insert(aig.get());
-            };
-        helper(aig_orig);
+            } else if (a->type == AIGT::t_and) {
+                if (visited.insert(a->l.get()).second) stack.push_back(a->l.get());
+                if (visited.insert(a->r.get()).second) stack.push_back(a->r.get());
+            }
+        }
     }
 
     static std::vector<aig_ptr> deep_clone_vec(const std::vector<aig_ptr>& aigs) {
