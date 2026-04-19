@@ -403,6 +403,7 @@ void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
     }
 
     FHolder fh(&verify_solver);
+    helper_vars.insert(fh.get_true_lit().var());
     verb_print(2, "true lit: " << fh.get_true_lit());
 
     add_not_f_x_yhat(verify_solver, orig_cnf);
