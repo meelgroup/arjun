@@ -15,19 +15,14 @@
 #include <cstdint>
 #include <functional>
 
-// Visibility export macros for proper symbol visibility with -fvisibility=hidden
+// Visibility export macros. Mirrors the pattern used in arjun.h: always
+// dllexport on Windows (works for both shared and static builds under MinGW
+// because consumers get direct references, not __imp_ ones), and default
+// visibility elsewhere.
 #if defined(_WIN32) || defined(__CYGWIN__)
-  #ifdef arjun_EXPORTS
-    #define ARJUN_PUBLIC __declspec(dllexport)
-  #else
-    #define ARJUN_PUBLIC __declspec(dllimport)
-  #endif
+  #define ARJUN_PUBLIC __declspec(dllexport)
 #else
-  #if defined(arjun_EXPORTS)
-    #define ARJUN_PUBLIC __attribute__((visibility("default")))
-  #else
-    #define ARJUN_PUBLIC
-  #endif
+  #define ARJUN_PUBLIC __attribute__((visibility("default")))
 #endif
 
 namespace ArjunNS {
