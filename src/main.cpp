@@ -205,8 +205,8 @@ void add_arjun_options() {
     myopt("--detailedstatsevery", mconf.detailed_stats_every, fc_int, "Print detailed stats every N repair loops");
     myopt("--rebuildminloops", mconf.rebuild_min_loops, fc_int, "Min repair loops before cex_solver rebuild");
     myopt("--rebuildminclauses", mconf.rebuild_min_clauses, fc_int, "Min total formula clauses before rebuild");
-    myopt("--rebuildgrownum", mconf.rebuild_growth_num, fc_int, "Rebuild growth numerator");
-    myopt("--rebuildgrowden", mconf.rebuild_growth_den, fc_int, "Rebuild growth denominator");
+    myopt("--rebuildgrownum", mconf.rebuild_growth_num, fc_double, "Rebuild growth numerator");
+    myopt("--rebuildgrowden", mconf.rebuild_growth_den, fc_double, "Rebuild growth denominator");
     myopt("--reducecexgenok", mconf.reduce_cex_gen_ok, fc_int, "Reduce multi_cex when gen_repair_ok > this");
     myopt("--reducecextotrep", mconf.reduce_cex_tot_rep, fc_int, "Reduce multi_cex when tot_repaired > this");
     myopt("--reducecexneedrep", mconf.reduce_cex_need_rep, fc_int, "Set multi_cex_k=1 when needs_repair <= this");

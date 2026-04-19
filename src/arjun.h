@@ -1602,8 +1602,8 @@ public:
         // it can dial the threshold down via --rebuildgrownum/den.
         uint32_t rebuild_min_loops = 500;
         uint32_t rebuild_min_clauses = 500000;
-        uint32_t rebuild_growth_num = 5;    // 5x growth since last rebuild
-        uint32_t rebuild_growth_den = 1;
+        double rebuild_growth_num = 5;    // 5x growth since last rebuild
+        double rebuild_growth_den = 1;
         uint32_t reduce_cex_gen_ok = 20;    // reduce multi_cex when generalized_repair_ok > this
         uint32_t reduce_cex_tot_rep = 2000; // reduce multi_cex when tot_repaired > this
         uint32_t reduce_cex_need_rep = 3;   // set multi_cex_k=1 when needs_repair <= this
