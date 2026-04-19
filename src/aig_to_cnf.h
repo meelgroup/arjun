@@ -394,6 +394,7 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
         cache[n] = h;
         return h;
     }
+
     // k-ary OR via ¬(l ∧ r) = ¬l ∨ ¬r
     std::vector<CMSat::Lit> inputs;
     if (kary_fusion) {
