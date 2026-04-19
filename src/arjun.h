@@ -1165,8 +1165,10 @@ public:
     [[nodiscard]] bool check_orig_sampl_vars_undefined() const;
     [[nodiscard]] bool defs_invariant() const;
 
-    // Get the orig vars this AIG depends on, recursively expanding defined vars
-    std::set<uint32_t> get_dependent_vars_recursive(const uint32_t orig_v, std::map<uint32_t, std::set<uint32_t>>& cache) const;
+    // Get the orig vars this AIG depends on, recursively expanding defined vars.
+    // Returns a sorted, unique vector. Cache entries are stored by std::map so
+    // references remain stable across inserts (needed by the internal helper).
+    std::vector<uint32_t> get_dependent_vars_recursive(const uint32_t orig_v, std::map<uint32_t, std::vector<uint32_t>>& cache) const;
 
     [[nodiscard]] bool check_aig_cycles() const;
     void check_self_dependency() const;
