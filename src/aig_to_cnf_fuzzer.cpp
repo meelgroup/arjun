@@ -437,6 +437,7 @@ struct FuzzStats {
     uint64_t opt_kary_and = 0, opt_kary_and_width = 0;
     uint64_t opt_kary_or = 0, opt_kary_or_width = 0;
     uint64_t opt_ite = 0;
+    uint64_t opt_mux3 = 0;
     double total_time_s = 0;
 
     void print() const {
@@ -465,6 +466,7 @@ struct FuzzStats {
              << (opt_kary_or ? (double)opt_kary_or_width / opt_kary_or : 0.0)
              << ")" << endl;
         cout << "ITE patterns detected: " << opt_ite << endl;
+        cout << "MUX3 patterns detected: " << opt_mux3 << endl;
         cout << "Time: " << std::fixed << std::setprecision(1)
              << total_time_s << "s" << endl;
     }
@@ -513,6 +515,7 @@ static bool run_one(const aig_ptr& aig, uint32_t num_vars,
              << "  kAND=" << es.kary_and_count
              << " kOR=" << es.kary_or_count
              << " ITE=" << es.ite_patterns
+             << " MUX3=" << es.mux3_patterns
              << " XOR=" << es.xor_patterns
              << endl;
     }
@@ -527,6 +530,7 @@ static bool run_one(const aig_ptr& aig, uint32_t num_vars,
     fs.opt_kary_or += es.kary_or_count;
     fs.opt_kary_or_width += es.kary_or_width_total;
     fs.opt_ite += es.ite_patterns;
+    fs.opt_mux3 += es.mux3_patterns;
 
     // 3. Check: naive_out <-> opt_out is valid (equivalence in the combined CNF).
     if (!sat_equivalent(solver, naive_out, opt_out)) {
@@ -942,6 +946,7 @@ int main(int argc, char** argv) {
                  << "  kAND=" << fs.opt_kary_and
                  << " kOR=" << fs.opt_kary_or
                  << " ITE=" << fs.opt_ite
+                 << " MUX3=" << fs.opt_mux3
                  << endl;
         }
     }

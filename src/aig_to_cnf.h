@@ -52,6 +52,7 @@ struct AIG2CNFStats {
     uint64_t kary_or_count = 0;
     uint64_t kary_or_width_total = 0;
     uint64_t ite_patterns = 0;
+    uint64_t mux3_patterns = 0;
     uint64_t xor_patterns = 0;
     uint64_t const_nodes = 0;
     uint64_t lit_nodes = 0;
@@ -166,6 +167,28 @@ private:
     bool try_ite(const aig_ptr& n, CMSat::Lit& out);
     bool try_xor(const aig_ptr& n, CMSat::Lit& out);
 
+    // Parsed ITE-pattern descriptor. Used by try_ite and the MUX3 nested-ITE
+    // fusion path: parse_ite_at extracts the selector/then/else without
+    // committing to an encoding shape, so the caller can decide whether to
+    // emit a 4-clause ITE or fuse with an enclosing pattern.
+    struct IteParse {
+        bool valid = false;
+        CMSat::Lit s_lit;
+        aig_ptr t_aig;
+        aig_ptr e_aig;
+    };
+    bool parse_ite_at(const aig_ptr& n, IteParse& out);
+
+    // Sort literals by (var, sign). Used to canonicalise group-CSE keys so
+    // the same AND/OR inputs in different orders hit the same cache entry.
+    static void canon_sort_lits(std::vector<CMSat::Lit>& v) {
+        std::sort(v.begin(), v.end(),
+            [](CMSat::Lit a, CMSat::Lit b) {
+                if (a.var() != b.var()) return a.var() < b.var();
+                return a.sign() < b.sign();
+            });
+    }
+
     void collect_and(const aig_ptr& n, std::vector<CMSat::Lit>& out);
     void collect_disjuncts_of_neg(const aig_ptr& n, std::vector<CMSat::Lit>& out);
 
@@ -225,6 +248,8 @@ private:
     void emit_and_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
     void emit_or_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
     void emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat::Lit e);
+    void emit_mux3(CMSat::Lit g, CMSat::Lit s1, CMSat::Lit a,
+                   CMSat::Lit s2, CMSat::Lit b, CMSat::Lit c);
     void emit_xor(CMSat::Lit g, CMSat::Lit a, CMSat::Lit b);
 
     void add_clause(const std::vector<CMSat::Lit>& cl);
@@ -428,6 +453,7 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
             }
         }
         if (group_cse) {
+            canon_sort_lits(inputs);
             auto it_cse = and_group_cse.find(inputs);
             if (it_cse != and_group_cse.end()) {
                 stats.cse_and_hits++;
@@ -527,6 +553,7 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
         }
     }
     if (group_cse) {
+        canon_sort_lits(inputs);
         auto it_cse = or_group_cse.find(inputs);
         if (it_cse != or_group_cse.end()) {
             stats.cse_or_hits++;
@@ -948,16 +975,18 @@ bool AIGToCNF<Solver>::normalize_or_inputs(std::vector<CMSat::Lit>& inputs, bool
 // many literals — the common manthan case). For non-literal selectors
 // we detect the complement via pointer equality of the positive AND with
 // its NOT-wrapper.
+//
+// parse_ite_at recognises the pattern and extracts (s_lit, t_aig, e_aig)
+// but does NOT encode the then/else branches or emit any clauses — so
+// callers may fuse nested ITEs (MUX3) without committing to separate
+// helpers for the inner pattern.
 template<class Solver>
-bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
+bool AIGToCNF<Solver>::parse_ite_at(const aig_ptr& n, IteParse& out) {
     auto is_lit_complement = [](const aig_ptr& a, const aig_ptr& b) -> bool {
         return a && b
             && a->type == AIGT::t_lit && b->type == AIGT::t_lit
             && a->var == b->var && a->neg != b->neg;
     };
-    // For non-literal nodes, detect that one is the NOT-wrapper of the
-    // other: either (a) a is t_and NOT-wrapper (l==r, neg=true) of b, or
-    // (b) b is t_and NOT-wrapper of a.
     auto is_sub_complement = [](const aig_ptr& a, const aig_ptr& b) -> bool {
         if (!a || !b) return false;
         if (a->type == AIGT::t_and && a->neg && a->l == a->r && a->l == b) return true;
@@ -1027,23 +1056,50 @@ bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
         s_lit = CMSat::Lit((*sel_x)->var, (*sel_x)->neg);
     } else {
         stats.ite_sub_sel++;
-        // Encode the selector sub-AIG. Use the positive form (whichever of
-        // sel_x/sel_y is NOT a NOT-wrapper) so that s_lit's polarity
-        // matches the "then" side.
         const aig_ptr& sx = *sel_x;
         const aig_ptr& sy = *sel_y;
-        // Identify the positive side: it is the one that is NOT a
-        // NOT-wrapper (AND(u,u,neg=true)) of the other.
         bool sx_is_wrapper = (sx->type == AIGT::t_and && sx->neg && sx->l == sx->r && sx->l == sy);
         const aig_ptr& pos_sel = sx_is_wrapper ? sy : sx;
         s_lit = encode_node(pos_sel);
-        // If sel_x happens to be the NOT-wrapper, the "then" branch is
-        // actually behind sel_y, i.e., we need to flip: the branch we
-        // called "other_x" is paired with the *negation* of pos_sel.
         if (sx_is_wrapper) s_lit = ~s_lit;
     }
-    CMSat::Lit t_lit = encode_node(*other_x);
-    CMSat::Lit e_lit = encode_node(*other_y);
+    out.valid = true;
+    out.s_lit = s_lit;
+    out.t_aig = *other_x;
+    out.e_aig = *other_y;
+    return true;
+}
+
+template<class Solver>
+bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
+    IteParse outer;
+    if (!parse_ite_at(n, outer)) return false;
+
+    // MUX3 fusion: outer's else branch is itself a fanout<=1, uncached
+    // ITE-pattern AIG. Emit one 6-clause MUX3 (1 helper) in place of the
+    // outer+inner 8-clause nested ITEs (2 helpers).
+    if (outer.e_aig && outer.e_aig->type == AIGT::t_and
+        && outer.e_aig != outer.t_aig
+        && cache.find(outer.e_aig) == cache.end()) {
+        auto it_fo = fanout.find(outer.e_aig);
+        if (it_fo != fanout.end() && it_fo->second <= 1) {
+            IteParse inner;
+            if (parse_ite_at(outer.e_aig, inner)) {
+                CMSat::Lit a_lit = encode_node(outer.t_aig);
+                CMSat::Lit b_lit = encode_node(inner.t_aig);
+                CMSat::Lit c_lit = encode_node(inner.e_aig);
+                CMSat::Lit h = new_helper();
+                emit_mux3(h, outer.s_lit, a_lit, inner.s_lit, b_lit, c_lit);
+                stats.mux3_patterns++;
+                out = h;
+                return true;
+            }
+        }
+    }
+
+    CMSat::Lit s_lit = outer.s_lit;
+    CMSat::Lit t_lit = encode_node(outer.t_aig);
+    CMSat::Lit e_lit = encode_node(outer.e_aig);
 
     // Degenerate cases.
     //   ITE(s, t, t) = t
@@ -1060,6 +1116,7 @@ bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
             if (inp.size() == 1) return inp[0];
         }
         if (group_cse) {
+            canon_sort_lits(inp);
             auto it = or_group_cse.find(inp);
             if (it != or_group_cse.end()) return it->second;
         }
@@ -1077,6 +1134,7 @@ bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
             if (inp.size() == 1) return inp[0];
         }
         if (group_cse) {
+            canon_sort_lits(inp);
             auto it = and_group_cse.find(inp);
             if (it != and_group_cse.end()) return it->second;
         }
@@ -1157,6 +1215,23 @@ void AIGToCNF<Solver>::emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat:
     add_clause({~g, s, e});
     add_clause({g, ~s, ~t});
     add_clause({g, s, ~e});
+}
+
+// g = ITE(s1, a, ITE(s2, b, c)) — a 3-way priority mux, encoded with 6
+// ternary/quaternary clauses and a single helper. The equivalent
+// nested-ITE encoding would use 8 clauses and 2 helpers.
+template<class Solver>
+void AIGToCNF<Solver>::emit_mux3(CMSat::Lit g, CMSat::Lit s1, CMSat::Lit a,
+                                  CMSat::Lit s2, CMSat::Lit b, CMSat::Lit c) {
+    // s1=1 -> g = a
+    add_clause({~s1, ~g, a});
+    add_clause({~s1, g, ~a});
+    // s1=0, s2=1 -> g = b
+    add_clause({s1, ~s2, ~g, b});
+    add_clause({s1, ~s2, g, ~b});
+    // s1=0, s2=0 -> g = c
+    add_clause({s1, s2, ~g, c});
+    add_clause({s1, s2, g, ~c});
 }
 
 template<class Solver>

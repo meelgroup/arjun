@@ -28,6 +28,7 @@ void AIG2CNFStats::print(int verb) const {
         << " (avg-width "
         << (kary_or_count ? (double)kary_or_width_total / kary_or_count : 0.0)
         << ")  ITE: " << ite_patterns
+        << "  MUX3: " << mux3_patterns
         << "  XOR: " << xor_patterns
         << std::endl;
 }
