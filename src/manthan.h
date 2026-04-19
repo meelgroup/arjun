@@ -27,7 +27,6 @@
 #include "arjun.h"
 #include "config.h"
 #include "constants.h"
-#include "metasolver.h"
 #include "metasolver2.h"
 #include "cachedsolver.h"
 #include <cryptominisat5/solvertypesmini.h>

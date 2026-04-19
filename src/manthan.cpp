@@ -2207,28 +2207,27 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
                 ctx[v] = s.get_model()[v];
             }
             return;
-        } else {
-            auto conflict = s.get_conflict();
-            assert(!conflict.empty() && "Got UNSAT with empty conflict!");
-            verb_print(3, "[find-better-ctx-normal] UNSAT, conflict size: " << conflict.size());
+        }
+        auto conflict = s.get_conflict();
+        assert(!conflict.empty() && "Got UNSAT with empty conflict!");
+        verb_print(3, "[find-better-ctx-normal] UNSAT, conflict size: " << conflict.size());
 
-            // Find which soft assumptions are in the conflict and remove them.
-            // If the conflict is large (>5 conflicting vars), remove ALL at once
-            // rather than one-at-a-time, since the one-at-a-time approach requires
-            // many iterations for large conflicts.
-            set<Lit> conflict_set(conflict.begin(), conflict.end());
-            uint32_t num_conflicting = 0;
-            for(const auto& [lit, weight]: incorrect_lits) {
-                if (conflict_set.count(~lit) && !cannot_fix.count(lit.var()))
-                    num_conflicting++;
-            }
-            bool remove_all = (num_conflicting > mconf.better_ctx_remove_all);
-            for(const auto& [lit, weight]: incorrect_lits) {
-                if (conflict_set.count(~lit) && !cannot_fix.count(lit.var())) {
-                    verb_print(3, "[find-better-ctx-normal] Giving up on fixing var " << lit.var()+1);
-                    cannot_fix.insert(lit.var());
-                    if (!remove_all) break; // Remove one at a time for small conflicts
-                }
+        // Find which soft assumptions are in the conflict and remove them.
+        // If the conflict is large (>5 conflicting vars), remove ALL at once
+        // rather than one-at-a-time, since the one-at-a-time approach requires
+        // many iterations for large conflicts.
+        set<Lit> conflict_set(conflict.begin(), conflict.end());
+        uint32_t num_conflicting = 0;
+        for(const auto& [lit, weight]: incorrect_lits) {
+            if (conflict_set.count(~lit) && !cannot_fix.count(lit.var()))
+                num_conflicting++;
+        }
+        bool remove_all = (num_conflicting > mconf.better_ctx_remove_all);
+        for(const auto& [lit, weight]: incorrect_lits) {
+            if (conflict_set.count(~lit) && !cannot_fix.count(lit.var())) {
+                verb_print(3, "[find-better-ctx-normal] Giving up on fixing var " << lit.var()+1);
+                cannot_fix.insert(lit.var());
+                if (!remove_all) break; // Remove one at a time for small conflicts
             }
         }
     }
