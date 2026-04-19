@@ -41,6 +41,21 @@
 
 namespace ArjunNS {
 
+// Plaisted-Greenbaum polarity tracking. A helper g used only positively in the
+// outer formula needs g -> gate (forward half) but not gate -> g (reverse).
+// A helper used only negatively needs the reverse half only. PolBoth reverts
+// to full Tseitin biconditional.
+enum Pol : uint8_t {
+    PolNone = 0,
+    PolPos  = 1,
+    PolNeg  = 2,
+    PolBoth = 3,
+};
+
+static inline uint8_t flip_pol(uint8_t p) {
+    return ((p & 1u) << 1) | ((p & 2u) >> 1);
+}
+
 struct AIG2CNFStats {
     uint64_t nodes_visited = 0;
     uint64_t helpers_added = 0;
@@ -107,6 +122,17 @@ public:
     // repair throughput. Default is a high cap (effectively unbounded).
     void set_max_kary_width(uint32_t w) { max_kary_width = w; }
 
+    // Plaisted-Greenbaum half-biconditional encoding. The caller must promise
+    // to only use the returned root literal in the polarity given to
+    // set_root_polarity (default PolBoth = full Tseitin, no savings).
+    // Typical use: assert the root positively -> set_root_polarity(PolPos).
+    // PG forces group_cse off (reused helpers would need consistent pol).
+    void set_plaisted_greenbaum(bool b) {
+        use_pg = b;
+        if (b) group_cse = false;
+    }
+    void set_root_polarity(uint8_t p) { root_pol = p; }
+
 private:
     Solver& solver;
     AIG2CNFStats stats;
@@ -128,6 +154,10 @@ private:
     bool normalize_inputs = true;  // dedup / complementary / const fold
     uint32_t max_kary_width = 1u << 30; // effectively unbounded by default
 
+    // Plaisted-Greenbaum mode. pol_map declaration is below (needs AigPtrHash).
+    bool use_pg = false;
+    uint8_t root_pol = PolBoth;
+
     // Hash on shared_ptr raw pointer for O(1) fanout/cache lookups. std::map
     // showed up as the hottest path on 500k-node manthan AIGs.
     struct AigPtrHash {
@@ -137,6 +167,8 @@ private:
     };
     std::unordered_map<aig_ptr, uint32_t, AigPtrHash> fanout;
     std::unordered_map<aig_ptr, CMSat::Lit, AigPtrHash> cache;
+    // PG pre-pass output: merged polarity per AIG node.
+    std::unordered_map<aig_ptr, uint8_t, AigPtrHash> pol_map;
 
     // Content-hashed caches for structural CSE across AIG pointers that
     // happen to encode the same gate. Keyed on the (sorted) literal inputs.
@@ -177,7 +209,36 @@ private:
         aig_ptr t_aig;
         aig_ptr e_aig;
     };
+    // Purely structural ITE-shape descriptor. parse_ite_shape is side-effect
+    // free and doesn't encode the selector, so it's safe to call from the
+    // PG pre-pass (where the cache is still empty) and from MUX3 inspection.
+    struct IteShape {
+        bool valid = false;
+        bool sel_is_lit = false;
+        uint32_t sel_var = 0;
+        bool sel_neg = false;
+        // For sub-AIG selectors: sel_aig is the positive AIG representing the
+        // selector; if sel_invert is true, the final selector literal is
+        // ~encode_node(sel_aig).
+        aig_ptr sel_aig;
+        bool sel_invert = false;
+        aig_ptr t_aig;
+        aig_ptr e_aig;
+    };
+    bool parse_ite_shape(const aig_ptr& n, IteShape& out);
     bool parse_ite_at(const aig_ptr& n, IteParse& out);
+
+    // Plaisted-Greenbaum pre-pass: starting from the root, propagate the
+    // polarity in which each AIG node's helper literal will appear in the
+    // emitted CNF, so emit_* can omit the unused half of each biconditional.
+    void propagate_pol(const aig_ptr& n, uint8_t pol);
+    void propagate_and_leaves(const aig_ptr& n, uint8_t pol);
+    void propagate_or_raw_leaves(const aig_ptr& raw, uint8_t pol);
+    uint8_t pol_for(const aig_ptr& n) const {
+        if (!use_pg) return (uint8_t)PolBoth;
+        auto it = pol_map.find(n);
+        return (it != pol_map.end()) ? it->second : (uint8_t)PolBoth;
+    }
 
     // Sort literals by (var, sign). Used to canonicalise group-CSE keys so
     // the same AND/OR inputs in different orders hit the same cache entry.
@@ -245,11 +306,15 @@ private:
     bool normalize_and_inputs(std::vector<CMSat::Lit>& inputs, bool& out_const);
     bool normalize_or_inputs(std::vector<CMSat::Lit>& inputs, bool& out_const);
 
-    void emit_and_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
-    void emit_or_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
-    void emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat::Lit e);
+    void emit_and_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs,
+                        uint8_t pol = PolBoth);
+    void emit_or_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs,
+                       uint8_t pol = PolBoth);
+    void emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat::Lit e,
+                  uint8_t pol = PolBoth);
     void emit_mux3(CMSat::Lit g, CMSat::Lit s1, CMSat::Lit a,
-                   CMSat::Lit s2, CMSat::Lit b, CMSat::Lit c);
+                   CMSat::Lit s2, CMSat::Lit b, CMSat::Lit c,
+                   uint8_t pol = PolBoth);
     void emit_xor(CMSat::Lit g, CMSat::Lit a, CMSat::Lit b);
 
     void add_clause(const std::vector<CMSat::Lit>& cl);
@@ -314,6 +379,10 @@ template<class Solver>
 CMSat::Lit AIGToCNF<Solver>::encode(const aig_ptr& root, bool force_helper) {
     assert(root);
     count_fanout(root);
+    if (use_pg) {
+        pol_map.clear();
+        propagate_pol(root, root_pol);
+    }
     CMSat::Lit out = encode_node(root);
     if (force_helper && root->type != AIGT::t_and) {
         CMSat::Lit h = new_helper();
@@ -461,11 +530,13 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
                 return it_cse->second;
             }
         }
+        uint8_t n_pol = pol_for(n);
         // Width cap: if the k-ary group exceeds max_kary_width, split it
         // into pairwise Tseitin chunks (each ≤ max_kary_width wide). Each
         // chunk produces a helper with a backward clause of at most
         // max_kary_width+1 literals, avoiding the single very wide
-        // clause that k-ary fusion would otherwise emit.
+        // clause that k-ary fusion would otherwise emit. Chunk helpers
+        // appear as inputs to the outer wrapper and inherit its polarity.
         if (inputs.size() > max_kary_width) {
             std::vector<CMSat::Lit> current = std::move(inputs);
             while (current.size() > max_kary_width) {
@@ -476,7 +547,7 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
                     if (end - i == 1) { next.push_back(current[i]); continue; }
                     std::vector<CMSat::Lit> chunk(current.begin() + i, current.begin() + end);
                     CMSat::Lit hc = new_helper();
-                    emit_and_equiv(hc, chunk);
+                    emit_and_equiv(hc, chunk, n_pol);
                     stats.kary_and_count++;
                     stats.kary_and_width_total += chunk.size();
                     next.push_back(hc);
@@ -485,14 +556,14 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
             }
             if (current.size() == 1) { cache[n] = current[0]; return current[0]; }
             CMSat::Lit h = new_helper();
-            emit_and_equiv(h, current);
+            emit_and_equiv(h, current, n_pol);
             stats.kary_and_count++;
             stats.kary_and_width_total += current.size();
             cache[n] = h;
             return h;
         }
         CMSat::Lit h = new_helper();
-        emit_and_equiv(h, inputs);
+        emit_and_equiv(h, inputs, n_pol);
         stats.kary_and_count++;
         stats.kary_and_width_total += inputs.size();
         if (group_cse) and_group_cse[inputs] = h;
@@ -561,6 +632,7 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
             return it_cse->second;
         }
     }
+    uint8_t n_pol = pol_for(n);
     if (inputs.size() > max_kary_width) {
         std::vector<CMSat::Lit> current = std::move(inputs);
         while (current.size() > max_kary_width) {
@@ -571,7 +643,7 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
                 if (end - i == 1) { next.push_back(current[i]); continue; }
                 std::vector<CMSat::Lit> chunk(current.begin() + i, current.begin() + end);
                 CMSat::Lit hc = new_helper();
-                emit_or_equiv(hc, chunk);
+                emit_or_equiv(hc, chunk, n_pol);
                 stats.kary_or_count++;
                 stats.kary_or_width_total += chunk.size();
                 next.push_back(hc);
@@ -580,7 +652,7 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
         }
         if (current.size() == 1) { cache[n] = current[0]; return current[0]; }
         CMSat::Lit h = new_helper();
-        emit_or_equiv(h, current);
+        emit_or_equiv(h, current, n_pol);
         stats.kary_or_count++;
         stats.kary_or_width_total += current.size();
         cache[n] = h;
@@ -588,7 +660,7 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
     }
     CMSat::Lit h = new_helper();
     if (group_cse) or_group_cse[inputs] = h;
-    emit_or_equiv(h, inputs);
+    emit_or_equiv(h, inputs, n_pol);
     stats.kary_or_count++;
     stats.kary_or_width_total += inputs.size();
     cache[n] = h;
@@ -976,12 +1048,11 @@ bool AIGToCNF<Solver>::normalize_or_inputs(std::vector<CMSat::Lit>& inputs, bool
 // we detect the complement via pointer equality of the positive AND with
 // its NOT-wrapper.
 //
-// parse_ite_at recognises the pattern and extracts (s_lit, t_aig, e_aig)
-// but does NOT encode the then/else branches or emit any clauses — so
-// callers may fuse nested ITEs (MUX3) without committing to separate
-// helpers for the inner pattern.
+// parse_ite_shape recognises the pattern purely structurally and records
+// selector / then / else info without encoding. parse_ite_at is a thin
+// wrapper that also encodes the selector (may allocate helpers).
 template<class Solver>
-bool AIGToCNF<Solver>::parse_ite_at(const aig_ptr& n, IteParse& out) {
+bool AIGToCNF<Solver>::parse_ite_shape(const aig_ptr& n, IteShape& out) {
     auto is_lit_complement = [](const aig_ptr& a, const aig_ptr& b) -> bool {
         return a && b
             && a->type == AIGT::t_lit && b->type == AIGT::t_lit
@@ -1051,29 +1122,184 @@ bool AIGToCNF<Solver>::parse_ite_at(const aig_ptr& n, IteParse& out) {
         !try_match(x2, x1, y1, y2) &&
         !try_match(x2, x1, y2, y1)) return false;
 
-    CMSat::Lit s_lit;
+    out.valid = true;
+    out.t_aig = *other_x;
+    out.e_aig = *other_y;
     if (matched_lit) {
-        s_lit = CMSat::Lit((*sel_x)->var, (*sel_x)->neg);
+        out.sel_is_lit = true;
+        out.sel_var = (*sel_x)->var;
+        out.sel_neg = (*sel_x)->neg;
     } else {
-        stats.ite_sub_sel++;
+        out.sel_is_lit = false;
         const aig_ptr& sx = *sel_x;
         const aig_ptr& sy = *sel_y;
         bool sx_is_wrapper = (sx->type == AIGT::t_and && sx->neg && sx->l == sx->r && sx->l == sy);
-        const aig_ptr& pos_sel = sx_is_wrapper ? sy : sx;
-        s_lit = encode_node(pos_sel);
-        if (sx_is_wrapper) s_lit = ~s_lit;
+        out.sel_aig = sx_is_wrapper ? sy : sx;
+        out.sel_invert = sx_is_wrapper;
+    }
+    return true;
+}
+
+template<class Solver>
+bool AIGToCNF<Solver>::parse_ite_at(const aig_ptr& n, IteParse& out) {
+    IteShape sh;
+    if (!parse_ite_shape(n, sh)) return false;
+    CMSat::Lit s_lit;
+    if (sh.sel_is_lit) {
+        s_lit = CMSat::Lit(sh.sel_var, sh.sel_neg);
+    } else {
+        stats.ite_sub_sel++;
+        s_lit = encode_node(sh.sel_aig);
+        if (sh.sel_invert) s_lit = ~s_lit;
     }
     out.valid = true;
     out.s_lit = s_lit;
-    out.t_aig = *other_x;
-    out.e_aig = *other_y;
+    out.t_aig = sh.t_aig;
+    out.e_aig = sh.e_aig;
     return true;
+}
+
+// PG pre-pass. Starting from the root with a caller-supplied polarity, walk
+// the AIG and record at each node the (merged) polarity in which its helper
+// literal will appear in the emitted CNF. Decisions mirror encode_node:
+//   - NOT-wrapper: child pol = flip(parent pol).
+//   - ITE / MUX3: then/else branches = parent pol; selectors = PolBoth.
+//   - k-ary AND: conjuncts inherit parent pol (flattened via
+//     propagate_and_leaves which mirrors collect_and_aigs).
+//   - k-ary OR (NAND-wrapped): raw children inherit flip(parent pol)
+//     (flattened via propagate_or_raw_leaves).
+// Merge semantics: pol_map[n] is the union of all reaching polarities.
+template<class Solver>
+void AIGToCNF<Solver>::propagate_pol(const aig_ptr& n, uint8_t pol) {
+    if (!n || pol == PolNone) return;
+    uint8_t old_pol;
+    {
+        auto it = pol_map.find(n);
+        old_pol = (it == pol_map.end()) ? (uint8_t)PolNone : it->second;
+    }
+    uint8_t new_pol = old_pol | pol;
+    if (new_pol == old_pol) return;
+    pol_map[n] = new_pol;
+    uint8_t delta = new_pol & ~old_pol;
+
+    if (n->type != AIGT::t_and) return;
+
+    // NOT-wrapper (AND(x,x,neg=true)) or identity (AND(x,x,neg=false)).
+    if (n->l == n->r) {
+        uint8_t child_pol = n->neg ? flip_pol(delta) : delta;
+        propagate_pol(n->l, child_pol);
+        return;
+    }
+
+    // ITE / MUX3 match first (encode_node calls try_ite before k-ary).
+    if (detect_ite) {
+        IteShape sh;
+        if (parse_ite_shape(n, sh)) {
+            // MUX3 fusion? outer.e_aig is itself a parseable ITE with fanout <= 1.
+            if (sh.e_aig && sh.e_aig->type == AIGT::t_and
+                && sh.e_aig != sh.t_aig) {
+                auto it_fo = fanout.find(sh.e_aig);
+                if (it_fo != fanout.end() && it_fo->second <= 1
+                    && cache.find(sh.e_aig) == cache.end()) {
+                    IteShape inner;
+                    if (parse_ite_shape(sh.e_aig, inner)) {
+                        propagate_pol(sh.t_aig,   delta);
+                        propagate_pol(inner.t_aig, delta);
+                        propagate_pol(inner.e_aig, delta);
+                        if (!sh.sel_is_lit)    propagate_pol(sh.sel_aig,    PolBoth);
+                        if (!inner.sel_is_lit) propagate_pol(inner.sel_aig, PolBoth);
+                        return;
+                    }
+                }
+            }
+            propagate_pol(sh.t_aig, delta);
+            propagate_pol(sh.e_aig, delta);
+            if (!sh.sel_is_lit) propagate_pol(sh.sel_aig, PolBoth);
+            return;
+        }
+    }
+
+    if (!n->neg) {
+        // k-ary AND: conjuncts inherit delta.
+        propagate_and_leaves(n->l, delta);
+        if (n->r != n->l) propagate_and_leaves(n->r, delta);
+    } else {
+        // NAND-wrapped k-ary OR: raw children represent ~disjunct, so their
+        // helper literal appears in the OR clauses with the opposite sign of
+        // the disjunct itself -> children's pol = flip(delta).
+        uint8_t raw_pol = flip_pol(delta);
+        propagate_or_raw_leaves(n->l, raw_pol);
+        if (n->r != n->l) propagate_or_raw_leaves(n->r, raw_pol);
+    }
+}
+
+// Mirrors collect_and_aigs: the final k-ary AND conjunct list is defined by
+// the same flattening rules, so PG polarity propagates to exactly those
+// nodes that encode_node will feed into emit_and_equiv.
+template<class Solver>
+void AIGToCNF<Solver>::propagate_and_leaves(const aig_ptr& n, uint8_t pol) {
+    if (!n) return;
+    if (n->type == AIGT::t_and && !n->neg
+        && n->l != n->r
+        && fanout[n] <= 1)
+    {
+        propagate_and_leaves(n->l, pol);
+        propagate_and_leaves(n->r, pol);
+        return;
+    }
+    if (demorgan_flatten
+        && n->type == AIGT::t_and && n->neg && n->l == n->r
+        && fanout[n] <= 1)
+    {
+        const aig_ptr& inner = n->l;
+        if (inner && inner->type == AIGT::t_and && inner->neg
+            && inner->l != inner->r
+            && fanout[inner] <= 1)
+        {
+            propagate_and_leaves(inner->l, pol);
+            propagate_and_leaves(inner->r, pol);
+            return;
+        }
+    }
+    propagate_pol(n, pol);
+}
+
+// Mirrors collect_or_disj_raws. Passed pol is the polarity of the raw child
+// (i.e., already flipped from the OR gate's pol by the caller).
+template<class Solver>
+void AIGToCNF<Solver>::propagate_or_raw_leaves(const aig_ptr& raw, uint8_t pol) {
+    if (!raw) return;
+    if (raw->type == AIGT::t_and && !raw->neg
+        && raw->l != raw->r
+        && fanout[raw] <= 1)
+    {
+        propagate_or_raw_leaves(raw->l, pol);
+        propagate_or_raw_leaves(raw->r, pol);
+        return;
+    }
+    if (demorgan_flatten
+        && raw->type == AIGT::t_and && raw->neg && raw->l == raw->r
+        && fanout[raw] <= 1)
+    {
+        const aig_ptr& inner = raw->l;
+        if (inner && inner->type == AIGT::t_and && inner->neg
+            && inner->l != inner->r
+            && fanout[inner] <= 1)
+        {
+            propagate_or_raw_leaves(inner->l, pol);
+            propagate_or_raw_leaves(inner->r, pol);
+            return;
+        }
+    }
+    propagate_pol(raw, pol);
 }
 
 template<class Solver>
 bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
     IteParse outer;
     if (!parse_ite_at(n, outer)) return false;
+
+    uint8_t n_pol = pol_for(n);
 
     // MUX3 fusion: outer's else branch is itself a fanout<=1, uncached
     // ITE-pattern AIG. Emit one 6-clause MUX3 (1 helper) in place of the
@@ -1089,7 +1315,7 @@ bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
                 CMSat::Lit b_lit = encode_node(inner.t_aig);
                 CMSat::Lit c_lit = encode_node(inner.e_aig);
                 CMSat::Lit h = new_helper();
-                emit_mux3(h, outer.s_lit, a_lit, inner.s_lit, b_lit, c_lit);
+                emit_mux3(h, outer.s_lit, a_lit, inner.s_lit, b_lit, c_lit, n_pol);
                 stats.mux3_patterns++;
                 out = h;
                 return true;
@@ -1143,11 +1369,17 @@ bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
         emit_and_equiv(h, inp);
         return h;
     };
-    if (t_lit == e_lit) { stats.ite_degenerate++; out = t_lit; return true; }
-    if (s_lit == t_lit)  { stats.ite_degenerate++; out = emit_or2(s_lit, e_lit);  return true; }
-    if (s_lit == ~t_lit) { stats.ite_degenerate++; out = emit_and2(~s_lit, e_lit); return true; }
-    if (s_lit == e_lit)  { stats.ite_degenerate++; out = emit_and2(s_lit, t_lit); return true; }
-    if (s_lit == ~e_lit) { stats.ite_degenerate++; out = emit_or2(~s_lit, t_lit); return true; }
+    // Degenerate shortcuts collapse the ITE helper to a fresh OR/AND helper
+    // whose inputs (incl. the selector) appear in both signs — incompatible
+    // with PG's pre-computed polarity for the selector/branch helpers.
+    // Skip them under PG and fall through to a full ITE emission.
+    if (!use_pg) {
+        if (t_lit == e_lit) { stats.ite_degenerate++; out = t_lit; return true; }
+        if (s_lit == t_lit)  { stats.ite_degenerate++; out = emit_or2(s_lit, e_lit);  return true; }
+        if (s_lit == ~t_lit) { stats.ite_degenerate++; out = emit_and2(~s_lit, e_lit); return true; }
+        if (s_lit == e_lit)  { stats.ite_degenerate++; out = emit_and2(s_lit, t_lit); return true; }
+        if (s_lit == ~e_lit) { stats.ite_degenerate++; out = emit_or2(~s_lit, t_lit); return true; }
+    }
 
     if (group_cse) {
         // Canonicalize: flip (s,t,e) to (¬s,e,t) when selector is negative.
@@ -1165,7 +1397,7 @@ bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
             return true;
         }
         CMSat::Lit h = new_helper();
-        emit_ite(h, s_lit, t_lit, e_lit);
+        emit_ite(h, s_lit, t_lit, e_lit, n_pol);
         ite_cse[key] = h;
         stats.ite_patterns++;
         out = h;
@@ -1173,7 +1405,7 @@ bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
     }
 
     CMSat::Lit h = new_helper();
-    emit_ite(h, s_lit, t_lit, e_lit);
+    emit_ite(h, s_lit, t_lit, e_lit, n_pol);
     stats.ite_patterns++;
     out = h;
     return true;
@@ -1188,33 +1420,55 @@ bool AIGToCNF<Solver>::try_xor(const aig_ptr& /*n*/, CMSat::Lit& /*out*/) {
 }
 
 template<class Solver>
-void AIGToCNF<Solver>::emit_and_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs) {
+void AIGToCNF<Solver>::emit_and_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs,
+                                      uint8_t pol) {
     assert(!inputs.empty());
-    for (const auto& a : inputs) add_clause({~g, a});
-    std::vector<CMSat::Lit> big;
-    big.reserve(inputs.size() + 1);
-    big.push_back(g);
-    for (const auto& a : inputs) big.push_back(~a);
-    add_clause(big);
+    if (pol == PolNone) pol = PolBoth;
+    // Forward: g -> AND (binary clauses).
+    if (pol & PolPos) {
+        for (const auto& a : inputs) add_clause({~g, a});
+    }
+    // Reverse: AND -> g (big clause).
+    if (pol & PolNeg) {
+        std::vector<CMSat::Lit> big;
+        big.reserve(inputs.size() + 1);
+        big.push_back(g);
+        for (const auto& a : inputs) big.push_back(~a);
+        add_clause(big);
+    }
 }
 
 template<class Solver>
-void AIGToCNF<Solver>::emit_or_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs) {
+void AIGToCNF<Solver>::emit_or_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs,
+                                     uint8_t pol) {
     assert(!inputs.empty());
-    std::vector<CMSat::Lit> big;
-    big.reserve(inputs.size() + 1);
-    big.push_back(~g);
-    for (const auto& a : inputs) big.push_back(a);
-    add_clause(big);
-    for (const auto& a : inputs) add_clause({~a, g});
+    if (pol == PolNone) pol = PolBoth;
+    // Forward: g -> OR (big clause).
+    if (pol & PolPos) {
+        std::vector<CMSat::Lit> big;
+        big.reserve(inputs.size() + 1);
+        big.push_back(~g);
+        for (const auto& a : inputs) big.push_back(a);
+        add_clause(big);
+    }
+    // Reverse: OR -> g (binary clauses).
+    if (pol & PolNeg) {
+        for (const auto& a : inputs) add_clause({~a, g});
+    }
 }
 
 template<class Solver>
-void AIGToCNF<Solver>::emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat::Lit e) {
-    add_clause({~g, ~s, t});
-    add_clause({~g, s, e});
-    add_clause({g, ~s, ~t});
-    add_clause({g, s, ~e});
+void AIGToCNF<Solver>::emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat::Lit e,
+                                uint8_t pol) {
+    if (pol == PolNone) pol = PolBoth;
+    if (pol & PolPos) {
+        add_clause({~g, ~s, t});
+        add_clause({~g, s, e});
+    }
+    if (pol & PolNeg) {
+        add_clause({g, ~s, ~t});
+        add_clause({g, s, ~e});
+    }
 }
 
 // g = ITE(s1, a, ITE(s2, b, c)) — a 3-way priority mux, encoded with 6
@@ -1222,16 +1476,22 @@ void AIGToCNF<Solver>::emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat:
 // nested-ITE encoding would use 8 clauses and 2 helpers.
 template<class Solver>
 void AIGToCNF<Solver>::emit_mux3(CMSat::Lit g, CMSat::Lit s1, CMSat::Lit a,
-                                  CMSat::Lit s2, CMSat::Lit b, CMSat::Lit c) {
-    // s1=1 -> g = a
-    add_clause({~s1, ~g, a});
-    add_clause({~s1, g, ~a});
-    // s1=0, s2=1 -> g = b
-    add_clause({s1, ~s2, ~g, b});
-    add_clause({s1, ~s2, g, ~b});
-    // s1=0, s2=0 -> g = c
-    add_clause({s1, s2, ~g, c});
-    add_clause({s1, s2, g, ~c});
+                                  CMSat::Lit s2, CMSat::Lit b, CMSat::Lit c,
+                                  uint8_t pol) {
+    if (pol == PolNone) pol = PolBoth;
+    if (pol & PolPos) {
+        // s1=1 -> g = a
+        add_clause({~s1, ~g, a});
+        // s1=0, s2=1 -> g = b
+        add_clause({s1, ~s2, ~g, b});
+        // s1=0, s2=0 -> g = c
+        add_clause({s1, s2, ~g, c});
+    }
+    if (pol & PolNeg) {
+        add_clause({~s1, g, ~a});
+        add_clause({s1, ~s2, g, ~b});
+        add_clause({s1, s2, g, ~c});
+    }
 }
 
 template<class Solver>
