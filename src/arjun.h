@@ -716,7 +716,7 @@ public:
     void set_zero() final { val = 0; }
     void set_one() final { val = 1; }
 
-    inline uint64_t helper(const mpz_class& v) const {
+    [[nodiscard]] inline uint64_t helper(const mpz_class& v) const {
       return v.get_mpz_t()->_mp_alloc * sizeof(mp_limb_t);
     }
 
@@ -1265,15 +1265,15 @@ public:
         }
     }
 
-    std::vector<CMSat::Lit>& map_cl(std::vector<CMSat::Lit>& cl, const std::vector<uint32_t>& v_map) const {
+    [[nodiscard]] std::vector<CMSat::Lit>& map_cl(std::vector<CMSat::Lit>& cl, const std::vector<uint32_t>& v_map) const {
             for(auto& l: cl) l = CMSat::Lit(v_map[l.var()], l.sign());
             return cl;
     }
-    std::vector<uint32_t>& map_var(std::vector<uint32_t>& cl, const std::vector<uint32_t>& v_map) const {
+    [[nodiscard]] std::vector<uint32_t>& map_var(std::vector<uint32_t>& cl, const std::vector<uint32_t>& v_map) const {
         for(auto& l: cl) l = v_map[l];
         return cl;
     }
-    std::set<uint32_t> map_var(const std::set<uint32_t>& cl, const std::vector<uint32_t>& v_map) const {
+    [[nodiscard]] std::set<uint32_t> map_var(const std::set<uint32_t>& cl, const std::vector<uint32_t>& v_map) const {
         std::set<uint32_t> new_set;
         for(const auto& l: cl) new_set.insert(v_map[l]);
         return new_set;
