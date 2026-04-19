@@ -211,8 +211,6 @@ void add_arjun_options() {
     myopt("--reducecextotrep", mconf.reduce_cex_tot_rep, fc_int, "Reduce multi_cex when tot_repaired > this");
     myopt("--reducecexneedrep", mconf.reduce_cex_need_rep, fc_int, "Set multi_cex_k=1 when needs_repair <= this");
     myopt("--reducecexczminrep", mconf.reduce_cex_cz_min_rep, fc_int, "Min tot_repaired for cost-zero cex reduction");
-    myopt("--skipbctxmin", mconf.skip_better_ctx_min, fc_int, "Skip find_better_ctx when needs_repair <= this");
-    myopt("--skipbctxfreq", mconf.skip_better_ctx_freq, fc_int, "Skip find_better_ctx every N loops when gen_ok dominates");
     myopt("--simprepevery", mconf.simplify_repair_every, fc_int, "Simplify repair_solver every N tot_repaired");
     myopt("--skipinputminrep", mconf.skip_input_only_min_rep, fc_int, "Min tot_repaired before skipping input-only conflict");
     myopt("--skipinputratio", mconf.skip_input_only_ratio, fc_int, "Skip input-only when gen_ok * ratio < tot_repaired");

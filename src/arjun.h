@@ -1558,8 +1558,6 @@ public:
         uint32_t reduce_cex_tot_rep = 2000; // reduce multi_cex when tot_repaired > this
         uint32_t reduce_cex_need_rep = 3;   // set multi_cex_k=1 when needs_repair <= this
         uint32_t reduce_cex_cz_min_rep = 100; // min tot_repaired for cost-zero cex reduction
-        uint32_t skip_better_ctx_min = 10;  // skip find_better_ctx when needs_repair <= this
-        uint32_t skip_better_ctx_freq = 3;  // skip find_better_ctx every N loops (when gen_ok dominates)
         uint32_t simplify_repair_every = 1000; // also simplify repair_solver every N tot_repaired
         uint32_t skip_input_only_min_rep = 200; // min tot_repaired before skipping input-only attempt
         uint32_t skip_input_only_ratio = 20;    // skip when gen_ok * ratio < tot_repaired

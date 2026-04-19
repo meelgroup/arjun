@@ -878,6 +878,30 @@ void Manthan::const_functions() {
     }
 }
 
+void Manthan::rebuild_cex_solver_if_needed(uint64_t total_formula_clauses, bool& did_rebuild) {
+    if (nvars_at_last_rebuild > 0 && mconf.rebuild_growth_den > 0
+            && cex_solver.nVars() > nvars_at_last_rebuild * mconf.rebuild_growth_num / mconf.rebuild_growth_den
+            && total_formula_clauses > mconf.rebuild_min_clauses && num_loops_repair > mconf.rebuild_min_loops)
+    {
+        // Rewrite AIGs
+        AIGRewriter rewriter;
+        vector<aig_ptr> aigs;
+        for (auto& [y, form] : var_to_formula) {
+            if (form.aig) aigs.push_back(form.aig);
+        }
+        rewriter.rewrite_all(aigs, conf.verb);
+        size_t idx = 0;
+        for (auto& [y, form] : var_to_formula) {
+            if (form.aig) form.aig = aigs[idx++];
+        }
+
+        // Rebuild
+        rebuild_cex_solver();
+        nvars_at_last_rebuild = cex_solver.nVars();
+        did_rebuild = true;
+    }
+}
+
 SimplifiedCNF Manthan::do_manthan() {
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
     const double my_time = cpuTime();
@@ -963,37 +987,10 @@ SimplifiedCNF Manthan::do_manthan() {
         at_least_one_repaired = false;
         num_loops_repair++;
 
-        // Rebuild the cex_solver when it has grown significantly (>3x since last
-        // rebuild). This discards dead indicator variables, old equivalence clauses,
-        // and forced blocking clause activations that accumulate during repair.
         bool did_rebuild = false;
-        // Count total formula clauses to decide if rebuild is worthwhile.
-        // Only rebuild when formulas are bloated (>50K total clauses) AND solver
-        // has grown significantly (1.5x since last rebuild).
         uint64_t total_formula_clauses = 0;
         for (const auto& [y, form] : var_to_formula) total_formula_clauses += form.clauses.size();
-        if (nvars_at_last_rebuild > 0 && mconf.rebuild_growth_den > 0
-                && cex_solver.nVars() > nvars_at_last_rebuild * mconf.rebuild_growth_num / mconf.rebuild_growth_den
-                && total_formula_clauses > mconf.rebuild_min_clauses && num_loops_repair > mconf.rebuild_min_loops) {
-            // Use the serious AIG rewriter to compress formulas before rebuild.
-            // This is much more powerful than AIG::simplify_aig because it does
-            // multi-level absorption, chain flattening, and structural hashing.
-            {
-                AIGRewriter rewriter;
-                vector<aig_ptr> aigs;
-                for (auto& [y, form] : var_to_formula) {
-                    if (form.aig) aigs.push_back(form.aig);
-                }
-                rewriter.rewrite_all(aigs, conf.verb);
-                size_t idx = 0;
-                for (auto& [y, form] : var_to_formula) {
-                    if (form.aig) form.aig = aigs[idx++];
-                }
-            }
-            rebuild_cex_solver();
-            nvars_at_last_rebuild = cex_solver.nVars();
-            did_rebuild = true;
-        }
+        rebuild_cex_solver_if_needed(total_formula_clauses, did_rebuild);
 
         double t0 = cpuTime();
         if (!did_rebuild) inject_formulas_into_solver();
@@ -1046,23 +1043,15 @@ SimplifiedCNF Manthan::do_manthan() {
 
         t0 = cpuTime();
         const uint32_t old_needs_repair_size = needs_repair.size();
-        // Only run find_better_ctx if there are enough wrong vars to justify it.
-        // With <= 10 wrong vars, the overhead of creating a fresh solver isn't worth it.
-        // Also skip every other iteration when input-only conflicts dominate, since
-        // the repair quality doesn't depend on which specific y-vars are wrong.
-        const bool skip_better_ctx = (mconf.skip_better_ctx_freq > 0 && num_loops_repair % mconf.skip_better_ctx_freq != 0) &&
-            (generalized_repair_ok > mconf.reduce_cex_gen_ok && generalized_repair_ok * mconf.reduce_cex_gen_ratio_den > tot_repaired * mconf.reduce_cex_gen_ratio_num);
-        if (needs_repair.size() <= mconf.skip_better_ctx_min || mconf.maxsat_better_ctx == -1 || skip_better_ctx) {
-          // Skip optimization
-        } else if (mconf.maxsat_better_ctx == 1) {
-        #ifdef EXTRA_SYNTH
-          find_better_ctx_maxsat(ctx);
-        #else
+        if (mconf.maxsat_better_ctx == 1) {
+            #ifdef EXTRA_SYNTH
+            find_better_ctx_maxsat(ctx);
+            #else
             cout << "ERROR: maxsat_better_ctx is set to 1 but we are not in EXTRA_SYNTH mode!" << endl;
             exit(EXIT_FAILURE);
-        #endif
+            #endif
         } else {
-          find_better_ctx_normal(ctx);
+            find_better_ctx_normal(ctx);
         }
         time_find_better_ctx += cpuTime() - t0;
         SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));

@@ -114,6 +114,7 @@ class Manthan {
         uint32_t find_next_repair_var(const sample& ctx) const;
         void perform_repair(const uint32_t y_rep, const sample& ctx, const std::vector<CMSat::Lit>& conflict);
         void add_not_f_x_yhat();
+        void rebuild_cex_solver_if_needed(uint64_t total_formula_clauses, bool& did_rebuild);
         void rebuild_cex_solver();
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with(std::set<uint32_t>& vars);
