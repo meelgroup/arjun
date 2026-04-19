@@ -1298,7 +1298,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         input_assumps.reserve(input.size() + 1);
         for (const auto& x : input) {
             if (have_aig_deps && (x >= aig_dep_is_dep.size() || !aig_dep_is_dep[x])) continue;
-            input_assumps.push_back(Lit(x, ctx[x] == l_False));
+            input_assumps.emplace_back(x, ctx[x] == l_False);
         }
         input_assumps.push_back({~to_repair});
         auto input_ret = repair_solver.solve(&input_assumps);
