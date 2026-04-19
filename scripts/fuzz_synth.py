@@ -316,7 +316,7 @@ def gen_mstrategy():
                    "detailed_stats_every", "rebuild_min_loops", "rebuild_min_clauses",
                    "rebuild_growth_num", "rebuild_growth_den",
                    "reduce_cex_gen_ok", "reduce_cex_tot_rep", "reduce_cex_need_rep",
-                   "reduce_cex_cz_min_rep", "skip_better_ctx_min", "skip_better_ctx_freq",
+                   "reduce_cex_cz_min_rep",
                    "simplify_repair_every", "skip_input_only_min_rep", "skip_input_only_ratio",
                    "conflict_drop_y_max", "extra_minim_hot", "extra_minim_very_hot",
                    "conflict_cap", "conflict_cap_keep", "batch_minim_min",
