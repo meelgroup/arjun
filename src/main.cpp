@@ -380,7 +380,8 @@ void do_synthesis() {
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
     check_cnf_sat(cnf);
     cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
-    cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
+    if (conf.verb)
+        cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
 
     if (do_synth_bve && !cnf.synth_done()) {
         cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
