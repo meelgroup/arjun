@@ -14,17 +14,40 @@ jobs:
       fail-fast: true
 
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15, macos-15-intel]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15, macos-15-intel, windows-latest]
         build_type: [Release]
         build_shared_libs: [OFF, ON]
         extra_synth: [ON, OFF]
+        exclude:
+          # Windows build uses MSYS2 MinGW and skips the heavy ML deps
+          # (armadillo/ensmallen/mlpack/EvalMaxSAT) that EXTRA_SYNTH needs.
+          - os: windows-latest
+            extra_synth: ON
 
     steps:
+    - name: Set up MSYS2
+      if: contains(matrix.os, 'windows')
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-ninja
+          mingw-w64-x86_64-gmp
+          mingw-w64-x86_64-mpfr
+          mingw-w64-x86_64-zlib
+          mingw-w64-x86_64-pkgconf
+          make
+
     - uses: actions/setup-python@v5
+      if: "!contains(matrix.os, 'windows')"
       with:
         python-version: '3.10'
 
     - name: Install python dependencies
+      if: "!contains(matrix.os, 'windows')"
       run: |
         pip install numpy lit
 
@@ -77,6 +100,7 @@ jobs:
       run: sudo apt-get update && sudo apt-get install -yq help2man libgmp-dev libmpfr-dev perl
 
     - name: Setup ccache
+      if: "!contains(matrix.os, 'windows')"
       uses: hendrikmuhs/ccache-action@v1
       with:
         key: ${{ matrix.os }}-${{ matrix.build_type }}-${{ matrix.build_shared_libs }}-${{ matrix.extra_synth }}
@@ -166,7 +190,9 @@ jobs:
       with:
         path: project
         submodules: 'true'
-    - name: Build project
+
+    - name: Build project (non-Windows)
+      if: "!contains(matrix.os, 'windows')"
       run: |
         cd project
         mkdir -p build && cd build
@@ -179,16 +205,44 @@ jobs:
         -S ..
         cmake --build . --config ${{matrix.build_type}} -v
 
+    - name: Build project (Windows)
+      if: contains(matrix.os, 'windows')
+      shell: msys2 {0}
+      run: |
+        cd project
+        mkdir -p build && cd build
+        cmake \
+        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+        -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} \
+        -DEXTRA_SYNTH=${{ matrix.extra_synth }} \
+        -G Ninja \
+        -S ..
+        cmake --build . --config ${{matrix.build_type}} -v
+
     - name: Test
+      if: "!contains(matrix.os, 'windows')"
       run: ctest -C ${{matrix.build_type}} --verbose
 
-    - name: run it to check it executes
+    - name: run it to check it executes (non-Windows)
+      if: "!contains(matrix.os, 'windows')"
       run: |
         echo "Running version command"
         ./project/build/arjun --version
         echo $?
         echo "Running help command"
         ./project/build/arjun --help
+        echo $?
+
+    - name: run it to check it executes (Windows)
+      if: contains(matrix.os, 'windows')
+      shell: msys2 {0}
+      run: |
+        EXE=./project/build/arjun.exe
+        echo "Running: $EXE --version"
+        $EXE --version
+        echo $?
+        echo "Running: $EXE --help"
+        $EXE --help
         echo $?
 
     - name: Upload Artifact - Linux
@@ -232,5 +286,16 @@ jobs:
         path: |
           project/build/arjun
           project/build/test-synth
+          project/build/lib/*
+          project/build/include/*
+
+    - name: Upload Artifact - Windows
+      if: matrix.os == 'windows-latest' && matrix.build_shared_libs == 'OFF'
+      uses: actions/upload-artifact@v4
+      with:
+        name: arjun-windows-x86_64
+        path: |
+          project/build/arjun.exe
+          project/build/test-synth.exe
           project/build/lib/*
           project/build/include/*
