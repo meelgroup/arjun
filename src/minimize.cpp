@@ -200,7 +200,7 @@ void Minimize::init() {
     seen.resize(solver->nVars(), 0);
 }
 
-bool Minimize::set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf) {
+bool Minimize::set_zero_weight_lits(const ArjunNS::SimplifiedCNF& cnf) const {
     if (!cnf.get_weighted()) return true;
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
         if (cnf.get_lit_weight(Lit(i, false))->is_zero()) {

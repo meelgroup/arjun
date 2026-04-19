@@ -1637,21 +1637,19 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     auto lit_to_lit = [&] (const Lit l) {
         if (input.count(l.var()) || backward_defined.count(l.var())) {
             return map_y_to_y_hat(l);
-        } else {
-            assert(var_to_formula.count(l.var()));
-            auto f2 = var_to_formula.at(l.var());
-            return l.sign() ? ~f2.out : f2.out;
         }
+        assert(var_to_formula.count(l.var()));
+        auto f2 = var_to_formula.at(l.var());
+        return l.sign() ? ~f2.out : f2.out;
     };
 
     auto lit_to_aig = [&] (const Lit l) {
         if (input.count(l.var()) || backward_defined.count(l.var())) {
             return AIG::new_lit(map_y_to_y_hat(l));
-        } else {
-            assert(var_to_formula.count(l.var()));
-            auto f2 = var_to_formula.at(l.var());
-            return l.sign() ? AIG::new_not(f2.aig) : f2.aig;
         }
+        assert(var_to_formula.count(l.var()));
+        auto f2 = var_to_formula.at(l.var());
+        return l.sign() ? AIG::new_not(f2.aig) : f2.aig;
     };
 
     // CNF part
@@ -1667,7 +1665,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
         cl.push_back(l2);
         set_depends_on(y_rep, l);
     }
-    f.clauses.push_back(cl);
+    f.clauses.emplace_back(cl);
 
     for(const auto& l: conflict) {
         Lit l2;

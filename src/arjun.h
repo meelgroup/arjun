@@ -1265,13 +1265,11 @@ public:
         }
     }
 
-    [[nodiscard]] std::vector<CMSat::Lit>& map_cl(std::vector<CMSat::Lit>& cl, const std::vector<uint32_t>& v_map) const {
-            for(auto& l: cl) l = CMSat::Lit(v_map[l.var()], l.sign());
-            return cl;
+    void map_cl(std::vector<CMSat::Lit>& cl, const std::vector<uint32_t>& v_map) const {
+        for(auto& l: cl) l = CMSat::Lit(v_map[l.var()], l.sign());
     }
-    [[nodiscard]] std::vector<uint32_t>& map_var(std::vector<uint32_t>& cl, const std::vector<uint32_t>& v_map) const {
+    void map_var(std::vector<uint32_t>& cl, const std::vector<uint32_t>& v_map) const {
         for(auto& l: cl) l = v_map[l];
-        return cl;
     }
     [[nodiscard]] std::set<uint32_t> map_var(const std::set<uint32_t>& cl, const std::vector<uint32_t>& v_map) const {
         std::set<uint32_t> new_set;

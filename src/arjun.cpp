@@ -1469,8 +1469,8 @@ DLL_PUBLIC void SimplifiedCNF::renumber_sampling_vars_for_ganak() {
     orig_to_new_var = upd_vmap;
 
     // Now we renumber samp_vars, opt_sampl_vars, weights
-    sampl_vars = map_var(sampl_vars, map_here_to_there);
-    opt_sampl_vars = map_var(opt_sampl_vars, map_here_to_there);
+    map_var(sampl_vars, map_here_to_there);
+    map_var(opt_sampl_vars, map_here_to_there);
     for(auto& cl: clauses) map_cl(cl, map_here_to_there);
     for(auto& cl: red_clauses) map_cl(cl, map_here_to_there);
     if (weighted) {
@@ -1786,7 +1786,7 @@ DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
     release_assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
     assert(check_orig_sampl_vars_undefined());
     assert(check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars());
-    assert(check_pre_post_backward_round_synth());
+    check_pre_post_backward_round_synth();
     check_all_vars_accounted_for();
     assert(check_aig_cycles());
     check_self_dependency();
