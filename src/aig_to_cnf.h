@@ -66,6 +66,12 @@ struct AIG2CNFStats {
     uint64_t demorgan_or_flat = 0;   // ... in collect_disjuncts_of_neg
     uint64_t ite_sub_sel = 0;        // ITE with non-literal sub-AIG selector
     uint64_t ite_degenerate = 0;     // ITE degenerate-case fold
+    uint64_t absorption_and = 0;     // AND(x, OR(x, ...)) -> x drops the OR
+    uint64_t absorption_or = 0;      // OR(x, AND(x, ...)) -> x drops the AND
+    uint64_t aig_complement_and = 0; // structural ¬A / A in AND -> FALSE
+    uint64_t aig_complement_or = 0;  // structural ¬A / A in OR -> TRUE
+    uint64_t aig_dedup_and = 0;      // structural AIG dedup in AND
+    uint64_t aig_dedup_or = 0;       // structural AIG dedup in OR
 
     double encode_time_s = 0.0;
 
@@ -162,6 +168,53 @@ private:
 
     void collect_and(const aig_ptr& n, std::vector<CMSat::Lit>& out);
     void collect_disjuncts_of_neg(const aig_ptr& n, std::vector<CMSat::Lit>& out);
+
+    // AIG-level collectors: same flattening as above but keep the leaves as
+    // aig_ptrs so we can do structural reasoning (absorption, complementary
+    // AIG detection, etc.) before committing to an encoding.
+    void collect_and_aigs(const aig_ptr& n, std::vector<aig_ptr>& out);
+    // For the k-ary OR path we represent disjuncts as "raw children" of the
+    // outer OR gate (AND-neg wrapper). Each raw child c contributes a
+    // disjunct `NOT(c)`. We flatten through chains of ORs / positive ANDs so
+    // the final list holds raw children whose complement is the disjunct.
+    void collect_or_disj_raws(const aig_ptr& raw_child, std::vector<aig_ptr>& out);
+
+    // Structural simplifications on a k-ary AND conjunct list (AIG form).
+    // Returns true if the group folds to a constant; out_const set to the
+    // constant value. Otherwise dedups in place.
+    bool structural_simplify_and(std::vector<aig_ptr>& conjuncts, bool& out_const);
+    // For k-ary OR represented as raw children (complements of disjuncts).
+    bool structural_simplify_or_raws(std::vector<aig_ptr>& raw_children, bool& out_const);
+
+    // Two AIG nodes represent the same logical value. Literals/constants are
+    // compared by value (AIG may allocate fresh nodes for identical literals),
+    // and AND nodes by pointer (aggressive AND-CSE would duplicate
+    // AIGRewriter). Static so that the enclosing class's friendship with AIG
+    // grants access to the private members.
+    static bool aig_logically_equal(const aig_ptr& a, const aig_ptr& b) {
+        if (a.get() == b.get()) return true;
+        if (!a || !b) return false;
+        if (a->type != b->type) return false;
+        if (a->type == AIGT::t_lit)
+            return a->var == b->var && a->neg == b->neg;
+        if (a->type == AIGT::t_const)
+            return a->neg == b->neg;
+        return false;
+    }
+    // a and b represent logically complementary values. Catches literal/const
+    // complements plus the AIG's NOT-wrapper pattern (AND(x,x,neg=true) wraps x).
+    static bool aig_complement(const aig_ptr& a, const aig_ptr& b) {
+        if (!a || !b) return false;
+        if (a->type == AIGT::t_lit && b->type == AIGT::t_lit)
+            return a->var == b->var && a->neg != b->neg;
+        if (a->type == AIGT::t_const && b->type == AIGT::t_const)
+            return a->neg != b->neg;
+        if (a->type == AIGT::t_and && a->neg && a->l == a->r
+            && aig_logically_equal(a->l, b)) return true;
+        if (b->type == AIGT::t_and && b->neg && b->l == b->r
+            && aig_logically_equal(b->l, a)) return true;
+        return false;
+    }
 
     // Post-process a k-ary AND input list: dedup, detect trivial constants.
     // Returns true if the group is a constant (out_const set to the constant).
@@ -322,8 +375,34 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
         // causing infinite recursion.
         std::vector<CMSat::Lit> inputs;
         if (kary_fusion) {
-            collect_and(n->l, inputs);
-            if (n->r != n->l) collect_and(n->r, inputs);
+            // Structural reasoning at the AIG level BEFORE encoding leaves:
+            // this catches patterns like AND(x, OR(x, y)) = x and
+            // complementary sub-AIGs that lit-level dedup can't see (a sub-AIG
+            // and its NOT-wrapper have different helper vars in general).
+            std::vector<aig_ptr> conjuncts;
+            collect_and_aigs(n->l, conjuncts);
+            if (n->r != n->l) collect_and_aigs(n->r, conjuncts);
+            bool is_const = false;
+            if (normalize_inputs && structural_simplify_and(conjuncts, is_const)) {
+                // Folded to FALSE.
+                stats.dedup_const_and++;
+                CMSat::Lit t = get_true_lit();
+                CMSat::Lit result = ~t;
+                cache[n] = result;
+                return result;
+            }
+            if (conjuncts.empty()) {
+                CMSat::Lit t = get_true_lit();
+                cache[n] = t;
+                return t;
+            }
+            if (conjuncts.size() == 1) {
+                CMSat::Lit lit = encode_node(conjuncts[0]);
+                cache[n] = lit;
+                return lit;
+            }
+            inputs.reserve(conjuncts.size());
+            for (const auto& c : conjuncts) inputs.push_back(encode_node(c));
         } else {
             inputs.push_back(encode_node(n->l));
             inputs.push_back(encode_node(n->r));
@@ -398,8 +477,32 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
     // k-ary OR via ¬(l ∧ r) = ¬l ∨ ¬r
     std::vector<CMSat::Lit> inputs;
     if (kary_fusion) {
-        collect_disjuncts_of_neg(n->l, inputs);
-        collect_disjuncts_of_neg(n->r, inputs);
+        // AIG-level collection so we can apply OR(x, AND(x, y)) = x absorption
+        // and complementary-disjunct detection before committing to leaves.
+        std::vector<aig_ptr> raws;
+        collect_or_disj_raws(n->l, raws);
+        if (n->r != n->l) collect_or_disj_raws(n->r, raws);
+        bool is_const = false;
+        if (normalize_inputs && structural_simplify_or_raws(raws, is_const)) {
+            // OR folded to TRUE.
+            stats.dedup_const_or++;
+            CMSat::Lit t = get_true_lit();
+            cache[n] = t;
+            return t;
+        }
+        if (raws.empty()) {
+            CMSat::Lit t = get_true_lit();
+            CMSat::Lit result = ~t;
+            cache[n] = result;
+            return result;
+        }
+        if (raws.size() == 1) {
+            CMSat::Lit lit = ~encode_node(raws[0]);
+            cache[n] = lit;
+            return lit;
+        }
+        inputs.reserve(raws.size());
+        for (const auto& r : raws) inputs.push_back(~encode_node(r));
     } else {
         inputs.push_back(~encode_node(n->l));
         inputs.push_back(~encode_node(n->r));
@@ -541,6 +644,238 @@ void AIGToCNF<Solver>::collect_disjuncts_of_neg(const aig_ptr& n, std::vector<CM
         }
     }
     out.push_back(~encode_node(n));
+}
+
+// =============================================================================
+// AIG-level helpers (structural reasoning before CNF encoding)
+// =============================================================================
+
+// Collect k-ary AND conjuncts into out (as aig_ptrs). Flattens through
+// positive AND nodes and NOT-wrappers of OR gates, using the same
+// fanout / cache guards as collect_and.
+template<class Solver>
+void AIGToCNF<Solver>::collect_and_aigs(const aig_ptr& n, std::vector<aig_ptr>& out) {
+    if (n->type == AIGT::t_and && !n->neg
+        && n->l != n->r
+        && fanout[n] <= 1
+        && cache.find(n) == cache.end())
+    {
+        collect_and_aigs(n->l, out);
+        collect_and_aigs(n->r, out);
+        return;
+    }
+    if (demorgan_flatten
+        && n->type == AIGT::t_and && n->neg && n->l == n->r
+        && fanout[n] <= 1
+        && cache.find(n) == cache.end())
+    {
+        const aig_ptr& inner = n->l;
+        if (inner && inner->type == AIGT::t_and && inner->neg
+            && inner->l != inner->r
+            && fanout[inner] <= 1
+            && cache.find(inner) == cache.end())
+        {
+            stats.demorgan_and_flat++;
+            collect_and_aigs(inner->l, out);
+            collect_and_aigs(inner->r, out);
+            return;
+        }
+    }
+    out.push_back(n);
+}
+
+// For the k-ary OR path: collect raw-child AIGs. Each raw child r represents
+// the negation of a disjunct (the outer OR is AND(L, R, neg=true) so its
+// disjuncts are NOT(L), NOT(R)). Flattens through chains of positive-ANDs
+// (via De Morgan) and NOT-wrappers of OR gates.
+template<class Solver>
+void AIGToCNF<Solver>::collect_or_disj_raws(const aig_ptr& raw_child, std::vector<aig_ptr>& out) {
+    if (raw_child->type == AIGT::t_and && !raw_child->neg
+        && raw_child->l != raw_child->r
+        && fanout[raw_child] <= 1
+        && cache.find(raw_child) == cache.end())
+    {
+        collect_or_disj_raws(raw_child->l, out);
+        collect_or_disj_raws(raw_child->r, out);
+        return;
+    }
+    if (demorgan_flatten
+        && raw_child->type == AIGT::t_and && raw_child->neg && raw_child->l == raw_child->r
+        && fanout[raw_child] <= 1
+        && cache.find(raw_child) == cache.end())
+    {
+        const aig_ptr& inner = raw_child->l;
+        if (inner && inner->type == AIGT::t_and && inner->neg
+            && inner->l != inner->r
+            && fanout[inner] <= 1
+            && cache.find(inner) == cache.end())
+        {
+            stats.demorgan_or_flat++;
+            collect_or_disj_raws(inner->l, out);
+            collect_or_disj_raws(inner->r, out);
+            return;
+        }
+    }
+    out.push_back(raw_child);
+}
+
+// Structural simplification of a k-ary AND conjunct list.
+// Rules applied:
+//   (1) Drop TRUE constants; any FALSE constant folds the AND to FALSE.
+//   (2) Pointer / literal dedup.
+//   (3) Complementary pair A and NOT(A) -> AND is FALSE.
+//   (4) Absorption: AND(A, OR(A, B)) = A. For each OR-gate conjunct,
+//       if any of its disjunct AIGs matches another conjunct structurally,
+//       drop the OR.
+template<class Solver>
+bool AIGToCNF<Solver>::structural_simplify_and(std::vector<aig_ptr>& conjuncts, bool& out_const) {
+    // (1) constant fold.
+    {
+        std::vector<aig_ptr> tmp;
+        tmp.reserve(conjuncts.size());
+        for (const auto& c : conjuncts) {
+            if (c->type == AIGT::t_const) {
+                if (c->neg) { out_const = false; return true; } // FALSE short-circuits
+                continue; // TRUE is identity for AND
+            }
+            tmp.push_back(c);
+        }
+        conjuncts.swap(tmp);
+    }
+    // (2) dedup by aig_logically_equal. O(n^2) but k-ary groups are small.
+    {
+        std::vector<aig_ptr> tmp;
+        tmp.reserve(conjuncts.size());
+        for (const auto& c : conjuncts) {
+            bool dup = false;
+            for (const auto& k : tmp) {
+                if (aig_logically_equal(c, k)) { dup = true; break; }
+            }
+            if (dup) { stats.aig_dedup_and++; continue; }
+            tmp.push_back(c);
+        }
+        conjuncts.swap(tmp);
+    }
+    // (3) complementary pair.
+    for (size_t i = 0; i < conjuncts.size(); i++) {
+        for (size_t j = i + 1; j < conjuncts.size(); j++) {
+            if (aig_complement(conjuncts[i], conjuncts[j])) {
+                stats.aig_complement_and++;
+                out_const = false;
+                return true;
+            }
+        }
+    }
+    // (4) OR-conjunct absorption. An OR gate is AND(L, R, neg=true) with L!=R;
+    // its disjuncts are NOT(L), NOT(R).
+    std::vector<aig_ptr> kept;
+    kept.reserve(conjuncts.size());
+    for (size_t i = 0; i < conjuncts.size(); i++) {
+        const aig_ptr& ci = conjuncts[i];
+        bool absorbed = false;
+        if (ci->type == AIGT::t_and && ci->neg && ci->l != ci->r) {
+            // ci is an OR gate.
+            for (size_t j = 0; j < conjuncts.size(); j++) {
+                if (i == j) continue;
+                // A conjunct equal to one of the OR's disjuncts absorbs it.
+                // disjunct_k == NOT(ci->l) iff conjuncts[j] is the complement of ci->l.
+                if (aig_complement(conjuncts[j], ci->l) ||
+                    aig_complement(conjuncts[j], ci->r)) {
+                    absorbed = true;
+                    break;
+                }
+            }
+        }
+        if (absorbed) { stats.absorption_and++; continue; }
+        kept.push_back(ci);
+    }
+    conjuncts.swap(kept);
+    return false;
+}
+
+// Structural simplification of a k-ary OR raw-child list. Each raw child r
+// represents NOT(disjunct). Rules:
+//   (1) Any raw == constant TRUE -> its disjunct is FALSE, drop. Any raw ==
+//       constant FALSE -> disjunct TRUE -> OR is TRUE.
+//   (2) Dedup raws (duplicate raws give duplicate disjuncts).
+//   (3) Complementary pair: raw_i and raw_j are logical complements ->
+//       disjuncts are complementary -> OR is TRUE.
+//   (4) Absorption: OR(A, AND(A, B)) = A. For each raw whose disjunct is a
+//       positive AND gate (raw is a NOT-wrapper of a positive AND), if any
+//       of the AND's conjuncts has its complement in the raw list (i.e., the
+//       conjunct matches some other disjunct), drop the raw.
+template<class Solver>
+bool AIGToCNF<Solver>::structural_simplify_or_raws(std::vector<aig_ptr>& raws, bool& out_const) {
+    // (1) constant fold.
+    {
+        std::vector<aig_ptr> tmp;
+        tmp.reserve(raws.size());
+        for (const auto& r : raws) {
+            if (r->type == AIGT::t_const) {
+                // disjunct = NOT(r). If r is TRUE (neg=false), disjunct is FALSE (drop).
+                // If r is FALSE (neg=true), disjunct is TRUE -> OR is TRUE.
+                if (r->neg) { out_const = true; return true; }
+                continue;
+            }
+            tmp.push_back(r);
+        }
+        raws.swap(tmp);
+    }
+    // (2) dedup by logical equality.
+    {
+        std::vector<aig_ptr> tmp;
+        tmp.reserve(raws.size());
+        for (const auto& r : raws) {
+            bool dup = false;
+            for (const auto& k : tmp) {
+                if (aig_logically_equal(r, k)) { dup = true; break; }
+            }
+            if (dup) { stats.aig_dedup_or++; continue; }
+            tmp.push_back(r);
+        }
+        raws.swap(tmp);
+    }
+    // (3) complementary pair -> OR TRUE.
+    for (size_t i = 0; i < raws.size(); i++) {
+        for (size_t j = i + 1; j < raws.size(); j++) {
+            if (aig_complement(raws[i], raws[j])) {
+                stats.aig_complement_or++;
+                out_const = true;
+                return true;
+            }
+        }
+    }
+    // (4) absorption: raw_i whose disjunct is a positive AND X = raw_i->l
+    // when raw_i is NOT-wrapper of positive AND. Its conjuncts are X->l, X->r.
+    // If some raw_j represents a disjunct equal to X->l or X->r (i.e., raw_j
+    // is complement of X->l or X->r), drop raw_i.
+    std::vector<aig_ptr> kept;
+    kept.reserve(raws.size());
+    for (size_t i = 0; i < raws.size(); i++) {
+        const aig_ptr& ri = raws[i];
+        bool absorbed = false;
+        if (ri->type == AIGT::t_and && ri->neg && ri->l == ri->r) {
+            // ri is a NOT-wrapper. Check the wrapped node is a positive AND.
+            const aig_ptr& x = ri->l;
+            if (x && x->type == AIGT::t_and && !x->neg && x->l != x->r) {
+                for (size_t j = 0; j < raws.size(); j++) {
+                    if (i == j) continue;
+                    // raw_j represents disjunct_j = NOT(raw_j). We want
+                    // disjunct_j == x->l or x->r, i.e., raw_j is the
+                    // complement of x->l / x->r.
+                    if (aig_complement(raws[j], x->l) ||
+                        aig_complement(raws[j], x->r)) {
+                        absorbed = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (absorbed) { stats.absorption_or++; continue; }
+        kept.push_back(ri);
+    }
+    raws.swap(kept);
+    return false;
 }
 
 // Dedup and constant-folding on a k-ary AND input list. Removes duplicate

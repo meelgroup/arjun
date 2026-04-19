@@ -199,6 +199,105 @@ static aig_ptr gen_dnf_cover_aig(std::mt19937& rng, uint32_t num_vars,
     return overall;
 }
 
+// Pure big-AND of many distinct literals -- the canonical target for k-ary
+// AND fusion. Uses each (var, +/-) combination at most once so the AIG's own
+// AND-simplification (AND(x, ~x) = FALSE) doesn't collapse the chain. The
+// actual width is capped at 2 * num_vars (that's how many distinct literals
+// exist).
+static aig_ptr gen_pure_and_chain(std::mt19937& rng, uint32_t num_vars, uint32_t len) {
+    if (len < 2) len = 2;
+    std::vector<std::pair<uint32_t, bool>> pool;
+    pool.reserve(2 * num_vars);
+    for (uint32_t v = 0; v < num_vars; v++) {
+        pool.emplace_back(v, false);
+        pool.emplace_back(v, true);
+    }
+    // Fisher-Yates shuffle + truncate to len (or to pool.size()).
+    std::shuffle(pool.begin(), pool.end(), rng);
+    uint32_t actual = std::min<uint32_t>(len, pool.size());
+    if (actual < 2) actual = std::min<uint32_t>(2u, pool.size());
+    // But pick only ONE polarity per var to avoid complementary pairs, so
+    // up to num_vars distinct conjuncts.
+    std::vector<char> used(num_vars, 0);
+    aig_ptr cur = nullptr;
+    uint32_t made = 0;
+    for (auto& p : pool) {
+        if (used[p.first]) continue;
+        used[p.first] = 1;
+        aig_ptr lit = AIG::new_lit(p.first, p.second);
+        cur = cur ? AIG::new_and(cur, lit) : lit;
+        if (++made >= actual) break;
+    }
+    if (!cur) cur = AIG::new_lit(0, false);
+    if (rng() % 5 == 0) cur = AIG::new_not(cur);
+    return cur;
+}
+
+static aig_ptr gen_pure_or_chain(std::mt19937& rng, uint32_t num_vars, uint32_t len) {
+    if (len < 2) len = 2;
+    std::vector<std::pair<uint32_t, bool>> pool;
+    pool.reserve(2 * num_vars);
+    for (uint32_t v = 0; v < num_vars; v++) {
+        pool.emplace_back(v, false);
+        pool.emplace_back(v, true);
+    }
+    std::shuffle(pool.begin(), pool.end(), rng);
+    uint32_t actual = std::min<uint32_t>(len, pool.size());
+    if (actual < 2) actual = std::min<uint32_t>(2u, pool.size());
+    std::vector<char> used(num_vars, 0);
+    aig_ptr cur = nullptr;
+    uint32_t made = 0;
+    for (auto& p : pool) {
+        if (used[p.first]) continue;
+        used[p.first] = 1;
+        aig_ptr lit = AIG::new_lit(p.first, p.second);
+        cur = cur ? AIG::new_or(cur, lit) : lit;
+        if (++made >= actual) break;
+    }
+    if (!cur) cur = AIG::new_lit(0, false);
+    if (rng() % 5 == 0) cur = AIG::new_not(cur);
+    return cur;
+}
+
+// Balanced-tree big-AND: build pairwise bottom-up (AND-of-ANDs). The
+// resulting AIG has depth log2(len) but the same k-ary semantic. Exercises
+// the flattening through internal fanout-1 AND nodes.
+static aig_ptr gen_balanced_and_tree(std::mt19937& rng, uint32_t num_vars, uint32_t len) {
+    if (len < 2) len = 2;
+    std::vector<aig_ptr> level;
+    level.reserve(len);
+    for (uint32_t i = 0; i < len; i++) {
+        level.push_back(AIG::new_lit(rng() % num_vars, rng() % 2));
+    }
+    while (level.size() > 1) {
+        std::vector<aig_ptr> next;
+        for (size_t i = 0; i + 1 < level.size(); i += 2) {
+            next.push_back(AIG::new_and(level[i], level[i+1]));
+        }
+        if (level.size() % 2 == 1) next.push_back(level.back());
+        level = std::move(next);
+    }
+    return level[0];
+}
+
+static aig_ptr gen_balanced_or_tree(std::mt19937& rng, uint32_t num_vars, uint32_t len) {
+    if (len < 2) len = 2;
+    std::vector<aig_ptr> level;
+    level.reserve(len);
+    for (uint32_t i = 0; i < len; i++) {
+        level.push_back(AIG::new_lit(rng() % num_vars, rng() % 2));
+    }
+    while (level.size() > 1) {
+        std::vector<aig_ptr> next;
+        for (size_t i = 0; i + 1 < level.size(); i += 2) {
+            next.push_back(AIG::new_or(level[i], level[i+1]));
+        }
+        if (level.size() % 2 == 1) next.push_back(level.back());
+        level = std::move(next);
+    }
+    return level[0];
+}
+
 // Deep chain — good for stressing k-ary AND/OR fusion.
 static aig_ptr gen_chain_aig(std::mt19937& rng, uint32_t num_vars, uint32_t chain_len) {
     aig_ptr chain = AIG::new_lit(rng() % num_vars, rng() % 2);
@@ -532,7 +631,7 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
         uint32_t depth = 3 + rng() % (max_depth - 2);
         uint32_t max_nodes = 8 + rng() % max_nodes_cfg;
         aig_ptr aig;
-        uint32_t shape = rng() % 10;
+        uint32_t shape = rng() % 16;
         if (shape < 4) {
             uint32_t d = 50 + rng() % 450;
             if (rng() % 20 == 0) d = 500 + rng() % 500;
@@ -548,6 +647,14 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
             aig = gen_random_aig(rng, num_vars, depth, max_nodes);
         } else if (shape < 9) {
             aig = gen_chain_aig(rng, num_vars, 5 + rng() % 25);
+        } else if (shape < 11) {
+            aig = gen_pure_and_chain(rng, num_vars, 10 + rng() % 790);
+        } else if (shape < 13) {
+            aig = gen_pure_or_chain(rng, num_vars, 10 + rng() % 790);
+        } else if (shape < 14) {
+            aig = gen_balanced_and_tree(rng, num_vars, 8 + rng() % 500);
+        } else if (shape < 15) {
+            aig = gen_balanced_or_tree(rng, num_vars, 8 + rng() % 500);
         } else {
             uint32_t d = 50 + rng() % 200;
             uint32_t bw = 2 + rng() % 6;
@@ -761,11 +868,11 @@ int main(int argc, char** argv) {
         aig_ptr aig;
         // Weight the shape distribution so the deep linear ITE chain --
         // the *actual* manthan Skolem-function shape with aig_depth 200+
-        // -- is the dominant case.
-        uint32_t shape = rng() % 10;
+        // -- is the dominant case, but also cover pure k-ary AND/OR chains
+        // (the target for large single-gate fusion).
+        uint32_t shape = rng() % 16;
         if (shape < 4) {
             // Deep linear ITE chain (primary manthan workload).
-            // Depth 50..500 with occasional very deep chains.
             uint32_t d = 50 + rng() % 450;
             if (rng() % 20 == 0) d = 500 + rng() % 500; // very deep
             uint32_t bw = 2 + rng() % 8;
@@ -784,6 +891,24 @@ int main(int argc, char** argv) {
             aig = gen_random_aig(rng, num_vars, depth, max_nodes);
         } else if (shape < 9) {
             aig = gen_chain_aig(rng, num_vars, 5 + rng() % 25);
+        } else if (shape < 11) {
+            // Pure big-AND chain of distinct literal inputs: canonical target
+            // for k-ary AND fusion. Length 10..800 to also exercise the width
+            // cap path.
+            uint32_t len = 10 + rng() % 790;
+            aig = gen_pure_and_chain(rng, num_vars, len);
+        } else if (shape < 13) {
+            uint32_t len = 10 + rng() % 790;
+            aig = gen_pure_or_chain(rng, num_vars, len);
+        } else if (shape < 14) {
+            // Balanced AND tree: same semantics as a pure big-AND but
+            // built bottom-up, so the encoder has to flatten through internal
+            // AND nodes.
+            uint32_t len = 8 + rng() % 500;
+            aig = gen_balanced_and_tree(rng, num_vars, len);
+        } else if (shape < 15) {
+            uint32_t len = 8 + rng() % 500;
+            aig = gen_balanced_or_tree(rng, num_vars, len);
         } else {
             // Simplify a deep ITE chain first to exercise the encoder on
             // rewritten AIGs (closest to the real pipeline).
