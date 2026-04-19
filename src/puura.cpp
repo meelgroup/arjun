@@ -78,7 +78,7 @@ void Puura::backbone(SimplifiedCNF& cnf) {
     verb_print(1, "[arjun-backbone] done, T: " << (cpuTime() - my_time));
 }
 
-std::unique_ptr<SATSolver> Puura::fill_solver(const SimplifiedCNF& cnf) {
+std::unique_ptr<SATSolver> Puura::fill_solver(const SimplifiedCNF& cnf) const {
     auto solver = std::make_unique<SATSolver>();
     solver->set_verbosity(conf.verb);
     solver->set_prefix("c o ");

@@ -1293,7 +1293,7 @@ DLL_PUBLIC map<uint32_t, set<uint32_t>> SimplifiedCNF::compute_dependencies(cons
     auto new_to_orig_var = get_new_to_orig_var();
     map<uint32_t, set<uint32_t>> cache;
     map<uint32_t, set<uint32_t>> ret;
-    for(auto& n: vars) {
+    for(const auto& n: vars) {
         const auto orig_v = new_to_orig_var.at(n).var();
         const auto ret_orig = get_dependent_vars_recursive(orig_v, cache);
         set<uint32_t> ret_new;
@@ -1753,17 +1753,16 @@ DLL_PUBLIC CMSat::lbool SimplifiedCNF::evaluate(const vector<CMSat::lbool>& vals
 DLL_PUBLIC bool SimplifiedCNF::check_orig_sampl_vars_undefined() const {
     for(const auto& v: orig_sampl_vars) {
         if(defs[v] == nullptr) continue;
-        else if (defs[v]->type == AIGT::t_const) continue;
-        else if (defs[v]->type == AIGT::t_lit) {
+        if (defs[v]->type == AIGT::t_const) continue;
+        if (defs[v]->type == AIGT::t_lit) {
             assert(orig_sampl_vars.count(defs[v]->var) && "If orig_sampl_var is defined to a literal, that literal must also be an orig_sampl_var");
             continue;
-        } else {
-            cerr << "ERROR: Orig sampl var " << v+1
-                << " cannot be defined to an AIG other than"
-                " a const or a lit pointing to another orig_sampl_var, but it is: "
-                << defs[v] << endl;
-            assert(false);
         }
+        cerr << "ERROR: Orig sampl var " << v+1
+            << " cannot be defined to an AIG other than"
+            " a const or a lit pointing to another orig_sampl_var, but it is: "
+            << defs[v] << endl;
+        assert(false);
     }
     return true;
 }
