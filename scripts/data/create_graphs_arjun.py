@@ -20,8 +20,9 @@ TMP_DIR = "tmp"
 # ---- Configuration: which dirs to include (prefix match) ----
 only_dirs = [
     # "out-synth-1068169-0",
-    "out-synth-1286344-",
-    # "out-synth-1296625-",
+    # "out-synth-1296625-", # lots of memory (9GB)
+    "out-synth-1286344-0", # 4.5GB memory, improvements but no AIG speedup
+    "out-synth-1367674-2", # 2-3x faster because of AIG
 ]
 # -------------------------------------------------------------
 
