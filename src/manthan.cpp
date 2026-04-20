@@ -640,7 +640,7 @@ void Manthan::bve_and_substitute() {
                 // a1 & a2 & ... & ak => and_out
                 for (const auto& ai : and_inputs) big_cl.push_back(~ai);
                 big_cl.push_back(and_out);
-                f.clauses.push_back(CL(big_cl));
+                f.clauses.emplace_back(big_cl);
                 branch_lit = and_out;
             }
             branch_results.push_back(branch_lit);
@@ -667,7 +667,7 @@ void Manthan::bve_and_substitute() {
             big_cl.clear();
             big_cl.push_back(~or_out);
             for (const auto& bi : branch_results) big_cl.push_back(bi);
-            f.clauses.push_back(CL(big_cl));
+            f.clauses.emplace_back(big_cl);
             result_lit = or_out;
         }
         f.out = sign ? ~result_lit : result_lit;
