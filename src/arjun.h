@@ -488,6 +488,7 @@ public:
     static void count_aig_nodes_batch(const AIG* aig, uint64_t epoch, size_t& count);
     static void simplify_aigs(uint32_t verb, std::vector<aig_ptr>& defs);
     static aig_ptr simplify_aig(aig_ptr aig);
+    static aig_ptr rewrite_aig(const aig_ptr& aig);
 
     friend std::ostream& operator<<(std::ostream& out, const aig_ptr& aig);
     friend class AIGManager;

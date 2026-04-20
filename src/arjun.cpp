@@ -2358,6 +2358,12 @@ DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb) {
     rw.rewrite_all(defs, verb);
 }
 
+DLL_PUBLIC aig_ptr AIG::rewrite_aig(const aig_ptr& aig) {
+    if (!aig) return nullptr;
+    AIGRewriter rw;
+    return rw.rewrite(aig);
+}
+
 DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
     const double my_time = cpuTime();
     size_t before;

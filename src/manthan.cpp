@@ -44,6 +44,8 @@
 #include <fstream>
 #include <cstdio>
 #include <filesystem>
+#include "aig_rewrite.h"
+
 #ifdef _WIN32
 #  include <process.h>
 #  define getpid _getpid
@@ -560,11 +562,11 @@ void Manthan::bve_and_substitute() {
     }
 
     uint32_t num_done = 0;
+    vector<aig_ptr> aigs;
     for(const auto& y: y_order) {
         if (!to_define.count(y)) continue;
         assert(var_to_formula.count(y) == 0);
 
-        FHolder<MetaSolver2>::Formula f;
         map<uint32_t, aig_ptr> transformed;
 
         // For optimizing which side of the BVE to take
@@ -618,7 +620,18 @@ void Manthan::bve_and_substitute() {
         if (overall == nullptr) overall = aig_mng.new_const(true);
         if (sign) overall = AIG::new_not(overall);
         overall = AIG::simplify_aig(overall);
-        f.aig = overall;
+        aigs.push_back(overall);
+    }
+    assert(aigs.size() == to_define.size());
+
+    AIGRewriter rw;
+    rw.rewrite_all(aigs, conf.verb);
+
+    uint32_t at = 0;
+    for(const auto& y: y_order) {
+        if (!to_define.count(y)) continue;
+        FHolder<MetaSolver2>::Formula f;
+        f.aig = aigs.at(at);
 
         // Encode via AIGToCNF on a y_hat-space clone of f.aig: k-ary AND/OR
         // fusion, De Morgan flattening, ITE detection and dedup give a much
@@ -658,6 +671,7 @@ void Manthan::bve_and_substitute() {
                 << " T: " << setw(5) << (cpuTime()-start_time)
                 << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
         }
+        at++;
     }
 
     assert(check_aig_dependency_cycles());
