@@ -137,8 +137,6 @@ class Manthan {
         uint32_t find_next_repair_var(const sample& ctx) const;
         void perform_repair(const uint32_t y_rep, const sample& ctx, const std::vector<CMSat::Lit>& conflict);
         void add_not_f_x_yhat();
-        void rebuild_cex_solver_if_needed(uint64_t total_formula_clauses, bool& did_rebuild);
-        void rebuild_cex_solver();
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with(std::set<uint32_t>& vars);
         void print_y_order_occur() const;
@@ -218,8 +216,6 @@ class Manthan {
         [[nodiscard]] bool check_functions_for_y_vars() const;
         std::mt19937 mtrand;
         std::vector<uint32_t> updated_y_funcs; // y_hats updated during last round of training
-        std::set<uint32_t> needs_reencode; // formulas modified since last rebuild
-        uint32_t nvars_at_last_rebuild = 0; // nVars at last rebuild for growth tracking
 
         // stats
         double repair_start_time;
@@ -227,7 +223,6 @@ class Manthan {
         void print_repair_stats(const std::string& txt = "", const std::string& color = "", const std::string& extra = "") const;
         void print_detailed_stats() const;
         uint32_t num_loops_repair = 0;
-        uint32_t last_loops_repair_rebuild = 0;
         uint64_t conflict_sizes_sum = 0;
         uint32_t generalized_repair_ok = 0;
         uint32_t generalized_repair_fallback = 0;

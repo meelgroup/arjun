@@ -22,7 +22,6 @@
  */
 
 #include "manthan.h"
-#include "aig_rewrite.h"
 #include "aig_to_cnf.h"
 #include <cryptominisat5/cryptominisat.h>
 #include <cryptominisat5/solvertypesmini.h>
@@ -886,35 +885,6 @@ void Manthan::const_functions() {
     }
 }
 
-void Manthan::rebuild_cex_solver_if_needed(uint64_t total_formula_clauses, bool& did_rebuild) {
-    if (nvars_at_last_rebuild > 0 && mconf.rebuild_growth_den > 0
-            && cex_solver.nVars() > nvars_at_last_rebuild * mconf.rebuild_growth_num / mconf.rebuild_growth_den
-            && total_formula_clauses > mconf.rebuild_min_clauses && num_loops_repair-last_loops_repair_rebuild > mconf.rebuild_min_loops)
-    {
-        last_loops_repair_rebuild = num_loops_repair;
-        verb_print(1, "Rebuilding because: "
-             << "current vars " << cex_solver.nVars() << " > last rebuild vars " << nvars_at_last_rebuild
-             << " * growth factor " << (double)mconf.rebuild_growth_num / mconf.rebuild_growth_den
-             << " and total formula clauses " << total_formula_clauses << " > min clauses " << mconf.rebuild_min_clauses
-             << " and loops " << num_loops_repair << " > min loops " << mconf.rebuild_min_loops);
-        // Rewrite AIGs
-        AIGRewriter rewriter;
-        vector<aig_ptr> aigs;
-        for (auto& [y, form] : var_to_formula) {
-            if (form.aig) aigs.push_back(form.aig);
-        }
-        rewriter.rewrite_all(aigs, conf.verb);
-        size_t idx = 0;
-        for (auto& [y, form] : var_to_formula) {
-            if (form.aig) form.aig = aigs[idx++];
-        }
-
-        rebuild_cex_solver();
-        nvars_at_last_rebuild = cex_solver.nVars();
-        did_rebuild = true;
-    }
-}
-
 SimplifiedCNF Manthan::do_manthan() {
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
     const double my_time = cpuTime();
@@ -986,7 +956,6 @@ SimplifiedCNF Manthan::do_manthan() {
 
     // Counterexample-guided repair
     repair_start_time = cpuTime();
-    nvars_at_last_rebuild = cex_solver.nVars();
     for(const auto& v: to_define_full) {
         assert(var_to_formula.count(v) && "All must have a tentative definition");
         updated_y_funcs.push_back(v);
@@ -1001,13 +970,8 @@ SimplifiedCNF Manthan::do_manthan() {
         at_least_one_repaired = false;
         num_loops_repair++;
 
-        bool did_rebuild = false;
-        uint64_t total_formula_clauses = 0;
-        for (const auto& [y, form] : var_to_formula) total_formula_clauses += form.clauses.size();
-        rebuild_cex_solver_if_needed(total_formula_clauses, did_rebuild);
-
         double t0 = cpuTime();
-        if (!did_rebuild) inject_formulas_into_solver();
+        inject_formulas_into_solver();
         time_inject_formulas += cpuTime() - t0;
 
         t0 = cpuTime();
@@ -1653,7 +1617,6 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
         verb_print(2, "[manthan] conflict empty for " << setw(5) << y_rep+1 << ", unconditionally fixing it to " << ctx[y_rep]);
         var_to_formula[y_rep] = fh->constant_formula(ctx[y_rep] == l_True);
         updated_y_funcs.push_back(y_rep);
-        needs_reencode.insert(y_rep);
         return;
     }
     verb_print(2, "[manthan] Performing repair on " << setw(5) << y_rep+1
@@ -1737,7 +1700,6 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
         var_to_formula[y_rep] = fh->compose_and(fh->neg(f), var_to_formula[y_rep]);
     }
     updated_y_funcs.push_back(y_rep);
-    needs_reencode.insert(y_rep);
 
     // For hot variables (repaired many times), periodically simplify the AIG
     // to prevent unbounded growth. Use the full rewriter for very hot variables,
@@ -2306,171 +2268,6 @@ void Manthan::add_not_f_x_yhat() {
     tmp.clear();
     for(const auto& l: cl_indics) tmp.push_back(~l); // at least one is unsatisfied
     cex_solver.add_clause(tmp, true);
-}
-
-void Manthan::rebuild_cex_solver() {
-    const double rebuild_start = cpuTime();
-    const uint32_t old_nvars = cex_solver.nVars();
-
-    // Strategy: keep all variable positions the same (no remapping needed).
-    // Create a fresh solver with the same number of variables, re-add only
-    // the essential clauses: original CNF, ~F(x,y_hat), true_lit, and
-    // fresh Tseitin encodings of all current formulas from their AIGs.
-
-    // Save old true_lit position before destroying fh
-    const Lit old_true = fh->get_true_lit();
-
-    // 1. Reset solvers
-    cex_solver.reset();
-
-    // 2. Allocate enough variables to cover all referenced positions.
-    // This covers: cnf vars, old true_lit, y_hat positions.
-    // This is much less than old_nvars which includes all accumulated
-    // gate/indicator/helper variables from previous repairs.
-    // Allocate only enough for essential positions (cnf vars, true_lit, y_hat).
-    // Formula gate variables will be freshly created during re-encoding.
-    // On successive rebuilds, min_vars stays the same since y_hat positions
-    // are fixed, so the total variable count stabilizes.
-    uint32_t min_vars = cnf.nVars();
-    min_vars = std::max(min_vars, old_true.var() + 1);
-    for (const auto& [y, y_hat] : y_to_y_hat) {
-        min_vars = std::max(min_vars, y_hat + 1);
-    }
-    cex_solver.new_vars(min_vars);
-
-    // 3. Re-add original CNF clauses
-    for(const auto& c: cnf.get_clauses()) cex_solver.add_clause(c, true);
-    for(const auto& c: cnf.get_red_clauses()) cex_solver.add_red_clause(c, true);
-
-    // 4. Force old true_lit to true (BW-defined formula clauses reference it).
-    // Then recreate FHolder which creates a new true_lit variable.
-    cex_solver.add_clause({old_true});
-    fh = std::make_unique<FHolder<MetaSolver2>>(&cex_solver);
-
-    // 5. Recreate ~F(x, y_hat) encoding (uses y_to_y_hat which is unchanged)
-    add_not_f_x_yhat();
-
-    // 6. Re-encode ALL formulas from their (simplified) AIGs into fresh compact
-    // Tseitin encodings. This is the core compression: a formula that accumulated
-    // 100K+ clauses through thousands of ITE repairs gets re-encoded from its
-    // simplified AIG into a much smaller set of clauses.
-    //
-    // We use the AIGToCNF encoder (k-ary AND/OR fusion, ITE pattern detection,
-    // De Morgan flattening), which typically cuts clauses and helpers ~50%
-    // compared to the previous naive pairwise Tseitin loop. Clauses land in
-    // the new Formula's clause list (rather than directly in cex_solver --
-    // inject_formulas_into_solver below pushes them out), while fresh helper
-    // variables ARE allocated from cex_solver so they use unique ids.
-    struct FormulaClauseSink {
-        MetaSolver2& solver;
-        std::vector<CL>& clauses;
-        std::set<uint32_t>& helpers_set;
-        uint32_t first_new_var;
-        void new_var() {
-            solver.new_var();
-            helpers_set.insert(solver.nVars() - 1);
-        }
-        [[nodiscard]] uint32_t nVars() const { return solver.nVars(); }
-        void add_clause(const std::vector<Lit>& cl) {
-            clauses.emplace_back(cl);
-        }
-    };
-
-    // Tally pre-rebuild clause counts for reporting.
-    uint64_t total_clauses_in = 0;
-    uint64_t total_aig_nodes = 0;
-    for (const auto& [y, form] : var_to_formula) {
-        total_clauses_in += form.clauses.size();
-        if (form.aig) total_aig_nodes += ArjunNS::AIG::count_aig_nodes(form.aig);
-    }
-
-    helpers.clear();
-    uint64_t total_clauses_out = 0;
-    uint64_t total_helpers_out = 0;
-    uint64_t total_ite_patterns = 0;
-    uint64_t total_kary_and = 0;
-    uint64_t total_kary_or = 0;
-    uint64_t total_kary_and_width = 0;
-    uint64_t total_kary_or_width = 0;
-    uint64_t total_dedup_const = 0;
-    uint64_t total_demorgan_flat = 0;
-    uint64_t total_ite_sub_sel = 0;
-    uint64_t total_ite_degenerate = 0;
-    uint64_t num_formulas_encoded = 0;
-    const auto t_enc_start = std::chrono::steady_clock::now();
-    for (auto& [y, form] : var_to_formula) {
-        if (form.aig == nullptr) {
-            for (auto& cl : form.clauses) cl.inserted = false;
-            continue;
-        }
-        FHolder<MetaSolver2>::Formula new_f;
-        new_f.aig = form.aig;
-        FormulaClauseSink sink{cex_solver, new_f.clauses, helpers, cex_solver.nVars()};
-        ArjunNS::AIGToCNF<FormulaClauseSink> enc(sink);
-        // Re-use FHolder's already-asserted true literal for t_const nodes
-        // so we don't waste a var+unit-clause per formula.
-        enc.set_true_lit(fh->get_true_lit());
-        // The k-ary width cap (set_max_kary_width) was evaluated on
-        // sdlx-fixpoint-5: width=3 ballooned clauses 1.9x (worse),
-        // width=8 produced ~28% more clauses and *slower* post-rebuild
-        // repair rate than the uncapped encoding. The wide-backward-clause
-        // hypothesis was wrong; the post-rebuild slowdown is driven by
-        // lost SAT solver state (learnt clauses, VSIDS activity), not by
-        // clause structure. Leave the encoder uncapped here.
-        new_f.out = enc.encode(new_f.aig);
-        const auto& es = enc.get_stats();
-        total_clauses_out += es.clauses_added;
-        total_helpers_out += es.helpers_added;
-        total_ite_patterns += es.ite_patterns;
-        total_kary_and += es.kary_and_count;
-        total_kary_or += es.kary_or_count;
-        total_kary_and_width += es.kary_and_width_total;
-        total_kary_or_width += es.kary_or_width_total;
-        total_dedup_const += es.dedup_const_and + es.dedup_const_or;
-        total_demorgan_flat += es.demorgan_and_flat + es.demorgan_or_flat;
-        total_ite_sub_sel += es.ite_sub_sel;
-        total_ite_degenerate += es.ite_degenerate;
-        num_formulas_encoded++;
-        form = new_f;
-    }
-    const double enc_time_s = std::chrono::duration<double>(
-        std::chrono::steady_clock::now() - t_enc_start).count();
-    const double avg_kand_w = total_kary_and > 0
-        ? (double)total_kary_and_width / total_kary_and : 0.0;
-    const double avg_kor_w = total_kary_or > 0
-        ? (double)total_kary_or_width / total_kary_or : 0.0;
-    verb_print(1, COLCYN "[manthan] rebuild re-encode: "
-        << "clauses " << total_clauses_in << " -> " << total_clauses_out
-        << "  (helpers " << total_helpers_out
-        << ", kAND " << total_kary_and << "/w" << std::fixed << std::setprecision(1) << avg_kand_w
-        << ", kOR " << total_kary_or << "/w" << std::fixed << std::setprecision(1) << avg_kor_w
-        << ", ITE " << total_ite_patterns
-        << ", aig_nodes " << total_aig_nodes
-        << ")  T: " << std::fixed << std::setprecision(2) << enc_time_s);
-    verb_print(1, COLCYN "[manthan] rebuild re-encode features: "
-        << "dedup_const " << total_dedup_const
-        << "  demorgan_flat " << total_demorgan_flat
-        << "  ite_sub_sel " << total_ite_sub_sel
-        << "  ite_degen " << total_ite_degenerate
-        << "  forms " << num_formulas_encoded);
-
-    // 7. Mark ALL formulas for re-injection and create fresh indicators
-    updated_y_funcs.clear();
-    y_hat_to_indic.clear();
-    indic_to_y_hat.clear();
-    indic_to_y.clear();
-    for (const auto& y : to_define_full) {
-        if (var_to_formula.count(y)) {
-            updated_y_funcs.push_back(y);
-        }
-    }
-
-    // 8. Inject all formulas and create indicators
-    inject_formulas_into_solver();
-
-    needs_reencode.clear();
-    verb_print(1, COLCYN "[manthan] Rebuilt cex_solver. nVars: " << old_nvars
-        << " T: " << fixed << setprecision(2) << (cpuTime() - rebuild_start));
 }
 
 void Manthan::inject_formulas_into_solver() {
