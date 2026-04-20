@@ -190,7 +190,7 @@ vector<sample> Manthan::get_samples_ccnr(const uint32_t num) {
         yals_lits.clear();
         for(auto lit : cl) yals_lits.push_back(lit_to_pl(lit));
         for(auto& lit: yals_lits) {
-            ls_s._clauses[cl_num].literals.push_back(::Arjun::CCNR::lit(lit, cl_num));
+            ls_s._clauses[cl_num].literals.emplace_back(lit, cl_num);
         }
         cl_num++;
     };
@@ -2420,7 +2420,7 @@ bool Manthan::get_counterexample(sample& ctx) {
         uint32_t y = indic_to_y[ind];
         if (mconf.force_bw_equal && backward_defined.count(y) && !helper_functions.count(y))
             continue; // already forced to true
-        assumps.push_back(Lit(ind, false));
+        assumps.emplace_back(ind, false);
     }
     if (mconf.force_bw_equal) assert(assumps.size() == y_order.size() - backward_defined.size());
     else assert(assumps.size() == y_order.size());
@@ -2444,11 +2444,10 @@ bool Manthan::get_counterexample(sample& ctx) {
         compute_needs_repair(ctx);
         assert(!needs_repair.empty() && "If we found a counterexample, there must be something to repair!");
         return false;
-    } else {
-        assert(ret == l_False);
-        verb_print(2, "Formula is good!");
-        return true;
     }
+    assert(ret == l_False);
+    verb_print(2, "Formula is good!");
+    return true;
 }
 
 // Checks if flipping variable v in sample s satisfies all clauses
