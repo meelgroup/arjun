@@ -412,12 +412,14 @@ void do_synthesis() {
 
     SynthRunner synth_runner(conf, arjun);
     auto strategies = synth_runner.parse_mstrategy(mstrategy);
+    cnf.rewrite_aigs(conf.verb);
     synth_runner.run_manthan_strategies(cnf, mconf, strategies);
+
+    cnf.rewrite_aigs(conf.verb);
     release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
     if (!output_file.empty() || !conf.debug_synth.empty()) {
         cnf.simplify_aigs();
-        cnf.rewrite_aigs(conf.verb);
     }
     if (!output_file.empty()) {
         cnf.write_aig_def_to_verilog(output_file);
