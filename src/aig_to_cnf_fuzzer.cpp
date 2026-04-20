@@ -423,40 +423,6 @@ static bool cnf_matches_aig(SATSolver& s, const aig_ptr& aig, Lit out_lit,
     return true;
 }
 
-// Per-assignment check for PG-encoded CNF with root asserted positively.
-// The biconditional is half-missing, so instead we require:
-//   SAT(cnf ∧ inputs=π ∧ opt_out=1)  iff  naive(π) = 1.
-static bool cnf_pg_matches_aig(SATSolver& s, const aig_ptr& aig, Lit out_lit,
-                                uint32_t num_vars)
-{
-    if (num_vars > 12) return true;
-    vector<aig_ptr> defs(num_vars, nullptr);
-    for (uint32_t mask = 0; mask < (1u << num_vars); mask++) {
-        vector<lbool> vals(num_vars);
-        vector<Lit> assumps;
-        for (uint32_t v = 0; v < num_vars; v++) {
-            bool b = (mask >> v) & 1;
-            vals[v] = b ? l_True : l_False;
-            assumps.emplace_back(v, !b);
-        }
-        assumps.push_back(out_lit); // assert the root positively
-        map<aig_ptr, lbool> ca;
-        lbool expected = AIG::evaluate(vals, aig, defs, ca);
-        lbool ret = s.solve(&assumps);
-        if (expected == l_True && ret != l_True) {
-            cerr << "  cnf_pg_matches_aig: expected T but UNSAT at mask="
-                 << mask << endl;
-            return false;
-        }
-        if (expected == l_False && ret != l_False) {
-            cerr << "  cnf_pg_matches_aig: expected F but SAT at mask="
-                 << mask << endl;
-            return false;
-        }
-    }
-    return true;
-}
-
 // -----------------------------------------------------------------------------
 // Main test routine.
 // -----------------------------------------------------------------------------
@@ -516,7 +482,7 @@ static void report_failure(const aig_ptr& aig, uint32_t num_vars,
 
 static bool run_one(const aig_ptr& aig, uint32_t num_vars,
                     uint64_t seed, uint64_t iter, FuzzStats& fs,
-                    bool verbose, bool use_pg)
+                    bool verbose)
 {
     (void)verbose;
     // Build a solver pre-populated with the input variables.
@@ -532,10 +498,6 @@ static bool run_one(const aig_ptr& aig, uint32_t num_vars,
 
     // 2. Optimized encoding (into the same solver, in a fresh variable range)
     AIGToCNF<SATSolver> enc(solver);
-    if (use_pg) {
-        enc.set_plaisted_greenbaum(true);
-        enc.set_root_polarity(PolPos);
-    }
     Lit opt_out = enc.encode(aig);
     const auto& es = enc.get_stats();
 
@@ -572,29 +534,14 @@ static bool run_one(const aig_ptr& aig, uint32_t num_vars,
     fs.opt_mux3 += es.mux3_patterns;
 
     // 3. Correctness check.
-    if (use_pg) {
-        // PG is half-biconditional, so naive <-> opt doesn't hold at the
-        // literal level. Instead: SAT(cnf ∧ inputs=π ∧ opt_out) iff naive(π).
-        if (!cnf_pg_matches_aig(solver, aig, opt_out, num_vars)) {
-            report_failure(aig, num_vars, seed, iter, "cnf_pg_matches_aig(opt)");
-            return false;
-        }
-        // Naive encoding is still biconditional: sanity-check it per-assignment
-        // so we catch bugs in the naive baseline too.
-        if (!cnf_matches_aig(solver, aig, naive_out, num_vars)) {
-            report_failure(aig, num_vars, seed, iter, "cnf_matches_aig(naive)");
-            return false;
-        }
-    } else {
-        if (!sat_equivalent(solver, naive_out, opt_out)) {
-            report_failure(aig, num_vars, seed, iter, "sat_equivalent");
-            cerr << "  naive_out=" << naive_out << "  opt_out=" << opt_out << endl;
-            return false;
-        }
-        if (!cnf_matches_aig(solver, aig, opt_out, num_vars)) {
-            report_failure(aig, num_vars, seed, iter, "cnf_matches_aig(opt)");
-            return false;
-        }
+    if (!sat_equivalent(solver, naive_out, opt_out)) {
+        report_failure(aig, num_vars, seed, iter, "sat_equivalent");
+        cerr << "  naive_out=" << naive_out << "  opt_out=" << opt_out << endl;
+        return false;
+    }
+    if (!cnf_matches_aig(solver, aig, opt_out, num_vars)) {
+        report_failure(aig, num_vars, seed, iter, "cnf_matches_aig(opt)");
+        return false;
     }
 
     return true;
@@ -860,8 +807,6 @@ static void print_usage(const char* prog) {
     cout << "  --vars V    Max input variables (default: 8)" << endl;
     cout << "  --depth D   Max AIG depth (default: 10)" << endl;
     cout << "  --nodes N   Max nodes per AIG (default: 50)" << endl;
-    cout << "  --pg        Force Plaisted-Greenbaum ON for every iter (default: random per iter)" << endl;
-    cout << "  --no-pg     Force Plaisted-Greenbaum OFF for every iter" << endl;
     cout << "  --verbose   Per-iteration verbose output" << endl;
 }
 
@@ -874,8 +819,6 @@ int main(int argc, char** argv) {
     bool verbose = false;
     bool measure_mode = false;
     bool bench_rewrite_mode = false;
-    // PG mode: -1 = random per iter (default), 0 = always off, 1 = always on.
-    int pg_mode = -1;
     uint32_t bench_chain_depth = 300;
 
     for (int i = 1; i < argc; i++) {
@@ -885,8 +828,6 @@ int main(int argc, char** argv) {
         else if (strcmp(argv[i], "--depth") == 0 && i + 1 < argc) max_depth = std::stoul(argv[++i]);
         else if (strcmp(argv[i], "--nodes") == 0 && i + 1 < argc) max_nodes_cfg = std::stoul(argv[++i]);
         else if (strcmp(argv[i], "--verbose") == 0) verbose = true;
-        else if (strcmp(argv[i], "--pg") == 0) pg_mode = 1;
-        else if (strcmp(argv[i], "--no-pg") == 0) pg_mode = 0;
         else if (strcmp(argv[i], "--measure") == 0) measure_mode = true;
         else if (strcmp(argv[i], "--bench-rewrite") == 0) bench_rewrite_mode = true;
         else if (strcmp(argv[i], "--chain-depth") == 0 && i + 1 < argc) bench_chain_depth = std::stoul(argv[++i]);
@@ -910,15 +851,9 @@ int main(int argc, char** argv) {
     cout << "fuzz_aig_to_cnf" << endl;
     cout << "Seed: " << seed << "  max_vars: " << max_vars
          << "  max_depth: " << max_depth << "  max_nodes: " << max_nodes_cfg << endl;
-    const char* pg_tag = (pg_mode == 1) ? " --pg" : (pg_mode == 0 ? " --no-pg" : "");
     cout << "Reproduce: fuzz_aig_to_cnf --seed " << seed
          << " --vars " << max_vars << " --depth " << max_depth
-         << " --nodes " << max_nodes_cfg << pg_tag << endl;
-    cout << "Plaisted-Greenbaum: "
-         << (pg_mode == 1 ? "always ON"
-             : pg_mode == 0 ? "always OFF"
-             : "random per iter")
-         << endl;
+         << " --nodes " << max_nodes_cfg << endl;
     if (num_iters > 0) cout << "Running " << num_iters << " iterations" << endl;
     else cout << "Running indefinitely (Ctrl-C to stop)" << endl;
 
@@ -988,12 +923,8 @@ int main(int argc, char** argv) {
         }
         if (!aig) continue;
 
-        bool iter_pg = (pg_mode == 1) ? true
-                     : (pg_mode == 0) ? false
-                     : ((rng() & 1u) != 0);
-        if (verbose) cout << "[" << iter << "] num_vars=" << num_vars
-                          << " pg=" << (iter_pg ? 1 : 0) << endl;
-        if (!run_one(aig, num_vars, seed, iter, fs, verbose, iter_pg)) return 1;
+        if (verbose) cout << "[" << iter << "] num_vars=" << num_vars << endl;
+        if (!run_one(aig, num_vars, seed, iter, fs, verbose)) return 1;
 
         fs.iters++;
 
