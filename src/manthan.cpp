@@ -589,6 +589,8 @@ void Manthan::bve_and_substitute() {
         vector<Lit> branch_results;
         bool has_true_branch = false;
         vector<Lit> big_cl;
+
+        // AIG
         for(const auto& at: lit_to_cls[Lit(y, sign).toInt()]) {
             const auto& cl = cnf.get_clauses()[at];
             bool todo = false;
@@ -649,7 +651,7 @@ void Manthan::bve_and_substitute() {
         if (sign) overall = AIG::new_not(overall);
         f.aig = overall;
 
-        // Direct multi-input Tseitin for OR of branches
+        // CNF
         Lit result_lit;
         if (has_true_branch || branch_results.empty()) {
             result_lit = fh->get_true_lit();
@@ -887,8 +889,9 @@ void Manthan::const_functions() {
 void Manthan::rebuild_cex_solver_if_needed(uint64_t total_formula_clauses, bool& did_rebuild) {
     if (nvars_at_last_rebuild > 0 && mconf.rebuild_growth_den > 0
             && cex_solver.nVars() > nvars_at_last_rebuild * mconf.rebuild_growth_num / mconf.rebuild_growth_den
-            && total_formula_clauses > mconf.rebuild_min_clauses && num_loops_repair > mconf.rebuild_min_loops)
+            && total_formula_clauses > mconf.rebuild_min_clauses && num_loops_repair-last_loops_repair_rebuild > mconf.rebuild_min_loops)
     {
+        last_loops_repair_rebuild = num_loops_repair;
         verb_print(1, "Rebuilding because: "
              << "current vars " << cex_solver.nVars() << " > last rebuild vars " << nvars_at_last_rebuild
              << " * growth factor " << (double)mconf.rebuild_growth_num / mconf.rebuild_growth_den
