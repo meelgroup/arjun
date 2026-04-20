@@ -617,6 +617,7 @@ void Manthan::bve_and_substitute() {
         }
         if (overall == nullptr) overall = aig_mng.new_const(true);
         if (sign) overall = AIG::new_not(overall);
+        overall = AIG::simplify_aig(overall);
         f.aig = overall;
 
         // Encode via AIGToCNF on a y_hat-space clone of f.aig: k-ary AND/OR
