@@ -110,8 +110,6 @@ DLL_PUBLIC string Arjun::get_thanks_info(const char* prefix) {
     stringstream ss;
     ss << prefix << "Using ideas by JM Lagniez, and Pierre Marquis" << endl;
     ss << prefix << "    from paper: Improving Model Counting [..] IJCAI 2016" << endl;
-    ss << prefix << "Using ideas by P. Golia, S. Roy, and K. Meel" << endl;
-    ss << prefix << "    from paper: Manthan: A Data-Driven Approach for Boolean Functional Synthesis";
     return ss.str();
 }
 
