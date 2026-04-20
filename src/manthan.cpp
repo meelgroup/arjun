@@ -627,6 +627,31 @@ void Manthan::bve_and_substitute() {
     AIGRewriter rw;
     rw.rewrite_all(aigs, conf.verb);
 
+    // Persistent sink + encoder across iterations. The AIGToCNF cache survives
+    // between encode() calls, so sub-AIGs shared across formulas (via AIG-
+    // manager hash-consing, including y_hat-remapped subtrees that touch no
+    // to_define vars) get encoded exactly once — subsequent formulas just
+    // reuse the helper literal, yielding a smaller CNF. The defining clauses
+    // are attributed to whichever formula first emits them, so per-formula
+    // stats (clause counts) become approximate; all downstream consumers
+    // (inject_formulas_into_solver, try_check_if_y_hat_ctx_works,
+    // check_functions_for_y_vars) feed every formula into the same solver, so
+    // shared helpers stay fully defined regardless of attribution.
+    struct FormulaClauseSink {
+        MetaSolver2& solver;
+        std::vector<CL>* clauses;
+        std::set<uint32_t>& helpers_set;
+        void new_var() {
+            solver.new_var();
+            helpers_set.insert(solver.nVars() - 1);
+        }
+        [[nodiscard]] uint32_t nVars() const { return solver.nVars(); }
+        void add_clause(const std::vector<Lit>& cl) { clauses->emplace_back(cl); }
+    };
+    FormulaClauseSink sink{cex_solver, nullptr, helpers};
+    ArjunNS::AIGToCNF<FormulaClauseSink> enc(sink);
+    enc.set_true_lit(fh->get_true_lit());
+
     uint32_t at = 0;
     for(const auto& y: y_order) {
         if (!to_define.count(y)) continue;
@@ -636,17 +661,6 @@ void Manthan::bve_and_substitute() {
         // Encode via AIGToCNF on a y_hat-space clone of f.aig: k-ary AND/OR
         // fusion, De Morgan flattening, ITE detection and dedup give a much
         // smaller CNF than the per-branch multi-input Tseitin we used before.
-        struct FormulaClauseSink {
-            MetaSolver2& solver;
-            std::vector<CL>& clauses;
-            std::set<uint32_t>& helpers_set;
-            void new_var() {
-                solver.new_var();
-                helpers_set.insert(solver.nVars() - 1);
-            }
-            [[nodiscard]] uint32_t nVars() const { return solver.nVars(); }
-            void add_clause(const std::vector<Lit>& cl) { clauses.emplace_back(cl); }
-        };
         map<aig_ptr, aig_ptr> aig_remap_cache;
         aig_ptr aig_yhat = AIG::transform<aig_ptr>(f.aig,
             [&](AIGT type, const uint32_t var2, const bool neg2,
@@ -657,9 +671,7 @@ void Manthan::bve_and_substitute() {
                 release_assert(false && "Unhandled AIG type");
             }, aig_remap_cache);
 
-        FormulaClauseSink sink{cex_solver, f.clauses, helpers};
-        ArjunNS::AIGToCNF<FormulaClauseSink> enc(sink);
-        enc.set_true_lit(fh->get_true_lit());
+        sink.clauses = &f.clauses;
         f.out = enc.encode(aig_yhat);
         var_to_formula[y] = f;
 
