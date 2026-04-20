@@ -585,9 +585,6 @@ void Manthan::bve_and_substitute() {
 
         const bool sign = (num_pos >= num_neg);
         aig_ptr overall = nullptr;
-        vector<Lit> branch_results;
-        bool has_true_branch = false;
-        vector<Lit> big_cl;
 
         // AIG
         for(const auto& at: lit_to_cls[Lit(y, sign).toInt()]) {
@@ -600,17 +597,14 @@ void Manthan::bve_and_substitute() {
                 }
             }
             if (!todo) continue;
-            aig_ptr current = nullptr; //aig_mng.new_const(true);
-            vector<Lit> and_inputs;
+            aig_ptr current = nullptr;
             for(const auto& l: cl) {
                 if (l.var() == y) continue;
-                aig_ptr aig = nullptr;
                 if (later_in_order(y, l.var())) {
-                    aig = get_aig(~l);
+                    aig_ptr aig = get_aig(~l);
                     set_depends_on(y, l);
                     if (current == nullptr) current = aig;
                     else current = AIG::new_and(current, aig);
-                    and_inputs.push_back(map_y_to_y_hat(~l));
                 } else if (y == l.var()) {
                     assert(false);
                 } else {
@@ -620,58 +614,39 @@ void Manthan::bve_and_substitute() {
             if (current == nullptr) current = aig_mng.new_const(true);
             if (overall == nullptr) overall = current;
             else overall = AIG::new_or(overall, current);
-
-            // Direct multi-input Tseitin for AND branch
-            Lit branch_lit;
-            if (and_inputs.empty()) {
-                // No inputs → branch is TRUE
-                has_true_branch = true;
-                branch_lit = fh->get_true_lit();
-            } else if (and_inputs.size() == 1) {
-                branch_lit = and_inputs[0];
-            } else {
-                big_cl.clear();
-                cex_solver.new_var();
-                const Lit and_out = Lit(cex_solver.nVars() - 1, false);
-                helpers.insert(and_out.var());
-                // ~and_out => ai for each i
-                for (const auto& ai : and_inputs) {
-                    f.clauses.push_back(CL({~and_out, ai}));
-                }
-                // a1 & a2 & ... & ak => and_out
-                for (const auto& ai : and_inputs) big_cl.push_back(~ai);
-                big_cl.push_back(and_out);
-                f.clauses.emplace_back(big_cl);
-                branch_lit = and_out;
-            }
-            branch_results.push_back(branch_lit);
         }
         if (overall == nullptr) overall = aig_mng.new_const(true);
         if (sign) overall = AIG::new_not(overall);
         f.aig = overall;
 
-        // CNF
-        Lit result_lit;
-        if (has_true_branch || branch_results.empty()) {
-            result_lit = fh->get_true_lit();
-        } else if (branch_results.size() == 1) {
-            result_lit = branch_results[0];
-        } else {
-            cex_solver.new_var();
-            Lit or_out = Lit(cex_solver.nVars() - 1, false);
-            helpers.insert(or_out.var());
-            // bi => or_out for each i
-            for (const auto& bi : branch_results) {
-                f.clauses.push_back(CL({~bi, or_out}));
+        // Encode via AIGToCNF on a y_hat-space clone of f.aig: k-ary AND/OR
+        // fusion, De Morgan flattening, ITE detection and dedup give a much
+        // smaller CNF than the per-branch multi-input Tseitin we used before.
+        struct FormulaClauseSink {
+            MetaSolver2& solver;
+            std::vector<CL>& clauses;
+            std::set<uint32_t>& helpers_set;
+            void new_var() {
+                solver.new_var();
+                helpers_set.insert(solver.nVars() - 1);
             }
-            // or_out => b1 | b2 | ... | bm
-            big_cl.clear();
-            big_cl.push_back(~or_out);
-            for (const auto& bi : branch_results) big_cl.push_back(bi);
-            f.clauses.emplace_back(big_cl);
-            result_lit = or_out;
-        }
-        f.out = sign ? ~result_lit : result_lit;
+            [[nodiscard]] uint32_t nVars() const { return solver.nVars(); }
+            void add_clause(const std::vector<Lit>& cl) { clauses.emplace_back(cl); }
+        };
+        map<aig_ptr, aig_ptr> aig_remap_cache;
+        aig_ptr aig_yhat = AIG::transform<aig_ptr>(f.aig,
+            [&](AIGT type, const uint32_t var2, const bool neg2,
+                const aig_ptr* left2, const aig_ptr* right2) -> aig_ptr {
+                if (type == AIGT::t_const) return aig_mng.new_const(!neg2);
+                if (type == AIGT::t_lit) return AIG::new_lit(map_y_to_y_hat(Lit(var2, neg2)));
+                if (type == AIGT::t_and) return AIG::new_and(*left2, *right2, neg2);
+                release_assert(false && "Unhandled AIG type");
+            }, aig_remap_cache);
+
+        FormulaClauseSink sink{cex_solver, f.clauses, helpers};
+        ArjunNS::AIGToCNF<FormulaClauseSink> enc(sink);
+        enc.set_true_lit(fh->get_true_lit());
+        f.out = enc.encode(aig_yhat);
         var_to_formula[y] = f;
 
         num_done++;
