@@ -21,8 +21,9 @@ TMP_DIR = "tmp"
 only_dirs = [
     # "out-synth-1068169-0",
     # "out-synth-1296625-", # lots of memory (9GB)
-    "out-synth-1286344-0", # 4.5GB memory, improvements but no AIG speedup
+    # "out-synth-1286344-0", # 4.5GB memory, improvements but no AIG speedup
     "out-synth-1367674-2", # 2-3x faster because of AIG
+    "out-synth-1375532-0", # 2x via aig_rewrite + AIGtoCNF in BVE
 ]
 # -------------------------------------------------------------
 
@@ -293,6 +294,99 @@ def print_signal_warnings(table_todo, fname_like):
     con.close()
 
 
+def print_slower_tables(matched_dirs, fname_like, threshold=0.25,
+                        min_abs_diff=50.0, verbose=False):
+    """For every ordered pair of matched dirs (A, B), list files where A's
+    arjun_time is at least `threshold` relatively slower than B's AND
+    at least `min_abs_diff` seconds absolutely slower. NULL arjun_time is
+    treated as TIMEOUT seconds."""
+    if len(matched_dirs) < 2:
+        return
+
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    pct = int(threshold * 100)
+
+    for dir1, dir2 in itertools.permutations(matched_dirs, 2):
+        cur.execute(
+            f"SELECT a.fname,"
+            f" COALESCE(a.arjun_time, {TIMEOUT}),"
+            f" COALESCE(b.arjun_time, {TIMEOUT}),"
+            f" a.repairs, b.repairs"
+            f" FROM {TABLE} a JOIN {TABLE} b ON a.fname = b.fname"
+            f" WHERE a.dirname = ? AND b.dirname = ?"
+            f"{fname_like}",
+            (dir1, dir2))
+
+        slower = []
+        for fn, t1, t2, r1, r2 in cur.fetchall():
+            if (t2 > 0 and t1 >= t2 * (1 + threshold)
+                    and (t1 - t2) >= min_abs_diff):
+                slower.append((fn, t1, t2, t1 / t2, r1, r2))
+
+        if not slower:
+            if verbose:
+                print(f"  slower: no cases for {dir1} vs {dir2}")
+            continue
+        slower.sort(key=lambda r: -r[3])
+
+        short1 = dir1.replace("out-synth-", "out-")
+        short2 = dir2.replace("out-synth-", "out-")
+        title = (f"{short1} >= {pct}% and >= {int(min_abs_diff)}s slower"
+                 f" than {short2}  ({len(slower)} cases)")
+        print(f"\n{BLUE}{title}{RESET}")
+        headers = ["fname", f"{short1} (s)", f"{short2} (s)", "ratio",
+                   f"{short1} rep", f"{short2} rep"]
+        str_rows = [(fn, f"{t1:.2f}", f"{t2:.2f}", f"{r:.2f}x",
+                     "N/A" if r1 is None else str(r1),
+                     "N/A" if r2 is None else str(r2))
+                    for fn, t1, t2, r, r1, r2 in slower]
+        _print_table(headers, str_rows)
+
+    con.close()
+
+
+def print_solve_diff_tables(matched_dirs, fname_like, verbose=False):
+    """For every ordered pair of matched dirs (A, B), list files where A
+    solved (arjun_time IS NOT NULL) but B did not (arjun_time IS NULL)."""
+    if len(matched_dirs) < 2:
+        return
+
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+
+    for dir1, dir2 in itertools.permutations(matched_dirs, 2):
+        cur.execute(
+            f"SELECT a.fname, a.arjun_time, a.repairs, b.repairs"
+            f" FROM {TABLE} a JOIN {TABLE} b ON a.fname = b.fname"
+            f" WHERE a.dirname = ? AND b.dirname = ?"
+            f" AND a.arjun_time IS NOT NULL AND b.arjun_time IS NULL"
+            f"{fname_like}"
+            f" ORDER BY a.arjun_time DESC",
+            (dir1, dir2))
+        rows = cur.fetchall()
+
+        if not rows:
+            if verbose:
+                print(f"  solve-diff: no cases for {dir1} vs {dir2}")
+            continue
+
+        short1 = dir1.replace("out-synth-", "out-")
+        short2 = dir2.replace("out-synth-", "out-")
+        title = (f"{short1} solves but {short2} does NOT"
+                 f"  ({len(rows)} cases)")
+        print(f"\n{BLUE}{title}{RESET}")
+        headers = ["fname", f"{short1} (s)",
+                   f"{short1} rep", f"{short2} rep"]
+        str_rows = [(fn, f"{t:.2f}",
+                     "N/A" if r1 is None else str(r1),
+                     "N/A" if r2 is None else str(r2))
+                    for fn, t, r1, r2 in rows]
+        _print_table(headers, str_rows)
+
+    con.close()
+
+
 # ---- Plot helpers ----
 
 def _png_dimensions(png_file):
@@ -488,6 +582,8 @@ def main():
     print_summary_tables(table_todo, fname_like, full=args.full)
     print_median_tables(table_todo, fname_like)
     print_instance_stats_table(table_todo, fname_like)
+    print_slower_tables(matched_dirs, fname_like, verbose=args.verbose)
+    print_solve_diff_tables(matched_dirs, fname_like, verbose=args.verbose)
 
     if fname2_s:
         generate_cdf(fname2_s)
