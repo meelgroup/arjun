@@ -308,13 +308,15 @@ def print_slower_tables(matched_dirs, fname_like, threshold=0.25,
     pct = int(threshold * 100)
 
     for dir1, dir2 in itertools.permutations(matched_dirs, 2):
+        # Both sides must have finished (arjun_time set, i.e. "All done."
+        # printed). Unsolved-on-either-side cases are covered by the
+        # solve-diff tables.
         cur.execute(
-            f"SELECT a.fname,"
-            f" COALESCE(a.arjun_time, {TIMEOUT}),"
-            f" COALESCE(b.arjun_time, {TIMEOUT}),"
+            f"SELECT a.fname, a.arjun_time, b.arjun_time,"
             f" a.repairs, b.repairs"
             f" FROM {TABLE} a JOIN {TABLE} b ON a.fname = b.fname"
             f" WHERE a.dirname = ? AND b.dirname = ?"
+            f" AND a.arjun_time IS NOT NULL AND b.arjun_time IS NOT NULL"
             f"{fname_like}",
             (dir1, dir2))
 

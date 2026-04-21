@@ -58,7 +58,9 @@ def find_arjun_time(fname):
         for line in f:
             line = strip_ansi(line.strip())
 
-            if "bad_alloc" in line:
+            # std::bad_alloc throws from C++ new; picosat prints its own
+            # "out of memory" message before aborting. Both are OOM.
+            if "bad_alloc" in line or "out of memory" in line:
                 mem_out = 1
             elif line.startswith("c o [arjun] All done."):
                 solved = True
