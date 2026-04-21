@@ -78,10 +78,11 @@ private:
 
     bool sat_sweep_enabled = false;
     // Number of 64-bit simulation rounds (each round = 64 patterns). Higher
-    // = fewer bogus candidate classes, at linear simulation cost. 2 rounds
-    // (128 patterns) comfortably separates accidental collisions on
-    // typical benchmarks.
-    uint32_t sweep_sim_rounds = 2;
+    // = fewer bogus candidate classes, at linear simulation cost. 4 rounds
+    // (256 patterns) trims the per-class SAT-refutation rate substantially
+    // versus 2 rounds, and simulation stays a small fraction of total
+    // sweep time on any realistic benchmark.
+    uint32_t sweep_sim_rounds = 4;
     // Classes larger than this are skipped (avoid quadratic SAT churn on
     // degenerate "all constants" groups that simulation can't split).
     uint32_t sweep_max_class_size = 64;

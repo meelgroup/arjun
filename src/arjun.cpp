@@ -2357,7 +2357,26 @@ DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb, bool sat_sweep)
     AIGRewriter rw;
     if (sat_sweep) rw.set_sat_sweep(true);
     rw.rewrite_all(defs, verb);
-    if (sat_sweep) rw.sat_sweep(defs, verb);
+    if (!sat_sweep) return;
+
+    // Iterate rewrite+sweep to a fixed point. Each sweep pass merges
+    // functionally equivalent nodes; those merges can expose new
+    // structural opportunities for the rewriter (shared subgraphs,
+    // fresh absorption / De Morgan chances), which in turn can
+    // restructure the graph enough for simulation to group previously
+    // scattered nodes into the same candidate class. Stop as soon as an
+    // iteration fails to shrink the graph. Cap at `max_iters` additional
+    // rounds so pathological oscillation can't spin forever.
+    rw.sat_sweep(defs, verb);
+    size_t prev = AIG::count_aig_nodes_fast(defs);
+    const uint32_t max_iters = 4;
+    for (uint32_t i = 0; i < max_iters; i++) {
+        rw.rewrite_all(defs, verb);
+        rw.sat_sweep(defs, verb);
+        const size_t now = AIG::count_aig_nodes_fast(defs);
+        if (now >= prev) break;
+        prev = now;
+    }
 }
 
 DLL_PUBLIC aig_ptr AIG::rewrite_aig(const aig_ptr& aig) {
