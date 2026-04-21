@@ -96,6 +96,11 @@ static EncResult encode(const aig_ptr& root, uint32_t nvars) {
     s.set_verbosity(0);
     s.new_vars(nvars);
     AIGToCNF<SATSolver> enc(s);
+    // Disable cut-based CNF so n=4 chains surface as k-ary gates here.
+    // The cut encoder would otherwise absorb small (≤4-leaf) cones into
+    // CUT patterns, which is what these tests are explicitly NOT
+    // checking.
+    enc.set_cut_cnf(false);
     Lit out = enc.encode(root);
     const auto& st = enc.get_stats();
     return {

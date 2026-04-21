@@ -11,7 +11,7 @@ for defining relationships between variables.
 ALWAYS build with `make -j12` from `build/` — otherwise it's slow.
 
 ```
-cd build && make -j12
+cd build && ./build_norm.sh
 ```
 
 Dependencies (cadical, cryptominisat, sbva, treedecomp) are typically sibling

@@ -530,6 +530,18 @@ endif()
 # -----------------------------------------------------------------------------
 set(ARJUN_EXPORT_NAME "arjunTargets")
 
+# enable_testing() must run in the top-level CMakeLists BEFORE any
+# add_subdirectory() calls that register tests with add_test(), otherwise
+# the nested add_test() invocations land in a scope that ctest never sees
+# and `make test` reports "No tests were found".
+if(ENABLE_TESTING)
+    enable_testing()
+    message(STATUS "Testing is enabled")
+    set(UNIT_TEST_EXE_SUFFIX "Tests" CACHE STRING "Suffix for Unit test executable")
+else()
+    message(WARNING "Testing is disabled")
+endif()
+
 add_subdirectory(src)
 
 # -----------------------------------------------------------------------------
@@ -544,17 +556,6 @@ configure_file(
 add_custom_target(uninstall_arjun
     COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake
 )
-
-if(ENABLE_TESTING)
-    enable_testing()
-
-    message(STATUS "Testing is enabled")
-    set(UNIT_TEST_EXE_SUFFIX "Tests" CACHE STRING "Suffix for Unit test executable")
-    #add_subdirectory(tests)
-
-else()
-    message(WARNING "Testing is disabled")
-endif()
 
 # -----------------------------------------------------------------------------
 # Export our targets so that other CMake based projects can interface with
