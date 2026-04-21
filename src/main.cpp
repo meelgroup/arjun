@@ -73,6 +73,7 @@ int do_unate = false;
 int do_unate_def = true;
 int do_revbce = false;
 int do_minim_indep = true;
+int do_sat_sweep = false;
 string debug_minim;
 double cms_glob_mult = -1.0;
 int mode = 0;
@@ -224,6 +225,7 @@ void add_arjun_options() {
     myopt("--minimbudgetmax", mconf.minim_budget_max, fc_int, "Max minimization solver calls");
     myopt("--minimbudgetmult", mconf.minim_budget_mult, fc_int, "Minim budget = conflict.size * mult (up to max)");
     myopt("--aigsimpevery", mconf.aig_simplify_every, fc_int, "Simplify AIG for hot vars every N repairs");
+    myflag("--sat-sweep", do_sat_sweep, "Run FRAIG-lite SAT sweeping after AIG rewrite (merges proven-equivalent gates)");
     myopt("--tdsteps", mconf.td_steps, fc_int, "Tree decomposition FlowCutter steps");
     myopt("--tdlookahead", mconf.td_lookahead_iters, fc_int, "Tree decomposition FlowCutter lookahead iterations");
     myopt("--bctxremoveall", mconf.better_ctx_remove_all, fc_int, "Remove-all threshold in find_better_ctx_normal");
@@ -412,13 +414,13 @@ void do_synthesis() {
 
     SynthRunner synth_runner(conf, arjun);
     auto strategies = synth_runner.parse_mstrategy(mstrategy);
-    cnf.rewrite_aigs(conf.verb);
+    cnf.rewrite_aigs(conf.verb, do_sat_sweep);
     synth_runner.run_manthan_strategies(cnf, mconf, strategies);
 
     release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
     if (!output_file.empty()) {
-        cnf.rewrite_aigs(conf.verb);
+        cnf.rewrite_aigs(conf.verb, do_sat_sweep);
         cnf.write_aig_def_to_verilog(output_file);
         cout << "c o [arjun] dumped synthesized functions to verilog file '" << output_file << "'" << endl;
     }

@@ -2352,10 +2352,12 @@ DLL_PUBLIC aig_ptr AIG::simplify_aig(aig_ptr aig) {
     return result;
 }
 
-DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb) {
+DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb, bool sat_sweep) {
     assert(need_aig);
     AIGRewriter rw;
+    if (sat_sweep) rw.set_sat_sweep(true);
     rw.rewrite_all(defs, verb);
+    if (sat_sweep) rw.sat_sweep(defs, verb);
 }
 
 DLL_PUBLIC aig_ptr AIG::rewrite_aig(const aig_ptr& aig) {

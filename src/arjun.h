@@ -1487,7 +1487,7 @@ public:
         assert(need_aig);
         AIG::simplify_aigs(verb, defs);
     }
-    void rewrite_aigs(const uint32_t verb = 0);
+    void rewrite_aigs(const uint32_t verb = 0, bool sat_sweep = false);
     [[nodiscard]] const auto& get_aig_mng() const { return aig_mng; }
     void import_candidate_functions(const std::string& fname, int verb = 0);
     void check_red_cls_deriveable() const;
