@@ -104,6 +104,7 @@ add_executable(arjun-example example.cpp)
 add_executable(test-synth test-synth.cpp)
 add_executable(test-aig-rewrite test_aig_rewrite.cpp)
 add_executable(test-aig-to-cnf test_aig_to_cnf.cpp)
+add_executable(test-cut-cnf test_cut_cnf.cpp)
 add_executable(fuzz_aig aig_fuzzer.cpp)
 add_executable(fuzz_aig_to_cnf aig_to_cnf_fuzzer.cpp)
 add_executable(fuzz_aig_rewrite aig_rewrite_fuzzer.cpp)
@@ -142,6 +143,10 @@ target_include_directories(fuzz_aig_rewrite PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_include_directories(test-aig-to-cnf PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_include_directories(test-cut-cnf PRIVATE
     ${PROJECT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
@@ -203,10 +208,20 @@ set_target_properties(test-aig-to-cnf PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
+set_target_properties(test-cut-cnf PROPERTIES
+    OUTPUT_NAME test-cut-cnf
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 if(ENABLE_TESTING)
     add_test(
         NAME test-aig-to-cnf
         COMMAND test-aig-to-cnf
+        WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
+    )
+    add_test(
+        NAME test-cut-cnf
+        COMMAND test-cut-cnf
         WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
     )
 endif()

@@ -30,6 +30,7 @@ void AIG2CNFStats::print(int verb) const {
         << ")  ITE: " << ite_patterns
         << "  MUX3: " << mux3_patterns
         << "  XOR: " << xor_patterns
+        << "  CUT: " << cut_cnf_patterns << "/" << cut_cnf_clauses << "cls"
         << std::endl;
 }
 

@@ -29,6 +29,7 @@
 #pragma once
 
 #include "arjun.h"
+#include "cut_cnf.h"
 #include <cryptominisat5/solvertypesmini.h>
 #include <algorithm>
 #include <cassert>
@@ -54,6 +55,8 @@ struct AIG2CNFStats {
     uint64_t ite_patterns = 0;
     uint64_t mux3_patterns = 0;
     uint64_t xor_patterns = 0;
+    uint64_t cut_cnf_patterns = 0;
+    uint64_t cut_cnf_clauses = 0;
     uint64_t const_nodes = 0;
     uint64_t lit_nodes = 0;
 
@@ -93,6 +96,7 @@ public:
 
     void set_detect_ite(bool b) { detect_ite = b; }
     void set_detect_xor(bool b) { detect_xor = b; }
+    void set_cut_cnf(bool b) { use_cut_cnf = b; }
     void set_kary_fusion(bool b) { kary_fusion = b; }
     void set_group_cse(bool b) { group_cse = b; }
     void set_ite_sub_selector(bool b) { ite_sub_selector = b; }
@@ -121,6 +125,7 @@ private:
     // propagation in the manthan pipeline.
     bool detect_ite = true;
     bool detect_xor = true;
+    bool use_cut_cnf = true;       // min-CNF encoding for k≤4 input cones
     bool kary_fusion = true;
     bool group_cse = false;        // (default off) structural CSE for groups
     bool ite_sub_selector = true;  // allow non-literal sub-AIG ITE selectors
@@ -167,6 +172,7 @@ private:
 
     bool try_ite(const aig_ptr& n, CMSat::Lit& out);
     bool try_xor(const aig_ptr& n, CMSat::Lit& out);
+    bool try_cut_cnf(const aig_ptr& n, CMSat::Lit& out);
 
     // Parsed ITE-pattern descriptor. Used by try_ite and the MUX3 nested-ITE
     // fusion path: parse_ite_at extracts the selector/then/else without
@@ -414,6 +420,7 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
     // covers the sub-AIG operand case when ite_sub_selector is off.
     if (detect_xor && try_xor(n, out)) { cache[n] = out; return out; }
     if (detect_ite && try_ite(n, out)) { cache[n] = out; return out; }
+    if (use_cut_cnf && try_cut_cnf(n, out)) { cache[n] = out; return out; }
 
     if (!n->neg) {
         // k-ary AND. We expand n's CHILDREN into the input list, never n
@@ -1305,6 +1312,132 @@ bool AIGToCNF<Solver>::try_xor(const aig_ptr& n, CMSat::Lit& out) {
     emit_xor(h, a_lit, b_lit);
     stats.xor_patterns++;
     out = ~h;
+    return true;
+}
+
+// Cut-based min-CNF encoding. Collects up to MAX_LEAVES leaves of the
+// sub-AIG rooted at n (stopping at literals, constants, and AND nodes with
+// fanout > 1 or already encoded), computes the truth table of n as a
+// function of those leaves, then looks up the minimum-clause CNF for that
+// truth table via cut_cnf::min_cnf_for_tt. If the function has no more than
+// 4 distinct input variables the result is typically smaller than the
+// k-ary AND/OR fallback. MAJ3 is the canonical win: 6 clauses + 1 helper
+// vs 13 clauses + 4 helpers for the naive (a∧b) ∨ (a∧c) ∨ (b∧c) encoding.
+template<class Solver>
+bool AIGToCNF<Solver>::try_cut_cnf(const aig_ptr& n, CMSat::Lit& out) {
+    constexpr uint32_t MAX_LEAVES = 4;
+    if (n->type != AIGT::t_and) return false;
+
+    auto can_consume = [&](const aig_ptr& p) -> bool {
+        if (cache.find(p) != cache.end()) return false;
+        auto it = fanout.find(p);
+        return it != fanout.end() && it->second <= 1;
+    };
+
+    // DFS the cone: record each leaf aig_ptr once (by pointer identity).
+    // Hard cap of MAX_LEAVES * 4 bails out quickly on cones that are
+    // clearly too wide — we still dedup by variable later, so the true leaf
+    // count may be smaller, but we want an early exit on unsuitable cones.
+    std::unordered_map<aig_ptr, uint32_t, AigPtrHash> leaf_idx;
+    std::vector<aig_ptr> leaves;
+    bool abort_flag = false;
+    std::function<void(const aig_ptr&)> dfs = [&](const aig_ptr& m) {
+        if (abort_flag) return;
+        bool is_leaf = (m->type != AIGT::t_and) || (m != n && !can_consume(m));
+        if (is_leaf) {
+            if (leaf_idx.count(m)) return;
+            if (leaves.size() >= MAX_LEAVES * 4) { abort_flag = true; return; }
+            leaf_idx[m] = leaves.size();
+            leaves.push_back(m);
+            return;
+        }
+        dfs(m->l);
+        if (!abort_flag && m->r != m->l) dfs(m->r);
+    };
+    dfs(n);
+    if (abort_flag || leaves.empty()) return false;
+
+    // Encode leaves and dedup by variable. Two leaves that resolve to the
+    // same variable (possibly with opposite signs — e.g., `x` and `¬x`)
+    // share one input slot; we remember the sign for each original leaf so
+    // the TT computation treats them consistently.
+    std::vector<CMSat::Lit> leaf_lits;
+    leaf_lits.reserve(leaves.size());
+    for (const auto& l : leaves) leaf_lits.push_back(encode_node(l));
+
+    std::unordered_map<uint32_t, uint32_t> var_to_slot;
+    std::vector<CMSat::Lit> slot_lits;  // positive-polarity lit per slot
+    std::vector<uint32_t> leaf_slot(leaves.size());
+    std::vector<bool> leaf_sign(leaves.size());
+    for (size_t i = 0; i < leaf_lits.size(); i++) {
+        uint32_t v = leaf_lits[i].var();
+        auto it = var_to_slot.find(v);
+        uint32_t slot;
+        if (it == var_to_slot.end()) {
+            if (slot_lits.size() >= MAX_LEAVES) return false;
+            slot = slot_lits.size();
+            var_to_slot[v] = slot;
+            slot_lits.push_back(CMSat::Lit(v, false));
+        } else {
+            slot = it->second;
+        }
+        leaf_slot[i] = slot;
+        leaf_sign[i] = leaf_lits[i].sign();
+    }
+
+    uint32_t num_inputs = slot_lits.size();
+    if (num_inputs == 0) return false;
+    uint32_t num_mt = 1u << num_inputs;
+    uint16_t full_mask = (uint16_t)((1u << num_mt) - 1);
+
+    // Build leaf value masks. `slot_mask[s]` has bit m set iff minterm m
+    // assigns slot s to 1; the leaf's mask XOR-s in the sign.
+    std::vector<uint16_t> leaf_mask(leaves.size());
+    for (size_t i = 0; i < leaves.size(); i++) {
+        uint16_t sm = 0;
+        for (uint32_t m = 0; m < num_mt; m++) {
+            if ((m >> leaf_slot[i]) & 1u) sm |= (uint16_t)(1u << m);
+        }
+        leaf_mask[i] = leaf_sign[i] ? (uint16_t)(sm ^ full_mask) : sm;
+    }
+
+    // Evaluate n as a 16-bit mask over the 2^num_inputs minterms.
+    std::unordered_map<aig_ptr, uint16_t, AigPtrHash> eval_cache;
+    std::function<uint16_t(const aig_ptr&)> eval = [&](const aig_ptr& m) -> uint16_t {
+        auto it_leaf = leaf_idx.find(m);
+        if (it_leaf != leaf_idx.end()) return leaf_mask[it_leaf->second];
+        auto it_c = eval_cache.find(m);
+        if (it_c != eval_cache.end()) return it_c->second;
+        assert(m->type == AIGT::t_and);
+        uint16_t lv = eval(m->l);
+        uint16_t rv = (m->r == m->l) ? lv : eval(m->r);
+        uint16_t v = (uint16_t)(lv & rv);
+        if (m->neg) v = (uint16_t)((~v) & full_mask);
+        eval_cache[m] = v;
+        return v;
+    };
+    uint16_t tt = eval(n);
+
+    const auto& min_cnf = cut_cnf::min_cnf_for_tt(num_inputs, tt);
+
+    // Emit clauses. The helper `h` carries g; clauses reference slot_lits[i]
+    // (possibly negated per the clause's sign bit) and h (possibly negated
+    // per g_sign).
+    CMSat::Lit h = new_helper();
+    for (const auto& c : min_cnf.clauses) {
+        std::vector<CMSat::Lit> cl;
+        cl.reserve(num_inputs + 1);
+        for (uint32_t i = 0; i < num_inputs; i++) {
+            if (!(c.present & (1u << i))) continue;
+            bool is_neg = (c.sign >> i) & 1u;
+            cl.push_back(is_neg ? ~slot_lits[i] : slot_lits[i]);
+        }
+        cl.push_back(c.g_sign ? ~h : h);
+        add_clause(cl);
+    }
+    stats.cut_cnf_patterns++;
+    stats.cut_cnf_clauses += min_cnf.clauses.size();
+    out = h;
     return true;
 }
 
