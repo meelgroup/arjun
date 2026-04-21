@@ -437,6 +437,10 @@ if __name__ == "__main__":
             val = random.choice([0, 1])
             solver += o + " " + str(val)
 
+        # Pure boolean flag (no 0/1 value). ~1-in-2 coverage.
+        if random.choice([True, False]):
+            solver += " --sat-sweep"
+
         solver += " --morder " + str(random.randint(0, 2))
         solver += " --bveresolvmaxsz " + str(random.randint(2, 20))
         solver += " --iter1grow " + str(random.randint(0, 5))
