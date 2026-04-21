@@ -408,8 +408,12 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
     }
 
     CMSat::Lit out;
-    if (detect_ite && try_ite(n, out)) { cache[n] = out; return out; }
+    // XOR before ITE: XOR is a special shape of ITE (t = ¬e) and would
+    // otherwise match the ITE detector as a degenerate case. Running XOR
+    // detection first keeps the classification accurate in stats and also
+    // covers the sub-AIG operand case when ite_sub_selector is off.
     if (detect_xor && try_xor(n, out)) { cache[n] = out; return out; }
+    if (detect_ite && try_ite(n, out)) { cache[n] = out; return out; }
 
     if (!n->neg) {
         // k-ary AND. We expand n's CHILDREN into the input list, never n
@@ -1214,12 +1218,94 @@ bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
     return true;
 }
 
+// XOR pattern detection. Shape produced by AIG::new_or(AIG::new_and(a, ¬b),
+// AIG::new_and(¬a, b)):
+//
+//   n  = AND(lx, ly, neg=true)       -- the outer OR (via De Morgan)
+//   lx = AND(ax, ax, neg=true)        -- NOT-wrapper of a positive AND
+//   ly = AND(ay, ay, neg=true)        -- NOT-wrapper of a positive AND
+//   ax = AND(p, q, neg=false)         -- {p, q} is {a, ¬b} in some order
+//   ay = AND(r, s, neg=false)         -- {r, s} is {¬a, b} in some order
+//
+// The signature is: between {p, q} and {r, s} there are exactly two
+// complementary pairs. Then XOR(a, b) = XOR(p, q) — we emit the 4-clause
+// XOR encoding on the literals for p and q (any XOR(x, y) is the same as
+// XOR(¬x, ¬y), so the pairing permutation doesn't matter).
+//
+// Why this isn't redundant with try_ite: try_ite's sub-AIG path uses
+// is_sub_complement, which only matches the NOT-wrapper pattern
+// (a, AND(a,a,neg=true)). XOR's shape has a deeper symmetry — *both* pairs
+// are complementary — that ITE can only pick up through the selector/other
+// split. With ite_sub_selector off, ITE misses sub-AIG XOR entirely;
+// try_xor catches it directly. Also keeps XOR classified in stats.
 template<class Solver>
-bool AIGToCNF<Solver>::try_xor(const aig_ptr& /*n*/, CMSat::Lit& /*out*/) {
-    // XOR with literal operands is already covered as a degenerate ITE (with
-    // t = NOT e), so the ITE detector catches it with identical clause count.
-    // Reserved for future direct XOR detection with arbitrary sub-AIG operands.
-    return false;
+bool AIGToCNF<Solver>::try_xor(const aig_ptr& n, CMSat::Lit& out) {
+    if (n->type != AIGT::t_and || !n->neg) return false;
+    const aig_ptr& lx = n->l;
+    const aig_ptr& ly = n->r;
+    if (!lx || !ly || lx == ly) return false;
+
+    auto unwrap_not_of_pos_and = [](const aig_ptr& w) -> aig_ptr {
+        if (!w || w->type != AIGT::t_and) return nullptr;
+        if (!w->neg || w->l != w->r) return nullptr;
+        const aig_ptr& u = w->l;
+        if (!u || u->type != AIGT::t_and || u->neg || u->l == u->r) return nullptr;
+        return u;
+    };
+    aig_ptr ax = unwrap_not_of_pos_and(lx);
+    aig_ptr ay = unwrap_not_of_pos_and(ly);
+    if (!ax || !ay) return false;
+
+    // Every structural node we're consuming must be fanout-1 and not yet
+    // encoded, otherwise folding it into a single XOR helper would elide a
+    // helper that some other encoded-path literal is referencing.
+    auto can_consume = [&](const aig_ptr& node) -> bool {
+        if (cache.find(node) != cache.end()) return false;
+        auto it = fanout.find(node);
+        return it != fanout.end() && it->second <= 1;
+    };
+    if (!can_consume(lx) || !can_consume(ly)) return false;
+    if (!can_consume(ax) || !can_consume(ay)) return false;
+
+    const aig_ptr& x1 = ax->l;
+    const aig_ptr& x2 = ax->r;
+    const aig_ptr& y1 = ay->l;
+    const aig_ptr& y2 = ay->r;
+
+    // Both pairs must be complements. Try both pairings of y's children.
+    bool matched = (aig_complement(x1, y1) && aig_complement(x2, y2))
+                || (aig_complement(x1, y2) && aig_complement(x2, y1));
+    if (!matched) return false;
+
+    // x1 and x2 come from the SAME inner AND whose children are {a, ¬b}.
+    // So XOR(x1, x2) == XOR(a, ¬b) == ¬XOR(a, b). The overall node value is
+    // XOR(a, b), so we emit XOR(x1, x2) and return its complement. (The other
+    // valid reading picks x1=¬a, x2=b, giving XOR(¬a, b) = ¬XOR(a, b) as well.)
+    CMSat::Lit a_lit = encode_node(x1);
+    CMSat::Lit b_lit = encode_node(x2);
+
+    // After encoding, operands may collapse through shared sub-formulas.
+    // These shouldn't occur on well-formed input AIGs (the original AND(a, ¬a)
+    // would have been folded to FALSE by AIG::new_and), but handle
+    // defensively so the encoder never emits a bogus helper.
+    if (a_lit == b_lit) {
+        // XOR(x, x) = FALSE, so node value = NOT FALSE = TRUE.
+        out = get_true_lit();
+        stats.xor_patterns++;
+        return true;
+    }
+    if (a_lit == ~b_lit) {
+        // XOR(x, ¬x) = TRUE, so node value = NOT TRUE = FALSE.
+        out = ~get_true_lit();
+        stats.xor_patterns++;
+        return true;
+    }
+
+    CMSat::Lit h = new_helper();
+    emit_xor(h, a_lit, b_lit);
+    stats.xor_patterns++;
+    out = ~h;
+    return true;
 }
 
 template<class Solver>
