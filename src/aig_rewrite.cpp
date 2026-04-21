@@ -21,6 +21,18 @@ using std::set;
 using std::cout;
 using std::endl;
 
+namespace {
+// Deterministic ordering for aig_ptr sorts. Using the raw pointer (the
+// default `operator<` for shared_ptr) gives different results run-to-run
+// because heap addresses vary under ASLR; sort by the stable construction-
+// time nid instead.
+inline bool aig_nid_less(const aig_ptr& a, const aig_ptr& b) {
+    if (!a) return b != nullptr;
+    if (!b) return false;
+    return a->nid < b->nid;
+}
+}
+
 
 void AIGRewriteStats::print(int verb) const {
     if (verb < 1) return;
@@ -138,8 +150,8 @@ aig_ptr AIGRewriter::build_or_tree(vector<aig_ptr>& children) {
 aig_ptr AIGRewriter::make_canonical(AIGT type, bool neg, const aig_ptr& l, const aig_ptr& r) {
     auto ll = l;
     auto rr = r;
-    if (ll < rr) std::swap(ll, rr);
-    StructKey key{neg, ll.get(), rr.get()};
+    if (ll->nid < rr->nid) std::swap(ll, rr);
+    StructKey key{neg, ll->nid, rr->nid};
     auto it = struct_hash.find(key);
     if (it != struct_hash.end()) {
         stats.structural_hash_hits++;
@@ -471,7 +483,7 @@ aig_ptr AIGRewriter::deep_absorb(const aig_ptr& aig, AigPtrMap& cache) {
         collect_and_children(r, children, false);
 
         // Sort and deduplicate
-        std::sort(children.begin(), children.end());
+        std::sort(children.begin(), children.end(), aig_nid_less);
         children.erase(std::unique(children.begin(), children.end()), children.end());
 
         // Quadratic-width guard. On real manthan workloads we see absorption
@@ -597,13 +609,13 @@ aig_ptr AIGRewriter::deep_absorb(const aig_ptr& aig, AigPtrMap& cache) {
                     if (!is_or(children[i])) continue;
                     vector<aig_ptr> or_i;
                     collect_or_children(children[i], or_i, false);
-                    std::sort(or_i.begin(), or_i.end());
+                    std::sort(or_i.begin(), or_i.end(), aig_nid_less);
 
                     for (size_t j = i + 1; j < children.size() && !res_changed; j++) {
                         if (!is_or(children[j])) continue;
                         vector<aig_ptr> or_j;
                         collect_or_children(children[j], or_j, false);
-                        std::sort(or_j.begin(), or_j.end());
+                        std::sort(or_j.begin(), or_j.end(), aig_nid_less);
 
                         if (or_i.size() != or_j.size()) continue;
 
@@ -643,7 +655,7 @@ aig_ptr AIGRewriter::deep_absorb(const aig_ptr& aig, AigPtrMap& cache) {
         }
 
         // Re-sort and re-deduplicate after subsumption/resolution changes
-        std::sort(children.begin(), children.end());
+        std::sort(children.begin(), children.end(), aig_nid_less);
         children.erase(std::unique(children.begin(), children.end()), children.end());
 
         if (children.empty()) {
@@ -665,7 +677,7 @@ aig_ptr AIGRewriter::deep_absorb(const aig_ptr& aig, AigPtrMap& cache) {
         collect_or_children(AIG::new_not(r), children, false);
 
         // Sort and deduplicate
-        std::sort(children.begin(), children.end());
+        std::sort(children.begin(), children.end(), aig_nid_less);
         children.erase(std::unique(children.begin(), children.end()), children.end());
 
         // Quadratic-width guard (same rationale as the AND path above).
@@ -771,7 +783,7 @@ aig_ptr AIGRewriter::deep_absorb(const aig_ptr& aig, AigPtrMap& cache) {
         }
 
         // Re-sort and re-deduplicate after subsumption changes
-        std::sort(children.begin(), children.end());
+        std::sort(children.begin(), children.end(), aig_nid_less);
         children.erase(std::unique(children.begin(), children.end()), children.end());
 
         if (children.empty()) {
@@ -825,7 +837,7 @@ aig_ptr AIGRewriter::flatten_ite_chains(const aig_ptr& aig, AigPtrMap& cache) {
 
         if (or_children.size() >= 3) {
             // Flatten into balanced tree (reduces depth from N to log2(N))
-            std::sort(or_children.begin(), or_children.end());
+            std::sort(or_children.begin(), or_children.end(), aig_nid_less);
             or_children.erase(std::unique(or_children.begin(), or_children.end()), or_children.end());
 
             // Check for complementary pairs
@@ -853,7 +865,7 @@ aig_ptr AIGRewriter::flatten_ite_chains(const aig_ptr& aig, AigPtrMap& cache) {
         collect_and_children(r, and_children, false);
 
         if (and_children.size() >= 3) {
-            std::sort(and_children.begin(), and_children.end());
+            std::sort(and_children.begin(), and_children.end(), aig_nid_less);
             and_children.erase(std::unique(and_children.begin(), and_children.end()), and_children.end());
 
             for (size_t i = 0; i < and_children.size(); i++) {

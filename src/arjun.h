@@ -62,10 +62,17 @@ inline std::ostream& operator<<(std::ostream& os, const AIGT& value) {
 
 class AIG {
 public:
-    AIG() = default;
+    AIG() : nid(next_nid()) {}
     ~AIG() = default;
     AIG(const AIG&) = delete;
     AIG& operator=(const AIG&) = delete;
+
+    // Monotonically increasing id assigned at construction time. Used as a
+    // deterministic ordering/hash key in place of the raw shared_ptr address,
+    // which varies run-to-run and machine-to-machine due to ASLR / allocator
+    // variance. Assignment order reflects construction order, which is
+    // itself deterministic given deterministic inputs.
+    uint64_t nid;
 
     [[nodiscard]] bool invariants() const {
         if (type == AIGT::t_lit) {
@@ -290,8 +297,11 @@ public:
         return ret;
     }
 
-    // Key for CSE: (type, var, neg, left_ptr, right_ptr)
-    using AIGKey = std::tuple<AIGT, uint32_t, bool, aig_ptr, aig_ptr>;
+    // Key for CSE: (type, var, neg, left_nid, right_nid).
+    // Uses the deterministic nid stamped at construction time rather than raw
+    // pointer addresses, so the CSE map order is identical across runs /
+    // machines.
+    using AIGKey = std::tuple<AIGT, uint32_t, bool, uint64_t, uint64_t>;
 
 
     static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, const aig_ptr& b) {
@@ -515,6 +525,16 @@ private:
     // then marks nodes by assignment; membership is an integer compare.
     mutable uint64_t visit_epoch = 0;
     static uint64_t next_visit_epoch() {
+        static uint64_t counter = 0;
+        return ++counter;
+    }
+
+    // Counter backing the `nid` field. A plain static counter is sufficient
+    // because AIG construction is not thread-parallel in our pipeline, and
+    // determinism only requires that within a single process the issued ids
+    // are a deterministic function of construction order. Not reset across
+    // runs, but each run starts from 0, which is what callers rely on.
+    static uint64_t next_nid() {
         static uint64_t counter = 0;
         return ++counter;
     }

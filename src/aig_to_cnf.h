@@ -128,11 +128,12 @@ private:
     bool normalize_inputs = true;  // dedup / complementary / const fold
     uint32_t max_kary_width = 1u << 30; // effectively unbounded by default
 
-    // Hash on shared_ptr raw pointer for O(1) fanout/cache lookups. std::map
-    // showed up as the hottest path on 500k-node manthan AIGs.
+    // Hash on AIG::nid for O(1) fanout/cache lookups. std::map showed up as
+    // the hottest path on 500k-node manthan AIGs. Using nid (not raw pointer)
+    // keeps bucket order deterministic across runs / machines.
     struct AigPtrHash {
         size_t operator()(const aig_ptr& p) const noexcept {
-            return std::hash<AIG*>{}(p.get());
+            return p ? std::hash<uint64_t>{}(p->nid) : 0;
         }
     };
     std::unordered_map<aig_ptr, uint32_t, AigPtrHash> fanout;

@@ -65,19 +65,23 @@ private:
     // rewriter only hash-conses t_and nodes with var == none_var, so we
     // key on just (neg, l, r) instead of the full 5-tuple -- a much
     // cheaper hash than the old std::tuple<AIGT,uint32_t,bool,...> key.
+    //
+    // Keyed on AIG::nid (monotonic, assigned at construction) rather than
+    // raw pointer addresses so hashing and equality are deterministic
+    // across runs / machines (addresses vary under ASLR).
     struct StructKey {
         bool neg;
-        AIG* l;
-        AIG* r;
+        uint64_t l_nid;
+        uint64_t r_nid;
         bool operator==(const StructKey& o) const noexcept {
-            return neg == o.neg && l == o.l && r == o.r;
+            return neg == o.neg && l_nid == o.l_nid && r_nid == o.r_nid;
         }
     };
     struct StructKeyHash {
         size_t operator()(const StructKey& k) const noexcept {
-            // Combine the two pointers via a cheap multiplicative mix.
-            size_t a = reinterpret_cast<uintptr_t>(k.l);
-            size_t b = reinterpret_cast<uintptr_t>(k.r);
+            // Combine the two nids via a cheap multiplicative mix.
+            size_t a = static_cast<size_t>(k.l_nid);
+            size_t b = static_cast<size_t>(k.r_nid);
             size_t h = a * 0x9e3779b97f4a7c15ULL;
             h ^= b + (h >> 32);
             h *= 0xff51afd7ed558ccdULL;
@@ -87,10 +91,11 @@ private:
     };
     std::unordered_map<StructKey, aig_ptr, StructKeyHash> struct_hash;
 
-    // Hash on the shared_ptr's raw pointer. Reused for every per-pass cache.
+    // Hash on AIG::nid. Reused for every per-pass cache. Using nid (not the
+    // raw pointer) keeps bucket order identical across runs.
     struct AigPtrHash {
         size_t operator()(const aig_ptr& p) const noexcept {
-            return std::hash<AIG*>{}(p.get());
+            return p ? std::hash<uint64_t>{}(p->nid) : 0;
         }
     };
     using AigPtrMap = std::unordered_map<aig_ptr, aig_ptr, AigPtrHash>;

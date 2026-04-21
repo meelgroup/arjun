@@ -2433,8 +2433,8 @@ aig_ptr AIG::simplify_cse(aig_ptr aig, map<AIGKey, aig_ptr>& cse_map, unordered_
     auto cse_lookup = [&](const AIGT type, const uint32_t var, const bool neg, const aig_ptr l, const aig_ptr r) -> aig_ptr {
         auto ll = l;
         auto rr = r;
-        if (ll < rr) std::swap(ll, rr);
-        AIGKey key(type, var, neg, ll, rr);
+        if (ll->nid < rr->nid) std::swap(ll, rr);
+        AIGKey key(type, var, neg, ll->nid, rr->nid);
         auto it = cse_map.find(key);
         if (it != cse_map.end()) {
             cache[aig.get()] = it->second;
