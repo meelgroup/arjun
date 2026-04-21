@@ -40,6 +40,7 @@ From `build/`:
 ```
 ./fuzz_synth.py --num 50
 ./fuzz_aig_to_cnf --num 300
+./fuzz_aig_rewrite --num 300
 ```
 
 Both must pass before reporting a change as complete.
