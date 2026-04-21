@@ -164,12 +164,21 @@ static void report_failure(const aig_ptr& orig, const aig_ptr& simp,
 
 static bool run_one(const aig_ptr& orig, uint32_t num_vars,
                     uint64_t seed, uint64_t iter, std::mt19937& rng,
-                    FuzzStats& fs, bool verbose)
+                    FuzzStats& fs, bool verbose, bool sat_sweep)
 {
     // 1. Rewrite.
     AIGRewriter rw;
+    if (sat_sweep) rw.set_sat_sweep(true);
     aig_ptr simp = rw.rewrite(orig);
     if (!simp) simp = orig;
+
+    // 1b. Optional SAT sweeping pass over the single-rooted vector.
+    if (sat_sweep) {
+        std::vector<aig_ptr> defs{simp};
+        rw.sat_sweep(defs, 0);
+        simp = defs[0];
+        if (!simp) simp = orig;
+    }
 
     size_t before = AIG::count_aig_nodes(orig);
     size_t after  = AIG::count_aig_nodes(simp);
@@ -221,6 +230,7 @@ static void print_usage(const char* prog) {
     cout << "  --depth D   Max AIG depth (default: 10)" << endl;
     cout << "  --nodes N   Max nodes per AIG (default: 50)" << endl;
     cout << "  --verbose   Per-iteration progress output" << endl;
+    cout << "  --sat-sweep Also run SAT sweeping pass (FRAIG-lite)" << endl;
 }
 
 int main(int argc, char** argv) {
@@ -230,6 +240,7 @@ int main(int argc, char** argv) {
     uint32_t max_depth = 10;
     uint32_t max_nodes_cfg = 50;
     bool verbose = false;
+    bool sat_sweep = false;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--num") == 0 && i + 1 < argc) num_iters = std::stoull(argv[++i]);
@@ -238,6 +249,7 @@ int main(int argc, char** argv) {
         else if (strcmp(argv[i], "--depth") == 0 && i + 1 < argc) max_depth = std::stoul(argv[++i]);
         else if (strcmp(argv[i], "--nodes") == 0 && i + 1 < argc) max_nodes_cfg = std::stoul(argv[++i]);
         else if (strcmp(argv[i], "--verbose") == 0) verbose = true;
+        else if (strcmp(argv[i], "--sat-sweep") == 0) sat_sweep = true;
         else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]);
             return 0;
@@ -250,7 +262,8 @@ int main(int argc, char** argv) {
 
     cout << "fuzz_aig_rewrite" << endl;
     cout << "Seed: " << seed << "  max_vars: " << max_vars
-         << "  max_depth: " << max_depth << "  max_nodes: " << max_nodes_cfg << endl;
+         << "  max_depth: " << max_depth << "  max_nodes: " << max_nodes_cfg
+         << "  sat-sweep: " << (sat_sweep ? "ON" : "off") << endl;
     cout << "Reproduce: fuzz_aig_rewrite --seed " << seed
          << " --vars " << max_vars << " --depth " << max_depth
          << " --nodes " << max_nodes_cfg << endl;
@@ -269,7 +282,7 @@ int main(int argc, char** argv) {
         aig_ptr aig = fuzz::gen_random_shape(aig_mng, rng, num_vars, depth, max_nodes);
         if (!aig) continue;
 
-        if (!run_one(aig, num_vars, seed, iter, rng, fs, verbose)) return 1;
+        if (!run_one(aig, num_vars, seed, iter, rng, fs, verbose, sat_sweep)) return 1;
         fs.iters++;
 
         if (iter > 0 && iter % 500 == 0) {

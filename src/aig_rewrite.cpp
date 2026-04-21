@@ -11,7 +11,10 @@
 #include <iostream>
 #include <iomanip>
 #include <cassert>
+#include <cstdint>
+#include <cryptominisat5/cryptominisat.h>
 #include <functional>
+#include <random>
 #include <unordered_set>
 
 using namespace ArjunNS;
@@ -1070,6 +1073,279 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
              << "  deep_absorb " << t_deep_absorb
              << "  flatten_ite " << t_flatten_ite
              << "  count " << t_count
+             << endl;
+    }
+}
+
+// ========== SAT sweeping (FRAIG-lite) ==========
+//
+// Identify functionally equivalent AND nodes (possibly across different
+// roots in `defs`) and merge them. The algorithm is the standard FRAIG
+// recipe:
+//   1. Simulate each node on random 64-bit patterns. Two nodes are
+//      candidate-equivalent iff their simulation signatures are equal
+//      (possibly after complementing one of them).
+//   2. Verify each candidate merge with a SAT solver. A merge is committed
+//      only when the miter CNF (force outputs to differ) is UNSAT.
+//   3. Rebuild each def with confirmed merges applied. The new_and calls
+//      go through the AIGManager's structural hash, so downstream sharing
+//      falls out for free.
+//
+// We build one shared SATSolver per candidate class (not per pair) and
+// rely on naive Tseitin encoding — the point of sweeping is to find
+// equivalences structural passes missed, and the cheapest encoder is
+// fine since we retire each class's solver immediately.
+
+namespace {
+
+// Naive Tseitin: one helper per AND, 3 clauses each. Identical in spirit
+// to the fuzzer's baseline encoder; duplicated here to avoid pulling
+// fuzz_aig_rewrite's helpers into the library.
+CMSat::Lit naive_encode(const aig_ptr& aig, CMSat::SATSolver& solver,
+                        CMSat::Lit& true_lit, bool& true_lit_set,
+                        std::map<aig_ptr, CMSat::Lit>& cache)
+{
+    auto visitor = [&](AIGT type, uint32_t var, bool neg,
+                       const CMSat::Lit* left, const CMSat::Lit* right) -> CMSat::Lit {
+        if (type == AIGT::t_const) {
+            if (!true_lit_set) {
+                solver.new_var();
+                true_lit = CMSat::Lit(solver.nVars() - 1, false);
+                solver.add_clause({true_lit});
+                true_lit_set = true;
+            }
+            return neg ? ~true_lit : true_lit;
+        }
+        if (type == AIGT::t_lit) {
+            while (solver.nVars() <= var) solver.new_var();
+            return CMSat::Lit(var, neg);
+        }
+        assert(type == AIGT::t_and);
+        CMSat::Lit l = *left;
+        CMSat::Lit r = *right;
+        solver.new_var();
+        CMSat::Lit g(solver.nVars() - 1, false);
+        solver.add_clause({~g, l});
+        solver.add_clause({~g, r});
+        solver.add_clause({g, ~l, ~r});
+        return neg ? ~g : g;
+    };
+    return AIG::transform<CMSat::Lit>(aig, visitor, cache);
+}
+
+} // namespace
+
+void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
+    if (!sat_sweep_enabled) return;
+    const double start_time = cpuTime();
+
+    // Collect unique nodes reachable from any root in post-order (children
+    // first). We cannot sort by nid here: helpers like `AIG::new_or`
+    // construct the wrapper AND node *before* its `new_not` children, so
+    // a parent can legitimately have a smaller nid than its children.
+    // Post-order DFS is deterministic given deterministic `defs`, which is
+    // all we need.
+    std::unordered_map<aig_ptr, bool, AigPtrHash> visited;
+    vector<aig_ptr> topo;  // all reachable nodes, any type, post-order
+    std::function<void(const aig_ptr&)> dfs = [&](const aig_ptr& n) {
+        if (!n) return;
+        if (visited.count(n)) return;
+        visited[n] = true;
+        if (n->type == AIGT::t_and) {
+            dfs(n->l);
+            if (n->r != n->l) dfs(n->r);
+        }
+        topo.push_back(n);
+    };
+    for (const auto& r : defs) dfs(r);
+
+    // Collect the set of input variables referenced anywhere in `defs`.
+    // Each gets one random 64-bit pattern per simulation round.
+    std::set<uint32_t> used_vars;
+    for (const auto& n : topo) {
+        if (n->type == AIGT::t_lit) used_vars.insert(n->var);
+    }
+
+    // Simulate. Each node's aggregate signature is `sweep_sim_rounds * 64`
+    // bits long; we concatenate rounds into a vector<uint64_t>. Canonical
+    // form: if the MSB of round 0 is 1, XOR every word with ~0. This maps
+    // `x` and `¬x` to the same canonical signature so complement-equivalent
+    // nodes land in the same class.
+    const uint32_t R = sweep_sim_rounds;
+    std::mt19937_64 rng(0xA11CEULL);  // fixed seed = determinism
+    std::unordered_map<uint32_t, vector<uint64_t>> var_pats;
+    for (uint32_t v : used_vars) {
+        var_pats[v].resize(R);
+        for (uint32_t i = 0; i < R; i++) var_pats[v][i] = rng();
+    }
+    std::unordered_map<aig_ptr, vector<uint64_t>, AigPtrHash> sigs;
+    sigs.reserve(topo.size());
+    for (const auto& n : topo) {
+        vector<uint64_t> s(R);
+        if (n->type == AIGT::t_const) {
+            uint64_t v = n->neg ? 0ULL : ~0ULL;
+            for (uint32_t i = 0; i < R; i++) s[i] = v;
+        } else if (n->type == AIGT::t_lit) {
+            const auto& p = var_pats[n->var];
+            for (uint32_t i = 0; i < R; i++) s[i] = n->neg ? ~p[i] : p[i];
+        } else {
+            // Use .at() to avoid operator[]-triggered insertion, which would
+            // rehash the map and invalidate `ls`/`rs` references. Children
+            // must already be present by topo invariant (sort by nid).
+            auto it_l = sigs.find(n->l);
+            auto it_r = (n->r == n->l) ? it_l : sigs.find(n->r);
+            assert(it_l != sigs.end() && it_r != sigs.end());
+            const auto& ls = it_l->second;
+            const auto& rs = it_r->second;
+            for (uint32_t i = 0; i < R; i++) {
+                uint64_t v = ls[i] & rs[i];
+                if (n->neg) v = ~v;
+                s[i] = v;
+            }
+        }
+        sigs.emplace(n, std::move(s));
+    }
+    auto canonicalize = [&](const vector<uint64_t>& s, bool& was_flipped) {
+        was_flipped = (s[0] >> 63) & 1ULL;
+        if (!was_flipped) return s;
+        vector<uint64_t> out(R);
+        for (uint32_t i = 0; i < R; i++) out[i] = ~s[i];
+        return out;
+    };
+
+    // Group AND nodes by canonical signature. Track the per-node sign so
+    // the merge logic knows whether `n` is the canonical form or its
+    // complement.
+    struct Key {
+        vector<uint64_t> data;
+        bool operator==(const Key& o) const { return data == o.data; }
+    };
+    struct KeyHash {
+        size_t operator()(const Key& k) const noexcept {
+            size_t h = 0xcbf29ce484222325ULL;
+            for (uint64_t w : k.data) {
+                h ^= w;
+                h *= 0x100000001b3ULL;
+            }
+            return h;
+        }
+    };
+    std::unordered_map<Key, vector<std::pair<aig_ptr, bool>>, KeyHash> classes;
+    for (const auto& n : topo) {
+        if (n->type != AIGT::t_and) continue;
+        bool flipped;
+        Key k{canonicalize(sigs[n], flipped)};
+        classes[std::move(k)].emplace_back(n, flipped);
+    }
+
+    // SAT-verify each non-singleton class. For each class we build one
+    // solver and encode every member, then ask pairwise-vs-representative.
+    // The representative is the first node (lowest nid = earliest built,
+    // almost always the topological root of the class).
+    std::unordered_map<aig_ptr, std::pair<aig_ptr, bool>, AigPtrHash> sub;
+    for (auto& [key, members] : classes) {
+        if (members.size() < 2) continue;
+        if (members.size() > sweep_max_class_size) continue;
+        stats.sweep_sim_groups++;
+        // Sort so the canonical (lowest-nid) representative is first.
+        std::sort(members.begin(), members.end(),
+                  [](const auto& a, const auto& b) { return a.first->nid < b.first->nid; });
+
+        CMSat::SATSolver solver;
+        solver.set_verbosity(0);
+        CMSat::Lit true_lit;
+        bool true_lit_set = false;
+        std::map<aig_ptr, CMSat::Lit> enc_cache;
+
+        // Pre-allocate primary input vars [0..max_used_var] so that the
+        // t_const helper (true_lit) — which takes the next fresh var —
+        // doesn't alias a primary input. Otherwise a const in the rep and a
+        // literal on the same var would be forced to TRUE.
+        if (!used_vars.empty()) {
+            uint32_t maxv = *std::max_element(used_vars.begin(), used_vars.end());
+            solver.new_vars(maxv + 1);
+        }
+
+        // Encode the representative.
+        CMSat::Lit rep_lit = naive_encode(members[0].first, solver,
+                                           true_lit, true_lit_set, enc_cache);
+        // Representative's "canonical" lit accounts for its own flip.
+        CMSat::Lit rep_canon = members[0].second ? ~rep_lit : rep_lit;
+
+        for (size_t i = 1; i < members.size(); i++) {
+            const auto& [node, flipped] = members[i];
+            // Skip if the node was already subsumed earlier (e.g. equal
+            // to some still-earlier representative from another class
+            // — shouldn't happen given partitioning, but belt-and-braces).
+            if (sub.count(node)) continue;
+
+            CMSat::Lit node_lit = naive_encode(node, solver, true_lit,
+                                               true_lit_set, enc_cache);
+            CMSat::Lit node_canon = flipped ? ~node_lit : node_lit;
+
+            // Miter: activation lit `act` ⇒ rep_canon ≠ node_canon.
+            solver.new_var();
+            CMSat::Lit act(solver.nVars() - 1, false);
+            solver.add_clause({~act, rep_canon, node_canon});
+            solver.add_clause({~act, ~rep_canon, ~node_canon});
+            vector<CMSat::Lit> assumps{act};
+            stats.sweep_sat_checks++;
+            CMSat::lbool res = solver.solve(&assumps);
+            // Retire the activation literal regardless of outcome.
+            solver.add_clause({~act});
+
+            if (res == CMSat::l_False) {
+                // Proven equivalent. Merge direction: node → rep (possibly
+                // complemented). The `invert` flag is true iff node is the
+                // complement of rep.
+                bool invert = (flipped != members[0].second);
+                sub[node] = {members[0].first, invert};
+                stats.sweep_merges++;
+            } else if (res == CMSat::l_True) {
+                stats.sweep_cex_refuted++;
+            }
+            // l_Undef: treat as "can't prove" — no merge. Rare here since
+            // we give CMS no budget limit.
+        }
+    }
+
+    // Apply the substitution map. Bottom-up rebuild via new_and so the
+    // AIGManager's structural hash reuses existing nodes where possible.
+    std::unordered_map<aig_ptr, aig_ptr, AigPtrHash> rebuild;
+    std::function<aig_ptr(const aig_ptr&)> rebuild_node = [&](const aig_ptr& n) -> aig_ptr {
+        if (!n) return n;
+        auto it = rebuild.find(n);
+        if (it != rebuild.end()) return it->second;
+        aig_ptr result;
+        auto it_sub = sub.find(n);
+        if (it_sub != sub.end()) {
+            aig_ptr rep = rebuild_node(it_sub->second.first);
+            result = it_sub->second.second ? AIG::new_not(rep) : rep;
+        } else if (n->type == AIGT::t_and) {
+            aig_ptr new_l = rebuild_node(n->l);
+            aig_ptr new_r = rebuild_node(n->r);
+            if (n->l == n->r) {
+                // NOT-wrapper or identity shape.
+                result = n->neg ? AIG::new_not(new_l) : new_l;
+            } else {
+                aig_ptr core = AIG::new_and(new_l, new_r);
+                result = n->neg ? AIG::new_not(core) : core;
+            }
+        } else {
+            result = n;
+        }
+        rebuild[n] = result;
+        return result;
+    };
+    for (auto& d : defs) if (d) d = rebuild_node(d);
+
+    if (verb >= 1) {
+        cout << "c o [aig-rewrite] sat-sweep T: "
+             << std::fixed << std::setprecision(2) << (cpuTime() - start_time)
+             << "  groups=" << stats.sweep_sim_groups
+             << "  checks=" << stats.sweep_sat_checks
+             << "  merges=" << stats.sweep_merges
+             << "  refuted=" << stats.sweep_cex_refuted
              << endl;
     }
 }

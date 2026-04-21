@@ -41,6 +41,12 @@ struct AIGRewriteStats {
     uint64_t nodes_before = 0;
     uint64_t nodes_after = 0;
 
+    // SAT sweeping (FRAIG-lite) counters.
+    uint64_t sweep_sim_groups = 0;  // candidate classes after simulation
+    uint64_t sweep_sat_checks = 0;  // pairwise SAT checks issued
+    uint64_t sweep_merges = 0;      // confirmed equivalences applied
+    uint64_t sweep_cex_refuted = 0; // candidate pairs refuted by SAT
+
     void print(int verb) const;
     void clear();
 };
@@ -55,11 +61,30 @@ public:
     // Rewrite a vector of AIGs (sharing structure across all)
     void rewrite_all(std::vector<aig_ptr>& defs, int verb = 1);
 
+    // FRAIG-lite SAT sweeping: detect and merge functionally equivalent
+    // AND nodes across `defs`. Sound — every merge is verified via
+    // CryptoMiniSat. Opt-in; no-op unless set_sat_sweep(true) was called.
+    void sat_sweep(std::vector<aig_ptr>& defs, int verb = 1);
+
+    void set_sat_sweep(bool b) { sat_sweep_enabled = b; }
+    void set_sat_sweep_sim_patterns(uint32_t n) { sweep_sim_rounds = n; }
+    void set_sat_sweep_max_class(uint32_t n) { sweep_max_class_size = n; }
+
     // Get rewriting statistics
     const AIGRewriteStats& get_stats() const { return stats; }
 
 private:
     AIGRewriteStats stats;
+
+    bool sat_sweep_enabled = false;
+    // Number of 64-bit simulation rounds (each round = 64 patterns). Higher
+    // = fewer bogus candidate classes, at linear simulation cost. 2 rounds
+    // (128 patterns) comfortably separates accidental collisions on
+    // typical benchmarks.
+    uint32_t sweep_sim_rounds = 2;
+    // Classes larger than this are skipped (avoid quadratic SAT churn on
+    // degenerate "all constants" groups that simulation can't split).
+    uint32_t sweep_max_class_size = 64;
 
     // Structural hash table for canonical AND nodes. In practice the
     // rewriter only hash-conses t_and nodes with var == none_var, so we
