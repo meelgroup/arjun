@@ -1138,6 +1138,7 @@ CMSat::Lit naive_encode(const aig_ptr& aig, CMSat::SATSolver& solver,
 void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
     if (!sat_sweep_enabled) return;
     const double start_time = cpuTime();
+    const size_t nodes_before = AIG::count_aig_nodes_fast(defs);
 
     // Collect unique nodes reachable from any root in post-order (children
     // first). We cannot sort by nid here: helpers like `AIG::new_or`
@@ -1340,8 +1341,13 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
     for (auto& d : defs) if (d) d = rebuild_node(d);
 
     if (verb >= 1) {
+        const size_t nodes_after = AIG::count_aig_nodes_fast(defs);
+        const double pct = nodes_before
+            ? 100.0 * (1.0 - (double)nodes_after / (double)nodes_before) : 0.0;
         cout << "c o [aig-rewrite] sat-sweep T: "
              << std::fixed << std::setprecision(2) << (cpuTime() - start_time)
+             << "  nodes: " << nodes_before << " -> " << nodes_after
+             << " (" << std::setprecision(1) << pct << "% reduction)"
              << "  groups=" << stats.sweep_sim_groups
              << "  checks=" << stats.sweep_sat_checks
              << "  merges=" << stats.sweep_merges
