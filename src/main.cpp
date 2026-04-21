@@ -415,10 +415,10 @@ void do_synthesis() {
     cnf.rewrite_aigs(conf.verb);
     synth_runner.run_manthan_strategies(cnf, mconf, strategies);
 
-    cnf.rewrite_aigs(conf.verb);
     release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
     if (!output_file.empty()) {
+        cnf.rewrite_aigs(conf.verb);
         cnf.write_aig_def_to_verilog(output_file);
         cout << "c o [arjun] dumped synthesized functions to verilog file '" << output_file << "'" << endl;
     }
