@@ -1310,8 +1310,40 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
         }
     }
 
-    // Apply the substitution map. Bottom-up rebuild via new_and so the
-    // AIGManager's structural hash reuses existing nodes where possible.
+    // Apply the substitution map. Bottom-up rebuild; every freshly-built
+    // AND is hash-consed through `struct_hash` so substitutions like
+    // A → ~B don't leak duplicate NOT wrappers and structurally identical
+    // rebuilt ANDs share storage. Without this, the sweep can *inflate*
+    // node count on small AIGs even when merges are correct.
+    //
+    // `make_and` folds via AIG::new_and first (constants, AND(x,x), etc.),
+    // and if the result is still a t_and it is canonicalized against the
+    // persistent struct_hash. Const/lit folds are returned unchanged.
+    auto make_and = [&](const aig_ptr& l, const aig_ptr& r, bool neg) -> aig_ptr {
+        aig_ptr folded = AIG::new_and(l, r, neg);
+        if (!folded || folded->type != AIGT::t_and) return folded;
+        uint64_t l_nid = folded->l->nid;
+        uint64_t r_nid = folded->r->nid;
+        if (l_nid < r_nid) std::swap(l_nid, r_nid);
+        StructKey key{folded->neg, l_nid, r_nid};
+        auto it = struct_hash.find(key);
+        if (it != struct_hash.end()) {
+            stats.structural_hash_hits++;
+            return it->second;
+        }
+        struct_hash.emplace(key, folded);
+        return folded;
+    };
+    auto make_not = [&](const aig_ptr& x) -> aig_ptr {
+        // new_not on a lit/const folds trivially and needs no hash entry.
+        // On a t_and it builds a fresh NOT wrapper; route through make_and
+        // so identical wrappers share.
+        if (!x) return x;
+        if (x->type != AIGT::t_and) return AIG::new_not(x);
+        if (x->l == x->r && x->neg) return x->l;           // NOT(NOT(y)) = y
+        return make_and(x, x, /*neg=*/true);
+    };
+
     std::unordered_map<aig_ptr, aig_ptr, AigPtrHash> rebuild;
     std::function<aig_ptr(const aig_ptr&)> rebuild_node = [&](const aig_ptr& n) -> aig_ptr {
         if (!n) return n;
@@ -1321,16 +1353,15 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
         auto it_sub = sub.find(n);
         if (it_sub != sub.end()) {
             aig_ptr rep = rebuild_node(it_sub->second.first);
-            result = it_sub->second.second ? AIG::new_not(rep) : rep;
+            result = it_sub->second.second ? make_not(rep) : rep;
         } else if (n->type == AIGT::t_and) {
             aig_ptr new_l = rebuild_node(n->l);
             aig_ptr new_r = rebuild_node(n->r);
             if (n->l == n->r) {
                 // NOT-wrapper or identity shape.
-                result = n->neg ? AIG::new_not(new_l) : new_l;
+                result = n->neg ? make_not(new_l) : new_l;
             } else {
-                aig_ptr core = AIG::new_and(new_l, new_r);
-                result = n->neg ? AIG::new_not(core) : core;
+                result = make_and(new_l, new_r, n->neg);
             }
         } else {
             result = n;
