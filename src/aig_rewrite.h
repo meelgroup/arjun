@@ -104,6 +104,11 @@ private:
     // in the matching AIGRewriteStats field.
     aig_lit simplify_pass(const aig_lit& edge, NodeRebuildMap& cache);
 
+    // Structural-hashing pass: rebuild bottom-up, routing every AND through
+    // make_canonical so structurally identical subgraphs across the AIGs
+    // share a single node. Doesn't change semantics — just dedup.
+    aig_lit hash_cons(const aig_lit& edge, NodeRebuildMap& cache);
+
     // --- Helpers ---
 
     void collect_and_edges(const aig_lit& edge, std::vector<aig_lit>& out);

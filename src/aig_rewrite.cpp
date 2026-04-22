@@ -267,16 +267,38 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
     return aig_lit(pos.node, pos.neg ^ edge.neg);
 }
 
+// ========== Pass 2: Structural hashing ==========
+
+aig_lit AIGRewriter::hash_cons(const aig_lit& edge, NodeRebuildMap& cache) {
+    if (!edge) return aig_lit();
+    auto it = cache.find(edge.get());
+    if (it != cache.end()) return aig_lit(it->second.node, it->second.neg ^ edge.neg);
+
+    aig_lit pos;
+    if (edge->type == AIGT::t_and) {
+        aig_lit l = hash_cons(edge->l, cache);
+        aig_lit r = hash_cons(edge->r, cache);
+        pos = make_canonical(l, r);
+    } else if (edge->type == AIGT::t_const) {
+        pos = AIG::new_const(true);
+    } else {
+        pos = AIG::new_lit(edge->var, false);
+    }
+    cache[edge.get()] = pos;
+    return aig_lit(pos.node, pos.neg ^ edge.neg);
+}
+
 // ========== Main rewrite entry points ==========
 
 aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
     if (!aig) return nullptr;
     struct_hash.clear();
     const size_t before = count_nodes(aig);
-    NodeRebuildMap c;
-    aig_lit result = simplify_pass(aig, c);
+    aig_lit result = aig;
+    { NodeRebuildMap c; result = simplify_pass(result, c); }
+    struct_hash.clear();
+    { NodeRebuildMap c; result = hash_cons(result, c); }
     stats.total_passes++;
-    // Never return a result larger than the original.
     if (count_nodes(result) > before) return aig;
     return result;
 }
@@ -290,9 +312,17 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
     // Snapshot originals so we can revert any def that grew.
     vector<aig_ptr> originals = defs;
 
-    NodeRebuildMap cache;
-    for (auto& d : defs) {
-        if (d) d = simplify_pass(d, cache);
+    {
+        NodeRebuildMap cache;
+        for (auto& d : defs) if (d) d = simplify_pass(d, cache);
+    }
+    {
+        // hash_cons is cheap and makes the final AIG share structure across
+        // defs; run it after simplify_pass so any new ANDs created by the
+        // OR / resolution rewrites also hash-cons.
+        struct_hash.clear();
+        NodeRebuildMap cache;
+        for (auto& d : defs) if (d) d = hash_cons(d, cache);
     }
     stats.total_passes++;
 
