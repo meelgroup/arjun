@@ -44,6 +44,10 @@ using std::map;
 
 static AIGManager aig_mng;
 
+// Aggregate counter for multi-def mode: how many defs were reverted by the
+// post-sweep self-ref check in AIGRewriter::sat_sweep across all iters.
+static uint64_t g_total_self_ref_reverts = 0;
+
 // Naive Tseitin encoding: one helper per AND node, 3 clauses each; constants
 // via a single unit-clauses helper. Returns the output literal. Identical in
 // spirit to the baseline used by fuzz_aig_to_cnf.
@@ -221,22 +225,6 @@ static bool run_one(const aig_ptr& orig, uint32_t num_vars,
     return true;
 }
 
-// Shift every input-literal var in `aig` by `shift`. Used to move generator
-// output out of the defined-var range so defs[0..K-1] reference only free
-// vars [K, K+F). Equivalent nodes still hash-cons through aig_mng.
-static aig_ptr shift_lits(const aig_ptr& aig, uint32_t shift) {
-    if (!aig) return aig;
-    std::map<aig_ptr, aig_ptr> cache;
-    auto visitor = [&](AIGT type, uint32_t var, bool neg,
-                       const aig_ptr* l, const aig_ptr* r) -> aig_ptr {
-        if (type == AIGT::t_const) return AIG::new_const(!neg);
-        if (type == AIGT::t_lit) return AIG::new_lit(var + shift, neg);
-        assert(type == AIGT::t_and);
-        return AIG::new_and(*l, *r, neg);
-    };
-    return AIG::transform<aig_ptr>(aig, visitor, cache);
-}
-
 // Walk `aig` looking for any t_lit leaf with var == target. Used for the
 // self-ref invariant check post-sat-sweep.
 static bool contains_lit_var(const aig_ptr& aig, uint32_t target) {
@@ -251,30 +239,39 @@ static bool contains_lit_var(const aig_ptr& aig, uint32_t target) {
     return walk(aig);
 }
 
-// Multi-def mode: build K random defs over F free vars, run SAT sweep,
-// then verify (1) no defs[v] contains lit(v), and (2) each defs[v] is
-// semantically unchanged on random assignments to the free vars.
+// Multi-def mode: build K random defs over K+F total vars, ensuring each
+// defs[v] does NOT reference var v (so defs[v] is defined purely in terms
+// of other vars). Then run SAT sweep and verify (1) no defs[v] contains
+// lit(v), and (2) each defs[v] is semantically unchanged on random
+// assignments to all vars.
 //
-// This exercises exactly the code path where sat-sweep's merge+fold can
-// re-embed lit(v) into defs[v] via make_canonical's idempotent fold of an
-// AND whose rep collapses to a single literal.
+// Allowing cross-def references to vars in [0, K) is what makes this
+// stress the self-ref path: other defs can have lit(v) as an input, and
+// a sat-sweep merge+fold can pull that lit(v) into defs[v]'s rebuild via
+// make_canonical's idempotent fold of an AND rep collapsing to a literal.
 static bool run_multi_def(uint32_t k_defs, uint32_t f_free,
                           uint32_t max_depth, uint32_t max_nodes_cfg,
                           uint64_t seed, uint64_t iter, std::mt19937& rng,
                           bool verbose)
 {
+    const uint32_t num_vars_total = k_defs + f_free;
     vector<aig_ptr> defs(k_defs);
     vector<aig_ptr> defs_pre(k_defs);
     uint32_t total_nodes_before = 0;
     for (uint32_t v = 0; v < k_defs; v++) {
-        uint32_t depth = 3 + rng() % (max_depth - 2);
-        uint32_t max_nodes = 8 + rng() % max_nodes_cfg;
-        aig_ptr raw = fuzz::gen_random_shape(aig_mng, rng, f_free, depth, max_nodes);
-        if (!raw) {
-            // Skip this iter if generator couldn't produce anything.
-            return true;
+        // Try up to a few times to generate a def that doesn't reference
+        // lit(v) (so it's a valid definition of v). If the generator
+        // keeps including lit(v), skip this iter.
+        aig_ptr cand;
+        for (int attempt = 0; attempt < 16; attempt++) {
+            uint32_t depth = 3 + rng() % (max_depth - 2);
+            uint32_t max_nodes = 8 + rng() % max_nodes_cfg;
+            aig_ptr raw = fuzz::gen_random_shape(
+                aig_mng, rng, num_vars_total, depth, max_nodes);
+            if (raw && !contains_lit_var(raw, v)) { cand = raw; break; }
         }
-        defs[v] = shift_lits(raw, k_defs);
+        if (!cand) return true; // skip iter
+        defs[v] = cand;
         defs_pre[v] = defs[v];
         total_nodes_before += AIG::count_aig_nodes(defs[v]);
     }
@@ -282,6 +279,7 @@ static bool run_multi_def(uint32_t k_defs, uint32_t f_free,
     AIGRewriter rw;
     rw.set_sat_sweep(true);
     rw.sat_sweep(defs, 0);
+    g_total_self_ref_reverts += rw.get_stats().sweep_self_ref_reverts;
 
     // Invariant: no defs[v] contains lit(v). The fix in aig_rewrite.cpp
     // reverts any def whose rebuild would violate this; the fuzzer asserts
@@ -299,11 +297,10 @@ static bool run_multi_def(uint32_t k_defs, uint32_t f_free,
         }
     }
 
-    // Semantic check: each defs[v] over free vars [k_defs, k_defs+f_free)
-    // must evaluate identically before and after the sweep. defs_pre gives
-    // us a ground-truth to compare against. Assignments for vars
-    // [0, k_defs) are irrelevant because the defs don't reference them.
-    const uint32_t num_vars_total = k_defs + f_free;
+    // Semantic check: each defs[v] over all vars must evaluate identically
+    // before and after the sweep. defs_pre gives us a ground-truth to
+    // compare against. Note that defs can reference each other's defined
+    // vars; for this check we treat ALL vars as free inputs (empty_defs).
     vector<aig_ptr> empty_defs(num_vars_total, nullptr);
     for (uint32_t t = 0; t < 20; t++) {
         vector<CMSat::lbool> vals(num_vars_total);
@@ -429,6 +426,9 @@ int main(int argc, char** argv) {
     auto t_end = std::chrono::steady_clock::now();
     fs.total_time_s = std::chrono::duration<double>(t_end - t_start).count();
     fs.print();
+    if (multi_def_k > 0) {
+        cout << "Multi-def self-ref reverts: " << g_total_self_ref_reverts << endl;
+    }
     cout << "\nAll tests passed!" << endl;
     return 0;
 }
