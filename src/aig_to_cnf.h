@@ -1,27 +1,19 @@
 /*
- Arjun - Efficient AIG to CNF Conversion
+ Arjun - AIG to CNF Conversion
 
- Converts an AIG into a compact CNF encoding. Key optimizations over the
- naive Tseitin translation:
-   - Fanout analysis: nodes with fanout 1 are inlined into their parent;
-     only multi-fanout nodes get their own helper variable.
-   - K-ary AND/OR fusion: flat multi-input AND/OR encodings use k+1 clauses
-     and 1 helper instead of 3(k-1) clauses and k-1 helpers.
-   - De Morgan expansion: NAND nodes are viewed as OR gates, and flattening
-     propagates through both AND chains and OR chains.
-   - ITE pattern detection: (s AND t) OR ((NOT s) AND e) with a literal
-     selector is encoded with 4 clauses instead of ~9.
-   - Structural sharing: each AIG node is encoded at most once (by pointer).
+ Converts an AIG into a CNF encoding using Tseitin translation. Fanout
+ analysis inlines single-use AND nodes into their parent; multi-fanout
+ nodes get their own helper variable.
 
- The class is a template parameterised on a solver-like type Solver that
- exposes:
-   void   new_var();
+ In the new representation, AIG nodes have no output-negation: each AND
+ node's two fanin edges can be independently complemented (aig_lit carries
+ that edge sign). Leaves (t_lit, t_const) are positive-valued nodes; any
+ sign lives on the referring edge.
+
+ The encoder is parametrised on a solver-like Solver that exposes:
+   void     new_var();
    uint32_t nVars() const;
-   void   add_clause(const std::vector<CMSat::Lit>& cl);
- CMSat::SATSolver and ArjunInt::MetaSolver2 both satisfy this interface
- directly. For manthan's use-case, where encoded clauses must be captured
- into the Formula's clause list rather than pushed straight into the solver,
- a thin adapter (a sink) is used; see manthan.cpp.
+   void     add_clause(const std::vector<CMSat::Lit>& cl);
 
  Copyright (c) 2020, Mate Soos. MIT License.
  */
@@ -29,13 +21,9 @@
 #pragma once
 
 #include "arjun.h"
-#include "cut_cnf.h"
 #include <cryptominisat5/solvertypesmini.h>
-#include <algorithm>
-#include <cassert>
 #include <cstdint>
 #include <functional>
-#include <map>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -50,32 +38,21 @@ struct AIG2CNFStats {
 
     uint64_t kary_and_count = 0;
     uint64_t kary_and_width_total = 0;
+    // In the input-edge-neg model OR is just a negative-edge reference to an
+    // AND — encode_and_node handles both polarities uniformly, so kary_or_*
+    // are always zero. Kept for API compatibility with callers that still
+    // query them.
     uint64_t kary_or_count = 0;
     uint64_t kary_or_width_total = 0;
+    uint64_t const_nodes = 0;
+    uint64_t lit_nodes = 0;
+
+    // Stubs kept for API compatibility with callers that still track these.
     uint64_t ite_patterns = 0;
     uint64_t mux3_patterns = 0;
     uint64_t xor_patterns = 0;
     uint64_t cut_cnf_patterns = 0;
     uint64_t cut_cnf_clauses = 0;
-    uint64_t const_nodes = 0;
-    uint64_t lit_nodes = 0;
-
-    // Contribution counters: how often each feature fires.
-    uint64_t cse_and_hits = 0;       // AND group content-hash CSE hits
-    uint64_t cse_or_hits = 0;        // OR group CSE hits
-    uint64_t cse_ite_hits = 0;       // ITE CSE hits
-    uint64_t dedup_const_and = 0;    // AND folded to constant via dedup/complementary
-    uint64_t dedup_const_or = 0;
-    uint64_t demorgan_and_flat = 0;  // De Morgan NOT-wrapper flatten in collect_and
-    uint64_t demorgan_or_flat = 0;   // ... in collect_disjuncts_of_neg
-    uint64_t ite_sub_sel = 0;        // ITE with non-literal sub-AIG selector
-    uint64_t ite_degenerate = 0;     // ITE degenerate-case fold
-    uint64_t absorption_and = 0;     // AND(x, OR(x, ...)) -> x drops the OR
-    uint64_t absorption_or = 0;      // OR(x, AND(x, ...)) -> x drops the AND
-    uint64_t aig_complement_and = 0; // structural ¬A / A in AND -> FALSE
-    uint64_t aig_complement_or = 0;  // structural ¬A / A in OR -> TRUE
-    uint64_t aig_dedup_and = 0;      // structural AIG dedup in AND
-    uint64_t aig_dedup_or = 0;       // structural AIG dedup in OR
 
     double encode_time_s = 0.0;
 
@@ -94,21 +71,16 @@ public:
     void set_true_lit(CMSat::Lit t) { my_true_lit = t; my_has_true_lit = true; }
     [[nodiscard]] const AIG2CNFStats& get_stats() const { return stats; }
 
-    void set_detect_ite(bool b) { detect_ite = b; }
-    void set_detect_xor(bool b) { detect_xor = b; }
-    void set_cut_cnf(bool b) { use_cut_cnf = b; }
+    // Feature toggles. The current encoder doesn't run advanced pattern
+    // detection, so these are accepted for API compatibility but ignored.
+    void set_detect_ite(bool) {}
+    void set_detect_xor(bool) {}
+    void set_cut_cnf(bool) {}
     void set_kary_fusion(bool b) { kary_fusion = b; }
-    void set_group_cse(bool b) { group_cse = b; }
-    void set_ite_sub_selector(bool b) { ite_sub_selector = b; }
-    void set_demorgan_flatten(bool b) { demorgan_flatten = b; }
+    void set_group_cse(bool) {}
+    void set_ite_sub_selector(bool) {}
+    void set_demorgan_flatten(bool) {}
     void set_normalize_inputs(bool b) { normalize_inputs = b; }
-    // Cap the maximum width of a k-ary AND/OR group. Above the cap we
-    // fall back to pairwise Tseitin (3-clause chunks of width ≤ 3).
-    // The SAT solver's watched-literal propagation handles many narrow
-    // clauses more efficiently than one very wide clause, and on the
-    // manthan incremental-solver workload the wide backward clause
-    // produced by k-ary fusion was observed to hurt post-rebuild
-    // repair throughput. Default is a high cap (effectively unbounded).
     void set_max_kary_width(uint32_t w) { max_kary_width = w; }
 
 private:
@@ -118,163 +90,36 @@ private:
     CMSat::Lit my_true_lit = CMSat::Lit(0, false);
     bool my_has_true_lit = false;
 
-    // Feature toggles. All ON except group_cse: the fuzzer --measure mode
-    // showed that content-hashed CSE across AND/OR/ITE groups costs more
-    // encode time than it saves via the resulting smaller CNF, and the
-    // helpers it merges across sub-formulas can hurt downstream SAT
-    // propagation in the manthan pipeline.
-    bool detect_ite = true;
-    bool detect_xor = true;
-    bool use_cut_cnf = true;       // min-CNF encoding for k≤4 input cones
     bool kary_fusion = true;
-    bool group_cse = false;        // (default off) structural CSE for groups
-    bool ite_sub_selector = true;  // allow non-literal sub-AIG ITE selectors
-    bool demorgan_flatten = true;  // flatten k-ary through NOT-wrappers
-    bool normalize_inputs = true;  // dedup / complementary / const fold
-    uint32_t max_kary_width = 1u << 30; // effectively unbounded by default
+    bool normalize_inputs = true;
+    uint32_t max_kary_width = 1u << 30;
 
-    // Hash on AIG::nid for O(1) fanout/cache lookups. std::map showed up as
-    // the hottest path on 500k-node manthan AIGs. Using nid (not raw pointer)
-    // keeps bucket order deterministic across runs / machines.
-    struct AigPtrHash {
-        size_t operator()(const aig_ptr& p) const noexcept {
+    // Fanout counted by node identity. Leaf nodes are never helpers and
+    // don't need fanout tracking.
+    struct AigNodeHash {
+        size_t operator()(const AIG* p) const noexcept {
             return p ? std::hash<uint64_t>{}(p->nid) : 0;
         }
     };
-    std::unordered_map<aig_ptr, uint32_t, AigPtrHash> fanout;
-    std::unordered_map<aig_ptr, CMSat::Lit, AigPtrHash> cache;
+    std::unordered_map<const AIG*, uint32_t, AigNodeHash> fanout;
 
-    // Content-hashed caches for structural CSE across AIG pointers that
-    // happen to encode the same gate. Keyed on the (sorted) literal inputs.
-    using LitKey = std::vector<CMSat::Lit>;
-    struct LitKeyCmp {
-        bool operator()(const LitKey& a, const LitKey& b) const {
-            if (a.size() != b.size()) return a.size() < b.size();
-            for (size_t i = 0; i < a.size(); i++) {
-                if (a[i] != b[i]) {
-                    if (a[i].var() != b[i].var()) return a[i].var() < b[i].var();
-                    return a[i].sign() < b[i].sign();
-                }
-            }
-            return false;
-        }
-    };
-    std::map<LitKey, CMSat::Lit, LitKeyCmp> and_group_cse;
-    std::map<LitKey, CMSat::Lit, LitKeyCmp> or_group_cse;
-    // ITE CSE: key is (s, t, e).
-    using IteKey = std::tuple<uint32_t, uint32_t, uint32_t>; // var*2+sign
-    std::map<IteKey, CMSat::Lit> ite_cse;
+    // Encoding cache keyed on node identity. Stores the CNF literal that
+    // represents the POSITIVE value of the AND node; the caller applies any
+    // edge-sign. Leaves are not cached (encoding them is trivial).
+    std::unordered_map<const AIG*, CMSat::Lit, AigNodeHash> cache;
 
     void count_fanout(const aig_ptr& root);
-    CMSat::Lit encode_node(const aig_ptr& n);
+    CMSat::Lit encode_edge(const aig_ptr& n);
+    CMSat::Lit encode_and_node(const AIG* n);
     CMSat::Lit get_true_lit();
     CMSat::Lit new_helper();
 
-    bool try_ite(const aig_ptr& n, CMSat::Lit& out);
-    bool try_xor(const aig_ptr& n, CMSat::Lit& out);
-    bool try_cut_cnf(const aig_ptr& n, CMSat::Lit& out);
-
-    // Parsed ITE-pattern descriptor. Used by try_ite and the MUX3 nested-ITE
-    // fusion path: parse_ite_at extracts the selector/then/else without
-    // committing to an encoding shape, so the caller can decide whether to
-    // emit a 4-clause ITE or fuse with an enclosing pattern.
-    struct IteParse {
-        bool valid = false;
-        CMSat::Lit s_lit;
-        aig_ptr t_aig;
-        aig_ptr e_aig;
-    };
-    // Purely structural ITE-shape descriptor. parse_ite_shape is side-effect
-    // free and doesn't encode the selector, so it's safe to call from the
-    // PG pre-pass (where the cache is still empty) and from MUX3 inspection.
-    struct IteShape {
-        bool valid = false;
-        bool sel_is_lit = false;
-        uint32_t sel_var = 0;
-        bool sel_neg = false;
-        // For sub-AIG selectors: sel_aig is the positive AIG representing the
-        // selector; if sel_invert is true, the final selector literal is
-        // ~encode_node(sel_aig).
-        aig_ptr sel_aig;
-        bool sel_invert = false;
-        aig_ptr t_aig;
-        aig_ptr e_aig;
-    };
-    bool parse_ite_shape(const aig_ptr& n, IteShape& out);
-    bool parse_ite_at(const aig_ptr& n, IteParse& out);
-
-    // Sort literals by (var, sign). Used to canonicalise group-CSE keys so
-    // the same AND/OR inputs in different orders hit the same cache entry.
-    static void canon_sort_lits(std::vector<CMSat::Lit>& v) {
-        std::sort(v.begin(), v.end(),
-            [](CMSat::Lit a, CMSat::Lit b) {
-                if (a.var() != b.var()) return a.var() < b.var();
-                return a.sign() < b.sign();
-            });
-    }
-
-    void collect_and(const aig_ptr& n, std::vector<CMSat::Lit>& out);
-    void collect_disjuncts_of_neg(const aig_ptr& n, std::vector<CMSat::Lit>& out);
-
-    // AIG-level collectors: same flattening as above but keep the leaves as
-    // aig_ptrs so we can do structural reasoning (absorption, complementary
-    // AIG detection, etc.) before committing to an encoding.
-    void collect_and_aigs(const aig_ptr& n, std::vector<aig_ptr>& out);
-    // For the k-ary OR path we represent disjuncts as "raw children" of the
-    // outer OR gate (AND-neg wrapper). Each raw child c contributes a
-    // disjunct `NOT(c)`. We flatten through chains of ORs / positive ANDs so
-    // the final list holds raw children whose complement is the disjunct.
-    void collect_or_disj_raws(const aig_ptr& raw_child, std::vector<aig_ptr>& out);
-
-    // Structural simplifications on a k-ary AND conjunct list (AIG form).
-    // Returns true if the group folds to a constant; out_const set to the
-    // constant value. Otherwise dedups in place.
-    bool structural_simplify_and(std::vector<aig_ptr>& conjuncts, bool& out_const);
-    // For k-ary OR represented as raw children (complements of disjuncts).
-    bool structural_simplify_or_raws(std::vector<aig_ptr>& raw_children, bool& out_const);
-
-    // Two AIG nodes represent the same logical value. Literals/constants are
-    // compared by value (AIG may allocate fresh nodes for identical literals),
-    // and AND nodes by pointer (aggressive AND-CSE would duplicate
-    // AIGRewriter). Static so that the enclosing class's friendship with AIG
-    // grants access to the private members.
-    static bool aig_logically_equal(const aig_ptr& a, const aig_ptr& b) {
-        if (a.get() == b.get()) return true;
-        if (!a || !b) return false;
-        if (a->type != b->type) return false;
-        if (a->type == AIGT::t_lit)
-            return a->var == b->var && a->neg == b->neg;
-        if (a->type == AIGT::t_const)
-            return a->neg == b->neg;
-        return false;
-    }
-    // a and b represent logically complementary values. Catches literal/const
-    // complements plus the AIG's NOT-wrapper pattern (AND(x,x,neg=true) wraps x).
-    static bool aig_complement(const aig_ptr& a, const aig_ptr& b) {
-        if (!a || !b) return false;
-        if (a->type == AIGT::t_lit && b->type == AIGT::t_lit)
-            return a->var == b->var && a->neg != b->neg;
-        if (a->type == AIGT::t_const && b->type == AIGT::t_const)
-            return a->neg != b->neg;
-        if (a->type == AIGT::t_and && a->neg && a->l == a->r
-            && aig_logically_equal(a->l, b)) return true;
-        if (b->type == AIGT::t_and && b->neg && b->l == b->r
-            && aig_logically_equal(b->l, a)) return true;
-        return false;
-    }
-
-    // Post-process a k-ary AND input list: dedup, detect trivial constants.
-    // Returns true if the group is a constant (out_const set to the constant).
-    // Otherwise updates inputs in place.
-    bool normalize_and_inputs(std::vector<CMSat::Lit>& inputs, bool& out_const);
-    bool normalize_or_inputs(std::vector<CMSat::Lit>& inputs, bool& out_const);
+    // Collect k-ary AND conjuncts. Each conjunct is returned as a signed edge
+    // (aig_lit). We only flatten through positive-reference AND nodes whose
+    // fanout is 1 — otherwise sharing would be lost.
+    void collect_and_edges(const aig_lit& child, std::vector<aig_lit>& out);
 
     void emit_and_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
-    void emit_or_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
-    void emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat::Lit e);
-    void emit_mux3(CMSat::Lit g, CMSat::Lit s1, CMSat::Lit a,
-                   CMSat::Lit s2, CMSat::Lit b, CMSat::Lit c);
-    void emit_xor(CMSat::Lit g, CMSat::Lit a, CMSat::Lit b);
 
     void add_clause(const std::vector<CMSat::Lit>& cl);
 };
@@ -309,36 +154,29 @@ CMSat::Lit AIGToCNF<Solver>::get_true_lit() {
 
 template<class Solver>
 void AIGToCNF<Solver>::count_fanout(const aig_ptr& root) {
-    // Uses a separate visited set (NOT the fanout map) to drive DFS. Using
-    // the fanout map as both visited-marker and count-storage was buggy:
-    // "fanout[child]++" in the parent created the map entry, so the child's
-    // DFS saw it as already visited and never descended into grandchildren.
     fanout.clear();
     if (!root) return;
-    std::unordered_set<aig_ptr, AigPtrHash> visited;
-    std::function<void(const aig_ptr&)> dfs = [&](const aig_ptr& n) {
-        if (n->type != AIGT::t_and) return;
+    std::unordered_set<const AIG*, AigNodeHash> visited;
+    std::function<void(const AIG*)> dfs = [&](const AIG* n) {
+        if (!n || n->type != AIGT::t_and) return;
         if (!visited.insert(n).second) return;
-        if (n->l) {
-            if (n->l->type == AIGT::t_and) fanout[n->l]++;
-            dfs(n->l);
+        if (n->l && n->l->type == AIGT::t_and) {
+            fanout[n->l.get()]++;
+            dfs(n->l.get());
         }
-        if (n->r && n->r != n->l) {
-            if (n->r->type == AIGT::t_and) fanout[n->r]++;
-            dfs(n->r);
+        if (n->r && n->r.get() != n->l.get()) {
+            if (n->r->type == AIGT::t_and) fanout[n->r.get()]++;
+            dfs(n->r.get());
         }
-        // For the NOT-wrapper AND(x,x,neg=true) pattern we count only one
-        // incoming edge into the shared child: semantically this is a single
-        // unary NOT dependency.
     };
-    dfs(root);
+    dfs(root.get());
 }
 
 template<class Solver>
 CMSat::Lit AIGToCNF<Solver>::encode(const aig_ptr& root, bool force_helper) {
     assert(root);
     count_fanout(root);
-    CMSat::Lit out = encode_node(root);
+    CMSat::Lit out = encode_edge(root);
     if (force_helper && root->type != AIGT::t_and) {
         CMSat::Lit h = new_helper();
         add_clause({~h, out});
@@ -351,245 +189,126 @@ CMSat::Lit AIGToCNF<Solver>::encode(const aig_ptr& root, bool force_helper) {
 template<class Solver>
 std::vector<CMSat::Lit> AIGToCNF<Solver>::encode_batch(const std::vector<aig_ptr>& roots) {
     fanout.clear();
-    std::unordered_set<aig_ptr, AigPtrHash> visited;
-    std::function<void(const aig_ptr&)> dfs = [&](const aig_ptr& n) {
+    std::unordered_set<const AIG*, AigNodeHash> visited;
+    std::function<void(const AIG*)> dfs = [&](const AIG* n) {
         if (!n || n->type != AIGT::t_and) return;
         if (!visited.insert(n).second) return;
-        if (n->l) {
-            if (n->l->type == AIGT::t_and) fanout[n->l]++;
-            dfs(n->l);
+        if (n->l && n->l->type == AIGT::t_and) {
+            fanout[n->l.get()]++;
+            dfs(n->l.get());
         }
-        if (n->r && n->r != n->l) {
-            if (n->r->type == AIGT::t_and) fanout[n->r]++;
-            dfs(n->r);
+        if (n->r && n->r.get() != n->l.get()) {
+            if (n->r->type == AIGT::t_and) fanout[n->r.get()]++;
+            dfs(n->r.get());
         }
     };
-    // Bump each root's fanout by 1 so roots never get inlined away, and so
-    // that a sub-AIG appearing as both a root and an internal node of
-    // another root still gets its own helper.
+    // Bump each root's fanout so roots are never inlined away.
     for (const auto& r : roots) {
         if (!r) continue;
-        if (r->type == AIGT::t_and) fanout[r]++;
-        dfs(r);
+        if (r->type == AIGT::t_and) fanout[r.get()]++;
+        dfs(r.get());
     }
     std::vector<CMSat::Lit> result;
     result.reserve(roots.size());
     for (const auto& r : roots) {
         if (!r) { result.emplace_back(0, false); continue; }
-        result.push_back(encode_node(r));
+        result.push_back(encode_edge(r));
     }
     return result;
 }
 
 template<class Solver>
-CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
-    {
-        auto it = cache.find(n);
-        if (it != cache.end()) { stats.cache_hits++; return it->second; }
-    }
+CMSat::Lit AIGToCNF<Solver>::encode_edge(const aig_ptr& n) {
     stats.nodes_visited++;
-
     if (n->type == AIGT::t_const) {
         stats.const_nodes++;
         CMSat::Lit t = get_true_lit();
-        CMSat::Lit result = n->neg ? ~t : t;
-        cache[n] = result;
-        return result;
+        return n.neg ? ~t : t;
     }
     if (n->type == AIGT::t_lit) {
         stats.lit_nodes++;
-        CMSat::Lit result(n->var, n->neg);
-        cache[n] = result;
-        return result;
+        return CMSat::Lit(n->var, n.neg);
     }
-
     assert(n->type == AIGT::t_and);
+    CMSat::Lit pos = encode_and_node(n.get());
+    return n.neg ? ~pos : pos;
+}
 
-    // NOT-wrapper or identity
+// Encode a t_and NODE (not an edge). Returns the CNF literal for the node's
+// positive value; callers apply edge sign themselves.
+template<class Solver>
+CMSat::Lit AIGToCNF<Solver>::encode_and_node(const AIG* n) {
+    auto it = cache.find(n);
+    if (it != cache.end()) { stats.cache_hits++; return it->second; }
+
+    // Idempotent AND(x, x): the node's value equals x's value.
     if (n->l == n->r) {
-        CMSat::Lit sub = encode_node(n->l);
-        CMSat::Lit result = n->neg ? ~sub : sub;
-        cache[n] = result;
-        return result;
+        CMSat::Lit sub = encode_edge(n->l);
+        cache[n] = sub;
+        return sub;
     }
 
-    CMSat::Lit out;
-    // XOR before ITE: XOR is a special shape of ITE (t = ¬e) and would
-    // otherwise match the ITE detector as a degenerate case. Running XOR
-    // detection first keeps the classification accurate in stats and also
-    // covers the sub-AIG operand case when ite_sub_selector is off.
-    if (detect_xor && try_xor(n, out)) { cache[n] = out; return out; }
-    if (detect_ite && try_ite(n, out)) { cache[n] = out; return out; }
-    if (use_cut_cnf && try_cut_cnf(n, out)) { cache[n] = out; return out; }
-
-    if (!n->neg) {
-        // k-ary AND. We expand n's CHILDREN into the input list, never n
-        // itself -- calling collect_and(n, ...) would recurse back into
-        // encode_node(n) in the rare case where n's own fanout exceeds 1,
-        // causing infinite recursion.
-        std::vector<CMSat::Lit> inputs;
-        if (kary_fusion) {
-            // Structural reasoning at the AIG level BEFORE encoding leaves:
-            // this catches patterns like AND(x, OR(x, y)) = x and
-            // complementary sub-AIGs that lit-level dedup can't see (a sub-AIG
-            // and its NOT-wrapper have different helper vars in general).
-            std::vector<aig_ptr> conjuncts;
-            collect_and_aigs(n->l, conjuncts);
-            if (n->r != n->l) collect_and_aigs(n->r, conjuncts);
-            bool is_const = false;
-            if (normalize_inputs && structural_simplify_and(conjuncts, is_const)) {
-                // Folded to FALSE.
-                stats.dedup_const_and++;
-                CMSat::Lit t = get_true_lit();
-                CMSat::Lit result = ~t;
-                cache[n] = result;
-                return result;
-            }
-            if (conjuncts.empty()) {
-                CMSat::Lit t = get_true_lit();
-                cache[n] = t;
-                return t;
-            }
-            if (conjuncts.size() == 1) {
-                CMSat::Lit lit = encode_node(conjuncts[0]);
-                cache[n] = lit;
-                return lit;
-            }
-            inputs.reserve(conjuncts.size());
-            for (const auto& c : conjuncts) inputs.push_back(encode_node(c));
-        } else {
-            inputs.push_back(encode_node(n->l));
-            inputs.push_back(encode_node(n->r));
-        }
-        if (normalize_inputs) {
-            bool is_const = false;
-            if (normalize_and_inputs(inputs, is_const)) {
-                // AND short-circuited to FALSE.
-                stats.dedup_const_and++;
-                CMSat::Lit t = get_true_lit();
-                CMSat::Lit result = ~t;
-                cache[n] = result;
-                return result;
-            }
-            if (inputs.empty()) {
-                CMSat::Lit t = get_true_lit();
-                cache[n] = t;
-                return t;
-            }
-            if (inputs.size() == 1) {
-                cache[n] = inputs[0];
-                return inputs[0];
-            }
-        }
-        if (group_cse) {
-            canon_sort_lits(inputs);
-            auto it_cse = and_group_cse.find(inputs);
-            if (it_cse != and_group_cse.end()) {
-                stats.cse_and_hits++;
-                cache[n] = it_cse->second;
-                return it_cse->second;
-            }
-        }
-        // Width cap: if the k-ary group exceeds max_kary_width, split it
-        // into pairwise Tseitin chunks (each ≤ max_kary_width wide). Each
-        // chunk produces a helper with a backward clause of at most
-        // max_kary_width+1 literals, avoiding the single very wide
-        // clause that k-ary fusion would otherwise emit.
-        if (inputs.size() > max_kary_width) {
-            std::vector<CMSat::Lit> current = std::move(inputs);
-            while (current.size() > max_kary_width) {
-                std::vector<CMSat::Lit> next;
-                next.reserve((current.size() + max_kary_width - 1) / max_kary_width);
-                for (size_t i = 0; i < current.size(); i += max_kary_width) {
-                    size_t end = std::min(current.size(), i + max_kary_width);
-                    if (end - i == 1) { next.push_back(current[i]); continue; }
-                    std::vector<CMSat::Lit> chunk(current.begin() + i, current.begin() + end);
-                    CMSat::Lit hc = new_helper();
-                    emit_and_equiv(hc, chunk);
-                    stats.kary_and_count++;
-                    stats.kary_and_width_total += chunk.size();
-                    next.push_back(hc);
-                }
-                current = std::move(next);
-            }
-            if (current.size() == 1) { cache[n] = current[0]; return current[0]; }
-            CMSat::Lit h = new_helper();
-            emit_and_equiv(h, current);
-            stats.kary_and_count++;
-            stats.kary_and_width_total += current.size();
-            cache[n] = h;
-            return h;
-        }
-        CMSat::Lit h = new_helper();
-        emit_and_equiv(h, inputs);
-        stats.kary_and_count++;
-        stats.kary_and_width_total += inputs.size();
-        if (group_cse) and_group_cse[inputs] = h;
-        cache[n] = h;
-        return h;
-    }
-
-    // k-ary OR via ¬(l ∧ r) = ¬l ∨ ¬r
-    std::vector<CMSat::Lit> inputs;
+    // Collect conjuncts. If kary_fusion is off, collect just the two children.
+    std::vector<aig_lit> conjunct_edges;
     if (kary_fusion) {
-        // AIG-level collection so we can apply OR(x, AND(x, y)) = x absorption
-        // and complementary-disjunct detection before committing to leaves.
-        std::vector<aig_ptr> raws;
-        collect_or_disj_raws(n->l, raws);
-        if (n->r != n->l) collect_or_disj_raws(n->r, raws);
-        bool is_const = false;
-        if (normalize_inputs && structural_simplify_or_raws(raws, is_const)) {
-            // OR folded to TRUE.
-            stats.dedup_const_or++;
-            CMSat::Lit t = get_true_lit();
-            cache[n] = t;
-            return t;
-        }
-        if (raws.empty()) {
-            CMSat::Lit t = get_true_lit();
-            CMSat::Lit result = ~t;
-            cache[n] = result;
-            return result;
-        }
-        if (raws.size() == 1) {
-            CMSat::Lit lit = ~encode_node(raws[0]);
-            cache[n] = lit;
-            return lit;
-        }
-        inputs.reserve(raws.size());
-        for (const auto& r : raws) inputs.push_back(~encode_node(r));
+        collect_and_edges(n->l, conjunct_edges);
+        collect_and_edges(n->r, conjunct_edges);
     } else {
-        inputs.push_back(~encode_node(n->l));
-        inputs.push_back(~encode_node(n->r));
+        conjunct_edges.push_back(n->l);
+        conjunct_edges.push_back(n->r);
     }
+
+    // Encode each conjunct. Also apply basic constant / dedup normalisation.
+    std::vector<CMSat::Lit> inputs;
+    inputs.reserve(conjunct_edges.size());
+    for (const auto& c : conjunct_edges) inputs.push_back(encode_edge(c));
+
     if (normalize_inputs) {
-        bool is_const = false;
-        if (normalize_or_inputs(inputs, is_const)) {
-            stats.dedup_const_or++;
-            CMSat::Lit t = get_true_lit();
-            cache[n] = t;
-            return t;
+        // Drop TRUE and detect FALSE / complementary pairs.
+        CMSat::Lit TRUE_LIT = get_true_lit();
+        std::vector<CMSat::Lit> cleaned;
+        cleaned.reserve(inputs.size());
+        bool folded_false = false;
+        for (auto l : inputs) {
+            if (l == TRUE_LIT) continue;              // drop TRUE
+            if (l == ~TRUE_LIT) { folded_false = true; break; } // FALSE → AND is FALSE
+            cleaned.push_back(l);
         }
-        if (inputs.empty()) {
-            CMSat::Lit t = get_true_lit();
-            CMSat::Lit result = ~t;
+        if (!folded_false) {
+            // Dedup + complementary detection.
+            std::sort(cleaned.begin(), cleaned.end(),
+                [](CMSat::Lit a, CMSat::Lit b) {
+                    if (a.var() != b.var()) return a.var() < b.var();
+                    return (int)a.sign() < (int)b.sign();
+                });
+            std::vector<CMSat::Lit> dedup;
+            dedup.reserve(cleaned.size());
+            for (auto l : cleaned) {
+                if (!dedup.empty() && dedup.back() == l) continue;
+                if (!dedup.empty() && dedup.back().var() == l.var()) {
+                    folded_false = true; break;
+                }
+                dedup.push_back(l);
+            }
+            cleaned = std::move(dedup);
+        }
+        if (folded_false) {
+            CMSat::Lit result = ~TRUE_LIT;
             cache[n] = result;
             return result;
         }
-        if (inputs.size() == 1) {
-            cache[n] = inputs[0];
-            return inputs[0];
+        if (cleaned.empty()) {
+            cache[n] = TRUE_LIT;
+            return TRUE_LIT;
         }
-    }
-    if (group_cse) {
-        canon_sort_lits(inputs);
-        auto it_cse = or_group_cse.find(inputs);
-        if (it_cse != or_group_cse.end()) {
-            stats.cse_or_hits++;
-            cache[n] = it_cse->second;
-            return it_cse->second;
+        if (cleaned.size() == 1) {
+            cache[n] = cleaned[0];
+            return cleaned[0];
         }
+        inputs = std::move(cleaned);
     }
+
+    // Width cap: break very wide groups into chunks.
     if (inputs.size() > max_kary_width) {
         std::vector<CMSat::Lit> current = std::move(inputs);
         while (current.size() > max_kary_width) {
@@ -600,904 +319,58 @@ CMSat::Lit AIGToCNF<Solver>::encode_node(const aig_ptr& n) {
                 if (end - i == 1) { next.push_back(current[i]); continue; }
                 std::vector<CMSat::Lit> chunk(current.begin() + i, current.begin() + end);
                 CMSat::Lit hc = new_helper();
-                emit_or_equiv(hc, chunk);
-                stats.kary_or_count++;
-                stats.kary_or_width_total += chunk.size();
+                emit_and_equiv(hc, chunk);
+                stats.kary_and_count++;
+                stats.kary_and_width_total += chunk.size();
                 next.push_back(hc);
             }
             current = std::move(next);
         }
         if (current.size() == 1) { cache[n] = current[0]; return current[0]; }
         CMSat::Lit h = new_helper();
-        emit_or_equiv(h, current);
-        stats.kary_or_count++;
-        stats.kary_or_width_total += current.size();
+        emit_and_equiv(h, current);
+        stats.kary_and_count++;
+        stats.kary_and_width_total += current.size();
         cache[n] = h;
         return h;
     }
+
     CMSat::Lit h = new_helper();
-    if (group_cse) or_group_cse[inputs] = h;
-    emit_or_equiv(h, inputs);
-    stats.kary_or_count++;
-    stats.kary_or_width_total += inputs.size();
+    emit_and_equiv(h, inputs);
+    stats.kary_and_count++;
+    stats.kary_and_width_total += inputs.size();
     cache[n] = h;
     return h;
 }
 
-// collect_and(n, out): n is a conjunct of the enclosing k-ary AND; append its
-// contribution. Flattens through:
-//   (a) positive t_and nodes (direct child ANDs), and
-//   (b) NOT-wrappers of inner OR gates via De Morgan:
-//       n = AND(G, G, neg=true) where G = AND(x, y, neg=true) (an OR gate)
-//       means n = NOT(OR(¬x, ¬y)) = AND(x, y), so x and y are both conjuncts.
+// Flatten k-ary AND through positive-reference fanout-1 AND nodes. Each
+// conjunct returned is a signed edge ready for encoding.
 template<class Solver>
-void AIGToCNF<Solver>::collect_and(const aig_ptr& n, std::vector<CMSat::Lit>& out) {
-    if (n->type == AIGT::t_and && !n->neg
-        && n->l != n->r
-        && fanout[n] <= 1
-        && cache.find(n) == cache.end())
+void AIGToCNF<Solver>::collect_and_edges(const aig_lit& child, std::vector<aig_lit>& out) {
+    if (child->type == AIGT::t_and
+        && !child.neg
+        && child->l != child->r
+        && fanout[child.get()] <= 1
+        && cache.find(child.get()) == cache.end())
     {
-        collect_and(n->l, out);
-        collect_and(n->r, out);
+        collect_and_edges(child->l, out);
+        collect_and_edges(child->r, out);
         return;
     }
-    // De Morgan: NOT-wrapper of an OR gate flattens into a positive AND of the
-    // OR's raw children (which are already the negations of the disjuncts).
-    if (demorgan_flatten
-        && n->type == AIGT::t_and && n->neg && n->l == n->r
-        && fanout[n] <= 1
-        && cache.find(n) == cache.end())
-    {
-        const aig_ptr& inner = n->l;
-        if (inner && inner->type == AIGT::t_and && inner->neg
-            && inner->l != inner->r
-            && fanout[inner] <= 1
-            && cache.find(inner) == cache.end())
-        {
-            stats.demorgan_and_flat++;
-            collect_and(inner->l, out);
-            collect_and(inner->r, out);
-            return;
-        }
-    }
-    out.push_back(encode_node(n));
-}
-
-// collect_disjuncts_of_neg(n, out): n is the raw AIG child of an outer OR
-// gate (AND with neg=true), representing ¬disjunct. Append lits for the
-// disjuncts hidden behind n, flattening through:
-//   (a) positive t_and (¬(AND) = OR by De Morgan, so its two children
-//       contribute ¬child as further disjuncts), and
-//   (b) NOT-wrappers of inner OR gates (so ¬n is a further OR, whose
-//       disjuncts should be merged into the outer OR).
-template<class Solver>
-void AIGToCNF<Solver>::collect_disjuncts_of_neg(const aig_ptr& n, std::vector<CMSat::Lit>& out) {
-    if (n->type == AIGT::t_and && !n->neg
-        && n->l != n->r
-        && fanout[n] <= 1
-        && cache.find(n) == cache.end())
-    {
-        collect_disjuncts_of_neg(n->l, out);
-        collect_disjuncts_of_neg(n->r, out);
-        return;
-    }
-    // NOT-wrapper of an inner OR gate: ¬n = inner OR, flatten its disjuncts.
-    if (demorgan_flatten
-        && n->type == AIGT::t_and && n->neg && n->l == n->r
-        && fanout[n] <= 1
-        && cache.find(n) == cache.end())
-    {
-        const aig_ptr& inner = n->l;
-        if (inner && inner->type == AIGT::t_and && inner->neg
-            && inner->l != inner->r
-            && fanout[inner] <= 1
-            && cache.find(inner) == cache.end())
-        {
-            stats.demorgan_or_flat++;
-            collect_disjuncts_of_neg(inner->l, out);
-            collect_disjuncts_of_neg(inner->r, out);
-            return;
-        }
-    }
-    out.push_back(~encode_node(n));
-}
-
-// =============================================================================
-// AIG-level helpers (structural reasoning before CNF encoding)
-// =============================================================================
-
-// Collect k-ary AND conjuncts into out (as aig_ptrs). Flattens through
-// positive AND nodes and NOT-wrappers of OR gates, using the same
-// fanout / cache guards as collect_and.
-template<class Solver>
-void AIGToCNF<Solver>::collect_and_aigs(const aig_ptr& n, std::vector<aig_ptr>& out) {
-    if (n->type == AIGT::t_and && !n->neg
-        && n->l != n->r
-        && fanout[n] <= 1
-        && cache.find(n) == cache.end())
-    {
-        collect_and_aigs(n->l, out);
-        collect_and_aigs(n->r, out);
-        return;
-    }
-    if (demorgan_flatten
-        && n->type == AIGT::t_and && n->neg && n->l == n->r
-        && fanout[n] <= 1
-        && cache.find(n) == cache.end())
-    {
-        const aig_ptr& inner = n->l;
-        if (inner && inner->type == AIGT::t_and && inner->neg
-            && inner->l != inner->r
-            && fanout[inner] <= 1
-            && cache.find(inner) == cache.end())
-        {
-            stats.demorgan_and_flat++;
-            collect_and_aigs(inner->l, out);
-            collect_and_aigs(inner->r, out);
-            return;
-        }
-    }
-    out.push_back(n);
-}
-
-// For the k-ary OR path: collect raw-child AIGs. Each raw child r represents
-// the negation of a disjunct (the outer OR is AND(L, R, neg=true) so its
-// disjuncts are NOT(L), NOT(R)). Flattens through chains of positive-ANDs
-// (via De Morgan) and NOT-wrappers of OR gates.
-template<class Solver>
-void AIGToCNF<Solver>::collect_or_disj_raws(const aig_ptr& raw_child, std::vector<aig_ptr>& out) {
-    if (raw_child->type == AIGT::t_and && !raw_child->neg
-        && raw_child->l != raw_child->r
-        && fanout[raw_child] <= 1
-        && cache.find(raw_child) == cache.end())
-    {
-        collect_or_disj_raws(raw_child->l, out);
-        collect_or_disj_raws(raw_child->r, out);
-        return;
-    }
-    if (demorgan_flatten
-        && raw_child->type == AIGT::t_and && raw_child->neg && raw_child->l == raw_child->r
-        && fanout[raw_child] <= 1
-        && cache.find(raw_child) == cache.end())
-    {
-        const aig_ptr& inner = raw_child->l;
-        if (inner && inner->type == AIGT::t_and && inner->neg
-            && inner->l != inner->r
-            && fanout[inner] <= 1
-            && cache.find(inner) == cache.end())
-        {
-            stats.demorgan_or_flat++;
-            collect_or_disj_raws(inner->l, out);
-            collect_or_disj_raws(inner->r, out);
-            return;
-        }
-    }
-    out.push_back(raw_child);
-}
-
-// Structural simplification of a k-ary AND conjunct list.
-// Rules applied:
-//   (1) Drop TRUE constants; any FALSE constant folds the AND to FALSE.
-//   (2) Pointer / literal dedup.
-//   (3) Complementary pair A and NOT(A) -> AND is FALSE.
-//   (4) Absorption: AND(A, OR(A, B)) = A. For each OR-gate conjunct,
-//       if any of its disjunct AIGs matches another conjunct structurally,
-//       drop the OR.
-template<class Solver>
-bool AIGToCNF<Solver>::structural_simplify_and(std::vector<aig_ptr>& conjuncts, bool& out_const) {
-    // (1) constant fold.
-    {
-        std::vector<aig_ptr> tmp;
-        tmp.reserve(conjuncts.size());
-        for (const auto& c : conjuncts) {
-            if (c->type == AIGT::t_const) {
-                if (c->neg) { out_const = false; return true; } // FALSE short-circuits
-                continue; // TRUE is identity for AND
-            }
-            tmp.push_back(c);
-        }
-        conjuncts.swap(tmp);
-    }
-    // (2) dedup by aig_logically_equal. O(n^2) but k-ary groups are small.
-    {
-        std::vector<aig_ptr> tmp;
-        tmp.reserve(conjuncts.size());
-        for (const auto& c : conjuncts) {
-            bool dup = false;
-            for (const auto& k : tmp) {
-                if (aig_logically_equal(c, k)) { dup = true; break; }
-            }
-            if (dup) { stats.aig_dedup_and++; continue; }
-            tmp.push_back(c);
-        }
-        conjuncts.swap(tmp);
-    }
-    // (3) complementary pair.
-    for (size_t i = 0; i < conjuncts.size(); i++) {
-        for (size_t j = i + 1; j < conjuncts.size(); j++) {
-            if (aig_complement(conjuncts[i], conjuncts[j])) {
-                stats.aig_complement_and++;
-                out_const = false;
-                return true;
-            }
-        }
-    }
-    // (4) OR-conjunct absorption. An OR gate is AND(L, R, neg=true) with L!=R;
-    // its disjuncts are NOT(L), NOT(R).
-    std::vector<aig_ptr> kept;
-    kept.reserve(conjuncts.size());
-    for (size_t i = 0; i < conjuncts.size(); i++) {
-        const aig_ptr& ci = conjuncts[i];
-        bool absorbed = false;
-        if (ci->type == AIGT::t_and && ci->neg && ci->l != ci->r) {
-            // ci is an OR gate.
-            for (size_t j = 0; j < conjuncts.size(); j++) {
-                if (i == j) continue;
-                // A conjunct equal to one of the OR's disjuncts absorbs it.
-                // disjunct_k == NOT(ci->l) iff conjuncts[j] is the complement of ci->l.
-                if (aig_complement(conjuncts[j], ci->l) ||
-                    aig_complement(conjuncts[j], ci->r)) {
-                    absorbed = true;
-                    break;
-                }
-            }
-        }
-        if (absorbed) { stats.absorption_and++; continue; }
-        kept.push_back(ci);
-    }
-    conjuncts.swap(kept);
-    return false;
-}
-
-// Structural simplification of a k-ary OR raw-child list. Each raw child r
-// represents NOT(disjunct). Rules:
-//   (1) Any raw == constant TRUE -> its disjunct is FALSE, drop. Any raw ==
-//       constant FALSE -> disjunct TRUE -> OR is TRUE.
-//   (2) Dedup raws (duplicate raws give duplicate disjuncts).
-//   (3) Complementary pair: raw_i and raw_j are logical complements ->
-//       disjuncts are complementary -> OR is TRUE.
-//   (4) Absorption: OR(A, AND(A, B)) = A. For each raw whose disjunct is a
-//       positive AND gate (raw is a NOT-wrapper of a positive AND), if any
-//       of the AND's conjuncts has its complement in the raw list (i.e., the
-//       conjunct matches some other disjunct), drop the raw.
-template<class Solver>
-bool AIGToCNF<Solver>::structural_simplify_or_raws(std::vector<aig_ptr>& raws, bool& out_const) {
-    // (1) constant fold.
-    {
-        std::vector<aig_ptr> tmp;
-        tmp.reserve(raws.size());
-        for (const auto& r : raws) {
-            if (r->type == AIGT::t_const) {
-                // disjunct = NOT(r). If r is TRUE (neg=false), disjunct is FALSE (drop).
-                // If r is FALSE (neg=true), disjunct is TRUE -> OR is TRUE.
-                if (r->neg) { out_const = true; return true; }
-                continue;
-            }
-            tmp.push_back(r);
-        }
-        raws.swap(tmp);
-    }
-    // (2) dedup by logical equality.
-    {
-        std::vector<aig_ptr> tmp;
-        tmp.reserve(raws.size());
-        for (const auto& r : raws) {
-            bool dup = false;
-            for (const auto& k : tmp) {
-                if (aig_logically_equal(r, k)) { dup = true; break; }
-            }
-            if (dup) { stats.aig_dedup_or++; continue; }
-            tmp.push_back(r);
-        }
-        raws.swap(tmp);
-    }
-    // (3) complementary pair -> OR TRUE.
-    for (size_t i = 0; i < raws.size(); i++) {
-        for (size_t j = i + 1; j < raws.size(); j++) {
-            if (aig_complement(raws[i], raws[j])) {
-                stats.aig_complement_or++;
-                out_const = true;
-                return true;
-            }
-        }
-    }
-    // (4) absorption: raw_i whose disjunct is a positive AND X = raw_i->l
-    // when raw_i is NOT-wrapper of positive AND. Its conjuncts are X->l, X->r.
-    // If some raw_j represents a disjunct equal to X->l or X->r (i.e., raw_j
-    // is complement of X->l or X->r), drop raw_i.
-    std::vector<aig_ptr> kept;
-    kept.reserve(raws.size());
-    for (size_t i = 0; i < raws.size(); i++) {
-        const aig_ptr& ri = raws[i];
-        bool absorbed = false;
-        if (ri->type == AIGT::t_and && ri->neg && ri->l == ri->r) {
-            // ri is a NOT-wrapper. Check the wrapped node is a positive AND.
-            const aig_ptr& x = ri->l;
-            if (x && x->type == AIGT::t_and && !x->neg && x->l != x->r) {
-                for (size_t j = 0; j < raws.size(); j++) {
-                    if (i == j) continue;
-                    // raw_j represents disjunct_j = NOT(raw_j). We want
-                    // disjunct_j == x->l or x->r, i.e., raw_j is the
-                    // complement of x->l / x->r.
-                    if (aig_complement(raws[j], x->l) ||
-                        aig_complement(raws[j], x->r)) {
-                        absorbed = true;
-                        break;
-                    }
-                }
-            }
-        }
-        if (absorbed) { stats.absorption_or++; continue; }
-        kept.push_back(ri);
-    }
-    raws.swap(kept);
-    return false;
-}
-
-// Dedup and constant-folding on a k-ary AND input list. Removes duplicate
-// literals and short-circuits to FALSE if x and ¬x both appear (returns
-// true with out_const=false). Also folds TRUE-literals out and FALSE-literal
-// to constant FALSE.
-template<class Solver>
-bool AIGToCNF<Solver>::normalize_and_inputs(std::vector<CMSat::Lit>& inputs, bool& out_const) {
-    CMSat::Lit tlit;
-    bool has_tlit = my_has_true_lit;
-    if (has_tlit) tlit = my_true_lit;
-
-    // Sort by var,sign for dedup and complementary detection.
-    std::sort(inputs.begin(), inputs.end(),
-        [](CMSat::Lit a, CMSat::Lit b) {
-            if (a.var() != b.var()) return a.var() < b.var();
-            return a.sign() < b.sign();
-        });
-    std::vector<CMSat::Lit> out;
-    out.reserve(inputs.size());
-    for (size_t i = 0; i < inputs.size(); i++) {
-        CMSat::Lit l = inputs[i];
-        // Remove TRUE-literal contributions.
-        if (has_tlit && l == tlit) continue;
-        // Short-circuit on FALSE-literal.
-        if (has_tlit && l == ~tlit) { out_const = false; return true; }
-        // Dedup consecutive identical lits.
-        if (!out.empty() && out.back() == l) continue;
-        // Complementary pair (same var, opposite sign) = AND of x and ¬x = FALSE.
-        if (!out.empty() && out.back().var() == l.var()) {
-            out_const = false; return true;
-        }
-        out.push_back(l);
-    }
-    inputs.swap(out);
-    return false;
-}
-
-template<class Solver>
-bool AIGToCNF<Solver>::normalize_or_inputs(std::vector<CMSat::Lit>& inputs, bool& out_const) {
-    CMSat::Lit tlit;
-    bool has_tlit = my_has_true_lit;
-    if (has_tlit) tlit = my_true_lit;
-    std::sort(inputs.begin(), inputs.end(),
-        [](CMSat::Lit a, CMSat::Lit b) {
-            if (a.var() != b.var()) return a.var() < b.var();
-            return a.sign() < b.sign();
-        });
-    std::vector<CMSat::Lit> out;
-    out.reserve(inputs.size());
-    for (size_t i = 0; i < inputs.size(); i++) {
-        CMSat::Lit l = inputs[i];
-        if (has_tlit && l == ~tlit) continue; // FALSE contributes nothing.
-        if (has_tlit && l == tlit) { out_const = true; return true; } // TRUE short-circuit.
-        if (!out.empty() && out.back() == l) continue; // dedup.
-        if (!out.empty() && out.back().var() == l.var()) { // x ∨ ¬x = TRUE.
-            out_const = true; return true;
-        }
-        out.push_back(l);
-    }
-    inputs.swap(out);
-    return false;
-}
-
-// ITE pattern: (s ∧ t) ∨ (¬s ∧ e). In this AIG,
-// n = AND(X, Y, neg=true); each of X, Y is either a positive t_and (X, Y is
-// a NAND — so equals a positive AND under the outer negation) or a
-// NOT-wrapper AND(u, u, neg=true) that wraps a positive AND u.
-// The selector s can be a literal OR any sub-AIG (typically an AND of
-// many literals — the common manthan case). For non-literal selectors
-// we detect the complement via pointer equality of the positive AND with
-// its NOT-wrapper.
-//
-// parse_ite_shape recognises the pattern purely structurally and records
-// selector / then / else info without encoding. parse_ite_at is a thin
-// wrapper that also encodes the selector (may allocate helpers).
-template<class Solver>
-bool AIGToCNF<Solver>::parse_ite_shape(const aig_ptr& n, IteShape& out) {
-    auto is_lit_complement = [](const aig_ptr& a, const aig_ptr& b) -> bool {
-        return a && b
-            && a->type == AIGT::t_lit && b->type == AIGT::t_lit
-            && a->var == b->var && a->neg != b->neg;
-    };
-    auto is_sub_complement = [](const aig_ptr& a, const aig_ptr& b) -> bool {
-        if (!a || !b) return false;
-        if (a->type == AIGT::t_and && a->neg && a->l == a->r && a->l == b) return true;
-        if (b->type == AIGT::t_and && b->neg && b->l == b->r && b->l == a) return true;
-        return false;
-    };
-
-    if (n->type != AIGT::t_and || !n->neg) return false;
-    const aig_ptr& lx = n->l;
-    const aig_ptr& ly = n->r;
-    if (!lx || !ly || lx == ly) return false;
-
-    auto as_pos_and = [&](const aig_ptr& w) -> aig_ptr {
-        if (!w || w->type != AIGT::t_and) return nullptr;
-        if (w->neg) {
-            if (w->l == w->r) {
-                aig_ptr u = w->l;
-                if (u && u->type == AIGT::t_and && !u->neg && u->l != u->r) return u;
-                return nullptr;
-            }
-            return w;
-        }
-        return nullptr;
-    };
-    aig_ptr ax = as_pos_and(lx);
-    aig_ptr ay = as_pos_and(ly);
-    if (!ax || !ay) return false;
-
-    auto can_consume = [&](const aig_ptr& node) -> bool {
-        if (cache.find(node) != cache.end()) return false;
-        auto it = fanout.find(node);
-        return it != fanout.end() && it->second <= 1;
-    };
-    if (!can_consume(lx) || !can_consume(ly)) return false;
-    if (ax != lx && !can_consume(ax)) return false;
-    if (ay != ly && !can_consume(ay)) return false;
-
-    const aig_ptr& x1 = ax->l;
-    const aig_ptr& x2 = ax->r;
-    const aig_ptr& y1 = ay->l;
-    const aig_ptr& y2 = ay->r;
-
-    const aig_ptr* sel_x = nullptr;
-    const aig_ptr* sel_y = nullptr;
-    const aig_ptr* other_x = nullptr;
-    const aig_ptr* other_y = nullptr;
-    bool matched_lit = false;
-    auto try_match = [&](const aig_ptr& xa, const aig_ptr& xb,
-                         const aig_ptr& ya, const aig_ptr& yb) -> bool {
-        if (is_lit_complement(xa, ya)) {
-            sel_x = &xa; sel_y = &ya; other_x = &xb; other_y = &yb;
-            matched_lit = true; return true;
-        }
-        if (ite_sub_selector && is_sub_complement(xa, ya)) {
-            sel_x = &xa; sel_y = &ya; other_x = &xb; other_y = &yb;
-            matched_lit = false; return true;
-        }
-        return false;
-    };
-    if (!try_match(x1, x2, y1, y2) &&
-        !try_match(x1, x2, y2, y1) &&
-        !try_match(x2, x1, y1, y2) &&
-        !try_match(x2, x1, y2, y1)) return false;
-
-    out.valid = true;
-    out.t_aig = *other_x;
-    out.e_aig = *other_y;
-    if (matched_lit) {
-        out.sel_is_lit = true;
-        out.sel_var = (*sel_x)->var;
-        out.sel_neg = (*sel_x)->neg;
-    } else {
-        out.sel_is_lit = false;
-        const aig_ptr& sx = *sel_x;
-        const aig_ptr& sy = *sel_y;
-        bool sx_is_wrapper = (sx->type == AIGT::t_and && sx->neg && sx->l == sx->r && sx->l == sy);
-        out.sel_aig = sx_is_wrapper ? sy : sx;
-        out.sel_invert = sx_is_wrapper;
-    }
-    return true;
-}
-
-template<class Solver>
-bool AIGToCNF<Solver>::parse_ite_at(const aig_ptr& n, IteParse& out) {
-    IteShape sh;
-    if (!parse_ite_shape(n, sh)) return false;
-    CMSat::Lit s_lit;
-    if (sh.sel_is_lit) {
-        s_lit = CMSat::Lit(sh.sel_var, sh.sel_neg);
-    } else {
-        stats.ite_sub_sel++;
-        s_lit = encode_node(sh.sel_aig);
-        if (sh.sel_invert) s_lit = ~s_lit;
-    }
-    out.valid = true;
-    out.s_lit = s_lit;
-    out.t_aig = sh.t_aig;
-    out.e_aig = sh.e_aig;
-    return true;
-}
-
-template<class Solver>
-bool AIGToCNF<Solver>::try_ite(const aig_ptr& n, CMSat::Lit& out) {
-    IteParse outer;
-    if (!parse_ite_at(n, outer)) return false;
-
-    // MUX3 fusion: outer's else branch is itself a fanout<=1, uncached
-    // ITE-pattern AIG. Emit one 6-clause MUX3 (1 helper) in place of the
-    // outer+inner 8-clause nested ITEs (2 helpers).
-    if (outer.e_aig && outer.e_aig->type == AIGT::t_and
-        && outer.e_aig != outer.t_aig
-        && cache.find(outer.e_aig) == cache.end()) {
-        auto it_fo = fanout.find(outer.e_aig);
-        if (it_fo != fanout.end() && it_fo->second <= 1) {
-            IteParse inner;
-            if (parse_ite_at(outer.e_aig, inner)) {
-                CMSat::Lit a_lit = encode_node(outer.t_aig);
-                CMSat::Lit b_lit = encode_node(inner.t_aig);
-                CMSat::Lit c_lit = encode_node(inner.e_aig);
-                CMSat::Lit h = new_helper();
-                emit_mux3(h, outer.s_lit, a_lit, inner.s_lit, b_lit, c_lit);
-                stats.mux3_patterns++;
-                out = h;
-                return true;
-            }
-        }
-    }
-
-    CMSat::Lit s_lit = outer.s_lit;
-    CMSat::Lit t_lit = encode_node(outer.t_aig);
-    CMSat::Lit e_lit = encode_node(outer.e_aig);
-
-    // Degenerate cases.
-    //   ITE(s, t, t) = t
-    //   ITE(s, s, e) = s ∨ e           (s=1 → 1; s=0 → e)
-    //   ITE(s, ¬s, e) = ¬s ∧ e         (s=1 → 0; s=0 → e)
-    //   ITE(s, t, s) = s ∧ t           (s=1 → t; s=0 → 0)
-    //   ITE(s, t, ¬s) = ¬s ∨ t         (s=1 → t; s=0 → 1)
-    auto emit_or2 = [&](CMSat::Lit a, CMSat::Lit b) -> CMSat::Lit {
-        std::vector<CMSat::Lit> inp = {a, b};
-        if (normalize_inputs) {
-            bool cst = false;
-            if (normalize_or_inputs(inp, cst)) return get_true_lit();
-            if (inp.empty()) return ~get_true_lit();
-            if (inp.size() == 1) return inp[0];
-        }
-        if (group_cse) {
-            canon_sort_lits(inp);
-            auto it = or_group_cse.find(inp);
-            if (it != or_group_cse.end()) return it->second;
-        }
-        CMSat::Lit h = new_helper();
-        if (group_cse) or_group_cse[inp] = h;
-        emit_or_equiv(h, inp);
-        return h;
-    };
-    auto emit_and2 = [&](CMSat::Lit a, CMSat::Lit b) -> CMSat::Lit {
-        std::vector<CMSat::Lit> inp = {a, b};
-        if (normalize_inputs) {
-            bool cst = false;
-            if (normalize_and_inputs(inp, cst)) return ~get_true_lit();
-            if (inp.empty()) return get_true_lit();
-            if (inp.size() == 1) return inp[0];
-        }
-        if (group_cse) {
-            canon_sort_lits(inp);
-            auto it = and_group_cse.find(inp);
-            if (it != and_group_cse.end()) return it->second;
-        }
-        CMSat::Lit h = new_helper();
-        if (group_cse) and_group_cse[inp] = h;
-        emit_and_equiv(h, inp);
-        return h;
-    };
-    if (t_lit == e_lit) { stats.ite_degenerate++; out = t_lit; return true; }
-    if (s_lit == t_lit)  { stats.ite_degenerate++; out = emit_or2(s_lit, e_lit);  return true; }
-    if (s_lit == ~t_lit) { stats.ite_degenerate++; out = emit_and2(~s_lit, e_lit); return true; }
-    if (s_lit == e_lit)  { stats.ite_degenerate++; out = emit_and2(s_lit, t_lit); return true; }
-    if (s_lit == ~e_lit) { stats.ite_degenerate++; out = emit_or2(~s_lit, t_lit); return true; }
-
-    if (group_cse) {
-        // Canonicalize: flip (s,t,e) to (¬s,e,t) when selector is negative.
-        if (s_lit.sign()) {
-            s_lit = ~s_lit;
-            std::swap(t_lit, e_lit);
-        }
-        auto pack = [](CMSat::Lit l) { return (l.var() << 1) | (l.sign() ? 1u : 0u); };
-        IteKey key{pack(s_lit), pack(t_lit), pack(e_lit)};
-        auto it_ite = ite_cse.find(key);
-        if (it_ite != ite_cse.end()) {
-            stats.cse_ite_hits++;
-            out = it_ite->second;
-            stats.ite_patterns++;
-            return true;
-        }
-        CMSat::Lit h = new_helper();
-        emit_ite(h, s_lit, t_lit, e_lit);
-        ite_cse[key] = h;
-        stats.ite_patterns++;
-        out = h;
-        return true;
-    }
-
-    CMSat::Lit h = new_helper();
-    emit_ite(h, s_lit, t_lit, e_lit);
-    stats.ite_patterns++;
-    out = h;
-    return true;
-}
-
-// XOR pattern detection. Shape produced by AIG::new_or(AIG::new_and(a, ¬b),
-// AIG::new_and(¬a, b)):
-//
-//   n  = AND(lx, ly, neg=true)       -- the outer OR (via De Morgan)
-//   lx = AND(ax, ax, neg=true)        -- NOT-wrapper of a positive AND
-//   ly = AND(ay, ay, neg=true)        -- NOT-wrapper of a positive AND
-//   ax = AND(p, q, neg=false)         -- {p, q} is {a, ¬b} in some order
-//   ay = AND(r, s, neg=false)         -- {r, s} is {¬a, b} in some order
-//
-// The signature is: between {p, q} and {r, s} there are exactly two
-// complementary pairs. Then XOR(a, b) = XOR(p, q) — we emit the 4-clause
-// XOR encoding on the literals for p and q (any XOR(x, y) is the same as
-// XOR(¬x, ¬y), so the pairing permutation doesn't matter).
-//
-// Why this isn't redundant with try_ite: try_ite's sub-AIG path uses
-// is_sub_complement, which only matches the NOT-wrapper pattern
-// (a, AND(a,a,neg=true)). XOR's shape has a deeper symmetry — *both* pairs
-// are complementary — that ITE can only pick up through the selector/other
-// split. With ite_sub_selector off, ITE misses sub-AIG XOR entirely;
-// try_xor catches it directly. Also keeps XOR classified in stats.
-template<class Solver>
-bool AIGToCNF<Solver>::try_xor(const aig_ptr& n, CMSat::Lit& out) {
-    if (n->type != AIGT::t_and || !n->neg) return false;
-    const aig_ptr& lx = n->l;
-    const aig_ptr& ly = n->r;
-    if (!lx || !ly || lx == ly) return false;
-
-    auto unwrap_not_of_pos_and = [](const aig_ptr& w) -> aig_ptr {
-        if (!w || w->type != AIGT::t_and) return nullptr;
-        if (!w->neg || w->l != w->r) return nullptr;
-        const aig_ptr& u = w->l;
-        if (!u || u->type != AIGT::t_and || u->neg || u->l == u->r) return nullptr;
-        return u;
-    };
-    aig_ptr ax = unwrap_not_of_pos_and(lx);
-    aig_ptr ay = unwrap_not_of_pos_and(ly);
-    if (!ax || !ay) return false;
-
-    // Every structural node we're consuming must be fanout-1 and not yet
-    // encoded, otherwise folding it into a single XOR helper would elide a
-    // helper that some other encoded-path literal is referencing.
-    auto can_consume = [&](const aig_ptr& node) -> bool {
-        if (cache.find(node) != cache.end()) return false;
-        auto it = fanout.find(node);
-        return it != fanout.end() && it->second <= 1;
-    };
-    if (!can_consume(lx) || !can_consume(ly)) return false;
-    if (!can_consume(ax) || !can_consume(ay)) return false;
-
-    const aig_ptr& x1 = ax->l;
-    const aig_ptr& x2 = ax->r;
-    const aig_ptr& y1 = ay->l;
-    const aig_ptr& y2 = ay->r;
-
-    // Both pairs must be complements. Try both pairings of y's children.
-    bool matched = (aig_complement(x1, y1) && aig_complement(x2, y2))
-                || (aig_complement(x1, y2) && aig_complement(x2, y1));
-    if (!matched) return false;
-
-    // x1 and x2 come from the SAME inner AND whose children are {a, ¬b}.
-    // So XOR(x1, x2) == XOR(a, ¬b) == ¬XOR(a, b). The overall node value is
-    // XOR(a, b), so we emit XOR(x1, x2) and return its complement. (The other
-    // valid reading picks x1=¬a, x2=b, giving XOR(¬a, b) = ¬XOR(a, b) as well.)
-    CMSat::Lit a_lit = encode_node(x1);
-    CMSat::Lit b_lit = encode_node(x2);
-
-    // After encoding, operands may collapse through shared sub-formulas.
-    // These shouldn't occur on well-formed input AIGs (the original AND(a, ¬a)
-    // would have been folded to FALSE by AIG::new_and), but handle
-    // defensively so the encoder never emits a bogus helper.
-    if (a_lit == b_lit) {
-        // XOR(x, x) = FALSE, so node value = NOT FALSE = TRUE.
-        out = get_true_lit();
-        stats.xor_patterns++;
-        return true;
-    }
-    if (a_lit == ~b_lit) {
-        // XOR(x, ¬x) = TRUE, so node value = NOT TRUE = FALSE.
-        out = ~get_true_lit();
-        stats.xor_patterns++;
-        return true;
-    }
-
-    CMSat::Lit h = new_helper();
-    emit_xor(h, a_lit, b_lit);
-    stats.xor_patterns++;
-    out = ~h;
-    return true;
-}
-
-// Cut-based min-CNF encoding. Collects up to MAX_LEAVES leaves of the
-// sub-AIG rooted at n (stopping at literals, constants, and AND nodes with
-// fanout > 1 or already encoded), computes the truth table of n as a
-// function of those leaves, then looks up the minimum-clause CNF for that
-// truth table via cut_cnf::min_cnf_for_tt. If the function has no more than
-// 4 distinct input variables the result is typically smaller than the
-// k-ary AND/OR fallback. MAJ3 is the canonical win: 6 clauses + 1 helper
-// vs 13 clauses + 4 helpers for the naive (a∧b) ∨ (a∧c) ∨ (b∧c) encoding.
-template<class Solver>
-bool AIGToCNF<Solver>::try_cut_cnf(const aig_ptr& n, CMSat::Lit& out) {
-    constexpr uint32_t MAX_LEAVES = 4;
-    if (n->type != AIGT::t_and) return false;
-
-    auto can_consume = [&](const aig_ptr& p) -> bool {
-        if (cache.find(p) != cache.end()) return false;
-        auto it = fanout.find(p);
-        return it != fanout.end() && it->second <= 1;
-    };
-
-    // DFS the cone: record each leaf aig_ptr once (by pointer identity).
-    // Hard cap of MAX_LEAVES * 4 bails out quickly on cones that are
-    // clearly too wide — we still dedup by variable later, so the true leaf
-    // count may be smaller, but we want an early exit on unsuitable cones.
-    std::unordered_map<aig_ptr, uint32_t, AigPtrHash> leaf_idx;
-    std::vector<aig_ptr> leaves;
-    bool abort_flag = false;
-    std::function<void(const aig_ptr&)> dfs = [&](const aig_ptr& m) {
-        if (abort_flag) return;
-        bool is_leaf = (m->type != AIGT::t_and) || (m != n && !can_consume(m));
-        if (is_leaf) {
-            if (leaf_idx.count(m)) return;
-            if (leaves.size() >= MAX_LEAVES * 4) { abort_flag = true; return; }
-            leaf_idx[m] = leaves.size();
-            leaves.push_back(m);
-            return;
-        }
-        dfs(m->l);
-        if (!abort_flag && m->r != m->l) dfs(m->r);
-    };
-    dfs(n);
-    if (abort_flag || leaves.empty()) return false;
-
-    // Encode leaves and dedup by variable. Two leaves that resolve to the
-    // same variable (possibly with opposite signs — e.g., `x` and `¬x`)
-    // share one input slot; we remember the sign for each original leaf so
-    // the TT computation treats them consistently.
-    std::vector<CMSat::Lit> leaf_lits;
-    leaf_lits.reserve(leaves.size());
-    for (const auto& l : leaves) leaf_lits.push_back(encode_node(l));
-
-    std::unordered_map<uint32_t, uint32_t> var_to_slot;
-    std::vector<CMSat::Lit> slot_lits;  // positive-polarity lit per slot
-    std::vector<uint32_t> leaf_slot(leaves.size());
-    std::vector<bool> leaf_sign(leaves.size());
-    for (size_t i = 0; i < leaf_lits.size(); i++) {
-        uint32_t v = leaf_lits[i].var();
-        auto it = var_to_slot.find(v);
-        uint32_t slot;
-        if (it == var_to_slot.end()) {
-            if (slot_lits.size() >= MAX_LEAVES) return false;
-            slot = slot_lits.size();
-            var_to_slot[v] = slot;
-            slot_lits.push_back(CMSat::Lit(v, false));
-        } else {
-            slot = it->second;
-        }
-        leaf_slot[i] = slot;
-        leaf_sign[i] = leaf_lits[i].sign();
-    }
-
-    uint32_t num_inputs = slot_lits.size();
-    if (num_inputs == 0) return false;
-    uint32_t num_mt = 1u << num_inputs;
-    uint16_t full_mask = (uint16_t)((1u << num_mt) - 1);
-
-    // Build leaf value masks. `slot_mask[s]` has bit m set iff minterm m
-    // assigns slot s to 1; the leaf's mask XOR-s in the sign.
-    std::vector<uint16_t> leaf_mask(leaves.size());
-    for (size_t i = 0; i < leaves.size(); i++) {
-        uint16_t sm = 0;
-        for (uint32_t m = 0; m < num_mt; m++) {
-            if ((m >> leaf_slot[i]) & 1u) sm |= (uint16_t)(1u << m);
-        }
-        leaf_mask[i] = leaf_sign[i] ? (uint16_t)(sm ^ full_mask) : sm;
-    }
-
-    // Evaluate n as a 16-bit mask over the 2^num_inputs minterms.
-    std::unordered_map<aig_ptr, uint16_t, AigPtrHash> eval_cache;
-    std::function<uint16_t(const aig_ptr&)> eval = [&](const aig_ptr& m) -> uint16_t {
-        auto it_leaf = leaf_idx.find(m);
-        if (it_leaf != leaf_idx.end()) return leaf_mask[it_leaf->second];
-        auto it_c = eval_cache.find(m);
-        if (it_c != eval_cache.end()) return it_c->second;
-        assert(m->type == AIGT::t_and);
-        uint16_t lv = eval(m->l);
-        uint16_t rv = (m->r == m->l) ? lv : eval(m->r);
-        uint16_t v = (uint16_t)(lv & rv);
-        if (m->neg) v = (uint16_t)((~v) & full_mask);
-        eval_cache[m] = v;
-        return v;
-    };
-    uint16_t tt = eval(n);
-
-    const auto& min_cnf = cut_cnf::min_cnf_for_tt(num_inputs, tt);
-
-    // Emit clauses. The helper `h` carries g; clauses reference slot_lits[i]
-    // (possibly negated per the clause's sign bit) and h (possibly negated
-    // per g_sign).
-    CMSat::Lit h = new_helper();
-    for (const auto& c : min_cnf.clauses) {
-        std::vector<CMSat::Lit> cl;
-        cl.reserve(num_inputs + 1);
-        for (uint32_t i = 0; i < num_inputs; i++) {
-            if (!(c.present & (1u << i))) continue;
-            bool is_neg = (c.sign >> i) & 1u;
-            cl.push_back(is_neg ? ~slot_lits[i] : slot_lits[i]);
-        }
-        cl.push_back(c.g_sign ? ~h : h);
-        add_clause(cl);
-    }
-    stats.cut_cnf_patterns++;
-    stats.cut_cnf_clauses += min_cnf.clauses.size();
-    out = h;
-    return true;
+    out.push_back(child);
 }
 
 template<class Solver>
 void AIGToCNF<Solver>::emit_and_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs) {
-    assert(!inputs.empty());
-    // Forward: g -> AND (binary clauses).
-    for (const auto& a : inputs) add_clause({~g, a});
-    // Reverse: AND -> g (big clause).
-    std::vector<CMSat::Lit> big;
-    big.reserve(inputs.size() + 1);
-    big.push_back(g);
-    for (const auto& a : inputs) big.push_back(~a);
-    add_clause(big);
-}
-
-template<class Solver>
-void AIGToCNF<Solver>::emit_or_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs) {
-    assert(!inputs.empty());
-    // Forward: g -> OR (big clause).
-    std::vector<CMSat::Lit> big;
-    big.reserve(inputs.size() + 1);
-    big.push_back(~g);
-    for (const auto& a : inputs) big.push_back(a);
-    add_clause(big);
-    // Reverse: OR -> g (binary clauses).
-    for (const auto& a : inputs) add_clause({~a, g});
-}
-
-template<class Solver>
-void AIGToCNF<Solver>::emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat::Lit e) {
-    add_clause({~g, ~s, t});
-    add_clause({~g, s, e});
-    add_clause({g, ~s, ~t});
-    add_clause({g, s, ~e});
-}
-
-// g = ITE(s1, a, ITE(s2, b, c)) — a 3-way priority mux, encoded with 6
-// ternary/quaternary clauses and a single helper. The equivalent
-// nested-ITE encoding would use 8 clauses and 2 helpers.
-template<class Solver>
-void AIGToCNF<Solver>::emit_mux3(CMSat::Lit g, CMSat::Lit s1, CMSat::Lit a,
-                                  CMSat::Lit s2, CMSat::Lit b, CMSat::Lit c) {
-    // s1=1 -> g = a
-    add_clause({~s1, ~g, a});
-    // s1=0, s2=1 -> g = b
-    add_clause({s1, ~s2, ~g, b});
-    // s1=0, s2=0 -> g = c
-    add_clause({s1, s2, ~g, c});
-    add_clause({~s1, g, ~a});
-    add_clause({s1, ~s2, g, ~b});
-    add_clause({s1, s2, g, ~c});
-}
-
-template<class Solver>
-void AIGToCNF<Solver>::emit_xor(CMSat::Lit g, CMSat::Lit a, CMSat::Lit b) {
-    add_clause({~g, a, b});
-    add_clause({~g, ~a, ~b});
-    add_clause({g, ~a, b});
-    add_clause({g, a, ~b});
+    // g = AND(inputs):
+    //   for each i: g → i  ⇔ ~g ∨ i  (forward implications)
+    //   all i →  g        ⇔ g ∨ ~i1 ∨ ~i2 ...  (backward)
+    for (auto l : inputs) add_clause({~g, l});
+    std::vector<CMSat::Lit> backward;
+    backward.reserve(inputs.size() + 1);
+    backward.push_back(g);
+    for (auto l : inputs) backward.push_back(~l);
+    add_clause(backward);
 }
 
 } // namespace ArjunNS

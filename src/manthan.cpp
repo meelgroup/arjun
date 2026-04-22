@@ -509,7 +509,7 @@ aig_ptr Manthan::one_level_substitute(Lit l, const uint32_t v, map<uint32_t, aig
     if (!transformed.count(l.var())) {
         assert(var_to_formula.count(l.var()) == 1);
         auto aig = var_to_formula.at(l.var()).aig;
-        std::unordered_map<const AIG*, aig_ptr> cache;
+        std::unordered_map<const AIG*, aig_node_ptr> cache;
         auto aig2 = AIG::deep_clone(aig, cache);
         map<aig_ptr, aig_ptr> cache_aig;
         auto aig3 = AIG::transform<aig_ptr>(
@@ -2685,16 +2685,19 @@ Lit Manthan::tseitin_encode_aig(
 
     Lit result = lit_Error;
     if (aig->type == AIGT::t_const) {
-        // const node: value is TRUE XOR neg
-        result = aig->neg ? ~true_lit : true_lit;
+        // const node is positive TRUE; edge sign flips it.
+        result = aig.neg ? ~true_lit : true_lit;
     } else if (aig->type == AIGT::t_lit) {
-        // Leaf: map to_define_full vars to y_hat, others stay as-is
+        // Leaf: map to_define_full vars to y_hat, others stay as-is.
+        // Sign lives on the referring edge.
         uint32_t v = aig->var;
         auto map_it = count_y_to_y_hat.find(v);
         if (map_it != count_y_to_y_hat.end()) v = map_it->second;
-        result = Lit(v, aig->neg);
+        result = Lit(v, aig.neg);
     } else {
         assert(aig->type == AIGT::t_and);
+        // Children are signed edges (aig_lit); the recursive call returns
+        // the CNF literal with the edge sign already applied.
         Lit left_lit = tseitin_encode_aig(aig->l, count_y_to_y_hat, clauses, next_var, true_lit, cache);
         Lit right_lit = tseitin_encode_aig(aig->r, count_y_to_y_hat, clauses, next_var, true_lit, cache);
 
@@ -2702,16 +2705,12 @@ Lit Manthan::tseitin_encode_aig(
         uint32_t gate_var = next_var++;
         Lit gate = Lit(gate_var, false);
 
-        // Tseitin: gate <-> (left AND right)
-        // ~gate OR left
         clauses.push_back({~gate, left_lit});
-        // ~gate OR right
         clauses.push_back({~gate, right_lit});
-        // gate OR ~left OR ~right
         clauses.push_back({gate, ~left_lit, ~right_lit});
 
-        // Apply negation
-        result = aig->neg ? ~gate : gate;
+        // Outer edge sign flips the gate output.
+        result = aig.neg ? ~gate : gate;
     }
 
     cache[aig] = result;

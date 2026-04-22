@@ -48,7 +48,13 @@ class AIGManager;
 class AIGRewriter;
 class SimplifiedCNF;
 template<class Solver> class AIGToCNF;
-using aig_ptr = std::shared_ptr<AIG>;
+
+// Underlying AIG node. Nodes are positive-output only — the complement of a
+// reference is carried on the referring edge (see aig_lit below), not on the
+// node. This matches the AIGER literature convention: every fanin of an AND
+// gate may be independently complemented, but the AND's own output is never
+// inverted.
+using aig_node_ptr = std::shared_ptr<AIG>;
 
 enum class AIGT {t_and, t_lit, t_const};
 inline std::ostream& operator<<(std::ostream& os, const AIGT& value) {
@@ -59,6 +65,41 @@ inline std::ostream& operator<<(std::ostream& os, const AIGT& value) {
         default: assert(false && "Unknown AIGT"); std::abort();
     }
 }
+
+// Signed reference to an AIG node: the edge carries a complement bit.
+// Every consumer that needs to refer to an AIG (as a root, as a fanin of an
+// AND gate, as a value stored in defs[], as a key in a map, etc.) uses
+// `aig_lit` rather than a bare shared_ptr. This is the only place where
+// complementation lives in the new representation.
+//
+// `aig_ptr` is an alias for `aig_lit` for backwards-compatible naming.
+struct aig_lit {
+    aig_node_ptr node;
+    bool neg;
+
+    aig_lit() : node(nullptr), neg(false) {}
+    aig_lit(std::nullptr_t) : node(nullptr), neg(false) {}
+    aig_lit(aig_node_ptr n) : node(std::move(n)), neg(false) {}
+    aig_lit(aig_node_ptr n, bool ng) : node(std::move(n)), neg(ng) {}
+
+    AIG* operator->() const { return node.get(); }
+    AIG& operator*() const { return *node; }
+    AIG* get() const { return node.get(); }
+    explicit operator bool() const { return (bool)node; }
+
+    aig_lit operator~() const { return {node, !neg}; }
+
+    bool operator==(const aig_lit& o) const { return node == o.node && neg == o.neg; }
+    bool operator!=(const aig_lit& o) const { return !(*this == o); }
+    bool operator==(std::nullptr_t) const { return node == nullptr; }
+    bool operator!=(std::nullptr_t) const { return node != nullptr; }
+    bool operator<(const aig_lit& o) const {
+        if (node.get() != o.node.get()) return std::less<const void*>()(node.get(), o.node.get());
+        return (int)neg < (int)o.neg;
+    }
+};
+
+using aig_ptr = aig_lit;
 
 class AIG {
 public:
@@ -94,43 +135,38 @@ public:
     }
 
     // vals = input variable assignments
-    // aig = AIG to evaluate
-    // defs = known definitions of variables
+    // aig = AIG to evaluate (signed edge; carries its own complement bit)
+    // defs = known definitions of variables (each def is a signed edge)
     static CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, const aig_ptr& a, const std::vector<aig_ptr>& defs, std::map<aig_ptr, CMSat::lbool>& cache) {
         std::function<CMSat::lbool(const aig_ptr&)> sub_eval = [&](const aig_ptr& aig) -> CMSat::lbool {
             if (cache.count(aig)) return cache.at(aig);
             assert(aig->invariants());
             if (aig->type == AIGT::t_lit) {
+                CMSat::lbool ret;
                 if (defs[aig->var] != nullptr) {
-                    auto ret = sub_eval(defs.at(aig->var));
-                    if (ret == CMSat::l_Undef) {
-                        cache[aig] = CMSat::l_Undef;
-                        return CMSat::l_Undef;
-                    }
-                    ret = ret ^ aig->neg;
-                    cache[aig] = ret;
-                    return ret;
+                    ret = sub_eval(defs.at(aig->var));
+                } else {
+                    assert(aig->var < vals.size());
+                    ret = vals[aig->var];
                 }
-                assert(aig->var < vals.size());
-                auto ret = vals[aig->var];
                 if (ret == CMSat::l_Undef) {
                     cache[aig] = CMSat::l_Undef;
                     return CMSat::l_Undef;
                 }
-                ret = ret ^ aig->neg;
+                ret = ret ^ aig.neg;
                 cache[aig] = ret;
                 return ret;
             }
 
-            if (aig->type == AIGT::t_const) return CMSat::boolToLBool(!aig->neg);
+            if (aig->type == AIGT::t_const) return CMSat::boolToLBool(!aig.neg);
 
             if (aig->type == AIGT::t_and) {
-                const auto l = sub_eval(aig->l);
-                const auto r = sub_eval(aig->r);
+                const auto lv = sub_eval(aig->l);
+                const auto rv = sub_eval(aig->r);
                 CMSat::lbool ret;
-                if (l == CMSat::l_False || r == CMSat::l_False) ret = CMSat::l_False ^ aig->neg;
-                else if (l == CMSat::l_Undef || r == CMSat::l_Undef) ret = CMSat::l_Undef;
-                else ret = (l && r) ^ aig->neg;
+                if (lv == CMSat::l_False || rv == CMSat::l_False) ret = CMSat::l_False ^ aig.neg;
+                else if (lv == CMSat::l_Undef || rv == CMSat::l_Undef) ret = CMSat::l_Undef;
+                else ret = (lv && rv) ^ aig.neg;
                 cache[aig] = ret;
                 return ret;
             }
@@ -143,12 +179,21 @@ public:
         return new_lit(l.var(), l.sign());
     }
 
-    static aig_ptr new_lit(uint32_t var, bool neg = false) {
-        auto ret = std::make_shared<AIG>();
-        ret->type = AIGT::t_lit;
-        ret->var = var;
-        ret->neg = neg;
-        return ret;
+    // Creates a positive t_lit node for `var` and returns a signed edge to it.
+    // The node itself has no `neg`; the sign lives on the returned aig_lit.
+    static aig_ptr new_lit(uint32_t v, bool neg = false) {
+        auto n = std::make_shared<AIG>();
+        n->type = AIGT::t_lit;
+        n->var = v;
+        return aig_lit(n, neg);
+    }
+
+    static aig_ptr new_const(bool val) {
+        // Single positive t_const node representing TRUE. Callers ask for FALSE
+        // via a complemented edge.
+        auto n = std::make_shared<AIG>();
+        n->type = AIGT::t_const;
+        return aig_lit(n, !val);
     }
 
     static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, CMSat::Lit b) {
@@ -160,92 +205,63 @@ public:
         return new_or(new_and(branch, l), new_and(new_not(branch), r));
     }
 
+    // Logical NOT is an edge-only operation in the new representation: flip
+    // the complement bit of the reference, don't create a new node.
     static aig_ptr new_not(const aig_ptr& a) {
         assert(a != nullptr);
-        // Double negation elimination: NOT(NOT(x)) = x
-        // NOT is encoded as AND(x,x,neg=true), so detect this pattern.
-        if (a->type == AIGT::t_and && a->l == a->r && a->neg) {
-            return a->l;
-        }
-        // Literal negation folding: NOT(lit(v,neg)) = lit(v,!neg)
-        if (a->type == AIGT::t_lit) {
-            return new_lit(a->var, !a->neg);
-        }
-        auto ret = std::make_shared<AIG>();
-        ret->type = AIGT::t_and;
-        ret->l = a;
-        ret->r = a;
-        ret->neg = true;
-        return ret;
+        return ~a;
     }
 
     static aig_ptr new_and(const aig_ptr& l, const aig_ptr& r, bool neg = false) {
         assert(l != nullptr && r != nullptr);
+
+        auto apply_out_neg = [&](const aig_ptr& v) -> aig_ptr {
+            return neg ? ~v : v;
+        };
+
         // Identity: AND(x, x) = x
-        if (l == r) return neg ? new_not(l) : l;
+        if (l == r) return apply_out_neg(l);
 
-        // Constant folding: AND(TRUE, x) = x, AND(FALSE, x) = FALSE
+        // Complement: AND(x, ~x) = FALSE
+        if (l.node == r.node && l.neg != r.neg) {
+            return apply_out_neg(new_const(false));
+        }
+
+        // Constant folding on the left input.
         if (l->type == AIGT::t_const) {
-            if (l->neg) return neg ? new_not(l) : l; // AND(FALSE, x) = FALSE
-            return neg ? new_not(r) : r; // AND(TRUE, x) = x
+            // l.neg == true means the reference is FALSE.
+            if (l.neg) return apply_out_neg(new_const(false)); // AND(FALSE, x) = FALSE
+            return apply_out_neg(r); // AND(TRUE, x) = x
         }
+        // ... and on the right input.
         if (r->type == AIGT::t_const) {
-            if (r->neg) return neg ? new_not(r) : r; // AND(x, FALSE) = FALSE
-            return neg ? new_not(l) : l; // AND(x, TRUE) = x
+            if (r.neg) return apply_out_neg(new_const(false));
+            return apply_out_neg(l);
         }
 
-        // Complementary literals: AND(v, ~v) = FALSE
-        if (l->type == AIGT::t_lit && r->type == AIGT::t_lit &&
-            l->var == r->var && l->neg != r->neg) {
-            auto c = std::make_shared<AIG>();
-            c->type = AIGT::t_const;
-            c->neg = !neg; // AND gives FALSE, neg flips to TRUE
-            return c;
+        // Absorption: AND(a, AND(a, b)) = AND(a, b), where the inner AND is
+        // referenced positively.
+        if (r->type == AIGT::t_and && !r.neg && (r->l == l || r->r == l)) {
+            return apply_out_neg(r);
+        }
+        if (l->type == AIGT::t_and && !l.neg && (l->l == r || l->r == r)) {
+            return apply_out_neg(l);
         }
 
-        // Identical literals: AND(v, v) = v (by value, not just pointer)
-        if (l->type == AIGT::t_lit && r->type == AIGT::t_lit &&
-            l->var == r->var && l->neg == r->neg) {
-            return neg ? new_not(l) : l;
-        }
-
-        // Absorption: AND(a, AND(a, b)) = AND(a, b)
-        // If r is AND(a, b) with no negation and one child is l
-        if (r->type == AIGT::t_and && !r->neg && (r->l == l || r->r == l)) {
-            return neg ? new_not(r) : r;
-        }
-        if (l->type == AIGT::t_and && !l->neg && (l->l == r || l->r == r)) {
-            return neg ? new_not(l) : l;
-        }
-
-        // Absorption: AND(a, OR(a, b)) = a
-        // OR(a, b) is encoded as AND(NOT(a), NOT(b), neg=true)
-        // So if r is t_and with neg=true (it's an OR), check if one of its
-        // children (which are negated) matches NOT(l)
-        if (r->type == AIGT::t_and && r->neg) {
-            // r = NOT(AND(r->l, r->r)) = OR(NOT(r->l), NOT(r->r))
-            // We need: l == NOT(r->l) or l == NOT(r->r)
-            // NOT(r->l) for a literal is: same var, opposite neg
-            if (r->l == l || r->r == l) {
-                // l appears as a child of r's AND, which means NOT(l) appears in the OR
-                // This is not absorption, skip
-            } else if (r->l->type == AIGT::t_lit && l->type == AIGT::t_lit &&
-                       r->l->var == l->var && r->l->neg != l->neg) {
-                // l = NOT(r->l), so OR contains l as a disjunct → AND(l, OR(l,...)) = l
-                return neg ? new_not(l) : l;
-            } else if (r->r->type == AIGT::t_lit && l->type == AIGT::t_lit &&
-                       r->r->var == l->var && r->r->neg != l->neg) {
-                return neg ? new_not(l) : l;
+        // Absorption: AND(a, OR(a, b)) = a. OR(a, b) is encoded as a negative
+        // reference to an AND node whose children are the negations of the
+        // disjuncts (De Morgan): ~AND(~a, ~b).
+        if (r->type == AIGT::t_and && r.neg) {
+            // disjuncts of the OR are ~(r->l) and ~(r->r).
+            if ((r->l.node == l.node && r->l.neg != l.neg)
+             || (r->r.node == l.node && r->r.neg != l.neg)) {
+                return apply_out_neg(l);
             }
         }
-        if (l->type == AIGT::t_and && l->neg) {
-            if (l->l->type == AIGT::t_lit && r->type == AIGT::t_lit &&
-                       l->l->var == r->var && l->l->neg != r->neg) {
-                return neg ? new_not(r) : r;
-            }
-            if (l->r->type == AIGT::t_lit && r->type == AIGT::t_lit &&
-                       l->r->var == r->var && l->r->neg != r->neg) {
-                return neg ? new_not(r) : r;
+        if (l->type == AIGT::t_and && l.neg) {
+            if ((l->l.node == r.node && l->l.neg != r.neg)
+             || (l->r.node == r.node && l->r.neg != r.neg)) {
+                return apply_out_neg(r);
             }
         }
 
@@ -253,63 +269,29 @@ public:
         ret->type = AIGT::t_and;
         ret->l = l;
         ret->r = r;
-        ret->neg = neg;
-        return ret;
+        return aig_lit(ret, neg);
     }
 
     static aig_ptr new_or(const aig_ptr& l, const aig_ptr& r, bool neg = false) {
-        assert(l != nullptr && r != nullptr);
-        // Identity: OR(x, x) = x
-        if (l == r) return neg ? new_not(l) : l;
-
-        // Constant folding: OR(TRUE, x) = TRUE, OR(FALSE, x) = x
-        if (l->type == AIGT::t_const) {
-            if (!l->neg) return neg ? new_not(l) : l; // OR(TRUE, x) = TRUE
-            return neg ? new_not(r) : r; // OR(FALSE, x) = x
-        }
-        if (r->type == AIGT::t_const) {
-            if (!r->neg) return neg ? new_not(r) : r; // OR(x, TRUE) = TRUE
-            return neg ? new_not(l) : l; // OR(x, FALSE) = x
-        }
-
-        // Complementary literals: OR(v, ~v) = TRUE
-        if (l->type == AIGT::t_lit && r->type == AIGT::t_lit &&
-            l->var == r->var && l->neg != r->neg) {
-            auto c = std::make_shared<AIG>();
-            c->type = AIGT::t_const;
-            c->neg = neg; // OR gives TRUE, neg flips to FALSE
-            return c;
-        }
-
-        // Identical literals: OR(v, v) = v (by value, not just pointer)
-        if (l->type == AIGT::t_lit && r->type == AIGT::t_lit &&
-            l->var == r->var && l->neg == r->neg) {
-            return neg ? new_not(l) : l;
-        }
-
-        // OR(a, b) = NOT(AND(NOT(a), NOT(b)))
-        // With double-negation elimination in new_not, this is efficient.
-        auto ret = std::make_shared<AIG>();
-        ret->type = AIGT::t_and;
-        ret->l = new_not(l);
-        ret->r = new_not(r);
-        ret->neg = true ^ neg;
-        return ret;
+        // OR(a, b) = ~AND(~a, ~b). The result's output complement collapses
+        // with the caller-provided `neg`.
+        return new_and(~l, ~r, !neg);
     }
 
-    // Key for CSE: (type, var, neg, left_nid, right_nid).
-    // Uses the deterministic nid stamped at construction time rather than raw
-    // pointer addresses, so the CSE map order is identical across runs /
-    // machines.
-    using AIGKey = std::tuple<AIGT, uint32_t, bool, uint64_t, uint64_t>;
+    // Key for CSE: (type, var, left_signed_nid, right_signed_nid).
+    // Uses the deterministic nid stamped at construction time paired with the
+    // edge-sign of each child. Output-sign is never part of a node — it lives
+    // on the referencing edge.
+    using AIGKey = std::tuple<AIGT, uint32_t, uint64_t, bool, uint64_t, bool>;
 
 
     static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, const aig_ptr& b) {
         assert(l != nullptr);
         assert(r != nullptr);
         assert(b != nullptr);
-        // Simplifications: ITE(TRUE, l, r) = l, ITE(FALSE, l, r) = r
-        if (b->type == AIGT::t_const) return b->neg ? r : l;
+        // ITE(TRUE, l, r) = l, ITE(FALSE, l, r) = r. The branch's value is
+        // (b.node is TRUE) XOR b.neg.
+        if (b->type == AIGT::t_const) return b.neg ? r : l;
         // ITE(b, x, x) = x
         if (l == r) return l;
         return AIG::new_or(AIG::new_and(b, l), AIG::new_and(AIG::new_not(b), r));
@@ -372,7 +354,7 @@ public:
 
     static std::vector<aig_ptr> deep_clone_vec(const std::vector<aig_ptr>& aigs) {
         std::vector<aig_ptr> ret;
-        std::unordered_map<const AIG*, aig_ptr> cache;
+        std::unordered_map<const AIG*, aig_node_ptr> cache;
         ret.reserve(aigs.size());
         for (const auto& aig : aigs) {
             if (aig == nullptr) {
@@ -387,46 +369,41 @@ public:
     template<typename T>
     static T deep_clone_map(const T& aigs) {
         T ret;
-        std::unordered_map<const AIG*, aig_ptr> cache;
+        std::unordered_map<const AIG*, aig_node_ptr> cache;
         for (auto& [x, aig] : aigs) ret[x] = deep_clone(aig, cache);
         return ret;
     }
 
-    static aig_ptr deep_clone(const aig_ptr& aig, std::unordered_map<const AIG*, aig_ptr>& cache) {
+    static aig_ptr deep_clone(const aig_ptr& aig, std::unordered_map<const AIG*, aig_node_ptr>& cache) {
         if (!aig) return nullptr;
 
-        std::function<aig_ptr(const aig_ptr&)> clone_helper =
-            [&](const aig_ptr& node) -> aig_ptr {
-                if (!node) return nullptr;
+        // Clones nodes, not signed edges. Sign is carried on the returned edge.
+        std::function<aig_node_ptr(const AIG*)> clone_node =
+            [&](const AIG* src) -> aig_node_ptr {
+                if (!src) return nullptr;
 
-                // Check cache to avoid cloning the same node multiple times
-                auto it = cache.find(node.get());
+                auto it = cache.find(src);
                 if (it != cache.end()) return it->second;
 
-                // Create new AIG node
                 auto cloned = std::make_shared<AIG>();
-                cloned->type = node->type;
-                cloned->var = node->var;
-                cloned->neg = node->neg;
+                cloned->type = src->type;
+                cloned->var = src->var;
+                cache[src] = cloned;
 
-                // Add to cache before recursing to handle cycles
-                cache[node.get()] = cloned;
-
-                // Recursively clone children for AND nodes
-                if (node->type == AIGT::t_and) {
-                    cloned->l = clone_helper(node->l);
-                    cloned->r = clone_helper(node->r);
+                if (src->type == AIGT::t_and) {
+                    cloned->l = aig_lit(clone_node(src->l.get()), src->l.neg);
+                    cloned->r = aig_lit(clone_node(src->r.get()), src->r.neg);
                 }
-
                 return cloned;
             };
 
-        return clone_helper(aig);
+        return aig_lit(clone_node(aig.get()), aig.neg);
     }
 
-    // Generic recursive traversal function that applies a function to each AIG node
-    // The function receives the current node as an aig_ptr
-    // Use cache to avoid visiting the same node multiple times
+    // Generic recursive traversal function that applies a function to each AIG
+    // node (post-edge). Each edge in the walk is passed to `func` as an
+    // aig_lit. De-dup is by signed-edge: two references with opposite sign
+    // visit the same underlying node twice (the sign can matter to callers).
     template<typename Func>
     static void traverse(const aig_ptr& aig, Func&& func) {
         if (!aig) return;
@@ -438,26 +415,22 @@ public:
     static void traverse_helper(const aig_ptr& node, Func&& func, std::set<aig_ptr>& visited) {
         if (!node) return;
 
-        // Check if already visited to avoid infinite loops
         if (visited.count(node)) return;
         visited.insert(node);
 
-        // Apply the function to the current node
         func(node);
 
-        // Recursively traverse children for AND nodes
         if (node->type == AIGT::t_and) {
             traverse_helper(node->l, std::forward<Func>(func), visited);
             traverse_helper(node->r, std::forward<Func>(func), visited);
         }
     }
 
-    // Transform function that performs post-order traversal and builds up a result
-    // The visitor receives: (type, var, neg, left_result*, right_result*)
-    // - type: the node type (t_const, t_lit, or t_and)
-    // - var: variable number (only meaningful for t_lit)
-    // - neg: negation flag
-    // - left_result, right_result: pointers to children results (nullptr for non-AND nodes)
+    // Post-order traversal producing a caller-defined fold. Visitor signature:
+    //   (type, var, edge_neg, left_result*, right_result*)
+    // where edge_neg is the sign of the reference we're folding over, and the
+    // child results are produced by recursive calls on each edge (so each
+    // child result already reflects its own edge sign).
     template<typename ResultType, typename Visitor>
     static ResultType transform(
         const aig_ptr& aig,
@@ -466,19 +439,16 @@ public:
     ) {
         assert(aig);
 
-        // Check cache first
         auto it = cache.find(aig);
         if (it != cache.end()) return it->second;
 
         ResultType result;
         if (aig->type == AIGT::t_and) {
-            // Post-order: process children first
             ResultType left_result = transform<ResultType>(aig->l, std::forward<Visitor>(visitor), cache);
             ResultType right_result = transform<ResultType>(aig->r, std::forward<Visitor>(visitor), cache);
-            result = visitor(aig->type, aig->var, aig->neg, &left_result, &right_result);
+            result = visitor(aig->type, aig->var, aig.neg, &left_result, &right_result);
         } else {
-            // Leaf nodes (t_const or t_lit)
-            result = visitor(aig->type, aig->var, aig->neg, nullptr, nullptr);
+            result = visitor(aig->type, aig->var, aig.neg, nullptr, nullptr);
         }
 
         cache[aig] = result;
@@ -507,17 +477,18 @@ public:
     friend class ArjunInt::Manthan;
     template<class Solver> friend class AIGToCNF;
 
-private:
-    static aig_ptr simplify(aig_ptr aig);
-    static aig_ptr simplify(aig_ptr aig, std::unordered_map<const AIG*, aig_ptr>& cache);
-    static aig_ptr simplify_cse(aig_ptr aig, std::map<AIGKey, aig_ptr>& cse_map, std::unordered_map<const AIG*, aig_ptr>& cache);
-
     AIGT type = AIGT::t_const;
     static constexpr uint32_t none_var = std::numeric_limits<uint32_t>::max();
     uint32_t var = none_var;
-    bool neg = false;
-    aig_ptr l = nullptr;
-    aig_ptr r = nullptr;
+    // AND fanins. Each is a signed edge — the AND's two inputs can be
+    // independently complemented. AND nodes have no output-sign of their own.
+    aig_lit l;
+    aig_lit r;
+
+private:
+    static aig_ptr simplify(aig_ptr aig);
+    static aig_ptr simplify(aig_ptr aig, std::unordered_map<const AIG*, aig_lit>& cache);
+    static aig_ptr simplify_cse(aig_ptr aig, std::map<AIGKey, aig_node_ptr>& cse_map, std::unordered_map<const AIG*, aig_node_ptr>& cache);
 
     // Epoch-based visited marker used by DFS traversals (get_dependent_vars,
     // count_aig_nodes, ...) in place of an unordered_set<const AIG*>. A
@@ -549,15 +520,15 @@ inline std::ostream& operator<<(std::ostream& out, const aig_ptr& aig) {
     assert(aig->invariants());
 
     if (aig->type == AIGT::t_lit) {
-        out << (aig->neg ? "~" : "") << "x" << aig->var+1;
+        out << (aig.neg ? "~" : "") << "x" << aig->var+1;
         return out;
     }
     if (aig->type == AIGT::t_const) {
-        out << (aig->neg ? "FALSE" : "TRUE");
+        out << (aig.neg ? "FALSE" : "TRUE");
         return out;
     }
     assert(aig->type == AIGT::t_and);
-    out << (aig->neg ? "~" : "") << "AND(";
+    out << (aig.neg ? "~" : "") << "AND(";
     out << (aig->l) << ", " << (aig->r) << ")";
     return out;
 }
@@ -566,46 +537,40 @@ class AIGManager {
 public:
     ~AIGManager() = default;
     AIGManager() {
-        const_true = std::make_shared<AIG>();
-        const_true->type = AIGT::t_const;
-        const_true->neg = false;
-        const_false = std::make_shared<AIG>();
-        const_false->type = AIGT::t_const;
-        const_false->neg = true;
+        // Single positive t_const node backing both TRUE (positive ref) and
+        // FALSE (complemented ref). In the new representation there is no
+        // dedicated FALSE node — it's just `~const_true_node`.
+        const_true_node = std::make_shared<AIG>();
+        const_true_node->type = AIGT::t_const;
     }
 
     AIGManager& operator=(const AIGManager& other) {
         if (this != &other) {
             clear();
-            // With shared_ptr, just copy the pointers - no deep copy needed!
-            const_true = other.const_true;
-            const_false = other.const_false;
+            const_true_node = other.const_true_node;
         }
         return *this;
     }
 
     AIGManager(const AIGManager& other) {
-        const_true = other.const_true;
-        const_false = other.const_false;
+        const_true_node = other.const_true_node;
     }
 
     [[nodiscard]] aig_ptr new_const(bool val) const {
-        return val ? const_true : const_false;
+        return aig_lit(const_true_node, !val);
     }
 
 
 private:
     void clear() {
-        const_true = nullptr;
-        const_false = nullptr;
+        const_true_node = nullptr;
     }
 
-    // There could be other const true, this is just a good example so we don't always copy
-    // Due to copying we don'g guarantee uniqueness
-    aig_ptr const_true = nullptr;
-    // There could be other const false, this is just a good example so we don't always copy
-    // Due to copying we don'g guarantee uniqueness
-    aig_ptr const_false = nullptr;
+    // Shared positive TRUE const node. Managers copied from others share the
+    // same node so comparisons stay pointer-equal across copies. Note: there
+    // can still be other TRUE nodes elsewhere (e.g. created by AIG::new_const);
+    // this manager is a convenience, not a canonical source.
+    aig_node_ptr const_true_node = nullptr;
 };
 
 class FMpz final : public CMSat::Field {
@@ -1747,3 +1712,15 @@ private:
 };
 
 } // end namespace
+
+namespace std {
+template<> struct hash<ArjunNS::aig_lit> {
+    size_t operator()(const ArjunNS::aig_lit& a) const noexcept {
+        // Combine the shared_ptr's address with the edge sign. Use the raw
+        // address only for hashing (bucket placement) — ordering is provided
+        // separately through aig_lit::operator< when determinism matters.
+        size_t h = std::hash<ArjunNS::AIG*>{}(a.get());
+        return (h << 1) ^ (a.neg ? 1 : 0);
+    }
+};
+} // namespace std

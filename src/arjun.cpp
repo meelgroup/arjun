@@ -504,16 +504,22 @@ DLL_PUBLIC void SimplifiedCNF::add_fixed_values(const vector<Lit>& fixed) {
 DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig, const uint32_t max_num_vars,
             std::optional<std::reference_wrapper<const std::map<uint32_t, CMSat::Lit>>> back_map) {
     const auto new_to_orig_var = get_new_to_orig_var();
-    auto aigs = AIG::deep_clone_vec(aigs_orig);
-    set<aig_ptr> visited;
+    // Rebuild each AIG: t_lit nodes are replaced with remapped variables, and
+    // any sign flip introduced by the remapping is propagated onto the edges
+    // that reach those t_lits. Because signs live on edges (aig_lit.neg) and
+    // not on nodes, remapping a variable with a sign flip means producing
+    // fresh aig_lits with XOR'd edge signs — so a full rebuild.
+    std::unordered_map<const AIG*, aig_lit> cache;
 
-    function<void(const aig_ptr&)> remap_aig = [&](const aig_ptr& aig) {
-        if (aig == nullptr) return;
-        if (visited.count(aig)) return;
-
-        assert(aig->invariants());
-        visited.insert(aig);
-
+    std::function<aig_lit(const aig_ptr&)> rebuild = [&](const aig_ptr& aig) -> aig_lit {
+        if (aig == nullptr) return aig_lit();
+        auto it = cache.find(aig.get());
+        if (it != cache.end()) {
+            // Cache stores the rebuilt positive-value edge for `aig.node`.
+            // Apply the incoming edge sign on the way out.
+            return aig_lit(it->second.node, it->second.neg ^ aig.neg);
+        }
+        aig_lit pos_result;
         if (aig->type == AIGT::t_lit) {
             Lit l = Lit(aig->var, false);
             if (back_map.has_value()) {
@@ -522,21 +528,25 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig
             }
             assert(l.var() < max_num_vars);
             l = new_to_orig_var.at(l.var()) ^ l.sign();
-            aig->var = l.var();
-            aig->neg ^= l.sign();
-            return;
+            pos_result = AIG::new_lit(l.var(), l.sign());
+        } else if (aig->type == AIGT::t_const) {
+            pos_result = AIG::new_const(true);
+        } else if (aig->type == AIGT::t_and) {
+            aig_lit lc = rebuild(aig->l);
+            aig_lit rc = rebuild(aig->r);
+            pos_result = AIG::new_and(lc, rc);
+        } else {
+            assert(false && "Unknown AIG type");
+            std::exit(EXIT_FAILURE);
         }
-        if (aig->type == AIGT::t_and) {
-            remap_aig(aig->l);
-            remap_aig(aig->r);
-            return;
-        }
-        if (aig->type == AIGT::t_const) return;
-        assert(false && "Unknown AIG type");
-        exit(EXIT_FAILURE);
+        cache[aig.get()] = pos_result;
+        return aig_lit(pos_result.node, pos_result.neg ^ aig.neg);
     };
 
-    for(auto& aig: aigs) remap_aig(aig);
+    vector<aig_ptr> aigs;
+    aigs.reserve(aigs_orig.size());
+    for (const auto& a : aigs_orig) aigs.push_back(rebuild(a));
+
     for(uint32_t v = 0; v < aigs.size(); ++v) {
         auto& aig = aigs[v];
         if (aig == nullptr) continue;
@@ -902,30 +912,33 @@ DLL_PUBLIC void SimplifiedCNF::read_aig_defs(ifstream& in) {
     in.read((char*)&num_nodes, sizeof(num_nodes));
     cout << "c o [aig-io] Reading " << num_nodes << " AIG nodes from file." << endl;
 
-    // Read all nodes
-    vector<aig_ptr> id_to_node(num_nodes, nullptr);
+    // Read all nodes. Format stores each AND node as (type, var, l_id, l_neg,
+    // r_id, r_neg). For leaves only (type, var) is stored; sign lives on the
+    // referring edge and so is written as part of the def block below.
+    vector<aig_node_ptr> id_to_node(num_nodes, nullptr);
     for (uint32_t i = 0; i < num_nodes; i++) {
         auto node = make_shared<AIG>();
         uint32_t id;
         in.read((char*)&id, sizeof(id));
-        /* cout << "c o [aig-io] Reading AIG node id: " << id << endl; */
         in.read((char*)&node->type, sizeof(node->type));
         in.read((char*)&node->var, sizeof(node->var));
-        in.read((char*)&node->neg, sizeof(node->neg));
         if (node->type == AIGT::t_and) {
             uint32_t lid, rid;
+            bool lneg, rneg;
             in.read((char*)&lid, sizeof(lid));
+            in.read((char*)&lneg, sizeof(lneg));
             in.read((char*)&rid, sizeof(rid));
+            in.read((char*)&rneg, sizeof(rneg));
             assert(id_to_node[lid] != nullptr);
             assert(id_to_node[rid] != nullptr);
-            node->l = id_to_node[lid];
-            node->r = id_to_node[rid];
+            node->l = aig_lit(id_to_node[lid], lneg);
+            node->r = aig_lit(id_to_node[rid], rneg);
         }
         assert(id < num_nodes);
         id_to_node[id] = node;
     }
 
-    // Read defs map
+    // Read defs map. Each def is a signed edge: (node id, edge neg).
     uint32_t num_defs;
     in.read((char*)&num_defs, sizeof(num_defs));
     cout << "c o [aig-io] Reading " << num_defs << " AIG defs from file." << endl;
@@ -935,16 +948,14 @@ DLL_PUBLIC void SimplifiedCNF::read_aig_defs(ifstream& in) {
         uint32_t id;
         in.read((char*)&id, sizeof(id));
         if (id == UINT32_MAX) {
-            /* cout << "c o [aig-io] Reading def for var: " << i+1 << " aig id: UNDEF" << endl; */
             defs[i] = nullptr;
             continue;
         }
-        /* cout << "c o [aig-io] Reading def for var: " << i+1 << " aig id: " << id << endl; */
+        bool edge_neg;
+        in.read((char*)&edge_neg, sizeof(edge_neg));
         assert(id < num_nodes);
         assert(id_to_node[id] != nullptr);
-        assert(id_to_node.size() > id);
-        assert(i < num_defs);
-        defs[i] = id_to_node[id];
+        defs[i] = aig_lit(id_to_node[id], edge_neg);
     }
 }
 
@@ -1041,35 +1052,40 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_defs(ofstream& out) const {
     cout << "c o [aig-io] Writing " << num_nodes << " AIG nodes to file." << endl;
     out.write((char*)&num_nodes, sizeof(num_nodes));
 
-    // 3. Write each node (postorder: children before parents)
+    // 3. Write each node (postorder: children before parents). AND nodes
+    //    carry their two signed child edges; leaves carry no sign (it moves
+    //    to the referring edge in the defs block below).
     for (auto id : order) {
         AIG* node = id_to_node[id];
         out.write((char*)&id, sizeof(id));
         out.write((char*)&node->type, sizeof(node->type));
         out.write((char*)&node->var, sizeof(node->var));
-        out.write((char*)&node->neg, sizeof(node->neg));
         if (node->type == AIGT::t_and) {
             uint32_t lid = node_to_id[node->l.get()];
             uint32_t rid = node_to_id[node->r.get()];
+            bool lneg = node->l.neg;
+            bool rneg = node->r.neg;
             out.write((char*)&lid, sizeof(lid));
+            out.write((char*)&lneg, sizeof(lneg));
             out.write((char*)&rid, sizeof(rid));
+            out.write((char*)&rneg, sizeof(rneg));
         }
     }
 
-    // 4. Write defs map
+    // 4. Write defs map. Each def is a signed root edge (node id + edge neg).
     uint32_t num_defs = defs.size();
     out.write((char*)&num_defs, sizeof(num_defs));
     cout << "c o [aig-io] Writing " << num_defs << " AIG defs to file." << endl;
     for (const auto& aig : defs) {
         if (aig == nullptr) {
             uint32_t id = UINT32_MAX;
-            /* cout << "c o [aig-io] Writing def aig id: UNDEF" << endl; */
             out.write((char*)&id, sizeof(id));
             continue;
         }
         uint32_t id = node_to_id[aig.get()];
-        /* cout << "c o [aig-io] Writing def for var aig id: " << id << endl; */
+        bool edge_neg = aig.neg;
         out.write((char*)&id, sizeof(id));
+        out.write((char*)&edge_neg, sizeof(edge_neg));
     }
 }
 
@@ -1154,18 +1170,28 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
     // compound and need parenthesizing when further composed.
     map<const AIG*, string> inline_expr;
     set<const AIG*> inline_compound;
-    auto node_expr_raw = [&](AIG* aig) -> string {
-        if (aig->type == AIGT::t_const) return aig->neg ? "1'b0" : "1'b1";
-        if (aig->type == AIGT::t_lit)
-            return string(aig->neg ? "~" : "") + "x" + std::to_string(aig->var + 1);
-        auto it = inline_expr.find(aig);
-        if (it != inline_expr.end()) return it->second;
-        return "_n" + std::to_string(node_to_id[aig]);
+    // Render a signed edge (aig_lit). The node gives the base expression; the
+    // edge sign prepends '~' or flips the const's polarity. Leaf nodes are
+    // unsigned in the new representation, so their sign lives entirely on the
+    // referring edge.
+    auto edge_expr_raw = [&](const aig_lit& e) -> string {
+        if (e->type == AIGT::t_const) return e.neg ? "1'b0" : "1'b1";
+        if (e->type == AIGT::t_lit)
+            return string(e.neg ? "~" : "") + "x" + std::to_string(e->var + 1);
+        auto it = inline_expr.find(e.get());
+        string base = (it != inline_expr.end()) ? it->second : "_n" + std::to_string(node_to_id[e.get()]);
+        if (!e.neg) return base;
+        // Wrap before negating if it was a compound inlined expression.
+        if (inline_compound.count(e.get())) base = "(" + base + ")";
+        return "~" + base;
     };
-    // Wrap in parens if this node is an inlined bare `a & b`.
-    auto node_expr_paren = [&](AIG* aig) -> string {
-        string s = node_expr_raw(aig);
-        if (inline_compound.count(aig)) return "(" + s + ")";
+    // Same as edge_expr_raw but wraps an inlined compound `a & b` in parens so
+    // it can safely be composed further.
+    auto edge_expr_paren = [&](const aig_lit& e) -> string {
+        string s = edge_expr_raw(e);
+        // An edge-complement produces `~X` which is already tight; only wrap
+        // when we inlined a bare `a & b`.
+        if (!e.neg && inline_compound.count(e.get())) return "(" + s + ")";
         return s;
     };
 
@@ -1188,17 +1214,12 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
     // bare `a & b` (callers must parenthesize it if composing further).
     auto build_rhs = [&](const AIG* node, bool& is_compound) -> string {
         is_compound = false;
-        // For NOT/idem patterns the child needs parens only if compound.
-        if (node->l.get() == node->r.get() && node->neg)
-            return "~" + node_expr_paren(node->l.get());
-        if (node->l.get() == node->r.get() && !node->neg)
-            return node_expr_raw(node->l.get());
-        const string l_str = node_expr_paren(node->l.get());
-        const string r_str = node_expr_paren(node->r.get());
-        string core = l_str + " & " + r_str;
-        if (node->neg) return "~(" + core + ")";
+        // Idempotent case AND(x, x): render as the child directly.
+        if (node->l == node->r) return edge_expr_raw(node->l);
+        const string l_str = edge_expr_paren(node->l);
+        const string r_str = edge_expr_paren(node->r);
         is_compound = true;
-        return core;
+        return l_str + " & " + r_str;
     };
 
     for (const auto* node : topo_order) {
@@ -1219,7 +1240,7 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
 
     // Output assignments
     for (const auto& v : outputs)
-        fout << "    assign x" << (v + 1) << " = " << node_expr_raw(defs[v].get()) << ";\n";
+        fout << "    assign x" << (v + 1) << " = " << edge_expr_raw(defs[v]) << ";\n";
 
     fout << "\nendmodule\n";
     fout.close();
@@ -2336,14 +2357,14 @@ DLL_PUBLIC aig_ptr AIG::simplify_aig(aig_ptr aig) {
 
     // Simplify AIG
     {
-        unordered_map<const AIG*, aig_ptr> cache;
+        unordered_map<const AIG*, aig_lit> cache;
         result = simplify(result, cache);
     }
 
     // Perform CSE
     {
-        map<AIGKey, aig_ptr> cse_map;
-        unordered_map<const AIG*, aig_ptr> cache;
+        map<AIGKey, aig_node_ptr> cse_map;
+        unordered_map<const AIG*, aig_node_ptr> cache;
         result = simplify_cse(result, cse_map, cache);
     }
 
@@ -2400,14 +2421,14 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
 
     // simplify the AIGs
     {
-        unordered_map<const AIG*, aig_ptr> cache;
+        unordered_map<const AIG*, aig_lit> cache;
         for(auto& aig: defs) aig = simplify(aig, cache);
     }
 
     // perform CSE
     {
-        map<AIGKey, aig_ptr> cse_map;
-        unordered_map<const AIG*, aig_ptr> cache2;
+        map<AIGKey, aig_node_ptr> cse_map;
+        unordered_map<const AIG*, aig_node_ptr> cache2;
         for(auto& aig: defs) aig = simplify_cse(aig, cse_map, cache2);
     }
 
@@ -2436,142 +2457,88 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
 }
 
 DLL_PUBLIC aig_ptr AIG::simplify(aig_ptr aig) {
-    unordered_map<const AIG*, aig_ptr> cache;
+    unordered_map<const AIG*, aig_lit> cache;
     return simplify(aig, cache);
 }
 
-aig_ptr AIG::simplify_cse(aig_ptr aig, map<AIGKey, aig_ptr>& cse_map, unordered_map<const AIG*, aig_ptr>& cache) {
+// CSE rebuild. Each AND node is keyed on (type, var, l_nid, l_neg, r_nid, r_neg).
+// Only the AND *node* is shared; the outer edge sign is applied by the caller.
+aig_ptr AIG::simplify_cse(aig_ptr aig, map<AIGKey, aig_node_ptr>& cse_map, unordered_map<const AIG*, aig_node_ptr>& cache) {
     if (!aig) return nullptr;
-    auto cache_it = cache.find(aig.get());
-    if (cache_it != cache.end()) return cache_it->second;
 
-    auto cse_lookup = [&](const AIGT type, const uint32_t var, const bool neg, const aig_ptr l, const aig_ptr r) -> aig_ptr {
-        auto ll = l;
-        auto rr = r;
-        if (ll->nid < rr->nid) std::swap(ll, rr);
-        AIGKey key(type, var, neg, ll->nid, rr->nid);
-        auto it = cse_map.find(key);
-        if (it != cse_map.end()) {
-            cache[aig.get()] = it->second;
-            return it->second;
+    std::function<aig_node_ptr(const AIG*)> rebuild = [&](const AIG* src) -> aig_node_ptr {
+        if (!src) return nullptr;
+        auto it = cache.find(src);
+        if (it != cache.end()) return it->second;
+
+        if (src->type == AIGT::t_const || src->type == AIGT::t_lit) {
+            // Leaves are keyed for dedup across the whole simplification pass.
+            AIGKey key(src->type, src->var, 0, false, 0, false);
+            auto cit = cse_map.find(key);
+            if (cit != cse_map.end()) { cache[src] = cit->second; return cit->second; }
+            auto node = make_shared<AIG>();
+            node->type = src->type;
+            node->var = src->var;
+            cse_map[key] = node;
+            cache[src] = node;
+            return node;
         }
+        assert(src->type == AIGT::t_and);
+
+        auto ln = rebuild(src->l.get());
+        auto rn = rebuild(src->r.get());
+        aig_lit le(ln, src->l.neg);
+        aig_lit re(rn, src->r.neg);
+        // Canonicalise operand order for AND (commutative).
+        if (le.get() && re.get() && le->nid < re->nid) std::swap(le, re);
+        AIGKey key(src->type, src->var, le.get() ? le->nid : 0, le.neg,
+                                       re.get() ? re->nid : 0, re.neg);
+        auto cit = cse_map.find(key);
+        if (cit != cse_map.end()) { cache[src] = cit->second; return cit->second; }
+
         auto node = make_shared<AIG>();
-        node->type = type;
-        node->var = var;
-        node->neg = neg;
-        node->l = ll;
-        node->r = rr;
+        node->type = src->type;
+        node->var = src->var;
+        node->l = le;
+        node->r = re;
         cse_map[key] = node;
-        cache[aig.get()] = node;
+        cache[src] = node;
         return node;
     };
 
-    if (aig->type == AIGT::t_const || aig->type == AIGT::t_lit) {
-        return aig;
-    }
-    if (aig->type == AIGT::t_and) {
-        auto l_cse = simplify_cse(aig->l, cse_map, cache);
-        auto r_cse = simplify_cse(aig->r, cse_map, cache);
-        return cse_lookup(aig->type, aig->var, aig->neg, l_cse, r_cse);
-    }
-    release_assert(false && "Unknown AIG type in simplify_cse");
+    return aig_lit(rebuild(aig.get()), aig.neg);
 }
 
-aig_ptr AIG::simplify(aig_ptr aig, unordered_map<const AIG*, aig_ptr>& cache) {
+// Rebuild the AIG tree bottom-up, running all algebraic simplifications
+// through the new_and / new_const / new_lit constructors. The cache stores, for
+// every source node, the rebuilt signed-edge form of that node's POSITIVE
+// value; the outer edge sign from the caller is applied on the final return.
+aig_ptr AIG::simplify(aig_ptr aig, unordered_map<const AIG*, aig_lit>& cache) {
     if (!aig) return nullptr;
-    auto cache_it = cache.find(aig.get());
-    if (cache_it != cache.end()) return cache_it->second;
 
-    auto cache_set = [&](const aig_ptr& node) {
-        cache[aig.get()] = node;
-        return node;
+    std::function<aig_lit(const AIG*)> rebuild = [&](const AIG* src) -> aig_lit {
+        if (!src) return aig_lit();
+        auto it = cache.find(src);
+        if (it != cache.end()) return it->second;
+        aig_lit result;
+        if (src->type == AIGT::t_const) {
+            result = AIG::new_const(true);
+        } else if (src->type == AIGT::t_lit) {
+            result = AIG::new_lit(src->var, false);
+        } else {
+            assert(src->type == AIGT::t_and);
+            aig_lit lpos = rebuild(src->l.get());
+            aig_lit rpos = rebuild(src->r.get());
+            aig_lit l_edge(lpos.node, lpos.neg ^ src->l.neg);
+            aig_lit r_edge(rpos.node, rpos.neg ^ src->r.neg);
+            result = AIG::new_and(l_edge, r_edge);
+        }
+        cache[src] = result;
+        return result;
     };
 
-    if (aig->type == AIGT::t_const || aig->type == AIGT::t_lit) {
-        return aig;
-    }
-
-    if (aig->type == AIGT::t_and) {
-        auto l_simp = simplify(aig->l, cache);
-        auto r_simp = simplify(aig->r, cache);
-        // AND simplifications
-        if (aig->neg) {
-            if (l_simp->type == AIGT::t_const && r_simp->type == AIGT::t_const) {
-                if (l_simp->neg || r_simp->neg) {
-                    // !(FALSE & X) = TRUE, !(X & FALSE) = TRUE
-                    auto c_t = make_shared<AIG>();
-                    c_t->type = AIGT::t_const;
-                    c_t->neg = false;
-                    return cache_set(c_t);
-                }
-                // !(TRUE & TRUE) = FALSE
-                auto c_f = make_shared<AIG>();
-                c_f->type = AIGT::t_const;
-                c_f->neg = true;
-                return cache_set(c_f);
-            }
-            if ( // ~(X & FALSE) = TRUE
-                    (r_simp->type == AIGT::t_const && r_simp->neg) ||
-                    (l_simp->type == AIGT::t_const && l_simp->neg)) {
-                auto c_t = make_shared<AIG>();
-                c_t->type = AIGT::t_const;
-                c_t->neg = false;
-                return cache_set(c_t);
-            }
-            if (l_simp->type == AIGT::t_const && !l_simp->neg) { // ~(TRUE & X) = !X
-                auto c_f = make_shared<AIG>();
-                c_f->type = r_simp->type;
-                c_f->neg = !r_simp->neg;
-                c_f->var = r_simp->var;
-                c_f->l = r_simp->l;
-                c_f->r = r_simp->r;
-                return cache_set(c_f);
-            }
-            if (r_simp->type == AIGT::t_const && !r_simp->neg) { // ~(X & TRUE) = !X
-                auto c_f = make_shared<AIG>();
-                c_f->type = l_simp->type;
-                c_f->neg = !l_simp->neg;
-                c_f->var = l_simp->var;
-                c_f->l = l_simp->l;
-                c_f->r = l_simp->r;
-                return cache_set(c_f);
-            }                  // Build new AND node with simplified children, apply CSE
-            auto new_and = make_shared<AIG>();
-            new_and->type = AIGT::t_and;
-            new_and->neg = true;
-            new_and->l = l_simp;
-            new_and->r = r_simp;
-            return cache_set(new_and);
-        }
-        if (l_simp->type == AIGT::t_const) {
-            if (!l_simp->neg) return cache_set(r_simp); // TRUE & X = X
-            return cache_set(l_simp); // FALSE & X = FALSE
-        }
-        if (r_simp->type == AIGT::t_const) {
-            if (!r_simp->neg) return cache_set(l_simp); // X & TRUE = X
-            return cache_set(r_simp); // X & FALSE = FALSE
-        }
-        if (l_simp == r_simp) {
-            return cache_set(l_simp);                   // X & X = X
-        }
-        if (l_simp->type == AIGT::t_lit && r_simp->type == AIGT::t_lit &&
-                   l_simp->var == r_simp->var &&
-                   l_simp->neg == r_simp->neg) {
-            return cache_set(l_simp);
-        }
-        if (l_simp == r_simp) {
-            return cache_set(l_simp);                   // X & X = X
-        }
-        // Build new AND node with simplified children, apply CSE
-        auto new_and = make_shared<AIG>();
-        new_and->type = AIGT::t_and;
-        new_and->neg = false;
-        new_and->l = l_simp;
-        new_and->r = r_simp;
-        return cache_set(new_and);
-    }
-    // cache[aig] already set to aig as sentinel, which is correct for fallback
-    return aig;
+    aig_lit rebuilt_pos = rebuild(aig.get());
+    return aig_lit(rebuilt_pos.node, rebuilt_pos.neg ^ aig.neg);
 }
 
 DLL_PUBLIC vector<vector<uint32_t>> SimplifiedCNF::find_disconnected() const {
