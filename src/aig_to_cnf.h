@@ -446,14 +446,18 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_positive(const AIG* n) {
     for (const auto& c : conjunct_edges) inputs.push_back(encode_edge(c));
 
     if (normalize_inputs) {
-        // Drop TRUE and detect FALSE / complementary pairs.
-        CMSat::Lit TRUE_LIT = get_true_lit();
+        // Drop TRUE and detect FALSE / complementary pairs. Only observe the
+        // TRUE-literal when it's already been materialised — allocating it
+        // here on groups that contain no constants would add a spurious
+        // helper + unit clause to every AND encoding.
+        const bool has_true = my_has_true_lit;
+        const CMSat::Lit true_lit = has_true ? my_true_lit : CMSat::Lit(0, false);
         std::vector<CMSat::Lit> cleaned;
         cleaned.reserve(inputs.size());
         bool folded_false = false;
         for (auto l : inputs) {
-            if (l == TRUE_LIT) continue;              // drop TRUE
-            if (l == ~TRUE_LIT) { folded_false = true; break; } // FALSE → AND is FALSE
+            if (has_true && l == true_lit) continue;                       // drop TRUE
+            if (has_true && l == ~true_lit) { folded_false = true; break; } // FALSE short-circuit
             cleaned.push_back(l);
         }
         if (!folded_false) {
@@ -474,8 +478,8 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_positive(const AIG* n) {
             }
             cleaned = std::move(dedup);
         }
-        if (folded_false) return ~TRUE_LIT;
-        if (cleaned.empty()) return TRUE_LIT;
+        if (folded_false) return ~get_true_lit();
+        if (cleaned.empty()) return get_true_lit();
         if (cleaned.size() == 1) return cleaned[0];
         inputs = std::move(cleaned);
     }
