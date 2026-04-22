@@ -881,10 +881,30 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
         return result;
     };
 
-    for (auto& d : defs) {
+    // A merge can correctly prove that an AND subtree of defs[v] ≡ x_v (since
+    // defs[v] literally defines v, so any subtree functionally matching x_v
+    // is valid). After rebuild, make_canonical's folding may collapse such
+    // an AND into lit(v), embedding x_v as a leaf inside defs[v] — a
+    // definition-level self-loop. Detect and revert those defs.
+    std::function<bool(const aig_ptr&, uint32_t)> has_self_lit =
+        [&](const aig_ptr& e, uint32_t v) -> bool {
+        if (!e) return false;
+        if (e->type == AIGT::t_lit) return e->var == v;
+        if (e->type == AIGT::t_and) {
+            return has_self_lit(e->l, v) || has_self_lit(e->r, v);
+        }
+        return false;
+    };
+    for (uint32_t v = 0; v < defs.size(); v++) {
+        auto& d = defs[v];
         if (!d) continue;
         aig_lit pos = rebuild_node(d.get());
-        d = aig_lit(pos.node, pos.neg ^ d.neg);
+        aig_ptr new_d(pos.node, pos.neg ^ d.neg);
+        if (has_self_lit(new_d, v)) {
+            stats.sweep_self_ref_reverts++;
+            continue;
+        }
+        d = new_d;
     }
 
     if (verb >= 1) {
@@ -899,6 +919,7 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
              << "  checks=" << stats.sweep_sat_checks
              << "  merges=" << stats.sweep_merges
              << "  refuted=" << stats.sweep_cex_refuted
+             << "  self_ref_reverts=" << stats.sweep_self_ref_reverts
              << endl;
     }
 }
