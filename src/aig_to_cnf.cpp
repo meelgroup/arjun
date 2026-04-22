@@ -23,7 +23,11 @@ void AIG2CNFStats::print(int verb) const {
         << "\n"
         << "c [aig2cnf] kAND: " << kary_and_count
         << " (avg-width " << std::fixed << std::setprecision(2)
-        << (kary_and_count ? (double)kary_and_width_total / kary_and_count : 0.0) << ")"
+        << (kary_and_count ? (double)kary_and_width_total / kary_and_count : 0.0)
+        << ")  ITE: " << ite_patterns
+        << "  MUX3: " << mux3_patterns
+        << "  XOR: " << xor_patterns
+        << "  CUT: " << cut_cnf_patterns << "/" << cut_cnf_clauses << "cls"
         << std::endl;
 }
 

@@ -72,7 +72,7 @@ public:
     [[nodiscard]] const AIG2CNFStats& get_stats() const { return stats; }
 
     void set_detect_ite(bool b) { detect_ite = b; }
-    void set_detect_xor(bool) {}
+    void set_detect_xor(bool b) { detect_xor = b; }
     void set_cut_cnf(bool) {}
     void set_kary_fusion(bool b) { kary_fusion = b; }
     void set_group_cse(bool) {}
@@ -89,6 +89,7 @@ private:
     bool my_has_true_lit = false;
 
     bool detect_ite = true;
+    bool detect_xor = true;
     bool ite_sub_selector = true;   // allow non-literal sub-AIG ITE selectors
     bool kary_fusion = true;
     bool normalize_inputs = true;
@@ -150,9 +151,23 @@ private:
     bool parse_ite_at(const aig_lit& n, IteParse& out);
     bool try_ite(const aig_lit& n, CMSat::Lit& out);
 
+    // XOR pattern detection. Same outer OR(AND_T, AND_E) shape as ITE, but
+    // instead of one complementary pair across (AND_T, AND_E) there are
+    // TWO — so both pairs cancel. The node's value is XOR(a, b) for some
+    // (a, b) read off one of the inner ANDs.
+    bool try_xor(const aig_lit& n, CMSat::Lit& out);
+
     void emit_and_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
     void emit_or_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
     void emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat::Lit e);
+    void emit_xor(CMSat::Lit g, CMSat::Lit a, CMSat::Lit b);
+
+    // Two signed edges representing logically-complementary values: same
+    // node, opposite edge sign (covers literals, constants, and sub-AIGs
+    // uniformly in the input-edge-neg model).
+    static bool aig_complement(const aig_lit& a, const aig_lit& b) {
+        return a.node && b.node && a.node == b.node && a.neg != b.neg;
+    }
 
     CMSat::Lit emit_and2(CMSat::Lit a, CMSat::Lit b);
     CMSat::Lit emit_or2(CMSat::Lit a, CMSat::Lit b);
@@ -283,10 +298,16 @@ CMSat::Lit AIGToCNF<Solver>::encode_edge(const aig_ptr& n) {
     }
 
     // Negative edge = OR-gate view — the shape where ITE / XOR / ... live.
+    // XOR runs before ITE: XOR is a special shape of ITE (then = ~else)
+    // that the degenerate-ITE path would otherwise match less cleanly.
     if (n.neg) {
         CMSat::Lit neg_lit;
+        if (detect_xor && try_xor(n, neg_lit)) {
+            cache[n.get()] = ~neg_lit;
+            return neg_lit;
+        }
         if (detect_ite && try_ite(n, neg_lit)) {
-            cache[n.get()] = ~neg_lit;  // positive lit = ~(OR helper)
+            cache[n.get()] = ~neg_lit;
             return neg_lit;
         }
     }
@@ -458,6 +479,19 @@ void AIGToCNF<Solver>::emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat:
     add_clause({s, ~e, g});
 }
 
+template<class Solver>
+void AIGToCNF<Solver>::emit_xor(CMSat::Lit g, CMSat::Lit a, CMSat::Lit b) {
+    // g ↔ (a XOR b) = (a ∧ ~b) ∨ (~a ∧ b)
+    //   g → a ∨ b
+    //   g → ~a ∨ ~b
+    //   ~a ∧ b → g     ⇔ a ∨ ~b ∨ g
+    //   a ∧ ~b → g     ⇔ ~a ∨ b ∨ g
+    add_clause({~g, a, b});
+    add_clause({~g, ~a, ~b});
+    add_clause({g, ~a, b});
+    add_clause({g, a, ~b});
+}
+
 // =============================================================================
 // ITE pattern detection
 // =============================================================================
@@ -569,6 +603,69 @@ bool AIGToCNF<Solver>::parse_ite_at(const aig_lit& n, IteParse& out) {
     out.s_lit = s_lit;
     out.t_aig = sh.t_aig;
     out.e_aig = sh.e_aig;
+    return true;
+}
+
+// XOR pattern detection. Same outer OR(AND_T, AND_E) structural shape as
+// ITE; the distinguishing feature is that BOTH AND_T / AND_E child pairs
+// match complementary across the two inner ANDs. XOR(x1, x2) read off
+// AND_T's children equals XNOR(a, b) = the node's POSITIVE value; the
+// negative (OR-gate) view is therefore XOR(a, b) = ~(emitted helper).
+template<class Solver>
+bool AIGToCNF<Solver>::try_xor(const aig_lit& n, CMSat::Lit& out) {
+    if (!n.neg || n->type != AIGT::t_and) return false;
+    if (n->l == n->r) return false;
+
+    const aig_lit disj_t = ~n->l;
+    const aig_lit disj_e = ~n->r;
+    if (disj_t.neg || disj_t->type != AIGT::t_and) return false;
+    if (disj_e.neg || disj_e->type != AIGT::t_and) return false;
+
+    const AIG* a_and = disj_t.get();
+    const AIG* b_and = disj_e.get();
+    auto can_consume = [&](const AIG* p) -> bool {
+        if (cache.find(p) != cache.end()) return false;
+        auto it = fanout.find(p);
+        return it != fanout.end() && it->second <= 1;
+    };
+    if (!can_consume(a_and) || !can_consume(b_and)) return false;
+
+    const aig_lit& x1 = a_and->l;
+    const aig_lit& x2 = a_and->r;
+    const aig_lit& y1 = b_and->l;
+    const aig_lit& y2 = b_and->r;
+
+    // Two complementary pairs required. Either (x1↔y1, x2↔y2) or (x1↔y2, x2↔y1).
+    const bool matched = (aig_complement(x1, y1) && aig_complement(x2, y2))
+                      || (aig_complement(x1, y2) && aig_complement(x2, y1));
+    if (!matched) return false;
+
+    CMSat::Lit a_lit = encode_edge(x1);
+    CMSat::Lit b_lit = encode_edge(x2);
+
+    // Guard against post-encoding collapses that a well-formed AIG won't
+    // produce in practice (new_and would have folded AND(a, ~a) to FALSE
+    // upstream) but that could still arise if a shared sub-formula lands
+    // here through aggressive CSE.
+    if (a_lit == b_lit) {
+        // XOR(x, x) = FALSE ⇒ negative-view value = ~FALSE = TRUE.
+        out = get_true_lit();
+        stats.xor_patterns++;
+        return true;
+    }
+    if (a_lit == ~b_lit) {
+        // XOR(x, ~x) = TRUE ⇒ negative-view value = FALSE.
+        out = ~get_true_lit();
+        stats.xor_patterns++;
+        return true;
+    }
+
+    CMSat::Lit h = new_helper();
+    emit_xor(h, a_lit, b_lit);
+    stats.xor_patterns++;
+    // h = XOR(x1, x2) = XNOR(a, b) = node's POSITIVE value.
+    // encode_edge wants the negative-view literal (OR-gate view = XOR(a, b)).
+    out = ~h;
     return true;
 }
 
