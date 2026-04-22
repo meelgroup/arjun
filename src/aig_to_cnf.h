@@ -21,6 +21,7 @@
 #pragma once
 
 #include "arjun.h"
+#include "cut_cnf.h"
 #include <cryptominisat5/solvertypesmini.h>
 #include <cstdint>
 #include <functional>
@@ -73,7 +74,7 @@ public:
 
     void set_detect_ite(bool b) { detect_ite = b; }
     void set_detect_xor(bool b) { detect_xor = b; }
-    void set_cut_cnf(bool) {}
+    void set_cut_cnf(bool b) { use_cut_cnf = b; }
     void set_kary_fusion(bool b) { kary_fusion = b; }
     void set_group_cse(bool) {}
     void set_ite_sub_selector(bool b) { ite_sub_selector = b; }
@@ -90,6 +91,7 @@ private:
 
     bool detect_ite = true;
     bool detect_xor = true;
+    bool use_cut_cnf = true;        // min-CNF encoding for k≤4-input cones
     bool ite_sub_selector = true;   // allow non-literal sub-AIG ITE selectors
     bool kary_fusion = true;
     bool normalize_inputs = true;
@@ -156,6 +158,13 @@ private:
     // TWO — so both pairs cancel. The node's value is XOR(a, b) for some
     // (a, b) read off one of the inner ANDs.
     bool try_xor(const aig_lit& n, CMSat::Lit& out);
+
+    // Cut-CNF: collect the ≤4-distinct-input cone rooted at `n`, compute
+    // its 16-bit truth table, look up the minimum-clause CNF, and emit it
+    // with one helper. Typical win: MAJ3 encodes in 6 clauses vs 13 for
+    // the naive (a∧b) ∨ (a∧c) ∨ (b∧c). Returns the helper literal
+    // representing the SIGNED-EDGE value of n (n.neg already folded in).
+    bool try_cut_cnf(const aig_lit& n, CMSat::Lit& out);
 
     void emit_and_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
     void emit_or_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
@@ -313,6 +322,17 @@ CMSat::Lit AIGToCNF<Solver>::encode_edge(const aig_ptr& n) {
         if (detect_ite && try_ite(n, neg_lit)) {
             cache[n.get()] = ~neg_lit;
             return neg_lit;
+        }
+    }
+
+    // Cut-CNF: applicable to both polarities. Encodes the signed-edge value
+    // directly (n.neg is folded into the TT), so the returned helper IS the
+    // reference literal; the positive-value cache entry is ~cut_lit when n.neg.
+    if (use_cut_cnf) {
+        CMSat::Lit cut_lit;
+        if (try_cut_cnf(n, cut_lit)) {
+            cache[n.get()] = n.neg ? ~cut_lit : cut_lit;
+            return cut_lit;
         }
     }
 
@@ -735,6 +755,133 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
     CMSat::Lit h = new_helper();
     emit_ite(h, p.s_lit, t_lit, e_lit);
     stats.ite_patterns++;
+    out = h;
+    return true;
+}
+
+// =============================================================================
+// Cut-CNF encoding
+// =============================================================================
+//
+// Collect the cone of ANDs rooted at n that can be consumed (each internal
+// node fanout ≤ 1 and not yet cached), computes the truth table of n's
+// SIGNED-EDGE value (with n.neg baked in) as a function of up to 4 distinct
+// input variables, and emits the minimum-clause CNF for that TT. MAJ3 is the
+// canonical win: 6 clauses + 1 helper vs 13 + 4 for the naive (a∧b)∨(a∧c)∨(b∧c).
+
+template<class Solver>
+bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
+    constexpr uint32_t MAX_LEAVES = 4;
+    if (n->type != AIGT::t_and) return false;
+
+    auto can_consume = [&](const AIG* p) -> bool {
+        if (cache.find(p) != cache.end()) return false;
+        auto it = fanout.find(p);
+        return it != fanout.end() && it->second <= 1;
+    };
+
+    // DFS the cone on SIGNED edges. Leaves are (non-AND nodes) OR
+    // (consumable-budget-exceeded ANDs). Interior ANDs we "consume" by
+    // recursing into their signed children. A hard cap of MAX_LEAVES * 4
+    // aborts cones that are clearly too wide.
+    std::unordered_map<aig_lit, uint32_t> leaf_idx;
+    std::vector<aig_lit> leaves;
+    bool abort_flag = false;
+    std::function<void(const aig_lit&)> dfs = [&](const aig_lit& m) {
+        if (abort_flag) return;
+        const bool is_interior_and = m->type == AIGT::t_and
+            && (m.node == n.node || can_consume(m.get()));
+        if (!is_interior_and) {
+            if (leaf_idx.count(m)) return;
+            if (leaves.size() >= MAX_LEAVES * 4u) { abort_flag = true; return; }
+            leaf_idx[m] = leaves.size();
+            leaves.push_back(m);
+            return;
+        }
+        dfs(m->l);
+        if (!abort_flag && m->r != m->l) dfs(m->r);
+    };
+    dfs(n);
+    if (abort_flag || leaves.empty()) return false;
+
+    // Encode each leaf edge to a CNF literal, then dedup to at most
+    // MAX_LEAVES input slots by variable. Two leaves resolving to the same
+    // variable (possibly with opposite signs) share one slot.
+    std::vector<CMSat::Lit> leaf_lits;
+    leaf_lits.reserve(leaves.size());
+    for (const auto& l : leaves) leaf_lits.push_back(encode_edge(l));
+
+    std::unordered_map<uint32_t, uint32_t> var_to_slot;
+    std::vector<CMSat::Lit> slot_lits;
+    std::vector<uint32_t> leaf_slot(leaves.size());
+    std::vector<bool> leaf_sign(leaves.size());
+    for (size_t i = 0; i < leaf_lits.size(); i++) {
+        uint32_t v = leaf_lits[i].var();
+        auto it = var_to_slot.find(v);
+        uint32_t slot;
+        if (it == var_to_slot.end()) {
+            if (slot_lits.size() >= MAX_LEAVES) return false;
+            slot = slot_lits.size();
+            var_to_slot[v] = slot;
+            slot_lits.emplace_back(v, false);
+        } else {
+            slot = it->second;
+        }
+        leaf_slot[i] = slot;
+        leaf_sign[i] = leaf_lits[i].sign();
+    }
+
+    const uint32_t num_inputs = slot_lits.size();
+    if (num_inputs == 0) return false;
+    const uint32_t num_mt = 1u << num_inputs;
+    const uint16_t full_mask = (uint16_t)((1u << num_mt) - 1);
+
+    // Build per-leaf minterm masks.
+    std::vector<uint16_t> leaf_mask(leaves.size());
+    for (size_t i = 0; i < leaves.size(); i++) {
+        uint16_t sm = 0;
+        for (uint32_t m = 0; m < num_mt; m++) {
+            if ((m >> leaf_slot[i]) & 1u) sm |= (uint16_t)(1u << m);
+        }
+        leaf_mask[i] = leaf_sign[i] ? (uint16_t)(sm ^ full_mask) : sm;
+    }
+
+    // Evaluate each interior node's POSITIVE value once (cached by node
+    // pointer); the final TT applies the requested edge sign at the root.
+    std::unordered_map<const AIG*, uint16_t> eval_cache;
+    std::function<uint16_t(const aig_lit&)> eval = [&](const aig_lit& m) -> uint16_t {
+        auto it_leaf = leaf_idx.find(m);
+        if (it_leaf != leaf_idx.end()) return leaf_mask[it_leaf->second];
+        auto it_c = eval_cache.find(m.get());
+        if (it_c != eval_cache.end()) {
+            const uint16_t v_pos = it_c->second;
+            return m.neg ? (uint16_t)((~v_pos) & full_mask) : v_pos;
+        }
+        assert(m->type == AIGT::t_and);
+        const uint16_t lv = eval(m->l);
+        const uint16_t rv = (m->r == m->l) ? lv : eval(m->r);
+        const uint16_t v_pos = (uint16_t)(lv & rv);
+        eval_cache[m.get()] = v_pos;
+        return m.neg ? (uint16_t)((~v_pos) & full_mask) : v_pos;
+    };
+    const uint16_t tt = eval(n);
+
+    const auto& min_cnf = cut_cnf::min_cnf_for_tt(num_inputs, tt);
+
+    CMSat::Lit h = new_helper();
+    for (const auto& c : min_cnf.clauses) {
+        std::vector<CMSat::Lit> cl;
+        cl.reserve(num_inputs + 1);
+        for (uint32_t i = 0; i < num_inputs; i++) {
+            if (!(c.present & (1u << i))) continue;
+            const bool is_neg = (c.sign >> i) & 1u;
+            cl.push_back(is_neg ? ~slot_lits[i] : slot_lits[i]);
+        }
+        cl.push_back(c.g_sign ? ~h : h);
+        add_clause(cl);
+    }
+    stats.cut_cnf_patterns++;
+    stats.cut_cnf_clauses += min_cnf.clauses.size();
     out = h;
     return true;
 }
