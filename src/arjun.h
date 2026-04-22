@@ -427,10 +427,20 @@ public:
     }
 
     // Post-order traversal producing a caller-defined fold. Visitor signature:
-    //   (type, var, edge_neg, left_result*, right_result*)
-    // where edge_neg is the sign of the reference we're folding over, and the
-    // child results are produced by recursive calls on each edge (so each
-    // child result already reflects its own edge sign).
+    //   (type, var, false, left_result*, right_result*)   ← visitor ALWAYS
+    //                                                       invoked as if the
+    //                                                       reference were
+    //                                                       positive.
+    // The child results are produced by recursive calls on each edge, so each
+    // already reflects its own edge sign. The visitor's third argument (edge
+    // sign) stays in the signature for source compatibility but is always
+    // false — transform applies the outer edge sign ITSELF by calling
+    // `operator~` on the visitor's result (requires ResultType to provide
+    // one; aig_lit and CMSat::Lit both do).
+    //
+    // Caching is per NODE rather than per signed edge. Without this, a shared
+    // sub-AIG referenced both positively and negatively would invoke the
+    // visitor twice — duplicating any side effects (e.g. Tseitin clauses).
     template<typename ResultType, typename Visitor>
     static ResultType transform(
         const aig_ptr& aig,
@@ -439,20 +449,27 @@ public:
     ) {
         assert(aig);
 
-        auto it = cache.find(aig);
-        if (it != cache.end()) return it->second;
+        // Cache is keyed on signed edge for source compatibility with the old
+        // signature, but we key each access on the POSITIVE ref and flip the
+        // result for the negative reference. That way the visitor fires once
+        // per node, not once per (node, sign) pair.
+        const aig_lit pos_key(aig.node, false);
+        auto it = cache.find(pos_key);
+        if (it != cache.end()) {
+            return aig.neg ? ~it->second : it->second;
+        }
 
         ResultType result;
         if (aig->type == AIGT::t_and) {
             ResultType left_result = transform<ResultType>(aig->l, std::forward<Visitor>(visitor), cache);
             ResultType right_result = transform<ResultType>(aig->r, std::forward<Visitor>(visitor), cache);
-            result = visitor(aig->type, aig->var, aig.neg, &left_result, &right_result);
+            result = visitor(aig->type, aig->var, /*neg=*/false, &left_result, &right_result);
         } else {
-            result = visitor(aig->type, aig->var, aig.neg, nullptr, nullptr);
+            result = visitor(aig->type, aig->var, /*neg=*/false, nullptr, nullptr);
         }
 
-        cache[aig] = result;
-        return result;
+        cache[pos_key] = result;
+        return aig.neg ? ~result : result;
     }
     static size_t count_aig_nodes(const aig_ptr aig) { return count_aig_nodes(aig.get()); }
     static size_t count_aig_nodes(const AIG* aig);
