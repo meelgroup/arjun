@@ -160,6 +160,10 @@ private:
     void emit_and_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
     void emit_or_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
     void emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat::Lit e);
+    // MUX3: g = ITE(s1, a, ITE(s2, b, c)). 6 clauses, 1 helper — beats
+    // two nested ITEs (8 clauses, 2 helpers).
+    void emit_mux3(CMSat::Lit g, CMSat::Lit s1, CMSat::Lit a,
+                   CMSat::Lit s2, CMSat::Lit b, CMSat::Lit c);
     void emit_xor(CMSat::Lit g, CMSat::Lit a, CMSat::Lit b);
 
     // Two signed edges representing logically-complementary values: same
@@ -480,6 +484,24 @@ void AIGToCNF<Solver>::emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat:
 }
 
 template<class Solver>
+void AIGToCNF<Solver>::emit_mux3(CMSat::Lit g, CMSat::Lit s1, CMSat::Lit a,
+                                 CMSat::Lit s2, CMSat::Lit b, CMSat::Lit c) {
+    //  g ↔ (s1 ? a : (s2 ? b : c))
+    //    s1 ∧ ~a → ~g          ⇔ ~s1 ∨ a ∨ ~g
+    //    s1 ∧ a  → g           ⇔ ~s1 ∨ ~a ∨ g
+    //    ~s1 ∧ s2 ∧ ~b → ~g     ⇔ s1 ∨ ~s2 ∨ b ∨ ~g
+    //    ~s1 ∧ s2 ∧ b  → g      ⇔ s1 ∨ ~s2 ∨ ~b ∨ g
+    //    ~s1 ∧ ~s2 ∧ ~c → ~g    ⇔ s1 ∨ s2 ∨ c ∨ ~g
+    //    ~s1 ∧ ~s2 ∧ c  → g     ⇔ s1 ∨ s2 ∨ ~c ∨ g
+    add_clause({~s1, a, ~g});
+    add_clause({~s1, ~a, g});
+    add_clause({s1, ~s2, b, ~g});
+    add_clause({s1, ~s2, ~b, g});
+    add_clause({s1, s2, c, ~g});
+    add_clause({s1, s2, ~c, g});
+}
+
+template<class Solver>
 void AIGToCNF<Solver>::emit_xor(CMSat::Lit g, CMSat::Lit a, CMSat::Lit b) {
     // g ↔ (a XOR b) = (a ∧ ~b) ∨ (~a ∧ b)
     //   g → a ∨ b
@@ -673,6 +695,32 @@ template<class Solver>
 bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
     IteParse p;
     if (!parse_ite_at(n, p)) return false;
+
+    // MUX3 fusion: outer's else branch is itself an ITE pattern whose sub-AND
+    // is fanout-1 and uncached. One helper + 6 clauses replaces two nested
+    // ITEs' 2 helpers + 8 clauses.
+    if (p.e_aig && p.e_aig->type == AIGT::t_and
+        && p.e_aig.neg
+        && p.e_aig.node != p.t_aig.node)
+    {
+        const AIG* e_node = p.e_aig.get();
+        auto it_fo = fanout.find(e_node);
+        if (cache.find(e_node) == cache.end()
+            && it_fo != fanout.end() && it_fo->second <= 1)
+        {
+            IteParse inner;
+            if (parse_ite_at(p.e_aig, inner)) {
+                CMSat::Lit a_lit = encode_edge(p.t_aig);
+                CMSat::Lit b_lit = encode_edge(inner.t_aig);
+                CMSat::Lit c_lit = encode_edge(inner.e_aig);
+                CMSat::Lit h = new_helper();
+                emit_mux3(h, p.s_lit, a_lit, inner.s_lit, b_lit, c_lit);
+                stats.mux3_patterns++;
+                out = h;
+                return true;
+            }
+        }
+    }
 
     CMSat::Lit t_lit = encode_edge(p.t_aig);
     CMSat::Lit e_lit = encode_edge(p.e_aig);
