@@ -141,21 +141,29 @@ static void check_single_kand(const char* name, aig_ptr root, uint32_t n) {
     }
 }
 
+// After the input-edge-neg refactor an OR chain isn't encoded through a
+// distinct OR path any more. new_or(a, b) is ~new_and(~a, ~b), so an OR
+// tree of N positive literals surfaces as one k-ary AND of width N over
+// the NEGATED leaves, referenced via a negative outer edge. The clause
+// count and helper count are identical to what emit_or_equiv would have
+// produced; only the bucket in the stats moved (kary_and instead of
+// kary_or). The test checks the AND-side bucket here to reflect that.
 static void check_single_kor(const char* name, aig_ptr root, uint32_t n) {
     EncResult r = encode(root, n);
     std::cout << name << " (n=" << n << "):"
               << "  clauses=" << r.clauses
               << "  helpers=" << r.helpers
-              << "  kOR=" << r.kary_or
-              << "  kOR_width_total=" << r.kary_or_width_total
+              << "  kAND=" << r.kary_and
+              << "  kAND_width_total=" << r.kary_and_width_total
+              << "  (OR routed through AND-of-negated-leaves)"
               << std::endl;
-    if (r.kary_or != 1u) {
-        fail(std::string(name) + ": expected exactly 1 k-ary OR, got "
-             + std::to_string(r.kary_or));
+    if (r.kary_and != 1u) {
+        fail(std::string(name) + ": expected exactly 1 k-ary AND (OR via AND-of-negs), got "
+             + std::to_string(r.kary_and));
     }
-    if (r.kary_or_width_total != n) {
-        fail(std::string(name) + ": expected k-ary OR width " + std::to_string(n)
-             + ", got " + std::to_string(r.kary_or_width_total));
+    if (r.kary_and_width_total != n) {
+        fail(std::string(name) + ": expected k-ary AND width " + std::to_string(n)
+             + ", got " + std::to_string(r.kary_and_width_total));
     }
     if (r.helpers != 1u) {
         fail(std::string(name) + ": expected 1 helper, got "
