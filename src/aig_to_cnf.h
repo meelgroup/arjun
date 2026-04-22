@@ -59,6 +59,13 @@ struct AIG2CNFStats {
     uint64_t cse_and_hits = 0;
     uint64_t cse_ite_hits = 0;
 
+    // How often collect_and_edges flattens through a positive-edge AND. In
+    // the new input-edge-neg model this subsumes the old NOT-wrapper-of-OR
+    // DeMorgan rewrite: a "double-negated OR" becomes a positive edge to
+    // the underlying AND, whose children are the negations of the original
+    // disjuncts — exactly the shape DeMorgan targeted.
+    uint64_t demorgan_and_flat = 0;
+
     double encode_time_s = 0.0;
 
     void clear() { *this = AIG2CNFStats(); }
@@ -82,6 +89,10 @@ public:
     void set_kary_fusion(bool b) { kary_fusion = b; }
     void set_group_cse(bool b) { group_cse = b; }
     void set_ite_sub_selector(bool b) { ite_sub_selector = b; }
+    // The DeMorgan-flatten toggle is a no-op in the new model — flattening
+    // through what used to be NOT-wrappers of OR gates is already captured
+    // by collect_and_edges's positive-edge AND descent. Kept for API
+    // compatibility.
     void set_demorgan_flatten(bool) {}
     void set_normalize_inputs(bool b) { normalize_inputs = b; }
     void set_max_kary_width(uint32_t w) { max_kary_width = w; }
@@ -480,7 +491,10 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_positive(const AIG* n) {
 }
 
 // Flatten k-ary AND through positive-reference fanout-1 AND nodes. Each
-// conjunct returned is a signed edge ready for encoding.
+// conjunct returned is a signed edge ready for encoding. Stepping through a
+// positive-edge AND whose children carry complements is exactly the
+// De Morgan pattern the old model handled via a dedicated NOT-wrapper
+// detector; it's implicit here because negation lives on edges.
 template<class Solver>
 void AIGToCNF<Solver>::collect_and_edges(const aig_lit& child, std::vector<aig_lit>& out) {
     if (child->type == AIGT::t_and
@@ -489,6 +503,7 @@ void AIGToCNF<Solver>::collect_and_edges(const aig_lit& child, std::vector<aig_l
         && fanout[child.get()] <= 1
         && cache.find(child.get()) == cache.end())
     {
+        stats.demorgan_and_flat++;
         collect_and_edges(child->l, out);
         collect_and_edges(child->r, out);
         return;
