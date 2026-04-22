@@ -381,18 +381,25 @@ CMSat::Lit AIGToCNF<Solver>::encode_edge(const aig_ptr& n) {
         return n.neg ? ~sub : sub;
     }
 
-    // Negative edge = OR-gate view — the shape where ITE / XOR / ... live.
-    // XOR runs before ITE: XOR is a special shape of ITE (then = ~else)
-    // that the degenerate-ITE path would otherwise match less cleanly.
-    if (n.neg) {
+    // ITE / XOR detection. The outer node has a fixed structural shape —
+    // AND with two children that are both negative-edge references to
+    // inner ANDs — and that same shape matches BOTH polarities: with
+    // n.neg=true the value is ITE / XOR, with n.neg=false it's the
+    // De Morgan dual (~ITE / XNOR). try_* returns the helper for the
+    // ITE/XOR value (i.e. the negative-view value); cache stores the
+    // positive-view as ~helper and the return applies n.neg.
+    //
+    // XOR runs before ITE: XOR is a degenerate ITE (then = ~else) that
+    // ITE would otherwise match less cleanly.
+    {
         CMSat::Lit neg_lit;
         if (detect_xor && try_xor(n, neg_lit)) {
             cache[n.get()] = ~neg_lit;
-            return neg_lit;
+            return n.neg ? neg_lit : ~neg_lit;
         }
         if (detect_ite && try_ite(n, neg_lit)) {
             cache[n.get()] = ~neg_lit;
-            return neg_lit;
+            return n.neg ? neg_lit : ~neg_lit;
         }
     }
 
@@ -657,8 +664,11 @@ void AIGToCNF<Solver>::emit_xor(CMSat::Lit g, CMSat::Lit a, CMSat::Lit b) {
 
 template<class Solver>
 bool AIGToCNF<Solver>::parse_ite_shape(const aig_lit& n, IteShape& out) {
-    if (!n.neg || n->type != AIGT::t_and) return false;
+    if (n->type != AIGT::t_and) return false;
     if (n->l == n->r) return false;
+    // Shape is polarity-agnostic: same inner structure matches ITE (at
+    // n.neg=true) and its De Morgan dual ~ITE = AND(OR, OR) (at n.neg=false).
+    // Caller applies n.neg to the resulting helper on return.
 
     // Disjuncts of the outer OR are the complements of its stored children.
     const aig_lit disj_t = ~n->l;
@@ -759,8 +769,11 @@ bool AIGToCNF<Solver>::parse_ite_at(const aig_lit& n, IteParse& out) {
 // negative (OR-gate) view is therefore XOR(a, b) = ~(emitted helper).
 template<class Solver>
 bool AIGToCNF<Solver>::try_xor(const aig_lit& n, CMSat::Lit& out) {
-    if (!n.neg || n->type != AIGT::t_and) return false;
+    if (n->type != AIGT::t_and) return false;
     if (n->l == n->r) return false;
+    // Same reasoning as parse_ite_shape: the two-inner-ANDs structure
+    // matches XOR at n.neg=true and XNOR at n.neg=false. The emitted
+    // helper represents the XOR value; caller applies n.neg.
 
     const aig_lit disj_t = ~n->l;
     const aig_lit disj_e = ~n->r;
