@@ -625,7 +625,17 @@ void Manthan::bve_and_substitute() {
     assert(aigs.size() == to_define.size());
 
     AIGRewriter rw;
+    rw.set_sat_sweep(true);
     rw.rewrite_all(aigs, conf.verb);
+    size_t prev = AIG::count_aig_nodes_fast(aigs);
+    const uint32_t max_iters = 2;
+    for (uint32_t i = 0; i < max_iters; i++) {
+        rw.rewrite_all(aigs, conf.verb);
+        rw.sat_sweep(aigs, conf.verb);
+        const size_t now = AIG::count_aig_nodes_fast(aigs);
+        if (now >= prev) break;
+        prev = now;
+    }
 
     // Persistent sink + encoder across iterations. The AIGToCNF cache survives
     // between encode() calls, so sub-AIGs shared across formulas (via AIG-
