@@ -216,13 +216,45 @@ inline MinCnf compute_min_cnf(uint32_t num_inputs, uint32_t tt) {
 }
 
 // Cache lookup. Key: (num_inputs << 16) | tt_bits.
+//
+// Output-polarity canonicalisation: in the input-edge-neg AIG model the
+// referring edge's sign is free, so f and ~f share one canonical CNF entry.
+// We key the underlying compute on min(tt, ~tt & full_mask); the complement
+// is derived by flipping g_sign on every clause. For 4-input cuts this
+// halves the table (up to 64K TTs → 32K canonical entries) without changing
+// any observable encoder output.
 inline const MinCnf& min_cnf_for_tt(uint32_t num_inputs, uint32_t tt) {
     static std::unordered_map<uint32_t, MinCnf> cache;
-    uint32_t key = (num_inputs << 16) | (tt & 0xFFFF);
+    const uint32_t max_m = 1u << num_inputs;
+    const uint32_t full_mask = (1u << max_m) - 1;
+    const uint32_t tt_bits = tt & full_mask;
+    const uint32_t key = (num_inputs << 16) | tt_bits;
+
     auto it = cache.find(key);
     if (it != cache.end()) return it->second;
-    MinCnf computed = compute_min_cnf(num_inputs, tt);
-    auto [ins, _] = cache.emplace(key, std::move(computed));
+
+    const uint32_t tt_compl = full_mask & ~tt_bits;
+    const uint32_t canon_tt = (tt_bits <= tt_compl) ? tt_bits : tt_compl;
+    const uint32_t canon_key = (num_inputs << 16) | canon_tt;
+
+    // Ensure the canonical entry is cached. std::unordered_map keeps
+    // references to mapped values stable across rehashes (only iterators
+    // may invalidate), so any reference we hold into `cache` remains valid
+    // across further emplaces.
+    auto cit = cache.find(canon_key);
+    if (cit == cache.end()) {
+        MinCnf computed = compute_min_cnf(num_inputs, canon_tt);
+        auto [ins, _] = cache.emplace(canon_key, std::move(computed));
+        cit = ins;
+    }
+
+    // If tt was already canonical, we're done.
+    if (canon_tt == tt_bits) return cit->second;
+
+    // Otherwise derive the complement form by flipping every clause's g_sign.
+    MinCnf flipped = cit->second;
+    for (auto& c : flipped.clauses) c.g_sign ^= 1;
+    auto [ins, _] = cache.emplace(key, std::move(flipped));
     return ins->second;
 }
 
