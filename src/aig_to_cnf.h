@@ -71,14 +71,12 @@ public:
     void set_true_lit(CMSat::Lit t) { my_true_lit = t; my_has_true_lit = true; }
     [[nodiscard]] const AIG2CNFStats& get_stats() const { return stats; }
 
-    // Feature toggles. The current encoder doesn't run advanced pattern
-    // detection, so these are accepted for API compatibility but ignored.
-    void set_detect_ite(bool) {}
+    void set_detect_ite(bool b) { detect_ite = b; }
     void set_detect_xor(bool) {}
     void set_cut_cnf(bool) {}
     void set_kary_fusion(bool b) { kary_fusion = b; }
     void set_group_cse(bool) {}
-    void set_ite_sub_selector(bool) {}
+    void set_ite_sub_selector(bool b) { ite_sub_selector = b; }
     void set_demorgan_flatten(bool) {}
     void set_normalize_inputs(bool b) { normalize_inputs = b; }
     void set_max_kary_width(uint32_t w) { max_kary_width = w; }
@@ -90,6 +88,8 @@ private:
     CMSat::Lit my_true_lit = CMSat::Lit(0, false);
     bool my_has_true_lit = false;
 
+    bool detect_ite = true;
+    bool ite_sub_selector = true;   // allow non-literal sub-AIG ITE selectors
     bool kary_fusion = true;
     bool normalize_inputs = true;
     uint32_t max_kary_width = 1u << 30;
@@ -110,7 +110,9 @@ private:
 
     void count_fanout(const aig_ptr& root);
     CMSat::Lit encode_edge(const aig_ptr& n);
-    CMSat::Lit encode_and_node(const AIG* n);
+    // Encode the node n's POSITIVE value as an AND (k-ary). Callers handle
+    // caching and outer-sign application.
+    CMSat::Lit encode_and_positive(const AIG* n);
     CMSat::Lit get_true_lit();
     CMSat::Lit new_helper();
 
@@ -119,7 +121,41 @@ private:
     // fanout is 1 — otherwise sharing would be lost.
     void collect_and_edges(const aig_lit& child, std::vector<aig_lit>& out);
 
+    // ITE pattern detection. Input `n` must be an OR-gate reference:
+    // n.neg = true, n->type = t_and, n->l != n->r. The outer OR decomposes
+    // as OR(AND_T, AND_E) where AND_T = (n->l's target, positive) and
+    // AND_E similarly — each branch was a negative edge from outer to a
+    // sub-AND. If the two sub-ANDs share one complementary input pair
+    // (literal or sub-AIG), that pair is the selector and the remaining
+    // children are the then / else values.
+    struct IteShape {
+        bool valid = false;
+        bool sel_is_lit = false;
+        uint32_t sel_var = 0;
+        bool sel_neg = false;
+        // For sub-AIG selectors: positive AIG for the selector, plus an
+        // `invert` flag for when the matched edge pointed at it negatively.
+        aig_lit sel_aig;
+        bool sel_invert = false;
+        aig_lit t_aig;
+        aig_lit e_aig;
+    };
+    struct IteParse {
+        bool valid = false;
+        CMSat::Lit s_lit;
+        aig_lit t_aig;
+        aig_lit e_aig;
+    };
+    bool parse_ite_shape(const aig_lit& n, IteShape& out);
+    bool parse_ite_at(const aig_lit& n, IteParse& out);
+    bool try_ite(const aig_lit& n, CMSat::Lit& out);
+
     void emit_and_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
+    void emit_or_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
+    void emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat::Lit e);
+
+    CMSat::Lit emit_and2(CMSat::Lit a, CMSat::Lit b);
+    CMSat::Lit emit_or2(CMSat::Lit a, CMSat::Lit b);
 
     void add_clause(const std::vector<CMSat::Lit>& cl);
 };
@@ -230,25 +266,43 @@ CMSat::Lit AIGToCNF<Solver>::encode_edge(const aig_ptr& n) {
         return CMSat::Lit(n->var, n.neg);
     }
     assert(n->type == AIGT::t_and);
-    CMSat::Lit pos = encode_and_node(n.get());
+
+    // Cache stores the POSITIVE value of the node. Applying n.neg gives the
+    // signed-edge lit.
+    auto it = cache.find(n.get());
+    if (it != cache.end()) {
+        stats.cache_hits++;
+        return n.neg ? ~it->second : it->second;
+    }
+
+    // Idempotent AND(x, x): node's value equals x's value.
+    if (n->l == n->r) {
+        CMSat::Lit sub = encode_edge(n->l);
+        cache[n.get()] = sub;
+        return n.neg ? ~sub : sub;
+    }
+
+    // Negative edge = OR-gate view — the shape where ITE / XOR / ... live.
+    if (n.neg) {
+        CMSat::Lit neg_lit;
+        if (detect_ite && try_ite(n, neg_lit)) {
+            cache[n.get()] = ~neg_lit;  // positive lit = ~(OR helper)
+            return neg_lit;
+        }
+    }
+
+    // Fall through: encode as positive-value AND.
+    CMSat::Lit pos = encode_and_positive(n.get());
+    cache[n.get()] = pos;
     return n.neg ? ~pos : pos;
 }
 
-// Encode a t_and NODE (not an edge). Returns the CNF literal for the node's
-// positive value; callers apply edge sign themselves.
+// Encode a t_and NODE's POSITIVE value as a k-ary AND. Caller caches.
 template<class Solver>
-CMSat::Lit AIGToCNF<Solver>::encode_and_node(const AIG* n) {
-    auto it = cache.find(n);
-    if (it != cache.end()) { stats.cache_hits++; return it->second; }
+CMSat::Lit AIGToCNF<Solver>::encode_and_positive(const AIG* n) {
+    assert(n->type == AIGT::t_and);
+    assert(n->l != n->r);
 
-    // Idempotent AND(x, x): the node's value equals x's value.
-    if (n->l == n->r) {
-        CMSat::Lit sub = encode_edge(n->l);
-        cache[n] = sub;
-        return sub;
-    }
-
-    // Collect conjuncts. If kary_fusion is off, collect just the two children.
     std::vector<aig_lit> conjunct_edges;
     if (kary_fusion) {
         collect_and_edges(n->l, conjunct_edges);
@@ -292,19 +346,9 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_node(const AIG* n) {
             }
             cleaned = std::move(dedup);
         }
-        if (folded_false) {
-            CMSat::Lit result = ~TRUE_LIT;
-            cache[n] = result;
-            return result;
-        }
-        if (cleaned.empty()) {
-            cache[n] = TRUE_LIT;
-            return TRUE_LIT;
-        }
-        if (cleaned.size() == 1) {
-            cache[n] = cleaned[0];
-            return cleaned[0];
-        }
+        if (folded_false) return ~TRUE_LIT;
+        if (cleaned.empty()) return TRUE_LIT;
+        if (cleaned.size() == 1) return cleaned[0];
         inputs = std::move(cleaned);
     }
 
@@ -326,12 +370,11 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_node(const AIG* n) {
             }
             current = std::move(next);
         }
-        if (current.size() == 1) { cache[n] = current[0]; return current[0]; }
+        if (current.size() == 1) return current[0];
         CMSat::Lit h = new_helper();
         emit_and_equiv(h, current);
         stats.kary_and_count++;
         stats.kary_and_width_total += current.size();
-        cache[n] = h;
         return h;
     }
 
@@ -339,7 +382,6 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_node(const AIG* n) {
     emit_and_equiv(h, inputs);
     stats.kary_and_count++;
     stats.kary_and_width_total += inputs.size();
-    cache[n] = h;
     return h;
 }
 
@@ -371,6 +413,185 @@ void AIGToCNF<Solver>::emit_and_equiv(CMSat::Lit g, const std::vector<CMSat::Lit
     backward.push_back(g);
     for (auto l : inputs) backward.push_back(~l);
     add_clause(backward);
+}
+
+template<class Solver>
+void AIGToCNF<Solver>::emit_or_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs) {
+    // g = OR(inputs):
+    //   for each i: i → g  ⇔ ~i ∨ g
+    //   ~g → (or-of-all-inputs) ⇔ g ∨ i1 ∨ i2 ... wait that's wrong.
+    // Let me redo:
+    //   g → OR  : g → (i1 ∨ i2 ∨ ...)  ⇔ ~g ∨ i1 ∨ i2 ...  (one big clause)
+    //   OR → g  : for each i, i → g    ⇔ ~i ∨ g             (per-input)
+    std::vector<CMSat::Lit> forward;
+    forward.reserve(inputs.size() + 1);
+    forward.push_back(~g);
+    for (auto l : inputs) forward.push_back(l);
+    add_clause(forward);
+    for (auto l : inputs) add_clause({~l, g});
+}
+
+template<class Solver>
+CMSat::Lit AIGToCNF<Solver>::emit_and2(CMSat::Lit a, CMSat::Lit b) {
+    CMSat::Lit h = new_helper();
+    emit_and_equiv(h, {a, b});
+    return h;
+}
+
+template<class Solver>
+CMSat::Lit AIGToCNF<Solver>::emit_or2(CMSat::Lit a, CMSat::Lit b) {
+    CMSat::Lit h = new_helper();
+    emit_or_equiv(h, {a, b});
+    return h;
+}
+
+template<class Solver>
+void AIGToCNF<Solver>::emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat::Lit e) {
+    // g ↔ (s ? t : e):
+    //   s ∧ ~t → ~g   ⇔ ~s ∨ t ∨ ~g
+    //   s ∧ t  → g    ⇔ ~s ∨ ~t ∨ g
+    //   ~s ∧ ~e → ~g  ⇔ s ∨ e ∨ ~g
+    //   ~s ∧ e → g    ⇔ s ∨ ~e ∨ g
+    add_clause({~s, t, ~g});
+    add_clause({~s, ~t, g});
+    add_clause({s, e, ~g});
+    add_clause({s, ~e, g});
+}
+
+// =============================================================================
+// ITE pattern detection
+// =============================================================================
+//
+// An ITE at the AIG level has the shape OR(AND_T, AND_E) where AND_T and
+// AND_E share one complementary input (the selector); the other children
+// are the then / else values.
+//
+// In the input-edge-neg model that shape reads as:
+//   n.neg = true                                 (outer edge is an OR)
+//   n->l, n->r each have neg=true and point to   (the two AND branches
+//   t_and nodes                                   referenced through an OR)
+// Each AND branch's pair of children (n->l->l/r, n->r->l/r) is a pair of
+// signed edges. One edge from AND_T matches an edge from AND_E with the
+// same underlying node and opposite sign — that pair is the selector,
+// and the remaining children are (then, else).
+
+template<class Solver>
+bool AIGToCNF<Solver>::parse_ite_shape(const aig_lit& n, IteShape& out) {
+    if (!n.neg || n->type != AIGT::t_and) return false;
+    if (n->l == n->r) return false;
+
+    // Disjuncts of the outer OR are the complements of its stored children.
+    const aig_lit disj_t = ~n->l;
+    const aig_lit disj_e = ~n->r;
+    if (disj_t.neg || disj_t->type != AIGT::t_and) return false;
+    if (disj_e.neg || disj_e->type != AIGT::t_and) return false;
+
+    const AIG* a = disj_t.get();
+    const AIG* b = disj_e.get();
+    // Both sub-ANDs must be consumable (fanout ≤ 1 and not yet encoded),
+    // otherwise folding them into the ITE would elide a helper another
+    // encoded path needs.
+    auto can_consume = [&](const AIG* p) -> bool {
+        if (cache.find(p) != cache.end()) return false;
+        auto it = fanout.find(p);
+        return it != fanout.end() && it->second <= 1;
+    };
+    if (!can_consume(a) || !can_consume(b)) return false;
+
+    const aig_lit& x1 = a->l;
+    const aig_lit& x2 = a->r;
+    const aig_lit& y1 = b->l;
+    const aig_lit& y2 = b->r;
+
+    auto is_lit_complement = [](const aig_lit& x, const aig_lit& y) {
+        return x.node && y.node
+            && x->type == AIGT::t_lit && y->type == AIGT::t_lit
+            && x->var == y->var && x.neg != y.neg;
+    };
+    // Complement of two sub-AIG references: same node, opposite sign.
+    auto is_sub_complement = [](const aig_lit& x, const aig_lit& y) {
+        return x.node && y.node
+            && x.node == y.node && x.neg != y.neg
+            && x->type == AIGT::t_and;
+    };
+
+    const aig_lit* sel_x = nullptr;
+    const aig_lit* sel_y = nullptr;
+    const aig_lit* other_x = nullptr;
+    const aig_lit* other_y = nullptr;
+    bool matched_lit = false;
+    auto try_match = [&](const aig_lit& xa, const aig_lit& xb,
+                         const aig_lit& ya, const aig_lit& yb) -> bool {
+        if (is_lit_complement(xa, ya)) {
+            sel_x = &xa; sel_y = &ya; other_x = &xb; other_y = &yb;
+            matched_lit = true; return true;
+        }
+        if (ite_sub_selector && is_sub_complement(xa, ya)) {
+            sel_x = &xa; sel_y = &ya; other_x = &xb; other_y = &yb;
+            matched_lit = false; return true;
+        }
+        return false;
+    };
+    if (!try_match(x1, x2, y1, y2) &&
+        !try_match(x1, x2, y2, y1) &&
+        !try_match(x2, x1, y1, y2) &&
+        !try_match(x2, x1, y2, y1)) return false;
+    (void)sel_y;
+
+    out.valid = true;
+    out.t_aig = *other_x;
+    out.e_aig = *other_y;
+    if (matched_lit) {
+        out.sel_is_lit = true;
+        out.sel_var = (*sel_x)->var;
+        out.sel_neg = sel_x->neg;
+    } else {
+        out.sel_is_lit = false;
+        // Selector positive-view + whether we should invert after encoding.
+        out.sel_aig = aig_lit(sel_x->node, false);
+        out.sel_invert = sel_x->neg;
+    }
+    return true;
+}
+
+template<class Solver>
+bool AIGToCNF<Solver>::parse_ite_at(const aig_lit& n, IteParse& out) {
+    IteShape sh;
+    if (!parse_ite_shape(n, sh)) return false;
+    CMSat::Lit s_lit;
+    if (sh.sel_is_lit) {
+        s_lit = CMSat::Lit(sh.sel_var, sh.sel_neg);
+    } else {
+        s_lit = encode_edge(sh.sel_aig);
+        if (sh.sel_invert) s_lit = ~s_lit;
+    }
+    out.valid = true;
+    out.s_lit = s_lit;
+    out.t_aig = sh.t_aig;
+    out.e_aig = sh.e_aig;
+    return true;
+}
+
+template<class Solver>
+bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
+    IteParse p;
+    if (!parse_ite_at(n, p)) return false;
+
+    CMSat::Lit t_lit = encode_edge(p.t_aig);
+    CMSat::Lit e_lit = encode_edge(p.e_aig);
+
+    // Degenerate folds.
+    if (t_lit == e_lit)   { out = t_lit; return true; }                 // ITE(s, t, t) = t
+    if (p.s_lit == t_lit) { out = emit_or2(p.s_lit, e_lit);  return true; } // ITE(s, s, e) = s ∨ e
+    if (p.s_lit == ~t_lit){ out = emit_and2(~p.s_lit, e_lit); return true; } // ITE(s, ~s, e) = ~s ∧ e
+    if (p.s_lit == e_lit) { out = emit_and2(p.s_lit, t_lit);  return true; } // ITE(s, t, s) = s ∧ t
+    if (p.s_lit == ~e_lit){ out = emit_or2(~p.s_lit, t_lit);  return true; } // ITE(s, t, ~s) = ~s ∨ t
+
+    CMSat::Lit h = new_helper();
+    emit_ite(h, p.s_lit, t_lit, e_lit);
+    stats.ite_patterns++;
+    out = h;
+    return true;
 }
 
 } // namespace ArjunNS
