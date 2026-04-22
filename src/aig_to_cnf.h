@@ -55,6 +55,10 @@ struct AIG2CNFStats {
     uint64_t cut_cnf_patterns = 0;
     uint64_t cut_cnf_clauses = 0;
 
+    // Group-CSE contribution counters.
+    uint64_t cse_and_hits = 0;
+    uint64_t cse_ite_hits = 0;
+
     double encode_time_s = 0.0;
 
     void clear() { *this = AIG2CNFStats(); }
@@ -76,7 +80,7 @@ public:
     void set_detect_xor(bool b) { detect_xor = b; }
     void set_cut_cnf(bool b) { use_cut_cnf = b; }
     void set_kary_fusion(bool b) { kary_fusion = b; }
-    void set_group_cse(bool) {}
+    void set_group_cse(bool b) { group_cse = b; }
     void set_ite_sub_selector(bool b) { ite_sub_selector = b; }
     void set_demorgan_flatten(bool) {}
     void set_normalize_inputs(bool b) { normalize_inputs = b; }
@@ -92,6 +96,11 @@ private:
     bool detect_ite = true;
     bool detect_xor = true;
     bool use_cut_cnf = true;        // min-CNF encoding for k≤4-input cones
+    // Content-hashed CSE across AND / ITE groups. Off by default: on real
+    // manthan workloads the content-hash maintenance cost outweighs the
+    // CNF-size reduction, and the helpers it dedups can hurt downstream
+    // SAT propagation. Enable via set_group_cse(true) to opt in.
+    bool group_cse = false;
     bool ite_sub_selector = true;   // allow non-literal sub-AIG ITE selectors
     bool kary_fusion = true;
     bool normalize_inputs = true;
@@ -110,6 +119,33 @@ private:
     // represents the POSITIVE value of the AND node; the caller applies any
     // edge-sign. Leaves are not cached (encoding them is trivial).
     std::unordered_map<const AIG*, CMSat::Lit, AigNodeHash> cache;
+
+    // Content-hashed CSE for k-ary AND groups and ITE (s, t, e) triples.
+    // Only populated when group_cse is true.
+    using LitKey = std::vector<CMSat::Lit>;
+    struct LitKeyCmp {
+        bool operator()(const LitKey& a, const LitKey& b) const {
+            if (a.size() != b.size()) return a.size() < b.size();
+            for (size_t i = 0; i < a.size(); i++) {
+                if (a[i] != b[i]) {
+                    if (a[i].var() != b[i].var()) return a[i].var() < b[i].var();
+                    return (int)a[i].sign() < (int)b[i].sign();
+                }
+            }
+            return false;
+        }
+    };
+    std::map<LitKey, CMSat::Lit, LitKeyCmp> and_group_cse;
+    // ITE CSE key: (s, t, e) each packed as (var << 1 | sign).
+    using IteKey = std::tuple<uint32_t, uint32_t, uint32_t>;
+    std::map<IteKey, CMSat::Lit> ite_cse;
+
+    static void canon_sort_lits(std::vector<CMSat::Lit>& v) {
+        std::sort(v.begin(), v.end(), [](CMSat::Lit a, CMSat::Lit b) {
+            if (a.var() != b.var()) return a.var() < b.var();
+            return (int)a.sign() < (int)b.sign();
+        });
+    }
 
     void count_fanout(const aig_ptr& root);
     CMSat::Lit encode_edge(const aig_ptr& n);
@@ -397,6 +433,18 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_positive(const AIG* n) {
         inputs = std::move(cleaned);
     }
 
+    // Content-hashed group CSE: if we've already emitted an AND with this
+    // exact canonicalised input list, return its helper instead of creating
+    // a duplicate.
+    if (group_cse) {
+        canon_sort_lits(inputs);
+        auto it_cse = and_group_cse.find(inputs);
+        if (it_cse != and_group_cse.end()) {
+            stats.cse_and_hits++;
+            return it_cse->second;
+        }
+    }
+
     // Width cap: break very wide groups into chunks.
     if (inputs.size() > max_kary_width) {
         std::vector<CMSat::Lit> current = std::move(inputs);
@@ -427,6 +475,7 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_positive(const AIG* n) {
     emit_and_equiv(h, inputs);
     stats.kary_and_count++;
     stats.kary_and_width_total += inputs.size();
+    if (group_cse) and_group_cse[inputs] = h;
     return h;
 }
 
@@ -751,6 +800,30 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
     if (p.s_lit == ~t_lit){ out = emit_and2(~p.s_lit, e_lit); return true; } // ITE(s, ~s, e) = ~s ∧ e
     if (p.s_lit == e_lit) { out = emit_and2(p.s_lit, t_lit);  return true; } // ITE(s, t, s) = s ∧ t
     if (p.s_lit == ~e_lit){ out = emit_or2(~p.s_lit, t_lit);  return true; } // ITE(s, t, ~s) = ~s ∨ t
+
+    // Content-hashed ITE CSE: canonicalise selector polarity (flip (s,t,e) to
+    // (~s, e, t) when s is negative) and look up the (s, t, e) triple.
+    if (group_cse) {
+        CMSat::Lit s = p.s_lit;
+        CMSat::Lit t = t_lit;
+        CMSat::Lit e = e_lit;
+        if (s.sign()) { s = ~s; std::swap(t, e); }
+        auto pack = [](CMSat::Lit l) { return (l.var() << 1) | (l.sign() ? 1u : 0u); };
+        IteKey key{pack(s), pack(t), pack(e)};
+        auto it = ite_cse.find(key);
+        if (it != ite_cse.end()) {
+            stats.cse_ite_hits++;
+            stats.ite_patterns++;
+            out = it->second;
+            return true;
+        }
+        CMSat::Lit h = new_helper();
+        emit_ite(h, s, t, e);
+        ite_cse[key] = h;
+        stats.ite_patterns++;
+        out = h;
+        return true;
+    }
 
     CMSat::Lit h = new_helper();
     emit_ite(h, p.s_lit, t_lit, e_lit);
