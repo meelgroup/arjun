@@ -109,6 +109,12 @@ private:
     // share a single node. Doesn't change semantics — just dedup.
     aig_lit hash_cons(const aig_lit& edge, NodeRebuildMap& cache);
 
+    // Deep / multi-level absorption: flatten k-ary AND and OR groups,
+    // dedup, detect complementary pairs, apply cross-level absorption and
+    // subsumption between AND-siblings and OR-child disjuncts, plus
+    // resolution on OR pairs that share all-but-one term.
+    aig_lit deep_absorb(const aig_lit& edge, NodeRebuildMap& cache);
+
     // --- Helpers ---
 
     void collect_and_edges(const aig_lit& edge, std::vector<aig_lit>& out);
