@@ -2722,7 +2722,7 @@ void Manthan::inject_formulas_into_solver() {
             vector<Lit> cl2;
             for(const auto& l: cl.lits) {
                 auto v = l.var();
-                if (to_define_full.count(v)) { cl2.push_back(Lit(y_to_y_hat.at(v), l.sign()));}
+                if (to_define_full.count(v)) { cl2.emplace_back(y_to_y_hat.at(v), l.sign());}
                 else cl2.push_back(l);
             }
             cex_solver.add_clause(cl2);
