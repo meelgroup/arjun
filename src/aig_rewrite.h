@@ -115,6 +115,11 @@ private:
     // resolution on OR pairs that share all-but-one term.
     aig_lit deep_absorb(const aig_lit& edge, NodeRebuildMap& cache);
 
+    // ITE chain depth reduction: flatten long AND / OR chains (common in
+    // manthan's ITE-repair output) and rebuild them as balanced trees so
+    // downstream encoders see O(log n) depth instead of O(n).
+    aig_lit flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cache);
+
     // --- Helpers ---
 
     void collect_and_edges(const aig_lit& edge, std::vector<aig_lit>& out);

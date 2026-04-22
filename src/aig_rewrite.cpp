@@ -489,6 +489,86 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
     return aig_lit(pos.node, pos.neg ^ edge.neg);
 }
 
+// ========== Pass 4: ITE chain depth reduction ==========
+//
+// Rebalance deep OR / AND chains. ITE repair loops in manthan produce long
+// linear chains; flattening + rebuilding as a balanced tree drops depth
+// from N to log2(N) without changing the function.
+
+aig_lit AIGRewriter::flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cache) {
+    if (!edge) return aig_lit();
+    auto it = cache.find(edge.get());
+    if (it != cache.end()) return aig_lit(it->second.node, it->second.neg ^ edge.neg);
+
+    aig_lit pos;
+    if (edge->type != AIGT::t_and) {
+        if (edge->type == AIGT::t_const) pos = AIG::new_const(true);
+        else pos = AIG::new_lit(edge->var, false);
+    } else {
+        const aig_lit l = flatten_ite_chains(edge->l, cache);
+        const aig_lit r = flatten_ite_chains(edge->r, cache);
+
+        // AND balanced-tree rebuild (on the positive view of the node).
+        vector<aig_lit> and_children;
+        collect_and_edges(l, and_children);
+        collect_and_edges(r, and_children);
+
+        if (and_children.size() >= 3) {
+            std::sort(and_children.begin(), and_children.end(), aig_lit_nid_less);
+            and_children.erase(std::unique(and_children.begin(), and_children.end()), and_children.end());
+
+            // Complementary pair anywhere → AND collapses to FALSE.
+            bool folded_false = false;
+            for (size_t i = 0; i + 1 < and_children.size(); i++) {
+                if (and_children[i].node == and_children[i+1].node
+                    && and_children[i].neg != and_children[i+1].neg) {
+                    stats.complement_elim++;
+                    folded_false = true;
+                    break;
+                }
+            }
+            if (folded_false) pos = AIG::new_const(false);
+            else pos = build_and_tree(and_children);
+        }
+
+        // Also look for deep OR chains by treating ~l and ~r as disjuncts:
+        // positive(node) = AND(l, r) = ~(OR(~l, ~r)). If that inner OR has
+        // ≥ 3 disjuncts, rebuild it balanced and negate.
+        if (!pos) {
+            vector<aig_lit> or_children;
+            collect_or_edges(~l, or_children);
+            collect_or_edges(~r, or_children);
+            if (or_children.size() >= 3) {
+                std::sort(or_children.begin(), or_children.end(), aig_lit_nid_less);
+                or_children.erase(std::unique(or_children.begin(), or_children.end()),
+                                  or_children.end());
+                bool folded_true = false;
+                for (size_t i = 0; i + 1 < or_children.size(); i++) {
+                    if (or_children[i].node == or_children[i+1].node
+                        && or_children[i].neg != or_children[i+1].neg) {
+                        stats.complement_elim++;
+                        folded_true = true;
+                        break;
+                    }
+                }
+                if (folded_true) {
+                    // OR folds to TRUE ⇒ node = ~OR = FALSE.
+                    pos = AIG::new_const(false);
+                } else {
+                    // Balanced OR rebuild, negated for the positive node view.
+                    aig_lit balanced_or = build_or_tree(or_children);
+                    pos = ~balanced_or;
+                }
+            }
+        }
+
+        if (!pos) pos = make_canonical(l, r);
+    }
+
+    cache[edge.get()] = pos;
+    return aig_lit(pos.node, pos.neg ^ edge.neg);
+}
+
 // ========== Main rewrite entry points ==========
 
 aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
@@ -500,6 +580,7 @@ aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
     struct_hash.clear();
     { NodeRebuildMap c; result = hash_cons(result, c); }
     { NodeRebuildMap c; result = deep_absorb(result, c); }
+    { NodeRebuildMap c; result = flatten_ite_chains(result, c); }
     struct_hash.clear();
     { NodeRebuildMap c; result = hash_cons(result, c); }
     stats.total_passes++;
@@ -526,6 +607,12 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
         // enough to run once per rewrite_all call rather than iteratively.
         NodeRebuildMap cache;
         for (auto& d : defs) if (d) d = deep_absorb(d, cache);
+    }
+    {
+        // flatten_ite_chains rebalances long AND / OR chains (common from
+        // manthan's ITE-repair output) as balanced trees.
+        NodeRebuildMap cache;
+        for (auto& d : defs) if (d) d = flatten_ite_chains(d, cache);
     }
     {
         // hash_cons is cheap and makes the final AIG share structure across
