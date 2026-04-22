@@ -66,6 +66,13 @@ struct AIG2CNFStats {
     // disjuncts — exactly the shape DeMorgan targeted.
     uint64_t demorgan_and_flat = 0;
 
+    // Structural (AIG-level) simplification counters for the k-ary AND
+    // conjunct list, applied BEFORE encoding conjuncts as CNF literals.
+    uint64_t aig_dedup_and = 0;       // duplicate conjuncts dropped
+    uint64_t aig_complement_and = 0;  // x and ~x in same group → FALSE
+    uint64_t absorption_and = 0;      // AND(a, OR(a, ...)) → drop OR
+    uint64_t dedup_const_and = 0;     // group folded to constant
+
     double encode_time_s = 0.0;
 
     void clear() { *this = AIG2CNFStats(); }
@@ -212,6 +219,23 @@ private:
     // the naive (a∧b) ∨ (a∧c) ∨ (b∧c). Returns the helper literal
     // representing the SIGNED-EDGE value of n (n.neg already folded in).
     bool try_cut_cnf(const aig_lit& n, CMSat::Lit& out);
+
+    // AIG-level structural simplification of a k-ary AND conjunct list.
+    // Applied BEFORE encoding conjuncts as CNF literals — catches patterns
+    // that lit-level dedup misses (e.g., complementary sub-AIGs that
+    // would otherwise become distinct helpers).
+    //
+    // Rules:
+    //   (1) Drop TRUE; FALSE short-circuits to FALSE.
+    //   (2) Dedup (same signed edge).
+    //   (3) Complementary pair (same node, opposite sign) → FALSE.
+    //   (4) OR-conjunct absorption: for an OR conjunct (negative-edge
+    //       AND), if another conjunct matches one of the OR's disjuncts
+    //       (= complement of the OR's stored child), drop the OR.
+    //
+    // Returns true and sets out_const when the group folds to a constant.
+    // Otherwise updates conjuncts in place.
+    bool structural_simplify_and(std::vector<aig_lit>& conjuncts, bool& out_const);
 
     void emit_and_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
     void emit_or_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
@@ -402,6 +426,18 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_positive(const AIG* n) {
     } else {
         conjunct_edges.push_back(n->l);
         conjunct_edges.push_back(n->r);
+    }
+
+    // AIG-level structural simplification BEFORE encoding — catches
+    // complementary / absorbed sub-AIGs that lit-level dedup would miss.
+    if (normalize_inputs) {
+        bool is_const = false;
+        if (structural_simplify_and(conjunct_edges, is_const)) {
+            stats.dedup_const_and++;
+            return is_const ? get_true_lit() : ~get_true_lit();
+        }
+        if (conjunct_edges.empty()) return get_true_lit();
+        if (conjunct_edges.size() == 1) return encode_edge(conjunct_edges[0]);
     }
 
     // Encode each conjunct. Also apply basic constant / dedup normalisation.
@@ -845,6 +881,81 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
     stats.ite_patterns++;
     out = h;
     return true;
+}
+
+// =============================================================================
+// Structural AIG-level simplification for k-ary AND conjunct lists
+// =============================================================================
+
+template<class Solver>
+bool AIGToCNF<Solver>::structural_simplify_and(std::vector<aig_lit>& conjuncts,
+                                               bool& out_const)
+{
+    // (1) Constant fold. FALSE in any slot makes the group FALSE; TRUE drops.
+    {
+        std::vector<aig_lit> tmp;
+        tmp.reserve(conjuncts.size());
+        for (const auto& c : conjuncts) {
+            if (c->type == AIGT::t_const) {
+                if (c.neg) { out_const = false; return true; }  // FALSE edge
+                continue;                                        // TRUE edge
+            }
+            tmp.push_back(c);
+        }
+        conjuncts.swap(tmp);
+    }
+    // (2) Dedup by signed edge. With the edge-sign representation equality
+    // is direct (same node + same sign), so a single sort+unique pass does
+    // it without the O(n²) pairwise compare the old model needed.
+    {
+        const size_t before = conjuncts.size();
+        std::sort(conjuncts.begin(), conjuncts.end(),
+            [](const aig_lit& a, const aig_lit& b) {
+                if (a.node.get() != b.node.get()) {
+                    return std::less<const AIG*>()(a.node.get(), b.node.get());
+                }
+                return (int)a.neg < (int)b.neg;
+            });
+        conjuncts.erase(std::unique(conjuncts.begin(), conjuncts.end()),
+                         conjuncts.end());
+        if (conjuncts.size() < before) stats.aig_dedup_and += before - conjuncts.size();
+    }
+    // (3) Complementary pair: after sort by node pointer, same-node entries
+    // are adjacent and differ only in sign.
+    for (size_t i = 0; i + 1 < conjuncts.size(); i++) {
+        if (conjuncts[i].node.get() == conjuncts[i+1].node.get()
+            && conjuncts[i].neg != conjuncts[i+1].neg) {
+            stats.aig_complement_and++;
+            out_const = false;
+            return true;
+        }
+    }
+    // (4) OR-conjunct absorption: AND(a, OR(a, ...)) → drop the OR. An OR
+    // conjunct is a negative-edge AND; its disjuncts are the complements of
+    // the underlying AND's stored children. If any sibling conjunct matches
+    // one of those disjuncts, the OR absorbs.
+    std::vector<aig_lit> kept;
+    kept.reserve(conjuncts.size());
+    for (size_t i = 0; i < conjuncts.size(); i++) {
+        const aig_lit& ci = conjuncts[i];
+        bool absorbed = false;
+        if (ci->type == AIGT::t_and && ci.neg && ci->l != ci->r) {
+            for (size_t j = 0; j < conjuncts.size(); j++) {
+                if (i == j) continue;
+                // sibling_j equals one of the disjuncts iff it's the complement
+                // of ci's stored child.
+                if (aig_complement(conjuncts[j], ci->l) ||
+                    aig_complement(conjuncts[j], ci->r)) {
+                    absorbed = true;
+                    break;
+                }
+            }
+        }
+        if (absorbed) { stats.absorption_and++; continue; }
+        kept.push_back(ci);
+    }
+    conjuncts.swap(kept);
+    return false;
 }
 
 // =============================================================================
