@@ -490,6 +490,7 @@ bool Manthan::ctx_y_hat_correct(const sample& ctx) const {
 }
 
 bool Manthan::check_functions_for_y_vars() const {
+    verb_print(4, "[check] START nVars=" << cex_solver.nVars() << " helpers.size=" << helpers.size());
     for(const auto& [v, f]  : var_to_formula) {
         for(const auto& cl: f.clauses) {
             for(const auto& l: cl.lits) {
@@ -498,6 +499,20 @@ bool Manthan::check_functions_for_y_vars() const {
                 bool is_y_hat = y_hats.count(var) == 1;
                 bool is_helper = helpers.count(var) == 1;
                 bool is_true = var == fh->get_true_lit().var();
+                if (!(is_y_hat || is_helper || is_true)) {
+                    std::cout << "c o [check_functions] BAD var in formula of v=" << (v+1)
+                         << ": var=" << (var+1)
+                         << " backward_defined=" << (backward_defined.count(var) ? 1 : 0)
+                         << " to_define=" << (to_define.count(var) ? 1 : 0)
+                         << " to_define_full=" << (to_define_full.count(var) ? 1 : 0)
+                         << " helper_functions=" << (helper_functions.count(var) ? 1 : 0)
+                         << " cnf.nVars=" << cnf.nVars()
+                         << " y_hats.size=" << y_hats.size()
+                         << " helpers.size=" << helpers.size()
+                         << std::endl;
+                    std::cout << "c o [check_functions] cex_solver.nVars=" << cex_solver.nVars() << std::endl;
+                    std::cout << "c o [check_functions] true_lit=" << fh->get_true_lit().var()+1 << std::endl;
+                }
                 assert(is_y_hat || is_helper || is_true);
             }
         }
@@ -682,7 +697,14 @@ void Manthan::bve_and_substitute() {
             }, aig_remap_cache);
 
         sink.clauses = &f.clauses;
+        uint32_t nv_before = cex_solver.nVars();
+        size_t h_before = helpers.size();
         f.out = enc.encode(aig_yhat);
+        uint32_t nv_after = cex_solver.nVars();
+        size_t h_after = helpers.size();
+        verb_print(4, "[bve-sub] y=" << (y+1)
+                  << " cex_solver.nVars " << nv_before << "->" << nv_after
+                  << " helpers " << h_before << "->" << h_after);
         var_to_formula[y] = f;
 
         num_done++;
@@ -964,7 +986,9 @@ SimplifiedCNF Manthan::do_manthan() {
     } else if (mconf.manthan_base == 2) {
         bve_and_substitute();
     }
+    verb_print(4, "[trace] post bve_and_substitute nVars=" << cex_solver.nVars() << " helpers=" << helpers.size());
     post_order_vars();
+    verb_print(4, "[trace] post post_order_vars nVars=" << cex_solver.nVars() << " helpers=" << helpers.size());
 
     // Counterexample-guided repair
     repair_start_time = cpuTime();
@@ -973,6 +997,7 @@ SimplifiedCNF Manthan::do_manthan() {
         updated_y_funcs.push_back(v);
     }
     bool at_least_one_repaired = true;
+    verb_print(4, "[trace] before check nVars=" << cex_solver.nVars() << " helpers=" << helpers.size());
     SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
 
     while(true) {
@@ -1707,9 +1732,9 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     // ITE(guard, FALSE, old) simplifies to AND(NOT(guard), old)
     // These create flatter AIGs with fewer nodes than the generic ITE encoding.
     if (ctx[y_rep] == l_True) {
-        var_to_formula[y_rep] = fh->compose_or(f, var_to_formula[y_rep]);
+        var_to_formula[y_rep] = fh->compose_or(f, var_to_formula[y_rep], helpers);
     } else {
-        var_to_formula[y_rep] = fh->compose_and(fh->neg(f), var_to_formula[y_rep]);
+        var_to_formula[y_rep] = fh->compose_and(fh->neg(f), var_to_formula[y_rep], helpers);
     }
     updated_y_funcs.push_back(y_rep);
 
@@ -2307,6 +2332,7 @@ void Manthan::inject_formulas_into_solver() {
     for(const auto& y: updated_y_funcs) {
         cex_solver.new_var();
         const uint32_t ind = cex_solver.nVars()-1;
+        helpers.insert(ind);
 
         assert(var_to_formula.count(y));
         for(const auto& cl: var_to_formula[y].clauses) assert(cl.inserted && "All clauses must have been inserted");

@@ -72,19 +72,19 @@ public:
     Formula compose_ite(const Formula& fleft, const Formula& fright, const Formula& branch, std::set<uint32_t>& helpers) {
         // ITE(branch, TRUE, x) = OR(branch, x)
         if (fleft.out == my_true_lit && fleft.clauses.empty()) {
-            return compose_or(branch, fright);
+            return compose_or(branch, fright, helpers);
         }
         // ITE(branch, FALSE, x) = AND(NOT(branch), x)
         if (fleft.out == ~my_true_lit && fleft.clauses.empty()) {
-            return compose_and(neg(branch), fright);
+            return compose_and(neg(branch), fright, helpers);
         }
         // ITE(branch, x, TRUE) = OR(NOT(branch), x)
         if (fright.out == my_true_lit && fright.clauses.empty()) {
-            return compose_or(neg(branch), fleft);
+            return compose_or(neg(branch), fleft, helpers);
         }
         // ITE(branch, x, FALSE) = AND(branch, x)
         if (fright.out == ~my_true_lit && fright.clauses.empty()) {
-            return compose_and(branch, fleft);
+            return compose_and(branch, fleft, helpers);
         }
         Formula ret;
         ret = compose_ite(fleft, fright, branch.out, helpers);
@@ -101,7 +101,10 @@ public:
     }
 
     // Direct AND encoding: out ↔ (left AND right).
-    Formula compose_and(const Formula& fleft, const Formula& fright) {
+    // Caller passes a `helpers` set so the fresh Tseitin var gets tracked;
+    // Manthan::check_functions_for_y_vars otherwise asserts on the
+    // unregistered literal appearing in a formula clause.
+    Formula compose_and(const Formula& fleft, const Formula& fright, std::set<uint32_t>& helpers) {
         // AND(FALSE, x) = FALSE, AND(x, FALSE) = FALSE
         if (fleft.out == ~my_true_lit && fleft.clauses.empty()) return fleft;
         if (fright.out == ~my_true_lit && fright.clauses.empty()) return fright;
@@ -114,6 +117,7 @@ public:
 
         solver->new_var();
         uint32_t fresh_v = solver->nVars()-1;
+        helpers.insert(fresh_v);
         CMSat::Lit l = CMSat::Lit(fresh_v, false);
 
         // l ↔ (fleft.out AND fright.out)
@@ -128,7 +132,8 @@ public:
         return ret;
     }
 
-    Formula compose_or(const Formula& fleft, const Formula& fright) {
+    // See compose_and for the `helpers` rationale.
+    Formula compose_or(const Formula& fleft, const Formula& fright, std::set<uint32_t>& helpers) {
         // OR(TRUE, x) = TRUE
         if (fleft.out == my_true_lit && fleft.clauses.empty()) return fleft;
         if (fright.out == my_true_lit && fright.clauses.empty()) return fright;
@@ -142,6 +147,7 @@ public:
 
         solver->new_var();
         uint32_t fresh_v = solver->nVars()-1;
+        helpers.insert(fresh_v);
         CMSat::Lit l = CMSat::Lit(fresh_v, false);
 
         ret.clauses.push_back(CL({~l, fleft.out, fright.out}));
