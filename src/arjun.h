@@ -93,10 +93,11 @@ struct aig_lit {
     bool operator!=(const aig_lit& o) const { return !(*this == o); }
     bool operator==(std::nullptr_t) const { return node == nullptr; }
     bool operator!=(std::nullptr_t) const { return node != nullptr; }
-    bool operator<(const aig_lit& o) const {
-        if (node.get() != o.node.get()) return std::less<const void*>()(node.get(), o.node.get());
-        return (int)neg < (int)o.neg;
-    }
+    // Defined out-of-line below class AIG, since the body needs access to
+    // AIG::nid which isn't complete here. Ordering on the monotonic nid
+    // (not the raw pointer) is required for cross-run determinism — see
+    // CLAUDE.md's determinism rule.
+    bool operator<(const aig_lit& o) const;
 };
 
 using aig_ptr = aig_lit;
@@ -528,6 +529,16 @@ private:
     }
 };
 
+// Deterministic ordering for aig_lit (a.k.a. aig_ptr) — keyed on the node's
+// monotonic nid rather than its raw address. std::map<aig_lit,…> and
+// std::set<aig_lit> rely on this to stay stable across runs (raw pointers
+// are ASLR-randomised).
+inline bool aig_lit::operator<(const aig_lit& o) const {
+    const uint64_t a = node ? node->nid : 0;
+    const uint64_t b = o.node ? o.node->nid : 0;
+    if (a != b) return a < b;
+    return (int)neg < (int)o.neg;
+}
 
 inline std::ostream& operator<<(std::ostream& out, const aig_ptr& aig) {
     if (!aig) {

@@ -923,22 +923,24 @@ bool AIGToCNF<Solver>::structural_simplify_and(std::vector<aig_lit>& conjuncts,
     }
     // (2) Dedup by signed edge. With the edge-sign representation equality
     // is direct (same node + same sign), so a single sort+unique pass does
-    // it without the O(n²) pairwise compare the old model needed.
+    // it without the O(n²) pairwise compare the old model needed. Ordering
+    // is on the monotonic `nid` (stamped at node construction) rather than
+    // the raw pointer so that ASLR doesn't leak into the surviving
+    // conjunct order — the subsequent OR-absorption pass below is
+    // order-sensitive and would otherwise produce different CNF across runs.
     {
         const size_t before = conjuncts.size();
         std::sort(conjuncts.begin(), conjuncts.end(),
             [](const aig_lit& a, const aig_lit& b) {
-                if (a.node.get() != b.node.get()) {
-                    return std::less<const AIG*>()(a.node.get(), b.node.get());
-                }
+                if (a.node->nid != b.node->nid) return a.node->nid < b.node->nid;
                 return (int)a.neg < (int)b.neg;
             });
         conjuncts.erase(std::unique(conjuncts.begin(), conjuncts.end()),
                          conjuncts.end());
         if (conjuncts.size() < before) stats.aig_dedup_and += before - conjuncts.size();
     }
-    // (3) Complementary pair: after sort by node pointer, same-node entries
-    // are adjacent and differ only in sign.
+    // (3) Complementary pair: after sort by nid, same-node entries are
+    // adjacent and differ only in sign.
     for (size_t i = 0; i + 1 < conjuncts.size(); i++) {
         if (conjuncts[i].node.get() == conjuncts[i+1].node.get()
             && conjuncts[i].neg != conjuncts[i+1].neg) {
