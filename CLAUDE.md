@@ -99,3 +99,41 @@ input CNF with suffixes `-simplified_cnf.aig`, `-autarky.aig`,
 `-minim_idep_synt.aig`, `-manthan.aig`, `-final.aig`. `test-synth` verifies
 each stage's AIG against the original CNF and is invoked automatically by
 `fuzz_synth.py`.
+
+## Debugging issues
+
+When debugging a bug (assertion, wrong answer, crash, non-determinism), use
+the full toolbox — don't stop at the first technique that gives a hint.
+Expected workflow:
+
+1. **Fuzzing** — reproduce / narrow down with `fuzz_synth.py`,
+   `fuzz_aig_to_cnf`, `fuzz_aig_rewrite` (see "After every build"). Fuzzers
+   generate minimal failing inputs much faster than reasoning from a large
+   user-supplied CNF.
+2. **`scripts/cnf_delta.py`** — clause-level delta debugger for DIMACS CNFs.
+   Given a failing CNF and an oracle script that exits 0 iff the bug still
+   reproduces, it does plain ddmin on the clause list, preserving headers,
+   comments, and the `c p show … 0` projection line. Typical use: write a
+   tiny bash oracle that runs `arjun` with the bug-triggering flags and
+   greps stderr for the assertion text, then run
+   `./cnf_delta.py bug.cnf bug_min.cnf /tmp/oracle.sh`. Always minimize
+   before filing a repro or committing a bug CNF to the repo.
+3. **`SLOW_DEBUG`** (`src/constants.h:50`) — uncomment to enable expensive
+   internal invariant checks (`SLOW_DEBUG_DO(...)` blocks). Turn this on
+   whenever an assertion fires or an output looks wrong; it will often fail
+   earlier and closer to the real cause.
+4. **`VERBOSE_DEBUG`** (`src/constants.h:51`) — uncomment to enable verbose
+   trace prints guarded by `VERBOSE_DEBUG_DO(...)` / `verbose_debug_enabled`.
+   Use together with a delta-debugged small CNF so the traces stay readable.
+5. **valgrind** — run under `valgrind --error-exitcode=1` (and
+   `--track-origins=yes` for uninitialized reads) for any suspected memory
+   issue. Undefined behavior here often manifests as non-determinism on
+   larger inputs.
+6. **gdb** — for assertion failures and crashes, run under `gdb --args
+   ./arjun ...`, `run`, then `bt` / `frame N` / `p` to inspect state at the
+   failure point. Pair with `SLOW_DEBUG` so gdb stops at the invariant
+   break, not downstream at a confusing symptom.
+
+Default loop for a tricky bug: fuzz → delta-debug the failing CNF with
+`cnf_delta.py` → rebuild with `SLOW_DEBUG` (and `VERBOSE_DEBUG` if needed) →
+valgrind / gdb on the minimized CNF.
