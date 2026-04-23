@@ -1744,11 +1744,12 @@ private:
 namespace std {
 template<> struct hash<ArjunNS::aig_lit> {
     size_t operator()(const ArjunNS::aig_lit& a) const noexcept {
-        // Combine the shared_ptr's address with the edge sign. Use the raw
-        // address only for hashing (bucket placement) — ordering is provided
-        // separately through aig_lit::operator< when determinism matters.
-        size_t h = std::hash<ArjunNS::AIG*>{}(a.get());
-        return (h << 1) ^ (a.neg ? 1 : 0);
+        // Hash on the monotonic nid + edge sign. Using the raw pointer
+        // would make bucket layout ASLR-dependent, and while lookup-only
+        // uses are fine, any future iteration over such a map would leak
+        // non-determinism — see CLAUDE.md.
+        const uint64_t nid = a.node ? a.node->nid : 0;
+        return std::hash<uint64_t>{}(nid) ^ (a.neg ? 0x9e3779b97f4a7c15ULL : 0);
     }
 };
 } // namespace std

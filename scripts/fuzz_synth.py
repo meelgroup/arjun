@@ -167,12 +167,17 @@ def run_check(command, final):
         exit(-1)
 
     for line in consoleOutput.split("\n"):
-        if "CORRECT" in line:
+        # Match "CORRECT" but not "INCORRECT" — test-synth prints both on
+        # failure ("AIGs are INCORRECT") and success ("AIGs are CORRECT"),
+        # and plain substring matching accepts the failure text too.
+        if "CORRECT" in line and "INCORRECT" not in line:
             print("Check output: %s" % line)
             ok = True
 
     if not ok and final:
         print("ERROR: check process did not report CORRECT")
+        print("Full check output was:")
+        print(consoleOutput)
         exit(-1)
 
 
