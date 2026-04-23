@@ -97,18 +97,59 @@ the original: `8042426018130559357`.
 
 ## Remaining open issue (NOT fixed by f72aac9)
 
-`/tmp/bug_real.cnf` — the 86-var CNF from the original run_many.sh —
-is still wrong WITHOUT SLOW_DEBUG after f72aac9 (test-synth reports
-INCORRECT, md5 `1a8173aa`, bit-identical across 8 runs).
+`bug_real_big.cnf` at the repo root (minimized via cnf_delta.py from
+the original 86-var /tmp/bug_real.cnf, 269 → 74 clauses) still
+produces a semantically wrong final AIG after f72aac9.
 
-With SLOW_DEBUG on, behaviour becomes non-deterministic across runs:
-some abort at `check_stage("manthan")`, some produce verified-correct
-AIGs (md5s `724398fc` or `88e83cd4`). The determinism change suggests
-the extra SLOW_DEBUG SAT-solver calls perturb the repair trajectory.
+Failure pattern: manthan finishes its first repair strategy with
+`repairs: 5 repair_failed: 2 still to define: 0` — it thinks it's
+done — then `check_synth_funs_sat` catches a wrong def:
 
-This is a separate class of bug from Fix 2 — likely still in the
-repair logic but not the y_hat staleness we just fixed. Next step:
-delta-debug the 86-var CNF to minimize, then investigate.
+```
+[check_synth_funs_sat] DEFS SEMANTICALLY WRONG (F ∧ ¬F[y←y_hat] SAT)
+  first broken orig clause idx=14 cl=3 16 -52
+    x3  (free,    val=0, lit_val=0)
+    x16 (defined, y_hat=0, lit_val=0)
+    x52 (defined, y_hat=1, lit_val=0)
+[check_stage] WRONG def after stage 'manthan' for var 1
+```
+
+So manthan's cex_solver returned UNSAT (no CEX found) but the
+resulting AIGs are actually wrong — cex_solver failed to catch the
+violation of orig clause `(3 ∨ 16 ∨ ¬52)`.
+
+Classes of hypotheses to investigate:
+
+1. **Stale indicator clauses.** Each `perform_repair` + `inject_…`
+   cycle adds a new indicator `ind_i` for y_hat_y with
+   `ind_i ↔ (y_hat_y ↔ new_form_out)`, but the old `ind_{i-1}`
+   clauses referring to the OLD form_out stay in cex_solver. The
+   fresh `y_hat_to_indic[y_hat] = new_ind` silently abandons the
+   old indicator. That's formally sound (solver can falsify the old
+   indicator), but if a stale OLD form_out refers to a helper var
+   that has since been reused (impossible by construction?) or that
+   simplify eliminated, we could end up with a degenerate model.
+
+2. **Cross-formula helper sharing via bve_and_substitute's
+   persistent encoder.** The comment at manthan.cpp:655
+   explicitly notes helpers are "attributed" to whichever formula
+   first emits their defining clauses. If perform_repair's
+   compose_or modifies formula Y's clauses but those helpers' defs
+   live in formula Z's clause list, we could lose synchronisation
+   when the old formula Y is replaced. Specifically, `cl.inserted =
+   true` on old clauses means inject won't re-emit them on the new
+   formula, but the helper's defining clauses are in a DIFFERENT
+   formula and stay valid.
+
+3. **`compute_needs_repair` under-reports.** After repair, the loop
+   checks `needs_repair.empty()`; if this set is computed from
+   ctx (which may still be stale for cascading y_hats despite Fix 2
+   recomputing via SAT), we might exit the repair loop early.
+
+Next steps: add `check_synth_funs_sat` inside the manthan repair
+loop (between repairs, SLOW_DEBUG-gated) to localise which repair
+breaks correctness. Delta-debug bug_real_big.cnf further with a
+per-strategy oracle to shrink the 74-clause case.
 
 ## Useful existing debug infrastructure (committed)
 
