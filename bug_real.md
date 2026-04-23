@@ -1,125 +1,124 @@
-# bug_real: Manthan produces wrong AIG under --synthmore --minimize 0
+# bug_real: Manthan wrong AIG under --synthmore — progress log
 
-## Symptom
+## Original symptom
 
-`/tmp/bug_real.cnf` — an 86-var CNF with 20 sampling vars — run under the
-flag-set in `/tmp/run_many.sh` produces a `-final.aig` whose miter against
-the orig CNF is SAT. `test-synth -u` reports many `* MISMATCH *` y vs y_hat
-pairs (x2, x17, x26, x28, x29, x35, x36, …). The bug reproduces
-bit-identically across 8 runs — it's deterministic, not a race.
+`/tmp/bug_real.cnf` — an 86-var CNF — produced a semantically wrong
+`-final.aig` under the flag set in `/tmp/run_many.sh`. test-synth reported
+many `* MISMATCH *` y vs y_hat pairs.
 
-Trigger flag combination (minimal known set):
-- `--synthmore`
-- `--synthbve 1` (BVE pass on)
-- `--minimize 0` (skip minim-indep — keeps more vars in to_define)
-- `--extend 0`
-- `--mstrategy "bve(...)"` (Manthan base = bve_and_substitute)
+## Fix 1 (committed 25b410c): compose_and/compose_or helpers leak
 
-With `--minimize 1` (default), the bug doesn't trigger — presumably because
-the backward-minim round removes the specific to_define vars that expose the
-inconsistency.
-
-## Layer 1 (FIXED in 25b410c): compose_and/compose_or helpers leak
-
-`FHolder<T>::compose_{and,or}` in `formula.h` created fresh SAT vars via
+`FHolder<T>::compose_{and,or}` created fresh SAT vars via
 `solver->new_var()` but never inserted them into the caller's `helpers`
-set. With `SLOW_DEBUG` on, `check_functions_for_y_vars` — which asserts
-every var in a formula clause is y_hat, helper, input, or true_lit — fired
-as soon as `perform_repair`'s ITE-collapse path (OR/AND between guard and
-old formula) introduced one of these untracked vars.
+set. With `SLOW_DEBUG` on, `check_functions_for_y_vars` (the assert that
+every var in a formula clause is y_hat, helper, input, or true_lit) fired
+as soon as `perform_repair`'s ITE-collapse path ran. Pure bookkeeping
+bug — fixing it unblocked SLOW_DEBUG so the next layer surfaced.
 
-This was a bookkeeping bug, not the root cause. Fixing it unblocks the
-SLOW_DEBUG path so the real bug (layer 2) surfaces.
+## Fix 2 (committed f72aac9): stale y_hat values after repair
 
-## Layer 2 (OPEN): ctx_y_hat_correct fails at iteration 1
+Root cause. Commit b216dd2 (Apr 3 2026) turned
+`recompute_all_y_hat_cnf(ctx)` after `perform_repair` into
+```c
+if (!backward_defined.empty()) recompute_all_y_hat_cnf(ctx);
+```
+reasoning that "without backward-defined vars, each formula only depends
+on inputs and its own y_hat".
 
-With `SLOW_DEBUG` on, the next layer's assert fires:
+That reasoning is false for `bve_and_substitute` (manthan_base=2):
+
+```c
+// bve_and_substitute's per-clause loop
+if (later_in_order(y, l.var())) {
+    aig_ptr aig = get_aig(~l);   // include l as a leaf
+    ...
+}
+```
+
+`later_in_order(y, l)` is true when `order_val[y] > order_val[l]`, i.e.
+when `l` comes EARLIER in y_order than `y`. Those earlier vars are
+to_define y's — and when the AIG is later transformed via
+`map_y_to_y_hat`, each such leaf becomes a y_hat. So y=5's formula
+legitimately depends on y_hat_1, y_hat_3, y_hat_4.
+
+After `perform_repair(y=3, …)` mutates `var_to_formula[3]` (via
+compose_or), y_hat_3's formula-computed value shifts. But
+`ctx[y_hat_5]` came from cex_solver pre-repair and now no longer matches
+what the post-repair formulas compute. The next
+`SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)))` in the repair loop
+fires:
 
 ```
-ERROR: ctx for y_hat    27: ctx has    1 but computed y_hat has    0
+ERROR: ctx for y_hat 5: ctx has 1 but computed y_hat has 0
 Assertion `incorrect.empty()' failed.
 ```
 
-This is inside `do_manthan`'s main loop, iteration 1, right after the first
-`get_counterexample()` call. `ctx_y_hat_correct` builds a fresh SAT solver
-with the formula clauses (in y_hat-space) and inputs pinned to `ctx[x]`,
-then solves. The resulting model's `y_hat[27]` is 0. But `ctx[y_hat[27]]`
-(from `cex_solver.get_model()`) is 1. Both "models" should coincide — the
-formulas are Tseitin-encoded circuits, so `y_hat` is uniquely determined
-by inputs.
+**Fix**: always call `recompute_all_y_hat_cnf(ctx)` after
+perform_repair in the non-one-repair-per-loop path. Reverts b216dd2's
+11 % speedup on backward_defined-empty workloads; correctness wins.
 
-### What I verified
+Possible follow-up optimization: gate on whether the formulas actually
+cross-reference y_hats. const_functions never does pre-repair;
+bve_and_substitute always does.
 
-Diagnostic prints confirmed:
+## Minimal repro (committed as `bug_real.cnf` at repo root)
 
-1. The local solver's model satisfies every clause in `f.clauses`.
-2. The ctx (from cex_solver) *does not* satisfy clause `13 -32 -4 -224` in
-   `var_to_formula[27].clauses`. Values: `ctx[12]=0, ctx[31]=1, ctx[3]=1,
-   ctx[223]=1` — all four literals FALSE → clause UNSAT in ctx.
-3. Forcing `y_hat[27] = ctx value(1)` against the same inputs makes the
-   local solver UNSAT. So the formulas genuinely determine `y_hat[27] = 0`
-   given these inputs.
-4. All formula clauses are in `cex_solver` (they're added via
-   `inject_formulas_into_solver`, which loops `updated_y_funcs` =
-   to_define_full on iteration 1).
-5. The specific clause `13 -32 -4 -224` references vars 12 (input),
-   31 (y_hat), 3 (input), 223 (helper). No var in `to_define_full` →
-   no y→y_hat substitution on injection → cex_solver has the same
-   literal form.
-6. `cex_solver.solve()` returns `l_True`. A SAT model must satisfy all
-   clauses. Yet the returned model does not.
-7. Same ctx vs. `var_to_formula[27].clauses` check run inside
-   `get_counterexample` (right after `get_model()`) reports viol=0.
-   The same check inside `ctx_y_hat_correct` a few lines later reports
-   viol=1. Same ctx reference, same formulas. This is the most suspicious
-   finding — something changes between those two points but I couldn't
-   pin it down with direct diagnostic.
+```
+p cnf 5 8
+1 -2 -3 0
+-1 2 -3 0
+1 2 3 0
+-1 -2 3 0
+-3 4 -5 0
+3 -4 -5 0
+-3 -4 5 0
+3 4 5 0
+c t pmc
+c p show 2 0
+```
 
-### Current best hypothesis
+Two XOR-3 constraints: `(1 ⊕ 2 ⊕ 3 = 1) ∧ (3 ⊕ 4 ⊕ 5 = 1)`, only
+var 2 in the projection. Reduced from a 90-clause fuzzer-generated CNF
+by `scripts/cnf_delta.py` (see the commit adding both). Fuzz seed for
+the original: `8042426018130559357`.
 
-`MetaSolver2::simplify(&assumps)` (called inside `get_counterexample` on
-iteration 1 and periodically) may be eliminating a helper var in
-cex_solver — CMS BVE — and the post-solve `get_model()` then returns a
-value for the eliminated var that isn't consistent with the *visible*
-clause set. If that eliminated var is a helper referenced by `f.clauses`
-(like helper 215 in y=27's formula, which is shared with y=15's formula
-via the persistent encoder cache in `bve_and_substitute`), the local
-ctx_y_hat_correct solver (which has no BVE history) computes a different
-value and they disagree.
+## How to re-hunt
 
-Unverified. Would need to either trace cex_solver's internal elim
-history or reproduce with CMS simplify disabled.
+1. Turn SLOW_DEBUG on in `src/constants.h`, `cd build && make -j12`.
+2. `./fuzz_synth.py --num 100` — with SLOW_DEBUG on, any SLOW_DEBUG
+   assert (including `check_functions_for_y_vars`, `ctx_y_hat_correct`,
+   `check_stage("<name>")`) aborts with signal 6 and the fuzzer
+   reports the reproducing seed.
+3. From that seed's failing run, copy the candidate CNF out of
+   `build/out/`.
+4. Write a short bash oracle that runs arjun with the same flags and
+   greps stdout for the specific assert string, exit 0 on hit / 1 on
+   miss. `scripts/cnf_delta.py <cnf> <out.cnf> <oracle.sh>` minimizes it.
 
-### What I have NOT ruled out
+## Remaining open issue (NOT fixed by f72aac9)
 
-- The two viol-check calls genuinely see different data. Possible causes:
-  some caller of `get_counterexample` re-solves cex_solver between the
-  two points (but `ctx_is_sat` creates its own local solver, and
-  `compute_needs_repair` / `print_cnf_debug_info` take `const sample&`).
-- A build-cache issue where the two diagnostics were compiled against
-  different versions of the struct layout. Low probability — same
-  translation unit.
+`/tmp/bug_real.cnf` — the 86-var CNF from the original run_many.sh —
+is still wrong WITHOUT SLOW_DEBUG after f72aac9 (test-synth reports
+INCORRECT, md5 `1a8173aa`, bit-identical across 8 runs).
 
-## How to repro
+With SLOW_DEBUG on, behaviour becomes non-deterministic across runs:
+some abort at `check_stage("manthan")`, some produce verified-correct
+AIGs (md5s `724398fc` or `88e83cd4`). The determinism change suggests
+the extra SLOW_DEBUG SAT-solver calls perturb the repair trajectory.
 
-1. Turn SLOW_DEBUG on in `src/constants.h` (uncomment `#define SLOW_DEBUG`).
-2. `cd build && make -j12`.
-3. `bash /tmp/run_many.sh` — all 8 runs produce the same wrong-AIG md5sum.
-4. `./test-synth -u -v 1 /tmp/bug_real.cnf /tmp/d1-final.aig` → SAT /
-   INCORRECT.
-5. To hit the `ctx_y_hat_correct` assert, run the single `./arjun …`
-   command from `run_many.sh` directly (without the `timeout`). The
-   assert fires on iter 1 of the outer repair loop.
+This is a separate class of bug from Fix 2 — likely still in the
+repair logic but not the y_hat staleness we just fixed. Next step:
+delta-debug the 86-var CNF to minimize, then investigate.
 
 ## Useful existing debug infrastructure (committed)
 
-- `SimplifiedCNF::check_synth_funs_sat()` — full UNSAT-style miter check,
-  returns -1 on correct else a var index. Call this at any pipeline
-  stage boundary.
-- `main.cpp do_synthesis()` wraps every stage with
-  `SLOW_DEBUG_DO(check_stage("<name>"))` — so a wrong def gets
-  attributed to the stage that introduced it.
+- `SimplifiedCNF::check_synth_funs_sat()` — full UNSAT-style miter
+  check; returns -1 on correct else a var index.
+- `main.cpp do_synthesis()` wraps every pipeline stage in
+  `SLOW_DEBUG_DO(check_stage("<name>"))`.
 - `test-synth` dumps a CEX model (inputs, y vs y_hat with MISMATCH
-  flags) when the miter is SAT.
+  flags) on miter SAT.
 - `[check] / [bve-sub] / [trace]` prints in `manthan.cpp` gated to
   `verb >= 4`.
+- `scripts/cnf_delta.py` + oracle-script pattern for clause-level
+  delta debugging.
