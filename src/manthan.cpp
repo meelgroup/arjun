@@ -520,6 +520,373 @@ bool Manthan::check_functions_for_y_vars() const {
     return true;
 }
 
+// SLOW_DEBUG: build a fresh SAT miter from var_to_formula[y].clauses + .out
+// exactly as cex_solver would see them (no indicator gating), asks
+// "does there exist an input + formula-consistent y_hat assignment that
+// falsifies an orig clause?". UNSAT = synthesis correct. SAT = bug in the
+// formula encoding — and since the miter uses the SAME clause set
+// cex_solver does (minus the indicators and orig-CNF-over-y-vars), a SAT
+// result here means cex_solver itself *should have* found this CEX.
+bool Manthan::check_synth_via_clauses(const string& where) const {
+    SATSolver s;
+    while (s.nVars() < cex_solver.nVars()) s.new_var();
+    s.add_clause({fh->get_true_lit()});
+
+    // Orig CNF on x + y (0..cnf.nVars()-1) — same var namespace cex_solver uses.
+    for (const auto& c : cnf.get_clauses()) s.add_clause(c);
+
+    // Add every formula's clauses + couple its y_hat to its .out
+    // unconditionally (no indicator).
+    for (const auto& y : to_define_full) {
+        auto it = var_to_formula.find(y);
+        if (it == var_to_formula.end()) continue;
+        const auto& f = it->second;
+        for (const auto& cl : f.clauses) s.add_clause(cl.lits);
+        uint32_t y_hat = y_to_y_hat.at(y);
+        s.add_clause({Lit(y_hat, false), ~f.out});
+        s.add_clause({Lit(y_hat, true),  f.out});
+    }
+
+    // Miter: at least one orig clause, y→y_hat substituted, is FALSE.
+    vector<Lit> cl_inds;
+    cl_inds.reserve(cnf.get_clauses().size());
+    for (const auto& cl_orig : cnf.get_clauses()) {
+        vector<Lit> cl_sub;
+        cl_sub.reserve(cl_orig.size());
+        for (const auto& l : cl_orig) {
+            if (to_define_full.count(l.var()))
+                cl_sub.push_back(Lit(y_to_y_hat.at(l.var()), l.sign()));
+            else cl_sub.push_back(l);
+        }
+        s.new_var();
+        Lit cl_ind(s.nVars() - 1, false);
+        vector<Lit> def_cl{~cl_ind};
+        for (auto l : cl_sub) def_cl.push_back(l);
+        s.add_clause(def_cl);
+        for (auto l : cl_sub) s.add_clause({cl_ind, ~l});
+        cl_inds.push_back(cl_ind);
+    }
+    vector<Lit> at_least_one_unsat;
+    at_least_one_unsat.reserve(cl_inds.size());
+    for (auto l : cl_inds) at_least_one_unsat.push_back(~l);
+    s.add_clause(at_least_one_unsat);
+
+    auto ret = s.solve();
+    if (ret == l_True) {
+        cout << "c o [via_clauses] @ " << where
+             << ": SYNTH WRONG (fresh SAT miter is SAT — cex_solver should have found this CEX)" << endl;
+        const auto& m = s.get_model();
+        cout << "c o [via_clauses]   inputs:";
+        for (uint32_t x : input) cout << " x" << (x+1) << "=" << pr(m[x]);
+        cout << endl;
+        for (size_t i = 0; i < cl_inds.size() && i < cnf.get_clauses().size(); i++) {
+            if (m[cl_inds[i].var()] == l_False) {
+                cout << "c o [via_clauses]   first broken orig cl idx=" << i << ":";
+                for (const auto& l : cnf.get_clauses()[i]) cout << " " << l;
+                cout << endl;
+                for (const auto& l : cnf.get_clauses()[i]) {
+                    uint32_t v = l.var();
+                    if (to_define_full.count(v)) {
+                        uint32_t yh = y_to_y_hat.at(v);
+                        cout << "c o [via_clauses]     y=x" << (v+1)
+                             << " y_hat_var=" << (yh+1)
+                             << " y_hat_val=" << pr(m[yh])
+                             << " lit_sign=" << l.sign() << endl;
+                    } else {
+                        cout << "c o [via_clauses]     free x=" << (v+1)
+                             << " val=" << pr(m[v])
+                             << " lit_sign=" << l.sign() << endl;
+                    }
+                }
+                break;
+            }
+        }
+        return false;
+    }
+    return true;
+}
+
+// SLOW_DEBUG: same miter, but the formula encoding comes from
+// var_to_formula[y].aig (the AIG rep that will eventually become
+// cnf.defs[y] after map_aigs_to_orig). If this passes but
+// check_synth_via_clauses fails, the AIG and CNF reps of the same formula
+// disagree; if this fails but _via_clauses passes, it's likely a leaf-
+// substitution issue in the AIG.
+bool Manthan::check_synth_via_aig(const string& where) const {
+    SATSolver s;
+    while (s.nVars() < cnf.nVars()) s.new_var();
+
+    // Shadow y_hat vars (distinct from Manthan's to avoid any interference).
+    map<uint32_t, Lit> shadow_y_hat;
+    for (uint32_t y : to_define_full) {
+        s.new_var();
+        shadow_y_hat[y] = Lit(s.nVars() - 1, false);
+    }
+
+    // Local true_lit.
+    s.new_var();
+    Lit true_l(s.nVars() - 1, false);
+    s.add_clause({true_l});
+
+    // Orig CNF on x + y (for F(x, y) side).
+    for (const auto& c : cnf.get_clauses()) s.add_clause(c);
+
+    // Tseitin-encode each var_to_formula[y].aig onto shadow_y_hats.
+    // Leaves: if var is to_define_full, use shadow_y_hat[v]; if it's a
+    // (Manthan-internal) y_hat leaf from perform_repair, use the
+    // corresponding shadow_y_hat via y_hat_to_y; otherwise treat as raw.
+    std::unordered_map<const AIG*, Lit> cache;
+    std::function<Lit(const aig_ptr&)> enc_edge = [&](const aig_ptr& n) -> Lit {
+        assert(n != nullptr);
+        if (n->type == AIGT::t_const) return n.neg ? ~true_l : true_l;
+        if (n->type == AIGT::t_lit) {
+            uint32_t v = n->var;
+            Lit base;
+            if (to_define_full.count(v)) {
+                base = shadow_y_hat.at(v);
+            } else if (y_hat_to_y.count(v)) {
+                // AIG leaf is a Manthan y_hat (from perform_repair's
+                // lit_to_aig for input/backward_defined vars). For inputs
+                // map_y_to_y_hat returns the input var itself, so if we
+                // reach here it's backward_defined. Use shadow.
+                uint32_t y = y_hat_to_y.at(v).var();
+                if (to_define_full.count(y)) base = shadow_y_hat.at(y);
+                else base = Lit(v, false);
+            } else {
+                base = Lit(v, false);
+            }
+            return n.neg ? ~base : base;
+        }
+        assert(n->type == AIGT::t_and);
+        auto it = cache.find(n.get());
+        if (it != cache.end()) return n.neg ? ~it->second : it->second;
+        Lit lc = enc_edge(n->l);
+        Lit rc = enc_edge(n->r);
+        s.new_var();
+        Lit out(s.nVars() - 1, false);
+        s.add_clause({~out, lc});
+        s.add_clause({~out, rc});
+        s.add_clause({out, ~lc, ~rc});
+        cache[n.get()] = out;
+        return n.neg ? ~out : out;
+    };
+    for (const auto& y : to_define_full) {
+        auto it = var_to_formula.find(y);
+        if (it == var_to_formula.end()) continue;
+        const auto& f = it->second;
+        if (f.aig == nullptr) continue;
+        Lit out = enc_edge(f.aig);
+        s.add_clause({~shadow_y_hat.at(y), out});
+        s.add_clause({shadow_y_hat.at(y), ~out});
+    }
+
+    // Miter: at least one orig clause, y→shadow_y_hat substituted, is FALSE.
+    vector<Lit> cl_inds;
+    cl_inds.reserve(cnf.get_clauses().size());
+    for (const auto& cl_orig : cnf.get_clauses()) {
+        vector<Lit> cl_sub;
+        cl_sub.reserve(cl_orig.size());
+        for (const auto& l : cl_orig) {
+            if (shadow_y_hat.count(l.var()))
+                cl_sub.push_back(shadow_y_hat.at(l.var()) ^ l.sign());
+            else cl_sub.push_back(l);
+        }
+        s.new_var();
+        Lit cl_ind(s.nVars() - 1, false);
+        vector<Lit> def_cl{~cl_ind};
+        for (auto l : cl_sub) def_cl.push_back(l);
+        s.add_clause(def_cl);
+        for (auto l : cl_sub) s.add_clause({cl_ind, ~l});
+        cl_inds.push_back(cl_ind);
+    }
+    vector<Lit> at_least_one_unsat;
+    at_least_one_unsat.reserve(cl_inds.size());
+    for (auto l : cl_inds) at_least_one_unsat.push_back(~l);
+    s.add_clause(at_least_one_unsat);
+
+    auto ret = s.solve();
+    if (ret == l_True) {
+        cout << "c o [via_aig] @ " << where
+             << ": AIG-based synth check WRONG (CEX exists per .aig encoding)" << endl;
+        const auto& m = s.get_model();
+        cout << "c o [via_aig]   inputs:";
+        for (uint32_t x : input) cout << " x" << (x+1) << "=" << pr(m[x]);
+        cout << endl;
+        for (size_t i = 0; i < cl_inds.size() && i < cnf.get_clauses().size(); i++) {
+            if (m[cl_inds[i].var()] == l_False) {
+                cout << "c o [via_aig]   first broken orig cl idx=" << i << ":";
+                for (const auto& l : cnf.get_clauses()[i]) cout << " " << l;
+                cout << endl;
+                break;
+            }
+        }
+        return false;
+    }
+    return true;
+}
+
+// SLOW_DEBUG: for each y in var_to_formula, prove that evaluating f.aig
+// (in y-space, with its leaves remapped into y_hat-space via map_y_to_y_hat)
+// yields the same value as f.out given the f.clauses constraints. Does a
+// pairwise miter per formula, so when it fires we know exactly which y's
+// AIG/CNF reps diverge.
+bool Manthan::check_aig_matches_clauses_per_formula(const string& where) const {
+    for (const auto& y : to_define_full) {
+        auto it = var_to_formula.find(y);
+        if (it == var_to_formula.end()) continue;
+        const auto& f = it->second;
+        if (f.aig == nullptr) continue;
+
+        SATSolver s;
+        while (s.nVars() < cex_solver.nVars()) s.new_var();
+        s.add_clause({fh->get_true_lit()});
+        // Add ALL formulas' clauses (not just this one) because
+        // bve_and_substitute shares helper vars across formulas via the
+        // persistent AIGToCNF encoder — a helper referenced in this f.out
+        // may be defined in a different formula's .clauses.
+        for (const auto& [yy, ff] : var_to_formula) {
+            for (const auto& cl : ff.clauses) s.add_clause(cl.lits);
+        }
+
+        // Tseitin-encode f.aig on top of the SAME var namespace, mapping
+        // leaves exactly as bve_and_substitute/perform_repair would (so we
+        // get a lit that represents the AIG's value over y_hat vars).
+        std::unordered_map<const AIG*, Lit> cache;
+        std::function<Lit(const aig_ptr&)> enc_edge = [&](const aig_ptr& n) -> Lit {
+            assert(n != nullptr);
+            if (n->type == AIGT::t_const) {
+                Lit t = fh->get_true_lit();
+                return n.neg ? ~t : t;
+            }
+            if (n->type == AIGT::t_lit) {
+                uint32_t v = n->var;
+                Lit base;
+                // For to_define_full: map to y_hat exactly like
+                // bve_and_substitute's transform does.
+                if (to_define_full.count(v)) base = Lit(y_to_y_hat.at(v), false);
+                else base = Lit(v, false);
+                return n.neg ? ~base : base;
+            }
+            assert(n->type == AIGT::t_and);
+            auto ci = cache.find(n.get());
+            if (ci != cache.end()) return n.neg ? ~ci->second : ci->second;
+            Lit lc = enc_edge(n->l);
+            Lit rc = enc_edge(n->r);
+            s.new_var();
+            Lit out(s.nVars() - 1, false);
+            s.add_clause({~out, lc});
+            s.add_clause({~out, rc});
+            s.add_clause({out, ~lc, ~rc});
+            cache[n.get()] = out;
+            return n.neg ? ~out : out;
+        };
+        Lit aig_val = enc_edge(f.aig);
+
+        // Miter: aig_val XOR f.out — is there an assignment where they
+        // differ? If yes, the two reps disagree.
+        s.new_var();
+        Lit diff(s.nVars() - 1, false);
+        // diff ↔ (aig_val XOR f.out)
+        s.add_clause({~diff, aig_val, f.out});
+        s.add_clause({~diff, ~aig_val, ~f.out});
+        s.add_clause({diff, aig_val, ~f.out});
+        s.add_clause({diff, ~aig_val, f.out});
+        s.add_clause({diff});  // force diff = true
+
+        auto ret = s.solve();
+        if (ret == l_True) {
+            cout << "c o [aig_vs_clauses] @ " << where
+                 << ": y=" << (y+1)
+                 << " AIG and CNF reps DIVERGE (both representations disagree on some input)"
+                 << endl;
+            cout << "c o [aig_vs_clauses]   y_hat_var=" << (y_to_y_hat.at(y)+1)
+                 << " f.out=" << f.out
+                 << " aig.type=" << (int)f.aig->type
+                 << " aig.neg=" << f.aig.neg
+                 << " bw_def=" << backward_defined.count(y)
+                 << " to_define=" << to_define.count(y)
+                 << " helper_func=" << helper_functions.count(y)
+                 << " f.clauses.size=" << f.clauses.size()
+                 << endl;
+            const auto& m = s.get_model();
+            cout << "c o [aig_vs_clauses]   inputs:";
+            for (uint32_t x : input) cout << " x" << (x+1) << "=" << pr(m[x]);
+            cout << endl;
+            auto lit_val = [&](Lit l) -> lbool {
+                lbool v = m[l.var()];
+                if (v == l_Undef) return l_Undef;
+                bool truthy = (v == l_True);
+                if (l.sign()) truthy = !truthy;
+                return truthy ? l_True : l_False;
+            };
+            cout << "c o [aig_vs_clauses]   aig_val_lit=" << aig_val
+                 << " (rawvar_model=" << pr(m[aig_val.var()])
+                 << " → lit_val=" << pr(lit_val(aig_val)) << ")"
+                 << " f.out_lit=" << f.out
+                 << " (rawvar_model=" << pr(m[f.out.var()])
+                 << " → lit_val=" << pr(lit_val(f.out)) << ")"
+                 << endl;
+            // Also show f.aig fields for deeper inspection
+            cout << "c o [aig_vs_clauses]   f.aig.node.nid=" << f.aig->nid
+                 << " f.aig.node.var=" << f.aig->var
+                 << " (AIGT: 0=and, 1=lit, 2=const)"
+                 << endl;
+            // Cross-check: evaluate f.aig directly under the SAT model.
+            // For bve_and_substitute, f.aig leaves are y-space orig vars,
+            // which under the miter map to y_hats. So read m[y_hat[v]] for
+            // to_define_full leaves, m[v] for inputs.
+            std::map<const AIG*, bool> eval_cache;
+            std::function<bool(const aig_ptr&)> eval_aig = [&](const aig_ptr& n) -> bool {
+                if (n->type == AIGT::t_const) return !n.neg;  // const TRUE is base, edge may flip
+                if (n->type == AIGT::t_lit) {
+                    uint32_t v = n->var;
+                    bool val;
+                    if (to_define_full.count(v)) {
+                        uint32_t yh = y_to_y_hat.at(v);
+                        val = (m[yh] == l_True);
+                    } else {
+                        val = (m[v] == l_True);
+                    }
+                    return n.neg ? !val : val;
+                }
+                assert(n->type == AIGT::t_and);
+                auto ci = eval_cache.find(n.get());
+                if (ci != eval_cache.end()) return n.neg ? !ci->second : ci->second;
+                bool lv = eval_aig(n->l);
+                bool rv = eval_aig(n->r);
+                bool pos = lv && rv;
+                eval_cache[n.get()] = pos;
+                return n.neg ? !pos : pos;
+            };
+            bool direct = eval_aig(f.aig);
+            cout << "c o [aig_vs_clauses]   direct AIG eval under SAT model = " << (direct ? 1 : 0) << endl;
+            // Full recursive AIG structure dump — gated under VERBOSE_DEBUG
+            // so SLOW_DEBUG alone gets a concise diagnostic; verbose is
+            // opt-in for deep triage.
+            VERBOSE_DEBUG_DO({
+                std::set<uint64_t> printed_nids;
+                std::function<void(const aig_ptr&, int)> dump_aig = [&](const aig_ptr& n, int depth) {
+                    std::string indent(depth * 2, ' ');
+                    cout << "c o [aig_vs_clauses]   " << indent
+                         << "nid=" << n->nid << " type=" << (int)n->type
+                         << " neg=" << n.neg << " var=" << n->var;
+                    if (printed_nids.count(n->nid)) { cout << " (seen)" << endl; return; }
+                    printed_nids.insert(n->nid);
+                    cout << endl;
+                    if (n->type == AIGT::t_and && depth < 6) {
+                        dump_aig(n->l, depth + 1);
+                        dump_aig(n->r, depth + 1);
+                    }
+                };
+                cout << "c o [aig_vs_clauses]   f.aig structure:" << endl;
+                dump_aig(f.aig, 0);
+            });
+            return false;
+        }
+    }
+    return true;
+}
+
 aig_ptr Manthan::one_level_substitute(Lit l, const uint32_t v, map<uint32_t, aig_ptr>& transformed) {
     if (!transformed.count(l.var())) {
         assert(var_to_formula.count(l.var()) == 1);
@@ -652,16 +1019,18 @@ void Manthan::bve_and_substitute() {
         prev = now;
     }
 
-    // Persistent sink + encoder across iterations. The AIGToCNF cache survives
-    // between encode() calls, so sub-AIGs shared across formulas (via AIG-
-    // manager hash-consing, including y_hat-remapped subtrees that touch no
-    // to_define vars) get encoded exactly once — subsequent formulas just
-    // reuse the helper literal, yielding a smaller CNF. The defining clauses
-    // are attributed to whichever formula first emits them, so per-formula
-    // stats (clause counts) become approximate; all downstream consumers
-    // (inject_formulas_into_solver, try_check_if_y_hat_ctx_works,
-    // check_functions_for_y_vars) feed every formula into the same solver, so
-    // shared helpers stay fully defined regardless of attribution.
+    // One AIGToCNF encoder per formula. An earlier version used a persistent
+    // encoder across formulas, reasoning that the node-pointer-keyed cache
+    // would dedup helpers for hash-consed sub-AIGs shared across formulas.
+    // That turned out to be unsound: with sat_sweep + AIGRewriter massaging
+    // the aigs vector, a cached Lit from one formula's encoding would be
+    // reused for another formula's encode_edge cache hit, yielding a Lit
+    // whose value disagreed with direct AIG evaluation (via an independent
+    // fresh Tseitin miter). The failure surfaces as var_to_formula[y].aig
+    // and var_to_formula[y].clauses+.out encoding different Boolean
+    // functions — cex_solver is happy (it only sees .clauses+.out) but the
+    // final exported AIGs (from .aig) are wrong. Reproducer: bug_real_big.cnf
+    // under SLOW_DEBUG catches this via check_aig_matches_clauses_per_formula.
     struct FormulaClauseSink {
         MetaSolver2& solver;
         std::vector<CL>* clauses;
@@ -674,14 +1043,16 @@ void Manthan::bve_and_substitute() {
         void add_clause(const std::vector<Lit>& cl) { clauses->emplace_back(cl); }
     };
     FormulaClauseSink sink{cex_solver, nullptr, helpers};
-    ArjunNS::AIGToCNF<FormulaClauseSink> enc(sink);
-    enc.set_true_lit(fh->get_true_lit());
 
     uint32_t at = 0;
     for(const auto& y: y_order) {
         if (!to_define.count(y)) continue;
         FHolder<MetaSolver2>::Formula f;
         f.aig = aigs.at(at);
+
+        // Fresh encoder per formula — see comment above FormulaClauseSink.
+        ArjunNS::AIGToCNF<FormulaClauseSink> enc(sink);
+        enc.set_true_lit(fh->get_true_lit());
 
         // Encode via AIGToCNF on a y_hat-space clone of f.aig: k-ary AND/OR
         // fusion, De Morgan flattening, ITE detection and dedup give a much
@@ -999,6 +1370,11 @@ SimplifiedCNF Manthan::do_manthan() {
     bool at_least_one_repaired = true;
     verb_print(4, "[trace] before check nVars=" << cex_solver.nVars() << " helpers=" << helpers.size());
     SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
+    SLOW_DEBUG_DO({
+        if (!check_aig_matches_clauses_per_formula("post-bve_and_substitute")) {
+            assert(false && "bve_and_substitute produces diverging aig/clauses — bug before repair");
+        }
+    });
 
     while(true) {
         if (mconf.stats_every > 0 && num_loops_repair % mconf.stats_every == mconf.stats_every - 1) print_stats();
@@ -1016,7 +1392,34 @@ SimplifiedCNF Manthan::do_manthan() {
         const bool finished = get_counterexample(ctx);
         time_cex_finding += cpuTime() - t0;
         cex_solver_calls++;
-        if (finished) break;
+        if (finished) {
+            // cex_solver claims no CEX. Triangulate:
+            //   via_clauses  — fresh SAT miter using var_to_formula[y].clauses+.out
+            //                  (same encoding cex_solver uses). If this fails,
+            //                  cex_solver is wrong.
+            //   via_aig      — fresh SAT miter using var_to_formula[y].aig
+            //                  (what becomes cnf.defs). If this fails but
+            //                  via_clauses passes, the AIG encoding diverges
+            //                  from the CNF encoding per formula.
+            //   aig_vs_clauses_per_formula — direct pairwise miter between
+            //                  .aig and .clauses+.out. Pinpoints which y
+            //                  has inconsistent reps.
+            SLOW_DEBUG_DO({
+                const std::string where = "finished-loop-exit iter=" + std::to_string(num_loops_repair);
+                bool clauses_ok = check_synth_via_clauses(where);
+                bool aig_ok = check_synth_via_aig(where);
+                if (!clauses_ok) std::cout << "c o [BUG] cex_solver FINISHED but via_clauses miter is SAT" << std::endl;
+                if (!aig_ok)     std::cout << "c o [BUG] cex_solver FINISHED but via_aig miter is SAT" << std::endl;
+                if (clauses_ok && !aig_ok) {
+                    std::cout << "c o [BUG] CNF rep correct but AIG rep wrong — pairwise check next" << std::endl;
+                    bool per_formula_ok = check_aig_matches_clauses_per_formula(where);
+                    (void)per_formula_ok;
+                }
+                assert(clauses_ok && "via_clauses check fails at loop exit");
+                assert(aig_ok && "via_aig check fails at loop exit");
+            });
+            break;
+        }
         if (tot_repaired >= mconf.max_repairs) {
             print_stats("", COLRED, " Reached max repairs");
             return cnf;
@@ -1105,6 +1508,13 @@ SimplifiedCNF Manthan::do_manthan() {
             }
             SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
             SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
+            SLOW_DEBUG_DO({
+                if (!check_aig_matches_clauses_per_formula(
+                        "post-repair y=" + std::to_string(y_rep+1) +
+                        " iter=" + std::to_string(num_loops_repair))) {
+                    assert(false && "perform_repair introduced a diverging aig/clauses");
+                }
+            });
             verb_print(3, "[manthan] finished repairing " << y_rep+1 << " : " << std::boolalpha << done);
         }
         verb_print(2, "[manthan] Num repaired: " << num_repaired << " tot repaired: " << tot_repaired << " num_loops_repair: " << num_loops_repair);

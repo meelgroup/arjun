@@ -213,6 +213,23 @@ class Manthan {
         [[nodiscard]] bool check_aig_dependency_cycles() const;
         [[nodiscard]] bool check_transitive_closure_correctness() const;
         [[nodiscard]] bool check_functions_for_y_vars() const;
+        // SLOW_DEBUG helpers: return true iff the current var_to_formula is a
+        // semantically correct synthesis against cnf.get_clauses(). Each
+        // rebuilds a fresh SAT miter and does NOT share state with cex_solver,
+        // so they catch cases where cex_solver's "no CEX" / UNSAT conclusion
+        // is inconsistent with the actual formulas. The _via_clauses variant
+        // uses var_to_formula[y].clauses + .out (exactly the encoding
+        // cex_solver sees); _via_aig uses var_to_formula[y].aig (what
+        // ultimately becomes cnf.defs). If _via_clauses passes but _via_aig
+        // fails, there's a divergence between the CNF and AIG representations.
+        [[nodiscard]] bool check_synth_via_clauses(const std::string& where) const;
+        [[nodiscard]] bool check_synth_via_aig(const std::string& where) const;
+        // SLOW_DEBUG: for every y in var_to_formula, prove that f.aig and
+        // f.clauses+f.out denote the same Boolean function. If they don't,
+        // returns a specific y and prints diagnostics. This is the specific
+        // invariant that glues "cex_solver UNSAT means synthesis correct"
+        // to "final .aig export is correct".
+        [[nodiscard]] bool check_aig_matches_clauses_per_formula(const std::string& where) const;
         std::mt19937 mtrand;
         std::vector<uint32_t> updated_y_funcs; // y_hats updated during last round of training
 
