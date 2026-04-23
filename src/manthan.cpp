@@ -1232,13 +1232,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
             time_inject_formulas += cpuTime() - t0;
 
             t0 = cpuTime();
-            // Only recompute y_hat if there are backward-defined variables that
-            // may depend on y_rep's y_hat. Without backward-defined vars, each
-            // formula only depends on inputs and its own y_hat, so only y_rep's
-            // y_hat needs updating (already done above).
-            if (!backward_defined.empty()) {
-                recompute_all_y_hat_cnf(ctx);
-            }
+            recompute_all_y_hat_cnf(ctx);
             time_recompute_y_hat += cpuTime() - t0;
         }
 
