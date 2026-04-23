@@ -2005,10 +2005,13 @@ DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
     release_assert(sampl_vars.size() <= opt_sampl_vars.size() && "We add to opt_sampl_vars via extend_synth in extend.cpp");
     release_assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
     assert(check_orig_sampl_vars_undefined());
+    // Cycle check must run BEFORE check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars
+    // and check_self_dependency, since those use get_dependent_vars_recursive
+    // which infinite-loops on cycles rather than detecting them.
+    assert(check_aig_cycles());
     assert(check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars());
     check_pre_post_backward_round_synth();
     check_all_vars_accounted_for();
-    assert(check_aig_cycles());
     check_self_dependency();
     get_var_types(0, "defs_invariant");
     SLOW_DEBUG_DO(check_synth_funs_randomly());

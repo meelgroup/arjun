@@ -39,6 +39,7 @@ struct AIGRewriteStats {
     uint64_t sweep_merges = 0;
     uint64_t sweep_cex_refuted = 0;
     uint64_t sweep_self_ref_reverts = 0;
+    uint64_t sweep_cycle_reverts = 0;
 
     void print(int verb) const;
     void clear();

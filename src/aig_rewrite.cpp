@@ -895,6 +895,9 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
         }
         return false;
     };
+    // Compute all proposed new defs; apply only the direct self-ref revert
+    // here, then check for indirect cycles across defs below.
+    std::vector<aig_ptr> orig_defs = defs;
     for (uint32_t v = 0; v < defs.size(); v++) {
         auto& d = defs[v];
         if (!d) continue;
@@ -905,6 +908,102 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
             continue;
         }
         d = new_d;
+    }
+
+    // Indirect cycle detection. The per-def has_self_lit check above only
+    // catches direct self-loops (var v as a leaf of defs[v]). Cross-def
+    // substitutions can also wire defs[v] to depend on some var w whose def
+    // now depends (directly or indirectly) on v — forming a cycle like
+    // v -> w -> ... -> v through multiple defs' AIGs. Downstream code
+    // (test-synth, get_dependent_vars_recursive) infinite-loops on this.
+    //
+    // Fix: collect direct def-level deps (for each v, the set of defined vars
+    // appearing as leaves of defs[v]). Iterate DFS cycle detection; on each
+    // cycle found, pick the first cycle member that hasn't been reverted yet
+    // and revert its def to the pre-sweep version. Loop until no cycles
+    // remain. Reverts are bounded by defs.size() since in the worst case we
+    // revert every def on a cycle back to orig, at which point that subset
+    // mirrors the (acyclic) pre-sweep graph.
+    std::function<void(const aig_ptr&, std::vector<uint32_t>&)> collect_leaf_vars =
+        [&](const aig_ptr& e, std::vector<uint32_t>& out) {
+        if (!e) return;
+        if (e->type == AIGT::t_lit) { out.push_back(e->var); return; }
+        if (e->type == AIGT::t_and) {
+            collect_leaf_vars(e->l, out);
+            collect_leaf_vars(e->r, out);
+        }
+    };
+    auto def_deps = [&](uint32_t v) {
+        std::vector<uint32_t> leaves;
+        collect_leaf_vars(defs[v], leaves);
+        std::sort(leaves.begin(), leaves.end());
+        leaves.erase(std::unique(leaves.begin(), leaves.end()), leaves.end());
+        std::vector<uint32_t> defined_deps;
+        for (uint32_t u : leaves) {
+            if (u < defs.size() && defs[u] != nullptr && u != v) defined_deps.push_back(u);
+        }
+        return defined_deps;
+    };
+    std::vector<std::vector<uint32_t>> deps(defs.size());
+    for (uint32_t v = 0; v < defs.size(); v++) {
+        if (!defs[v]) continue;
+        deps[v] = def_deps(v);
+    }
+
+    std::vector<bool> reverted(defs.size(), false);
+    while (true) {
+        std::vector<uint8_t> state(defs.size(), 0); // 0=white, 1=gray, 2=black
+        std::vector<uint32_t> path;
+        std::vector<uint32_t> cycle_members;
+        std::function<bool(uint32_t)> dfs = [&](uint32_t v) -> bool {
+            if (state[v] == 2) return false;
+            if (state[v] == 1) {
+                // Back edge to v; cycle is path[idx(v)..end]. Record members.
+                auto it = std::find(path.begin(), path.end(), v);
+                for (; it != path.end(); ++it) cycle_members.push_back(*it);
+                return true;
+            }
+            state[v] = 1;
+            path.push_back(v);
+            for (uint32_t u : deps[v]) {
+                if (dfs(u)) return true;
+            }
+            path.pop_back();
+            state[v] = 2;
+            return false;
+        };
+        bool any_cycle = false;
+        for (uint32_t v = 0; v < defs.size(); v++) {
+            if (state[v] == 0 && defs[v] != nullptr) {
+                path.clear();
+                cycle_members.clear();
+                if (dfs(v)) { any_cycle = true; break; }
+            }
+        }
+        if (!any_cycle) break;
+
+        // Pick a cycle member that hasn't been reverted yet.
+        uint32_t to_revert = std::numeric_limits<uint32_t>::max();
+        for (uint32_t m : cycle_members) {
+            if (!reverted[m]) { to_revert = m; break; }
+        }
+        if (to_revert == std::numeric_limits<uint32_t>::max()) {
+            // All cycle members are already at orig defs, yet a cycle exists.
+            // That can't happen if orig_defs was acyclic (which defs_invariant
+            // verifies upstream), so treat this as a real bug and bail out by
+            // fully reverting everything to orig.
+            defs = orig_defs;
+            for (uint32_t v = 0; v < defs.size(); v++) {
+                if (defs[v]) deps[v] = def_deps(v);
+                else deps[v].clear();
+            }
+            stats.sweep_cycle_reverts++;
+            break;
+        }
+        defs[to_revert] = orig_defs[to_revert];
+        deps[to_revert] = def_deps(to_revert);
+        reverted[to_revert] = true;
+        stats.sweep_cycle_reverts++;
     }
 
     if (verb >= 1) {
@@ -920,6 +1019,7 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
              << "  merges=" << stats.sweep_merges
              << "  refuted=" << stats.sweep_cex_refuted
              << "  self_ref_reverts=" << stats.sweep_self_ref_reverts
+             << "  cycle_reverts=" << stats.sweep_cycle_reverts
              << endl;
     }
 }
