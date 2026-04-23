@@ -33,6 +33,23 @@ Useful top-level flags:
   `*-autarky.aig`, `*-manthan.aig`, `*-final.aig`) for debugging
 - `--verb N` — verbosity (0–2)
 
+## Quick A/B benchmarking: `scripts/run_elim_bench.sh`
+
+One-line sanity bench for comparing simplification tweaks. Runs `arjun` on a
+CNF and prints a single line with the headline counts (vars, indep, optind,
+bin cls, long cls, lits, time).
+
+Run from `build/` (where `arjun` and `count_literals.py` live):
+
+```
+../scripts/run_elim_bench.sh <cnf[.gz]> [extra arjun args...]
+```
+
+Extra args are forwarded to `arjun`. The simplified CNF is written to
+`/tmp/arjun_elim_out` and the full log to `/tmp/arjun_elim.log`. Typical
+workflow: run it on the same CNF before and after a change and diff the
+output lines.
+
 ## After every build ALWAYS run the fuzzers
 
 From `build/`:
