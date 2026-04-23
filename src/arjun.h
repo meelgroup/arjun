@@ -1428,6 +1428,11 @@ public:
     // Get back BVE AIGs into scnf.defs
     void get_bve_mapping(SimplifiedCNF& scnf, std::unique_ptr<CMSat::SATSolver>& solver, const uint32_t verb) const;
 
+    // SAT-based check that each def[v] is semantically correct against
+    // orig_clauses. Returns -1 if all correct, else the var index whose
+    // def is wrong. Expensive; intended for debugging BVE/synthesis issues.
+    [[nodiscard]] int check_synth_funs_sat() const;
+
     void set_backbone_done(const bool bb_done) {
         backbone_done = bb_done;
     }

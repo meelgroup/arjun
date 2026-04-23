@@ -625,6 +625,206 @@ DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
     cout << "c o [check_synth_funs_randomly] filled defs total: " << filled_defs << " undefs: " << undefs << " checks: " << num_checks << endl;
 }
 
+DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
+    // Full semantic correctness check matching test-synth's UNSAT-verify:
+    // build a solver with orig_clauses, then Tseitin-encode each def[v] into
+    // a fresh "y_hat_v" var (distinct from v) with def leaves substituted via
+    // y_hat_w when w is also defined (chain through the def graph). Require
+    // that every defined var's y_hat equals the orig var, under a per-miter
+    // activation lit that we flip on one at a time. If *all* y_hat=v miters
+    // are forced on simultaneously the solver should become UNSAT; if any
+    // single miter flip reveals SAT, that def is semantically wrong.
+    SATSolver s;
+    s.new_vars(defs.size());
+    for (const auto& cl : orig_clauses) s.add_clause(cl);
+    if (s.solve() == l_False) {
+        cout << "c o [check_synth_funs_sat] orig CNF is UNSAT!" << endl;
+        return -1;
+    }
+
+    // Build one solver that has: orig clauses + y_hat_v for every defined v,
+    // with y_hat_v = def[v] where leaves are y_hat_w for defined w and raw
+    // sampl vars otherwise. Record y_hat_v for each defined v.
+    SATSolver check;
+    check.new_vars(defs.size());
+    for (const auto& cl : orig_clauses) check.add_clause(cl);
+
+    // Per-v y_hat lit; unassigned if v has no def (no y_hat needed).
+    std::vector<Lit> y_hat(defs.size(), lit_Undef);
+    Lit true_lit;
+    bool true_lit_set = false;
+
+    // Topological encode: for each defined v, encode def[v] with leaves
+    // mapped via y_hat[leaf_var] when that var is also defined. This
+    // requires DAG traversal not just per-def trees, to reuse shared
+    // sub-AIGs. Simpler: one Tseitin per def, with a recursive encode.
+    std::function<Lit(const aig_ptr&, std::map<aig_ptr, Lit>&)> enc =
+      [&](const aig_ptr& a, std::map<aig_ptr, Lit>& cache) -> Lit {
+        assert(a != nullptr);
+        auto it = cache.find(a);
+        if (it != cache.end()) return it->second;
+        Lit out;
+        if (a->type == AIGT::t_const) {
+            if (!true_lit_set) {
+                check.new_var();
+                true_lit = Lit(check.nVars() - 1, false);
+                check.add_clause({true_lit});
+                true_lit_set = true;
+            }
+            out = a.neg ? ~true_lit : true_lit;
+        } else if (a->type == AIGT::t_lit) {
+            // If this leaf is itself a defined var, substitute its y_hat.
+            if (a->var < defs.size() && defs[a->var] != nullptr
+                && y_hat[a->var] != lit_Undef) {
+                out = y_hat[a->var] ^ a.neg;
+            } else {
+                out = Lit(a->var, a.neg);
+            }
+        } else {
+            assert(a->type == AIGT::t_and);
+            Lit l = enc(a->l, cache);
+            Lit r = enc(a->r, cache);
+            check.new_var();
+            Lit g(check.nVars() - 1, false);
+            check.add_clause({~g, l});
+            check.add_clause({~g, r});
+            check.add_clause({g, ~l, ~r});
+            out = a.neg ? ~g : g;
+        }
+        cache[a] = out;
+        return out;
+    };
+
+    // Process defs in some order where deps come first. Simple fixpoint:
+    // loop over defs, encode those whose deps are all encoded.
+    std::vector<bool> done(defs.size(), false);
+    for (uint32_t v = 0; v < defs.size(); v++) {
+        if (defs[v] == nullptr) { done[v] = true; continue; }
+        if (orig_sampl_vars.count(v)) { done[v] = true; continue; }
+    }
+    bool progress = true;
+    while (progress) {
+        progress = false;
+        for (uint32_t v = 0; v < defs.size(); v++) {
+            if (done[v]) continue;
+            // Check deps: walk def[v] collecting lit-vars, skip if any
+            // dep is also defined but not yet encoded.
+            std::set<uint32_t> deps;
+            std::function<void(const aig_ptr&, std::set<const AIG*>&)> collect =
+              [&](const aig_ptr& a, std::set<const AIG*>& seen) {
+                if (!a || !seen.insert(a.get()).second) return;
+                if (a->type == AIGT::t_lit) {
+                    deps.insert(a->var);
+                } else if (a->type == AIGT::t_and) {
+                    collect(a->l, seen);
+                    collect(a->r, seen);
+                }
+            };
+            std::set<const AIG*> seen;
+            collect(defs[v], seen);
+            bool ready = true;
+            for (uint32_t d : deps) {
+                if (d < defs.size() && defs[d] != nullptr
+                    && !done[d] && d != v) { ready = false; break; }
+            }
+            if (!ready) continue;
+            check.new_var();
+            y_hat[v] = Lit(check.nVars() - 1, false);
+            std::map<aig_ptr, Lit> cache;
+            Lit out = enc(defs[v], cache);
+            // y_hat_v <-> out
+            check.add_clause({~y_hat[v], out});
+            check.add_clause({y_hat[v], ~out});
+            done[v] = true;
+            progress = true;
+        }
+    }
+    // Any still-undone defs indicate a cycle; skip them (not our bug class).
+    for (uint32_t v = 0; v < defs.size(); v++) {
+        if (!done[v]) {
+            cout << "c o [check_synth_funs_sat] skipping var " << (v+1)
+                 << " (cyclic dep)" << endl;
+        }
+    }
+
+    // test-synth-style check: build ¬F(x, y_hat) via a cls-indic trick on a
+    // SEPARATE copy of orig_clauses where every defined orig var is
+    // substituted by its y_hat. Then assert "at least one substituted clause
+    // is unsatisfied". F(x) ∧ ¬F(x, y_hat) UNSAT ⇔ defs correct.
+    vector<Lit> cl_indics;
+    for (const auto& cl_orig : orig_clauses) {
+        // Substitute defined orig vars with their y_hat.
+        vector<Lit> cl_sub;
+        cl_sub.reserve(cl_orig.size());
+        for (const auto& l : cl_orig) {
+            if (l.var() < defs.size() && defs[l.var()] != nullptr
+                && y_hat[l.var()] != lit_Undef) {
+                cl_sub.push_back(y_hat[l.var()] ^ l.sign());
+            } else {
+                cl_sub.push_back(l);
+            }
+        }
+        // Add indicator: cl_ind → clause, i.e., (~cl_ind ∨ lits...)
+        check.new_var();
+        Lit cl_ind(check.nVars() - 1, false);
+        vector<Lit> clause_with_ind;
+        clause_with_ind.reserve(cl_sub.size() + 1);
+        clause_with_ind.push_back(~cl_ind);
+        for (const auto& l : cl_sub) clause_with_ind.push_back(l);
+        check.add_clause(clause_with_ind);
+        // Also: (¬l ∨ cl_ind) for each l, encoding cl_ind ↔ clause satisfied.
+        for (const auto& l : cl_sub) {
+            check.add_clause({cl_ind, ~l});
+        }
+        cl_indics.push_back(cl_ind);
+    }
+    // At least one indicator is false (i.e., corresponding substituted clause UNSAT).
+    vector<Lit> at_least_one_unsat;
+    for (const auto& ind : cl_indics) at_least_one_unsat.push_back(~ind);
+    check.add_clause(at_least_one_unsat);
+
+    auto ret = check.solve();
+    if (ret == l_True) {
+        cout << "c o [check_synth_funs_sat] DEFS SEMANTICALLY WRONG (F ∧ ¬F[y←y_hat] SAT)" << endl;
+        const auto& model = check.get_model();
+        cout << "c o [check_synth_funs_sat]   input sampl vars:";
+        for (uint32_t sv : orig_sampl_vars) {
+            cout << " x" << (sv+1) << "=" << (model[sv] == l_True ? 1 : 0);
+        }
+        cout << endl;
+        // Find the first clause that's UNSAT under substitution.
+        for (size_t i = 0; i < cl_indics.size() && i < orig_clauses.size(); i++) {
+            if (model[cl_indics[i].var()] == l_False) {
+                cout << "c o [check_synth_funs_sat]   first broken orig clause idx=" << i
+                     << " cl=";
+                for (const auto& l : orig_clauses[i]) {
+                    cout << (l.sign() ? "-" : "") << (l.var()+1) << " ";
+                }
+                cout << endl;
+                // Print each lit in clause and its substituted value under y_hat.
+                for (const auto& l : orig_clauses[i]) {
+                    uint32_t vv = l.var();
+                    bool sub_val;
+                    if (vv < defs.size() && defs[vv] != nullptr && y_hat[vv] != lit_Undef) {
+                        bool yv = model[y_hat[vv].var()] == l_True;
+                        sub_val = l.sign() ? !yv : yv;
+                        cout << "c o [check_synth_funs_sat]     x" << (vv+1)
+                             << " (defined, y_hat=" << (yv?1:0) << ", lit_val=" << (sub_val?1:0) << ")" << endl;
+                    } else {
+                        bool xv = model[vv] == l_True;
+                        sub_val = l.sign() ? !xv : xv;
+                        cout << "c o [check_synth_funs_sat]     x" << (vv+1)
+                             << " (free, val=" << (xv?1:0) << ", lit_val=" << (sub_val?1:0) << ")" << endl;
+                    }
+                }
+                break;
+            }
+        }
+        return 0; // signal failure (don't know exact var)
+    }
+    return -1;
+}
+
 DLL_PUBLIC void SimplifiedCNF::import_candidate_functions(const string& fname, int verb) {
     ArjunNS::SimplifiedCNF cand(fg);
     cand.read_aig_defs_from_file(fname);

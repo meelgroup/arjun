@@ -347,6 +347,30 @@ bool verify_aigs_correct(T& solver, const map<uint32_t, typename FHolder<T>::For
 
     if (ret == l_True) {
         if (verb) cout << "c [test-synth] RESULT: SAT - AIGs are INCORRECT (counterexample found)" << endl;
+        // Dump the counterexample so we can see WHICH y_hat is wrong. The
+        // miter is F(x) ∧ ¬F(x, y_hat); a SAT answer means some orig clause
+        // is violated when y_hat is plugged in, but the orig clauses with
+        // the un-hatted y vars satisfied F(x). The inputs are in
+        // orig_sampling_vars, the un-hatted orig vars are everything else
+        // below orig_cnf nVars, and y_hat is above that.
+        const auto& model = solver.get_model();
+        cout << "c [test-synth] CEX MODEL:" << endl;
+        cout << "c [test-synth]   inputs: ";
+        for (uint32_t v : orig_sampling_vars) {
+            cout << "x" << (v+1) << "=" << (model[v] == CMSat::l_True ? 1 : 0) << " ";
+        }
+        cout << endl;
+        cout << "c [test-synth]   y vs y_hat (MISMATCHES flagged):" << endl;
+        for (const auto& [y_hat, ind] : y_hat_to_indic) {
+            if (!y_hat_to_y.count(y_hat)) continue;
+            uint32_t y_var = y_hat_to_y.at(y_hat);
+            if (model[y_hat] == CMSat::l_Undef || model[y_var] == CMSat::l_Undef) continue;
+            bool y_hat_val = (model[y_hat] == CMSat::l_True);
+            bool y_val = (model[y_var] == CMSat::l_True);
+            const char* mark = (y_hat_val == y_val) ? "" : "  *** MISMATCH ***";
+            cout << "c [test-synth]     y=x" << (y_var+1) << "=" << y_val
+                 << " y_hat=x" << (y_hat+1) << "=" << y_hat_val << mark << endl;
+        }
         return false;
     } else {
         release_assert(ret == l_False);

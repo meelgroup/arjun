@@ -385,31 +385,49 @@ void do_synthesis() {
     if (conf.verb)
         cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
 
+    // SLOW_DEBUG: after every pipeline stage, run the semantic SAT check on
+    // the current defs. If any stage produces a wrong def, flag it with the
+    // stage name so it's obvious which pass introduced the bug.
+    [[maybe_unused]] auto check_stage = [&](const std::string& stage) {
+        int bad = cnf.check_synth_funs_sat();
+        if (bad >= 0) {
+            cout << "c o [check_stage] WRONG def after stage '" << stage
+                 << "' for var " << (bad+1) << endl;
+            assert(false && "wrong synth def after stage");
+        }
+    };
+
     if (do_synth_bve && !cnf.synth_done()) {
         cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
+        SLOW_DEBUG_DO(check_stage("simplified_cnf"));
     }
     if (etof_conf.do_autarky && !cnf.synth_done()) {
         arjun->standalone_autarky(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-autarky.aig");
+        SLOW_DEBUG_DO(check_stage("autarky"));
     }
     if (etof_conf.do_extend_indep && !cnf.synth_done()) {
         arjun->standalone_unsat_define(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-extend_synth.aig");
         cnf.simplify_aigs(conf.verb);
+        SLOW_DEBUG_DO(check_stage("extend_synth"));
     }
     if (do_minim_indep && !cnf.synth_done()) {
         arjun->standalone_backward_round_synth(cnf, mconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-minim_idep_synt.aig");
         cnf.simplify_aigs(conf.verb);
+        SLOW_DEBUG_DO(check_stage("minim_idep_synt"));
     }
     if (do_unate && !cnf.synth_done()) {
         arjun->standalone_unate(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate.aig");
+        SLOW_DEBUG_DO(check_stage("unsat_unate"));
     }
     if (do_unate_def && !cnf.synth_done()) {
         arjun->standalone_unate_def(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate_def.aig");
+        SLOW_DEBUG_DO(check_stage("unsat_unate_def"));
     }
 
     SynthRunner synth_runner(conf, arjun);
@@ -419,6 +437,7 @@ void do_synthesis() {
 
     release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
+    SLOW_DEBUG_DO(check_stage("manthan"));
     if (!output_file.empty()) {
         cnf.rewrite_aigs(conf.verb, do_sat_sweep);
         cnf.write_aig_def_to_verilog(output_file);
