@@ -791,13 +791,53 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
         classes[std::move(k)].emplace_back(n, flipped);
     }
 
+    if (verb >= 2) {
+        size_t nontrivial = 0, total_members = 0, max_class = 0;
+        for (const auto& [k, m] : classes) {
+            if (m.size() < 2) continue;
+            nontrivial++;
+            total_members += m.size();
+            if (m.size() > max_class) max_class = m.size();
+        }
+        cout << "c o [aig-rewrite] sat-sweep setup T: "
+             << std::fixed << std::setprecision(2) << (cpuTime() - start_time)
+             << "  topo=" << topo.size()
+             << "  used_vars=" << used_vars.size()
+             << "  classes_total=" << classes.size()
+             << "  classes_nontrivial=" << nontrivial
+             << "  total_nontrivial_members=" << total_members
+             << "  max_class=" << max_class
+             << endl;
+    }
+
     // SAT-verify each non-singleton class against its lowest-nid
     // representative. An activation literal per-check lets us reuse one
     // solver for the whole class.
     std::unordered_map<const AIG*, std::pair<const AIG*, bool>> sub;
+    bool time_exhausted = false;
+    uint64_t classes_processed = 0;
+    uint64_t last_progress_print_classes = 0;
     for (auto& [key, members] : classes) {
         if (members.size() < 2) continue;
         if (members.size() > sweep_max_class_size) continue;
+        if (cpuTime() - start_time > sweep_time_budget_s) {
+            time_exhausted = true;
+            break;
+        }
+        classes_processed++;
+        if (verb >= 2 && classes_processed - last_progress_print_classes >= 100) {
+            cout << "c o [aig-rewrite] sat-sweep progress"
+                 << "  T: " << std::fixed << std::setprecision(2)
+                 << (cpuTime() - start_time)
+                 << "  classes_done=" << classes_processed
+                 << "  checks=" << stats.sweep_sat_checks
+                 << "  merges=" << stats.sweep_merges
+                 << "  refuted=" << stats.sweep_cex_refuted
+                 << "  timeouts=" << stats.sweep_timeouts
+                 << "  class_aborts=" << stats.sweep_class_aborts
+                 << endl;
+            last_progress_print_classes = classes_processed;
+        }
         stats.sweep_sim_groups++;
         std::sort(members.begin(), members.end(),
             [](const auto& a, const auto& b) { return a.first->nid < b.first->nid; });
@@ -822,6 +862,7 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
             solver, true_lit, true_lit_set, enc_cache);
         const CMSat::Lit rep_canon = members[0].second ? ~rep_lit : rep_lit;
 
+        uint32_t streak = 0;  // consecutive non-merge results in this class
         for (size_t i = 1; i < members.size(); i++) {
             const auto& [node, flipped] = members[i];
             if (sub.count(node)) continue;
@@ -836,6 +877,7 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
             solver.add_clause({~act, ~rep_canon, ~node_canon});
             vector<CMSat::Lit> assumps{act};
             stats.sweep_sat_checks++;
+            solver.set_max_confl(sweep_conflict_budget);
             const CMSat::lbool res = solver.solve(&assumps);
             // Retire the activation lit either way.
             solver.add_clause({~act});
@@ -844,12 +886,31 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
                 const bool invert = (flipped != members[0].second);
                 sub[node] = {members[0].first, invert};
                 stats.sweep_merges++;
+                streak = 0;
             } else if (res == CMSat::l_True) {
                 stats.sweep_cex_refuted++;
+                streak++;
+            } else {
+                // l_Undef: budget exhausted. Treat as "can't prove".
+                stats.sweep_timeouts++;
+                streak++;
             }
-            // l_Undef: treated as "can't prove" — no merge.
+
+            if (streak >= sweep_class_abort_streak) {
+                // Several consecutive non-merges in a row: the class is
+                // almost certainly a simulation false-positive. Skip the
+                // rest rather than keep paying for SAT.
+                stats.sweep_class_aborts++;
+                break;
+            }
+            if (cpuTime() - start_time > sweep_time_budget_s) {
+                time_exhausted = true;
+                break;
+            }
         }
+        if (time_exhausted) break;
     }
+    if (time_exhausted) stats.sweep_budget_exhausted++;
 
     // Rebuild defs applying the substitution. Every produced AND goes
     // through make_canonical → hash-consed against struct_hash, so
@@ -1024,6 +1085,9 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
              << "  checks=" << stats.sweep_sat_checks
              << "  merges=" << stats.sweep_merges
              << "  refuted=" << stats.sweep_cex_refuted
+             << "  timeouts=" << stats.sweep_timeouts
+             << "  class_aborts=" << stats.sweep_class_aborts
+             << "  budget_exh=" << stats.sweep_budget_exhausted
              << "  self_ref_reverts=" << stats.sweep_self_ref_reverts
              << "  cycle_reverts=" << stats.sweep_cycle_reverts
              << endl;

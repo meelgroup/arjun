@@ -38,6 +38,9 @@ struct AIGRewriteStats {
     uint64_t sweep_sat_checks = 0;
     uint64_t sweep_merges = 0;
     uint64_t sweep_cex_refuted = 0;
+    uint64_t sweep_timeouts = 0;         // SAT checks hitting the conflict budget (l_Undef)
+    uint64_t sweep_class_aborts = 0;     // Classes abandoned after too many consecutive refutations
+    uint64_t sweep_budget_exhausted = 0; // Wall-clock budget hit; remaining classes skipped
     uint64_t sweep_self_ref_reverts = 0;
     uint64_t sweep_cycle_reverts = 0;
 
@@ -63,6 +66,8 @@ public:
     void set_sat_sweep(bool b) { sat_sweep_enabled = b; }
     void set_sat_sweep_sim_patterns(uint32_t n) { sweep_sim_rounds = n; }
     void set_sat_sweep_max_class(uint32_t n) { sweep_max_class_size = n; }
+    void set_sat_sweep_conflict_budget(uint64_t n) { sweep_conflict_budget = n; }
+    void set_sat_sweep_time_budget(double s) { sweep_time_budget_s = s; }
 
     const AIGRewriteStats& get_stats() const { return stats; }
 
@@ -75,6 +80,18 @@ private:
     // Skip classes larger than this to avoid quadratic SAT churn on
     // degenerate "all constants" groups simulation can't split.
     uint32_t sweep_max_class_size = 64;
+    // Per-check CMS conflict budget. Bounds worst-case solve time on big
+    // cones. l_Undef from hitting the budget is treated as "cannot prove".
+    uint64_t sweep_conflict_budget = 500;
+    // Give up on a class after this many consecutive refutations/timeouts
+    // with no merge. A class that keeps refuting is almost always a
+    // simulation coincidence — further SAT checks on it are wasted time.
+    uint32_t sweep_class_abort_streak = 2;
+    // Wall-clock budget for the entire sat_sweep() call. A safety net for
+    // pathological blow-ups on huge AIGs; not a primary throttle — the
+    // per-class abort streak + conflict budget should already keep useful
+    // work inside a tight envelope.
+    double sweep_time_budget_s = 60.0;
 
     // Structural hash table for canonical AND nodes. Keyed on the two signed
     // child edges (nid + sign). In the new model an AND node has no output
