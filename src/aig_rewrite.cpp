@@ -886,14 +886,26 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
     // is valid). After rebuild, make_canonical's folding may collapse such
     // an AND into lit(v), embedding x_v as a leaf inside defs[v] — a
     // definition-level self-loop. Detect and revert those defs.
-    std::function<bool(const aig_ptr&, uint32_t)> has_self_lit =
-        [&](const aig_ptr& e, uint32_t v) -> bool {
-        if (!e) return false;
-        if (e->type == AIGT::t_lit) return e->var == v;
-        if (e->type == AIGT::t_and) {
-            return has_self_lit(e->l, v) || has_self_lit(e->r, v);
-        }
-        return false;
+    //
+    // Collect the set of variable leaves reachable from an AIG edge.
+    // Memoised on node identity: rebuilt defs are DAGs with diamond sharing
+    // (hash-consed by make_canonical), so a tree-style recursive walk
+    // visits shared subgraphs an exponential number of times on adversarial
+    // inputs (e.g. sdlx-fixpoint-5: ~90k-node post-sweep AIG made the cycle
+    // check alone take >100s of CPU before memoisation).
+    auto collect_leaf_vars_memo = [](const aig_ptr& e,
+                                     std::unordered_set<uint32_t>& out_vars) {
+        std::unordered_set<const AIG*> seen;
+        std::function<void(const AIG*)> rec = [&](const AIG* n) {
+            if (!n) return;
+            if (!seen.insert(n).second) return;
+            if (n->type == AIGT::t_lit) { out_vars.insert(n->var); return; }
+            if (n->type == AIGT::t_and) {
+                rec(n->l.get());
+                rec(n->r.get());
+            }
+        };
+        rec(e.get());
     };
     // Compute all proposed new defs; apply only the direct self-ref revert
     // here, then check for indirect cycles across defs below.
@@ -903,7 +915,9 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
         if (!d) continue;
         aig_lit pos = rebuild_node(d.get());
         aig_ptr new_d(pos.node, pos.neg ^ d.neg);
-        if (has_self_lit(new_d, v)) {
+        std::unordered_set<uint32_t> leaves;
+        collect_leaf_vars_memo(new_d, leaves);
+        if (leaves.count(v)) {
             stats.sweep_self_ref_reverts++;
             continue;
         }
@@ -924,24 +938,16 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
     // remain. Reverts are bounded by defs.size() since in the worst case we
     // revert every def on a cycle back to orig, at which point that subset
     // mirrors the (acyclic) pre-sweep graph.
-    std::function<void(const aig_ptr&, std::vector<uint32_t>&)> collect_leaf_vars =
-        [&](const aig_ptr& e, std::vector<uint32_t>& out) {
-        if (!e) return;
-        if (e->type == AIGT::t_lit) { out.push_back(e->var); return; }
-        if (e->type == AIGT::t_and) {
-            collect_leaf_vars(e->l, out);
-            collect_leaf_vars(e->r, out);
-        }
-    };
     auto def_deps = [&](uint32_t v) {
-        std::vector<uint32_t> leaves;
-        collect_leaf_vars(defs[v], leaves);
-        std::sort(leaves.begin(), leaves.end());
-        leaves.erase(std::unique(leaves.begin(), leaves.end()), leaves.end());
+        // Reuse the memoised-DFS helper above; same DAG-sharing concern.
+        std::unordered_set<uint32_t> leaves;
+        collect_leaf_vars_memo(defs[v], leaves);
         std::vector<uint32_t> defined_deps;
+        defined_deps.reserve(leaves.size());
         for (uint32_t u : leaves) {
             if (u < defs.size() && defs[u] != nullptr && u != v) defined_deps.push_back(u);
         }
+        std::sort(defined_deps.begin(), defined_deps.end());
         return defined_deps;
     };
     std::vector<std::vector<uint32_t>> deps(defs.size());
