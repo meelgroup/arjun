@@ -103,15 +103,20 @@ add_executable(arjun-bin main.cpp synth.cpp)
 add_executable(arjun-example example.cpp)
 add_executable(test-synth test-synth.cpp)
 add_executable(test-aig-rewrite test_aig_rewrite.cpp)
+add_executable(test-aig-to-cnf test_aig_to_cnf.cpp)
+add_executable(test-cut-cnf test_cut_cnf.cpp)
 add_executable(fuzz_aig aig_fuzzer.cpp)
 add_executable(fuzz_aig_to_cnf aig_to_cnf_fuzzer.cpp)
+add_executable(fuzz_aig_rewrite aig_rewrite_fuzzer.cpp)
 
 target_link_libraries(arjun-bin PRIVATE arjun)
 target_link_libraries(arjun-example PRIVATE arjun)
 target_link_libraries(test-synth PRIVATE arjun cadical cryptominisat5)
 target_link_libraries(test-aig-rewrite PRIVATE arjun)
+target_link_libraries(test-aig-to-cnf PRIVATE arjun cryptominisat5)
 target_link_libraries(fuzz_aig PRIVATE arjun)
 target_link_libraries(fuzz_aig_to_cnf PRIVATE arjun)
+target_link_libraries(fuzz_aig_rewrite PRIVATE arjun)
 
 target_include_directories(arjun-bin PRIVATE
     ${PROJECT_SOURCE_DIR}
@@ -133,9 +138,21 @@ target_include_directories(fuzz_aig_to_cnf PRIVATE
     ${PROJECT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
+target_include_directories(fuzz_aig_rewrite PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_include_directories(test-aig-to-cnf PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_include_directories(test-cut-cnf PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
 
 if(ZLIB_FOUND)
-    foreach(tgt arjun-bin arjun-example test-synth fuzz_aig fuzz_aig_to_cnf test-aig-rewrite)
+    foreach(tgt arjun-bin arjun-example test-synth fuzz_aig fuzz_aig_to_cnf fuzz_aig_rewrite test-aig-rewrite test-aig-to-cnf)
         target_include_directories(${tgt} PRIVATE ${ZLIB_INCLUDE_DIR})
         target_link_libraries(${tgt} PRIVATE ${ZLIB_LIBRARY})
     endforeach()
@@ -180,6 +197,34 @@ set_target_properties(fuzz_aig_to_cnf PROPERTIES
     OUTPUT_NAME fuzz_aig_to_cnf
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+set_target_properties(fuzz_aig_rewrite PROPERTIES
+    OUTPUT_NAME fuzz_aig_rewrite
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+set_target_properties(test-aig-to-cnf PROPERTIES
+    OUTPUT_NAME test-aig-to-cnf
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+set_target_properties(test-cut-cnf PROPERTIES
+    OUTPUT_NAME test-cut-cnf
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+if(ENABLE_TESTING)
+    add_test(
+        NAME test-aig-to-cnf
+        COMMAND test-aig-to-cnf
+        WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
+    )
+    add_test(
+        NAME test-cut-cnf
+        COMMAND test-cut-cnf
+        WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
+    )
+endif()
 
 arjun_add_public_header(arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun.h)
 

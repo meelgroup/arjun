@@ -7,7 +7,6 @@ examples
 neovide_backtraces.log
 /result
 /.ccls-cache
-CLAUDE.md
 .claude
 perf*
 output
@@ -17,3 +16,4 @@ html/*.css
 html/*.wasm
 html/*.ts
 
+/scripts/data/__pycache__

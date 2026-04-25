@@ -38,7 +38,13 @@ def find_arjun_time(fname):
     manthan_time = None
     repairs = None
     repairs_failed = None
+    repairs_per_sec = None
     manthan_defined = None
+    # Manthan may run several strategies in sequence; each resets its rep
+    # counter. We accumulate across strategies into `repairs`, using
+    # `current_strategy_rep` to hold the in-flight count until the strategy
+    # finishes ("Reached max repairs" or "[manthan] Done.") or the run dies.
+    current_strategy_rep = 0
 
     arjun_time = None
 
@@ -52,7 +58,9 @@ def find_arjun_time(fname):
         for line in f:
             line = strip_ansi(line.strip())
 
-            if "bad_alloc" in line:
+            # std::bad_alloc throws from C++ new; picosat prints its own
+            # "out of memory" message before aborting. Both are OOM.
+            if "bad_alloc" in line or "out of memory" in line:
                 mem_out = 1
             elif line.startswith("c o [arjun] All done."):
                 solved = True
@@ -119,17 +127,29 @@ def find_arjun_time(fname):
                     backward_time = float(match.group(1))
 
             # c o [manthan] rep:   1319   loops:   1319   avg rep/loop:  1.0   ...   T:    1.83   rep/s: 718.8093
-            # (intermediate progress lines, captured in case Done. never appears)
+            # Progress line. Tail may carry "Reached max repairs" (strategy
+            # gave up — commit its rep count) or "DONE" (a [manthan] Done.
+            # line will follow, which supplies the final repairs count).
             if "c o [manthan] rep:" in line:
+                if repairs is None:
+                    repairs = 0
                 match = re.search(r'T:\s*([\d.]+)', line)
                 if match:
                     manthan_time = float(match.group(1))
                 match = re.search(r'rep:\s*(\d+)', line)
                 if match:
-                    repairs = int(match.group(1))
+                    current_strategy_rep = int(match.group(1))
+                match = re.search(r'rep/s:\s*([\d.]+)', line)
+                if match:
+                    repairs_per_sec = float(match.group(1))
+                if "Reached max repairs" in line:
+                    repairs += current_strategy_rep
+                    current_strategy_rep = 0
 
             # c o [manthan] Done.  sampl T: 3.72 train T: 44.99 repair T: 0.71 repairs: 75 repair failed: 0 defined: 158 still to define: 0 T: 51.05
             if "c o [manthan] Done." in line:
+                if repairs is None:
+                    repairs = 0
                 match = re.search(r'sampl T:\s*([\d.]+)', line)
                 if match:
                     manthan_sampling_time = float(match.group(1))
@@ -141,7 +161,8 @@ def find_arjun_time(fname):
                     manthan_repair_time = float(match.group(1))
                 match = re.search(r'repairs:\s*(\d+)', line)
                 if match:
-                    repairs = int(match.group(1))
+                    repairs += int(match.group(1))
+                current_strategy_rep = 0
                 match = re.search(r'repair failed:\s*(\d+)', line)
                 if match:
                     repairs_failed = int(match.group(1))
@@ -158,6 +179,11 @@ def find_arjun_time(fname):
                 match = re.search(r'T:\s*([\d.]+)', line)
                 if match:
                     arjun_time = float(match.group(1))
+
+    # Run died mid-strategy (no "Reached max repairs" or Done. terminator):
+    # credit the last progress reading to the accumulated total.
+    if repairs is not None:
+        repairs += current_strategy_rep
 
     return {
         "arjun_sha1": arjun_sha1,
@@ -178,6 +204,7 @@ def find_arjun_time(fname):
         "manthan_time": manthan_time,
         "repairs": repairs,
         "repairs_failed": repairs_failed,
+        "repairs_per_sec": repairs_per_sec,
         "manthan_defined": manthan_defined,
         "arjun_time": arjun_time,
         "mem_out": mem_out,
@@ -304,6 +331,7 @@ COLUMNS = [
     ("manthan_time",            "REAL"),
     ("repairs",                 "INTEGER"),
     ("repairs_failed",          "INTEGER"),
+    ("repairs_per_sec",         "REAL"),
     ("manthan_defined",         "INTEGER"),
     ("arjun_time",              "REAL"),
     ("mem_out",                 "INTEGER"),

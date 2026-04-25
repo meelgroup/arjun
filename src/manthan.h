@@ -27,7 +27,6 @@
 #include "arjun.h"
 #include "config.h"
 #include "constants.h"
-#include "metasolver.h"
 #include "metasolver2.h"
 #include "cachedsolver.h"
 #include <cryptominisat5/solvertypesmini.h>
@@ -36,6 +35,7 @@
 #include <memory>
 #include <vector>
 #include <set>
+#include <unordered_map>
 #include "formula.h"
 #include "treedecomp/TreeDecomposition.hpp"
 
@@ -82,6 +82,14 @@ class Manthan {
         std::set<uint32_t> to_define_full; // to_define + backward_defined
         std::set<uint32_t> helper_functions; // these are in BW, but we definitely want them
 
+        // Byte-map mirrors of the sets above for O(1) membership tests in hot
+        // paths (sort comparators in minimize_conflict / find_conflict, etc.).
+        // Sized to cnf.nVars(); kept in sync with the sets via rebuild_var_bytemaps().
+        std::vector<uint8_t> is_input;
+        std::vector<uint8_t> is_backward_defined;
+        std::vector<uint8_t> is_to_define_full;
+        void rebuild_var_bytemaps();
+
         // To help us account for every variable in the formulas' clauses
         std::set<uint32_t> helpers; // used for ITE
         std::set<uint32_t> y_hats; // the potential y_hats (due to ITE chains, some are "old" and unused)
@@ -109,13 +117,25 @@ class Manthan {
         bool repair(const uint32_t v, sample& ctx);
         std::vector<sample> collect_extra_cex(const sample& ctx);
         bool find_conflict(const uint32_t y_rep, sample& ctx, std::vector<CMSat::Lit>& conflict);
+        // Reusable scratch for AIG::get_dependent_vars inside find_conflict;
+        // avoids per-call heap allocations for bitmap/stack. Visited state
+        // is tracked via AIG::visit_epoch (no scratch needed).
+        std::vector<char> aig_dep_is_dep;
+        std::vector<uint32_t> aig_dep_list;
+        std::vector<const ArjunNS::AIG*> aig_dep_stack;
+        // Memoized dependency list per y_rep. Keyed by the raw AIG pointer of
+        // var_to_formula[y_rep].aig at the time of caching; a pointer mismatch
+        // (happens when perform_repair rewrites the formula) triggers recompute.
+        struct DepCacheEntry {
+            const ArjunNS::AIG* aig_ptr;
+            std::vector<uint32_t> dep_list;
+        };
+        std::unordered_map<uint32_t, DepCacheEntry> dep_cache;
         std::vector<uint32_t> var_conflict_freq; // how often each var appears in conflicts
         void minimize_conflict(std::vector<CMSat::Lit>& conflict, std::vector<CMSat::Lit>& assumps, const CMSat::Lit repairing);
         uint32_t find_next_repair_var(const sample& ctx) const;
         void perform_repair(const uint32_t y_rep, const sample& ctx, const std::vector<CMSat::Lit>& conflict);
         void add_not_f_x_yhat();
-        void rebuild_cex_solver_if_needed(uint64_t total_formula_clauses, bool& did_rebuild);
-        void rebuild_cex_solver();
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with(std::set<uint32_t>& vars);
         void print_y_order_occur() const;
@@ -193,10 +213,25 @@ class Manthan {
         [[nodiscard]] bool check_aig_dependency_cycles() const;
         [[nodiscard]] bool check_transitive_closure_correctness() const;
         [[nodiscard]] bool check_functions_for_y_vars() const;
+        // SLOW_DEBUG helpers: return true iff the current var_to_formula is a
+        // semantically correct synthesis against cnf.get_clauses(). Each
+        // rebuilds a fresh SAT miter and does NOT share state with cex_solver,
+        // so they catch cases where cex_solver's "no CEX" / UNSAT conclusion
+        // is inconsistent with the actual formulas. The _via_clauses variant
+        // uses var_to_formula[y].clauses + .out (exactly the encoding
+        // cex_solver sees); _via_aig uses var_to_formula[y].aig (what
+        // ultimately becomes cnf.defs). If _via_clauses passes but _via_aig
+        // fails, there's a divergence between the CNF and AIG representations.
+        [[nodiscard]] bool check_synth_via_clauses(const std::string& where) const;
+        [[nodiscard]] bool check_synth_via_aig(const std::string& where) const;
+        // SLOW_DEBUG: for every y in var_to_formula, prove that f.aig and
+        // f.clauses+f.out denote the same Boolean function. If they don't,
+        // returns a specific y and prints diagnostics. This is the specific
+        // invariant that glues "cex_solver UNSAT means synthesis correct"
+        // to "final .aig export is correct".
+        [[nodiscard]] bool check_aig_matches_clauses_per_formula(const std::string& where) const;
         std::mt19937 mtrand;
         std::vector<uint32_t> updated_y_funcs; // y_hats updated during last round of training
-        std::set<uint32_t> needs_reencode; // formulas modified since last rebuild
-        uint32_t nvars_at_last_rebuild = 0; // nVars at last rebuild for growth tracking
 
         // stats
         double repair_start_time;

@@ -52,6 +52,14 @@ public:
         // TODO: we could have a flag of what has already been inserted into
         // solver_train
         std::vector<CL> clauses;
+        // Index hint: clauses[0..uninserted_start) are guaranteed to have
+        // already been pushed to the cex_solver. inject_formulas walks from
+        // this index forward and sets it to clauses.size() at the end,
+        // turning the per-iteration "skip already-inserted" linear scan
+        // into a tight tail-iteration. Clauses are only ever appended (in
+        // perform_repair / compose_or-move), so the prefix invariant
+        // holds automatically.
+        uint32_t uninserted_start = 0;
         CMSat::Lit out = CMSat::lit_Error;
         ArjunNS::aig_ptr aig = nullptr;
     };
@@ -72,19 +80,19 @@ public:
     Formula compose_ite(const Formula& fleft, const Formula& fright, const Formula& branch, std::set<uint32_t>& helpers) {
         // ITE(branch, TRUE, x) = OR(branch, x)
         if (fleft.out == my_true_lit && fleft.clauses.empty()) {
-            return compose_or(branch, fright);
+            return compose_or(branch, fright, helpers);
         }
         // ITE(branch, FALSE, x) = AND(NOT(branch), x)
         if (fleft.out == ~my_true_lit && fleft.clauses.empty()) {
-            return compose_and(neg(branch), fright);
+            return compose_and(neg(branch), fright, helpers);
         }
         // ITE(branch, x, TRUE) = OR(NOT(branch), x)
         if (fright.out == my_true_lit && fright.clauses.empty()) {
-            return compose_or(neg(branch), fleft);
+            return compose_or(neg(branch), fleft, helpers);
         }
         // ITE(branch, x, FALSE) = AND(branch, x)
         if (fright.out == ~my_true_lit && fright.clauses.empty()) {
-            return compose_and(branch, fleft);
+            return compose_and(branch, fleft, helpers);
         }
         Formula ret;
         ret = compose_ite(fleft, fright, branch.out, helpers);
@@ -101,7 +109,10 @@ public:
     }
 
     // Direct AND encoding: out ↔ (left AND right).
-    Formula compose_and(const Formula& fleft, const Formula& fright) {
+    // Caller passes a `helpers` set so the fresh Tseitin var gets tracked;
+    // Manthan::check_functions_for_y_vars otherwise asserts on the
+    // unregistered literal appearing in a formula clause.
+    Formula compose_and(const Formula& fleft, const Formula& fright, std::set<uint32_t>& helpers) {
         // AND(FALSE, x) = FALSE, AND(x, FALSE) = FALSE
         if (fleft.out == ~my_true_lit && fleft.clauses.empty()) return fleft;
         if (fright.out == ~my_true_lit && fright.clauses.empty()) return fright;
@@ -114,6 +125,7 @@ public:
 
         solver->new_var();
         uint32_t fresh_v = solver->nVars()-1;
+        helpers.insert(fresh_v);
         CMSat::Lit l = CMSat::Lit(fresh_v, false);
 
         // l ↔ (fleft.out AND fright.out)
@@ -128,7 +140,50 @@ public:
         return ret;
     }
 
-    Formula compose_or(const Formula& fleft, const Formula& fright) {
+    // Move-aware overload: takes ownership of fright (typically the
+    // accumulated big formula in perform_repair). Avoids copying
+    // |fright.clauses| every iteration — over a long repair sequence the
+    // const-ref version was O(N²) in clauses copied (each repair copies
+    // every previously-accumulated clause).
+    Formula compose_and(const Formula& fleft, Formula&& fright, std::set<uint32_t>& helpers) {
+        // Constant-fold cases: defer to copy-overload to avoid surprising
+        // moved-from semantics on degenerate inputs.
+        if (fleft.out == ~my_true_lit && fleft.clauses.empty()) return fleft;
+        if (fright.out == ~my_true_lit && fright.clauses.empty()) return Formula(std::move(fright));
+        if (fleft.out == my_true_lit && fleft.clauses.empty()) return Formula(std::move(fright));
+        if (fright.out == my_true_lit && fright.clauses.empty()) return fleft;
+
+        Formula ret;
+        // Move fright's clauses, append fleft's. The OR/AND helper clauses
+        // get appended at the end. This makes the per-call cost O(|fleft|)
+        // instead of O(|fleft| + |fright|).
+        const uint32_t fright_uninserted = fright.uninserted_start;
+        ret.clauses = std::move(fright.clauses);
+        ret.clauses.reserve(ret.clauses.size() + fleft.clauses.size() + 3);
+        for(const auto& cl: fleft.clauses) ret.clauses.push_back(cl);
+
+        solver->new_var();
+        uint32_t fresh_v = solver->nVars()-1;
+        helpers.insert(fresh_v);
+        CMSat::Lit l = CMSat::Lit(fresh_v, false);
+
+        ret.clauses.push_back(CL({~l, fleft.out}));
+        ret.clauses.push_back(CL({~l, fright.out}));
+        ret.clauses.push_back(CL({l, ~fleft.out, ~fright.out}));
+        ret.out = l;
+        // Carry over the prefix-inserted invariant from fright. Anything we
+        // appended (fleft's copy + 3 helpers) is freshly emitted and not yet
+        // pushed to cex_solver.
+        ret.uninserted_start = fright_uninserted;
+
+        assert(fleft.aig != nullptr);
+        assert(fright.aig != nullptr);
+        ret.aig = ArjunNS::AIG::new_and(fleft.aig, fright.aig);
+        return ret;
+    }
+
+    // See compose_and for the `helpers` rationale.
+    Formula compose_or(const Formula& fleft, const Formula& fright, std::set<uint32_t>& helpers) {
         // OR(TRUE, x) = TRUE
         if (fleft.out == my_true_lit && fleft.clauses.empty()) return fleft;
         if (fright.out == my_true_lit && fright.clauses.empty()) return fright;
@@ -142,12 +197,43 @@ public:
 
         solver->new_var();
         uint32_t fresh_v = solver->nVars()-1;
+        helpers.insert(fresh_v);
         CMSat::Lit l = CMSat::Lit(fresh_v, false);
 
         ret.clauses.push_back(CL({~l, fleft.out, fright.out}));
         ret.clauses.push_back(CL({l, ~fleft.out}));
         ret.clauses.push_back(CL({l, ~fright.out}));
         ret.out = l;
+
+        assert(fleft.aig != nullptr);
+        assert(fright.aig != nullptr);
+        ret.aig = ArjunNS::AIG::new_or(fleft.aig, fright.aig);
+        return ret;
+    }
+
+    // Move-aware overload — see compose_and(fleft, Formula&&, ...).
+    Formula compose_or(const Formula& fleft, Formula&& fright, std::set<uint32_t>& helpers) {
+        if (fleft.out == my_true_lit && fleft.clauses.empty()) return fleft;
+        if (fright.out == my_true_lit && fright.clauses.empty()) return Formula(std::move(fright));
+        if (fleft.out == ~my_true_lit && fleft.clauses.empty()) return Formula(std::move(fright));
+        if (fright.out == ~my_true_lit && fright.clauses.empty()) return fleft;
+
+        Formula ret;
+        const uint32_t fright_uninserted = fright.uninserted_start;
+        ret.clauses = std::move(fright.clauses);
+        ret.clauses.reserve(ret.clauses.size() + fleft.clauses.size() + 3);
+        for(const auto& cl: fleft.clauses) ret.clauses.push_back(cl);
+
+        solver->new_var();
+        uint32_t fresh_v = solver->nVars()-1;
+        helpers.insert(fresh_v);
+        CMSat::Lit l = CMSat::Lit(fresh_v, false);
+
+        ret.clauses.push_back(CL({~l, fleft.out, fright.out}));
+        ret.clauses.push_back(CL({l, ~fleft.out}));
+        ret.clauses.push_back(CL({l, ~fright.out}));
+        ret.out = l;
+        ret.uninserted_start = fright_uninserted;
 
         assert(fleft.aig != nullptr);
         assert(fright.aig != nullptr);

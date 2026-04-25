@@ -73,6 +73,7 @@ int do_unate = false;
 int do_unate_def = true;
 int do_revbce = false;
 int do_minim_indep = true;
+int do_sat_sweep = false;
 string debug_minim;
 double cms_glob_mult = -1.0;
 int mode = 0;
@@ -205,8 +206,8 @@ void add_arjun_options() {
     myopt("--detailedstatsevery", mconf.detailed_stats_every, fc_int, "Print detailed stats every N repair loops");
     myopt("--rebuildminloops", mconf.rebuild_min_loops, fc_int, "Min repair loops before cex_solver rebuild");
     myopt("--rebuildminclauses", mconf.rebuild_min_clauses, fc_int, "Min total formula clauses before rebuild");
-    myopt("--rebuildgrownum", mconf.rebuild_growth_num, fc_int, "Rebuild growth numerator");
-    myopt("--rebuildgrowden", mconf.rebuild_growth_den, fc_int, "Rebuild growth denominator");
+    myopt("--rebuildgrownum", mconf.rebuild_growth_num, fc_double, "Rebuild growth numerator");
+    myopt("--rebuildgrowden", mconf.rebuild_growth_den, fc_double, "Rebuild growth denominator");
     myopt("--reducecexgenok", mconf.reduce_cex_gen_ok, fc_int, "Reduce multi_cex when gen_repair_ok > this");
     myopt("--reducecextotrep", mconf.reduce_cex_tot_rep, fc_int, "Reduce multi_cex when tot_repaired > this");
     myopt("--reducecexneedrep", mconf.reduce_cex_need_rep, fc_int, "Set multi_cex_k=1 when needs_repair <= this");
@@ -224,6 +225,7 @@ void add_arjun_options() {
     myopt("--minimbudgetmax", mconf.minim_budget_max, fc_int, "Max minimization solver calls");
     myopt("--minimbudgetmult", mconf.minim_budget_mult, fc_int, "Minim budget = conflict.size * mult (up to max)");
     myopt("--aigsimpevery", mconf.aig_simplify_every, fc_int, "Simplify AIG for hot vars every N repairs");
+    myflag("--sat-sweep", do_sat_sweep, "Run FRAIG-lite SAT sweeping after AIG rewrite (merges proven-equivalent gates)");
     myopt("--tdsteps", mconf.td_steps, fc_int, "Tree decomposition FlowCutter steps");
     myopt("--tdlookahead", mconf.td_lookahead_iters, fc_int, "Tree decomposition FlowCutter lookahead iterations");
     myopt("--bctxremoveall", mconf.better_ctx_remove_all, fc_int, "Remove-all threshold in find_better_ctx_normal");
@@ -383,43 +385,61 @@ void do_synthesis() {
     if (conf.verb)
         cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
 
+    // SLOW_DEBUG: after every pipeline stage, run the semantic SAT check on
+    // the current defs. If any stage produces a wrong def, flag it with the
+    // stage name so it's obvious which pass introduced the bug.
+    [[maybe_unused]] auto check_stage = [&](const std::string& stage) {
+        int bad = cnf.check_synth_funs_sat();
+        if (bad >= 0) {
+            cout << "c o [check_stage] WRONG def after stage '" << stage
+                 << "' for var " << (bad+1) << endl;
+            assert(false && "wrong synth def after stage");
+        }
+    };
+
     if (do_synth_bve && !cnf.synth_done()) {
         cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
+        SLOW_DEBUG_DO(check_stage("simplified_cnf"));
     }
     if (etof_conf.do_autarky && !cnf.synth_done()) {
         arjun->standalone_autarky(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-autarky.aig");
+        SLOW_DEBUG_DO(check_stage("autarky"));
     }
     if (etof_conf.do_extend_indep && !cnf.synth_done()) {
         arjun->standalone_unsat_define(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-extend_synth.aig");
         cnf.simplify_aigs(conf.verb);
+        SLOW_DEBUG_DO(check_stage("extend_synth"));
     }
     if (do_minim_indep && !cnf.synth_done()) {
         arjun->standalone_backward_round_synth(cnf, mconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-minim_idep_synt.aig");
         cnf.simplify_aigs(conf.verb);
+        SLOW_DEBUG_DO(check_stage("minim_idep_synt"));
     }
     if (do_unate && !cnf.synth_done()) {
         arjun->standalone_unate(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate.aig");
+        SLOW_DEBUG_DO(check_stage("unsat_unate"));
     }
     if (do_unate_def && !cnf.synth_done()) {
         arjun->standalone_unate_def(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate_def.aig");
+        SLOW_DEBUG_DO(check_stage("unsat_unate_def"));
     }
 
     SynthRunner synth_runner(conf, arjun);
     auto strategies = synth_runner.parse_mstrategy(mstrategy);
+    cnf.rewrite_aigs(conf.verb, do_sat_sweep);
     synth_runner.run_manthan_strategies(cnf, mconf, strategies);
+
     release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
-    if (!output_file.empty() || !conf.debug_synth.empty()) {
-        cnf.simplify_aigs();
-        cnf.rewrite_aigs(conf.verb);
-    }
+    SLOW_DEBUG_DO(check_stage("manthan"));
     if (!output_file.empty()) {
+        cnf.rewrite_aigs(conf.verb, do_sat_sweep);
         cnf.write_aig_def_to_verilog(output_file);
         cout << "c o [arjun] dumped synthesized functions to verilog file '" << output_file << "'" << endl;
     }

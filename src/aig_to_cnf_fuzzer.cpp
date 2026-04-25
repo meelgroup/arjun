@@ -21,6 +21,7 @@
 
 #include "aig_to_cnf.h"
 #include "aig_rewrite.h"
+#include "aig_fuzz_gen.h"
 #include <cryptominisat5/cryptominisat.h>
 #include <cassert>
 #include <chrono>
@@ -43,182 +44,21 @@ using std::map;
 static AIGManager aig_mng;
 
 // -----------------------------------------------------------------------------
-// Random AIG generation (copied / adapted from aig_fuzzer.cpp).
+// Random AIG generation.  The actual generators live in aig_fuzz_gen.h so the
+// aig_rewrite fuzzer sees the same corpus and the same shape distribution.
+// Local wrappers below preserve the previous file-local call sites.
 // -----------------------------------------------------------------------------
 
-static aig_ptr gen_random_aig(std::mt19937& rng, uint32_t num_vars,
-                              uint32_t depth, uint32_t max_nodes)
-{
-    vector<aig_ptr> pool;
-    for (uint32_t v = 0; v < num_vars; v++) {
-        pool.push_back(AIG::new_lit(v, false));
-        pool.push_back(AIG::new_lit(v, true));
-    }
-    if (rng() % 8 == 0) pool.push_back(aig_mng.new_const(true));
-    if (rng() % 8 == 0) pool.push_back(aig_mng.new_const(false));
-
-    uint32_t nodes_built = 0;
-    for (uint32_t d = 0; d < depth && nodes_built < max_nodes; d++) {
-        uint32_t new_this_level = 1 + rng() % 4;
-        for (uint32_t i = 0; i < new_this_level && nodes_built < max_nodes; i++) {
-            if (pool.size() < 2) break;
-            auto pick = [&]() -> uint32_t {
-                if (rng() % 3 == 0) return rng() % pool.size();
-                uint32_t lo = pool.size() > 4 ? pool.size() - pool.size() / 2 : 0;
-                return lo + rng() % (pool.size() - lo);
-            };
-            uint32_t idx_a = pick();
-            uint32_t idx_b = pick();
-            if (idx_a == idx_b) idx_b = (idx_b + 1) % pool.size();
-            aig_ptr a = pool[idx_a];
-            aig_ptr b = pool[idx_b];
-            uint32_t op = rng() % 7;
-            aig_ptr node;
-            switch (op) {
-                case 0: node = AIG::new_and(a, b, false); break;
-                case 1: node = AIG::new_and(a, b, true); break;
-                case 2: node = AIG::new_or(a, b, false); break;
-                case 3: node = AIG::new_or(a, b, true); break;
-                case 4: node = AIG::new_not(a); break;
-                case 5: {
-                    uint32_t bvar = rng() % num_vars;
-                    bool bneg = rng() % 2;
-                    node = AIG::new_ite(a, b, Lit(bvar, bneg));
-                    break;
-                }
-                case 6: {
-                    // XOR
-                    node = AIG::new_or(
-                        AIG::new_and(a, AIG::new_not(b)),
-                        AIG::new_and(AIG::new_not(a), b));
-                    break;
-                }
-            }
-            pool.push_back(node);
-            nodes_built++;
-        }
-    }
-    if (pool.size() <= num_vars * 2) return pool[rng() % pool.size()];
-    uint32_t start = pool.size() * 2 / 3;
-    return pool[start + rng() % (pool.size() - start)];
-}
-
-// Manthan-style generator: nested ITE trees whose selector branches are ANDs
-// of many literals (mimicking how manthan builds a Skolem function from a DNF
-// cover of a CEX clause). The "then" and "else" arms are recursively built
-// from the same pattern so we get deep ITE chains.
-static aig_ptr gen_manthan_aig(std::mt19937& rng, uint32_t num_vars,
-                                uint32_t depth, uint32_t max_branch_width)
-{
-    // Base case: leaf is a literal (or constant).
-    if (depth == 0) {
-        uint32_t pick = rng() % 10;
-        if (pick == 0) return aig_mng.new_const(true);
-        if (pick == 1) return aig_mng.new_const(false);
-        return AIG::new_lit(rng() % num_vars, rng() % 2);
-    }
-
-    // Build the "branch": an AND of k random literals (1..max_branch_width).
-    uint32_t k = 1 + rng() % std::max<uint32_t>(1u, max_branch_width);
-    // Sometimes force a large AND-of-literals branch (the manthan common case).
-    if (rng() % 3 == 0) k = std::max<uint32_t>(k, 3u + rng() % std::max<uint32_t>(1u, max_branch_width));
-    aig_ptr branch = AIG::new_lit(rng() % num_vars, rng() % 2);
-    for (uint32_t i = 1; i < k; i++) {
-        aig_ptr lit = AIG::new_lit(rng() % num_vars, rng() % 2);
-        branch = AIG::new_and(branch, lit);
-    }
-    // Sometimes negate the branch overall.
-    if (rng() % 5 == 0) branch = AIG::new_not(branch);
-
-    // Recursively build "then" and "else" arms.
-    aig_ptr then_arm = gen_manthan_aig(rng, num_vars, depth - 1, max_branch_width);
-    aig_ptr else_arm = gen_manthan_aig(rng, num_vars, depth - 1, max_branch_width);
-
-    // ITE pattern: (branch ∧ then) ∨ (¬branch ∧ else)
-    aig_ptr ite = AIG::new_or(
-        AIG::new_and(branch, then_arm),
-        AIG::new_and(AIG::new_not(branch), else_arm));
-    return ite;
-}
-
-// LINEAR deep ITE-chain generator: this is the actual manthan workload
-// shape. Each repair adds one more ITE on top of the current formula:
-//   f_{i+1} = ITE(branch_i, repair_i, f_i)
-// where branch_i is an AND of many literals. After ~200-500 repairs the
-// chain depth is hundreds -- matching the "aig_depth: 200+" values in
-// real genbuf8b4n.sat runs.
-static aig_ptr gen_deep_ite_chain_aig(std::mt19937& rng, uint32_t num_vars,
-                                       uint32_t chain_depth,
-                                       uint32_t max_branch_width)
-{
-    // Start with a literal base.
-    aig_ptr f = AIG::new_lit(rng() % num_vars, rng() % 2);
-    for (uint32_t step = 0; step < chain_depth; step++) {
-        // Build the branch: AND of k random literals. Width distribution
-        // is biased towards ~max_branch_width/2 with occasional wide ANDs.
-        uint32_t k = 1 + rng() % std::max<uint32_t>(1u, max_branch_width);
-        if (rng() % 4 == 0) k = std::max<uint32_t>(k, max_branch_width);
-        aig_ptr branch = AIG::new_lit(rng() % num_vars, rng() % 2);
-        for (uint32_t i = 1; i < k; i++) {
-            branch = AIG::new_and(branch, AIG::new_lit(rng() % num_vars, rng() % 2));
-        }
-        // Repair value: usually a literal, occasionally a small AND.
-        aig_ptr repair;
-        if (rng() % 5 == 0) {
-            repair = AIG::new_and(
-                AIG::new_lit(rng() % num_vars, rng() % 2),
-                AIG::new_lit(rng() % num_vars, rng() % 2));
-        } else {
-            repair = AIG::new_lit(rng() % num_vars, rng() % 2);
-        }
-        // ITE(branch, repair, f)
-        f = AIG::new_or(
-            AIG::new_and(branch, repair),
-            AIG::new_and(AIG::new_not(branch), f));
-    }
-    return f;
-}
-
-// "DNF cover" generator: OR of several (AND of literals) * subformula branches.
-// Directly models the inner loop of manthan.cpp around line 590-616.
-static aig_ptr gen_dnf_cover_aig(std::mt19937& rng, uint32_t num_vars,
-                                   uint32_t num_branches, uint32_t max_branch_width)
-{
-    aig_ptr overall = nullptr;
-    for (uint32_t b = 0; b < num_branches; b++) {
-        uint32_t k = 1 + rng() % std::max<uint32_t>(1u, max_branch_width);
-        aig_ptr cur = AIG::new_lit(rng() % num_vars, rng() % 2);
-        for (uint32_t i = 1; i < k; i++) {
-            cur = AIG::new_and(cur, AIG::new_lit(rng() % num_vars, rng() % 2));
-        }
-        if (overall == nullptr) overall = cur;
-        else overall = AIG::new_or(overall, cur);
-    }
-    if (overall == nullptr) overall = aig_mng.new_const(true);
-    if (rng() % 3 == 0) overall = AIG::new_not(overall);
-    return overall;
-}
-
-// Deep chain — good for stressing k-ary AND/OR fusion.
-static aig_ptr gen_chain_aig(std::mt19937& rng, uint32_t num_vars, uint32_t chain_len) {
-    aig_ptr chain = AIG::new_lit(rng() % num_vars, rng() % 2);
-    for (uint32_t i = 0; i < chain_len; i++) {
-        aig_ptr leaf = AIG::new_lit(rng() % num_vars, rng() % 2);
-        uint32_t op = rng() % 4;
-        switch (op) {
-            case 0: chain = AIG::new_and(chain, leaf); break;
-            case 1: chain = AIG::new_or(chain, leaf); break;
-            case 2: chain = AIG::new_and(leaf, chain); break;
-            case 3: chain = AIG::new_or(leaf, chain); break;
-        }
-    }
-    if (rng() % 3 == 0) chain = AIG::new_not(chain);
-    if (rng() % 4 == 0) {
-        aig_ptr other = AIG::new_lit(rng() % num_vars, rng() % 2);
-        chain = AIG::new_ite(chain, other, Lit(rng() % num_vars, rng() % 2));
-    }
-    return chain;
-}
+using fuzz::gen_random_aig;
+using fuzz::gen_manthan_aig;
+using fuzz::gen_deep_ite_chain_aig;
+using fuzz::gen_dnf_cover_aig;
+using fuzz::gen_pure_and_chain;
+using fuzz::gen_pure_or_chain;
+using fuzz::gen_balanced_and_tree;
+using fuzz::gen_balanced_or_tree;
+using fuzz::gen_chain_aig;
+using fuzz::gen_random_shape;
 
 // -----------------------------------------------------------------------------
 // Naive Tseitin baseline encoder (one helper per AND node, 3 clauses each).
@@ -338,6 +178,7 @@ struct FuzzStats {
     uint64_t opt_kary_and = 0, opt_kary_and_width = 0;
     uint64_t opt_kary_or = 0, opt_kary_or_width = 0;
     uint64_t opt_ite = 0;
+    uint64_t opt_mux3 = 0;
     double total_time_s = 0;
 
     void print() const {
@@ -366,6 +207,7 @@ struct FuzzStats {
              << (opt_kary_or ? (double)opt_kary_or_width / opt_kary_or : 0.0)
              << ")" << endl;
         cout << "ITE patterns detected: " << opt_ite << endl;
+        cout << "MUX3 patterns detected: " << opt_mux3 << endl;
         cout << "Time: " << std::fixed << std::setprecision(1)
              << total_time_s << "s" << endl;
     }
@@ -383,6 +225,7 @@ static bool run_one(const aig_ptr& aig, uint32_t num_vars,
                     uint64_t seed, uint64_t iter, FuzzStats& fs,
                     bool verbose)
 {
+    (void)verbose;
     // Build a solver pre-populated with the input variables.
     SATSolver solver;
     solver.set_verbosity(0);
@@ -414,6 +257,7 @@ static bool run_one(const aig_ptr& aig, uint32_t num_vars,
              << "  kAND=" << es.kary_and_count
              << " kOR=" << es.kary_or_count
              << " ITE=" << es.ite_patterns
+             << " MUX3=" << es.mux3_patterns
              << " XOR=" << es.xor_patterns
              << endl;
     }
@@ -428,17 +272,14 @@ static bool run_one(const aig_ptr& aig, uint32_t num_vars,
     fs.opt_kary_or += es.kary_or_count;
     fs.opt_kary_or_width += es.kary_or_width_total;
     fs.opt_ite += es.ite_patterns;
+    fs.opt_mux3 += es.mux3_patterns;
 
-    // 3. Check: naive_out <-> opt_out is valid (equivalence in the combined CNF).
+    // 3. Correctness check.
     if (!sat_equivalent(solver, naive_out, opt_out)) {
         report_failure(aig, num_vars, seed, iter, "sat_equivalent");
         cerr << "  naive_out=" << naive_out << "  opt_out=" << opt_out << endl;
         return false;
     }
-
-    // 4. For small num_vars, also check that the optimized CNF's output literal
-    //    agrees with the AIG's ground-truth value on every input assignment.
-    //    This catches bugs where both encodings are "equivalent" but both wrong.
     if (!cnf_matches_aig(solver, aig, opt_out, num_vars)) {
         report_failure(aig, num_vars, seed, iter, "cnf_matches_aig(opt)");
         return false;
@@ -532,26 +373,34 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
         uint32_t depth = 3 + rng() % (max_depth - 2);
         uint32_t max_nodes = 8 + rng() % max_nodes_cfg;
         aig_ptr aig;
-        uint32_t shape = rng() % 10;
+        uint32_t shape = rng() % 16;
         if (shape < 4) {
             uint32_t d = 50 + rng() % 450;
             if (rng() % 20 == 0) d = 500 + rng() % 500;
             uint32_t bw = 2 + rng() % 8;
-            aig = gen_deep_ite_chain_aig(rng, num_vars, d, bw);
+            aig = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, d, bw);
         } else if (shape < 6) {
             uint32_t nb = 2 + rng() % 8;
             uint32_t bw = 2 + rng() % 6;
-            aig = gen_dnf_cover_aig(rng, num_vars, nb, bw);
+            aig = gen_dnf_cover_aig(aig_mng, rng, num_vars, nb, bw);
         } else if (shape < 7) {
-            aig = gen_manthan_aig(rng, num_vars, 2 + rng() % 4, 2 + rng() % 6);
+            aig = gen_manthan_aig(aig_mng, rng, num_vars, 2 + rng() % 4, 2 + rng() % 6);
         } else if (shape < 8) {
-            aig = gen_random_aig(rng, num_vars, depth, max_nodes);
+            aig = gen_random_aig(aig_mng, rng, num_vars, depth, max_nodes);
         } else if (shape < 9) {
-            aig = gen_chain_aig(rng, num_vars, 5 + rng() % 25);
+            aig = gen_chain_aig(aig_mng, rng, num_vars, 5 + rng() % 25);
+        } else if (shape < 11) {
+            aig = gen_pure_and_chain(aig_mng, rng, num_vars, 10 + rng() % 790);
+        } else if (shape < 13) {
+            aig = gen_pure_or_chain(aig_mng, rng, num_vars, 10 + rng() % 790);
+        } else if (shape < 14) {
+            aig = gen_balanced_and_tree(aig_mng, rng, num_vars, 8 + rng() % 500);
+        } else if (shape < 15) {
+            aig = gen_balanced_or_tree(aig_mng, rng, num_vars, 8 + rng() % 500);
         } else {
             uint32_t d = 50 + rng() % 200;
             uint32_t bw = 2 + rng() % 6;
-            aig_ptr raw = gen_deep_ite_chain_aig(rng, num_vars, d, bw);
+            aig_ptr raw = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, d, bw);
             if (raw) { AIGRewriter rw; aig = rw.rewrite(raw); }
         }
         if (!aig) continue;
@@ -640,7 +489,7 @@ static int run_bench_rewrite_mode(uint64_t seed, uint64_t num_aigs,
     for (uint64_t i = 0; i < num_aigs; i++) {
         uint32_t num_vars = 4 + rng() % max_vars;
         uint32_t bw = 2 + rng() % 6;
-        aig_ptr a = gen_deep_ite_chain_aig(rng, num_vars, chain_depth, bw);
+        aig_ptr a = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, chain_depth, bw);
         if (a) {
             aigs.push_back(a);
             total_raw_nodes += ArjunNS::AIG::count_aig_nodes(a);
@@ -761,35 +610,53 @@ int main(int argc, char** argv) {
         aig_ptr aig;
         // Weight the shape distribution so the deep linear ITE chain --
         // the *actual* manthan Skolem-function shape with aig_depth 200+
-        // -- is the dominant case.
-        uint32_t shape = rng() % 10;
+        // -- is the dominant case, but also cover pure k-ary AND/OR chains
+        // (the target for large single-gate fusion).
+        uint32_t shape = rng() % 16;
         if (shape < 4) {
             // Deep linear ITE chain (primary manthan workload).
-            // Depth 50..500 with occasional very deep chains.
             uint32_t d = 50 + rng() % 450;
             if (rng() % 20 == 0) d = 500 + rng() % 500; // very deep
             uint32_t bw = 2 + rng() % 8;
-            aig = gen_deep_ite_chain_aig(rng, num_vars, d, bw);
+            aig = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, d, bw);
         } else if (shape < 6) {
             // DNF-cover (OR of ANDs-of-lits).
             uint32_t nb = 2 + rng() % 8;
             uint32_t bw = 2 + rng() % 6;
-            aig = gen_dnf_cover_aig(rng, num_vars, nb, bw);
+            aig = gen_dnf_cover_aig(aig_mng, rng, num_vars, nb, bw);
         } else if (shape < 7) {
             // Shallow manthan-style tree (exponential, keep depth tiny).
             uint32_t d = 2 + rng() % 4;
             uint32_t bw = 2 + rng() % 6;
-            aig = gen_manthan_aig(rng, num_vars, d, bw);
+            aig = gen_manthan_aig(aig_mng, rng, num_vars, d, bw);
         } else if (shape < 8) {
-            aig = gen_random_aig(rng, num_vars, depth, max_nodes);
+            aig = gen_random_aig(aig_mng, rng, num_vars, depth, max_nodes);
         } else if (shape < 9) {
-            aig = gen_chain_aig(rng, num_vars, 5 + rng() % 25);
+            aig = gen_chain_aig(aig_mng, rng, num_vars, 5 + rng() % 25);
+        } else if (shape < 11) {
+            // Pure big-AND chain of distinct literal inputs: canonical target
+            // for k-ary AND fusion. Length 10..800 to also exercise the width
+            // cap path.
+            uint32_t len = 10 + rng() % 790;
+            aig = gen_pure_and_chain(aig_mng, rng, num_vars, len);
+        } else if (shape < 13) {
+            uint32_t len = 10 + rng() % 790;
+            aig = gen_pure_or_chain(aig_mng, rng, num_vars, len);
+        } else if (shape < 14) {
+            // Balanced AND tree: same semantics as a pure big-AND but
+            // built bottom-up, so the encoder has to flatten through internal
+            // AND nodes.
+            uint32_t len = 8 + rng() % 500;
+            aig = gen_balanced_and_tree(aig_mng, rng, num_vars, len);
+        } else if (shape < 15) {
+            uint32_t len = 8 + rng() % 500;
+            aig = gen_balanced_or_tree(aig_mng, rng, num_vars, len);
         } else {
             // Simplify a deep ITE chain first to exercise the encoder on
             // rewritten AIGs (closest to the real pipeline).
             uint32_t d = 50 + rng() % 200;
             uint32_t bw = 2 + rng() % 6;
-            aig_ptr raw = gen_deep_ite_chain_aig(rng, num_vars, d, bw);
+            aig_ptr raw = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, d, bw);
             if (raw) {
                 AIGRewriter rw;
                 aig = rw.rewrite(raw);
@@ -817,6 +684,7 @@ int main(int argc, char** argv) {
                  << "  kAND=" << fs.opt_kary_and
                  << " kOR=" << fs.opt_kary_or
                  << " ITE=" << fs.opt_ite
+                 << " MUX3=" << fs.opt_mux3
                  << endl;
         }
     }

@@ -167,12 +167,17 @@ def run_check(command, final):
         exit(-1)
 
     for line in consoleOutput.split("\n"):
-        if "CORRECT" in line:
+        # Match "CORRECT" but not "INCORRECT" — test-synth prints both on
+        # failure ("AIGs are INCORRECT") and success ("AIGs are CORRECT"),
+        # and plain substring matching accepts the failure text too.
+        if "CORRECT" in line and "INCORRECT" not in line:
             print("Check output: %s" % line)
             ok = True
 
     if not ok and final:
         print("ERROR: check process did not report CORRECT")
+        print("Full check output was:")
+        print(consoleOutput)
         exit(-1)
 
 
@@ -316,7 +321,7 @@ def gen_mstrategy():
                    "detailed_stats_every", "rebuild_min_loops", "rebuild_min_clauses",
                    "rebuild_growth_num", "rebuild_growth_den",
                    "reduce_cex_gen_ok", "reduce_cex_tot_rep", "reduce_cex_need_rep",
-                   "reduce_cex_cz_min_rep", "skip_better_ctx_min", "skip_better_ctx_freq",
+                   "reduce_cex_cz_min_rep",
                    "simplify_repair_every", "skip_input_only_min_rep", "skip_input_only_ratio",
                    "conflict_drop_y_max", "extra_minim_hot", "extra_minim_very_hot",
                    "conflict_cap", "conflict_cap_keep", "batch_minim_min",
@@ -437,6 +442,10 @@ if __name__ == "__main__":
             val = random.choice([0, 1])
             solver += o + " " + str(val)
 
+        # Pure boolean flag (no 0/1 value). ~1-in-2 coverage.
+        if random.choice([True, False]):
+            solver += " --sat-sweep"
+
         solver += " --morder " + str(random.randint(0, 2))
         solver += " --bveresolvmaxsz " + str(random.randint(2, 20))
         solver += " --iter1grow " + str(random.randint(0, 5))
@@ -457,8 +466,8 @@ if __name__ == "__main__":
         solver += " --detailedstatsevery " + random.choice(["0", "1", "10", "200", "5000"])
         solver += " --rebuildminloops " + random.choice(["1", "5", "50", "200", "10000"])
         solver += " --rebuildminclauses " + random.choice(["1", "100", "1000", "100000", "1000000"])
-        solver += " --rebuildgrownum " + random.choice(["1", "2", "3", "5", "10"])
-        solver += " --rebuildgrowden " + random.choice(["0", "1", "2", "3", "5"])
+        solver += " --rebuildgrownum " + random.choice(["0.02", "0.1", "1", "2", "10"])
+        solver += " --rebuildgrowden " + random.choice(["0", "0.5", "1", "3", "10"])
         solver += " --reducecexgenok " + random.choice(["1", "5", "20", "100", "10000"])
         solver += " --reducecextotrep " + random.choice(["1", "10", "100", "2000", "100000"])
         solver += " --reducecexneedrep " + random.choice(["0", "1", "3", "10", "1000"])

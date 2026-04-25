@@ -31,7 +31,7 @@ Checks: >
   performance-unnecessary-copy-initialization,
   readability-const-return-type,
   readability-container-size-empty,
-  readability-convert-member-functions-to-static,
+  -readability-convert-member-functions-to-static,
   readability-else-after-return,
   readability-identifier-naming,
   readability-make-member-function-const,
@@ -40,7 +40,7 @@ Checks: >
   readability-redundant-member-init,
   readability-redundant-smartptr-get,
   readability-redundant-string-cstr,
-  readability-simplify-boolean-expr
+  -readability-simplify-boolean-expr
 
 CheckOptions:
 - key: bugprone-assert-side-effect.AssertMacros
