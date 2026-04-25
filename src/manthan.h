@@ -67,6 +67,9 @@ class Manthan {
         // std::numeric_limits<uint32_t>::max(). Filled by populate_y_to_y_hat_vec
         // after create_vars_for_y_hats and never modified afterwards.
         std::vector<uint32_t> y_to_y_hat_vec;
+        // Cached y → y_order position weight, populated on first call to
+        // find_better_ctx_normal. Recomputed if cnf.nVars() ever changes.
+        std::vector<uint32_t> y_to_y_order_pos_vec;
         void populate_y_to_y_hat_vec();
         inline uint32_t y_to_y_hat_fast(uint32_t y) const {
             assert(y < y_to_y_hat_vec.size());

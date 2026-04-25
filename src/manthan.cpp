@@ -2585,12 +2585,17 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
         s.add_clause({l});
     }
 
-    map<uint32_t, uint32_t> y_to_y_order_pos;
-    for(size_t i = 0; i < y_order.size(); i++) {
-        if (mconf.maxsat_order)
-            y_to_y_order_pos[y_order[i]] = i+1;
-        else
-            y_to_y_order_pos[y_order[i]] = y_order.size()-i;
+    // y_order doesn't change after init, so the per-call std::map build was
+    // wasted. Cache the order-position vector on the first call (vector
+    // sized cnf.nVars() with -1 sentinel for non-y_order entries).
+    if (y_to_y_order_pos_vec.empty() || y_to_y_order_pos_vec.size() != cnf.nVars()) {
+        y_to_y_order_pos_vec.assign(cnf.nVars(), 0);
+        for(size_t i = 0; i < y_order.size(); i++) {
+            const uint32_t pos = mconf.maxsat_order ? (uint32_t)(i + 1)
+                                                   : (uint32_t)(y_order.size() - i);
+            if (y_order[i] < y_to_y_order_pos_vec.size())
+                y_to_y_order_pos_vec[y_order[i]] = pos;
+        }
     }
 
     // For to_define variables, separate into correct and incorrect
@@ -2606,7 +2611,7 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
             s.add_clause({l});
         } else {
             // Incorrect, we want to try to fix this
-            uint32_t weight = y_to_y_order_pos[y];
+            uint32_t weight = y < y_to_y_order_pos_vec.size() ? y_to_y_order_pos_vec[y] : 0;
             incorrect_lits.emplace_back(l, weight);
             verb_print(3, "[find-better-ctx-normal] CTX is INCORRECT on y=" << y+1
                  << " ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat])
