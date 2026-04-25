@@ -2632,19 +2632,20 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
     std::sort(incorrect_lits.begin(), incorrect_lits.end(),
               [](const auto& a, const auto& b) { return a.second > b.second; });
 
-    // Iteratively find a minimal CTX
-    set<uint32_t> cannot_fix; // variables we cannot fix
+    // Iteratively find a minimal CTX. cannot_fix was an std::set; the
+    // membership test ran once per incorrect_lit per iteration. Keep it
+    // dense as a var-indexed bitmap — O(1) lookups, dirty-tracked clear.
+    vector<uint8_t> cannot_fix(cnf.nVars(), 0);
     vector<Lit> assumps;
     while (true) {
         assumps.clear();
         for(const auto& [lit, weight]: incorrect_lits) {
-            if (cannot_fix.count(lit.var()) == 0) assumps.push_back(lit);
+            if (!cannot_fix[lit.var()]) assumps.push_back(lit);
         }
         auto ret = s.solve(&assumps);
         if (ret == l_True) {
             // Success! Extract the model
-            verb_print(2, "[find-better-ctx-normal] Found satisfying assignment. "
-                       << "Could not fix " << cannot_fix.size() << " variables.");
+            verb_print(2, "[find-better-ctx-normal] Found satisfying assignment.");
             for(const auto& v: to_define_full) {
                 ctx[v] = s.get_model()[v];
             }
@@ -2661,14 +2662,14 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
         set<Lit> conflict_set(conflict.begin(), conflict.end());
         uint32_t num_conflicting = 0;
         for(const auto& [lit, weight]: incorrect_lits) {
-            if (conflict_set.count(~lit) && !cannot_fix.count(lit.var()))
+            if (conflict_set.count(~lit) && !cannot_fix[lit.var()])
                 num_conflicting++;
         }
         bool remove_all = (num_conflicting > mconf.better_ctx_remove_all);
         for(const auto& [lit, weight]: incorrect_lits) {
-            if (conflict_set.count(~lit) && !cannot_fix.count(lit.var())) {
+            if (conflict_set.count(~lit) && !cannot_fix[lit.var()]) {
                 verb_print(3, "[find-better-ctx-normal] Giving up on fixing var " << lit.var()+1);
-                cannot_fix.insert(lit.var());
+                cannot_fix[lit.var()] = 1;
                 if (!remove_all) break; // Remove one at a time for small conflicts
             }
         }
