@@ -248,6 +248,7 @@ void Manthan::rebuild_var_bytemaps() {
     for (const auto& v : to_define_full) is_to_define_full[v] = 1;
     for (const auto& v : to_define) is_to_define[v] = 1;
     for (const auto& v : helper_functions) is_helper_function[v] = 1;
+    to_define_full_vec.assign(to_define_full.begin(), to_define_full.end());
 }
 
 void Manthan::fill_dependency_mat_with_backward() {
@@ -3112,7 +3113,11 @@ void Manthan::recompute_all_y_hat_aig(sample& ctx, const uint32_t y_rep) {
 void Manthan::compute_needs_repair(const sample& ctx) {
     assert(ctx[fh->get_true_lit().var()] == l_True);
     needs_repair.clear();
-    for(const auto& y: to_define_full) {
+    // Iterate the dense vector mirror of to_define_full — std::set walks a
+    // red-black tree (cache-thrashing) and this is called many times per
+    // outer/inner iteration. The vector is built sorted so the resulting
+    // std::set::insert path is the same fast back-of-tree append.
+    for(const auto& y: to_define_full_vec) {
         if (ctx[y] != ctx[y_to_y_hat_fast(y)]) needs_repair.insert(y);
     }
 }
