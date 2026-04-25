@@ -259,6 +259,57 @@ inline aig_ptr gen_balanced_or_tree(ArjunNS::AIGManager& /*aig_mng*/,
     return level[0];
 }
 
+// Pure ITE-tree that exercises MUX3 fusion in aig_to_cnf. Each ITE's else
+// branch is itself an ITE, so the encoder can collapse two adjacent ITEs
+// into a single MUX3 (1 helper + 6 clauses) when fanout permits. Random
+// flips of the polarity of the selectors and arms cover the "selector
+// negative" / "arm sub-AIG" branches of the MUX3 detection too.
+inline aig_ptr gen_mux3_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
+                                  std::mt19937& rng, uint32_t num_vars,
+                                  uint32_t depth)
+{
+    // Bottom value
+    aig_ptr cur = AIG::new_lit(rng() % num_vars, rng() % 2);
+    for (uint32_t i = 0; i < depth; i++) {
+        // Selector (literal, optionally complemented).
+        const CMSat::Lit s(rng() % num_vars, rng() % 2);
+        // Then-arm: literal most of the time, sub-AIG (AND of two lits)
+        // every fifth step — that's exactly the shape MUX3's inner ITE
+        // detection looks for.
+        aig_ptr then_arm;
+        if (rng() % 5 == 0) {
+            then_arm = AIG::new_and(
+                AIG::new_lit(rng() % num_vars, rng() % 2),
+                AIG::new_lit(rng() % num_vars, rng() % 2));
+        } else {
+            then_arm = AIG::new_lit(rng() % num_vars, rng() % 2);
+        }
+        cur = AIG::new_ite(then_arm, cur, s);
+    }
+    if (rng() % 3 == 0) cur = AIG::new_not(cur);
+    return cur;
+}
+
+// XOR-of-XOR shape: builds (XOR(a, b)) XOR c style nested XORs. Exercises
+// the try_xor / XNOR detection across multiple levels.
+inline aig_ptr gen_xor_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
+                                 std::mt19937& rng, uint32_t num_vars,
+                                 uint32_t depth)
+{
+    auto xor_of = [](const aig_ptr& a, const aig_ptr& b) -> aig_ptr {
+        return AIG::new_or(
+            AIG::new_and(a, AIG::new_not(b)),
+            AIG::new_and(AIG::new_not(a), b));
+    };
+    aig_ptr cur = AIG::new_lit(rng() % num_vars, rng() % 2);
+    for (uint32_t i = 0; i < depth; i++) {
+        aig_ptr next = AIG::new_lit(rng() % num_vars, rng() % 2);
+        cur = xor_of(cur, next);
+    }
+    if (rng() % 4 == 0) cur = AIG::new_not(cur);
+    return cur;
+}
+
 // Arbitrary deep chain of mixed AND/OR with a literal threaded through.
 inline aig_ptr gen_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
                              std::mt19937& rng, uint32_t num_vars, uint32_t chain_len)
@@ -294,10 +345,12 @@ enum class Shape : uint8_t {
     PureOrChain,
     BalancedAndTree,
     BalancedOrTree,
+    Mux3Chain,
+    XorChain,
 };
 
 inline Shape pick_shape(std::mt19937& rng) {
-    uint32_t s = rng() % 16;
+    uint32_t s = rng() % 18;
     if (s < 4)  return Shape::DeepIteChain;
     if (s < 6)  return Shape::DnfCover;
     if (s < 7)  return Shape::Manthan;
@@ -306,7 +359,9 @@ inline Shape pick_shape(std::mt19937& rng) {
     if (s < 11) return Shape::PureAndChain;
     if (s < 13) return Shape::PureOrChain;
     if (s < 14) return Shape::BalancedAndTree;
-    return Shape::BalancedOrTree;
+    if (s < 15) return Shape::BalancedOrTree;
+    if (s < 17) return Shape::Mux3Chain;
+    return Shape::XorChain;
 }
 
 // Emit a random AIG whose shape is picked by pick_shape(). max_vars, max_depth
@@ -345,6 +400,16 @@ inline aig_ptr gen_random_shape(ArjunNS::AIGManager& aig_mng,
             return gen_balanced_and_tree(aig_mng, rng, num_vars, 8 + rng() % 500);
         case Shape::BalancedOrTree:
             return gen_balanced_or_tree(aig_mng, rng, num_vars, 8 + rng() % 500);
+        case Shape::Mux3Chain: {
+            uint32_t d = 5 + rng() % 50;
+            if (rng() % 10 == 0) d = 50 + rng() % 200;
+            return gen_mux3_chain_aig(aig_mng, rng, num_vars, d);
+        }
+        case Shape::XorChain: {
+            uint32_t d = 3 + rng() % 30;
+            if (rng() % 10 == 0) d = 30 + rng() % 100;
+            return gen_xor_chain_aig(aig_mng, rng, num_vars, d);
+        }
     }
     return aig_mng.new_const(true);
 }
