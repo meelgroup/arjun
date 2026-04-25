@@ -41,6 +41,13 @@ class Unate {
         void synthesis_unate_def(ArjunNS::SimplifiedCNF& cnf);
         void synthesis_unate(ArjunNS::SimplifiedCNF& cnf);
     private:
+        // One pass of SAT-based unate detection over the current to_define
+        // set. Caller is expected to drive it in a fix-point loop, since
+        // each pass's pinned units may unblock further unates in the next
+        // pass via propagation. Returns the number of new units found.
+        // Mutates cnf (adds unit clauses) and the unates accumulator.
+        uint32_t synthesis_unate_def_pass(ArjunNS::SimplifiedCNF& cnf,
+                                          std::vector<CMSat::Lit>& unates);
 
         ArjunInt::Config conf;
         std::set<uint32_t> input;
