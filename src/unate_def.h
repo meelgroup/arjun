@@ -51,6 +51,13 @@ class Unate {
         // Found definitions are written as AIGs and the var moves out of
         // to_define. Returns the number of vars defined.
         uint32_t synthesis_gate_def(ArjunNS::SimplifiedCNF& cnf);
+        // SAT-based equivalence detection: for each pair (yᵢ, yⱼ) of
+        // to-define vars (or yᵢ in to_define and xⱼ in input), test whether
+        // F entails (yᵢ ↔ yⱼ) or (yᵢ ↔ ¬yⱼ). Uses CMSGen sampling to bucket
+        // candidates by value-vector signature so only in-bucket pairs hit
+        // the SAT path. Definitions extract as one-node AIGs (yᵢ = yⱼ or
+        // yᵢ = ¬yⱼ). Returns the number of vars defined.
+        uint32_t synthesis_equiv_def(ArjunNS::SimplifiedCNF& cnf, bool include_input);
     private:
         // One pass of SAT-based unate detection over the current to_define
         // set. Caller is expected to drive it in a fix-point loop, since

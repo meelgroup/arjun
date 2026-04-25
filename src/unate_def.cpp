@@ -50,6 +50,16 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         (void)gate_defs;
     }
 
+    // SAT-based equivalence pass: catches yᵢ = yⱼ / yᵢ = ¬yⱼ that the
+    // syntactic pass misses (no two-clause equivalence pattern in the CNF
+    // even though the entailment holds). Run before the unate test
+    // because each equivalence found removes a var from to_define and
+    // shrinks the dual-rail miter.
+    {
+        const uint32_t equiv_defs = synthesis_equiv_def(cnf, /*include_input=*/true);
+        (void)equiv_defs;
+    }
+
     std::vector<Lit> pure_pre_units;
     {
         // Re-fetch types (could change between calls if iterated).
@@ -347,6 +357,197 @@ uint32_t Unate::synthesis_gate_def(SimplifiedCNF& cnf) {
         << " eq: " << n_eq
         << " and-or: " << n_and
         << " (cycles dropped: " << (n_eq + n_and - total) << ")"
+        << " T: " << setprecision(3) << fixed << (cpuTime() - t0));
+    return total;
+}
+
+uint32_t Unate::synthesis_equiv_def(SimplifiedCNF& cnf, bool include_input) {
+    const double t0 = cpuTime();
+    cnf.get_var_types(0 | verbose_debug_enabled, "start equiv_def").unpack_to(input, to_define, backward_defined);
+    if (to_define.empty()) return 0;
+
+    // Step 1: simulation. Generate K satisfying assignments via cmsgen
+    // sampling and bucket vars by value-vector signature. Only in-bucket
+    // pairs go to the SAT verification step.
+    constexpr uint32_t K = 64; // bits in signature
+    SATSolver samp;
+    samp.set_seed(conf.seed);
+    samp.new_vars(cnf.nVars());
+    for (const auto& cl : cnf.get_clauses()) samp.add_clause(cl);
+    samp.set_up_for_sample_counter(100);
+
+    std::vector<uint64_t> sig(cnf.nVars(), 0);
+    uint32_t got = 0;
+    for (uint32_t i = 0; i < K; i++) {
+        const auto ret = samp.solve();
+        if (ret != l_True) {
+            // Either UNSAT (broken CNF — caller's bug) or unknown after
+            // budget. Stop sampling either way.
+            break;
+        }
+        const auto& m = samp.get_model();
+        for (uint32_t v = 0; v < cnf.nVars(); v++) {
+            if (m[v] == l_True) sig[v] |= (uint64_t)1 << i;
+        }
+        got++;
+    }
+    if (got < 4) {
+        verb_print(1, "[unate_def/equiv-def] only got " << got
+            << " samples; skipping (need ≥4 to be useful)");
+        return 0;
+    }
+
+    // Bucket by signature. For each var v, the canonical signature is
+    // min(sig[v], ~sig[v] & mask) so that v and ¬v land in the same bucket
+    // (we test both polarities below).
+    const uint64_t full_mask = (got == 64) ? ~uint64_t{0} : (((uint64_t)1 << got) - 1);
+    auto canon = [&](uint32_t v) -> uint64_t {
+        const uint64_t a = sig[v] & full_mask;
+        const uint64_t b = (~sig[v]) & full_mask;
+        return std::min(a, b);
+    };
+    std::unordered_map<uint64_t, std::vector<uint32_t>> bucket;
+    verb_print(2, "[unate_def/equiv-def] sampling done; got=" << got
+        << " to_define=" << to_define.size() << " input+extend=" << input.size());
+    for (uint32_t y : to_define) bucket[canon(y)].push_back(y);
+    if (include_input) {
+        for (uint32_t x : input) {
+            // Inputs already have a "definition" implicitly (= themselves).
+            // We'll only use them as RHS of an equivalence we add for a
+            // y-side var.
+            bucket[canon(x)].push_back(x);
+        }
+    }
+
+    // Step 2: SAT verification.
+    SATSolver vrfy;
+    vrfy.set_seed(conf.seed);
+    vrfy.new_vars(cnf.nVars());
+    for (const auto& cl : cnf.get_clauses()) vrfy.add_clause(cl);
+
+    std::vector<aig_ptr> aigs(cnf.nVars(), nullptr);
+    uint32_t n_pos = 0, n_neg = 0;
+    uint32_t n_sat_calls = 0;
+
+    auto is_input_var = [&](uint32_t v) -> bool {
+        return v < cnf.nVars() && input.count(v);
+    };
+
+    for (auto& [s, vars] : bucket) {
+        if (vars.size() < 2) continue;
+        // For each pair, test (yᵢ, yⱼ) under both polarities. We only need
+        // one DEF per yᵢ — once it's defined, skip subsequent pairs that
+        // include it on the LHS. Order: vars sorted so we always pick the
+        // smallest-indexed RHS deterministically.
+        std::sort(vars.begin(), vars.end());
+        for (size_t i = 0; i < vars.size(); i++) {
+            const uint32_t y_i = vars[i];
+            // y_i must be a to-define var (input vars stay as-is). If
+            // include_input is true, the bucket may have inputs too; only
+            // do them as RHS, never as LHS.
+            if (is_input_var(y_i)) continue;
+            if (aigs[y_i]) continue; // already defined this round
+            // Check pre-existing defs (from earlier passes / extend / backward).
+            if (cnf.get_def(y_i) != nullptr) continue; // wait — y_i is NEW-space
+            for (size_t j = 0; j < vars.size(); j++) {
+                if (i == j) continue;
+                const uint32_t y_j = vars[j];
+                if (y_j == y_i) continue;
+                // Determine polarity: positive equivalence (y_i = y_j) or
+                // negative (y_i = ¬y_j) based on simulation signatures.
+                const bool same_polarity = ((sig[y_i] ^ sig[y_j]) & full_mask) == 0;
+                const bool opp_polarity  = ((sig[y_i] ^ sig[y_j]) & full_mask) == full_mask;
+                if (!same_polarity && !opp_polarity) continue; // false-positive bucket co-residency
+                // SAT-test:
+                //   Positive equivalence (y_i = y_j): assume {y_i, ¬y_j} → UNSAT,
+                //                                     and {¬y_i, y_j} → UNSAT.
+                //   Negative equivalence (y_i = ¬y_j): assume {y_i, y_j} → UNSAT,
+                //                                     and {¬y_i, ¬y_j} → UNSAT.
+                std::vector<Lit> a1, a2;
+                if (same_polarity) {
+                    a1 = {Lit(y_i, false), Lit(y_j, true)};
+                    a2 = {Lit(y_i, true),  Lit(y_j, false)};
+                } else {
+                    a1 = {Lit(y_i, false), Lit(y_j, false)};
+                    a2 = {Lit(y_i, true),  Lit(y_j, true)};
+                }
+                n_sat_calls++;
+                lbool r1 = vrfy.solve(&a1);
+                if (r1 != l_False) continue;
+                n_sat_calls++;
+                lbool r2 = vrfy.solve(&a2);
+                if (r2 != l_False) continue;
+                // Found equivalence. Build AIG.
+                aigs[y_i] = AIG::new_lit(y_j, !same_polarity);
+                if (same_polarity) n_pos++; else n_neg++;
+                break; // y_i defined, move to next i
+            }
+        }
+    }
+
+    // Cycle-safety check (same logic as gate-def but inlined here).
+    {
+        const auto new_to_orig_var = cnf.get_new_to_orig_var();
+        auto orig_of = [&](uint32_t v_new) -> uint32_t {
+            auto it = new_to_orig_var.find(v_new);
+            if (it == new_to_orig_var.end()) return std::numeric_limits<uint32_t>::max();
+            return it->second.var();
+        };
+        std::unordered_map<uint32_t, std::vector<uint32_t>> cand_deps_orig;
+        std::unordered_map<uint32_t, uint32_t> y_new_of;
+        for (uint32_t v = 0; v < cnf.nVars(); v++) {
+            if (!aigs[v]) continue;
+            const uint32_t y_orig = orig_of(v);
+            if (y_orig == std::numeric_limits<uint32_t>::max()) { aigs[v] = nullptr; continue; }
+            std::set<uint32_t> ds;
+            AIG::get_dependent_vars(aigs[v], ds, v);
+            std::vector<uint32_t> ds_orig;
+            ds_orig.reserve(ds.size());
+            bool ok = true;
+            for (auto d : ds) {
+                const uint32_t d_orig = orig_of(d);
+                if (d_orig == std::numeric_limits<uint32_t>::max()) { ok = false; break; }
+                if (d_orig == y_orig) { ok = false; break; }
+                ds_orig.push_back(d_orig);
+            }
+            if (!ok) { aigs[v] = nullptr; continue; }
+            cand_deps_orig[y_orig] = std::move(ds_orig);
+            y_new_of[y_orig] = v;
+        }
+        std::vector<uint32_t> to_drop;
+        for (const auto& [y_orig, ds] : cand_deps_orig) {
+            std::queue<uint32_t> q;
+            std::unordered_set<uint32_t> visited;
+            for (auto d : ds) { q.push(d); visited.insert(d); }
+            bool cycle = false;
+            while (!q.empty() && !cycle) {
+                uint32_t cur = q.front(); q.pop();
+                if (cur == y_orig) { cycle = true; break; }
+                const auto& def_aig = cnf.get_def(cur);
+                if (def_aig != nullptr) {
+                    std::set<uint32_t> defds;
+                    AIG::get_dependent_vars(def_aig, defds, cur);
+                    for (auto d : defds) if (visited.insert(d).second) q.push(d);
+                }
+                auto it = cand_deps_orig.find(cur);
+                if (it != cand_deps_orig.end()) {
+                    for (auto d : it->second) if (visited.insert(d).second) q.push(d);
+                }
+            }
+            if (cycle) to_drop.push_back(y_orig);
+        }
+        for (uint32_t y_orig : to_drop) aigs[y_new_of[y_orig]] = nullptr;
+    }
+
+    uint32_t total = 0;
+    for (uint32_t v = 0; v < cnf.nVars(); v++) if (aigs[v]) total++;
+    if (total > 0) cnf.map_aigs_to_orig(aigs, cnf.nVars());
+    verb_print(1, "[unate_def/equiv-def]"
+        << " pos: " << n_pos << " neg: " << n_neg
+        << " survivors: " << total << " (" << (n_pos + n_neg - total) << " cycle-dropped)"
+        << " SAT-calls: " << n_sat_calls
+        << " buckets: " << bucket.size()
+        << " include_input: " << include_input
         << " T: " << setprecision(3) << fixed << (cpuTime() - t0));
     return total;
 }
