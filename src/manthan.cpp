@@ -2719,10 +2719,18 @@ void Manthan::add_not_f_x_yhat() {
 void Manthan::inject_formulas_into_solver() {
     SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
 
-    // Replace y with y_hat
+    // Replace y with y_hat.
+    //
+    // form.uninserted_start lets us skip the inserted prefix without
+    // walking it. The compose_or/and move overloads maintain the prefix
+    // invariant (all clauses < uninserted_start are inserted); the
+    // const-ref overloads conservatively set uninserted_start = 0, so
+    // the cl.inserted flag is still the source of truth on degenerate
+    // paths.
     for(auto& k: updated_y_funcs) {
         auto& form = var_to_formula.at(k);
-        for(auto& cl: form.clauses) {
+        for (size_t i = form.uninserted_start; i < form.clauses.size(); i++) {
+            auto& cl = form.clauses[i];
             if (cl.inserted) continue;
             vector<Lit> cl2;
             for(const auto& l: cl.lits) {
@@ -2733,6 +2741,7 @@ void Manthan::inject_formulas_into_solver() {
             cex_solver.add_clause(cl2);
             cl.inserted = true;
         }
+        form.uninserted_start = form.clauses.size();
     }
 
     // Relation between y_hat and form_out
