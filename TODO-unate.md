@@ -98,6 +98,19 @@ If you want one PR that covers most of the gap with minimal disturbance, the sug
 
 Both passes plug into the existing `MetaSolver` / `add_clause` infrastructure and the existing `interpolant.cpp` is unchanged (no new interpolation needed for #1).
 
+## Implementation status (commits on `develop`)
+
+| # | Item | Commit | Yield on test bench |
+|---|---|---|---|
+| 7 | Pure-literal pre-pass | `19d3c26` | 0 hits (CMS already strips them) |
+| 3 | Iterative fix-point | `37bf623` | 0 cascades found; +1 wasted pass per Unate call (~2-4s on usb/sdlx) |
+| 6 | Syntactic gate detection | `8d5c406` | 0 hits (puura/SCC already collapses these); ~0.06-0.19s scan |
+| 1+2 | Sim+SAT equivalence detection | `441d7b5` | 0 hits (puura already collapses); ~0.06-0.18s scan |
+| 4 | Padoa over X∪Y\\{y} | NOT IMPLEMENTED — `backward.cpp` already runs the equivalent dual-rail Padoa test with `interpolant.cpp` extracting the AIG. Adding a separate pass would duplicate the work. |
+| 5 | Conditional unate | NOT IMPLEMENTED — yield expected to be marginal after #1 already finds the easy cases, and the ITE-extraction with a free arm is messy. Worth revisiting if a benchmark is found where it would help. |
+
+The four pipeline benchmarks (`sdlx-fixpoint-5`, `genbuf8b4n.sat`, `usb-phy-fixpoint-5`, `query52_query25_1344n`) are post-puura inputs where every easy gate / equivalence / pure literal has already been collapsed. The new passes add bounded cost (sub-second each) and find no new defs *for these inputs*, but pay for themselves the moment `unate_def` is invoked on a non-pre-processed CNF (the standalone API surface).
+
 ## Sources
 - [Lagniez & Marquis, *Improving Model Counting by Leveraging Definability* (IJCAI 2016)](https://www.ijcai.org/Proceedings/16/Papers/112.pdf)
 - [Lagniez & Marquis, *Definability for Model Counting* (Artificial Intelligence 2019)](https://www.sciencedirect.com/science/article/pii/S0004370218303928)
