@@ -45,6 +45,60 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         verb_print(1, "[unate_def] No variables to define, skipping");
         return;
     }
+    std::vector<Lit> pure_pre_units;
+
+    // Pure-literal pre-pass: a to-define var that appears with only one
+    // polarity in F is unate at the *opposite* polarity for free — no SAT
+    // call. Lagniez-Marquis's "Improving Model Counting by Leveraging
+    // Definability" lists this as a syntactic shortcut that should always
+    // run before the SAT-based test. CMS's normal preprocessing strips
+    // these for solver vars, but we run on the raw CNF here, so the check
+    // pays its own way. We pin each find as a unit clause and drop the var
+    // from to_define so the dual-rail solver below doesn't redundantly
+    // re-test it.
+    {
+        const double pl_start = cpuTime();
+        std::vector<uint32_t> pos_count(cnf.nVars(), 0);
+        std::vector<uint32_t> neg_count(cnf.nVars(), 0);
+        for (const auto& cl : cnf.get_clauses()) {
+            for (const auto& l : cl) {
+                if (l.sign()) neg_count[l.var()]++;
+                else pos_count[l.var()]++;
+            }
+        }
+        std::vector<Lit> pure_units;
+        std::vector<uint32_t> pure_done;
+        for (const auto& v : to_define) {
+            // A var with no occurrences at all is a pure don't-care; pin
+            // it to false (arbitrary, matching CMS's pure-literal default).
+            if (pos_count[v] == 0 && neg_count[v] == 0) {
+                pure_units.emplace_back(v, true);
+                pure_done.push_back(v);
+            } else if (pos_count[v] == 0) {
+                // Only ¬v occurs ⇒ v=false satisfies every clause containing v.
+                pure_units.emplace_back(v, true);
+                pure_done.push_back(v);
+            } else if (neg_count[v] == 0) {
+                // Only v occurs ⇒ v=true satisfies every clause containing v.
+                pure_units.emplace_back(v, false);
+                pure_done.push_back(v);
+            }
+        }
+        for (const auto& l : pure_units) cnf.add_clause({l});
+        for (const auto& v : pure_done) to_define.erase(v);
+        new_units += pure_units.size();
+        pure_pre_units = std::move(pure_units);
+        verb_print(1, "[unate_def/pure-lit] units: " << setw(4) << pure_pre_units.size()
+            << " out of " << setw(5) << (to_define.size() + pure_pre_units.size())
+            << " T: " << setprecision(3) << fixed << (cpuTime() - pl_start));
+        if (to_define.empty()) {
+            cnf.add_fixed_values(pure_pre_units);
+            verb_print(1, COLRED "[unate_def] Done. all to_define vars resolved by pure-lit pass T: "
+                << (cpuTime() - my_time));
+            return;
+        }
+    }
+
     auto s = setup_f_not_f(cnf);
 
     // Add copied-side definition constraints: i' <-> H_i(X, Y') for all i in I.
@@ -225,6 +279,9 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
             << " tested: " << setw(7) << tested_num
             << " tests/s: " << setprecision(2) << fixed << setw(6) << safe_div(tested_num, total_time));
 
+    // Merge pure-literal pre-pass units with SAT-found unates so the final
+    // bookkeeping pass sees the full set.
+    for (const auto& l : pure_pre_units) unates.push_back(l);
     cnf.add_fixed_values(unates);
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end do_unate_def");
     verb_print(1, COLRED "[unate_def] Done. synthesis_unate_def"
