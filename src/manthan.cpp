@@ -2747,10 +2747,18 @@ void Manthan::inject_formulas_into_solver() {
     // hot var; with several thousand repairs the per-literal hot loop
     // visits millions of literals — the std::set::count was the cost
     // here, the bytemap brings it to a single byte load.
+    //
+    // form.uninserted_start lets us skip the inserted prefix without
+    // walking it. The compose_or/and move overloads maintain the prefix
+    // invariant (all clauses < uninserted_start are inserted); the
+    // const-ref overloads conservatively set uninserted_start = 0, so
+    // the cl.inserted flag is still the source of truth on degenerate
+    // paths.
     vector<Lit> cl2;
     for(auto& k: updated_y_funcs) {
         auto& form = var_to_formula.at(k);
-        for(auto& cl: form.clauses) {
+        for (size_t i = form.uninserted_start; i < form.clauses.size(); i++) {
+            auto& cl = form.clauses[i];
             if (cl.inserted) continue;
             cl2.clear();
             cl2.reserve(cl.lits.size());
@@ -2763,6 +2771,7 @@ void Manthan::inject_formulas_into_solver() {
             cex_solver.add_clause(cl2);
             cl.inserted = true;
         }
+        form.uninserted_start = form.clauses.size();
     }
 
     // Relation between y_hat and form_out

@@ -52,6 +52,14 @@ public:
         // TODO: we could have a flag of what has already been inserted into
         // solver_train
         std::vector<CL> clauses;
+        // Index hint: clauses[0..uninserted_start) are guaranteed to have
+        // already been pushed to the cex_solver. inject_formulas walks from
+        // this index forward and sets it to clauses.size() at the end,
+        // turning the per-iteration "skip already-inserted" linear scan
+        // into a tight tail-iteration. Clauses are only ever appended (in
+        // perform_repair / compose_or-move), so the prefix invariant
+        // holds automatically.
+        uint32_t uninserted_start = 0;
         CMSat::Lit out = CMSat::lit_Error;
         ArjunNS::aig_ptr aig = nullptr;
     };
@@ -149,6 +157,7 @@ public:
         // Move fright's clauses, append fleft's. The OR/AND helper clauses
         // get appended at the end. This makes the per-call cost O(|fleft|)
         // instead of O(|fleft| + |fright|).
+        const uint32_t fright_uninserted = fright.uninserted_start;
         ret.clauses = std::move(fright.clauses);
         ret.clauses.reserve(ret.clauses.size() + fleft.clauses.size() + 3);
         for(const auto& cl: fleft.clauses) ret.clauses.push_back(cl);
@@ -162,6 +171,10 @@ public:
         ret.clauses.push_back(CL({~l, fright.out}));
         ret.clauses.push_back(CL({l, ~fleft.out, ~fright.out}));
         ret.out = l;
+        // Carry over the prefix-inserted invariant from fright. Anything we
+        // appended (fleft's copy + 3 helpers) is freshly emitted and not yet
+        // pushed to cex_solver.
+        ret.uninserted_start = fright_uninserted;
 
         assert(fleft.aig != nullptr);
         assert(fright.aig != nullptr);
@@ -206,6 +219,7 @@ public:
         if (fright.out == ~my_true_lit && fright.clauses.empty()) return fleft;
 
         Formula ret;
+        const uint32_t fright_uninserted = fright.uninserted_start;
         ret.clauses = std::move(fright.clauses);
         ret.clauses.reserve(ret.clauses.size() + fleft.clauses.size() + 3);
         for(const auto& cl: fleft.clauses) ret.clauses.push_back(cl);
@@ -219,6 +233,7 @@ public:
         ret.clauses.push_back(CL({l, ~fleft.out}));
         ret.clauses.push_back(CL({l, ~fright.out}));
         ret.out = l;
+        ret.uninserted_start = fright_uninserted;
 
         assert(fleft.aig != nullptr);
         assert(fright.aig != nullptr);
