@@ -142,7 +142,32 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
 
     vector<Lit> assumps;
     vector<Lit> cl;
-    set<uint32_t> already_tested;
+
+    // Precompute the candidate-indicator list once. Each iteration of the
+    // outer test loop previously rebuilt this by walking every CNF variable
+    // and doing log-time set lookups (input/backward_defined/already_tested);
+    // for benchmarks with thousands of variables and hundreds of to_define
+    // tests, that was tens of millions of map operations on the hot path
+    // before the SAT call. Now it's a fixed-size O(to_define) copy plus a
+    // single index swap to drop the current test var.
+    vector<Lit> cand_indics;
+    vector<uint32_t> cand_var;
+    cand_indics.reserve(to_define.size());
+    cand_var.reserve(to_define.size());
+    vector<int> var_to_cand_pos(cnf.nVars(), -1);
+    for(uint32_t i = 0; i < cnf.nVars(); i++) {
+        if (input.count(i)) continue;
+        if (backward_defined.count(i)) continue;
+        const auto ind = var_to_indic.at(i);
+        if (ind == var_Undef) continue;
+        var_to_cand_pos[i] = (int)cand_indics.size();
+        cand_indics.push_back(Lit(ind, false));
+        cand_var.push_back(i);
+    }
+    // Tested vars get a permanent clause forcing their indic; we also pop
+    // them out of cand_indics by swapping with the back. cand_indics keeps
+    // exactly the still-untested indics, so the per-test assumps copy is
+    // proportional to remaining work, not to the whole CNF.
 
     uint32_t tested_num = 0;
     vector<Lit> unates;
@@ -156,16 +181,21 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
                 << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
         }
 
-        assumps.clear();
-        for(uint32_t i = 0; i < cnf.nVars(); i++) {
-            if (i == test) continue;
-            if (already_tested.count(i)) continue;
-            if (input.count(i)) continue;
-            if (backward_defined.count(i)) continue;
-            auto ind = var_to_indic.at(i);
-            assert(ind != var_Undef);
-            assumps.push_back(Lit(ind, false));
+        // Drop test's own indic from cand_indics (swap-with-back) so its
+        // y_hat=y constraint isn't asserted for this test's flip.
+        const int test_pos = var_to_cand_pos[test];
+        assert(test_pos >= 0 && test_pos < (int)cand_indics.size());
+        const int last = (int)cand_indics.size() - 1;
+        if (test_pos != last) {
+            std::swap(cand_indics[test_pos], cand_indics[last]);
+            std::swap(cand_var[test_pos],    cand_var[last]);
+            var_to_cand_pos[cand_var[test_pos]] = test_pos;
         }
+        cand_indics.pop_back();
+        cand_var.pop_back();
+        var_to_cand_pos[test] = -1;
+
+        assumps = cand_indics;
         for(int flip = 0; flip < 2; flip++) {
             assumps.push_back(Lit(test, !flip));
             assumps.push_back(Lit(test+cnf.nVars(), flip));
@@ -186,7 +216,6 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
             assumps.pop_back();
             assumps.pop_back();
         }
-        already_tested.insert(test);
         s->add_clause({Lit(var_to_indic.at(test), false)});
     }
 
