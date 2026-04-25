@@ -2018,7 +2018,10 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
 
 Lit Manthan::map_y_to_y_hat(const Lit& l) const {
     const uint32_t var = l.var();
-    if (input.count(var)) return l;
+    // Bytemap is_input is already maintained; the std::set::count was
+    // O(log n) per call and this is on the hot perform_repair / lit_to_aig
+    // path. y_to_y_hat is small but std::map is still O(log n).
+    if (var < is_input.size() && is_input[var]) return l;
     assert(to_define_full.count(var));
     const uint32_t y_hat = y_to_y_hat.at(var);
     return Lit(y_hat, l.sign());
@@ -2026,8 +2029,8 @@ Lit Manthan::map_y_to_y_hat(const Lit& l) const {
 
 // Update dependency matrix to say that a depends on b
 void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
-    assert(!input.count(a) && "we are not interested in what input vars depend on");
-    if (input.count(b)) {
+    assert(!(a < is_input.size() && is_input[a]) && "we are not interested in what input vars depend on");
+    if (b < is_input.size() && is_input[b]) {
        //We are not interested if a var depends on the input
        return;
     }
