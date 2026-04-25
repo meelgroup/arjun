@@ -100,6 +100,8 @@ class Manthan {
         std::vector<uint8_t> is_input;
         std::vector<uint8_t> is_backward_defined;
         std::vector<uint8_t> is_to_define_full;
+        std::vector<uint8_t> is_to_define;
+        std::vector<uint8_t> is_helper_function;
         void rebuild_var_bytemaps();
 
         // To help us account for every variable in the formulas' clauses

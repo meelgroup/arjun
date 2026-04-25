@@ -241,9 +241,13 @@ void Manthan::rebuild_var_bytemaps() {
     is_input.assign(nv, 0);
     is_backward_defined.assign(nv, 0);
     is_to_define_full.assign(nv, 0);
+    is_to_define.assign(nv, 0);
+    is_helper_function.assign(nv, 0);
     for (const auto& v : input) is_input[v] = 1;
     for (const auto& v : backward_defined) is_backward_defined[v] = 1;
     for (const auto& v : to_define_full) is_to_define_full[v] = 1;
+    for (const auto& v : to_define) is_to_define[v] = 1;
+    for (const auto& v : helper_functions) is_helper_function[v] = 1;
 }
 
 void Manthan::fill_dependency_mat_with_backward() {
@@ -2785,7 +2789,9 @@ void Manthan::inject_formulas_into_solver() {
         tmp[2] = ~tmp[2];
         cex_solver.add_clause(tmp);
 
-        if (mconf.force_bw_equal && backward_defined.count(y) && !helper_functions.count(y)) {
+        if (mconf.force_bw_equal
+            && y < is_backward_defined.size() && is_backward_defined[y]
+            && !(y < is_helper_function.size() && is_helper_function[y])) {
             verb_print(3, "backward defined y (except helper function), forcing indic to TRUE, since it must be correct");
             cex_solver.add_clause({Lit(ind, false)});
         }
@@ -2821,7 +2827,9 @@ vector<sample> Manthan::collect_extra_cex(const sample& ctx) {
         for(auto a: block_acts) assumps.push_back(Lit(a, true)); // ~act activates blocking
         for(const auto& [y_hat, ind]: y_hat_to_indic) {
             uint32_t y = indic_to_y[ind];
-            if (mconf.force_bw_equal && backward_defined.count(y) && !helper_functions.count(y))
+            if (mconf.force_bw_equal
+                && y < is_backward_defined.size() && is_backward_defined[y]
+                && !(y < is_helper_function.size() && is_helper_function[y]))
                 continue;
             assumps.push_back(Lit(ind, false));
         }
@@ -2876,7 +2884,9 @@ bool Manthan::get_counterexample(sample& ctx) {
     assumps.reserve(y_hat_to_indic.size());
     for(const auto& [y_hat, ind]: y_hat_to_indic) {
         uint32_t y = indic_to_y[ind];
-        if (mconf.force_bw_equal && backward_defined.count(y) && !helper_functions.count(y))
+        if (mconf.force_bw_equal
+            && y < is_backward_defined.size() && is_backward_defined[y]
+            && !(y < is_helper_function.size() && is_helper_function[y]))
             continue; // already forced to true
         assumps.emplace_back(ind, false);
     }
@@ -3059,7 +3069,7 @@ void Manthan::recompute_all_y_hat_cnf(sample& ctx) {
     }
     for(const auto& [y_hat, ind]: y_hat_to_indic) {
         uint32_t y = indic_to_y[ind];
-        if (mconf.force_bw_equal && backward_defined.count(y)) continue;
+        if (mconf.force_bw_equal && y < is_backward_defined.size() && is_backward_defined[y]) continue;
         assumps.push_back(Lit(ind, false));
     }
 
