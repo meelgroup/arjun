@@ -105,11 +105,13 @@ class Manthan {
         std::vector<uint8_t> is_to_define_full;
         std::vector<uint8_t> is_to_define;
         std::vector<uint8_t> is_helper_function;
-        // Sorted vector mirror of to_define_full for tight iteration in
-        // hot paths (compute_needs_repair). std::set iteration walks a tree
-        // and is cache-unfriendly; the dense vector is order-stable and
-        // iterates linearly.
+        // Sorted vector mirrors of the var-id sets for tight iteration in
+        // hot paths (compute_needs_repair, find_conflict). std::set
+        // iteration walks a tree and is cache-unfriendly; the dense
+        // vectors are order-stable and iterate linearly.
         std::vector<uint32_t> to_define_full_vec;
+        std::vector<uint32_t> input_vec;
+        std::vector<uint32_t> backward_defined_vec;
         void rebuild_var_bytemaps();
 
         // To help us account for every variable in the formulas' clauses

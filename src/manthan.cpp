@@ -249,6 +249,8 @@ void Manthan::rebuild_var_bytemaps() {
     for (const auto& v : to_define) is_to_define[v] = 1;
     for (const auto& v : helper_functions) is_helper_function[v] = 1;
     to_define_full_vec.assign(to_define_full.begin(), to_define_full.end());
+    input_vec.assign(input.begin(), input.end());
+    backward_defined_vec.assign(backward_defined.begin(), backward_defined.end());
 }
 
 void Manthan::fill_dependency_mat_with_backward() {
@@ -1604,9 +1606,9 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     if (mconf.simplify_every > 0 && (num_loops_repair % mconf.simplify_every == (mconf.simplify_every-1)
             || (mconf.simplify_repair_every > 0 && tot_repaired % mconf.simplify_repair_every == mconf.simplify_repair_every - 1))) {
         vector<Lit> assumps;
-        assumps.reserve(input.size() + to_define_full.size());
-        for(const auto& x: input) assumps.emplace_back(x, false);
-        for(const auto& x: to_define_full) assumps.emplace_back(x, false);
+        assumps.reserve(input_vec.size() + to_define_full_vec.size());
+        for(const auto& x: input_vec) assumps.emplace_back(x, false);
+        for(const auto& x: to_define_full_vec) assumps.emplace_back(x, false);
         repair_solver.simplify(&assumps);
     }
 
@@ -1729,8 +1731,8 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         generalized_repair_ok * mconf.skip_input_only_ratio < tot_repaired);
     if (!skip_input_only) {
         vector<Lit> input_assumps;
-        input_assumps.reserve(input.size() + 1);
-        for (const auto& x : input) {
+        input_assumps.reserve(input_vec.size() + 1);
+        for (const auto& x : input_vec) {
             if (have_aig_deps && (x >= aig_dep_is_dep.size() || !aig_dep_is_dep[x])) continue;
             input_assumps.emplace_back(x, ctx[x] == l_False);
         }
@@ -1751,8 +1753,8 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     if (!found_input_only) {
     uint32_t skipped_inputs = 0;
     assumps.clear();
-    assumps.reserve(input.size() + y_order.size() + 1);
-    for(const auto& x: input) {
+    assumps.reserve(input_vec.size() + y_order.size() + 1);
+    for(const auto& x: input_vec) {
         // Skip inputs that the AIG for y_rep doesn't depend on
         if (have_aig_deps && (x >= aig_dep_is_dep.size() || !aig_dep_is_dep[x])) {
             skipped_inputs++;
@@ -1761,7 +1763,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         const Lit l = Lit(x, ctx[x] == l_False);
         assumps.push_back(l);
     }
-    verb_print(2, "[manthan] skipped " << skipped_inputs << " / " << input.size()
+    verb_print(2, "[manthan] skipped " << skipped_inputs << " / " << input_vec.size()
             << " inputs for y_rep=" << y_rep+1);
 
     // We go through the variables that y_rep does NOT depend on, and assume them to be correct
@@ -1789,9 +1791,10 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         if (skipped_inputs > 0) {
             // SAT with reduced inputs - retry with all inputs to get proper cost-0 repair
             assumps.clear();
-            for(const auto& x: input) assumps.push_back(Lit(x, ctx[x] == l_False));
+            for(const auto& x: input_vec) assumps.push_back(Lit(x, ctx[x] == l_False));
             for(const auto& y: y_order) {
-                if (!mconf.silent_var_update && backward_defined.count(y)) continue;
+                if (!mconf.silent_var_update
+                    && y < is_backward_defined.size() && is_backward_defined[y]) continue;
                 if (y == y_rep) break;
                 assumps.push_back(Lit(y, ctx[y] == l_False));
             }
