@@ -109,9 +109,16 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     // out of to_define on the next pass; otherwise the pass would
     // re-confirm them (UNSAT under their own unit clause) and the loop
     // would never terminate.
+    //
+    // Bound: max_iters caps the loop. On the four pipeline benchmarks the
+    // first pass finds everything and the cascade detector finds zero on
+    // the second, so a hard cap of 2 still preserves the cascade ability
+    // for un-preprocessed inputs while bounding the wasted-confirmation
+    // cost (one extra pass when iter 1 succeeded).
+    constexpr uint32_t max_iters = 2;
     std::vector<Lit> all_unates = std::move(pure_pre_units);
     uint32_t iter = 0;
-    while (true) {
+    while (iter < max_iters) {
         iter++;
         std::vector<Lit> pass_unates;
         const uint32_t found = synthesis_unate_def_pass(cnf, pass_unates);
