@@ -2724,16 +2724,22 @@ void Manthan::add_not_f_x_yhat() {
 void Manthan::inject_formulas_into_solver() {
     SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
 
-    // Replace y with y_hat
+    // Replace y with y_hat. Each repair appends ~3-4 fresh clauses per
+    // hot var; with several thousand repairs the per-literal hot loop
+    // visits millions of literals — the std::set::count was the cost
+    // here, the bytemap brings it to a single byte load.
+    vector<Lit> cl2;
     for(auto& k: updated_y_funcs) {
         auto& form = var_to_formula.at(k);
         for(auto& cl: form.clauses) {
             if (cl.inserted) continue;
-            vector<Lit> cl2;
+            cl2.clear();
+            cl2.reserve(cl.lits.size());
             for(const auto& l: cl.lits) {
-                auto v = l.var();
-                if (to_define_full.count(v)) { cl2.emplace_back(y_to_y_hat_fast(v), l.sign());}
-                else cl2.push_back(l);
+                const auto v = l.var();
+                if (v < is_to_define_full.size() && is_to_define_full[v]) {
+                    cl2.emplace_back(y_to_y_hat_fast(v), l.sign());
+                } else cl2.push_back(l);
             }
             cex_solver.add_clause(cl2);
             cl.inserted = true;
