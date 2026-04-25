@@ -40,6 +40,17 @@ class Unate {
 
         void synthesis_unate_def(ArjunNS::SimplifiedCNF& cnf);
         void synthesis_unate(ArjunNS::SimplifiedCNF& cnf);
+        // Syntactic gate detection on the to_define set. Looks for pairwise
+        // clause patterns that uniquely define a y-var as a small Boolean
+        // function of others — no SAT calls. Patterns covered (Lagniez-
+        // Marquis "Improving Model Counting by Leveraging Definability"):
+        //   • binary equivalence: (¬y ∨ a) ∧ (y ∨ ¬a)        ⇒ y = a
+        //   • AND-gate:           (¬y ∨ aᵢ) for each i ∧ (y ∨ ¬a₁ ∨ … ∨ ¬aₖ)
+        //                                                     ⇒ y = ⋀aᵢ
+        //   • OR-gate (dual)
+        // Found definitions are written as AIGs and the var moves out of
+        // to_define. Returns the number of vars defined.
+        uint32_t synthesis_gate_def(ArjunNS::SimplifiedCNF& cnf);
     private:
         // One pass of SAT-based unate detection over the current to_define
         // set. Caller is expected to drive it in a fix-point loop, since

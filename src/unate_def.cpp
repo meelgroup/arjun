@@ -27,6 +27,9 @@
 #include "metasolver.h"
 #include "time_mem.h"
 #include <iomanip>
+#include <queue>
+#include <unordered_map>
+#include <unordered_set>
 
 using namespace ArjunNS;
 using namespace CMSat;
@@ -39,6 +42,13 @@ using std::unique_ptr;
 
 void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     const double my_time = cpuTime();
+
+    // Syntactic gate-def pass first — every gate found here saves a SAT
+    // call later, plus a downstream Manthan repair sequence.
+    {
+        const uint32_t gate_defs = synthesis_gate_def(cnf);
+        (void)gate_defs;
+    }
 
     std::vector<Lit> pure_pre_units;
     {
@@ -106,6 +116,239 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         << " total units: " << all_unates.size()
         << " still to define: " << to_define2.size()
         << " T: " << (cpuTime() - my_time));
+}
+
+uint32_t Unate::synthesis_gate_def(SimplifiedCNF& cnf) {
+    const double t0 = cpuTime();
+    cnf.get_var_types(0 | verbose_debug_enabled, "start gate_def").unpack_to(input, to_define, backward_defined);
+    if (to_define.empty()) return 0;
+
+    // Build polarity-keyed occurrence lists. For each (var, sign) we list
+    // the clauses that contain that signed literal. CNF here is the
+    // post-simplifier CNF passed in by the caller — clauses are over
+    // "new"-space var ids.
+    const auto& clauses = cnf.get_clauses();
+    std::vector<std::vector<size_t>> pos_occ(cnf.nVars()); // clauses with +v
+    std::vector<std::vector<size_t>> neg_occ(cnf.nVars()); // clauses with ¬v
+    for (size_t ci = 0; ci < clauses.size(); ci++) {
+        for (const auto& l : clauses[ci]) {
+            (l.sign() ? neg_occ : pos_occ)[l.var()].push_back(ci);
+        }
+    }
+
+    // Hash-set of binary clauses (canonical-sorted lit pair) for O(1)
+    // membership checks during the equivalence pattern match. Using
+    // packed-int representation: low bit = sign, rest = var.
+    auto pack = [](Lit l) -> uint64_t { return ((uint64_t)l.var() << 1) | (uint64_t)l.sign(); };
+    auto unpack = [](uint64_t x) -> Lit { return Lit((uint32_t)(x >> 1), (bool)(x & 1)); };
+    auto clause_key = [&](Lit a, Lit b) -> uint64_t {
+        uint64_t pa = pack(a), pb = pack(b);
+        if (pa > pb) std::swap(pa, pb);
+        return (pa << 32) | pb;
+    };
+    std::unordered_set<uint64_t> bin_set;
+    bin_set.reserve(clauses.size());
+    for (const auto& cl : clauses) {
+        if (cl.size() == 2) bin_set.insert(clause_key(cl[0], cl[1]));
+    }
+
+    std::vector<aig_ptr> aigs(cnf.nVars(), nullptr);
+    uint32_t n_eq = 0, n_and = 0, n_or = 0;
+
+    auto try_equiv = [&](uint32_t y) -> bool {
+        // y ↔ a iff (¬y ∨ a) ∧ (y ∨ ¬a) both binary clauses present.
+        // Walk binary clauses containing y (either polarity) and check the
+        // negated mate.
+        const Lit pos_y(y, false);
+        const Lit neg_y(y, true);
+        for (const auto ci : pos_occ[y]) {
+            if (clauses[ci].size() != 2) continue;
+            // clause is (y ∨ x) for some x. Match needs (¬y ∨ ¬x).
+            const Lit x = (clauses[ci][0] == pos_y) ? clauses[ci][1] : clauses[ci][0];
+            assert((clauses[ci][0] == pos_y || clauses[ci][1] == pos_y));
+            if (clauses[ci][0] != pos_y && clauses[ci][1] != pos_y) continue;
+            if (bin_set.count(clause_key(neg_y, ~x))) {
+                // (y ∨ x) ∧ (¬y ∨ ¬x) ⇒ y = ¬x.
+                aigs[y] = AIG::new_lit(x.var(), !x.sign());
+                return true;
+            }
+        }
+        for (const auto ci : neg_occ[y]) {
+            if (clauses[ci].size() != 2) continue;
+            // clause is (¬y ∨ x) for some x. Match needs (y ∨ ¬x).
+            const Lit x = (clauses[ci][0] == neg_y) ? clauses[ci][1] : clauses[ci][0];
+            if (clauses[ci][0] != neg_y && clauses[ci][1] != neg_y) continue;
+            if (bin_set.count(clause_key(pos_y, ~x))) {
+                // (¬y ∨ x) ∧ (y ∨ ¬x) ⇒ y = x.
+                aigs[y] = AIG::new_lit(x.var(), x.sign());
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // For AND-gate y = ⋀ aᵢ:
+    //   long clause:   (y ∨ ¬a₁ ∨ … ∨ ¬aₖ)
+    //   binary mates:  (¬y ∨ aᵢ) for each i
+    // For OR-gate y = ⋁ aᵢ:
+    //   long clause:   (¬y ∨ a₁ ∨ … ∨ aₖ)
+    //   binary mates:  (y ∨ ¬aᵢ) for each i
+    auto try_and_or_gate = [&](uint32_t y) -> bool {
+        const Lit pos_y(y, false);
+        const Lit neg_y(y, true);
+
+        // AND-gate: long clause containing +y, binary mates (¬y ∨ aᵢ).
+        for (const auto ci : pos_occ[y]) {
+            const auto& cl = clauses[ci];
+            if (cl.size() < 3) continue;
+            // Collect the aᵢ candidates: every other lit in cl, negated.
+            std::vector<Lit> as;
+            as.reserve(cl.size() - 1);
+            for (const auto& l : cl) {
+                if (l == pos_y) continue;
+                as.push_back(~l);
+            }
+            // Each (¬y ∨ aᵢ) must be a binary clause.
+            bool all_present = true;
+            for (const auto& a : as) {
+                if (!bin_set.count(clause_key(neg_y, a))) { all_present = false; break; }
+            }
+            if (all_present) {
+                aig_ptr cur = AIG::new_lit(as[0].var(), as[0].sign());
+                for (size_t i = 1; i < as.size(); i++) {
+                    cur = AIG::new_and(cur, AIG::new_lit(as[i].var(), as[i].sign()));
+                }
+                aigs[y] = cur;
+                return true;
+            }
+        }
+
+        // OR-gate: long clause containing ¬y, binary mates (y ∨ ¬aᵢ).
+        for (const auto ci : neg_occ[y]) {
+            const auto& cl = clauses[ci];
+            if (cl.size() < 3) continue;
+            std::vector<Lit> as;
+            as.reserve(cl.size() - 1);
+            for (const auto& l : cl) {
+                if (l == neg_y) continue;
+                as.push_back(l);
+            }
+            bool all_present = true;
+            for (const auto& a : as) {
+                if (!bin_set.count(clause_key(pos_y, ~a))) { all_present = false; break; }
+            }
+            if (all_present) {
+                // y = ⋁ aᵢ — build via new_or which de-Morgans into the AIG.
+                aig_ptr cur = AIG::new_lit(as[0].var(), as[0].sign());
+                for (size_t i = 1; i < as.size(); i++) {
+                    cur = AIG::new_or(cur, AIG::new_lit(as[i].var(), as[i].sign()));
+                }
+                aigs[y] = cur;
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Sort to_define so that vars defined by other-gate-defined vars are
+    // discovered after their dependencies. The simple cycle-prevention
+    // policy: only accept a definition whose RHS doesn't reference any
+    // already-defined var transitively. This keeps the def order acyclic
+    // by construction without needing a topological sort.
+    for (uint32_t y : to_define) {
+        if (try_equiv(y))           {
+            n_eq++;
+            verb_print(2, "[gate-def] eq: y=" << y+1 << " AIG: " << aigs[y]);
+            continue;
+        }
+        if (try_and_or_gate(y))     {
+            n_and++;
+            verb_print(2, "[gate-def] and/or: y=" << y+1 << " AIG: " << aigs[y]);
+            continue;
+        }
+    }
+
+    // Cycle-safety check. A candidate def for y_new = f(d_new₁, …, d_newₖ)
+    // is unsafe if any d_orig (the orig-space image of d_newᵢ) transitively
+    // reaches y_orig via the *existing* cnf defs (set by extend.cpp or
+    // backward.cpp earlier in the pipeline) or via another candidate gate-
+    // def we're about to install. The check walks through both: we BFS from
+    // each d_orig and stop on hitting y_orig.
+    {
+        const auto new_to_orig_var = cnf.get_new_to_orig_var();
+        auto orig_of = [&](uint32_t v_new) -> uint32_t {
+            auto it = new_to_orig_var.find(v_new);
+            // not all new vars have an orig mapping (e.g. helpers); treat
+            // unmapped as "unknown — conservatively drop the candidate".
+            if (it == new_to_orig_var.end()) return std::numeric_limits<uint32_t>::max();
+            return it->second.var();
+        };
+        // Build orig-space images of every candidate def's RHS deps.
+        std::unordered_map<uint32_t, std::vector<uint32_t>> cand_deps_orig; // y_orig -> list of d_orig
+        std::unordered_map<uint32_t, uint32_t> y_new_of;
+        for (uint32_t v = 0; v < cnf.nVars(); v++) {
+            if (!aigs[v]) continue;
+            const uint32_t y_orig = orig_of(v);
+            if (y_orig == std::numeric_limits<uint32_t>::max()) { aigs[v] = nullptr; continue; }
+            std::set<uint32_t> ds;
+            AIG::get_dependent_vars(aigs[v], ds, v);
+            std::vector<uint32_t> ds_orig;
+            ds_orig.reserve(ds.size());
+            bool ok = true;
+            for (auto d : ds) {
+                const uint32_t d_orig = orig_of(d);
+                if (d_orig == std::numeric_limits<uint32_t>::max()) { ok = false; break; }
+                if (d_orig == y_orig) { ok = false; break; } // direct self-ref
+                ds_orig.push_back(d_orig);
+            }
+            if (!ok) { aigs[v] = nullptr; continue; }
+            cand_deps_orig[y_orig] = std::move(ds_orig);
+            y_new_of[y_orig] = v;
+        }
+        // For each candidate y_orig, BFS from each d_orig and drop if it
+        // reaches y_orig. The BFS follows: (a) cnf.get_def(d_orig) edges,
+        // (b) candidate edges from cand_deps_orig if d_orig is itself a
+        // candidate.
+        std::vector<uint32_t> to_drop;
+        for (const auto& [y_orig, ds] : cand_deps_orig) {
+            std::queue<uint32_t> q;
+            std::unordered_set<uint32_t> visited;
+            for (auto d : ds) { q.push(d); visited.insert(d); }
+            bool cycle = false;
+            while (!q.empty() && !cycle) {
+                uint32_t cur = q.front(); q.pop();
+                if (cur == y_orig) { cycle = true; break; }
+                // Existing-def edges:
+                const auto& def_aig = cnf.get_def(cur);
+                if (def_aig != nullptr) {
+                    std::set<uint32_t> defds;
+                    AIG::get_dependent_vars(def_aig, defds, cur);
+                    for (auto d : defds) {
+                        if (visited.insert(d).second) q.push(d);
+                    }
+                }
+                // Candidate-def edges:
+                auto it = cand_deps_orig.find(cur);
+                if (it != cand_deps_orig.end()) {
+                    for (auto d : it->second) {
+                        if (visited.insert(d).second) q.push(d);
+                    }
+                }
+            }
+            if (cycle) to_drop.push_back(y_orig);
+        }
+        for (uint32_t y_orig : to_drop) aigs[y_new_of[y_orig]] = nullptr;
+    }
+
+    uint32_t total = 0;
+    for (uint32_t v = 0; v < cnf.nVars(); v++) if (aigs[v]) total++;
+    if (total > 0) cnf.map_aigs_to_orig(aigs, cnf.nVars());
+    verb_print(1, "[unate_def/gate-def]"
+        << " eq: " << n_eq
+        << " and-or: " << n_and
+        << " (cycles dropped: " << (n_eq + n_and - total) << ")"
+        << " T: " << setprecision(3) << fixed << (cpuTime() - t0));
+    return total;
 }
 
 uint32_t Unate::synthesis_unate_def_pass(SimplifiedCNF& cnf, std::vector<Lit>& unates) {
