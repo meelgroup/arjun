@@ -132,6 +132,43 @@ public:
         return ret;
     }
 
+    // Move-aware overload: takes ownership of fright (typically the
+    // accumulated big formula in perform_repair). Avoids copying
+    // |fright.clauses| every iteration — over a long repair sequence the
+    // const-ref version was O(N²) in clauses copied (each repair copies
+    // every previously-accumulated clause).
+    Formula compose_and(const Formula& fleft, Formula&& fright, std::set<uint32_t>& helpers) {
+        // Constant-fold cases: defer to copy-overload to avoid surprising
+        // moved-from semantics on degenerate inputs.
+        if (fleft.out == ~my_true_lit && fleft.clauses.empty()) return fleft;
+        if (fright.out == ~my_true_lit && fright.clauses.empty()) return Formula(std::move(fright));
+        if (fleft.out == my_true_lit && fleft.clauses.empty()) return Formula(std::move(fright));
+        if (fright.out == my_true_lit && fright.clauses.empty()) return fleft;
+
+        Formula ret;
+        // Move fright's clauses, append fleft's. The OR/AND helper clauses
+        // get appended at the end. This makes the per-call cost O(|fleft|)
+        // instead of O(|fleft| + |fright|).
+        ret.clauses = std::move(fright.clauses);
+        ret.clauses.reserve(ret.clauses.size() + fleft.clauses.size() + 3);
+        for(const auto& cl: fleft.clauses) ret.clauses.push_back(cl);
+
+        solver->new_var();
+        uint32_t fresh_v = solver->nVars()-1;
+        helpers.insert(fresh_v);
+        CMSat::Lit l = CMSat::Lit(fresh_v, false);
+
+        ret.clauses.push_back(CL({~l, fleft.out}));
+        ret.clauses.push_back(CL({~l, fright.out}));
+        ret.clauses.push_back(CL({l, ~fleft.out, ~fright.out}));
+        ret.out = l;
+
+        assert(fleft.aig != nullptr);
+        assert(fright.aig != nullptr);
+        ret.aig = ArjunNS::AIG::new_and(fleft.aig, fright.aig);
+        return ret;
+    }
+
     // See compose_and for the `helpers` rationale.
     Formula compose_or(const Formula& fleft, const Formula& fright, std::set<uint32_t>& helpers) {
         // OR(TRUE, x) = TRUE
@@ -144,6 +181,34 @@ public:
         Formula ret;
         ret.clauses = fleft.clauses;
         for(const auto& cl: fright.clauses) ret.clauses.push_back(cl);
+
+        solver->new_var();
+        uint32_t fresh_v = solver->nVars()-1;
+        helpers.insert(fresh_v);
+        CMSat::Lit l = CMSat::Lit(fresh_v, false);
+
+        ret.clauses.push_back(CL({~l, fleft.out, fright.out}));
+        ret.clauses.push_back(CL({l, ~fleft.out}));
+        ret.clauses.push_back(CL({l, ~fright.out}));
+        ret.out = l;
+
+        assert(fleft.aig != nullptr);
+        assert(fright.aig != nullptr);
+        ret.aig = ArjunNS::AIG::new_or(fleft.aig, fright.aig);
+        return ret;
+    }
+
+    // Move-aware overload — see compose_and(fleft, Formula&&, ...).
+    Formula compose_or(const Formula& fleft, Formula&& fright, std::set<uint32_t>& helpers) {
+        if (fleft.out == my_true_lit && fleft.clauses.empty()) return fleft;
+        if (fright.out == my_true_lit && fright.clauses.empty()) return Formula(std::move(fright));
+        if (fleft.out == ~my_true_lit && fleft.clauses.empty()) return Formula(std::move(fright));
+        if (fright.out == ~my_true_lit && fright.clauses.empty()) return fleft;
+
+        Formula ret;
+        ret.clauses = std::move(fright.clauses);
+        ret.clauses.reserve(ret.clauses.size() + fleft.clauses.size() + 3);
+        for(const auto& cl: fleft.clauses) ret.clauses.push_back(cl);
 
         solver->new_var();
         uint32_t fresh_v = solver->nVars()-1;

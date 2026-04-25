@@ -2135,10 +2135,15 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
     // ITE(guard, TRUE, old) simplifies to OR(guard, old)
     // ITE(guard, FALSE, old) simplifies to AND(NOT(guard), old)
     // These create flatter AIGs with fewer nodes than the generic ITE encoding.
+    //
+    // We std::move(var_to_formula[y_rep]) into the rvalue-overload so the
+    // accumulated-clause vector is reused instead of copied. For hot vars
+    // this used to grow O(N²) in repairs (each repair copies every prior
+    // clause); the move makes per-repair cost O(|f|) instead.
     if (ctx[y_rep] == l_True) {
-        var_to_formula[y_rep] = fh->compose_or(f, var_to_formula[y_rep], helpers);
+        var_to_formula[y_rep] = fh->compose_or(f, std::move(var_to_formula[y_rep]), helpers);
     } else {
-        var_to_formula[y_rep] = fh->compose_and(fh->neg(f), var_to_formula[y_rep], helpers);
+        var_to_formula[y_rep] = fh->compose_and(fh->neg(f), std::move(var_to_formula[y_rep]), helpers);
     }
     updated_y_funcs.push_back(y_rep);
 
