@@ -62,6 +62,18 @@ class Manthan {
         // y_hat is learned var
         std::map<uint32_t, uint32_t> y_to_y_hat;
         std::map<uint32_t, CMSat::Lit> y_hat_to_y;
+        // Parallel vector mirror of y_to_y_hat for O(1) hot-path access.
+        // Indexed by var id; entries for vars not in the map are
+        // std::numeric_limits<uint32_t>::max(). Filled by populate_y_to_y_hat_vec
+        // after create_vars_for_y_hats and never modified afterwards.
+        std::vector<uint32_t> y_to_y_hat_vec;
+        void populate_y_to_y_hat_vec();
+        inline uint32_t y_to_y_hat_fast(uint32_t y) const {
+            assert(y < y_to_y_hat_vec.size());
+            const uint32_t v = y_to_y_hat_vec[y];
+            assert(v != std::numeric_limits<uint32_t>::max() && "y not in y_to_y_hat");
+            return v;
+        }
 
         // when indic is TRUE, y_hat and func_out are EQUAL
         std::map<uint32_t, uint32_t> y_hat_to_indic;

@@ -389,7 +389,7 @@ void Manthan::print_y_order_occur() const {
 void Manthan::print_cnf_debug_info(const sample& ctx) const {
     if (conf.verb >= 3) {
         for(const auto& y: to_define_full) {
-            const auto y_hat = y_to_y_hat.at(y);
+            const auto y_hat = y_to_y_hat_fast(y);
             if (ctx[y] == ctx[y_hat]) continue;
             verb_print(3, "for y " << setw(5) << y+1 << ": " << setw(4) << pr(ctx[y])
                     << " we got y_hat " << setw(5) << y_hat+1 << ":" << setw(4) << pr(ctx[y_hat]));
@@ -455,7 +455,7 @@ bool Manthan::ctx_y_hat_correct(const sample& ctx) const {
 
         // make y_hat == f.out
         auto form_out = f.out;
-        const auto& y_hat = y_to_y_hat.at(y);
+        const auto& y_hat = y_to_y_hat_fast(y);
         auto y_hat_l = Lit(y_hat, false);
         tmp.clear();
         tmp.push_back(y_hat_l);
@@ -471,7 +471,7 @@ bool Manthan::ctx_y_hat_correct(const sample& ctx) const {
     const auto& model = s.get_model();
     vector<uint32_t> incorrect;
     for(const auto& y: y_order) {
-        const uint32_t y_hat = y_to_y_hat.at(y);
+        const uint32_t y_hat = y_to_y_hat_fast(y);
 
         const auto ctx_y_hat = ctx[y_hat];
         const auto model_y_hat = model[y_hat];
@@ -542,7 +542,7 @@ bool Manthan::check_synth_via_clauses(const string& where) const {
         if (it == var_to_formula.end()) continue;
         const auto& f = it->second;
         for (const auto& cl : f.clauses) s.add_clause(cl.lits);
-        uint32_t y_hat = y_to_y_hat.at(y);
+        uint32_t y_hat = y_to_y_hat_fast(y);
         s.add_clause({Lit(y_hat, false), ~f.out});
         s.add_clause({Lit(y_hat, true),  f.out});
     }
@@ -555,7 +555,7 @@ bool Manthan::check_synth_via_clauses(const string& where) const {
         cl_sub.reserve(cl_orig.size());
         for (const auto& l : cl_orig) {
             if (to_define_full.count(l.var()))
-                cl_sub.push_back(Lit(y_to_y_hat.at(l.var()), l.sign()));
+                cl_sub.push_back(Lit(y_to_y_hat_fast(l.var()), l.sign()));
             else cl_sub.push_back(l);
         }
         s.new_var();
@@ -587,7 +587,7 @@ bool Manthan::check_synth_via_clauses(const string& where) const {
                 for (const auto& l : cnf.get_clauses()[i]) {
                     uint32_t v = l.var();
                     if (to_define_full.count(v)) {
-                        uint32_t yh = y_to_y_hat.at(v);
+                        uint32_t yh = y_to_y_hat_fast(v);
                         cout << "c o [via_clauses]     y=x" << (v+1)
                              << " y_hat_var=" << (yh+1)
                              << " y_hat_val=" << pr(m[yh])
@@ -763,7 +763,7 @@ bool Manthan::check_aig_matches_clauses_per_formula(const string& where) const {
                 Lit base;
                 // For to_define_full: map to y_hat exactly like
                 // bve_and_substitute's transform does.
-                if (to_define_full.count(v)) base = Lit(y_to_y_hat.at(v), false);
+                if (to_define_full.count(v)) base = Lit(y_to_y_hat_fast(v), false);
                 else base = Lit(v, false);
                 return n.neg ? ~base : base;
             }
@@ -799,7 +799,7 @@ bool Manthan::check_aig_matches_clauses_per_formula(const string& where) const {
                  << ": y=" << (y+1)
                  << " AIG and CNF reps DIVERGE (both representations disagree on some input)"
                  << endl;
-            cout << "c o [aig_vs_clauses]   y_hat_var=" << (y_to_y_hat.at(y)+1)
+            cout << "c o [aig_vs_clauses]   y_hat_var=" << (y_to_y_hat_fast(y)+1)
                  << " f.out=" << f.out
                  << " aig.type=" << (int)f.aig->type
                  << " aig.neg=" << f.aig.neg
@@ -842,7 +842,7 @@ bool Manthan::check_aig_matches_clauses_per_formula(const string& where) const {
                     uint32_t v = n->var;
                     bool val;
                     if (to_define_full.count(v)) {
-                        uint32_t yh = y_to_y_hat.at(v);
+                        uint32_t yh = y_to_y_hat_fast(v);
                         val = (m[yh] == l_True);
                     } else {
                         val = (m[v] == l_True);
@@ -1567,11 +1567,11 @@ uint32_t Manthan::find_next_repair_var(const sample& ctx) const {
     uint32_t y_rep = std::numeric_limits<uint32_t>::max();
     for(const auto& y: y_order) {
         if (needs_repair.count(y)) {
-            assert(ctx[y] != ctx[y_to_y_hat.at(y)]);
+            assert(ctx[y] != ctx[y_to_y_hat_fast(y)]);
             y_rep = y;
             break;
         }
-        assert(ctx[y] == ctx[y_to_y_hat.at(y)]);
+        assert(ctx[y] == ctx[y_to_y_hat_fast(y)]);
     }
     assert(y_rep != std::numeric_limits<uint32_t>::max());
     assert(!backward_defined.count(y_rep) && "If all y_hat has been recomputed, the first wrong CANNOT be a BW var");
@@ -1583,7 +1583,7 @@ bool Manthan::is_unsat(const vector<Lit>& conflict, uint32_t y_rep, const sample
     s.new_vars(cnf.nVars());
     for(const auto& c: cnf.get_clauses()) s.add_clause(c);
     for(const auto& l: conflict) s.add_clause({~l});
-    const Lit to_repair = Lit(y_rep, ctx[y_to_y_hat.at(y_rep)] == l_True);
+    const Lit to_repair = Lit(y_rep, ctx[y_to_y_hat_fast(y_rep)] == l_True);
     s.add_clause({~to_repair});
     const auto ret = s.solve();
     return ret == l_False;
@@ -1622,7 +1622,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
         // So (l1 OR l2 OR ... OR to_repair) is a valid clause.
         // We add it as redundant to help the solver reason faster.
         if (!conflict.empty()) {
-            const Lit to_repair = Lit(y_rep, ctx[y_to_y_hat[y_rep]] == l_True);
+            const Lit to_repair = Lit(y_rep, ctx[y_to_y_hat_fast(y_rep)] == l_True);
             vector<Lit> learned_cl;
             learned_cl.reserve(conflict.size() + 1);
             for (const auto& l : conflict) learned_cl.push_back(l);
@@ -1635,7 +1635,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
         time_perform_repair += cpuTime() - t0;
 
         if (!mconf.one_repair_per_loop) {
-            ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
+            ctx[y_to_y_hat_fast(y_rep)] = ctx[y_rep];
 
             t0 = cpuTime();
             inject_formulas_into_solver();
@@ -1706,8 +1706,8 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
     }
     const bool have_aig_deps = !aig_dep_list.empty();
 
-    assert(ctx[y_rep] != ctx[y_to_y_hat[y_rep]] && "before repair, y and y_hat must be different");
-    const Lit to_repair = Lit(y_rep, ctx[y_to_y_hat[y_rep]] == l_True);
+    assert(ctx[y_rep] != ctx[y_to_y_hat_fast(y_rep)] && "before repair, y and y_hat must be different");
+    const Lit to_repair = Lit(y_rep, ctx[y_to_y_hat_fast(y_rep)] == l_True);
 
     // Try input-only conflict first: assume only input vars + ~to_repair, without
     // fixing earlier y-variables. If UNSAT, the conflict is strictly more general:
@@ -1765,7 +1765,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
         if (!mconf.silent_var_update && backward_defined.count(y)) continue;
         if (y == y_rep) break; // beyond this point we don't care
         assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen. Otherwise y depends on y_rep, but we will repair y_rep potentially with y_rep");
-        assert(ctx[y] == ctx[y_to_y_hat[y]]); // they are correct
+        assert(ctx[y] == ctx[y_to_y_hat_fast(y)]); // they are correct
         const Lit l = Lit(y, ctx[y] == l_False);
         verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
         assumps.push_back(l);
@@ -1801,7 +1801,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
                     if (y == y_rep) found_yrep = true;
                     if (found_yrep) ctx[y] = model[y];
                 }
-                assert(ctx[y_rep] == ctx[y_to_y_hat[y_rep]]);
+                assert(ctx[y_rep] == ctx[y_to_y_hat_fast(y_rep)]);
                 return false;
             }
             // UNSAT with all inputs - extract conflict normally
@@ -1814,7 +1814,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
                 if (y == y_rep) found_yrep = true;
                 if (found_yrep) ctx[y] = model[y];
             }
-            assert(ctx[y_rep] == ctx[y_to_y_hat[y_rep]]);
+            assert(ctx[y_rep] == ctx[y_to_y_hat_fast(y_rep)]);
             return false;
         }
     } else {
@@ -2020,11 +2020,10 @@ Lit Manthan::map_y_to_y_hat(const Lit& l) const {
     const uint32_t var = l.var();
     // Bytemap is_input is already maintained; the std::set::count was
     // O(log n) per call and this is on the hot perform_repair / lit_to_aig
-    // path. y_to_y_hat is small but std::map is still O(log n).
+    // path. y_to_y_hat_vec is the O(1) mirror of y_to_y_hat.
     if (var < is_input.size() && is_input[var]) return l;
     assert(to_define_full.count(var));
-    const uint32_t y_hat = y_to_y_hat.at(var);
-    return Lit(y_hat, l.sign());
+    return Lit(y_to_y_hat_fast(var), l.sign());
 }
 
 // Update dependency matrix to say that a depends on b
@@ -2533,7 +2532,7 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
 
     // Fix to_define variables that are correct (y_hat is the learned one)
     for(const auto& y: to_define_full) {
-        const auto y_hat = y_to_y_hat[y];
+        const auto y_hat = y_to_y_hat_fast(y);
         if (ctx[y] != ctx[y_hat]) continue;
         verb_print(3, "[find-better-ctx] CTX is CORRECT on y=" << y+1 << " y_hat=" << y_hat+1
              << " -- ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat]));
@@ -2554,7 +2553,7 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
 
     // Fix to_define variables that are incorrect via assumptions
     for(const auto& y: y_order) {
-        const auto y_hat = y_to_y_hat[y];
+        const auto y_hat = y_to_y_hat_fast(y);
         if (ctx[y] == ctx[y_hat]) continue;
         const auto l = Lit(y, ctx[y_hat] == l_False);
         verb_print(3, "[find-better-ctx] put into assumps y= " << l);
@@ -2593,7 +2592,7 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
     // For to_define variables, separate into correct and incorrect
     vector<std::pair<Lit, uint32_t>> incorrect_lits; // pair of literal and weight
     for(const auto& y: to_define_full) {
-        const auto y_hat = y_to_y_hat[y];
+        const auto y_hat = y_to_y_hat_fast(y);
         const Lit l = Lit(y, ctx[y_hat] == l_False); // literal that makes y match y_hat
 
         if (ctx[y] == ctx[y_hat]) {
@@ -2676,6 +2675,14 @@ void Manthan::create_vars_for_y_hats() {
         y_hats.insert(y_hat);
         verb_print(3, "mapping -- y: " << y+1 << " y_hat: " << y_hat+1);
     }
+    populate_y_to_y_hat_vec();
+}
+
+void Manthan::populate_y_to_y_hat_vec() {
+    y_to_y_hat_vec.assign(cnf.nVars(), std::numeric_limits<uint32_t>::max());
+    for (const auto& [y, y_hat] : y_to_y_hat) {
+        if (y < y_to_y_hat_vec.size()) y_to_y_hat_vec[y] = y_hat;
+    }
 }
 
 // Adds ~F(x, y_hat), fills y_to_y_hat and y_hat_to_y
@@ -2689,7 +2696,7 @@ void Manthan::add_not_f_x_yhat() {
         // Replace y with y_hat in the clause
         cl.clear();
         for(const auto& l: cl_orig) {
-            if (to_define_full.count(l.var())) cl.push_back(Lit(y_to_y_hat.at(l.var()), l.sign()));
+            if (to_define_full.count(l.var())) cl.push_back(Lit(y_to_y_hat_fast(l.var()), l.sign()));
             else cl.push_back(l);
         }
 
@@ -2725,7 +2732,7 @@ void Manthan::inject_formulas_into_solver() {
             vector<Lit> cl2;
             for(const auto& l: cl.lits) {
                 auto v = l.var();
-                if (to_define_full.count(v)) { cl2.emplace_back(y_to_y_hat.at(v), l.sign());}
+                if (to_define_full.count(v)) { cl2.emplace_back(y_to_y_hat_fast(v), l.sign());}
                 else cl2.push_back(l);
             }
             cex_solver.add_clause(cl2);
@@ -2744,7 +2751,7 @@ void Manthan::inject_formulas_into_solver() {
         assert(var_to_formula.count(y));
         for(const auto& cl: var_to_formula[y].clauses) assert(cl.inserted && "All clauses must have been inserted");
         const auto& form_out = var_to_formula[y].out;
-        const auto& y_hat = y_to_y_hat.at(y);
+        const auto& y_hat = y_to_y_hat_fast(y);
 
         y_hat_to_indic[y_hat] = ind;
         indic_to_y_hat[ind] = y_hat;
@@ -2834,7 +2841,7 @@ vector<sample> Manthan::collect_extra_cex(const sample& ctx) {
         uint32_t rank = 0;
         for(const auto& y: y_order) {
             rank++;
-            if (all_cex[i][y] != all_cex[i][y_to_y_hat[y]]) {
+            if (all_cex[i][y] != all_cex[i][y_to_y_hat_fast(y)]) {
                 // Quadratic weight by order position: early vars matter much more.
                 // Also boost by repair count for frequently-repaired vars.
                 uint64_t pos_weight = (y_order.size() - rank + 1);
@@ -3054,7 +3061,7 @@ void Manthan::recompute_all_y_hat_cnf(sample& ctx) {
     assert(ret == l_True);
     const auto& m = cex_solver.get_model(1);
     for(const auto& y: y_order) {
-        uint32_t y_hat = y_to_y_hat.at(y);
+        uint32_t y_hat = y_to_y_hat_fast(y);
         ctx[y_hat] = m[y_hat];
     }
 }
@@ -3075,7 +3082,7 @@ void Manthan::recompute_all_y_hat_aig(sample& ctx, const uint32_t y_rep) {
         assert(aig != nullptr && "All formulas should have AIGs for evaluation");
         lbool val = AIG::evaluate(ctx, aig, defs, cache);
         if (val == l_Undef) continue;
-        ctx[y_to_y_hat.at(y)] = val;
+        ctx[y_to_y_hat_fast(y)] = val;
     }
     verb_print(2, "Recomputed all y_hat values in ctx.");
 }
@@ -3084,7 +3091,7 @@ void Manthan::compute_needs_repair(const sample& ctx) {
     assert(ctx[fh->get_true_lit().var()] == l_True);
     needs_repair.clear();
     for(const auto& y: to_define_full) {
-        if (ctx[y] != ctx[y_to_y_hat[y]]) needs_repair.insert(y);
+        if (ctx[y] != ctx[y_to_y_hat_fast(y)]) needs_repair.insert(y);
     }
 }
 
