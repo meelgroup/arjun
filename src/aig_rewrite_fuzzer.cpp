@@ -355,7 +355,7 @@ int main(int argc, char** argv) {
     uint32_t max_nodes_cfg = 50;
     uint32_t multi_def_k = 0;
     bool verbose = false;
-    bool sat_sweep = false;
+    uint32_t sat_sweep = 3;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--num") == 0 && i + 1 < argc) num_iters = std::stoull(argv[++i]);
@@ -364,7 +364,7 @@ int main(int argc, char** argv) {
         else if (strcmp(argv[i], "--depth") == 0 && i + 1 < argc) max_depth = std::stoul(argv[++i]);
         else if (strcmp(argv[i], "--nodes") == 0 && i + 1 < argc) max_nodes_cfg = std::stoul(argv[++i]);
         else if (strcmp(argv[i], "--verbose") == 0) verbose = true;
-        else if (strcmp(argv[i], "--sat-sweep") == 0) sat_sweep = true;
+        else if (strcmp(argv[i], "--sat-sweep") == 0 && i + 1 < argc) sat_sweep = std::stoull(argv[++i]);
         else if (strcmp(argv[i], "--multi-def") == 0 && i + 1 < argc) multi_def_k = std::stoul(argv[++i]);
         else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]);
@@ -379,7 +379,7 @@ int main(int argc, char** argv) {
     cout << "fuzz_aig_rewrite" << endl;
     cout << "Seed: " << seed << "  max_vars: " << max_vars
          << "  max_depth: " << max_depth << "  max_nodes: " << max_nodes_cfg
-         << "  sat-sweep: " << (sat_sweep ? "ON" : "off")
+         << "  sat-sweep: " << ((sat_sweep > 1) ? "random" : (sat_sweep ? "ON" : "OFF"))
          << "  multi-def: " << (multi_def_k ? std::to_string(multi_def_k) : std::string("off")) << endl;
     cout << "Reproduce: fuzz_aig_rewrite --seed " << seed
          << " --vars " << max_vars << " --depth " << max_depth
@@ -399,7 +399,11 @@ int main(int argc, char** argv) {
         aig_ptr aig = fuzz::gen_random_shape(aig_mng, rng, num_vars, depth, max_nodes);
         if (!aig) continue;
 
-        if (!run_one(aig, num_vars, seed, iter, rng, fs, verbose, sat_sweep)) return 1;
+        bool actual_sat_sweep = sat_sweep;
+        if (sat_sweep > 1) {
+            actual_sat_sweep = rng() %2;
+        }
+        if (!run_one(aig, num_vars, seed, iter, rng, fs, verbose, actual_sat_sweep)) return 1;
         if (multi_def_k > 0) {
             if (!run_multi_def(multi_def_k, max_vars, max_depth, max_nodes_cfg,
                                seed, iter, rng, verbose)) return 1;
