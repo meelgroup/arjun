@@ -81,7 +81,7 @@ encoding would be reused on a later formula's cache hit, and the
 cached Lit's effective value sometimes disagreed with a direct AIG
 evaluation of the same node. The surface symptom on `bug_real_big.cnf`
 (a 74-clause fuzzer-reduced case, since removed from the repo):
-Manthan thinks it's done (`still to define: 0`, cex_solver UNSAT
+Manthan thinks it's done (`still to-define: 0`, cex_solver UNSAT
 against `f.clauses+f.out`) but the exported `cnf.defs` (built from
 `f.aig`) violate an original clause. The CNF encoding and AIG
 encoding of the same formula denote different Boolean functions.

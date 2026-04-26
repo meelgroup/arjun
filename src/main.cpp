@@ -262,10 +262,10 @@ void add_arjun_options() {
     // Gate options
     myopt("--gates", do_gates, fc_int,"Turn on/off all gate-based definability");
     myopt("--nogatebelow", conf.no_gates_below, fc_double,"Don't use gates below this incidence relative position (1.0-0.0) to minimize the independent set. Gates are not very accurate, but can save a LOT of time. We use them to get rid of most of the uppert part of the sampling set only. Default is 99% is free-for-all, the last 1% we test. At 1.0 we test everything, at 0.0 we try using gates for everything.");
-    myopt("--orgate", conf.or_gate_based, fc_int,"Use 3-long gate detection in SAT solver to define variables");
+    myopt("--orgate", conf.or_gate_based, fc_int,"Use 3-long gate detection in SAT solver to-define variables");
     myopt("--irreggate", conf.irreg_gate_based, fc_int,"Use irregular gate-based removal of vars from indep set");
-    myopt("--itegate", conf.ite_gate_based, fc_int,"Use ITE gate detection in SAT solver to define some variables");
-    myopt("--xorgate", conf.xor_gates_based, fc_int,"Use XOR detection in SAT solver to define some variables");
+    myopt("--itegate", conf.ite_gate_based, fc_int,"Use ITE gate detection in SAT solver to-define some variables");
+    myopt("--xorgate", conf.xor_gates_based, fc_int,"Use XOR detection in SAT solver to-define some variables");
 
     // AppMC
     program.add_argument("--appmc")

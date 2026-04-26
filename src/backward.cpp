@@ -378,7 +378,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start backward_round_synth");
     set<uint32_t> pretend_input;
     if (to_define.empty()) {
-        verb_print(1, "[backw-synth] No variables to define, returning original CNF");
+        verb_print(1, "[backw-synth] No variables to-define, returning original CNF");
         return;
     }
     assert(backward_defined.empty());
@@ -525,7 +525,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     verb_print(1, COLRED "[backward SYNTH] Done. "
         << " TR: " << ret_true << " UN: " << ret_undef << " FA: " << ret_false
         << " defined: " << to_define.size()-to_define2.size()
-        << " still to define: " << to_define2.size()
+        << " still to-define: " << to_define2.size()
         << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time)
         << " mem: " << memUsedTotal()/(1024*1024) << " MB");
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));

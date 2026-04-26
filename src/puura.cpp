@@ -262,7 +262,7 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
         verb_print(1, COLRED "[puura] Done. final vars: " << ret_cnf.nVars()
             << " final cls: " << ret_cnf.get_clauses().size()
             << " defined: " << to_define.size() - to_define2.size()
-            << " still to define: " << to_define2.size()
+            << " still to-define: " << to_define2.size()
             << " T: " << setprecision(2) << setw(2) << (cpuTime() - my_time));
     } else {
         verb_print(1, COLRED "[puura] Done. final vars: " << ret_cnf.nVars()

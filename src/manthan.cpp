@@ -1309,7 +1309,7 @@ SimplifiedCNF Manthan::do_manthan() {
     // to_define vars -- vars that are not defined yet, and not input
     cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_manthan").unpack_to(input, to_define, backward_defined);
     if (to_define.empty()) {
-        verb_print(1, "[manthan] No variables to define, returning original CNF");
+        verb_print(1, "[manthan] No variables to-define, returning original CNF");
         return cnf;
     }
     for(const auto& v: helper_functions) {
@@ -1546,7 +1546,7 @@ SimplifiedCNF Manthan::do_manthan() {
         << " repair T: " << setprecision(2) << std::fixed << repair_time
         << " repairs: " << tot_repaired << " repair failed: " << repair_failed
         << " defined: " << to_define.size() - to_define2.size()
-        << " still to define: " << to_define2.size()
+        << " still to-define: " << to_define2.size()
         << " T: " << cpuTime()-my_time);
     return fcnf;
 }

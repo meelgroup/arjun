@@ -178,7 +178,7 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
             << " True: " << num_sat
             << " Unkn: " << num_unknown
             << " defined: " << to_define.size()-to_define2.size()
-            << " still to define: " << to_define2.size()
+            << " still to-define: " << to_define2.size()
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - my_time));
 }
 

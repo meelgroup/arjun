@@ -45,7 +45,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     uint32_t cond_calls = 0;
     cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_unate_def").unpack_to(input, to_define, backward_defined);
     if (to_define.empty()) {
-        verb_print(1, "[unate_def] No variables to define, skipping");
+        verb_print(1, "[unate_def] No variables to-define, skipping");
         return;
     }
     auto s = setup_f_not_f(cnf);
@@ -341,7 +341,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     verb_print(1, COLRED "[unate_def] Done. synthesis_unate_def"
         << " tested: " << tested_num
         << " defined: " << to_define.size() - to_define2.size()
-        << " still to define: " << to_define2.size()
+        << " still to-define: " << to_define2.size()
         << " T: " << total_time);
 }
 
@@ -350,7 +350,7 @@ void Unate::synthesis_unate(SimplifiedCNF& cnf) {
     uint32_t new_units = 0;
     cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_unate").unpack_to(input, to_define, backward_defined);
     if (to_define.empty()) {
-        verb_print(1, "[unate] No variables to define, skipping");
+        verb_print(1, "[unate] No variables to-define, skipping");
         return;
     }
 
@@ -437,7 +437,7 @@ void Unate::synthesis_unate(SimplifiedCNF& cnf) {
     verb_print(1, COLRED "[unate] Done. synthesis_unate"
         << " tested: " << tested_num
         << " defined: " << to_define.size() - to_define2.size()
-        << " still to define: " << to_define2.size()
+        << " still to-define: " << to_define2.size()
         << " T: " << (cpuTime() - my_time));
 }
 

@@ -187,7 +187,7 @@ void Autarky::find_autarkies(SimplifiedCNF& cnf) {
         verb_print(1, COLRED "[autarky] Done. do_autarky"
             << " found autarkies: " << autaries
             << " defined: " << to_define.size() - to_define2.size()
-            << " still to define: " << to_define2.size()
+            << " still to-define: " << to_define2.size()
             << " T-out: " << (timeout ? "Y" : "N")
             << " T: " << (cpuTime() - start_time));
     } else {
