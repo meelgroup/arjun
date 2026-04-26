@@ -67,7 +67,6 @@ public:
     void set_sat_sweep_sim_patterns(uint32_t n) { sweep_sim_rounds = n; }
     void set_sat_sweep_max_class(uint32_t n) { sweep_max_class_size = n; }
     void set_sat_sweep_conflict_budget(uint64_t n) { sweep_conflict_budget = n; }
-    void set_sat_sweep_time_budget(double s) { sweep_time_budget_s = s; }
 
     const AIGRewriteStats& get_stats() const { return stats; }
 
@@ -87,11 +86,6 @@ private:
     // with no merge. A class that keeps refuting is almost always a
     // simulation coincidence — further SAT checks on it are wasted time.
     uint32_t sweep_class_abort_streak = 2;
-    // Wall-clock budget for the entire sat_sweep() call. A safety net for
-    // pathological blow-ups on huge AIGs; not a primary throttle — the
-    // per-class abort streak + conflict budget should already keep useful
-    // work inside a tight envelope.
-    double sweep_time_budget_s = 60.0;
 
     // Structural hash table for canonical AND nodes. Keyed on the two signed
     // child edges (nid + sign). In the new model an AND node has no output

@@ -820,10 +820,6 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
     for (auto& [key, members] : classes) {
         if (members.size() < 2) continue;
         if (members.size() > sweep_max_class_size) continue;
-        if (cpuTime() - start_time > sweep_time_budget_s) {
-            time_exhausted = true;
-            break;
-        }
         classes_processed++;
         if (verb >= 2 && classes_processed - last_progress_print_classes >= 100) {
             cout << "c o [aig-rewrite] sat-sweep progress"
@@ -901,10 +897,6 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
                 // almost certainly a simulation false-positive. Skip the
                 // rest rather than keep paying for SAT.
                 stats.sweep_class_aborts++;
-                break;
-            }
-            if (cpuTime() - start_time > sweep_time_budget_s) {
-                time_exhausted = true;
                 break;
             }
         }
