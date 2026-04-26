@@ -2511,14 +2511,6 @@ DLL_PUBLIC void SimplifiedCNF::check_red_cls_deriveable() const {
     }
   }
 }
-DLL_PUBLIC size_t AIG::count_aig_nodes(const AIG* aig) {
-    if (!aig) return 0;
-    const uint64_t epoch = next_visit_epoch();
-    size_t count = 0;
-    count_aig_nodes_batch(aig, epoch, count);
-    return count;
-}
-
 DLL_PUBLIC void AIG::count_aig_nodes_batch(const AIG* aig, uint64_t epoch, size_t& count) {
     if (!aig) return;
     if (aig->visit_epoch == epoch) return;
@@ -2546,7 +2538,7 @@ DLL_PUBLIC size_t AIG::count_aig_nodes_fast(const std::vector<aig_ptr>& roots) {
     return count;
 }
 
-DLL_PUBLIC size_t AIG::count_aig_nodes_fast(const aig_ptr& root) {
+DLL_PUBLIC size_t AIG::count_aig_nodes_fast(aig_ptr const& root) {
     if (!root) return 0;
     const uint64_t epoch = next_visit_epoch();
     size_t count = 0;
@@ -2555,7 +2547,7 @@ DLL_PUBLIC size_t AIG::count_aig_nodes_fast(const aig_ptr& root) {
 }
 
 DLL_PUBLIC aig_ptr AIG::simplify_aig(aig_ptr aig) {
-    const size_t original_nodes = count_aig_nodes(aig);
+    const size_t original_nodes = count_aig_nodes_fast(aig);
     aig_ptr result = aig;
 
     // Simplify AIG
@@ -2572,7 +2564,7 @@ DLL_PUBLIC aig_ptr AIG::simplify_aig(aig_ptr aig) {
     }
 
     // Never return a result larger than the original
-    if (count_aig_nodes(result) > original_nodes) return aig;
+    if (count_aig_nodes_fast(result) > original_nodes) return aig;
     return result;
 }
 
@@ -2605,7 +2597,7 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
     vector<aig_ptr> originals = defs;
     vector<size_t> original_node_counts(defs.size());
     for (size_t i = 0; i < defs.size(); i++) {
-        original_node_counts[i] = count_aig_nodes(defs[i]);
+        original_node_counts[i] = count_aig_nodes_fast(defs[i]);
     }
 
     // simplify the AIGs
@@ -2623,7 +2615,7 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
 
     // Revert individual AIGs that grew
     for (size_t i = 0; i < defs.size(); i++) {
-        if (count_aig_nodes(defs[i]) > original_node_counts[i]) {
+        if (count_aig_nodes_fast(defs[i]) > original_node_counts[i]) {
             defs[i] = originals[i];
         }
     }

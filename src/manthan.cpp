@@ -1007,17 +1007,9 @@ void Manthan::bve_and_substitute() {
     assert(aigs.size() == to_define.size());
 
     AIGRewriter rw;
-    rw.set_sat_sweep(true);
     rw.rewrite_all(aigs, conf.verb);
-    size_t prev = AIG::count_aig_nodes_fast(aigs);
-    const uint32_t max_iters = 2;
-    for (uint32_t i = 0; i < max_iters; i++) {
-        rw.rewrite_all(aigs, conf.verb);
-        rw.sat_sweep(aigs, conf.verb);
-        const size_t now = AIG::count_aig_nodes_fast(aigs);
-        if (now >= prev) break;
-        prev = now;
-    }
+    rw.sat_sweep(aigs, conf.verb);
+    rw.rewrite_all(aigs, conf.verb);
 
     // One AIGToCNF encoder per formula. An earlier version used a persistent
     // encoder across formulas, reasoning that the node-pointer-keyed cache
@@ -1181,7 +1173,7 @@ void Manthan::print_detailed_stats() const {
         size_t aig_sz = 0;
         size_t aig_depth = 0;
         if (var_to_formula.count(v) && var_to_formula.at(v).aig) {
-            aig_sz = AIG::count_aig_nodes(var_to_formula.at(v).aig);
+            aig_sz = AIG::count_aig_nodes_fast(var_to_formula.at(v).aig);
             // Compute depth
             std::function<size_t(const aig_ptr&, std::map<aig_ptr,size_t>&)> get_depth =
                 [&](const aig_ptr& a, std::map<aig_ptr,size_t>& dc) -> size_t {
@@ -1211,7 +1203,7 @@ void Manthan::print_detailed_stats() const {
         for (const auto& [v, form] : var_to_formula) {
             total_clauses += form.clauses.size();
             if (form.aig) {
-                size_t sz = AIG::count_aig_nodes(form.aig.get());
+                size_t sz = AIG::count_aig_nodes_fast(form.aig);
                 AIG::count_aig_nodes_batch(form.aig.get(), epoch, union_count);
                 max_aig_nodes = std::max(max_aig_nodes, (uint64_t)sz);
             }

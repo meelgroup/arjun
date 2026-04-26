@@ -26,7 +26,6 @@
 #include <cassert>
 #include <chrono>
 #include <cstring>
-#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <map>
@@ -243,7 +242,7 @@ static bool run_one(const aig_ptr& aig, uint32_t num_vars,
     const auto& es = enc.get_stats();
 
     {
-        size_t nodes = AIG::count_aig_nodes(aig);
+        size_t nodes = AIG::count_aig_nodes_fast(aig);
         double cls_ratio = ns.clauses > 0 ? (double)es.clauses_added / ns.clauses : 1.0;
         double hlp_ratio = ns.helpers > 0 ? (double)es.helpers_added / ns.helpers : 1.0;
         cout << "[" << std::setw(6) << iter << "] "
@@ -262,7 +261,7 @@ static bool run_one(const aig_ptr& aig, uint32_t num_vars,
              << endl;
     }
 
-    fs.nodes_total += AIG::count_aig_nodes(aig);
+    fs.nodes_total += AIG::count_aig_nodes_fast(aig);
     fs.naive_clauses_total += ns.clauses;
     fs.naive_helpers_total += ns.helpers;
     fs.opt_clauses_total += es.clauses_added;
@@ -492,7 +491,7 @@ static int run_bench_rewrite_mode(uint64_t seed, uint64_t num_aigs,
         aig_ptr a = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, chain_depth, bw);
         if (a) {
             aigs.push_back(a);
-            total_raw_nodes += ArjunNS::AIG::count_aig_nodes(a);
+            total_raw_nodes += ArjunNS::AIG::count_aig_nodes_fast(a);
         }
     }
     double gen_s = std::chrono::duration<double>(

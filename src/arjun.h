@@ -31,7 +31,6 @@ THE SOFTWARE.
 #include <map>
 #include <set>
 #include <unordered_map>
-#include <unordered_set>
 #include <optional>
 #include <fstream>
 #include <gmpxx.h>
@@ -472,8 +471,6 @@ public:
         cache[pos_key] = result;
         return aig.neg ? ~result : result;
     }
-    static size_t count_aig_nodes(const aig_ptr aig) { return count_aig_nodes(aig.get()); }
-    static size_t count_aig_nodes(const AIG* aig);
     // Fast variant: iterative DFS using AIG::visit_epoch marking. Shared
     // structure across the input vector is counted only once. Used by the
     // rewriter's hot paths where the std::set<aig_ptr> version was the

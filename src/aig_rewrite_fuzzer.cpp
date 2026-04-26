@@ -172,7 +172,6 @@ static bool run_one(const aig_ptr& orig, uint32_t num_vars,
 {
     // 1. Rewrite.
     AIGRewriter rw;
-    if (sat_sweep) rw.set_sat_sweep(true);
     aig_ptr simp = rw.rewrite(orig);
     if (!simp) simp = orig;
 
@@ -184,8 +183,8 @@ static bool run_one(const aig_ptr& orig, uint32_t num_vars,
         if (!simp) simp = orig;
     }
 
-    size_t before = AIG::count_aig_nodes(orig);
-    size_t after  = AIG::count_aig_nodes(simp);
+    size_t before = AIG::count_aig_nodes_fast(orig);
+    size_t after  = AIG::count_aig_nodes_fast(simp);
     fs.nodes_before += before;
     fs.nodes_after  += after;
 
@@ -273,11 +272,10 @@ static bool run_multi_def(uint32_t k_defs, uint32_t f_free,
         if (!cand) return true; // skip iter
         defs[v] = cand;
         defs_pre[v] = defs[v];
-        total_nodes_before += AIG::count_aig_nodes(defs[v]);
+        total_nodes_before += AIG::count_aig_nodes_fast(defs[v]);
     }
 
     AIGRewriter rw;
-    rw.set_sat_sweep(true);
     rw.sat_sweep(defs, 0);
     g_total_self_ref_reverts += rw.get_stats().sweep_self_ref_reverts;
 
@@ -324,7 +322,7 @@ static bool run_multi_def(uint32_t k_defs, uint32_t f_free,
 
     if (verbose) {
         uint32_t total_nodes_after = 0;
-        for (const auto& d : defs) total_nodes_after += AIG::count_aig_nodes(d);
+        for (const auto& d : defs) total_nodes_after += AIG::count_aig_nodes_fast(d);
         cout << "[" << std::setw(6) << iter << "] multi-def K=" << k_defs
              << " F=" << f_free
              << " nodes " << std::setw(5) << total_nodes_before

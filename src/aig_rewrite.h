@@ -153,7 +153,6 @@ private:
     }
 
     aig_lit make_canonical(const aig_lit& l, const aig_lit& r);
-    size_t count_nodes(const aig_ptr& aig) const;
 };
 
 } // namespace ArjunNS

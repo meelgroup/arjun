@@ -58,10 +58,6 @@ void AIGRewriteStats::clear() { *this = AIGRewriteStats(); }
 
 // ========== Helpers ==========
 
-size_t AIGRewriter::count_nodes(const aig_ptr& aig) const {
-    return AIG::count_aig_nodes(aig);
-}
-
 void AIGRewriter::collect_and_edges(const aig_lit& edge, vector<aig_lit>& out) {
     if (!edge) return;
     if (edge->type == AIGT::t_and && !edge.neg) {
@@ -581,7 +577,7 @@ aig_lit AIGRewriter::flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cac
 aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
     if (!aig) return nullptr;
     struct_hash.clear();
-    const size_t before = count_nodes(aig);
+    const size_t before = AIG::count_aig_nodes_fast(aig);
     aig_lit result = aig;
     { NodeRebuildMap c; result = simplify_pass(result, c); }
     struct_hash.clear();
@@ -591,7 +587,7 @@ aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
     struct_hash.clear();
     { NodeRebuildMap c; result = hash_cons(result, c); }
     stats.total_passes++;
-    if (count_nodes(result) > before) return aig;
+    if (AIG::count_aig_nodes_fast(result) > before) return aig;
     return result;
 }
 
