@@ -2013,7 +2013,7 @@ DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
     check_pre_post_backward_round_synth();
     check_all_vars_accounted_for();
     check_self_dependency();
-    get_var_types(0, "defs_invariant");
+    [[maybe_unused]] auto ret = get_var_types(0, "defs_invariant");
     SLOW_DEBUG_DO(check_synth_funs_randomly());
     return true;
 }
