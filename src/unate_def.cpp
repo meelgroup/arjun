@@ -217,7 +217,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     // on inputs that obviously won't yield a single-literal definition.
     bool cond_enabled = (conf.unate_def_cond != 0);
     uint32_t cond_attempts_since_last_hit = 0;
-    constexpr uint32_t cond_dry_streak_disable = 64;
+    constexpr uint32_t cond_dry_streak_disable = 128;
     for(uint32_t test: to_define) {
         assert(input.count(test) == 0);
         verb_print(3, "[unate_def] testing var: " << test+1);
