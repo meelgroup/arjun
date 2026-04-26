@@ -28,6 +28,7 @@
 #include "time_mem.h"
 #include <algorithm>
 #include <iomanip>
+#include <limits>
 
 using namespace ArjunNS;
 using namespace CMSat;
@@ -39,10 +40,10 @@ using std::set;
 using std::unique_ptr;
 
 void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
+    cond_stats = UnateDefCondStats{};
     double my_time = cpuTime();
     uint32_t new_units = 0;
     uint32_t new_cond_defs = 0;
-    uint32_t cond_calls = 0;
     cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_unate_def").unpack_to(input, to_define, backward_defined);
     if (to_define.empty()) {
         verb_print(1, "[unate_def] No variables to-define, skipping");
@@ -149,6 +150,62 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     vector<uint32_t> input_vars_list(input.begin(), input.end());
     std::sort(input_vars_list.begin(), input_vars_list.end());
 
+    // Dense lookup: input_pos[v] = index of v in input_vars_list, or
+    // UINT32_MAX if v is not an input. Used to project SAT models down
+    // to just input vars without keeping the full ~2*nVars model.
+    constexpr uint32_t NOT_INPUT = std::numeric_limits<uint32_t>::max();
+    vector<uint32_t> input_pos(cnf.nVars(), NOT_INPUT);
+    for (uint32_t i = 0; i < input_vars_list.size(); i++)
+        input_pos[input_vars_list[i]] = i;
+
+    // Per to-define var, the inputs that share at least one CNF clause
+    // with it, in first-encountered order. These are the most likely
+    // single-literal definers, so we examine them before the rest of
+    // the input list.
+    vector<vector<uint32_t>> related_inputs(cnf.nVars());
+    {
+        vector<uint8_t> in_cl(cnf.nVars(), 0); // scratch, cleared per clause
+        vector<uint32_t> ins_in_cl;
+        for (const auto& cl_ : cnf.get_clauses()) {
+            ins_in_cl.clear();
+            for (const auto& l : cl_) {
+                const uint32_t v = l.var();
+                if (input.count(v) && !in_cl[v]) {
+                    in_cl[v] = 1;
+                    ins_in_cl.push_back(v);
+                }
+            }
+            if (!ins_in_cl.empty()) {
+                for (const auto& l : cl_) {
+                    const uint32_t v = l.var();
+                    if (input.count(v)) continue;
+                    if (backward_defined.count(v)) continue;
+                    auto& dst = related_inputs[v];
+                    dst.insert(dst.end(), ins_in_cl.begin(), ins_in_cl.end());
+                }
+            }
+            for (uint32_t iv : ins_in_cl) in_cl[iv] = 0;
+        }
+        // Dedup each per-var list, preserving first-seen order.
+        vector<uint8_t> seen(cnf.nVars(), 0);
+        for (uint32_t v = 0; v < cnf.nVars(); v++) {
+            auto& lst = related_inputs[v];
+            if (lst.empty()) continue;
+            vector<uint32_t> ded; ded.reserve(lst.size());
+            for (uint32_t iv : lst) {
+                if (!seen[iv]) { seen[iv] = 1; ded.push_back(iv); }
+            }
+            for (uint32_t iv : ded) seen[iv] = 0;
+            lst = std::move(ded);
+        }
+    }
+
+    // Generation-counter dedup for the per-test candidate list.
+    vector<uint32_t> cand_seen_gen(cnf.nVars(), 0);
+    uint32_t cand_gen = 0;
+    vector<uint32_t> cur_cands;
+    cur_cands.reserve(input_vars_list.size());
+
     vector<Lit> assumps;
     vector<Lit> cl;
     set<uint32_t> already_tested;
@@ -183,10 +240,10 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
             assumps.emplace_back(ind, false);
         }
         bool found_def = false;
-        // Models from the standard-unate flip attempts; used to pick
-        // conditional candidates without scanning every input.
-        // model_for_flip[k] is the model returned when flip=k was SAT.
-        vector<lbool> model_for_flip[2];
+        // Models from the standard-unate flip attempts, projected down
+        // to just input vars (input_vars_list[i] -> input_vals[flip][i]).
+        // Avoids keeping the full ~2*nVars + helpers SAT model around.
+        vector<lbool> input_vals[2];
         bool model_valid[2] = {false, false};
         for(int flip = 0; flip < 2; flip++) {
             assumps.emplace_back(test, !flip);
@@ -208,10 +265,15 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
                 assumps.pop_back();
                 break;
             }
-            // SAT: capture the model so we can use it to choose conditional
-            // candidates below. Copy out before issuing more solve calls.
+            // SAT: project the model down to input vars. We only ever
+            // read these positions when picking conditional candidates.
             if (ret == l_True) {
-                model_for_flip[flip] = s->get_model();
+                const auto& m = s->get_model();
+                input_vals[flip].assign(input_vars_list.size(), l_Undef);
+                for (size_t i = 0; i < input_vars_list.size(); i++) {
+                    const uint32_t v = input_vars_list[i];
+                    if (v < m.size()) input_vals[flip][i] = m[v];
+                }
                 model_valid[flip] = true;
             }
             assumps.pop_back();
@@ -226,19 +288,56 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         // the OPPOSITE flip per L value, i.e. 2 SAT calls per candidate.
         if (!found_def && cond_enabled
                 && model_valid[0] && model_valid[1]) {
+            const double cond_t0 = cpuTime();
+            cond_stats.tests_eligible++;
             const uint32_t nv = cnf.nVars();
             cond_attempts_since_last_hit++;
 
+            // Build per-test candidate list: inputs sharing a clause
+            // with `test` first (most likely definers), then the rest.
+            // `related_count` is the size of the related-inputs prefix
+            // so we can attribute hits to it for the stats.
+            cand_gen++;
+            cur_cands.clear();
+            if (conf.unate_def_cond_relfirst) {
+                for (uint32_t iv : related_inputs[test]) {
+                    if (cand_seen_gen[iv] != cand_gen) {
+                        cand_seen_gen[iv] = cand_gen;
+                        cur_cands.push_back(iv);
+                    }
+                }
+            }
+            const uint32_t related_count = cur_cands.size();
+            for (uint32_t iv : input_vars_list) {
+                if (cand_seen_gen[iv] != cand_gen) {
+                    cand_seen_gen[iv] = cand_gen;
+                    cur_cands.push_back(iv);
+                }
+            }
+
             uint32_t cand_count = 0;
-            for (const uint32_t l_var : input_vars_list) {
-                if (cand_count >= conf.unate_def_cond_max_per_var) break;
-                if (l_var >= model_for_flip[0].size()) continue;
-                if (l_var >= model_for_flip[1].size()) continue;
-                lbool v1 = model_for_flip[0][l_var]; // M1: test_x=0 was SAT
-                lbool v2 = model_for_flip[1][l_var]; // M2: test_x=1 was SAT
-                if (v1 == l_Undef || v2 == l_Undef) continue;
-                if (v1 == v2) continue; // L's value didn't change; no chance
+            uint32_t cand_depth = 0; // 1-based position of the winner
+            for (const uint32_t l_var : cur_cands) {
+                cand_depth++;
+                if (cand_count >= conf.unate_def_cond_max_per_var) {
+                    cond_stats.cands_skipped_budget +=
+                        (uint64_t)(cur_cands.size() - (cand_depth - 1));
+                    break;
+                }
+                const uint32_t pos = input_pos[l_var];
+                assert(pos != NOT_INPUT);
+                lbool v1 = input_vals[0][pos]; // M1: test_x=0 was SAT
+                lbool v2 = input_vals[1][pos]; // M2: test_x=1 was SAT
+                if (v1 == l_Undef || v2 == l_Undef) {
+                    cond_stats.cands_skipped_undef++;
+                    continue;
+                }
+                if (v1 == v2) {
+                    cond_stats.cands_skipped_v_eq++;
+                    continue;
+                }
                 cand_count++;
+                cond_stats.cands_examined++;
 
                 // Under L = v1, the SAT witness M1 had flip=0 SAT
                 // (test_x=0, test_y'=1). Try flip=1 (test_x=1, test_y'=0)
@@ -253,9 +352,12 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
                 assumps.emplace_back(test, false);
                 assumps.emplace_back(test + nv, true);
                 s->set_max_confl(conf.unate_def_cond_max_confl);
-                cond_calls++;
+                cond_stats.cond_sat_calls++;
                 auto r1 = s->solve(&assumps);
                 assumps.pop_back(); assumps.pop_back(); assumps.pop_back();
+                if (r1 == l_False) cond_stats.p1_unsat++;
+                else if (r1 == l_True) cond_stats.p1_sat++;
+                else cond_stats.p1_undef++;
                 if (r1 != l_False) continue;
 
                 // Mirror probe under L=v2: pins test=1 under L=v2.
@@ -263,9 +365,12 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
                 assumps.emplace_back(test, true);
                 assumps.emplace_back(test + nv, false);
                 s->set_max_confl(conf.unate_def_cond_max_confl);
-                cond_calls++;
+                cond_stats.cond_sat_calls++;
                 auto r2 = s->solve(&assumps);
                 assumps.pop_back(); assumps.pop_back(); assumps.pop_back();
+                if (r2 == l_False) cond_stats.p2_unsat++;
+                else if (r2 == l_True) cond_stats.p2_sat++;
+                else cond_stats.p2_undef++;
                 if (r2 != l_False) continue;
 
                 // Under L=v1 → test=0, under L=v2 → test=1, and v1≠v2.
@@ -292,11 +397,17 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
                 const bool def_neg = l_orig.sign() ^ (!test_equals_l) ^ test_orig.sign();
                 cnf.set_def(test_orig.var(), AIG::new_lit(l_orig.var(), def_neg));
                 new_cond_defs++;
+                cond_stats.hits++;
+                cond_stats.winning_depth_sum += cand_depth;
+                if ((uint64_t)cand_depth > cond_stats.winning_depth_max)
+                    cond_stats.winning_depth_max = cand_depth;
+                if (cand_depth <= related_count) cond_stats.hits_in_related++;
                 verb_print(2, "[unate_def] cond def: NEW test " << test+1
                     << " = " << (test_equals_l ? "" : "~") << "NEW " << (l_var+1)
                     << " (orig: " << test_orig.var()+1 << " "
                     << (def_neg ? "-" : "+") << l_orig.var()+1
-                    << ") T: " << fixed << setprecision(2) << (cpuTime()-my_time));
+                    << ") depth=" << cand_depth
+                    << " T: " << fixed << setprecision(2) << (cpuTime()-my_time));
 
                 // Tighten the SAT solver: equate test on both sides to L
                 // (or its negation). Implies the indicator becoming TRUE,
@@ -315,6 +426,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
                 cond_attempts_since_last_hit = 0;
                 break;
             }
+            cond_stats.time_in_cond += cpuTime() - cond_t0;
             if (cond_enabled
                     && cond_attempts_since_last_hit >= cond_dry_streak_disable
                     && new_cond_defs == 0) {
@@ -332,9 +444,26 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     verb_print(1, COLYEL "[unate_def] "
             << " units: " << setw(7) << new_units
             << " cond defs: " << setw(7) << new_cond_defs
-            << " cond calls: " << setw(7) << cond_calls
+            << " cond calls: " << setw(7) << cond_stats.cond_sat_calls
             << " tested: " << setw(7) << tested_num
             << " tests/s: " << setprecision(2) << fixed << setw(6) << safe_div(tested_num, total_time));
+
+    if (conf.unate_def_cond) {
+        const auto& cs = cond_stats;
+        verb_print(1, COLYEL "[unate_def] cond stats:"
+            << " elig=" << cs.tests_eligible
+            << " hits=" << cs.hits
+            << " hits_in_related=" << cs.hits_in_related
+            << " cands[exam=" << cs.cands_examined
+            << " skip_v_eq=" << cs.cands_skipped_v_eq
+            << " skip_undef=" << cs.cands_skipped_undef
+            << " skip_budget=" << cs.cands_skipped_budget << "]"
+            << " p1[U=" << cs.p1_unsat << " S=" << cs.p1_sat << " T=" << cs.p1_undef << "]"
+            << " p2[U=" << cs.p2_unsat << " S=" << cs.p2_sat << " T=" << cs.p2_undef << "]"
+            << " avg_win_depth=" << setprecision(1) << fixed << safe_div(cs.winning_depth_sum, cs.hits)
+            << " max_win_depth=" << cs.winning_depth_max
+            << " cond_T=" << setprecision(2) << fixed << cs.time_in_cond);
+    }
 
     cnf.add_fixed_values(unates);
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end do_unate_def");

@@ -1713,6 +1713,7 @@ public:
     void set_unate_def_cond(int unate_def_cond);
     void set_unate_def_cond_max_per_var(uint32_t unate_def_cond_max_per_var);
     void set_unate_def_cond_max_confl(uint32_t unate_def_cond_max_confl);
+    void set_unate_def_cond_relfirst(int unate_def_cond_relfirst);
     void set_oracle_find_bins(int oracle_find_bins);
     void set_cms_glob_mult(double cms_glob_mult);
     void set_extend_ccnr(int extend_ccnr);
@@ -1741,6 +1742,7 @@ public:
     [[nodiscard]] int get_unate_def_cond() const;
     [[nodiscard]] uint32_t get_unate_def_cond_max_per_var() const;
     [[nodiscard]] uint32_t get_unate_def_cond_max_confl() const;
+    [[nodiscard]] int get_unate_def_cond_relfirst() const;
     [[nodiscard]] int get_oracle_find_bins() const;
     [[nodiscard]] double get_cms_glob_mult() const;
     [[nodiscard]] int get_extend_ccnr() const;

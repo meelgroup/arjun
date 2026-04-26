@@ -165,6 +165,7 @@ void add_arjun_options() {
     myopt("--unatedefcond", conf.unate_def_cond, fc_int,"In unate_def, also detect conditional defs of the form t = ITE(L,c1,c0) for input literals L (i.e., t = L or t = ~L)");
     myopt("--unatedefcondmax", conf.unate_def_cond_max_per_var, fc_int,"Max conditional candidates to test per to-define variable in unate_def");
     myopt("--unatedefcondconfl", conf.unate_def_cond_max_confl, fc_int,"Conflict budget per SAT call inside the conditional unate_def search");
+    myopt("--unatedefcondrel", conf.unate_def_cond_relfirst, fc_int,"In unate_def cond, examine inputs sharing a clause with `test` first");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
     myopt("--monflyorder", mconf.manthan_on_the_fly_order, fc_int,"Use on-the-fly training order and post-training topological order");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
@@ -351,6 +352,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_unate_def_cond(conf.unate_def_cond);
     arj->set_unate_def_cond_max_per_var(conf.unate_def_cond_max_per_var);
     arj->set_unate_def_cond_max_confl(conf.unate_def_cond_max_confl);
+    arj->set_unate_def_cond_relfirst(conf.unate_def_cond_relfirst);
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 

@@ -50,6 +50,9 @@ struct Config {
     int unate_def_cond = 1;
     uint32_t unate_def_cond_max_per_var = 64;
     uint32_t unate_def_cond_max_confl = 4000;
+    // 1 = try inputs sharing a clause with `test` first; 0 = use the
+    // sorted input list. Used for A/B-testing the structural ordering.
+    int unate_def_cond_relfirst = 1;
     bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;

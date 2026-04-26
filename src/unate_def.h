@@ -33,6 +33,51 @@
 #include "config.h"
 #include "metasolver.h"
 
+// Telemetry for the conditional-unate-def probe. Reset at the start of
+// each `synthesis_unate_def` call. All counts are over the inner
+// (per-test) loop so we can spot expensive vs. productive patterns.
+struct UnateDefCondStats {
+    // Tests where conditional probing was attempted at all (i.e. neither
+    // standard-unate flip was UNSAT and both witnesses were captured).
+    uint32_t tests_eligible = 0;
+
+    // Candidate L iterations that we *examined* (got past the v1==v2,
+    // l_Undef, and per-var cap filters).
+    uint64_t cands_examined = 0;
+    // Candidates skipped because v1 == v2 (no chance to define).
+    uint64_t cands_skipped_v_eq = 0;
+    // Candidates skipped because v1 or v2 was l_Undef in the witness.
+    uint64_t cands_skipped_undef = 0;
+    // Candidates skipped because the per-test budget was exceeded.
+    uint64_t cands_skipped_budget = 0;
+
+    // Per-probe results. Each examined candidate runs probe 1, and only
+    // runs probe 2 if probe 1 was UNSAT.
+    uint64_t p1_unsat = 0;
+    uint64_t p1_sat = 0;
+    uint64_t p1_undef = 0; // conflict-budget timeout
+    uint64_t p2_unsat = 0;
+    uint64_t p2_sat = 0;
+    uint64_t p2_undef = 0;
+
+    // Definitions actually recorded.
+    uint64_t hits = 0;
+    // Sum of "how-many-cands-deep was the winner" across hits, for an
+    // average winning depth metric.
+    uint64_t winning_depth_sum = 0;
+    uint64_t winning_depth_max = 0;
+    // Of `hits`, how many had the winning L in the related-inputs prefix
+    // (i.e. an input sharing at least one clause with `test`). The
+    // remainder (hits - hits_in_related) came from the fall-through tail.
+    // Tells us whether the structural pre-ordering actually pays off.
+    uint64_t hits_in_related = 0;
+
+    // Time spent inside the conditional block (post-flips), seconds.
+    double time_in_cond = 0.0;
+    // SAT calls issued from inside the conditional block.
+    uint64_t cond_sat_calls = 0;
+};
+
 class Unate {
     public:
         Unate(const ArjunInt::Config& _conf) : conf(_conf) {}
@@ -50,4 +95,6 @@ class Unate {
         std::vector<uint32_t> var_to_indic; // for each var, the indicator
                                             // variable in the SAT solver that is true iff the var is equal to its copy (i.e. not flipped)
         std::unique_ptr<ArjunInt::MetaSolver> setup_f_not_f(const ArjunNS::SimplifiedCNF& cnf);
+
+        UnateDefCondStats cond_stats;
 };
