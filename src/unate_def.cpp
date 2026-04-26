@@ -26,6 +26,7 @@
 #include "constants.h"
 #include "metasolver.h"
 #include "time_mem.h"
+#include <algorithm>
 #include <iomanip>
 
 using namespace ArjunNS;
@@ -40,6 +41,8 @@ using std::unique_ptr;
 void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     double my_time = cpuTime();
     uint32_t new_units = 0;
+    uint32_t new_cond_defs = 0;
+    uint32_t cond_calls = 0;
     cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_unate_def").unpack_to(input, to_define, backward_defined);
     if (to_define.empty()) {
         verb_print(1, "[unate_def] No variables to define, skipping");
@@ -140,12 +143,24 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     }
     /* if (conf.verb >= 3) dump_cnf<Lit>(*s, "unate_def-start.cnf", input); */
 
+    // Deterministic candidate list of input vars used for conditional tests.
+    // Inputs are shared across copies in setup_f_not_f, so a single literal
+    // assumption fixes the value on both sides simultaneously.
+    vector<uint32_t> input_vars_list(input.begin(), input.end());
+    std::sort(input_vars_list.begin(), input_vars_list.end());
+
     vector<Lit> assumps;
     vector<Lit> cl;
     set<uint32_t> already_tested;
 
     uint32_t tested_num = 0;
     vector<Lit> unates;
+    // Adaptive disable: if conditional probing finds nothing for long,
+    // turn it off for the rest of the run so we don't waste SAT calls
+    // on inputs that obviously won't yield a single-literal definition.
+    bool cond_enabled = (conf.unate_def_cond != 0);
+    uint32_t cond_attempts_since_last_hit = 0;
+    constexpr uint32_t cond_dry_streak_disable = 64;
     for(uint32_t test: to_define) {
         assert(input.count(test) == 0);
         verb_print(3, "[unate_def] testing var: " << test+1);
@@ -153,6 +168,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         if (tested_num % 300 == 299) {
             verb_print(1, "[unate_def] test no: " << setw(5) << tested_num
                 << " new units: " << setw(4) << new_units
+                << " new cond defs: " << setw(4) << new_cond_defs
                 << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
         }
 
@@ -166,6 +182,12 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
             assert(ind != var_Undef);
             assumps.push_back(Lit(ind, false));
         }
+        bool found_def = false;
+        // Models from the standard-unate flip attempts; used to pick
+        // conditional candidates without scanning every input.
+        // model_for_flip[k] is the model returned when flip=k was SAT.
+        vector<lbool> model_for_flip[2];
+        bool model_valid[2] = {false, false};
         for(int flip = 0; flip < 2; flip++) {
             assumps.push_back(Lit(test, !flip));
             assumps.push_back(Lit(test+cnf.nVars(), flip));
@@ -181,10 +203,126 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
                 cl = {l};
                 s->add_clause(cl);
                 new_units++;
+                found_def = true;
+                assumps.pop_back();
+                assumps.pop_back();
                 break;
+            }
+            // SAT: capture the model so we can use it to choose conditional
+            // candidates below. Copy out before issuing more solve calls.
+            if (ret == l_True) {
+                model_for_flip[flip] = s->get_model();
+                model_valid[flip] = true;
             }
             assumps.pop_back();
             assumps.pop_back();
+        }
+
+        // Conditional unate definition: try to express test as a single
+        // input literal (test = L or test = ~L) by checking, for each
+        // candidate input L, whether forcing L to v1 makes test forced to a
+        // specific value, and similarly for L = !v1. The two flips of the
+        // standard test give us free SAT witnesses: we only have to issue
+        // the OPPOSITE flip per L value, i.e. 2 SAT calls per candidate.
+        if (!found_def && cond_enabled
+                && model_valid[0] && model_valid[1]) {
+            const uint32_t nv = cnf.nVars();
+            cond_attempts_since_last_hit++;
+
+            uint32_t cand_count = 0;
+            for (const uint32_t l_var : input_vars_list) {
+                if (cand_count >= conf.unate_def_cond_max_per_var) break;
+                if (l_var >= model_for_flip[0].size()) continue;
+                if (l_var >= model_for_flip[1].size()) continue;
+                lbool v1 = model_for_flip[0][l_var]; // M1: test_x=0 was SAT
+                lbool v2 = model_for_flip[1][l_var]; // M2: test_x=1 was SAT
+                if (v1 == l_Undef || v2 == l_Undef) continue;
+                if (v1 == v2) continue; // L's value didn't change; no chance
+                cand_count++;
+
+                // Under L = v1, the SAT witness M1 had flip=0 SAT
+                // (test_x=0, test_y'=1). Try flip=1 (test_x=1, test_y'=0)
+                // under L=v1 — UNSAT means test is forced to 0 under L=v1.
+                Lit l_eq_v1 = Lit(l_var, v1 != l_True);
+                Lit l_eq_v2 = Lit(l_var, v2 != l_True);
+
+                // Probe (test_x=1, test_y'=0) under L=v1: UNSAT here means
+                // test cannot be 1 under L=v1. Combined with M1 (which had
+                // test_x=0 SAT under L=v1), this pins test=0 under L=v1.
+                assumps.push_back(l_eq_v1);
+                assumps.push_back(Lit(test, false));
+                assumps.push_back(Lit(test + nv, true));
+                s->set_max_confl(conf.unate_def_cond_max_confl);
+                cond_calls++;
+                auto r1 = s->solve(&assumps);
+                assumps.pop_back(); assumps.pop_back(); assumps.pop_back();
+                if (r1 != l_False) continue;
+
+                // Mirror probe under L=v2: pins test=1 under L=v2.
+                assumps.push_back(l_eq_v2);
+                assumps.push_back(Lit(test, true));
+                assumps.push_back(Lit(test + nv, false));
+                s->set_max_confl(conf.unate_def_cond_max_confl);
+                cond_calls++;
+                auto r2 = s->solve(&assumps);
+                assumps.pop_back(); assumps.pop_back(); assumps.pop_back();
+                if (r2 != l_False) continue;
+
+                // Under L=v1 → test=0, under L=v2 → test=1, and v1≠v2.
+                // So test = L if v1=l_False, else test = ~L.
+                const bool test_equals_l = (v1 == l_False);
+
+                // Set the AIG def (in ORIG variable space).
+                assert(new_to_orig.count(test) > 0);
+                assert(new_to_orig.count(l_var) > 0);
+                const Lit test_orig = new_to_orig.at(test);
+                const Lit l_orig    = new_to_orig.at(l_var);
+                // Defensive: never produce a self-referential def. Distinct
+                // NEW vars should map to distinct ORIG vars after the usual
+                // simplification passes, but skip just in case.
+                if (test_orig.var() == l_orig.var()) continue;
+                // NEW positive `test` corresponds to ORIG lit
+                //   Lit(test_orig.var(), test_orig.sign()).
+                // We've established NEW test == NEW l_var XOR (!test_equals_l).
+                // Translating to ORIG vars:
+                //   NEW test = ORIG-var-of-test-pos ⊕ test_orig.sign()
+                //   NEW l_var = ORIG-var-of-L-pos ⊕ l_orig.sign()
+                // So ORIG-var-of-test = ORIG-var-of-L XOR
+                //   (l_orig.sign() ⊕ !test_equals_l ⊕ test_orig.sign())
+                const bool def_neg = l_orig.sign() ^ (!test_equals_l) ^ test_orig.sign();
+                cnf.set_def(test_orig.var(), AIG::new_lit(l_orig.var(), def_neg));
+                new_cond_defs++;
+                verb_print(2, "[unate_def] cond def: NEW test " << test+1
+                    << " = " << (test_equals_l ? "" : "~") << "NEW " << (l_var+1)
+                    << " (orig: " << test_orig.var()+1 << " "
+                    << (def_neg ? "-" : "+") << l_orig.var()+1
+                    << ") T: " << fixed << setprecision(2) << (cpuTime()-my_time));
+
+                // Tighten the SAT solver: equate test on both sides to L
+                // (or its negation). Implies the indicator becoming TRUE,
+                // and helps subsequent tests prove more.
+                // NEW lit `test_x ⇔ (test_equals_l ? l_var : ~l_var)`
+                {
+                    const Lit lit_t_x = Lit(test, false);
+                    const Lit lit_t_y = Lit(test + nv, false);
+                    const Lit lit_l   = Lit(l_var, !test_equals_l);
+                    s->add_clause({~lit_t_x, lit_l});
+                    s->add_clause({lit_t_x, ~lit_l});
+                    s->add_clause({~lit_t_y, lit_l});
+                    s->add_clause({lit_t_y, ~lit_l});
+                }
+                found_def = true;
+                cond_attempts_since_last_hit = 0;
+                break;
+            }
+            if (cond_enabled
+                    && cond_attempts_since_last_hit >= cond_dry_streak_disable
+                    && new_cond_defs == 0) {
+                verb_print(1, "[unate_def] disabling cond probe after "
+                        << cond_attempts_since_last_hit
+                        << " dry attempts");
+                cond_enabled = false;
+            }
         }
         already_tested.insert(test);
         s->add_clause({Lit(var_to_indic.at(test), false)});
@@ -193,6 +331,8 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     double total_time = cpuTime() - my_time;
     verb_print(1, COLYEL "[unate_def] "
             << " units: " << setw(7) << new_units
+            << " cond defs: " << setw(7) << new_cond_defs
+            << " cond calls: " << setw(7) << cond_calls
             << " tested: " << setw(7) << tested_num
             << " tests/s: " << setprecision(2) << fixed << setw(6) << safe_div(tested_num, total_time));
 

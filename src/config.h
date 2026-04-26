@@ -47,6 +47,9 @@ struct Config {
     uint32_t backw_max_confl = 20000;
     uint32_t unate_max_confl = 100;
     uint32_t extend_max_confl = 30000;
+    int unate_def_cond = 1;
+    uint32_t unate_def_cond_max_per_var = 64;
+    uint32_t unate_def_cond_max_confl = 4000;
     bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;

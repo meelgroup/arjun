@@ -162,6 +162,9 @@ void add_arjun_options() {
     myopt("--simpevery", mconf.simplify_every, fc_int,"Simplify solvers inside Manthan every K loops");
     myopt("--unate", do_unate, fc_int,"Perform unate analysis");
     myopt("--unatedef", do_unate_def, fc_int,"Perform definition-aware unate analysis");
+    myopt("--unatedefcond", conf.unate_def_cond, fc_int,"In unate_def, also detect conditional defs of the form t = ITE(L,c1,c0) for input literals L (i.e., t = L or t = ~L)");
+    myopt("--unatedefcondmax", conf.unate_def_cond_max_per_var, fc_int,"Max conditional candidates to test per to-define variable in unate_def");
+    myopt("--unatedefcondconfl", conf.unate_def_cond_max_confl, fc_int,"Conflict budget per SAT call inside the conditional unate_def search");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
     myopt("--monflyorder", mconf.manthan_on_the_fly_order, fc_int,"Use on-the-fly training order and post-training topological order");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
@@ -345,6 +348,9 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_gauss_jordan(conf.gauss_jordan);
     arj->set_simp(conf.simp);
     arj->set_extend_max_confl(conf.extend_max_confl);
+    arj->set_unate_def_cond(conf.unate_def_cond);
+    arj->set_unate_def_cond_max_per_var(conf.unate_def_cond_max_per_var);
+    arj->set_unate_def_cond_max_confl(conf.unate_def_cond_max_confl);
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 
