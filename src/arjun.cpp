@@ -2582,19 +2582,7 @@ DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb, bool sat_sweep)
     if (sat_sweep) rw.set_sat_sweep(true);
     rw.rewrite_all(defs, verb);
     if (!sat_sweep) return;
-
-    // Iterate rewrite+sweep to a fixed point.
-    // `max_iters` additional rounds so pathological oscillation can't spin forever.
     rw.sat_sweep(defs, verb);
-    size_t prev = AIG::count_aig_nodes_fast(defs);
-    const uint32_t max_iters = 1;
-    for (uint32_t i = 0; i < max_iters; i++) {
-        rw.rewrite_all(defs, verb);
-        rw.sat_sweep(defs, verb);
-        const size_t now = AIG::count_aig_nodes_fast(defs);
-        if (now >= prev) break;
-        prev = now;
-    }
 }
 
 DLL_PUBLIC aig_ptr AIG::rewrite_aig(const aig_ptr& aig) {
