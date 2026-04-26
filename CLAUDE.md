@@ -55,9 +55,9 @@ output lines.
 From `build/`:
 
 ```
-./fuzz_synth.py --num 50
-./fuzz_aig_to_cnf --num 300
-./fuzz_aig_rewrite --num 300
+./fuzz_synth.py --num 150
+./fuzz_aig_to_cnf --num 500
+./fuzz_aig_rewrite --num 500
 ```
 
 Both must pass before reporting a change as complete.
