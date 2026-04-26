@@ -699,7 +699,6 @@ CMSat::Lit naive_encode(const aig_lit& edge, CMSat::SATSolver& solver,
 } // namespace
 
 void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
-    if (!sat_sweep_enabled) return;
     const double start_time = cpuTime();
     const size_t nodes_before = AIG::count_aig_nodes_fast(defs);
 

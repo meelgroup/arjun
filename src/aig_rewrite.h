@@ -63,7 +63,6 @@ public:
     // Opt-in; no-op unless set_sat_sweep(true) was called.
     void sat_sweep(std::vector<aig_ptr>& defs, int verb = 1);
 
-    void set_sat_sweep(bool b) { sat_sweep_enabled = b; }
     void set_sat_sweep_sim_patterns(uint32_t n) { sweep_sim_rounds = n; }
     void set_sat_sweep_max_class(uint32_t n) { sweep_max_class_size = n; }
     void set_sat_sweep_conflict_budget(uint64_t n) { sweep_conflict_budget = n; }
@@ -72,7 +71,6 @@ public:
 
 private:
     AIGRewriteStats stats;
-    bool sat_sweep_enabled = false;
     // Number of 64-bit simulation rounds (each round = 64 patterns). More
     // rounds = fewer bogus candidate classes at linear simulation cost.
     uint32_t sweep_sim_rounds = 16;
