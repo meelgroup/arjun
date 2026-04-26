@@ -180,7 +180,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
             if (backward_defined.count(i)) continue;
             auto ind = var_to_indic.at(i);
             assert(ind != var_Undef);
-            assumps.push_back(Lit(ind, false));
+            assumps.emplace_back(ind, false);
         }
         bool found_def = false;
         // Models from the standard-unate flip attempts; used to pick
@@ -189,8 +189,8 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         vector<lbool> model_for_flip[2];
         bool model_valid[2] = {false, false};
         for(int flip = 0; flip < 2; flip++) {
-            assumps.push_back(Lit(test, !flip));
-            assumps.push_back(Lit(test+cnf.nVars(), flip));
+            assumps.emplace_back(test, !flip);
+            assumps.emplace_back(test+cnf.nVars(), flip);
             verb_print(3, "[unate_def] assumps : " << assumps);
             const auto ret = s->solve(&assumps);
             if (ret == l_False) {
@@ -250,8 +250,8 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
                 // test cannot be 1 under L=v1. Combined with M1 (which had
                 // test_x=0 SAT under L=v1), this pins test=0 under L=v1.
                 assumps.push_back(l_eq_v1);
-                assumps.push_back(Lit(test, false));
-                assumps.push_back(Lit(test + nv, true));
+                assumps.emplace_back(test, false);
+                assumps.emplace_back(test + nv, true);
                 s->set_max_confl(conf.unate_def_cond_max_confl);
                 cond_calls++;
                 auto r1 = s->solve(&assumps);
@@ -260,8 +260,8 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
 
                 // Mirror probe under L=v2: pins test=1 under L=v2.
                 assumps.push_back(l_eq_v2);
-                assumps.push_back(Lit(test, true));
-                assumps.push_back(Lit(test + nv, false));
+                assumps.emplace_back(test, true);
+                assumps.emplace_back(test + nv, false);
                 s->set_max_confl(conf.unate_def_cond_max_confl);
                 cond_calls++;
                 auto r2 = s->solve(&assumps);
