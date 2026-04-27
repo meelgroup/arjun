@@ -287,7 +287,16 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
 
         if (tested_num % 100 == 99) {
             verb_print(1, "[unate_def_rep] test no: " << setw(5) << tested_num
+                << "/" << to_define.size()
                 << " new defs: " << setw(4) << new_defs
+                << " iters: " << setw(7) << rep_stats.total_iters
+                << " miter[U=" << rep_stats.miter_unsat
+                << " S=" << rep_stats.miter_sat
+                << " T=" << rep_stats.miter_undef << "]"
+                << " f[U=" << rep_stats.f_unsat
+                << " S=" << rep_stats.f_sat
+                << " T=" << rep_stats.f_undef << "]"
+                << " skip_big=" << rep_stats.skipped_pattern_too_big
                 << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
         }
 
