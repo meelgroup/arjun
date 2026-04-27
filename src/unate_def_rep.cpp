@@ -257,10 +257,6 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
         return AIG::transform<Lit>(h, visit, cache);
     };
 
-    const uint32_t max_iter      = conf.unate_def_rep_iters;
-    const uint32_t max_pattern   = conf.unate_def_rep_max_pattern;
-    const uint32_t max_costzero  = conf.unate_def_rep_max_costzero;
-
     vector<Lit> assumps;
     set<uint32_t> already_tested;
     uint32_t tested_num = 0;
@@ -313,7 +309,7 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
         uint32_t hit_iter = 0;
         bool found_def = false;
 
-        for (uint32_t iter = 0; iter < max_iter; iter++) {
+        for (uint32_t iter = 0; iter < conf.unate_def_rep_iters; iter++) {
             rep_stats.total_iters++;
 
             const Lit h_top_lit = encode_h_y_prime(h);
@@ -422,7 +418,7 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 // rarely the right pattern, and burns iteration budget).
                 rep_stats.f_sat++;
                 costzero_count++;
-                if (costzero_count >= max_costzero) {
+                if (costzero_count >= conf.unate_def_rep_max_costzero) {
                     verb_print(3, "[unate_def_rep] giving up on test " << test+1
                         << " after " << costzero_count << " cost-zero CEXes");
                     break;
@@ -448,12 +444,12 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 if (!input.count(cl.var())) continue;
                 pattern_lits.push_back(~cl);    // assumption form: matches X*
             }
-            if (pattern_lits.size() > max_pattern) {
+            if (pattern_lits.size() > conf.unate_def_rep_max_pattern) {
                 rep_stats.skipped_pattern_too_big++;
                 // Same accounting as cost-zero: too-large patterns lead to
                 // explosive AIG growth without much generalization.
                 costzero_count++;
-                if (costzero_count >= max_costzero) break;
+                if (costzero_count >= conf.unate_def_rep_max_costzero) break;
                 continue;
             }
 
