@@ -210,11 +210,9 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     cond_cur_cands.reserve(cond_input_vars_list.size());
 
     vector<Lit> assumps;
-    vector<Lit> cl;
     set<uint32_t> already_tested;
 
     uint32_t tested_num = 0;
-    vector<Lit> unates;
     // Adaptive disable: if conditional probing finds nothing for long,
     // turn it off for the rest of the run so we don't waste SAT calls
     // on inputs that obviously won't yield a single-literal definition.
@@ -253,14 +251,18 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
             verb_print(3, "[unate_def] assumps : " << assumps);
             const auto ret = s->solve(&assumps);
             if (ret == l_False) {
-                Lit l = {Lit(test, flip)};
-                unates.push_back(l);
-                cnf.add_clause({l});
+                const Lit l = Lit(test, flip);
+                const Lit test_orig = new_to_orig.at(test);
+                // l forces NEW test to value !flip; in ORIG space the var
+                // gets the constant !(test_orig.sign() ^ flip).
+                cnf.set_def(test_orig.var(),
+                    AIG::new_const(!(test_orig.sign() ^ (bool)flip)));
                 verb_print(2, "[unate_def] good test. Setting: " << std::setw(3)  << l
                     << " T: " << fixed << setprecision(2) << (cpuTime() - my_time));
-                l = Lit(test+cnf.nVars(), flip);
-                cl = {l};
-                s->add_clause(cl);
+                // Tighten both sides of the miter so subsequent tests
+                // benefit from the now-forced value.
+                s->add_clause({l});
+                s->add_clause({Lit(test+cnf.nVars(), flip)});
                 new_units++;
                 found_def = true;
                 assumps.pop_back();
@@ -317,7 +319,6 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
             << " cond_T=" << setprecision(2) << fixed << cs.time_in_cond);
     }
 
-    cnf.add_fixed_values(unates);
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end do_unate_def");
     verb_print(1, COLRED "[unate_def] Done. synthesis_unate_def"
         << " tested: " << tested_num
@@ -499,6 +500,7 @@ void Unate::synthesis_unate(SimplifiedCNF& cnf) {
     }
 
     auto s = setup_f_not_f(cnf);
+    const auto new_to_orig = cnf.get_new_to_orig_var();
     var_to_indic.clear();
     var_to_indic.resize(cnf.nVars(), var_Undef);
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
@@ -531,10 +533,8 @@ void Unate::synthesis_unate(SimplifiedCNF& cnf) {
     /* if (conf.verb >= 3) dump_cnf<Lit>(*s, "unate-start.cnf", input); */
 
     vector<Lit> assumps;
-    vector<Lit> cl;
 
     uint32_t tested_num = 0;
-    vector<Lit> unates;
     for(uint32_t test: to_define) {
         assert(input.count(test) == 0);
         verb_print(3, "[unate] testing var: " << test+1);
@@ -548,35 +548,34 @@ void Unate::synthesis_unate(SimplifiedCNF& cnf) {
 
         for(int flip = 0; flip < 2; flip++) {
             assumps.clear();
-            assumps.push_back(Lit(test, !flip));
-            assumps.push_back(Lit(test+cnf.nVars(), flip));
+            assumps.emplace_back(test, !flip);
+            assumps.emplace_back(test+cnf.nVars(), flip);
             for(uint32_t i = 0; i < cnf.nVars(); i++) {
                 if (i == test) continue;
                 if (input.count(i)) continue;
                 auto ind = var_to_indic.at(i);
                 assert(ind != var_Undef);
-                assumps.push_back(Lit(ind, false));
+                assumps.emplace_back(ind, false);
             }
             verb_print(3, "[unate] assumps : " << assumps);
             const auto ret = s->solve(&assumps);
             if (ret == l_False) {
-
-                Lit l = {Lit(test, flip)};
-                unates.push_back(l);
-                cnf.add_clause({l});
+                const Lit l = Lit(test, flip);
+                const Lit test_orig = new_to_orig.at(test);
+                cnf.set_def(test_orig.var(),
+                    AIG::new_const(!(test_orig.sign() ^ (bool)flip)));
                 verb_print(2, "[unate] good test. Setting: " << std::setw(3)  << l
                     << " T: " << fixed << setprecision(2) << (cpuTime() - my_time));
-
-                l = Lit(test+cnf.nVars(), flip);
-                cl = {l};
-                s->add_clause(cl);
+                // Tighten both sides of the miter so subsequent tests
+                // benefit from the now-forced value.
+                s->add_clause({l});
+                s->add_clause({Lit(test+cnf.nVars(), flip)});
                 new_units++;
                 break;
             }
         }
     }
 
-    cnf.add_fixed_values(unates);
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end do_unate");
     verb_print(1, COLRED "[unate] Done. synthesis_unate"
         << " tested: " << tested_num
