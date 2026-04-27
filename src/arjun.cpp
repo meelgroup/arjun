@@ -43,6 +43,7 @@
 #include "manthan.h"
 #include "metasolver.h"
 #include "aig_rewrite.h"
+#include "constants.h"
 
 using namespace ArjunInt;
 using namespace ArjunNS;
@@ -1771,12 +1772,14 @@ void SimplifiedCNF::set_def(const uint32_t v_orig, const aig_ptr& def) {
     assert(v_orig < defs.size());
     assert(defs[v_orig] == nullptr);
     defs[v_orig] = def;
-    /* std::cout << "setting def for orig var " << v_orig << " to: " << def << std::endl; */
-    /* map<uint32_t, set<uint32_t>> cache; */
-    /* auto s = get_dependent_vars_recursive(v_orig, cache); */
-    /* cout << "Dependent vars: "; */
-    /* for(const auto& d: s) cout << d+1 << " "; */
-    /* cout << endl; */
+#ifdef VERBOSE_DEBUG
+    std::cout << "setting def for orig var " << v_orig << endl;
+    map<uint32_t, vector<uint32_t>> cache;
+    auto s = get_dependent_vars_recursive(v_orig, cache);
+    cout << "Dependent vars: ";
+    for(const auto& d: s) cout << d+1 << " ";
+    cout << endl;
+#endif
 }
 
 // Returns NEW vars, i.e. < nVars()
