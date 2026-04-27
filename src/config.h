@@ -53,6 +53,10 @@ struct Config {
     // 1 = try inputs sharing a clause with `test` first; 0 = use the
     // sorted input list. Used for A/B-testing the structural ordering.
     int unate_def_cond_relfirst = 1;
+    // Disable conditional probe after this many consecutive misses with
+    // zero hits so far. Low = bail aggressively; very high = effectively
+    // never disable.
+    uint32_t unate_def_cond_dry_streak = 128;
     // Repair-based unate definition search (manthan-style guess+refine).
     // Runs after standard unate_def for variables still undefined.
     int unate_def_rep = 1;

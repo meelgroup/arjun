@@ -452,6 +452,7 @@ if __name__ == "__main__":
         solver += " --morder " + str(random.randint(0, 2))
         solver += " --unatedefcondmax " + random.choice(["0", "1", "4", "16", "64", "1024"])
         solver += " --unatedefcondconfl " + random.choice(["1", "10", "100", "1000", "100000"])
+        solver += " --unatedefconddry " + random.choice(["1", "10", "100", "100000"])
         solver += " --unatedefrepiters " + random.choice(["1", "5", "30", "100"])
         solver += " --unatedefrepmaxpat " + random.choice(["0", "1", "5", "12", "40", "1000"])
         solver += " --unatedefrepmaxcz " + random.choice(["0", "1", "2", "5", "30"])

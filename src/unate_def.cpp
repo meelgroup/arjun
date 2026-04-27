@@ -41,7 +41,6 @@ using std::unique_ptr;
 
 
 constexpr uint32_t NOT_INPUT = std::numeric_limits<uint32_t>::max();
-constexpr uint32_t COND_DRY_STREAK_DISABLE = 128;
 
 void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     cond_stats = UnateDefCondStats{};
@@ -480,7 +479,7 @@ bool Unate::try_cond_unate_def(
     }
     cond_stats.time_in_cond += cpuTime() - cond_t0;
     if (cond_enabled
-            && cond_attempts_since_last_hit >= COND_DRY_STREAK_DISABLE
+            && cond_attempts_since_last_hit >= conf.unate_def_cond_dry_streak
             && cond_new_defs == 0) {
         verb_print(1, "[unate_def] disabling cond probe after "
                 << cond_attempts_since_last_hit

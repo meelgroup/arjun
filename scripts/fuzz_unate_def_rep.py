@@ -99,6 +99,7 @@ def run_arjun(fname, prefix):
         "--unatedefrepconfl", str(random.choice([10, 100, 1000, 100000])),
         "--unatedefcond", str(random.choice([0, 1])),
         "--unatedefcondmax", str(random.choice([0, 1, 16, 1024])),
+        "--unatedefconddry", str(random.choice([1, 10, 100, 100000])),
         # keep manthan strategies tame so most runs finish fast
         "--mstrategy", "const(max_repairs=50),bve",
         fname,
