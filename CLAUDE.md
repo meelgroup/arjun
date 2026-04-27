@@ -58,9 +58,14 @@ From `build/`:
 ./fuzz_synth.py --num 150
 ./fuzz_aig_to_cnf --num 500
 ./fuzz_aig_rewrite --num 500
+./fuzz_unate_def_rep.py 60
 ```
 
-Both must pass before reporting a change as complete.
+All must pass before reporting a change as complete. `fuzz_unate_def_rep.py`
+forces `--unatedef 1 --unatedefrep 1` on every iteration and verifies the
+`*-unsat_unate_def_rep.aig` output AIG via `test-synth`; the general
+`fuzz_synth.py` only randomizes those flags so the rep-pass output is not
+always exercised.
 
 ## Source layout (`src/`)
 

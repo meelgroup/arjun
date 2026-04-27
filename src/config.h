@@ -53,6 +53,13 @@ struct Config {
     // 1 = try inputs sharing a clause with `test` first; 0 = use the
     // sorted input list. Used for A/B-testing the structural ordering.
     int unate_def_cond_relfirst = 1;
+    // Repair-based unate definition search (manthan-style guess+refine).
+    // Runs after standard unate_def for variables still undefined.
+    int unate_def_rep = 1;
+    uint32_t unate_def_rep_iters = 30;       // max guess+refine iters per var
+    uint32_t unate_def_rep_max_pattern = 12; // skip CEX if conflict (= pattern lits) bigger than this
+    uint32_t unate_def_rep_max_costzero = 2; // give up on a var after this many cost-zero CEXes
+    uint32_t unate_def_rep_max_confl = 4000; // SAT conflict budget per probe
     bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;

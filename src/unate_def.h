@@ -33,6 +33,26 @@
 #include "config.h"
 #include "metasolver.h"
 
+// Telemetry for the repair-based unate-def probe. Reset at the start of
+// each `synthesis_unate_def_rep` call.
+struct UnateDefRepStats {
+    uint32_t tests_run = 0;          // vars we ran the rep loop for
+    uint32_t hits = 0;               // vars where we found a def
+    uint64_t total_iters = 0;        // total guess+refine iterations
+    uint64_t miter_unsat = 0;        // miter UNSAT (def found this iter)
+    uint64_t miter_sat = 0;          // miter SAT (CEX)
+    uint64_t miter_undef = 0;        // miter timed out
+    uint64_t f_unsat = 0;            // F-only solver UNSAT (productive CEX)
+    uint64_t f_sat = 0;              // F-only solver SAT (cost-zero CEX)
+    uint64_t f_undef = 0;            // F-only solver timed out
+    uint64_t skipped_pattern_too_big = 0;
+    uint64_t hit_iter_sum = 0;       // for averaging hit-iteration depth
+    uint64_t hit_iter_max = 0;
+    uint64_t hit_aig_nodes_sum = 0;  // for averaging final AIG size
+    uint64_t hit_aig_nodes_max = 0;
+    double time_total = 0.0;
+};
+
 // Telemetry for the conditional-unate-def probe. Reset at the start of
 // each `synthesis_unate_def` call. All counts are over the inner
 // (per-test) loop so we can spot expensive vs. productive patterns.
@@ -84,6 +104,7 @@ class Unate {
         ~Unate() = default;
 
         void synthesis_unate_def(ArjunNS::SimplifiedCNF& cnf);
+        void synthesis_unate_def_rep(ArjunNS::SimplifiedCNF& cnf);
         void synthesis_unate(ArjunNS::SimplifiedCNF& cnf);
     private:
 
@@ -97,4 +118,5 @@ class Unate {
         std::unique_ptr<ArjunInt::MetaSolver> setup_f_not_f(const ArjunNS::SimplifiedCNF& cnf);
 
         UnateDefCondStats cond_stats;
+        UnateDefRepStats rep_stats;
 };

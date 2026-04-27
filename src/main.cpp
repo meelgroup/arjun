@@ -166,6 +166,11 @@ void add_arjun_options() {
     myopt("--unatedefcondmax", conf.unate_def_cond_max_per_var, fc_int,"Max conditional candidates to test per to-define variable in unate_def");
     myopt("--unatedefcondconfl", conf.unate_def_cond_max_confl, fc_int,"Conflict budget per SAT call inside the conditional unate_def search");
     myopt("--unatedefcondrel", conf.unate_def_cond_relfirst, fc_int,"In unate_def cond, examine inputs sharing a clause with `test` first");
+    myopt("--unatedefrep", conf.unate_def_rep, fc_int,"In unate_def, run a manthan-style guess-and-repair pass for vars still undefined after the literal-only conditional probe");
+    myopt("--unatedefrepiters", conf.unate_def_rep_iters, fc_int,"Per-variable iteration budget in the repair-based unate_def pass");
+    myopt("--unatedefrepmaxpat", conf.unate_def_rep_max_pattern, fc_int,"Skip CEX whose minimized core (= candidate AIG conjunct count) exceeds this");
+    myopt("--unatedefrepmaxcz", conf.unate_def_rep_max_costzero, fc_int,"Give up on a variable after this many cost-zero CEXes in the repair pass");
+    myopt("--unatedefrepconfl", conf.unate_def_rep_max_confl, fc_int,"Conflict budget per SAT call inside the repair-based unate_def pass");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
     myopt("--monflyorder", mconf.manthan_on_the_fly_order, fc_int,"Use on-the-fly training order and post-training topological order");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
@@ -353,6 +358,11 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_unate_def_cond_max_per_var(conf.unate_def_cond_max_per_var);
     arj->set_unate_def_cond_max_confl(conf.unate_def_cond_max_confl);
     arj->set_unate_def_cond_relfirst(conf.unate_def_cond_relfirst);
+    arj->set_unate_def_rep(conf.unate_def_rep);
+    arj->set_unate_def_rep_iters(conf.unate_def_rep_iters);
+    arj->set_unate_def_rep_max_pattern(conf.unate_def_rep_max_pattern);
+    arj->set_unate_def_rep_max_costzero(conf.unate_def_rep_max_costzero);
+    arj->set_unate_def_rep_max_confl(conf.unate_def_rep_max_confl);
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 
@@ -436,6 +446,11 @@ void do_synthesis() {
         arjun->standalone_unate_def(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate_def.aig");
         SLOW_DEBUG_DO(check_stage("unsat_unate_def"));
+    }
+    if (do_unate_def && conf.unate_def_rep && !cnf.synth_done()) {
+        arjun->standalone_unate_def_rep(cnf);
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate_def_rep.aig");
+        SLOW_DEBUG_DO(check_stage("unsat_unate_def_rep"));
     }
 
     SynthRunner synth_runner(conf, arjun);

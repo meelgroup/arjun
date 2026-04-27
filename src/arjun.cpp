@@ -193,6 +193,12 @@ DLL_PUBLIC void Arjun::standalone_unate_def(SimplifiedCNF& cnf)
     unate.synthesis_unate_def(cnf);
 }
 
+DLL_PUBLIC void Arjun::standalone_unate_def_rep(SimplifiedCNF& cnf)
+{
+    Unate unate(arjdata->conf);
+    unate.synthesis_unate_def_rep(cnf);
+}
+
 DLL_PUBLIC void Arjun::standalone_sbva(SimplifiedCNF& orig,
             int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak)
 {
@@ -2830,6 +2836,11 @@ set_get_macro(uint32_t, extend_max_confl)
 set_get_macro(int, unate_def_cond)
 set_get_macro(uint32_t, unate_def_cond_max_per_var)
 set_get_macro(uint32_t, unate_def_cond_max_confl)
+set_get_macro(int, unate_def_rep)
+set_get_macro(uint32_t, unate_def_rep_iters)
+set_get_macro(uint32_t, unate_def_rep_max_pattern)
+set_get_macro(uint32_t, unate_def_rep_max_costzero)
+set_get_macro(uint32_t, unate_def_rep_max_confl)
 set_get_macro(int, unate_def_cond_relfirst)
 set_get_macro(int, oracle_find_bins)
 set_get_macro(double, cms_glob_mult)
