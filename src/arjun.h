@@ -1671,7 +1671,6 @@ public:
     void standalone_extend_sampl_set(SimplifiedCNF& cnf);
     bool standalone_check_extend(const SimplifiedCNF& cnf);
     void standalone_unsat_define(SimplifiedCNF& cnf);
-    void standalone_unate(SimplifiedCNF& cnf);
     void standalone_unate_def(SimplifiedCNF& cnf);
     void standalone_unate_def_rep(SimplifiedCNF& cnf);
     void standalone_elim_to_file(SimplifiedCNF& cnf,
@@ -1701,7 +1700,6 @@ public:
     void set_gauss_jordan(bool gauss_jordan);
     void set_find_xors(bool find_xors);
     void set_ite_gate_based(bool ite_gate_based);
-    void set_do_unate(bool do_unate);
     void set_irreg_gate_based(const bool irreg_gate_based);
     //void set_polar_mode(CMSat::PolarityMode mode);
     void set_no_gates_below(double no_gates_below);
@@ -1725,7 +1723,6 @@ public:
 
     //Get config
     [[nodiscard]] uint32_t get_verb() const;
-    [[nodiscard]] bool get_do_unate() const;
     [[nodiscard]] std::string get_specified_order_fname() const;
     [[nodiscard]] double get_no_gates_below() const;
     [[nodiscard]] int get_simp() const;

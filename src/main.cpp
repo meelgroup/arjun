@@ -69,7 +69,6 @@ int do_pre_backbone = 0;
 string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_learnt=1),bve";
 
 int synthesis = false;
-int do_unate = false;
 int do_unate_def = true;
 int do_revbce = false;
 int do_minim_indep = true;
@@ -160,7 +159,6 @@ void add_arjun_options() {
     myopt("--extend", etof_conf.do_extend_indep, fc_int,"Extend independent set just before CNF dumping");
     myopt("--minimconfl", mconf.minimize_conflict, fc_int,"Minimize conflict size when repairing");
     myopt("--simpevery", mconf.simplify_every, fc_int,"Simplify solvers inside Manthan every K loops");
-    myopt("--unate", do_unate, fc_int,"Perform unate analysis");
     myopt("--unatedef", do_unate_def, fc_int,"Perform definition-aware unate analysis");
     myopt("--unatedefcond", conf.unate_def_cond, fc_int,"In unate_def, also detect conditional defs of the form t = ITE(L,c1,c0) for input literals L (i.e., t = L or t = ~L)");
     myopt("--unatedefcondmax", conf.unate_def_cond_max_per_var, fc_int,"Max conditional candidates to test per to-define variable in unate_def");
@@ -438,11 +436,6 @@ void do_synthesis() {
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-minim_idep_synt.aig");
         cnf.simplify_aigs(conf.verb);
         SLOW_DEBUG_DO(check_stage("minim_idep_synt"));
-    }
-    if (do_unate && !cnf.synth_done()) {
-        arjun->standalone_unate(cnf);
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate.aig");
-        SLOW_DEBUG_DO(check_stage("unsat_unate"));
     }
     if (do_unate_def && !cnf.synth_done()) {
         arjun->standalone_unate_def(cnf);

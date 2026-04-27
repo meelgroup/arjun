@@ -106,7 +106,6 @@ class Unate {
 
         void synthesis_unate_def(ArjunNS::SimplifiedCNF& cnf);
         void synthesis_unate_def_rep(ArjunNS::SimplifiedCNF& cnf);
-        void synthesis_unate(ArjunNS::SimplifiedCNF& cnf);
     private:
 
         ArjunInt::Config conf;

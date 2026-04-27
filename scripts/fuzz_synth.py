@@ -428,7 +428,6 @@ if __name__ == "__main__":
             , " --filtersamples"
             , " --biasedsampling"
             , " --uniqsamp"
-            , " --unate"
             , " --ctxsolver"
             , " --repairsolver"
             , " --unatedef"

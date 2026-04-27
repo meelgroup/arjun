@@ -90,7 +90,6 @@ def run_arjun(fname, prefix):
     args = [
         "./arjun", "--synth", "--debugsynth", prefix,
         "--verb", "1",
-        "--unate", "0",            # let unate_def + rep do the work
         "--unatedef", "1",
         "--unatedefrep", "1",
         "--unatedefrepiters", str(random.choice([1, 5, 30, 100])),
