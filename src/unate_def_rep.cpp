@@ -74,7 +74,6 @@
 //     sign flip; the AIG output is XOR'd by `test_orig.sign()`.
 //
 // Knobs (Config):
-//   unate_def_rep              — pass enable
 //   unate_def_rep_iters        — guess+refine iters per var
 //   unate_def_rep_max_pattern  — skip CEX whose unsat core is bigger than this
 //   unate_def_rep_max_costzero — give up after this many cost-zero CEXes
