@@ -311,6 +311,7 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
     } else {
         const aig_lit l = deep_absorb(edge->l, cache);
         const aig_lit r = deep_absorb(edge->r, cache);
+        assert(l.node && r.node);  // t_and children are always non-null
 
         // Fast path: if neither child is a proper AND (positive-edge,
         // distinct children) and neither is an OR (negative-edge AND),
