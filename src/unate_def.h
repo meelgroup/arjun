@@ -24,6 +24,7 @@
 
 #pragma once
 #include <cstdint>
+#include <map>
 #include <set>
 #include <vector>
 #include <memory>
@@ -116,6 +117,32 @@ class Unate {
         std::vector<uint32_t> var_to_indic; // for each var, the indicator
                                             // variable in the SAT solver that is true iff the var is equal to its copy (i.e. not flipped)
         std::unique_ptr<ArjunInt::MetaSolver> setup_f_not_f(const ArjunNS::SimplifiedCNF& cnf);
+
+        // ===== Conditional unate-def probe state =====
+        // Set up once at the start of synthesis_unate_def, then read/updated
+        // per-test inside try_cond_unate_def.
+        std::vector<uint32_t> cond_input_vars_list;
+        std::vector<uint32_t> cond_input_pos;            // var -> index in cond_input_vars_list, or NOT_INPUT
+        std::vector<std::vector<uint32_t>> cond_related_inputs; // per to-define var, inputs sharing a clause
+        std::vector<uint32_t> cond_cand_seen_gen;        // generation-counter dedup for cur_cands
+        uint32_t cond_cand_gen = 0;
+        std::vector<uint32_t> cond_cur_cands;            // reusable per-test candidate buffer
+        bool cond_enabled = false;
+        uint32_t cond_attempts_since_last_hit = 0;
+        uint32_t cond_new_defs = 0;
+        double cond_my_time = 0.0;                       // wall-clock baseline for verb_print
+
+        // Try to express `test` as a single input literal under a value-conditioned
+        // probe, using the two SAT witnesses from the standard-unate flips
+        // (projected to input vars in input_vals[0/1]). Returns true if a
+        // definition was found and committed to `cnf`.
+        bool try_cond_unate_def(
+            ArjunNS::SimplifiedCNF& cnf,
+            ArjunInt::MetaSolver& s,
+            uint32_t test,
+            const std::vector<CMSat::lbool> (&input_vals)[2],
+            std::vector<CMSat::Lit>& assumps,
+            const std::map<uint32_t, CMSat::Lit>& new_to_orig);
 
         UnateDefCondStats cond_stats;
         UnateDefRepStats rep_stats;
