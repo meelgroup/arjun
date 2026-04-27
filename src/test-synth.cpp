@@ -372,11 +372,10 @@ bool verify_aigs_correct(T& solver, const map<uint32_t, typename FHolder<T>::For
                  << " y_hat=x" << (y_hat+1) << "=" << y_hat_val << mark << endl;
         }
         return false;
-    } else {
-        release_assert(ret == l_False);
-        if (verb) cout << "c [test-synth] RESULT: UNSAT - AIGs are CORRECT!" << endl;
-        return true;
     }
+    release_assert(ret == l_False);
+    if (verb) cout << "c [test-synth] RESULT: UNSAT - AIGs are CORRECT!" << endl;
+    return true;
 }
 
 void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
