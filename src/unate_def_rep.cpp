@@ -307,10 +307,19 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
         aig_ptr h = AIG::new_const(false);   // start from H ≡ 0
         uint32_t costzero_count = 0;
         uint32_t hit_iter = 0;
-        bool found_def = false;
+
+        // Per-var diagnostics for the verb=2 trace.
+        uint32_t v_iters = 0;
+        uint32_t v_miter_sat = 0, v_miter_unsat = 0, v_miter_undef = 0;
+        uint32_t v_f_sat = 0, v_f_unsat = 0, v_f_undef = 0;
+        uint32_t v_skipped_big = 0;
+        uint64_t v_pattern_sum = 0;
+        uint32_t v_pattern_count = 0;
+        const char* stop_reason = "iter_limit";
 
         for (uint32_t iter = 0; iter < conf.unate_def_rep_iters; iter++) {
             rep_stats.total_iters++;
+            v_iters++;
 
             const Lit h_top_lit = encode_h_y_prime(h);
 
@@ -330,6 +339,7 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
 
             if (ret == l_False) {
                 rep_stats.miter_unsat++;
+                v_miter_unsat++;
                 // y_test = H(X) is a valid Skolem.
                 const aig_ptr h_in_orig = translate_to_orig(h, new_to_orig, test_orig.sign());
                 cnf.set_def(test_orig.var(), h_in_orig);
@@ -354,20 +364,18 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                     rep_stats.hit_aig_nodes_sum += nodes;
                     if (nodes > rep_stats.hit_aig_nodes_max) rep_stats.hit_aig_nodes_max = nodes;
                 }
-                verb_print(2, "[unate_def_rep] def found NEW " << test+1
-                    << " orig " << test_orig.var()+1
-                    << " iter=" << hit_iter
-                    << " AIG nodes=" << AIG::count_aig_nodes_fast(h)
-                    << " T: " << fixed << setprecision(2) << (cpuTime()-my_time));
-                found_def = true;
+                stop_reason = "found";
                 break;
             }
             if (ret == l_Undef) {
                 rep_stats.miter_undef++;
+                v_miter_undef++;
                 s->add_clause({~act});
+                stop_reason = "miter_undef";
                 break;
             }
             rep_stats.miter_sat++;
+            v_miter_sat++;
 
             // CEX. Extract values of test (F-side) and h_top_lit (forced to
             // H(X*) by `act`).
@@ -377,6 +385,7 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
             if (y_test_val_f == l_Undef || h_val == l_Undef) {
                 // Solver didn't pin one of the literals — bail out cleanly.
                 s->add_clause({~act});
+                stop_reason = "miter_pin_undef";
                 break;
             }
             // Activation was assumed TRUE, so y_test' = h_val. The miter
@@ -417,20 +426,25 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 // produces large mixed conflicts whose input projection is
                 // rarely the right pattern, and burns iteration budget).
                 rep_stats.f_sat++;
+                v_f_sat++;
                 costzero_count++;
                 if (costzero_count >= conf.unate_def_rep_max_costzero) {
                     verb_print(3, "[unate_def_rep] giving up on test " << test+1
                         << " after " << costzero_count << " cost-zero CEXes");
+                    stop_reason = "costzero_limit";
                     break;
                 }
                 continue;
             }
             if (f_ret == l_Undef) {
                 rep_stats.f_undef++;
+                v_f_undef++;
+                stop_reason = "f_undef";
                 break;
             }
             // f_ret == l_False
             rep_stats.f_unsat++;
+            v_f_unsat++;
 
             // Conflict literals are negations of assumed literals. Filter
             // out the test-forcing one; everything else is an input lit
@@ -444,12 +458,18 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 if (!input.count(cl.var())) continue;
                 pattern_lits.push_back(~cl);    // assumption form: matches X*
             }
+            v_pattern_sum += pattern_lits.size();
+            v_pattern_count++;
             if (pattern_lits.size() > conf.unate_def_rep_max_pattern) {
                 rep_stats.skipped_pattern_too_big++;
+                v_skipped_big++;
                 // Same accounting as cost-zero: too-large patterns lead to
                 // explosive AIG growth without much generalization.
                 costzero_count++;
-                if (costzero_count >= conf.unate_def_rep_max_costzero) break;
+                if (costzero_count >= conf.unate_def_rep_max_costzero) {
+                    stop_reason = "costzero_limit";
+                    break;
+                }
                 continue;
             }
 
@@ -472,9 +492,25 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
             else                         h = AIG::new_and(h, AIG::new_not(pattern));
         }
 
+        verb_print(2, "[unate_def_rep] var NEW " << setw(5) << test+1
+            << " orig " << setw(5) << test_orig.var()+1
+            << " iters="     << setw(5) << v_iters
+            << " miter[U="   << setw(3) << v_miter_unsat
+            << " S="         << setw(3) << v_miter_sat
+            << " T="         << setw(3) << v_miter_undef << "]"
+            << " f[U="       << setw(3) << v_f_unsat
+            << " S="         << setw(3) << v_f_sat
+            << " T="         << setw(3) << v_f_undef << "]"
+            << " skip_big="  << setw(3) << v_skipped_big
+            << " costzero="  << setw(3) << costzero_count
+            << " avg_pat="   << setw(5) << setprecision(1) << fixed
+                             << safe_div(v_pattern_sum, v_pattern_count)
+            << " AIG_nodes=" << setw(5) << AIG::count_aig_nodes_fast(h)
+            << " result=" << std::left << setw(15) << stop_reason << std::right
+            << " T: " << fixed << setprecision(2) << (cpuTime()-my_time));
+
         already_tested.insert(test);
         s->add_clause({Lit(var_to_indic.at(test), false)});
-        (void)found_def;
     }
 
     rep_stats.time_total = cpuTime() - my_time;
