@@ -578,7 +578,7 @@ int main(int argc, char** argv) {
     SimplifiedCNF cnf(fg);
     if (verb) cout << "c [test-synth] Reading AIG file: " << aig_fname << endl;
     cnf.read_aig_defs_from_file(aig_fname);
-    cnf.defs_invariant();
+    [[maybe_unused]] auto check = cnf.defs_invariant();
 
     if (verb) {
         cout << "c [test-synth] Successfully read AIG file" << endl;
