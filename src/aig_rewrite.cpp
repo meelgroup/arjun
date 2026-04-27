@@ -1009,7 +1009,7 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
         std::vector<uint8_t> state(defs.size(), 0); // 0=white, 1=gray, 2=black
         std::vector<uint32_t> path;
         std::vector<uint32_t> cycle_members;
-        std::function<bool(uint32_t)> dfs = [&](uint32_t v) -> bool {
+        std::function<bool(uint32_t)> dfs_local = [&](uint32_t v) -> bool {
             if (state[v] == 2) return false;
             if (state[v] == 1) {
                 // Back edge to v; cycle is path[idx(v)..end]. Record members.
@@ -1020,7 +1020,7 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
             state[v] = 1;
             path.push_back(v);
             for (uint32_t u : deps[v]) {
-                if (dfs(u)) return true;
+                if (dfs_local(u)) return true;
             }
             path.pop_back();
             state[v] = 2;
@@ -1031,7 +1031,7 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
             if (state[v] == 0 && defs[v] != nullptr) {
                 path.clear();
                 cycle_members.clear();
-                if (dfs(v)) { any_cycle = true; break; }
+                if (dfs_local(v)) { any_cycle = true; break; }
             }
         }
         if (!any_cycle) break;
