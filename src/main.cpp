@@ -70,6 +70,7 @@ string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_learnt=1),b
 
 int synthesis = false;
 int do_unate_def = true;
+int do_unate_def_rep = true;
 int do_revbce = false;
 int do_minim_indep = true;
 int do_sat_sweep = false;
@@ -165,7 +166,7 @@ void add_arjun_options() {
     myopt("--unatedefcondconfl", conf.unate_def_cond_max_confl, fc_int,"Conflict budget per SAT call inside the conditional unate_def search");
     myopt("--unatedefcondrel", conf.unate_def_cond_relfirst, fc_int,"In unate_def cond, examine inputs sharing a clause with `test` first");
     myopt("--unatedefconddry", conf.unate_def_cond_dry_streak, fc_int,"Disable conditional unate_def probe after this many consecutive misses with zero hits so far (very low = bail aggressively, very high = effectively never disable)");
-    myopt("--unatedefrep", conf.unate_def_rep, fc_int,"In unate_def, run a manthan-style guess-and-repair pass for vars still undefined after the literal-only conditional probe");
+    myopt("--unatedefrep", do_unate_def_rep, fc_int,"In unate_def, run a manthan-style guess-and-repair pass for vars still undefined after the literal-only conditional probe");
     myopt("--unatedefrepiters", conf.unate_def_rep_iters, fc_int,"Per-variable iteration budget in the repair-based unate_def pass");
     myopt("--unatedefrepmaxpat", conf.unate_def_rep_max_pattern, fc_int,"Skip CEX whose minimized core (= candidate AIG conjunct count) exceeds this");
     myopt("--unatedefrepmaxcz", conf.unate_def_rep_max_costzero, fc_int,"Give up on a variable after this many cost-zero CEXes in the repair pass");
@@ -358,7 +359,6 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_unate_def_cond_max_confl(conf.unate_def_cond_max_confl);
     arj->set_unate_def_cond_relfirst(conf.unate_def_cond_relfirst);
     arj->set_unate_def_cond_dry_streak(conf.unate_def_cond_dry_streak);
-    arj->set_unate_def_rep(conf.unate_def_rep);
     arj->set_unate_def_rep_iters(conf.unate_def_rep_iters);
     arj->set_unate_def_rep_max_pattern(conf.unate_def_rep_max_pattern);
     arj->set_unate_def_rep_max_costzero(conf.unate_def_rep_max_costzero);
@@ -442,7 +442,7 @@ void do_synthesis() {
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate_def.aig");
         SLOW_DEBUG_DO(check_stage("unsat_unate_def"));
     }
-    if (do_unate_def && conf.unate_def_rep && !cnf.synth_done()) {
+    if (do_unate_def && do_unate_def_rep && !cnf.synth_done()) {
         arjun->standalone_unate_def_rep(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate_def_rep.aig");
         SLOW_DEBUG_DO(check_stage("unsat_unate_def_rep"));

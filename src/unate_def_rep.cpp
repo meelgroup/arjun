@@ -74,11 +74,11 @@
 //     sign flip; the AIG output is XOR'd by `test_orig.sign()`.
 //
 // Knobs (Config):
-//   unate_def_rep            — pass enable
-//   unate_def_rep_iters      — guess+refine iters per var
-//   unate_def_rep_max_pattern— skip CEX whose unsat core is bigger than this
+//   unate_def_rep              — pass enable
+//   unate_def_rep_iters        — guess+refine iters per var
+//   unate_def_rep_max_pattern  — skip CEX whose unsat core is bigger than this
 //   unate_def_rep_max_costzero — give up after this many cost-zero CEXes
-//   unate_def_rep_max_confl  — conflict budget for each SAT call
+//   unate_def_rep_max_confl    — conflict budget for each SAT call
 
 #include "unate_def.h"
 #include "constants.h"
@@ -139,10 +139,6 @@ inline lbool model_value(const vector<lbool>& m, const Lit l) {
 } // namespace
 
 void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
-    if (conf.unate_def_rep == 0) {
-        verb_print(2, "[unate_def_rep] disabled (--unatedefrep 0)");
-        return;
-    }
     rep_stats = UnateDefRepStats{};
     const double my_time = cpuTime();
 
