@@ -299,6 +299,7 @@ void add_arjun_options() {
     myopt("--oracleextra", simp_conf.oracle_extra, fc_int,"Run an extra oracle-vivif-fast + oracle-sparsify-fast + occ-bve pass at the end of Puura's strategy");
     myopt("--distill", conf.distill, fc_int, "Distill clauses before minimization of indep");
     myopt("--weakenlim", simp_conf.weaken_limit, fc_int, "Limit to weaken BVE resolvents");
+    myopt("--puurastrategy", simp_conf.puura_strategy, fc_int, "Puura iter1 simplification strategy: 0=default, 1=new-model");
     myopt("--bce", etof_conf.do_bce, fc_int, "Use blocked clause elimination (BCE) statically");
     myopt("--red", redundant_cls, fc_int,"Also dump redundant clauses");
 
