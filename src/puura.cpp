@@ -159,19 +159,11 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
         solver->set_occ_based_lit_rem_time_limitM(0);
     }
 
-    // occ-cl-rem-with-orgates not used -- should test and add, probably to 2nd iter
-    // eqlit-find from oracle not used (too slow?)
-    // D: occ-ternary-res moved before occ-bve (ternary->binary enables more SCC equivalences for BVE)
-    // B: distill-cls-onlyrem added after occ-bve (removes clauses subsumed after variable elimination)
-    // K: must-scc-vrepl between occ-ternary-res and occ-bve so BVE sees the
-    //    var-substitutions implied by the new binaries ternary-res produced.
-    //    Without it, BVE is still reasoning against the old var IDs.
-    // L: sub-impl right after occ-bve. BVE produces new binary resolvents, and
-    //    sub-impl cleans out the transitively-redundant ones cheaply (it's
-    //    just walking implications) before distill sees them.
-    string str("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, must-scc-vrepl, occ-bve, sub-impl, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
+    string str("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
+    /// BELOW new model
+    /* string str("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, must-scc-vrepl, occ-bve, sub-impl, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, "); */
+
     if (simp_conf.appmc) str = string("must-scc-vrepl, full-probe, sub-cls-with-bin, sub-impl, distill-cls-onlyrem, occ-resolv-subs, occ-backw-sub, occ-bve, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
-    // C: iter2 uses a separate string with extra occ-backw-sub at the end (catches clauses subsumed by BVE resolvents)
     string str_iter2 = str + string("occ-backw-sub, ");
     for (int i = 0; i < simp_conf.iter1; i++) solver->simplify(&dont_elim, &str);
 
@@ -180,15 +172,11 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     bool backbone_done = cnf.get_backbone_done();
     if (!backbone_done && simp_conf.do_backbone_puura) {
         solver->backbone_simpl(simp_conf.backbone_max_confl, backbone_done);
-        // N: after backbone_simpl sets units and adds bins, run the trio
-        //    sub-impl + sub-cls-with-bin + distill-cls-onlyrem so the new
-        //    binaries collapse against the existing ones, the new units
-        //    strengthen/drop clauses via sub-cls-with-bin, and distill
-        //    removes anything that's now a tautology. Previously only
-        //    must-scc-vrepl ran, and oracle-vivif then paid full price to
-        //    vivify clauses a unit would have satisfied for free.
-        string str_post_backbone = "must-scc-vrepl, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, must-renumber";
-        solver->simplify(&dont_elim, &str_post_backbone);
+        string str_scc = "must-scc-vrepl, must-renumber";
+        solver->simplify(&dont_elim, &str_scc);
+        // BELOW new model instead of above 2 lines
+        /* string str_post_backbone = "must-scc-vrepl, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, must-renumber"; */
+        /* solver->simplify(&dont_elim, &str_post_backbone); */
     }
     if (backbone_done) {
         if (simp_conf.oracle_vivify && simp_conf.oracle_sparsify) str2 = "oracle-vivif-sparsify";
@@ -231,7 +219,9 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
         solver->simplify(&dont_elim, &s_bve);
     }
 
-    str += string(", must-scc-vrepl, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, intree-probe, must-scc-vrepl, must-renumber,");
+    str += string(", must-scc-vrepl, must-renumber,");
+    // BELOW new model instead of above line
+    /* str += string(", must-scc-vrepl, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, intree-probe, must-scc-vrepl, must-renumber,"); */
     solver->simplify(&dont_elim, &str);
 
     auto new_sampl_vars = cnf.get_sampl_vars();
