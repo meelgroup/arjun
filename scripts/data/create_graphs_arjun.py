@@ -23,7 +23,8 @@ only_dirs = [
     # "out-synth-1296625-", # lots of memory (9GB)
     # "out-synth-1286344-0", # 4.5GB memory, improvements but no AIG speedup
     "out-synth-1367674-2", # 2-3x faster because of AIG
-    "out-synth-1375532-0", # 2x via aig_rewrite + AIGtoCNF in BVE
+    # "out-synth-1375532-0", # 2x via aig_rewrite + AIGtoCNF in BVE
+    "out-synth-1448672-1", # formula move, unate_def_cond, unate_def_rep
 ]
 # -------------------------------------------------------------
 
