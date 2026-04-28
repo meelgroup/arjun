@@ -325,15 +325,15 @@ void Manthan::fill_var_to_formula_with(set<uint32_t>& vars) {
         // must live in the AIG rather than a visit-time hook.
         map<aig_ptr, aig_ptr> aig_remap_cache;
         f.aig = AIG::transform<aig_ptr>(aig,
-          [&](AIGT type, const uint32_t var_orig2, const bool neg2,
+          [&](AIGT type, const uint32_t var_orig2,
               const aig_ptr* left2, const aig_ptr* right2) -> aig_ptr {
-            if (type == AIGT::t_const) return aig_mng.new_const(!neg2);
+            if (type == AIGT::t_const) return aig_mng.new_const(true);
             if (type == AIGT::t_lit) {
-                const Lit lit_new = cnf.orig_to_new_lit(Lit(var_orig2, neg2));
+                const Lit lit_new = cnf.orig_to_new_lit(Lit(var_orig2, false));
                 const Lit result_lit = map_y_to_y_hat(lit_new);
                 return AIG::new_lit(result_lit);
             }
-            if (type == AIGT::t_and) return AIG::new_and(*left2, *right2, neg2);
+            if (type == AIGT::t_and) return AIG::new_and(*left2, *right2);
             release_assert(false && "Unhandled AIG type");
           }, aig_remap_cache);
         if (orig.sign()) f.aig = AIG::new_not(f.aig);
@@ -896,14 +896,14 @@ aig_ptr Manthan::one_level_substitute(Lit l, const uint32_t v, map<uint32_t, aig
         map<aig_ptr, aig_ptr> cache_aig;
         auto aig3 = AIG::transform<aig_ptr>(
           aig2,
-          [&](AIGT type, const uint32_t var, const bool neg, const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
+          [&](AIGT type, const uint32_t var, const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
             if (type == AIGT::t_const) {
-                return neg ? aig_mng.new_const(false) : aig_mng.new_const(true);
+                return aig_mng.new_const(true);
             }
             if (type == AIGT::t_lit) {
                 aig_ptr l_aig = nullptr;
                 if (later_in_order(v, var)) {
-                    l_aig = AIG::new_lit(Lit(var, neg));
+                    l_aig = AIG::new_lit(Lit(var, false));
                     set_depends_on(v, var);
                 } else {
                     l_aig = aig_mng.new_const(true);
@@ -911,7 +911,7 @@ aig_ptr Manthan::one_level_substitute(Lit l, const uint32_t v, map<uint32_t, aig
                 return l_aig;
             }
             if (type == AIGT::t_and) {
-                return AIG::new_and(*left, *right, neg);
+                return AIG::new_and(*left, *right);
             }
             release_assert(false && "Unhandled AIG type in visitor");
           }, cache_aig);
@@ -1051,11 +1051,11 @@ void Manthan::bve_and_substitute() {
         // smaller CNF than the per-branch multi-input Tseitin we used before.
         map<aig_ptr, aig_ptr> aig_remap_cache;
         aig_ptr aig_yhat = AIG::transform<aig_ptr>(f.aig,
-            [&](AIGT type, const uint32_t var2, const bool neg2,
+            [&](AIGT type, const uint32_t var2,
                 const aig_ptr* left2, const aig_ptr* right2) -> aig_ptr {
-                if (type == AIGT::t_const) return aig_mng.new_const(!neg2);
-                if (type == AIGT::t_lit) return AIG::new_lit(map_y_to_y_hat(Lit(var2, neg2)));
-                if (type == AIGT::t_and) return AIG::new_and(*left2, *right2, neg2);
+                if (type == AIGT::t_const) return aig_mng.new_const(true);
+                if (type == AIGT::t_lit) return AIG::new_lit(map_y_to_y_hat(Lit(var2, false)));
+                if (type == AIGT::t_and) return AIG::new_and(*left2, *right2);
                 release_assert(false && "Unhandled AIG type");
             }, aig_remap_cache);
 

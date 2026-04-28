@@ -76,13 +76,13 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         assert(aig != nullptr && "Already-defined var must have an AIG definition");
 
         std::vector<Lit> tmp;
-        std::function<Lit(AIGT, uint32_t, bool, const Lit*, const Lit*)> aig_to_copy_visitor =
-          [&](AIGT type, const uint32_t var_orig, const bool neg, const Lit* left, const Lit* right) -> Lit {
+        std::function<Lit(AIGT, uint32_t, const Lit*, const Lit*)> aig_to_copy_visitor =
+          [&](AIGT type, const uint32_t var_orig, const Lit* left, const Lit* right) -> Lit {
             if (type == AIGT::t_const) {
-                return neg ? ~get_true_lit() : get_true_lit();
+                return get_true_lit();
             }
             if (type == AIGT::t_lit) {
-                const Lit lit_new = cnf.orig_to_new_lit(Lit(var_orig, neg));
+                const Lit lit_new = cnf.orig_to_new_lit(Lit(var_orig, false));
                 if (input.count(lit_new.var())) return lit_new;
                 assert(lit_new.var() < cnf.nVars());
                 return Lit(lit_new.var() + cnf.nVars(), lit_new.sign());
@@ -99,7 +99,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
                 s->add_clause(tmp);
                 tmp = {~l_lit, ~r_lit, and_out};
                 s->add_clause(tmp);
-                return neg ? ~and_out : and_out;
+                return and_out;
             }
             release_assert(false && "Unhandled AIG type in synthesis_unate_def");
           };

@@ -665,7 +665,7 @@ CMSat::Lit naive_encode(const aig_lit& edge, CMSat::SATSolver& solver,
                         CMSat::Lit& true_lit, bool& true_lit_set,
                         std::map<aig_lit, CMSat::Lit>& cache)
 {
-    auto visitor = [&](AIGT type, uint32_t var, bool neg,
+    auto visitor = [&](AIGT type, uint32_t var,
                        const CMSat::Lit* left, const CMSat::Lit* right) -> CMSat::Lit {
         if (type == AIGT::t_const) {
             if (!true_lit_set) {
@@ -674,11 +674,11 @@ CMSat::Lit naive_encode(const aig_lit& edge, CMSat::SATSolver& solver,
                 solver.add_clause({true_lit});
                 true_lit_set = true;
             }
-            return neg ? ~true_lit : true_lit;
+            return true_lit;
         }
         if (type == AIGT::t_lit) {
             while (solver.nVars() <= var) solver.new_var();
-            return CMSat::Lit(var, neg);
+            return CMSat::Lit(var, false);
         }
         assert(type == AIGT::t_and);
         const CMSat::Lit l = *left;
@@ -688,7 +688,7 @@ CMSat::Lit naive_encode(const aig_lit& edge, CMSat::SATSolver& solver,
         solver.add_clause({~g, l});
         solver.add_clause({~g, r});
         solver.add_clause({g, ~l, ~r});
-        return neg ? ~g : g;
+        return g;
     };
     return AIG::transform<CMSat::Lit>(edge, visitor, cache);
 }

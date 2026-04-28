@@ -220,14 +220,14 @@ void fill_var_to_formula(T& solver, FHolder<T>& fh, const SimplifiedCNF& cnf, ma
         release_assert(aig != nullptr);
 
         // Create a lambda to transform AIG to CNF using the transform function
-        std::function<Lit(AIGT, uint32_t, bool, const Lit*, const Lit*)> aig_to_cnf_visitor =
-          [&](AIGT type, const uint32_t v, const bool neg, const Lit* left, const Lit* right) -> Lit {
+        std::function<Lit(AIGT, uint32_t, const Lit*, const Lit*)> aig_to_cnf_visitor =
+          [&](AIGT type, const uint32_t v, const Lit* left, const Lit* right) -> Lit {
             if (type == AIGT::t_const) {
-                return neg ? ~fh.get_true_lit() : fh.get_true_lit();
+                return fh.get_true_lit();
             }
 
             if (type == AIGT::t_lit) {
-                const Lit lit = Lit(v, neg);
+                const Lit lit = Lit(v, false);
 
                 // Check if this is an input variable or needs y_to_y_hat mapping
                 Lit result_lit;
@@ -236,7 +236,7 @@ void fill_var_to_formula(T& solver, FHolder<T>& fh, const SimplifiedCNF& cnf, ma
                 } else {
                     release_assert(aig_vs.count(lit.var()));
                     const uint32_t y_hat = y_to_y_hat.at(lit.var());
-                    result_lit = Lit(y_hat, neg);
+                    result_lit = Lit(y_hat, false);
                 }
                 return result_lit;
             }
@@ -256,8 +256,7 @@ void fill_var_to_formula(T& solver, FHolder<T>& fh, const SimplifiedCNF& cnf, ma
                 f.clauses.push_back(CL({~and_out, r_lit}));
                 f.clauses.push_back(CL({~l_lit, ~r_lit, and_out}));
 
-                // Apply negation if needed
-                return neg ? ~and_out : and_out;
+                return and_out;
             }
             release_assert(false && "Unhandled AIG type in visitor");
         };
@@ -493,7 +492,7 @@ void check_aig_contains_no_self_refs(const SimplifiedCNF& cnf) {
         const auto& aig = cnf.get_def(var);
         if (aig == nullptr) continue;
 
-        auto visitor = [&](AIGT type, const uint32_t v, const bool,
+        auto visitor = [&](AIGT type, const uint32_t v,
                              bool*, bool*) -> bool {
             if (type == AIGT::t_lit) {
                 release_assert(v != var && "AIG contains self-reference!");

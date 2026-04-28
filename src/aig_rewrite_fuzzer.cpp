@@ -55,7 +55,7 @@ static Lit naive_encode(const aig_ptr& aig, SATSolver& solver,
                         Lit& true_lit, bool& true_lit_set)
 {
     map<aig_ptr, Lit> cache;
-    auto visitor = [&](AIGT type, uint32_t var, bool neg,
+    auto visitor = [&](AIGT type, uint32_t var,
                        const Lit* left, const Lit* right) -> Lit {
         if (type == AIGT::t_const) {
             if (!true_lit_set) {
@@ -64,9 +64,9 @@ static Lit naive_encode(const aig_ptr& aig, SATSolver& solver,
                 solver.add_clause({true_lit});
                 true_lit_set = true;
             }
-            return neg ? ~true_lit : true_lit;
+            return true_lit;
         }
-        if (type == AIGT::t_lit) return Lit(var, neg);
+        if (type == AIGT::t_lit) return Lit(var, false);
         assert(type == AIGT::t_and);
         Lit l = *left;
         Lit r = *right;
@@ -75,7 +75,7 @@ static Lit naive_encode(const aig_ptr& aig, SATSolver& solver,
         solver.add_clause({~g, l});
         solver.add_clause({~g, r});
         solver.add_clause({g, ~l, ~r});
-        return neg ? ~g : g;
+        return g;
     };
     return AIG::transform<Lit>(aig, visitor, cache);
 }

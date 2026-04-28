@@ -170,17 +170,17 @@ static vector<aig_ptr> gen_random_aig_batch(
 static Lit aig_to_sat(const aig_ptr& aig, SATSolver& solver, uint32_t num_input_vars,
                        map<aig_ptr, Lit>& cache)
 {
-    std::function<Lit(AIGT, uint32_t, bool, const Lit*, const Lit*)> visitor =
-        [&](AIGT type, uint32_t var, bool neg, const Lit* left, const Lit* right) -> Lit {
+    std::function<Lit(AIGT, uint32_t, const Lit*, const Lit*)> visitor =
+        [&](AIGT type, uint32_t var, const Lit* left, const Lit* right) -> Lit {
             if (type == AIGT::t_const) {
                 solver.new_var();
                 Lit tlit = Lit(solver.nVars() - 1, false);
                 solver.add_clause(vector<Lit>{tlit});
-                return neg ? ~tlit : tlit;
+                return tlit;
             }
             if (type == AIGT::t_lit) {
                 assert(var < num_input_vars);
-                return Lit(var, neg);
+                return Lit(var, false);
             }
             if (type == AIGT::t_and) {
                 Lit l = *left;
@@ -190,7 +190,7 @@ static Lit aig_to_sat(const aig_ptr& aig, SATSolver& solver, uint32_t num_input_
                 solver.add_clause(vector<Lit>{~out, l});
                 solver.add_clause(vector<Lit>{~out, r});
                 solver.add_clause(vector<Lit>{~l, ~r, out});
-                return neg ? ~out : out;
+                return out;
             }
             assert(false && "Unknown AIG type");
             return Lit(0, false);

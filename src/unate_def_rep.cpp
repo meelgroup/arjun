@@ -101,13 +101,12 @@ using std::map;
 namespace {
 
 // Translate H from NEW-var-space to ORIG-var-space. Leaf sign flips combine
-// the visitor's edge sign (always false in the new transform API), the leaf
-// var's own NEW→ORIG sign offset, and the output sign offset of the def's
-// var (`test_orig.sign()`) applied at the end.
+// the leaf var's own NEW→ORIG sign offset and the output sign offset of the
+// def's var (`test_orig.sign()`) applied at the end.
 aig_ptr translate_to_orig(const aig_ptr& aig,
                           const map<uint32_t, Lit>& new_to_orig,
                           bool out_sign_xor) {
-    auto visit = [&](AIGT type, uint32_t var, bool /*neg*/,
+    auto visit = [&](AIGT type, uint32_t var,
                      const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
         if (type == AIGT::t_const) return AIG::new_const(true);
         if (type == AIGT::t_lit) {
@@ -170,12 +169,12 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
         assert(aig != nullptr && "Already-defined var must have an AIG definition");
 
         vector<Lit> tmp;
-        std::function<Lit(AIGT, uint32_t, bool, const Lit*, const Lit*)> aig_to_copy_visitor =
-          [&](AIGT type, const uint32_t var_orig, const bool neg,
+        std::function<Lit(AIGT, uint32_t, const Lit*, const Lit*)> aig_to_copy_visitor =
+          [&](AIGT type, const uint32_t var_orig,
               const Lit* left, const Lit* right) -> Lit {
-            if (type == AIGT::t_const) return neg ? ~get_true_lit() : get_true_lit();
+            if (type == AIGT::t_const) return get_true_lit();
             if (type == AIGT::t_lit) {
-                const Lit lit_new = cnf.orig_to_new_lit(Lit(var_orig, neg));
+                const Lit lit_new = cnf.orig_to_new_lit(Lit(var_orig, false));
                 if (input.count(lit_new.var())) return lit_new;
                 assert(lit_new.var() < cnf.nVars());
                 return Lit(lit_new.var() + cnf.nVars(), lit_new.sign());
@@ -188,7 +187,7 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 tmp = {~and_out, l_lit};       s->add_clause(tmp);
                 tmp = {~and_out, r_lit};       s->add_clause(tmp);
                 tmp = {~l_lit, ~r_lit, and_out}; s->add_clause(tmp);
-                return neg ? ~and_out : and_out;
+                return and_out;
             }
             release_assert(false && "Unhandled AIG type in synthesis_unate_def_rep");
           };
@@ -235,7 +234,7 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
     //      encoded helper var is valid on both sides simultaneously.
     auto encode_h_y_prime = [&](const aig_ptr& h) -> Lit {
         vector<Lit> tmp;
-        auto visit = [&](AIGT type, uint32_t var, bool /*neg*/,
+        auto visit = [&](AIGT type, uint32_t var,
                          const Lit* left, const Lit* right) -> Lit {
             if (type == AIGT::t_const) return get_true_lit();
             if (type == AIGT::t_lit) {

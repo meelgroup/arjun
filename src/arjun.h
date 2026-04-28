@@ -427,16 +427,11 @@ public:
     }
 
     // Post-order traversal producing a caller-defined fold. Visitor signature:
-    //   (type, var, false, left_result*, right_result*)   ← visitor ALWAYS
-    //                                                       invoked as if the
-    //                                                       reference were
-    //                                                       positive.
-    // The child results are produced by recursive calls on each edge, so each
-    // already reflects its own edge sign. The visitor's third argument (edge
-    // sign) stays in the signature for source compatibility but is always
-    // false — transform applies the outer edge sign ITSELF by calling
-    // `operator~` on the visitor's result (requires ResultType to provide
-    // one; aig_lit and CMSat::Lit both do).
+    //   (type, var, left_result*, right_result*)
+    // The visitor is always invoked as if the edge were positive; transform
+    // applies the outer edge sign ITSELF by calling `operator~` on the
+    // visitor's result (requires ResultType to provide one; aig_lit and
+    // CMSat::Lit both do). Child results already reflect their own edge sign.
     //
     // Caching is per NODE rather than per signed edge. Without this, a shared
     // sub-AIG referenced both positively and negatively would invoke the
@@ -449,10 +444,6 @@ public:
     ) {
         assert(aig);
 
-        // Cache is keyed on signed edge for source compatibility with the old
-        // signature, but we key each access on the POSITIVE ref and flip the
-        // result for the negative reference. That way the visitor fires once
-        // per node, not once per (node, sign) pair.
         const aig_lit pos_key(aig.node, false);
         auto it = cache.find(pos_key);
         if (it != cache.end()) {
@@ -463,9 +454,9 @@ public:
         if (aig->type == AIGT::t_and) {
             ResultType left_result = transform<ResultType>(aig->l, std::forward<Visitor>(visitor), cache);
             ResultType right_result = transform<ResultType>(aig->r, std::forward<Visitor>(visitor), cache);
-            result = visitor(aig->type, aig->var, /*neg=*/false, &left_result, &right_result);
+            result = visitor(aig->type, aig->var, &left_result, &right_result);
         } else {
-            result = visitor(aig->type, aig->var, /*neg=*/false, nullptr, nullptr);
+            result = visitor(aig->type, aig->var, nullptr, nullptr);
         }
 
         cache[pos_key] = result;
@@ -1603,7 +1594,7 @@ public:
 
         // Hard-coded cutoffs now configurable
         uint32_t bias_samples = 500;        // biased sampling: number of samples per bias direction
-        uint32_t const_vote_samples = 10;   // const_functions: majority voting samples
+        uint32_t const_vote_samples = 100;   // const_functions: majority voting samples
         uint32_t stats_every = 40;          // print stats every N repair loops
         uint32_t detailed_stats_every = 200;// print detailed stats every N repair loops
         // cex_solver rebuild thresholds. Rebuilding re-canonicalizes the
