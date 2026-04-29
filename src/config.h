@@ -48,7 +48,7 @@ struct Config {
     uint32_t unate_max_confl = 100;
     uint32_t extend_max_confl = 30000;
     int unate_def_cond = 1;
-    uint32_t unate_def_cond_max_per_var = 64;
+    uint32_t unate_def_cond_max_per_var = 128;
     uint32_t unate_def_cond_max_confl = 4000;
     // 1 = try inputs sharing a clause with `test` first; 0 = use the
     // sorted input list. Used for A/B-testing the structural ordering.

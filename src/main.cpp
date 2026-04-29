@@ -70,7 +70,7 @@ string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_learnt=1),b
 
 int synthesis = false;
 int do_unate_def = true;
-int do_unate_def_rep = true;
+int do_unate_def_rep = false;
 int do_revbce = false;
 int do_minim_indep = true;
 int do_sat_sweep = false;
