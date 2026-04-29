@@ -96,6 +96,7 @@ def run_arjun(fname, prefix):
         "--unatedefrepmaxpat", str(random.choice([0, 1, 4, 12, 50, 1000])),
         "--unatedefrepmaxcz", str(random.choice([0, 1, 2, 5, 30])),
         "--unatedefrepconfl", str(random.choice([10, 100, 1000, 100000])),
+        "--unatedefrepaux", str(random.choice([0, 1, 2])),
         "--unatedefcond", str(random.choice([0, 1])),
         "--unatedefcondmax", str(random.choice([0, 1, 16, 1024])),
         "--unatedefconddry", str(random.choice([1, 10, 100, 100000])),

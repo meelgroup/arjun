@@ -456,6 +456,7 @@ if __name__ == "__main__":
         solver += " --unatedefrepmaxpat " + random.choice(["0", "1", "5", "12", "40", "1000"])
         solver += " --unatedefrepmaxcz " + random.choice(["0", "1", "2", "5", "30"])
         solver += " --unatedefrepconfl " + random.choice(["1", "10", "100", "1000", "100000"])
+        solver += " --unatedefrepaux " + random.choice(["0", "1", "2"])
         solver += " --bveresolvmaxsz " + str(random.randint(2, 20))
         solver += " --iter1grow " + str(random.randint(0, 5))
         solver += " --iter2grow " + str(random.choice([0, 10, 100]))

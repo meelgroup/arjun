@@ -310,7 +310,14 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
         const Lit test_orig = new_to_orig.at(test);
         if (cnf.defined(test_orig.var())) {
             already_tested.insert(test);
-            s->add_clause({Lit(var_to_indic.at(test), false)});
+            // Note: we do NOT lock var_to_indic[test] = TRUE here. With
+            // aux-leaf H's, locking indicator-prev creates a soundness bug
+            // (the locked indicator chains through Y- and Y'-side prev
+            // commits and spuriously pins y_t_Y = y_t_Y' during a later
+            // test=t whose var appears as aux in some prior H). The Y/Y'-
+            // side commit clauses by themselves already pin y_prev to its
+            // committed H on each side, which is all we need. See the
+            // commit-time block below for the same convention.
             continue;
         }
         tested_num++;
@@ -343,6 +350,23 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
             assert(ind != var_Undef);
             base_assumps.emplace_back(ind, false);
         }
+        // Assume indicator_test = FALSE: forces y_test_Y != y_test_Y' in
+        // every miter call. With y_test_Y' pinned to h_val by the per-iter
+        // activation, this guarantees y_test_val_f = ~h_val whenever the
+        // miter is SAT — i.e. every CEX is "F admits the OPPOSITE of
+        // H_curr", which is the only direction useful for refining H.
+        //
+        // Required because we no longer lock indicator-prev for previously
+        // committed tests (see end-of-test commit comment): without that
+        // lock, prev's Y- and Y'-side H-commits can place y_prev_Y vs
+        // y_prev_Y' freely, so a miter SAT could otherwise have y_test_Y
+        // == h_val with ¬F-on-Y' achieved through y_prev divergence — a
+        // CEX with no useful refinement direction. Asserting indicator_test
+        // = FALSE rules that case out and keeps the SAT/UNSAT split
+        // matching the soundness condition (see header comment).
+        const auto ind_test = var_to_indic.at(test);
+        assert(ind_test != var_Undef);
+        base_assumps.emplace_back(ind_test, true);
 
         // Build per-test aux leaf set. A var `v` ≠ test, not in input, may be
         // used as an H-leaf iff committing `test = H(..., v)` does NOT close
@@ -350,6 +374,9 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
         // recursive-deps cache; for currently-undefined to-define `v` there
         // is no current cycle (Manthan's set_depends_on tracks the new edge
         // and avoids closing it later).
+        VERBOSE_DEBUG_DO(std::cout << "c o [unate_def_rep][verbose] === test NEW="
+            << test+1 << " orig=" << test_orig.var()+1
+            << " (sign=" << test_orig.sign() << ") ===" << std::endl);
         aux_vars.clear();
         std::fill(aux_mask.begin(), aux_mask.end(), 0);
         if (conf.unate_def_rep_aux > 0) {
@@ -374,6 +401,11 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 aux_mask[v_new] = 1;
             }
         }
+        VERBOSE_DEBUG_DO({
+            std::cout << "c o [unate_def_rep][verbose]   aux_vars (NEW): {";
+            for (uint32_t a : aux_vars) std::cout << " " << a+1;
+            std::cout << " }" << std::endl;
+        });
 
         aig_ptr h = AIG::new_const(false);   // start from H ≡ 0
         uint32_t costzero_count = 0;
@@ -413,9 +445,29 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 v_miter_unsat++;
                 // y_test = H(...) is a valid Skolem.
                 const aig_ptr h_in_orig = translate_to_orig(h, new_to_orig, test_orig.sign());
+                VERBOSE_DEBUG_DO(std::cout
+                    << "c o [unate_def_rep][verbose] commit test NEW=" << test+1
+                    << " orig=" << test_orig.var()+1
+                    << " sign=" << test_orig.sign()
+                    << " H_NEW=" << h
+                    << " H_ORIG=" << h_in_orig << std::endl);
                 cnf.set_def(test_orig.var(), h_in_orig);
                 // New def changed the dep graph; drop cached recursive deps.
                 deps_cache.clear();
+                // SLOW_DEBUG: full F[y←y_hat] semantic check after each commit;
+                // catches bad defs at the exact iteration that introduced them.
+                SLOW_DEBUG_DO({
+                    int bad = cnf.check_synth_funs_sat();
+                    if (bad >= 0) {
+                        std::cout << "c o [unate_def_rep][SLOW_DEBUG] WRONG commit "
+                             << "for orig var " << test_orig.var()+1
+                             << " (test NEW=" << test+1 << ")"
+                             << " H_NEW=" << h
+                             << " H_ORIG=" << h_in_orig << std::endl;
+                        release_assert(false &&
+                            "unate_def_rep committed a wrong def");
+                    }
+                });
 
                 // Tighten miter: y_test ⇔ H on Y side. For input-only H,
                 // h_top_lit (Y'-side encoding) and the Y-side encoding are
@@ -475,12 +527,12 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 stop_reason = "miter_pin_undef";
                 break;
             }
-            // Activation was assumed TRUE, so y_test' = h_val. The miter
-            // requires F holds on Y side and ¬F on Y' side; with y_other'
-            // = y_other (indicators), the only flexibility is y_test vs
-            // y_test' — so they must differ.
+            // y_test_Y' = h_val (act_curr); indicator_test = FALSE
+            // (base_assumps) forces y_test_Y != y_test_Y'. So
+            // y_test_val_f = ~h_val whenever the miter is SAT.
             assert(y_test_val_f != h_val
-                    && "Miter SAT must have F-side y_test differ from H(X)");
+                && "Miter SAT must have F-side y_test differ from H(X) "
+                   "(ensured by indicator_test = FALSE in base_assumps)");
 
             // F-only call: assume (X*, aux*) values and force y_test = H(...)
             // (the wrong value in F's view).
@@ -587,10 +639,19 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                         AIG::new_lit(pattern_lits[i].var(), pattern_lits[i].sign()));
                 }
             }
+            VERBOSE_DEBUG_DO({
+                std::cout << "c o [unate_def_rep][verbose]   iter=" << iter
+                     << " y_test_val_f=" << y_test_val_f
+                     << " pattern={ ";
+                for (const auto& pl : pattern_lits) std::cout << pl << " ";
+                std::cout << "} pattern_AIG=" << pattern << std::endl;
+            });
 
             // Cover X*: when P(X) holds, set H = y_test_val_f there.
             if (y_test_val_f == l_True)  h = AIG::new_or(h, pattern);
             else                         h = AIG::new_and(h, AIG::new_not(pattern));
+            VERBOSE_DEBUG_DO(std::cout << "c o [unate_def_rep][verbose]   H_NEW after refine="
+                << h << std::endl);
         }
 
         const size_t v_aux_leaves = h_aux_leaf_count(h);
@@ -614,7 +675,26 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
             << " T: " << fixed << setprecision(2) << (cpuTime()-my_time));
 
         already_tested.insert(test);
-        s->add_clause({Lit(var_to_indic.at(test), false)});
+        // IMPORTANT: do NOT add `s->add_clause({var_to_indic[test] = TRUE})`
+        // here, even though synthesis_unate_def does. With aux-leaf H, the
+        // indicator-lock creates a soundness bug:
+        //
+        //   - Y-side commit:  y_prev_Y  = H_prev(y_aux_Y)
+        //   - Y'-side commit: y_prev_Y' = H_prev(y_aux_Y')   (act_prev locked)
+        //   - Indicator-prev locked TRUE: y_prev_Y = y_prev_Y'
+        //
+        // When a later test=t has its var appear in aux_prev (because an
+        // earlier H_prev was committed with t as aux), the chain
+        //   H_prev(y_t_Y, ...) = H_prev(y_t_Y', ...)
+        // forces y_t_Y = y_t_Y' whenever H_prev is sensitive to y_t — but
+        // test=t's miter requires y_t_Y vs y_t_Y' to be free. The result is
+        // a spurious miter UNSAT and a wrong commit.
+        //
+        // The Y- and Y'-side commit clauses on their own already pin y_prev
+        // to H_prev on each side, so the indicator-lock is redundant for
+        // input-only / backward-only H's anyway, and harmful otherwise.
+        // Without the lock, the SAT solver picks indicator-prev consistently
+        // with the per-side y_prev values, and the miter stays sound.
     }
 
     rep_stats.time_total = cpuTime() - my_time;
