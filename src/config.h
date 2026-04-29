@@ -59,10 +59,10 @@ struct Config {
     uint32_t unate_def_cond_dry_streak = 128;
     // Repair-based unate definition search (manthan-style guess+refine).
     // Runs after standard unate_def for variables still undefined.
-    uint32_t unate_def_rep_iters = 100;       // max guess+refine iters per var
-    uint32_t unate_def_rep_max_pattern = 12;  // skip CEX if conflict (= pattern lits) bigger than this
+    uint32_t unate_def_rep_iters = 200;       // max guess+refine iters per var
+    uint32_t unate_def_rep_max_pattern = 20;  // skip CEX if conflict (= pattern lits) bigger than this
     uint32_t unate_def_rep_max_costzero = 10; // give up on a var after this many cost-zero CEXes
-    uint32_t unate_def_rep_max_confl = 10000; // SAT conflict budget per probe
+    uint32_t unate_def_rep_max_confl = 5000; // SAT conflict budget per probe
     // Allow H to use non-input leaves to attack the cost-zero gap (F-bifunctional X).
     // 0 = input-only (old behavior).
     // 1 = input + backward-defined vars whose recursive deps don't include `test`.

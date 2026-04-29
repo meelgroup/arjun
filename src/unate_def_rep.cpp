@@ -594,7 +594,7 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
         }
 
         const size_t v_aux_leaves = h_aux_leaf_count(h);
-        verb_print(2, "[unate_def_rep] var NEW " << setw(5) << test+1
+        verb_print(1, "[unate_def_rep] var NEW " << setw(5) << test+1
             << " orig " << setw(5) << test_orig.var()+1
             << " iters="     << setw(5) << v_iters
             << " miter[U="   << setw(3) << v_miter_unsat
