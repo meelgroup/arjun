@@ -51,6 +51,12 @@ struct UnateDefRepStats {
     uint64_t hit_iter_max = 0;
     uint64_t hit_aig_nodes_sum = 0;  // for averaging final AIG size
     uint64_t hit_aig_nodes_max = 0;
+    // Aux-leaf telemetry: how often the new "non-input H leaves" path actually
+    // contributes. `aux_leaves_sum` counts distinct non-input leaves in the
+    // committed H, summed across hits.
+    uint64_t hits_using_aux = 0;
+    uint64_t aux_leaves_sum = 0;
+    uint64_t aux_leaves_max = 0;
     double time_total = 0.0;
 };
 

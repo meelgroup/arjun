@@ -27,8 +27,8 @@
 // `synthesis_unate_def` already tries trivial Skolems (constant true/false
 // from the standard flip test) and one-literal definitions
 // `t = L` / `t = ~L` from the conditional probe. For variables that survive
-// both, this pass tries to synthesize a richer Boolean function over the
-// input vars using a manthan-style counterexample-guided guess+refine loop.
+// both, this pass tries to synthesize a richer Boolean function for `test`
+// using a manthan-style counterexample-guided guess+refine loop.
 //
 // Algorithm per surviving `test`:
 //
@@ -36,48 +36,64 @@
 //        F(X, Y)  ∧  ¬F(X, Y')
 //      with all already-defined vars constrained on the Y' side, and
 //      indicator literals tying y_i = y_i' for every other to-define i.
-//   2. Maintain a candidate AIG H(X) over input vars. Start with H = FALSE.
+//   2. Maintain a candidate AIG H over allowed leaves. Start with H = FALSE.
+//      Allowed leaves are X (always) plus a per-test "aux" set: vars `v`
+//      where committing `test = H(..., v)` does NOT close a dependency
+//      cycle. See `unate_def_rep_aux` for the policy.
 //   3. Each iteration:
 //      a. Tseitin-encode H on the Y' side under a fresh activation literal
-//         act_i, adding clauses `act_i → (y_test' ⇔ H(X))`.
+//         act_i, adding clauses `act_i → (y_test' ⇔ H(...))`. Non-input
+//         leaves use the Y'-side var (`var + nVars()`); inputs are shared
+//         and use `var`.
 //      b. Solve the miter under {indicators TRUE, act_i}.
-//         - UNSAT → y_test = H(X) is a valid Skolem; commit and stop.
-//         - SAT   → CEX (X*, Y*, Y'*). y_test_F = m[test] is a value F
-//                   admits at X*; H(X*) = m[H_top_lit] is the value the
-//                   activation forced on Y' which broke F. They differ.
-//      c. Use a separate F-only solver to confirm "F forces y_test ≠ H(X*)
-//         when X = X*" and to extract a small input-only unsat core.
-//         - Cost-zero (F-solver SAT) → H(X*) is actually fine; the miter
-//           is over-constrained by y_other = y_other'. Give up after a
-//           small budget of cost-zero CEXes.
-//         - UNSAT → conflict ⊆ assumed input lits. The conjunction of the
-//           assumed lits in the core is a "pattern" P(X) such that
-//             F(X) ⊨ (P(X) → y_test = y_test_F).
+//         - UNSAT → y_test = H is a valid Skolem; commit and stop.
+//         - SAT   → CEX. y_test_F = m[test] is a value F admits at X*;
+//                   H(...) = m[H_top_lit] is the value the activation
+//                   forced on Y' which broke F. They differ.
+//      c. Use a separate F-only solver to confirm "F forces y_test ≠ H(...)
+//         when (X, aux) = miter values" and to extract a small unsat core.
+//         - Cost-zero (F-solver SAT) → H is actually fine; the miter is
+//           over-constrained by the y_other = y_other' pinning. Allowing
+//           H to read more aux vars (mode>=1) shrinks the y_other set the
+//           miter is sensitive to and tends to eliminate cost-zero
+//           false alarms when F is bifunctional. After the budget, bail
+//           and let Manthan handle this var.
+//         - UNSAT → conflict ⊆ assumed (X ∪ aux) lits. The conjunction of
+//           the core lits is a "pattern" P such that F ⊨ (P → y_test = y_F).
 //      d. Refine H by covering the bad point:
 //           y_test_F = TRUE  →  H = H ∨ P
 //           y_test_F = FALSE →  H = H ∧ ¬P
 //   4. Disable old activation each iteration (`act_i := FALSE` permanent).
 //   5. After per-var loop, mark the var's indicator TRUE permanently —
 //      same convention as synthesis_unate_def, regardless of whether we
-//      found a def. If we did, we also commit y_test ⇔ H_top_lit to
-//      tighten the miter for subsequent vars.
+//      found a def. If we did, we also commit y_test ⇔ H to tighten the
+//      miter for subsequent vars (using a Y-side encoding when H has any
+//      non-input leaves so the commit clause stays sound after later
+//      tests untie an aux var's pinning indicator).
 //
 // AIG correctness invariants:
 //
-//   - Every leaf of H is an input var (since we only assume input lits in
-//     the F-solver call, the unsat-core lits are always inputs).
-//   - Inputs are shared across the Y/Y' sides, so the encoded H_top_lit is
-//     the same on both sides. This lets us emit y_test ⇔ H_top_lit on the
-//     Y side without re-encoding.
+//   - Leaves of H come from X (input) ∪ aux. Aux is selected per-test so
+//     that committing `test`'s def cannot create a dependency cycle:
+//     for every aux var `v`, either `v` is undefined or `test ∉ deps(v)`.
+//     Manthan's existing dependency tracking handles the live-cycle case
+//     for undefined aux leaves (it must define `v` without going through
+//     `test`).
+//   - Inputs are shared across the Y/Y' sides, so an input-only H needs
+//     just one encoding for both `act → y_test' ⇔ H` and `y_test ⇔ H`.
+//     With aux leaves, those vars differ between sides; we emit two
+//     encodings (Y' and Y) on commit.
 //   - Translation to ORIG-var-space uses the same sign convention as the
-//     existing conditional-unate code: leaf-sign XOR's `new_to_orig`'s
-//     sign flip; the AIG output is XOR'd by `test_orig.sign()`.
+//     conditional-unate code: leaf-sign XOR's `new_to_orig`'s sign flip;
+//     the AIG output is XOR'd by `test_orig.sign()`. Works for any leaf.
 //
 // Knobs (Config):
 //   unate_def_rep_iters        — guess+refine iters per var
 //   unate_def_rep_max_pattern  — skip CEX whose unsat core is bigger than this
 //   unate_def_rep_max_costzero — give up after this many cost-zero CEXes
 //   unate_def_rep_max_confl    — conflict budget for each SAT call
+//   unate_def_rep_aux          — 0=input only, 1=+backward_defined,
+//                                2=+to-define (full)
 
 #include "unate_def.h"
 #include "constants.h"
@@ -86,6 +102,7 @@
 
 #include <functional>
 #include <iomanip>
+#include <limits>
 #include <map>
 
 using namespace ArjunNS;
@@ -229,18 +246,21 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
     f_solver->set_verbosity(0);
     for (const auto& cl : cnf.get_clauses()) f_solver->add_clause(cl);
 
-    // ---- H Tseitin encoder, Y' side. H only references input vars (enforced
-    //      by pattern construction below), and inputs are shared, so the
-    //      encoded helper var is valid on both sides simultaneously.
-    auto encode_h_y_prime = [&](const aig_ptr& h) -> Lit {
+    // ---- H Tseitin encoder. `is_y_prime` selects which side the leaf SAT
+    //      vars live on. Input leaves are shared between Y and Y' (same SAT
+    //      var). Non-input leaves (aux) live on separate vars per side; the
+    //      pinning indicator (asserted in base_assumps for every other
+    //      to-define var) keeps `y == y'` so both encodings agree on leaf
+    //      values. AND helpers are freshly allocated per call.
+    auto encode_h = [&](const aig_ptr& h, bool is_y_prime) -> Lit {
         vector<Lit> tmp;
         auto visit = [&](AIGT type, uint32_t var,
                          const Lit* left, const Lit* right) -> Lit {
             if (type == AIGT::t_const) return get_true_lit();
             if (type == AIGT::t_lit) {
-                // var is in NEW-var space and (by construction) an input.
-                assert(input.count(var) && "H must only reference input vars");
-                return Lit(var, false);
+                // var is in NEW-var space.
+                if (input.count(var)) return Lit(var, false);
+                return Lit(is_y_prime ? var + cnf.nVars() : var, false);
             }
             if (type == AIGT::t_and) {
                 s->new_var();
@@ -250,16 +270,37 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 tmp = {~*left, ~*right, out}; s->add_clause(tmp);
                 return out;
             }
-            release_assert(false && "Unhandled AIG type in encode_h_y_prime");
+            release_assert(false && "Unhandled AIG type in encode_h");
         };
         map<aig_ptr, Lit> cache;
         return AIG::transform<Lit>(h, visit, cache);
+    };
+
+    // Count distinct non-input leaves of `h`. Used both as a "do we need
+    // a Y-side encoding on commit?" check and for telemetry.
+    auto h_aux_leaf_count = [&](const aig_ptr& h) -> size_t {
+        std::set<uint32_t> deps;
+        AIG::get_dependent_vars(h, deps,
+                                std::numeric_limits<uint32_t>::max());
+        size_t n = 0;
+        for (uint32_t d : deps) if (!input.count(d)) n++;
+        return n;
     };
 
     vector<Lit> assumps;
     set<uint32_t> already_tested;
     uint32_t tested_num = 0;
     uint32_t new_defs = 0;
+
+    // Per-test "aux" leaf candidates. NEW-var-space, sorted ascending for
+    // determinism. `aux_mask[v] == 1` iff v is in the current test's
+    // aux set (used for fast filtering of conflict-core lits).
+    vector<uint32_t> aux_vars;
+    vector<char> aux_mask(cnf.nVars(), 0);
+    // Recursive-deps cache for the cycle check on backward-defined aux
+    // candidates. Cleared after every successful commit since the new
+    // def changes deps.
+    map<uint32_t, vector<uint32_t>> deps_cache;
 
     for (uint32_t test : to_define) {
         assert(input.count(test) == 0);
@@ -303,6 +344,37 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
             base_assumps.emplace_back(ind, false);
         }
 
+        // Build per-test aux leaf set. A var `v` ≠ test, not in input, may be
+        // used as an H-leaf iff committing `test = H(..., v)` does NOT close
+        // a dependency cycle. For backward-defined `v` we check via the
+        // recursive-deps cache; for currently-undefined to-define `v` there
+        // is no current cycle (Manthan's set_depends_on tracks the new edge
+        // and avoids closing it later).
+        aux_vars.clear();
+        std::fill(aux_mask.begin(), aux_mask.end(), 0);
+        if (conf.unate_def_rep_aux > 0) {
+            for (uint32_t v_new = 0; v_new < cnf.nVars(); v_new++) {
+                if (v_new == test) continue;
+                if (input.count(v_new)) continue;
+                auto it = new_to_orig.find(v_new);
+                if (it == new_to_orig.end()) continue;
+                const Lit cand_orig = it->second;
+                if (cnf.defined(cand_orig.var())) {
+                    const auto& deps = cnf.get_dependent_vars_recursive(
+                        cand_orig.var(), deps_cache);
+                    bool has_test = false;
+                    for (uint32_t d : deps) {
+                        if (d == test_orig.var()) { has_test = true; break; }
+                    }
+                    if (has_test) continue;
+                } else {
+                    if (conf.unate_def_rep_aux < 2) continue;
+                }
+                aux_vars.push_back(v_new);
+                aux_mask[v_new] = 1;
+            }
+        }
+
         aig_ptr h = AIG::new_const(false);   // start from H ≡ 0
         uint32_t costzero_count = 0;
         uint32_t hit_iter = 0;
@@ -320,7 +392,7 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
             rep_stats.total_iters++;
             v_iters++;
 
-            const Lit h_top_lit = encode_h_y_prime(h);
+            const Lit h_top_lit = encode_h(h, /*is_y_prime=*/true);
 
             // act_i ⇒ y_test' ⇔ H_top_lit (gating so old encodings can be
             // disabled cheaply between iterations by adding the unit ~act_i).
@@ -339,16 +411,26 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
             if (ret == l_False) {
                 rep_stats.miter_unsat++;
                 v_miter_unsat++;
-                // y_test = H(X) is a valid Skolem.
+                // y_test = H(...) is a valid Skolem.
                 const aig_ptr h_in_orig = translate_to_orig(h, new_to_orig, test_orig.sign());
                 cnf.set_def(test_orig.var(), h_in_orig);
+                // New def changed the dep graph; drop cached recursive deps.
+                deps_cache.clear();
 
-                // Tighten miter: y_test ⇔ H_top_lit on Y side. H_top_lit's
-                // helper var is shared (only references input vars) so this
-                // reuses the same encoding.
+                // Tighten miter: y_test ⇔ H on Y side. For input-only H,
+                // h_top_lit (Y'-side encoding) and the Y-side encoding are
+                // the same SAT lit since inputs are shared. For an H with
+                // any aux leaves, the two sides differ when the aux var's
+                // pinning indicator is later untied (e.g. when aux becomes
+                // a future `test`), so we must encode H explicitly on the
+                // Y side here.
+                const size_t aux_leaves = h_aux_leaf_count(h);
+                const Lit h_top_lit_for_commit = (aux_leaves == 0)
+                    ? h_top_lit
+                    : encode_h(h, /*is_y_prime=*/false);
                 const Lit y_test = Lit(test, false);
-                s->add_clause({~y_test,  h_top_lit});
-                s->add_clause({ y_test, ~h_top_lit});
+                s->add_clause({~y_test,  h_top_lit_for_commit});
+                s->add_clause({ y_test, ~h_top_lit_for_commit});
 
                 // Lock activation TRUE so the Y'-side equality stays in force
                 // for subsequent tests.
@@ -362,6 +444,12 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                     const size_t nodes = AIG::count_aig_nodes_fast(h);
                     rep_stats.hit_aig_nodes_sum += nodes;
                     if (nodes > rep_stats.hit_aig_nodes_max) rep_stats.hit_aig_nodes_max = nodes;
+                }
+                if (aux_leaves > 0) {
+                    rep_stats.hits_using_aux++;
+                    rep_stats.aux_leaves_sum += aux_leaves;
+                    if (aux_leaves > rep_stats.aux_leaves_max)
+                        rep_stats.aux_leaves_max = aux_leaves;
                 }
                 stop_reason = "found";
                 break;
@@ -394,18 +482,29 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
             assert(y_test_val_f != h_val
                     && "Miter SAT must have F-side y_test differ from H(X)");
 
-            // F-only call: assume X* values and force y_test = H(X*) (the
-            // wrong value in F's view at X*).
+            // F-only call: assume (X*, aux*) values and force y_test = H(...)
+            // (the wrong value in F's view).
             // sign convention: Lit(v, true)= ¬v, so Lit(test, h_val == l_False)
             // = (h_val == TRUE ? test : ¬test) — exactly "y_test = H_val".
             const Lit force_wrong = Lit(test, h_val == l_False);
             vector<Lit> f_assumps;
-            f_assumps.reserve(input.size() + 1);
+            f_assumps.reserve(input.size() + aux_vars.size() + 1);
             for (uint32_t x : input) {
                 if (x >= m.size()) continue;
                 const lbool v = m[x];
                 if (v == l_Undef) continue;
                 f_assumps.emplace_back(x, v == l_False);
+            }
+            // Aux assumptions: pin aux vars to their miter-model values.
+            // In the F-solver these vars are otherwise free (the F-solver
+            // has no AIG-copy block / indicator structure), so without
+            // this pin a CEX where bifunctionality lives in an aux var
+            // would surface as a cost-zero alarm.
+            for (uint32_t a : aux_vars) {
+                if (a >= m.size()) continue;
+                const lbool v = m[a];
+                if (v == l_Undef) continue;
+                f_assumps.emplace_back(a, v == l_False);
             }
             f_assumps.push_back(force_wrong);
 
@@ -446,15 +545,18 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
             v_f_unsat++;
 
             // Conflict literals are negations of assumed literals. Filter
-            // out the test-forcing one; everything else is an input lit
-            // (we only assumed inputs + force_wrong).
+            // out the test-forcing one; everything else is an input or aux
+            // lit (we only assumed input ∪ aux + force_wrong).
             vector<Lit> conflict = f_solver->get_conflict();
             vector<Lit> pattern_lits;
             pattern_lits.reserve(conflict.size());
             for (const Lit& cl : conflict) {
                 if (cl == ~force_wrong) continue;
                 if (cl.var() == test) continue; // defensive
-                if (!input.count(cl.var())) continue;
+                const bool is_input = input.count(cl.var()) > 0;
+                const bool is_aux = cl.var() < aux_mask.size()
+                                    && aux_mask[cl.var()] != 0;
+                if (!is_input && !is_aux) continue;
                 pattern_lits.push_back(~cl);    // assumption form: matches X*
             }
             v_pattern_sum += pattern_lits.size();
@@ -491,6 +593,7 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
             else                         h = AIG::new_and(h, AIG::new_not(pattern));
         }
 
+        const size_t v_aux_leaves = h_aux_leaf_count(h);
         verb_print(2, "[unate_def_rep] var NEW " << setw(5) << test+1
             << " orig " << setw(5) << test_orig.var()+1
             << " iters="     << setw(5) << v_iters
@@ -504,6 +607,8 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
             << " costzero="  << setw(3) << costzero_count
             << " avg_pat="   << setw(5) << setprecision(1) << fixed
                              << safe_div(v_pattern_sum, v_pattern_count)
+            << " aux["       << setw(4) << aux_vars.size()
+            << "/used="      << setw(3) << v_aux_leaves << "]"
             << " AIG_nodes=" << setw(5) << AIG::count_aig_nodes_fast(h)
             << " result=" << std::left << setw(15) << stop_reason << std::right
             << " T: " << fixed << setprecision(2) << (cpuTime()-my_time));
@@ -532,6 +637,10 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
         << " avg_hit_aig=" << setprecision(1) << fixed
         << safe_div(rep_stats.hit_aig_nodes_sum, rep_stats.hits)
         << " max_hit_aig=" << rep_stats.hit_aig_nodes_max
+        << " aux_hits=" << rep_stats.hits_using_aux
+        << " avg_aux_leaves=" << setprecision(1) << fixed
+        << safe_div(rep_stats.aux_leaves_sum, rep_stats.hits_using_aux)
+        << " max_aux_leaves=" << rep_stats.aux_leaves_max
         << " still to-define: " << to_define2.size()
         << " T: " << setprecision(2) << fixed << rep_stats.time_total);
 }

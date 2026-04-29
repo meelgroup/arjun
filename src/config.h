@@ -63,6 +63,12 @@ struct Config {
     uint32_t unate_def_rep_max_pattern = 12;  // skip CEX if conflict (= pattern lits) bigger than this
     uint32_t unate_def_rep_max_costzero = 10; // give up on a var after this many cost-zero CEXes
     uint32_t unate_def_rep_max_confl = 10000; // SAT conflict budget per probe
+    // Allow H to use non-input leaves to attack the cost-zero gap (F-bifunctional X).
+    // 0 = input-only (old behavior).
+    // 1 = input + backward-defined vars whose recursive deps don't include `test`.
+    // 2 = input + backward-defined + still-undefined to-define vars (richest; relies
+    //     on Manthan-side dependency tracking to keep the synthesis cycle-free).
+    uint32_t unate_def_rep_aux = 2;
     bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;
