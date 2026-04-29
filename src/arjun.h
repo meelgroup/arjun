@@ -1049,7 +1049,7 @@ struct SimpConf {
     bool do_backbone_puura = true;
     int64_t backbone_max_confl = -1;
     int weaken_limit = 8000;
-    int puura_strategy = 0;
+    int puura_strategy = 1;
 };
 
 struct VarTypes {
