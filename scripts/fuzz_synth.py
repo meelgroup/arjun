@@ -479,10 +479,17 @@ if __name__ == "__main__":
         solver += " --unatedefcondmax " + random.choice(["0", "1", "4", "16", "64", "1024"])
         solver += " --unatedefcondconfl " + random.choice(["1", "10", "100", "1000", "100000"])
         solver += " --unatedefconddry " + random.choice(["1", "10", "100", "100000"])
-        solver += " --unatedefrepiters " + random.choice(["1", "5", "30", "100"])
+        # 0 = inner loop never runs (no commits at all); high values stress
+        # the per-iteration refinement.
+        solver += " --unatedefrepiters " + random.choice(["0", "1", "5", "30", "100", "10000"])
+        # 0 = skip every CEX (no refinement); 1 = only single-lit patterns;
+        # 1000 = effectively unlimited.
         solver += " --unatedefrepmaxpat " + random.choice(["0", "1", "5", "12", "40", "1000"])
+        # 0 = give up on first cost-zero; high = never give up.
         solver += " --unatedefrepmaxcz " + random.choice(["0", "1", "2", "5", "30"])
+        # 1 = miter/uniqueness/F-solver mostly time out; 100000 = never.
         solver += " --unatedefrepconfl " + random.choice(["1", "10", "100", "1000", "100000"])
+        # 0=input only, 1=+backward-defined, 2=+to-define (richest).
         solver += " --unatedefrepaux " + random.choice(["0", "1", "2"])
         solver += " --bveresolvmaxsz " + str(random.randint(2, 20))
         solver += " --iter1grow " + str(random.randint(0, 5))

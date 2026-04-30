@@ -1481,6 +1481,10 @@ public:
     // miters relied on them.
     void set_def_skolem(uint32_t v_orig, const aig_ptr& def);
 
+    [[nodiscard]] bool is_skolem_defined(uint32_t v_orig) const {
+        return skolem_defined_vars.count(v_orig) > 0;
+    }
+
     void clear_orig_sampl_defs();
     void simplify_aigs(const uint32_t verb = 0) {
         assert(need_aig);

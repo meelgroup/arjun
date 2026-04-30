@@ -92,10 +92,15 @@ def run_arjun(fname, prefix):
         "--verb", "1",
         "--unatedef", "1",
         "--unatedefrep", "1",
-        "--unatedefrepiters", str(random.choice([1, 5, 30, 100])),
+        # 0 = inner loop never runs (no commits); high values stress refinement.
+        "--unatedefrepiters", str(random.choice([0, 1, 5, 30, 100, 10000])),
+        # 0 = skip every CEX (no refinement); 1000 = effectively unlimited.
         "--unatedefrepmaxpat", str(random.choice([0, 1, 4, 12, 50, 1000])),
+        # 0 = give up on first cost-zero; high = never give up.
         "--unatedefrepmaxcz", str(random.choice([0, 1, 2, 5, 30])),
-        "--unatedefrepconfl", str(random.choice([10, 100, 1000, 100000])),
+        # 1 = mostly time out; 100000 = never.
+        "--unatedefrepconfl", str(random.choice([1, 10, 100, 1000, 100000])),
+        # 0=input only, 1=+backward-defined, 2=+to-define (richest).
         "--unatedefrepaux", str(random.choice([0, 1, 2])),
         "--unatedefcond", str(random.choice([0, 1])),
         "--unatedefcondmax", str(random.choice([0, 1, 16, 1024])),

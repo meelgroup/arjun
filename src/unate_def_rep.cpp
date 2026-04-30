@@ -346,7 +346,17 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
     map<uint32_t, vector<uint32_t>> deps_cache;
 
     for (uint32_t test : to_define) {
+        // Cheap invariants documenting what the loop assumes about `test`:
+        //   - it's a real var index;
+        //   - it's not an input (those never need a Skolem);
+        //   - it's not in already_tested (each var goes through the loop
+        //     body at most once);
+        //   - it has an indicator (built in the prelude for every to_define
+        //     non-input non-original-BW var).
+        assert(test < cnf.nVars());
         assert(input.count(test) == 0);
+        assert(already_tested.count(test) == 0);
+        assert(var_to_indic.at(test) != var_Undef);
         // Skip if a previous pass already defined this (e.g. an earlier
         // iteration of THIS pass, via cnf.set_def on a different orig var
         // that resolves to the same new var — defensive only).
@@ -444,6 +454,15 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 aux_mask[v_new] = 1;
             }
         }
+        // Cheap aux invariants: aux candidates are always non-input,
+        // non-self, distinct (we only pushed once per v_new in the
+        // single-pass loop above), and aux_mask agrees with aux_vars.
+        assert(aux_vars.size() <= cnf.nVars());
+        for (uint32_t a : aux_vars) {
+            assert(a != test);
+            assert(input.count(a) == 0);
+            assert(a < aux_mask.size() && aux_mask[a] == 1);
+        }
         VERBOSE_DEBUG_DO({
             std::cout << "c o [unate_def_rep][verbose]   aux_vars (NEW): {";
             for (uint32_t a : aux_vars) std::cout << " " << a+1;
@@ -517,7 +536,29 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 }
 
                 // y_test = H(...) is a valid unique-defining function.
+                // Cheap invariants before commit:
+                //   - h is non-null (we always build at least a const FALSE);
+                //   - target var has no def yet (set_def_skolem will assert,
+                //     but checking here gives a clearer site if it ever
+                //     fires);
+                //   - H's direct (non-recursive) leaves all live in
+                //     input ∪ aux (this is the structural soundness condition
+                //     for committing — anything else means the conflict-core
+                //     filter let a non-allowed lit through).
+                assert(h != nullptr);
+                assert(!cnf.defined(test_orig.var()));
+                {
+                    std::set<uint32_t> h_leaves;
+                    AIG::get_dependent_vars(h, h_leaves,
+                                            std::numeric_limits<uint32_t>::max());
+                    for (uint32_t lf : h_leaves) {
+                        assert((input.count(lf)
+                               || (lf < aux_mask.size() && aux_mask[lf] != 0))
+                            && "H leaf must be input or aux");
+                    }
+                }
                 const aig_ptr h_in_orig = translate_to_orig(h, new_to_orig, test_orig.sign());
+                assert(h_in_orig != nullptr);
                 VERBOSE_DEBUG_DO(std::cout
                     << "c o [unate_def_rep][verbose] commit test NEW=" << test+1
                     << " orig=" << test_orig.var()+1
@@ -533,11 +574,22 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 // checked uniqueness above, but retain the Skolem flag
                 // so the categorization stays consistent.)
                 cnf.set_def_skolem(test_orig.var(), h_in_orig);
+                assert(cnf.defined(test_orig.var())
+                    && "set_def_skolem must populate defs[test]");
+                assert(cnf.is_skolem_defined(test_orig.var())
+                    && "set_def_skolem must add test to skolem_defined_vars");
                 // New def changed the dep graph; drop cached recursive deps.
                 deps_cache.clear();
-                // SLOW_DEBUG: full F[y←y_hat] semantic check after each commit;
-                // catches bad defs at the exact iteration that introduced them.
+                // SLOW_DEBUG: full per-commit verification.
+                //   1. defs_invariant() — defs are well-formed (cycle-free,
+                //      sampling-var deps unique, etc).
+                //   2. check_synth_funs_sat() — F ∧ ¬F[y←y_hat] is UNSAT,
+                //      i.e. the AIGs synthesized so far are jointly correct.
+                // These catch bad defs at the exact iteration that introduced
+                // them; without SLOW_DEBUG the bug would only surface at the
+                // unsat_unate_def_rep AIG checkpoint or in Manthan.
                 SLOW_DEBUG_DO({
+                    [[maybe_unused]] auto inv_ok = cnf.defs_invariant();
                     int bad = cnf.check_synth_funs_sat();
                     if (bad >= 0) {
                         std::cout << "c o [unate_def_rep][SLOW_DEBUG] WRONG commit "
@@ -694,6 +746,15 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
             }
             v_pattern_sum += pattern_lits.size();
             v_pattern_count++;
+            // Cheap invariant: pattern lits live in input ∪ aux (filter above
+            // ensures this). If a non-allowed lit ever leaks through it would
+            // make H reference an out-of-scope leaf and break the structural
+            // soundness check at commit time.
+            for (const Lit& pl : pattern_lits) {
+                assert(pl.var() != test);
+                assert(input.count(pl.var())
+                    || (pl.var() < aux_mask.size() && aux_mask[pl.var()] != 0));
+            }
             if (pattern_lits.size() > conf.unate_def_rep_max_pattern) {
                 rep_stats.skipped_pattern_too_big++;
                 v_skipped_big++;
@@ -779,6 +840,13 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
     }
 
     rep_stats.time_total = cpuTime() - my_time;
+    // SLOW_DEBUG: end-of-pass sanity. defs_invariant() catches anything
+    // a per-commit slipped (cycles, dangling deps, bad sampling-var
+    // categorization) and fails fast at the pass boundary instead of
+    // at a downstream consumer.
+    SLOW_DEBUG_DO({
+        [[maybe_unused]] auto inv_ok = cnf.defs_invariant();
+    });
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(
         0 | verbose_debug_enabled, "end do_unate_def_rep");
     verb_print(1, COLRED "[unate_def_rep] Done."
@@ -792,6 +860,7 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
         << " S=" << rep_stats.f_sat
         << " T=" << rep_stats.f_undef << "]"
         << " skip_big=" << rep_stats.skipped_pattern_too_big
+        << " skolem_skip=" << rep_stats.skolem_only_skipped
         << " avg_hit_iter=" << setprecision(1) << fixed
         << safe_div(rep_stats.hit_iter_sum, rep_stats.hits)
         << " max_hit_iter=" << rep_stats.hit_iter_max
