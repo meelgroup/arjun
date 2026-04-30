@@ -150,7 +150,7 @@ def run(command):
             resource.getrlimit(resource.RLIMIT_CPU))
     return consoleOutput, err, p.returncode
 
-def run_check(command, final):
+def run_check(command, final, seed):
     ok = False
 
     p = subprocess.Popen(command, stderr=subprocess.STDOUT,
@@ -166,7 +166,30 @@ def run_check(command, final):
         print("Error string is: ", err)
         exit(-1)
 
+    # Negative returncode = killed by signal (segfault / SIGABRT from
+    # assertion). Anything other than 0 (CORRECT) or 1 (INCORRECT, handled
+    # below via output match) means test-synth crashed or hit an internal
+    # error — treat as a bug regardless of final/non-final.
+    if p.returncode < 0 or p.returncode > 1:
+        print("=" * 60)
+        print("BUG: test-synth crashed with returncode %d" % p.returncode)
+        print("Command was: %s" % " ".join(command))
+        print("Full check output was:")
+        print(consoleOutput)
+        print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
+        print("=" * 60)
+        exit(-1)
+
     for line in consoleOutput.split("\n"):
+        if "INCORRECT" in line:
+            print("=" * 60)
+            print("BUG: test-synth reported AIGs are INCORRECT")
+            print("Command was: %s" % " ".join(command))
+            print("Full check output was:")
+            print(consoleOutput)
+            print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
+            print("=" * 60)
+            exit(-1)
         # Match "CORRECT" but not "INCORRECT" — test-synth prints both on
         # failure ("AIGs are INCORRECT") and success ("AIGs are CORRECT"),
         # and plain substring matching accepts the failure text too.
@@ -175,9 +198,13 @@ def run_check(command, final):
             ok = True
 
     if not ok and final:
-        print("ERROR: check process did not report CORRECT")
+        print("=" * 60)
+        print("BUG: check process did not report CORRECT")
+        print("Command was: %s" % " ".join(command))
         print("Full check output was:")
         print(consoleOutput)
+        print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
+        print("=" * 60)
         exit(-1)
 
 
@@ -539,7 +566,7 @@ if __name__ == "__main__":
             else:
                 call = "./test-synth -v -s %d %s %s" % (seed, fname, aig)
             print("Running check command: ", call)
-            run_check(call.split(), final)
+            run_check(call.split(), final, seed)
             os.unlink(aig)
         cleanup(fname, prefix)
     exit(0)
