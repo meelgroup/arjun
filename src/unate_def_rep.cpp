@@ -219,8 +219,8 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 const Lit r_lit = *right;
                 s->new_var();
                 const Lit and_out = Lit(s->nVars() - 1, false);
-                tmp = {~and_out, l_lit};       s->add_clause(tmp);
-                tmp = {~and_out, r_lit};       s->add_clause(tmp);
+                tmp = {~and_out, l_lit};         s->add_clause(tmp);
+                tmp = {~and_out, r_lit};         s->add_clause(tmp);
                 tmp = {~l_lit, ~r_lit, and_out}; s->add_clause(tmp);
                 return and_out;
             }
