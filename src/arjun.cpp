@@ -1966,6 +1966,22 @@ DLL_PUBLIC VarTypes
     }
     assert(input.size() + to_define.size() + extend_defined_vars.size() + backw_synth_defined_vars.size() == nVars());
 
+    // SLOW_DEBUG: a Skolem-committed var (see set_def_skolem) must never be
+    // categorized as extend-defined. The whole point of the Skolem flag is
+    // to keep such vars in backward_synth_defined_vars even when their AIG
+    // happens to be input-only or a constant: extend-defined gets treated
+    // as an input by Manthan, dropping the y_test = H_test commit
+    // constraint that downstream code (later commits, find_better_ctx) may
+    // rely on. If this assert ever fires, the categorization branch above
+    // (`only_input_deps && !skolem_defined_vars.count(orig)`) has been
+    // changed and the bug is back.
+    SLOW_DEBUG_DO({
+        for (const auto& v : extend_defined_vars) {
+            assert(!skolem_defined_vars.count(v.o)
+                && "Skolem-committed var landed in extend_defined_vars");
+        }
+    });
+
     // extend-defined vars can be treateed as input vars
     for(const auto& v: extend_defined_vars) input.insert(v.n);
 
@@ -2039,6 +2055,19 @@ DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
     check_pre_post_backward_round_synth();
     check_all_vars_accounted_for();
     check_self_dependency();
+    // skolem_defined_vars set well-formedness: every entry must point at a
+    // valid, currently-defined, non-orig-sampl var. A violation usually
+    // means set_def_skolem was called with the wrong arg or
+    // clear_orig_sampl_defs / a copy/move forgot to keep the set in sync
+    // with `defs`.
+    for (uint32_t v : skolem_defined_vars) {
+        release_assert(v < defs.size()
+            && "skolem_defined_vars entry past defs.size()");
+        release_assert(defs[v] != nullptr
+            && "skolem_defined_vars entry has no def");
+        release_assert(!orig_sampl_vars.count(v)
+            && "orig sampling var must never be Skolem-committed");
+    }
     [[maybe_unused]] auto ret = get_var_types(0, "defs_invariant");
     SLOW_DEBUG_DO(check_synth_funs_randomly());
     return true;
