@@ -46,7 +46,15 @@
 //         leaves use the Y'-side var (`var + nVars()`); inputs are shared
 //         and use `var`.
 //      b. Solve the miter under {indicators TRUE, act_i}.
-//         - UNSAT → y_test = H is a valid Skolem; commit and stop.
+//         - UNSAT → run a uniqueness check in f_solver: encode H there
+//                   and ask whether `(current F') ∧ y_test ≠ H_top` is
+//                   UNSAT. f_solver starts as original F and accumulates
+//                   the y_v ⇔ H_v of every prior commit (see step 5), so
+//                   this check is against cumulative F', not original F.
+//                   UNSAT → commit y_test ⇔ H and stop. SAT/UNDEF →
+//                   H is only Skolem (or undecided) in F'; bump
+//                   skolem_only_skipped and continue refining (later
+//                   CEXes can sharpen H into a uniquely-defining form).
 //         - SAT   → CEX. y_test_F = m[test] is a value F admits at X*;
 //                   H(...) = m[H_top_lit] is the value the activation
 //                   forced on Y' which broke F. They differ.
@@ -69,7 +77,11 @@
 //      found a def. If we did, we also commit y_test ⇔ H to tighten the
 //      miter for subsequent vars (using a Y-side encoding when H has any
 //      non-input leaves so the commit clause stays sound after later
-//      tests untie an aux var's pinning indicator).
+//      tests untie an aux var's pinning indicator). The same y_test ⇔ H
+//      equivalence is mirrored into f_solver so the next var's uniqueness
+//      check operates against cumulative F' (= F ∧ all prior commits),
+//      catching chained-Skolem cases that wouldn't pass uniqueness in
+//      original F alone.
 //
 // AIG correctness invariants:
 //
@@ -506,14 +518,23 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 rep_stats.miter_unsat++;
                 v_miter_unsat++;
 
-                // Uniqueness check: the miter UNSAT only proves Skolem
-                // (F-sat ⇒ exists F-sat with y_test = H). Manthan's BW
-                // pipeline needs the stronger condition F ⊨ y_test = H
-                // — otherwise y[test] in some F-sat models can disagree
+                // Uniqueness check: the miter UNSAT alone is not enough to
+                // commit. Worst case it can hold vacuously when no F-model
+                // even has y_test = H(X) at any X, so blindly committing
+                // y_test ⇔ H would lose X-projections. Manthan's BW pipeline
+                // also needs the stronger condition (current F') ⊨ y_test = H
+                // — otherwise y[test] in some F'-sat models can disagree
                 // with y_hat[test] = H, leaving test in needs_repair after
                 // find_better_ctx and tripping the BW assertion in
-                // find_next_repair_var. Verify in f_solver (no commit
-                // clauses): UNSAT under (y_test != H_top) ⇔ uniqueness.
+                // find_next_repair_var. Verify in f_solver: by the time we
+                // reach here f_solver carries original F plus every prior
+                // commit's y_v ⇔ H_v (mirrored from the s-side commit on
+                // success — see the f_solver->add_clause block below). UNSAT
+                // under (y_test ≠ H_top) ⇔ y_test is uniquely-defining in
+                // this cumulative F', which is exactly what BW expects. This
+                // captures chained-Skolem cases: an H that is only a Skolem
+                // witness in original F can become uniquely-defining once
+                // prior commits restrict the model space.
                 const Lit h_top_in_f = encode_h_in_f(h);
                 const Lit y_test_in_f = Lit(test, false);
                 vector<Lit> uniq_assumps;
@@ -535,8 +556,8 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                     continue;
                 }
 
-                // y_test = H(...) is a valid unique-defining function.
-                // Cheap invariants before commit:
+                // y_test = H(...) is a unique-defining function in
+                // cumulative F'. Cheap invariants before commit:
                 //   - h is non-null (we always build at least a const FALSE);
                 //   - target var has no def yet (set_def_skolem will assert,
                 //     but checking here gives a clearer site if it ever
@@ -616,6 +637,20 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 const Lit y_test = Lit(test, false);
                 s->add_clause({~y_test,  h_top_lit_for_commit});
                 s->add_clause({ y_test, ~h_top_lit_for_commit});
+
+                // Mirror the y_test ⇔ H commit into f_solver so subsequent
+                // uniqueness checks for later vars operate against cumulative
+                // F' (= original F ∧ all prior commits), not original F. A
+                // later var's H may be Skolem-only in F but uniquely-defining
+                // in F' once prior commits restrict the model space; this
+                // change captures those chained-Skolem cases without any
+                // soundness loss (the new clauses are exactly the def we
+                // already verified is implied by F under the F-only check).
+                // h_top_in_f and y_test_in_f are still in scope from the
+                // uniqueness check above (lines 517-518) and the Tseitin
+                // chain for H is already in f_solver from that call.
+                f_solver->add_clause({~y_test_in_f,  h_top_in_f});
+                f_solver->add_clause({ y_test_in_f, ~h_top_in_f});
 
                 // Lock activation TRUE so the Y'-side equality stays in force
                 // for subsequent tests.
@@ -797,8 +832,7 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
         }
 
         const size_t v_aux_leaves = h_aux_leaf_count(h);
-        verb_print(1, "[unate_def_rep] var NEW " << setw(5) << test+1
-            << " orig " << setw(5) << test_orig.var()+1
+        verb_print(1, "[unate_def_rep] v " << setw(5) << test+1
             << " iters="     << setw(5) << v_iters
             << " miter[U="   << setw(3) << v_miter_unsat
             << " S="         << setw(3) << v_miter_sat
@@ -813,7 +847,7 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
             << " aux["       << setw(4) << aux_vars.size()
             << "/used="      << setw(3) << v_aux_leaves << "]"
             << " AIG_nodes=" << setw(5) << AIG::count_aig_nodes_fast(h)
-            << " result=" << std::left << setw(15) << stop_reason << std::right
+            << " " << COLCYN << std::left << setw(15) << stop_reason << std::right << COLDEF
             << " T: " << fixed << setprecision(2) << (cpuTime()-my_time));
 
         already_tested.insert(test);
