@@ -63,23 +63,12 @@ struct Config {
     uint32_t unate_def_rep_max_pattern = 20;  // skip CEX if conflict (= pattern lits) bigger than this
     uint32_t unate_def_rep_max_costzero = 10; // give up on a var after this many cost-zero CEXes
     uint32_t unate_def_rep_max_confl = 5000; // SAT conflict budget per probe
-    // Allow H to use non-input leaves in unate_def_rep. Currently must be 0
-    // (input-only). Values >= 1 are clamped to 0; non-input aux leaves are
-    // unsound for two independent reasons:
-    //   - Level 2 (undefined to-define leaves) violates the
-    //     check_pre_post_backward_round_synth invariant: the committed def
-    //     transitively reaches a leaf that's neither orig-sampl nor itself
-    //     defined, tripping the assertion at the unsat_unate_def_rep AIG
-    //     checkpoint.
-    //   - Level 1 (backward-defined leaves) breaks Manthan's BW-vars-have-
-    //     unique-defs assumption: unate_def_rep commits Skolem functions H,
-    //     not unique-defining ones. With aux=1, H(input, y_aux) can pick a
-    //     valid F-sat value of y_test that disagrees with y[test] in the
-    //     specific F-sat model the CEX produced, leaving y[test] in
-    //     needs_repair after find_better_ctx and tripping the BW assertion
-    //     in find_next_repair_var. Re-enabling needs Manthan to support
-    //     repair on Skolem-defined BW vars.
-    uint32_t unate_def_rep_aux = 0;
+    // Allow H to use non-input leaves to attack the cost-zero gap (F-bifunctional X).
+    // 0 = input-only (old behavior).
+    // 1 = input + backward-defined vars whose recursive deps don't include `test`.
+    // 2 = input + backward-defined + still-undefined to-define vars (richest; relies
+    //     on Manthan-side dependency tracking to keep the synthesis cycle-free).
+    uint32_t unate_def_rep_aux = 2;
     bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;
