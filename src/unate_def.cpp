@@ -23,6 +23,7 @@
  */
 
 #include "unate_def.h"
+#include "unate_def_common.h"
 #include "constants.h"
 #include "metasolver.h"
 #include "time_mem.h"
@@ -53,7 +54,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         verb_print(1, "[unate_def] No variables to-define, skipping");
         return;
     }
-    auto s = setup_f_not_f(cnf);
+    auto s = ArjunInt::setup_f_not_f(cnf, input, conf);
 
     // Add copied-side definition constraints: i' <-> H_i(X, Y') for all i in I.
     const auto new_to_orig = cnf.get_new_to_orig_var();
@@ -490,47 +491,3 @@ bool Unate::try_cond_unate_def(
     return found_def;
 }
 
-unique_ptr<ArjunInt::MetaSolver> Unate::setup_f_not_f(const SimplifiedCNF& cnf) {
-    double my_time = cpuTime();
-
-    vector<Lit> tmp;
-    auto s = std::make_unique<ArjunInt::MetaSolver>();
-    s->new_vars(cnf.nVars()*2); // one for orig, one for copy
-    s->set_verbosity(0);
-
-    vector<Lit> not_f_cls;
-    for(const auto& cl: cnf.get_clauses()) {
-        // F(x)
-        s->add_clause(cl);
-
-        // !F(y)
-        s->new_var(); // new var for each clause
-                      // z is true iff clause is TRUE
-        const Lit z = Lit(s->nVars()-1, false);
-
-        // (C shifted) V -z
-        tmp.clear();
-        for(const auto& l: cl) {
-            if (input.count(l.var())) tmp.push_back(l);
-            else tmp.push_back(Lit(l.var()+cnf.nVars(), l.sign()));
-        }
-        tmp.push_back(~z);
-        s->add_clause(tmp);
-
-        // (each -lit in C, shifted) V z
-        for(const auto& l: cl) {
-            tmp.clear();
-            if (input.count(l.var())) tmp = {~l,  z};
-            else tmp = {Lit(l.var()+cnf.nVars(), !l.sign()),  z};
-            s->add_clause(tmp);
-        }
-        not_f_cls.push_back(~z);
-    }
-
-    // At least ONE clause must be FALSE
-    s->add_clause(not_f_cls);
-
-    verb_print(1, "[unate/def] Built up the F and ~F_x_y solver. T: "
-            << fixed << setprecision(2) << (cpuTime() - my_time));
-    return s;
-}

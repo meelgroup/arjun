@@ -27,53 +27,11 @@
 #include <map>
 #include <set>
 #include <vector>
-#include <memory>
 #include <cryptominisat5/solvertypesmini.h>
 #include <cryptominisat5/cryptominisat.h>
 #include "arjun.h"
 #include "config.h"
 #include "metasolver.h"
-
-// Telemetry for the repair-based unate-def probe. Reset at the start of
-// each `synthesis_unate_def_rep` call.
-struct UnateDefRepStats {
-    uint32_t tests_run = 0;          // vars we ran the rep loop for
-    uint32_t hits = 0;               // vars where we found a def
-    uint64_t total_iters = 0;        // total guess+refine iterations
-    uint64_t miter_unsat = 0;        // miter UNSAT (def found this iter)
-    uint64_t miter_sat = 0;          // miter SAT (CEX)
-    uint64_t miter_undef = 0;        // miter timed out
-    uint64_t f_unsat = 0;            // F-only solver UNSAT (productive CEX)
-    uint64_t f_sat = 0;              // F-only solver SAT (cost-zero CEX)
-    uint64_t f_undef = 0;            // F-only solver timed out
-    uint64_t skipped_pattern_too_big = 0;
-    // Miter UNSAT but uniqueness check failed (Skolem-only). We don't
-    // commit because Manthan downstream needs F ⊨ y_test = H.
-    uint64_t skolem_only_skipped = 0;
-    uint64_t hit_iter_sum = 0;       // for averaging hit-iteration depth
-    uint64_t hit_iter_max = 0;
-    uint64_t hit_aig_nodes_sum = 0;  // for averaging final AIG size
-    uint64_t hit_aig_nodes_max = 0;
-    // Aux-leaf telemetry: how often the new "non-input H leaves" path actually
-    // contributes. `aux_leaves_sum` counts distinct non-input leaves in the
-    // committed H, summed across hits.
-    uint64_t hits_using_aux = 0;
-    uint64_t aux_leaves_sum = 0;
-    uint64_t aux_leaves_max = 0;
-    double time_total = 0.0;
-    // Time breakdown (seconds). Only the three SAT calls — they dominate
-    // total time and per-iter cpuTime() calls aren't free.
-    double time_miter_solve = 0.0;  // SAT call on the miter
-    double time_feas_solve = 0.0;   // F-solver feasibility SAT call
-    double time_f_solve = 0.0;      // F-solver CEX SAT call
-    // Op counts to put time numbers in context.
-    uint64_t miter_solve_calls = 0;
-    uint64_t feas_solve_calls = 0;
-    uint64_t f_solve_calls = 0;
-    uint64_t encode_h_nodes_visited = 0;
-    uint64_t encode_h_nodes_emitted = 0;  // distinct AND helpers actually allocated
-    uint64_t encode_h_in_f_emitted = 0;
-};
 
 // Telemetry for the conditional-unate-def probe. Reset at the start of
 // each `synthesis_unate_def` call. All counts are over the inner
@@ -136,7 +94,6 @@ class Unate {
 
         std::vector<uint32_t> var_to_indic; // for each var, the indicator
                                             // variable in the SAT solver that is true iff the var is equal to its copy (i.e. not flipped)
-        std::unique_ptr<ArjunInt::MetaSolver> setup_f_not_f(const ArjunNS::SimplifiedCNF& cnf);
 
         // ===== Conditional unate-def probe state =====
         // Set up once at the start of synthesis_unate_def, then read/updated
@@ -165,68 +122,4 @@ class Unate {
             const std::map<uint32_t, CMSat::Lit>& new_to_orig);
 
         UnateDefCondStats cond_stats;
-        UnateDefRepStats rep_stats;
-
-        // ===== synthesis_unate_def_rep helpers =====
-        // Per-pass mutable state. Holds the two SAT solvers, lazy true-lits
-        // for each, and the per-pass scratch buffers. Lives on the stack of
-        // synthesis_unate_def_rep and is threaded into every helper. Kept
-        // here (rather than as Unate fields) so it cannot persist across
-        // calls or pollute synthesis_unate_def's view of the class.
-        struct RepPass {
-            std::unique_ptr<ArjunInt::MetaSolver> s;          // miter
-            std::unique_ptr<ArjunInt::MetaSolver> f_solver;   // F-only
-
-            CMSat::Lit s_true_lit         = CMSat::lit_Undef;
-            CMSat::Lit f_true_lit         = CMSat::lit_Undef;
-            CMSat::Lit cnf_true_lit_new   = CMSat::lit_Undef;
-            CMSat::Lit cnf_true_lit_orig  = CMSat::lit_Undef;
-
-            std::map<uint32_t, CMSat::Lit> new_to_orig;
-
-            std::vector<uint32_t> aux_vars;
-            std::vector<char>     aux_mask;
-            std::map<uint32_t, std::vector<uint32_t>> deps_cache;
-
-            std::vector<std::pair<uint32_t, ArjunNS::aig_ptr>> deferred_materialize;
-            std::set<uint32_t> already_tested;
-            uint32_t tested_num = 0;
-            uint32_t new_defs   = 0;
-            double   t0         = 0.0;
-        };
-
-        // Lazy true-literal allocators for each solver / cnf side.
-        CMSat::Lit rep_get_s_true(RepPass& p);
-        CMSat::Lit rep_get_f_true(RepPass& p);
-        std::pair<CMSat::Lit, CMSat::Lit> rep_get_cnf_true(
-            ArjunNS::SimplifiedCNF& cnf, RepPass& p);
-
-        // Tseitin encoders / structural helpers.
-        CMSat::Lit rep_encode_h_in_miter(
-            RepPass& p, const ArjunNS::SimplifiedCNF& cnf,
-            const ArjunNS::aig_ptr& h, bool is_y_prime);
-        CMSat::Lit rep_encode_h_in_f(RepPass& p, const ArjunNS::aig_ptr& h);
-        CMSat::Lit rep_materialize_h_in_cnf(
-            ArjunNS::SimplifiedCNF& cnf, RepPass& p, const ArjunNS::aig_ptr& h);
-        size_t rep_h_aux_leaf_count(const ArjunNS::aig_ptr& h) const;
-
-        // Pass-section helpers, in the order synthesis_unate_def_rep uses
-        // them. Each helper's body is a verbatim move of the corresponding
-        // block in the original function (with `s` → `p.s` etc.).
-        void rep_setup_yprime_backward_defs(
-            ArjunNS::SimplifiedCNF& cnf, RepPass& p);
-        void rep_build_indicators(ArjunNS::SimplifiedCNF& cnf, RepPass& p);
-        void rep_build_f_solver(
-            const ArjunNS::SimplifiedCNF& cnf, RepPass& p);
-        void rep_build_base_assumps(
-            const ArjunNS::SimplifiedCNF& cnf, const RepPass& p,
-            uint32_t test, std::vector<CMSat::Lit>& base_assumps);
-        void rep_build_aux_set(
-            const ArjunNS::SimplifiedCNF& cnf, RepPass& p,
-            uint32_t test, CMSat::Lit test_orig);
-        void rep_process_test_var(
-            ArjunNS::SimplifiedCNF& cnf, RepPass& p, uint32_t test);
-        void rep_materialize_deferred(
-            ArjunNS::SimplifiedCNF& cnf, RepPass& p);
-        void rep_log_pass_summary(ArjunNS::SimplifiedCNF& cnf) const;
 };
