@@ -274,6 +274,7 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
         vector<Lit> tmp;
         auto visit = [&](AIGT type, uint32_t var,
                          const Lit* left, const Lit* right) -> Lit {
+            rep_stats.encode_h_nodes_visited++;
             if (type == AIGT::t_const) return get_true_lit();
             if (type == AIGT::t_lit) {
                 // var is in NEW-var space.
@@ -281,6 +282,7 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 return Lit(is_y_prime ? var + cnf.nVars() : var, false);
             }
             if (type == AIGT::t_and) {
+                rep_stats.encode_h_nodes_emitted++;
                 s->new_var();
                 const Lit out = Lit(s->nVars()-1, false);
                 tmp = {~out, *left};        s->add_clause(tmp);
@@ -330,6 +332,7 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 return Lit(var, false);
             }
             if (type == AIGT::t_and) {
+                rep_stats.encode_h_in_f_emitted++;
                 f_solver->new_var();
                 const Lit out = Lit(f_solver->nVars()-1, false);
                 tmp = {~out, *left};        f_solver->add_clause(tmp);
@@ -611,7 +614,10 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
             as.push_back(act);
 
             s->set_max_confl(conf.unate_def_rep_max_confl);
+            const double t_miter_start = cpuTime();
+            rep_stats.miter_solve_calls++;
             const auto ret = s->solve(&as);
+            rep_stats.time_miter_solve += cpuTime() - t_miter_start;
 
             if (ret == l_False) {
                 rep_stats.miter_unsat++;
@@ -647,7 +653,10 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 f_solver->add_clause({~f_act, ~y_test_in_f,  h_top_in_f});
                 feas_assumps.push_back(f_act);
                 f_solver->set_max_confl(conf.unate_def_rep_max_confl);
+                const double t_feas_solve_start = cpuTime();
+                rep_stats.feas_solve_calls++;
                 const auto feas_ret = f_solver->solve(&feas_assumps);
+                rep_stats.time_feas_solve += cpuTime() - t_feas_solve_start;
                 f_solver->add_clause({~f_act}); // disable for next iters
                 if (feas_ret != l_True) {
                     // Infeasible (no F'-model has y_test = H) or undecided:
@@ -847,7 +856,10 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
             f_assumps.push_back(force_wrong);
 
             f_solver->set_max_confl(conf.unate_def_rep_max_confl);
+            const double t_f_start = cpuTime();
+            rep_stats.f_solve_calls++;
             const auto f_ret = f_solver->solve(&f_assumps);
+            rep_stats.time_f_solve += cpuTime() - t_f_start;
 
             // Disable this iteration's activation regardless of outcome.
             s->add_clause({~act});
@@ -1036,4 +1048,14 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
         << " max_aux_leaves=" << rep_stats.aux_leaves_max
         << " still to-define: " << to_define2.size()
         << " T: " << setprecision(2) << fixed << rep_stats.time_total);
+    verb_print(1, COLRED "[unate_def_rep] time breakdown:"
+        << " encode_h_visited=" << rep_stats.encode_h_nodes_visited
+            << " encode_h_and=" << rep_stats.encode_h_nodes_emitted
+            << " encode_h_in_f_and=" << rep_stats.encode_h_in_f_emitted
+        << " miter_solve=" << setprecision(2) << fixed << rep_stats.time_miter_solve
+            << "(calls=" << rep_stats.miter_solve_calls << ")"
+        << " feas_solve=" << rep_stats.time_feas_solve
+            << "(calls=" << rep_stats.feas_solve_calls << ")"
+        << " f_solve=" << rep_stats.time_f_solve
+            << "(calls=" << rep_stats.f_solve_calls << ")");
 }

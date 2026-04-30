@@ -61,6 +61,18 @@ struct UnateDefRepStats {
     uint64_t aux_leaves_sum = 0;
     uint64_t aux_leaves_max = 0;
     double time_total = 0.0;
+    // Time breakdown (seconds). Only the three SAT calls — they dominate
+    // total time and per-iter cpuTime() calls aren't free.
+    double time_miter_solve = 0.0;  // SAT call on the miter
+    double time_feas_solve = 0.0;   // F-solver feasibility SAT call
+    double time_f_solve = 0.0;      // F-solver CEX SAT call
+    // Op counts to put time numbers in context.
+    uint64_t miter_solve_calls = 0;
+    uint64_t feas_solve_calls = 0;
+    uint64_t f_solve_calls = 0;
+    uint64_t encode_h_nodes_visited = 0;
+    uint64_t encode_h_nodes_emitted = 0;  // distinct AND helpers actually allocated
+    uint64_t encode_h_in_f_emitted = 0;
 };
 
 // Telemetry for the conditional-unate-def probe. Reset at the start of
