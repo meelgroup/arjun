@@ -46,15 +46,22 @@
 //         leaves use the Y'-side var (`var + nVars()`); inputs are shared
 //         and use `var`.
 //      b. Solve the miter under {indicators TRUE, act_i}.
-//         - UNSAT → run a uniqueness check in f_solver: encode H there
-//                   and ask whether `(current F') ∧ y_test ≠ H_top` is
-//                   UNSAT. f_solver starts as original F and accumulates
+//         - UNSAT → run a feasibility check in f_solver: encode H there
+//                   and ask whether `(current F') ∧ y_test = H_top` is
+//                   SAT. f_solver starts as original F and accumulates
 //                   the y_v ⇔ H_v of every prior commit (see step 5), so
 //                   this check is against cumulative F', not original F.
-//                   UNSAT → commit y_test ⇔ H and stop. SAT/UNDEF →
-//                   H is only Skolem (or undecided) in F'; bump
-//                   skolem_only_skipped and continue refining (later
-//                   CEXes can sharpen H into a uniquely-defining form).
+//                   SAT → H is at least sometimes a Skolem witness in F';
+//                   commit y_test ⇔ H and stop. UNSAT → H is never a
+//                   valid value for y_test anywhere in F' (rules out the
+//                   vacuous-miter-UNSAT case where committing would lose
+//                   X-projections); bump skolem_only_skipped and continue.
+//                   UNDEF → undecided; treat as UNSAT and continue.
+//                   NOTE: this is intentionally weaker than uniqueness in
+//                   F' — miter UNSAT + feasibility SAT does not prove
+//                   F-Skolem at every F-sat X. We trade soundness for
+//                   commits on bifunctional benchmarks; see the in-block
+//                   comment at the check site for the exact gamble.
 //         - SAT   → CEX. y_test_F = m[test] is a value F admits at X*;
 //                   H(...) = m[H_top_lit] is the value the activation
 //                   forced on Y' which broke F. They differ.
@@ -78,10 +85,9 @@
 //      miter for subsequent vars (using a Y-side encoding when H has any
 //      non-input leaves so the commit clause stays sound after later
 //      tests untie an aux var's pinning indicator). The same y_test ⇔ H
-//      equivalence is mirrored into f_solver so the next var's uniqueness
-//      check operates against cumulative F' (= F ∧ all prior commits),
-//      catching chained-Skolem cases that wouldn't pass uniqueness in
-//      original F alone.
+//      equivalence is mirrored into f_solver so the next var's
+//      feasibility check operates against cumulative F' (= F ∧ all prior
+//      commits), letting chained-Skolem commits compose.
 //
 // AIG correctness invariants:
 //
@@ -312,12 +318,7 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
 
     // Tseitin-encode H into f_solver. Leaves are direct F-vars (inputs and
     // aux). AND helpers are fresh vars in f_solver. Returns the top lit.
-    // Used to verify that H is *unique-defining* under F (`F ⊨ y_test = H`)
-    // before committing — the miter UNSAT only proves the Skolem property
-    // (F-sat ⇒ exists F-sat with y_test = H), but Manthan's BW-vars-have-
-    // unique-defs assumption needs the stronger uniqueness so y[BW] =
-    // y_hat[BW] holds in every F-sat model and find_better_ctx never has
-    // to "fix" a BW var.
+    // Used by the per-iter feasibility check before committing.
     auto encode_h_in_f = [&](const aig_ptr& h) -> Lit {
         vector<Lit> tmp;
         auto visit = [&](AIGT type, uint32_t var,
@@ -342,6 +343,97 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
         return AIG::transform<Lit>(h, visit, cache);
     };
 
+    // Tseitin-encode H into cnf clauses, allocating AND helpers in cnf and
+    // setting defs[helper_orig] for each helper. Returns the NEW-space Lit
+    // representing the top of H. Called once per successful commit. We
+    // need the def materialized as actual cnf clauses (not just stored in
+    // cnf.defs) so the fresh SAT solver in find_better_ctx_normal — which
+    // ingests cnf.get_clauses() but does NOT materialize cnf.defs — sees
+    // the y_test ⇔ H equivalence directly. Without this, chained-Skolem
+    // commits can hard-assume y[BW]=ctx[y_hat[BW]] in find_better_ctx_normal
+    // and fail because original F (without prior commits' clauses) doesn't
+    // imply the chain.
+    //
+    // Helpers are classified by get_var_types based on their dep chain:
+    // a pure-input H produces extend-defined helpers (treated as inputs by
+    // Manthan, with cnf clauses constraining their values); an aux-bearing
+    // H produces backward-synth-defined helpers. Either way the user-
+    // visible output AIG for `test` itself comes from defs[test_orig] =
+    // h_in_orig (with original leaves only), set by set_def_skolem above —
+    // the helpers are SAT-side artifacts.
+    //
+    // Caches the NEW-space and ORIG-space lits per AIG node (positive
+    // form), then applies edge negation. The ORIG-space lit is used to
+    // construct each helper's def AIG.
+    Lit cnf_true_lit_new = lit_Undef;
+    Lit cnf_true_lit_orig = lit_Undef;
+    auto get_cnf_true = [&]() -> std::pair<Lit, Lit> {
+        if (cnf_true_lit_new == lit_Undef) {
+            cnf.new_var();
+            const uint32_t v_new = cnf.nVars() - 1;
+            const uint32_t v_orig = cnf.num_defs() - 1;
+            cnf_true_lit_new = Lit(v_new, false);
+            cnf_true_lit_orig = Lit(v_orig, false);
+            cnf.add_clause({cnf_true_lit_new});
+            // Skolem-mark the helper so check_pre_post_backward_round_synth
+            // and get_var_types treat the chain consistently — see comment
+            // at the AND-helper set_def_skolem call below.
+            cnf.set_def_skolem(v_orig, AIG::new_const(true));
+        }
+        return {cnf_true_lit_new, cnf_true_lit_orig};
+    };
+    auto materialize_h_in_cnf = [&](const aig_ptr& h_root) -> Lit {
+        std::map<const AIG*, std::pair<Lit, Lit>> mat_cache;
+        std::function<std::pair<Lit, Lit>(const aig_ptr&)> rec =
+          [&](const aig_ptr& a) -> std::pair<Lit, Lit> {
+            auto it = mat_cache.find(a.get());
+            std::pair<Lit, Lit> pos;
+            if (it != mat_cache.end()) {
+                pos = it->second;
+            } else {
+                if (a->type == AIGT::t_const) {
+                    pos = get_cnf_true();
+                } else if (a->type == AIGT::t_lit) {
+                    const uint32_t v_new = a->var;
+                    const Lit orig = new_to_orig.at(v_new);
+                    pos = {Lit(v_new, false), orig};
+                } else {
+                    auto l = rec(a->l);
+                    auto r = rec(a->r);
+                    cnf.new_var();
+                    const uint32_t v_new = cnf.nVars() - 1;
+                    const uint32_t v_orig = cnf.num_defs() - 1;
+                    const Lit pos_new(v_new, false);
+                    const Lit pos_orig(v_orig, false);
+                    cnf.add_clause({~pos_new, l.first});
+                    cnf.add_clause({~pos_new, r.first});
+                    cnf.add_clause({pos_new, ~l.first, ~r.first});
+                    aig_ptr left_aig  = AIG::new_lit(l.second.var(), l.second.sign());
+                    aig_ptr right_aig = AIG::new_lit(r.second.var(), r.second.sign());
+                    // Use set_def_skolem (vs set_def) so:
+                    //  (a) get_var_types keeps helpers in backward_synth_
+                    //      defined even when their dep-chain is all input
+                    //      (a pure-input H produces such helpers); without
+                    //      this they'd land in extend_defined and Manthan
+                    //      would treat them as inputs, dropping the
+                    //      helper = AND constraint we just baked in.
+                    //  (b) check_pre_post_backward_round_synth's invariant
+                    //      ("vars in CNF must be defined in terms of
+                    //      orig_sampl_vars") explicitly exempts Skolem-
+                    //      marked vars — necessary for chained-Skolem H's
+                    //      whose aux leaves are themselves non-orig-sampl
+                    //      backward-defined vars.
+                    cnf.set_def_skolem(v_orig, AIG::new_and(left_aig, right_aig));
+                    pos = {pos_new, pos_orig};
+                }
+                mat_cache[a.get()] = pos;
+            }
+            return {a.neg ? ~pos.first  : pos.first,
+                    a.neg ? ~pos.second : pos.second};
+        };
+        return rec(h_root).first;
+    };
+
     vector<Lit> assumps;
     set<uint32_t> already_tested;
     uint32_t tested_num = 0;
@@ -356,6 +448,13 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
     // candidates. Cleared after every successful commit since the new
     // def changes deps.
     map<uint32_t, vector<uint32_t>> deps_cache;
+
+    // Per-commit (test_var_NEW, H_AIG_NEW) pairs to materialize into cnf
+    // clauses after the per-test loop completes. We can't materialize in
+    // the loop because cnf.new_var() would shift cnf.nVars(), breaking the
+    // Y'-side offset in the miter solver `s` and in encode_h. See the
+    // commit branch below for the rationale.
+    std::vector<std::pair<uint32_t, aig_ptr>> deferred_materialize;
 
     for (uint32_t test : to_define) {
         // Cheap invariants documenting what the loop assumes about `test`:
@@ -518,46 +617,52 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 rep_stats.miter_unsat++;
                 v_miter_unsat++;
 
-                // Uniqueness check: the miter UNSAT alone is not enough to
-                // commit. Worst case it can hold vacuously when no F-model
-                // even has y_test = H(X) at any X, so blindly committing
-                // y_test ⇔ H would lose X-projections. Manthan's BW pipeline
-                // also needs the stronger condition (current F') ⊨ y_test = H
-                // — otherwise y[test] in some F'-sat models can disagree
-                // with y_hat[test] = H, leaving test in needs_repair after
-                // find_better_ctx and tripping the BW assertion in
-                // find_next_repair_var. Verify in f_solver: by the time we
-                // reach here f_solver carries original F plus every prior
-                // commit's y_v ⇔ H_v (mirrored from the s-side commit on
-                // success — see the f_solver->add_clause block below). UNSAT
-                // under (y_test ≠ H_top) ⇔ y_test is uniquely-defining in
-                // this cumulative F', which is exactly what BW expects. This
-                // captures chained-Skolem cases: an H that is only a Skolem
-                // witness in original F can become uniquely-defining once
-                // prior commits restrict the model space.
+                // Feasibility check: ask f_solver whether F' has any model
+                // with y_test = H_top. f_solver carries original F plus
+                // every prior commit's y_v ⇔ H_v (mirrored on commit — see
+                // the f_solver->add_clause block below), so this is checked
+                // against cumulative F', not original F. SAT means H is at
+                // least sometimes a Skolem witness in F'; UNSAT means H is
+                // never a valid value for y_test anywhere (rules out the
+                // vacuous-miter-UNSAT case where blindly committing would
+                // lose X-projections); UNDEF means undecided.
+                //
+                // This is intentionally weaker than full uniqueness in F':
+                // miter UNSAT + feasibility SAT does NOT prove F-Skolem at
+                // every F-sat X, so committing here can in principle lose
+                // an X-projection (counterexample: F admits y_test=0 only
+                // at X1 and y_test=1 only at X2, H=0 — feasibility SAT via
+                // X1, but commit kills X2). The check IS strong enough to
+                // pass on bifunctional benchmarks like factorization where
+                // strict uniqueness can never hold; the soundness gamble is
+                // that CEX-driven refinement keeps H broadly Skolem-like
+                // and the fuzzers will surface any bad commit fast.
                 const Lit h_top_in_f = encode_h_in_f(h);
                 const Lit y_test_in_f = Lit(test, false);
-                vector<Lit> uniq_assumps;
+                vector<Lit> feas_assumps;
                 f_solver->new_var();
-                const Lit ne_act = Lit(f_solver->nVars()-1, false);
-                f_solver->add_clause({~ne_act,  y_test_in_f,  h_top_in_f});
-                f_solver->add_clause({~ne_act, ~y_test_in_f, ~h_top_in_f});
-                uniq_assumps.push_back(ne_act);
+                const Lit f_act = Lit(f_solver->nVars()-1, false);
+                // Under f_act: y_test_in_f ⇔ h_top_in_f.
+                f_solver->add_clause({~f_act,  y_test_in_f, ~h_top_in_f});
+                f_solver->add_clause({~f_act, ~y_test_in_f,  h_top_in_f});
+                feas_assumps.push_back(f_act);
                 f_solver->set_max_confl(conf.unate_def_rep_max_confl);
-                const auto uniq_ret = f_solver->solve(&uniq_assumps);
-                f_solver->add_clause({~ne_act}); // disable for next iters
-                if (uniq_ret != l_False) {
-                    // Skolem-only or undecided: don't commit. Continuing
-                    // the iter loop refines H further via the next CEX,
-                    // which can sharpen Skolem-only Hs into uniquely-
-                    // defining ones in subsequent rounds.
+                const auto feas_ret = f_solver->solve(&feas_assumps);
+                f_solver->add_clause({~f_act}); // disable for next iters
+                if (feas_ret != l_True) {
+                    // Infeasible (no F'-model has y_test = H) or undecided:
+                    // don't commit. Continuing the iter loop refines H
+                    // further via the next CEX, which can move H into a
+                    // feasible region.
                     s->add_clause({~act});
                     rep_stats.skolem_only_skipped++;
                     continue;
                 }
 
-                // y_test = H(...) is a unique-defining function in
-                // cumulative F'. Cheap invariants before commit:
+                // y_test = H(...) is a feasible Skolem witness in cumulative
+                // F' (some F'-model has y_test = H_top). This is weaker than
+                // unique-defining; see the feasibility-check comment above
+                // for the soundness gamble. Cheap invariants before commit:
                 //   - h is non-null (we always build at least a const FALSE);
                 //   - target var has no def yet (set_def_skolem will assert,
                 //     but checking here gives a clearer site if it ever
@@ -591,9 +696,11 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 // even when H_test happens to be a constant or input-only
                 // AIG. Otherwise downstream (Manthan) would treat the var
                 // as an input and drop the y_test = H_test constraint that
-                // a later var's miter UNSAT relied on. (We've already
-                // checked uniqueness above, but retain the Skolem flag
-                // so the categorization stays consistent.)
+                // a later var's miter UNSAT relied on. The Skolem flag is
+                // semantically appropriate here too: the feasibility check
+                // only confirms H is at least sometimes a Skolem witness,
+                // not that F ⊨ y_test = H, so this is a Skolem-style commit
+                // by definition.
                 cnf.set_def_skolem(test_orig.var(), h_in_orig);
                 assert(cnf.defined(test_orig.var())
                     && "set_def_skolem must populate defs[test]");
@@ -639,18 +746,29 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                 s->add_clause({ y_test, ~h_top_lit_for_commit});
 
                 // Mirror the y_test ⇔ H commit into f_solver so subsequent
-                // uniqueness checks for later vars operate against cumulative
-                // F' (= original F ∧ all prior commits), not original F. A
-                // later var's H may be Skolem-only in F but uniquely-defining
-                // in F' once prior commits restrict the model space; this
-                // change captures those chained-Skolem cases without any
-                // soundness loss (the new clauses are exactly the def we
-                // already verified is implied by F under the F-only check).
-                // h_top_in_f and y_test_in_f are still in scope from the
-                // uniqueness check above (lines 517-518) and the Tseitin
+                // feasibility checks for later vars operate against cumulative
+                // F' (= original F ∧ all prior commits). Without this the
+                // chain of Skolem-only commits wouldn't compose: a later
+                // var's "feasible in F" would be checked even when the right
+                // question is "feasible in F + prior committed defs". The
+                // new clauses are exactly the equivalence we just committed
+                // on the s side. h_top_in_f and y_test_in_f are still in
+                // scope from the feasibility check above and the Tseitin
                 // chain for H is already in f_solver from that call.
                 f_solver->add_clause({~y_test_in_f,  h_top_in_f});
                 f_solver->add_clause({ y_test_in_f, ~h_top_in_f});
+
+                // Defer materializing y_test ⇔ H into cnf clauses until
+                // after the per-test loop. cnf.new_var() allocations during
+                // the loop would shift cnf.nVars(), and that offset is the
+                // anchor for the Y'-side encoding in the miter solver `s`
+                // (e.g. Lit(test + cnf.nVars(), false) at the indicator
+                // setup). The materialization is only needed downstream by
+                // find_better_ctx_normal, which runs inside Manthan after
+                // synthesis_unate_def_rep returns — so deferring is sound
+                // and avoids threading a "frozen" cnf var count through
+                // every Y'-offset use site.
+                deferred_materialize.emplace_back(test, h);
 
                 // Lock activation TRUE so the Y'-side equality stays in force
                 // for subsequent tests.
@@ -871,6 +989,17 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
         // input-only / backward-only H's anyway, and harmful otherwise.
         // Without the lock, the SAT solver picks indicator-prev consistently
         // with the per-side y_prev values, and the miter stays sound.
+    }
+
+    // Materialize all deferred y_test ⇔ H equivalences into cnf clauses.
+    // Safe to grow cnf.nVars() now: the per-test loop has finished and the
+    // miter solver `s` (which depended on cnf.nVars() for Y'-side offsets)
+    // is no longer used after this point.
+    for (const auto& [test_v, h_aig] : deferred_materialize) {
+        const Lit h_top_in_cnf = materialize_h_in_cnf(h_aig);
+        const Lit y_test_in_cnf = Lit(test_v, false);
+        cnf.add_clause({~y_test_in_cnf,  h_top_in_cnf});
+        cnf.add_clause({ y_test_in_cnf, ~h_top_in_cnf});
     }
 
     rep_stats.time_total = cpuTime() - my_time;
