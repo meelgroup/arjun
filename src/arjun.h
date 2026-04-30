@@ -1098,6 +1098,7 @@ public:
             orig_clauses = other.orig_clauses;
             orig_sampl_vars = other.orig_sampl_vars;
             orig_sampl_vars_set = other.orig_sampl_vars_set;
+            skolem_defined_vars = other.skolem_defined_vars;
         }
 
         return *this;
@@ -1469,6 +1470,17 @@ public:
 
     void set_def(const uint32_t v_orig, const aig_ptr& def);
 
+    // Like set_def, but marks `v_orig` as committed via a Skolem function
+    // (replacement keeps F sat) rather than a unique-defining function
+    // (y = AIG in every F-sat model). This affects get_var_types: a Skolem-
+    // committed var is always categorized as backward-synth-defined, never
+    // extend-defined, even if its AIG happens to depend on inputs only or is
+    // a constant. Manthan must build a formula and y_hat for it so the
+    // commit's constraints (e.g. y_test = H_test) propagate; treating it as
+    // an input would silently drop those, breaking later commits whose
+    // miters relied on them.
+    void set_def_skolem(uint32_t v_orig, const aig_ptr& def);
+
     void clear_orig_sampl_defs();
     void simplify_aigs(const uint32_t verb = 0) {
         assert(need_aig);
@@ -1520,6 +1532,11 @@ private:
     void check_synth_funs_randomly() const;
     bool orig_sampl_vars_set = false;
     std::set<uint32_t> orig_sampl_vars;
+    // Vars whose def in `defs` was set via set_def_skolem — i.e. committed
+    // as a Skolem (replacement-only) rather than a unique-defining function.
+    // get_var_types reads this to keep them out of extend_defined_vars even
+    // when the AIG happens to look input-only or constant.
+    std::set<uint32_t> skolem_defined_vars;
     // debug
     std::vector<std::vector<CMSat::Lit>> orig_clauses;
 };

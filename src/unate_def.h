@@ -47,6 +47,9 @@ struct UnateDefRepStats {
     uint64_t f_sat = 0;              // F-only solver SAT (cost-zero CEX)
     uint64_t f_undef = 0;            // F-only solver timed out
     uint64_t skipped_pattern_too_big = 0;
+    // Miter UNSAT but uniqueness check failed (Skolem-only). We don't
+    // commit because Manthan downstream needs F ⊨ y_test = H.
+    uint64_t skolem_only_skipped = 0;
     uint64_t hit_iter_sum = 0;       // for averaging hit-iteration depth
     uint64_t hit_iter_max = 0;
     uint64_t hit_aig_nodes_sum = 0;  // for averaging final AIG size

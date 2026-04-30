@@ -287,6 +287,49 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
         return n;
     };
 
+    // Lazy true-lit in f_solver, allocated on first use.
+    Lit f_true_lit = lit_Undef;
+    auto get_f_true_lit = [&]() -> Lit {
+        if (f_true_lit == lit_Undef) {
+            f_solver->new_var();
+            f_true_lit = Lit(f_solver->nVars()-1, false);
+            f_solver->add_clause({f_true_lit});
+        }
+        return f_true_lit;
+    };
+
+    // Tseitin-encode H into f_solver. Leaves are direct F-vars (inputs and
+    // aux). AND helpers are fresh vars in f_solver. Returns the top lit.
+    // Used to verify that H is *unique-defining* under F (`F ⊨ y_test = H`)
+    // before committing — the miter UNSAT only proves the Skolem property
+    // (F-sat ⇒ exists F-sat with y_test = H), but Manthan's BW-vars-have-
+    // unique-defs assumption needs the stronger uniqueness so y[BW] =
+    // y_hat[BW] holds in every F-sat model and find_better_ctx never has
+    // to "fix" a BW var.
+    auto encode_h_in_f = [&](const aig_ptr& h) -> Lit {
+        vector<Lit> tmp;
+        auto visit = [&](AIGT type, uint32_t var,
+                         const Lit* left, const Lit* right) -> Lit {
+            if (type == AIGT::t_const) return get_f_true_lit();
+            if (type == AIGT::t_lit) {
+                // var is in NEW-var space and is also an F-var (inputs and
+                // backward-defined aux are both F-vars in f_solver).
+                return Lit(var, false);
+            }
+            if (type == AIGT::t_and) {
+                f_solver->new_var();
+                const Lit out = Lit(f_solver->nVars()-1, false);
+                tmp = {~out, *left};        f_solver->add_clause(tmp);
+                tmp = {~out, *right};       f_solver->add_clause(tmp);
+                tmp = {~*left, ~*right, out}; f_solver->add_clause(tmp);
+                return out;
+            }
+            release_assert(false && "Unhandled AIG type in encode_h_in_f");
+        };
+        map<aig_ptr, Lit> cache;
+        return AIG::transform<Lit>(h, visit, cache);
+    };
+
     vector<Lit> assumps;
     set<uint32_t> already_tested;
     uint32_t tested_num = 0;
@@ -443,7 +486,37 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
             if (ret == l_False) {
                 rep_stats.miter_unsat++;
                 v_miter_unsat++;
-                // y_test = H(...) is a valid Skolem.
+
+                // Uniqueness check: the miter UNSAT only proves Skolem
+                // (F-sat ⇒ exists F-sat with y_test = H). Manthan's BW
+                // pipeline needs the stronger condition F ⊨ y_test = H
+                // — otherwise y[test] in some F-sat models can disagree
+                // with y_hat[test] = H, leaving test in needs_repair after
+                // find_better_ctx and tripping the BW assertion in
+                // find_next_repair_var. Verify in f_solver (no commit
+                // clauses): UNSAT under (y_test != H_top) ⇔ uniqueness.
+                const Lit h_top_in_f = encode_h_in_f(h);
+                const Lit y_test_in_f = Lit(test, false);
+                vector<Lit> uniq_assumps;
+                f_solver->new_var();
+                const Lit ne_act = Lit(f_solver->nVars()-1, false);
+                f_solver->add_clause({~ne_act,  y_test_in_f,  h_top_in_f});
+                f_solver->add_clause({~ne_act, ~y_test_in_f, ~h_top_in_f});
+                uniq_assumps.push_back(ne_act);
+                f_solver->set_max_confl(conf.unate_def_rep_max_confl);
+                const auto uniq_ret = f_solver->solve(&uniq_assumps);
+                f_solver->add_clause({~ne_act}); // disable for next iters
+                if (uniq_ret != l_False) {
+                    // Skolem-only or undecided: don't commit. Continuing
+                    // the iter loop refines H further via the next CEX,
+                    // which can sharpen Skolem-only Hs into uniquely-
+                    // defining ones in subsequent rounds.
+                    s->add_clause({~act});
+                    rep_stats.skolem_only_skipped++;
+                    continue;
+                }
+
+                // y_test = H(...) is a valid unique-defining function.
                 const aig_ptr h_in_orig = translate_to_orig(h, new_to_orig, test_orig.sign());
                 VERBOSE_DEBUG_DO(std::cout
                     << "c o [unate_def_rep][verbose] commit test NEW=" << test+1
@@ -451,7 +524,15 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
                     << " sign=" << test_orig.sign()
                     << " H_NEW=" << h
                     << " H_ORIG=" << h_in_orig << std::endl);
-                cnf.set_def(test_orig.var(), h_in_orig);
+                // set_def_skolem (vs set_def) records the var as Skolem-
+                // committed so get_var_types keeps it in backward_defined
+                // even when H_test happens to be a constant or input-only
+                // AIG. Otherwise downstream (Manthan) would treat the var
+                // as an input and drop the y_test = H_test constraint that
+                // a later var's miter UNSAT relied on. (We've already
+                // checked uniqueness above, but retain the Skolem flag
+                // so the categorization stays consistent.)
+                cnf.set_def_skolem(test_orig.var(), h_in_orig);
                 // New def changed the dep graph; drop cached recursive deps.
                 deps_cache.clear();
                 // SLOW_DEBUG: full F[y←y_hat] semantic check after each commit;
