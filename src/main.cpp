@@ -171,7 +171,7 @@ void add_arjun_options() {
     myopt("--unatedefrepmaxpat", conf.unate_def_rep_max_pattern, fc_int,"Skip CEX whose minimized core (= candidate AIG conjunct count) exceeds this");
     myopt("--unatedefrepmaxcz", conf.unate_def_rep_max_costzero, fc_int,"Give up on a variable after this many cost-zero CEXes in the repair pass");
     myopt("--unatedefrepconfl", conf.unate_def_rep_max_confl, fc_int,"Conflict budget per SAT call inside the repair-based unate_def pass");
-    myopt("--unatedefrepaux", conf.unate_def_rep_aux, fc_int,"Allow H to use non-input leaves in unate_def_rep. 0=input-only; 1=input+backward-defined (cycle-checked); 2=input+backward-defined+to-define (richest)");
+    myopt("--unatedefrepaux", conf.unate_def_rep_aux, fc_int,"Allow H to use non-input leaves in unate_def_rep. Must be 0 (input-only); values >=1 are clamped to 0. See config.h for why aux>=1 is unsound (AIG-checkpoint invariant + Manthan BW-vars-unique-def assumption).");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
     myopt("--monflyorder", mconf.manthan_on_the_fly_order, fc_int,"Use on-the-fly training order and post-training topological order");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");

@@ -73,12 +73,8 @@
 //
 // AIG correctness invariants:
 //
-//   - Leaves of H come from X (input) ∪ aux. Aux is selected per-test so
-//     that committing `test`'s def cannot create a dependency cycle:
-//     for every aux var `v`, either `v` is undefined or `test ∉ deps(v)`.
-//     Manthan's existing dependency tracking handles the live-cycle case
-//     for undefined aux leaves (it must define `v` without going through
-//     `test`).
+//   - Leaves of H are all inputs. The aux-leaf modes (config.unate_def_rep_aux
+//     >= 1) are currently disabled (clamped to 0); see config.h.
 //   - Inputs are shared across the Y/Y' sides, so an input-only H needs
 //     just one encoding for both `act → y_test' ⇔ H` and `y_test ⇔ H`.
 //     With aux leaves, those vars differ between sides; we emit two
@@ -92,8 +88,12 @@
 //   unate_def_rep_max_pattern  — skip CEX whose unsat core is bigger than this
 //   unate_def_rep_max_costzero — give up after this many cost-zero CEXes
 //   unate_def_rep_max_confl    — conflict budget for each SAT call
-//   unate_def_rep_aux          — 0=input only, 1=+backward_defined,
-//                                2=+to-define (full)
+//   unate_def_rep_aux          — must be 0 (input-only). Non-input aux
+//                                leaves are unsound; see config.h for the
+//                                two failure modes (AIG-checkpoint
+//                                invariant violation at level 2, and
+//                                Manthan BW-vars-have-unique-defs
+//                                violation at level 1).
 
 #include "unate_def.h"
 #include "constants.h"
@@ -368,39 +368,15 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
         assert(ind_test != var_Undef);
         base_assumps.emplace_back(ind_test, true);
 
-        // Build per-test aux leaf set. A var `v` ≠ test, not in input, may be
-        // used as an H-leaf iff committing `test = H(..., v)` does NOT close
-        // a dependency cycle. For backward-defined `v` we check via the
-        // recursive-deps cache; for currently-undefined to-define `v` there
-        // is no current cycle (Manthan's set_depends_on tracks the new edge
-        // and avoids closing it later).
+        // Aux leaf set is currently always empty: H is restricted to input
+        // leaves only. The aux>0 modes (backward-defined / undefined to-
+        // define) are unsound for the reasons documented in config.h next
+        // to unate_def_rep_aux.
         VERBOSE_DEBUG_DO(std::cout << "c o [unate_def_rep][verbose] === test NEW="
             << test+1 << " orig=" << test_orig.var()+1
             << " (sign=" << test_orig.sign() << ") ===" << std::endl);
         aux_vars.clear();
         std::fill(aux_mask.begin(), aux_mask.end(), 0);
-        if (conf.unate_def_rep_aux > 0) {
-            for (uint32_t v_new = 0; v_new < cnf.nVars(); v_new++) {
-                if (v_new == test) continue;
-                if (input.count(v_new)) continue;
-                auto it = new_to_orig.find(v_new);
-                if (it == new_to_orig.end()) continue;
-                const Lit cand_orig = it->second;
-                if (cnf.defined(cand_orig.var())) {
-                    const auto& deps = cnf.get_dependent_vars_recursive(
-                        cand_orig.var(), deps_cache);
-                    bool has_test = false;
-                    for (uint32_t d : deps) {
-                        if (d == test_orig.var()) { has_test = true; break; }
-                    }
-                    if (has_test) continue;
-                } else {
-                    if (conf.unate_def_rep_aux < 2) continue;
-                }
-                aux_vars.push_back(v_new);
-                aux_mask[v_new] = 1;
-            }
-        }
         VERBOSE_DEBUG_DO({
             std::cout << "c o [unate_def_rep][verbose]   aux_vars (NEW): {";
             for (uint32_t a : aux_vars) std::cout << " " << a+1;
