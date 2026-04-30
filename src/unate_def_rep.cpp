@@ -1040,12 +1040,6 @@ void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
     rep_materialize_deferred(cnf, p);
 
     rep_stats.time_total = cpuTime() - my_time;
-    // SLOW_DEBUG: end-of-pass sanity. defs_invariant() catches anything
-    // a per-commit slipped (cycles, dangling deps, bad sampling-var
-    // categorization) and fails fast at the pass boundary instead of
-    // at a downstream consumer.
-    SLOW_DEBUG_DO({
-        [[maybe_unused]] auto inv_ok = cnf.defs_invariant();
-    });
+    SLOW_DEBUG_DO(assert(cnf.defs_invariant()););
     rep_log_pass_summary(cnf);
 }
