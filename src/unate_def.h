@@ -166,4 +166,67 @@ class Unate {
 
         UnateDefCondStats cond_stats;
         UnateDefRepStats rep_stats;
+
+        // ===== synthesis_unate_def_rep helpers =====
+        // Per-pass mutable state. Holds the two SAT solvers, lazy true-lits
+        // for each, and the per-pass scratch buffers. Lives on the stack of
+        // synthesis_unate_def_rep and is threaded into every helper. Kept
+        // here (rather than as Unate fields) so it cannot persist across
+        // calls or pollute synthesis_unate_def's view of the class.
+        struct RepPass {
+            std::unique_ptr<ArjunInt::MetaSolver> s;          // miter
+            std::unique_ptr<ArjunInt::MetaSolver> f_solver;   // F-only
+
+            CMSat::Lit s_true_lit         = CMSat::lit_Undef;
+            CMSat::Lit f_true_lit         = CMSat::lit_Undef;
+            CMSat::Lit cnf_true_lit_new   = CMSat::lit_Undef;
+            CMSat::Lit cnf_true_lit_orig  = CMSat::lit_Undef;
+
+            std::map<uint32_t, CMSat::Lit> new_to_orig;
+
+            std::vector<uint32_t> aux_vars;
+            std::vector<char>     aux_mask;
+            std::map<uint32_t, std::vector<uint32_t>> deps_cache;
+
+            std::vector<std::pair<uint32_t, ArjunNS::aig_ptr>> deferred_materialize;
+            std::set<uint32_t> already_tested;
+            uint32_t tested_num = 0;
+            uint32_t new_defs   = 0;
+            double   t0         = 0.0;
+        };
+
+        // Lazy true-literal allocators for each solver / cnf side.
+        CMSat::Lit rep_get_s_true(RepPass& p);
+        CMSat::Lit rep_get_f_true(RepPass& p);
+        std::pair<CMSat::Lit, CMSat::Lit> rep_get_cnf_true(
+            ArjunNS::SimplifiedCNF& cnf, RepPass& p);
+
+        // Tseitin encoders / structural helpers.
+        CMSat::Lit rep_encode_h_in_miter(
+            RepPass& p, const ArjunNS::SimplifiedCNF& cnf,
+            const ArjunNS::aig_ptr& h, bool is_y_prime);
+        CMSat::Lit rep_encode_h_in_f(RepPass& p, const ArjunNS::aig_ptr& h);
+        CMSat::Lit rep_materialize_h_in_cnf(
+            ArjunNS::SimplifiedCNF& cnf, RepPass& p, const ArjunNS::aig_ptr& h);
+        size_t rep_h_aux_leaf_count(const ArjunNS::aig_ptr& h) const;
+
+        // Pass-section helpers, in the order synthesis_unate_def_rep uses
+        // them. Each helper's body is a verbatim move of the corresponding
+        // block in the original function (with `s` → `p.s` etc.).
+        void rep_setup_yprime_backward_defs(
+            ArjunNS::SimplifiedCNF& cnf, RepPass& p);
+        void rep_build_indicators(ArjunNS::SimplifiedCNF& cnf, RepPass& p);
+        void rep_build_f_solver(
+            const ArjunNS::SimplifiedCNF& cnf, RepPass& p);
+        void rep_build_base_assumps(
+            const ArjunNS::SimplifiedCNF& cnf, const RepPass& p,
+            uint32_t test, std::vector<CMSat::Lit>& base_assumps);
+        void rep_build_aux_set(
+            const ArjunNS::SimplifiedCNF& cnf, RepPass& p,
+            uint32_t test, CMSat::Lit test_orig);
+        void rep_process_test_var(
+            ArjunNS::SimplifiedCNF& cnf, RepPass& p, uint32_t test);
+        void rep_materialize_deferred(
+            ArjunNS::SimplifiedCNF& cnf, RepPass& p);
+        void rep_log_pass_summary(ArjunNS::SimplifiedCNF& cnf) const;
 };
