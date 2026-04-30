@@ -273,7 +273,7 @@ bool Minimize::remove_definable_by_gates() {
         if (var_to_rel_position[v] < conf.no_gates_below) continue;
 
         non_zero_occs++;
-        //cout << "Trying to define var " << v << " size of lookup: " << vars_xor_occurs[v].size() << endl;
+        //cout << "Trying to-define var " << v << " size of lookup: " << vars_xor_occurs[v].size() << endl;
 
         //Define v as a function of the other variables in the XOR
         for(const auto& gate: vars_gate_occurs[v]) {

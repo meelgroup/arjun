@@ -17,7 +17,7 @@ rm -rf Makefile
 rm -rf rjun-src
 rm -rf deps
 rm -rf _deps
-cmake -DBUILD_SHARED_LIBS=OFF \
+cmake -DBUILD_SHARED_LIBS=OFF -DSTATIC_BINARY=ON \
     -DGMPXX_LIBRARY=/usr/local/lib/libgmpxx.a \
     -Dcryptominisat5_DIR="${SOLVERS_DIR}/cryptominisat/build" \
     -Dsbva_DIR="${SOLVERS_DIR}/sbva/build" \

@@ -220,14 +220,14 @@ void fill_var_to_formula(T& solver, FHolder<T>& fh, const SimplifiedCNF& cnf, ma
         release_assert(aig != nullptr);
 
         // Create a lambda to transform AIG to CNF using the transform function
-        std::function<Lit(AIGT, uint32_t, bool, const Lit*, const Lit*)> aig_to_cnf_visitor =
-          [&](AIGT type, const uint32_t v, const bool neg, const Lit* left, const Lit* right) -> Lit {
+        std::function<Lit(AIGT, uint32_t, const Lit*, const Lit*)> aig_to_cnf_visitor =
+          [&](AIGT type, const uint32_t v, const Lit* left, const Lit* right) -> Lit {
             if (type == AIGT::t_const) {
-                return neg ? ~fh.get_true_lit() : fh.get_true_lit();
+                return fh.get_true_lit();
             }
 
             if (type == AIGT::t_lit) {
-                const Lit lit = Lit(v, neg);
+                const Lit lit = Lit(v, false);
 
                 // Check if this is an input variable or needs y_to_y_hat mapping
                 Lit result_lit;
@@ -236,7 +236,7 @@ void fill_var_to_formula(T& solver, FHolder<T>& fh, const SimplifiedCNF& cnf, ma
                 } else {
                     release_assert(aig_vs.count(lit.var()));
                     const uint32_t y_hat = y_to_y_hat.at(lit.var());
-                    result_lit = Lit(y_hat, neg);
+                    result_lit = Lit(y_hat, false);
                 }
                 return result_lit;
             }
@@ -256,8 +256,7 @@ void fill_var_to_formula(T& solver, FHolder<T>& fh, const SimplifiedCNF& cnf, ma
                 f.clauses.push_back(CL({~and_out, r_lit}));
                 f.clauses.push_back(CL({~l_lit, ~r_lit, and_out}));
 
-                // Apply negation if needed
-                return neg ? ~and_out : and_out;
+                return and_out;
             }
             release_assert(false && "Unhandled AIG type in visitor");
         };
@@ -347,12 +346,35 @@ bool verify_aigs_correct(T& solver, const map<uint32_t, typename FHolder<T>::For
 
     if (ret == l_True) {
         if (verb) cout << "c [test-synth] RESULT: SAT - AIGs are INCORRECT (counterexample found)" << endl;
+        // Dump the counterexample so we can see WHICH y_hat is wrong. The
+        // miter is F(x) ∧ ¬F(x, y_hat); a SAT answer means some orig clause
+        // is violated when y_hat is plugged in, but the orig clauses with
+        // the un-hatted y vars satisfied F(x). The inputs are in
+        // orig_sampling_vars, the un-hatted orig vars are everything else
+        // below orig_cnf nVars, and y_hat is above that.
+        const auto& model = solver.get_model();
+        cout << "c [test-synth] CEX MODEL:" << endl;
+        cout << "c [test-synth]   inputs: ";
+        for (uint32_t v : orig_sampling_vars) {
+            cout << "x" << (v+1) << "=" << (model[v] == CMSat::l_True ? 1 : 0) << " ";
+        }
+        cout << endl;
+        cout << "c [test-synth]   y vs y_hat (MISMATCHES flagged):" << endl;
+        for (const auto& [y_hat, ind] : y_hat_to_indic) {
+            if (!y_hat_to_y.count(y_hat)) continue;
+            uint32_t y_var = y_hat_to_y.at(y_hat);
+            if (model[y_hat] == CMSat::l_Undef || model[y_var] == CMSat::l_Undef) continue;
+            bool y_hat_val = (model[y_hat] == CMSat::l_True);
+            bool y_val = (model[y_var] == CMSat::l_True);
+            const char* mark = (y_hat_val == y_val) ? "" : "  *** MISMATCH ***";
+            cout << "c [test-synth]     y=x" << (y_var+1) << "=" << y_val
+                 << " y_hat=x" << (y_hat+1) << "=" << y_hat_val << mark << endl;
+        }
         return false;
-    } else {
-        release_assert(ret == l_False);
-        if (verb) cout << "c [test-synth] RESULT: UNSAT - AIGs are CORRECT!" << endl;
-        return true;
     }
+    release_assert(ret == l_False);
+    if (verb) cout << "c [test-synth] RESULT: UNSAT - AIGs are CORRECT!" << endl;
+    return true;
 }
 
 void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
@@ -403,6 +425,7 @@ void unsat_verify(const SimplifiedCNF& orig_cnf, const SimplifiedCNF& cnf) {
     }
 
     FHolder fh(&verify_solver);
+    helper_vars.insert(fh.get_true_lit().var());
     verb_print(2, "true lit: " << fh.get_true_lit());
 
     add_not_f_x_yhat(verify_solver, orig_cnf);
@@ -469,7 +492,7 @@ void check_aig_contains_no_self_refs(const SimplifiedCNF& cnf) {
         const auto& aig = cnf.get_def(var);
         if (aig == nullptr) continue;
 
-        auto visitor = [&](AIGT type, const uint32_t v, const bool,
+        auto visitor = [&](AIGT type, const uint32_t v,
                              bool*, bool*) -> bool {
             if (type == AIGT::t_lit) {
                 release_assert(v != var && "AIG contains self-reference!");
@@ -554,7 +577,7 @@ int main(int argc, char** argv) {
     SimplifiedCNF cnf(fg);
     if (verb) cout << "c [test-synth] Reading AIG file: " << aig_fname << endl;
     cnf.read_aig_defs_from_file(aig_fname);
-    cnf.defs_invariant();
+    [[maybe_unused]] auto check = cnf.defs_invariant();
 
     if (verb) {
         cout << "c [test-synth] Successfully read AIG file" << endl;

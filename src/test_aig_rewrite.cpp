@@ -15,7 +15,7 @@ using std::vector;
 static AIGManager aig_mng;
 
 static size_t count_nodes(const aig_ptr& aig) {
-    return AIG::count_aig_nodes(aig);
+    return AIG::count_aig_nodes_fast(aig);
 }
 
 // Evaluate an AIG with a given assignment using the public evaluate() method

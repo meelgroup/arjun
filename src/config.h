@@ -47,6 +47,28 @@ struct Config {
     uint32_t backw_max_confl = 20000;
     uint32_t unate_max_confl = 100;
     uint32_t extend_max_confl = 30000;
+    int unate_def_cond = 1;
+    uint32_t unate_def_cond_max_per_var = 128;
+    uint32_t unate_def_cond_max_confl = 4000;
+    // 1 = try inputs sharing a clause with `test` first; 0 = use the
+    // sorted input list. Used for A/B-testing the structural ordering.
+    int unate_def_cond_relfirst = 1;
+    // Disable conditional probe after this many consecutive misses with
+    // zero hits so far. Low = bail aggressively; very high = effectively
+    // never disable.
+    uint32_t unate_def_cond_dry_streak = 128;
+    // Repair-based unate definition search (manthan-style guess+refine).
+    // Runs after standard unate_def for variables still undefined.
+    uint32_t unate_def_rep_iters = 10;       // max guess+refine iters per var
+    uint32_t unate_def_rep_max_pattern = 20;  // skip CEX if conflict (= pattern lits) bigger than this
+    uint32_t unate_def_rep_max_costzero = 5; // give up on a var after this many cost-zero CEXes
+    uint32_t unate_def_rep_max_confl = 5000; // SAT conflict budget per probe
+    // Allow H to use non-input leaves to attack the cost-zero gap (F-bifunctional X).
+    // 0 = input-only (old behavior).
+    // 1 = input + backward-defined vars whose recursive deps don't include `test`.
+    // 2 = input + backward-defined + still-undefined to-define vars (richest; relies
+    //     on Manthan-side dependency tracking to keep the synthesis cycle-free).
+    uint32_t unate_def_rep_aux = 2;
     bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;

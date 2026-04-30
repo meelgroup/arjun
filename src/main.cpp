@@ -69,10 +69,11 @@ int do_pre_backbone = 0;
 string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_learnt=1),bve";
 
 int synthesis = false;
-int do_unate = false;
 int do_unate_def = true;
+int do_unate_def_rep = true;
 int do_revbce = false;
 int do_minim_indep = true;
+int do_sat_sweep = false;
 string debug_minim;
 double cms_glob_mult = -1.0;
 int mode = 0;
@@ -91,12 +92,16 @@ string print_version() {
 
 static int fc_int(const std::string& s) {
     int val = 0;
-    std::from_chars(s.data(), s.data() + s.size(), val);
+    auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), val);
+    if (ec != std::errc{}) throw std::invalid_argument("not an integer: " + s);
+    if (ptr != s.data() + s.size()) throw std::invalid_argument("trailing characters in integer: " + s);
     return val;
 }
 static double fc_double(const std::string& s) {
-    size_t pos;
-    double val = std::stod(s, &pos);
+    size_t pos = 0;
+    double val;
+    try { val = std::stod(s, &pos); }
+    catch (const std::exception&) { throw std::invalid_argument("not a double: " + s); }
     if (pos != s.size()) throw std::invalid_argument("trailing characters in double: " + s);
     return val;
 }
@@ -159,8 +164,18 @@ void add_arjun_options() {
     myopt("--extend", etof_conf.do_extend_indep, fc_int,"Extend independent set just before CNF dumping");
     myopt("--minimconfl", mconf.minimize_conflict, fc_int,"Minimize conflict size when repairing");
     myopt("--simpevery", mconf.simplify_every, fc_int,"Simplify solvers inside Manthan every K loops");
-    myopt("--unate", do_unate, fc_int,"Perform unate analysis");
     myopt("--unatedef", do_unate_def, fc_int,"Perform definition-aware unate analysis");
+    myopt("--unatedefcond", conf.unate_def_cond, fc_int,"In unate_def, also detect conditional defs of the form t = ITE(L,c1,c0) for input literals L (i.e., t = L or t = ~L)");
+    myopt("--unatedefcondmax", conf.unate_def_cond_max_per_var, fc_int,"Max conditional candidates to test per to-define variable in unate_def");
+    myopt("--unatedefcondconfl", conf.unate_def_cond_max_confl, fc_int,"Conflict budget per SAT call inside the conditional unate_def search");
+    myopt("--unatedefcondrel", conf.unate_def_cond_relfirst, fc_int,"In unate_def cond, examine inputs sharing a clause with `test` first");
+    myopt("--unatedefconddry", conf.unate_def_cond_dry_streak, fc_int,"Disable conditional unate_def probe after this many consecutive misses with zero hits so far (very low = bail aggressively, very high = effectively never disable)");
+    myopt("--unatedefrep", do_unate_def_rep, fc_int,"In unate_def, run a manthan-style guess-and-repair pass for vars still undefined after the literal-only conditional probe");
+    myopt("--unatedefrepiters", conf.unate_def_rep_iters, fc_int,"Per-variable iteration budget in the repair-based unate_def pass");
+    myopt("--unatedefrepmaxpat", conf.unate_def_rep_max_pattern, fc_int,"Skip CEX whose minimized core (= candidate AIG conjunct count) exceeds this");
+    myopt("--unatedefrepmaxcz", conf.unate_def_rep_max_costzero, fc_int,"Give up on a variable after this many cost-zero CEXes in the repair pass");
+    myopt("--unatedefrepconfl", conf.unate_def_rep_max_confl, fc_int,"Conflict budget per SAT call inside the repair-based unate_def pass");
+    myopt("--unatedefrepaux", conf.unate_def_rep_aux, fc_int,"Allow H to use non-input leaves in unate_def_rep. 0=input-only; 1=input+backward-defined (cycle-checked); 2=input+backward-defined+to-define (richest)");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
     myopt("--monflyorder", mconf.manthan_on_the_fly_order, fc_int,"Use on-the-fly training order and post-training topological order");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
@@ -205,8 +220,8 @@ void add_arjun_options() {
     myopt("--detailedstatsevery", mconf.detailed_stats_every, fc_int, "Print detailed stats every N repair loops");
     myopt("--rebuildminloops", mconf.rebuild_min_loops, fc_int, "Min repair loops before cex_solver rebuild");
     myopt("--rebuildminclauses", mconf.rebuild_min_clauses, fc_int, "Min total formula clauses before rebuild");
-    myopt("--rebuildgrownum", mconf.rebuild_growth_num, fc_int, "Rebuild growth numerator");
-    myopt("--rebuildgrowden", mconf.rebuild_growth_den, fc_int, "Rebuild growth denominator");
+    myopt("--rebuildgrownum", mconf.rebuild_growth_num, fc_double, "Rebuild growth numerator");
+    myopt("--rebuildgrowden", mconf.rebuild_growth_den, fc_double, "Rebuild growth denominator");
     myopt("--reducecexgenok", mconf.reduce_cex_gen_ok, fc_int, "Reduce multi_cex when gen_repair_ok > this");
     myopt("--reducecextotrep", mconf.reduce_cex_tot_rep, fc_int, "Reduce multi_cex when tot_repaired > this");
     myopt("--reducecexneedrep", mconf.reduce_cex_need_rep, fc_int, "Set multi_cex_k=1 when needs_repair <= this");
@@ -224,6 +239,7 @@ void add_arjun_options() {
     myopt("--minimbudgetmax", mconf.minim_budget_max, fc_int, "Max minimization solver calls");
     myopt("--minimbudgetmult", mconf.minim_budget_mult, fc_int, "Minim budget = conflict.size * mult (up to max)");
     myopt("--aigsimpevery", mconf.aig_simplify_every, fc_int, "Simplify AIG for hot vars every N repairs");
+    myflag("--sat-sweep", do_sat_sweep, "Run FRAIG-lite SAT sweeping after AIG rewrite (merges proven-equivalent gates)");
     myopt("--tdsteps", mconf.td_steps, fc_int, "Tree decomposition FlowCutter steps");
     myopt("--tdlookahead", mconf.td_lookahead_iters, fc_int, "Tree decomposition FlowCutter lookahead iterations");
     myopt("--bctxremoveall", mconf.better_ctx_remove_all, fc_int, "Remove-all threshold in find_better_ctx_normal");
@@ -257,10 +273,10 @@ void add_arjun_options() {
     // Gate options
     myopt("--gates", do_gates, fc_int,"Turn on/off all gate-based definability");
     myopt("--nogatebelow", conf.no_gates_below, fc_double,"Don't use gates below this incidence relative position (1.0-0.0) to minimize the independent set. Gates are not very accurate, but can save a LOT of time. We use them to get rid of most of the uppert part of the sampling set only. Default is 99% is free-for-all, the last 1% we test. At 1.0 we test everything, at 0.0 we try using gates for everything.");
-    myopt("--orgate", conf.or_gate_based, fc_int,"Use 3-long gate detection in SAT solver to define variables");
+    myopt("--orgate", conf.or_gate_based, fc_int,"Use 3-long gate detection in SAT solver to-define variables");
     myopt("--irreggate", conf.irreg_gate_based, fc_int,"Use irregular gate-based removal of vars from indep set");
-    myopt("--itegate", conf.ite_gate_based, fc_int,"Use ITE gate detection in SAT solver to define some variables");
-    myopt("--xorgate", conf.xor_gates_based, fc_int,"Use XOR detection in SAT solver to define some variables");
+    myopt("--itegate", conf.ite_gate_based, fc_int,"Use ITE gate detection in SAT solver to-define some variables");
+    myopt("--xorgate", conf.xor_gates_based, fc_int,"Use XOR detection in SAT solver to-define some variables");
 
     // AppMC
     program.add_argument("--appmc")
@@ -288,6 +304,7 @@ void add_arjun_options() {
     myopt("--oracleextra", simp_conf.oracle_extra, fc_int,"Run an extra oracle-vivif-fast + oracle-sparsify-fast + occ-bve pass at the end of Puura's strategy");
     myopt("--distill", conf.distill, fc_int, "Distill clauses before minimization of indep");
     myopt("--weakenlim", simp_conf.weaken_limit, fc_int, "Limit to weaken BVE resolvents");
+    myopt("--puurastrategy", simp_conf.puura_strategy, fc_int, "Puura iter1 simplification strategy: 0=default, 1=new-model");
     myopt("--bce", etof_conf.do_bce, fc_int, "Use blocked clause elimination (BCE) statically");
     myopt("--red", redundant_cls, fc_int,"Also dump redundant clauses");
 
@@ -343,6 +360,16 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_gauss_jordan(conf.gauss_jordan);
     arj->set_simp(conf.simp);
     arj->set_extend_max_confl(conf.extend_max_confl);
+    arj->set_unate_def_cond(conf.unate_def_cond);
+    arj->set_unate_def_cond_max_per_var(conf.unate_def_cond_max_per_var);
+    arj->set_unate_def_cond_max_confl(conf.unate_def_cond_max_confl);
+    arj->set_unate_def_cond_relfirst(conf.unate_def_cond_relfirst);
+    arj->set_unate_def_cond_dry_streak(conf.unate_def_cond_dry_streak);
+    arj->set_unate_def_rep_iters(conf.unate_def_rep_iters);
+    arj->set_unate_def_rep_max_pattern(conf.unate_def_rep_max_pattern);
+    arj->set_unate_def_rep_max_costzero(conf.unate_def_rep_max_costzero);
+    arj->set_unate_def_rep_max_confl(conf.unate_def_rep_max_confl);
+    arj->set_unate_def_rep_aux(conf.unate_def_rep_aux);
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 
@@ -383,43 +410,61 @@ void do_synthesis() {
     if (conf.verb)
         cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
 
+    // SLOW_DEBUG: after every pipeline stage, run the semantic SAT check on
+    // the current defs. If any stage produces a wrong def, flag it with the
+    // stage name so it's obvious which pass introduced the bug.
+    [[maybe_unused]] auto check_stage = [&](const std::string& stage) {
+        int bad = cnf.check_synth_funs_sat();
+        if (bad >= 0) {
+            cout << "c o [check_stage] WRONG def after stage '" << stage
+                 << "' for var " << (bad+1) << endl;
+            assert(false && "wrong synth def after stage");
+        }
+    };
+
     if (do_synth_bve && !cnf.synth_done()) {
         cnf = arjun->standalone_get_simplified_cnf(cnf, simp_conf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-simplified_cnf.aig");
+        SLOW_DEBUG_DO(check_stage("simplified_cnf"));
     }
     if (etof_conf.do_autarky && !cnf.synth_done()) {
         arjun->standalone_autarky(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-autarky.aig");
+        SLOW_DEBUG_DO(check_stage("autarky"));
     }
     if (etof_conf.do_extend_indep && !cnf.synth_done()) {
         arjun->standalone_unsat_define(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-extend_synth.aig");
         cnf.simplify_aigs(conf.verb);
+        SLOW_DEBUG_DO(check_stage("extend_synth"));
     }
     if (do_minim_indep && !cnf.synth_done()) {
         arjun->standalone_backward_round_synth(cnf, mconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-minim_idep_synt.aig");
         cnf.simplify_aigs(conf.verb);
-    }
-    if (do_unate && !cnf.synth_done()) {
-        arjun->standalone_unate(cnf);
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate.aig");
+        SLOW_DEBUG_DO(check_stage("minim_idep_synt"));
     }
     if (do_unate_def && !cnf.synth_done()) {
         arjun->standalone_unate_def(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate_def.aig");
+        SLOW_DEBUG_DO(check_stage("unsat_unate_def"));
+    }
+    if (do_unate_def && do_unate_def_rep && !cnf.synth_done()) {
+        arjun->standalone_unate_def_rep(cnf);
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate_def_rep.aig");
+        SLOW_DEBUG_DO(check_stage("unsat_unate_def_rep"));
     }
 
     SynthRunner synth_runner(conf, arjun);
     auto strategies = synth_runner.parse_mstrategy(mstrategy);
+    cnf.rewrite_aigs(conf.verb, do_sat_sweep);
     synth_runner.run_manthan_strategies(cnf, mconf, strategies);
+
     release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
     if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
-    if (!output_file.empty() || !conf.debug_synth.empty()) {
-        cnf.simplify_aigs();
-        cnf.rewrite_aigs(conf.verb);
-    }
+    SLOW_DEBUG_DO(check_stage("manthan"));
     if (!output_file.empty()) {
+        cnf.rewrite_aigs(conf.verb, do_sat_sweep);
         cnf.write_aig_def_to_verilog(output_file);
         cout << "c o [arjun] dumped synthesized functions to verilog file '" << output_file << "'" << endl;
     }

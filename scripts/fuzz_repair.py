@@ -149,7 +149,6 @@ def run_arjun_checkrepair(fname, seed, timeout):
         # Disable all preprocessors so manthan starts immediately
         "--bve", "0",
         "--synthbve", "0",
-        "--unate", "0",
         "--autarky", "0",
         "--unatedef", "0",
         "--extend", "0",

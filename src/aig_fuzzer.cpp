@@ -170,17 +170,17 @@ static vector<aig_ptr> gen_random_aig_batch(
 static Lit aig_to_sat(const aig_ptr& aig, SATSolver& solver, uint32_t num_input_vars,
                        map<aig_ptr, Lit>& cache)
 {
-    std::function<Lit(AIGT, uint32_t, bool, const Lit*, const Lit*)> visitor =
-        [&](AIGT type, uint32_t var, bool neg, const Lit* left, const Lit* right) -> Lit {
+    std::function<Lit(AIGT, uint32_t, const Lit*, const Lit*)> visitor =
+        [&](AIGT type, uint32_t var, const Lit* left, const Lit* right) -> Lit {
             if (type == AIGT::t_const) {
                 solver.new_var();
                 Lit tlit = Lit(solver.nVars() - 1, false);
                 solver.add_clause(vector<Lit>{tlit});
-                return neg ? ~tlit : tlit;
+                return tlit;
             }
             if (type == AIGT::t_lit) {
                 assert(var < num_input_vars);
-                return Lit(var, neg);
+                return Lit(var, false);
             }
             if (type == AIGT::t_and) {
                 Lit l = *left;
@@ -190,7 +190,7 @@ static Lit aig_to_sat(const aig_ptr& aig, SATSolver& solver, uint32_t num_input_
                 solver.add_clause(vector<Lit>{~out, l});
                 solver.add_clause(vector<Lit>{~out, r});
                 solver.add_clause(vector<Lit>{~l, ~r, out});
-                return neg ? ~out : out;
+                return out;
             }
             assert(false && "Unknown AIG type");
             return Lit(0, false);
@@ -316,8 +316,8 @@ static bool verify_rewrite(const aig_ptr& orig, const aig_ptr& simplified,
     if (!check_invariants(simplified, seed, iter, method))
         return false;
 
-    size_t nb = AIG::count_aig_nodes(orig);
-    size_t na = AIG::count_aig_nodes(simplified);
+    size_t nb = AIG::count_aig_nodes_fast(orig);
+    size_t na = AIG::count_aig_nodes_fast(simplified);
 
     if (!check_equivalence_sat(orig, simplified, num_vars)) {
         report_failure(method, orig, simplified, num_vars, seed, iter, nb, na);
@@ -437,7 +437,7 @@ int main(int argc, char** argv) {
             aig_ptr orig = gen_random_aig(rng, num_vars, depth, max_nodes);
             if (!orig) continue;
 
-            size_t nodes_before = AIG::count_aig_nodes(orig);
+            size_t nodes_before = AIG::count_aig_nodes_fast(orig);
 
             if (verbose) {
                 cout << "[" << iter << "] rewrite (" << nodes_before << " nodes, "
@@ -454,7 +454,7 @@ int main(int argc, char** argv) {
             if (!verify_rewrite(orig, simplified, num_vars, seed, iter, "rewrite", rng))
                 return 1;
 
-            size_t nodes_after = AIG::count_aig_nodes(simplified);
+            size_t nodes_after = AIG::count_aig_nodes_fast(simplified);
             stats.rewrite_tests++;
 
             // Double-rewrite: rewrite the already-rewritten AIG
@@ -472,7 +472,7 @@ int main(int argc, char** argv) {
                 if (!verify_rewrite(simplified, double_simplified, num_vars, seed, iter, "double_vs_single", rng))
                     return 1;
 
-                nodes_after = AIG::count_aig_nodes(double_simplified);
+                nodes_after = AIG::count_aig_nodes_fast(double_simplified);
                 stats.double_rewrite_tests++;
             }
 
@@ -500,8 +500,8 @@ int main(int argc, char** argv) {
                 if (!originals[j] || !to_rewrite[j]) continue;
                 if (!verify_rewrite(originals[j], to_rewrite[j], num_vars, seed, iter, "rewrite_all", rng))
                     return 1;
-                total_before += AIG::count_aig_nodes(originals[j]);
-                total_after += AIG::count_aig_nodes(to_rewrite[j]);
+                total_before += AIG::count_aig_nodes_fast(originals[j]);
+                total_after += AIG::count_aig_nodes_fast(to_rewrite[j]);
             }
 
             stats.rewrite_all_tests++;
@@ -513,7 +513,7 @@ int main(int argc, char** argv) {
             aig_ptr orig = gen_random_aig(rng, num_vars, depth, max_nodes);
             if (!orig) continue;
 
-            size_t nodes_before = AIG::count_aig_nodes(orig);
+            size_t nodes_before = AIG::count_aig_nodes_fast(orig);
             auto t0 = std::chrono::steady_clock::now();
             aig_ptr simplified = AIG::simplify_aig(orig);
             auto t1 = std::chrono::steady_clock::now();
@@ -522,7 +522,7 @@ int main(int argc, char** argv) {
             if (!verify_rewrite(orig, simplified, num_vars, seed, iter, "simplify_aig", rng))
                 return 1;
 
-            size_t nodes_after = AIG::count_aig_nodes(simplified);
+            size_t nodes_after = AIG::count_aig_nodes_fast(simplified);
             stats.simplify_tests++;
             stats.nodes_before_total += nodes_before;
             stats.nodes_after_total += nodes_after;
@@ -552,8 +552,8 @@ int main(int argc, char** argv) {
                 }
                 if (!verify_rewrite(originals[j], to_simplify[j], num_vars, seed, iter, "simplify_aigs", rng))
                     return 1;
-                total_before += AIG::count_aig_nodes(originals[j]);
-                total_after += AIG::count_aig_nodes(to_simplify[j]);
+                total_before += AIG::count_aig_nodes_fast(originals[j]);
+                total_after += AIG::count_aig_nodes_fast(to_simplify[j]);
             }
 
             stats.simplify_tests++;
@@ -566,7 +566,7 @@ int main(int argc, char** argv) {
             aig_ptr orig = gen_chain_aig(rng, num_vars, chain_len);
             if (!orig) continue;
 
-            size_t nodes_before = AIG::count_aig_nodes(orig);
+            size_t nodes_before = AIG::count_aig_nodes_fast(orig);
 
             AIGRewriter rw;
             auto t0 = std::chrono::steady_clock::now();
@@ -577,7 +577,7 @@ int main(int argc, char** argv) {
             if (!verify_rewrite(orig, simplified, num_vars, seed, iter, "chain_rewrite", rng))
                 return 1;
 
-            size_t nodes_after = AIG::count_aig_nodes(simplified);
+            size_t nodes_after = AIG::count_aig_nodes_fast(simplified);
             stats.chain_tests++;
             stats.nodes_before_total += nodes_before;
             stats.nodes_after_total += nodes_after;
