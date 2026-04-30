@@ -691,8 +691,10 @@ void UnateDefRep::process_test_var(uint32_t test) {
                 && "set_def_skolem must populate defs[test]");
             assert(cnf.is_skolem_defined(test_orig.var())
                 && "set_def_skolem must add test to skolem_defined_vars");
+
             // New def changed the dep graph; drop cached recursive deps.
             deps_cache.clear();
+
             // SLOW_DEBUG: full per-commit verification.
             //   1. defs_invariant() — defs are well-formed (cycle-free,
             //      sampling-var deps unique, etc).
