@@ -143,6 +143,20 @@ private:
     CMSat::Lit materialize_h_in_cnf(const ArjunNS::aig_ptr& h);
     size_t h_aux_leaf_count(const ArjunNS::aig_ptr& h) const;
 
+    // Per-var diagnostics for the verb=1/2 trace. Lives only across
+    // process_test_var and its helpers.
+    struct PerVarStats {
+        uint32_t iters = 0;
+        uint32_t miter_sat = 0, miter_unsat = 0, miter_undef = 0;
+        uint32_t f_sat = 0, f_unsat = 0, f_undef = 0;
+        uint32_t skipped_big = 0;
+        uint64_t pattern_sum = 0;
+        uint32_t pattern_count = 0;
+        uint32_t costzero_count = 0;
+        const char* stop_reason = "iter_limit";
+    };
+    enum class CexAction { Refine, Continue, Break };
+
     // Pass-section helpers, in the order run() uses them. Each helper's
     // body is a verbatim move of the corresponding block in the original
     // synthesis_unate_def_rep.
@@ -152,6 +166,15 @@ private:
     void build_base_assumps(uint32_t test, std::vector<CMSat::Lit>& base_assumps);
     void build_aux_set(uint32_t test, CMSat::Lit test_orig);
     void process_test_var(uint32_t test);
+    void log_progress_periodic();
+    bool try_commit_h(uint32_t test, CMSat::Lit test_orig,
+                       const ArjunNS::aig_ptr& h, CMSat::Lit h_top_lit,
+                       CMSat::Lit act, uint32_t iter, PerVarStats& vstats);
+    CexAction process_cex(uint32_t test, CMSat::Lit h_top_lit, CMSat::Lit act,
+                           uint32_t iter, ArjunNS::aig_ptr& h,
+                           PerVarStats& vstats);
+    void log_per_var_summary(uint32_t test, const ArjunNS::aig_ptr& h,
+                              const PerVarStats& vstats);
     void materialize_deferred();
     void log_pass_summary();
 };

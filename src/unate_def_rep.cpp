@@ -528,21 +528,7 @@ void UnateDefRep::process_test_var(uint32_t test) {
     }
     tested_num++;
     rep_stats.tests_run++;
-
-    if (tested_num % 100 == 99) {
-        verb_print(1, "[unate_def_rep] test no: " << setw(5) << tested_num
-            << "/" << to_define.size()
-            << " new defs: " << setw(4) << new_defs
-            << " iters: " << setw(7) << rep_stats.total_iters
-            << " miter[U=" << rep_stats.miter_unsat
-            << " S=" << rep_stats.miter_sat
-            << " T=" << rep_stats.miter_undef << "]"
-            << " f[U=" << rep_stats.f_unsat
-            << " S=" << rep_stats.f_sat
-            << " T=" << rep_stats.f_undef << "]"
-            << " skip_big=" << rep_stats.skipped_pattern_too_big
-            << " T: " << setprecision(2) << fixed << (cpuTime() - t0));
-    }
+    log_progress_periodic();
 
     vector<Lit> base_assumps;
     build_base_assumps(test, base_assumps);
@@ -558,21 +544,11 @@ void UnateDefRep::process_test_var(uint32_t test) {
     });
 
     aig_ptr h = AIG::new_const(false);   // start from H ≡ 0
-    uint32_t costzero_count = 0;
-    uint32_t hit_iter = 0;
-
-    // Per-var diagnostics for the verb=2 trace.
-    uint32_t v_iters = 0;
-    uint32_t v_miter_sat = 0, v_miter_unsat = 0, v_miter_undef = 0;
-    uint32_t v_f_sat = 0, v_f_unsat = 0, v_f_undef = 0;
-    uint32_t v_skipped_big = 0;
-    uint64_t v_pattern_sum = 0;
-    uint32_t v_pattern_count = 0;
-    const char* stop_reason = "iter_limit";
+    PerVarStats vstats;
 
     for (uint32_t iter = 0; iter < conf.unate_def_rep_iters; iter++) {
         rep_stats.total_iters++;
-        v_iters++;
+        vstats.iters++;
 
         const Lit h_top_lit = encode_h_in_miter(h, /*is_y_prime=*/true);
 
@@ -595,368 +571,26 @@ void UnateDefRep::process_test_var(uint32_t test) {
 
         if (ret == l_False) {
             rep_stats.miter_unsat++;
-            v_miter_unsat++;
-
-            // Feasibility check: ask f_solver whether F' has any model
-            // with y_test = H_top. f_solver carries original F plus
-            // every prior commit's y_v ⇔ H_v (mirrored on commit — see
-            // the f_solver->add_clause block below), so this is checked
-            // against cumulative F', not original F. SAT means H is at
-            // least sometimes a Skolem witness in F'; UNSAT means H is
-            // never a valid value for y_test anywhere (rules out the
-            // vacuous-miter-UNSAT case where blindly committing would
-            // lose X-projections); UNDEF means undecided.
-            //
-            // This is intentionally weaker than full uniqueness in F':
-            // miter UNSAT + feasibility SAT does NOT prove F-Skolem at
-            // every F-sat X, so committing here can in principle lose
-            // an X-projection (counterexample: F admits y_test=0 only
-            // at X1 and y_test=1 only at X2, H=0 — feasibility SAT via
-            // X1, but commit kills X2). The check IS strong enough to
-            // pass on bifunctional benchmarks like factorization where
-            // strict uniqueness can never hold; the soundness gamble is
-            // that CEX-driven refinement keeps H broadly Skolem-like
-            // and the fuzzers will surface any bad commit fast.
-            const Lit h_top_in_f = encode_h_in_f(h);
-            const Lit y_test_in_f = Lit(test, false);
-            vector<Lit> feas_assumps;
-            f_solver->new_var();
-            const Lit f_act = Lit(f_solver->nVars()-1, false);
-            // Under f_act: y_test_in_f ⇔ h_top_in_f.
-            f_solver->add_clause({~f_act,  y_test_in_f, ~h_top_in_f});
-            f_solver->add_clause({~f_act, ~y_test_in_f,  h_top_in_f});
-            feas_assumps.push_back(f_act);
-            f_solver->set_max_confl(conf.unate_def_rep_max_confl);
-            const double t_feas_solve_start = cpuTime();
-            rep_stats.feas_solve_calls++;
-            const auto feas_ret = f_solver->solve(&feas_assumps);
-            rep_stats.time_feas_solve += cpuTime() - t_feas_solve_start;
-            f_solver->add_clause({~f_act}); // disable for next iters
-            if (feas_ret != l_True) {
-                // Infeasible (no F'-model has y_test = H) or undecided:
-                // don't commit. Continuing the iter loop refines H
-                // further via the next CEX, which can move H into a
-                // feasible region.
-                s->add_clause({~act});
-                rep_stats.skolem_only_skipped++;
-                continue;
-            }
-
-            // y_test = H(...) is a feasible Skolem witness in cumulative
-            // F' (some F'-model has y_test = H_top). This is weaker than
-            // unique-defining; see the feasibility-check comment above
-            // for the soundness gamble.
-
-            // Cheap invariants before commit:
-            //   - h is non-null (we always build at least a const FALSE);
-            //   - target var has no def yet (set_def_skolem will assert,
-            //     but checking here gives a clearer site if it ever
-            //     fires);
-            //   - H's direct (non-recursive) leaves all live in
-            //     input ∪ aux (this is the structural soundness condition
-            //     for committing — anything else means the conflict-core
-            //     filter let a non-allowed lit through).
-            assert(h != nullptr);
-            assert(!cnf.defined(test_orig.var()));
-            {
-                std::set<uint32_t> h_leaves;
-                AIG::get_dependent_vars(h, h_leaves,
-                                        std::numeric_limits<uint32_t>::max());
-                for (uint32_t lf : h_leaves) {
-                    assert((input.count(lf)
-                           || (lf < aux_mask.size() && aux_mask[lf] != 0))
-                        && "H leaf must be input or aux");
-                }
-            }
-            const aig_ptr h_in_orig = translate_to_orig(h, new_to_orig, test_orig.sign());
-            assert(h_in_orig != nullptr);
-            VERBOSE_DEBUG_DO(std::cout
-                << "c o [unate_def_rep][verbose] commit test NEW=" << test+1
-                << " orig=" << test_orig.var()+1
-                << " sign=" << test_orig.sign()
-                << " H_NEW=" << h
-                << " H_ORIG=" << h_in_orig << std::endl);
-            // set_def_skolem (vs set_def) records the var as Skolem-
-            // committed so get_var_types keeps it in backward_defined
-            // even when H_test happens to be a constant or input-only
-            // AIG. Otherwise downstream (Manthan) would treat the var
-            // as an input and drop the y_test = H_test constraint that
-            // a later var's miter UNSAT relied on. The Skolem flag is
-            // semantically appropriate here too: the feasibility check
-            // only confirms H is at least sometimes a Skolem witness,
-            // not that F ⊨ y_test = H, so this is a Skolem-style commit
-            // by definition.
-            cnf.set_def_skolem(test_orig.var(), h_in_orig);
-            assert(cnf.defined(test_orig.var())
-                && "set_def_skolem must populate defs[test]");
-            assert(cnf.is_skolem_defined(test_orig.var())
-                && "set_def_skolem must add test to skolem_defined_vars");
-
-            // New def changed the dep graph; drop cached recursive deps.
-            deps_cache.clear();
-
-            // SLOW_DEBUG: full per-commit verification.
-            //   1. defs_invariant() — defs are well-formed (cycle-free,
-            //      sampling-var deps unique, etc).
-            //   2. check_synth_funs_sat() — F ∧ ¬F[y←y_hat] is UNSAT,
-            //      i.e. the AIGs synthesized so far are jointly correct.
-            // These catch bad defs at the exact iteration that introduced
-            // them; without SLOW_DEBUG the bug would only surface at the
-            // unsat_unate_def_rep AIG checkpoint or in Manthan.
-            SLOW_DEBUG_DO({
-                [[maybe_unused]] auto inv_ok = cnf.defs_invariant();
-                int bad = cnf.check_synth_funs_sat();
-                if (bad >= 0) {
-                    std::cout << "c o [unate_def_rep][SLOW_DEBUG] WRONG commit "
-                         << "for orig var " << test_orig.var()+1
-                         << " (test NEW=" << test+1 << ")"
-                         << " H_NEW=" << h
-                         << " H_ORIG=" << h_in_orig << std::endl;
-                    release_assert(false &&
-                        "unate_def_rep committed a wrong def");
-                }
-            });
-
-            // Tighten miter: y_test ⇔ H on Y side. For input-only H,
-            // h_top_lit (Y'-side encoding) and the Y-side encoding are
-            // the same SAT lit since inputs are shared. For an H with
-            // any aux leaves, the two sides differ when the aux var's
-            // pinning indicator is later untied (e.g. when aux becomes
-            // a future `test`), so we must encode H explicitly on the
-            // Y side here.
-            const size_t aux_leaves = h_aux_leaf_count(h);
-            const Lit h_top_lit_for_commit = (aux_leaves == 0)
-                ? h_top_lit
-                : encode_h_in_miter(h, /*is_y_prime=*/false);
-            const Lit y_test = Lit(test, false);
-            s->add_clause({~y_test,  h_top_lit_for_commit});
-            s->add_clause({ y_test, ~h_top_lit_for_commit});
-
-            // Mirror the y_test ⇔ H commit into f_solver so subsequent
-            // feasibility checks for later vars operate against cumulative
-            // F' (= original F ∧ all prior commits). Without this the
-            // chain of Skolem-only commits wouldn't compose: a later
-            // var's "feasible in F" would be checked even when the right
-            // question is "feasible in F + prior committed defs". The
-            // new clauses are exactly the equivalence we just committed
-            // on the s side. h_top_in_f and y_test_in_f are still in
-            // scope from the feasibility check above and the Tseitin
-            // chain for H is already in f_solver from that call.
-            f_solver->add_clause({~y_test_in_f,  h_top_in_f});
-            f_solver->add_clause({ y_test_in_f, ~h_top_in_f});
-
-            // Defer materializing y_test ⇔ H into cnf clauses until
-            // after the per-test loop. cnf.new_var() allocations during
-            // the loop would shift cnf.nVars(), and that offset is the
-            // anchor for the Y'-side encoding in the miter solver `s`
-            // (e.g. Lit(test + cnf.nVars(), false) at the indicator
-            // setup). The materialization is only needed downstream by
-            // find_better_ctx_normal, which runs inside Manthan after
-            // synthesis_unate_def_rep returns — so deferring is sound
-            // and avoids threading a "frozen" cnf var count through
-            // every Y'-offset use site.
-            deferred_materialize.emplace_back(test, h);
-
-            // Lock activation TRUE so the Y'-side equality stays in force
-            // for subsequent tests.
-            s->add_clause({act});
-            new_defs++;
-            hit_iter = iter + 1;
-            rep_stats.hits++;
-            rep_stats.hit_iter_sum += hit_iter;
-            if (hit_iter > rep_stats.hit_iter_max) rep_stats.hit_iter_max = hit_iter;
-            {
-                const size_t nodes = AIG::count_aig_nodes_fast(h);
-                rep_stats.hit_aig_nodes_sum += nodes;
-                if (nodes > rep_stats.hit_aig_nodes_max) rep_stats.hit_aig_nodes_max = nodes;
-            }
-            if (aux_leaves > 0) {
-                rep_stats.hits_using_aux++;
-                rep_stats.aux_leaves_sum += aux_leaves;
-                if (aux_leaves > rep_stats.aux_leaves_max)
-                    rep_stats.aux_leaves_max = aux_leaves;
-            }
-            stop_reason = "found";
-            break;
+            vstats.miter_unsat++;
+            if (try_commit_h(test, test_orig, h, h_top_lit, act, iter, vstats)) break;
+            continue;
         }
         if (ret == l_Undef) {
             rep_stats.miter_undef++;
-            v_miter_undef++;
+            vstats.miter_undef++;
             s->add_clause({~act});
-            stop_reason = "miter_undef";
+            vstats.stop_reason = "miter_undef";
             break;
         }
         rep_stats.miter_sat++;
-        v_miter_sat++;
+        vstats.miter_sat++;
 
-        // CEX. Extract values of test (F-side) and h_top_lit (forced to
-        // H(X*) by `act`).
-        const auto& m = s->get_model();
-        const lbool y_test_val_f = m[test];
-        const lbool h_val        = model_value(m, h_top_lit);
-        if (y_test_val_f == l_Undef || h_val == l_Undef) {
-            // Solver didn't pin one of the literals — bail out cleanly.
-            s->add_clause({~act});
-            stop_reason = "miter_pin_undef";
-            break;
-        }
-        // y_test_Y' = h_val (act_curr); indicator_test = FALSE
-        // (base_assumps) forces y_test_Y != y_test_Y'. So
-        // y_test_val_f = ~h_val whenever the miter is SAT.
-        assert(y_test_val_f != h_val
-            && "Miter SAT must have F-side y_test differ from H(X) "
-               "(ensured by indicator_test = FALSE in base_assumps)");
-
-        // F-only call: assume (X*, aux*) values and force y_test = H(...)
-        // (the wrong value in F's view).
-        // sign convention: Lit(v, true)= ¬v, so Lit(test, h_val == l_False)
-        // = (h_val == TRUE ? test : ¬test) — exactly "y_test = H_val".
-        const Lit force_wrong = Lit(test, h_val == l_False);
-        vector<Lit> f_assumps;
-        f_assumps.reserve(input.size() + aux_vars.size() + 1);
-        for (uint32_t x : input) {
-            if (x >= m.size()) continue;
-            const lbool v = m[x];
-            if (v == l_Undef) continue;
-            f_assumps.emplace_back(x, v == l_False);
-        }
-        // Aux assumptions: pin aux vars to their miter-model values.
-        // In the F-solver these vars are otherwise free (the F-solver
-        // has no AIG-copy block / indicator structure), so without
-        // this pin a CEX where bifunctionality lives in an aux var
-        // would surface as a cost-zero alarm.
-        for (uint32_t a : aux_vars) {
-            if (a >= m.size()) continue;
-            const lbool v = m[a];
-            if (v == l_Undef) continue;
-            f_assumps.emplace_back(a, v == l_False);
-        }
-        f_assumps.push_back(force_wrong);
-
-        f_solver->set_max_confl(conf.unate_def_rep_max_confl);
-        const double t_f_start = cpuTime();
-        rep_stats.f_solve_calls++;
-        const auto f_ret = f_solver->solve(&f_assumps);
-        rep_stats.time_f_solve += cpuTime() - t_f_start;
-
-        // Disable this iteration's activation regardless of outcome.
-        s->add_clause({~act});
-
-        if (f_ret == l_True) {
-            // Cost-zero: H(X*) is valid in F (some y_other admits it).
-            // The miter SAT was an artifact of forcing y_other = y_other'.
-            // No safe pattern direction — give up on this var after a
-            // few attempts (a single y_other-tied CEX rarely yields a
-            // useful pointwise pattern, so we don't bother trying the
-            // tighter [X*, y_other*, force_wrong] query: in practice it
-            // produces large mixed conflicts whose input projection is
-            // rarely the right pattern, and burns iteration budget).
-            rep_stats.f_sat++;
-            v_f_sat++;
-            costzero_count++;
-            if (costzero_count >= conf.unate_def_rep_max_costzero) {
-                verb_print(3, "[unate_def_rep] giving up on test " << test+1
-                    << " after " << costzero_count << " cost-zero CEXes");
-                stop_reason = "costzero_limit";
-                break;
-            }
-            continue;
-        }
-        if (f_ret == l_Undef) {
-            rep_stats.f_undef++;
-            v_f_undef++;
-            stop_reason = "f_undef";
-            break;
-        }
-        // f_ret == l_False
-        rep_stats.f_unsat++;
-        v_f_unsat++;
-
-        // Conflict literals are negations of assumed literals. Filter
-        // out the test-forcing one; everything else is an input or aux
-        // lit (we only assumed input ∪ aux + force_wrong).
-        vector<Lit> conflict = f_solver->get_conflict();
-        vector<Lit> pattern_lits;
-        pattern_lits.reserve(conflict.size());
-        for (const Lit& cl : conflict) {
-            if (cl == ~force_wrong) continue;
-            if (cl.var() == test) continue; // defensive
-            const bool is_input = input.count(cl.var()) > 0;
-            const bool is_aux = cl.var() < aux_mask.size()
-                                && aux_mask[cl.var()] != 0;
-            if (!is_input && !is_aux) continue;
-            pattern_lits.push_back(~cl);    // assumption form: matches X*
-        }
-        v_pattern_sum += pattern_lits.size();
-        v_pattern_count++;
-        // Cheap invariant: pattern lits live in input ∪ aux (filter above
-        // ensures this). If a non-allowed lit ever leaks through it would
-        // make H reference an out-of-scope leaf and break the structural
-        // soundness check at commit time.
-        for (const Lit& pl : pattern_lits) {
-            assert(pl.var() != test);
-            assert(input.count(pl.var())
-                || (pl.var() < aux_mask.size() && aux_mask[pl.var()] != 0));
-        }
-        if (pattern_lits.size() > conf.unate_def_rep_max_pattern) {
-            rep_stats.skipped_pattern_too_big++;
-            v_skipped_big++;
-            // Same accounting as cost-zero: too-large patterns lead to
-            // explosive AIG growth without much generalization.
-            costzero_count++;
-            if (costzero_count >= conf.unate_def_rep_max_costzero) {
-                stop_reason = "costzero_limit";
-                break;
-            }
-            continue;
-        }
-
-        aig_ptr pattern;
-        if (pattern_lits.empty()) {
-            // Empty conflict implies F unconditionally forces
-            // y_test ≠ H_val — i.e. y_test is a constant we somehow
-            // missed in the standard unate test. Refine with a constant.
-            pattern = AIG::new_const(true);
-        } else {
-            pattern = AIG::new_lit(pattern_lits[0].var(), pattern_lits[0].sign());
-            for (size_t i = 1; i < pattern_lits.size(); i++) {
-                pattern = AIG::new_and(pattern,
-                    AIG::new_lit(pattern_lits[i].var(), pattern_lits[i].sign()));
-            }
-        }
-        VERBOSE_DEBUG_DO({
-            std::cout << "c o [unate_def_rep][verbose]   iter=" << iter
-                 << " y_test_val_f=" << y_test_val_f
-                 << " pattern={ ";
-            for (const auto& pl : pattern_lits) std::cout << pl << " ";
-            std::cout << "} pattern_AIG=" << pattern << std::endl;
-        });
-
-        // Cover X*: when P(X) holds, set H = y_test_val_f there.
-        if (y_test_val_f == l_True)  h = AIG::new_or(h, pattern);
-        else                         h = AIG::new_and(h, AIG::new_not(pattern));
-        VERBOSE_DEBUG_DO(std::cout << "c o [unate_def_rep][verbose]   H_NEW after refine="
-            << h << std::endl);
+        const CexAction action = process_cex(test, h_top_lit, act, iter, h, vstats);
+        if (action == CexAction::Break) break;
+        // Refine and Continue both fall through to the next iteration.
     }
 
-    const size_t v_aux_leaves = h_aux_leaf_count(h);
-    verb_print(1, "[unate_def_rep] v " << setw(5) << test+1
-        << " iters="     << setw(5) << v_iters
-        << " miter[U="   << setw(3) << v_miter_unsat
-        << " S="         << setw(3) << v_miter_sat
-        << " T="         << setw(3) << v_miter_undef << "]"
-        << " f[U="       << setw(3) << v_f_unsat
-        << " S="         << setw(3) << v_f_sat
-        << " T="         << setw(3) << v_f_undef << "]"
-        << " skip_big="  << setw(3) << v_skipped_big
-        << " costzero="  << setw(3) << costzero_count
-        << " avg_pat="   << setw(5) << setprecision(1) << fixed
-                         << safe_div(v_pattern_sum, v_pattern_count)
-        << " aux["       << setw(4) << aux_vars.size()
-        << "/used="      << setw(3) << v_aux_leaves << "]"
-        << " AIG_nodes=" << setw(5) << AIG::count_aig_nodes_fast(h)
-        << " " << COLCYN << std::left << setw(15) << stop_reason << std::right << COLDEF
-        << " T: " << fixed << setprecision(2) << (cpuTime()-t0));
+    log_per_var_summary(test, h, vstats);
 
     already_tested.insert(test);
     // IMPORTANT: do NOT add `s->add_clause({var_to_indic[test] = TRUE})`
@@ -979,6 +613,386 @@ void UnateDefRep::process_test_var(uint32_t test) {
     // input-only / backward-only H's anyway, and harmful otherwise.
     // Without the lock, the SAT solver picks indicator-prev consistently
     // with the per-side y_prev values, and the miter stays sound.
+}
+
+void UnateDefRep::log_progress_periodic() {
+    if (tested_num % 100 != 99) return;
+    verb_print(1, "[unate_def_rep] test no: " << setw(5) << tested_num
+        << "/" << to_define.size()
+        << " new defs: " << setw(4) << new_defs
+        << " iters: " << setw(7) << rep_stats.total_iters
+        << " miter[U=" << rep_stats.miter_unsat
+        << " S=" << rep_stats.miter_sat
+        << " T=" << rep_stats.miter_undef << "]"
+        << " f[U=" << rep_stats.f_unsat
+        << " S=" << rep_stats.f_sat
+        << " T=" << rep_stats.f_undef << "]"
+        << " skip_big=" << rep_stats.skipped_pattern_too_big
+        << " T: " << setprecision(2) << fixed << (cpuTime() - t0));
+}
+
+// Called when the miter just returned UNSAT. Runs the feasibility check
+// and, on success, commits y_test ⇔ H. Returns true iff we committed and
+// the iter loop should break; false means infeasible/undecided and the
+// caller should `continue`.
+bool UnateDefRep::try_commit_h(uint32_t test, Lit test_orig,
+                                const aig_ptr& h, Lit h_top_lit, Lit act,
+                                uint32_t iter, PerVarStats& vstats) {
+    // Feasibility check: ask f_solver whether F' has any model with
+    // y_test = H_top. f_solver carries original F plus every prior
+    // commit's y_v ⇔ H_v (mirrored on commit — see the
+    // f_solver->add_clause block below), so this is checked against
+    // cumulative F', not original F. SAT means H is at least sometimes
+    // a Skolem witness in F'; UNSAT means H is never a valid value for
+    // y_test anywhere (rules out the vacuous-miter-UNSAT case where
+    // blindly committing would lose X-projections); UNDEF means
+    // undecided.
+    //
+    // This is intentionally weaker than full uniqueness in F': miter
+    // UNSAT + feasibility SAT does NOT prove F-Skolem at every F-sat X,
+    // so committing here can in principle lose an X-projection
+    // (counterexample: F admits y_test=0 only at X1 and y_test=1 only
+    // at X2, H=0 — feasibility SAT via X1, but commit kills X2). The
+    // check IS strong enough to pass on bifunctional benchmarks like
+    // factorization where strict uniqueness can never hold; the
+    // soundness gamble is that CEX-driven refinement keeps H broadly
+    // Skolem-like and the fuzzers will surface any bad commit fast.
+    const Lit h_top_in_f = encode_h_in_f(h);
+    const Lit y_test_in_f = Lit(test, false);
+    f_solver->new_var();
+    const Lit f_act = Lit(f_solver->nVars()-1, false);
+    // Under f_act: y_test_in_f ⇔ h_top_in_f.
+    f_solver->add_clause({~f_act,  y_test_in_f, ~h_top_in_f});
+    f_solver->add_clause({~f_act, ~y_test_in_f,  h_top_in_f});
+    vector<Lit> feas_assumps = {f_act};
+    f_solver->set_max_confl(conf.unate_def_rep_max_confl);
+    const double t_feas_solve_start = cpuTime();
+    rep_stats.feas_solve_calls++;
+    const auto feas_ret = f_solver->solve(&feas_assumps);
+    rep_stats.time_feas_solve += cpuTime() - t_feas_solve_start;
+    f_solver->add_clause({~f_act}); // disable for next iters
+    if (feas_ret != l_True) {
+        // Infeasible (no F'-model has y_test = H) or undecided: don't
+        // commit. Continuing the iter loop refines H further via the
+        // next CEX, which can move H into a feasible region.
+        s->add_clause({~act});
+        rep_stats.skolem_only_skipped++;
+        return false;
+    }
+
+    // y_test = H(...) is a feasible Skolem witness in cumulative F'
+    // (some F'-model has y_test = H_top). This is weaker than
+    // unique-defining; see the feasibility-check comment above for the
+    // soundness gamble.
+
+    // Cheap invariants before commit:
+    //   - h is non-null (we always build at least a const FALSE);
+    //   - target var has no def yet (set_def_skolem will assert, but
+    //     checking here gives a clearer site if it ever fires);
+    //   - H's direct (non-recursive) leaves all live in input ∪ aux
+    //     (this is the structural soundness condition for committing —
+    //     anything else means the conflict-core filter let a non-allowed
+    //     lit through).
+    assert(h != nullptr);
+    assert(!cnf.defined(test_orig.var()));
+    {
+        std::set<uint32_t> h_leaves;
+        AIG::get_dependent_vars(h, h_leaves,
+                                std::numeric_limits<uint32_t>::max());
+        for (uint32_t lf : h_leaves) {
+            assert((input.count(lf)
+                   || (lf < aux_mask.size() && aux_mask[lf] != 0))
+                && "H leaf must be input or aux");
+        }
+    }
+    const aig_ptr h_in_orig = translate_to_orig(h, new_to_orig, test_orig.sign());
+    assert(h_in_orig != nullptr);
+    VERBOSE_DEBUG_DO(std::cout
+        << "c o [unate_def_rep][verbose] commit test NEW=" << test+1
+        << " orig=" << test_orig.var()+1
+        << " sign=" << test_orig.sign()
+        << " H_NEW=" << h
+        << " H_ORIG=" << h_in_orig << std::endl);
+    // set_def_skolem (vs set_def) records the var as Skolem-committed
+    // so get_var_types keeps it in backward_defined even when H_test
+    // happens to be a constant or input-only AIG. Otherwise downstream
+    // (Manthan) would treat the var as an input and drop the
+    // y_test = H_test constraint that a later var's miter UNSAT relied
+    // on. The Skolem flag is semantically appropriate here too: the
+    // feasibility check only confirms H is at least sometimes a Skolem
+    // witness, not that F ⊨ y_test = H, so this is a Skolem-style
+    // commit by definition.
+    cnf.set_def_skolem(test_orig.var(), h_in_orig);
+    assert(cnf.defined(test_orig.var())
+        && "set_def_skolem must populate defs[test]");
+    assert(cnf.is_skolem_defined(test_orig.var())
+        && "set_def_skolem must add test to skolem_defined_vars");
+
+    // New def changed the dep graph; drop cached recursive deps.
+    deps_cache.clear();
+
+    // SLOW_DEBUG: full per-commit verification.
+    //   1. defs_invariant() — defs are well-formed (cycle-free,
+    //      sampling-var deps unique, etc).
+    //   2. check_synth_funs_sat() — F ∧ ¬F[y←y_hat] is UNSAT, i.e. the
+    //      AIGs synthesized so far are jointly correct.
+    // These catch bad defs at the exact iteration that introduced them;
+    // without SLOW_DEBUG the bug would only surface at the
+    // unsat_unate_def_rep AIG checkpoint or in Manthan.
+    SLOW_DEBUG_DO({
+        [[maybe_unused]] auto inv_ok = cnf.defs_invariant();
+        int bad = cnf.check_synth_funs_sat();
+        if (bad >= 0) {
+            std::cout << "c o [unate_def_rep][SLOW_DEBUG] WRONG commit "
+                 << "for orig var " << test_orig.var()+1
+                 << " (test NEW=" << test+1 << ")"
+                 << " H_NEW=" << h
+                 << " H_ORIG=" << h_in_orig << std::endl;
+            release_assert(false &&
+                "unate_def_rep committed a wrong def");
+        }
+    });
+
+    // Tighten miter: y_test ⇔ H on Y side. For input-only H, h_top_lit
+    // (Y'-side encoding) and the Y-side encoding are the same SAT lit
+    // since inputs are shared. For an H with any aux leaves, the two
+    // sides differ when the aux var's pinning indicator is later untied
+    // (e.g. when aux becomes a future `test`), so we must encode H
+    // explicitly on the Y side here.
+    const size_t aux_leaves = h_aux_leaf_count(h);
+    const Lit h_top_lit_for_commit = (aux_leaves == 0)
+        ? h_top_lit
+        : encode_h_in_miter(h, /*is_y_prime=*/false);
+    const Lit y_test = Lit(test, false);
+    s->add_clause({~y_test,  h_top_lit_for_commit});
+    s->add_clause({ y_test, ~h_top_lit_for_commit});
+
+    // Mirror the y_test ⇔ H commit into f_solver so subsequent
+    // feasibility checks for later vars operate against cumulative F'
+    // (= original F ∧ all prior commits). Without this the chain of
+    // Skolem-only commits wouldn't compose: a later var's "feasible in
+    // F" would be checked even when the right question is "feasible in
+    // F + prior committed defs". The new clauses are exactly the
+    // equivalence we just committed on the s side. The Tseitin chain
+    // for H is already in f_solver from the feasibility check above.
+    f_solver->add_clause({~y_test_in_f,  h_top_in_f});
+    f_solver->add_clause({ y_test_in_f, ~h_top_in_f});
+
+    // Defer materializing y_test ⇔ H into cnf clauses until after the
+    // per-test loop. cnf.new_var() allocations during the loop would
+    // shift cnf.nVars(), and that offset is the anchor for the Y'-side
+    // encoding in the miter solver `s` (e.g. Lit(test + cnf.nVars(),
+    // false) at the indicator setup). The materialization is only
+    // needed downstream by find_better_ctx_normal, which runs inside
+    // Manthan after synthesis_unate_def_rep returns — so deferring is
+    // sound and avoids threading a "frozen" cnf var count through every
+    // Y'-offset use site.
+    deferred_materialize.emplace_back(test, h);
+
+    // Lock activation TRUE so the Y'-side equality stays in force for
+    // subsequent tests.
+    s->add_clause({act});
+    new_defs++;
+    const uint32_t hit_iter = iter + 1;
+    rep_stats.hits++;
+    rep_stats.hit_iter_sum += hit_iter;
+    if (hit_iter > rep_stats.hit_iter_max) rep_stats.hit_iter_max = hit_iter;
+    {
+        const size_t nodes = AIG::count_aig_nodes_fast(h);
+        rep_stats.hit_aig_nodes_sum += nodes;
+        if (nodes > rep_stats.hit_aig_nodes_max) rep_stats.hit_aig_nodes_max = nodes;
+    }
+    if (aux_leaves > 0) {
+        rep_stats.hits_using_aux++;
+        rep_stats.aux_leaves_sum += aux_leaves;
+        if (aux_leaves > rep_stats.aux_leaves_max)
+            rep_stats.aux_leaves_max = aux_leaves;
+    }
+    vstats.stop_reason = "found";
+    return true;
+}
+
+// Called when the miter just returned SAT. Runs the F-only CEX call,
+// extracts the input/aux pattern from the conflict, and refines `h`
+// in-place. Returns Break if the iter loop should stop, Continue if
+// the iteration should be skipped (no useful refinement), or Refine on
+// successful refinement.
+UnateDefRep::CexAction UnateDefRep::process_cex(uint32_t test, Lit h_top_lit,
+                                                 Lit act,
+                                                 [[maybe_unused]] uint32_t iter,
+                                                 aig_ptr& h,
+                                                 PerVarStats& vstats) {
+    // CEX. Extract values of test (F-side) and h_top_lit (forced to
+    // H(X*) by `act`).
+    const auto& m = s->get_model();
+    const lbool y_test_val_f = m[test];
+    const lbool h_val        = model_value(m, h_top_lit);
+    if (y_test_val_f == l_Undef || h_val == l_Undef) {
+        // Solver didn't pin one of the literals — bail out cleanly.
+        s->add_clause({~act});
+        vstats.stop_reason = "miter_pin_undef";
+        return CexAction::Break;
+    }
+    // y_test_Y' = h_val (act_curr); indicator_test = FALSE
+    // (base_assumps) forces y_test_Y != y_test_Y'. So
+    // y_test_val_f = ~h_val whenever the miter is SAT.
+    assert(y_test_val_f != h_val
+        && "Miter SAT must have F-side y_test differ from H(X) "
+           "(ensured by indicator_test = FALSE in base_assumps)");
+
+    // F-only call: assume (X*, aux*) values and force y_test = H(...)
+    // (the wrong value in F's view).
+    // sign convention: Lit(v, true)= ¬v, so Lit(test, h_val == l_False)
+    // = (h_val == TRUE ? test : ¬test) — exactly "y_test = H_val".
+    const Lit force_wrong = Lit(test, h_val == l_False);
+    vector<Lit> f_assumps;
+    f_assumps.reserve(input.size() + aux_vars.size() + 1);
+    for (uint32_t x : input) {
+        if (x >= m.size()) continue;
+        const lbool v = m[x];
+        if (v == l_Undef) continue;
+        f_assumps.emplace_back(x, v == l_False);
+    }
+    // Aux assumptions: pin aux vars to their miter-model values. In the
+    // F-solver these vars are otherwise free (the F-solver has no
+    // AIG-copy block / indicator structure), so without this pin a CEX
+    // where bifunctionality lives in an aux var would surface as a
+    // cost-zero alarm.
+    for (uint32_t a : aux_vars) {
+        if (a >= m.size()) continue;
+        const lbool v = m[a];
+        if (v == l_Undef) continue;
+        f_assumps.emplace_back(a, v == l_False);
+    }
+    f_assumps.push_back(force_wrong);
+
+    f_solver->set_max_confl(conf.unate_def_rep_max_confl);
+    const double t_f_start = cpuTime();
+    rep_stats.f_solve_calls++;
+    const auto f_ret = f_solver->solve(&f_assumps);
+    rep_stats.time_f_solve += cpuTime() - t_f_start;
+
+    // Disable this iteration's activation regardless of outcome.
+    s->add_clause({~act});
+
+    if (f_ret == l_True) {
+        // Cost-zero: H(X*) is valid in F (some y_other admits it). The
+        // miter SAT was an artifact of forcing y_other = y_other'. No
+        // safe pattern direction — give up on this var after a few
+        // attempts (a single y_other-tied CEX rarely yields a useful
+        // pointwise pattern, so we don't bother trying the tighter
+        // [X*, y_other*, force_wrong] query: in practice it produces
+        // large mixed conflicts whose input projection is rarely the
+        // right pattern, and burns iteration budget).
+        rep_stats.f_sat++;
+        vstats.f_sat++;
+        vstats.costzero_count++;
+        if (vstats.costzero_count >= conf.unate_def_rep_max_costzero) {
+            verb_print(3, "[unate_def_rep] giving up on test " << test+1
+                << " after " << vstats.costzero_count << " cost-zero CEXes");
+            vstats.stop_reason = "costzero_limit";
+            return CexAction::Break;
+        }
+        return CexAction::Continue;
+    }
+    if (f_ret == l_Undef) {
+        rep_stats.f_undef++;
+        vstats.f_undef++;
+        vstats.stop_reason = "f_undef";
+        return CexAction::Break;
+    }
+    // f_ret == l_False
+    rep_stats.f_unsat++;
+    vstats.f_unsat++;
+
+    // Conflict literals are negations of assumed literals. Filter out
+    // the test-forcing one; everything else is an input or aux lit (we
+    // only assumed input ∪ aux + force_wrong).
+    vector<Lit> conflict = f_solver->get_conflict();
+    vector<Lit> pattern_lits;
+    pattern_lits.reserve(conflict.size());
+    for (const Lit& cl : conflict) {
+        if (cl == ~force_wrong) continue;
+        if (cl.var() == test) continue; // defensive
+        const bool is_input = input.count(cl.var()) > 0;
+        const bool is_aux = cl.var() < aux_mask.size()
+                            && aux_mask[cl.var()] != 0;
+        if (!is_input && !is_aux) continue;
+        pattern_lits.push_back(~cl);    // assumption form: matches X*
+    }
+    vstats.pattern_sum += pattern_lits.size();
+    vstats.pattern_count++;
+    // Cheap invariant: pattern lits live in input ∪ aux (filter above
+    // ensures this). If a non-allowed lit ever leaks through it would
+    // make H reference an out-of-scope leaf and break the structural
+    // soundness check at commit time.
+    for (const Lit& pl : pattern_lits) {
+        assert(pl.var() != test);
+        assert(input.count(pl.var())
+            || (pl.var() < aux_mask.size() && aux_mask[pl.var()] != 0));
+    }
+    if (pattern_lits.size() > conf.unate_def_rep_max_pattern) {
+        rep_stats.skipped_pattern_too_big++;
+        vstats.skipped_big++;
+        // Same accounting as cost-zero: too-large patterns lead to
+        // explosive AIG growth without much generalization.
+        vstats.costzero_count++;
+        if (vstats.costzero_count >= conf.unate_def_rep_max_costzero) {
+            vstats.stop_reason = "costzero_limit";
+            return CexAction::Break;
+        }
+        return CexAction::Continue;
+    }
+
+    aig_ptr pattern;
+    if (pattern_lits.empty()) {
+        // Empty conflict implies F unconditionally forces
+        // y_test ≠ H_val — i.e. y_test is a constant we somehow missed
+        // in the standard unate test. Refine with a constant.
+        pattern = AIG::new_const(true);
+    } else {
+        pattern = AIG::new_lit(pattern_lits[0].var(), pattern_lits[0].sign());
+        for (size_t i = 1; i < pattern_lits.size(); i++) {
+            pattern = AIG::new_and(pattern,
+                AIG::new_lit(pattern_lits[i].var(), pattern_lits[i].sign()));
+        }
+    }
+    VERBOSE_DEBUG_DO({
+        std::cout << "c o [unate_def_rep][verbose]   iter=" << iter
+             << " y_test_val_f=" << y_test_val_f
+             << " pattern={ ";
+        for (const auto& pl : pattern_lits) std::cout << pl << " ";
+        std::cout << "} pattern_AIG=" << pattern << std::endl;
+    });
+
+    // Cover X*: when P(X) holds, set H = y_test_val_f there.
+    if (y_test_val_f == l_True)  h = AIG::new_or(h, pattern);
+    else                         h = AIG::new_and(h, AIG::new_not(pattern));
+    VERBOSE_DEBUG_DO(std::cout << "c o [unate_def_rep][verbose]   H_NEW after refine="
+        << h << std::endl);
+    return CexAction::Refine;
+}
+
+void UnateDefRep::log_per_var_summary(uint32_t test, const aig_ptr& h,
+                                       const PerVarStats& vstats) {
+    const size_t v_aux_leaves = h_aux_leaf_count(h);
+    verb_print(1, "[unate_def_rep] v " << setw(5) << test+1
+        << " iters="     << setw(5) << vstats.iters
+        << " miter[U="   << setw(3) << vstats.miter_unsat
+        << " S="         << setw(3) << vstats.miter_sat
+        << " T="         << setw(3) << vstats.miter_undef << "]"
+        << " f[U="       << setw(3) << vstats.f_unsat
+        << " S="         << setw(3) << vstats.f_sat
+        << " T="         << setw(3) << vstats.f_undef << "]"
+        << " skip_big="  << setw(3) << vstats.skipped_big
+        << " costzero="  << setw(3) << vstats.costzero_count
+        << " avg_pat="   << setw(5) << setprecision(1) << fixed
+                         << safe_div(vstats.pattern_sum, vstats.pattern_count)
+        << " aux["       << setw(4) << aux_vars.size()
+        << "/used="      << setw(3) << v_aux_leaves << "]"
+        << " AIG_nodes=" << setw(5) << AIG::count_aig_nodes_fast(h)
+        << " " << COLCYN << std::left << setw(15) << vstats.stop_reason << std::right << COLDEF
+        << " T: " << fixed << setprecision(2) << (cpuTime()-t0));
 }
 
 void UnateDefRep::materialize_deferred() {
