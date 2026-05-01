@@ -340,8 +340,7 @@ Lit UnateDefRep::encode_h_in_f(const aig_ptr& h) {
     return AIG::transform<Lit>(h, visit, cache);
 }
 
-// Count distinct non-input leaves of `h`. Used both as a "do we need
-// a Y-side encoding on commit?" check and for telemetry.
+// Count distinct non-input leaves of `h`
 size_t UnateDefRep::h_aux_leaf_count(const aig_ptr& h) const {
     std::set<uint32_t> deps;
     AIG::get_dependent_vars(h, deps,
