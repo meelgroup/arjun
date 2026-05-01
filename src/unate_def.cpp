@@ -32,6 +32,7 @@
 #include <limits>
 
 using namespace ArjunNS;
+using namespace ArjunInt;
 using namespace CMSat;
 using std::setprecision;
 using std::fixed;

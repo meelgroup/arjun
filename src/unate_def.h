@@ -33,6 +33,8 @@
 #include "config.h"
 #include "metasolver.h"
 
+namespace ArjunInt {
+
 // Telemetry for the conditional-unate-def probe. Reset at the start of
 // each `synthesis_unate_def` call. All counts are over the inner
 // (per-test) loop so we can spot expensive vs. productive patterns.
@@ -80,14 +82,14 @@ struct UnateDefCondStats {
 
 class Unate {
     public:
-        Unate(const ArjunInt::Config& _conf) : conf(_conf) {}
+        Unate(const Config& _conf) : conf(_conf) {}
         ~Unate() = default;
 
         void synthesis_unate_def(ArjunNS::SimplifiedCNF& cnf);
         void synthesis_unate_def_rep(ArjunNS::SimplifiedCNF& cnf);
     private:
 
-        ArjunInt::Config conf;
+        Config conf;
         std::set<uint32_t> input;
         std::set<uint32_t> to_define;
         std::set<uint32_t> backward_defined;
@@ -115,7 +117,7 @@ class Unate {
         // definition was found and committed to `cnf`.
         bool try_cond_unate_def(
             ArjunNS::SimplifiedCNF& cnf,
-            ArjunInt::MetaSolver& s,
+            MetaSolver& s,
             uint32_t test,
             const std::vector<CMSat::lbool> (&input_vals)[2],
             std::vector<CMSat::Lit>& assumps,
@@ -123,3 +125,5 @@ class Unate {
 
         UnateDefCondStats cond_stats;
 };
+
+} // namespace ArjunInt

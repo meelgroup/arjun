@@ -1020,9 +1020,9 @@ void UnateDefRep::run() {
     log_pass_summary();
 }
 
+void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
+    UnateDefRep r(conf, cnf);
+    r.run();
 }
 
-void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
-    ArjunInt::UnateDefRep r(conf, cnf);
-    r.run();
 }
