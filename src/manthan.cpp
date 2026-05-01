@@ -323,20 +323,12 @@ void Manthan::fill_var_to_formula_with(set<uint32_t>& vars) {
         // Remap the AIG from original var space into y_hat space and bake in
         // orig.sign(). AIGToCNF consumes raw AIG lit vars, so the y_hat remap
         // must live in the AIG rather than a visit-time hook.
-        map<aig_ptr, aig_ptr> aig_remap_cache;
-        f.aig = AIG::transform<aig_ptr>(aig,
-          [&](AIGT type, const uint32_t var_orig2,
-              const aig_ptr* left2, const aig_ptr* right2) -> aig_ptr {
-            if (type == AIGT::t_const) return aig_mng.new_const(true);
-            if (type == AIGT::t_lit) {
-                const Lit lit_new = cnf.orig_to_new_lit(Lit(var_orig2, false));
-                const Lit result_lit = map_y_to_y_hat(lit_new);
-                return AIG::new_lit(result_lit);
-            }
-            if (type == AIGT::t_and) return AIG::new_and(*left2, *right2);
-            release_assert(false && "Unhandled AIG type");
-          }, aig_remap_cache);
-        if (orig.sign()) f.aig = AIG::new_not(f.aig);
+        f.aig = AIG::translate_leaves(
+            aig,
+            [&](uint32_t var_orig2) {
+                return map_y_to_y_hat(cnf.orig_to_new_lit(Lit(var_orig2, false)));
+            },
+            orig.sign());
 
         // Encode via the optimized AIGToCNF encoder (k-ary AND/OR fusion, ITE
         // pattern detection, De Morgan flattening, dedup/constant folding)
@@ -1049,15 +1041,9 @@ void Manthan::bve_and_substitute() {
         // Encode via AIGToCNF on a y_hat-space clone of f.aig: k-ary AND/OR
         // fusion, De Morgan flattening, ITE detection and dedup give a much
         // smaller CNF than the per-branch multi-input Tseitin we used before.
-        map<aig_ptr, aig_ptr> aig_remap_cache;
-        aig_ptr aig_yhat = AIG::transform<aig_ptr>(f.aig,
-            [&](AIGT type, const uint32_t var2,
-                const aig_ptr* left2, const aig_ptr* right2) -> aig_ptr {
-                if (type == AIGT::t_const) return aig_mng.new_const(true);
-                if (type == AIGT::t_lit) return AIG::new_lit(map_y_to_y_hat(Lit(var2, false)));
-                if (type == AIGT::t_and) return AIG::new_and(*left2, *right2);
-                release_assert(false && "Unhandled AIG type");
-            }, aig_remap_cache);
+        aig_ptr aig_yhat = AIG::translate_leaves(
+            f.aig,
+            [&](uint32_t var2) { return map_y_to_y_hat(Lit(var2, false)); });
 
         sink.clauses = &f.clauses;
         uint32_t nv_before = cex_solver.nVars();

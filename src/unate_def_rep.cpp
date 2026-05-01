@@ -137,32 +137,6 @@ using std::map;
 
 namespace {
 
-// Translate H from NEW-var-space to ORIG-var-space. Leaf sign flips combine
-// the leaf var's own NEW→ORIG sign offset and the output sign offset of the
-// def's var (`test_orig.sign()`) applied at the end.
-aig_ptr translate_to_orig(const aig_ptr& aig,
-                          const map<uint32_t, Lit>& new_to_orig,
-                          bool out_sign_xor) {
-    auto visit = [&](AIGT type, uint32_t var,
-                     const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
-        if (type == AIGT::t_const) return AIG::new_const(true);
-        if (type == AIGT::t_lit) {
-            auto it = new_to_orig.find(var);
-            assert(it != new_to_orig.end());
-            const Lit l = it->second;
-            return AIG::new_lit(l.var(), l.sign());
-        }
-        if (type == AIGT::t_and) {
-            return AIG::new_and(*left, *right);
-        }
-        release_assert(false && "Unhandled AIG type in translate_to_orig");
-    };
-    map<aig_ptr, aig_ptr> cache;
-    aig_ptr ret = AIG::transform<aig_ptr>(aig, visit, cache);
-    if (out_sign_xor) ret = ~ret;
-    return ret;
-}
-
 // Resolve the lbool value of a Lit against a SAT model.
 inline lbool model_value(const vector<lbool>& m, const Lit l) {
     if (l.var() >= m.size()) return l_Undef;
@@ -650,7 +624,10 @@ bool UnateDefRep::try_commit_h(const uint32_t test, const Lit test_orig,
               && "H leaf must be input or aux");
       }
     );
-    const aig_ptr h_in_orig = translate_to_orig(h, new_to_orig, test_orig.sign());
+    const aig_ptr h_in_orig = AIG::translate_leaves(
+        h,
+        [&](uint32_t v) { return new_to_orig.at(v); },
+        test_orig.sign());
     VERBOSE_DEBUG_DO(cout
         << "c o [unate_def_rep][verbose] commit test NEW=" << test+1
         << " orig=" << test_orig.var()+1

@@ -462,6 +462,29 @@ public:
         cache[pos_key] = result;
         return aig.neg ? ~result : result;
     }
+
+    // Rebuild `aig` with each leaf var `v` replaced by `new_lit(lit_of_var(v))`,
+    // preserving structure. `out_negate` flips the top edge. Used to remap
+    // AIGs across var spaces (NEW↔ORIG, y→y_hat, etc.).
+    template<typename LitFn>
+    static aig_ptr translate_leaves(
+        const aig_ptr& aig,
+        LitFn&& lit_of_var,
+        bool out_negate = false
+    ) {
+        auto visit = [&](AIGT type, uint32_t var,
+                         const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
+            if (type == AIGT::t_const) return new_const(true);
+            if (type == AIGT::t_lit)   return new_lit(lit_of_var(var));
+            if (type == AIGT::t_and)   return new_and(*left, *right);
+            assert(false && "Unhandled AIG type in translate_leaves");
+            std::abort();
+        };
+        std::map<aig_ptr, aig_ptr> cache;
+        aig_ptr ret = transform<aig_ptr>(aig, visit, cache);
+        return out_negate ? ~ret : ret;
+    }
+
     // Fast variant: iterative DFS using AIG::visit_epoch marking. Shared
     // structure across the input vector is counted only once. Used by the
     // rewriter's hot paths where the std::set<aig_ptr> version was the
