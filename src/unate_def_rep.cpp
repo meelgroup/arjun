@@ -402,8 +402,8 @@ Lit UnateDefRep::materialize_h_in_cnf(const aig_ptr& h_root) {
                 aig_ptr left_aig  = AIG::new_lit(l.second.var(), l.second.sign());
                 aig_ptr right_aig = AIG::new_lit(r.second.var(), r.second.sign());
                 // Use set_def_skolem (vs set_def) so:
-                //  (a) get_var_types keeps helpers in backward_synth_
-                //      defined even when their dep-chain is all input
+                //  (a) get_var_types keeps helpers in backward_synth_defined
+                //      even when their dep-chain is all input
                 //      (a pure-input H produces such helpers); without
                 //      this they'd land in extend_defined and Manthan
                 //      would treat them as inputs, dropping the
