@@ -179,9 +179,9 @@ void Unate::build_cond_state() {
     cond_related_inputs.assign(cnf.nVars(), {});
     vector<uint8_t> in_cl(cnf.nVars(), 0); // scratch, cleared per clause
     vector<uint32_t> ins_in_cl;
-    for (const auto& cl_ : cnf.get_clauses()) {
+    for (const auto& cl : cnf.get_clauses()) {
         ins_in_cl.clear();
-        for (const auto& l : cl_) {
+        for (const auto& l : cl) {
             const uint32_t v = l.var();
             if (input.count(v) && !in_cl[v]) {
                 in_cl[v] = 1;
@@ -189,7 +189,7 @@ void Unate::build_cond_state() {
             }
         }
         if (!ins_in_cl.empty()) {
-            for (const auto& l : cl_) {
+            for (const auto& l : cl) {
                 const uint32_t v = l.var();
                 if (input.count(v)) continue;
                 if (backward_defined.count(v)) continue;
