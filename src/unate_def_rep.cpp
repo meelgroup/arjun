@@ -385,7 +385,7 @@ vector<Lit> UnateDefRep::build_base_assumps(const uint32_t test) {
 // recursive-deps cache; for currently-undefined to-define `v` there
 // is no current cycle (Manthan's set_depends_on tracks the new edge
 // and avoids closing it later).
-void UnateDefRep::build_aux_set(const uint32_t test, const Lit test_orig) {
+void UnateDefRep::build_allowed_aux_set(const uint32_t test, const Lit test_orig) {
     aux_vars.clear();
     std::fill(aux_mask.begin(), aux_mask.end(), 0);
     if (conf.unate_def_rep_aux > 0) {
@@ -409,9 +409,7 @@ void UnateDefRep::build_aux_set(const uint32_t test, const Lit test_orig) {
             aux_mask[v_new] = 1;
         }
     }
-    // Cheap aux invariants: aux candidates are always non-input,
-    // non-self, distinct (we only pushed once per v_new in the
-    // single-pass loop above), and aux_mask agrees with aux_vars.
+
     assert(aux_vars.size() <= cnf.nVars());
     for (uint32_t a : aux_vars) {
         assert(a != test);
@@ -440,7 +438,7 @@ void UnateDefRep::process_test_var(const uint32_t test) {
     VERBOSE_DEBUG_DO(cout << "c o [unate_def_rep][verbose] === test NEW="
         << test+1 << " orig=" << test_orig.var()+1
         << " (sign=" << test_orig.sign() << ") ===" << endl);
-    build_aux_set(test, test_orig);
+    build_allowed_aux_set(test, test_orig);
     VERBOSE_DEBUG_DO({
         cout << "c o [unate_def_rep][verbose]   aux_vars (NEW): {";
         for (uint32_t a : aux_vars) cout << " " << a+1;
