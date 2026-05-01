@@ -640,26 +640,18 @@ bool UnateDefRep::try_commit_h(const uint32_t test, const Lit test_orig,
     // unique-defining; see the feasibility-check comment above for the
     // soundness gamble.
 
-    // Cheap invariants before commit:
-    //   - h is non-null (we always build at least a const FALSE);
-    //   - target var has no def yet (set_def_skolem will assert, but
-    //     checking here gives a clearer site if it ever fires);
-    //   - H's direct (non-recursive) leaves all live in input ∪ aux
-    //     (this is the structural soundness condition for committing —
-    //     anything else means the conflict-core filter let a non-allowed
-    //     lit through).
     assert(h != nullptr);
     assert(!cnf.defined(test_orig.var()));
-    {
-        std::set<uint32_t> h_leaves;
-        AIG::get_dependent_vars(h, h_leaves,
-                                std::numeric_limits<uint32_t>::max());
-        for (uint32_t lf : h_leaves) {
-            assert((input.count(lf)
-                   || (lf < aux_mask.size() && aux_mask[lf] != 0))
-                && "H leaf must be input or aux");
-        }
-    }
+    SLOW_DEBUG_DO(
+      std::set<uint32_t> h_leaves;
+      AIG::get_dependent_vars(h, h_leaves,
+                              std::numeric_limits<uint32_t>::max());
+      for (uint32_t lf : h_leaves) {
+          assert((input.count(lf)
+                 || (lf < aux_mask.size() && aux_mask[lf] != 0))
+              && "H leaf must be input or aux");
+      }
+    );
     const aig_ptr h_in_orig = translate_to_orig(h, new_to_orig, test_orig.sign());
     assert(h_in_orig != nullptr);
     VERBOSE_DEBUG_DO(cout
