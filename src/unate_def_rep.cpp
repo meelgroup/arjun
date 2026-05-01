@@ -589,9 +589,10 @@ void UnateDefRep::log_progress_periodic() {
 // and, on success, commits y_test ⇔ H. Returns true iff we committed and
 // the iter loop should break; false means infeasible/undecided and the
 // caller should `continue`.
-bool UnateDefRep::try_commit_h(uint32_t test, Lit test_orig,
-                                const aig_ptr& h, Lit h_enc_lit, Lit act,
-                                uint32_t iter, PerVarStats& vstats) {
+bool UnateDefRep::try_commit_h(const uint32_t test, const Lit test_orig,
+                                const aig_ptr& h, const Lit h_enc_lit,
+                                const Lit act, const uint32_t iter,
+                                PerVarStats& vstats) {
     // Feasibility check: ask f_solver whether F' has any model with
     // y_test = h_enc. f_solver carries original F plus every prior
     // commit's y_v ⇔ H_v (mirrored on commit — see the

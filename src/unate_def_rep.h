@@ -167,9 +167,10 @@ private:
     void build_aux_set(const uint32_t test, const CMSat::Lit test_orig);
     void process_test_var(const uint32_t test);
     void log_progress_periodic();
-    bool try_commit_h(uint32_t test, CMSat::Lit test_orig,
-                       const ArjunNS::aig_ptr& h, CMSat::Lit h_top_lit,
-                       CMSat::Lit act, uint32_t iter, PerVarStats& vstats);
+    bool try_commit_h(const uint32_t test, const CMSat::Lit test_orig,
+                       const ArjunNS::aig_ptr& h, const CMSat::Lit h_top_lit,
+                       const CMSat::Lit act, const uint32_t iter,
+                       PerVarStats& vstats);
     CexAction process_cex(uint32_t test, CMSat::Lit h_top_lit, CMSat::Lit act,
                            uint32_t iter, ArjunNS::aig_ptr& h,
                            PerVarStats& vstats);
