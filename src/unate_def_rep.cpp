@@ -433,7 +433,7 @@ void UnateDefRep::process_test_var(const uint32_t test) {
     tested_num++;
     rep_stats.tests_run++;
     log_progress_periodic();
-    auto base_assumps = build_base_assumps(test);
+    const auto base_assumps = build_base_assumps(test);
 
     VERBOSE_DEBUG_DO(cout << "c o [unate_def_rep][verbose] === test NEW="
         << test+1 << " orig=" << test_orig.var()+1
