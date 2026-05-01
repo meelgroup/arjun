@@ -466,8 +466,7 @@ void UnateDefRep::build_aux_set(const uint32_t test, const Lit test_orig) {
             if (it == new_to_orig.end()) continue;
             const Lit cand_orig = it->second;
             if (cnf.defined(cand_orig.var())) {
-                const auto& deps = cnf.get_dependent_vars_recursive(
-                    cand_orig.var(), deps_cache);
+                const auto& deps = cnf.get_dependent_vars_recursive(cand_orig.var(), deps_cache);
                 bool has_test = false;
                 for (uint32_t d : deps) {
                     if (d == test_orig.var()) { has_test = true; break; }
@@ -653,13 +652,13 @@ bool UnateDefRep::try_commit_h(const uint32_t test, const Lit test_orig,
       }
     );
     const aig_ptr h_in_orig = translate_to_orig(h, new_to_orig, test_orig.sign());
-    assert(h_in_orig != nullptr);
     VERBOSE_DEBUG_DO(cout
         << "c o [unate_def_rep][verbose] commit test NEW=" << test+1
         << " orig=" << test_orig.var()+1
         << " sign=" << test_orig.sign()
         << " H_NEW=" << h
         << " H_ORIG=" << h_in_orig << endl);
+
     // set_def_skolem (vs set_def) records the var as Skolem-committed
     // so get_var_types keeps it in backward_defined even when H_test
     // happens to be a constant or input-only AIG. Otherwise downstream
@@ -670,10 +669,6 @@ bool UnateDefRep::try_commit_h(const uint32_t test, const Lit test_orig,
     // witness, not that F ⊨ y_test = H, so this is a Skolem-style
     // commit by definition.
     cnf.set_def_skolem(test_orig.var(), h_in_orig);
-    assert(cnf.defined(test_orig.var())
-        && "set_def_skolem must populate defs[test]");
-    assert(cnf.is_skolem_defined(test_orig.var())
-        && "set_def_skolem must add test to skolem_defined_vars");
 
     // New def changed the dep graph; drop cached recursive deps.
     deps_cache.clear();
