@@ -463,6 +463,47 @@ public:
         return aig.neg ? ~result : result;
     }
 
+    // Tseitin-encode `aig` into `solver`. Walks once (shared subgraphs are
+    // encoded once via the cache), allocating one fresh helper var per AND
+    // node and emitting the standard Tseitin clauses
+    //     (~h ∨ l), (~h ∨ r), (h ∨ ~l ∨ ~r).
+    // Leaf vars go through `leaf_to_lit`. The const-TRUE literal is supplied
+    // lazily via `true_lit_fn` (called only if the AIG references a const),
+    // so callers can defer allocating their TRUE helper. `Solver` must expose
+    // `new_var()`, `nVars()`, and `add_clause(const std::vector<CMSat::Lit>&)`.
+    // `visit_count` and `and_emit_count`, when non-null, are incremented per
+    // visited node and per emitted helper respectively.
+    template<typename Solver, typename TrueFn, typename LeafFn>
+    static CMSat::Lit tseitin_encode(
+        const aig_ptr& aig,
+        Solver& solver,
+        TrueFn&& true_lit_fn,
+        LeafFn&& leaf_to_lit,
+        uint64_t* visit_count = nullptr,
+        uint64_t* and_emit_count = nullptr
+    ) {
+        std::vector<CMSat::Lit> tmp;
+        auto visit = [&](AIGT type, uint32_t var,
+                         const CMSat::Lit* left, const CMSat::Lit* right) -> CMSat::Lit {
+            if (visit_count) ++*visit_count;
+            if (type == AIGT::t_const) return true_lit_fn();
+            if (type == AIGT::t_lit)   return leaf_to_lit(var);
+            if (type == AIGT::t_and) {
+                if (and_emit_count) ++*and_emit_count;
+                solver.new_var();
+                const CMSat::Lit out(solver.nVars() - 1, false);
+                tmp = {~out, *left};          solver.add_clause(tmp);
+                tmp = {~out, *right};         solver.add_clause(tmp);
+                tmp = {~*left, ~*right, out}; solver.add_clause(tmp);
+                return out;
+            }
+            assert(false && "Unhandled AIG type in tseitin_encode");
+            std::abort();
+        };
+        std::map<aig_ptr, CMSat::Lit> cache;
+        return transform<CMSat::Lit>(aig, visit, cache);
+    }
+
     // Rebuild `aig` with each leaf var `v` replaced by `new_lit(lit_of_var(v))`,
     // preserving structure. `out_negate` flips the top edge. Used to remap
     // AIGs across var spaces (NEW↔ORIG, y→y_hat, etc.).

@@ -191,31 +191,15 @@ void UnateDefRep::setup_yprime_backward_defs() {
         const auto& aig = cnf.get_def(orig.var());
         assert(aig != nullptr && "Already-defined var must have an AIG definition");
 
-        vector<Lit> tmp;
-        std::function<Lit(AIGT, uint32_t, const Lit*, const Lit*)> aig_to_copy_visitor =
-          [&](AIGT type, const uint32_t var_orig,
-              const Lit* left, const Lit* right) -> Lit {
-            if (type == AIGT::t_const) return get_s_true();
-            if (type == AIGT::t_lit) {
+        const Lit out_lit = AIG::tseitin_encode(
+            aig, *s,
+            [&] { return get_s_true(); },
+            [&](uint32_t var_orig) -> Lit {
                 const Lit lit_new = cnf.orig_to_new_lit(Lit(var_orig, false));
                 if (input.count(lit_new.var())) return lit_new;
                 assert(lit_new.var() < cnf.nVars());
                 return Lit(lit_new.var() + cnf.nVars(), lit_new.sign());
-            }
-            if (type == AIGT::t_and) {
-                const Lit l_lit = *left;
-                const Lit r_lit = *right;
-                s->new_var();
-                const Lit and_out = Lit(s->nVars() - 1, false);
-                tmp = {~and_out, l_lit};         s->add_clause(tmp);
-                tmp = {~and_out, r_lit};         s->add_clause(tmp);
-                tmp = {~l_lit, ~r_lit, and_out}; s->add_clause(tmp);
-                return and_out;
-            }
-            release_assert(false && "Unhandled AIG type in synthesis_unate_def_rep");
-          };
-        map<aig_ptr, Lit> cache;
-        const Lit out_lit = AIG::transform<Lit>(aig, aig_to_copy_visitor, cache);
+            });
         const Lit out_in_new_space = out_lit ^ orig.sign();
         const Lit i_copy = Lit(i_new + cnf.nVars(), false);
         s->add_clause({~i_copy, out_in_new_space});
@@ -261,57 +245,30 @@ void UnateDefRep::build_f_solver() {
 // encodings agree on leaf values. AND helpers are freshly allocated per
 // call.
 Lit UnateDefRep::encode_h_in_miter(const aig_ptr& h, bool is_y_prime) {
-    vector<Lit> tmp;
-    auto visit = [&](AIGT type, uint32_t var,
-                     const Lit* left, const Lit* right) -> Lit {
-        rep_stats.encode_h_nodes_visited++;
-        if (type == AIGT::t_const) return get_s_true();
-        if (type == AIGT::t_lit) {
+    return AIG::tseitin_encode(
+        h, *s,
+        [&] { return get_s_true(); },
+        [&](uint32_t var) -> Lit {
             // var is in NEW-var space.
             if (input.count(var)) return Lit(var, false);
             return Lit(is_y_prime ? var + cnf.nVars() : var, false);
-        }
-        if (type == AIGT::t_and) {
-            rep_stats.encode_h_nodes_emitted++;
-            s->new_var();
-            const Lit out = Lit(s->nVars()-1, false);
-            tmp = {~out, *left};        s->add_clause(tmp);
-            tmp = {~out, *right};       s->add_clause(tmp);
-            tmp = {~*left, ~*right, out}; s->add_clause(tmp);
-            return out;
-        }
-        release_assert(false && "Unhandled AIG type in encode_h");
-    };
-    map<aig_ptr, Lit> cache;
-    return AIG::transform<Lit>(h, visit, cache);
+        },
+        &rep_stats.encode_h_nodes_visited,
+        &rep_stats.encode_h_nodes_emitted);
 }
 
 // Tseitin-encode H into f_solver. Leaves are direct F-vars (inputs and
 // aux). AND helpers are fresh vars in f_solver. Returns the top lit.
 // Used by the per-iter feasibility check before committing.
 Lit UnateDefRep::encode_h_in_f(const aig_ptr& h) {
-    vector<Lit> tmp;
-    auto visit = [&](AIGT type, uint32_t var,
-                     const Lit* left, const Lit* right) -> Lit {
-        if (type == AIGT::t_const) return get_f_true();
-        if (type == AIGT::t_lit) {
-            // var is in NEW-var space and is also an F-var (inputs and
-            // backward-defined aux are both F-vars in f_solver).
-            return Lit(var, false);
-        }
-        if (type == AIGT::t_and) {
-            rep_stats.encode_h_in_f_emitted++;
-            f_solver->new_var();
-            const Lit out = Lit(f_solver->nVars()-1, false);
-            tmp = {~out, *left};        f_solver->add_clause(tmp);
-            tmp = {~out, *right};       f_solver->add_clause(tmp);
-            tmp = {~*left, ~*right, out}; f_solver->add_clause(tmp);
-            return out;
-        }
-        release_assert(false && "Unhandled AIG type in encode_h_in_f");
-    };
-    map<aig_ptr, Lit> cache;
-    return AIG::transform<Lit>(h, visit, cache);
+    // Leaves are direct F-vars (inputs and backward-defined aux are both F-vars
+    // in f_solver), so the leaf map is the identity in NEW-var space.
+    return AIG::tseitin_encode(
+        h, *f_solver,
+        [&] { return get_f_true(); },
+        [](uint32_t var) { return Lit(var, false); },
+        nullptr,
+        &rep_stats.encode_h_in_f_emitted);
 }
 
 // Count distinct non-input leaves of `h`

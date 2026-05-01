@@ -77,37 +77,15 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         const auto& aig = cnf.get_def(orig.var());
         assert(aig != nullptr && "Already-defined var must have an AIG definition");
 
-        std::vector<Lit> tmp;
-        std::function<Lit(AIGT, uint32_t, const Lit*, const Lit*)> aig_to_copy_visitor =
-          [&](AIGT type, const uint32_t var_orig, const Lit* left, const Lit* right) -> Lit {
-            if (type == AIGT::t_const) {
-                return get_true_lit();
-            }
-            if (type == AIGT::t_lit) {
+        const Lit out_lit = AIG::tseitin_encode(
+            aig, *s,
+            [&] { return get_true_lit(); },
+            [&](uint32_t var_orig) -> Lit {
                 const Lit lit_new = cnf.orig_to_new_lit(Lit(var_orig, false));
                 if (input.count(lit_new.var())) return lit_new;
                 assert(lit_new.var() < cnf.nVars());
                 return Lit(lit_new.var() + cnf.nVars(), lit_new.sign());
-            }
-            if (type == AIGT::t_and) {
-                const Lit l_lit = *left;
-                const Lit r_lit = *right;
-                s->new_var();
-                const Lit and_out = Lit(s->nVars() - 1, false);
-                tmp.clear();
-                tmp = {~and_out, l_lit};
-                s->add_clause(tmp);
-                tmp = {~and_out, r_lit};
-                s->add_clause(tmp);
-                tmp = {~l_lit, ~r_lit, and_out};
-                s->add_clause(tmp);
-                return and_out;
-            }
-            release_assert(false && "Unhandled AIG type in synthesis_unate_def");
-          };
-
-        std::map<aig_ptr, Lit> cache;
-        const Lit out_lit = AIG::transform<Lit>(aig, aig_to_copy_visitor, cache);
+            });
 
         // new_to_orig stores whether CNF var is sign-flipped wrt orig var.
         const Lit out_in_new_space = out_lit ^ orig.sign();
