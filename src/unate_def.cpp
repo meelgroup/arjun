@@ -361,12 +361,10 @@ bool Unate::try_cond_unate_def(const uint32_t test) {
     // size of the related-inputs prefix so we can attribute hits to it.
     cond_cand_gen++;
     cond_cur_cands.clear();
-    if (conf.unate_def_cond_relfirst) {
-        for (uint32_t iv : cond_related_inputs[test]) {
-            if (cond_cand_seen_gen[iv] != cond_cand_gen) {
-                cond_cand_seen_gen[iv] = cond_cand_gen;
-                cond_cur_cands.push_back(iv);
-            }
+    for (uint32_t iv : cond_related_inputs[test]) {
+        if (cond_cand_seen_gen[iv] != cond_cand_gen) {
+            cond_cand_seen_gen[iv] = cond_cand_gen;
+            cond_cur_cands.push_back(iv);
         }
     }
     const uint32_t related_count = cond_cur_cands.size();
@@ -445,10 +443,8 @@ bool Unate::try_cond_unate_def(const uint32_t test) {
         assert(new_to_orig.count(l_var) > 0);
         const Lit test_orig = new_to_orig.at(test);
         const Lit l_orig    = new_to_orig.at(l_var);
-        // Defensive: never produce a self-referential def. Distinct NEW
-        // vars should map to distinct ORIG vars after the usual
-        // simplification passes, but skip just in case.
-        if (test_orig.var() == l_orig.var()) continue;
+        assert(test_orig.var() != l_orig.var());
+
         // NEW positive `test` corresponds to ORIG lit
         //   Lit(test_orig.var(), test_orig.sign()).
         // We've established NEW test == NEW l_var XOR (!test_equals_l).

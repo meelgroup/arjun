@@ -459,7 +459,6 @@ if __name__ == "__main__":
             , " --repairsolver"
             , " --unatedef"
             , " --unatedefcond"
-            , " --unatedefcondrel"
             , " --unatedefrep"
             , " --bwequal"
             , " --bvaxor"
