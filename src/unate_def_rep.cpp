@@ -134,11 +134,6 @@ using std::set;
 using std::make_unique;
 using std::map;
 
-namespace {
-
-
-}
-
 namespace ArjunInt {
 
 Lit UnateDefRep::get_s_true() {
