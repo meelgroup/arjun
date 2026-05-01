@@ -63,11 +63,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     new_to_orig = cnf.get_new_to_orig_var();
 
     setup_y_prime_backward_defs();
-    verb_print(2, "[unate_def] already-defined vars in CNF: " << backward_defined.size());
-
     build_indicators();
-    /* if (conf.verb >= 3) dump_cnf<Lit>(*s, "unate_def-start.cnf", input); */
-
     build_cond_state();
 
     // Adaptive disable: if conditional probing finds nothing for long,
