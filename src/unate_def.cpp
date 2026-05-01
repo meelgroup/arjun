@@ -172,10 +172,10 @@ void Unate::build_cond_state() {
     for (uint32_t i = 0; i < cond_input_vars_list.size(); i++)
         cond_input_pos[cond_input_vars_list[i]] = i;
 
-    // Per to-define var, the inputs that share at least one CNF clause
-    // with it, in first-encountered order. These are the most likely
-    // single-literal definers, so we examine them before the rest of
-    // the input list.
+    // Per to-define var, the inputs that share CNF clauses with it,
+    // ordered by number of shared clauses (descending). Inputs that
+    // co-occur more often are more likely single-literal definers, so
+    // we examine them before the rest of the input list.
     cond_related_inputs.assign(cnf.nVars(), {});
     vector<uint8_t> in_cl(cnf.nVars(), 0); // scratch, cleared per clause
     vector<uint32_t> ins_in_cl;
@@ -199,17 +199,29 @@ void Unate::build_cond_state() {
         }
         for (uint32_t iv : ins_in_cl) in_cl[iv] = 0;
     }
-    // Dedup each per-var list, preserving first-seen order.
-    vector<uint8_t> seen(cnf.nVars(), 0);
+
+    // Reorder each per-var list by co-occurrence count (descending),
+    // ties broken by lower input var id for determinism.
+    vector<std::pair<uint32_t, uint32_t>> counts; // (count, var)
     for (uint32_t v = 0; v < cnf.nVars(); v++) {
         auto& lst = cond_related_inputs[v];
         if (lst.empty()) continue;
-        vector<uint32_t> ded; ded.reserve(lst.size());
-        for (uint32_t iv : lst) {
-            if (!seen[iv]) { seen[iv] = 1; ded.push_back(iv); }
+        std::sort(lst.begin(), lst.end());
+        counts.clear();
+        for (size_t i = 0; i < lst.size(); ) {
+            size_t j = i;
+            while (j < lst.size() && lst[j] == lst[i]) j++;
+            counts.emplace_back((uint32_t)(j - i), lst[i]);
+            i = j;
         }
-        for (uint32_t iv : ded) seen[iv] = 0;
-        lst = std::move(ded);
+        std::sort(counts.begin(), counts.end(),
+            [](const auto& a, const auto& b) {
+                if (a.first != b.first) return a.first > b.first;
+                return a.second < b.second;
+            });
+        lst.clear();
+        lst.reserve(counts.size());
+        for (const auto& p : counts) lst.push_back(p.second);
     }
 
     // Generation-counter dedup for the per-test candidate list.
