@@ -1227,7 +1227,7 @@ public:
 
     // Returns NEW vars, i.e. < nVars()
     // It is checked that it is correct and total
-    [[nodiscard]] VarTypes get_var_types([[maybe_unused]] uint32_t verb, const std::string& str = "") const;
+    VarTypes get_var_types([[maybe_unused]] uint32_t verb, const std::string& str = "") const;
 
     [[nodiscard]] bool check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars() const;
     [[nodiscard]] bool check_orig_sampl_vars_undefined() const;
