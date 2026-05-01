@@ -446,13 +446,13 @@ void do_synthesis() {
     }
     if (do_unate_def && !cnf.synth_done()) {
         arjun->standalone_unate_def(cnf);
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate_def.aig");
-        SLOW_DEBUG_DO(check_stage("unsat_unate_def"));
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unate_def.aig");
+        SLOW_DEBUG_DO(check_stage("unate_def"));
     }
     if (do_unate_def && do_unate_def_rep && !cnf.synth_done()) {
         arjun->standalone_unate_def_rep(cnf);
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate_def_rep.aig");
-        SLOW_DEBUG_DO(check_stage("unsat_unate_def_rep"));
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unate_def_rep.aig");
+        SLOW_DEBUG_DO(check_stage("unate_def_rep"));
     }
 
     SynthRunner synth_runner(conf, arjun);
