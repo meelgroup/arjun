@@ -25,6 +25,7 @@
 #pragma once
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <set>
 #include <vector>
 #include <cryptominisat5/solvertypesmini.h>
@@ -96,6 +97,27 @@ class Unate {
         std::vector<uint32_t> var_to_indic; // for each var, the indicator
                                             // variable in the SAT solver that is true iff the var is equal to its copy (i.e. not flipped)
 
+        // Per-call transient state for synthesis_unate_def. Reset at entry.
+        std::unique_ptr<ArjunInt::MetaSolver> s;
+        ArjunNS::SimplifiedCNF* cnf_ptr = nullptr;
+        CMSat::Lit true_lit = CMSat::lit_Undef;
+        std::map<uint32_t, CMSat::Lit> new_to_orig;
+        std::set<uint32_t> already_tested;
+        std::vector<CMSat::Lit> assumps;
+        std::vector<CMSat::lbool> input_vals[2];
+        bool model_valid[2] = {false, false};
+        uint32_t new_units = 0;
+        uint32_t tested_num = 0;
+        double my_time = 0.0;
+
+        // Pass-section helpers, in the order synthesis_unate_def uses them.
+        CMSat::Lit get_true_lit();
+        void setup_y_prime_backward_defs();
+        void build_indicators();
+        void build_cond_state();
+        bool process_test_var(uint32_t test);
+        void log_pass_summary(uint32_t to_define_size_before);
+
         // ===== Conditional unate-def probe state =====
         // Set up once at the start of synthesis_unate_def, then read/updated
         // per-test inside try_cond_unate_def.
@@ -113,14 +135,8 @@ class Unate {
         // Try to express `test` as a single input literal under a value-conditioned
         // probe, using the two SAT witnesses from the standard-unate flips
         // (projected to input vars in input_vals[0/1]). Returns true if a
-        // definition was found and committed to `cnf`.
-        bool try_cond_unate_def(
-            ArjunNS::SimplifiedCNF& cnf,
-            MetaSolver& s,
-            uint32_t test,
-            const std::vector<CMSat::lbool> (&input_vals)[2],
-            std::vector<CMSat::Lit>& assumps,
-            const std::map<uint32_t, CMSat::Lit>& new_to_orig);
+        // definition was found and committed to `*cnf_ptr`.
+        bool try_cond_unate_def(uint32_t test);
 
         UnateDefCondStats cond_stats;
 };

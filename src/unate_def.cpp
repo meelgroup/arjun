@@ -38,8 +38,6 @@ using std::setprecision;
 using std::fixed;
 using std::setw;
 using std::vector;
-using std::set;
-using std::unique_ptr;
 
 
 constexpr uint32_t NOT_INPUT = std::numeric_limits<uint32_t>::max();
@@ -47,29 +45,57 @@ constexpr uint32_t NOT_INPUT = std::numeric_limits<uint32_t>::max();
 void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     cond_stats = UnateDefCondStats{};
     cond_my_time = cpuTime();
-    double my_time = cond_my_time;
-    uint32_t new_units = 0;
+    my_time = cond_my_time;
+    new_units = 0;
     cond_new_defs = 0;
-    cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_unate_def").unpack_to(input, to_define, backward_defined);
+    tested_num = 0;
+    true_lit = lit_Undef;
+    cnf_ptr = &cnf;
+    already_tested.clear();
+
+    cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_unate_def")
+        .unpack_to(input, to_define, backward_defined);
     if (to_define.empty()) {
         verb_print(1, "[unate_def] No variables to-define, skipping");
         return;
     }
-    auto s = ArjunInt::setup_f_not_f(cnf, input, conf);
+    s = ArjunInt::setup_f_not_f(cnf, input, conf);
+    new_to_orig = cnf.get_new_to_orig_var();
 
-    // Add copied-side definition constraints: i' <-> H_i(X, Y') for all i in I.
-    const auto new_to_orig = cnf.get_new_to_orig_var();
-    Lit true_lit = lit_Undef;
-    auto get_true_lit = [&]() -> Lit {
-        if (true_lit == lit_Undef) {
-            s->new_var();
-            true_lit = Lit(s->nVars()-1, false);
-            s->add_clause({true_lit});
-        }
-        return true_lit;
-    };
+    setup_y_prime_backward_defs();
+    verb_print(2, "[unate_def] already-defined vars in CNF: " << backward_defined.size());
 
-    for(const auto& i_new: backward_defined) {
+    build_indicators();
+    /* if (conf.verb >= 3) dump_cnf<Lit>(*s, "unate_def-start.cnf", input); */
+
+    build_cond_state();
+
+    // Adaptive disable: if conditional probing finds nothing for long,
+    // turn it off for the rest of the run so we don't waste SAT calls
+    // on inputs that obviously won't yield a single-literal definition.
+    cond_enabled = (conf.unate_def_cond != 0);
+    cond_attempts_since_last_hit = 0;
+
+    const uint32_t to_define_size_before = to_define.size();
+    for (uint32_t test : to_define) process_test_var(test);
+
+    log_pass_summary(to_define_size_before);
+}
+
+Lit Unate::get_true_lit() {
+    if (true_lit == lit_Undef) {
+        s->new_var();
+        true_lit = Lit(s->nVars()-1, false);
+        s->add_clause({true_lit});
+    }
+    return true_lit;
+}
+
+// Add copied-side definition constraints: i' <-> H_i(X, Y') for each
+// already-defined var in `backward_defined`.
+void Unate::setup_y_prime_backward_defs() {
+    auto& cnf = *cnf_ptr;
+    for (const auto& i_new : backward_defined) {
         if (input.count(i_new)) continue;
 
         assert(new_to_orig.count(i_new) > 0);
@@ -79,7 +105,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
 
         const Lit out_lit = AIG::tseitin_encode(
             aig, *s,
-            [&] { return get_true_lit(); },
+            [this] { return get_true_lit(); },
             [&](uint32_t var_orig) -> Lit {
                 const Lit lit_new = cnf.orig_to_new_lit(Lit(var_orig, false));
                 if (input.count(lit_new.var())) return lit_new;
@@ -93,19 +119,22 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         s->add_clause({~i_copy, out_in_new_space});
         s->add_clause({i_copy, ~out_in_new_space});
     }
+}
 
-    verb_print(2, "[unate_def] already-defined vars in CNF: " << backward_defined.size());
-
+// Allocate one indicator var per non-input, non-backward-defined var, with
+// clauses making it TRUE iff y_i == y_i'.
+void Unate::build_indicators() {
+    auto& cnf = *cnf_ptr;
     assert(var_to_indic.empty());
     var_to_indic.resize(cnf.nVars(), var_Undef);
-    for(uint32_t i = 0; i < cnf.nVars(); i++) {
+    for (uint32_t i = 0; i < cnf.nVars(); i++) {
         if (input.count(i)) continue;
         if (backward_defined.count(i)) continue;
         s->new_var();
         const Lit ind_l = Lit(s->nVars()-1, false);
 
         // when indic is TRUE, they are equal
-        const auto y = Lit (i, false);
+        const auto y = Lit(i, false);
         const auto y_hat = Lit(i + cnf.nVars(), false);
         vector<Lit> tmp;
         tmp.push_back(~ind_l);
@@ -126,7 +155,13 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
         s->add_clause(tmp);
         var_to_indic[i] = ind_l.var();
     }
-    /* if (conf.verb >= 3) dump_cnf<Lit>(*s, "unate_def-start.cnf", input); */
+}
+
+// Populate the conditional-probe scratch state used by try_cond_unate_def:
+// the deterministic input list, the position lookup, the per-to-define
+// "related inputs" prefix, and the generation-counter dedup buffer.
+void Unate::build_cond_state() {
+    auto& cnf = *cnf_ptr;
 
     // Deterministic candidate list of input vars used for conditional tests.
     // Inputs are shared across copies in setup_f_not_f, so a single literal
@@ -146,41 +181,39 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     // single-literal definers, so we examine them before the rest of
     // the input list.
     cond_related_inputs.assign(cnf.nVars(), {});
-    {
-        vector<uint8_t> in_cl(cnf.nVars(), 0); // scratch, cleared per clause
-        vector<uint32_t> ins_in_cl;
-        for (const auto& cl_ : cnf.get_clauses()) {
-            ins_in_cl.clear();
+    vector<uint8_t> in_cl(cnf.nVars(), 0); // scratch, cleared per clause
+    vector<uint32_t> ins_in_cl;
+    for (const auto& cl_ : cnf.get_clauses()) {
+        ins_in_cl.clear();
+        for (const auto& l : cl_) {
+            const uint32_t v = l.var();
+            if (input.count(v) && !in_cl[v]) {
+                in_cl[v] = 1;
+                ins_in_cl.push_back(v);
+            }
+        }
+        if (!ins_in_cl.empty()) {
             for (const auto& l : cl_) {
                 const uint32_t v = l.var();
-                if (input.count(v) && !in_cl[v]) {
-                    in_cl[v] = 1;
-                    ins_in_cl.push_back(v);
-                }
+                if (input.count(v)) continue;
+                if (backward_defined.count(v)) continue;
+                auto& dst = cond_related_inputs[v];
+                dst.insert(dst.end(), ins_in_cl.begin(), ins_in_cl.end());
             }
-            if (!ins_in_cl.empty()) {
-                for (const auto& l : cl_) {
-                    const uint32_t v = l.var();
-                    if (input.count(v)) continue;
-                    if (backward_defined.count(v)) continue;
-                    auto& dst = cond_related_inputs[v];
-                    dst.insert(dst.end(), ins_in_cl.begin(), ins_in_cl.end());
-                }
-            }
-            for (uint32_t iv : ins_in_cl) in_cl[iv] = 0;
         }
-        // Dedup each per-var list, preserving first-seen order.
-        vector<uint8_t> seen(cnf.nVars(), 0);
-        for (uint32_t v = 0; v < cnf.nVars(); v++) {
-            auto& lst = cond_related_inputs[v];
-            if (lst.empty()) continue;
-            vector<uint32_t> ded; ded.reserve(lst.size());
-            for (uint32_t iv : lst) {
-                if (!seen[iv]) { seen[iv] = 1; ded.push_back(iv); }
-            }
-            for (uint32_t iv : ded) seen[iv] = 0;
-            lst = std::move(ded);
+        for (uint32_t iv : ins_in_cl) in_cl[iv] = 0;
+    }
+    // Dedup each per-var list, preserving first-seen order.
+    vector<uint8_t> seen(cnf.nVars(), 0);
+    for (uint32_t v = 0; v < cnf.nVars(); v++) {
+        auto& lst = cond_related_inputs[v];
+        if (lst.empty()) continue;
+        vector<uint32_t> ded; ded.reserve(lst.size());
+        for (uint32_t iv : lst) {
+            if (!seen[iv]) { seen[iv] = 1; ded.push_back(iv); }
         }
+        for (uint32_t iv : ded) seen[iv] = 0;
+        lst = std::move(ded);
     }
 
     // Generation-counter dedup for the per-test candidate list.
@@ -188,93 +221,88 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     cond_cand_gen = 0;
     cond_cur_cands.clear();
     cond_cur_cands.reserve(cond_input_vars_list.size());
+}
 
-    vector<Lit> assumps;
-    set<uint32_t> already_tested;
-
-    uint32_t tested_num = 0;
-    // Adaptive disable: if conditional probing finds nothing for long,
-    // turn it off for the rest of the run so we don't waste SAT calls
-    // on inputs that obviously won't yield a single-literal definition.
-    cond_enabled = (conf.unate_def_cond != 0);
-    cond_attempts_since_last_hit = 0;
-    for(uint32_t test: to_define) {
-        assert(input.count(test) == 0);
-        verb_print(3, "[unate_def] testing var: " << test+1);
-        tested_num++;
-        if (tested_num % 300 == 299) {
-            verb_print(1, "[unate_def] test no: " << setw(5) << tested_num
-                << " new units: " << setw(4) << new_units
-                << " new cond defs: " << setw(4) << cond_new_defs
-                << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
-        }
-
-        assumps.clear();
-        for(uint32_t i = 0; i < cnf.nVars(); i++) {
-            if (i == test) continue;
-            if (already_tested.count(i)) continue;
-            if (input.count(i)) continue;
-            if (backward_defined.count(i)) continue;
-            auto ind = var_to_indic.at(i);
-            assert(ind != var_Undef);
-            assumps.emplace_back(ind, false);
-        }
-        bool found_def = false;
-        // Models from the standard-unate flip attempts, projected down
-        // to just input vars (input_vars_list[i] -> input_vals[flip][i]).
-        // Avoids keeping the full ~2*nVars + helpers SAT model around.
-        vector<lbool> input_vals[2];
-        bool model_valid[2] = {false, false};
-        for(int flip = 0; flip < 2; flip++) {
-            assumps.emplace_back(test, !flip);
-            assumps.emplace_back(test+cnf.nVars(), flip);
-            verb_print(3, "[unate_def] assumps : " << assumps);
-            const auto ret = s->solve(&assumps);
-            if (ret == l_False) {
-                const Lit l = Lit(test, flip);
-                const Lit test_orig = new_to_orig.at(test);
-                // l forces NEW test to value !flip; in ORIG space the var
-                // gets the constant !(test_orig.sign() ^ flip).
-                cnf.set_def(test_orig.var(),
-                    AIG::new_const(!(test_orig.sign() ^ (bool)flip)));
-                verb_print(2, "[unate_def] good test. Setting: " << std::setw(3)  << l
-                    << " T: " << fixed << setprecision(2) << (cpuTime() - my_time));
-                // Tighten both sides of the miter so subsequent tests
-                // benefit from the now-forced value.
-                s->add_clause({l});
-                s->add_clause({Lit(test+cnf.nVars(), flip)});
-                new_units++;
-                found_def = true;
-                assumps.pop_back();
-                assumps.pop_back();
-                break;
-            }
-            // SAT: project the model down to input vars. We only ever
-            // read these positions when picking conditional candidates.
-            if (ret == l_True) {
-                const auto& m = s->get_model();
-                input_vals[flip].assign(cond_input_vars_list.size(), l_Undef);
-                for (size_t i = 0; i < cond_input_vars_list.size(); i++) {
-                    const uint32_t v = cond_input_vars_list[i];
-                    if (v < m.size()) input_vals[flip][i] = m[v];
-                }
-                model_valid[flip] = true;
-            }
-            assumps.pop_back();
-            assumps.pop_back();
-        }
-
-        if (!found_def && cond_enabled
-                && model_valid[0] && model_valid[1]) {
-            if (try_cond_unate_def(cnf, *s, test, input_vals, assumps, new_to_orig)) {
-                found_def = true;
-            }
-        }
-        already_tested.insert(test);
-        s->add_clause({Lit(var_to_indic.at(test), false)});
+// Run both standard-unate flips on `test`, then dispatch to the conditional
+// probe if both flips were SAT. Updates new_units / cond_new_defs as a side
+// effect. Returns true if any def was found.
+bool Unate::process_test_var(const uint32_t test) {
+    auto& cnf = *cnf_ptr;
+    assert(input.count(test) == 0);
+    verb_print(3, "[unate_def] testing var: " << test+1);
+    tested_num++;
+    if (tested_num % 300 == 299) {
+        verb_print(1, "[unate_def] test no: " << setw(5) << tested_num
+            << " new units: " << setw(4) << new_units
+            << " new cond defs: " << setw(4) << cond_new_defs
+            << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
     }
 
-    double total_time = cpuTime() - my_time;
+    assumps.clear();
+    for (uint32_t i = 0; i < cnf.nVars(); i++) {
+        if (i == test) continue;
+        if (already_tested.count(i)) continue;
+        if (input.count(i)) continue;
+        if (backward_defined.count(i)) continue;
+        auto ind = var_to_indic.at(i);
+        assert(ind != var_Undef);
+        assumps.emplace_back(ind, false);
+    }
+    bool found_def = false;
+    // Models from the standard-unate flip attempts, projected down
+    // to just input vars (input_vars_list[i] -> input_vals[flip][i]).
+    // Avoids keeping the full ~2*nVars + helpers SAT model around.
+    model_valid[0] = false;
+    model_valid[1] = false;
+    for (int flip = 0; flip < 2; flip++) {
+        assumps.emplace_back(test, !flip);
+        assumps.emplace_back(test+cnf.nVars(), flip);
+        verb_print(3, "[unate_def] assumps : " << assumps);
+        const auto ret = s->solve(&assumps);
+        if (ret == l_False) {
+            const Lit l = Lit(test, flip);
+            const Lit test_orig = new_to_orig.at(test);
+            // l forces NEW test to value !flip; in ORIG space the var
+            // gets the constant !(test_orig.sign() ^ flip).
+            cnf.set_def(test_orig.var(),
+                AIG::new_const(!(test_orig.sign() ^ (bool)flip)));
+            verb_print(2, "[unate_def] good test. Setting: " << std::setw(3)  << l
+                << " T: " << fixed << setprecision(2) << (cpuTime() - my_time));
+            // Tighten both sides of the miter so subsequent tests
+            // benefit from the now-forced value.
+            s->add_clause({l});
+            s->add_clause({Lit(test+cnf.nVars(), flip)});
+            new_units++;
+            found_def = true;
+            assumps.pop_back();
+            assumps.pop_back();
+            break;
+        }
+        // SAT: project the model down to input vars. We only ever
+        // read these positions when picking conditional candidates.
+        if (ret == l_True) {
+            const auto& m = s->get_model();
+            input_vals[flip].assign(cond_input_vars_list.size(), l_Undef);
+            for (size_t i = 0; i < cond_input_vars_list.size(); i++) {
+                const uint32_t v = cond_input_vars_list[i];
+                if (v < m.size()) input_vals[flip][i] = m[v];
+            }
+            model_valid[flip] = true;
+        }
+        assumps.pop_back();
+        assumps.pop_back();
+    }
+
+    if (!found_def && cond_enabled && model_valid[0] && model_valid[1]) {
+        if (try_cond_unate_def(test)) found_def = true;
+    }
+    already_tested.insert(test);
+    s->add_clause({Lit(var_to_indic.at(test), false)});
+    return found_def;
+}
+
+void Unate::log_pass_summary(const uint32_t to_define_size_before) {
+    const double total_time = cpuTime() - my_time;
     verb_print(1, COLYEL "[unate_def] "
             << " units: " << setw(7) << new_units
             << " cond defs: " << setw(7) << cond_new_defs
@@ -299,10 +327,11 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
             << " cond_T=" << setprecision(2) << fixed << cs.time_in_cond);
     }
 
-    auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end do_unate_def");
+    auto [input2, to_define2, backward_defined2] =
+        cnf_ptr->get_var_types(0 | verbose_debug_enabled, "end do_unate_def");
     verb_print(1, COLRED "[unate_def] Done. synthesis_unate_def"
         << " tested: " << tested_num
-        << " defined: " << to_define.size() - to_define2.size()
+        << " defined: " << to_define_size_before - to_define2.size()
         << " still to-define: " << to_define2.size()
         << " T: " << total_time);
 }
@@ -312,14 +341,8 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
 // forced to a specific value, and similarly for L = !v1. The two flips of the
 // standard test give us free SAT witnesses (passed as `input_vals`); we only
 // have to issue the OPPOSITE flip per L value, i.e. 2 SAT calls per candidate.
-bool Unate::try_cond_unate_def(
-        SimplifiedCNF& cnf,
-        ArjunInt::MetaSolver& s,
-        const uint32_t test,
-        const vector<lbool> (&input_vals)[2],
-        vector<Lit>& assumps,
-        const std::map<uint32_t, Lit>& new_to_orig) {
-
+bool Unate::try_cond_unate_def(const uint32_t test) {
+    auto& cnf = *cnf_ptr;
     const double cond_t0 = cpuTime();
     cond_stats.tests_eligible++;
     const uint32_t nv = cnf.nVars();
@@ -383,9 +406,9 @@ bool Unate::try_cond_unate_def(
         assumps.push_back(l_eq_v1);
         assumps.emplace_back(test, false);
         assumps.emplace_back(test + nv, true);
-        s.set_max_confl(conf.unate_def_cond_max_confl);
+        s->set_max_confl(conf.unate_def_cond_max_confl);
         cond_stats.cond_sat_calls++;
-        auto r1 = s.solve(&assumps);
+        auto r1 = s->solve(&assumps);
         assumps.pop_back(); assumps.pop_back(); assumps.pop_back();
         if (r1 == l_False) cond_stats.p1_unsat++;
         else if (r1 == l_True) cond_stats.p1_sat++;
@@ -396,9 +419,9 @@ bool Unate::try_cond_unate_def(
         assumps.push_back(l_eq_v2);
         assumps.emplace_back(test, true);
         assumps.emplace_back(test + nv, false);
-        s.set_max_confl(conf.unate_def_cond_max_confl);
+        s->set_max_confl(conf.unate_def_cond_max_confl);
         cond_stats.cond_sat_calls++;
-        auto r2 = s.solve(&assumps);
+        auto r2 = s->solve(&assumps);
         assumps.pop_back(); assumps.pop_back(); assumps.pop_back();
         if (r2 == l_False) cond_stats.p2_unsat++;
         else if (r2 == l_True) cond_stats.p2_sat++;
@@ -449,10 +472,10 @@ bool Unate::try_cond_unate_def(
             const Lit lit_t_x = Lit(test, false);
             const Lit lit_t_y = Lit(test + nv, false);
             const Lit lit_l   = Lit(l_var, !test_equals_l);
-            s.add_clause({~lit_t_x, lit_l});
-            s.add_clause({lit_t_x, ~lit_l});
-            s.add_clause({~lit_t_y, lit_l});
-            s.add_clause({lit_t_y, ~lit_l});
+            s->add_clause({~lit_t_x, lit_l});
+            s->add_clause({lit_t_x, ~lit_l});
+            s->add_clause({~lit_t_y, lit_l});
+            s->add_clause({lit_t_y, ~lit_l});
         }
         found_def = true;
         cond_attempts_since_last_hit = 0;
