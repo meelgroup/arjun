@@ -165,7 +165,7 @@ private:
     void build_f_solver();
     void build_base_assumps(uint32_t test, std::vector<CMSat::Lit>& base_assumps);
     void build_aux_set(uint32_t test, CMSat::Lit test_orig);
-    void process_test_var(uint32_t test);
+    void process_test_var(const uint32_t test);
     void log_progress_periodic();
     bool try_commit_h(uint32_t test, CMSat::Lit test_orig,
                        const ArjunNS::aig_ptr& h, CMSat::Lit h_top_lit,

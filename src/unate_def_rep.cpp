@@ -498,32 +498,15 @@ void UnateDefRep::build_aux_set(uint32_t test, Lit test_orig) {
     }
 }
 
-void UnateDefRep::process_test_var(uint32_t test) {
-    // Cheap invariants documenting what the loop assumes about `test`:
-    //   - it's a real var index;
-    //   - it's not an input (those never need a Skolem);
-    //   - it's not in already_tested (each var goes through the loop
-    //     body at most once);
-    //   - it has an indicator (built in the prelude for every to_define
-    //     non-input non-original-BW var).
+void UnateDefRep::process_test_var(const uint32_t test) {
     assert(test < cnf.nVars());
     assert(input.count(test) == 0);
     assert(already_tested.count(test) == 0);
     assert(var_to_indic.at(test) != var_Undef);
-    // Skip if a previous pass already defined this (e.g. an earlier
-    // iteration of THIS pass, via cnf.set_def on a different orig var
-    // that resolves to the same new var — defensive only).
+
     const Lit test_orig = new_to_orig.at(test);
     if (cnf.defined(test_orig.var())) {
         already_tested.insert(test);
-        // Note: we do NOT lock var_to_indic[test] = TRUE here. With
-        // aux-leaf H's, locking indicator-prev creates a soundness bug
-        // (the locked indicator chains through Y- and Y'-side prev
-        // commits and spuriously pins y_t_Y = y_t_Y' during a later
-        // test=t whose var appears as aux in some prior H). The Y/Y'-
-        // side commit clauses by themselves already pin y_prev to its
-        // committed H on each side, which is all we need. See the
-        // commit-time block below for the same convention.
         return;
     }
     tested_num++;
