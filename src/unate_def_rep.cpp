@@ -425,7 +425,7 @@ Lit UnateDefRep::materialize_h_in_cnf(const aig_ptr& h_root) {
     return rec(h_root).first;
 }
 
-void UnateDefRep::build_base_assumps(uint32_t test, vector<Lit>& base_assumps) {
+void UnateDefRep::build_base_assumps(const uint32_t test, vector<Lit>& base_assumps) {
     // Indicator assumptions: TRUE for every other to-define var that hasn't
     // been pinned yet. Same exclusion logic as synthesis_unate_def.
     for (uint32_t i = 0; i < cnf.nVars(); i++) {
@@ -567,26 +567,6 @@ void UnateDefRep::process_test_var(const uint32_t test) {
     log_per_var_summary(test, h, vstats);
 
     already_tested.insert(test);
-    // IMPORTANT: do NOT add `s->add_clause({var_to_indic[test] = TRUE})`
-    // here, even though synthesis_unate_def does. With aux-leaf H, the
-    // indicator-lock creates a soundness bug:
-    //
-    //   - Y-side commit:  y_prev_Y  = H_prev(y_aux_Y)
-    //   - Y'-side commit: y_prev_Y' = H_prev(y_aux_Y')   (act_prev locked)
-    //   - Indicator-prev locked TRUE: y_prev_Y = y_prev_Y'
-    //
-    // When a later test=t has its var appear in aux_prev (because an
-    // earlier H_prev was committed with t as aux), the chain
-    //   H_prev(y_t_Y, ...) = H_prev(y_t_Y', ...)
-    // forces y_t_Y = y_t_Y' whenever H_prev is sensitive to y_t — but
-    // test=t's miter requires y_t_Y vs y_t_Y' to be free. The result is
-    // a spurious miter UNSAT and a wrong commit.
-    //
-    // The Y- and Y'-side commit clauses on their own already pin y_prev
-    // to H_prev on each side, so the indicator-lock is redundant for
-    // input-only / backward-only H's anyway, and harmful otherwise.
-    // Without the lock, the SAT solver picks indicator-prev consistently
-    // with the per-side y_prev values, and the miter stays sound.
 }
 
 void UnateDefRep::log_progress_periodic() {
