@@ -379,13 +379,13 @@ vector<Lit> UnateDefRep::build_base_assumps(const uint32_t test) {
     return base_assumps;
 }
 
+// Build per-test aux leaf set. A var `v` ≠ test, not in input, may be
+// used as an H-leaf iff committing `test = H(..., v)` does NOT close
+// a dependency cycle. For backward-defined `v` we check via the
+// recursive-deps cache; for currently-undefined to-define `v` there
+// is no current cycle (Manthan's set_depends_on tracks the new edge
+// and avoids closing it later).
 void UnateDefRep::build_aux_set(const uint32_t test, const Lit test_orig) {
-    // Build per-test aux leaf set. A var `v` ≠ test, not in input, may be
-    // used as an H-leaf iff committing `test = H(..., v)` does NOT close
-    // a dependency cycle. For backward-defined `v` we check via the
-    // recursive-deps cache; for currently-undefined to-define `v` there
-    // is no current cycle (Manthan's set_depends_on tracks the new edge
-    // and avoids closing it later).
     aux_vars.clear();
     std::fill(aux_mask.begin(), aux_mask.end(), 0);
     if (conf.unate_def_rep_aux > 0) {
