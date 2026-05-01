@@ -490,4 +490,3 @@ bool Unate::try_cond_unate_def(
     }
     return found_def;
 }
-
