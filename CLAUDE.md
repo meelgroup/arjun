@@ -126,10 +126,13 @@ Expected workflow:
 3. **`SLOW_DEBUG`** (`src/constants.h:50`) — uncomment to enable expensive
    internal invariant checks (`SLOW_DEBUG_DO(...)` blocks). Turn this on
    whenever an assertion fires or an output looks wrong; it will often fail
-   earlier and closer to the real cause.
+   earlier and closer to the real cause. Add SLOW_DEBUG_DO blocks for new
+   code as needed to help future debugging.
 4. **`VERBOSE_DEBUG`** (`src/constants.h:51`) — uncomment to enable verbose
    trace prints guarded by `VERBOSE_DEBUG_DO(...)` / `verbose_debug_enabled`.
    Use together with a delta-debugged small CNF so the traces stay readable.
+   Don't forget to add `VERBOSE_DEBUG_DO` blocks for new code as needed to help
+   future debugging.
 5. **valgrind** — run under `valgrind --error-exitcode=1` (and
    `--track-origins=yes` for uninitialized reads) for any suspected memory
    issue. Undefined behavior here often manifests as non-determinism on
