@@ -40,6 +40,7 @@
 #include "constants.h"
 #include "autarky.h"
 #include "unate_def.h"
+#include "unate_def_rep.h"
 #include "manthan.h"
 #include "metasolver.h"
 #include "aig_rewrite.h"
@@ -190,8 +191,8 @@ DLL_PUBLIC void Arjun::standalone_unate_def(SimplifiedCNF& cnf)
 
 DLL_PUBLIC void Arjun::standalone_unate_def_rep(SimplifiedCNF& cnf)
 {
-    Unate unate(arjdata->conf);
-    unate.synthesis_unate_def_rep(cnf);
+    UnateDefRep rep(arjdata->conf, cnf);
+    rep.run();
 }
 
 DLL_PUBLIC void Arjun::standalone_sbva(SimplifiedCNF& orig,

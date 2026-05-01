@@ -114,7 +114,6 @@
 //                                2=+to-define (full)
 
 #include "unate_def_rep.h"
-#include "unate_def.h"
 #include "unate_def_common.h"
 #include "constants.h"
 #include "metasolver.h"
@@ -934,11 +933,6 @@ void UnateDefRep::run() {
         [[maybe_unused]] auto inv_ok = cnf.defs_invariant();
     });
     log_pass_summary();
-}
-
-void Unate::synthesis_unate_def_rep(SimplifiedCNF& cnf) {
-    UnateDefRep r(conf, cnf);
-    r.run();
 }
 
 }
