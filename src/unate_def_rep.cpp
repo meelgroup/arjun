@@ -442,15 +442,6 @@ void UnateDefRep::build_base_assumps(uint32_t test, vector<Lit>& base_assumps) {
     // activation, this guarantees y_test_val_f = ~h_val whenever the
     // miter is SAT — i.e. every CEX is "F admits the OPPOSITE of
     // H_curr", which is the only direction useful for refining H.
-    //
-    // Required because we no longer lock indicator-prev for previously
-    // committed tests (see end-of-test commit comment): without that
-    // lock, prev's Y- and Y'-side H-commits can place y_prev_Y vs
-    // y_prev_Y' freely, so a miter SAT could otherwise have y_test_Y
-    // == h_val with ¬F-on-Y' achieved through y_prev divergence — a
-    // CEX with no useful refinement direction. Asserting indicator_test
-    // = FALSE rules that case out and keeps the SAT/UNSAT split
-    // matching the soundness condition (see header comment).
     const auto ind_test = var_to_indic.at(test);
     assert(ind_test != var_Undef);
     base_assumps.emplace_back(ind_test, true);
