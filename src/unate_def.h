@@ -74,6 +74,12 @@ struct UnateDefCondStats {
     // remainder (hits - hits_in_related) came from the fall-through tail.
     // Tells us whether the structural pre-ordering actually pays off.
     uint64_t hits_in_related = 0;
+    // Of `hits`, how many used a non-input as the definer L. Counts the
+    // payoff of the non-input extension.
+    uint64_t hits_using_noninput = 0;
+    // Non-input candidates skipped because committing test = L would close
+    // a dependency cycle (test ∈ deps_recursive(L_orig)).
+    uint64_t cands_skipped_cycle = 0;
 
     // Time spent inside the conditional block (post-flips), seconds.
     double time_in_cond = 0.0;
@@ -121,12 +127,18 @@ class Unate {
         // ===== Conditional unate-def probe state =====
         // Set up once at the start of synthesis_unate_def, then read/updated
         // per-test inside try_cond_unate_def.
-        std::vector<uint32_t> cond_input_vars_list;
-        std::vector<uint32_t> cond_input_pos;            // var -> index in cond_input_vars_list, or NOT_INPUT
-        std::vector<std::vector<uint32_t>> cond_related_inputs; // per to-define var, inputs sharing a clause
+        std::vector<uint32_t> cond_input_vars_list;      // sorted inputs
+        std::vector<uint32_t> cond_noninput_vars_list;   // sorted non-input candidates (to-define + already-tested non-backward-defined)
+        std::vector<uint32_t> cond_cand_pos;             // var -> global index in [inputs, noninputs], or NOT_INPUT
+        std::vector<std::vector<uint32_t>> cond_related_inputs;    // per to-define var, inputs sharing a clause
+        std::vector<std::vector<uint32_t>> cond_related_noninputs; // per to-define var, non-input candidates sharing a clause
         std::vector<uint32_t> cond_cand_seen_gen;        // generation-counter dedup for cur_cands
         uint32_t cond_cand_gen = 0;
         std::vector<uint32_t> cond_cur_cands;            // reusable per-test candidate buffer
+        // Cycle-safety cache for non-input L: dep-recursive lookups on
+        // l_orig.var(). Invalidated after every successful commit since the
+        // new def changes the dep graph.
+        std::map<uint32_t, std::vector<uint32_t>> cond_deps_cache;
         bool cond_enabled = false;
         uint32_t cond_attempts_since_last_hit = 0;
         uint32_t cond_new_defs = 0;

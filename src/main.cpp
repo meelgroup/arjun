@@ -169,6 +169,7 @@ void add_arjun_options() {
     myopt("--unatedefcondmax", conf.unate_def_cond_max_per_var, fc_int,"Max conditional candidates to test per to-define variable in unate_def");
     myopt("--unatedefcondconfl", conf.unate_def_cond_max_confl, fc_int,"Conflict budget per SAT call inside the conditional unate_def search");
     myopt("--unatedefconddry", conf.unate_def_cond_dry_streak, fc_int,"Disable conditional unate_def probe after this many consecutive misses with zero hits so far (very low = bail aggressively, very high = effectively never disable)");
+    myopt("--unatedefcondnoninp", conf.unate_def_cond_noninput, fc_int,"Allow non-input vars (to-define + already-tested) as the candidate L in t = L. Inputs are still tried first; non-inputs only after the input list is exhausted. 0 = inputs only");
     myopt("--unatedefrep", do_unate_def_rep, fc_int,"In unate_def, run a manthan-style guess-and-repair pass for vars still undefined after the literal-only conditional probe");
     myopt("--unatedefrepiters", conf.unate_def_rep_iters, fc_int,"Per-variable iteration budget in the repair-based unate_def pass");
     myopt("--unatedefrepmaxpat", conf.unate_def_rep_max_pattern, fc_int,"Skip CEX whose minimized core (= candidate AIG conjunct count) exceeds this");
@@ -363,6 +364,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_unate_def_cond_max_per_var(conf.unate_def_cond_max_per_var);
     arj->set_unate_def_cond_max_confl(conf.unate_def_cond_max_confl);
     arj->set_unate_def_cond_dry_streak(conf.unate_def_cond_dry_streak);
+    arj->set_unate_def_cond_noninput(conf.unate_def_cond_noninput);
     arj->set_unate_def_rep_iters(conf.unate_def_rep_iters);
     arj->set_unate_def_rep_max_pattern(conf.unate_def_rep_max_pattern);
     arj->set_unate_def_rep_max_costzero(conf.unate_def_rep_max_costzero);

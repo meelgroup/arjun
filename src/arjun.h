@@ -1787,6 +1787,7 @@ public:
     void set_unate_def_cond_max_per_var(uint32_t unate_def_cond_max_per_var);
     void set_unate_def_cond_max_confl(uint32_t unate_def_cond_max_confl);
     void set_unate_def_cond_dry_streak(uint32_t unate_def_cond_dry_streak);
+    void set_unate_def_cond_noninput(int unate_def_cond_noninput);
     void set_unate_def_rep_iters(uint32_t unate_def_rep_iters);
     void set_unate_def_rep_max_pattern(uint32_t unate_def_rep_max_pattern);
     void set_unate_def_rep_max_costzero(uint32_t unate_def_rep_max_costzero);
@@ -1820,6 +1821,7 @@ public:
     [[nodiscard]] uint32_t get_unate_def_cond_max_per_var() const;
     [[nodiscard]] uint32_t get_unate_def_cond_max_confl() const;
     [[nodiscard]] uint32_t get_unate_def_cond_dry_streak() const;
+    [[nodiscard]] int get_unate_def_cond_noninput() const;
     [[nodiscard]] uint32_t get_unate_def_rep_iters() const;
     [[nodiscard]] uint32_t get_unate_def_rep_max_pattern() const;
     [[nodiscard]] uint32_t get_unate_def_rep_max_costzero() const;

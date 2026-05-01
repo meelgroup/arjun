@@ -54,6 +54,11 @@ struct Config {
     // zero hits so far. Low = bail aggressively; very high = effectively
     // never disable.
     uint32_t unate_def_cond_dry_streak = 128;
+    // Allow non-input vars (to-define + already-tested non-backward-defined)
+    // as the candidate L in the conditional t = L probe. Inputs are still
+    // tried first; non-inputs only after the input list is exhausted.
+    // 0 = inputs only (old behavior). 1 = inputs first, then non-inputs.
+    int unate_def_cond_noninput = 1;
     // Repair-based unate definition search (manthan-style guess+refine).
     // Runs after standard unate_def for variables still undefined.
     uint32_t unate_def_rep_iters = 10;       // max guess+refine iters per var
