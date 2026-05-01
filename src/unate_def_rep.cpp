@@ -447,7 +447,7 @@ void UnateDefRep::build_base_assumps(uint32_t test, vector<Lit>& base_assumps) {
     base_assumps.emplace_back(ind_test, true);
 }
 
-void UnateDefRep::build_aux_set(uint32_t test, Lit test_orig) {
+void UnateDefRep::build_aux_set(const uint32_t test, const Lit test_orig) {
     // Build per-test aux leaf set. A var `v` ≠ test, not in input, may be
     // used as an H-leaf iff committing `test = H(..., v)` does NOT close
     // a dependency cycle. For backward-defined `v` we check via the
