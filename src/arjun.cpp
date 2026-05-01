@@ -735,8 +735,8 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
     // Any still-undone defs indicate a cycle; skip them (not our bug class).
     for (uint32_t v = 0; v < defs.size(); v++) {
         if (!done[v]) {
-            cout << "c o [check_synth_funs_sat] skipping var " << (v+1)
-                 << " (cyclic dep)" << endl;
+            cout << "ERROR c o [check_synth_funs_sat] skipping var " << (v+1) << " (cyclic dep)" << endl;
+            exit(-1);
         }
     }
 
