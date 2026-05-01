@@ -425,7 +425,8 @@ Lit UnateDefRep::materialize_h_in_cnf(const aig_ptr& h_root) {
     return rec(h_root).first;
 }
 
-void UnateDefRep::build_base_assumps(const uint32_t test, vector<Lit>& base_assumps) {
+vector<Lit> UnateDefRep::build_base_assumps(const uint32_t test) {
+    vector<Lit> base_assumps;
     // Indicator assumptions: TRUE for every other to-define var that hasn't
     // been pinned yet. Same exclusion logic as synthesis_unate_def.
     for (uint32_t i = 0; i < cnf.nVars(); i++) {
@@ -445,6 +446,7 @@ void UnateDefRep::build_base_assumps(const uint32_t test, vector<Lit>& base_assu
     const auto ind_test = var_to_indic.at(test);
     assert(ind_test != var_Undef);
     base_assumps.emplace_back(ind_test, true);
+    return base_assumps;
 }
 
 void UnateDefRep::build_aux_set(const uint32_t test, const Lit test_orig) {
@@ -504,9 +506,7 @@ void UnateDefRep::process_test_var(const uint32_t test) {
     tested_num++;
     rep_stats.tests_run++;
     log_progress_periodic();
-
-    vector<Lit> base_assumps;
-    build_base_assumps(test, base_assumps);
+    auto base_assumps = build_base_assumps(test);
 
     VERBOSE_DEBUG_DO(cout << "c o [unate_def_rep][verbose] === test NEW="
         << test+1 << " orig=" << test_orig.var()+1
