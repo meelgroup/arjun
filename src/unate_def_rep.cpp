@@ -681,27 +681,14 @@ bool UnateDefRep::try_commit_h(const uint32_t test, const Lit test_orig,
 // in-place. Returns Break if the iter loop should stop, Continue if
 // the iteration should be skipped (no useful refinement), or Refine on
 // successful refinement.
-UnateDefRep::CexAction UnateDefRep::process_cex(uint32_t test, Lit h_enc_lit,
-                                                 Lit act,
-                                                 [[maybe_unused]] uint32_t iter,
-                                                 aig_ptr& h,
-                                                 PerVarStats& vstats) {
-    // CEX. Extract values of test (F-side) and h_enc_lit (forced to
-    // H(X*) by `act`).
-    const auto& m = s->get_model();
-    const lbool y_test_val_f = m[test];
-    const lbool h_val        = model_value(m, h_enc_lit);
-    if (y_test_val_f == l_Undef || h_val == l_Undef) {
-        // Solver didn't pin one of the literals — bail out cleanly.
-        s->add_clause({~act});
-        vstats.stop_reason = "miter_pin_undef";
-        return CexAction::Break;
-    }
-    // y_test_Y' = h_val (act_curr); indicator_test = FALSE
-    // (base_assumps) forces y_test_Y != y_test_Y'. So
-    // y_test_val_f = ~h_val whenever the miter is SAT.
-    assert(y_test_val_f != h_val
-        && "Miter SAT must have F-side y_test differ from H(X) "
+UnateDefRep::CexAction UnateDefRep::process_cex(const uint32_t test, const Lit h_enc_lit,
+     const Lit act, [[maybe_unused]] uint32_t iter, aig_ptr& h, PerVarStats& vstats) {
+    // CEX. Extract values of test (F-side) and h_enc_lit (forced to H(X*) by `act`)
+    const auto& model = s->get_model();
+    const lbool y_test_val_f = model[test];
+    const lbool h_val        = model_value(model, h_enc_lit);
+    assert(y_test_val_f != l_Undef && h_val != l_Undef);
+    assert(y_test_val_f != h_val && "Miter SAT must have F-side y_test differ from H(X) "
            "(ensured by indicator_test = FALSE in base_assumps)");
 
     // F-only call: assume (X*, aux*) values and force y_test = H(...)
@@ -712,10 +699,10 @@ UnateDefRep::CexAction UnateDefRep::process_cex(uint32_t test, Lit h_enc_lit,
     vector<Lit> f_assumps;
     f_assumps.reserve(input.size() + aux_vars.size() + 1);
     for (uint32_t x : input) {
-        if (x >= m.size()) continue;
-        const lbool v = m[x];
-        if (v == l_Undef) continue;
-        f_assumps.emplace_back(x, v == l_False);
+        assert(x < model.size());
+        const lbool val = model[x];
+        assert(val != l_Undef);
+        f_assumps.emplace_back(x, val == l_False);
     }
     // Aux assumptions: pin aux vars to their miter-model values. In the
     // F-solver these vars are otherwise free (the F-solver has no
@@ -723,8 +710,8 @@ UnateDefRep::CexAction UnateDefRep::process_cex(uint32_t test, Lit h_enc_lit,
     // where bifunctionality lives in an aux var would surface as a
     // cost-zero alarm.
     for (uint32_t a : aux_vars) {
-        if (a >= m.size()) continue;
-        const lbool v = m[a];
+        if (a >= model.size()) continue;
+        const lbool v = model[a];
         if (v == l_Undef) continue;
         f_assumps.emplace_back(a, v == l_False);
     }

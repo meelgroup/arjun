@@ -171,7 +171,7 @@ private:
                        const ArjunNS::aig_ptr& h, const CMSat::Lit h_top_lit,
                        const CMSat::Lit act, const uint32_t iter,
                        PerVarStats& vstats);
-    CexAction process_cex(uint32_t test, CMSat::Lit h_top_lit, CMSat::Lit act,
+    CexAction process_cex(const uint32_t test, const CMSat::Lit h_top_lit, const CMSat::Lit act,
                            uint32_t iter, ArjunNS::aig_ptr& h,
                            PerVarStats& vstats);
     void log_per_var_summary(uint32_t test, const ArjunNS::aig_ptr& h,
