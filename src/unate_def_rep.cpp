@@ -699,8 +699,7 @@ UnateDefRep::CexAction UnateDefRep::process_cex(const uint32_t test, const Lit h
     vector<Lit> f_assumps;
     f_assumps.reserve(input.size() + aux_vars.size() + 1);
     for (uint32_t x : input) {
-        assert(x < model.size());
-        const lbool val = model[x];
+        const lbool val = model.at(x);
         assert(val != l_Undef);
         f_assumps.emplace_back(x, val == l_False);
     }
@@ -710,10 +709,9 @@ UnateDefRep::CexAction UnateDefRep::process_cex(const uint32_t test, const Lit h
     // where bifunctionality lives in an aux var would surface as a
     // cost-zero alarm.
     for (uint32_t a : aux_vars) {
-        if (a >= model.size()) continue;
-        const lbool v = model[a];
-        if (v == l_Undef) continue;
-        f_assumps.emplace_back(a, v == l_False);
+        const lbool val = model.at(a);
+        assert(val != l_Undef);
+        f_assumps.emplace_back(a, val == l_False);
     }
     f_assumps.push_back(force_wrong);
 
