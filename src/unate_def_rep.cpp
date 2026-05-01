@@ -47,7 +47,7 @@
 //         and use `var`.
 //      b. Solve the miter under {indicators TRUE, act_i}.
 //         - UNSAT → run a feasibility check in f_solver: encode H there
-//                   and ask whether `(current F') ∧ y_test = H_top` is
+//                   and ask whether `(current F') ∧ y_test = h_enc` is
 //                   SAT. f_solver starts as original F and accumulates
 //                   the y_v ⇔ H_v of every prior commit (see step 5), so
 //                   this check is against cumulative F', not original F.
@@ -63,7 +63,7 @@
 //                   commits on bifunctional benchmarks; see the in-block
 //                   comment at the check site for the exact gamble.
 //         - SAT   → CEX. y_test_F = m[test] is a value F admits at X*;
-//                   H(...) = m[H_top_lit] is the value the activation
+//                   H(...) = m[h_enc_lit] is the value the activation
 //                   forced on Y' which broke F. They differ.
 //      c. Use a separate F-only solver to confirm "F forces y_test ≠ H(...)
 //         when (X, aux) = miter values" and to extract a small unsat core.
@@ -525,14 +525,14 @@ void UnateDefRep::process_test_var(const uint32_t test) {
         rep_stats.total_iters++;
         vstats.iters++;
 
-        const Lit h_top_lit = encode_h_in_miter(h, /*is_y_prime=*/true);
+        const Lit h_enc_lit = encode_h_in_miter(h, /*is_y_prime=*/true);
 
-        // act_i ⇒ y_test' ⇔ H_top_lit (gating so old encodings can be
+        // act_i ⇒ y_test' ⇔ h_enc_lit (gating so old encodings can be
         // disabled cheaply between iterations by adding the unit ~act_i).
         s->new_var();
         const Lit act_i = Lit(s->nVars()-1, false);
-        s->add_clause({~act_i, ~y_test_prime, h_top_lit});
-        s->add_clause({~act_i,  y_test_prime, ~h_top_lit});
+        s->add_clause({~act_i, ~y_test_prime, h_enc_lit});
+        s->add_clause({~act_i,  y_test_prime, ~h_enc_lit});
 
         vector<Lit> as = base_assumps;
         as.push_back(act_i);
@@ -546,7 +546,7 @@ void UnateDefRep::process_test_var(const uint32_t test) {
         if (ret == l_False) {
             rep_stats.miter_unsat++;
             vstats.miter_unsat++;
-            if (try_commit_h(test, test_orig, h, h_top_lit, act_i, iter, vstats)) break;
+            if (try_commit_h(test, test_orig, h, h_enc_lit, act_i, iter, vstats)) break;
             continue;
         }
         if (ret == l_Undef) {
@@ -559,7 +559,7 @@ void UnateDefRep::process_test_var(const uint32_t test) {
         rep_stats.miter_sat++;
         vstats.miter_sat++;
 
-        const CexAction action = process_cex(test, h_top_lit, act_i, iter, h, vstats);
+        const CexAction action = process_cex(test, h_enc_lit, act_i, iter, h, vstats);
         if (action == CexAction::Break) break;
         // Refine and Continue both fall through to the next iteration.
     }
@@ -590,10 +590,10 @@ void UnateDefRep::log_progress_periodic() {
 // the iter loop should break; false means infeasible/undecided and the
 // caller should `continue`.
 bool UnateDefRep::try_commit_h(uint32_t test, Lit test_orig,
-                                const aig_ptr& h, Lit h_top_lit, Lit act,
+                                const aig_ptr& h, Lit h_enc_lit, Lit act,
                                 uint32_t iter, PerVarStats& vstats) {
     // Feasibility check: ask f_solver whether F' has any model with
-    // y_test = H_top. f_solver carries original F plus every prior
+    // y_test = h_enc. f_solver carries original F plus every prior
     // commit's y_v ⇔ H_v (mirrored on commit — see the
     // f_solver->add_clause block below), so this is checked against
     // cumulative F', not original F. SAT means H is at least sometimes
@@ -611,13 +611,13 @@ bool UnateDefRep::try_commit_h(uint32_t test, Lit test_orig,
     // factorization where strict uniqueness can never hold; the
     // soundness gamble is that CEX-driven refinement keeps H broadly
     // Skolem-like and the fuzzers will surface any bad commit fast.
-    const Lit h_top_in_f = encode_h_in_f(h);
+    const Lit h_enc_in_f = encode_h_in_f(h);
     const Lit y_test_in_f = Lit(test, false);
     f_solver->new_var();
     const Lit f_act = Lit(f_solver->nVars()-1, false);
-    // Under f_act: y_test_in_f ⇔ h_top_in_f.
-    f_solver->add_clause({~f_act,  y_test_in_f, ~h_top_in_f});
-    f_solver->add_clause({~f_act, ~y_test_in_f,  h_top_in_f});
+    // Under f_act: y_test_in_f ⇔ h_enc_in_f.
+    f_solver->add_clause({~f_act,  y_test_in_f, ~h_enc_in_f});
+    f_solver->add_clause({~f_act, ~y_test_in_f,  h_enc_in_f});
     vector<Lit> feas_assumps = {f_act};
     f_solver->set_max_confl(conf.unate_def_rep_max_confl);
     const double t_feas_solve_start = cpuTime();
@@ -635,7 +635,7 @@ bool UnateDefRep::try_commit_h(uint32_t test, Lit test_orig,
     }
 
     // y_test = H(...) is a feasible Skolem witness in cumulative F'
-    // (some F'-model has y_test = H_top). This is weaker than
+    // (some F'-model has y_test = h_enc). This is weaker than
     // unique-defining; see the feasibility-check comment above for the
     // soundness gamble.
 
@@ -698,19 +698,19 @@ bool UnateDefRep::try_commit_h(uint32_t test, Lit test_orig,
         release_assert(bad == 0):
     });
 
-    // Tighten miter: y_test ⇔ H on Y side. For input-only H, h_top_lit
+    // Tighten miter: y_test ⇔ H on Y side. For input-only H, h_enc_lit
     // (Y'-side encoding) and the Y-side encoding are the same SAT lit
     // since inputs are shared. For an H with any aux leaves, the two
     // sides differ when the aux var's pinning indicator is later untied
     // (e.g. when aux becomes a future `test`), so we must encode H
     // explicitly on the Y side here.
     const size_t aux_leaves = h_aux_leaf_count(h);
-    const Lit h_top_lit_for_commit = (aux_leaves == 0)
-        ? h_top_lit
+    const Lit h_enc_lit_for_commit = (aux_leaves == 0)
+        ? h_enc_lit
         : encode_h_in_miter(h, /*is_y_prime=*/false);
     const Lit y_test = Lit(test, false);
-    s->add_clause({~y_test,  h_top_lit_for_commit});
-    s->add_clause({ y_test, ~h_top_lit_for_commit});
+    s->add_clause({~y_test,  h_enc_lit_for_commit});
+    s->add_clause({ y_test, ~h_enc_lit_for_commit});
 
     // Mirror the y_test ⇔ H commit into f_solver so subsequent
     // feasibility checks for later vars operate against cumulative F'
@@ -720,8 +720,8 @@ bool UnateDefRep::try_commit_h(uint32_t test, Lit test_orig,
     // F + prior committed defs". The new clauses are exactly the
     // equivalence we just committed on the s side. The Tseitin chain
     // for H is already in f_solver from the feasibility check above.
-    f_solver->add_clause({~y_test_in_f,  h_top_in_f});
-    f_solver->add_clause({ y_test_in_f, ~h_top_in_f});
+    f_solver->add_clause({~y_test_in_f,  h_enc_in_f});
+    f_solver->add_clause({ y_test_in_f, ~h_enc_in_f});
 
     // Defer materializing y_test ⇔ H into cnf clauses until after the
     // per-test loop. cnf.new_var() allocations during the loop would
@@ -762,16 +762,16 @@ bool UnateDefRep::try_commit_h(uint32_t test, Lit test_orig,
 // in-place. Returns Break if the iter loop should stop, Continue if
 // the iteration should be skipped (no useful refinement), or Refine on
 // successful refinement.
-UnateDefRep::CexAction UnateDefRep::process_cex(uint32_t test, Lit h_top_lit,
+UnateDefRep::CexAction UnateDefRep::process_cex(uint32_t test, Lit h_enc_lit,
                                                  Lit act,
                                                  [[maybe_unused]] uint32_t iter,
                                                  aig_ptr& h,
                                                  PerVarStats& vstats) {
-    // CEX. Extract values of test (F-side) and h_top_lit (forced to
+    // CEX. Extract values of test (F-side) and h_enc_lit (forced to
     // H(X*) by `act`).
     const auto& m = s->get_model();
     const lbool y_test_val_f = m[test];
-    const lbool h_val        = model_value(m, h_top_lit);
+    const lbool h_val        = model_value(m, h_enc_lit);
     if (y_test_val_f == l_Undef || h_val == l_Undef) {
         // Solver didn't pin one of the literals — bail out cleanly.
         s->add_clause({~act});
@@ -945,10 +945,10 @@ void UnateDefRep::materialize_deferred() {
     // miter solver `s` (which depended on cnf.nVars() for Y'-side offsets)
     // is no longer used after this point.
     for (const auto& [test_v, h_aig] : deferred_materialize) {
-        const Lit h_top_in_cnf = materialize_h_in_cnf(h_aig);
+        const Lit h_enc_in_cnf = materialize_h_in_cnf(h_aig);
         const Lit y_test_in_cnf = Lit(test_v, false);
-        cnf.add_clause({~y_test_in_cnf,  h_top_in_cnf});
-        cnf.add_clause({ y_test_in_cnf, ~h_top_in_cnf});
+        cnf.add_clause({~y_test_in_cnf,  h_enc_in_cnf});
+        cnf.add_clause({ y_test_in_cnf, ~h_enc_in_cnf});
     }
 }
 
