@@ -86,7 +86,6 @@ class Unate {
         ~Unate() = default;
 
         void synthesis_unate_def(ArjunNS::SimplifiedCNF& cnf);
-        void synthesis_unate_def_rep(ArjunNS::SimplifiedCNF& cnf);
     private:
 
         Config conf;
