@@ -28,6 +28,7 @@ only_dirs = [
     # "out-synth-1452293-", # same as above, but puura changes reverted to old good one
     "out-synth-1455773-0", # now version 2 of puura
     "out-synth-1455773-3", # now version 2 of puura
+    "out-synth-1471320-", # repair is better now I think
 ]
 # -------------------------------------------------------------
 
