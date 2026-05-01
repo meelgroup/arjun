@@ -136,13 +136,6 @@ using std::map;
 
 namespace {
 
-// Resolve the lbool value of a Lit against a SAT model.
-inline lbool model_value(const vector<lbool>& m, const Lit l) {
-    if (l.var() >= m.size()) return l_Undef;
-    lbool v = m[l.var()];
-    if (v == l_Undef) return l_Undef;
-    return l.sign() ? (v == l_True ? l_False : l_True) : v;
-}
 
 }
 

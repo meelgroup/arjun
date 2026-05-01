@@ -89,6 +89,14 @@ public:
     const UnateDefRepStats& stats() const { return rep_stats; }
 
 private:
+
+    inline CMSat::lbool model_value(const std::vector<CMSat::lbool>& m, const CMSat::Lit l) {
+        if (l.var() >= m.size()) return CMSat::l_Undef;
+        CMSat::lbool v = m[l.var()];
+        if (v == CMSat::l_Undef) return CMSat::l_Undef;
+        return l.sign() ? (v == CMSat::l_True ? CMSat::l_False : CMSat::l_True) : v;
+    }
+
     const ArjunInt::Config& conf;
     ArjunNS::SimplifiedCNF& cnf;
 
