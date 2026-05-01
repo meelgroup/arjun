@@ -50,7 +50,7 @@ Extra args are forwarded to `arjun`. The simplified CNF is written to
 workflow: run it on the same CNF before and after a change and diff the
 output lines.
 
-## After every build ALWAYS run the fuzzers
+## After every build ALWAYS run the fuzzers, in parallel if possible
 
 From `build/`:
 
