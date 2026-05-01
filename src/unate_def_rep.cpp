@@ -494,6 +494,7 @@ void UnateDefRep::process_test_var(const uint32_t test) {
     assert(input.count(test) == 0);
     assert(already_tested.count(test) == 0);
     assert(var_to_indic.at(test) != var_Undef);
+    const Lit y_test_prime = Lit(test + cnf.nVars(), false);
 
     const Lit test_orig = new_to_orig.at(test);
     if (cnf.defined(test_orig.var())) {
@@ -529,13 +530,12 @@ void UnateDefRep::process_test_var(const uint32_t test) {
         // act_i ⇒ y_test' ⇔ H_top_lit (gating so old encodings can be
         // disabled cheaply between iterations by adding the unit ~act_i).
         s->new_var();
-        const Lit act = Lit(s->nVars()-1, false);
-        const Lit y_test_prime = Lit(test + cnf.nVars(), false);
-        s->add_clause({~act, ~y_test_prime, h_top_lit});
-        s->add_clause({~act,  y_test_prime, ~h_top_lit});
+        const Lit act_i = Lit(s->nVars()-1, false);
+        s->add_clause({~act_i, ~y_test_prime, h_top_lit});
+        s->add_clause({~act_i,  y_test_prime, ~h_top_lit});
 
         vector<Lit> as = base_assumps;
-        as.push_back(act);
+        as.push_back(act_i);
 
         s->set_max_confl(conf.unate_def_rep_max_confl);
         const double t_miter_start = cpuTime();
@@ -546,20 +546,20 @@ void UnateDefRep::process_test_var(const uint32_t test) {
         if (ret == l_False) {
             rep_stats.miter_unsat++;
             vstats.miter_unsat++;
-            if (try_commit_h(test, test_orig, h, h_top_lit, act, iter, vstats)) break;
+            if (try_commit_h(test, test_orig, h, h_top_lit, act_i, iter, vstats)) break;
             continue;
         }
         if (ret == l_Undef) {
             rep_stats.miter_undef++;
             vstats.miter_undef++;
-            s->add_clause({~act});
+            s->add_clause({~act_i});
             vstats.stop_reason = "miter_undef";
             break;
         }
         rep_stats.miter_sat++;
         vstats.miter_sat++;
 
-        const CexAction action = process_cex(test, h_top_lit, act, iter, h, vstats);
+        const CexAction action = process_cex(test, h_top_lit, act_i, iter, h, vstats);
         if (action == CexAction::Break) break;
         // Refine and Continue both fall through to the next iteration.
     }
