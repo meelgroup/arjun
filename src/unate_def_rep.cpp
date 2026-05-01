@@ -508,14 +508,14 @@ void UnateDefRep::process_test_var(const uint32_t test) {
     vector<Lit> base_assumps;
     build_base_assumps(test, base_assumps);
 
-    VERBOSE_DEBUG_DO(std::cout << "c o [unate_def_rep][verbose] === test NEW="
+    VERBOSE_DEBUG_DO(cout << "c o [unate_def_rep][verbose] === test NEW="
         << test+1 << " orig=" << test_orig.var()+1
-        << " (sign=" << test_orig.sign() << ") ===" << std::endl);
+        << " (sign=" << test_orig.sign() << ") ===" << endl);
     build_aux_set(test, test_orig);
     VERBOSE_DEBUG_DO({
-        std::cout << "c o [unate_def_rep][verbose]   aux_vars (NEW): {";
-        for (uint32_t a : aux_vars) std::cout << " " << a+1;
-        std::cout << " }" << std::endl;
+        cout << "c o [unate_def_rep][verbose]   aux_vars (NEW): {";
+        for (uint32_t a : aux_vars) cout << " " << a+1;
+        cout << " }" << endl;
     });
 
     aig_ptr h = AIG::new_const(false);   // start from H ≡ 0
@@ -681,12 +681,12 @@ bool UnateDefRep::try_commit_h(uint32_t test, Lit test_orig,
     }
     const aig_ptr h_in_orig = translate_to_orig(h, new_to_orig, test_orig.sign());
     assert(h_in_orig != nullptr);
-    VERBOSE_DEBUG_DO(std::cout
+    VERBOSE_DEBUG_DO(cout
         << "c o [unate_def_rep][verbose] commit test NEW=" << test+1
         << " orig=" << test_orig.var()+1
         << " sign=" << test_orig.sign()
         << " H_NEW=" << h
-        << " H_ORIG=" << h_in_orig << std::endl);
+        << " H_ORIG=" << h_in_orig << endl);
     // set_def_skolem (vs set_def) records the var as Skolem-committed
     // so get_var_types keeps it in backward_defined even when H_test
     // happens to be a constant or input-only AIG. Otherwise downstream
@@ -705,26 +705,17 @@ bool UnateDefRep::try_commit_h(uint32_t test, Lit test_orig,
     // New def changed the dep graph; drop cached recursive deps.
     deps_cache.clear();
 
-    // SLOW_DEBUG: full per-commit verification.
-    //   1. defs_invariant() — defs are well-formed (cycle-free,
-    //      sampling-var deps unique, etc).
-    //   2. check_synth_funs_sat() — F ∧ ¬F[y←y_hat] is UNSAT, i.e. the
-    //      AIGs synthesized so far are jointly correct.
-    // These catch bad defs at the exact iteration that introduced them;
-    // without SLOW_DEBUG the bug would only surface at the
-    // unsat_unate_def_rep AIG checkpoint or in Manthan.
     SLOW_DEBUG_DO({
-        [[maybe_unused]] auto inv_ok = cnf.defs_invariant();
+        release_assert(cnf.defs_invariant());
         int bad = cnf.check_synth_funs_sat();
         if (bad >= 0) {
-            std::cout << "c o [unate_def_rep][SLOW_DEBUG] WRONG commit "
+            cout << "c o [unate_def_rep][SLOW_DEBUG] WRONG commit "
                  << "for orig var " << test_orig.var()+1
                  << " (test NEW=" << test+1 << ")"
                  << " H_NEW=" << h
-                 << " H_ORIG=" << h_in_orig << std::endl;
-            release_assert(false &&
-                "unate_def_rep committed a wrong def");
+                 << " H_ORIG=" << h_in_orig << endl;
         }
+        release_assert(bad == 0):
     });
 
     // Tighten miter: y_test ⇔ H on Y side. For input-only H, h_top_lit
@@ -932,18 +923,17 @@ UnateDefRep::CexAction UnateDefRep::process_cex(uint32_t test, Lit h_top_lit,
         }
     }
     VERBOSE_DEBUG_DO({
-        std::cout << "c o [unate_def_rep][verbose]   iter=" << iter
+        cout << "c o [unate_def_rep][verbose]   iter=" << iter
              << " y_test_val_f=" << y_test_val_f
              << " pattern={ ";
-        for (const auto& pl : pattern_lits) std::cout << pl << " ";
-        std::cout << "} pattern_AIG=" << pattern << std::endl;
+        for (const auto& pl : pattern_lits) cout << pl << " ";
+        cout << "} pattern_AIG=" << pattern << endl;
     });
 
     // Cover X*: when P(X) holds, set H = y_test_val_f there.
     if (y_test_val_f == l_True)  h = AIG::new_or(h, pattern);
     else                         h = AIG::new_and(h, AIG::new_not(pattern));
-    VERBOSE_DEBUG_DO(std::cout << "c o [unate_def_rep][verbose]   H_NEW after refine="
-        << h << std::endl);
+    VERBOSE_DEBUG_DO(cout << "c o [unate_def_rep][verbose]   H_NEW after refine=" << h << endl);
     return CexAction::Refine;
 }
 
