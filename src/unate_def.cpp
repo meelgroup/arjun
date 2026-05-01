@@ -94,7 +94,7 @@ Lit Unate::get_true_lit() {
 // Add copied-side definition constraints: i' <-> H_i(X, Y') for each
 // already-defined var in `backward_defined`.
 void Unate::setup_y_prime_backward_defs() {
-    auto& cnf = *cnf_ptr;
+    const auto& cnf = *cnf_ptr;
     for (const auto& i_new : backward_defined) {
         if (input.count(i_new)) continue;
 
