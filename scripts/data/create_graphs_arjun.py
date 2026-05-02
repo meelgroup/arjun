@@ -26,9 +26,10 @@ only_dirs = [
     # "out-synth-1375532-0", # 2x via aig_rewrite + AIGtoCNF in BVE
     # "out-synth-1448672-1", # formula move, unate_def_cond, unate_def_rep
     # "out-synth-1452293-", # same as above, but puura changes reverted to old good one
-    "out-synth-1455773-0", # now version 2 of puura
-    "out-synth-1455773-3", # now version 2 of puura
-    "out-synth-1471320-", # repair is better now I think
+    # "out-synth-1455773-0", # now version 2 of puura
+    # "out-synth-1455773-3", # now version 2 of puura
+    "out-synth-1471320-0", # repair is better now I think
+    "out-synth-1471320-1", # repair is better now I think
 ]
 # -------------------------------------------------------------
 
