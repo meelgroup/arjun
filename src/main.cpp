@@ -181,6 +181,7 @@ void add_arjun_options() {
     myopt("--unatedefrepinpfirst", conf.unate_def_rep_input_only_first, fc_int,"Try input-only F-solver call before input+aux. 0=off; 1=always; 2=only when aux_vars is non-empty");
     myopt("--unatedefrepdropaux", conf.unate_def_rep_drop_aux, fc_int,"After greedy minim, attempt a single-shot SAT call dropping all aux lits from the pattern. 0=off; 1=on");
     myopt("--unatedefrepmulticex", conf.unate_def_rep_multi_cex_k, fc_int,"Collect K CEX models per iteration and refine H using the one with the smallest input-only conflict. 1 = off");
+    myopt("--unatedefrepiterverb", conf.unate_def_rep_iter_verb, fc_int,"Per-iteration trace verbosity threshold. The trace fires when --verb >= this value");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
     myopt("--monflyorder", mconf.manthan_on_the_fly_order, fc_int,"Use on-the-fly training order and post-training topological order");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
@@ -380,6 +381,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_unate_def_rep_input_only_first(conf.unate_def_rep_input_only_first);
     arj->set_unate_def_rep_drop_aux(conf.unate_def_rep_drop_aux);
     arj->set_unate_def_rep_multi_cex_k(conf.unate_def_rep_multi_cex_k);
+    arj->set_unate_def_rep_iter_verb(conf.unate_def_rep_iter_verb);
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 

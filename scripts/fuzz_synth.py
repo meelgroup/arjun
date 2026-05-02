@@ -500,6 +500,8 @@ if __name__ == "__main__":
         solver += " --unatedefrepdropaux " + random.choice(["0", "1"])
         # 1 = off (single CEX), 2..8 = collect that many.
         solver += " --unatedefrepmulticex " + random.choice(["1", "2", "3", "5", "8"])
+        # per-iter trace verbosity threshold (low = chatty).
+        solver += " --unatedefrepiterverb " + random.choice(["0", "1", "4", "99"])
         solver += " --bveresolvmaxsz " + str(random.randint(2, 20))
         solver += " --iter1grow " + str(random.randint(0, 5))
         solver += " --iter2grow " + str(random.choice([0, 10, 100]))

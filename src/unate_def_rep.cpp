@@ -432,10 +432,19 @@ void UnateDefRep::process_test_var(const uint32_t test) {
 
     aig_ptr h = AIG::new_const(false);   // start from H ≡ 0
     PerVarStats vstats;
+    const bool iter_trace =
+        conf.unate_def_rep_iter_verb > 0 &&
+        (uint32_t)conf.verb >= conf.unate_def_rep_iter_verb;
 
     for (uint32_t iter = 0; iter < conf.unate_def_rep_iters; iter++) {
         rep_stats.total_iters++;
         vstats.iters++;
+        // Snapshot per-iter counters so the trace can compute deltas.
+        const uint32_t iter_pat_count_before = vstats.pattern_count;
+        const uint64_t iter_pat_sum_before   = vstats.pattern_sum;
+        const uint32_t iter_minim_lits_dropped_before = vstats.minim_lits_dropped;
+        const uint32_t iter_minim_attempts_before = vstats.minim_attempts;
+        const size_t   iter_h_nodes_before = AIG::count_aig_nodes_fast(h);
 
         const Lit h_enc_lit = encode_h_in_miter(h, /*is_y_prime=*/true);
 
@@ -458,7 +467,18 @@ void UnateDefRep::process_test_var(const uint32_t test) {
         if (ret == l_False) {
             rep_stats.miter_unsat++;
             vstats.miter_unsat++;
-            if (try_commit_h(test, test_orig, h, h_enc_lit, act_i, iter, vstats)) break;
+            const bool committed =
+                try_commit_h(test, test_orig, h, h_enc_lit, act_i, iter, vstats);
+            if (iter_trace) {
+                const size_t h_nodes_after = AIG::count_aig_nodes_fast(h);
+                verb_print((int)conf.unate_def_rep_iter_verb,
+                    "[unate_def_rep][iter] v=" << setw(5) << test+1
+                    << " it=" << setw(3) << iter
+                    << " miter=UNSAT "
+                    << (committed ? "COMMIT" : "infeas/undef-skip")
+                    << " H_nodes=" << h_nodes_after);
+            }
+            if (committed) break;
             continue;
         }
         if (ret == l_Undef) {
@@ -466,6 +486,12 @@ void UnateDefRep::process_test_var(const uint32_t test) {
             vstats.miter_undef++;
             s->add_clause({~act_i});
             vstats.stop_reason = "miter_undef";
+            if (iter_trace) {
+                verb_print((int)conf.unate_def_rep_iter_verb,
+                    "[unate_def_rep][iter] v=" << setw(5) << test+1
+                    << " it=" << setw(3) << iter
+                    << " miter=UNDEF break");
+            }
             break;
         }
         rep_stats.miter_sat++;
@@ -523,6 +549,30 @@ void UnateDefRep::process_test_var(const uint32_t test) {
 
         const CexAction action = process_cex(test, h_enc_lit, act_i, iter, h,
                                               vstats, cex_models[chosen_idx]);
+        if (iter_trace) {
+            const size_t h_nodes_after = AIG::count_aig_nodes_fast(h);
+            const char* act_str = (action == CexAction::Break)    ? "BREAK" :
+                                  (action == CexAction::Continue) ? "CONT"  : "REFINE";
+            uint32_t pat_sz = 0;
+            if (vstats.pattern_count > iter_pat_count_before) {
+                pat_sz = (uint32_t)(vstats.pattern_sum - iter_pat_sum_before);
+            }
+            const uint32_t minim_dropped =
+                vstats.minim_lits_dropped - iter_minim_lits_dropped_before;
+            const uint32_t minim_called =
+                vstats.minim_attempts - iter_minim_attempts_before;
+            verb_print((int)conf.unate_def_rep_iter_verb,
+                "[unate_def_rep][iter] v=" << setw(5) << test+1
+                << " it=" << setw(3) << iter
+                << " miter=SAT cex_models=" << setw(2) << cex_models.size()
+                << " pat=" << setw(3) << pat_sz
+                << " minim["
+                << setw(2) << minim_called << "/-"
+                << setw(2) << minim_dropped << "]"
+                << " H_nodes " << setw(4) << iter_h_nodes_before
+                << " -> " << setw(4) << h_nodes_after
+                << " " << act_str);
+        }
         if (action == CexAction::Break) break;
         // Refine and Continue both fall through to the next iteration.
     }

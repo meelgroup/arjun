@@ -113,6 +113,9 @@ def run_arjun(fname, prefix):
         "--unatedefrepdropaux", str(random.choice([0, 1])),
         # 1 = single CEX (off), 2..8 = collect that many.
         "--unatedefrepmulticex", str(random.choice([1, 2, 3, 5, 8])),
+        # iter-trace verbosity threshold. Sometimes set low so the
+        # trace fires (stress-testing the printing code).
+        "--unatedefrepiterverb", str(random.choice([0, 1, 4, 99])),
         "--unatedefcond", str(random.choice([0, 1])),
         "--unatedefcondmax", str(random.choice([0, 1, 16, 1024])),
         "--unatedefconddry", str(random.choice([1, 10, 100, 100000])),

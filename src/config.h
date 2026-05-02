@@ -100,6 +100,12 @@ struct Config {
     // (or first if none input-only-UNSAT). 1 = off (single CEX); 2..N
     // = collect this many models per iter.
     uint32_t unate_def_rep_multi_cex_k = 1;
+    // Verbosity for the per-iteration trace (manthan-style). At verb >=
+    // unate_def_rep_iter_verb, every guess+refine iter prints a line
+    // showing miter/f outcomes, pattern size, conflict size, h node
+    // count. 0 = always print (chatty). Default 4 = only when --verb 4
+    // or higher, since most users only want the per-var line.
+    uint32_t unate_def_rep_iter_verb = 4;
     bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;
