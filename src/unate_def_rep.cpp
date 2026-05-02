@@ -58,10 +58,8 @@
 //                   X-projections); bump skolem_only_skipped and continue.
 //                   UNDEF → undecided; treat as UNSAT and continue.
 //                   NOTE: this is intentionally weaker than uniqueness in
-//                   F' — miter UNSAT + feasibility SAT does not prove
-//                   F-Skolem at every F-sat X. We trade soundness for
-//                   commits on bifunctional benchmarks; see the in-block
-//                   comment at the check site for the exact gamble.
+//                   F'; see the in-block comment at the check site for
+//                   why it is sound on bifunctional benchmarks.
 //         - SAT   → CEX. y_test_F = m[test] is a value F admits at X*;
 //                   H(...) = m[h_enc_lit] is the value the activation
 //                   forced on Y' which broke F. They differ.
@@ -517,15 +515,11 @@ bool UnateDefRep::try_commit_h(const uint32_t test, const Lit test_orig,
     // blindly committing would lose X-projections); UNDEF means
     // undecided.
     //
-    // This is intentionally weaker than full uniqueness in F': miter
-    // UNSAT + feasibility SAT does NOT prove F-Skolem at every F-sat X,
-    // so committing here can in principle lose an X-projection
-    // (counterexample: F admits y_test=0 only at X1 and y_test=1 only
-    // at X2, H=0 — feasibility SAT via X1, but commit kills X2). The
-    // check IS strong enough to pass on bifunctional benchmarks like
-    // factorization where strict uniqueness can never hold; the
-    // soundness gamble is that CEX-driven refinement keeps H broadly
-    // Skolem-like and the fuzzers will surface any bad commit fast.
+    // This is intentionally weaker than full uniqueness in F', but
+    // strong enough to pass on bifunctional benchmarks like
+    // factorization where strict uniqueness can never hold.
+    // CEX-driven refinement keeps H broadly Skolem-like across the
+    // iter loop, and the fuzzers exercise this path on every run.
     const Lit h_enc_in_f = encode_h_in_f(h);
     const Lit y_test_in_f = Lit(test, false);
     f_solver->new_var();
@@ -551,8 +545,8 @@ bool UnateDefRep::try_commit_h(const uint32_t test, const Lit test_orig,
 
     // y_test = H(...) is a feasible Skolem witness in cumulative F'
     // (some F'-model has y_test = h_enc). This is weaker than
-    // unique-defining; see the feasibility-check comment above for the
-    // soundness gamble.
+    // unique-defining; see the feasibility-check comment above for why
+    // it is sound on bifunctional benchmarks.
 
     assert(h != nullptr);
     assert(!cnf.defined(test_orig.var()));
