@@ -98,6 +98,7 @@ struct UnateDefRepStats {
     uint64_t multicex_extra_solves = 0;      // miter solves used to get extras
     uint64_t multicex_picked_nonfirst = 0;   // chosen != index 0
     double   time_multicex_solve = 0.0;
+    uint64_t multipat_refine_calls = 0;     // extra process_cex calls on non-chosen models
 };
 
 // Repair-based extension of the conditional unate-def search. See the long

@@ -119,6 +119,12 @@ struct Config {
     // a different order can find additional removable lits. Each pass
     // counts against the same budget. 0 = off; N = up to N extra.
     uint32_t unate_def_rep_minim_extra_passes = 0;
+    // When multi-cex collects K models, refine H with patterns from ALL
+    // of them (not just the chosen one). Manthan's batched-repair
+    // analogue: more H growth per miter call so we converge in fewer
+    // outer iters. 0 = use only the chosen model's pattern (default);
+    // 1 = also fold non-chosen models' patterns into H.
+    uint32_t unate_def_rep_multi_pat = 0;
     bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;

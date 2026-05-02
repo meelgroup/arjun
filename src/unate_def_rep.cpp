@@ -547,8 +547,32 @@ void UnateDefRep::process_test_var(const uint32_t test) {
             if (chosen_idx != 0) rep_stats.multicex_picked_nonfirst++;
         }
 
-        const CexAction action = process_cex(test, h_enc_lit, act_i, iter, h,
-                                              vstats, cex_models[chosen_idx]);
+        CexAction action = process_cex(test, h_enc_lit, act_i, iter, h,
+                                        vstats, cex_models[chosen_idx]);
+        if (conf.unate_def_rep_multi_pat != 0 && cex_models.size() > 1
+            && action != CexAction::Break) {
+            // Multi-pat: also refine H using each non-chosen model.
+            // Each call may yield Refine / Continue / Break — Break
+            // here propagates out (act is already disabled by the
+            // chosen call). Stop after Break to keep accounting sane.
+            // Note: process_cex disables `act` once on its first call;
+            // subsequent calls re-disable it (no-op clause add) which
+            // is harmless. The Y'-side encoding for h was for THIS
+            // iter's H; refining H in subsequent calls within the same
+            // iter operates on stale h_enc_lit (the encoding doesn't
+            // reflect post-refine H). That's OK — the F-only call
+            // doesn't depend on h_enc_lit, only on (X*, aux*) from
+            // the alternate model and force_wrong derived from
+            // model_value(model, h_enc_lit). The pattern extracted
+            // remains a valid refinement target.
+            for (size_t i = 0; i < cex_models.size(); i++) {
+                if (i == chosen_idx) continue;
+                rep_stats.multipat_refine_calls++;
+                CexAction a2 = process_cex(test, h_enc_lit, act_i, iter, h,
+                                            vstats, cex_models[i]);
+                if (a2 == CexAction::Break) { action = a2; break; }
+            }
+        }
         if (iter_trace) {
             const size_t h_nodes_after = AIG::count_aig_nodes_fast(h);
             const char* act_str = (action == CexAction::Break)    ? "BREAK" :

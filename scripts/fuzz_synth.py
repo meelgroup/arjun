@@ -506,6 +506,8 @@ if __name__ == "__main__":
         solver += " --unatedefrepfreqsort " + random.choice(["0", "1"])
         # extra reverse-shuffle minim passes (manthan-style).
         solver += " --unatedefrepminextra " + random.choice(["0", "1", "3", "10"])
+        # 0/1: refine H using all collected multi-cex models.
+        solver += " --unatedefrepmultipat " + random.choice(["0", "1"])
         solver += " --bveresolvmaxsz " + str(random.randint(2, 20))
         solver += " --iter1grow " + str(random.randint(0, 5))
         solver += " --iter2grow " + str(random.choice([0, 10, 100]))

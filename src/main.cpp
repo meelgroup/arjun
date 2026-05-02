@@ -184,6 +184,7 @@ void add_arjun_options() {
     myopt("--unatedefrepiterverb", conf.unate_def_rep_iter_verb, fc_int,"Per-iteration trace verbosity threshold. The trace fires when --verb >= this value");
     myopt("--unatedefrepfreqsort", conf.unate_def_rep_freq_sort, fc_int,"Sort minim drop order by ascending pattern-frequency (manthan-style). 0=off; 1=on");
     myopt("--unatedefrepminextra", conf.unate_def_rep_minim_extra_passes, fc_int,"Number of extra minim passes with reverse-order shuffle after the main greedy loop (manthan-style hot-var extra passes)");
+    myopt("--unatedefrepmultipat", conf.unate_def_rep_multi_pat, fc_int,"With multi-CEX>1, refine H with patterns from ALL collected models (not just chosen). 0=off; 1=on");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
     myopt("--monflyorder", mconf.manthan_on_the_fly_order, fc_int,"Use on-the-fly training order and post-training topological order");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
@@ -386,6 +387,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_unate_def_rep_iter_verb(conf.unate_def_rep_iter_verb);
     arj->set_unate_def_rep_freq_sort(conf.unate_def_rep_freq_sort);
     arj->set_unate_def_rep_minim_extra_passes(conf.unate_def_rep_minim_extra_passes);
+    arj->set_unate_def_rep_multi_pat(conf.unate_def_rep_multi_pat);
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 

@@ -120,6 +120,8 @@ def run_arjun(fname, prefix):
         "--unatedefrepfreqsort", str(random.choice([0, 1])),
         # extra reverse-shuffle minim passes (manthan-style).
         "--unatedefrepminextra", str(random.choice([0, 1, 3, 10])),
+        # 0/1: refine H using all collected multi-cex models.
+        "--unatedefrepmultipat", str(random.choice([0, 1])),
         "--unatedefcond", str(random.choice([0, 1])),
         "--unatedefcondmax", str(random.choice([0, 1, 16, 1024])),
         "--unatedefconddry", str(random.choice([1, 10, 100, 100000])),
