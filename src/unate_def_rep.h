@@ -150,6 +150,12 @@ private:
     // def changes deps.
     std::map<uint32_t, std::vector<uint32_t>> deps_cache;
 
+    // Per-NEW-var pattern frequency: bumped every time a var appears in
+    // an extracted conflict pattern. Used to prefer dropping high-
+    // frequency vars first during minim (manthan's var_conflict_freq).
+    // Sized once at run() entry; never resized.
+    std::vector<uint32_t> pattern_freq;
+
     // Per-commit (test_var_NEW, H_AIG_NEW) pairs to materialize into cnf
     // clauses after the per-test loop completes. We can't materialize in
     // the loop because cnf.new_var() would shift cnf.nVars(), breaking the

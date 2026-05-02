@@ -106,6 +106,13 @@ struct Config {
     // count. 0 = always print (chatty). Default 4 = only when --verb 4
     // or higher, since most users only want the per-var line.
     uint32_t unate_def_rep_iter_verb = 4;
+    // When sorting pattern lits for greedy minim, prefer dropping lower-
+    // pattern-frequency vars first (manthan's `var_conflict_freq`). 0 =
+    // off (alphabetical); 1 = sort within aux/input buckets by ascending
+    // freq. Default 0 — on this benchmark set the freq sort doesn't
+    // produce H AIGs Manthan deals with cleanly downstream (bob loses
+    // ~5s per repair round even though unate_def_rep finds more hits).
+    uint32_t unate_def_rep_freq_sort = 0;
     bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;

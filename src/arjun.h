@@ -1799,6 +1799,7 @@ public:
     void set_unate_def_rep_drop_aux(uint32_t unate_def_rep_drop_aux);
     void set_unate_def_rep_multi_cex_k(uint32_t unate_def_rep_multi_cex_k);
     void set_unate_def_rep_iter_verb(uint32_t unate_def_rep_iter_verb);
+    void set_unate_def_rep_freq_sort(uint32_t unate_def_rep_freq_sort);
     void set_oracle_find_bins(int oracle_find_bins);
     void set_cms_glob_mult(double cms_glob_mult);
     void set_extend_ccnr(int extend_ccnr);
@@ -1839,6 +1840,7 @@ public:
     [[nodiscard]] uint32_t get_unate_def_rep_drop_aux() const;
     [[nodiscard]] uint32_t get_unate_def_rep_multi_cex_k() const;
     [[nodiscard]] uint32_t get_unate_def_rep_iter_verb() const;
+    [[nodiscard]] uint32_t get_unate_def_rep_freq_sort() const;
     [[nodiscard]] int get_oracle_find_bins() const;
     [[nodiscard]] double get_cms_glob_mult() const;
     [[nodiscard]] int get_extend_ccnr() const;

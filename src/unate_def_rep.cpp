@@ -791,13 +791,21 @@ void UnateDefRep::minimize_pattern(vector<Lit>& pattern_lits,
     };
 
     // Sort: drop aux first (so we'd rather lose aux than input lits if
-    // both are removable). Stable to avoid run-to-run reordering.
+    // both are removable). Optionally tiebreak within same kind by
+    // ascending pattern-frequency (manthan's `var_conflict_freq`).
+    // Stable for deterministic tiebreaking on freq ties.
+    const bool freq_sort = conf.unate_def_rep_freq_sort != 0;
     std::stable_sort(pattern_lits.begin(), pattern_lits.end(),
-        [this](const Lit& a, const Lit& b) {
+        [this, freq_sort](const Lit& a, const Lit& b) {
             const bool a_in = input.count(a.var()) > 0;
             const bool b_in = input.count(b.var()) > 0;
             if (a_in != b_in) return !a_in; // aux first
-            return a.var() < b.var();       // deterministic
+            if (freq_sort) {
+                const uint32_t fa = a.var() < pattern_freq.size() ? pattern_freq[a.var()] : 0;
+                const uint32_t fb = b.var() < pattern_freq.size() ? pattern_freq[b.var()] : 0;
+                if (fa != fb) return fa < fb;   // lower freq first
+            }
+            return a.var() < b.var();       // deterministic tiebreaker
         });
 
     std::set<Lit> dont_remove;
@@ -1153,6 +1161,13 @@ UnateDefRep::CexAction UnateDefRep::process_cex(const uint32_t test, const Lit h
     // Cheap fallback for benchmarks where aux is jointly redundant
     // but greedy didn't remove it pair-by-pair.
     drop_aux_oneshot(pattern_lits, force_wrong, vstats);
+
+    // Bump per-var pattern frequency for the (final) pattern lits.
+    // Used by `minimize_pattern` next call to prefer dropping
+    // frequently-seen vars first. Manthan's var_conflict_freq.
+    for (const Lit& pl : pattern_lits) {
+        if (pl.var() < pattern_freq.size()) pattern_freq[pl.var()]++;
+    }
     vstats.pattern_sum += pattern_lits.size();
     vstats.pattern_count++;
     // Cheap invariant: pattern lits live in input ∪ aux (filter above
@@ -1313,6 +1328,7 @@ void UnateDefRep::run() {
     s = setup_f_not_f(cnf, input, conf);
     new_to_orig = cnf.get_new_to_orig_var();
     aux_mask.assign(cnf.nVars(), 0);
+    pattern_freq.assign(cnf.nVars(), 0);
     t0 = my_time;
 
     // ---- Y'-side defs for already-defined vars (mirror of synthesis_unate_def).
