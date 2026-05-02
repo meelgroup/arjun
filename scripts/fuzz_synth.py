@@ -494,6 +494,8 @@ if __name__ == "__main__":
         solver += " --unatedefrepminim " + random.choice(["0", "1"])
         # 0..200 budget for greedy literal-drop.
         solver += " --unatedefrepminbud " + random.choice(["0", "1", "4", "16", "200"])
+        # 0=off; 1=always; 2=only when aux non-empty.
+        solver += " --unatedefrepinpfirst " + random.choice(["0", "1", "2"])
         solver += " --bveresolvmaxsz " + str(random.randint(2, 20))
         solver += " --iter1grow " + str(random.randint(0, 5))
         solver += " --iter2grow " + str(random.choice([0, 10, 100]))

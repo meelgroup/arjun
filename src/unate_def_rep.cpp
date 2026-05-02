@@ -789,30 +789,88 @@ UnateDefRep::CexAction UnateDefRep::process_cex(const uint32_t test, const Lit h
     // sign convention: Lit(v, true)= ¬v, so Lit(test, h_val == l_False)
     // = (h_val == TRUE ? test : ¬test) — exactly "y_test = H_val".
     const Lit force_wrong = Lit(test, h_val == l_False);
+
+    // Manthan's "input-only conflict first": pin only X to the miter
+    // model, force y_test wrong, and try UNSAT. If F is already
+    // contradicted by inputs alone, the resulting pattern lives over
+    // inputs (smaller H, no Y-side aux encode at commit). Falls back
+    // to the input+aux assumption block on SAT or budget. This is
+    // weaker than minim (we may even produce a still-large pattern),
+    // but a hit here makes the subsequent minim run on a strictly
+    // input-shape pattern.
+    const bool inp_first_enabled =
+        (conf.unate_def_rep_input_only_first == 1) ||
+        (conf.unate_def_rep_input_only_first == 2 && !aux_vars.empty());
+    bool got_input_only_unsat = false;
     vector<Lit> f_assumps;
     f_assumps.reserve(input.size() + aux_vars.size() + 1);
-    for (uint32_t x : input) {
-        const lbool val = model.at(x);
-        assert(val != l_Undef);
-        f_assumps.emplace_back(x, val == l_False);
+    if (inp_first_enabled) {
+        rep_stats.inpfirst_attempts++;
+        vector<Lit> input_assumps;
+        input_assumps.reserve(input.size() + 1);
+        for (uint32_t x : input) {
+            const lbool val = model.at(x);
+            assert(val != l_Undef);
+            input_assumps.emplace_back(x, val == l_False);
+        }
+        input_assumps.push_back(force_wrong);
+        f_solver->set_max_confl(conf.unate_def_rep_max_confl);
+        const double t = cpuTime();
+        rep_stats.f_solve_calls++;
+        const auto r0 = f_solver->solve(&input_assumps);
+        rep_stats.time_f_solve += cpuTime() - t;
+        if (r0 == l_False) {
+            // Conflict over inputs alone: confirm force_wrong is in it
+            // (otherwise the conflict is unrelated). On hit, skip the
+            // input+aux call entirely and use this conflict.
+            const auto cf0 = f_solver->get_conflict();
+            bool has_fw = false;
+            for (const auto& cl : cf0) if (cl == ~force_wrong) { has_fw = true; break; }
+            if (has_fw) {
+                rep_stats.inpfirst_unsat++;
+                got_input_only_unsat = true;
+                f_assumps = std::move(input_assumps);
+            } else {
+                // Treat as SAT for accounting; we'll do the full call
+                // below.
+                rep_stats.inpfirst_sat++;
+            }
+        } else if (r0 == l_True) {
+            rep_stats.inpfirst_sat++;
+        } else {
+            rep_stats.inpfirst_undef++;
+        }
     }
-    // Aux assumptions: pin aux vars to their miter-model values. In the
-    // F-solver these vars are otherwise free (the F-solver has no
-    // AIG-copy block / indicator structure), so without this pin a CEX
-    // where bifunctionality lives in an aux var would surface as a
-    // cost-zero alarm.
-    for (uint32_t a : aux_vars) {
-        const lbool val = model.at(a);
-        assert(val != l_Undef);
-        f_assumps.emplace_back(a, val == l_False);
-    }
-    f_assumps.push_back(force_wrong);
 
-    f_solver->set_max_confl(conf.unate_def_rep_max_confl);
-    const double t_f_start = cpuTime();
-    rep_stats.f_solve_calls++;
-    const auto f_ret = f_solver->solve(&f_assumps);
-    rep_stats.time_f_solve += cpuTime() - t_f_start;
+    lbool f_ret = l_Undef;
+    if (got_input_only_unsat) {
+        // Reuse the input-only UNSAT result; conflict already extractable
+        // from f_solver state.
+        f_ret = l_False;
+    } else {
+        for (uint32_t x : input) {
+            const lbool val = model.at(x);
+            assert(val != l_Undef);
+            f_assumps.emplace_back(x, val == l_False);
+        }
+        // Aux assumptions: pin aux vars to their miter-model values. In the
+        // F-solver these vars are otherwise free (the F-solver has no
+        // AIG-copy block / indicator structure), so without this pin a CEX
+        // where bifunctionality lives in an aux var would surface as a
+        // cost-zero alarm.
+        for (uint32_t a : aux_vars) {
+            const lbool val = model.at(a);
+            assert(val != l_Undef);
+            f_assumps.emplace_back(a, val == l_False);
+        }
+        f_assumps.push_back(force_wrong);
+
+        f_solver->set_max_confl(conf.unate_def_rep_max_confl);
+        const double t_f_start = cpuTime();
+        rep_stats.f_solve_calls++;
+        f_ret = f_solver->solve(&f_assumps);
+        rep_stats.time_f_solve += cpuTime() - t_f_start;
+    }
 
     // Disable this iteration's activation regardless of outcome.
     s->add_clause({~act});
@@ -996,7 +1054,11 @@ void UnateDefRep::log_pass_summary() {
             << " att=" << rep_stats.minim_attempts
             << " ok=" << rep_stats.minim_succeeded
             << " sz_in=" << rep_stats.minim_lits_in
-            << " sz_out=" << rep_stats.minim_lits_out << ")");
+            << " sz_out=" << rep_stats.minim_lits_out << ")"
+        << " inpfirst[att=" << rep_stats.inpfirst_attempts
+            << " U=" << rep_stats.inpfirst_unsat
+            << " S=" << rep_stats.inpfirst_sat
+            << " T=" << rep_stats.inpfirst_undef << "]");
 }
 
 void UnateDefRep::run() {

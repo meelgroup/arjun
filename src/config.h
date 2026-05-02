@@ -80,6 +80,13 @@ struct Config {
     // exits when removed_any goes false OR when budget hits zero. Keep
     // bounded since minim is O(pattern_size) extra solves per CEX.
     uint32_t unate_def_rep_minim_budget = 32;
+    // Try an input-only F-solver call before the input+aux call. Manthan's
+    // "input-only conflict first" — if the conflict survives without aux
+    // pinning, the resulting pattern is over inputs only (smaller H, no
+    // Y-side aux encode at commit). Disabled when aux mode is 0 since
+    // the aux set is empty there. 0 = off; 1 = always try first; 2 = try
+    // first but only when aux_vars non-empty.
+    uint32_t unate_def_rep_input_only_first = 2;
     bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;

@@ -107,6 +107,8 @@ def run_arjun(fname, prefix):
         # 0 = budget burnt instantly (no minim work even if enabled). High
         # values let minim grind through patterns. Stress both extremes.
         "--unatedefrepminbud", str(random.choice([0, 1, 4, 16, 200])),
+        # 0=off; 1=always; 2=only when aux non-empty.
+        "--unatedefrepinpfirst", str(random.choice([0, 1, 2])),
         "--unatedefcond", str(random.choice([0, 1])),
         "--unatedefcondmax", str(random.choice([0, 1, 16, 1024])),
         "--unatedefconddry", str(random.choice([1, 10, 100, 100000])),

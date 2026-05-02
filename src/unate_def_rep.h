@@ -82,6 +82,11 @@ struct UnateDefRepStats {
     uint64_t minim_lits_in = 0;        // total lits going into minim
     uint64_t minim_lits_out = 0;       // total lits remaining after minim
     double   time_minim = 0.0;         // SAT time spent inside minim
+    // Input-only F-solver attempts (Manthan's "input-only conflict first").
+    uint64_t inpfirst_attempts = 0;
+    uint64_t inpfirst_unsat = 0;       // succeeded → input-only pattern
+    uint64_t inpfirst_sat = 0;         // had to fall back to input+aux
+    uint64_t inpfirst_undef = 0;       // budget hit
 };
 
 // Repair-based extension of the conditional unate-def search. See the long
