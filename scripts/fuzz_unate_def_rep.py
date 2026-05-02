@@ -136,21 +136,49 @@ def run_arjun(fname, prefix):
         return None, [], None
     aigs = []
     saw_rep_done = False
+    rep_stats = {}
     for line in out.stdout.splitlines():
         if "[unate_def_rep] Done." in line:
             saw_rep_done = True
+            # Parse a few stats from the summary for the run-level totals.
+            # Example shape: "tests:   30 hits:    6 iters:    168 ..."
+            for key in ("tests", "hits", "iters"):
+                m = re.search(r"%s:\s*(\d+)" % key, line)
+                if m:
+                    rep_stats[key] = int(m.group(1))
+        if "[unate_def_rep] time breakdown:" in line:
+            # New stats: minim, inpfirst, dropaux, multicex.
+            for key in ("minim_t", "att", "ok", "sz_in", "sz_out"):
+                # multiple matches may appear; take last for the time line
+                pass
+            m = re.search(r"sz_in=(\d+)\s+sz_out=(\d+)", line)
+            if m:
+                rep_stats["minim_sz_in"] = int(m.group(1))
+                rep_stats["minim_sz_out"] = int(m.group(2))
+            m = re.search(r"inpfirst\[att=(\d+) U=(\d+)", line)
+            if m:
+                rep_stats["inpfirst_att"] = int(m.group(1))
+                rep_stats["inpfirst_unsat"] = int(m.group(2))
+            m = re.search(r"dropaux\[att=(\d+) ok=(\d+)", line)
+            if m:
+                rep_stats["dropaux_att"] = int(m.group(1))
+                rep_stats["dropaux_ok"] = int(m.group(2))
+            m = re.search(r"multicex\[att=(\d+) models=(\d+)", line)
+            if m:
+                rep_stats["multicex_att"] = int(m.group(1))
+                rep_stats["multicex_models"] = int(m.group(2))
         if line.startswith("c o Wrote AIG defs:"):
             aigs.append(line[len("c o Wrote AIG defs:"):].strip())
         if "ERROR" in line and "Training error" not in line:
             print("ERROR line: %s" % line)
-            return True, aigs, saw_rep_done
+            return True, aigs, saw_rep_done, rep_stats
         if "Assertion" in line or "assert" in line:
             print("Assertion line: %s" % line)
-            return True, aigs, saw_rep_done
+            return True, aigs, saw_rep_done, rep_stats
     if out.returncode != 0:
         print("arjun crashed exit=%d args=%s" % (out.returncode, " ".join(args)))
-        return True, aigs, saw_rep_done
-    return False, aigs, saw_rep_done
+        return True, aigs, saw_rep_done, rep_stats
+    return False, aigs, saw_rep_done, rep_stats
 
 
 def run_test_synth(cnf, aig, final):
@@ -203,6 +231,17 @@ def main():
     os.makedirs("out", exist_ok=True)
     rep_fired = 0
     rep_verified = 0
+    # Cumulative stat totals across iterations. Used at the end to print
+    # a coverage line so the user sees that all the new code paths were
+    # actually exercised by the random knob choices (e.g., minim ran at
+    # least N times, inpfirst at least M, etc.).
+    totals = {
+        "minim_sz_in": 0, "minim_sz_out": 0,
+        "inpfirst_att": 0, "inpfirst_unsat": 0,
+        "dropaux_att": 0, "dropaux_ok": 0,
+        "multicex_att": 0, "multicex_models": 0,
+        "iters": 0, "hits": 0, "tests": 0,
+    }
     for i in range(num):
         seed = random.randint(0, 1 << 31)
         random.seed(seed)
@@ -211,7 +250,7 @@ def main():
             os.remove(fname)
             continue
         prefix = unique_file("rep_out", suffix="")
-        err, aigs, saw_rep_done = run_arjun(fname, prefix)
+        err, aigs, saw_rep_done, stats = run_arjun(fname, prefix)
         if err is None:
             print("seed=%d TIMEOUT" % seed)
             cleanup(fname, prefix)
@@ -221,6 +260,8 @@ def main():
             sys.exit(1)
         if saw_rep_done:
             rep_fired += 1
+        for k, v in stats.items():
+            totals[k] = totals.get(k, 0) + v
         # Verify each intermediate AIG (incl. unate_def_rep specifically).
         for aig in aigs:
             final = "-final.aig" in aig
@@ -235,6 +276,29 @@ def main():
                   (i + 1, num, rep_fired, rep_verified))
     print("DONE %d iters: rep_fired=%d rep_verified_AIGs=%d" %
           (num, rep_fired, rep_verified))
+    # Coverage summary — every knob's effect should show up in totals.
+    # If e.g. minim_sz_in == minim_sz_out for every run, the minim
+    # path is broken or never fires.
+    print("=== knob coverage across runs ===")
+    print("  total iters: %d (rep tests: %d, hits: %d)" %
+          (totals["iters"], totals["tests"], totals["hits"]))
+    if totals["minim_sz_in"]:
+        dropped = totals["minim_sz_in"] - totals["minim_sz_out"]
+        print("  minim: in=%d out=%d (-%d, %.1f%%)" %
+              (totals["minim_sz_in"], totals["minim_sz_out"], dropped,
+               100.0 * dropped / max(totals["minim_sz_in"], 1)))
+    if totals["inpfirst_att"]:
+        print("  inpfirst: att=%d UNSAT=%d (%.1f%%)" %
+              (totals["inpfirst_att"], totals["inpfirst_unsat"],
+               100.0 * totals["inpfirst_unsat"] / max(totals["inpfirst_att"], 1)))
+    if totals["dropaux_att"]:
+        print("  dropaux: att=%d ok=%d (%.1f%%)" %
+              (totals["dropaux_att"], totals["dropaux_ok"],
+               100.0 * totals["dropaux_ok"] / max(totals["dropaux_att"], 1)))
+    if totals["multicex_att"]:
+        print("  multicex: att=%d models=%d (avg %.1f models/iter)" %
+              (totals["multicex_att"], totals["multicex_models"],
+               totals["multicex_models"] / max(totals["multicex_att"], 1)))
 
 
 if __name__ == "__main__":
