@@ -690,13 +690,13 @@ bool UnateDefRep::try_commit_h(const uint32_t test, const Lit test_orig,
         release_assert(cnf.defs_invariant());
         int bad = cnf.check_synth_funs_sat();
         if (bad >= 0) {
-            cout << "c o [unate_def_rep][SLOW_DEBUG] WRONG commit "
+            std::cout << "c o [unate_def_rep][SLOW_DEBUG] WRONG commit "
                  << "for orig var " << test_orig.var()+1
                  << " (test NEW=" << test+1 << ")"
                  << " H_NEW=" << h
-                 << " H_ORIG=" << h_in_orig << endl;
+                 << " H_ORIG=" << h_in_orig << std::endl;
         }
-        release_assert(bad == 0):
+        release_assert(bad == 0);
     });
 
     // Tighten miter: y_test ⇔ H on Y side. For input-only H, h_enc_lit
@@ -783,6 +783,22 @@ void UnateDefRep::minimize_pattern(vector<Lit>& pattern_lits,
     vstats.minim_attempts++;
     const size_t orig_sz = pattern_lits.size();
     rep_stats.minim_lits_in += orig_sz;
+    SLOW_DEBUG_DO({
+        // All pattern lits must be in input ∪ aux on entry; force_wrong
+        // must NOT be in pattern_lits. The extractor in process_cex
+        // already filters to this set, but the minim helper is called
+        // multiple places — assert at entry to catch any leak.
+        for (const Lit& pl : pattern_lits) {
+            release_assert(pl.var() != force_wrong.var());
+            const bool is_in = input.count(pl.var()) > 0;
+            const bool is_au = pl.var() < aux_mask.size() && aux_mask[pl.var()] != 0;
+            release_assert((is_in || is_au)
+                && "minim_pattern: lit must be input or aux");
+        }
+    });
+    VERBOSE_DEBUG_DO(cout
+        << "c o [unate_def_rep][minim] entry pat sz=" << orig_sz
+        << " budget=" << conf.unate_def_rep_minim_budget << endl);
 
     auto is_in_pat_set = [&](const Lit& l) {
         const bool is_input_l = input.count(l.var()) > 0;
@@ -876,6 +892,20 @@ void UnateDefRep::minimize_pattern(vector<Lit>& pattern_lits,
     }
     rep_stats.minim_lits_out += pattern_lits.size();
     if (pattern_lits.size() < orig_sz) rep_stats.minim_succeeded++;
+    SLOW_DEBUG_DO({
+        // Postcondition: minim never grows the pattern, and all lits
+        // are still in input ∪ aux.
+        release_assert(pattern_lits.size() <= orig_sz);
+        for (const Lit& pl : pattern_lits) {
+            const bool is_in = input.count(pl.var()) > 0;
+            const bool is_au = pl.var() < aux_mask.size() && aux_mask[pl.var()] != 0;
+            release_assert((is_in || is_au)
+                && "minim_pattern: post lit must be input or aux");
+        }
+    });
+    VERBOSE_DEBUG_DO(cout
+        << "c o [unate_def_rep][minim] exit pat sz=" << pattern_lits.size()
+        << " ("<< (orig_sz - pattern_lits.size()) <<" dropped)" << endl);
 }
 
 // One SAT call dropping every aux lit from the pattern at once.
@@ -934,6 +964,13 @@ void UnateDefRep::drop_aux_oneshot(vector<Lit>& pattern_lits,
     rep_stats.dropaux_lits_dropped += orig_sz - new_pat.size();
     rep_stats.dropaux_succeeded++;
     pattern_lits = std::move(new_pat);
+    SLOW_DEBUG_DO({
+        // Postcondition: drop_aux produces a strictly input-only pattern.
+        for (const Lit& pl : pattern_lits) {
+            release_assert(input.count(pl.var()) > 0
+                && "drop_aux: post pattern must be input-only");
+        }
+    });
 }
 
 // Manthan-style multi-CEX collection on the miter. Given the current
@@ -1000,6 +1037,24 @@ vector<vector<lbool>> UnateDefRep::collect_cex_models(
     // Permanently disable each blocking clause.
     for (uint32_t ab : block_act_vars) s->add_clause({Lit(ab, false)});
     rep_stats.multicex_models_collected += models.size();
+    SLOW_DEBUG_DO({
+        // All collected models must differ on at least one (input ∪ aux)
+        // value (the blocking clauses guarantee this; assert it).
+        auto same_proj = [&](const vector<lbool>& a, const vector<lbool>& b) {
+            for (uint32_t x : input) if (a[x] != b[x]) return false;
+            for (uint32_t a_v : aux_vars) if (a[a_v] != b[a_v]) return false;
+            return true;
+        };
+        for (size_t i = 0; i < models.size(); i++) {
+            for (size_t j = i+1; j < models.size(); j++) {
+                release_assert(!same_proj(models[i], models[j])
+                    && "collect_cex_models produced duplicate models");
+            }
+        }
+    });
+    VERBOSE_DEBUG_DO(cout
+        << "c o [unate_def_rep][multicex] collected " << models.size()
+        << " models (k=" << k << ")" << endl);
     return models;
 }
 
@@ -1064,6 +1119,10 @@ UnateDefRep::CexAction UnateDefRep::process_cex(const uint32_t test, const Lit h
                 rep_stats.inpfirst_unsat++;
                 got_input_only_unsat = true;
                 f_assumps = std::move(input_assumps);
+                VERBOSE_DEBUG_DO(cout
+                    << "c o [unate_def_rep][inpfirst] UNSAT-on-inputs for v="
+                    << test+1 << " (cf sz=" << cf0.size()
+                    << "); skipping aux pinning" << endl);
             } else {
                 // Treat as SAT for accounting; we'll do the full call
                 // below.
