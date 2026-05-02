@@ -504,6 +504,8 @@ if __name__ == "__main__":
         solver += " --unatedefrepiterverb " + random.choice(["0", "1", "4", "99"])
         # 0/1: sort minim drop order by pattern-frequency.
         solver += " --unatedefrepfreqsort " + random.choice(["0", "1"])
+        # extra reverse-shuffle minim passes (manthan-style).
+        solver += " --unatedefrepminextra " + random.choice(["0", "1", "3", "10"])
         solver += " --bveresolvmaxsz " + str(random.randint(2, 20))
         solver += " --iter1grow " + str(random.randint(0, 5))
         solver += " --iter2grow " + str(random.choice([0, 10, 100]))

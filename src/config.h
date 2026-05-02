@@ -113,6 +113,12 @@ struct Config {
     // produce H AIGs Manthan deals with cleanly downstream (bob loses
     // ~5s per repair round even though unate_def_rep finds more hits).
     uint32_t unate_def_rep_freq_sort = 0;
+    // After greedy minim's main loop, do up to N extra passes with a
+    // reverse-order shuffle. Manthan-style "extra passes for hot
+    // variables" — the greedy result depends on iteration order, and
+    // a different order can find additional removable lits. Each pass
+    // counts against the same budget. 0 = off; N = up to N extra.
+    uint32_t unate_def_rep_minim_extra_passes = 0;
     bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;

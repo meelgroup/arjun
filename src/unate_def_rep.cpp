@@ -826,8 +826,26 @@ void UnateDefRep::minimize_pattern(vector<Lit>& pattern_lits,
 
     std::set<Lit> dont_remove;
     uint32_t budget_left = conf.unate_def_rep_minim_budget;
+    uint32_t extra_passes_remaining = conf.unate_def_rep_minim_extra_passes;
+    bool reverse_order = false;
     bool removed_any = true;
-    while (removed_any && budget_left > 0 && pattern_lits.size() > 1) {
+    while (budget_left > 0 && pattern_lits.size() > 1) {
+        if (!removed_any) {
+            // Greedy loop converged. If extra-pass budget left, reverse
+            // the order, clear pin set, and try again — the greedy
+            // result depends on order so a different sweep may find
+            // additional removable lits.
+            if (extra_passes_remaining == 0) break;
+            extra_passes_remaining--;
+            std::reverse(pattern_lits.begin(), pattern_lits.end());
+            reverse_order = !reverse_order;
+            dont_remove.clear();
+            removed_any = true;
+            VERBOSE_DEBUG_DO(cout
+                << "c o [unate_def_rep][minim] extra pass (rev) pat sz="
+                << pattern_lits.size() << " budget=" << budget_left << endl);
+            rep_stats.minim_extra_pass_calls++;
+        }
         removed_any = false;
         for (size_t i = 0; i < pattern_lits.size(); i++) {
             if (budget_left == 0) break;

@@ -118,6 +118,8 @@ def run_arjun(fname, prefix):
         "--unatedefrepiterverb", str(random.choice([0, 1, 4, 99])),
         # 0/1: sort minim drop order by pattern-frequency.
         "--unatedefrepfreqsort", str(random.choice([0, 1])),
+        # extra reverse-shuffle minim passes (manthan-style).
+        "--unatedefrepminextra", str(random.choice([0, 1, 3, 10])),
         "--unatedefcond", str(random.choice([0, 1])),
         "--unatedefcondmax", str(random.choice([0, 1, 16, 1024])),
         "--unatedefconddry", str(random.choice([1, 10, 100, 100000])),
