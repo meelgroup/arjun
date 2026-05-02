@@ -176,6 +176,8 @@ void add_arjun_options() {
     myopt("--unatedefrepmaxcz", conf.unate_def_rep_max_costzero, fc_int,"Give up on a variable after this many cost-zero CEXes in the repair pass");
     myopt("--unatedefrepconfl", conf.unate_def_rep_max_confl, fc_int,"Conflict budget per SAT call inside the repair-based unate_def pass");
     myopt("--unatedefrepaux", conf.unate_def_rep_aux, fc_int,"Allow H to use non-input leaves in unate_def_rep. 0=input-only; 1=input+backward-defined (cycle-checked); 2=input+backward-defined+to-define (richest)");
+    myopt("--unatedefrepminim", conf.unate_def_rep_minim, fc_int,"Greedy conflict minimization on the F-only solver in unate_def_rep. 0=off; 1=greedy single pass; 2=greedy + extra shuffled passes for hot vars");
+    myopt("--unatedefrepminbud", conf.unate_def_rep_minim_budget, fc_int,"Per-iter budget on minimization solver calls (number of literal-removal attempts allowed before bailing out)");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
     myopt("--monflyorder", mconf.manthan_on_the_fly_order, fc_int,"Use on-the-fly training order and post-training topological order");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
@@ -370,6 +372,8 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_unate_def_rep_max_costzero(conf.unate_def_rep_max_costzero);
     arj->set_unate_def_rep_max_confl(conf.unate_def_rep_max_confl);
     arj->set_unate_def_rep_aux(conf.unate_def_rep_aux);
+    arj->set_unate_def_rep_minim(conf.unate_def_rep_minim);
+    arj->set_unate_def_rep_minim_budget(conf.unate_def_rep_minim_budget);
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 

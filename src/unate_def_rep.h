@@ -75,6 +75,13 @@ struct UnateDefRepStats {
     uint64_t encode_h_nodes_visited = 0;
     uint64_t encode_h_nodes_emitted = 0;  // distinct AND helpers actually allocated
     uint64_t encode_h_in_f_emitted = 0;
+    // Conflict minimization (greedy literal drop on the F-only solver).
+    uint64_t minim_attempts = 0;       // CEXes where minim was invoked
+    uint64_t minim_succeeded = 0;      // CEXes where minim removed >=1 lit
+    uint64_t minim_solver_calls = 0;   // total extra F-solver calls
+    uint64_t minim_lits_in = 0;        // total lits going into minim
+    uint64_t minim_lits_out = 0;       // total lits remaining after minim
+    double   time_minim = 0.0;         // SAT time spent inside minim
 };
 
 // Repair-based extension of the conditional unate-def search. See the long
@@ -161,6 +168,9 @@ private:
         uint64_t pattern_sum = 0;
         uint32_t pattern_count = 0;
         uint32_t costzero_count = 0;
+        // Per-var minimization counters (for the verb=2 trace line).
+        uint32_t minim_attempts = 0;
+        uint32_t minim_lits_dropped = 0;
         const char* stop_reason = "iter_limit";
     };
     enum class CexAction { Refine, Continue, Break };
@@ -182,6 +192,14 @@ private:
     CexAction process_cex(const uint32_t test, const CMSat::Lit h_top_lit, const CMSat::Lit act,
                            uint32_t iter, ArjunNS::aig_ptr& h,
                            PerVarStats& vstats);
+    // Greedy minimization on the F-only conflict. Tries to drop each
+    // pattern lit and re-solve with `force_wrong` kept; if still UNSAT
+    // and `~force_wrong` remains in the conflict, replaces `pattern_lits`
+    // with the smaller conflict. Bounded by
+    // `unate_def_rep_minim_budget`. No-op when `unate_def_rep_minim==0`.
+    void minimize_pattern(std::vector<CMSat::Lit>& pattern_lits,
+                          CMSat::Lit force_wrong,
+                          PerVarStats& vstats);
     void log_per_var_summary(uint32_t test, const ArjunNS::aig_ptr& h,
                               const PerVarStats& vstats);
     void materialize_deferred();

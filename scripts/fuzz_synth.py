@@ -490,6 +490,10 @@ if __name__ == "__main__":
         solver += " --unatedefrepconfl " + random.choice(["1", "10", "100", "1000", "100000"])
         # 0=input only, 1=+backward-defined, 2=+to-define (richest).
         solver += " --unatedefrepaux " + random.choice(["0", "1", "2"])
+        # 0 = greedy minim off, 1 = on.
+        solver += " --unatedefrepminim " + random.choice(["0", "1"])
+        # 0..200 budget for greedy literal-drop.
+        solver += " --unatedefrepminbud " + random.choice(["0", "1", "4", "16", "200"])
         solver += " --bveresolvmaxsz " + str(random.randint(2, 20))
         solver += " --iter1grow " + str(random.randint(0, 5))
         solver += " --iter2grow " + str(random.choice([0, 10, 100]))

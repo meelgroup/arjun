@@ -102,6 +102,11 @@ def run_arjun(fname, prefix):
         "--unatedefrepconfl", str(random.choice([1, 10, 100, 1000, 100000])),
         # 0=input only, 1=+backward-defined, 2=+to-define (richest).
         "--unatedefrepaux", str(random.choice([0, 1, 2])),
+        # 0 = no conflict minim (old). 1 = greedy. Mostly we want 1.
+        "--unatedefrepminim", str(random.choice([0, 1])),
+        # 0 = budget burnt instantly (no minim work even if enabled). High
+        # values let minim grind through patterns. Stress both extremes.
+        "--unatedefrepminbud", str(random.choice([0, 1, 4, 16, 200])),
         "--unatedefcond", str(random.choice([0, 1])),
         "--unatedefcondmax", str(random.choice([0, 1, 16, 1024])),
         "--unatedefconddry", str(random.choice([1, 10, 100, 100000])),

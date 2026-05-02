@@ -657,6 +657,118 @@ bool UnateDefRep::try_commit_h(const uint32_t test, const Lit test_orig,
     return true;
 }
 
+// Greedy literal-drop minimization on the F-only conflict. Manthan's
+// `minimize_conflict` adapted for the unate_def_rep setting where the
+// "to_repair" lit is `force_wrong = Lit(test, h_val == FALSE)` and the
+// pattern lits are the negated conflict lits in input ∪ aux.
+//
+// Loop: walk pattern_lits, attempt to drop each one and re-solve with
+// the remaining lits + force_wrong assumed. UNSAT-with-~force_wrong-
+// in-conflict ⇒ replace pattern with the smaller conflict; otherwise
+// pin the lit (unable to remove). Repeat until a full pass removes
+// nothing or the budget is exhausted.
+//
+// Aux lits are sorted to the front so the minimizer prefers dropping
+// aux first — input-only patterns produce smaller, simpler H AIGs at
+// commit, and an input-only H avoids the Y-side encode for aux on
+// commit (h_aux_leaf_count == 0 → reuse h_enc_lit).
+void UnateDefRep::minimize_pattern(vector<Lit>& pattern_lits,
+                                    const Lit force_wrong,
+                                    PerVarStats& vstats) {
+    if (conf.unate_def_rep_minim == 0) return;
+    if (pattern_lits.size() <= 1) return;
+
+    rep_stats.minim_attempts++;
+    vstats.minim_attempts++;
+    const size_t orig_sz = pattern_lits.size();
+    rep_stats.minim_lits_in += orig_sz;
+
+    auto is_in_pat_set = [&](const Lit& l) {
+        const bool is_input_l = input.count(l.var()) > 0;
+        const bool is_aux_l = l.var() < aux_mask.size() && aux_mask[l.var()] != 0;
+        return is_input_l || is_aux_l;
+    };
+
+    // Sort: drop aux first (so we'd rather lose aux than input lits if
+    // both are removable). Stable to avoid run-to-run reordering.
+    std::stable_sort(pattern_lits.begin(), pattern_lits.end(),
+        [this](const Lit& a, const Lit& b) {
+            const bool a_in = input.count(a.var()) > 0;
+            const bool b_in = input.count(b.var()) > 0;
+            if (a_in != b_in) return !a_in; // aux first
+            return a.var() < b.var();       // deterministic
+        });
+
+    std::set<Lit> dont_remove;
+    uint32_t budget_left = conf.unate_def_rep_minim_budget;
+    bool removed_any = true;
+    while (removed_any && budget_left > 0 && pattern_lits.size() > 1) {
+        removed_any = false;
+        for (size_t i = 0; i < pattern_lits.size(); i++) {
+            if (budget_left == 0) break;
+            const Lit candidate = pattern_lits[i];
+            if (dont_remove.count(candidate)) continue;
+            VERBOSE_DEBUG_DO(cout
+                << "c o [unate_def_rep][minim] try drop " << candidate
+                << " from pat sz=" << pattern_lits.size() << endl);
+            vector<Lit> as;
+            as.reserve(pattern_lits.size());
+            for (size_t j = 0; j < pattern_lits.size(); j++) {
+                if (i == j) continue;
+                as.push_back(pattern_lits[j]);
+            }
+            as.push_back(force_wrong);
+            f_solver->set_max_confl(conf.unate_def_rep_max_confl);
+            const double t = cpuTime();
+            rep_stats.f_solve_calls++;
+            rep_stats.minim_solver_calls++;
+            budget_left--;
+            const auto r = f_solver->solve(&as);
+            const double dt = cpuTime() - t;
+            rep_stats.time_f_solve += dt;
+            rep_stats.time_minim += dt;
+            if (r != l_False) {
+                dont_remove.insert(candidate);
+                continue;
+            }
+            // Build a new pattern from the conflict, restricted to
+            // input ∪ aux assumption-form lits and excluding force_wrong.
+            const auto cf = f_solver->get_conflict();
+            bool has_fw = false;
+            for (const auto& cl : cf) if (cl == ~force_wrong) { has_fw = true; break; }
+            if (!has_fw) {
+                // Conflict doesn't depend on force_wrong; this would
+                // give us a useless (vacuous) pattern — pin and move on.
+                dont_remove.insert(candidate);
+                continue;
+            }
+            vector<Lit> new_pat;
+            new_pat.reserve(cf.size());
+            for (const auto& cl : cf) {
+                if (cl == ~force_wrong) continue;
+                if (cl.var() == force_wrong.var()) continue;
+                if (!is_in_pat_set(~cl)) continue;
+                new_pat.push_back(~cl);
+            }
+            // Defensive: if the solver gave us back the same set or
+            // bigger, treat as a non-removal.
+            if (new_pat.size() >= pattern_lits.size()) {
+                dont_remove.insert(candidate);
+                continue;
+            }
+            VERBOSE_DEBUG_DO(cout
+                << "c o [unate_def_rep][minim]   removed; pat sz "
+                << pattern_lits.size() << " -> " << new_pat.size() << endl);
+            vstats.minim_lits_dropped += pattern_lits.size() - new_pat.size();
+            pattern_lits = std::move(new_pat);
+            removed_any = true;
+            break;
+        }
+    }
+    rep_stats.minim_lits_out += pattern_lits.size();
+    if (pattern_lits.size() < orig_sz) rep_stats.minim_succeeded++;
+}
+
 // Called when the miter just returned SAT. Runs the F-only CEX call,
 // extracts the input/aux pattern from the conflict, and refines `h`
 // in-place. Returns Break if the iter loop should stop, Continue if
@@ -750,6 +862,9 @@ UnateDefRep::CexAction UnateDefRep::process_cex(const uint32_t test, const Lit h
         if (!is_input && !is_aux) continue;
         pattern_lits.push_back(~cl);    // assumption form: matches X*
     }
+    // Greedy minimization on the conflict before counting / size-gating.
+    // Shrinks the pattern, generalising H and shrinking AIG growth.
+    minimize_pattern(pattern_lits, force_wrong, vstats);
     vstats.pattern_sum += pattern_lits.size();
     vstats.pattern_count++;
     // Cheap invariant: pattern lits live in input ∪ aux (filter above
@@ -817,6 +932,8 @@ void UnateDefRep::log_per_var_summary(uint32_t test, const aig_ptr& h,
         << " costzero="  << setw(3) << vstats.costzero_count
         << " avg_pat="   << setw(5) << setprecision(1) << fixed
                          << safe_div(vstats.pattern_sum, vstats.pattern_count)
+        << " minim["     << setw(2) << vstats.minim_attempts
+        << "/-"          << setw(3) << vstats.minim_lits_dropped << "]"
         << " aux["       << setw(4) << aux_vars.size()
         << "/used="      << setw(3) << v_aux_leaves << "]"
         << " AIG_nodes=" << setw(5) << AIG::count_aig_nodes_fast(h)
@@ -873,7 +990,13 @@ void UnateDefRep::log_pass_summary() {
         << " feas_solve=" << rep_stats.time_feas_solve
             << "(calls=" << rep_stats.feas_solve_calls << ")"
         << " f_solve=" << rep_stats.time_f_solve
-            << "(calls=" << rep_stats.f_solve_calls << ")");
+            << "(calls=" << rep_stats.f_solve_calls << ")"
+        << " minim_t=" << rep_stats.time_minim
+            << "(calls=" << rep_stats.minim_solver_calls
+            << " att=" << rep_stats.minim_attempts
+            << " ok=" << rep_stats.minim_succeeded
+            << " sz_in=" << rep_stats.minim_lits_in
+            << " sz_out=" << rep_stats.minim_lits_out << ")");
 }
 
 void UnateDefRep::run() {

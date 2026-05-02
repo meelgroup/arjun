@@ -71,6 +71,15 @@ struct Config {
     // 2 = input + backward-defined + still-undefined to-define vars (richest; relies
     //     on Manthan-side dependency tracking to keep the synthesis cycle-free).
     uint32_t unate_def_rep_aux = 2;
+    // Greedy conflict minimization on the F-only solver: after extracting
+    // the initial pattern, iteratively try dropping each lit and re-solving.
+    // 0 = off (old behavior). 1 = greedy single pass. 2 = greedy + extra
+    // shuffled passes for hot vars (similar to manthan's hot-var minim).
+    uint32_t unate_def_rep_minim = 1;
+    // Per-iteration budget on minimization solver calls. The minim loop
+    // exits when removed_any goes false OR when budget hits zero. Keep
+    // bounded since minim is O(pattern_size) extra solves per CEX.
+    uint32_t unate_def_rep_minim_budget = 32;
     bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;
