@@ -49,7 +49,8 @@ struct Config {
     uint32_t extend_max_confl = 30000;
     int unate_def_cond = 1;
     uint32_t unate_def_cond_max_per_var = 128;
-    uint32_t unate_def_cond_max_confl = 4000;
+    uint32_t unate_def_max_confl = 7000;
+    uint32_t unate_def_cond_max_confl = 7000;
     // Disable conditional probe after this many consecutive misses with
     // zero hits so far. Low = bail aggressively; very high = effectively
     // never disable.

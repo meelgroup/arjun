@@ -307,6 +307,7 @@ bool Unate::process_test_var(const uint32_t test) {
         assumps.emplace_back(test, !flip);
         assumps.emplace_back(test+cnf.nVars(), flip);
         verb_print(3, "[unate_def] assumps : " << assumps);
+        s->set_max_confl(conf.unate_def_max_confl);
         const auto ret = s->solve(&assumps);
         if (ret == l_False) {
             const Lit l = Lit(test, flip);

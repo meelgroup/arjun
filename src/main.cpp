@@ -165,6 +165,7 @@ void add_arjun_options() {
     myopt("--minimconfl", mconf.minimize_conflict, fc_int,"Minimize conflict size when repairing");
     myopt("--simpevery", mconf.simplify_every, fc_int,"Simplify solvers inside Manthan every K loops");
     myopt("--unatedef", do_unate_def, fc_int,"Perform definition-aware unate analysis");
+    myopt("--unatedefmaxconfl", conf.unate_def_max_confl, fc_int,"Conflict budget per SAT call in the standard unate_def probe");
     myopt("--unatedefcond", conf.unate_def_cond, fc_int,"In unate_def, also detect conditional defs of the form t = ITE(L,c1,c0) for input literals L (i.e., t = L or t = ~L)");
     myopt("--unatedefcondmax", conf.unate_def_cond_max_per_var, fc_int,"Max conditional candidates to test per to-define variable in unate_def");
     myopt("--unatedefcondconfl", conf.unate_def_cond_max_confl, fc_int,"Conflict budget per SAT call inside the conditional unate_def search");
