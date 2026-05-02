@@ -179,6 +179,7 @@ void add_arjun_options() {
     myopt("--unatedefrepminim", conf.unate_def_rep_minim, fc_int,"Greedy conflict minimization on the F-only solver in unate_def_rep. 0=off; 1=greedy single pass; 2=greedy + extra shuffled passes for hot vars");
     myopt("--unatedefrepminbud", conf.unate_def_rep_minim_budget, fc_int,"Per-iter budget on minimization solver calls (number of literal-removal attempts allowed before bailing out)");
     myopt("--unatedefrepinpfirst", conf.unate_def_rep_input_only_first, fc_int,"Try input-only F-solver call before input+aux. 0=off; 1=always; 2=only when aux_vars is non-empty");
+    myopt("--unatedefrepdropaux", conf.unate_def_rep_drop_aux, fc_int,"After greedy minim, attempt a single-shot SAT call dropping all aux lits from the pattern. 0=off; 1=on");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
     myopt("--monflyorder", mconf.manthan_on_the_fly_order, fc_int,"Use on-the-fly training order and post-training topological order");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
@@ -376,6 +377,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_unate_def_rep_minim(conf.unate_def_rep_minim);
     arj->set_unate_def_rep_minim_budget(conf.unate_def_rep_minim_budget);
     arj->set_unate_def_rep_input_only_first(conf.unate_def_rep_input_only_first);
+    arj->set_unate_def_rep_drop_aux(conf.unate_def_rep_drop_aux);
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 

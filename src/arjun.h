@@ -1796,6 +1796,7 @@ public:
     void set_unate_def_rep_minim(uint32_t unate_def_rep_minim);
     void set_unate_def_rep_minim_budget(uint32_t unate_def_rep_minim_budget);
     void set_unate_def_rep_input_only_first(uint32_t unate_def_rep_input_only_first);
+    void set_unate_def_rep_drop_aux(uint32_t unate_def_rep_drop_aux);
     void set_oracle_find_bins(int oracle_find_bins);
     void set_cms_glob_mult(double cms_glob_mult);
     void set_extend_ccnr(int extend_ccnr);
@@ -1833,6 +1834,7 @@ public:
     [[nodiscard]] uint32_t get_unate_def_rep_minim() const;
     [[nodiscard]] uint32_t get_unate_def_rep_minim_budget() const;
     [[nodiscard]] uint32_t get_unate_def_rep_input_only_first() const;
+    [[nodiscard]] uint32_t get_unate_def_rep_drop_aux() const;
     [[nodiscard]] int get_oracle_find_bins() const;
     [[nodiscard]] double get_cms_glob_mult() const;
     [[nodiscard]] int get_extend_ccnr() const;

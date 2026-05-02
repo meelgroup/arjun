@@ -87,6 +87,10 @@ struct UnateDefRepStats {
     uint64_t inpfirst_unsat = 0;       // succeeded → input-only pattern
     uint64_t inpfirst_sat = 0;         // had to fall back to input+aux
     uint64_t inpfirst_undef = 0;       // budget hit
+    // Single-shot "drop all aux from pattern" attempts after minim.
+    uint64_t dropaux_attempts = 0;
+    uint64_t dropaux_succeeded = 0;
+    uint64_t dropaux_lits_dropped = 0;
 };
 
 // Repair-based extension of the conditional unate-def search. See the long
@@ -203,6 +207,13 @@ private:
     // with the smaller conflict. Bounded by
     // `unate_def_rep_minim_budget`. No-op when `unate_def_rep_minim==0`.
     void minimize_pattern(std::vector<CMSat::Lit>& pattern_lits,
+                          CMSat::Lit force_wrong,
+                          PerVarStats& vstats);
+    // One-shot "drop all aux lits from the pattern at once" SAT call.
+    // If the input-only subset still produces UNSAT-with-~force_wrong,
+    // replace pattern_lits with the smaller (input-only) conflict.
+    // Returns nothing; updates rep_stats counters and pattern_lits.
+    void drop_aux_oneshot(std::vector<CMSat::Lit>& pattern_lits,
                           CMSat::Lit force_wrong,
                           PerVarStats& vstats);
     void log_per_var_summary(uint32_t test, const ArjunNS::aig_ptr& h,

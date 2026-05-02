@@ -109,6 +109,8 @@ def run_arjun(fname, prefix):
         "--unatedefrepminbud", str(random.choice([0, 1, 4, 16, 200])),
         # 0=off; 1=always; 2=only when aux non-empty.
         "--unatedefrepinpfirst", str(random.choice([0, 1, 2])),
+        # 0/1: single-shot drop-all-aux after greedy minim.
+        "--unatedefrepdropaux", str(random.choice([0, 1])),
         "--unatedefcond", str(random.choice([0, 1])),
         "--unatedefcondmax", str(random.choice([0, 1, 16, 1024])),
         "--unatedefconddry", str(random.choice([1, 10, 100, 100000])),

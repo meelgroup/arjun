@@ -769,6 +769,64 @@ void UnateDefRep::minimize_pattern(vector<Lit>& pattern_lits,
     if (pattern_lits.size() < orig_sz) rep_stats.minim_succeeded++;
 }
 
+// One SAT call dropping every aux lit from the pattern at once.
+// If the pure-input subset still UNSATs with `force_wrong` in the
+// conflict, replace `pattern_lits` with the input-only conflict.
+// Manthan's "drop y-vars from conflict" — much cheaper than greedy
+// elimination when the aux lits are jointly redundant.
+void UnateDefRep::drop_aux_oneshot(vector<Lit>& pattern_lits,
+                                    const Lit force_wrong,
+                                    [[maybe_unused]] PerVarStats& vstats) {
+    if (conf.unate_def_rep_drop_aux == 0) return;
+    if (pattern_lits.size() <= 1) return;
+    // Are there any aux lits to drop? If pattern is already input-only,
+    // skip — saves one SAT call per CEX on benchmarks where aux mode is 0
+    // or where minim already removed all aux.
+    bool any_aux = false;
+    for (const Lit& l : pattern_lits) {
+        if (input.count(l.var()) == 0) { any_aux = true; break; }
+    }
+    if (!any_aux) return;
+    rep_stats.dropaux_attempts++;
+    const size_t orig_sz = pattern_lits.size();
+    vector<Lit> as;
+    as.reserve(pattern_lits.size());
+    for (const Lit& l : pattern_lits) {
+        if (input.count(l.var()) == 0) continue;
+        as.push_back(l);
+    }
+    if (as.empty()) return; // nothing to assume; would be vacuous
+    as.push_back(force_wrong);
+    f_solver->set_max_confl(conf.unate_def_rep_max_confl);
+    const double t = cpuTime();
+    rep_stats.f_solve_calls++;
+    rep_stats.minim_solver_calls++;
+    const auto r = f_solver->solve(&as);
+    const double dt = cpuTime() - t;
+    rep_stats.time_f_solve += dt;
+    rep_stats.time_minim += dt;
+    if (r != l_False) return;
+    const auto cf = f_solver->get_conflict();
+    bool has_fw = false;
+    for (const auto& cl : cf) if (cl == ~force_wrong) { has_fw = true; break; }
+    if (!has_fw) return;
+    vector<Lit> new_pat;
+    new_pat.reserve(cf.size());
+    for (const auto& cl : cf) {
+        if (cl == ~force_wrong) continue;
+        if (cl.var() == force_wrong.var()) continue;
+        if (input.count(cl.var()) == 0) continue; // strictly input-only
+        new_pat.push_back(~cl);
+    }
+    if (new_pat.size() >= pattern_lits.size()) return;
+    VERBOSE_DEBUG_DO(cout
+        << "c o [unate_def_rep][drop_aux] dropped aux: "
+        << pattern_lits.size() << " -> " << new_pat.size() << endl);
+    rep_stats.dropaux_lits_dropped += orig_sz - new_pat.size();
+    rep_stats.dropaux_succeeded++;
+    pattern_lits = std::move(new_pat);
+}
+
 // Called when the miter just returned SAT. Runs the F-only CEX call,
 // extracts the input/aux pattern from the conflict, and refines `h`
 // in-place. Returns Break if the iter loop should stop, Continue if
@@ -923,6 +981,10 @@ UnateDefRep::CexAction UnateDefRep::process_cex(const uint32_t test, const Lit h
     // Greedy minimization on the conflict before counting / size-gating.
     // Shrinks the pattern, generalising H and shrinking AIG growth.
     minimize_pattern(pattern_lits, force_wrong, vstats);
+    // After greedy minim, attempt a single-shot "drop all aux" pass.
+    // Cheap fallback for benchmarks where aux is jointly redundant
+    // but greedy didn't remove it pair-by-pair.
+    drop_aux_oneshot(pattern_lits, force_wrong, vstats);
     vstats.pattern_sum += pattern_lits.size();
     vstats.pattern_count++;
     // Cheap invariant: pattern lits live in input ∪ aux (filter above
@@ -1058,7 +1120,10 @@ void UnateDefRep::log_pass_summary() {
         << " inpfirst[att=" << rep_stats.inpfirst_attempts
             << " U=" << rep_stats.inpfirst_unsat
             << " S=" << rep_stats.inpfirst_sat
-            << " T=" << rep_stats.inpfirst_undef << "]");
+            << " T=" << rep_stats.inpfirst_undef << "]"
+        << " dropaux[att=" << rep_stats.dropaux_attempts
+            << " ok=" << rep_stats.dropaux_succeeded
+            << " lits=" << rep_stats.dropaux_lits_dropped << "]");
 }
 
 void UnateDefRep::run() {

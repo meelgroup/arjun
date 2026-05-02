@@ -87,6 +87,12 @@ struct Config {
     // the aux set is empty there. 0 = off; 1 = always try first; 2 = try
     // first but only when aux_vars non-empty.
     uint32_t unate_def_rep_input_only_first = 2;
+    // After greedy minim of an input+aux conflict, attempt to drop *all*
+    // aux lits at once (single solver call). Manthan's "drop y-vars from
+    // conflict" — one shot SAT call to test whether the conflict still
+    // holds with aux lits gone. On UNSAT, the resulting pattern is over
+    // inputs only.
+    uint32_t unate_def_rep_drop_aux = 1;
     bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;
