@@ -91,6 +91,12 @@ struct UnateDefRepStats {
     uint64_t dropaux_attempts = 0;
     uint64_t dropaux_succeeded = 0;
     uint64_t dropaux_lits_dropped = 0;
+    // Multi-CEX collection (manthan-style).
+    uint64_t multicex_attempts = 0;          // iters where we tried to collect K>=2
+    uint64_t multicex_models_collected = 0;  // total models obtained (including 1st)
+    uint64_t multicex_extra_solves = 0;      // miter solves used to get extras
+    uint64_t multicex_picked_nonfirst = 0;   // chosen != index 0
+    double   time_multicex_solve = 0.0;
 };
 
 // Repair-based extension of the conditional unate-def search. See the long
@@ -200,7 +206,17 @@ private:
                        PerVarStats& vstats);
     CexAction process_cex(const uint32_t test, const CMSat::Lit h_top_lit, const CMSat::Lit act,
                            uint32_t iter, ArjunNS::aig_ptr& h,
-                           PerVarStats& vstats);
+                           PerVarStats& vstats,
+                           const std::vector<CMSat::lbool>& model);
+    // Collect up to k miter models by blocking already-seen (X, aux)
+    // points under fresh activation lits. Activation lits are
+    // permanently disabled before returning. Returns vector of models
+    // including the first one (caller passes in).
+    std::vector<std::vector<CMSat::lbool>> collect_cex_models(
+        const std::vector<CMSat::lbool>& first_model,
+        const CMSat::Lit act_i,
+        const std::vector<CMSat::Lit>& base_assumps,
+        uint32_t k);
     // Greedy minimization on the F-only conflict. Tries to drop each
     // pattern lit and re-solve with `force_wrong` kept; if still UNSAT
     // and `~force_wrong` remains in the conflict, replaces `pattern_lits`

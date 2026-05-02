@@ -93,6 +93,13 @@ struct Config {
     // holds with aux lits gone. On UNSAT, the resulting pattern is over
     // inputs only.
     uint32_t unate_def_rep_drop_aux = 1;
+    // Multi-CEX collection à la manthan. After miter SAT, collect up to
+    // K-1 additional CEX models by blocking each model's (input, aux)
+    // projection. Then score models by an input-only F-only probe and
+    // refine H using the model with the smallest input-only conflict
+    // (or first if none input-only-UNSAT). 1 = off (single CEX); 2..N
+    // = collect this many models per iter.
+    uint32_t unate_def_rep_multi_cex_k = 1;
     bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;

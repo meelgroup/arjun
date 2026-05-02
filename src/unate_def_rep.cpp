@@ -471,7 +471,58 @@ void UnateDefRep::process_test_var(const uint32_t test) {
         rep_stats.miter_sat++;
         vstats.miter_sat++;
 
-        const CexAction action = process_cex(test, h_enc_lit, act_i, iter, h, vstats);
+        // Collect K CEX models. With K=1 we just snapshot the current
+        // model. With K>1 we block the input/aux projection of each
+        // model and re-solve to collect more, then pick the model whose
+        // input-only F-only call is most informative (UNSAT-on-input-
+        // alone > SAT, ties broken by smaller conflict size). This is a
+        // soft preference for input-only patterns: if no model gives
+        // input-only UNSAT, we use the first.
+        vector<vector<lbool>> cex_models = collect_cex_models(
+            s->get_model(), act_i, base_assumps, conf.unate_def_rep_multi_cex_k);
+        size_t chosen_idx = 0;
+        if (cex_models.size() > 1) {
+            // Score each model with a single input-only F-only probe.
+            // Cheaper than running full process_cex per model since we
+            // skip aux pinning, minim, drop_aux. The chosen model still
+            // goes through the full process_cex path below.
+            int best_score = -1;       // -1 = no UNSAT yet
+            uint32_t best_cf_size = std::numeric_limits<uint32_t>::max();
+            for (size_t i = 0; i < cex_models.size(); i++) {
+                const auto& m = cex_models[i];
+                const lbool h_val_i = model_value(m, h_enc_lit);
+                if (h_val_i == l_Undef) continue;
+                const Lit fw_i = Lit(test, h_val_i == l_False);
+                vector<Lit> ip;
+                ip.reserve(input.size() + 1);
+                for (uint32_t x : input) {
+                    const lbool v = m.at(x);
+                    if (v == l_Undef) continue;
+                    ip.emplace_back(x, v == l_False);
+                }
+                ip.push_back(fw_i);
+                f_solver->set_max_confl(conf.unate_def_rep_max_confl);
+                const double t = cpuTime();
+                rep_stats.f_solve_calls++;
+                const auto r = f_solver->solve(&ip);
+                rep_stats.time_f_solve += cpuTime() - t;
+                if (r != l_False) continue;
+                const auto cf = f_solver->get_conflict();
+                bool has_fw = false;
+                for (const auto& cl : cf) if (cl == ~fw_i) { has_fw = true; break; }
+                if (!has_fw) continue;
+                const uint32_t sz = (uint32_t)cf.size();
+                if (best_score < 0 || sz < best_cf_size) {
+                    best_score = (int)i;
+                    best_cf_size = sz;
+                    chosen_idx = i;
+                }
+            }
+            if (chosen_idx != 0) rep_stats.multicex_picked_nonfirst++;
+        }
+
+        const CexAction action = process_cex(test, h_enc_lit, act_i, iter, h,
+                                              vstats, cex_models[chosen_idx]);
         if (action == CexAction::Break) break;
         // Refine and Continue both fall through to the next iteration.
     }
@@ -827,15 +878,82 @@ void UnateDefRep::drop_aux_oneshot(vector<Lit>& pattern_lits,
     pattern_lits = std::move(new_pat);
 }
 
+// Manthan-style multi-CEX collection on the miter. Given the current
+// (post-SAT) miter model, add up to k-1 blocking clauses that exclude
+// each model's (input ∪ aux) projection under fresh activation lits,
+// re-solve to obtain extra CEXes. Activation lits are permanently
+// pinned TRUE before returning so the blocking clauses are inert
+// after the call (the cumulative miter we'll keep using forever
+// otherwise has no obligation to a specific X*).
+//
+// Returns vector of models including `first_model` at index 0.
+vector<vector<lbool>> UnateDefRep::collect_cex_models(
+    const vector<lbool>& first_model,
+    const Lit act_i,
+    const vector<Lit>& base_assumps,
+    uint32_t k)
+{
+    vector<vector<lbool>> models;
+    models.push_back(first_model);
+    if (k <= 1) return models;
+    rep_stats.multicex_attempts++;
+    vector<Lit> block_acts_assumps;
+    vector<uint32_t> block_act_vars;
+    block_acts_assumps.reserve(k);
+    block_act_vars.reserve(k);
+    for (uint32_t i = 1; i < k; i++) {
+        s->new_var();
+        const uint32_t ab = s->nVars()-1;
+        block_act_vars.push_back(ab);
+        // Blocking clause: ab ∨ (any (X∪aux) flip vs the last model).
+        // When ~ab is assumed, the clause forces a flip → a different
+        // (X, aux) tuple. When ab is asserted TRUE later, the clause
+        // becomes trivially satisfied for the rest of the miter's life.
+        vector<Lit> bc;
+        bc.reserve(1 + input.size() + aux_vars.size());
+        bc.emplace_back(ab, false);
+        const auto& last = models.back();
+        for (uint32_t x : input) {
+            if (x >= last.size() || last[x] == l_Undef) continue;
+            bc.emplace_back(x, last[x] == l_True); // flip from last
+        }
+        for (uint32_t a : aux_vars) {
+            if (a >= last.size() || last[a] == l_Undef) continue;
+            bc.emplace_back(a, last[a] == l_True);
+        }
+        s->add_clause(bc);
+        block_acts_assumps.emplace_back(ab, true); // ~ab activates blocking
+        vector<Lit> as2;
+        as2.reserve(base_assumps.size() + 1 + block_acts_assumps.size());
+        for (const Lit& l : base_assumps) as2.push_back(l);
+        as2.push_back(act_i);
+        for (const Lit& l : block_acts_assumps) as2.push_back(l);
+        s->set_max_confl(conf.unate_def_rep_max_confl);
+        const double t = cpuTime();
+        rep_stats.miter_solve_calls++;
+        rep_stats.multicex_extra_solves++;
+        const auto r = s->solve(&as2);
+        const double dt = cpuTime() - t;
+        rep_stats.time_miter_solve += dt;
+        rep_stats.time_multicex_solve += dt;
+        if (r != l_True) break;
+        models.push_back(s->get_model());
+    }
+    // Permanently disable each blocking clause.
+    for (uint32_t ab : block_act_vars) s->add_clause({Lit(ab, false)});
+    rep_stats.multicex_models_collected += models.size();
+    return models;
+}
+
 // Called when the miter just returned SAT. Runs the F-only CEX call,
 // extracts the input/aux pattern from the conflict, and refines `h`
 // in-place. Returns Break if the iter loop should stop, Continue if
 // the iteration should be skipped (no useful refinement), or Refine on
 // successful refinement.
 UnateDefRep::CexAction UnateDefRep::process_cex(const uint32_t test, const Lit h_enc_lit,
-     const Lit act, [[maybe_unused]] uint32_t iter, aig_ptr& h, PerVarStats& vstats) {
+     const Lit act, [[maybe_unused]] uint32_t iter, aig_ptr& h, PerVarStats& vstats,
+     const vector<lbool>& model) {
     // CEX. Extract values of test (F-side) and h_enc_lit (forced to H(X*) by `act`)
-    const auto& model = s->get_model();
     const lbool y_test_val_f = model[test];
     const lbool h_val        = model_value(model, h_enc_lit);
     assert(y_test_val_f != l_Undef && h_val != l_Undef);
@@ -1123,7 +1241,12 @@ void UnateDefRep::log_pass_summary() {
             << " T=" << rep_stats.inpfirst_undef << "]"
         << " dropaux[att=" << rep_stats.dropaux_attempts
             << " ok=" << rep_stats.dropaux_succeeded
-            << " lits=" << rep_stats.dropaux_lits_dropped << "]");
+            << " lits=" << rep_stats.dropaux_lits_dropped << "]"
+        << " multicex[att=" << rep_stats.multicex_attempts
+            << " models=" << rep_stats.multicex_models_collected
+            << " extra_solves=" << rep_stats.multicex_extra_solves
+            << " picked!=0=" << rep_stats.multicex_picked_nonfirst
+            << " T=" << setprecision(2) << fixed << rep_stats.time_multicex_solve << "]");
 }
 
 void UnateDefRep::run() {
