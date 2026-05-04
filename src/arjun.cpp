@@ -196,10 +196,12 @@ DLL_PUBLIC void Arjun::standalone_unate_def_rep(SimplifiedCNF& cnf)
 }
 
 DLL_PUBLIC void Arjun::standalone_sbva(SimplifiedCNF& orig,
-            int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak)
+            int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff,
+            int sbva_tiebreak, uint32_t sbva_max_new_vars)
 {
     Puura puura(arjdata->conf);
-    puura.run_sbva(orig, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
+    puura.run_sbva(orig, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak,
+            sbva_max_new_vars);
 }
 
 // DELETES ALL REDUNDANT CLAUSES!!!
@@ -300,7 +302,8 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     cnf = standalone_get_simplified_cnf(cnf, simp_conf2);
     if (etof_conf.num_sbva_steps > 0)
         standalone_sbva(cnf, etof_conf.num_sbva_steps,
-                etof_conf.sbva_cls_cutoff, etof_conf.sbva_lits_cutoff, etof_conf.sbva_tiebreak);
+                etof_conf.sbva_cls_cutoff, etof_conf.sbva_lits_cutoff, etof_conf.sbva_tiebreak,
+                etof_conf.sbva_max_new_vars);
     if (etof_conf.all_indep) {
         vector<uint32_t> all_vars;
         all_vars.reserve(cnf.nVars());

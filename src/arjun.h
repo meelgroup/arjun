@@ -1631,10 +1631,11 @@ public:
         bool all_indep = false;
         bool do_extend_indep = true;
         bool do_bce = false;
-        int num_sbva_steps = 1;
+        int num_sbva_steps = 5000;
         uint32_t sbva_cls_cutoff = 4;
         uint32_t sbva_lits_cutoff = 5;
         int sbva_tiebreak = 1;
+        uint32_t sbva_max_new_vars = 1;
         bool do_renumber = true;
         bool do_autarky = true;
     };
@@ -1758,7 +1759,8 @@ public:
     void standalone_backbone(SimplifiedCNF& cnf);
     void standalone_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,
-        uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1);
+        uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1,
+        uint32_t sbva_max_new_vars = 0);
     SimplifiedCNF standalone_manthan(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
     void standalone_autarky(SimplifiedCNF& cnf);
 

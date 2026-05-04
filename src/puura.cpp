@@ -298,7 +298,7 @@ void Puura::set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf) {
 
 void Puura::run_sbva(SimplifiedCNF& cnf,
         int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff,
-        int sbva_tiebreak)
+        int sbva_tiebreak, uint32_t sbva_max_new_vars)
 {
     if (sbva_steps == 0) return;
     assert(cnf.get_opt_sampl_vars_set());
@@ -310,10 +310,11 @@ void Puura::run_sbva(SimplifiedCNF& cnf,
            << " opt sampl: " << cnf.get_opt_sampl_vars() .size());
 
     SBVA::Config sbva_conf;
-    sbva_conf.steps = sbva_steps*1e6;
+    sbva_conf.steps = sbva_steps*1e3;
     sbva_conf.matched_cls_cutoff = sbva_cls_cutoff;
     sbva_conf.matched_lits_cutoff = sbva_lits_cutoff;
     sbva_conf.preserve_model_cnt = 1;
+    sbva_conf.max_replacements = sbva_max_new_vars;
     if (conf.verb >= 3) sbva_conf.verbosity = 1;
     SBVA::CNF sbva;
     sbva.init_cnf(cnf.nVars(), sbva_conf);
@@ -334,7 +335,7 @@ void Puura::run_sbva(SimplifiedCNF& cnf,
     verb_print(1,
            std::left << setw(35) << "[arjun-sbva] exited SBVA with"
            << " vars: " << setw(7) << cnf.nVars() << setw(8) << " cls: " << cnf.get_clauses().size());
-    verb_print(1, "[arjun-sbva] steps remainK: " << std::setprecision(2) << std::fixed
+    verb_print(1, "[arjun-sbva] K steps remaining: " << std::setprecision(2) << std::fixed
            << (double)sbva_conf.steps/1000.0
            << " T-out: " << (sbva_conf.steps <= 0 ? "Yes" : "No")
            << " T: " << std::setprecision(2) << std::fixed

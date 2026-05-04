@@ -152,7 +152,7 @@ void add_arjun_options() {
     myopt("--allindep", etof_conf.all_indep , fc_int, "All variables can be made part of the indepedent support. Indep support is given ONLY to help the solver.");
     myopt("--maxc", conf.backw_max_confl, fc_int,"Maximum conflicts per variable in backward mode");
     myopt("--revbce", do_revbce, fc_int,"Perform reverse BCE");
-    myopt("--sbva", etof_conf.num_sbva_steps, fc_int,"SBVA timeout. 0 = no sbva");
+    myopt("--sbva", etof_conf.num_sbva_steps, fc_int,"SBVA timeout in K steps. 0 = no sbva");
     myopt("--prebackbone", do_pre_backbone, fc_int,"Perform backbone before other things");
     myopt("--seed", conf.seed, fc_int, "Random seed");
 
@@ -299,6 +299,7 @@ void add_arjun_options() {
     myopt("--sbvalitcut", etof_conf.sbva_lits_cutoff, fc_int,"SBVA heuristic cutoff. Higher -> only appied to larger clauses");
     myopt("--findbins", conf.oracle_find_bins, fc_int,"How aggressively find binaries via oracle");
     myopt("--sbvabreak",  etof_conf.sbva_tiebreak, fc_int,"SBVA tie break: 1=sbva or 0=bva");
+    myopt("--sbvamaxnewvars", etof_conf.sbva_max_new_vars, fc_int,"Max number of new variables SBVA may add. 0 = no limit");
     myopt("--gaussj", conf.gauss_jordan, fc_int,"Use XOR finding and Gauss-Jordan elimination");
     myopt("--bve", simp_conf.do_bve, fc_int,"Perform BVE during CNF simplification");
     myopt("--iter1", simp_conf.iter1, fc_int,"Puura iterations before oracle");
