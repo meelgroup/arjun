@@ -1646,7 +1646,7 @@ public:
         bool all_indep = false;
         bool do_extend_indep = true;
         bool do_bce = false;
-        int num_sbva_steps = 5000;
+        int num_sbva_steps = 1000;
         uint32_t sbva_cls_cutoff = 4;
         uint32_t sbva_lits_cutoff = 5;
         int sbva_tiebreak = 1;
