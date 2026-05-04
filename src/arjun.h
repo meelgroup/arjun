@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
@@ -1267,13 +1268,27 @@ public:
     void check_clause(const std::vector<CMSat::Lit>& cl) const;
     void add_xor_clause(const std::vector<uint32_t>&, bool) const { exit(EXIT_FAILURE); }
     void add_xor_clause(const std::vector<CMSat::Lit>&, bool) const { exit(EXIT_FAILURE); }
+    // Normalize: sort+unique to drop duplicate literals; return false if the
+    // clause is a tautology (x ∨ ¬x) and should be skipped.
+    static bool normalize_clause(std::vector<CMSat::Lit>& cl) {
+        std::sort(cl.begin(), cl.end());
+        cl.erase(std::unique(cl.begin(), cl.end()), cl.end());
+        for (size_t i = 1; i < cl.size(); i++) {
+            if (cl[i].var() == cl[i-1].var()) return false;
+        }
+        return true;
+    }
     void add_clause(const std::vector<CMSat::Lit>& cl) {
         check_clause(cl);
-        clauses.push_back(cl);
+        std::vector<CMSat::Lit> tmp(cl);
+        if (!normalize_clause(tmp)) return;
+        clauses.push_back(std::move(tmp));
     }
     void add_red_clause(const std::vector<CMSat::Lit>& cl) {
         check_clause(cl);
-        red_clauses.push_back(cl);
+        std::vector<CMSat::Lit> tmp(cl);
+        if (!normalize_clause(tmp)) return;
+        red_clauses.push_back(std::move(tmp));
     }
     [[nodiscard]] bool get_sampl_vars_set() const { return sampl_vars_set; }
     [[nodiscard]] bool get_opt_sampl_vars_set() const { return opt_sampl_vars_set; }

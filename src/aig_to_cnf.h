@@ -23,6 +23,7 @@
 #include "arjun.h"
 #include "cut_cnf.h"
 #include <cryptominisat5/solvertypesmini.h>
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <unordered_map>
@@ -265,7 +266,16 @@ private:
 
 template<class Solver>
 void AIGToCNF<Solver>::add_clause(const std::vector<CMSat::Lit>& cl) {
-    solver.add_clause(cl);
+    // Tseitin emission for degenerate gates (e.g. AND(x, x)) can yield clauses
+    // with repeated literals. Downstream consumers (TWD primal-graph builder)
+    // require each variable to appear at most once per clause.
+    std::vector<CMSat::Lit> tmp(cl);
+    std::sort(tmp.begin(), tmp.end());
+    tmp.erase(std::unique(tmp.begin(), tmp.end()), tmp.end());
+    for (size_t i = 1; i < tmp.size(); i++) {
+        if (tmp[i].var() == tmp[i-1].var()) return; // tautology
+    }
+    solver.add_clause(tmp);
     stats.clauses_added++;
 }
 
