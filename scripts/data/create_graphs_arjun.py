@@ -17,6 +17,15 @@ TABLE = "arjun"
 TIMEOUT = 1800  # seconds used for PAR2 / scatter timeout
 TMP_DIR = "tmp"
 
+# arjun_sha1 is NULL for non-arjun solvers (e.g. CADET), so fall back to the
+# solver name as the per-run "version" identifier.
+VER_EXPR = "COALESCE(arjun_sha1, solver)"
+
+# Per-solver solve time: arjun reports it on the "All done." line; CADET has
+# no equivalent, so we use timeout_t (wall-clock user time, already nulled
+# by the parser when killed by signal).
+SOLVE_TIME_EXPR = "(CASE WHEN solver='cadet' THEN timeout_t ELSE arjun_time END)"
+
 # ---- Configuration: which dirs to include (prefix match) ----
 only_dirs = [
     # "out-synth-1068169-0",
@@ -28,8 +37,9 @@ only_dirs = [
     # "out-synth-1452293-", # same as above, but puura changes reverted to old good one
     # "out-synth-1455773-0", # now version 2 of puura
     # "out-synth-1455773-3", # now version 2 of puura
-    "out-synth-1471320-0", # repair is better now I think
+    # "out-synth-1471320-0", # repair is better now I think
     "out-synth-1471320-1", # repair is better now I think
+    "out-synth-1479607-0", # cadet
 ]
 # -------------------------------------------------------------
 
@@ -38,9 +48,9 @@ def get_versions():
     con = sqlite3.connect(DB)
     cur = con.cursor()
     res = cur.execute(f"""
-        SELECT arjun_sha1 FROM {TABLE}
-        WHERE arjun_sha1 IS NOT NULL AND arjun_sha1 != ''
-        GROUP BY arjun_sha1""")
+        SELECT {VER_EXPR} FROM {TABLE}
+        WHERE {VER_EXPR} IS NOT NULL AND {VER_EXPR} != ''
+        GROUP BY {VER_EXPR}""")
     vers = [row[0] for row in res]
     con.close()
     return vers
@@ -60,9 +70,10 @@ def get_matching_dirs(only_dirs_list):
 
 
 def _dir_call_label(call: str) -> str:
-    """Strip binary name and CNF filename from a raw timeout_call string."""
-    call = re.sub(r'^\./arjun\S*\s+', '', call)
-    call = re.sub(r'\s+\S+\.(?:qdimacs\.cnf|cnf)\S*\s*$', '', call)
+    """Strip binary name and CNF/QDIMACS filename from a raw timeout_call string."""
+    call = re.sub(r'^(?:\./)+arjun\S*\s+', '', call)
+    call = re.sub(r'^(?:\./)+cadet\S*\s+', '', call)
+    call = re.sub(r'\s+\S+\.(?:qdimacs\.cnf|qdimacs|cnf)\S*\s*$', '', call)
     return call.strip()
 
 
@@ -72,7 +83,7 @@ def get_dirs(ver: str):
     cur = con.cursor()
     res = cur.execute(
         f"SELECT dirname, MIN(timeout_call) FROM {TABLE}"
-        f" WHERE arjun_sha1=? GROUP BY dirname",
+        f" WHERE {VER_EXPR}=? GROUP BY dirname",
         (ver,))
     for row in res:
         call = _dir_call_label(row[1] or "")
@@ -127,8 +138,9 @@ def build_csv_data(versions, matched_dirs, only_calls, not_calls, not_versions,
             con = sqlite3.connect(DB)
             cur = con.cursor()
             res = cur.execute(
-                f"SELECT arjun_time FROM {TABLE}"
-                f" WHERE dirname=? AND arjun_sha1=? AND arjun_time IS NOT NULL{fname_like}",
+                f"SELECT {SOLVE_TIME_EXPR} FROM {TABLE}"
+                f" WHERE dirname=? AND {VER_EXPR}=?"
+                f" AND {SOLVE_TIME_EXPR} IS NOT NULL{fname_like}",
                 (dir, ver))
             with open(fname, "w") as f:
                 for row in res:
@@ -178,13 +190,14 @@ def print_summary_tables(table_todo, fname_like, full=False):
     vers = ",".join("'" + v + "'" for _, v in table_todo)
 
     # Strip CNF filename and leading binary name from call
-    call_expr = "TRIM(REPLACE(REPLACE(MIN(timeout_call), ' '||MIN(fname), ''), './arjun ', ''))"
+    call_expr = ("TRIM(REPLACE(REPLACE(REPLACE(MIN(timeout_call),"
+                 " ' '||MIN(fname), ''), './arjun ', ''), './cadet ', ''))")
 
     compact_cols = [
         ("replace(dirname,'out-synth-','out-')",                         "dirname"),
         (call_expr,                                                       "call"),
-        ("sum(arjun_time is not null)",                                  "solved"),
-        (f"CAST(ROUND(sum(coalesce(arjun_time,{TIMEOUT}))/COUNT(*),0) AS INTEGER)", "PAR2"),
+        (f"sum({SOLVE_TIME_EXPR} IS NOT NULL)",                          "solved"),
+        (f"CAST(ROUND(sum(coalesce({SOLVE_TIME_EXPR},{TIMEOUT}))/COUNT(*),0) AS INTEGER)", "PAR2"),
         ("CAST(ROUND(avg(timeout_mem),0) AS INTEGER)",                   "av memMB"),
         ("sum(mem_out)",                                                 "mem_out"),
         ("sum(signal == 11)",                                            "sigSEGV"),
@@ -214,39 +227,44 @@ def print_summary_tables(table_todo, fname_like, full=False):
     for only_counted in [False, True]:
         title = ("Data based on ONLY SOLVED benchmarks"
                  if only_counted else "Data including UNSOLVED benchmarks")
-        counted_req = " AND arjun_time IS NOT NULL" if only_counted else ""
+        counted_req = f" AND {SOLVE_TIME_EXPR} IS NOT NULL" if only_counted else ""
         _sqlite_run(
             f"select\n        {select_clause}\n"
             f"        from {TABLE}"
-            f" where dirname IN ({dirs}) and arjun_sha1 IN ({vers})"
+            f" where dirname IN ({dirs}) and {VER_EXPR} IN ({vers})"
             f"{fname_like}{counted_req} group by dirname order by solved asc",
             title=title)
 
 
 def _median_sq(col, dir, ver, fname_like):
-    base = f"dirname='{dir}' AND arjun_sha1='{ver}' AND {col} IS NOT NULL{fname_like}"
+    base = f"dirname='{dir}' AND {VER_EXPR}='{ver}' AND {col} IS NOT NULL{fname_like}"
     return (f"(SELECT {col} FROM {TABLE} WHERE {base}"
             f" ORDER BY {col} LIMIT 1"
             f" OFFSET (SELECT COUNT({col}) FROM {TABLE} WHERE {base}) / 2)")
 
 
 def _avg_sq(col, dir, ver, fname_like):
-    base = f"dirname='{dir}' AND arjun_sha1='{ver}' AND {col} IS NOT NULL{fname_like}"
+    base = f"dirname='{dir}' AND {VER_EXPR}='{ver}' AND {col} IS NOT NULL{fname_like}"
     return f"(SELECT CAST(ROUND(AVG({col}),0) AS INTEGER) FROM {TABLE} WHERE {base})"
 
 
 def print_median_tables(table_todo, fname_like):
     if not table_todo:
         return
-    plain_cols = ["repairs", "timeout_mem", "arjun_time", "manthan_time"]
+    plain_cols = [
+        ("repairs",         "repairs"),
+        ("timeout_mem",     "timeout_mem"),
+        (SOLVE_TIME_EXPR,   "solve_time"),
+        ("manthan_time",    "manthan_time"),
+    ]
     union_parts = []
     for i, (dir, ver) in enumerate(table_todo):
         alias_suffix = " as dirname" if i == 0 else ""
         ver_alias    = " as ver"     if i == 0 else ""
         parts = [f"replace('{dir}','out-synth-','out-'){alias_suffix}",
                  f"'{ver[:10]}'{ver_alias}"]
-        for col in plain_cols:
-            parts.append(f"{_median_sq(col, dir, ver, fname_like)} as med_{col}")
+        for expr, alias in plain_cols:
+            parts.append(f"{_median_sq(expr, dir, ver, fname_like)} as med_{alias}")
         union_parts.append("SELECT " + ", ".join(parts))
     _sqlite_run("\nUNION ALL\n".join(union_parts), title="Median values per directory")
 
@@ -284,14 +302,14 @@ def print_signal_warnings(table_todo, fname_like):
     cur = con.cursor()
     cur.execute(
         f"SELECT COUNT(*) FROM {TABLE}"
-        f" WHERE dirname IN ({dirs}) AND arjun_sha1 IN ({vers})"
+        f" WHERE dirname IN ({dirs}) AND {VER_EXPR} IN ({vers})"
         f" AND signal=6 AND (mem_out IS NULL OR mem_out=0){fname_like}")
     count = cur.fetchone()[0]
     if count > 0:
         print(f"\n{RED}WARNING: {count} instance(s) with sigABRT (signal=6){RESET}")
         cur.execute(
             f"SELECT dirname, fname, timeout_mem FROM {TABLE}"
-            f" WHERE dirname IN ({dirs}) AND arjun_sha1 IN ({vers})"
+            f" WHERE dirname IN ({dirs}) AND {VER_EXPR} IN ({vers})"
             f" AND signal=6 AND (mem_out IS NULL OR mem_out=0){fname_like}"
             f" ORDER BY dirname, fname")
         rows = cur.fetchall()
@@ -314,15 +332,20 @@ def print_slower_tables(matched_dirs, fname_like, threshold=0.25,
     pct = int(threshold * 100)
 
     for dir1, dir2 in itertools.permutations(matched_dirs, 2):
-        # Both sides must have finished (arjun_time set, i.e. "All done."
-        # printed). Unsolved-on-either-side cases are covered by the
-        # solve-diff tables.
+        # Both sides must have finished. For arjun that means "All done."
+        # printed (arjun_time set); for cadet it means a "SAT" line and
+        # clean exit (timeout_t set). Unsolved-on-either-side cases are
+        # covered by the solve-diff tables.
+        a_solve = SOLVE_TIME_EXPR.replace("solver", "a.solver")\
+            .replace("timeout_t", "a.timeout_t").replace("arjun_time", "a.arjun_time")
+        b_solve = SOLVE_TIME_EXPR.replace("solver", "b.solver")\
+            .replace("timeout_t", "b.timeout_t").replace("arjun_time", "b.arjun_time")
         cur.execute(
-            f"SELECT a.fname, a.arjun_time, b.arjun_time,"
+            f"SELECT a.fname, {a_solve}, {b_solve},"
             f" a.repairs, b.repairs"
             f" FROM {TABLE} a JOIN {TABLE} b ON a.fname = b.fname"
             f" WHERE a.dirname = ? AND b.dirname = ?"
-            f" AND a.arjun_time IS NOT NULL AND b.arjun_time IS NOT NULL"
+            f" AND {a_solve} IS NOT NULL AND {b_solve} IS NOT NULL"
             f"{fname_like}",
             (dir1, dir2))
 
@@ -364,13 +387,17 @@ def print_solve_diff_tables(matched_dirs, fname_like, verbose=False):
     cur = con.cursor()
 
     for dir1, dir2 in itertools.permutations(matched_dirs, 2):
+        a_solve = SOLVE_TIME_EXPR.replace("solver", "a.solver")\
+            .replace("timeout_t", "a.timeout_t").replace("arjun_time", "a.arjun_time")
+        b_solve = SOLVE_TIME_EXPR.replace("solver", "b.solver")\
+            .replace("timeout_t", "b.timeout_t").replace("arjun_time", "b.arjun_time")
         cur.execute(
-            f"SELECT a.fname, a.arjun_time, a.repairs, b.repairs"
+            f"SELECT a.fname, {a_solve}, a.repairs, b.repairs"
             f" FROM {TABLE} a JOIN {TABLE} b ON a.fname = b.fname"
             f" WHERE a.dirname = ? AND b.dirname = ?"
-            f" AND a.arjun_time IS NOT NULL AND b.arjun_time IS NULL"
+            f" AND {a_solve} IS NOT NULL AND {b_solve} IS NULL"
             f"{fname_like}"
-            f" ORDER BY a.arjun_time DESC",
+            f" ORDER BY {a_solve} DESC",
             (dir1, dir2))
         rows = cur.fetchall()
 
@@ -492,10 +519,14 @@ def scatter_plot_time_pairs(matched_dirs, fname_like, verbose=False):
         dir_label[d] = _dir_call_label(row[0] or "") if row and row[0] else d
 
     for dir1, dir2 in pairs:
+        a_solve = SOLVE_TIME_EXPR.replace("solver", "a.solver")\
+            .replace("timeout_t", "a.timeout_t").replace("arjun_time", "a.arjun_time")
+        b_solve = SOLVE_TIME_EXPR.replace("solver", "b.solver")\
+            .replace("timeout_t", "b.timeout_t").replace("arjun_time", "b.arjun_time")
         cur.execute(
             f"SELECT a.fname,"
-            f" COALESCE(a.arjun_time, {TIMEOUT}),"
-            f" COALESCE(b.arjun_time, {TIMEOUT})"
+            f" COALESCE({a_solve}, {TIMEOUT}),"
+            f" COALESCE({b_solve}, {TIMEOUT})"
             f" FROM {TABLE} a JOIN {TABLE} b ON a.fname = b.fname"
             f" WHERE a.dirname = '{dir1}' AND b.dirname = '{dir2}'"
             f"{fname_like}")
