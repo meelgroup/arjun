@@ -178,8 +178,8 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     bool backbone_done = cnf.get_backbone_done();
     if (!backbone_done && simp_conf.do_backbone_puura) {
         switch ((simp_conf.puura_strategy & 2) >> 1) {
+            solver->backbone_simpl(simp_conf.backbone_max_confl, backbone_done);
             case 0: {
-                solver->backbone_simpl(simp_conf.backbone_max_confl, backbone_done);
                 string str_scc = "must-scc-vrepl, must-renumber";
                 solver->simplify(&dont_elim, &str_scc);
                 break;
