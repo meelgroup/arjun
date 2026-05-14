@@ -187,14 +187,12 @@ void add_arjun_options() {
     myopt("--unatedefrepminextra", conf.unate_def_rep_minim_extra_passes, fc_int,"Number of extra minim passes with reverse-order shuffle after the main greedy loop (manthan-style hot-var extra passes)");
     myopt("--unatedefrepmultipat", conf.unate_def_rep_multi_pat, fc_int,"With multi-CEX>1, refine H with patterns from ALL collected models (not just chosen). 0=off; 1=on");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
-    myopt("--monflyorder", mconf.manthan_on_the_fly_order, fc_int,"Use on-the-fly training order and post-training topological order");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
     myopt("--multicex", mconf.multi_cex_k, fc_int,"Number of counterexamples to collect for generalized repair (1=off)");
     myopt("--minvertlearn", mconf.inv_learnt, fc_int,"Invert learnt functions");
 
     // repairing on vars
     myopt("--bwequal", mconf.force_bw_equal, fc_int,"Force BW vars' indicators to be TRUE -- prevents repairing with them, but faster to repair");
-    myopt("--bvaxor", mconf.bva_xor_vars, fc_int,"Add XOR over input vars as BVA vars, so we can repair with them");
     myopt("--silentupdate", mconf.silent_var_update, fc_int,"Silently update variables while repairing");
     // Strategy
     myopt("--mstrategy", mstrategy, fc_string,
@@ -216,7 +214,6 @@ void add_arjun_options() {
     myopt("--samplesccnr", mconf.samples_ccnr, fc_int,"Number of samples from CCNR");
     myopt("--uniqsamp", mconf.do_unique_input_samples, fc_int, "Unique samples on input vars");
     myopt("--filtersamples", mconf.filter_samples, fc_int,"Filter samples from useless ones");
-    myopt("--biasedsampling", mconf.biased_sampling, fc_int,"Biased sampling");
     myopt("--fixedconf", mconf.sampler_fixed_conflicts, fc_int,"Restart conflict limit in CMSGen");
     // synth -- decision tree
     myopt("--maxdepth", mconf.max_depth, fc_int,"Maximum depth of decision tree");
@@ -224,14 +221,9 @@ void add_arjun_options() {
     myopt("--mingainsplit", mconf.min_gain_split, fc_double,"Minimum gain for a split in decision tree");
     myopt("--learnuseall", mconf.use_all_vars_as_feats, fc_int,"Use all variables as features in decision tree learning. 0 = only inputs");
     // synth -- cutoff/tuning constants
-    myopt("--biassamples", mconf.bias_samples, fc_int, "Number of biased samples per direction");
     myopt("--constvotesamples", mconf.const_vote_samples, fc_int, "Majority voting samples for const_functions");
     myopt("--statsevery", mconf.stats_every, fc_int, "Print stats every N repair loops");
     myopt("--detailedstatsevery", mconf.detailed_stats_every, fc_int, "Print detailed stats every N repair loops");
-    myopt("--rebuildminloops", mconf.rebuild_min_loops, fc_int, "Min repair loops before cex_solver rebuild");
-    myopt("--rebuildminclauses", mconf.rebuild_min_clauses, fc_int, "Min total formula clauses before rebuild");
-    myopt("--rebuildgrownum", mconf.rebuild_growth_num, fc_double, "Rebuild growth numerator");
-    myopt("--rebuildgrowden", mconf.rebuild_growth_den, fc_double, "Rebuild growth denominator");
     myopt("--reducecexgenok", mconf.reduce_cex_gen_ok, fc_int, "Reduce multi_cex when gen_repair_ok > this");
     myopt("--reducecextotrep", mconf.reduce_cex_tot_rep, fc_int, "Reduce multi_cex when tot_repaired > this");
     myopt("--reducecexneedrep", mconf.reduce_cex_need_rep, fc_int, "Set multi_cex_k=1 when needs_repair <= this");
@@ -257,9 +249,6 @@ void add_arjun_options() {
     myopt("--tdmaxedges", mconf.td_max_edges, fc_int, "Skip TD when primal graph exceeds this many edges");
     myopt("--ccnrmemspersample", mconf.ccnr_mems_per_sample, fc_int, "CCNR total memory budget per sample");
     myopt("--ccnrpercalllimit", mconf.ccnr_per_call_limit, fc_int, "CCNR per-call step limit for local_search");
-    myopt("--biaswgh", mconf.bias_w_high, fc_double, "Bias weight for positive sampling direction (1-this for negative)");
-    myopt("--biasplow", mconf.bias_p_low, fc_double, "Lower probability threshold for mid-range bias selection");
-    myopt("--biasphigh", mconf.bias_p_high, fc_double, "Upper probability threshold for mid-range bias selection");
     myopt("--reducecexgenrationum", mconf.reduce_cex_gen_ratio_num, fc_int, "Numerator of gen_ok/tot_repaired threshold for CEX reduction");
     myopt("--reducecexgenratioden", mconf.reduce_cex_gen_ratio_den, fc_int, "Denominator of gen_ok/tot_repaired threshold for CEX reduction");
     myopt("--czhighratio", mconf.cz_high_ratio, fc_int, "cost_zero > tot_repaired * this triggers tightest cz_threshold");

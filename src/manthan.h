@@ -146,9 +146,7 @@ class Manthan {
         // ordering
         std::vector<uint32_t> y_order; //1st only depends on inputs
         std::vector<int> order_val; // inputs have order -1, everything else as per y_order
-        void topological_sort_order();
         void pre_order_vars();
-        void post_order_vars();
         void learn_order();
         void bve_order();
         bool cluster_order();
@@ -174,7 +172,6 @@ class Manthan {
         std::vector<std::vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
 
         // Formulas
-        void add_xor_var();
         std::unique_ptr<FHolder<MetaSolver2>> fh = nullptr;
         std::map<uint32_t, FHolder<MetaSolver2>::Formula> var_to_formula; // var -> formula
 

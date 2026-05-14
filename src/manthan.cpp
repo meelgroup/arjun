@@ -34,7 +34,6 @@
 #include <treedecomp/IFlowCutter.hpp>
 #include <treedecomp/graph.hpp>
 #include <vector>
-#include <array>
 #include <algorithm>
 #include <ranges>
 #include "constants.h"
@@ -65,7 +64,6 @@
 using std::min;
 using std::sort;
 using std::vector;
-using std::array;
 using std::set;
 using std::unordered_set;
 using std::map;
@@ -107,63 +105,6 @@ vector<sample> Manthan::get_cmsgen_samples(const uint32_t num) {
     inject_cnf(solver_samp);
     solver_samp.set_up_for_sample_counter(mconf.sampler_fixed_conflicts);
 
-    if (mconf.biased_sampling && mconf.bias_samples > 0) {
-        array<vector<double>,2> dist;
-        dist[0].resize(cnf.nVars(), 0.0);
-        dist[1].resize(cnf.nVars(), 0.0);
-
-        // get biased samples in each direction
-        const uint32_t bias_samples = mconf.bias_samples;
-        for(int bias = 0; bias <= 1; bias++) {
-            for(const auto& y: to_define) {
-                double bias_w = bias ? mconf.bias_w_high : (1.0 - mconf.bias_w_high);
-                solver_samp.set_lit_weight(Lit(y, false), bias_w);
-                solver_samp.set_lit_weight(Lit(y, true), 1.0-bias_w);
-            }
-            vector<uint32_t> got_ones(cnf.nVars(), 0);
-            for (uint32_t i = 0; i < bias_samples; i++) {
-                solver_samp.solve();
-                assert(solver_samp.get_model().size() == cnf.nVars());
-
-                for(const auto& v: to_define) {
-                    if (solver_samp.get_model()[v] == l_True) got_ones[v]++;
-                }
-            }
-            //print distribution
-            verb_print(2, "[sampling] Bias " << bias << " distribution for to_define vars:");
-            for(const auto& v: to_define) {
-                dist[bias][v] = (double)got_ones[v]/(double)bias_samples;
-                verb_print(1, "  var " << setw(5) << v+1 << ": "
-                    << setw(6) << got_ones[v] << "/" << setw(6) << bias_samples
-                    << " = " << fixed << setprecision(0) << (dist[bias][v] * 100.0) << setprecision(2) << "% ones");
-            }
-        }
-
-        // compute bias from p/q as per manthan.py
-        verb_print(2, "[sampling] Final biases for to_define vars:");
-        for(const auto& y: to_define) {
-            double p = dist[1][y];
-            double q = dist[0][y];
-            double bias;
-            if (mconf.bias_p_low < p && p < mconf.bias_p_high && mconf.bias_p_low < q && q < mconf.bias_p_high) {
-              bias = p;
-            } else if (q <= mconf.bias_p_low) {
-              if (q == 0.0) q = 0.001;
-              bias = q;
-            } else {
-              if (p == 1.0) p = 0.99;
-              bias = p;
-            }
-            verb_print(2, "[sampling] For var " << y+1 << ": p=" << fixed << setprecision(3) << p
-                << " q=" << fixed << setprecision(3) << q
-                << " -- final bias: "
-                << fixed << setprecision(3) << bias);
-            solver_samp.set_lit_weight(Lit(y, false), bias);
-            solver_samp.set_lit_weight(Lit(y, true), 1.0-bias);
-        }
-    }
-
-    // get final samples
     vector<sample> samples;
     for (uint32_t i = 0; i < num; i++) {
         auto ret = solver_samp.solve();
@@ -171,7 +112,7 @@ vector<sample> Manthan::get_cmsgen_samples(const uint32_t num) {
         assert(solver_samp.get_model().size() == cnf.nVars());
         samples.push_back(solver_samp.get_model());
     }
-    verb_print(1, "[manthan] CMSGen got " << samples.size() << " samples. Biased: " << (bool)mconf.biased_sampling
+    verb_print(1, "[manthan] CMSGen got " << samples.size() << " samples."
             << " T: " << setprecision(2) << std::fixed << (cpuTime() - my_time));
     return samples;
 }
@@ -1203,43 +1144,6 @@ void Manthan::print_detailed_stats() const {
     verb_print(1, COLCYN "[manthan-stats]   cex_solver nVars: " << cex_solver.nVars());
 }
 
-void Manthan::add_xor_var() {
-    const auto& sampl_vars = cnf.get_sampl_vars();
-    if (sampl_vars.empty()) return;
-
-    // sampl_vars are in NEW space; AIGs stored in defs[] use ORIG space.
-    // new_var() creates vars with orig == new (orig_to_new_var[v] = Lit(v,false)),
-    // so intermediate XOR vars can use their index directly in AIGs.
-    const auto new_to_orig = cnf.get_new_to_orig_var();
-
-    // XOR(a, b) = OR(AND(a, NOT b), AND(NOT a, b))
-    auto xor_of = [](const aig_ptr& a, const aig_ptr& b) -> aig_ptr {
-        return AIG::new_or(
-            AIG::new_and(a, AIG::new_not(b)),
-            AIG::new_and(AIG::new_not(a), b));
-    };
-
-    // Start with the orig-space literal for the first sampling var
-    Lit orig_lit = new_to_orig.at(sampl_vars[0]);
-    aig_ptr prev = AIG::new_lit(orig_lit);
-
-    for (size_t i = 1; i < sampl_vars.size(); i++) {
-        orig_lit = new_to_orig.at(sampl_vars[i]);
-        aig_ptr cur = AIG::new_lit(orig_lit);
-        // new_var() gives orig == new for freshly created vars
-        cnf.new_var();
-        const uint32_t v = cnf.nVars() - 1;
-        const Lit v_orig = cnf.get_new_to_orig_var().at(v);
-        assert(v_orig.sign() == false);
-        cnf.set_def(v_orig.var(), xor_of(prev, cur));
-        helper_functions.insert(v);
-        verb_print(2, "[manthan] Added XOR internal var: " << v+1 << " orig v: " << v_orig.var()+1);
-        prev = AIG::new_lit(v_orig);
-    }
-
-    verb_print(1, "[manthan] Added " << sampl_vars.size() - 1 << " XOR vars as BVA input vars");
-}
-
 void Manthan::const_functions() {
     // Use multiple samples and majority voting to pick better constant values.
     // A single sample might be atypical; majority voting reduces the number of
@@ -1273,7 +1177,6 @@ SimplifiedCNF Manthan::do_manthan() {
     const double my_time = cpuTime();
     const auto ret = cnf.find_disconnected();
     verb_print(1, "[manthan] Found " << ret.size() << " components");
-    if (mconf.bva_xor_vars) add_xor_var();
     repaired_vars_count.resize(cnf.nVars(), 0);
     var_conflict_freq.resize(cnf.nVars(), 0);
     input_only_ok.resize(cnf.nVars(), 0);
@@ -1336,8 +1239,6 @@ SimplifiedCNF Manthan::do_manthan() {
         bve_and_substitute();
     }
     verb_print(4, "[trace] post bve_and_substitute nVars=" << cex_solver.nVars() << " helpers=" << helpers.size());
-    post_order_vars();
-    verb_print(4, "[trace] post post_order_vars nVars=" << cex_solver.nVars() << " helpers=" << helpers.size());
 
     // Counterexample-guided repair
     repair_start_time = cpuTime();
@@ -2344,51 +2245,6 @@ void Manthan::compute_td_score_using_adj(const uint32_t nodes,
     assert(old_i < td_score.size());
     td_score[old_i] = val;
   }
-}
-
-void Manthan::topological_sort_order() {
-    y_order.clear();
-    assert(y_order.empty());
-    if (td_score.empty()) td_score.resize(cnf.nVars(), 0.0);
-    vector<uint32_t> indeg(cnf.nVars(), 0);
-    for(const auto& a: to_define_full) {
-        for(const auto& b: to_define_full) {
-            if (a == b) continue;
-            if (dependency_mat[a][b] == 1) indeg[a]++;
-        }
-    }
-
-    set<uint32_t> ready;
-    for(const auto& v: to_define_full) {
-        if (indeg[v] == 0) ready.insert(v);
-    }
-
-    while(!ready.empty()) {
-        const uint32_t v = *ready.begin();
-        ready.erase(ready.begin());
-        y_order.push_back(v);
-
-        for(const auto& dep: to_define_full) {
-            if (dependency_mat[dep][v] == 0) continue;
-            assert(indeg[dep] > 0);
-            indeg[dep]--;
-            if (indeg[dep] == 0) ready.insert(dep);
-        }
-    }
-
-    release_assert(y_order.size() == to_define_full.size() && "Topological ordering failed, dependency cycle?");
-    order_val.clear();
-    order_val.resize(cnf.nVars(), -2);
-    for(const auto& x: input) order_val[x] = -1;
-    for(uint32_t i = 0; i < y_order.size(); i++) order_val[y_order[i]] = i;
-    for(const auto& vv: order_val) assert(vv != -2);
-    verb_print(1, "[manthan] Fixed order [TOPO] Final order size: " << y_order.size());
-    print_y_order_occur();
-}
-
-void Manthan::post_order_vars() {
-    if (mconf.manthan_on_the_fly_order)
-        topological_sort_order();
 }
 
 // Will order 1st the variables that NOTHING depends on

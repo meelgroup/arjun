@@ -1658,7 +1658,6 @@ public:
         ManthanConf() = default;
         ManthanConf(const ManthanConf& other) = default;
         int filter_samples = 1;
-        int biased_sampling = 0;
         /// Also to try:
         uint32_t samples = 5000;
         uint32_t samples_ccnr = 0;
@@ -1680,13 +1679,11 @@ public:
         int backward_synth_order = 0;
         int manthan_base = 0;
         int manthan_order = 0;
-        int manthan_on_the_fly_order = 0;
         int one_repair_per_loop = 0;
         int do_td_contract = 1; // contract over the input variables
         int td_max_edges = 70000;
         std::string td_visualize_dot_file = "";
         int force_bw_equal = 1;
-        int bva_xor_vars = 0;
         int silent_var_update = 1;
         int inv_learnt = 0;
         uint32_t max_repairs = std::numeric_limits<uint32_t>::max();
@@ -1695,24 +1692,9 @@ public:
         std::string ganak_binary;
 
         // Hard-coded cutoffs now configurable
-        uint32_t bias_samples = 500;        // biased sampling: number of samples per bias direction
         uint32_t const_vote_samples = 100;   // const_functions: majority voting samples
         uint32_t stats_every = 40;          // print stats every N repair loops
         uint32_t detailed_stats_every = 200;// print detailed stats every N repair loops
-        // cex_solver rebuild thresholds. Rebuilding re-canonicalizes the
-        // accumulated ITE repairs through the AIG rewriter and re-encodes
-        // them as fresh Tseitin, which is meant to keep the incremental
-        // solver's clause count in check. In practice, on instances like
-        // sdlx-fixpoint-5 aig-rewrite finds <1% node reduction and each
-        // rebuild throws away the solver's learnt clauses / VSIDS activity,
-        // costing dozens of repair loops' worth of wall-clock (measured
-        // 49s / 26% of total runtime to do 2 rebuilds). The defaults are
-        // tuned to make rebuild rare; benchmarks that actually benefit from
-        // it can dial the threshold down via --rebuildgrownum/den.
-        uint32_t rebuild_min_loops = 500;
-        uint32_t rebuild_min_clauses = 500000;
-        double rebuild_growth_num = 5;    // 5x growth since last rebuild
-        double rebuild_growth_den = 1;
         uint32_t reduce_cex_gen_ok = 20;    // reduce multi_cex when generalized_repair_ok > this
         uint32_t reduce_cex_tot_rep = 2000; // reduce multi_cex when tot_repaired > this
         uint32_t reduce_cex_need_rep = 3;   // set multi_cex_k=1 when needs_repair <= this
@@ -1736,10 +1718,6 @@ public:
         // CCNR sampling constants
         uint64_t ccnr_mems_per_sample = 100000; // total CCNR mem budget per sample
         uint32_t ccnr_per_call_limit = 50000;   // per-call step limit for CCNR local_search
-        // Biased sampling thresholds/weights (from Manthan paper)
-        double bias_w_high = 0.9;           // weight for "positive" bias direction
-        double bias_p_low = 0.35;           // lower threshold for mid-range bias selection
-        double bias_p_high = 0.65;          // upper threshold for mid-range bias selection
         // Ratios used in CEX reduction heuristics
         uint32_t reduce_cex_gen_ratio_num = 3; // numerator of gen_ok / tot_repaired ratio
         uint32_t reduce_cex_gen_ratio_den = 4; // denominator of gen_ok / tot_repaired ratio
