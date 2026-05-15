@@ -290,6 +290,18 @@ class Manthan {
         // Craig-interpolant repair (Option 2 in IDEAS-3-categories.md).
         // Lazily constructed in do_manthan() if mconf.interp_repair > 0.
         std::unique_ptr<InterpRepair> interp_repair;
+
+        // Adaptive per-variable gating state. interp_skip_until[v] is the
+        // tot_repaired count at which we may try interp on v again; if
+        // tot_repaired < interp_skip_until[v], we skip. interp_var_calls
+        // / interp_var_node_sum / interp_var_lit_sum let us compute the
+        // running mean ratio. Cleared once skip-window fires.
+        std::vector<uint32_t> interp_skip_until;
+        std::vector<uint32_t> interp_var_calls;
+        std::vector<uint64_t> interp_var_node_sum;
+        std::vector<uint64_t> interp_var_lit_sum;
+        // Stat: how many times the adaptive gate skipped an interp call.
+        uint64_t interp_adaptive_skips = 0;
         // Per-call counter so we can trigger interpolation only after a
         // variable has been repaired more than min_var_repairs times.
         // (Tracked anyway via repaired_vars_count, but kept here so the

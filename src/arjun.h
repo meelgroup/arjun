@@ -1754,6 +1754,18 @@ public:
         // otherwise grind we bail and fall back to the conflict-clause
         // path. Tracked stat: interp_budget_exhausted.
         uint64_t interp_repair_max_conflicts = 0;
+        // Adaptive per-variable gating. Track each var's recent
+        // interp_nodes / conflict_lits ratio: when it consistently
+        // exceeds adaptive_ratio_skip the var is "blacklisted" from
+        // interp for the next adaptive_skip_window repair attempts.
+        // Re-evaluated periodically; a var that produced one bad
+        // interpolant gets a second chance after the window expires.
+        //
+        // 0 = off (default behaviour, no adaptive gating).
+        // 1 = on, with the bundled defaults (window=20, ratio=8.0).
+        int interp_repair_adaptive_gate = 0;
+        double interp_repair_adaptive_ratio_skip = 8.0;
+        uint32_t interp_repair_adaptive_skip_window = 20;
     };
 
     struct IndepInfo {

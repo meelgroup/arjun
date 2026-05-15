@@ -1066,6 +1066,11 @@ void Manthan::print_detailed_stats() const {
             << " / " << tot_repaired
             << "  (" << fixed << setprecision(1) << interp_used_pct << "%)");
         verb_print(1, COLCYN "[manthan-stats]   conflict drove rep.:  " << conflict_repairs);
+        if (mconf.interp_repair_adaptive_gate != 0) {
+            verb_print(1, COLCYN "[manthan-stats]   adaptive skips:       " << interp_adaptive_skips
+                << "  (ratio>" << fixed << setprecision(1) << mconf.interp_repair_adaptive_ratio_skip
+                << " → blacklist for " << mconf.interp_repair_adaptive_skip_window << " repairs)");
+        }
         verb_print(1, COLCYN "[manthan-stats]   interp calls (incl. fallbacks): " << interp_repair->calls
             << "  ok: " << interp_repair->calls_succeeded
             << "  oversize: " << interp_repair->calls_failed_oversize
@@ -1237,11 +1242,21 @@ SimplifiedCNF Manthan::do_manthan() {
     fh = std::make_unique<FHolder<MetaSolver2>>(&cex_solver);
     if (mconf.interp_repair > 0) {
         interp_repair = std::make_unique<InterpRepair>(conf, cnf, input, aig_mng);
+        // Per-var adaptive gating bookkeeping. Sized to nVars so we can
+        // index by raw cnf var; only the to_define entries actually get
+        // touched.
+        if (mconf.interp_repair_adaptive_gate != 0) {
+            interp_skip_until.assign(cnf.nVars(), 0);
+            interp_var_calls.assign(cnf.nVars(), 0);
+            interp_var_node_sum.assign(cnf.nVars(), 0);
+            interp_var_lit_sum.assign(cnf.nVars(), 0);
+        }
         verb_print(1, "[manthan] InterpRepair enabled (mode "
                 << mconf.interp_repair
                 << ", min_conflict=" << mconf.interp_repair_min_conflict
                 << ", min_var_repairs=" << mconf.interp_repair_min_var_repairs
                 << ", max_aig_nodes=" << mconf.interp_repair_max_aig_nodes
+                << ", adaptive=" << mconf.interp_repair_adaptive_gate
                 << ")");
     }
     create_vars_for_y_hats();
@@ -1778,12 +1793,58 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
         if (mconf.interp_repair_min_var_repairs > 0 &&
             repaired_vars_count[y_rep] < mconf.interp_repair_min_var_repairs)
             do_interp = false;
+        // Adaptive per-var gating. If this var produced consistently
+        // oversized interpolants relative to its conflict size, skip
+        // for the next skip_window repairs (after which the slate
+        // wipes and the var gets another chance).
+        if (do_interp && mconf.interp_repair_adaptive_gate != 0) {
+            if (y_rep < interp_skip_until.size()
+                    && tot_repaired < interp_skip_until[y_rep]) {
+                do_interp = false;
+                interp_adaptive_skips++;
+                VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
+                    cout << "c o [manthan-interp] adaptive-skip y=" << y_rep+1
+                         << " until tot_repaired=" << interp_skip_until[y_rep]
+                         << " (current=" << tot_repaired << ")" << endl;
+                });
+            }
+        }
         if (do_interp) {
             interp_branch = interp_repair->compute_interpolant(
                 y_rep, to_repair, conflict,
                 mconf.interp_repair_max_aig_nodes,
                 mconf.interp_repair_rewrite != 0,
                 mconf.interp_repair_max_conflicts);
+            // Adaptive bookkeeping: record interp-vs-conflict size and,
+            // if the running mean ratio exceeds the configured threshold
+            // after at least a few samples, blacklist this var for the
+            // next skip_window repairs.
+            if (interp_branch != nullptr
+                    && mconf.interp_repair_adaptive_gate != 0
+                    && y_rep < interp_var_calls.size()) {
+                size_t nodes = ArjunNS::AIG::count_aig_nodes_fast(interp_branch);
+                interp_var_calls[y_rep]++;
+                interp_var_node_sum[y_rep] += nodes;
+                interp_var_lit_sum[y_rep] += conflict.size();
+                if (interp_var_calls[y_rep] >= 3 && interp_var_lit_sum[y_rep] > 0) {
+                    double mean_ratio = (double)interp_var_node_sum[y_rep]
+                                       / (double)interp_var_lit_sum[y_rep];
+                    if (mean_ratio > mconf.interp_repair_adaptive_ratio_skip) {
+                        interp_skip_until[y_rep] = tot_repaired
+                            + mconf.interp_repair_adaptive_skip_window;
+                        // Reset running stats so the next chance is fresh.
+                        interp_var_calls[y_rep] = 0;
+                        interp_var_node_sum[y_rep] = 0;
+                        interp_var_lit_sum[y_rep] = 0;
+                        VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 2) {
+                            cout << "c o [manthan-interp] adaptive blacklist y=" << y_rep+1
+                                 << " ratio=" << mean_ratio
+                                 << " until tot_repaired="
+                                 << interp_skip_until[y_rep] << endl;
+                        });
+                    }
+                }
+            }
 
             // Optional always-on verification (cluster runs without SLOW_DEBUG).
             // verify=0 → skip; 1 → cheap CEX-excluded check; 2 → full miter.
