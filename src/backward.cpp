@@ -407,8 +407,6 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
         unknown_set[x] = 1;
     }
     sort_unknown(unknown, incidence);
-    if (mconf.backward_synth_order)
-        std::reverse(unknown.begin(), unknown.end());
     print_sorted_unknown(unknown);
     verb_print(1, "[backward SYNTH] Start unknown size: " << unknown.size()
                     << " mem: " << memUsedTotal()/(1024*1024) << " MB");

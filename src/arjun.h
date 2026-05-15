@@ -1675,7 +1675,6 @@ public:
         int ctx_solver_type = 1;
         int repair_solver_type = 1;
         int repair_cache_size = 1000;
-        int backward_synth_order = 0;
         int manthan_base = 0;
         int manthan_order = 0;
         int one_repair_per_loop = 0;

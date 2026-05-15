@@ -202,7 +202,6 @@ void add_arjun_options() {
     // Order
     myopt("--morder", mconf.manthan_order, fc_int,"Order vars: indicence (0), cluster-incidence (1), BVE (2)");
     myopt("--maxsatorder", mconf.maxsat_order, fc_int,"Which order to use to try to fix vars? 0 = norm, 1 = rev");
-    myopt("--mbackwsynthorder", mconf.backward_synth_order, fc_int,"Which order to use to try to do backward? 0 = normal, 1 = reverse");
     // solver config
     myopt("--ctxsolver", mconf.ctx_solver_type, fc_int,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
     myopt("--repairsolver", mconf.repair_solver_type, fc_int,"Repair solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");

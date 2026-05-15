@@ -74,7 +74,6 @@ const std::map<string, ParamDef> param_table = {
     {"ctx_solver_type",          {PT::Int,    [](MC& c, const string& v) { c.ctx_solver_type          = parse_val<int>(v); }}},
     {"repair_solver_type",       {PT::Int,    [](MC& c, const string& v) { c.repair_solver_type       = parse_val<int>(v); }}},
     {"repair_cache_size",        {PT::Int,    [](MC& c, const string& v) { c.repair_cache_size        = parse_val<int>(v); }}},
-    {"backward_synth_order",     {PT::Int,    [](MC& c, const string& v) { c.backward_synth_order     = parse_val<int>(v); }}},
     {"manthan_order",            {PT::Int,    [](MC& c, const string& v) { c.manthan_order            = parse_val<int>(v); }}},
     {"one_repair_per_loop",      {PT::Int,    [](MC& c, const string& v) { c.one_repair_per_loop      = parse_val<int>(v); }}},
     {"force_bw_equal",           {PT::Int,    [](MC& c, const string& v) { c.force_bw_equal           = parse_val<int>(v); }}},
