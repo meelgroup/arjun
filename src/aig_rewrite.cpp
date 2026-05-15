@@ -251,7 +251,35 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
             } else if (is_complement(l, d2)) {
                 stats.complement_elim++;
                 pos = make_canonical(l, d1);
-            } else if (l->type == AIGT::t_and && !l.neg) {
+            }
+            // OR-disjunct context drill: under outer AND with sibling l, if
+            // d_i is an AND containing l as a fanin, d_i reduces to its other
+            // fanin (BCP via l). If d_i contains ~l, d_i = FALSE and the
+            // OR collapses to the other disjunct.
+            //
+            //   AND(a, OR(AND(a, x), d2))   = AND(a, OR(x, d2))
+            //   AND(a, OR(AND(~a, x), d2))  = AND(a, d2)
+            auto try_disj_drill = [&](const aig_lit& d, const aig_lit& other_d) -> aig_lit {
+                if (!d.node || d->type != AIGT::t_and || d.neg) return aig_lit();
+                if (is_complement(d->l, l) || is_complement(d->r, l)) {
+                    stats.complement_elim++;
+                    return make_canonical(l, other_d);
+                }
+                aig_lit x;
+                if (d->l == l) x = d->r;
+                else if (d->r == l) x = d->l;
+                if (x.node) {
+                    stats.absorption++;
+                    // AND(l, OR(x, other_d)) — OR encoded as ~AND(~x, ~other_d).
+                    aig_lit new_or = ~make_canonical(~x, ~other_d);
+                    return make_canonical(l, new_or);
+                }
+                return aig_lit();
+            };
+            if (!pos) pos = try_disj_drill(d1, d2);
+            if (!pos) pos = try_disj_drill(d2, d1);
+
+            if (!pos && l->type == AIGT::t_and && !l.neg) {
                 // OR-vs-AND-fanin drill-down (ABC's
                 // AND(p0, ~AND(C,D)) for p0 a positive AND case):
                 //   AND(AND(la, lb), OR(d1, d2)) where some d_i matches a
@@ -284,7 +312,28 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
             } else if (is_complement(r, d2)) {
                 stats.complement_elim++;
                 pos = make_canonical(r, d1);
-            } else if (r->type == AIGT::t_and && !r.neg) {
+            }
+            // OR-disjunct context drill, symmetric to the is_or(r) variant.
+            auto try_disj_drill_l = [&](const aig_lit& d, const aig_lit& other_d) -> aig_lit {
+                if (!d.node || d->type != AIGT::t_and || d.neg) return aig_lit();
+                if (is_complement(d->l, r) || is_complement(d->r, r)) {
+                    stats.complement_elim++;
+                    return make_canonical(r, other_d);
+                }
+                aig_lit x;
+                if (d->l == r) x = d->r;
+                else if (d->r == r) x = d->l;
+                if (x.node) {
+                    stats.absorption++;
+                    aig_lit new_or = ~make_canonical(~x, ~other_d);
+                    return make_canonical(r, new_or);
+                }
+                return aig_lit();
+            };
+            if (!pos) pos = try_disj_drill_l(d1, d2);
+            if (!pos) pos = try_disj_drill_l(d2, d1);
+
+            if (!pos && r->type == AIGT::t_and && !r.neg) {
                 if (d1 == r->l || d1 == r->r || d2 == r->l || d2 == r->r) {
                     stats.absorption++;
                     pos = r;
