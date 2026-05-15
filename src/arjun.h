@@ -1763,6 +1763,17 @@ public:
         // tend to share sub-AIGs heavily (same y_other formula appears
         // across many repairs). 0=off (default), 1=on for interp encodings.
         int interp_repair_group_cse = 0;
+        // Use the y_other formula's *output literal* (a cex_solver
+        // helper) as the leaf for its AND-conjunct in b1, instead of
+        // inlining the full y_other formula AIG. This is what the
+        // legacy lit_to_lit path does: each y_other contributes 1
+        // literal to f.clauses rather than its entire (potentially
+        // huge) AIG cone. The resulting b1 is much smaller and
+        // simplify_aig has less work to do, but cex_solver loses some
+        // visibility into the y_other's structure during conflict
+        // analysis (because the formula appears only through its
+        // helper var). 0=inline full AIG (default), 1=use .out lit.
+        int interp_repair_b1_use_lit = 0;
         // Per-call cadical conflict budget for the interpolation solve.
         // 0 = no limit (default). Useful upper bound: 50_000 keeps each
         // interp call < 1 second on most benchmarks; on pathological

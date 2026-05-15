@@ -2144,7 +2144,19 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
             if (is_input[l.var()] || is_backward_defined[l.var()]) continue;
             assert(var_to_formula.count(l.var()));
             auto f2 = var_to_formula.at(l.var());
-            aig_ptr ymatch = (~l).sign() ? AIG::new_not(f2.aig) : f2.aig;
+            aig_ptr ymatch;
+            if (mconf.interp_repair_b1_use_lit != 0) {
+                // Reference the y_other formula via its cex_solver
+                // output literal (a single helper var) instead of
+                // inlining its full AIG. Mirrors what the legacy
+                // lit_to_lit path does. b1 stays small; the formula
+                // clauses for y_other are already in cex_solver so
+                // the helper var is well-defined.
+                Lit out_lit = (~l).sign() ? ~f2.out : f2.out;
+                ymatch = AIG::new_lit(out_lit);
+            } else {
+                ymatch = (~l).sign() ? AIG::new_not(f2.aig) : f2.aig;
+            }
             b1 = AIG::new_and(b1, ymatch);
         }
     }
@@ -2186,9 +2198,18 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
     // CNF encoding: var_to_formula[y].aig stores the RAW AIG, but
     // f.clauses must be in y_hat space (cex_solver's view). Translate
     // leaves once, then feed the y_hat-mapped copy to AIGToCNF.
-    aig_ptr b1_yhat = AIG::translate_leaves(
-        b1,
-        [&](uint32_t v) { return map_y_to_y_hat(Lit(v, false)); });
+    //
+    // In b1_use_lit mode, the y_other refs are already helper vars
+    // (formula.out lits) which are NOT in to_define_full and need no
+    // translation; we use a leaf-aware mapper that's identity on
+    // anything outside to_define_full.
+    auto leaf_to_yhat = [&](uint32_t v) -> Lit {
+        if (input.count(v)) return Lit(v, false);
+        if (to_define_full.count(v)) return Lit(y_to_y_hat.at(v), false);
+        // Helper var or true_lit: already in cex_solver space.
+        return Lit(v, false);
+    };
+    aig_ptr b1_yhat = AIG::translate_leaves(b1, leaf_to_yhat);
 
     SLOW_DEBUG_DO({
         // Defensive: confirm every leaf in b1_yhat is an input var, a
