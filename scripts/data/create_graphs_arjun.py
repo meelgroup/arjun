@@ -38,8 +38,9 @@ only_dirs = [
     # "out-synth-1455773-0", # now version 2 of puura
     # "out-synth-1455773-3", # now version 2 of puura
     # "out-synth-1471320-0", # repair is better now I think
-    "out-synth-1471320-1", # repair is better now I think
-    "out-synth-1479607-0", # cadet
+    # "out-synth-1471320-1", # repair is better now I think
+    # "out-synth-1479607-0", # cadet
+    "out-synth-1570930-", # check what can be removed
 ]
 # -------------------------------------------------------------
 
@@ -189,13 +190,9 @@ def print_summary_tables(table_todo, fname_like, full=False):
     dirs = ",".join("'" + d + "'" for d, _ in table_todo)
     vers = ",".join("'" + v + "'" for _, v in table_todo)
 
-    # Strip CNF filename and leading binary name from call
-    call_expr = ("TRIM(REPLACE(REPLACE(REPLACE(MIN(timeout_call),"
-                 " ' '||MIN(fname), ''), './arjun ', ''), './cadet ', ''))")
-
     compact_cols = [
         ("replace(dirname,'out-synth-','out-')",                         "dirname"),
-        (call_expr,                                                       "call"),
+        ("MIN(timeout_call)",                                            "call"),
         (f"sum({SOLVE_TIME_EXPR} IS NOT NULL)",                          "solved"),
         (f"CAST(ROUND(sum(coalesce({SOLVE_TIME_EXPR},{TIMEOUT}))/COUNT(*),0) AS INTEGER)", "PAR2"),
         ("CAST(ROUND(avg(timeout_mem),0) AS INTEGER)",                   "av memMB"),
@@ -223,17 +220,30 @@ def print_summary_tables(table_todo, fname_like, full=False):
 
     cols = compact_cols + (full_only_cols if full else [])
     select_clause = ",\n        ".join(f"{expr} as '{alias}'" for expr, alias in cols)
+    headers = [alias for _, alias in cols]
+    call_idx = headers.index("call")
 
     for only_counted in [False, True]:
         title = ("Data based on ONLY SOLVED benchmarks"
                  if only_counted else "Data including UNSOLVED benchmarks")
         counted_req = f" AND {SOLVE_TIME_EXPR} IS NOT NULL" if only_counted else ""
-        _sqlite_run(
-            f"select\n        {select_clause}\n"
-            f"        from {TABLE}"
-            f" where dirname IN ({dirs}) and {VER_EXPR} IN ({vers})"
-            f"{fname_like}{counted_req} group by dirname order by solved asc",
-            title=title)
+        sql = (f"select {select_clause} from {TABLE}"
+               f" where dirname IN ({dirs}) and {VER_EXPR} IN ({vers})"
+               f"{fname_like}{counted_req} group by dirname order by solved asc")
+        con = sqlite3.connect(DB)
+        cur = con.cursor()
+        cur.execute(sql)
+        rows = cur.fetchall()
+        con.close()
+
+        str_rows = []
+        for r in rows:
+            r = list(r)
+            r[call_idx] = _dir_call_label(r[call_idx] or "")
+            str_rows.append(["" if c is None else str(c) for c in r])
+
+        print(f"\n{BLUE}{title}{RESET}")
+        _print_table(headers, str_rows)
 
 
 def _median_sq(col, dir, ver, fname_like):
@@ -587,6 +597,8 @@ def main():
                         help="Print progress information")
     parser.add_argument("--full", action="store_true",
                         help="Print full summary table (default: compact)")
+    parser.add_argument("--cdf", action="store_true",
+                        help="Print only the CDF/summary table; skip everything else")
     parser.add_argument("--fname", nargs="+", metavar="PATTERN", default=[],
                         help="Filter by fname pattern(s), e.g. --fname '%%amba%%'")
     args = parser.parse_args()
@@ -615,6 +627,10 @@ def main():
 
     if not table_todo:
         print(f"{RED}No matching data found.{RESET}")
+        return
+
+    if args.cdf:
+        print_summary_tables(table_todo, fname_like, full=args.full)
         return
 
     print_signal_warnings(table_todo, fname_like)
