@@ -519,6 +519,8 @@ aig_ptr InterpRepair::compute_interpolant(
     if (interp_nodes > max_interp_nodes_seen) max_interp_nodes_seen = interp_nodes;
     if (interp_nodes < conflict.size()) interp_smaller_than_conflict++;
     else if (interp_nodes > conflict.size()) interp_larger_than_conflict++;
+    interp_size_hist[bucket_of(interp_nodes)]++;
+    conflict_size_hist[bucket_of(conflict.size())]++;
 
     // Store in conflict-signature cache for future calls.
     if (cache_capacity > 0 && !conflict.empty()) {

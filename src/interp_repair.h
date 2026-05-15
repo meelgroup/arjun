@@ -175,6 +175,32 @@ public:
     uint64_t interp_larger_than_conflict = 0;
     // Largest interpolant we accepted, in nodes.
     uint64_t max_interp_nodes_seen = 0;
+    // Histogram of interpolant sizes (nodes) for tuning visibility.
+    // Buckets: [0,8) [8,32) [32,128) [128,512) [512,2K) [2K,8K) [8K,32K) [32K,∞).
+    static constexpr size_t HIST_BUCKETS = 8;
+    uint64_t interp_size_hist[HIST_BUCKETS] = {};
+    // Histogram of conflict sizes seen at compute_interpolant entry —
+    // same bucket boundaries. Useful for "what conflicts did we even
+    // try to interpolate" tuning questions.
+    uint64_t conflict_size_hist[HIST_BUCKETS] = {};
+    // Bucket lookup. Edge: 0 → bucket 0; ∞ → last bucket.
+    static size_t bucket_of(size_t n) {
+        if (n < 8) return 0;
+        if (n < 32) return 1;
+        if (n < 128) return 2;
+        if (n < 512) return 3;
+        if (n < 2048) return 4;
+        if (n < 8192) return 5;
+        if (n < 32768) return 6;
+        return 7;
+    }
+    static const char* bucket_label(size_t i) {
+        static const char* lbl[HIST_BUCKETS] = {
+            "[0,8)", "[8,32)", "[32,128)", "[128,512)",
+            "[512,2K)", "[2K,8K)", "[8K,32K)", "[32K,∞)"
+        };
+        return lbl[i];
+    }
     double   total_solve_time = 0.0;
     double   total_setup_time = 0.0;
     double   total_simplify_time = 0.0;

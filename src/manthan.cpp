@@ -1110,6 +1110,18 @@ void Manthan::print_detailed_stats() const {
                     << "  T: " << setprecision(2) << interp_repair->total_combined_simp_time << "s"
                     << "  b1_rewrite=" << mconf.interp_repair_b1_rewrite);
             }
+            // Compact histograms: only print non-zero buckets.
+            auto print_hist = [&](const char* label, const uint64_t* h) {
+                std::stringstream ss;
+                ss << "[manthan-stats]   " << label;
+                for (size_t i = 0; i < InterpRepair::HIST_BUCKETS; i++) {
+                    if (h[i] == 0) continue;
+                    ss << "  " << InterpRepair::bucket_label(i) << "=" << h[i];
+                }
+                verb_print(1, COLCYN << ss.str());
+            };
+            print_hist("conflict-sz hist:   ", interp_repair->conflict_size_hist);
+            print_hist("interp-nodes hist:  ", interp_repair->interp_size_hist);
         }
     }
 
