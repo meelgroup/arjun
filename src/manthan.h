@@ -145,6 +145,16 @@ class Manthan {
         void perform_repair(const uint32_t y_rep, const sample& ctx,
                 const std::vector<CMSat::Lit>& conflict,
                 ArjunNS::aig_ptr interp_branch = nullptr);
+
+        // Build the Formula for the interpolant branch path. Factored out
+        // of perform_repair for testability and to keep the legacy
+        // conflict-clause path readable. Sets f.aig (raw AIG, leaves =
+        // input + raw to_define), f.clauses (Tseitin-encoded in y_hat
+        // space), and f.out (the helper literal that equals the must-flip
+        // region NOT(I) AND y_other_match).
+        FHolder<MetaSolver2>::Formula build_interp_branch_formula(
+                const uint32_t y_rep, const std::vector<CMSat::Lit>& conflict,
+                ArjunNS::aig_ptr interp_branch);
         void add_not_f_x_yhat();
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with(std::set<uint32_t>& vars);

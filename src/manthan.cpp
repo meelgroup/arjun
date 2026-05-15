@@ -1940,6 +1940,123 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 #endif
 }
 
+// See manthan.h for the contract. The interpolant branch path is split
+// into its own function because:
+//   (1) it's algorithmically a different beast — operates on AIG-level
+//       structure, runs a couple of simplification passes, then Tseitin
+//       encodes — whereas the legacy path builds clauses literal-by-lit
+//       manually and never touches AIGToCNF;
+//   (2) it has its own SLOW_DEBUG invariant (leaf-set check) that's
+//       irrelevant to the legacy path;
+//   (3) perform_repair was getting unwieldy.
+FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
+        const uint32_t y_rep, const vector<Lit>& conflict,
+        aig_ptr interp_branch) {
+    FHolder<MetaSolver2>::Formula f;
+
+    // Build the "must-flip region" AIG in raw cnf-var space:
+    //   b1 = AND( ¬I(X),                                     // input-only
+    //             AND_{y_other in conflict}(                  // pinned y_others
+    //               y_other_formula matches ctx) )
+    //
+    // We could include input lits as explicit ANDs too, but the
+    // interpolant I(X) already covers them; redundant.
+    //
+    // interp_branch leaves are input vars only (by McMillan
+    // construction). y_other formula AIGs are stored RAW
+    // (var_to_formula[y].aig has leaves = input + raw to_define), so
+    // ANDing them in keeps b1 in the same raw form.
+    aig_ptr b1 = AIG::new_not(interp_branch);
+    for (const auto& l : conflict) {
+        if (is_input[l.var()] || is_backward_defined[l.var()]) continue;
+        assert(var_to_formula.count(l.var()));
+        auto f2 = var_to_formula.at(l.var());
+        aig_ptr ymatch = (~l).sign() ? AIG::new_not(f2.aig) : f2.aig;
+        b1 = AIG::new_and(b1, ymatch);
+    }
+
+    // AIG-level simplification of b1. The cheap simplify_aig (const-prop +
+    // CSE) is always on; the heavier rewrite_aig (absorption, distrib,
+    // complement, idempotent, xor_simp) is opt-in via
+    // --interprepairb1rewrite. The y_other formula ANDs introduce
+    // cross-conjunct redundancies that AIGToCNF's CNF-level fusion can't
+    // catch — that's the motivation for doing this at the AIG level.
+    const double t_simp_b1 = cpuTime();
+    const size_t pre_simp_sz = AIG::count_aig_nodes_fast(b1);
+    b1 = AIG::simplify_aig(b1);
+    if (mconf.interp_repair_b1_rewrite != 0) {
+        b1 = AIG::rewrite_aig(b1);
+        b1 = AIG::simplify_aig(b1);
+    }
+    const size_t post_simp_sz = AIG::count_aig_nodes_fast(b1);
+    if (interp_repair) {
+        interp_repair->total_combined_pre_simp += pre_simp_sz;
+        interp_repair->total_combined_post_simp += post_simp_sz;
+        interp_repair->total_combined_simp_time += cpuTime() - t_simp_b1;
+    }
+    f.aig = b1;
+
+    // CNF encoding: var_to_formula[y].aig stores the RAW AIG, but
+    // f.clauses must be in y_hat space (cex_solver's view). Translate
+    // leaves once, then feed the y_hat-mapped copy to AIGToCNF.
+    aig_ptr b1_yhat = AIG::translate_leaves(
+        b1,
+        [&](uint32_t v) { return map_y_to_y_hat(Lit(v, false)); });
+
+    SLOW_DEBUG_DO({
+        // Defensive: confirm every leaf in b1_yhat is an input var, a
+        // y_hat, a helper, or the true_lit. A raw to_define leaf here
+        // means our translation is incomplete and check_functions_for
+        // _y_vars will assert downstream.
+        std::set<const ArjunNS::AIG*> seen;
+        std::function<void(const aig_ptr&)> walk = [&](const aig_ptr& a) {
+            if (a == nullptr) return;
+            if (a->type == ArjunNS::AIGT::t_const) return;
+            if (a->type == ArjunNS::AIGT::t_lit) {
+                const uint32_t var = a->var;
+                if (var < is_input.size() && is_input[var]) return;
+                if (y_hats.count(var)) return;
+                if (helpers.count(var)) return;
+                if (var == fh->get_true_lit().var()) return;
+                std::cout << "c o [interp-perform_repair] BAD leaf var=" << (var+1)
+                          << " in b1_yhat for y_rep=" << (y_rep+1)
+                          << " is_to_def=" << to_define.count(var) << std::endl;
+                assert(false && "interp-perform_repair: b1_yhat has bad leaf");
+                return;
+            }
+            if (!seen.insert(a.get()).second) return;
+            walk(a->l);
+            walk(a->r);
+        };
+        walk(b1_yhat);
+    });
+
+    // Encode via AIGToCNF. The InterpClauseSink lambda allocates helper
+    // vars on cex_solver and tracks them in the `helpers` set so the
+    // check_functions_for_y_vars invariant holds.
+    struct InterpClauseSink {
+        MetaSolver2& solver;
+        std::vector<CL>* clauses;
+        std::set<uint32_t>& helpers_set;
+        void new_var() {
+            solver.new_var();
+            helpers_set.insert(solver.nVars() - 1);
+        }
+        [[nodiscard]] uint32_t nVars() const { return solver.nVars(); }
+        void add_clause(const std::vector<Lit>& cl) { clauses->emplace_back(cl); }
+    };
+    InterpClauseSink sink{cex_solver, &f.clauses, helpers};
+    ArjunNS::AIGToCNF<InterpClauseSink> enc(sink);
+    enc.set_true_lit(fh->get_true_lit());
+    f.out = enc.encode(b1_yhat, /*force_helper=*/true);
+
+    // Dependency tracking. Inputs are skipped by set_depends_on's normal
+    // logic; y_others get marked via the conflict literal walk.
+    for (const auto& l : conflict) set_depends_on(y_rep, l);
+
+    return f;
+}
+
 void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         const vector<Lit>& conflict, aig_ptr interp_branch) {
     // Track conflict variable frequency for smarter minimization ordering
@@ -1981,119 +2098,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
     };
 
     if (interp_branch != nullptr) {
-        // Interpolant path. interp_branch is I(X), where X are input vars.
-        //   I(X) holds  → flipping y_rep is feasible  (no must-flip)
-        //   ¬I(X) holds → y_rep MUST be ctx[y_rep]   (must-flip region)
-        //
-        // BUT: the interpolant was computed with each non-input conflict
-        // literal pinned to the conflict's polarity (i.e. y_others = the
-        // ctx[y_others] values). So ¬I(X) means "must-flip *given* those
-        // y_others match". To preserve the legacy semantics, AND in the
-        // y_other formula matches (same as the legacy conflict path does
-        // implicitly via lit_to_aig). For y_others NOT in the conflict
-        // and for input lits, we drop the explicit per-lit AND (the
-        // interpolant already covers inputs).
-        //
-        // Build:
-        //   b1 = AND( ¬I(X), AND_{y_other in conflict}( y_other_formula matches ctx ) )
-        //
-        // interp_branch has input-var leaves only. y_other formula AIGs
-        // have raw cnf-space leaves (input + to_define). So b1 ends up
-        // with mixed leaves (input + raw to_define), matching the legacy
-        // perform_repair invariant for var_to_formula[y].aig.
-        aig_ptr b1 = AIG::new_not(interp_branch);
-        for (const auto& l : conflict) {
-            if (is_input[l.var()] || is_backward_defined[l.var()]) continue;
-            // y_other: AND in the formula's match.
-            assert(var_to_formula.count(l.var()));
-            auto f2 = var_to_formula.at(l.var());
-            aig_ptr ymatch = (~l).sign() ? AIG::new_not(f2.aig) : f2.aig;
-            b1 = AIG::new_and(b1, ymatch);
-        }
-
-        // McMillan-style interpolants tend to be noisy AIGs: deep ORs of
-        // ANDs with many cross-redundancies that constant-prop+CSE alone
-        // doesn't fully crush. Worse, after the AND with y_other formula
-        // AIGs (themselves often 10k+ nodes for hot vars), the combined
-        // b1 has even more opportunities for absorption / distrib /
-        // complement / idempotent rewrites.
-        //
-        // Always run simplify_aig on b1 (it's cheap and structural).
-        // If --interprepairrewrite is set, also run the full
-        // AIGRewriter (absorption, distrib, complement, idempotent,
-        // xor_simp) — more expensive but typically halves the AIG size
-        // on benchmarks with large conflicts (sdlx-fixpoint-*).
-        const double t_simp_b1 = cpuTime();
-        const size_t pre_simp_sz = AIG::count_aig_nodes_fast(b1);
-        b1 = AIG::simplify_aig(b1);
-        if (mconf.interp_repair_b1_rewrite != 0) {
-            b1 = AIG::rewrite_aig(b1);
-            b1 = AIG::simplify_aig(b1);
-        }
-        const size_t post_simp_sz = AIG::count_aig_nodes_fast(b1);
-        if (interp_repair) {
-            interp_repair->total_combined_pre_simp += pre_simp_sz;
-            interp_repair->total_combined_post_simp += post_simp_sz;
-            interp_repair->total_combined_simp_time += cpuTime() - t_simp_b1;
-        }
-        f.aig = b1;
-
-        // Encode b1 to CNF for f.clauses + f.out.
-        struct InterpClauseSink {
-            MetaSolver2& solver;
-            std::vector<CL>* clauses;
-            std::set<uint32_t>& helpers_set;
-            void new_var() {
-                solver.new_var();
-                helpers_set.insert(solver.nVars() - 1);
-            }
-            [[nodiscard]] uint32_t nVars() const { return solver.nVars(); }
-            void add_clause(const std::vector<Lit>& cl) { clauses->emplace_back(cl); }
-        };
-        InterpClauseSink sink{cex_solver, &f.clauses, helpers};
-        ArjunNS::AIGToCNF<InterpClauseSink> enc(sink);
-        enc.set_true_lit(fh->get_true_lit());
-
-        // var_to_formula[y].aig stores the RAW AIG (with to_define cnf
-        // vars as leaves) — that's the codebase invariant the rest of
-        // perform_repair / lit_to_aig relies on. Translate to y_hat
-        // space here only for the CNF encoding pass below.
-        // (Legacy perform_repair sidesteps this by building f.clauses
-        // manually with lit_to_lit, never encoding b1.)
-        aig_ptr b1_yhat = AIG::translate_leaves(
-            b1,
-            [&](uint32_t v) { return map_y_to_y_hat(Lit(v, false)); });
-
-        SLOW_DEBUG_DO({
-            std::set<const ArjunNS::AIG*> seen3;
-            std::function<void(const aig_ptr&)> walk3 = [&](const aig_ptr& a) {
-                if (a == nullptr) return;
-                if (a->type == ArjunNS::AIGT::t_const) return;
-                if (a->type == ArjunNS::AIGT::t_lit) {
-                    const uint32_t var = a->var;
-                    if (var < is_input.size() && is_input[var]) return;
-                    if (y_hats.count(var)) return;
-                    if (helpers.count(var)) return;
-                    if (var == fh->get_true_lit().var()) return;
-                    std::cout << "c o [interp-perform_repair] BAD leaf var=" << (var+1)
-                              << " in b1_yhat for y_rep=" << (y_rep+1)
-                              << " is_to_def=" << to_define.count(var)
-                              << std::endl;
-                    assert(false && "interp-perform_repair: b1_yhat has bad leaf");
-                    return;
-                }
-                if (!seen3.insert(a.get()).second) return;
-                walk3(a->l);
-                walk3(a->r);
-            };
-            walk3(b1_yhat);
-        });
-
-        f.out = enc.encode(b1_yhat, /*force_helper=*/true);
-
-        // Dependency tracking: each conflict lit may be referenced via the
-        // y_other ANDs above (or implicitly via the interpolant for inputs).
-        for (const auto& l : conflict) set_depends_on(y_rep, l);
+        f = build_interp_branch_formula(y_rep, conflict, interp_branch);
         VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
             cout << "c o [manthan-interp] y=" << y_rep+1
                  << " interp f.clauses=" << f.clauses.size()
