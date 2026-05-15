@@ -177,6 +177,15 @@ private:
 
     // Byte-map for O(1) input-membership check.
     std::vector<uint8_t> is_input;
+
+    // Cache: original CNF clauses pre-converted to cadical's signed-int
+    // format, with each clause terminated by 0. Built lazily on the
+    // first interp call. Avoids re-walking cnf.get_clauses() and
+    // converting Lit→int on every call (which dominates setup-T on
+    // benchmarks with many interp calls).
+    std::vector<int> cnf_serialized;
+    bool cnf_serialized_built = false;
+    void build_serialized_cnf();
 };
 
 } // namespace ArjunInt

@@ -223,6 +223,21 @@ InterpRepair::InterpRepair(const Config& _conf,
     }
 }
 
+void InterpRepair::build_serialized_cnf() {
+    // Serialise once: lits as cadical signed ints, each clause terminated
+    // by 0. Concatenated so we can solver->add(...) in a tight loop on
+    // every interp call without re-walking cnf.get_clauses().
+    cnf_serialized.clear();
+    size_t total = 0;
+    for (const auto& cl : cnf.get_clauses()) total += cl.size() + 1;
+    cnf_serialized.reserve(total);
+    for (const auto& cl : cnf.get_clauses()) {
+        for (const auto& l : cl) cnf_serialized.push_back(lit_to_pl(l));
+        cnf_serialized.push_back(0);
+    }
+    cnf_serialized_built = true;
+}
+
 aig_ptr InterpRepair::compute_interpolant(
         uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes)
@@ -274,11 +289,6 @@ aig_ptr InterpRepair::compute_interpolant(
     InterpTracerMcMillan tracer(conf, aig_mng, input_vars);
     solver->connect_proof_tracer(&tracer, true);
 
-    auto add_cl_a = [&](const vector<Lit>& cl) {
-        tracer.next_is_b = false;
-        for (const auto& l : cl) solver->add(lit_to_pl(l));
-        solver->add(0);
-    };
     auto add_unit_a = [&](Lit l) {
         tracer.next_is_b = false;
         solver->add(lit_to_pl(l));
@@ -294,7 +304,11 @@ aig_ptr InterpRepair::compute_interpolant(
     // 1) Original CNF clauses (all A-side). We deliberately skip
     // cnf.get_red_clauses(): those are redundant learnts and aren't
     // required for UNSAT-side reproduction.
-    for (const auto& cl : cnf.get_clauses()) add_cl_a(cl);
+    if (!cnf_serialized_built) {
+        const_cast<InterpRepair*>(this)->build_serialized_cnf();
+    }
+    tracer.next_is_b = false;
+    for (int v : cnf_serialized) solver->add(v);
 
     // get_conflict() returns the negation of the failing assumption set
     // (so it forms a learnable clause). To reproduce the same UNSAT in a
