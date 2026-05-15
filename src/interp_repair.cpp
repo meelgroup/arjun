@@ -343,6 +343,11 @@ aig_ptr InterpRepair::compute_interpolant(
         return nullptr;
     }
 
+    // Local AIG simplification (constant propagation, CSE, ITE detection)
+    // before returning. The proof-driven construction can leave a lot of
+    // redundant ANDs/ORs that the rewriter trivially crushes.
+    interp = AIG::simplify_aig(interp);
+
     // Quick sanity: under the original CEX inputs (= the input units we
     // added), interpolant should evaluate to FALSE. (This is what makes
     // the repair correct.) Cheap to check.
