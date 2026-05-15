@@ -138,6 +138,15 @@ public:
         const ArjunNS::aig_ptr& interp,
         const std::vector<CMSat::Lit>& conflict) const;
 
+    // Heavy SLOW_DEBUG check: full miter that A → I.
+    // A = original CNF + non-input conflict units + ~to_repair_lit
+    // Returns true if the miter (A ∧ ¬I) is UNSAT (i.e. A → I holds).
+    // SAT solver under the hood; only call from SLOW_DEBUG_DO context.
+    [[nodiscard]] bool slow_check_a_implies_i(
+        CMSat::Lit to_repair_lit,
+        const std::vector<CMSat::Lit>& conflict,
+        const ArjunNS::aig_ptr& interp) const;
+
     // Statistics (read-only)
     uint64_t calls = 0;
     uint64_t calls_succeeded = 0;

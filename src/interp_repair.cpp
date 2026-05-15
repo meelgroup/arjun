@@ -230,6 +230,29 @@ aig_ptr InterpRepair::compute_interpolant(
     (void)y_rep;
     calls++;
     total_conflict_lits += conflict.size();
+
+    // Empty conflict means the candidate is forced to ctx[y_rep] regardless
+    // of input — perform_repair already special-cases that into a
+    // constant_formula. No interpolation needed (and we don't have any
+    // input units, so there'd be no B side anyway).
+    if (conflict.empty()) {
+        calls_failed_other++;
+        return nullptr;
+    }
+
+    // No input lits in conflict → no B side → trivial / undefined
+    // interpolant. Bail immediately to skip the cadical setup cost.
+    bool has_input = false;
+    for (const auto& l : conflict) {
+        if (l.var() < is_input.size() && is_input[l.var()]) {
+            has_input = true; break;
+        }
+    }
+    if (!has_input) {
+        calls_failed_other++;
+        return nullptr;
+    }
+
     const double t0 = cpuTime();
 
     // Build mini CNF:
@@ -329,6 +352,14 @@ aig_ptr InterpRepair::compute_interpolant(
         return nullptr;
     }
 
+    // SLOW_DEBUG full miter: A → I.
+    SLOW_DEBUG_DO({
+        if (!slow_check_a_implies_i(to_repair_lit, conflict, interp)) {
+            cout << "c o [interp-repair] SLOW_DEBUG: A→I miter FAILED" << endl;
+            assert(false && "slow_check_a_implies_i: bad interpolant");
+        }
+    });
+
     // Size cap: count nodes in this AIG sub-tree.
     if (max_aig_nodes > 0) {
         set<const AIG*> seen;
@@ -364,6 +395,75 @@ aig_ptr InterpRepair::compute_interpolant(
 
     calls_succeeded++;
     return interp;
+}
+
+// SLOW_DEBUG full miter: verify that A → I, where
+//   A = original CNF + non-input conflict units + ~to_repair_lit
+//   I = interpolant AIG over input vars
+// We add A's clauses + ¬I as a fresh CNF and check UNSAT. Encoding ¬I
+// requires Tseitin over the AIG; we do it inline.
+bool InterpRepair::slow_check_a_implies_i(
+        Lit to_repair_lit,
+        const vector<Lit>& conflict,
+        const aig_ptr& interp) const
+{
+    if (interp == nullptr) return true;
+
+    auto solver = std::make_unique<Solver>();
+    auto add_cl = [&](const vector<Lit>& cl) {
+        for (const auto& l : cl) solver->add(lit_to_pl(l));
+        solver->add(0);
+    };
+    auto add_unit = [&](Lit l) {
+        solver->add(lit_to_pl(l));
+        solver->add(0);
+    };
+
+    for (const auto& cl : cnf.get_clauses()) add_cl(cl);
+    for (const auto& l : conflict) {
+        if (l.var() < is_input.size() && is_input[l.var()]) continue;
+        add_unit(~l);
+    }
+    add_unit(~to_repair_lit);
+
+    // Tseitin-encode interp into the same solver. Use cnf.nVars() as the
+    // start of fresh helper IDs.
+    uint32_t next_var = cnf.nVars();
+    map<aig_ptr, Lit> cache;
+    std::function<Lit(const aig_ptr&)> enc = [&](const aig_ptr& a) -> Lit {
+        auto it = cache.find(a);
+        if (it != cache.end()) return it->second;
+        Lit ret;
+        if (a->type == AIGT::t_const) {
+            uint32_t tv = next_var++;
+            Lit tl(tv, false);
+            add_unit(tl);
+            ret = a.neg ? ~tl : tl;
+        } else if (a->type == AIGT::t_lit) {
+            ret = Lit(a->var, a.neg);
+        } else { // AND
+            Lit lleft = enc(a->l);
+            Lit rright = enc(a->r);
+            uint32_t gv = next_var++;
+            Lit gl(gv, false);
+            add_cl({~gl, lleft});
+            add_cl({~gl, rright});
+            add_cl({gl, ~lleft, ~rright});
+            ret = a.neg ? ~gl : gl;
+        }
+        cache[a] = ret;
+        return ret;
+    };
+    Lit interp_lit = enc(interp);
+    add_unit(~interp_lit);  // assert ¬I
+
+    int ret = solver->solve();
+    if (ret != 20) {
+        cout << "c o [interp-repair] SLOW_DEBUG slow_check_a_implies_i: "
+             << "miter is NOT UNSAT (cadical ret=" << ret << ")" << endl;
+        return false;
+    }
+    return true;
 }
 
 bool InterpRepair::quick_check_interpolant_excludes_cex(
