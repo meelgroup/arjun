@@ -457,6 +457,64 @@ void test_ite_e_eq_sel() {
     check(true_count == 1, "ITE(s,t,s) = s∧t truth count");
 }
 
+// and_or_distrib: AND(OR(a, b), OR(a, c)) = OR(a, AND(b, c)).
+// Pins both functional correctness and that the counter is bumped.
+void test_and_or_distrib() {
+    auto a = AIG::new_lit(0);
+    auto b = AIG::new_lit(1);
+    auto c = AIG::new_lit(2);
+
+    AIGRewriter rw;
+    auto a_or_b = AIG::new_or(a, b);
+    auto a_or_c = AIG::new_or(a, c);
+    auto both = AIG::new_and(a_or_b, a_or_c);
+    auto r = rw.rewrite(both);
+    check(functionally_equal(both, r, 3), "AND(OR(a,b), OR(a,c)) functional");
+    check(rw.get_stats().and_or_distrib >= 1,
+          "and_or_distrib counter bumped");
+}
+
+// structural_hash_hits: same AND subtree built twice from independent
+// fresh edges should collapse to one node after rewriting (across two AIGs
+// in rewrite_all).
+void test_structural_hash_hits() {
+    auto a = AIG::new_lit(0);
+    auto b = AIG::new_lit(1);
+    auto c = AIG::new_lit(2);
+
+    AIGRewriter rw;
+    auto ab1 = AIG::new_and(a, b);
+    auto ab2 = AIG::new_and(a, b); // fresh independent AND with the same fanins
+    auto root1 = AIG::new_and(ab1, c);
+    auto root2 = AIG::new_and(ab2, c);
+
+    vector<aig_ptr> defs = {root1, root2};
+    rw.rewrite_all(defs, 0);
+    check(rw.get_stats().structural_hash_hits >= 1,
+          "duplicate AND subtrees produce a structural-hash hit");
+    check(functionally_equal(root1, defs[0], 3),
+          "structural-hash defs[0] functional");
+    check(functionally_equal(root2, defs[1], 3),
+          "structural-hash defs[1] functional");
+}
+
+// Complement absorption with literal-vs-OR-disjunct: AND(a, OR(~a, b)) = AND(a, b)
+// — exercises the complement_elim path on the is_or(r) branch.
+void test_complement_absorption_or() {
+    auto a = AIG::new_lit(0);
+    auto b = AIG::new_lit(1);
+    auto na = AIG::new_lit(0, true);
+
+    AIGRewriter rw;
+    auto na_or_b = AIG::new_or(na, b);
+    auto root = AIG::new_and(a, na_or_b);
+    const auto compl_before = rw.get_stats().complement_elim;
+    auto r = rw.rewrite(root);
+    check(functionally_equal(root, r, 2), "AND(a, OR(~a, b)) functional");
+    check(rw.get_stats().complement_elim > compl_before,
+          "AND(a, OR(~a, b)) bumps complement_elim");
+}
+
 // XOR pattern bump: XOR(p, q) leaves nodes alone but bumps xor_simplify so
 // the fuzzer / consumer can confirm the pattern was observed.
 void test_xor_pattern_recognized() {
@@ -519,6 +577,9 @@ int main() {
     test_and_of_and_sharing();
     test_ite_t_eq_sel();
     test_ite_e_eq_sel();
+    test_and_or_distrib();
+    test_structural_hash_hits();
+    test_complement_absorption_or();
     test_xor_pattern_recognized();
 
     cout << endl << "Results: " << tests_passed << " passed, " << tests_failed << " failed" << endl;
