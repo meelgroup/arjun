@@ -1747,6 +1747,14 @@ public:
         // (absorption, complement) that the per-AIG rewriter doesn't see.
         // 0=simplify only (default), 1=+rewrite_aig.
         int interp_repair_b1_rewrite = 0;
+        // FRAIG-lite SAT-sweep on b1: random-pattern simulation +
+        // SAT-driven merging of equivalent AIG nodes. Catches structural
+        // equivalences that pure rewriting misses (e.g. encoded XOR vs
+        // mux of complement). More expensive than rewrite_aig but can
+        // collapse the b1 dramatically on benchmarks where the
+        // interpolant duplicates structure already present in a y_other
+        // formula. 0=off (default), 1=on after rewrite/simplify.
+        int interp_repair_b1_satsweep = 0;
         // Per-call cadical conflict budget for the interpolation solve.
         // 0 = no limit (default). Useful upper bound: 50_000 keeps each
         // interp call < 1 second on most benchmarks; on pathological

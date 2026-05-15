@@ -2098,6 +2098,19 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
         b1 = AIG::rewrite_aig(b1);
         b1 = AIG::simplify_aig(b1);
     }
+    // Optional FRAIG-lite sat-sweep pass. AIGRewriter::sat_sweep
+    // operates on a vector of roots; wrap b1 in one. The sweeper merges
+    // equivalent AIG nodes detected via random-pattern simulation +
+    // SAT-driven confirmation — useful when the interpolant duplicates
+    // structure already present in a y_other formula AIG (common when
+    // both reference the same fanin cone).
+    if (mconf.interp_repair_b1_satsweep != 0) {
+        ArjunNS::AIGRewriter rw;
+        std::vector<aig_ptr> roots = {b1};
+        rw.sat_sweep(roots, /*verb=*/0);
+        b1 = roots[0];
+        b1 = AIG::simplify_aig(b1);
+    }
     const size_t post_simp_sz = AIG::count_aig_nodes_fast(b1);
     if (interp_repair) {
         interp_repair->total_combined_pre_simp += pre_simp_sz;
