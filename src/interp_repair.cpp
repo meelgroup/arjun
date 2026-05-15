@@ -374,6 +374,32 @@ aig_ptr InterpRepair::compute_interpolant(
     interp = AIG::simplify_aig(interp);
     total_simplify_time += cpuTime() - t_simp;
 
+    // SLOW_DEBUG: verify the interpolant only references input variables.
+    // McMillan's construction guarantees this by induction; if it fails
+    // we have a bug in the tracer.
+    SLOW_DEBUG_DO({
+        if (interp != nullptr) {
+            set<const AIG*> seen2;
+            std::function<bool(const aig_ptr&)> check = [&](const aig_ptr& a) -> bool {
+                if (a == nullptr) return true;
+                if (a->type == AIGT::t_const) return true;
+                if (a->type == AIGT::t_lit) {
+                    if (a->var >= is_input.size() || !is_input[a->var]) {
+                        cout << "c o [interp-repair] SLOW_DEBUG: interpolant has non-input leaf var="
+                             << (a->var+1) << endl;
+                        return false;
+                    }
+                    return true;
+                }
+                if (!seen2.insert(a.get()).second) return true;
+                return check(a->l) && check(a->r);
+            };
+            if (!check(interp)) {
+                assert(false && "interpolant has non-input leaf — tracer bug");
+            }
+        }
+    });
+
     // Degenerate cases.
     //
     // I = TRUE  means "wrong y_rep is feasible everywhere" — but A∧B was

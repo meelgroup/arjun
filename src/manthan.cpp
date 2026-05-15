@@ -1986,7 +1986,44 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         InterpClauseSink sink{cex_solver, &f.clauses, helpers};
         ArjunNS::AIGToCNF<InterpClauseSink> enc(sink);
         enc.set_true_lit(fh->get_true_lit());
-        f.out = enc.encode(b1, /*force_helper=*/true);
+
+        // var_to_formula[y].aig stores the RAW AIG (with to_define cnf
+        // vars as leaves); CNF clauses use the y_hat-translated form.
+        // Since we're encoding b1 into CNF directly via AIGToCNF, we
+        // must translate b1's leaves to y_hat space first — otherwise
+        // raw to_define vars leak into f.clauses and check_functions
+        // asserts. (Legacy perform_repair sidesteps this by building
+        // f.clauses manually with lit_to_lit, never encoding b1.)
+        aig_ptr b1_yhat = AIG::translate_leaves(
+            b1,
+            [&](uint32_t v) { return map_y_to_y_hat(Lit(v, false)); });
+
+        SLOW_DEBUG_DO({
+            std::set<const ArjunNS::AIG*> seen3;
+            std::function<void(const aig_ptr&)> walk3 = [&](const aig_ptr& a) {
+                if (a == nullptr) return;
+                if (a->type == ArjunNS::AIGT::t_const) return;
+                if (a->type == ArjunNS::AIGT::t_lit) {
+                    const uint32_t var = a->var;
+                    if (var < is_input.size() && is_input[var]) return;
+                    if (y_hats.count(var)) return;
+                    if (helpers.count(var)) return;
+                    if (var == fh->get_true_lit().var()) return;
+                    std::cout << "c o [interp-perform_repair] BAD leaf var=" << (var+1)
+                              << " in b1_yhat for y_rep=" << (y_rep+1)
+                              << " is_to_def=" << to_define.count(var)
+                              << std::endl;
+                    assert(false && "interp-perform_repair: b1_yhat has bad leaf");
+                    return;
+                }
+                if (!seen3.insert(a.get()).second) return;
+                walk3(a->l);
+                walk3(a->r);
+            };
+            walk3(b1_yhat);
+        });
+
+        f.out = enc.encode(b1_yhat, /*force_helper=*/true);
 
         // Dependency tracking: each conflict lit may be referenced via the
         // y_other ANDs above (or implicitly via the interpolant for inputs).
