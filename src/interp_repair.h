@@ -231,6 +231,21 @@ public:
     uint64_t total_combined_post_simp = 0;
     double   total_combined_simp_time = 0.0;
 
+    // Wire up the mini-CNF on `solver` with `tracer` attached. The
+    // partition is:
+    //   A side: original CNF + non-input conflict-literal units
+    //            (skipped if `unconditional`) + ~to_repair_lit
+    //   B side: input conflict-literal units
+    //
+    // Returns the number of B-side units added. Zero means there's no
+    // shared variable between A and B; the resulting interpolant would
+    // be trivial and the caller should bail.
+    uint32_t setup_mini_cnf(CaDiCaL::Solver& solver,
+            InterpTracerMcMillan& tracer,
+            CMSat::Lit to_repair_lit,
+            const std::vector<CMSat::Lit>& conflict,
+            bool unconditional) const;
+
     void print_stats(const std::string& prefix = "[interp-repair]") const;
 
 private:

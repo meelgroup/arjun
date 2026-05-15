@@ -225,6 +225,56 @@ InterpRepair::InterpRepair(const Config& _conf,
     }
 }
 
+uint32_t InterpRepair::setup_mini_cnf(CaDiCaL::Solver& solver,
+        InterpTracerMcMillan& tracer, Lit to_repair_lit,
+        const std::vector<Lit>& conflict, bool unconditional) const
+{
+    auto add_unit_a = [&](Lit l) {
+        tracer.next_is_b = false;
+        solver.add(lit_to_pl(l));
+        solver.add(0);
+    };
+    auto add_unit_b = [&](Lit l) {
+        tracer.next_is_b = true;
+        solver.add(lit_to_pl(l));
+        solver.add(0);
+        tracer.next_is_b = false;
+    };
+
+    // 1) Original CNF clauses (all A-side). We deliberately skip
+    // cnf.get_red_clauses(): those are redundant learnts and aren't
+    // required for UNSAT-side reproduction.
+    if (!cnf_serialized_built) build_serialized_cnf();
+    tracer.next_is_b = false;
+    for (int v : cnf_serialized) solver.add(v);
+
+    // get_conflict() returns the negation of the failing assumption set
+    // (so it forms a learnable clause). To reproduce the same UNSAT in
+    // a fresh solver via unit clauses, we add the *original*
+    // assumptions, i.e. ~l for each conflict literal l.
+    //
+    // 2) Non-input conflict units (A side) plus ~to_repair (A side).
+    // In unconditional mode we *skip* the y_other units: the
+    // interpolant then characterises must-flip universally over
+    // y_others (rather than conditional on this CEX's y_other values).
+    if (!unconditional) {
+        for (const auto& l : conflict) {
+            if (l.var() < is_input.size() && is_input[l.var()]) continue;
+            add_unit_a(~l);
+        }
+    }
+    add_unit_a(~to_repair_lit);
+
+    // 3) Input conflict units (B side).
+    uint32_t b_marked = 0;
+    for (const auto& l : conflict) {
+        if (l.var() >= is_input.size() || !is_input[l.var()]) continue;
+        add_unit_b(~l);
+        b_marked++;
+    }
+    return b_marked;
+}
+
 void InterpRepair::build_serialized_cnf() const {
     // Serialise once: lits as cadical signed ints, each clause terminated
     // by 0. Concatenated so we can solver->add(...) in a tight loop on
@@ -341,49 +391,8 @@ aig_ptr InterpRepair::compute_interpolant(
     InterpTracerMcMillan tracer(conf, aig_mng, input_vars);
     solver->connect_proof_tracer(&tracer, true);
 
-    auto add_unit_a = [&](Lit l) {
-        tracer.next_is_b = false;
-        solver->add(lit_to_pl(l));
-        solver->add(0);
-    };
-    auto add_unit_b = [&](Lit l) {
-        tracer.next_is_b = true;
-        solver->add(lit_to_pl(l));
-        solver->add(0);
-        tracer.next_is_b = false;
-    };
-
-    // 1) Original CNF clauses (all A-side). We deliberately skip
-    // cnf.get_red_clauses(): those are redundant learnts and aren't
-    // required for UNSAT-side reproduction.
-    if (!cnf_serialized_built) build_serialized_cnf();
-    tracer.next_is_b = false;
-    for (int v : cnf_serialized) solver->add(v);
-
-    // get_conflict() returns the negation of the failing assumption set
-    // (so it forms a learnable clause). To reproduce the same UNSAT in a
-    // fresh solver via unit clauses, we need to add the *original*
-    // assumptions, i.e. ~l for each conflict literal l.
-    //
-    // 2) Non-input conflict units (A side) plus ~to_repair (A side).
-    // In unconditional mode we *skip* the y_other units: the
-    // interpolant then characterises must-flip universally over
-    // y_others (rather than conditional on this CEX's y_other values).
-    uint32_t b_marked = 0;
-    if (!unconditional) {
-        for (const auto& l : conflict) {
-            if (l.var() < is_input.size() && is_input[l.var()]) continue;
-            add_unit_a(~l);
-        }
-    }
-    add_unit_a(~to_repair_lit);
-
-    // 3) Input conflict units (B side).
-    for (const auto& l : conflict) {
-        if (l.var() >= is_input.size() || !is_input[l.var()]) continue;
-        add_unit_b(~l);
-        b_marked++;
-    }
+    const uint32_t b_marked = setup_mini_cnf(*solver, tracer,
+            to_repair_lit, conflict, unconditional);
     total_setup_time += cpuTime() - t0;
 
     VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
