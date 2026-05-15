@@ -49,36 +49,91 @@ recovers baseline performance on factorization-style benchmarks.
 
 ## Tuning knobs
 
-- `--interprepair {0,1,2}` — off / on for every repair / on only when
+### Gating: when to invoke interp
+
+- `--interprepair {0,1,2}` — off / on every repair / only when
   conflict size ≥ `--interprepairmincl` (default 4).
-- `--interprepairmincl N` — minimum conflict size to trigger interp.
-  Recommended starting point: **8–12** to skip the small-conflict
-  benchmarks where interp tends to expand.
+- `--interprepairmincl N` — minimum conflict size to trigger interp
+  (mode 2). Recommended starting point: **8–12**.
 - `--interprepairminvar N` — only kick in after a y has been repaired
-  more than N times. Useful to focus interpolation on the hot
-  variables that are actually in the death-spiral pattern.
-- `--interprepairmaxnodes N` — cap interpolant AIG size; if the
-  produced interpolant is bigger, fall back to the conflict-clause
-  path. 0 = no cap.
-- `--interprepairverify {0,1,2}` — always-on verification. 0 = off,
-  1 = cheap CEX-input check, 2 = full SAT miter (slow). Useful for
-  cluster runs where SLOW_DEBUG isn't compiled in.
+  more than N times. Focus interpolation on hot variables.
+- `--interprepairmaxnodes N` — cap interpolant AIG size; fall back if
+  exceeded. 0 = no cap.
+- `--interprepairmaxconfl N` — per-call cadical conflict budget. 0=no
+  limit. Useful upper bound: **50000**.
+- `--interprepairadaptive {0,1}` — adaptive per-var blacklisting when
+  the running interp/conflict size ratio exceeds
+  `--interprepairratioskip` (default 8.0); blacklisted for
+  `--interprepairskipwindow` repairs (default 20).
+
+### Solve flavour
+
+- `--interprepairuncond {0,1}` — try the unconditional interpolant
+  (no y_other pinning) first; falls back to conditional on SAT. When
+  it works, perform_repair skips the y_other AND in b1.
+- `--interprepaircache N` — FIFO cache for
+  (conflict-signature → interpolant). 0 = off. Useful range:
+  **64–512**.
+
+### Post-processing: shrink the AIG before encoding
+
+- `--interprepairrewrite {0,1}` — heavier AIGRewriter::rewrite_aig on
+  the *raw interpolant* (in addition to the always-on simplify_aig).
+- `--interprepairb1rewrite {0,1}` — independent: AIGRewriter::rewrite_aig
+  on the *combined b1* = NOT(I) AND y_other_match.
+- `--interprepairb1satsweep {0,1}` — FRAIG-lite SAT-sweep on b1.
+  Catches structural equivalences rewrite_aig misses.
+- `--interprepairgroupcse {0,1}` — pass --group-cse to AIGToCNF when
+  encoding b1; dedups Tseitin helpers for structurally identical
+  sub-AIGs.
+
+### Verification
+
+- `--interprepairverify {0,1,2,3}` — always-on correctness check.
+  0 = off, 1 = cheap CEX-input check (default), 2 = full SAT miter
+  (slow), 3 = probabilistic 8-sample SAT check.
 
 ## Recommended cluster sweep
 
 A reasonable grid for a first cluster experiment:
 
 ```
---interprepair 0
---interprepair 2 --interprepairmincl 8
+--interprepair 0                                       # baseline
+--interprepair 2 --interprepairmincl 8                 # gate by size
 --interprepair 2 --interprepairmincl 8 --interprepairminvar 5
 --interprepair 2 --interprepairmincl 12 --interprepairminvar 50
---interprepair 1 --interprepairmaxnodes 100
+--interprepair 2 --interprepairmincl 8 --interprepairadaptive 1
+--interprepair 2 --interprepairmincl 8 --interprepairrewrite 1 --interprepairb1rewrite 1
+--interprepair 2 --interprepairmincl 8 --interprepaircache 128
+--interprepair 2 --interprepairmincl 8 --interprepairuncond 1
+--interprepair 2 --interprepairmincl 8 --interprepairmaxconfl 50000
 ```
 
-The first row is the baseline. The remaining four sweep the gating
-knobs to find the right balance between "fire often enough to break
-death-spirals" and "skip when small conflicts are already optimal".
+What each row tests:
+
+- **gate by size**: skip cheap conflicts where interp can't compress.
+- **+minvar**: target the death-spiral vars only.
+- **+adaptive**: let the system self-tune per-var.
+- **+rewrite**: pay the AIG simplification cost for smaller b1.
+- **+cache**: dedupe repeated conflicts.
+- **+uncond**: try strictly-stronger interpolants when feasible.
+- **+maxconfl**: cap pathological mini-CNF blow-up.
+
+## Observability
+
+Every run with `--interprepair > 0` prints an `INTERP-REPAIR STATS`
+block in the detailed stats. Key lines:
+
+- `interp drove repairs: N / M (P%)` — usage rate.
+- `interp calls: ... cache_hit: ... budget_exh: ... trivial: ...` — failure-mode breakdown.
+- `interp smaller/larger than conflict: N / M` — compression ratio.
+- `interp time: T (P% of repair)` — wall-time cost.
+- `b1 simp: pre=N post=M (P% reduction)` — AIG simplification savings.
+- `conflict-sz hist: [32,128)=12 [128,512)=5` — size distribution.
+- `interp-nodes hist: ...` — same for resulting interpolants.
+- `support: avg interp uses 234.5 input vars (conflict had 126.5...)` — generalisation breadth.
+- `helpers/rep: interp avg 155.0  legacy avg 25.0` — cex_solver bloat.
+- `top vars driven by interp:` — top-10 hottest interp-driven vars.
 
 ## Correctness
 
