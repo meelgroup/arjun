@@ -672,13 +672,27 @@ aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
     const_true_node.reset();
     const size_t before = AIG::count_aig_nodes_fast(aig);
     aig_lit result = aig;
-    { NodeRebuildMap c; result = simplify_pass(result, c); }
-    struct_hash.clear();
-    { NodeRebuildMap c; result = hash_cons(result, c); }
-    { NodeRebuildMap c; result = deep_absorb(result, c); }
-    { NodeRebuildMap c; result = flatten_ite_chains(result, c); }
-    struct_hash.clear();
-    { NodeRebuildMap c; result = hash_cons(result, c); }
+
+    // Iterate to a fixed point: deep_absorb's k-ary flattening + complement
+    // dedup can expose new patterns the local simplify_pass rules would
+    // catch, which in turn enables further deep_absorb folds. Cap the loop
+    // at a small constant — in practice convergence is fast (1-2 extra
+    // iterations) and we don't want to pay for runaway oscillation on
+    // adversarial inputs.
+    constexpr int kMaxIters = 4;
+    size_t prev_count = before;
+    for (int iter = 0; iter < kMaxIters; iter++) {
+        { NodeRebuildMap c; result = simplify_pass(result, c); }
+        struct_hash.clear();
+        { NodeRebuildMap c; result = hash_cons(result, c); }
+        { NodeRebuildMap c; result = deep_absorb(result, c); }
+        { NodeRebuildMap c; result = flatten_ite_chains(result, c); }
+        struct_hash.clear();
+        { NodeRebuildMap c; result = hash_cons(result, c); }
+        const size_t cur_count = AIG::count_aig_nodes_fast(result);
+        if (cur_count >= prev_count) break;
+        prev_count = cur_count;
+    }
     stats.total_passes++;
     if (AIG::count_aig_nodes_fast(result) > before) return aig;
     return result;
@@ -695,30 +709,38 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
     // Snapshot originals so we can revert any def that grew.
     vector<aig_ptr> originals = defs;
 
-    {
-        NodeRebuildMap cache;
-        for (auto& d : defs) if (d) d = simplify_pass(d, cache);
-    }
-    {
-        // deep_absorb handles k-ary AND/OR flattening, multi-level absorption
-        // and resolution that simplify_pass's local rules miss. Expensive
-        // enough to run once per rewrite_all call rather than iteratively.
-        NodeRebuildMap cache;
-        for (auto& d : defs) if (d) d = deep_absorb(d, cache);
-    }
-    {
-        // flatten_ite_chains rebalances long AND / OR chains (common from
-        // manthan's ITE-repair output) as balanced trees.
-        NodeRebuildMap cache;
-        for (auto& d : defs) if (d) d = flatten_ite_chains(d, cache);
-    }
-    {
-        // hash_cons is cheap and makes the final AIG share structure across
-        // defs; run it last so any new ANDs created by the OR / resolution
-        // rewrites also hash-cons.
-        struct_hash.clear();
-        NodeRebuildMap cache;
-        for (auto& d : defs) if (d) d = hash_cons(d, cache);
+    // Iterate to a fixed point — same rationale as the single-AIG rewrite
+    // entry point. Bounded at kMaxIters to avoid pathological oscillation.
+    constexpr int kMaxIters = 4;
+    size_t prev_count = stats.nodes_before;
+    for (int iter = 0; iter < kMaxIters; iter++) {
+        {
+            NodeRebuildMap cache;
+            for (auto& d : defs) if (d) d = simplify_pass(d, cache);
+        }
+        {
+            // deep_absorb handles k-ary AND/OR flattening, multi-level
+            // absorption / resolution that simplify_pass's local rules miss.
+            NodeRebuildMap cache;
+            for (auto& d : defs) if (d) d = deep_absorb(d, cache);
+        }
+        {
+            // flatten_ite_chains rebalances long AND / OR chains (common
+            // from manthan's ITE-repair output) as balanced trees.
+            NodeRebuildMap cache;
+            for (auto& d : defs) if (d) d = flatten_ite_chains(d, cache);
+        }
+        {
+            // hash_cons makes the AIG share structure across defs; run it
+            // last so any new ANDs created by the OR / resolution rewrites
+            // also hash-cons.
+            struct_hash.clear();
+            NodeRebuildMap cache;
+            for (auto& d : defs) if (d) d = hash_cons(d, cache);
+        }
+        const size_t cur_count = AIG::count_aig_nodes_fast(defs);
+        if (cur_count >= prev_count) break;
+        prev_count = cur_count;
     }
     stats.total_passes++;
 
