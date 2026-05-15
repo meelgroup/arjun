@@ -152,11 +152,20 @@ public:
     uint64_t calls_succeeded = 0;
     uint64_t calls_failed_oversize = 0;
     uint64_t calls_failed_other = 0;
+    uint64_t calls_failed_empty_or_no_input = 0;
     uint64_t calls_quick_check_failed = 0;
     uint64_t total_interp_nodes = 0;
     uint64_t total_conflict_lits = 0;
+    // How often the interpolant was *strictly* smaller than the conflict
+    // (in node-vs-lit count, a rough proxy for "structural compression").
+    // The dual count helps tune --interprepairmaxnodes.
+    uint64_t interp_smaller_than_conflict = 0;
+    uint64_t interp_larger_than_conflict = 0;
+    // Largest interpolant we accepted, in nodes.
+    uint64_t max_interp_nodes_seen = 0;
     double   total_solve_time = 0.0;
     double   total_setup_time = 0.0;
+    double   total_simplify_time = 0.0;
 
     void print_stats(const std::string& prefix = "[interp-repair]") const;
 

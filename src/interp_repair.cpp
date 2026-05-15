@@ -236,7 +236,7 @@ aig_ptr InterpRepair::compute_interpolant(
     // constant_formula. No interpolation needed (and we don't have any
     // input units, so there'd be no B side anyway).
     if (conflict.empty()) {
-        calls_failed_other++;
+        calls_failed_empty_or_no_input++;
         return nullptr;
     }
 
@@ -249,7 +249,7 @@ aig_ptr InterpRepair::compute_interpolant(
         }
     }
     if (!has_input) {
-        calls_failed_other++;
+        calls_failed_empty_or_no_input++;
         return nullptr;
     }
 
@@ -346,7 +346,9 @@ aig_ptr InterpRepair::compute_interpolant(
     // Local AIG simplification (constant propagation, CSE, ITE detection)
     // before returning. The proof-driven construction can leave a lot of
     // redundant ANDs/ORs that the rewriter trivially crushes.
+    const double t_simp = cpuTime();
     interp = AIG::simplify_aig(interp);
+    total_simplify_time += cpuTime() - t_simp;
 
     // Quick sanity: under the original CEX inputs (= the input units we
     // added), interpolant should evaluate to FALSE. (This is what makes
@@ -365,38 +367,29 @@ aig_ptr InterpRepair::compute_interpolant(
         }
     });
 
-    // Size cap: count nodes in this AIG sub-tree.
-    if (max_aig_nodes > 0) {
-        set<const AIG*> seen;
-        std::function<void(const aig_ptr&)> walk = [&](const aig_ptr& a) {
-            if (a == nullptr) return;
-            if (a->type == AIGT::t_const || a->type == AIGT::t_lit) return;
-            if (!seen.insert(a.get()).second) return;
-            walk(a->l);
-            walk(a->r);
-        };
-        walk(interp);
-        if (seen.size() > max_aig_nodes) {
-            calls_failed_oversize++;
-            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] interp has "
-                << seen.size() << " AIG nodes > cap " << max_aig_nodes
-                << "; falling back" << endl);
-            return nullptr;
-        }
-        total_interp_nodes += seen.size();
-    } else {
-        // Still count for stats.
-        set<const AIG*> seen;
-        std::function<void(const aig_ptr&)> walk = [&](const aig_ptr& a) {
-            if (a == nullptr) return;
-            if (a->type == AIGT::t_const || a->type == AIGT::t_lit) return;
-            if (!seen.insert(a.get()).second) return;
-            walk(a->l);
-            walk(a->r);
-        };
-        walk(interp);
-        total_interp_nodes += seen.size();
+    // Size: count internal AND nodes in this AIG sub-tree.
+    set<const AIG*> seen;
+    std::function<void(const aig_ptr&)> walk = [&](const aig_ptr& a) {
+        if (a == nullptr) return;
+        if (a->type == AIGT::t_const || a->type == AIGT::t_lit) return;
+        if (!seen.insert(a.get()).second) return;
+        walk(a->l);
+        walk(a->r);
+    };
+    walk(interp);
+    const size_t interp_nodes = seen.size();
+
+    if (max_aig_nodes > 0 && interp_nodes > max_aig_nodes) {
+        calls_failed_oversize++;
+        VERBOSE_DEBUG_DO(cout << "c o [interp-repair] interp has "
+            << interp_nodes << " AIG nodes > cap " << max_aig_nodes
+            << "; falling back" << endl);
+        return nullptr;
     }
+    total_interp_nodes += interp_nodes;
+    if (interp_nodes > max_interp_nodes_seen) max_interp_nodes_seen = interp_nodes;
+    if (interp_nodes < conflict.size()) interp_smaller_than_conflict++;
+    else if (interp_nodes > conflict.size()) interp_larger_than_conflict++;
 
     calls_succeeded++;
     return interp;
@@ -505,13 +498,18 @@ void InterpRepair::print_stats(const std::string& prefix) const {
          << " ok: " << calls_succeeded
          << " oversize: " << calls_failed_oversize
          << " quickfail: " << calls_quick_check_failed
-         << " other_fail: " << calls_failed_other
+         << " trivial: " << calls_failed_empty_or_no_input
+         << " other: " << calls_failed_other
          << " avg conflict-lits: "
          << fixed << setprecision(1)
          << (calls ? (double)total_conflict_lits / (double)calls : 0.0)
          << " avg interp-nodes: "
          << (calls_succeeded ? (double)total_interp_nodes / (double)calls_succeeded : 0.0)
+         << " max interp-nodes: " << max_interp_nodes_seen
+         << " smaller/larger: " << interp_smaller_than_conflict
+         << "/" << interp_larger_than_conflict
          << " setup-T: " << fixed << setprecision(2) << total_setup_time
          << " solve-T: " << fixed << setprecision(2) << total_solve_time
+         << " simp-T: " << fixed << setprecision(2) << total_simplify_time
          << endl;
 }
