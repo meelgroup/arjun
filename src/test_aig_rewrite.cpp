@@ -289,8 +289,9 @@ void test_not_through_and() {
         check(count_nodes(r) == 3, "NOT(NAND(a,b)) = AND(a,b) is 3 nodes");
     }
 
-    // NOT(AND(a, AND(b,c))): outer NOT should fold into outer AND's neg,
-    // giving NAND(a, AND(b,c)) with no extra inverter layer.
+    // NOT(AND(a, AND(b,c))): in the edge-signed model NOT is just an
+    // edge-flip — there is no separate inverter node for the rewriter to
+    // absorb. The rewrite is a no-op on node count; semantics must match.
     {
         auto and_bc = AIG::new_and(b, c);
         auto and_abc = AIG::new_and(a, and_bc);
@@ -298,7 +299,7 @@ void test_not_through_and() {
         auto not_abc = AIG::new_not(and_abc);
         auto r = rw.rewrite(not_abc);
         check(functionally_equal(not_abc, r, 3), "NOT(AND(a,AND(b,c))) functional");
-        check(count_nodes(r) < before, "NOT(AND(a,AND(b,c))) strictly smaller");
+        check(count_nodes(r) <= before, "NOT(AND(a,AND(b,c))) no growth");
     }
 
     // Double NOT through AND: NOT(NOT(AND(a,b))) must collapse back to AND(a,b).

@@ -112,6 +112,20 @@ private:
     };
     std::unordered_map<StructKey, aig_node_ptr, StructKeyHash> struct_hash;
 
+    // Hash-cons table for t_lit nodes, keyed by variable id. Without this the
+    // rewriter would build a fresh t_lit node per source occurrence, so
+    // structurally identical literals would compare unequal and rules like
+    // AND(a, AND(~a, b)) = FALSE would silently miss. Cleared together with
+    // struct_hash at the top of each public rewrite call.
+    std::unordered_map<uint32_t, aig_node_ptr> lit_hash;
+    // A single shared t_const TRUE node so const-folded edges across the
+    // rebuild use the same underlying node — useful when downstream passes
+    // compare nodes by pointer.
+    aig_node_ptr const_true_node;
+
+    aig_lit cached_lit(uint32_t var, bool neg);
+    aig_lit cached_const(bool val);
+
     // Per-pass caches map SOURCE NODE → rebuilt signed edge for the node's
     // POSITIVE value. Callers XOR in the incoming edge sign on return.
     using NodeRebuildMap = std::unordered_map<const AIG*, aig_lit>;

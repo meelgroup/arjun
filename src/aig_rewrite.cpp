@@ -58,6 +58,28 @@ void AIGRewriteStats::clear() { *this = AIGRewriteStats(); }
 
 // ========== Helpers ==========
 
+// Return a hash-consed signed edge for variable `var`. The first call for
+// each variable allocates the backing t_lit node; subsequent calls reuse it.
+// This is what makes structural equality (`a == b` on aig_lits) reliable
+// across all rewrites within a single rewrite_all() pass — without it, the
+// rebuilder produces a fresh t_lit per occurrence and rules like
+// AND(a, AND(~a, b)) = FALSE silently fall off the table.
+aig_lit AIGRewriter::cached_lit(uint32_t var, bool neg) {
+    auto it = lit_hash.find(var);
+    if (it != lit_hash.end()) return aig_lit(it->second, neg);
+    aig_lit fresh = AIG::new_lit(var, false);
+    lit_hash.emplace(var, fresh.node);
+    return aig_lit(fresh.node, neg);
+}
+
+aig_lit AIGRewriter::cached_const(bool val) {
+    if (!const_true_node) {
+        aig_lit t = AIG::new_const(true);
+        const_true_node = t.node;
+    }
+    return aig_lit(const_true_node, !val);
+}
+
 void AIGRewriter::collect_and_edges(const aig_lit& edge, vector<aig_lit>& out) {
     if (!edge) return;
     if (edge->type == AIGT::t_and && !edge.neg) {
@@ -82,7 +104,7 @@ void AIGRewriter::collect_or_edges(const aig_lit& edge, vector<aig_lit>& out) {
 }
 
 aig_lit AIGRewriter::build_and_tree(vector<aig_lit>& children) {
-    if (children.empty()) return AIG::new_const(true);
+    if (children.empty()) return cached_const(true);
     if (children.size() == 1) return children[0];
     while (children.size() > 1) {
         vector<aig_lit> next;
@@ -97,7 +119,7 @@ aig_lit AIGRewriter::build_and_tree(vector<aig_lit>& children) {
 }
 
 aig_lit AIGRewriter::build_or_tree(vector<aig_lit>& children) {
-    if (children.empty()) return AIG::new_const(false);
+    if (children.empty()) return cached_const(false);
     if (children.size() == 1) return children[0];
     while (children.size() > 1) {
         vector<aig_lit> next;
@@ -164,9 +186,9 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
 
     aig_lit pos;
     if (edge->type == AIGT::t_const) {
-        pos = AIG::new_const(true);
+        pos = cached_const(true);
     } else if (edge->type == AIGT::t_lit) {
-        pos = AIG::new_lit(edge->var, false);
+        pos = cached_lit(edge->var, false);
     } else {
         assert(edge->type == AIGT::t_and);
         const aig_lit l = simplify_pass(edge->l, cache);
@@ -174,25 +196,33 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
 
         if (l->type == AIGT::t_const) {
             stats.const_prop++;
-            pos = l.neg ? AIG::new_const(false) : r;  // FALSE∧x=FALSE, TRUE∧x=x
+            pos = l.neg ? cached_const(false) : r;  // FALSE∧x=FALSE, TRUE∧x=x
         } else if (r->type == AIGT::t_const) {
             stats.const_prop++;
-            pos = r.neg ? AIG::new_const(false) : l;
+            pos = r.neg ? cached_const(false) : l;
         } else if (l == r) {
             stats.idempotent_elim++;
             pos = l;
         } else if (is_complement(l, r)) {
             stats.complement_elim++;
-            pos = AIG::new_const(false);
-        } else if (l->type == AIGT::t_lit && r->type == AIGT::t_lit
-                   && l->var == r->var && l.neg == r.neg) {
-            // Separate t_lit nodes for the same signed variable — dedup.
-            stats.idempotent_elim++;
-            pos = l;
-        } else if (l->type == AIGT::t_lit && r->type == AIGT::t_lit
-                   && l->var == r->var && l.neg != r.neg) {
-            stats.complement_elim++;
-            pos = AIG::new_const(false);
+            pos = cached_const(false);
+        }
+
+        // Complementary absorption: AND(a, AND(~a, b)) = FALSE — fires when
+        // simplify_pass has hash-consed literals so `is_complement` resolves
+        // structurally. The bare AND(a, AND(a, b)) absorption rule below
+        // covers the positive case; this one catches the contradiction.
+        if (!pos && r->type == AIGT::t_and && !r.neg) {
+            if (is_complement(r->l, l) || is_complement(r->r, l)) {
+                stats.complement_elim++;
+                pos = cached_const(false);
+            }
+        }
+        if (!pos && l->type == AIGT::t_and && !l.neg) {
+            if (is_complement(l->l, r) || is_complement(l->r, r)) {
+                stats.complement_elim++;
+                pos = cached_const(false);
+            }
         }
 
         // Absorption: AND(a, AND(a, b)) = AND(a, b). Inner AND must be
@@ -234,6 +264,33 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
             } else if (is_complement(r, d2)) {
                 stats.complement_elim++;
                 pos = make_canonical(r, d1);
+            }
+        }
+
+        // XOR / XNOR pattern detection.
+        // XOR(a,b) = OR(AND(a, ~b), AND(~a, b)) = ~AND(~AND(a, ~b), ~AND(~a, b))
+        // Stored shape: outer AND(neg=true) whose two children are
+        // positive-edge ANDs A = AND(p, ~q) and B = AND(~p, q), where p == ~q'
+        // across the two ANDs. We detect it on the inner AND-of-AND positive
+        // view; the outer edge sign (l.neg, r.neg) tells us if the surrounding
+        // operator is OR (XOR) or AND (XNOR-like, when both inner ANDs are
+        // negated).
+        if (!pos && l->type == AIGT::t_and && !l.neg
+                 && r->type == AIGT::t_and && !r.neg) {
+            const aig_lit la = l->l, lb = l->r;
+            const aig_lit ra = r->l, rb = r->r;
+            // Look for (p, ~q) on one side and (~p, q) on the other. There
+            // are four ways to match.
+            auto matches_xor = [](const aig_lit& a1, const aig_lit& a2,
+                                  const aig_lit& b1, const aig_lit& b2) {
+                return is_complement(a1, b1) && is_complement(a2, b2);
+            };
+            if (matches_xor(la, lb, ra, rb) || matches_xor(la, lb, rb, ra)
+             || matches_xor(lb, la, ra, rb) || matches_xor(lb, la, rb, ra)) {
+                // AND(AND(p, ~q), AND(~p, q)) = AND(p, ~p, ...) = FALSE.
+                // The pair of complementary literals is enough.
+                stats.complement_elim++;
+                pos = cached_const(false);
             }
         }
 
@@ -283,9 +340,9 @@ aig_lit AIGRewriter::hash_cons(const aig_lit& edge, NodeRebuildMap& cache) {
         aig_lit r = hash_cons(edge->r, cache);
         pos = make_canonical(l, r);
     } else if (edge->type == AIGT::t_const) {
-        pos = AIG::new_const(true);
+        pos = cached_const(true);
     } else {
-        pos = AIG::new_lit(edge->var, false);
+        pos = cached_lit(edge->var, false);
     }
     cache[edge.get()] = pos;
     return aig_lit(pos.node, pos.neg ^ edge.neg);
@@ -306,8 +363,8 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
 
     aig_lit pos;
     if (edge->type != AIGT::t_and) {
-        if (edge->type == AIGT::t_const) pos = AIG::new_const(true);
-        else pos = AIG::new_lit(edge->var, false);
+        if (edge->type == AIGT::t_const) pos = cached_const(true);
+        else pos = cached_lit(edge->var, false);
     } else {
         const aig_lit l = deep_absorb(edge->l, cache);
         const aig_lit r = deep_absorb(edge->r, cache);
@@ -325,13 +382,13 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
 
         if (!any_chain) {
             if (l == r) { stats.idempotent_elim++; pos = l; }
-            else if (is_complement(l, r)) { stats.complement_elim++; pos = AIG::new_const(false); }
+            else if (is_complement(l, r)) { stats.complement_elim++; pos = cached_const(false); }
             else if (l->type == AIGT::t_const) {
                 stats.const_prop++;
-                pos = l.neg ? AIG::new_const(false) : r;
+                pos = l.neg ? cached_const(false) : r;
             } else if (r->type == AIGT::t_const) {
                 stats.const_prop++;
-                pos = r.neg ? AIG::new_const(false) : l;
+                pos = r.neg ? cached_const(false) : l;
             } else {
                 pos = make_canonical(l, r);
             }
@@ -378,9 +435,9 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
             }
 
             if (folded_false) {
-                pos = AIG::new_const(false);
+                pos = cached_const(false);
             } else if (children.empty()) {
-                pos = AIG::new_const(true);
+                pos = cached_const(true);
             } else {
                 // Cross-level subsumption: for each OR child, check if any
                 // AND sibling matches one of its disjuncts (absorption) or
@@ -425,7 +482,7 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
                         if (disj_changed) {
                             if (new_disj.empty()) {
                                 // Empty OR = FALSE. AND(..., FALSE) = FALSE.
-                                pos = AIG::new_const(false);
+                                pos = cached_const(false);
                                 break;
                             }
                             children[i] = build_or_tree(new_disj);
@@ -482,7 +539,7 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
                 if (!pos) {
                     std::sort(children.begin(), children.end(), aig_lit_nid_less);
                     children.erase(std::unique(children.begin(), children.end()), children.end());
-                    if (children.empty()) pos = AIG::new_const(true);
+                    if (children.empty()) pos = cached_const(true);
                     else pos = build_and_tree(children);
                 }
             }
@@ -506,8 +563,8 @@ aig_lit AIGRewriter::flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cac
 
     aig_lit pos;
     if (edge->type != AIGT::t_and) {
-        if (edge->type == AIGT::t_const) pos = AIG::new_const(true);
-        else pos = AIG::new_lit(edge->var, false);
+        if (edge->type == AIGT::t_const) pos = cached_const(true);
+        else pos = cached_lit(edge->var, false);
     } else {
         const aig_lit l = flatten_ite_chains(edge->l, cache);
         const aig_lit r = flatten_ite_chains(edge->r, cache);
@@ -531,7 +588,7 @@ aig_lit AIGRewriter::flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cac
                     break;
                 }
             }
-            if (folded_false) pos = AIG::new_const(false);
+            if (folded_false) pos = cached_const(false);
             else pos = build_and_tree(and_children);
         }
 
@@ -557,7 +614,7 @@ aig_lit AIGRewriter::flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cac
                 }
                 if (folded_true) {
                     // OR folds to TRUE ⇒ node = ~OR = FALSE.
-                    pos = AIG::new_const(false);
+                    pos = cached_const(false);
                 } else {
                     // Balanced OR rebuild, negated for the positive node view.
                     aig_lit balanced_or = build_or_tree(or_children);
@@ -578,6 +635,8 @@ aig_lit AIGRewriter::flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cac
 aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
     if (!aig) return nullptr;
     struct_hash.clear();
+    lit_hash.clear();
+    const_true_node.reset();
     const size_t before = AIG::count_aig_nodes_fast(aig);
     aig_lit result = aig;
     { NodeRebuildMap c; result = simplify_pass(result, c); }
@@ -596,6 +655,8 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
     const double t = cpuTime();
     stats.clear();
     struct_hash.clear();
+    lit_hash.clear();
+    const_true_node.reset();
     stats.nodes_before = AIG::count_aig_nodes_fast(defs);
 
     // Snapshot originals so we can revert any def that grew.
