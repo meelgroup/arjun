@@ -21,6 +21,8 @@ underlying function generalises well over input vars:
 | stmt19_71_95         | 7 / 8                  | **2 / 3**            | 2 calls, avg 41 nodes          |
 | stmt19_75_83         | 8 / 9                  | **4 / 5**            | 4 calls, avg 11 nodes          |
 | stmt25_52_53         | 15 / 16                | **8 / 9**            | 8 calls, avg 8 nodes           |
+| sdlx-fixpoint-3      | 44 / 23                | **17 / 9**           | avg conflict 127 lits, interp 466 nodes |
+| sdlx-fixpoint-4      | 387 / 235  (16.18s)    | **81 / 32  (12.50s)**| avg conflict 155 lits, interp 613 nodes |
 
 The repair count drops by 30–80%. Total wall time barely moves on
 these (they are tiny benchmarks dominated by preprocessing), but the
