@@ -251,6 +251,25 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
             } else if (is_complement(l, d2)) {
                 stats.complement_elim++;
                 pos = make_canonical(l, d1);
+            } else if (l->type == AIGT::t_and && !l.neg) {
+                // OR-vs-AND-fanin drill-down (ABC's
+                // AND(p0, ~AND(C,D)) for p0 a positive AND case):
+                //   AND(AND(la, lb), OR(d1, d2)) where some d_i matches a
+                //   fanin of l: the OR is implied by l, drop OR  →  l.
+                //   Symmetric to deep_absorb's k-ary absorption check, but
+                //   fires before flattening so iteration converges faster.
+                if (d1 == l->l || d1 == l->r || d2 == l->l || d2 == l->r) {
+                    stats.absorption++;
+                    pos = l;
+                } else if (is_complement(d1, l->l) || is_complement(d1, l->r)) {
+                    // d1 is the complement of a fanin of l: under l, d1=false
+                    // so OR reduces to d2. AND becomes AND(l, d2).
+                    stats.complement_elim++;
+                    pos = make_canonical(l, d2);
+                } else if (is_complement(d2, l->l) || is_complement(d2, l->r)) {
+                    stats.complement_elim++;
+                    pos = make_canonical(l, d1);
+                }
             }
         }
         if (!pos && is_or(l)) {
@@ -265,6 +284,17 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
             } else if (is_complement(r, d2)) {
                 stats.complement_elim++;
                 pos = make_canonical(r, d1);
+            } else if (r->type == AIGT::t_and && !r.neg) {
+                if (d1 == r->l || d1 == r->r || d2 == r->l || d2 == r->r) {
+                    stats.absorption++;
+                    pos = r;
+                } else if (is_complement(d1, r->l) || is_complement(d1, r->r)) {
+                    stats.complement_elim++;
+                    pos = make_canonical(r, d2);
+                } else if (is_complement(d2, r->l) || is_complement(d2, r->r)) {
+                    stats.complement_elim++;
+                    pos = make_canonical(r, d1);
+                }
             }
         }
 
