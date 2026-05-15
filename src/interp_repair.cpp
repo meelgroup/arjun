@@ -263,6 +263,14 @@ aig_ptr InterpRepair::compute_interpolant(
     // Solve on a fresh CaDiCaL with proof tracing connected. Tracer
     // produces the McMillan interpolant in input vars.
     auto solver = std::make_unique<Solver>();
+    // Disable in-processing & vivification: they can delete/strengthen
+    // original clauses while the proof tracer is attached, which would
+    // give us derived clauses whose antecedent IDs don't map to the
+    // labels we computed in add_original_clause. The interpolant CNF is
+    // small (typically dominated by the input cnf clauses + a few
+    // units), so the standard CDCL solver is fine without simp.
+    solver->set("inprocessing", 0);
+    solver->set("preprocessing", 0);
     InterpTracerMcMillan tracer(conf, aig_mng, input_vars);
     solver->connect_proof_tracer(&tracer, true);
 
