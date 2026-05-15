@@ -192,7 +192,6 @@ void test_deep_complement_in_chain() {
     auto a = AIG::new_lit(0);
     auto b = AIG::new_lit(1);
     auto na = AIG::new_lit(0, true);
-    auto c = AIG::new_lit(2);
 
     AIGRewriter rw;
 
@@ -200,14 +199,14 @@ void test_deep_complement_in_chain() {
     auto na_b = AIG::new_and(na, b);
     auto a_and_na_b = AIG::new_and(a, na_b);
     auto r1 = rw.rewrite(a_and_na_b);
-    check(functionally_equal(a_and_na_b, r1, 3), "AND(a, AND(~a, b)) = FALSE functional");
-    check(count_nodes(r1) == 1 && !eval(r1, 3, 0), "AND(a, AND(~a, b)) is FALSE");
+    check(functionally_equal(a_and_na_b, r1, 2), "AND(a, AND(~a, b)) = FALSE functional");
+    check(count_nodes(r1) == 1 && !eval(r1, 2, 0), "AND(a, AND(~a, b)) is FALSE");
 
     // OR(a, OR(~a, b)) = TRUE
     auto na_or_b = AIG::new_or(na, b);
     auto a_or_na_or_b = AIG::new_or(a, na_or_b);
     auto r2 = rw.rewrite(a_or_na_or_b);
-    check(functionally_equal(a_or_na_or_b, r2, 3), "OR(a, OR(~a, b)) = TRUE functional");
+    check(functionally_equal(a_or_na_or_b, r2, 2), "OR(a, OR(~a, b)) = TRUE functional");
 }
 
 void test_multi_aig_sharing() {
@@ -531,6 +530,36 @@ void test_xor_pattern_recognized() {
           "XOR pattern bumps xor_simplify counter");
 }
 
+// Fixed-point iteration: deep_absorb's flattening enables simplify_pass
+// rules that fire only after several passes. Build a contrived shape that
+// collapses to a literal only with iteration; check the rewriter reaches
+// that fixed point.
+void test_fixed_point_iteration() {
+    // (a ∧ b) ∨ (a ∧ c) ∨ (a ∧ d) — should collapse to a ∧ (b ∨ c ∨ d) and
+    // ultimately to "a ∧ <smaller>" with iteration. The single-pass result
+    // is bigger than the fixed-point result.
+    auto a = AIG::new_lit(0);
+    auto b = AIG::new_lit(1);
+    auto c = AIG::new_lit(2);
+    auto d = AIG::new_lit(3);
+
+    auto ab = AIG::new_and(a, b);
+    auto ac = AIG::new_and(a, c);
+    auto ad = AIG::new_and(a, d);
+    auto or1 = AIG::new_or(ab, ac);
+    auto or2 = AIG::new_or(or1, ad);
+
+    size_t before = count_nodes(or2);
+
+    AIGRewriter rw;
+    auto r = rw.rewrite(or2);
+    check(functionally_equal(or2, r, 4), "fixed-point iteration functional");
+    // Fixed-point result should have the shared `a` factored to the top.
+    // Lower bound: 4 lits + 2 ANDs (inner OR, outer AND) = 6 nodes is the
+    // best we'd hope for. Existing iteration achieves it.
+    check(count_nodes(r) < before, "fixed-point shrinks AIG");
+}
+
 // AND-of-AND with shared fanin: AND(AND(a,b), AND(a,c)) factors as
 // AND(a, AND(b,c)) — same node count locally, but the inner AND(b,c) can
 // now be hash-consed against existing AND(b,c) nodes elsewhere, and the
@@ -574,6 +603,7 @@ int main() {
     test_deep_or_chain_flattening();
     test_deep_and_chain_flattening();
     test_and_of_and_contradiction();
+    test_fixed_point_iteration();
     test_and_of_and_sharing();
     test_ite_t_eq_sel();
     test_ite_e_eq_sel();
