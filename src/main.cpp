@@ -258,6 +258,8 @@ void add_arjun_options() {
           "0=AIG simplify_aig only (default, fast), 1=full AIGRewriter::rewrite_aig + simplify (slower, smaller). Applies to the raw interpolant.");
     myopt("--interprepairb1rewrite", mconf.interp_repair_b1_rewrite, fc_int,
           "Independent: AIG rewrite of the combined branch b1=NOT(I) AND y_other_matches before Tseitin-encoding. simplify_aig is always on; this controls the heavier rewrite_aig pass. 0=off, 1=on.");
+    myopt("--interprepairmaxconfl", mconf.interp_repair_max_conflicts, fc_int,
+          "Per-call cadical conflict budget for the interpolation solve. 0=no limit (default). Try 50000 to cap interp call cost; budget-exhausted calls fall back to the conflict-clause path.");
 
 
     // Simplification options for minim

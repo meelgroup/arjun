@@ -1747,6 +1747,13 @@ public:
         // (absorption, complement) that the per-AIG rewriter doesn't see.
         // 0=simplify only (default), 1=+rewrite_aig.
         int interp_repair_b1_rewrite = 0;
+        // Per-call cadical conflict budget for the interpolation solve.
+        // 0 = no limit (default). Useful upper bound: 50_000 keeps each
+        // interp call < 1 second on most benchmarks; on pathological
+        // mini-CNFs (large input set, deep proof) where cadical would
+        // otherwise grind we bail and fall back to the conflict-clause
+        // path. Tracked stat: interp_budget_exhausted.
+        uint64_t interp_repair_max_conflicts = 0;
     };
 
     struct IndepInfo {

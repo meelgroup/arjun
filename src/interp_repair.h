@@ -130,7 +130,8 @@ public:
         uint32_t y_rep, CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         uint32_t max_aig_nodes = 0,
-        bool full_rewrite = false);
+        bool full_rewrite = false,
+        uint64_t conflict_budget = 0);
 
     // Light-weight check: that the interpolant evaluates to FALSE on the
     // CEX input pattern (i.e. on this CEX's inputs, the interpolant
@@ -155,6 +156,11 @@ public:
     uint64_t calls_failed_other = 0;
     uint64_t calls_failed_empty_or_no_input = 0;
     uint64_t calls_quick_check_failed = 0;
+    // Cadical hit the conflict budget (interp_repair_max_conflicts) and
+    // returned l_Undef instead of a proof. Different from "other" so
+    // tuning can react: if this is high, raise the budget; if it's zero
+    // the budget is irrelevant.
+    uint64_t calls_budget_exhausted = 0;
     uint64_t total_interp_nodes = 0;
     uint64_t total_conflict_lits = 0;
     // How often the interpolant was *strictly* smaller than the conflict

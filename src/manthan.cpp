@@ -1069,6 +1069,7 @@ void Manthan::print_detailed_stats() const {
         verb_print(1, COLCYN "[manthan-stats]   interp calls (incl. fallbacks): " << interp_repair->calls
             << "  ok: " << interp_repair->calls_succeeded
             << "  oversize: " << interp_repair->calls_failed_oversize
+            << "  budget_exh: " << interp_repair->calls_budget_exhausted
             << "  trivial: " << interp_repair->calls_failed_empty_or_no_input
             << "  other_fail: " << interp_repair->calls_failed_other);
         if (interp_repair->calls_succeeded > 0) {
@@ -1781,7 +1782,8 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
             interp_branch = interp_repair->compute_interpolant(
                 y_rep, to_repair, conflict,
                 mconf.interp_repair_max_aig_nodes,
-                mconf.interp_repair_rewrite != 0);
+                mconf.interp_repair_rewrite != 0,
+                mconf.interp_repair_max_conflicts);
 
             // Optional always-on verification (cluster runs without SLOW_DEBUG).
             // verify=0 → skip; 1 → cheap CEX-excluded check; 2 → full miter.

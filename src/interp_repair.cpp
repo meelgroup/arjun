@@ -25,6 +25,7 @@
 #include "interp_repair.h"
 #include "time_mem.h"
 #include <cadical.hpp>
+#include <climits>
 #include <iomanip>
 #include <iostream>
 #include <algorithm>
@@ -241,7 +242,7 @@ void InterpRepair::build_serialized_cnf() const {
 aig_ptr InterpRepair::compute_interpolant(
         uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
-        bool full_rewrite)
+        bool full_rewrite, uint64_t conflict_budget)
 {
     (void)y_rep;
     calls++;
@@ -287,6 +288,13 @@ aig_ptr InterpRepair::compute_interpolant(
     // units), so the standard CDCL solver is fine without simp.
     solver->set("inprocessing", 0);
     solver->set("preprocessing", 0);
+    if (conflict_budget > 0) {
+        // CaDiCaL exposes per-solve limits via .limit("conflicts", N).
+        // Clamp to int max — cadical's limit API takes an int.
+        const int64_t clamped = (conflict_budget > (uint64_t)INT_MAX)
+            ? INT_MAX : (int64_t)conflict_budget;
+        solver->limit("conflicts", (int)clamped);
+    }
     InterpTracerMcMillan tracer(conf, aig_mng, input_vars);
     solver->connect_proof_tracer(&tracer, true);
 
@@ -349,11 +357,18 @@ aig_ptr InterpRepair::compute_interpolant(
     total_solve_time += cpuTime() - t_solve;
     solver->disconnect_proof_tracer(&tracer);
 
-    if (ret != 20) { // 20 = UNSAT in CaDiCaL
-        // Should be UNSAT — if not, something is inconsistent.
-        VERBOSE_DEBUG_DO(cout << "c o [interp-repair] solver returned non-UNSAT: "
-                << ret << "; falling back" << endl);
-        calls_failed_other++;
+    if (ret != 20) { // 20 = UNSAT, 0 = UNKNOWN (budget hit), 10 = SAT
+        if (ret == 0 && conflict_budget > 0) {
+            // Cadical hit our conflict limit. Track separately so it
+            // tunes differently from "real" failures.
+            calls_budget_exhausted++;
+            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] budget exhausted ("
+                << conflict_budget << " conflicts); falling back" << endl);
+        } else {
+            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] solver returned non-UNSAT: "
+                    << ret << "; falling back" << endl);
+            calls_failed_other++;
+        }
         return nullptr;
     }
 
