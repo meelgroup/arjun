@@ -223,7 +223,7 @@ InterpRepair::InterpRepair(const Config& _conf,
     }
 }
 
-void InterpRepair::build_serialized_cnf() {
+void InterpRepair::build_serialized_cnf() const {
     // Serialise once: lits as cadical signed ints, each clause terminated
     // by 0. Concatenated so we can solver->add(...) in a tight loop on
     // every interp call without re-walking cnf.get_clauses().
@@ -304,9 +304,7 @@ aig_ptr InterpRepair::compute_interpolant(
     // 1) Original CNF clauses (all A-side). We deliberately skip
     // cnf.get_red_clauses(): those are redundant learnts and aren't
     // required for UNSAT-side reproduction.
-    if (!cnf_serialized_built) {
-        const_cast<InterpRepair*>(this)->build_serialized_cnf();
-    }
+    if (!cnf_serialized_built) build_serialized_cnf();
     tracer.next_is_b = false;
     for (int v : cnf_serialized) solver->add(v);
 

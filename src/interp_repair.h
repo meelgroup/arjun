@@ -182,10 +182,11 @@ private:
     // format, with each clause terminated by 0. Built lazily on the
     // first interp call. Avoids re-walking cnf.get_clauses() and
     // converting Lit→int on every call (which dominates setup-T on
-    // benchmarks with many interp calls).
-    std::vector<int> cnf_serialized;
-    bool cnf_serialized_built = false;
-    void build_serialized_cnf();
+    // benchmarks with many interp calls). compute_interpolant is the
+    // only mutator and we don't share the InterpRepair across threads.
+    mutable std::vector<int> cnf_serialized;
+    mutable bool cnf_serialized_built = false;
+    void build_serialized_cnf() const;
 };
 
 } // namespace ArjunInt
