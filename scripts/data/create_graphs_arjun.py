@@ -214,6 +214,25 @@ def _sqlite_run(query, title=None):
     os.unlink(query_file)
 
 
+class _Median:
+    """SQLite aggregate: median of non-NULL values. Picks the upper-middle
+    element for even counts, matching the OFFSET-based _median_sq helper used
+    by the other tables, so 'median' means the same thing throughout."""
+
+    def __init__(self):
+        self._vals = []
+
+    def step(self, value):
+        if value is not None:
+            self._vals.append(value)
+
+    def finalize(self):
+        if not self._vals:
+            return None
+        self._vals.sort()
+        return self._vals[len(self._vals) // 2]
+
+
 def print_summary_tables(table_todo, fname_like, full=False):
     if not table_todo:
         return
@@ -225,27 +244,27 @@ def print_summary_tables(table_todo, fname_like, full=False):
         ("MIN(timeout_call)",                                            "call"),
         (f"sum({SOLVE_TIME_EXPR} IS NOT NULL)",                          "solved"),
         (f"CAST(ROUND(sum(coalesce({SOLVE_TIME_EXPR},{TIMEOUT}))/COUNT(*),0) AS INTEGER)", "PAR2"),
-        ("CAST(ROUND(avg(timeout_mem),0) AS INTEGER)",                   "av memMB"),
+        ("CAST(ROUND(median(timeout_mem),0) AS INTEGER)",                "med memMB"),
         ("sum(mem_out)",                                                 "mem_out"),
         ("sum(signal == 11)",                                            "sigSEGV"),
         ("sum(signal == 6)",                                             "sigABRT"),
         ("sum(signal == 14)",                                            "sigALRM"),
-        ("CAST(avg(input_vars) AS INTEGER)",                             "av-inp"),
-        ("CAST(avg(start_to_define_vars) AS INTEGER)",                   "av-to-def"),
-        ("CAST(ROUND(avg(puura_time), 2) AS REAL)",                      "av-puura-T"),
-        ("CAST(avg(puura_defined) AS INTEGER)",                          "av-puura-def"),
+        ("CAST(median(input_vars) AS INTEGER)",                          "med-inp"),
+        ("CAST(median(start_to_define_vars) AS INTEGER)",                "med-to-def"),
+        ("CAST(ROUND(median(puura_time), 2) AS REAL)",                   "med-puura-T"),
+        ("CAST(median(puura_defined) AS INTEGER)",                       "med-puura-def"),
         ("sum(fname is not null)",                                       "nfiles"),
     ]
     full_only_cols = [
-        ("CAST(ROUND(avg(extend_time), 2) AS REAL)",                     "av-ext-T"),
-        ("CAST(avg(extend_defined) AS INTEGER)",                         "av-ext-def"),
-        ("CAST(ROUND(avg(backward_time), 2) AS REAL)",                   "av-backw-T"),
-        ("CAST(avg(backward_defined) AS INTEGER)",                       "av-backw-def"),
-        ("CAST(ROUND(avg(manthan_training_time),2) AS REAL)",            "av-mant-tr-T"),
-        ("CAST(ROUND(avg(manthan_repair_time),2) AS REAL)",              "av-mant-rep-T"),
-        ("CAST(ROUND(avg(manthan_time), 2) AS REAL)",                    "av-manth-T"),
-        ("CAST(ROUND(avg(repairs),0) AS INTEGER)",                       "av-repairs"),
-        ("CAST(avg(manthan_defined) AS INTEGER)",                        "av-manthan-def"),
+        ("CAST(ROUND(median(extend_time), 2) AS REAL)",                  "med-ext-T"),
+        ("CAST(median(extend_defined) AS INTEGER)",                      "med-ext-def"),
+        ("CAST(ROUND(median(backward_time), 2) AS REAL)",                "med-backw-T"),
+        ("CAST(median(backward_defined) AS INTEGER)",                    "med-backw-def"),
+        ("CAST(ROUND(median(manthan_training_time),2) AS REAL)",         "med-mant-tr-T"),
+        ("CAST(ROUND(median(manthan_repair_time),2) AS REAL)",           "med-mant-rep-T"),
+        ("CAST(ROUND(median(manthan_time), 2) AS REAL)",                 "med-manth-T"),
+        ("CAST(ROUND(median(repairs),0) AS INTEGER)",                    "med-repairs"),
+        ("CAST(median(manthan_defined) AS INTEGER)",                     "med-manthan-def"),
     ]
 
     cols = compact_cols + (full_only_cols if full else [])
@@ -261,6 +280,7 @@ def print_summary_tables(table_todo, fname_like, full=False):
                f" where dirname IN ({dirs}) and {VER_EXPR} IN ({vers})"
                f"{fname_like}{counted_req} group by dirname order by solved asc")
         con = sqlite3.connect(DB)
+        con.create_aggregate("median", 1, _Median)
         cur = con.cursor()
         cur.execute(sql)
         rows = cur.fetchall()
