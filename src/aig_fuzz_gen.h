@@ -310,6 +310,58 @@ inline aig_ptr gen_xor_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
     return cur;
 }
 
+// Shared-fanin diamond: build two non-trivial sub-AIGs that share a common
+// fanin, then AND them. Drives the AND-of-AND sharing rule (factor out the
+// shared fanin) and helps exercise structural-hash hits when the second AND
+// rebuilds against the same shared.
+inline aig_ptr gen_shared_diamond_aig(ArjunNS::AIGManager& /*aig_mng*/,
+                                      std::mt19937& rng, uint32_t num_vars,
+                                      uint32_t depth)
+{
+    aig_ptr common = AIG::new_lit(rng() % num_vars, rng() % 2);
+    // Optionally make `common` a small AND/OR to bias hash-hit testing.
+    if (rng() % 3 == 0) {
+        aig_ptr c2 = AIG::new_lit(rng() % num_vars, rng() % 2);
+        common = (rng() % 2) ? AIG::new_and(common, c2) : AIG::new_or(common, c2);
+    }
+    aig_ptr left = common, right = common;
+    for (uint32_t i = 0; i < depth; i++) {
+        aig_ptr leaf = AIG::new_lit(rng() % num_vars, rng() % 2);
+        left = (rng() % 2) ? AIG::new_and(left, leaf) : AIG::new_or(left, leaf);
+    }
+    for (uint32_t i = 0; i < depth; i++) {
+        aig_ptr leaf = AIG::new_lit(rng() % num_vars, rng() % 2);
+        right = (rng() % 2) ? AIG::new_and(right, leaf) : AIG::new_or(right, leaf);
+    }
+    return AIG::new_and(left, right);
+}
+
+// AND/OR with a complementary fanin somewhere in the conjunction. The
+// rewriter should fold the whole thing to FALSE (or TRUE for the OR side).
+// Stresses the complement-pair detection in both simplify_pass and
+// deep_absorb.
+inline aig_ptr gen_contradiction_aig(ArjunNS::AIGManager& /*aig_mng*/,
+                                     std::mt19937& rng, uint32_t num_vars,
+                                     uint32_t width)
+{
+    if (num_vars < 2) num_vars = 2;
+    const uint32_t pivot = rng() % num_vars;
+    aig_ptr pivot_lit = AIG::new_lit(pivot, false);
+    aig_ptr not_pivot = AIG::new_lit(pivot, true);
+    aig_ptr cur = pivot_lit;
+    for (uint32_t i = 0; i < width; i++) {
+        cur = AIG::new_and(cur, AIG::new_lit(rng() % num_vars, rng() % 2));
+    }
+    // Splice the complementary pivot in somewhere by ANDing it deep.
+    aig_ptr tail = not_pivot;
+    for (uint32_t i = 0; i < width; i++) {
+        tail = AIG::new_and(tail, AIG::new_lit(rng() % num_vars, rng() % 2));
+    }
+    aig_ptr both = AIG::new_and(cur, tail);
+    if (rng() % 2) both = AIG::new_not(both);
+    return both;
+}
+
 // Arbitrary deep chain of mixed AND/OR with a literal threaded through.
 inline aig_ptr gen_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
                              std::mt19937& rng, uint32_t num_vars, uint32_t chain_len)
@@ -347,10 +399,12 @@ enum class Shape : uint8_t {
     BalancedOrTree,
     Mux3Chain,
     XorChain,
+    SharedDiamond,
+    Contradiction,
 };
 
 inline Shape pick_shape(std::mt19937& rng) {
-    uint32_t s = rng() % 18;
+    uint32_t s = rng() % 22;
     if (s < 4)  return Shape::DeepIteChain;
     if (s < 6)  return Shape::DnfCover;
     if (s < 7)  return Shape::Manthan;
@@ -361,7 +415,9 @@ inline Shape pick_shape(std::mt19937& rng) {
     if (s < 14) return Shape::BalancedAndTree;
     if (s < 15) return Shape::BalancedOrTree;
     if (s < 17) return Shape::Mux3Chain;
-    return Shape::XorChain;
+    if (s < 19) return Shape::XorChain;
+    if (s < 21) return Shape::SharedDiamond;
+    return Shape::Contradiction;
 }
 
 // Emit a random AIG whose shape is picked by pick_shape(). max_vars, max_depth
@@ -409,6 +465,14 @@ inline aig_ptr gen_random_shape(ArjunNS::AIGManager& aig_mng,
             uint32_t d = 3 + rng() % 30;
             if (rng() % 10 == 0) d = 30 + rng() % 100;
             return gen_xor_chain_aig(aig_mng, rng, num_vars, d);
+        }
+        case Shape::SharedDiamond: {
+            uint32_t d = 2 + rng() % 10;
+            return gen_shared_diamond_aig(aig_mng, rng, num_vars, d);
+        }
+        case Shape::Contradiction: {
+            uint32_t w = 2 + rng() % 8;
+            return gen_contradiction_aig(aig_mng, rng, num_vars, w);
         }
     }
     return aig_mng.new_const(true);
