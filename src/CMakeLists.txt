@@ -147,6 +147,10 @@ target_include_directories(test-aig-to-cnf PRIVATE
     ${PROJECT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
+target_include_directories(test-aig-rewrite PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
 target_include_directories(test-cut-cnf PRIVATE
     ${PROJECT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -209,6 +213,11 @@ set_target_properties(test-aig-to-cnf PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
+set_target_properties(test-aig-rewrite PROPERTIES
+    OUTPUT_NAME test-aig-rewrite
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 set_target_properties(test-cut-cnf PROPERTIES
     OUTPUT_NAME test-cut-cnf
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
@@ -223,6 +232,11 @@ if(ENABLE_TESTING)
     add_test(
         NAME test-cut-cnf
         COMMAND test-cut-cnf
+        WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
+    )
+    add_test(
+        NAME test-aig-rewrite
+        COMMAND test-aig-rewrite
         WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
     )
 endif()
