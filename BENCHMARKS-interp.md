@@ -87,8 +87,36 @@ death-spirals" and "skip when small conflicts are already optimal".
   enables `--interprepair` ~25% of the time). 0 failures.
 - Under `SLOW_DEBUG`, every successful interp call is verified via a
   full SAT miter that checks `A → I` (the McMillan soundness
-  condition). All 86 interp calls in a 100-iter SLOW_DEBUG fuzz run
-  passed.
+  condition). 75/80 successful runs in a 100-iter SLOW_DEBUG fuzz
+  pass; the rest are timeouts (SLOW_DEBUG slows things down by 2-3x).
 - Quick check (`I` evaluates to FALSE on the original CEX inputs)
   fires on every call; failing interpolants are discarded and the
   legacy conflict-clause path is used as fallback.
+
+## Bugs caught during bring-up
+
+- `add_derived_clause` fires from cadical's add-time unit propagation,
+  not just `solve()`. Original "post-hoc B-clause re-labeling" pass
+  was unsound: the re-label happened after some derived clauses had
+  already been emitted with the (wrong) initial A-side label.
+  Replaced with a synchronous `next_is_b` flag set on the tracer
+  before each `solver->add(0)`.
+- `get_conflict()` returns the *negation* of failing assumptions (so
+  the conflict can be added as a learnable clause). The first cut
+  added them un-negated as units, producing a different UNSAT (or
+  none at all). Negating to recover the original assumptions fixed it.
+- `var_to_formula[y].aig` stores the *raw* AIG with cnf-space
+  to_define vars as leaves; the y_hat-translated form lives only in
+  `var_to_formula[y].clauses`. The first cut encoded the b1 AIG
+  (which AND's in y_other f2.aig) directly via AIGToCNF — leaking
+  raw to_define vars into f.clauses and tripping
+  `check_functions_for_y_vars`. Fix: translate via `map_y_to_y_hat`
+  before encoding. SLOW_DEBUG leaf check protects against future
+  regressions of this kind.
+- Y-other formula AND-conjuncts: the first cut dropped them entirely
+  from the branch, treating ¬I as the must-flip region unconditionally.
+  But the interpolant was computed under the assumption y_others =
+  ctx[y_others]; ¬I only applies when those values match. Restored
+  the per-y_other AND (same expansion the legacy lit_to_aig path does).
+  Effect: driver_a10y went 41 → 143 repairs with the bug, back to ~41
+  after fix.
