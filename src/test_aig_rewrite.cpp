@@ -497,6 +497,51 @@ void test_structural_hash_hits() {
           "structural-hash defs[1] functional");
 }
 
+// is_or drill-down into AND fanin: AND(AND(a,b), OR(a, c)) should absorb
+// the OR (since a∧b implies a, and a satisfies the OR clause). Verifies
+// the new sub-fanin absorption branch added on top of the existing is_or
+// rules.
+void test_is_or_drill_into_and() {
+    auto a = AIG::new_lit(0);
+    auto b = AIG::new_lit(1);
+    auto c = AIG::new_lit(2);
+
+    AIGRewriter rw;
+    auto ab = AIG::new_and(a, b);
+    auto a_or_c = AIG::new_or(a, c);
+    auto both = AIG::new_and(ab, a_or_c);
+    const auto abs_before = rw.get_stats().absorption;
+    auto r = rw.rewrite(both);
+    check(functionally_equal(both, r, 3),
+          "AND(AND(a,b), OR(a,c)) functional");
+    check(rw.get_stats().absorption > abs_before,
+          "drill-down absorption fires");
+    // Result is AND(a, b) — 3 nodes (2 lits + 1 AND).
+    check(count_nodes(r) <= 3,
+          "AND(AND(a,b), OR(a,c)) reduces to AND(a,b)");
+}
+
+// is_or drill-down with complement: AND(AND(a,b), OR(~a, c)) — under a∧b
+// the ~a disjunct is false, so the OR reduces to c, giving AND(a∧b, c) =
+// AND(a, b, c). Verifies the complement-of-fanin path in the drill-down.
+void test_is_or_drill_into_and_complement() {
+    auto a = AIG::new_lit(0);
+    auto b = AIG::new_lit(1);
+    auto c = AIG::new_lit(2);
+    auto na = AIG::new_lit(0, true);
+
+    AIGRewriter rw;
+    auto ab = AIG::new_and(a, b);
+    auto na_or_c = AIG::new_or(na, c);
+    auto both = AIG::new_and(ab, na_or_c);
+    const auto compl_before = rw.get_stats().complement_elim;
+    auto r = rw.rewrite(both);
+    check(functionally_equal(both, r, 3),
+          "AND(AND(a,b), OR(~a,c)) functional");
+    check(rw.get_stats().complement_elim > compl_before,
+          "drill-down complement reduction fires");
+}
+
 // Complement absorption with literal-vs-OR-disjunct: AND(a, OR(~a, b)) = AND(a, b)
 // — exercises the complement_elim path on the is_or(r) branch.
 void test_complement_absorption_or() {
@@ -610,6 +655,8 @@ int main() {
     test_and_or_distrib();
     test_structural_hash_hits();
     test_complement_absorption_or();
+    test_is_or_drill_into_and();
+    test_is_or_drill_into_and_complement();
     test_xor_pattern_recognized();
 
     cout << endl << "Results: " << tests_passed << " passed, " << tests_failed << " failed" << endl;
