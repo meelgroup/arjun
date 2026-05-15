@@ -402,6 +402,50 @@ void test_deep_and_chain_flattening() {
     check(count_nodes(r) <= count_nodes(chain), "deep AND chain node count reduced or equal");
 }
 
+// AND-of-AND contradiction: AND(AND(a,b), AND(~a,c)) must collapse to FALSE
+// in a single simplify_pass — without flatten-based deep_absorb having to
+// run. Tests the 4-fanin complement check that's the basis of the Brummayer
+// algebraic rules.
+void test_and_of_and_contradiction() {
+    auto a = AIG::new_lit(0);
+    auto na = AIG::new_lit(0, true);
+    auto b = AIG::new_lit(1);
+    auto c = AIG::new_lit(2);
+
+    AIGRewriter rw;
+    auto ab = AIG::new_and(a, b);
+    auto nac = AIG::new_and(na, c);
+    auto both = AIG::new_and(ab, nac);
+    auto r = rw.rewrite(both);
+    check(functionally_equal(both, r, 3), "AND(AND(a,b), AND(~a,c)) functional");
+    check(count_nodes(r) == 1 && !eval(r, 3, 0) && !eval(r, 3, 7),
+          "AND(AND(a,b), AND(~a,c)) = FALSE");
+    check(rw.get_stats().complement_elim >= 1,
+          "AND-of-AND contradiction bumps complement_elim");
+}
+
+// AND-of-AND with shared fanin: AND(AND(a,b), AND(a,c)) factors as
+// AND(a, AND(b,c)) — same node count locally, but the inner AND(b,c) can
+// now be hash-consed against existing AND(b,c) nodes elsewhere, and the
+// top-level shared 'a' is visible to further outer rewrites.
+void test_and_of_and_sharing() {
+    auto a = AIG::new_lit(0);
+    auto b = AIG::new_lit(1);
+    auto c = AIG::new_lit(2);
+
+    AIGRewriter rw;
+    auto ab = AIG::new_and(a, b);
+    auto ac = AIG::new_and(a, c);
+    auto both = AIG::new_and(ab, ac);
+    auto r = rw.rewrite(both);
+    check(functionally_equal(both, r, 3), "AND(AND(a,b), AND(a,c)) functional");
+    // Original: 3 lit + 3 AND = 6 nodes. After rewrite: 3 lit + AND(b,c) +
+    // AND(a, AND(b,c)) = 5 nodes.
+    check(count_nodes(r) <= 5, "AND-of-AND sharing reduces nodes");
+    check(rw.get_stats().absorption >= 1,
+          "AND-of-AND sharing bumps absorption");
+}
+
 int main() {
     cout << "=== AIG Rewriter Tests ===" << endl;
 
@@ -422,6 +466,8 @@ int main() {
     test_complex_ite_chain();
     test_deep_or_chain_flattening();
     test_deep_and_chain_flattening();
+    test_and_of_and_contradiction();
+    test_and_of_and_sharing();
 
     cout << endl << "Results: " << tests_passed << " passed, " << tests_failed << " failed" << endl;
     return tests_failed > 0 ? 1 : 0;

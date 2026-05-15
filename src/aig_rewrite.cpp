@@ -267,30 +267,37 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
             }
         }
 
-        // XOR / XNOR pattern detection.
-        // XOR(a,b) = OR(AND(a, ~b), AND(~a, b)) = ~AND(~AND(a, ~b), ~AND(~a, b))
-        // Stored shape: outer AND(neg=true) whose two children are
-        // positive-edge ANDs A = AND(p, ~q) and B = AND(~p, q), where p == ~q'
-        // across the two ANDs. We detect it on the inner AND-of-AND positive
-        // view; the outer edge sign (l.neg, r.neg) tells us if the surrounding
-        // operator is OR (XOR) or AND (XNOR-like, when both inner ANDs are
-        // negated).
+        // AND-of-AND structural rewrites (Brummayer/Biere MEMICS'06 patterns
+        // adapted from ABC's Aig_And, edge-signed AIG variant).
+        //   AND(AND(A,B), AND(C,D)) collapses to FALSE if any pair of fanins
+        //     across the two inner ANDs is complementary — the conjunction
+        //     has the form x ∧ ¬x ∧ ... = FALSE. Catches XOR-AND pairs,
+        //     AND(AND(p,¬q), AND(¬p,q)) and any other 4-fanin contradiction
+        //     that deep_absorb would otherwise have to flatten to spot.
+        //   AND(AND(A,B), AND(C,D)) with a shared fanin (A==C, A==D, B==C,
+        //     or B==D) factors as AND(shared, AND(other_l, other_r)).
+        //     Node count is unchanged but the new inner AND hash-conses
+        //     against a possibly-existing AND(other_l, other_r); the shared
+        //     fanin is lifted to the top so further outer-level rewrites
+        //     can see it.
         if (!pos && l->type == AIGT::t_and && !l.neg
                  && r->type == AIGT::t_and && !r.neg) {
             const aig_lit la = l->l, lb = l->r;
             const aig_lit ra = r->l, rb = r->r;
-            // Look for (p, ~q) on one side and (~p, q) on the other. There
-            // are four ways to match.
-            auto matches_xor = [](const aig_lit& a1, const aig_lit& a2,
-                                  const aig_lit& b1, const aig_lit& b2) {
-                return is_complement(a1, b1) && is_complement(a2, b2);
-            };
-            if (matches_xor(la, lb, ra, rb) || matches_xor(la, lb, rb, ra)
-             || matches_xor(lb, la, ra, rb) || matches_xor(lb, la, rb, ra)) {
-                // AND(AND(p, ~q), AND(~p, q)) = AND(p, ~p, ...) = FALSE.
-                // The pair of complementary literals is enough.
+            if (is_complement(la, ra) || is_complement(la, rb)
+             || is_complement(lb, ra) || is_complement(lb, rb)) {
                 stats.complement_elim++;
                 pos = cached_const(false);
+            } else {
+                aig_lit shared, ol, ortmp;
+                if      (la == ra) { shared = la; ol = lb; ortmp = rb; }
+                else if (la == rb) { shared = la; ol = lb; ortmp = ra; }
+                else if (lb == ra) { shared = lb; ol = la; ortmp = rb; }
+                else if (lb == rb) { shared = lb; ol = la; ortmp = ra; }
+                if (shared.node) {
+                    stats.absorption++;
+                    pos = make_canonical(shared, make_canonical(ol, ortmp));
+                }
             }
         }
 
