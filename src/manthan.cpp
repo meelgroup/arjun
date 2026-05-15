@@ -1949,6 +1949,17 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                         verb_print(1, "[manthan-interp] verify=2 (full miter) fails; falling back");
                         interp_branch = nullptr;
                     }
+                } else if (mconf.interp_repair_verify == 3) {
+                    // Probabilistic: 8 random samples. Catches a class
+                    // of bugs the quick_check misses (interp wrong on
+                    // an input pattern other than the CEX) without
+                    // paying the full-miter cost.
+                    if (!interp_repair->sample_check_interpolant(
+                            to_repair, conflict, interp_branch,
+                            /*num_samples=*/8, /*seed=*/num_loops_repair * 7919u)) {
+                        verb_print(1, "[manthan-interp] verify=3 (sample check) fails; falling back");
+                        interp_branch = nullptr;
+                    }
                 }
             }
 

@@ -30,6 +30,7 @@
 #include <iomanip>
 #include <iostream>
 #include <algorithm>
+#include <random>
 
 using namespace ArjunInt;
 using namespace ArjunNS;
@@ -644,6 +645,69 @@ bool InterpRepair::slow_check_a_implies_i(
              << "miter is NOT UNSAT (cadical ret=" << ret << ")" << endl;
         return false;
     }
+    return true;
+}
+
+bool InterpRepair::sample_check_interpolant(
+        Lit to_repair_lit,
+        const vector<Lit>& conflict,
+        const aig_ptr& interp,
+        uint32_t num_samples,
+        uint64_t seed) const
+{
+    if (interp == nullptr) return true;
+
+    // Random partial assignments over input vars, kept in input_vars.
+    // Skip evaluation if I(X) returns l_True/l_Undef (only false-region
+    // samples can violate the must-flip claim).
+    std::vector<uint32_t> ins(input_vars.begin(), input_vars.end());
+    if (ins.empty()) return true;
+    std::mt19937_64 rng(seed);
+
+    int num_false_seen = 0;
+    for (uint32_t s = 0; s < num_samples; s++) {
+        // Build full assignment with random input bits.
+        std::vector<lbool> assign(cnf.nVars(), l_Undef);
+        for (uint32_t v : ins) {
+            assign[v] = (rng() & 1) ? l_True : l_False;
+        }
+        std::map<aig_ptr, lbool> cache;
+        std::vector<aig_ptr> defs(cnf.nVars(), nullptr);
+        const lbool ival = AIG::evaluate(assign, interp, defs, cache);
+        if (ival != l_False) continue; // only must-flip region matters
+        num_false_seen++;
+
+        // For this input pattern, check that F(X, Y) ∧ y_rep = wrong is
+        // UNSAT — i.e., flipping y_rep is genuinely impossible. Fresh
+        // cadical, no proof tracing needed.
+        auto solver = std::make_unique<Solver>();
+        solver->set("inprocessing", 0);
+        solver->set("preprocessing", 0);
+        for (int v : cnf_serialized) solver->add(v);
+        // Pin inputs.
+        for (uint32_t v : ins) {
+            solver->add(assign[v] == l_True ? (int)v + 1 : -((int)v + 1));
+            solver->add(0);
+        }
+        // ~to_repair = wrong y_rep value
+        solver->add(lit_to_pl(~to_repair_lit));
+        solver->add(0);
+
+        if (cnf_serialized_built) {} // suppress unused warning if any
+        int ret = solver->solve();
+        if (ret == 10) { // SAT — interp says must-flip but it's not!
+            cout << "c o [interp-repair] sample_check FAILED on seed=" << seed
+                 << " sample=" << s << ": I(X)=FALSE but F is sat with y_rep=wrong" << endl;
+            return false;
+        }
+        // ret == 20 (UNSAT) or 0 (UNKNOWN, shouldn't happen w/o budget): pass
+    }
+
+    VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 4) {
+        cout << "c o [interp-repair] sample_check ok ("
+             << num_false_seen << " false samples checked, " << num_samples
+             << " total)" << endl;
+    });
     return true;
 }
 

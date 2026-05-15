@@ -253,7 +253,7 @@ void add_arjun_options() {
     myopt("--interprepairmaxnodes", mconf.interp_repair_max_aig_nodes, fc_int,
           "Cap interpolant AIG size; if bigger, fall back to conflict-clause path. 0=no cap.");
     myopt("--interprepairverify", mconf.interp_repair_verify, fc_int,
-          "0=no verify, 1=cheap CEX-excluded check, 2=full miter (slow).");
+          "0=no verify, 1=cheap CEX-excluded check, 2=full miter (slow), 3=8-sample probabilistic SAT check.");
     myopt("--interprepairrewrite", mconf.interp_repair_rewrite, fc_int,
           "0=AIG simplify_aig only (default, fast), 1=full AIGRewriter::rewrite_aig + simplify (slower, smaller). Applies to the raw interpolant.");
     myopt("--interprepairb1rewrite", mconf.interp_repair_b1_rewrite, fc_int,

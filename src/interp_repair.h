@@ -161,6 +161,21 @@ public:
         const std::vector<CMSat::Lit>& conflict,
         const ArjunNS::aig_ptr& interp) const;
 
+    // Lighter-weight probabilistic check: for K random input patterns,
+    // evaluate I(X). When I(X) = FALSE, run a quick SAT check that
+    // F(X, Y) ∧ y_rep = wrong is indeed UNSAT (the must-flip claim).
+    // K small (default 8) so it's cheap enough for always-on use; if
+    // any sample fails the interpolant is unsound.
+    //
+    // Returns true on pass / inconclusive (insufficient FALSE samples
+    // hit), false on a confirmed counterexample.
+    [[nodiscard]] bool sample_check_interpolant(
+        CMSat::Lit to_repair_lit,
+        const std::vector<CMSat::Lit>& conflict,
+        const ArjunNS::aig_ptr& interp,
+        uint32_t num_samples = 8,
+        uint64_t seed = 42) const;
+
     // Tunable: simple FIFO cache of (conflict signature → interpolant
     // AIG). Set via set_cache_capacity(); 0 disables (default).
     void set_cache_capacity(size_t n) { cache_capacity = n; }
