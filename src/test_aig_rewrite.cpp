@@ -497,6 +497,48 @@ void test_structural_hash_hits() {
           "structural-hash defs[1] functional");
 }
 
+// BCP-lite disjunct drill: AND(a, OR(AND(a, x), d2)) collapses to AND(a, OR(x, d2)).
+// Verifies the disj-drill branch fires and the result is functionally
+// equivalent. Saves at least one AND node vs the unsimplified shape.
+void test_bcp_disjunct_drill_share() {
+    auto a = AIG::new_lit(0);
+    auto x = AIG::new_lit(1);
+    auto d = AIG::new_lit(2);
+
+    AIGRewriter rw;
+    auto and_ax = AIG::new_and(a, x);
+    auto or_ax_d = AIG::new_or(and_ax, d);
+    auto root = AIG::new_and(a, or_ax_d);
+    const auto abs_before = rw.get_stats().absorption;
+    auto r = rw.rewrite(root);
+    check(functionally_equal(root, r, 3), "BCP drill AND(a,OR(AND(a,x),d)) functional");
+    check(rw.get_stats().absorption > abs_before,
+          "BCP drill shared bumps absorption");
+}
+
+// BCP-lite disjunct drill with complement: AND(a, OR(AND(~a, x), d2)) =
+// AND(a, d2). The disjunct with ~a is FALSE under a, so the OR reduces to
+// d2. This is the strongest of the two BCP-lite cases.
+void test_bcp_disjunct_drill_complement() {
+    auto a = AIG::new_lit(0);
+    auto na = AIG::new_lit(0, true);
+    auto x = AIG::new_lit(1);
+    auto d = AIG::new_lit(2);
+
+    AIGRewriter rw;
+    auto and_nax = AIG::new_and(na, x);
+    auto or_nax_d = AIG::new_or(and_nax, d);
+    auto root = AIG::new_and(a, or_nax_d);
+    const auto compl_before = rw.get_stats().complement_elim;
+    auto r = rw.rewrite(root);
+    check(functionally_equal(root, r, 3),
+          "BCP drill AND(a,OR(AND(~a,x),d)) functional");
+    check(rw.get_stats().complement_elim > compl_before,
+          "BCP drill complement bumps complement_elim");
+    // Result is AND(a, d) — 2 lits + 1 AND = 3 nodes.
+    check(count_nodes(r) <= 3, "BCP complement drill reduces to AND(a, d)");
+}
+
 // is_or drill-down into AND fanin: AND(AND(a,b), OR(a, c)) should absorb
 // the OR (since a∧b implies a, and a satisfies the OR clause). Verifies
 // the new sub-fanin absorption branch added on top of the existing is_or
@@ -657,6 +699,8 @@ int main() {
     test_complement_absorption_or();
     test_is_or_drill_into_and();
     test_is_or_drill_into_and_complement();
+    test_bcp_disjunct_drill_share();
+    test_bcp_disjunct_drill_complement();
     test_xor_pattern_recognized();
 
     cout << endl << "Results: " << tests_passed << " passed, " << tests_failed << " failed" << endl;
