@@ -1093,6 +1093,23 @@ void Manthan::print_detailed_stats() const {
             verb_print(1, COLCYN "[manthan-stats]   interp smaller/larger than conflict: "
                 << interp_repair->interp_smaller_than_conflict << " / "
                 << interp_repair->interp_larger_than_conflict);
+            if (interp_repair->calls_succeeded > 0
+                    && interp_repair->total_input_lits_in_conflict > 0) {
+                const double avg_supp = safe_div(interp_repair->total_interp_support,
+                                                 interp_repair->calls_succeeded);
+                const double avg_inplits = safe_div(interp_repair->total_input_lits_in_conflict,
+                                                    interp_repair->calls_succeeded);
+                // ratio > 1 means the interp brings in extra input vars
+                // beyond the conflict's input subset (via resolution
+                // chains through cnf clauses). Useful signal when tuning
+                // gating: huge ratios suggest the cnf's structure
+                // forces the interp to "explain too much".
+                const double ratio = safe_div(avg_supp, avg_inplits);
+                verb_print(1, COLCYN "[manthan-stats]   support: avg interp uses "
+                    << fixed << setprecision(1) << avg_supp
+                    << " input vars (conflict had " << avg_inplits << " input lits, ratio "
+                    << setprecision(2) << ratio << "x)");
+            }
             const double interp_total = interp_repair->total_setup_time
                 + interp_repair->total_solve_time + interp_repair->total_simplify_time;
             verb_print(1, COLCYN "[manthan-stats]   interp time:          " << fixed << setprecision(2) << interp_total

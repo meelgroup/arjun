@@ -527,6 +527,32 @@ aig_ptr InterpRepair::compute_interpolant(
     interp_size_hist[bucket_of(interp_nodes)]++;
     conflict_size_hist[bucket_of(conflict.size())]++;
 
+    // Count interpolant's input support (distinct input vars in leaves)
+    // and the conflict's input-literal count. Both feed into the
+    // "support-shrinkage" stat: how much narrower the interp's
+    // dependence is vs the raw conflict input footprint.
+    {
+        std::set<uint32_t> support;
+        std::set<const AIG*> seen_supp;
+        std::function<void(const aig_ptr&)> walk_supp = [&](const aig_ptr& a) {
+            if (a == nullptr) return;
+            if (a->type == AIGT::t_lit) {
+                if (a->var < is_input.size() && is_input[a->var]) support.insert(a->var);
+                return;
+            }
+            if (a->type == AIGT::t_const) return;
+            if (!seen_supp.insert(a.get()).second) return;
+            walk_supp(a->l);
+            walk_supp(a->r);
+        };
+        walk_supp(interp);
+        total_interp_support += support.size();
+        uint64_t input_lits = 0;
+        for (const auto& l : conflict)
+            if (l.var() < is_input.size() && is_input[l.var()]) input_lits++;
+        total_input_lits_in_conflict += input_lits;
+    }
+
     // Store in conflict-signature cache for future calls.
     if (cache_capacity > 0 && !conflict.empty()) {
         const CacheKey key = make_signature(to_repair_lit, conflict);

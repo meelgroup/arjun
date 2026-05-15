@@ -187,6 +187,12 @@ public:
     uint64_t interp_larger_than_conflict = 0;
     // Largest interpolant we accepted, in nodes.
     uint64_t max_interp_nodes_seen = 0;
+    // Support size = number of distinct input vars actually referenced
+    // in the interpolant AIG. The conflict's input subset is an upper
+    // bound; the support is often substantially smaller, which is the
+    // generalisation we're after. Summed across all successful calls.
+    uint64_t total_interp_support = 0;
+    uint64_t total_input_lits_in_conflict = 0;
     // Histogram of interpolant sizes (nodes) for tuning visibility.
     // Buckets: [0,8) [8,32) [32,128) [128,512) [512,2K) [2K,8K) [8K,32K) [32K,∞).
     static constexpr size_t HIST_BUCKETS = 8;
