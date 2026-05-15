@@ -677,6 +677,50 @@ void test_fixed_point_iteration() {
     check(count_nodes(r) < before, "fixed-point shrinks AIG");
 }
 
+// OR-of-OR with shared disjunct: OR(OR(a, b), OR(a, c)) should collapse
+// via the AND-of-AND rule applied to the De Morgan dual (the outer OR is
+// stored as a negative-edge AND, and its two underlying AND children are
+// positive ANDs of negated lits — AND-of-AND rule finds the shared ~a).
+void test_or_of_or_sharing() {
+    auto a = AIG::new_lit(0);
+    auto b = AIG::new_lit(1);
+    auto c = AIG::new_lit(2);
+
+    AIGRewriter rw;
+    auto ab = AIG::new_or(a, b);
+    auto ac = AIG::new_or(a, c);
+    auto both = AIG::new_or(ab, ac);
+    auto r = rw.rewrite(both);
+    check(functionally_equal(both, r, 3), "OR(OR(a,b), OR(a,c)) functional");
+    check(rw.get_stats().absorption >= 1,
+          "OR-of-OR sharing bumps absorption (via AND-of-AND on De Morgan)");
+}
+
+// OR-of-OR contradiction: OR(OR(a, b), OR(~a, c)) — under any assignment
+// either a or ~a is true, so the outer OR is always TRUE. The De Morgan
+// dual has AND-of-AND with complementary fanins (~a vs a in the underlying
+// ANDs of negated disjuncts), which folds to FALSE; the OR view is then
+// the complement TRUE.
+void test_or_of_or_tautology() {
+    auto a = AIG::new_lit(0);
+    auto na = AIG::new_lit(0, true);
+    auto b = AIG::new_lit(1);
+    auto c = AIG::new_lit(2);
+
+    AIGRewriter rw;
+    auto ab = AIG::new_or(a, b);
+    auto nac = AIG::new_or(na, c);
+    auto both = AIG::new_or(ab, nac);
+    auto r = rw.rewrite(both);
+    check(functionally_equal(both, r, 3),
+          "OR(OR(a,b), OR(~a,c)) functional");
+    // TRUE in all 8 assignments of 3 vars.
+    int true_count = 0;
+    for (uint32_t m = 0; m < 8; m++) if (eval(r, 3, m)) true_count++;
+    check(true_count == 8, "OR(OR(a,b), OR(~a,c)) = TRUE");
+    check(count_nodes(r) == 1, "OR(OR(a,b), OR(~a,c)) folds to const");
+}
+
 // AND-of-AND with shared fanin: AND(AND(a,b), AND(a,c)) factors as
 // AND(a, AND(b,c)) — same node count locally, but the inner AND(b,c) can
 // now be hash-consed against existing AND(b,c) nodes elsewhere, and the
@@ -721,6 +765,8 @@ int main() {
     test_deep_and_chain_flattening();
     test_and_of_and_contradiction();
     test_fixed_point_iteration();
+    test_or_of_or_sharing();
+    test_or_of_or_tautology();
     test_and_of_and_sharing();
     test_ite_t_eq_sel();
     test_ite_e_eq_sel();
