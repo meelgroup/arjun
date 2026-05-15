@@ -424,6 +424,55 @@ void test_and_of_and_contradiction() {
           "AND-of-AND contradiction bumps complement_elim");
 }
 
+// ITE(s, s, e) = OR(s, e). The encoding is AND(neg=true) over two inner
+// ANDs: AND_T = AND(s, t), AND_E = AND(~s, e). With t==s the OR view
+// collapses to s∨e; this test verifies the rewriter sees that.
+void test_ite_t_eq_sel() {
+    auto s = AIG::new_lit(0);
+    auto e = AIG::new_lit(1);
+
+    AIGRewriter rw;
+    // ITE(s, s, e) via new_ite: returns OR(AND(s, s), AND(~s, e)) = OR(s, AND(~s, e)).
+    auto ite = AIG::new_ite(s, e, CMSat::Lit(0, false));
+    auto r = rw.rewrite(ite);
+    check(functionally_equal(ite, r, 2), "ITE(s,s,e) functional");
+    // Functionally s∨e: must be TRUE in 3 of 4 input combos.
+    int true_count = 0;
+    for (uint32_t m = 0; m < 4; m++) if (eval(r, 2, m)) true_count++;
+    check(true_count == 3, "ITE(s,s,e) = s∨e truth count");
+}
+
+// ITE(s, t, s) = AND(s, t). Similar shape with the e-arm matching the
+// selector. Verifies the symmetric fold path.
+void test_ite_e_eq_sel() {
+    auto s = AIG::new_lit(0);
+    auto t = AIG::new_lit(1);
+
+    AIGRewriter rw;
+    auto ite = AIG::new_ite(t, s, CMSat::Lit(0, false));  // ITE(s, t, s)
+    auto r = rw.rewrite(ite);
+    check(functionally_equal(ite, r, 2), "ITE(s,t,s) functional");
+    int true_count = 0;
+    for (uint32_t m = 0; m < 4; m++) if (eval(r, 2, m)) true_count++;
+    check(true_count == 1, "ITE(s,t,s) = s∧t truth count");
+}
+
+// XOR pattern bump: XOR(p, q) leaves nodes alone but bumps xor_simplify so
+// the fuzzer / consumer can confirm the pattern was observed.
+void test_xor_pattern_recognized() {
+    auto p = AIG::new_lit(0);
+    auto q = AIG::new_lit(1);
+    auto xor_pq = AIG::new_or(
+        AIG::new_and(p, AIG::new_not(q)),
+        AIG::new_and(AIG::new_not(p), q));
+
+    AIGRewriter rw;
+    auto r = rw.rewrite(xor_pq);
+    check(functionally_equal(xor_pq, r, 2), "XOR(p,q) functional");
+    check(rw.get_stats().xor_simplify >= 1,
+          "XOR pattern bumps xor_simplify counter");
+}
+
 // AND-of-AND with shared fanin: AND(AND(a,b), AND(a,c)) factors as
 // AND(a, AND(b,c)) — same node count locally, but the inner AND(b,c) can
 // now be hash-consed against existing AND(b,c) nodes elsewhere, and the
@@ -468,6 +517,9 @@ int main() {
     test_deep_and_chain_flattening();
     test_and_of_and_contradiction();
     test_and_of_and_sharing();
+    test_ite_t_eq_sel();
+    test_ite_e_eq_sel();
+    test_xor_pattern_recognized();
 
     cout << endl << "Results: " << tests_passed << " passed, " << tests_failed << " failed" << endl;
     return tests_failed > 0 ? 1 : 0;

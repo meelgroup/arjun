@@ -28,6 +28,7 @@ struct AIGRewriteStats {
     uint64_t absorption = 0;
     uint64_t and_or_distrib = 0;
     uint64_t ite_simplify = 0;
+    uint64_t xor_simplify = 0;
     uint64_t structural_hash_hits = 0;
     uint64_t total_passes = 0;
     uint64_t nodes_before = 0;
