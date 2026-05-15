@@ -323,6 +323,12 @@ class Manthan {
         // var leans on interp; ranked top-N in the detailed stats.
         std::vector<uint32_t> interp_repairs_per_var;
         std::vector<uint64_t> interp_conflict_lits_per_var;
+        // cex_solver helper-var growth per repair, accumulated by
+        // path. Interp encodings add helpers proportional to b1 size;
+        // legacy adds a fixed handful per conflict literal. Useful as
+        // a quick "is interp blowing up cex_solver vars" signal.
+        uint64_t helpers_added_interp = 0;
+        uint64_t helpers_added_legacy = 0;
         // Per-call counter so we can trigger interpolation only after a
         // variable has been repaired more than min_var_repairs times.
         // (Tracked anyway via repaired_vars_count, but kept here so the

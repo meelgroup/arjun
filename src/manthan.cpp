@@ -1066,6 +1066,16 @@ void Manthan::print_detailed_stats() const {
             << " / " << tot_repaired
             << "  (" << fixed << setprecision(1) << interp_used_pct << "%)");
         verb_print(1, COLCYN "[manthan-stats]   conflict drove rep.:  " << conflict_repairs);
+        // Helper-var growth per repair: how many fresh cex_solver vars
+        // each path created. Smaller is better for downstream
+        // cex_solver scaling. Interp paths tend to add more (b1 is a
+        // bigger AIG), but b1-rewrite/sat_sweep should narrow the gap.
+        if (interp_repairs_used > 0) {
+            verb_print(1, COLCYN "[manthan-stats]   helpers/rep:          "
+                << "interp avg " << fixed << setprecision(1)
+                << safe_div(helpers_added_interp, interp_repairs_used)
+                << "  legacy avg " << safe_div(helpers_added_legacy, conflict_repairs));
+        }
         if (mconf.interp_repair_adaptive_gate != 0) {
             verb_print(1, COLCYN "[manthan-stats]   adaptive skips:       " << interp_adaptive_skips
                 << "  (ratio>" << fixed << setprecision(1) << mconf.interp_repair_adaptive_ratio_skip
@@ -2276,8 +2286,10 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
     };
 
     if (interp_branch != nullptr) {
+        const uint32_t cex_nvars_before = cex_solver.nVars();
         f = build_interp_branch_formula(y_rep, conflict, interp_branch,
                 interp_branch_unconditional);
+        helpers_added_interp += cex_solver.nVars() - cex_nvars_before;
         VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
             cout << "c o [manthan-interp] y=" << y_rep+1
                  << (interp_branch_unconditional ? " [UNCOND]" : "")
@@ -2287,6 +2299,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         });
     } else {
         // Conflict-clause path (legacy).
+        const uint32_t cex_nvars_before = cex_solver.nVars();
         vector<Lit> cl;
         cex_solver.new_var();
         auto fresh_l = Lit(cex_solver.nVars()-1, false);
@@ -2327,6 +2340,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
             }
         }
         f.aig = b1;
+        helpers_added_legacy += cex_solver.nVars() - cex_nvars_before;
     }
 
     // when fresh_l is true, confl is satisfied → guard is active → use constant
