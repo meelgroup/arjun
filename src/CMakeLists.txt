@@ -52,6 +52,7 @@ set(libfiles
     aig_rewrite.cpp
     aig_to_cnf.cpp
     interpolant.cpp
+    interp_repair.cpp
 )
 
 if(EXTRA_SYNTH)

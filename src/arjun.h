@@ -1705,6 +1705,33 @@ public:
         uint32_t cz_threshold_high = 1;     // consecutive cost-zero break threshold (high ratio)
         uint32_t cz_threshold_mid = 2;      // consecutive cost-zero break threshold (medium ratio)
         uint32_t cz_threshold_low = 3;      // consecutive cost-zero break threshold (low ratio)
+
+        // Craig-interpolant repair (Option 2 in IDEAS-3-categories.md).
+        //
+        // When set, find_conflict's UNSAT core is re-played on a fresh
+        // CaDiCaL solver with proof tracing, and a McMillan interpolant in
+        // input variables only is computed. The interpolant AIG becomes the
+        // branch in compose_or/and instead of "AND of conflict literals".
+        // Each repair generalizes to a region rather than a single corner.
+        //
+        // 0 = off (default; current behaviour);
+        // 1 = on for every repair;
+        // 2 = on only when conflict size >= interp_repair_min_conflict.
+        int interp_repair = 0;
+        // Only relevant for interp_repair == 2: minimum conflict size to bother
+        // computing an interpolant. Tiny conflicts are already pretty general.
+        uint32_t interp_repair_min_conflict = 4;
+        // Only kick in interpolation after the per-var repair count exceeds
+        // this. 0 = always. Lets us focus the (relatively expensive) interp
+        // call on hot variables that actually deserve the generalization.
+        uint32_t interp_repair_min_var_repairs = 0;
+        // Cap the interpolant AIG node count. If the produced interpolant is
+        // bigger, fall back to the conflict-clause path. 0 = no cap.
+        uint32_t interp_repair_max_aig_nodes = 0;
+        // Verify the interpolant via SAT (slow; on by default under
+        // SLOW_DEBUG, otherwise sample-only). 0=no verify, 1=verify the CEX
+        // is excluded, 2=full miter verify.
+        int interp_repair_verify = 1;
     };
 
     struct IndepInfo {
