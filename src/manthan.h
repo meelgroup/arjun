@@ -115,7 +115,6 @@ class Manthan {
         template<typename S>
         void inject_cnf(S& s) const;
         bool repair(const uint32_t v, sample& ctx);
-        std::vector<sample> collect_extra_cex(const sample& ctx);
         bool find_conflict(const uint32_t y_rep, sample& ctx, std::vector<CMSat::Lit>& conflict);
         // Reusable scratch for AIG::get_dependent_vars inside find_conflict;
         // avoids per-call heap allocations for bitmap/stack. Visited state
@@ -250,7 +249,6 @@ class Manthan {
 
         // detailed timing stats
         double time_cex_finding = 0;
-        double time_collect_extra_cex = 0;
         double time_find_better_ctx = 0;
         double time_find_conflict = 0;
         double time_minimize_conflict = 0;

@@ -163,7 +163,6 @@ void add_arjun_options() {
     myopt("--synthbve", do_synth_bve, fc_int,"Perform BVE for synthesis");
     myopt("--extend", etof_conf.do_extend_indep, fc_int,"Extend independent set just before CNF dumping");
     myopt("--minimconfl", mconf.minimize_conflict, fc_int,"Minimize conflict size when repairing");
-    myopt("--simpevery", mconf.simplify_every, fc_int,"Simplify solvers inside Manthan every K loops");
     myopt("--unatedef", do_unate_def, fc_int,"Perform definition-aware unate analysis");
     myopt("--unatedefmaxconfl", conf.unate_def_max_confl, fc_int,"Conflict budget per SAT call in the standard unate_def probe");
     myopt("--unatedefcond", conf.unate_def_cond, fc_int,"In unate_def, also detect conditional defs of the form t = ITE(L,c1,c0) for input literals L (i.e., t = L or t = ~L)");
@@ -188,7 +187,6 @@ void add_arjun_options() {
     myopt("--unatedefrepmultipat", conf.unate_def_rep_multi_pat, fc_int,"With multi-CEX>1, refine H with patterns from ALL collected models (not just chosen). 0=off; 1=on");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
-    myopt("--multicex", mconf.multi_cex_k, fc_int,"Number of counterexamples to collect for generalized repair (1=off)");
     myopt("--minvertlearn", mconf.inv_learnt, fc_int,"Invert learnt functions");
 
     // repairing on vars
@@ -224,33 +222,20 @@ void add_arjun_options() {
     myopt("--constvotesamples", mconf.const_vote_samples, fc_int, "Majority voting samples for const_functions");
     myopt("--statsevery", mconf.stats_every, fc_int, "Print stats every N repair loops");
     myopt("--detailedstatsevery", mconf.detailed_stats_every, fc_int, "Print detailed stats every N repair loops");
-    myopt("--reducecexgenok", mconf.reduce_cex_gen_ok, fc_int, "Reduce multi_cex when gen_repair_ok > this");
-    myopt("--reducecextotrep", mconf.reduce_cex_tot_rep, fc_int, "Reduce multi_cex when tot_repaired > this");
-    myopt("--reducecexneedrep", mconf.reduce_cex_need_rep, fc_int, "Set multi_cex_k=1 when needs_repair <= this");
-    myopt("--reducecexczminrep", mconf.reduce_cex_cz_min_rep, fc_int, "Min tot_repaired for cost-zero cex reduction");
-    myopt("--simprepevery", mconf.simplify_repair_every, fc_int, "Simplify repair_solver every N tot_repaired");
-    myopt("--skipinputminrep", mconf.skip_input_only_min_rep, fc_int, "Min tot_repaired before skipping input-only conflict");
-    myopt("--skipinputratio", mconf.skip_input_only_ratio, fc_int, "Skip input-only when gen_ok * ratio < tot_repaired");
     myopt("--confldropy", mconf.conflict_drop_y_max, fc_int, "Max conflict size to try dropping y-vars");
-    myopt("--extraminimhot", mconf.extra_minim_hot, fc_int, "Extra minimization when var repaired >= this many times");
-    myopt("--extraminimvhot", mconf.extra_minim_very_hot, fc_int, "2 extra minim passes when var repaired >= this");
     myopt("--conflcap", mconf.conflict_cap, fc_int, "Cap very large conflicts above this size");
     myopt("--conflcapkeep", mconf.conflict_cap_keep, fc_int, "Keep this many literals when capping conflicts");
     myopt("--batchminimmin", mconf.batch_minim_min, fc_int, "Min conflict size for batch minimization");
     myopt("--minimbudgetthresh", mconf.minim_budget_threshold, fc_int, "Conflict size above which minim budget is capped");
     myopt("--minimbudgetmax", mconf.minim_budget_max, fc_int, "Max minimization solver calls");
     myopt("--minimbudgetmult", mconf.minim_budget_mult, fc_int, "Minim budget = conflict.size * mult (up to max)");
-    myopt("--aigsimpevery", mconf.aig_simplify_every, fc_int, "Simplify AIG for hot vars every N repairs");
     myflag("--sat-sweep", do_sat_sweep, "Run FRAIG-lite SAT sweeping after AIG rewrite (merges proven-equivalent gates)");
     myopt("--tdsteps", mconf.td_steps, fc_int, "Tree decomposition FlowCutter steps");
     myopt("--tdlookahead", mconf.td_lookahead_iters, fc_int, "Tree decomposition FlowCutter lookahead iterations");
-    myopt("--bctxremoveall", mconf.better_ctx_remove_all, fc_int, "Remove-all threshold in find_better_ctx_normal");
     myopt("--tdcontract", mconf.do_td_contract, fc_int, "Contract input variables before tree decomposition");
     myopt("--tdmaxedges", mconf.td_max_edges, fc_int, "Skip TD when primal graph exceeds this many edges");
     myopt("--ccnrmemspersample", mconf.ccnr_mems_per_sample, fc_int, "CCNR total memory budget per sample");
     myopt("--ccnrpercalllimit", mconf.ccnr_per_call_limit, fc_int, "CCNR per-call step limit for local_search");
-    myopt("--reducecexgenrationum", mconf.reduce_cex_gen_ratio_num, fc_int, "Numerator of gen_ok/tot_repaired threshold for CEX reduction");
-    myopt("--reducecexgenratioden", mconf.reduce_cex_gen_ratio_den, fc_int, "Denominator of gen_ok/tot_repaired threshold for CEX reduction");
     myopt("--czhighratio", mconf.cz_high_ratio, fc_int, "cost_zero > tot_repaired * this triggers tightest cz_threshold");
     myopt("--czlowratio", mconf.cz_low_ratio, fc_int, "cost_zero > tot_repaired * this triggers medium cz_threshold");
     myopt("--czthreshhigh", mconf.cz_threshold_high, fc_int, "Consecutive cost-zero break count when high cz ratio");
