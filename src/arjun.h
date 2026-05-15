@@ -1732,6 +1732,9 @@ public:
         // SLOW_DEBUG, otherwise sample-only). 0=no verify, 1=verify the CEX
         // is excluded, 2=full miter verify.
         int interp_repair_verify = 1;
+        // 0=simplify_aig only (default; fast structural+CSE),
+        // 1=full AIGRewriter::rewrite + simplify (slower, smaller).
+        int interp_repair_rewrite = 0;
     };
 
     struct IndepInfo {

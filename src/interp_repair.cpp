@@ -240,7 +240,8 @@ void InterpRepair::build_serialized_cnf() const {
 
 aig_ptr InterpRepair::compute_interpolant(
         uint32_t y_rep, Lit to_repair_lit,
-        const vector<Lit>& conflict, uint32_t max_aig_nodes)
+        const vector<Lit>& conflict, uint32_t max_aig_nodes,
+        bool full_rewrite)
 {
     (void)y_rep;
     calls++;
@@ -367,6 +368,9 @@ aig_ptr InterpRepair::compute_interpolant(
     // before returning. The proof-driven construction can leave a lot of
     // redundant ANDs/ORs that the rewriter trivially crushes.
     const double t_simp = cpuTime();
+    if (full_rewrite) {
+        interp = AIG::rewrite_aig(interp);
+    }
     interp = AIG::simplify_aig(interp);
     total_simplify_time += cpuTime() - t_simp;
 

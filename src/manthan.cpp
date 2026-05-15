@@ -1738,7 +1738,9 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
             do_interp = false;
         if (do_interp) {
             interp_branch = interp_repair->compute_interpolant(
-                y_rep, to_repair, conflict, mconf.interp_repair_max_aig_nodes);
+                y_rep, to_repair, conflict,
+                mconf.interp_repair_max_aig_nodes,
+                mconf.interp_repair_rewrite != 0);
 
             // Optional always-on verification (cluster runs without SLOW_DEBUG).
             // verify=0 → skip; 1 → cheap CEX-excluded check; 2 → full miter.
