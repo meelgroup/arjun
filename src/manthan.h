@@ -239,7 +239,6 @@ class Manthan {
         // stats
         double repair_start_time;
         void print_stats(const std::string& txt = "", const std::string& color = "", const std::string& extra = "") const;
-        void print_repair_stats(const std::string& txt = "", const std::string& color = "", const std::string& extra = "") const;
         void print_detailed_stats() const;
         uint32_t num_loops_repair = 0;
         uint64_t conflict_sizes_sum = 0;

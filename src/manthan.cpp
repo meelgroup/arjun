@@ -1010,15 +1010,6 @@ void Manthan::bve_and_substitute() {
         << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
 }
 
-void Manthan::print_repair_stats([[maybe_unused]] const string& txt,
-        [[maybe_unused]] const string& color,
-        [[maybe_unused]] const string& extra) const {
-    // Top-N most-repaired vars used to be printed here, but they are
-    // already in print_detailed_stats's "TOP REPAIRED VARS" block called
-    // immediately after — leave the function as a no-op stub so the call
-    // sites in do_manthan don't need to be touched.
-}
-
 void Manthan::print_stats(const string& txt, const string& color, const string& extra) const {
     const double repair_time = cpuTime() - repair_start_time;
     verb_print(1, color << "[manthan]" << txt
@@ -1397,7 +1388,6 @@ SimplifiedCNF Manthan::do_manthan() {
     }
     const double repair_time = cpuTime() - repair_start_time;
     assert(check_map_dependency_cycles());
-    print_repair_stats();
     print_detailed_stats();
     print_stats("", COLYEL, " DONE");
 
