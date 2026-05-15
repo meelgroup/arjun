@@ -1919,17 +1919,32 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         // Interpolant path. interp_branch is I(X), where X are input vars.
         //   I(X) holds  → flipping y_rep is feasible  (no must-flip)
         //   ¬I(X) holds → y_rep MUST be ctx[y_rep]   (must-flip region)
-        // So the "branch" b1 (must-flip region) is NOT(interp_branch).
         //
-        // Inputs map identity under map_y_to_y_hat (they're not in
-        // y_to_y_hat); so translate_leaves with that mapper is a no-op for
-        // pure-input AIGs. We still call it so the AIG is reconstructed
-        // in the local hash-cons table consistently with the rest of the
-        // formula representation.
+        // BUT: the interpolant was computed with each non-input conflict
+        // literal pinned to the conflict's polarity (i.e. y_others = the
+        // ctx[y_others] values). So ¬I(X) means "must-flip *given* those
+        // y_others match". To preserve the legacy semantics, AND in the
+        // y_other formula matches (same as the legacy conflict path does
+        // implicitly via lit_to_aig). For y_others NOT in the conflict
+        // and for input lits, we drop the explicit per-lit AND (the
+        // interpolant already covers inputs).
+        //
+        // Build:
+        //   b1 = AND( ¬I(X) [in y_hat space], AND_{y_other in conflict}( y_other_formula matches ctx ) )
         aig_ptr interp_yhat = AIG::translate_leaves(
             interp_branch,
             [&](uint32_t v) { return map_y_to_y_hat(Lit(v, false)); });
         aig_ptr b1 = AIG::new_not(interp_yhat);
+        for (const auto& l : conflict) {
+            if (is_input[l.var()] || is_backward_defined[l.var()]) continue;
+            // y_other: AND in the formula's match. lit_to_aig(~l) returns
+            // the formula AIG (or its negation) representing "y_other took
+            // the conflict's value".
+            assert(var_to_formula.count(l.var()));
+            auto f2 = var_to_formula.at(l.var());
+            aig_ptr ymatch = (~l).sign() ? AIG::new_not(f2.aig) : f2.aig;
+            b1 = AIG::new_and(b1, ymatch);
+        }
         f.aig = b1;
 
         // Encode b1 to CNF for f.clauses + f.out.
@@ -1949,9 +1964,8 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         enc.set_true_lit(fh->get_true_lit());
         f.out = enc.encode(b1, /*force_helper=*/true);
 
-        // Dependency tracking. Interpolant is in input vars only; for the
-        // dependency matrix we still flag y_rep as depending on each input
-        // referenced. Walking the AIG once is cheap.
+        // Dependency tracking: each conflict lit may be referenced via the
+        // y_other ANDs above (or implicitly via the interpolant for inputs).
         for (const auto& l : conflict) set_depends_on(y_rep, l);
         VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
             cout << "c o [manthan-interp] y=" << y_rep+1
