@@ -29,6 +29,7 @@
 #include "constants.h"
 #include "metasolver2.h"
 #include "cachedsolver.h"
+#include "interp_repair.h"
 #include <cryptominisat5/solvertypesmini.h>
 
 #include <cstdint>
@@ -112,7 +113,14 @@ class Manthan {
         template<typename S>
         void inject_cnf(S& s) const;
         bool repair(const uint32_t v, sample& ctx);
-        bool find_conflict(const uint32_t y_rep, sample& ctx, std::vector<CMSat::Lit>& conflict);
+        // Sets `interp_branch` to the precomputed McMillan interpolant AIG
+        // (in input-var space) when --interp-repair is enabled, the
+        // interpolant succeeds, and downstream perform_repair should use it
+        // as the branch in compose_or/and instead of the conflict-as-AND.
+        // nullptr => fall back to the conflict-clause path.
+        bool find_conflict(const uint32_t y_rep, sample& ctx,
+                std::vector<CMSat::Lit>& conflict,
+                ArjunNS::aig_ptr& interp_branch);
         // Reusable scratch for AIG::get_dependent_vars inside find_conflict;
         // avoids per-call heap allocations for bitmap/stack. Visited state
         // is tracked via AIG::visit_epoch (no scratch needed).
@@ -130,7 +138,13 @@ class Manthan {
         std::vector<uint32_t> var_conflict_freq; // how often each var appears in conflicts
         void minimize_conflict(std::vector<CMSat::Lit>& conflict, std::vector<CMSat::Lit>& assumps, const CMSat::Lit repairing);
         uint32_t find_next_repair_var(const sample& ctx) const;
-        void perform_repair(const uint32_t y_rep, const sample& ctx, const std::vector<CMSat::Lit>& conflict);
+        // If `interp_branch` is non-null, perform_repair uses it directly as
+        // the AIG branch (and as the source of the formula clauses via a
+        // fresh AIGToCNF encoding). Otherwise it falls back to building
+        // the branch from conflict literals (legacy behaviour).
+        void perform_repair(const uint32_t y_rep, const sample& ctx,
+                const std::vector<CMSat::Lit>& conflict,
+                ArjunNS::aig_ptr interp_branch = nullptr);
         void add_not_f_x_yhat();
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with(std::set<uint32_t>& vars);
@@ -259,5 +273,13 @@ class Manthan {
         // Main stuff
         ArjunNS::SimplifiedCNF cnf;
         ArjunNS::AIGManager aig_mng;
+
+        // Craig-interpolant repair (Option 2 in IDEAS-3-categories.md).
+        // Lazily constructed in do_manthan() if mconf.interp_repair > 0.
+        std::unique_ptr<InterpRepair> interp_repair;
+        // Per-call counter so we can trigger interpolation only after a
+        // variable has been repaired more than min_var_repairs times.
+        // (Tracked anyway via repaired_vars_count, but kept here so the
+        // wiring stays self-contained.)
 };
 }

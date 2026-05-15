@@ -536,6 +536,17 @@ if __name__ == "__main__":
         solver += " --czthreshmid " + random.choice(["0", "1", "2", "5", "1000"])
         solver += " --czthreshlow " + random.choice(["0", "1", "2", "5", "1000"])
 
+        # Craig-interpolant repair (Option 2 in IDEAS-3-categories.md). Most
+        # of the time leave it off so we don't trade coverage of the
+        # default path; turn it on ~25% to exercise the new code.
+        ir_mode = random.choices([0, 1, 2], weights=[3, 1, 1])[0]
+        solver += " --interprepair " + str(ir_mode)
+        if ir_mode == 2:
+            solver += " --interprepairmincl " + random.choice(["1", "2", "4", "8", "20"])
+        if ir_mode > 0:
+            solver += " --interprepairminvar " + random.choice(["0", "1", "5", "100"])
+            solver += " --interprepairmaxnodes " + random.choice(["0", "10", "100", "1000", "100000"])
+
         solver += " --mstrategy " + gen_mstrategy()
 
         err, aigs = run_synth(solver, fname)

@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# Copyright (C) 2026 Mate Soos
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; version 2
+# of the License.
+
+"""
+Dedicated fuzzer for the Craig-interpolant repair path
+(Option 2 in IDEAS-3-categories.md).
+
+Identical to fuzz_synth.py except --interprepair is always set to 1 or 2,
+i.e. every fuzz iteration exercises the interpolant code path. The
+correctness check is the same: test-synth verifies the AIG output
+against the original CNF.
+
+Usage (from build/):
+    ./fuzz_interp_repair.py --num 1000
+    ./fuzz_interp_repair.py --seed N --num 1   # reproduce
+"""
+
+import sys
+import os
+import random
+
+# Re-use everything from fuzz_synth — we only override the flag-randomisation
+# behaviour for --interprepair so that every iteration enables it.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import fuzz_synth as _fs
+
+
+# Save the original gen_mstrategy and patch the main loop's choice for
+# interp_repair. The simplest, most robust thing is to monkey-patch
+# random.choices in the main loop window so the ir_mode path always
+# returns 1 or 2. Since fuzz_synth's main loop is __main__-guarded, we
+# wrap it here.
+
+def _force_interp_choice():
+    # Force the random.choices-call in fuzz_synth to never return 0.
+    orig_choices = random.choices
+    def patched_choices(population, weights=None, *, cum_weights=None, k=1):
+        # Match the specific [0,1,2] population used by fuzz_synth for
+        # interp_repair selection: drop the 0 option so we always exercise
+        # the interpolant path, picking 1 vs 2 50/50.
+        if (list(population) == [0, 1, 2]
+                and weights is not None
+                and len(weights) == 3):
+            return orig_choices([1, 2], weights=[1, 1], k=k)
+        return orig_choices(population, weights=weights,
+                            cum_weights=cum_weights, k=k)
+    random.choices = patched_choices
+
+
+if __name__ == "__main__":
+    _force_interp_choice()
+    # Re-exec fuzz_synth's main: easier to just do the same setup.
+    if os.path.exists("out") and os.path.isfile("out"):
+        print("ERROR: file 'out' exists, but we need a directory named 'out'")
+        sys.exit(-1)
+
+    os.makedirs("out", exist_ok=True)
+    parser = _fs.set_up_parser()
+    (options, args) = parser.parse_args()
+    _fs.options = options  # fuzz_synth references options as a module global
+
+    if options.rnd_seed is None:
+        b = os.urandom(8)
+        rnd_seed = int.from_bytes(b)
+        print("Using seed:", rnd_seed)
+    else:
+        rnd_seed = options.rnd_seed
+    random.seed(rnd_seed)
+
+    i = 0
+    while options.num is None or i < options.num:
+        i += 1
+        if options.rnd_seed is None:
+            b = os.urandom(8)
+            seed = int.from_bytes(b)
+            random.seed(seed)
+        else:
+            seed = options.rnd_seed
+
+        _fs.del_core_files()
+
+        fname = _fs.gen_fuzz(seed)
+        _fs.add_projection(fname)
+        if _fs.is_unsat(fname):
+            print("Generated file %s is UNSAT, skipping synthesis" % fname)
+            os.unlink(fname)
+            continue
+        prefix = _fs.unique_file("fuzzInterp")
+        print("Using prefix %s for synthesis output files" % prefix)
+
+        # Build the same solver string fuzz_synth would, but force interpolation.
+        # Easiest: build a minimal driver string with --interprepair=1
+        # (or 2) so we exercise the path while keeping the rest of the
+        # config small and reproducible.
+        ir_mode = random.choice([1, 2])
+        solver = "./arjun --verb 1 --debugsynth %s " % prefix
+        # Mode toggles
+        if random.choice([True, False]):
+            solver += "--synth "
+        else:
+            solver += "--synthmore "
+        # Boolean opts (a small subset; full sweep is fuzz_synth's job).
+        for opt in ["--synthbve", "--extend", "--minimize", "--minimconfl",
+                    "--filtersamples", "--uniqsamp", "--bwequal",
+                    "--silentupdate"]:
+            solver += " %s %d" % (opt, random.choice([0, 1]))
+        # CTX/repair solver picks (cadical only — tracer needs cadical anyway).
+        solver += " --ctxsolver 1 --repairsolver 1"
+        # The interpolation flag itself.
+        solver += " --interprepair %d" % ir_mode
+        if ir_mode == 2:
+            solver += " --interprepairmincl %s" % random.choice(["1", "2", "4", "8", "20"])
+        solver += " --interprepairminvar %s" % random.choice(["0", "1", "5"])
+        solver += " --interprepairmaxnodes %s" % random.choice(["0", "10", "100", "10000"])
+        # Strategy
+        solver += " --mstrategy " + _fs.gen_mstrategy()
+
+        err, aigs = _fs.run_synth(solver, fname)
+        if err is None:
+            print("Synthesis timed out on file %s" % fname)
+            _fs.cleanup(fname, prefix)
+            continue
+        if err:
+            print("Synthesis failed on file %s" % fname)
+            print("=" * 60)
+            print("REPRODUCE with: python3 %s --seed %d --num 1" %
+                  (os.path.basename(__file__), seed))
+            print("=" * 60)
+            sys.exit(-1)
+        print("Synthesis succeeded on file %s, produced files: %s" %
+              (fname, str(aigs)))
+        if len(aigs) == 0:
+            print("ERROR: Synthesis produced no output AIGs on file %s" % fname)
+            sys.exit(-1)
+        _fs.check_core_files()
+
+        for aig in aigs:
+            final = "final" in aig
+            if final:
+                call = "./test-synth -u -v -s %d %s %s" % (seed, fname, aig)
+            else:
+                call = "./test-synth -v -s %d %s %s" % (seed, fname, aig)
+            print("Running check command: ", call)
+            _fs.run_check(call.split(), final, seed)
+            try: os.unlink(aig)
+            except OSError: pass
+
+        _fs.cleanup(fname, prefix)
+    sys.exit(0)

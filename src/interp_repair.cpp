@@ -80,8 +80,9 @@ void InterpTracerMcMillan::add_original_clause(uint64_t id, bool /*red*/,
     vector<Lit> cl_lits = pl_to_lit_cl(clause);
     cls[id] = cl_lits;
 
-    if (b_clause_ids.count(id)) {
+    if (next_is_b) {
         // B-side clause: label = TRUE
+        b_clause_ids.insert(id);
         labels[id] = aig_mng.new_const(true);
     } else {
         // A-side clause: label = OR of input lits in the clause
@@ -89,7 +90,7 @@ void InterpTracerMcMillan::add_original_clause(uint64_t id, bool /*red*/,
     }
     VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 5) {
         cout << "c o [interp] orig id=" << id
-             << (b_clause_ids.count(id) ? " B" : " A")
+             << (next_is_b ? " B" : " A")
              << " sz=" << cl_lits.size() << endl;
     });
 }
@@ -242,106 +243,57 @@ aig_ptr InterpRepair::compute_interpolant(
     InterpTracerMcMillan tracer(conf, aig_mng, input_vars);
     solver->connect_proof_tracer(&tracer, true);
 
-    auto add_cl = [&](const vector<Lit>& cl) {
+    auto add_cl_a = [&](const vector<Lit>& cl) {
+        tracer.next_is_b = false;
         for (const auto& l : cl) solver->add(lit_to_pl(l));
         solver->add(0);
     };
-    auto add_unit = [&](Lit l) {
+    auto add_unit_a = [&](Lit l) {
+        tracer.next_is_b = false;
         solver->add(lit_to_pl(l));
         solver->add(0);
     };
+    auto add_unit_b = [&](Lit l) {
+        tracer.next_is_b = true;
+        solver->add(lit_to_pl(l));
+        solver->add(0);
+        tracer.next_is_b = false;
+    };
 
-    // 1) Original CNF clauses (all A-side).
-    for (const auto& cl : cnf.get_clauses()) add_cl(cl);
-    // We deliberately skip cnf.get_red_clauses(): those are redundant
-    // and can be "wrong" (added during repair as learnts on a separate
-    // solver). For UNSAT-side reproduction we only need the originals.
+    // 1) Original CNF clauses (all A-side). We deliberately skip
+    // cnf.get_red_clauses(): those are redundant learnts and aren't
+    // required for UNSAT-side reproduction.
+    for (const auto& cl : cnf.get_clauses()) add_cl_a(cl);
 
-    // After originals, we know the next clause IDs cadical will assign
-    // are sequential. cadical numbers original clauses starting at 1
-    // (visible to the tracer in add_original_clause's id arg). We can
-    // capture them directly from the tracer callbacks rather than guess
-    // — see the marking pass below.
-
-    // Add the conflict literals as units, capturing IDs as we go.
-    // Track the boundary: any original clause id added AFTER this point
-    // that has a single literal whose var is in input_vars goes to the
-    // B set.
-    const size_t orig_cls_count_before_units = tracer.cls.size();
-    (void)orig_cls_count_before_units;
-
-    // We need to know the IDs of the unit clauses we add so we can mark
-    // input units as B. We'll collect them from the tracer's `cls`
-    // entries with size == 1 added after this boundary.
+    // get_conflict() returns the negation of the failing assumption set
+    // (so it forms a learnable clause). To reproduce the same UNSAT in a
+    // fresh solver via unit clauses, we need to add the *original*
+    // assumptions, i.e. ~l for each conflict literal l.
     //
-    // A simpler approach: also assert a unique sentinel ID before/after
-    // additions by reading tracer.cls.size(). cadical assigns IDs
-    // monotonically, but the easiest path is post-hoc: after adding
-    // everything, walk `tracer.cls` and mark the input units.
-    //
-    // BUT: tracer labels are computed in add_original_clause synchronously
-    // during the .add(...) calls. So we must mark BEFORE the clause is
-    // added. Workaround: directly hook the marking into the add path by
-    // calling `mark_b_clause` immediately after we know the ID. cadical
-    // doesn't expose the just-assigned ID via the Solver API, but the
-    // tracer's `add_original_clause` callback fires synchronously
-    // *during* `solver->add(0)`. So we can interpose a small helper that
-    // adds the clause and uses a flag to direct the tracer's labeling.
-    //
-    // That's surgical. Instead, we'll use a 2-pass approach:
-    // (a) add originals + units with `b_for_inputs = true` mode in the
-    //     tracer, where a unit clause whose only variable is in input is
-    //     auto-tagged B.
-    //
-    // Implementing (a) by adding a small flag in the tracer: see code
-    // below.
-
-    // We don't have a flag yet, so we'll patch the tracer's labels
-    // *after* all originals are added: walk tracer.cls and re-label
-    // input unit clauses to TRUE (B-side). This is safe because labels
-    // for derived clauses reference the labels map by ID, and we only
-    // rewrite originals before any derived clause is produced (i.e.
-    // before solve()).
-    //
-    // (Solve hasn't happened yet, so derived_count must be 0 here.)
-    assert(tracer.derived_count == 0);
-
-    // Add non-input conflict units (A side) and ~to_repair (A side) directly.
-    // Add input conflict units last; we'll mark them B post-hoc.
-    vector<Lit> input_units;
+    // 2) Non-input conflict units (A side) plus ~to_repair (A side).
+    uint32_t b_marked = 0;
     for (const auto& l : conflict) {
-        if (l.var() < is_input.size() && is_input[l.var()]) {
-            input_units.push_back(l);
-        } else {
-            add_unit(l);
-        }
+        if (l.var() < is_input.size() && is_input[l.var()]) continue;
+        add_unit_a(~l);
     }
-    add_unit(~to_repair_lit);
-    // Now add input units.
-    for (const auto& l : input_units) add_unit(l);
+    add_unit_a(~to_repair_lit);
+
+    // 3) Input conflict units (B side).
+    for (const auto& l : conflict) {
+        if (l.var() >= is_input.size() || !is_input[l.var()]) continue;
+        add_unit_b(~l);
+        b_marked++;
+    }
     total_setup_time += cpuTime() - t0;
 
-    // After all add_original_clause callbacks have fired, walk the tracer's
-    // cls map and mark input-unit clauses as B-side: re-label them to TRUE.
-    // (We can't mark before-add because we don't get the id pre-add.)
-    uint32_t b_marked = 0;
-    for (auto& [id, cl] : tracer.cls) {
-        if (cl.size() != 1) continue;
-        const Lit l = cl[0];
-        if (l.var() < is_input.size() && is_input[l.var()]) {
-            tracer.b_clause_ids.insert(id);
-            tracer.labels[id] = aig_mng.new_const(true);
-            b_marked++;
-        }
-    }
     VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
-        cout << "c o [interp-repair] marked " << b_marked
+        cout << "c o [interp-repair] added " << b_marked
              << " input units as B-side; total orig cls=" << tracer.orig_count
+             << " derived (during add) =" << tracer.derived_count
              << endl;
     });
     if (b_marked == 0) {
-        // No input units made it as B — interpolant would be trivial.
-        // Bail (fall back to conflict-clause path).
+        // No input units. Interpolant would be trivial. Bail.
         VERBOSE_DEBUG_DO(cout << "c o [interp-repair] no input B units; bailing" << endl);
         solver->disconnect_proof_tracer(&tracer);
         calls_failed_other++;
@@ -419,12 +371,15 @@ bool InterpRepair::quick_check_interpolant_excludes_cex(
 {
     if (interp == nullptr) return false;
 
-    // Build a partial assignment from input lits in conflict.
+    // Build a partial assignment from input lits in conflict. Conflict
+    // literals are negations of the original assumptions, so we use ~l
+    // for the actual CEX value (matching add_unit_b in compute_interpolant).
     vector<lbool> assign(cnf.nVars(), l_Undef);
     for (const auto& l : conflict) {
         if (l.var() >= assign.size()) continue;
         if (l.var() < is_input.size() && is_input[l.var()]) {
-            assign[l.var()] = l.sign() ? l_False : l_True;
+            const Lit asm_lit = ~l;
+            assign[l.var()] = asm_lit.sign() ? l_False : l_True;
         }
     }
 

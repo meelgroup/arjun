@@ -241,6 +241,19 @@ void add_arjun_options() {
     myopt("--debugsynth", conf.debug_synth, fc_string,"Debug synthesis, prefix with this fname");
     myflag("--checkrepair", mconf.check_repair, "Check that error formula count decreases monotonically after each repair iteration (uses ganak)");
     myopt("--ganakbin", mconf.ganak_binary, fc_string, "Path to ganak binary (for --checkrepair)");
+    // Craig-interpolant repair (Option 2 in IDEAS-3-categories.md).
+    myopt("--interprepair", mconf.interp_repair, fc_int,
+          "Craig-interpolant repair branch in compose_or/and. "
+          "0=off, 1=on for every repair, 2=on only when conflict size >= --interprepairmincl");
+    myopt("--interprepairmincl", mconf.interp_repair_min_conflict, fc_int,
+          "(--interprepair=2 only) Minimum conflict size to attempt interpolation.");
+    myopt("--interprepairminvar", mconf.interp_repair_min_var_repairs, fc_int,
+          "Only kick interpolation in after a y has been repaired more than N times. "
+          "0=always (default).");
+    myopt("--interprepairmaxnodes", mconf.interp_repair_max_aig_nodes, fc_int,
+          "Cap interpolant AIG size; if bigger, fall back to conflict-clause path. 0=no cap.");
+    myopt("--interprepairverify", mconf.interp_repair_verify, fc_int,
+          "0=no verify, 1=cheap CEX-excluded check, 2=full miter (slow).");
 
 
     // Simplification options for minim

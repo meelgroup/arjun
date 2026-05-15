@@ -66,6 +66,12 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     const ArjunNS::AIGManager& aig_mng;
     const std::set<uint32_t>& input_vars;
 
+    // Set by the caller before each solver->add(0) so the synchronous
+    // add_original_clause callback knows whether the about-to-arrive
+    // clause is B-side (label = TRUE) or A-side (label = OR of input lits).
+    // Default = false (A-side).
+    bool next_is_b = false;
+
     // Original clauses we've decided are B-side (label = TRUE). Anything
     // else is A-side (label = OR of input literals in the clause).
     std::set<uint64_t> b_clause_ids;

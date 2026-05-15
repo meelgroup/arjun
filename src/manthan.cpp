@@ -1191,6 +1191,15 @@ SimplifiedCNF Manthan::do_manthan() {
         for(const auto& c: cnf.get_red_clauses()) cex_solver.add_red_clause(c, true);
     }
     fh = std::make_unique<FHolder<MetaSolver2>>(&cex_solver);
+    if (mconf.interp_repair > 0) {
+        interp_repair = std::make_unique<InterpRepair>(conf, cnf, input, aig_mng);
+        verb_print(1, "[manthan] InterpRepair enabled (mode "
+                << mconf.interp_repair
+                << ", min_conflict=" << mconf.interp_repair_min_conflict
+                << ", min_var_repairs=" << mconf.interp_repair_min_var_repairs
+                << ", max_aig_nodes=" << mconf.interp_repair_max_aig_nodes
+                << ")");
+    }
     create_vars_for_y_hats();
     add_not_f_x_yhat();
     verb_print(2, "True lit in solver_train: " << fh->get_true_lit());
@@ -1352,6 +1361,7 @@ SimplifiedCNF Manthan::do_manthan() {
     assert(check_map_dependency_cycles());
     print_repair_stats();
     print_detailed_stats();
+    if (interp_repair) interp_repair->print_stats(COLCYN "[manthan-stats] [interp]");
     print_stats("", COLYEL, " DONE");
 
     // Build final CNF
@@ -1427,7 +1437,8 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     repaired_vars_count[y_rep]++;
 
     double t0 = cpuTime();
-    bool ret = find_conflict(y_rep, ctx, conflict);
+    aig_ptr interp_branch = nullptr;
+    bool ret = find_conflict(y_rep, ctx, conflict, interp_branch);
     time_find_conflict += cpuTime() - t0;
     repair_solver_calls++;
 
@@ -1449,7 +1460,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
         }
 
         t0 = cpuTime();
-        perform_repair(y_rep, ctx, conflict);
+        perform_repair(y_rep, ctx, conflict, interp_branch);
         time_perform_repair += cpuTime() - t0;
 
         if (!mconf.one_repair_per_loop) {
@@ -1488,7 +1499,9 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     return ret;
 }
 
-bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conflict) {
+bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
+        vector<Lit>& conflict, aig_ptr& interp_branch) {
+    interp_branch = nullptr;
     const double repair_solver_start_time = cpuTime();
 
     // Find which input variables the AIG for y_rep actually depends on.
@@ -1708,6 +1721,27 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx, vector<Lit>& conf
             << " repair cache size: " << setw(8) << repair_solver.cache_size()/1000 << "K"
             << " repair cache hit rate: " << setw(5) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
             << " T: " << setw(5) << setprecision(2) << cpuTime()-minimize_start_time);
+
+    // Optionally compute a Craig interpolant in input-vars only as a
+    // generalisation of the conflict clause. Caller (perform_repair) will
+    // use it as the AIG branch in compose_or/and instead of building from
+    // the conflict literals.
+    if (interp_repair && mconf.interp_repair > 0) {
+        bool do_interp = true;
+        if (mconf.interp_repair == 2 &&
+            conflict.size() < mconf.interp_repair_min_conflict) do_interp = false;
+        if (mconf.interp_repair_min_var_repairs > 0 &&
+            repaired_vars_count[y_rep] < mconf.interp_repair_min_var_repairs)
+            do_interp = false;
+        if (do_interp) {
+            interp_branch = interp_repair->compute_interpolant(
+                y_rep, to_repair, conflict, mconf.interp_repair_max_aig_nodes);
+            VERBOSE_DEBUG_DO(if (interp_branch == nullptr) {
+                std::cout << "c o [manthan] interp_repair returned null for y="
+                    << y_rep+1 << " confl_sz=" << conflict.size() << std::endl;
+            });
+        }
+    }
     return true;
 }
 
@@ -1841,7 +1875,8 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 #endif
 }
 
-void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vector<Lit>& conflict) {
+void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
+        const vector<Lit>& conflict, aig_ptr interp_branch) {
     // Track conflict variable frequency for smarter minimization ordering
     for (const auto& l : conflict) {
         if (l.var() < var_conflict_freq.size()) var_conflict_freq[l.var()]++;
@@ -1854,7 +1889,8 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
         return;
     }
     verb_print(2, "[manthan] Performing repair on " << setw(5) << y_rep+1
-            << " with conflict size " << setw(3) << conflict.size());
+            << " with conflict size " << setw(3) << conflict.size()
+            << (interp_branch ? " [INTERP]" : ""));
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
     conflict_sizes_sum += conflict.size();
 
@@ -1879,47 +1915,93 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx, const vect
         return l.sign() ? AIG::new_not(f2.aig) : f2.aig;
     };
 
-    // CNF part
-    vector<Lit> cl;
-    cex_solver.new_var();
-    auto fresh_l = Lit(cex_solver.nVars()-1, false);
-    helpers.insert(fresh_l.var());
-    cl.push_back(fresh_l);
-    for(const auto& l: conflict) {
-        Lit l2;
-        if (!mconf.silent_var_update) l2 = lit_to_lit(l);
-        else l2 = map_y_to_y_hat(l);
-        cl.push_back(l2);
-        set_depends_on(y_rep, l);
-    }
-    f.clauses.emplace_back(cl);
+    if (interp_branch != nullptr) {
+        // Interpolant path. interp_branch is I(X), where X are input vars.
+        //   I(X) holds  → flipping y_rep is feasible  (no must-flip)
+        //   ¬I(X) holds → y_rep MUST be ctx[y_rep]   (must-flip region)
+        // So the "branch" b1 (must-flip region) is NOT(interp_branch).
+        //
+        // Inputs map identity under map_y_to_y_hat (they're not in
+        // y_to_y_hat); so translate_leaves with that mapper is a no-op for
+        // pure-input AIGs. We still call it so the AIG is reconstructed
+        // in the local hash-cons table consistently with the rest of the
+        // formula representation.
+        aig_ptr interp_yhat = AIG::translate_leaves(
+            interp_branch,
+            [&](uint32_t v) { return map_y_to_y_hat(Lit(v, false)); });
+        aig_ptr b1 = AIG::new_not(interp_yhat);
+        f.aig = b1;
 
-    for(const auto& l: conflict) {
-        Lit l2;
-        if (!mconf.silent_var_update) l2 = lit_to_lit(l);
-        else l2 = map_y_to_y_hat(l);
-        cl.clear();
-        cl.push_back(~fresh_l);
-        cl.push_back(~l2);
-        f.clauses.push_back(cl);
-    }
-    f.out = fresh_l;
+        // Encode b1 to CNF for f.clauses + f.out.
+        struct InterpClauseSink {
+            MetaSolver2& solver;
+            std::vector<CL>* clauses;
+            std::set<uint32_t>& helpers_set;
+            void new_var() {
+                solver.new_var();
+                helpers_set.insert(solver.nVars() - 1);
+            }
+            [[nodiscard]] uint32_t nVars() const { return solver.nVars(); }
+            void add_clause(const std::vector<Lit>& cl) { clauses->emplace_back(cl); }
+        };
+        InterpClauseSink sink{cex_solver, &f.clauses, helpers};
+        ArjunNS::AIGToCNF<InterpClauseSink> enc(sink);
+        enc.set_true_lit(fh->get_true_lit());
+        f.out = enc.encode(b1, /*force_helper=*/true);
 
-    // AIG part
-    aig_ptr b1 = nullptr;
-    for(const auto& l: conflict) assert(l.var() < cnf.nVars());
-    if (conflict.empty()) b1 = aig_mng.new_const(true);
-    else {
-        if (!mconf.silent_var_update) b1 = lit_to_aig(~conflict[0]);
-        else b1 = AIG::new_lit(~conflict[0]);
-        for(size_t i = 1; i < conflict.size(); i++) {
-            aig_ptr lit_aig;
-            if (!mconf.silent_var_update) lit_aig = lit_to_aig(~conflict[i]);
-            else lit_aig = AIG::new_lit(~conflict[i]);
-            b1 = AIG::new_and(b1, lit_aig);
+        // Dependency tracking. Interpolant is in input vars only; for the
+        // dependency matrix we still flag y_rep as depending on each input
+        // referenced. Walking the AIG once is cheap.
+        for (const auto& l : conflict) set_depends_on(y_rep, l);
+        VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
+            cout << "c o [manthan-interp] y=" << y_rep+1
+                 << " interp f.clauses=" << f.clauses.size()
+                 << " f.out=" << f.out
+                 << endl;
+        });
+    } else {
+        // Conflict-clause path (legacy).
+        vector<Lit> cl;
+        cex_solver.new_var();
+        auto fresh_l = Lit(cex_solver.nVars()-1, false);
+        helpers.insert(fresh_l.var());
+        cl.push_back(fresh_l);
+        for(const auto& l: conflict) {
+            Lit l2;
+            if (!mconf.silent_var_update) l2 = lit_to_lit(l);
+            else l2 = map_y_to_y_hat(l);
+            cl.push_back(l2);
+            set_depends_on(y_rep, l);
         }
+        f.clauses.emplace_back(cl);
+
+        for(const auto& l: conflict) {
+            Lit l2;
+            if (!mconf.silent_var_update) l2 = lit_to_lit(l);
+            else l2 = map_y_to_y_hat(l);
+            cl.clear();
+            cl.push_back(~fresh_l);
+            cl.push_back(~l2);
+            f.clauses.push_back(cl);
+        }
+        f.out = fresh_l;
+
+        // AIG part
+        aig_ptr b1 = nullptr;
+        for(const auto& l: conflict) assert(l.var() < cnf.nVars());
+        if (conflict.empty()) b1 = aig_mng.new_const(true);
+        else {
+            if (!mconf.silent_var_update) b1 = lit_to_aig(~conflict[0]);
+            else b1 = AIG::new_lit(~conflict[0]);
+            for(size_t i = 1; i < conflict.size(); i++) {
+                aig_ptr lit_aig2;
+                if (!mconf.silent_var_update) lit_aig2 = lit_to_aig(~conflict[i]);
+                else lit_aig2 = AIG::new_lit(~conflict[i]);
+                b1 = AIG::new_and(b1, lit_aig2);
+            }
+        }
+        f.aig = b1;
     }
-    f.aig = b1;
 
     // when fresh_l is true, confl is satisfied → guard is active → use constant
     verb_print(4, "Original formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
