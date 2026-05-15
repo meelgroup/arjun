@@ -350,6 +350,27 @@ aig_ptr InterpRepair::compute_interpolant(
     interp = AIG::simplify_aig(interp);
     total_simplify_time += cpuTime() - t_simp;
 
+    // Degenerate cases.
+    //
+    // I = TRUE  means "wrong y_rep is feasible everywhere" — but A∧B was
+    // UNSAT at the CEX inputs, so this is a contradiction. Bail; using
+    // ¬I = FALSE as the must-flip region produces an empty branch and
+    // perform_repair would not actually fix anything (next loop sees the
+    // same CEX → infinite loop).
+    if (interp != nullptr && interp->type == AIGT::t_const && !interp.neg) {
+        VERBOSE_DEBUG_DO(cout << "c o [interp-repair] interpolant = TRUE; bailing" << endl);
+        calls_failed_other++;
+        return nullptr;
+    }
+    // I = FALSE  means "wrong y_rep is infeasible everywhere" — y_rep must
+    // be ctx[y_rep] universally. compose_or(TRUE, old) makes the function a
+    // constant, which is a strong (and possibly correct) claim. Allow it
+    // through but log it — and the SLOW_DEBUG miter and downstream
+    // SLOW_DEBUG checks catch any soundness violation.
+    VERBOSE_DEBUG_DO(if (interp != nullptr && interp->type == AIGT::t_const && interp.neg) {
+        cout << "c o [interp-repair] interpolant = FALSE; y_rep forced to ctx everywhere" << endl;
+    });
+
     // Quick sanity: under the original CEX inputs (= the input units we
     // added), interpolant should evaluate to FALSE. (This is what makes
     // the repair correct.) Cheap to check.
