@@ -50,7 +50,6 @@ void AIGRewriteStats::print(int verb) const {
          << "  idempotent: " << idempotent_elim
          << "  absorption: " << absorption
          << "  distrib: " << and_or_distrib
-         << "  ite_simp: " << ite_simplify
          << "  xor_simp: " << xor_simplify
          << "  hash_hits: " << structural_hash_hits
          << endl;
@@ -269,105 +268,29 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
             }
         }
 
-        // ITE / XOR pattern simplification on the OR-of-two-ANDs shape.
+        // XOR pattern observation on the OR-of-two-ANDs shape.
         //
-        // When the outer node is being used through its negative edge (the
-        // OR view) the shape `pos = AND(~AND_A, ~AND_B)` is the canonical
-        // ITE / XOR carrier:
-        //     OR(AND_A, AND_B) = OR(p∧q, r∧s)
-        // We recognise this on the positive view and rewrite both views in
-        // sync. The output is still expressed as a positive AND (potentially
-        // a different one); deep_absorb/hash_cons handle downstream sharing.
-        //
-        // ITE matches when one fanin is shared between AND_A and AND_B with
-        // complementary signs (the selector), e.g.
-        //     AND_A = AND(s, t),  AND_B = AND(~s, e)  ⇒  OR-view = ITE(s, t, e)
-        // XOR matches when BOTH pairs of fanins are complementary, e.g.
-        //     AND_A = AND(p, ~q), AND_B = AND(~p, q) ⇒  OR-view = XOR(p, q)
-        // (XOR is also a degenerate ITE with t == ~e.)
-        //
-        // We apply the cheap folds (selector vs arms degenerate, XOR with
-        // const or self) — anything more aggressive belongs in a dedicated
-        // pass.
+        // The stored shape `pos = AND(~AND_A, ~AND_B)` decodes as
+        // OR(AND_A, AND_B). XOR(p, q) = OR(AND(p, ~q), AND(~p, q)) lands
+        // here with both inner ANDs non-degenerate. ITE-folds (ITE(s, s, e),
+        // ITE(s, ~s, e), ITE(s, t, s), ITE(s, t, ~s)) never reach this point:
+        //   - new_and folds AND(s, s) -> s at construction;
+        //   - the is_or(r) / is_or(l) branches above catch the residual
+        //     AND(~s, ~AND(~s, e)) = AND(~s, ~e) pattern earlier.
+        // So the only useful thing to do here is count XOR observations
+        // (it bumps xor_simplify so the fuzzer can verify the corpus hits
+        // XOR shapes). No structural rewrite -- XOR is irreducible without
+        // going to a wider rewrite step.
         if (!pos && l->type == AIGT::t_and && l.neg
                  && r->type == AIGT::t_and && r.neg) {
             const aig_lit& la = l->l, lb = l->r;
             const aig_lit& ra = r->l, rb = r->r;
-            // Find the ITE selector: the matching node with opposite signs.
-            // sel = the variable on the AND_A side; other_t = its sibling
-            // (the THEN arm). The matching child on AND_B is ~sel; its
-            // sibling is the ELSE arm.
-            aig_lit sel, t_arm, e_arm;
-            int match_count = 0;
-            auto try_sel = [&](const aig_lit& a, const aig_lit& a_sib,
-                               const aig_lit& b, const aig_lit& b_sib) {
-                if (is_complement(a, b)) {
-                    sel = a; t_arm = a_sib; e_arm = b_sib;
-                    match_count++;
-                }
-            };
-            try_sel(la, lb, ra, rb);
-            try_sel(la, lb, rb, ra);
-            try_sel(lb, la, ra, rb);
-            try_sel(lb, la, rb, ra);
-            if (sel.node) {
-                if (match_count >= 2) {
-                    // Both pairs complementary ⇒ XOR(p, q). The fold rules
-                    // for XOR with a const arm (XOR(p, 0)=p, XOR(p, 1)=~p)
-                    // already triggered upstream — new_and folded the inner
-                    // ANDs in those cases. XOR(p, ~p) = TRUE was caught by
-                    // upstream complement-elim. So if we get here, XOR is
-                    // structurally irreducible — leave the AND alone.
-                    // (Bumping the counter helps the fuzzer notice the
-                    // pattern was observed.)
-                    stats.xor_simplify++;
-                } else {
-                    // ITE folds. Note: the rewrite must preserve BOTH views
-                    // (positive AND view and complemented OR view). The
-                    // arithmetic ¬ITE(s, t, e) = ITE(s, ¬t, ¬e) makes that
-                    // automatic: replacing AND(~A, ~B) with AND(~s, ~e_new)
-                    // keeps the positive view equal to ¬(s∨e_new) AND the
-                    // OR view equal to s∨e_new — both consistent.
-                    if (t_arm == sel) {
-                        // ITE(s, s, e) = s ∨ e. Positive view = ¬(s ∨ e) = ¬s ∧ ¬e.
-                        pos = make_canonical(~sel, ~e_arm);
-                        stats.ite_simplify++;
-                    } else if (is_complement(t_arm, sel)) {
-                        // ITE(s, ~s, e) = ¬s ∧ e. Positive view = ¬(¬s ∧ e) = s ∨ ¬e.
-                        // pos must equal AND of (¬s) and (e)'s complement-OR form...
-                        // To express OR(¬s, ... oh wait. Let me redo.
-                        // OR-view = ¬s ∧ e. Positive view of AND-of-two-ANDs is
-                        // ¬(OR-view) = ¬(¬s ∧ e) = s ∨ ¬e.
-                        // s ∨ ¬e = ¬(¬s ∧ e). Store as AND(~~s, ~~e).neg=true...
-                        // Simpler: build the OR(¬s, ¬e) form which is
-                        // ~AND(s, e). Caller wants positive view; the
-                        // positive view of OR(¬s, ¬e) is ¬(¬s ∨ ¬e) = s ∧ e.
-                        // That's NOT what we want; we want pos = s ∨ ¬e.
-                        // Hmm. Let me use the relation directly: pos must equal
-                        // AND-of-original-children-view = ¬(ITE(s,~s,e)) = ¬(¬s∧e)
-                        // = s ∨ ¬e = ~AND(~s, e). So pos = aig_lit{AND(~s, e), neg=true}.
-                        // But pos is meant to be positive. Store the AND and
-                        // flip the outer edge — but simplify_pass returns pos
-                        // intended as the positive view and caller XORs the
-                        // edge sign. Returning pos with .neg=true changes how
-                        // caller uses it. The cache stores pos directly and
-                        // applies `pos.neg ^ edge.neg` on retrieval — so a
-                        // pos with .neg=true is fine, it's a signed edge.
-                        aig_lit inner = make_canonical(~sel, e_arm);
-                        pos = ~inner;
-                        stats.ite_simplify++;
-                    } else if (e_arm == sel) {
-                        // ITE(s, t, s) = s ∧ t. Pos = ¬(s ∧ t) = ¬s ∨ ¬t = ~AND(s, t).
-                        aig_lit inner = make_canonical(sel, t_arm);
-                        pos = ~inner;
-                        stats.ite_simplify++;
-                    } else if (is_complement(e_arm, sel)) {
-                        // ITE(s, t, ~s) = ¬s ∨ t. Pos = ¬(¬s ∨ t) = s ∧ ¬t.
-                        pos = make_canonical(sel, ~t_arm);
-                        stats.ite_simplify++;
-                    }
-                }
-            }
+            int compl_pairs = 0;
+            if (is_complement(la, ra)) compl_pairs++;
+            if (is_complement(la, rb)) compl_pairs++;
+            if (is_complement(lb, ra)) compl_pairs++;
+            if (is_complement(lb, rb)) compl_pairs++;
+            if (compl_pairs >= 2) stats.xor_simplify++;
         }
 
         // AND-of-AND structural rewrites (Brummayer/Biere MEMICS'06 patterns
