@@ -1010,19 +1010,13 @@ void Manthan::bve_and_substitute() {
         << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
 }
 
-void Manthan::print_repair_stats([[maybe_unused]] const string& txt, const string& color, [[maybe_unused]] const string& extra) const {
-    vector<uint32_t> rep(cnf.nVars());
-    for(uint32_t i = 0; i < cnf.nVars(); i++) rep[i] = i;
-    sort(rep.begin(), rep.end(), [&] (const auto& a, const auto& b) {
-        return repaired_vars_count[a] > repaired_vars_count[b];
-    });
-
-    for(size_t i = 0; i < min((size_t)10, (size_t)rep.size()); i++) {
-        const auto& v = rep[i];
-        if (repaired_vars_count[v] == 0) break;
-        verb_print(1, color << "[manthan] repaired var " << setw(5) << v+1
-            << " count: " << setw(6) << repaired_vars_count[v]);
-    }
+void Manthan::print_repair_stats([[maybe_unused]] const string& txt,
+        [[maybe_unused]] const string& color,
+        [[maybe_unused]] const string& extra) const {
+    // Top-N most-repaired vars used to be printed here, but they are
+    // already in print_detailed_stats's "TOP REPAIRED VARS" block called
+    // immediately after — leave the function as a no-op stub so the call
+    // sites in do_manthan don't need to be touched.
 }
 
 void Manthan::print_stats(const string& txt, const string& color, const string& extra) const {
@@ -1034,7 +1028,9 @@ void Manthan::print_stats(const string& txt, const string& color, const string& 
             << "   avg conflsz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
             << "   avg need rep: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
             << "   cache-hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
-            << "   gen-ok: " << setw(4) << generalized_repair_ok << " gen-fb: " << generalized_repair_fallback
+            << "   gen-ok: " << setw(4) << generalized_repair_ok
+            << "   interp: " << setw(3) << fixed << setprecision(0)
+                << safe_div(interp_repairs_used*100.0, tot_repaired) << "%"
             << "   T: " << setprecision(2) << fixed << setw(7) << repair_time
             << "   rep/s: " << setprecision(4) << safe_div(tot_repaired,repair_time) << setprecision(2)
             << extra);
@@ -1062,6 +1058,46 @@ void Manthan::print_detailed_stats() const {
     verb_print(1, COLCYN "[manthan-stats]   repair_failed:        " << repair_failed);
     verb_print(1, COLCYN "[manthan-stats]   cex_solver calls:     " << cex_solver_calls);
     verb_print(1, COLCYN "[manthan-stats]   repair_solver calls:  " << repair_solver_calls);
+
+    // Interp-repair (Option 2). Manthan-side aggregates so the breakdown
+    // sits next to the regular repair stats. The InterpRepair object's
+    // own print_stats reports per-call internals (setup/solve/simp time,
+    // smaller-vs-larger ratios, max nodes). Both are useful: this block
+    // tells you "how often did interp drive a repair", InterpRepair's
+    // line tells you "what the call costs and what the interpolant looks
+    // like".
+    if (interp_repair) {
+        const double interp_used_pct = safe_div(interp_repairs_used*100.0, tot_repaired);
+        const uint64_t conflict_repairs = (tot_repaired >= interp_repairs_used)
+            ? (tot_repaired - interp_repairs_used) : 0;
+        verb_print(1, COLCYN "[manthan-stats] === INTERP-REPAIR STATS ===");
+        verb_print(1, COLCYN "[manthan-stats]   interp drove repairs: " << interp_repairs_used
+            << " / " << tot_repaired
+            << "  (" << fixed << setprecision(1) << interp_used_pct << "%)");
+        verb_print(1, COLCYN "[manthan-stats]   conflict drove rep.:  " << conflict_repairs);
+        verb_print(1, COLCYN "[manthan-stats]   interp calls (incl. fallbacks): " << interp_repair->calls
+            << "  ok: " << interp_repair->calls_succeeded
+            << "  oversize: " << interp_repair->calls_failed_oversize
+            << "  trivial: " << interp_repair->calls_failed_empty_or_no_input
+            << "  other_fail: " << interp_repair->calls_failed_other);
+        if (interp_repair->calls_succeeded > 0) {
+            verb_print(1, COLCYN "[manthan-stats]   interp avg conflict-lits: " << fixed << setprecision(1)
+                << safe_div(interp_repair->total_conflict_lits, interp_repair->calls)
+                << "  avg interp-nodes: "
+                << safe_div(interp_repair->total_interp_nodes, interp_repair->calls_succeeded)
+                << "  max interp-nodes: " << interp_repair->max_interp_nodes_seen);
+            verb_print(1, COLCYN "[manthan-stats]   interp smaller/larger than conflict: "
+                << interp_repair->interp_smaller_than_conflict << " / "
+                << interp_repair->interp_larger_than_conflict);
+            const double interp_total = interp_repair->total_setup_time
+                + interp_repair->total_solve_time + interp_repair->total_simplify_time;
+            verb_print(1, COLCYN "[manthan-stats]   interp time:          " << fixed << setprecision(2) << interp_total
+                << "s (" << setprecision(1) << safe_div(interp_total, repair_time)*100.0 << "% of repair)"
+                << "  setup: " << setprecision(2) << interp_repair->total_setup_time << "s"
+                << "  solve: " << interp_repair->total_solve_time << "s"
+                << "  simp: " << interp_repair->total_simplify_time << "s");
+        }
+    }
 
     // Print top 20 most repaired vars with their AIG sizes
     vector<uint32_t> rep(cnf.nVars());
@@ -1244,7 +1280,6 @@ SimplifiedCNF Manthan::do_manthan() {
         if (mconf.stats_every > 0 && num_loops_repair % mconf.stats_every == mconf.stats_every - 1) print_stats();
         if (mconf.detailed_stats_every > 0 && num_loops_repair % mconf.detailed_stats_every == mconf.detailed_stats_every - 1) {
             print_detailed_stats();
-            if (interp_repair) interp_repair->print_stats(COLCYN "[manthan-stats] [interp]");
         }
         assert(at_least_one_repaired);
         at_least_one_repaired = false;
@@ -1364,7 +1399,6 @@ SimplifiedCNF Manthan::do_manthan() {
     assert(check_map_dependency_cycles());
     print_repair_stats();
     print_detailed_stats();
-    if (interp_repair) interp_repair->print_stats(COLCYN "[manthan-stats] [interp]");
     print_stats("", COLYEL, " DONE");
 
     // Build final CNF
@@ -1463,6 +1497,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
         }
 
         t0 = cpuTime();
+        if (interp_branch != nullptr) interp_repairs_used++;
         perform_repair(y_rep, ctx, conflict, interp_branch);
         time_perform_repair += cpuTime() - t0;
 

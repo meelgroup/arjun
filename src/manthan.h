@@ -269,6 +269,10 @@ class Manthan {
         uint32_t cost_zero_repairs = 0;
         uint32_t cex_solver_calls = 0;
         uint32_t repair_solver_calls = 0;
+        // Interp-repair: how many tot_repaired came from the interp path
+        // vs the legacy conflict path. (Only counted on real repairs, not
+        // cost-zero ones.)
+        uint32_t interp_repairs_used = 0;
 
         // Main stuff
         ArjunNS::SimplifiedCNF cnf;
