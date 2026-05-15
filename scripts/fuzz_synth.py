@@ -548,6 +548,15 @@ if __name__ == "__main__":
             solver += " --interprepairmaxnodes " + random.choice(["0", "10", "100", "1000", "100000"])
             solver += " --interprepairrewrite " + random.choice(["0", "1"])
             solver += " --interprepairb1rewrite " + random.choice(["0", "1"])
+            solver += " --interprepairmaxconfl " + random.choice(["0", "100", "10000"])
+            solver += " --interprepaircache " + random.choice(["0", "16", "128"])
+            solver += " --interprepairuncond " + random.choice(["0", "1"])
+            solver += " --interprepairb1satsweep " + random.choice(["0", "1"])
+            solver += " --interprepairgroupcse " + random.choice(["0", "1"])
+            solver += " --interprepairadaptive " + random.choice(["0", "1"])
+            solver += " --interprepairratioskip " + random.choice(["1.0", "5.0", "20.0"])
+            solver += " --interprepairskipwindow " + random.choice(["1", "10", "100"])
+            solver += " --interprepairverify " + random.choice(["0", "1", "3"])
 
         solver += " --mstrategy " + gen_mstrategy()
 

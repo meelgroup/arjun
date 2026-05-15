@@ -121,6 +121,15 @@ if __name__ == "__main__":
         solver += " --interprepairmaxnodes %s" % random.choice(["0", "10", "100", "10000"])
         solver += " --interprepairrewrite %s" % random.choice(["0", "1"])
         solver += " --interprepairb1rewrite %s" % random.choice(["0", "1"])
+        solver += " --interprepairmaxconfl %s" % random.choice(["0", "100", "10000"])
+        solver += " --interprepaircache %s" % random.choice(["0", "16", "128"])
+        solver += " --interprepairuncond %s" % random.choice(["0", "1"])
+        solver += " --interprepairb1satsweep %s" % random.choice(["0", "1"])
+        solver += " --interprepairgroupcse %s" % random.choice(["0", "1"])
+        solver += " --interprepairadaptive %s" % random.choice(["0", "1"])
+        solver += " --interprepairratioskip %s" % random.choice(["1.0", "5.0", "20.0"])
+        solver += " --interprepairskipwindow %s" % random.choice(["1", "10", "100"])
+        solver += " --interprepairverify %s" % random.choice(["0", "1", "3"])
         # Strategy
         solver += " --mstrategy " + _fs.gen_mstrategy()
 
