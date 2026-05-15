@@ -1754,6 +1754,11 @@ public:
         // otherwise grind we bail and fall back to the conflict-clause
         // path. Tracked stat: interp_budget_exhausted.
         uint64_t interp_repair_max_conflicts = 0;
+        // FIFO cache of (conflict-signature → interpolant). 0 = off
+        // (default). Useful values: 64–512. Same-conflict re-runs are
+        // common enough on death-spiral benchmarks that even a small
+        // cache hits a lot.
+        uint32_t interp_repair_cache_capacity = 0;
         // Adaptive per-variable gating. Track each var's recent
         // interp_nodes / conflict_lits ratio: when it consistently
         // exceeds adaptive_ratio_skip the var is "blacklisted" from

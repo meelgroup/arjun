@@ -26,6 +26,7 @@
 #include "time_mem.h"
 #include <cadical.hpp>
 #include <climits>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <algorithm>
@@ -239,6 +240,22 @@ void InterpRepair::build_serialized_cnf() const {
     cnf_serialized_built = true;
 }
 
+// Build a small, stable key from (to_repair, conflict). Sort to make
+// it order-independent: cadical may reorder the conflict literals
+// between calls. Encoded as a packed string of int32s for std::map.
+InterpRepair::CacheKey InterpRepair::make_signature(Lit to_repair_lit,
+        const vector<Lit>& conflict) {
+    std::vector<int> pls;
+    pls.reserve(conflict.size() + 1);
+    for (const auto& l : conflict) pls.push_back(lit_to_pl(l));
+    pls.push_back(lit_to_pl(to_repair_lit));
+    std::sort(pls.begin(), pls.end());
+    CacheKey k;
+    k.sig.resize(pls.size() * sizeof(int));
+    std::memcpy(k.sig.data(), pls.data(), k.sig.size());
+    return k;
+}
+
 aig_ptr InterpRepair::compute_interpolant(
         uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
@@ -247,6 +264,32 @@ aig_ptr InterpRepair::compute_interpolant(
     (void)y_rep;
     calls++;
     total_conflict_lits += conflict.size();
+
+    // Conflict-signature cache lookup. Identical conflicts produce
+    // identical interpolants under McMillan with our partition, so we
+    // can skip the cadical setup + proof-walk entirely.
+    if (cache_capacity > 0 && !conflict.empty()) {
+        const CacheKey key = make_signature(to_repair_lit, conflict);
+        auto it = sig_cache.find(key);
+        if (it != sig_cache.end()) {
+            cache_hits++;
+            VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
+                cout << "c o [interp-repair] cache hit for conflict-sig (size "
+                     << conflict.size() << ")" << endl;
+            });
+            // Still apply oversize cap, so a tuning change in
+            // --interprepairmaxnodes takes effect on cached entries too.
+            if (max_aig_nodes > 0) {
+                size_t nodes = AIG::count_aig_nodes_fast(it->second);
+                if (nodes > max_aig_nodes) {
+                    calls_failed_oversize++;
+                    return nullptr;
+                }
+            }
+            calls_succeeded++;
+            return it->second;
+        }
+    }
 
     // Empty conflict means the candidate is forced to ctx[y_rep] regardless
     // of input — perform_repair already special-cases that into a
@@ -476,6 +519,18 @@ aig_ptr InterpRepair::compute_interpolant(
     if (interp_nodes > max_interp_nodes_seen) max_interp_nodes_seen = interp_nodes;
     if (interp_nodes < conflict.size()) interp_smaller_than_conflict++;
     else if (interp_nodes > conflict.size()) interp_larger_than_conflict++;
+
+    // Store in conflict-signature cache for future calls.
+    if (cache_capacity > 0 && !conflict.empty()) {
+        const CacheKey key = make_signature(to_repair_lit, conflict);
+        if (sig_cache.size() >= cache_capacity && !sig_cache_order.empty()) {
+            // Evict oldest.
+            sig_cache.erase(sig_cache_order.front());
+            sig_cache_order.erase(sig_cache_order.begin());
+        }
+        sig_cache[key] = interp;
+        sig_cache_order.push_back(key);
+    }
 
     calls_succeeded++;
     return interp;

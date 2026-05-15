@@ -1073,6 +1073,7 @@ void Manthan::print_detailed_stats() const {
         }
         verb_print(1, COLCYN "[manthan-stats]   interp calls (incl. fallbacks): " << interp_repair->calls
             << "  ok: " << interp_repair->calls_succeeded
+            << "  cache_hit: " << interp_repair->cache_hits
             << "  oversize: " << interp_repair->calls_failed_oversize
             << "  budget_exh: " << interp_repair->calls_budget_exhausted
             << "  trivial: " << interp_repair->calls_failed_empty_or_no_input
@@ -1242,6 +1243,7 @@ SimplifiedCNF Manthan::do_manthan() {
     fh = std::make_unique<FHolder<MetaSolver2>>(&cex_solver);
     if (mconf.interp_repair > 0) {
         interp_repair = std::make_unique<InterpRepair>(conf, cnf, input, aig_mng);
+        interp_repair->set_cache_capacity(mconf.interp_repair_cache_capacity);
         // Per-var adaptive gating bookkeeping. Sized to nVars so we can
         // index by raw cnf var; only the to_define entries actually get
         // touched.

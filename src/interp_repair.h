@@ -149,8 +149,13 @@ public:
         const std::vector<CMSat::Lit>& conflict,
         const ArjunNS::aig_ptr& interp) const;
 
+    // Tunable: simple FIFO cache of (conflict signature → interpolant
+    // AIG). Set via set_cache_capacity(); 0 disables (default).
+    void set_cache_capacity(size_t n) { cache_capacity = n; }
+
     // Statistics (read-only)
     uint64_t calls = 0;
+    uint64_t cache_hits = 0;
     uint64_t calls_succeeded = 0;
     uint64_t calls_failed_oversize = 0;
     uint64_t calls_failed_other = 0;
@@ -202,6 +207,22 @@ private:
     mutable std::vector<int> cnf_serialized;
     mutable bool cnf_serialized_built = false;
     void build_serialized_cnf() const;
+
+    // Conflict-signature → interpolant cache. Consecutive find_conflict
+    // calls often produce identical conflicts (same y_rep, same
+    // assumptions reach UNSAT again). Caching avoids the cadical setup
+    // + proof-walk cost on repeats. FIFO; bounded by cache_capacity.
+    // Signature = sorted vector<Lit> of the conflict (including
+    // to_repair_lit appended), encoded as a single string for std::map.
+    struct CacheKey {
+        std::string sig;
+        bool operator<(const CacheKey& o) const { return sig < o.sig; }
+    };
+    size_t cache_capacity = 0;
+    std::map<CacheKey, ArjunNS::aig_ptr> sig_cache;
+    std::vector<CacheKey> sig_cache_order; // FIFO eviction queue
+    static CacheKey make_signature(CMSat::Lit to_repair_lit,
+            const std::vector<CMSat::Lit>& conflict);
 };
 
 } // namespace ArjunInt
