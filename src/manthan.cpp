@@ -1145,6 +1145,24 @@ void Manthan::print_detailed_stats() const {
             };
             print_hist("conflict-sz hist:   ", interp_repair->conflict_size_hist);
             print_hist("interp-nodes hist:  ", interp_repair->interp_size_hist);
+            // Top vars driven by interp. Useful for narrowing
+            // --interprepairminvar / adaptive gate tuning ("are the
+            // wins concentrated in a few vars or spread?").
+            std::vector<uint32_t> by_interp(cnf.nVars());
+            for (uint32_t i = 0; i < cnf.nVars(); i++) by_interp[i] = i;
+            std::sort(by_interp.begin(), by_interp.end(), [&](uint32_t a, uint32_t b) {
+                return interp_repairs_per_var[a] > interp_repairs_per_var[b];
+            });
+            verb_print(1, COLCYN "[manthan-stats]   top vars driven by interp:");
+            for (size_t i = 0; i < std::min<size_t>(10, by_interp.size()); i++) {
+                const uint32_t v = by_interp[i];
+                if (interp_repairs_per_var[v] == 0) break;
+                const double avg_lits = safe_div(interp_conflict_lits_per_var[v],
+                                                 interp_repairs_per_var[v]);
+                verb_print(1, COLCYN "[manthan-stats]     var " << setw(5) << v+1
+                    << "  interp_rep: " << setw(5) << interp_repairs_per_var[v]
+                    << "  avg conflsz: " << fixed << setprecision(1) << avg_lits);
+            }
         }
     }
 
@@ -1279,6 +1297,8 @@ SimplifiedCNF Manthan::do_manthan() {
     if (mconf.interp_repair > 0) {
         interp_repair = std::make_unique<InterpRepair>(conf, cnf, input, aig_mng);
         interp_repair->set_cache_capacity(mconf.interp_repair_cache_capacity);
+        interp_repairs_per_var.assign(cnf.nVars(), 0);
+        interp_conflict_lits_per_var.assign(cnf.nVars(), 0);
         // Per-var adaptive gating bookkeeping. Sized to nVars so we can
         // index by raw cnf var; only the to_define entries actually get
         // touched.
@@ -1556,7 +1576,13 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
         }
 
         t0 = cpuTime();
-        if (interp_branch != nullptr) interp_repairs_used++;
+        if (interp_branch != nullptr) {
+            interp_repairs_used++;
+            if (y_rep < interp_repairs_per_var.size()) {
+                interp_repairs_per_var[y_rep]++;
+                interp_conflict_lits_per_var[y_rep] += conflict.size();
+            }
+        }
         perform_repair(y_rep, ctx, conflict, interp_branch);
         time_perform_repair += cpuTime() - t0;
 

@@ -317,6 +317,12 @@ class Manthan {
         // Stat: count of repairs where the unconditional interpolant
         // succeeded (and we were able to skip the y_other AND in b1).
         uint64_t interp_unconditional_succeeded = 0;
+        // Per-variable counts of (a) how many of that var's repairs
+        // came from interp, and (b) total interp-conflict size summed
+        // for that var. Both grow proportionally with how heavily a
+        // var leans on interp; ranked top-N in the detailed stats.
+        std::vector<uint32_t> interp_repairs_per_var;
+        std::vector<uint64_t> interp_conflict_lits_per_var;
         // Per-call counter so we can trigger interpolation only after a
         // variable has been repaired more than min_var_repairs times.
         // (Tracked anyway via repaired_vars_count, but kept here so the
