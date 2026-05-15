@@ -255,7 +255,9 @@ void add_arjun_options() {
     myopt("--interprepairverify", mconf.interp_repair_verify, fc_int,
           "0=no verify, 1=cheap CEX-excluded check, 2=full miter (slow).");
     myopt("--interprepairrewrite", mconf.interp_repair_rewrite, fc_int,
-          "0=AIG simplify_aig only (default, fast), 1=full AIGRewriter::rewrite_aig + simplify (slower, smaller).");
+          "0=AIG simplify_aig only (default, fast), 1=full AIGRewriter::rewrite_aig + simplify (slower, smaller). Applies to the raw interpolant.");
+    myopt("--interprepairb1rewrite", mconf.interp_repair_b1_rewrite, fc_int,
+          "Independent: AIG rewrite of the combined branch b1=NOT(I) AND y_other_matches before Tseitin-encoding. simplify_aig is always on; this controls the heavier rewrite_aig pass. 0=off, 1=on.");
 
 
     // Simplification options for minim

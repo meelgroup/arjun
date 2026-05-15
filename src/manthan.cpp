@@ -1087,6 +1087,22 @@ void Manthan::print_detailed_stats() const {
                 << "  setup: " << setprecision(2) << interp_repair->total_setup_time << "s"
                 << "  solve: " << interp_repair->total_solve_time << "s"
                 << "  simp: " << interp_repair->total_simplify_time << "s");
+            // b1-simplification stats (perform_repair side): how much the
+            // AIG simplification of the *combined* branch (NOT(I) AND
+            // y_other_formulas) shrank it before we Tseitin-encoded it
+            // into f.clauses. Big numbers here say "the rewriter is
+            // earning its keep, consider --interprepairrewrite=1".
+            if (interp_repair->total_combined_pre_simp > 0) {
+                const double combined_pct = 100.0 *
+                    (1.0 - safe_div(interp_repair->total_combined_post_simp,
+                                    interp_repair->total_combined_pre_simp));
+                verb_print(1, COLCYN "[manthan-stats]   b1 simp:            "
+                    << "pre=" << interp_repair->total_combined_pre_simp
+                    << " post=" << interp_repair->total_combined_post_simp
+                    << "  (" << fixed << setprecision(1) << combined_pct << "% reduction)"
+                    << "  T: " << setprecision(2) << interp_repair->total_combined_simp_time << "s"
+                    << "  b1_rewrite=" << mconf.interp_repair_b1_rewrite);
+            }
         }
     }
 
@@ -1979,20 +1995,46 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         // interpolant already covers inputs).
         //
         // Build:
-        //   b1 = AND( ¬I(X) [in y_hat space], AND_{y_other in conflict}( y_other_formula matches ctx ) )
-        aig_ptr interp_yhat = AIG::translate_leaves(
-            interp_branch,
-            [&](uint32_t v) { return map_y_to_y_hat(Lit(v, false)); });
-        aig_ptr b1 = AIG::new_not(interp_yhat);
+        //   b1 = AND( ¬I(X), AND_{y_other in conflict}( y_other_formula matches ctx ) )
+        //
+        // interp_branch has input-var leaves only. y_other formula AIGs
+        // have raw cnf-space leaves (input + to_define). So b1 ends up
+        // with mixed leaves (input + raw to_define), matching the legacy
+        // perform_repair invariant for var_to_formula[y].aig.
+        aig_ptr b1 = AIG::new_not(interp_branch);
         for (const auto& l : conflict) {
             if (is_input[l.var()] || is_backward_defined[l.var()]) continue;
-            // y_other: AND in the formula's match. lit_to_aig(~l) returns
-            // the formula AIG (or its negation) representing "y_other took
-            // the conflict's value".
+            // y_other: AND in the formula's match.
             assert(var_to_formula.count(l.var()));
             auto f2 = var_to_formula.at(l.var());
             aig_ptr ymatch = (~l).sign() ? AIG::new_not(f2.aig) : f2.aig;
             b1 = AIG::new_and(b1, ymatch);
+        }
+
+        // McMillan-style interpolants tend to be noisy AIGs: deep ORs of
+        // ANDs with many cross-redundancies that constant-prop+CSE alone
+        // doesn't fully crush. Worse, after the AND with y_other formula
+        // AIGs (themselves often 10k+ nodes for hot vars), the combined
+        // b1 has even more opportunities for absorption / distrib /
+        // complement / idempotent rewrites.
+        //
+        // Always run simplify_aig on b1 (it's cheap and structural).
+        // If --interprepairrewrite is set, also run the full
+        // AIGRewriter (absorption, distrib, complement, idempotent,
+        // xor_simp) — more expensive but typically halves the AIG size
+        // on benchmarks with large conflicts (sdlx-fixpoint-*).
+        const double t_simp_b1 = cpuTime();
+        const size_t pre_simp_sz = AIG::count_aig_nodes_fast(b1);
+        b1 = AIG::simplify_aig(b1);
+        if (mconf.interp_repair_b1_rewrite != 0) {
+            b1 = AIG::rewrite_aig(b1);
+            b1 = AIG::simplify_aig(b1);
+        }
+        const size_t post_simp_sz = AIG::count_aig_nodes_fast(b1);
+        if (interp_repair) {
+            interp_repair->total_combined_pre_simp += pre_simp_sz;
+            interp_repair->total_combined_post_simp += post_simp_sz;
+            interp_repair->total_combined_simp_time += cpuTime() - t_simp_b1;
         }
         f.aig = b1;
 
@@ -2013,12 +2055,11 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         enc.set_true_lit(fh->get_true_lit());
 
         // var_to_formula[y].aig stores the RAW AIG (with to_define cnf
-        // vars as leaves); CNF clauses use the y_hat-translated form.
-        // Since we're encoding b1 into CNF directly via AIGToCNF, we
-        // must translate b1's leaves to y_hat space first — otherwise
-        // raw to_define vars leak into f.clauses and check_functions
-        // asserts. (Legacy perform_repair sidesteps this by building
-        // f.clauses manually with lit_to_lit, never encoding b1.)
+        // vars as leaves) — that's the codebase invariant the rest of
+        // perform_repair / lit_to_aig relies on. Translate to y_hat
+        // space here only for the CNF encoding pass below.
+        // (Legacy perform_repair sidesteps this by building f.clauses
+        // manually with lit_to_lit, never encoding b1.)
         aig_ptr b1_yhat = AIG::translate_leaves(
             b1,
             [&](uint32_t v) { return map_y_to_y_hat(Lit(v, false)); });

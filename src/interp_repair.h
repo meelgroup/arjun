@@ -168,6 +168,14 @@ public:
     double   total_setup_time = 0.0;
     double   total_simplify_time = 0.0;
 
+    // Combined-AIG simplification stats (perform_repair side, not
+    // compute_interpolant side). These track the pre/post AIG node
+    // count when we simplify the b1 = NOT(I) AND y_others_match AIG
+    // before encoding it to CNF for cex_solver.
+    uint64_t total_combined_pre_simp = 0;
+    uint64_t total_combined_post_simp = 0;
+    double   total_combined_simp_time = 0.0;
+
     void print_stats(const std::string& prefix = "[interp-repair]") const;
 
 private:

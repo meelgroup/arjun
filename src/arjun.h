@@ -1734,7 +1734,19 @@ public:
         int interp_repair_verify = 1;
         // 0=simplify_aig only (default; fast structural+CSE),
         // 1=full AIGRewriter::rewrite + simplify (slower, smaller).
+        // Applies to the raw interpolant AIG returned by
+        // InterpRepair::compute_interpolant.
         int interp_repair_rewrite = 0;
+        // Independent knob: simplification of the *combined* b1 AIG
+        // (NOT(I) AND y_other_formula_matches) inside perform_repair,
+        // before it's Tseitin-encoded into f.clauses. Cheap simplify_aig
+        // is always on; this controls whether the heavier
+        // AIGRewriter::rewrite_aig pass also runs. Often pays off
+        // independently of --interprepairrewrite because the AND with
+        // huge y_other formula AIGs introduces cross-redundancies
+        // (absorption, complement) that the per-AIG rewriter doesn't see.
+        // 0=simplify only (default), 1=+rewrite_aig.
+        int interp_repair_b1_rewrite = 0;
     };
 
     struct IndepInfo {
