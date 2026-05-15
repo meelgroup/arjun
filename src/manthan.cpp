@@ -1242,7 +1242,10 @@ SimplifiedCNF Manthan::do_manthan() {
 
     while(true) {
         if (mconf.stats_every > 0 && num_loops_repair % mconf.stats_every == mconf.stats_every - 1) print_stats();
-        if (mconf.detailed_stats_every > 0 && num_loops_repair % mconf.detailed_stats_every == mconf.detailed_stats_every - 1) print_detailed_stats();
+        if (mconf.detailed_stats_every > 0 && num_loops_repair % mconf.detailed_stats_every == mconf.detailed_stats_every - 1) {
+            print_detailed_stats();
+            if (interp_repair) interp_repair->print_stats(COLCYN "[manthan-stats] [interp]");
+        }
         assert(at_least_one_repaired);
         at_least_one_repaired = false;
         num_loops_repair++;
@@ -1736,6 +1739,25 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
         if (do_interp) {
             interp_branch = interp_repair->compute_interpolant(
                 y_rep, to_repair, conflict, mconf.interp_repair_max_aig_nodes);
+
+            // Optional always-on verification (cluster runs without SLOW_DEBUG).
+            // verify=0 → skip; 1 → cheap CEX-excluded check; 2 → full miter.
+            if (interp_branch != nullptr) {
+                if (mconf.interp_repair_verify == 1) {
+                    if (!interp_repair->quick_check_interpolant_excludes_cex(
+                            interp_branch, conflict)) {
+                        verb_print(1, "[manthan-interp] verify=1 fails; falling back");
+                        interp_branch = nullptr;
+                    }
+                } else if (mconf.interp_repair_verify == 2) {
+                    if (!interp_repair->slow_check_a_implies_i(
+                            to_repair, conflict, interp_branch)) {
+                        verb_print(1, "[manthan-interp] verify=2 (full miter) fails; falling back");
+                        interp_branch = nullptr;
+                    }
+                }
+            }
+
             VERBOSE_DEBUG_DO(if (interp_branch == nullptr) {
                 std::cout << "c o [manthan] interp_repair returned null for y="
                     << y_rep+1 << " confl_sz=" << conflict.size() << std::endl;
