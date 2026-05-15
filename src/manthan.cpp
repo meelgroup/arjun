@@ -2188,6 +2188,7 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
     InterpClauseSink sink{cex_solver, &f.clauses, helpers};
     ArjunNS::AIGToCNF<InterpClauseSink> enc(sink);
     enc.set_true_lit(fh->get_true_lit());
+    if (mconf.interp_repair_group_cse != 0) enc.set_group_cse(true);
     f.out = enc.encode(b1_yhat, /*force_helper=*/true);
 
     // Dependency tracking. Inputs are skipped by set_depends_on's normal

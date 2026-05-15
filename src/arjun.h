@@ -1755,6 +1755,14 @@ public:
         // interpolant duplicates structure already present in a y_other
         // formula. 0=off (default), 1=on after rewrite/simplify.
         int interp_repair_b1_satsweep = 0;
+        // Pass --group-cse to AIGToCNF when encoding b1. Content-hashed
+        // CSE on k-ary AND groups + ITE triples; dedups Tseitin helpers
+        // for structurally identical sub-AIGs. Off by default in the
+        // base AIGToCNF because the maintenance cost can outweigh the
+        // CNF-size win on initial bve encodings, but interpolant ANDs
+        // tend to share sub-AIGs heavily (same y_other formula appears
+        // across many repairs). 0=off (default), 1=on for interp encodings.
+        int interp_repair_group_cse = 0;
         // Per-call cadical conflict budget for the interpolation solve.
         // 0 = no limit (default). Useful upper bound: 50_000 keeps each
         // interp call < 1 second on most benchmarks; on pathological
