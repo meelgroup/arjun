@@ -31,8 +31,6 @@
 #include <cstdint>
 #include <iomanip>
 #include <memory>
-#include <treedecomp/IFlowCutter.hpp>
-#include <treedecomp/graph.hpp>
 #include <vector>
 #include <algorithm>
 #include <ranges>
@@ -65,13 +63,10 @@ using std::min;
 using std::sort;
 using std::vector;
 using std::set;
-using std::unordered_set;
 using std::map;
-using std::unique_ptr;
 using std::string;
 using std::setprecision;
 using std::fixed;
-using std::make_unique;
 using std::cout;
 using std::endl;
 using std::setw;
@@ -313,7 +308,6 @@ void Manthan::print_y_order_occur() const {
         const uint32_t neg = occur_lit[Lit(y, true).toInt()];
         verb_print(2, "[manthan] y-order var " << setw(4) << y+1
             << " BW: " << backward_defined.count(y)
-            << "   td_score " << setw(6) << fixed << setprecision(2) << td_score.at(y)
             << "   pos occur " << setw(6) << pos
             << "   --  neg occur " << setw(6) << neg);
     }
@@ -1014,23 +1008,6 @@ void Manthan::bve_and_substitute() {
         << " funs/s: " << setw(6) << fixed << setprecision(2) << safe_div(num_done,(cpuTime()-start_time))
         << " T: " << setw(5) << (cpuTime()-start_time)
         << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
-}
-
-std::unique_ptr<TWD::Graph> Manthan::build_primal_graph() {
-    auto primal = make_unique<TWD::Graph>(cnf.nVars());
-    for(const auto& cl: cnf.get_clauses()) {
-      for(uint32_t i = 0; i < cl.size(); i++) {
-        for(uint32_t i2 = i+1; i2 < cl.size(); i2++) {
-            assert(cl[i].var() != cl[i2].var() &&
-                    "Tree decomposition cannot handle repeated variables in a clause");
-          primal->addEdge(cl[i].var(), cl[i2].var());
-        }
-      }
-    }
-
-    verb_print(1, "[manthan] Primal graph nodes: " << primal->numNodes()
-            << " edges: " << primal->numEdges());
-    return primal;
 }
 
 void Manthan::print_repair_stats([[maybe_unused]] const string& txt, const string& color, [[maybe_unused]] const string& extra) const {
@@ -1974,7 +1951,6 @@ void Manthan::learn_order() {
     verb_print(2, "[manthan] Fixing LEARN order...");
     vector<uint32_t> sorted(to_define_full.begin(), to_define_full.end());
     auto mysorter = [&](const uint32_t a, const uint32_t b) -> bool {
-        if (td_score[a] != td_score[b]) return td_score[a] < td_score[b];
         if (incidence[a] != incidence[b]) return incidence[a] > incidence[b];
         return a < b;
     };
@@ -2008,178 +1984,9 @@ void Manthan::learn_order() {
     assert(y_order.size() == to_define_full.size());
 }
 
-bool Manthan::cluster_order() {
-    assert(y_order.empty());
-    verb_print(2, "[manthan] Fixing CLUSTER order...");
-
-    auto primal = build_primal_graph();
-    if (primal->numEdges() == 0) {
-        verb_print(1, "[td] Primal graph has no edges, skipping TD");
-        return false;
-    }
-
-    if (mconf.do_td_contract) {
-      for(const auto& i: input) {
-        primal->contract(i, mconf.td_max_edges*100);
-        if (primal->numEdges() > mconf.td_max_edges*100 ) break;
-      }
-    }
-
-    if (primal->numEdges() > mconf.td_max_edges) {
-        verb_print(1, "[td] Too many edges, " << primal->numEdges() << " skipping TD");
-        return false;
-    }
-
-    map<uint32_t, uint32_t> old_to_new;
-    map<uint32_t, uint32_t> new_to_old;
-    std::unique_ptr<TWD::Graph> primal_alt = nullptr;
-    uint32_t nodes;
-    if (mconf.do_td_contract) {
-        primal_alt = make_unique<TWD::Graph>(to_define_full.size());
-        nodes = to_define_full.size();
-        uint32_t idx = 0;
-        for(const auto& v: to_define_full) {
-            old_to_new[v] = idx;
-            new_to_old[idx] = v;
-            idx++;
-        }
-        assert(idx == to_define_full.size());
-        for(uint32_t v = 0; v < cnf.nVars(); v++) {
-            const auto& adj = primal->get_adj_list()[v];
-            if (!to_define_full.count(v)) {
-                assert(adj.empty() && "Should have been contracted away");
-                continue;
-            }
-            for(const auto& n: adj) {
-                assert(to_define_full.count(n) && "Input vars should have been contracted away");
-                primal_alt->addEdge(old_to_new[v], old_to_new[n]);
-            }
-        }
-        primal.reset();
-        verb_print(1, "[manthan] Contracted primal graph nodes: " << primal_alt->numNodes()
-                << " edges: " << primal_alt->numEdges());
-        if (primal_alt->numEdges() == 0) {
-            verb_print(1, "[td] Contracted primal graph has no edges, skipping TD");
-            return false;
-        }
-    } else {
-        nodes = cnf.nVars();
-        uint32_t idx = 0;
-        for(uint32_t v = 0; v < cnf.nVars(); v++) {
-            old_to_new[v] = idx;
-            new_to_old[idx] = v;
-            idx++;
-        }
-        primal_alt = std::move(primal);
-    }
-
-    // run FlowCutter
-    verb_print(2, "[td-cmp] FlowCutter is running...");
-    TWD::IFlowCutter fc(primal_alt->numNodes(), primal_alt->numEdges(), conf.verb);
-    fc.importGraph(*primal_alt);
-
-    // Notice that this graph returned is VERY different
-    uint64_t td_steps = mconf.td_steps;
-    int td_lookahead_iters = mconf.td_lookahead_iters;
-    auto tdec = TWD::TreeDecomposition(fc.constructTD(td_steps, td_lookahead_iters));
-    tdec.centroid(conf.verb);
-    const auto td_width = tdec.width()-1;
-    verb_print(2, "[td] FlowCutter FINISHED, TD width: " << td_width);
-
-    const auto& bags = tdec.Bags();
-    if (td_width <= 0) {
-      verb_print(1, "[td] TD width is 0, ignoring TD");
-      return false;
-    }
-
-    verb_print(2, "[td] Calculated TD width: " << td_width);
-    const auto& adj = tdec.get_adj_list();
-    if (conf.verb >= 3) {
-      for(uint32_t i = 0; i < bags.size(); i++) {
-        const auto& b = bags[i];
-        cout << "c o [td] bag id: " << setw(3) << i << " contains: ";
-        for(const auto& bb: b) cout << setw(4) << bb << " ";
-        cout << endl;
-      }
-      for(uint32_t i = 0; i < adj.size(); i++) {
-        const auto& a = adj[i];
-        cout << "c o [td] bag " << setw(3) << i << " is adjacent to bags: ";
-        for(const auto& nn: a) cout << setw(3) << nn << " ";
-        cout << endl;
-      }
-    }
-    int max_dist = 0;
-    std::vector<int> dists = tdec.distanceFromCentroid();
-    for(uint32_t i = 0; i < (uint32_t)tdec.numNodes(); i++)
-        max_dist = std::max(max_dist, dists[i]);
-
-    if (max_dist == 0) {
-        verb_print(1, "All projected vars are the same distance, ignoring TD");
-        return false;
-    }
-    // When do_td_contract=1, primal_alt only contains to-define vars.
-    // When do_td_contract=0, primal_alt contains all cnf vars (including inputs).
-    if (mconf.do_td_contract) assert(to_define_full.size() == (uint32_t)primal_alt->numNodes());
-    compute_td_score_using_adj(nodes, bags, adj, new_to_old);
-    return true;
-}
-
-void Manthan::compute_td_score_using_adj(const uint32_t nodes,
-    const std::vector<std::vector<int>>& bags,
-    const std::vector<std::vector<int>>& adj,
-    const map<uint32_t, uint32_t>& new_to_old) {
-  SLOW_DEBUG_DO(
-    vector<int> check(nodes, 0);
-    for(const auto& b:  bags) for(const auto&v: b) {
-      assert(v < (int)nodes);
-      check[v]++;
-    }
-    for(uint32_t i = 0; i < nodes; i++) {
-      if (check[i] == 0) cout << "ERROR: vertex " << i << " is not in any bag!" << endl;
-    }
-    assert(std::all_of(check.begin(), check.end(), [](int i) { return i > 0; }));
-  );
-
-  sspp::TreeDecomposition dec(bags.size(), nodes);
-  for(uint32_t i = 0; i < bags.size();i++) dec.setBag(i, bags[i]);
-  for(uint32_t i = 0; i < adj.size(); i++)
-    for(const auto& nn: adj[i]) dec.addEdge(i, nn);
-
-  int centroid = -1;
-  auto ord = dec.getOrd(centroid);
-  verb_print(1, "[td] centroid bag id: " << centroid << " bag size: " << bags[centroid].size());
-  if (!mconf.td_visualize_dot_file.empty()) {
-    dec.visualizeTree(mconf.td_visualize_dot_file);
-    cout << "c o [td] Wrote tree decomposition to file: " << mconf.td_visualize_dot_file << endl;
-    cout << "c o [td] You can convert it to pdf using the command: dot -Tpdf " << mconf.td_visualize_dot_file << " -o td_tree.pdf" << endl;
-  }
-
-  assert(ord.size() == nodes);
-  int max_ord = 0;
-  int min_ord = std::numeric_limits<int>::max();
-  for (uint32_t i = 0; i < nodes; i++) {
-    max_ord = std::max(max_ord, ord[i]);
-    min_ord = std::min(min_ord, ord[i]);
-  }
-  max_ord -= min_ord;
-  assert(max_ord >= 1);
-
-  // Calc td score
-  for (uint32_t i = 0; i < nodes; i++) {
-    double val = max_ord - (ord[i]-min_ord);
-    val /= (double)max_ord;
-    assert(val > -0.01 && val < 1.01);
-    const uint32_t old_i = new_to_old.at(i);
-    assert(old_i < td_score.size());
-    td_score[old_i] = val;
-  }
-}
-
 // Will order 1st the variables that NOTHING depends on
 // Will order LAST the variables that depends on EVERYTHING
 void Manthan::pre_order_vars() {
-    assert(td_score.empty());
-    td_score.resize(cnf.nVars(), 0.0);
     assert(order_val.empty());
     assert(y_order.empty());
     const double my_time = cpuTime();
@@ -2187,9 +1994,6 @@ void Manthan::pre_order_vars() {
 
     switch(mconf.manthan_order) {
         case 0: learn_order(); break;
-        case 1: cluster_order();
-                learn_order();
-                break;
         case 2: bve_order(); break;
         default: release_assert(false && "Invalid manthan_order");
     }

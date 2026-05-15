@@ -22,7 +22,6 @@ cmake -DENABLE_TESTING=ON -DCMAKE_BUILD_TYPE=Release \
     -Dcadiback_DIR="${SOLVERS_DIR}/cadiback/build" \
     -Dcryptominisat5_DIR="${SOLVERS_DIR}/cryptominisat/build" \
     -Dsbva_DIR="${SOLVERS_DIR}/sbva/build" \
-    -Dtreedecomp_DIR="${SOLVERS_DIR}/treedecomp/build" \
     -DEvalMaxSAT_DIR="${SOLVERS_DIR}/EvalMaxSAT/build" \
     ..
 make -j$(nproc)

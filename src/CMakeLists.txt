@@ -84,7 +84,6 @@ target_link_libraries(arjun
     PkgConfig::MPFR
     cryptominisat5
     sbva
-    treedecomp
   PRIVATE
     cadical
 )
@@ -233,8 +232,7 @@ arjun_add_public_header(arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun.h)
 # Ensure headers from sub-builds are copied before we compile against them.
 foreach(_dep_copy_target
         CopyPublicHeaders_cryptominisat5
-        CopyPublicHeaders_sbva
-        CopyPublicHeaders_treedecomp)
+        CopyPublicHeaders_sbva)
     if(TARGET ${_dep_copy_target})
         foreach(_tgt arjun arjun-bin arjun-example test-synth)
             add_dependencies(${_tgt} ${_dep_copy_target})

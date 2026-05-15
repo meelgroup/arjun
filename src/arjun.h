@@ -1678,9 +1678,6 @@ public:
         int manthan_base = 0;
         int manthan_order = 0;
         int one_repair_per_loop = 0;
-        int do_td_contract = 1; // contract over the input variables
-        int td_max_edges = 70000;
-        std::string td_visualize_dot_file = "";
         int force_bw_equal = 1;
         int silent_var_update = 1;
         int inv_learnt = 0;
@@ -1699,8 +1696,6 @@ public:
         uint32_t minim_budget_threshold = 20; // conflict size above which budget is capped
         uint32_t minim_budget_max = 150;    // max minimization solver calls
         uint32_t minim_budget_mult = 4;     // budget = conflict.size * mult (up to max)
-        uint64_t td_steps = 100000;         // tree decomposition FlowCutter steps
-        uint32_t td_lookahead_iters = 300;  // tree decomposition FlowCutter lookahead
         // CCNR sampling constants
         uint64_t ccnr_mems_per_sample = 100000; // total CCNR mem budget per sample
         uint32_t ccnr_per_call_limit = 50000;   // per-call step limit for CCNR local_search

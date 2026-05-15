@@ -37,7 +37,6 @@
 #include <set>
 #include <unordered_map>
 #include "formula.h"
-#include "treedecomp/TreeDecomposition.hpp"
 
 namespace ArjunInt {
 
@@ -94,14 +93,12 @@ class Manthan {
         std::set<uint32_t> helpers; // used for ITE
         std::set<uint32_t> y_hats; // the potential y_hats (due to ITE chains, some are "old" and unused)
 
-        std::unique_ptr<TWD::Graph> build_primal_graph();
         void const_functions();
         void bve_and_substitute();
         ArjunNS::aig_ptr one_level_substitute(const CMSat::Lit l, const uint32_t v, std::map<uint32_t, ArjunNS::aig_ptr>& transformed);
 
         void create_vars_for_y_hats();
         std::vector<uint32_t> incidence;
-        std::vector<double> td_score;
 
         CMSat::Lit map_y_to_y_hat(const CMSat::Lit& l) const;
         void print_needs_repair_vars() const;
@@ -148,10 +145,6 @@ class Manthan {
         void pre_order_vars();
         void learn_order();
         void bve_order();
-        bool cluster_order();
-        void compute_td_score_using_adj(const uint32_t nodes,
-            const std::vector<std::vector<int>>& bags,
-            const std::vector<std::vector<int>>& adj, const std::map<uint32_t, uint32_t>& new_to_old);
         bool later_in_order(const uint32_t a, const uint32_t b) const {
             SLOW_DEBUG_DO({
                 assert(order_val.size() > a);

@@ -382,22 +382,6 @@ if(NOT TARGET sbva)
     endif()
 endif()
 
-# ---- treedecomp (cmake-based) ----
-set(treedecomp_DIR "" CACHE PATH "treedecomp install/build prefix (contains lib/cmake/treedecomp/). Auto-resolved if empty.")
-if(NOT TARGET treedecomp)
-    if(treedecomp_DIR)
-        find_package(treedecomp CONFIG REQUIRED HINTS "${treedecomp_DIR}")
-        message(STATUS "treedecomp: using pre-built at ${treedecomp_DIR}")
-    else()
-        FetchContent_Declare(treedecomp
-            GIT_REPOSITORY https://github.com/meelgroup/treedecomp.git
-            GIT_TAG        main
-            GIT_SHALLOW    TRUE)
-        FetchContent_MakeAvailable(treedecomp)
-        message(STATUS "treedecomp: fetched from GitHub")
-    endif()
-endif()
-
 if(EXTRA_SYNTH)
     add_compile_definitions(EXTRA_SYNTH)
     find_path(ARMADILLO_INCLUDE_DIRS armadillo REQUIRED)

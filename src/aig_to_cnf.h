@@ -267,8 +267,8 @@ private:
 template<class Solver>
 void AIGToCNF<Solver>::add_clause(const std::vector<CMSat::Lit>& cl) {
     // Tseitin emission for degenerate gates (e.g. AND(x, x)) can yield clauses
-    // with repeated literals. Downstream consumers (TWD primal-graph builder)
-    // require each variable to appear at most once per clause.
+    // with repeated literals; collapse duplicates and drop tautologies so each
+    // variable appears at most once per clause.
     std::vector<CMSat::Lit> tmp(cl);
     std::sort(tmp.begin(), tmp.end());
     tmp.erase(std::unique(tmp.begin(), tmp.end()), tmp.end());

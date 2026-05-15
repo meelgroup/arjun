@@ -200,7 +200,7 @@ void add_arjun_options() {
         "Params: max_repairs, samples, samples_ccnr, min_gain_split, "
         "max_depth, sampler_fixed_conflicts, and other ManthanConf fields.");
     // Order
-    myopt("--morder", mconf.manthan_order, fc_int,"Order vars: indicence (0), cluster-incidence (1), BVE (2)");
+    myopt("--morder", mconf.manthan_order, fc_int,"Order vars: incidence (0), BVE (2)");
     myopt("--maxsatorder", mconf.maxsat_order, fc_int,"Which order to use to try to fix vars? 0 = norm, 1 = rev");
     // solver config
     myopt("--ctxsolver", mconf.ctx_solver_type, fc_int,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
@@ -229,10 +229,6 @@ void add_arjun_options() {
     myopt("--minimbudgetmax", mconf.minim_budget_max, fc_int, "Max minimization solver calls");
     myopt("--minimbudgetmult", mconf.minim_budget_mult, fc_int, "Minim budget = conflict.size * mult (up to max)");
     myflag("--sat-sweep", do_sat_sweep, "Run FRAIG-lite SAT sweeping after AIG rewrite (merges proven-equivalent gates)");
-    myopt("--tdsteps", mconf.td_steps, fc_int, "Tree decomposition FlowCutter steps");
-    myopt("--tdlookahead", mconf.td_lookahead_iters, fc_int, "Tree decomposition FlowCutter lookahead iterations");
-    myopt("--tdcontract", mconf.do_td_contract, fc_int, "Contract input variables before tree decomposition");
-    myopt("--tdmaxedges", mconf.td_max_edges, fc_int, "Skip TD when primal graph exceeds this many edges");
     myopt("--ccnrmemspersample", mconf.ccnr_mems_per_sample, fc_int, "CCNR total memory budget per sample");
     myopt("--ccnrpercalllimit", mconf.ccnr_per_call_limit, fc_int, "CCNR per-call step limit for local_search");
     myopt("--czhighratio", mconf.cz_high_ratio, fc_int, "cost_zero > tot_repaired * this triggers tightest cz_threshold");

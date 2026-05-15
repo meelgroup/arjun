@@ -22,7 +22,6 @@ cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DSTATIC_BINARY=ON \
     -Dcryptominisat5_DIR="${SAT_DIR}/cryptominisat/build" \
     -Dsbva_DIR="${SAT_DIR}/sbva/build" \
     -DEvalMaxSAT_DIR="${SAT_DIR}/EvalMaxSAT/build" \
-    -Dtreedecomp_DIR="${SAT_DIR}/treedecomp/build" \
     -Darjun_DIR="${SAT_DIR}/arjun/build" \
     -Dapproxmc_DIR="${SAT_DIR}/approxmc/build" \
     -Dcadical_DIR="${SAT_DIR}/cadical/build" \
