@@ -1759,6 +1759,19 @@ public:
         // common enough on death-spiral benchmarks that even a small
         // cache hits a lot.
         uint32_t interp_repair_cache_capacity = 0;
+        // Try an *unconditional* interpolant first: omit the y_other
+        // unit clauses from A, so the resulting I(X) characterizes the
+        // must-flip region universally over y_others (rather than
+        // conditional on this CEX's y_other values). When this solve
+        // is UNSAT, perform_repair can skip the y_other AND-conjuncts
+        // (smaller b1, no cross-conjunct dependency). It's often SAT
+        // (some Y can satisfy A regardless of inputs), in which case
+        // we fall back to the conditional path.
+        //
+        // 0=off (default), 1=on. Implementation runs two solves on
+        // failure paths; combine with --interprepairmaxconfl to cap
+        // worst case.
+        int interp_repair_unconditional = 0;
         // Adaptive per-variable gating. Track each var's recent
         // interp_nodes / conflict_lits ratio: when it consistently
         // exceeds adaptive_ratio_skip the var is "blacklisted" from

@@ -262,6 +262,8 @@ void add_arjun_options() {
           "Per-call cadical conflict budget for the interpolation solve. 0=no limit (default). Try 50000 to cap interp call cost; budget-exhausted calls fall back to the conflict-clause path.");
     myopt("--interprepaircache", mconf.interp_repair_cache_capacity, fc_int,
           "FIFO cache for (conflict-signature → interpolant). 0=off (default). Useful range: 64-512.");
+    myopt("--interprepairuncond", mconf.interp_repair_unconditional, fc_int,
+          "Try unconditional interpolant (no y_other pinning) first; falls back to conditional on SAT. 0=off, 1=on.");
     myopt("--interprepairadaptive", mconf.interp_repair_adaptive_gate, fc_int,
           "Adaptive per-var gating: blacklist a var from interp when its running mean interp/conflict ratio exceeds --interprepairratioskip. 0=off, 1=on.");
     myopt("--interprepairratioskip", mconf.interp_repair_adaptive_ratio_skip, fc_double,

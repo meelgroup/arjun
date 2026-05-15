@@ -259,7 +259,7 @@ InterpRepair::CacheKey InterpRepair::make_signature(Lit to_repair_lit,
 aig_ptr InterpRepair::compute_interpolant(
         uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
-        bool full_rewrite, uint64_t conflict_budget)
+        bool full_rewrite, uint64_t conflict_budget, bool unconditional)
 {
     (void)y_rep;
     calls++;
@@ -366,10 +366,15 @@ aig_ptr InterpRepair::compute_interpolant(
     // assumptions, i.e. ~l for each conflict literal l.
     //
     // 2) Non-input conflict units (A side) plus ~to_repair (A side).
+    // In unconditional mode we *skip* the y_other units: the
+    // interpolant then characterises must-flip universally over
+    // y_others (rather than conditional on this CEX's y_other values).
     uint32_t b_marked = 0;
-    for (const auto& l : conflict) {
-        if (l.var() < is_input.size() && is_input[l.var()]) continue;
-        add_unit_a(~l);
+    if (!unconditional) {
+        for (const auto& l : conflict) {
+            if (l.var() < is_input.size() && is_input[l.var()]) continue;
+            add_unit_a(~l);
+        }
     }
     add_unit_a(~to_repair_lit);
 

@@ -1071,6 +1071,12 @@ void Manthan::print_detailed_stats() const {
                 << "  (ratio>" << fixed << setprecision(1) << mconf.interp_repair_adaptive_ratio_skip
                 << " → blacklist for " << mconf.interp_repair_adaptive_skip_window << " repairs)");
         }
+        if (mconf.interp_repair_unconditional != 0) {
+            verb_print(1, COLCYN "[manthan-stats]   uncond succeeded:     " << interp_unconditional_succeeded
+                << " / " << interp_repair->calls
+                << "  (" << fixed << setprecision(1)
+                << safe_div(interp_unconditional_succeeded*100.0, interp_repair->calls) << "%)");
+        }
         verb_print(1, COLCYN "[manthan-stats]   interp calls (incl. fallbacks): " << interp_repair->calls
             << "  ok: " << interp_repair->calls_succeeded
             << "  cache_hit: " << interp_repair->cache_hits
@@ -1824,11 +1830,36 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
             }
         }
         if (do_interp) {
-            interp_branch = interp_repair->compute_interpolant(
-                y_rep, to_repair, conflict,
-                mconf.interp_repair_max_aig_nodes,
-                mconf.interp_repair_rewrite != 0,
-                mconf.interp_repair_max_conflicts);
+            interp_branch_unconditional = false;
+            // Try unconditional first when opted in. UNSAT here means
+            // y_rep must be ctx[y_rep] regardless of y_others — a
+            // strictly stronger statement than the conditional
+            // interpolant. Often SAT (some Y values make the formula
+            // satisfy with y_rep wrong), in which case we fall back to
+            // the conditional interpolant below.
+            if (mconf.interp_repair_unconditional != 0) {
+                interp_branch = interp_repair->compute_interpolant(
+                    y_rep, to_repair, conflict,
+                    mconf.interp_repair_max_aig_nodes,
+                    mconf.interp_repair_rewrite != 0,
+                    mconf.interp_repair_max_conflicts,
+                    /*unconditional=*/true);
+                if (interp_branch != nullptr) {
+                    interp_branch_unconditional = true;
+                    interp_unconditional_succeeded++;
+                    VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 2) {
+                        std::cout << "c o [manthan-interp] unconditional interp succeeded for y="
+                                  << y_rep+1 << std::endl;
+                    });
+                }
+            }
+            if (interp_branch == nullptr) {
+                interp_branch = interp_repair->compute_interpolant(
+                    y_rep, to_repair, conflict,
+                    mconf.interp_repair_max_aig_nodes,
+                    mconf.interp_repair_rewrite != 0,
+                    mconf.interp_repair_max_conflicts);
+            }
             // Adaptive bookkeeping: record interp-vs-conflict size and,
             // if the running mean ratio exceeds the configured threshold
             // after at least a few samples, blacklist this var for the
@@ -2028,7 +2059,7 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 //   (3) perform_repair was getting unwieldy.
 FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
         const uint32_t y_rep, const vector<Lit>& conflict,
-        aig_ptr interp_branch) {
+        aig_ptr interp_branch, bool skip_y_other_and) {
     FHolder<MetaSolver2>::Formula f;
 
     // Build the "must-flip region" AIG in raw cnf-var space:
@@ -2044,12 +2075,14 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
     // (var_to_formula[y].aig has leaves = input + raw to_define), so
     // ANDing them in keeps b1 in the same raw form.
     aig_ptr b1 = AIG::new_not(interp_branch);
-    for (const auto& l : conflict) {
-        if (is_input[l.var()] || is_backward_defined[l.var()]) continue;
-        assert(var_to_formula.count(l.var()));
-        auto f2 = var_to_formula.at(l.var());
-        aig_ptr ymatch = (~l).sign() ? AIG::new_not(f2.aig) : f2.aig;
-        b1 = AIG::new_and(b1, ymatch);
+    if (!skip_y_other_and) {
+        for (const auto& l : conflict) {
+            if (is_input[l.var()] || is_backward_defined[l.var()]) continue;
+            assert(var_to_formula.count(l.var()));
+            auto f2 = var_to_formula.at(l.var());
+            aig_ptr ymatch = (~l).sign() ? AIG::new_not(f2.aig) : f2.aig;
+            b1 = AIG::new_and(b1, ymatch);
+        }
     }
 
     // AIG-level simplification of b1. The cheap simplify_aig (const-prop +
@@ -2175,9 +2208,11 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
     };
 
     if (interp_branch != nullptr) {
-        f = build_interp_branch_formula(y_rep, conflict, interp_branch);
+        f = build_interp_branch_formula(y_rep, conflict, interp_branch,
+                interp_branch_unconditional);
         VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
             cout << "c o [manthan-interp] y=" << y_rep+1
+                 << (interp_branch_unconditional ? " [UNCOND]" : "")
                  << " interp f.clauses=" << f.clauses.size()
                  << " f.out=" << f.out
                  << endl;

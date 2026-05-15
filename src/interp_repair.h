@@ -126,12 +126,24 @@ public:
     //
     // Returns nullptr on failure (interpolation problem reported SAT,
     // returned an oversized AIG, or hit any internal error).
+    // If `unconditional` is true, the y_other (non-input) literals
+    // from `conflict` are NOT pinned as A-side units. The resulting
+    // interpolant — if the solve is UNSAT — characterises the must-flip
+    // region universally over y_others. Useful for perform_repair to
+    // skip the y_other AND-conjuncts. The unconditional solve is more
+    // often SAT than the conditional one, so callers should fall back
+    // to conditional on a nullptr return.
+    //
+    // Sets *unconditional_succeeded to true iff the returned AIG is the
+    // unconditional interpolant (so perform_repair knows whether to
+    // omit the y_other AND).
     ArjunNS::aig_ptr compute_interpolant(
         uint32_t y_rep, CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         uint32_t max_aig_nodes = 0,
         bool full_rewrite = false,
-        uint64_t conflict_budget = 0);
+        uint64_t conflict_budget = 0,
+        bool unconditional = false);
 
     // Light-weight check: that the interpolant evaluates to FALSE on the
     // CEX input pattern (i.e. on this CEX's inputs, the interpolant

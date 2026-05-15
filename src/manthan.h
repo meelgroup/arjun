@@ -152,9 +152,21 @@ class Manthan {
         // input + raw to_define), f.clauses (Tseitin-encoded in y_hat
         // space), and f.out (the helper literal that equals the must-flip
         // region NOT(I) AND y_other_match).
+        //
+        // skip_y_other_and: if true, build b1 as just NOT(I) without the
+        // y_other AND-conjuncts. Set when the interpolant is the
+        // *unconditional* form (covers must-flip universally over
+        // y_others), so the AND-conjuncts would be redundant.
         FHolder<MetaSolver2>::Formula build_interp_branch_formula(
                 const uint32_t y_rep, const std::vector<CMSat::Lit>& conflict,
-                ArjunNS::aig_ptr interp_branch);
+                ArjunNS::aig_ptr interp_branch,
+                bool skip_y_other_and = false);
+
+        // Set by find_conflict alongside interp_branch when the
+        // interpolant is the unconditional (no y_other pinning) form.
+        // perform_repair reads it to decide whether to AND the y_other
+        // formula matches into b1.
+        bool interp_branch_unconditional = false;
         void add_not_f_x_yhat();
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with(std::set<uint32_t>& vars);
@@ -302,6 +314,9 @@ class Manthan {
         std::vector<uint64_t> interp_var_lit_sum;
         // Stat: how many times the adaptive gate skipped an interp call.
         uint64_t interp_adaptive_skips = 0;
+        // Stat: count of repairs where the unconditional interpolant
+        // succeeded (and we were able to skip the y_other AND in b1).
+        uint64_t interp_unconditional_succeeded = 0;
         // Per-call counter so we can trigger interpolation only after a
         // variable has been repaired more than min_var_repairs times.
         // (Tracked anyway via repaired_vars_count, but kept here so the
