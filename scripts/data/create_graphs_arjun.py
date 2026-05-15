@@ -5,6 +5,7 @@ import base64
 import itertools
 import os
 import sqlite3
+import sys
 import re
 
 BLUE  = "\033[94m"
@@ -154,6 +155,35 @@ def build_csv_data(versions, matched_dirs, only_calls, not_calls, not_versions,
             table_todo.append([dir, ver])
 
     return fname2_s, table_todo
+
+
+def compute_fname_sets(table_todo, fname_like):
+    """Return (union, intersection) of the fname sets across every (dir, ver)
+    in table_todo. A file counts as 'present in a dir' when it has a row for
+    that dir+ver with a non-NULL fname (respecting the active --fname filter)."""
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    per_dir = []
+    for dir, ver in table_todo:
+        cur.execute(
+            f"SELECT DISTINCT fname FROM {TABLE}"
+            f" WHERE dirname=? AND {VER_EXPR}=? AND fname IS NOT NULL{fname_like}",
+            (dir, ver))
+        per_dir.append({r[0] for r in cur.fetchall()})
+    con.close()
+    if not per_dir:
+        return set(), set()
+    union = set().union(*per_dir)
+    inter = set(per_dir[0])
+    for s in per_dir[1:]:
+        inter &= s
+    return union, inter
+
+
+def intersection_clause(inter):
+    """Build an ' AND fname IN (...)' SQL fragment from a set of fnames."""
+    in_list = ",".join("'" + f.replace("'", "''") + "'" for f in sorted(inter))
+    return f" AND fname IN ({in_list}) "
 
 
 # ---- Table helpers ----
@@ -599,6 +629,10 @@ def main():
                         help="Print full summary table (default: compact)")
     parser.add_argument("--cdf", action="store_true",
                         help="Print only the CDF/summary table; skip everything else")
+    parser.add_argument("--intersection", action="store_true",
+                        help="With --cdf: count only over the files present in "
+                             "ALL filtered directories. Without it, --cdf aborts "
+                             "when the directories differ in their file sets.")
     parser.add_argument("--fname", nargs="+", metavar="PATTERN", default=[],
                         help="Filter by fname pattern(s), e.g. --fname '%%amba%%'")
     args = parser.parse_args()
@@ -630,7 +664,38 @@ def main():
         return
 
     if args.cdf:
-        print_summary_tables(table_todo, fname_like, full=args.full)
+        union, inter = compute_fname_sets(table_todo, fname_like)
+        n_dirs = len(table_todo)
+        if args.intersection:
+            if not inter:
+                print(f"{RED}ERROR: no file is present in all {n_dirs} "
+                      f"filtered directories; intersection is empty.{RESET}")
+                sys.exit(1)
+            print(f"{GREEN}--intersection: counting over {len(inter)} file(s) "
+                  f"common to all {n_dirs} dir(s) (union has {len(union)}).{RESET}")
+            eff_fname_like = fname_like + intersection_clause(inter)
+        else:
+            if inter != union:
+                missing = len(union) - len(inter)
+                print(f"{RED}")
+                print("=" * 72)
+                print("  ERROR: the filtered directories do NOT contain the same")
+                print("         set of benchmark files.")
+                print("=" * 72)
+                print(f"  directories compared      : {n_dirs}")
+                print(f"  union of files            : {len(union)}")
+                print(f"  intersection of files     : {len(inter)}")
+                print(f"  files missing from >=1 dir : {missing}")
+                print()
+                print("  Counting solved/PAR2 over the union compares runs on")
+                print("  DIFFERENT benchmark sets -- those numbers are NOT")
+                print("  comparable. Re-run with --intersection to restrict the")
+                print("  count to the files common to every directory.")
+                print("=" * 72)
+                print(f"{RESET}")
+                sys.exit(1)
+            eff_fname_like = fname_like
+        print_summary_tables(table_todo, eff_fname_like, full=args.full)
         return
 
     print_signal_warnings(table_todo, fname_like)
