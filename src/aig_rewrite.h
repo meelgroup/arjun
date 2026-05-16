@@ -44,6 +44,7 @@ struct AIGRewriteStats {
     uint64_t sweep_self_ref_reverts = 0;
     uint64_t sweep_cycle_reverts = 0;
     uint64_t sweep_const_merges = 0;     // AND nodes SAT-proven constant
+    uint64_t sweep_cex_filtered = 0;     // class members dropped by a SAT counterexample
 
     void print(int verb) const;
     void clear();

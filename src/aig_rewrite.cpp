@@ -1098,10 +1098,34 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
             solver, true_lit, true_lit_set, enc_cache);
         const CMSat::Lit rep_canon = members[0].second ? ~rep_lit : rep_lit;
 
+        // Single-pattern AIG evaluation under a SAT counterexample model,
+        // memoised on node identity for one model. Used for FRAIG-style
+        // counterexample feedback: a refuting model is a real distinguishing
+        // input, so any other class member that disagrees with the
+        // representative on it cannot be equivalent and need not be checked.
+        std::unordered_map<const AIG*, char> ev_memo;
+        std::function<bool(const AIG*, const std::vector<CMSat::lbool>&)> eval1 =
+            [&](const AIG* n, const std::vector<CMSat::lbool>& model) -> bool {
+                auto itm = ev_memo.find(n);
+                if (itm != ev_memo.end()) return itm->second != 0;
+                bool v;
+                if (n->type == AIGT::t_const) v = true;
+                else if (n->type == AIGT::t_lit)
+                    v = n->var < model.size() && model[n->var] == CMSat::l_True;
+                else {
+                    bool lv = eval1(n->l.get(), model) ^ n->l.neg;
+                    bool rv = eval1(n->r.get(), model) ^ n->r.neg;
+                    v = lv && rv;
+                }
+                ev_memo[n] = v ? 1 : 0;
+                return v;
+            };
+        std::unordered_set<const AIG*> dead;  // members a cex has refuted
+
         uint32_t streak = 0;  // consecutive non-merge results in this class
         for (size_t i = 1; i < members.size(); i++) {
             const auto& [node, flipped] = members[i];
-            if (sub.count(node) || const_sub.count(node)) continue;
+            if (sub.count(node) || const_sub.count(node) || dead.count(node)) continue;
 
             const CMSat::Lit node_lit = naive_encode(to_edge(node),
                 solver, true_lit, true_lit_set, enc_cache);
@@ -1126,6 +1150,24 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
             } else if (res == CMSat::l_True) {
                 stats.sweep_cex_refuted++;
                 streak++;
+                // Counterexample feedback: the model is a genuine input on
+                // which `node` and the representative differ. Drop every
+                // not-yet-processed member that also disagrees with the rep
+                // on it — those are simulation false-positives and would
+                // otherwise burn a SAT check each.
+                const std::vector<CMSat::lbool>& model = solver.get_model();
+                ev_memo.clear();
+                const bool rep_val =
+                    eval1(members[0].first, model) ^ members[0].second;
+                for (size_t j = i + 1; j < members.size(); j++) {
+                    const auto& [jn, jflip] = members[j];
+                    if (sub.count(jn) || const_sub.count(jn) || dead.count(jn))
+                        continue;
+                    if ((eval1(jn, model) ^ jflip) != rep_val) {
+                        dead.insert(jn);
+                        stats.sweep_cex_filtered++;
+                    }
+                }
             } else {
                 // l_Undef: budget exhausted. Treat as "can't prove".
                 stats.sweep_timeouts++;
@@ -1324,6 +1366,7 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
              << "  merges=" << stats.sweep_merges
              << "  const_merges=" << stats.sweep_const_merges
              << "  refuted=" << stats.sweep_cex_refuted
+             << "  cex_filtered=" << stats.sweep_cex_filtered
              << "  timeouts=" << stats.sweep_timeouts
              << "  class_aborts=" << stats.sweep_class_aborts
              << "  budget_exh=" << stats.sweep_budget_exhausted
