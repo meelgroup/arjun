@@ -579,6 +579,29 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
                         }
                         if (absorbed) break;
 
+                        // OR-vs-OR subset subsumption: a narrower OR implies a
+                        // wider one whose disjuncts are a superset, so under
+                        // the AND the wider OR is redundant — drop it.
+                        //   AND(OR(a,b,c), OR(a,b)) = OR(a,b)
+                        std::sort(disj.begin(), disj.end(), aig_lit_nid_less);
+                        bool dropped_wide = false;
+                        for (size_t j = 0; j < children.size() && !dropped_wide; j++) {
+                            if (i == j || !is_or(children[j])) continue;
+                            vector<aig_lit> dj;
+                            collect_or_edges(children[j], dj);
+                            if (dj.size() >= disj.size()) continue;  // j not narrower
+                            std::sort(dj.begin(), dj.end(), aig_lit_nid_less);
+                            if (std::includes(disj.begin(), disj.end(),
+                                              dj.begin(), dj.end(),
+                                              aig_lit_nid_less)) {
+                                stats.absorption++;
+                                children.erase(children.begin() + i);
+                                dropped_wide = true;
+                                changed = true;
+                            }
+                        }
+                        if (dropped_wide) break;
+
                         // Subsumption: OR-disjunct complement of an AND-sibling drops.
                         vector<aig_lit> new_disj;
                         bool disj_changed = false;
