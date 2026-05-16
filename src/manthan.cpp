@@ -1108,17 +1108,28 @@ void Manthan::print_detailed_stats() const {
                     << " input vars (conflict had " << avg_inplits << " input lits, ratio "
                     << setprecision(2) << ratio << "x)");
             }
-            // b1-simplification stats (perform_repair side): how much
-            // simplifying the combined branch shrank it before encoding.
-            if (interp_repair->total_combined_pre_simp > 0) {
-                const double combined_pct = 100.0 *
-                    (1.0 - safe_div(interp_repair->total_combined_post_simp,
-                                    interp_repair->total_combined_pre_simp));
-                verb_print(1, COLCYN "[manthan-stats]   b1 simp:            "
-                    << "pre=" << interp_repair->total_combined_pre_simp
-                    << " post=" << interp_repair->total_combined_post_simp
-                    << "  (" << fixed << setprecision(1) << combined_pct << "% reduction)"
-                    << "  b1_rewrite=" << mconf.interp_repair_b1_rewrite);
+            // rewrite_aig effectiveness: AIG node counts summed pre vs
+            // post the heavier structural rewrite pass. Each line is
+            // printed only when its rewrite flag is enabled.
+            if (interp_repair->interp_rewrite_calls > 0) {
+                const double pct = 100.0 *
+                    (1.0 - safe_div(interp_repair->total_interp_post_rewrite,
+                                    interp_repair->total_interp_pre_rewrite));
+                verb_print(1, COLCYN "[manthan-stats]   interp rewrite:     "
+                    << "pre=" << interp_repair->total_interp_pre_rewrite
+                    << " post=" << interp_repair->total_interp_post_rewrite
+                    << "  (" << fixed << setprecision(1) << pct << "% reduction"
+                    << ", " << interp_repair->interp_rewrite_calls << " calls)");
+            }
+            if (interp_repair->b1_rewrite_calls > 0) {
+                const double pct = 100.0 *
+                    (1.0 - safe_div(interp_repair->total_b1_post_rewrite,
+                                    interp_repair->total_b1_pre_rewrite));
+                verb_print(1, COLCYN "[manthan-stats]   b1 rewrite:         "
+                    << "pre=" << interp_repair->total_b1_pre_rewrite
+                    << " post=" << interp_repair->total_b1_post_rewrite
+                    << "  (" << fixed << setprecision(1) << pct << "% reduction"
+                    << ", " << interp_repair->b1_rewrite_calls << " calls)");
             }
             // Compact histograms: only print non-zero buckets.
             auto print_hist = [&](const char* label, const uint64_t* h) {
@@ -2087,12 +2098,19 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
         }
     }
 
-    // AIG-level simplification of b1.
-    const size_t pre_simp_sz = AIG::count_aig_nodes_fast(b1);
+    // AIG-level simplification of b1. simplify_aig is always run; the
+    // heavier rewrite_aig pass is opt-in and its pre/post node counts
+    // are tracked for the b1-rewrite effectiveness stat.
     b1 = AIG::simplify_aig(b1);
     if (mconf.interp_repair_b1_rewrite != 0) {
+        const size_t pre_rw = AIG::count_aig_nodes_fast(b1);
         b1 = AIG::rewrite_aig(b1);
         b1 = AIG::simplify_aig(b1);
+        if (interp_repair) {
+            interp_repair->total_b1_pre_rewrite += pre_rw;
+            interp_repair->total_b1_post_rewrite += AIG::count_aig_nodes_fast(b1);
+            interp_repair->b1_rewrite_calls++;
+        }
     }
     // Optional FRAIG-lite sat-sweep pass; sat_sweep takes a root vector.
     if (mconf.interp_repair_b1_satsweep != 0) {
@@ -2101,11 +2119,6 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
         rw.sat_sweep(roots, /*verb=*/0);
         b1 = roots[0];
         b1 = AIG::simplify_aig(b1);
-    }
-    const size_t post_simp_sz = AIG::count_aig_nodes_fast(b1);
-    if (interp_repair) {
-        interp_repair->total_combined_pre_simp += pre_simp_sz;
-        interp_repair->total_combined_post_simp += post_simp_sz;
     }
     f.aig = b1;
 

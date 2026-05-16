@@ -409,7 +409,12 @@ aig_ptr InterpRepair::compute_interpolant(
     // rewrite_aig pass. Doing it here (rather than only on the combined
     // b1) means the oversize cap, the size stats and the signature cache
     // all see the rewritten interpolant.
-    if (full_rewrite) interp = AIG::rewrite_aig(interp);
+    if (full_rewrite) {
+        total_interp_pre_rewrite += AIG::count_aig_nodes_fast(interp);
+        interp = AIG::rewrite_aig(interp);
+        total_interp_post_rewrite += AIG::count_aig_nodes_fast(interp);
+        interp_rewrite_calls++;
+    }
     interp = AIG::simplify_aig(interp);
 
     // SLOW_DEBUG: verify the interpolant only references input vars.

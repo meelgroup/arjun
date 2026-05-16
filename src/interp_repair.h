@@ -189,9 +189,17 @@ public:
         };
         return lbl[i];
     }
-    // Pre/post node counts for the b1 AIG simplification (perform_repair side).
-    uint64_t total_combined_pre_simp = 0;
-    uint64_t total_combined_post_simp = 0;
+    // rewrite_aig effectiveness, node counts summed pre vs post the
+    // heavier structural rewrite pass. The interp_* pair tracks the raw
+    // McMillan interpolant (--interprepairrewrite); the b1_* pair tracks
+    // the combined branch b1 (--interprepairb1rewrite). Both stay zero
+    // unless their flag is enabled.
+    uint64_t total_interp_pre_rewrite = 0;
+    uint64_t total_interp_post_rewrite = 0;
+    uint64_t interp_rewrite_calls = 0;
+    uint64_t total_b1_pre_rewrite = 0;
+    uint64_t total_b1_post_rewrite = 0;
+    uint64_t b1_rewrite_calls = 0;
 
     // Wire up the mini-CNF on `solver` with `tracer` attached.
     //   A: original CNF + non-input conflict units + ~to_repair_lit
