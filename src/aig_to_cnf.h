@@ -1266,6 +1266,34 @@ bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
         }
 
         const auto& min_cnf = cut_cnf::min_cnf_for_tt(num_inputs, tt);
+
+        // Verify the looked-up min-CNF really encodes `tt`: for every input
+        // minterm, the clauses must force g to exactly the tt bit. Catches a
+        // bad cut_cnf entry or a TT-canonicalisation slip at the source.
+        SLOW_DEBUG_DO({
+            for (uint32_t m = 0; m < num_mt; m++) {
+                bool forced_false = false;
+                bool forced_true = false;
+                for (const auto& c : min_cnf.clauses) {
+                    bool inputs_sat = false;
+                    for (uint32_t i = 0; i < num_inputs; i++) {
+                        if (!(c.present & (1u << i))) continue;
+                        const bool bit = (m >> i) & 1u;
+                        const bool neg = (c.sign >> i) & 1u;
+                        if (neg ? !bit : bit) { inputs_sat = true; break; }
+                    }
+                    if (inputs_sat) continue;          // clause already satisfied
+                    // Inputs all false ⇒ the clause's g-literal must hold.
+                    if (c.g_sign) forced_false = true; // clause is (… ∨ ¬g) ⇒ g = 0
+                    else          forced_true = true;  // clause is (… ∨  g) ⇒ g = 1
+                }
+                const bool want = (tt >> m) & 1u;
+                assert(!(forced_false && forced_true) && "cut min-CNF contradicts itself");
+                assert((want ? !forced_false : !forced_true)
+                       && "cut min-CNF does not encode the cone truth table");
+            }
+        });
+
         CMSat::Lit h = new_helper();
         for (const auto& c : min_cnf.clauses) {
             std::vector<CMSat::Lit> cl;
