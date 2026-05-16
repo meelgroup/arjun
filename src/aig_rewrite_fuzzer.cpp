@@ -226,6 +226,27 @@ static bool run_one(const aig_ptr& orig, uint32_t num_vars,
     aig_ptr simp = rw.rewrite(orig);
     if (!simp) simp = orig;
 
+    // 1a. Idempotence: rewriting an already-rewritten AIG must keep it
+    // equivalent and must never make it bigger. A growth here would mean a
+    // rewrite rule is non-confluent / oscillating; a mismatch would mean a
+    // rule is unsound only on already-canonical input.
+    {
+        AIGRewriter rw2;
+        aig_ptr simp2 = rw2.rewrite(simp);
+        if (!simp2) simp2 = simp;
+        if (!random_check(simp, simp2, num_vars, rng, 40)) {
+            report_failure(orig, simp2, num_vars, seed, iter,
+                           "random_check(idempotence)");
+            return false;
+        }
+        if (AIG::count_aig_nodes_fast(simp2)
+                > AIG::count_aig_nodes_fast(simp)) {
+            report_failure(orig, simp2, num_vars, seed, iter,
+                           "rewrite grew an already-rewritten AIG");
+            return false;
+        }
+    }
+
     // 1b. Optional SAT sweeping pass over the single-rooted vector.
     if (sat_sweep) {
         // Half the time, sweep the RAW (un-rewritten) AIG instead of the
