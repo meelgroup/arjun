@@ -6,6 +6,7 @@
  */
 
 #include "aig_rewrite.h"
+#include "constants.h"
 #include "time_mem.h"
 #include <algorithm>
 #include <cassert>
@@ -36,6 +37,34 @@ inline bool aig_lit_nid_less(const aig_lit& a, const aig_lit& b) {
     if (a->nid != b->nid) return a->nid < b->nid;
     return (int)a.neg < (int)b.neg;
 }
+
+#ifdef SLOW_DEBUG
+// Brute-force functional equivalence check. Enumerates every assignment over
+// the (≤ kMaxVars) primary-input variables referenced by `a` or `b` and
+// asserts the two AIGs agree everywhere. Skipped for wider AIGs — the
+// rewriter's fuzzers cover those. Used to catch a rewrite rule that changes
+// the function the instant it fires, instead of much later downstream.
+inline void slow_assert_equiv(const aig_ptr& a, const aig_ptr& b) {
+    if (!a.node || !b.node) { assert(a.node == b.node); return; }
+    std::set<uint32_t> vars;
+    AIG::get_dependent_vars(a, vars, std::numeric_limits<uint32_t>::max());
+    AIG::get_dependent_vars(b, vars, std::numeric_limits<uint32_t>::max());
+    constexpr size_t kMaxVars = 16;
+    if (vars.empty() || vars.size() > kMaxVars) return;
+    const uint32_t maxv = *vars.rbegin();
+    std::vector<aig_ptr> defs(maxv + 1, nullptr);
+    std::vector<uint32_t> vlist(vars.begin(), vars.end());
+    for (uint32_t mask = 0; mask < (1u << vlist.size()); mask++) {
+        std::vector<CMSat::lbool> vals(maxv + 1, CMSat::l_False);
+        for (size_t i = 0; i < vlist.size(); i++)
+            if ((mask >> i) & 1u) vals[vlist[i]] = CMSat::l_True;
+        std::map<aig_ptr, CMSat::lbool> ca, cb;
+        const CMSat::lbool va = AIG::evaluate(vals, a, defs, ca);
+        const CMSat::lbool vb = AIG::evaluate(vals, b, defs, cb);
+        assert(va == vb && "AIGRewriter changed the function!");
+    }
+}
+#endif
 
 } // namespace
 
@@ -796,6 +825,7 @@ aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
         prev_count = cur_count;
     }
     stats.total_passes++;
+    SLOW_DEBUG_DO(slow_assert_equiv(aig, result));
     if (AIG::count_aig_nodes_fast(result) > before) return aig;
     return result;
 }
@@ -854,6 +884,8 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
         if (new_count > orig_count) defs[i] = originals[i];
     }
     stats.nodes_after = AIG::count_aig_nodes_fast(defs);
+    SLOW_DEBUG_DO(for (size_t i = 0; i < defs.size(); i++)
+                      slow_assert_equiv(originals[i], defs[i]));
 
     if (verb >= 1) {
         cout << "c o [aig-rewrite] T: " << std::fixed << std::setprecision(2)
@@ -1388,6 +1420,12 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
         reverted[to_revert] = true;
         stats.sweep_cycle_reverts++;
     }
+
+    // Every committed merge / constant fold is a SAT-verified functional
+    // equivalence, and any def that gained a definitional cycle was reverted
+    // above — so each final def must still compute its original function.
+    SLOW_DEBUG_DO(for (uint32_t v = 0; v < defs.size(); v++)
+                      slow_assert_equiv(orig_defs[v], defs[v]));
 
     if (verb >= 1) {
         const size_t nodes_after = AIG::count_aig_nodes_fast(defs);
