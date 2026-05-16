@@ -974,9 +974,12 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
             return h;
         }
     };
+    // Both AND and literal nodes are classed: a class with a literal lets an
+    // AND node functionally equal to that literal merge straight onto the
+    // leaf (only ANDs are ever substituted — see the member loop below).
     std::unordered_map<Key, vector<std::pair<const AIG*, bool>>, KeyHash> classes;
     for (const auto* n : topo) {
-        if (n->type != AIGT::t_and) continue;
+        if (n->type != AIGT::t_and && n->type != AIGT::t_lit) continue;
         bool flipped;
         Key k{canonicalize(sigs[n], flipped)};
         classes[std::move(k)].emplace_back(n, flipped);
@@ -1075,8 +1078,15 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
             last_progress_print_classes = classes_processed;
         }
         stats.sweep_sim_groups++;
+        // Representative = members[0]. Prefer a literal (so AND members can
+        // collapse onto the leaf), then lowest nid for determinism.
         std::sort(members.begin(), members.end(),
-            [](const auto& a, const auto& b) { return a.first->nid < b.first->nid; });
+            [](const auto& a, const auto& b) {
+                const bool al = a.first->type == AIGT::t_lit;
+                const bool bl = b.first->type == AIGT::t_lit;
+                if (al != bl) return al;
+                return a.first->nid < b.first->nid;
+            });
 
         CMSat::SATSolver solver;
         solver.set_verbosity(0);
@@ -1125,6 +1135,9 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
         uint32_t streak = 0;  // consecutive non-merge results in this class
         for (size_t i = 1; i < members.size(); i++) {
             const auto& [node, flipped] = members[i];
+            // Only AND nodes are ever substituted — never rewrite a leaf
+            // literal into a (larger, possibly cyclic) AND cone.
+            if (node->type != AIGT::t_and) continue;
             if (sub.count(node) || const_sub.count(node) || dead.count(node)) continue;
 
             const CMSat::Lit node_lit = naive_encode(to_edge(node),
