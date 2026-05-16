@@ -1117,7 +1117,13 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
     uint64_t last_progress_print_classes = 0;
     for (auto& [key, members] : classes) {
         if (members.size() < 2) continue;
-        if (members.size() > sweep_max_class_size) continue;
+        // Oversized classes used to be skipped wholesale. With the constant
+        // detection pass draining the degenerate all-constant groups and the
+        // counterexample filter culling simulation false-positives, it is
+        // worth processing them — but still only the first sweep_max_class_size
+        // members so worst-case SAT churn stays bounded.
+        const size_t member_cap = std::min<size_t>(members.size(),
+                                                    sweep_max_class_size);
         classes_processed++;
         if (verb >= 2 && classes_processed - last_progress_print_classes >= 100) {
             cout << "c o [aig-rewrite] sat-sweep progress"
@@ -1188,7 +1194,7 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
         std::unordered_set<const AIG*> dead;  // members a cex has refuted
 
         uint32_t streak = 0;  // consecutive non-merge results in this class
-        for (size_t i = 1; i < members.size(); i++) {
+        for (size_t i = 1; i < member_cap; i++) {
             const auto& [node, flipped] = members[i];
             // Only AND nodes are ever substituted — never rewrite a leaf
             // literal into a (larger, possibly cyclic) AND cone.
@@ -1227,7 +1233,7 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
                 ev_memo.clear();
                 const bool rep_val =
                     eval1(members[0].first, model) ^ members[0].second;
-                for (size_t j = i + 1; j < members.size(); j++) {
+                for (size_t j = i + 1; j < member_cap; j++) {
                     const auto& [jn, jflip] = members[j];
                     if (sub.count(jn) || const_sub.count(jn) || dead.count(jn))
                         continue;
