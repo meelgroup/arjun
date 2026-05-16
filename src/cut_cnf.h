@@ -63,35 +63,36 @@ struct MinCnf {
 struct Implicant {
     uint8_t value;
     uint8_t dontcare;
-    // Bitset of minterms covered. For k ≤ 4 this fits in a uint16_t.
-    uint16_t covers;
+    // Bitset of minterms covered. For k ≤ 5 there are ≤ 32 minterms, so a
+    // uint32_t holds the full cover set.
+    uint32_t covers;
 };
 
-inline uint16_t implicant_covers(uint8_t value, uint8_t dontcare,
+inline uint32_t implicant_covers(uint8_t value, uint8_t dontcare,
                                  uint32_t num_inputs) {
-    uint16_t res = 0;
-    uint16_t max_m = 1u << num_inputs;
+    uint32_t res = 0;
+    uint32_t max_m = 1u << num_inputs;
     uint8_t care_mask = ((1u << num_inputs) - 1) & (uint8_t)~dontcare;
     uint8_t core = value & care_mask;
-    for (uint16_t m = 0; m < max_m; m++) {
-        if ((m & care_mask) == core) res |= (uint16_t)(1u << m);
+    for (uint32_t m = 0; m < max_m; m++) {
+        if ((m & care_mask) == core) res |= (1u << m);
     }
     return res;
 }
 
 // Count population. __builtin_popcount is more portable but std::popcount
 // requires C++20 -- we're on -std=c++23 so either works.
-inline uint32_t popcount16(uint16_t x) { return __builtin_popcount(x); }
+inline uint32_t popcount16(uint32_t x) { return __builtin_popcount(x); }
 
-inline std::vector<Implicant> prime_implicants(uint16_t on_mask,
+inline std::vector<Implicant> prime_implicants(uint32_t on_mask,
                                                uint32_t num_inputs) {
     // Group implicants by the number of 1-bits in their `value & ~dontcare`.
     // Start with single-minterm implicants.
-    uint16_t max_m = 1u << num_inputs;
+    uint32_t max_m = 1u << num_inputs;
     std::vector<Implicant> current;
-    for (uint16_t m = 0; m < max_m; m++) {
+    for (uint32_t m = 0; m < max_m; m++) {
         if (on_mask & (1u << m)) {
-            Implicant im{ (uint8_t)m, 0, (uint16_t)(1u << m) };
+            Implicant im{ (uint8_t)m, 0, (1u << m) };
             current.push_back(im);
         }
     }
@@ -140,22 +141,49 @@ inline std::vector<Implicant> prime_implicants(uint16_t on_mask,
     return primes;
 }
 
+// Greedy set-cover of `target_minterms`: repeatedly take the prime covering
+// the most yet-uncovered targets. Not guaranteed minimal, but always a valid
+// cover — used as the fallback when exact brute force would be too costly.
+inline std::vector<Implicant> greedy_cover(const std::vector<Implicant>& primes,
+                                           uint32_t target_minterms)
+{
+    std::vector<Implicant> pick;
+    uint32_t remaining = target_minterms;
+    std::vector<bool> used(primes.size(), false);
+    while (remaining) {
+        size_t best_i = primes.size();
+        uint32_t best_gain = 0;
+        for (size_t i = 0; i < primes.size(); i++) {
+            if (used[i]) continue;
+            uint32_t gain = __builtin_popcount(primes[i].covers & remaining);
+            if (gain > best_gain) { best_gain = gain; best_i = i; }
+        }
+        if (best_i == primes.size()) break;  // unreachable for a valid prime set
+        used[best_i] = true;
+        pick.push_back(primes[best_i]);
+        remaining &= ~primes[best_i].covers;
+    }
+    return pick;
+}
+
 // Exact min-cover of `target_minterms` using primes. For k ≤ 4 there are at
 // most 16 minterms and typically ≤ 16 primes; brute force over subsets is
-// fine.
+// fine. For k = 5 a pathological truth table can yield many primes — past a
+// threshold fall back to the (still-correct) greedy cover so we never risk a
+// 2^n blow-up.
 inline std::vector<Implicant> min_cover(const std::vector<Implicant>& primes,
-                                        uint16_t target_minterms)
+                                        uint32_t target_minterms)
 {
     if (target_minterms == 0) return {};
-    // Bounded by the number of primes. For k=4 worst case ~18 primes; 2^18
-    // enumeration is 260k. Cache keeps us from redoing it.
     size_t n = primes.size();
-    assert(n <= 24 && "too many primes for brute force");
+    // 2^22 ≈ 4M subset masks — the cap on the exact search. Beyond it the
+    // greedy cover keeps correctness without the exponential cost.
+    if (n > 22) return greedy_cover(primes, target_minterms);
     std::vector<Implicant> best;
     size_t best_size = n + 1;
     for (size_t s = 0; s < (size_t(1) << n); s++) {
         if ((size_t)__builtin_popcountll((uint64_t)s) >= best_size) continue;
-        uint16_t cov = 0;
+        uint32_t cov = 0;
         for (size_t i = 0; i < n; i++) {
             if (s & (size_t(1) << i)) cov |= primes[i].covers;
         }
@@ -173,11 +201,13 @@ inline std::vector<Implicant> min_cover(const std::vector<Implicant>& primes,
 }
 
 inline MinCnf compute_min_cnf(uint32_t num_inputs, uint32_t tt) {
-    assert(num_inputs >= 1 && num_inputs <= 4);
+    assert(num_inputs >= 1 && num_inputs <= 5);
     uint32_t max_m = 1u << num_inputs;
-    uint32_t full_mask = (1u << max_m) - 1;
-    uint16_t on_mask  = (uint16_t)(tt & full_mask);
-    uint16_t off_mask = (uint16_t)(~tt & full_mask);
+    // For num_inputs == 5, max_m == 32 and (1u << 32) is undefined behaviour;
+    // build the all-ones mask without overflowing.
+    uint32_t full_mask = (max_m >= 32) ? 0xFFFFFFFFu : ((1u << max_m) - 1);
+    uint32_t on_mask  = tt & full_mask;
+    uint32_t off_mask = ~tt & full_mask;
 
     MinCnf out;
     out.num_inputs = num_inputs;
@@ -224,18 +254,20 @@ inline MinCnf compute_min_cnf(uint32_t num_inputs, uint32_t tt) {
 // halves the table (up to 64K TTs → 32K canonical entries) without changing
 // any observable encoder output.
 inline const MinCnf& min_cnf_for_tt(uint32_t num_inputs, uint32_t tt) {
-    static std::unordered_map<uint32_t, MinCnf> cache;
+    static std::unordered_map<uint64_t, MinCnf> cache;
     const uint32_t max_m = 1u << num_inputs;
-    const uint32_t full_mask = (1u << max_m) - 1;
+    // 5-input truth tables are full 32-bit, so the cache key must be 64-bit
+    // (num_inputs in the high half) to avoid colliding tt against num_inputs.
+    const uint32_t full_mask = (max_m >= 32) ? 0xFFFFFFFFu : ((1u << max_m) - 1);
     const uint32_t tt_bits = tt & full_mask;
-    const uint32_t key = (num_inputs << 16) | tt_bits;
+    const uint64_t key = ((uint64_t)num_inputs << 32) | tt_bits;
 
     auto it = cache.find(key);
     if (it != cache.end()) return it->second;
 
     const uint32_t tt_compl = full_mask & ~tt_bits;
     const uint32_t canon_tt = (tt_bits <= tt_compl) ? tt_bits : tt_compl;
-    const uint32_t canon_key = (num_inputs << 16) | canon_tt;
+    const uint64_t canon_key = ((uint64_t)num_inputs << 32) | canon_tt;
 
     // Ensure the canonical entry is cached. std::unordered_map keeps
     // references to mapped values stable across rehashes (only iterators

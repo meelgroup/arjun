@@ -1072,7 +1072,7 @@ bool AIGToCNF<Solver>::structural_simplify_and(std::vector<aig_lit>& conjuncts,
 
 template<class Solver>
 bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
-    constexpr uint32_t MAX_LEAVES = 4;
+    constexpr uint32_t MAX_LEAVES = 5;
     if (n->type != AIGT::t_and) return false;
 
     auto can_consume = [&](const AIG* p) -> bool {
@@ -1149,38 +1149,41 @@ bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
 
     const uint32_t num_inputs = slot_lits.size();
     if (num_inputs == 0) return false;
-    const uint32_t num_mt = 1u << num_inputs;
-    const uint16_t full_mask = (uint16_t)((1u << num_mt) - 1);
+    const uint32_t num_mt = 1u << num_inputs;  // ≤ 32 (MAX_LEAVES = 5)
+    // num_mt == 32 makes (1u << num_mt) undefined behaviour; build all-ones
+    // without overflowing.
+    const uint32_t full_mask = (num_mt >= 32) ? 0xFFFFFFFFu
+                                              : ((1u << num_mt) - 1);
 
     // Build per-leaf minterm masks.
-    std::vector<uint16_t> leaf_mask(leaves.size());
+    std::vector<uint32_t> leaf_mask(leaves.size());
     for (size_t i = 0; i < leaves.size(); i++) {
-        uint16_t sm = 0;
+        uint32_t sm = 0;
         for (uint32_t m = 0; m < num_mt; m++) {
-            if ((m >> leaf_slot[i]) & 1u) sm |= (uint16_t)(1u << m);
+            if ((m >> leaf_slot[i]) & 1u) sm |= (1u << m);
         }
-        leaf_mask[i] = leaf_sign[i] ? (uint16_t)(sm ^ full_mask) : sm;
+        leaf_mask[i] = leaf_sign[i] ? (sm ^ full_mask) : sm;
     }
 
     // Evaluate each interior node's POSITIVE value once (cached by node
     // pointer); the final TT applies the requested edge sign at the root.
-    std::unordered_map<const AIG*, uint16_t> eval_cache;
-    std::function<uint16_t(const aig_lit&)> eval = [&](const aig_lit& m) -> uint16_t {
+    std::unordered_map<const AIG*, uint32_t> eval_cache;
+    std::function<uint32_t(const aig_lit&)> eval = [&](const aig_lit& m) -> uint32_t {
         auto it_leaf = leaf_idx.find(m);
         if (it_leaf != leaf_idx.end()) return leaf_mask[it_leaf->second];
         auto it_c = eval_cache.find(m.get());
         if (it_c != eval_cache.end()) {
-            const uint16_t v_pos = it_c->second;
-            return m.neg ? (uint16_t)((~v_pos) & full_mask) : v_pos;
+            const uint32_t v_pos = it_c->second;
+            return m.neg ? ((~v_pos) & full_mask) : v_pos;
         }
         assert(m->type == AIGT::t_and);
-        const uint16_t lv = eval(m->l);
-        const uint16_t rv = (m->r == m->l) ? lv : eval(m->r);
-        const uint16_t v_pos = (uint16_t)(lv & rv);
+        const uint32_t lv = eval(m->l);
+        const uint32_t rv = (m->r == m->l) ? lv : eval(m->r);
+        const uint32_t v_pos = lv & rv;
         eval_cache[m.get()] = v_pos;
-        return m.neg ? (uint16_t)((~v_pos) & full_mask) : v_pos;
+        return m.neg ? ((~v_pos) & full_mask) : v_pos;
     };
-    const uint16_t tt = eval(n);
+    const uint32_t tt = eval(n);
 
     // Constant cone: the whole sub-AIG is FALSE or TRUE. No helper, no
     // clauses — the encoder's TRUE literal (or its negation) IS the value.
@@ -1202,16 +1205,16 @@ bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
     // helper and no clauses. Typical source: a multi-level AND/OR cone whose
     // other inputs cancel out (e.g. AND(x, OR(x, y)) flattened across levels).
     for (uint32_t s = 0; s < num_inputs; s++) {
-        uint16_t proj = 0;
+        uint32_t proj = 0;
         for (uint32_t m = 0; m < num_mt; m++) {
-            if ((m >> s) & 1u) proj |= (uint16_t)(1u << m);
+            if ((m >> s) & 1u) proj |= (1u << m);
         }
         if (tt == proj) {
             out = slot_lits[s];
             stats.cut_cnf_proj++;
             return true;
         }
-        if (tt == (uint16_t)(proj ^ full_mask)) {
+        if (tt == (proj ^ full_mask)) {
             out = ~slot_lits[s];
             stats.cut_cnf_proj++;
             return true;
@@ -1228,17 +1231,17 @@ bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
         std::sort(order.begin(), order.end(), [&](uint32_t a, uint32_t b) {
             return slot_lits[a].var() < slot_lits[b].var();
         });
-        uint16_t canon_tt = 0;
+        uint32_t canon_tt = 0;
         for (uint32_t mp = 0; mp < num_mt; mp++) {
             uint32_t m = 0;
             for (uint32_t sp = 0; sp < num_inputs; sp++) {
                 if ((mp >> sp) & 1u) m |= 1u << order[sp];
             }
-            if ((tt >> m) & 1u) canon_tt |= (uint16_t)(1u << mp);
+            if ((tt >> m) & 1u) canon_tt |= (1u << mp);
         }
-        const uint16_t compl_tt = (uint16_t)(canon_tt ^ full_mask);
+        const uint32_t compl_tt = canon_tt ^ full_mask;
         const bool use_compl = canon_tt > compl_tt;
-        const uint16_t final_tt = use_compl ? compl_tt : canon_tt;
+        const uint32_t final_tt = use_compl ? compl_tt : canon_tt;
 
         std::vector<uint32_t> key;
         key.reserve(num_inputs + 2);
