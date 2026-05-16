@@ -53,8 +53,8 @@
 #endif
 
 #ifdef EXTRA_SYNTH
-#include <armadillo>
 #include <mlpack/methods/decision_tree/decision_tree.hpp>
+#include <armadillo>
 #include "EvalMaxSAT.h"
 #include "manthan_learn.h"
 #endif
