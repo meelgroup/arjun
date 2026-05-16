@@ -1001,7 +1001,13 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
     for (const auto* n : topo) {
         if (n->type == AIGT::t_lit) used_vars.insert(n->var);
     }
-    const uint32_t R = sweep_sim_rounds;
+    // Adaptive simulation depth. Two non-equivalent nodes that happen to
+    // agree on every random pattern land in the same candidate class and
+    // cost a wasted SAT check; the more nodes a sweep covers, the more such
+    // coincidences arise, so scale the round count (each round = 64 patterns)
+    // up with topology size. +4 rounds per 4× growth past 256 nodes, capped.
+    uint32_t R = sweep_sim_rounds;
+    for (size_t t = topo.size(); t > 256 && R < 48; t >>= 2) R += 4;
     std::mt19937_64 rng(0xA11CEULL);
     std::unordered_map<uint32_t, vector<uint64_t>> var_pats;
     for (uint32_t v : used_vars) {
