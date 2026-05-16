@@ -1083,10 +1083,16 @@ bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
 
     // DFS the cone on SIGNED edges. Leaves are (non-AND nodes) OR
     // (consumable-budget-exceeded ANDs). Interior ANDs we "consume" by
-    // recursing into their signed children. A hard cap of MAX_LEAVES * 4
-    // aborts cones that are clearly too wide.
+    // recursing into their signed children.
+    //
+    // The cone qualifies on its number of DISTINCT input slots, not on raw
+    // leaf-edge occurrences: a leaf's slot key is its variable (for a
+    // literal) or its node id (for a sub-AIG) — sign is irrelevant, it folds
+    // into the TT later. Aborting on distinct slots rather than occurrences
+    // lets a wide cone that reuses only ≤4 variables still be cut-encoded.
     std::unordered_map<aig_lit, uint32_t> leaf_idx;
     std::vector<aig_lit> leaves;
+    std::set<std::pair<int, uint64_t>> distinct_slots;
     bool abort_flag = false;
     std::function<void(const aig_lit&)> dfs = [&](const aig_lit& m) {
         if (abort_flag) return;
@@ -1094,7 +1100,16 @@ bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
             && (m.node == n.node || can_consume(m.get()));
         if (!is_interior_and) {
             if (leaf_idx.count(m)) return;
-            if (leaves.size() >= MAX_LEAVES * 4u) { abort_flag = true; return; }
+            const std::pair<int, uint64_t> slot_key =
+                (m->type == AIGT::t_lit)
+                    ? std::make_pair(0, (uint64_t)m->var)
+                    : std::make_pair(1, m->nid);
+            if (!distinct_slots.count(slot_key)
+                && distinct_slots.size() >= MAX_LEAVES) {
+                abort_flag = true;
+                return;
+            }
+            distinct_slots.insert(slot_key);
             leaf_idx[m] = leaves.size();
             leaves.push_back(m);
             return;
