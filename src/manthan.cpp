@@ -2138,41 +2138,55 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
     // construction). y_other formula AIGs are stored RAW
     // (var_to_formula[y].aig has leaves = input + raw to_define), so
     // ANDing them in keeps b1 in the same raw form.
+    // We build two AIGs:
+    //   b1            — full y_other formula AIGs inlined. Leaves are only
+    //                   input + raw to_define vars (codebase invariant for
+    //                   var_to_formula[y].aig — used by final AIG export
+    //                   via map_aigs_to_orig).
+    //   b1_for_encode — same shape, but in --interprepairb1uselit mode the
+    //                   y_other AND-conjuncts reference helper vars
+    //                   (formula.out) instead of inlining the full AIG.
+    //                   Smaller, used only for the CNF Tseitin encoding.
+    //                   When the flag is off, b1_for_encode == b1.
     aig_ptr b1 = AIG::new_not(interp_branch);
+    aig_ptr b1_for_encode = b1;
+    const bool use_lit = (mconf.interp_repair_b1_use_lit != 0);
     if (!skip_y_other_and) {
         for (const auto& l : conflict) {
             if (is_input[l.var()] || is_backward_defined[l.var()]) continue;
             assert(var_to_formula.count(l.var()));
             auto f2 = var_to_formula.at(l.var());
-            aig_ptr ymatch;
-            if (mconf.interp_repair_b1_use_lit != 0) {
-                // Reference the y_other formula via its cex_solver
-                // output literal (a single helper var) instead of
-                // inlining its full AIG. Mirrors what the legacy
-                // lit_to_lit path does. b1 stays small; the formula
-                // clauses for y_other are already in cex_solver so
-                // the helper var is well-defined.
+            aig_ptr ymatch_full = (~l).sign() ? AIG::new_not(f2.aig) : f2.aig;
+            b1 = AIG::new_and(b1, ymatch_full);
+            if (use_lit) {
                 Lit out_lit = (~l).sign() ? ~f2.out : f2.out;
-                ymatch = AIG::new_lit(out_lit);
+                aig_ptr ymatch_helper = AIG::new_lit(out_lit);
+                b1_for_encode = AIG::new_and(b1_for_encode, ymatch_helper);
             } else {
-                ymatch = (~l).sign() ? AIG::new_not(f2.aig) : f2.aig;
+                b1_for_encode = b1; // mirror
             }
-            b1 = AIG::new_and(b1, ymatch);
         }
     }
 
-    // AIG-level simplification of b1. The cheap simplify_aig (const-prop +
-    // CSE) is always on; the heavier rewrite_aig (absorption, distrib,
-    // complement, idempotent, xor_simp) is opt-in via
-    // --interprepairb1rewrite. The y_other formula ANDs introduce
-    // cross-conjunct redundancies that AIGToCNF's CNF-level fusion can't
-    // catch — that's the motivation for doing this at the AIG level.
+    // AIG-level simplification. We simplify b1 (the full version used
+    // for f.aig storage) AND b1_for_encode (only different in
+    // b1_use_lit mode; saves work otherwise). Stats reflect the
+    // simplification of the encoded variant since that's what
+    // determines f.clauses size.
     const double t_simp_b1 = cpuTime();
-    const size_t pre_simp_sz = AIG::count_aig_nodes_fast(b1);
+    const size_t pre_simp_sz = AIG::count_aig_nodes_fast(b1_for_encode);
     b1 = AIG::simplify_aig(b1);
+    if (use_lit) b1_for_encode = AIG::simplify_aig(b1_for_encode);
+    else         b1_for_encode = b1;
     if (mconf.interp_repair_b1_rewrite != 0) {
         b1 = AIG::rewrite_aig(b1);
         b1 = AIG::simplify_aig(b1);
+        if (use_lit) {
+            b1_for_encode = AIG::rewrite_aig(b1_for_encode);
+            b1_for_encode = AIG::simplify_aig(b1_for_encode);
+        } else {
+            b1_for_encode = b1;
+        }
     }
     // Optional FRAIG-lite sat-sweep pass. AIGRewriter::sat_sweep
     // operates on a vector of roots; wrap b1 in one. The sweeper merges
@@ -2186,8 +2200,15 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
         rw.sat_sweep(roots, /*verb=*/0);
         b1 = roots[0];
         b1 = AIG::simplify_aig(b1);
+        if (use_lit) {
+            std::vector<aig_ptr> roots2 = {b1_for_encode};
+            rw.sat_sweep(roots2, /*verb=*/0);
+            b1_for_encode = AIG::simplify_aig(roots2[0]);
+        } else {
+            b1_for_encode = b1;
+        }
     }
-    const size_t post_simp_sz = AIG::count_aig_nodes_fast(b1);
+    const size_t post_simp_sz = AIG::count_aig_nodes_fast(b1_for_encode);
     if (interp_repair) {
         interp_repair->total_combined_pre_simp += pre_simp_sz;
         interp_repair->total_combined_post_simp += post_simp_sz;
@@ -2209,7 +2230,10 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
         // Helper var or true_lit: already in cex_solver space.
         return Lit(v, false);
     };
-    aig_ptr b1_yhat = AIG::translate_leaves(b1, leaf_to_yhat);
+    // Encode the b1_for_encode variant (small in b1_use_lit mode), but
+    // store the full-AIG b1 as f.aig so map_aigs_to_orig at final
+    // export sees only cnf-space leaves.
+    aig_ptr b1_yhat = AIG::translate_leaves(b1_for_encode, leaf_to_yhat);
 
     SLOW_DEBUG_DO({
         // Defensive: confirm every leaf in b1_yhat is an input var, a
