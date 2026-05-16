@@ -55,7 +55,6 @@ QUICK_CONFIGS: List[Tuple[str, str]] = [
     ("minvar-5",         "--interprepair 1 --interprepairminvar 5"),
     ("uncond",           "--interprepair 1 --interprepairuncond 1"),
     ("b1rewrite",        "--interprepair 1 --interprepairb1rewrite 1"),
-    ("b1uselit",         "--interprepair 1 --interprepairb1uselit 1"),
     ("cache-128",        "--interprepair 1 --interprepaircache 128"),
 ]
 
@@ -79,7 +78,6 @@ ALL_CONFIGS: List[Tuple[str, str]] = [
     ("b1rewrite",        "--interprepair 1 --interprepairb1rewrite 1"),
     ("b1satsweep",       "--interprepair 1 --interprepairb1satsweep 1"),
     ("groupcse",         "--interprepair 1 --interprepairgroupcse 1"),
-    ("b1uselit",         "--interprepair 1 --interprepairb1uselit 1"),
     # Combo: "kitchen sink" for benchmarks where interp shines
     ("combo-aggressive", "--interprepair 1 "
                          "--interprepairb1rewrite 1 --interprepairgroupcse 1 "

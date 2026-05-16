@@ -2066,46 +2066,31 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
     // Build the must-flip region AIG in raw cnf-var space:
     //   b1 = AND( ~I(X), AND_{y_other in conflict}(y_other matches ctx) )
     //
-    // Two variants:
-    //   b1            — full y_other formula AIGs inlined; stored as f.aig.
-    //   b1_for_encode — in b1_use_lit mode the y_other conjuncts use
-    //                   helper vars (formula.out); used for the encoding.
-    //                   Equal to b1 when the flag is off.
+    // The y_other conjuncts are leaf literals on the y-variable itself —
+    // never the inlined formula AIG. The interpolant I(X) already
+    // generalizes the input part of the conflict; the y_other part is the
+    // conflict y-literals as leaves, exactly as the legacy clause path
+    // does (perform_repair's conflict-clause branch). Inlining
+    // var_to_formula[y_other].aig here used to make the formula AIGs (and
+    // the Tseitin-encoded cex_solver) blow up super-linearly: each interp
+    // repair re-inlined formulas already grown by prior interp repairs.
+    // Leaf-referencing is semantically identical — y_other is itself a
+    // defined variable, so the leaf resolves to its own def AIG on export.
     aig_ptr b1 = AIG::new_not(interp_branch);
-    aig_ptr b1_for_encode = b1;
-    const bool use_lit = (mconf.interp_repair_b1_use_lit != 0);
     if (!skip_y_other_and) {
         for (const auto& l : conflict) {
             if (is_input[l.var()] || is_backward_defined[l.var()]) continue;
             assert(var_to_formula.count(l.var()));
-            const auto& f2 = var_to_formula.at(l.var());
-            aig_ptr ymatch_full = (~l).sign() ? AIG::new_not(f2.aig) : f2.aig;
-            b1 = AIG::new_and(b1, ymatch_full);
-            if (use_lit) {
-                Lit out_lit = (~l).sign() ? ~f2.out : f2.out;
-                aig_ptr ymatch_helper = AIG::new_lit(out_lit);
-                b1_for_encode = AIG::new_and(b1_for_encode, ymatch_helper);
-            } else {
-                b1_for_encode = b1; // mirror
-            }
+            b1 = AIG::new_and(b1, AIG::new_lit(~l));
         }
     }
 
-    // AIG-level simplification of b1 and b1_for_encode. Stats track the
-    // encoded variant, since that drives f.clauses size.
-    const size_t pre_simp_sz = AIG::count_aig_nodes_fast(b1_for_encode);
+    // AIG-level simplification of b1.
+    const size_t pre_simp_sz = AIG::count_aig_nodes_fast(b1);
     b1 = AIG::simplify_aig(b1);
-    if (use_lit) b1_for_encode = AIG::simplify_aig(b1_for_encode);
-    else         b1_for_encode = b1;
     if (mconf.interp_repair_b1_rewrite != 0) {
         b1 = AIG::rewrite_aig(b1);
         b1 = AIG::simplify_aig(b1);
-        if (use_lit) {
-            b1_for_encode = AIG::rewrite_aig(b1_for_encode);
-            b1_for_encode = AIG::simplify_aig(b1_for_encode);
-        } else {
-            b1_for_encode = b1;
-        }
     }
     // Optional FRAIG-lite sat-sweep pass; sat_sweep takes a root vector.
     if (mconf.interp_repair_b1_satsweep != 0) {
@@ -2114,15 +2099,8 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
         rw.sat_sweep(roots, /*verb=*/0);
         b1 = roots[0];
         b1 = AIG::simplify_aig(b1);
-        if (use_lit) {
-            std::vector<aig_ptr> roots2 = {b1_for_encode};
-            rw.sat_sweep(roots2, /*verb=*/0);
-            b1_for_encode = AIG::simplify_aig(roots2[0]);
-        } else {
-            b1_for_encode = b1;
-        }
     }
-    const size_t post_simp_sz = AIG::count_aig_nodes_fast(b1_for_encode);
+    const size_t post_simp_sz = AIG::count_aig_nodes_fast(b1);
     if (interp_repair) {
         interp_repair->total_combined_pre_simp += pre_simp_sz;
         interp_repair->total_combined_post_simp += post_simp_sz;
@@ -2137,8 +2115,7 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
         // Helper var or true_lit: already in cex_solver space.
         return Lit(v, false);
     };
-    // Encode b1_for_encode; f.aig keeps the full-AIG b1.
-    aig_ptr b1_yhat = AIG::translate_leaves(b1_for_encode, leaf_to_yhat);
+    aig_ptr b1_yhat = AIG::translate_leaves(b1, leaf_to_yhat);
 
     SLOW_DEBUG_DO({
         // Defensive: every b1_yhat leaf must be an input, y_hat, helper

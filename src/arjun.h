@@ -1732,8 +1732,6 @@ public:
         int interp_repair_b1_satsweep = 0;
         // Pass --group-cse to AIGToCNF when encoding b1. 0=off, 1=on.
         int interp_repair_group_cse = 0;
-        // y_other AND-conjuncts in b1: 0=inline full AIG, 1=use .out lit.
-        int interp_repair_b1_use_lit = 0;
         // Per-call cadical conflict budget for the interp solve. 0=no limit.
         uint64_t interp_repair_max_conflicts = 0;
         // FIFO cache of (conflict-signature -> interpolant). 0=off.
