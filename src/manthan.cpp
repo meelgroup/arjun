@@ -2078,7 +2078,7 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
         for (const auto& l : conflict) {
             if (is_input[l.var()] || is_backward_defined[l.var()]) continue;
             assert(var_to_formula.count(l.var()));
-            auto f2 = var_to_formula.at(l.var());
+            const auto& f2 = var_to_formula.at(l.var());
             aig_ptr ymatch_full = (~l).sign() ? AIG::new_not(f2.aig) : f2.aig;
             b1 = AIG::new_and(b1, ymatch_full);
             if (use_lit) {
