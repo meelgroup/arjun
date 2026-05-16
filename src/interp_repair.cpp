@@ -97,15 +97,58 @@ void InterpTracerMcMillan::add_derived_clause(uint64_t id, bool /*red*/,
         const vector<int>& clause,
         const vector<uint64_t>& antecedents) {
     derived_count++;
-    vector<Lit> cl_lits = pl_to_lit_cl(clause);
-    cls[id] = cl_lits;
+    // Record only — label construction is deferred to build_interpolant()
+    // so we resolve solely the clauses on the proof core (those reachable
+    // from the empty clause), not every derived clause cadical streams.
+    cls[id] = pl_to_lit_cl(clause);
+    antec[id] = antecedents;
+    if (cls[id].empty() && empty_id == UINT64_MAX) {
+        empty_id = id;
+        VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 4) {
+            cout << "c o [interp] empty clause derived id=" << id << endl;
+        });
+    }
+}
+
+aig_ptr InterpTracerMcMillan::build_interpolant() {
+    if (empty_id == UINT64_MAX) return nullptr;
+
+    // Backward reachability from the empty clause over the recorded
+    // antecedent chains. Only these clauses contribute to the interpolant.
+    set<uint64_t> reach;
+    vector<uint64_t> stack{empty_id};
+    while (!stack.empty()) {
+        const uint64_t id = stack.back();
+        stack.pop_back();
+        if (!reach.insert(id).second) continue;
+        auto it = antec.find(id);
+        if (it == antec.end()) continue;  // original clause: a proof leaf
+        for (const uint64_t a : it->second) stack.push_back(a);
+    }
+
+    // Forward pass: a derived clause's antecedents always have smaller
+    // IDs (cadical hands out IDs monotonically), so ascending-ID order —
+    // which is how std::set iterates — is a valid topological order.
+    for (const uint64_t id : reach) {
+        if (antec.count(id)) {
+            build_derived_label(id);
+            core_count++;
+        }
+    }
+
+    auto it = labels.find(empty_id);
+    out = (it != labels.end()) ? it->second : nullptr;
+    return out;
+}
+
+void InterpTracerMcMillan::build_derived_label(uint64_t id) {
+    const vector<uint64_t>& antecedents = antec[id];
 
     // Walk the resolution chain; cadical gives antecedents in chain
     // order, so reverse to resolve iteratively from the start.
     if (antecedents.empty()) {
         // Shouldn't happen for a derived clause, but be defensive.
         labels[id] = aig_mng.new_const(false);
-        if (cl_lits.empty()) out = labels[id];
         return;
     }
     const vector<uint64_t> rantec(antecedents.rbegin(), antecedents.rend());
@@ -199,12 +242,6 @@ void InterpTracerMcMillan::add_derived_clause(uint64_t id, bool /*red*/,
     }
     flush_batch();
     labels[id] = lab;
-    if (cl_lits.empty()) {
-        out = lab;
-        VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 4) {
-            cout << "c o [interp] empty clause derived; interpolant set" << endl;
-        });
-    }
 }
 
 InterpRepair::InterpRepair(const Config& _conf,
@@ -356,12 +393,17 @@ aig_ptr InterpRepair::compute_interpolant(
         return nullptr;
     }
 
-    aig_ptr interp = tracer.out;
+    // Trace back from the empty clause and resolve only the proof core.
+    aig_ptr interp = tracer.build_interpolant();
     if (interp == nullptr) {
         VERBOSE_DEBUG_DO(cout << "c o [interp-repair] interpolant is null after UNSAT; falling back" << endl);
         calls_failed_other++;
         return nullptr;
     }
+    VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
+        cout << "c o [interp-repair] proof core: " << tracer.core_count
+             << " / " << tracer.derived_count << " derived clauses" << endl;
+    });
 
     // Clean up the proof-driven AIG before returning. simplify_aig is
     // always run; full_rewrite additionally runs the heavier structural

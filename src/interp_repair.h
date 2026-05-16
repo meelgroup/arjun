@@ -73,19 +73,29 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
 
     // ID -> clause literals (kept to find resolution pivots).
     std::map<uint64_t, std::vector<CMSat::Lit>> cls;
-    // ID -> partial McMillan label (an AIG over input vars).
+    // ID -> partial McMillan label (an AIG over input vars). Original
+    // clauses are labelled eagerly; derived-clause labels are only filled
+    // for the proof core during build_interpolant().
     std::map<uint64_t, ArjunNS::aig_ptr> labels;
+    // ID -> antecedent chain for derived clauses. Recorded as the proof
+    // streams in, but only resolved (into a label) for the proof core.
+    std::map<uint64_t, std::vector<uint64_t>> antec;
 
     // Cache: input lit -> AIG leaf node, so structural hashing dedups.
     std::map<CMSat::Lit, ArjunNS::aig_ptr> lit_to_aig;
 
-    // Set when the empty clause is derived. The repair caller reads this
-    // and uses it as the interpolant.
+    // ID of the derived empty clause; set when first seen.
+    uint64_t empty_id = UINT64_MAX;
+
+    // Set by build_interpolant(): the McMillan interpolant AIG, or null.
     ArjunNS::aig_ptr out = nullptr;
 
     // For diagnostics.
     uint64_t derived_count = 0;
     uint64_t orig_count = 0;
+    // Derived clauses actually on the proof core (reachable from the
+    // empty clause), set by build_interpolant().
+    uint64_t core_count = 0;
 
     void mark_b_clause(uint64_t id) { b_clause_ids.insert(id); }
 
@@ -97,6 +107,17 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     void add_derived_clause(uint64_t id, bool red,
             const std::vector<int>& clause,
             const std::vector<uint64_t>& antecedents) override;
+
+    // Trace back from the empty clause over the recorded antecedent
+    // chains, build McMillan labels only for the reachable proof-core
+    // clauses, and return the interpolant AIG (sets `out`). Returns null
+    // if no empty clause was derived.
+    ArjunNS::aig_ptr build_interpolant();
+
+private:
+    // Resolve one derived clause's antecedent chain into a McMillan
+    // label. Assumes every antecedent already has a label.
+    void build_derived_label(uint64_t id);
 };
 
 class InterpRepair {
