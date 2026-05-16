@@ -1117,9 +1117,7 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
             aig_lit r_edge(rp.node, rp.neg ^ n->r.neg);
             result = make_canonical(l_edge, r_edge);
         } else {
-            auto rsi = raw_to_shared.find(n);
-            assert(rsi != raw_to_shared.end());
-            result = aig_lit(rsi->second, false);
+            result = aig_lit(raw_to_shared.at(n), false);
         }
         rebuild[n] = result;
         return result;
