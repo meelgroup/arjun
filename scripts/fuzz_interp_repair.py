@@ -66,6 +66,35 @@ if __name__ == "__main__":
     (options, args) = parser.parse_args()
     _fs.options = options  # fuzz_synth references options as a module global
 
+    # Monkey-patch the brummayer call so most iterations stay tiny
+    # (~20-30 vars, runs in ~3-5s — fits inside fuzz_synth's per-iter
+    # time budget of options.maxtime, default 12s), but a small slice
+    # samples bigger CNFs. The interpolation bugs we care about
+    # (helper-var leaf leaking to f.aig, y_other AND mishandling)
+    # need conflicts that span y variables — tiny random CNFs almost
+    # never produce those. Going bigger is risky (large CNFs can hit
+    # the per-iter timeout and waste the slot), so we keep the heavy
+    # tail rare:
+    #
+    #   tiny    ~85% : cnf-fuzz-brummayer defaults
+    #   medium  ~10% : -i 8 -I 15        (~50-100 vars)
+    #   large   ~4%  : -i 14 -I 30       (~200-400 vars; ~half timeout)
+    #   huge    ~1%  : -i 22 -I 45       (often timeout; we accept that)
+    _orig_brummayer = _fs.gen_fuzz_call_brummayer
+    def _bigger_brummayer(fuzzer, fname):
+        seed = random.randint(0, 1000*1000*1000)
+        profile = random.choices(
+            ["tiny", "medium", "large", "huge"],
+            weights=[85, 10, 4, 1])[0]
+        if profile == "tiny":
+            return "{0} -s {1} > {2}".format(fuzzer, seed, fname)
+        if profile == "medium":
+            return "{0} -s {1} -i 8 -I 15 > {2}".format(fuzzer, seed, fname)
+        if profile == "large":
+            return "{0} -s {1} -i 14 -I 30 > {2}".format(fuzzer, seed, fname)
+        return "{0} -s {1} -i 22 -I 45 > {2}".format(fuzzer, seed, fname)
+    _fs.gen_fuzz_call_brummayer = _bigger_brummayer
+
     if options.rnd_seed is None:
         b = os.urandom(8)
         rnd_seed = int.from_bytes(b)
