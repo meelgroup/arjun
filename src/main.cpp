@@ -191,7 +191,6 @@ void add_arjun_options() {
 
     // repairing on vars
     myopt("--bwequal", mconf.force_bw_equal, fc_int,"Force BW vars' indicators to be TRUE -- prevents repairing with them, but faster to repair");
-    myopt("--silentupdate", mconf.silent_var_update, fc_int,"Silently update variables while repairing");
     // Strategy
     myopt("--mstrategy", mstrategy, fc_string,
         "Comma-separated synthesis strategy list, e.g. "

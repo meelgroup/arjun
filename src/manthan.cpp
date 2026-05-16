@@ -572,8 +572,8 @@ bool Manthan::check_synth_via_aig(const string& where) const {
             if (to_define_full.count(v)) {
                 base = shadow_y_hat.at(v);
             } else if (y_hat_to_y.count(v)) {
-                // AIG leaf is a Manthan y_hat (from perform_repair's
-                // lit_to_aig for input/backward_defined vars). For inputs
+                // AIG leaf is a Manthan y_hat (from map_y_to_y_hat
+                // remapping of input/backward_defined vars). For inputs
                 // map_y_to_y_hat returns the input var itself, so if we
                 // reach here it's backward_defined. Use shadow.
                 uint32_t y = y_hat_to_y.at(v).var();
@@ -1698,8 +1698,6 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
 
     // We go through the variables that y_rep does NOT depend on, and assume them to be correct
     for(const auto& y: y_order) {
-        // BW will be updated, as it can must depend on vars other than inputs
-        if (!mconf.silent_var_update && backward_defined.count(y)) continue;
         if (y == y_rep) break; // beyond this point we don't care
         assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen. Otherwise y depends on y_rep, but we will repair y_rep potentially with y_rep");
         assert(ctx[y] == ctx[y_to_y_hat[y]]); // they are correct
@@ -1723,7 +1721,6 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
             assumps.clear();
             for(const auto& x: input) assumps.push_back(Lit(x, ctx[x] == l_False));
             for(const auto& y: y_order) {
-                if (!mconf.silent_var_update && backward_defined.count(y)) continue;
                 if (y == y_rep) break;
                 assumps.push_back(Lit(y, ctx[y] == l_False));
             }
@@ -2239,24 +2236,6 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
     // not (conflict) -> v = ctx(v)
     FHolder<MetaSolver2>::Formula f;
 
-    auto lit_to_lit = [&] (const Lit l) {
-        if (is_input[l.var()] || is_backward_defined[l.var()]) {
-            return map_y_to_y_hat(l);
-        }
-        assert(var_to_formula.count(l.var()));
-        auto f2 = var_to_formula.at(l.var());
-        return l.sign() ? ~f2.out : f2.out;
-    };
-
-    auto lit_to_aig = [&] (const Lit l) {
-        if (is_input[l.var()] || is_backward_defined[l.var()]) {
-            return AIG::new_lit(map_y_to_y_hat(l));
-        }
-        assert(var_to_formula.count(l.var()));
-        auto f2 = var_to_formula.at(l.var());
-        return l.sign() ? AIG::new_not(f2.aig) : f2.aig;
-    };
-
     if (interp_branch != nullptr) {
         // Interpolant path
         const uint32_t cex_nvars_before = cex_solver.nVars();
@@ -2279,21 +2258,15 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         helpers.insert(fresh_l.var());
         cl.push_back(fresh_l);
         for(const auto& l: conflict) {
-            Lit l2;
-            if (!mconf.silent_var_update) l2 = lit_to_lit(l);
-            else l2 = map_y_to_y_hat(l);
-            cl.push_back(l2);
+            cl.push_back(map_y_to_y_hat(l));
             set_depends_on(y_rep, l);
         }
         f.clauses.emplace_back(cl);
 
         for(const auto& l: conflict) {
-            Lit l2;
-            if (!mconf.silent_var_update) l2 = lit_to_lit(l);
-            else l2 = map_y_to_y_hat(l);
             cl.clear();
             cl.push_back(~fresh_l);
-            cl.push_back(~l2);
+            cl.push_back(~map_y_to_y_hat(l));
             f.clauses.push_back(cl);
         }
         f.out = fresh_l;
@@ -2303,13 +2276,9 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         for(const auto& l: conflict) assert(l.var() < cnf.nVars());
         if (conflict.empty()) b1 = aig_mng.new_const(true);
         else {
-            if (!mconf.silent_var_update) b1 = lit_to_aig(~conflict[0]);
-            else b1 = AIG::new_lit(~conflict[0]);
+            b1 = AIG::new_lit(~conflict[0]);
             for(size_t i = 1; i < conflict.size(); i++) {
-                aig_ptr lit_aig2;
-                if (!mconf.silent_var_update) lit_aig2 = lit_to_aig(~conflict[i]);
-                else lit_aig2 = AIG::new_lit(~conflict[i]);
-                b1 = AIG::new_and(b1, lit_aig2);
+                b1 = AIG::new_and(b1, AIG::new_lit(~conflict[i]));
             }
         }
         f.aig = b1;

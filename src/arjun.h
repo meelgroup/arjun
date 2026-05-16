@@ -1679,7 +1679,6 @@ public:
         int manthan_order = 0;
         int one_repair_per_loop = 0;
         int force_bw_equal = 1;
-        int silent_var_update = 1;
         int inv_learnt = 0;
         uint32_t max_repairs = std::numeric_limits<uint32_t>::max();
         int check_repair = 0;

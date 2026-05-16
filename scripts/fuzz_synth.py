@@ -357,7 +357,7 @@ def gen_mstrategy():
                    "maxsat_order", "use_all_vars_as_feats",
                    "repair_cache_size",
                    "one_repair_per_loop", "force_bw_equal",
-                   "silent_var_update", "inv_learnt"]
+                   "inv_learnt"]
     #  "ctx_solver_type", "repair_solver_type",
     double_params = ["min_gain_split"]
 
@@ -457,7 +457,6 @@ if __name__ == "__main__":
             , " --unatedefcondnoninp"
             , " --unatedefrep"
             , " --bwequal"
-            , " --silentupdate"
             , " --learnuseall"
         ]
         for o in opts:
