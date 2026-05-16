@@ -1010,9 +1010,19 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
     for (size_t t = topo.size(); t > 256 && R < 48; t >>= 2) R += 4;
     std::mt19937_64 rng(0xA11CEULL);
     std::unordered_map<uint32_t, vector<uint64_t>> var_pats;
+    // Structured seeding: dedicate round 0 to the input vectors random
+    // sampling is least likely to hit — all-zeros (bit 0), all-ones (bit 1),
+    // and one-hot rows isolating each variable (bit idx+2). These split
+    // near-constant and single-variable-sensitive nodes that pure random
+    // patterns can coincidentally group, cutting bogus candidate classes.
+    uint32_t var_idx = 0;
     for (uint32_t v : used_vars) {
         var_pats[v].resize(R);
         for (uint32_t i = 0; i < R; i++) var_pats[v][i] = rng();
+        uint64_t structured = 2ULL;  // bit 1 set ⇒ "all variables = 1" row
+        if (var_idx < 62) structured |= (1ULL << (var_idx + 2));
+        var_pats[v][0] = structured;  // bit 0 stays 0 ⇒ "all variables = 0" row
+        var_idx++;
     }
 
     // Simulate every node's POSITIVE value. Fanin sign flips the child's
