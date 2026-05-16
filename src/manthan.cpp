@@ -1522,6 +1522,22 @@ uint32_t Manthan::find_next_repair_var(const sample& ctx) const {
     return y_rep;
 }
 
+// Add the repair conflict as a learned clause to the repair solver.
+// The conflict {l1, l2, ..., ln} (with to_repair already removed) means:
+// under the CNF, ~l1 AND ~l2 AND ... AND ~to_repair → FALSE.
+// So (l1 OR l2 OR ... OR to_repair) is a valid clause.
+// We add it as redundant to help the solver reason faster.
+void Manthan::add_repair_conflict_clause(const uint32_t y_rep, const sample& ctx,
+        const vector<Lit>& conflict) {
+    if (conflict.empty()) return;
+    const Lit to_repair = Lit(y_rep, ctx[y_to_y_hat[y_rep]] == l_True);
+    vector<Lit> learned_cl;
+    learned_cl.reserve(conflict.size() + 1);
+    for (const auto& l : conflict) learned_cl.push_back(l);
+    learned_cl.push_back(to_repair);
+    repair_solver.add_red_clause(learned_cl);
+}
+
 bool Manthan::is_unsat(const vector<Lit>& conflict, uint32_t y_rep, const sample& ctx) const {
     SATSolver s;
     s.new_vars(cnf.nVars());
@@ -1552,19 +1568,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     if (ret) {
         SLOW_DEBUG_DO(assert(is_unsat(conflict, y_rep, ctx)));
 
-        // Add the repair conflict as a learned clause to the repair solver.
-        // The conflict {l1, l2, ..., ln} (with to_repair already removed) means:
-        // under the CNF, ~l1 AND ~l2 AND ... AND ~to_repair → FALSE.
-        // So (l1 OR l2 OR ... OR to_repair) is a valid clause.
-        // We add it as redundant to help the solver reason faster.
-        if (!conflict.empty()) {
-            const Lit to_repair = Lit(y_rep, ctx[y_to_y_hat[y_rep]] == l_True);
-            vector<Lit> learned_cl;
-            learned_cl.reserve(conflict.size() + 1);
-            for (const auto& l : conflict) learned_cl.push_back(l);
-            learned_cl.push_back(to_repair);
-            repair_solver.add_red_clause(learned_cl);
-        }
+        add_repair_conflict_clause(y_rep, ctx, conflict);
 
         t0 = cpuTime();
         if (interp_branch != nullptr) {

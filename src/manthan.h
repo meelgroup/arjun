@@ -136,6 +136,10 @@ class Manthan {
         std::vector<uint32_t> var_conflict_freq; // how often each var appears in conflicts
         void minimize_conflict(std::vector<CMSat::Lit>& conflict, std::vector<CMSat::Lit>& assumps, const CMSat::Lit repairing);
         uint32_t find_next_repair_var(const sample& ctx) const;
+        // Add the repair conflict as a redundant clause to repair_solver,
+        // to speed up future repair_solver reasoning.
+        void add_repair_conflict_clause(const uint32_t y_rep, const sample& ctx,
+                const std::vector<CMSat::Lit>& conflict);
         // If `interp_branch` is non-null, perform_repair uses it as the
         // AIG branch; otherwise it builds the branch from conflict literals.
         void perform_repair(const uint32_t y_rep, const sample& ctx,
