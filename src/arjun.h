@@ -1725,6 +1725,10 @@ public:
         uint32_t interp_repair_min_var_repairs = 0;
         // Cap interpolant AIG node count; bigger falls back. 0=no cap.
         uint32_t interp_repair_max_aig_nodes = 0;
+        // rewrite_aig of the raw McMillan interpolant AIG, right after it
+        // is computed (before the cap check / cache / use in b1).
+        // 0=simplify only, 1=+rewrite_aig.
+        int interp_repair_rewrite = 0;
         // rewrite_aig of the combined b1 AIG before Tseitin encoding.
         // 0=simplify only, 1=+rewrite_aig.
         int interp_repair_b1_rewrite = 0;

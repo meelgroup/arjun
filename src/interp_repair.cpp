@@ -298,7 +298,7 @@ InterpRepair::CacheKey InterpRepair::make_signature(Lit to_repair_lit,
 aig_ptr InterpRepair::compute_interpolant(
         [[maybe_unused]] uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
-        uint64_t conflict_budget, bool unconditional)
+        bool full_rewrite, uint64_t conflict_budget, bool unconditional)
 {
     calls++;
     total_conflict_lits += conflict.size();
@@ -404,7 +404,12 @@ aig_ptr InterpRepair::compute_interpolant(
         return nullptr;
     }
 
-    // Simplify the proof-driven AIG before returning.
+    // Clean up the proof-driven AIG before returning. simplify_aig is
+    // always run; full_rewrite additionally runs the heavier structural
+    // rewrite_aig pass. Doing it here (rather than only on the combined
+    // b1) means the oversize cap, the size stats and the signature cache
+    // all see the rewritten interpolant.
+    if (full_rewrite) interp = AIG::rewrite_aig(interp);
     interp = AIG::simplify_aig(interp);
 
     // SLOW_DEBUG: verify the interpolant only references input vars.

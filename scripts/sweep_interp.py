@@ -75,6 +75,7 @@ ALL_CONFIGS: List[Tuple[str, str]] = [
     ("cache-64",         "--interprepair 1 --interprepaircache 64"),
     ("cache-512",        "--interprepair 1 --interprepaircache 512"),
     # AIG post-processing
+    ("rewrite",          "--interprepair 1 --interprepairrewrite 1"),
     ("b1rewrite",        "--interprepair 1 --interprepairb1rewrite 1"),
     ("b1satsweep",       "--interprepair 1 --interprepairb1satsweep 1"),
     ("groupcse",         "--interprepair 1 --interprepairgroupcse 1"),
