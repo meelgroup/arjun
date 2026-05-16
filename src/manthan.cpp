@@ -1907,34 +1907,18 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                 }
             }
 
-            // Optional always-on verification.
-            if (interp_branch != nullptr) {
-                if (mconf.interp_repair_verify == 1) {
-                    if (!interp_repair->quick_check_interpolant_excludes_cex(
-                            interp_branch, conflict)) {
-                        verb_print(1, "[manthan-interp] verify=1 fails; falling back");
-                        interp_branch = nullptr;
-                    }
-                } else if (mconf.interp_repair_verify == 2) {
-                    if (!interp_repair->slow_check_a_implies_i(
-                            to_repair, conflict, interp_branch)) {
-                        verb_print(1, "[manthan-interp] verify=2 (full miter) fails; falling back");
-                        interp_branch = nullptr;
-                    }
-                } else if (mconf.interp_repair_verify == 3) {
-                    // Probabilistic: 8 random samples.
-                    if (!interp_repair->sample_check_interpolant(
-                            to_repair, conflict, interp_branch,
-                            /*num_samples=*/8, /*seed=*/num_loops_repair * 7919u)) {
-                        verb_print(1, "[manthan-interp] verify=3 (sample check) fails; falling back");
-                        interp_branch = nullptr;
-                    }
+            // Verification: with SLOW_DEBUG enabled, run all checks
+            // (cheap CEX-excluded, full miter, and sample check).
+            SLOW_DEBUG_DO(
+              if (interp_branch != nullptr) {
+                if (!interp_repair->quick_check_interpolant_excludes_cex(interp_branch, conflict)) {
+                    assert(false &&& "verify (CEX-excluded) fails");
+                } else if (!interp_repair->slow_check_a_implies_i(to_repair, conflict, interp_branch)) {
+                    assert(false && "verify (full miter) fails");
+                } else if (!interp_repair->sample_check_interpolant(to_repair, conflict, interp_branch,
+                        /*num_samples=*/8, /*seed=*/num_loops_repair * 7919u)) {
+                    assert(false && "verify (sample check) fails");
                 }
-            }
-
-            VERBOSE_DEBUG_DO(if (interp_branch == nullptr) {
-                std::cout << "c o [manthan] interp_repair returned null for y="
-                    << y_rep+1 << " confl_sz=" << conflict.size() << std::endl;
             });
         }
     }

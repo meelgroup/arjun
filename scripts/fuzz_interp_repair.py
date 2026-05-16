@@ -128,7 +128,6 @@ if __name__ == "__main__":
         solver += " --interprepairadaptive %s" % random.choice(["0", "1"])
         solver += " --interprepairratioskip %s" % random.choice(["1.0", "5.0", "20.0"])
         solver += " --interprepairskipwindow %s" % random.choice(["1", "10", "100"])
-        solver += " --interprepairverify %s" % random.choice(["0", "1", "3"])
         # Strategy
         solver += " --mstrategy " + _fs.gen_mstrategy()
 

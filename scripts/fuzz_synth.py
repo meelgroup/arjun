@@ -552,7 +552,6 @@ if __name__ == "__main__":
             solver += " --interprepairadaptive " + random.choice(["0", "1"])
             solver += " --interprepairratioskip " + random.choice(["1.0", "5.0", "20.0"])
             solver += " --interprepairskipwindow " + random.choice(["1", "10", "100"])
-            solver += " --interprepairverify " + random.choice(["0", "1", "3"])
 
         solver += " --mstrategy " + gen_mstrategy()
 

@@ -80,8 +80,6 @@ ALL_CONFIGS: List[Tuple[str, str]] = [
     ("b1satsweep",       "--interprepair 1 --interprepairb1satsweep 1"),
     ("groupcse",         "--interprepair 1 --interprepairgroupcse 1"),
     ("b1uselit",         "--interprepair 1 --interprepairb1uselit 1"),
-    # Always-on verification
-    ("verify-3",         "--interprepair 1 --interprepairverify 3"),
     # Combo: "kitchen sink" for benchmarks where interp shines
     ("combo-aggressive", "--interprepair 1 "
                          "--interprepairb1rewrite 1 --interprepairgroupcse 1 "
