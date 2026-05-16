@@ -28,6 +28,8 @@ void AIG2CNFStats::print(int verb) const {
         << "  MUX3: " << mux3_patterns
         << "  XOR: " << xor_patterns
         << "  CUT: " << cut_cnf_patterns << "/" << cut_cnf_clauses << "cls"
+        << " (const=" << cut_cnf_const << " proj=" << cut_cnf_proj
+        << " cse=" << cut_cnf_cse_hits << ")"
         << std::endl;
 }
 

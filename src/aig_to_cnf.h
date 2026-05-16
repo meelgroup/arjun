@@ -21,6 +21,7 @@
 #pragma once
 
 #include "arjun.h"
+#include "constants.h"
 #include "cut_cnf.h"
 #include <cryptominisat5/solvertypesmini.h>
 #include <algorithm>
@@ -55,6 +56,12 @@ struct AIG2CNFStats {
     uint64_t xor_patterns = 0;
     uint64_t cut_cnf_patterns = 0;
     uint64_t cut_cnf_clauses = 0;
+    // Cut-CNF cones that collapsed to a constant or to a single input
+    // projection — these need neither a helper nor any clause.
+    uint64_t cut_cnf_const = 0;
+    uint64_t cut_cnf_proj = 0;
+    // Cut-CNF cones served from the functional (leaves+tt) CSE cache.
+    uint64_t cut_cnf_cse_hits = 0;
 
     // Group-CSE contribution counters.
     uint64_t cse_and_hits = 0;
@@ -1093,6 +1100,42 @@ bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
         return m.neg ? (uint16_t)((~v_pos) & full_mask) : v_pos;
     };
     const uint16_t tt = eval(n);
+
+    // Constant cone: the whole sub-AIG is FALSE or TRUE. No helper, no
+    // clauses — the encoder's TRUE literal (or its negation) IS the value.
+    // Catches contradictory / tautological cones that the AIG-level folds
+    // missed because the contradiction only shows up across ≥2 levels.
+    if (tt == 0) {
+        out = ~get_true_lit();
+        stats.cut_cnf_const++;
+        return true;
+    }
+    if (tt == full_mask) {
+        out = get_true_lit();
+        stats.cut_cnf_const++;
+        return true;
+    }
+
+    // Projection cone: f(x₀…x_{k-1}) == x_s (possibly negated). The cone is
+    // functionally just one of its leaves — return that leaf literal with no
+    // helper and no clauses. Typical source: a multi-level AND/OR cone whose
+    // other inputs cancel out (e.g. AND(x, OR(x, y)) flattened across levels).
+    for (uint32_t s = 0; s < num_inputs; s++) {
+        uint16_t proj = 0;
+        for (uint32_t m = 0; m < num_mt; m++) {
+            if ((m >> s) & 1u) proj |= (uint16_t)(1u << m);
+        }
+        if (tt == proj) {
+            out = slot_lits[s];
+            stats.cut_cnf_proj++;
+            return true;
+        }
+        if (tt == (uint16_t)(proj ^ full_mask)) {
+            out = ~slot_lits[s];
+            stats.cut_cnf_proj++;
+            return true;
+        }
+    }
 
     const auto& min_cnf = cut_cnf::min_cnf_for_tt(num_inputs, tt);
 
