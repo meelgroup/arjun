@@ -580,6 +580,35 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
             } else if (children.empty()) {
                 pos = cached_const(true);
             } else {
+                // Wide groups skip the O(n²) absorption/resolution loops
+                // below, but a single hash-set pass of OR absorption is only
+                // O(n + Σdisjuncts): drop any OR child one of whose disjuncts
+                // equals an AND sibling — AND(a, OR(a, …)) = a.
+                if (wide) {
+                    std::set<std::pair<uint64_t, bool>> sibset;
+                    for (const auto& c : children)
+                        sibset.insert({c.node->nid, c.neg});
+                    vector<aig_lit> kept;
+                    kept.reserve(children.size());
+                    for (const auto& c : children) {
+                        bool absorbed = false;
+                        if (is_or(c)) {
+                            vector<aig_lit> dj;
+                            collect_or_edges(c, dj);
+                            for (const auto& d : dj) {
+                                if (d.node && d != c
+                                    && sibset.count({d.node->nid, d.neg})) {
+                                    absorbed = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (absorbed) stats.absorption++;
+                        else kept.push_back(c);
+                    }
+                    children.swap(kept);
+                }
+
                 // Cross-level subsumption: for each OR child, check if any
                 // AND sibling matches one of its disjuncts (absorption) or
                 // complements one (subsumption).
