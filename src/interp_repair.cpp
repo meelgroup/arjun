@@ -296,11 +296,10 @@ InterpRepair::CacheKey InterpRepair::make_signature(Lit to_repair_lit,
 }
 
 aig_ptr InterpRepair::compute_interpolant(
-        uint32_t y_rep, Lit to_repair_lit,
+        [[maybe_unused]] uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
         uint64_t conflict_budget, bool unconditional)
 {
-    (void)y_rep;
     calls++;
     total_conflict_lits += conflict.size();
 
