@@ -57,6 +57,7 @@ struct AIG2CNFStats {
     // mux3_patterns counting one per chain, the average chain length is
     // mux_chain_levels_total / mux3_patterns.
     uint64_t mux_chain_levels_total = 0;
+    uint64_t mux_chain_cse_hits = 0;
     uint64_t xor_patterns = 0;
     uint64_t cut_cnf_patterns = 0;
     uint64_t cut_cnf_clauses = 0;
@@ -181,6 +182,11 @@ private:
     // 16-bit TT keeps the key tiny, so unlike group_cse this is cheap enough
     // to leave always on. Always populated.
     std::map<std::vector<uint32_t>, CMSat::Lit> cut_cse;
+
+    // Functional CSE for fused MUX chains. Key: the packed (var<<1|sign)
+    // selector / then-value / base literals of the chain. Two structurally
+    // distinct but literal-identical ITE chains then share one helper.
+    std::map<std::vector<uint32_t>, CMSat::Lit> mux_chain_cse;
 
     static void canon_sort_lits(std::vector<CMSat::Lit>& v) {
         std::sort(v.begin(), v.end(), [](CMSat::Lit a, CMSat::Lit b) {
@@ -921,10 +927,28 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
                 t_lits.push_back(encode_edge(lv.second));
             }
             CMSat::Lit base_lit = encode_edge(base);
+
+            // Functional CSE: a structurally distinct chain over the same
+            // literal sequence is the same function — reuse its helper.
+            auto pack = [](CMSat::Lit l) { return (l.var() << 1) | (l.sign() ? 1u : 0u); };
+            std::vector<uint32_t> key;
+            key.reserve(2 * levels.size() + 2);
+            for (auto l : sels)   key.push_back(pack(l));
+            key.push_back(0xFFFFFFFFu);  // separator: selectors | then-values
+            for (auto l : t_lits) key.push_back(pack(l));
+            key.push_back(pack(base_lit));
+            auto it_cse = mux_chain_cse.find(key);
+            if (it_cse != mux_chain_cse.end()) {
+                stats.mux_chain_cse_hits++;
+                out = it_cse->second;
+                return true;
+            }
+
             CMSat::Lit h = new_helper();
             emit_mux_chain(h, sels, t_lits, base_lit);
             stats.mux3_patterns++;
             stats.mux_chain_levels_total += levels.size();
+            mux_chain_cse[key] = h;
             out = h;
             return true;
         }
