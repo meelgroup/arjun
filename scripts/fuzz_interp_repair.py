@@ -9,13 +9,8 @@
 # of the License.
 
 """
-Dedicated fuzzer for the Craig-interpolant repair path
-(Option 2 in IDEAS-3-categories.md).
-
-Identical to fuzz_synth.py except --interprepair is always set to 1 or 2,
-i.e. every fuzz iteration exercises the interpolant code path. The
-correctness check is the same: test-synth verifies the AIG output
-against the original CNF.
+Fuzzer for the Craig-interpolant repair path: like fuzz_synth but with
+--interprepair always 1 or 2, so every iteration exercises it.
 
 Usage (from build/):
     ./fuzz_interp_repair.py --num 1000
@@ -32,19 +27,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fuzz_synth as _fs
 
 
-# Save the original gen_mstrategy and patch the main loop's choice for
-# interp_repair. The simplest, most robust thing is to monkey-patch
-# random.choices in the main loop window so the ir_mode path always
-# returns 1 or 2. Since fuzz_synth's main loop is __main__-guarded, we
-# wrap it here.
-
+# Monkey-patch random.choices so the interp_repair mode never picks 0.
 def _force_interp_choice():
     # Force the random.choices-call in fuzz_synth to never return 0.
     orig_choices = random.choices
     def patched_choices(population, weights=None, *, cum_weights=None, k=1):
-        # Match the specific [0,1,2] population used by fuzz_synth for
-        # interp_repair selection: drop the 0 option so we always exercise
-        # the interpolant path, picking 1 vs 2 50/50.
+        # Drop the 0 option from the interp_repair [0,1,2] selection.
         if (list(population) == [0, 1, 2]
                 and weights is not None
                 and len(weights) == 3):
@@ -56,7 +44,6 @@ def _force_interp_choice():
 
 if __name__ == "__main__":
     _force_interp_choice()
-    # Re-exec fuzz_synth's main: easier to just do the same setup.
     if os.path.exists("out") and os.path.isfile("out"):
         print("ERROR: file 'out' exists, but we need a directory named 'out'")
         sys.exit(-1)
@@ -66,20 +53,8 @@ if __name__ == "__main__":
     (options, args) = parser.parse_args()
     _fs.options = options  # fuzz_synth references options as a module global
 
-    # Monkey-patch the brummayer call so most iterations stay tiny
-    # (~20-30 vars, runs in ~3-5s — fits inside fuzz_synth's per-iter
-    # time budget of options.maxtime, default 12s), but a small slice
-    # samples bigger CNFs. The interpolation bugs we care about
-    # (helper-var leaf leaking to f.aig, y_other AND mishandling)
-    # need conflicts that span y variables — tiny random CNFs almost
-    # never produce those. Going bigger is risky (large CNFs can hit
-    # the per-iter timeout and waste the slot), so we keep the heavy
-    # tail rare:
-    #
-    #   tiny    ~85% : cnf-fuzz-brummayer defaults
-    #   medium  ~10% : -i 8 -I 15        (~50-100 vars)
-    #   large   ~4%  : -i 14 -I 30       (~200-400 vars; ~half timeout)
-    #   huge    ~1%  : -i 22 -I 45       (often timeout; we accept that)
+    # Mostly tiny CNFs, with a rare heavy tail so interp conflicts that
+    # span y variables still get exercised.
     _orig_brummayer = _fs.gen_fuzz_call_brummayer
     def _bigger_brummayer(fuzzer, fname):
         seed = random.randint(0, 1000*1000*1000)
@@ -124,10 +99,7 @@ if __name__ == "__main__":
         prefix = _fs.unique_file("fuzzInterp")
         print("Using prefix %s for synthesis output files" % prefix)
 
-        # Build the same solver string fuzz_synth would, but force interpolation.
-        # Easiest: build a minimal driver string with --interprepair=1
-        # (or 2) so we exercise the path while keeping the rest of the
-        # config small and reproducible.
+        # Minimal driver string with interpolation forced on.
         ir_mode = random.choice([1, 2])
         solver = "./arjun --verb 1 --debugsynth %s " % prefix
         # Mode toggles

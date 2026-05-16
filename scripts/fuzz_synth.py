@@ -536,9 +536,7 @@ if __name__ == "__main__":
         solver += " --czthreshmid " + random.choice(["0", "1", "2", "5", "1000"])
         solver += " --czthreshlow " + random.choice(["0", "1", "2", "5", "1000"])
 
-        # Craig-interpolant repair (Option 2 in IDEAS-3-categories.md). Most
-        # of the time leave it off so we don't trade coverage of the
-        # default path; turn it on ~25% to exercise the new code.
+        # Craig-interpolant repair: mostly off, ~25% on.
         ir_mode = random.choices([0, 1, 2], weights=[3, 1, 1])[0]
         solver += " --interprepair " + str(ir_mode)
         if ir_mode == 2:

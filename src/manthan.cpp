@@ -1050,13 +1050,8 @@ void Manthan::print_detailed_stats() const {
     verb_print(1, COLCYN "[manthan-stats]   cex_solver calls:     " << cex_solver_calls);
     verb_print(1, COLCYN "[manthan-stats]   repair_solver calls:  " << repair_solver_calls);
 
-    // Interp-repair (Option 2). Manthan-side aggregates so the breakdown
-    // sits next to the regular repair stats. The InterpRepair object's
-    // own print_stats reports per-call internals (setup/solve/simp time,
-    // smaller-vs-larger ratios, max nodes). Both are useful: this block
-    // tells you "how often did interp drive a repair", InterpRepair's
-    // line tells you "what the call costs and what the interpolant looks
-    // like".
+    // Interp-repair: Manthan-side aggregates (how often interp drove a
+    // repair); InterpRepair's own print_stats has per-call internals.
     if (interp_repair) {
         const double interp_used_pct = safe_div(interp_repairs_used*100.0, tot_repaired);
         const uint64_t conflict_repairs = (tot_repaired >= interp_repairs_used)
@@ -1066,10 +1061,7 @@ void Manthan::print_detailed_stats() const {
             << " / " << tot_repaired
             << "  (" << fixed << setprecision(1) << interp_used_pct << "%)");
         verb_print(1, COLCYN "[manthan-stats]   conflict drove rep.:  " << conflict_repairs);
-        // Helper-var growth per repair: how many fresh cex_solver vars
-        // each path created. Smaller is better for downstream
-        // cex_solver scaling. Interp paths tend to add more (b1 is a
-        // bigger AIG), but b1-rewrite/sat_sweep should narrow the gap.
+        // Fresh cex_solver helper vars created per repair, by path.
         if (interp_repairs_used > 0) {
             verb_print(1, COLCYN "[manthan-stats]   helpers/rep:          "
                 << "interp avg " << fixed << setprecision(1)
@@ -1109,11 +1101,7 @@ void Manthan::print_detailed_stats() const {
                                                  interp_repair->calls_succeeded);
                 const double avg_inplits = safe_div(interp_repair->total_input_lits_in_conflict,
                                                     interp_repair->calls_succeeded);
-                // ratio > 1 means the interp brings in extra input vars
-                // beyond the conflict's input subset (via resolution
-                // chains through cnf clauses). Useful signal when tuning
-                // gating: huge ratios suggest the cnf's structure
-                // forces the interp to "explain too much".
+                // ratio > 1: interp uses input vars beyond the conflict's.
                 const double ratio = safe_div(avg_supp, avg_inplits);
                 verb_print(1, COLCYN "[manthan-stats]   support: avg interp uses "
                     << fixed << setprecision(1) << avg_supp
@@ -1127,11 +1115,8 @@ void Manthan::print_detailed_stats() const {
                 << "  setup: " << setprecision(2) << interp_repair->total_setup_time << "s"
                 << "  solve: " << interp_repair->total_solve_time << "s"
                 << "  simp: " << interp_repair->total_simplify_time << "s");
-            // b1-simplification stats (perform_repair side): how much the
-            // AIG simplification of the *combined* branch (NOT(I) AND
-            // y_other_formulas) shrank it before we Tseitin-encoded it
-            // into f.clauses. Big numbers here say "the rewriter is
-            // earning its keep, consider --interprepairrewrite=1".
+            // b1-simplification stats (perform_repair side): how much
+            // simplifying the combined branch shrank it before encoding.
             if (interp_repair->total_combined_pre_simp > 0) {
                 const double combined_pct = 100.0 *
                     (1.0 - safe_div(interp_repair->total_combined_post_simp,
@@ -1155,9 +1140,7 @@ void Manthan::print_detailed_stats() const {
             };
             print_hist("conflict-sz hist:   ", interp_repair->conflict_size_hist);
             print_hist("interp-nodes hist:  ", interp_repair->interp_size_hist);
-            // Top vars driven by interp. Useful for narrowing
-            // --interprepairminvar / adaptive gate tuning ("are the
-            // wins concentrated in a few vars or spread?").
+            // Top vars driven by interp.
             std::vector<uint32_t> by_interp(cnf.nVars());
             for (uint32_t i = 0; i < cnf.nVars(); i++) by_interp[i] = i;
             std::sort(by_interp.begin(), by_interp.end(), [&](uint32_t a, uint32_t b) {
@@ -1309,9 +1292,7 @@ SimplifiedCNF Manthan::do_manthan() {
         interp_repair->set_cache_capacity(mconf.interp_repair_cache_capacity);
         interp_repairs_per_var.assign(cnf.nVars(), 0);
         interp_conflict_lits_per_var.assign(cnf.nVars(), 0);
-        // Per-var adaptive gating bookkeeping. Sized to nVars so we can
-        // index by raw cnf var; only the to_define entries actually get
-        // touched.
+        // Per-var adaptive gating bookkeeping, sized to nVars.
         if (mconf.interp_repair_adaptive_gate != 0) {
             interp_skip_until.assign(cnf.nVars(), 0);
             interp_var_calls.assign(cnf.nVars(), 0);
@@ -1855,10 +1836,8 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
             << " repair cache hit rate: " << setw(5) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
             << " T: " << setw(5) << setprecision(2) << cpuTime()-minimize_start_time);
 
-    // Optionally compute a Craig interpolant in input-vars only as a
-    // generalisation of the conflict clause. Caller (perform_repair) will
-    // use it as the AIG branch in compose_or/and instead of building from
-    // the conflict literals.
+    // Optionally compute a Craig interpolant as a generalisation of the
+    // conflict clause, for perform_repair to use as the AIG branch.
     if (interp_repair && mconf.interp_repair > 0) {
         bool do_interp = true;
         if (mconf.interp_repair == 2 &&
@@ -1866,10 +1845,8 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
         if (mconf.interp_repair_min_var_repairs > 0 &&
             repaired_vars_count[y_rep] < mconf.interp_repair_min_var_repairs)
             do_interp = false;
-        // Adaptive per-var gating. If this var produced consistently
-        // oversized interpolants relative to its conflict size, skip
-        // for the next skip_window repairs (after which the slate
-        // wipes and the var gets another chance).
+        // Adaptive per-var gating: skip vars currently blacklisted for
+        // oversized interpolants.
         if (do_interp && mconf.interp_repair_adaptive_gate != 0) {
             if (y_rep < interp_skip_until.size()
                     && tot_repaired < interp_skip_until[y_rep]) {
@@ -1884,12 +1861,8 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
         }
         if (do_interp) {
             interp_branch_unconditional = false;
-            // Try unconditional first when opted in. UNSAT here means
-            // y_rep must be ctx[y_rep] regardless of y_others — a
-            // strictly stronger statement than the conditional
-            // interpolant. Often SAT (some Y values make the formula
-            // satisfy with y_rep wrong), in which case we fall back to
-            // the conditional interpolant below.
+            // Try the unconditional interpolant first; fall back to the
+            // conditional one below if it fails.
             if (mconf.interp_repair_unconditional != 0) {
                 interp_branch = interp_repair->compute_interpolant(
                     y_rep, to_repair, conflict,
@@ -1913,10 +1886,8 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                     mconf.interp_repair_rewrite != 0,
                     mconf.interp_repair_max_conflicts);
             }
-            // Adaptive bookkeeping: record interp-vs-conflict size and,
-            // if the running mean ratio exceeds the configured threshold
-            // after at least a few samples, blacklist this var for the
-            // next skip_window repairs.
+            // Adaptive bookkeeping: track interp-vs-conflict size and
+            // blacklist the var if the mean ratio exceeds the threshold.
             if (interp_branch != nullptr
                     && mconf.interp_repair_adaptive_gate != 0
                     && y_rep < interp_var_calls.size()) {
@@ -1944,8 +1915,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                 }
             }
 
-            // Optional always-on verification (cluster runs without SLOW_DEBUG).
-            // verify=0 → skip; 1 → cheap CEX-excluded check; 2 → full miter.
+            // Optional always-on verification.
             if (interp_branch != nullptr) {
                 if (mconf.interp_repair_verify == 1) {
                     if (!interp_repair->quick_check_interpolant_excludes_cex(
@@ -1960,10 +1930,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                         interp_branch = nullptr;
                     }
                 } else if (mconf.interp_repair_verify == 3) {
-                    // Probabilistic: 8 random samples. Catches a class
-                    // of bugs the quick_check misses (interp wrong on
-                    // an input pattern other than the CEX) without
-                    // paying the full-miter cost.
+                    // Probabilistic: 8 random samples.
                     if (!interp_repair->sample_check_interpolant(
                             to_repair, conflict, interp_branch,
                             /*num_samples=*/8, /*seed=*/num_loops_repair * 7919u)) {
@@ -2112,42 +2079,22 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 #endif
 }
 
-// See manthan.h for the contract. The interpolant branch path is split
-// into its own function because:
-//   (1) it's algorithmically a different beast — operates on AIG-level
-//       structure, runs a couple of simplification passes, then Tseitin
-//       encodes — whereas the legacy path builds clauses literal-by-lit
-//       manually and never touches AIGToCNF;
-//   (2) it has its own SLOW_DEBUG invariant (leaf-set check) that's
-//       irrelevant to the legacy path;
-//   (3) perform_repair was getting unwieldy.
+// See manthan.h for the contract. Split out of perform_repair: it
+// works at AIG level and Tseitin-encodes via AIGToCNF, unlike the
+// legacy clause-by-clause path.
 FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
         const uint32_t y_rep, const vector<Lit>& conflict,
         aig_ptr interp_branch, bool skip_y_other_and) {
     FHolder<MetaSolver2>::Formula f;
 
-    // Build the "must-flip region" AIG in raw cnf-var space:
-    //   b1 = AND( ¬I(X),                                     // input-only
-    //             AND_{y_other in conflict}(                  // pinned y_others
-    //               y_other_formula matches ctx) )
+    // Build the must-flip region AIG in raw cnf-var space:
+    //   b1 = AND( ~I(X), AND_{y_other in conflict}(y_other matches ctx) )
     //
-    // We could include input lits as explicit ANDs too, but the
-    // interpolant I(X) already covers them; redundant.
-    //
-    // interp_branch leaves are input vars only (by McMillan
-    // construction). y_other formula AIGs are stored RAW
-    // (var_to_formula[y].aig has leaves = input + raw to_define), so
-    // ANDing them in keeps b1 in the same raw form.
-    // We build two AIGs:
-    //   b1            — full y_other formula AIGs inlined. Leaves are only
-    //                   input + raw to_define vars (codebase invariant for
-    //                   var_to_formula[y].aig — used by final AIG export
-    //                   via map_aigs_to_orig).
-    //   b1_for_encode — same shape, but in --interprepairb1uselit mode the
-    //                   y_other AND-conjuncts reference helper vars
-    //                   (formula.out) instead of inlining the full AIG.
-    //                   Smaller, used only for the CNF Tseitin encoding.
-    //                   When the flag is off, b1_for_encode == b1.
+    // Two variants:
+    //   b1            — full y_other formula AIGs inlined; stored as f.aig.
+    //   b1_for_encode — in b1_use_lit mode the y_other conjuncts use
+    //                   helper vars (formula.out); used for the encoding.
+    //                   Equal to b1 when the flag is off.
     aig_ptr b1 = AIG::new_not(interp_branch);
     aig_ptr b1_for_encode = b1;
     const bool use_lit = (mconf.interp_repair_b1_use_lit != 0);
@@ -2168,11 +2115,8 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
         }
     }
 
-    // AIG-level simplification. We simplify b1 (the full version used
-    // for f.aig storage) AND b1_for_encode (only different in
-    // b1_use_lit mode; saves work otherwise). Stats reflect the
-    // simplification of the encoded variant since that's what
-    // determines f.clauses size.
+    // AIG-level simplification of b1 and b1_for_encode. Stats track the
+    // encoded variant, since that drives f.clauses size.
     const double t_simp_b1 = cpuTime();
     const size_t pre_simp_sz = AIG::count_aig_nodes_fast(b1_for_encode);
     b1 = AIG::simplify_aig(b1);
@@ -2188,12 +2132,7 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
             b1_for_encode = b1;
         }
     }
-    // Optional FRAIG-lite sat-sweep pass. AIGRewriter::sat_sweep
-    // operates on a vector of roots; wrap b1 in one. The sweeper merges
-    // equivalent AIG nodes detected via random-pattern simulation +
-    // SAT-driven confirmation — useful when the interpolant duplicates
-    // structure already present in a y_other formula AIG (common when
-    // both reference the same fanin cone).
+    // Optional FRAIG-lite sat-sweep pass; sat_sweep takes a root vector.
     if (mconf.interp_repair_b1_satsweep != 0) {
         ArjunNS::AIGRewriter rw;
         std::vector<aig_ptr> roots = {b1};
@@ -2216,30 +2155,20 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
     }
     f.aig = b1;
 
-    // CNF encoding: var_to_formula[y].aig stores the RAW AIG, but
-    // f.clauses must be in y_hat space (cex_solver's view). Translate
-    // leaves once, then feed the y_hat-mapped copy to AIGToCNF.
-    //
-    // In b1_use_lit mode, the y_other refs are already helper vars
-    // (formula.out lits) which are NOT in to_define_full and need no
-    // translation; we use a leaf-aware mapper that's identity on
-    // anything outside to_define_full.
+    // f.clauses must be in y_hat space, so translate the raw leaves
+    // before encoding; the mapper is identity outside to_define_full.
     auto leaf_to_yhat = [&](uint32_t v) -> Lit {
         if (input.count(v)) return Lit(v, false);
         if (to_define_full.count(v)) return Lit(y_to_y_hat.at(v), false);
         // Helper var or true_lit: already in cex_solver space.
         return Lit(v, false);
     };
-    // Encode the b1_for_encode variant (small in b1_use_lit mode), but
-    // store the full-AIG b1 as f.aig so map_aigs_to_orig at final
-    // export sees only cnf-space leaves.
+    // Encode b1_for_encode; f.aig keeps the full-AIG b1.
     aig_ptr b1_yhat = AIG::translate_leaves(b1_for_encode, leaf_to_yhat);
 
     SLOW_DEBUG_DO({
-        // Defensive: confirm every leaf in b1_yhat is an input var, a
-        // y_hat, a helper, or the true_lit. A raw to_define leaf here
-        // means our translation is incomplete and check_functions_for
-        // _y_vars will assert downstream.
+        // Defensive: every b1_yhat leaf must be an input, y_hat, helper
+        // or true_lit — a raw to_define leaf means incomplete translation.
         std::set<const ArjunNS::AIG*> seen;
         std::function<void(const aig_ptr&)> walk = [&](const aig_ptr& a) {
             if (a == nullptr) return;
@@ -2263,9 +2192,8 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
         walk(b1_yhat);
     });
 
-    // Encode via AIGToCNF. The InterpClauseSink lambda allocates helper
-    // vars on cex_solver and tracks them in the `helpers` set so the
-    // check_functions_for_y_vars invariant holds.
+    // Encode via AIGToCNF; InterpClauseSink allocates cex_solver helper
+    // vars and records them in `helpers`.
     struct InterpClauseSink {
         MetaSolver2& solver;
         std::vector<CL>* clauses;
@@ -2283,8 +2211,7 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
     if (mconf.interp_repair_group_cse != 0) enc.set_group_cse(true);
     f.out = enc.encode(b1_yhat, /*force_helper=*/true);
 
-    // Dependency tracking. Inputs are skipped by set_depends_on's normal
-    // logic; y_others get marked via the conflict literal walk.
+    // Dependency tracking; set_depends_on skips inputs itself.
     for (const auto& l : conflict) set_depends_on(y_rep, l);
 
     return f;

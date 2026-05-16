@@ -241,7 +241,7 @@ void add_arjun_options() {
     myopt("--debugsynth", conf.debug_synth, fc_string,"Debug synthesis, prefix with this fname");
     myflag("--checkrepair", mconf.check_repair, "Check that error formula count decreases monotonically after each repair iteration (uses ganak)");
     myopt("--ganakbin", mconf.ganak_binary, fc_string, "Path to ganak binary (for --checkrepair)");
-    // Craig-interpolant repair (Option 2 in IDEAS-3-categories.md).
+    // Craig-interpolant repair options.
     myopt("--interprepair", mconf.interp_repair, fc_int,
           "Craig-interpolant repair branch in compose_or/and. "
           "0=off, 1=on for every repair, 2=on only when conflict size >= --interprepairmincl");

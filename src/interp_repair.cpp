@@ -53,9 +53,8 @@ aig_ptr InterpTracerMcMillan::lit_aig(Lit l) {
     return a;
 }
 
-// OR over only the input literals in `cl` (the shared-variable label
-// for an A-side clause in McMillan's construction). An empty input set
-// means the label is FALSE (no shared lits → can't justify anything).
+// OR over the input literals in `cl` — the McMillan label for an
+// A-side clause. Empty input set => label FALSE.
 aig_ptr InterpTracerMcMillan::or_of_input_lits(const vector<Lit>& cl) {
     vector<aig_ptr> leaves;
     leaves.reserve(cl.size());
@@ -105,9 +104,8 @@ void InterpTracerMcMillan::add_derived_clause(uint64_t id, bool /*red*/,
     vector<Lit> cl_lits = pl_to_lit_cl(clause);
     cls[id] = cl_lits;
 
-    // Walk the resolution chain (cadical gives antecedents in chain order).
-    // Reverse so we can iteratively resolve from the start. Following the
-    // pattern used in interpolant.cpp.
+    // Walk the resolution chain; cadical gives antecedents in chain
+    // order, so reverse to resolve iteratively from the start.
     if (antecedents.empty()) {
         // Shouldn't happen for a derived clause, but be defensive.
         labels[id] = aig_mng.new_const(false);
@@ -120,17 +118,15 @@ void InterpTracerMcMillan::add_derived_clause(uint64_t id, bool /*red*/,
     const uint64_t id1 = rantec[0];
     auto it_lab = labels.find(id1);
     if (it_lab == labels.end()) {
-        // Antecedent label missing — happens if cadical gave us a derived
-        // clause whose antecedent we never observed (e.g. a vivified
-        // pre-existing internal clause). Fail closed: empty interpolant.
+        // Antecedent label missing — fail closed: empty interpolant.
         labels[id] = aig_mng.new_const(false);
         return;
     }
     aig_ptr lab = it_lab->second;
     set<Lit> resolvent(cls[id1].begin(), cls[id1].end());
 
-    // Batch consecutive same-op steps into balanced ANDs/ORs (avoids
-    // stack-blowing left-leaning chains, mirrors interpolant.cpp).
+    // Batch consecutive same-op steps into balanced ANDs/ORs to avoid
+    // stack-blowing left-leaning chains.
     vector<aig_ptr> batch;
     bool batch_is_and = false;
     auto flush_batch = [&]() {
@@ -242,22 +238,16 @@ uint32_t InterpRepair::setup_mini_cnf(CaDiCaL::Solver& solver,
         tracer.next_is_b = false;
     };
 
-    // 1) Original CNF clauses (all A-side). We deliberately skip
-    // cnf.get_red_clauses(): those are redundant learnts and aren't
-    // required for UNSAT-side reproduction.
+    // 1) Original CNF clauses (all A-side). Redundant learnts are
+    // skipped — not needed to reproduce the UNSAT.
     if (!cnf_serialized_built) build_serialized_cnf();
     tracer.next_is_b = false;
     for (int v : cnf_serialized) solver.add(v);
 
-    // get_conflict() returns the negation of the failing assumption set
-    // (so it forms a learnable clause). To reproduce the same UNSAT in
-    // a fresh solver via unit clauses, we add the *original*
-    // assumptions, i.e. ~l for each conflict literal l.
-    //
-    // 2) Non-input conflict units (A side) plus ~to_repair (A side).
-    // In unconditional mode we *skip* the y_other units: the
-    // interpolant then characterises must-flip universally over
-    // y_others (rather than conditional on this CEX's y_other values).
+    // 2) Non-input conflict units (A side) + ~to_repair (A side). The
+    // conflict is the negated assumptions, so we add ~l to reproduce the
+    // original assumptions. In unconditional mode the y_other units are
+    // skipped.
     if (!unconditional) {
         for (const auto& l : conflict) {
             if (l.var() < is_input.size() && is_input[l.var()]) continue;
@@ -291,9 +281,8 @@ void InterpRepair::build_serialized_cnf() const {
     cnf_serialized_built = true;
 }
 
-// Build a small, stable key from (to_repair, conflict). Sort to make
-// it order-independent: cadical may reorder the conflict literals
-// between calls. Encoded as a packed string of int32s for std::map.
+// Stable key from (to_repair, conflict): sorted so it's order-
+// independent, packed into a string.
 InterpRepair::CacheKey InterpRepair::make_signature(Lit to_repair_lit,
         const vector<Lit>& conflict) {
     std::vector<int> pls;
@@ -316,9 +305,8 @@ aig_ptr InterpRepair::compute_interpolant(
     calls++;
     total_conflict_lits += conflict.size();
 
-    // Conflict-signature cache lookup. Identical conflicts produce
-    // identical interpolants under McMillan with our partition, so we
-    // can skip the cadical setup + proof-walk entirely.
+    // Conflict-signature cache lookup; identical conflicts give
+    // identical interpolants.
     if (cache_capacity > 0 && !conflict.empty()) {
         const CacheKey key = make_signature(to_repair_lit, conflict);
         auto it = sig_cache.find(key);
@@ -328,8 +316,7 @@ aig_ptr InterpRepair::compute_interpolant(
                 cout << "c o [interp-repair] cache hit for conflict-sig (size "
                      << conflict.size() << ")" << endl;
             });
-            // Still apply oversize cap, so a tuning change in
-            // --interprepairmaxnodes takes effect on cached entries too.
+            // Still apply the oversize cap to cached entries.
             if (max_aig_nodes > 0) {
                 size_t nodes = AIG::count_aig_nodes_fast(it->second);
                 if (nodes > max_aig_nodes) {
@@ -342,17 +329,14 @@ aig_ptr InterpRepair::compute_interpolant(
         }
     }
 
-    // Empty conflict means the candidate is forced to ctx[y_rep] regardless
-    // of input — perform_repair already special-cases that into a
-    // constant_formula. No interpolation needed (and we don't have any
-    // input units, so there'd be no B side anyway).
+    // Empty conflict: y_rep forced to ctx[y_rep]; perform_repair already
+    // special-cases this. No interpolation needed.
     if (conflict.empty()) {
         calls_failed_empty_or_no_input++;
         return nullptr;
     }
 
-    // No input lits in conflict → no B side → trivial / undefined
-    // interpolant. Bail immediately to skip the cadical setup cost.
+    // No input lits in conflict => no B side => trivial interpolant.
     bool has_input = false;
     for (const auto& l : conflict) {
         if (l.var() < is_input.size() && is_input[l.var()]) {
@@ -366,24 +350,15 @@ aig_ptr InterpRepair::compute_interpolant(
 
     const double t0 = cpuTime();
 
-    // Build mini CNF:
-    //   A side : original CNF clauses + non-input conflict-literal units
-    //            + ~to_repair unit
-    //   B side : input conflict-literal units
-    //
-    // Solve on a fresh CaDiCaL with proof tracing connected. Tracer
-    // produces the McMillan interpolant in input vars.
+    // Build the mini CNF and solve on a fresh CaDiCaL with proof
+    // tracing; the tracer produces the McMillan interpolant.
     auto solver = std::make_unique<Solver>();
-    // Disable in-processing & vivification: they can delete/strengthen
-    // original clauses while the proof tracer is attached, which would
-    // give us derived clauses whose antecedent IDs don't map to the
-    // labels we computed in add_original_clause. The interpolant CNF is
-    // small (typically dominated by the input cnf clauses + a few
-    // units), so the standard CDCL solver is fine without simp.
+    // Disable in-processing & vivification: they mutate original clauses
+    // while the tracer is attached, leaving derived clauses whose
+    // antecedent IDs don't map to our labels.
     solver->set("inprocessing", 0);
     solver->set("preprocessing", 0);
     if (conflict_budget > 0) {
-        // CaDiCaL exposes per-solve limits via .limit("conflicts", N).
         // Clamp to int max — cadical's limit API takes an int.
         const int64_t clamped = (conflict_budget > (uint64_t)INT_MAX)
             ? INT_MAX : (int64_t)conflict_budget;
@@ -417,8 +392,7 @@ aig_ptr InterpRepair::compute_interpolant(
 
     if (ret != 20) { // 20 = UNSAT, 0 = UNKNOWN (budget hit), 10 = SAT
         if (ret == 0 && conflict_budget > 0) {
-            // Cadical hit our conflict limit. Track separately so it
-            // tunes differently from "real" failures.
+            // Cadical hit our conflict limit; tracked separately.
             calls_budget_exhausted++;
             VERBOSE_DEBUG_DO(cout << "c o [interp-repair] budget exhausted ("
                 << conflict_budget << " conflicts); falling back" << endl);
@@ -437,9 +411,7 @@ aig_ptr InterpRepair::compute_interpolant(
         return nullptr;
     }
 
-    // Local AIG simplification (constant propagation, CSE, ITE detection)
-    // before returning. The proof-driven construction can leave a lot of
-    // redundant ANDs/ORs that the rewriter trivially crushes.
+    // Simplify the proof-driven AIG before returning.
     const double t_simp = cpuTime();
     if (full_rewrite) {
         interp = AIG::rewrite_aig(interp);
@@ -447,9 +419,7 @@ aig_ptr InterpRepair::compute_interpolant(
     interp = AIG::simplify_aig(interp);
     total_simplify_time += cpuTime() - t_simp;
 
-    // SLOW_DEBUG: verify the interpolant only references input variables.
-    // McMillan's construction guarantees this by induction; if it fails
-    // we have a bug in the tracer.
+    // SLOW_DEBUG: verify the interpolant only references input vars.
     SLOW_DEBUG_DO({
         if (interp != nullptr) {
             set<const AIG*> seen2;
@@ -473,30 +443,20 @@ aig_ptr InterpRepair::compute_interpolant(
         }
     });
 
-    // Degenerate cases.
-    //
-    // I = TRUE  means "wrong y_rep is feasible everywhere" — but A∧B was
-    // UNSAT at the CEX inputs, so this is a contradiction. Bail; using
-    // ¬I = FALSE as the must-flip region produces an empty branch and
-    // perform_repair would not actually fix anything (next loop sees the
-    // same CEX → infinite loop).
+    // I = TRUE would make the must-flip region empty (infinite loop);
+    // it also contradicts the UNSAT. Bail.
     if (interp != nullptr && interp->type == AIGT::t_const && !interp.neg) {
         VERBOSE_DEBUG_DO(cout << "c o [interp-repair] interpolant = TRUE; bailing" << endl);
         calls_failed_other++;
         return nullptr;
     }
-    // I = FALSE  means "wrong y_rep is infeasible everywhere" — y_rep must
-    // be ctx[y_rep] universally. compose_or(TRUE, old) makes the function a
-    // constant, which is a strong (and possibly correct) claim. Allow it
-    // through but log it — and the SLOW_DEBUG miter and downstream
-    // SLOW_DEBUG checks catch any soundness violation.
+    // I = FALSE means y_rep is forced to ctx[y_rep] everywhere; allowed
+    // through, SLOW_DEBUG checks catch any unsoundness.
     VERBOSE_DEBUG_DO(if (interp != nullptr && interp->type == AIGT::t_const && interp.neg) {
         cout << "c o [interp-repair] interpolant = FALSE; y_rep forced to ctx everywhere" << endl;
     });
 
-    // Quick sanity: under the original CEX inputs (= the input units we
-    // added), interpolant should evaluate to FALSE. (This is what makes
-    // the repair correct.) Cheap to check.
+    // Quick sanity: interpolant must evaluate to FALSE on the CEX inputs.
     if (!quick_check_interpolant_excludes_cex(interp, conflict)) {
         calls_quick_check_failed++;
         VERBOSE_DEBUG_DO(cout << "c o [interp-repair] quick_check_excludes_cex FAILED — bailing" << endl);
@@ -537,10 +497,8 @@ aig_ptr InterpRepair::compute_interpolant(
     interp_size_hist[bucket_of(interp_nodes)]++;
     conflict_size_hist[bucket_of(conflict.size())]++;
 
-    // Count interpolant's input support (distinct input vars in leaves)
-    // and the conflict's input-literal count. Both feed into the
-    // "support-shrinkage" stat: how much narrower the interp's
-    // dependence is vs the raw conflict input footprint.
+    // Interpolant input support vs conflict input-literal count, for
+    // the support-shrinkage stat.
     {
         std::set<uint32_t> support;
         std::set<const AIG*> seen_supp;
@@ -579,11 +537,8 @@ aig_ptr InterpRepair::compute_interpolant(
     return interp;
 }
 
-// SLOW_DEBUG full miter: verify that A → I, where
-//   A = original CNF + non-input conflict units + ~to_repair_lit
-//   I = interpolant AIG over input vars
-// We add A's clauses + ¬I as a fresh CNF and check UNSAT. Encoding ¬I
-// requires Tseitin over the AIG; we do it inline.
+// SLOW_DEBUG full miter: check A & ~I is UNSAT (i.e. A -> I), with I
+// Tseitin-encoded inline.
 bool InterpRepair::slow_check_a_implies_i(
         Lit to_repair_lit,
         const vector<Lit>& conflict,
@@ -608,8 +563,7 @@ bool InterpRepair::slow_check_a_implies_i(
     }
     add_unit(~to_repair_lit);
 
-    // Tseitin-encode interp into the same solver. Use cnf.nVars() as the
-    // start of fresh helper IDs.
+    // Tseitin-encode interp; fresh helper IDs start at cnf.nVars().
     uint32_t next_var = cnf.nVars();
     map<aig_ptr, Lit> cache;
     std::function<Lit(const aig_ptr&)> enc = [&](const aig_ptr& a) -> Lit {
@@ -657,9 +611,7 @@ bool InterpRepair::sample_check_interpolant(
 {
     if (interp == nullptr) return true;
 
-    // Random partial assignments over input vars, kept in input_vars.
-    // Skip evaluation if I(X) returns l_True/l_Undef (only false-region
-    // samples can violate the must-flip claim).
+    // Only I(X)=FALSE samples can violate the must-flip claim.
     std::vector<uint32_t> ins(input_vars.begin(), input_vars.end());
     if (ins.empty()) return true;
     std::mt19937_64 rng(seed);
@@ -677,9 +629,7 @@ bool InterpRepair::sample_check_interpolant(
         if (ival != l_False) continue; // only must-flip region matters
         num_false_seen++;
 
-        // For this input pattern, check that F(X, Y) ∧ y_rep = wrong is
-        // UNSAT — i.e., flipping y_rep is genuinely impossible. Fresh
-        // cadical, no proof tracing needed.
+        // Check F(X,Y) & y_rep=wrong is UNSAT for this input pattern.
         auto solver = std::make_unique<Solver>();
         solver->set("inprocessing", 0);
         solver->set("preprocessing", 0);
@@ -716,9 +666,8 @@ bool InterpRepair::quick_check_interpolant_excludes_cex(
 {
     if (interp == nullptr) return false;
 
-    // Build a partial assignment from input lits in conflict. Conflict
-    // literals are negations of the original assumptions, so we use ~l
-    // for the actual CEX value (matching add_unit_b in compute_interpolant).
+    // Partial assignment from the input lits in conflict; conflict lits
+    // are negated assumptions, so use ~l for the CEX value.
     vector<lbool> assign(cnf.nVars(), l_Undef);
     for (const auto& l : conflict) {
         if (l.var() >= assign.size()) continue;
@@ -728,10 +677,7 @@ bool InterpRepair::quick_check_interpolant_excludes_cex(
         }
     }
 
-    // Evaluate the interpolant AIG at this partial assignment. If any
-    // input is l_Undef (e.g. interpolant references an input not pinned
-    // by the conflict), the result is undefined; we report pass to be
-    // conservative.
+    // Evaluate the interpolant; l_Undef result => report pass.
     map<aig_ptr, lbool> cache;
     vector<aig_ptr> defs(cnf.nVars(), nullptr);
     lbool v = AIG::evaluate(assign, interp, defs, cache);

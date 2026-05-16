@@ -113,11 +113,9 @@ class Manthan {
         template<typename S>
         void inject_cnf(S& s) const;
         bool repair(const uint32_t v, sample& ctx);
-        // Sets `interp_branch` to the precomputed McMillan interpolant AIG
-        // (in input-var space) when --interp-repair is enabled, the
-        // interpolant succeeds, and downstream perform_repair should use it
-        // as the branch in compose_or/and instead of the conflict-as-AND.
-        // nullptr => fall back to the conflict-clause path.
+        // Sets `interp_branch` to the McMillan interpolant AIG for
+        // perform_repair to use as the compose_or/and branch; nullptr =>
+        // fall back to the conflict-clause path.
         bool find_conflict(const uint32_t y_rep, sample& ctx,
                 std::vector<CMSat::Lit>& conflict,
                 ArjunNS::aig_ptr& interp_branch);
@@ -138,34 +136,23 @@ class Manthan {
         std::vector<uint32_t> var_conflict_freq; // how often each var appears in conflicts
         void minimize_conflict(std::vector<CMSat::Lit>& conflict, std::vector<CMSat::Lit>& assumps, const CMSat::Lit repairing);
         uint32_t find_next_repair_var(const sample& ctx) const;
-        // If `interp_branch` is non-null, perform_repair uses it directly as
-        // the AIG branch (and as the source of the formula clauses via a
-        // fresh AIGToCNF encoding). Otherwise it falls back to building
-        // the branch from conflict literals (legacy behaviour).
+        // If `interp_branch` is non-null, perform_repair uses it as the
+        // AIG branch; otherwise it builds the branch from conflict literals.
         void perform_repair(const uint32_t y_rep, const sample& ctx,
                 const std::vector<CMSat::Lit>& conflict,
                 ArjunNS::aig_ptr interp_branch = nullptr);
 
-        // Build the Formula for the interpolant branch path. Factored out
-        // of perform_repair for testability and to keep the legacy
-        // conflict-clause path readable. Sets f.aig (raw AIG, leaves =
-        // input + raw to_define), f.clauses (Tseitin-encoded in y_hat
-        // space), and f.out (the helper literal that equals the must-flip
-        // region NOT(I) AND y_other_match).
-        //
-        // skip_y_other_and: if true, build b1 as just NOT(I) without the
-        // y_other AND-conjuncts. Set when the interpolant is the
-        // *unconditional* form (covers must-flip universally over
-        // y_others), so the AND-conjuncts would be redundant.
+        // Build the Formula for the interpolant branch path. Sets f.aig
+        // (raw AIG), f.clauses (Tseitin-encoded in y_hat space) and
+        // f.out. With skip_y_other_and, b1 is just NOT(I) (used for the
+        // unconditional interpolant, where the y_other ANDs are redundant).
         FHolder<MetaSolver2>::Formula build_interp_branch_formula(
                 const uint32_t y_rep, const std::vector<CMSat::Lit>& conflict,
                 ArjunNS::aig_ptr interp_branch,
                 bool skip_y_other_and = false);
 
-        // Set by find_conflict alongside interp_branch when the
-        // interpolant is the unconditional (no y_other pinning) form.
-        // perform_repair reads it to decide whether to AND the y_other
-        // formula matches into b1.
+        // Set by find_conflict when interp_branch is the unconditional
+        // (no y_other pinning) form.
         bool interp_branch_unconditional = false;
         void add_not_f_x_yhat();
         void fill_dependency_mat_with_backward();
@@ -290,48 +277,33 @@ class Manthan {
         uint32_t cost_zero_repairs = 0;
         uint32_t cex_solver_calls = 0;
         uint32_t repair_solver_calls = 0;
-        // Interp-repair: how many tot_repaired came from the interp path
-        // vs the legacy conflict path. (Only counted on real repairs, not
-        // cost-zero ones.)
+        // Repairs that came from the interp path (real repairs only).
         uint32_t interp_repairs_used = 0;
 
         // Main stuff
         ArjunNS::SimplifiedCNF cnf;
         ArjunNS::AIGManager aig_mng;
 
-        // Craig-interpolant repair (Option 2 in IDEAS-3-categories.md).
-        // Lazily constructed in do_manthan() if mconf.interp_repair > 0.
+        // Craig-interpolant repair; lazily constructed in do_manthan()
+        // if mconf.interp_repair > 0.
         std::unique_ptr<InterpRepair> interp_repair;
 
-        // Adaptive per-variable gating state. interp_skip_until[v] is the
-        // tot_repaired count at which we may try interp on v again; if
-        // tot_repaired < interp_skip_until[v], we skip. interp_var_calls
-        // / interp_var_node_sum / interp_var_lit_sum let us compute the
-        // running mean ratio. Cleared once skip-window fires.
+        // Adaptive per-var gating state. interp_skip_until[v] is the
+        // tot_repaired count at which interp on v may be retried; the
+        // var_* sums feed the running mean ratio.
         std::vector<uint32_t> interp_skip_until;
         std::vector<uint32_t> interp_var_calls;
         std::vector<uint64_t> interp_var_node_sum;
         std::vector<uint64_t> interp_var_lit_sum;
-        // Stat: how many times the adaptive gate skipped an interp call.
+        // Stat: adaptive-gate skips.
         uint64_t interp_adaptive_skips = 0;
-        // Stat: count of repairs where the unconditional interpolant
-        // succeeded (and we were able to skip the y_other AND in b1).
+        // Stat: repairs where the unconditional interpolant succeeded.
         uint64_t interp_unconditional_succeeded = 0;
-        // Per-variable counts of (a) how many of that var's repairs
-        // came from interp, and (b) total interp-conflict size summed
-        // for that var. Both grow proportionally with how heavily a
-        // var leans on interp; ranked top-N in the detailed stats.
+        // Per-var: interp-driven repair count and summed conflict size.
         std::vector<uint32_t> interp_repairs_per_var;
         std::vector<uint64_t> interp_conflict_lits_per_var;
-        // cex_solver helper-var growth per repair, accumulated by
-        // path. Interp encodings add helpers proportional to b1 size;
-        // legacy adds a fixed handful per conflict literal. Useful as
-        // a quick "is interp blowing up cex_solver vars" signal.
+        // cex_solver helper-var growth per repair, by path.
         uint64_t helpers_added_interp = 0;
         uint64_t helpers_added_legacy = 0;
-        // Per-call counter so we can trigger interpolation only after a
-        // variable has been repaired more than min_var_repairs times.
-        // (Tracked anyway via repaired_vars_count, but kept here so the
-        // wiring stays self-contained.)
 };
 }

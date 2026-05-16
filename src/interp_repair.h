@@ -22,14 +22,12 @@
  THE SOFTWARE.
  */
 
-// Craig-interpolant repair for Manthan (Option 2 in IDEAS-3-categories.md).
+// Craig-interpolant repair for Manthan.
 //
-// On a Manthan repair, find_conflict returns an UNSAT core
-// (input lits + y-other lits + ~to_repair). The conflict clause is a
-// single corner of input space. The interpolant in input vars only
-// generalises to the entire region of inputs for which flipping y_rep
-// is required. compose_or/and on the interpolant AIG (instead of an
-// AND-of-conflict-literals AIG) captures many would-be repairs at once.
+// find_conflict's UNSAT core is a single corner of input space. The
+// interpolant in input vars only generalises to the whole region where
+// flipping y_rep is required, so compose_or/and on the interpolant AIG
+// captures many would-be repairs at once.
 
 #pragma once
 
@@ -66,18 +64,14 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     const ArjunNS::AIGManager& aig_mng;
     const std::set<uint32_t>& input_vars;
 
-    // Set by the caller before each solver->add(0) so the synchronous
-    // add_original_clause callback knows whether the about-to-arrive
-    // clause is B-side (label = TRUE) or A-side (label = OR of input lits).
-    // Default = false (A-side).
+    // Set by the caller before each solver->add(0): is the next clause
+    // B-side (label TRUE) or A-side (label = OR of input lits)?
     bool next_is_b = false;
 
-    // Original clauses we've decided are B-side (label = TRUE). Anything
-    // else is A-side (label = OR of input literals in the clause).
+    // Original clauses decided to be B-side (label = TRUE).
     std::set<uint64_t> b_clause_ids;
 
-    // ID -> clause literals (we keep these to know what pivots to look for
-    // on resolution).
+    // ID -> clause literals (kept to find resolution pivots).
     std::map<uint64_t, std::vector<CMSat::Lit>> cls;
     // ID -> partial McMillan label (an AIG over input vars).
     std::map<uint64_t, ArjunNS::aig_ptr> labels;
@@ -113,30 +107,11 @@ public:
         ArjunNS::AIGManager& _aig_mng);
     ~InterpRepair() = default;
 
-    // Compute an interpolant I(input_vars) such that:
-    //   - For inputs in I, flipping y_rep is feasible (so y_rep_func can stay)
-    //   - For the original CEX inputs, I is FALSE (we need to learn the flip)
-    //
-    // Args:
-    //   y_rep         : the variable being repaired
-    //   to_repair_lit : the literal whose negation is being assumed
-    //                   (i.e. y_rep with the WRONG value the candidate gave)
-    //   conflict      : conflict literals from repair_solver (excludes
-    //                   to_repair). Each is a unit assumption.
-    //
-    // Returns nullptr on failure (interpolation problem reported SAT,
-    // returned an oversized AIG, or hit any internal error).
-    // If `unconditional` is true, the y_other (non-input) literals
-    // from `conflict` are NOT pinned as A-side units. The resulting
-    // interpolant — if the solve is UNSAT — characterises the must-flip
-    // region universally over y_others. Useful for perform_repair to
-    // skip the y_other AND-conjuncts. The unconditional solve is more
-    // often SAT than the conditional one, so callers should fall back
-    // to conditional on a nullptr return.
-    //
-    // Sets *unconditional_succeeded to true iff the returned AIG is the
-    // unconditional interpolant (so perform_repair knows whether to
-    // omit the y_other AND).
+    // Compute an interpolant I(input_vars): FALSE on the CEX inputs,
+    // TRUE where flipping y_rep stays feasible. Returns nullptr on
+    // failure (SAT, oversized AIG, internal error). When `unconditional`
+    // is set the y_other lits are not pinned, so I covers the must-flip
+    // region universally over y_others.
     ArjunNS::aig_ptr compute_interpolant(
         uint32_t y_rep, CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
@@ -145,30 +120,20 @@ public:
         uint64_t conflict_budget = 0,
         bool unconditional = false);
 
-    // Light-weight check: that the interpolant evaluates to FALSE on the
-    // CEX input pattern (i.e. on this CEX's inputs, the interpolant
-    // correctly says "must flip"). Returns true on pass.
+    // Cheap check: interpolant evaluates to FALSE on the CEX inputs.
     [[nodiscard]] bool quick_check_interpolant_excludes_cex(
         const ArjunNS::aig_ptr& interp,
         const std::vector<CMSat::Lit>& conflict) const;
 
-    // Heavy SLOW_DEBUG check: full miter that A → I.
-    // A = original CNF + non-input conflict units + ~to_repair_lit
-    // Returns true if the miter (A ∧ ¬I) is UNSAT (i.e. A → I holds).
-    // SAT solver under the hood; only call from SLOW_DEBUG_DO context.
+    // Heavy check: full miter that A -> I. Returns true if A & ~I is UNSAT.
     [[nodiscard]] bool slow_check_a_implies_i(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         const ArjunNS::aig_ptr& interp) const;
 
-    // Lighter-weight probabilistic check: for K random input patterns,
-    // evaluate I(X). When I(X) = FALSE, run a quick SAT check that
-    // F(X, Y) ∧ y_rep = wrong is indeed UNSAT (the must-flip claim).
-    // K small (default 8) so it's cheap enough for always-on use; if
-    // any sample fails the interpolant is unsound.
-    //
-    // Returns true on pass / inconclusive (insufficient FALSE samples
-    // hit), false on a confirmed counterexample.
+    // Probabilistic check: for K random input patterns where I(X)=FALSE,
+    // SAT-check that flipping y_rep is genuinely impossible. Returns true
+    // on pass/inconclusive, false on a confirmed counterexample.
     [[nodiscard]] bool sample_check_interpolant(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
@@ -176,8 +141,7 @@ public:
         uint32_t num_samples = 8,
         uint64_t seed = 42) const;
 
-    // Tunable: simple FIFO cache of (conflict signature → interpolant
-    // AIG). Set via set_cache_capacity(); 0 disables (default).
+    // FIFO cache of (conflict signature -> interpolant AIG). 0 disables.
     void set_cache_capacity(size_t n) { cache_capacity = n; }
 
     // Statistics (read-only)
@@ -188,35 +152,26 @@ public:
     uint64_t calls_failed_other = 0;
     uint64_t calls_failed_empty_or_no_input = 0;
     uint64_t calls_quick_check_failed = 0;
-    // Cadical hit the conflict budget (interp_repair_max_conflicts) and
-    // returned l_Undef instead of a proof. Different from "other" so
-    // tuning can react: if this is high, raise the budget; if it's zero
-    // the budget is irrelevant.
+    // Cadical hit the conflict budget and returned l_Undef, not a proof.
     uint64_t calls_budget_exhausted = 0;
     uint64_t total_interp_nodes = 0;
     uint64_t total_conflict_lits = 0;
-    // How often the interpolant was *strictly* smaller than the conflict
-    // (in node-vs-lit count, a rough proxy for "structural compression").
-    // The dual count helps tune --interprepairmaxnodes.
+    // How often the interpolant was smaller/larger than the conflict
+    // (node-vs-lit count).
     uint64_t interp_smaller_than_conflict = 0;
     uint64_t interp_larger_than_conflict = 0;
     // Largest interpolant we accepted, in nodes.
     uint64_t max_interp_nodes_seen = 0;
-    // Support size = number of distinct input vars actually referenced
-    // in the interpolant AIG. The conflict's input subset is an upper
-    // bound; the support is often substantially smaller, which is the
-    // generalisation we're after. Summed across all successful calls.
+    // Distinct input vars referenced in the interpolant AIG, summed
+    // over successful calls.
     uint64_t total_interp_support = 0;
     uint64_t total_input_lits_in_conflict = 0;
     // Histogram of interpolant sizes (nodes) for tuning visibility.
     // Buckets: [0,8) [8,32) [32,128) [128,512) [512,2K) [2K,8K) [8K,32K) [32K,∞).
     static constexpr size_t HIST_BUCKETS = 8;
     uint64_t interp_size_hist[HIST_BUCKETS] = {};
-    // Histogram of conflict sizes seen at compute_interpolant entry —
-    // same bucket boundaries. Useful for "what conflicts did we even
-    // try to interpolate" tuning questions.
+    // Histogram of conflict sizes at compute_interpolant entry.
     uint64_t conflict_size_hist[HIST_BUCKETS] = {};
-    // Bucket lookup. Edge: 0 → bucket 0; ∞ → last bucket.
     static size_t bucket_of(size_t n) {
         if (n < 8) return 0;
         if (n < 32) return 1;
@@ -238,23 +193,15 @@ public:
     double   total_setup_time = 0.0;
     double   total_simplify_time = 0.0;
 
-    // Combined-AIG simplification stats (perform_repair side, not
-    // compute_interpolant side). These track the pre/post AIG node
-    // count when we simplify the b1 = NOT(I) AND y_others_match AIG
-    // before encoding it to CNF for cex_solver.
+    // Pre/post node counts for the b1 AIG simplification (perform_repair side).
     uint64_t total_combined_pre_simp = 0;
     uint64_t total_combined_post_simp = 0;
     double   total_combined_simp_time = 0.0;
 
-    // Wire up the mini-CNF on `solver` with `tracer` attached. The
-    // partition is:
-    //   A side: original CNF + non-input conflict-literal units
-    //            (skipped if `unconditional`) + ~to_repair_lit
-    //   B side: input conflict-literal units
-    //
-    // Returns the number of B-side units added. Zero means there's no
-    // shared variable between A and B; the resulting interpolant would
-    // be trivial and the caller should bail.
+    // Wire up the mini-CNF on `solver` with `tracer` attached.
+    //   A: original CNF + non-input conflict units + ~to_repair_lit
+    //   B: input conflict units
+    // Returns the B-side unit count; 0 means a trivial interpolant.
     uint32_t setup_mini_cnf(CaDiCaL::Solver& solver,
             InterpTracerMcMillan& tracer,
             CMSat::Lit to_repair_lit,
@@ -272,22 +219,15 @@ private:
     // Byte-map for O(1) input-membership check.
     std::vector<uint8_t> is_input;
 
-    // Cache: original CNF clauses pre-converted to cadical's signed-int
-    // format, with each clause terminated by 0. Built lazily on the
-    // first interp call. Avoids re-walking cnf.get_clauses() and
-    // converting Lit→int on every call (which dominates setup-T on
-    // benchmarks with many interp calls). compute_interpolant is the
-    // only mutator and we don't share the InterpRepair across threads.
+    // Original CNF clauses pre-converted to cadical signed-ints (0
+    // terminated), built lazily on the first interp call.
     mutable std::vector<int> cnf_serialized;
     mutable bool cnf_serialized_built = false;
     void build_serialized_cnf() const;
 
-    // Conflict-signature → interpolant cache. Consecutive find_conflict
-    // calls often produce identical conflicts (same y_rep, same
-    // assumptions reach UNSAT again). Caching avoids the cadical setup
-    // + proof-walk cost on repeats. FIFO; bounded by cache_capacity.
-    // Signature = sorted vector<Lit> of the conflict (including
-    // to_repair_lit appended), encoded as a single string for std::map.
+    // Conflict-signature -> interpolant cache, FIFO, bounded by
+    // cache_capacity. Signature = sorted conflict lits (+ to_repair_lit)
+    // packed into a string.
     struct CacheKey {
         std::string sig;
         bool operator<(const CacheKey& o) const { return sig < o.sig; }

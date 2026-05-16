@@ -15,15 +15,7 @@ Run from build/:
   ./sweep_interp.py --csv out.csv            # also dump raw rows to CSV
   ./sweep_interp.py --jobs 4                 # run 4 cells in parallel
 
-Defaults to a small benchmark set that exercises the win cases
-(sdlx-fixpoint-3/4, stmt17/19) and the where-it-hurts cases
-(factorization8, driver_a10y). Time budget per cell is 60s; full
-sweep is ~10-15 min depending on machine.
-
-The output is a table: each row is a (cnf, config), columns include
-repairs / loops / total-time / interp-% / interp-time / b1-reduction.
-For each cnf, the baseline row is printed first, then the variants
-sorted by repair count.
+Output is a table: one row per (cnf, config), baseline first.
 """
 
 import os
@@ -38,14 +30,7 @@ from typing import Dict, List, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-# ────────────────────────────────────────────────────────────────────────────
-# Default benchmark set.
-# Picked from build/benchmarks-qdimacs to cover:
-#   - clear interp wins   (sdlx-fixpoint-3/4, stmt17_70_98, stmt19_*)
-#   - clear interp losses (factorization8, driver_a9n)
-#   - large-but-tractable (amba2c7n, driver_a10y)
-# Override with --bench-list to test on your own set.
-# ────────────────────────────────────────────────────────────────────────────
+# Default benchmark set; override with --bench-list.
 DEFAULT_BENCH = [
     "benchmarks-qdimacs/stmt17_70_98.qdimacs.cnf",
     "benchmarks-qdimacs/stmt19_64_91.qdimacs.cnf",
@@ -61,12 +46,8 @@ DEFAULT_BENCH = [
 ]
 
 
-# ────────────────────────────────────────────────────────────────────────────
-# Config matrix.
-# Each entry: (name, list of arjun flag strings to add).
-# The first entry is always the baseline (interp off). Each subsequent
-# entry isolates one knob so you can read the impact down a column.
-# ────────────────────────────────────────────────────────────────────────────
+# Config matrix: (name, arjun flags). First entry is the baseline;
+# each other isolates one knob.
 QUICK_CONFIGS: List[Tuple[str, str]] = [
     ("baseline",         "--interprepair 0"),
     ("interp-default",   "--interprepair 1"),

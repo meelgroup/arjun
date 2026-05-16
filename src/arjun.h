@@ -1706,108 +1706,39 @@ public:
         uint32_t cz_threshold_mid = 2;      // consecutive cost-zero break threshold (medium ratio)
         uint32_t cz_threshold_low = 3;      // consecutive cost-zero break threshold (low ratio)
 
-        // Craig-interpolant repair (Option 2 in IDEAS-3-categories.md).
-        //
-        // When set, find_conflict's UNSAT core is re-played on a fresh
-        // CaDiCaL solver with proof tracing, and a McMillan interpolant in
-        // input variables only is computed. The interpolant AIG becomes the
-        // branch in compose_or/and instead of "AND of conflict literals".
-        // Each repair generalizes to a region rather than a single corner.
-        //
-        // 0 = off (default; current behaviour);
-        // 1 = on for every repair;
-        // 2 = on only when conflict size >= interp_repair_min_conflict.
+        // Craig-interpolant repair: use a McMillan interpolant (input
+        // vars only) as the compose_or/and branch instead of the AND of
+        // conflict literals. 0=off, 1=every repair, 2=only when conflict
+        // size >= interp_repair_min_conflict.
         int interp_repair = 0;
-        // Only relevant for interp_repair == 2: minimum conflict size to bother
-        // computing an interpolant. Tiny conflicts are already pretty general.
+        // Mode 2 only: minimum conflict size to interpolate.
         uint32_t interp_repair_min_conflict = 4;
-        // Only kick in interpolation after the per-var repair count exceeds
-        // this. 0 = always. Lets us focus the (relatively expensive) interp
-        // call on hot variables that actually deserve the generalization.
+        // Only interpolate after a var's repair count exceeds this. 0=always.
         uint32_t interp_repair_min_var_repairs = 0;
-        // Cap the interpolant AIG node count. If the produced interpolant is
-        // bigger, fall back to the conflict-clause path. 0 = no cap.
+        // Cap interpolant AIG node count; bigger falls back. 0=no cap.
         uint32_t interp_repair_max_aig_nodes = 0;
-        // Verify the interpolant via SAT (slow; on by default under
-        // SLOW_DEBUG, otherwise sample-only). 0=no verify, 1=verify the CEX
-        // is excluded, 2=full miter verify.
+        // 0=no verify, 1=CEX-excluded check, 2=full miter.
         int interp_repair_verify = 1;
-        // 0=simplify_aig only (default; fast structural+CSE),
-        // 1=full AIGRewriter::rewrite + simplify (slower, smaller).
-        // Applies to the raw interpolant AIG returned by
-        // InterpRepair::compute_interpolant.
+        // Interpolant AIG cleanup: 0=simplify_aig only, 1=+rewrite_aig.
         int interp_repair_rewrite = 0;
-        // Independent knob: simplification of the *combined* b1 AIG
-        // (NOT(I) AND y_other_formula_matches) inside perform_repair,
-        // before it's Tseitin-encoded into f.clauses. Cheap simplify_aig
-        // is always on; this controls whether the heavier
-        // AIGRewriter::rewrite_aig pass also runs. Often pays off
-        // independently of --interprepairrewrite because the AND with
-        // huge y_other formula AIGs introduces cross-redundancies
-        // (absorption, complement) that the per-AIG rewriter doesn't see.
-        // 0=simplify only (default), 1=+rewrite_aig.
+        // rewrite_aig of the combined b1 AIG before Tseitin encoding.
+        // 0=simplify only, 1=+rewrite_aig.
         int interp_repair_b1_rewrite = 0;
-        // FRAIG-lite SAT-sweep on b1: random-pattern simulation +
-        // SAT-driven merging of equivalent AIG nodes. Catches structural
-        // equivalences that pure rewriting misses (e.g. encoded XOR vs
-        // mux of complement). More expensive than rewrite_aig but can
-        // collapse the b1 dramatically on benchmarks where the
-        // interpolant duplicates structure already present in a y_other
-        // formula. 0=off (default), 1=on after rewrite/simplify.
+        // FRAIG-lite SAT-sweep on b1. 0=off, 1=on.
         int interp_repair_b1_satsweep = 0;
-        // Pass --group-cse to AIGToCNF when encoding b1. Content-hashed
-        // CSE on k-ary AND groups + ITE triples; dedups Tseitin helpers
-        // for structurally identical sub-AIGs. Off by default in the
-        // base AIGToCNF because the maintenance cost can outweigh the
-        // CNF-size win on initial bve encodings, but interpolant ANDs
-        // tend to share sub-AIGs heavily (same y_other formula appears
-        // across many repairs). 0=off (default), 1=on for interp encodings.
+        // Pass --group-cse to AIGToCNF when encoding b1. 0=off, 1=on.
         int interp_repair_group_cse = 0;
-        // Use the y_other formula's *output literal* (a cex_solver
-        // helper) as the leaf for its AND-conjunct in b1, instead of
-        // inlining the full y_other formula AIG. This is what the
-        // legacy lit_to_lit path does: each y_other contributes 1
-        // literal to f.clauses rather than its entire (potentially
-        // huge) AIG cone. The resulting b1 is much smaller and
-        // simplify_aig has less work to do, but cex_solver loses some
-        // visibility into the y_other's structure during conflict
-        // analysis (because the formula appears only through its
-        // helper var). 0=inline full AIG (default), 1=use .out lit.
+        // y_other AND-conjuncts in b1: 0=inline full AIG, 1=use .out lit.
         int interp_repair_b1_use_lit = 0;
-        // Per-call cadical conflict budget for the interpolation solve.
-        // 0 = no limit (default). Useful upper bound: 50_000 keeps each
-        // interp call < 1 second on most benchmarks; on pathological
-        // mini-CNFs (large input set, deep proof) where cadical would
-        // otherwise grind we bail and fall back to the conflict-clause
-        // path. Tracked stat: interp_budget_exhausted.
+        // Per-call cadical conflict budget for the interp solve. 0=no limit.
         uint64_t interp_repair_max_conflicts = 0;
-        // FIFO cache of (conflict-signature → interpolant). 0 = off
-        // (default). Useful values: 64–512. Same-conflict re-runs are
-        // common enough on death-spiral benchmarks that even a small
-        // cache hits a lot.
+        // FIFO cache of (conflict-signature -> interpolant). 0=off.
         uint32_t interp_repair_cache_capacity = 0;
-        // Try an *unconditional* interpolant first: omit the y_other
-        // unit clauses from A, so the resulting I(X) characterizes the
-        // must-flip region universally over y_others (rather than
-        // conditional on this CEX's y_other values). When this solve
-        // is UNSAT, perform_repair can skip the y_other AND-conjuncts
-        // (smaller b1, no cross-conjunct dependency). It's often SAT
-        // (some Y can satisfy A regardless of inputs), in which case
-        // we fall back to the conditional path.
-        //
-        // 0=off (default), 1=on. Implementation runs two solves on
-        // failure paths; combine with --interprepairmaxconfl to cap
-        // worst case.
+        // Try the unconditional interpolant (no y_other pinning) first,
+        // fall back to conditional. 0=off, 1=on.
         int interp_repair_unconditional = 0;
-        // Adaptive per-variable gating. Track each var's recent
-        // interp_nodes / conflict_lits ratio: when it consistently
-        // exceeds adaptive_ratio_skip the var is "blacklisted" from
-        // interp for the next adaptive_skip_window repair attempts.
-        // Re-evaluated periodically; a var that produced one bad
-        // interpolant gets a second chance after the window expires.
-        //
-        // 0 = off (default behaviour, no adaptive gating).
-        // 1 = on, with the bundled defaults (window=20, ratio=8.0).
+        // Adaptive per-var gating: blacklist a var when its mean
+        // interp/conflict ratio exceeds the threshold. 0=off, 1=on.
         int interp_repair_adaptive_gate = 0;
         double interp_repair_adaptive_ratio_skip = 8.0;
         uint32_t interp_repair_adaptive_skip_window = 20;
