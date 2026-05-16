@@ -109,6 +109,7 @@ void InterpTracerMcMillan::add_derived_clause(uint64_t id, bool /*red*/,
         return;
     }
     const vector<uint64_t> rantec(antecedents.rbegin(), antecedents.rend());
+    release_assert(!rantec.empty());
 
     // Initial resolvent = first antecedent's clause + label.
     const uint64_t id1 = rantec[0];
