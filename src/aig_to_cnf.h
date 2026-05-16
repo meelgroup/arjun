@@ -166,6 +166,13 @@ private:
     using IteKey = std::tuple<uint32_t, uint32_t, uint32_t>;
     std::map<IteKey, CMSat::Lit> ite_cse;
 
+    // Functional CSE for ≤4-input cut cones. Key: [num_inputs, sorted leaf
+    // vars…, canonical truth table]. Two cones over the same input variables
+    // computing the same (or complementary) function reuse one helper. The
+    // 16-bit TT keeps the key tiny, so unlike group_cse this is cheap enough
+    // to leave always on. Always populated.
+    std::map<std::vector<uint32_t>, CMSat::Lit> cut_cse;
+
     static void canon_sort_lits(std::vector<CMSat::Lit>& v) {
         std::sort(v.begin(), v.end(), [](CMSat::Lit a, CMSat::Lit b) {
             if (a.var() != b.var()) return a.var() < b.var();
@@ -1159,24 +1166,62 @@ bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
         }
     }
 
-    const auto& min_cnf = cut_cnf::min_cnf_for_tt(num_inputs, tt);
-
-    CMSat::Lit h = new_helper();
-    for (const auto& c : min_cnf.clauses) {
-        std::vector<CMSat::Lit> cl;
-        cl.reserve(num_inputs + 1);
-        for (uint32_t i = 0; i < num_inputs; i++) {
-            if (!(c.present & (1u << i))) continue;
-            const bool is_neg = (c.sign >> i) & 1u;
-            cl.push_back(is_neg ? ~slot_lits[i] : slot_lits[i]);
+    // Functional CSE: canonicalise the cone by sorting its leaf slots by
+    // variable id and permuting the truth table to match. Two cones over the
+    // same variables computing the same (or complementary) function then
+    // collide on one key and share a helper.
+    {
+        std::vector<uint32_t> order(num_inputs);
+        for (uint32_t i = 0; i < num_inputs; i++) order[i] = i;
+        std::sort(order.begin(), order.end(), [&](uint32_t a, uint32_t b) {
+            return slot_lits[a].var() < slot_lits[b].var();
+        });
+        uint16_t canon_tt = 0;
+        for (uint32_t mp = 0; mp < num_mt; mp++) {
+            uint32_t m = 0;
+            for (uint32_t sp = 0; sp < num_inputs; sp++) {
+                if ((mp >> sp) & 1u) m |= 1u << order[sp];
+            }
+            if ((tt >> m) & 1u) canon_tt |= (uint16_t)(1u << mp);
         }
-        cl.push_back(c.g_sign ? ~h : h);
-        add_clause(cl);
+        const uint16_t compl_tt = (uint16_t)(canon_tt ^ full_mask);
+        const bool use_compl = canon_tt > compl_tt;
+        const uint16_t final_tt = use_compl ? compl_tt : canon_tt;
+
+        std::vector<uint32_t> key;
+        key.reserve(num_inputs + 2);
+        key.push_back(num_inputs);
+        for (uint32_t i = 0; i < num_inputs; i++) key.push_back(slot_lits[order[i]].var());
+        key.push_back(final_tt);
+
+        auto it_cse = cut_cse.find(key);
+        if (it_cse != cut_cse.end()) {
+            stats.cut_cnf_cse_hits++;
+            out = use_compl ? ~it_cse->second : it_cse->second;
+            return true;
+        }
+
+        const auto& min_cnf = cut_cnf::min_cnf_for_tt(num_inputs, tt);
+        CMSat::Lit h = new_helper();
+        for (const auto& c : min_cnf.clauses) {
+            std::vector<CMSat::Lit> cl;
+            cl.reserve(num_inputs + 1);
+            for (uint32_t i = 0; i < num_inputs; i++) {
+                if (!(c.present & (1u << i))) continue;
+                const bool is_neg = (c.sign >> i) & 1u;
+                cl.push_back(is_neg ? ~slot_lits[i] : slot_lits[i]);
+            }
+            cl.push_back(c.g_sign ? ~h : h);
+            add_clause(cl);
+        }
+        stats.cut_cnf_patterns++;
+        stats.cut_cnf_clauses += min_cnf.clauses.size();
+        // h is the lit for the cone's function; the key stores the lit for
+        // `final_tt` (possibly the complement), so flip when use_compl.
+        cut_cse[key] = use_compl ? ~h : h;
+        out = h;
+        return true;
     }
-    stats.cut_cnf_patterns++;
-    stats.cut_cnf_clauses += min_cnf.clauses.size();
-    out = h;
-    return true;
 }
 
 } // namespace ArjunNS
