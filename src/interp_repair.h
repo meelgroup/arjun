@@ -141,12 +141,8 @@ public:
         uint32_t num_samples = 8,
         uint64_t seed = 42) const;
 
-    // FIFO cache of (conflict signature -> interpolant AIG). 0 disables.
-    void set_cache_capacity(size_t n) { cache_capacity = n; }
-
     // Statistics (read-only)
     uint64_t calls = 0;
-    uint64_t cache_hits = 0;
     uint64_t calls_succeeded = 0;
     uint64_t calls_failed_oversize = 0;
     uint64_t calls_failed_other = 0;
@@ -227,19 +223,6 @@ private:
     mutable std::vector<int> cnf_serialized;
     mutable bool cnf_serialized_built = false;
     void build_serialized_cnf() const;
-
-    // Conflict-signature -> interpolant cache, FIFO, bounded by
-    // cache_capacity. Signature = sorted conflict lits (+ to_repair_lit)
-    // packed into a string.
-    struct CacheKey {
-        std::string sig;
-        bool operator<(const CacheKey& o) const { return sig < o.sig; }
-    };
-    size_t cache_capacity = 0;
-    std::map<CacheKey, ArjunNS::aig_ptr> sig_cache;
-    std::vector<CacheKey> sig_cache_order; // FIFO eviction queue
-    static CacheKey make_signature(CMSat::Lit to_repair_lit,
-            const std::vector<CMSat::Lit>& conflict);
 };
 
 } // namespace ArjunInt

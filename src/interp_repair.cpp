@@ -25,10 +25,8 @@
 #include "interp_repair.h"
 #include <cadical.hpp>
 #include <climits>
-#include <cstring>
 #include <iomanip>
 #include <iostream>
-#include <algorithm>
 #include <random>
 
 using namespace ArjunInt;
@@ -40,7 +38,6 @@ using std::set;
 using std::map;
 using std::cout;
 using std::endl;
-using std::setw;
 using std::setprecision;
 using std::fixed;
 
@@ -280,21 +277,6 @@ void InterpRepair::build_serialized_cnf() const {
     cnf_serialized_built = true;
 }
 
-// Stable key from (to_repair, conflict): sorted so it's order-
-// independent, packed into a string.
-InterpRepair::CacheKey InterpRepair::make_signature(Lit to_repair_lit,
-        const vector<Lit>& conflict) {
-    std::vector<int> pls;
-    pls.reserve(conflict.size() + 1);
-    for (const auto& l : conflict) pls.push_back(lit_to_pl(l));
-    pls.push_back(lit_to_pl(to_repair_lit));
-    std::sort(pls.begin(), pls.end());
-    CacheKey k;
-    k.sig.resize(pls.size() * sizeof(int));
-    std::memcpy(k.sig.data(), pls.data(), k.sig.size());
-    return k;
-}
-
 aig_ptr InterpRepair::compute_interpolant(
         [[maybe_unused]] uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
@@ -302,30 +284,6 @@ aig_ptr InterpRepair::compute_interpolant(
 {
     calls++;
     total_conflict_lits += conflict.size();
-
-    // Conflict-signature cache lookup; identical conflicts give
-    // identical interpolants.
-    if (cache_capacity > 0 && !conflict.empty()) {
-        const CacheKey key = make_signature(to_repair_lit, conflict);
-        auto it = sig_cache.find(key);
-        if (it != sig_cache.end()) {
-            cache_hits++;
-            VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
-                cout << "c o [interp-repair] cache hit for conflict-sig (size "
-                     << conflict.size() << ")" << endl;
-            });
-            // Still apply the oversize cap to cached entries.
-            if (max_aig_nodes > 0) {
-                size_t nodes = AIG::count_aig_nodes_fast(it->second);
-                if (nodes > max_aig_nodes) {
-                    calls_failed_oversize++;
-                    return nullptr;
-                }
-            }
-            calls_succeeded++;
-            return it->second;
-        }
-    }
 
     // Empty conflict: y_rep forced to ctx[y_rep]; perform_repair already
     // special-cases this. No interpolation needed.
@@ -407,8 +365,8 @@ aig_ptr InterpRepair::compute_interpolant(
     // Clean up the proof-driven AIG before returning. simplify_aig is
     // always run; full_rewrite additionally runs the heavier structural
     // rewrite_aig pass. Doing it here (rather than only on the combined
-    // b1) means the oversize cap, the size stats and the signature cache
-    // all see the rewritten interpolant.
+    // b1) means the oversize cap and the size stats both see the
+    // rewritten interpolant.
     if (full_rewrite) {
         total_interp_pre_rewrite += AIG::count_aig_nodes_fast(interp);
         interp = AIG::rewrite_aig(interp);
@@ -517,18 +475,6 @@ aig_ptr InterpRepair::compute_interpolant(
         for (const auto& l : conflict)
             if (l.var() < is_input.size() && is_input[l.var()]) input_lits++;
         total_input_lits_in_conflict += input_lits;
-    }
-
-    // Store in conflict-signature cache for future calls.
-    if (cache_capacity > 0 && !conflict.empty()) {
-        const CacheKey key = make_signature(to_repair_lit, conflict);
-        if (sig_cache.size() >= cache_capacity && !sig_cache_order.empty()) {
-            // Evict oldest.
-            sig_cache.erase(sig_cache_order.front());
-            sig_cache_order.erase(sig_cache_order.begin());
-        }
-        sig_cache[key] = interp;
-        sig_cache_order.push_back(key);
     }
 
     calls_succeeded++;

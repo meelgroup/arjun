@@ -1738,8 +1738,6 @@ public:
         int interp_repair_group_cse = 0;
         // Per-call cadical conflict budget for the interp solve. 0=no limit.
         uint64_t interp_repair_max_conflicts = 0;
-        // FIFO cache of (conflict-signature -> interpolant). 0=off.
-        uint32_t interp_repair_cache_capacity = 0;
         // Try the unconditional interpolant (no y_other pinning) first,
         // fall back to conditional. 0=off, 1=on.
         int interp_repair_unconditional = 0;

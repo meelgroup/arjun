@@ -55,7 +55,6 @@ QUICK_CONFIGS: List[Tuple[str, str]] = [
     ("minvar-5",         "--interprepair 1 --interprepairminvar 5"),
     ("uncond",           "--interprepair 1 --interprepairuncond 1"),
     ("b1rewrite",        "--interprepair 1 --interprepairb1rewrite 1"),
-    ("cache-128",        "--interprepair 1 --interprepaircache 128"),
 ]
 
 ALL_CONFIGS: List[Tuple[str, str]] = [
@@ -72,8 +71,6 @@ ALL_CONFIGS: List[Tuple[str, str]] = [
     ("adaptive",         "--interprepair 1 --interprepairadaptive 1"),
     # Solve flavour
     ("uncond",           "--interprepair 1 --interprepairuncond 1"),
-    ("cache-64",         "--interprepair 1 --interprepaircache 64"),
-    ("cache-512",        "--interprepair 1 --interprepaircache 512"),
     # AIG post-processing
     ("rewrite",          "--interprepair 1 --interprepairrewrite 1"),
     ("b1rewrite",        "--interprepair 1 --interprepairb1rewrite 1"),
@@ -82,7 +79,7 @@ ALL_CONFIGS: List[Tuple[str, str]] = [
     # Combo: "kitchen sink" for benchmarks where interp shines
     ("combo-aggressive", "--interprepair 1 "
                          "--interprepairb1rewrite 1 --interprepairgroupcse 1 "
-                         "--interprepaircache 128 --interprepairuncond 1"),
+                         "--interprepairuncond 1"),
     # Combo: "conservative" — only fire on big conflicts, with adaptive backoff
     ("combo-conservative",
                          "--interprepair 2 --interprepairmincl 8 "
@@ -106,7 +103,6 @@ class RunResult:
     loops: int = 0
     interp_pct: int = -1        # -1 if line absent (interp disabled)
     interp_calls: int = -1
-    interp_cache_hits: int = -1
     interp_budget_exh: int = -1
     interp_uncond_succ: int = -1
     b1_pre: int = -1
@@ -131,7 +127,7 @@ INTERP_DROVE_RE = re.compile(
     r"interp drove repairs:\s*(\d+)\s*/\s*(\d+)\s*\(([0-9.]+)%\)"
 )
 INTERP_CALLS_RE = re.compile(
-    r"interp calls.*?:\s*(\d+).*?cache_hit:\s*(\d+).*?budget_exh:\s*(\d+)"
+    r"interp calls.*?:\s*(\d+).*?budget_exh:\s*(\d+)"
 )
 UNCOND_RE = re.compile(r"uncond succeeded:\s*(\d+)")
 B1_SIMP_RE = re.compile(r"b1 simp:\s+pre=(\d+)\s+post=(\d+)")
@@ -170,8 +166,7 @@ def parse_output(stdout: str, stderr: str) -> Dict[str, object]:
     m = INTERP_CALLS_RE.search(text)
     if m:
         out["interp_calls"]      = int(m.group(1))
-        out["interp_cache_hits"] = int(m.group(2))
-        out["interp_budget_exh"] = int(m.group(3))
+        out["interp_budget_exh"] = int(m.group(2))
 
     m = UNCOND_RE.search(text)
     if m: out["interp_uncond_succ"] = int(m.group(1))
@@ -243,8 +238,8 @@ def print_per_cnf_table(rows: List[RunResult]):
         by_cnf.setdefault(r.cnf, []).append(r)
 
     header = ("config", "status", "rep", "loops", "T-tot", "T-rep",
-              "interp%", "calls", "cache_h", "bud_x", "uncond", "b1pre→post", "adapt_sk")
-    widths = (24, 10, 6, 6, 8, 8, 7, 6, 7, 5, 6, 14, 8)
+              "interp%", "calls", "bud_x", "uncond", "b1pre→post", "adapt_sk")
+    widths = (24, 10, 6, 6, 8, 8, 7, 6, 5, 6, 14, 8)
 
     def line(cols):
         return "  ".join(c.ljust(w) for c, w in zip(cols, widths))
@@ -274,7 +269,6 @@ def print_per_cnf_table(rows: List[RunResult]):
                 fmt_float(r.repair_s),
                 fmt_int(r.interp_pct),
                 fmt_int(r.interp_calls),
-                fmt_int(r.interp_cache_hits),
                 fmt_int(r.interp_budget_exh),
                 fmt_int(r.interp_uncond_succ),
                 b1,
