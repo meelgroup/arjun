@@ -2258,6 +2258,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
     };
 
     if (interp_branch != nullptr) {
+        // Interpolant path
         const uint32_t cex_nvars_before = cex_solver.nVars();
         f = build_interp_branch_formula(y_rep, conflict, interp_branch,
                 interp_branch_unconditional);
@@ -2270,7 +2271,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
                  << endl;
         });
     } else {
-        // Conflict-clause path (legacy).
+        // Conflict-clause path
         const uint32_t cex_nvars_before = cex_solver.nVars();
         vector<Lit> cl;
         cex_solver.new_var();
