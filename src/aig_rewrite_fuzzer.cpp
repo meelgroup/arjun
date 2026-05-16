@@ -48,6 +48,10 @@ static AIGManager aig_mng;
 // post-sweep self-ref check in AIGRewriter::sat_sweep across all iters.
 static uint64_t g_total_self_ref_reverts = 0;
 
+// Aggregate counters for sat_sweep effectiveness across all iters.
+static uint64_t g_total_sweep_merges = 0;
+static uint64_t g_total_sweep_const_merges = 0;
+
 // Naive Tseitin encoding: one helper per AND node, 3 clauses each; constants
 // via a single unit-clauses helper. Returns the output literal. Identical in
 // spirit to the baseline used by fuzz_aig_to_cnf.
@@ -224,10 +228,28 @@ static bool run_one(const aig_ptr& orig, uint32_t num_vars,
 
     // 1b. Optional SAT sweeping pass over the single-rooted vector.
     if (sat_sweep) {
+        // Half the time, sweep the RAW (un-rewritten) AIG instead of the
+        // rewritten one. The raw AIG still carries the multi-level
+        // contradictions / tautologies and structural equivalences that the
+        // rewriter would otherwise fold away — exactly what exercises
+        // sat_sweep's constant detection and FRAIG merging. Verify that
+        // raw-swept result against `orig` independently.
+        if (rng() & 1) {
+            std::vector<aig_ptr> raw_defs{orig};
+            rw.sat_sweep(raw_defs, 0);
+            aig_ptr raw_swept = raw_defs[0] ? raw_defs[0] : orig;
+            if (!random_check(orig, raw_swept, num_vars, rng, 40)) {
+                report_failure(orig, raw_swept, num_vars, seed, iter,
+                               "random_check(raw-sweep)");
+                return false;
+            }
+        }
         std::vector<aig_ptr> defs{simp};
         rw.sat_sweep(defs, 0);
         simp = defs[0];
         if (!simp) simp = orig;
+        g_total_sweep_merges       += rw.get_stats().sweep_merges;
+        g_total_sweep_const_merges += rw.get_stats().sweep_const_merges;
     }
 
     size_t before = AIG::count_aig_nodes_fast(orig);
@@ -489,6 +511,10 @@ int main(int argc, char** argv) {
     auto t_end = std::chrono::steady_clock::now();
     fs.total_time_s = std::chrono::duration<double>(t_end - t_start).count();
     fs.print();
+    if (g_total_sweep_merges || g_total_sweep_const_merges) {
+        cout << "sat_sweep: merges=" << g_total_sweep_merges
+             << "  const_merges=" << g_total_sweep_const_merges << endl;
+    }
     if (multi_def_k > 0) {
         cout << "Multi-def self-ref reverts: " << g_total_self_ref_reverts << endl;
     }

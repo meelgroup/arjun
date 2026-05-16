@@ -43,6 +43,7 @@ struct AIGRewriteStats {
     uint64_t sweep_budget_exhausted = 0; // Wall-clock budget hit; remaining classes skipped
     uint64_t sweep_self_ref_reverts = 0;
     uint64_t sweep_cycle_reverts = 0;
+    uint64_t sweep_const_merges = 0;     // AND nodes SAT-proven constant
 
     void print(int verb) const;
     void clear();

@@ -1001,6 +1001,55 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
              << endl;
     }
 
+    // --- Constant-node detection -------------------------------------------
+    // A node whose entire simulation signature is uniformly 0 (resp. 1) is a
+    // candidate constant. SAT-verify (the negated value must be UNSAT) and,
+    // on success, substitute the AIG constant — make_canonical then folds the
+    // whole cone away on rebuild. This is the cheap half of FRAIG's constant
+    // sweep and catches multi-level contradictions/tautologies that the
+    // structural rules cannot see.
+    std::unordered_map<const AIG*, bool> const_sub;  // node -> proven value
+    {
+        CMSat::SATSolver csolver;
+        csolver.set_verbosity(0);
+        CMSat::Lit c_true_lit;
+        bool c_true_set = false;
+        std::map<aig_lit, CMSat::Lit> c_enc_cache;
+        if (!used_vars.empty()) {
+            const uint32_t maxv = *std::max_element(used_vars.begin(), used_vars.end());
+            csolver.new_vars(maxv + 1);
+        }
+        auto to_edge = [&](const AIG* n) -> aig_lit {
+            return aig_lit(raw_to_shared.at(n), false);
+        };
+        for (const auto* n : topo) {
+            if (n->type != AIGT::t_and) continue;
+            const auto& s = sigs[n];
+            bool all0 = true, all1 = true;
+            for (uint64_t w : s) {
+                if (w != 0ULL)   all0 = false;
+                if (w != ~0ULL)  all1 = false;
+            }
+            if (!all0 && !all1) continue;
+            const bool cand_val = all1;
+            stats.sweep_sat_checks++;
+            const CMSat::Lit nl = naive_encode(to_edge(n), csolver,
+                c_true_lit, c_true_set, c_enc_cache);
+            csolver.set_max_confl(sweep_conflict_budget);
+            // node ≡ cand_val ⟺ asserting node ≠ cand_val is UNSAT.
+            std::vector<CMSat::Lit> assumps{ cand_val ? ~nl : nl };
+            const CMSat::lbool res = csolver.solve(&assumps);
+            if (res == CMSat::l_False) {
+                const_sub[n] = cand_val;
+                stats.sweep_const_merges++;
+            } else if (res == CMSat::l_True) {
+                stats.sweep_cex_refuted++;
+            } else {
+                stats.sweep_timeouts++;
+            }
+        }
+    }
+
     // SAT-verify each non-singleton class against its lowest-nid
     // representative. An activation literal per-check lets us reuse one
     // solver for the whole class.
@@ -1052,7 +1101,7 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
         uint32_t streak = 0;  // consecutive non-merge results in this class
         for (size_t i = 1; i < members.size(); i++) {
             const auto& [node, flipped] = members[i];
-            if (sub.count(node)) continue;
+            if (sub.count(node) || const_sub.count(node)) continue;
 
             const CMSat::Lit node_lit = naive_encode(to_edge(node),
                 solver, true_lit, true_lit_set, enc_cache);
@@ -1106,6 +1155,14 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
         if (it != rebuild.end()) return it->second;
 
         aig_lit result;
+        auto it_const = const_sub.find(n);
+        if (it_const != const_sub.end()) {
+            // Proven-constant node: emit the shared TRUE node with the edge
+            // sign carrying the proven value (neg = !value).
+            result = cached_const(it_const->second);
+            rebuild[n] = result;
+            return result;
+        }
         auto it_sub = sub.find(n);
         if (it_sub != sub.end()) {
             aig_lit rep_pos = rebuild_node(it_sub->second.first);
@@ -1265,6 +1322,7 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
              << "  groups=" << stats.sweep_sim_groups
              << "  checks=" << stats.sweep_sat_checks
              << "  merges=" << stats.sweep_merges
+             << "  const_merges=" << stats.sweep_const_merges
              << "  refuted=" << stats.sweep_cex_refuted
              << "  timeouts=" << stats.sweep_timeouts
              << "  class_aborts=" << stats.sweep_class_aborts
