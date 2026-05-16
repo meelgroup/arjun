@@ -42,7 +42,8 @@ only_dirs = [
     # "out-synth-1471320-1", # repair is better now I think
     # "out-synth-1479607-0", # cadet
     # "out-synth-1570930-", # check what can be removed
-    "out-synth-1583187-", # interpolation, cadet-style
+    "out-synth-1583187-0", # interpolation, cadet-style
+    "out-synth-1583187-5", # interpolation, cadet-style
 ]
 # -------------------------------------------------------------
 
