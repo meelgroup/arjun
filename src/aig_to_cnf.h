@@ -835,6 +835,16 @@ bool AIGToCNF<Solver>::try_xor(const aig_lit& n, CMSat::Lit& out) {
         stats.xor_patterns++;
         return true;
     }
+    // Constant-operand folds. `out` is the XNOR(a_lit, b_lit) value (the
+    // node's negative/OR-gate view); XNOR with a constant collapses to the
+    // other operand. No helper, no clause.
+    if (my_has_true_lit) {
+        const CMSat::Lit TL = my_true_lit;
+        if (a_lit ==  TL) { out =  b_lit; stats.xor_patterns++; return true; }
+        if (a_lit == ~TL) { out = ~b_lit; stats.xor_patterns++; return true; }
+        if (b_lit ==  TL) { out =  a_lit; stats.xor_patterns++; return true; }
+        if (b_lit == ~TL) { out = ~a_lit; stats.xor_patterns++; return true; }
+    }
 
     CMSat::Lit h = new_helper();
     emit_xor(h, a_lit, b_lit);
@@ -878,6 +888,18 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
 
     CMSat::Lit t_lit = encode_edge(p.t_aig);
     CMSat::Lit e_lit = encode_edge(p.e_aig);
+
+    // Constant-branch folds. A branch can resolve to the TRUE literal even
+    // when the AIG-level structural folds didn't fire — e.g. the branch
+    // sub-cone collapsed to a constant inside try_cut_cnf. Each of these
+    // turns a 4-clause ITE into a 3-clause AND/OR.
+    if (my_has_true_lit) {
+        const CMSat::Lit TL = my_true_lit;
+        if (t_lit ==  TL) { out = emit_or2(p.s_lit, e_lit);   return true; } // ITE(s,1,e)=s∨e
+        if (t_lit == ~TL) { out = emit_and2(~p.s_lit, e_lit); return true; } // ITE(s,0,e)=~s∧e
+        if (e_lit ==  TL) { out = emit_or2(~p.s_lit, t_lit);  return true; } // ITE(s,t,1)=~s∨t
+        if (e_lit == ~TL) { out = emit_and2(p.s_lit, t_lit);  return true; } // ITE(s,t,0)=s∧t
+    }
 
     // Degenerate folds.
     if (t_lit == e_lit)   { out = t_lit; return true; }                 // ITE(s, t, t) = t
