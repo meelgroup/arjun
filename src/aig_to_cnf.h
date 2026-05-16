@@ -1041,6 +1041,12 @@ bool AIGToCNF<Solver>::structural_simplify_and(std::vector<aig_lit>& conjuncts,
     for (size_t i = 0; i < conjuncts.size(); i++) {
         const aig_lit& ci = conjuncts[i];
         bool absorbed = false;
+        // (5) OR-disjunct resolution. An OR conjunct's stored children
+        // (ci->l, ci->r) are the complements of its disjuncts. If a sibling
+        // equals a stored child, that disjunct is FALSE under the AND, so
+        // the OR narrows to its other disjunct (the complement of the other
+        // stored child). AND(a, OR(~a, b)) = AND(a, b).
+        aig_lit resolved;
         if (ci->type == AIGT::t_and && ci.neg && ci->l != ci->r) {
             for (size_t j = 0; j < conjuncts.size(); j++) {
                 if (i == j) continue;
@@ -1051,9 +1057,12 @@ bool AIGToCNF<Solver>::structural_simplify_and(std::vector<aig_lit>& conjuncts,
                     absorbed = true;
                     break;
                 }
+                if (conjuncts[j] == ci->l)      resolved = ~ci->r;
+                else if (conjuncts[j] == ci->r) resolved = ~ci->l;
             }
         }
         if (absorbed) { stats.absorption_and++; continue; }
+        if (resolved.node) { stats.absorption_and++; kept.push_back(resolved); continue; }
         kept.push_back(ci);
     }
     conjuncts.swap(kept);
