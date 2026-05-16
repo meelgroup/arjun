@@ -596,7 +596,7 @@ bool InterpRepair::slow_check_a_implies_i(
 
 bool InterpRepair::sample_check_interpolant(
         Lit to_repair_lit,
-        const vector<Lit>& conflict,
+        const vector<Lit>& /*conflict*/,
         const aig_ptr& interp,
         uint32_t num_samples,
         uint64_t seed) const
@@ -608,7 +608,7 @@ bool InterpRepair::sample_check_interpolant(
     if (ins.empty()) return true;
     std::mt19937_64 rng(seed);
 
-    int num_false_seen = 0;
+    [[maybe_unused]] int num_false_seen = 0;
     for (uint32_t s = 0; s < num_samples; s++) {
         // Build full assignment with random input bits.
         std::vector<lbool> assign(cnf.nVars(), l_Undef);

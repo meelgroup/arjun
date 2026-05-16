@@ -360,7 +360,7 @@ void Minimize::add_all_indics_except(const set<uint32_t>& except) {
         var_to_indic, indic_to_var, dont_elim, seen, conf.verb);
 }
 
-void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf& mconf) {
+void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf&) {
     SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
 

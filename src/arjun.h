@@ -427,12 +427,21 @@ public:
         }
     }
 
+    // Apply the outer edge sign to a transform result. `operator~` negates
+    // aig_lit and CMSat::Lit; for a plain `bool` result it would trigger a
+    // -Wbool-operation warning, so negate logically instead.
+    template<typename T>
+    static T negate_result(const T& x) {
+        if constexpr (std::is_same_v<T, bool>) return !x;
+        else return ~x;
+    }
+
     // Post-order traversal producing a caller-defined fold. Visitor signature:
     //   (type, var, left_result*, right_result*)
     // The visitor is always invoked as if the edge were positive; transform
-    // applies the outer edge sign ITSELF by calling `operator~` on the
-    // visitor's result (requires ResultType to provide one; aig_lit and
-    // CMSat::Lit both do). Child results already reflect their own edge sign.
+    // applies the outer edge sign ITSELF by negating the visitor's result
+    // (`operator~` for aig_lit and CMSat::Lit, logical NOT for bool). Child
+    // results already reflect their own edge sign.
     //
     // Caching is per NODE rather than per signed edge. Without this, a shared
     // sub-AIG referenced both positively and negatively would invoke the
@@ -448,7 +457,7 @@ public:
         const aig_lit pos_key(aig.node, false);
         auto it = cache.find(pos_key);
         if (it != cache.end()) {
-            return aig.neg ? ~it->second : it->second;
+            return aig.neg ? negate_result(it->second) : it->second;
         }
 
         ResultType result;
@@ -461,7 +470,7 @@ public:
         }
 
         cache[pos_key] = result;
-        return aig.neg ? ~result : result;
+        return aig.neg ? negate_result(result) : result;
     }
 
     // Tseitin-encode `aig` into `solver`. Walks once (shared subgraphs are
