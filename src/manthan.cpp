@@ -1861,7 +1861,6 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                 interp_branch = interp_repair->compute_interpolant(
                     y_rep, to_repair, conflict,
                     mconf.interp_repair_max_aig_nodes,
-                    mconf.interp_repair_rewrite != 0,
                     mconf.interp_repair_max_conflicts,
                     /*unconditional=*/true);
                 if (interp_branch != nullptr) {
@@ -1877,7 +1876,6 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                 interp_branch = interp_repair->compute_interpolant(
                     y_rep, to_repair, conflict,
                     mconf.interp_repair_max_aig_nodes,
-                    mconf.interp_repair_rewrite != 0,
                     mconf.interp_repair_max_conflicts);
             }
             // Adaptive bookkeeping: track interp-vs-conflict size and

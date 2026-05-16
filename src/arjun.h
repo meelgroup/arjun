@@ -1727,8 +1727,6 @@ public:
         uint32_t interp_repair_max_aig_nodes = 0;
         // 0=no verify, 1=CEX-excluded check, 2=full miter.
         int interp_repair_verify = 1;
-        // Interpolant AIG cleanup: 0=simplify_aig only, 1=+rewrite_aig.
-        int interp_repair_rewrite = 0;
         // rewrite_aig of the combined b1 AIG before Tseitin encoding.
         // 0=simplify only, 1=+rewrite_aig.
         int interp_repair_b1_rewrite = 0;

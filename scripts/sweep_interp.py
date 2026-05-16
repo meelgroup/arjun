@@ -76,17 +76,14 @@ ALL_CONFIGS: List[Tuple[str, str]] = [
     ("cache-64",         "--interprepair 1 --interprepaircache 64"),
     ("cache-512",        "--interprepair 1 --interprepaircache 512"),
     # AIG post-processing
-    ("rewrite",          "--interprepair 1 --interprepairrewrite 1"),
     ("b1rewrite",        "--interprepair 1 --interprepairb1rewrite 1"),
-    ("rewrite+b1rewrite",
-                         "--interprepair 1 --interprepairrewrite 1 --interprepairb1rewrite 1"),
     ("b1satsweep",       "--interprepair 1 --interprepairb1satsweep 1"),
     ("groupcse",         "--interprepair 1 --interprepairgroupcse 1"),
     ("b1uselit",         "--interprepair 1 --interprepairb1uselit 1"),
     # Always-on verification
     ("verify-3",         "--interprepair 1 --interprepairverify 3"),
     # Combo: "kitchen sink" for benchmarks where interp shines
-    ("combo-aggressive", "--interprepair 1 --interprepairrewrite 1 "
+    ("combo-aggressive", "--interprepair 1 "
                          "--interprepairb1rewrite 1 --interprepairgroupcse 1 "
                          "--interprepaircache 128 --interprepairuncond 1"),
     # Combo: "conservative" — only fire on big conflicts, with adaptive backoff

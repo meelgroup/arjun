@@ -116,7 +116,6 @@ public:
         uint32_t y_rep, CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         uint32_t max_aig_nodes = 0,
-        bool full_rewrite = false,
         uint64_t conflict_budget = 0,
         bool unconditional = false);
 
