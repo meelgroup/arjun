@@ -977,8 +977,10 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
     if (p.s_lit == ~e_lit){ out = emit_or2(~p.s_lit, t_lit);  return true; } // ITE(s, t, ~s) = ~s ∨ t
 
     // Content-hashed ITE CSE: canonicalise selector polarity (flip (s,t,e) to
-    // (~s, e, t) when s is negative) and look up the (s, t, e) triple.
-    if (group_cse) {
+    // (~s, e, t) when s is negative) and look up the (s, t, e) triple. Always
+    // on — an identical ITE triple is literally the same gate, so reuse is an
+    // unconditional win (cheap 3-int tuple key, unlike the AND group_cse).
+    {
         CMSat::Lit s = p.s_lit;
         CMSat::Lit t = t_lit;
         CMSat::Lit e = e_lit;
@@ -999,12 +1001,6 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
         out = h;
         return true;
     }
-
-    CMSat::Lit h = new_helper();
-    emit_ite(h, p.s_lit, t_lit, e_lit);
-    stats.ite_patterns++;
-    out = h;
-    return true;
 }
 
 // =============================================================================
