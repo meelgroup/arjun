@@ -53,6 +53,10 @@ struct AIG2CNFStats {
     // Stubs kept for API compatibility with callers that still track these.
     uint64_t ite_patterns = 0;
     uint64_t mux3_patterns = 0;
+    // Sum of selector counts across all fused MUX chains (≥2 each). With
+    // mux3_patterns counting one per chain, the average chain length is
+    // mux_chain_levels_total / mux3_patterns.
+    uint64_t mux_chain_levels_total = 0;
     uint64_t xor_patterns = 0;
     uint64_t cut_cnf_patterns = 0;
     uint64_t cut_cnf_clauses = 0;
@@ -131,6 +135,11 @@ private:
     bool kary_fusion = true;
     bool normalize_inputs = true;
     uint32_t max_kary_width = 1u << 30;
+
+    // Upper bound on MUX-chain fusion depth. Bounds the longest emitted
+    // clause (level + 3 literals) so a 500-deep manthan ITE chain still
+    // produces SAT-friendly short clauses while cutting helpers ~4×.
+    static constexpr uint32_t kMaxMuxChain = 8;
 
     // Fanout counted by node identity. Leaf nodes are never helpers and
     // don't need fanout tracking.
@@ -255,10 +264,11 @@ private:
     void emit_and_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
     void emit_or_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
     void emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat::Lit e);
-    // MUX3: g = ITE(s1, a, ITE(s2, b, c)). 6 clauses, 1 helper — beats
-    // two nested ITEs (8 clauses, 2 helpers).
-    void emit_mux3(CMSat::Lit g, CMSat::Lit s1, CMSat::Lit a,
-                   CMSat::Lit s2, CMSat::Lit b, CMSat::Lit c);
+    // k-way MUX chain: g = ITE(s0,t0, ITE(s1,t1, … ITE(s_{k-1},t_{k-1},
+    // base))). 2(k+1) clauses, 1 helper — generalises MUX3 (k=2) and
+    // collapses a whole ITE chain into a single helper.
+    void emit_mux_chain(CMSat::Lit g, const std::vector<CMSat::Lit>& sels,
+                        const std::vector<CMSat::Lit>& tvals, CMSat::Lit base);
     void emit_xor(CMSat::Lit g, CMSat::Lit a, CMSat::Lit b);
 
     // Two signed edges representing logically-complementary values: same
@@ -639,21 +649,35 @@ void AIGToCNF<Solver>::emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat:
 }
 
 template<class Solver>
-void AIGToCNF<Solver>::emit_mux3(CMSat::Lit g, CMSat::Lit s1, CMSat::Lit a,
-                                 CMSat::Lit s2, CMSat::Lit b, CMSat::Lit c) {
-    //  g ↔ (s1 ? a : (s2 ? b : c))
-    //    s1 ∧ ~a → ~g          ⇔ ~s1 ∨ a ∨ ~g
-    //    s1 ∧ a  → g           ⇔ ~s1 ∨ ~a ∨ g
-    //    ~s1 ∧ s2 ∧ ~b → ~g     ⇔ s1 ∨ ~s2 ∨ b ∨ ~g
-    //    ~s1 ∧ s2 ∧ b  → g      ⇔ s1 ∨ ~s2 ∨ ~b ∨ g
-    //    ~s1 ∧ ~s2 ∧ ~c → ~g    ⇔ s1 ∨ s2 ∨ c ∨ ~g
-    //    ~s1 ∧ ~s2 ∧ c  → g     ⇔ s1 ∨ s2 ∨ ~c ∨ g
-    add_clause({~s1, a, ~g});
-    add_clause({~s1, ~a, g});
-    add_clause({s1, ~s2, b, ~g});
-    add_clause({s1, ~s2, ~b, g});
-    add_clause({s1, s2, c, ~g});
-    add_clause({s1, s2, ~c, g});
+void AIGToCNF<Solver>::emit_mux_chain(CMSat::Lit g,
+                                      const std::vector<CMSat::Lit>& sels,
+                                      const std::vector<CMSat::Lit>& tvals,
+                                      CMSat::Lit base) {
+    // g ↔ ITE(s0,t0, ITE(s1,t1, … ITE(s_{k-1},t_{k-1}, base))).
+    // Level i is chosen when s0…s_{i-1} are all false and s_i is true; the
+    // base when every selector is false. Per chosen value v with path P:
+    //   P ∧  v →  g   and   P ∧ ¬v → ¬g
+    // `prefix` accumulates the earlier selectors s0…s_{i-1} that appear
+    // positively in every level-i clause (the negation of "s_j false").
+    assert(sels.size() == tvals.size() && sels.size() >= 1);
+    SLOW_DEBUG_DO(assert(g.var() != base.var()));
+    std::vector<CMSat::Lit> prefix;
+    prefix.reserve(sels.size() + 2);
+    for (size_t i = 0; i < sels.size(); i++) {
+        std::vector<CMSat::Lit> c1(prefix);
+        c1.push_back(~sels[i]); c1.push_back(~tvals[i]); c1.push_back(g);
+        add_clause(c1);
+        std::vector<CMSat::Lit> c2(prefix);
+        c2.push_back(~sels[i]); c2.push_back(tvals[i]); c2.push_back(~g);
+        add_clause(c2);
+        prefix.push_back(sels[i]);
+    }
+    std::vector<CMSat::Lit> b1(prefix);
+    b1.push_back(~base); b1.push_back(g);
+    add_clause(b1);
+    std::vector<CMSat::Lit> b2(prefix);
+    b2.push_back(base); b2.push_back(~g);
+    add_clause(b2);
 }
 
 template<class Solver>
@@ -867,29 +891,42 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
     IteParse p;
     if (!parse_ite_at(n, p)) return false;
 
-    // MUX3 fusion: outer's else branch is itself an ITE pattern whose sub-AND
-    // is fanout-1 and uncached. One helper + 6 clauses replaces two nested
-    // ITEs' 2 helpers + 8 clauses.
-    if (p.e_aig && p.e_aig->type == AIGT::t_and
-        && p.e_aig.neg
-        && p.e_aig.node != p.t_aig.node)
+    // k-way MUX-chain fusion. As long as the current else-branch is itself
+    // an ITE-shaped AND we can consume (fanout ≤ 1, uncached), fold it into
+    // the chain. One helper + 2(k+1) clauses encodes a k-selector chain vs
+    // the k-1 helpers chained MUX3 would spend — a 4× helper cut on the deep
+    // ITE chains manthan emits. Capped at kMaxMuxChain so the longest clause
+    // (length level+3) stays short enough for healthy SAT propagation.
     {
-        const AIG* e_node = p.e_aig.get();
-        auto it_fo = fanout.find(e_node);
-        if (cache.find(e_node) == cache.end()
-            && it_fo != fanout.end() && it_fo->second <= 1)
-        {
-            IteParse inner;
-            if (parse_ite_at(p.e_aig, inner)) {
-                CMSat::Lit a_lit = encode_edge(p.t_aig);
-                CMSat::Lit b_lit = encode_edge(inner.t_aig);
-                CMSat::Lit c_lit = encode_edge(inner.e_aig);
-                CMSat::Lit h = new_helper();
-                emit_mux3(h, p.s_lit, a_lit, inner.s_lit, b_lit, c_lit);
-                stats.mux3_patterns++;
-                out = h;
-                return true;
+        std::vector<std::pair<CMSat::Lit, aig_lit>> levels;  // (selector, then)
+        levels.emplace_back(p.s_lit, p.t_aig);
+        aig_lit base = p.e_aig;
+        while (levels.size() < kMaxMuxChain) {
+            if (!base || base->type != AIGT::t_and || !base.neg) break;
+            const AIG* bn = base.get();
+            if (cache.find(bn) != cache.end()) break;
+            auto it_fo = fanout.find(bn);
+            if (it_fo == fanout.end() || it_fo->second > 1) break;
+            IteParse q;
+            if (!parse_ite_at(base, q)) break;
+            levels.emplace_back(q.s_lit, q.t_aig);
+            base = q.e_aig;
+        }
+        if (levels.size() >= 2) {
+            std::vector<CMSat::Lit> sels, t_lits;
+            sels.reserve(levels.size());
+            t_lits.reserve(levels.size());
+            for (auto& lv : levels) {
+                sels.push_back(lv.first);
+                t_lits.push_back(encode_edge(lv.second));
             }
+            CMSat::Lit base_lit = encode_edge(base);
+            CMSat::Lit h = new_helper();
+            emit_mux_chain(h, sels, t_lits, base_lit);
+            stats.mux3_patterns++;
+            stats.mux_chain_levels_total += levels.size();
+            out = h;
+            return true;
         }
     }
 
