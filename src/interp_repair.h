@@ -189,14 +189,9 @@ public:
         };
         return lbl[i];
     }
-    double   total_solve_time = 0.0;
-    double   total_setup_time = 0.0;
-    double   total_simplify_time = 0.0;
-
     // Pre/post node counts for the b1 AIG simplification (perform_repair side).
     uint64_t total_combined_pre_simp = 0;
     uint64_t total_combined_post_simp = 0;
-    double   total_combined_simp_time = 0.0;
 
     // Wire up the mini-CNF on `solver` with `tracer` attached.
     //   A: original CNF + non-input conflict units + ~to_repair_lit

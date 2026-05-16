@@ -23,7 +23,6 @@
  */
 
 #include "interp_repair.h"
-#include "time_mem.h"
 #include <cadical.hpp>
 #include <climits>
 #include <cstring>
@@ -348,8 +347,6 @@ aig_ptr InterpRepair::compute_interpolant(
         return nullptr;
     }
 
-    const double t0 = cpuTime();
-
     // Build the mini CNF and solve on a fresh CaDiCaL with proof
     // tracing; the tracer produces the McMillan interpolant.
     auto solver = std::make_unique<Solver>();
@@ -369,7 +366,6 @@ aig_ptr InterpRepair::compute_interpolant(
 
     const uint32_t b_marked = setup_mini_cnf(*solver, tracer,
             to_repair_lit, conflict, unconditional);
-    total_setup_time += cpuTime() - t0;
 
     VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
         cout << "c o [interp-repair] added " << b_marked
@@ -385,9 +381,7 @@ aig_ptr InterpRepair::compute_interpolant(
         return nullptr;
     }
 
-    const double t_solve = cpuTime();
     int ret = solver->solve();
-    total_solve_time += cpuTime() - t_solve;
     solver->disconnect_proof_tracer(&tracer);
 
     if (ret != 20) { // 20 = UNSAT, 0 = UNKNOWN (budget hit), 10 = SAT
@@ -412,12 +406,10 @@ aig_ptr InterpRepair::compute_interpolant(
     }
 
     // Simplify the proof-driven AIG before returning.
-    const double t_simp = cpuTime();
     if (full_rewrite) {
         interp = AIG::rewrite_aig(interp);
     }
     interp = AIG::simplify_aig(interp);
-    total_simplify_time += cpuTime() - t_simp;
 
     // SLOW_DEBUG: verify the interpolant only references input vars.
     SLOW_DEBUG_DO({
@@ -701,8 +693,5 @@ void InterpRepair::print_stats(const std::string& prefix) const {
          << " max interp-nodes: " << max_interp_nodes_seen
          << " smaller/larger: " << interp_smaller_than_conflict
          << "/" << interp_larger_than_conflict
-         << " setup-T: " << fixed << setprecision(2) << total_setup_time
-         << " solve-T: " << fixed << setprecision(2) << total_solve_time
-         << " simp-T: " << fixed << setprecision(2) << total_simplify_time
          << endl;
 }

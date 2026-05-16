@@ -1108,13 +1108,6 @@ void Manthan::print_detailed_stats() const {
                     << " input vars (conflict had " << avg_inplits << " input lits, ratio "
                     << setprecision(2) << ratio << "x)");
             }
-            const double interp_total = interp_repair->total_setup_time
-                + interp_repair->total_solve_time + interp_repair->total_simplify_time;
-            verb_print(1, COLCYN "[manthan-stats]   interp time:          " << fixed << setprecision(2) << interp_total
-                << "s (" << setprecision(1) << safe_div(interp_total, repair_time)*100.0 << "% of repair)"
-                << "  setup: " << setprecision(2) << interp_repair->total_setup_time << "s"
-                << "  solve: " << interp_repair->total_solve_time << "s"
-                << "  simp: " << interp_repair->total_simplify_time << "s");
             // b1-simplification stats (perform_repair side): how much
             // simplifying the combined branch shrank it before encoding.
             if (interp_repair->total_combined_pre_simp > 0) {
@@ -1125,7 +1118,6 @@ void Manthan::print_detailed_stats() const {
                     << "pre=" << interp_repair->total_combined_pre_simp
                     << " post=" << interp_repair->total_combined_post_simp
                     << "  (" << fixed << setprecision(1) << combined_pct << "% reduction)"
-                    << "  T: " << setprecision(2) << interp_repair->total_combined_simp_time << "s"
                     << "  b1_rewrite=" << mconf.interp_repair_b1_rewrite);
             }
             // Compact histograms: only print non-zero buckets.
@@ -1860,6 +1852,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                 });
             }
         }
+
         if (do_interp) {
             interp_branch_unconditional = false;
             // Try the unconditional interpolant first; fall back to the
@@ -2118,7 +2111,6 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
 
     // AIG-level simplification of b1 and b1_for_encode. Stats track the
     // encoded variant, since that drives f.clauses size.
-    const double t_simp_b1 = cpuTime();
     const size_t pre_simp_sz = AIG::count_aig_nodes_fast(b1_for_encode);
     b1 = AIG::simplify_aig(b1);
     if (use_lit) b1_for_encode = AIG::simplify_aig(b1_for_encode);
@@ -2152,7 +2144,6 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
     if (interp_repair) {
         interp_repair->total_combined_pre_simp += pre_simp_sz;
         interp_repair->total_combined_post_simp += post_simp_sz;
-        interp_repair->total_combined_simp_time += cpuTime() - t_simp_b1;
     }
     f.aig = b1;
 
