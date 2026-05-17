@@ -202,6 +202,8 @@ public:
     uint64_t calls = 0;
     uint64_t calls_succeeded = 0;
     uint64_t calls_failed_oversize = 0;
+    // Oversize McMillan interpolants that triggered a Pudlák retry.
+    uint64_t calls_oversize_pudlak_retry = 0;
     uint64_t calls_failed_other = 0;
     uint64_t calls_failed_empty_or_no_input = 0;
     uint64_t calls_quick_check_failed = 0;

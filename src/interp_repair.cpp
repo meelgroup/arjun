@@ -601,6 +601,17 @@ aig_ptr InterpRepair::compute_interpolant(
         VERBOSE_DEBUG_DO(cout << "c o [interp-repair] interp has "
             << interp_nodes << " AIG nodes > cap " << max_aig_nodes
             << "; falling back" << endl);
+        // A McMillan interpolant can be much larger than the Pudlák
+        // selector form. Rather than dropping straight to the conflict
+        // clause, retry once with Pudlák — it is weaker but often fits.
+        if (system == InterpTracerMcMillan::SYS_MCMILLAN) {
+            calls_oversize_pudlak_retry++;
+            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] retrying oversize "
+                "McMillan interpolant with Pudlák" << endl);
+            return compute_interpolant(y_rep, to_repair_lit, conflict,
+                max_aig_nodes, full_rewrite, conflict_budget, unconditional,
+                nproofs, InterpTracerMcMillan::SYS_PUDLAK, verify);
+        }
         return nullptr;
     }
     total_interp_nodes += interp_nodes;
