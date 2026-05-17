@@ -12,6 +12,7 @@ import glob
 import os
 import random
 import re
+import shlex
 import stat
 import subprocess
 import sys
@@ -176,7 +177,8 @@ def run_arjun(fname, prefix):
             print("Assertion line: %s" % line)
             return True, aigs, saw_rep_done, rep_stats
     if out.returncode != 0:
-        print("arjun crashed exit=%d args=%s" % (out.returncode, " ".join(args)))
+        print("arjun crashed exit=%d args=%s"
+              % (out.returncode, " ".join(shlex.quote(str(a)) for a in args)))
         return True, aigs, saw_rep_done, rep_stats
     return False, aigs, saw_rep_done, rep_stats
 

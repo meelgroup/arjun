@@ -28,7 +28,16 @@ import optparse
 import stat
 import glob
 import re
+import shlex
 from collections import namedtuple
+
+
+def fmt_cmd(command):
+    # Render a command (list of args) so it can be copy-pasted into a
+    # shell verbatim: each token is shell-quoted, so values containing
+    # parens/commas (e.g. --mstrategy "const(max_repairs=10),bve") stay
+    # a single argument.
+    return " ".join(shlex.quote(str(c)) for c in command)
 
 maxtimediff = 1
 Solver = namedtuple("Solver", "exe dir", defaults=[None, None])
@@ -131,7 +140,7 @@ def set_up_parser():
 
 
 def run(command):
-    print("--> Executing: %s" % (" ".join(command)))
+    print("--> Executing: %s" % fmt_cmd(command))
     if options.verbose:
         print("CPU limit of parent (pid %d)" % os.getpid(), resource.getrlimit(resource.RLIMIT_CPU))
 
@@ -173,7 +182,7 @@ def run_check(command, final, seed):
     if p.returncode < 0 or p.returncode > 1:
         print("=" * 60)
         print("BUG: test-synth crashed with returncode %d" % p.returncode)
-        print("Command was: %s" % " ".join(command))
+        print("Command was: %s" % fmt_cmd(command))
         print("Full check output was:")
         print(consoleOutput)
         print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
@@ -184,7 +193,7 @@ def run_check(command, final, seed):
         if "INCORRECT" in line:
             print("=" * 60)
             print("BUG: test-synth reported AIGs are INCORRECT")
-            print("Command was: %s" % " ".join(command))
+            print("Command was: %s" % fmt_cmd(command))
             print("Full check output was:")
             print(consoleOutput)
             print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
@@ -200,7 +209,7 @@ def run_check(command, final, seed):
     if not ok and final:
         print("=" * 60)
         print("BUG: check process did not report CORRECT")
-        print("Command was: %s" % " ".join(command))
+        print("Command was: %s" % fmt_cmd(command))
         print("Full check output was:")
         print(consoleOutput)
         print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)

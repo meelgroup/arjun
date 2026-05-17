@@ -14,6 +14,7 @@ import re
 import optparse
 import time
 import itertools
+import shlex
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -288,7 +289,8 @@ def main():
                 # Build reproduce command with the saved file instead of the temp path
                 reproduce_cmd = cmd[:-1] + [saved]
                 print("\nArjun crashed. Saved CNF to: %s" % os.path.abspath(saved))
-                print("Reproduce with:\n  %s" % " ".join(reproduce_cmd))
+                print("Reproduce with:\n  %s"
+                      % " ".join(shlex.quote(str(c)) for c in reproduce_cmd))
                 if error_output:
                     print("\nLast lines of output:")
                     lines = error_output.strip().split("\n")
