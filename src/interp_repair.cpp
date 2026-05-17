@@ -201,27 +201,34 @@ aig_ptr InterpTracerMcMillan::build_interpolant() {
 
 void InterpTracerMcMillan::build_derived_label(uint64_t id) {
     const vector<uint64_t>& antecedents = antec[id];
-
-    // Walk the resolution chain; cadical gives antecedents in chain
-    // order, so reverse to resolve iteratively from the start.
     if (antecedents.empty()) {
-        // Shouldn't happen for a derived clause. The label below is not
-        // a valid partial interpolant — abandon the whole interpolant.
+        // Shouldn't happen for a derived clause — abandon the interpolant.
         labels[id] = aig_mng.new_const(false);
         build_failed = true;
         return;
     }
-    const vector<uint64_t> rantec(antecedents.rbegin(), antecedents.rend());
-    release_assert(!rantec.empty());
+    // cadical's antecedent list usually replays as a linear resolution
+    // when reversed; if that order hits a non-linear or missing step,
+    // try it forward before giving up. The finished interpolant is
+    // verified downstream regardless, so this only rescues clauses a
+    // single fixed order would have needlessly abandoned.
+    const vector<uint64_t> rev(antecedents.rbegin(), antecedents.rend());
+    if (resolve_chain(id, rev)) return;
+    if (resolve_chain(id, antecedents)) return;
+    build_failed = true;  // labels[id] holds the partial last attempt
+}
 
-    // Initial resolvent = first antecedent's clause + label.
-    const uint64_t id1 = rantec[0];
+bool InterpTracerMcMillan::resolve_chain(uint64_t id,
+        const vector<uint64_t>& chain) {
+    release_assert(!chain.empty());
+
+    // Initial resolvent = first clause in the chain + its label.
+    const uint64_t id1 = chain[0];
     auto it_lab = labels.find(id1);
     if (it_lab == labels.end()) {
         // Antecedent label missing — the chain cannot be reconstructed.
         labels[id] = aig_mng.new_const(false);
-        build_failed = true;
-        return;
+        return false;
     }
     aig_ptr lab = it_lab->second;
     set<Lit> resolvent(cls[id1].begin(), cls[id1].end());
@@ -249,16 +256,15 @@ void InterpTracerMcMillan::build_derived_label(uint64_t id) {
         batch.clear();
     };
 
-    for (size_t i = 1; i < rantec.size(); i++) {
-        const uint64_t id2 = rantec[i];
+    for (size_t i = 1; i < chain.size(); i++) {
+        const uint64_t id2 = chain[i];
         auto it_cl = cls.find(id2);
         auto it_l2 = labels.find(id2);
         if (it_cl == cls.end() || it_l2 == labels.end()) {
             // Antecedent missing: chain cannot be reconstructed.
             flush_batch();
             labels[id] = lab;
-            build_failed = true;
-            return;
+            return false;
         }
         const vector<Lit>& cl = it_cl->second;
 
@@ -271,8 +277,7 @@ void InterpTracerMcMillan::build_derived_label(uint64_t id) {
                     // Multiple pivots — non-linear chain step. Bail.
                     flush_batch();
                     labels[id] = lab;
-                    build_failed = true;
-                    return;
+                    return false;
                 }
                 pivot = ~l;
             }
@@ -281,8 +286,7 @@ void InterpTracerMcMillan::build_derived_label(uint64_t id) {
             // No pivot — not a real resolution step. Bail.
             flush_batch();
             labels[id] = lab;
-            build_failed = true;
-            return;
+            return false;
         }
 
         // Update resolvent.
@@ -325,6 +329,7 @@ void InterpTracerMcMillan::build_derived_label(uint64_t id) {
     }
     flush_batch();
     labels[id] = lab;
+    return true;
 }
 
 InterpRepair::InterpRepair(const Config& _conf,

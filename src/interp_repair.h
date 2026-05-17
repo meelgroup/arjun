@@ -143,9 +143,14 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     ArjunNS::aig_ptr build_interpolant();
 
 private:
-    // Resolve one derived clause's antecedent chain into a McMillan
-    // label. Assumes every antecedent already has a label.
+    // Resolve one derived clause's antecedent chain into a McMillan /
+    // Pudlák label. Tries the chain reversed, then forward.
     void build_derived_label(uint64_t id);
+    // Replay `chain` as a linear resolution and set labels[id]. Returns
+    // false (with labels[id] left at a partial value) if the chain is
+    // not a clean linear resolution in this order.
+    [[nodiscard]] bool resolve_chain(uint64_t id,
+            const std::vector<uint64_t>& chain);
 };
 
 // Memoisation key for InterpRepair: (to_repair lit, max-nodes cap,
