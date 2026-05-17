@@ -115,7 +115,6 @@ if __name__ == "__main__":
         solver += " --interprepair %d" % ir_mode
         if ir_mode == 2:
             solver += " --interprepairmincl %s" % random.choice(["1", "2", "4", "8", "20"])
-        solver += " --interprepairminvar %s" % random.choice(["0", "1", "5"])
         solver += " --interprepairmaxnodes %s" % random.choice(["0", "10", "100", "10000"])
         solver += " --interprepairb1rewrite %s" % random.choice(["0", "1"])
         solver += " --interprepairmaxconfl %s" % random.choice(["0", "100", "10000"])

@@ -1721,8 +1721,6 @@ public:
         int interp_repair = 0;
         // Mode 2 only: minimum conflict size to interpolate.
         uint32_t interp_repair_min_conflict = 4;
-        // Only interpolate after a var's repair count exceeds this. 0=always.
-        uint32_t interp_repair_min_var_repairs = 0;
         // Cap interpolant AIG node count; bigger falls back. 0=no cap.
         uint32_t interp_repair_max_aig_nodes = 0;
         // rewrite_aig of the combined b1 AIG before Tseitin encoding.

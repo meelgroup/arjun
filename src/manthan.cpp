@@ -1341,7 +1341,6 @@ SimplifiedCNF Manthan::do_manthan() {
         verb_print(1, "[manthan] InterpRepair enabled (mode "
                 << mconf.interp_repair
                 << ", min_conflict=" << mconf.interp_repair_min_conflict
-                << ", min_var_repairs=" << mconf.interp_repair_min_var_repairs
                 << ", max_aig_nodes=" << mconf.interp_repair_max_aig_nodes
                 << ", adaptive=" << mconf.interp_repair_adaptive_gate
                 << ", progress_max=" << mconf.interp_repair_progress_max_var_repairs
@@ -1895,9 +1894,6 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
         bool do_interp = true;
         if (mconf.interp_repair == 2 &&
             conflict.size() < mconf.interp_repair_min_conflict) do_interp = false;
-        if (mconf.interp_repair_min_var_repairs > 0 &&
-            repaired_vars_count[y_rep] < mconf.interp_repair_min_var_repairs)
-            do_interp = false;
         // Adaptive per-var gating: skip vars currently blacklisted for
         // oversized interpolants.
         if (do_interp && mconf.interp_repair_adaptive_gate != 0) {

@@ -52,7 +52,6 @@ QUICK_CONFIGS: List[Tuple[str, str]] = [
     ("baseline",         "--interprepair 0"),
     ("interp-default",   "--interprepair 1"),
     ("mincl-8",          "--interprepair 2 --interprepairmincl 8"),
-    ("minvar-5",         "--interprepair 1 --interprepairminvar 5"),
     ("b1rewrite",        "--interprepair 1 --interprepairb1rewrite 1"),
 ]
 
@@ -62,8 +61,6 @@ ALL_CONFIGS: List[Tuple[str, str]] = [
     # Gating
     ("mincl-8",          "--interprepair 2 --interprepairmincl 8"),
     ("mincl-12",         "--interprepair 2 --interprepairmincl 12"),
-    ("minvar-5",         "--interprepair 1 --interprepairminvar 5"),
-    ("minvar-50",        "--interprepair 1 --interprepairminvar 50"),
     ("maxnodes-200",     "--interprepair 1 --interprepairmaxnodes 200"),
     ("maxnodes-2000",    "--interprepair 1 --interprepairmaxnodes 2000"),
     ("maxconfl-50k",     "--interprepair 1 --interprepairmaxconfl 50000"),

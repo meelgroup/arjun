@@ -546,7 +546,6 @@ if __name__ == "__main__":
         if ir_mode == 2:
             solver += " --interprepairmincl " + random.choice(["1", "2", "4", "8", "20"])
         if ir_mode > 0:
-            solver += " --interprepairminvar " + random.choice(["0", "1", "5", "100"])
             solver += " --interprepairmaxnodes " + random.choice(["0", "10", "100", "1000", "100000"])
             solver += " --interprepairb1rewrite " + random.choice(["0", "1"])
             solver += " --interprepairmaxconfl " + random.choice(["0", "100", "10000"])

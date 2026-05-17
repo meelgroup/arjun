@@ -246,9 +246,6 @@ void add_arjun_options() {
           "0=off, 1=on for every repair, 2=on only when conflict size >= --interprepairmincl");
     myopt("--interprepairmincl", mconf.interp_repair_min_conflict, fc_int,
           "(--interprepair=2 only) Minimum conflict size to attempt interpolation.");
-    myopt("--interprepairminvar", mconf.interp_repair_min_var_repairs, fc_int,
-          "Only kick interpolation in after a y has been repaired more than N times. "
-          "0=always (default).");
     myopt("--interprepairmaxnodes", mconf.interp_repair_max_aig_nodes, fc_int,
           "Cap interpolant AIG size; if bigger, fall back to conflict-clause path. 0=no cap.");
     myopt("--interprepairb1rewrite", mconf.interp_repair_b1_rewrite, fc_int,
