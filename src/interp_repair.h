@@ -225,6 +225,9 @@ public:
     uint64_t calls_quick_check_failed = 0;
     // Interpolants rejected by the always-on A→I miter verification.
     uint64_t calls_verify_failed = 0;
+    // Calls whose interpolant failed verification and were retried on a
+    // fresh, disjoint range of proof seeds.
+    uint64_t calls_verify_retry = 0;
     // Cadical hit the conflict budget and returned l_Undef, not a proof.
     uint64_t calls_budget_exhausted = 0;
     uint64_t total_interp_nodes = 0;
@@ -325,7 +328,8 @@ private:
         const std::vector<CMSat::Lit>& conflict,
         uint32_t max_aig_nodes, bool full_rewrite,
         uint64_t conflict_budget, bool unconditional,
-        uint32_t nproofs, int system, bool verify);
+        uint32_t nproofs, int system, bool verify,
+        uint32_t seed_offset = 0);
 
     // Memoised interpolants, keyed by InterpCacheKey.
     std::map<InterpCacheKey, ArjunNS::aig_ptr> interp_cache;

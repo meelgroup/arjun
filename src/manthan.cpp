@@ -1085,6 +1085,7 @@ void Manthan::print_detailed_stats() const {
             << "  budget_exh: " << interp_repair->calls_budget_exhausted
             << "  trivial: " << interp_repair->calls_failed_empty_or_no_input
             << "  verify_fail: " << interp_repair->calls_verify_failed
+            << "  verify_retry: " << interp_repair->calls_verify_retry
             << "  other_fail: " << interp_repair->calls_failed_other);
         if (interp_repair->calls_succeeded > 0) {
             verb_print(1, COLCYN "[manthan-stats]   interp avg conflict-lits: " << fixed << setprecision(1)

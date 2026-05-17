@@ -504,7 +504,7 @@ aig_ptr InterpRepair::compute_interpolant_impl(
         [[maybe_unused]] uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
         bool full_rewrite, uint64_t conflict_budget, bool unconditional,
-        uint32_t nproofs, int system, bool verify)
+        uint32_t nproofs, int system, bool verify, uint32_t seed_offset)
 {
     calls++;
     total_conflict_lits += conflict.size();
@@ -539,7 +539,8 @@ aig_ptr InterpRepair::compute_interpolant_impl(
     for (uint32_t p = 0; p < want; p++) {
         int ret = 0;
         aig_ptr one = solve_one_interpolant(to_repair_lit, conflict,
-                unconditional, conflict_budget, /*seed=*/p, system, ret);
+                unconditional, conflict_budget,
+                /*seed=*/seed_offset + p, system, ret);
         if (one == nullptr) {
             if (p == 0) {
                 // First proof failed: classify and bail, as before.
@@ -647,6 +648,19 @@ aig_ptr InterpRepair::compute_interpolant_impl(
     // repair sound by construction, independent of any tracer bug.
     if (verify && !slow_check_a_implies_i(to_repair_lit, conflict, interp,
                                           unconditional, conflict_budget)) {
+        // A clean reconstruction can still be subtly wrong for an
+        // unusual proof shape. Before falling back to the conflict
+        // clause, retry once on independent proofs (a disjoint seed
+        // range) — a different refutation often reconstructs correctly.
+        if (seed_offset == 0) {
+            calls_verify_retry++;
+            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] A→I verification "
+                "FAILED — retrying on fresh proofs" << endl);
+            return compute_interpolant_impl(y_rep, to_repair_lit, conflict,
+                max_aig_nodes, full_rewrite, conflict_budget, unconditional,
+                nproofs, system, verify,
+                /*seed_offset=*/std::max<uint32_t>(1, nproofs));
+        }
         calls_verify_failed++;
         VERBOSE_DEBUG_DO(cout << "c o [interp-repair] A→I verification FAILED"
             " — falling back to conflict clause" << endl);
