@@ -174,6 +174,49 @@ int main() {
         check(interp == nullptr, "empty conflict yields no interpolant");
     }
 
+    // --- Test 7: a two-clause CNF with two input vars in the conflict.
+    // CNF (x0∨y2) ∧ (x1∨y2): with ¬y2 the formula forces x0 ∧ x1, so
+    // the conflict {y2+, x0+, x1+} gives the UNSAT mini-CNF
+    // (x0∨y2)∧(x1∨y2) ∧ ¬y2 ∧ ¬x0 ∧ ¬x1 and a real interpolant over
+    // {x0, x1}. ---
+    {
+        SimplifiedCNF cnf = make_cnf(fg, 3, {
+            { Lit(0, false), Lit(2, false) },
+            { Lit(1, false), Lit(2, false) }});
+        set<uint32_t> inputs = {0, 1};
+        AIGManager aig_mng;
+        InterpRepair ir(conf, cnf, inputs, aig_mng);
+
+        const Lit tr2(2, false);
+        const vector<Lit> conf2 = { Lit(2, false), Lit(0, false), Lit(1, false) };
+        aig_ptr interp = ir.compute_interpolant(2, tr2, conf2);
+        check(interp != nullptr, "two-clause / two-input interpolant produced");
+        if (interp != nullptr) {
+            check(ir.quick_check_interpolant_excludes_cex(interp, conf2),
+                  "two-input interpolant excludes the CEX");
+            check(ir.slow_check_a_implies_i(tr2, conf2, interp, false),
+                  "two-input interpolant satisfies A -> I");
+        }
+    }
+
+    // --- Test 8: with verification disabled the interpolant is still
+    // returned, and (for this easy instance) is in fact sound. ---
+    {
+        SimplifiedCNF cnf = make_cnf(fg, 2, cls_xy);
+        set<uint32_t> inputs = {0};
+        AIGManager aig_mng;
+        InterpRepair ir(conf, cnf, inputs, aig_mng);
+
+        aig_ptr interp = ir.compute_interpolant(
+            1, to_repair, conflict, 0, false, 0, false, 1, 0,
+            /*verify=*/false);
+        check(interp != nullptr, "interpolant produced with verify disabled");
+        if (interp != nullptr) {
+            check(ir.slow_check_a_implies_i(to_repair, conflict, interp, false),
+                  "unverified interpolant still checks out on this instance");
+        }
+    }
+
     if (failures == 0) {
         cout << "c o [test-interp-repair] ALL TESTS PASSED" << endl;
         return 0;
