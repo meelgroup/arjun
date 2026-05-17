@@ -412,13 +412,16 @@ aig_ptr InterpRepair::solve_one_interpolant(
     // antecedent IDs don't map to our labels.
     solver->set("inprocessing", 0);
     solver->set("preprocessing", 0);
-    // Distinct seeds (with variable shuffling) steer cadical into a
-    // different search and hence a different resolution proof, so the
-    // per-proof McMillan interpolants genuinely differ. seed==0 keeps
-    // cadical's default search for the first proof.
+    // Distinct seeds (variable shuffling + an alternating initial
+    // decision phase) steer cadical into a different search and hence a
+    // different resolution proof, so the per-proof McMillan interpolants
+    // genuinely differ — which is what makes multi-proof intersection
+    // pay off. seed==0 keeps cadical's default search for the first
+    // proof.
     if (seed != 0) {
         solver->set("seed", (int)seed);
         solver->set("shuffle", 1);
+        solver->set("phase", (int)(seed & 1u));
     }
     if (conflict_budget > 0) {
         // Clamp to int max — cadical's limit API takes an int.
