@@ -243,6 +243,11 @@ public:
     // tracing solves.
     uint64_t total_proof_derived = 0;
     uint64_t total_proof_core = 0;
+    // Mini-CNF clause pruning: original clauses vs the relevant subset
+    // actually fed to the tracing solver, summed over all interp solves.
+    // Mutable: updated from the const setup_mini_cnf.
+    mutable uint64_t total_minicnf_clauses = 0;
+    mutable uint64_t total_minicnf_clauses_kept = 0;
 
     // Wire up the mini-CNF on `solver` with `tracer` attached.
     //   A: original CNF + non-input conflict units + ~to_repair_lit
@@ -265,10 +270,29 @@ private:
     std::vector<uint8_t> is_input;
 
     // Original CNF clauses pre-converted to cadical signed-ints (0
-    // terminated), built lazily on the first interp call.
+    // terminated), built lazily on the first interp call. Used by the
+    // always-on verification solves, which need the full A-side CNF.
     mutable std::vector<int> cnf_serialized;
     mutable bool cnf_serialized_built = false;
     void build_serialized_cnf() const;
+
+    // Per-literal occurrence lists over the original CNF clauses, indexed
+    // by CMSat::Lit::toInt(). occ[litidx] holds the indices (into
+    // cnf.get_clauses()) of the clauses containing that literal. Built
+    // lazily on the first interp call and reused afterwards.
+    mutable std::vector<std::vector<uint32_t>> occ;
+    mutable bool occ_built = false;
+    void build_occ() const;
+
+    // Pick the subset of original-CNF clause indices relevant to the
+    // interpolant for this conflict. Unit propagation from the assumption
+    // units drops clauses the units already satisfy; a connectivity sweep
+    // drops clauses in variable components disjoint from the conflict.
+    // Both reductions preserve the mini-CNF's UNSAT and the interpolant's
+    // soundness — see interp_repair.cpp for the argument.
+    [[nodiscard]] std::vector<uint32_t> collect_relevant_clauses(
+            CMSat::Lit to_repair_lit,
+            const std::vector<CMSat::Lit>& conflict) const;
 
     // Run one tracing solve and return its raw McMillan interpolant.
     // out_ret receives the cadical status (20=UNSAT, 0=budget, 10=SAT).

@@ -364,10 +364,24 @@ uint32_t InterpRepair::setup_mini_cnf(CaDiCaL::Solver& solver,
         b_marked++;
     }
 
-    // 1) Original CNF clauses (all A-side)
-    if (!cnf_serialized_built) build_serialized_cnf();
+    // 1) Original CNF clauses (all A-side) — only the subset relevant to
+    // this conflict. Clauses the assumption units already satisfy, and
+    // clauses in disjoint variable components, contribute nothing to the
+    // UNSAT proof and so are left out, shrinking the solver's state.
+    const auto& clauses = cnf.get_clauses();
+    const std::vector<uint32_t> relevant =
+        collect_relevant_clauses(to_repair_lit, conflict);
     tracer.next_is_b = false;
-    for (int v : cnf_serialized) solver.add(v);
+    for (const uint32_t ci : relevant) {
+        for (const auto& l : clauses[ci]) solver.add(lit_to_pl(l));
+        solver.add(0);
+    }
+    total_minicnf_clauses += clauses.size();
+    total_minicnf_clauses_kept += relevant.size();
+    VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
+        cout << "c o [interp-repair] mini-CNF: " << relevant.size() << " / "
+             << clauses.size() << " original clauses kept" << endl;
+    });
 
     return b_marked;
 }
@@ -385,6 +399,150 @@ void InterpRepair::build_serialized_cnf() const {
         cnf_serialized.push_back(0);
     }
     cnf_serialized_built = true;
+}
+
+void InterpRepair::build_occ() const {
+    // Per-literal occurrence lists, keyed by Lit::toInt() (= var*2+sign).
+    // Built once and reused: collect_relevant_clauses walks them on every
+    // interp call to do unit propagation and the connectivity sweep.
+    const auto& clauses = cnf.get_clauses();
+    occ.assign((size_t)cnf.nVars() * 2, {});
+    for (uint32_t ci = 0; ci < clauses.size(); ci++) {
+        for (const auto& l : clauses[ci]) {
+            const uint32_t li = l.toInt();
+            if (li < occ.size()) occ[li].push_back(ci);
+        }
+    }
+    occ_built = true;
+}
+
+// Find the original-CNF clauses that actually matter for the interpolant
+// of this conflict.
+//
+// The mini-CNF is M = F ∪ U, where F is the original CNF and U is the set
+// of assumption units (~conflict lits, ~to_repair). M is UNSAT. We want a
+// subset M' ⊆ M that (a) keeps every B-side input unit, (b) is still
+// UNSAT, and (c) yields an interpolant valid for the full partition. Any
+// such M' works: the McMillan/Pudlák interpolant of M' satisfies A'→I and
+// I∧B unsat, and since A' ⊆ A the always-on miter A→I still holds.
+//
+// Two reductions, both sound:
+//
+//  1. Unit propagation. Propagate U through F. A clause satisfied by the
+//     propagated assignment is redundant *provided* the clauses that
+//     forced the assignment are kept (the "reason" clauses) — then the
+//     solver re-derives the same forced literals and M' is equisatisfiable
+//     to M. Reason clauses are themselves original F clauses, so the A/B
+//     partition is unchanged.
+//
+//  2. Connectivity (added below in collect_relevant_clauses' second half).
+//
+// If UP alone refutes M, the conflicting clause plus the transitive reason
+// chain behind it is a complete UNSAT proof — everything else is dropped.
+std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
+        Lit to_repair_lit, const vector<Lit>& conflict) const
+{
+    if (!occ_built) build_occ();
+    const auto& clauses = cnf.get_clauses();
+    const uint32_t n_cls = clauses.size();
+
+    // Variable universe: the CNF, plus any assumption var beyond nVars().
+    uint32_t n_vars = cnf.nVars();
+    auto bump = [&](uint32_t v) { if (v + 1 > n_vars) n_vars = v + 1; };
+    for (const auto& l : conflict) bump(l.var());
+    bump(to_repair_lit.var());
+
+    // Ternary assignment from unit propagation: 0=unset, 1=true, 2=false.
+    vector<uint8_t> val(n_vars, 0);
+    vector<int64_t> reason(n_vars, -1);   // forcing clause idx, -1=assumption
+    vector<Lit> trail;
+    trail.reserve(n_vars);
+    bool conflict_hit = false;
+    int64_t conflict_cl = -1;
+
+    auto lit_val = [&](Lit l) -> uint8_t {   // 0 undef, 1 true, 2 false
+        const uint8_t v = val[l.var()];
+        if (v == 0) return 0;
+        return ((v == 1) ^ l.sign()) ? 1 : 2;
+    };
+    auto enqueue = [&](Lit l, int64_t rsn) {
+        const uint32_t v = l.var();
+        const uint8_t want = l.sign() ? 2 : 1;
+        if (val[v] == 0) { val[v] = want; reason[v] = rsn; trail.push_back(l); }
+        else if (val[v] != want) conflict_hit = true;
+    };
+
+    // Assumption units (direct): ~conflict lits and ~to_repair.
+    for (const auto& l : conflict) enqueue(~l, -1);
+    enqueue(~to_repair_lit, -1);
+    // Original-CNF unit clauses force their literal unconditionally.
+    for (uint32_t ci = 0; ci < n_cls && !conflict_hit; ci++) {
+        if (clauses[ci].size() == 1) enqueue(clauses[ci][0], (int64_t)ci);
+    }
+
+    // Unit propagation to fixpoint (or first conflict).
+    for (size_t qi = 0; qi < trail.size() && !conflict_hit; qi++) {
+        const Lit l = trail[qi];                  // l is now true
+        const uint32_t false_idx = (~l).toInt();  // clauses with ~l falsified
+        if (false_idx >= occ.size()) continue;
+        for (const uint32_t ci : occ[false_idx]) {
+            uint32_t n_undef = 0;
+            Lit last_undef = lit_Undef;
+            bool sat = false;
+            for (const auto& cli : clauses[ci]) {
+                const uint8_t lv = lit_val(cli);
+                if (lv == 1) { sat = true; break; }
+                if (lv == 0) { n_undef++; last_undef = cli; }
+            }
+            if (sat) continue;
+            if (n_undef == 0) { conflict_hit = true; conflict_cl = (int64_t)ci; break; }
+            if (n_undef == 1) enqueue(last_undef, (int64_t)ci);
+        }
+    }
+
+    vector<char> keep(n_cls, 0);
+
+    if (conflict_hit) {
+        // UP alone refutes the mini-CNF: keep the conflicting clause and
+        // the transitive set of reason clauses behind its literals.
+        vector<uint32_t> work;
+        auto add_reasons_of = [&](const vector<Lit>& cl) {
+            for (const auto& cli : cl) {
+                if (cli.var() >= n_vars) continue;
+                const int64_t r = reason[cli.var()];
+                if (r >= 0 && !keep[r]) { keep[r] = 1; work.push_back((uint32_t)r); }
+            }
+        };
+        if (conflict_cl >= 0) {
+            keep[conflict_cl] = 1;
+            add_reasons_of(clauses[conflict_cl]);
+        }
+        while (!work.empty()) {
+            const uint32_t ci = work.back(); work.pop_back();
+            add_reasons_of(clauses[ci]);
+        }
+        vector<uint32_t> out;
+        for (uint32_t ci = 0; ci < n_cls; ci++) if (keep[ci]) out.push_back(ci);
+        return out;
+    }
+
+    // No UP conflict: keep clauses not satisfied by the propagated
+    // assignment, plus every reason clause (the solver needs them to
+    // re-derive the forced literals).
+    for (uint32_t ci = 0; ci < n_cls; ci++) {
+        bool sat = false;
+        for (const auto& cli : clauses[ci]) {
+            if (lit_val(cli) == 1) { sat = true; break; }
+        }
+        if (!sat) keep[ci] = 1;
+    }
+    for (uint32_t v = 0; v < n_vars; v++) {
+        if (reason[v] >= 0) keep[reason[v]] = 1;
+    }
+
+    vector<uint32_t> out;
+    for (uint32_t ci = 0; ci < n_cls; ci++) if (keep[ci]) out.push_back(ci);
+    return out;
 }
 
 aig_ptr InterpRepair::solve_one_interpolant(
@@ -714,6 +872,10 @@ bool InterpRepair::sample_check_interpolant(
     if (ins.empty()) return true;
     std::mt19937_64 rng(seed);
 
+    // This check verifies against the full A-side CNF, so it needs the
+    // complete serialised form (setup_mini_cnf only feeds a subset now).
+    if (!cnf_serialized_built) build_serialized_cnf();
+
     [[maybe_unused]] int num_false_seen = 0;
     for (uint32_t s = 0; s < num_samples; s++) {
         // Build full assignment with random input bits.
@@ -749,7 +911,6 @@ bool InterpRepair::sample_check_interpolant(
             solver->add(0);
         }
 
-        if (cnf_serialized_built) {} // suppress unused warning if any
         int ret = solver->solve();
         if (ret == 10) { // SAT — interp says must-flip but it's not!
             cout << "c o [interp-repair] sample_check FAILED on seed=" << seed
