@@ -107,6 +107,7 @@ aig_ptr InterpTracerMcMillan::or_of_input_lits(const vector<Lit>& cl) {
         }
         leaves.swap(next);
     }
+    assert(!leaves.empty());
     return leaves[0];
 }
 
