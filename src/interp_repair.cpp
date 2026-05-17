@@ -578,6 +578,22 @@ std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
         // variable, so the sweep never reaches it — keep it regardless.
         if (keep[ci] && (cl_seen[ci] || clauses[ci].empty())) out.push_back(ci);
     }
+
+    SLOW_DEBUG_DO({
+        // Every dropped clause must be provably inert: either already
+        // satisfied by the UP assignment (keep[ci]==0 is only set for
+        // satisfied non-reason clauses), or in a variable component
+        // disjoint from the assumption units (!cl_seen). A clause that is
+        // neither live-and-connected nor inert is a keep-logic bug.
+        for (uint32_t ci = 0; ci < n_cls; ci++) {
+            if (keep[ci] && (cl_seen[ci] || clauses[ci].empty())) continue;
+            bool sat = false;
+            for (const auto& cli : clauses[ci])
+                if (lit_val(cli) == 1) { sat = true; break; }
+            release_assert((sat || !cl_seen[ci])
+                && "collect_relevant_clauses dropped a live, connected clause");
+        }
+    });
     return out;
 }
 

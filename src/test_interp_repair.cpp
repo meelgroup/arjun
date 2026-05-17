@@ -176,6 +176,31 @@ int main() {
         }
     }
 
+    // --- Test 8: mini-CNF pruning. The relevant core is still (x0∨y1)
+    // with conflict {y1+,x0+}, but the CNF is padded with clauses the
+    // pruner must drop: (¬x0∨x5) is satisfied by the ¬x0 assumption
+    // unit, and (x3∨x4) sits in a variable component disconnected from
+    // the conflict. compute_interpolant must still return a verified
+    // interpolant over x0, unaffected by the junk. ---
+    {
+        SimplifiedCNF cnf = make_cnf(fg, 6, {
+            { Lit(0, false), Lit(1, false) },   // core: x0 ∨ y1
+            { Lit(0, true),  Lit(5, false) },   // satisfied by ¬x0
+            { Lit(3, false), Lit(4, false) }}); // disconnected component
+        set<uint32_t> inputs = {0};
+        AIGManager aig_mng;
+        InterpRepair ir(conf, cnf, inputs, aig_mng);
+
+        aig_ptr interp = ir.compute_interpolant(1, to_repair, conflict);
+        check(interp != nullptr, "interpolant produced despite padded CNF");
+        if (interp != nullptr) {
+            check(ir.quick_check_interpolant_excludes_cex(interp, conflict),
+                  "padded-CNF interpolant excludes the CEX");
+            check(ir.slow_check_a_implies_i(to_repair, conflict, interp),
+                  "padded-CNF interpolant satisfies A -> I (full CNF)");
+        }
+    }
+
     if (failures == 0) {
         cout << "c o [test-interp-repair] ALL TESTS PASSED" << endl;
         return 0;
