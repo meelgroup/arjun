@@ -2015,13 +2015,6 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                 }
             }
 
-            // Verification: with SLOW_DEBUG enabled, run all checks
-            // (cheap CEX-excluded, full miter, and sample check).
-            // The A→I soundness asserts only hold when interpolant
-            // verification is enabled: with --interprepairverify 0 an
-            // unsound interpolant may be returned, which the repair loop
-            // still tolerates (later compose_and/or rounds correct it),
-            // so it must not be asserted against here.
             SLOW_DEBUG_DO(
               if (interp_branch != nullptr) {
                 if (!interp_repair->quick_check_interpolant_excludes_cex(interp_branch, conflict)) {
