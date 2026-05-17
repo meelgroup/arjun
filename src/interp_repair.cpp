@@ -76,15 +76,25 @@ aig_ptr InterpTracerMcMillan::hash_or(const aig_ptr& l, const aig_ptr& r) {
     return ~hash_and(~l, ~r);
 }
 
-// OR over the input literals in `cl` — the McMillan label for an
+// OR over the input literals in `cl` — the McMillan/Pudlák label for an
 // A-side clause. Empty input set => label FALSE.
 aig_ptr InterpTracerMcMillan::or_of_input_lits(const vector<Lit>& cl) {
-    vector<aig_ptr> leaves;
-    leaves.reserve(cl.size());
+    // Collect the input literals and fold them in a canonical order:
+    // two A-clauses with the same input-literal *set* (in any clause
+    // order) then produce the identical OR-AIG, so hash_or's table
+    // shares it instead of building two structurally-equal cones.
+    vector<Lit> ins;
+    ins.reserve(cl.size());
     for (const auto& l : cl) {
-        if (input_vars.count(l.var())) leaves.push_back(lit_aig(l));
+        if (input_vars.count(l.var())) ins.push_back(l);
     }
-    if (leaves.empty()) return aig_mng.new_const(false);
+    if (ins.empty()) return aig_mng.new_const(false);
+    std::sort(ins.begin(), ins.end());
+    ins.erase(std::unique(ins.begin(), ins.end()), ins.end());
+
+    vector<aig_ptr> leaves;
+    leaves.reserve(ins.size());
+    for (const auto& l : ins) leaves.push_back(lit_aig(l));
 
     // Balanced binary fold to keep AIG depth small.
     while (leaves.size() > 1) {
