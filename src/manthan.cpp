@@ -1165,8 +1165,7 @@ void Manthan::print_detailed_stats() const {
                     << fixed << setprecision(1)
                     << safe_div(interp_repair->total_proof_core*100.0,
                                 interp_repair->total_proof_derived)
-                    << "%), " << interp_repair->calls_build_failed
-                    << " chain reconstructions bailed");
+                    << "%)");
             }
             // Compact histograms: only print non-zero buckets.
             auto print_hist = [&](const char* label, const uint64_t* h) {

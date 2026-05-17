@@ -245,11 +245,9 @@ public:
     uint64_t b1_rewrite_calls = 0;
     // Proof-core trimming: total derived clauses cadical streamed vs the
     // subset actually reachable from the empty clause, summed over all
-    // tracing solves. And the number of solves whose chain could not be
-    // reconstructed (build_failed in the tracer).
+    // tracing solves.
     uint64_t total_proof_derived = 0;
     uint64_t total_proof_core = 0;
-    uint64_t calls_build_failed = 0;
 
     // Wire up the mini-CNF on `solver` with `tracer` attached.
     //   A: original CNF + non-input conflict units + ~to_repair_lit

@@ -198,15 +198,11 @@ void InterpTracerMcMillan::build_derived_label(uint64_t id) {
         // Shouldn't happen for a derived clause — abandon the interpolant.
         assert(false && "derived clause with no antecedents?");
     }
-    // cadical's antecedent list usually replays as a linear resolution
-    // when reversed; if that order hits a non-linear or missing step,
-    // try it forward before giving up. The finished interpolant is
-    // verified downstream regardless, so this only rescues clauses a
-    // single fixed order would have needlessly abandoned.
+    // cadical hands the antecedent list in reverse linear-resolution
+    // order, so replaying it reversed reconstructs the chain.
     const vector<uint64_t> rev(antecedents.rbegin(), antecedents.rend());
     if (resolve_chain(id, rev)) return;
-    if (resolve_chain(id, antecedents)) return;
-    assert(false && "failed to resolve derived clause's antecedent chain in either direction");
+    assert(false && "failed to resolve derived clause's antecedent chain");
 }
 
 bool InterpTracerMcMillan::resolve_chain(uint64_t id,
