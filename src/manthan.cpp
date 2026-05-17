@@ -1138,16 +1138,6 @@ void Manthan::print_detailed_stats() const {
             // rewrite_aig effectiveness: AIG node counts summed pre vs
             // post the heavier structural rewrite pass. Each line is
             // printed only when its rewrite flag is enabled.
-            if (interp_repair->interp_rewrite_calls > 0) {
-                const double pct = 100.0 *
-                    (1.0 - safe_div(interp_repair->total_interp_post_rewrite,
-                                    interp_repair->total_interp_pre_rewrite));
-                verb_print(1, COLCYN "[manthan-stats]   interp rewrite:     "
-                    << "pre=" << interp_repair->total_interp_pre_rewrite
-                    << " post=" << interp_repair->total_interp_post_rewrite
-                    << "  (" << fixed << setprecision(1) << pct << "% reduction"
-                    << ", " << interp_repair->interp_rewrite_calls << " calls)");
-            }
             if (interp_repair->b1_rewrite_calls > 0) {
                 const double pct = 100.0 *
                     (1.0 - safe_div(interp_repair->total_b1_post_rewrite,
@@ -1942,7 +1932,6 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
             interp_branch = interp_repair->compute_interpolant(
                 y_rep, to_repair, conflict,
                 mconf.interp_repair_max_aig_nodes,
-                mconf.interp_repair_rewrite != 0,
                 mconf.interp_repair_max_conflicts,
                 mconf.interp_repair_system);
             // Adaptive bookkeeping: track interp-vs-conflict size and

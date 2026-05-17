@@ -441,7 +441,7 @@ aig_ptr InterpRepair::solve_one_interpolant(
 aig_ptr InterpRepair::compute_interpolant(
         [[maybe_unused]] uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
-        bool full_rewrite, uint64_t conflict_budget,
+        uint64_t conflict_budget,
         int system)
 {
     calls++;
@@ -485,17 +485,7 @@ aig_ptr InterpRepair::compute_interpolant(
         return nullptr;
     }
 
-    // Clean up the proof-driven AIG before returning. simplify_aig is
-    // always run; full_rewrite additionally runs the heavier structural
-    // rewrite_aig pass. Doing it here (rather than only on the combined
-    // b1) means the oversize cap and the size stats both see the
-    // rewritten interpolant.
-    if (full_rewrite) {
-        total_interp_pre_rewrite += AIG::count_aig_nodes_fast(interp);
-        interp = AIG::rewrite_aig(interp);
-        total_interp_post_rewrite += AIG::count_aig_nodes_fast(interp);
-        interp_rewrite_calls++;
-    }
+    // Clean up the proof-driven AIG before returning.
     interp = AIG::simplify_aig(interp);
 
     // SLOW_DEBUG: verify the interpolant only references input vars.
@@ -575,7 +565,7 @@ aig_ptr InterpRepair::compute_interpolant(
             VERBOSE_DEBUG_DO(cout << "c o [interp-repair] retrying oversize "
                 "McMillan interpolant with Pudlák" << endl);
             return compute_interpolant(y_rep, to_repair_lit, conflict,
-                max_aig_nodes, full_rewrite, conflict_budget,
+                max_aig_nodes, conflict_budget,
                 InterpTracerMcMillan::SYS_PUDLAK);
         }
         return nullptr;

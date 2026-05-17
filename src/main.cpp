@@ -251,8 +251,6 @@ void add_arjun_options() {
           "0=always (default).");
     myopt("--interprepairmaxnodes", mconf.interp_repair_max_aig_nodes, fc_int,
           "Cap interpolant AIG size; if bigger, fall back to conflict-clause path. 0=no cap.");
-    myopt("--interprepairrewrite", mconf.interp_repair_rewrite, fc_int,
-          "AIG rewrite of the raw McMillan interpolant right after it is computed, before the oversize cap / cache / use in b1. simplify_aig is always on; this controls the heavier rewrite_aig pass. 0=off, 1=on.");
     myopt("--interprepairb1rewrite", mconf.interp_repair_b1_rewrite, fc_int,
           "Independent: AIG rewrite of the combined branch b1=NOT(I) AND y_other_matches before Tseitin-encoding. simplify_aig is always on; this controls the heavier rewrite_aig pass. 0=off, 1=on.");
     myopt("--interprepairb1satsweep", mconf.interp_repair_b1_satsweep, fc_int,

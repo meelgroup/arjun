@@ -101,7 +101,7 @@ int main() {
         InterpRepair ir(conf, cnf, inputs, aig_mng);
 
         aig_ptr interp = ir.compute_interpolant(
-            1, to_repair, conflict, /*max_aig_nodes=*/0, /*full_rewrite=*/false,
+            1, to_repair, conflict, /*max_aig_nodes=*/0,
             /*conflict_budget=*/0, /*system=*/1 /*Pudlák*/);
         check(interp != nullptr, "Pudlák interpolant produced");
         if (interp != nullptr) {
@@ -168,7 +168,7 @@ int main() {
         InterpRepair ir(conf, cnf, inputs, aig_mng);
 
         aig_ptr interp = ir.compute_interpolant(
-            1, to_repair, conflict, 0, false, 0, /*system=*/0);
+            1, to_repair, conflict, 0, 0, /*system=*/0);
         check(interp != nullptr, "interpolant produced with verify disabled");
         if (interp != nullptr) {
             check(ir.slow_check_a_implies_i(to_repair, conflict, interp),

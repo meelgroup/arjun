@@ -69,7 +69,6 @@ ALL_CONFIGS: List[Tuple[str, str]] = [
     ("maxconfl-50k",     "--interprepair 1 --interprepairmaxconfl 50000"),
     ("adaptive",         "--interprepair 1 --interprepairadaptive 1"),
     # AIG post-processing
-    ("rewrite",          "--interprepair 1 --interprepairrewrite 1"),
     ("b1rewrite",        "--interprepair 1 --interprepairb1rewrite 1"),
     ("b1satsweep",       "--interprepair 1 --interprepairb1satsweep 1"),
     ("groupcse",         "--interprepair 1 --interprepairgroupcse 1"),

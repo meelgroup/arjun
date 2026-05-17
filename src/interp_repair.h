@@ -159,7 +159,6 @@ public:
         uint32_t y_rep, CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         uint32_t max_aig_nodes = 0,
-        bool full_rewrite = false,
         uint64_t conflict_budget = 0,
         int system = 0);
 
@@ -233,13 +232,9 @@ public:
         return lbl[i];
     }
     // rewrite_aig effectiveness, node counts summed pre vs post the
-    // heavier structural rewrite pass. The interp_* pair tracks the raw
-    // McMillan interpolant (--interprepairrewrite); the b1_* pair tracks
-    // the combined branch b1 (--interprepairb1rewrite). Both stay zero
-    // unless their flag is enabled.
-    uint64_t total_interp_pre_rewrite = 0;
-    uint64_t total_interp_post_rewrite = 0;
-    uint64_t interp_rewrite_calls = 0;
+    // heavier structural rewrite pass. The b1_* pair tracks the combined
+    // branch b1 (--interprepairb1rewrite); it stays zero unless the flag
+    // is enabled.
     uint64_t total_b1_pre_rewrite = 0;
     uint64_t total_b1_post_rewrite = 0;
     uint64_t b1_rewrite_calls = 0;
