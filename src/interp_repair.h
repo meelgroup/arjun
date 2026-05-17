@@ -106,15 +106,6 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     // ID of the derived empty clause; set when first seen.
     uint64_t empty_id = UINT64_MAX;
 
-    // Set true if a proof-core clause's antecedent chain could not be
-    // reconstructed as a clean linear resolution (missing antecedent,
-    // multi-pivot, or no-pivot step). The partial McMillan label built
-    // in that case is NOT a valid interpolant for the clause, so the
-    // whole interpolant must be abandoned — build_interpolant() returns
-    // null. Previously such a bail silently produced a wrong (possibly
-    // unsound) interpolant.
-    bool build_failed = false;
-
     // Set by build_interpolant(): the McMillan interpolant AIG, or null.
     ArjunNS::aig_ptr out = nullptr;
 

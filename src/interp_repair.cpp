@@ -187,15 +187,6 @@ aig_ptr InterpTracerMcMillan::build_interpolant() {
         }
     }
 
-    // A bail anywhere on the proof core means the partial labels are no
-    // longer valid McMillan/Pudlák interpolants — abandon the result.
-    if (build_failed) {
-        VERBOSE_DEBUG_DO(cout << "c o [interp] build_failed: chain not "
-            "reconstructible; abandoning interpolant" << endl);
-        out = nullptr;
-        return nullptr;
-    }
-
     auto it = labels.find(empty_id);
     out = (it != labels.end()) ? it->second : nullptr;
     return out;
@@ -205,9 +196,7 @@ void InterpTracerMcMillan::build_derived_label(uint64_t id) {
     const vector<uint64_t>& antecedents = antec[id];
     if (antecedents.empty()) {
         // Shouldn't happen for a derived clause — abandon the interpolant.
-        labels[id] = aig_mng.new_const(false);
-        build_failed = true;
-        return;
+        assert(false && "derived clause with no antecedents?");
     }
     // cadical's antecedent list usually replays as a linear resolution
     // when reversed; if that order hits a non-linear or missing step,
@@ -217,7 +206,7 @@ void InterpTracerMcMillan::build_derived_label(uint64_t id) {
     const vector<uint64_t> rev(antecedents.rbegin(), antecedents.rend());
     if (resolve_chain(id, rev)) return;
     if (resolve_chain(id, antecedents)) return;
-    build_failed = true;  // labels[id] holds the partial last attempt
+    assert(false && "failed to resolve derived clause's antecedent chain in either direction");
 }
 
 bool InterpTracerMcMillan::resolve_chain(uint64_t id,
@@ -445,12 +434,10 @@ aig_ptr InterpRepair::solve_one_interpolant(
     // Diagnostics: proof-core trim ratio and chain-reconstruction bails.
     total_proof_derived += tracer.derived_count;
     total_proof_core += tracer.core_count;
-    if (tracer.build_failed) calls_build_failed++;
     VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
         cout << "c o [interp-repair] proof core: "
              << tracer.core_count << " / " << tracer.derived_count
              << " derived clauses"
-             << (tracer.build_failed ? " (build_failed)" : "") << endl;
     });
     return one;
 }
