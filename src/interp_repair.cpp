@@ -435,7 +435,11 @@ void InterpRepair::build_occ() const {
 //     to M. Reason clauses are themselves original F clauses, so the A/B
 //     partition is unchanged.
 //
-//  2. Connectivity (added below in collect_relevant_clauses' second half).
+//  2. Connectivity. The UNSAT proof stays within one connected component
+//     of the variable graph (resolution never crosses disjoint
+//     sub-formulas); that is the component holding the assumption units.
+//     Other components are sub-formulas of the satisfiable spec, hence
+//     satisfiable, and are dropped.
 //
 // If UP alone refutes M, the conflicting clause plus the transitive reason
 // chain behind it is a complete UNSAT proof — everything else is dropped.
@@ -540,8 +544,40 @@ std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
         if (reason[v] >= 0) keep[reason[v]] = 1;
     }
 
+    // Connectivity sweep. The mini-CNF's UNSAT lives entirely within one
+    // connected component of its variable-incidence graph — a resolution
+    // proof never crosses variable-disjoint sub-formulas. That component
+    // is the one holding the assumption units: every other component is a
+    // sub-formula of the (satisfiable) spec CNF and so is itself
+    // satisfiable, contributing nothing. BFS the kept clauses outward
+    // from the assumption variables and drop whatever is not reached.
+    vector<char> var_seen(n_vars, 0);
+    vector<char> cl_seen(n_cls, 0);
+    vector<uint32_t> vq;
+    auto see_var = [&](uint32_t v) {
+        if (v < n_vars && !var_seen[v]) { var_seen[v] = 1; vq.push_back(v); }
+    };
+    for (const auto& l : conflict) see_var(l.var());
+    see_var(to_repair_lit.var());
+    while (!vq.empty()) {
+        const uint32_t v = vq.back(); vq.pop_back();
+        for (uint32_t s = 0; s < 2; s++) {
+            const uint32_t li = Lit(v, s != 0).toInt();
+            if (li >= occ.size()) continue;
+            for (const uint32_t ci : occ[li]) {
+                if (!keep[ci] || cl_seen[ci]) continue;
+                cl_seen[ci] = 1;
+                for (const auto& cli : clauses[ci]) see_var(cli.var());
+            }
+        }
+    }
+
     vector<uint32_t> out;
-    for (uint32_t ci = 0; ci < n_cls; ci++) if (keep[ci]) out.push_back(ci);
+    for (uint32_t ci = 0; ci < n_cls; ci++) {
+        // An empty clause (degenerate, refutes on its own) carries no
+        // variable, so the sweep never reaches it — keep it regardless.
+        if (keep[ci] && (cl_seen[ci] || clauses[ci].empty())) out.push_back(ci);
+    }
     return out;
 }
 
