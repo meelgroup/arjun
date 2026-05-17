@@ -1138,6 +1138,14 @@ void Manthan::print_detailed_stats() const {
                                 interp_repair->interp_multiproof_calls)
                     << " proofs avg");
             }
+            if (interp_repair->cache_lookups > 0) {
+                verb_print(1, COLCYN "[manthan-stats]   interp cache:       "
+                    << interp_repair->cache_hits << " hits / "
+                    << interp_repair->cache_lookups << " lookups ("
+                    << fixed << setprecision(1)
+                    << safe_div(interp_repair->cache_hits*100.0,
+                                interp_repair->cache_lookups) << "%)");
+            }
             // Compact histograms: only print non-zero buckets.
             auto print_hist = [&](const char* label, const uint64_t* h) {
                 std::stringstream ss;
