@@ -424,9 +424,20 @@ aig_ptr InterpRepair::solve_one_interpolant(
     const int ret = solver->solve();
     solver->disconnect_proof_tracer(&tracer);
     out_ret = ret;
-    if (ret != 20) return nullptr;  // 20=UNSAT, 0=UNKNOWN(budget), 10=SAT
+    // The mini CNF asserts the conflict, so the search must come back UNSAT
+    // — never SAT (10). ret==0 (UNKNOWN) is only legitimate when a conflict
+    // budget capped the search; with no budget the solve must terminate.
+    release_assert(ret != 10
+        && "interp-repair mini CNF came back SAT — conflict was not a real conflict");
+    release_assert((ret == 20 || conflict_budget > 0)
+        && "interp-repair solve returned UNKNOWN with no conflict budget");
+    if (ret != 20) return nullptr;  // 20=UNSAT, 0=UNKNOWN(budget exhausted)
 
     aig_ptr one = tracer.build_interpolant();
+    // The proof exists (UNSAT) and the tracer recorded it, so reconstructing
+    // the interpolant from the proof trace must always succeed.
+    release_assert(one != nullptr
+        && "interp-repair tracer failed to reconstruct interpolant from proof");
     // Diagnostics: proof-core trim ratio and chain-reconstruction bails.
     total_proof_derived += tracer.derived_count;
     total_proof_core += tracer.core_count;
@@ -473,14 +484,17 @@ aig_ptr InterpRepair::compute_interpolant(
     aig_ptr interp = solve_one_interpolant(to_repair_lit, conflict,
             conflict_budget, system, ret);
     if (interp == nullptr) {
-        if (ret == 0 && conflict_budget > 0) {
+        if (ret == 0) {
+            // UNKNOWN is only reachable with a conflict budget set (asserted
+            // in solve_one_interpolant), so the budget was exhausted.
             calls_budget_exhausted++;
             VERBOSE_DEBUG_DO(cout << "c o [interp-repair] budget exhausted ("
                 << conflict_budget << " conflicts); falling back" << endl);
         } else {
-            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] proof failed (ret="
-                << ret << "); falling back" << endl);
+            // ret==20 with no input B units: nothing to interpolate.
             calls_failed_other++;
+            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] no input B units;"
+                " falling back" << endl);
         }
         return nullptr;
     }
