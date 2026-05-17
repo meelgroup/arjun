@@ -1758,6 +1758,15 @@ public:
         int interp_repair_adaptive_gate = 0;
         double interp_repair_adaptive_ratio_skip = 8.0;
         uint32_t interp_repair_adaptive_skip_window = 20;
+        // Global temporary gating: track the last
+        // interp_repair_global_window interpolant-producing repairs and,
+        // if at least interp_repair_global_thresh of them produced an
+        // interpolant larger than the conflict clause, disable
+        // interpolation globally for interp_repair_global_skip repairs.
+        // window 0 disables the mechanism.
+        uint32_t interp_repair_global_window = 10;
+        uint32_t interp_repair_global_thresh = 8;
+        uint32_t interp_repair_global_skip = 100;
     };
 
     struct IndepInfo {
