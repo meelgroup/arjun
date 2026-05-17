@@ -49,6 +49,33 @@ aig_ptr InterpTracerMcMillan::lit_aig(Lit l) {
     return a;
 }
 
+// new_and + structural hash-consing: if an AND node with the same
+// child edges already exists, reuse it. Equal cones across the proof
+// thus collapse into a shared DAG before simplify_aig ever runs.
+aig_ptr InterpTracerMcMillan::hash_and(const aig_ptr& l, const aig_ptr& r) {
+    aig_ptr res = AIG::new_and(l, r);
+    // new_and may have folded to a constant, a leaf, or an input node.
+    if (res.node == nullptr || res->type != AIGT::t_and) return res;
+
+    // Canonical key: order the two child edges by (nid, neg).
+    uint64_t lnid = res->l.node->nid, rnid = res->r.node->nid;
+    bool lneg = res->l.neg, rneg = res->r.neg;
+    if (std::tie(rnid, rneg) < std::tie(lnid, lneg)) {
+        std::swap(lnid, rnid);
+        std::swap(lneg, rneg);
+    }
+    const AIG::AIGKey key{AIGT::t_and, 0u, lnid, lneg, rnid, rneg};
+    auto it = and_table.find(key);
+    if (it != and_table.end()) return res.neg ? ~it->second : it->second;
+
+    and_table.emplace(key, aig_ptr(res.node, false));
+    return res;
+}
+
+aig_ptr InterpTracerMcMillan::hash_or(const aig_ptr& l, const aig_ptr& r) {
+    return ~hash_and(~l, ~r);
+}
+
 // OR over the input literals in `cl` — the McMillan label for an
 // A-side clause. Empty input set => label FALSE.
 aig_ptr InterpTracerMcMillan::or_of_input_lits(const vector<Lit>& cl) {
@@ -65,7 +92,7 @@ aig_ptr InterpTracerMcMillan::or_of_input_lits(const vector<Lit>& cl) {
         next.reserve((leaves.size() + 1) / 2);
         for (size_t i = 0; i < leaves.size(); i += 2) {
             if (i + 1 >= leaves.size()) next.push_back(leaves[i]);
-            else next.push_back(AIG::new_or(leaves[i], leaves[i+1], false));
+            else next.push_back(hash_or(leaves[i], leaves[i+1]));
         }
         leaves.swap(next);
     }
@@ -178,9 +205,9 @@ void InterpTracerMcMillan::build_derived_label(uint64_t id) {
             for (size_t i = 0; i < batch.size(); i += 2) {
                 if (i + 1 >= batch.size()) next.push_back(batch[i]);
                 else if (batch_is_and)
-                    next.push_back(AIG::new_and(batch[i], batch[i+1], false));
+                    next.push_back(hash_and(batch[i], batch[i+1]));
                 else
-                    next.push_back(AIG::new_or (batch[i], batch[i+1], false));
+                    next.push_back(hash_or (batch[i], batch[i+1]));
             }
             batch.swap(next);
         }

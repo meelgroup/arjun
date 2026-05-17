@@ -84,6 +84,16 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     // Cache: input lit -> AIG leaf node, so structural hashing dedups.
     std::map<CMSat::Lit, ArjunNS::aig_ptr> lit_to_aig;
 
+    // Structural-hash table over the t_and nodes built while resolving
+    // partial interpolants. Keyed on the canonicalised (smaller-nid
+    // first) child edges so equal cones across different proof clauses
+    // collapse to one shared sub-DAG instead of a fresh tree each time.
+    std::map<ArjunNS::AIG::AIGKey, ArjunNS::aig_ptr> and_table;
+    ArjunNS::aig_ptr hash_and(const ArjunNS::aig_ptr& l,
+                              const ArjunNS::aig_ptr& r);
+    ArjunNS::aig_ptr hash_or(const ArjunNS::aig_ptr& l,
+                             const ArjunNS::aig_ptr& r);
+
     // ID of the derived empty clause; set when first seen.
     uint64_t empty_id = UINT64_MAX;
 
