@@ -195,7 +195,8 @@ public:
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         const ArjunNS::aig_ptr& interp,
-        bool unconditional) const;
+        bool unconditional,
+        uint64_t conflict_budget = 0) const;
 
     // Probabilistic check: for K random input patterns where I(X)=FALSE,
     // SAT-check that flipping y_rep is genuinely impossible. Returns true

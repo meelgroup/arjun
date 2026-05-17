@@ -610,7 +610,7 @@ aig_ptr InterpRepair::compute_interpolant_impl(
     // `unconditional` picks the matching partition. This makes interp
     // repair sound by construction, independent of any tracer bug.
     if (verify && !slow_check_a_implies_i(to_repair_lit, conflict, interp,
-                                          unconditional)) {
+                                          unconditional, conflict_budget)) {
         calls_verify_failed++;
         VERBOSE_DEBUG_DO(cout << "c o [interp-repair] A→I verification FAILED"
             " — falling back to conflict clause" << endl);
@@ -682,17 +682,26 @@ aig_ptr InterpRepair::compute_interpolant_impl(
     return interp;
 }
 
-// SLOW_DEBUG full miter: check A & ~I is UNSAT (i.e. A -> I), with I
-// Tseitin-encoded inline.
+// Full miter: check A & ~I is UNSAT (i.e. A -> I), with I Tseitin-encoded
+// inline. `conflict_budget` (0 = unlimited) caps the solve; an exhausted
+// budget is reported as a verification failure so the caller falls back.
 bool InterpRepair::slow_check_a_implies_i(
         Lit to_repair_lit,
         const vector<Lit>& conflict,
         const aig_ptr& interp,
-        bool unconditional) const
+        bool unconditional,
+        uint64_t conflict_budget) const
 {
     if (interp == nullptr) return true;
 
     auto solver = std::make_unique<Solver>();
+    solver->set("inprocessing", 0);
+    solver->set("preprocessing", 0);
+    if (conflict_budget > 0) {
+        const int64_t clamped = (conflict_budget > (uint64_t)INT_MAX)
+            ? INT_MAX : (int64_t)conflict_budget;
+        solver->limit("conflicts", (int)clamped);
+    }
     auto add_cl = [&](const vector<Lit>& cl) {
         for (const auto& l : cl) solver->add(lit_to_pl(l));
         solver->add(0);
@@ -702,7 +711,10 @@ bool InterpRepair::slow_check_a_implies_i(
         solver->add(0);
     };
 
-    for (const auto& cl : cnf.get_clauses()) add_cl(cl);
+    // A-side original CNF — added from the pre-serialised buffer rather
+    // than re-walking cnf.get_clauses() on every (always-on) verify.
+    if (!cnf_serialized_built) build_serialized_cnf();
+    for (int v : cnf_serialized) solver->add(v);
     // A-side: original CNF + ~to_repair, plus the non-input (y_other)
     // conflict units — but only for a conditional interpolant. The
     // unconditional interpolant was computed with no y_other pinning,
@@ -747,8 +759,10 @@ bool InterpRepair::slow_check_a_implies_i(
 
     int ret = solver->solve();
     if (ret != 20) {
-        cout << "c o [interp-repair] SLOW_DEBUG slow_check_a_implies_i: "
-             << "miter is NOT UNSAT (cadical ret=" << ret << ")" << endl;
+        // 10 = SAT (interpolant genuinely violates A→I), 0 = budget
+        // exhausted (cannot conclude). Either way verification failed.
+        VERBOSE_DEBUG_DO(cout << "c o [interp-repair] slow_check_a_implies_i: "
+             << "miter NOT UNSAT (cadical ret=" << ret << ")" << endl);
         return false;
     }
     return true;
