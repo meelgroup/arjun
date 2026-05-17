@@ -1724,12 +1724,17 @@ public:
         // Cap interpolant AIG node count; bigger falls back. 0=no cap.
         uint32_t interp_repair_max_aig_nodes = 0;
         // rewrite_aig of the combined b1 AIG before Tseitin encoding.
-        // 0=simplify only, 1=+rewrite_aig.
-        int interp_repair_b1_rewrite = 0;
+        // 0=simplify only, 1=+rewrite_aig. On by default: b1 is composed
+        // into the candidate formula and Tseitin-encoded into the cex
+        // solver on every interpolant repair, so a smaller b1 directly
+        // slows cex-solver growth between rebuilds.
+        int interp_repair_b1_rewrite = 1;
         // FRAIG-lite SAT-sweep on b1. 0=off, 1=on.
         int interp_repair_b1_satsweep = 0;
-        // Pass --group-cse to AIGToCNF when encoding b1. 0=off, 1=on.
-        int interp_repair_group_cse = 0;
+        // Pass --group-cse to AIGToCNF when encoding b1: dedups Tseitin
+        // helpers for structurally identical sub-AIGs. On by default for
+        // the same cex-solver-growth reason as b1_rewrite.
+        int interp_repair_group_cse = 1;
         // Per-call cadical conflict budget for the interp solve. 0=no limit.
         uint64_t interp_repair_max_conflicts = 0;
         // Labeled-interpolation system: 0=McMillan (strongest, default),
