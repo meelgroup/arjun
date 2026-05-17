@@ -309,12 +309,9 @@ class Manthan {
         uint16_t interp_recent = 0;
         uint32_t interp_recent_n = 0;
         uint32_t interp_global_skip_until = 0;
-        // Stats: global-gate activations, total repairs that fell inside
-        // a disable window (the blocking "duration"), the subset of those
-        // that would otherwise have tried interpolation, and interpolants
-        // discarded for being larger than the conflict.
+        // Stats: global-gate activations and the repairs they skipped,
+        // plus interpolants discarded for being larger than the conflict.
         uint64_t interp_global_disables = 0;
-        uint64_t interp_global_blocked = 0;
         uint64_t interp_global_skips = 0;
         uint64_t interp_larger_discarded = 0;
         // Stat: repairs where the unconditional interpolant succeeded.
