@@ -1046,9 +1046,28 @@ void Manthan::print_detailed_stats() const {
     verb_print(1, COLCYN "[manthan-stats]   full conflicts:       " << full_conflict_count
         << "  avg sz: " << fixed << setprecision(1) << safe_div(full_conflict_sizes_sum, full_conflict_count));
     verb_print(1, COLCYN "[manthan-stats]   cost-zero repairs:    " << cost_zero_repairs);
+    verb_print(1, COLCYN "[manthan-stats]   cost-zero by last branch: interp "
+        << interp_path_cost_zero << "  conflict " << conflict_path_cost_zero
+        << "  pre-repair " << unrepaired_cost_zero);
     verb_print(1, COLCYN "[manthan-stats]   repair_failed:        " << repair_failed);
     verb_print(1, COLCYN "[manthan-stats]   cex_solver calls:     " << cex_solver_calls);
     verb_print(1, COLCYN "[manthan-stats]   repair_solver calls:  " << repair_solver_calls);
+    // Repair recurrence: a single var repaired hundreds/thousands of
+    // times means the repairs of that var are not generalising at all.
+    {
+        uint32_t max_rep = 0, max_rep_var = 0;
+        uint64_t vars_over_100 = 0, vars_over_1000 = 0;
+        for (uint32_t v = 0; v < repaired_vars_count.size(); v++) {
+            const uint32_t r = repaired_vars_count[v];
+            if (r > max_rep) { max_rep = r; max_rep_var = v; }
+            if (r > 100) vars_over_100++;
+            if (r > 1000) vars_over_1000++;
+        }
+        verb_print(1, COLCYN "[manthan-stats]   repair recurrence:    max "
+            << max_rep << " on var " << max_rep_var+1
+            << "  (vars >100x: " << vars_over_100
+            << ", >1000x: " << vars_over_1000 << ")");
+    }
 
     // Interp-repair: Manthan-side aggregates (how often interp drove a
     // repair); InterpRepair's own print_stats has per-call internals.
@@ -1061,6 +1080,14 @@ void Manthan::print_detailed_stats() const {
             << " / " << tot_repaired
             << "  (" << fixed << setprecision(1) << interp_used_pct << "%)");
         verb_print(1, COLCYN "[manthan-stats]   conflict drove rep.:  " << conflict_repairs);
+        // The discriminator: cost-zero (failed) repairs per successful
+        // repair, split by branch. A low interp ratio means interpolants
+        // generalise; a high one means they churn without progress.
+        verb_print(1, COLCYN "[manthan-stats]   cost-zero / repair:   "
+            << "interp " << fixed << setprecision(2)
+            << safe_div(interp_path_cost_zero, interp_repairs_used)
+            << "  conflict "
+            << safe_div(conflict_path_cost_zero, conflict_repairs));
         // Fresh cex_solver helper vars created per repair, by path.
         if (interp_repairs_used > 0) {
             verb_print(1, COLCYN "[manthan-stats]   helpers/rep:          "
@@ -1072,6 +1099,13 @@ void Manthan::print_detailed_stats() const {
             verb_print(1, COLCYN "[manthan-stats]   adaptive skips:       " << interp_adaptive_skips
                 << "  (ratio>" << fixed << setprecision(1) << mconf.interp_repair_adaptive_ratio_skip
                 << " → blacklist for " << mconf.interp_repair_adaptive_skip_window << " repairs)");
+        }
+        if (mconf.interp_repair_progress_max_var_repairs > 0) {
+            verb_print(1, COLCYN "[manthan-stats]   progress gate:        "
+                << interp_progress_blacklisted << " vars blacklisted, "
+                << interp_progress_skips << " repairs fell back"
+                << "  (>" << mconf.interp_repair_progress_max_var_repairs
+                << " non-converging interp repairs/var)");
         }
         if (mconf.interp_repair_unconditional != 0) {
             verb_print(1, COLCYN "[manthan-stats]   uncond succeeded:     " << interp_unconditional_succeeded
@@ -1273,6 +1307,8 @@ SimplifiedCNF Manthan::do_manthan() {
     const auto ret = cnf.find_disconnected();
     verb_print(1, "[manthan] Found " << ret.size() << " components");
     repaired_vars_count.resize(cnf.nVars(), 0);
+    last_repair_branch.assign(cnf.nVars(), 0);
+    interp_progress_blacklist.assign(cnf.nVars(), 0);
     var_conflict_freq.resize(cnf.nVars(), 0);
     input_only_ok.resize(cnf.nVars(), 0);
     input_only_fail.resize(cnf.nVars(), 0);
@@ -1327,6 +1363,7 @@ SimplifiedCNF Manthan::do_manthan() {
                 << ", min_var_repairs=" << mconf.interp_repair_min_var_repairs
                 << ", max_aig_nodes=" << mconf.interp_repair_max_aig_nodes
                 << ", adaptive=" << mconf.interp_repair_adaptive_gate
+                << ", progress_max=" << mconf.interp_repair_progress_max_var_repairs
                 << ")");
     }
     create_vars_for_y_hats();
@@ -1600,6 +1637,10 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
                 interp_conflict_lits_per_var[y_rep] += conflict.size();
             }
         }
+        // Record which branch drove this (successful) repair, so a later
+        // cost-zero repair of the same var can be attributed to it.
+        if (y_rep < last_repair_branch.size())
+            last_repair_branch[y_rep] = (interp_branch != nullptr) ? 2 : 1;
         perform_repair(y_rep, ctx, conflict, interp_branch);
         time_perform_repair += cpuTime() - t0;
 
@@ -1630,6 +1671,14 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
 
     } else {
         cost_zero_repairs++;
+        // Attribute this failed repair to the branch that last successfully
+        // repaired the var: a cost-zero repair on a var the interpolant
+        // "handled" means the interpolant did not generalise.
+        const uint8_t br = (y_rep < last_repair_branch.size())
+            ? last_repair_branch[y_rep] : 0;
+        if (br == 2) interp_path_cost_zero++;
+        else if (br == 1) conflict_path_cost_zero++;
+        else unrepaired_cost_zero++;
         // Cost 0: find_conflict updated ctx[y] for y_rep and later vars only.
         // Formulas and inputs haven't changed, so y_hat values are still valid.
         // No recomputation needed.
@@ -1880,6 +1929,30 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                          << " until tot_repaired=" << interp_skip_until[y_rep]
                          << " (current=" << tot_repaired << ")" << endl;
                 });
+            }
+        }
+        // Progress-based per-var gating: once a var has been interp-repaired
+        // more than the threshold and still keeps coming back for repair,
+        // the interpolant is not generalising for it — a good interpolant
+        // captures the must-flip region in a handful of repairs. Permanently
+        // fall back to the conflict clause for that var.
+        if (do_interp && mconf.interp_repair_progress_max_var_repairs > 0
+                && y_rep < interp_progress_blacklist.size()) {
+            if (!interp_progress_blacklist[y_rep]
+                    && y_rep < interp_repairs_per_var.size()
+                    && interp_repairs_per_var[y_rep]
+                       >= mconf.interp_repair_progress_max_var_repairs) {
+                interp_progress_blacklist[y_rep] = 1;
+                interp_progress_blacklisted++;
+                VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 2) {
+                    cout << "c o [manthan-interp] progress-blacklist y=" << y_rep+1
+                         << " after " << interp_repairs_per_var[y_rep]
+                         << " non-converging interp repairs" << endl;
+                });
+            }
+            if (interp_progress_blacklist[y_rep]) {
+                do_interp = false;
+                interp_progress_skips++;
             }
         }
 

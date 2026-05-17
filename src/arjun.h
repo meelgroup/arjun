@@ -1758,6 +1758,12 @@ public:
         int interp_repair_adaptive_gate = 0;
         double interp_repair_adaptive_ratio_skip = 8.0;
         uint32_t interp_repair_adaptive_skip_window = 20;
+        // Progress-based per-var gating: once a variable has been repaired
+        // via the interpolant branch this many times and still needs more
+        // repairs, the interpolant is not generalising for it, so fall
+        // back permanently to the conflict clause for that variable.
+        // 0 disables the gate.
+        uint32_t interp_repair_progress_max_var_repairs = 100;
     };
 
     struct IndepInfo {

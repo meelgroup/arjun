@@ -269,6 +269,8 @@ void add_arjun_options() {
           "Mean interp/conflict ratio above which the adaptive gate blacklists a var.");
     myopt("--interprepairskipwindow", mconf.interp_repair_adaptive_skip_window, fc_int,
           "How many tot_repaired ticks the adaptive blacklist persists before the var gets another chance.");
+    myopt("--interprepairprogressmax", mconf.interp_repair_progress_max_var_repairs, fc_int,
+          "Progress gate: once a var has been interp-repaired this many times and still needs more, drop interp for it (it is not generalising). 0=off.");
     myopt("--interprepairnproofs", mconf.interp_repair_nproofs, fc_int,
           "Intersect N independently-searched McMillan interpolants into one stronger interpolant (larger must-flip region). 1=off (single proof), try 2-4.");
     myopt("--interprepairsystem", mconf.interp_repair_system, fc_int,
