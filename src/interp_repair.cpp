@@ -106,11 +106,23 @@ void InterpTracerMcMillan::add_original_clause(uint64_t id, bool /*red*/,
     cls[id] = cl_lits;
 
     if (next_is_b) {
-        // B-side clause: label = TRUE
         b_clause_ids.insert(id);
-        labels[id] = aig_mng.new_const(true);
+        if (system == SYS_PUDLAK) {
+            // Pudlák: shared (input) lits are 'ab'-labelled, so a B-side
+            // clause's partial interpolant is ∧ ¬l over its shared lits.
+            // Our B clauses are input units, so this is just ¬(the lit).
+            aig_ptr lab = aig_mng.new_const(true);
+            for (const auto& l : cl_lits)
+                if (input_vars.count(l.var())) lab = hash_and(lab, lit_aig(~l));
+            labels[id] = lab;
+        } else {
+            // McMillan: shared lits are 'b'-labelled → B-clause label TRUE.
+            labels[id] = aig_mng.new_const(true);
+        }
     } else {
-        // A-side clause: label = OR of input lits in the clause
+        // A-side clause: label = OR of input lits in the clause. Shared
+        // lits are 'b' (McMillan) or 'ab' (Pudlák); either way they are
+        // the disjuncts, so this base label is the same for both systems.
         labels[id] = or_of_input_lits(cl_lits);
     }
     VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 5) {
@@ -163,6 +175,15 @@ aig_ptr InterpTracerMcMillan::build_interpolant() {
         }
     }
 
+    // A bail anywhere on the proof core means the partial labels are no
+    // longer valid McMillan/Pudlák interpolants — abandon the result.
+    if (build_failed) {
+        VERBOSE_DEBUG_DO(cout << "c o [interp] build_failed: chain not "
+            "reconstructible; abandoning interpolant" << endl);
+        out = nullptr;
+        return nullptr;
+    }
+
     auto it = labels.find(empty_id);
     out = (it != labels.end()) ? it->second : nullptr;
     return out;
@@ -174,8 +195,10 @@ void InterpTracerMcMillan::build_derived_label(uint64_t id) {
     // Walk the resolution chain; cadical gives antecedents in chain
     // order, so reverse to resolve iteratively from the start.
     if (antecedents.empty()) {
-        // Shouldn't happen for a derived clause, but be defensive.
+        // Shouldn't happen for a derived clause. The label below is not
+        // a valid partial interpolant — abandon the whole interpolant.
         labels[id] = aig_mng.new_const(false);
+        build_failed = true;
         return;
     }
     const vector<uint64_t> rantec(antecedents.rbegin(), antecedents.rend());
@@ -185,8 +208,9 @@ void InterpTracerMcMillan::build_derived_label(uint64_t id) {
     const uint64_t id1 = rantec[0];
     auto it_lab = labels.find(id1);
     if (it_lab == labels.end()) {
-        // Antecedent label missing — fail closed: empty interpolant.
+        // Antecedent label missing — the chain cannot be reconstructed.
         labels[id] = aig_mng.new_const(false);
+        build_failed = true;
         return;
     }
     aig_ptr lab = it_lab->second;
@@ -220,9 +244,10 @@ void InterpTracerMcMillan::build_derived_label(uint64_t id) {
         auto it_cl = cls.find(id2);
         auto it_l2 = labels.find(id2);
         if (it_cl == cls.end() || it_l2 == labels.end()) {
-            // Antecedent missing: bail safely with what we have so far.
+            // Antecedent missing: chain cannot be reconstructed.
             flush_batch();
             labels[id] = lab;
+            build_failed = true;
             return;
         }
         const vector<Lit>& cl = it_cl->second;
@@ -233,19 +258,20 @@ void InterpTracerMcMillan::build_derived_label(uint64_t id) {
         for (const auto& l : cl) {
             if (resolvent.count(~l)) {
                 if (pivot != lit_Undef) {
-                    // Multiple pivots — non-standard chain. Bail.
+                    // Multiple pivots — non-linear chain step. Bail.
                     flush_batch();
                     labels[id] = lab;
+                    build_failed = true;
                     return;
                 }
                 pivot = ~l;
             }
         }
         if (pivot == lit_Undef) {
-            // No pivot — this shouldn't happen with a real resolution;
-            // fail closed.
+            // No pivot — not a real resolution step. Bail.
             flush_batch();
             labels[id] = lab;
+            build_failed = true;
             return;
         }
 
@@ -256,8 +282,28 @@ void InterpTracerMcMillan::build_derived_label(uint64_t id) {
             resolvent.insert(l);
         }
 
-        // McMillan: shared (input) pivot → AND, A-local pivot → OR.
         const bool pivot_is_input = input_vars.count(pivot.var());
+
+        // Pudlák: a shared (input) pivot is 'ab'-labelled, so the
+        // partial interpolant is the selector (v∨I1)∧(¬v∨I2), where I1
+        // belongs to the parent containing the variable positively and
+        // I2 to the parent containing it negatively. `lab` is the
+        // running parent (which holds `pivot`); `it_l2->second` is the
+        // new antecedent (which holds `~pivot`).
+        if (pivot_is_input && system == SYS_PUDLAK) {
+            flush_batch();
+            const aig_ptr I_run = lab;               // parent with `pivot`
+            const aig_ptr I_new = it_l2->second;     // parent with `~pivot`
+            aig_ptr I1, I2;
+            if (!pivot.sign()) { I1 = I_run; I2 = I_new; }
+            else               { I1 = I_new; I2 = I_run; }
+            const aig_ptr v_pos = lit_aig(Lit(pivot.var(), false));
+            const aig_ptr v_neg = lit_aig(Lit(pivot.var(), true));
+            lab = hash_and(hash_or(v_pos, I1), hash_or(v_neg, I2));
+            continue;
+        }
+
+        // McMillan: shared (input) pivot → AND, A-local pivot → OR.
         const bool want_and = pivot_is_input;
 
         if (!batch.empty() && batch_is_and != want_and) flush_batch();
@@ -345,7 +391,7 @@ void InterpRepair::build_serialized_cnf() const {
 aig_ptr InterpRepair::solve_one_interpolant(
         Lit to_repair_lit, const vector<Lit>& conflict,
         bool unconditional, uint64_t conflict_budget,
-        uint32_t seed, int& out_ret) const
+        uint32_t seed, int system, int& out_ret) const
 {
     out_ret = 0;
     // Build the mini CNF and solve on a fresh CaDiCaL with proof
@@ -371,6 +417,7 @@ aig_ptr InterpRepair::solve_one_interpolant(
         solver->limit("conflicts", (int)clamped);
     }
     InterpTracerMcMillan tracer(conf, aig_mng, input_vars);
+    tracer.system = system;
     solver->connect_proof_tracer(&tracer, true);
 
     const uint32_t b_marked = setup_mini_cnf(*solver, tracer,
@@ -401,7 +448,7 @@ aig_ptr InterpRepair::compute_interpolant(
         [[maybe_unused]] uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
         bool full_rewrite, uint64_t conflict_budget, bool unconditional,
-        uint32_t nproofs)
+        uint32_t nproofs, int system, bool verify)
 {
     calls++;
     total_conflict_lits += conflict.size();
@@ -436,7 +483,7 @@ aig_ptr InterpRepair::compute_interpolant(
     for (uint32_t p = 0; p < want; p++) {
         int ret = 0;
         aig_ptr one = solve_one_interpolant(to_repair_lit, conflict,
-                unconditional, conflict_budget, /*seed=*/p, ret);
+                unconditional, conflict_budget, /*seed=*/p, system, ret);
         if (one == nullptr) {
             if (p == 0) {
                 // First proof failed: classify and bail, as before.
@@ -524,13 +571,18 @@ aig_ptr InterpRepair::compute_interpolant(
         return nullptr;
     }
 
-    // SLOW_DEBUG full miter: A → I.
-    SLOW_DEBUG_DO({
-        if (!slow_check_a_implies_i(to_repair_lit, conflict, interp)) {
-            cout << "c o [interp-repair] SLOW_DEBUG: A→I miter FAILED" << endl;
-            assert(false && "slow_check_a_implies_i: bad interpolant");
-        }
-    });
+    // Always verify: the proof-driven McMillan/Pudlák reconstruction is
+    // not trusted to be a perfect linear-resolution replay, so check the
+    // full miter A→I and fall back to the conflict clause if it fails.
+    // `unconditional` picks the matching partition. This makes interp
+    // repair sound by construction, independent of any tracer bug.
+    if (verify && !slow_check_a_implies_i(to_repair_lit, conflict, interp,
+                                          unconditional)) {
+        calls_verify_failed++;
+        VERBOSE_DEBUG_DO(cout << "c o [interp-repair] A→I verification FAILED"
+            " — falling back to conflict clause" << endl);
+        return nullptr;
+    }
 
     // Size: count internal AND nodes in this AIG sub-tree.
     set<const AIG*> seen;
@@ -591,7 +643,8 @@ aig_ptr InterpRepair::compute_interpolant(
 bool InterpRepair::slow_check_a_implies_i(
         Lit to_repair_lit,
         const vector<Lit>& conflict,
-        const aig_ptr& interp) const
+        const aig_ptr& interp,
+        bool unconditional) const
 {
     if (interp == nullptr) return true;
 
@@ -606,9 +659,15 @@ bool InterpRepair::slow_check_a_implies_i(
     };
 
     for (const auto& cl : cnf.get_clauses()) add_cl(cl);
-    for (const auto& l : conflict) {
-        if (l.var() < is_input.size() && is_input[l.var()]) continue;
-        add_unit(~l);
+    // A-side: original CNF + ~to_repair, plus the non-input (y_other)
+    // conflict units — but only for a conditional interpolant. The
+    // unconditional interpolant was computed with no y_other pinning,
+    // so its miter must not pin them either.
+    if (!unconditional) {
+        for (const auto& l : conflict) {
+            if (l.var() < is_input.size() && is_input[l.var()]) continue;
+            add_unit(~l);
+        }
     }
     add_unit(~to_repair_lit);
 
@@ -653,8 +712,9 @@ bool InterpRepair::slow_check_a_implies_i(
 
 bool InterpRepair::sample_check_interpolant(
         Lit to_repair_lit,
-        const vector<Lit>& /*conflict*/,
+        const vector<Lit>& conflict,
         const aig_ptr& interp,
+        bool unconditional,
         uint32_t num_samples,
         uint64_t seed) const
 {
@@ -691,6 +751,17 @@ bool InterpRepair::sample_check_interpolant(
         // ~to_repair = wrong y_rep value
         solver->add(lit_to_pl(~to_repair_lit));
         solver->add(0);
+        // For a conditional interpolant the repair only fires when the
+        // y_other conflict literals also match the CEX, so the must-flip
+        // claim is conditional on them — pin them here too. For the
+        // unconditional interpolant they are left free.
+        if (!unconditional) {
+            for (const auto& l : conflict) {
+                if (l.var() < is_input.size() && is_input[l.var()]) continue;
+                solver->add(lit_to_pl(~l));
+                solver->add(0);
+            }
+        }
 
         if (cnf_serialized_built) {} // suppress unused warning if any
         int ret = solver->solve();
@@ -740,6 +811,7 @@ void InterpRepair::print_stats(const std::string& prefix) const {
          << " ok: " << calls_succeeded
          << " oversize: " << calls_failed_oversize
          << " quickfail: " << calls_quick_check_failed
+         << " verifyfail: " << calls_verify_failed
          << " trivial: " << calls_failed_empty_or_no_input
          << " other: " << calls_failed_other
          << " avg conflict-lits: "

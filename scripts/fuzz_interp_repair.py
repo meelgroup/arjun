@@ -126,6 +126,8 @@ if __name__ == "__main__":
         solver += " --interprepairb1satsweep %s" % random.choice(["0", "1"])
         solver += " --interprepairgroupcse %s" % random.choice(["0", "1"])
         solver += " --interprepairnproofs %s" % random.choice(["1", "1", "2", "3", "4"])
+        solver += " --interprepairsystem %s" % random.choice(["0", "1"])
+        solver += " --interprepairverify %s" % random.choice(["0", "1", "1"])
         solver += " --interprepairadaptive %s" % random.choice(["0", "1"])
         solver += " --interprepairratioskip %s" % random.choice(["1.0", "5.0", "20.0"])
         solver += " --interprepairskipwindow %s" % random.choice(["1", "10", "100"])

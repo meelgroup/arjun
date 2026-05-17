@@ -68,6 +68,15 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     // B-side (label TRUE) or A-side (label = OR of input lits)?
     bool next_is_b = false;
 
+    // Labeled-interpolation system for resolution on a shared (input)
+    // pivot. SYS_MCMILLAN: shared='b' → AND of children (strongest
+    // interpolant). SYS_PUDLAK: shared='ab' → the selector
+    // (v∨I1)∧(¬v∨I2) (a smaller, symmetric interpolant). A-local
+    // pivots are 'a' → OR in both systems.
+    static constexpr int SYS_MCMILLAN = 0;
+    static constexpr int SYS_PUDLAK = 1;
+    int system = SYS_MCMILLAN;
+
     // Original clauses decided to be B-side (label = TRUE).
     std::set<uint64_t> b_clause_ids;
 
@@ -96,6 +105,15 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
 
     // ID of the derived empty clause; set when first seen.
     uint64_t empty_id = UINT64_MAX;
+
+    // Set true if a proof-core clause's antecedent chain could not be
+    // reconstructed as a clean linear resolution (missing antecedent,
+    // multi-pivot, or no-pivot step). The partial McMillan label built
+    // in that case is NOT a valid interpolant for the clause, so the
+    // whole interpolant must be abandoned — build_interpolant() returns
+    // null. Previously such a bail silently produced a wrong (possibly
+    // unsound) interpolant.
+    bool build_failed = false;
 
     // Set by build_interpolant(): the McMillan interpolant AIG, or null.
     ArjunNS::aig_ptr out = nullptr;
@@ -150,18 +168,24 @@ public:
         bool full_rewrite = false,
         uint64_t conflict_budget = 0,
         bool unconditional = false,
-        uint32_t nproofs = 1);
+        uint32_t nproofs = 1,
+        int system = 0,
+        bool verify = true);
 
     // Cheap check: interpolant evaluates to FALSE on the CEX inputs.
     [[nodiscard]] bool quick_check_interpolant_excludes_cex(
         const ArjunNS::aig_ptr& interp,
         const std::vector<CMSat::Lit>& conflict) const;
 
-    // Heavy check: full miter that A -> I. Returns true if A & ~I is UNSAT.
+    // Heavy check: full miter that A -> I. Returns true if A & ~I is
+    // UNSAT. `unconditional` selects the partition: when true the
+    // non-input (y_other) conflict units are NOT pinned, matching the
+    // unconditional interpolant; when false they are pinned.
     [[nodiscard]] bool slow_check_a_implies_i(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
-        const ArjunNS::aig_ptr& interp) const;
+        const ArjunNS::aig_ptr& interp,
+        bool unconditional) const;
 
     // Probabilistic check: for K random input patterns where I(X)=FALSE,
     // SAT-check that flipping y_rep is genuinely impossible. Returns true
@@ -170,6 +194,7 @@ public:
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         const ArjunNS::aig_ptr& interp,
+        bool unconditional,
         uint32_t num_samples = 8,
         uint64_t seed = 42) const;
 
@@ -180,6 +205,8 @@ public:
     uint64_t calls_failed_other = 0;
     uint64_t calls_failed_empty_or_no_input = 0;
     uint64_t calls_quick_check_failed = 0;
+    // Interpolants rejected by the always-on A→I miter verification.
+    uint64_t calls_verify_failed = 0;
     // Cadical hit the conflict budget and returned l_Undef, not a proof.
     uint64_t calls_budget_exhausted = 0;
     uint64_t total_interp_nodes = 0;
@@ -268,7 +295,7 @@ private:
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         bool unconditional, uint64_t conflict_budget,
-        uint32_t seed, int& out_ret) const;
+        uint32_t seed, int system, int& out_ret) const;
 };
 
 } // namespace ArjunInt

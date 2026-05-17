@@ -1745,6 +1745,14 @@ public:
         // one stronger interpolant (larger must-flip region). 1=single
         // proof (default), >1 = combine that many.
         uint32_t interp_repair_nproofs = 1;
+        // Labeled-interpolation system: 0=McMillan (strongest, default),
+        // 1=Pudlák (symmetric selector; smaller but weaker interpolant).
+        int interp_repair_system = 0;
+        // Verify every interpolant with a full A→I miter and fall back to
+        // the conflict clause if it fails. Makes interp repair sound by
+        // construction regardless of any tracer reconstruction bug.
+        // 1=on (default), 0=trust the tracer.
+        int interp_repair_verify = 1;
         // Adaptive per-var gating: blacklist a var when its mean
         // interp/conflict ratio exceeds the threshold. 0=off, 1=on.
         int interp_repair_adaptive_gate = 0;
