@@ -201,6 +201,27 @@ int main() {
         }
     }
 
+    // --- Test 9: an original unit clause that contradicts an assumption
+    // unit. CNF (x0) ∧ (x0∨y1): unit propagation of the ¬x0 assumption
+    // immediately falsifies the (x0) clause, so the pruner must anchor
+    // its kept set on that clause rather than emitting an empty (and
+    // satisfiable) mini-CNF. ---
+    {
+        SimplifiedCNF cnf = make_cnf(fg, 2, {
+            { Lit(0, false) },                 // unit clause: x0
+            { Lit(0, false), Lit(1, false) }}); // x0 ∨ y1
+        set<uint32_t> inputs = {0};
+        AIGManager aig_mng;
+        InterpRepair ir(conf, cnf, inputs, aig_mng);
+
+        aig_ptr interp = ir.compute_interpolant(1, to_repair, conflict);
+        check(interp != nullptr, "interpolant produced with unit-clause conflict");
+        if (interp != nullptr) {
+            check(ir.slow_check_a_implies_i(to_repair, conflict, interp),
+                  "unit-clause-conflict interpolant satisfies A -> I");
+        }
+    }
+
     if (failures == 0) {
         cout << "c o [test-interp-repair] ALL TESTS PASSED" << endl;
         return 0;

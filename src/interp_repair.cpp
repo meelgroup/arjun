@@ -473,7 +473,16 @@ std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
         const uint32_t v = l.var();
         const uint8_t want = l.sign() ? 2 : 1;
         if (val[v] == 0) { val[v] = want; reason[v] = rsn; trail.push_back(l); }
-        else if (val[v] != want) conflict_hit = true;
+        else if (val[v] != want) {
+            // A forced literal contradicts the existing assignment.
+            // Anchor the reason-chain trim on a falsified clause: the
+            // clause forcing `l` if it is an original clause, otherwise
+            // the clause that forced the opposing value. -1 only when
+            // two assumption units contradict directly (units alone are
+            // then UNSAT and no CNF clause is needed).
+            conflict_hit = true;
+            if (conflict_cl < 0) conflict_cl = (rsn >= 0) ? rsn : reason[v];
+        }
     };
 
     // Assumption units (direct): ~conflict lits and ~to_repair.
