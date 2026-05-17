@@ -347,13 +347,7 @@ uint32_t InterpRepair::setup_mini_cnf(CaDiCaL::Solver& solver,
         tracer.next_is_b = false;
     };
 
-    // 1) Original CNF clauses (all A-side). Redundant learnts are
-    // skipped — not needed to reproduce the UNSAT.
-    if (!cnf_serialized_built) build_serialized_cnf();
-    tracer.next_is_b = false;
-    for (int v : cnf_serialized) solver.add(v);
-
-    // 2) Non-input conflict units (A side) + ~to_repair (A side). The
+    // Non-input conflict units (A side) + ~to_repair (A side). The
     // conflict is the negated assumptions, so we add ~l to reproduce the
     // original assumptions.
     for (const auto& l : conflict) {
@@ -362,13 +356,19 @@ uint32_t InterpRepair::setup_mini_cnf(CaDiCaL::Solver& solver,
     }
     add_unit_a(~to_repair_lit);
 
-    // 3) Input conflict units (B side).
+    // Input conflict units (B side).
     uint32_t b_marked = 0;
     for (const auto& l : conflict) {
         if (l.var() >= is_input.size() || !is_input[l.var()]) continue;
         add_unit_b(~l);
         b_marked++;
     }
+
+    // 1) Original CNF clauses (all A-side)
+    if (!cnf_serialized_built) build_serialized_cnf();
+    tracer.next_is_b = false;
+    for (int v : cnf_serialized) solver.add(v);
+
     return b_marked;
 }
 
