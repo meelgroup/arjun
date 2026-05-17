@@ -275,6 +275,13 @@ public:
     // Per-proof interpolants dropped by the multi-proof robustness check
     // because they individually failed A→I verification.
     uint64_t interp_proof_rejected = 0;
+    // Proof-core trimming: total derived clauses cadical streamed vs the
+    // subset actually reachable from the empty clause, summed over all
+    // tracing solves. And the number of solves whose chain could not be
+    // reconstructed (build_failed in the tracer).
+    uint64_t total_proof_derived = 0;
+    uint64_t total_proof_core = 0;
+    uint64_t calls_build_failed = 0;
     // Memoisation: total cache lookups and hits.
     uint64_t cache_lookups = 0;
     uint64_t cache_hits = 0;
@@ -326,7 +333,7 @@ private:
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         bool unconditional, uint64_t conflict_budget,
-        uint32_t seed, int system, int& out_ret) const;
+        uint32_t seed, int system, int& out_ret);
 };
 
 } // namespace ArjunInt

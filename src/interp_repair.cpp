@@ -401,7 +401,7 @@ void InterpRepair::build_serialized_cnf() const {
 aig_ptr InterpRepair::solve_one_interpolant(
         Lit to_repair_lit, const vector<Lit>& conflict,
         bool unconditional, uint64_t conflict_budget,
-        uint32_t seed, int system, int& out_ret) const
+        uint32_t seed, int system, int& out_ret)
 {
     out_ret = 0;
     // Build the mini CNF and solve on a fresh CaDiCaL with proof
@@ -446,10 +446,15 @@ aig_ptr InterpRepair::solve_one_interpolant(
     if (ret != 20) return nullptr;  // 20=UNSAT, 0=UNKNOWN(budget), 10=SAT
 
     aig_ptr one = tracer.build_interpolant();
+    // Diagnostics: proof-core trim ratio and chain-reconstruction bails.
+    total_proof_derived += tracer.derived_count;
+    total_proof_core += tracer.core_count;
+    if (tracer.build_failed) calls_build_failed++;
     VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
         cout << "c o [interp-repair] seed=" << seed << " proof core: "
              << tracer.core_count << " / " << tracer.derived_count
-             << " derived clauses" << endl;
+             << " derived clauses"
+             << (tracer.build_failed ? " (build_failed)" : "") << endl;
     });
     return one;
 }

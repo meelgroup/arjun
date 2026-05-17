@@ -1140,6 +1140,16 @@ void Manthan::print_detailed_stats() const {
                     << " proofs avg, " << interp_repair->interp_proof_rejected
                     << " proofs dropped on verify");
             }
+            if (interp_repair->total_proof_derived > 0) {
+                verb_print(1, COLCYN "[manthan-stats]   interp proof-core:  "
+                    << interp_repair->total_proof_core << " / "
+                    << interp_repair->total_proof_derived << " derived clauses kept ("
+                    << fixed << setprecision(1)
+                    << safe_div(interp_repair->total_proof_core*100.0,
+                                interp_repair->total_proof_derived)
+                    << "%), " << interp_repair->calls_build_failed
+                    << " chain reconstructions bailed");
+            }
             if (interp_repair->cache_lookups > 0) {
                 verb_print(1, COLCYN "[manthan-stats]   interp cache:       "
                     << interp_repair->cache_hits << " hits / "
