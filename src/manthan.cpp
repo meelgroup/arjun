@@ -1077,8 +1077,13 @@ void Manthan::print_detailed_stats() const {
             << interp_larger_discarded);
         if (mconf.interp_repair_global_window > 0) {
             verb_print(1, COLCYN "[manthan-stats]   global gate:          "
-                << interp_global_disables << " disable(s), "
-                << interp_global_skips << " repairs skipped  ("
+                << "fired " << interp_global_disables << "x, "
+                << "blocking active for " << interp_global_blocked << " / "
+                << tot_repaired << " repairs  ("
+                << fixed << setprecision(1)
+                << safe_div(interp_global_blocked*100.0, tot_repaired)
+                << "%), " << interp_global_skips << " interp attempts skipped");
+            verb_print(1, COLCYN "[manthan-stats]                         ("
                 << mconf.interp_repair_global_thresh << "/"
                 << mconf.interp_repair_global_window
                 << " oversized → off for " << mconf.interp_repair_global_skip
@@ -1902,15 +1907,21 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
         }
         // Global gating: interpolation is currently disabled because a
         // recent window of repairs produced too many oversized interps.
-        if (do_interp && mconf.interp_repair_global_window > 0
+        if (mconf.interp_repair_global_window > 0
                 && tot_repaired < interp_global_skip_until) {
-            do_interp = false;
-            interp_global_skips++;
-            VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
-                cout << "c o [manthan-interp] global-skip until tot_repaired="
-                     << interp_global_skip_until
-                     << " (current=" << tot_repaired << ")" << endl;
-            });
+            // interp_global_blocked counts every repair that fell inside
+            // a disable window (the blocking "duration"); interp_global_
+            // skips counts only those that would otherwise have tried it.
+            interp_global_blocked++;
+            if (do_interp) {
+                do_interp = false;
+                interp_global_skips++;
+                VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
+                    cout << "c o [manthan-interp] global-skip until tot_repaired="
+                         << interp_global_skip_until
+                         << " (current=" << tot_repaired << ")" << endl;
+                });
+            }
         }
 
         if (do_interp) {
