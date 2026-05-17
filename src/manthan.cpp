@@ -1157,6 +1157,15 @@ void Manthan::print_detailed_stats() const {
                                 interp_repair->total_proof_derived)
                     << "%)");
             }
+            if (interp_repair->total_minicnf_clauses > 0) {
+                verb_print(1, COLCYN "[manthan-stats]   interp mini-CNF:    "
+                    << interp_repair->total_minicnf_clauses_kept << " / "
+                    << interp_repair->total_minicnf_clauses << " orig clauses fed ("
+                    << fixed << setprecision(1)
+                    << safe_div(interp_repair->total_minicnf_clauses_kept*100.0,
+                                interp_repair->total_minicnf_clauses)
+                    << "%)");
+            }
             // Compact histograms: only print non-zero buckets.
             auto print_hist = [&](const char* label, const uint64_t* h) {
                 std::stringstream ss;

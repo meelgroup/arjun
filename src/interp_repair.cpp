@@ -1004,5 +1004,10 @@ void InterpRepair::print_stats(const std::string& prefix) const {
          << " max interp-nodes: " << max_interp_nodes_seen
          << " smaller/larger: " << interp_smaller_than_conflict
          << "/" << interp_larger_than_conflict
+         << " mini-CNF kept: "
+         << (total_minicnf_clauses
+                ? safe_div(total_minicnf_clauses_kept*100.0, total_minicnf_clauses)
+                : 0.0)
+         << "%"
          << endl;
 }
