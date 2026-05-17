@@ -468,39 +468,6 @@ aig_ptr InterpRepair::solve_one_interpolant(
 }
 
 aig_ptr InterpRepair::compute_interpolant(
-        uint32_t y_rep, Lit to_repair_lit,
-        const vector<Lit>& conflict, uint32_t max_aig_nodes,
-        bool full_rewrite, uint64_t conflict_budget, bool unconditional,
-        uint32_t nproofs, int system, bool verify)
-{
-    // Memoise: the interpolant depends only on the (fixed) CNF and the
-    // arguments below, so a repeated request is served from the cache.
-    // The conflict is keyed as a sorted literal set, so call-order does
-    // not split entries.
-    std::vector<int> conf_key;
-    conf_key.reserve(conflict.size());
-    for (const auto& l : conflict) conf_key.push_back(lit_to_pl(l));
-    std::sort(conf_key.begin(), conf_key.end());
-    const uint8_t flags = (unconditional ? 1u : 0u)
-                        | (verify        ? 2u : 0u)
-                        | (full_rewrite  ? 4u : 0u);
-    InterpCacheKey key{lit_to_pl(to_repair_lit), max_aig_nodes,
-        conflict_budget, nproofs, system, flags, std::move(conf_key)};
-
-    cache_lookups++;
-    auto cit = interp_cache.find(key);
-    if (cit != interp_cache.end()) {
-        cache_hits++;
-        return cit->second;
-    }
-    aig_ptr res = compute_interpolant_impl(y_rep, to_repair_lit, conflict,
-        max_aig_nodes, full_rewrite, conflict_budget, unconditional,
-        nproofs, system, verify);
-    interp_cache.emplace(std::move(key), res);
-    return res;
-}
-
-aig_ptr InterpRepair::compute_interpolant_impl(
         [[maybe_unused]] uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
         bool full_rewrite, uint64_t conflict_budget, bool unconditional,
@@ -656,7 +623,7 @@ aig_ptr InterpRepair::compute_interpolant_impl(
             calls_verify_retry++;
             VERBOSE_DEBUG_DO(cout << "c o [interp-repair] A→I verification "
                 "FAILED — retrying on fresh proofs" << endl);
-            return compute_interpolant_impl(y_rep, to_repair_lit, conflict,
+            return compute_interpolant(y_rep, to_repair_lit, conflict,
                 max_aig_nodes, full_rewrite, conflict_budget, unconditional,
                 nproofs, system, verify,
                 /*seed_offset=*/std::max<uint32_t>(1, nproofs));

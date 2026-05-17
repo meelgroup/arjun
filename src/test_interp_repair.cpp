@@ -93,29 +93,7 @@ int main() {
         }
     }
 
-    // --- Test 2: memoisation cache. ---
-    {
-        SimplifiedCNF cnf = make_cnf(fg, 2, cls_xy);
-        set<uint32_t> inputs = {0};
-        AIGManager aig_mng;
-        InterpRepair ir(conf, cnf, inputs, aig_mng);
-
-        aig_ptr first = ir.compute_interpolant(1, to_repair, conflict);
-        const uint64_t hits0 = ir.cache_hits;
-        aig_ptr second = ir.compute_interpolant(1, to_repair, conflict);
-        check(second == first, "repeated identical call returns the cached AIG");
-        check(ir.cache_hits == hits0 + 1, "cache hit is recorded");
-
-        // The conflict literal set keys the cache, so call-order must not
-        // matter — a reordered conflict hits the same entry.
-        const vector<Lit> conflict_rev = { Lit(0, false), Lit(1, false) };
-        const uint64_t hits1 = ir.cache_hits;
-        ir.compute_interpolant(1, to_repair, conflict_rev);
-        check(ir.cache_hits == hits1 + 1,
-              "reordered conflict hits the same cache entry");
-    }
-
-    // --- Test 3: Pudlák system also yields a verified interpolant. ---
+    // --- Test 2: Pudlák system also yields a verified interpolant. ---
     {
         SimplifiedCNF cnf = make_cnf(fg, 2, cls_xy);
         set<uint32_t> inputs = {0};
@@ -133,7 +111,7 @@ int main() {
         }
     }
 
-    // --- Test 4: multi-proof intersection stays sound. ---
+    // --- Test 3: multi-proof intersection stays sound. ---
     {
         SimplifiedCNF cnf = make_cnf(fg, 2, cls_xy);
         set<uint32_t> inputs = {0};
@@ -150,7 +128,7 @@ int main() {
         }
     }
 
-    // --- Test 5: a conflict with no input literal has no B side, so
+    // --- Test 4: a conflict with no input literal has no B side, so
     // compute_interpolant must decline (return null). ---
     {
         SimplifiedCNF cnf = make_cnf(fg, 2, cls_xy);
@@ -163,7 +141,7 @@ int main() {
         check(interp == nullptr, "no-input conflict yields no interpolant");
     }
 
-    // --- Test 6: an empty conflict yields no interpolant. ---
+    // --- Test 5: an empty conflict yields no interpolant. ---
     {
         SimplifiedCNF cnf = make_cnf(fg, 2, cls_xy);
         set<uint32_t> inputs = {0};
@@ -174,7 +152,7 @@ int main() {
         check(interp == nullptr, "empty conflict yields no interpolant");
     }
 
-    // --- Test 7: a two-clause CNF with two input vars in the conflict.
+    // --- Test 6: a two-clause CNF with two input vars in the conflict.
     // CNF (x0∨y2) ∧ (x1∨y2): with ¬y2 the formula forces x0 ∧ x1, so
     // the conflict {y2+, x0+, x1+} gives the UNSAT mini-CNF
     // (x0∨y2)∧(x1∨y2) ∧ ¬y2 ∧ ¬x0 ∧ ¬x1 and a real interpolant over
@@ -199,7 +177,7 @@ int main() {
         }
     }
 
-    // --- Test 8: with verification disabled the interpolant is still
+    // --- Test 7: with verification disabled the interpolant is still
     // returned, and (for this easy instance) is in fact sound. ---
     {
         SimplifiedCNF cnf = make_cnf(fg, 2, cls_xy);

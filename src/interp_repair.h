@@ -153,13 +153,6 @@ private:
             const std::vector<uint64_t>& chain);
 };
 
-// Memoisation key for InterpRepair: (to_repair lit, max-nodes cap,
-// conflict budget, nproofs, system, packed bool flags, sorted conflict
-// literals). The conflict is sorted so call-order does not matter — the
-// same partition always hits the same entry.
-using InterpCacheKey = std::tuple<int, uint32_t, uint64_t, uint32_t,
-        int, uint8_t, std::vector<int>>;
-
 class InterpRepair {
 public:
     InterpRepair(const Config& _conf,
@@ -173,10 +166,7 @@ public:
     // failure (SAT, oversized AIG, internal error). When `unconditional`
     // is set the y_other lits are not pinned, so I covers the must-flip
     // region universally over y_others.
-    // Cache-checked entry point. The interpolant is a deterministic
-    // function of (CNF, conflict set, to_repair, options), so a repeated
-    // request returns the memoised result without re-solving.
-    ArjunNS::aig_ptr compute_interpolant(
+    [[nodiscard]] ArjunNS::aig_ptr compute_interpolant(
         uint32_t y_rep, CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         uint32_t max_aig_nodes = 0,
@@ -185,7 +175,8 @@ public:
         bool unconditional = false,
         uint32_t nproofs = 1,
         int system = 0,
-        bool verify = true);
+        bool verify = true,
+        uint32_t seed_offset = 0);
 
     // Cheap check: interpolant evaluates to FALSE on the CEX inputs.
     [[nodiscard]] bool quick_check_interpolant_excludes_cex(
@@ -290,9 +281,6 @@ public:
     uint64_t total_proof_derived = 0;
     uint64_t total_proof_core = 0;
     uint64_t calls_build_failed = 0;
-    // Memoisation: total cache lookups and hits.
-    uint64_t cache_lookups = 0;
-    uint64_t cache_hits = 0;
 
     // Wire up the mini-CNF on `solver` with `tracer` attached.
     //   A: original CNF + non-input conflict units + ~to_repair_lit
@@ -320,19 +308,6 @@ private:
     mutable std::vector<int> cnf_serialized;
     mutable bool cnf_serialized_built = false;
     void build_serialized_cnf() const;
-
-    // The actual interpolant computation, behind the compute_interpolant
-    // memoisation wrapper.
-    [[nodiscard]] ArjunNS::aig_ptr compute_interpolant_impl(
-        uint32_t y_rep, CMSat::Lit to_repair_lit,
-        const std::vector<CMSat::Lit>& conflict,
-        uint32_t max_aig_nodes, bool full_rewrite,
-        uint64_t conflict_budget, bool unconditional,
-        uint32_t nproofs, int system, bool verify,
-        uint32_t seed_offset = 0);
-
-    // Memoised interpolants, keyed by InterpCacheKey.
-    std::map<InterpCacheKey, ArjunNS::aig_ptr> interp_cache;
 
     // Run one tracing solve and return its raw McMillan interpolant.
     // `seed` 0 keeps cadical's default search; non-zero shuffles the
