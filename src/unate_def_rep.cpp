@@ -720,7 +720,7 @@ bool UnateDefRep::try_commit_h(const uint32_t test, const Lit test_orig,
                  << " H_NEW=" << h
                  << " H_ORIG=" << h_in_orig << std::endl;
         }
-        release_assert(bad == 0);
+        release_assert(bad < 0);
     });
 
     // Tighten miter: y_test ⇔ H on Y side. For input-only H, h_enc_lit
