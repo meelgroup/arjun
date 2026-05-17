@@ -107,6 +107,7 @@ add_executable(test-synth test-synth.cpp)
 add_executable(test-aig-rewrite test_aig_rewrite.cpp)
 add_executable(test-aig-to-cnf test_aig_to_cnf.cpp)
 add_executable(test-cut-cnf test_cut_cnf.cpp)
+add_executable(test-interp-repair test_interp_repair.cpp)
 add_executable(fuzz_aig aig_fuzzer.cpp)
 add_executable(fuzz_aig_to_cnf aig_to_cnf_fuzzer.cpp)
 add_executable(fuzz_aig_rewrite aig_rewrite_fuzzer.cpp)
@@ -116,6 +117,7 @@ target_link_libraries(arjun-example PRIVATE arjun)
 target_link_libraries(test-synth PRIVATE arjun cadical cryptominisat5)
 target_link_libraries(test-aig-rewrite PRIVATE arjun)
 target_link_libraries(test-aig-to-cnf PRIVATE arjun cryptominisat5)
+target_link_libraries(test-interp-repair PRIVATE arjun cadical cryptominisat5)
 target_link_libraries(fuzz_aig PRIVATE arjun)
 target_link_libraries(fuzz_aig_to_cnf PRIVATE arjun)
 target_link_libraries(fuzz_aig_rewrite PRIVATE arjun)
@@ -153,6 +155,10 @@ target_include_directories(test-aig-rewrite PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_include_directories(test-cut-cnf PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_include_directories(test-interp-repair PRIVATE
     ${PROJECT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
@@ -224,6 +230,11 @@ set_target_properties(test-cut-cnf PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
+set_target_properties(test-interp-repair PROPERTIES
+    OUTPUT_NAME test-interp-repair
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+    INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 if(ENABLE_TESTING)
     add_test(
         NAME test-aig-to-cnf
@@ -238,6 +249,11 @@ if(ENABLE_TESTING)
     add_test(
         NAME test-aig-rewrite
         COMMAND test-aig-rewrite
+        WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
+    )
+    add_test(
+        NAME test-interp-repair
+        COMMAND test-interp-repair
         WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
     )
 endif()
