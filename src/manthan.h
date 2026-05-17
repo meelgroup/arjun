@@ -301,19 +301,6 @@ class Manthan {
         std::vector<uint64_t> interp_var_lit_sum;
         // Stat: adaptive-gate skips.
         uint64_t interp_adaptive_skips = 0;
-        // Global gating state. interp_recent is a bit-window of the last
-        // interpolant-producing repairs (LSB = most recent, 1 = the
-        // interpolant was larger than the conflict); interp_recent_n is
-        // how many bits are valid. interp_global_skip_until is the
-        // tot_repaired value below which interpolation is globally off.
-        uint16_t interp_recent = 0;
-        uint32_t interp_recent_n = 0;
-        uint32_t interp_global_skip_until = 0;
-        // Stats: global-gate activations and the repairs they skipped,
-        // plus interpolants discarded for being larger than the conflict.
-        uint64_t interp_global_disables = 0;
-        uint64_t interp_global_skips = 0;
-        uint64_t interp_larger_discarded = 0;
         // Stat: repairs where the unconditional interpolant succeeded.
         uint64_t interp_unconditional_succeeded = 0;
         // Per-var: interp-driven repair count and summed conflict size.

@@ -1073,17 +1073,6 @@ void Manthan::print_detailed_stats() const {
                 << "  (ratio>" << fixed << setprecision(1) << mconf.interp_repair_adaptive_ratio_skip
                 << " → blacklist for " << mconf.interp_repair_adaptive_skip_window << " repairs)");
         }
-        verb_print(1, COLCYN "[manthan-stats]   interp discarded (larger than confl): "
-            << interp_larger_discarded);
-        if (mconf.interp_repair_global_window > 0) {
-            verb_print(1, COLCYN "[manthan-stats]   global gate:          "
-                << interp_global_disables << " disable(s), "
-                << interp_global_skips << " repairs skipped  ("
-                << mconf.interp_repair_global_thresh << "/"
-                << mconf.interp_repair_global_window
-                << " oversized → off for " << mconf.interp_repair_global_skip
-                << " repairs)");
-        }
         if (mconf.interp_repair_unconditional != 0) {
             verb_print(1, COLCYN "[manthan-stats]   uncond succeeded:     " << interp_unconditional_succeeded
                 << " / " << interp_repair->calls
@@ -1332,19 +1321,12 @@ SimplifiedCNF Manthan::do_manthan() {
             interp_var_node_sum.assign(cnf.nVars(), 0);
             interp_var_lit_sum.assign(cnf.nVars(), 0);
         }
-        // Global gating state.
-        interp_recent = 0;
-        interp_recent_n = 0;
-        interp_global_skip_until = 0;
         verb_print(1, "[manthan] InterpRepair enabled (mode "
                 << mconf.interp_repair
                 << ", min_conflict=" << mconf.interp_repair_min_conflict
                 << ", min_var_repairs=" << mconf.interp_repair_min_var_repairs
                 << ", max_aig_nodes=" << mconf.interp_repair_max_aig_nodes
                 << ", adaptive=" << mconf.interp_repair_adaptive_gate
-                << ", global_gate=" << mconf.interp_repair_global_window
-                << "/" << mconf.interp_repair_global_thresh
-                << "/" << mconf.interp_repair_global_skip
                 << ")");
     }
     create_vars_for_y_hats();
@@ -1900,18 +1882,6 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                 });
             }
         }
-        // Global gating: interpolation is currently disabled because a
-        // recent window of repairs produced too many oversized interps.
-        if (do_interp && mconf.interp_repair_global_window > 0
-                && tot_repaired < interp_global_skip_until) {
-            do_interp = false;
-            interp_global_skips++;
-            VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
-                cout << "c o [manthan-interp] global-skip until tot_repaired="
-                     << interp_global_skip_until
-                     << " (current=" << tot_repaired << ")" << endl;
-            });
-        }
 
         if (do_interp) {
             interp_branch_unconditional = false;
@@ -1947,52 +1917,14 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                     mconf.interp_repair_system,
                     mconf.interp_repair_verify != 0);
             }
-            // Size of the interpolant vs the conflict clause it would
-            // replace. Both the global gate and the size-based discard
-            // below key off this comparison.
-            const size_t interp_nodes = (interp_branch != nullptr)
-                ? ArjunNS::AIG::count_aig_nodes_fast(interp_branch) : 0;
-            const bool interp_larger =
-                interp_branch != nullptr && interp_nodes > conflict.size();
-
-            // Global gating: slide the bit-window of recent interpolant
-            // outcomes and disable interpolation if too many in the
-            // window came out larger than the conflict clause.
-            if (interp_branch != nullptr
-                    && mconf.interp_repair_global_window > 0) {
-                interp_recent = static_cast<uint16_t>(
-                    (interp_recent << 1) | (interp_larger ? 1u : 0u));
-                if (interp_recent_n < mconf.interp_repair_global_window)
-                    interp_recent_n++;
-                if (interp_recent_n >= mconf.interp_repair_global_window) {
-                    const uint32_t w = mconf.interp_repair_global_window;
-                    const uint16_t mask = (w >= 16)
-                        ? static_cast<uint16_t>(0xffffu)
-                        : static_cast<uint16_t>((1u << w) - 1u);
-                    const uint32_t larger_cnt = static_cast<uint32_t>(
-                        __builtin_popcount(interp_recent & mask));
-                    if (larger_cnt >= mconf.interp_repair_global_thresh) {
-                        interp_global_skip_until = tot_repaired
-                            + mconf.interp_repair_global_skip;
-                        interp_recent_n = 0;  // fresh window after re-enable
-                        interp_global_disables++;
-                        VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 2) {
-                            cout << "c o [manthan-interp] global disable: "
-                                 << larger_cnt << "/" << w
-                                 << " oversized; off until tot_repaired="
-                                 << interp_global_skip_until << endl;
-                        });
-                    }
-                }
-            }
-
             // Adaptive bookkeeping: track interp-vs-conflict size and
             // blacklist the var if the mean ratio exceeds the threshold.
             if (interp_branch != nullptr
                     && mconf.interp_repair_adaptive_gate != 0
                     && y_rep < interp_var_calls.size()) {
+                size_t nodes = ArjunNS::AIG::count_aig_nodes_fast(interp_branch);
                 interp_var_calls[y_rep]++;
-                interp_var_node_sum[y_rep] += interp_nodes;
+                interp_var_node_sum[y_rep] += nodes;
                 interp_var_lit_sum[y_rep] += conflict.size();
                 if (interp_var_calls[y_rep] >= 3 && interp_var_lit_sum[y_rep] > 0) {
                     double mean_ratio = (double)interp_var_node_sum[y_rep]
@@ -2012,18 +1944,6 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                         });
                     }
                 }
-            }
-
-            // Always fall back to the conflict clause when the
-            // interpolant is larger than it — discard the interpolant.
-            if (interp_larger) {
-                interp_branch = nullptr;
-                interp_larger_discarded++;
-                VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
-                    cout << "c o [manthan-interp] discard y=" << y_rep+1
-                         << " interp nodes=" << interp_nodes
-                         << " > conflict=" << conflict.size() << endl;
-                });
             }
 
             // Verification: with SLOW_DEBUG enabled, run all checks
