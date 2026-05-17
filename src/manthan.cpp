@@ -1131,12 +1131,14 @@ void Manthan::print_detailed_stats() const {
                     << "  (" << fixed << setprecision(1) << pct << "% reduction"
                     << ", " << interp_repair->b1_rewrite_calls << " calls)");
             }
-            if (interp_repair->interp_multiproof_calls > 0) {
+            if (interp_repair->interp_multiproof_calls > 0
+                    || interp_repair->interp_proof_rejected > 0) {
                 verb_print(1, COLCYN "[manthan-stats]   interp multiproof:  "
                     << interp_repair->interp_multiproof_calls << " calls combined "
                     << safe_div(interp_repair->interp_multiproof_combined,
                                 interp_repair->interp_multiproof_calls)
-                    << " proofs avg");
+                    << " proofs avg, " << interp_repair->interp_proof_rejected
+                    << " proofs dropped on verify");
             }
             if (interp_repair->cache_lookups > 0) {
                 verb_print(1, COLCYN "[manthan-stats]   interp cache:       "

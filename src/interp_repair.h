@@ -272,6 +272,9 @@ public:
     // the total number of proofs intersected over those calls.
     uint64_t interp_multiproof_calls = 0;
     uint64_t interp_multiproof_combined = 0;
+    // Per-proof interpolants dropped by the multi-proof robustness check
+    // because they individually failed A→I verification.
+    uint64_t interp_proof_rejected = 0;
     // Memoisation: total cache lookups and hits.
     uint64_t cache_lookups = 0;
     uint64_t cache_hits = 0;

@@ -534,6 +534,19 @@ aig_ptr InterpRepair::compute_interpolant_impl(
             // A later proof failed — stop combining, keep what we have.
             break;
         }
+        // Robust intersection: with >1 proof, verify each per-proof
+        // interpolant on its own before folding it in. A single
+        // mis-reconstructed proof would otherwise poison the whole
+        // conjunction; here it is simply dropped and the remaining
+        // (still valid) proofs are intersected.
+        if (verify && want > 1
+                && !slow_check_a_implies_i(to_repair_lit, conflict, one,
+                                           unconditional, conflict_budget)) {
+            interp_proof_rejected++;
+            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] proof seed=" << p
+                << " interpolant failed A→I; dropping it" << endl);
+            continue;
+        }
         got++;
         interp = (interp == nullptr) ? one : AIG::new_and(interp, one);
     }
