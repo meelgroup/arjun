@@ -88,8 +88,6 @@ if __name__ == "__main__":
         else:
             seed = options.rnd_seed
 
-        _fs.del_core_files()
-
         fname = _fs.gen_fuzz(seed)
         _fs.add_projection(fname)
         if _fs.is_unsat(fname):
@@ -154,7 +152,7 @@ if __name__ == "__main__":
         if len(aigs) == 0:
             print("ERROR: Synthesis produced no output AIGs on file %s" % fname)
             sys.exit(-1)
-        _fs.check_core_files()
+        _fs.check_core_files(prefix)
 
         for aig in aigs:
             final = "final" in aig

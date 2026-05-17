@@ -178,7 +178,9 @@ void Interpolant::generate_interpolant(
 
     if (!conf.debug_synth.empty()) {
         std::stringstream name;
-        name << "core-" << test_var+1 << ".cnf";
+        // Prefix the core file with the (unique) debug-synth path so that
+        // concurrent fuzzer runs never write/read the same core-*.cnf.
+        name << conf.debug_synth << "-core-" << test_var+1 << ".cnf";
         verb_print(1, "Writing core to: " << name.str());
         auto f = std::ofstream(name.str());
         f << "p cnf " << orig_num_vars*2 << " " << mini_cls.size() << endl;

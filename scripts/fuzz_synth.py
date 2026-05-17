@@ -243,22 +243,14 @@ def run_synth(solver, fname):
 
     return False, aigs
 
-def del_core_files():
-    items = glob.glob("core-*.cnf")
-    for fname in items:
-        if os.path.isfile(fname):
-            try:
-                os.remove(fname)
-                print(f"Deleted file: {fname}")
-            except OSError as e:
-                print(f"Error deleting {fname}: {e}")
-
-def check_core_files():
-    # Find all items matching the pattern
-    items = glob.glob("core-*.cnf")
+def check_core_files(prefix):
+    # arjun writes core files as "<debug-synth-prefix>-core-N.cnf"; the
+    # prefix is unique per fuzzer run, so globbing on it keeps concurrent
+    # runs from picking up each other's core dumps.
+    items = glob.glob(f"{prefix}-core-*.cnf")
 
     # Filter to ensure NUM is numeric AND it's a regular file
-    pattern = re.compile(r'core-(\d+)\.cnf')
+    pattern = re.compile(re.escape(prefix) + r'-core-(\d+)\.cnf$')
 
     for fname in items:
         # Check if it's a file (not a directory, symlink, etc.)
@@ -333,6 +325,12 @@ def cleanup(fname, prefix):
     os.unlink(fname)
     directory = "."
     for file_path in glob.glob(os.path.join(directory, f"{prefix}*.aig")):
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+            print(f"Deleted: {os.path.basename(file_path)}")
+    # Sweep any leftover prefix-scoped core file (e.g. when the run timed
+    # out before check_core_files could verify and remove it).
+    for file_path in glob.glob(f"{prefix}-core-*.cnf"):
         if os.path.isfile(file_path):
             os.remove(file_path)
             print(f"Deleted: {os.path.basename(file_path)}")
@@ -425,8 +423,6 @@ if __name__ == "__main__":
             random.seed(seed)
         else:
             seed = options.rnd_seed
-
-        del_core_files()
 
         fname = gen_fuzz(seed)
         add_projection(fname)
@@ -570,7 +566,7 @@ if __name__ == "__main__":
         if len(aigs) == 0:
             print("ERROR: Synthesis produced no output AIGs on file %s" % fname)
             exit(-1)
-        check_core_files()
+        check_core_files(prefix)
 
         for aig in aigs:
             final = "final" in aig
