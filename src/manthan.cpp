@@ -1130,6 +1130,13 @@ void Manthan::print_detailed_stats() const {
                     << "  (" << fixed << setprecision(1) << pct << "% reduction"
                     << ", " << interp_repair->b1_rewrite_calls << " calls)");
             }
+            if (interp_repair->interp_multiproof_calls > 0) {
+                verb_print(1, COLCYN "[manthan-stats]   interp multiproof:  "
+                    << interp_repair->interp_multiproof_calls << " calls combined "
+                    << safe_div(interp_repair->interp_multiproof_combined,
+                                interp_repair->interp_multiproof_calls)
+                    << " proofs avg");
+            }
             // Compact histograms: only print non-zero buckets.
             auto print_hist = [&](const char* label, const uint64_t* h) {
                 std::stringstream ss;
@@ -1872,7 +1879,8 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                     mconf.interp_repair_max_aig_nodes,
                     mconf.interp_repair_rewrite != 0,
                     mconf.interp_repair_max_conflicts,
-                    /*unconditional=*/true);
+                    /*unconditional=*/true,
+                    mconf.interp_repair_nproofs);
                 if (interp_branch != nullptr) {
                     interp_branch_unconditional = true;
                     interp_unconditional_succeeded++;
@@ -1887,7 +1895,9 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                     y_rep, to_repair, conflict,
                     mconf.interp_repair_max_aig_nodes,
                     mconf.interp_repair_rewrite != 0,
-                    mconf.interp_repair_max_conflicts);
+                    mconf.interp_repair_max_conflicts,
+                    /*unconditional=*/false,
+                    mconf.interp_repair_nproofs);
             }
             // Adaptive bookkeeping: track interp-vs-conflict size and
             // blacklist the var if the mean ratio exceeds the threshold.

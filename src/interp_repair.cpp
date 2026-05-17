@@ -342,10 +342,66 @@ void InterpRepair::build_serialized_cnf() const {
     cnf_serialized_built = true;
 }
 
+aig_ptr InterpRepair::solve_one_interpolant(
+        Lit to_repair_lit, const vector<Lit>& conflict,
+        bool unconditional, uint64_t conflict_budget,
+        uint32_t seed, int& out_ret) const
+{
+    out_ret = 0;
+    // Build the mini CNF and solve on a fresh CaDiCaL with proof
+    // tracing; the tracer produces the McMillan interpolant.
+    auto solver = std::make_unique<Solver>();
+    // Disable in-processing & vivification: they mutate original clauses
+    // while the tracer is attached, leaving derived clauses whose
+    // antecedent IDs don't map to our labels.
+    solver->set("inprocessing", 0);
+    solver->set("preprocessing", 0);
+    // Distinct seeds (with variable shuffling) steer cadical into a
+    // different search and hence a different resolution proof, so the
+    // per-proof McMillan interpolants genuinely differ. seed==0 keeps
+    // cadical's default search for the first proof.
+    if (seed != 0) {
+        solver->set("seed", (int)seed);
+        solver->set("shuffle", 1);
+    }
+    if (conflict_budget > 0) {
+        // Clamp to int max — cadical's limit API takes an int.
+        const int64_t clamped = (conflict_budget > (uint64_t)INT_MAX)
+            ? INT_MAX : (int64_t)conflict_budget;
+        solver->limit("conflicts", (int)clamped);
+    }
+    InterpTracerMcMillan tracer(conf, aig_mng, input_vars);
+    solver->connect_proof_tracer(&tracer, true);
+
+    const uint32_t b_marked = setup_mini_cnf(*solver, tracer,
+            to_repair_lit, conflict, unconditional);
+    if (b_marked == 0) {
+        // No input units. Interpolant would be trivial. Bail.
+        VERBOSE_DEBUG_DO(cout << "c o [interp-repair] no input B units; bailing" << endl);
+        solver->disconnect_proof_tracer(&tracer);
+        out_ret = 20;  // not a solver failure; just nothing to interpolate
+        return nullptr;
+    }
+
+    const int ret = solver->solve();
+    solver->disconnect_proof_tracer(&tracer);
+    out_ret = ret;
+    if (ret != 20) return nullptr;  // 20=UNSAT, 0=UNKNOWN(budget), 10=SAT
+
+    aig_ptr one = tracer.build_interpolant();
+    VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
+        cout << "c o [interp-repair] seed=" << seed << " proof core: "
+             << tracer.core_count << " / " << tracer.derived_count
+             << " derived clauses" << endl;
+    });
+    return one;
+}
+
 aig_ptr InterpRepair::compute_interpolant(
         [[maybe_unused]] uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
-        bool full_rewrite, uint64_t conflict_budget, bool unconditional)
+        bool full_rewrite, uint64_t conflict_budget, bool unconditional,
+        uint32_t nproofs)
 {
     calls++;
     total_conflict_lits += conflict.size();
@@ -369,68 +425,47 @@ aig_ptr InterpRepair::compute_interpolant(
         return nullptr;
     }
 
-    // Build the mini CNF and solve on a fresh CaDiCaL with proof
-    // tracing; the tracer produces the McMillan interpolant.
-    auto solver = std::make_unique<Solver>();
-    // Disable in-processing & vivification: they mutate original clauses
-    // while the tracer is attached, leaving derived clauses whose
-    // antecedent IDs don't map to our labels.
-    solver->set("inprocessing", 0);
-    solver->set("preprocessing", 0);
-    if (conflict_budget > 0) {
-        // Clamp to int max — cadical's limit API takes an int.
-        const int64_t clamped = (conflict_budget > (uint64_t)INT_MAX)
-            ? INT_MAX : (int64_t)conflict_budget;
-        solver->limit("conflicts", (int)clamped);
-    }
-    InterpTracerMcMillan tracer(conf, aig_mng, input_vars);
-    solver->connect_proof_tracer(&tracer, true);
-
-    const uint32_t b_marked = setup_mini_cnf(*solver, tracer,
-            to_repair_lit, conflict, unconditional);
-
-    VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
-        cout << "c o [interp-repair] added " << b_marked
-             << " input units as B-side; total orig cls=" << tracer.orig_count
-             << " derived (during add) =" << tracer.derived_count
-             << endl;
-    });
-    if (b_marked == 0) {
-        // No input units. Interpolant would be trivial. Bail.
-        VERBOSE_DEBUG_DO(cout << "c o [interp-repair] no input B units; bailing" << endl);
-        solver->disconnect_proof_tracer(&tracer);
-        calls_failed_other++;
-        return nullptr;
-    }
-
-    int ret = solver->solve();
-    solver->disconnect_proof_tracer(&tracer);
-
-    if (ret != 20) { // 20 = UNSAT, 0 = UNKNOWN (budget hit), 10 = SAT
-        if (ret == 0 && conflict_budget > 0) {
-            // Cadical hit our conflict limit; tracked separately.
-            calls_budget_exhausted++;
-            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] budget exhausted ("
-                << conflict_budget << " conflicts); falling back" << endl);
-        } else {
-            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] solver returned non-UNSAT: "
-                    << ret << "; falling back" << endl);
-            calls_failed_other++;
+    // Compute up to `nproofs` interpolants from independent cadical
+    // searches and intersect them. Each I_k satisfies A→I_k and I_k∧B
+    // UNSAT, so the conjunction ∧I_k is itself a valid interpolant —
+    // and a strictly stronger one, so its negation (the must-flip
+    // region the repair generalises over) is correspondingly larger.
+    const uint32_t want = std::max<uint32_t>(1, nproofs);
+    aig_ptr interp = nullptr;
+    uint32_t got = 0;
+    for (uint32_t p = 0; p < want; p++) {
+        int ret = 0;
+        aig_ptr one = solve_one_interpolant(to_repair_lit, conflict,
+                unconditional, conflict_budget, /*seed=*/p, ret);
+        if (one == nullptr) {
+            if (p == 0) {
+                // First proof failed: classify and bail, as before.
+                if (ret == 0 && conflict_budget > 0) {
+                    calls_budget_exhausted++;
+                    VERBOSE_DEBUG_DO(cout << "c o [interp-repair] budget exhausted ("
+                        << conflict_budget << " conflicts); falling back" << endl);
+                } else {
+                    VERBOSE_DEBUG_DO(cout << "c o [interp-repair] first proof failed (ret="
+                        << ret << "); falling back" << endl);
+                    calls_failed_other++;
+                }
+                return nullptr;
+            }
+            // A later proof failed — stop combining, keep what we have.
+            break;
         }
-        return nullptr;
+        got++;
+        interp = (interp == nullptr) ? one : AIG::new_and(interp, one);
     }
-
-    // Trace back from the empty clause and resolve only the proof core.
-    aig_ptr interp = tracer.build_interpolant();
     if (interp == nullptr) {
-        VERBOSE_DEBUG_DO(cout << "c o [interp-repair] interpolant is null after UNSAT; falling back" << endl);
+        VERBOSE_DEBUG_DO(cout << "c o [interp-repair] interpolant null; falling back" << endl);
         calls_failed_other++;
         return nullptr;
     }
-    VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
-        cout << "c o [interp-repair] proof core: " << tracer.core_count
-             << " / " << tracer.derived_count << " derived clauses" << endl;
-    });
+    if (got > 1) {
+        interp_multiproof_calls++;
+        interp_multiproof_combined += got;
+    }
 
     // Clean up the proof-driven AIG before returning. simplify_aig is
     // always run; full_rewrite additionally runs the heavier structural

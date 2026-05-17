@@ -1741,6 +1741,10 @@ public:
         // Try the unconditional interpolant (no y_other pinning) first,
         // fall back to conditional. 0=off, 1=on.
         int interp_repair_unconditional = 0;
+        // Intersect N independently-searched McMillan interpolants into
+        // one stronger interpolant (larger must-flip region). 1=single
+        // proof (default), >1 = combine that many.
+        uint32_t interp_repair_nproofs = 1;
         // Adaptive per-var gating: blacklist a var when its mean
         // interp/conflict ratio exceeds the threshold. 0=off, 1=on.
         int interp_repair_adaptive_gate = 0;

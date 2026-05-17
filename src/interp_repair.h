@@ -149,7 +149,8 @@ public:
         uint32_t max_aig_nodes = 0,
         bool full_rewrite = false,
         uint64_t conflict_budget = 0,
-        bool unconditional = false);
+        bool unconditional = false,
+        uint32_t nproofs = 1);
 
     // Cheap check: interpolant evaluates to FALSE on the CEX inputs.
     [[nodiscard]] bool quick_check_interpolant_excludes_cex(
@@ -227,6 +228,10 @@ public:
     uint64_t total_b1_pre_rewrite = 0;
     uint64_t total_b1_post_rewrite = 0;
     uint64_t b1_rewrite_calls = 0;
+    // Multi-proof intersection: calls where >1 proof was combined, and
+    // the total number of proofs intersected over those calls.
+    uint64_t interp_multiproof_calls = 0;
+    uint64_t interp_multiproof_combined = 0;
 
     // Wire up the mini-CNF on `solver` with `tracer` attached.
     //   A: original CNF + non-input conflict units + ~to_repair_lit
@@ -254,6 +259,16 @@ private:
     mutable std::vector<int> cnf_serialized;
     mutable bool cnf_serialized_built = false;
     void build_serialized_cnf() const;
+
+    // Run one tracing solve and return its raw McMillan interpolant.
+    // `seed` 0 keeps cadical's default search; non-zero shuffles the
+    // search so an independent proof (hence interpolant) is produced.
+    // out_ret receives the cadical status (20=UNSAT, 0=budget, 10=SAT).
+    [[nodiscard]] ArjunNS::aig_ptr solve_one_interpolant(
+        CMSat::Lit to_repair_lit,
+        const std::vector<CMSat::Lit>& conflict,
+        bool unconditional, uint64_t conflict_budget,
+        uint32_t seed, int& out_ret) const;
 };
 
 } // namespace ArjunInt
