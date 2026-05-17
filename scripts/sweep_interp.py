@@ -53,7 +53,6 @@ QUICK_CONFIGS: List[Tuple[str, str]] = [
     ("interp-default",   "--interprepair 1"),
     ("mincl-8",          "--interprepair 2 --interprepairmincl 8"),
     ("minvar-5",         "--interprepair 1 --interprepairminvar 5"),
-    ("uncond",           "--interprepair 1 --interprepairuncond 1"),
     ("b1rewrite",        "--interprepair 1 --interprepairb1rewrite 1"),
 ]
 
@@ -69,8 +68,6 @@ ALL_CONFIGS: List[Tuple[str, str]] = [
     ("maxnodes-2000",    "--interprepair 1 --interprepairmaxnodes 2000"),
     ("maxconfl-50k",     "--interprepair 1 --interprepairmaxconfl 50000"),
     ("adaptive",         "--interprepair 1 --interprepairadaptive 1"),
-    # Solve flavour
-    ("uncond",           "--interprepair 1 --interprepairuncond 1"),
     # AIG post-processing
     ("rewrite",          "--interprepair 1 --interprepairrewrite 1"),
     ("b1rewrite",        "--interprepair 1 --interprepairb1rewrite 1"),
@@ -78,8 +75,7 @@ ALL_CONFIGS: List[Tuple[str, str]] = [
     ("groupcse",         "--interprepair 1 --interprepairgroupcse 1"),
     # Combo: "kitchen sink" for benchmarks where interp shines
     ("combo-aggressive", "--interprepair 1 "
-                         "--interprepairb1rewrite 1 --interprepairgroupcse 1 "
-                         "--interprepairuncond 1"),
+                         "--interprepairb1rewrite 1 --interprepairgroupcse 1"),
     # Combo: "conservative" — only fire on big conflicts, with adaptive backoff
     ("combo-conservative",
                          "--interprepair 2 --interprepairmincl 8 "
@@ -104,7 +100,6 @@ class RunResult:
     interp_pct: int = -1        # -1 if line absent (interp disabled)
     interp_calls: int = -1
     interp_budget_exh: int = -1
-    interp_uncond_succ: int = -1
     b1_pre: int = -1
     b1_post: int = -1
     adaptive_skips: int = -1
@@ -129,7 +124,6 @@ INTERP_DROVE_RE = re.compile(
 INTERP_CALLS_RE = re.compile(
     r"interp calls.*?:\s*(\d+).*?budget_exh:\s*(\d+)"
 )
-UNCOND_RE = re.compile(r"uncond succeeded:\s*(\d+)")
 B1_SIMP_RE = re.compile(r"b1 simp:\s+pre=(\d+)\s+post=(\d+)")
 ADAPTIVE_RE = re.compile(r"adaptive skips:\s*(\d+)")
 
@@ -167,9 +161,6 @@ def parse_output(stdout: str, stderr: str) -> Dict[str, object]:
     if m:
         out["interp_calls"]      = int(m.group(1))
         out["interp_budget_exh"] = int(m.group(2))
-
-    m = UNCOND_RE.search(text)
-    if m: out["interp_uncond_succ"] = int(m.group(1))
 
     m = B1_SIMP_RE.search(text)
     if m:
@@ -238,8 +229,8 @@ def print_per_cnf_table(rows: List[RunResult]):
         by_cnf.setdefault(r.cnf, []).append(r)
 
     header = ("config", "status", "rep", "loops", "T-tot", "T-rep",
-              "interp%", "calls", "bud_x", "uncond", "b1pre→post", "adapt_sk")
-    widths = (24, 10, 6, 6, 8, 8, 7, 6, 5, 6, 14, 8)
+              "interp%", "calls", "bud_x", "b1pre→post", "adapt_sk")
+    widths = (24, 10, 6, 6, 8, 8, 7, 6, 5, 14, 8)
 
     def line(cols):
         return "  ".join(c.ljust(w) for c, w in zip(cols, widths))
@@ -270,7 +261,6 @@ def print_per_cnf_table(rows: List[RunResult]):
                 fmt_int(r.interp_pct),
                 fmt_int(r.interp_calls),
                 fmt_int(r.interp_budget_exh),
-                fmt_int(r.interp_uncond_succ),
                 b1,
                 fmt_int(r.adaptive_skips),
             )))

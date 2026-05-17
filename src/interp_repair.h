@@ -163,19 +163,14 @@ public:
 
     // Compute an interpolant I(input_vars): FALSE on the CEX inputs,
     // TRUE where flipping y_rep stays feasible. Returns nullptr on
-    // failure (SAT, oversized AIG, internal error). When `unconditional`
-    // is set the y_other lits are not pinned, so I covers the must-flip
-    // region universally over y_others.
+    // failure (SAT, oversized AIG, internal error).
     [[nodiscard]] ArjunNS::aig_ptr compute_interpolant(
         uint32_t y_rep, CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         uint32_t max_aig_nodes = 0,
         bool full_rewrite = false,
         uint64_t conflict_budget = 0,
-        bool unconditional = false,
-        uint32_t nproofs = 1,
-        int system = 0,
-        uint32_t seed_offset = 0);
+        int system = 0);
 
     // Cheap check: interpolant evaluates to FALSE on the CEX inputs.
     [[nodiscard]] bool quick_check_interpolant_excludes_cex(
@@ -183,14 +178,11 @@ public:
         const std::vector<CMSat::Lit>& conflict) const;
 
     // Heavy check: full miter that A -> I. Returns true if A & ~I is
-    // UNSAT. `unconditional` selects the partition: when true the
-    // non-input (y_other) conflict units are NOT pinned, matching the
-    // unconditional interpolant; when false they are pinned.
+    // UNSAT.
     [[nodiscard]] bool slow_check_a_implies_i(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         const ArjunNS::aig_ptr& interp,
-        bool unconditional,
         uint64_t conflict_budget = 0) const;
 
     // Probabilistic check: for K random input patterns where I(X)=FALSE,
@@ -200,7 +192,6 @@ public:
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         const ArjunNS::aig_ptr& interp,
-        bool unconditional,
         uint32_t num_samples = 8,
         uint64_t seed = 42) const;
 
@@ -261,13 +252,6 @@ public:
     uint64_t total_b1_pre_rewrite = 0;
     uint64_t total_b1_post_rewrite = 0;
     uint64_t b1_rewrite_calls = 0;
-    // Multi-proof intersection: calls where >1 proof was combined, and
-    // the total number of proofs intersected over those calls.
-    uint64_t interp_multiproof_calls = 0;
-    uint64_t interp_multiproof_combined = 0;
-    // Per-proof interpolants dropped by the multi-proof robustness check
-    // because they individually failed A→I verification.
-    uint64_t interp_proof_rejected = 0;
     // Proof-core trimming: total derived clauses cadical streamed vs the
     // subset actually reachable from the empty clause, summed over all
     // tracing solves. And the number of solves whose chain could not be
@@ -283,8 +267,7 @@ public:
     uint32_t setup_mini_cnf(CaDiCaL::Solver& solver,
             InterpTracerMcMillan& tracer,
             CMSat::Lit to_repair_lit,
-            const std::vector<CMSat::Lit>& conflict,
-            bool unconditional) const;
+            const std::vector<CMSat::Lit>& conflict) const;
 
     void print_stats(const std::string& prefix = "[interp-repair]") const;
 
@@ -304,14 +287,12 @@ private:
     void build_serialized_cnf() const;
 
     // Run one tracing solve and return its raw McMillan interpolant.
-    // `seed` 0 keeps cadical's default search; non-zero shuffles the
-    // search so an independent proof (hence interpolant) is produced.
     // out_ret receives the cadical status (20=UNSAT, 0=budget, 10=SAT).
     [[nodiscard]] ArjunNS::aig_ptr solve_one_interpolant(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
-        bool unconditional, uint64_t conflict_budget,
-        uint32_t seed, int system, int& out_ret);
+        uint64_t conflict_budget,
+        int system, int& out_ret);
 };
 
 } // namespace ArjunInt

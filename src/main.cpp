@@ -261,8 +261,6 @@ void add_arjun_options() {
           "Pass --group-cse to AIGToCNF when encoding the interp branch b1. Dedups Tseitin helpers for structurally identical sub-AIGs. 0=off, 1=on.");
     myopt("--interprepairmaxconfl", mconf.interp_repair_max_conflicts, fc_int,
           "Per-call cadical conflict budget for the interpolation solve. 0=no limit (default). Try 50000 to cap interp call cost; budget-exhausted calls fall back to the conflict-clause path.");
-    myopt("--interprepairuncond", mconf.interp_repair_unconditional, fc_int,
-          "Try unconditional interpolant (no y_other pinning) first; falls back to conditional on SAT. 0=off, 1=on.");
     myopt("--interprepairadaptive", mconf.interp_repair_adaptive_gate, fc_int,
           "Adaptive per-var gating: blacklist a var from interp when its running mean interp/conflict ratio exceeds --interprepairratioskip. 0=off, 1=on.");
     myopt("--interprepairratioskip", mconf.interp_repair_adaptive_ratio_skip, fc_double,
@@ -271,8 +269,6 @@ void add_arjun_options() {
           "How many tot_repaired ticks the adaptive blacklist persists before the var gets another chance.");
     myopt("--interprepairprogressmax", mconf.interp_repair_progress_max_var_repairs, fc_int,
           "Progress gate: once a var has been interp-repaired this many times and still needs more, drop interp for it (it is not generalising). 0=off.");
-    myopt("--interprepairnproofs", mconf.interp_repair_nproofs, fc_int,
-          "Intersect N independently-searched McMillan interpolants into one stronger interpolant (larger must-flip region). 1=off (single proof), try 2-4.");
     myopt("--interprepairsystem", mconf.interp_repair_system, fc_int,
           "Labeled-interpolation system: 0=McMillan (strongest interpolant, default), 1=Pudlák (symmetric selector; smaller but weaker interpolant).");
 

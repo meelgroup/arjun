@@ -1738,13 +1738,6 @@ public:
         int interp_repair_group_cse = 0;
         // Per-call cadical conflict budget for the interp solve. 0=no limit.
         uint64_t interp_repair_max_conflicts = 0;
-        // Try the unconditional interpolant (no y_other pinning) first,
-        // fall back to conditional. 0=off, 1=on.
-        int interp_repair_unconditional = 0;
-        // Intersect N independently-searched McMillan interpolants into
-        // one stronger interpolant (larger must-flip region). 1=single
-        // proof (default), >1 = combine that many.
-        uint32_t interp_repair_nproofs = 1;
         // Labeled-interpolation system: 0=McMillan (strongest, default),
         // 1=Pudlák (symmetric selector; smaller but weaker interpolant).
         int interp_repair_system = 0;

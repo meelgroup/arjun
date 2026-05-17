@@ -148,16 +148,11 @@ class Manthan {
 
         // Build the Formula for the interpolant branch path. Sets f.aig
         // (raw AIG), f.clauses (Tseitin-encoded in y_hat space) and
-        // f.out. With skip_y_other_and, b1 is just NOT(I) (used for the
-        // unconditional interpolant, where the y_other ANDs are redundant).
+        // f.out.
         FHolder<MetaSolver2>::Formula build_interp_branch_formula(
                 const uint32_t y_rep, const std::vector<CMSat::Lit>& conflict,
-                ArjunNS::aig_ptr interp_branch,
-                bool skip_y_other_and = false);
+                ArjunNS::aig_ptr interp_branch);
 
-        // Set by find_conflict when interp_branch is the unconditional
-        // (no y_other pinning) form.
-        bool interp_branch_unconditional = false;
         void add_not_f_x_yhat();
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with(std::set<uint32_t>& vars);
@@ -317,8 +312,6 @@ class Manthan {
         std::vector<uint64_t> interp_var_lit_sum;
         // Stat: adaptive-gate skips.
         uint64_t interp_adaptive_skips = 0;
-        // Stat: repairs where the unconditional interpolant succeeded.
-        uint64_t interp_unconditional_succeeded = 0;
         // Per-var: interp-driven repair count and summed conflict size.
         std::vector<uint32_t> interp_repairs_per_var;
         std::vector<uint64_t> interp_conflict_lits_per_var;

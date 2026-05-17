@@ -551,7 +551,6 @@ if __name__ == "__main__":
             solver += " --interprepairrewrite " + random.choice(["0", "1"])
             solver += " --interprepairb1rewrite " + random.choice(["0", "1"])
             solver += " --interprepairmaxconfl " + random.choice(["0", "100", "10000"])
-            solver += " --interprepairuncond " + random.choice(["0", "1"])
             solver += " --interprepairb1satsweep " + random.choice(["0", "1"])
             solver += " --interprepairgroupcse " + random.choice(["0", "1"])
             solver += " --interprepairadaptive " + random.choice(["0", "1"])

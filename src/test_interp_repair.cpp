@@ -88,7 +88,7 @@ int main() {
         if (interp != nullptr) {
             check(ir.quick_check_interpolant_excludes_cex(interp, conflict),
                   "interpolant evaluates FALSE on the CEX inputs");
-            check(ir.slow_check_a_implies_i(to_repair, conflict, interp, false),
+            check(ir.slow_check_a_implies_i(to_repair, conflict, interp),
                   "A -> I holds (full miter)");
         }
     }
@@ -102,29 +102,11 @@ int main() {
 
         aig_ptr interp = ir.compute_interpolant(
             1, to_repair, conflict, /*max_aig_nodes=*/0, /*full_rewrite=*/false,
-            /*conflict_budget=*/0, /*unconditional=*/false, /*nproofs=*/1,
-            /*system=*/1 /*Pudlák*/, /*verify=*/true);
+            /*conflict_budget=*/0, /*system=*/1 /*Pudlák*/);
         check(interp != nullptr, "Pudlák interpolant produced");
         if (interp != nullptr) {
-            check(ir.slow_check_a_implies_i(to_repair, conflict, interp, false),
+            check(ir.slow_check_a_implies_i(to_repair, conflict, interp),
                   "Pudlák interpolant satisfies A -> I");
-        }
-    }
-
-    // --- Test 3: multi-proof intersection stays sound. ---
-    {
-        SimplifiedCNF cnf = make_cnf(fg, 2, cls_xy);
-        set<uint32_t> inputs = {0};
-        AIGManager aig_mng;
-        InterpRepair ir(conf, cnf, inputs, aig_mng);
-
-        aig_ptr interp = ir.compute_interpolant(
-            1, to_repair, conflict, 0, false, 0, false,
-            /*nproofs=*/4, /*system=*/0, /*verify=*/true);
-        check(interp != nullptr, "multi-proof (4) interpolant produced");
-        if (interp != nullptr) {
-            check(ir.slow_check_a_implies_i(to_repair, conflict, interp, false),
-                  "intersected interpolant satisfies A -> I");
         }
     }
 
@@ -172,7 +154,7 @@ int main() {
         if (interp != nullptr) {
             check(ir.quick_check_interpolant_excludes_cex(interp, conf2),
                   "two-input interpolant excludes the CEX");
-            check(ir.slow_check_a_implies_i(tr2, conf2, interp, false),
+            check(ir.slow_check_a_implies_i(tr2, conf2, interp),
                   "two-input interpolant satisfies A -> I");
         }
     }
@@ -186,11 +168,10 @@ int main() {
         InterpRepair ir(conf, cnf, inputs, aig_mng);
 
         aig_ptr interp = ir.compute_interpolant(
-            1, to_repair, conflict, 0, false, 0, false, 1, 0,
-            /*verify=*/false);
+            1, to_repair, conflict, 0, false, 0, /*system=*/0);
         check(interp != nullptr, "interpolant produced with verify disabled");
         if (interp != nullptr) {
-            check(ir.slow_check_a_implies_i(to_repair, conflict, interp, false),
+            check(ir.slow_check_a_implies_i(to_repair, conflict, interp),
                   "unverified interpolant still checks out on this instance");
         }
     }

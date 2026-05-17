@@ -1107,12 +1107,6 @@ void Manthan::print_detailed_stats() const {
                 << "  (>" << mconf.interp_repair_progress_max_var_repairs
                 << " non-converging interp repairs/var)");
         }
-        if (mconf.interp_repair_unconditional != 0) {
-            verb_print(1, COLCYN "[manthan-stats]   uncond succeeded:     " << interp_unconditional_succeeded
-                << " / " << interp_repair->calls
-                << "  (" << fixed << setprecision(1)
-                << safe_div(interp_unconditional_succeeded*100.0, interp_repair->calls) << "%)");
-        }
         verb_print(1, COLCYN "[manthan-stats]   interp calls (incl. fallbacks): " << interp_repair->calls
             << "  ok: " << interp_repair->calls_succeeded
             << "  oversize: " << interp_repair->calls_failed_oversize
@@ -1163,15 +1157,6 @@ void Manthan::print_detailed_stats() const {
                     << " post=" << interp_repair->total_b1_post_rewrite
                     << "  (" << fixed << setprecision(1) << pct << "% reduction"
                     << ", " << interp_repair->b1_rewrite_calls << " calls)");
-            }
-            if (interp_repair->interp_multiproof_calls > 0
-                    || interp_repair->interp_proof_rejected > 0) {
-                verb_print(1, COLCYN "[manthan-stats]   interp multiproof:  "
-                    << interp_repair->interp_multiproof_calls << " calls combined "
-                    << safe_div(interp_repair->interp_multiproof_combined,
-                                interp_repair->interp_multiproof_calls)
-                    << " proofs avg, " << interp_repair->interp_proof_rejected
-                    << " proofs dropped on verify");
             }
             if (interp_repair->total_proof_derived > 0) {
                 verb_print(1, COLCYN "[manthan-stats]   interp proof-core:  "
@@ -1955,37 +1940,12 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
         }
 
         if (do_interp) {
-            interp_branch_unconditional = false;
-            // Try the unconditional interpolant first; fall back to the
-            // conditional one below if it fails.
-            if (mconf.interp_repair_unconditional != 0) {
-                interp_branch = interp_repair->compute_interpolant(
-                    y_rep, to_repair, conflict,
-                    mconf.interp_repair_max_aig_nodes,
-                    mconf.interp_repair_rewrite != 0,
-                    mconf.interp_repair_max_conflicts,
-                    /*unconditional=*/true,
-                    mconf.interp_repair_nproofs,
-                    mconf.interp_repair_system);
-                if (interp_branch != nullptr) {
-                    interp_branch_unconditional = true;
-                    interp_unconditional_succeeded++;
-                    VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 2) {
-                        std::cout << "c o [manthan-interp] unconditional interp succeeded for y="
-                                  << y_rep+1 << std::endl;
-                    });
-                }
-            }
-            if (interp_branch == nullptr) {
-                interp_branch = interp_repair->compute_interpolant(
-                    y_rep, to_repair, conflict,
-                    mconf.interp_repair_max_aig_nodes,
-                    mconf.interp_repair_rewrite != 0,
-                    mconf.interp_repair_max_conflicts,
-                    /*unconditional=*/false,
-                    mconf.interp_repair_nproofs,
-                    mconf.interp_repair_system);
-            }
+            interp_branch = interp_repair->compute_interpolant(
+                y_rep, to_repair, conflict,
+                mconf.interp_repair_max_aig_nodes,
+                mconf.interp_repair_rewrite != 0,
+                mconf.interp_repair_max_conflicts,
+                mconf.interp_repair_system);
             // Adaptive bookkeeping: track interp-vs-conflict size and
             // blacklist the var if the mean ratio exceeds the threshold.
             if (interp_branch != nullptr
@@ -2020,12 +1980,10 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                 if (!interp_repair->quick_check_interpolant_excludes_cex(interp_branch, conflict)) {
                     assert(false &&& "verify (CEX-excluded) fails");
                 }
-                if (!interp_repair->slow_check_a_implies_i(to_repair, conflict, interp_branch,
-                               interp_branch_unconditional)) {
+                if (!interp_repair->slow_check_a_implies_i(to_repair, conflict, interp_branch)) {
                     assert(false && "verify (full miter) fails");
                 }
                 if (!interp_repair->sample_check_interpolant(to_repair, conflict, interp_branch,
-                               interp_branch_unconditional,
                                /*num_samples=*/8, /*seed=*/num_loops_repair * 7919u)) {
                     assert(false && "verify (sample check) fails");
                 }
@@ -2170,7 +2128,7 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 // legacy clause-by-clause path.
 FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
         const uint32_t y_rep, const vector<Lit>& conflict,
-        aig_ptr interp_branch, bool skip_y_other_and) {
+        aig_ptr interp_branch) {
     FHolder<MetaSolver2>::Formula f;
 
     // Build the must-flip region AIG in raw cnf-var space:
@@ -2187,12 +2145,10 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
     // Leaf-referencing is semantically identical — y_other is itself a
     // defined variable, so the leaf resolves to its own def AIG on export.
     aig_ptr b1 = AIG::new_not(interp_branch);
-    if (!skip_y_other_and) {
-        for (const auto& l : conflict) {
-            if (is_input[l.var()] || is_backward_defined[l.var()]) continue;
-            assert(var_to_formula.count(l.var()));
-            b1 = AIG::new_and(b1, AIG::new_lit(~l));
-        }
+    for (const auto& l : conflict) {
+        if (is_input[l.var()] || is_backward_defined[l.var()]) continue;
+        assert(var_to_formula.count(l.var()));
+        b1 = AIG::new_and(b1, AIG::new_lit(~l));
     }
 
     // AIG-level simplification of b1. simplify_aig is always run; the
@@ -2305,12 +2261,10 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
     if (interp_branch != nullptr) {
         // Interpolant path
         const uint32_t cex_nvars_before = cex_solver.nVars();
-        f = build_interp_branch_formula(y_rep, conflict, interp_branch,
-                interp_branch_unconditional);
+        f = build_interp_branch_formula(y_rep, conflict, interp_branch);
         helpers_added_interp += cex_solver.nVars() - cex_nvars_before;
         VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
             cout << "c o [manthan-interp] y=" << y_rep+1
-                 << (interp_branch_unconditional ? " [UNCOND]" : "")
                  << " interp f.clauses=" << f.clauses.size()
                  << " f.out=" << f.out
                  << endl;

@@ -347,7 +347,7 @@ InterpRepair::InterpRepair(const Config& _conf,
 
 uint32_t InterpRepair::setup_mini_cnf(CaDiCaL::Solver& solver,
         InterpTracerMcMillan& tracer, Lit to_repair_lit,
-        const std::vector<Lit>& conflict, bool unconditional) const
+        const std::vector<Lit>& conflict) const
 {
     auto add_unit_a = [&](Lit l) {
         tracer.next_is_b = false;
@@ -369,13 +369,10 @@ uint32_t InterpRepair::setup_mini_cnf(CaDiCaL::Solver& solver,
 
     // 2) Non-input conflict units (A side) + ~to_repair (A side). The
     // conflict is the negated assumptions, so we add ~l to reproduce the
-    // original assumptions. In unconditional mode the y_other units are
-    // skipped.
-    if (!unconditional) {
-        for (const auto& l : conflict) {
-            if (l.var() < is_input.size() && is_input[l.var()]) continue;
-            add_unit_a(~l);
-        }
+    // original assumptions.
+    for (const auto& l : conflict) {
+        if (l.var() < is_input.size() && is_input[l.var()]) continue;
+        add_unit_a(~l);
     }
     add_unit_a(~to_repair_lit);
 
@@ -406,8 +403,8 @@ void InterpRepair::build_serialized_cnf() const {
 
 aig_ptr InterpRepair::solve_one_interpolant(
         Lit to_repair_lit, const vector<Lit>& conflict,
-        bool unconditional, uint64_t conflict_budget,
-        uint32_t seed, int system, int& out_ret)
+        uint64_t conflict_budget,
+        int system, int& out_ret)
 {
     out_ret = 0;
     // Build the mini CNF and solve on a fresh CaDiCaL with proof
@@ -418,17 +415,6 @@ aig_ptr InterpRepair::solve_one_interpolant(
     // antecedent IDs don't map to our labels.
     solver->set("inprocessing", 0);
     solver->set("preprocessing", 0);
-    // Distinct seeds (variable shuffling + an alternating initial
-    // decision phase) steer cadical into a different search and hence a
-    // different resolution proof, so the per-proof McMillan interpolants
-    // genuinely differ — which is what makes multi-proof intersection
-    // pay off. seed==0 keeps cadical's default search for the first
-    // proof.
-    if (seed != 0) {
-        solver->set("seed", (int)seed);
-        solver->set("shuffle", 1);
-        solver->set("phase", (int)(seed & 1u));
-    }
     if (conflict_budget > 0) {
         // Clamp to int max — cadical's limit API takes an int.
         const int64_t clamped = (conflict_budget > (uint64_t)INT_MAX)
@@ -440,7 +426,7 @@ aig_ptr InterpRepair::solve_one_interpolant(
     solver->connect_proof_tracer(&tracer, true);
 
     const uint32_t b_marked = setup_mini_cnf(*solver, tracer,
-            to_repair_lit, conflict, unconditional);
+            to_repair_lit, conflict);
     if (b_marked == 0) {
         // No input units. Interpolant would be trivial. Bail.
         VERBOSE_DEBUG_DO(cout << "c o [interp-repair] no input B units; bailing" << endl);
@@ -460,7 +446,7 @@ aig_ptr InterpRepair::solve_one_interpolant(
     total_proof_core += tracer.core_count;
     if (tracer.build_failed) calls_build_failed++;
     VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
-        cout << "c o [interp-repair] seed=" << seed << " proof core: "
+        cout << "c o [interp-repair] proof core: "
              << tracer.core_count << " / " << tracer.derived_count
              << " derived clauses"
              << (tracer.build_failed ? " (build_failed)" : "") << endl;
@@ -471,8 +457,8 @@ aig_ptr InterpRepair::solve_one_interpolant(
 aig_ptr InterpRepair::compute_interpolant(
         [[maybe_unused]] uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
-        bool full_rewrite, uint64_t conflict_budget, bool unconditional,
-        uint32_t nproofs, int system, uint32_t seed_offset)
+        bool full_rewrite, uint64_t conflict_budget,
+        int system)
 {
     calls++;
     total_conflict_lits += conflict.size();
@@ -496,57 +482,23 @@ aig_ptr InterpRepair::compute_interpolant(
         return nullptr;
     }
 
-    // Compute up to `nproofs` interpolants from independent cadical
-    // searches and intersect them. Each I_k satisfies A→I_k and I_k∧B
-    // UNSAT, so the conjunction ∧I_k is itself a valid interpolant —
-    // and a strictly stronger one, so its negation (the must-flip
-    // region the repair generalises over) is correspondingly larger.
-    const uint32_t want = std::max<uint32_t>(1, nproofs);
-    aig_ptr interp = nullptr;
-    uint32_t got = 0;
-    for (uint32_t p = 0; p < want; p++) {
-        int ret = 0;
-        aig_ptr one = solve_one_interpolant(to_repair_lit, conflict,
-                unconditional, conflict_budget,
-                /*seed=*/seed_offset + p, system, ret);
-        if (one == nullptr) {
-            if (p == 0) {
-                // First proof failed: classify and bail, as before.
-                if (ret == 0 && conflict_budget > 0) {
-                    calls_budget_exhausted++;
-                    VERBOSE_DEBUG_DO(cout << "c o [interp-repair] budget exhausted ("
-                        << conflict_budget << " conflicts); falling back" << endl);
-                } else {
-                    VERBOSE_DEBUG_DO(cout << "c o [interp-repair] first proof failed (ret="
-                        << ret << "); falling back" << endl);
-                    calls_failed_other++;
-                }
-                return nullptr;
-            }
-            // A later proof failed — stop combining, keep what we have.
-            break;
-        }
-        SLOW_DEBUG_DO(
-            if (want > 1
-                    && !slow_check_a_implies_i(to_repair_lit, conflict, one,
-                                               unconditional, conflict_budget)) {
-                interp_proof_rejected++;
-                VERBOSE_DEBUG_DO(cout << "c o [interp-repair] proof seed=" << p
-                    << " interpolant failed A→I; dropping it" << endl);
-                assert(false);
-            }
-        );
-        got++;
-        interp = (interp == nullptr) ? one : AIG::new_and(interp, one);
-    }
+    // Compute the interpolant from a single cadical search. I satisfies
+    // A→I and I∧B UNSAT, so its negation is the must-flip region the
+    // repair generalises over.
+    int ret = 0;
+    aig_ptr interp = solve_one_interpolant(to_repair_lit, conflict,
+            conflict_budget, system, ret);
     if (interp == nullptr) {
-        VERBOSE_DEBUG_DO(cout << "c o [interp-repair] interpolant null; falling back" << endl);
-        calls_failed_other++;
+        if (ret == 0 && conflict_budget > 0) {
+            calls_budget_exhausted++;
+            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] budget exhausted ("
+                << conflict_budget << " conflicts); falling back" << endl);
+        } else {
+            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] proof failed (ret="
+                << ret << "); falling back" << endl);
+            calls_failed_other++;
+        }
         return nullptr;
-    }
-    if (got > 1) {
-        interp_multiproof_calls++;
-        interp_multiproof_combined += got;
     }
 
     // Clean up the proof-driven AIG before returning. simplify_aig is
@@ -607,7 +559,7 @@ aig_ptr InterpRepair::compute_interpolant(
     }
 
     SLOW_DEBUG_DO(
-        if (!slow_check_a_implies_i(to_repair_lit, conflict, interp, unconditional, conflict_budget)) {
+        if (!slow_check_a_implies_i(to_repair_lit, conflict, interp, conflict_budget)) {
             VERBOSE_DEBUG_DO(cout << "c o [interp-repair] A→I verification FAILED"
                 " — falling back to conflict clause" << endl);
             assert(false && "interpolant failed A→I check — tracer or verifier bug");
@@ -639,8 +591,8 @@ aig_ptr InterpRepair::compute_interpolant(
             VERBOSE_DEBUG_DO(cout << "c o [interp-repair] retrying oversize "
                 "McMillan interpolant with Pudlák" << endl);
             return compute_interpolant(y_rep, to_repair_lit, conflict,
-                max_aig_nodes, full_rewrite, conflict_budget, unconditional,
-                nproofs, InterpTracerMcMillan::SYS_PUDLAK);
+                max_aig_nodes, full_rewrite, conflict_budget,
+                InterpTracerMcMillan::SYS_PUDLAK);
         }
         return nullptr;
     }
@@ -686,7 +638,6 @@ bool InterpRepair::slow_check_a_implies_i(
         Lit to_repair_lit,
         const vector<Lit>& conflict,
         const aig_ptr& interp,
-        bool unconditional,
         uint64_t conflict_budget) const
 {
     if (interp == nullptr) return true;
@@ -713,14 +664,10 @@ bool InterpRepair::slow_check_a_implies_i(
     if (!cnf_serialized_built) build_serialized_cnf();
     for (int v : cnf_serialized) solver->add(v);
     // A-side: original CNF + ~to_repair, plus the non-input (y_other)
-    // conflict units — but only for a conditional interpolant. The
-    // unconditional interpolant was computed with no y_other pinning,
-    // so its miter must not pin them either.
-    if (!unconditional) {
-        for (const auto& l : conflict) {
-            if (l.var() < is_input.size() && is_input[l.var()]) continue;
-            add_unit(~l);
-        }
+    // conflict units.
+    for (const auto& l : conflict) {
+        if (l.var() < is_input.size() && is_input[l.var()]) continue;
+        add_unit(~l);
     }
     add_unit(~to_repair_lit);
 
@@ -769,7 +716,6 @@ bool InterpRepair::sample_check_interpolant(
         Lit to_repair_lit,
         const vector<Lit>& conflict,
         const aig_ptr& interp,
-        bool unconditional,
         uint32_t num_samples,
         uint64_t seed) const
 {
@@ -806,16 +752,13 @@ bool InterpRepair::sample_check_interpolant(
         // ~to_repair = wrong y_rep value
         solver->add(lit_to_pl(~to_repair_lit));
         solver->add(0);
-        // For a conditional interpolant the repair only fires when the
-        // y_other conflict literals also match the CEX, so the must-flip
-        // claim is conditional on them — pin them here too. For the
-        // unconditional interpolant they are left free.
-        if (!unconditional) {
-            for (const auto& l : conflict) {
-                if (l.var() < is_input.size() && is_input[l.var()]) continue;
-                solver->add(lit_to_pl(~l));
-                solver->add(0);
-            }
+        // The repair only fires when the y_other conflict literals also
+        // match the CEX, so the must-flip claim is conditional on them —
+        // pin them here too.
+        for (const auto& l : conflict) {
+            if (l.var() < is_input.size() && is_input[l.var()]) continue;
+            solver->add(lit_to_pl(~l));
+            solver->add(0);
         }
 
         if (cnf_serialized_built) {} // suppress unused warning if any
