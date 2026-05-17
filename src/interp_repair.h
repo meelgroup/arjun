@@ -175,7 +175,6 @@ public:
         bool unconditional = false,
         uint32_t nproofs = 1,
         int system = 0,
-        bool verify = true,
         uint32_t seed_offset = 0);
 
     // Cheap check: interpolant evaluates to FALSE on the CEX inputs.
@@ -214,11 +213,6 @@ public:
     uint64_t calls_failed_other = 0;
     uint64_t calls_failed_empty_or_no_input = 0;
     uint64_t calls_quick_check_failed = 0;
-    // Interpolants rejected by the always-on A→I miter verification.
-    uint64_t calls_verify_failed = 0;
-    // Calls whose interpolant failed verification and were retried on a
-    // fresh, disjoint range of proof seeds.
-    uint64_t calls_verify_retry = 0;
     // Cadical hit the conflict budget and returned l_Undef, not a proof.
     uint64_t calls_budget_exhausted = 0;
     uint64_t total_interp_nodes = 0;

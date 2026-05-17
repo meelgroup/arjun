@@ -23,6 +23,7 @@
  */
 
 #include "interp_repair.h"
+#include "constants.h"
 #include <cadical.hpp>
 #include <climits>
 #include <iomanip>
@@ -471,7 +472,7 @@ aig_ptr InterpRepair::compute_interpolant(
         [[maybe_unused]] uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
         bool full_rewrite, uint64_t conflict_budget, bool unconditional,
-        uint32_t nproofs, int system, bool verify, uint32_t seed_offset)
+        uint32_t nproofs, int system, uint32_t seed_offset)
 {
     calls++;
     total_conflict_lits += conflict.size();
@@ -525,19 +526,16 @@ aig_ptr InterpRepair::compute_interpolant(
             // A later proof failed — stop combining, keep what we have.
             break;
         }
-        // Robust intersection: with >1 proof, verify each per-proof
-        // interpolant on its own before folding it in. A single
-        // mis-reconstructed proof would otherwise poison the whole
-        // conjunction; here it is simply dropped and the remaining
-        // (still valid) proofs are intersected.
-        if (verify && want > 1
-                && !slow_check_a_implies_i(to_repair_lit, conflict, one,
-                                           unconditional, conflict_budget)) {
-            interp_proof_rejected++;
-            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] proof seed=" << p
-                << " interpolant failed A→I; dropping it" << endl);
-            continue;
-        }
+        SLOW_DEBUG_DO(
+            if (want > 1
+                    && !slow_check_a_implies_i(to_repair_lit, conflict, one,
+                                               unconditional, conflict_budget)) {
+                interp_proof_rejected++;
+                VERBOSE_DEBUG_DO(cout << "c o [interp-repair] proof seed=" << p
+                    << " interpolant failed A→I; dropping it" << endl);
+                assert(false);
+            }
+        );
         got++;
         interp = (interp == nullptr) ? one : AIG::new_and(interp, one);
     }
@@ -608,31 +606,13 @@ aig_ptr InterpRepair::compute_interpolant(
         return nullptr;
     }
 
-    // Always verify: the proof-driven McMillan/Pudlák reconstruction is
-    // not trusted to be a perfect linear-resolution replay, so check the
-    // full miter A→I and fall back to the conflict clause if it fails.
-    // `unconditional` picks the matching partition. This makes interp
-    // repair sound by construction, independent of any tracer bug.
-    if (verify && !slow_check_a_implies_i(to_repair_lit, conflict, interp,
-                                          unconditional, conflict_budget)) {
-        // A clean reconstruction can still be subtly wrong for an
-        // unusual proof shape. Before falling back to the conflict
-        // clause, retry once on independent proofs (a disjoint seed
-        // range) — a different refutation often reconstructs correctly.
-        if (seed_offset == 0) {
-            calls_verify_retry++;
-            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] A→I verification "
-                "FAILED — retrying on fresh proofs" << endl);
-            return compute_interpolant(y_rep, to_repair_lit, conflict,
-                max_aig_nodes, full_rewrite, conflict_budget, unconditional,
-                nproofs, system, verify,
-                /*seed_offset=*/std::max<uint32_t>(1, nproofs));
+    SLOW_DEBUG_DO(
+        if (!slow_check_a_implies_i(to_repair_lit, conflict, interp, unconditional, conflict_budget)) {
+            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] A→I verification FAILED"
+                " — falling back to conflict clause" << endl);
+            assert(false && "interpolant failed A→I check — tracer or verifier bug");
         }
-        calls_verify_failed++;
-        VERBOSE_DEBUG_DO(cout << "c o [interp-repair] A→I verification FAILED"
-            " — falling back to conflict clause" << endl);
-        return nullptr;
-    }
+    );
 
     // Size: count internal AND nodes in this AIG sub-tree.
     set<const AIG*> seen;
@@ -660,7 +640,7 @@ aig_ptr InterpRepair::compute_interpolant(
                 "McMillan interpolant with Pudlák" << endl);
             return compute_interpolant(y_rep, to_repair_lit, conflict,
                 max_aig_nodes, full_rewrite, conflict_budget, unconditional,
-                nproofs, InterpTracerMcMillan::SYS_PUDLAK, verify);
+                nproofs, InterpTracerMcMillan::SYS_PUDLAK);
         }
         return nullptr;
     }
@@ -886,7 +866,6 @@ void InterpRepair::print_stats(const std::string& prefix) const {
          << " ok: " << calls_succeeded
          << " oversize: " << calls_failed_oversize
          << " quickfail: " << calls_quick_check_failed
-         << " verifyfail: " << calls_verify_failed
          << " trivial: " << calls_failed_empty_or_no_input
          << " other: " << calls_failed_other
          << " avg conflict-lits: "

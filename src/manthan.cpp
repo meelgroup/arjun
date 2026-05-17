@@ -1118,8 +1118,6 @@ void Manthan::print_detailed_stats() const {
             << "  oversize: " << interp_repair->calls_failed_oversize
             << "  budget_exh: " << interp_repair->calls_budget_exhausted
             << "  trivial: " << interp_repair->calls_failed_empty_or_no_input
-            << "  verify_fail: " << interp_repair->calls_verify_failed
-            << "  verify_retry: " << interp_repair->calls_verify_retry
             << "  other_fail: " << interp_repair->calls_failed_other);
         if (interp_repair->calls_succeeded > 0) {
             verb_print(1, COLCYN "[manthan-stats]   interp avg conflict-lits: " << fixed << setprecision(1)
@@ -1968,8 +1966,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                     mconf.interp_repair_max_conflicts,
                     /*unconditional=*/true,
                     mconf.interp_repair_nproofs,
-                    mconf.interp_repair_system,
-                    mconf.interp_repair_verify != 0);
+                    mconf.interp_repair_system);
                 if (interp_branch != nullptr) {
                     interp_branch_unconditional = true;
                     interp_unconditional_succeeded++;
@@ -1987,8 +1984,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                     mconf.interp_repair_max_conflicts,
                     /*unconditional=*/false,
                     mconf.interp_repair_nproofs,
-                    mconf.interp_repair_system,
-                    mconf.interp_repair_verify != 0);
+                    mconf.interp_repair_system);
             }
             // Adaptive bookkeeping: track interp-vs-conflict size and
             // blacklist the var if the mean ratio exceeds the threshold.
@@ -2030,12 +2026,12 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
               if (interp_branch != nullptr) {
                 if (!interp_repair->quick_check_interpolant_excludes_cex(interp_branch, conflict)) {
                     assert(false &&& "verify (CEX-excluded) fails");
-                } else if (mconf.interp_repair_verify != 0
-                        && !interp_repair->slow_check_a_implies_i(to_repair, conflict, interp_branch,
+                }
+                if (!interp_repair->slow_check_a_implies_i(to_repair, conflict, interp_branch,
                                interp_branch_unconditional)) {
                     assert(false && "verify (full miter) fails");
-                } else if (mconf.interp_repair_verify != 0
-                        && !interp_repair->sample_check_interpolant(to_repair, conflict, interp_branch,
+                }
+                if (!interp_repair->sample_check_interpolant(to_repair, conflict, interp_branch,
                                interp_branch_unconditional,
                                /*num_samples=*/8, /*seed=*/num_loops_repair * 7919u)) {
                     assert(false && "verify (sample check) fails");

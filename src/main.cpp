@@ -275,9 +275,6 @@ void add_arjun_options() {
           "Intersect N independently-searched McMillan interpolants into one stronger interpolant (larger must-flip region). 1=off (single proof), try 2-4.");
     myopt("--interprepairsystem", mconf.interp_repair_system, fc_int,
           "Labeled-interpolation system: 0=McMillan (strongest interpolant, default), 1=Pudlák (symmetric selector; smaller but weaker interpolant).");
-    myopt("--interprepairverify", mconf.interp_repair_verify, fc_int,
-          "Verify every interpolant with a full A→I miter; on failure fall back to the conflict clause. Makes interp repair sound regardless of tracer bugs. 1=on (default), 0=off.");
-
 
     // Simplification options for minim
     myopt("--probe", conf.probe_based, fc_int,"Use simple probing to set (and define) some variables");
