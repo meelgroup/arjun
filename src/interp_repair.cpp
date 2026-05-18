@@ -285,12 +285,10 @@ bool InterpTracerMcMillan::resolve_chain(uint64_t id,
 
         const bool pivot_is_input = input_vars.count(pivot.var());
 
-        // Pudlák: a shared (input) pivot is 'ab'-labelled, so the
-        // partial interpolant is the selector (v∨I1)∧(¬v∨I2), where I1
-        // belongs to the parent containing the variable positively and
-        // I2 to the parent containing it negatively. `lab` is the
-        // running parent (which holds `pivot`); `it_l2->second` is the
-        // new antecedent (which holds `~pivot`).
+        // Pudlák: a shared (input) pivot is 'ab'-labelled → partial
+        // interpolant is the selector (v∨I1)∧(¬v∨I2), I1/I2 from the
+        // parents holding the variable positively/negatively. `lab` holds
+        // `pivot`; `it_l2->second` holds `~pivot`.
         if (pivot_is_input && system == SYS_PUDLAK) {
             flush_batch();
             const aig_ptr I_run = lab;               // parent with `pivot`
@@ -419,30 +417,16 @@ void InterpRepair::build_occ() const {
 // Find the original-CNF clauses that actually matter for the interpolant
 // of this conflict.
 //
-// The mini-CNF is M = F ∪ U, where F is the original CNF and U is the set
-// of assumption units (~conflict lits, ~to_repair). M is UNSAT. We want a
-// subset M' ⊆ M that (a) keeps every B-side input unit, (b) is still
-// UNSAT, and (c) yields an interpolant valid for the full partition. Any
-// such M' works: the McMillan/Pudlák interpolant of M' satisfies A'→I and
-// I∧B unsat, and since A' ⊆ A the always-on miter A→I still holds.
-//
-// Two reductions, both sound:
-//
-//  1. Unit propagation. Propagate U through F. A clause satisfied by the
-//     propagated assignment is redundant *provided* the clauses that
-//     forced the assignment are kept (the "reason" clauses) — then the
-//     solver re-derives the same forced literals and M' is equisatisfiable
-//     to M. Reason clauses are themselves original F clauses, so the A/B
-//     partition is unchanged.
-//
-//  2. Connectivity. The UNSAT proof stays within one connected component
-//     of the variable graph (resolution never crosses disjoint
-//     sub-formulas); that is the component holding the assumption units.
-//     Other components are sub-formulas of the satisfiable spec, hence
-//     satisfiable, and are dropped.
-//
-// If UP alone refutes M, the conflicting clause plus the transitive reason
-// chain behind it is a complete UNSAT proof — everything else is dropped.
+// The mini-CNF is M = F ∪ U (F = original CNF, U = assumption units,
+// UNSAT). Any subset M' ⊆ M that keeps every B-side input unit and stays
+// UNSAT yields a valid interpolant — A' ⊆ A keeps the A→I miter holding.
+// Two sound reductions: (1) unit propagation — a clause U satisfies is
+// redundant once its "reason" clauses are kept, and reasons are original
+// F clauses so the A/B partition is unchanged; (2) connectivity — the
+// proof stays in the one variable component holding the assumption units,
+// and other components are satisfiable spec sub-formulas, so dropped.
+// If UP alone refutes M, the conflicting clause plus its transitive
+// reason chain is the whole proof and everything else is dropped.
 std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
         Lit to_repair_lit, const vector<Lit>& conflict) const
 {
@@ -474,12 +458,10 @@ std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
         const uint8_t want = l.sign() ? 2 : 1;
         if (val[v] == 0) { val[v] = want; reason[v] = rsn; trail.push_back(l); }
         else if (val[v] != want) {
-            // A forced literal contradicts the existing assignment.
-            // Anchor the reason-chain trim on a falsified clause: the
-            // clause forcing `l` if it is an original clause, otherwise
-            // the clause that forced the opposing value. -1 only when
-            // two assumption units contradict directly (units alone are
-            // then UNSAT and no CNF clause is needed).
+            // A forced literal contradicts the assignment. Anchor the
+            // reason-chain trim on the falsified clause: the one forcing
+            // `l`, else the one that forced the opposing value; -1 only
+            // when two assumption units clash directly (units then UNSAT).
             conflict_hit = true;
             if (conflict_cl < 0) conflict_cl = (rsn >= 0) ? rsn : reason[v];
         }
@@ -553,13 +535,11 @@ std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
         if (reason[v] >= 0) keep[reason[v]] = 1;
     }
 
-    // Connectivity sweep. The mini-CNF's UNSAT lives entirely within one
-    // connected component of its variable-incidence graph — a resolution
-    // proof never crosses variable-disjoint sub-formulas. That component
-    // is the one holding the assumption units: every other component is a
-    // sub-formula of the (satisfiable) spec CNF and so is itself
-    // satisfiable, contributing nothing. BFS the kept clauses outward
-    // from the assumption variables and drop whatever is not reached.
+    // Connectivity sweep. The UNSAT lives within the one variable
+    // component holding the assumption units (a resolution proof never
+    // crosses variable-disjoint sub-formulas); other components are
+    // satisfiable spec sub-formulas. BFS the kept clauses outward from
+    // the assumption variables and drop whatever is not reached.
     vector<char> var_seen(n_vars, 0);
     vector<char> cl_seen(n_cls, 0);
     vector<uint32_t> vq;
@@ -589,11 +569,9 @@ std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
     }
 
     SLOW_DEBUG_DO({
-        // Every dropped clause must be provably inert: either already
-        // satisfied by the UP assignment (keep[ci]==0 is only set for
-        // satisfied non-reason clauses), or in a variable component
-        // disjoint from the assumption units (!cl_seen). A clause that is
-        // neither live-and-connected nor inert is a keep-logic bug.
+        // Every dropped clause must be provably inert: satisfied by the
+        // UP assignment, or in a variable component disjoint from the
+        // assumption units (!cl_seen). Anything else is a keep-logic bug.
         for (uint32_t ci = 0; ci < n_cls; ci++) {
             if (keep[ci] && (cl_seen[ci] || clauses[ci].empty())) continue;
             bool sat = false;
