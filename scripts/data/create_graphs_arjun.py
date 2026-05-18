@@ -44,8 +44,9 @@ only_dirs = [
     # "out-synth-1570930-", # check what can be removed
     # "out-synth-1583187-0", # interpolation, cadet-style
     # "out-synth-1583187-5", # interpolation, cadet-style
-    "out-synth-1587721-4", # fixed interpolation -- much faster
-    "out-synth-1595974-", # now interpolation is using minimized ("touched" variables) cnf so interpolation generation is faster
+    "out-synth-1587721-6", # CADET
+    # "out-synth-1595974-5", # ALWAYS ON INTERPOLATION
+    "out-synth-1595974-1", # now interpolation is using minimized ("touched" variables) cnf so interpolation generation is faster
 ]
 # -------------------------------------------------------------
 
