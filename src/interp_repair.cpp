@@ -593,11 +593,6 @@ aig_ptr InterpRepair::solve_one_interpolant(
     // Build the mini CNF and solve on a fresh CaDiCaL with proof
     // tracing; the tracer produces the McMillan interpolant.
     auto solver = std::make_unique<Solver>();
-    // Disable in-processing & vivification: they mutate original clauses
-    // while the tracer is attached, leaving derived clauses whose
-    // antecedent IDs don't map to our labels.
-    solver->set("inprocessing", 0);
-    solver->set("preprocessing", 0);
     if (conflict_budget > 0) {
         // Clamp to int max — cadical's limit API takes an int.
         const int64_t clamped = (conflict_budget > (uint64_t)INT_MAX)
