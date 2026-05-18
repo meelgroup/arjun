@@ -77,6 +77,15 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     static constexpr int SYS_PUDLAK = 1;
     int system = SYS_MCMILLAN;
 
+    // Variables with index >= b_local_from are B-local: they occur only
+    // in B clauses, so a resolution pivot on them is AND'd just like a
+    // shared (input) pivot. interp_repair's B is input units only, so it
+    // leaves this at UINT32_MAX (no B-local vars); the doubled-CNF
+    // interpolation in interpolant.cpp sets it to orig_num_vars so the
+    // copy-2 and indicator variables (the bulk of its B side) are handled
+    // correctly. A-local pivots (below the threshold, non-input) → OR.
+    uint32_t b_local_from = UINT32_MAX;
+
     // Original clauses decided to be B-side (label = TRUE).
     std::set<uint64_t> b_clause_ids;
 
@@ -143,6 +152,25 @@ private:
     [[nodiscard]] bool resolve_chain(uint64_t id,
             const std::vector<uint64_t>& chain);
 };
+
+// Pick the subset of `clauses` relevant to an UNSAT proof seeded by the
+// unit literals `units`. Pure unit propagation + a connectivity sweep, no
+// SAT solve. Two sound reductions: (1) clauses the propagated assignment
+// satisfies contribute nothing once their reason clauses are kept;
+// (2) clauses in a variable component disjoint from the seed units are
+// satisfiable spec sub-formulas and dropped. If UP alone refutes the
+// formula, only the conflicting clause and its transitive reason chain
+// are kept.
+//
+// `occ[lit.toInt()]` must list the indices into `clauses` of the clauses
+// containing that literal. `n_vars` must cover every variable appearing
+// in `clauses` and in `units`. `occ` may be shorter than 2*n_vars;
+// out-of-range lookups are simply skipped.
+[[nodiscard]] std::vector<uint32_t> collect_relevant_clauses(
+        const std::vector<std::vector<CMSat::Lit>>& clauses,
+        const std::vector<CMSat::Lit>& units,
+        uint32_t n_vars,
+        const std::vector<std::vector<uint32_t>>& occ);
 
 class InterpRepair {
 public:

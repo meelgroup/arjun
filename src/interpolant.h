@@ -25,117 +25,91 @@
 #pragma once
 
 #include <cryptominisat5/solvertypesmini.h>
-extern "C" {
-#include <cryptominisat5/mpicosat.h>
-}
 #include "constants.h"
 #include "arjun.h"
 #include "config.h"
-#include <vector>
-#include <map>
-#include <cstdint>
+#include "interp_repair.h"
 #include <cadical.hpp>
-#include <tracer.hpp>
+#include <vector>
+#include <set>
+#include <memory>
+#include <cstdint>
 
 namespace ArjunInt {
 
-struct MyTracer : public CaDiCaL::Tracer {
-    MyTracer(const uint32_t _orig_num_vars, const std::set<uint32_t>& input_vars,
-            const Config& _conf, std::map<CMSat::Lit, ArjunNS::aig_ptr>& _lit_to_aig,
-            const ArjunNS::AIGManager& _aig_mng) :
-      conf(_conf),
-      aig_mng(_aig_mng),
-      orig_num_vars(_orig_num_vars),
-      input(input_vars),
-      lit_to_aig(_lit_to_aig)
-    {}
-
-    const Config& conf;
-    std::map<uint64_t, std::vector<CMSat::Lit>> cls;
-    std::map<uint64_t, ArjunNS::aig_ptr> fs_clid;  // clause ID to formula
-    const ArjunNS::AIGManager& aig_mng;
-    ArjunNS::aig_ptr out; // Final output formula
-    int32_t orig_num_vars;
-    std::set<uint32_t> input;
-
-    // AIG cache
-    std::map<CMSat::Lit, ArjunNS::aig_ptr>& lit_to_aig;
-
-    // Balanced binary tree reduction using Op (AIG::new_and or AIG::new_or).
-    // Avoids deep recursion/stack overflow compared to linear left-to-right folding.
-    template<ArjunNS::aig_ptr (*Op)(const ArjunNS::aig_ptr&, const ArjunNS::aig_ptr&, bool neg)>
-    static ArjunNS::aig_ptr combine_balanced(std::vector<ArjunNS::aig_ptr> terms) {
-        release_assert(!terms.empty());
-        std::vector<ArjunNS::aig_ptr> next;
-        while (terms.size() > 1) {
-            next.clear();
-            for (size_t i = 0; i < terms.size(); i += 2) {
-                if (i + 1 >= terms.size()) next.push_back(terms[i]);
-                else next.push_back(Op(terms[i], terms[i + 1], false));
-            }
-            terms = next;
-        }
-        return terms[0];
-    }
-
-    ArjunNS::aig_ptr get_aig(const CMSat::Lit l) {
-      if (lit_to_aig.count(l)) return lit_to_aig.at(l);
-      ArjunNS::aig_ptr aig = ArjunNS::AIG::new_lit(l);
-      lit_to_aig[l] = aig;
-      return aig;
-    }
-
-    ArjunNS::aig_ptr get_aig(const std::vector<CMSat::Lit>& unsorted_cl) {
-      std::vector<CMSat::Lit> cl = unsorted_cl;
-      std::sort(cl.begin(), cl.end());
-      if (cl.empty()) return aig_mng.new_const(false);
-      std::vector<ArjunNS::aig_ptr> leaves;
-      leaves.reserve(cl.size());
-      for (const auto& l: cl) leaves.push_back(get_aig(l));
-      return combine_balanced<ArjunNS::AIG::new_or>(leaves);
-    }
-
-    void add_derived_clause (uint64_t id, bool red, const std::vector<int> & clause,
-                                   const std::vector<uint64_t> & oantec) override;
-    void add_original_clause (uint64_t id, bool red, const std::vector<int> & clause, bool) override;
-};
-
+// Definition extraction by Craig interpolation over a doubled CNF.
+//
+// extend/backward build a doubled formula: copy 1 = vars [0, orig_num_vars),
+// copy 2 = vars [orig_num_vars, 2*orig_num_vars), tied together by
+// indicator variables. When the doubled solver proves a `test_var` is
+// functionally determined by the input variables (UNSAT under the
+// test_var-differs-across-copies assumptions), the McMillan interpolant of
+//   A = clauses lying entirely inside copy 1
+//   B = everything else (copy 2, indicators, and their units)
+// over the shared input variables IS the definition of test_var.
+//
+// No PicoSAT is involved. The (CMS-simplified) doubled CNF is extracted
+// once into a persistent incremental CaDiCaL where every clause is
+// guarded by a fresh selector literal. Per test_var: assume all
+// selectors + the test_var assumptions, solve, and read the UNSAT core
+// back via failed() — a true clause-level core, as small as PicoSAT's
+// was. That core (and only it) feeds a fresh CaDiCaL solve with
+// InterpTracerMcMillan, which reconstructs the interpolant from the
+// proof.
 class Interpolant {
 public:
     Interpolant(const Config& _conf, const uint32_t num_vars) :
         conf(_conf) {
-        assert(ps == nullptr);
-        ps = picosat_init();
-        int pret = picosat_enable_trace_generation(ps);
-        release_assert(pret != 0 && "Traces cannot be generated in PicoSAT");
         defs.resize(num_vars, nullptr);
     }
-    ~Interpolant() {
-        picosat_reset(ps);
-    }
-    void fill_picolsat(uint32_t _orig_num_vars);
-    void fill_var_to_indic(const std::vector<uint32_t>& var_to_indic);
-    void generate_interpolant(const std::vector<CMSat::Lit>& assumptions, uint32_t test_var,
-        const ArjunNS::SimplifiedCNF& cnf, const std::set<uint32_t>& input_vars);
+    ~Interpolant() = default;
+
+    // Extract the (CMS-simplified) doubled CNF from `solver` once, before
+    // the per-variable solve loop starts.
+    void fill_from_solver(CMSat::SATSolver* solver, uint32_t orig_num_vars,
+        const ArjunNS::AIGManager& aig_mng);
+
+    // `test_var` was just proven UNSAT under `assumptions`; reconstruct
+    // and store its definition AIG over `input_vars`.
+    void generate_interpolant(const std::vector<CMSat::Lit>& assumptions,
+        uint32_t test_var, const std::set<uint32_t>& input_vars);
+
+    // Record an indicator unit clause permanently added to the doubled
+    // problem (a var proven independent/defined). Folded into every later
+    // mini-CNF as a B-side unit.
     void add_unit_cl(const std::vector<CMSat::Lit>& cl);
+
     auto& get_defs() { return defs; }
 
-    // Internal really
-    CMSat::SATSolver* solver = nullptr;
-
 private:
-    void fix_up_aig(ArjunNS::aig_ptr& aig);
-
-    // AIG cache
-    std::map<CMSat::Lit, ArjunNS::aig_ptr> lit_to_aig;
-
-    PicoSAT* ps = nullptr;
-    std::map<uint32_t, std::vector<CMSat::Lit>> cl_map;
-    uint32_t cl_num = 0;
-    std::vector<CMSat::lbool> set_vals;
     const Config conf;
-    uint32_t orig_num_vars;
-    std::vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
-    std::vector<ArjunNS::aig_ptr> defs; //definition of variables in terms of AIG. ORIGINAL number space
+    uint32_t orig_num_vars = 0;
+    uint32_t tot_num_vars = 0;
+    const ArjunNS::AIGManager* aig_mng = nullptr;
+
+    // The doubled CMS-simplified CNF, extracted once in fill_from_solver.
+    std::vector<std::vector<CMSat::Lit>> all_cls;
+    // Indicator units accumulated as variables get defined / proven
+    // independent over the course of the solve loop.
+    std::vector<CMSat::Lit> indicator_units;
+
+    // Persistent incremental CaDiCaL for clause-level core extraction.
+    // Holds every clause of all_cls and every indicator unit, each
+    // guarded by a selector literal. Selector variables start at
+    // tot_num_vars: clause i of all_cls uses selector tot_num_vars+i,
+    // indicator unit k uses tot_num_vars+all_cls.size()+k.
+    std::unique_ptr<CaDiCaL::Solver> core_solver;
+
+    // defs[v] = AIG definition of v over the input vars (original var
+    // space), or nullptr if v was not defined this way.
+    std::vector<ArjunNS::aig_ptr> defs;
+
+    // A clause is A-side iff it lies entirely inside copy 1.
+    bool is_b_clause(const std::vector<CMSat::Lit>& cl) const {
+        for (const auto& l : cl)
+            if (l.var() >= orig_num_vars) return true;
+        return false;
+    }
 };
+
 }

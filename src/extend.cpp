@@ -71,9 +71,7 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
 
     // set up interpolant
     Interpolant interp(conf, cnf.nVars());
-    interp.solver = solver.get();
-    interp.fill_picolsat(orig_num_vars);
-    interp.fill_var_to_indic(var_to_indic);
+    interp.fill_from_solver(solver.get(), orig_num_vars, cnf.get_aig_mng());
 
     //Initially, all of non-opt sampling set is unknown
     for(const auto& x: seen) assert(x == 0);
@@ -136,7 +134,7 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
             // Dependent fully on `indep`
             // TODO: run get_conflict and then we know which were
             // actually needed, so we can do an easier generation/check
-            interp.generate_interpolant(assumptions, test_var, cnf, input_vars);
+            interp.generate_interpolant(assumptions, test_var, input_vars);
             solver->add_clause({Lit(indic, false)});
             interp.add_unit_cl({Lit(indic, false)});
             cnf.add_opt_sampl_var(test_var);

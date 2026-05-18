@@ -396,9 +396,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
 
     // set up interpolant
     Interpolant interp(conf, cnf.nVars());
-    interp.solver = solver.get();
-    interp.fill_picolsat(orig_num_vars);
-    interp.fill_var_to_indic(var_to_indic);
+    interp.fill_from_solver(solver.get(), orig_num_vars, cnf.get_aig_mng());
 
     for(uint32_t x = 0; x < orig_num_vars; x++) {
         pretend_input.insert(x); // we pretend that all vars are input vars
@@ -492,7 +490,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
         } else if (ret == l_False) {
             //not independent
             //i.e. given that all in indep+unkown is equivalent, it's not possible that a1 != b1
-            interp.generate_interpolant(assumptions, test_var, cnf, pretend_input);
+            interp.generate_interpolant(assumptions, test_var, pretend_input);
         }
     }
     verb_print(3, __PRETTY_FUNCTION__ << " pretend_input size: " << pretend_input.size());

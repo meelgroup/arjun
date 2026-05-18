@@ -302,8 +302,8 @@ bool InterpTracerMcMillan::resolve_chain(uint64_t id,
             continue;
         }
 
-        // McMillan: shared (input) pivot → AND, A-local pivot → OR.
-        const bool want_and = pivot_is_input;
+        // McMillan: shared (input) or B-local pivot → AND, A-local → OR.
+        const bool want_and = pivot_is_input || pivot.var() >= b_local_from;
 
         if (!batch.empty() && batch_is_and != want_and) flush_batch();
         if (batch.empty()) {
@@ -414,31 +414,17 @@ void InterpRepair::build_occ() const {
     occ_built = true;
 }
 
-// Find the original-CNF clauses that actually matter for the interpolant
-// of this conflict.
-//
-// The mini-CNF is M = F ∪ U (F = original CNF, U = assumption units,
-// UNSAT). Any subset M' ⊆ M that keeps every B-side input unit and stays
-// UNSAT yields a valid interpolant — A' ⊆ A keeps the A→I miter holding.
-// Two sound reductions: (1) unit propagation — a clause U satisfies is
-// redundant once its "reason" clauses are kept, and reasons are original
-// F clauses so the A/B partition is unchanged; (2) connectivity — the
-// proof stays in the one variable component holding the assumption units,
-// and other components are satisfiable spec sub-formulas, so dropped.
-// If UP alone refutes M, the conflicting clause plus its transitive
-// reason chain is the whole proof and everything else is dropped.
-std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
-        Lit to_repair_lit, const vector<Lit>& conflict) const
+// Find the clauses that actually matter for an UNSAT proof seeded by
+// `units`. See the header for the soundness argument; the mini-CNF is
+// M = clauses ∪ units, any subset that keeps `units` and stays UNSAT
+// yields a valid interpolant.
+std::vector<uint32_t> ArjunInt::collect_relevant_clauses(
+        const std::vector<std::vector<Lit>>& clauses,
+        const std::vector<Lit>& units,
+        uint32_t n_vars,
+        const std::vector<std::vector<uint32_t>>& occ)
 {
-    if (!occ_built) build_occ();
-    const auto& clauses = cnf.get_clauses();
     const uint32_t n_cls = clauses.size();
-
-    // Variable universe: the CNF, plus any assumption var beyond nVars().
-    uint32_t n_vars = cnf.nVars();
-    auto bump = [&](uint32_t v) { if (v + 1 > n_vars) n_vars = v + 1; };
-    for (const auto& l : conflict) bump(l.var());
-    bump(to_repair_lit.var());
 
     // Ternary assignment from unit propagation: 0=unset, 1=true, 2=false.
     vector<uint8_t> val(n_vars, 0);
@@ -467,9 +453,8 @@ std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
         }
     };
 
-    // Assumption units (direct): ~conflict lits and ~to_repair.
-    for (const auto& l : conflict) enqueue(~l, -1);
-    enqueue(~to_repair_lit, -1);
+    // Seed units (direct, no reason clause).
+    for (const auto& l : units) enqueue(l, -1);
     // Original-CNF unit clauses force their literal unconditionally.
     for (uint32_t ci = 0; ci < n_cls && !conflict_hit; ci++) {
         if (clauses[ci].size() == 1) enqueue(clauses[ci][0], (int64_t)ci);
@@ -546,8 +531,7 @@ std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
     auto see_var = [&](uint32_t v) {
         if (v < n_vars && !var_seen[v]) { var_seen[v] = 1; vq.push_back(v); }
     };
-    for (const auto& l : conflict) see_var(l.var());
-    see_var(to_repair_lit.var());
+    for (const auto& l : units) see_var(l.var());
     while (!vq.empty()) {
         const uint32_t v = vq.back(); vq.pop_back();
         for (uint32_t s = 0; s < 2; s++) {
@@ -582,6 +566,31 @@ std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
         }
     });
     return out;
+}
+
+// Thin wrapper: the mini-CNF is the original CNF plus the assumption
+// units (negated conflict lits + ~to_repair). Delegates the actual UP /
+// connectivity work to the generic free function above.
+std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
+        Lit to_repair_lit, const vector<Lit>& conflict) const
+{
+    if (!occ_built) build_occ();
+
+    // Variable universe: the CNF, plus any assumption var beyond nVars().
+    uint32_t n_vars = cnf.nVars();
+    auto bump = [&](uint32_t v) { if (v + 1 > n_vars) n_vars = v + 1; };
+    for (const auto& l : conflict) bump(l.var());
+    bump(to_repair_lit.var());
+
+    // Assumption units: ~conflict lits (the conflict is the negated
+    // assumptions) and ~to_repair.
+    vector<Lit> units;
+    units.reserve(conflict.size() + 1);
+    for (const auto& l : conflict) units.push_back(~l);
+    units.push_back(~to_repair_lit);
+
+    return ArjunInt::collect_relevant_clauses(cnf.get_clauses(), units,
+            n_vars, occ);
 }
 
 aig_ptr InterpRepair::solve_one_interpolant(
