@@ -23,7 +23,6 @@
  */
 
 #include "autarky.h"
-#include <cryptominisat5/cryptominisat.h>
 #include "time_mem.h"
 #include "arjun.h"
 #include "constants.h"

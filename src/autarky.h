@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <cryptominisat5/cryptominisat.h>
+#include "metasolver.h"
 #include "config.h"
 #include <set>
 #include "arjun.h"
@@ -48,7 +48,7 @@ private:
         CMSat::Lit pos = CMSat::lit_Undef;
         CMSat::Lit neg = CMSat::lit_Undef;
     };
-    CMSat::SATSolver s;
+    MetaSolver s;
     const Config conf;
 
 };
