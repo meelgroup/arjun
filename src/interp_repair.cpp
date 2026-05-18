@@ -195,8 +195,8 @@ aig_ptr InterpTracerMcMillan::build_interpolant() {
 void InterpTracerMcMillan::build_derived_label(uint64_t id) {
     const vector<uint64_t>& antecedents = antec[id];
     if (antecedents.empty()) {
-        // Shouldn't happen for a derived clause — abandon the interpolant.
-        assert(false && "derived clause with no antecedents?");
+        // A derived clause always has antecedents.
+        assert(false && "derived clause with no antecedents");
     }
     // cadical hands the antecedent list in reverse linear-resolution
     // order, so replaying it reversed reconstructs the chain.
@@ -720,57 +720,48 @@ aig_ptr InterpRepair::compute_interpolant(
 
     // Clean up the proof-driven AIG before returning.
     interp = AIG::simplify_aig(interp);
+    release_assert(interp != nullptr
+        && "interp-repair: simplify_aig of the interpolant returned null");
 
     // SLOW_DEBUG: verify the interpolant only references input vars.
     SLOW_DEBUG_DO({
-        if (interp != nullptr) {
-            set<const AIG*> seen2;
-            std::function<bool(const aig_ptr&)> check = [&](const aig_ptr& a) -> bool {
-                if (a == nullptr) return true;
-                if (a->type == AIGT::t_const) return true;
-                if (a->type == AIGT::t_lit) {
-                    if (a->var >= is_input.size() || !is_input[a->var]) {
-                        cout << "c o [interp-repair] SLOW_DEBUG: interpolant has non-input leaf var="
-                             << (a->var+1) << endl;
-                        return false;
-                    }
-                    return true;
+        set<const AIG*> seen2;
+        std::function<bool(const aig_ptr&)> check = [&](const aig_ptr& a) -> bool {
+            if (a == nullptr) return true;
+            if (a->type == AIGT::t_const) return true;
+            if (a->type == AIGT::t_lit) {
+                if (a->var >= is_input.size() || !is_input[a->var]) {
+                    cout << "c o [interp-repair] SLOW_DEBUG: interpolant has non-input leaf var="
+                         << (a->var+1) << endl;
+                    return false;
                 }
-                if (!seen2.insert(a.get()).second) return true;
-                return check(a->l) && check(a->r);
-            };
-            if (!check(interp)) {
-                assert(false && "interpolant has non-input leaf — tracer bug");
+                return true;
             }
+            if (!seen2.insert(a.get()).second) return true;
+            return check(a->l) && check(a->r);
+        };
+        if (!check(interp)) {
+            assert(false && "interpolant has non-input leaf — tracer bug");
         }
     });
 
-    // I = TRUE would make the must-flip region empty (infinite loop);
-    // it also contradicts the UNSAT. Bail.
-    if (interp != nullptr && interp->type == AIGT::t_const && !interp.neg) {
-        VERBOSE_DEBUG_DO(cout << "c o [interp-repair] interpolant = TRUE; bailing" << endl);
-        calls_failed_other++;
-        return nullptr;
-    }
+    // I = TRUE would make the must-flip region empty; it also
+    // contradicts the mini-CNF UNSAT, so it is never produced.
+    release_assert(!(interp->type == AIGT::t_const && !interp.neg)
+        && "interp-repair: interpolant = TRUE contradicts the mini-CNF UNSAT");
     // I = FALSE means y_rep is forced to ctx[y_rep] everywhere; allowed
-    // through, SLOW_DEBUG checks catch any unsoundness.
-    VERBOSE_DEBUG_DO(if (interp != nullptr && interp->type == AIGT::t_const && interp.neg) {
+    // through.
+    VERBOSE_DEBUG_DO(if (interp->type == AIGT::t_const && interp.neg) {
         cout << "c o [interp-repair] interpolant = FALSE; y_rep forced to ctx everywhere" << endl;
     });
 
-    // Quick sanity: interpolant must evaluate to FALSE on the CEX inputs.
-    if (!quick_check_interpolant_excludes_cex(interp, conflict)) {
-        calls_quick_check_failed++;
-        VERBOSE_DEBUG_DO(cout << "c o [interp-repair] quick_check_excludes_cex FAILED — bailing" << endl);
-        return nullptr;
-    }
+    // The interpolant always evaluates to FALSE on the CEX inputs.
+    release_assert(quick_check_interpolant_excludes_cex(interp, conflict)
+        && "interp-repair: interpolant does not evaluate to FALSE on the CEX inputs");
 
     SLOW_DEBUG_DO(
-        if (!slow_check_a_implies_i(to_repair_lit, conflict, interp, conflict_budget)) {
-            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] A→I verification FAILED"
-                " — falling back to conflict clause" << endl);
-            assert(false && "interpolant failed A→I check — tracer or verifier bug");
-        }
+        release_assert(slow_check_a_implies_i(
+            to_repair_lit, conflict, interp, conflict_budget));
     );
 
     // Size: count internal AND nodes in this AIG sub-tree.
@@ -840,7 +831,7 @@ aig_ptr InterpRepair::compute_interpolant(
 
 // Full miter: check A & ~I is UNSAT (i.e. A -> I), with I Tseitin-encoded
 // inline. `conflict_budget` (0 = unlimited) caps the solve; an exhausted
-// budget is reported as a verification failure so the caller falls back.
+// budget leaves the check inconclusive and returns true.
 bool InterpRepair::slow_check_a_implies_i(
         Lit to_repair_lit,
         const vector<Lit>& conflict,
@@ -909,13 +900,11 @@ bool InterpRepair::slow_check_a_implies_i(
     add_unit(~interp_lit);  // assert ¬I
 
     int ret = solver->solve();
-    if (ret != 20) {
-        // 10 = SAT (interpolant genuinely violates A→I), 0 = budget
-        // exhausted (cannot conclude). Either way verification failed.
-        VERBOSE_DEBUG_DO(cout << "c o [interp-repair] slow_check_a_implies_i: "
-             << "miter NOT UNSAT (cadical ret=" << ret << ")" << endl);
-        return false;
-    }
+    // ret==10 (SAT) is a genuine model of A & ¬I — the interpolant would
+    // violate A→I, which a sound interpolant never does.
+    release_assert(ret != 10
+        && "interp-repair: A→I miter came back SAT — interpolant violates A→I");
+    // ret==20 (UNSAT, verified) or ret==0 (budget exhausted, inconclusive).
     return true;
 }
 
@@ -973,11 +962,10 @@ bool InterpRepair::sample_check_interpolant(
         }
 
         int ret = solver->solve();
-        if (ret == 10) { // SAT — interp says must-flip but it's not!
-            cout << "c o [interp-repair] sample_check FAILED on seed=" << seed
-                 << " sample=" << s << ": I(X)=FALSE but F is sat with y_rep=wrong" << endl;
-            return false;
-        }
+        // ret==10 (SAT) would mean I(X)=FALSE on an input where flipping
+        // y_rep is in fact feasible — a sound interpolant never does this.
+        release_assert(ret != 10
+            && "interp-repair: sample_check found I(X)=FALSE but y_rep is flippable");
         // ret == 20 (UNSAT) or 0 (UNKNOWN, shouldn't happen w/o budget): pass
     }
 
@@ -1018,7 +1006,6 @@ void InterpRepair::print_stats(const std::string& prefix) const {
          << " calls: " << calls
          << " ok: " << calls_succeeded
          << " oversize: " << calls_failed_oversize
-         << " quickfail: " << calls_quick_check_failed
          << " trivial: " << calls_failed_empty_or_no_input
          << " other: " << calls_failed_other
          << " avg conflict-lits: "

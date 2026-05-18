@@ -153,8 +153,9 @@ public:
     ~InterpRepair() = default;
 
     // Compute an interpolant I(input_vars): FALSE on the CEX inputs,
-    // TRUE where flipping y_rep stays feasible. Returns nullptr on
-    // failure (SAT, oversized AIG, internal error).
+    // TRUE where flipping y_rep stays feasible. Returns nullptr when
+    // there is nothing to interpolate (empty or input-free conflict),
+    // the AIG exceeds the node cap, or the conflict budget is exhausted.
     [[nodiscard]] ArjunNS::aig_ptr compute_interpolant(
         uint32_t y_rep, CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
@@ -167,8 +168,9 @@ public:
         const ArjunNS::aig_ptr& interp,
         const std::vector<CMSat::Lit>& conflict) const;
 
-    // Heavy check: full miter that A -> I. Returns true if A & ~I is
-    // UNSAT.
+    // Heavy check: full miter that A → I. A genuine A & ¬I model trips
+    // an assert; returns true otherwise (an exhausted conflict budget
+    // leaves the check inconclusive and also returns true).
     [[nodiscard]] bool slow_check_a_implies_i(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
@@ -176,8 +178,8 @@ public:
         uint64_t conflict_budget = 0) const;
 
     // Probabilistic check: for K random input patterns where I(X)=FALSE,
-    // SAT-check that flipping y_rep is genuinely impossible. Returns true
-    // on pass/inconclusive, false on a confirmed counterexample.
+    // SAT-check that flipping y_rep is genuinely impossible. Always
+    // returns true; a confirmed counterexample trips an assert.
     [[nodiscard]] bool sample_check_interpolant(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
@@ -193,7 +195,6 @@ public:
     uint64_t calls_oversize_pudlak_retry = 0;
     uint64_t calls_failed_other = 0;
     uint64_t calls_failed_empty_or_no_input = 0;
-    uint64_t calls_quick_check_failed = 0;
     // Cadical hit the conflict budget and returned l_Undef, not a proof.
     uint64_t calls_budget_exhausted = 0;
     uint64_t total_interp_nodes = 0;
