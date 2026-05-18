@@ -2271,7 +2271,7 @@ DLL_PUBLIC void SimplifiedCNF::check_cnf_vars() const {
 
     // Now check orig_to_new_var covers all vars in the CNF
     if (!need_aig) return;
-    set<uint32_t> vars_in_cnf;
+    unordered_set<uint32_t> vars_in_cnf;
     for(const auto& cl: clauses) {
         for(const auto& l: cl) {
             vars_in_cnf.insert(l.var());
@@ -2282,16 +2282,14 @@ DLL_PUBLIC void SimplifiedCNF::check_cnf_vars() const {
             vars_in_cnf.insert(l.var());
         }
     }
+    auto rev = get_new_to_orig_var_list();
     for(const auto& v: vars_in_cnf) {
         release_assert(v < nvars); // already checked above
-        bool in_orig = false;
-        for(const auto& [o, n]: orig_to_new_var) {
-            if (n.var() == v) {
-                in_orig = true;
-                break;
-            }
+        if (rev.count(v) == 0) {
+            cout << "ERROR: Found a variable in CNF that is not mapped from any orig var" << endl;
+            cout << "CNF var: " << v+1 << endl;
+            exit(EXIT_FAILURE);
         }
-        release_assert(in_orig && "All CNF vars must be in orig_to_new_var");
     }
 }
 
