@@ -49,13 +49,12 @@ namespace ArjunInt {
 // over the shared input variables IS the definition of test_var.
 //
 // No PicoSAT is involved. The (CMS-simplified) doubled CNF is extracted
-// once into a persistent incremental CaDiCaL where every clause is
-// guarded by a fresh selector literal. Per test_var: assume all
-// selectors + the test_var assumptions, solve, and read the UNSAT core
-// back via failed() — a true clause-level core, as small as PicoSAT's
-// was. That core (and only it) feeds a fresh CaDiCaL solve with
-// InterpTracerMcMillan, which reconstructs the interpolant from the
-// proof.
+// once in fill_from_solver. Per test_var, the whole doubled CNF plus the
+// accumulated indicator units and the test_var assumptions are added (as
+// clauses) to a fresh CaDiCaL solve with InterpTracerMcMillan, which
+// reconstructs the interpolant from the refutation. Clauses the proof
+// never touches never enter the interpolant, so no separate
+// core-extraction pre-solve is needed.
 class Interpolant {
 public:
     Interpolant(const Config& _conf, const uint32_t num_vars) :
@@ -92,13 +91,6 @@ private:
     // Indicator units accumulated as variables get defined / proven
     // independent over the course of the solve loop.
     std::vector<CMSat::Lit> indicator_units;
-
-    // Persistent incremental CaDiCaL for clause-level core extraction.
-    // Holds every clause of all_cls and every indicator unit, each
-    // guarded by a selector literal. Selector variables start at
-    // tot_num_vars: clause i of all_cls uses selector tot_num_vars+i,
-    // indicator unit k uses tot_num_vars+all_cls.size()+k.
-    std::unique_ptr<CaDiCaL::Solver> core_solver;
 
     // defs[v] = AIG definition of v over the input vars (original var
     // space), or nullptr if v was not defined this way.
