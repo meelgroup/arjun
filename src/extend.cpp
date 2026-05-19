@@ -132,8 +132,6 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
         if (ret == l_False) {
             num_unsat++;
             // Dependent fully on `indep`
-            // TODO: run get_conflict and then we know which were
-            // actually needed, so we can do an easier generation/check
             interp.generate_interpolant(assumptions, test_var, input_vars);
             solver->add_clause({Lit(indic, false)});
             interp.add_unit_cl({Lit(indic, false)});
