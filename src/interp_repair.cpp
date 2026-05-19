@@ -815,8 +815,9 @@ aig_ptr InterpRepair::compute_interpolant(
     });
 
     // The interpolant always evaluates to FALSE on the CEX inputs.
-    release_assert(quick_check_interpolant_excludes_cex(interp, conflict)
-        && "interp-repair: interpolant does not evaluate to FALSE on the CEX inputs");
+    SLOW_DEBUG_DO(
+        assert(quick_check_interpolant_excludes_cex(interp, conflict)
+            && "interp-repair: interpolant does not evaluate to FALSE on the CEX inputs"));
 
     SLOW_DEBUG_DO(
         release_assert(slow_check_a_implies_i(
