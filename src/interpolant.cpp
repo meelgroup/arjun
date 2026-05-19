@@ -45,12 +45,39 @@ Interpolant::~Interpolant() {
     if (solver && tracer) solver->disconnect_proof_tracer(tracer.get());
 }
 
+void Interpolant::load_solver() {
+    // Build a fresh incremental CaDiCaL + McMillan tracer and (re)load the
+    // doubled CNF and the indicator units accumulated so far. Partition:
+    // A = clauses entirely in copy 1, B = everything else (copy 2,
+    // indicators, and their units).
+    solver = std::make_unique<Solver>();
+    tracer = std::make_unique<InterpTracerMcMillan>(conf, *aig_mng, *input_vars);
+    // copy-2 and indicator variables (index >= orig_num_vars) are B-local.
+    tracer->b_local_from = orig_num_vars;
+    solver->connect_proof_tracer(tracer.get(), true);
+
+    for (const auto& c : all_cls) {
+        tracer->next_is_b = is_b_clause(c);
+        for (const auto& l : c) solver->add(lit_to_pl(l));
+        solver->add(0);
+        tracer->next_is_b = false;
+    }
+    for (const auto& l : indicator_units) {
+        tracer->next_is_b = true;
+        solver->add(lit_to_pl(l));
+        solver->add(0);
+        tracer->next_is_b = false;
+    }
+    solves_since_rebuild = 0;
+}
+
 void Interpolant::fill_from_solver(SATSolver* cms_solver,
         uint32_t _orig_num_vars, const AIGManager& _aig_mng,
-        const set<uint32_t>& input_vars) {
+        const set<uint32_t>& _input_vars) {
     orig_num_vars = _orig_num_vars;
     tot_num_vars = cms_solver->nVars();
     aig_mng = &_aig_mng;
+    input_vars = &_input_vars;
 
     // Extract the (already CMS-simplified) doubled CNF once. The indicator
     // units permanently added to the solver later come via add_unit_cl.
@@ -64,23 +91,7 @@ void Interpolant::fill_from_solver(SATSolver* cms_solver,
     }
     cms_solver->end_getting_constraints();
 
-    // Build the persistent incremental CaDiCaL + McMillan tracer and load
-    // the doubled CNF into it once. The tracer keeps a reference to the
-    // caller's live input_vars set. Partition: A = clauses entirely in
-    // copy 1, B = everything else (copy 2, indicators, and their units).
-    solver = std::make_unique<Solver>();
-    tracer = std::make_unique<InterpTracerMcMillan>(conf, *aig_mng, input_vars);
-    // copy-2 and indicator variables (index >= orig_num_vars) are B-local.
-    tracer->b_local_from = orig_num_vars;
-    solver->connect_proof_tracer(tracer.get(), true);
-
-    for (const auto& c : all_cls) {
-        tracer->next_is_b = is_b_clause(c);
-        for (const auto& l : c) solver->add(lit_to_pl(l));
-        solver->add(0);
-        tracer->next_is_b = false;
-    }
-
+    load_solver();
     verb_print(2, "[interp] doubled CNF loaded into incremental solver: "
             << all_cls.size() << " clauses, " << tot_num_vars << " vars");
 }
@@ -140,4 +151,14 @@ void Interpolant::generate_interpolant(const vector<Lit>& assumptions,
     defs[test_var] = interp;
     verb_print(5, "[interp] definition of var " << test_var+1
             << " is: " << interp);
+
+    // Periodically rebuild solver + tracer so the tracer's clause maps
+    // (which accumulate every clause of every solve) do not grow without
+    // bound. The doubled CNF and indicator units are simply reloaded.
+    if (++solves_since_rebuild >= conf.interp_rebuild_every) {
+        verb_print(2, "[interp] rebuilding incremental solver after "
+                << solves_since_rebuild << " interpolants");
+        solver->disconnect_proof_tracer(tracer.get());
+        load_solver();
+    }
 }

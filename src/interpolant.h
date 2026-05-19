@@ -57,6 +57,13 @@ namespace ArjunInt {
 // tracer reconstruct the interpolant from the refutation. Because the
 // doubled CNF is added (and the tracer told about it) only once, the
 // per-test_var cost is just the solve and the proof-core reconstruction.
+//
+// The tracer's clause maps (cls / antec) grow with every incremental
+// solve and cannot be pruned safely (a derived clause kept by cadical
+// may be an antecedent of a later proof). To bound both memory and the
+// per-lookup cost, the solver + tracer are rebuilt from scratch every
+// conf.interp_rebuild_every interpolants — cheap, since reloading just
+// re-adds the doubled CNF and the indicator units.
 class Interpolant {
 public:
     Interpolant(const Config& _conf, const uint32_t num_vars) :
@@ -100,13 +107,21 @@ private:
     std::vector<CMSat::Lit> indicator_units;
 
     // Persistent incremental CaDiCaL holding the doubled CNF + indicator
-    // units, with the McMillan tracer attached for the whole solve loop.
+    // units, with the McMillan tracer attached. Rebuilt periodically.
     std::unique_ptr<CaDiCaL::Solver> solver;
     std::unique_ptr<InterpTracerMcMillan> tracer;
+    // The caller's live input-variable set, bound into each fresh tracer.
+    const std::set<uint32_t>* input_vars = nullptr;
+    // Interpolants produced since the last (re)build of solver + tracer.
+    uint32_t solves_since_rebuild = 0;
 
     // defs[v] = AIG definition of v over the input vars (original var
     // space), or nullptr if v was not defined this way.
     std::vector<ArjunNS::aig_ptr> defs;
+
+    // Create a fresh solver + tracer and (re)load the doubled CNF and the
+    // indicator units accumulated so far into it.
+    void load_solver();
 
     // A clause is A-side iff it lies entirely inside copy 1.
     bool is_b_clause(const std::vector<CMSat::Lit>& cl) const {

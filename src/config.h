@@ -130,6 +130,10 @@ struct Config {
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;
     int extend_ccnr = 0;
+    // Rebuild the persistent interpolation solver + tracer after this
+    // many interpolants, to bound the tracer's accumulating clause maps.
+    // Lowering it forces the rebuild path on every fuzz iteration.
+    uint32_t interp_rebuild_every = 512;
     std::string debug_synth;
     uint32_t seed = 42;
 };

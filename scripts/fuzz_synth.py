@@ -472,6 +472,12 @@ if __name__ == "__main__":
         if random.choice([True, False]):
             solver += " --sat-sweep"
 
+        # Force the doubled-CNF interpolation solver to rebuild after every
+        # 1..5 interpolants so the rebuild path is exercised on every fuzz
+        # iteration (production default is 512 — fuzz CNFs would never trip
+        # it otherwise).
+        solver += " --interprebuildevery %d" % random.randint(1, 5)
+
         # manthan_order: 0 = incidence/learn, 2 = BVE. 1 is not a valid value.
         solver += " --morder " + str(random.choice([0, 2]))
         solver += " --maxsatorder " + random.choice(["0", "1"])

@@ -39,6 +39,8 @@
 #include <tracer.hpp>
 #include <map>
 #include <set>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <cstdint>
 #include <memory>
@@ -87,17 +89,20 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     uint32_t b_local_from = UINT32_MAX;
 
     // Original clauses decided to be B-side (label = TRUE).
-    std::set<uint64_t> b_clause_ids;
+    // Clause-id keyed and only ever point-accessed (never iterated), so
+    // these are unordered: a persistent tracer accumulates them across
+    // many incremental solves, and O(1) lookup keeps resolve_chain off
+    // the O(log N) red-black-tree walk.
+    std::unordered_set<uint64_t> b_clause_ids;
 
     // ID -> clause literals (kept to find resolution pivots).
-    std::map<uint64_t, std::vector<CMSat::Lit>> cls;
-    // ID -> partial McMillan label (an AIG over input vars). Original
-    // clauses are labelled eagerly; derived-clause labels are only filled
-    // for the proof core during build_interpolant().
-    std::map<uint64_t, ArjunNS::aig_ptr> labels;
+    std::unordered_map<uint64_t, std::vector<CMSat::Lit>> cls;
+    // ID -> partial McMillan label (an AIG over input vars), filled for
+    // the proof core during build_interpolant().
+    std::unordered_map<uint64_t, ArjunNS::aig_ptr> labels;
     // ID -> antecedent chain for derived clauses. Recorded as the proof
     // streams in, but only resolved (into a label) for the proof core.
-    std::map<uint64_t, std::vector<uint64_t>> antec;
+    std::unordered_map<uint64_t, std::vector<uint64_t>> antec;
 
     // Cache: input lit -> AIG leaf node, so structural hashing dedups.
     std::map<CMSat::Lit, ArjunNS::aig_ptr> lit_to_aig;
