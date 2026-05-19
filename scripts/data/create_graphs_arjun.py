@@ -245,7 +245,7 @@ def print_summary_tables(table_todo, fname_like, full=False):
     vers = ",".join("'" + v + "'" for _, v in table_todo)
 
     compact_cols = [
-        ("replace(dirname,'out-synth-','out-')",                         "dirname"),
+        ("dirname",                                                      "dirname"),
         ("MIN(timeout_call)",                                            "call"),
         (f"sum({SOLVE_TIME_EXPR} IS NOT NULL)",                          "solved"),
         (f"CAST(ROUND(sum(coalesce({SOLVE_TIME_EXPR},{TIMEOUT}))/COUNT(*),0) AS INTEGER)", "PAR2"),
@@ -326,7 +326,7 @@ def print_median_tables(table_todo, fname_like):
     for i, (dir, ver) in enumerate(table_todo):
         alias_suffix = " as dirname" if i == 0 else ""
         ver_alias    = " as ver"     if i == 0 else ""
-        parts = [f"replace('{dir}','out-synth-','out-'){alias_suffix}",
+        parts = [f"'{dir}'{alias_suffix}",
                  f"'{ver[:10]}'{ver_alias}"]
         for expr, alias in plain_cols:
             parts.append(f"{_median_sq(expr, dir, ver, fname_like)} as med_{alias}")
@@ -348,7 +348,7 @@ def print_instance_stats_table(table_todo, fname_like):
     union_parts = []
     for i, (dir, ver) in enumerate(table_todo):
         alias_suffix = " as dirname" if i == 0 else ""
-        parts = [f"replace('{dir}','out-synth-','out-'){alias_suffix}"]
+        parts = [f"'{dir}'{alias_suffix}"]
         for col, alias in metrics:
             parts.append(f"{_median_sq(col, dir, ver, fname_like)} as med_{alias}")
             parts.append(f"{_avg_sq(col, dir, ver, fname_like)} as avg_{alias}")
@@ -426,8 +426,8 @@ def print_slower_tables(matched_dirs, fname_like, threshold=0.25,
             continue
         slower.sort(key=lambda r: -r[3])
 
-        short1 = dir1.replace("out-synth-", "out-")
-        short2 = dir2.replace("out-synth-", "out-")
+        short1 = dir1
+        short2 = dir2
         title = (f"{short1} >= {pct}% and >= {int(min_abs_diff)}s slower"
                  f" than {short2}  ({len(slower)} cases)")
         print(f"\n{BLUE}{title}{RESET}")
@@ -471,8 +471,8 @@ def print_solve_diff_tables(matched_dirs, fname_like, verbose=False):
                 print(f"  solve-diff: no cases for {dir1} vs {dir2}")
             continue
 
-        short1 = dir1.replace("out-synth-", "out-")
-        short2 = dir2.replace("out-synth-", "out-")
+        short1 = dir1
+        short2 = dir2
         title = (f"{short1} solves but {short2} does NOT"
                  f"  ({len(rows)} cases)")
         print(f"\n{BLUE}{title}{RESET}")
