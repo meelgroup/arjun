@@ -48,34 +48,40 @@ namespace ArjunInt {
 //   B = everything else (copy 2, indicators, and their units)
 // over the shared input variables IS the definition of test_var.
 //
-// No PicoSAT is involved. The (CMS-simplified) doubled CNF is extracted
-// once in fill_from_solver. Per test_var, the whole doubled CNF plus the
-// accumulated indicator units and the test_var assumptions are added (as
-// clauses) to a fresh CaDiCaL solve with InterpTracerMcMillan, which
-// reconstructs the interpolant from the refutation. Clauses the proof
-// never touches never enter the interpolant, so no separate
-// core-extraction pre-solve is needed.
+// No PicoSAT is involved. The (CMS-simplified) doubled CNF is loaded once
+// in fill_from_solver into a single persistent incremental CaDiCaL with
+// InterpTracerMcMillan attached. Indicator units are added incrementally
+// via add_unit_cl, and each generate_interpolant call is one
+// assumption-based solve on that same solver: assume the
+// test_var-differs-across-copies literals, solve, conclude(), and let the
+// tracer reconstruct the interpolant from the refutation. Because the
+// doubled CNF is added (and the tracer told about it) only once, the
+// per-test_var cost is just the solve and the proof-core reconstruction.
 class Interpolant {
 public:
     Interpolant(const Config& _conf, const uint32_t num_vars) :
         conf(_conf) {
         defs.resize(num_vars, nullptr);
     }
-    ~Interpolant() = default;
+    ~Interpolant();
 
-    // Extract the (CMS-simplified) doubled CNF from `solver` once, before
-    // the per-variable solve loop starts.
+    // Extract the (CMS-simplified) doubled CNF from `solver` once and load
+    // it into the persistent incremental interpolation solver, before the
+    // per-variable solve loop starts. `input_vars` is the caller's live
+    // input-variable set: the tracer keeps a reference to it and picks up
+    // variables added to it as the loop proceeds.
     void fill_from_solver(CMSat::SATSolver* solver, uint32_t orig_num_vars,
-        const ArjunNS::AIGManager& aig_mng);
+        const ArjunNS::AIGManager& aig_mng,
+        const std::set<uint32_t>& input_vars);
 
     // `test_var` was just proven UNSAT under `assumptions`; reconstruct
-    // and store its definition AIG over `input_vars`.
+    // and store its definition AIG over the current input vars.
     void generate_interpolant(const std::vector<CMSat::Lit>& assumptions,
-        uint32_t test_var, const std::set<uint32_t>& input_vars);
+        uint32_t test_var);
 
     // Record an indicator unit clause permanently added to the doubled
-    // problem (a var proven independent/defined). Folded into every later
-    // mini-CNF as a B-side unit.
+    // problem (a var proven independent/defined): add it, B-side, to the
+    // persistent interpolation solver too.
     void add_unit_cl(const std::vector<CMSat::Lit>& cl);
 
     auto& get_defs() { return defs; }
@@ -86,11 +92,17 @@ private:
     uint32_t tot_num_vars = 0;
     const ArjunNS::AIGManager* aig_mng = nullptr;
 
-    // The doubled CMS-simplified CNF, extracted once in fill_from_solver.
+    // The doubled CMS-simplified CNF, extracted once in fill_from_solver
+    // (kept only for the optional --debugsynth CNF dump).
     std::vector<std::vector<CMSat::Lit>> all_cls;
     // Indicator units accumulated as variables get defined / proven
     // independent over the course of the solve loop.
     std::vector<CMSat::Lit> indicator_units;
+
+    // Persistent incremental CaDiCaL holding the doubled CNF + indicator
+    // units, with the McMillan tracer attached for the whole solve loop.
+    std::unique_ptr<CaDiCaL::Solver> solver;
+    std::unique_ptr<InterpTracerMcMillan> tracer;
 
     // defs[v] = AIG definition of v over the input vars (original var
     // space), or nullptr if v was not defined this way.

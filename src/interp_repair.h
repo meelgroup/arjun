@@ -115,6 +115,15 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     // ID of the derived empty clause; set when first seen.
     uint64_t empty_id = UINT64_MAX;
 
+    // Incremental (assumption-based) solving. cadical reports the
+    // refutation through conclude_unsat() after conclude() is called.
+    // conclusion_type stays 0 on the non-incremental interp_repair path
+    // (which never calls conclude()), so build_interpolant() falls back
+    // to empty_id there. conclusion_root is the id of the derived empty
+    // clause (CONFLICT) or of the failing-assumption clause (ASSUMPTIONS).
+    int conclusion_type = 0;
+    uint64_t conclusion_root = UINT64_MAX;
+
     // Set by build_interpolant(): the McMillan interpolant AIG, or null.
     ArjunNS::aig_ptr out = nullptr;
 
@@ -136,13 +145,38 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
             const std::vector<int>& clause,
             const std::vector<uint64_t>& antecedents) override;
 
-    // Trace back from the empty clause over the recorded antecedent
-    // chains, build McMillan labels only for the reachable proof-core
-    // clauses, and return the interpolant AIG (sets `out`). Returns null
-    // if no empty clause was derived.
+    // Incremental-solving events. Needed when the tracer is reused
+    // across several assumption-based solves on one persistent solver
+    // (the doubled-CNF interpolation in interpolant.cpp).
+    // add_assumption_clause() records the failing-assumption clause;
+    // conclude_unsat() reports the refutation root. The non-incremental
+    // interp_repair path never triggers these.
+    void add_assumption_clause(uint64_t id,
+            const std::vector<int>& clause,
+            const std::vector<uint64_t>& antecedents) override;
+    void conclude_unsat(CaDiCaL::ConclusionType type,
+            const std::vector<uint64_t>& ids) override;
+
+    // Drop the per-solve scratch (labels, and-table, refutation root)
+    // before the next incremental solve. cls / antec / b_clause_ids are
+    // kept — the clause database outlives a single solve. The caller
+    // must invoke this between solves; it is deliberately not driven by
+    // the solve_query() callback, since cadical can derive the empty
+    // clause already while clauses are being added, before solve().
+    void reset_per_solve();
+
+    // Trace back from the refutation root (empty clause, or the
+    // failing-assumption clause) over the recorded antecedent chains,
+    // build McMillan labels only for the reachable proof-core clauses,
+    // and return the interpolant AIG (sets `out`). Returns null if no
+    // refutation was recorded.
     ArjunNS::aig_ptr build_interpolant();
 
 private:
+    // McMillan/Pudlák label of an original clause, computed lazily from
+    // the current input_vars — deferred out of add_original_clause so a
+    // persistent tracer picks up input vars added since the clause was.
+    [[nodiscard]] ArjunNS::aig_ptr original_label(uint64_t id);
     // Resolve one derived clause's antecedent chain into a McMillan /
     // Pudlák label. Tries the chain reversed, then forward.
     void build_derived_label(uint64_t id);

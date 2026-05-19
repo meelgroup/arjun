@@ -39,64 +39,67 @@ using std::vector;
 using std::set;
 using std::endl;
 
-void Interpolant::fill_from_solver(SATSolver* solver, uint32_t _orig_num_vars,
-        const AIGManager& _aig_mng) {
+Interpolant::~Interpolant() {
+    // Detach the tracer before either it or the solver is destroyed:
+    // an attached tracer is otherwise deleted by the solver's destructor.
+    if (solver && tracer) solver->disconnect_proof_tracer(tracer.get());
+}
+
+void Interpolant::fill_from_solver(SATSolver* cms_solver,
+        uint32_t _orig_num_vars, const AIGManager& _aig_mng,
+        const set<uint32_t>& input_vars) {
     orig_num_vars = _orig_num_vars;
-    tot_num_vars = solver->nVars();
+    tot_num_vars = cms_solver->nVars();
     aig_mng = &_aig_mng;
 
     // Extract the (already CMS-simplified) doubled CNF once. The indicator
-    // units permanently added to the solver later are tracked via
-    // add_unit_cl.
+    // units permanently added to the solver later come via add_unit_cl.
     all_cls.clear();
-    solver->start_getting_constraints(false);
+    cms_solver->start_getting_constraints(false);
     vector<Lit> cl;
     bool is_xor, rhs;
-    while (solver->get_next_constraint(cl, is_xor, rhs)) {
+    while (cms_solver->get_next_constraint(cl, is_xor, rhs)) {
         assert(!is_xor); assert(rhs);
         all_cls.push_back(cl);
     }
-    solver->end_getting_constraints();
+    cms_solver->end_getting_constraints();
 
-    verb_print(2, "[interp] doubled CNF extracted: " << all_cls.size()
-            << " clauses, " << tot_num_vars << " vars");
+    // Build the persistent incremental CaDiCaL + McMillan tracer and load
+    // the doubled CNF into it once. The tracer keeps a reference to the
+    // caller's live input_vars set. Partition: A = clauses entirely in
+    // copy 1, B = everything else (copy 2, indicators, and their units).
+    solver = std::make_unique<Solver>();
+    tracer = std::make_unique<InterpTracerMcMillan>(conf, *aig_mng, input_vars);
+    // copy-2 and indicator variables (index >= orig_num_vars) are B-local.
+    tracer->b_local_from = orig_num_vars;
+    solver->connect_proof_tracer(tracer.get(), true);
+
+    for (const auto& c : all_cls) {
+        tracer->next_is_b = is_b_clause(c);
+        for (const auto& l : c) solver->add(lit_to_pl(l));
+        solver->add(0);
+        tracer->next_is_b = false;
+    }
+
+    verb_print(2, "[interp] doubled CNF loaded into incremental solver: "
+            << all_cls.size() << " clauses, " << tot_num_vars << " vars");
 }
 
 void Interpolant::add_unit_cl(const vector<Lit>& cl) {
     assert(cl.size() == 1);
-    // Folded into every later interpolant solve as a B-side unit.
+    // A variable proven defined/independent: add its indicator unit,
+    // B-side, to the persistent interpolation solver.
+    tracer->next_is_b = true;
+    solver->add(lit_to_pl(cl[0]));
+    solver->add(0);
+    tracer->next_is_b = false;
     indicator_units.push_back(cl[0]);
 }
 
 void Interpolant::generate_interpolant(const vector<Lit>& assumptions,
-        uint32_t test_var, const set<uint32_t>& input_vars) {
+        uint32_t test_var) {
     verb_print(2, "[interp] generating interpolant for var: " << test_var+1);
     verb_print(3, "[interp] assumptions: " << assumptions);
-
-    // Solve the whole doubled CNF (plus the accumulated indicator units
-    // and this test_var's assumptions, all added as clauses) on a fresh
-    // CaDiCaL with the McMillan tracer, which reconstructs the interpolant
-    // from the UNSAT proof. Clauses the refutation never touches never
-    // enter the proof, hence never enter the interpolant, so no separate
-    // core-extraction pre-solve is needed.
-    // Partition: A = clauses entirely in copy 1, B = everything else.
-    auto cdcl = std::make_unique<Solver>();
-    InterpTracerMcMillan tracer(conf, *aig_mng, input_vars);
-    // copy-2 and indicator variables (index >= orig_num_vars) are B-local.
-    tracer.b_local_from = orig_num_vars;
-    cdcl->connect_proof_tracer(&tracer, true);
-
-    auto add_cl = [&](const vector<Lit>& cl, bool is_b) {
-        tracer.next_is_b = is_b;
-        for (const auto& l : cl) cdcl->add(lit_to_pl(l));
-        cdcl->add(0);
-        tracer.next_is_b = false;
-    };
-    for (const auto& cl : all_cls) add_cl(cl, is_b_clause(cl));
-    for (const auto& l : indicator_units)         // indicator units are B-side
-        add_cl(vector<Lit>{l}, true);
-    for (const auto& l : assumptions)
-        add_cl(vector<Lit>{l}, l.var() >= orig_num_vars);
 
     if (!conf.debug_synth.empty()) {
         std::stringstream name;
@@ -114,13 +117,19 @@ void Interpolant::generate_interpolant(const vector<Lit>& assumptions,
         f.close();
     }
 
-    const int ret = cdcl->solve();
-    cdcl->disconnect_proof_tracer(&tracer);
-    // CMS already proved this UNSAT under the same assumptions, so the
-    // doubled CNF must come back UNSAT (20).
-    release_assert(ret == 20 && "interpolant doubled-CNF must be UNSAT");
+    // One incremental, assumption-based solve on the persistent solver.
+    // The test_var assumptions are assumed (not added as clauses), so the
+    // doubled CNF and indicator units stay reusable for the next call.
+    tracer->reset_per_solve();
+    for (const auto& l : assumptions) solver->assume(lit_to_pl(l));
+    const int ret = solver->solve();
+    // CMS already proved this UNSAT under the same assumptions.
+    release_assert(ret == 20 && "interpolant solve must be UNSAT");
+    // conclude() makes cadical emit the incremental-proof conclusion, so
+    // the tracer sees the failing-assumption clause and conclude_unsat.
+    solver->conclude();
 
-    aig_ptr interp = tracer.build_interpolant();
+    aig_ptr interp = tracer->build_interpolant();
     // The proof exists and was traced, so reconstruction must succeed.
     release_assert(interp != nullptr
         && "interpolant tracer failed to reconstruct from proof");

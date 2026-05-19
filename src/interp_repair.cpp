@@ -112,36 +112,75 @@ aig_ptr InterpTracerMcMillan::or_of_input_lits(const vector<Lit>& cl) {
 }
 
 void InterpTracerMcMillan::add_original_clause(uint64_t id, bool /*red*/,
-        const vector<int>& clause, bool /*restored*/) {
+        const vector<int>& clause, bool restored) {
+    // A restored clause was already recorded on its first add; cadical
+    // re-announces it after weakening, when next_is_b no longer reflects
+    // its side — so skip the re-record.
+    if (restored && cls.count(id)) return;
     orig_count++;
-    vector<Lit> cl_lits = pl_to_lit_cl(clause);
-    cls[id] = cl_lits;
-
-    if (next_is_b) {
-        b_clause_ids.insert(id);
-        if (system == SYS_PUDLAK) {
-            // Pudlák: shared (input) lits are 'ab'-labelled, so a B-side
-            // clause's partial interpolant is ∧ ¬l over its shared lits.
-            // Our B clauses are input units, so this is just ¬(the lit).
-            aig_ptr lab = aig_mng.new_const(true);
-            for (const auto& l : cl_lits)
-                if (input_vars.count(l.var())) lab = hash_and(lab, lit_aig(~l));
-            labels[id] = lab;
-        } else {
-            // McMillan: shared lits are 'b'-labelled → B-clause label TRUE.
-            labels[id] = aig_mng.new_const(true);
-        }
-    } else {
-        // A-side clause: label = OR of input lits in the clause. Shared
-        // lits are 'b' (McMillan) or 'ab' (Pudlák); either way they are
-        // the disjuncts, so this base label is the same for both systems.
-        labels[id] = or_of_input_lits(cl_lits);
-    }
+    cls[id] = pl_to_lit_cl(clause);
+    if (next_is_b) b_clause_ids.insert(id);
+    // The label is *not* computed here: it depends on input_vars, which
+    // a persistent tracer sees grow between solves, and only proof-core
+    // clauses ever need one. See original_label() / build_interpolant().
     VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 5) {
         cout << "c o [interp] orig id=" << id
              << (next_is_b ? " B" : " A")
-             << " sz=" << cl_lits.size() << endl;
+             << " sz=" << cls[id].size() << endl;
     });
+}
+
+// McMillan/Pudlák label of an original clause from the current input_vars.
+aig_ptr InterpTracerMcMillan::original_label(uint64_t id) {
+    const vector<Lit>& cl = cls[id];
+    if (!b_clause_ids.count(id)) {
+        // A-side clause: label = OR of input lits in the clause. Shared
+        // lits are 'b' (McMillan) or 'ab' (Pudlák); either way they are
+        // the disjuncts, so this base label is the same for both systems.
+        return or_of_input_lits(cl);
+    }
+    if (system == SYS_PUDLAK) {
+        // Pudlák: shared (input) lits are 'ab'-labelled, so a B-side
+        // clause's partial interpolant is ∧ ¬l over its shared lits.
+        aig_ptr lab = aig_mng.new_const(true);
+        for (const auto& l : cl)
+            if (input_vars.count(l.var())) lab = hash_and(lab, lit_aig(~l));
+        return lab;
+    }
+    // McMillan: shared lits are 'b'-labelled → B-clause label TRUE.
+    return aig_mng.new_const(true);
+}
+
+void InterpTracerMcMillan::reset_per_solve() {
+    // cls / antec / b_clause_ids persist — the clause database outlives a
+    // single incremental solve — but labels and the and-table do not:
+    // both depend on input_vars, which may have grown since last solve.
+    labels.clear();
+    and_table.clear();
+    empty_id = UINT64_MAX;
+    conclusion_type = 0;
+    conclusion_root = UINT64_MAX;
+    out = nullptr;
+    derived_count = 0;
+    core_count = 0;
+}
+
+void InterpTracerMcMillan::add_assumption_clause(uint64_t id,
+        const vector<int>& clause, const vector<uint64_t>& antecedents) {
+    // The failing-assumption clause: the negation of the assumption core,
+    // derived purely from the formula. Treat it like any derived clause.
+    derived_count++;
+    cls[id] = pl_to_lit_cl(clause);
+    antec[id] = antecedents;
+}
+
+void InterpTracerMcMillan::conclude_unsat(CaDiCaL::ConclusionType type,
+        const vector<uint64_t>& ids) {
+    conclusion_type = type;
+    // ASSUMPTIONS: one failing-assumption clause id. CONFLICT: the empty
+    // clause id. (Failing constraints would give several ids, but the
+    // doubled-CNF interpolation uses assumptions only.)
+    if (!ids.empty()) conclusion_root = ids[0];
 }
 
 void InterpTracerMcMillan::add_derived_clause(uint64_t id, bool /*red*/,
@@ -162,12 +201,22 @@ void InterpTracerMcMillan::add_derived_clause(uint64_t id, bool /*red*/,
 }
 
 aig_ptr InterpTracerMcMillan::build_interpolant() {
-    if (empty_id == UINT64_MAX) return nullptr;
+    // Refutation root: the failing-assumption clause for an
+    // assumption-based UNSAT (conclude_unsat reported ASSUMPTIONS),
+    // otherwise the derived empty clause.
+    uint64_t root;
+    if (conclusion_type == CaDiCaL::ASSUMPTIONS) {
+        if (conclusion_root == UINT64_MAX) return nullptr;
+        root = conclusion_root;
+    } else {
+        if (empty_id == UINT64_MAX) return nullptr;
+        root = empty_id;
+    }
 
-    // Backward reachability from the empty clause over the recorded
-    // antecedent chains. Only these clauses contribute to the interpolant.
+    // Backward reachability from the root over the recorded antecedent
+    // chains. Only these clauses contribute to the interpolant.
     set<uint64_t> reach;
-    vector<uint64_t> stack{empty_id};
+    vector<uint64_t> stack{root};
     while (!stack.empty()) {
         const uint64_t id = stack.back();
         stack.pop_back();
@@ -179,16 +228,42 @@ aig_ptr InterpTracerMcMillan::build_interpolant() {
 
     // Forward pass: a derived clause's antecedents always have smaller
     // IDs (cadical hands out IDs monotonically), so ascending-ID order —
-    // which is how std::set iterates — is a valid topological order.
+    // which is how std::set iterates — is a valid topological order. Both
+    // original- and derived-clause labels are built here (deferred from
+    // add_original_clause), so they use the current input_vars.
     for (const uint64_t id : reach) {
         if (antec.count(id)) {
             build_derived_label(id);
             core_count++;
+        } else {
+            labels[id] = original_label(id);
         }
     }
 
-    auto it = labels.find(empty_id);
-    out = (it != labels.end()) ? it->second : nullptr;
+    auto it = labels.find(root);
+    aig_ptr res = (it != labels.end()) ? it->second : nullptr;
+
+    if (res != nullptr && conclusion_type == CaDiCaL::ASSUMPTIONS) {
+        // The root clause is {¬a : a a failing assumption}. Resolving it
+        // with each assumption unit a reaches the empty clause; the label
+        // of that empty clause is the interpolant. A B-side unit's label
+        // is TRUE and is AND'd in (no change); an A-side unit's label is
+        // OR'd in. So these steps only matter for an A-side input
+        // assumption — but doing them keeps the result fully general.
+        release_assert(system == SYS_MCMILLAN
+            && "assumption-based interpolation supports McMillan only");
+        for (const Lit m : cls[root]) {           // m = ¬a
+            const Lit a = ~m;
+            const aig_ptr unit_lab = (a.var() >= b_local_from)
+                ? aig_mng.new_const(true)             // B-side unit → TRUE
+                : or_of_input_lits(vector<Lit>{a});   // A-side unit
+            const bool want_and =
+                input_vars.count(m.var()) || m.var() >= b_local_from;
+            res = want_and ? hash_and(res, unit_lab) : hash_or(res, unit_lab);
+        }
+    }
+
+    out = res;
     return out;
 }
 
@@ -198,10 +273,12 @@ void InterpTracerMcMillan::build_derived_label(uint64_t id) {
         // A derived clause always has antecedents.
         assert(false && "derived clause with no antecedents");
     }
-    // cadical hands the antecedent list in reverse linear-resolution
-    // order, so replaying it reversed reconstructs the chain.
+    // cadical usually hands the antecedent list in reverse linear-
+    // resolution order, so replaying it reversed reconstructs the chain;
+    // fall back to forward order if that is not a clean linear chain.
     const vector<uint64_t> rev(antecedents.rbegin(), antecedents.rend());
     if (resolve_chain(id, rev)) return;
+    if (resolve_chain(id, antecedents)) return;
     assert(false && "failed to resolve derived clause's antecedent chain");
 }
 
