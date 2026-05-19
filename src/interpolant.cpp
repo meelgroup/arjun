@@ -64,11 +64,7 @@ void Interpolant::fill_from_solver(SATSolver* solver, uint32_t _orig_num_vars,
 
     // Build the persistent core-extraction solver. Each clause c_i is
     // stored as (c_i ∨ ¬s_i) with a fresh selector s_i = tot_num_vars+i.
-    // Inprocessing/preprocessing are disabled so the single-occurrence
-    // selector variables are never eliminated between incremental solves.
     core_solver = std::make_unique<Solver>();
-    core_solver->set("inprocessing", 0);
-    core_solver->set("preprocessing", 0);
     for (uint32_t i = 0; i < all_cls.size(); i++) {
         for (const auto& l : all_cls[i]) core_solver->add(lit_to_pl(l));
         core_solver->add(-sel_lit(tot_num_vars + i));   // ¬s_i
