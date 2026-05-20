@@ -41,6 +41,7 @@ set(libfiles
     simplify.cpp
     minimize.cpp
     arjun.cpp
+    arjun_c.cpp
     puura.cpp
     unate_def.cpp
     unate_def_rep.cpp
@@ -259,6 +260,8 @@ if(ENABLE_TESTING)
 endif()
 
 arjun_add_public_header(arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun.h)
+arjun_add_public_header(arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun_c.h)
+arjun_add_public_header(arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun_c_priv.hpp)
 
 # Ensure headers from sub-builds are copied before we compile against them.
 foreach(_dep_copy_target
