@@ -45,7 +45,8 @@ def gen_cnf(seed):
     if rc != 0:
         print("ERROR: brummayer failed seed=%d" % seed)
         sys.exit(1)
-    add_projection(fname)
+    if add_projection(fname) is None:
+        return None
     return fname
 
 
@@ -60,11 +61,18 @@ def add_projection(fname):
                 break
     if nvars == 0:
         sys.exit(1)
+    # Synthesis needs ≥1 var NOT in the projection (the var to be defined).
+    # Brummayer occasionally emits a 1-var "c too many nodes" fallback CNF
+    # — skip it: arjun would otherwise abort with "no defined vars".
+    if nvars < 2:
+        return None
     # ~1/3 to 1/2 of vars projected — enough for the rep pass to have work.
-    n = max(1, random.randint(nvars // 4, nvars // 2 + 1))
+    # Clamp upper bound to nvars-1 so the projection is a proper subset.
+    n = max(1, min(nvars - 1, random.randint(nvars // 4, nvars // 2 + 1)))
     proj = random.sample(range(1, nvars + 1), n)
     with open(fname, 'a') as f:
         f.write("c p show " + " ".join(str(v) for v in proj) + " 0\n")
+    return proj
 
 
 def is_sat(fname):
@@ -248,6 +256,9 @@ def main():
         seed = random.randint(0, 1 << 31)
         random.seed(seed)
         fname = gen_cnf(seed)
+        if fname is None:
+            print("seed=%d SKIP (CNF has <2 vars, no defined var possible)" % seed)
+            continue
         if not is_sat(fname):
             os.remove(fname)
             continue

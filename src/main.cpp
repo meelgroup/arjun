@@ -411,7 +411,12 @@ void do_synthesis() {
     cnf.set_need_aig();
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
     if (etof_conf.all_indep) {
-        cout << "ERROR: CNF had no indep set, we cannot do synthesis" << endl;
+        // all_indep is set by read_in_a_file when either no `c p show`
+        // projection was given (default is all-indep) or the projection
+        // happens to cover every variable. In both cases there are no
+        // defined vars left to synthesize, so synthesis has no work.
+        cout << "ERROR: no defined vars to synthesize "
+                "(no projection set, or projection covers all vars)" << endl;
         exit(EXIT_FAILURE);
     }
     cnf.clean_idiotic_mccomp_weights();

@@ -110,12 +110,18 @@ def add_projection(fname):
     if num_vars == 0:
         print("ERROR: No 'p cnf' header in %s" % fname)
         return None
+    # Synthesis needs ≥1 var NOT in the projection. With only 1 var the
+    # projection necessarily covers everything; arjun would then abort with
+    # "no defined vars to synthesize" — skip such degenerate CNFs.
+    if num_vars < 2:
+        return None
 
     all_vars = list(range(1, num_vars + 1))
     # Pick between 1/5 and 1/3 of variables as independent set
     lo = max(1, num_vars // 5)
     hi = max(lo, num_vars // 3)
-    num_proj = random.randint(lo, hi)
+    # Clamp upper bound to num_vars-1 so the projection is a proper subset.
+    num_proj = min(num_vars - 1, random.randint(lo, hi))
     proj = random.sample(all_vars, min(num_proj, len(all_vars)))
 
     with open(fname, "a") as f:

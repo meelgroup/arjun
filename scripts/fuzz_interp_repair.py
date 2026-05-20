@@ -89,7 +89,10 @@ if __name__ == "__main__":
             seed = options.rnd_seed
 
         fname = _fs.gen_fuzz(seed)
-        _fs.add_projection(fname)
+        if _fs.add_projection(fname) is None:
+            print("Generated file %s has <2 vars (no defined var possible), skipping" % fname)
+            os.unlink(fname)
+            continue
         if _fs.is_unsat(fname):
             print("Generated file %s is UNSAT, skipping synthesis" % fname)
             os.unlink(fname)

@@ -91,6 +91,11 @@ def add_projection(fname) :
     if vars == 0:
         print("ERROR: Can't find 'p cnf' in file %s" % fname)
         exit(-1)
+    # Synthesis needs at least one defined var (one var NOT in the
+    # projection). Brummayer occasionally emits a 1-var "c too many nodes"
+    # fallback CNF — skip those: no projection can leave a var to define.
+    if vars < 2:
+        return None
 
     if random.choice([True, False]):
         num : int = random.randint(int(len(all_vars)/15), int(len(all_vars)/5))
@@ -99,7 +104,10 @@ def add_projection(fname) :
     else:
         num : int = random.randint(int(len(all_vars)/4), int(len(all_vars)/3))
 
-    num = max(1, num) # at least one variable to project
+    # Clamp to [1, vars-1] so the projection is a proper subset. If we
+    # project all vars, arjun sets all_indep=true and aborts synthesis
+    # with "CNF had no indep set" — a nonsense test case for synthesis.
+    num = max(1, min(num, vars - 1))
     for i in range(num):
         proj_set[random.choice(all_vars)] = 1
 
@@ -434,7 +442,10 @@ if __name__ == "__main__":
             seed = options.rnd_seed
 
         fname = gen_fuzz(seed)
-        add_projection(fname)
+        if add_projection(fname) is None:
+            print("Generated file %s has <2 vars (no defined var possible), skipping" % fname)
+            os.unlink(fname)
+            continue
         if is_unsat(fname):
             print("Generated file %s is UNSAT, skipping synthesis" % fname)
             os.unlink(fname)
