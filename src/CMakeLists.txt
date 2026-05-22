@@ -41,9 +41,11 @@ set(libfiles
     simplify.cpp
     minimize.cpp
     arjun.cpp
+    arjun_c.cpp
     puura.cpp
     unate_def.cpp
     unate_def_rep.cpp
+    unate_def_common.cpp
     autarky.cpp
     ccnr/ccnr.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
@@ -51,6 +53,7 @@ set(libfiles
     aig_rewrite.cpp
     aig_to_cnf.cpp
     interpolant.cpp
+    interp_repair.cpp
 )
 
 if(EXTRA_SYNTH)
@@ -83,7 +86,6 @@ target_link_libraries(arjun
     PkgConfig::MPFR
     cryptominisat5
     sbva
-    treedecomp
   PRIVATE
     cadical
 )
@@ -102,19 +104,12 @@ endif()
 
 add_executable(arjun-bin main.cpp synth.cpp)
 add_executable(arjun-example example.cpp)
-add_executable(test-synth test-synth.cpp)
-add_executable(test-aig-rewrite test_aig_rewrite.cpp)
-add_executable(test-aig-to-cnf test_aig_to_cnf.cpp)
-add_executable(test-cut-cnf test_cut_cnf.cpp)
 add_executable(fuzz_aig aig_fuzzer.cpp)
 add_executable(fuzz_aig_to_cnf aig_to_cnf_fuzzer.cpp)
 add_executable(fuzz_aig_rewrite aig_rewrite_fuzzer.cpp)
 
 target_link_libraries(arjun-bin PRIVATE arjun)
 target_link_libraries(arjun-example PRIVATE arjun)
-target_link_libraries(test-synth PRIVATE arjun cadical cryptominisat5)
-target_link_libraries(test-aig-rewrite PRIVATE arjun)
-target_link_libraries(test-aig-to-cnf PRIVATE arjun cryptominisat5)
 target_link_libraries(fuzz_aig PRIVATE arjun)
 target_link_libraries(fuzz_aig_to_cnf PRIVATE arjun)
 target_link_libraries(fuzz_aig_rewrite PRIVATE arjun)
@@ -124,10 +119,6 @@ target_include_directories(arjun-bin PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_include_directories(arjun-example PRIVATE
-    ${PROJECT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}
-)
-target_include_directories(test-synth PRIVATE
     ${PROJECT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
@@ -143,17 +134,9 @@ target_include_directories(fuzz_aig_rewrite PRIVATE
     ${PROJECT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
-target_include_directories(test-aig-to-cnf PRIVATE
-    ${PROJECT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}
-)
-target_include_directories(test-cut-cnf PRIVATE
-    ${PROJECT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}
-)
 
 if(ZLIB_FOUND)
-    foreach(tgt arjun-bin arjun-example test-synth fuzz_aig fuzz_aig_to_cnf fuzz_aig_rewrite test-aig-rewrite test-aig-to-cnf)
+    foreach(tgt arjun-bin arjun-example fuzz_aig fuzz_aig_to_cnf fuzz_aig_rewrite)
         target_include_directories(${tgt} PRIVATE ${ZLIB_INCLUDE_DIR})
         target_link_libraries(${tgt} PRIVATE ${ZLIB_LIBRARY})
     endforeach()
@@ -184,11 +167,6 @@ set_target_properties(arjun-example PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-set_target_properties(test-synth PROPERTIES
-    OUTPUT_NAME test-synth
-    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
-    INSTALL_RPATH_USE_LINK_PATH TRUE)
-
 set_target_properties(fuzz_aig PROPERTIES
     OUTPUT_NAME fuzz_aig
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
@@ -204,17 +182,41 @@ set_target_properties(fuzz_aig_rewrite PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
     INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-set_target_properties(test-aig-to-cnf PROPERTIES
-    OUTPUT_NAME test-aig-to-cnf
-    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
-    INSTALL_RPATH_USE_LINK_PATH TRUE)
-
-set_target_properties(test-cut-cnf PROPERTIES
-    OUTPUT_NAME test-cut-cnf
-    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
-    INSTALL_RPATH_USE_LINK_PATH TRUE)
-
+# Test executables are built only when ENABLE_TESTING is ON. With
+# ENABLE_TESTING OFF the top-level CMakeLists builds the library with
+# -fvisibility=hidden, which hides the internal ArjunInt symbols (e.g.
+# InterpRepair) that test-interp-repair links against, so these targets
+# cannot link in that configuration.
 if(ENABLE_TESTING)
+    add_executable(test-synth test-synth.cpp)
+    add_executable(test-aig-rewrite test_aig_rewrite.cpp)
+    add_executable(test-aig-to-cnf test_aig_to_cnf.cpp)
+    add_executable(test-cut-cnf test_cut_cnf.cpp)
+    add_executable(test-interp-repair test_interp_repair.cpp)
+
+    target_link_libraries(test-synth PRIVATE arjun cadical cryptominisat5)
+    target_link_libraries(test-aig-rewrite PRIVATE arjun)
+    target_link_libraries(test-aig-to-cnf PRIVATE arjun cryptominisat5)
+    target_link_libraries(test-interp-repair PRIVATE arjun cadical cryptominisat5)
+
+    foreach(tgt test-synth test-aig-rewrite test-aig-to-cnf test-cut-cnf test-interp-repair)
+        target_include_directories(${tgt} PRIVATE
+            ${PROJECT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        set_target_properties(${tgt} PROPERTIES
+            OUTPUT_NAME ${tgt}
+            RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}
+            INSTALL_RPATH_USE_LINK_PATH TRUE)
+    endforeach()
+
+    if(ZLIB_FOUND)
+        foreach(tgt test-synth test-aig-rewrite test-aig-to-cnf)
+            target_include_directories(${tgt} PRIVATE ${ZLIB_INCLUDE_DIR})
+            target_link_libraries(${tgt} PRIVATE ${ZLIB_LIBRARY})
+        endforeach()
+    endif()
+
     add_test(
         NAME test-aig-to-cnf
         COMMAND test-aig-to-cnf
@@ -225,18 +227,31 @@ if(ENABLE_TESTING)
         COMMAND test-cut-cnf
         WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
     )
+    add_test(
+        NAME test-aig-rewrite
+        COMMAND test-aig-rewrite
+        WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
+    )
+    add_test(
+        NAME test-interp-repair
+        COMMAND test-interp-repair
+        WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
+    )
 endif()
 
 arjun_add_public_header(arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun.h)
+arjun_add_public_header(arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun_c.h)
+arjun_add_public_header(arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun_c_priv.hpp)
 
 # Ensure headers from sub-builds are copied before we compile against them.
 foreach(_dep_copy_target
         CopyPublicHeaders_cryptominisat5
-        CopyPublicHeaders_sbva
-        CopyPublicHeaders_treedecomp)
+        CopyPublicHeaders_sbva)
     if(TARGET ${_dep_copy_target})
         foreach(_tgt arjun arjun-bin arjun-example test-synth)
-            add_dependencies(${_tgt} ${_dep_copy_target})
+            if(TARGET ${_tgt})
+                add_dependencies(${_tgt} ${_dep_copy_target})
+            endif()
         endforeach()
     endif()
 endforeach()

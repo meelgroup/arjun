@@ -48,6 +48,10 @@ static AIGManager aig_mng;
 // post-sweep self-ref check in AIGRewriter::sat_sweep across all iters.
 static uint64_t g_total_self_ref_reverts = 0;
 
+// Aggregate counters for sat_sweep effectiveness across all iters.
+static uint64_t g_total_sweep_merges = 0;
+static uint64_t g_total_sweep_const_merges = 0;
+
 // Naive Tseitin encoding: one helper per AND node, 3 clauses each; constants
 // via a single unit-clauses helper. Returns the output literal. Identical in
 // spirit to the baseline used by fuzz_aig_to_cnf.
@@ -139,6 +143,18 @@ struct FuzzStats {
     uint64_t nodes_after = 0;
     double total_time_s = 0;
 
+    // Aggregated rule-firing counters across all iters. Used to assert that
+    // each rewrite rule was exercised by the corpus — if a new rule lands
+    // and its counter stays at 0 after N>>0 iters, the fuzzer is silently
+    // not covering it and we want a loud signal.
+    uint64_t total_const_prop = 0;
+    uint64_t total_complement_elim = 0;
+    uint64_t total_idempotent_elim = 0;
+    uint64_t total_absorption = 0;
+    uint64_t total_and_or_distrib = 0;
+    uint64_t total_xor_simplify = 0;
+    uint64_t total_struct_hash_hits = 0;
+
     void print() const {
         cout << "\n=== fuzz_aig_rewrite statistics ===" << endl;
         cout << "Iterations:           " << iters << endl;
@@ -153,6 +169,41 @@ struct FuzzStats {
         }
         cout << "Time:                 " << std::fixed << std::setprecision(1)
              << total_time_s << "s" << endl;
+        cout << "Rule fires:           "
+             << "const_prop="     << total_const_prop
+             << "  complement="   << total_complement_elim
+             << "  idempotent="   << total_idempotent_elim
+             << "  absorption="   << total_absorption
+             << "  distrib="      << total_and_or_distrib
+             << "  xor_simp="     << total_xor_simplify
+             << "  hash_hits="    << total_struct_hash_hits
+             << endl;
+    }
+
+    // Verify every rule was triggered at least once. Called at end of a run
+    // long enough that zero fires implies the shape corpus or the rule body
+    // is broken. Returns the count of rules that never fired.
+    int report_unfired_rules() const {
+        struct Rule { const char* name; uint64_t count; };
+        Rule rules[] = {
+            {"const_prop",      total_const_prop},
+            {"complement_elim", total_complement_elim},
+            {"idempotent_elim", total_idempotent_elim},
+            {"absorption",      total_absorption},
+            {"and_or_distrib",  total_and_or_distrib},
+            {"xor_simplify",    total_xor_simplify},
+            {"struct_hash_hits",total_struct_hash_hits},
+        };
+        int unfired = 0;
+        for (const auto& r : rules) {
+            if (r.count == 0) {
+                cerr << "WARNING: rule '" << r.name
+                     << "' never fired across " << iters << " iterations"
+                     << endl;
+                unfired++;
+            }
+        }
+        return unfired;
     }
 };
 
@@ -175,18 +226,66 @@ static bool run_one(const aig_ptr& orig, uint32_t num_vars,
     aig_ptr simp = rw.rewrite(orig);
     if (!simp) simp = orig;
 
+    // 1a. Idempotence: rewriting an already-rewritten AIG must keep it
+    // equivalent and must never make it bigger. A growth here would mean a
+    // rewrite rule is non-confluent / oscillating; a mismatch would mean a
+    // rule is unsound only on already-canonical input.
+    {
+        AIGRewriter rw2;
+        aig_ptr simp2 = rw2.rewrite(simp);
+        if (!simp2) simp2 = simp;
+        if (!random_check(simp, simp2, num_vars, rng, 40)) {
+            report_failure(orig, simp2, num_vars, seed, iter,
+                           "random_check(idempotence)");
+            return false;
+        }
+        if (AIG::count_aig_nodes_fast(simp2)
+                > AIG::count_aig_nodes_fast(simp)) {
+            report_failure(orig, simp2, num_vars, seed, iter,
+                           "rewrite grew an already-rewritten AIG");
+            return false;
+        }
+    }
+
     // 1b. Optional SAT sweeping pass over the single-rooted vector.
     if (sat_sweep) {
+        // Half the time, sweep the RAW (un-rewritten) AIG instead of the
+        // rewritten one. The raw AIG still carries the multi-level
+        // contradictions / tautologies and structural equivalences that the
+        // rewriter would otherwise fold away — exactly what exercises
+        // sat_sweep's constant detection and FRAIG merging. Verify that
+        // raw-swept result against `orig` independently.
+        if (rng() & 1) {
+            std::vector<aig_ptr> raw_defs{orig};
+            rw.sat_sweep(raw_defs, 0);
+            aig_ptr raw_swept = raw_defs[0] ? raw_defs[0] : orig;
+            if (!random_check(orig, raw_swept, num_vars, rng, 40)) {
+                report_failure(orig, raw_swept, num_vars, seed, iter,
+                               "random_check(raw-sweep)");
+                return false;
+            }
+        }
         std::vector<aig_ptr> defs{simp};
         rw.sat_sweep(defs, 0);
         simp = defs[0];
         if (!simp) simp = orig;
+        g_total_sweep_merges       += rw.get_stats().sweep_merges;
+        g_total_sweep_const_merges += rw.get_stats().sweep_const_merges;
     }
 
     size_t before = AIG::count_aig_nodes_fast(orig);
     size_t after  = AIG::count_aig_nodes_fast(simp);
     fs.nodes_before += before;
     fs.nodes_after  += after;
+
+    const auto& s = rw.get_stats();
+    fs.total_const_prop       += s.const_prop;
+    fs.total_complement_elim  += s.complement_elim;
+    fs.total_idempotent_elim  += s.idempotent_elim;
+    fs.total_absorption       += s.absorption;
+    fs.total_and_or_distrib   += s.and_or_distrib;
+    fs.total_xor_simplify     += s.xor_simplify;
+    fs.total_struct_hash_hits += s.structural_hash_hits;
 
     if (verbose) {
         cout << "[" << std::setw(6) << iter << "] "
@@ -345,6 +444,9 @@ static void print_usage(const char* prog) {
     cout << "                 over F free vars (F = --vars). Checks the" << endl;
     cout << "                 no-self-ref invariant plus per-def semantic" << endl;
     cout << "                 preservation." << endl;
+    cout << "  --require-all-rules  Fail run if any rewrite rule was never" << endl;
+    cout << "                       triggered. Useful when adding new rules" << endl;
+    cout << "                       to confirm the shape corpus covers them." << endl;
 }
 
 int main(int argc, char** argv) {
@@ -355,6 +457,7 @@ int main(int argc, char** argv) {
     uint32_t max_nodes_cfg = 50;
     uint32_t multi_def_k = 0;
     bool verbose = false;
+    bool require_all_rules = false;
     uint32_t sat_sweep = 3;
 
     for (int i = 1; i < argc; i++) {
@@ -366,6 +469,7 @@ int main(int argc, char** argv) {
         else if (strcmp(argv[i], "--verbose") == 0) verbose = true;
         else if (strcmp(argv[i], "--sat-sweep") == 0 && i + 1 < argc) sat_sweep = std::stoull(argv[++i]);
         else if (strcmp(argv[i], "--multi-def") == 0 && i + 1 < argc) multi_def_k = std::stoul(argv[++i]);
+        else if (strcmp(argv[i], "--require-all-rules") == 0) require_all_rules = true;
         else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]);
             return 0;
@@ -428,8 +532,21 @@ int main(int argc, char** argv) {
     auto t_end = std::chrono::steady_clock::now();
     fs.total_time_s = std::chrono::duration<double>(t_end - t_start).count();
     fs.print();
+    if (g_total_sweep_merges || g_total_sweep_const_merges) {
+        cout << "sat_sweep: merges=" << g_total_sweep_merges
+             << "  const_merges=" << g_total_sweep_const_merges << endl;
+    }
     if (multi_def_k > 0) {
         cout << "Multi-def self-ref reverts: " << g_total_self_ref_reverts << endl;
+    }
+    if (require_all_rules) {
+        const int unfired = fs.report_unfired_rules();
+        if (unfired > 0) {
+            cerr << "FAIL: " << unfired
+                 << " rewrite rules never fired (use --require-all-rules)" << endl;
+            return 1;
+        }
+        cout << "All rewrite rules fired at least once." << endl;
     }
     cout << "\nAll tests passed!" << endl;
     return 0;

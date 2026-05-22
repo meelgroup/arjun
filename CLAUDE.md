@@ -50,22 +50,28 @@ Extra args are forwarded to `arjun`. The simplified CNF is written to
 workflow: run it on the same CNF before and after a change and diff the
 output lines.
 
-## After every build ALWAYS run the fuzzers
+## After every build ALWAYS run the fuzzers, in parallel if possible
 
 From `build/`:
 
 ```
-./fuzz_synth.py --num 1500
+./fuzz_synth.py --num 800
 ./fuzz_aig_to_cnf --num 1000
 ./fuzz_aig_rewrite --num 1000
 ./fuzz_unate_def_rep.py 300
+./fuzz_interp_repair.py --num 800
 ```
 
 All must pass before reporting a change as complete. `fuzz_unate_def_rep.py`
 forces `--unatedef 1 --unatedefrep 1` on every iteration and verifies the
 `*-unsat_unate_def_rep.aig` output AIG via `test-synth`; the general
 `fuzz_synth.py` only randomizes those flags so the rep-pass output is not
-always exercised.
+always exercised. `fuzz_interp_repair.py` forces `--interprepair` on every
+iteration and randomizes the full set of `--interprepair*` knobs, so the
+Craig-interpolant repair path is always exercised.
+
+For anything touching `interp_repair.*` also build the unit test and run
+it (`./test-interp-repair`, also wired into `ctest`).
 
 ## Source layout (`src/`)
 
@@ -78,6 +84,16 @@ always exercised.
   synthesis / repair loop. Hot path for large benchmarks.
 - `aig_rewrite.{h,cpp}` — structural hashing, CSE, absorption, ITE
   flattening. Runs before Manthan and between repair rounds.
+- `interp_repair.{h,cpp}` — Craig-interpolant repair for Manthan. A
+  failed repair's UNSAT core is one corner of input space; the McMillan
+  (or Pudlák) interpolant over the input vars generalises it to the
+  whole must-flip region, so one `compose_or/and` captures many repairs.
+  Interpolants are reconstructed from a cadical proof trace, trimmed to
+  the proof core, optionally intersected over several proofs, and
+  **always verified** with an A→I miter before use — a tracer
+  reconstruction error then falls back to the plain conflict clause
+  rather than producing a wrong interpolant. See the `--interprepair*`
+  flags in `main.cpp`.
 - `aig_to_cnf.{h,cpp}` — Tseitin encoding with fanout-based helper
   suppression, k-ary AND/OR fusion, ITE / MUX3 detection.
 - `puura.{h,cpp}` — SharpSAT-td-derived simplification.
@@ -85,8 +101,8 @@ always exercised.
   `unate_def.cpp` — independent-set extraction passes.
 - `metasolver.h`, `metasolver2.h`, `cachedsolver.h` — SAT-solver wrappers
   used by Manthan.
-- `test_aig_rewrite.cpp`, `test_aig_to_cnf.cpp`, `test-synth.cpp` —
-  correctness checkers.
+- `test_aig_rewrite.cpp`, `test_aig_to_cnf.cpp`, `test-synth.cpp`,
+  `test_interp_repair.cpp` — correctness checkers.
 - `aig_fuzzer.cpp`, `aig_to_cnf_fuzzer.cpp` — fuzzers.
 
 ## Determinism
@@ -126,10 +142,13 @@ Expected workflow:
 3. **`SLOW_DEBUG`** (`src/constants.h:50`) — uncomment to enable expensive
    internal invariant checks (`SLOW_DEBUG_DO(...)` blocks). Turn this on
    whenever an assertion fires or an output looks wrong; it will often fail
-   earlier and closer to the real cause.
+   earlier and closer to the real cause. Add SLOW_DEBUG_DO blocks for new
+   code as needed to help future debugging.
 4. **`VERBOSE_DEBUG`** (`src/constants.h:51`) — uncomment to enable verbose
    trace prints guarded by `VERBOSE_DEBUG_DO(...)` / `verbose_debug_enabled`.
    Use together with a delta-debugged small CNF so the traces stay readable.
+   Don't forget to add `VERBOSE_DEBUG_DO` blocks for new code as needed to help
+   future debugging.
 5. **valgrind** — run under `valgrind --error-exitcode=1` (and
    `--track-origins=yes` for uninitialized reads) for any suspected memory
    issue. Undefined behavior here often manifests as non-determinism on

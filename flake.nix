@@ -2,17 +2,19 @@
   description = "Minimal independent set calculator and CNF minimizer";
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
-    cadical = {
-      url = "github:meelgroup/cadical/master";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     cadiback = {
       url = "github:meelgroup/cadiback/main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # cadiback already depends on cadical; reuse that exact input rather than
+    # declaring our own, so flake.lock pins a single cadical revision.
+    cadical.follows = "cadiback/cadical";
     cryptominisat = {
       url = "github:msoos/cryptominisat/master";
       inputs.nixpkgs.follows = "nixpkgs";
+      # cryptominisat pulls in cadiback (and, transitively, cadical) too;
+      # point it at ours so the whole tree shares one cadiback/cadical.
+      inputs.cadiback.follows = "cadiback";
     };
     sbva = {
       url = "github:meelgroup/sbva/master";

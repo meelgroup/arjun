@@ -70,7 +70,7 @@ string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_learnt=1),b
 
 int synthesis = false;
 int do_unate_def = true;
-int do_unate_def_rep = true;
+int do_unate_def_rep = false;
 int do_revbce = false;
 int do_minim_indep = true;
 int do_sat_sweep = false;
@@ -152,7 +152,7 @@ void add_arjun_options() {
     myopt("--allindep", etof_conf.all_indep , fc_int, "All variables can be made part of the indepedent support. Indep support is given ONLY to help the solver.");
     myopt("--maxc", conf.backw_max_confl, fc_int,"Maximum conflicts per variable in backward mode");
     myopt("--revbce", do_revbce, fc_int,"Perform reverse BCE");
-    myopt("--sbva", etof_conf.num_sbva_steps, fc_int,"SBVA timeout. 0 = no sbva");
+    myopt("--sbva", etof_conf.num_sbva_steps, fc_int,"SBVA timeout in K steps. 0 = no sbva");
     myopt("--prebackbone", do_pre_backbone, fc_int,"Perform backbone before other things");
     myopt("--seed", conf.seed, fc_int, "Random seed");
 
@@ -163,29 +163,34 @@ void add_arjun_options() {
     myopt("--synthbve", do_synth_bve, fc_int,"Perform BVE for synthesis");
     myopt("--extend", etof_conf.do_extend_indep, fc_int,"Extend independent set just before CNF dumping");
     myopt("--minimconfl", mconf.minimize_conflict, fc_int,"Minimize conflict size when repairing");
-    myopt("--simpevery", mconf.simplify_every, fc_int,"Simplify solvers inside Manthan every K loops");
     myopt("--unatedef", do_unate_def, fc_int,"Perform definition-aware unate analysis");
+    myopt("--unatedefmaxconfl", conf.unate_def_max_confl, fc_int,"Conflict budget per SAT call in the standard unate_def probe");
     myopt("--unatedefcond", conf.unate_def_cond, fc_int,"In unate_def, also detect conditional defs of the form t = ITE(L,c1,c0) for input literals L (i.e., t = L or t = ~L)");
     myopt("--unatedefcondmax", conf.unate_def_cond_max_per_var, fc_int,"Max conditional candidates to test per to-define variable in unate_def");
     myopt("--unatedefcondconfl", conf.unate_def_cond_max_confl, fc_int,"Conflict budget per SAT call inside the conditional unate_def search");
-    myopt("--unatedefcondrel", conf.unate_def_cond_relfirst, fc_int,"In unate_def cond, examine inputs sharing a clause with `test` first");
     myopt("--unatedefconddry", conf.unate_def_cond_dry_streak, fc_int,"Disable conditional unate_def probe after this many consecutive misses with zero hits so far (very low = bail aggressively, very high = effectively never disable)");
+    myopt("--unatedefcondnoninp", conf.unate_def_cond_noninput, fc_int,"Allow non-input vars (to-define + already-tested) as the candidate L in t = L. Inputs are still tried first; non-inputs only after the input list is exhausted. 0 = inputs only");
     myopt("--unatedefrep", do_unate_def_rep, fc_int,"In unate_def, run a manthan-style guess-and-repair pass for vars still undefined after the literal-only conditional probe");
     myopt("--unatedefrepiters", conf.unate_def_rep_iters, fc_int,"Per-variable iteration budget in the repair-based unate_def pass");
     myopt("--unatedefrepmaxpat", conf.unate_def_rep_max_pattern, fc_int,"Skip CEX whose minimized core (= candidate AIG conjunct count) exceeds this");
     myopt("--unatedefrepmaxcz", conf.unate_def_rep_max_costzero, fc_int,"Give up on a variable after this many cost-zero CEXes in the repair pass");
     myopt("--unatedefrepconfl", conf.unate_def_rep_max_confl, fc_int,"Conflict budget per SAT call inside the repair-based unate_def pass");
     myopt("--unatedefrepaux", conf.unate_def_rep_aux, fc_int,"Allow H to use non-input leaves in unate_def_rep. 0=input-only; 1=input+backward-defined (cycle-checked); 2=input+backward-defined+to-define (richest)");
+    myopt("--unatedefrepminim", conf.unate_def_rep_minim, fc_int,"Greedy conflict minimization on the F-only solver in unate_def_rep. 0=off; 1=greedy single pass; 2=greedy + extra shuffled passes for hot vars");
+    myopt("--unatedefrepminbud", conf.unate_def_rep_minim_budget, fc_int,"Per-iter budget on minimization solver calls (number of literal-removal attempts allowed before bailing out)");
+    myopt("--unatedefrepinpfirst", conf.unate_def_rep_input_only_first, fc_int,"Try input-only F-solver call before input+aux. 0=off; 1=always; 2=only when aux_vars is non-empty");
+    myopt("--unatedefrepdropaux", conf.unate_def_rep_drop_aux, fc_int,"After greedy minim, attempt a single-shot SAT call dropping all aux lits from the pattern. 0=off; 1=on");
+    myopt("--unatedefrepmulticex", conf.unate_def_rep_multi_cex_k, fc_int,"Collect K CEX models per iteration and refine H using the one with the smallest input-only conflict. 1 = off");
+    myopt("--unatedefrepiterverb", conf.unate_def_rep_iter_verb, fc_int,"Per-iteration trace verbosity threshold. The trace fires when --verb >= this value");
+    myopt("--unatedefrepfreqsort", conf.unate_def_rep_freq_sort, fc_int,"Sort minim drop order by ascending pattern-frequency (manthan-style). 0=off; 1=on");
+    myopt("--unatedefrepminextra", conf.unate_def_rep_minim_extra_passes, fc_int,"Number of extra minim passes with reverse-order shuffle after the main greedy loop (manthan-style hot-var extra passes)");
+    myopt("--unatedefrepmultipat", conf.unate_def_rep_multi_pat, fc_int,"With multi-CEX>1, refine H with patterns from ALL collected models (not just chosen). 0=off; 1=on");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
-    myopt("--monflyorder", mconf.manthan_on_the_fly_order, fc_int,"Use on-the-fly training order and post-training topological order");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
-    myopt("--multicex", mconf.multi_cex_k, fc_int,"Number of counterexamples to collect for generalized repair (1=off)");
     myopt("--minvertlearn", mconf.inv_learnt, fc_int,"Invert learnt functions");
 
     // repairing on vars
     myopt("--bwequal", mconf.force_bw_equal, fc_int,"Force BW vars' indicators to be TRUE -- prevents repairing with them, but faster to repair");
-    myopt("--bvaxor", mconf.bva_xor_vars, fc_int,"Add XOR over input vars as BVA vars, so we can repair with them");
-    myopt("--silentupdate", mconf.silent_var_update, fc_int,"Silently update variables while repairing");
     // Strategy
     myopt("--mstrategy", mstrategy, fc_string,
         "Comma-separated synthesis strategy list, e.g. "
@@ -194,9 +199,8 @@ void add_arjun_options() {
         "Params: max_repairs, samples, samples_ccnr, min_gain_split, "
         "max_depth, sampler_fixed_conflicts, and other ManthanConf fields.");
     // Order
-    myopt("--morder", mconf.manthan_order, fc_int,"Order vars: indicence (0), cluster-incidence (1), BVE (2)");
+    myopt("--morder", mconf.manthan_order, fc_int,"Order vars: incidence (0), BVE (2)");
     myopt("--maxsatorder", mconf.maxsat_order, fc_int,"Which order to use to try to fix vars? 0 = norm, 1 = rev");
-    myopt("--mbackwsynthorder", mconf.backward_synth_order, fc_int,"Which order to use to try to do backward? 0 = normal, 1 = reverse");
     // solver config
     myopt("--ctxsolver", mconf.ctx_solver_type, fc_int,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
     myopt("--repairsolver", mconf.repair_solver_type, fc_int,"Repair solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
@@ -206,7 +210,6 @@ void add_arjun_options() {
     myopt("--samplesccnr", mconf.samples_ccnr, fc_int,"Number of samples from CCNR");
     myopt("--uniqsamp", mconf.do_unique_input_samples, fc_int, "Unique samples on input vars");
     myopt("--filtersamples", mconf.filter_samples, fc_int,"Filter samples from useless ones");
-    myopt("--biasedsampling", mconf.biased_sampling, fc_int,"Biased sampling");
     myopt("--fixedconf", mconf.sampler_fixed_conflicts, fc_int,"Restart conflict limit in CMSGen");
     // synth -- decision tree
     myopt("--maxdepth", mconf.max_depth, fc_int,"Maximum depth of decision tree");
@@ -214,44 +217,19 @@ void add_arjun_options() {
     myopt("--mingainsplit", mconf.min_gain_split, fc_double,"Minimum gain for a split in decision tree");
     myopt("--learnuseall", mconf.use_all_vars_as_feats, fc_int,"Use all variables as features in decision tree learning. 0 = only inputs");
     // synth -- cutoff/tuning constants
-    myopt("--biassamples", mconf.bias_samples, fc_int, "Number of biased samples per direction");
     myopt("--constvotesamples", mconf.const_vote_samples, fc_int, "Majority voting samples for const_functions");
     myopt("--statsevery", mconf.stats_every, fc_int, "Print stats every N repair loops");
     myopt("--detailedstatsevery", mconf.detailed_stats_every, fc_int, "Print detailed stats every N repair loops");
-    myopt("--rebuildminloops", mconf.rebuild_min_loops, fc_int, "Min repair loops before cex_solver rebuild");
-    myopt("--rebuildminclauses", mconf.rebuild_min_clauses, fc_int, "Min total formula clauses before rebuild");
-    myopt("--rebuildgrownum", mconf.rebuild_growth_num, fc_double, "Rebuild growth numerator");
-    myopt("--rebuildgrowden", mconf.rebuild_growth_den, fc_double, "Rebuild growth denominator");
-    myopt("--reducecexgenok", mconf.reduce_cex_gen_ok, fc_int, "Reduce multi_cex when gen_repair_ok > this");
-    myopt("--reducecextotrep", mconf.reduce_cex_tot_rep, fc_int, "Reduce multi_cex when tot_repaired > this");
-    myopt("--reducecexneedrep", mconf.reduce_cex_need_rep, fc_int, "Set multi_cex_k=1 when needs_repair <= this");
-    myopt("--reducecexczminrep", mconf.reduce_cex_cz_min_rep, fc_int, "Min tot_repaired for cost-zero cex reduction");
-    myopt("--simprepevery", mconf.simplify_repair_every, fc_int, "Simplify repair_solver every N tot_repaired");
-    myopt("--skipinputminrep", mconf.skip_input_only_min_rep, fc_int, "Min tot_repaired before skipping input-only conflict");
-    myopt("--skipinputratio", mconf.skip_input_only_ratio, fc_int, "Skip input-only when gen_ok * ratio < tot_repaired");
     myopt("--confldropy", mconf.conflict_drop_y_max, fc_int, "Max conflict size to try dropping y-vars");
-    myopt("--extraminimhot", mconf.extra_minim_hot, fc_int, "Extra minimization when var repaired >= this many times");
-    myopt("--extraminimvhot", mconf.extra_minim_very_hot, fc_int, "2 extra minim passes when var repaired >= this");
     myopt("--conflcap", mconf.conflict_cap, fc_int, "Cap very large conflicts above this size");
     myopt("--conflcapkeep", mconf.conflict_cap_keep, fc_int, "Keep this many literals when capping conflicts");
     myopt("--batchminimmin", mconf.batch_minim_min, fc_int, "Min conflict size for batch minimization");
     myopt("--minimbudgetthresh", mconf.minim_budget_threshold, fc_int, "Conflict size above which minim budget is capped");
     myopt("--minimbudgetmax", mconf.minim_budget_max, fc_int, "Max minimization solver calls");
     myopt("--minimbudgetmult", mconf.minim_budget_mult, fc_int, "Minim budget = conflict.size * mult (up to max)");
-    myopt("--aigsimpevery", mconf.aig_simplify_every, fc_int, "Simplify AIG for hot vars every N repairs");
     myflag("--sat-sweep", do_sat_sweep, "Run FRAIG-lite SAT sweeping after AIG rewrite (merges proven-equivalent gates)");
-    myopt("--tdsteps", mconf.td_steps, fc_int, "Tree decomposition FlowCutter steps");
-    myopt("--tdlookahead", mconf.td_lookahead_iters, fc_int, "Tree decomposition FlowCutter lookahead iterations");
-    myopt("--bctxremoveall", mconf.better_ctx_remove_all, fc_int, "Remove-all threshold in find_better_ctx_normal");
-    myopt("--tdcontract", mconf.do_td_contract, fc_int, "Contract input variables before tree decomposition");
-    myopt("--tdmaxedges", mconf.td_max_edges, fc_int, "Skip TD when primal graph exceeds this many edges");
     myopt("--ccnrmemspersample", mconf.ccnr_mems_per_sample, fc_int, "CCNR total memory budget per sample");
     myopt("--ccnrpercalllimit", mconf.ccnr_per_call_limit, fc_int, "CCNR per-call step limit for local_search");
-    myopt("--biaswgh", mconf.bias_w_high, fc_double, "Bias weight for positive sampling direction (1-this for negative)");
-    myopt("--biasplow", mconf.bias_p_low, fc_double, "Lower probability threshold for mid-range bias selection");
-    myopt("--biasphigh", mconf.bias_p_high, fc_double, "Upper probability threshold for mid-range bias selection");
-    myopt("--reducecexgenrationum", mconf.reduce_cex_gen_ratio_num, fc_int, "Numerator of gen_ok/tot_repaired threshold for CEX reduction");
-    myopt("--reducecexgenratioden", mconf.reduce_cex_gen_ratio_den, fc_int, "Denominator of gen_ok/tot_repaired threshold for CEX reduction");
     myopt("--czhighratio", mconf.cz_high_ratio, fc_int, "cost_zero > tot_repaired * this triggers tightest cz_threshold");
     myopt("--czlowratio", mconf.cz_low_ratio, fc_int, "cost_zero > tot_repaired * this triggers medium cz_threshold");
     myopt("--czthreshhigh", mconf.cz_threshold_high, fc_int, "Consecutive cost-zero break count when high cz ratio");
@@ -260,9 +238,36 @@ void add_arjun_options() {
     // synth -- debug
     myopt("--manthancnf", mconf.write_manthan_cnf, fc_string, "Write Manthan CNF to this file");
     myopt("--debugsynth", conf.debug_synth, fc_string,"Debug synthesis, prefix with this fname");
+    myopt("--interprebuildevery", conf.interp_rebuild_every, fc_int,
+          "Rebuild the doubled-CNF interpolation solver every N interpolants (bounds tracer maps; smaller = exercise the rebuild path more).");
     myflag("--checkrepair", mconf.check_repair, "Check that error formula count decreases monotonically after each repair iteration (uses ganak)");
     myopt("--ganakbin", mconf.ganak_binary, fc_string, "Path to ganak binary (for --checkrepair)");
-
+    // Craig-interpolant repair options.
+    myopt("--interprepair", mconf.interp_repair, fc_int,
+          "Craig-interpolant repair branch in compose_or/and. "
+          "0=off, 1=on for every repair, 2=on only when conflict size >= --interprepairmincl");
+    myopt("--interprepairmincl", mconf.interp_repair_min_conflict, fc_int,
+          "(--interprepair=2 only) Minimum conflict size to attempt interpolation.");
+    myopt("--interprepairmaxnodes", mconf.interp_repair_max_aig_nodes, fc_int,
+          "Cap interpolant AIG size; if bigger, fall back to conflict-clause path. 0=no cap.");
+    myopt("--interprepairb1rewrite", mconf.interp_repair_b1_rewrite, fc_int,
+          "Independent: AIG rewrite of the combined branch b1=NOT(I) AND y_other_matches before Tseitin-encoding. simplify_aig is always on; this controls the heavier rewrite_aig pass. 0=off, 1=on.");
+    myopt("--interprepairb1satsweep", mconf.interp_repair_b1_satsweep, fc_int,
+          "FRAIG-lite sat_sweep on b1 — random-pattern sim + SAT-driven merging. Catches structural equivalences rewrite_aig misses. Expensive, opt-in. 0=off, 1=on.");
+    myopt("--interprepairgroupcse", mconf.interp_repair_group_cse, fc_int,
+          "Pass --group-cse to AIGToCNF when encoding the interp branch b1. Dedups Tseitin helpers for structurally identical sub-AIGs. 0=off, 1=on.");
+    myopt("--interprepairmaxconfl", mconf.interp_repair_max_conflicts, fc_int,
+          "Per-call cadical conflict budget for the interpolation solve. 0=no limit (default). Try 50000 to cap interp call cost; budget-exhausted calls fall back to the conflict-clause path.");
+    myopt("--interprepairadaptive", mconf.interp_repair_adaptive_gate, fc_int,
+          "Adaptive per-var gating: blacklist a var from interp when its running mean interp/conflict ratio exceeds --interprepairratioskip. 0=off, 1=on.");
+    myopt("--interprepairratioskip", mconf.interp_repair_adaptive_ratio_skip, fc_double,
+          "Mean interp/conflict ratio above which the adaptive gate blacklists a var.");
+    myopt("--interprepairskipwindow", mconf.interp_repair_adaptive_skip_window, fc_int,
+          "How many tot_repaired ticks the adaptive blacklist persists before the var gets another chance.");
+    myopt("--interprepairprogressmax", mconf.interp_repair_progress_max_var_repairs, fc_int,
+          "Progress gate: once a var has been interp-repaired this many times and still needs more, drop interp for it (it is not generalising). 0=off.");
+    myopt("--interprepairsystem", mconf.interp_repair_system, fc_int,
+          "Labeled-interpolation system: 0=McMillan (strongest interpolant, default), 1=Pudlák (symmetric selector; smaller but weaker interpolant).");
 
     // Simplification options for minim
     myopt("--probe", conf.probe_based, fc_int,"Use simple probing to set (and define) some variables");
@@ -289,6 +294,7 @@ void add_arjun_options() {
     myopt("--sbvalitcut", etof_conf.sbva_lits_cutoff, fc_int,"SBVA heuristic cutoff. Higher -> only appied to larger clauses");
     myopt("--findbins", conf.oracle_find_bins, fc_int,"How aggressively find binaries via oracle");
     myopt("--sbvabreak",  etof_conf.sbva_tiebreak, fc_int,"SBVA tie break: 1=sbva or 0=bva");
+    myopt("--sbvamaxnewvars", etof_conf.sbva_max_new_vars, fc_int,"Max number of new variables SBVA may add. 0 = no limit");
     myopt("--gaussj", conf.gauss_jordan, fc_int,"Use XOR finding and Gauss-Jordan elimination");
     myopt("--bve", simp_conf.do_bve, fc_int,"Perform BVE during CNF simplification");
     myopt("--iter1", simp_conf.iter1, fc_int,"Puura iterations before oracle");
@@ -363,13 +369,22 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_unate_def_cond(conf.unate_def_cond);
     arj->set_unate_def_cond_max_per_var(conf.unate_def_cond_max_per_var);
     arj->set_unate_def_cond_max_confl(conf.unate_def_cond_max_confl);
-    arj->set_unate_def_cond_relfirst(conf.unate_def_cond_relfirst);
     arj->set_unate_def_cond_dry_streak(conf.unate_def_cond_dry_streak);
+    arj->set_unate_def_cond_noninput(conf.unate_def_cond_noninput);
     arj->set_unate_def_rep_iters(conf.unate_def_rep_iters);
     arj->set_unate_def_rep_max_pattern(conf.unate_def_rep_max_pattern);
     arj->set_unate_def_rep_max_costzero(conf.unate_def_rep_max_costzero);
     arj->set_unate_def_rep_max_confl(conf.unate_def_rep_max_confl);
     arj->set_unate_def_rep_aux(conf.unate_def_rep_aux);
+    arj->set_unate_def_rep_minim(conf.unate_def_rep_minim);
+    arj->set_unate_def_rep_minim_budget(conf.unate_def_rep_minim_budget);
+    arj->set_unate_def_rep_input_only_first(conf.unate_def_rep_input_only_first);
+    arj->set_unate_def_rep_drop_aux(conf.unate_def_rep_drop_aux);
+    arj->set_unate_def_rep_multi_cex_k(conf.unate_def_rep_multi_cex_k);
+    arj->set_unate_def_rep_iter_verb(conf.unate_def_rep_iter_verb);
+    arj->set_unate_def_rep_freq_sort(conf.unate_def_rep_freq_sort);
+    arj->set_unate_def_rep_minim_extra_passes(conf.unate_def_rep_minim_extra_passes);
+    arj->set_unate_def_rep_multi_pat(conf.unate_def_rep_multi_pat);
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 
@@ -396,7 +411,12 @@ void do_synthesis() {
     cnf.set_need_aig();
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
     if (etof_conf.all_indep) {
-        cout << "ERROR: CNF had no indep set, we cannot do synthesis" << endl;
+        // all_indep is set by read_in_a_file when either no `c p show`
+        // projection was given (default is all-indep) or the projection
+        // happens to cover every variable. In both cases there are no
+        // defined vars left to synthesize, so synthesis has no work.
+        cout << "ERROR: no defined vars to synthesize "
+                "(no projection set, or projection covers all vars)" << endl;
         exit(EXIT_FAILURE);
     }
     cnf.clean_idiotic_mccomp_weights();
@@ -446,13 +466,13 @@ void do_synthesis() {
     }
     if (do_unate_def && !cnf.synth_done()) {
         arjun->standalone_unate_def(cnf);
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate_def.aig");
-        SLOW_DEBUG_DO(check_stage("unsat_unate_def"));
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unate_def.aig");
+        SLOW_DEBUG_DO(check_stage("unate_def"));
     }
     if (do_unate_def && do_unate_def_rep && !cnf.synth_done()) {
         arjun->standalone_unate_def_rep(cnf);
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unsat_unate_def_rep.aig");
-        SLOW_DEBUG_DO(check_stage("unsat_unate_def_rep"));
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unate_def_rep.aig");
+        SLOW_DEBUG_DO(check_stage("unate_def_rep"));
     }
 
     SynthRunner synth_runner(conf, arjun);

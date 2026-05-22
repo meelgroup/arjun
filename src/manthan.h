@@ -29,6 +29,7 @@
 #include "constants.h"
 #include "metasolver2.h"
 #include "cachedsolver.h"
+#include "interp_repair.h"
 #include <cryptominisat5/solvertypesmini.h>
 
 #include <cstdint>
@@ -37,7 +38,6 @@
 #include <set>
 #include <unordered_map>
 #include "formula.h"
-#include "treedecomp/TreeDecomposition.hpp"
 
 namespace ArjunInt {
 
@@ -94,14 +94,12 @@ class Manthan {
         std::set<uint32_t> helpers; // used for ITE
         std::set<uint32_t> y_hats; // the potential y_hats (due to ITE chains, some are "old" and unused)
 
-        std::unique_ptr<TWD::Graph> build_primal_graph();
         void const_functions();
         void bve_and_substitute();
         ArjunNS::aig_ptr one_level_substitute(const CMSat::Lit l, const uint32_t v, std::map<uint32_t, ArjunNS::aig_ptr>& transformed);
 
         void create_vars_for_y_hats();
         std::vector<uint32_t> incidence;
-        std::vector<double> td_score;
 
         CMSat::Lit map_y_to_y_hat(const CMSat::Lit& l) const;
         void print_needs_repair_vars() const;
@@ -115,8 +113,12 @@ class Manthan {
         template<typename S>
         void inject_cnf(S& s) const;
         bool repair(const uint32_t v, sample& ctx);
-        std::vector<sample> collect_extra_cex(const sample& ctx);
-        bool find_conflict(const uint32_t y_rep, sample& ctx, std::vector<CMSat::Lit>& conflict);
+        // Sets `interp_branch` to the McMillan interpolant AIG for
+        // perform_repair to use as the compose_or/and branch; nullptr =>
+        // fall back to the conflict-clause path.
+        bool find_conflict(const uint32_t y_rep, sample& ctx,
+                std::vector<CMSat::Lit>& conflict,
+                ArjunNS::aig_ptr& interp_branch);
         // Reusable scratch for AIG::get_dependent_vars inside find_conflict;
         // avoids per-call heap allocations for bitmap/stack. Visited state
         // is tracked via AIG::visit_epoch (no scratch needed).
@@ -134,7 +136,23 @@ class Manthan {
         std::vector<uint32_t> var_conflict_freq; // how often each var appears in conflicts
         void minimize_conflict(std::vector<CMSat::Lit>& conflict, std::vector<CMSat::Lit>& assumps, const CMSat::Lit repairing);
         uint32_t find_next_repair_var(const sample& ctx) const;
-        void perform_repair(const uint32_t y_rep, const sample& ctx, const std::vector<CMSat::Lit>& conflict);
+        // Add the repair conflict as a redundant clause to repair_solver,
+        // to speed up future repair_solver reasoning.
+        void add_repair_conflict_clause(const uint32_t y_rep, const sample& ctx,
+                const std::vector<CMSat::Lit>& conflict);
+        // If `interp_branch` is non-null, perform_repair uses it as the
+        // AIG branch; otherwise it builds the branch from conflict literals.
+        void perform_repair(const uint32_t y_rep, const sample& ctx,
+                const std::vector<CMSat::Lit>& conflict,
+                ArjunNS::aig_ptr interp_branch = nullptr);
+
+        // Build the Formula for the interpolant branch path. Sets f.aig
+        // (raw AIG), f.clauses (Tseitin-encoded in y_hat space) and
+        // f.out.
+        FHolder<MetaSolver2>::Formula build_interp_branch_formula(
+                const uint32_t y_rep, const std::vector<CMSat::Lit>& conflict,
+                ArjunNS::aig_ptr interp_branch);
+
         void add_not_f_x_yhat();
         void fill_dependency_mat_with_backward();
         void fill_var_to_formula_with(std::set<uint32_t>& vars);
@@ -146,15 +164,9 @@ class Manthan {
         // ordering
         std::vector<uint32_t> y_order; //1st only depends on inputs
         std::vector<int> order_val; // inputs have order -1, everything else as per y_order
-        void topological_sort_order();
         void pre_order_vars();
-        void post_order_vars();
         void learn_order();
         void bve_order();
-        bool cluster_order();
-        void compute_td_score_using_adj(const uint32_t nodes,
-            const std::vector<std::vector<int>>& bags,
-            const std::vector<std::vector<int>>& adj, const std::map<uint32_t, uint32_t>& new_to_old);
         bool later_in_order(const uint32_t a, const uint32_t b) const {
             SLOW_DEBUG_DO({
                 assert(order_val.size() > a);
@@ -174,7 +186,6 @@ class Manthan {
         std::vector<std::vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
 
         // Formulas
-        void add_xor_var();
         std::unique_ptr<FHolder<MetaSolver2>> fh = nullptr;
         std::map<uint32_t, FHolder<MetaSolver2>::Formula> var_to_formula; // var -> formula
 
@@ -236,7 +247,6 @@ class Manthan {
         // stats
         double repair_start_time;
         void print_stats(const std::string& txt = "", const std::string& color = "", const std::string& extra = "") const;
-        void print_repair_stats(const std::string& txt = "", const std::string& color = "", const std::string& extra = "") const;
         void print_detailed_stats() const;
         uint32_t num_loops_repair = 0;
         uint64_t conflict_sizes_sum = 0;
@@ -253,7 +263,6 @@ class Manthan {
 
         // detailed timing stats
         double time_cex_finding = 0;
-        double time_collect_extra_cex = 0;
         double time_find_better_ctx = 0;
         double time_find_conflict = 0;
         double time_minimize_conflict = 0;
@@ -267,9 +276,47 @@ class Manthan {
         uint32_t cost_zero_repairs = 0;
         uint32_t cex_solver_calls = 0;
         uint32_t repair_solver_calls = 0;
+        // Repairs that came from the interp path (real repairs only).
+        uint32_t interp_repairs_used = 0;
+
+        // Per-var record of which branch drove the var's most recent
+        // successful repair: 0=none yet, 1=conflict-clause, 2=interp.
+        // Used to attribute later cost-zero (failed) repairs of that var
+        // to whichever branch last touched it — a high interp share means
+        // the interpolant is not generalising, just churning.
+        std::vector<uint8_t> last_repair_branch;
+        uint64_t interp_path_cost_zero = 0;
+        uint64_t conflict_path_cost_zero = 0;
+        uint64_t unrepaired_cost_zero = 0; // cost-zero before any success
+
+        // Progress gate: per-var flag set once interp has been disabled
+        // for a var that kept needing repairs without converging.
+        std::vector<uint8_t> interp_progress_blacklist;
+        uint64_t interp_progress_blacklisted = 0; // #vars blacklisted
+        uint64_t interp_progress_skips = 0;       // repairs that fell back
 
         // Main stuff
         ArjunNS::SimplifiedCNF cnf;
         ArjunNS::AIGManager aig_mng;
+
+        // Craig-interpolant repair; lazily constructed in do_manthan()
+        // if mconf.interp_repair > 0.
+        std::unique_ptr<InterpRepair> interp_repair;
+
+        // Adaptive per-var gating state. interp_skip_until[v] is the
+        // tot_repaired count at which interp on v may be retried; the
+        // var_* sums feed the running mean ratio.
+        std::vector<uint32_t> interp_skip_until;
+        std::vector<uint32_t> interp_var_calls;
+        std::vector<uint64_t> interp_var_node_sum;
+        std::vector<uint64_t> interp_var_lit_sum;
+        // Stat: adaptive-gate skips.
+        uint64_t interp_adaptive_skips = 0;
+        // Per-var: interp-driven repair count and summed conflict size.
+        std::vector<uint32_t> interp_repairs_per_var;
+        std::vector<uint64_t> interp_conflict_lits_per_var;
+        // cex_solver helper-var growth per repair, by path.
+        uint64_t helpers_added_interp = 0;
+        uint64_t helpers_added_legacy = 0;
 };
 }

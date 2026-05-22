@@ -25,9 +25,14 @@ void AIG2CNFStats::print(int verb) const {
         << " (avg-width " << std::fixed << std::setprecision(2)
         << (kary_and_count ? (double)kary_and_width_total / kary_and_count : 0.0)
         << ")  ITE: " << ite_patterns
-        << "  MUX3: " << mux3_patterns
+        << "  MUXchain: " << mux3_patterns
+        << " (avg-len " << std::fixed << std::setprecision(2)
+        << (mux3_patterns ? (double)mux_chain_levels_total / mux3_patterns : 0.0)
+        << ")"
         << "  XOR: " << xor_patterns
         << "  CUT: " << cut_cnf_patterns << "/" << cut_cnf_clauses << "cls"
+        << " (const=" << cut_cnf_const << " proj=" << cut_cnf_proj
+        << " cse=" << cut_cnf_cse_hits << ")"
         << std::endl;
 }
 

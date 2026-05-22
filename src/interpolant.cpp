@@ -22,13 +22,14 @@
  THE SOFTWARE.
  */
 
-extern "C" {
-#include <cryptominisat5/mpicosat.h>
-}
-
 #include "interpolant.h"
-#include <memory>
+#include "interp_repair.h"
 #include "constants.h"
+
+#include <cadical.hpp>
+#include <fstream>
+#include <memory>
+#include <sstream>
 
 using namespace CMSat;
 using namespace CaDiCaL;
@@ -36,209 +37,128 @@ using namespace ArjunInt;
 using namespace ArjunNS;
 using std::vector;
 using std::set;
-using std::cout;
 using std::endl;
-using std::setw;
 
-void MyTracer::add_derived_clause(uint64_t id, bool /*red*/, const std::vector<int> & clause,
-                               const std::vector<uint64_t> & oantec) {
-  if (conf.verb >= 3) {
-      cout << "red ID:" << setw(4) << id;//  << " red: " << (int)red;
-      cout << " cl: "; for(const auto& l: clause) cout << l << " "; cout << endl;
-      cout << "antec: "; for(const auto& l: oantec) cout << l << " "; cout << endl;
-  }
-  cls[id] = pl_to_lit_cl(clause);
-  release_assert(!oantec.empty());
-  const vector<uint64_t> rantec(oantec.rbegin(), oantec.rend());
-
-  const uint64_t id1 = rantec[0];
-  auto aig = fs_clid[id1];
-  set<Lit> resolvent(cls[id1].begin(), cls[id1].end());
-
-  // Batch consecutive same-op steps for balanced tree construction,
-  // avoiding O(n)-depth AIGs that cause stack overflow on large proofs.
-  std::vector<aig_ptr> batch;
-  bool batch_is_and = false;
-  auto flush_batch = [&]() {
-      if (batch.empty()) return;
-      if (batch_is_and) aig = combine_balanced<AIG::new_and>(batch);
-      else              aig = combine_balanced<AIG::new_or>(batch);
-      batch.clear();
-  };
-
-  for (uint32_t i = 1; i < rantec.size(); i++) {
-      if (conf.verb >= 4) {
-          cout << "resolvent: "; for(const auto& l: resolvent) cout << l << " "; cout << endl;
-      }
-
-      const uint64_t id2 = rantec[i];
-      const vector<Lit>& cl = cls[id2];
-      verb_print(3, "resolving with: " << cl);
-      Lit res_lit = lit_Undef;
-      for(const auto& l: cl) {
-          if (resolvent.count(~l)) {
-              assert(res_lit == lit_Undef);
-              res_lit = ~l;
-              resolvent.erase(~l);
-          } else {
-              assert(resolvent.count(~l) == 0 && "not tautological resolvent!");
-              resolvent.insert(l);
-          }
-      }
-      assert(res_lit != lit_Undef);
-      const bool input_or_copy = input.count(res_lit.var()) || res_lit.var() >= (uint32_t)orig_num_vars;
-
-      if (!batch.empty() && batch_is_and != input_or_copy) flush_batch();
-      if (batch.empty()) { batch_is_and = input_or_copy; batch.push_back(aig); }
-      batch.push_back(fs_clid[id2]);
-  }
-  flush_batch();
-  fs_clid[id] = aig;
-  verb_print(5, "intermediate formula: " << fs_clid[id]);
-  if (clause.empty()) {
-      out = aig;
-      verb_print(5, "Final formula: " << aig);
-  }
+Interpolant::~Interpolant() {
+    // Detach the tracer before either it or the solver is destroyed:
+    // an attached tracer is otherwise deleted by the solver's destructor.
+    if (solver && tracer) solver->disconnect_proof_tracer(tracer.get());
 }
 
-void MyTracer::add_original_clause(uint64_t id, bool red, const std::vector<int> & clause, bool) {
-  assert(red == false);
-  if (conf.verb >= 3) {
-      cout << "orig ID:" << setw(4)<< id << " cl: ";
-      for(const auto& l: clause) cout << l << " ";
-      cout << endl;
-  }
-  cls[id] = pl_to_lit_cl(clause);
+void Interpolant::load_solver() {
+    // Build a fresh incremental CaDiCaL + McMillan tracer and (re)load the
+    // doubled CNF and the indicator units accumulated so far. Partition:
+    // A = clauses entirely in copy 1, B = everything else (copy 2,
+    // indicators, and their units).
+    solver = std::make_unique<Solver>();
+    tracer = std::make_unique<InterpTracerMcMillan>(conf, *aig_mng, *input_vars);
+    // copy-2 and indicator variables (index >= orig_num_vars) are B-local.
+    tracer->b_local_from = orig_num_vars;
+    solver->connect_proof_tracer(tracer.get(), true);
 
-  bool all_in_part_a = true;
-  for(const auto& l : clause) {
-      if (abs(l)-1 >= orig_num_vars) {all_in_part_a = false; break;}
-  }
-
-  if (all_in_part_a) {
-      // output of formula is equal to the set of inputs being satisfied or not in this CL
-      vector<Lit> cl;
-      for(const auto& l: clause) {
-          int32_t v = abs(l)-1;
-          if (input.count(v)) cl.push_back(pl_to_lit(l));
-      }
-      auto aig = get_aig(cl);
-      fs_clid[id] = aig;
-  } else {
-      fs_clid[id] = aig_mng.new_const(true);
-  }
-  verb_print(5, "intermediate formula: " << fs_clid[id]);
+    for (const auto& c : all_cls) {
+        tracer->next_is_b = is_b_clause(c);
+        for (const auto& l : c) solver->add(lit_to_pl(l));
+        solver->add(0);
+        tracer->next_is_b = false;
+    }
+    for (const auto& l : indicator_units) {
+        tracer->next_is_b = true;
+        solver->add(lit_to_pl(l));
+        solver->add(0);
+        tracer->next_is_b = false;
+    }
+    solves_since_rebuild = 0;
 }
 
-void Interpolant::generate_interpolant(
-        const vector<Lit>& assumptions, uint32_t test_var, const ArjunNS::SimplifiedCNF& cnf, const set<uint32_t>& input_vars) {
-    verb_print(2, "generating unsat proof for: " << test_var+1);
-    verb_print(3, "assumptions: " << assumptions);
-    verb_print(3, "orig_num_vars: " << orig_num_vars);
-
-    // FIRST, we get an UNSAT core
-    for(const auto& l: assumptions) picosat_assume(ps, lit_to_pl(l));
-    auto pret = picosat_sat(ps, -1);
-    verb_print(5, "c pret: " << pret);
-    release_assert(pret != PICOSAT_SATISFIABLE && "BUG, should be UNSAT");
-    release_assert(pret != PICOSAT_UNKNOWN && "picosat returned UNKNOWN");
-    release_assert(pret == PICOSAT_UNSATISFIABLE);
-
-    // NEXT we generate the small CNF that is UNSAT and is simplified
-    vector<vector<Lit>> mini_cls;
-    vector<Lit> cl;
-    for(uint32_t i = 0; i < orig_num_vars; i++) {
-        if (set_vals[i] != l_Undef) {
-            if (i == test_var) continue;
-            cl.clear();
-            cl.push_back(Lit(i, set_vals[i] == l_False));
-            mini_cls.push_back(cl);
-        }
-    }
-    for(uint32_t cl_at = 0; cl_at < cl_num; cl_at++) {
-        if (picosat_coreclause(ps, cl_at)) {
-            cl.clear();
-            verb_print(3, "cl: " << cl_map[cl_at]);
-            for(auto l: cl_map[cl_at]) {
-                // if it's a var that's the image that has been
-                // forced to be equal, then replace
-                if (l.var() < orig_num_vars*2 && l.var() >= orig_num_vars) {
-                    auto indic = var_to_indic[l.var()-orig_num_vars];
-                    if (indic != var_Undef && set_vals[indic] == l_True)
-                        l = Lit (l.var()-orig_num_vars, l.sign());
-                }
-                cl.push_back(l);
-            }
-            verb_print(3, "[interpolant] picosat says need cl: " << cl);
-            mini_cls.push_back(cl);
-        }
-    }
-    for(const auto& l: assumptions) mini_cls.push_back({l});
-
-    if (!conf.debug_synth.empty()) {
-        std::stringstream name;
-        name << "core-" << test_var+1 << ".cnf";
-        verb_print(1, "Writing core to: " << name.str());
-        auto f = std::ofstream(name.str());
-        f << "p cnf " << orig_num_vars*2 << " " << mini_cls.size() << endl;
-        f << "c orig_num_vars: " << orig_num_vars << endl;
-        f << "c output: " << test_var +1 << endl;
-        f << "c output2: " << orig_num_vars+test_var +1 << endl;
-        f << "c num inputs: " << cnf.get_sampl_vars().size() << endl;
-        f << "c inputs: "; for(const auto& l: cnf.get_sampl_vars()) f << (l+1) << " "; f << endl;
-        for(const auto& c: mini_cls) f << c << " 0" << endl;
-        f.close();
-    }
-
-    // CaDiCaL on the core only
-    auto cdcl = std::make_unique<Solver>();
-    MyTracer t(orig_num_vars, input_vars, conf, lit_to_aig, cnf.get_aig_mng());
-
-    cdcl->connect_proof_tracer(&t, true);
-    for(const auto& c: mini_cls) {
-        for(const auto& l: c) cdcl->add(lit_to_pl(l));
-        cdcl->add(0);
-    }
-    pret = cdcl->solve();
-    verb_print(3, "c CaDiCaL ret: " << pret);
-    release_assert(pret != Status::SATISFIABLE && "ERROR: core should be UNSAT");
-    release_assert(pret != Status::UNKNOWN && "CaDiCaL returned UNKNOWN");
-    release_assert(pret == Status::UNSATISFIABLE);
-    cdcl->disconnect_proof_tracer(&t);
-
-    defs[test_var] = t.out;
-    verb_print(5, "definition of var: " << test_var+1 << " is: " << t.out);
-    verb_print(5, "----------------------------");
-}
-
-void Interpolant::fill_picolsat(uint32_t _orig_num_vars) {
-    set_vals.clear();
-    set_vals.resize(solver->nVars(), l_Undef);
+void Interpolant::fill_from_solver(SATSolver* cms_solver,
+        uint32_t _orig_num_vars, const AIGManager& _aig_mng,
+        const set<uint32_t>& _input_vars) {
     orig_num_vars = _orig_num_vars;
+    tot_num_vars = cms_solver->nVars();
+    aig_mng = &_aig_mng;
+    input_vars = &_input_vars;
 
-    solver->start_getting_constraints(false);
+    // Extract the (already CMS-simplified) doubled CNF once. The indicator
+    // units permanently added to the solver later come via add_unit_cl.
+    all_cls.clear();
+    cms_solver->start_getting_constraints(false);
     vector<Lit> cl;
     bool is_xor, rhs;
-    for(uint32_t i = 0; i < solver->nVars(); i++) picosat_inc_max_var(ps);
-    while(solver->get_next_constraint(cl, is_xor, rhs)) {
+    while (cms_solver->get_next_constraint(cl, is_xor, rhs)) {
         assert(!is_xor); assert(rhs);
-        cl_map[cl_num++] = cl;
-        for (const auto& l: cl) picosat_add(ps, lit_to_pl(l));
-        picosat_add(ps, 0);
+        all_cls.push_back(cl);
     }
-    solver->end_getting_constraints();
-}
+    cms_solver->end_getting_constraints();
 
-void Interpolant::fill_var_to_indic(const vector<uint32_t>& _var_to_indic) {
-    var_to_indic = _var_to_indic;
+    load_solver();
+    verb_print(2, "[interp] doubled CNF loaded into incremental solver: "
+            << all_cls.size() << " clauses, " << tot_num_vars << " vars");
 }
 
 void Interpolant::add_unit_cl(const vector<Lit>& cl) {
     assert(cl.size() == 1);
+    // A variable proven defined/independent: add its indicator unit,
+    // B-side, to the persistent interpolation solver.
+    tracer->next_is_b = true;
+    solver->add(lit_to_pl(cl[0]));
+    solver->add(0);
+    tracer->next_is_b = false;
+    indicator_units.push_back(cl[0]);
+}
 
-    cl_map[cl_num++] = cl;
-    picosat_add(ps, lit_to_pl(cl[0]));
-    picosat_add(ps, 0);
-    assert(cl[0].sign() == false);
-    set_vals[cl[0].var()] = l_True;
+void Interpolant::generate_interpolant(const vector<Lit>& assumptions,
+        uint32_t test_var) {
+    verb_print(2, "[interp] generating interpolant for var: " << test_var+1);
+    verb_print(3, "[interp] assumptions: " << assumptions);
+
+    if (!conf.debug_synth.empty()) {
+        std::stringstream name;
+        name << conf.debug_synth << "-core-" << test_var+1 << ".cnf";
+        verb_print(1, "[interp] writing doubled CNF to: " << name.str());
+        const size_t n = all_cls.size() + indicator_units.size()
+                + assumptions.size();
+        auto f = std::ofstream(name.str());
+        f << "p cnf " << tot_num_vars << " " << n << endl;
+        f << "c orig_num_vars: " << orig_num_vars << endl;
+        f << "c output: " << test_var+1 << endl;
+        for (const auto& c : all_cls) f << c << " 0" << endl;
+        for (const auto& l : indicator_units) f << l << " 0" << endl;
+        for (const auto& l : assumptions) f << l << " 0" << endl;
+        f.close();
+    }
+
+    // One incremental, assumption-based solve on the persistent solver.
+    // The test_var assumptions are assumed (not added as clauses), so the
+    // doubled CNF and indicator units stay reusable for the next call.
+    tracer->reset_per_solve();
+    for (const auto& l : assumptions) solver->assume(lit_to_pl(l));
+    const int ret = solver->solve();
+    // CMS already proved this UNSAT under the same assumptions.
+    release_assert(ret == 20 && "interpolant solve must be UNSAT");
+    // conclude() makes cadical emit the incremental-proof conclusion, so
+    // the tracer sees the failing-assumption clause and conclude_unsat.
+    solver->conclude();
+
+    aig_ptr interp = tracer->build_interpolant();
+    // The proof exists and was traced, so reconstruction must succeed.
+    release_assert(interp != nullptr
+        && "interpolant tracer failed to reconstruct from proof");
+    interp = AIG::simplify_aig(interp);
+    release_assert(interp != nullptr
+        && "interpolant: simplify_aig returned null");
+
+    defs[test_var] = interp;
+    verb_print(5, "[interp] definition of var " << test_var+1
+            << " is: " << interp);
+
+    // Periodically rebuild solver + tracer so the tracer's clause maps
+    // (which accumulate every clause of every solve) do not grow without
+    // bound. The doubled CNF and indicator units are simply reloaded.
+    if (++solves_since_rebuild >= conf.interp_rebuild_every) {
+        verb_print(2, "[interp] rebuilding incremental solver after "
+                << solves_since_rebuild << " interpolants");
+        solver->disconnect_proof_tracer(tracer.get());
+        load_solver();
+    }
 }

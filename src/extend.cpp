@@ -67,13 +67,12 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
     const auto zero_ass = solver->get_zero_assigned_lits();
     for(const auto& p: zero_ass) input_vars.insert(p.var());
     add_all_indics_except(input_vars);
-    verb_print(2, "[extend] orig_num_vars: " << orig_num_vars << " nvars: " << solver->nVars());
+    verb_print(2, "[synth-extend] orig_num_vars: " << orig_num_vars << " nvars: " << solver->nVars());
 
     // set up interpolant
     Interpolant interp(conf, cnf.nVars());
-    interp.solver = solver.get();
-    interp.fill_picolsat(orig_num_vars);
-    interp.fill_var_to_indic(var_to_indic);
+    interp.fill_from_solver(solver.get(), orig_num_vars, cnf.get_aig_mng(),
+            input_vars);
 
     //Initially, all of non-opt sampling set is unknown
     for(const auto& x: seen) assert(x == 0);
@@ -85,7 +84,7 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
     if (unknown.empty()) return;
 
     sort_unknown(unknown, incidence);
-    verb_print(1,"[extend] Start unknown size: " << unknown.size()
+    verb_print(1,"[synth-extend] Start unknown size: " << unknown.size()
                     << " mem: " << memUsedTotal()/(1024*1024) << " MB");
     uint32_t num_sat = 0;
     uint32_t num_unknown = 0;
@@ -96,7 +95,7 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
     uint32_t num_unsat = 0;
     while(!unknown.empty()) {
         if (num_done % 100 == 99) {
-            verb_print(1, "[extend] done: " << setw(4) << num_done
+            verb_print(1, "[synth-extend] done: " << setw(4) << num_done
                     << " unsat: " << setw(4) << num_unsat
                     << " left: " << setw(4) << unknown.size()
                     << " T: " << std::setprecision(2) << std::fixed << setw(6)
@@ -117,8 +116,8 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
         assert(!input_vars.count(test_var));
         assumptions.clear();
         const uint32_t indic = var_to_indic[test_var];
-        assumptions.push_back(Lit(test_var, false));
-        assumptions.push_back(Lit(test_var + orig_num_vars, true));
+        assumptions.emplace_back(test_var, false);
+        assumptions.emplace_back(test_var + orig_num_vars, true);
 
         //TODO: Actually, we should get conflict, that will make things easier
         solver->set_no_confl_needed();
@@ -127,16 +126,14 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
         ret = solver->solve(&assumptions);
         num_done++;
 
-        if (ret == l_False) verb_print(5, "[extend] extend solve(): False");
-        else if (ret == l_True) {verb_print(5, "[extend] extend solve(): True");num_sat++;}
-        else if (ret == l_Undef) {verb_print(5, "[extend] extend solve(): Undef"); num_unknown++;}
+        if (ret == l_False) verb_print(5, "[synth-extend] extend solve(): False");
+        else if (ret == l_True) {verb_print(5, "[synth-extend] extend solve(): True");num_sat++;}
+        else if (ret == l_Undef) {verb_print(5, "[synth-extend] extend solve(): Undef"); num_unknown++;}
 
         if (ret == l_False) {
             num_unsat++;
             // Dependent fully on `indep`
-            // TODO: run get_conflict and then we know which were
-            // actually needed, so we can do an easier generation/check
-            interp.generate_interpolant(assumptions, test_var, cnf, input_vars);
+            interp.generate_interpolant(assumptions, test_var);
             solver->add_clause({Lit(indic, false)});
             interp.add_unit_cl({Lit(indic, false)});
             cnf.add_opt_sampl_var(test_var);
@@ -174,7 +171,7 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
     cnf.map_aigs_to_orig(interp.get_defs(), orig_num_vars);
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
     auto [input2, to_define2, backward_defined2] = cnf.get_var_types(0 | verbose_debug_enabled, "end extend_synth");
-    verb_print(1, COLRED "[extend] Done. "
+    verb_print(1, COLRED "[synth-extend] Done. "
             << " True: " << num_sat
             << " Unkn: " << num_unknown
             << " defined: " << to_define.size()-to_define2.size()

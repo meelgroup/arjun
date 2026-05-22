@@ -25,55 +25,16 @@
 #pragma once
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <set>
 #include <vector>
-#include <memory>
 #include <cryptominisat5/solvertypesmini.h>
 #include <cryptominisat5/cryptominisat.h>
 #include "arjun.h"
 #include "config.h"
 #include "metasolver.h"
 
-// Telemetry for the repair-based unate-def probe. Reset at the start of
-// each `synthesis_unate_def_rep` call.
-struct UnateDefRepStats {
-    uint32_t tests_run = 0;          // vars we ran the rep loop for
-    uint32_t hits = 0;               // vars where we found a def
-    uint64_t total_iters = 0;        // total guess+refine iterations
-    uint64_t miter_unsat = 0;        // miter UNSAT (def found this iter)
-    uint64_t miter_sat = 0;          // miter SAT (CEX)
-    uint64_t miter_undef = 0;        // miter timed out
-    uint64_t f_unsat = 0;            // F-only solver UNSAT (productive CEX)
-    uint64_t f_sat = 0;              // F-only solver SAT (cost-zero CEX)
-    uint64_t f_undef = 0;            // F-only solver timed out
-    uint64_t skipped_pattern_too_big = 0;
-    // Miter UNSAT but uniqueness check failed (Skolem-only). We don't
-    // commit because Manthan downstream needs F ⊨ y_test = H.
-    uint64_t skolem_only_skipped = 0;
-    uint64_t hit_iter_sum = 0;       // for averaging hit-iteration depth
-    uint64_t hit_iter_max = 0;
-    uint64_t hit_aig_nodes_sum = 0;  // for averaging final AIG size
-    uint64_t hit_aig_nodes_max = 0;
-    // Aux-leaf telemetry: how often the new "non-input H leaves" path actually
-    // contributes. `aux_leaves_sum` counts distinct non-input leaves in the
-    // committed H, summed across hits.
-    uint64_t hits_using_aux = 0;
-    uint64_t aux_leaves_sum = 0;
-    uint64_t aux_leaves_max = 0;
-    double time_total = 0.0;
-    // Time breakdown (seconds). Only the three SAT calls — they dominate
-    // total time and per-iter cpuTime() calls aren't free.
-    double time_miter_solve = 0.0;  // SAT call on the miter
-    double time_feas_solve = 0.0;   // F-solver feasibility SAT call
-    double time_f_solve = 0.0;      // F-solver CEX SAT call
-    // Op counts to put time numbers in context.
-    uint64_t miter_solve_calls = 0;
-    uint64_t feas_solve_calls = 0;
-    uint64_t f_solve_calls = 0;
-    uint64_t encode_h_nodes_visited = 0;
-    uint64_t encode_h_nodes_emitted = 0;  // distinct AND helpers actually allocated
-    uint64_t encode_h_in_f_emitted = 0;
-};
+namespace ArjunInt {
 
 // Telemetry for the conditional-unate-def probe. Reset at the start of
 // each `synthesis_unate_def` call. All counts are over the inner
@@ -113,6 +74,12 @@ struct UnateDefCondStats {
     // remainder (hits - hits_in_related) came from the fall-through tail.
     // Tells us whether the structural pre-ordering actually pays off.
     uint64_t hits_in_related = 0;
+    // Of `hits`, how many used a non-input as the definer L. Counts the
+    // payoff of the non-input extension.
+    uint64_t hits_using_noninput = 0;
+    // Non-input candidates skipped because committing test = L would close
+    // a dependency cycle (test ∈ deps_recursive(L_orig)).
+    uint64_t cands_skipped_cycle = 0;
 
     // Time spent inside the conditional block (post-flips), seconds.
     double time_in_cond = 0.0;
@@ -122,31 +89,56 @@ struct UnateDefCondStats {
 
 class Unate {
     public:
-        Unate(const ArjunInt::Config& _conf) : conf(_conf) {}
+        Unate(const Config& _conf) : conf(_conf) {}
         ~Unate() = default;
 
         void synthesis_unate_def(ArjunNS::SimplifiedCNF& cnf);
-        void synthesis_unate_def_rep(ArjunNS::SimplifiedCNF& cnf);
     private:
 
-        ArjunInt::Config conf;
+        Config conf;
         std::set<uint32_t> input;
         std::set<uint32_t> to_define;
         std::set<uint32_t> backward_defined;
 
         std::vector<uint32_t> var_to_indic; // for each var, the indicator
                                             // variable in the SAT solver that is true iff the var is equal to its copy (i.e. not flipped)
-        std::unique_ptr<ArjunInt::MetaSolver> setup_f_not_f(const ArjunNS::SimplifiedCNF& cnf);
+
+        // Per-call transient state for synthesis_unate_def. Reset at entry.
+        std::unique_ptr<ArjunInt::MetaSolver> s;
+        ArjunNS::SimplifiedCNF* cnf_ptr = nullptr;
+        CMSat::Lit true_lit = CMSat::lit_Undef;
+        std::map<uint32_t, CMSat::Lit> new_to_orig;
+        std::set<uint32_t> already_tested;
+        std::vector<CMSat::Lit> assumps;
+        std::vector<CMSat::lbool> input_vals[2];
+        bool model_valid[2] = {false, false};
+        uint32_t new_units = 0;
+        uint32_t tested_num = 0;
+        double my_time = 0.0;
+
+        // Pass-section helpers, in the order synthesis_unate_def uses them.
+        CMSat::Lit get_true_lit();
+        void setup_y_prime_backward_defs();
+        void build_indicators();
+        void build_cond_state();
+        bool process_test_var(uint32_t test);
+        void log_pass_summary(uint32_t to_define_size_before);
 
         // ===== Conditional unate-def probe state =====
         // Set up once at the start of synthesis_unate_def, then read/updated
         // per-test inside try_cond_unate_def.
-        std::vector<uint32_t> cond_input_vars_list;
-        std::vector<uint32_t> cond_input_pos;            // var -> index in cond_input_vars_list, or NOT_INPUT
-        std::vector<std::vector<uint32_t>> cond_related_inputs; // per to-define var, inputs sharing a clause
+        std::vector<uint32_t> cond_input_vars_list;      // sorted inputs
+        std::vector<uint32_t> cond_noninput_vars_list;   // sorted non-input candidates (to-define + already-tested non-backward-defined)
+        std::vector<uint32_t> cond_cand_pos;             // var -> global index in [inputs, noninputs], or NOT_INPUT
+        std::vector<std::vector<uint32_t>> cond_related_inputs;    // per to-define var, inputs sharing a clause
+        std::vector<std::vector<uint32_t>> cond_related_noninputs; // per to-define var, non-input candidates sharing a clause
         std::vector<uint32_t> cond_cand_seen_gen;        // generation-counter dedup for cur_cands
         uint32_t cond_cand_gen = 0;
         std::vector<uint32_t> cond_cur_cands;            // reusable per-test candidate buffer
+        // Cycle-safety cache for non-input L: dep-recursive lookups on
+        // l_orig.var(). Invalidated after every successful commit since the
+        // new def changes the dep graph.
+        std::map<uint32_t, std::vector<uint32_t>> cond_deps_cache;
         bool cond_enabled = false;
         uint32_t cond_attempts_since_last_hit = 0;
         uint32_t cond_new_defs = 0;
@@ -155,15 +147,10 @@ class Unate {
         // Try to express `test` as a single input literal under a value-conditioned
         // probe, using the two SAT witnesses from the standard-unate flips
         // (projected to input vars in input_vals[0/1]). Returns true if a
-        // definition was found and committed to `cnf`.
-        bool try_cond_unate_def(
-            ArjunNS::SimplifiedCNF& cnf,
-            ArjunInt::MetaSolver& s,
-            uint32_t test,
-            const std::vector<CMSat::lbool> (&input_vals)[2],
-            std::vector<CMSat::Lit>& assumps,
-            const std::map<uint32_t, CMSat::Lit>& new_to_orig);
+        // definition was found and committed to `*cnf_ptr`.
+        bool try_cond_unate_def(uint32_t test);
 
         UnateDefCondStats cond_stats;
-        UnateDefRepStats rep_stats;
 };
+
+} // namespace ArjunInt

@@ -12,6 +12,7 @@ import glob
 import os
 import random
 import re
+import shlex
 import stat
 import subprocess
 import sys
@@ -44,7 +45,8 @@ def gen_cnf(seed):
     if rc != 0:
         print("ERROR: brummayer failed seed=%d" % seed)
         sys.exit(1)
-    add_projection(fname)
+    if add_projection(fname) is None:
+        return None
     return fname
 
 
@@ -59,11 +61,18 @@ def add_projection(fname):
                 break
     if nvars == 0:
         sys.exit(1)
+    # Synthesis needs ≥1 var NOT in the projection (the var to be defined).
+    # Brummayer occasionally emits a 1-var "c too many nodes" fallback CNF
+    # — skip it: arjun would otherwise abort with "no defined vars".
+    if nvars < 2:
+        return None
     # ~1/3 to 1/2 of vars projected — enough for the rep pass to have work.
-    n = max(1, random.randint(nvars // 4, nvars // 2 + 1))
+    # Clamp upper bound to nvars-1 so the projection is a proper subset.
+    n = max(1, min(nvars - 1, random.randint(nvars // 4, nvars // 2 + 1)))
     proj = random.sample(range(1, nvars + 1), n)
     with open(fname, 'a') as f:
         f.write("c p show " + " ".join(str(v) for v in proj) + " 0\n")
+    return proj
 
 
 def is_sat(fname):
@@ -102,6 +111,26 @@ def run_arjun(fname, prefix):
         "--unatedefrepconfl", str(random.choice([1, 10, 100, 1000, 100000])),
         # 0=input only, 1=+backward-defined, 2=+to-define (richest).
         "--unatedefrepaux", str(random.choice([0, 1, 2])),
+        # 0 = no conflict minim (old). 1 = greedy. Mostly we want 1.
+        "--unatedefrepminim", str(random.choice([0, 1])),
+        # 0 = budget burnt instantly (no minim work even if enabled). High
+        # values let minim grind through patterns. Stress both extremes.
+        "--unatedefrepminbud", str(random.choice([0, 1, 4, 16, 200])),
+        # 0=off; 1=always; 2=only when aux non-empty.
+        "--unatedefrepinpfirst", str(random.choice([0, 1, 2])),
+        # 0/1: single-shot drop-all-aux after greedy minim.
+        "--unatedefrepdropaux", str(random.choice([0, 1])),
+        # 1 = single CEX (off), 2..8 = collect that many.
+        "--unatedefrepmulticex", str(random.choice([1, 2, 3, 5, 8])),
+        # iter-trace verbosity threshold. Sometimes set low so the
+        # trace fires (stress-testing the printing code).
+        "--unatedefrepiterverb", str(random.choice([0, 1, 4, 99])),
+        # 0/1: sort minim drop order by pattern-frequency.
+        "--unatedefrepfreqsort", str(random.choice([0, 1])),
+        # extra reverse-shuffle minim passes (manthan-style).
+        "--unatedefrepminextra", str(random.choice([0, 1, 3, 10])),
+        # 0/1: refine H using all collected multi-cex models.
+        "--unatedefrepmultipat", str(random.choice([0, 1])),
         "--unatedefcond", str(random.choice([0, 1])),
         "--unatedefcondmax", str(random.choice([0, 1, 16, 1024])),
         "--unatedefconddry", str(random.choice([1, 10, 100, 100000])),
@@ -116,21 +145,50 @@ def run_arjun(fname, prefix):
         return None, [], None
     aigs = []
     saw_rep_done = False
+    rep_stats = {}
     for line in out.stdout.splitlines():
         if "[unate_def_rep] Done." in line:
             saw_rep_done = True
+            # Parse a few stats from the summary for the run-level totals.
+            # Example shape: "tests:   30 hits:    6 iters:    168 ..."
+            for key in ("tests", "hits", "iters"):
+                m = re.search(r"%s:\s*(\d+)" % key, line)
+                if m:
+                    rep_stats[key] = int(m.group(1))
+        if "[unate_def_rep] time breakdown:" in line:
+            # New stats: minim, inpfirst, dropaux, multicex.
+            for key in ("minim_t", "att", "ok", "sz_in", "sz_out"):
+                # multiple matches may appear; take last for the time line
+                pass
+            m = re.search(r"sz_in=(\d+)\s+sz_out=(\d+)", line)
+            if m:
+                rep_stats["minim_sz_in"] = int(m.group(1))
+                rep_stats["minim_sz_out"] = int(m.group(2))
+            m = re.search(r"inpfirst\[att=(\d+) U=(\d+)", line)
+            if m:
+                rep_stats["inpfirst_att"] = int(m.group(1))
+                rep_stats["inpfirst_unsat"] = int(m.group(2))
+            m = re.search(r"dropaux\[att=(\d+) ok=(\d+)", line)
+            if m:
+                rep_stats["dropaux_att"] = int(m.group(1))
+                rep_stats["dropaux_ok"] = int(m.group(2))
+            m = re.search(r"multicex\[att=(\d+) models=(\d+)", line)
+            if m:
+                rep_stats["multicex_att"] = int(m.group(1))
+                rep_stats["multicex_models"] = int(m.group(2))
         if line.startswith("c o Wrote AIG defs:"):
             aigs.append(line[len("c o Wrote AIG defs:"):].strip())
         if "ERROR" in line and "Training error" not in line:
             print("ERROR line: %s" % line)
-            return True, aigs, saw_rep_done
+            return True, aigs, saw_rep_done, rep_stats
         if "Assertion" in line or "assert" in line:
             print("Assertion line: %s" % line)
-            return True, aigs, saw_rep_done
+            return True, aigs, saw_rep_done, rep_stats
     if out.returncode != 0:
-        print("arjun crashed exit=%d args=%s" % (out.returncode, " ".join(args)))
-        return True, aigs, saw_rep_done
-    return False, aigs, saw_rep_done
+        print("arjun crashed exit=%d args=%s"
+              % (out.returncode, " ".join(shlex.quote(str(a)) for a in args)))
+        return True, aigs, saw_rep_done, rep_stats
+    return False, aigs, saw_rep_done, rep_stats
 
 
 def run_test_synth(cnf, aig, final):
@@ -183,15 +241,29 @@ def main():
     os.makedirs("out", exist_ok=True)
     rep_fired = 0
     rep_verified = 0
+    # Cumulative stat totals across iterations. Used at the end to print
+    # a coverage line so the user sees that all the new code paths were
+    # actually exercised by the random knob choices (e.g., minim ran at
+    # least N times, inpfirst at least M, etc.).
+    totals = {
+        "minim_sz_in": 0, "minim_sz_out": 0,
+        "inpfirst_att": 0, "inpfirst_unsat": 0,
+        "dropaux_att": 0, "dropaux_ok": 0,
+        "multicex_att": 0, "multicex_models": 0,
+        "iters": 0, "hits": 0, "tests": 0,
+    }
     for i in range(num):
         seed = random.randint(0, 1 << 31)
         random.seed(seed)
         fname = gen_cnf(seed)
+        if fname is None:
+            print("seed=%d SKIP (CNF has <2 vars, no defined var possible)" % seed)
+            continue
         if not is_sat(fname):
             os.remove(fname)
             continue
         prefix = unique_file("rep_out", suffix="")
-        err, aigs, saw_rep_done = run_arjun(fname, prefix)
+        err, aigs, saw_rep_done, stats = run_arjun(fname, prefix)
         if err is None:
             print("seed=%d TIMEOUT" % seed)
             cleanup(fname, prefix)
@@ -201,6 +273,8 @@ def main():
             sys.exit(1)
         if saw_rep_done:
             rep_fired += 1
+        for k, v in stats.items():
+            totals[k] = totals.get(k, 0) + v
         # Verify each intermediate AIG (incl. unate_def_rep specifically).
         for aig in aigs:
             final = "-final.aig" in aig
@@ -215,6 +289,29 @@ def main():
                   (i + 1, num, rep_fired, rep_verified))
     print("DONE %d iters: rep_fired=%d rep_verified_AIGs=%d" %
           (num, rep_fired, rep_verified))
+    # Coverage summary — every knob's effect should show up in totals.
+    # If e.g. minim_sz_in == minim_sz_out for every run, the minim
+    # path is broken or never fires.
+    print("=== knob coverage across runs ===")
+    print("  total iters: %d (rep tests: %d, hits: %d)" %
+          (totals["iters"], totals["tests"], totals["hits"]))
+    if totals["minim_sz_in"]:
+        dropped = totals["minim_sz_in"] - totals["minim_sz_out"]
+        print("  minim: in=%d out=%d (-%d, %.1f%%)" %
+              (totals["minim_sz_in"], totals["minim_sz_out"], dropped,
+               100.0 * dropped / max(totals["minim_sz_in"], 1)))
+    if totals["inpfirst_att"]:
+        print("  inpfirst: att=%d UNSAT=%d (%.1f%%)" %
+              (totals["inpfirst_att"], totals["inpfirst_unsat"],
+               100.0 * totals["inpfirst_unsat"] / max(totals["inpfirst_att"], 1)))
+    if totals["dropaux_att"]:
+        print("  dropaux: att=%d ok=%d (%.1f%%)" %
+              (totals["dropaux_att"], totals["dropaux_ok"],
+               100.0 * totals["dropaux_ok"] / max(totals["dropaux_att"], 1)))
+    if totals["multicex_att"]:
+        print("  multicex: att=%d models=%d (avg %.1f models/iter)" %
+              (totals["multicex_att"], totals["multicex_models"],
+               totals["multicex_models"] / max(totals["multicex_att"], 1)))
 
 
 if __name__ == "__main__":

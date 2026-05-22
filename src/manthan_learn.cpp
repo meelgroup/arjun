@@ -79,37 +79,10 @@ double ManthanLearn::train(const vector<sample>& orig_samples, const uint32_t v)
 
     vector<uint32_t> used_vars(m.input.begin(), m.input.end());
     if (mconf.use_all_vars_as_feats) {
-        if (!mconf.manthan_on_the_fly_order) {
-            for(const auto& y: m.y_order) {
-                if (y == v) break;
-                assert(m.dependency_mat[y][v] != 1);
-                used_vars.push_back(y);
-            }
-        } else {
-            auto reaches = [&](const uint32_t from, const uint32_t to) -> bool {
-                if (from == to) return true;
-                vector<uint8_t> seen(m.cnf.nVars(), 0);
-                vector<uint32_t> st;
-                st.push_back(from);
-                seen[from] = 1;
-                while(!st.empty()) {
-                    const uint32_t cur = st.back();
-                    st.pop_back();
-                    for(uint32_t nxt = 0; nxt < m.cnf.nVars(); nxt++) {
-                        if (m.dependency_mat[cur][nxt] == 0) continue;
-                        if (nxt == to) return true;
-                        if (seen[nxt]) continue;
-                        seen[nxt] = 1;
-                        st.push_back(nxt);
-                    }
-                }
-                return false;
-            };
-            for(const auto& y: m.to_define_full) {
-                if (y == v) continue;
-                if (reaches(y, v)) continue;
-                used_vars.push_back(y);
-            }
+        for(const auto& y: m.y_order) {
+            if (y == v) break;
+            assert(m.dependency_mat[y][v] != 1);
+            used_vars.push_back(y);
         }
     }
     /* assert(!orig_samples.empty()); */

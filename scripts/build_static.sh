@@ -21,7 +21,6 @@ cmake -DBUILD_SHARED_LIBS=OFF -DSTATIC_BINARY=ON \
     -DGMPXX_LIBRARY=/usr/local/lib/libgmpxx.a \
     -Dcryptominisat5_DIR="${SOLVERS_DIR}/cryptominisat/build" \
     -Dsbva_DIR="${SOLVERS_DIR}/sbva/build" \
-    -Dtreedecomp_DIR="${SOLVERS_DIR}/treedecomp/build" \
     -Dcadical_DIR="${SOLVERS_DIR}/cadical/build" \
     ..
 make -j$(nproc)

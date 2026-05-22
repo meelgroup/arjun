@@ -28,8 +28,6 @@
 #include <vector>
 #include "argparse.hpp"
 #include "arjun.h"
-#include <cryptominisat5/dimacsparser.h>
-#include <cryptominisat5/solvertypesmini.h>
 #include "file_read_helper.h"
 #include "formula.h"
 #include "metasolver.h"
@@ -99,7 +97,7 @@ using namespace ArjunNS;
 
 int verb = 1;
 int mode = 0;
-int num_samples = 50;
+int num_samples = 100;
 long long seed = 42;
 std::mt19937 mt;
 int unsat_verif = 0;

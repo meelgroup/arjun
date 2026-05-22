@@ -21,8 +21,10 @@
 #pragma once
 
 #include "arjun.h"
+#include "constants.h"
 #include "cut_cnf.h"
 #include <cryptominisat5/solvertypesmini.h>
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <unordered_map>
@@ -51,9 +53,20 @@ struct AIG2CNFStats {
     // Stubs kept for API compatibility with callers that still track these.
     uint64_t ite_patterns = 0;
     uint64_t mux3_patterns = 0;
+    // Sum of selector counts across all fused MUX chains (≥2 each). With
+    // mux3_patterns counting one per chain, the average chain length is
+    // mux_chain_levels_total / mux3_patterns.
+    uint64_t mux_chain_levels_total = 0;
+    uint64_t mux_chain_cse_hits = 0;
     uint64_t xor_patterns = 0;
     uint64_t cut_cnf_patterns = 0;
     uint64_t cut_cnf_clauses = 0;
+    // Cut-CNF cones that collapsed to a constant or to a single input
+    // projection — these need neither a helper nor any clause.
+    uint64_t cut_cnf_const = 0;
+    uint64_t cut_cnf_proj = 0;
+    // Cut-CNF cones served from the functional (leaves+tt) CSE cache.
+    uint64_t cut_cnf_cse_hits = 0;
 
     // Group-CSE contribution counters.
     uint64_t cse_and_hits = 0;
@@ -124,6 +137,11 @@ private:
     bool normalize_inputs = true;
     uint32_t max_kary_width = 1u << 30;
 
+    // Upper bound on MUX-chain fusion depth. Bounds the longest emitted
+    // clause (level + 3 literals) so a 500-deep manthan ITE chain still
+    // produces SAT-friendly short clauses while cutting helpers ~4×.
+    static constexpr uint32_t kMaxMuxChain = 8;
+
     // Fanout counted by node identity. Leaf nodes are never helpers and
     // don't need fanout tracking.
     struct AigNodeHash {
@@ -157,6 +175,18 @@ private:
     // ITE CSE key: (s, t, e) each packed as (var << 1 | sign).
     using IteKey = std::tuple<uint32_t, uint32_t, uint32_t>;
     std::map<IteKey, CMSat::Lit> ite_cse;
+
+    // Functional CSE for ≤4-input cut cones. Key: [num_inputs, sorted leaf
+    // vars…, canonical truth table]. Two cones over the same input variables
+    // computing the same (or complementary) function reuse one helper. The
+    // 16-bit TT keeps the key tiny, so unlike group_cse this is cheap enough
+    // to leave always on. Always populated.
+    std::map<std::vector<uint32_t>, CMSat::Lit> cut_cse;
+
+    // Functional CSE for fused MUX chains. Key: the packed (var<<1|sign)
+    // selector / then-value / base literals of the chain. Two structurally
+    // distinct but literal-identical ITE chains then share one helper.
+    std::map<std::vector<uint32_t>, CMSat::Lit> mux_chain_cse;
 
     static void canon_sort_lits(std::vector<CMSat::Lit>& v) {
         std::sort(v.begin(), v.end(), [](CMSat::Lit a, CMSat::Lit b) {
@@ -240,10 +270,11 @@ private:
     void emit_and_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
     void emit_or_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs);
     void emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat::Lit e);
-    // MUX3: g = ITE(s1, a, ITE(s2, b, c)). 6 clauses, 1 helper — beats
-    // two nested ITEs (8 clauses, 2 helpers).
-    void emit_mux3(CMSat::Lit g, CMSat::Lit s1, CMSat::Lit a,
-                   CMSat::Lit s2, CMSat::Lit b, CMSat::Lit c);
+    // k-way MUX chain: g = ITE(s0,t0, ITE(s1,t1, … ITE(s_{k-1},t_{k-1},
+    // base))). 2(k+1) clauses, 1 helper — generalises MUX3 (k=2) and
+    // collapses a whole ITE chain into a single helper.
+    void emit_mux_chain(CMSat::Lit g, const std::vector<CMSat::Lit>& sels,
+                        const std::vector<CMSat::Lit>& tvals, CMSat::Lit base);
     void emit_xor(CMSat::Lit g, CMSat::Lit a, CMSat::Lit b);
 
     // Two signed edges representing logically-complementary values: same
@@ -265,7 +296,16 @@ private:
 
 template<class Solver>
 void AIGToCNF<Solver>::add_clause(const std::vector<CMSat::Lit>& cl) {
-    solver.add_clause(cl);
+    // Tseitin emission for degenerate gates (e.g. AND(x, x)) can yield clauses
+    // with repeated literals; collapse duplicates and drop tautologies so each
+    // variable appears at most once per clause.
+    std::vector<CMSat::Lit> tmp(cl);
+    std::sort(tmp.begin(), tmp.end());
+    tmp.erase(std::unique(tmp.begin(), tmp.end()), tmp.end());
+    for (size_t i = 1; i < tmp.size(); i++) {
+        if (tmp[i].var() == tmp[i-1].var()) return; // tautology
+    }
+    solver.add_clause(tmp);
     stats.clauses_added++;
 }
 
@@ -615,21 +655,35 @@ void AIGToCNF<Solver>::emit_ite(CMSat::Lit g, CMSat::Lit s, CMSat::Lit t, CMSat:
 }
 
 template<class Solver>
-void AIGToCNF<Solver>::emit_mux3(CMSat::Lit g, CMSat::Lit s1, CMSat::Lit a,
-                                 CMSat::Lit s2, CMSat::Lit b, CMSat::Lit c) {
-    //  g ↔ (s1 ? a : (s2 ? b : c))
-    //    s1 ∧ ~a → ~g          ⇔ ~s1 ∨ a ∨ ~g
-    //    s1 ∧ a  → g           ⇔ ~s1 ∨ ~a ∨ g
-    //    ~s1 ∧ s2 ∧ ~b → ~g     ⇔ s1 ∨ ~s2 ∨ b ∨ ~g
-    //    ~s1 ∧ s2 ∧ b  → g      ⇔ s1 ∨ ~s2 ∨ ~b ∨ g
-    //    ~s1 ∧ ~s2 ∧ ~c → ~g    ⇔ s1 ∨ s2 ∨ c ∨ ~g
-    //    ~s1 ∧ ~s2 ∧ c  → g     ⇔ s1 ∨ s2 ∨ ~c ∨ g
-    add_clause({~s1, a, ~g});
-    add_clause({~s1, ~a, g});
-    add_clause({s1, ~s2, b, ~g});
-    add_clause({s1, ~s2, ~b, g});
-    add_clause({s1, s2, c, ~g});
-    add_clause({s1, s2, ~c, g});
+void AIGToCNF<Solver>::emit_mux_chain(CMSat::Lit g,
+                                      const std::vector<CMSat::Lit>& sels,
+                                      const std::vector<CMSat::Lit>& tvals,
+                                      CMSat::Lit base) {
+    // g ↔ ITE(s0,t0, ITE(s1,t1, … ITE(s_{k-1},t_{k-1}, base))).
+    // Level i is chosen when s0…s_{i-1} are all false and s_i is true; the
+    // base when every selector is false. Per chosen value v with path P:
+    //   P ∧  v →  g   and   P ∧ ¬v → ¬g
+    // `prefix` accumulates the earlier selectors s0…s_{i-1} that appear
+    // positively in every level-i clause (the negation of "s_j false").
+    assert(sels.size() == tvals.size() && sels.size() >= 1);
+    SLOW_DEBUG_DO(assert(g.var() != base.var()));
+    std::vector<CMSat::Lit> prefix;
+    prefix.reserve(sels.size() + 2);
+    for (size_t i = 0; i < sels.size(); i++) {
+        std::vector<CMSat::Lit> c1(prefix);
+        c1.push_back(~sels[i]); c1.push_back(~tvals[i]); c1.push_back(g);
+        add_clause(c1);
+        std::vector<CMSat::Lit> c2(prefix);
+        c2.push_back(~sels[i]); c2.push_back(tvals[i]); c2.push_back(~g);
+        add_clause(c2);
+        prefix.push_back(sels[i]);
+    }
+    std::vector<CMSat::Lit> b1(prefix);
+    b1.push_back(~base); b1.push_back(g);
+    add_clause(b1);
+    std::vector<CMSat::Lit> b2(prefix);
+    b2.push_back(base); b2.push_back(~g);
+    add_clause(b2);
 }
 
 template<class Solver>
@@ -818,6 +872,16 @@ bool AIGToCNF<Solver>::try_xor(const aig_lit& n, CMSat::Lit& out) {
         stats.xor_patterns++;
         return true;
     }
+    // Constant-operand folds. `out` is the XNOR(a_lit, b_lit) value (the
+    // node's negative/OR-gate view); XNOR with a constant collapses to the
+    // other operand. No helper, no clause.
+    if (my_has_true_lit) {
+        const CMSat::Lit TL = my_true_lit;
+        if (a_lit ==  TL) { out =  b_lit; stats.xor_patterns++; return true; }
+        if (a_lit == ~TL) { out = ~b_lit; stats.xor_patterns++; return true; }
+        if (b_lit ==  TL) { out =  a_lit; stats.xor_patterns++; return true; }
+        if (b_lit == ~TL) { out = ~a_lit; stats.xor_patterns++; return true; }
+    }
 
     CMSat::Lit h = new_helper();
     emit_xor(h, a_lit, b_lit);
@@ -833,34 +897,77 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
     IteParse p;
     if (!parse_ite_at(n, p)) return false;
 
-    // MUX3 fusion: outer's else branch is itself an ITE pattern whose sub-AND
-    // is fanout-1 and uncached. One helper + 6 clauses replaces two nested
-    // ITEs' 2 helpers + 8 clauses.
-    if (p.e_aig && p.e_aig->type == AIGT::t_and
-        && p.e_aig.neg
-        && p.e_aig.node != p.t_aig.node)
+    // k-way MUX-chain fusion. As long as the current else-branch is itself
+    // an ITE-shaped AND we can consume (fanout ≤ 1, uncached), fold it into
+    // the chain. One helper + 2(k+1) clauses encodes a k-selector chain vs
+    // the k-1 helpers chained MUX3 would spend — a 4× helper cut on the deep
+    // ITE chains manthan emits. Capped at kMaxMuxChain so the longest clause
+    // (length level+3) stays short enough for healthy SAT propagation.
     {
-        const AIG* e_node = p.e_aig.get();
-        auto it_fo = fanout.find(e_node);
-        if (cache.find(e_node) == cache.end()
-            && it_fo != fanout.end() && it_fo->second <= 1)
-        {
-            IteParse inner;
-            if (parse_ite_at(p.e_aig, inner)) {
-                CMSat::Lit a_lit = encode_edge(p.t_aig);
-                CMSat::Lit b_lit = encode_edge(inner.t_aig);
-                CMSat::Lit c_lit = encode_edge(inner.e_aig);
-                CMSat::Lit h = new_helper();
-                emit_mux3(h, p.s_lit, a_lit, inner.s_lit, b_lit, c_lit);
-                stats.mux3_patterns++;
-                out = h;
+        std::vector<std::pair<CMSat::Lit, aig_lit>> levels;  // (selector, then)
+        levels.emplace_back(p.s_lit, p.t_aig);
+        aig_lit base = p.e_aig;
+        while (levels.size() < kMaxMuxChain) {
+            if (!base || base->type != AIGT::t_and || !base.neg) break;
+            const AIG* bn = base.get();
+            if (cache.find(bn) != cache.end()) break;
+            auto it_fo = fanout.find(bn);
+            if (it_fo == fanout.end() || it_fo->second > 1) break;
+            IteParse q;
+            if (!parse_ite_at(base, q)) break;
+            levels.emplace_back(q.s_lit, q.t_aig);
+            base = q.e_aig;
+        }
+        if (levels.size() >= 2) {
+            std::vector<CMSat::Lit> sels, t_lits;
+            sels.reserve(levels.size());
+            t_lits.reserve(levels.size());
+            for (auto& lv : levels) {
+                sels.push_back(lv.first);
+                t_lits.push_back(encode_edge(lv.second));
+            }
+            CMSat::Lit base_lit = encode_edge(base);
+
+            // Functional CSE: a structurally distinct chain over the same
+            // literal sequence is the same function — reuse its helper.
+            auto pack = [](CMSat::Lit l) { return (l.var() << 1) | (l.sign() ? 1u : 0u); };
+            std::vector<uint32_t> key;
+            key.reserve(2 * levels.size() + 2);
+            for (auto l : sels)   key.push_back(pack(l));
+            key.push_back(0xFFFFFFFFu);  // separator: selectors | then-values
+            for (auto l : t_lits) key.push_back(pack(l));
+            key.push_back(pack(base_lit));
+            auto it_cse = mux_chain_cse.find(key);
+            if (it_cse != mux_chain_cse.end()) {
+                stats.mux_chain_cse_hits++;
+                out = it_cse->second;
                 return true;
             }
+
+            CMSat::Lit h = new_helper();
+            emit_mux_chain(h, sels, t_lits, base_lit);
+            stats.mux3_patterns++;
+            stats.mux_chain_levels_total += levels.size();
+            mux_chain_cse[key] = h;
+            out = h;
+            return true;
         }
     }
 
     CMSat::Lit t_lit = encode_edge(p.t_aig);
     CMSat::Lit e_lit = encode_edge(p.e_aig);
+
+    // Constant-branch folds. A branch can resolve to the TRUE literal even
+    // when the AIG-level structural folds didn't fire — e.g. the branch
+    // sub-cone collapsed to a constant inside try_cut_cnf. Each of these
+    // turns a 4-clause ITE into a 3-clause AND/OR.
+    if (my_has_true_lit) {
+        const CMSat::Lit TL = my_true_lit;
+        if (t_lit ==  TL) { out = emit_or2(p.s_lit, e_lit);   return true; } // ITE(s,1,e)=s∨e
+        if (t_lit == ~TL) { out = emit_and2(~p.s_lit, e_lit); return true; } // ITE(s,0,e)=~s∧e
+        if (e_lit ==  TL) { out = emit_or2(~p.s_lit, t_lit);  return true; } // ITE(s,t,1)=~s∨t
+        if (e_lit == ~TL) { out = emit_and2(p.s_lit, t_lit);  return true; } // ITE(s,t,0)=s∧t
+    }
 
     // Degenerate folds.
     if (t_lit == e_lit)   { out = t_lit; return true; }                 // ITE(s, t, t) = t
@@ -870,8 +977,10 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
     if (p.s_lit == ~e_lit){ out = emit_or2(~p.s_lit, t_lit);  return true; } // ITE(s, t, ~s) = ~s ∨ t
 
     // Content-hashed ITE CSE: canonicalise selector polarity (flip (s,t,e) to
-    // (~s, e, t) when s is negative) and look up the (s, t, e) triple.
-    if (group_cse) {
+    // (~s, e, t) when s is negative) and look up the (s, t, e) triple. Always
+    // on — an identical ITE triple is literally the same gate, so reuse is an
+    // unconditional win (cheap 3-int tuple key, unlike the AND group_cse).
+    {
         CMSat::Lit s = p.s_lit;
         CMSat::Lit t = t_lit;
         CMSat::Lit e = e_lit;
@@ -892,12 +1001,6 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
         out = h;
         return true;
     }
-
-    CMSat::Lit h = new_helper();
-    emit_ite(h, p.s_lit, t_lit, e_lit);
-    stats.ite_patterns++;
-    out = h;
-    return true;
 }
 
 // =============================================================================
@@ -958,6 +1061,12 @@ bool AIGToCNF<Solver>::structural_simplify_and(std::vector<aig_lit>& conjuncts,
     for (size_t i = 0; i < conjuncts.size(); i++) {
         const aig_lit& ci = conjuncts[i];
         bool absorbed = false;
+        // (5) OR-disjunct resolution. An OR conjunct's stored children
+        // (ci->l, ci->r) are the complements of its disjuncts. If a sibling
+        // equals a stored child, that disjunct is FALSE under the AND, so
+        // the OR narrows to its other disjunct (the complement of the other
+        // stored child). AND(a, OR(~a, b)) = AND(a, b).
+        aig_lit resolved;
         if (ci->type == AIGT::t_and && ci.neg && ci->l != ci->r) {
             for (size_t j = 0; j < conjuncts.size(); j++) {
                 if (i == j) continue;
@@ -968,9 +1077,12 @@ bool AIGToCNF<Solver>::structural_simplify_and(std::vector<aig_lit>& conjuncts,
                     absorbed = true;
                     break;
                 }
+                if (conjuncts[j] == ci->l)      resolved = ~ci->r;
+                else if (conjuncts[j] == ci->r) resolved = ~ci->l;
             }
         }
         if (absorbed) { stats.absorption_and++; continue; }
+        if (resolved.node) { stats.absorption_and++; kept.push_back(resolved); continue; }
         kept.push_back(ci);
     }
     conjuncts.swap(kept);
@@ -989,7 +1101,7 @@ bool AIGToCNF<Solver>::structural_simplify_and(std::vector<aig_lit>& conjuncts,
 
 template<class Solver>
 bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
-    constexpr uint32_t MAX_LEAVES = 4;
+    constexpr uint32_t MAX_LEAVES = 5;
     if (n->type != AIGT::t_and) return false;
 
     auto can_consume = [&](const AIG* p) -> bool {
@@ -1000,10 +1112,16 @@ bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
 
     // DFS the cone on SIGNED edges. Leaves are (non-AND nodes) OR
     // (consumable-budget-exceeded ANDs). Interior ANDs we "consume" by
-    // recursing into their signed children. A hard cap of MAX_LEAVES * 4
-    // aborts cones that are clearly too wide.
+    // recursing into their signed children.
+    //
+    // The cone qualifies on its number of DISTINCT input slots, not on raw
+    // leaf-edge occurrences: a leaf's slot key is its variable (for a
+    // literal) or its node id (for a sub-AIG) — sign is irrelevant, it folds
+    // into the TT later. Aborting on distinct slots rather than occurrences
+    // lets a wide cone that reuses only ≤4 variables still be cut-encoded.
     std::unordered_map<aig_lit, uint32_t> leaf_idx;
     std::vector<aig_lit> leaves;
+    std::set<std::pair<int, uint64_t>> distinct_slots;
     bool abort_flag = false;
     std::function<void(const aig_lit&)> dfs = [&](const aig_lit& m) {
         if (abort_flag) return;
@@ -1011,7 +1129,16 @@ bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
             && (m.node == n.node || can_consume(m.get()));
         if (!is_interior_and) {
             if (leaf_idx.count(m)) return;
-            if (leaves.size() >= MAX_LEAVES * 4u) { abort_flag = true; return; }
+            const std::pair<int, uint64_t> slot_key =
+                (m->type == AIGT::t_lit)
+                    ? std::make_pair(0, (uint64_t)m->var)
+                    : std::make_pair(1, m->nid);
+            if (!distinct_slots.count(slot_key)
+                && distinct_slots.size() >= MAX_LEAVES) {
+                abort_flag = true;
+                return;
+            }
+            distinct_slots.insert(slot_key);
             leaf_idx[m] = leaves.size();
             leaves.push_back(m);
             return;
@@ -1051,57 +1178,162 @@ bool AIGToCNF<Solver>::try_cut_cnf(const aig_lit& n, CMSat::Lit& out) {
 
     const uint32_t num_inputs = slot_lits.size();
     if (num_inputs == 0) return false;
-    const uint32_t num_mt = 1u << num_inputs;
-    const uint16_t full_mask = (uint16_t)((1u << num_mt) - 1);
+    const uint32_t num_mt = 1u << num_inputs;  // ≤ 32 (MAX_LEAVES = 5)
+    // num_mt == 32 makes (1u << num_mt) undefined behaviour; build all-ones
+    // without overflowing.
+    const uint32_t full_mask = (num_mt >= 32) ? 0xFFFFFFFFu
+                                              : ((1u << num_mt) - 1);
 
     // Build per-leaf minterm masks.
-    std::vector<uint16_t> leaf_mask(leaves.size());
+    std::vector<uint32_t> leaf_mask(leaves.size());
     for (size_t i = 0; i < leaves.size(); i++) {
-        uint16_t sm = 0;
+        uint32_t sm = 0;
         for (uint32_t m = 0; m < num_mt; m++) {
-            if ((m >> leaf_slot[i]) & 1u) sm |= (uint16_t)(1u << m);
+            if ((m >> leaf_slot[i]) & 1u) sm |= (1u << m);
         }
-        leaf_mask[i] = leaf_sign[i] ? (uint16_t)(sm ^ full_mask) : sm;
+        leaf_mask[i] = leaf_sign[i] ? (sm ^ full_mask) : sm;
     }
 
     // Evaluate each interior node's POSITIVE value once (cached by node
     // pointer); the final TT applies the requested edge sign at the root.
-    std::unordered_map<const AIG*, uint16_t> eval_cache;
-    std::function<uint16_t(const aig_lit&)> eval = [&](const aig_lit& m) -> uint16_t {
+    std::unordered_map<const AIG*, uint32_t> eval_cache;
+    std::function<uint32_t(const aig_lit&)> eval = [&](const aig_lit& m) -> uint32_t {
         auto it_leaf = leaf_idx.find(m);
         if (it_leaf != leaf_idx.end()) return leaf_mask[it_leaf->second];
         auto it_c = eval_cache.find(m.get());
         if (it_c != eval_cache.end()) {
-            const uint16_t v_pos = it_c->second;
-            return m.neg ? (uint16_t)((~v_pos) & full_mask) : v_pos;
+            const uint32_t v_pos = it_c->second;
+            return m.neg ? ((~v_pos) & full_mask) : v_pos;
         }
         assert(m->type == AIGT::t_and);
-        const uint16_t lv = eval(m->l);
-        const uint16_t rv = (m->r == m->l) ? lv : eval(m->r);
-        const uint16_t v_pos = (uint16_t)(lv & rv);
+        const uint32_t lv = eval(m->l);
+        const uint32_t rv = (m->r == m->l) ? lv : eval(m->r);
+        const uint32_t v_pos = lv & rv;
         eval_cache[m.get()] = v_pos;
-        return m.neg ? (uint16_t)((~v_pos) & full_mask) : v_pos;
+        return m.neg ? ((~v_pos) & full_mask) : v_pos;
     };
-    const uint16_t tt = eval(n);
+    const uint32_t tt = eval(n);
 
-    const auto& min_cnf = cut_cnf::min_cnf_for_tt(num_inputs, tt);
-
-    CMSat::Lit h = new_helper();
-    for (const auto& c : min_cnf.clauses) {
-        std::vector<CMSat::Lit> cl;
-        cl.reserve(num_inputs + 1);
-        for (uint32_t i = 0; i < num_inputs; i++) {
-            if (!(c.present & (1u << i))) continue;
-            const bool is_neg = (c.sign >> i) & 1u;
-            cl.push_back(is_neg ? ~slot_lits[i] : slot_lits[i]);
-        }
-        cl.push_back(c.g_sign ? ~h : h);
-        add_clause(cl);
+    // Constant cone: the whole sub-AIG is FALSE or TRUE. No helper, no
+    // clauses — the encoder's TRUE literal (or its negation) IS the value.
+    // Catches contradictory / tautological cones that the AIG-level folds
+    // missed because the contradiction only shows up across ≥2 levels.
+    if (tt == 0) {
+        out = ~get_true_lit();
+        stats.cut_cnf_const++;
+        return true;
     }
-    stats.cut_cnf_patterns++;
-    stats.cut_cnf_clauses += min_cnf.clauses.size();
-    out = h;
-    return true;
+    if (tt == full_mask) {
+        out = get_true_lit();
+        stats.cut_cnf_const++;
+        return true;
+    }
+
+    // Projection cone: f(x₀…x_{k-1}) == x_s (possibly negated). The cone is
+    // functionally just one of its leaves — return that leaf literal with no
+    // helper and no clauses. Typical source: a multi-level AND/OR cone whose
+    // other inputs cancel out (e.g. AND(x, OR(x, y)) flattened across levels).
+    for (uint32_t s = 0; s < num_inputs; s++) {
+        uint32_t proj = 0;
+        for (uint32_t m = 0; m < num_mt; m++) {
+            if ((m >> s) & 1u) proj |= (1u << m);
+        }
+        if (tt == proj) {
+            out = slot_lits[s];
+            stats.cut_cnf_proj++;
+            return true;
+        }
+        if (tt == (proj ^ full_mask)) {
+            out = ~slot_lits[s];
+            stats.cut_cnf_proj++;
+            return true;
+        }
+    }
+
+    // Functional CSE: canonicalise the cone by sorting its leaf slots by
+    // variable id and permuting the truth table to match. Two cones over the
+    // same variables computing the same (or complementary) function then
+    // collide on one key and share a helper.
+    {
+        std::vector<uint32_t> order(num_inputs);
+        for (uint32_t i = 0; i < num_inputs; i++) order[i] = i;
+        std::sort(order.begin(), order.end(), [&](uint32_t a, uint32_t b) {
+            return slot_lits[a].var() < slot_lits[b].var();
+        });
+        uint32_t canon_tt = 0;
+        for (uint32_t mp = 0; mp < num_mt; mp++) {
+            uint32_t m = 0;
+            for (uint32_t sp = 0; sp < num_inputs; sp++) {
+                if ((mp >> sp) & 1u) m |= 1u << order[sp];
+            }
+            if ((tt >> m) & 1u) canon_tt |= (1u << mp);
+        }
+        const uint32_t compl_tt = canon_tt ^ full_mask;
+        const bool use_compl = canon_tt > compl_tt;
+        const uint32_t final_tt = use_compl ? compl_tt : canon_tt;
+
+        std::vector<uint32_t> key;
+        key.reserve(num_inputs + 2);
+        key.push_back(num_inputs);
+        for (uint32_t i = 0; i < num_inputs; i++) key.push_back(slot_lits[order[i]].var());
+        key.push_back(final_tt);
+
+        auto it_cse = cut_cse.find(key);
+        if (it_cse != cut_cse.end()) {
+            stats.cut_cnf_cse_hits++;
+            out = use_compl ? ~it_cse->second : it_cse->second;
+            return true;
+        }
+
+        const auto& min_cnf = cut_cnf::min_cnf_for_tt(num_inputs, tt);
+
+        // Verify the looked-up min-CNF really encodes `tt`: for every input
+        // minterm, the clauses must force g to exactly the tt bit. Catches a
+        // bad cut_cnf entry or a TT-canonicalisation slip at the source.
+        SLOW_DEBUG_DO({
+            for (uint32_t m = 0; m < num_mt; m++) {
+                bool forced_false = false;
+                bool forced_true = false;
+                for (const auto& c : min_cnf.clauses) {
+                    bool inputs_sat = false;
+                    for (uint32_t i = 0; i < num_inputs; i++) {
+                        if (!(c.present & (1u << i))) continue;
+                        const bool bit = (m >> i) & 1u;
+                        const bool neg = (c.sign >> i) & 1u;
+                        if (neg ? !bit : bit) { inputs_sat = true; break; }
+                    }
+                    if (inputs_sat) continue;          // clause already satisfied
+                    // Inputs all false ⇒ the clause's g-literal must hold.
+                    if (c.g_sign) forced_false = true; // clause is (… ∨ ¬g) ⇒ g = 0
+                    else          forced_true = true;  // clause is (… ∨  g) ⇒ g = 1
+                }
+                const bool want = (tt >> m) & 1u;
+                assert(!(forced_false && forced_true) && "cut min-CNF contradicts itself");
+                assert((want ? !forced_false : !forced_true)
+                       && "cut min-CNF does not encode the cone truth table");
+            }
+        });
+
+        CMSat::Lit h = new_helper();
+        for (const auto& c : min_cnf.clauses) {
+            std::vector<CMSat::Lit> cl;
+            cl.reserve(num_inputs + 1);
+            for (uint32_t i = 0; i < num_inputs; i++) {
+                if (!(c.present & (1u << i))) continue;
+                const bool is_neg = (c.sign >> i) & 1u;
+                cl.push_back(is_neg ? ~slot_lits[i] : slot_lits[i]);
+            }
+            cl.push_back(c.g_sign ? ~h : h);
+            add_clause(cl);
+        }
+        stats.cut_cnf_patterns++;
+        stats.cut_cnf_clauses += min_cnf.clauses.size();
+        // h is the lit for the cone's function; the key stores the lit for
+        // `final_tt` (possibly the complement), so flip when use_compl.
+        cut_cse[key] = use_compl ? ~h : h;
+        out = h;
+        return true;
+    }
 }
 
 } // namespace ArjunNS

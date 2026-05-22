@@ -62,6 +62,7 @@ static aig_ptr build_balanced_and_tree(uint32_t n) {
         if (level.size() % 2 == 1) next.push_back(level.back());
         level = std::move(next);
     }
+    assert(!level.empty());
     return level[0];
 }
 
@@ -78,6 +79,7 @@ static aig_ptr build_balanced_or_tree(uint32_t n) {
         if (level.size() % 2 == 1) next.push_back(level.back());
         level = std::move(next);
     }
+    assert(!level.empty());
     return level[0];
 }
 

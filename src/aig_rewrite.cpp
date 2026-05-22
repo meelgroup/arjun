@@ -6,6 +6,7 @@
  */
 
 #include "aig_rewrite.h"
+#include "constants.h"
 #include "time_mem.h"
 #include <algorithm>
 #include <cassert>
@@ -37,6 +38,34 @@ inline bool aig_lit_nid_less(const aig_lit& a, const aig_lit& b) {
     return (int)a.neg < (int)b.neg;
 }
 
+#ifdef SLOW_DEBUG
+// Brute-force functional equivalence check. Enumerates every assignment over
+// the (≤ kMaxVars) primary-input variables referenced by `a` or `b` and
+// asserts the two AIGs agree everywhere. Skipped for wider AIGs — the
+// rewriter's fuzzers cover those. Used to catch a rewrite rule that changes
+// the function the instant it fires, instead of much later downstream.
+inline void slow_assert_equiv(const aig_ptr& a, const aig_ptr& b) {
+    if (!a.node || !b.node) { assert(a.node == b.node); return; }
+    std::set<uint32_t> vars;
+    AIG::get_dependent_vars(a, vars, std::numeric_limits<uint32_t>::max());
+    AIG::get_dependent_vars(b, vars, std::numeric_limits<uint32_t>::max());
+    constexpr size_t kMaxVars = 16;
+    if (vars.empty() || vars.size() > kMaxVars) return;
+    const uint32_t maxv = *vars.rbegin();
+    std::vector<aig_ptr> defs(maxv + 1, nullptr);
+    std::vector<uint32_t> vlist(vars.begin(), vars.end());
+    for (uint32_t mask = 0; mask < (1u << vlist.size()); mask++) {
+        std::vector<CMSat::lbool> vals(maxv + 1, CMSat::l_False);
+        for (size_t i = 0; i < vlist.size(); i++)
+            if ((mask >> i) & 1u) vals[vlist[i]] = CMSat::l_True;
+        std::map<aig_ptr, CMSat::lbool> ca, cb;
+        const CMSat::lbool va = AIG::evaluate(vals, a, defs, ca);
+        const CMSat::lbool vb = AIG::evaluate(vals, b, defs, cb);
+        assert(va == vb && "AIGRewriter changed the function!");
+    }
+}
+#endif
+
 } // namespace
 
 void AIGRewriteStats::print(int verb) const {
@@ -50,6 +79,7 @@ void AIGRewriteStats::print(int verb) const {
          << "  idempotent: " << idempotent_elim
          << "  absorption: " << absorption
          << "  distrib: " << and_or_distrib
+         << "  xor_simp: " << xor_simplify
          << "  hash_hits: " << structural_hash_hits
          << endl;
 }
@@ -57,6 +87,28 @@ void AIGRewriteStats::print(int verb) const {
 void AIGRewriteStats::clear() { *this = AIGRewriteStats(); }
 
 // ========== Helpers ==========
+
+// Return a hash-consed signed edge for variable `var`. The first call for
+// each variable allocates the backing t_lit node; subsequent calls reuse it.
+// This is what makes structural equality (`a == b` on aig_lits) reliable
+// across all rewrites within a single rewrite_all() pass — without it, the
+// rebuilder produces a fresh t_lit per occurrence and rules like
+// AND(a, AND(~a, b)) = FALSE silently fall off the table.
+aig_lit AIGRewriter::cached_lit(uint32_t var, bool neg) {
+    auto it = lit_hash.find(var);
+    if (it != lit_hash.end()) return aig_lit(it->second, neg);
+    aig_lit fresh = AIG::new_lit(var, false);
+    lit_hash.emplace(var, fresh.node);
+    return aig_lit(fresh.node, neg);
+}
+
+aig_lit AIGRewriter::cached_const(bool val) {
+    if (!const_true_node) {
+        aig_lit t = AIG::new_const(true);
+        const_true_node = t.node;
+    }
+    return aig_lit(const_true_node, !val);
+}
 
 void AIGRewriter::collect_and_edges(const aig_lit& edge, vector<aig_lit>& out) {
     if (!edge) return;
@@ -82,7 +134,7 @@ void AIGRewriter::collect_or_edges(const aig_lit& edge, vector<aig_lit>& out) {
 }
 
 aig_lit AIGRewriter::build_and_tree(vector<aig_lit>& children) {
-    if (children.empty()) return AIG::new_const(true);
+    if (children.empty()) return cached_const(true);
     if (children.size() == 1) return children[0];
     while (children.size() > 1) {
         vector<aig_lit> next;
@@ -97,7 +149,7 @@ aig_lit AIGRewriter::build_and_tree(vector<aig_lit>& children) {
 }
 
 aig_lit AIGRewriter::build_or_tree(vector<aig_lit>& children) {
-    if (children.empty()) return AIG::new_const(false);
+    if (children.empty()) return cached_const(false);
     if (children.size() == 1) return children[0];
     while (children.size() > 1) {
         vector<aig_lit> next;
@@ -164,9 +216,9 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
 
     aig_lit pos;
     if (edge->type == AIGT::t_const) {
-        pos = AIG::new_const(true);
+        pos = cached_const(true);
     } else if (edge->type == AIGT::t_lit) {
-        pos = AIG::new_lit(edge->var, false);
+        pos = cached_lit(edge->var, false);
     } else {
         assert(edge->type == AIGT::t_and);
         const aig_lit l = simplify_pass(edge->l, cache);
@@ -174,25 +226,33 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
 
         if (l->type == AIGT::t_const) {
             stats.const_prop++;
-            pos = l.neg ? AIG::new_const(false) : r;  // FALSE∧x=FALSE, TRUE∧x=x
+            pos = l.neg ? cached_const(false) : r;  // FALSE∧x=FALSE, TRUE∧x=x
         } else if (r->type == AIGT::t_const) {
             stats.const_prop++;
-            pos = r.neg ? AIG::new_const(false) : l;
+            pos = r.neg ? cached_const(false) : l;
         } else if (l == r) {
             stats.idempotent_elim++;
             pos = l;
         } else if (is_complement(l, r)) {
             stats.complement_elim++;
-            pos = AIG::new_const(false);
-        } else if (l->type == AIGT::t_lit && r->type == AIGT::t_lit
-                   && l->var == r->var && l.neg == r.neg) {
-            // Separate t_lit nodes for the same signed variable — dedup.
-            stats.idempotent_elim++;
-            pos = l;
-        } else if (l->type == AIGT::t_lit && r->type == AIGT::t_lit
-                   && l->var == r->var && l.neg != r.neg) {
-            stats.complement_elim++;
-            pos = AIG::new_const(false);
+            pos = cached_const(false);
+        }
+
+        // Complementary absorption: AND(a, AND(~a, b)) = FALSE — fires when
+        // simplify_pass has hash-consed literals so `is_complement` resolves
+        // structurally. The bare AND(a, AND(a, b)) absorption rule below
+        // covers the positive case; this one catches the contradiction.
+        if (!pos && r->type == AIGT::t_and && !r.neg) {
+            if (is_complement(r->l, l) || is_complement(r->r, l)) {
+                stats.complement_elim++;
+                pos = cached_const(false);
+            }
+        }
+        if (!pos && l->type == AIGT::t_and && !l.neg) {
+            if (is_complement(l->l, r) || is_complement(l->r, r)) {
+                stats.complement_elim++;
+                pos = cached_const(false);
+            }
         }
 
         // Absorption: AND(a, AND(a, b)) = AND(a, b). Inner AND must be
@@ -221,6 +281,53 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
                 stats.complement_elim++;
                 pos = make_canonical(l, d1);
             }
+            // OR-disjunct context drill: under outer AND with sibling l, if
+            // d_i is an AND containing l as a fanin, d_i reduces to its other
+            // fanin (BCP via l). If d_i contains ~l, d_i = FALSE and the
+            // OR collapses to the other disjunct.
+            //
+            //   AND(a, OR(AND(a, x), d2))   = AND(a, OR(x, d2))
+            //   AND(a, OR(AND(~a, x), d2))  = AND(a, d2)
+            auto try_disj_drill = [&](const aig_lit& d, const aig_lit& other_d) -> aig_lit {
+                if (!d.node || d->type != AIGT::t_and || d.neg) return aig_lit();
+                if (is_complement(d->l, l) || is_complement(d->r, l)) {
+                    stats.complement_elim++;
+                    return make_canonical(l, other_d);
+                }
+                aig_lit x;
+                if (d->l == l) x = d->r;
+                else if (d->r == l) x = d->l;
+                if (x.node) {
+                    stats.absorption++;
+                    // AND(l, OR(x, other_d)) — OR encoded as ~AND(~x, ~other_d).
+                    aig_lit new_or = ~make_canonical(~x, ~other_d);
+                    return make_canonical(l, new_or);
+                }
+                return aig_lit();
+            };
+            if (!pos) pos = try_disj_drill(d1, d2);
+            if (!pos) pos = try_disj_drill(d2, d1);
+
+            if (!pos && l->type == AIGT::t_and && !l.neg) {
+                // OR-vs-AND-fanin drill-down (ABC's
+                // AND(p0, ~AND(C,D)) for p0 a positive AND case):
+                //   AND(AND(la, lb), OR(d1, d2)) where some d_i matches a
+                //   fanin of l: the OR is implied by l, drop OR  →  l.
+                //   Symmetric to deep_absorb's k-ary absorption check, but
+                //   fires before flattening so iteration converges faster.
+                if (d1 == l->l || d1 == l->r || d2 == l->l || d2 == l->r) {
+                    stats.absorption++;
+                    pos = l;
+                } else if (is_complement(d1, l->l) || is_complement(d1, l->r)) {
+                    // d1 is the complement of a fanin of l: under l, d1=false
+                    // so OR reduces to d2. AND becomes AND(l, d2).
+                    stats.complement_elim++;
+                    pos = make_canonical(l, d2);
+                } else if (is_complement(d2, l->l) || is_complement(d2, l->r)) {
+                    stats.complement_elim++;
+                    pos = make_canonical(l, d1);
+                }
+            }
         }
         if (!pos && is_or(l)) {
             const aig_lit d1 = ~l->l;
@@ -234,6 +341,97 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
             } else if (is_complement(r, d2)) {
                 stats.complement_elim++;
                 pos = make_canonical(r, d1);
+            }
+            // OR-disjunct context drill, symmetric to the is_or(r) variant.
+            auto try_disj_drill_l = [&](const aig_lit& d, const aig_lit& other_d) -> aig_lit {
+                if (!d.node || d->type != AIGT::t_and || d.neg) return aig_lit();
+                if (is_complement(d->l, r) || is_complement(d->r, r)) {
+                    stats.complement_elim++;
+                    return make_canonical(r, other_d);
+                }
+                aig_lit x;
+                if (d->l == r) x = d->r;
+                else if (d->r == r) x = d->l;
+                if (x.node) {
+                    stats.absorption++;
+                    aig_lit new_or = ~make_canonical(~x, ~other_d);
+                    return make_canonical(r, new_or);
+                }
+                return aig_lit();
+            };
+            if (!pos) pos = try_disj_drill_l(d1, d2);
+            if (!pos) pos = try_disj_drill_l(d2, d1);
+
+            if (!pos && r->type == AIGT::t_and && !r.neg) {
+                if (d1 == r->l || d1 == r->r || d2 == r->l || d2 == r->r) {
+                    stats.absorption++;
+                    pos = r;
+                } else if (is_complement(d1, r->l) || is_complement(d1, r->r)) {
+                    stats.complement_elim++;
+                    pos = make_canonical(r, d2);
+                } else if (is_complement(d2, r->l) || is_complement(d2, r->r)) {
+                    stats.complement_elim++;
+                    pos = make_canonical(r, d1);
+                }
+            }
+        }
+
+        // XOR pattern observation on the OR-of-two-ANDs shape.
+        //
+        // The stored shape `pos = AND(~AND_A, ~AND_B)` decodes as
+        // OR(AND_A, AND_B). XOR(p, q) = OR(AND(p, ~q), AND(~p, q)) lands
+        // here with both inner ANDs non-degenerate. ITE-folds (ITE(s, s, e),
+        // ITE(s, ~s, e), ITE(s, t, s), ITE(s, t, ~s)) never reach this point:
+        //   - new_and folds AND(s, s) -> s at construction;
+        //   - the is_or(r) / is_or(l) branches above catch the residual
+        //     AND(~s, ~AND(~s, e)) = AND(~s, ~e) pattern earlier.
+        // So the only useful thing to do here is count XOR observations
+        // (it bumps xor_simplify so the fuzzer can verify the corpus hits
+        // XOR shapes). No structural rewrite -- XOR is irreducible without
+        // going to a wider rewrite step.
+        if (!pos && l->type == AIGT::t_and && l.neg
+                 && r->type == AIGT::t_and && r.neg) {
+            const aig_lit& la = l->l, lb = l->r;
+            const aig_lit& ra = r->l, rb = r->r;
+            int compl_pairs = 0;
+            if (is_complement(la, ra)) compl_pairs++;
+            if (is_complement(la, rb)) compl_pairs++;
+            if (is_complement(lb, ra)) compl_pairs++;
+            if (is_complement(lb, rb)) compl_pairs++;
+            if (compl_pairs >= 2) stats.xor_simplify++;
+        }
+
+        // AND-of-AND structural rewrites (Brummayer/Biere MEMICS'06 patterns
+        // adapted from ABC's Aig_And, edge-signed AIG variant).
+        //   AND(AND(A,B), AND(C,D)) collapses to FALSE if any pair of fanins
+        //     across the two inner ANDs is complementary — the conjunction
+        //     has the form x ∧ ¬x ∧ ... = FALSE. Catches XOR-AND pairs,
+        //     AND(AND(p,¬q), AND(¬p,q)) and any other 4-fanin contradiction
+        //     that deep_absorb would otherwise have to flatten to spot.
+        //   AND(AND(A,B), AND(C,D)) with a shared fanin (A==C, A==D, B==C,
+        //     or B==D) factors as AND(shared, AND(other_l, other_r)).
+        //     Node count is unchanged but the new inner AND hash-conses
+        //     against a possibly-existing AND(other_l, other_r); the shared
+        //     fanin is lifted to the top so further outer-level rewrites
+        //     can see it.
+        if (!pos && l->type == AIGT::t_and && !l.neg
+                 && r->type == AIGT::t_and && !r.neg) {
+            const aig_lit la = l->l, lb = l->r;
+            const aig_lit ra = r->l, rb = r->r;
+            if (is_complement(la, ra) || is_complement(la, rb)
+             || is_complement(lb, ra) || is_complement(lb, rb)) {
+                stats.complement_elim++;
+                pos = cached_const(false);
+            } else {
+                aig_lit shared, ol, ortmp;
+                if      (la == ra) { shared = la; ol = lb; ortmp = rb; }
+                else if (la == rb) { shared = la; ol = lb; ortmp = ra; }
+                else if (lb == ra) { shared = lb; ol = la; ortmp = rb; }
+                else if (lb == rb) { shared = lb; ol = la; ortmp = ra; }
+                if (shared.node) {
+                    stats.absorption++;
+                    pos = make_canonical(shared, make_canonical(ol, ortmp));
+                }
             }
         }
 
@@ -283,9 +481,9 @@ aig_lit AIGRewriter::hash_cons(const aig_lit& edge, NodeRebuildMap& cache) {
         aig_lit r = hash_cons(edge->r, cache);
         pos = make_canonical(l, r);
     } else if (edge->type == AIGT::t_const) {
-        pos = AIG::new_const(true);
+        pos = cached_const(true);
     } else {
-        pos = AIG::new_lit(edge->var, false);
+        pos = cached_lit(edge->var, false);
     }
     cache[edge.get()] = pos;
     return aig_lit(pos.node, pos.neg ^ edge.neg);
@@ -306,8 +504,8 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
 
     aig_lit pos;
     if (edge->type != AIGT::t_and) {
-        if (edge->type == AIGT::t_const) pos = AIG::new_const(true);
-        else pos = AIG::new_lit(edge->var, false);
+        if (edge->type == AIGT::t_const) pos = cached_const(true);
+        else pos = cached_lit(edge->var, false);
     } else {
         const aig_lit l = deep_absorb(edge->l, cache);
         const aig_lit r = deep_absorb(edge->r, cache);
@@ -325,13 +523,13 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
 
         if (!any_chain) {
             if (l == r) { stats.idempotent_elim++; pos = l; }
-            else if (is_complement(l, r)) { stats.complement_elim++; pos = AIG::new_const(false); }
+            else if (is_complement(l, r)) { stats.complement_elim++; pos = cached_const(false); }
             else if (l->type == AIGT::t_const) {
                 stats.const_prop++;
-                pos = l.neg ? AIG::new_const(false) : r;
+                pos = l.neg ? cached_const(false) : r;
             } else if (r->type == AIGT::t_const) {
                 stats.const_prop++;
-                pos = r.neg ? AIG::new_const(false) : l;
+                pos = r.neg ? cached_const(false) : l;
             } else {
                 pos = make_canonical(l, r);
             }
@@ -378,10 +576,39 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
             }
 
             if (folded_false) {
-                pos = AIG::new_const(false);
+                pos = cached_const(false);
             } else if (children.empty()) {
-                pos = AIG::new_const(true);
+                pos = cached_const(true);
             } else {
+                // Wide groups skip the O(n²) absorption/resolution loops
+                // below, but a single hash-set pass of OR absorption is only
+                // O(n + Σdisjuncts): drop any OR child one of whose disjuncts
+                // equals an AND sibling — AND(a, OR(a, …)) = a.
+                if (wide) {
+                    std::set<std::pair<uint64_t, bool>> sibset;
+                    for (const auto& c : children)
+                        sibset.insert({c.node->nid, c.neg});
+                    vector<aig_lit> kept;
+                    kept.reserve(children.size());
+                    for (const auto& c : children) {
+                        bool absorbed = false;
+                        if (is_or(c)) {
+                            vector<aig_lit> dj;
+                            collect_or_edges(c, dj);
+                            for (const auto& d : dj) {
+                                if (d.node && d != c
+                                    && sibset.count({d.node->nid, d.neg})) {
+                                    absorbed = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (absorbed) stats.absorption++;
+                        else kept.push_back(c);
+                    }
+                    children.swap(kept);
+                }
+
                 // Cross-level subsumption: for each OR child, check if any
                 // AND sibling matches one of its disjuncts (absorption) or
                 // complements one (subsumption).
@@ -410,6 +637,29 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
                         }
                         if (absorbed) break;
 
+                        // OR-vs-OR subset subsumption: a narrower OR implies a
+                        // wider one whose disjuncts are a superset, so under
+                        // the AND the wider OR is redundant — drop it.
+                        //   AND(OR(a,b,c), OR(a,b)) = OR(a,b)
+                        std::sort(disj.begin(), disj.end(), aig_lit_nid_less);
+                        bool dropped_wide = false;
+                        for (size_t j = 0; j < children.size() && !dropped_wide; j++) {
+                            if (i == j || !is_or(children[j])) continue;
+                            vector<aig_lit> dj;
+                            collect_or_edges(children[j], dj);
+                            if (dj.size() >= disj.size()) continue;  // j not narrower
+                            std::sort(dj.begin(), dj.end(), aig_lit_nid_less);
+                            if (std::includes(disj.begin(), disj.end(),
+                                              dj.begin(), dj.end(),
+                                              aig_lit_nid_less)) {
+                                stats.absorption++;
+                                children.erase(children.begin() + i);
+                                dropped_wide = true;
+                                changed = true;
+                            }
+                        }
+                        if (dropped_wide) break;
+
                         // Subsumption: OR-disjunct complement of an AND-sibling drops.
                         vector<aig_lit> new_disj;
                         bool disj_changed = false;
@@ -425,7 +675,7 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
                         if (disj_changed) {
                             if (new_disj.empty()) {
                                 // Empty OR = FALSE. AND(..., FALSE) = FALSE.
-                                pos = AIG::new_const(false);
+                                pos = cached_const(false);
                                 break;
                             }
                             children[i] = build_or_tree(new_disj);
@@ -482,7 +732,7 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
                 if (!pos) {
                     std::sort(children.begin(), children.end(), aig_lit_nid_less);
                     children.erase(std::unique(children.begin(), children.end()), children.end());
-                    if (children.empty()) pos = AIG::new_const(true);
+                    if (children.empty()) pos = cached_const(true);
                     else pos = build_and_tree(children);
                 }
             }
@@ -506,8 +756,8 @@ aig_lit AIGRewriter::flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cac
 
     aig_lit pos;
     if (edge->type != AIGT::t_and) {
-        if (edge->type == AIGT::t_const) pos = AIG::new_const(true);
-        else pos = AIG::new_lit(edge->var, false);
+        if (edge->type == AIGT::t_const) pos = cached_const(true);
+        else pos = cached_lit(edge->var, false);
     } else {
         const aig_lit l = flatten_ite_chains(edge->l, cache);
         const aig_lit r = flatten_ite_chains(edge->r, cache);
@@ -531,7 +781,7 @@ aig_lit AIGRewriter::flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cac
                     break;
                 }
             }
-            if (folded_false) pos = AIG::new_const(false);
+            if (folded_false) pos = cached_const(false);
             else pos = build_and_tree(and_children);
         }
 
@@ -557,7 +807,7 @@ aig_lit AIGRewriter::flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cac
                 }
                 if (folded_true) {
                     // OR folds to TRUE ⇒ node = ~OR = FALSE.
-                    pos = AIG::new_const(false);
+                    pos = cached_const(false);
                 } else {
                     // Balanced OR rebuild, negated for the positive node view.
                     aig_lit balanced_or = build_or_tree(or_children);
@@ -578,16 +828,33 @@ aig_lit AIGRewriter::flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cac
 aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
     if (!aig) return nullptr;
     struct_hash.clear();
+    lit_hash.clear();
+    const_true_node.reset();
     const size_t before = AIG::count_aig_nodes_fast(aig);
     aig_lit result = aig;
-    { NodeRebuildMap c; result = simplify_pass(result, c); }
-    struct_hash.clear();
-    { NodeRebuildMap c; result = hash_cons(result, c); }
-    { NodeRebuildMap c; result = deep_absorb(result, c); }
-    { NodeRebuildMap c; result = flatten_ite_chains(result, c); }
-    struct_hash.clear();
-    { NodeRebuildMap c; result = hash_cons(result, c); }
+
+    // Iterate to a fixed point: deep_absorb's k-ary flattening + complement
+    // dedup can expose new patterns the local simplify_pass rules would
+    // catch, which in turn enables further deep_absorb folds. Cap the loop
+    // at a small constant — in practice convergence is fast (1-2 extra
+    // iterations) and we don't want to pay for runaway oscillation on
+    // adversarial inputs.
+    constexpr int kMaxIters = 4;
+    size_t prev_count = before;
+    for (int iter = 0; iter < kMaxIters; iter++) {
+        { NodeRebuildMap c; result = simplify_pass(result, c); }
+        struct_hash.clear();
+        { NodeRebuildMap c; result = hash_cons(result, c); }
+        { NodeRebuildMap c; result = deep_absorb(result, c); }
+        { NodeRebuildMap c; result = flatten_ite_chains(result, c); }
+        struct_hash.clear();
+        { NodeRebuildMap c; result = hash_cons(result, c); }
+        const size_t cur_count = AIG::count_aig_nodes_fast(result);
+        if (cur_count >= prev_count) break;
+        prev_count = cur_count;
+    }
     stats.total_passes++;
+    SLOW_DEBUG_DO(slow_assert_equiv(aig, result));
     if (AIG::count_aig_nodes_fast(result) > before) return aig;
     return result;
 }
@@ -596,35 +863,45 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
     const double t = cpuTime();
     stats.clear();
     struct_hash.clear();
+    lit_hash.clear();
+    const_true_node.reset();
     stats.nodes_before = AIG::count_aig_nodes_fast(defs);
 
     // Snapshot originals so we can revert any def that grew.
     vector<aig_ptr> originals = defs;
 
-    {
-        NodeRebuildMap cache;
-        for (auto& d : defs) if (d) d = simplify_pass(d, cache);
-    }
-    {
-        // deep_absorb handles k-ary AND/OR flattening, multi-level absorption
-        // and resolution that simplify_pass's local rules miss. Expensive
-        // enough to run once per rewrite_all call rather than iteratively.
-        NodeRebuildMap cache;
-        for (auto& d : defs) if (d) d = deep_absorb(d, cache);
-    }
-    {
-        // flatten_ite_chains rebalances long AND / OR chains (common from
-        // manthan's ITE-repair output) as balanced trees.
-        NodeRebuildMap cache;
-        for (auto& d : defs) if (d) d = flatten_ite_chains(d, cache);
-    }
-    {
-        // hash_cons is cheap and makes the final AIG share structure across
-        // defs; run it last so any new ANDs created by the OR / resolution
-        // rewrites also hash-cons.
-        struct_hash.clear();
-        NodeRebuildMap cache;
-        for (auto& d : defs) if (d) d = hash_cons(d, cache);
+    // Iterate to a fixed point — same rationale as the single-AIG rewrite
+    // entry point. Bounded at kMaxIters to avoid pathological oscillation.
+    constexpr int kMaxIters = 4;
+    size_t prev_count = stats.nodes_before;
+    for (int iter = 0; iter < kMaxIters; iter++) {
+        {
+            NodeRebuildMap cache;
+            for (auto& d : defs) if (d) d = simplify_pass(d, cache);
+        }
+        {
+            // deep_absorb handles k-ary AND/OR flattening, multi-level
+            // absorption / resolution that simplify_pass's local rules miss.
+            NodeRebuildMap cache;
+            for (auto& d : defs) if (d) d = deep_absorb(d, cache);
+        }
+        {
+            // flatten_ite_chains rebalances long AND / OR chains (common
+            // from manthan's ITE-repair output) as balanced trees.
+            NodeRebuildMap cache;
+            for (auto& d : defs) if (d) d = flatten_ite_chains(d, cache);
+        }
+        {
+            // hash_cons makes the AIG share structure across defs; run it
+            // last so any new ANDs created by the OR / resolution rewrites
+            // also hash-cons.
+            struct_hash.clear();
+            NodeRebuildMap cache;
+            for (auto& d : defs) if (d) d = hash_cons(d, cache);
+        }
+        const size_t cur_count = AIG::count_aig_nodes_fast(defs);
+        if (cur_count >= prev_count) break;
+        prev_count = cur_count;
     }
     stats.total_passes++;
 
@@ -636,6 +913,8 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
         if (new_count > orig_count) defs[i] = originals[i];
     }
     stats.nodes_after = AIG::count_aig_nodes_fast(defs);
+    SLOW_DEBUG_DO(for (size_t i = 0; i < defs.size(); i++)
+                      slow_assert_equiv(originals[i], defs[i]));
 
     if (verb >= 1) {
         cout << "c o [aig-rewrite] T: " << std::fixed << std::setprecision(2)
@@ -722,12 +1001,28 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
     for (const auto* n : topo) {
         if (n->type == AIGT::t_lit) used_vars.insert(n->var);
     }
-    const uint32_t R = sweep_sim_rounds;
+    // Adaptive simulation depth. Two non-equivalent nodes that happen to
+    // agree on every random pattern land in the same candidate class and
+    // cost a wasted SAT check; the more nodes a sweep covers, the more such
+    // coincidences arise, so scale the round count (each round = 64 patterns)
+    // up with topology size. +4 rounds per 4× growth past 256 nodes, capped.
+    uint32_t R = sweep_sim_rounds;
+    for (size_t t = topo.size(); t > 256 && R < 48; t >>= 2) R += 4;
     std::mt19937_64 rng(0xA11CEULL);
     std::unordered_map<uint32_t, vector<uint64_t>> var_pats;
+    // Structured seeding: dedicate round 0 to the input vectors random
+    // sampling is least likely to hit — all-zeros (bit 0), all-ones (bit 1),
+    // and one-hot rows isolating each variable (bit idx+2). These split
+    // near-constant and single-variable-sensitive nodes that pure random
+    // patterns can coincidentally group, cutting bogus candidate classes.
+    uint32_t var_idx = 0;
     for (uint32_t v : used_vars) {
         var_pats[v].resize(R);
         for (uint32_t i = 0; i < R; i++) var_pats[v][i] = rng();
+        uint64_t structured = 2ULL;  // bit 1 set ⇒ "all variables = 1" row
+        if (var_idx < 62) structured |= (1ULL << (var_idx + 2));
+        var_pats[v][0] = structured;  // bit 0 stays 0 ⇒ "all variables = 0" row
+        var_idx++;
     }
 
     // Simulate every node's POSITIVE value. Fanin sign flips the child's
@@ -779,9 +1074,12 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
             return h;
         }
     };
+    // Both AND and literal nodes are classed: a class with a literal lets an
+    // AND node functionally equal to that literal merge straight onto the
+    // leaf (only ANDs are ever substituted — see the member loop below).
     std::unordered_map<Key, vector<std::pair<const AIG*, bool>>, KeyHash> classes;
     for (const auto* n : topo) {
-        if (n->type != AIGT::t_and) continue;
+        if (n->type != AIGT::t_and && n->type != AIGT::t_lit) continue;
         bool flipped;
         Key k{canonicalize(sigs[n], flipped)};
         classes[std::move(k)].emplace_back(n, flipped);
@@ -806,6 +1104,55 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
              << endl;
     }
 
+    // --- Constant-node detection -------------------------------------------
+    // A node whose entire simulation signature is uniformly 0 (resp. 1) is a
+    // candidate constant. SAT-verify (the negated value must be UNSAT) and,
+    // on success, substitute the AIG constant — make_canonical then folds the
+    // whole cone away on rebuild. This is the cheap half of FRAIG's constant
+    // sweep and catches multi-level contradictions/tautologies that the
+    // structural rules cannot see.
+    std::unordered_map<const AIG*, bool> const_sub;  // node -> proven value
+    {
+        CMSat::SATSolver csolver;
+        csolver.set_verbosity(0);
+        CMSat::Lit c_true_lit;
+        bool c_true_set = false;
+        std::map<aig_lit, CMSat::Lit> c_enc_cache;
+        if (!used_vars.empty()) {
+            const uint32_t maxv = *std::max_element(used_vars.begin(), used_vars.end());
+            csolver.new_vars(maxv + 1);
+        }
+        auto to_edge = [&](const AIG* n) -> aig_lit {
+            return aig_lit(raw_to_shared.at(n), false);
+        };
+        for (const auto* n : topo) {
+            if (n->type != AIGT::t_and) continue;
+            const auto& s = sigs[n];
+            bool all0 = true, all1 = true;
+            for (uint64_t w : s) {
+                if (w != 0ULL)   all0 = false;
+                if (w != ~0ULL)  all1 = false;
+            }
+            if (!all0 && !all1) continue;
+            const bool cand_val = all1;
+            stats.sweep_sat_checks++;
+            const CMSat::Lit nl = naive_encode(to_edge(n), csolver,
+                c_true_lit, c_true_set, c_enc_cache);
+            csolver.set_max_confl(sweep_conflict_budget);
+            // node ≡ cand_val ⟺ asserting node ≠ cand_val is UNSAT.
+            std::vector<CMSat::Lit> assumps{ cand_val ? ~nl : nl };
+            const CMSat::lbool res = csolver.solve(&assumps);
+            if (res == CMSat::l_False) {
+                const_sub[n] = cand_val;
+                stats.sweep_const_merges++;
+            } else if (res == CMSat::l_True) {
+                stats.sweep_cex_refuted++;
+            } else {
+                stats.sweep_timeouts++;
+            }
+        }
+    }
+
     // SAT-verify each non-singleton class against its lowest-nid
     // representative. An activation literal per-check lets us reuse one
     // solver for the whole class.
@@ -815,7 +1162,13 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
     uint64_t last_progress_print_classes = 0;
     for (auto& [key, members] : classes) {
         if (members.size() < 2) continue;
-        if (members.size() > sweep_max_class_size) continue;
+        // Oversized classes used to be skipped wholesale. With the constant
+        // detection pass draining the degenerate all-constant groups and the
+        // counterexample filter culling simulation false-positives, it is
+        // worth processing them — but still only the first sweep_max_class_size
+        // members so worst-case SAT churn stays bounded.
+        const size_t member_cap = std::min<size_t>(members.size(),
+                                                    sweep_max_class_size);
         classes_processed++;
         if (verb >= 2 && classes_processed - last_progress_print_classes >= 100) {
             cout << "c o [aig-rewrite] sat-sweep progress"
@@ -831,8 +1184,15 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
             last_progress_print_classes = classes_processed;
         }
         stats.sweep_sim_groups++;
+        // Representative = members[0]. Prefer a literal (so AND members can
+        // collapse onto the leaf), then lowest nid for determinism.
         std::sort(members.begin(), members.end(),
-            [](const auto& a, const auto& b) { return a.first->nid < b.first->nid; });
+            [](const auto& a, const auto& b) {
+                const bool al = a.first->type == AIGT::t_lit;
+                const bool bl = b.first->type == AIGT::t_lit;
+                if (al != bl) return al;
+                return a.first->nid < b.first->nid;
+            });
 
         CMSat::SATSolver solver;
         solver.set_verbosity(0);
@@ -854,10 +1214,37 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
             solver, true_lit, true_lit_set, enc_cache);
         const CMSat::Lit rep_canon = members[0].second ? ~rep_lit : rep_lit;
 
+        // Single-pattern AIG evaluation under a SAT counterexample model,
+        // memoised on node identity for one model. Used for FRAIG-style
+        // counterexample feedback: a refuting model is a real distinguishing
+        // input, so any other class member that disagrees with the
+        // representative on it cannot be equivalent and need not be checked.
+        std::unordered_map<const AIG*, char> ev_memo;
+        std::function<bool(const AIG*, const std::vector<CMSat::lbool>&)> eval1 =
+            [&](const AIG* n, const std::vector<CMSat::lbool>& model) -> bool {
+                auto itm = ev_memo.find(n);
+                if (itm != ev_memo.end()) return itm->second != 0;
+                bool v;
+                if (n->type == AIGT::t_const) v = true;
+                else if (n->type == AIGT::t_lit)
+                    v = n->var < model.size() && model[n->var] == CMSat::l_True;
+                else {
+                    bool lv = eval1(n->l.get(), model) ^ n->l.neg;
+                    bool rv = eval1(n->r.get(), model) ^ n->r.neg;
+                    v = lv && rv;
+                }
+                ev_memo[n] = v ? 1 : 0;
+                return v;
+            };
+        std::unordered_set<const AIG*> dead;  // members a cex has refuted
+
         uint32_t streak = 0;  // consecutive non-merge results in this class
-        for (size_t i = 1; i < members.size(); i++) {
+        for (size_t i = 1; i < member_cap; i++) {
             const auto& [node, flipped] = members[i];
-            if (sub.count(node)) continue;
+            // Only AND nodes are ever substituted — never rewrite a leaf
+            // literal into a (larger, possibly cyclic) AND cone.
+            if (node->type != AIGT::t_and) continue;
+            if (sub.count(node) || const_sub.count(node) || dead.count(node)) continue;
 
             const CMSat::Lit node_lit = naive_encode(to_edge(node),
                 solver, true_lit, true_lit_set, enc_cache);
@@ -882,6 +1269,24 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
             } else if (res == CMSat::l_True) {
                 stats.sweep_cex_refuted++;
                 streak++;
+                // Counterexample feedback: the model is a genuine input on
+                // which `node` and the representative differ. Drop every
+                // not-yet-processed member that also disagrees with the rep
+                // on it — those are simulation false-positives and would
+                // otherwise burn a SAT check each.
+                const std::vector<CMSat::lbool>& model = solver.get_model();
+                ev_memo.clear();
+                const bool rep_val =
+                    eval1(members[0].first, model) ^ members[0].second;
+                for (size_t j = i + 1; j < member_cap; j++) {
+                    const auto& [jn, jflip] = members[j];
+                    if (sub.count(jn) || const_sub.count(jn) || dead.count(jn))
+                        continue;
+                    if ((eval1(jn, model) ^ jflip) != rep_val) {
+                        dead.insert(jn);
+                        stats.sweep_cex_filtered++;
+                    }
+                }
             } else {
                 // l_Undef: budget exhausted. Treat as "can't prove".
                 stats.sweep_timeouts++;
@@ -911,6 +1316,14 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
         if (it != rebuild.end()) return it->second;
 
         aig_lit result;
+        auto it_const = const_sub.find(n);
+        if (it_const != const_sub.end()) {
+            // Proven-constant node: emit the shared TRUE node with the edge
+            // sign carrying the proven value (neg = !value).
+            result = cached_const(it_const->second);
+            rebuild[n] = result;
+            return result;
+        }
         auto it_sub = sub.find(n);
         if (it_sub != sub.end()) {
             aig_lit rep_pos = rebuild_node(it_sub->second.first);
@@ -922,9 +1335,7 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
             aig_lit r_edge(rp.node, rp.neg ^ n->r.neg);
             result = make_canonical(l_edge, r_edge);
         } else {
-            auto rsi = raw_to_shared.find(n);
-            assert(rsi != raw_to_shared.end());
-            result = aig_lit(rsi->second, false);
+            result = aig_lit(raw_to_shared.at(n), false);
         }
         rebuild[n] = result;
         return result;
@@ -1061,6 +1472,12 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
         stats.sweep_cycle_reverts++;
     }
 
+    // Every committed merge / constant fold is a SAT-verified functional
+    // equivalence, and any def that gained a definitional cycle was reverted
+    // above — so each final def must still compute its original function.
+    SLOW_DEBUG_DO(for (uint32_t v = 0; v < defs.size(); v++)
+                      slow_assert_equiv(orig_defs[v], defs[v]));
+
     if (verb >= 1) {
         const size_t nodes_after = AIG::count_aig_nodes_fast(defs);
         const double pct = nodes_before
@@ -1072,7 +1489,9 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
              << "  groups=" << stats.sweep_sim_groups
              << "  checks=" << stats.sweep_sat_checks
              << "  merges=" << stats.sweep_merges
+             << "  const_merges=" << stats.sweep_const_merges
              << "  refuted=" << stats.sweep_cex_refuted
+             << "  cex_filtered=" << stats.sweep_cex_filtered
              << "  timeouts=" << stats.sweep_timeouts
              << "  class_aborts=" << stats.sweep_class_aborts
              << "  budget_exh=" << stats.sweep_budget_exhausted

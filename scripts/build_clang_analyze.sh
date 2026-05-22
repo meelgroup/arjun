@@ -20,7 +20,6 @@ cmake -DANALYZE=ON -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DEXTRA
     -Dcadical_DIR="${SOLVERS_DIR}/cadical/build" \
     -Dcryptominisat5_DIR="${SOLVERS_DIR}/cryptominisat/build" \
     -Dsbva_DIR="${SOLVERS_DIR}/sbva/build" \
-    -Dtreedecomp_DIR="${SOLVERS_DIR}/treedecomp/build" \
     -DEvalMaxSAT_DIR="${SOLVERS_DIR}/EvalMaxSAT/build" \
     ..
 make -j$(nproc)

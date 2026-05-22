@@ -87,6 +87,13 @@ option(STATIC_BINARY "Link the arjun binary fully statically" OFF)
 if(STATIC_BINARY AND ${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     message(STATUS "Linking arjun binary statically")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
+
+    # gcc's spec uses linker-script wrappers (libgcc_s_asneeded.so,
+    # libatomic_asneeded.so) that have no static counterpart. CMake captures
+    # them in CMAKE_<LANG>_IMPLICIT_LINK_LIBRARIES and propagates them to
+    # consumers — under -static the linker then fails to find libgcc_s_asneeded.a.
+    list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES   gcc_s_asneeded atomic_asneeded)
+    list(REMOVE_ITEM CMAKE_CXX_IMPLICIT_LINK_LIBRARIES gcc_s          atomic_asneeded)
 endif()
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -372,22 +379,6 @@ if(NOT TARGET sbva)
             GIT_SHALLOW    TRUE)
         FetchContent_MakeAvailable(sbva)
         message(STATUS "SBVA: fetched from GitHub")
-    endif()
-endif()
-
-# ---- treedecomp (cmake-based) ----
-set(treedecomp_DIR "" CACHE PATH "treedecomp install/build prefix (contains lib/cmake/treedecomp/). Auto-resolved if empty.")
-if(NOT TARGET treedecomp)
-    if(treedecomp_DIR)
-        find_package(treedecomp CONFIG REQUIRED HINTS "${treedecomp_DIR}")
-        message(STATUS "treedecomp: using pre-built at ${treedecomp_DIR}")
-    else()
-        FetchContent_Declare(treedecomp
-            GIT_REPOSITORY https://github.com/meelgroup/treedecomp.git
-            GIT_TAG        main
-            GIT_SHALLOW    TRUE)
-        FetchContent_MakeAvailable(treedecomp)
-        message(STATUS "treedecomp: fetched from GitHub")
     endif()
 endif()
 

@@ -40,6 +40,7 @@
 #include "constants.h"
 #include "autarky.h"
 #include "unate_def.h"
+#include "unate_def_rep.h"
 #include "manthan.h"
 #include "metasolver.h"
 #include "aig_rewrite.h"
@@ -110,7 +111,7 @@ DLL_PUBLIC string Arjun::get_version_sha1() {
 DLL_PUBLIC string Arjun::get_thanks_info(const char* prefix) {
     stringstream ss;
     ss << prefix << "Using ideas by JM Lagniez, and Pierre Marquis" << endl;
-    ss << prefix << "    from paper: Improving Model Counting [..] IJCAI 2016" << endl;
+    ss << prefix << "    from paper: Improving Model Counting [..] IJCAI 2016";
     return ss.str();
 }
 
@@ -190,15 +191,17 @@ DLL_PUBLIC void Arjun::standalone_unate_def(SimplifiedCNF& cnf)
 
 DLL_PUBLIC void Arjun::standalone_unate_def_rep(SimplifiedCNF& cnf)
 {
-    Unate unate(arjdata->conf);
-    unate.synthesis_unate_def_rep(cnf);
+    UnateDefRep rep(arjdata->conf, cnf);
+    rep.run();
 }
 
 DLL_PUBLIC void Arjun::standalone_sbva(SimplifiedCNF& orig,
-            int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff, int sbva_tiebreak)
+            int64_t sbva_steps, uint32_t sbva_cls_cutoff, uint32_t sbva_lits_cutoff,
+            int sbva_tiebreak, uint32_t sbva_max_new_vars)
 {
     Puura puura(arjdata->conf);
-    puura.run_sbva(orig, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak);
+    puura.run_sbva(orig, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak,
+            sbva_max_new_vars);
 }
 
 // DELETES ALL REDUNDANT CLAUSES!!!
@@ -299,7 +302,8 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     cnf = standalone_get_simplified_cnf(cnf, simp_conf2);
     if (etof_conf.num_sbva_steps > 0)
         standalone_sbva(cnf, etof_conf.num_sbva_steps,
-                etof_conf.sbva_cls_cutoff, etof_conf.sbva_lits_cutoff, etof_conf.sbva_tiebreak);
+                etof_conf.sbva_cls_cutoff, etof_conf.sbva_lits_cutoff, etof_conf.sbva_tiebreak,
+                etof_conf.sbva_max_new_vars);
     if (etof_conf.all_indep) {
         vector<uint32_t> all_vars;
         all_vars.reserve(cnf.nVars());
@@ -735,8 +739,8 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
     // Any still-undone defs indicate a cycle; skip them (not our bug class).
     for (uint32_t v = 0; v < defs.size(); v++) {
         if (!done[v]) {
-            cout << "c o [check_synth_funs_sat] skipping var " << (v+1)
-                 << " (cyclic dep)" << endl;
+            cout << "ERROR c o [check_synth_funs_sat] skipping var " << (v+1) << " (cyclic dep)" << endl;
+            exit(-1);
         }
     }
 
@@ -2267,7 +2271,7 @@ DLL_PUBLIC void SimplifiedCNF::check_cnf_vars() const {
 
     // Now check orig_to_new_var covers all vars in the CNF
     if (!need_aig) return;
-    set<uint32_t> vars_in_cnf;
+    unordered_set<uint32_t> vars_in_cnf;
     for(const auto& cl: clauses) {
         for(const auto& l: cl) {
             vars_in_cnf.insert(l.var());
@@ -2278,16 +2282,14 @@ DLL_PUBLIC void SimplifiedCNF::check_cnf_vars() const {
             vars_in_cnf.insert(l.var());
         }
     }
+    auto rev = get_new_to_orig_var_list();
     for(const auto& v: vars_in_cnf) {
         release_assert(v < nvars); // already checked above
-        bool in_orig = false;
-        for(const auto& [o, n]: orig_to_new_var) {
-            if (n.var() == v) {
-                in_orig = true;
-                break;
-            }
+        if (rev.count(v) == 0) {
+            cout << "ERROR: Found a variable in CNF that is not mapped from any orig var" << endl;
+            cout << "CNF var: " << v+1 << endl;
+            exit(EXIT_FAILURE);
         }
-        release_assert(in_orig && "All CNF vars must be in orig_to_new_var");
     }
 }
 
@@ -2634,7 +2636,93 @@ DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb, bool sat_sweep)
     assert(need_aig);
     AIGRewriter rw;
     rw.rewrite_all(defs, verb);
-    if (sat_sweep) rw.sat_sweep(defs, verb);
+    if (sat_sweep) {
+        // sat_sweep merges functionally-equivalent AIG nodes. The substituted
+        // node and its representative compute the same function, but their
+        // leaf-var sets need not coincide: a leaf u may be functionally
+        // irrelevant (e.g. cancels via internal contradiction) yet still
+        // appear as a t_lit in the rebuilt AIG. If such a u (directly, or
+        // transitively via another def whose own leaves are non-orig-sampl)
+        // exposes a non-orig-sampl var as a recursive dep of an opt_sampl_var's
+        // orig def, defs_invariant /
+        // check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars trips on
+        // the next pass / test-synth read.
+        //
+        // Pre-sweep this invariant holds for every opt_sampl_var (defs_invariant
+        // asserts it on entry). Snapshot defs and: per opt_sampl_var, walk the
+        // PRE-sweep recursive cone; if the CURRENT (post-sweep) deps of that
+        // orig contain any non-orig-sampl var, revert the entire pre-sweep
+        // cone for that orig. That restores the opt_sampl_var to its provably-
+        // good pre-sweep shape. Iterate to a fixpoint — reverting one cone can
+        // re-expose another opt_sampl_var that shared a substituted sub-AIG.
+        vector<aig_ptr> pre_sweep_defs = defs;
+        rw.sat_sweep(defs, verb);
+
+        const auto new_to_orig = get_new_to_orig_var_list();
+
+        // Direct-leaf walk on pre_sweep_defs[v] (def-graph traversal does NOT
+        // see post-sweep mutations of intermediate defs).
+        auto pre_leaves = [&](uint32_t v, std::set<uint32_t>& out) {
+            out.clear();
+            AIG::get_dependent_vars(pre_sweep_defs[v], out, v);
+        };
+
+        // Pre-sweep recursive cone of orig_v: orig_v plus every defined non-
+        // input var transitively reachable from defs[orig_v] when looking up
+        // children through pre_sweep_defs (consistent snapshot).
+        auto pre_sweep_cone = [&](uint32_t orig_v, std::set<uint32_t>& cone) {
+            cone.clear();
+            std::vector<uint32_t> stack{orig_v};
+            cone.insert(orig_v);
+            std::set<uint32_t> leaves;
+            while (!stack.empty()) {
+                uint32_t v = stack.back(); stack.pop_back();
+                if (!pre_sweep_defs[v]) continue;
+                pre_leaves(v, leaves);
+                for (uint32_t u : leaves) {
+                    if (orig_sampl_vars.count(u)) continue;
+                    if (u >= pre_sweep_defs.size() || !pre_sweep_defs[u]) continue;
+                    if (cone.insert(u).second) stack.push_back(u);
+                }
+            }
+        };
+
+        uint32_t reverted_total = 0;
+        for (int iter = 0; iter < 32; iter++) {
+            // Build the cache once per iteration; reverts below invalidate
+            // any cached entry that walked through a reverted def, but we
+            // discard the whole cache at iter boundaries anyway.
+            std::map<uint32_t, std::vector<uint32_t>> dep_cache;
+            std::set<uint32_t> to_revert_cone;
+            for (uint32_t new_v : opt_sampl_vars) {
+                auto it = new_to_orig.find(new_v);
+                if (it == new_to_orig.end()) continue;
+                for (const auto& orig_lit : it->second) {
+                    const uint32_t orig_v = orig_lit.var();
+                    if (orig_sampl_vars.count(orig_v)) continue;
+                    if (orig_v >= defs.size() || !defs[orig_v]) continue;
+                    auto deps = get_dependent_vars_recursive(orig_v, dep_cache);
+                    bool bad = false;
+                    for (uint32_t d : deps) if (!orig_sampl_vars.count(d)) { bad = true; break; }
+                    if (!bad) continue;
+                    std::set<uint32_t> cone;
+                    pre_sweep_cone(orig_v, cone);
+                    for (uint32_t c : cone) to_revert_cone.insert(c);
+                }
+            }
+            if (to_revert_cone.empty()) break;
+            for (uint32_t v : to_revert_cone) {
+                if (defs[v] == pre_sweep_defs[v]
+                    && defs[v].neg == pre_sweep_defs[v].neg) continue;
+                defs[v] = pre_sweep_defs[v];
+                reverted_total++;
+            }
+        }
+        if (verb >= 1 && reverted_total > 0) {
+            cout << "c o [aig-rewrite] sat-sweep reverted " << reverted_total
+                 << " defs that gained non-orig-sampl recursive deps" << endl;
+        }
+    }
 }
 
 DLL_PUBLIC aig_ptr AIG::rewrite_aig(const aig_ptr& aig) {
@@ -2897,8 +2985,17 @@ set_get_macro(uint32_t, unate_def_rep_max_pattern)
 set_get_macro(uint32_t, unate_def_rep_max_costzero)
 set_get_macro(uint32_t, unate_def_rep_max_confl)
 set_get_macro(uint32_t, unate_def_rep_aux)
-set_get_macro(int, unate_def_cond_relfirst)
+set_get_macro(uint32_t, unate_def_rep_minim)
+set_get_macro(uint32_t, unate_def_rep_minim_budget)
+set_get_macro(uint32_t, unate_def_rep_input_only_first)
+set_get_macro(uint32_t, unate_def_rep_drop_aux)
+set_get_macro(uint32_t, unate_def_rep_multi_cex_k)
+set_get_macro(uint32_t, unate_def_rep_iter_verb)
+set_get_macro(uint32_t, unate_def_rep_freq_sort)
+set_get_macro(uint32_t, unate_def_rep_minim_extra_passes)
+set_get_macro(uint32_t, unate_def_rep_multi_pat)
 set_get_macro(uint32_t, unate_def_cond_dry_streak)
+set_get_macro(int, unate_def_cond_noninput)
 set_get_macro(int, oracle_find_bins)
 set_get_macro(double, cms_glob_mult)
 set_get_macro(int, extend_ccnr)

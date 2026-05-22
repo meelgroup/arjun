@@ -28,7 +28,16 @@ import optparse
 import stat
 import glob
 import re
+import shlex
 from collections import namedtuple
+
+
+def fmt_cmd(command):
+    # Render a command (list of args) so it can be copy-pasted into a
+    # shell verbatim: each token is shell-quoted, so values containing
+    # parens/commas (e.g. --mstrategy "const(max_repairs=10),bve") stay
+    # a single argument.
+    return " ".join(shlex.quote(str(c)) for c in command)
 
 maxtimediff = 1
 Solver = namedtuple("Solver", "exe dir", defaults=[None, None])
@@ -82,6 +91,11 @@ def add_projection(fname) :
     if vars == 0:
         print("ERROR: Can't find 'p cnf' in file %s" % fname)
         exit(-1)
+    # Synthesis needs at least one defined var (one var NOT in the
+    # projection). Brummayer occasionally emits a 1-var "c too many nodes"
+    # fallback CNF — skip those: no projection can leave a var to define.
+    if vars < 2:
+        return None
 
     if random.choice([True, False]):
         num : int = random.randint(int(len(all_vars)/15), int(len(all_vars)/5))
@@ -90,7 +104,10 @@ def add_projection(fname) :
     else:
         num : int = random.randint(int(len(all_vars)/4), int(len(all_vars)/3))
 
-    num = max(1, num) # at least one variable to project
+    # Clamp to [1, vars-1] so the projection is a proper subset. If we
+    # project all vars, arjun sets all_indep=true and aborts synthesis
+    # with "CNF had no indep set" — a nonsense test case for synthesis.
+    num = max(1, min(num, vars - 1))
     for i in range(num):
         proj_set[random.choice(all_vars)] = 1
 
@@ -131,7 +148,7 @@ def set_up_parser():
 
 
 def run(command):
-    print("--> Executing: %s" % (" ".join(command)))
+    print("--> Executing: %s" % fmt_cmd(command))
     if options.verbose:
         print("CPU limit of parent (pid %d)" % os.getpid(), resource.getrlimit(resource.RLIMIT_CPU))
 
@@ -173,7 +190,7 @@ def run_check(command, final, seed):
     if p.returncode < 0 or p.returncode > 1:
         print("=" * 60)
         print("BUG: test-synth crashed with returncode %d" % p.returncode)
-        print("Command was: %s" % " ".join(command))
+        print("Command was: %s" % fmt_cmd(command))
         print("Full check output was:")
         print(consoleOutput)
         print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
@@ -184,7 +201,7 @@ def run_check(command, final, seed):
         if "INCORRECT" in line:
             print("=" * 60)
             print("BUG: test-synth reported AIGs are INCORRECT")
-            print("Command was: %s" % " ".join(command))
+            print("Command was: %s" % fmt_cmd(command))
             print("Full check output was:")
             print(consoleOutput)
             print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
@@ -200,7 +217,7 @@ def run_check(command, final, seed):
     if not ok and final:
         print("=" * 60)
         print("BUG: check process did not report CORRECT")
-        print("Command was: %s" % " ".join(command))
+        print("Command was: %s" % fmt_cmd(command))
         print("Full check output was:")
         print(consoleOutput)
         print("REPRODUCE with: python3 ../scripts/fuzz_synth.py --seed %d --num 1" % seed)
@@ -243,22 +260,14 @@ def run_synth(solver, fname):
 
     return False, aigs
 
-def del_core_files():
-    items = glob.glob("core-*.cnf")
-    for fname in items:
-        if os.path.isfile(fname):
-            try:
-                os.remove(fname)
-                print(f"Deleted file: {fname}")
-            except OSError as e:
-                print(f"Error deleting {fname}: {e}")
-
-def check_core_files():
-    # Find all items matching the pattern
-    items = glob.glob("core-*.cnf")
+def check_core_files(prefix):
+    # arjun writes core files as "<debug-synth-prefix>-core-N.cnf"; the
+    # prefix is unique per fuzzer run, so globbing on it keeps concurrent
+    # runs from picking up each other's core dumps.
+    items = glob.glob(f"{prefix}-core-*.cnf")
 
     # Filter to ensure NUM is numeric AND it's a regular file
-    pattern = re.compile(r'core-(\d+)\.cnf')
+    pattern = re.compile(re.escape(prefix) + r'-core-(\d+)\.cnf$')
 
     for fname in items:
         # Check if it's a file (not a directory, symlink, etc.)
@@ -336,6 +345,12 @@ def cleanup(fname, prefix):
         if os.path.isfile(file_path):
             os.remove(file_path)
             print(f"Deleted: {os.path.basename(file_path)}")
+    # Sweep any leftover prefix-scoped core file (e.g. when the run timed
+    # out before check_core_files could verify and remove it).
+    for file_path in glob.glob(f"{prefix}-core-*.cnf"):
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+            print(f"Deleted: {os.path.basename(file_path)}")
     os.unlink(prefix)
 
 def gen_mstrategy():
@@ -343,30 +358,23 @@ def gen_mstrategy():
     types = ["const", "bve"]
 
     uint_params = ["samples", "samples_ccnr", "max_depth", "sampler_fixed_conflicts",
-                   "min_leaf_size", "simplify_every",
-                   "bias_samples", "const_vote_samples", "stats_every",
-                   "detailed_stats_every", "rebuild_min_loops", "rebuild_min_clauses",
-                   "rebuild_growth_num", "rebuild_growth_den",
-                   "reduce_cex_gen_ok", "reduce_cex_tot_rep", "reduce_cex_need_rep",
-                   "reduce_cex_cz_min_rep",
-                   "simplify_repair_every", "skip_input_only_min_rep", "skip_input_only_ratio",
-                   "conflict_drop_y_max", "extra_minim_hot", "extra_minim_very_hot",
+                   "min_leaf_size", "const_vote_samples", "stats_every",
+                   "detailed_stats_every",
+                   "conflict_drop_y_max",
                    "conflict_cap", "conflict_cap_keep", "batch_minim_min",
                    "minim_budget_threshold", "minim_budget_max", "minim_budget_mult",
-                   "aig_simplify_every", "td_steps", "td_lookahead_iters",
-                   "better_ctx_remove_all",
-                   "td_max_edges", "ccnr_mems_per_sample", "ccnr_per_call_limit",
-                   "reduce_cex_gen_ratio_num", "reduce_cex_gen_ratio_den",
+                   "ccnr_mems_per_sample", "ccnr_per_call_limit",
                    "cz_high_ratio", "cz_low_ratio",
                    "cz_threshold_high", "cz_threshold_mid", "cz_threshold_low"]
-    int_params  = ["filter_samples", "biased_sampling", "minimize_conflict",
+    # manthan_order is handled separately (only 0/2 valid, gen_int would emit 1).
+    int_params  = ["filter_samples", "minimize_conflict",
                    # maxsat_better_ctx=1 requires EXTRA_SYNTH — omit from strategies
                    "maxsat_order", "use_all_vars_as_feats",
-                   "repair_cache_size", "backward_synth_order", "manthan_order",
-                   "manthan_on_the_fly_order", "one_repair_per_loop", "force_bw_equal",
-                   "bva_xor_vars", "silent_var_update", "inv_learnt", "do_td_contract"]
+                   "repair_cache_size",
+                   "one_repair_per_loop", "force_bw_equal",
+                   "inv_learnt"]
     #  "ctx_solver_type", "repair_solver_type",
-    double_params = ["min_gain_split", "bias_w_high", "bias_p_low", "bias_p_high"]
+    double_params = ["min_gain_split"]
 
     def gen_uint():
         return str(random.choice([0, 1, 10, 100, 400, 1000]))
@@ -388,6 +396,9 @@ def gen_mstrategy():
             params.setdefault(p, gen_int())
         for p in random.sample(double_params, random.randint(0, 1)):
             params.setdefault(p, gen_double())
+        # manthan_order accepts only 0 (learn) and 2 (bve); 1 aborts.
+        if random.choice([True, False]):
+            params.setdefault("manthan_order", str(random.choice([0, 2])))
         if not params:
             return stype
         param_str = ",".join("%s=%s" % (k, v) for k, v in params.items())
@@ -430,10 +441,11 @@ if __name__ == "__main__":
         else:
             seed = options.rnd_seed
 
-        del_core_files()
-
         fname = gen_fuzz(seed)
-        add_projection(fname)
+        if add_projection(fname) is None:
+            print("Generated file %s has <2 vars (no defined var possible), skipping" % fname)
+            os.unlink(fname)
+            continue
         if is_unsat(fname):
             print("Generated file %s is UNSAT, skipping synthesis" % fname)
             os.unlink(fname)
@@ -453,19 +465,15 @@ if __name__ == "__main__":
             , " --minimize"
             , " --minimconfl"
             , " --filtersamples"
-            , " --biasedsampling"
             , " --uniqsamp"
             , " --ctxsolver"
             , " --repairsolver"
             , " --unatedef"
             , " --unatedefcond"
-            , " --unatedefcondrel"
+            , " --unatedefcondnoninp"
             , " --unatedefrep"
             , " --bwequal"
-            , " --bvaxor"
-            , " --silentupdate"
             , " --learnuseall"
-            , " --monflyorder"
         ]
         for o in opts:
             val = random.choice([0, 1])
@@ -475,7 +483,17 @@ if __name__ == "__main__":
         if random.choice([True, False]):
             solver += " --sat-sweep"
 
-        solver += " --morder " + str(random.randint(0, 2))
+        # Force the doubled-CNF interpolation solver to rebuild after every
+        # 1..5 interpolants so the rebuild path is exercised on every fuzz
+        # iteration (production default is 512 — fuzz CNFs would never trip
+        # it otherwise).
+        solver += " --interprebuildevery %d" % random.randint(1, 5)
+
+        # manthan_order: 0 = incidence/learn, 2 = BVE. 1 is not a valid value.
+        solver += " --morder " + str(random.choice([0, 2]))
+        solver += " --maxsatorder " + random.choice(["0", "1"])
+        solver += " --fixedconf " + random.choice(["1", "10", "100", "1000"])
+        solver += " --unatedefmaxconfl " + random.choice(["1", "100", "1000", "15000", "100000"])
         solver += " --unatedefcondmax " + random.choice(["0", "1", "4", "16", "64", "1024"])
         solver += " --unatedefcondconfl " + random.choice(["1", "10", "100", "1000", "100000"])
         solver += " --unatedefconddry " + random.choice(["1", "10", "100", "100000"])
@@ -491,61 +509,68 @@ if __name__ == "__main__":
         solver += " --unatedefrepconfl " + random.choice(["1", "10", "100", "1000", "100000"])
         # 0=input only, 1=+backward-defined, 2=+to-define (richest).
         solver += " --unatedefrepaux " + random.choice(["0", "1", "2"])
+        # 0 = greedy minim off, 1 = on.
+        solver += " --unatedefrepminim " + random.choice(["0", "1"])
+        # 0..200 budget for greedy literal-drop.
+        solver += " --unatedefrepminbud " + random.choice(["0", "1", "4", "16", "200"])
+        # 0=off; 1=always; 2=only when aux non-empty.
+        solver += " --unatedefrepinpfirst " + random.choice(["0", "1", "2"])
+        # 0/1: single-shot drop-all-aux after greedy minim.
+        solver += " --unatedefrepdropaux " + random.choice(["0", "1"])
+        # 1 = off (single CEX), 2..8 = collect that many.
+        solver += " --unatedefrepmulticex " + random.choice(["1", "2", "3", "5", "8"])
+        # per-iter trace verbosity threshold (low = chatty).
+        solver += " --unatedefrepiterverb " + random.choice(["0", "1", "4", "99"])
+        # 0/1: sort minim drop order by pattern-frequency.
+        solver += " --unatedefrepfreqsort " + random.choice(["0", "1"])
+        # extra reverse-shuffle minim passes (manthan-style).
+        solver += " --unatedefrepminextra " + random.choice(["0", "1", "3", "10"])
+        # 0/1: refine H using all collected multi-cex models.
+        solver += " --unatedefrepmultipat " + random.choice(["0", "1"])
         solver += " --bveresolvmaxsz " + str(random.randint(2, 20))
         solver += " --iter1grow " + str(random.randint(0, 5))
         solver += " --iter2grow " + str(random.choice([0, 10, 100]))
         solver += " --samplesccnr " + random.choice(["0", "100", "10000"])
         solver += " --samples " + random.choice(["0", "100", "10000"])
         solver += " --mingainsplit " + random.choice(["0.1", "0.001", "5"])
-        solver += " --simpevery " + random.choice(["1", "100", "10000"])
         solver += " --maxdepth " + random.choice(["2", "10"])
         solver += " --minleaf " + random.choice(["2", "10"])
         solver += " --maxsat " + random.choice(["0", "-1"])  # skip 1 (requires EXTRA_SYNTH)
         solver += " --repaircache " + " " + random.choice(["0", "100", "1000"])
 
         # Hard-coded cutoff constants (very low and very high values)
-        solver += " --biassamples " + random.choice(["0", "1", "5", "50", "500", "5000"])
         solver += " --constvotesamples " + random.choice(["0", "1", "2", "10", "100"])
         solver += " --statsevery " + random.choice(["0", "1", "10", "40", "1000"])
         solver += " --detailedstatsevery " + random.choice(["0", "1", "10", "200", "5000"])
-        solver += " --rebuildminloops " + random.choice(["1", "5", "50", "200", "10000"])
-        solver += " --rebuildminclauses " + random.choice(["1", "100", "1000", "100000", "1000000"])
-        solver += " --rebuildgrownum " + random.choice(["0.02", "0.1", "1", "2", "10"])
-        solver += " --rebuildgrowden " + random.choice(["0", "0.5", "1", "3", "10"])
-        solver += " --reducecexgenok " + random.choice(["1", "5", "20", "100", "10000"])
-        solver += " --reducecextotrep " + random.choice(["1", "10", "100", "2000", "100000"])
-        solver += " --reducecexneedrep " + random.choice(["0", "1", "3", "10", "1000"])
-        solver += " --reducecexczminrep " + random.choice(["1", "10", "100", "10000"])
-        solver += " --simprepevery " + random.choice(["0", "1", "10", "1000", "100000"])
-        solver += " --skipinputminrep " + random.choice(["1", "10", "200", "10000"])
-        solver += " --skipinputratio " + random.choice(["1", "5", "20", "100"])
         solver += " --confldropy " + random.choice(["1", "5", "25", "100", "10000"])
-        solver += " --extraminimhot " + random.choice(["1", "5", "10", "100", "10000"])
-        solver += " --extraminimvhot " + random.choice(["1", "10", "30", "100", "10000"])
         solver += " --conflcap " + random.choice(["1", "5", "10", "40", "200", "100000"])
         solver += " --conflcapkeep " + random.choice(["1", "2", "5", "30", "100", "100000"])
         solver += " --batchminimmin " + random.choice(["1", "3", "6", "20", "10000"])
         solver += " --minimbudgetthresh " + random.choice(["1", "5", "20", "100", "10000"])
         solver += " --minimbudgetmax " + random.choice(["1", "10", "150", "1000", "100000"])
         solver += " --minimbudgetmult " + random.choice(["1", "2", "4", "10", "100"])
-        solver += " --aigsimpevery " + random.choice(["0", "1", "5", "50", "10000"])
-        solver += " --tdsteps " + random.choice(["100", "1000", "100000", "1000000"])
-        solver += " --tdlookahead " + random.choice(["1", "10", "300", "1000"])
-        solver += " --bctxremoveall " + random.choice(["1", "3", "5", "20", "10000"])
-        solver += " --tdcontract " + random.choice(["0", "1"])
-        solver += " --tdmaxedges " + random.choice(["1", "10", "100", "1000", "70000", "10000000"])
         solver += " --ccnrmemspersample " + random.choice(["0", "1", "100", "1000", "100000", "10000000"])
         solver += " --ccnrpercalllimit " + random.choice(["0", "1", "100", "1000", "50000", "10000000"])
-        solver += " --biaswgh " + random.choice(["0.0", "0.1", "0.5", "0.9", "1.0"])
-        solver += " --biasplow " + random.choice(["0.0", "0.1", "0.35", "0.5"])
-        solver += " --biasphigh " + random.choice(["0.5", "0.65", "0.9", "1.0"])
-        solver += " --reducecexgenrationum " + random.choice(["0", "1", "3", "10", "1000"])
-        solver += " --reducecexgenratioden " + random.choice(["1", "2", "4", "10", "1000"])
         solver += " --czhighratio " + random.choice(["0", "1", "3", "10", "1000"])
         solver += " --czlowratio " + random.choice(["0", "1", "2", "5", "100"])
         solver += " --czthreshhigh " + random.choice(["0", "1", "2", "5", "1000"])
         solver += " --czthreshmid " + random.choice(["0", "1", "2", "5", "1000"])
         solver += " --czthreshlow " + random.choice(["0", "1", "2", "5", "1000"])
+
+        # Craig-interpolant repair: mostly off, ~25% on.
+        ir_mode = random.choices([0, 1, 2], weights=[3, 1, 1])[0]
+        solver += " --interprepair " + str(ir_mode)
+        if ir_mode == 2:
+            solver += " --interprepairmincl " + random.choice(["1", "2", "4", "8", "20"])
+        if ir_mode > 0:
+            solver += " --interprepairmaxnodes " + random.choice(["0", "10", "100", "1000", "100000"])
+            solver += " --interprepairb1rewrite " + random.choice(["0", "1"])
+            solver += " --interprepairmaxconfl " + random.choice(["0", "100", "10000"])
+            solver += " --interprepairb1satsweep " + random.choice(["0", "1"])
+            solver += " --interprepairgroupcse " + random.choice(["0", "1"])
+            solver += " --interprepairadaptive " + random.choice(["0", "1"])
+            solver += " --interprepairratioskip " + random.choice(["1.0", "5.0", "20.0"])
+            solver += " --interprepairskipwindow " + random.choice(["1", "10", "100"])
 
         solver += " --mstrategy " + gen_mstrategy()
 
@@ -564,7 +589,7 @@ if __name__ == "__main__":
         if len(aigs) == 0:
             print("ERROR: Synthesis produced no output AIGs on file %s" % fname)
             exit(-1)
-        check_core_files()
+        check_core_files(prefix)
 
         for aig in aigs:
             final = "final" in aig

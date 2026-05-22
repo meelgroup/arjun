@@ -1,7 +1,7 @@
 /*
  Arjun
 
- Copyright (c) 2020, Mate Soos and Kuldeep S. Meel. All rights reserved.
+ Copyright (c) 2026, Mate Soos and Kuldeep S. Meel. All rights reserved.
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -22,34 +22,25 @@
  THE SOFTWARE.
  */
 
-
 #pragma once
-
-#include "metasolver.h"
-#include "config.h"
+#include <cstdint>
+#include <memory>
 #include <set>
 #include "arjun.h"
+#include "config.h"
+#include "metasolver.h"
 
 namespace ArjunInt {
 
-class Autarky {
-public:
-    Autarky(const Config& _conf);
+// Build the miter solver `F(X, Y) ∧ ¬F(X, Y')` shared by synthesis_unate_def
+// and UnateDefRep. Inputs (vars in `input`) live in NEW-var-space and are
+// shared between the Y and Y' sides; non-input vars get a parallel Y'-side
+// var at offset `cnf.nVars()`. Each F-clause `cl` gets a fresh selector
+// `z_cl` such that z_cl ⇔ cl-on-Y'; the disjunction of `~z_cl` across all
+// clauses asserts "at least one clause is FALSE on Y'", giving ¬F(X, Y').
+std::unique_ptr<ArjunInt::MetaSolver> setup_f_not_f(
+    const ArjunNS::SimplifiedCNF& cnf,
+    const std::set<uint32_t>& input,
+    const ArjunInt::Config& conf);
 
-    void find_autarkies(ArjunNS::SimplifiedCNF& cnf);
-
-private:
-    /// For synthesis stats
-    std::set<uint32_t> input;
-    std::set<uint32_t> to_define;
-    std::set<uint32_t> backward_defined;
-
-    struct LitSub {
-        CMSat::Lit pos = CMSat::lit_Undef;
-        CMSat::Lit neg = CMSat::lit_Undef;
-    };
-    MetaSolver s;
-    const Config conf;
-
-};
 }

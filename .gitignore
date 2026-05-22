@@ -1,4 +1,5 @@
 build/
+build_slowdbg/
 .kdev4/
 *.kdev4
 compile_commands.json

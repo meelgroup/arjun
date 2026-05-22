@@ -21,6 +21,5 @@ cmake -DENABLE_TESTING=OFF -DEXTRA_SYNTH=OFF \
     -Dcadical_DIR="${SOLVERS_DIR}/cadical/build" \
     -Dcryptominisat5_DIR="${SOLVERS_DIR}/cryptominisat/build" \
     -Dsbva_DIR="${SOLVERS_DIR}/sbva/build" \
-    -Dtreedecomp_DIR="${SOLVERS_DIR}/treedecomp/build" \
     ..
 make -j$(nproc)

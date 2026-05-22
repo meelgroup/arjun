@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
@@ -426,12 +427,21 @@ public:
         }
     }
 
+    // Apply the outer edge sign to a transform result. `operator~` negates
+    // aig_lit and CMSat::Lit; for a plain `bool` result it would trigger a
+    // -Wbool-operation warning, so negate logically instead.
+    template<typename T>
+    static T negate_result(const T& x) {
+        if constexpr (std::is_same_v<T, bool>) return !x;
+        else return ~x;
+    }
+
     // Post-order traversal producing a caller-defined fold. Visitor signature:
     //   (type, var, left_result*, right_result*)
     // The visitor is always invoked as if the edge were positive; transform
-    // applies the outer edge sign ITSELF by calling `operator~` on the
-    // visitor's result (requires ResultType to provide one; aig_lit and
-    // CMSat::Lit both do). Child results already reflect their own edge sign.
+    // applies the outer edge sign ITSELF by negating the visitor's result
+    // (`operator~` for aig_lit and CMSat::Lit, logical NOT for bool). Child
+    // results already reflect their own edge sign.
     //
     // Caching is per NODE rather than per signed edge. Without this, a shared
     // sub-AIG referenced both positively and negatively would invoke the
@@ -447,7 +457,7 @@ public:
         const aig_lit pos_key(aig.node, false);
         auto it = cache.find(pos_key);
         if (it != cache.end()) {
-            return aig.neg ? ~it->second : it->second;
+            return aig.neg ? negate_result(it->second) : it->second;
         }
 
         ResultType result;
@@ -460,8 +470,72 @@ public:
         }
 
         cache[pos_key] = result;
-        return aig.neg ? ~result : result;
+        return aig.neg ? negate_result(result) : result;
     }
+
+    // Tseitin-encode `aig` into `solver`. Walks once (shared subgraphs are
+    // encoded once via the cache), allocating one fresh helper var per AND
+    // node and emitting the standard Tseitin clauses
+    //     (~h ∨ l), (~h ∨ r), (h ∨ ~l ∨ ~r).
+    // Leaf vars go through `leaf_to_lit`. The const-TRUE literal is supplied
+    // lazily via `true_lit_fn` (called only if the AIG references a const),
+    // so callers can defer allocating their TRUE helper. `Solver` must expose
+    // `new_var()`, `nVars()`, and `add_clause(const std::vector<CMSat::Lit>&)`.
+    // `visit_count` and `and_emit_count`, when non-null, are incremented per
+    // visited node and per emitted helper respectively.
+    template<typename Solver, typename TrueFn, typename LeafFn>
+    static CMSat::Lit tseitin_encode(
+        const aig_ptr& aig,
+        Solver& solver,
+        TrueFn&& true_lit_fn,
+        LeafFn&& leaf_to_lit,
+        uint64_t* visit_count = nullptr,
+        uint64_t* and_emit_count = nullptr
+    ) {
+        std::vector<CMSat::Lit> tmp;
+        auto visit = [&](AIGT type, uint32_t var,
+                         const CMSat::Lit* left, const CMSat::Lit* right) -> CMSat::Lit {
+            if (visit_count) ++*visit_count;
+            if (type == AIGT::t_const) return true_lit_fn();
+            if (type == AIGT::t_lit)   return leaf_to_lit(var);
+            if (type == AIGT::t_and) {
+                if (and_emit_count) ++*and_emit_count;
+                solver.new_var();
+                const CMSat::Lit out(solver.nVars() - 1, false);
+                tmp = {~out, *left};          solver.add_clause(tmp);
+                tmp = {~out, *right};         solver.add_clause(tmp);
+                tmp = {~*left, ~*right, out}; solver.add_clause(tmp);
+                return out;
+            }
+            assert(false && "Unhandled AIG type in tseitin_encode");
+            std::abort();
+        };
+        std::map<aig_ptr, CMSat::Lit> cache;
+        return transform<CMSat::Lit>(aig, visit, cache);
+    }
+
+    // Rebuild `aig` with each leaf var `v` replaced by `new_lit(lit_of_var(v))`,
+    // preserving structure. `out_negate` flips the top edge. Used to remap
+    // AIGs across var spaces (NEW↔ORIG, y→y_hat, etc.).
+    template<typename LitFn>
+    static aig_ptr translate_leaves(
+        const aig_ptr& aig,
+        LitFn&& lit_of_var,
+        bool out_negate = false
+    ) {
+        auto visit = [&](AIGT type, uint32_t var,
+                         const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
+            if (type == AIGT::t_const) return new_const(true);
+            if (type == AIGT::t_lit)   return new_lit(lit_of_var(var));
+            if (type == AIGT::t_and)   return new_and(*left, *right);
+            assert(false && "Unhandled AIG type in translate_leaves");
+            std::abort();
+        };
+        std::map<aig_ptr, aig_ptr> cache;
+        aig_ptr ret = transform<aig_ptr>(aig, visit, cache);
+        return out_negate ? ~ret : ret;
+    }
+
     // Fast variant: iterative DFS using AIG::visit_epoch marking. Shared
     // structure across the input vector is counted only once. Used by the
     // rewriter's hot paths where the std::set<aig_ptr> version was the
@@ -1163,7 +1237,7 @@ public:
 
     // Returns NEW vars, i.e. < nVars()
     // It is checked that it is correct and total
-    [[nodiscard]] VarTypes get_var_types([[maybe_unused]] uint32_t verb, const std::string& str = "") const;
+    VarTypes get_var_types([[maybe_unused]] uint32_t verb, const std::string& str = "") const;
 
     [[nodiscard]] bool check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars() const;
     [[nodiscard]] bool check_orig_sampl_vars_undefined() const;
@@ -1203,13 +1277,27 @@ public:
     void check_clause(const std::vector<CMSat::Lit>& cl) const;
     void add_xor_clause(const std::vector<uint32_t>&, bool) const { exit(EXIT_FAILURE); }
     void add_xor_clause(const std::vector<CMSat::Lit>&, bool) const { exit(EXIT_FAILURE); }
+    // Normalize: sort+unique to drop duplicate literals; return false if the
+    // clause is a tautology (x ∨ ¬x) and should be skipped.
+    static bool normalize_clause(std::vector<CMSat::Lit>& cl) {
+        std::sort(cl.begin(), cl.end());
+        cl.erase(std::unique(cl.begin(), cl.end()), cl.end());
+        for (size_t i = 1; i < cl.size(); i++) {
+            if (cl[i].var() == cl[i-1].var()) return false;
+        }
+        return true;
+    }
     void add_clause(const std::vector<CMSat::Lit>& cl) {
         check_clause(cl);
-        clauses.push_back(cl);
+        std::vector<CMSat::Lit> tmp(cl);
+        if (!normalize_clause(tmp)) return;
+        clauses.push_back(std::move(tmp));
     }
     void add_red_clause(const std::vector<CMSat::Lit>& cl) {
         check_clause(cl);
-        red_clauses.push_back(cl);
+        std::vector<CMSat::Lit> tmp(cl);
+        if (!normalize_clause(tmp)) return;
+        red_clauses.push_back(std::move(tmp));
     }
     [[nodiscard]] bool get_sampl_vars_set() const { return sampl_vars_set; }
     [[nodiscard]] bool get_opt_sampl_vars_set() const { return opt_sampl_vars_set; }
@@ -1567,10 +1655,11 @@ public:
         bool all_indep = false;
         bool do_extend_indep = true;
         bool do_bce = false;
-        int num_sbva_steps = 1;
+        int num_sbva_steps = 1000;
         uint32_t sbva_cls_cutoff = 4;
         uint32_t sbva_lits_cutoff = 5;
         int sbva_tiebreak = 1;
+        uint32_t sbva_max_new_vars = 1000;
         bool do_renumber = true;
         bool do_autarky = true;
     };
@@ -1578,7 +1667,6 @@ public:
         ManthanConf() = default;
         ManthanConf(const ManthanConf& other) = default;
         int filter_samples = 1;
-        int biased_sampling = 0;
         /// Also to try:
         uint32_t samples = 5000;
         uint32_t samples_ccnr = 0;
@@ -1588,7 +1676,6 @@ public:
         uint32_t max_depth = 0;
         uint32_t sampler_fixed_conflicts = 100;
         int minimize_conflict = 1;
-        uint32_t simplify_every = 1000;
         std::string write_manthan_cnf;
         int maxsat_better_ctx = 0;
         int maxsat_order = 1;
@@ -1597,77 +1684,73 @@ public:
         int ctx_solver_type = 1;
         int repair_solver_type = 1;
         int repair_cache_size = 1000;
-        int backward_synth_order = 0;
         int manthan_base = 0;
         int manthan_order = 0;
-        int manthan_on_the_fly_order = 0;
         int one_repair_per_loop = 0;
-        int do_td_contract = 1; // contract over the input variables
-        int td_max_edges = 70000;
-        std::string td_visualize_dot_file = "";
         int force_bw_equal = 1;
-        int bva_xor_vars = 0;
-        int silent_var_update = 1;
         int inv_learnt = 0;
         uint32_t max_repairs = std::numeric_limits<uint32_t>::max();
-        int multi_cex_k = 5; // number of counterexamples to collect for generalized repair
         int check_repair = 0;
         std::string ganak_binary;
 
         // Hard-coded cutoffs now configurable
-        uint32_t bias_samples = 500;        // biased sampling: number of samples per bias direction
         uint32_t const_vote_samples = 100;   // const_functions: majority voting samples
         uint32_t stats_every = 40;          // print stats every N repair loops
         uint32_t detailed_stats_every = 200;// print detailed stats every N repair loops
-        // cex_solver rebuild thresholds. Rebuilding re-canonicalizes the
-        // accumulated ITE repairs through the AIG rewriter and re-encodes
-        // them as fresh Tseitin, which is meant to keep the incremental
-        // solver's clause count in check. In practice, on instances like
-        // sdlx-fixpoint-5 aig-rewrite finds <1% node reduction and each
-        // rebuild throws away the solver's learnt clauses / VSIDS activity,
-        // costing dozens of repair loops' worth of wall-clock (measured
-        // 49s / 26% of total runtime to do 2 rebuilds). The defaults are
-        // tuned to make rebuild rare; benchmarks that actually benefit from
-        // it can dial the threshold down via --rebuildgrownum/den.
-        uint32_t rebuild_min_loops = 500;
-        uint32_t rebuild_min_clauses = 500000;
-        double rebuild_growth_num = 5;    // 5x growth since last rebuild
-        double rebuild_growth_den = 1;
-        uint32_t reduce_cex_gen_ok = 20;    // reduce multi_cex when generalized_repair_ok > this
-        uint32_t reduce_cex_tot_rep = 2000; // reduce multi_cex when tot_repaired > this
-        uint32_t reduce_cex_need_rep = 3;   // set multi_cex_k=1 when needs_repair <= this
-        uint32_t reduce_cex_cz_min_rep = 100; // min tot_repaired for cost-zero cex reduction
-        uint32_t simplify_repair_every = 1000; // also simplify repair_solver every N tot_repaired
-        uint32_t skip_input_only_min_rep = 200; // min tot_repaired before skipping input-only attempt
-        uint32_t skip_input_only_ratio = 20;    // skip when gen_ok * ratio < tot_repaired
         uint32_t conflict_drop_y_max = 25;  // max conflict size to try dropping y-vars
-        uint32_t extra_minim_hot = 10;      // extra minimization when repaired_count >= this
-        uint32_t extra_minim_very_hot = 30; // 2 extra passes when repaired_count >= this
         uint32_t conflict_cap = 40;         // cap very large conflicts to this size
         uint32_t conflict_cap_keep = 30;    // keep this many literals when capping
         uint32_t batch_minim_min = 6;       // min conflict size for batch minimization
         uint32_t minim_budget_threshold = 20; // conflict size above which budget is capped
         uint32_t minim_budget_max = 150;    // max minimization solver calls
         uint32_t minim_budget_mult = 4;     // budget = conflict.size * mult (up to max)
-        uint32_t aig_simplify_every = 50;   // simplify AIG for hot vars every N repairs
-        uint64_t td_steps = 100000;         // tree decomposition FlowCutter steps
-        uint32_t td_lookahead_iters = 300;  // tree decomposition FlowCutter lookahead
-        uint32_t better_ctx_remove_all = 5; // remove-all threshold in find_better_ctx_normal
         // CCNR sampling constants
         uint64_t ccnr_mems_per_sample = 100000; // total CCNR mem budget per sample
         uint32_t ccnr_per_call_limit = 50000;   // per-call step limit for CCNR local_search
-        // Biased sampling thresholds/weights (from Manthan paper)
-        double bias_w_high = 0.9;           // weight for "positive" bias direction
-        double bias_p_low = 0.35;           // lower threshold for mid-range bias selection
-        double bias_p_high = 0.65;          // upper threshold for mid-range bias selection
-        // Ratios used in CEX reduction heuristics
-        uint32_t reduce_cex_gen_ratio_num = 3; // numerator of gen_ok / tot_repaired ratio
-        uint32_t reduce_cex_gen_ratio_den = 4; // denominator of gen_ok / tot_repaired ratio
+        // Adaptive consecutive cost-zero break threshold
         uint32_t cz_high_ratio = 3;         // cost_zero > tot_repaired * cz_high_ratio triggers tight threshold
         uint32_t cz_low_ratio = 2;          // cost_zero > tot_repaired * cz_low_ratio triggers medium threshold
         uint32_t cz_threshold_high = 1;     // consecutive cost-zero break threshold (high ratio)
         uint32_t cz_threshold_mid = 2;      // consecutive cost-zero break threshold (medium ratio)
         uint32_t cz_threshold_low = 3;      // consecutive cost-zero break threshold (low ratio)
+
+        // Craig-interpolant repair: use a McMillan interpolant (input
+        // vars only) as the compose_or/and branch instead of the AND of
+        // conflict literals. 0=off, 1=every repair, 2=only when conflict
+        // size >= interp_repair_min_conflict.
+        int interp_repair = 0;
+        // Mode 2 only: minimum conflict size to interpolate.
+        uint32_t interp_repair_min_conflict = 4;
+        // Cap interpolant AIG node count; bigger falls back. 0=no cap.
+        uint32_t interp_repair_max_aig_nodes = 0;
+        // rewrite_aig of the combined b1 AIG before Tseitin encoding.
+        // 0=simplify only, 1=+rewrite_aig. On by default: b1 is composed
+        // into the candidate formula and Tseitin-encoded into the cex
+        // solver on every interpolant repair, so a smaller b1 directly
+        // slows cex-solver growth between rebuilds.
+        int interp_repair_b1_rewrite = 1;
+        // FRAIG-lite SAT-sweep on b1. 0=off, 1=on.
+        int interp_repair_b1_satsweep = 0;
+        // Pass --group-cse to AIGToCNF when encoding b1: dedups Tseitin
+        // helpers for structurally identical sub-AIGs. On by default for
+        // the same cex-solver-growth reason as b1_rewrite.
+        int interp_repair_group_cse = 1;
+        // Per-call cadical conflict budget for the interp solve. 0=no limit.
+        uint64_t interp_repair_max_conflicts = 0;
+        // Labeled-interpolation system: 0=McMillan (strongest, default),
+        // 1=Pudlák (symmetric selector; smaller but weaker interpolant).
+        int interp_repair_system = 0;
+        // Adaptive per-var gating: blacklist a var when its mean
+        // interp/conflict ratio exceeds the threshold. 0=off, 1=on.
+        int interp_repair_adaptive_gate = 0;
+        double interp_repair_adaptive_ratio_skip = 8.0;
+        uint32_t interp_repair_adaptive_skip_window = 20;
+        // Progress-based per-var gating: once a variable has been repaired
+        // via the interpolant branch this many times and still needs more
+        // repairs, the interpolant is not generalising for it, so fall
+        // back permanently to the conflict clause for that variable.
+        // 0 disables the gate.
+        uint32_t interp_repair_progress_max_var_repairs = 100;
     };
 
     struct IndepInfo {
@@ -1694,7 +1777,8 @@ public:
     void standalone_backbone(SimplifiedCNF& cnf);
     void standalone_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,
-        uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1);
+        uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1,
+        uint32_t sbva_max_new_vars = 0);
     SimplifiedCNF standalone_manthan(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
     void standalone_autarky(SimplifiedCNF& cnf);
 
@@ -1722,13 +1806,22 @@ public:
     void set_unate_def_cond(int unate_def_cond);
     void set_unate_def_cond_max_per_var(uint32_t unate_def_cond_max_per_var);
     void set_unate_def_cond_max_confl(uint32_t unate_def_cond_max_confl);
-    void set_unate_def_cond_relfirst(int unate_def_cond_relfirst);
     void set_unate_def_cond_dry_streak(uint32_t unate_def_cond_dry_streak);
+    void set_unate_def_cond_noninput(int unate_def_cond_noninput);
     void set_unate_def_rep_iters(uint32_t unate_def_rep_iters);
     void set_unate_def_rep_max_pattern(uint32_t unate_def_rep_max_pattern);
     void set_unate_def_rep_max_costzero(uint32_t unate_def_rep_max_costzero);
     void set_unate_def_rep_max_confl(uint32_t unate_def_rep_max_confl);
     void set_unate_def_rep_aux(uint32_t unate_def_rep_aux);
+    void set_unate_def_rep_minim(uint32_t unate_def_rep_minim);
+    void set_unate_def_rep_minim_budget(uint32_t unate_def_rep_minim_budget);
+    void set_unate_def_rep_input_only_first(uint32_t unate_def_rep_input_only_first);
+    void set_unate_def_rep_drop_aux(uint32_t unate_def_rep_drop_aux);
+    void set_unate_def_rep_multi_cex_k(uint32_t unate_def_rep_multi_cex_k);
+    void set_unate_def_rep_iter_verb(uint32_t unate_def_rep_iter_verb);
+    void set_unate_def_rep_freq_sort(uint32_t unate_def_rep_freq_sort);
+    void set_unate_def_rep_minim_extra_passes(uint32_t unate_def_rep_minim_extra_passes);
+    void set_unate_def_rep_multi_pat(uint32_t unate_def_rep_multi_pat);
     void set_oracle_find_bins(int oracle_find_bins);
     void set_cms_glob_mult(double cms_glob_mult);
     void set_extend_ccnr(int extend_ccnr);
@@ -1756,13 +1849,22 @@ public:
     [[nodiscard]] int get_unate_def_cond() const;
     [[nodiscard]] uint32_t get_unate_def_cond_max_per_var() const;
     [[nodiscard]] uint32_t get_unate_def_cond_max_confl() const;
-    [[nodiscard]] int get_unate_def_cond_relfirst() const;
     [[nodiscard]] uint32_t get_unate_def_cond_dry_streak() const;
+    [[nodiscard]] int get_unate_def_cond_noninput() const;
     [[nodiscard]] uint32_t get_unate_def_rep_iters() const;
     [[nodiscard]] uint32_t get_unate_def_rep_max_pattern() const;
     [[nodiscard]] uint32_t get_unate_def_rep_max_costzero() const;
     [[nodiscard]] uint32_t get_unate_def_rep_max_confl() const;
     [[nodiscard]] uint32_t get_unate_def_rep_aux() const;
+    [[nodiscard]] uint32_t get_unate_def_rep_minim() const;
+    [[nodiscard]] uint32_t get_unate_def_rep_minim_budget() const;
+    [[nodiscard]] uint32_t get_unate_def_rep_input_only_first() const;
+    [[nodiscard]] uint32_t get_unate_def_rep_drop_aux() const;
+    [[nodiscard]] uint32_t get_unate_def_rep_multi_cex_k() const;
+    [[nodiscard]] uint32_t get_unate_def_rep_iter_verb() const;
+    [[nodiscard]] uint32_t get_unate_def_rep_freq_sort() const;
+    [[nodiscard]] uint32_t get_unate_def_rep_minim_extra_passes() const;
+    [[nodiscard]] uint32_t get_unate_def_rep_multi_pat() const;
     [[nodiscard]] int get_oracle_find_bins() const;
     [[nodiscard]] double get_cms_glob_mult() const;
     [[nodiscard]] int get_extend_ccnr() const;

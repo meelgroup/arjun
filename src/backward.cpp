@@ -360,7 +360,7 @@ void Minimize::add_all_indics_except(const set<uint32_t>& except) {
         var_to_indic, indic_to_var, dont_elim, seen, conf.verb);
 }
 
-void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf& mconf) {
+void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf&) {
     SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
 
@@ -396,9 +396,8 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
 
     // set up interpolant
     Interpolant interp(conf, cnf.nVars());
-    interp.solver = solver.get();
-    interp.fill_picolsat(orig_num_vars);
-    interp.fill_var_to_indic(var_to_indic);
+    interp.fill_from_solver(solver.get(), orig_num_vars, cnf.get_aig_mng(),
+            pretend_input);
 
     for(uint32_t x = 0; x < orig_num_vars; x++) {
         pretend_input.insert(x); // we pretend that all vars are input vars
@@ -407,8 +406,6 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
         unknown_set[x] = 1;
     }
     sort_unknown(unknown, incidence);
-    if (mconf.backward_synth_order)
-        std::reverse(unknown.begin(), unknown.end());
     print_sorted_unknown(unknown);
     verb_print(1, "[backward SYNTH] Start unknown size: " << unknown.size()
                     << " mem: " << memUsedTotal()/(1024*1024) << " MB");
@@ -494,7 +491,7 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
         } else if (ret == l_False) {
             //not independent
             //i.e. given that all in indep+unkown is equivalent, it's not possible that a1 != b1
-            interp.generate_interpolant(assumptions, test_var, cnf, pretend_input);
+            interp.generate_interpolant(assumptions, test_var);
         }
     }
     verb_print(3, __PRETTY_FUNCTION__ << " pretend_input size: " << pretend_input.size());

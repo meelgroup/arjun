@@ -212,6 +212,22 @@ def find_arjun_time(fname):
     }
 
 
+def find_cadet_time(fname):
+    # CADET .out_cadet files are nearly empty. Presence of a bare "SAT" line
+    # is the only signal that the synthesis instance was solved; "UNSAT",
+    # empty output, and crashes all count as not solved.
+    solved = False
+    with open(fname, "r") as f:
+        for line in f:
+            if strip_ansi(line.strip()) == "SAT":
+                solved = True
+                break
+    return {
+        "solved": solved,
+        "mem_out": 0,
+    }
+
+
 def timeout_parse(fname):
     t = None
     signal = None
@@ -240,7 +256,12 @@ def timeout_parse(fname):
     assert mem is not None, f"mem not found in {fname}"
     assert t is not None, f"t not found in {fname}"
 
-    solver = "arjun" if "./arjun" in call_full or "arjun_" in call_full else None
+    if "./arjun" in call_full or "arjun_" in call_full:
+        solver = "arjun"
+    elif "/cadet" in call_full or "cadet_" in call_full:
+        solver = "cadet"
+    else:
+        solver = None
 
     # Normalize the call for comparison purposes
     call = re.sub(r'arjun[^ ]* ', 'arjun ', call_full)
@@ -279,8 +300,14 @@ def read_file(fname, files):
     if "competitors" in dirname:
         return
 
-    # Extract base CNF name (everything up to and including .cnf)
-    basename = parts[1].split(".cnf")[0] + ".cnf"
+    # Strip the .out_<solver> / .timeout_<solver> suffix to get the benchmark
+    # filename. Arjun outputs are *.cnf.gz.{out,timeout}_arjun and CADET
+    # outputs are *.qdimacs.gz.{out,timeout}_cadet, so we can't rely on a
+    # fixed extension being present.
+    m = re.match(r'(.+)\.(out|timeout)_\w+$', parts[1])
+    if not m:
+        return
+    basename = m.group(1)
     base = dirname + "/" + basename
 
     if base not in files:
@@ -297,6 +324,14 @@ def read_file(fname, files):
         files[base]["solver"] = "arjun"
         data = find_arjun_time(fname)
         # If arjun didn't solve it, don't record wall-clock time as a valid solve time
+        if not data["solved"]:
+            files[base]["timeout_t"] = None
+        files[base].update({k: v for k, v in data.items() if k != "solved"})
+        return
+
+    if fname.endswith(".out_cadet"):
+        files[base]["solver"] = "cadet"
+        data = find_cadet_time(fname)
         if not data["solved"]:
             files[base]["timeout_t"] = None
         files[base].update({k: v for k, v in data.items() if k != "solved"})

@@ -114,6 +114,12 @@ public:
         else return cadical_conflict;
     }
 
+    // Cumulative number of conflicts across all solve() calls.
+    uint64_t get_sum_conflicts() const {
+        if (solver_type == SolverType::cms) return cms->get_sum_conflicts();
+        return static_cast<uint64_t>(cadical->conflicts());
+    }
+
     void simplify(std::vector<CMSat::Lit>* assumps) {
         if (solver_type == SolverType::cms) cms->simplify(assumps);
     }

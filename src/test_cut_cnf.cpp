@@ -1,7 +1,10 @@
 /*
- Standalone smoke test for cut_cnf.h. Exercises every 3-input truth table
- by: (1) computing the min-CNF, (2) re-evaluating the CNF on every input
+ Standalone smoke test for cut_cnf.h. Exercises truth tables by:
+ (1) computing the min-CNF, (2) re-evaluating the CNF on every input
  assignment and verifying it uniquely determines g to match f.
+
+ Coverage: every 1-4-input truth table exhaustively, plus a 5-input sample
+ (the 5-input path uses 32-bit truth tables and the greedy-cover fallback).
 
  Copyright (c) 2020, Mate Soos. MIT License.
  */
@@ -54,16 +57,31 @@ static int check_tt(uint32_t num_inputs, uint32_t tt) {
 
 int main() {
     int fails = 0;
-    for (uint32_t k = 1; k <= 3; k++) {
+    // k = 1..4: exhaustive over every truth table.
+    for (uint32_t k = 1; k <= 4; k++) {
         uint32_t max_tt = 1u << (1u << k);
         for (uint32_t tt = 0; tt < max_tt; tt++) {
             if (check_tt(k, tt)) fails++;
         }
     }
-    // k = 4: sample 512 random tts out of 65536 for coverage.
-    for (uint32_t i = 0; i < 512; i++) {
-        uint32_t tt = (uint32_t)rand() & 0xFFFFu;
-        if (check_tt(4, tt)) fails++;
+    // k = 5: 32-bit truth tables — 4 billion is too many to enumerate, so
+    // sample randomly plus a few structured functions (parity, majority,
+    // a projection, a constant) that stress the prime-cover code paths.
+    for (uint32_t i = 0; i < 4000; i++) {
+        uint32_t tt = ((uint32_t)rand() << 17) ^ ((uint32_t)rand() << 2) ^ (uint32_t)rand();
+        if (check_tt(5, tt)) fails++;
+    }
+    {
+        uint32_t parity5 = 0, maj5 = 0;
+        for (uint32_t m = 0; m < 32; m++) {
+            if (__builtin_popcount(m) & 1) parity5 |= (1u << m);
+            if (__builtin_popcount(m) >= 3) maj5 |= (1u << m);
+        }
+        if (check_tt(5, parity5))           fails++;  // hardest: no merges
+        if (check_tt(5, maj5))              fails++;
+        if (check_tt(5, 0xAAAAAAAAu))       fails++;  // projection of x0
+        if (check_tt(5, 0x00000000u))       fails++;  // constant 0
+        if (check_tt(5, 0xFFFFFFFFu))       fails++;  // constant 1
     }
 
     // Report sizes for a few notable functions.
