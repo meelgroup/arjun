@@ -39,12 +39,6 @@ THE SOFTWARE.
 #include <stddef.h>
 #include <gmp.h>
 
-#if defined _WIN32
-    #define ARJUN_C_DLL_PUBLIC __declspec(dllexport)
-#else
-    #define ARJUN_C_DLL_PUBLIC __attribute__ ((visibility ("default")))
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif

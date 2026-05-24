@@ -29,6 +29,14 @@ THE SOFTWARE.
 #include <vector>
 #include <exception>
 
+// Force default visibility on the C ABI symbols so they remain exported
+// even when the library is compiled with -fvisibility=hidden.
+#if defined _WIN32
+    #define DLL_PUBLIC __declspec(dllexport)
+#else
+    #define DLL_PUBLIC __attribute__ ((visibility ("default")))
+#endif
+
 using namespace ArjunNS;
 
 namespace {
@@ -61,13 +69,13 @@ extern "C" {
 // Error
 // ---------------------------------------------------------------------------
 
-const char* arjun_last_error(void) { return g_last_error.c_str(); }
+DLL_PUBLIC const char* arjun_last_error(void) { return g_last_error.c_str(); }
 
 // ---------------------------------------------------------------------------
 // FieldGen
 // ---------------------------------------------------------------------------
 
-arjun_fgen_t* arjun_fgen_mpz_new(void) {
+DLL_PUBLIC arjun_fgen_t* arjun_fgen_mpz_new(void) {
     try {
         clear_error();
         auto* w = new arjun_fgen_t();
@@ -77,7 +85,7 @@ arjun_fgen_t* arjun_fgen_mpz_new(void) {
     } catch (const std::exception& e) { set_error(e.what()); return nullptr; }
 }
 
-arjun_fgen_t* arjun_fgen_mpq_new(void) {
+DLL_PUBLIC arjun_fgen_t* arjun_fgen_mpq_new(void) {
     try {
         clear_error();
         auto* w = new arjun_fgen_t();
@@ -87,15 +95,15 @@ arjun_fgen_t* arjun_fgen_mpq_new(void) {
     } catch (const std::exception& e) { set_error(e.what()); return nullptr; }
 }
 
-void arjun_fgen_free(arjun_fgen_t* fg) { delete fg; }
+DLL_PUBLIC void arjun_fgen_free(arjun_fgen_t* fg) { delete fg; }
 
-arjun_field_kind arjun_fgen_kind(const arjun_fgen_t* fg) { return fg->kind; }
+DLL_PUBLIC arjun_field_kind arjun_fgen_kind(const arjun_fgen_t* fg) { return fg->kind; }
 
 // ---------------------------------------------------------------------------
 // Field
 // ---------------------------------------------------------------------------
 
-arjun_field_t* arjun_field_zero(const arjun_fgen_t* fg) {
+DLL_PUBLIC arjun_field_t* arjun_field_zero(const arjun_fgen_t* fg) {
     try {
         clear_error();
         auto* w = new arjun_field_t();
@@ -105,7 +113,7 @@ arjun_field_t* arjun_field_zero(const arjun_fgen_t* fg) {
     } catch (const std::exception& e) { set_error(e.what()); return nullptr; }
 }
 
-arjun_field_t* arjun_field_one(const arjun_fgen_t* fg) {
+DLL_PUBLIC arjun_field_t* arjun_field_one(const arjun_fgen_t* fg) {
     try {
         clear_error();
         auto* w = new arjun_field_t();
@@ -115,7 +123,7 @@ arjun_field_t* arjun_field_one(const arjun_fgen_t* fg) {
     } catch (const std::exception& e) { set_error(e.what()); return nullptr; }
 }
 
-arjun_field_t* arjun_field_from_int(const arjun_fgen_t* fg, long val) {
+DLL_PUBLIC arjun_field_t* arjun_field_from_int(const arjun_fgen_t* fg, long val) {
     try {
         clear_error();
         auto* w = new arjun_field_t();
@@ -129,7 +137,7 @@ arjun_field_t* arjun_field_from_int(const arjun_fgen_t* fg, long val) {
     } catch (const std::exception& e) { set_error(e.what()); return nullptr; }
 }
 
-arjun_field_t* arjun_field_from_mpq(const arjun_fgen_t* fg, const mpq_t in) {
+DLL_PUBLIC arjun_field_t* arjun_field_from_mpq(const arjun_fgen_t* fg, const mpq_t in) {
     try {
         clear_error();
         if (fg->kind != ARJUN_FIELD_MPQ) {
@@ -145,7 +153,7 @@ arjun_field_t* arjun_field_from_mpq(const arjun_fgen_t* fg, const mpq_t in) {
     } catch (const std::exception& e) { set_error(e.what()); return nullptr; }
 }
 
-arjun_field_t* arjun_field_from_mpz(const arjun_fgen_t* fg, const mpz_t in) {
+DLL_PUBLIC arjun_field_t* arjun_field_from_mpz(const arjun_fgen_t* fg, const mpz_t in) {
     try {
         clear_error();
         if (fg->kind != ARJUN_FIELD_MPZ) {
@@ -161,9 +169,9 @@ arjun_field_t* arjun_field_from_mpz(const arjun_fgen_t* fg, const mpz_t in) {
     } catch (const std::exception& e) { set_error(e.what()); return nullptr; }
 }
 
-void arjun_field_free(arjun_field_t* f) { delete f; }
+DLL_PUBLIC void arjun_field_free(arjun_field_t* f) { delete f; }
 
-arjun_field_t* arjun_field_dup(const arjun_field_t* f) {
+DLL_PUBLIC arjun_field_t* arjun_field_dup(const arjun_field_t* f) {
     try {
         clear_error();
         auto* w = new arjun_field_t();
@@ -173,11 +181,11 @@ arjun_field_t* arjun_field_dup(const arjun_field_t* f) {
     } catch (const std::exception& e) { set_error(e.what()); return nullptr; }
 }
 
-arjun_field_kind arjun_field_kind_of(const arjun_field_t* f) { return f->kind; }
-int arjun_field_is_zero(const arjun_field_t* f) { return f->f->is_zero() ? 1 : 0; }
-int arjun_field_is_one (const arjun_field_t* f) { return f->f->is_one()  ? 1 : 0; }
+DLL_PUBLIC arjun_field_kind arjun_field_kind_of(const arjun_field_t* f) { return f->kind; }
+DLL_PUBLIC int arjun_field_is_zero(const arjun_field_t* f) { return f->f->is_zero() ? 1 : 0; }
+DLL_PUBLIC int arjun_field_is_one (const arjun_field_t* f) { return f->f->is_one()  ? 1 : 0; }
 
-int arjun_field_get_mpz(const arjun_field_t* f, mpz_t out) {
+DLL_PUBLIC int arjun_field_get_mpz(const arjun_field_t* f, mpz_t out) {
     clear_error();
     if (f->kind != ARJUN_FIELD_MPZ) {
         set_error("arjun_field_get_mpz called on non-MPZ field"); return -1;
@@ -187,7 +195,7 @@ int arjun_field_get_mpz(const arjun_field_t* f, mpz_t out) {
     return 0;
 }
 
-int arjun_field_get_mpq(const arjun_field_t* f, mpq_t out) {
+DLL_PUBLIC int arjun_field_get_mpq(const arjun_field_t* f, mpq_t out) {
     clear_error();
     if (f->kind != ARJUN_FIELD_MPQ) {
         set_error("arjun_field_get_mpq called on non-MPQ field"); return -1;
@@ -197,21 +205,21 @@ int arjun_field_get_mpq(const arjun_field_t* f, mpq_t out) {
     return 0;
 }
 
-int arjun_field_mul_assign(arjun_field_t* a, const arjun_field_t* b) {
+DLL_PUBLIC int arjun_field_mul_assign(arjun_field_t* a, const arjun_field_t* b) {
     clear_error();
     if (!kinds_match(a, b)) { set_error("kind mismatch"); return -1; }
     try { *a->f *= *b->f; return 0; }
     catch (const std::exception& e) { set_error(e.what()); return -1; }
 }
 
-int arjun_field_add_assign(arjun_field_t* a, const arjun_field_t* b) {
+DLL_PUBLIC int arjun_field_add_assign(arjun_field_t* a, const arjun_field_t* b) {
     clear_error();
     if (!kinds_match(a, b)) { set_error("kind mismatch"); return -1; }
     try { *a->f += *b->f; return 0; }
     catch (const std::exception& e) { set_error(e.what()); return -1; }
 }
 
-int arjun_field_sub_assign(arjun_field_t* a, const arjun_field_t* b) {
+DLL_PUBLIC int arjun_field_sub_assign(arjun_field_t* a, const arjun_field_t* b) {
     clear_error();
     if (!kinds_match(a, b)) { set_error("kind mismatch"); return -1; }
     try { *a->f -= *b->f; return 0; }
@@ -222,7 +230,7 @@ int arjun_field_sub_assign(arjun_field_t* a, const arjun_field_t* b) {
 // SimplifiedCNF
 // ---------------------------------------------------------------------------
 
-arjun_simpcnf_t* arjun_simpcnf_new(const arjun_fgen_t* fg) {
+DLL_PUBLIC arjun_simpcnf_t* arjun_simpcnf_new(const arjun_fgen_t* fg) {
     try {
         clear_error();
         auto* w = new arjun_simpcnf_t();
@@ -232,15 +240,15 @@ arjun_simpcnf_t* arjun_simpcnf_new(const arjun_fgen_t* fg) {
     } catch (const std::exception& e) { set_error(e.what()); return nullptr; }
 }
 
-void arjun_simpcnf_free(arjun_simpcnf_t* c) {
+DLL_PUBLIC void arjun_simpcnf_free(arjun_simpcnf_t* c) {
     if (!c) return;
     delete c->cnf;
     delete c;
 }
 
-void arjun_simpcnf_new_vars(arjun_simpcnf_t* c, uint32_t n) { c->cnf->new_vars(n); }
+DLL_PUBLIC void arjun_simpcnf_new_vars(arjun_simpcnf_t* c, uint32_t n) { c->cnf->new_vars(n); }
 
-uint32_t arjun_simpcnf_nvars(const arjun_simpcnf_t* c) { return c->cnf->nVars(); }
+DLL_PUBLIC uint32_t arjun_simpcnf_nvars(const arjun_simpcnf_t* c) { return c->cnf->nVars(); }
 
 static int simpcnf_add_clause_impl(arjun_simpcnf_t* c,
                                    const int32_t* lits, size_t n_lits,
@@ -261,23 +269,23 @@ static int simpcnf_add_clause_impl(arjun_simpcnf_t* c,
     } catch (const std::exception& e) { set_error(e.what()); return -1; }
 }
 
-int arjun_simpcnf_add_clause(arjun_simpcnf_t* c, const int32_t* lits, size_t n_lits) {
+DLL_PUBLIC int arjun_simpcnf_add_clause(arjun_simpcnf_t* c, const int32_t* lits, size_t n_lits) {
     return simpcnf_add_clause_impl(c, lits, n_lits, false);
 }
 
-int arjun_simpcnf_add_red_clause(arjun_simpcnf_t* c, const int32_t* lits, size_t n_lits) {
+DLL_PUBLIC int arjun_simpcnf_add_red_clause(arjun_simpcnf_t* c, const int32_t* lits, size_t n_lits) {
     return simpcnf_add_clause_impl(c, lits, n_lits, true);
 }
 
-void arjun_simpcnf_set_weighted(arjun_simpcnf_t* c, int weighted) {
+DLL_PUBLIC void arjun_simpcnf_set_weighted(arjun_simpcnf_t* c, int weighted) {
     c->cnf->set_weighted(weighted != 0);
 }
 
-int arjun_simpcnf_get_weighted(const arjun_simpcnf_t* c) {
+DLL_PUBLIC int arjun_simpcnf_get_weighted(const arjun_simpcnf_t* c) {
     return c->cnf->get_weighted() ? 1 : 0;
 }
 
-int arjun_simpcnf_set_lit_weight(arjun_simpcnf_t* c, int32_t lit,
+DLL_PUBLIC int arjun_simpcnf_set_lit_weight(arjun_simpcnf_t* c, int32_t lit,
                                  const arjun_field_t* weight) {
     clear_error();
     if (weight->kind != c->kind) { set_error("weight kind mismatch"); return -1; }
@@ -289,7 +297,7 @@ int arjun_simpcnf_set_lit_weight(arjun_simpcnf_t* c, int32_t lit,
     } catch (const std::exception& e) { set_error(e.what()); return -1; }
 }
 
-int arjun_simpcnf_set_sampl_vars(arjun_simpcnf_t* c,
+DLL_PUBLIC int arjun_simpcnf_set_sampl_vars(arjun_simpcnf_t* c,
                                  const uint32_t* vars, size_t n_vars) {
     clear_error();
     try {
@@ -305,7 +313,7 @@ int arjun_simpcnf_set_sampl_vars(arjun_simpcnf_t* c,
     } catch (const std::exception& e) { set_error(e.what()); return -1; }
 }
 
-arjun_field_t* arjun_simpcnf_get_multiplier_weight(const arjun_simpcnf_t* c) {
+DLL_PUBLIC arjun_field_t* arjun_simpcnf_get_multiplier_weight(const arjun_simpcnf_t* c) {
     try {
         clear_error();
         auto* w = new arjun_field_t();
@@ -319,7 +327,7 @@ arjun_field_t* arjun_simpcnf_get_multiplier_weight(const arjun_simpcnf_t* c) {
 // Arjun
 // ---------------------------------------------------------------------------
 
-arjun_arjun_t* arjun_new(void) {
+DLL_PUBLIC arjun_arjun_t* arjun_new(void) {
     try {
         clear_error();
         auto* w = new arjun_arjun_t();
@@ -328,16 +336,16 @@ arjun_arjun_t* arjun_new(void) {
     } catch (const std::exception& e) { set_error(e.what()); return nullptr; }
 }
 
-void arjun_free(arjun_arjun_t* a) {
+DLL_PUBLIC void arjun_free(arjun_arjun_t* a) {
     if (!a) return;
     delete a->a;
     delete a;
 }
 
-void arjun_set_verb(arjun_arjun_t* a, uint32_t verb) { a->a->set_verb(verb); }
-void arjun_set_seed(arjun_arjun_t* a, uint32_t seed) { a->a->set_seed(seed); }
+DLL_PUBLIC void arjun_set_verb(arjun_arjun_t* a, uint32_t verb) { a->a->set_verb(verb); }
+DLL_PUBLIC void arjun_set_seed(arjun_arjun_t* a, uint32_t seed) { a->a->set_seed(seed); }
 
-int arjun_standalone_minimize_indep(arjun_arjun_t* a,
+DLL_PUBLIC int arjun_standalone_minimize_indep(arjun_arjun_t* a,
                                     arjun_simpcnf_t* cnf,
                                     int all_indep) {
     clear_error();
@@ -347,7 +355,7 @@ int arjun_standalone_minimize_indep(arjun_arjun_t* a,
     } catch (const std::exception& e) { set_error(e.what()); return -1; }
 }
 
-int arjun_standalone_elim_to_file(arjun_arjun_t* a, arjun_simpcnf_t* cnf) {
+DLL_PUBLIC int arjun_standalone_elim_to_file(arjun_arjun_t* a, arjun_simpcnf_t* cnf) {
     clear_error();
     try {
         Arjun::ElimToFileConf etof;
