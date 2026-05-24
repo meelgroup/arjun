@@ -237,6 +237,24 @@ if(ENABLE_TESTING)
         COMMAND test-interp-repair
         WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
     )
+
+    # Verilog emitter must not produce blank lines.
+    add_test(
+        NAME test-verilog-no-blank-lines
+        COMMAND bash -c [=[
+            set -e
+            tmpd=$(mktemp -d)
+            trap "rm -rf $tmpd" EXIT
+            printf 'p cnf 3 3\n-1 -2 3 0\n1 -3 0\n2 -3 0\nc p show 1 2 0\n' > "$tmpd/in.cnf"
+            ./arjun --synth "$tmpd/in.cnf" "$tmpd/out.v" > "$tmpd/log" 2>&1
+            if grep -q '^[[:space:]]*$' "$tmpd/out.v"; then
+                echo "FAIL: blank lines found in verilog output"
+                cat -An "$tmpd/out.v"
+                exit 1
+            fi
+        ]=]
+        WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
+    )
 endif()
 
 arjun_add_public_header(arjun ${CMAKE_CURRENT_SOURCE_DIR}/arjun.h)
