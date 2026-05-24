@@ -1425,7 +1425,7 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
         fout << "    output wire x" << (v + 1);
         first = false;
     }
-    fout << "\n);\n\n";
+    fout << "\n);\n";
 
     // Build a node's RHS in unparenthesized form, and note whether it is a
     // bare `a & b` (callers must parenthesize it if composing further).
@@ -1453,13 +1453,11 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
         fout << "    assign _n" << id << " = " << rhs << ";\n";
     }
 
-    fout << "\n";
-
     // Output assignments
     for (const auto& v : outputs)
         fout << "    assign x" << (v + 1) << " = " << edge_expr_raw(defs[v]) << ";\n";
 
-    fout << "\nendmodule\n";
+    fout << "endmodule\n";
     fout.close();
     cout << "c o Wrote Verilog AIG: " << fname << endl;
 }
