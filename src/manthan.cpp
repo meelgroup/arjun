@@ -1736,53 +1736,66 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
     }
 
     if (!found_input_only) {
-    uint32_t skipped_inputs = 0;
-    assumps.clear();
-    assumps.reserve(input.size() + y_order.size() + 1);
-    for(const auto& x: input) {
-        // Skip inputs that the AIG for y_rep doesn't depend on
-        if (have_aig_deps && (x >= aig_dep_is_dep.size() || !aig_dep_is_dep[x])) {
-            skipped_inputs++;
-            continue;
-        }
-        const Lit l = Lit(x, ctx[x] == l_False);
-        assumps.push_back(l);
-    }
-    verb_print(2, "[manthan] skipped " << skipped_inputs << " / " << input.size()
-            << " inputs for y_rep=" << y_rep+1);
-
-    // We go through the variables that y_rep does NOT depend on, and assume them to be correct
-    for(const auto& y: y_order) {
-        if (y == y_rep) break; // beyond this point we don't care
-        assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen. Otherwise y depends on y_rep, but we will repair y_rep potentially with y_rep");
-        assert(ctx[y] == ctx[y_to_y_hat[y]]); // they are correct
-        const Lit l = Lit(y, ctx[y] == l_False);
-        verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
-        assumps.push_back(l);
-    }
-
-    assumps.push_back({~to_repair});
-
-    verb_print(2, "assuming reverse for y_rep: " << ~to_repair);
-    auto ret = repair_solver.solve(&assumps);
-    verb_print(2, "repair_solver finished "
-            << " with result: " << (ret == l_True ? "SAT" : (ret == l_False ? "UNSAT" : "UNKNOWN"))
-            << " in T: " << cpuTime()-repair_solver_start_time);
-    assert(ret != l_Undef);
-
-    if (ret == l_True) {
-        if (skipped_inputs > 0) {
-            // SAT with reduced inputs - retry with all inputs to get proper cost-0 repair
-            assumps.clear();
-            for(const auto& x: input) assumps.push_back(Lit(x, ctx[x] == l_False));
-            for(const auto& y: y_order) {
-                if (y == y_rep) break;
-                assumps.push_back(Lit(y, ctx[y] == l_False));
+        uint32_t skipped_inputs = 0;
+        assumps.clear();
+        assumps.reserve(input.size() + y_order.size() + 1);
+        for(const auto& x: input) {
+            // Skip inputs that the AIG for y_rep doesn't depend on
+            if (have_aig_deps && (x >= aig_dep_is_dep.size() || !aig_dep_is_dep[x])) {
+                skipped_inputs++;
+                continue;
             }
-            assumps.push_back({~to_repair});
-            ret = repair_solver.solve(&assumps);
-            assert(ret != l_Undef);
-            if (ret == l_True) {
+            const Lit l = Lit(x, ctx[x] == l_False);
+            assumps.push_back(l);
+        }
+        verb_print(2, "[manthan] skipped " << skipped_inputs << " / " << input.size()
+                << " inputs for y_rep=" << y_rep+1);
+
+        // We go through the variables that y_rep does NOT depend on, and assume them to be correct
+        for(const auto& y: y_order) {
+            if (y == y_rep) break; // beyond this point we don't care
+            assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen. Otherwise y depends on y_rep, but we will repair y_rep potentially with y_rep");
+            assert(ctx[y] == ctx[y_to_y_hat[y]]); // they are correct
+            const Lit l = Lit(y, ctx[y] == l_False);
+            verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
+            assumps.push_back(l);
+        }
+
+        assumps.push_back({~to_repair});
+
+        verb_print(2, "assuming reverse for y_rep: " << ~to_repair);
+        auto ret = repair_solver.solve(&assumps);
+        verb_print(2, "repair_solver finished "
+                << " with result: " << (ret == l_True ? "SAT" : (ret == l_False ? "UNSAT" : "UNKNOWN"))
+                << " in T: " << cpuTime()-repair_solver_start_time);
+        assert(ret != l_Undef);
+
+        if (ret == l_True) {
+            if (skipped_inputs > 0) {
+                // SAT with reduced inputs - retry with all inputs to get proper cost-0 repair
+                assumps.clear();
+                for(const auto& x: input) assumps.push_back(Lit(x, ctx[x] == l_False));
+                for(const auto& y: y_order) {
+                    if (y == y_rep) break;
+                    assumps.push_back(Lit(y, ctx[y] == l_False));
+                }
+                assumps.push_back({~to_repair});
+                ret = repair_solver.solve(&assumps);
+                assert(ret != l_Undef);
+                if (ret == l_True) {
+                    verb_print(2, "Repair cost is 0 for y: " << y_rep+1);
+                    bool found_yrep = false;
+                    const auto& model = repair_solver.get_model();
+                    for(const auto& y: y_order) {
+                        if (y == y_rep) found_yrep = true;
+                        if (found_yrep) ctx[y] = model[y];
+                    }
+                    assert(ctx[y_rep] == ctx[y_to_y_hat[y_rep]]);
+                    return false;
+                }
+                // UNSAT with all inputs - extract conflict normally
+                conflict = repair_solver.get_conflict();
+            } else {
                 verb_print(2, "Repair cost is 0 for y: " << y_rep+1);
                 bool found_yrep = false;
                 const auto& model = repair_solver.get_model();
@@ -1793,22 +1806,9 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                 assert(ctx[y_rep] == ctx[y_to_y_hat[y_rep]]);
                 return false;
             }
-            // UNSAT with all inputs - extract conflict normally
-            conflict = repair_solver.get_conflict();
         } else {
-            verb_print(2, "Repair cost is 0 for y: " << y_rep+1);
-            bool found_yrep = false;
-            const auto& model = repair_solver.get_model();
-            for(const auto& y: y_order) {
-                if (y == y_rep) found_yrep = true;
-                if (found_yrep) ctx[y] = model[y];
-            }
-            assert(ctx[y_rep] == ctx[y_to_y_hat[y_rep]]);
-            return false;
+            conflict = repair_solver.get_conflict();
         }
-    } else {
-        conflict = repair_solver.get_conflict();
-    }
     } // end if (!found_input_only)
     assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end() &&
         "to_repair literal must be in conflict");
