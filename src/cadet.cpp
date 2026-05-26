@@ -1101,13 +1101,15 @@ bool Cadet::synth_complete_with_interp_generalization() {
 
 void Cadet::commit_definitions() {
     // Build a vector indexed by var, holding the Skolem AIG for each
-    // to_define var that cadet ACTUALLY determinized (skol[y] non-null).
-    // map_aigs_to_orig skips nullptr entries, so partial coverage is
-    // fine — to_define vars cadet didn't reach are left untouched and
-    // the caller (main.cpp) hands them off to Manthan.
+    // to_define var. With Phase F's terminal completion guarantee,
+    // every to_define var MUST have a non-null skol[y] by the time we
+    // commit — assert that so any future regression that lets a var
+    // slip through trips loudly here, not silently downstream.
     vector<aig_ptr> aigs(cnf.nVars(), nullptr);
     for (uint32_t y : to_define) {
-        if (skol[y] != nullptr) aigs[y] = skol[y];
+        release_assert(skol[y] != nullptr &&
+                       "cadet must produce a Skolem for every to_define var");
+        aigs[y] = skol[y];
     }
     const uint32_t cnf_nvars = cnf.nVars();
     cnf.map_aigs_to_orig(aigs, cnf_nvars);

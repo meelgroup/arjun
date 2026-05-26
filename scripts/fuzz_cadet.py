@@ -10,13 +10,16 @@
 
 """Fuzzer for the in-tree CADET port (`--cadet 1`).
 
-Generates small Brummayer-style CNFs, adds a projection, runs arjun with
+Generates Brummayer-style CNFs, adds a projection, runs arjun with
 `--cadet 1` to synthesize the un-projected vars, and verifies the result
-with `test-synth`. Mirrors the structure of `fuzz_synth.py` but trims
-the option matrix to flags CADET actually consumes, and clamps the
-projection so the number of inputs reaching CADET stays inside what
-Phase A can enumerate (current threshold: 16).
-"""
+with `test-synth`.
+
+Completeness contract: CADET must produce a Skolem for every
+existential variable on every iteration. Any Manthan handoff is a
+FUZZ FAILURE — `--cadet 1` is "cadet finishes alone" mode, period.
+Projection sizes deliberately span both Phase A's enumeration range and
+the larger ranges only Phase F can handle, so the terminal phase gets
+proper coverage."""
 
 import subprocess
 import os
@@ -208,7 +211,14 @@ def run_synth(solver, fname):
     toexec = solver.split()
     toexec.append(fname)
     out, err, returncode = run(toexec)
-    info = {"cadet_committed_partial": False, "cadet_committed_all": False,
+    info = {"cadet_committed_partial": False,
+            # cadet_committed_all defaults to True: if cadet is never
+            # invoked (upstream pipeline already finished the synth
+            # before main.cpp reached the cadet block), there's
+            # nothing for cadet to do and the iteration is trivially
+            # successful. The flag flips to False only if we see
+            # evidence of incomplete cadet work.
+            "cadet_committed_all": True,
             "handoff_triggered": False, "cadet_committed_count": 0,
             "cadet_to_define_count": 0,
             # Phase E: whether the SAT-model completion phase ran AND
@@ -263,10 +273,8 @@ def run_synth(solver, fname):
             aigs.append(line[len("c o Wrote AIG defs:"):].strip())
 
         # Cadet status lines (matched against the verb=1 prints in
-        # cadet.cpp's do_cadet()). These let the fuzzer summary check
-        # that the handoff path actually exercises — the user
-        # explicitly asked that at least some iterations involve
-        # cadet committing ≥ 1 var AND Manthan picking up the rest.
+        # cadet.cpp's do_cadet()). With the completeness contract we
+        # now also recognize the "nothing to define" path as success.
         if "[cadet] done — all" in line:
             info["cadet_committed_all"] = True
             # parse "all N to_define vars committed"
@@ -274,8 +282,17 @@ def run_synth(solver, fname):
             if m:
                 info["cadet_to_define_count"] = int(m.group(1))
                 info["cadet_committed_count"] = int(m.group(1))
+        elif "[cadet] nothing to define" in line:
+            # Upstream pipeline finished everything before cadet
+            # engaged. Counts as a clean cadet success (cadet was
+            # asked to do 0 vars and did 0). Without this, runs
+            # where bve+autarky+extend already determinized every
+            # to_define var leave the counters at zero and the
+            # end-of-run check spuriously fails.
+            info["cadet_committed_all"] = True
         elif "[cadet] PARTIAL: committed" in line:
             info["cadet_committed_partial"] = True
+            info["cadet_committed_all"] = False
             m = re.search(r"committed (\d+)/(\d+) to_define", line)
             if m:
                 info["cadet_committed_count"] = int(m.group(1))
@@ -471,6 +488,20 @@ if __name__ == "__main__":
             # Cadet ran but committed nothing; Manthan did all the work.
             stats["cadet_did_nothing"] += 1
             stats["handoff_triggered"] += 1
+
+        # Completeness contract: `--cadet 1` mode means CADET must
+        # produce a Skolem for every existential. Any Manthan handoff
+        # is a regression — fail immediately so the user sees the
+        # exact reproduction command for the failing seed.
+        if info["handoff_triggered"] or info["cadet_committed_partial"]:
+            print("=" * 60)
+            print("FUZZ FAIL: cadet failed to complete synthesis alone")
+            print("  committed %d / %d to_define vars; rest handed off to Manthan"
+                  % (info["cadet_committed_count"], info["cadet_to_define_count"]))
+            print("  --cadet 1 is supposed to ALWAYS finish without Manthan.")
+            print("REPRODUCE: python3 ../scripts/fuzz_cadet.py --seed %d --num 1" % seed)
+            print("=" * 60)
+            exit(-1)
         if info["phase_e_ran"]:
             stats["phase_e_ran"] += 1
             if info["cadet_committed_all"]:
@@ -535,19 +566,20 @@ if __name__ == "__main__":
     print("  cadet finished alone:       %d" % stats["cadet_committed_all"])
     print("=" * 60)
 
-    if stats["synth_succeeded"] >= 20:
-        if stats["cadet_committed_partial_then_handoff"] == 0:
-            print("FUZZER CONFIG BUG: %d iterations succeeded but NONE had "
-                  "cadet commit ≥ 1 var AND hand off to Manthan. The whole "
-                  "point of fuzz_cadet.py's new mode is to cover that "
-                  "handoff path — please relax the projection clamp / CNF "
-                  "size / preprocessing toggles." %
-                  stats["synth_succeeded"])
-            exit(-1)
+    # Completeness check: every successful iteration must have cadet
+    # finish the synthesis alone. Any handoff was caught and aborted
+    # at the time it happened (see the inner loop); this end-of-run
+    # check is the belt-and-braces version, so a logic error in the
+    # per-iteration parsing can't hide a regression.
+    if stats["synth_succeeded"] > 0 and \
+       stats["cadet_committed_all"] != stats["synth_succeeded"]:
+        print("FUZZ FAIL: %d successful runs but only %d had cadet "
+              "finish alone — handoff regression somewhere." %
+              (stats["synth_succeeded"], stats["cadet_committed_all"]))
+        exit(-1)
     # Phase E coverage check: same idea but for the SAT-model completion
-    # phase. Phase E is what makes "--cadet 1" useful when Phase C+D
-    # commits some but not all — if it never runs in a 30+ iteration
-    # batch, the fuzzer isn't shaping inputs to trigger it.
+    # phase. Phase E is the small-input SAT-model completion that
+    # respects Phase C+D's partial commits.
     if stats["synth_succeeded"] >= 30:
         if stats["phase_e_ran"] == 0:
             print("FUZZER CONFIG BUG: %d iterations succeeded but Phase E "
@@ -566,20 +598,20 @@ if __name__ == "__main__":
                   stats["phase_e_ran"])
             exit(-1)
         # Phase F: at >=50 iters, expect at least one engage; at >=100
-        # iters, expect at least one converge-and-finish. Phase F's
-        # threshold is 32, well above Phase E's 16, so plenty of fuzzer
-        # CNFs should hit it.
+        # iters, expect at least one converge-and-finish. Phase F is the
+        # terminal completion phase — no size threshold, no iter cap —
+        # so plenty of fuzzer CNFs should hit it.
         if stats["synth_succeeded"] >= 50 and stats["phase_f_ran"] == 0:
             print("FUZZER CONFIG BUG: %d iterations succeeded but Phase F "
-                  "(bit-dropping generalization for |orig_sampl| > 16) "
-                  "never engaged. Adjust fuzzer to widen projection sizes." %
+                  "(terminal SAT-model completion) never engaged. Adjust "
+                  "fuzzer to widen projection sizes." %
                   stats["synth_succeeded"])
             exit(-1)
         if stats["synth_succeeded"] >= 100 and \
                 stats["phase_f_converged_and_finished"] == 0:
             print("FUZZER CONFIG BUG: Phase F ran %d times but NEVER "
-                  "converged and finished synthesis. Phase F's convergence "
-                  "+ commit is the test for non-trivial coverage." %
+                  "converged and finished synthesis. Phase F is supposed "
+                  "to always converge now — this is a regression." %
                   stats["phase_f_ran"])
             exit(-1)
     exit(0)

@@ -483,31 +483,18 @@ void do_synthesis() {
 
     cnf.rewrite_aigs(conf.verb, do_sat_sweep);
     if (use_cadet) {
-        // Cadet handles whatever it can (Phase C+D / B / A), then
-        // commits its partial result. On benchmarks where cadet
-        // can't determinize every var (its current implementation has
-        // capability gaps — see cadet.{h,cpp}), the partial commits
-        // become "backward_defined" entries for the downstream
-        // Manthan pass to start from. So --cadet 1 is "cadet does
-        // what it can, Manthan finishes" rather than "cadet or fail".
+        // Full CADET: incremental determinization with a terminal
+        // SAT-model-enumeration phase (Phase F). Always finishes
+        // synthesis alone — no Manthan fallback. If any var slips
+        // through, that's a bug in cadet, not something to paper over.
         if (!cnf.synth_done()) {
             cout << "c o [arjun] Synthesis: CADET" << endl;
             cnf = arjun->standalone_cadet(std::move(cnf), mconf);
         }
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-cadet.aig");
         SLOW_DEBUG_DO(check_stage("cadet"));
-
-        // Hand off any still-undetermined vars to Manthan.
-        if (!cnf.synth_done()) {
-            cout << "c o [arjun] Synthesis: cadet left vars undetermined — "
-                 << "running Manthan on the remainder" << endl;
-            SynthRunner synth_runner(conf, arjun);
-            auto strategies = synth_runner.parse_mstrategy(mstrategy);
-            synth_runner.run_manthan_strategies(cnf, mconf, strategies);
-            if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
-            SLOW_DEBUG_DO(check_stage("cadet+manthan"));
-        }
-        release_assert(cnf.synth_done() && "Synthesis should be done by CADET+Manthan, but it is not!");
+        release_assert(cnf.synth_done() && "CADET must produce a Skolem for every existential — "
+                       "no Manthan fallback in --cadet 1 mode");
     } else {
         SynthRunner synth_runner(conf, arjun);
         auto strategies = synth_runner.parse_mstrategy(mstrategy);
