@@ -97,7 +97,12 @@ void Cadet::inject_cnf(S& s) const {
 }
 
 bool Cadet::inputs_are_small() const {
-    return input.size() <= kSmallInputThreshold;
+    // Enumeration size is 2^|orig_sampl_cnf|, NOT 2^|input|. The latter
+    // counts extend-defined vars too, which are not free (they have AIG
+    // defs over the orig sampling vars), so enumerating them would
+    // generate lots of inconsistent assumption sets the SAT solver
+    // immediately reject.
+    return orig_sampl_cnf.size() <= kSmallInputThreshold;
 }
 
 aig_ptr Cadet::build_input_minterm(const vector<bool>& vals,
@@ -113,10 +118,17 @@ aig_ptr Cadet::build_input_minterm(const vector<bool>& vals,
 }
 
 bool Cadet::synth_by_enumeration() {
-    // Order the inputs deterministically by var id so the AIG construction
-    // order is identical across runs (CLAUDE.md determinism rule — we use
-    // var id, not pointer order).
-    vector<uint32_t> sorted_inputs(input.begin(), input.end());
+    // Enumerate only over the *orig* sampling vars (in CNF numbering).
+    // The wider `input` set returned by get_var_types also lumps in
+    // extend-defined vars (vars whose AIG def depends only on orig
+    // sampling vars). Those are not free — the CNF constrains them — so
+    // enumerating them is wasteful and would mostly produce inconsistent
+    // assumption sets.
+    //
+    // Order deterministically by var id so the AIG construction order
+    // matches across runs (CLAUDE.md determinism rule — never order on
+    // pointer addresses).
+    vector<uint32_t> sorted_inputs(orig_sampl_cnf.begin(), orig_sampl_cnf.end());
     std::sort(sorted_inputs.begin(), sorted_inputs.end());
     const uint32_t n_in = sorted_inputs.size();
 
@@ -226,6 +238,19 @@ SimplifiedCNF Cadet::do_cadet() {
     cnf.get_var_types(conf.verb, "start do_cadet").unpack_to(
         input, to_define, backward_defined);
 
+    // Independently compute the orig sampling vars in CNF numbering.
+    // VarTypes.input would include extend-defined vars (vars defined by an
+    // AIG over orig sampling vars), which are not actually free in F;
+    // enumerating over them in Phase A would generate inconsistent
+    // assumption sets. We only enumerate over the orig sampling vars.
+    orig_sampl_cnf.clear();
+    const auto& o2n = cnf.get_orig_to_new_var();
+    for (uint32_t v : cnf.get_orig_sampl_vars()) {
+        auto it = o2n.find(v);
+        if (it == o2n.end()) continue; // eliminated from CNF
+        orig_sampl_cnf.insert(it->second.var());
+    }
+
     if (to_define.empty()) {
         if (conf.verb >= 1) {
             cout << "c o [cadet] nothing to define — returning unchanged CNF" << endl;
@@ -234,7 +259,8 @@ SimplifiedCNF Cadet::do_cadet() {
     }
 
     if (conf.verb >= 1) {
-        cout << "c o [cadet] partition: |input|=" << input.size()
+        cout << "c o [cadet] partition: |orig_sampl|=" << orig_sampl_cnf.size()
+             << " |input|=" << input.size()
              << " |to_define|=" << to_define.size()
              << " |backward_defined|=" << backward_defined.size() << endl;
     }
@@ -248,11 +274,12 @@ SimplifiedCNF Cadet::do_cadet() {
         }
     } else {
         // TODO: Phase B/C — incremental determinization for large inputs.
-        cout << "ERROR: [cadet] " << input.size() << " inputs exceeds enumeration "
-             << "threshold " << kSmallInputThreshold << ". Phase B (unique-"
-             << "consequence propagation) and Phase C (decisions + conflict "
-             << "analysis) are not yet implemented. Use --cadet 0 (the default "
-             << "Manthan path) for this benchmark." << endl;
+        cout << "ERROR: [cadet] " << orig_sampl_cnf.size() << " orig sampling "
+             << "vars exceed enumeration threshold " << kSmallInputThreshold
+             << ". Phase B (unique-consequence propagation) and Phase C "
+             << "(decisions + conflict analysis) are not yet implemented. "
+             << "Use --cadet 0 (the default Manthan path) for this benchmark."
+             << endl;
         std::exit(EXIT_FAILURE);
     }
 

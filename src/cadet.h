@@ -60,10 +60,17 @@ private:
     ArjunNS::SimplifiedCNF cnf;
     ArjunNS::AIGManager aig_mng;
 
-    // Var partitions, mirroring Manthan's split.
-    std::set<uint32_t> input;            // sampling vars (free inputs)
+    // Var partitions, mirroring Manthan's split. NB: `input` here matches
+    // VarTypes.input — it lumps `extend-defined` vars (those with an AIG
+    // def depending only on orig sampling vars) together with the orig
+    // sampling vars themselves, since the SAT solver treats both as free
+    // for synthesis purposes. The narrower "true" set of orig sampling
+    // vars (cnf-numbering) is held in `orig_sampl_cnf` and is the one we
+    // actually enumerate over.
+    std::set<uint32_t> input;            // free + extend-defined
     std::set<uint32_t> to_define;        // vars without an AIG def — Cadet must produce one
     std::set<uint32_t> backward_defined; // vars already defined upstream
+    std::set<uint32_t> orig_sampl_cnf;   // orig sampling vars in CNF numbering
 
     // skol[v] = Skolem function for v in terms of input vars (and previously-
     // synthesized vars). For inputs, this is the literal AIG. For backward
