@@ -1751,6 +1751,17 @@ public:
         // back permanently to the conflict clause for that variable.
         // 0 disables the gate.
         uint32_t interp_repair_progress_max_var_repairs = 100;
+        // Full-conflict interpolation: instead of restricting the
+        // interpolant to input vars only (the default, where B = input
+        // conflict units, A = original CNF + non-input conflict units +
+        // ~to_repair), put ALL conflict units in B (A = original CNF +
+        // ~to_repair). The interpolant is then over every conflict var —
+        // a smaller, "as-is" generalisation of the whole conflict clause
+        // rather than just its input projection. build_interp_branch_formula
+        // drops the AND with y_other leaves in this mode since the
+        // interpolant already covers them. 0=off (default, input-only),
+        // 1=on (full conflict).
+        int interp_repair_full_conflict = 0;
     };
 
     struct IndepInfo {
