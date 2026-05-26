@@ -312,9 +312,19 @@ class Manthan {
         std::vector<uint64_t> interp_var_lit_sum;
         // Stat: adaptive-gate skips.
         uint64_t interp_adaptive_skips = 0;
-        // Per-var: interp-driven repair count and summed conflict size.
+        // Per-var: interp-driven repair count.
         std::vector<uint32_t> interp_repairs_per_var;
-        std::vector<uint64_t> interp_conflict_lits_per_var;
+        // Per-var: AIG node count summed across interp-branch repairs of
+        // this var (avg = sum / interp_repairs_per_var[v]).
+        std::vector<uint64_t> interp_branch_nodes_per_var;
+        // Per-var: successful conflict-branch repair count, and the sum
+        // of conflict-clause lengths over those repairs. Both increment
+        // together (in lockstep with each conflict-branch success), so
+        // avg = lits_sum / count. Kept separate from
+        // repaired_vars_count[v] (which counts attempts incl. cost-zero
+        // failures) and interp_repairs_per_var[v] (interp-branch only).
+        std::vector<uint32_t> conflict_branch_repairs_per_var;
+        std::vector<uint64_t> conflict_branch_lits_per_var;
         // cex_solver helper-var growth per repair, by path.
         uint64_t helpers_added_interp = 0;
         uint64_t helpers_added_legacy = 0;

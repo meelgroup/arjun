@@ -39,6 +39,7 @@
 #include "time_mem.h"
 #include "ccnr/ccnr.h"
 #include <fstream>
+#include <sstream>
 #include <cstdio>
 #include <filesystem>
 #include "aig_rewrite.h"
@@ -1181,22 +1182,6 @@ void Manthan::print_detailed_stats() const {
             };
             print_hist("conflict-sz hist:   ", interp_repair->conflict_size_hist);
             print_hist("interp-nodes hist:  ", interp_repair->interp_size_hist);
-            // Top vars driven by interp.
-            std::vector<uint32_t> by_interp(cnf.nVars());
-            for (uint32_t i = 0; i < cnf.nVars(); i++) by_interp[i] = i;
-            std::sort(by_interp.begin(), by_interp.end(), [&](uint32_t a, uint32_t b) {
-                return interp_repairs_per_var[a] > interp_repairs_per_var[b];
-            });
-            verb_print(1, COLCYN "[manthan-stats]   top vars driven by interp:");
-            for (size_t i = 0; i < std::min<size_t>(10, by_interp.size()); i++) {
-                const uint32_t v = by_interp[i];
-                if (interp_repairs_per_var[v] == 0) break;
-                const double avg_lits = safe_div(interp_conflict_lits_per_var[v],
-                                                 interp_repairs_per_var[v]);
-                verb_print(1, COLCYN "[manthan-stats]     var " << setw(5) << v+1
-                    << "  interp_rep: " << setw(5) << interp_repairs_per_var[v]
-                    << "  avg conflsz: " << fixed << setprecision(1) << avg_lits);
-            }
         }
     }
 
@@ -1227,13 +1212,58 @@ void Manthan::print_detailed_stats() const {
             std::map<aig_ptr,size_t> dc;
             aig_depth = get_depth(var_to_formula.at(v).aig, dc);
         }
-        verb_print(1, COLCYN "[manthan-stats]   var " << setw(5) << v+1
-            << "  repairs: " << setw(6) << repaired_vars_count[v]
-            << "  cnf_cl: " << setw(7) << (var_to_formula.count(v) ? var_to_formula.at(v).clauses.size() : 0)
-            << "  aig_nodes: " << setw(7) << aig_sz
-            << "  aig_depth: " << setw(5) << aig_depth
-            << "  confl_freq: " << setw(5) << (v < var_conflict_freq.size() ? var_conflict_freq[v] : 0));
+        const uint32_t n_attempts = repaired_vars_count[v];
+        const uint32_t n_interp = (v < interp_repairs_per_var.size())
+            ? interp_repairs_per_var[v] : 0;
+        const uint32_t n_confl_succ = (v < conflict_branch_repairs_per_var.size())
+            ? conflict_branch_repairs_per_var[v] : 0;
+        const uint32_t n_succ = n_interp + n_confl_succ;
+        const uint32_t n_cost_zero = (n_attempts >= n_succ) ? (n_attempts - n_succ) : 0;
+        // interp% is over *successful* repairs (interp + conflict),
+        // ignoring cost-zero failures so the two paths add up to 100%.
+        const double interp_pct = safe_div(n_interp * 100.0, n_succ);
+        auto fmt_avg = [&](uint64_t sum, uint32_t cnt, int w) {
+            std::ostringstream os;
+            if (cnt == 0) os << setw(w) << "-";
+            else os << setw(w) << fixed << setprecision(1) << ((double)sum / (double)cnt);
+            return os.str();
+        };
+        auto fmt_pct = [&](double v, uint32_t denom) {
+            std::ostringstream os;
+            if (denom == 0) os << setw(5) << "-";
+            else os << setw(5) << fixed << setprecision(1) << v;
+            return os.str();
+        };
+        verb_print(1, COLCYN "[m-stats] v" << setw(5) << v+1
+            << " att:" << setw(5) << n_attempts
+            << " i:" << setw(4) << n_interp
+            << " c:" << setw(4) << n_confl_succ
+            << " z:" << setw(4) << n_cost_zero
+            << " i%:" << fmt_pct(interp_pct, n_succ)
+            << " acl:" << fmt_avg(
+                v < conflict_branch_lits_per_var.size() ? conflict_branch_lits_per_var[v] : 0,
+                n_confl_succ, 6)
+            << " ain:" << fmt_avg(
+                v < interp_branch_nodes_per_var.size() ? interp_branch_nodes_per_var[v] : 0,
+                n_interp, 7)
+            << " cl:" << setw(6) << (var_to_formula.count(v) ? var_to_formula.at(v).clauses.size() : 0)
+            << " an:" << setw(6) << aig_sz
+            << " ad:" << setw(3) << aig_depth
+            << " cf:" << setw(5) << (v < var_conflict_freq.size() ? var_conflict_freq[v] : 0));
     }
+    verb_print(1, COLCYN "[m-stats] --- legend ---");
+    verb_print(1, COLCYN "[m-stats]   v   : var id (1-indexed)");
+    verb_print(1, COLCYN "[m-stats]   att : total repair() calls for this var (successes + cost-zero failures); att = i + c + z");
+    verb_print(1, COLCYN "[m-stats]   i   : # repairs that succeeded via the Craig-interpolant branch");
+    verb_print(1, COLCYN "[m-stats]   c   : # repairs that succeeded via the conflict-clause branch (interp absent or fell back)");
+    verb_print(1, COLCYN "[m-stats]   z   : # cost-zero outcomes: solver found the bug is fixable by flipping later y-vars instead; y_rep needs no repair, so NEITHER branch (conflict-clause nor interpolant) is attempted");
+    verb_print(1, COLCYN "[m-stats]   i%  : i/(i+c), share of *successful* repairs that used the interp branch ('-' if i+c=0)");
+    verb_print(1, COLCYN "[m-stats]   acl : avg #literals in the conflict clause, over the 'c' successes only ('-' if c=0)");
+    verb_print(1, COLCYN "[m-stats]   ain : avg #AIG-nodes in the interp branch, over the 'i' successes only ('-' if i=0)");
+    verb_print(1, COLCYN "[m-stats]   cl  : #clauses currently in this var's Manthan formula (var_to_formula[v].clauses)");
+    verb_print(1, COLCYN "[m-stats]   an  : #AIG nodes in this var's current Manthan formula");
+    verb_print(1, COLCYN "[m-stats]   ad  : longest AND-gate path from the formula's AIG root");
+    verb_print(1, COLCYN "[m-stats]   cf  : total appearances of this var (any polarity) across all repair-conflict clauses ever seen (per literal, per clause)");
 
     // Aggregate AIG stats
     uint64_t total_aig_nodes = 0, total_clauses = 0, max_aig_nodes = 0;
@@ -1294,6 +1324,8 @@ SimplifiedCNF Manthan::do_manthan() {
     last_repair_branch.assign(cnf.nVars(), 0);
     interp_progress_blacklist.assign(cnf.nVars(), 0);
     var_conflict_freq.resize(cnf.nVars(), 0);
+    conflict_branch_lits_per_var.assign(cnf.nVars(), 0);
+    conflict_branch_repairs_per_var.assign(cnf.nVars(), 0);
     input_only_ok.resize(cnf.nVars(), 0);
     input_only_fail.resize(cnf.nVars(), 0);
 
@@ -1333,7 +1365,7 @@ SimplifiedCNF Manthan::do_manthan() {
     if (mconf.interp_repair > 0) {
         interp_repair = std::make_unique<InterpRepair>(conf, cnf, input, aig_mng);
         interp_repairs_per_var.assign(cnf.nVars(), 0);
-        interp_conflict_lits_per_var.assign(cnf.nVars(), 0);
+        interp_branch_nodes_per_var.assign(cnf.nVars(), 0);
         // Per-var adaptive gating bookkeeping, sized to nVars.
         if (mconf.interp_repair_adaptive_gate != 0) {
             interp_skip_until.assign(cnf.nVars(), 0);
@@ -1618,8 +1650,12 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
             interp_repairs_used++;
             if (y_rep < interp_repairs_per_var.size()) {
                 interp_repairs_per_var[y_rep]++;
-                interp_conflict_lits_per_var[y_rep] += conflict.size();
+                interp_branch_nodes_per_var[y_rep] +=
+                    AIG::count_aig_nodes_fast(interp_branch);
             }
+        } else if (y_rep < conflict_branch_lits_per_var.size()) {
+            conflict_branch_lits_per_var[y_rep] += conflict.size();
+            conflict_branch_repairs_per_var[y_rep]++;
         }
         // Record which branch drove this (successful) repair, so a later
         // cost-zero repair of the same var can be attributed to it.
