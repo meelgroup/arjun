@@ -918,30 +918,51 @@ bool Cadet::synth_complete_with_interp_generalization() {
         }
         minim.add_clause(uniq_clause);
 
-        // Greedy bit-drop minimization (against the minim solver).
+        // UNSAT-core-based minimization. Replaces the per-bit greedy
+        // loop (which did n SAT calls per case, one per bit) with ONE
+        // SAT call followed by an UNSAT-core extraction.
+        //
+        // Setup: assume sel + EVERY input-match lit. The clause set
+        // says (gated by sel) "joint undet y must differ from M". If
+        // that's UNSAT under the full-pattern assumption, joint y=M is
+        // uniquely forced at the model's input — but more usefully,
+        // cadical's UNSAT core tells us WHICH input lits were actually
+        // used in the proof. Any input lit NOT in the core was
+        // irrelevant: removing its assumption leaves the formula
+        // UNSAT (uniqueness still holds with that bit free). So we
+        // can safely drop every bit whose var is absent from the
+        // core — same soundness guarantee as the per-bit greedy, but
+        // O(1) SAT calls instead of O(n).
+        //
+        // get_conflict() returns ~l for each failed assumption l, so
+        // failed_input_vars is just the var-id set of the conflict.
         std::vector<bool> kept(n_in, true);
-        std::vector<Lit> assumps;
-        assumps.reserve(n_in + 1);
         uint32_t bits_dropped = 0;
-        for (uint32_t i = 0; i < n_in; i++) {
-            // Build assumptions: sel + kept input lits with bit i dropped.
-            assumps.clear();
+        {
+            std::vector<Lit> assumps;
+            assumps.reserve(n_in + 1);
             assumps.push_back(sel_lit);
-            for (uint32_t j = 0; j < n_in; j++) {
-                if (!kept[j]) continue;
-                if (j == i) continue;
-                const bool mv = (model[sorted_inputs[j]] == CMSat::l_True);
-                assumps.push_back(Lit(sorted_inputs[j], /*sign=*/!mv));
+            for (uint32_t i = 0; i < n_in; i++) {
+                const bool mv = (model[sorted_inputs[i]] == CMSat::l_True);
+                assumps.push_back(Lit(sorted_inputs[i], /*sign=*/!mv));
             }
             const auto r = minim.solve(&assumps);
             if (r == CMSat::l_False) {
-                // Uniqueness holds without bit i — joint y = M is
-                // forced over (kept ∖ i) × {bit i either way}. Drop i.
-                kept[i] = false;
-                bits_dropped++;
+                const auto failed = minim.get_conflict();
+                std::set<uint32_t> failed_vars;
+                for (const Lit& f : failed) failed_vars.insert(f.var());
+                for (uint32_t i = 0; i < n_in; i++) {
+                    if (failed_vars.count(sorted_inputs[i]) == 0) {
+                        kept[i] = false;
+                        bits_dropped++;
+                    }
+                }
             }
-            // r == CMSat::l_True: dropping i would leave room for a
-            // different joint y — keep bit i.
+            // r == CMSat::l_True: joint y=M is not unique at this
+            // input pattern (multiple joint y satisfy F here). No bit
+            // can be dropped; the case covers only this exact input.
+            // r == CMSat::l_Undef: same fallback as the old greedy
+            // (no drops; case is one input).
         }
         total_drops += bits_dropped;
 
