@@ -479,6 +479,19 @@ if __name__ == "__main__":
     print("Fuzz run summary:")
     for k, v in stats.items():
         print("  %s: %d" % (k, v))
+
+    # Dedicated phase-coverage callout so you can see at a glance
+    # which of cadet's phases actually got exercised. Without this
+    # block you'd have to scan the per-key dump above to find each
+    # `phase_X_ran` value individually.
+    print("-" * 60)
+    print("Phase coverage (out of %d successful runs):" % stats["synth_succeeded"])
+    print("  Phase E ran:                %d  (finished synthesis alone in %d)" % (
+        stats["phase_e_ran"], stats["phase_e_finished_synthesis"]))
+    print("  Phase F ran:                %d  (converged and finished in %d)" % (
+        stats["phase_f_ran"], stats["phase_f_converged_and_finished"]))
+    print("  cadet+Manthan handoff:      %d" % stats["handoff_triggered"])
+    print("  cadet finished alone:       %d" % stats["cadet_committed_all"])
     print("=" * 60)
 
     if stats["synth_succeeded"] >= 20:
