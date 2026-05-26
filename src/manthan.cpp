@@ -1344,6 +1344,7 @@ SimplifiedCNF Manthan::do_manthan() {
                 << ", max_aig_nodes=" << mconf.interp_repair_max_aig_nodes
                 << ", adaptive=" << mconf.interp_repair_adaptive_gate
                 << ", progress_max=" << mconf.interp_repair_progress_max_var_repairs
+                << ", full_conflict=" << mconf.interp_repair_full_conflict
                 << ")");
     }
     create_vars_for_y_hats();
@@ -1938,7 +1939,8 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
                 y_rep, to_repair, conflict,
                 mconf.interp_repair_max_aig_nodes,
                 mconf.interp_repair_max_conflicts,
-                mconf.interp_repair_system);
+                mconf.interp_repair_system,
+                /*full_conflict=*/mconf.interp_repair_full_conflict != 0);
             // Adaptive bookkeeping: track interp-vs-conflict size and
             // blacklist the var if the mean ratio exceeds the threshold.
             if (interp_branch != nullptr
@@ -1970,10 +1972,11 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
 
             SLOW_DEBUG_DO(
               if (interp_branch != nullptr) {
+                const bool fc = mconf.interp_repair_full_conflict != 0;
                 if (!interp_repair->quick_check_interpolant_excludes_cex(interp_branch, conflict)) {
                     assert(false &&& "verify (CEX-excluded) fails");
                 }
-                if (!interp_repair->slow_check_a_implies_i(to_repair, conflict, interp_branch)) {
+                if (!interp_repair->slow_check_a_implies_i(to_repair, conflict, interp_branch, 0, fc)) {
                     assert(false && "verify (full miter) fails");
                 }
                 if (!interp_repair->sample_check_interpolant(to_repair, conflict, interp_branch,
@@ -2125,23 +2128,29 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
     FHolder<MetaSolver2>::Formula f;
 
     // Build the must-flip region AIG in raw cnf-var space:
-    //   b1 = AND( ~I(X), AND_{y_other in conflict}(y_other matches ctx) )
+    //   default mode:        b1 = AND( ~I(X), AND_{y_other ∈ conflict}(y_other matches ctx) )
+    //   full-conflict mode:  b1 = ~I(X, Y_other)
+    //
+    // In default mode the interpolant I only ranges over input vars, so
+    // the y_other ctx-matching has to be ANDed in explicitly. In
+    // full-conflict mode the interpolant already encodes the y_other
+    // conjuncts (they were B-side units, so I(X,Y) = FALSE there), so the
+    // AND would only duplicate constraints — skip it.
     //
     // The y_other conjuncts are leaf literals on the y-variable itself —
-    // never the inlined formula AIG. The interpolant I(X) already
-    // generalizes the input part of the conflict; the y_other part is the
-    // conflict y-literals as leaves, exactly as the legacy clause path
-    // does (perform_repair's conflict-clause branch). Inlining
-    // var_to_formula[y_other].aig here used to make the formula AIGs (and
-    // the Tseitin-encoded cex_solver) blow up super-linearly: each interp
-    // repair re-inlined formulas already grown by prior interp repairs.
-    // Leaf-referencing is semantically identical — y_other is itself a
-    // defined variable, so the leaf resolves to its own def AIG on export.
+    // never the inlined formula AIG. Inlining var_to_formula[y_other].aig
+    // here used to make the formula AIGs (and the Tseitin-encoded
+    // cex_solver) blow up super-linearly: each interp repair re-inlined
+    // formulas already grown by prior interp repairs. Leaf-referencing is
+    // semantically identical — y_other is itself a defined variable, so
+    // the leaf resolves to its own def AIG on export.
     aig_ptr b1 = AIG::new_not(interp_branch);
-    for (const auto& l : conflict) {
-        if (is_input[l.var()] || is_backward_defined[l.var()]) continue;
-        assert(var_to_formula.count(l.var()));
-        b1 = AIG::new_and(b1, AIG::new_lit(~l));
+    if (mconf.interp_repair_full_conflict == 0) {
+        for (const auto& l : conflict) {
+            if (is_input[l.var()] || is_backward_defined[l.var()]) continue;
+            assert(var_to_formula.count(l.var()));
+            b1 = AIG::new_and(b1, AIG::new_lit(~l));
+        }
     }
 
     // AIG-level simplification of b1. simplify_aig is always run; the
