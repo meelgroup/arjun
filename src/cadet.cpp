@@ -813,7 +813,13 @@ bool Cadet::synth_complete_with_interp_generalization() {
     // Threshold: |orig_sampl_cnf| ≤ kPhaseFThreshold (set higher
     // than Phase A/E's 16 since each iteration covers many inputs).
 
-    static constexpr uint32_t kPhaseFThreshold = 32;
+    // Threshold raised from 32 → 64 alongside switching per-bit
+    // minimization to one-shot UNSAT-core extraction (1 SAT call per
+    // case instead of n). The previous limit was set so a Phase F
+    // iteration would do at most ~32 SAT calls; with core extraction
+    // each iter is one SAT call, so 64 inputs cost the same per-iter
+    // wall time as 32 used to.
+    static constexpr uint32_t kPhaseFThreshold = 64;
     static constexpr uint32_t kPhaseFMaxIters = 5000;
 
     if (orig_sampl_cnf.size() > kPhaseFThreshold) return false;
@@ -1026,7 +1032,9 @@ bool Cadet::synth_complete_with_interp_generalization() {
         // commit and let the caller hand the rest off to Manthan.
         if (conf.verb >= 1) {
             cout << "c o [cadet] Phase F did NOT converge in " << kPhaseFMaxIters
-                 << " iters — reverting Phase F commits (Manthan will finish)"
+                 << " iters (avg bits-dropped/iter: " << std::fixed << setprecision(1)
+                 << (iters > 0 ? double(total_drops) / iters : 0.0)
+                 << ") — reverting Phase F commits (Manthan will finish)"
                  << " T: " << fixed << setprecision(2) << (cpuTime() - t0) << endl;
         }
         return false;
