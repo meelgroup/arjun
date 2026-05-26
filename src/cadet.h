@@ -92,6 +92,27 @@ private:
     // function has structure (constant subtrees collapse).
     bool synth_by_enumeration();
 
+    // Phase C: incremental determinization via unique-consequence
+    // propagation — CADET's signature algorithm in its simplest form.
+    //
+    // For each undetermined to_define var y, iterate over the clauses
+    // mentioning y. When every other literal in a clause is already a
+    // function of inputs / earlier-determined vars, the clause forces
+    // y to a specific value over the "forced region" (where all other
+    // literals are false). Accumulating the positive-force region over
+    // all positive-y clauses gives a candidate Skolem.
+    //
+    // Iterate to fixpoint: once y is determined, its skol[y] can serve
+    // as a "known" function for clauses that mention y but couldn't be
+    // analyzed before. Fails (returns false) when no y can be
+    // determined this way — at which point Phase D (decisions +
+    // backtracking) would take over. Phase D is not yet implemented.
+    //
+    // Correctness: y := positive_force(y) is sound when positive_force
+    // and negative_force never overlap (which holds whenever F is
+    // satisfiable for every input — the synthesis precondition).
+    bool synth_by_propagation();
+
     // Phase B: connected-component enumeration. The CNF clause graph,
     // treating already-determined vars (orig sampling + extend-defined +
     // backward-defined) as opaque sinks, partitions the to_define vars

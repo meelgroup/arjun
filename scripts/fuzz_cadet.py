@@ -290,12 +290,15 @@ if __name__ == "__main__":
             solver += "--synthmore "
         solver += "--cadet 1 "
 
-        # Randomize the preprocessing toggles — same flags fuzz_synth.py
-        # exercises. They take int 0/1 values.
-        for opt in [" --synthbve", " --extend", " --minimize",
+        # Preprocessing toggles. The upstream pipeline is aggressive
+        # enough that on fuzzer-sized CNFs it usually finishes synthesis
+        # before cadet gets a chance to run. To genuinely exercise
+        # cadet, force every toggleable pass OFF — including autarky.
+        # That leaves the un-synth'd vars for cadet to handle.
+        for opt in [" --synthbve", " --autarky", " --extend", " --minimize",
                     " --unatedef", " --unatedefeq", " --unatedefeqnoninp",
                     " --unatedefrep"]:
-            solver += opt + " " + str(random.choice([0, 1]))
+            solver += opt + " 0"
 
         err, aigs = run_synth(solver, fname)
         if err is None:

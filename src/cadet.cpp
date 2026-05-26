@@ -228,6 +228,152 @@ bool Cadet::synth_by_enumeration() {
     return true;
 }
 
+bool Cadet::synth_by_propagation() {
+    if (conf.verb >= 1) {
+        cout << "c o [cadet] Phase C — unique-consequence propagation" << endl;
+    }
+    const double t0 = cpuTime();
+
+    // cnf-space → orig-space lookup, used in the per-commit cycle check.
+    const auto new_to_orig = cnf.get_new_to_orig_var();
+    // Cache for cnf.get_dependent_vars_recursive — that function's
+    // signature wants a caller-owned cache so successive lookups across
+    // a pass amortize. We rebuild this fresh each Phase-C call because
+    // committed skols only ever add edges, never remove them.
+    std::map<uint32_t, vector<uint32_t>> dep_cache;
+
+    skol.assign(cnf.nVars(), nullptr);
+    // Both inputs and backward-defined vars become opaque "leaves" in the
+    // Skolem AIGs we build: their AIG identities go in as t_lit nodes
+    // for the cnf-space var id. map_aigs_to_orig later rewrites those
+    // leaves to orig-space, where AIG::evaluate transparently follows
+    // any defined-var's nested AIG def.
+    for (uint32_t v : input) skol[v] = AIG::new_lit(v, /*neg=*/false);
+    for (uint32_t v : backward_defined) skol[v] = AIG::new_lit(v, /*neg=*/false);
+
+    // var → list of (clause_idx, sign-of-var-in-clause). sign=true means
+    // the literal in that clause is the NEGATION of the var.
+    const auto& clauses = cnf.get_clauses();
+    vector<vector<std::pair<uint32_t, bool>>> var_clauses(cnf.nVars());
+    for (uint32_t ci = 0; ci < clauses.size(); ci++) {
+        for (const auto& l : clauses[ci]) {
+            var_clauses[l.var()].emplace_back(ci, l.sign());
+        }
+    }
+
+    // Iterate to fixpoint. In each pass we sweep every still-undetermined
+    // y and check whether every clause C mentioning y has ALL of its
+    // other literals already determined (skol non-null). If so, we
+    // know the "forced region" for y from each such C and OR them into
+    // y's positive- and negative-force AIGs. Committing skol[y] :=
+    // pos_force allows later passes to use y as a "known" literal for
+    // other clauses that previously had y as their one-undetermined
+    // literal.
+    uint32_t pass = 0;
+    uint32_t total_committed = 0;
+    while (true) {
+        pass++;
+        bool progress = false;
+        uint32_t committed_this_pass = 0;
+        for (uint32_t y : to_define) {
+            if (skol[y] != nullptr) continue;
+
+            bool all_determined = true;
+            aig_ptr pos_force = AIG::new_const(false);
+            aig_ptr neg_force = AIG::new_const(false);
+            for (const auto& [ci, sign_y] : var_clauses[y]) {
+                aig_ptr forced = AIG::new_const(true);
+                for (const auto& l : clauses[ci]) {
+                    if (l.var() == y) continue;
+                    if (skol[l.var()] == nullptr) {
+                        all_determined = false;
+                        break;
+                    }
+                    // AIG for literal l: skol[l.var] XOR l.sign().
+                    aig_ptr lit_aig = skol[l.var()];
+                    if (l.sign()) lit_aig = ~lit_aig;
+                    // We want ¬l: AND forced with that.
+                    forced = AIG::new_and(forced, ~lit_aig);
+                }
+                if (!all_determined) break;
+                if (!sign_y) pos_force = AIG::new_or(pos_force, forced);
+                else neg_force = AIG::new_or(neg_force, forced);
+            }
+
+            if (all_determined) {
+                // Cycle check via transitive orig-space deps.
+                //
+                // pos_force is a cnf-space AIG; its leaves are cnf-vars
+                // that, after map_aigs_to_orig, become orig-vars. Some
+                // of those orig-vars are themselves already defined
+                // (extend / backward); cnf.defs[v_orig] is their AIG
+                // and the eval chain follows defs[] recursively. If
+                // y_orig is reachable from any pos_force orig-leaf via
+                // that defs[] chain, committing skol[y] closes a
+                // cycle. Seed 12845165257551977592 was such a case:
+                // pos_force_18 had an orig-19 leaf, and cnf.defs[orig-19]
+                // already referenced orig-18 (because extend's
+                // interpolant was computed over an orig-18 that hadn't
+                // been defined yet).
+                const uint32_t y_orig = new_to_orig.at(y).var();
+                std::set<uint32_t> cnf_leaves;
+                AIG::get_dependent_vars(pos_force, cnf_leaves, /*self=*/UINT32_MAX);
+                bool would_cycle = false;
+                for (uint32_t leaf : cnf_leaves) {
+                    uint32_t leaf_orig = new_to_orig.at(leaf).var();
+                    if (leaf_orig == y_orig) { would_cycle = true; break; }
+                    if (cnf.defined(leaf_orig)) {
+                        // get_dependent_vars_recursive returns deps in
+                        // insertion order — not sorted, so we can't
+                        // binary_search. Linear scan suffices: a typical
+                        // dep set is small (handful of vars).
+                        const auto& deps = cnf.get_dependent_vars_recursive(
+                                leaf_orig, dep_cache);
+                        if (std::find(deps.begin(), deps.end(), y_orig)
+                                != deps.end()) {
+                            would_cycle = true;
+                            break;
+                        }
+                    }
+                }
+                if (!would_cycle) {
+                    // We pick the positive-force region as the Skolem:
+                    // y is forced true exactly where some positive
+                    // clause's other literals all evaluate false, and
+                    // "false elsewhere" never violates any clause
+                    // provided F is satisfiable for every input (so
+                    // positive and negative forces never overlap).
+                    skol[y] = pos_force;
+                    progress = true;
+                    committed_this_pass++;
+                    total_committed++;
+                } else if (conf.verb >= 3) {
+                    cout << "c o [cadet]   skipping y=" << (y + 1)
+                         << " (orig " << y_orig + 1
+                         << "): commit would create a defs[] cycle" << endl;
+                }
+            }
+            (void)neg_force; // see correctness note in synth_by_propagation()
+        }
+        if (conf.verb >= 2) {
+            cout << "c o [cadet]   prop pass #" << pass
+                 << ": committed " << committed_this_pass << endl;
+        }
+        if (!progress) break;
+    }
+
+    uint32_t remaining = 0;
+    for (uint32_t y : to_define) if (skol[y] == nullptr) remaining++;
+
+    if (conf.verb >= 1) {
+        cout << "c o [cadet] Phase C done. passes: " << pass
+             << " committed: " << total_committed
+             << " remaining: " << remaining
+             << " T: " << fixed << setprecision(2) << (cpuTime() - t0) << endl;
+    }
+    return remaining == 0;
+}
+
 void Cadet::collect_component(uint32_t seed_var,
                               const set<uint32_t>& stop_set,
                               const vector<vector<uint32_t>>& var_to_clauses,
@@ -456,31 +602,40 @@ SimplifiedCNF Cadet::do_cadet() {
              << " |backward_defined|=" << backward_defined.size() << endl;
     }
 
-    // ---- Phase B: connected-component enumeration. Decompose the
-    // clause graph (treating inputs and backward_defined as sinks) into
-    // components; each component carries its own bounded input set and
-    // its to_define vars are jointly enumerated. Scales past Phase A's
-    // global-threshold gate when F decomposes naturally.
-    bool done = synth_by_components();
+    // ---- Phase C: unique-consequence propagation (CADET-flavored).
+    // Tries to determinize every to_define var by propagating from
+    // already-determined ones. Scales independently of input count;
+    // limited only by structural propagation reach.
+    bool done = synth_by_propagation();
 
-    // ---- Phase A fallback: global enumeration. Only viable for
-    // pathologically small problems where every y touches every input.
-    // For now we only try this when |orig_sampl_cnf| is itself small;
-    // larger problems fall through to Phase C (not yet implemented).
+    // ---- Phase B fallback: clause-graph component enumeration. Used
+    // when propagation gets stuck (some vars genuinely free under F).
+    // Decomposes F's clause graph and enumerates per component.
+    if (!done) {
+        if (conf.verb >= 1) {
+            cout << "c o [cadet] Phase C did not finish — trying Phase B"
+                 << endl;
+        }
+        done = synth_by_components();
+    }
+
+    // ---- Phase A last resort: global enumeration. Same algorithm as
+    // Phase B with one big component.
     if (!done && inputs_are_small()) {
+        if (conf.verb >= 1) {
+            cout << "c o [cadet] Phase B did not finish — trying Phase A"
+                 << endl;
+        }
         done = synth_by_enumeration();
     }
 
     if (!done) {
-        // TODO: Phase C — decisions + conflict analysis for the hard cases.
-        cout << "ERROR: [cadet] Phase B and Phase A both failed. " << endl
-             << "       |orig_sampl| = " << orig_sampl_cnf.size()
-             << " is too large for Phase A's global enumeration, and at "
-             << "least one to_define var has a local support that's also "
-             << "too large for Phase B. Phase C (decisions + conflict "
-             << "analysis) — the proper incremental-determinization loop "
-             << "— is not yet implemented. Use --cadet 0 for now."
-             << endl;
+        // TODO: Phase D — decisions + conflict analysis for the hard cases.
+        cout << "ERROR: [cadet] All implemented phases (C, B, A) failed. "
+             << "Phase C left vars undetermined (no propagation path), and "
+             << "Phase B/A couldn't finish either. Phase D (decisions + "
+             << "conflict analysis) is not yet implemented. Use --cadet 0 "
+             << "for now." << endl;
         std::exit(EXIT_FAILURE);
     }
 
