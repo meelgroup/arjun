@@ -290,15 +290,24 @@ if __name__ == "__main__":
             solver += "--synthmore "
         solver += "--cadet 1 "
 
-        # Preprocessing toggles. The upstream pipeline is aggressive
-        # enough that on fuzzer-sized CNFs it usually finishes synthesis
-        # before cadet gets a chance to run. To genuinely exercise
-        # cadet, force every toggleable pass OFF — including autarky.
-        # That leaves the un-synth'd vars for cadet to handle.
-        for opt in [" --synthbve", " --autarky", " --extend", " --minimize",
-                    " --unatedef", " --unatedefeq", " --unatedefeqnoninp",
-                    " --unatedefrep"]:
-            solver += opt + " 0"
+        # Preprocessing toggles. We want to exercise cadet both with
+        # and without the upstream pipeline:
+        #   - 50% of iterations: force EVERY toggleable pass OFF so
+        #     cadet has to actually do the synthesis (otherwise BVE +
+        #     autarky finish it first on fuzzer-sized CNFs).
+        #   - 50% of iterations: pick each toggle independently, biased
+        #     80/20 toward off. Some preprocessing still runs and the
+        #     pipeline's downstream cadet sees the post-preprocessing
+        #     CNF — which is what real-world usage looks like.
+        prep_opts = [" --synthbve", " --autarky", " --extend", " --minimize",
+                     " --unatedef", " --unatedefeq", " --unatedefeqnoninp",
+                     " --unatedefrep"]
+        if random.choice([True, False]):
+            for opt in prep_opts:
+                solver += opt + " 0"
+        else:
+            for opt in prep_opts:
+                solver += opt + " " + str(random.choices([0, 1], weights=[4, 1])[0])
 
         err, aigs = run_synth(solver, fname)
         if err is None:
