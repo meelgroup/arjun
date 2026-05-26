@@ -2717,7 +2717,7 @@ DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb, bool sat_sweep)
             }
         }
         if (verb >= 1 && reverted_total > 0) {
-            cout << "c o [aig-rewrite] sat-sweep reverted " << reverted_total
+            cout << "c o [aig-rw/sweep] reverted " << reverted_total
                  << " defs that gained non-orig-sampl recursive deps" << endl;
         }
     }

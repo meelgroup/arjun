@@ -70,17 +70,18 @@ inline void slow_assert_equiv(const aig_ptr& a, const aig_ptr& b) {
 
 void AIGRewriteStats::print(int verb) const {
     if (verb < 1) return;
-    cout << "c o [aig-rewrite] nodes: " << nodes_before << " -> " << nodes_after
-         << " (" << std::fixed << std::setprecision(1)
-         << (nodes_before > 0 ? (1.0 - (double)nodes_after / nodes_before) * 100.0 : 0.0) << "% reduction)"
-         << "  passes: " << total_passes
-         << "  const_prop: " << const_prop
-         << "  complement: " << complement_elim
-         << "  idempotent: " << idempotent_elim
-         << "  absorption: " << absorption
-         << "  distrib: " << and_or_distrib
-         << "  xor_simp: " << xor_simplify
-         << "  hash_hits: " << structural_hash_hits
+    cout << "c o [aig-rw] T:" << std::fixed << std::setprecision(2) << total_time
+         << " n:" << nodes_before << "->" << nodes_after
+         << " (-" << std::fixed << std::setprecision(1)
+         << (nodes_before > 0 ? (1.0 - (double)nodes_after / nodes_before) * 100.0 : 0.0) << "%)"
+         << " p:" << total_passes
+         << " cp:" << const_prop
+         << " cmp:" << complement_elim
+         << " idm:" << idempotent_elim
+         << " abs:" << absorption
+         << " dst:" << and_or_distrib
+         << " xor:" << xor_simplify
+         << " hh:" << structural_hash_hits
          << endl;
 }
 
@@ -917,8 +918,7 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
                       slow_assert_equiv(originals[i], defs[i]));
 
     if (verb >= 1) {
-        cout << "c o [aig-rewrite] T: " << std::fixed << std::setprecision(2)
-             << (cpuTime() - t) << " ";
+        stats.total_time = cpuTime() - t;
         stats.print(verb);
     }
 }
@@ -1093,14 +1093,14 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
             total_members += m.size();
             if (m.size() > max_class) max_class = m.size();
         }
-        cout << "c o [aig-rewrite] sat-sweep setup T: "
+        cout << "c o [aig-rw/sweep-setup] T:"
              << std::fixed << std::setprecision(2) << (cpuTime() - start_time)
-             << "  topo=" << topo.size()
-             << "  used_vars=" << used_vars.size()
-             << "  classes_total=" << classes.size()
-             << "  classes_nontrivial=" << nontrivial
-             << "  total_nontrivial_members=" << total_members
-             << "  max_class=" << max_class
+             << " topo=" << topo.size()
+             << " used_v=" << used_vars.size()
+             << " cls=" << classes.size()
+             << " cls_nt=" << nontrivial
+             << " mem_nt=" << total_members
+             << " max_cls=" << max_class
              << endl;
     }
 
@@ -1171,15 +1171,14 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
                                                     sweep_max_class_size);
         classes_processed++;
         if (verb >= 2 && classes_processed - last_progress_print_classes >= 100) {
-            cout << "c o [aig-rewrite] sat-sweep progress"
-                 << "  T: " << std::fixed << std::setprecision(2)
-                 << (cpuTime() - start_time)
-                 << "  classes_done=" << classes_processed
-                 << "  checks=" << stats.sweep_sat_checks
-                 << "  merges=" << stats.sweep_merges
-                 << "  refuted=" << stats.sweep_cex_refuted
-                 << "  timeouts=" << stats.sweep_timeouts
-                 << "  class_aborts=" << stats.sweep_class_aborts
+            cout << "c o [aig-rw/sweep-prog] T:"
+                 << std::fixed << std::setprecision(2) << (cpuTime() - start_time)
+                 << " cls_done=" << classes_processed
+                 << " chk=" << stats.sweep_sat_checks
+                 << " m=" << stats.sweep_merges
+                 << " r=" << stats.sweep_cex_refuted
+                 << " to=" << stats.sweep_timeouts
+                 << " ca=" << stats.sweep_class_aborts
                  << endl;
             last_progress_print_classes = classes_processed;
         }
@@ -1482,21 +1481,21 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
         const size_t nodes_after = AIG::count_aig_nodes_fast(defs);
         const double pct = nodes_before
             ? 100.0 * (1.0 - (double)nodes_after / (double)nodes_before) : 0.0;
-        cout << "c o [aig-rewrite] sat-sweep T: "
+        cout << "c o [aig-rw/sweep] T:"
              << std::fixed << std::setprecision(2) << (cpuTime() - start_time)
-             << "  nodes: " << nodes_before << " -> " << nodes_after
-             << " (" << std::setprecision(1) << pct << "% reduction)"
-             << "  groups=" << stats.sweep_sim_groups
-             << "  checks=" << stats.sweep_sat_checks
-             << "  merges=" << stats.sweep_merges
-             << "  const_merges=" << stats.sweep_const_merges
-             << "  refuted=" << stats.sweep_cex_refuted
-             << "  cex_filtered=" << stats.sweep_cex_filtered
-             << "  timeouts=" << stats.sweep_timeouts
-             << "  class_aborts=" << stats.sweep_class_aborts
-             << "  budget_exh=" << stats.sweep_budget_exhausted
-             << "  self_ref_reverts=" << stats.sweep_self_ref_reverts
-             << "  cycle_reverts=" << stats.sweep_cycle_reverts
+             << " n:" << nodes_before << "->" << nodes_after
+             << " (-" << std::setprecision(1) << pct << "%)"
+             << " g=" << stats.sweep_sim_groups
+             << " chk=" << stats.sweep_sat_checks
+             << " m=" << stats.sweep_merges
+             << " cm=" << stats.sweep_const_merges
+             << " r=" << stats.sweep_cex_refuted
+             << " cxf=" << stats.sweep_cex_filtered
+             << " to=" << stats.sweep_timeouts
+             << " ca=" << stats.sweep_class_aborts
+             << " be=" << stats.sweep_budget_exhausted
+             << " srv=" << stats.sweep_self_ref_reverts
+             << " cyc=" << stats.sweep_cycle_reverts
              << endl;
     }
 }

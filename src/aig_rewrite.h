@@ -32,6 +32,7 @@ struct AIGRewriteStats {
     uint64_t total_passes = 0;
     uint64_t nodes_before = 0;
     uint64_t nodes_after = 0;
+    double total_time = 0.0;
 
     // SAT sweeping (FRAIG-lite) counters.
     uint64_t sweep_sim_groups = 0;
