@@ -891,6 +891,12 @@ bool Cadet::synth_complete_with_interp_generalization() {
     uint32_t iters = 0;
     uint64_t total_drops = 0;
     bool converged = false;
+    // Diagnostic counters: distinguish why Phase F's minimization
+    // succeeded or failed at each iter.
+    uint32_t n_uniq_unsat = 0;     // uniqueness check returned UNSAT (good — drops possible)
+    uint32_t n_uniq_sat = 0;       // uniqueness check returned SAT (joint Y has alternatives — no drops)
+    uint32_t n_uniq_unknown = 0;   // UNDEF (rare — solver gave up)
+    uint64_t total_core_size = 0;  // size of UNSAT core when the check returned UNSAT
     while (iters < kPhaseFMaxIters) {
         // Outer solve: find an uncovered input pattern.
         const auto ret = sat.solve();
@@ -954,7 +960,9 @@ bool Cadet::synth_complete_with_interp_generalization() {
             }
             const auto r = minim.solve(&assumps);
             if (r == CMSat::l_False) {
+                n_uniq_unsat++;
                 const auto failed = minim.get_conflict();
+                total_core_size += failed.size();
                 std::set<uint32_t> failed_vars;
                 for (const Lit& f : failed) failed_vars.insert(f.var());
                 for (uint32_t i = 0; i < n_in; i++) {
@@ -963,12 +971,15 @@ bool Cadet::synth_complete_with_interp_generalization() {
                         bits_dropped++;
                     }
                 }
+            } else if (r == CMSat::l_True) {
+                n_uniq_sat++;
+                // joint y=M is not unique at this input pattern
+                // (multiple joint y satisfy F here). No bit can be
+                // dropped; the case covers only this exact input.
+            } else {
+                n_uniq_unknown++;
+                // UNDEF — solver gave up. Same fallback: no drops.
             }
-            // r == CMSat::l_True: joint y=M is not unique at this
-            // input pattern (multiple joint y satisfy F here). No bit
-            // can be dropped; the case covers only this exact input.
-            // r == CMSat::l_Undef: same fallback as the old greedy
-            // (no drops; case is one input).
         }
         total_drops += bits_dropped;
 
@@ -1022,6 +1033,20 @@ bool Cadet::synth_complete_with_interp_generalization() {
         }
     }
 
+    auto print_phase_f_stats = [&](const std::string& outcome) {
+        cout << "c o [cadet] Phase F " << outcome
+             << ". iters=" << iters
+             << " (max " << kPhaseFMaxIters << ")"
+             << " uniq-UNSAT=" << n_uniq_unsat
+             << " uniq-SAT=" << n_uniq_sat
+             << " uniq-UNDEF=" << n_uniq_unknown
+             << " avg-drops/iter=" << std::fixed << setprecision(1)
+             << (iters > 0 ? double(total_drops) / iters : 0.0)
+             << " avg-core-size=" << std::fixed << setprecision(1)
+             << (n_uniq_unsat > 0 ? double(total_core_size) / n_uniq_unsat : 0.0)
+             << " T=" << fixed << setprecision(2) << (cpuTime() - t0) << endl;
+    };
+
     if (!converged) {
         // Phase F did not finish covering the input space within the
         // iteration budget. Whatever ITE chain we'd build has UNCOVERED
@@ -1031,11 +1056,7 @@ bool Cadet::synth_complete_with_interp_generalization() {
         // fuzzer; seed 2609914553842841542). Roll back: skip the
         // commit and let the caller hand the rest off to Manthan.
         if (conf.verb >= 1) {
-            cout << "c o [cadet] Phase F did NOT converge in " << kPhaseFMaxIters
-                 << " iters (avg bits-dropped/iter: " << std::fixed << setprecision(1)
-                 << (iters > 0 ? double(total_drops) / iters : 0.0)
-                 << ") — reverting Phase F commits (Manthan will finish)"
-                 << " T: " << fixed << setprecision(2) << (cpuTime() - t0) << endl;
+            print_phase_f_stats("did NOT converge — reverting commits");
         }
         return false;
     }
@@ -1046,11 +1067,7 @@ bool Cadet::synth_complete_with_interp_generalization() {
     for (uint32_t y : to_define) if (skol[y] == nullptr) all_done = false;
 
     if (conf.verb >= 1) {
-        cout << "c o [cadet] Phase F done. iters: " << iters
-             << " (max " << kPhaseFMaxIters << ")"
-             << " avg bits-dropped/iter: " << std::fixed << setprecision(1)
-             << (iters > 0 ? double(total_drops) / iters : 0.0)
-             << " T: " << fixed << setprecision(2) << (cpuTime() - t0) << endl;
+        print_phase_f_stats("converged + committed");
     }
     return all_done;
 }

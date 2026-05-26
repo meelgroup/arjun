@@ -279,8 +279,7 @@ def run_synth(solver, fname):
                 info["phase_e_committed"] = int(m.group(1))
         elif "Phase F — generalized cases on" in line:
             info["phase_f_ran"] = True
-        elif "Phase F done. iters:" in line:
-            # convergent runs print "Phase F done. iters: N (max M)"
+        elif "Phase F converged + committed" in line:
             info["phase_f_converged"] = True
         elif "Phase F did NOT converge" in line:
             info["phase_f_converged"] = False
