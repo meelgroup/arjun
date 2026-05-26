@@ -712,10 +712,10 @@ aig_ptr InterpRepair::solve_one_interpolant(
     if (ret != 20) return nullptr;  // 20=UNSAT, 0=UNKNOWN(budget exhausted)
 
     aig_ptr one = tracer.build_interpolant();
-    // The proof exists (UNSAT) and the tracer recorded it, so reconstructing
-    // the interpolant from the proof trace must always succeed.
+    // Invariant: after a UNSAT solve the tracer has seen a refutation root,
+    // so build_interpolant returns a non-null AIG.
     release_assert(one != nullptr
-        && "interp-repair tracer failed to reconstruct interpolant from proof");
+        && "interp-repair: build_interpolant returned null after UNSAT proof");
     // Diagnostics: proof-core trim ratio and chain-reconstruction bails.
     total_proof_derived += tracer.derived_count;
     total_proof_core += tracer.core_count;
@@ -889,9 +889,10 @@ aig_ptr InterpRepair::compute_interpolant(
     return interp;
 }
 
-// Full miter: check A & ~I is UNSAT (i.e. A -> I), with I Tseitin-encoded
-// inline. `conflict_budget` (0 = unlimited) caps the solve; an exhausted
-// budget leaves the check inconclusive and returns true.
+// SLOW_DEBUG / test-only sanity helper. Encodes A & ~I and checks UNSAT
+// (i.e. A -> I), with I Tseitin-encoded inline. `conflict_budget`
+// (0 = unlimited) caps the solve; a budget-exhausted (inconclusive)
+// solve returns true. Not invoked on the default runtime path.
 bool InterpRepair::slow_check_a_implies_i(
         Lit to_repair_lit,
         const vector<Lit>& conflict,
@@ -918,7 +919,7 @@ bool InterpRepair::slow_check_a_implies_i(
     };
 
     // A-side original CNF — added from the pre-serialised buffer rather
-    // than re-walking cnf.get_clauses() on every (always-on) verify.
+    // than re-walking cnf.get_clauses() on every SLOW_DEBUG sanity call.
     if (!cnf_serialized_built) build_serialized_cnf();
     for (int v : cnf_serialized) solver->add(v);
     // A-side: original CNF + ~to_repair, plus the non-input (y_other)
@@ -960,11 +961,11 @@ bool InterpRepair::slow_check_a_implies_i(
     add_unit(~interp_lit);  // assert ¬I
 
     int ret = solver->solve();
-    // ret==10 (SAT) is a genuine model of A & ¬I — the interpolant would
-    // violate A→I, which a sound interpolant never does.
+    // ret==10 (SAT) would mean A & ¬I is satisfiable — impossible by
+    // construction of the McMillan/Pudlák interpolant. Guards the math.
     release_assert(ret != 10
-        && "interp-repair: A→I miter came back SAT — interpolant violates A→I");
-    // ret==20 (UNSAT, verified) or ret==0 (budget exhausted, inconclusive).
+        && "interp-repair: A→I miter came back SAT");
+    // ret==20 (UNSAT) or ret==0 (budget exhausted, inconclusive).
     return true;
 }
 
@@ -1023,7 +1024,8 @@ bool InterpRepair::sample_check_interpolant(
 
         int ret = solver->solve();
         // ret==10 (SAT) would mean I(X)=FALSE on an input where flipping
-        // y_rep is in fact feasible — a sound interpolant never does this.
+        // y_rep is in fact feasible — impossible by construction of the
+        // McMillan/Pudlák interpolant. Guards the math.
         release_assert(ret != 10
             && "interp-repair: sample_check found I(X)=FALSE but y_rep is flippable");
         // ret == 20 (UNSAT) or 0 (UNKNOWN, shouldn't happen w/o budget): pass

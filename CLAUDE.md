@@ -88,12 +88,12 @@ it (`./test-interp-repair`, also wired into `ctest`).
   failed repair's UNSAT core is one corner of input space; the McMillan
   (or Pudlák) interpolant over the input vars generalises it to the
   whole must-flip region, so one `compose_or/and` captures many repairs.
-  Interpolants are reconstructed from a cadical proof trace, trimmed to
-  the proof core, optionally intersected over several proofs, and
-  **always verified** with an A→I miter before use — a tracer
-  reconstruction error then falls back to the plain conflict clause
-  rather than producing a wrong interpolant. See the `--interprepair*`
-  flags in `main.cpp`.
+  Interpolants are reconstructed from a cadical proof trace and trimmed
+  to the proof core. The pass returns nullptr (caller then uses the
+  plain conflict-clause branch) only when there is nothing to
+  interpolate (empty conflict, no input lits in conflict), the AIG
+  exceeds the node cap, or the per-call conflict budget is exhausted.
+  See the `--interprepair*` flags in `main.cpp`.
 - `aig_to_cnf.{h,cpp}` — Tseitin encoding with fanout-based helper
   suppression, k-ary AND/OR fusion, ITE / MUX3 detection.
 - `puura.{h,cpp}` — SharpSAT-td-derived simplification.

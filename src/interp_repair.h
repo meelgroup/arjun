@@ -230,23 +230,24 @@ public:
         uint64_t conflict_budget = 0,
         int system = 0);
 
-    // Cheap check: interpolant evaluates to FALSE on the CEX inputs.
+    // SLOW_DEBUG / test-only sanity helper: interpolant evaluates to
+    // FALSE on the CEX inputs. Not called on the default runtime path.
     [[nodiscard]] bool quick_check_interpolant_excludes_cex(
         const ArjunNS::aig_ptr& interp,
         const std::vector<CMSat::Lit>& conflict) const;
 
-    // Heavy check: full miter that A → I. A genuine A & ¬I model trips
-    // an assert; returns true otherwise (an exhausted conflict budget
-    // leaves the check inconclusive and also returns true).
+    // SLOW_DEBUG / test-only sanity helper: full A → I miter, used to
+    // guard the math during development and in unit tests. Returns true
+    // on UNSAT and on a budget-exhausted (inconclusive) solve.
     [[nodiscard]] bool slow_check_a_implies_i(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         const ArjunNS::aig_ptr& interp,
         uint64_t conflict_budget = 0) const;
 
-    // Probabilistic check: for K random input patterns where I(X)=FALSE,
-    // SAT-check that flipping y_rep is genuinely impossible. Always
-    // returns true; a confirmed counterexample trips an assert.
+    // SLOW_DEBUG / test-only sanity helper: for K random input patterns
+    // where I(X)=FALSE, SAT-check that flipping y_rep is genuinely
+    // impossible. Always returns true on the happy path.
     [[nodiscard]] bool sample_check_interpolant(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
@@ -339,7 +340,7 @@ private:
 
     // Original CNF clauses pre-converted to cadical signed-ints (0
     // terminated), built lazily on the first interp call. Used by the
-    // always-on verification solves, which need the full A-side CNF.
+    // SLOW_DEBUG sanity helpers, which need the full A-side CNF.
     mutable std::vector<int> cnf_serialized;
     mutable bool cnf_serialized_built = false;
     void build_serialized_cnf() const;
