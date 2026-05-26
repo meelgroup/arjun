@@ -370,70 +370,86 @@ bool Cadet::synth_by_propagation() {
         }
         if (progress) continue;
 
-        // Stuck. Try a Phase D decision.
-        uint32_t pick = UINT32_MAX;
-        size_t min_clauses = std::numeric_limits<size_t>::max();
-        for (uint32_t y : to_define) {
-            if (skol[y] != nullptr) continue;
-            if (var_clauses[y].size() < min_clauses) {
-                min_clauses = var_clauses[y].size();
-                pick = y;
-            }
-        }
-        if (pick == UINT32_MAX) break; // nothing left undetermined
-
-        // Phase D decision. We commit a CONSTANT Skolem only when F (plus
-        // earlier decisions) FORCES pick to that constant — i.e. the
-        // opposite polarity is UNSAT under current decisions. Anything
-        // looser would be unsound: "F+(y=false) sat" only means "some
-        // input X makes F sat with y=false", not "every input X". A
-        // constant Skolem for a genuinely-input-dependent y would
-        // violate F on some other input.
+        // Phase D — propagation has stalled. We want to find SOME undet
+        // var that F forces to a constant under current decisions
+        // (commit it, resume propagation, possibly unblock more vars).
         //
-        // SAT call 1: assume pick=true; UNSAT ⇒ y must be false ⇒ commit false.
-        // SAT call 2 (only if call 1 is SAT): assume pick=false; UNSAT ⇒
-        //   y must be true ⇒ commit true.
-        // Both SAT ⇒ y is genuinely input-dependent; we can't decide it
-        // here. Phase B / Phase A fallback will need to enumerate it.
-        vector<Lit> assumps;
-        assumps.push_back(Lit(pick, /*sign=*/false)); // assume pick = true
-        bool decided = false;
-        if (decision_sat.solve(&assumps) == CMSat::l_False) {
-            // F+(pick=true) unsat ⇒ pick must be false.
-            skol[pick] = AIG::new_const(false);
-            decision_sat.add_clause({Lit(pick, /*sign=*/true)}); // unit: ~pick
-            decided = true;
-            if (conf.verb >= 2) {
-                cout << "c o [cadet]   decision: skol[" << (pick + 1)
-                     << "] := false (F forces it)" << endl;
-            }
-        } else {
-            assumps[0] = Lit(pick, /*sign=*/true); // assume pick = false
+        // Try every undet candidate, not just one. The earlier version
+        // bailed after the first failed candidate, which on real
+        // benchmarks (sdlx-fixpoint-5) was the difference between
+        // "0 commits / give up" and "stop trying just because the
+        // least-constrained var happened to be input-dependent".
+        //
+        // Order: by ascending clause-count (least-constrained first;
+        // those are the most likely to be forced). Two SAT calls per
+        // candidate at worst (both polarities); we accept that.
+        //
+        // We commit a CONSTANT Skolem only when F (plus earlier
+        // decisions) FORCES pick to that constant — opposite-polarity
+        // assumption is UNSAT. A looser check ("F+(y=c) sat") would be
+        // unsound: it only means SOME input X works, not every X, so a
+        // constant decision would violate F on some other input.
+
+        // Sort undetermined vars by clause count ascending.
+        vector<uint32_t> undet;
+        undet.reserve(to_define.size());
+        for (uint32_t y : to_define) {
+            if (skol[y] == nullptr) undet.push_back(y);
+        }
+        if (undet.empty()) break; // nothing left undetermined
+        std::sort(undet.begin(), undet.end(),
+                  [&](uint32_t a, uint32_t b) {
+                      return var_clauses[a].size() < var_clauses[b].size();
+                  });
+
+        bool any_decided = false;
+        vector<Lit> assumps(1);
+        for (uint32_t pick : undet) {
+            if (skol[pick] != nullptr) continue; // earlier decision propagated
+
+            // SAT call 1: assume pick=true; UNSAT ⇒ pick must be false.
+            assumps[0] = Lit(pick, /*sign=*/false);
             if (decision_sat.solve(&assumps) == CMSat::l_False) {
-                // F+(pick=false) unsat ⇒ pick must be true.
+                skol[pick] = AIG::new_const(false);
+                decision_sat.add_clause({Lit(pick, /*sign=*/true)});
+                total_decisions++;
+                any_decided = true;
+                if (conf.verb >= 2) {
+                    cout << "c o [cadet]   decision: skol[" << (pick + 1)
+                         << "] := false (F forces it)" << endl;
+                }
+                continue; // try the next candidate too in this Phase-D pass
+            }
+            // SAT call 2: assume pick=false; UNSAT ⇒ pick must be true.
+            assumps[0] = Lit(pick, /*sign=*/true);
+            if (decision_sat.solve(&assumps) == CMSat::l_False) {
                 skol[pick] = AIG::new_const(true);
-                decision_sat.add_clause({Lit(pick, /*sign=*/false)}); // unit: pick
-                decided = true;
+                decision_sat.add_clause({Lit(pick, /*sign=*/false)});
+                total_decisions++;
+                any_decided = true;
                 if (conf.verb >= 2) {
                     cout << "c o [cadet]   decision: skol[" << (pick + 1)
                          << "] := true (F forces it)" << endl;
                 }
+                continue;
             }
+            // Neither polarity forced — pick is genuinely
+            // input-dependent. Skip and try the next candidate.
         }
-        if (!decided) {
-            // pick is genuinely input-dependent — neither polarity is
-            // forced by F. Phase C+D can't determinize it without a
-            // non-constant Skolem; fall through to the caller's
-            // Phase B / Phase A enumeration.
+
+        if (!any_decided) {
+            // No undet var is forced by F under current decisions.
+            // Phase C+D can do no more; fall through to caller's
+            // Phase B / Phase A (or, with the partial-results flow,
+            // the caller may hand off remaining vars to Manthan).
             if (conf.verb >= 1) {
-                cout << "c o [cadet] Phase D: y=" << (pick + 1)
-                     << " not forced by F; falling back" << endl;
+                cout << "c o [cadet] Phase D: no undet var forced by F "
+                     << "(" << undet.size() << " tried); falling back" << endl;
             }
             break;
         }
-        total_decisions++;
-        // Loop continues: propagation may make progress now that pick
-        // is committed.
+        // Loop continues: propagation may make progress now that some
+        // picks are committed.
     }
 
     uint32_t remaining = 0;
@@ -627,12 +643,13 @@ bool Cadet::synth_by_components() {
 
 void Cadet::commit_definitions() {
     // Build a vector indexed by var, holding the Skolem AIG for each
-    // to_define var (and nullptr elsewhere) — exactly the form
-    // map_aigs_to_orig expects from Manthan.
+    // to_define var that cadet ACTUALLY determinized (skol[y] non-null).
+    // map_aigs_to_orig skips nullptr entries, so partial coverage is
+    // fine — to_define vars cadet didn't reach are left untouched and
+    // the caller (main.cpp) hands them off to Manthan.
     vector<aig_ptr> aigs(cnf.nVars(), nullptr);
     for (uint32_t y : to_define) {
-        assert(skol[y] != nullptr);
-        aigs[y] = skol[y];
+        if (skol[y] != nullptr) aigs[y] = skol[y];
     }
     const uint32_t cnf_nvars = cnf.nVars();
     cnf.map_aigs_to_orig(aigs, cnf_nvars);
@@ -677,26 +694,37 @@ SimplifiedCNF Cadet::do_cadet() {
              << " |backward_defined|=" << backward_defined.size() << endl;
     }
 
-    // ---- Phase C: unique-consequence propagation (CADET-flavored).
-    // Tries to determinize every to_define var by propagating from
-    // already-determined ones. Scales independently of input count;
-    // limited only by structural propagation reach.
+    // ---- Phase C+D: unique-consequence propagation with sound
+    // constant decisions. CADET-flavored core; scales independently of
+    // input count, limited only by structural propagation reach and by
+    // how many vars F forces to constants.
     bool done = synth_by_propagation();
 
+    // Count what Phase C+D committed in case it didn't finish.
+    // If it committed nothing, Phase B/A are safe to try (they reset
+    // skol[] internally, so they'd clobber any partial work — only
+    // run them when there's nothing to clobber). If C+D committed
+    // some but not all, we keep those partial commits and let the
+    // caller (main.cpp) hand off the remainder to Manthan.
+    uint32_t cd_committed = 0;
+    for (uint32_t y : to_define) if (skol[y] != nullptr) cd_committed++;
+
     // ---- Phase B fallback: clause-graph component enumeration. Used
-    // when propagation gets stuck (some vars genuinely free under F).
-    // Decomposes F's clause graph and enumerates per component.
-    if (!done) {
+    // when propagation gets stuck (some vars genuinely free under F)
+    // AND Phase C+D made no partial progress (otherwise Phase B's
+    // reset would discard Phase C+D's commits).
+    if (!done && cd_committed == 0) {
         if (conf.verb >= 1) {
-            cout << "c o [cadet] Phase C did not finish — trying Phase B"
+            cout << "c o [cadet] Phase C+D made no progress — trying Phase B"
                  << endl;
         }
         done = synth_by_components();
     }
 
     // ---- Phase A last resort: global enumeration. Same algorithm as
-    // Phase B with one big component.
-    if (!done && inputs_are_small()) {
+    // Phase B with one big component. Same caveat re: no partial
+    // commits from Phase C+D.
+    if (!done && cd_committed == 0 && inputs_are_small()) {
         if (conf.verb >= 1) {
             cout << "c o [cadet] Phase B did not finish — trying Phase A"
                  << endl;
@@ -704,27 +732,26 @@ SimplifiedCNF Cadet::do_cadet() {
         done = synth_by_enumeration();
     }
 
-    if (!done) {
-        // Print as "LIMITATION" (not "ERROR") and exit with code 42 so
-        // the fuzzer can distinguish "cadet can't handle this CNF
-        // shape yet, please skip" from a genuine bug. Code 42 is
-        // checked for in fuzz_cadet.py.
-        cout << "c o [cadet] LIMITATION: No phase finished synthesis. Phase "
-             << "C+D (propagation + sound constant-decision via SAT) left "
-             << "vars undetermined; Phase B's clause-graph component was "
-             << "too large to enumerate; Phase A's |orig sampling|="
-             << orig_sampl_cnf.size() << " is past the enumeration "
-             << "threshold. Next step would be conflict-analysis-driven "
-             << "decisions over non-constant Skolems (true CADET "
-             << "incremental determinization with backtracking)." << endl;
-        std::exit(42);
-    }
-
+    // Commit whatever skol[] entries we have, full or partial. Vars
+    // we couldn't determinize stay undefined in cnf.defs[]; the caller
+    // sees that via cnf.synth_done() == false and can hand off to
+    // Manthan to finish the remaining vars.
     commit_definitions();
 
     if (conf.verb >= 1) {
-        cout << "c o [cadet] done. T: " << fixed << setprecision(2)
-             << (cpuTime() - my_time) << endl;
+        uint32_t still_undef = 0;
+        for (uint32_t y : to_define) if (skol[y] == nullptr) still_undef++;
+        if (still_undef == 0) {
+            cout << "c o [cadet] done — all " << to_define.size()
+                 << " to_define vars committed. T: "
+                 << fixed << setprecision(2) << (cpuTime() - my_time) << endl;
+        } else {
+            cout << "c o [cadet] PARTIAL: committed "
+                 << (to_define.size() - still_undef) << "/"
+                 << to_define.size() << " to_define vars; "
+                 << still_undef << " remain for Manthan. T: "
+                 << fixed << setprecision(2) << (cpuTime() - my_time) << endl;
+        }
     }
     return std::move(cnf);
 }

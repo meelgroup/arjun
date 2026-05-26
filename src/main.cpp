@@ -483,16 +483,31 @@ void do_synthesis() {
 
     cnf.rewrite_aigs(conf.verb, do_sat_sweep);
     if (use_cadet) {
-        // Final synthesis step via the in-tree CADET port instead of
-        // Manthan. CADET is invoked once (no strategy ladder yet); if it
-        // fails it exits with a clear error rather than falling back.
+        // Cadet handles whatever it can (Phase C+D / B / A), then
+        // commits its partial result. On benchmarks where cadet
+        // can't determinize every var (its current implementation has
+        // capability gaps — see cadet.{h,cpp}), the partial commits
+        // become "backward_defined" entries for the downstream
+        // Manthan pass to start from. So --cadet 1 is "cadet does
+        // what it can, Manthan finishes" rather than "cadet or fail".
         if (!cnf.synth_done()) {
-            cout << "c o [arjun] Final synthesis: CADET" << endl;
+            cout << "c o [arjun] Synthesis: CADET" << endl;
             cnf = arjun->standalone_cadet(std::move(cnf), mconf);
         }
-        release_assert(cnf.synth_done() && "Synthesis should be done by CADET, but it is not!");
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-cadet.aig");
         SLOW_DEBUG_DO(check_stage("cadet"));
+
+        // Hand off any still-undetermined vars to Manthan.
+        if (!cnf.synth_done()) {
+            cout << "c o [arjun] Synthesis: cadet left vars undetermined — "
+                 << "running Manthan on the remainder" << endl;
+            SynthRunner synth_runner(conf, arjun);
+            auto strategies = synth_runner.parse_mstrategy(mstrategy);
+            synth_runner.run_manthan_strategies(cnf, mconf, strategies);
+            if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
+            SLOW_DEBUG_DO(check_stage("cadet+manthan"));
+        }
+        release_assert(cnf.synth_done() && "Synthesis should be done by CADET+Manthan, but it is not!");
     } else {
         SynthRunner synth_runner(conf, arjun);
         auto strategies = synth_runner.parse_mstrategy(mstrategy);

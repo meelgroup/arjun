@@ -184,35 +184,30 @@ def run_check(command, final, seed):
 
 
 def run_synth(solver, fname):
+    """Run arjun, parse its output, and return (err, aigs, info) where
+    info is a dict with cadet-specific stats so the caller can track
+    whether cadet did real work and whether the cadet→Manthan handoff
+    triggered."""
     curr_time = time.time()
     toexec = solver.split()
     toexec.append(fname)
     out, err, returncode = run(toexec)
+    info = {"cadet_committed_partial": False, "cadet_committed_all": False,
+            "handoff_triggered": False, "cadet_committed_count": 0,
+            "cadet_to_define_count": 0}
     if err is not None:
         print("Error string is: ", err)
-        return True, []
+        return True, [], info
 
     diff_time = time.time() - curr_time
     if diff_time > options.maxtime - maxtimediff:
         print("Too much time, aborted")
-        return None, []
-
-    # Exit code 42 = cadet hit a "LIMITATION" (known capability gap,
-    # not a bug). Handle BEFORE the generic returncode != 0 check;
-    # otherwise that path treats it as a crash. The limitation is
-    # documented in cadet.cpp; the user wants the fuzzer to exercise
-    # (not gate on) those cases. The print confirms it surfaced.
-    if returncode == 42:
-        for line in out.split("\n"):
-            if "LIMITATION" in line:
-                print("[skip] " + line.strip())
-                break
-        return False, []  # soft skip; no AIGs to check
+        return None, [], info
 
     if returncode != 0 and not out.startswith("TIMEOUT"):
         print("Solver crashed with exit code %d" % returncode)
         print(out)
-        return True, []
+        return True, [], info
 
     aigs = []
     for line in out.split("\n"):
@@ -220,13 +215,35 @@ def run_synth(solver, fname):
         if "Training error" not in line:
             if "ERROR" in line or "Error" in line or "error" in line:
                 print("Error line from solver: %s" % line)
-                return True, []
+                return True, [], info
             if "assert" in line or "Assertion" in line:
                 print("Error line from solver: %s" % line)
-                return True, []
+                return True, [], info
         if line.startswith("c o Wrote AIG defs:"):
             aigs.append(line[len("c o Wrote AIG defs:"):].strip())
-    return False, aigs
+
+        # Cadet status lines (matched against the verb=1 prints in
+        # cadet.cpp's do_cadet()). These let the fuzzer summary check
+        # that the handoff path actually exercises — the user
+        # explicitly asked that at least some iterations involve
+        # cadet committing ≥ 1 var AND Manthan picking up the rest.
+        if "[cadet] done — all" in line:
+            info["cadet_committed_all"] = True
+            # parse "all N to_define vars committed"
+            m = re.search(r"all (\d+) to_define vars", line)
+            if m:
+                info["cadet_to_define_count"] = int(m.group(1))
+                info["cadet_committed_count"] = int(m.group(1))
+        elif "[cadet] PARTIAL: committed" in line:
+            info["cadet_committed_partial"] = True
+            m = re.search(r"committed (\d+)/(\d+) to_define", line)
+            if m:
+                info["cadet_committed_count"] = int(m.group(1))
+                info["cadet_to_define_count"] = int(m.group(2))
+        elif "cadet left vars undetermined" in line:
+            info["handoff_triggered"] = True
+
+    return False, aigs, info
 
 
 def is_unsat(fname):
@@ -291,6 +308,21 @@ if __name__ == "__main__":
         rnd_seed = options.rnd_seed
     random.seed(rnd_seed)
 
+    # Coverage counters. The fuzz run FAILS at the end if these
+    # don't reach acceptable levels — the whole point of these
+    # fuzzer iterations is to actually exercise cadet's commits and
+    # the cadet→Manthan handoff, not just verify Manthan via cadet's
+    # passthrough.
+    stats = {
+        "total": 0,
+        "skipped_smallcnf_or_unsat": 0,
+        "synth_succeeded": 0,
+        "cadet_did_nothing": 0,    # cadet ran but committed 0 vars
+        "cadet_committed_partial_then_handoff": 0,
+        "cadet_committed_all": 0,
+        "handoff_triggered": 0,
+    }
+
     i = 0
     while options.num is None or i < options.num:
         i += 1
@@ -300,14 +332,17 @@ if __name__ == "__main__":
         else:
             seed = options.rnd_seed
 
+        stats["total"] += 1
         fname = gen_fuzz(seed)
         if add_projection(fname) is None:
             print("CNF too small, skipping")
             os.unlink(fname)
+            stats["skipped_smallcnf_or_unsat"] += 1
             continue
         if is_unsat(fname):
             print("UNSAT, skipping")
             os.unlink(fname)
+            stats["skipped_smallcnf_or_unsat"] += 1
             continue
 
         prefix = unique_file("fuzzCadet")
@@ -337,7 +372,7 @@ if __name__ == "__main__":
             for opt in prep_opts:
                 solver += opt + " " + str(random.choices([0, 1], weights=[4, 1])[0])
 
-        err, aigs = run_synth(solver, fname)
+        err, aigs, info = run_synth(solver, fname)
         if err is None:
             print("Synthesis timed out on %s" % fname)
             cleanup(fname, prefix)
@@ -349,14 +384,25 @@ if __name__ == "__main__":
             print("=" * 60)
             exit(-1)
 
-        # No AIGs means run_synth returned a soft skip (cadet
-        # LIMITATION, exit code 42). The skip line was already printed
-        # by run_synth; just move on to the next iteration.
         if len(aigs) == 0:
+            # No output AIGs — usually a soft skip path; just move on.
             cleanup(fname, prefix)
             continue
 
-        print("Synthesis succeeded on %s, AIGs: %s" % (fname, aigs))
+        stats["synth_succeeded"] += 1
+        if info["cadet_committed_all"]:
+            stats["cadet_committed_all"] += 1
+        elif info["cadet_committed_partial"] and info["handoff_triggered"]:
+            stats["cadet_committed_partial_then_handoff"] += 1
+            stats["handoff_triggered"] += 1
+        elif info["handoff_triggered"]:
+            # Cadet ran but committed nothing; Manthan did all the work.
+            stats["cadet_did_nothing"] += 1
+            stats["handoff_triggered"] += 1
+        print("Synthesis succeeded on %s [cadet committed %d/%d%s], AIGs: %s" % (
+            fname, info["cadet_committed_count"], info["cadet_to_define_count"],
+            " + Manthan handoff" if info["handoff_triggered"] else "",
+            aigs))
 
         for aig in aigs:
             final = "final" in aig
@@ -368,4 +414,26 @@ if __name__ == "__main__":
             run_check(call.split(), final, seed)
             os.unlink(aig)
         cleanup(fname, prefix)
+
+    # End-of-run coverage check. The whole point of these new iterations
+    # is to exercise the cadet→Manthan handoff with cadet actually
+    # committing at least one var. If we ran ≥ 20 iterations and never
+    # hit a handoff with non-empty cadet commits, the fuzzer is mis-
+    # configured (preprocessing is finishing everything, or CNFs are
+    # too small/too easy) and should be flagged.
+    print("=" * 60)
+    print("Fuzz run summary:")
+    for k, v in stats.items():
+        print("  %s: %d" % (k, v))
+    print("=" * 60)
+
+    if stats["synth_succeeded"] >= 20:
+        if stats["cadet_committed_partial_then_handoff"] == 0:
+            print("FUZZER CONFIG BUG: %d iterations succeeded but NONE had "
+                  "cadet commit ≥ 1 var AND hand off to Manthan. The whole "
+                  "point of fuzz_cadet.py's new mode is to cover that "
+                  "handoff path — please relax the projection clamp / CNF "
+                  "size / preprocessing toggles." %
+                  stats["synth_succeeded"])
+            exit(-1)
     exit(0)
