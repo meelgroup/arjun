@@ -69,6 +69,7 @@ int do_pre_backbone = 0;
 string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_learnt=1),bve";
 
 int synthesis = false;
+int use_cadet = 0;
 int do_unate_def = true;
 int do_unate_def_rep = false;
 int do_revbce = false;
@@ -159,6 +160,9 @@ void add_arjun_options() {
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
     myflag("--synthmore", synthesis, "Run synthesis, with more aggressive BVE options");
+    myopt("--cadet", use_cadet, fc_int, "Use the in-tree CADET (incremental "
+            "determinization) port for the final synthesis step instead of "
+            "Manthan. 0=Manthan (default), 1=CADET.");
     myopt("--maxsat", mconf.maxsat_better_ctx, fc_int, "Use maxsat to find better counterexamples during Manthan");
     myopt("--synthbve", do_synth_bve, fc_int,"Perform BVE for synthesis");
     myopt("--extend", etof_conf.do_extend_indep, fc_int,"Extend independent set just before CNF dumping");
@@ -477,14 +481,27 @@ void do_synthesis() {
         SLOW_DEBUG_DO(check_stage("unate_def_rep"));
     }
 
-    SynthRunner synth_runner(conf, arjun);
-    auto strategies = synth_runner.parse_mstrategy(mstrategy);
     cnf.rewrite_aigs(conf.verb, do_sat_sweep);
-    synth_runner.run_manthan_strategies(cnf, mconf, strategies);
+    if (use_cadet) {
+        // Final synthesis step via the in-tree CADET port instead of
+        // Manthan. CADET is invoked once (no strategy ladder yet); if it
+        // fails it exits with a clear error rather than falling back.
+        if (!cnf.synth_done()) {
+            cout << "c o [arjun] Final synthesis: CADET" << endl;
+            cnf = arjun->standalone_cadet(std::move(cnf), mconf);
+        }
+        release_assert(cnf.synth_done() && "Synthesis should be done by CADET, but it is not!");
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-cadet.aig");
+        SLOW_DEBUG_DO(check_stage("cadet"));
+    } else {
+        SynthRunner synth_runner(conf, arjun);
+        auto strategies = synth_runner.parse_mstrategy(mstrategy);
+        synth_runner.run_manthan_strategies(cnf, mconf, strategies);
 
-    release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
-    if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
-    SLOW_DEBUG_DO(check_stage("manthan"));
+        release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
+        SLOW_DEBUG_DO(check_stage("manthan"));
+    }
     if (!output_file.empty()) {
         cnf.rewrite_aigs(conf.verb, do_sat_sweep);
         cnf.write_aig_def_to_verilog(output_file);

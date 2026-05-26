@@ -50,6 +50,7 @@ set(libfiles
     ccnr/ccnr.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
     manthan.cpp
+    cadet.cpp
     aig_rewrite.cpp
     aig_to_cnf.cpp
     interpolant.cpp

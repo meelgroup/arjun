@@ -42,6 +42,7 @@
 #include "unate_def.h"
 #include "unate_def_rep.h"
 #include "manthan.h"
+#include "cadet.h"
 #include "metasolver.h"
 #include "aig_rewrite.h"
 #include "constants.h"
@@ -175,6 +176,12 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
 {
     Manthan manthan(arjdata->conf, mconf, std::move(cnf));
     return manthan.do_manthan();
+}
+
+DLL_PUBLIC SimplifiedCNF Arjun::standalone_cadet(SimplifiedCNF&& cnf, const ManthanConf& mconf)
+{
+    Cadet cadet(arjdata->conf, mconf, std::move(cnf));
+    return cadet.do_cadet();
 }
 
 DLL_PUBLIC void Arjun::standalone_rev_bce(SimplifiedCNF& cnf)
