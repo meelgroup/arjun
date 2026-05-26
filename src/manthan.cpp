@@ -1185,16 +1185,28 @@ void Manthan::print_detailed_stats() const {
         }
     }
 
-    // Print top 20 most repaired vars with their AIG sizes
+    // Print top 20 most successfully repaired vars with their AIG sizes.
+    // Order by i+c (successful interp + conflict-branch repairs); ties
+    // broken by total attempts so cost-zero-heavy vars still show up
+    // below their successful peers.
+    auto n_succ_of = [&](uint32_t v) -> uint32_t {
+        const uint32_t ni = (v < interp_repairs_per_var.size())
+            ? interp_repairs_per_var[v] : 0;
+        const uint32_t nc = (v < conflict_branch_repairs_per_var.size())
+            ? conflict_branch_repairs_per_var[v] : 0;
+        return ni + nc;
+    };
     vector<uint32_t> rep(cnf.nVars());
     for(uint32_t i = 0; i < cnf.nVars(); i++) rep[i] = i;
     sort(rep.begin(), rep.end(), [&] (const auto& a, const auto& b) {
+        const uint32_t sa = n_succ_of(a), sb = n_succ_of(b);
+        if (sa != sb) return sa > sb;
         return repaired_vars_count[a] > repaired_vars_count[b];
     });
-    verb_print(1, COLCYN "[manthan-stats] === TOP REPAIRED VARS ===");
+    verb_print(1, COLCYN "[manthan-stats] === TOP SUCCESSFULLY REPAIRED VARS ===");
     for(size_t i = 0; i < min((size_t)20, (size_t)rep.size()); i++) {
         const auto& v = rep[i];
-        if (repaired_vars_count[v] == 0) break;
+        if (n_succ_of(v) == 0) break;
         size_t aig_sz = 0;
         size_t aig_depth = 0;
         if (var_to_formula.count(v) && var_to_formula.at(v).aig) {
