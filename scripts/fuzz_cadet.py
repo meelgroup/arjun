@@ -194,7 +194,14 @@ def run_synth(solver, fname):
     out, err, returncode = run(toexec)
     info = {"cadet_committed_partial": False, "cadet_committed_all": False,
             "handoff_triggered": False, "cadet_committed_count": 0,
-            "cadet_to_define_count": 0}
+            "cadet_to_define_count": 0,
+            # Phase E: whether the SAT-model completion phase ran AND
+            # whether it actually committed at least one undet var.
+            # Phase E commits when Phase C+D left vars undetermined
+            # AND the orig sampling space is small enough — exactly
+            # the new mode we want the fuzzer to exercise.
+            "phase_e_ran": False,
+            "phase_e_committed": 0}
     if err is not None:
         print("Error string is: ", err)
         return True, [], info
@@ -242,6 +249,11 @@ def run_synth(solver, fname):
                 info["cadet_to_define_count"] = int(m.group(2))
         elif "cadet left vars undetermined" in line:
             info["handoff_triggered"] = True
+        elif "Phase E — SAT-model completion on" in line:
+            info["phase_e_ran"] = True
+            m = re.search(r"on (\d+) undet vars", line)
+            if m:
+                info["phase_e_committed"] = int(m.group(1))
 
     return False, aigs, info
 
@@ -321,6 +333,8 @@ if __name__ == "__main__":
         "cadet_committed_partial_then_handoff": 0,
         "cadet_committed_all": 0,
         "handoff_triggered": 0,
+        "phase_e_ran": 0,                       # iterations where Phase E ran
+        "phase_e_finished_synthesis": 0,        # Phase E ran AND cadet completed all
     }
 
     i = 0
@@ -399,6 +413,10 @@ if __name__ == "__main__":
             # Cadet ran but committed nothing; Manthan did all the work.
             stats["cadet_did_nothing"] += 1
             stats["handoff_triggered"] += 1
+        if info["phase_e_ran"]:
+            stats["phase_e_ran"] += 1
+            if info["cadet_committed_all"]:
+                stats["phase_e_finished_synthesis"] += 1
         print("Synthesis succeeded on %s [cadet committed %d/%d%s], AIGs: %s" % (
             fname, info["cadet_committed_count"], info["cadet_to_define_count"],
             " + Manthan handoff" if info["handoff_triggered"] else "",
@@ -435,5 +453,26 @@ if __name__ == "__main__":
                   "handoff path — please relax the projection clamp / CNF "
                   "size / preprocessing toggles." %
                   stats["synth_succeeded"])
+            exit(-1)
+    # Phase E coverage check: same idea but for the SAT-model completion
+    # phase. Phase E is what makes "--cadet 1" useful when Phase C+D
+    # commits some but not all — if it never runs in a 30+ iteration
+    # batch, the fuzzer isn't shaping inputs to trigger it.
+    if stats["synth_succeeded"] >= 30:
+        if stats["phase_e_ran"] == 0:
+            print("FUZZER CONFIG BUG: %d iterations succeeded but Phase E "
+                  "(SAT-model completion that respects Phase C+D's partial "
+                  "commits) never ran. Phase E is the part of cadet that "
+                  "completes synthesis after Phase C+D leaves vars "
+                  "undetermined — please adjust fuzzer parameters so that "
+                  "some iterations exhibit partial Phase C+D commits with "
+                  "small enough orig_sampl_cnf for Phase E to engage." %
+                  stats["synth_succeeded"])
+            exit(-1)
+        if stats["phase_e_finished_synthesis"] == 0:
+            print("FUZZER CONFIG BUG: Phase E ran %d times but NEVER "
+                  "completed cadet's synthesis alone. The success metric "
+                  "for Phase E is letting cadet finish without Manthan." %
+                  stats["phase_e_ran"])
             exit(-1)
     exit(0)

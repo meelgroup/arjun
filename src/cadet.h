@@ -92,6 +92,22 @@ private:
     // function has structure (constant subtrees collapse).
     bool synth_by_enumeration();
 
+    // Phase E: complete-the-synthesis pass. Unlike Phase A/B (which reset
+    // skol[] and only run when Phase C+D committed nothing), Phase E
+    // RESPECTS Phase C+D's prior commits by Tseitin-encoding them into a
+    // fresh SAT solver, then enumerates input patterns via SAT model
+    // search to fill in tables for the still-undet vars. SAT models
+    // automatically satisfy the Tseitin constraints, so the values
+    // collected for the undet y's are jointly consistent with everything
+    // already committed.
+    //
+    // Enumeration bound is the same as Phase A (|orig_sampl_cnf| <= 16),
+    // but Phase E ADDS to the partial state rather than starting over.
+    // This is what makes "--cadet 1" useful when Phase C+D committed
+    // some vars but not all: previously the only choice was Manthan
+    // handoff; now Phase E finishes locally when feasible.
+    bool synth_complete_with_models();
+
     // Phase C+D: incremental determinization (CADET's signature).
     //
     // Phase C — unique-consequence propagation. For each undetermined

@@ -47,6 +47,7 @@
 #include "arjun.h"
 #include "constants.h"
 #include "metasolver.h"
+#include "aig_to_cnf.h"
 #include "time_mem.h"
 
 #include <cryptominisat5/solvertypesmini.h>
@@ -67,6 +68,7 @@ using std::setprecision;
 using std::fixed;
 
 using ArjunNS::AIG;
+using ArjunNS::AIGT;
 using ArjunNS::aig_ptr;
 using ArjunNS::aig_lit;
 using ArjunNS::SimplifiedCNF;
@@ -641,6 +643,139 @@ bool Cadet::synth_by_components() {
     return true;
 }
 
+bool Cadet::synth_complete_with_models() {
+    // Phase E. Builds the rest of cadet's Skolems on top of whatever
+    // Phase C+D already committed, by:
+    //   (1) Loading F into a fresh SAT solver.
+    //   (2) Tseitin-encoding every prior skol[] commit (Phase C's
+    //       pos_force AIGs and Phase D's constant decisions) and
+    //       y ↔ skol[y] equivalence clauses. Any SAT model then
+    //       respects the prior commits automatically.
+    //   (3) Enumerating orig-sampling-var assignments via repeated
+    //       SAT solving — each iteration finds a model, records y
+    //       values for the still-undet vars into a per-y table,
+    //       and forbids that exact input pattern so the next solve
+    //       returns a different one. Stops when the solver returns
+    //       UNSAT (every consistent input has been visited).
+    //   (4) Building each undet y's Skolem from its table via
+    //       Shannon decomposition — same as Phase A.
+    //
+    // Soundness: every recorded (input, y) pair comes from a SAT model
+    // of F + prior commits, so the joint values for all undet y's at
+    // each input are mutually consistent and consistent with what was
+    // already committed.
+    //
+    // Limit: |orig_sampl_cnf| <= kSmallInputThreshold, same as Phase
+    // A. For larger inputs Phase E gives up and lets the caller hand
+    // off to Manthan.
+    if (orig_sampl_cnf.size() > kSmallInputThreshold) return false;
+
+    // Identify still-undetermined to_define vars. If Phase C+D already
+    // determinized everything, Phase E has nothing to do.
+    vector<uint32_t> undet;
+    for (uint32_t y : to_define) {
+        if (skol[y] == nullptr) undet.push_back(y);
+    }
+    if (undet.empty()) return true;
+
+    if (conf.verb >= 1) {
+        cout << "c o [cadet] Phase E — SAT-model completion on "
+             << undet.size() << " undet vars over "
+             << orig_sampl_cnf.size() << " orig sampling vars (Phase C+D "
+             << "committed " << (to_define.size() - undet.size())
+             << "/" << to_define.size() << " already)" << endl;
+    }
+    const double t0 = cpuTime();
+
+    // Build a fresh SAT solver loaded with F, plus a known-true literal
+    // (needed by AIGToCNF for constant nodes).
+    MetaSolver sat(SolverType::cadical);
+    inject_cnf(sat);
+    sat.new_var();
+    const uint32_t true_var = sat.nVars() - 1;
+    const Lit true_lit(true_var, /*sign=*/false);
+    sat.add_clause({true_lit}); // unit: true_var = TRUE
+
+    // Encode every prior skol[] commit into the SAT solver so any
+    // model respects it. We need this for BOTH Phase C's AIGs and
+    // Phase D's constants — Phase B/A reset and so don't run after
+    // Phase C+D (cd_committed > 0 path), so the only commits here
+    // came from Phase C+D.
+    using AIGEnc = ArjunNS::AIGToCNF<MetaSolver>;
+    AIGEnc enc(sat);
+    enc.set_true_lit(true_lit);
+    for (uint32_t y : to_define) {
+        if (skol[y] == nullptr) continue;
+        if (skol[y]->type == AIGT::t_const) {
+            // Constant: skol[y] is TRUE iff its edge sign is positive.
+            const bool val = !skol[y].neg;
+            sat.add_clause({Lit(y, /*sign=*/!val)}); // y = val
+        } else {
+            // Non-constant AIG (Phase C's pos_force). Tseitin-encode
+            // it, then add the y ↔ root equivalence.
+            const Lit root = enc.encode(skol[y]);
+            sat.add_clause({~Lit(y, false), root});  // y → root
+            sat.add_clause({Lit(y, false), ~root});  // ¬y → ¬root
+        }
+    }
+
+    // Now iterate: every solve returns a SAT model whose values for
+    // committed y's already match their skol[]s (via the Tseitin
+    // encoding); we just record values for the UNDET y's and forbid
+    // the input pattern.
+    vector<uint32_t> sorted_inputs(orig_sampl_cnf.begin(), orig_sampl_cnf.end());
+    std::sort(sorted_inputs.begin(), sorted_inputs.end());
+    const uint32_t n_in = sorted_inputs.size();
+    const uint64_t n_assign = 1ull << n_in;
+
+    // Per-y value table; missing inputs default to false (those
+    // assignments are UNSAT under F + prior commits, so y's value
+    // there is vacuously free and "false" is a fine default — it
+    // gets folded away by AIG simplification anyway).
+    std::map<uint32_t, vector<bool>> tables;
+    for (uint32_t y : undet) tables[y].assign(n_assign, false);
+
+    vector<Lit> forbid;
+    forbid.reserve(n_in);
+    uint64_t covered_count = 0;
+    while (true) {
+        const auto ret = sat.solve();
+        if (ret == CMSat::l_False) break;
+        if (ret != CMSat::l_True) {
+            // UNDEF / unknown — bail; the caller's Manthan fallback
+            // will pick up the still-undet vars.
+            return false;
+        }
+        const auto& model = sat.get_model();
+        uint64_t mask = 0;
+        forbid.clear();
+        for (uint32_t i = 0; i < n_in; i++) {
+            const bool mv = (model[sorted_inputs[i]] == CMSat::l_True);
+            if (mv) mask |= (1ull << i);
+            forbid.push_back(Lit(sorted_inputs[i], mv));
+        }
+        if (mask < n_assign) {
+            covered_count++;
+            for (uint32_t y : undet) {
+                tables[y][mask] = (model[y] == CMSat::l_True);
+            }
+        }
+        sat.add_clause(forbid);
+    }
+
+    // Build Shannon trees for each undet y and commit.
+    for (uint32_t y : undet) {
+        skol[y] = build_shannon_tree(tables.at(y), sorted_inputs);
+    }
+
+    if (conf.verb >= 1) {
+        cout << "c o [cadet] Phase E done. covered " << covered_count
+             << "/" << n_assign << " consistent input patterns. T: "
+             << fixed << setprecision(2) << (cpuTime() - t0) << endl;
+    }
+    return true;
+}
+
 void Cadet::commit_definitions() {
     // Build a vector indexed by var, holding the Skolem AIG for each
     // to_define var that cadet ACTUALLY determinized (skol[y] non-null).
@@ -709,6 +844,14 @@ SimplifiedCNF Cadet::do_cadet() {
     uint32_t cd_committed = 0;
     for (uint32_t y : to_define) if (skol[y] != nullptr) cd_committed++;
 
+    // ---- Phase E: SAT-model-based completion that RESPECTS Phase C+D's
+    // partial commits via Tseitin encoding. Runs when Phase C+D
+    // committed at least one var but didn't finish — exactly the case
+    // Phase B/A can't handle (their reset would clobber prior work).
+    if (!done && cd_committed > 0) {
+        done = synth_complete_with_models();
+    }
+
     // ---- Phase B fallback: clause-graph component enumeration. Used
     // when propagation gets stuck (some vars genuinely free under F)
     // AND Phase C+D made no partial progress (otherwise Phase B's
@@ -730,6 +873,16 @@ SimplifiedCNF Cadet::do_cadet() {
                  << endl;
         }
         done = synth_by_enumeration();
+    }
+
+    // ---- Final Phase E try when nothing committed by C+D and Phase
+    // B/A also failed (large component but small global). Phase E
+    // here just acts like Phase A but with Tseitin-encoded prior
+    // commits (none to encode in this branch, so same behavior as
+    // Phase A). Included for completeness: now no "small-enough"
+    // input space ever leaves cadet without a try.
+    if (!done && inputs_are_small()) {
+        done = synth_complete_with_models();
     }
 
     // Commit whatever skol[] entries we have, full or partial. Vars
