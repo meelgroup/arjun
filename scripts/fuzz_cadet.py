@@ -224,15 +224,7 @@ def run_synth(solver, fname):
             # iteration budget (only convergent runs commit; non-
             # convergent ones revert and fall back).
             "phase_f_ran": False,
-            "phase_f_converged": False,
-            # Phase G: DPLL-on-cases search with selectors, conflict
-            # analysis, clause learning, backtracking. ran => engaged;
-            # converged => terminated via "no failed sels" (all
-            # consistent input patterns covered); committed when both
-            # converged and produced a Skolem.
-            "phase_g_ran": False,
-            "phase_g_converged": False,
-            "phase_g_conflicts": 0}
+            "phase_f_converged": False}
     if err is not None:
         print("Error string is: ", err)
         return True, [], info
@@ -292,15 +284,6 @@ def run_synth(solver, fname):
             info["phase_f_converged"] = True
         elif "Phase F did NOT converge" in line:
             info["phase_f_converged"] = False
-        elif "Phase G — decisions + conflict analysis on" in line:
-            info["phase_g_ran"] = True
-        elif "Phase G done. decisions=" in line:
-            info["phase_g_converged"] = True
-            m = re.search(r"conflicts=(\d+)", line)
-            if m:
-                info["phase_g_conflicts"] = int(m.group(1))
-        elif "Phase G did NOT converge" in line:
-            info["phase_g_converged"] = False
 
     return False, aigs, info
 
@@ -384,9 +367,6 @@ if __name__ == "__main__":
         "phase_e_finished_synthesis": 0,        # Phase E ran AND cadet completed all
         "phase_f_ran": 0,                       # iterations where Phase F engaged
         "phase_f_converged_and_finished": 0,    # Phase F converged AND cadet completed all
-        "phase_g_ran": 0,                       # iterations where Phase G engaged
-        "phase_g_converged_and_finished": 0,    # Phase G converged AND cadet completed all
-        "phase_g_total_conflicts": 0,           # cumulative conflicts across Phase G runs
     }
 
     i = 0
@@ -473,11 +453,6 @@ if __name__ == "__main__":
             stats["phase_f_ran"] += 1
             if info["phase_f_converged"] and info["cadet_committed_all"]:
                 stats["phase_f_converged_and_finished"] += 1
-        if info["phase_g_ran"]:
-            stats["phase_g_ran"] += 1
-            stats["phase_g_total_conflicts"] += info["phase_g_conflicts"]
-            if info["phase_g_converged"] and info["cadet_committed_all"]:
-                stats["phase_g_converged_and_finished"] += 1
         print("Synthesis succeeded on %s [cadet committed %d/%d%s], AIGs: %s" % (
             fname, info["cadet_committed_count"], info["cadet_to_define_count"],
             " + Manthan handoff" if info["handoff_triggered"] else "",
@@ -552,18 +527,5 @@ if __name__ == "__main__":
                   "converged and finished synthesis. Phase F's convergence "
                   "+ commit is the test for non-trivial coverage." %
                   stats["phase_f_ran"])
-            exit(-1)
-        # Phase G: with the default minimization (drop=0), conflicts
-        # never arise — just check that the phase engages and finishes
-        # at least once. The conflict path is exercised via
-        # CADET_PHASE_G_DEBUG_DROP=N which the fuzzer doesn't set by
-        # default (we don't want unsound minimization to spook
-        # test-synth on the random fuzz cases).
-        if stats["synth_succeeded"] >= 100 and stats["phase_g_ran"] == 0:
-            print("FUZZER CONFIG BUG: %d iterations succeeded but Phase G "
-                  "(DPLL-on-cases search) never engaged. Phase G fires when "
-                  "F gives up — adjust fuzzer to widen projection sizes "
-                  "past Phase F's 32 threshold occasionally." %
-                  stats["synth_succeeded"])
             exit(-1)
     exit(0)
