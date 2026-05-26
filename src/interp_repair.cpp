@@ -77,17 +77,17 @@ aig_ptr InterpTracerMcMillan::hash_or(const aig_ptr& l, const aig_ptr& r) {
     return ~hash_and(~l, ~r);
 }
 
-// OR over the input literals in `cl` — the McMillan/Pudlák label for an
-// A-side clause. Empty input set => label FALSE.
-aig_ptr InterpTracerMcMillan::or_of_input_lits(const vector<Lit>& cl) {
-    // Collect the input literals and fold them in a canonical order:
-    // two A-clauses with the same input-literal *set* (in any clause
+// OR over the shared (B-visible) literals in `cl` — the McMillan/Pudlák
+// label for an A-side clause. Empty shared set => label FALSE.
+aig_ptr InterpTracerMcMillan::or_of_shared_lits(const vector<Lit>& cl) {
+    // Collect the shared literals and fold them in a canonical order:
+    // two A-clauses with the same shared-literal *set* (in any clause
     // order) then produce the identical OR-AIG, so hash_or's table
     // shares it instead of building two structurally-equal cones.
     vector<Lit> ins;
     ins.reserve(cl.size());
     for (const auto& l : cl) {
-        if (input_vars.count(l.var())) ins.push_back(l);
+        if (is_shared(l.var())) ins.push_back(l);
     }
     if (ins.empty()) return aig_mng.new_const(false);
     std::sort(ins.begin(), ins.end());
@@ -134,17 +134,17 @@ void InterpTracerMcMillan::add_original_clause(uint64_t id, bool /*red*/,
 aig_ptr InterpTracerMcMillan::original_label(uint64_t id) {
     const vector<Lit>& cl = cls[id];
     if (!b_clause_ids.count(id)) {
-        // A-side clause: label = OR of input lits in the clause. Shared
+        // A-side clause: label = OR of shared lits in the clause. Shared
         // lits are 'b' (McMillan) or 'ab' (Pudlák); either way they are
         // the disjuncts, so this base label is the same for both systems.
-        return or_of_input_lits(cl);
+        return or_of_shared_lits(cl);
     }
     if (system == SYS_PUDLAK) {
-        // Pudlák: shared (input) lits are 'ab'-labelled, so a B-side
+        // Pudlák: shared lits are 'ab'-labelled, so a B-side
         // clause's partial interpolant is ∧ ¬l over its shared lits.
         aig_ptr lab = aig_mng.new_const(true);
         for (const auto& l : cl)
-            if (input_vars.count(l.var())) lab = hash_and(lab, lit_aig(~l));
+            if (is_shared(l.var())) lab = hash_and(lab, lit_aig(~l));
         return lab;
     }
     // McMillan: shared lits are 'b'-labelled → B-clause label TRUE.
@@ -256,9 +256,9 @@ aig_ptr InterpTracerMcMillan::build_interpolant() {
             const Lit a = ~m;
             const aig_ptr unit_lab = (a.var() >= b_local_from)
                 ? aig_mng.new_const(true)             // B-side unit → TRUE
-                : or_of_input_lits(vector<Lit>{a});   // A-side unit
+                : or_of_shared_lits(vector<Lit>{a});  // A-side unit
             const bool want_and =
-                input_vars.count(m.var()) || m.var() >= b_local_from;
+                is_shared(m.var()) || m.var() >= b_local_from;
             res = want_and ? hash_and(res, unit_lab) : hash_or(res, unit_lab);
         }
     }
@@ -360,13 +360,13 @@ bool InterpTracerMcMillan::resolve_chain(uint64_t id,
             resolvent.insert(l);
         }
 
-        const bool pivot_is_input = input_vars.count(pivot.var());
+        const bool pivot_is_shared = is_shared(pivot.var());
 
-        // Pudlák: a shared (input) pivot is 'ab'-labelled → partial
-        // interpolant is the selector (v∨I1)∧(¬v∨I2), I1/I2 from the
-        // parents holding the variable positively/negatively. `lab` holds
-        // `pivot`; `it_l2->second` holds `~pivot`.
-        if (pivot_is_input && system == SYS_PUDLAK) {
+        // Pudlák: a shared pivot is 'ab'-labelled → partial interpolant
+        // is the selector (v∨I1)∧(¬v∨I2), I1/I2 from the parents holding
+        // the variable positively/negatively. `lab` holds `pivot`;
+        // `it_l2->second` holds `~pivot`.
+        if (pivot_is_shared && system == SYS_PUDLAK) {
             flush_batch();
             const aig_ptr I_run = lab;               // parent with `pivot`
             const aig_ptr I_new = it_l2->second;     // parent with `~pivot`
@@ -379,8 +379,8 @@ bool InterpTracerMcMillan::resolve_chain(uint64_t id,
             continue;
         }
 
-        // McMillan: shared (input) or B-local pivot → AND, A-local → OR.
-        const bool want_and = pivot_is_input || pivot.var() >= b_local_from;
+        // McMillan: shared or B-local pivot → AND, A-local → OR.
+        const bool want_and = pivot_is_shared || pivot.var() >= b_local_from;
 
         if (!batch.empty() && batch_is_and != want_and) flush_batch();
         if (batch.empty()) {
@@ -408,7 +408,8 @@ InterpRepair::InterpRepair(const Config& _conf,
 
 uint32_t InterpRepair::setup_mini_cnf(CaDiCaL::Solver& solver,
         InterpTracerMcMillan& tracer, Lit to_repair_lit,
-        const std::vector<Lit>& conflict) const
+        const std::vector<Lit>& conflict,
+        bool full_conflict) const
 {
     auto add_unit_a = [&](Lit l) {
         tracer.next_is_b = false;
@@ -422,19 +423,27 @@ uint32_t InterpRepair::setup_mini_cnf(CaDiCaL::Solver& solver,
         tracer.next_is_b = false;
     };
 
-    // Non-input conflict units (A side) + ~to_repair (A side). The
-    // conflict is the negated assumptions, so we add ~l to reproduce the
-    // original assumptions.
-    for (const auto& l : conflict) {
-        if (l.var() < is_input.size() && is_input[l.var()]) continue;
-        add_unit_a(~l);
+    // ~to_repair is always A-side (the y-output assumption we are
+    // trying to refute). In the default mode it joins the y_other conflict
+    // units on A; in full-conflict mode it is the only A-side assumption
+    // unit and every conflict unit moves to B.
+    if (!full_conflict) {
+        // Non-input conflict units join A. The conflict is the negated
+        // assumptions, so add ~l to reproduce the original assumption.
+        for (const auto& l : conflict) {
+            if (l.var() < is_input.size() && is_input[l.var()]) continue;
+            add_unit_a(~l);
+        }
     }
     add_unit_a(~to_repair_lit);
 
-    // Input conflict units (B side).
+    // B-side units: input-only in the default mode, every conflict lit
+    // (input + y_other) in full-conflict mode.
     uint32_t b_marked = 0;
     for (const auto& l : conflict) {
-        if (l.var() >= is_input.size() || !is_input[l.var()]) continue;
+        if (!full_conflict) {
+            if (l.var() >= is_input.size() || !is_input[l.var()]) continue;
+        }
         add_unit_b(~l);
         b_marked++;
     }
@@ -673,7 +682,7 @@ std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
 aig_ptr InterpRepair::solve_one_interpolant(
         Lit to_repair_lit, const vector<Lit>& conflict,
         uint64_t conflict_budget,
-        int system, int& out_ret)
+        int system, bool full_conflict, int& out_ret)
 {
     out_ret = 0;
     // Build the mini CNF and solve on a fresh CaDiCaL with proof
@@ -687,10 +696,22 @@ aig_ptr InterpRepair::solve_one_interpolant(
     }
     InterpTracerMcMillan tracer(conf, aig_mng, input_vars);
     tracer.system = system;
+    // Full-conflict mode: tell the tracer that the shared/B-visible vars
+    // are every conflict var (~to_repair excluded since it stays A-side).
+    // The tracer then labels A-clauses with an OR over their conflict-var
+    // lits (not just inputs) and treats every conflict-var pivot as
+    // shared. Default mode leaves the override empty so input_vars is
+    // used as before.
+    if (full_conflict) {
+        for (const auto& l : conflict) {
+            if (l.var() == to_repair_lit.var()) continue;
+            tracer.shared_vars_override.insert(l.var());
+        }
+    }
     solver->connect_proof_tracer(&tracer, true);
 
     const uint32_t b_marked = setup_mini_cnf(*solver, tracer,
-            to_repair_lit, conflict);
+            to_repair_lit, conflict, full_conflict);
     if (b_marked == 0) {
         // No input units. Interpolant would be trivial. Bail.
         VERBOSE_DEBUG_DO(cout << "c o [interp-repair] no input B units; bailing" << endl);
@@ -731,9 +752,10 @@ aig_ptr InterpRepair::compute_interpolant(
         [[maybe_unused]] uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
         uint64_t conflict_budget,
-        int system)
+        int system, bool full_conflict)
 {
     calls++;
+    if (full_conflict) calls_full_conflict++;
     total_conflict_lits += conflict.size();
 
     // Empty conflict: y_rep forced to ctx[y_rep]; perform_repair already
@@ -743,14 +765,18 @@ aig_ptr InterpRepair::compute_interpolant(
         return nullptr;
     }
 
-    // No input lits in conflict => no B side => trivial interpolant.
-    bool has_input = false;
+    // No B-side lits in conflict => no B side => trivial interpolant.
+    // Default mode: B = input lits. Full-conflict: B = every conflict
+    // lit, so as long as the conflict is non-empty B is non-empty too —
+    // the check still falls through correctly.
+    bool has_b = false;
     for (const auto& l : conflict) {
+        if (full_conflict) { has_b = true; break; }
         if (l.var() < is_input.size() && is_input[l.var()]) {
-            has_input = true; break;
+            has_b = true; break;
         }
     }
-    if (!has_input) {
+    if (!has_b) {
         calls_failed_empty_or_no_input++;
         return nullptr;
     }
@@ -760,7 +786,7 @@ aig_ptr InterpRepair::compute_interpolant(
     // repair generalises over.
     int ret = 0;
     aig_ptr interp = solve_one_interpolant(to_repair_lit, conflict,
-            conflict_budget, system, ret);
+            conflict_budget, system, full_conflict, ret);
     if (interp == nullptr) {
         if (ret == 0) {
             // UNKNOWN is only reachable with a conflict budget set (asserted
@@ -782,16 +808,35 @@ aig_ptr InterpRepair::compute_interpolant(
     release_assert(interp != nullptr
         && "interp-repair: simplify_aig of the interpolant returned null");
 
-    // SLOW_DEBUG: verify the interpolant only references input vars.
+    // SLOW_DEBUG: verify the interpolant only references shared vars —
+    // input vars in the default mode, every conflict var in full-conflict
+    // mode. A leaf outside this set means the tracer mislabelled something.
     SLOW_DEBUG_DO({
+        std::vector<uint8_t> is_allowed_leaf;
+        if (full_conflict) {
+            is_allowed_leaf.assign(cnf.nVars(), 0);
+            for (const auto& l : conflict) {
+                if (l.var() == to_repair_lit.var()) continue;
+                if (l.var() < is_allowed_leaf.size()) is_allowed_leaf[l.var()] = 1;
+            }
+        }
+        auto leaf_ok = [&](uint32_t v) -> bool {
+            if (full_conflict) {
+                return v < is_allowed_leaf.size() && is_allowed_leaf[v];
+            }
+            return v < is_input.size() && is_input[v];
+        };
         set<const AIG*> seen2;
         std::function<bool(const aig_ptr&)> check = [&](const aig_ptr& a) -> bool {
             if (a == nullptr) return true;
             if (a->type == AIGT::t_const) return true;
             if (a->type == AIGT::t_lit) {
-                if (a->var >= is_input.size() || !is_input[a->var]) {
-                    cout << "c o [interp-repair] SLOW_DEBUG: interpolant has non-input leaf var="
-                         << (a->var+1) << endl;
+                if (!leaf_ok(a->var)) {
+                    cout << "c o [interp-repair] SLOW_DEBUG: interpolant has bad leaf var="
+                         << (a->var+1)
+                         << (full_conflict ? " (expected conflict var)"
+                                           : " (expected input var)")
+                         << endl;
                     return false;
                 }
                 return true;
@@ -800,7 +845,7 @@ aig_ptr InterpRepair::compute_interpolant(
             return check(a->l) && check(a->r);
         };
         if (!check(interp)) {
-            assert(false && "interpolant has non-input leaf — tracer bug");
+            assert(false && "interpolant has bad leaf — tracer bug");
         }
     });
 
@@ -850,7 +895,7 @@ aig_ptr InterpRepair::compute_interpolant(
                 "McMillan interpolant with Pudlák" << endl);
             return compute_interpolant(y_rep, to_repair_lit, conflict,
                 max_aig_nodes, conflict_budget,
-                InterpTracerMcMillan::SYS_PUDLAK);
+                InterpTracerMcMillan::SYS_PUDLAK, full_conflict);
         }
         return nullptr;
     }
@@ -886,6 +931,7 @@ aig_ptr InterpRepair::compute_interpolant(
     }
 
     calls_succeeded++;
+    if (full_conflict) calls_full_conflict_succeeded++;
     return interp;
 }
 
@@ -897,7 +943,8 @@ bool InterpRepair::slow_check_a_implies_i(
         Lit to_repair_lit,
         const vector<Lit>& conflict,
         const aig_ptr& interp,
-        uint64_t conflict_budget) const
+        uint64_t conflict_budget,
+        bool full_conflict) const
 {
     if (interp == nullptr) return true;
 
@@ -922,11 +969,13 @@ bool InterpRepair::slow_check_a_implies_i(
     // than re-walking cnf.get_clauses() on every SLOW_DEBUG sanity call.
     if (!cnf_serialized_built) build_serialized_cnf();
     for (int v : cnf_serialized) solver->add(v);
-    // A-side: original CNF + ~to_repair, plus the non-input (y_other)
-    // conflict units.
-    for (const auto& l : conflict) {
-        if (l.var() < is_input.size() && is_input[l.var()]) continue;
-        add_unit(~l);
+    // A-side units: ~to_repair always; non-input (y_other) conflict units
+    // only in the default mode (in full-conflict mode they move to B).
+    if (!full_conflict) {
+        for (const auto& l : conflict) {
+            if (l.var() < is_input.size() && is_input[l.var()]) continue;
+            add_unit(~l);
+        }
     }
     add_unit(~to_repair_lit);
 
@@ -994,6 +1043,16 @@ bool InterpRepair::sample_check_interpolant(
         for (uint32_t v : ins) {
             assign[v] = (rng() & 1) ? l_True : l_False;
         }
+        // Also pin every y_other conflict lit to its CEX value. In the
+        // default mode the interpolant doesn't reference those vars so
+        // they're ignored; in full-conflict mode they're leaves of I and
+        // need to match the CEX for the must-flip claim to apply.
+        for (const auto& l : conflict) {
+            if (l.var() >= assign.size()) continue;
+            if (l.var() < is_input.size() && is_input[l.var()]) continue;
+            const Lit asm_lit = ~l;
+            assign[l.var()] = asm_lit.sign() ? l_False : l_True;
+        }
         std::map<aig_ptr, lbool> cache;
         std::vector<aig_ptr> defs(cnf.nVars(), nullptr);
         const lbool ival = AIG::evaluate(assign, interp, defs, cache);
@@ -1044,15 +1103,16 @@ bool InterpRepair::quick_check_interpolant_excludes_cex(
 {
     if (interp == nullptr) return false;
 
-    // Partial assignment from the input lits in conflict; conflict lits
-    // are negated assumptions, so use ~l for the CEX value.
+    // Partial assignment from every conflict lit (input + y_other). The
+    // interpolant only ever references shared vars (inputs in the default
+    // mode, every conflict var in full-conflict mode), so y_other entries
+    // are harmless if the interpolant ignores them. Conflict lits are
+    // negated assumptions, so use ~l for the CEX value.
     vector<lbool> assign(cnf.nVars(), l_Undef);
     for (const auto& l : conflict) {
         if (l.var() >= assign.size()) continue;
-        if (l.var() < is_input.size() && is_input[l.var()]) {
-            const Lit asm_lit = ~l;
-            assign[l.var()] = asm_lit.sign() ? l_False : l_True;
-        }
+        const Lit asm_lit = ~l;
+        assign[l.var()] = asm_lit.sign() ? l_False : l_True;
     }
 
     // Evaluate the interpolant; l_Undef result => report pass.
@@ -1082,6 +1142,10 @@ void InterpRepair::print_stats(const std::string& prefix) const {
          << (total_minicnf_clauses
                 ? safe_div(total_minicnf_clauses_kept*100.0, total_minicnf_clauses)
                 : 0.0)
-         << "%"
-         << endl;
+         << "%";
+    if (calls_full_conflict > 0) {
+        cout << " full-conflict: " << calls_full_conflict_succeeded
+             << "/" << calls_full_conflict;
+    }
+    cout << endl;
 }
