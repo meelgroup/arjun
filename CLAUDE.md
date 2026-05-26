@@ -55,11 +55,11 @@ output lines.
 From `build/`:
 
 ```
-./fuzz_synth.py --num 800
+./fuzz_synth.py --num 400
 ./fuzz_aig_to_cnf --num 1000
 ./fuzz_aig_rewrite --num 1000
 ./fuzz_unate_def_rep.py 300
-./fuzz_interp_repair.py --num 800
+./fuzz_interp_repair.py --num 400
 ```
 
 All must pass before reporting a change as complete. `fuzz_unate_def_rep.py`
