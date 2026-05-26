@@ -224,7 +224,17 @@ def run_synth(solver, fname):
             # iteration budget (only convergent runs commit; non-
             # convergent ones revert and fall back).
             "phase_f_ran": False,
-            "phase_f_converged": False}
+            "phase_f_converged": False,
+            # Phase F iteration-level diagnostics. Parsed from the
+            # print_phase_f_stats line (both converged and
+            # non-converged runs print it). These let us see whether
+            # Phase F's bit-dropping is ACTUALLY firing across fuzz
+            # iterations, not just whether the phase engaged.
+            "phase_f_iters": 0,
+            "phase_f_uniq_unsat": 0,
+            "phase_f_uniq_sat": 0,
+            "phase_f_avg_drops": 0.0,
+            "phase_f_avg_core_size": 0.0}
     if err is not None:
         print("Error string is: ", err)
         return True, [], info
@@ -279,10 +289,20 @@ def run_synth(solver, fname):
                 info["phase_e_committed"] = int(m.group(1))
         elif "Phase F — generalized cases on" in line:
             info["phase_f_ran"] = True
-        elif "Phase F converged + committed" in line:
-            info["phase_f_converged"] = True
-        elif "Phase F did NOT converge" in line:
-            info["phase_f_converged"] = False
+        elif "Phase F converged + committed" in line or \
+             "Phase F did NOT converge" in line:
+            info["phase_f_converged"] = "converged + committed" in line
+            # Both lines share the same diagnostic-stats suffix:
+            #   iters=N uniq-UNSAT=N uniq-SAT=N uniq-UNDEF=N
+            #   avg-drops/iter=X.X avg-core-size=X.X T=X.X
+            m = re.search(r"iters=(\d+).*uniq-UNSAT=(\d+).*uniq-SAT=(\d+).*"
+                          r"avg-drops/iter=([\d.]+).*avg-core-size=([\d.]+)", line)
+            if m:
+                info["phase_f_iters"] = int(m.group(1))
+                info["phase_f_uniq_unsat"] = int(m.group(2))
+                info["phase_f_uniq_sat"] = int(m.group(3))
+                info["phase_f_avg_drops"] = float(m.group(4))
+                info["phase_f_avg_core_size"] = float(m.group(5))
 
     return False, aigs, info
 
@@ -366,6 +386,13 @@ if __name__ == "__main__":
         "phase_e_finished_synthesis": 0,        # Phase E ran AND cadet completed all
         "phase_f_ran": 0,                       # iterations where Phase F engaged
         "phase_f_converged_and_finished": 0,    # Phase F converged AND cadet completed all
+        # Cumulative iter-level stats across all Phase F engagements,
+        # so we can answer "is bit-dropping actually firing during
+        # fuzzing?" with concrete numbers instead of guessing.
+        "phase_f_total_iters": 0,
+        "phase_f_total_uniq_unsat": 0,
+        "phase_f_total_uniq_sat": 0,
+        "phase_f_runs_with_any_drop": 0,  # iterations where avg-drops > 0
     }
 
     i = 0
@@ -452,6 +479,11 @@ if __name__ == "__main__":
             stats["phase_f_ran"] += 1
             if info["phase_f_converged"] and info["cadet_committed_all"]:
                 stats["phase_f_converged_and_finished"] += 1
+            stats["phase_f_total_iters"] += info["phase_f_iters"]
+            stats["phase_f_total_uniq_unsat"] += info["phase_f_uniq_unsat"]
+            stats["phase_f_total_uniq_sat"] += info["phase_f_uniq_sat"]
+            if info["phase_f_avg_drops"] > 0.0:
+                stats["phase_f_runs_with_any_drop"] += 1
         print("Synthesis succeeded on %s [cadet committed %d/%d%s], AIGs: %s" % (
             fname, info["cadet_committed_count"], info["cadet_to_define_count"],
             " + Manthan handoff" if info["handoff_triggered"] else "",
@@ -489,6 +521,16 @@ if __name__ == "__main__":
         stats["phase_e_ran"], stats["phase_e_finished_synthesis"]))
     print("  Phase F ran:                %d  (converged and finished in %d)" % (
         stats["phase_f_ran"], stats["phase_f_converged_and_finished"]))
+    if stats["phase_f_ran"] > 0:
+        total_checks = stats["phase_f_total_uniq_unsat"] + stats["phase_f_total_uniq_sat"]
+        pct = 100.0 * stats["phase_f_total_uniq_unsat"] / total_checks if total_checks else 0.0
+        print("    cumulative iters:         %d" % stats["phase_f_total_iters"])
+        print("    uniqueness-check UNSAT:   %d  (i.e. drops happened: %.1f%% of checks)" % (
+            stats["phase_f_total_uniq_unsat"], pct))
+        print("    uniqueness-check SAT:     %d  (joint Y had alternatives)" % (
+            stats["phase_f_total_uniq_sat"]))
+        print("    runs where bit-drop ever fired: %d / %d" % (
+            stats["phase_f_runs_with_any_drop"], stats["phase_f_ran"]))
     print("  cadet+Manthan handoff:      %d" % stats["handoff_triggered"])
     print("  cadet finished alone:       %d" % stats["cadet_committed_all"])
     print("=" * 60)
