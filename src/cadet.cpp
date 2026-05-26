@@ -776,6 +776,256 @@ bool Cadet::synth_complete_with_models() {
     return true;
 }
 
+bool Cadet::synth_complete_with_interp_generalization() {
+    // Phase F. Like Phase E, but each iteration's case covers many
+    // inputs (not just one). The generalization comes from greedy
+    // bit-dropping with a uniqueness check:
+    //
+    //   For each SAT model M, build a tentative "case condition" = the
+    //   input pattern from M. Then for each input bit i in turn, ask
+    //   the SAT solver:
+    //
+    //     "F + (kept input lits without i) + (joint undet y ≠ M's
+    //      values, gated by a selector) is UNSAT?"
+    //
+    //   If UNSAT: over the region "kept lits ∧ bit i unconstrained",
+    //   the joint values for undet y's are FORCED to equal M's. Bit i
+    //   doesn't affect what the y's must be — drop it from the case
+    //   condition. Greedy across bits keeps shrinking the condition.
+    //
+    // Soundness: the uniqueness check is over the FULL kept region
+    // (all combinations of dropped bits + whatever the SAT solver
+    // picks for non-input vars), so committing the joint M-values
+    // over the kept region is correct: there's no consistent y other
+    // than M's values in that region.
+    //
+    // The "joint undet y ≠ M" assumption is encoded via a fresh
+    // selector variable per iteration so it can be deactivated when
+    // we move on (cadical doesn't support clause removal; selector
+    // toggles are the standard incremental-SAT idiom).
+    //
+    // Termination: like Phase E, we forbid each minimized case
+    // pattern after committing it. The outer SAT solve hits UNSAT
+    // when every consistent input pattern has been covered by some
+    // case. We also bound the iteration count to keep poorly-
+    // converging inputs from running forever.
+    //
+    // Threshold: |orig_sampl_cnf| ≤ kPhaseFThreshold (set higher
+    // than Phase A/E's 16 since each iteration covers many inputs).
+
+    static constexpr uint32_t kPhaseFThreshold = 32;
+    static constexpr uint32_t kPhaseFMaxIters = 5000;
+
+    if (orig_sampl_cnf.size() > kPhaseFThreshold) return false;
+
+    vector<uint32_t> undet;
+    for (uint32_t y : to_define) {
+        if (skol[y] == nullptr) undet.push_back(y);
+    }
+    if (undet.empty()) return true;
+
+    if (conf.verb >= 1) {
+        cout << "c o [cadet] Phase F — generalized cases on " << undet.size()
+             << " undet vars over " << orig_sampl_cnf.size()
+             << " orig sampling vars (max " << kPhaseFMaxIters
+             << " iters)" << endl;
+    }
+    const double t0 = cpuTime();
+
+    // We need TWO SAT solvers:
+    //   * sat — for outer enumeration: F + Tseitin(prior commits) +
+    //     accumulated forbid clauses (one per committed case so the
+    //     next outer solve picks an uncovered input region).
+    //   * minim — for the per-iteration uniqueness check: F +
+    //     Tseitin(prior commits) ONLY. No forbid clauses.
+    //
+    // Why separate: the uniqueness check assumes (kept lits ∖ i) and
+    // asks "is joint y = M_undet forced over this region?". If a
+    // previous case's forbid clause becomes UNSAT under our
+    // assumption (because dropping bit i lets our region overlap that
+    // previous region on its kept bits), sat would return UNSAT for
+    // the WRONG reason — making us spuriously drop bits and commit
+    // wrong cases. Caught by fuzz_cadet seed 12315156945706132842.
+    auto build_solver = [&](MetaSolver& s) {
+        inject_cnf(s);
+        s.new_var();
+        const uint32_t tv = s.nVars() - 1;
+        const Lit tl(tv, /*sign=*/false);
+        s.add_clause({tl});
+        using AIGEnc = ArjunNS::AIGToCNF<MetaSolver>;
+        AIGEnc enc(s);
+        enc.set_true_lit(tl);
+        for (uint32_t y : to_define) {
+            if (skol[y] == nullptr) continue;
+            if (skol[y]->type == AIGT::t_const) {
+                const bool val = !skol[y].neg;
+                s.add_clause({Lit(y, !val)});
+            } else {
+                const Lit root = enc.encode(skol[y]);
+                s.add_clause({~Lit(y, false), root});
+                s.add_clause({Lit(y, false), ~root});
+            }
+        }
+    };
+
+    MetaSolver sat(SolverType::cadical);
+    MetaSolver minim(SolverType::cadical);
+    build_solver(sat);
+    build_solver(minim);
+
+    vector<uint32_t> sorted_inputs(orig_sampl_cnf.begin(), orig_sampl_cnf.end());
+    std::sort(sorted_inputs.begin(), sorted_inputs.end());
+    const uint32_t n_in = sorted_inputs.size();
+
+    // Per-y partial Skolem (ITE chain of cases). Starts FALSE; each
+    // iteration prepends a case via new_ite(value, prev, condition).
+    std::map<uint32_t, aig_ptr> partial;
+    for (uint32_t y : undet) partial[y] = AIG::new_const(false);
+
+    uint32_t iters = 0;
+    uint64_t total_drops = 0;
+    bool converged = false;
+    while (iters < kPhaseFMaxIters) {
+        // Outer solve: find an uncovered input pattern.
+        const auto ret = sat.solve();
+        if (ret == CMSat::l_False) { converged = true; break; }
+        if (ret != CMSat::l_True) return false;
+        iters++;
+
+        const auto& model = sat.get_model();
+
+        // Add a "selectable" uniqueness clause to the MINIM solver
+        // (NOT the main `sat` solver, whose accumulated forbid clauses
+        // would interfere with the uniqueness check — see
+        // build_solver comment).
+        //
+        //   ¬sel ∨ (some undet y ≠ M's value for y)
+        // When sel is asserted, the clause says "some y differs from M".
+        // We solve minim under (sel + kept input lits) to ask "is
+        // there a way for the kept inputs to extend to F-sat with some
+        // undet y ≠ M?".  UNSAT ⇒ joint y = M is forced over the kept
+        // region.
+        minim.new_var();
+        const uint32_t sel_var = minim.nVars() - 1;
+        const Lit sel_lit(sel_var, /*sign=*/false);
+        std::vector<Lit> uniq_clause;
+        uniq_clause.reserve(undet.size() + 1);
+        uniq_clause.push_back(~sel_lit);
+        for (uint32_t y : undet) {
+            const bool v = (model[y] == CMSat::l_True);
+            // "y differs from v": if v=true, literal is ¬y; if v=false, y.
+            uniq_clause.push_back(Lit(y, /*sign=*/v));
+        }
+        minim.add_clause(uniq_clause);
+
+        // Greedy bit-drop minimization (against the minim solver).
+        std::vector<bool> kept(n_in, true);
+        std::vector<Lit> assumps;
+        assumps.reserve(n_in + 1);
+        uint32_t bits_dropped = 0;
+        for (uint32_t i = 0; i < n_in; i++) {
+            // Build assumptions: sel + kept input lits with bit i dropped.
+            assumps.clear();
+            assumps.push_back(sel_lit);
+            for (uint32_t j = 0; j < n_in; j++) {
+                if (!kept[j]) continue;
+                if (j == i) continue;
+                const bool mv = (model[sorted_inputs[j]] == CMSat::l_True);
+                assumps.push_back(Lit(sorted_inputs[j], /*sign=*/!mv));
+            }
+            const auto r = minim.solve(&assumps);
+            if (r == CMSat::l_False) {
+                // Uniqueness holds without bit i — joint y = M is
+                // forced over (kept ∖ i) × {bit i either way}. Drop i.
+                kept[i] = false;
+                bits_dropped++;
+            }
+            // r == CMSat::l_True: dropping i would leave room for a
+            // different joint y — keep bit i.
+        }
+        total_drops += bits_dropped;
+
+        // Deactivate the uniqueness clause permanently (we don't need
+        // it anymore; future iterations get their own selectors).
+        minim.add_clause({~sel_lit});
+
+        // Build min_pattern AIG from the kept bits. If everything was
+        // dropped, the case covers the WHOLE input space — joint y =
+        // M is the unique Skolem and we can commit constants.
+        aig_ptr min_pattern = AIG::new_const(true);
+        std::vector<Lit> forbid_clause;
+        bool any_kept = false;
+        for (uint32_t i = 0; i < n_in; i++) {
+            if (!kept[i]) continue;
+            any_kept = true;
+            const bool mv = (model[sorted_inputs[i]] == CMSat::l_True);
+            min_pattern = AIG::new_and(min_pattern, AIG::new_lit(sorted_inputs[i], !mv));
+            forbid_clause.push_back(Lit(sorted_inputs[i], mv));
+        }
+
+        if (!any_kept) {
+            // Whole input space → joint y = M is the unique Skolem
+            // globally. Commit constants and we're done.
+            for (uint32_t y : undet) {
+                const bool v = (model[y] == CMSat::l_True);
+                partial[y] = AIG::new_const(v);
+            }
+            if (conf.verb >= 2) {
+                cout << "c o [cadet]   iter " << iters
+                     << ": commit covers entire input space" << endl;
+            }
+            converged = true;
+            break;
+        }
+
+        // Prepend the case to each undet y's partial Skolem:
+        //   new_skol = ITE(min_pattern, M[y], old_skol)
+        for (uint32_t y : undet) {
+            const bool v = (model[y] == CMSat::l_True);
+            partial[y] = AIG::new_ite(AIG::new_const(v), partial[y], min_pattern);
+        }
+        // Forbid this minimized pattern so the next outer solve picks
+        // an uncovered input region.
+        sat.add_clause(forbid_clause);
+
+        if (conf.verb >= 2) {
+            cout << "c o [cadet]   iter " << iters
+                 << ": kept " << (n_in - bits_dropped)
+                 << " / " << n_in << " bits" << endl;
+        }
+    }
+
+    if (!converged) {
+        // Phase F did not finish covering the input space within the
+        // iteration budget. Whatever ITE chain we'd build has UNCOVERED
+        // inputs defaulting to FALSE — and FALSE may be the wrong joint
+        // y value at those inputs. Committing partial would produce a
+        // wrong Skolem (caught by test-synth's UNSAT verifier on the
+        // fuzzer; seed 2609914553842841542). Roll back: skip the
+        // commit and let the caller hand the rest off to Manthan.
+        if (conf.verb >= 1) {
+            cout << "c o [cadet] Phase F did NOT converge in " << kPhaseFMaxIters
+                 << " iters — reverting Phase F commits (Manthan will finish)"
+                 << " T: " << fixed << setprecision(2) << (cpuTime() - t0) << endl;
+        }
+        return false;
+    }
+
+    for (uint32_t y : undet) skol[y] = partial[y];
+
+    bool all_done = true;
+    for (uint32_t y : to_define) if (skol[y] == nullptr) all_done = false;
+
+    if (conf.verb >= 1) {
+        cout << "c o [cadet] Phase F done. iters: " << iters
+             << " (max " << kPhaseFMaxIters << ")"
+             << " avg bits-dropped/iter: " << std::fixed << setprecision(1)
+             << (iters > 0 ? double(total_drops) / iters : 0.0)
+             << " T: " << fixed << setprecision(2) << (cpuTime() - t0) << endl;
+    }
+    return all_done;
+}
+
 void Cadet::commit_definitions() {
     // Build a vector indexed by var, holding the Skolem AIG for each
     // to_define var that cadet ACTUALLY determinized (skol[y] non-null).
@@ -788,6 +1038,14 @@ void Cadet::commit_definitions() {
     }
     const uint32_t cnf_nvars = cnf.nVars();
     cnf.map_aigs_to_orig(aigs, cnf_nvars);
+
+    // Compress what we just committed. Phase F builds Skolems as deep
+    // ITE chains; without this, every committed iteration adds an ITE
+    // branch per undet var, and a 1000-iter Phase F run on 900 vars
+    // produces a 900k-node AIG that downstream verification (test-synth)
+    // can't handle in a reasonable time. AIG::simplify_aigs walks each
+    // def, runs the cheap structural simplifier, and replaces in-place.
+    cnf.simplify_aigs(conf.verb);
 }
 
 SimplifiedCNF Cadet::do_cadet() {
@@ -850,6 +1108,22 @@ SimplifiedCNF Cadet::do_cadet() {
     // Phase B/A can't handle (their reset would clobber prior work).
     if (!done && cd_committed > 0) {
         done = synth_complete_with_models();
+    }
+
+    // ---- Phase F: generalized cases via uniqueness-checked
+    // bit-dropping. Same setup as Phase E but each iteration's case
+    // covers many inputs at once, so it works past Phase E's
+    // |orig_sampl_cnf| ≤ 16 ceiling.
+    //
+    // Runs:
+    //   * after Phase E gives up (Phase E only ran when cd_committed>0,
+    //     so we cover both the post-Phase-E and the no-prior-commits
+    //     cases here),
+    //   * any time orig_sampl_cnf fits Phase F's threshold (32) but
+    //     not the smaller Phase A/B/E threshold (16). Phase A/B/E
+    //     would have bailed; Phase F is the one that handles that gap.
+    if (!done) {
+        done = synth_complete_with_interp_generalization();
     }
 
     // ---- Phase B fallback: clause-graph component enumeration. Used

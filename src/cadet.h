@@ -108,6 +108,26 @@ private:
     // handoff; now Phase E finishes locally when feasible.
     bool synth_complete_with_models();
 
+    // Phase F: like Phase E but each SAT-model case is generalized to
+    // cover many inputs via greedy bit-dropping with a uniqueness
+    // check. For each model M, iterate over input bits; for each bit
+    // i, ask SAT: "F + (kept input lits minus i) + (joint undet y ≠
+    // M's values) UNSAT?". If yes, joint y = M's values is forced
+    // over inputs with bit i either way — drop bit i. Greedy across
+    // bits gives a minimal kept set; commit a single case covering
+    // that whole region.
+    //
+    // Soundness: the uniqueness check verifies that joint y = M is
+    // the ONLY joint Skolem over the (potentially exponential) kept
+    // region, so committing that joint value over the region is
+    // correct. Each iteration covers many inputs at once, lifting
+    // Phase E's |orig_sampl_cnf| ≤ 16 ceiling.
+    //
+    // Cost: O(|orig_sampl_cnf|) SAT calls per iteration (one per
+    // bit-drop attempt). Bounded by an iteration budget to keep
+    // runtime sane on poorly-converging inputs.
+    bool synth_complete_with_interp_generalization();
+
     // Phase C+D: incremental determinization (CADET's signature).
     //
     // Phase C — unique-consequence propagation. For each undetermined

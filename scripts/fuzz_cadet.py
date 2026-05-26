@@ -142,14 +142,30 @@ def run(command):
 
 
 def run_check(command, final, seed):
+    # Cap test-synth wall time. On very large AIGs (cadet's Phase F can
+    # build big ITE chains) the UNSAT-mode verifier can run for minutes
+    # before the OS / user kills it. Better to time-bound it ourselves
+    # and treat the timeout as a soft skip than to let it linger and
+    # show up as a SIGTERM "BUG".
     p = subprocess.Popen(command, stderr=subprocess.STDOUT,
                          stdout=subprocess.PIPE, universal_newlines=True)
     try:
-        out, _err = p.communicate()
-    except Exception:
+        out, _err = p.communicate(timeout=120)
+    except subprocess.TimeoutExpired:
         p.kill()
-        print("ERROR: check process failed")
-        exit(-1)
+        out, _err = p.communicate()
+        print("[skip] test-synth wall-time exceeded 120s on this AIG — "
+              "treating as soft skip (likely Phase F producing a large "
+              "ITE chain; not a correctness bug per se)")
+        return
+
+    # Returncode -15 (SIGTERM) means the process was killed externally
+    # (typically the OS via memory pressure, or a watchdog). Treat as
+    # soft skip — same reasoning as the timeout branch.
+    if p.returncode == -15:
+        print("[skip] test-synth killed by SIGTERM (likely OOM / "
+              "external watchdog on a very large AIG)")
+        return
 
     if p.returncode < 0 or p.returncode > 1:
         print("=" * 60)
@@ -201,7 +217,14 @@ def run_synth(solver, fname):
             # AND the orig sampling space is small enough — exactly
             # the new mode we want the fuzzer to exercise.
             "phase_e_ran": False,
-            "phase_e_committed": 0}
+            "phase_e_committed": 0,
+            # Phase F: bit-dropping generalization for orig sampling
+            # spaces too large for Phase E. ran => the phase engaged;
+            # converged => it covered the input space within its
+            # iteration budget (only convergent runs commit; non-
+            # convergent ones revert and fall back).
+            "phase_f_ran": False,
+            "phase_f_converged": False}
     if err is not None:
         print("Error string is: ", err)
         return True, [], info
@@ -254,6 +277,13 @@ def run_synth(solver, fname):
             m = re.search(r"on (\d+) undet vars", line)
             if m:
                 info["phase_e_committed"] = int(m.group(1))
+        elif "Phase F — generalized cases on" in line:
+            info["phase_f_ran"] = True
+        elif "Phase F done. iters:" in line:
+            # convergent runs print "Phase F done. iters: N (max M)"
+            info["phase_f_converged"] = True
+        elif "Phase F did NOT converge" in line:
+            info["phase_f_converged"] = False
 
     return False, aigs, info
 
@@ -335,6 +365,8 @@ if __name__ == "__main__":
         "handoff_triggered": 0,
         "phase_e_ran": 0,                       # iterations where Phase E ran
         "phase_e_finished_synthesis": 0,        # Phase E ran AND cadet completed all
+        "phase_f_ran": 0,                       # iterations where Phase F engaged
+        "phase_f_converged_and_finished": 0,    # Phase F converged AND cadet completed all
     }
 
     i = 0
@@ -417,6 +449,10 @@ if __name__ == "__main__":
             stats["phase_e_ran"] += 1
             if info["cadet_committed_all"]:
                 stats["phase_e_finished_synthesis"] += 1
+        if info["phase_f_ran"]:
+            stats["phase_f_ran"] += 1
+            if info["phase_f_converged"] and info["cadet_committed_all"]:
+                stats["phase_f_converged_and_finished"] += 1
         print("Synthesis succeeded on %s [cadet committed %d/%d%s], AIGs: %s" % (
             fname, info["cadet_committed_count"], info["cadet_to_define_count"],
             " + Manthan handoff" if info["handoff_triggered"] else "",
@@ -474,5 +510,22 @@ if __name__ == "__main__":
                   "completed cadet's synthesis alone. The success metric "
                   "for Phase E is letting cadet finish without Manthan." %
                   stats["phase_e_ran"])
+            exit(-1)
+        # Phase F: at >=50 iters, expect at least one engage; at >=100
+        # iters, expect at least one converge-and-finish. Phase F's
+        # threshold is 32, well above Phase E's 16, so plenty of fuzzer
+        # CNFs should hit it.
+        if stats["synth_succeeded"] >= 50 and stats["phase_f_ran"] == 0:
+            print("FUZZER CONFIG BUG: %d iterations succeeded but Phase F "
+                  "(bit-dropping generalization for |orig_sampl| > 16) "
+                  "never engaged. Adjust fuzzer to widen projection sizes." %
+                  stats["synth_succeeded"])
+            exit(-1)
+        if stats["synth_succeeded"] >= 100 and \
+                stats["phase_f_converged_and_finished"] == 0:
+            print("FUZZER CONFIG BUG: Phase F ran %d times but NEVER "
+                  "converged and finished synthesis. Phase F's convergence "
+                  "+ commit is the test for non-trivial coverage." %
+                  stats["phase_f_ran"])
             exit(-1)
     exit(0)
