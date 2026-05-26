@@ -16,6 +16,6 @@ html/*.js
 html/*.css
 html/*.wasm
 html/*.ts
-presentation
+presentation*
 
 /scripts/data/__pycache__
