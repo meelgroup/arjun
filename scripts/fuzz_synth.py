@@ -459,6 +459,15 @@ if __name__ == "__main__":
         else:
             solver += "--synthmore "
 
+        # ~25% of iterations: also enable --cadet 1. This stresses the
+        # cadet→Manthan handoff against fuzz_synth.py's full Manthan
+        # flag matrix (which fuzz_cadet.py keeps fixed). Cadet handles
+        # whatever it can; main.cpp falls through to the Manthan
+        # strategy ladder for the remainder, so behavior should be
+        # strictly ≥ Manthan-alone.
+        if random.choices([True, False], weights=[1, 3])[0]:
+            solver += "--cadet 1 "
+
         opts = [
             " --synthbve"
             , " --extend"
