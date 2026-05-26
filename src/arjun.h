@@ -1742,7 +1742,7 @@ public:
         int interp_repair_system = 0;
         // Adaptive per-var gating: blacklist a var when its mean
         // interp/conflict ratio exceeds the threshold. 0=off, 1=on.
-        int interp_repair_adaptive_gate = 0;
+        int interp_repair_adaptive_gate = 1;
         double interp_repair_adaptive_ratio_skip = 8.0;
         uint32_t interp_repair_adaptive_skip_window = 20;
         // Progress-based per-var gating: once a variable has been repaired
