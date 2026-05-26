@@ -68,7 +68,7 @@ forces `--unatedef 1 --unatedefrep 1` on every iteration and verifies the
 `fuzz_synth.py` only randomizes those flags so the rep-pass output is not
 always exercised. `fuzz_interp_repair.py` forces `--interprepair` on every
 iteration and randomizes the full set of `--interprepair*` knobs, so the
-Craig-interpolant repair path is always exercised.
+Craig-interpolant repair path is exercised.
 
 For anything touching `interp_repair.*` also build the unit test and run
 it (`./test-interp-repair`, also wired into `ctest`).
