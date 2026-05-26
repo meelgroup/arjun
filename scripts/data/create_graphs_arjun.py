@@ -544,7 +544,7 @@ def generate_cdf(fname2_s):
 
     with open(gnuplotfn, "w") as f:
         for term, out in [
-            ('pdfcairo size 20cm,15cm background "#d0d0d0"', pdf_file),
+            ('pdfcairo size 15cm,12cm background "#d0d0d0"', pdf_file),
             ('pngcairo size 800,600 background "#d0d0d0"',   png_file),
         ]:
             f.write(f'set terminal {term}\n')
