@@ -22,11 +22,11 @@
  THE SOFTWARE.
  */
 
-// Repair-based extension of the conditional unate-def search.
+// Repair-based extension of the equiv unate-def search.
 //
 // `synthesis_unate_def` already tries trivial Skolems (constant true/false
 // from the standard flip test) and one-literal definitions
-// `t = L` / `t = ~L` from the conditional probe. For variables that survive
+// `t = L` / `t = ~L` from the equiv probe. For variables that survive
 // both, this pass tries to synthesize a richer Boolean function for `test`
 // using a manthan-style counterexample-guided guess+refine loop.
 //
@@ -100,7 +100,7 @@
 //     With aux leaves, those vars differ between sides; we emit two
 //     encodings (Y' and Y) on commit.
 //   - Translation to ORIG-var-space uses the same sign convention as the
-//     conditional-unate code: leaf-sign XOR's `new_to_orig`'s sign flip;
+//     equiv-unate code: leaf-sign XOR's `new_to_orig`'s sign flip;
 //     the AIG output is XOR'd by `test_orig.sign()`. Works for any leaf.
 //
 // Knobs (Config):

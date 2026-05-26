@@ -36,11 +36,11 @@
 
 namespace ArjunInt {
 
-// Telemetry for the conditional-unate-def probe. Reset at the start of
+// Telemetry for the equiv-unate-def probe. Reset at the start of
 // each `synthesis_unate_def` call. All counts are over the inner
 // (per-test) loop so we can spot expensive vs. productive patterns.
-struct UnateDefCondStats {
-    // Tests where conditional probing was attempted at all (i.e. neither
+struct UnateDefEqStats {
+    // Tests where equiv probing was attempted at all (i.e. neither
     // standard-unate flip was UNSAT and both witnesses were captured).
     uint32_t tests_eligible = 0;
 
@@ -81,10 +81,10 @@ struct UnateDefCondStats {
     // a dependency cycle (test ∈ deps_recursive(L_orig)).
     uint64_t cands_skipped_cycle = 0;
 
-    // Time spent inside the conditional block (post-flips), seconds.
-    double time_in_cond = 0.0;
-    // SAT calls issued from inside the conditional block.
-    uint64_t cond_sat_calls = 0;
+    // Time spent inside the equiv block (post-flips), seconds.
+    double time_in_eq = 0.0;
+    // SAT calls issued from inside the equiv block.
+    uint64_t eq_sat_calls = 0;
 };
 
 class Unate {
@@ -120,37 +120,37 @@ class Unate {
         CMSat::Lit get_true_lit();
         void setup_y_prime_backward_defs();
         void build_indicators();
-        void build_cond_state();
+        void build_eq_state();
         bool process_test_var(uint32_t test);
         void log_pass_summary(uint32_t to_define_size_before);
 
-        // ===== Conditional unate-def probe state =====
+        // ===== Equiv unate-def probe state =====
         // Set up once at the start of synthesis_unate_def, then read/updated
-        // per-test inside try_cond_unate_def.
-        std::vector<uint32_t> cond_input_vars_list;      // sorted inputs
-        std::vector<uint32_t> cond_noninput_vars_list;   // sorted non-input candidates (to-define + already-tested non-backward-defined)
-        std::vector<uint32_t> cond_cand_pos;             // var -> global index in [inputs, noninputs], or NOT_INPUT
-        std::vector<std::vector<uint32_t>> cond_related_inputs;    // per to-define var, inputs sharing a clause
-        std::vector<std::vector<uint32_t>> cond_related_noninputs; // per to-define var, non-input candidates sharing a clause
-        std::vector<uint32_t> cond_cand_seen_gen;        // generation-counter dedup for cur_cands
-        uint32_t cond_cand_gen = 0;
-        std::vector<uint32_t> cond_cur_cands;            // reusable per-test candidate buffer
+        // per-test inside try_eq_unate_def.
+        std::vector<uint32_t> eq_input_vars_list;      // sorted inputs
+        std::vector<uint32_t> eq_noninput_vars_list;   // sorted non-input candidates (to-define + already-tested non-backward-defined)
+        std::vector<uint32_t> eq_cand_pos;             // var -> global index in [inputs, noninputs], or NOT_INPUT
+        std::vector<std::vector<uint32_t>> eq_related_inputs;    // per to-define var, inputs sharing a clause
+        std::vector<std::vector<uint32_t>> eq_related_noninputs; // per to-define var, non-input candidates sharing a clause
+        std::vector<uint32_t> eq_cand_seen_gen;        // generation-counter dedup for cur_cands
+        uint32_t eq_cand_gen = 0;
+        std::vector<uint32_t> eq_cur_cands;            // reusable per-test candidate buffer
         // Cycle-safety cache for non-input L: dep-recursive lookups on
         // l_orig.var(). Invalidated after every successful commit since the
         // new def changes the dep graph.
-        std::map<uint32_t, std::vector<uint32_t>> cond_deps_cache;
-        bool cond_enabled = false;
-        uint32_t cond_attempts_since_last_hit = 0;
-        uint32_t cond_new_defs = 0;
-        double cond_my_time = 0.0;                       // wall-clock baseline for verb_print
+        std::map<uint32_t, std::vector<uint32_t>> eq_deps_cache;
+        bool eq_enabled = false;
+        uint32_t eq_attempts_since_last_hit = 0;
+        uint32_t eq_new_defs = 0;
+        double eq_my_time = 0.0;                       // wall-clock baseline for verb_print
 
-        // Try to express `test` as a single input literal under a value-conditioned
-        // probe, using the two SAT witnesses from the standard-unate flips
+        // Try to express `test` as a single input literal (test = L or test = ~L),
+        // using the two SAT witnesses from the standard-unate flips
         // (projected to input vars in input_vals[0/1]). Returns true if a
         // definition was found and committed to `*cnf_ptr`.
-        bool try_cond_unate_def(uint32_t test);
+        bool try_eq_unate_def(uint32_t test);
 
-        UnateDefCondStats cond_stats;
+        UnateDefEqStats eq_stats;
 };
 
 } // namespace ArjunInt

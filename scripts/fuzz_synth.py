@@ -469,8 +469,8 @@ if __name__ == "__main__":
             , " --ctxsolver"
             , " --repairsolver"
             , " --unatedef"
-            , " --unatedefcond"
-            , " --unatedefcondnoninp"
+            , " --unatedefeq"
+            , " --unatedefeqnoninp"
             , " --unatedefrep"
             , " --bwequal"
             , " --learnuseall"
@@ -494,9 +494,9 @@ if __name__ == "__main__":
         solver += " --maxsatorder " + random.choice(["0", "1"])
         solver += " --fixedconf " + random.choice(["1", "10", "100", "1000"])
         solver += " --unatedefmaxconfl " + random.choice(["1", "100", "1000", "15000", "100000"])
-        solver += " --unatedefcondmax " + random.choice(["0", "1", "4", "16", "64", "1024"])
-        solver += " --unatedefcondconfl " + random.choice(["1", "10", "100", "1000", "100000"])
-        solver += " --unatedefconddry " + random.choice(["1", "10", "100", "100000"])
+        solver += " --unatedefeqmax " + random.choice(["0", "1", "4", "16", "64", "1024"])
+        solver += " --unatedefeqconfl " + random.choice(["1", "10", "100", "1000", "100000"])
+        solver += " --unatedefeqdry " + random.choice(["1", "10", "100", "100000"])
         # 0 = inner loop never runs (no commits at all); high values stress
         # the per-iteration refinement.
         solver += " --unatedefrepiters " + random.choice(["0", "1", "5", "30", "100", "10000"])

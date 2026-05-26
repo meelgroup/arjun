@@ -131,9 +131,9 @@ def run_arjun(fname, prefix):
         "--unatedefrepminextra", str(random.choice([0, 1, 3, 10])),
         # 0/1: refine H using all collected multi-cex models.
         "--unatedefrepmultipat", str(random.choice([0, 1])),
-        "--unatedefcond", str(random.choice([0, 1])),
-        "--unatedefcondmax", str(random.choice([0, 1, 16, 1024])),
-        "--unatedefconddry", str(random.choice([1, 10, 100, 100000])),
+        "--unatedefeq", str(random.choice([0, 1])),
+        "--unatedefeqmax", str(random.choice([0, 1, 16, 1024])),
+        "--unatedefeqdry", str(random.choice([1, 10, 100, 100000])),
         # keep manthan strategies tame so most runs finish fast
         "--mstrategy", "const(max_repairs=50),bve",
         fname,

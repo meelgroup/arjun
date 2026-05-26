@@ -101,7 +101,7 @@ struct UnateDefRepStats {
     uint64_t multipat_refine_calls = 0;     // extra process_cex calls on non-chosen models
 };
 
-// Repair-based extension of the conditional unate-def search. See the long
+// Repair-based extension of the equiv unate-def search. See the long
 // comment at the top of unate_def_rep.cpp for the algorithm. Runs once per
 // SimplifiedCNF; not reusable.
 class UnateDefRep {
