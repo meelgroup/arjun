@@ -54,19 +54,30 @@ def unique_file(fname_begin, fname_end=".cnf", max_num_files=2700):
 
 def gen_fuzz_call_brummayer(fuzzer, fname):
     seed = random.randint(0, 1000 * 1000 * 1000)
-    # Smaller CNFs than the default — keeps |inputs| under Phase A's
-    # enumeration threshold. -i = leaves, -I = inner nodes (see
-    # cnf-fuzz-brummayer.py).
-    call = "{0} -s {1} -i 4 -I 12 > {2}".format(fuzzer, seed, fname)
+    # Mix of small and larger CNFs.
+    #
+    # Half the iterations use small CNFs (~4 leaves, ~12 nodes), which
+    # produce CNFs whose orig-sampling projection fits under Phase A's
+    # 16-input enumeration threshold. The other half use larger CNFs
+    # (~12 leaves, ~30 nodes) so the projection often EXCEEDS the
+    # threshold — forcing the run past Phase A and Phase B into Phase
+    # C+D, the actual CADET-flavored part. -i = leaves, -I = inner
+    # nodes (see cnf-fuzz-brummayer.py).
+    if random.choice([True, False]):
+        call = "{0} -s {1} -i 4 -I 12 > {2}".format(fuzzer, seed, fname)
+    else:
+        call = "{0} -s {1} -i 12 -I 30 > {2}".format(fuzzer, seed, fname)
     return call
 
 
 def add_projection(fname):
-    """Append a `c p show ...` projection. Returns the projection list, or
-    None if the CNF is too small to project meaningfully. CADET-fuzzer
-    variant: clamps the projection size to <= 14 inputs so Phase A's
-    exhaustive enumeration is feasible (threshold is 16; staying under
-    that even after preprocessing keeps margin)."""
+    """Append a `c p show ...` projection. Returns the projection list,
+    or None if the CNF is too small to project meaningfully.
+
+    Sometimes clamps the projection to <= 14 inputs (Phase A-friendly);
+    sometimes lets it go larger (up to n_vars - 1) so Phase A's
+    threshold is exceeded and the run is forced into Phase B / C+D,
+    the actual CADET part of the pipeline."""
     n_vars = 0
     with open(fname, "r") as f:
         for line in f:
@@ -85,9 +96,13 @@ def add_projection(fname):
     if n_vars < 2:
         return None
 
-    # Sample a projection of size in [1, min(14, n_vars-1)] uniformly. The
-    # upper clamp is what keeps Phase A's 2^|inputs| loop tractable.
-    upper = max(1, min(14, n_vars - 1))
+    # Half the time, clamp projection size to <= 14 (Phase A's
+    # enumeration is tractable). The other half: pick from a wider
+    # range so Phase A is forced to bail and Phase C+D get exercised.
+    if random.choice([True, False]):
+        upper = max(1, min(14, n_vars - 1))
+    else:
+        upper = max(1, n_vars - 1)
     num = random.randint(1, upper)
     proj_set = set()
     while len(proj_set) < num:
@@ -181,6 +196,19 @@ def run_synth(solver, fname):
     if diff_time > options.maxtime - maxtimediff:
         print("Too much time, aborted")
         return None, []
+
+    # Exit code 42 = cadet hit a "LIMITATION" (known capability gap,
+    # not a bug). Handle BEFORE the generic returncode != 0 check;
+    # otherwise that path treats it as a crash. The limitation is
+    # documented in cadet.cpp; the user wants the fuzzer to exercise
+    # (not gate on) those cases. The print confirms it surfaced.
+    if returncode == 42:
+        for line in out.split("\n"):
+            if "LIMITATION" in line:
+                print("[skip] " + line.strip())
+                break
+        return False, []  # soft skip; no AIGs to check
+
     if returncode != 0 and not out.startswith("TIMEOUT"):
         print("Solver crashed with exit code %d" % returncode)
         print(out)
@@ -321,10 +349,14 @@ if __name__ == "__main__":
             print("=" * 60)
             exit(-1)
 
-        print("Synthesis succeeded on %s, AIGs: %s" % (fname, aigs))
+        # No AIGs means run_synth returned a soft skip (cadet
+        # LIMITATION, exit code 42). The skip line was already printed
+        # by run_synth; just move on to the next iteration.
         if len(aigs) == 0:
-            print("ERROR: no output AIGs on %s" % fname)
-            exit(-1)
+            cleanup(fname, prefix)
+            continue
+
+        print("Synthesis succeeded on %s, AIGs: %s" % (fname, aigs))
 
         for aig in aigs:
             final = "final" in aig

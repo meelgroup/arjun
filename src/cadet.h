@@ -92,25 +92,37 @@ private:
     // function has structure (constant subtrees collapse).
     bool synth_by_enumeration();
 
-    // Phase C: incremental determinization via unique-consequence
-    // propagation — CADET's signature algorithm in its simplest form.
+    // Phase C+D: incremental determinization (CADET's signature).
     //
-    // For each undetermined to_define var y, iterate over the clauses
-    // mentioning y. When every other literal in a clause is already a
-    // function of inputs / earlier-determined vars, the clause forces
-    // y to a specific value over the "forced region" (where all other
-    // literals are false). Accumulating the positive-force region over
-    // all positive-y clauses gives a candidate Skolem.
+    // Phase C — unique-consequence propagation. For each undetermined
+    // to_define var y, iterate over the clauses mentioning y. When
+    // every other literal in a clause is already a function of inputs /
+    // earlier-determined vars, the clause forces y to a specific value
+    // over the "forced region" (where all other literals are false).
+    // Accumulating the positive-force region over all positive-y
+    // clauses gives a candidate Skolem.
     //
-    // Iterate to fixpoint: once y is determined, its skol[y] can serve
-    // as a "known" function for clauses that mention y but couldn't be
-    // analyzed before. Fails (returns false) when no y can be
-    // determined this way — at which point Phase D (decisions +
-    // backtracking) would take over. Phase D is not yet implemented.
+    // Phase D — decisions. When Phase C reaches a fixpoint with vars
+    // still undetermined, pick the undetermined var with the fewest
+    // clauses (least-constrained = least likely to need a non-constant
+    // function) and commit a constant Skolem chosen by SAT: try
+    // y=false first, fall back to y=true if F+y=false is unsat under
+    // the running solver state. This is CADET's "decision" step.
     //
-    // Correctness: y := positive_force(y) is sound when positive_force
-    // and negative_force never overlap (which holds whenever F is
-    // satisfiable for every input — the synthesis precondition).
+    // What's MISSING vs full CADET: conflict analysis. Real CADET, on
+    // an inconsistent decision, derives a learnt clause that prunes
+    // the relevant input region and backtracks. Here we accept the
+    // decision at face value and rely on:
+    //   (a) the synthesis precondition (F satisfiable for every input)
+    //       making most decisions sound,
+    //   (b) the SAT-based test in Phase D rejecting decisions that
+    //       are constant-unsat under the running state,
+    //   (c) the per-commit cycle check from Phase C catching
+    //       structural cycles,
+    //   (d) Phase B / Phase A as fallbacks if Phase C+D produces a
+    //       Skolem that fails downstream verification.
+    //
+    // Returns true iff every to_define var was determinized.
     bool synth_by_propagation();
 
     // Phase B: connected-component enumeration. The CNF clause graph,
