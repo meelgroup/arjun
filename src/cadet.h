@@ -84,18 +84,21 @@ private:
     // affordable. This drives the simple v1 path.
     bool inputs_are_small() const;
 
-    // Phase A (v1): for each y in to_define, build its Skolem by enumerating
-    // every input assignment, finding a SAT model under the assumption, and
-    // taking y's value from that model. The Skolem becomes a DNF-style
-    // AIG: OR over the input-assignments-where-y-is-true of the matching
-    // input-conjunction.
+    // Phase A: for each y in to_define, build its Skolem by enumerating
+    // every orig-sampling-var assignment, calling SAT under the assumption,
+    // and reading y's value from the model. Each y's Skolem is then built
+    // as a Shannon-decomposition binary tree of ITEs over the sorted
+    // input vars — vastly smaller than a flat OR-of-minterms when the
+    // function has structure (constant subtrees collapse).
     bool synth_by_enumeration();
 
-    // Build an AIG that evaluates to TRUE iff the input vars (in `input`,
-    // sorted) take the values given by `vals` (indexed by sorted-input
-    // position).
-    ArjunNS::aig_ptr build_input_minterm(const std::vector<bool>& vals,
-                                         const std::vector<uint32_t>& sorted_inputs);
+    // Build a Skolem AIG from a value table by Shannon decomposition over
+    // `sorted_inputs`. `table[mask]` is the y-value for the input
+    // assignment whose bit i corresponds to sorted_inputs[i]. Identical
+    // sibling subtrees collapse, so constants and pure-literal cases come
+    // out at minimal cost.
+    ArjunNS::aig_ptr build_shannon_tree(const std::vector<bool>& table,
+                                        const std::vector<uint32_t>& sorted_inputs);
 
     // Inject the entire CNF into the given solver.
     template<typename S>

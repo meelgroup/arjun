@@ -105,16 +105,41 @@ bool Cadet::inputs_are_small() const {
     return orig_sampl_cnf.size() <= kSmallInputThreshold;
 }
 
-aig_ptr Cadet::build_input_minterm(const vector<bool>& vals,
-                                   const vector<uint32_t>& sorted_inputs) {
-    assert(vals.size() == sorted_inputs.size());
-    // AND across all input vars: AIG(x_i) if vals[i], else ~AIG(x_i).
-    aig_ptr acc = AIG::new_const(true);
-    for (size_t i = 0; i < sorted_inputs.size(); i++) {
-        aig_ptr lit = AIG::new_lit(sorted_inputs[i], /*neg=*/!vals[i]);
-        acc = AIG::new_and(acc, lit);
+aig_ptr Cadet::build_shannon_tree(const vector<bool>& table,
+                                  const vector<uint32_t>& sorted_inputs) {
+    // table is indexed by integer mask of length sorted_inputs.size().
+    // Bit i of the mask corresponds to sorted_inputs[i]. We Shannon-
+    // decompose bottom-up, level by level: at level L the surviving
+    // nodes cover 2^L leaves, addressed by the high (n-L) bits of the
+    // original mask. Pair-merge: level[i] = ITE(sorted_inputs[L],
+    //                                          high=level_prev[2i+1],
+    //                                          low=level_prev[2i]).
+    // ITE collapses to the common subtree when both children match, so
+    // constant regions vanish naturally.
+    const uint32_t n = sorted_inputs.size();
+    if (n == 0) {
+        assert(table.size() == 1);
+        return AIG::new_const(table[0]);
     }
-    return acc;
+    vector<aig_ptr> level;
+    level.reserve(table.size());
+    for (bool b : table) level.push_back(AIG::new_const(b));
+
+    for (uint32_t lvl = 0; lvl < n; lvl++) {
+        const uint32_t split_var = sorted_inputs[lvl];
+        const CMSat::Lit branch_lit(split_var, /*sign=*/false);
+        vector<aig_ptr> next;
+        next.reserve(level.size() / 2);
+        for (size_t i = 0; i + 1 < level.size(); i += 2) {
+            // level[i]   has bit `lvl` = 0  → low branch
+            // level[i+1] has bit `lvl` = 1  → high branch
+            // ITE(b, l, r) returns l when b is true.
+            next.push_back(AIG::new_ite(level[i + 1], level[i], branch_lit));
+        }
+        level = std::move(next);
+    }
+    assert(level.size() == 1);
+    return level[0];
 }
 
 bool Cadet::synth_by_enumeration() {
@@ -147,44 +172,39 @@ bool Cadet::synth_by_enumeration() {
     }
     const double t0 = cpuTime();
 
-    // For each y in to_define, accumulate an OR of input-minterms where y
-    // must be 1.
-    std::map<uint32_t, aig_ptr> skolem_pos;
-    for (uint32_t y : to_define) skolem_pos[y] = AIG::new_const(false);
+    // Collect a per-y value table over all 2^n_in input assignments. We
+    // build the AIG only AFTER the table is filled, via Shannon
+    // decomposition — much smaller than a flat OR-of-minterms.
+    const uint64_t n_assignments = 1ull << n_in;
+    std::map<uint32_t, vector<bool>> table;
+    for (uint32_t y : to_define) table[y].assign(n_assignments, false);
 
     MetaSolver solver(SolverType::cadical);
     inject_cnf(solver);
 
-    const uint64_t n_assignments = 1ull << n_in;
     vector<Lit> assumps;
     assumps.reserve(n_in);
-    vector<bool> vals(n_in);
     uint64_t sat_calls = 0;
     uint64_t unsat_calls = 0;
     for (uint64_t mask = 0; mask < n_assignments; mask++) {
         assumps.clear();
         for (uint32_t i = 0; i < n_in; i++) {
             const bool v = (mask >> i) & 1ull;
-            vals[i] = v;
             assumps.push_back(Lit(sorted_inputs[i], /*sign=*/!v));
         }
         const auto ret = solver.solve(&assumps);
         if (ret == CMSat::l_True) {
             sat_calls++;
             const auto& model = solver.get_model();
-            // For each to_define y, if model[y] == True, add this input
-            // minterm to skolem_pos[y].
             for (uint32_t y : to_define) {
                 assert(y < model.size());
-                if (model[y] == CMSat::l_True) {
-                    aig_ptr minterm = build_input_minterm(vals, sorted_inputs);
-                    skolem_pos[y] = AIG::new_or(skolem_pos[y], minterm);
-                }
+                if (model[y] == CMSat::l_True) table[y][mask] = true;
             }
         } else if (ret == CMSat::l_False) {
-            // Input combination has no satisfying assignment — the values
-            // of the to_define vars under this input are vacuously free.
-            // Default each y to FALSE here (no minterm added).
+            // Input combination has no satisfying assignment — y can be
+            // anything here. Leaving the table entry as `false` (default)
+            // is fine: Shannon decomposition will pull constant regions
+            // together, and "false" merges naturally with neighbours.
             unsat_calls++;
         } else {
             cout << "ERROR: [cadet] SAT solver returned UNKNOWN during enumeration"
@@ -193,17 +213,12 @@ bool Cadet::synth_by_enumeration() {
         }
     }
 
-    // Commit into skol[].
     skol.assign(cnf.nVars(), nullptr);
-    for (uint32_t v : input) {
-        // For inputs, the "Skolem" is just the var itself; not stored back
-        // into cnf.defs but used internally.
-        skol[v] = AIG::new_lit(v, /*neg=*/false);
+    for (uint32_t v : input) skol[v] = AIG::new_lit(v, /*neg=*/false);
+    for (uint32_t v : backward_defined) skol[v] = cnf.get_def(v);
+    for (uint32_t y : to_define) {
+        skol[y] = build_shannon_tree(table.at(y), sorted_inputs);
     }
-    for (uint32_t v : backward_defined) {
-        skol[v] = cnf.get_def(v);
-    }
-    for (uint32_t y : to_define) skol[y] = skolem_pos.at(y);
 
     if (conf.verb >= 1) {
         cout << "c o [cadet] Phase A done. SAT calls: " << sat_calls
