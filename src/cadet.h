@@ -92,6 +92,40 @@ private:
     // function has structure (constant subtrees collapse).
     bool synth_by_enumeration();
 
+    // Phase B: connected-component enumeration. The CNF clause graph,
+    // treating already-determined vars (orig sampling + extend-defined +
+    // backward-defined) as opaque sinks, partitions the to_define vars
+    // into connected components. Each component carries its own
+    // restricted set of "input" sinks; we Phase-A-enumerate each
+    // component over its restricted inputs only.
+    //
+    // Why a whole component at once (not one y at a time): the to_define
+    // vars in a component are jointly determined by F restricted to that
+    // component. Synthesizing them one at a time would let the SAT
+    // solver pick mutually-inconsistent values across calls.
+    //
+    // Why this scales: when F decomposes into many small components,
+    // each component's enumeration is 2^(small). The full-input
+    // exponential blowup (Phase A) only hits monolithic CNFs.
+    bool synth_by_components();
+
+    // Compute the connected component (of the CNF clause graph, with
+    // sinks at `stop_set` boundaries) containing `seed_var`. Output is
+    // split into:
+    //   - support_out: orig sampling vars reached (sinks; the component's
+    //     "inputs")
+    //   - to_def_out: to_define vars in the component (Skolems to build)
+    //   - clauses_out: clause indices that lie entirely inside the
+    //     component (their literals are subsumed by support ∪ to_def ∪
+    //     other stop_set members) — i.e. the clauses to satisfy. Each
+    //     clause index that touches the component is included.
+    void collect_component(uint32_t seed_var,
+                           const std::set<uint32_t>& stop_set,
+                           const std::vector<std::vector<uint32_t>>& var_to_clauses,
+                           std::vector<uint32_t>& support_out,
+                           std::vector<uint32_t>& to_def_out,
+                           std::vector<uint32_t>& clauses_out) const;
+
     // Build a Skolem AIG from a value table by Shannon decomposition over
     // `sorted_inputs`. `table[mask]` is the y-value for the input
     // assignment whose bit i corresponds to sorted_inputs[i]. Identical

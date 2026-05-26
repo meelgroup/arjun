@@ -228,6 +228,182 @@ bool Cadet::synth_by_enumeration() {
     return true;
 }
 
+void Cadet::collect_component(uint32_t seed_var,
+                              const set<uint32_t>& stop_set,
+                              const vector<vector<uint32_t>>& var_to_clauses,
+                              vector<uint32_t>& support_out,
+                              vector<uint32_t>& to_def_out,
+                              vector<uint32_t>& clauses_out) const {
+    // BFS over the clause graph: a clause is "expanded" (its other vars
+    // pushed onto the frontier) the first time we reach it. stop_set
+    // vars terminate expansion — we record them as boundary but don't
+    // continue through their clauses.
+    const uint32_t n_vars = cnf.nVars();
+    vector<char> visited_var(n_vars, 0);
+    vector<char> visited_clause(cnf.get_clauses().size(), 0);
+    vector<uint32_t> frontier;
+    frontier.push_back(seed_var);
+    visited_var[seed_var] = 1;
+
+    set<uint32_t> support, to_def;
+    set<uint32_t> clauses_set;
+    while (!frontier.empty()) {
+        uint32_t v = frontier.back();
+        frontier.pop_back();
+        if (stop_set.count(v)) {
+            // Sink — orig sampling var. Record as a boundary input and
+            // do NOT expand its clauses (those clauses are owned by
+            // some "other" component that the input separates).
+            support.insert(v);
+            continue;
+        }
+        // Otherwise v is one of: to_define, extend-defined, or
+        // backward-defined. All three: we expand their clauses. Only
+        // to_define vars get recorded for Skolem-building.
+        if (to_define.count(v)) to_def.insert(v);
+        for (uint32_t cls_idx : var_to_clauses[v]) {
+            if (visited_clause[cls_idx]) continue;
+            visited_clause[cls_idx] = 1;
+            clauses_set.insert(cls_idx);
+            for (const auto& l : cnf.get_clauses()[cls_idx]) {
+                if (!visited_var[l.var()]) {
+                    visited_var[l.var()] = 1;
+                    frontier.push_back(l.var());
+                }
+            }
+        }
+    }
+    support_out.assign(support.begin(), support.end());
+    std::sort(support_out.begin(), support_out.end());
+    to_def_out.assign(to_def.begin(), to_def.end());
+    std::sort(to_def_out.begin(), to_def_out.end());
+    clauses_out.assign(clauses_set.begin(), clauses_set.end());
+    std::sort(clauses_out.begin(), clauses_out.end());
+}
+
+bool Cadet::synth_by_components() {
+    // Build var → clause-index map once.
+    const auto& clauses = cnf.get_clauses();
+    vector<vector<uint32_t>> var_to_clauses(cnf.nVars());
+    for (uint32_t ci = 0; ci < clauses.size(); ci++) {
+        for (const auto& l : clauses[ci]) var_to_clauses[l.var()].push_back(ci);
+    }
+
+    // Sinks for BFS: ONLY the orig sampling vars. We deliberately do
+    // NOT stop at extend-defined or backward-defined vars: those have
+    // AIG defs that ultimately bottom out at orig sampling vars, and
+    // F's clauses constraining them connect them to the same orig
+    // sampling vars that other components might also touch. If we
+    // stopped at them, two "components" could implicitly share the
+    // same orig sampling var via defined-intermediate boundary nodes;
+    // their independently-built Skolems would then disagree on that
+    // shared input, producing wrong AIGs (verified via test-synth on
+    // the fuzzer seed 9340754230162260130).
+    //
+    // Trade-off: this makes components larger (they grow through every
+    // defined intermediate var), so Phase B helps less on CNFs where
+    // backward/extend has already linked everything. Phase C will be
+    // the answer for those cases.
+    set<uint32_t> stop_set = orig_sampl_cnf;
+
+    if (conf.verb >= 1) {
+        cout << "c o [cadet] Phase B — clause-graph component enumeration"
+             << endl;
+    }
+    const double t0 = cpuTime();
+
+    // Pre-load a single SAT solver with the full CNF. We'll reuse it
+    // across all components, calling it under different assumption sets.
+    // (The full CNF on the solver is fine: extra constraints outside
+    // the current component can only be more restrictive, never less,
+    // and within a component the answer is the same as if we'd loaded
+    // only the component's clauses.)
+    MetaSolver solver(SolverType::cadical);
+    inject_cnf(solver);
+
+    skol.assign(cnf.nVars(), nullptr);
+    for (uint32_t v : input) skol[v] = AIG::new_lit(v, /*neg=*/false);
+    for (uint32_t v : backward_defined) skol[v] = cnf.get_def(v);
+
+    set<uint32_t> not_yet_done(to_define.begin(), to_define.end());
+    uint64_t total_sat = 0, total_unsat = 0;
+    uint64_t max_comp_inputs = 0, max_comp_to_def = 0;
+    uint32_t n_components = 0;
+
+    while (!not_yet_done.empty()) {
+        const uint32_t seed = *not_yet_done.begin();
+        vector<uint32_t> comp_inputs, comp_to_def, comp_cls;
+        collect_component(seed, stop_set, var_to_clauses,
+                          comp_inputs, comp_to_def, comp_cls);
+        n_components++;
+        max_comp_inputs = std::max<uint64_t>(max_comp_inputs, comp_inputs.size());
+        max_comp_to_def = std::max<uint64_t>(max_comp_to_def, comp_to_def.size());
+
+        if (comp_inputs.size() > kSmallInputThreshold) {
+            if (conf.verb >= 1) {
+                cout << "c o [cadet] Phase B aborts: component seeded at y="
+                     << (seed + 1) << " has " << comp_inputs.size()
+                     << " inputs > threshold " << kSmallInputThreshold << endl;
+            }
+            return false;
+        }
+        if (conf.verb >= 2) {
+            cout << "c o [cadet]   component #" << n_components
+                 << ": " << comp_inputs.size() << " inputs, "
+                 << comp_to_def.size() << " to_define, "
+                 << comp_cls.size() << " clauses" << endl;
+        }
+
+        // Enumerate over THIS component's inputs only. All to_define
+        // vars in the component get their value from the same SAT call,
+        // so their Skolems are mutually consistent. Inputs outside the
+        // component are propagated freely by the SAT solver; their
+        // choice doesn't affect this component because F decomposes
+        // along the boundary.
+        const uint64_t n_assign = 1ull << comp_inputs.size();
+        std::map<uint32_t, vector<bool>> tables;
+        for (uint32_t y : comp_to_def) tables[y].assign(n_assign, false);
+
+        vector<Lit> assumps;
+        assumps.reserve(comp_inputs.size());
+        for (uint64_t mask = 0; mask < n_assign; mask++) {
+            assumps.clear();
+            for (size_t i = 0; i < comp_inputs.size(); i++) {
+                const bool v = (mask >> i) & 1ull;
+                assumps.push_back(Lit(comp_inputs[i], /*sign=*/!v));
+            }
+            const auto ret = solver.solve(&assumps);
+            if (ret == CMSat::l_True) {
+                total_sat++;
+                const auto& model = solver.get_model();
+                for (uint32_t y : comp_to_def) {
+                    if (model[y] == CMSat::l_True) tables[y][mask] = true;
+                }
+            } else if (ret == CMSat::l_False) {
+                total_unsat++; // don't-care for this input
+            } else {
+                cout << "ERROR: [cadet] SAT solver returned UNKNOWN in Phase B"
+                     << endl;
+                return false;
+            }
+        }
+
+        for (uint32_t y : comp_to_def) {
+            skol[y] = build_shannon_tree(tables.at(y), comp_inputs);
+            not_yet_done.erase(y);
+        }
+    }
+
+    if (conf.verb >= 1) {
+        cout << "c o [cadet] Phase B done. components: " << n_components
+             << " max inputs/comp: " << max_comp_inputs
+             << " max to_def/comp: " << max_comp_to_def
+             << " SAT/UNSAT: " << total_sat << "/" << total_unsat
+             << " T: " << fixed << setprecision(2) << (cpuTime() - t0) << endl;
+    }
+    return true;
+}
+
 void Cadet::commit_definitions() {
     // Build a vector indexed by var, holding the Skolem AIG for each
     // to_define var (and nullptr elsewhere) — exactly the form
@@ -280,20 +456,30 @@ SimplifiedCNF Cadet::do_cadet() {
              << " |backward_defined|=" << backward_defined.size() << endl;
     }
 
-    // ---- Phase A: small-input enumeration ----
-    if (inputs_are_small()) {
-        if (!synth_by_enumeration()) {
-            cout << "ERROR: [cadet] Phase A failed; Phase B/C not yet implemented"
-                 << endl;
-            std::exit(EXIT_FAILURE);
-        }
-    } else {
-        // TODO: Phase B/C — incremental determinization for large inputs.
-        cout << "ERROR: [cadet] " << orig_sampl_cnf.size() << " orig sampling "
-             << "vars exceed enumeration threshold " << kSmallInputThreshold
-             << ". Phase B (unique-consequence propagation) and Phase C "
-             << "(decisions + conflict analysis) are not yet implemented. "
-             << "Use --cadet 0 (the default Manthan path) for this benchmark."
+    // ---- Phase B: connected-component enumeration. Decompose the
+    // clause graph (treating inputs and backward_defined as sinks) into
+    // components; each component carries its own bounded input set and
+    // its to_define vars are jointly enumerated. Scales past Phase A's
+    // global-threshold gate when F decomposes naturally.
+    bool done = synth_by_components();
+
+    // ---- Phase A fallback: global enumeration. Only viable for
+    // pathologically small problems where every y touches every input.
+    // For now we only try this when |orig_sampl_cnf| is itself small;
+    // larger problems fall through to Phase C (not yet implemented).
+    if (!done && inputs_are_small()) {
+        done = synth_by_enumeration();
+    }
+
+    if (!done) {
+        // TODO: Phase C — decisions + conflict analysis for the hard cases.
+        cout << "ERROR: [cadet] Phase B and Phase A both failed. " << endl
+             << "       |orig_sampl| = " << orig_sampl_cnf.size()
+             << " is too large for Phase A's global enumeration, and at "
+             << "least one to_define var has a local support that's also "
+             << "too large for Phase B. Phase C (decisions + conflict "
+             << "analysis) — the proper incremental-determinization loop "
+             << "— is not yet implemented. Use --cadet 0 for now."
              << endl;
         std::exit(EXIT_FAILURE);
     }
