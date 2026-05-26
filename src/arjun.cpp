@@ -508,17 +508,14 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig
     // fresh aig_lits with XOR'd edge signs — so a full rebuild.
     std::unordered_map<const AIG*, aig_lit> cache;
 
-    std::function<aig_lit(const aig_ptr&)> rebuild = [&](const aig_ptr& aig) -> aig_lit {
-        if (aig == nullptr) return aig_lit();
-        auto it = cache.find(aig.get());
-        if (it != cache.end()) {
-            // Cache stores the rebuilt positive-value edge for `aig.node`.
-            // Apply the incoming edge sign on the way out.
-            return aig_lit(it->second.node, it->second.neg ^ aig.neg);
-        }
+    // Iterative post-order rebuild. The cache stores the rebuilt
+    // positive-edge form per source node; outer edge sign is applied
+    // on the way out. Iterative because proof-driven interpolant AIGs
+    // can be deep enough that the recursive form overflows the stack.
+    auto build_node = [&](const AIG* src) {
         aig_lit pos_result;
-        if (aig->type == AIGT::t_lit) {
-            Lit l = Lit(aig->var, false);
+        if (src->type == AIGT::t_lit) {
+            Lit l = Lit(src->var, false);
             if (back_map.has_value()) {
                 if(back_map->get().count(l.var()))
                     l = back_map->get().at(l.var()) ^ l.sign();
@@ -526,23 +523,54 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig
             assert(l.var() < max_num_vars);
             l = new_to_orig_var.at(l.var()) ^ l.sign();
             pos_result = AIG::new_lit(l.var(), l.sign());
-        } else if (aig->type == AIGT::t_const) {
+        } else if (src->type == AIGT::t_const) {
             pos_result = AIG::new_const(true);
-        } else if (aig->type == AIGT::t_and) {
-            aig_lit lc = rebuild(aig->l);
-            aig_lit rc = rebuild(aig->r);
+        } else if (src->type == AIGT::t_and) {
+            auto it_l = cache.find(src->l.get());
+            auto it_r = cache.find(src->r.get());
+            aig_lit lcp = (it_l != cache.end()) ? it_l->second : aig_lit();
+            aig_lit rcp = (it_r != cache.end()) ? it_r->second : aig_lit();
+            aig_lit lc(lcp.node, lcp.neg ^ src->l.neg);
+            aig_lit rc(rcp.node, rcp.neg ^ src->r.neg);
             pos_result = AIG::new_and(lc, rc);
         } else {
             assert(false && "Unknown AIG type");
             std::exit(EXIT_FAILURE);
         }
-        cache[aig.get()] = pos_result;
+        cache[src] = pos_result;
+    };
+
+    auto rebuild_iter = [&](const aig_ptr& aig) -> aig_lit {
+        if (aig == nullptr) return aig_lit();
+        if (!cache.count(aig.get())) {
+            struct Frame { const AIG* src; bool children_done; };
+            std::vector<Frame> stack;
+            stack.reserve(64);
+            stack.push_back({aig.get(), false});
+            while (!stack.empty()) {
+                Frame& f = stack.back();
+                const AIG* src = f.src;
+                if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
+                if (src->type == AIGT::t_and && !f.children_done) {
+                    f.children_done = true;
+                    const AIG* ln = src->l.get();
+                    const AIG* rn = src->r.get();
+                    stack.push_back({rn, false});
+                    stack.push_back({ln, false});
+                } else {
+                    build_node(src);
+                    stack.pop_back();
+                }
+            }
+        }
+        auto it = cache.find(aig.get());
+        aig_lit pos_result = (it != cache.end()) ? it->second : aig_lit();
         return aig_lit(pos_result.node, pos_result.neg ^ aig.neg);
     };
 
     vector<aig_ptr> aigs;
     aigs.reserve(aigs_orig.size());
-    for (const auto& a : aigs_orig) aigs.push_back(rebuild(a));
+    for (const auto& a : aigs_orig) aigs.push_back(rebuild_iter(a));
 
     for(uint32_t v = 0; v < aigs.size(); ++v) {
         auto& aig = aigs[v];
@@ -2792,81 +2820,125 @@ DLL_PUBLIC aig_ptr AIG::simplify(aig_ptr aig) {
 
 // CSE rebuild. Each AND node is keyed on (type, var, l_nid, l_neg, r_nid, r_neg).
 // Only the AND *node* is shared; the outer edge sign is applied by the caller.
+// Iterative post-order — see AIG::simplify for the reasoning.
 aig_ptr AIG::simplify_cse(aig_ptr aig, map<AIGKey, aig_node_ptr>& cse_map, unordered_map<const AIG*, aig_node_ptr>& cache) {
     if (!aig) return nullptr;
 
-    std::function<aig_node_ptr(const AIG*)> rebuild = [&](const AIG* src) -> aig_node_ptr {
-        if (!src) return nullptr;
-        auto it = cache.find(src);
-        if (it != cache.end()) return it->second;
-
-        if (src->type == AIGT::t_const || src->type == AIGT::t_lit) {
-            // Leaves are keyed for dedup across the whole simplification pass.
-            AIGKey key(src->type, src->var, 0, false, 0, false);
-            auto cit = cse_map.find(key);
-            if (cit != cse_map.end()) { cache[src] = cit->second; return cit->second; }
-            auto node = make_shared<AIG>();
-            node->type = src->type;
-            node->var = src->var;
-            cse_map[key] = node;
-            cache[src] = node;
-            return node;
-        }
-        assert(src->type == AIGT::t_and);
-
-        auto ln = rebuild(src->l.get());
-        auto rn = rebuild(src->r.get());
-        aig_lit le(ln, src->l.neg);
-        aig_lit re(rn, src->r.neg);
-        // Canonicalise operand order for AND (commutative).
-        if (le.get() && re.get() && le->nid < re->nid) std::swap(le, re);
-        AIGKey key(src->type, src->var, le.get() ? le->nid : 0, le.neg,
-                                       re.get() ? re->nid : 0, re.neg);
+    auto build_leaf = [&](const AIG* src) -> aig_node_ptr {
+        // Leaves are keyed for dedup across the whole simplification pass.
+        AIGKey key(src->type, src->var, 0, false, 0, false);
         auto cit = cse_map.find(key);
         if (cit != cse_map.end()) { cache[src] = cit->second; return cit->second; }
-
         auto node = make_shared<AIG>();
         node->type = src->type;
         node->var = src->var;
-        node->l = le;
-        node->r = re;
         cse_map[key] = node;
         cache[src] = node;
         return node;
     };
 
-    return aig_lit(rebuild(aig.get()), aig.neg);
+    struct Frame { const AIG* src; bool children_done; };
+    std::vector<Frame> stack;
+    stack.reserve(64);
+    stack.push_back({aig.get(), false});
+
+    while (!stack.empty()) {
+        Frame& f = stack.back();
+        const AIG* src = f.src;
+        if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
+        if (src->type == AIGT::t_const || src->type == AIGT::t_lit) {
+            build_leaf(src);
+            stack.pop_back();
+            continue;
+        }
+        assert(src->type == AIGT::t_and);
+        if (!f.children_done) {
+            f.children_done = true;
+            const AIG* ln = src->l.get();
+            const AIG* rn = src->r.get();
+            stack.push_back({rn, false});
+            stack.push_back({ln, false});
+        } else {
+            auto it_l = cache.find(src->l.get());
+            auto it_r = cache.find(src->r.get());
+            aig_node_ptr ln = (it_l != cache.end()) ? it_l->second : nullptr;
+            aig_node_ptr rn = (it_r != cache.end()) ? it_r->second : nullptr;
+            aig_lit le(ln, src->l.neg);
+            aig_lit re(rn, src->r.neg);
+            // Canonicalise operand order for AND (commutative).
+            if (le.get() && re.get() && le->nid < re->nid) std::swap(le, re);
+            AIGKey key(src->type, src->var, le.get() ? le->nid : 0, le.neg,
+                                           re.get() ? re->nid : 0, re.neg);
+            auto cit = cse_map.find(key);
+            if (cit != cse_map.end()) { cache[src] = cit->second; stack.pop_back(); continue; }
+
+            auto node = make_shared<AIG>();
+            node->type = src->type;
+            node->var = src->var;
+            node->l = le;
+            node->r = re;
+            cse_map[key] = node;
+            cache[src] = node;
+            stack.pop_back();
+        }
+    }
+
+    auto it = cache.find(aig.get());
+    aig_node_ptr root = (it != cache.end()) ? it->second : nullptr;
+    return aig_lit(root, aig.neg);
 }
 
 // Rebuild the AIG tree bottom-up, running all algebraic simplifications
 // through the new_and / new_const / new_lit constructors. The cache stores, for
 // every source node, the rebuilt signed-edge form of that node's POSITIVE
 // value; the outer edge sign from the caller is applied on the final return.
+// Iterative post-order via an explicit stack — proof-driven interpolants
+// can be deep enough that a recursive rebuild blows the program stack.
 aig_ptr AIG::simplify(aig_ptr aig, unordered_map<const AIG*, aig_lit>& cache) {
     if (!aig) return nullptr;
 
-    std::function<aig_lit(const AIG*)> rebuild = [&](const AIG* src) -> aig_lit {
-        if (!src) return aig_lit();
-        auto it = cache.find(src);
-        if (it != cache.end()) return it->second;
-        aig_lit result;
-        if (src->type == AIGT::t_const) {
-            result = AIG::new_const(true);
-        } else if (src->type == AIGT::t_lit) {
-            result = AIG::new_lit(src->var, false);
+    struct Frame { const AIG* src; bool children_done; };
+    std::vector<Frame> stack;
+    stack.reserve(64);
+    stack.push_back({aig.get(), false});
+
+    while (!stack.empty()) {
+        Frame& f = stack.back();
+        const AIG* src = f.src;
+        if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
+        if (!f.children_done) {
+            if (src->type == AIGT::t_const) {
+                cache[src] = AIG::new_const(true);
+                stack.pop_back();
+            } else if (src->type == AIGT::t_lit) {
+                cache[src] = AIG::new_lit(src->var, false);
+                stack.pop_back();
+            } else {
+                assert(src->type == AIGT::t_and);
+                f.children_done = true;
+                // Pointer to f is invalidated by push_back, so capture
+                // children up-front. Right then left, so left is processed
+                // first when popped (LIFO).
+                const AIG* ln = src->l.get();
+                const AIG* rn = src->r.get();
+                stack.push_back({rn, false});
+                stack.push_back({ln, false});
+            }
         } else {
             assert(src->type == AIGT::t_and);
-            aig_lit lpos = rebuild(src->l.get());
-            aig_lit rpos = rebuild(src->r.get());
+            auto it_l = cache.find(src->l.get());
+            auto it_r = cache.find(src->r.get());
+            aig_lit lpos = (it_l != cache.end()) ? it_l->second : aig_lit();
+            aig_lit rpos = (it_r != cache.end()) ? it_r->second : aig_lit();
             aig_lit l_edge(lpos.node, lpos.neg ^ src->l.neg);
             aig_lit r_edge(rpos.node, rpos.neg ^ src->r.neg);
-            result = AIG::new_and(l_edge, r_edge);
+            cache[src] = AIG::new_and(l_edge, r_edge);
+            stack.pop_back();
         }
-        cache[src] = result;
-        return result;
-    };
+    }
 
-    aig_lit rebuilt_pos = rebuild(aig.get());
+    auto it = cache.find(aig.get());
+    aig_lit rebuilt_pos = (it != cache.end()) ? it->second : aig_lit();
     return aig_lit(rebuilt_pos.node, rebuilt_pos.neg ^ aig.neg);
 }
 

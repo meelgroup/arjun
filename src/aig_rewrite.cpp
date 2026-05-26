@@ -210,21 +210,47 @@ aig_lit AIGRewriter::make_canonical(const aig_lit& l, const aig_lit& r) {
 
 aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
     if (!edge) return aig_lit();
-    auto it = cache.find(edge.get());
-    if (it != cache.end()) {
-        return aig_lit(it->second.node, it->second.neg ^ edge.neg);
-    }
 
-    aig_lit pos;
-    if (edge->type == AIGT::t_const) {
-        pos = cached_const(true);
-    } else if (edge->type == AIGT::t_lit) {
-        pos = cached_lit(edge->var, false);
-    } else {
-        assert(edge->type == AIGT::t_and);
-        const aig_lit l = simplify_pass(edge->l, cache);
-        const aig_lit r = simplify_pass(edge->r, cache);
+    // Iterative post-order — deep AIGs (proof-driven interpolants can hit
+    // hundreds of thousands of nodes) overflow the program stack if we
+    // recurse straight through edge->l / edge->r.
+    struct Frame { const AIG* src; bool children_done; };
+    std::vector<Frame> stack;
+    stack.reserve(64);
+    stack.push_back({edge.get(), false});
 
+    while (!stack.empty()) {
+        Frame& f = stack.back();
+        const AIG* src = f.src;
+        if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
+        if (src->type != AIGT::t_and) {
+            cache[src] = (src->type == AIGT::t_const)
+                ? cached_const(true)
+                : cached_lit(src->var, false);
+            stack.pop_back();
+            continue;
+        }
+        if (!f.children_done) {
+            f.children_done = true;
+            const AIG* ln = src->l.get();
+            const AIG* rn = src->r.get();
+            stack.push_back({rn, false});
+            stack.push_back({ln, false});
+            continue;
+        }
+
+        // AND node, children done — fetch them as if returned from a
+        // recursive call (rebuilt positive edge composed with the source
+        // edge's sign).
+        auto it_lc = cache.find(src->l.get());
+        auto it_rc = cache.find(src->r.get());
+        aig_lit lcached = (it_lc != cache.end()) ? it_lc->second : aig_lit();
+        aig_lit rcached = (it_rc != cache.end()) ? it_rc->second : aig_lit();
+        const aig_lit l(lcached.node, lcached.neg ^ src->l.neg);
+        const aig_lit r(rcached.node, rcached.neg ^ src->r.neg);
+
+        aig_lit pos;
+        {
         if (l->type == AIGT::t_const) {
             stats.const_prop++;
             pos = l.neg ? cached_const(false) : r;  // FALSE∧x=FALSE, TRUE∧x=x
@@ -463,31 +489,58 @@ aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
         }
 
         if (!pos) pos = make_canonical(l, r);
+        }
+        cache[src] = pos;
+        stack.pop_back();
     }
 
-    cache[edge.get()] = pos;
-    return aig_lit(pos.node, pos.neg ^ edge.neg);
+    auto it = cache.find(edge.get());
+    aig_lit cached = (it != cache.end()) ? it->second : aig_lit();
+    return aig_lit(cached.node, cached.neg ^ edge.neg);
 }
 
 // ========== Pass 2: Structural hashing ==========
 
 aig_lit AIGRewriter::hash_cons(const aig_lit& edge, NodeRebuildMap& cache) {
     if (!edge) return aig_lit();
-    auto it = cache.find(edge.get());
-    if (it != cache.end()) return aig_lit(it->second.node, it->second.neg ^ edge.neg);
 
-    aig_lit pos;
-    if (edge->type == AIGT::t_and) {
-        aig_lit l = hash_cons(edge->l, cache);
-        aig_lit r = hash_cons(edge->r, cache);
-        pos = make_canonical(l, r);
-    } else if (edge->type == AIGT::t_const) {
-        pos = cached_const(true);
-    } else {
-        pos = cached_lit(edge->var, false);
+    struct Frame { const AIG* src; bool children_done; };
+    std::vector<Frame> stack;
+    stack.reserve(64);
+    stack.push_back({edge.get(), false});
+
+    while (!stack.empty()) {
+        Frame& f = stack.back();
+        const AIG* src = f.src;
+        if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
+        if (src->type != AIGT::t_and) {
+            cache[src] = (src->type == AIGT::t_const)
+                ? cached_const(true)
+                : cached_lit(src->var, false);
+            stack.pop_back();
+            continue;
+        }
+        if (!f.children_done) {
+            f.children_done = true;
+            const AIG* ln = src->l.get();
+            const AIG* rn = src->r.get();
+            stack.push_back({rn, false});
+            stack.push_back({ln, false});
+            continue;
+        }
+        auto it_lc = cache.find(src->l.get());
+        auto it_rc = cache.find(src->r.get());
+        aig_lit lcached = (it_lc != cache.end()) ? it_lc->second : aig_lit();
+        aig_lit rcached = (it_rc != cache.end()) ? it_rc->second : aig_lit();
+        aig_lit l(lcached.node, lcached.neg ^ src->l.neg);
+        aig_lit r(rcached.node, rcached.neg ^ src->r.neg);
+        cache[src] = make_canonical(l, r);
+        stack.pop_back();
     }
-    cache[edge.get()] = pos;
-    return aig_lit(pos.node, pos.neg ^ edge.neg);
+
+    auto it = cache.find(edge.get());
+    aig_lit cached = (it != cache.end()) ? it->second : aig_lit();
+    return aig_lit(cached.node, cached.neg ^ edge.neg);
 }
 
 // ========== Pass 3: Multi-level absorption ==========
@@ -500,16 +553,40 @@ aig_lit AIGRewriter::hash_cons(const aig_lit& edge, NodeRebuildMap& cache) {
 
 aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
     if (!edge) return aig_lit();
-    auto it = cache.find(edge.get());
-    if (it != cache.end()) return aig_lit(it->second.node, it->second.neg ^ edge.neg);
 
-    aig_lit pos;
-    if (edge->type != AIGT::t_and) {
-        if (edge->type == AIGT::t_const) pos = cached_const(true);
-        else pos = cached_lit(edge->var, false);
-    } else {
-        const aig_lit l = deep_absorb(edge->l, cache);
-        const aig_lit r = deep_absorb(edge->r, cache);
+    struct Frame { const AIG* src; bool children_done; };
+    std::vector<Frame> stack;
+    stack.reserve(64);
+    stack.push_back({edge.get(), false});
+
+    while (!stack.empty()) {
+        Frame& f = stack.back();
+        const AIG* src = f.src;
+        if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
+        if (src->type != AIGT::t_and) {
+            cache[src] = (src->type == AIGT::t_const)
+                ? cached_const(true)
+                : cached_lit(src->var, false);
+            stack.pop_back();
+            continue;
+        }
+        if (!f.children_done) {
+            f.children_done = true;
+            const AIG* ln = src->l.get();
+            const AIG* rn = src->r.get();
+            stack.push_back({rn, false});
+            stack.push_back({ln, false});
+            continue;
+        }
+
+        auto it_lc = cache.find(src->l.get());
+        auto it_rc = cache.find(src->r.get());
+        aig_lit lcached = (it_lc != cache.end()) ? it_lc->second : aig_lit();
+        aig_lit rcached = (it_rc != cache.end()) ? it_rc->second : aig_lit();
+        const aig_lit l(lcached.node, lcached.neg ^ src->l.neg);
+        const aig_lit r(rcached.node, rcached.neg ^ src->r.neg);
+        aig_lit pos;
+        {
         assert(l.node && r.node);  // t_and children are always non-null
 
         // Fast path: if neither child is a proper AND (positive-edge,
@@ -738,10 +815,14 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
                 }
             }
         }
+        }
+        cache[src] = pos;
+        stack.pop_back();
     }
 
-    cache[edge.get()] = pos;
-    return aig_lit(pos.node, pos.neg ^ edge.neg);
+    auto it = cache.find(edge.get());
+    aig_lit cached = (it != cache.end()) ? it->second : aig_lit();
+    return aig_lit(cached.node, cached.neg ^ edge.neg);
 }
 
 // ========== Pass 4: ITE chain depth reduction ==========
@@ -752,16 +833,40 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
 
 aig_lit AIGRewriter::flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cache) {
     if (!edge) return aig_lit();
-    auto it = cache.find(edge.get());
-    if (it != cache.end()) return aig_lit(it->second.node, it->second.neg ^ edge.neg);
 
-    aig_lit pos;
-    if (edge->type != AIGT::t_and) {
-        if (edge->type == AIGT::t_const) pos = cached_const(true);
-        else pos = cached_lit(edge->var, false);
-    } else {
-        const aig_lit l = flatten_ite_chains(edge->l, cache);
-        const aig_lit r = flatten_ite_chains(edge->r, cache);
+    struct Frame { const AIG* src; bool children_done; };
+    std::vector<Frame> stack;
+    stack.reserve(64);
+    stack.push_back({edge.get(), false});
+
+    while (!stack.empty()) {
+        Frame& f = stack.back();
+        const AIG* src = f.src;
+        if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
+        if (src->type != AIGT::t_and) {
+            cache[src] = (src->type == AIGT::t_const)
+                ? cached_const(true)
+                : cached_lit(src->var, false);
+            stack.pop_back();
+            continue;
+        }
+        if (!f.children_done) {
+            f.children_done = true;
+            const AIG* ln = src->l.get();
+            const AIG* rn = src->r.get();
+            stack.push_back({rn, false});
+            stack.push_back({ln, false});
+            continue;
+        }
+
+        auto it_lc = cache.find(src->l.get());
+        auto it_rc = cache.find(src->r.get());
+        aig_lit lcached = (it_lc != cache.end()) ? it_lc->second : aig_lit();
+        aig_lit rcached = (it_rc != cache.end()) ? it_rc->second : aig_lit();
+        const aig_lit l(lcached.node, lcached.neg ^ src->l.neg);
+        const aig_lit r(rcached.node, rcached.neg ^ src->r.neg);
+        aig_lit pos;
+        {
 
         // AND balanced-tree rebuild (on the positive view of the node).
         vector<aig_lit> and_children;
@@ -818,10 +923,14 @@ aig_lit AIGRewriter::flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cac
         }
 
         if (!pos) pos = make_canonical(l, r);
+        }
+        cache[src] = pos;
+        stack.pop_back();
     }
 
-    cache[edge.get()] = pos;
-    return aig_lit(pos.node, pos.neg ^ edge.neg);
+    auto it = cache.find(edge.get());
+    aig_lit cached = (it != cache.end()) ? it->second : aig_lit();
+    return aig_lit(cached.node, cached.neg ^ edge.neg);
 }
 
 // ========== Main rewrite entry points ==========
@@ -1309,35 +1418,58 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
     // identical rebuilt ANDs share. Cache stores the rebuild for each
     // source node's POSITIVE value; callers combine with incoming edge sign.
     std::unordered_map<const AIG*, aig_lit> rebuild;
-    std::function<aig_lit(const AIG*)> rebuild_node = [&](const AIG* n) -> aig_lit {
-        if (!n) return aig_lit();
-        auto it = rebuild.find(n);
-        if (it != rebuild.end()) return it->second;
-
-        aig_lit result;
-        auto it_const = const_sub.find(n);
-        if (it_const != const_sub.end()) {
-            // Proven-constant node: emit the shared TRUE node with the edge
-            // sign carrying the proven value (neg = !value).
-            result = cached_const(it_const->second);
-            rebuild[n] = result;
-            return result;
+    // Iterative post-order — deep AIGs blow the stack on a recursive walk.
+    auto rebuild_node = [&](const AIG* root) -> aig_lit {
+        if (!root) return aig_lit();
+        struct Frame { const AIG* n; bool deps_done; };
+        std::vector<Frame> stk;
+        stk.reserve(64);
+        stk.push_back({root, false});
+        while (!stk.empty()) {
+            Frame& f = stk.back();
+            const AIG* n = f.n;
+            if (!n || rebuild.count(n)) { stk.pop_back(); continue; }
+            if (!f.deps_done) {
+                auto it_const = const_sub.find(n);
+                if (it_const != const_sub.end()) {
+                    rebuild[n] = cached_const(it_const->second);
+                    stk.pop_back();
+                    continue;
+                }
+                auto it_sub = sub.find(n);
+                if (it_sub != sub.end()) {
+                    f.deps_done = true;
+                    stk.push_back({it_sub->second.first, false});
+                    continue;
+                }
+                if (n->type == AIGT::t_and) {
+                    f.deps_done = true;
+                    stk.push_back({n->r.get(), false});
+                    stk.push_back({n->l.get(), false});
+                    continue;
+                }
+                rebuild[n] = aig_lit(raw_to_shared.at(n), false);
+                stk.pop_back();
+                continue;
+            }
+            // Deps done: combine.
+            auto it_sub = sub.find(n);
+            if (it_sub != sub.end()) {
+                auto& rep_pos = rebuild[it_sub->second.first];
+                rebuild[n] = aig_lit(rep_pos.node,
+                        rep_pos.neg ^ it_sub->second.second);
+            } else {
+                assert(n->type == AIGT::t_and);
+                auto& lp = rebuild[n->l.get()];
+                auto& rp = rebuild[n->r.get()];
+                aig_lit l_edge(lp.node, lp.neg ^ n->l.neg);
+                aig_lit r_edge(rp.node, rp.neg ^ n->r.neg);
+                rebuild[n] = make_canonical(l_edge, r_edge);
+            }
+            stk.pop_back();
         }
-        auto it_sub = sub.find(n);
-        if (it_sub != sub.end()) {
-            aig_lit rep_pos = rebuild_node(it_sub->second.first);
-            result = aig_lit(rep_pos.node, rep_pos.neg ^ it_sub->second.second);
-        } else if (n->type == AIGT::t_and) {
-            aig_lit lp = rebuild_node(n->l.get());
-            aig_lit rp = rebuild_node(n->r.get());
-            aig_lit l_edge(lp.node, lp.neg ^ n->l.neg);
-            aig_lit r_edge(rp.node, rp.neg ^ n->r.neg);
-            result = make_canonical(l_edge, r_edge);
-        } else {
-            result = aig_lit(raw_to_shared.at(n), false);
-        }
-        rebuild[n] = result;
-        return result;
+        auto it = rebuild.find(root);
+        return (it != rebuild.end()) ? it->second : aig_lit();
     };
 
     // A merge can correctly prove that an AND subtree of defs[v] ≡ x_v (since
