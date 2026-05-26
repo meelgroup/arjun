@@ -813,16 +813,23 @@ bool Cadet::synth_complete_with_interp_generalization() {
     // Threshold: |orig_sampl_cnf| ≤ kPhaseFThreshold (set higher
     // than Phase A/E's 16 since each iteration covers many inputs).
 
-    // Threshold raised from 32 → 64 alongside switching per-bit
-    // minimization to one-shot UNSAT-core extraction (1 SAT call per
-    // case instead of n). The previous limit was set so a Phase F
-    // iteration would do at most ~32 SAT calls; with core extraction
-    // each iter is one SAT call, so 64 inputs cost the same per-iter
-    // wall time as 32 used to.
-    static constexpr uint32_t kPhaseFThreshold = 64;
+    // Phase F has no input-size threshold and no iteration cap. It is
+    // the terminal completion phase: it MUST succeed because the user
+    // contract is that cadet always finishes (no Manthan fallback).
+    //
+    // Termination: each iteration forbids a non-empty kept-input
+    // region, so total iterations ≤ 2^|orig_sampl_cnf| — finite.
+    // Practical iterations are much smaller because each case's
+    // UNSAT-core extraction generalizes over many inputs.
+    //
+    // The kPhaseFMaxIters constant is kept as a soft "warn but keep
+    // going" threshold — the loop logs progress diagnostics every
+    // kPhaseFMaxIters iters but never terminates early.
     static constexpr uint32_t kPhaseFMaxIters = 5000;
-
-    if (orig_sampl_cnf.size() > kPhaseFThreshold) return false;
+    // Periodic AIG simplification cadence. Long Phase F runs build
+    // deep ITE chains; without periodic compression the AIG grows
+    // unboundedly and each new_ite call walks an ever-larger DAG.
+    static constexpr uint32_t kPhaseFSimplifyEvery = 1000;
 
     vector<uint32_t> undet;
     for (uint32_t y : to_define) {
@@ -833,8 +840,8 @@ bool Cadet::synth_complete_with_interp_generalization() {
     if (conf.verb >= 1) {
         cout << "c o [cadet] Phase F — generalized cases on " << undet.size()
              << " undet vars over " << orig_sampl_cnf.size()
-             << " orig sampling vars (max " << kPhaseFMaxIters
-             << " iters)" << endl;
+             << " orig sampling vars (no iter cap; "
+             << "diagnostic-flush every " << kPhaseFMaxIters << ")" << endl;
     }
     const double t0 = cpuTime();
 
@@ -897,7 +904,7 @@ bool Cadet::synth_complete_with_interp_generalization() {
     uint32_t n_uniq_sat = 0;       // uniqueness check returned SAT (joint Y has alternatives — no drops)
     uint32_t n_uniq_unknown = 0;   // UNDEF (rare — solver gave up)
     uint64_t total_core_size = 0;  // size of UNSAT core when the check returned UNSAT
-    while (iters < kPhaseFMaxIters) {
+    while (true) {
         // Outer solve: find an uncovered input pattern.
         const auto ret = sat.solve();
         if (ret == CMSat::l_False) { converged = true; break; }
@@ -1030,6 +1037,26 @@ bool Cadet::synth_complete_with_interp_generalization() {
             cout << "c o [cadet]   iter " << iters
                  << ": kept " << (n_in - bits_dropped)
                  << " / " << n_in << " bits" << endl;
+        }
+
+        // Periodic AIG simplification: as the iteration count grows,
+        // each `partial[y]` is a deepening ITE chain. AIG::new_ite
+        // walks the existing DAG looking for structural matches, so
+        // unsimplified deep chains slow every iteration down. Walk
+        // the partial map and compress every kPhaseFSimplifyEvery
+        // iters — this keeps per-iter wall time stable across runs
+        // that take many thousands of iterations to converge.
+        if (iters % kPhaseFSimplifyEvery == 0) {
+            for (uint32_t y : undet) {
+                partial[y] = AIG::simplify_aig(partial[y]);
+            }
+            if (conf.verb >= 1) {
+                cout << "c o [cadet]   Phase F progress: iter=" << iters
+                     << " uniq-UNSAT=" << n_uniq_unsat
+                     << " uniq-SAT=" << n_uniq_sat
+                     << " T=" << fixed << setprecision(2)
+                     << (cpuTime() - t0) << endl;
+            }
         }
     }
 
