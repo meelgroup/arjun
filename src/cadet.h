@@ -108,6 +108,40 @@ private:
     // handoff; now Phase E finishes locally when feasible.
     bool synth_complete_with_models();
 
+    // Phase G: full CADET-style search — decisions + conflict analysis
+    // + clause learning + backtracking. Each "decision" is a case
+    // commit (input region + joint undet y values) with a fresh
+    // selector variable; case constraints are gated by the selector so
+    // they can be toggled. The forbid on the SAT model's exact input
+    // pattern is permanent (full-pattern) — that's the difference
+    // from Phase F's gated forbid, and it's what lets case
+    // constraints from overlapping cases actually fire (and produce
+    // conflicts) rather than being silently shadowed by their own
+    // forbid.
+    //
+    // Loop: outer solve under active selectors as assumptions.
+    //   SAT: build a new decision, encode case + forbid, push.
+    //   UNSAT with empty failed-assumption set:
+    //                    all input patterns covered → done.
+    //   UNSAT with non-empty failed set:
+    //                    conflict — learn a clause over the failed
+    //                    selectors, find the topmost contributing
+    //                    decision; flip its y values (and re-encode
+    //                    with a fresh selector) if untried, else pop
+    //                    (deactivate selector permanently).
+    //
+    // Clause learning: the failed-assumption set from cadical IS the
+    // conflict over selectors; adding its negation as a permanent
+    // clause prevents the same combination from being assumed active
+    // simultaneously in future search.
+    //
+    // Minimization knob: by default Phase G uses the full input
+    // pattern in each case condition (no overlaps → no conflicts —
+    // the backtracking machinery is dormant). Setting the
+    // kPhaseGDropPerIter knob to > 0 randomly drops that many bits
+    // per case, creating overlaps and exercising the conflict path.
+    bool synth_phase_g();
+
     // Phase F: like Phase E but each SAT-model case is generalized to
     // cover many inputs via greedy bit-dropping with a uniqueness
     // check. For each model M, iterate over input bits; for each bit
