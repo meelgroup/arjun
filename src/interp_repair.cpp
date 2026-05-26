@@ -1136,8 +1136,10 @@ void InterpRepair::print_stats(const std::string& prefix) const {
          << " avg interp-nodes: "
          << (calls_succeeded ? (double)total_interp_nodes / (double)calls_succeeded : 0.0)
          << " max interp-nodes: " << max_interp_nodes_seen
-         << " smaller/larger: " << interp_smaller_than_conflict
+         << " AIG-nodes</>conflict-lits: " << interp_smaller_than_conflict
          << "/" << interp_larger_than_conflict
+         << " avg AIG input-vars: "
+         << (calls_succeeded ? (double)total_interp_support / (double)calls_succeeded : 0.0)
          << " mini-CNF kept: "
          << (total_minicnf_clauses
                 ? safe_div(total_minicnf_clauses_kept*100.0, total_minicnf_clauses)

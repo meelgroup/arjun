@@ -303,8 +303,11 @@ public:
     uint64_t calls_budget_exhausted = 0;
     uint64_t total_interp_nodes = 0;
     uint64_t total_conflict_lits = 0;
-    // How often the interpolant was smaller/larger than the conflict
-    // (node-vs-lit count).
+    // How often the interpolant AIG had fewer/more nodes than the
+    // conflict clause had literals. Apples-to-oranges (gates vs lits),
+    // but a useful coarse signal for whether interpolation is
+    // compressing the explanation. See total_interp_support for the
+    // average input-variable count of the interpolant AIG.
     uint64_t interp_smaller_than_conflict = 0;
     uint64_t interp_larger_than_conflict = 0;
     // Largest interpolant we accepted, in nodes.

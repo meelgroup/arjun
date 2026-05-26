@@ -1119,9 +1119,12 @@ void Manthan::print_detailed_stats() const {
                 << "  avg interp-nodes: "
                 << safe_div(interp_repair->total_interp_nodes, interp_repair->calls_succeeded)
                 << "  max interp-nodes: " << interp_repair->max_interp_nodes_seen);
-            verb_print(1, COLCYN "[manthan-stats]   interp smaller/larger than conflict: "
+            verb_print(1, COLCYN "[manthan-stats]   interp-AIG-nodes < / > conflict-clause-lits: "
                 << interp_repair->interp_smaller_than_conflict << " / "
-                << interp_repair->interp_larger_than_conflict);
+                << interp_repair->interp_larger_than_conflict
+                << "  (avg AIG input-vars: " << fixed << setprecision(1)
+                << safe_div(interp_repair->total_interp_support,
+                            interp_repair->calls_succeeded) << ")");
             if (interp_repair->calls_succeeded > 0
                     && interp_repair->total_input_lits_in_conflict > 0) {
                 const double avg_supp = safe_div(interp_repair->total_interp_support,
