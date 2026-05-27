@@ -13,6 +13,7 @@
 #include "shannon_synth.h"
 
 #include "arjun.h"
+#include "backward.h"
 #include "constants.h"
 #include "metasolver.h"
 #include "time_mem.h"
@@ -77,6 +78,29 @@ aig_ptr ShannonSynth::build_shannon_tree(const vector<bool>& table,
     }
     assert(level.size() == 1);
     return level[0];
+}
+
+void ShannonSynth::maybe_minimize_enum_set() {
+    if (!mconf.shannon_synth_minim) return;
+    if (orig_sampl_cnf.empty()) return;
+
+    const double t0 = cpuTime();
+    const size_t before = orig_sampl_cnf.size();
+    vector<uint32_t> candidate(orig_sampl_cnf.begin(), orig_sampl_cnf.end());
+
+    Backward bw(conf);
+    vector<uint32_t> minimized = bw.minimize_subset(cnf, candidate);
+
+    orig_sampl_cnf.clear();
+    orig_sampl_cnf.insert(minimized.begin(), minimized.end());
+
+    if (conf.verb >= 1) {
+        cout << "c o [shannon_synth] minim shrank enum set: " << before
+             << " -> " << orig_sampl_cnf.size()
+             << " (2^N rows: " << (1ull << before) << " -> "
+             << (1ull << orig_sampl_cnf.size()) << "). T: "
+             << fixed << setprecision(2) << (cpuTime() - t0) << endl;
+    }
 }
 
 void ShannonSynth::synth_complete_with_models() {
@@ -192,6 +216,7 @@ SimplifiedCNF ShannonSynth::do_synth() {
              << " |backward_defined|=" << backward_defined.size() << endl;
     }
 
+    maybe_minimize_enum_set();
     synth_complete_with_models();
     commit_definitions();
 

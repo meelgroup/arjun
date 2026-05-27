@@ -473,6 +473,10 @@ if __name__ == "__main__":
         # the flags shape the pre-synth pipeline (BVE, autarky, extend,
         # unate_def variants), so the CNF varies widely across iters.
         solver += "--shannonsynth %d " % random.randint(0, 1)
+        # Independently toggle the dry-run backward minim pre-pass. Only
+        # affects iters where --shannonsynth=1, but the binary accepts
+        # it either way.
+        solver += "--shannonsynthminim %d " % random.randint(0, 1)
 
         opts = [
             " --synthbve"

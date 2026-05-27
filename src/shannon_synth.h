@@ -60,6 +60,11 @@ private:
 
     std::vector<ArjunNS::aig_ptr> skol;
 
+    // If shannon_synth_minim is on, run a dry-run backward minim over
+    // orig_sampl_cnf in the current CNF and shrink the set to the
+    // minimized subset before enumeration.
+    void maybe_minimize_enum_set();
+
     void synth_complete_with_models();
 
     // Shannon decomposition over sorted_inputs; collapses identical

@@ -1770,6 +1770,14 @@ public:
         // a 2^N truth table, so raising this past ~20 will OOM. Above
         // the threshold shannon_synth release_asserts (no fallback).
         uint32_t shannon_synth_threshold = 16;
+
+        // If set, run a dry-run backward minim on orig_sampl_cnf in the
+        // *current* (post-preproc, post-AIG-rewrite) CNF before the
+        // enumeration. The transforms can introduce dependencies among
+        // orig sampling vars that didn't exist at initial minim time;
+        // shrinking the enum domain makes the 2^N table much cheaper
+        // and lets more cases stay under shannon_synth_threshold.
+        int shannon_synth_minim = 1;
     };
 
     struct IndepInfo {

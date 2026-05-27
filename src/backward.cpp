@@ -500,6 +500,29 @@ void Backward::backward_round() {
     if (conf.verb >= 4) solver->print_stats();
 }
 
+vector<uint32_t> Backward::minimize_subset(
+    const ArjunNS::SimplifiedCNF& cnf,
+    const vector<uint32_t>& candidate)
+{
+    // Mirrors run_minimize's wiring without Minimize's BVE/gauss
+    // preproc and without mutating cnf. fill_solver is inlined to skip
+    // the opt_sampl_vars guard and to override sampling_vars with the
+    // caller's candidate set instead of cnf.get_sampl_vars().
+    solver->set_verbosity(conf.verb);
+    solver->new_vars(cnf.nVars());
+    for (const auto& cl : cnf.get_clauses())     solver->add_clause(cl);
+    for (const auto& cl : cnf.get_red_clauses()) solver->add_red_clause(cl);
+    sampling_vars = candidate;
+
+    init();
+    get_incidence();
+    duplicate_problem(cnf);
+    add_fixed_clauses();
+    backward_round();
+
+    return sampling_vars;
+}
+
 void Backward::add_all_indics_except(const set<uint32_t>& except) {
     ::add_all_indics_except(*solver, orig_num_vars, except,
         var_to_indic, indic_to_var, dont_elim, seen, conf.verb);

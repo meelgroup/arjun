@@ -264,6 +264,8 @@ void add_arjun_options() {
     // === Shannon-tree synthesis (--shannonsynth 1) knobs ===
     myopt("--shannonsynththresh", mconf.shannon_synth_threshold, fc_int,
           "Hard cap: |orig_sampl_cnf| ≤ this. Above it shannon_synth release_asserts (each y allocates 2^N truth-table entries, so raising past ~20 OOMs).");
+    myopt("--shannonsynthminim", mconf.shannon_synth_minim, fc_int,
+          "Dry-run backward minim on orig_sampl_cnf before enumeration: prunes sampling vars that the post-preproc CNF defines from the rest, shrinking the 2^N truth tables. 0=off, 1=on (default).");
 
     // Simplification options for minim
     myopt("--probe", conf.probe_based, fc_int,"Use simple probing to set (and define) some variables");

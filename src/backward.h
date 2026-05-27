@@ -82,6 +82,13 @@ struct Backward
         const std::optional<std::set<uint32_t>>& ignore = std::nullopt);
     void backward_round();
     void backward_round_synth(ArjunNS::SimplifiedCNF& cnf, const ArjunNS::Arjun::ManthanConf& mconf);
+
+    // Dry-run minim: returns a minimal independent subset of `candidate`
+    // in the simplified CNF, without mutating cnf. Single-use — the
+    // caller must construct a fresh Backward per call.
+    std::vector<uint32_t> minimize_subset(
+        const ArjunNS::SimplifiedCNF& cnf,
+        const std::vector<uint32_t>& candidate);
     void add_all_indics_except(const std::set<uint32_t>& except);
     void order_by_file(const std::string& fname, std::vector<uint32_t>& unknown);
     void print_sorted_unknown(const std::vector<uint32_t>& unknown) const;
