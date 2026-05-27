@@ -21,30 +21,50 @@
 
  Phases (current implementation)
  ===============================
-   Phase C — unique-consequence propagation. For each undet y, walk
-   its clauses; when every other literal is already a function of
-   inputs / earlier-determined vars, the clause forces y over its
-   "negated-other-literals" region. Accumulating those regions over
-   all positive-y clauses gives a candidate Skolem; a cycle check
-   guards against creating defs[] cycles.
+   Phase C — worklist-driven unique-consequence + pure-literal
+   propagation. When a clause's non-y literals are all functions of
+   earlier-determined vars, y is forced over its "negated-other-
+   literals" region. Pure-literal commits y to whichever polarity
+   satisfies all of y's surviving (undead) clauses. Every commit
+   re-enqueues only its undet neighbours — no full-table scans.
+   skol[] is updated AND the commit is tseitin-encoded into the
+   persistent skolem_sat (gated by the current decision level's
+   selector when at decision_lvl > 0).
 
-   Phase D — constant-value decisions. When Phase C stalls, pick
-   undet vars in least-constrained order and try y=false; if F+y=true
-   is UNSAT, y must be false (and vice versa). Commits only when one
-   polarity is provably UNSAT — never an unsound guess.
+   Phase D — sound forced commits via SAT probes, plus speculative
+   CDCL guesses. The forced step picks undet vars in VSIDS order and
+   probes both polarities under active selector assumptions; a UNSAT
+   polarity becomes a permanent (or selector-gated) commit. When
+   forced-only stalls, a guess opens a fresh decision level with a
+   selector and a gated decision clause. A global conflict check at
+   the start of each pass spots when F+decisions is UNSAT; the
+   failed-assumption core gets mapped back to decision lits, the
+   learnt clause is added permanently (plus stashed for Phase E/F),
+   and backjumping pops the trail to the second-highest level.
+   Geometric restart (initial K=16, ×1.5 per restart) keeps the
+   speculative tree from compounding.
 
    Phase E — small-input SAT-model enumeration. When |orig_sampl| ≤
-   16, repeatedly solve F+Tseitin(prior commits) under "forbid seen
-   inputs"; collect each model's undet y values into a per-y table;
-   build Shannon trees at the end.
+   16, repeatedly solve F+Tseitin(prior commits)+CDCL learnt clauses
+   under "forbid seen inputs"; collect each model's undet y values
+   into a per-y table; build Shannon trees at the end.
 
    Phase F — terminal: SAT-model + UNSAT-core generalization with
-   per-y uniqueness fallback. No input-size threshold, no iter cap.
-   Each iter either drops bits via the joint UNSAT core or, on
-   joint-SAT, falls back to per-y uniqueness checks (capped at 30
-   undet vars to bound per-iter cost). Total iter count is bounded
-   by 2^|orig_sampl_cnf| — finite. Phase F is what backs cadet's
-   "always finishes" contract.
+   per-y uniqueness fallback. VSIDS-ordered per-y scan, bumps from
+   joint and per-y cores. No input-size threshold, no iter cap. Each
+   iter either drops bits via the joint UNSAT core or, on joint-SAT,
+   falls back to per-y uniqueness (capped at 30 undet vars). Total
+   iter count ≤ 2^|orig_sampl_cnf| — finite. Phase F is what backs
+   cadet's "always finishes" contract.
+
+ SAT infrastructure
+ ==================
+   A single persistent MetaSolver(cadical) — skolem_sat — is built
+   once with F and incrementally fed every Phase C/D commit
+   (constants directly, AIGs via AIGToCNF). Phase D's polarity
+   probes and the CDCL global-conflict check use it. Phase E and
+   Phase F each build a private solver via build_solver_with_skols(),
+   which also replays the CDCL learnt_clauses.
 
  Copyright (c) 2026, Mate Soos. All rights reserved.
 */

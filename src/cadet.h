@@ -232,36 +232,41 @@ private:
     bool synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs,
                               const std::vector<uint32_t>& sub_undet);
 
-    // Phase C+D: incremental determinization (CADET's signature).
+    // Phase C+D: incremental determinization with CDCL (CADET's
+    // signature).
     //
     // Phase C — unique-consequence propagation. For each undetermined
-    // to_define var y, iterate over the clauses mentioning y. When
-    // every other literal in a clause is already a function of inputs /
-    // earlier-determined vars, the clause forces y to a specific value
-    // over the "forced region" (where all other literals are false).
-    // Accumulating the positive-force region over all positive-y
-    // clauses gives a candidate Skolem.
+    // to_define var y, walk its clauses; when every non-y literal is
+    // already a function of earlier-determined vars, the clause forces
+    // y over its "negated-other-literals" region. Accumulating those
+    // regions over the positive-y clauses gives a candidate Skolem. A
+    // worklist re-checks only neighbours after each commit. Pure-
+    // literal applies whenever every undead clause containing y has
+    // y in one polarity (committing it then satisfies the alive
+    // clauses).
     //
-    // Phase D — decisions. When Phase C reaches a fixpoint with vars
-    // still undetermined, pick the undetermined var with the fewest
-    // clauses (least-constrained = least likely to need a non-constant
-    // function) and commit a constant Skolem chosen by SAT: try
-    // y=false first, fall back to y=true if F+y=false is unsat under
-    // the running solver state. This is CADET's "decision" step.
+    // Phase D — sound forced-constant decisions + CDCL guesses.
+    // Forced step: VSIDS-ordered scan of undet vars; assume y=true,
+    // and if UNSAT under current state, commit y=false (vice versa).
+    // When forced-only runs out, optionally make a speculative guess
+    // at a fresh decision level, gated by a selector. Subsequent
+    // commits at that level are also gated. A global conflict check
+    // (solve under active selectors) detects when F + decisions is
+    // UNSAT; the failed-assumption core maps back to decision lits,
+    // and the learnt clause = OR(~decision_lits in core) gets added
+    // permanently to skolem_sat (and to learnt_clauses for Phase E/F
+    // to replay). Backjump to the second-highest level in the core.
     //
-    // What's MISSING vs full CADET: conflict analysis. Real CADET, on
-    // an inconsistent decision, derives a learnt clause that prunes
-    // the relevant input region and backtracks. Here we accept the
-    // decision at face value and rely on:
-    //   (a) the synthesis precondition (F satisfiable for every input)
-    //       making most decisions sound,
-    //   (b) the SAT-based test in Phase D rejecting decisions that
-    //       are constant-unsat under the running state,
-    //   (c) the per-commit cycle check from Phase C catching
-    //       structural cycles,
-    //   (d) Phase F (terminal) catching any remainder.
+    // VSIDS-bumps come from failed-assumption cores in Phase D's
+    // forced probes, Phase F's joint and per-y UNSAT cores, plus
+    // small bumps on every Phase C commit. JW-style seed initialises
+    // activity from clause density.
     //
-    // Returns true iff every to_define var was determinized.
+    // Geometric restart: after K conflicts the speculative tree is
+    // discarded (learnt clauses survive). K starts at 16, grows by
+    // 1.5× per restart. Hard guess-depth cap (8) bounds search depth.
+    //
+    // Returns true iff every to_define var was determinized at level 0.
     bool synth_by_propagation();
 
     // Phase C unit step: try to commit skol[y] from its clauses.
