@@ -105,6 +105,22 @@ private:
     // ¬y (resp. y) has already become dead via other commits.
     std::vector<uint8_t> clause_dead;
 
+    // VSIDS variable activities. var_activity[v] starts at a
+    // clause-density seed (Jeroslow-Wang-like) and gets bumped each
+    // time v appears in a learnt clause / failed-assumption core.
+    // activity_inc grows after each conflict (it's the inverse of
+    // multiplicative decay — we scale UP the bump rather than scaling
+    // every activity DOWN, then occasionally rescale when overflow
+    // threatens). Used by Phase D's variable-pick and Phase F's
+    // per-y ordering.
+    std::vector<double> var_activity;
+    double activity_inc = 1.0;
+    static constexpr double kActivityDecay = 0.95;
+    static constexpr double kActivityRescaleThreshold = 1e100;
+
+    void bump_var(uint32_t v);
+    void decay_activities();
+
     // --- algorithm pieces ---
 
     // Phase E: small-input SAT-model enumeration. Loads F + Tseitin

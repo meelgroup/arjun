@@ -61,6 +61,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
@@ -106,6 +107,29 @@ void Cadet::inject_cnf(S& s) const {
     s.new_vars(cnf.nVars());
     for (const auto& c : cnf.get_clauses()) s.add_clause(c);
     for (const auto& c : cnf.get_red_clauses()) s.add_red_clause(c);
+}
+
+void Cadet::bump_var(uint32_t v) {
+    assert(v < var_activity.size());
+    var_activity[v] += activity_inc;
+    if (var_activity[v] > kActivityRescaleThreshold) {
+        // Rescale all activities to avoid double overflow.
+        const double inv = 1.0 / kActivityRescaleThreshold;
+        for (auto& a : var_activity) a *= inv;
+        activity_inc *= inv;
+    }
+}
+
+void Cadet::decay_activities() {
+    // Multiplicative decay: scale the bump-increment UP by 1/decay
+    // each time, equivalent to scaling all activities DOWN by decay.
+    // O(1) per decay step.
+    activity_inc *= (1.0 / kActivityDecay);
+    if (activity_inc > kActivityRescaleThreshold) {
+        const double inv = 1.0 / kActivityRescaleThreshold;
+        for (auto& a : var_activity) a *= inv;
+        activity_inc *= inv;
+    }
 }
 
 void Cadet::tseitin_skol_into_skolem_sat(uint32_t y) {
@@ -1145,6 +1169,21 @@ SimplifiedCNF Cadet::do_cadet() {
             }
         }
         clause_dead.assign(clauses.size(), 0);
+    }
+
+    // VSIDS seed: Jeroslow-Wang-style — heavier vars in shorter clauses
+    // are more likely to be forced; activity starts at 2^-len summed
+    // over clauses, capped at len<=10 to avoid pow underflow. This gives
+    // Phase D a useful priority before any conflict has happened.
+    var_activity.assign(cnf.nVars(), 0.0);
+    activity_inc = 1.0;
+    {
+        const auto& clauses = cnf.get_clauses();
+        for (const auto& c : clauses) {
+            if (c.size() > 10) continue;
+            const double w = std::ldexp(1.0, -(int)c.size()); // 2^-size
+            for (const auto& l : c) var_activity[l.var()] += w;
+        }
     }
 
     // Build the persistent Skolem SAT solver once with F injected.
