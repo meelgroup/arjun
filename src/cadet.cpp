@@ -434,7 +434,11 @@ bool Cadet::synth_by_propagation() {
         // unsound: it only means SOME input X works, not every X, so a
         // constant decision would violate F on some other input.
 
-        // Sort undetermined vars by clause count ascending.
+        // Order undet by VSIDS activity (highest first). Activities are
+        // JW-seeded from clause density and get bumped each time a var
+        // shows up in a failed-assumption core, so vars participating
+        // in many UNSAT proofs rise to the front. Replaces the old
+        // "fewest clauses first" heuristic, which had no learning loop.
         vector<uint32_t> undet;
         undet.reserve(to_define.size());
         for (uint32_t y : to_define) {
@@ -443,7 +447,7 @@ bool Cadet::synth_by_propagation() {
         if (undet.empty()) break; // nothing left undetermined
         std::sort(undet.begin(), undet.end(),
                   [&](uint32_t a, uint32_t b) {
-                      return var_clauses[a].size() < var_clauses[b].size();
+                      return var_activity[a] > var_activity[b];
                   });
 
         bool any_decided = false;
@@ -451,9 +455,22 @@ bool Cadet::synth_by_propagation() {
         for (uint32_t pick : undet) {
             if (skol[pick] != nullptr) continue; // earlier decision propagated
 
+            auto bump_core = [&]() {
+                // Every var in the failed-assumption core participated
+                // in the UNSAT proof — bump its activity so it floats
+                // up next pass.
+                const auto failed = decision_sat.get_conflict();
+                for (const auto& f : failed) {
+                    const uint32_t v = f.var();
+                    if (v < var_activity.size()) bump_var(v);
+                }
+                decay_activities();
+            };
+
             // SAT call 1: assume pick=true; UNSAT ⇒ pick must be false.
             assumps[0] = Lit(pick, /*sign=*/false);
             if (decision_sat.solve(&assumps) == CMSat::l_False) {
+                bump_core();
                 skol[pick] = AIG::new_const(false);
                 mark_clauses_dead_by_constant(pick, false);
                 decision_sat.add_clause({Lit(pick, /*sign=*/true)});
@@ -469,6 +486,7 @@ bool Cadet::synth_by_propagation() {
             // SAT call 2: assume pick=false; UNSAT ⇒ pick must be true.
             assumps[0] = Lit(pick, /*sign=*/true);
             if (decision_sat.solve(&assumps) == CMSat::l_False) {
+                bump_core();
                 skol[pick] = AIG::new_const(true);
                 mark_clauses_dead_by_constant(pick, true);
                 decision_sat.add_clause({Lit(pick, /*sign=*/false)});
