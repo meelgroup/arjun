@@ -720,4 +720,17 @@ if __name__ == "__main__":
                   "to always converge now — this is a regression." %
                   stats["phase_f_ran"])
             exit(-1)
+        # CEGAR coverage: with the knob-randomization defaults above
+        # (--cadetcegar weighted 4:1 on:off), at >= 100 iters we expect
+        # CEGAR to have fired in at least a handful of runs. If it
+        # never fires, either the random seed missed cadetcegar=1 every
+        # time (very unlikely) or a regression silently disabled the
+        # drain. Either way it's worth surfacing — otherwise CEGAR
+        # could rot without us noticing.
+        if stats["synth_succeeded"] >= 100 and stats["cegar_ran"] == 0:
+            print("FUZZER CONFIG BUG: %d iterations succeeded but CEGAR "
+                  "never ran. Either knob-randomization got unlucky or "
+                  "the CEGAR drain is silently disabled." %
+                  stats["synth_succeeded"])
+            exit(-1)
     exit(0)
