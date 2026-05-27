@@ -1,101 +1,14 @@
 /*
- Arjun
+ Arjun — cadet.cpp
 
- cadet.cpp — In-tree port of CADET's incremental-determinization core
- (Markus N. Rabe, SAT 2016). Used in place of Manthan when --cadet 1 is
- set. Always finishes synthesis alone — no Manthan fallback.
-
- Algorithm overview
- ==================
- CADET solves 2QBF formulas ∀X. ∃Y. φ(X, Y) by constructing a Skolem
- function for every existential variable in Y. The Skolem function for
- y ∈ Y is a Boolean function f_y(X) such that ∀X. φ(X, f_y(X), …) holds
- — i.e. plugging the Skolem functions into φ yields a tautology over X.
-
- CADET builds Skolem functions incrementally rather than guessing them
- up-front (as Manthan does). It uses a SAT solver to detect when an
- existential variable's value is *forced* by F given the partial
- Skolem functions built so far ("unique consequence" propagation),
- and falls back to SAT-model-driven case construction when propagation
- stops.
-
- Phases (current implementation)
- ===============================
-   Phase C — worklist-driven unique-consequence + pure-literal
-   propagation. When a clause's non-y literals are all functions of
-   earlier-determined vars, y is forced over its "negated-other-
-   literals" region. Pure-literal commits y to whichever polarity
-   satisfies all of y's surviving (undead) clauses. Every commit
-   re-enqueues only its undet neighbours — no full-table scans.
-   skol[] is updated AND the commit is tseitin-encoded into the
-   persistent skolem_sat (gated by the current decision level's
-   selector when at decision_lvl > 0).
-
-   Phase D — sound forced commits via SAT probes, plus speculative
-   CDCL guesses. The forced step picks undet vars in VSIDS order and
-   probes both polarities under active selector assumptions; a UNSAT
-   polarity becomes a permanent (or selector-gated) commit. When
-   forced-only stalls at level 0, a CEGAR refinement sub-loop runs
-   (see "CEGAR" below) before falling back to a speculative guess.
-   On guess: a fresh decision level opens with a selector and a
-   gated decision clause. A global conflict check at the start of
-   each pass spots when F+decisions is UNSAT; the failed-assumption
-   core gets mapped back to decision lits, MINIMIZED via the drop-
-   and-resolve loop (cadet's c2_minimize_clause analogue), the
-   learnt clause is added permanently (plus stashed for Phase E/F),
-   and backjumping pops the trail to the second-highest level.
-   Geometric restart (initial K=16, ×1.5 per restart) keeps the
-   speculative tree from compounding. After each restart the inner
-   SAT solver is optionally rebuilt to shed accumulated Tseitin junk
-   (cadet's c2_replenish_skolem_satsolver). At Phase D end any
-   speculative level whose decision is now F-implied (typically via
-   a learnt clause that arrived after the guess) is RATIFIED — its
-   selector becomes a unit clause and its commits stay — rather
-   than being unconditionally rolled back.
-
-   CEGAR (Phase D companion) — counterexample-guided cube
-   refinement, ported from cadet/src/cegar.c. Runs at level 0 when
-   forced-only stalls. Each round: solve skolem_sat → get model M
-   → assume M's universal-cube values in a second cadical
-   (exists_solver) loaded with F + Tseitin of level-0 commits →
-   solve under a selector-gated "∃ undet y differs from M[y]"
-   clause. UNSAT means joint Y is forced over the cube; the UNSAT
-   core identifies the load-bearing cube bits (the rest get
-   dropped). Empty kept cube → constant commits; non-empty → an
-   implication clause `(X ≠ kept) ∨ (y = M[y])` per undet y, added
-   to skolem_sat + learnt_clauses (so Phase E/F replay it). On
-   joint-SAT, an optional per-y fallback asks the same question
-   one y at a time. The drain bails on per-stall round caps, on a
-   trailing avg kept-cube > threshold, or after consec rounds with
-   no constant commit. The whole layer is gated by --cadetcegar 1
-   (default on); see the --cadetcegar* knobs in main.cpp.
-
-   Phase E — small-input SAT-model enumeration. When |orig_sampl| ≤
-   16, repeatedly solve F+Tseitin(prior commits)+CDCL learnt clauses
-   under "forbid seen inputs"; collect each model's undet y values
-   into a per-y table; build Shannon trees at the end.
-
-   Phase F — terminal: SAT-model + UNSAT-core generalization with
-   per-y uniqueness fallback. VSIDS-ordered per-y scan, bumps from
-   joint and per-y cores. No input-size threshold, no iter cap. Each
-   iter either drops bits via the joint UNSAT core or, on joint-SAT,
-   falls back to per-y uniqueness (capped at 30 undet vars). Total
-   iter count ≤ 2^|orig_sampl_cnf| — finite. Phase F is what backs
-   cadet's "always finishes" contract.
-
- SAT infrastructure
- ==================
-   A single persistent MetaSolver(cadical) — skolem_sat — is built
-   once with F and incrementally fed every Phase C/D commit
-   (constants directly, AIGs via AIGToCNF). Phase D's polarity
-   probes and the CDCL global-conflict check use it. Phase E and
-   Phase F each build a private solver via build_solver_with_skols(),
-   which also replays the CDCL learnt_clauses. CEGAR adds a SECOND
-   persistent solver — exists_solver — lazily built on first CEGAR
-   round and kept in sync with level-0 skol[] commits via
-   cegar_sync_exists_solver(). It carries F + Tseitin of every
-   level-0 commit and is used exclusively for the uniqueness
-   probes of CEGAR rounds.
+ In-tree port of CADET (Rabe, SAT 2016). Constructs Skolem functions
+ for ∀X.∃Y.φ via incremental unique-consequence determinization plus
+ SAT-model fallbacks. Phases:
+   C: worklist unique-consequence + pure-literal propagation.
+   D: forced-constant probes (two-sided), speculative CDCL guesses
+      gated by selectors, CEGAR companion at level-0 stalls.
+   E: SAT-model enumeration + Shannon trees (small input only).
+   F: terminal SAT + UNSAT-core generalization. Always finishes.
 
  Copyright (c) 2026, Mate Soos. All rights reserved.
 */
@@ -147,14 +60,6 @@ Cadet::Cadet(const ArjunInt::Config& _conf,
     activity_decay = mconf.cadet_activity_decay;
 }
 
-// === Partial-Assignment propagator ===================================
-//
-// Mirrors cadet/src/partial_assignment.c. Tracks every CNF var that is
-// committed to a CONSTANT skol[] value; non-constant skol[] entries
-// (AIG functions over inputs) leave pa_value[v] = l_Undef. BCP runs
-// over the original CNF; reasons are clause indices into
-// cnf.get_clauses(). Universals are never propagated.
-
 void Cadet::pa_init() {
     pa_value.assign(cnf.nVars(), CMSat::l_Undef);
     pa_reason.assign(cnf.nVars(), PA_REASON_SOURCE);
@@ -186,11 +91,9 @@ void Cadet::pa_enqueue_clauses_for_var(uint32_t v) {
 
 void Cadet::pa_assign(uint32_t v, bool val, uint32_t reason) {
     const CMSat::lbool target = val ? CMSat::l_True : CMSat::l_False;
-    if (pa_value[v] == target) return;          // already correct
+    if (pa_value[v] == target) return;
     if (pa_value[v] != CMSat::l_Undef) {
-        // Contradiction: same var was committed to opposite value.
-        // Should never happen in normal flow (every commit site
-        // checks skol[v]==nullptr first), but record defensively.
+        // Defensive: shouldn't happen in normal flow.
         if (pa_conflict_clause == PA_NO_CONFLICT) {
             pa_conflict_clause = reason;
             pa_conflicts_caught++;
@@ -212,30 +115,12 @@ void Cadet::pa_pop_to_level(uint32_t target) {
         pa_level[v]  = 0;
         pa_trail.pop_back();
     }
-    // Drop any conflict & worklist state — backjump invalidates them.
     pa_conflict_clause = PA_NO_CONFLICT;
     for (uint32_t ci : pa_bcp_queue) pa_bcp_in_queue[ci] = 0;
     pa_bcp_queue.clear();
 }
 
 void Cadet::two_sided_build(MetaSolver& solver) {
-    // Allocate pos_var[y] / neg_var[y] in `solver` for every y in
-    // to_define, and add the sufficient-direction encoding clauses.
-    //
-    // The encoded direction (one clause per (Y, F-clause-containing-Y)):
-    //   For positive-y clause C = (y ∨ l_1 ∨ ... ∨ l_k):
-    //       add (l_1 ∨ ... ∨ l_k ∨ pos_var[y])
-    //       i.e. ¬pos_var[y] → ¬(all non-y lits false in C)
-    //              equivalently: ¬pos_var[y] → some non-y lit is true
-    //   For negative-y clause C = (¬y ∨ l_1 ∨ ... ∨ l_k):
-    //       add (l_1 ∨ ... ∨ l_k ∨ neg_var[y])
-    //
-    // Under this encoding:
-    //   ¬pos_var[y] SAT  ⇔ exists consistent X where every pos-y clause
-    //                       has some non-y lit true — i.e. no pos-y
-    //                       clause forces y at X.
-    //   ¬pos_var[y] UNSAT ⇔ every consistent X has some pos-y clause
-    //                        firing — y must be true at every X.
     pos_var.assign(cnf.nVars(), CMSat::Lit(0, false));
     neg_var.assign(cnf.nVars(), CMSat::Lit(0, false));
     std::vector<uint8_t> y_alloc(cnf.nVars(), 0);
@@ -251,8 +136,6 @@ void Cadet::two_sided_build(MetaSolver& solver) {
     std::vector<CMSat::Lit> buf;
     for (uint32_t y : to_define) {
         for (const auto& [ci, sign_y] : var_clauses[y]) {
-            // sign_y == false: y appears positively in clauses[ci]
-            // sign_y == true : y appears negatively
             const CMSat::Lit& side_var = sign_y ? neg_var[y] : pos_var[y];
             buf.clear();
             for (const auto& l : clauses[ci]) {
@@ -271,12 +154,6 @@ void Cadet::two_sided_build(MetaSolver& solver) {
 }
 
 void Cadet::minimize_learnt_recursive(std::vector<Lit>& learnt) {
-    // Sörensson-Biere recursive minimization. A lit l in `learnt` is
-    // dropped iff every lit of pa_reason[l.var()] (other than l's own
-    // var) is either at level 0, already in learnt, or recursively
-    // foldable back via this same rule. The abstract-level mask is a
-    // cheap pre-filter — only vars whose level matches a bit set in the
-    // mask can possibly be foldable.
     const auto& clauses = cnf.get_clauses();
     if (learnt.size() <= 1) return;
 
@@ -290,11 +167,8 @@ void Cadet::minimize_learnt_recursive(std::vector<Lit>& learnt) {
         abstract_level |= (1u << (pa_level[l.var()] & 31));
     }
 
-    // seen[v]: 1 if v was found foldable (either originally in learnt
-    // or proven redundant during a successful walk). 0 otherwise.
-    // to_clear records vars NEWLY marked during the in-progress walk;
-    // on failure we roll the seen flag back. After a successful walk we
-    // keep the marks (caching for subsequent litRedundant calls).
+    // After a successful walk, marks are kept (cache); on failure
+    // they're rolled back via to_clear.
     std::vector<uint8_t> seen(cnf.nVars(), 0);
     for (const Lit& l : learnt) seen[l.var()] = 1;
 
@@ -314,17 +188,13 @@ void Cadet::minimize_learnt_recursive(std::vector<Lit>& learnt) {
                 const uint32_t qv = q.var();
                 if (qv == v) continue;
                 if (seen[qv]) continue;
-                if (pa_level[qv] == 0) continue; // level-0: implied
-                // Only worth exploring if qv has a chance of folding:
-                // it must have a clause reason (not a source) AND its
-                // level must be one of those represented in learnt.
+                if (pa_level[qv] == 0) continue;
                 if (pa_reason[qv] != PA_REASON_SOURCE
                     && (abstract_level & (1u << (pa_level[qv] & 31))) != 0) {
                     seen[qv] = 1;
                     to_clear.push_back(qv);
                     stack.push_back(qv);
                 } else {
-                    // Cannot fold further. Roll back this walk.
                     while (to_clear.size() > top) {
                         seen[to_clear.back()] = 0;
                         to_clear.pop_back();
@@ -361,24 +231,16 @@ bool Cadet::handle_pa_conflict_1uip(std::vector<uint8_t>& outer_in_queue,
     const auto& clauses = cnf.get_clauses();
     const auto& cclause = clauses[pa_conflict_clause];
 
-    // Determine the resolution level: the highest pa_level of any var
-    // in the conflict clause. If 0, F is UNSAT under level-0 commits.
     uint32_t conflict_dlvl = 0;
     for (const Lit& l : cclause) {
         if (pa_level[l.var()] > conflict_dlvl) conflict_dlvl = pa_level[l.var()];
     }
     if (conflict_dlvl == 0) {
-        // Level-0 PA conflict — caller should bail to Phase E/F.
+        // F UNSAT under level-0 commits — caller bails to Phase E/F.
         pa_conflict_clause = PA_NO_CONFLICT;
         return false;
     }
 
-    // 1-UIP resolution. seen[v] tracks vars that have been pulled into
-    // the working clause. `counter` is the number of seen vars at the
-    // resolution level still pending resolution / source-promotion.
-    // `learnt` accumulates the negated-assigned lits whose level is
-    // below conflict_dlvl (already in final form) plus the sources at
-    // conflict_dlvl encountered on the trail walk.
     std::vector<uint8_t> seen(cnf.nVars(), 0);
     std::vector<Lit> learnt;
     learnt.reserve(cclause.size());
@@ -387,19 +249,17 @@ bool Cadet::handle_pa_conflict_1uip(std::vector<uint8_t>& outer_in_queue,
     auto absorb_lit = [&](const Lit& l) {
         const uint32_t v = l.var();
         if (seen[v]) return;
-        if (pa_level[v] == 0) return; // root-level lits don't go into learnt
+        if (pa_level[v] == 0) return;
         seen[v] = 1;
         if (v < var_activity.size()) bump_var(v);
         if (pa_level[v] == conflict_dlvl) counter++;
-        else learnt.push_back(l); // already FALSE in PA, retained verbatim
+        else learnt.push_back(l);
     };
 
-    // Initial absorb: every lit of the conflict clause.
     for (const Lit& l : cclause) absorb_lit(l);
 
     int64_t trail_idx = (int64_t)pa_trail.size() - 1;
     while (counter > 0 && trail_idx >= 0) {
-        // Walk back to the latest still-seen var at the conflict level.
         while (trail_idx >= 0) {
             const Lit tl = pa_trail[trail_idx];
             if (seen[tl.var()] && pa_level[tl.var()] == conflict_dlvl) break;
@@ -411,30 +271,9 @@ bool Cadet::handle_pa_conflict_1uip(std::vector<uint8_t>& outer_in_queue,
         const uint32_t reason = pa_reason[tv];
 
         if (reason == PA_REASON_SOURCE) {
-            // Strict 1-UIP requires exactly one lit at conflict_dlvl
-            // in the final learnt clause. Sources fall in two cases:
-            //
-            // Case A (THE decision at its level):
-            //   tv == decision_lits[d-1].var(). The decision is the
-            //   FIRST commit at its level, so in the reverse trail
-            //   walk it's the LAST level-d source we hit. Provided we
-            //   synthetic-resolve every earlier non-decision source,
-            //   counter has wound down to 1 by then and we land
-            //   cleanly: add ~tl as the UIP lit.
-            //
-            // Case B (non-decision source at level d):
-            //   A Phase D forced commit, Phase C pos_force-const, pure
-            //   literal, or CEGAR commit at level d. We don't have a
-            //   clause reason for it, but we DO know it is implied by
-            //   the conjunction of decisions at levels 1..d (the level
-            //   was opened by them and the commit is sound under
-            //   them). The synthetic reason clause is
-            //   (¬dec_1 ∨ ... ∨ ¬dec_d ∨ assigned_lit_for_tv);
-            //   resolving tv out replaces it with ¬dec_1 ∨ ... ∨ ¬dec_d.
-            //   For i < d those are at lower levels — go straight to
-            //   learnt. For i == d that's the decision itself, mark
-            //   seen + counter++. The trail walk will pick it up later
-            //   and resolve via Case A.
+            // The decision at its level → UIP. Non-decision sources
+            // (Phase D forced, Phase C const, pure, CEGAR) get
+            // synthetic-resolved via "implied by decisions ≤ d".
             const uint32_t d = pa_level[tv];
             const bool is_the_decision =
                 (d >= 1 && d <= decision_lits.size()
@@ -446,7 +285,6 @@ bool Cadet::handle_pa_conflict_1uip(std::vector<uint8_t>& outer_in_queue,
                 uip_strict_decision_terminations++;
                 break;
             }
-            // Non-decision source: synthetic-resolve.
             counter--;
             seen[tv] = 0;
             for (uint32_t i = 0; i < d; i++) {
@@ -464,9 +302,8 @@ bool Cadet::handle_pa_conflict_1uip(std::vector<uint8_t>& outer_in_queue,
             continue;
         }
 
-        // Clause reason: resolve `tv` out by absorbing the OTHER lits
-        // of the reason clause. They are all FALSE in PA by the
-        // unit-propagation precondition.
+        // Clause reason: resolve tv out via the reason's other lits
+        // (all FALSE in PA by unit-prop precondition).
         counter--;
         seen[tv] = 0;
         for (const Lit& other : clauses[reason]) {
@@ -477,20 +314,13 @@ bool Cadet::handle_pa_conflict_1uip(std::vector<uint8_t>& outer_in_queue,
     }
 
     if (learnt.empty()) {
-        // Defensive: shouldn't happen when conflict_dlvl > 0.
         pa_conflict_clause = PA_NO_CONFLICT;
         return false;
     }
 
-    // Recursive minimization — runs while pa_reason / pa_level are
-    // still valid for vars in learnt (i.e. before backjump). Drops
-    // every lit whose pa_reason chain folds back into other learnt
-    // lits.
+    // Runs before backjump while pa_reason / pa_level are valid.
     minimize_learnt_recursive(learnt);
 
-    // Backjump target = second-highest dlvl in the learnt clause.
-    // The highest is conflict_dlvl (via the source(s) at that level);
-    // we want to undo just enough to make those un-assigned.
     uint32_t max_lvl = 0, second_lvl = 0;
     for (const Lit& l : learnt) {
         const uint32_t lvl = pa_level[l.var()];
@@ -499,8 +329,6 @@ bool Cadet::handle_pa_conflict_1uip(std::vector<uint8_t>& outer_in_queue,
     }
     decay_activities();
 
-    // Add learnt clause: to skolem_sat (permanent), to learnt_clauses
-    // (for Phase E/F replay).
     skolem_sat->add_clause(learnt);
     learnt_clauses.push_back(learnt);
 
@@ -516,8 +344,6 @@ bool Cadet::handle_pa_conflict_1uip(std::vector<uint8_t>& outer_in_queue,
 
     backjump_to_level(second_lvl);
 
-    // Outer-loop bookkeeping: enqueue every still-undet var so the
-    // next propagation pass sees the new learnt clause's units.
     for (uint32_t y : to_define) {
         if (skol[y] == nullptr && !outer_in_queue[y]) {
             outer_in_queue[y] = 1;
@@ -559,21 +385,14 @@ bool Cadet::pa_drain_bcp(std::vector<uint8_t>& outer_in_queue,
             return false;
         }
         if (n_undef > 1) continue;
-        // Exactly one undef lit. Only auto-commit if it's a Y var (in
-        // to_define). Skipping universals is sound: we'd otherwise
-        // constrain ∀X, which is illegal in synthesis.
+        // Only commit Y vars; propagating universals would falsely
+        // constrain ∀X.
         if (has_undef_universal) continue;
         const uint32_t uv = unit_lit.var();
-        if (skol[uv] != nullptr) {
-            // Var already has a non-pa-tracked Skolem (e.g. an AIG
-            // function). Don't overwrite. PA value stays l_Undef.
-            continue;
-        }
+        // skol[uv] non-null = non-PA-tracked AIG function; don't overwrite.
+        if (skol[uv] != nullptr) continue;
         const bool uval = !unit_lit.sign();
 
-        // Auto-commit at current dec_lvl, fully integrated with the
-        // rest of Cadet's bookkeeping. Mirrors the Phase D commit_const
-        // path so backjumps / Phase E/F see a coherent state.
         skol[uv] = AIG::new_const(uval);
         trail.push_back({uv, decision_lvl, /*is_decision=*/false,
                          CMSat::Lit(0, false), {}});
@@ -583,8 +402,6 @@ bool Cadet::pa_drain_bcp(std::vector<uint8_t>& outer_in_queue,
         pa_assign(uv, uval, ci);
         pa_propagations++;
         if (uv < var_activity.size()) bump_var(uv);
-        // Bump the outer Phase C neighbour queue so subsequent
-        // try_propagate / try_pure_literal sweeps see the new commit.
         for (const auto& [cidx, sign_v] : var_clauses[uv]) {
             (void)sign_v;
             for (const auto& l2 : clauses[cidx]) {
@@ -665,11 +482,6 @@ void Cadet::backjump_to_level(uint32_t target) {
     decision_lits.resize(target);
     sel_lits.resize(target);
     decision_lvl = target;
-    // PA companion: drop every pa_assignment at a level > target. The
-    // pa_trail walk is independent of the trail walk above (it keys off
-    // pa_level[v] rather than TrailEntry.dec_lvl), so the two are kept
-    // in sync only via the level-equality invariant established by the
-    // commit sites.
     pa_pop_to_level(target);
 }
 
@@ -677,7 +489,6 @@ void Cadet::bump_var(uint32_t v) {
     assert(v < var_activity.size());
     var_activity[v] += activity_inc;
     if (var_activity[v] > kActivityRescaleThreshold) {
-        // Rescale all activities to avoid double overflow.
         const double inv = 1.0 / kActivityRescaleThreshold;
         for (auto& a : var_activity) a *= inv;
         activity_inc *= inv;
@@ -694,9 +505,6 @@ void Cadet::clause_undet_delta(uint32_t v, int delta) {
 }
 
 void Cadet::decay_activities() {
-    // Multiplicative decay: scale the bump-increment UP by 1/decay
-    // each time, equivalent to scaling all activities DOWN by decay.
-    // O(1) per decay step.
     activity_inc *= (1.0 / activity_decay);
     if (activity_inc > kActivityRescaleThreshold) {
         const double inv = 1.0 / kActivityRescaleThreshold;
@@ -706,31 +514,21 @@ void Cadet::decay_activities() {
 }
 
 void Cadet::minimize_failed_selectors(std::set<uint32_t>& kept) {
-    // Without an internal propagator we can't do classical CDCL
-    // implication-graph minimization. The pragmatic substitute is:
-    // for each selector in the initial failed core, re-solve under the
-    // remaining selectors; if still UNSAT, that selector was redundant
-    // and we tighten `kept` to the new (possibly even smaller) failed
-    // core that cadical returns. Single pass, descending decision-level
-    // order — dropping a high-dlvl selector lets the subsequent
-    // second_lvl computation backjump deeper. Refreshing `kept` from
-    // each new conflict means one successful drop can chain into more.
+    // Drop each selector via re-solve; tighten `kept` from the new
+    // failed core. Single pass, descending dlvl.
     if (!mconf.cadet_clause_min) return;
     if (kept.size() <= mconf.cadet_clause_min_size_floor) return;
 
     clause_min_total_in_lits += kept.size();
     const size_t in_size = kept.size();
 
-    // Map sel-var → dlvl, computed once. Walking sel_lits for every
-    // lookup would be O(dlvl²); the map is O(dlvl).
     std::unordered_map<uint32_t, uint32_t> sel_var_to_dlvl;
     sel_var_to_dlvl.reserve(decision_lvl);
     for (uint32_t d = 1; d <= decision_lvl; d++) {
         sel_var_to_dlvl[sel_lits[d - 1].var()] = d;
     }
 
-    // Candidates: descending dlvl. Dropping the highest first means
-    // every successful drop tightens the backjump target.
+    // Descending dlvl so the resulting backjump can go deeper.
     std::vector<uint32_t> cands(kept.begin(), kept.end());
     std::sort(cands.begin(), cands.end(),
               [&](uint32_t a, uint32_t b) {
@@ -742,7 +540,7 @@ void Cadet::minimize_failed_selectors(std::set<uint32_t>& kept) {
     trial.reserve(kept.size());
     for (uint32_t sv : cands) {
         if (kept.size() <= 1) break;
-        if (!kept.count(sv)) continue; // dropped by a previous refresh
+        if (!kept.count(sv)) continue;
 
         trial.clear();
         for (uint32_t k : kept) {
@@ -751,8 +549,6 @@ void Cadet::minimize_failed_selectors(std::set<uint32_t>& kept) {
         }
         clause_min_resolves++;
         if (s.solve(&trial) == CMSat::l_False) {
-            // sv was redundant. Refresh kept from the new failed core.
-            // The new core ⊆ trial's selectors ⊆ old kept \ {sv}.
             std::set<uint32_t> new_kept;
             for (const Lit& f : s.get_conflict()) {
                 if (sel_var_to_dlvl.count(f.var())) {
@@ -760,10 +556,8 @@ void Cadet::minimize_failed_selectors(std::set<uint32_t>& kept) {
                 }
             }
             if (new_kept.empty()) {
-                // Cadical reported UNSAT without any failed assumption
-                // — F (or the gating clauses) alone is UNSAT under the
-                // empty assumption set. Hand the empty core back; the
-                // caller short-circuits to backjump-to-0.
+                // UNSAT with no failed assumption → F itself UNSAT.
+                // Caller short-circuits to backjump-to-0.
                 kept.clear();
                 clause_min_drops += in_size;
                 clause_min_total_out_lits += 0;
@@ -778,12 +572,9 @@ void Cadet::minimize_failed_selectors(std::set<uint32_t>& kept) {
 }
 
 void Cadet::tseitin_skol_into_skolem_sat(uint32_t y) {
-    // Communicate skol[y] to the persistent SAT solver. At level 0
-    // commits are permanent. At decision_lvl > 0 we ONLY gate
-    // constants under sel_d (so backjump can kill them); non-constant
-    // pos_force AIGs are left in skol[] only, since selector-gating
-    // every clause produced by AIGToCNF would require a wrapper —
-    // future work.
+    // Level-0: permanent. Level>0: only gate CONSTANT skols (non-const
+    // pos_force AIGs stay in skol[] only — selector-gating every
+    // AIGToCNF clause needs a wrapper, future work).
     assert(skolem_sat != nullptr);
     assert(skol[y] != nullptr);
     const bool gated = (decision_lvl > 0);
@@ -797,7 +588,7 @@ void Cadet::tseitin_skol_into_skolem_sat(uint32_t y) {
         }
         return;
     }
-    if (gated) return; // non-constant level>0 commits: skol[] only
+    if (gated) return;
     using AIGEnc = ArjunNS::AIGToCNF<MetaSolver>;
     AIGEnc enc(*skolem_sat);
     enc.set_true_lit(skolem_sat_true_lit);
@@ -811,10 +602,7 @@ uint32_t Cadet::ratify_speculative_decisions() {
     if (decision_lvl == 0) return 0;
     uint32_t ratified = 0;
     for (uint32_t d = 1; d <= decision_lvl; d++) {
-        // Assume earlier selectors (still speculative or being ratified
-        // up the chain) + ¬decision_lit_d. UNSAT ⇒ decision_lit_d is
-        // F-implied under sel[0..d-2], so once those are promoted to
-        // unit, decision_lit_d is unconditionally F-implied.
+        // sel[0..d-2] + ¬decision_lit_d UNSAT ⇒ decision F-implied.
         std::vector<Lit> probe;
         probe.reserve(d);
         for (uint32_t e = 1; e < d; e++) probe.push_back(sel_lits[e - 1]);
@@ -823,23 +611,15 @@ uint32_t Cadet::ratify_speculative_decisions() {
         ratified = d;
     }
     if (ratified == 0) return 0;
-    // Promote sel_d to unit for the ratified prefix. This makes the
-    // previously-gated clauses (decision clause + commits at level d)
-    // effectively ungated — equivalent to moving the level to 0.
+    // Promote sel_d to unit for the ratified prefix — ungates the
+    // level's clauses, effectively moving them to level 0.
     for (uint32_t d = 1; d <= ratified; d++) {
         skolem_sat->add_clause({sel_lits[d - 1]});
     }
-    // Rewrite the trail so ratified levels survive future inspection
-    // as level-0 entries. (Phase E/F never look at dec_lvl, but the
-    // backjump in this function does.)
     for (auto& te : trail) {
         if (te.dec_lvl > 0 && te.dec_lvl <= ratified) te.dec_lvl = 0;
     }
-    // Roll back any still-speculative levels above ratified.
     backjump_to_level(ratified);
-    // Collapse the ratified levels into level 0: drop their selector /
-    // decision-lit metadata since the unit clauses above make them
-    // permanent.
     decision_lits.clear();
     sel_lits.clear();
     decision_lvl = 0;
@@ -852,11 +632,7 @@ uint32_t Cadet::ratify_speculative_decisions() {
 }
 
 void Cadet::maybe_replenish_skolem_sat() {
-    // Only run at level 0 — sel_lits / decision_lits still reference
-    // the OLD solver's vars; replenishing under live decisions would
-    // need a re-allocation pass we'd rather avoid. The natural call
-    // sites in synth_by_propagation are restart and the level-0
-    // top-of-loop check.
+    // Level-0 only: sel_lits / decision_lits reference OLD-solver vars.
     if (mconf.cadet_skolem_sat_replenish_every == 0) return;
     if (skolem_sat_commits_since_build < mconf.cadet_skolem_sat_replenish_every) return;
     if (decision_lvl != 0) return;
@@ -881,17 +657,10 @@ void Cadet::maybe_replenish_skolem_sat() {
             new_solver->add_clause({Lit(y, /*sign=*/false), ~root});
         }
     }
-    // Replay learnt clauses — cadet's casesplits_steal_cases analogue
-    // for the closed-case database; arjun only has the one bag of
-    // failed-decision refutations.
     for (const auto& lc : learnt_clauses) {
         new_solver->add_red_clause(lc);
     }
 
-    // Two-sided encoding: re-allocate pos_var/neg_var in the fresh
-    // solver and re-add the sufficient-direction clauses. They are
-    // pure F-encoding (no Skolem dependence), so a single static
-    // rebuild is correct regardless of how many commits we've made.
     skolem_sat = std::move(new_solver);
     skolem_sat_true_lit = new_true_lit;
     skolem_sat_commits_since_build = 0;
@@ -923,24 +692,14 @@ void Cadet::build_solver_with_skols(MetaSolver& s, Lit& out_true_lit) const {
             s.add_clause({Lit(y, /*sign=*/false), ~root});
         }
     }
-    // Inject CDCL-learnt clauses from Phase D so the new solver gets
-    // the same combinatorial pruning. They're over original vars, so
-    // safe to add as red clauses.
     for (const auto& lc : learnt_clauses) s.add_red_clause(lc);
 }
 
 
 aig_ptr Cadet::build_shannon_tree(const vector<bool>& table,
                                   const vector<uint32_t>& sorted_inputs) {
-    // table is indexed by integer mask of length sorted_inputs.size().
-    // Bit i of the mask corresponds to sorted_inputs[i]. We Shannon-
-    // decompose bottom-up, level by level: at level L the surviving
-    // nodes cover 2^L leaves, addressed by the high (n-L) bits of the
-    // original mask. Pair-merge: level[i] = ITE(sorted_inputs[L],
-    //                                          high=level_prev[2i+1],
-    //                                          low=level_prev[2i]).
-    // ITE collapses to the common subtree when both children match, so
-    // constant regions vanish naturally.
+    // Bottom-up pair-merge: level[i] = ITE(sorted_inputs[L],
+    //   high=prev[2i+1], low=prev[2i]). ITE folds constant subtrees.
     const uint32_t n = sorted_inputs.size();
     if (n == 0) {
         assert(table.size() == 1);
@@ -956,9 +715,7 @@ aig_ptr Cadet::build_shannon_tree(const vector<bool>& table,
         vector<aig_ptr> next;
         next.reserve(level.size() / 2);
         for (size_t i = 0; i + 1 < level.size(); i += 2) {
-            // level[i]   has bit `lvl` = 0  → low branch
-            // level[i+1] has bit `lvl` = 1  → high branch
-            // ITE(b, l, r) returns l when b is true.
+            // level[i] = low (bit=0), level[i+1] = high (bit=1).
             next.push_back(AIG::new_ite(level[i + 1], level[i], branch_lit));
         }
         level = std::move(next);
@@ -972,16 +729,7 @@ bool Cadet::try_propagate(uint32_t y,
                           const std::map<uint32_t, Lit>& new_to_orig) {
     if (skol[y] != nullptr) return false;
 
-    // Fast pre-check: a clause containing y has n_undet > 1 ⇔ some
-    // non-y lit in it is still undet. If ANY of y's clauses fails the
-    // n_undet ≤ 1 condition, y can't be a unique consequence yet —
-    // skip the per-clause inner walk entirely. Cadet's unique_-
-    // consequence[] machinery does this incrementally per clause; we
-    // do the same lookup on demand, which is cheaper than maintaining
-    // the inverse "ready-to-fire" queue per var. Dead clauses are
-    // already satisfied so they don't block — but their n_undet may
-    // still be > 1 because we don't decrement on death. Treat them
-    // as ready inline.
+    // Fast pre-check: any non-dead clause with n_undet > 1 blocks y.
     for (const auto& [ci, sign_y] : var_clauses[y]) {
         (void)sign_y;
         if (clause_dead[ci]) continue;
@@ -991,12 +739,8 @@ bool Cadet::try_propagate(uint32_t y,
     const auto& clauses = cnf.get_clauses();
     bool all_determined = true;
     aig_ptr pos_force = AIG::new_const(false);
-    // We accumulate ONLY the positive-force region. The negative-force
-    // region need not be computed: by the synthesis precondition
-    // (F satisfiable for every input), positive and negative force
-    // regions never overlap, so committing y = pos_force — TRUE on the
-    // positive region, FALSE elsewhere — never violates a negative-y
-    // clause.
+    // Only accumulate the positive-force region: by F-SAT-for-every-X,
+    // pos and neg force regions are disjoint, so y=pos_force is sound.
     for (const auto& [ci, sign_y] : var_clauses[y]) {
         if (sign_y) continue;
         aig_ptr forced = AIG::new_const(true);
@@ -1073,13 +817,10 @@ bool Cadet::try_propagate(uint32_t y,
 
 void Cadet::mark_clauses_dead_by_constant(uint32_t v, bool val) {
     // Lit appears as +v when sign=false; that literal is TRUE iff val
-    // is true. ¬v has sign=true and is TRUE iff val is false. The
-    // satisfying-sign matches `!val` (since sign=true means ¬v).
-    // We also record the freshly-killed clauses in trail.back() so
-    // backjump_to_level can un-kill them.
+    // Satisfying-sign matches !val. Freshly-killed clauses recorded on
+    // trail.back() so backjump can un-kill them.
     const bool sat_sign = !val;
-    assert(!trail.empty() && "mark_clauses_dead_by_constant must run "
-                             "AFTER pushing the commit's TrailEntry");
+    assert(!trail.empty() && "must run AFTER pushing the TrailEntry");
     auto& killed = trail.back().killed_clauses;
     for (const auto& [ci, sign_v] : var_clauses[v]) {
         if (sign_v == sat_sign && !clause_dead[ci]) {
@@ -1091,7 +832,6 @@ void Cadet::mark_clauses_dead_by_constant(uint32_t v, bool val) {
 
 bool Cadet::try_pure_literal(uint32_t y) {
     if (skol[y] != nullptr) return false;
-    // Count surviving (undead) clauses by polarity-of-y.
     bool has_pos = false, has_neg = false;
     for (const auto& [ci, sign_y] : var_clauses[y]) {
         if (clause_dead[ci]) continue;
@@ -1100,8 +840,7 @@ bool Cadet::try_pure_literal(uint32_t y) {
         if (has_pos && has_neg) return false;
     }
     if (!has_pos && !has_neg) {
-        // Every clause already dead — y is unconstrained. Commit false
-        // (arbitrary; later AIG simplification folds it away).
+        // y unconstrained — pick false (AIG simplifier folds it away).
         skol[y] = AIG::new_const(false);
         trail.push_back({y, decision_lvl, /*is_decision=*/false, Lit(0, false), {}});
         clause_undet_delta(y, -1);
@@ -1110,9 +849,6 @@ bool Cadet::try_pure_literal(uint32_t y) {
         tseitin_skol_into_skolem_sat(y);
         return true;
     }
-    // Pure: if has_pos and !has_neg, y only appears positively in
-    // surviving clauses; setting y=true satisfies all of them.
-    // Symmetric for has_neg.
     const bool val = has_pos;
     skol[y] = AIG::new_const(val);
     trail.push_back({y, decision_lvl, /*is_decision=*/false, Lit(0, false), {}});
@@ -1154,15 +890,8 @@ bool Cadet::synth_by_propagation() {
     for (uint32_t v : input) skol[v] = AIG::new_lit(v, /*neg=*/false);
     for (uint32_t v : backward_defined) skol[v] = AIG::new_lit(v, /*neg=*/false);
 
-    // PA propagator state. All vars start l_Undef; X universals and
-    // backward_defined leaves stay that way (never propagated). Y vars
-    // get pa_assigned as their constant skol[] commits land.
     pa_init();
 
-    // Initialise n_undet_per_clause: count lits in each clause whose
-    // var still has skol[v]==nullptr. Input + backward_defined vars
-    // count as determined (they're literal leaves, not propagation
-    // candidates). Decremented on commits / restored on backjumps.
     {
         const auto& clauses_ref = cnf.get_clauses();
         for (uint32_t ci = 0; ci < clauses_ref.size(); ci++) {
@@ -1181,11 +910,7 @@ bool Cadet::synth_by_propagation() {
 
     MetaSolver& decision_sat = *skolem_sat;
 
-    // Worklist-driven Phase C: every undet y starts on the queue.
-    // When we commit y, every undet neighbour (sharing a clause) gets
-    // re-enqueued — they're the only vars whose try_propagate result
-    // could change. Avoids the O(passes × |to_define| × clauses) cost
-    // of the old fixpoint loop.
+    // Worklist: only re-check undet neighbours of fresh commits.
     std::vector<uint8_t> in_queue(cnf.nVars(), 0);
     std::vector<uint32_t> queue;
     queue.reserve(to_define.size());
@@ -1193,10 +918,7 @@ bool Cadet::synth_by_propagation() {
         if (skol[y] == nullptr) { in_queue[y] = 1; queue.push_back(y); }
     }
 
-    // Seed clause_dead from any already-committed const skol[]. Today
-    // this loop is a no-op because skol[] was just reset above, but it
-    // would matter if synth_by_propagation got re-entered with a
-    // partially-built skol state.
+    // Defensive: handles a partially-built skol on re-entry (no-op today).
     for (uint32_t y : to_define) {
         if (skol[y] != nullptr && skol[y]->type == AIGT::t_const) {
             trail.push_back({y, decision_lvl,
@@ -1212,29 +934,15 @@ bool Cadet::synth_by_propagation() {
     uint32_t total_restarts = 0;
     skolem_sat_replenishes = 0;
     total_ratified = 0;
-    // The persistent skolem_sat already has F injected plus any level-0
-    // commits we've tseitin-encoded so far. Treat its current state as
-    // "freshly built" — we only count NEW commits from here on towards
-    // the replenish threshold.
     skolem_sat_commits_since_build = 0;
-    // Geometric restart schedule: backjump to level 0 after every
-    // `restart_threshold` conflicts, then grow the threshold by
-    // kRestartFactor. Keeps learnt clauses; just discards the
-    // speculative tree so a fresh exploration can start.
     uint32_t restart_threshold = mconf.cadet_restart_initial;
     uint32_t conflicts_since_restart = 0;
     const double restart_factor = mconf.cadet_restart_factor;
-    // Latch set when we hit the guess-depth cap and want one more
-    // forced-only pass at level 0 (to pick up vars now forced by
-    // learnt clauses) before exiting.
+    // One more level-0 forced pass after the guess-depth cap.
     bool no_more_guesses = false;
     uint32_t pass = 0;
     while (true) {
         pass++;
-        // PA-UIP conflict path: BCP (run inline at commit sites) may
-        // have set pa_conflict_clause. Resolve it via 1-UIP and learn
-        // before doing anything else this iteration. On level-0
-        // conflict, drop to Phase E/F.
         if (pa_conflict_clause != PA_NO_CONFLICT) {
             if (!handle_pa_conflict_1uip(in_queue, queue)) {
                 backjump_to_level(0);
@@ -1248,9 +956,6 @@ bool Cadet::synth_by_propagation() {
             conflicts_since_restart++;
             continue;
         }
-        // Geometric restart: when we've taken enough conflicts inside
-        // the current speculative tree, throw away the tree (keeping
-        // learnt clauses) and start fresh.
         if (decision_lvl > 0 &&
                 conflicts_since_restart >= restart_threshold) {
             backjump_to_level(0);
@@ -1262,7 +967,6 @@ bool Cadet::synth_by_propagation() {
                      << ", next threshold " << restart_threshold
                      << ", learnt=" << learnt_clauses.size() << endl;
             }
-            // Re-enqueue every undet var.
             for (uint32_t y : to_define) {
                 if (skol[y] == nullptr && !in_queue[y]) {
                     in_queue[y] = 1;
@@ -1270,21 +974,14 @@ bool Cadet::synth_by_propagation() {
                 }
             }
         }
-        // Replenish skolem_sat after enough level-0 commits have
-        // accumulated, restart-aligned (decision_lvl is 0 here). Cheap
-        // when --cadetreplenish 0 — short-circuits at the threshold
-        // check.
         if (decision_lvl == 0) maybe_replenish_skolem_sat();
         uint32_t committed_this_pass = 0;
-        // Drain the propagation worklist.
         while (!queue.empty()) {
             const uint32_t y = queue.back();
             queue.pop_back();
             in_queue[y] = 0;
-            // Try unique-consequence propagation first, then pure-literal.
-            // Pure-literal can apply when not-all-determined: it doesn't
-            // require knowing every clause's other lits, just that the
-            // surviving clauses for y are one-sided.
+            // Unique-consequence first; pure-literal may apply even when
+            // not-all-determined (one-sided surviving clauses suffice).
             bool committed = try_propagate(y, dep_cache, new_to_orig);
             if (!committed) {
                 if (try_pure_literal(y)) {
@@ -1296,11 +993,6 @@ bool Cadet::synth_by_propagation() {
                 committed_this_pass++;
                 total_committed++;
                 enqueue_neighbours(y, in_queue, queue);
-                // Drain the PA worklist. try_propagate / try_pure_literal
-                // pa_assigned the commit, which queued every clause it
-                // touches. BCP may now auto-commit more Y units at the
-                // current level; each auto-commit also enqueues outer
-                // neighbours so this while loop picks them up.
                 pa_drain_bcp(in_queue, queue);
             }
         }
@@ -1309,39 +1001,13 @@ bool Cadet::synth_by_propagation() {
                  << ": committed " << committed_this_pass << endl;
         }
 
-        // Phase D — propagation has stalled. We want to find SOME undet
-        // var that F forces to a constant under current decisions
-        // (commit it, resume propagation, possibly unblock more vars).
-        //
-        // Try every undet candidate, not just one. The earlier version
-        // bailed after the first failed candidate, which on real
-        // benchmarks (sdlx-fixpoint-5) was the difference between
-        // "0 commits / give up" and "stop trying just because the
-        // least-constrained var happened to be input-dependent".
-        //
-        // Order: by ascending clause-count (least-constrained first;
-        // those are the most likely to be forced). Two SAT calls per
-        // candidate at worst (both polarities); we accept that.
-        //
-        // We commit a CONSTANT Skolem only when F (plus earlier
-        // decisions) FORCES pick to that constant — opposite-polarity
-        // assumption is UNSAT. A looser check ("F+(y=c) sat") would be
-        // unsound: it only means SOME input X works, not every X, so a
-        // constant decision would violate F on some other input.
+        // Phase D forced-only: try every undet candidate; commit when
+        // one polarity is universally forced (¬pos/¬neg UNSAT).
 
-        // Conflict check at the current decision context. If under
-        // active selector assumptions F is already UNSAT, our decision
-        // stack is bad — find the responsible decisions in the failed
-        // core, learn the negation as a permanent clause, and backjump
-        // to the second-highest level among the responsible decisions.
+        // Global conflict check: F UNSAT under active selectors → learn.
         if (decision_lvl > 0) {
             vector<Lit> base = active_assumps();
             if (decision_sat.solve(&base) == CMSat::l_False) {
-                // Pull selectors out of the initial failed core, then
-                // shrink it via re-solves (cadet's c2_minimize_clause
-                // analogue — see minimize_failed_selectors). The
-                // tightened set drives a smaller learnt clause AND a
-                // deeper backjump target.
                 std::set<uint32_t> kept_selectors;
                 for (const Lit& f : decision_sat.get_conflict()) {
                     kept_selectors.insert(f.var());
@@ -1365,9 +1031,7 @@ bool Cadet::synth_by_propagation() {
                     }
                 }
                 if (max_lvl == 0 || learnt.empty()) {
-                    // F+empty UNSAT — means F itself is UNSAT.
-                    // Shouldn't reach this in synthesis (precondition is
-                    // F sat for every input). Bail to Phase E/F.
+                    // F itself UNSAT — bail to Phase E/F.
                     backjump_to_level(0);
                     break;
                 }
@@ -1435,15 +1099,7 @@ bool Cadet::synth_by_propagation() {
                 decay_activities();
             };
 
-            // Two-sided Skolem probe (replaces the old y=true/y=false
-            // assumption pattern). Equivalent semantics, but the SAT
-            // solver gets to learn cross-Y constraints over the
-            // pos_var/neg_var space that persist across probes.
-            //
-            // SAT call 1: assume ¬pos_var[pick] under current
-            // decisions; UNSAT ⇒ pos_var[pick] is universally true,
-            // i.e. some pos-y clause fires at every consistent X, i.e.
-            // pick must be TRUE universally.
+            // Two-sided probe: ¬pos_var[pick] UNSAT ⇒ pick forced TRUE.
             assumps = base_assumps;
             assumps.push_back(~pos_var[pick]);
             auto commit_const = [&](bool val) {
@@ -1454,14 +1110,10 @@ bool Cadet::synth_by_propagation() {
                 clause_undet_delta(pick, -1);
                 mark_clauses_dead_by_constant(pick, val);
                 pa_assign(pick, val, PA_REASON_SOURCE);
-                // Unified tseitin path: at level 0 permanent, at
-                // level>0 gated by sel_d. Backjump kills the gating.
                 tseitin_skol_into_skolem_sat(pick);
                 total_decisions++;
                 any_decided = true;
                 enqueue_neighbours(pick, in_queue, queue);
-                // Extend via BCP — pa_assign queued affected clauses,
-                // so the propagator may auto-commit further Y units.
                 pa_drain_bcp(in_queue, queue);
                 if (conf.verb >= 2) {
                     cout << "c o [cadet]   forced: skol[" << (pick + 1)
@@ -1471,12 +1123,9 @@ bool Cadet::synth_by_propagation() {
             };
             if (decision_sat.solve(&assumps) == CMSat::l_False) {
                 two_sided_pos_unsat++;
-                commit_const(true); // ¬pos UNSAT ⇒ pick must be TRUE
+                commit_const(true);
                 continue;
             }
-            // SAT call 2: assume ¬neg_var[pick]; UNSAT ⇒ pick must be
-            // FALSE universally (every consistent X has some neg-y
-            // clause firing).
             assumps = base_assumps;
             assumps.push_back(~neg_var[pick]);
             if (decision_sat.solve(&assumps) == CMSat::l_False) {
@@ -1484,34 +1133,14 @@ bool Cadet::synth_by_propagation() {
                 commit_const(false);
                 continue;
             }
-            // Neither polarity forced — pick is genuinely
-            // input-dependent. Skip and try the next candidate.
         }
 
         if (!any_decided) {
-            // Forced-only is stuck at the current decision context.
-            // If we're at level 0, try the CEGAR refinement loop
-            // BEFORE giving up to a speculative guess. CEGAR finds
-            // y-values forced under *universal cubes* — commits that
-            // are invisible to forced-only (which only spots values
-            // forced *universally*). Empty kept-cube rounds produce
-            // direct level-0 constant commits; non-empty rounds add
-            // implication clauses to skolem_sat that may unblock
-            // forced-only on its next pass.
+            // CEGAR before speculative guess: finds y forced under
+            // universal cubes (invisible to forced-only).
             if (decision_lvl == 0 && mconf.cadet_cegar) {
-                if (cegar_drain_at_level_0(in_queue, queue)) {
-                    // CEGAR made progress; let propagation pick up
-                    // any newly-committed neighbours and any forcing
-                    // that came from the new skolem_sat clauses.
-                    continue;
-                }
+                if (cegar_drain_at_level_0(in_queue, queue)) continue;
             }
-            // CDCL step: guess the highest-VSIDS undet at a new
-            // decision level. Subsequent propagation runs under the
-            // assumed sel_d. On a future probe UNSAT-with-sel_d-in-
-            // core we'll backjump and learn (later commit).
-            //
-            // If there are no remaining undet, we're done.
             uint32_t guess = UINT32_MAX;
             double best = -1.0;
             for (uint32_t y : to_define) {
@@ -1521,11 +1150,7 @@ bool Cadet::synth_by_propagation() {
                     guess = y;
                 }
             }
-            if (guess == UINT32_MAX) break; // nothing left
-            // Soft cap on speculative depth — Phase F is terminal and
-            // will mop up anything not committed. The cap also
-            // bounds the work of "explore-and-backtrack" before we
-            // give up and let downstream phases finish.
+            if (guess == UINT32_MAX) break;
             const uint32_t max_guess_depth = mconf.cadet_max_guess_depth;
             if (no_more_guesses) break;
             if (decision_lvl >= max_guess_depth) {
@@ -1536,9 +1161,6 @@ bool Cadet::synth_by_propagation() {
                 }
                 backjump_to_level(0);
                 no_more_guesses = true;
-                // Re-enqueue every undet — learnt clauses may unit-
-                // propagate them. Then re-enter the outer loop; the
-                // next "no_more_guesses" branch will exit cleanly.
                 for (uint32_t y : to_define) {
                     if (skol[y] == nullptr && !in_queue[y]) {
                         in_queue[y] = 1;
@@ -1547,12 +1169,7 @@ bool Cadet::synth_by_propagation() {
                 }
                 continue;
             }
-            // Guess polarity: pick the value that satisfies more
-            // surviving (undead) clauses — JW-style on the residual
-            // formula. If y appears positively in more undead clauses
-            // (sign=false), commit y=true; otherwise y=false. Pure-
-            // literal handled the one-sided extremes, so this only
-            // kicks in when both polarities are non-trivial.
+            // JW-style polarity on residual undead clauses.
             uint32_t n_pos = 0, n_neg = 0;
             for (const auto& [ci, sign_y] : var_clauses[guess]) {
                 if (clause_dead[ci]) continue;
@@ -1561,7 +1178,6 @@ bool Cadet::synth_by_propagation() {
             const bool guess_val = (n_pos >= n_neg);
             make_decision(guess, guess_val);
             enqueue_neighbours(guess, in_queue, queue);
-            // BCP may force further Y values under the new dec_lvl.
             pa_drain_bcp(in_queue, queue);
             if (conf.verb >= 1) {
                 cout << "c o [cadet] Phase D: guess skol[" << (guess + 1)
@@ -1571,20 +1187,10 @@ bool Cadet::synth_by_propagation() {
             }
             continue;
         }
-        // Loop continues: propagation may make progress now that some
-        // picks are committed.
     }
 
-    // Before handing off to Phase E/F, undo every speculative (level>0)
-    // commit. Phase E/F can only see level-0-permanent skol[] entries;
-    // a wrong guess left behind here would corrupt their result.
-    //
-    // Try to ratify levels first — for any level d whose decision lit
-    // is now F-implied under the earlier selectors (typically thanks
-    // to learnt clauses added after the guess), promote sel_d to a
-    // unit clause and keep the trail entries. Speculative levels that
-    // stay non-implied get rolled back. Even one ratification spares
-    // Phase F a chunk of work.
+    // Phase E/F see only level-0 commits. Ratify F-implied levels
+    // before rolling back the rest.
     if (decision_lvl > 0) {
         if (mconf.cadet_ratify_speculative) ratify_speculative_decisions();
         if (decision_lvl > 0) backjump_to_level(0);
@@ -1679,34 +1285,11 @@ bool Cadet::synth_by_propagation() {
 }
 
 bool Cadet::synth_complete_with_models() {
-    // Phase E. Builds the rest of cadet's Skolems on top of whatever
-    // Phase C+D already committed, by:
-    //   (1) Loading F into a fresh SAT solver.
-    //   (2) Tseitin-encoding every prior skol[] commit (Phase C's
-    //       pos_force AIGs and Phase D's constant decisions) and
-    //       y ↔ skol[y] equivalence clauses. Any SAT model then
-    //       respects the prior commits automatically.
-    //   (3) Enumerating orig-sampling-var assignments via repeated
-    //       SAT solving — each iteration finds a model, records y
-    //       values for the still-undet vars into a per-y table,
-    //       and forbids that exact input pattern so the next solve
-    //       returns a different one. Stops when the solver returns
-    //       UNSAT (every consistent input has been visited).
-    //   (4) Building each undet y's Skolem from its table via
-    //       Shannon decomposition (build_shannon_tree).
-    //
-    // Soundness: every recorded (input, y) pair comes from a SAT model
-    // of F + prior commits, so the joint values for all undet y's at
-    // each input are mutually consistent and consistent with what was
-    // already committed.
-    //
-    // Limit: |orig_sampl_cnf| <= mconf.cadet_phase_e_threshold (default 16).
-    // For larger inputs Phase E gives up; Phase F (terminal, no threshold)
-    // takes over.
+    // Phase E: enumerate consistent X assignments, record undet y
+    // values per model, build Shannon trees. Only runs when input
+    // space is small enough.
     if (orig_sampl_cnf.size() > mconf.cadet_phase_e_threshold) return false;
 
-    // Identify still-undetermined to_define vars. If Phase C+D already
-    // determinized everything, Phase E has nothing to do.
     vector<uint32_t> undet;
     for (uint32_t y : to_define) {
         if (skol[y] == nullptr) undet.push_back(y);
@@ -1722,31 +1305,18 @@ bool Cadet::synth_complete_with_models() {
     }
     const double t0 = cpuTime();
 
-    // Build a fresh SAT solver loaded with F + tseitin of prior skol[]
-    // commits via the shared helper. Phase E adds forbid clauses later
-    // and so cannot share the persistent skolem_sat (those forbid
-    // clauses must not leak into Phase F or Phase D).
+    // Private solver — its forbid clauses must not leak into Phase D/F.
     MetaSolver sat(SolverType::cadical);
     Lit true_lit;
     build_solver_with_skols(sat, true_lit);
-    (void)true_lit; // currently unused after setup, kept for future ext.
+    (void)true_lit;
 
-    // Now iterate: every solve returns a SAT model whose values for
-    // committed y's already match their skol[]s (via the Tseitin
-    // encoding); we just record values for the UNDET y's and forbid
-    // the input pattern.
     vector<uint32_t> sorted_inputs(orig_sampl_cnf.begin(), orig_sampl_cnf.end());
     std::sort(sorted_inputs.begin(), sorted_inputs.end());
     const uint32_t n_in = sorted_inputs.size();
     const uint64_t n_assign = 1ull << n_in;
 
-    // Per-y value table; missing inputs default to false (those
-    // assignments are UNSAT under F + prior commits, so y's value
-    // there is vacuously free and "false" is a fine default — it
-    // gets folded away by AIG simplification anyway).
-    // unordered_map — see the matching note on `partial` in Phase F.
-    // We only index `tables[y]` with y from `undet`; never iterate the
-    // map itself, so ordered traversal is unneeded.
+    // UNSAT-input rows stay false (vacuously free; AIG simplifier folds).
     std::unordered_map<uint32_t, vector<bool>> tables;
     tables.reserve(undet.size());
     for (uint32_t y : undet) tables[y].assign(n_assign, false);
@@ -1757,11 +1327,7 @@ bool Cadet::synth_complete_with_models() {
     while (true) {
         const auto ret = sat.solve();
         if (ret == CMSat::l_False) break;
-        if (ret != CMSat::l_True) {
-            // UNDEF / unknown — bail; the caller (do_cadet) will
-            // run Phase F to finish the still-undet vars.
-            return false;
-        }
+        if (ret != CMSat::l_True) return false; // Phase F will finish
         const auto& model = sat.get_model();
         uint64_t mask = 0;
         forbid.clear();
@@ -1793,22 +1359,8 @@ bool Cadet::synth_complete_with_models() {
 }
 
 bool Cadet::synth_complete_with_interp_generalization() {
-    // Monolithic Phase F: build Skolems for all still-undet vars over
-    // the full orig sampling space in one SAT-model-enumeration loop.
-    //
-    // An earlier attempt at per-component decomposition was unsound:
-    // when a clause involves a to_define var and an extend-defined
-    // var, the extend var's existing AIG def transitively touches
-    // OTHER to_define vars in different components. The per-component
-    // Skolems then implicitly relied on consistent values for the
-    // out-of-component orig-sampling vars feeding those extend defs,
-    // producing skol[y1], skol[y2] that were each individually
-    // consistent with F but JOINTLY incorrect at some inputs. Caught
-    // by fuzz_cadet seed 11995170551103480696 (test-synth: "Sample
-    // does not satisfy the CNF"). The worker is kept as a callable
-    // helper (synth_phase_f_subset) so a future, correctly-merged
-    // decomposition can call it; the current wrapper just forwards
-    // the full undet set / full orig sampling set in one call.
+    // Monolithic Phase F (per-component decomposition was unsound;
+    // worker kept parametrized for a future correct version).
     vector<uint32_t> all_undet;
     for (uint32_t y : to_define) {
         if (skol[y] == nullptr) all_undet.push_back(y);
@@ -1822,60 +1374,11 @@ bool Cadet::synth_complete_with_interp_generalization() {
 
 bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
                                  const std::vector<uint32_t>& sub_undet) {
-    // Phase F worker — operates on the supplied subset. Same algorithm
-    // as the original monolithic Phase F, but `sorted_inputs` and
-    // `undet` come from the parameters instead of class state.
-    //
-    // Like Phase E, but each iteration's case covers many
-    // inputs (not just one). The generalization comes from greedy
-    // bit-dropping with a uniqueness check:
-    //
-    //   For each SAT model M, build a tentative "case condition" = the
-    //   input pattern from M. Then for each input bit i in turn, ask
-    //   the SAT solver:
-    //
-    //     "F + (kept input lits without i) + (joint undet y ≠ M's
-    //      values, gated by a selector) is UNSAT?"
-    //
-    //   If UNSAT: over the region "kept lits ∧ bit i unconstrained",
-    //   the joint values for undet y's are FORCED to equal M's. Bit i
-    //   doesn't affect what the y's must be — drop it from the case
-    //   condition. Greedy across bits keeps shrinking the condition.
-    //
-    // Soundness: the uniqueness check is over the FULL kept region
-    // (all combinations of dropped bits + whatever the SAT solver
-    // picks for non-input vars), so committing the joint M-values
-    // over the kept region is correct: there's no consistent y other
-    // than M's values in that region.
-    //
-    // The "joint undet y ≠ M" assumption is encoded via a fresh
-    // selector variable per iteration so it can be deactivated when
-    // we move on (cadical doesn't support clause removal; selector
-    // toggles are the standard incremental-SAT idiom).
-    //
-    // Termination: like Phase E, we forbid each minimized case
-    // pattern after committing it. The outer SAT solve hits UNSAT
-    // when every consistent input pattern has been covered by some
-    // case. We also bound the iteration count to keep poorly-
-    // converging inputs from running forever.
-    //
-    // Phase F has no input-size threshold and no iteration cap. It is
-    // the terminal completion phase: it MUST succeed because the user
-    // contract is that cadet always finishes (no Manthan fallback).
-    //
-    // Termination: each iteration forbids a non-empty kept-input
-    // region, so total iterations ≤ 2^|orig_sampl_cnf| — finite.
-    // Practical iterations are much smaller because each case's
-    // UNSAT-core extraction generalizes over many inputs.
-    //
-    // The kPhaseFMaxIters constant is kept as a soft "warn but keep
-    // going" threshold — the loop logs progress diagnostics every
-    // kPhaseFMaxIters iters but never terminates early.
-    static constexpr uint32_t kPhaseFMaxIters = 5000;
-    // Periodic AIG simplification cadence. Long Phase F runs build
-    // deep ITE chains; without periodic compression the AIG grows
-    // unboundedly and each new_ite call walks an ever-larger DAG.
-    // Tunable via mconf.cadet_phase_f_simplify_every.
+    // Per-iter: outer SAT model M → minim UNSAT under (sel + kept
+    // input lits) → drop non-core bits → commit Y=M over kept region
+    // (or per-y fallback on joint-SAT). No iter cap; ≤ 2^|inputs|.
+    static constexpr uint32_t kPhaseFMaxIters = 5000; // logging cadence
+    // Periodic AIG simplification keeps ITE-chain growth bounded.
     const uint32_t simplify_every = mconf.cadet_phase_f_simplify_every;
 
     const std::vector<uint32_t>& undet = sub_undet;
@@ -1889,20 +1392,9 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
     }
     const double t0 = cpuTime();
 
-    // We need TWO SAT solvers:
-    //   * sat — for outer enumeration: F + Tseitin(prior commits) +
-    //     accumulated forbid clauses (one per committed case so the
-    //     next outer solve picks an uncovered input region).
-    //   * minim — for the per-iteration uniqueness check: F +
-    //     Tseitin(prior commits) ONLY. No forbid clauses.
-    //
-    // Why separate: the uniqueness check assumes (kept lits ∖ i) and
-    // asks "is joint y = M_undet forced over this region?". If a
-    // previous case's forbid clause becomes UNSAT under our
-    // assumption (because dropping bit i lets our region overlap that
-    // previous region on its kept bits), sat would return UNSAT for
-    // the WRONG reason — making us spuriously drop bits and commit
-    // wrong cases. Caught by fuzz_cadet seed 12315156945706132842.
+    // Two solvers: `sat` accumulates forbid clauses for outer
+    // enumeration; `minim` stays forbid-free so the uniqueness check
+    // can't be confused by previous cases overlapping ours.
     MetaSolver sat(SolverType::cadical);
     MetaSolver minim(SolverType::cadical);
     Lit sat_true_lit, minim_true_lit;
@@ -1914,13 +1406,7 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
     std::sort(sorted_inputs.begin(), sorted_inputs.end());
     const uint32_t n_in = sorted_inputs.size();
 
-    // Per-y partial Skolem (ITE chain of cases). Starts FALSE; each
-    // iteration prepends a case via new_ite(value, prev, condition).
-    // unordered_map (vs std::map) — we never iterate `partial`, only
-    // index it via `partial[y]` with y drawn from `undet`, so the
-    // ordered-traversal property of std::map is unused and we trade
-    // a log(|undet|) factor for the O(1) lookup. Helps on the
-    // hundreds-undet runs where Phase F iter count is large.
+    // Per-y partial Skolem: ITE chain of cases, FALSE fallback.
     std::unordered_map<uint32_t, aig_ptr> partial;
     partial.reserve(undet.size());
     for (uint32_t y : undet) partial[y] = AIG::new_const(false);
@@ -1928,58 +1414,32 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
     uint32_t iters = 0;
     uint64_t total_drops = 0;
     bool converged = false;
-    // Diagnostic counters: distinguish why Phase F's minimization
-    // succeeded or failed at each iter.
-    uint32_t n_uniq_unsat = 0;     // uniqueness check returned UNSAT (good — drops possible)
-    uint32_t n_uniq_sat = 0;       // uniqueness check returned SAT (joint Y has alternatives — no drops)
-    uint32_t n_uniq_unknown = 0;   // UNDEF (rare — solver gave up)
-    uint64_t total_core_size = 0;  // size of UNSAT core when the check returned UNSAT
-    // Per-y uniqueness fallback (runs only when joint uniqueness check
-    // returns SAT — i.e., joint Y has alternatives at X*). For each
-    // undet y, check whether y is *individually* forced at X*. Forced
-    // y's get committed via a single permanent clause (no Tseitin —
-    // the case condition is just a conjunction of input lits).
-    uint64_t n_per_y_checks = 0;       // total per-y uniqueness SAT calls
-    uint64_t n_per_y_commits = 0;      // per-y individually-forced commits
-    // Adaptive disable flag: after the first productivity window of
-    // per-y attempts, if commits/checks ratio is too low, per-y is
-    // disabled for the remainder of this worker run.
+    uint32_t n_uniq_unsat = 0;
+    uint32_t n_uniq_sat = 0;
+    uint32_t n_uniq_unknown = 0;
+    uint64_t total_core_size = 0;
+    uint64_t n_per_y_checks = 0;
+    uint64_t n_per_y_commits = 0;
     bool per_y_disabled = false;
-    // Partial-completion cap: when --cadetpartial K is in effect, bail
-    // after K outer iterations and leave the still-undet vars
-    // undefined. The driver (main.cpp's --cadet 1 path) then completes
-    // them via Manthan. 0 means no cap (the original always-finishes
-    // contract).
+    // --cadetpartial K: bail after K outer iters; caller runs Manthan.
     const uint64_t partial_cap = mconf.cadet_partial;
     bool partial_bail = false;
     while (true) {
-        // Outer solve: find an uncovered input pattern.
         const auto ret = sat.solve();
         if (ret == CMSat::l_False) { converged = true; break; }
         if (ret != CMSat::l_True) return false;
         iters++;
         if (partial_cap > 0 && iters > partial_cap) {
-            // Bail out without committing partial[y] — those AIGs are
-            // ITE chains with a `false` fallback for uncovered X
-            // regions, so they do not satisfy F. The caller will run
-            // Manthan on the remaining undet vars.
+            // partial[y] still has FALSE-fallback ITE chains — don't
+            // commit them; let Manthan finish.
             partial_bail = true;
             break;
         }
 
         const auto& model = sat.get_model();
 
-        // Add a "selectable" uniqueness clause to the MINIM solver
-        // (NOT the main `sat` solver, whose accumulated forbid clauses
-        // would interfere with the uniqueness check — see
-        // build_solver comment).
-        //
-        //   ¬sel ∨ (some undet y ≠ M's value for y)
-        // When sel is asserted, the clause says "some y differs from M".
-        // We solve minim under (sel + kept input lits) to ask "is
-        // there a way for the kept inputs to extend to F-sat with some
-        // undet y ≠ M?".  UNSAT ⇒ joint y = M is forced over the kept
-        // region.
+        // Uniqueness clause goes into minim (NOT sat — its forbid
+        // clauses would confuse the check).
         minim.new_var();
         const uint32_t sel_var = minim.nVars() - 1;
         const Lit sel_lit(sel_var, /*sign=*/false);
@@ -1988,33 +1448,13 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
         uniq_clause.push_back(~sel_lit);
         for (uint32_t y : undet) {
             const bool v = (model[y] == CMSat::l_True);
-            // "y differs from v": if v=true, literal is ¬y; if v=false, y.
             uniq_clause.push_back(Lit(y, /*sign=*/v));
         }
         minim.add_clause(uniq_clause);
 
-        // UNSAT-core-based minimization. Replaces the per-bit greedy
-        // loop (which did n SAT calls per case, one per bit) with ONE
-        // SAT call followed by an UNSAT-core extraction.
-        //
-        // Setup: assume sel + EVERY input-match lit. The clause set
-        // says (gated by sel) "joint undet y must differ from M". If
-        // that's UNSAT under the full-pattern assumption, joint y=M is
-        // uniquely forced at the model's input — but more usefully,
-        // cadical's UNSAT core tells us WHICH input lits were actually
-        // used in the proof. Any input lit NOT in the core was
-        // irrelevant: removing its assumption leaves the formula
-        // UNSAT (uniqueness still holds with that bit free). So we
-        // can safely drop every bit whose var is absent from the
-        // core — same soundness guarantee as the per-bit greedy, but
-        // O(1) SAT calls instead of O(n).
-        //
-        // get_conflict() returns ~l for each failed assumption l, so
-        // failed_input_vars is just the var-id set of the conflict.
+        // One UNSAT-core solve drops every input bit not in the core.
         std::vector<bool> kept(n_in, true);
         uint32_t bits_dropped = 0;
-        // Captured per-iter so the per-y fallback after the joint
-        // commit can tell whether THIS iter took the joint-SAT branch.
         lbool joint_unique_result = CMSat::l_Undef;
         {
             std::vector<Lit> assumps;
@@ -2099,8 +1539,6 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
             const bool v = (model[y] == CMSat::l_True);
             partial[y] = AIG::new_ite(AIG::new_const(v), partial[y], min_pattern);
         }
-        // Forbid this minimized pattern so the next outer solve picks
-        // an uncovered input region.
         sat.add_clause(forbid_clause);
 
         if (conf.verb >= 2) {
@@ -2109,53 +1547,13 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
                  << " / " << n_in << " bits" << endl;
         }
 
-        // Per-y uniqueness fallback. Runs only on joint-SAT iters —
-        // joint-UNSAT iters already commit a wide case via the
-        // joint-UNSAT-core, so additional per-y work is wasted there.
-        //
-        // For each undet y, ask minim: "F ∧ y ≠ M[y] ∧ X=X* UNSAT?".
-        // If so, y is individually forced at X*; the UNSAT core gives
-        // the per-y kept bits. We commit y over that case via ONE
-        // permanent clause to both sat and minim:
-        //
-        //   (X ≠ kept_bits) ∨ (y = M[y])
-        //
-        // No Tseitin needed — the case condition is a conjunction of
-        // input lits, so its negation is exactly the disjunction in
-        // the clause.
-        //
-        // Soundness: same UNSAT-core argument as joint uniqueness —
-        // any X with kept_bits at their X*-values forces y=M[y] in F.
-        //
-        // Without per-y, joint-SAT iters cover exactly one input
-        // minterm each, so the total Phase F iter count is ~|number of
-        // consistent input patterns|. Per-y often shrinks that 10×+
-        // because individual y's are forced under far more inputs
-        // than joint Y.
-        //
-        // Cost guard: per-y adds |undet| SAT calls + |undet| clauses
-        // to the running solvers per joint-SAT iter. Tight static cap
-        // (kPerYUndetCap) avoids the worst case; an additional ADAPTIVE
-        // disable kicks in mid-run when the first window of per-y
-        // attempts has poor productivity (very few commits relative to
-        // checks), since that means subsequent per-y calls will
-        // probably be the same costly miss. Either guard alone is
-        // unsound for performance: the static cap misses fast runs at
-        // medium undet sizes (~30-60) where per-y would pay off, and
-        // the adaptive disable alone would let huge-undet runs do a
-        // ruinous first window before bailing.
+        // Per-y fallback on joint-SAT iters: ask "y forced alone at
+        // X*?" — commits `(X ≠ kept) ∨ (y = M[y])`. Static cap +
+        // adaptive productivity bail prevent ruinous huge-undet runs.
         const uint32_t per_y_undet_cap = mconf.cadet_phase_f_per_y_undet_cap;
         const uint64_t per_y_window = mconf.cadet_phase_f_per_y_window;
-        // Below this commits/checks ratio, per-y is disabled for the
-        // rest of the Phase F worker run. Calibrated against the
-        // fuzzer: productive per-y typically hits >0.4 commits/check;
-        // unproductive runs sit at <0.05 and dominate the slowdown.
         const double per_y_min_productivity = mconf.cadet_phase_f_per_y_min_productivity;
         const bool was_joint_sat_this_iter = (joint_unique_result == CMSat::l_True);
-        // Adaptive disable: after the productivity window, check the
-        // commits/checks ratio. If poor, disable per-y for this run.
-        // per_y_disabled is a function-scope variable (declared
-        // outside the iter loop) so this check persists across iters.
         if (!per_y_disabled && per_y_window > 0 &&
             n_per_y_checks >= per_y_window) {
             const double ratio = double(n_per_y_commits) / double(n_per_y_checks);
@@ -2173,11 +1571,6 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
         }
         if (was_joint_sat_this_iter && undet.size() <= per_y_undet_cap
             && !per_y_disabled) {
-            // VSIDS-ordered per-y scan: vars with higher activity get
-            // checked first. A successful per-y commit reduces future
-            // iter counts more for high-activity vars (those that were
-            // failing-core members during earlier joint checks), so
-            // ordering them first tends to converge faster.
             std::vector<uint32_t> py_order(undet.begin(), undet.end());
             std::sort(py_order.begin(), py_order.end(),
                       [&](uint32_t a, uint32_t b) {
@@ -2189,7 +1582,6 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
                 const uint32_t sel_y_var = minim.nVars() - 1;
                 const Lit sel_y(sel_y_var, /*sign=*/false);
                 const bool y_v = (model[y] == CMSat::l_True);
-                // (¬sel_y ∨ y ≠ y_v): asserts y differs from M[y] when sel_y.
                 minim.add_clause({~sel_y, Lit(y, /*sign=*/y_v)});
 
                 std::vector<Lit> assumps;
@@ -2200,19 +1592,14 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
                     assumps.push_back(Lit(sorted_inputs[i], /*sign=*/!mv));
                 }
                 const auto rr = minim.solve(&assumps);
-                // Deactivate the per-y uniqueness clause forever.
                 minim.add_clause({~sel_y});
 
-                if (rr != CMSat::l_False) continue; // y not forced at X*
+                if (rr != CMSat::l_False) continue;
 
-                // y is individually forced at X*. Extract UNSAT core
-                // for the per-y kept bits.
                 const auto failed = minim.get_conflict();
                 std::set<uint32_t> failed_vars;
                 for (const Lit& f : failed) failed_vars.insert(f.var());
 
-                // Bump y plus every var in the per-y proof core — those
-                // vars made y forced at X*, so they're discriminative.
                 bump_var(y);
                 for (const auto& f : failed) {
                     const uint32_t v = f.var();
@@ -2220,39 +1607,27 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
                 }
                 decay_activities();
 
-                // Build the commit clause: (X ≠ kept_bits) ∨ (y = M[y]).
+                // Commit (X ≠ kept) ∨ (y = M[y]).
                 std::vector<Lit> commit_clause;
                 commit_clause.reserve(n_in + 1);
                 aig_ptr case_aig = AIG::new_const(true);
                 for (uint32_t i = 0; i < n_in; i++) {
                     if (failed_vars.count(sorted_inputs[i]) == 0) continue;
                     const bool mv = (model[sorted_inputs[i]] == CMSat::l_True);
-                    // X_i ≠ mv: if mv=true, lit is ¬X_i (sign=true); else X_i (sign=false).
                     commit_clause.push_back(Lit(sorted_inputs[i], /*sign=*/mv));
-                    // case AIG: AND of input matching lits
                     case_aig = AIG::new_and(case_aig,
                         AIG::new_lit(sorted_inputs[i], /*neg=*/!mv));
                 }
-                // y matches M[y]: if y_v=true, lit is y; else ¬y.
                 commit_clause.push_back(Lit(y, /*sign=*/!y_v));
                 sat.add_clause(commit_clause);
                 minim.add_clause(commit_clause);
 
-                // Update partial Skolem for y. The ITE prepend: at X
-                // in case, return M[y]; else fall through to prev.
                 partial[y] = AIG::new_ite(AIG::new_const(y_v),
                                           partial[y], case_aig);
                 n_per_y_commits++;
             }
         }
 
-        // Periodic AIG simplification: as the iteration count grows,
-        // each `partial[y]` is a deepening ITE chain. AIG::new_ite
-        // walks the existing DAG looking for structural matches, so
-        // unsimplified deep chains slow every iteration down. Walk
-        // the partial map and compress every simplify_every iters —
-        // this keeps per-iter wall time stable across runs that take
-        // many thousands of iterations to converge.
         if (simplify_every > 0 && iters % simplify_every == 0) {
             for (uint32_t y : undet) {
                 partial[y] = AIG::simplify_aig(partial[y]);
@@ -2285,11 +1660,6 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
     };
 
     if (partial_bail) {
-        // --cadetpartial K hit. Don't commit partial[y] to skol[y] —
-        // the ITE chains' `false` fallback for uncovered X regions
-        // would yield Skolems that do not satisfy F. Leave skol[y] as
-        // nullptr for the still-undet vars; the driver runs Manthan on
-        // those. Return true (we did exactly what we were asked to do).
         if (conf.verb >= 1) {
             print_phase_f_stats("PARTIAL bail (--cadetpartial cap reached)");
             cout << "c o [cadet] Phase F partial bail at iter " << iters
@@ -2300,9 +1670,7 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
     }
 
     if (!converged) {
-        // Phase F did not finish covering the input space — should
-        // never happen since the loop has no iter cap. The only path
-        // is SAT-solver UNDEF on outer solve. Print stats and bail.
+        // SAT-solver UNDEF on outer solve.
         if (conf.verb >= 1) {
             print_phase_f_stats("did NOT converge (SAT UNDEF — bailing)");
         }
@@ -2318,15 +1686,7 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
 }
 
 void Cadet::cegar_build_interface() {
-    // Interface = orig_sampl_cnf vars that appear in any clause that
-    // also touches at least one to_define var. Vars outside this set
-    // never co-occur with what we're solving for, so their values in a
-    // model can't help force any undet y — assuming them in a CEGAR
-    // cube would just bloat the UNSAT core. Mirrors cadet's
-    // casesplits_update_interface() (casesplits.c:81).
-    //
-    // O(clauses * avg-lits-per-clause) — single pass over var_clauses
-    // via the to_define vars.
+    // Vars outside the interface can't help force any undet y.
     cegar_interface.clear();
     if (orig_sampl_cnf.empty()) return;
     std::vector<uint8_t> seen_clause(cnf.get_clauses().size(), 0);
@@ -2406,27 +1766,9 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
     std::vector<uint8_t>& in_queue,
     std::vector<uint32_t>& queue) {
     CegarRoundResult R;
-    // Joint CEGAR step. Caller MUST be at decision_lvl == 0.
-    //
-    // 1) Solve skolem_sat (at level 0) to get a model M of F + all
-    //    prior commits. UNSAT means we've already determined the
-    //    formula — Phase D's normal conflict path handles that.
-    // 2) Read the universal cube from M's interface_var values.
-    // 3) Ask exists_solver "∃ Y differing from M at any undet y, under
-    //    the cube assumed" via a selector-gated clause.
-    //    UNSAT (joint forced): UNSAT core → drop cube lits not in core,
-    //      then either constant-commit each undet y (empty kept cube)
-    //      or add `(¬kept_cube) ∨ (y = M[y])` clauses to skolem_sat.
-    //    SAT (joint has alternatives): nothing to commit jointly; caller
-    //      should fall through to per-y CEGAR.
-    //    UNDEF: skip.
-    //
-    // Returns true iff at least one constant commit happened OR new
-    // skolem_sat constraints were added (caller should re-propagate).
     assert(decision_lvl == 0);
     if (cegar_interface.empty()) return R;
 
-    // Collect still-undet to_define vars. If none, nothing to do.
     std::vector<uint32_t> undet;
     undet.reserve(to_define.size());
     for (uint32_t y : to_define) {
@@ -2434,43 +1776,27 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
     }
     if (undet.empty()) return R;
 
-    // Lazy build / sync exists_solver before the round.
     if (!exists_solver) cegar_build_exists_solver();
     else cegar_sync_exists_solver();
 
     cegar_stat_rounds++;
     cegar_total_rounds++;
 
-    // (1) Get a level-0 SAT model from skolem_sat. Pass the
-    // forbid-on-SAT selectors as assumptions so previously-explored
-    // X-cubes are excluded from this round's model space. Phase D's
-    // probes never pass these, so the forbids stay inactive there.
+    // Forbid-selectors are CEGAR-only — Phase D probes never assume them.
     const auto outer_ret = cegar_forbid_selectors.empty()
         ? skolem_sat->solve()
         : skolem_sat->solve(&cegar_forbid_selectors);
-    if (outer_ret == CMSat::l_False) {
-        // F + all prior commits is UNSAT at level 0 — shouldn't happen
-        // in synthesis (precondition is F SAT for every input), but if
-        // it does, Phase D's normal level-0 conflict check will deal.
-        return R;
-    }
-    if (outer_ret != CMSat::l_True) return R; // UNDEF — skip
+    if (outer_ret == CMSat::l_False) return R;
+    if (outer_ret != CMSat::l_True) return R;
     const auto& model = skolem_sat->get_model();
 
-    // (2) Build cube from interface var values. Each cube entry is
-    // (var_id, value_in_model). Skip vars that the model leaves
-    // undefined (cadical sometimes returns l_Undef for don't-cares).
     std::vector<std::pair<uint32_t, bool>> cube;
     cube.reserve(cegar_interface.size());
     for (uint32_t v : cegar_interface) {
         if (model[v] == CMSat::l_True)  cube.emplace_back(v, true);
         else if (model[v] == CMSat::l_False) cube.emplace_back(v, false);
-        // l_Undef → don't include; the lit is a don't-care here.
     }
 
-    // (3) Add the uniqueness clause to exists_solver:
-    //   (¬sel ∨ ⋁ y differs from M[y])
-    // The selector lets us deactivate this clause after the round.
     exists_solver->new_var();
     const CMSat::Lit sel(exists_solver->nVars() - 1, /*sign=*/false);
     std::vector<CMSat::Lit> uniq_clause;
@@ -2482,7 +1808,6 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
     }
     exists_solver->add_clause(uniq_clause);
 
-    // (4) Solve exists_solver under (sel, cube assumptions).
     std::vector<CMSat::Lit> assumps;
     assumps.reserve(cube.size() + 1);
     assumps.push_back(sel);
@@ -2491,30 +1816,14 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
     }
     const auto inner_ret = exists_solver->solve(&assumps);
 
-    // Deactivate the uniqueness clause permanently — every future
-    // round gets its own selector.
     exists_solver->add_clause({~sel});
 
     if (inner_ret == CMSat::l_True) {
         cegar_stat_joint_sat++;
-        // joint Y has alternatives at this cube. Fall through to per-y:
-        // ask, for each undet y individually, "is y alone forced under
-        // the cube?" — same UNSAT-core minimization as joint, just
-        // restricted to one y at a time.
-        //
-        // Cost guard mirrors Phase F's per-y: capped by --cadetcegar-
-        // peryundetcap (default 1000) since per-y adds |undet| SAT calls
-        // per round, and adaptively disabled when commits/checks ratio
-        // drops below --cadetcegarperyminprod over a productivity
-        // window (see cegar_per_y_* counters).
         const bool do_per_y = mconf.cadet_cegar_per_y
                               && !cegar_per_y_disabled
                               && undet.size() <= mconf.cadet_cegar_per_y_undet_cap;
 
-        // VSIDS-ordered per-y scan (highest activity first). Identical
-        // rationale to Phase F's per-y: high-activity vars are likely
-        // forced by many other constraints; committing them first
-        // shrinks future rounds the most.
         std::vector<uint32_t> py_order(undet.begin(), undet.end());
         std::sort(py_order.begin(), py_order.end(),
                   [&](uint32_t a, uint32_t b) {
@@ -2522,13 +1831,12 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
                   });
 
         if (do_per_y) for (uint32_t y : py_order) {
-            if (skol[y] != nullptr) continue; // already committed this round
+            if (skol[y] != nullptr) continue;
             cegar_per_y_checks++;
             exists_solver->new_var();
             const CMSat::Lit sel_y(exists_solver->nVars() - 1,
                                     /*sign=*/false);
             const bool y_v = (model[y] == CMSat::l_True);
-            // (¬sel_y ∨ y ≠ y_v): assert y differs from M[y] when sel_y.
             exists_solver->add_clause({~sel_y,
                                        CMSat::Lit(y, /*sign=*/y_v)});
 
@@ -2539,11 +1847,9 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
                 py_assumps.push_back(CMSat::Lit(v, /*sign=*/!val));
             }
             const auto rr = exists_solver->solve(&py_assumps);
-            // Deactivate the per-y clause forever.
             exists_solver->add_clause({~sel_y});
-            if (rr != CMSat::l_False) continue; // y not forced here
+            if (rr != CMSat::l_False) continue;
 
-            // y is forced. Extract core, keep only cube lits in core.
             const auto py_failed = exists_solver->get_conflict();
             std::set<uint32_t> py_failed_vars;
             for (const auto& f : py_failed) py_failed_vars.insert(f.var());
@@ -2561,7 +1867,6 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
             }
 
             if (py_kept.empty()) {
-                // y = M[y] universally — commit as level-0 constant.
                 skol[y] = AIG::new_const(y_v);
                 trail.push_back({y, /*dec_lvl=*/0, /*is_decision=*/false,
                                  CMSat::Lit(0, false), {}});
@@ -2577,10 +1882,9 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
                 continue;
             }
 
-            // Non-empty per-y kept cube: add `(X ≠ kept) ∨ (y = M[y])`
-            // clauses to skolem_sat + learnt_clauses; forbid the cube
-            // in exists_solver only (so we don't keep proposing the
-            // same one). Identical pattern to Phase F's per-y commit.
+            // (X ≠ kept) ∨ (y = M[y]). Don't forbid the per-y cube in
+            // exists_solver — would block joint rounds where OTHER y's
+            // aren't forced there.
             std::vector<CMSat::Lit> py_commit;
             py_commit.reserve(py_kept.size() + 1);
             for (const auto& [v, val] : py_kept) {
@@ -2589,20 +1893,11 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
             py_commit.push_back(CMSat::Lit(y, /*sign=*/!y_v));
             skolem_sat->add_clause(py_commit);
             learnt_clauses.push_back(py_commit);
-            // For per-y, we DON'T add a forbid clause to exists_solver
-            // for the per-y kept cube: doing so would prevent the next
-            // joint round from picking a model in that region even if
-            // OTHER undet y's are not forced there. The implication
-            // clause we just added to skolem_sat is enough to constrain
-            // future skolem_sat models.
             cegar_per_y_commits++;
             cegar_stat_per_y_commits++;
             R.any_clause_added = true;
         }
 
-        // Adaptive disable: after window of checks, if commits/checks
-        // is too low, disable per-y for the remainder of this Phase D
-        // entry. Same logic as Phase F's adaptive disable.
         if (!cegar_per_y_disabled &&
             mconf.cadet_cegar_per_y_productivity_window > 0 &&
             cegar_per_y_checks >= mconf.cadet_cegar_per_y_productivity_window) {
@@ -2620,22 +1915,9 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
                 }
             }
         }
-        // Forbid the explored X-cube in skolem_sat so the next CEGAR
-        // round's level-0 solve picks a different model M. Without
-        // this, cadical keeps returning the same M and the drain
-        // stalls on no-op rounds. Skip on constant_commit: the undet
-        // set shrank, so the state changed enough that the next solve
-        // will be different anyway.
-        //
-        // SOUNDNESS: the forbid clause is gated by a fresh selector
-        // and the selector is added to cegar_forbid_selectors. CEGAR's
-        // level-0 solve at (1) passes this list as assumptions so the
-        // forbid is active there. Phase D's polarity probes and the
-        // CDCL global-conflict check DO NOT pass them — under their
-        // solves the selector is free, the SAT solver sets it false,
-        // and the forbid clause is trivially satisfied. This is
-        // critical: Phase D probing "is y forced?" under an
-        // artificially-restricted X space would falsely commit y.
+        // Forbid this X-cube so the next CEGAR solve picks a different
+        // M. Gated by a selector (cegar_forbid_selectors) so Phase D
+        // probes are unaffected (load-bearing for soundness).
         if (mconf.cadet_cegar_forbid_on_sat && !R.constant_commit && !cube.empty()) {
             skolem_sat->new_var();
             const CMSat::Lit fsel(skolem_sat->nVars() - 1, /*sign=*/false);
@@ -2679,10 +1961,9 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
     cegar_stat_cube_total += R.kept_cube_size;
 
     if (kept_cube.empty()) {
-        // Empty kept cube — joint Y = M[y] universally. Commit each
-        // undet y to its M value as a permanent level-0 constant.
+        // Joint Y = M[y] universally — commit constants.
         for (uint32_t y : undet) {
-            if (skol[y] != nullptr) continue; // defensive
+            if (skol[y] != nullptr) continue;
             const bool v = (model[y] == CMSat::l_True);
             skol[y] = AIG::new_const(v);
             trail.push_back({y, /*dec_lvl=*/0, /*is_decision=*/false,
@@ -2690,42 +1971,31 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
             mark_clauses_dead_by_constant(y, v);
             pa_assign(y, v, PA_REASON_SOURCE);
             tseitin_skol_into_skolem_sat(y);
-            exists_solver_encoded[y] = 0; // re-sync will catch it
+            exists_solver_encoded[y] = 0;
             enqueue_neighbours(y, in_queue, queue);
             if (y < var_activity.size()) bump_var(y);
             cegar_stat_joint_commits++;
             R.constant_commit = true;
         }
-        // BCP may now force more Y units from the level-0 constants.
         pa_drain_bcp(in_queue, queue);
         R.any_clause_added = true;
         return R;
     }
 
-    // Non-empty kept cube. Add two kinds of clauses:
-    //   (a) For each undet y: `(X ≠ kept) ∨ (y = M[y])` — committed
-    //       to skolem_sat (permanent) and learnt_clauses (so Phase E/F
-    //       replay it on their fresh solvers).
-    //   (b) Forbid clause: `(X ≠ kept)` — added to exists_solver only,
-    //       to prevent re-finding this cube. NOT to skolem_sat, where
-    //       it would conflict with (a)'s "y = M[y] when X = kept".
+    // Per-y: (X ≠ kept) ∨ (y = M[y]) into skolem_sat + learnt_clauses.
+    // Forbid (X ≠ kept) only in exists_solver (would conflict with the
+    // per-y clauses in skolem_sat).
     std::vector<CMSat::Lit> forbid;
     forbid.reserve(kept_cube.size());
     for (const auto& [v, val] : kept_cube) {
-        // X_i != val: if val=true, lit is ¬X_i (sign=true); else X_i.
         forbid.push_back(CMSat::Lit(v, /*sign=*/val));
     }
     for (uint32_t y : undet) {
         const bool y_v = (model[y] == CMSat::l_True);
         std::vector<CMSat::Lit> commit_clause = forbid;
-        // y = y_v: if y_v=true, lit is y (sign=false); else ¬y.
         commit_clause.push_back(CMSat::Lit(y, /*sign=*/!y_v));
         skolem_sat->add_clause(commit_clause);
         learnt_clauses.push_back(commit_clause);
-        // The y is now constrained on the kept_cube region — bump its
-        // activity so Phase D's next forced-only sweep tries it
-        // earlier. Cheap; matters most for vars on the boundary of
-        // forced regions.
         if (y < var_activity.size()) bump_var(y);
     }
     decay_activities();
@@ -2737,19 +2007,6 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
 
 bool Cadet::cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
                                    std::vector<uint32_t>& queue) {
-    // Per-stall CEGAR driver. Caller invokes when Phase D's forced-only
-    // sweep stalled at decision_lvl == 0. We try up to
-    // mconf.cadet_cegar_max_rounds_per_stall rounds, but bail early
-    // on:
-    //   - the per-Phase-D total-rounds cap (mconf.cadet_cegar_max_total_rounds)
-    //   - the trailing avg kept-cube-size exceeding the effectiveness
-    //     threshold (mirrors cadet's cegar_effectiveness_threshold; the
-    //     more bits each cube keeps, the less generalization we're
-    //     getting per SAT call, so cube-minimization is paying
-    //     diminishing returns)
-    //   - cadet_cegar_consec_bail consecutive no-constant-commit
-    //     rounds (clauses-only progress), or cadet_cegar_noop_bail
-    //     consecutive pure no-op rounds (joint SAT + per-y empty).
     assert(decision_lvl == 0);
     if (!mconf.cadet_cegar) return false;
     if (cegar_disabled) return false;
@@ -2765,8 +2022,7 @@ bool Cadet::cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
     uint32_t consec_noop = 0;
     while (rounds < mconf.cadet_cegar_max_rounds_per_stall) {
         if (max_total > 0 && cegar_total_rounds >= max_total) break;
-        // Effectiveness break: only meaningful once we've seen a
-        // handful of UNSAT rounds (≥3) so the average isn't noise.
+        // Need ≥3 UNSAT rounds before trusting the average.
         if (cube_count >= 3 &&
             (cube_sum / cube_count) > mconf.cadet_cegar_max_avg_cube) {
             if (conf.verb >= 2) {
@@ -2779,7 +2035,6 @@ bool Cadet::cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
         const CegarRoundResult res = cegar_one_round(in_queue, queue);
         rounds++;
         if (res.kept_cube_size != UINT32_MAX && res.kept_cube_size > 0) {
-            // Joint UNSAT with non-empty cube — track size for avg.
             cube_sum += res.kept_cube_size;
             cube_count++;
         }
@@ -2787,20 +2042,12 @@ bool Cadet::cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
             any_constant_commit = true;
             consec_no_constant = 0;
             consec_noop = 0;
-            // Real shrink of undet set; keep going — every committed
-            // const may unblock more rounds.
             continue;
         }
-        // No constant this round. Either clauses-only progress (joint
-        // UNSAT non-empty cube / per-y clauses-only), or no-progress at
-        // all (joint SAT + per-y empty).
         consec_no_constant++;
         if (mconf.cadet_cegar_consec_bail > 0 &&
             consec_no_constant >= mconf.cadet_cegar_consec_bail) break;
         if (!res.any_clause_added) {
-            // No clauses, no constants — pure no-op round. With
-            // forbid-on-SAT, successive no-op rounds get distinct M's,
-            // so we allow up to cadet_cegar_noop_bail in a row.
             consec_noop++;
             if (mconf.cadet_cegar_noop_bail == 0 ||
                 consec_noop >= mconf.cadet_cegar_noop_bail) break;
@@ -2816,11 +2063,7 @@ bool Cadet::cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
         else cout << "n/a";
         cout << endl;
     }
-    // Outer adaptive disable: after enough total rounds have run
-    // without yielding ANY constant commit, give up on CEGAR for the
-    // rest of the Phase D entry. Per-y constraint clauses are useful
-    // (Phase E/F replay them) but they don't shrink the undet set, so
-    // we'd burn SAT calls every stall to no avail.
+    // Outer adaptive disable: stop CEGAR after N rounds with no commit.
     if (!cegar_disabled &&
         mconf.cadet_cegar_overall_disable_after > 0 &&
         cegar_total_rounds >= mconf.cadet_cegar_overall_disable_after &&
@@ -2837,10 +2080,7 @@ bool Cadet::cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
                cegar_total_rounds >=
                    mconf.cadet_cegar_overall_disable_after * 3 &&
                cegar_stat_joint_commits == 0) {
-        // Looser secondary guard: even if per-y constraint clauses are
-        // accumulating, after 3× the disable window with no actual
-        // constant commits (joint OR per-y empty cube), CEGAR isn't
-        // contributing to undet-set shrink. Bail.
+        // 3× window with per-y clauses but no constant commits.
         cegar_disabled = true;
         if (conf.verb >= 1) {
             cout << "c o [cadet] CEGAR disabled for rest of Phase D: "
@@ -2854,13 +2094,8 @@ bool Cadet::cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
 }
 
 void Cadet::commit_definitions() {
-    // Build a vector indexed by var, holding the Skolem AIG for each
-    // to_define var. Normally every to_define var must have a non-null
-    // skol[y] — Phase F's terminal completion guarantee. The exception
-    // is --cadetpartial > 0, where the user asked us to bail early and
-    // hand the remaining vars to Manthan; in that case nullptr entries
-    // are expected and we just skip them (map_aigs_to_orig leaves the
-    // var in to_define for downstream Manthan).
+    // Missing skol[y] only legal under --cadetpartial > 0 (Manthan
+    // finishes those).
     vector<aig_ptr> aigs(cnf.nVars(), nullptr);
     for (uint32_t y : to_define) {
         if (skol[y] == nullptr) {
@@ -2874,12 +2109,6 @@ void Cadet::commit_definitions() {
     const uint32_t cnf_nvars = cnf.nVars();
     cnf.map_aigs_to_orig(aigs, cnf_nvars);
 
-    // Compress what we just committed. Phase F builds Skolems as deep
-    // ITE chains; without this, every committed iteration adds an ITE
-    // branch per undet var, and a 1000-iter Phase F run on 900 vars
-    // produces a 900k-node AIG that downstream verification (test-synth)
-    // can't handle in a reasonable time. AIG::simplify_aigs walks each
-    // def, runs the cheap structural simplifier, and replaces in-place.
     cnf.simplify_aigs(conf.verb);
 }
 
@@ -2890,21 +2119,16 @@ SimplifiedCNF Cadet::do_cadet() {
              << " clauses=" << cnf.get_clauses().size() << endl;
     }
 
-    // Partition vars into input/to_define/backward_defined, the same split
-    // Manthan uses.
     cnf.get_var_types(conf.verb, "start do_cadet").unpack_to(
         input, to_define, backward_defined);
 
-    // Independently compute the orig sampling vars in CNF numbering.
-    // VarTypes.input would include extend-defined vars (vars defined by an
-    // AIG over orig sampling vars), which are not actually free in F;
-    // enumerating over them in Phase A would generate inconsistent
-    // assumption sets. We only enumerate over the orig sampling vars.
+    // VarTypes.input lumps extend-defined vars in; orig_sampl_cnf is
+    // the narrower set we actually enumerate over.
     orig_sampl_cnf.clear();
     const auto& o2n = cnf.get_orig_to_new_var();
     for (uint32_t v : cnf.get_orig_sampl_vars()) {
         auto it = o2n.find(v);
-        if (it == o2n.end()) continue; // eliminated from CNF
+        if (it == o2n.end()) continue;
         orig_sampl_cnf.insert(it->second.var());
     }
 
@@ -2922,8 +2146,6 @@ SimplifiedCNF Cadet::do_cadet() {
              << " |backward_defined|=" << backward_defined.size() << endl;
     }
 
-    // Build the per-var clause occurrence index once. Used by Phase C
-    // and Phase D, and (transitively) by Phase F's per-y fallback.
     {
         const auto& clauses = cnf.get_clauses();
         var_clauses.assign(cnf.nVars(), {});
@@ -2933,17 +2155,9 @@ SimplifiedCNF Cadet::do_cadet() {
             }
         }
         clause_dead.assign(clauses.size(), 0);
-        // n_undet_per_clause is sized here; the per-call count is set
-        // in synth_by_propagation() after skol[] is freshly assigned
-        // (input + backward_defined vars become determined immediately).
         n_undet_per_clause.assign(clauses.size(), 0);
     }
 
-    // CEGAR scaffolding: precompute the interface (orig sampling vars
-    // that co-occur with any to_define var). Subsequent CEGAR rounds
-    // assume only these vars' values from the SAT model, keeping cubes
-    // small. Computed unconditionally — cheap, ~O(clauses); the
-    // exists_solver and the rounds themselves are gated by mconf knobs.
     cegar_build_interface();
     exists_solver.reset();
     exists_solver_committed_count = 0;
@@ -2961,70 +2175,32 @@ SimplifiedCNF Cadet::do_cadet() {
     cegar_stat_joint_commits = 0;
     cegar_stat_per_y_commits = 0;
 
-    // VSIDS seed: Jeroslow-Wang-style — heavier vars in shorter clauses
-    // are more likely to be forced; activity starts at 2^-len summed
-    // over clauses, capped at len<=10 to avoid pow underflow. This gives
-    // Phase D a useful priority before any conflict has happened.
+    // JW-style seed: short clauses weighted higher (2^-len summed).
     var_activity.assign(cnf.nVars(), 0.0);
     activity_inc = 1.0;
     {
         const auto& clauses = cnf.get_clauses();
         for (const auto& c : clauses) {
             if (c.size() > 10) continue;
-            const double w = std::ldexp(1.0, -(int)c.size()); // 2^-size
+            const double w = std::ldexp(1.0, -(int)c.size());
             for (const auto& l : c) var_activity[l.var()] += w;
         }
     }
 
-    // Build the persistent Skolem SAT solver once with F injected.
-    // Phase C adds tseitin-encoded skol[y] AIGs as it commits them
-    // (so Phase D's probes run under F + all prior commits), and
-    // Phase D adds unit clauses for constants. cadical retains learnt
-    // clauses across solve() calls, so each new decision builds on
-    // prior work.
     skolem_sat = std::make_unique<MetaSolver>(SolverType::cadical);
     inject_cnf(*skolem_sat);
     skolem_sat->new_var();
     skolem_sat_true_lit = Lit(skolem_sat->nVars() - 1, /*sign=*/false);
     skolem_sat->add_clause({skolem_sat_true_lit});
 
-    // Two-sided Skolem encoding: per Y var, pos_var[y] and neg_var[y]
-    // SAT lits in skolem_sat. Used by Phase D's forced-constant probe
-    // (assume ¬pos_var[y] / ¬neg_var[y] instead of y=true / y=false).
     two_sided_build(*skolem_sat);
 
-    // ---- Phase C+D: unique-consequence propagation with sound
-    // constant decisions. CADET-flavored core; scales independently of
-    // input count, limited only by structural propagation reach and by
-    // how many vars F forces to constants.
     bool done = synth_by_propagation();
+    if (!done) done = synth_complete_with_models();
+    if (!done) done = synth_complete_with_interp_generalization();
 
-    // ---- Phase E: small-input SAT-model enumeration. Runs whenever
-    // the input space is small enough that 2^|orig_sampl_cnf| naive
-    // enumeration is cheap (≤ mconf.cadet_phase_e_threshold = 16 by
-    // default, so ≤ 65k SAT calls). Respects Phase C+D's partial
-    // commits via Tseitin encoding. Phase E is just faster than Phase F
-    // at this size — no per-iter uniqueness/minimization overhead, just
-    // straight model collection.
-    if (!done) {
-        done = synth_complete_with_models();
-    }
+    release_assert(done && "Phase F is terminal");
 
-    // ---- Phase F: terminal generalized-case completion. ALWAYS
-    // succeeds — no input-size threshold, no iter cap. Per-iter cost
-    // is bounded by UNSAT-core minimization and per-y uniqueness;
-    // total iter count is bounded by 2^|orig_sampl_cnf|. After Phase
-    // F the synth contract holds.
-    if (!done) {
-        done = synth_complete_with_interp_generalization();
-    }
-
-    release_assert(done && "Phase F is supposed to be a terminal phase — "
-                   "if we land here without completing, that's a regression");
-
-    // Commit. commit_definitions release_asserts every to_define var
-    // has a non-null skol[y] — Phase F's guarantee tested loudly.
-    // Exception: --cadetpartial > 0, where missing skols are allowed.
     commit_definitions();
 
     if (conf.verb >= 1) {
