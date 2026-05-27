@@ -263,6 +263,43 @@ private:
     uint64_t uip_min_in_lits = 0;
     uint64_t uip_min_out_lits = 0;
 
+    // === Two-sided Skolem encoding ====================================
+    //
+    // Per to_define var y, allocate two fresh SAT vars in skolem_sat:
+    // pos_var[y] and neg_var[y]. For each positive-y clause
+    // (y ∨ l_1 ∨ ... ∨ l_k) add the sufficient-direction clause
+    // (l_1 ∨ ... ∨ l_k ∨ pos_var[y]) — i.e. "if all non-y lits of this
+    // clause are false, then pos_var[y] must be true". Symmetric for
+    // negative-y clauses with neg_var[y].
+    //
+    // Equivalence to the existing Phase D forced-constant probe:
+    //   ¬pos_var[y] UNSAT under (sel_lits) ⇔ y forced TRUE universally
+    //   ¬neg_var[y] UNSAT under (sel_lits) ⇔ y forced FALSE universally
+    // (Proof: ¬pos_var[y] forces every pos-y clause's "antecedent
+    // false" condition to be violated, i.e. some non-y lit must be
+    // true — meaning no pos-y clause fires. UNSAT means no consistent X
+    // has all pos-y clauses non-firing, i.e. y is forced true at every
+    // X consistent with the active sel_lits.)
+    //
+    // Replaces the old "assume y=val under sel_lits" probe with
+    // "assume ¬pos_var[y] / ¬neg_var[y] under sel_lits". Same SAT-call
+    // count per pick, but cadical can now learn cross-Y constraints
+    // about pos_var[*] / neg_var[*] that persist across many probes.
+    // Mirrors upstream's skolem_var pos_lit / neg_lit pair.
+    std::vector<CMSat::Lit> pos_var; // pos_var[y] for y in to_define
+    std::vector<CMSat::Lit> neg_var; // ditto
+    static constexpr uint32_t TWO_SIDED_INVALID_VAR = UINT32_MAX;
+
+    // Allocate pos_var/neg_var lits in `solver` for every y in
+    // to_define, and add the sufficient-direction encoding clauses.
+    // Called once after skolem_sat is built (in synth_by_propagation
+    // startup) and again whenever skolem_sat is replenished.
+    void two_sided_build(MetaSolver& solver);
+    // Stats — number of forced commits attributable to the two-sided
+    // path (vs the old y=true/y=false path that is now gone).
+    uint64_t two_sided_pos_unsat = 0;
+    uint64_t two_sided_neg_unsat = 0;
+
     // CDCL-learnt clauses over original variables (no selectors).
     // Each conflict produces one entry — the negation of the failed
     // decision lits, i.e. a clause that refutes that combination of

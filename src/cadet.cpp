@@ -218,6 +218,58 @@ void Cadet::pa_pop_to_level(uint32_t target) {
     pa_bcp_queue.clear();
 }
 
+void Cadet::two_sided_build(MetaSolver& solver) {
+    // Allocate pos_var[y] / neg_var[y] in `solver` for every y in
+    // to_define, and add the sufficient-direction encoding clauses.
+    //
+    // The encoded direction (one clause per (Y, F-clause-containing-Y)):
+    //   For positive-y clause C = (y ∨ l_1 ∨ ... ∨ l_k):
+    //       add (l_1 ∨ ... ∨ l_k ∨ pos_var[y])
+    //       i.e. ¬pos_var[y] → ¬(all non-y lits false in C)
+    //              equivalently: ¬pos_var[y] → some non-y lit is true
+    //   For negative-y clause C = (¬y ∨ l_1 ∨ ... ∨ l_k):
+    //       add (l_1 ∨ ... ∨ l_k ∨ neg_var[y])
+    //
+    // Under this encoding:
+    //   ¬pos_var[y] SAT  ⇔ exists consistent X where every pos-y clause
+    //                       has some non-y lit true — i.e. no pos-y
+    //                       clause forces y at X.
+    //   ¬pos_var[y] UNSAT ⇔ every consistent X has some pos-y clause
+    //                        firing — y must be true at every X.
+    pos_var.assign(cnf.nVars(), CMSat::Lit(0, false));
+    neg_var.assign(cnf.nVars(), CMSat::Lit(0, false));
+    std::vector<uint8_t> y_alloc(cnf.nVars(), 0);
+    for (uint32_t y : to_define) {
+        solver.new_var();
+        pos_var[y] = CMSat::Lit(solver.nVars() - 1, /*sign=*/false);
+        solver.new_var();
+        neg_var[y] = CMSat::Lit(solver.nVars() - 1, /*sign=*/false);
+        y_alloc[y] = 1;
+    }
+
+    const auto& clauses = cnf.get_clauses();
+    std::vector<CMSat::Lit> buf;
+    for (uint32_t y : to_define) {
+        for (const auto& [ci, sign_y] : var_clauses[y]) {
+            // sign_y == false: y appears positively in clauses[ci]
+            // sign_y == true : y appears negatively
+            const CMSat::Lit& side_var = sign_y ? neg_var[y] : pos_var[y];
+            buf.clear();
+            for (const auto& l : clauses[ci]) {
+                if (l.var() == y) continue;
+                buf.push_back(l);
+            }
+            buf.push_back(side_var);
+            solver.add_clause(buf);
+        }
+    }
+    if (conf.verb >= 1) {
+        cout << "c o [cadet] two-sided encoding: " << to_define.size()
+             << " Y vars, " << (2 * to_define.size())
+             << " pos/neg SAT vars added" << endl;
+    }
+}
+
 void Cadet::minimize_learnt_recursive(std::vector<Lit>& learnt) {
     // Sörensson-Biere recursive minimization. A lit l in `learnt` is
     // dropped iff every lit of pa_reason[l.var()] (other than l's own
@@ -792,10 +844,15 @@ void Cadet::maybe_replenish_skolem_sat() {
         new_solver->add_red_clause(lc);
     }
 
+    // Two-sided encoding: re-allocate pos_var/neg_var in the fresh
+    // solver and re-add the sufficient-direction clauses. They are
+    // pure F-encoding (no Skolem dependence), so a single static
+    // rebuild is correct regardless of how many commits we've made.
     skolem_sat = std::move(new_solver);
     skolem_sat_true_lit = new_true_lit;
     skolem_sat_commits_since_build = 0;
     skolem_sat_replenishes++;
+    two_sided_build(*skolem_sat);
     if (conf.verb >= 1) {
         cout << "c o [cadet] skolem_sat replenished (#" << skolem_sat_replenishes
              << ", " << learnt_clauses.size() << " learnt replayed)" << endl;
@@ -1334,10 +1391,17 @@ bool Cadet::synth_by_propagation() {
                 decay_activities();
             };
 
-            // SAT call 1: assume pick=true under current decisions;
-            // UNSAT ⇒ pick must be false.
+            // Two-sided Skolem probe (replaces the old y=true/y=false
+            // assumption pattern). Equivalent semantics, but the SAT
+            // solver gets to learn cross-Y constraints over the
+            // pos_var/neg_var space that persist across probes.
+            //
+            // SAT call 1: assume ¬pos_var[pick] under current
+            // decisions; UNSAT ⇒ pos_var[pick] is universally true,
+            // i.e. some pos-y clause fires at every consistent X, i.e.
+            // pick must be TRUE universally.
             assumps = base_assumps;
-            assumps.push_back(Lit(pick, /*sign=*/false));
+            assumps.push_back(~pos_var[pick]);
             auto commit_const = [&](bool val) {
                 bump_core();
                 skol[pick] = AIG::new_const(val);
@@ -1362,15 +1426,18 @@ bool Cadet::synth_by_propagation() {
                 }
             };
             if (decision_sat.solve(&assumps) == CMSat::l_False) {
-                commit_const(false);
+                two_sided_pos_unsat++;
+                commit_const(true); // ¬pos UNSAT ⇒ pick must be TRUE
                 continue;
             }
-            // SAT call 2: assume pick=false under current decisions;
-            // UNSAT ⇒ pick must be true.
+            // SAT call 2: assume ¬neg_var[pick]; UNSAT ⇒ pick must be
+            // FALSE universally (every consistent X has some neg-y
+            // clause firing).
             assumps = base_assumps;
-            assumps.push_back(Lit(pick, /*sign=*/true));
+            assumps.push_back(~neg_var[pick]);
             if (decision_sat.solve(&assumps) == CMSat::l_False) {
-                commit_const(true);
+                two_sided_neg_unsat++;
+                commit_const(false);
                 continue;
             }
             // Neither polarity forced — pick is genuinely
@@ -1494,6 +1561,11 @@ bool Cadet::synth_by_propagation() {
              << " learnt: " << learnt_clauses.size()
              << " remaining: " << remaining
              << " T: " << fixed << setprecision(2) << (cpuTime() - t0) << endl;
+        if (two_sided_pos_unsat > 0 || two_sided_neg_unsat > 0) {
+            cout << "c o [cadet]   two-sided forced: pos-UNSAT="
+                 << two_sided_pos_unsat
+                 << " neg-UNSAT=" << two_sided_neg_unsat << endl;
+        }
         if (pa_propagations > 0 || uip_conflicts_handled > 0) {
             const double avg_uip_lits = uip_conflicts_handled > 0
                 ? double(uip_learnt_lits_total) / double(uip_conflicts_handled)
@@ -2865,6 +2937,11 @@ SimplifiedCNF Cadet::do_cadet() {
     skolem_sat->new_var();
     skolem_sat_true_lit = Lit(skolem_sat->nVars() - 1, /*sign=*/false);
     skolem_sat->add_clause({skolem_sat_true_lit});
+
+    // Two-sided Skolem encoding: per Y var, pos_var[y] and neg_var[y]
+    // SAT lits in skolem_sat. Used by Phase D's forced-constant probe
+    // (assume ¬pos_var[y] / ¬neg_var[y] instead of y=true / y=false).
+    two_sided_build(*skolem_sat);
 
     // ---- Phase C+D: unique-consequence propagation with sound
     // constant decisions. CADET-flavored core; scales independently of
