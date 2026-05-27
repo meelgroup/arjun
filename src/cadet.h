@@ -29,9 +29,11 @@
 
 #include "arjun.h"
 #include "config.h"
+#include "metasolver.h"
 #include <cryptominisat5/solvertypesmini.h>
 
 #include <cstdint>
+#include <memory>
 #include <set>
 #include <vector>
 
@@ -80,6 +82,20 @@ private:
     // (their values come from the model), so skol[] for those vars
     // is only used by Phase C+D's AIG-pos_force construction.
     std::vector<ArjunNS::aig_ptr> skol;
+
+    // Persistent Skolem SAT solver — one cadical instance shared
+    // across Phase C+D, kept incrementally updated as commits happen.
+    // Built once in do_cadet() with F injected; Phase D adds unit
+    // clauses as it commits constants, and (later phases) tseitin-
+    // encode skol[] AIGs into it on commit. Reusing the same solver
+    // lets cadical retain learnt clauses across decisions.
+    std::unique_ptr<MetaSolver> skolem_sat;
+
+    // Per-var clause occurrence index: var → [(clause_idx, sign_of_lit)].
+    // sign=true means the literal in that clause is the NEGATION of
+    // the var. Built once in do_cadet() and reused by Phase C/D so
+    // each propagation pass doesn't rebuild it.
+    std::vector<std::vector<std::pair<uint32_t, bool>>> var_clauses;
 
     // --- algorithm pieces ---
 

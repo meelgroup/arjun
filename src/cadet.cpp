@@ -169,21 +169,16 @@ bool Cadet::synth_by_propagation() {
     for (uint32_t v : input) skol[v] = AIG::new_lit(v, /*neg=*/false);
     for (uint32_t v : backward_defined) skol[v] = AIG::new_lit(v, /*neg=*/false);
 
-    // var → list of (clause_idx, sign-of-var-in-clause). sign=true means
-    // the literal in that clause is the NEGATION of the var.
+    // Per-var clause occurrence index lives on the class (`var_clauses`)
+    // and is initialized by do_cadet() before this phase runs, so we
+    // don't rebuild it here.
     const auto& clauses = cnf.get_clauses();
-    vector<vector<std::pair<uint32_t, bool>>> var_clauses(cnf.nVars());
-    for (uint32_t ci = 0; ci < clauses.size(); ci++) {
-        for (const auto& l : clauses[ci]) {
-            var_clauses[l.var()].emplace_back(ci, l.sign());
-        }
-    }
 
-    // SAT solver loaded with F once, used in Phase D for decisions.
-    // We add unit-clauses to it as we commit constant decisions so
-    // subsequent SAT calls run under the cumulative decision state.
-    MetaSolver decision_sat(SolverType::cadical);
-    inject_cnf(decision_sat);
+    // Persistent SAT solver `skolem_sat` was built in do_cadet() with F
+    // already injected. We add unit clauses to it as we commit constant
+    // decisions so subsequent SAT calls run under the cumulative state;
+    // future phases will keep using the same solver.
+    MetaSolver& decision_sat = *skolem_sat;
 
     // Iterate to fixpoint with interleaved decisions:
     //   - Phase C inner loop: propagate every var we can.
@@ -1091,6 +1086,25 @@ SimplifiedCNF Cadet::do_cadet() {
              << " |to_define|=" << to_define.size()
              << " |backward_defined|=" << backward_defined.size() << endl;
     }
+
+    // Build the per-var clause occurrence index once. Used by Phase C
+    // and Phase D, and (transitively) by Phase F's per-y fallback.
+    {
+        const auto& clauses = cnf.get_clauses();
+        var_clauses.assign(cnf.nVars(), {});
+        for (uint32_t ci = 0; ci < clauses.size(); ci++) {
+            for (const auto& l : clauses[ci]) {
+                var_clauses[l.var()].emplace_back(ci, l.sign());
+            }
+        }
+    }
+
+    // Build the persistent Skolem SAT solver once with F injected.
+    // Phase D adds unit clauses to it as it commits constants; cadical
+    // retains learnt clauses across solve() calls, so each new decision
+    // builds on prior work.
+    skolem_sat = std::make_unique<MetaSolver>(SolverType::cadical);
+    inject_cnf(*skolem_sat);
 
     // ---- Phase C+D: unique-consequence propagation with sound
     // constant decisions. CADET-flavored core; scales independently of
