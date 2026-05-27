@@ -1792,9 +1792,10 @@ public:
         uint32_t sbva_max_new_vars = 0);
     SimplifiedCNF standalone_manthan(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
     // Synthesis via in-tree port of CADET (incremental determinization,
-    // Rabe 2016). Currently honors ManthanConf only for fields that
-    // CADET reuses; the rest are ignored. Returns the CNF with every
-    // previously-unsynthesized var carrying an AIG definition.
+    // Rabe 2016). Phase F (the terminal phase) guarantees the return
+    // value satisfies synth_done() — every previously-unsynthesized var
+    // carries an AIG definition. ManthanConf is kept for API parity
+    // with standalone_manthan; CADET ignores all its fields.
     SimplifiedCNF standalone_cadet(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
     void standalone_autarky(SimplifiedCNF& cnf);
 
