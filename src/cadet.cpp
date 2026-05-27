@@ -1817,7 +1817,13 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
         commit_clause.push_back(CMSat::Lit(y, /*sign=*/!y_v));
         skolem_sat->add_clause(commit_clause);
         learnt_clauses.push_back(commit_clause);
+        // The y is now constrained on the kept_cube region — bump its
+        // activity so Phase D's next forced-only sweep tries it
+        // earlier. Cheap; matters most for vars on the boundary of
+        // forced regions.
+        if (y < var_activity.size()) bump_var(y);
     }
+    decay_activities();
     exists_solver->add_clause(forbid);
     cegar_stat_joint_commits++;
     R.any_clause_added = true;
