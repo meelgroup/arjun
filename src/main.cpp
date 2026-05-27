@@ -298,6 +298,12 @@ void add_arjun_options() {
           "Rebuild exists_solver from scratch every N level-0 commits (keeps Tseitin growth bounded). 0 = never rebuild.");
     myopt("--cadetcegardisableafter", mconf.cadet_cegar_overall_disable_after, fc_int,
           "Disable CEGAR for the rest of the Phase D entry after this many total CEGAR rounds without a CONSTANT commit (per-y constraint clauses don't count). 0 = never disable.");
+    myopt("--cadetcegarconsecbail", mconf.cadet_cegar_consec_bail, fc_int,
+          "Per stall: bail CEGAR after this many consecutive rounds with clauses but no constant commit. Original cadet behavior was hardcoded 2.");
+    myopt("--cadetcegarnoopbail", mconf.cadet_cegar_noop_bail, fc_int,
+          "Per stall: bail CEGAR after this many consecutive pure no-op rounds (joint-SAT with no per-y commits and no clauses added). Original cadet bailed on the first no-op; with --cadetcegarforbidonsat 1 each no-op round gets a different skolem_sat model so >1 is productive.");
+    myopt("--cadetcegarforbidonsat", mconf.cadet_cegar_forbid_on_sat, fc_int,
+          "After a joint-SAT CEGAR round with no constant commit, add ¬cube (negation of the explored X-cube) to skolem_sat so the next round's level-0 solve returns a different model. 0=off, 1=on.");
 
     // Existing Phase C/D/E/F internals exposed as knobs.
     myopt("--cadetphaseeth", mconf.cadet_phase_e_threshold, fc_int,
@@ -318,6 +324,8 @@ void add_arjun_options() {
           "Phase F per-y adaptive disable productivity window.");
     myopt("--cadetphasefperyminprod", mconf.cadet_phase_f_per_y_min_productivity, fc_double,
           "Phase F per-y adaptive disable: ratio threshold below which per-y is disabled.");
+    myopt("--cadetpartial", mconf.cadet_partial, fc_int,
+          "If > 0, cap Phase F outer iterations at K and leave remaining undet vars undefined. The caller (arjun's --cadet 1 driver) then runs Manthan to complete them. 0 = no cap, cadet always finishes alone.");
 
     // Simplification options for minim
     myopt("--probe", conf.probe_based, fc_int,"Use simple probing to set (and define) some variables");
@@ -531,14 +539,30 @@ void do_synthesis() {
         // SAT-model-enumeration phase (Phase F). Always finishes
         // synthesis alone — no Manthan fallback. If any var slips
         // through, that's a bug in cadet, not something to paper over.
+        //
+        // Exception: --cadetpartial K > 0 explicitly asks cadet to bail
+        // out of Phase F after K iterations and hand the remaining
+        // undet vars to Manthan. In that mode synth_done() may be false
+        // after cadet returns; we then run Manthan to finish.
         if (!cnf.synth_done()) {
             cout << "c o [arjun] Synthesis: CADET" << endl;
             cnf = arjun->standalone_cadet(std::move(cnf), mconf);
         }
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-cadet.aig");
         SLOW_DEBUG_DO(check_stage("cadet"));
-        release_assert(cnf.synth_done() && "CADET must produce a Skolem for every existential — "
-                       "no Manthan fallback in --cadet 1 mode");
+        if (!cnf.synth_done()) {
+            release_assert(mconf.cadet_partial > 0 &&
+                           "CADET must produce a Skolem for every existential — "
+                           "no Manthan fallback unless --cadetpartial > 0");
+            cout << "c o [arjun] CADET partial bail — running Manthan to finish" << endl;
+            SynthRunner synth_runner(conf, arjun);
+            auto strategies = synth_runner.parse_mstrategy(mstrategy);
+            synth_runner.run_manthan_strategies(cnf, mconf, strategies);
+            release_assert(cnf.synth_done() &&
+                           "Manthan must finish what CADET partial left undone");
+            if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
+            SLOW_DEBUG_DO(check_stage("manthan"));
+        }
     } else {
         SynthRunner synth_runner(conf, arjun);
         auto strategies = synth_runner.parse_mstrategy(mstrategy);

@@ -1133,12 +1133,27 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
     // per-y attempts, if commits/checks ratio is too low, per-y is
     // disabled for the remainder of this worker run.
     bool per_y_disabled = false;
+    // Partial-completion cap: when --cadetpartial K is in effect, bail
+    // after K outer iterations and leave the still-undet vars
+    // undefined. The driver (main.cpp's --cadet 1 path) then completes
+    // them via Manthan. 0 means no cap (the original always-finishes
+    // contract).
+    const uint64_t partial_cap = mconf.cadet_partial;
+    bool partial_bail = false;
     while (true) {
         // Outer solve: find an uncovered input pattern.
         const auto ret = sat.solve();
         if (ret == CMSat::l_False) { converged = true; break; }
         if (ret != CMSat::l_True) return false;
         iters++;
+        if (partial_cap > 0 && iters > partial_cap) {
+            // Bail out without committing partial[y] — those AIGs are
+            // ITE chains with a `false` fallback for uncovered X
+            // regions, so they do not satisfy F. The caller will run
+            // Manthan on the remaining undet vars.
+            partial_bail = true;
+            break;
+        }
 
         const auto& model = sat.get_model();
 
@@ -1457,6 +1472,21 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
              << " T=" << fixed << setprecision(2) << (cpuTime() - t0) << endl;
     };
 
+    if (partial_bail) {
+        // --cadetpartial K hit. Don't commit partial[y] to skol[y] —
+        // the ITE chains' `false` fallback for uncovered X regions
+        // would yield Skolems that do not satisfy F. Leave skol[y] as
+        // nullptr for the still-undet vars; the driver runs Manthan on
+        // those. Return true (we did exactly what we were asked to do).
+        if (conf.verb >= 1) {
+            print_phase_f_stats("PARTIAL bail (--cadetpartial cap reached)");
+            cout << "c o [cadet] Phase F partial bail at iter " << iters
+                 << " (--cadetpartial=" << partial_cap << "); "
+                 << undet.size() << " undet vars left for Manthan" << endl;
+        }
+        return true;
+    }
+
     if (!converged) {
         // Phase F did not finish covering the input space — should
         // never happen since the loop has no iter cap. The only path
@@ -1599,8 +1629,13 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
     cegar_stat_rounds++;
     cegar_total_rounds++;
 
-    // (1) Get a level-0 SAT model from skolem_sat.
-    const auto outer_ret = skolem_sat->solve();
+    // (1) Get a level-0 SAT model from skolem_sat. Pass the
+    // forbid-on-SAT selectors as assumptions so previously-explored
+    // X-cubes are excluded from this round's model space. Phase D's
+    // probes never pass these, so the forbids stay inactive there.
+    const auto outer_ret = cegar_forbid_selectors.empty()
+        ? skolem_sat->solve()
+        : skolem_sat->solve(&cegar_forbid_selectors);
     if (outer_ret == CMSat::l_False) {
         // F + all prior commits is UNSAT at level 0 — shouldn't happen
         // in synthesis (precondition is F SAT for every input), but if
@@ -1656,13 +1691,13 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
         // restricted to one y at a time.
         //
         // Cost guard mirrors Phase F's per-y: capped by --cadetcegar-
-        // peryundetcap (default 30) since per-y adds |undet| SAT calls
+        // peryundetcap (default 1000) since per-y adds |undet| SAT calls
         // per round, and adaptively disabled when commits/checks ratio
         // drops below --cadetcegarperyminprod over a productivity
         // window (see cegar_per_y_* counters).
-        if (!mconf.cadet_cegar_per_y) return R;
-        if (cegar_per_y_disabled) return R;
-        if (undet.size() > mconf.cadet_cegar_per_y_undet_cap) return R;
+        const bool do_per_y = mconf.cadet_cegar_per_y
+                              && !cegar_per_y_disabled
+                              && undet.size() <= mconf.cadet_cegar_per_y_undet_cap;
 
         // VSIDS-ordered per-y scan (highest activity first). Identical
         // rationale to Phase F's per-y: high-activity vars are likely
@@ -1674,7 +1709,7 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
                       return var_activity[a] > var_activity[b];
                   });
 
-        for (uint32_t y : py_order) {
+        if (do_per_y) for (uint32_t y : py_order) {
             if (skol[y] != nullptr) continue; // already committed this round
             cegar_per_y_checks++;
             exists_solver->new_var();
@@ -1772,6 +1807,36 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
                 }
             }
         }
+        // Forbid the explored X-cube in skolem_sat so the next CEGAR
+        // round's level-0 solve picks a different model M. Without
+        // this, cadical keeps returning the same M and the drain
+        // stalls on no-op rounds. Skip on constant_commit: the undet
+        // set shrank, so the state changed enough that the next solve
+        // will be different anyway.
+        //
+        // SOUNDNESS: the forbid clause is gated by a fresh selector
+        // and the selector is added to cegar_forbid_selectors. CEGAR's
+        // level-0 solve at (1) passes this list as assumptions so the
+        // forbid is active there. Phase D's polarity probes and the
+        // CDCL global-conflict check DO NOT pass them — under their
+        // solves the selector is free, the SAT solver sets it false,
+        // and the forbid clause is trivially satisfied. This is
+        // critical: Phase D probing "is y forced?" under an
+        // artificially-restricted X space would falsely commit y.
+        if (mconf.cadet_cegar_forbid_on_sat && !R.constant_commit && !cube.empty()) {
+            skolem_sat->new_var();
+            const CMSat::Lit fsel(skolem_sat->nVars() - 1, /*sign=*/false);
+            std::vector<CMSat::Lit> forbid;
+            forbid.reserve(cube.size() + 1);
+            forbid.push_back(~fsel);
+            for (const auto& [v, val] : cube) {
+                // (v, val) in cube ⇒ literal `v != val`, i.e. sign=val.
+                forbid.push_back(CMSat::Lit(v, /*sign=*/val));
+            }
+            skolem_sat->add_clause(forbid);
+            cegar_forbid_selectors.push_back(fsel);
+            R.any_clause_added = true;
+        }
         return R;
     }
     if (inner_ret != CMSat::l_False) {
@@ -1866,8 +1931,9 @@ bool Cadet::cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
     //     more bits each cube keeps, the less generalization we're
     //     getting per SAT call, so cube-minimization is paying
     //     diminishing returns)
-    //   - two consecutive no-progress rounds (joint SAT + no per-y
-    //     commit, nothing to add).
+    //   - cadet_cegar_consec_bail consecutive no-constant-commit
+    //     rounds (clauses-only progress), or cadet_cegar_noop_bail
+    //     consecutive pure no-op rounds (joint SAT + per-y empty).
     assert(decision_lvl == 0);
     if (!mconf.cadet_cegar) return false;
     if (cegar_disabled) return false;
@@ -1880,6 +1946,7 @@ bool Cadet::cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
     uint64_t cube_sum = 0;
     uint64_t cube_count = 0;
     uint32_t consec_no_constant = 0;
+    uint32_t consec_noop = 0;
     while (rounds < mconf.cadet_cegar_max_rounds_per_stall) {
         if (max_total > 0 && cegar_total_rounds >= max_total) break;
         // Effectiveness break: only meaningful once we've seen a
@@ -1903,21 +1970,26 @@ bool Cadet::cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
         if (res.constant_commit) {
             any_constant_commit = true;
             consec_no_constant = 0;
+            consec_noop = 0;
             // Real shrink of undet set; keep going — every committed
             // const may unblock more rounds.
             continue;
         }
         // No constant this round. Either clauses-only progress (joint
         // UNSAT non-empty cube / per-y clauses-only), or no-progress at
-        // all (joint SAT + per-y empty). Allow ONE clauses-only round
-        // (the new constraints may help the next round find a constant),
-        // then bail.
+        // all (joint SAT + per-y empty).
         consec_no_constant++;
-        if (consec_no_constant >= 2) break;
+        if (mconf.cadet_cegar_consec_bail > 0 &&
+            consec_no_constant >= mconf.cadet_cegar_consec_bail) break;
         if (!res.any_clause_added) {
-            // No clauses, no constants — pure no-op round. Bail
-            // immediately; another won't help.
-            break;
+            // No clauses, no constants — pure no-op round. With
+            // forbid-on-SAT, successive no-op rounds get distinct M's,
+            // so we allow up to cadet_cegar_noop_bail in a row.
+            consec_noop++;
+            if (mconf.cadet_cegar_noop_bail == 0 ||
+                consec_noop >= mconf.cadet_cegar_noop_bail) break;
+        } else {
+            consec_noop = 0;
         }
     }
     if (conf.verb >= 2 && rounds > 0) {
@@ -1967,14 +2039,20 @@ bool Cadet::cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
 
 void Cadet::commit_definitions() {
     // Build a vector indexed by var, holding the Skolem AIG for each
-    // to_define var. With Phase F's terminal completion guarantee,
-    // every to_define var MUST have a non-null skol[y] by the time we
-    // commit — assert that so any future regression that lets a var
-    // slip through trips loudly here, not silently downstream.
+    // to_define var. Normally every to_define var must have a non-null
+    // skol[y] — Phase F's terminal completion guarantee. The exception
+    // is --cadetpartial > 0, where the user asked us to bail early and
+    // hand the remaining vars to Manthan; in that case nullptr entries
+    // are expected and we just skip them (map_aigs_to_orig leaves the
+    // var in to_define for downstream Manthan).
     vector<aig_ptr> aigs(cnf.nVars(), nullptr);
     for (uint32_t y : to_define) {
-        release_assert(skol[y] != nullptr &&
-                       "cadet must produce a Skolem for every to_define var");
+        if (skol[y] == nullptr) {
+            release_assert(mconf.cadet_partial > 0 &&
+                           "cadet must produce a Skolem for every to_define var "
+                           "unless --cadetpartial > 0");
+            continue;
+        }
         aigs[y] = skol[y];
     }
     const uint32_t cnf_nvars = cnf.nVars();
@@ -2054,6 +2132,7 @@ SimplifiedCNF Cadet::do_cadet() {
     cegar_per_y_commits = 0;
     cegar_per_y_disabled = false;
     cegar_disabled = false;
+    cegar_forbid_selectors.clear();
     cegar_stat_rounds = 0;
     cegar_stat_joint_unsat = 0;
     cegar_stat_joint_sat = 0;
@@ -2120,12 +2199,23 @@ SimplifiedCNF Cadet::do_cadet() {
 
     // Commit. commit_definitions release_asserts every to_define var
     // has a non-null skol[y] — Phase F's guarantee tested loudly.
+    // Exception: --cadetpartial > 0, where missing skols are allowed.
     commit_definitions();
 
     if (conf.verb >= 1) {
-        cout << "c o [cadet] done — all " << to_define.size()
-             << " to_define vars committed. T: "
-             << fixed << setprecision(2) << (cpuTime() - my_time) << endl;
+        uint32_t committed = 0;
+        for (uint32_t y : to_define) if (skol[y] != nullptr) committed++;
+        if (committed == to_define.size()) {
+            cout << "c o [cadet] done — all " << to_define.size()
+                 << " to_define vars committed. T: "
+                 << fixed << setprecision(2) << (cpuTime() - my_time) << endl;
+        } else {
+            cout << "c o [cadet] PARTIAL: committed " << committed
+                 << " of " << to_define.size() << " to_define vars "
+                 << "(--cadetpartial=" << mconf.cadet_partial << "); "
+                 << (to_define.size() - committed) << " left for Manthan. T: "
+                 << fixed << setprecision(2) << (cpuTime() - my_time) << endl;
+        }
     }
     return std::move(cnf);
 }

@@ -1801,24 +1801,26 @@ public:
         // commits but each round is expensive on large F. 0 = no cap.
         uint32_t cadet_cegar_max_total_rounds = 0;
         // Per stall: max CEGAR rounds before falling back to a guess.
-        // Mirrors cadet's max_cegar_iterations_per_learnt_clause = 50.
-        uint32_t cadet_cegar_max_rounds_per_stall = 50;
+        // Original cadet's max_cegar_iterations_per_learnt_clause = 50;
+        // we raise this to give CEGAR more headroom on benchmarks where
+        // it is finding things but slowly.
+        uint32_t cadet_cegar_max_rounds_per_stall = 500;
         // Average cube-size break: when the trailing-window mean of
         // surviving (kept) cube sizes exceeds this, abandon CEGAR for
-        // this stall and let Phase D guess. Mirrors cadet's
-        // cegar_effectiveness_threshold = 17.
-        uint32_t cadet_cegar_max_avg_cube = 17;
+        // this stall and let Phase D guess. Original cadet's
+        // cegar_effectiveness_threshold = 17; relaxed here.
+        uint32_t cadet_cegar_max_avg_cube = 32;
         // Enable per-y forcing fallback inside CEGAR rounds.
         int cadet_cegar_per_y = 1;
         // Per-y cap on undet count (analog of Phase F's kPerYUndetCap).
         // Past this size, per-y fallback is skipped — each per-y call
         // adds |undet| SAT calls per CEGAR round.
-        uint32_t cadet_cegar_per_y_undet_cap = 30;
+        uint32_t cadet_cegar_per_y_undet_cap = 1000;
         // Adaptive disable: after this many per-y CEGAR checks, if
         // commits/checks < productivity_threshold, disable per-y CEGAR
         // for the remainder of the run. 0 = no adaptive disable.
         uint64_t cadet_cegar_per_y_productivity_window = 5000;
-        double cadet_cegar_per_y_min_productivity = 0.1;
+        double cadet_cegar_per_y_min_productivity = 0.02;
         // Rebuild exists_solver from scratch every N level-0 commits.
         // Keeps Tseitin clause growth bounded across long runs. 0 = no
         // periodic rebuild (the solver only grows).
@@ -1832,6 +1834,23 @@ public:
         // guard a run that's not getting constant commits would still
         // pay the CEGAR-round cost on every stall. 0 = no outer disable.
         uint32_t cadet_cegar_overall_disable_after = 30;
+        // Per stall: max consecutive rounds with clauses but no constant
+        // commit before bailing. Original cadet behavior was hardcoded 2;
+        // raise to give clauses-only rounds more chance to unblock the
+        // next round.
+        uint32_t cadet_cegar_consec_bail = 4;
+        // Per stall: max consecutive pure no-op rounds (joint-SAT with no
+        // per-y commits and no clauses added) before bailing. Original
+        // hardcoded behavior bailed immediately on the first no-op. With
+        // forbid-on-SAT below, successive no-op rounds get distinct
+        // skolem_sat models, so it's productive to keep trying.
+        uint32_t cadet_cegar_noop_bail = 3;
+        // After a joint-SAT round in which no constant commit happened,
+        // add ¬cube (the negation of the explored X-cube) to skolem_sat
+        // so the NEXT round's level-0 solve returns a different model M.
+        // Without this, repeated rounds keep getting the same M and the
+        // drain stalls. 0 = off, 1 = on.
+        int cadet_cegar_forbid_on_sat = 1;
 
         // === Existing internal Phase C/D/E/F constants, exposed ========
         // Defaults match the in-source constants they replace; set to 0
@@ -1858,6 +1877,18 @@ public:
         // Phase F: adaptive per-y disable productivity window + threshold.
         uint64_t cadet_phase_f_per_y_window = 5000;
         double cadet_phase_f_per_y_min_productivity = 0.1;
+        // Phase F partial-completion cap. If > 0, the Phase F worker
+        // stops after this many outer iterations and leaves any
+        // still-undet to_define vars as undefined (skol[y] = nullptr).
+        // commit_definitions then commits only the non-null skols, and
+        // the caller is expected to finish the rest via Manthan. 0 = no
+        // cap, the original "always finishes alone" contract. An "outer
+        // iteration" is one `sat.solve()` cycle in synth_phase_f_subset
+        // — each cycle generates a new uncovered input model, minimizes
+        // it via UNSAT-core, and commits a joint case or runs the per-y
+        // fallback. Phase F's iter unit is deterministic across runs
+        // because the underlying cadical solves are deterministic.
+        uint64_t cadet_partial = 0;
     };
 
     struct IndepInfo {

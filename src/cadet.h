@@ -403,6 +403,16 @@ private:
     uint64_t cegar_stat_cube_total = 0;   // sum of kept cube sizes
     uint64_t cegar_stat_joint_commits = 0;// joint-Y commits (one per UNSAT round)
     uint64_t cegar_stat_per_y_commits = 0;// per-y commits within rounds
+    // Selector lits for forbid-on-SAT clauses added to skolem_sat. Each
+    // entry is the positive selector for a forbid clause `(¬sel ∨ ¬cube)`
+    // that excludes one previously-explored X-cube from CEGAR's M
+    // generation. CEGAR's level-0 solve of skolem_sat passes these as
+    // assumptions (so the forbids are active there). Phase D's polarity
+    // probes and the CDCL global-conflict check do NOT pass them, so the
+    // forbids stay inactive there — this is load-bearing for soundness:
+    // a probe under an artificially-restricted X space could falsely
+    // conclude that y is universally forced.
+    std::vector<CMSat::Lit> cegar_forbid_selectors;
 
     // Compute cegar_interface — single pass over var_clauses. Cheap.
     void cegar_build_interface();

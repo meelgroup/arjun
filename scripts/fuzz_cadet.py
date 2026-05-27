@@ -443,6 +443,7 @@ if __name__ == "__main__":
         "cadet_committed_partial_then_handoff": 0,
         "cadet_committed_all": 0,
         "handoff_triggered": 0,
+        "partial_handoff_expected": 0,  # iterations where --cadetpartial > 0 caused handoff
         "phase_e_ran": 0,                       # iterations where Phase E ran
         "phase_e_finished_synthesis": 0,        # Phase E ran AND cadet completed all
         "phase_f_ran": 0,                       # iterations where Phase F engaged
@@ -515,6 +516,13 @@ if __name__ == "__main__":
             "--cadetcegarperyminprod": random.choice([0.05, 0.1, 0.5]),
             "--cadetcegardisableafter": random.choice([0, 5, 30, 200]),
             "--cadetcegarrebuildevery": random.choice([0, 5, 50]),
+            # New drain-loop bail knobs (replace previously hardcoded
+            # consec=2 / immediate-noop bail). 0 disables the bail.
+            "--cadetcegarconsecbail": random.choice([0, 1, 2, 4, 10]),
+            "--cadetcegarnoopbail": random.choice([0, 1, 3, 10]),
+            # Forbid the explored X-cube in skolem_sat after joint-SAT
+            # so the next round gets a different model. Default on (1).
+            "--cadetcegarforbidonsat": random.choices([0, 1], weights=[1, 3])[0],
             # Existing Phase C/D/E/F internals.
             # Phase E threshold capped at 16 — Phase E enumerates
             # 2^th SAT calls. 32 is intractable (2^32 ≈ 4·10⁹), kills
@@ -528,6 +536,12 @@ if __name__ == "__main__":
             "--cadetphasefperycap": random.choice([5, 30, 100]),
             "--cadetphasefperywindow": random.choice([0, 100, 5000]),
             "--cadetphasefperyminprod": random.choice([0.05, 0.1, 0.5]),
+            # Partial mode: 0 = off (always finishes alone). When > 0,
+            # Phase F bails after K iters and Manthan finishes the rest.
+            # Mostly off (cadet-finishes-alone is the standard contract),
+            # but occasionally cap at small K to exercise the handoff.
+            "--cadetpartial": random.choices(
+                [0, 1, 5, 100], weights=[6, 1, 1, 1])[0],
         }
         for k, v in cadet_knobs.items():
             solver += "%s %s " % (k, v)
@@ -583,15 +597,22 @@ if __name__ == "__main__":
         # produce a Skolem for every existential. Any Manthan handoff
         # is a regression — fail immediately so the user sees the
         # exact reproduction command for the failing seed.
+        # EXCEPTION: --cadetpartial K > 0 explicitly asks CADET to bail
+        # out of Phase F at K iters and let Manthan finish the rest.
+        # In that case a handoff is the *expected* behavior; we just
+        # count it and continue.
+        partial_k = int(cadet_knobs["--cadetpartial"])
         if info["handoff_triggered"] or info["cadet_committed_partial"]:
-            print("=" * 60)
-            print("FUZZ FAIL: cadet failed to complete synthesis alone")
-            print("  committed %d / %d to_define vars; rest handed off to Manthan"
-                  % (info["cadet_committed_count"], info["cadet_to_define_count"]))
-            print("  --cadet 1 is supposed to ALWAYS finish without Manthan.")
-            print("REPRODUCE: python3 ../scripts/fuzz_cadet.py --seed %d --num 1" % seed)
-            print("=" * 60)
-            exit(-1)
+            if partial_k == 0:
+                print("=" * 60)
+                print("FUZZ FAIL: cadet failed to complete synthesis alone")
+                print("  committed %d / %d to_define vars; rest handed off to Manthan"
+                      % (info["cadet_committed_count"], info["cadet_to_define_count"]))
+                print("  --cadet 1 is supposed to ALWAYS finish without Manthan.")
+                print("REPRODUCE: python3 ../scripts/fuzz_cadet.py --seed %d --num 1" % seed)
+                print("=" * 60)
+                exit(-1)
+            stats["partial_handoff_expected"] += 1
         if info["phase_e_ran"]:
             stats["phase_e_ran"] += 1
             if info["cadet_committed_all"]:
@@ -670,18 +691,24 @@ if __name__ == "__main__":
         print("    per-y commits:            %d" % stats["cegar_total_per_y_commits"])
     print("  cadet+Manthan handoff:      %d" % stats["handoff_triggered"])
     print("  cadet finished alone:       %d" % stats["cadet_committed_all"])
+    print("  expected partial handoffs:  %d" % stats["partial_handoff_expected"])
     print("=" * 60)
 
-    # Completeness check: every successful iteration must have cadet
-    # finish the synthesis alone. Any handoff was caught and aborted
-    # at the time it happened (see the inner loop); this end-of-run
-    # check is the belt-and-braces version, so a logic error in the
-    # per-iteration parsing can't hide a regression.
+    # Completeness check: every successful iteration must either have
+    # cadet finish alone, or be a --cadetpartial > 0 run that handed
+    # off to Manthan by design. Any unexpected handoff is a regression;
+    # those are caught and aborted at the time they happen (see the
+    # inner loop). This end-of-run check is the belt-and-braces
+    # version, so a logic error in the per-iteration parsing can't
+    # hide a regression.
     if stats["synth_succeeded"] > 0 and \
-       stats["cadet_committed_all"] != stats["synth_succeeded"]:
-        print("FUZZ FAIL: %d successful runs but only %d had cadet "
-              "finish alone — handoff regression somewhere." %
-              (stats["synth_succeeded"], stats["cadet_committed_all"]))
+       stats["cadet_committed_all"] + stats["partial_handoff_expected"] \
+           != stats["synth_succeeded"]:
+        print("FUZZ FAIL: %d successful runs but %d had cadet finish "
+              "alone and %d were expected --cadetpartial handoffs — "
+              "handoff regression somewhere." %
+              (stats["synth_succeeded"], stats["cadet_committed_all"],
+               stats["partial_handoff_expected"]))
         exit(-1)
     # Phase E coverage check: same idea but for the SAT-model completion
     # phase. Phase E is the small-input SAT-model completion that
