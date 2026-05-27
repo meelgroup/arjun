@@ -501,6 +501,10 @@ bool Cadet::synth_by_propagation() {
     uint32_t restart_threshold = 16;
     uint32_t conflicts_since_restart = 0;
     static constexpr double kRestartFactor = 1.5;
+    // Latch set when we hit the guess-depth cap and want one more
+    // forced-only pass at level 0 (to pick up vars now forced by
+    // learnt clauses) before exiting.
+    bool no_more_guesses = false;
     uint32_t pass = 0;
     while (true) {
         pass++;
@@ -733,16 +737,25 @@ bool Cadet::synth_by_propagation() {
             // bounds the work of "explore-and-backtrack" before we
             // give up and let downstream phases finish.
             static constexpr uint32_t kMaxGuessDepth = 8;
+            if (no_more_guesses) break;
             if (decision_lvl >= kMaxGuessDepth) {
                 if (conf.verb >= 1) {
                     cout << "c o [cadet] Phase D: hit guess-depth cap "
-                         << kMaxGuessDepth << ", falling back" << endl;
+                         << kMaxGuessDepth << ", draining level-0 forced"
+                         << endl;
                 }
-                // Backjump to level 0 before falling through, so
-                // skolem_sat doesn't carry stale selector assumptions
-                // into Phase E/F.
                 backjump_to_level(0);
-                break;
+                no_more_guesses = true;
+                // Re-enqueue every undet — learnt clauses may unit-
+                // propagate them. Then re-enter the outer loop; the
+                // next "no_more_guesses" branch will exit cleanly.
+                for (uint32_t y : to_define) {
+                    if (skol[y] == nullptr && !in_queue[y]) {
+                        in_queue[y] = 1;
+                        queue.push_back(y);
+                    }
+                }
+                continue;
             }
             // Guess polarity: pick the value that satisfies more
             // surviving (undead) clauses — JW-style on the residual
