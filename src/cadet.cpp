@@ -1027,20 +1027,14 @@ SimplifiedCNF Cadet::do_cadet() {
     // how many vars F forces to constants.
     bool done = synth_by_propagation();
 
-    // Count what Phase C+D committed. Phase E only kicks in when at
-    // least one C+D commit landed, since Phase E's setup pays its
-    // Tseitin-encoding cost up front and that's wasted if there's
-    // nothing to encode (Phase F would do strictly more work in less
-    // time on a no-commits formula).
-    uint32_t cd_committed = 0;
-    for (uint32_t y : to_define) if (skol[y] != nullptr) cd_committed++;
-
-    // ---- Phase E: SAT-model-based completion that RESPECTS Phase C+D's
-    // partial commits via Tseitin encoding. Runs when Phase C+D
-    // committed at least one var but didn't finish and the input
-    // space is small enough for naive enumeration. Otherwise Phase F
-    // (terminal) handles the remainder.
-    if (!done && cd_committed > 0) {
+    // ---- Phase E: small-input SAT-model enumeration. Runs whenever
+    // the input space is small enough that 2^|orig_sampl_cnf| naive
+    // enumeration is cheap (≤ kSmallInputThreshold = 16, so ≤ 65k
+    // SAT calls). Respects Phase C+D's partial commits via Tseitin
+    // encoding. Phase E is just faster than Phase F at this size —
+    // no per-iter uniqueness/minimization overhead, just straight
+    // model collection.
+    if (!done) {
         done = synth_complete_with_models();
     }
 
