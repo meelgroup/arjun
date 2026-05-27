@@ -904,6 +904,13 @@ bool Cadet::synth_complete_with_interp_generalization() {
     uint32_t n_uniq_sat = 0;       // uniqueness check returned SAT (joint Y has alternatives — no drops)
     uint32_t n_uniq_unknown = 0;   // UNDEF (rare — solver gave up)
     uint64_t total_core_size = 0;  // size of UNSAT core when the check returned UNSAT
+    // Per-y uniqueness fallback (runs only when joint uniqueness check
+    // returns SAT — i.e., joint Y has alternatives at X*). For each
+    // undet y, check whether y is *individually* forced at X*. Forced
+    // y's get committed via a single permanent clause (no Tseitin —
+    // the case condition is just a conjunction of input lits).
+    uint64_t n_per_y_checks = 0;       // total per-y uniqueness SAT calls
+    uint64_t n_per_y_commits = 0;      // per-y individually-forced commits
     while (true) {
         // Outer solve: find an uncovered input pattern.
         const auto ret = sat.solve();
@@ -957,6 +964,9 @@ bool Cadet::synth_complete_with_interp_generalization() {
         // failed_input_vars is just the var-id set of the conflict.
         std::vector<bool> kept(n_in, true);
         uint32_t bits_dropped = 0;
+        // Captured per-iter so the per-y fallback after the joint
+        // commit can tell whether THIS iter took the joint-SAT branch.
+        lbool joint_unique_result = CMSat::l_Undef;
         {
             std::vector<Lit> assumps;
             assumps.reserve(n_in + 1);
@@ -966,6 +976,7 @@ bool Cadet::synth_complete_with_interp_generalization() {
                 assumps.push_back(Lit(sorted_inputs[i], /*sign=*/!mv));
             }
             const auto r = minim.solve(&assumps);
+            joint_unique_result = r;
             if (r == CMSat::l_False) {
                 n_uniq_unsat++;
                 const auto failed = minim.get_conflict();
@@ -982,7 +993,10 @@ bool Cadet::synth_complete_with_interp_generalization() {
                 n_uniq_sat++;
                 // joint y=M is not unique at this input pattern
                 // (multiple joint y satisfy F here). No bit can be
-                // dropped; the case covers only this exact input.
+                // dropped JOINTLY; the joint case covers only this
+                // exact input. But individual y's might still be
+                // forced — fall through to per-y uniqueness check
+                // below the joint commit block.
             } else {
                 n_uniq_unknown++;
                 // UNDEF — solver gave up. Same fallback: no drops.
@@ -1039,6 +1053,95 @@ bool Cadet::synth_complete_with_interp_generalization() {
                  << " / " << n_in << " bits" << endl;
         }
 
+        // Per-y uniqueness fallback. Runs only on joint-SAT iters —
+        // joint-UNSAT iters already commit a wide case via the
+        // joint-UNSAT-core, so additional per-y work is wasted there.
+        //
+        // For each undet y, ask minim: "F ∧ y ≠ M[y] ∧ X=X* UNSAT?".
+        // If so, y is individually forced at X*; the UNSAT core gives
+        // the per-y kept bits. We commit y over that case via ONE
+        // permanent clause to both sat and minim:
+        //
+        //   (X ≠ kept_bits) ∨ (y = M[y])
+        //
+        // No Tseitin needed — the case condition is a conjunction of
+        // input lits, so its negation is exactly the disjunction in
+        // the clause.
+        //
+        // Soundness: same UNSAT-core argument as joint uniqueness —
+        // any X with kept_bits at their X*-values forces y=M[y] in F.
+        //
+        // Without per-y, joint-SAT iters cover exactly one input
+        // minterm each, so the total Phase F iter count is ~|number of
+        // consistent input patterns|. Per-y often shrinks that 10×+
+        // because individual y's are forced under far more inputs
+        // than joint Y.
+        //
+        // Cost guard: per-y adds |undet| SAT calls + |undet| clauses
+        // to the running solvers per joint-SAT iter. On large undet
+        // sets this dominates; bench evidence (/tmp/slow.cnf with
+        // |undet|=65) showed per-y making total wall time worse, not
+        // better, because the bloating solver state slowed every
+        // subsequent SAT call. Skip per-y when |undet| exceeds
+        // kPerYUndetCap; the joint single-minterm commit still
+        // covers progress, just less per iter.
+        static constexpr uint32_t kPerYUndetCap = 30;
+        const bool was_joint_sat_this_iter = (joint_unique_result == CMSat::l_True);
+        if (was_joint_sat_this_iter && undet.size() <= kPerYUndetCap) {
+            for (uint32_t y : undet) {
+                n_per_y_checks++;
+                minim.new_var();
+                const uint32_t sel_y_var = minim.nVars() - 1;
+                const Lit sel_y(sel_y_var, /*sign=*/false);
+                const bool y_v = (model[y] == CMSat::l_True);
+                // (¬sel_y ∨ y ≠ y_v): asserts y differs from M[y] when sel_y.
+                minim.add_clause({~sel_y, Lit(y, /*sign=*/y_v)});
+
+                std::vector<Lit> assumps;
+                assumps.reserve(n_in + 1);
+                assumps.push_back(sel_y);
+                for (uint32_t i = 0; i < n_in; i++) {
+                    const bool mv = (model[sorted_inputs[i]] == CMSat::l_True);
+                    assumps.push_back(Lit(sorted_inputs[i], /*sign=*/!mv));
+                }
+                const auto rr = minim.solve(&assumps);
+                // Deactivate the per-y uniqueness clause forever.
+                minim.add_clause({~sel_y});
+
+                if (rr != CMSat::l_False) continue; // y not forced at X*
+
+                // y is individually forced at X*. Extract UNSAT core
+                // for the per-y kept bits.
+                const auto failed = minim.get_conflict();
+                std::set<uint32_t> failed_vars;
+                for (const Lit& f : failed) failed_vars.insert(f.var());
+
+                // Build the commit clause: (X ≠ kept_bits) ∨ (y = M[y]).
+                std::vector<Lit> commit_clause;
+                commit_clause.reserve(n_in + 1);
+                aig_ptr case_aig = AIG::new_const(true);
+                for (uint32_t i = 0; i < n_in; i++) {
+                    if (failed_vars.count(sorted_inputs[i]) == 0) continue;
+                    const bool mv = (model[sorted_inputs[i]] == CMSat::l_True);
+                    // X_i ≠ mv: if mv=true, lit is ¬X_i (sign=true); else X_i (sign=false).
+                    commit_clause.push_back(Lit(sorted_inputs[i], /*sign=*/mv));
+                    // case AIG: AND of input matching lits
+                    case_aig = AIG::new_and(case_aig,
+                        AIG::new_lit(sorted_inputs[i], /*neg=*/!mv));
+                }
+                // y matches M[y]: if y_v=true, lit is y; else ¬y.
+                commit_clause.push_back(Lit(y, /*sign=*/!y_v));
+                sat.add_clause(commit_clause);
+                minim.add_clause(commit_clause);
+
+                // Update partial Skolem for y. The ITE prepend: at X
+                // in case, return M[y]; else fall through to prev.
+                partial[y] = AIG::new_ite(AIG::new_const(y_v),
+                                          partial[y], case_aig);
+                n_per_y_commits++;
+            }
+        }
+
         // Periodic AIG simplification: as the iteration count grows,
         // each `partial[y]` is a deepening ITE chain. AIG::new_ite
         // walks the existing DAG looking for structural matches, so
@@ -1054,6 +1157,8 @@ bool Cadet::synth_complete_with_interp_generalization() {
                 cout << "c o [cadet]   Phase F progress: iter=" << iters
                      << " uniq-UNSAT=" << n_uniq_unsat
                      << " uniq-SAT=" << n_uniq_sat
+                     << " per-y-checks=" << n_per_y_checks
+                     << " per-y-commits=" << n_per_y_commits
                      << " T=" << fixed << setprecision(2)
                      << (cpuTime() - t0) << endl;
             }
