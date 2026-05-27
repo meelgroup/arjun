@@ -387,6 +387,13 @@ private:
     uint64_t cegar_per_y_checks = 0;
     uint64_t cegar_per_y_commits = 0;
     bool cegar_per_y_disabled = false;
+    // Outer CEGAR disable. Set when the drain has run for at least
+    // mconf.cadet_cegar_overall_disable_after rounds across all stalls
+    // without producing any *constant* commits (the per-y commits are
+    // only constraint clauses; useful but they don't shrink the undet
+    // set). Once disabled, cegar_drain_at_level_0 returns false
+    // immediately for the rest of the Phase D entry.
+    bool cegar_disabled = false;
     // Stats across the Phase D entry (reset at the top of
     // synth_by_propagation). Printed in the Phase C+D summary.
     uint64_t cegar_stat_rounds = 0;       // CEGAR rounds attempted

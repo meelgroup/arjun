@@ -1823,6 +1823,15 @@ public:
         // Keeps Tseitin clause growth bounded across long runs. 0 = no
         // periodic rebuild (the solver only grows).
         uint32_t cadet_cegar_rebuild_every = 0;
+        // Outer adaptive disable: after this many total CEGAR rounds
+        // (across all stalls in a Phase D entry) without producing any
+        // CONSTANT commit, disable CEGAR for the remainder of the
+        // entry. Per-y constraint clauses don't count toward this — they
+        // help Phase E/F but don't shrink the Phase D undet set, and
+        // they're the most common per-round output, so without this
+        // guard a run that's not getting constant commits would still
+        // pay the CEGAR-round cost on every stall. 0 = no outer disable.
+        uint32_t cadet_cegar_overall_disable_after = 30;
 
         // === Existing internal Phase C/D/E/F constants, exposed ========
         // Defaults match the in-source constants they replace; set to 0

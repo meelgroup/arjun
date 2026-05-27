@@ -1840,6 +1840,7 @@ bool Cadet::cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
     //     commit, nothing to add).
     assert(decision_lvl == 0);
     if (!mconf.cadet_cegar) return false;
+    if (cegar_disabled) return false;
     if (cegar_interface.empty()) return false;
     const uint32_t max_total = mconf.cadet_cegar_max_total_rounds;
     if (max_total > 0 && cegar_total_rounds >= max_total) return false;
@@ -1896,6 +1897,40 @@ bool Cadet::cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
         if (cube_count > 0) cout << (cube_sum / cube_count);
         else cout << "n/a";
         cout << endl;
+    }
+    // Outer adaptive disable: after enough total rounds have run
+    // without yielding ANY constant commit, give up on CEGAR for the
+    // rest of the Phase D entry. Per-y constraint clauses are useful
+    // (Phase E/F replay them) but they don't shrink the undet set, so
+    // we'd burn SAT calls every stall to no avail.
+    if (!cegar_disabled &&
+        mconf.cadet_cegar_overall_disable_after > 0 &&
+        cegar_total_rounds >= mconf.cadet_cegar_overall_disable_after &&
+        cegar_stat_joint_commits == 0 &&
+        cegar_per_y_commits == 0) {
+        cegar_disabled = true;
+        if (conf.verb >= 1) {
+            cout << "c o [cadet] CEGAR disabled for rest of Phase D: "
+                 << cegar_total_rounds << " rounds without any commit"
+                 << endl;
+        }
+    } else if (!cegar_disabled &&
+               mconf.cadet_cegar_overall_disable_after > 0 &&
+               cegar_total_rounds >=
+                   mconf.cadet_cegar_overall_disable_after * 3 &&
+               cegar_stat_joint_commits == 0) {
+        // Looser secondary guard: even if per-y constraint clauses are
+        // accumulating, after 3× the disable window with no actual
+        // constant commits (joint OR per-y empty cube), CEGAR isn't
+        // contributing to undet-set shrink. Bail.
+        cegar_disabled = true;
+        if (conf.verb >= 1) {
+            cout << "c o [cadet] CEGAR disabled for rest of Phase D: "
+                 << cegar_total_rounds
+                 << " rounds without any CONSTANT commit (per-y produced "
+                 << cegar_per_y_commits << " constraint clauses but "
+                 << "nothing to shrink undet)" << endl;
+        }
     }
     return any_constant_commit;
 }
@@ -1988,6 +2023,7 @@ SimplifiedCNF Cadet::do_cadet() {
     cegar_per_y_checks = 0;
     cegar_per_y_commits = 0;
     cegar_per_y_disabled = false;
+    cegar_disabled = false;
     cegar_stat_rounds = 0;
     cegar_stat_joint_unsat = 0;
     cegar_stat_joint_sat = 0;

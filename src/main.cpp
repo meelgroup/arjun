@@ -296,6 +296,8 @@ void add_arjun_options() {
           "Per-y CEGAR adaptive disable: ratio threshold below which per-y is disabled for the rest of the run.");
     myopt("--cadetcegarrebuildevery", mconf.cadet_cegar_rebuild_every, fc_int,
           "Rebuild exists_solver from scratch every N level-0 commits (keeps Tseitin growth bounded). 0 = never rebuild.");
+    myopt("--cadetcegardisableafter", mconf.cadet_cegar_overall_disable_after, fc_int,
+          "Disable CEGAR for the rest of the Phase D entry after this many total CEGAR rounds without a CONSTANT commit (per-y constraint clauses don't count). 0 = never disable.");
 
     // Existing Phase C/D/E/F internals exposed as knobs.
     myopt("--cadetphaseeth", mconf.cadet_phase_e_threshold, fc_int,
