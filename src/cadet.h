@@ -174,6 +174,65 @@ private:
     // those clauses away.
     std::vector<CMSat::Lit> sel_lits;
 
+    // === Partial Assignment domain (internal BCP propagator) =========
+    //
+    // For every CNF var v with skol[v] committed to a CONSTANT,
+    // pa_value[v] holds that constant. For everything else (X
+    // universals, Y vars with non-const skol, Y vars not yet
+    // committed), pa_value[v] = l_Undef. Mirrors upstream's
+    // PartialAssignment (cadet/src/partial_assignment.c).
+    //
+    // pa_reason[v] is the clause idx (into cnf.get_clauses()) that
+    // forced v's value during BCP; PA_REASON_SOURCE marks an
+    // assignment that came from outside BCP (decision, Phase C
+    // pos_force commit, CEGAR commit, pure literal). pa_level[v] is
+    // the dec_lvl at assignment time.
+    //
+    // BCP propagates Y vars only — universals are never assigned
+    // (would falsely constrain ∀X). When a clause becomes unit and the
+    // sole unassigned lit's var is in to_define, the var is auto-
+    // committed as a constant at the current dec_lvl.
+    //
+    // Used by 1-UIP conflict analysis and recursive learnt-clause
+    // minimization (upcoming passes).
+    static constexpr uint32_t PA_REASON_SOURCE = UINT32_MAX;
+    static constexpr uint32_t PA_NO_CONFLICT   = UINT32_MAX;
+
+    std::vector<CMSat::lbool> pa_value;
+    std::vector<uint32_t> pa_reason;
+    std::vector<uint32_t> pa_level;
+    std::vector<CMSat::Lit> pa_trail;
+    std::vector<uint32_t> pa_bcp_queue;
+    std::vector<uint8_t>  pa_bcp_in_queue;
+    uint32_t pa_conflict_clause = PA_NO_CONFLICT;
+
+    uint64_t pa_propagations    = 0;  // # auto-commits via BCP
+    uint64_t pa_conflicts_caught = 0; // # BCP-detected conflicts
+
+    // Init PA arrays. Sized to cnf.nVars(); all entries l_Undef.
+    void pa_init();
+    // Record an assignment at the current decision_lvl. reason =
+    // clause idx, or PA_REASON_SOURCE. Idempotent on equal-value
+    // re-assignment; sets pa_conflict_clause on contradictory
+    // re-assignment.
+    void pa_assign(uint32_t v, bool val, uint32_t reason);
+    // Pop PA assignments made at levels > target. Companion to
+    // backjump_to_level; clears the conflict flag.
+    void pa_pop_to_level(uint32_t target);
+    // Look up lit's value under PA: l_True if PA satisfies lit,
+    // l_False if PA falsifies it, l_Undef if v unassigned.
+    CMSat::lbool pa_lit_value(CMSat::Lit lit) const;
+    // Enqueue every clause containing var v for BCP recheck. Called
+    // after v gets pa-assigned.
+    void pa_enqueue_clauses_for_var(uint32_t v);
+    // Drain the BCP worklist. Auto-commits Y units (skol[] becomes a
+    // constant, all bookkeeping updated). Stops on PA conflict; sets
+    // pa_conflict_clause and returns false. Outer queues are bumped
+    // for every auto-commit so Phase C/D's neighbour-driven
+    // propagation picks up the new state.
+    bool pa_drain_bcp(std::vector<uint8_t>& outer_in_queue,
+                      std::vector<uint32_t>& outer_neighbour_queue);
+
     // CDCL-learnt clauses over original variables (no selectors).
     // Each conflict produces one entry — the negation of the failed
     // decision lits, i.e. a clause that refutes that combination of

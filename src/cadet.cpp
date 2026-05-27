@@ -147,6 +147,151 @@ Cadet::Cadet(const ArjunInt::Config& _conf,
     activity_decay = mconf.cadet_activity_decay;
 }
 
+// === Partial-Assignment propagator ===================================
+//
+// Mirrors cadet/src/partial_assignment.c. Tracks every CNF var that is
+// committed to a CONSTANT skol[] value; non-constant skol[] entries
+// (AIG functions over inputs) leave pa_value[v] = l_Undef. BCP runs
+// over the original CNF; reasons are clause indices into
+// cnf.get_clauses(). Universals are never propagated.
+
+void Cadet::pa_init() {
+    pa_value.assign(cnf.nVars(), CMSat::l_Undef);
+    pa_reason.assign(cnf.nVars(), PA_REASON_SOURCE);
+    pa_level.assign(cnf.nVars(), 0);
+    pa_trail.clear();
+    pa_bcp_queue.clear();
+    pa_bcp_in_queue.assign(cnf.get_clauses().size(), 0);
+    pa_conflict_clause = PA_NO_CONFLICT;
+    pa_propagations = 0;
+    pa_conflicts_caught = 0;
+}
+
+CMSat::lbool Cadet::pa_lit_value(CMSat::Lit lit) const {
+    const uint32_t v = lit.var();
+    if (pa_value[v] == CMSat::l_Undef) return CMSat::l_Undef;
+    const bool var_true = (pa_value[v] == CMSat::l_True);
+    return (var_true != lit.sign()) ? CMSat::l_True : CMSat::l_False;
+}
+
+void Cadet::pa_enqueue_clauses_for_var(uint32_t v) {
+    for (const auto& [ci, sign_v] : var_clauses[v]) {
+        (void)sign_v;
+        if (pa_bcp_in_queue[ci]) continue;
+        if (clause_dead[ci]) continue;
+        pa_bcp_in_queue[ci] = 1;
+        pa_bcp_queue.push_back(ci);
+    }
+}
+
+void Cadet::pa_assign(uint32_t v, bool val, uint32_t reason) {
+    const CMSat::lbool target = val ? CMSat::l_True : CMSat::l_False;
+    if (pa_value[v] == target) return;          // already correct
+    if (pa_value[v] != CMSat::l_Undef) {
+        // Contradiction: same var was committed to opposite value.
+        // Should never happen in normal flow (every commit site
+        // checks skol[v]==nullptr first), but record defensively.
+        if (pa_conflict_clause == PA_NO_CONFLICT) {
+            pa_conflict_clause = reason;
+            pa_conflicts_caught++;
+        }
+        return;
+    }
+    pa_value[v]  = target;
+    pa_reason[v] = reason;
+    pa_level[v]  = decision_lvl;
+    pa_trail.push_back(CMSat::Lit(v, /*sign=*/!val));
+    pa_enqueue_clauses_for_var(v);
+}
+
+void Cadet::pa_pop_to_level(uint32_t target) {
+    while (!pa_trail.empty() && pa_level[pa_trail.back().var()] > target) {
+        const uint32_t v = pa_trail.back().var();
+        pa_value[v]  = CMSat::l_Undef;
+        pa_reason[v] = PA_REASON_SOURCE;
+        pa_level[v]  = 0;
+        pa_trail.pop_back();
+    }
+    // Drop any conflict & worklist state — backjump invalidates them.
+    pa_conflict_clause = PA_NO_CONFLICT;
+    for (uint32_t ci : pa_bcp_queue) pa_bcp_in_queue[ci] = 0;
+    pa_bcp_queue.clear();
+}
+
+bool Cadet::pa_drain_bcp(std::vector<uint8_t>& outer_in_queue,
+                         std::vector<uint32_t>& outer_neighbour_queue) {
+    const auto& clauses = cnf.get_clauses();
+    while (!pa_bcp_queue.empty() && pa_conflict_clause == PA_NO_CONFLICT) {
+        const uint32_t ci = pa_bcp_queue.back();
+        pa_bcp_queue.pop_back();
+        pa_bcp_in_queue[ci] = 0;
+        if (clause_dead[ci]) continue;
+
+        const auto& c = clauses[ci];
+        CMSat::Lit unit_lit(0, false);
+        uint32_t n_undef = 0;
+        bool has_undef_universal = false;
+        bool sat = false;
+        for (const auto& l : c) {
+            const auto lv = pa_lit_value(l);
+            if (lv == CMSat::l_True) { sat = true; break; }
+            if (lv == CMSat::l_Undef) {
+                if (n_undef == 0) unit_lit = l;
+                n_undef++;
+                if (input.count(l.var()) || backward_defined.count(l.var()))
+                    has_undef_universal = true;
+                if (n_undef >= 2) break;
+            }
+        }
+        if (sat) continue;
+        if (n_undef == 0) {
+            pa_conflict_clause = ci;
+            pa_conflicts_caught++;
+            return false;
+        }
+        if (n_undef > 1) continue;
+        // Exactly one undef lit. Only auto-commit if it's a Y var (in
+        // to_define). Skipping universals is sound: we'd otherwise
+        // constrain ∀X, which is illegal in synthesis.
+        if (has_undef_universal) continue;
+        const uint32_t uv = unit_lit.var();
+        if (skol[uv] != nullptr) {
+            // Var already has a non-pa-tracked Skolem (e.g. an AIG
+            // function). Don't overwrite. PA value stays l_Undef.
+            continue;
+        }
+        const bool uval = !unit_lit.sign();
+
+        // Auto-commit at current dec_lvl, fully integrated with the
+        // rest of Cadet's bookkeeping. Mirrors the Phase D commit_const
+        // path so backjumps / Phase E/F see a coherent state.
+        skol[uv] = AIG::new_const(uval);
+        trail.push_back({uv, decision_lvl, /*is_decision=*/false,
+                         CMSat::Lit(0, false), {}});
+        clause_undet_delta(uv, -1);
+        mark_clauses_dead_by_constant(uv, uval);
+        tseitin_skol_into_skolem_sat(uv);
+        pa_assign(uv, uval, ci);
+        pa_propagations++;
+        if (uv < var_activity.size()) bump_var(uv);
+        // Bump the outer Phase C neighbour queue so subsequent
+        // try_propagate / try_pure_literal sweeps see the new commit.
+        for (const auto& [cidx, sign_v] : var_clauses[uv]) {
+            (void)sign_v;
+            for (const auto& l2 : clauses[cidx]) {
+                const uint32_t u2 = l2.var();
+                if (u2 == uv) continue;
+                if (skol[u2] != nullptr) continue;
+                if (!outer_in_queue[u2]) {
+                    outer_in_queue[u2] = 1;
+                    outer_neighbour_queue.push_back(u2);
+                }
+            }
+        }
+    }
+    return pa_conflict_clause == PA_NO_CONFLICT;
+}
+
 template<typename S>
 void Cadet::inject_cnf(S& s) const {
     s.new_vars(cnf.nVars());
@@ -176,6 +321,10 @@ void Cadet::make_decision(uint32_t v, bool val) {
     trail.push_back({v, decision_lvl, /*is_decision=*/true, dlit, {}});
     clause_undet_delta(v, -1);
     mark_clauses_dead_by_constant(v, val);
+    // PA: record the decision as a source-of-truth assignment at the
+    // freshly-opened dec_lvl. BCP can then auto-propagate Y units from
+    // it; the caller is responsible for invoking pa_drain_bcp.
+    pa_assign(v, val, PA_REASON_SOURCE);
 }
 
 std::vector<Lit> Cadet::active_assumps() const {
@@ -207,6 +356,12 @@ void Cadet::backjump_to_level(uint32_t target) {
     decision_lits.resize(target);
     sel_lits.resize(target);
     decision_lvl = target;
+    // PA companion: drop every pa_assignment at a level > target. The
+    // pa_trail walk is independent of the trail walk above (it keys off
+    // pa_level[v] rather than TrailEntry.dec_lvl), so the two are kept
+    // in sync only via the level-equality invariant established by the
+    // commit sites.
+    pa_pop_to_level(target);
 }
 
 void Cadet::bump_var(uint32_t v) {
@@ -585,7 +740,13 @@ bool Cadet::try_propagate(uint32_t y,
                      CMSat::Lit(0, false), {}});
     clause_undet_delta(y, -1);
     if (pos_force->type == AIGT::t_const) {
-        mark_clauses_dead_by_constant(y, !pos_force.neg);
+        const bool val = !pos_force.neg;
+        mark_clauses_dead_by_constant(y, val);
+        // Phase C constant — fold into the PA so BCP can propagate
+        // through pure-Y clauses. Use PA_REASON_SOURCE because the
+        // pos_force AIG already encodes the multi-clause derivation;
+        // there's no single F-clause to point at as antecedent.
+        pa_assign(y, val, PA_REASON_SOURCE);
     }
     tseitin_skol_into_skolem_sat(y);
     // Small activity bump for vars whose Phase-C propagation actually
@@ -631,6 +792,7 @@ bool Cadet::try_pure_literal(uint32_t y) {
         trail.push_back({y, decision_lvl, /*is_decision=*/false, Lit(0, false), {}});
         clause_undet_delta(y, -1);
         mark_clauses_dead_by_constant(y, false);
+        pa_assign(y, false, PA_REASON_SOURCE);
         tseitin_skol_into_skolem_sat(y);
         return true;
     }
@@ -642,6 +804,7 @@ bool Cadet::try_pure_literal(uint32_t y) {
     trail.push_back({y, decision_lvl, /*is_decision=*/false, Lit(0, false), {}});
     clause_undet_delta(y, -1);
     mark_clauses_dead_by_constant(y, val);
+    pa_assign(y, val, PA_REASON_SOURCE);
     tseitin_skol_into_skolem_sat(y);
     return true;
 }
@@ -676,6 +839,11 @@ bool Cadet::synth_by_propagation() {
     skol.assign(cnf.nVars(), nullptr);
     for (uint32_t v : input) skol[v] = AIG::new_lit(v, /*neg=*/false);
     for (uint32_t v : backward_defined) skol[v] = AIG::new_lit(v, /*neg=*/false);
+
+    // PA propagator state. All vars start l_Undef; X universals and
+    // backward_defined leaves stay that way (never propagated). Y vars
+    // get pa_assigned as their constant skol[] commits land.
+    pa_init();
 
     // Initialise n_undet_per_clause: count lits in each clause whose
     // var still has skol[v]==nullptr. Input + backward_defined vars
@@ -797,6 +965,12 @@ bool Cadet::synth_by_propagation() {
                 committed_this_pass++;
                 total_committed++;
                 enqueue_neighbours(y, in_queue, queue);
+                // Drain the PA worklist. try_propagate / try_pure_literal
+                // pa_assigned the commit, which queued every clause it
+                // touches. BCP may now auto-commit more Y units at the
+                // current level; each auto-commit also enqueues outer
+                // neighbours so this while loop picks them up.
+                pa_drain_bcp(in_queue, queue);
             }
         }
         if (conf.verb >= 2) {
@@ -941,12 +1115,16 @@ bool Cadet::synth_by_propagation() {
                                  /*is_decision=*/false, Lit(0, false), {}});
                 clause_undet_delta(pick, -1);
                 mark_clauses_dead_by_constant(pick, val);
+                pa_assign(pick, val, PA_REASON_SOURCE);
                 // Unified tseitin path: at level 0 permanent, at
                 // level>0 gated by sel_d. Backjump kills the gating.
                 tseitin_skol_into_skolem_sat(pick);
                 total_decisions++;
                 any_decided = true;
                 enqueue_neighbours(pick, in_queue, queue);
+                // Extend via BCP — pa_assign queued affected clauses,
+                // so the propagator may auto-commit further Y units.
+                pa_drain_bcp(in_queue, queue);
                 if (conf.verb >= 2) {
                     cout << "c o [cadet]   forced: skol[" << (pick + 1)
                          << "] := " << (val ? "true" : "false")
@@ -1042,6 +1220,8 @@ bool Cadet::synth_by_propagation() {
             const bool guess_val = (n_pos >= n_neg);
             make_decision(guess, guess_val);
             enqueue_neighbours(guess, in_queue, queue);
+            // BCP may force further Y values under the new dec_lvl.
+            pa_drain_bcp(in_queue, queue);
             if (conf.verb >= 1) {
                 cout << "c o [cadet] Phase D: guess skol[" << (guess + 1)
                      << "] := " << (guess_val ? "true" : "false")
@@ -2015,6 +2195,7 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
                 trail.push_back({y, /*dec_lvl=*/0, /*is_decision=*/false,
                                  CMSat::Lit(0, false), {}});
                 mark_clauses_dead_by_constant(y, y_v);
+                pa_assign(y, y_v, PA_REASON_SOURCE);
                 tseitin_skol_into_skolem_sat(y);
                 exists_solver_encoded[y] = 0;
                 enqueue_neighbours(y, in_queue, queue);
@@ -2136,6 +2317,7 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
             trail.push_back({y, /*dec_lvl=*/0, /*is_decision=*/false,
                              CMSat::Lit(0, false), {}});
             mark_clauses_dead_by_constant(y, v);
+            pa_assign(y, v, PA_REASON_SOURCE);
             tseitin_skol_into_skolem_sat(y);
             exists_solver_encoded[y] = 0; // re-sync will catch it
             enqueue_neighbours(y, in_queue, queue);
@@ -2143,6 +2325,8 @@ Cadet::CegarRoundResult Cadet::cegar_one_round(
             cegar_stat_joint_commits++;
             R.constant_commit = true;
         }
+        // BCP may now force more Y units from the level-0 constants.
+        pa_drain_bcp(in_queue, queue);
         R.any_clause_added = true;
         return R;
     }
