@@ -42,11 +42,13 @@ only_dirs = [
     # "out-synth-1471320-1", # repair is better now I think
     # "out-synth-1479607-0", # cadet
     # "out-synth-1570930-", # check what can be removed
-    # "out-synth-1583187-0", # interpolation, cadet-style
+    "out-synth-1583187-0", # interpolation, cadet-style (turned off)
     # "out-synth-1583187-5", # interpolation, cadet-style
-    "out-synth-1587721-6", # CADET
+    # "out-synth-1587721-6", # CADET
     # "out-synth-1595974-5", # ALWAYS ON INTERPOLATION
-    "out-synth-1595974-1", # now interpolation is using minimized ("touched" variables) cnf so interpolation generation is faster
+    # "out-synth-1595974-", # now interpolation is using minimized ("touched" variables) cnf so interpolation generation is faster
+    "out-synth-1652067-0", # inprocessing with cadet turned OFF
+    "out-synth-1652067-2", # inprocessing with cadet
 ]
 # -------------------------------------------------------------
 
