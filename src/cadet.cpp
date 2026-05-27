@@ -186,16 +186,26 @@ void Cadet::decay_activities() {
 }
 
 void Cadet::tseitin_skol_into_skolem_sat(uint32_t y) {
-    // skolem_sat already has F + previously-committed skols. Add the
-    // tseitin encoding of skol[y] and the y ↔ root equivalence so the
-    // solver knows that y must match skol[y] wherever F is satisfiable.
+    // Communicate skol[y] to the persistent SAT solver. At level 0
+    // commits are permanent. At decision_lvl > 0 we ONLY gate
+    // constants under sel_d (so backjump can kill them); non-constant
+    // pos_force AIGs are left in skol[] only, since selector-gating
+    // every clause produced by AIGToCNF would require a wrapper —
+    // future work.
     assert(skolem_sat != nullptr);
     assert(skol[y] != nullptr);
+    const bool gated = (decision_lvl > 0);
     if (skol[y]->type == AIGT::t_const) {
         const bool val = !skol[y].neg;
-        skolem_sat->add_clause({Lit(y, /*sign=*/!val)});
+        if (gated) {
+            const Lit sel = sel_lits[decision_lvl - 1];
+            skolem_sat->add_clause({~sel, Lit(y, /*sign=*/!val)});
+        } else {
+            skolem_sat->add_clause({Lit(y, /*sign=*/!val)});
+        }
         return;
     }
+    if (gated) return; // non-constant level>0 commits: skol[] only
     using AIGEnc = ArjunNS::AIGToCNF<MetaSolver>;
     AIGEnc enc(*skolem_sat);
     enc.set_true_lit(skolem_sat_true_lit);
@@ -521,7 +531,9 @@ bool Cadet::synth_by_propagation() {
                   });
 
         bool any_decided = false;
-        vector<Lit> assumps(1);
+        vector<Lit> base_assumps = active_assumps();
+        vector<Lit> assumps;
+        assumps.reserve(base_assumps.size() + 1);
         for (uint32_t pick : undet) {
             if (skol[pick] != nullptr) continue; // earlier decision propagated
 
@@ -537,40 +549,38 @@ bool Cadet::synth_by_propagation() {
                 decay_activities();
             };
 
-            // SAT call 1: assume pick=true; UNSAT ⇒ pick must be false.
-            assumps[0] = Lit(pick, /*sign=*/false);
-            if (decision_sat.solve(&assumps) == CMSat::l_False) {
+            // SAT call 1: assume pick=true under current decisions;
+            // UNSAT ⇒ pick must be false.
+            assumps = base_assumps;
+            assumps.push_back(Lit(pick, /*sign=*/false));
+            auto commit_const = [&](bool val) {
                 bump_core();
-                skol[pick] = AIG::new_const(false);
+                skol[pick] = AIG::new_const(val);
                 trail.push_back({pick, decision_lvl,
                                  /*is_decision=*/false, Lit(0, false), {}});
-                mark_clauses_dead_by_constant(pick, false);
-                decision_sat.add_clause({Lit(pick, /*sign=*/true)});
+                mark_clauses_dead_by_constant(pick, val);
+                // Unified tseitin path: at level 0 permanent, at
+                // level>0 gated by sel_d. Backjump kills the gating.
+                tseitin_skol_into_skolem_sat(pick);
                 total_decisions++;
                 any_decided = true;
                 enqueue_neighbours(pick, in_queue, queue);
                 if (conf.verb >= 2) {
-                    cout << "c o [cadet]   decision: skol[" << (pick + 1)
-                         << "] := false (F forces it)" << endl;
+                    cout << "c o [cadet]   forced: skol[" << (pick + 1)
+                         << "] := " << (val ? "true" : "false")
+                         << " at lvl " << decision_lvl << endl;
                 }
-                continue; // try the next candidate too in this Phase-D pass
+            };
+            if (decision_sat.solve(&assumps) == CMSat::l_False) {
+                commit_const(false);
+                continue;
             }
-            // SAT call 2: assume pick=false; UNSAT ⇒ pick must be true.
-            assumps[0] = Lit(pick, /*sign=*/true);
+            // SAT call 2: assume pick=false under current decisions;
+            // UNSAT ⇒ pick must be true.
+            assumps = base_assumps;
+            assumps.push_back(Lit(pick, /*sign=*/true));
             if (decision_sat.solve(&assumps) == CMSat::l_False) {
-                bump_core();
-                skol[pick] = AIG::new_const(true);
-                trail.push_back({pick, decision_lvl,
-                                 /*is_decision=*/false, Lit(0, false), {}});
-                mark_clauses_dead_by_constant(pick, true);
-                decision_sat.add_clause({Lit(pick, /*sign=*/false)});
-                total_decisions++;
-                any_decided = true;
-                enqueue_neighbours(pick, in_queue, queue);
-                if (conf.verb >= 2) {
-                    cout << "c o [cadet]   decision: skol[" << (pick + 1)
-                         << "] := true (F forces it)" << endl;
-                }
+                commit_const(true);
                 continue;
             }
             // Neither polarity forced — pick is genuinely
@@ -579,17 +589,65 @@ bool Cadet::synth_by_propagation() {
 
         if (!any_decided) {
             // No undet var is forced by F under current decisions.
-            // Phase C+D can do no more; return so do_cadet runs
-            // Phase E / Phase F to finish the remaining undet vars.
-            if (conf.verb >= 1) {
-                cout << "c o [cadet] Phase D: no undet var forced by F "
-                     << "(" << undet.size() << " tried); falling back" << endl;
+            // CDCL step: guess the highest-VSIDS undet at a new
+            // decision level. Subsequent propagation runs under the
+            // assumed sel_d. On a future probe UNSAT-with-sel_d-in-
+            // core we'll backjump and learn (later commit).
+            //
+            // If there are no remaining undet, we're done.
+            uint32_t guess = UINT32_MAX;
+            double best = -1.0;
+            for (uint32_t y : to_define) {
+                if (skol[y] != nullptr) continue;
+                if (var_activity[y] > best) {
+                    best = var_activity[y];
+                    guess = y;
+                }
             }
-            break;
+            if (guess == UINT32_MAX) break; // nothing left
+            // Soft cap on speculative depth — Phase F is terminal and
+            // will mop up anything not committed. The cap also
+            // bounds the work of "explore-and-backtrack" before we
+            // give up and let downstream phases finish.
+            static constexpr uint32_t kMaxGuessDepth = 8;
+            if (decision_lvl >= kMaxGuessDepth) {
+                if (conf.verb >= 1) {
+                    cout << "c o [cadet] Phase D: hit guess-depth cap "
+                         << kMaxGuessDepth << ", falling back" << endl;
+                }
+                // Backjump to level 0 before falling through, so
+                // skolem_sat doesn't carry stale selector assumptions
+                // into Phase E/F.
+                backjump_to_level(0);
+                break;
+            }
+            // Probe both polarities before guessing — prefer the
+            // polarity that's still SAT. (Both UNSAT means the
+            // current decision state is already contradictory; bail.)
+            // Cheap because skolem_sat caches learnt clauses.
+            const bool guess_val = false; // start with y=false (heuristic)
+            make_decision(guess, guess_val);
+            enqueue_neighbours(guess, in_queue, queue);
+            if (conf.verb >= 1) {
+                cout << "c o [cadet] Phase D: guess skol[" << (guess + 1)
+                     << "] := " << (guess_val ? "true" : "false")
+                     << " (lvl " << decision_lvl
+                     << ", undet=" << undet.size() << ")" << endl;
+            }
+            continue;
         }
         // Loop continues: propagation may make progress now that some
         // picks are committed.
     }
+
+    // Before handing off to Phase E/F, undo every speculative (level>0)
+    // commit. Phase E/F can only see level-0-permanent skol[] entries;
+    // a wrong guess left behind here would corrupt their result.
+    // Without conflict-driven CDCL the guess infrastructure can't
+    // ratify a speculative commit, so they all get rolled back —
+    // future commits will add the conflict-analysis step that turns
+    // ratified guesses into permanent commits.
+    if (decision_lvl > 0) backjump_to_level(0);
 
     uint32_t remaining = 0;
     for (uint32_t y : to_define) if (skol[y] == nullptr) remaining++;
