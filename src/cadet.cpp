@@ -796,10 +796,12 @@ bool Cadet::synth_by_propagation() {
     for (uint32_t y : to_define) if (skol[y] == nullptr) remaining++;
 
     if (conf.verb >= 1) {
+        const uint32_t prop_only = total_committed > total_pure
+                                       ? total_committed - total_pure : 0;
         cout << "c o [cadet] Phase C+D done. passes: " << pass
-             << " props: " << total_committed
-             << " (pure: " << total_pure << ")"
-             << " decisions: " << total_decisions
+             << " uc-props: " << prop_only
+             << " pure: " << total_pure
+             << " forced: " << total_decisions
              << " conflicts: " << total_conflicts
              << " restarts: " << total_restarts
              << " learnt: " << learnt_clauses.size()
