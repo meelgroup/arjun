@@ -109,6 +109,36 @@ void Cadet::inject_cnf(S& s) const {
     for (const auto& c : cnf.get_red_clauses()) s.add_red_clause(c);
 }
 
+std::vector<Lit> Cadet::active_assumps() const {
+    // Return [sel_lits[0], ..., sel_lits[decision_lvl-1]] —
+    // assumption list that activates all currently-live decision levels.
+    return std::vector<Lit>(sel_lits.begin(),
+                            sel_lits.begin() + decision_lvl);
+}
+
+void Cadet::backjump_to_level(uint32_t target) {
+    assert(target <= decision_lvl);
+    if (target == decision_lvl) return;
+    // Pop trail entries committed at levels > target. Reset their
+    // skol[] slots and un-kill their clauses.
+    while (!trail.empty() && trail.back().dec_lvl > target) {
+        auto& te = trail.back();
+        for (uint32_t ci : te.killed_clauses) clause_dead[ci] = 0;
+        skol[te.var] = nullptr;
+        trail.pop_back();
+    }
+    // Permanently kill selector vars for levels (target, decision_lvl].
+    // After ¬sel_d is added, cadical can simplify away every level-d
+    // clause on its next garbage collection.
+    for (uint32_t d = target + 1; d <= decision_lvl; d++) {
+        const Lit sl = sel_lits[d - 1];
+        skolem_sat->add_clause({~sl});
+    }
+    decision_lits.resize(target);
+    sel_lits.resize(target);
+    decision_lvl = target;
+}
+
 void Cadet::bump_var(uint32_t v) {
     assert(v < var_activity.size());
     var_activity[v] += activity_inc;
@@ -278,12 +308,12 @@ bool Cadet::try_propagate(uint32_t y,
     }
     // Commit.
     skol[y] = pos_force;
+    trail.push_back({y, decision_lvl, /*is_decision=*/false,
+                     CMSat::Lit(0, false), {}});
     if (pos_force->type == AIGT::t_const) {
         mark_clauses_dead_by_constant(y, !pos_force.neg);
     }
     tseitin_skol_into_skolem_sat(y);
-    trail.push_back({y, decision_lvl, /*is_decision=*/false,
-                     CMSat::Lit(0, false)});
     return true;
 }
 
@@ -291,9 +321,17 @@ void Cadet::mark_clauses_dead_by_constant(uint32_t v, bool val) {
     // Lit appears as +v when sign=false; that literal is TRUE iff val
     // is true. ¬v has sign=true and is TRUE iff val is false. The
     // satisfying-sign matches `!val` (since sign=true means ¬v).
+    // We also record the freshly-killed clauses in trail.back() so
+    // backjump_to_level can un-kill them.
     const bool sat_sign = !val;
+    assert(!trail.empty() && "mark_clauses_dead_by_constant must run "
+                             "AFTER pushing the commit's TrailEntry");
+    auto& killed = trail.back().killed_clauses;
     for (const auto& [ci, sign_v] : var_clauses[v]) {
-        if (sign_v == sat_sign) clause_dead[ci] = 1;
+        if (sign_v == sat_sign && !clause_dead[ci]) {
+            clause_dead[ci] = 1;
+            killed.push_back(ci);
+        }
     }
 }
 
@@ -311,9 +349,9 @@ bool Cadet::try_pure_literal(uint32_t y) {
         // Every clause already dead — y is unconstrained. Commit false
         // (arbitrary; later AIG simplification folds it away).
         skol[y] = AIG::new_const(false);
+        trail.push_back({y, decision_lvl, /*is_decision=*/false, Lit(0, false), {}});
         mark_clauses_dead_by_constant(y, false);
         tseitin_skol_into_skolem_sat(y);
-        trail.push_back({y, decision_lvl, /*is_decision=*/false, Lit(0, false)});
         return true;
     }
     // Pure: if has_pos and !has_neg, y only appears positively in
@@ -321,9 +359,9 @@ bool Cadet::try_pure_literal(uint32_t y) {
     // Symmetric for has_neg.
     const bool val = has_pos;
     skol[y] = AIG::new_const(val);
+    trail.push_back({y, decision_lvl, /*is_decision=*/false, Lit(0, false), {}});
     mark_clauses_dead_by_constant(y, val);
     tseitin_skol_into_skolem_sat(y);
-    trail.push_back({y, decision_lvl, /*is_decision=*/false, Lit(0, false)});
     return true;
 }
 
@@ -360,6 +398,7 @@ bool Cadet::synth_by_propagation() {
 
     trail.clear();
     decision_lits.clear();
+    sel_lits.clear();
     decision_lvl = 0;
 
     MetaSolver& decision_sat = *skolem_sat;
@@ -376,14 +415,14 @@ bool Cadet::synth_by_propagation() {
         if (skol[y] == nullptr) { in_queue[y] = 1; queue.push_back(y); }
     }
 
-    // Seed clause_dead from any already-committed const skol[]. The
-    // input set already has skol[v]=lit (non-const leaves), backward
-    // has the same — neither kill clauses. But Phase C is allowed to
-    // re-enter this function in principle, so a constant left over
-    // from a previous pass would need to mark clauses; today this loop
-    // is a no-op because skol[] was just reset to nullptr / leaves.
+    // Seed clause_dead from any already-committed const skol[]. Today
+    // this loop is a no-op because skol[] was just reset above, but it
+    // would matter if synth_by_propagation got re-entered with a
+    // partially-built skol state.
     for (uint32_t y : to_define) {
         if (skol[y] != nullptr && skol[y]->type == AIGT::t_const) {
+            trail.push_back({y, decision_lvl,
+                             /*is_decision=*/false, Lit(0, false), {}});
             mark_clauses_dead_by_constant(y, !skol[y].neg);
         }
     }
@@ -480,10 +519,10 @@ bool Cadet::synth_by_propagation() {
             if (decision_sat.solve(&assumps) == CMSat::l_False) {
                 bump_core();
                 skol[pick] = AIG::new_const(false);
+                trail.push_back({pick, decision_lvl,
+                                 /*is_decision=*/false, Lit(0, false), {}});
                 mark_clauses_dead_by_constant(pick, false);
                 decision_sat.add_clause({Lit(pick, /*sign=*/true)});
-                trail.push_back({pick, decision_lvl,
-                                 /*is_decision=*/false, Lit(0, false)});
                 total_decisions++;
                 any_decided = true;
                 enqueue_neighbours(pick, in_queue, queue);
@@ -498,10 +537,10 @@ bool Cadet::synth_by_propagation() {
             if (decision_sat.solve(&assumps) == CMSat::l_False) {
                 bump_core();
                 skol[pick] = AIG::new_const(true);
+                trail.push_back({pick, decision_lvl,
+                                 /*is_decision=*/false, Lit(0, false), {}});
                 mark_clauses_dead_by_constant(pick, true);
                 decision_sat.add_clause({Lit(pick, /*sign=*/false)});
-                trail.push_back({pick, decision_lvl,
-                                 /*is_decision=*/false, Lit(0, false)});
                 total_decisions++;
                 any_decided = true;
                 enqueue_neighbours(pick, in_queue, queue);

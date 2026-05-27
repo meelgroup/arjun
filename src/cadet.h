@@ -135,6 +135,10 @@ private:
                                  // the lit assumed in skolem_sat at the
                                  // time of decision. On backjump we
                                  // drop it from active_assumptions.
+        // Clauses that this commit killed via
+        // mark_clauses_dead_by_constant. On backjump we un-kill them
+        // so pure-literal stays sound across speculative regions.
+        std::vector<uint32_t> killed_clauses;
     };
     std::vector<TrailEntry> trail;
 
@@ -143,9 +147,27 @@ private:
     // active_decision_assumps() to get the current assumption set.
     std::vector<CMSat::Lit> decision_lits;
 
+    // Per-decision-level selector var (level d → sel_lits[d-1]). When
+    // we commit a tentative constant at level d, we add it as
+    // (¬sel_d ∨ lit_val) so deactivating sel_d makes the clause
+    // trivially satisfied. On backjump from d to t, we permanently
+    // add {¬sel_d} for each killed level d > t so cadical can simplify
+    // those clauses away.
+    std::vector<CMSat::Lit> sel_lits;
+
     // Current decision level. 0 = root level, where all commits are
     // permanent. >0 = inside a speculative decision context.
     uint32_t decision_lvl = 0;
+
+    // Build the list of currently-active selector lits to be assumed in
+    // Phase D probes / Phase C downstream checks. Returns sel_lits[0..d-1].
+    std::vector<CMSat::Lit> active_assumps() const;
+
+    // Undo trail entries with dec_lvl > target and revert their skol[]
+    // slots. Drops decision lits and selectors above target.
+    // Permanently kills (¬sel_d) for each removed level so cadical
+    // can purge selector-gated clauses on its next simplification.
+    void backjump_to_level(uint32_t target);
 
     // --- algorithm pieces ---
 
