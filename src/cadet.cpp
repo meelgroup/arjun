@@ -108,6 +108,25 @@ void Cadet::inject_cnf(S& s) const {
     for (const auto& c : cnf.get_red_clauses()) s.add_red_clause(c);
 }
 
+void Cadet::tseitin_skol_into_skolem_sat(uint32_t y) {
+    // skolem_sat already has F + previously-committed skols. Add the
+    // tseitin encoding of skol[y] and the y ↔ root equivalence so the
+    // solver knows that y must match skol[y] wherever F is satisfiable.
+    assert(skolem_sat != nullptr);
+    assert(skol[y] != nullptr);
+    if (skol[y]->type == AIGT::t_const) {
+        const bool val = !skol[y].neg;
+        skolem_sat->add_clause({Lit(y, /*sign=*/!val)});
+        return;
+    }
+    using AIGEnc = ArjunNS::AIGToCNF<MetaSolver>;
+    AIGEnc enc(*skolem_sat);
+    enc.set_true_lit(skolem_sat_true_lit);
+    const Lit root = enc.encode(skol[y]);
+    skolem_sat->add_clause({~Lit(y, /*sign=*/false), root});
+    skolem_sat->add_clause({Lit(y, /*sign=*/false), ~root});
+}
+
 void Cadet::build_solver_with_skols(MetaSolver& s, Lit& out_true_lit) const {
     inject_cnf(s);
     s.new_var();
@@ -312,6 +331,9 @@ bool Cadet::synth_by_propagation() {
                     // provided F is satisfiable for every input (so
                     // positive and negative forces never overlap).
                     skol[y] = pos_force;
+                    // Tseitin-encode this commit into the persistent
+                    // SAT solver so Phase D probes see it as a constraint.
+                    tseitin_skol_into_skolem_sat(y);
                     progress = true;
                     committed_this_pass++;
                     total_committed++;
@@ -1080,11 +1102,16 @@ SimplifiedCNF Cadet::do_cadet() {
     }
 
     // Build the persistent Skolem SAT solver once with F injected.
-    // Phase D adds unit clauses to it as it commits constants; cadical
-    // retains learnt clauses across solve() calls, so each new decision
-    // builds on prior work.
+    // Phase C adds tseitin-encoded skol[y] AIGs as it commits them
+    // (so Phase D's probes run under F + all prior commits), and
+    // Phase D adds unit clauses for constants. cadical retains learnt
+    // clauses across solve() calls, so each new decision builds on
+    // prior work.
     skolem_sat = std::make_unique<MetaSolver>(SolverType::cadical);
     inject_cnf(*skolem_sat);
+    skolem_sat->new_var();
+    skolem_sat_true_lit = Lit(skolem_sat->nVars() - 1, /*sign=*/false);
+    skolem_sat->add_clause({skolem_sat_true_lit});
 
     // ---- Phase C+D: unique-consequence propagation with sound
     // constant decisions. CADET-flavored core; scales independently of

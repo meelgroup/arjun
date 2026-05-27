@@ -198,6 +198,17 @@ private:
     // solver instance.
     void build_solver_with_skols(MetaSolver& s, CMSat::Lit& out_true_lit) const;
 
+    // True-literal used by the persistent skolem_sat solver — allocated
+    // once when skolem_sat is built. Needed for AIGToCNF encoding when
+    // we add Phase C/D commits incrementally.
+    CMSat::Lit skolem_sat_true_lit;
+
+    // Add the tseitin encoding of skol[y] into skolem_sat. Called from
+    // Phase C's commit site so the persistent solver immediately knows
+    // about each new commit — subsequent Phase D probes then run under
+    // F + (all prior skol[] commits), strictly stronger than F alone.
+    void tseitin_skol_into_skolem_sat(uint32_t y);
+
     // Set defs[v] for every v in to_define from skol[v], via map_aigs_to_orig.
     void commit_definitions();
 };
