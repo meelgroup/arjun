@@ -7,6 +7,7 @@
 
 #include "aig_rewrite.h"
 #include "constants.h"
+#include "metasolver.h"
 #include "time_mem.h"
 #include <algorithm>
 #include <cassert>
@@ -1049,7 +1050,7 @@ namespace {
 
 // Naive Tseitin: one helper per AND, 3 clauses each. Used only to drive
 // the per-class SAT check; the full encoder is overkill here.
-CMSat::Lit naive_encode(const aig_lit& edge, CMSat::SATSolver& solver,
+CMSat::Lit naive_encode(const aig_lit& edge, ArjunInt::MetaSolver& solver,
                         CMSat::Lit& true_lit, bool& true_lit_set,
                         std::map<aig_lit, CMSat::Lit>& cache)
 {
@@ -1222,7 +1223,7 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
     // structural rules cannot see.
     std::unordered_map<const AIG*, bool> const_sub;  // node -> proven value
     {
-        CMSat::SATSolver csolver;
+        ArjunInt::MetaSolver csolver;
         csolver.set_verbosity(0);
         CMSat::Lit c_true_lit;
         bool c_true_set = false;
@@ -1302,7 +1303,7 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
                 return a.first->nid < b.first->nid;
             });
 
-        CMSat::SATSolver solver;
+        ArjunInt::MetaSolver solver;
         solver.set_verbosity(0);
         CMSat::Lit true_lit;
         bool true_lit_set = false;
