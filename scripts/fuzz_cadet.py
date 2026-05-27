@@ -515,8 +515,11 @@ if __name__ == "__main__":
             "--cadetcegarperyminprod": random.choice([0.05, 0.1, 0.5]),
             "--cadetcegardisableafter": random.choice([0, 5, 30, 200]),
             "--cadetcegarrebuildevery": random.choice([0, 5, 50]),
-            # Existing Phase C/D/E/F internals
-            "--cadetphaseeth": random.choice([0, 4, 16, 32]),
+            # Existing Phase C/D/E/F internals.
+            # Phase E threshold capped at 16 — Phase E enumerates
+            # 2^th SAT calls. 32 is intractable (2^32 ≈ 4·10⁹), kills
+            # the runner via OOM/timeout, not a real bug.
+            "--cadetphaseeth": random.choice([0, 4, 8, 16]),
             "--cadetguessdepth": random.choice([1, 4, 8, 16]),
             "--cadetrestartinit": random.choice([4, 16, 64]),
             "--cadetrestartfactor": random.choice([1.1, 1.5, 2.0]),
