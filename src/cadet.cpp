@@ -1414,6 +1414,44 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
     return true;
 }
 
+void Cadet::cegar_build_interface() {
+    // Interface = orig_sampl_cnf vars that appear in any clause that
+    // also touches at least one to_define var. Vars outside this set
+    // never co-occur with what we're solving for, so their values in a
+    // model can't help force any undet y — assuming them in a CEGAR
+    // cube would just bloat the UNSAT core. Mirrors cadet's
+    // casesplits_update_interface() (casesplits.c:81).
+    //
+    // O(clauses * avg-lits-per-clause) — single pass over var_clauses
+    // via the to_define vars.
+    cegar_interface.clear();
+    if (orig_sampl_cnf.empty()) return;
+    std::vector<uint8_t> seen_clause(cnf.get_clauses().size(), 0);
+    std::vector<uint8_t> in_interface(cnf.nVars(), 0);
+    const auto& clauses = cnf.get_clauses();
+    for (uint32_t y : to_define) {
+        for (const auto& [ci, sign_y] : var_clauses[y]) {
+            (void)sign_y;
+            if (seen_clause[ci]) continue;
+            seen_clause[ci] = 1;
+            for (const auto& l : clauses[ci]) {
+                const uint32_t u = l.var();
+                if (u == y) continue;
+                if (in_interface[u]) continue;
+                if (orig_sampl_cnf.count(u) == 0) continue;
+                in_interface[u] = 1;
+                cegar_interface.push_back(u);
+            }
+        }
+    }
+    std::sort(cegar_interface.begin(), cegar_interface.end());
+    if (conf.verb >= 1) {
+        cout << "c o [cadet] CEGAR interface: " << cegar_interface.size()
+             << " / " << orig_sampl_cnf.size() << " orig sampling vars"
+             << " co-occur with to_define" << endl;
+    }
+}
+
 void Cadet::commit_definitions() {
     // Build a vector indexed by var, holding the Skolem AIG for each
     // to_define var. With Phase F's terminal completion guarantee,
@@ -1489,6 +1527,26 @@ SimplifiedCNF Cadet::do_cadet() {
         }
         clause_dead.assign(clauses.size(), 0);
     }
+
+    // CEGAR scaffolding: precompute the interface (orig sampling vars
+    // that co-occur with any to_define var). Subsequent CEGAR rounds
+    // assume only these vars' values from the SAT model, keeping cubes
+    // small. Computed unconditionally — cheap, ~O(clauses); the
+    // exists_solver and the rounds themselves are gated by mconf knobs.
+    cegar_build_interface();
+    exists_solver.reset();
+    exists_solver_committed_count = 0;
+    cegar_total_rounds = 0;
+    cegar_per_y_checks = 0;
+    cegar_per_y_commits = 0;
+    cegar_per_y_disabled = false;
+    cegar_stat_rounds = 0;
+    cegar_stat_joint_unsat = 0;
+    cegar_stat_joint_sat = 0;
+    cegar_stat_joint_undef = 0;
+    cegar_stat_cube_total = 0;
+    cegar_stat_joint_commits = 0;
+    cegar_stat_per_y_commits = 0;
 
     // VSIDS seed: Jeroslow-Wang-style — heavier vars in shorter clauses
     // are more likely to be forced; activity starts at 2^-len summed

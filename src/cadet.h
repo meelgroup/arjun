@@ -330,6 +330,86 @@ private:
 
     // Set defs[v] for every v in to_define from skol[v], via map_aigs_to_orig.
     void commit_definitions();
+
+    // === CEGAR refinement layer (Phase D companion) ====================
+    //
+    // CEGAR adds an UNSAT-core-driven cube-shrinking step that runs
+    // between Phase D's forced-only pass and its speculative guess.
+    // For each round:
+    //   1. Solve skolem_sat under active selectors to get a SAT model.
+    //   2. Read off the universal cube = (interface_var_values from the
+    //      model). The "interface" is the precomputed set of orig
+    //      sampling vars that actually co-occur with any to_define var
+    //      in a clause; vars outside it are independent and can't
+    //      affect uniqueness of undet y. Mirrors cadet's
+    //      casesplits_update_interface() (casesplits.c:81).
+    //   3. Probe a SECOND solver (exists_solver) with (sel +
+    //      "∃ still-undet y differs from M[y]") + the cube assumed.
+    //   4. UNSAT means the cube forces joint Y = M; the failed-
+    //      assumption core tells us which cube bits were load-bearing
+    //      (the rest can be dropped — same one-shot generalization
+    //      Phase F uses). Commit Y = M as a permanent blocking clause
+    //      over the kept cube.
+    //   5. (Optional) Per-y CEGAR: for each undet y, ask "is y alone
+    //      forced under the kept cube?" via the same trick.
+    //
+    // Effect: shrinks the universal search space Phase F must later
+    // cover, often eliminating it on Phase-D-bottlenecked runs.
+
+    // Interface vars: orig_sampl_cnf vars that share a clause with at
+    // least one to_define var. Computed once in do_cadet() after
+    // var_clauses is built; used by CEGAR rounds. Sorted ascending.
+    std::vector<uint32_t> cegar_interface;
+
+    // Second SAT solver instance for CEGAR: F + Tseitin of all
+    // level-0 committed skols. Built lazily on the first CEGAR call.
+    // exists_solver_true_lit is its always-true literal (allocated at
+    // build time, used by AIGToCNF for constant nodes).
+    std::unique_ptr<MetaSolver> exists_solver;
+    CMSat::Lit exists_solver_true_lit;
+    // Number of level-0 skol[] commits already Tseitin-encoded into
+    // exists_solver. When the running count of level-0 commits exceeds
+    // this, the new ones are encoded incrementally before the next
+    // CEGAR round. Used so we don't re-encode the whole skol[] table
+    // every round.
+    uint32_t exists_solver_committed_count = 0;
+    // Per-Phase-D-entry running count of total CEGAR rounds executed,
+    // for the --cadetcegarmaxtot cap. Reset at the start of
+    // synth_by_propagation().
+    uint32_t cegar_total_rounds = 0;
+    // Per-y CEGAR adaptive disable state. Counts only ratify across
+    // rounds. Once disabled, stays disabled for the rest of the
+    // Phase D entry.
+    uint64_t cegar_per_y_checks = 0;
+    uint64_t cegar_per_y_commits = 0;
+    bool cegar_per_y_disabled = false;
+    // Stats across the Phase D entry (reset at the top of
+    // synth_by_propagation). Printed in the Phase C+D summary.
+    uint64_t cegar_stat_rounds = 0;       // CEGAR rounds attempted
+    uint64_t cegar_stat_joint_unsat = 0;  // UNSAT (cube forces joint Y=M)
+    uint64_t cegar_stat_joint_sat = 0;    // SAT  (joint Y has alternatives)
+    uint64_t cegar_stat_joint_undef = 0;  // UNDEF
+    uint64_t cegar_stat_cube_total = 0;   // sum of kept cube sizes
+    uint64_t cegar_stat_joint_commits = 0;// joint-Y commits (one per UNSAT round)
+    uint64_t cegar_stat_per_y_commits = 0;// per-y commits within rounds
+
+    // Compute cegar_interface — single pass over var_clauses. Cheap.
+    void cegar_build_interface();
+    // (Re)build exists_solver. Called lazily on first CEGAR round, or
+    // when --cadetcegarrebuildevery commits have accumulated since the
+    // last build.
+    void cegar_build_exists_solver();
+    // Bring exists_solver up-to-date with any level-0 skol[] commits
+    // made since the last sync. No-op if nothing new committed.
+    void cegar_sync_exists_solver();
+    // Try one CEGAR round. Returns true iff at least one commit
+    // (joint or per-y) was made; caller restarts propagation on true.
+    // `out_kept_cube_size` is written with the surviving cube size on
+    // UNSAT rounds (used to update the average-cube break). On SAT /
+    // UNDEF rounds it's left untouched.
+    bool cegar_one_round(uint32_t& out_kept_cube_size,
+                         std::vector<uint8_t>& in_queue,
+                         std::vector<uint32_t>& queue);
 };
 
 } // namespace ArjunInt
