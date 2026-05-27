@@ -680,11 +680,18 @@ bool Cadet::synth_by_propagation() {
                 backjump_to_level(0);
                 break;
             }
-            // Probe both polarities before guessing — prefer the
-            // polarity that's still SAT. (Both UNSAT means the
-            // current decision state is already contradictory; bail.)
-            // Cheap because skolem_sat caches learnt clauses.
-            const bool guess_val = false; // start with y=false (heuristic)
+            // Guess polarity: pick the value that satisfies more
+            // surviving (undead) clauses — JW-style on the residual
+            // formula. If y appears positively in more undead clauses
+            // (sign=false), commit y=true; otherwise y=false. Pure-
+            // literal handled the one-sided extremes, so this only
+            // kicks in when both polarities are non-trivial.
+            uint32_t n_pos = 0, n_neg = 0;
+            for (const auto& [ci, sign_y] : var_clauses[guess]) {
+                if (clause_dead[ci]) continue;
+                if (sign_y) n_neg++; else n_pos++;
+            }
+            const bool guess_val = (n_pos >= n_neg);
             make_decision(guess, guess_val);
             enqueue_neighbours(guess, in_queue, queue);
             if (conf.verb >= 1) {
