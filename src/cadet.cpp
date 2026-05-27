@@ -96,7 +96,8 @@ Cadet::Cadet(const ArjunInt::Config& _conf,
              ArjunNS::SimplifiedCNF&& _cnf)
     : conf(_conf), mconf(_mconf), cnf(std::move(_cnf))
 {
-    (void)mconf; // currently unused; will be once we implement Phase B/C
+    (void)mconf; // kept for API parity with Manthan's constructor;
+                 // none of the Manthan-specific knobs apply to cadet.
 }
 
 template<typename S>
@@ -191,8 +192,8 @@ bool Cadet::synth_by_propagation() {
     //     y=false; commit y to that side (or the other if false is
     //     infeasible). Then resume propagation.
     //   - Done when every to_define has a skol, or no decision can
-    //     break the stall (in which case we return false and let the
-    //     fallback phases run).
+    //     break the stall (in which case we return false and let
+    //     do_cadet's downstream phases (E / F) take over).
     uint32_t pass = 0;
     uint32_t total_committed = 0;
     uint32_t total_decisions = 0;
@@ -355,9 +356,8 @@ bool Cadet::synth_by_propagation() {
 
         if (!any_decided) {
             // No undet var is forced by F under current decisions.
-            // Phase C+D can do no more; fall through to caller's
-            // Phase B / Phase A (or, with the partial-results flow,
-            // the caller may hand off remaining vars to Manthan).
+            // Phase C+D can do no more; return so do_cadet runs
+            // Phase E / Phase F to finish the remaining undet vars.
             if (conf.verb >= 1) {
                 cout << "c o [cadet] Phase D: no undet var forced by F "
                      << "(" << undet.size() << " tried); falling back" << endl;
@@ -396,16 +396,16 @@ bool Cadet::synth_complete_with_models() {
     //       returns a different one. Stops when the solver returns
     //       UNSAT (every consistent input has been visited).
     //   (4) Building each undet y's Skolem from its table via
-    //       Shannon decomposition — same as Phase A.
+    //       Shannon decomposition (build_shannon_tree).
     //
     // Soundness: every recorded (input, y) pair comes from a SAT model
     // of F + prior commits, so the joint values for all undet y's at
     // each input are mutually consistent and consistent with what was
     // already committed.
     //
-    // Limit: |orig_sampl_cnf| <= kSmallInputThreshold, same as Phase
-    // A. For larger inputs Phase E gives up and lets the caller hand
-    // off to Manthan.
+    // Limit: |orig_sampl_cnf| <= kSmallInputThreshold (16). For larger
+    // inputs Phase E gives up; Phase F (terminal, no threshold) takes
+    // over.
     if (orig_sampl_cnf.size() > kSmallInputThreshold) return false;
 
     // Identify still-undetermined to_define vars. If Phase C+D already
@@ -436,9 +436,8 @@ bool Cadet::synth_complete_with_models() {
 
     // Encode every prior skol[] commit into the SAT solver so any
     // model respects it. We need this for BOTH Phase C's AIGs and
-    // Phase D's constants — Phase B/A reset and so don't run after
-    // Phase C+D (cd_committed > 0 path), so the only commits here
-    // came from Phase C+D.
+    // Phase D's constants — those are the only prior commits this
+    // phase can see (Phase E itself only commits at the end).
     using AIGEnc = ArjunNS::AIGToCNF<MetaSolver>;
     AIGEnc enc(sat);
     enc.set_true_lit(true_lit);
@@ -480,8 +479,8 @@ bool Cadet::synth_complete_with_models() {
         const auto ret = sat.solve();
         if (ret == CMSat::l_False) break;
         if (ret != CMSat::l_True) {
-            // UNDEF / unknown — bail; the caller's Manthan fallback
-            // will pick up the still-undet vars.
+            // UNDEF / unknown — bail; the caller (do_cadet) will
+            // run Phase F to finish the still-undet vars.
             return false;
         }
         const auto& model = sat.get_model();
@@ -581,9 +580,6 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
     // case. We also bound the iteration count to keep poorly-
     // converging inputs from running forever.
     //
-    // Threshold: |orig_sampl_cnf| ≤ kPhaseFThreshold (set higher
-    // than Phase A/E's 16 since each iteration covers many inputs).
-
     // Phase F has no input-size threshold and no iteration cap. It is
     // the terminal completion phase: it MUST succeed because the user
     // contract is that cadet always finishes (no Manthan fallback).
