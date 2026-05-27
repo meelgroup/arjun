@@ -1499,6 +1499,169 @@ void Cadet::cegar_sync_exists_solver() {
     }
 }
 
+bool Cadet::cegar_one_round(uint32_t& out_kept_cube_size,
+                            std::vector<uint8_t>& in_queue,
+                            std::vector<uint32_t>& queue) {
+    // Joint CEGAR step. Caller MUST be at decision_lvl == 0.
+    //
+    // 1) Solve skolem_sat (at level 0) to get a model M of F + all
+    //    prior commits. UNSAT means we've already determined the
+    //    formula — Phase D's normal conflict path handles that.
+    // 2) Read the universal cube from M's interface_var values.
+    // 3) Ask exists_solver "∃ Y differing from M at any undet y, under
+    //    the cube assumed" via a selector-gated clause.
+    //    UNSAT (joint forced): UNSAT core → drop cube lits not in core,
+    //      then either constant-commit each undet y (empty kept cube)
+    //      or add `(¬kept_cube) ∨ (y = M[y])` clauses to skolem_sat.
+    //    SAT (joint has alternatives): nothing to commit jointly; caller
+    //      should fall through to per-y CEGAR.
+    //    UNDEF: skip.
+    //
+    // Returns true iff at least one constant commit happened OR new
+    // skolem_sat constraints were added (caller should re-propagate).
+    assert(decision_lvl == 0);
+    if (cegar_interface.empty()) return false;
+
+    // Collect still-undet to_define vars. If none, nothing to do.
+    std::vector<uint32_t> undet;
+    undet.reserve(to_define.size());
+    for (uint32_t y : to_define) {
+        if (skol[y] == nullptr) undet.push_back(y);
+    }
+    if (undet.empty()) return false;
+
+    // Lazy build / sync exists_solver before the round.
+    if (!exists_solver) cegar_build_exists_solver();
+    else cegar_sync_exists_solver();
+
+    cegar_stat_rounds++;
+    cegar_total_rounds++;
+
+    // (1) Get a level-0 SAT model from skolem_sat.
+    const auto outer_ret = skolem_sat->solve();
+    if (outer_ret == CMSat::l_False) {
+        // F + all prior commits is UNSAT at level 0 — shouldn't happen
+        // in synthesis (precondition is F SAT for every input), but if
+        // it does, Phase D's normal level-0 conflict check will deal.
+        return false;
+    }
+    if (outer_ret != CMSat::l_True) return false; // UNDEF — skip
+    const auto& model = skolem_sat->get_model();
+
+    // (2) Build cube from interface var values. Each cube entry is
+    // (var_id, value_in_model). Skip vars that the model leaves
+    // undefined (cadical sometimes returns l_Undef for don't-cares).
+    std::vector<std::pair<uint32_t, bool>> cube;
+    cube.reserve(cegar_interface.size());
+    for (uint32_t v : cegar_interface) {
+        if (model[v] == CMSat::l_True)  cube.emplace_back(v, true);
+        else if (model[v] == CMSat::l_False) cube.emplace_back(v, false);
+        // l_Undef → don't include; the lit is a don't-care here.
+    }
+
+    // (3) Add the uniqueness clause to exists_solver:
+    //   (¬sel ∨ ⋁ y differs from M[y])
+    // The selector lets us deactivate this clause after the round.
+    exists_solver->new_var();
+    const CMSat::Lit sel(exists_solver->nVars() - 1, /*sign=*/false);
+    std::vector<CMSat::Lit> uniq_clause;
+    uniq_clause.reserve(undet.size() + 1);
+    uniq_clause.push_back(~sel);
+    for (uint32_t y : undet) {
+        const bool v = (model[y] == CMSat::l_True);
+        uniq_clause.push_back(CMSat::Lit(y, /*sign=*/v));
+    }
+    exists_solver->add_clause(uniq_clause);
+
+    // (4) Solve exists_solver under (sel, cube assumptions).
+    std::vector<CMSat::Lit> assumps;
+    assumps.reserve(cube.size() + 1);
+    assumps.push_back(sel);
+    for (const auto& [v, val] : cube) {
+        assumps.push_back(CMSat::Lit(v, /*sign=*/!val));
+    }
+    const auto inner_ret = exists_solver->solve(&assumps);
+
+    // Deactivate the uniqueness clause permanently — every future
+    // round gets its own selector.
+    exists_solver->add_clause({~sel});
+
+    if (inner_ret == CMSat::l_True) {
+        cegar_stat_joint_sat++;
+        // joint Y has alternatives at this cube; caller can try per-y.
+        return false;
+    }
+    if (inner_ret != CMSat::l_False) {
+        cegar_stat_joint_undef++;
+        return false; // UNDEF
+    }
+    // UNSAT: joint Y is forced under (some subset of) the cube.
+    cegar_stat_joint_unsat++;
+
+    // (5) Extract core: which cube lits + sel are in the UNSAT proof?
+    // Drop cube vars not in core. Bump every var in the core (VSIDS).
+    const auto failed = exists_solver->get_conflict();
+    std::set<uint32_t> failed_vars;
+    for (const CMSat::Lit& f : failed) failed_vars.insert(f.var());
+    for (uint32_t v : failed_vars) {
+        if (v < var_activity.size()) bump_var(v);
+    }
+    decay_activities();
+
+    // Build the kept_cube: cube entries whose var appears in the core.
+    std::vector<std::pair<uint32_t, bool>> kept_cube;
+    kept_cube.reserve(cube.size());
+    for (const auto& [v, val] : cube) {
+        if (failed_vars.count(v)) kept_cube.emplace_back(v, val);
+    }
+    out_kept_cube_size = (uint32_t)kept_cube.size();
+    cegar_stat_cube_total += out_kept_cube_size;
+
+    if (kept_cube.empty()) {
+        // Empty kept cube — joint Y = M[y] universally. Commit each
+        // undet y to its M value as a permanent level-0 constant.
+        for (uint32_t y : undet) {
+            if (skol[y] != nullptr) continue; // defensive
+            const bool v = (model[y] == CMSat::l_True);
+            skol[y] = AIG::new_const(v);
+            trail.push_back({y, /*dec_lvl=*/0, /*is_decision=*/false,
+                             CMSat::Lit(0, false), {}});
+            mark_clauses_dead_by_constant(y, v);
+            tseitin_skol_into_skolem_sat(y);
+            exists_solver_encoded[y] = 0; // re-sync will catch it
+            enqueue_neighbours(y, in_queue, queue);
+            if (y < var_activity.size()) bump_var(y);
+            cegar_stat_joint_commits++;
+        }
+        return true;
+    }
+
+    // Non-empty kept cube. Add two kinds of clauses:
+    //   (a) For each undet y: `(X ≠ kept) ∨ (y = M[y])` — committed
+    //       to skolem_sat (permanent) and learnt_clauses (so Phase E/F
+    //       replay it on their fresh solvers).
+    //   (b) Forbid clause: `(X ≠ kept)` — added to exists_solver only,
+    //       to prevent re-finding this cube. NOT to skolem_sat, where
+    //       it would conflict with (a)'s "y = M[y] when X = kept".
+    std::vector<CMSat::Lit> forbid;
+    forbid.reserve(kept_cube.size());
+    for (const auto& [v, val] : kept_cube) {
+        // X_i != val: if val=true, lit is ¬X_i (sign=true); else X_i.
+        forbid.push_back(CMSat::Lit(v, /*sign=*/val));
+    }
+    for (uint32_t y : undet) {
+        const bool y_v = (model[y] == CMSat::l_True);
+        std::vector<CMSat::Lit> commit_clause = forbid;
+        // y = y_v: if y_v=true, lit is y (sign=false); else ¬y.
+        commit_clause.push_back(CMSat::Lit(y, /*sign=*/!y_v));
+        skolem_sat->add_clause(commit_clause);
+        learnt_clauses.push_back(commit_clause);
+    }
+    exists_solver->add_clause(forbid);
+    cegar_stat_joint_commits++;
+    return true;
+}
+
 void Cadet::commit_definitions() {
     // Build a vector indexed by var, holding the Skolem AIG for each
     // to_define var. With Phase F's terminal completion guarantee,
