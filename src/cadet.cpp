@@ -1588,8 +1588,129 @@ bool Cadet::cegar_one_round(uint32_t& out_kept_cube_size,
 
     if (inner_ret == CMSat::l_True) {
         cegar_stat_joint_sat++;
-        // joint Y has alternatives at this cube; caller can try per-y.
-        return false;
+        // joint Y has alternatives at this cube. Fall through to per-y:
+        // ask, for each undet y individually, "is y alone forced under
+        // the cube?" — same UNSAT-core minimization as joint, just
+        // restricted to one y at a time.
+        //
+        // Cost guard mirrors Phase F's per-y: capped by --cadetcegar-
+        // peryundetcap (default 30) since per-y adds |undet| SAT calls
+        // per round, and adaptively disabled when commits/checks ratio
+        // drops below --cadetcegarperyminprod over a productivity
+        // window (see cegar_per_y_* counters).
+        if (!mconf.cadet_cegar_per_y) return false;
+        if (cegar_per_y_disabled) return false;
+        if (undet.size() > mconf.cadet_cegar_per_y_undet_cap) return false;
+
+        // VSIDS-ordered per-y scan (highest activity first). Identical
+        // rationale to Phase F's per-y: high-activity vars are likely
+        // forced by many other constraints; committing them first
+        // shrinks future rounds the most.
+        std::vector<uint32_t> py_order(undet.begin(), undet.end());
+        std::sort(py_order.begin(), py_order.end(),
+                  [&](uint32_t a, uint32_t b) {
+                      return var_activity[a] > var_activity[b];
+                  });
+
+        bool any_committed = false;
+        for (uint32_t y : py_order) {
+            if (skol[y] != nullptr) continue; // already committed this round
+            cegar_per_y_checks++;
+            exists_solver->new_var();
+            const CMSat::Lit sel_y(exists_solver->nVars() - 1,
+                                    /*sign=*/false);
+            const bool y_v = (model[y] == CMSat::l_True);
+            // (¬sel_y ∨ y ≠ y_v): assert y differs from M[y] when sel_y.
+            exists_solver->add_clause({~sel_y,
+                                       CMSat::Lit(y, /*sign=*/y_v)});
+
+            std::vector<CMSat::Lit> py_assumps;
+            py_assumps.reserve(cube.size() + 1);
+            py_assumps.push_back(sel_y);
+            for (const auto& [v, val] : cube) {
+                py_assumps.push_back(CMSat::Lit(v, /*sign=*/!val));
+            }
+            const auto rr = exists_solver->solve(&py_assumps);
+            // Deactivate the per-y clause forever.
+            exists_solver->add_clause({~sel_y});
+            if (rr != CMSat::l_False) continue; // y not forced here
+
+            // y is forced. Extract core, keep only cube lits in core.
+            const auto py_failed = exists_solver->get_conflict();
+            std::set<uint32_t> py_failed_vars;
+            for (const auto& f : py_failed) py_failed_vars.insert(f.var());
+            bump_var(y);
+            for (const auto& f : py_failed) {
+                const uint32_t v = f.var();
+                if (v < var_activity.size()) bump_var(v);
+            }
+            decay_activities();
+
+            std::vector<std::pair<uint32_t, bool>> py_kept;
+            py_kept.reserve(cube.size());
+            for (const auto& [v, val] : cube) {
+                if (py_failed_vars.count(v)) py_kept.emplace_back(v, val);
+            }
+
+            if (py_kept.empty()) {
+                // y = M[y] universally — commit as level-0 constant.
+                skol[y] = AIG::new_const(y_v);
+                trail.push_back({y, /*dec_lvl=*/0, /*is_decision=*/false,
+                                 CMSat::Lit(0, false), {}});
+                mark_clauses_dead_by_constant(y, y_v);
+                tseitin_skol_into_skolem_sat(y);
+                exists_solver_encoded[y] = 0;
+                enqueue_neighbours(y, in_queue, queue);
+                cegar_per_y_commits++;
+                cegar_stat_per_y_commits++;
+                any_committed = true;
+                continue;
+            }
+
+            // Non-empty per-y kept cube: add `(X ≠ kept) ∨ (y = M[y])`
+            // clauses to skolem_sat + learnt_clauses; forbid the cube
+            // in exists_solver only (so we don't keep proposing the
+            // same one). Identical pattern to Phase F's per-y commit.
+            std::vector<CMSat::Lit> py_commit;
+            py_commit.reserve(py_kept.size() + 1);
+            for (const auto& [v, val] : py_kept) {
+                py_commit.push_back(CMSat::Lit(v, /*sign=*/val));
+            }
+            py_commit.push_back(CMSat::Lit(y, /*sign=*/!y_v));
+            skolem_sat->add_clause(py_commit);
+            learnt_clauses.push_back(py_commit);
+            // For per-y, we DON'T add a forbid clause to exists_solver
+            // for the per-y kept cube: doing so would prevent the next
+            // joint round from picking a model in that region even if
+            // OTHER undet y's are not forced there. The implication
+            // clause we just added to skolem_sat is enough to constrain
+            // future skolem_sat models.
+            cegar_per_y_commits++;
+            cegar_stat_per_y_commits++;
+            any_committed = true;
+        }
+
+        // Adaptive disable: after window of checks, if commits/checks
+        // is too low, disable per-y for the remainder of this Phase D
+        // entry. Same logic as Phase F's adaptive disable.
+        if (!cegar_per_y_disabled &&
+            mconf.cadet_cegar_per_y_productivity_window > 0 &&
+            cegar_per_y_checks >= mconf.cadet_cegar_per_y_productivity_window) {
+            const double ratio =
+                double(cegar_per_y_commits) / double(cegar_per_y_checks);
+            if (ratio < mconf.cadet_cegar_per_y_min_productivity) {
+                cegar_per_y_disabled = true;
+                if (conf.verb >= 1) {
+                    cout << "c o [cadet] CEGAR per-y disabled: "
+                         << "productivity " << fixed << setprecision(3)
+                         << ratio << " < "
+                         << mconf.cadet_cegar_per_y_min_productivity
+                         << " (" << cegar_per_y_commits << "/"
+                         << cegar_per_y_checks << ")" << endl;
+                }
+            }
+        }
+        return any_committed;
     }
     if (inner_ret != CMSat::l_False) {
         cegar_stat_joint_undef++;
