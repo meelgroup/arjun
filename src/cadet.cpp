@@ -234,6 +234,10 @@ void Cadet::build_solver_with_skols(MetaSolver& s, Lit& out_true_lit) const {
             s.add_clause({Lit(y, /*sign=*/false), ~root});
         }
     }
+    // Inject CDCL-learnt clauses from Phase D so the new solver gets
+    // the same combinatorial pruning. They're over original vars, so
+    // safe to add as red clauses.
+    for (const auto& lc : learnt_clauses) s.add_red_clause(lc);
 }
 
 
@@ -554,8 +558,10 @@ bool Cadet::synth_by_propagation() {
                 }
                 decay_activities();
                 // Permanent learnt clause. Refutes the current
-                // decision conjunction across all inputs.
+                // decision conjunction across all inputs. Also store
+                // for Phase E/F to inject into their fresh solvers.
                 decision_sat.add_clause(learnt);
+                learnt_clauses.push_back(learnt);
                 backjump_to_level(second_lvl);
                 if (conf.verb >= 1) {
                     cout << "c o [cadet] CDCL conflict at lvl "

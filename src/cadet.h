@@ -155,6 +155,14 @@ private:
     // those clauses away.
     std::vector<CMSat::Lit> sel_lits;
 
+    // CDCL-learnt clauses over original variables (no selectors).
+    // Each conflict produces one entry — the negation of the failed
+    // decision lits, i.e. a clause that refutes that combination of
+    // decisions across all inputs. Sound to inject into any solver
+    // that has F over the same vars; Phase E and Phase F do that on
+    // setup so they benefit from work done in Phase C+D.
+    std::vector<std::vector<CMSat::Lit>> learnt_clauses;
+
     // Current decision level. 0 = root level, where all commits are
     // permanent. >0 = inside a speculative decision context.
     uint32_t decision_lvl = 0;
