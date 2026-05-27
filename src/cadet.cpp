@@ -65,6 +65,7 @@
 #include <iomanip>
 #include <iostream>
 #include <set>
+#include <unordered_map>
 #include <vector>
 
 using std::cout;
@@ -679,7 +680,13 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
 
     // Per-y partial Skolem (ITE chain of cases). Starts FALSE; each
     // iteration prepends a case via new_ite(value, prev, condition).
-    std::map<uint32_t, aig_ptr> partial;
+    // unordered_map (vs std::map) — we never iterate `partial`, only
+    // index it via `partial[y]` with y drawn from `undet`, so the
+    // ordered-traversal property of std::map is unused and we trade
+    // a log(|undet|) factor for the O(1) lookup. Helps on the
+    // hundreds-undet runs where Phase F iter count is large.
+    std::unordered_map<uint32_t, aig_ptr> partial;
+    partial.reserve(undet.size());
     for (uint32_t y : undet) partial[y] = AIG::new_const(false);
 
     uint32_t iters = 0;
