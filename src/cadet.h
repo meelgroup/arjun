@@ -233,6 +233,27 @@ private:
     bool pa_drain_bcp(std::vector<uint8_t>& outer_in_queue,
                       std::vector<uint32_t>& outer_neighbour_queue);
 
+    // 1-UIP-style conflict analysis over the PA implication graph.
+    // Called when pa_conflict_clause != PA_NO_CONFLICT. Walks back
+    // through pa_reason, resolves clause reasons until only sources
+    // (PA_REASON_SOURCE) remain at the conflict's decision level, and
+    // builds a learnt clause. The learnt clause is added to skolem_sat
+    // and learnt_clauses; backjump_to_level(second_highest_lvl) pops
+    // the speculative stack. Returns false on level-0 conflict (caller
+    // should bail to Phase E/F).
+    //
+    // Note: non-strict 1-UIP — when multiple sources appear at the
+    // conflict level (e.g. a Phase D decision plus one or more Phase D
+    // forced commits / Phase C propagations at the same level, all
+    // PA_REASON_SOURCE), every source becomes a learnt-clause lit at
+    // that level. Sound, slightly weaker than upstream's strict 1-UIP
+    // (which would need synthetic resolution chains for non-decision
+    // sources). A future tightening can plug those in.
+    bool handle_pa_conflict_1uip(std::vector<uint8_t>& outer_in_queue,
+                                 std::vector<uint32_t>& outer_neighbour_queue);
+    uint64_t uip_conflicts_handled = 0;
+    uint64_t uip_learnt_lits_total = 0;
+
     // CDCL-learnt clauses over original variables (no selectors).
     // Each conflict produces one entry — the negation of the failed
     // decision lits, i.e. a clause that refutes that combination of

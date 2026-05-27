@@ -218,6 +218,128 @@ void Cadet::pa_pop_to_level(uint32_t target) {
     pa_bcp_queue.clear();
 }
 
+bool Cadet::handle_pa_conflict_1uip(std::vector<uint8_t>& outer_in_queue,
+                                    std::vector<uint32_t>& outer_neighbour_queue) {
+    assert(pa_conflict_clause != PA_NO_CONFLICT);
+    const auto& clauses = cnf.get_clauses();
+    const auto& cclause = clauses[pa_conflict_clause];
+
+    // Determine the resolution level: the highest pa_level of any var
+    // in the conflict clause. If 0, F is UNSAT under level-0 commits.
+    uint32_t conflict_dlvl = 0;
+    for (const Lit& l : cclause) {
+        if (pa_level[l.var()] > conflict_dlvl) conflict_dlvl = pa_level[l.var()];
+    }
+    if (conflict_dlvl == 0) {
+        // Level-0 PA conflict — caller should bail to Phase E/F.
+        pa_conflict_clause = PA_NO_CONFLICT;
+        return false;
+    }
+
+    // 1-UIP resolution. seen[v] tracks vars that have been pulled into
+    // the working clause. `counter` is the number of seen vars at the
+    // resolution level still pending resolution / source-promotion.
+    // `learnt` accumulates the negated-assigned lits whose level is
+    // below conflict_dlvl (already in final form) plus the sources at
+    // conflict_dlvl encountered on the trail walk.
+    std::vector<uint8_t> seen(cnf.nVars(), 0);
+    std::vector<Lit> learnt;
+    learnt.reserve(cclause.size());
+    uint32_t counter = 0;
+
+    auto absorb_lit = [&](const Lit& l) {
+        const uint32_t v = l.var();
+        if (seen[v]) return;
+        if (pa_level[v] == 0) return; // root-level lits don't go into learnt
+        seen[v] = 1;
+        if (v < var_activity.size()) bump_var(v);
+        if (pa_level[v] == conflict_dlvl) counter++;
+        else learnt.push_back(l); // already FALSE in PA, retained verbatim
+    };
+
+    // Initial absorb: every lit of the conflict clause.
+    for (const Lit& l : cclause) absorb_lit(l);
+
+    int64_t trail_idx = (int64_t)pa_trail.size() - 1;
+    while (counter > 0 && trail_idx >= 0) {
+        // Walk back to the latest still-seen var at the conflict level.
+        while (trail_idx >= 0) {
+            const Lit tl = pa_trail[trail_idx];
+            if (seen[tl.var()] && pa_level[tl.var()] == conflict_dlvl) break;
+            trail_idx--;
+        }
+        if (trail_idx < 0) break;
+        const Lit tl = pa_trail[trail_idx];
+        const uint32_t tv = tl.var();
+        const uint32_t reason = pa_reason[tv];
+
+        if (reason == PA_REASON_SOURCE) {
+            // Source: the assigned lit `tl` is TRUE in PA, its
+            // negation goes into the learnt clause as a FALSE lit.
+            learnt.push_back(~tl);
+            counter--;
+            seen[tv] = 0;
+            trail_idx--;
+            continue;
+        }
+
+        // Clause reason: resolve `tv` out by absorbing the OTHER lits
+        // of the reason clause. They are all FALSE in PA by the
+        // unit-propagation precondition.
+        counter--;
+        seen[tv] = 0;
+        for (const Lit& other : clauses[reason]) {
+            if (other.var() == tv) continue;
+            absorb_lit(other);
+        }
+        trail_idx--;
+    }
+
+    if (learnt.empty()) {
+        // Defensive: shouldn't happen when conflict_dlvl > 0.
+        pa_conflict_clause = PA_NO_CONFLICT;
+        return false;
+    }
+
+    // Backjump target = second-highest dlvl in the learnt clause.
+    // The highest is conflict_dlvl (via the source(s) at that level);
+    // we want to undo just enough to make those un-assigned.
+    uint32_t max_lvl = 0, second_lvl = 0;
+    for (const Lit& l : learnt) {
+        const uint32_t lvl = pa_level[l.var()];
+        if (lvl > max_lvl) { second_lvl = max_lvl; max_lvl = lvl; }
+        else if (lvl > second_lvl && lvl < max_lvl) { second_lvl = lvl; }
+    }
+    decay_activities();
+
+    // Add learnt clause: to skolem_sat (permanent), to learnt_clauses
+    // (for Phase E/F replay).
+    skolem_sat->add_clause(learnt);
+    learnt_clauses.push_back(learnt);
+
+    uip_conflicts_handled++;
+    uip_learnt_lits_total += learnt.size();
+
+    if (conf.verb >= 2) {
+        cout << "c o [cadet] PA-UIP conflict at lvl " << conflict_dlvl
+             << ": learnt " << learnt.size() << " lits, backjump to "
+             << second_lvl << " (was decision_lvl " << decision_lvl << ")"
+             << endl;
+    }
+
+    backjump_to_level(second_lvl);
+
+    // Outer-loop bookkeeping: enqueue every still-undet var so the
+    // next propagation pass sees the new learnt clause's units.
+    for (uint32_t y : to_define) {
+        if (skol[y] == nullptr && !outer_in_queue[y]) {
+            outer_in_queue[y] = 1;
+            outer_neighbour_queue.push_back(y);
+        }
+    }
+    return true;
+}
+
 bool Cadet::pa_drain_bcp(std::vector<uint8_t>& outer_in_queue,
                          std::vector<uint32_t>& outer_neighbour_queue) {
     const auto& clauses = cnf.get_clauses();
@@ -917,6 +1039,23 @@ bool Cadet::synth_by_propagation() {
     uint32_t pass = 0;
     while (true) {
         pass++;
+        // PA-UIP conflict path: BCP (run inline at commit sites) may
+        // have set pa_conflict_clause. Resolve it via 1-UIP and learn
+        // before doing anything else this iteration. On level-0
+        // conflict, drop to Phase E/F.
+        if (pa_conflict_clause != PA_NO_CONFLICT) {
+            if (!handle_pa_conflict_1uip(in_queue, queue)) {
+                backjump_to_level(0);
+                if (conf.verb >= 1) {
+                    cout << "c o [cadet] PA-UIP detected level-0 conflict "
+                         << "— bailing out of Phase D" << endl;
+                }
+                break;
+            }
+            total_conflicts++;
+            conflicts_since_restart++;
+            continue;
+        }
         // Geometric restart: when we've taken enough conflicts inside
         // the current speculative tree, throw away the tree (keeping
         // learnt clauses) and start fresh.
@@ -1264,6 +1403,16 @@ bool Cadet::synth_by_propagation() {
              << " learnt: " << learnt_clauses.size()
              << " remaining: " << remaining
              << " T: " << fixed << setprecision(2) << (cpuTime() - t0) << endl;
+        if (pa_propagations > 0 || uip_conflicts_handled > 0) {
+            const double avg_uip_lits = uip_conflicts_handled > 0
+                ? double(uip_learnt_lits_total) / double(uip_conflicts_handled)
+                : 0.0;
+            cout << "c o [cadet]   PA: bcp-propagations=" << pa_propagations
+                 << " bcp-conflicts=" << pa_conflicts_caught
+                 << " uip-conflicts=" << uip_conflicts_handled
+                 << " avg-uip-lits=" << fixed << setprecision(1) << avg_uip_lits
+                 << endl;
+        }
         if (clause_min_resolves > 0) {
             const double avg_in = double(clause_min_total_in_lits)
                                   / double(total_conflicts ? total_conflicts : 1);
