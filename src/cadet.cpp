@@ -514,11 +514,70 @@ bool Cadet::synth_by_propagation() {
         // unsound: it only means SOME input X works, not every X, so a
         // constant decision would violate F on some other input.
 
+        // Conflict check at the current decision context. If under
+        // active selector assumptions F is already UNSAT, our decision
+        // stack is bad — find the responsible decisions in the failed
+        // core, learn the negation as a permanent clause, and backjump
+        // to the second-highest level among the responsible decisions.
+        if (decision_lvl > 0) {
+            vector<Lit> base = active_assumps();
+            if (decision_sat.solve(&base) == CMSat::l_False) {
+                const auto failed = decision_sat.get_conflict();
+                vector<Lit> learnt;
+                uint32_t max_lvl = 0, second_lvl = 0;
+                for (const Lit& f : failed) {
+                    // f is ~assumed_lit. The assumed lit is a selector
+                    // sel_d (positive), so f is ~sel_d. Find d.
+                    for (uint32_t d = 1; d <= decision_lvl; d++) {
+                        if (sel_lits[d - 1].var() == f.var()) {
+                            learnt.push_back(~decision_lits[d - 1]);
+                            if (d > max_lvl) {
+                                second_lvl = max_lvl;
+                                max_lvl = d;
+                            } else if (d > second_lvl) {
+                                second_lvl = d;
+                            }
+                            break;
+                        }
+                    }
+                }
+                if (max_lvl == 0 || learnt.empty()) {
+                    // F+empty UNSAT — means F itself is UNSAT.
+                    // Shouldn't reach this in synthesis (precondition is
+                    // F sat for every input). Bail to Phase E/F.
+                    backjump_to_level(0);
+                    break;
+                }
+                for (const Lit& l : learnt) {
+                    const uint32_t v = l.var();
+                    if (v < var_activity.size()) bump_var(v);
+                }
+                decay_activities();
+                // Permanent learnt clause. Refutes the current
+                // decision conjunction across all inputs.
+                decision_sat.add_clause(learnt);
+                backjump_to_level(second_lvl);
+                if (conf.verb >= 1) {
+                    cout << "c o [cadet] CDCL conflict at lvl "
+                         << max_lvl << ": learnt " << learnt.size()
+                         << " lits, backjump to " << second_lvl << endl;
+                }
+                // Re-enqueue every still-undet var — they might be
+                // forced under the new learnt clause.
+                for (uint32_t y : to_define) {
+                    if (skol[y] == nullptr && !in_queue[y]) {
+                        in_queue[y] = 1;
+                        queue.push_back(y);
+                    }
+                }
+                continue; // restart outer loop with shallower state
+            }
+        }
+
         // Order undet by VSIDS activity (highest first). Activities are
         // JW-seeded from clause density and get bumped each time a var
         // shows up in a failed-assumption core, so vars participating
-        // in many UNSAT proofs rise to the front. Replaces the old
-        // "fewest clauses first" heuristic, which had no learning loop.
+        // in many UNSAT proofs rise to the front.
         vector<uint32_t> undet;
         undet.reserve(to_define.size());
         for (uint32_t y : to_define) {
