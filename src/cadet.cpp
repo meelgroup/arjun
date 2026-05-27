@@ -206,8 +206,16 @@ bool Cadet::synth_by_propagation() {
 
             bool all_determined = true;
             aig_ptr pos_force = AIG::new_const(false);
-            aig_ptr neg_force = AIG::new_const(false);
+            // We accumulate ONLY the positive-force region. The
+            // negative-force region (where ¬y is similarly forced)
+            // need not be computed: by the synthesis precondition
+            // (F satisfiable for every input), positive and negative
+            // force regions never overlap, so committing y = pos_force
+            // — TRUE on the positive region, FALSE elsewhere — never
+            // violates a negative-y clause. Computing neg_force would
+            // just spawn unused AIG nodes.
             for (const auto& [ci, sign_y] : var_clauses[y]) {
+                if (sign_y) continue; // negative-y clauses don't feed pos_force
                 aig_ptr forced = AIG::new_const(true);
                 for (const auto& l : clauses[ci]) {
                     if (l.var() == y) continue;
@@ -222,8 +230,24 @@ bool Cadet::synth_by_propagation() {
                     forced = AIG::new_and(forced, ~lit_aig);
                 }
                 if (!all_determined) break;
-                if (!sign_y) pos_force = AIG::new_or(pos_force, forced);
-                else neg_force = AIG::new_or(neg_force, forced);
+                pos_force = AIG::new_or(pos_force, forced);
+            }
+            // Negative-y clauses must still be CHECKED for
+            // "all_determined" (otherwise we'd commit pos_force based
+            // on incomplete info). Walk them and bail if any has an
+            // undetermined non-y literal.
+            if (all_determined) {
+                for (const auto& [ci, sign_y] : var_clauses[y]) {
+                    if (!sign_y) continue;
+                    for (const auto& l : clauses[ci]) {
+                        if (l.var() == y) continue;
+                        if (skol[l.var()] == nullptr) {
+                            all_determined = false;
+                            break;
+                        }
+                    }
+                    if (!all_determined) break;
+                }
             }
 
             if (all_determined) {
@@ -279,7 +303,6 @@ bool Cadet::synth_by_propagation() {
                          << "): commit would create a defs[] cycle" << endl;
                 }
             }
-            (void)neg_force; // see correctness note in synth_by_propagation()
         }
         if (conf.verb >= 2) {
             cout << "c o [cadet]   prop pass #" << pass
