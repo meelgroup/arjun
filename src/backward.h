@@ -24,17 +24,54 @@
 
 #pragma once
 
-#include "minimize.h"
+#include "arjun.h"
+#include <vector>
+#include <memory>
+#include <optional>
+#include <set>
+#include <cryptominisat5/cryptominisat.h>
+
+#include "config.h"
 
 namespace ArjunInt {
 
-struct Backward : public Minimize
+struct Backward
 {
-    Backward(const Config& _conf) : Minimize(_conf) {}
+    Backward(const Config& _conf) : conf(_conf) {
+        set_up_solver();
+    }
     ~Backward() = default;
 
-    void run_backward(ArjunNS::SimplifiedCNF& cnf, bool all_indep);
-    ArjunNS::Arjun::IndepInfo run_backward_info(ArjunNS::SimplifiedCNF& cnf, bool all_indep);
+    const Config conf;
+    std::unique_ptr<CMSat::SATSolver> solver;
+    bool already_duplicated = false;
+    std::vector<uint32_t> sampling_vars;
+    std::vector<uint32_t> empty_sampling_vars;
+
+    std::vector<char> seen;
+    uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
+
+    //assert indic[var] to TRUE to force var==var+orig_num_vars
+    std::vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
+    std::vector<uint32_t> indic_to_var; //maps an INDICATOR VAR to ORIG VAR
+
+    //Incidence as counted by clauses it's appeared together with other variables
+    std::vector<uint32_t> incidence;
+
+    std::vector<CMSat::Lit> dont_elim;
+
+    void init();
+    void update_sampling_set(
+        const std::vector<uint32_t>& unknown,
+        const std::vector<char>& unknown_set,
+        const std::vector<uint32_t>& indep
+    );
+    void add_fixed_clauses(bool all = false);
+    void duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf);
+    void get_incidence();
+    void set_up_solver();
+    void fill_solver(const ArjunNS::SimplifiedCNF& cnf);
+    void fill_solver_synth(const ArjunNS::SimplifiedCNF& cnf);
 
     template<typename T>
     void fill_assumptions_backward(

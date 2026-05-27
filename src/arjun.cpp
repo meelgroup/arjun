@@ -33,6 +33,7 @@
 #include "arjun.h"
 #include "config.h"
 #include "backward.h"
+#include "minimize.h"
 #include "GitSHA1.h"
 #include "puura.h"
 #include "extend.h"
@@ -128,13 +129,13 @@ DLL_PUBLIC string Arjun::get_compilation_env() {
 }
 
 DLL_PUBLIC void Arjun::standalone_minimize_indep(SimplifiedCNF& cnf, bool all_indep) {
-    Backward common(arjdata->conf);
-    common.run_backward(cnf, all_indep);
+    Minimize common(arjdata->conf);
+    common.run_minimize(cnf, all_indep);
 }
 
 DLL_PUBLIC Arjun::IndepInfo Arjun::standalone_minimize_indep_info(SimplifiedCNF& cnf, bool all_indep) {
-    Backward common(arjdata->conf);
-    return common.run_backward_info(cnf, all_indep);
+    Minimize common(arjdata->conf);
+    return common.run_minimize_info(cnf, all_indep);
 }
 
 DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {
