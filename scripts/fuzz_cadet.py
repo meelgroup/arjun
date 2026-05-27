@@ -57,19 +57,28 @@ def unique_file(fname_begin, fname_end=".cnf", max_num_files=2700):
 
 def gen_fuzz_call_brummayer(fuzzer, fname):
     seed = random.randint(0, 1000 * 1000 * 1000)
-    # Mix of small and larger CNFs.
+    # Mix of small, medium, and large CNFs so we cover the entire
+    # Phase A → Phase F enumeration range. With Phase F now
+    # unconditional (no input-size threshold), larger CNFs are the
+    # interesting stress case — they force many Phase F iterations
+    # and exercise periodic AIG simplification.
     #
-    # Half the iterations use small CNFs (~4 leaves, ~12 nodes), which
-    # produce CNFs whose orig-sampling projection fits under Phase A's
-    # 16-input enumeration threshold. The other half use larger CNFs
-    # (~12 leaves, ~30 nodes) so the projection often EXCEEDS the
-    # threshold — forcing the run past Phase A and Phase B into Phase
-    # C+D, the actual CADET-flavored part. -i = leaves, -I = inner
-    # nodes (see cnf-fuzz-brummayer.py).
-    if random.choice([True, False]):
+    # Weight small/medium higher so the run is fast on average; large
+    # gets ~25% of iters to exercise scaling. xlarge is omitted as a
+    # routine size because it often pushes per-iter wall time past
+    # the fuzzer timeout — use a manual --tout bump if you want to
+    # stress-test at that size.
+    #
+    # -i = leaves, -I = inner nodes (see cnf-fuzz-brummayer.py).
+    kind = random.choices(
+        ["small", "medium", "large"],
+        weights=[3, 3, 2])[0]
+    if kind == "small":
         call = "{0} -s {1} -i 4 -I 12 > {2}".format(fuzzer, seed, fname)
-    else:
+    elif kind == "medium":
         call = "{0} -s {1} -i 12 -I 30 > {2}".format(fuzzer, seed, fname)
+    else:  # large
+        call = "{0} -s {1} -i 25 -I 60 > {2}".format(fuzzer, seed, fname)
     return call
 
 
