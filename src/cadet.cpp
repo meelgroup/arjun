@@ -817,6 +817,27 @@ bool Cadet::synth_by_propagation() {
              << " learnt: " << learnt_clauses.size()
              << " remaining: " << remaining
              << " T: " << fixed << setprecision(2) << (cpuTime() - t0) << endl;
+        if (cegar_stat_rounds > 0) {
+            const double avg_kept = cegar_stat_joint_unsat > 0
+                ? double(cegar_stat_cube_total)
+                  / double(cegar_stat_joint_unsat)
+                : 0.0;
+            const double pery_ratio = cegar_per_y_checks > 0
+                ? double(cegar_per_y_commits)
+                  / double(cegar_per_y_checks)
+                : 0.0;
+            cout << "c o [cadet] CEGAR rounds=" << cegar_stat_rounds
+                 << " (joint UNSAT=" << cegar_stat_joint_unsat
+                 << " SAT=" << cegar_stat_joint_sat
+                 << " UNDEF=" << cegar_stat_joint_undef
+                 << ") joint-commits=" << cegar_stat_joint_commits
+                 << " per-y-commits=" << cegar_stat_per_y_commits
+                 << "/checks=" << cegar_per_y_checks
+                 << " (ratio=" << fixed << setprecision(3) << pery_ratio
+                 << (cegar_per_y_disabled ? ", DISABLED" : "")
+                 << ") avg-kept-cube=" << fixed << setprecision(1) << avg_kept
+                 << endl;
+        }
     }
     return remaining == 0;
 }
@@ -1515,9 +1536,10 @@ void Cadet::cegar_sync_exists_solver() {
     }
 }
 
-bool Cadet::cegar_one_round(uint32_t& out_kept_cube_size,
-                            std::vector<uint8_t>& in_queue,
-                            std::vector<uint32_t>& queue) {
+Cadet::CegarRoundResult Cadet::cegar_one_round(
+    std::vector<uint8_t>& in_queue,
+    std::vector<uint32_t>& queue) {
+    CegarRoundResult R;
     // Joint CEGAR step. Caller MUST be at decision_lvl == 0.
     //
     // 1) Solve skolem_sat (at level 0) to get a model M of F + all
@@ -1536,7 +1558,7 @@ bool Cadet::cegar_one_round(uint32_t& out_kept_cube_size,
     // Returns true iff at least one constant commit happened OR new
     // skolem_sat constraints were added (caller should re-propagate).
     assert(decision_lvl == 0);
-    if (cegar_interface.empty()) return false;
+    if (cegar_interface.empty()) return R;
 
     // Collect still-undet to_define vars. If none, nothing to do.
     std::vector<uint32_t> undet;
@@ -1544,7 +1566,7 @@ bool Cadet::cegar_one_round(uint32_t& out_kept_cube_size,
     for (uint32_t y : to_define) {
         if (skol[y] == nullptr) undet.push_back(y);
     }
-    if (undet.empty()) return false;
+    if (undet.empty()) return R;
 
     // Lazy build / sync exists_solver before the round.
     if (!exists_solver) cegar_build_exists_solver();
@@ -1559,9 +1581,9 @@ bool Cadet::cegar_one_round(uint32_t& out_kept_cube_size,
         // F + all prior commits is UNSAT at level 0 — shouldn't happen
         // in synthesis (precondition is F SAT for every input), but if
         // it does, Phase D's normal level-0 conflict check will deal.
-        return false;
+        return R;
     }
-    if (outer_ret != CMSat::l_True) return false; // UNDEF — skip
+    if (outer_ret != CMSat::l_True) return R; // UNDEF — skip
     const auto& model = skolem_sat->get_model();
 
     // (2) Build cube from interface var values. Each cube entry is
@@ -1614,9 +1636,9 @@ bool Cadet::cegar_one_round(uint32_t& out_kept_cube_size,
         // per round, and adaptively disabled when commits/checks ratio
         // drops below --cadetcegarperyminprod over a productivity
         // window (see cegar_per_y_* counters).
-        if (!mconf.cadet_cegar_per_y) return false;
-        if (cegar_per_y_disabled) return false;
-        if (undet.size() > mconf.cadet_cegar_per_y_undet_cap) return false;
+        if (!mconf.cadet_cegar_per_y) return R;
+        if (cegar_per_y_disabled) return R;
+        if (undet.size() > mconf.cadet_cegar_per_y_undet_cap) return R;
 
         // VSIDS-ordered per-y scan (highest activity first). Identical
         // rationale to Phase F's per-y: high-activity vars are likely
@@ -1628,7 +1650,6 @@ bool Cadet::cegar_one_round(uint32_t& out_kept_cube_size,
                       return var_activity[a] > var_activity[b];
                   });
 
-        bool any_committed = false;
         for (uint32_t y : py_order) {
             if (skol[y] != nullptr) continue; // already committed this round
             cegar_per_y_checks++;
@@ -1679,7 +1700,8 @@ bool Cadet::cegar_one_round(uint32_t& out_kept_cube_size,
                 enqueue_neighbours(y, in_queue, queue);
                 cegar_per_y_commits++;
                 cegar_stat_per_y_commits++;
-                any_committed = true;
+                R.constant_commit = true;
+                R.any_clause_added = true;
                 continue;
             }
 
@@ -1703,7 +1725,7 @@ bool Cadet::cegar_one_round(uint32_t& out_kept_cube_size,
             // future skolem_sat models.
             cegar_per_y_commits++;
             cegar_stat_per_y_commits++;
-            any_committed = true;
+            R.any_clause_added = true;
         }
 
         // Adaptive disable: after window of checks, if commits/checks
@@ -1726,11 +1748,11 @@ bool Cadet::cegar_one_round(uint32_t& out_kept_cube_size,
                 }
             }
         }
-        return any_committed;
+        return R;
     }
     if (inner_ret != CMSat::l_False) {
         cegar_stat_joint_undef++;
-        return false; // UNDEF
+        return R; // UNDEF
     }
     // UNSAT: joint Y is forced under (some subset of) the cube.
     cegar_stat_joint_unsat++;
@@ -1751,8 +1773,8 @@ bool Cadet::cegar_one_round(uint32_t& out_kept_cube_size,
     for (const auto& [v, val] : cube) {
         if (failed_vars.count(v)) kept_cube.emplace_back(v, val);
     }
-    out_kept_cube_size = (uint32_t)kept_cube.size();
-    cegar_stat_cube_total += out_kept_cube_size;
+    R.kept_cube_size = (uint32_t)kept_cube.size();
+    cegar_stat_cube_total += R.kept_cube_size;
 
     if (kept_cube.empty()) {
         // Empty kept cube — joint Y = M[y] universally. Commit each
@@ -1769,8 +1791,10 @@ bool Cadet::cegar_one_round(uint32_t& out_kept_cube_size,
             enqueue_neighbours(y, in_queue, queue);
             if (y < var_activity.size()) bump_var(y);
             cegar_stat_joint_commits++;
+            R.constant_commit = true;
         }
-        return true;
+        R.any_clause_added = true;
+        return R;
     }
 
     // Non-empty kept cube. Add two kinds of clauses:
@@ -1796,7 +1820,8 @@ bool Cadet::cegar_one_round(uint32_t& out_kept_cube_size,
     }
     exists_solver->add_clause(forbid);
     cegar_stat_joint_commits++;
-    return true;
+    R.any_clause_added = true;
+    return R;
 }
 
 bool Cadet::cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
@@ -1819,11 +1844,11 @@ bool Cadet::cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
     const uint32_t max_total = mconf.cadet_cegar_max_total_rounds;
     if (max_total > 0 && cegar_total_rounds >= max_total) return false;
 
-    bool any_progress = false;
+    bool any_constant_commit = false;
     uint32_t rounds = 0;
     uint64_t cube_sum = 0;
     uint64_t cube_count = 0;
-    uint32_t consec_no_progress = 0;
+    uint32_t consec_no_constant = 0;
     while (rounds < mconf.cadet_cegar_max_rounds_per_stall) {
         if (max_total > 0 && cegar_total_rounds >= max_total) break;
         // Effectiveness break: only meaningful once we've seen a
@@ -1837,34 +1862,42 @@ bool Cadet::cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
             }
             break;
         }
-        uint32_t kept = 0;
-        const bool round_progress = cegar_one_round(kept, in_queue, queue);
+        const CegarRoundResult res = cegar_one_round(in_queue, queue);
         rounds++;
-        if (kept > 0) {
+        if (res.kept_cube_size != UINT32_MAX && res.kept_cube_size > 0) {
             // Joint UNSAT with non-empty cube — track size for avg.
-            cube_sum += kept;
+            cube_sum += res.kept_cube_size;
             cube_count++;
         }
-        if (round_progress) {
-            any_progress = true;
-            consec_no_progress = 0;
-            // Keep going: more rounds may catch more commits since each
-            // committed constant changes skol[] and the next round's
-            // model will reflect that.
+        if (res.constant_commit) {
+            any_constant_commit = true;
+            consec_no_constant = 0;
+            // Real shrink of undet set; keep going — every committed
+            // const may unblock more rounds.
             continue;
         }
-        consec_no_progress++;
-        if (consec_no_progress >= 2) break;
+        // No constant this round. Either clauses-only progress (joint
+        // UNSAT non-empty cube / per-y clauses-only), or no-progress at
+        // all (joint SAT + per-y empty). Allow ONE clauses-only round
+        // (the new constraints may help the next round find a constant),
+        // then bail.
+        consec_no_constant++;
+        if (consec_no_constant >= 2) break;
+        if (!res.any_clause_added) {
+            // No clauses, no constants — pure no-op round. Bail
+            // immediately; another won't help.
+            break;
+        }
     }
     if (conf.verb >= 2 && rounds > 0) {
         cout << "c o [cadet]   CEGAR drain: rounds=" << rounds
-             << " any_progress=" << (any_progress ? "yes" : "no")
+             << " const_commits=" << (any_constant_commit ? "yes" : "no")
              << " avg_kept=";
         if (cube_count > 0) cout << (cube_sum / cube_count);
         else cout << "n/a";
         cout << endl;
     }
-    return any_progress;
+    return any_constant_commit;
 }
 
 void Cadet::commit_definitions() {

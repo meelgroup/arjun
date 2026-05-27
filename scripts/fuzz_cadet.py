@@ -253,7 +253,19 @@ def run_synth(solver, fname):
             "phase_f_uniq_unsat": 0,
             "phase_f_uniq_sat": 0,
             "phase_f_avg_drops": 0.0,
-            "phase_f_avg_core_size": 0.0}
+            "phase_f_avg_core_size": 0.0,
+            # CEGAR (Phase D companion). Counts come from the
+            # "c o [cadet] CEGAR rounds=... joint-commits=...
+            # per-y-commits=.../checks=..." line emitted at verb>=1
+            # when at least one CEGAR round fired.
+            "cegar_ran": False,
+            "cegar_rounds": 0,
+            "cegar_joint_unsat": 0,
+            "cegar_joint_sat": 0,
+            "cegar_joint_commits": 0,
+            "cegar_per_y_commits": 0,
+            "cegar_per_y_checks": 0,
+            "cegar_avg_kept_cube": 0.0}
     if err is not None:
         print("Error string is: ", err)
         return True, [], info
@@ -325,6 +337,19 @@ def run_synth(solver, fname):
                 info["phase_e_committed"] = int(m.group(1))
         elif "Phase F worker —" in line:
             info["phase_f_ran"] = True
+        elif "[cadet] CEGAR rounds=" in line:
+            info["cegar_ran"] = True
+            m = re.search(r"CEGAR rounds=(\d+).*joint UNSAT=(\d+) SAT=(\d+).*"
+                          r"joint-commits=(\d+) per-y-commits=(\d+)"
+                          r"/checks=(\d+).*avg-kept-cube=([\d.]+)", line)
+            if m:
+                info["cegar_rounds"] = int(m.group(1))
+                info["cegar_joint_unsat"] = int(m.group(2))
+                info["cegar_joint_sat"] = int(m.group(3))
+                info["cegar_joint_commits"] = int(m.group(4))
+                info["cegar_per_y_commits"] = int(m.group(5))
+                info["cegar_per_y_checks"] = int(m.group(6))
+                info["cegar_avg_kept_cube"] = float(m.group(7))
         elif "Phase F converged + committed" in line or \
              "Phase F did NOT converge" in line:
             info["phase_f_converged"] = "converged + committed" in line
@@ -429,6 +454,15 @@ if __name__ == "__main__":
         "phase_f_total_uniq_unsat": 0,
         "phase_f_total_uniq_sat": 0,
         "phase_f_runs_with_any_drop": 0,  # iterations where avg-drops > 0
+        # CEGAR coverage. cegar_ran => CEGAR drain at least fired one
+        # round; cegar_made_commits => at least one commit (joint or
+        # per-y) on this iter.
+        "cegar_ran": 0,
+        "cegar_made_commits": 0,
+        "cegar_total_rounds": 0,
+        "cegar_total_joint_unsat": 0,
+        "cegar_total_joint_commits": 0,
+        "cegar_total_per_y_commits": 0,
     }
 
     i = 0
@@ -534,6 +568,15 @@ if __name__ == "__main__":
             stats["phase_f_total_uniq_sat"] += info["phase_f_uniq_sat"]
             if info["phase_f_avg_drops"] > 0.0:
                 stats["phase_f_runs_with_any_drop"] += 1
+        if info["cegar_ran"]:
+            stats["cegar_ran"] += 1
+            if info["cegar_joint_commits"] > 0 or \
+               info["cegar_per_y_commits"] > 0:
+                stats["cegar_made_commits"] += 1
+            stats["cegar_total_rounds"] += info["cegar_rounds"]
+            stats["cegar_total_joint_unsat"] += info["cegar_joint_unsat"]
+            stats["cegar_total_joint_commits"] += info["cegar_joint_commits"]
+            stats["cegar_total_per_y_commits"] += info["cegar_per_y_commits"]
         print("Synthesis succeeded on %s [cadet committed %d/%d%s], AIGs: %s" % (
             fname, info["cadet_committed_count"], info["cadet_to_define_count"],
             " + Manthan handoff" if info["handoff_triggered"] else "",
@@ -581,6 +624,13 @@ if __name__ == "__main__":
             stats["phase_f_total_uniq_sat"]))
         print("    runs where bit-drop ever fired: %d / %d" % (
             stats["phase_f_runs_with_any_drop"], stats["phase_f_ran"]))
+    print("  CEGAR ran:                  %d  (made >=1 commit in %d)" % (
+        stats["cegar_ran"], stats["cegar_made_commits"]))
+    if stats["cegar_ran"] > 0:
+        print("    cumulative rounds:        %d" % stats["cegar_total_rounds"])
+        print("    joint-UNSAT rounds:       %d" % stats["cegar_total_joint_unsat"])
+        print("    joint commits:            %d" % stats["cegar_total_joint_commits"])
+        print("    per-y commits:            %d" % stats["cegar_total_per_y_commits"])
     print("  cadet+Manthan handoff:      %d" % stats["handoff_triggered"])
     print("  cadet finished alone:       %d" % stats["cadet_committed_all"])
     print("=" * 60)

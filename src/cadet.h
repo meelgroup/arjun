@@ -406,14 +406,31 @@ private:
     // Bring exists_solver up-to-date with any level-0 skol[] commits
     // made since the last sync. No-op if nothing new committed.
     void cegar_sync_exists_solver();
-    // Try one CEGAR round. Returns true iff at least one commit
-    // (joint or per-y) was made; caller restarts propagation on true.
-    // `out_kept_cube_size` is written with the surviving cube size on
-    // UNSAT rounds (used to update the average-cube break). On SAT /
-    // UNDEF rounds it's left untouched.
-    bool cegar_one_round(uint32_t& out_kept_cube_size,
-                         std::vector<uint8_t>& in_queue,
-                         std::vector<uint32_t>& queue);
+    // Result of one CEGAR round. `constant_commit` is the headline
+    // signal — it's true iff at least one undet y had skol[y] flipped
+    // from nullptr to a permanent AIG constant this round (whether via
+    // an empty joint cube or an empty per-y cube). The driver uses
+    // this to decide whether real undet-set-shrinking progress is
+    // happening, vs only clause-additions that constrain skolem_sat
+    // without committing.
+    //
+    // `any_clause_added` is true iff we either committed a constant OR
+    // added one of the non-empty-cube implication clauses to
+    // skolem_sat. It's looser than `constant_commit`; the driver uses
+    // it to detect the "joint SAT + no per-y commit" stall (both
+    // false) for the consec_no_progress bail.
+    //
+    // `kept_cube_size` is the surviving joint kept-cube size when
+    // joint-UNSAT, or UINT32_MAX otherwise; driver uses it for the
+    // average-cube effectiveness break.
+    struct CegarRoundResult {
+        bool constant_commit = false;
+        bool any_clause_added = false;
+        uint32_t kept_cube_size = UINT32_MAX;
+    };
+    // Try one CEGAR round. See CegarRoundResult.
+    CegarRoundResult cegar_one_round(std::vector<uint8_t>& in_queue,
+                                     std::vector<uint32_t>& queue);
     // Per-stall driver: call cegar_one_round repeatedly until either
     // (a) a round commits something (caller re-runs propagation), or
     // (b) the per-stall round cap is hit, or
