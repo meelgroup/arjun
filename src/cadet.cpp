@@ -282,6 +282,8 @@ bool Cadet::try_propagate(uint32_t y,
         mark_clauses_dead_by_constant(y, !pos_force.neg);
     }
     tseitin_skol_into_skolem_sat(y);
+    trail.push_back({y, decision_lvl, /*is_decision=*/false,
+                     CMSat::Lit(0, false)});
     return true;
 }
 
@@ -311,6 +313,7 @@ bool Cadet::try_pure_literal(uint32_t y) {
         skol[y] = AIG::new_const(false);
         mark_clauses_dead_by_constant(y, false);
         tseitin_skol_into_skolem_sat(y);
+        trail.push_back({y, decision_lvl, /*is_decision=*/false, Lit(0, false)});
         return true;
     }
     // Pure: if has_pos and !has_neg, y only appears positively in
@@ -320,6 +323,7 @@ bool Cadet::try_pure_literal(uint32_t y) {
     skol[y] = AIG::new_const(val);
     mark_clauses_dead_by_constant(y, val);
     tseitin_skol_into_skolem_sat(y);
+    trail.push_back({y, decision_lvl, /*is_decision=*/false, Lit(0, false)});
     return true;
 }
 
@@ -353,6 +357,10 @@ bool Cadet::synth_by_propagation() {
     skol.assign(cnf.nVars(), nullptr);
     for (uint32_t v : input) skol[v] = AIG::new_lit(v, /*neg=*/false);
     for (uint32_t v : backward_defined) skol[v] = AIG::new_lit(v, /*neg=*/false);
+
+    trail.clear();
+    decision_lits.clear();
+    decision_lvl = 0;
 
     MetaSolver& decision_sat = *skolem_sat;
 
@@ -474,6 +482,8 @@ bool Cadet::synth_by_propagation() {
                 skol[pick] = AIG::new_const(false);
                 mark_clauses_dead_by_constant(pick, false);
                 decision_sat.add_clause({Lit(pick, /*sign=*/true)});
+                trail.push_back({pick, decision_lvl,
+                                 /*is_decision=*/false, Lit(0, false)});
                 total_decisions++;
                 any_decided = true;
                 enqueue_neighbours(pick, in_queue, queue);
@@ -490,6 +500,8 @@ bool Cadet::synth_by_propagation() {
                 skol[pick] = AIG::new_const(true);
                 mark_clauses_dead_by_constant(pick, true);
                 decision_sat.add_clause({Lit(pick, /*sign=*/false)});
+                trail.push_back({pick, decision_lvl,
+                                 /*is_decision=*/false, Lit(0, false)});
                 total_decisions++;
                 any_decided = true;
                 enqueue_neighbours(pick, in_queue, queue);

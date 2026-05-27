@@ -121,6 +121,32 @@ private:
     void bump_var(uint32_t v);
     void decay_activities();
 
+    // Trail of skol[] commits, in commit order. Each entry records the
+    // var, whether it was a decision (vs propagation), and the SAT
+    // assumption literal that gates this decision (only meaningful for
+    // decisions). Used by backjump_to_level to undo speculative
+    // commits.
+    struct TrailEntry {
+        uint32_t var;            // cnf-space var id committed
+        uint32_t dec_lvl;        // decision level at the time of commit
+        bool is_decision;        // true: a guessed Phase-D decision;
+                                 // false: a propagation/forced commit
+        CMSat::Lit decision_lit; // only meaningful for decisions —
+                                 // the lit assumed in skolem_sat at the
+                                 // time of decision. On backjump we
+                                 // drop it from active_assumptions.
+    };
+    std::vector<TrailEntry> trail;
+
+    // Stack of decision lits, indexed by decision level (entry d is
+    // the assumption literal for level d+1). solve()'d via
+    // active_decision_assumps() to get the current assumption set.
+    std::vector<CMSat::Lit> decision_lits;
+
+    // Current decision level. 0 = root level, where all commits are
+    // permanent. >0 = inside a speculative decision context.
+    uint32_t decision_lvl = 0;
+
     // --- algorithm pieces ---
 
     // Phase E: small-input SAT-model enumeration. Loads F + Tseitin
