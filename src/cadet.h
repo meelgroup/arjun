@@ -254,6 +254,15 @@ private:
     uint64_t uip_conflicts_handled = 0;
     uint64_t uip_learnt_lits_total = 0;
 
+    // Recursive learnt-clause minimization (Sörensson-Biere 2009).
+    // Drops each lit l of `learnt` whose pa_reason chain folds entirely
+    // back into other learnt-clause lits / level-0 lits. Runs BEFORE
+    // backjump so pa_reason / pa_level for conflict-level vars are
+    // still valid.
+    void minimize_learnt_recursive(std::vector<CMSat::Lit>& learnt);
+    uint64_t uip_min_in_lits = 0;
+    uint64_t uip_min_out_lits = 0;
+
     // CDCL-learnt clauses over original variables (no selectors).
     // Each conflict produces one entry — the negation of the failed
     // decision lits, i.e. a clause that refutes that combination of

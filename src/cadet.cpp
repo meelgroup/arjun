@@ -218,6 +218,91 @@ void Cadet::pa_pop_to_level(uint32_t target) {
     pa_bcp_queue.clear();
 }
 
+void Cadet::minimize_learnt_recursive(std::vector<Lit>& learnt) {
+    // Sörensson-Biere recursive minimization. A lit l in `learnt` is
+    // dropped iff every lit of pa_reason[l.var()] (other than l's own
+    // var) is either at level 0, already in learnt, or recursively
+    // foldable back via this same rule. The abstract-level mask is a
+    // cheap pre-filter — only vars whose level matches a bit set in the
+    // mask can possibly be foldable.
+    const auto& clauses = cnf.get_clauses();
+    if (learnt.size() <= 1) return;
+
+    const size_t orig_size = learnt.size();
+    uip_min_in_lits += orig_size;
+
+    std::vector<uint8_t> in_learnt(cnf.nVars(), 0);
+    uint32_t abstract_level = 0;
+    for (const Lit& l : learnt) {
+        in_learnt[l.var()] = 1;
+        abstract_level |= (1u << (pa_level[l.var()] & 31));
+    }
+
+    // seen[v]: 1 if v was found foldable (either originally in learnt
+    // or proven redundant during a successful walk). 0 otherwise.
+    // to_clear records vars NEWLY marked during the in-progress walk;
+    // on failure we roll the seen flag back. After a successful walk we
+    // keep the marks (caching for subsequent litRedundant calls).
+    std::vector<uint8_t> seen(cnf.nVars(), 0);
+    for (const Lit& l : learnt) seen[l.var()] = 1;
+
+    std::vector<uint32_t> stack;
+    std::vector<uint32_t> to_clear;
+
+    auto lit_redundant = [&](uint32_t v0) -> bool {
+        stack.clear();
+        stack.push_back(v0);
+        const size_t top = to_clear.size();
+        while (!stack.empty()) {
+            const uint32_t v = stack.back();
+            stack.pop_back();
+            const uint32_t reason = pa_reason[v];
+            assert(reason != PA_REASON_SOURCE);
+            for (const Lit& q : clauses[reason]) {
+                const uint32_t qv = q.var();
+                if (qv == v) continue;
+                if (seen[qv]) continue;
+                if (pa_level[qv] == 0) continue; // level-0: implied
+                // Only worth exploring if qv has a chance of folding:
+                // it must have a clause reason (not a source) AND its
+                // level must be one of those represented in learnt.
+                if (pa_reason[qv] != PA_REASON_SOURCE
+                    && (abstract_level & (1u << (pa_level[qv] & 31))) != 0) {
+                    seen[qv] = 1;
+                    to_clear.push_back(qv);
+                    stack.push_back(qv);
+                } else {
+                    // Cannot fold further. Roll back this walk.
+                    while (to_clear.size() > top) {
+                        seen[to_clear.back()] = 0;
+                        to_clear.pop_back();
+                    }
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+
+    std::vector<Lit> kept;
+    kept.reserve(learnt.size());
+    // Sources (decisions, Phase C/pure/CEGAR/Phase-D-forced) are
+    // untouchable — no clause reason to fold through. Everything else
+    // (clause-reason lits, which can only be lits below conflict_dlvl
+    // brought in via the initial absorb pass of 1-UIP) is fair game.
+    for (const Lit& l : learnt) {
+        const uint32_t v = l.var();
+        if (pa_reason[v] == PA_REASON_SOURCE) {
+            kept.push_back(l);
+            continue;
+        }
+        if (lit_redundant(v)) continue; // drop
+        kept.push_back(l);
+    }
+    learnt = std::move(kept);
+    uip_min_out_lits += learnt.size();
+}
+
 bool Cadet::handle_pa_conflict_1uip(std::vector<uint8_t>& outer_in_queue,
                                     std::vector<uint32_t>& outer_neighbour_queue) {
     assert(pa_conflict_clause != PA_NO_CONFLICT);
@@ -300,6 +385,12 @@ bool Cadet::handle_pa_conflict_1uip(std::vector<uint8_t>& outer_in_queue,
         pa_conflict_clause = PA_NO_CONFLICT;
         return false;
     }
+
+    // Recursive minimization — runs while pa_reason / pa_level are
+    // still valid for vars in learnt (i.e. before backjump). Drops
+    // every lit whose pa_reason chain folds back into other learnt
+    // lits.
+    minimize_learnt_recursive(learnt);
 
     // Backjump target = second-highest dlvl in the learnt clause.
     // The highest is conflict_dlvl (via the source(s) at that level);
@@ -1412,6 +1503,15 @@ bool Cadet::synth_by_propagation() {
                  << " uip-conflicts=" << uip_conflicts_handled
                  << " avg-uip-lits=" << fixed << setprecision(1) << avg_uip_lits
                  << endl;
+            if (uip_min_in_lits > 0) {
+                const double drop_pct = 100.0
+                    * double(uip_min_in_lits - uip_min_out_lits)
+                    / double(uip_min_in_lits);
+                cout << "c o [cadet]   PA-min: in-lits=" << uip_min_in_lits
+                     << " out-lits=" << uip_min_out_lits
+                     << " drop=" << fixed << setprecision(1) << drop_pct
+                     << "%" << endl;
+            }
         }
         if (clause_min_resolves > 0) {
             const double avg_in = double(clause_min_total_in_lits)
