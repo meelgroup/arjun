@@ -495,6 +495,40 @@ if __name__ == "__main__":
             solver += "--synthmore "
         solver += "--cadet 1 "
 
+        # Randomize every --cadet* knob so the fuzzer probes the full
+        # configuration space. Defaults are weighted in so most
+        # iterations look "normal" but every knob position gets
+        # exercised across a long run. Each knob is picked
+        # independently — the goal is to surface soundness regressions
+        # under unusual combinations, not to test any one combination
+        # exhaustively.
+        cadet_knobs = {
+            # CEGAR master + sub-options
+            "--cadetcegar": random.choices([0, 1], weights=[1, 4])[0],
+            "--cadetcegarpery": random.choices([0, 1], weights=[1, 3])[0],
+            "--cadetcegarevery": random.choice([1, 2, 5]),
+            "--cadetcegarmaxperstall": random.choice([1, 5, 50, 200]),
+            "--cadetcegarmaxavgcube": random.choice([3, 17, 50, 9999]),
+            "--cadetcegarmaxtot": random.choice([0, 5, 100]),
+            "--cadetcegarperyundetcap": random.choice([5, 30, 100, 500]),
+            "--cadetcegarperywindow": random.choice([0, 100, 5000]),
+            "--cadetcegarperyminprod": random.choice([0.05, 0.1, 0.5]),
+            "--cadetcegardisableafter": random.choice([0, 5, 30, 200]),
+            "--cadetcegarrebuildevery": random.choice([0, 5, 50]),
+            # Existing Phase C/D/E/F internals
+            "--cadetphaseeth": random.choice([0, 4, 16, 32]),
+            "--cadetguessdepth": random.choice([1, 4, 8, 16]),
+            "--cadetrestartinit": random.choice([4, 16, 64]),
+            "--cadetrestartfactor": random.choice([1.1, 1.5, 2.0]),
+            "--cadetactdecay": random.choice([0.85, 0.95, 0.99]),
+            "--cadetphasefsimpevery": random.choice([0, 100, 1000]),
+            "--cadetphasefperycap": random.choice([5, 30, 100]),
+            "--cadetphasefperywindow": random.choice([0, 100, 5000]),
+            "--cadetphasefperyminprod": random.choice([0.05, 0.1, 0.5]),
+        }
+        for k, v in cadet_knobs.items():
+            solver += "%s %s " % (k, v)
+
         # Preprocessing toggles. We want to exercise cadet both with
         # and without the upstream pipeline:
         #   - 50% of iterations: force EVERY toggleable pass OFF so
