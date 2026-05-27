@@ -869,6 +869,13 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
                 total_core_size += failed.size();
                 std::set<uint32_t> failed_vars;
                 for (const Lit& f : failed) failed_vars.insert(f.var());
+                // Bump every var in the joint UNSAT core — those input
+                // bits and undet vars that participated in the proof
+                // are the discriminative ones.
+                for (uint32_t v : failed_vars) {
+                    if (v < var_activity.size()) bump_var(v);
+                }
+                decay_activities();
                 for (uint32_t i = 0; i < n_in; i++) {
                     if (failed_vars.count(sorted_inputs[i]) == 0) {
                         kept[i] = false;
@@ -1003,7 +1010,17 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
         }
         if (was_joint_sat_this_iter && undet.size() <= kPerYUndetCap
             && !per_y_disabled) {
-            for (uint32_t y : undet) {
+            // VSIDS-ordered per-y scan: vars with higher activity get
+            // checked first. A successful per-y commit reduces future
+            // iter counts more for high-activity vars (those that were
+            // failing-core members during earlier joint checks), so
+            // ordering them first tends to converge faster.
+            std::vector<uint32_t> py_order(undet.begin(), undet.end());
+            std::sort(py_order.begin(), py_order.end(),
+                      [&](uint32_t a, uint32_t b) {
+                          return var_activity[a] > var_activity[b];
+                      });
+            for (uint32_t y : py_order) {
                 n_per_y_checks++;
                 minim.new_var();
                 const uint32_t sel_y_var = minim.nVars() - 1;
@@ -1030,6 +1047,15 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
                 const auto failed = minim.get_conflict();
                 std::set<uint32_t> failed_vars;
                 for (const Lit& f : failed) failed_vars.insert(f.var());
+
+                // Bump y plus every var in the per-y proof core — those
+                // vars made y forced at X*, so they're discriminative.
+                bump_var(y);
+                for (const auto& f : failed) {
+                    const uint32_t v = f.var();
+                    if (v < var_activity.size()) bump_var(v);
+                }
+                decay_activities();
 
                 // Build the commit clause: (X ≠ kept_bits) ∨ (y = M[y]).
                 std::vector<Lit> commit_clause;
