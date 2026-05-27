@@ -58,7 +58,6 @@ private:
     const ArjunInt::Config& conf;
     const ArjunNS::Arjun::ManthanConf& mconf;
     ArjunNS::SimplifiedCNF cnf;
-    ArjunNS::AIGManager aig_mng;
 
     // Var partitions, mirroring Manthan's split. NB: `input` here matches
     // VarTypes.input — it lumps `extend-defined` vars (those with an AIG
