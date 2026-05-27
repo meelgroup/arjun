@@ -570,8 +570,7 @@ if __name__ == "__main__":
         #     pipeline's downstream cadet sees the post-preprocessing
         #     CNF — which is what real-world usage looks like.
         prep_opts = [" --synthbve", " --autarky", " --extend", " --minimize",
-                     " --unatedef", " --unatedefeq", " --unatedefeqnoninp",
-                     " --unatedefrep"]
+                     " --unatedef", " --unatedefeq", " --unatedefeqnoninp"]
         if random.choice([True, False]):
             for opt in prep_opts:
                 solver += opt + " 0"

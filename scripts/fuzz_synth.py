@@ -488,7 +488,6 @@ if __name__ == "__main__":
             , " --unatedef"
             , " --unatedefeq"
             , " --unatedefeqnoninp"
-            , " --unatedefrep"
             , " --bwequal"
             , " --learnuseall"
         ]
@@ -514,36 +513,6 @@ if __name__ == "__main__":
         solver += " --unatedefeqmax " + random.choice(["0", "1", "4", "16", "64", "1024"])
         solver += " --unatedefeqconfl " + random.choice(["1", "10", "100", "1000", "100000"])
         solver += " --unatedefeqdry " + random.choice(["1", "10", "100", "100000"])
-        # 0 = inner loop never runs (no commits at all); high values stress
-        # the per-iteration refinement.
-        solver += " --unatedefrepiters " + random.choice(["0", "1", "5", "30", "100", "10000"])
-        # 0 = skip every CEX (no refinement); 1 = only single-lit patterns;
-        # 1000 = effectively unlimited.
-        solver += " --unatedefrepmaxpat " + random.choice(["0", "1", "5", "12", "40", "1000"])
-        # 0 = give up on first cost-zero; high = never give up.
-        solver += " --unatedefrepmaxcz " + random.choice(["0", "1", "2", "5", "30"])
-        # 1 = miter/uniqueness/F-solver mostly time out; 100000 = never.
-        solver += " --unatedefrepconfl " + random.choice(["1", "10", "100", "1000", "100000"])
-        # 0=input only, 1=+backward-defined, 2=+to-define (richest).
-        solver += " --unatedefrepaux " + random.choice(["0", "1", "2"])
-        # 0 = greedy minim off, 1 = on.
-        solver += " --unatedefrepminim " + random.choice(["0", "1"])
-        # 0..200 budget for greedy literal-drop.
-        solver += " --unatedefrepminbud " + random.choice(["0", "1", "4", "16", "200"])
-        # 0=off; 1=always; 2=only when aux non-empty.
-        solver += " --unatedefrepinpfirst " + random.choice(["0", "1", "2"])
-        # 0/1: single-shot drop-all-aux after greedy minim.
-        solver += " --unatedefrepdropaux " + random.choice(["0", "1"])
-        # 1 = off (single CEX), 2..8 = collect that many.
-        solver += " --unatedefrepmulticex " + random.choice(["1", "2", "3", "5", "8"])
-        # per-iter trace verbosity threshold (low = chatty).
-        solver += " --unatedefrepiterverb " + random.choice(["0", "1", "4", "99"])
-        # 0/1: sort minim drop order by pattern-frequency.
-        solver += " --unatedefrepfreqsort " + random.choice(["0", "1"])
-        # extra reverse-shuffle minim passes (manthan-style).
-        solver += " --unatedefrepminextra " + random.choice(["0", "1", "3", "10"])
-        # 0/1: refine H using all collected multi-cex models.
-        solver += " --unatedefrepmultipat " + random.choice(["0", "1"])
         solver += " --bveresolvmaxsz " + str(random.randint(2, 20))
         solver += " --iter1grow " + str(random.randint(0, 5))
         solver += " --iter2grow " + str(random.choice([0, 10, 100]))

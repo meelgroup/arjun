@@ -44,7 +44,6 @@ set(libfiles
     arjun_c.cpp
     puura.cpp
     unate_def.cpp
-    unate_def_rep.cpp
     unate_def_common.cpp
     autarky.cpp
     ccnr/ccnr.cpp

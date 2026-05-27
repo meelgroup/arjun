@@ -71,7 +71,6 @@ string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_learnt=1),b
 int synthesis = false;
 int use_cadet = 0;
 int do_unate_def = true;
-int do_unate_def_rep = false;
 int do_revbce = false;
 int do_minim_indep = true;
 int do_sat_sweep = false;
@@ -174,21 +173,6 @@ void add_arjun_options() {
     myopt("--unatedefeqconfl", conf.unate_def_eq_max_confl, fc_int,"Conflict budget per SAT call inside the equiv unate_def search");
     myopt("--unatedefeqdry", conf.unate_def_eq_dry_streak, fc_int,"Disable equiv unate_def probe after this many consecutive misses with zero hits so far (very low = bail aggressively, very high = effectively never disable)");
     myopt("--unatedefeqnoninp", conf.unate_def_eq_noninput, fc_int,"Allow non-input vars (to-define + already-tested) as the candidate L in t = L. Inputs are still tried first; non-inputs only after the input list is exhausted. 0 = inputs only");
-    myopt("--unatedefrep", do_unate_def_rep, fc_int,"In unate_def, run a manthan-style guess-and-repair pass for vars still undefined after the literal-only equiv probe");
-    myopt("--unatedefrepiters", conf.unate_def_rep_iters, fc_int,"Per-variable iteration budget in the repair-based unate_def pass");
-    myopt("--unatedefrepmaxpat", conf.unate_def_rep_max_pattern, fc_int,"Skip CEX whose minimized core (= candidate AIG conjunct count) exceeds this");
-    myopt("--unatedefrepmaxcz", conf.unate_def_rep_max_costzero, fc_int,"Give up on a variable after this many cost-zero CEXes in the repair pass");
-    myopt("--unatedefrepconfl", conf.unate_def_rep_max_confl, fc_int,"Conflict budget per SAT call inside the repair-based unate_def pass");
-    myopt("--unatedefrepaux", conf.unate_def_rep_aux, fc_int,"Allow H to use non-input leaves in unate_def_rep. 0=input-only; 1=input+backward-defined (cycle-checked); 2=input+backward-defined+to-define (richest)");
-    myopt("--unatedefrepminim", conf.unate_def_rep_minim, fc_int,"Greedy conflict minimization on the F-only solver in unate_def_rep. 0=off; 1=greedy single pass; 2=greedy + extra shuffled passes for hot vars");
-    myopt("--unatedefrepminbud", conf.unate_def_rep_minim_budget, fc_int,"Per-iter budget on minimization solver calls (number of literal-removal attempts allowed before bailing out)");
-    myopt("--unatedefrepinpfirst", conf.unate_def_rep_input_only_first, fc_int,"Try input-only F-solver call before input+aux. 0=off; 1=always; 2=only when aux_vars is non-empty");
-    myopt("--unatedefrepdropaux", conf.unate_def_rep_drop_aux, fc_int,"After greedy minim, attempt a single-shot SAT call dropping all aux lits from the pattern. 0=off; 1=on");
-    myopt("--unatedefrepmulticex", conf.unate_def_rep_multi_cex_k, fc_int,"Collect K CEX models per iteration and refine H using the one with the smallest input-only conflict. 1 = off");
-    myopt("--unatedefrepiterverb", conf.unate_def_rep_iter_verb, fc_int,"Per-iteration trace verbosity threshold. The trace fires when --verb >= this value");
-    myopt("--unatedefrepfreqsort", conf.unate_def_rep_freq_sort, fc_int,"Sort minim drop order by ascending pattern-frequency (manthan-style). 0=off; 1=on");
-    myopt("--unatedefrepminextra", conf.unate_def_rep_minim_extra_passes, fc_int,"Number of extra minim passes with reverse-order shuffle after the main greedy loop (manthan-style hot-var extra passes)");
-    myopt("--unatedefrepmultipat", conf.unate_def_rep_multi_pat, fc_int,"With multi-CEX>1, refine H with patterns from ALL collected models (not just chosen). 0=off; 1=on");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
     myopt("--minvertlearn", mconf.inv_learnt, fc_int,"Invert learnt functions");
@@ -381,20 +365,6 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_unate_def_eq_max_confl(conf.unate_def_eq_max_confl);
     arj->set_unate_def_eq_dry_streak(conf.unate_def_eq_dry_streak);
     arj->set_unate_def_eq_noninput(conf.unate_def_eq_noninput);
-    arj->set_unate_def_rep_iters(conf.unate_def_rep_iters);
-    arj->set_unate_def_rep_max_pattern(conf.unate_def_rep_max_pattern);
-    arj->set_unate_def_rep_max_costzero(conf.unate_def_rep_max_costzero);
-    arj->set_unate_def_rep_max_confl(conf.unate_def_rep_max_confl);
-    arj->set_unate_def_rep_aux(conf.unate_def_rep_aux);
-    arj->set_unate_def_rep_minim(conf.unate_def_rep_minim);
-    arj->set_unate_def_rep_minim_budget(conf.unate_def_rep_minim_budget);
-    arj->set_unate_def_rep_input_only_first(conf.unate_def_rep_input_only_first);
-    arj->set_unate_def_rep_drop_aux(conf.unate_def_rep_drop_aux);
-    arj->set_unate_def_rep_multi_cex_k(conf.unate_def_rep_multi_cex_k);
-    arj->set_unate_def_rep_iter_verb(conf.unate_def_rep_iter_verb);
-    arj->set_unate_def_rep_freq_sort(conf.unate_def_rep_freq_sort);
-    arj->set_unate_def_rep_minim_extra_passes(conf.unate_def_rep_minim_extra_passes);
-    arj->set_unate_def_rep_multi_pat(conf.unate_def_rep_multi_pat);
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 
@@ -478,11 +448,6 @@ void do_synthesis() {
         arjun->standalone_unate_def(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unate_def.aig");
         SLOW_DEBUG_DO(check_stage("unate_def"));
-    }
-    if (do_unate_def && do_unate_def_rep && !cnf.synth_done()) {
-        arjun->standalone_unate_def_rep(cnf);
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unate_def_rep.aig");
-        SLOW_DEBUG_DO(check_stage("unate_def_rep"));
     }
 
     cnf.rewrite_aigs(conf.verb, do_sat_sweep);

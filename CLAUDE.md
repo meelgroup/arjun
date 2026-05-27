@@ -58,15 +58,11 @@ From `build/`:
 ./fuzz_synth.py --num 400
 ./fuzz_aig_to_cnf --num 1000
 ./fuzz_aig_rewrite --num 1000
-./fuzz_unate_def_rep.py 300
 ./fuzz_interp_repair.py --num 400
 ```
 
-All must pass before reporting a change as complete. `fuzz_unate_def_rep.py`
-forces `--unatedef 1 --unatedefrep 1` on every iteration and verifies the
-`*-unsat_unate_def_rep.aig` output AIG via `test-synth`; the general
-`fuzz_synth.py` only randomizes those flags so the rep-pass output is not
-always exercised. `fuzz_interp_repair.py` forces `--interprepair` on every
+All must pass before reporting a change as complete.
+`fuzz_interp_repair.py` forces `--interprepair` on every
 iteration and randomizes the full set of `--interprepair*` knobs, so the
 Craig-interpolant repair path is exercised.
 

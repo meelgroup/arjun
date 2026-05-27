@@ -40,7 +40,6 @@
 #include "constants.h"
 #include "autarky.h"
 #include "unate_def.h"
-#include "unate_def_rep.h"
 #include "manthan.h"
 #include "cadet.h"
 #include "metasolver.h"
@@ -194,12 +193,6 @@ DLL_PUBLIC void Arjun::standalone_unate_def(SimplifiedCNF& cnf)
 {
     Unate unate(arjdata->conf);
     unate.synthesis_unate_def(cnf);
-}
-
-DLL_PUBLIC void Arjun::standalone_unate_def_rep(SimplifiedCNF& cnf)
-{
-    UnateDefRep rep(arjdata->conf, cnf);
-    rep.run();
 }
 
 DLL_PUBLIC void Arjun::standalone_sbva(SimplifiedCNF& orig,
@@ -1902,7 +1895,7 @@ DLL_PUBLIC VarTypes
 
         const uint32_t new_var = orig_to_new_var.at(orig).var();
         assert(new_var < nVars());
-        // Skolem-committed vars (from unate_def_rep aux>=1) are never
+        // Skolem-committed vars are never
         // extend-defined: their AIG is just one valid Skolem choice, not
         // the unique value F forces, so Manthan must build a formula
         // for them and run the y_hat propagation. Categorizing them as
@@ -2412,8 +2405,7 @@ DLL_PUBLIC void SimplifiedCNF::check_pre_post_backward_round_synth() const {
                     break;
                 }
             }
-            // Skolem-committed vars (set_def_skolem, e.g. from
-            // unate_def_rep aux>=1) are allowed to reach non-orig-sampl
+            // Skolem-committed vars (set_def_skolem) are allowed to reach non-orig-sampl
             // leaves: their AIG is just one valid winning Skolem, not a
             // unique-defining function over inputs. The "pre-backward-
             // round-synth" invariant only applies to unique-defining defs
@@ -3057,20 +3049,6 @@ set_get_macro(uint32_t, extend_max_confl)
 set_get_macro(int, unate_def_eq)
 set_get_macro(uint32_t, unate_def_eq_max_per_var)
 set_get_macro(uint32_t, unate_def_eq_max_confl)
-set_get_macro(uint32_t, unate_def_rep_iters)
-set_get_macro(uint32_t, unate_def_rep_max_pattern)
-set_get_macro(uint32_t, unate_def_rep_max_costzero)
-set_get_macro(uint32_t, unate_def_rep_max_confl)
-set_get_macro(uint32_t, unate_def_rep_aux)
-set_get_macro(uint32_t, unate_def_rep_minim)
-set_get_macro(uint32_t, unate_def_rep_minim_budget)
-set_get_macro(uint32_t, unate_def_rep_input_only_first)
-set_get_macro(uint32_t, unate_def_rep_drop_aux)
-set_get_macro(uint32_t, unate_def_rep_multi_cex_k)
-set_get_macro(uint32_t, unate_def_rep_iter_verb)
-set_get_macro(uint32_t, unate_def_rep_freq_sort)
-set_get_macro(uint32_t, unate_def_rep_minim_extra_passes)
-set_get_macro(uint32_t, unate_def_rep_multi_pat)
 set_get_macro(uint32_t, unate_def_eq_dry_streak)
 set_get_macro(int, unate_def_eq_noninput)
 set_get_macro(int, oracle_find_bins)
