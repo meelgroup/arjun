@@ -169,6 +169,12 @@ private:
     // can purge selector-gated clauses on its next simplification.
     void backjump_to_level(uint32_t target);
 
+    // Make a fresh guess decision: pick var v with polarity val,
+    // increment decision_lvl, allocate a selector, add the gated
+    // decision clause {¬sel_d, (v=val)} to skolem_sat, and record
+    // the commit on the trail. Tentative: backjumpable.
+    void make_decision(uint32_t v, bool val);
+
     // --- algorithm pieces ---
 
     // Phase E: small-input SAT-model enumeration. Loads F + Tseitin

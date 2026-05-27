@@ -109,6 +109,29 @@ void Cadet::inject_cnf(S& s) const {
     for (const auto& c : cnf.get_red_clauses()) s.add_red_clause(c);
 }
 
+void Cadet::make_decision(uint32_t v, bool val) {
+    assert(skol[v] == nullptr);
+    // Allocate fresh selector. sel_d active ⇒ decision in force.
+    skolem_sat->new_var();
+    const Lit sel(skolem_sat->nVars() - 1, /*sign=*/false);
+    sel_lits.push_back(sel);
+
+    // Decision lit: y=val. For val=true: Lit(v, sign=false). For
+    // val=false: Lit(v, sign=true).
+    const Lit dlit(v, /*sign=*/!val);
+    decision_lits.push_back(dlit);
+    decision_lvl++;
+
+    // Gated decision clause: (¬sel_d ∨ dlit). When sel_d assumed,
+    // dlit must hold.
+    skolem_sat->add_clause({~sel, dlit});
+
+    // Commit skol[v] to the constant and trail it as a decision.
+    skol[v] = AIG::new_const(val);
+    trail.push_back({v, decision_lvl, /*is_decision=*/true, dlit, {}});
+    mark_clauses_dead_by_constant(v, val);
+}
+
 std::vector<Lit> Cadet::active_assumps() const {
     // Return [sel_lits[0], ..., sel_lits[decision_lvl-1]] —
     // assumption list that activates all currently-live decision levels.
