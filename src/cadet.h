@@ -80,32 +80,15 @@ private:
 
     // --- algorithm pieces ---
 
-    // True iff |input| <= small_input_threshold so an exhaustive table is
-    // affordable. This drives the simple v1 path.
-    bool inputs_are_small() const;
-
-    // Phase A: for each y in to_define, build its Skolem by enumerating
-    // every orig-sampling-var assignment, calling SAT under the assumption,
-    // and reading y's value from the model. Each y's Skolem is then built
-    // as a Shannon-decomposition binary tree of ITEs over the sorted
-    // input vars — vastly smaller than a flat OR-of-minterms when the
-    // function has structure (constant subtrees collapse).
-    bool synth_by_enumeration();
-
-    // Phase E: complete-the-synthesis pass. Unlike Phase A/B (which reset
-    // skol[] and only run when Phase C+D committed nothing), Phase E
-    // RESPECTS Phase C+D's prior commits by Tseitin-encoding them into a
-    // fresh SAT solver, then enumerates input patterns via SAT model
-    // search to fill in tables for the still-undet vars. SAT models
-    // automatically satisfy the Tseitin constraints, so the values
-    // collected for the undet y's are jointly consistent with everything
-    // already committed.
+    // Phase E: complete-the-synthesis pass. RESPECTS Phase C+D's prior
+    // commits by Tseitin-encoding them into a fresh SAT solver, then
+    // enumerates input patterns via repeated SAT model search to fill
+    // in tables for the still-undet vars. SAT models automatically
+    // satisfy the Tseitin constraints, so the values collected for the
+    // undet y's are jointly consistent with everything already committed.
     //
-    // Enumeration bound is the same as Phase A (|orig_sampl_cnf| <= 16),
-    // but Phase E ADDS to the partial state rather than starting over.
-    // This is what makes "--cadet 1" useful when Phase C+D committed
-    // some vars but not all: previously the only choice was Manthan
-    // handoff; now Phase E finishes locally when feasible.
+    // Enumeration bound is |orig_sampl_cnf| <= 16. For larger input
+    // spaces Phase F (terminal, no threshold) takes over.
     bool synth_complete_with_models();
 
     // Phase F: like Phase E but each SAT-model case is generalized to
@@ -170,45 +153,10 @@ private:
     //       are constant-unsat under the running state,
     //   (c) the per-commit cycle check from Phase C catching
     //       structural cycles,
-    //   (d) Phase B / Phase A as fallbacks if Phase C+D produces a
-    //       Skolem that fails downstream verification.
+    //   (d) Phase F (terminal) catching any remainder.
     //
     // Returns true iff every to_define var was determinized.
     bool synth_by_propagation();
-
-    // Phase B: connected-component enumeration. The CNF clause graph,
-    // treating already-determined vars (orig sampling + extend-defined +
-    // backward-defined) as opaque sinks, partitions the to_define vars
-    // into connected components. Each component carries its own
-    // restricted set of "input" sinks; we Phase-A-enumerate each
-    // component over its restricted inputs only.
-    //
-    // Why a whole component at once (not one y at a time): the to_define
-    // vars in a component are jointly determined by F restricted to that
-    // component. Synthesizing them one at a time would let the SAT
-    // solver pick mutually-inconsistent values across calls.
-    //
-    // Why this scales: when F decomposes into many small components,
-    // each component's enumeration is 2^(small). The full-input
-    // exponential blowup (Phase A) only hits monolithic CNFs.
-    bool synth_by_components();
-
-    // Compute the connected component (of the CNF clause graph, with
-    // sinks at `stop_set` boundaries) containing `seed_var`. Output is
-    // split into:
-    //   - support_out: orig sampling vars reached (sinks; the component's
-    //     "inputs")
-    //   - to_def_out: to_define vars in the component (Skolems to build)
-    //   - clauses_out: clause indices that lie entirely inside the
-    //     component (their literals are subsumed by support ∪ to_def ∪
-    //     other stop_set members) — i.e. the clauses to satisfy. Each
-    //     clause index that touches the component is included.
-    void collect_component(uint32_t seed_var,
-                           const std::set<uint32_t>& stop_set,
-                           const std::vector<std::vector<uint32_t>>& var_to_clauses,
-                           std::vector<uint32_t>& support_out,
-                           std::vector<uint32_t>& to_def_out,
-                           std::vector<uint32_t>& clauses_out) const;
 
     // Build a Skolem AIG from a value table by Shannon decomposition over
     // `sorted_inputs`. `table[mask]` is the y-value for the input

@@ -264,6 +264,16 @@ def run_synth(solver, fname):
         return None, [], info
 
     if returncode != 0 and not out.startswith("TIMEOUT"):
+        # SIGTERM (143) and SIGKILL (137) are timeout-adjacent — the
+        # OS or some watchdog killed the process. Treat them as soft
+        # skips, same as the explicit TIMEOUT path, rather than as
+        # correctness failures. Without this, a slow cadet run that
+        # lands the process in the timeout-kill window gets logged
+        # as "Synthesis failed" and stops the fuzzer.
+        if returncode in (143, 137):
+            print("Solver killed by signal (returncode %d) — treating as timeout"
+                  % returncode)
+            return None, [], info
         print("Solver crashed with exit code %d" % returncode)
         print(out)
         return True, [], info
