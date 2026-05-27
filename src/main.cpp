@@ -275,65 +275,9 @@ void add_arjun_options() {
     myopt("--interprepairfullconf", mconf.interp_repair_full_conflict, fc_int,
           "Full-conflict interpolation: put ALL conflict units in B (not just input units). The interpolant is then over every conflict var rather than the input projection, generalising the whole conflict clause 'as-is'. build_interp_branch_formula drops the AND with y_other leaves since the interpolant already covers them. 0=off (default, input-only), 1=on.");
 
-    // === CADET (--cadet 1) knobs ===
-    myopt("--cadetcegar", mconf.cadet_cegar, fc_int,
-          "CADET CEGAR refinement in Phase D: when forced-only stalls, run a counterexample-guided sub-loop that shrinks the universal search space via UNSAT-core cube minimization before falling back to a speculative guess. 0=off, 1=on.");
-    myopt("--cadetcegarevery", mconf.cadet_cegar_every, fc_int,
-          "Try CEGAR every N Phase-D outer passes. 1 = every stall.");
-    myopt("--cadetcegarmaxtot", mconf.cadet_cegar_max_total_rounds, fc_int,
-          "Per Phase D entry: cap on total CEGAR rounds across all stalls. 0 = no cap.");
-    myopt("--cadetcegarmaxperstall", mconf.cadet_cegar_max_rounds_per_stall, fc_int,
-          "Per stall: max CEGAR rounds before guessing. Mirrors cadet's max_cegar_iterations_per_learnt_clause.");
-    myopt("--cadetcegarmaxavgcube", mconf.cadet_cegar_max_avg_cube, fc_int,
-          "Avg cube-size break: bail CEGAR for this stall when the trailing mean kept-cube size exceeds this. Mirrors cadet's cegar_effectiveness_threshold.");
-    myopt("--cadetcegarpery", mconf.cadet_cegar_per_y, fc_int,
-          "Per-y forcing fallback inside CEGAR rounds. 0=off, 1=on.");
-    myopt("--cadetcegarperyundetcap", mconf.cadet_cegar_per_y_undet_cap, fc_int,
-          "Per-y CEGAR fallback: skip when undet count > this (each per-y call adds |undet| SAT calls per round).");
-    myopt("--cadetcegarperywindow", mconf.cadet_cegar_per_y_productivity_window, fc_int,
-          "Per-y CEGAR adaptive disable productivity window (number of checks before evaluating commits/checks ratio). 0 = no adaptive disable.");
-    myopt("--cadetcegarperyminprod", mconf.cadet_cegar_per_y_min_productivity, fc_double,
-          "Per-y CEGAR adaptive disable: ratio threshold below which per-y is disabled for the rest of the run.");
-    myopt("--cadetcegarrebuildevery", mconf.cadet_cegar_rebuild_every, fc_int,
-          "Rebuild exists_solver from scratch every N level-0 commits (keeps Tseitin growth bounded). 0 = never rebuild.");
-    myopt("--cadetcegardisableafter", mconf.cadet_cegar_overall_disable_after, fc_int,
-          "Disable CEGAR for the rest of the Phase D entry after this many total CEGAR rounds without a CONSTANT commit (per-y constraint clauses don't count). 0 = never disable.");
-    myopt("--cadetcegarconsecbail", mconf.cadet_cegar_consec_bail, fc_int,
-          "Per stall: bail CEGAR after this many consecutive rounds with clauses but no constant commit. Original cadet behavior was hardcoded 2.");
-    myopt("--cadetcegarnoopbail", mconf.cadet_cegar_noop_bail, fc_int,
-          "Per stall: bail CEGAR after this many consecutive pure no-op rounds (joint-SAT with no per-y commits and no clauses added). Original cadet bailed on the first no-op; with --cadetcegarforbidonsat 1 each no-op round gets a different skolem_sat model so >1 is productive.");
-    myopt("--cadetcegarforbidonsat", mconf.cadet_cegar_forbid_on_sat, fc_int,
-          "After a joint-SAT CEGAR round with no constant commit, add ¬cube (negation of the explored X-cube) to skolem_sat so the next round's level-0 solve returns a different model. 0=off, 1=on.");
-
-    // Existing Phase C/D/E/F internals exposed as knobs.
+    // === CADET (--cadet 1) knobs — Phase-E-only driver ===
     myopt("--cadetphaseeth", mconf.cadet_phase_e_threshold, fc_int,
-          "Phase E gate: |orig_sampl_cnf| ≤ this triggers SAT-model enumeration (Phase E). Above this, Phase F runs directly.");
-    myopt("--cadetguessdepth", mconf.cadet_max_guess_depth, fc_int,
-          "Phase D speculative guess-depth cap. Above this, drain forced-only at level 0 and hand off to Phase E/F.");
-    myopt("--cadetrestartinit", mconf.cadet_restart_initial, fc_int,
-          "Phase D geometric-restart initial conflict count.");
-    myopt("--cadetrestartfactor", mconf.cadet_restart_factor, fc_double,
-          "Phase D geometric-restart growth factor.");
-    myopt("--cadetactdecay", mconf.cadet_activity_decay, fc_double,
-          "VSIDS multiplicative-decay factor (per decay step).");
-    myopt("--cadetphasefsimpevery", mconf.cadet_phase_f_simplify_every, fc_int,
-          "Phase F periodic AIG simplification cadence (iters between simplify passes on each partial[y]).");
-    myopt("--cadetphasefperycap", mconf.cadet_phase_f_per_y_undet_cap, fc_int,
-          "Phase F per-y uniqueness fallback cap (undet count above which per-y is skipped).");
-    myopt("--cadetphasefperywindow", mconf.cadet_phase_f_per_y_window, fc_int,
-          "Phase F per-y adaptive disable productivity window.");
-    myopt("--cadetphasefperyminprod", mconf.cadet_phase_f_per_y_min_productivity, fc_double,
-          "Phase F per-y adaptive disable: ratio threshold below which per-y is disabled.");
-    myopt("--cadetpartial", mconf.cadet_partial, fc_int,
-          "If > 0, cap Phase F outer iterations at K and leave remaining undet vars undefined. The caller (arjun's --cadet 1 driver) then runs Manthan to complete them. 0 = no cap, cadet always finishes alone.");
-    myopt("--cadetclausemin", mconf.cadet_clause_min, fc_int,
-          "Phase D conflict-clause minimization on the failed-assumption core (drop+resolve, descending dlvl). 0=off, 1=on. Mirrors cadet's c2_minimize_clause.");
-    myopt("--cadetclauseminfloor", mconf.cadet_clause_min_size_floor, fc_int,
-          "Skip clause minimization when the failed core has ≤ K selectors. Default 2.");
-    myopt("--cadetreplenish", mconf.cadet_skolem_sat_replenish_every, fc_int,
-          "Periodic skolem_sat rebuild — after K level-0 commits, rebuild the inner SAT solver from F + current skol[] commits + learnt clauses to shed accumulated Tseitin junk. 0 = off. Mirrors cadet's c2_replenish_skolem_satsolver.");
-    myopt("--cadetratify", mconf.cadet_ratify_speculative, fc_int,
-          "At Phase D end, ratify speculative decisions that became F-implied via learnt clauses (promotes the selector to a unit clause). 0 = off (unconditional backjump), 1 = on.");
+          "Phase E hard cap: |orig_sampl_cnf| ≤ this. Above it cadet release_asserts (each y allocates 2^N truth-table entries, so raising past ~20 OOMs).");
 
     // Simplification options for minim
     myopt("--probe", conf.probe_based, fc_int,"Use simple probing to set (and define) some variables");
@@ -543,34 +487,17 @@ void do_synthesis() {
 
     cnf.rewrite_aigs(conf.verb, do_sat_sweep);
     if (use_cadet) {
-        // Full CADET: incremental determinization with a terminal
-        // SAT-model-enumeration phase (Phase F). Always finishes
-        // synthesis alone — no Manthan fallback. If any var slips
-        // through, that's a bug in cadet, not something to paper over.
-        //
-        // Exception: --cadetpartial K > 0 explicitly asks cadet to bail
-        // out of Phase F after K iterations and hand the remaining
-        // undet vars to Manthan. In that mode synth_done() may be false
-        // after cadet returns; we then run Manthan to finish.
+        // Phase-E-only CADET: enumerate every consistent X assignment,
+        // build per-y Shannon trees. Always finishes alone or
+        // release_asserts; no Manthan fallback.
         if (!cnf.synth_done()) {
             cout << "c o [arjun] Synthesis: CADET" << endl;
             cnf = arjun->standalone_cadet(std::move(cnf), mconf);
         }
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-cadet.aig");
         SLOW_DEBUG_DO(check_stage("cadet"));
-        if (!cnf.synth_done()) {
-            release_assert(mconf.cadet_partial > 0 &&
-                           "CADET must produce a Skolem for every existential — "
-                           "no Manthan fallback unless --cadetpartial > 0");
-            cout << "c o [arjun] CADET partial bail — running Manthan to finish" << endl;
-            SynthRunner synth_runner(conf, arjun);
-            auto strategies = synth_runner.parse_mstrategy(mstrategy);
-            synth_runner.run_manthan_strategies(cnf, mconf, strategies);
-            release_assert(cnf.synth_done() &&
-                           "Manthan must finish what CADET partial left undone");
-            if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
-            SLOW_DEBUG_DO(check_stage("manthan"));
-        }
+        release_assert(cnf.synth_done() &&
+                       "CADET must produce a Skolem for every existential");
     } else {
         SynthRunner synth_runner(conf, arjun);
         auto strategies = synth_runner.parse_mstrategy(mstrategy);

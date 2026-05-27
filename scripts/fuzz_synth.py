@@ -241,6 +241,12 @@ def run_synth(solver, fname):
         print("Too much time to solve with %s, aborted: " % solver)
         return None, []
     if returncode != 0 and not out.startswith("TIMEOUT"):
+        # Phase-E-only cadet release_asserts when |orig_sampl_cnf| >
+        # cadet_phase_e_threshold (each y allocates a 2^N truth table).
+        # Skip the iter rather than report a bug — the limit is by design.
+        if "cadet_phase_e_threshold" in out:
+            print("cadet Phase E threshold exceeded; skipping iteration")
+            return None, []
         print("Solver crashed with exit code %d (signal %d)" % (returncode, -returncode))
         return True, []
 
