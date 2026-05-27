@@ -190,6 +190,14 @@ private:
     template<typename S>
     void inject_cnf(S& s) const;
 
+    // One-shot helper: inject F into `s`, allocate a known-true literal
+    // (needed by AIGToCNF for constant nodes), and tseitin-encode every
+    // already-committed skol[y] as `y ↔ root` clauses. Constant skols
+    // become unit clauses. Returns the true-literal in `out_true_lit`.
+    // Used by Phase E and Phase F when they need their own private
+    // solver instance.
+    void build_solver_with_skols(MetaSolver& s, CMSat::Lit& out_true_lit) const;
+
     // Set defs[v] for every v in to_define from skol[v], via map_aigs_to_orig.
     void commit_definitions();
 };

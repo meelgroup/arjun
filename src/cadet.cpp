@@ -108,6 +108,28 @@ void Cadet::inject_cnf(S& s) const {
     for (const auto& c : cnf.get_red_clauses()) s.add_red_clause(c);
 }
 
+void Cadet::build_solver_with_skols(MetaSolver& s, Lit& out_true_lit) const {
+    inject_cnf(s);
+    s.new_var();
+    const uint32_t tv = s.nVars() - 1;
+    out_true_lit = Lit(tv, /*sign=*/false);
+    s.add_clause({out_true_lit});
+    using AIGEnc = ArjunNS::AIGToCNF<MetaSolver>;
+    AIGEnc enc(s);
+    enc.set_true_lit(out_true_lit);
+    for (uint32_t y : to_define) {
+        if (skol[y] == nullptr) continue;
+        if (skol[y]->type == AIGT::t_const) {
+            const bool val = !skol[y].neg;
+            s.add_clause({Lit(y, /*sign=*/!val)});
+        } else {
+            const Lit root = enc.encode(skol[y]);
+            s.add_clause({~Lit(y, /*sign=*/false), root});
+            s.add_clause({Lit(y, /*sign=*/false), ~root});
+        }
+    }
+}
+
 
 aig_ptr Cadet::build_shannon_tree(const vector<bool>& table,
                                   const vector<uint32_t>& sorted_inputs) {
@@ -444,36 +466,14 @@ bool Cadet::synth_complete_with_models() {
     }
     const double t0 = cpuTime();
 
-    // Build a fresh SAT solver loaded with F, plus a known-true literal
-    // (needed by AIGToCNF for constant nodes).
+    // Build a fresh SAT solver loaded with F + tseitin of prior skol[]
+    // commits via the shared helper. Phase E adds forbid clauses later
+    // and so cannot share the persistent skolem_sat (those forbid
+    // clauses must not leak into Phase F or Phase D).
     MetaSolver sat(SolverType::cadical);
-    inject_cnf(sat);
-    sat.new_var();
-    const uint32_t true_var = sat.nVars() - 1;
-    const Lit true_lit(true_var, /*sign=*/false);
-    sat.add_clause({true_lit}); // unit: true_var = TRUE
-
-    // Encode every prior skol[] commit into the SAT solver so any
-    // model respects it. We need this for BOTH Phase C's AIGs and
-    // Phase D's constants — those are the only prior commits this
-    // phase can see (Phase E itself only commits at the end).
-    using AIGEnc = ArjunNS::AIGToCNF<MetaSolver>;
-    AIGEnc enc(sat);
-    enc.set_true_lit(true_lit);
-    for (uint32_t y : to_define) {
-        if (skol[y] == nullptr) continue;
-        if (skol[y]->type == AIGT::t_const) {
-            // Constant: skol[y] is TRUE iff its edge sign is positive.
-            const bool val = !skol[y].neg;
-            sat.add_clause({Lit(y, /*sign=*/!val)}); // y = val
-        } else {
-            // Non-constant AIG (Phase C's pos_force). Tseitin-encode
-            // it, then add the y ↔ root equivalence.
-            const Lit root = enc.encode(skol[y]);
-            sat.add_clause({~Lit(y, false), root});  // y → root
-            sat.add_clause({Lit(y, false), ~root});  // ¬y → ¬root
-        }
-    }
+    Lit true_lit;
+    build_solver_with_skols(sat, true_lit);
+    (void)true_lit; // currently unused after setup, kept for future ext.
 
     // Now iterate: every solve returns a SAT model whose values for
     // committed y's already match their skol[]s (via the Tseitin
@@ -646,32 +646,12 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
     // previous region on its kept bits), sat would return UNSAT for
     // the WRONG reason — making us spuriously drop bits and commit
     // wrong cases. Caught by fuzz_cadet seed 12315156945706132842.
-    auto build_solver = [&](MetaSolver& s) {
-        inject_cnf(s);
-        s.new_var();
-        const uint32_t tv = s.nVars() - 1;
-        const Lit tl(tv, /*sign=*/false);
-        s.add_clause({tl});
-        using AIGEnc = ArjunNS::AIGToCNF<MetaSolver>;
-        AIGEnc enc(s);
-        enc.set_true_lit(tl);
-        for (uint32_t y : to_define) {
-            if (skol[y] == nullptr) continue;
-            if (skol[y]->type == AIGT::t_const) {
-                const bool val = !skol[y].neg;
-                s.add_clause({Lit(y, !val)});
-            } else {
-                const Lit root = enc.encode(skol[y]);
-                s.add_clause({~Lit(y, false), root});
-                s.add_clause({Lit(y, false), ~root});
-            }
-        }
-    };
-
     MetaSolver sat(SolverType::cadical);
     MetaSolver minim(SolverType::cadical);
-    build_solver(sat);
-    build_solver(minim);
+    Lit sat_true_lit, minim_true_lit;
+    build_solver_with_skols(sat, sat_true_lit);
+    build_solver_with_skols(minim, minim_true_lit);
+    (void)sat_true_lit; (void)minim_true_lit;
 
     vector<uint32_t> sorted_inputs = sub_inputs_in;
     std::sort(sorted_inputs.begin(), sorted_inputs.end());
