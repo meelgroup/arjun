@@ -98,6 +98,13 @@ private:
     // each propagation pass doesn't rebuild it.
     std::vector<std::vector<std::pair<uint32_t, bool>>> var_clauses;
 
+    // clause_dead[ci]=1 once some literal in clause ci has been
+    // committed to TRUE (i.e. skol[v]=const matching the lit's sign).
+    // Pure-literal detection in Phase C considers a clause "removed"
+    // when dead, so an undet var y is pure if every clause containing
+    // ¬y (resp. y) has already become dead via other commits.
+    std::vector<uint8_t> clause_dead;
+
     // --- algorithm pieces ---
 
     // Phase E: small-input SAT-model enumeration. Loads F + Tseitin
@@ -192,6 +199,17 @@ private:
     void enqueue_neighbours(uint32_t v,
                             std::vector<uint8_t>& in_queue,
                             std::vector<uint32_t>& queue) const;
+
+    // When skol[v] becomes a constant matching `val`, every clause
+    // where v appears with that polarity is satisfied. Mark those
+    // clauses dead so pure-literal detection can ignore them.
+    void mark_clauses_dead_by_constant(uint32_t v, bool val);
+
+    // Try a pure-literal commit on y: if every undead clause where y
+    // appears has y positively (resp. negatively), committing y=true
+    // (resp. false) satisfies all of them and so is sound. Returns
+    // true if committed.
+    bool try_pure_literal(uint32_t y);
 
     // Build a Skolem AIG from a value table by Shannon decomposition over
     // `sorted_inputs`. `table[mask]` is the y-value for the input

@@ -254,6 +254,47 @@ bool Cadet::try_propagate(uint32_t y,
     }
     // Commit.
     skol[y] = pos_force;
+    if (pos_force->type == AIGT::t_const) {
+        mark_clauses_dead_by_constant(y, !pos_force.neg);
+    }
+    tseitin_skol_into_skolem_sat(y);
+    return true;
+}
+
+void Cadet::mark_clauses_dead_by_constant(uint32_t v, bool val) {
+    // Lit appears as +v when sign=false; that literal is TRUE iff val
+    // is true. ¬v has sign=true and is TRUE iff val is false. The
+    // satisfying-sign matches `!val` (since sign=true means ¬v).
+    const bool sat_sign = !val;
+    for (const auto& [ci, sign_v] : var_clauses[v]) {
+        if (sign_v == sat_sign) clause_dead[ci] = 1;
+    }
+}
+
+bool Cadet::try_pure_literal(uint32_t y) {
+    if (skol[y] != nullptr) return false;
+    // Count surviving (undead) clauses by polarity-of-y.
+    bool has_pos = false, has_neg = false;
+    for (const auto& [ci, sign_y] : var_clauses[y]) {
+        if (clause_dead[ci]) continue;
+        if (sign_y) has_neg = true;
+        else has_pos = true;
+        if (has_pos && has_neg) return false;
+    }
+    if (!has_pos && !has_neg) {
+        // Every clause already dead — y is unconstrained. Commit false
+        // (arbitrary; later AIG simplification folds it away).
+        skol[y] = AIG::new_const(false);
+        mark_clauses_dead_by_constant(y, false);
+        tseitin_skol_into_skolem_sat(y);
+        return true;
+    }
+    // Pure: if has_pos and !has_neg, y only appears positively in
+    // surviving clauses; setting y=true satisfies all of them.
+    // Symmetric for has_neg.
+    const bool val = has_pos;
+    skol[y] = AIG::new_const(val);
+    mark_clauses_dead_by_constant(y, val);
     tseitin_skol_into_skolem_sat(y);
     return true;
 }
@@ -303,8 +344,21 @@ bool Cadet::synth_by_propagation() {
         if (skol[y] == nullptr) { in_queue[y] = 1; queue.push_back(y); }
     }
 
+    // Seed clause_dead from any already-committed const skol[]. The
+    // input set already has skol[v]=lit (non-const leaves), backward
+    // has the same — neither kill clauses. But Phase C is allowed to
+    // re-enter this function in principle, so a constant left over
+    // from a previous pass would need to mark clauses; today this loop
+    // is a no-op because skol[] was just reset to nullptr / leaves.
+    for (uint32_t y : to_define) {
+        if (skol[y] != nullptr && skol[y]->type == AIGT::t_const) {
+            mark_clauses_dead_by_constant(y, !skol[y].neg);
+        }
+    }
+
     uint32_t total_committed = 0;
     uint32_t total_decisions = 0;
+    uint32_t total_pure = 0;
     uint32_t pass = 0;
     while (true) {
         pass++;
@@ -314,7 +368,18 @@ bool Cadet::synth_by_propagation() {
             const uint32_t y = queue.back();
             queue.pop_back();
             in_queue[y] = 0;
-            if (try_propagate(y, dep_cache, new_to_orig)) {
+            // Try unique-consequence propagation first, then pure-literal.
+            // Pure-literal can apply when not-all-determined: it doesn't
+            // require knowing every clause's other lits, just that the
+            // surviving clauses for y are one-sided.
+            bool committed = try_propagate(y, dep_cache, new_to_orig);
+            if (!committed) {
+                if (try_pure_literal(y)) {
+                    committed = true;
+                    total_pure++;
+                }
+            }
+            if (committed) {
                 committed_this_pass++;
                 total_committed++;
                 enqueue_neighbours(y, in_queue, queue);
@@ -366,6 +431,7 @@ bool Cadet::synth_by_propagation() {
             assumps[0] = Lit(pick, /*sign=*/false);
             if (decision_sat.solve(&assumps) == CMSat::l_False) {
                 skol[pick] = AIG::new_const(false);
+                mark_clauses_dead_by_constant(pick, false);
                 decision_sat.add_clause({Lit(pick, /*sign=*/true)});
                 total_decisions++;
                 any_decided = true;
@@ -380,6 +446,7 @@ bool Cadet::synth_by_propagation() {
             assumps[0] = Lit(pick, /*sign=*/true);
             if (decision_sat.solve(&assumps) == CMSat::l_False) {
                 skol[pick] = AIG::new_const(true);
+                mark_clauses_dead_by_constant(pick, true);
                 decision_sat.add_clause({Lit(pick, /*sign=*/false)});
                 total_decisions++;
                 any_decided = true;
@@ -414,6 +481,7 @@ bool Cadet::synth_by_propagation() {
     if (conf.verb >= 1) {
         cout << "c o [cadet] Phase C+D done. passes: " << pass
              << " props: " << total_committed
+             << " (pure: " << total_pure << ")"
              << " decisions: " << total_decisions
              << " remaining: " << remaining
              << " T: " << fixed << setprecision(2) << (cpuTime() - t0) << endl;
@@ -1076,6 +1144,7 @@ SimplifiedCNF Cadet::do_cadet() {
                 var_clauses[l.var()].emplace_back(ci, l.sign());
             }
         }
+        clause_dead.assign(clauses.size(), 0);
     }
 
     // Build the persistent Skolem SAT solver once with F injected.
