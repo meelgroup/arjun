@@ -40,11 +40,18 @@
    On guess: a fresh decision level opens with a selector and a
    gated decision clause. A global conflict check at the start of
    each pass spots when F+decisions is UNSAT; the failed-assumption
-   core gets mapped back to decision lits, the learnt clause is
-   added permanently (plus stashed for Phase E/F), and backjumping
-   pops the trail to the second-highest level. Geometric restart
-   (initial K=16, ×1.5 per restart) keeps the speculative tree from
-   compounding.
+   core gets mapped back to decision lits, MINIMIZED via the drop-
+   and-resolve loop (cadet's c2_minimize_clause analogue), the
+   learnt clause is added permanently (plus stashed for Phase E/F),
+   and backjumping pops the trail to the second-highest level.
+   Geometric restart (initial K=16, ×1.5 per restart) keeps the
+   speculative tree from compounding. After each restart the inner
+   SAT solver is optionally rebuilt to shed accumulated Tseitin junk
+   (cadet's c2_replenish_skolem_satsolver). At Phase D end any
+   speculative level whose decision is now F-implied (typically via
+   a learnt clause that arrived after the guess) is RATIFIED — its
+   selector becomes a unit clause and its commits stay — rather
+   than being unconditionally rolled back.
 
    CEGAR (Phase D companion) — counterexample-guided cube
    refinement, ported from cadet/src/cegar.c. Runs at level 0 when
@@ -167,6 +174,7 @@ void Cadet::make_decision(uint32_t v, bool val) {
     // Commit skol[v] to the constant and trail it as a decision.
     skol[v] = AIG::new_const(val);
     trail.push_back({v, decision_lvl, /*is_decision=*/true, dlit, {}});
+    clause_undet_delta(v, -1);
     mark_clauses_dead_by_constant(v, val);
 }
 
@@ -186,6 +194,7 @@ void Cadet::backjump_to_level(uint32_t target) {
         auto& te = trail.back();
         for (uint32_t ci : te.killed_clauses) clause_dead[ci] = 0;
         skol[te.var] = nullptr;
+        clause_undet_delta(te.var, +1);
         trail.pop_back();
     }
     // Permanently kill selector vars for levels (target, decision_lvl].
@@ -211,6 +220,15 @@ void Cadet::bump_var(uint32_t v) {
     }
 }
 
+void Cadet::clause_undet_delta(uint32_t v, int delta) {
+    for (const auto& [ci, sign_v] : var_clauses[v]) {
+        (void)sign_v;
+        const int32_t nv = static_cast<int32_t>(n_undet_per_clause[ci]) + delta;
+        assert(nv >= 0 && nv <= UINT16_MAX);
+        n_undet_per_clause[ci] = static_cast<uint16_t>(nv);
+    }
+}
+
 void Cadet::decay_activities() {
     // Multiplicative decay: scale the bump-increment UP by 1/decay
     // each time, equivalent to scaling all activities DOWN by decay.
@@ -221,6 +239,78 @@ void Cadet::decay_activities() {
         for (auto& a : var_activity) a *= inv;
         activity_inc *= inv;
     }
+}
+
+void Cadet::minimize_failed_selectors(std::set<uint32_t>& kept) {
+    // Without an internal propagator we can't do classical CDCL
+    // implication-graph minimization. The pragmatic substitute is:
+    // for each selector in the initial failed core, re-solve under the
+    // remaining selectors; if still UNSAT, that selector was redundant
+    // and we tighten `kept` to the new (possibly even smaller) failed
+    // core that cadical returns. Single pass, descending decision-level
+    // order — dropping a high-dlvl selector lets the subsequent
+    // second_lvl computation backjump deeper. Refreshing `kept` from
+    // each new conflict means one successful drop can chain into more.
+    if (!mconf.cadet_clause_min) return;
+    if (kept.size() <= mconf.cadet_clause_min_size_floor) return;
+
+    clause_min_total_in_lits += kept.size();
+    const size_t in_size = kept.size();
+
+    // Map sel-var → dlvl, computed once. Walking sel_lits for every
+    // lookup would be O(dlvl²); the map is O(dlvl).
+    std::unordered_map<uint32_t, uint32_t> sel_var_to_dlvl;
+    sel_var_to_dlvl.reserve(decision_lvl);
+    for (uint32_t d = 1; d <= decision_lvl; d++) {
+        sel_var_to_dlvl[sel_lits[d - 1].var()] = d;
+    }
+
+    // Candidates: descending dlvl. Dropping the highest first means
+    // every successful drop tightens the backjump target.
+    std::vector<uint32_t> cands(kept.begin(), kept.end());
+    std::sort(cands.begin(), cands.end(),
+              [&](uint32_t a, uint32_t b) {
+                  return sel_var_to_dlvl[a] > sel_var_to_dlvl[b];
+              });
+
+    MetaSolver& s = *skolem_sat;
+    std::vector<Lit> trial;
+    trial.reserve(kept.size());
+    for (uint32_t sv : cands) {
+        if (kept.size() <= 1) break;
+        if (!kept.count(sv)) continue; // dropped by a previous refresh
+
+        trial.clear();
+        for (uint32_t k : kept) {
+            if (k == sv) continue;
+            trial.push_back(sel_lits[sel_var_to_dlvl[k] - 1]);
+        }
+        clause_min_resolves++;
+        if (s.solve(&trial) == CMSat::l_False) {
+            // sv was redundant. Refresh kept from the new failed core.
+            // The new core ⊆ trial's selectors ⊆ old kept \ {sv}.
+            std::set<uint32_t> new_kept;
+            for (const Lit& f : s.get_conflict()) {
+                if (sel_var_to_dlvl.count(f.var())) {
+                    new_kept.insert(f.var());
+                }
+            }
+            if (new_kept.empty()) {
+                // Cadical reported UNSAT without any failed assumption
+                // — F (or the gating clauses) alone is UNSAT under the
+                // empty assumption set. Hand the empty core back; the
+                // caller short-circuits to backjump-to-0.
+                kept.clear();
+                clause_min_drops += in_size;
+                clause_min_total_out_lits += 0;
+                return;
+            }
+            const size_t dropped = kept.size() - new_kept.size();
+            clause_min_drops += dropped;
+            kept = std::move(new_kept);
+        }
+    }
+    clause_min_total_out_lits += kept.size();
 }
 
 void Cadet::tseitin_skol_into_skolem_sat(uint32_t y) {
@@ -250,6 +340,98 @@ void Cadet::tseitin_skol_into_skolem_sat(uint32_t y) {
     const Lit root = enc.encode(skol[y]);
     skolem_sat->add_clause({~Lit(y, /*sign=*/false), root});
     skolem_sat->add_clause({Lit(y, /*sign=*/false), ~root});
+    skolem_sat_commits_since_build++;
+}
+
+uint32_t Cadet::ratify_speculative_decisions() {
+    if (decision_lvl == 0) return 0;
+    uint32_t ratified = 0;
+    for (uint32_t d = 1; d <= decision_lvl; d++) {
+        // Assume earlier selectors (still speculative or being ratified
+        // up the chain) + ¬decision_lit_d. UNSAT ⇒ decision_lit_d is
+        // F-implied under sel[0..d-2], so once those are promoted to
+        // unit, decision_lit_d is unconditionally F-implied.
+        std::vector<Lit> probe;
+        probe.reserve(d);
+        for (uint32_t e = 1; e < d; e++) probe.push_back(sel_lits[e - 1]);
+        probe.push_back(~decision_lits[d - 1]);
+        if (skolem_sat->solve(&probe) != CMSat::l_False) break;
+        ratified = d;
+    }
+    if (ratified == 0) return 0;
+    // Promote sel_d to unit for the ratified prefix. This makes the
+    // previously-gated clauses (decision clause + commits at level d)
+    // effectively ungated — equivalent to moving the level to 0.
+    for (uint32_t d = 1; d <= ratified; d++) {
+        skolem_sat->add_clause({sel_lits[d - 1]});
+    }
+    // Rewrite the trail so ratified levels survive future inspection
+    // as level-0 entries. (Phase E/F never look at dec_lvl, but the
+    // backjump in this function does.)
+    for (auto& te : trail) {
+        if (te.dec_lvl > 0 && te.dec_lvl <= ratified) te.dec_lvl = 0;
+    }
+    // Roll back any still-speculative levels above ratified.
+    backjump_to_level(ratified);
+    // Collapse the ratified levels into level 0: drop their selector /
+    // decision-lit metadata since the unit clauses above make them
+    // permanent.
+    decision_lits.clear();
+    sel_lits.clear();
+    decision_lvl = 0;
+    total_ratified += ratified;
+    if (conf.verb >= 1) {
+        cout << "c o [cadet] ratified " << ratified
+             << " speculative level(s) into permanent" << endl;
+    }
+    return ratified;
+}
+
+void Cadet::maybe_replenish_skolem_sat() {
+    // Only run at level 0 — sel_lits / decision_lits still reference
+    // the OLD solver's vars; replenishing under live decisions would
+    // need a re-allocation pass we'd rather avoid. The natural call
+    // sites in synth_by_propagation are restart and the level-0
+    // top-of-loop check.
+    if (mconf.cadet_skolem_sat_replenish_every == 0) return;
+    if (skolem_sat_commits_since_build < mconf.cadet_skolem_sat_replenish_every) return;
+    if (decision_lvl != 0) return;
+
+    auto new_solver = std::make_unique<MetaSolver>(SolverType::cadical);
+    inject_cnf(*new_solver);
+    new_solver->new_var();
+    const Lit new_true_lit(new_solver->nVars() - 1, /*sign=*/false);
+    new_solver->add_clause({new_true_lit});
+
+    using AIGEnc = ArjunNS::AIGToCNF<MetaSolver>;
+    AIGEnc enc(*new_solver);
+    enc.set_true_lit(new_true_lit);
+    for (uint32_t y : to_define) {
+        if (skol[y] == nullptr) continue;
+        if (skol[y]->type == AIGT::t_const) {
+            const bool val = !skol[y].neg;
+            new_solver->add_clause({Lit(y, /*sign=*/!val)});
+        } else {
+            const Lit root = enc.encode(skol[y]);
+            new_solver->add_clause({~Lit(y, /*sign=*/false), root});
+            new_solver->add_clause({Lit(y, /*sign=*/false), ~root});
+        }
+    }
+    // Replay learnt clauses — cadet's casesplits_steal_cases analogue
+    // for the closed-case database; arjun only has the one bag of
+    // failed-decision refutations.
+    for (const auto& lc : learnt_clauses) {
+        new_solver->add_red_clause(lc);
+    }
+
+    skolem_sat = std::move(new_solver);
+    skolem_sat_true_lit = new_true_lit;
+    skolem_sat_commits_since_build = 0;
+    skolem_sat_replenishes++;
+    if (conf.verb >= 1) {
+        cout << "c o [cadet] skolem_sat replenished (#" << skolem_sat_replenishes
+             << ", " << learnt_clauses.size() << " learnt replayed)" << endl;
+    }
 }
 
 void Cadet::build_solver_with_skols(MetaSolver& s, Lit& out_true_lit) const {
@@ -321,6 +503,22 @@ bool Cadet::try_propagate(uint32_t y,
                           const std::map<uint32_t, Lit>& new_to_orig) {
     if (skol[y] != nullptr) return false;
 
+    // Fast pre-check: a clause containing y has n_undet > 1 ⇔ some
+    // non-y lit in it is still undet. If ANY of y's clauses fails the
+    // n_undet ≤ 1 condition, y can't be a unique consequence yet —
+    // skip the per-clause inner walk entirely. Cadet's unique_-
+    // consequence[] machinery does this incrementally per clause; we
+    // do the same lookup on demand, which is cheaper than maintaining
+    // the inverse "ready-to-fire" queue per var. Dead clauses are
+    // already satisfied so they don't block — but their n_undet may
+    // still be > 1 because we don't decrement on death. Treat them
+    // as ready inline.
+    for (const auto& [ci, sign_y] : var_clauses[y]) {
+        (void)sign_y;
+        if (clause_dead[ci]) continue;
+        if (n_undet_per_clause[ci] > 1) return false;
+    }
+
     const auto& clauses = cnf.get_clauses();
     bool all_determined = true;
     aig_ptr pos_force = AIG::new_const(false);
@@ -385,6 +583,7 @@ bool Cadet::try_propagate(uint32_t y,
     skol[y] = pos_force;
     trail.push_back({y, decision_lvl, /*is_decision=*/false,
                      CMSat::Lit(0, false), {}});
+    clause_undet_delta(y, -1);
     if (pos_force->type == AIGT::t_const) {
         mark_clauses_dead_by_constant(y, !pos_force.neg);
     }
@@ -430,6 +629,7 @@ bool Cadet::try_pure_literal(uint32_t y) {
         // (arbitrary; later AIG simplification folds it away).
         skol[y] = AIG::new_const(false);
         trail.push_back({y, decision_lvl, /*is_decision=*/false, Lit(0, false), {}});
+        clause_undet_delta(y, -1);
         mark_clauses_dead_by_constant(y, false);
         tseitin_skol_into_skolem_sat(y);
         return true;
@@ -440,6 +640,7 @@ bool Cadet::try_pure_literal(uint32_t y) {
     const bool val = has_pos;
     skol[y] = AIG::new_const(val);
     trail.push_back({y, decision_lvl, /*is_decision=*/false, Lit(0, false), {}});
+    clause_undet_delta(y, -1);
     mark_clauses_dead_by_constant(y, val);
     tseitin_skol_into_skolem_sat(y);
     return true;
@@ -475,6 +676,21 @@ bool Cadet::synth_by_propagation() {
     skol.assign(cnf.nVars(), nullptr);
     for (uint32_t v : input) skol[v] = AIG::new_lit(v, /*neg=*/false);
     for (uint32_t v : backward_defined) skol[v] = AIG::new_lit(v, /*neg=*/false);
+
+    // Initialise n_undet_per_clause: count lits in each clause whose
+    // var still has skol[v]==nullptr. Input + backward_defined vars
+    // count as determined (they're literal leaves, not propagation
+    // candidates). Decremented on commits / restored on backjumps.
+    {
+        const auto& clauses_ref = cnf.get_clauses();
+        for (uint32_t ci = 0; ci < clauses_ref.size(); ci++) {
+            uint32_t undet = 0;
+            for (const auto& l : clauses_ref[ci]) {
+                if (skol[l.var()] == nullptr) undet++;
+            }
+            n_undet_per_clause[ci] = static_cast<uint16_t>(undet);
+        }
+    }
 
     trail.clear();
     decision_lits.clear();
@@ -512,6 +728,13 @@ bool Cadet::synth_by_propagation() {
     uint32_t total_pure = 0;
     uint32_t total_conflicts = 0;
     uint32_t total_restarts = 0;
+    skolem_sat_replenishes = 0;
+    total_ratified = 0;
+    // The persistent skolem_sat already has F injected plus any level-0
+    // commits we've tseitin-encoded so far. Treat its current state as
+    // "freshly built" — we only count NEW commits from here on towards
+    // the replenish threshold.
+    skolem_sat_commits_since_build = 0;
     // Geometric restart schedule: backjump to level 0 after every
     // `restart_threshold` conflicts, then grow the threshold by
     // kRestartFactor. Keeps learnt clauses; just discards the
@@ -548,6 +771,11 @@ bool Cadet::synth_by_propagation() {
                 }
             }
         }
+        // Replenish skolem_sat after enough level-0 commits have
+        // accumulated, restart-aligned (decision_lvl is 0 here). Cheap
+        // when --cadetreplenish 0 — short-circuits at the threshold
+        // check.
+        if (decision_lvl == 0) maybe_replenish_skolem_sat();
         uint32_t committed_this_pass = 0;
         // Drain the propagation worklist.
         while (!queue.empty()) {
@@ -604,14 +832,22 @@ bool Cadet::synth_by_propagation() {
         if (decision_lvl > 0) {
             vector<Lit> base = active_assumps();
             if (decision_sat.solve(&base) == CMSat::l_False) {
-                const auto failed = decision_sat.get_conflict();
+                // Pull selectors out of the initial failed core, then
+                // shrink it via re-solves (cadet's c2_minimize_clause
+                // analogue — see minimize_failed_selectors). The
+                // tightened set drives a smaller learnt clause AND a
+                // deeper backjump target.
+                std::set<uint32_t> kept_selectors;
+                for (const Lit& f : decision_sat.get_conflict()) {
+                    kept_selectors.insert(f.var());
+                }
+                minimize_failed_selectors(kept_selectors);
+
                 vector<Lit> learnt;
                 uint32_t max_lvl = 0, second_lvl = 0;
-                for (const Lit& f : failed) {
-                    // f is ~assumed_lit. The assumed lit is a selector
-                    // sel_d (positive), so f is ~sel_d. Find d.
+                for (uint32_t sv : kept_selectors) {
                     for (uint32_t d = 1; d <= decision_lvl; d++) {
-                        if (sel_lits[d - 1].var() == f.var()) {
+                        if (sel_lits[d - 1].var() == sv) {
                             learnt.push_back(~decision_lits[d - 1]);
                             if (d > max_lvl) {
                                 second_lvl = max_lvl;
@@ -703,6 +939,7 @@ bool Cadet::synth_by_propagation() {
                 skol[pick] = AIG::new_const(val);
                 trail.push_back({pick, decision_lvl,
                                  /*is_decision=*/false, Lit(0, false), {}});
+                clause_undet_delta(pick, -1);
                 mark_clauses_dead_by_constant(pick, val);
                 // Unified tseitin path: at level 0 permanent, at
                 // level>0 gated by sel_d. Backjump kills the gating.
@@ -820,11 +1057,17 @@ bool Cadet::synth_by_propagation() {
     // Before handing off to Phase E/F, undo every speculative (level>0)
     // commit. Phase E/F can only see level-0-permanent skol[] entries;
     // a wrong guess left behind here would corrupt their result.
-    // Without conflict-driven CDCL the guess infrastructure can't
-    // ratify a speculative commit, so they all get rolled back —
-    // future commits will add the conflict-analysis step that turns
-    // ratified guesses into permanent commits.
-    if (decision_lvl > 0) backjump_to_level(0);
+    //
+    // Try to ratify levels first — for any level d whose decision lit
+    // is now F-implied under the earlier selectors (typically thanks
+    // to learnt clauses added after the guess), promote sel_d to a
+    // unit clause and keep the trail entries. Speculative levels that
+    // stay non-implied get rolled back. Even one ratification spares
+    // Phase F a chunk of work.
+    if (decision_lvl > 0) {
+        if (mconf.cadet_ratify_speculative) ratify_speculative_decisions();
+        if (decision_lvl > 0) backjump_to_level(0);
+    }
 
     uint32_t remaining = 0;
     for (uint32_t y : to_define) if (skol[y] == nullptr) remaining++;
@@ -841,6 +1084,24 @@ bool Cadet::synth_by_propagation() {
              << " learnt: " << learnt_clauses.size()
              << " remaining: " << remaining
              << " T: " << fixed << setprecision(2) << (cpuTime() - t0) << endl;
+        if (clause_min_resolves > 0) {
+            const double avg_in = double(clause_min_total_in_lits)
+                                  / double(total_conflicts ? total_conflicts : 1);
+            const double avg_out = double(clause_min_total_out_lits)
+                                   / double(total_conflicts ? total_conflicts : 1);
+            cout << "c o [cadet]   clausemin: resolves=" << clause_min_resolves
+                 << " drops=" << clause_min_drops
+                 << " avg-lits " << fixed << setprecision(2) << avg_in
+                 << " -> " << avg_out << endl;
+        }
+        if (skolem_sat_replenishes > 0) {
+            cout << "c o [cadet]   skolem_sat replenishes: "
+                 << skolem_sat_replenishes << endl;
+        }
+        if (total_ratified > 0) {
+            cout << "c o [cadet]   ratified levels: "
+                 << total_ratified << endl;
+        }
         if (cegar_stat_rounds > 0) {
             const double avg_kept = cegar_stat_joint_unsat > 0
                 ? double(cegar_stat_cube_total)
@@ -2117,6 +2378,10 @@ SimplifiedCNF Cadet::do_cadet() {
             }
         }
         clause_dead.assign(clauses.size(), 0);
+        // n_undet_per_clause is sized here; the per-call count is set
+        // in synth_by_propagation() after skol[] is freshly assigned
+        // (input + backward_defined vars become determined immediately).
+        n_undet_per_clause.assign(clauses.size(), 0);
     }
 
     // CEGAR scaffolding: precompute the interface (orig sampling vars

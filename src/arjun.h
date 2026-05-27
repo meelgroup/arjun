@@ -1889,6 +1889,37 @@ public:
         // fallback. Phase F's iter unit is deterministic across runs
         // because the underlying cadical solves are deterministic.
         uint64_t cadet_partial = 0;
+
+        // CDCL learnt-clause minimization on the failed-assumption core.
+        // On Phase D's global conflict check, after getting the initial
+        // failed-assumption set we try to drop each selector via a
+        // re-solve; if the trial is still UNSAT, the selector was
+        // redundant and we tighten the learnt clause (also tightening
+        // backjump). Single-pass, descending-dlvl order, refresh from
+        // each new conflict. 0 = off, 1 = on. Mirrors cadet's
+        // c2_minimize_clause / minimize_learnt_clauses option.
+        int cadet_clause_min = 1;
+        // Skip minimization for cores of size ≤ this (no win possible).
+        // Default 2.
+        uint32_t cadet_clause_min_size_floor = 2;
+
+        // Periodic skolem_sat replenish — mirrors cadet's
+        // c2_replenish_skolem_satsolver (cadet2.c:625). Every commit to
+        // skolem_sat accumulates Tseitin gates that the cadical
+        // simplifier can't always purge. After K level-0 commits we
+        // rebuild skolem_sat from scratch on F + the current skol[]
+        // commits + learnt_clauses. 0 = off, >0 = rebuild after K
+        // level-0 commits. Replenish runs only at the top of a restart
+        // (decision_lvl == 0) so no selectors/decisions are alive.
+        uint32_t cadet_skolem_sat_replenish_every = 500;
+
+        // At the end of Phase D, try to ratify speculative decisions
+        // that turned out to be F-implied (typically thanks to learnt
+        // clauses added after the guess). Each ratified level is
+        // promoted to permanent (selector unit-claused), skipping the
+        // unconditional backjump-to-0. 0 = off (always backjump as
+        // before), 1 = on. Cheap: at most decision_lvl SAT calls.
+        int cadet_ratify_speculative = 1;
     };
 
     struct IndepInfo {

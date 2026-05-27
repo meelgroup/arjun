@@ -105,6 +105,17 @@ private:
     // ¬y (resp. y) has already become dead via other commits.
     std::vector<uint8_t> clause_dead;
 
+    // n_undet_per_clause[ci] = count of lits in clause ci whose var
+    // still has skol[v] == nullptr. Initialised to clause length, then
+    // decremented on every commit and incremented on every backjump.
+    // try_propagate uses it as a fast pre-check: if ANY clause
+    // containing y has n_undet > 1, y is not yet a unique consequence
+    // and we can skip the per-clause AIG-build pass. Avoids the
+    // O(|y_clauses| · avg_clause_len) inner walk on the common case
+    // where some neighbour is still undet. Cadet's analogue is the
+    // unique_consequence[]/clauses_to_check pair in skolem.c.
+    std::vector<uint16_t> n_undet_per_clause;
+
     // VSIDS variable activities. var_activity[v] starts at a
     // clause-density seed (Jeroslow-Wang-like) and gets bumped each
     // time v appears in a learnt clause / failed-assumption core.
@@ -123,6 +134,11 @@ private:
 
     void bump_var(uint32_t v);
     void decay_activities();
+
+    // Adjust n_undet_per_clause for every clause containing v by
+    // `delta` (typically -1 on commit, +1 on backjump). Cheap O(|v's
+    // clauses|).
+    void clause_undet_delta(uint32_t v, int delta);
 
     // Trail of skol[] commits, in commit order. Each entry records the
     // var, whether it was a decision (vs propagation), and the SAT
@@ -165,6 +181,22 @@ private:
     // that has F over the same vars; Phase E and Phase F do that on
     // setup so they benefit from work done in Phase C+D.
     std::vector<std::vector<CMSat::Lit>> learnt_clauses;
+
+    // Counters for the Phase D conflict-clause minimization pass.
+    // Reported in the Phase C+D summary; useful for tuning the
+    // --cadetclausemin* knobs.
+    uint64_t clause_min_total_in_lits = 0;
+    uint64_t clause_min_total_out_lits = 0;
+    uint64_t clause_min_resolves = 0;
+    uint64_t clause_min_drops = 0;
+
+    // Try to drop each selector from `kept` via a re-solve. On success
+    // refresh `kept` from the new failed-assumption core (cadical may
+    // tighten it further on its own). Single-pass, descending dlvl
+    // order. `kept` on entry holds the var-ids of the failed selectors;
+    // on return it holds the strengthened subset. Caller maps back to
+    // decision_lits. No-op when |kept| ≤ cadet_clause_min_size_floor.
+    void minimize_failed_selectors(std::set<uint32_t>& kept);
 
     // Current decision level. 0 = root level, where all commits are
     // permanent. >0 = inside a speculative decision context.
@@ -327,6 +359,33 @@ private:
     // about each new commit — subsequent Phase D probes then run under
     // F + (all prior skol[] commits), strictly stronger than F alone.
     void tseitin_skol_into_skolem_sat(uint32_t y);
+
+    // Periodic skolem_sat replenish. Discards the accumulated Tseitin
+    // bloat by rebuilding skolem_sat from F + current level-0 skol[]
+    // commits + learnt_clauses. Called only at decision_lvl == 0, so
+    // sel_lits / decision_lits do not need to be re-created. Returns
+    // immediately if `cadet_skolem_sat_replenish_every` is 0 or the
+    // commit count is below the threshold.
+    void maybe_replenish_skolem_sat();
+
+    // Try to ratify speculative decisions at the END of Phase D before
+    // unconditionally rolling back to level 0. For each level d from 1
+    // upward, probe skolem_sat under (sel[0..d-2] + ¬decision_lit_d).
+    // UNSAT ⇒ the decision is F-implied under prior selectors —
+    // typically because new learnt clauses arrived after the guess.
+    // Promote sel_d to a unit clause (effectively moving the level to
+    // 0) and keep its trail entries. On the first SAT, stop trying
+    // higher levels and backjump them. Returns the number of levels
+    // ratified.
+    uint32_t ratify_speculative_decisions();
+    uint32_t total_ratified = 0;
+    // Number of level-0 commits added to skolem_sat since the last
+    // build/replenish. Bumped in tseitin_skol_into_skolem_sat for the
+    // level-0 path; reset by maybe_replenish_skolem_sat on rebuild.
+    uint32_t skolem_sat_commits_since_build = 0;
+    // Total replenishes done in this Phase D entry — printed in the
+    // summary.
+    uint32_t skolem_sat_replenishes = 0;
 
     // Set defs[v] for every v in to_define from skol[v], via map_aigs_to_orig.
     void commit_definitions();

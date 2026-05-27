@@ -326,6 +326,14 @@ void add_arjun_options() {
           "Phase F per-y adaptive disable: ratio threshold below which per-y is disabled.");
     myopt("--cadetpartial", mconf.cadet_partial, fc_int,
           "If > 0, cap Phase F outer iterations at K and leave remaining undet vars undefined. The caller (arjun's --cadet 1 driver) then runs Manthan to complete them. 0 = no cap, cadet always finishes alone.");
+    myopt("--cadetclausemin", mconf.cadet_clause_min, fc_int,
+          "Phase D conflict-clause minimization on the failed-assumption core (drop+resolve, descending dlvl). 0=off, 1=on. Mirrors cadet's c2_minimize_clause.");
+    myopt("--cadetclauseminfloor", mconf.cadet_clause_min_size_floor, fc_int,
+          "Skip clause minimization when the failed core has ≤ K selectors. Default 2.");
+    myopt("--cadetreplenish", mconf.cadet_skolem_sat_replenish_every, fc_int,
+          "Periodic skolem_sat rebuild — after K level-0 commits, rebuild the inner SAT solver from F + current skol[] commits + learnt clauses to shed accumulated Tseitin junk. 0 = off. Mirrors cadet's c2_replenish_skolem_satsolver.");
+    myopt("--cadetratify", mconf.cadet_ratify_speculative, fc_int,
+          "At Phase D end, ratify speculative decisions that became F-implied via learnt clauses (promotes the selector to a unit clause). 0 = off (unconditional backjump), 1 = on.");
 
     // Simplification options for minim
     myopt("--probe", conf.probe_based, fc_int,"Use simple probing to set (and define) some variables");

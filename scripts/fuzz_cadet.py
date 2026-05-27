@@ -542,6 +542,20 @@ if __name__ == "__main__":
             # but occasionally cap at small K to exercise the handoff.
             "--cadetpartial": random.choices(
                 [0, 1, 5, 100], weights=[6, 1, 1, 1])[0],
+            # Failed-assumption core minimization on Phase D conflicts.
+            # Default 1; toggle off on a fraction of runs so disabled
+            # path keeps coverage.
+            "--cadetclausemin": random.choices(
+                [0, 1], weights=[1, 4])[0],
+            "--cadetclauseminfloor": random.choice([0, 2, 4]),
+            # Periodic skolem_sat replenish. Wide range — 0 (off), tight
+            # threshold (frequent rebuild → stresses the replenish path),
+            # and big threshold (rarely fires).
+            "--cadetreplenish": random.choice([0, 10, 50, 500, 5000]),
+            # Ratify speculative decisions at end of Phase D. Default on;
+            # toggle off on a fraction to cover the legacy unconditional-
+            # backjump path.
+            "--cadetratify": random.choices([0, 1], weights=[1, 3])[0],
         }
         for k, v in cadet_knobs.items():
             solver += "%s %s " % (k, v)
