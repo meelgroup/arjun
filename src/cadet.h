@@ -80,49 +80,50 @@ private:
 
     // --- algorithm pieces ---
 
-    // Phase E: complete-the-synthesis pass. RESPECTS Phase C+D's prior
-    // commits by Tseitin-encoding them into a fresh SAT solver, then
-    // enumerates input patterns via repeated SAT model search to fill
-    // in tables for the still-undet vars. SAT models automatically
-    // satisfy the Tseitin constraints, so the values collected for the
-    // undet y's are jointly consistent with everything already committed.
-    //
-    // Enumeration bound is |orig_sampl_cnf| <= 16. For larger input
-    // spaces Phase F (terminal, no threshold) takes over.
+    // Phase E: small-input SAT-model enumeration. Loads F + Tseitin
+    // of any existing skol[y] commits into a fresh SAT solver, then
+    // repeatedly solves and forbids the seen input pattern until
+    // UNSAT. Per-undet-y value tables collect every model's y values;
+    // a Shannon-decomposition tree builds each Skolem from its table
+    // at the end. Runs whenever |orig_sampl_cnf| ≤ kSmallInputThreshold
+    // (16), i.e. ≤ 65k SAT calls — faster per iter than Phase F at
+    // that size because there's no uniqueness/minimization overhead.
     bool synth_complete_with_models();
 
-    // Phase F: like Phase E but each SAT-model case is generalized to
-    // cover many inputs via UNSAT-core-based bit-dropping with a
-    // uniqueness check. For each model M, ask the SAT solver under
-    // (sel + kept_input_lits) whether joint undet Y must differ from
-    // M's value. On UNSAT, the conflict core identifies the kept
-    // input bits required for forcing — every other bit can be
-    // dropped. On joint-SAT (alternatives exist), fall back to
-    // per-y uniqueness for small undet sets.
+    // Phase F: terminal SAT-model + UNSAT-core-generalize loop.
+    // For each model M, ask minim under (sel + kept_input_lits)
+    // whether joint undet Y must differ from M's value. On UNSAT,
+    // the conflict core identifies the input bits required for
+    // forcing — every other bit can be dropped from the case. On
+    // joint-SAT (alternatives exist for Y at X*), fall back to
+    // per-y uniqueness for small undet sets (cap kPerYUndetCap) and
+    // commit individually-forced y's via single clauses.
     //
     // Soundness: the uniqueness check verifies that joint Y = M is
     // the ONLY joint Skolem over the (potentially exponential) kept
     // region, so committing that joint value over the region is
     // correct.
     //
-    // Terminal completion guarantee: no input-size threshold, no iter
-    // cap. Each iteration forbids a non-empty kept-input region, so
-    // total iterations ≤ 2^|sub_inputs| — finite.
+    // Terminal completion guarantee: no input-size threshold, no
+    // iter cap. Each iteration forbids a non-empty kept-input
+    // region, so total iterations ≤ 2^|orig_sampl_cnf| — finite.
+    // Phase F is what backs cadet's "always finishes" contract.
     //
-    // Wrapper that decomposes the undet set into clause-graph
-    // components (sinks at orig sampling vars + already-determined
-    // vars) and calls synth_phase_f_subset() per component. Smaller
-    // components mean smaller per-iter SAT calls and far fewer iters
-    // overall on structured CNFs.
+    // Currently the wrapper forwards the full undet set / full
+    // orig sampling space to synth_phase_f_subset() in one call.
+    // An earlier per-component decomposition was reverted because
+    // extend-defined vars' existing AIG defs transitively cross
+    // component boundaries, breaking per-component soundness; the
+    // worker remains parametrized so a future, correctly-merged
+    // decomposition can wire it up per component.
     bool synth_complete_with_interp_generalization();
 
     // Phase F worker: run the SAT-model + UNSAT-core-generalize loop
     // on the supplied (sub_inputs, sub_undet) subset. Builds its own
     // sat and minim solvers, encoding the current skol[] state, then
     // enumerates over sub_inputs to fill in Skolems for sub_undet.
-    // Returns true on convergence (sub_undet fully determined), false
-    // on UNDEF from the SAT solver (never happens in practice — no
-    // hard timeout is set).
+    // Returns true on convergence, false on UNDEF from the SAT solver
+    // (never happens in practice — no hard SAT timeout is set).
     bool synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs,
                               const std::vector<uint32_t>& sub_undet);
 
