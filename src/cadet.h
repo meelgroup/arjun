@@ -33,6 +33,7 @@
 #include <cryptominisat5/solvertypesmini.h>
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <set>
 #include <vector>
@@ -177,6 +178,20 @@ private:
     //
     // Returns true iff every to_define var was determinized.
     bool synth_by_propagation();
+
+    // Phase C unit step: try to commit skol[y] from its clauses.
+    // Returns true if a commit happened (and tseitin'd it into
+    // skolem_sat). dep_cache is shared across calls for amortization.
+    bool try_propagate(uint32_t y,
+                       std::map<uint32_t, std::vector<uint32_t>>& dep_cache,
+                       const std::map<uint32_t, CMSat::Lit>& new_to_orig);
+
+    // Build the set of "neighbour" vars for var v: every undet var
+    // sharing at least one clause with v. Used to enqueue work after
+    // a commit.
+    void enqueue_neighbours(uint32_t v,
+                            std::vector<uint8_t>& in_queue,
+                            std::vector<uint32_t>& queue) const;
 
     // Build a Skolem AIG from a value table by Shannon decomposition over
     // `sorted_inputs`. `table[mask]` is the y-value for the input

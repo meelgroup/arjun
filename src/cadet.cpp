@@ -187,168 +187,143 @@ aig_ptr Cadet::build_shannon_tree(const vector<bool>& table,
     return level[0];
 }
 
+bool Cadet::try_propagate(uint32_t y,
+                          std::map<uint32_t, vector<uint32_t>>& dep_cache,
+                          const std::map<uint32_t, Lit>& new_to_orig) {
+    if (skol[y] != nullptr) return false;
+
+    const auto& clauses = cnf.get_clauses();
+    bool all_determined = true;
+    aig_ptr pos_force = AIG::new_const(false);
+    // We accumulate ONLY the positive-force region. The negative-force
+    // region need not be computed: by the synthesis precondition
+    // (F satisfiable for every input), positive and negative force
+    // regions never overlap, so committing y = pos_force — TRUE on the
+    // positive region, FALSE elsewhere — never violates a negative-y
+    // clause.
+    for (const auto& [ci, sign_y] : var_clauses[y]) {
+        if (sign_y) continue;
+        aig_ptr forced = AIG::new_const(true);
+        for (const auto& l : clauses[ci]) {
+            if (l.var() == y) continue;
+            if (skol[l.var()] == nullptr) {
+                all_determined = false;
+                break;
+            }
+            aig_ptr lit_aig = skol[l.var()];
+            if (l.sign()) lit_aig = ~lit_aig;
+            forced = AIG::new_and(forced, ~lit_aig);
+        }
+        if (!all_determined) break;
+        pos_force = AIG::new_or(pos_force, forced);
+    }
+    // Negative-y clauses must still be CHECKED for "all_determined".
+    if (all_determined) {
+        for (const auto& [ci, sign_y] : var_clauses[y]) {
+            if (!sign_y) continue;
+            for (const auto& l : clauses[ci]) {
+                if (l.var() == y) continue;
+                if (skol[l.var()] == nullptr) {
+                    all_determined = false;
+                    break;
+                }
+            }
+            if (!all_determined) break;
+        }
+    }
+    if (!all_determined) return false;
+
+    // Cycle check via transitive orig-space deps.
+    const uint32_t y_orig = new_to_orig.at(y).var();
+    std::set<uint32_t> cnf_leaves;
+    AIG::get_dependent_vars(pos_force, cnf_leaves, /*self=*/UINT32_MAX);
+    for (uint32_t leaf : cnf_leaves) {
+        uint32_t leaf_orig = new_to_orig.at(leaf).var();
+        if (leaf_orig == y_orig) return false;
+        if (cnf.defined(leaf_orig)) {
+            const auto& deps = cnf.get_dependent_vars_recursive(leaf_orig, dep_cache);
+            if (std::find(deps.begin(), deps.end(), y_orig) != deps.end()) {
+                if (conf.verb >= 3) {
+                    cout << "c o [cadet]   skipping y=" << (y + 1)
+                         << " (orig " << y_orig + 1
+                         << "): commit would create a defs[] cycle" << endl;
+                }
+                return false;
+            }
+        }
+    }
+    // Commit.
+    skol[y] = pos_force;
+    tseitin_skol_into_skolem_sat(y);
+    return true;
+}
+
+void Cadet::enqueue_neighbours(uint32_t v,
+                               std::vector<uint8_t>& in_queue,
+                               std::vector<uint32_t>& queue) const {
+    const auto& clauses = cnf.get_clauses();
+    for (const auto& [ci, sign_v] : var_clauses[v]) {
+        (void)sign_v;
+        for (const auto& l : clauses[ci]) {
+            const uint32_t u = l.var();
+            if (u == v) continue;
+            if (skol[u] != nullptr) continue;
+            if (!in_queue[u]) {
+                in_queue[u] = 1;
+                queue.push_back(u);
+            }
+        }
+    }
+}
+
 bool Cadet::synth_by_propagation() {
     if (conf.verb >= 1) {
         cout << "c o [cadet] Phase C — unique-consequence propagation" << endl;
     }
     const double t0 = cpuTime();
 
-    // cnf-space → orig-space lookup, used in the per-commit cycle check.
     const auto new_to_orig = cnf.get_new_to_orig_var();
-    // Cache for cnf.get_dependent_vars_recursive — that function's
-    // signature wants a caller-owned cache so successive lookups across
-    // a pass amortize. We rebuild this fresh each Phase-C call because
-    // committed skols only ever add edges, never remove them.
     std::map<uint32_t, vector<uint32_t>> dep_cache;
 
     skol.assign(cnf.nVars(), nullptr);
-    // Both inputs and backward-defined vars become opaque "leaves" in the
-    // Skolem AIGs we build: their AIG identities go in as t_lit nodes
-    // for the cnf-space var id. map_aigs_to_orig later rewrites those
-    // leaves to orig-space, where AIG::evaluate transparently follows
-    // any defined-var's nested AIG def.
     for (uint32_t v : input) skol[v] = AIG::new_lit(v, /*neg=*/false);
     for (uint32_t v : backward_defined) skol[v] = AIG::new_lit(v, /*neg=*/false);
 
-    // Per-var clause occurrence index lives on the class (`var_clauses`)
-    // and is initialized by do_cadet() before this phase runs, so we
-    // don't rebuild it here.
-    const auto& clauses = cnf.get_clauses();
-
-    // Persistent SAT solver `skolem_sat` was built in do_cadet() with F
-    // already injected. We add unit clauses to it as we commit constant
-    // decisions so subsequent SAT calls run under the cumulative state;
-    // future phases will keep using the same solver.
     MetaSolver& decision_sat = *skolem_sat;
 
-    // Iterate to fixpoint with interleaved decisions:
-    //   - Phase C inner loop: propagate every var we can.
-    //   - When stuck (no propagation progress), make a Phase D
-    //     decision: pick the undet var with fewest clauses, ask the
-    //     SAT solver whether F-plus-current-decisions is sat under
-    //     y=false; commit y to that side (or the other if false is
-    //     infeasible). Then resume propagation.
-    //   - Done when every to_define has a skol, or no decision can
-    //     break the stall (in which case we return false and let
-    //     do_cadet's downstream phases (E / F) take over).
-    uint32_t pass = 0;
+    // Worklist-driven Phase C: every undet y starts on the queue.
+    // When we commit y, every undet neighbour (sharing a clause) gets
+    // re-enqueued — they're the only vars whose try_propagate result
+    // could change. Avoids the O(passes × |to_define| × clauses) cost
+    // of the old fixpoint loop.
+    std::vector<uint8_t> in_queue(cnf.nVars(), 0);
+    std::vector<uint32_t> queue;
+    queue.reserve(to_define.size());
+    for (uint32_t y : to_define) {
+        if (skol[y] == nullptr) { in_queue[y] = 1; queue.push_back(y); }
+    }
+
     uint32_t total_committed = 0;
     uint32_t total_decisions = 0;
+    uint32_t pass = 0;
     while (true) {
         pass++;
-        bool progress = false;
         uint32_t committed_this_pass = 0;
-        for (uint32_t y : to_define) {
-            if (skol[y] != nullptr) continue;
-
-            bool all_determined = true;
-            aig_ptr pos_force = AIG::new_const(false);
-            // We accumulate ONLY the positive-force region. The
-            // negative-force region (where ¬y is similarly forced)
-            // need not be computed: by the synthesis precondition
-            // (F satisfiable for every input), positive and negative
-            // force regions never overlap, so committing y = pos_force
-            // — TRUE on the positive region, FALSE elsewhere — never
-            // violates a negative-y clause. Computing neg_force would
-            // just spawn unused AIG nodes.
-            for (const auto& [ci, sign_y] : var_clauses[y]) {
-                if (sign_y) continue; // negative-y clauses don't feed pos_force
-                aig_ptr forced = AIG::new_const(true);
-                for (const auto& l : clauses[ci]) {
-                    if (l.var() == y) continue;
-                    if (skol[l.var()] == nullptr) {
-                        all_determined = false;
-                        break;
-                    }
-                    // AIG for literal l: skol[l.var] XOR l.sign().
-                    aig_ptr lit_aig = skol[l.var()];
-                    if (l.sign()) lit_aig = ~lit_aig;
-                    // We want ¬l: AND forced with that.
-                    forced = AIG::new_and(forced, ~lit_aig);
-                }
-                if (!all_determined) break;
-                pos_force = AIG::new_or(pos_force, forced);
-            }
-            // Negative-y clauses must still be CHECKED for
-            // "all_determined" (otherwise we'd commit pos_force based
-            // on incomplete info). Walk them and bail if any has an
-            // undetermined non-y literal.
-            if (all_determined) {
-                for (const auto& [ci, sign_y] : var_clauses[y]) {
-                    if (!sign_y) continue;
-                    for (const auto& l : clauses[ci]) {
-                        if (l.var() == y) continue;
-                        if (skol[l.var()] == nullptr) {
-                            all_determined = false;
-                            break;
-                        }
-                    }
-                    if (!all_determined) break;
-                }
-            }
-
-            if (all_determined) {
-                // Cycle check via transitive orig-space deps.
-                //
-                // pos_force is a cnf-space AIG; its leaves are cnf-vars
-                // that, after map_aigs_to_orig, become orig-vars. Some
-                // of those orig-vars are themselves already defined
-                // (extend / backward); cnf.defs[v_orig] is their AIG
-                // and the eval chain follows defs[] recursively. If
-                // y_orig is reachable from any pos_force orig-leaf via
-                // that defs[] chain, committing skol[y] closes a
-                // cycle. Seed 12845165257551977592 was such a case:
-                // pos_force_18 had an orig-19 leaf, and cnf.defs[orig-19]
-                // already referenced orig-18 (because extend's
-                // interpolant was computed over an orig-18 that hadn't
-                // been defined yet).
-                const uint32_t y_orig = new_to_orig.at(y).var();
-                std::set<uint32_t> cnf_leaves;
-                AIG::get_dependent_vars(pos_force, cnf_leaves, /*self=*/UINT32_MAX);
-                bool would_cycle = false;
-                for (uint32_t leaf : cnf_leaves) {
-                    uint32_t leaf_orig = new_to_orig.at(leaf).var();
-                    if (leaf_orig == y_orig) { would_cycle = true; break; }
-                    if (cnf.defined(leaf_orig)) {
-                        // get_dependent_vars_recursive returns deps in
-                        // insertion order — not sorted, so we can't
-                        // binary_search. Linear scan suffices: a typical
-                        // dep set is small (handful of vars).
-                        const auto& deps = cnf.get_dependent_vars_recursive(
-                                leaf_orig, dep_cache);
-                        if (std::find(deps.begin(), deps.end(), y_orig)
-                                != deps.end()) {
-                            would_cycle = true;
-                            break;
-                        }
-                    }
-                }
-                if (!would_cycle) {
-                    // We pick the positive-force region as the Skolem:
-                    // y is forced true exactly where some positive
-                    // clause's other literals all evaluate false, and
-                    // "false elsewhere" never violates any clause
-                    // provided F is satisfiable for every input (so
-                    // positive and negative forces never overlap).
-                    skol[y] = pos_force;
-                    // Tseitin-encode this commit into the persistent
-                    // SAT solver so Phase D probes see it as a constraint.
-                    tseitin_skol_into_skolem_sat(y);
-                    progress = true;
-                    committed_this_pass++;
-                    total_committed++;
-                } else if (conf.verb >= 3) {
-                    cout << "c o [cadet]   skipping y=" << (y + 1)
-                         << " (orig " << y_orig + 1
-                         << "): commit would create a defs[] cycle" << endl;
-                }
+        // Drain the propagation worklist.
+        while (!queue.empty()) {
+            const uint32_t y = queue.back();
+            queue.pop_back();
+            in_queue[y] = 0;
+            if (try_propagate(y, dep_cache, new_to_orig)) {
+                committed_this_pass++;
+                total_committed++;
+                enqueue_neighbours(y, in_queue, queue);
             }
         }
         if (conf.verb >= 2) {
             cout << "c o [cadet]   prop pass #" << pass
                  << ": committed " << committed_this_pass << endl;
         }
-        if (progress) continue;
 
         // Phase D — propagation has stalled. We want to find SOME undet
         // var that F forces to a constant under current decisions
@@ -394,6 +369,7 @@ bool Cadet::synth_by_propagation() {
                 decision_sat.add_clause({Lit(pick, /*sign=*/true)});
                 total_decisions++;
                 any_decided = true;
+                enqueue_neighbours(pick, in_queue, queue);
                 if (conf.verb >= 2) {
                     cout << "c o [cadet]   decision: skol[" << (pick + 1)
                          << "] := false (F forces it)" << endl;
@@ -407,6 +383,7 @@ bool Cadet::synth_by_propagation() {
                 decision_sat.add_clause({Lit(pick, /*sign=*/false)});
                 total_decisions++;
                 any_decided = true;
+                enqueue_neighbours(pick, in_queue, queue);
                 if (conf.verb >= 2) {
                     cout << "c o [cadet]   decision: skol[" << (pick + 1)
                          << "] := true (F forces it)" << endl;
