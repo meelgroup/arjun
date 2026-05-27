@@ -35,14 +35,33 @@
    CDCL guesses. The forced step picks undet vars in VSIDS order and
    probes both polarities under active selector assumptions; a UNSAT
    polarity becomes a permanent (or selector-gated) commit. When
-   forced-only stalls, a guess opens a fresh decision level with a
-   selector and a gated decision clause. A global conflict check at
-   the start of each pass spots when F+decisions is UNSAT; the
-   failed-assumption core gets mapped back to decision lits, the
-   learnt clause is added permanently (plus stashed for Phase E/F),
-   and backjumping pops the trail to the second-highest level.
-   Geometric restart (initial K=16, ×1.5 per restart) keeps the
-   speculative tree from compounding.
+   forced-only stalls at level 0, a CEGAR refinement sub-loop runs
+   (see "CEGAR" below) before falling back to a speculative guess.
+   On guess: a fresh decision level opens with a selector and a
+   gated decision clause. A global conflict check at the start of
+   each pass spots when F+decisions is UNSAT; the failed-assumption
+   core gets mapped back to decision lits, the learnt clause is
+   added permanently (plus stashed for Phase E/F), and backjumping
+   pops the trail to the second-highest level. Geometric restart
+   (initial K=16, ×1.5 per restart) keeps the speculative tree from
+   compounding.
+
+   CEGAR (Phase D companion) — counterexample-guided cube
+   refinement, ported from cadet/src/cegar.c. Runs at level 0 when
+   forced-only stalls. Each round: solve skolem_sat → get model M
+   → assume M's universal-cube values in a second cadical
+   (exists_solver) loaded with F + Tseitin of level-0 commits →
+   solve under a selector-gated "∃ undet y differs from M[y]"
+   clause. UNSAT means joint Y is forced over the cube; the UNSAT
+   core identifies the load-bearing cube bits (the rest get
+   dropped). Empty kept cube → constant commits; non-empty → an
+   implication clause `(X ≠ kept) ∨ (y = M[y])` per undet y, added
+   to skolem_sat + learnt_clauses (so Phase E/F replay it). On
+   joint-SAT, an optional per-y fallback asks the same question
+   one y at a time. The drain bails on per-stall round caps, on a
+   trailing avg kept-cube > threshold, or after consec rounds with
+   no constant commit. The whole layer is gated by --cadetcegar 1
+   (default on); see the --cadetcegar* knobs in main.cpp.
 
    Phase E — small-input SAT-model enumeration. When |orig_sampl| ≤
    16, repeatedly solve F+Tseitin(prior commits)+CDCL learnt clauses
@@ -64,7 +83,12 @@
    (constants directly, AIGs via AIGToCNF). Phase D's polarity
    probes and the CDCL global-conflict check use it. Phase E and
    Phase F each build a private solver via build_solver_with_skols(),
-   which also replays the CDCL learnt_clauses.
+   which also replays the CDCL learnt_clauses. CEGAR adds a SECOND
+   persistent solver — exists_solver — lazily built on first CEGAR
+   round and kept in sync with level-0 skol[] commits via
+   cegar_sync_exists_solver(). It carries F + Tseitin of every
+   level-0 commit and is used exclusively for the uniqueness
+   probes of CEGAR rounds.
 
  Copyright (c) 2026, Mate Soos. All rights reserved.
 */
