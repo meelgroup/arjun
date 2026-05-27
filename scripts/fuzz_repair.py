@@ -159,7 +159,7 @@ def run_arjun_checkrepair(fname, seed, timeout):
         "--autarky", "0",
         "--unatedef", "0",
         "--extend", "0",
-        "--minimize", "0",
+        "--backward", "0",
         "--samples", "0",
         fname,
     ]

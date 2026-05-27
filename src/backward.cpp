@@ -23,7 +23,7 @@
  */
 
 #include "constants.h"
-#include "minimize.h"
+#include "backward.h"
 #include "interpolant.h"
 #include "time_mem.h"
 #include <algorithm>
@@ -44,7 +44,7 @@ using std::setw;
 
 
 template<typename T>
-void Minimize::fill_assumptions_backward(
+void Backward::fill_assumptions_backward(
     vector<Lit>& assumptions,
     vector<uint32_t>& unknown,
     const vector<char>& unknown_set,
@@ -85,7 +85,7 @@ void Minimize::fill_assumptions_backward(
     verb_print(5, "Filling assumps END, total assumps size: " << assumptions.size());
 }
 
-void Minimize::order_by_file(const string& fname, vector<uint32_t>& unknown) {
+void Backward::order_by_file(const string& fname, vector<uint32_t>& unknown) {
     std::set<uint32_t> old_unknown(unknown.begin(), unknown.end());
     unknown.clear();
 
@@ -110,7 +110,7 @@ void Minimize::order_by_file(const string& fname, vector<uint32_t>& unknown) {
     }
 }
 
-void Minimize::print_sorted_unknown(const vector<uint32_t>& unknown) const {
+void Backward::print_sorted_unknown(const vector<uint32_t>& unknown) const {
     if (conf.verb >= 4) {
         cout << "c o Sorted output: "<< endl;
         for (const auto& v: unknown) {
@@ -121,7 +121,7 @@ void Minimize::print_sorted_unknown(const vector<uint32_t>& unknown) const {
     }
 }
 
-void Minimize::backward_round() {
+void Backward::backward_round() {
     SLOW_DEBUG_DO( for(const auto& x: seen) assert(x == 0));
     double start_round_time = cpuTime();
     //start with empty independent set
@@ -355,12 +355,12 @@ void Minimize::backward_round() {
     if (conf.verb >= 4) solver->print_stats();
 }
 
-void Minimize::add_all_indics_except(const set<uint32_t>& except) {
+void Backward::add_all_indics_except(const set<uint32_t>& except) {
     ::add_all_indics_except(*solver, orig_num_vars, except,
         var_to_indic, indic_to_var, dont_elim, seen, conf.verb);
 }
 
-void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf&) {
+void Backward::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf&) {
     SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
 
@@ -526,4 +526,72 @@ void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
         << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time)
         << " mem: " << memUsedTotal()/(1024*1024) << " MB");
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
+}
+
+void Backward::run_backward(ArjunNS::SimplifiedCNF& cnf, bool all_indep) {
+    double start_time = cpuTime();
+    fill_solver(cnf);
+    init();
+    if (!preproc_and_duplicate(cnf)) goto end;
+    backward_round();
+
+    end:
+    if (all_indep) {
+        verb_print(2, "[arjun] All variables are independent, filling opt_sampl_vars to all vars.");
+        cnf.set_all_opt_indep();
+    }
+    cnf.fix_weights(solver, sampling_vars, empty_sampling_vars);
+
+    // Get back clauses
+    const auto eq_lits = solver->get_all_binary_xors();
+    for(auto p: eq_lits) {
+        if (p.first.var() >= cnf.nVars() || p.second.var() >= cnf.nVars()) continue;
+        vector<Lit> cl(2);
+        cl[0] = p.first;
+        cl[1] = ~p.second;
+        cnf.add_clause(cl);
+        verb_print(5, "[w-debug] adding cl: " << cl);
+        cl[0] = ~cl[0];
+        cl[1] = ~cl[1];
+        cnf.add_clause(cl);
+        verb_print(5, "[w-debug] adding cl: " << cl);
+    }
+
+    // Clean sampling sets from set vars
+    auto zero_assigned = solver->get_zero_assigned_lits();
+    std::erase_if(zero_assigned, [&](const Lit& l) { return l.var() >= cnf.nVars(); });
+    for(const auto& l: zero_assigned) { cnf.add_clause({l}); }
+    cnf.remove_sampling_vars(zero_assigned);
+
+    for(const auto& v: cnf.get_sampl_vars())
+        verb_print(5, "[w-debug] minim final sampl var: " << v+1);
+    for(const auto& v: cnf.get_opt_sampl_vars())
+        verb_print(5, "[w-debug] minim final opt sampl var: " << v+1);
+    cnf.remove_equiv_weights();
+
+    verb_print(5, "[w-debug] ----- minimize done.");
+
+    verb_print(1, "[arjun] run_backward finished "
+        << "T: " << std::setprecision(2) << std::fixed << (cpuTime() - start_time));
+}
+
+
+ArjunNS::Arjun::IndepInfo Backward::run_backward_info(ArjunNS::SimplifiedCNF& cnf, bool all_indep)
+{
+    run_backward(cnf, all_indep);
+
+    ArjunNS::Arjun::IndepInfo info;
+    std::vector<std::pair<Lit, Lit>> raw_eq = solver->get_all_binary_xors();
+    for (auto& p : raw_eq) {
+        if (p.first.var()  >= cnf.nVars()) continue;
+        if (p.second.var() >= cnf.nVars()) continue;
+        info.eq_lits.push_back(p);
+    }
+
+    info.backbone = solver->get_zero_assigned_lits();
+    auto pred = [&](const CMSat::Lit& l) { return l.var() >= cnf.nVars(); };
+    std::erase_if(info.backbone, pred);
+
+    info.free_vars = empty_sampling_vars;
+    return info;
 }

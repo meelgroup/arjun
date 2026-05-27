@@ -109,7 +109,7 @@ if __name__ == "__main__":
         else:
             solver += "--synthmore "
         # Boolean opts (a small subset; full sweep is fuzz_synth's job).
-        for opt in ["--synthbve", "--extend", "--minimize", "--minimconfl",
+        for opt in ["--synthbve", "--extend", "--backward", "--minimconfl",
                     "--filtersamples", "--uniqsamp", "--bwequal"]:
             solver += " %s %d" % (opt, random.choice([0, 1]))
         # CTX/repair solver picks (cadical only — tracer needs cadical anyway).

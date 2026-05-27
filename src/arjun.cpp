@@ -32,7 +32,7 @@
 
 #include "arjun.h"
 #include "config.h"
-#include "minimize.h"
+#include "backward.h"
 #include "GitSHA1.h"
 #include "puura.h"
 #include "extend.h"
@@ -128,13 +128,13 @@ DLL_PUBLIC string Arjun::get_compilation_env() {
 }
 
 DLL_PUBLIC void Arjun::standalone_minimize_indep(SimplifiedCNF& cnf, bool all_indep) {
-    Minimize common(arjdata->conf);
-    common.run_minimize_indep(cnf, all_indep);
+    Backward common(arjdata->conf);
+    common.run_backward(cnf, all_indep);
 }
 
 DLL_PUBLIC Arjun::IndepInfo Arjun::standalone_minimize_indep_info(SimplifiedCNF& cnf, bool all_indep) {
-    Minimize common(arjdata->conf);
-    return common.run_minimize_indep_info(cnf, all_indep);
+    Backward common(arjdata->conf);
+    return common.run_backward_info(cnf, all_indep);
 }
 
 DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {
@@ -143,7 +143,7 @@ DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {
 }
 
 DLL_PUBLIC void Arjun::standalone_backward_round_synth(SimplifiedCNF& cnf, const ManthanConf& mconf) {
-    Minimize common(arjdata->conf);
+    Backward common(arjdata->conf);
     common.backward_round_synth(cnf, mconf);
 }
 
@@ -183,12 +183,6 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_cadet(SimplifiedCNF&& cnf, const Mant
     return cadet.do_cadet();
 }
 
-DLL_PUBLIC void Arjun::standalone_rev_bce(SimplifiedCNF& cnf)
-{
-    Puura puura(arjdata->conf);
-    return puura.reverse_bce(cnf);
-}
-
 DLL_PUBLIC void Arjun::standalone_unate_def(SimplifiedCNF& cnf)
 {
     Unate unate(arjdata->conf);
@@ -202,83 +196,6 @@ DLL_PUBLIC void Arjun::standalone_sbva(SimplifiedCNF& orig,
     Puura puura(arjdata->conf);
     puura.run_sbva(orig, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak,
             sbva_max_new_vars);
-}
-
-// DELETES ALL REDUNDANT CLAUSES!!!
-// This is a must, because it's impossible to ascertain
-// which redundant clauses are actually deriveable from the irred clauses
-// after deletion. Sad.
-DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
-    SLOW_DEBUG_DO(cnf.check_red_cls_deriveable());
-
-    // Unfortunately, with opt_sampling_set, we rely on a variables
-    // being fully deterministic. So we can't block on them
-    // otherwise we'd need to remove those variables from the opt_sampling set
-    set<uint32_t> dont_block;
-    for(const auto& v: cnf.get_sampl_vars()) dont_block.insert(v);
-    for(const auto& v: cnf.get_opt_sampl_vars()) dont_block.insert(v);
-    if (dont_block.size() == cnf.nVars()) return;
-
-    const double start_time = cpuTime();
-    vector<SimplifiedCNF::BCEClause> cls;
-    vector<vector<uint32_t>> occs(cnf.nVars()*2);
-    uint32_t at = 0;
-    for(const auto& cl: cnf.get_clauses()) {
-        if (cl.empty()) {
-            // Empty clause, CNF is unsat, skip BCE
-            return;
-        }
-
-        SimplifiedCNF::BCEClause c;
-        c.lits = cl;
-        c.at = at;
-        assert(cls.size() == at);
-        cls.push_back(c);
-        for(const auto& l: cl) occs[l.toInt()].push_back(at);
-        assert(cl.size() > 1 && "CNF must be simplified for BCE");
-        at++;
-    }
-
-    vector<uint8_t> seen;
-    seen.resize(cnf.nVars()*2, 0);
-
-    uint32_t tot_removed = 0;
-    bool removed_one;
-    do {
-        removed_one = false;
-        for(auto& cl: cls) {
-            if (cl.to_remove) continue;
-
-            bool can_remove = false;
-            for(const auto& l: cl.lits) seen[l.toInt()] = true;
-            for(const auto& l: cl.lits) {
-                if (dont_block.count(l.var())) continue;
-                bool all_blocking = true;
-                for(const auto& cl2_at: occs[(~l).toInt()]) {
-                    const SimplifiedCNF::BCEClause& cl2 = cls[cl2_at];
-                    if (cl2.to_remove) continue;
-                    bool found_blocking_lit = false;
-                    for(const auto& l2: cl2.lits) {
-                        if (l2 == ~l) continue;
-                        if (seen[(~l2).toInt()]) {found_blocking_lit = true; break;}
-                    }
-                    if (!found_blocking_lit) {all_blocking = false; break;}
-                }
-                if (all_blocking) {can_remove = true; break; }
-            }
-            for(const auto& l: cl.lits) seen[l.toInt()] = 0;
-            if (can_remove) {
-                cl.to_remove = true;
-                removed_one = true;
-                tot_removed++;
-            }
-        }
-    } while(removed_one);
-    cnf.replace_clauses_with(cls);
-
-    verb_print2(1, "[arjun] BCE removed " << tot_removed << " clauses"
-        " T: " << (cpuTime() - start_time));
-    SLOW_DEBUG_DO(cnf.check_red_cls_deriveable());
 }
 
 DLL_PUBLIC void Arjun::standalone_backbone(SimplifiedCNF& cnf) {
@@ -312,12 +229,6 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     } else {
         if (etof_conf.do_extend_indep && cnf.get_opt_sampl_vars().size() != cnf.nVars())
             standalone_extend_sampl_set(cnf);
-
-        // BCE shoudl be after extension, as opt_sampl_vars
-        // could be smaller if BCE is run before... maybe we should try
-        // reverse system, though. Would work... but then BCE would be
-        // better, and opt_sampl_vars would be smaller
-        if (etof_conf.do_bce) standalone_bce(cnf);
     }
     cnf.remove_equiv_weights();
     if (etof_conf.do_renumber) cnf.renumber_sampling_vars_for_ganak();

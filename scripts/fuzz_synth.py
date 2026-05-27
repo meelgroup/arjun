@@ -479,7 +479,7 @@ if __name__ == "__main__":
         opts = [
             " --synthbve"
             , " --extend"
-            , " --minimize"
+            , " --backward"
             , " --minimconfl"
             , " --filtersamples"
             , " --uniqsamp"

@@ -72,7 +72,7 @@ int synthesis = false;
 int use_cadet = 0;
 int do_unate_def = true;
 int do_revbce = false;
-int do_minim_indep = true;
+int do_backward = true;
 int do_sat_sweep = false;
 string debug_minim;
 double cms_glob_mult = -1.0;
@@ -305,13 +305,12 @@ void add_arjun_options() {
     myopt("--distill", conf.distill, fc_int, "Distill clauses before minimization of indep");
     myopt("--weakenlim", simp_conf.weaken_limit, fc_int, "Limit to weaken BVE resolvents");
     myopt("--puurastrategy", simp_conf.puura_strategy, fc_int, "Puura iter1 simplification strategy: 0=default, 1=new-model");
-    myopt("--bce", etof_conf.do_bce, fc_int, "Use blocked clause elimination (BCE) statically");
     myopt("--red", redundant_cls, fc_int,"Also dump redundant clauses");
 
     // Debug
     myopt("--renumber", etof_conf.do_renumber, fc_int,"Renumber variables to start from 1...N in CNF.");
     myopt("--specifiedorder", conf.specified_order_fname, fc_string, "Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY");
-    myopt("--minimize", do_minim_indep, fc_int,"Minimize indep set");
+    myopt("--backward", do_backward, fc_int,"Run the backward pass to minimize the independent set");
     myopt("--debugminim", debug_minim, fc_string,"Create this file that is the CNF after indep set minimization");
     myopt("--cmsmult", conf.cms_glob_mult, fc_double,"Multiply timeouts in CMS by this. Default is -1, which means no change. Useful for debugging");
 
@@ -438,7 +437,7 @@ void do_synthesis() {
         cnf.simplify_aigs(conf.verb);
         SLOW_DEBUG_DO(check_stage("extend_synth"));
     }
-    if (do_minim_indep && !cnf.synth_done()) {
+    if (do_backward && !cnf.synth_done()) {
         arjun->standalone_backward_round_synth(cnf, mconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-minim_idep_synt.aig");
         cnf.simplify_aigs(conf.verb);
@@ -487,7 +486,7 @@ void do_synthesis() {
     }
 }
 
-void do_minimize() {
+void do_backward_pass() {
     ArjunNS::SimplifiedCNF cnf(fg);
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
     cnf.clean_idiotic_mccomp_weights();
@@ -495,7 +494,7 @@ void do_minimize() {
 
     if (do_pre_backbone) arjun->standalone_backbone(cnf);
     const auto orig_sampl_vars = cnf.get_sampl_vars();
-    if (do_minim_indep) arjun->standalone_minimize_indep(cnf, etof_conf.all_indep);
+    if (do_backward) arjun->standalone_minimize_indep(cnf, etof_conf.all_indep);
     if (!debug_minim.empty()) {
         cnf.write_simpcnf(debug_minim, false);
         auto cnf2 = cnf;
@@ -644,7 +643,7 @@ int main(int argc, char** argv) {
     if (synthesis) {
         do_synthesis();
     } else {
-        do_minimize();
+        do_backward_pass();
     }
     cout << "c o [arjun] All done. T: " << std::setprecision(2) << std::fixed
         << (cpuTime() - start_time) << endl;

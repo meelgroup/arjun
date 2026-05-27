@@ -569,7 +569,7 @@ if __name__ == "__main__":
         #     80/20 toward off. Some preprocessing still runs and the
         #     pipeline's downstream cadet sees the post-preprocessing
         #     CNF — which is what real-world usage looks like.
-        prep_opts = [" --synthbve", " --autarky", " --extend", " --minimize",
+        prep_opts = [" --synthbve", " --autarky", " --extend", " --backward",
                      " --unatedef", " --unatedefeq", " --unatedefeqnoninp"]
         if random.choice([True, False]):
             for opt in prep_opts:

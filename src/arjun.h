@@ -1654,7 +1654,6 @@ public:
     struct ElimToFileConf {
         bool all_indep = false;
         bool do_extend_indep = true;
-        bool do_bce = false;
         int num_sbva_steps = 1000;
         uint32_t sbva_cls_cutoff = 4;
         uint32_t sbva_lits_cutoff = 5;
@@ -1791,8 +1790,6 @@ public:
     void standalone_elim_to_file(SimplifiedCNF& cnf,
             const ElimToFileConf& etof_conf, const SimpConf& simp_conf);
     SimplifiedCNF standalone_get_simplified_cnf(const SimplifiedCNF& cnf, const SimpConf& simp_conf);
-    void standalone_bce(SimplifiedCNF& cnf);
-    void standalone_rev_bce(SimplifiedCNF& cnf);
     void standalone_backbone(SimplifiedCNF& cnf);
     void standalone_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,

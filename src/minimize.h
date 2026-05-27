@@ -26,10 +26,7 @@
 
 
 #include "arjun.h"
-#include <optional>
 #include <vector>
-#include <set>
-#include <string>
 #include <memory>
 #include <cryptominisat5/cryptominisat.h>
 
@@ -43,9 +40,6 @@ struct Minimize
         set_up_solver();
     }
     ~Minimize() = default;
-
-    void run_minimize_indep(ArjunNS::SimplifiedCNF& cnf, bool all_indep);
-    ArjunNS::Arjun::IndepInfo run_minimize_indep_info(ArjunNS::SimplifiedCNF& cnf, bool all_indep);
 
     const Config conf;
     std::unique_ptr<CMSat::SATSolver> solver;
@@ -78,6 +72,8 @@ struct Minimize
     void get_incidence();
     void set_up_solver();
     ArjunNS::SimplifiedCNF get_init_cnf();
+    void fill_solver(const ArjunNS::SimplifiedCNF& cnf);
+    void fill_solver_synth(const ArjunNS::SimplifiedCNF& cnf);
 
     //simp
     std::vector<uint32_t> toClear;
@@ -93,22 +89,6 @@ struct Minimize
     bool run_gauss_jordan();
     void check_no_duplicate_in_sampling_set();
     void order_sampl_set_for_simp();
-
-    //backward
-    template<typename T>
-    void fill_assumptions_backward(
-        std::vector<CMSat::Lit>& assumptions,
-        std::vector<uint32_t>& unknown,
-        const std::vector<char>& unknown_set,
-        const T& indep,
-        const std::optional<std::set<uint32_t>>& ignore = std::nullopt);
-    void fill_solver(const ArjunNS::SimplifiedCNF& cnf);
-    void fill_solver_synth(const ArjunNS::SimplifiedCNF& cnf);
-    void backward_round();
-    void backward_round_synth(ArjunNS::SimplifiedCNF& cnf, const ArjunNS::Arjun::ManthanConf& mconf);
-    void add_all_indics_except(const std::set<uint32_t>& except);
-    void order_by_file(const std::string& fname, std::vector<uint32_t>& unknown);
-    void print_sorted_unknown(const std::vector<uint32_t>& unknown) const;
 };
 
 }

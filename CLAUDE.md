@@ -24,7 +24,7 @@ or `scripts/build_release.sh`.
 From `build/`:
 
 ```
-./arjun --verb 2 --synth --synthbve 1 --extend 1 --minimize 1 --debugsynth --samples 1 out/fuzzTest_596.cnf
+./arjun --verb 2 --synth --synthbve 1 --extend 1 --backward 1 --debugsynth --samples 1 out/fuzzTest_596.cnf
 ```
 
 Useful top-level flags:
