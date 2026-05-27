@@ -1762,14 +1762,14 @@ public:
         // 1=on (full conflict).
         int interp_repair_full_conflict = 0;
 
-        // In-tree CADET (--cadet 1) is Phase-E-only: enumerate every
+        // Shannon-tree synthesis (--shannonsynth 1): enumerate every
         // consistent X assignment via a forbid-clause loop, tabulate y
         // values per SAT model, build per-y Shannon trees.
         //
         // Hard upper bound on |orig_sampl_cnf|. Each undet y allocates
         // a 2^N truth table, so raising this past ~20 will OOM. Above
-        // the threshold cadet release_asserts (no fallback).
-        uint32_t cadet_phase_e_threshold = 16;
+        // the threshold shannon_synth release_asserts (no fallback).
+        uint32_t shannon_synth_threshold = 16;
     };
 
     struct IndepInfo {
@@ -1796,12 +1796,13 @@ public:
         uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1,
         uint32_t sbva_max_new_vars = 0);
     SimplifiedCNF standalone_manthan(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
-    // Synthesis via in-tree port of CADET (incremental determinization,
-    // Rabe 2016). Phase F (the terminal phase) guarantees the return
-    // value satisfies synth_done() — every previously-unsynthesized var
-    // carries an AIG definition. ManthanConf is kept for API parity
-    // with standalone_manthan; CADET ignores all its fields.
-    SimplifiedCNF standalone_cadet(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
+    // Brute-force Shannon-tree synthesis: enumerate every consistent X
+    // assignment via a forbid-clause SAT loop, build per-y Shannon
+    // trees. Always finishes alone (no Manthan fallback) when
+    // |orig_sampl_cnf| ≤ shannon_synth_threshold; release_asserts
+    // above the threshold. ManthanConf is kept for API parity with
+    // standalone_manthan; shannon_synth only reads shannon_synth_threshold.
+    SimplifiedCNF standalone_shannon_synth(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
     void standalone_autarky(SimplifiedCNF& cnf);
 
     //Set config

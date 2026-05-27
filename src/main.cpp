@@ -69,7 +69,7 @@ int do_pre_backbone = 0;
 string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_learnt=1),bve";
 
 int synthesis = false;
-int use_cadet = 0;
+int use_shannon_synth = 1;
 int do_unate_def = true;
 int do_revbce = false;
 int do_backward = true;
@@ -159,9 +159,11 @@ void add_arjun_options() {
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
     myflag("--synthmore", synthesis, "Run synthesis, with more aggressive BVE options");
-    myopt("--cadet", use_cadet, fc_int, "Use the in-tree CADET (incremental "
-            "determinization) port for the final synthesis step instead of "
-            "Manthan. 0=Manthan (default), 1=CADET.");
+    myopt("--shannonsynth", use_shannon_synth, fc_int,
+          "Use brute-force Shannon-tree synthesis for the final synthesis "
+          "step instead of Manthan. Only viable when |orig_sampl_cnf| ≤ "
+          "--shannonsynththresh; release_asserts above that. "
+          "0=Manthan, 1=Shannon synthesis (default).");
     myopt("--maxsat", mconf.maxsat_better_ctx, fc_int, "Use maxsat to find better counterexamples during Manthan");
     myopt("--synthbve", do_synth_bve, fc_int,"Perform BVE for synthesis");
     myopt("--extend", etof_conf.do_extend_indep, fc_int,"Extend independent set just before CNF dumping");
@@ -259,9 +261,9 @@ void add_arjun_options() {
     myopt("--interprepairfullconf", mconf.interp_repair_full_conflict, fc_int,
           "Full-conflict interpolation: put ALL conflict units in B (not just input units). The interpolant is then over every conflict var rather than the input projection, generalising the whole conflict clause 'as-is'. build_interp_branch_formula drops the AND with y_other leaves since the interpolant already covers them. 0=off (default, input-only), 1=on.");
 
-    // === CADET (--cadet 1) knobs — Phase-E-only driver ===
-    myopt("--cadetphaseeth", mconf.cadet_phase_e_threshold, fc_int,
-          "Phase E hard cap: |orig_sampl_cnf| ≤ this. Above it cadet release_asserts (each y allocates 2^N truth-table entries, so raising past ~20 OOMs).");
+    // === Shannon-tree synthesis (--shannonsynth 1) knobs ===
+    myopt("--shannonsynththresh", mconf.shannon_synth_threshold, fc_int,
+          "Hard cap: |orig_sampl_cnf| ≤ this. Above it shannon_synth release_asserts (each y allocates 2^N truth-table entries, so raising past ~20 OOMs).");
 
     // Simplification options for minim
     myopt("--probe", conf.probe_based, fc_int,"Use simple probing to set (and define) some variables");
@@ -450,18 +452,18 @@ void do_synthesis() {
     }
 
     cnf.rewrite_aigs(conf.verb, do_sat_sweep);
-    if (use_cadet) {
-        // Phase-E-only CADET: enumerate every consistent X assignment,
-        // build per-y Shannon trees. Always finishes alone or
-        // release_asserts; no Manthan fallback.
+    if (use_shannon_synth) {
+        // Brute-force Shannon-tree synthesis: enumerate every consistent
+        // X assignment, build per-y Shannon trees. Always finishes alone
+        // or release_asserts; no Manthan fallback.
         if (!cnf.synth_done()) {
-            cout << "c o [arjun] Synthesis: CADET" << endl;
-            cnf = arjun->standalone_cadet(std::move(cnf), mconf);
+            cout << "c o [arjun] Synthesis: Shannon trees" << endl;
+            cnf = arjun->standalone_shannon_synth(std::move(cnf), mconf);
         }
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-cadet.aig");
-        SLOW_DEBUG_DO(check_stage("cadet"));
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-shannon_synth.aig");
+        SLOW_DEBUG_DO(check_stage("shannon_synth"));
         release_assert(cnf.synth_done() &&
-                       "CADET must produce a Skolem for every existential");
+                       "shannon_synth must produce a Skolem for every existential");
     } else {
         SynthRunner synth_runner(conf, arjun);
         auto strategies = synth_runner.parse_mstrategy(mstrategy);

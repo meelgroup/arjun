@@ -241,11 +241,11 @@ def run_synth(solver, fname):
         print("Too much time to solve with %s, aborted: " % solver)
         return None, []
     if returncode != 0 and not out.startswith("TIMEOUT"):
-        # Phase-E-only cadet release_asserts when |orig_sampl_cnf| >
-        # cadet_phase_e_threshold (each y allocates a 2^N truth table).
+        # shannon_synth release_asserts when |orig_sampl_cnf| >
+        # shannon_synth_threshold (each y allocates a 2^N truth table).
         # Skip the iter rather than report a bug — the limit is by design.
-        if "cadet_phase_e_threshold" in out:
-            print("cadet Phase E threshold exceeded; skipping iteration")
+        if "shannon_synth_threshold" in out:
+            print("shannon_synth threshold exceeded; skipping iteration")
             return None, []
         print("Solver crashed with exit code %d (signal %d)" % (returncode, -returncode))
         return True, []
@@ -465,16 +465,14 @@ if __name__ == "__main__":
         else:
             solver += "--synthmore "
 
-        # ~25% of iterations: also enable --cadet 1. CADET is the
-        # terminal synthesis path under --cadet 1 (no Manthan
-        # fallback); main.cpp release_asserts that cadet finished
-        # alone. This stresses cadet's correctness against the full
-        # Manthan flag matrix that this fuzzer randomizes — cadet
-        # mostly ignores those flags, but they shape the pre-cadet
-        # pipeline (BVE, autarky, extend, unate_def variants) so the
-        # CNF cadet sees varies widely across iters.
-        if random.choices([True, False], weights=[1, 3])[0]:
-            solver += "--cadet 1 "
+        # --shannonsynth is default-on in the binary, so explicitly
+        # toggle 50/50 to cover both terminal paths equally: 1 = Shannon
+        # synthesis (no Manthan fallback; release_asserts above
+        # --shannonsynththresh), 0 = Manthan. shannon_synth mostly
+        # ignores the Manthan flag matrix this fuzzer randomizes, but
+        # the flags shape the pre-synth pipeline (BVE, autarky, extend,
+        # unate_def variants), so the CNF varies widely across iters.
+        solver += "--shannonsynth %d " % random.randint(0, 1)
 
         opts = [
             " --synthbve"

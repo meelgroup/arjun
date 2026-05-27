@@ -42,7 +42,7 @@
 #include "autarky.h"
 #include "unate_def.h"
 #include "manthan.h"
-#include "cadet.h"
+#include "shannon_synth.h"
 #include "metasolver.h"
 #include "aig_rewrite.h"
 #include "constants.h"
@@ -178,10 +178,10 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
     return manthan.do_manthan();
 }
 
-DLL_PUBLIC SimplifiedCNF Arjun::standalone_cadet(SimplifiedCNF&& cnf, const ManthanConf& mconf)
+DLL_PUBLIC SimplifiedCNF Arjun::standalone_shannon_synth(SimplifiedCNF&& cnf, const ManthanConf& mconf)
 {
-    Cadet cadet(arjdata->conf, mconf, std::move(cnf));
-    return cadet.do_cadet();
+    ShannonSynth ss(arjdata->conf, mconf, std::move(cnf));
+    return ss.do_synth();
 }
 
 DLL_PUBLIC void Arjun::standalone_unate_def(SimplifiedCNF& cnf)

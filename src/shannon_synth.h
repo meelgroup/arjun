@@ -1,10 +1,10 @@
 /*
  Arjun
 
- cadet.h — Phase-E-only synthesis driver. Enumerate every consistent
- input pattern, record undet-y values per SAT model, build per-y
- Shannon trees over the orig sampling vars. Only runs when
- |orig_sampl_cnf| ≤ cadet_phase_e_threshold.
+ shannon_synth.h — Brute-force Shannon-tree synthesis. Enumerate every
+ consistent input pattern via a forbid-clause SAT loop, record each
+ undet y per SAT model, then build per-y Shannon trees over the orig
+ sampling vars. Only runs when |orig_sampl_cnf| ≤ shannon_synth_threshold.
 
  Copyright (c) 2026, Mate Soos. All rights reserved.
 
@@ -38,13 +38,13 @@
 
 namespace ArjunInt {
 
-class Cadet {
+class ShannonSynth {
 public:
-    Cadet(const ArjunInt::Config& _conf,
-          const ArjunNS::Arjun::ManthanConf& _mconf,
-          ArjunNS::SimplifiedCNF&& _cnf);
+    ShannonSynth(const ArjunInt::Config& _conf,
+                 const ArjunNS::Arjun::ManthanConf& _mconf,
+                 ArjunNS::SimplifiedCNF&& _cnf);
 
-    ArjunNS::SimplifiedCNF do_cadet();
+    ArjunNS::SimplifiedCNF do_synth();
 
 private:
     const ArjunInt::Config& conf;

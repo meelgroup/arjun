@@ -1,15 +1,16 @@
 /*
- Arjun — cadet.cpp
+ Arjun — shannon_synth.cpp
 
- Phase-E-only synthesis: enumerate consistent X assignments via a
- forbid-clause SAT loop, tabulate every undet y per model, then build a
- Shannon tree per y over the sorted orig sampling vars. Always finishes
- alone (no Manthan fallback) when |orig_sampl_cnf| is within the gate.
+ Brute-force Shannon-tree synthesis: enumerate consistent X assignments
+ via a forbid-clause SAT loop, tabulate every undet y per model, then
+ build a Shannon tree per y over the sorted orig sampling vars. Always
+ finishes alone (no Manthan fallback) when |orig_sampl_cnf| is within
+ the threshold.
 
  Copyright (c) 2026, Mate Soos. All rights reserved.
 */
 
-#include "cadet.h"
+#include "shannon_synth.h"
 
 #include "arjun.h"
 #include "constants.h"
@@ -38,21 +39,21 @@ using CMSat::Lit;
 
 namespace ArjunInt {
 
-Cadet::Cadet(const ArjunInt::Config& _conf,
-             const ArjunNS::Arjun::ManthanConf& _mconf,
-             ArjunNS::SimplifiedCNF&& _cnf)
+ShannonSynth::ShannonSynth(const ArjunInt::Config& _conf,
+                           const ArjunNS::Arjun::ManthanConf& _mconf,
+                           ArjunNS::SimplifiedCNF&& _cnf)
     : conf(_conf), mconf(_mconf), cnf(std::move(_cnf))
 {}
 
 template<typename S>
-void Cadet::inject_cnf(S& s) const {
+void ShannonSynth::inject_cnf(S& s) const {
     s.new_vars(cnf.nVars());
     for (const auto& c : cnf.get_clauses()) s.add_clause(c);
     for (const auto& c : cnf.get_red_clauses()) s.add_red_clause(c);
 }
 
-aig_ptr Cadet::build_shannon_tree(const vector<bool>& table,
-                                  const vector<uint32_t>& sorted_inputs) {
+aig_ptr ShannonSynth::build_shannon_tree(const vector<bool>& table,
+                                         const vector<uint32_t>& sorted_inputs) {
     // Bottom-up pair-merge: level[i] = ITE(sorted_inputs[L],
     //   high=prev[2i+1], low=prev[2i]). ITE folds constant subtrees.
     const uint32_t n = sorted_inputs.size();
@@ -78,18 +79,18 @@ aig_ptr Cadet::build_shannon_tree(const vector<bool>& table,
     return level[0];
 }
 
-void Cadet::synth_complete_with_models() {
+void ShannonSynth::synth_complete_with_models() {
     // 2^|orig_sampl_cnf| tables; guard or we OOM. No fallback exists.
-    release_assert(orig_sampl_cnf.size() <= mconf.cadet_phase_e_threshold &&
-                   "cadet Phase E: |orig_sampl_cnf| > cadet_phase_e_threshold "
-                   "(would OOM on the 2^N truth tables); raise --cadetphaseeth "
-                   "if you understand the memory cost, or don't use --cadet");
+    release_assert(orig_sampl_cnf.size() <= mconf.shannon_synth_threshold &&
+                   "shannon_synth: |orig_sampl_cnf| > shannon_synth_threshold "
+                   "(would OOM on the 2^N truth tables); raise --shannonsynththresh "
+                   "if you understand the memory cost, or don't use --shannonsynth");
 
     vector<uint32_t> undet(to_define.begin(), to_define.end());
     if (undet.empty()) return;
 
     if (conf.verb >= 1) {
-        cout << "c o [cadet] Phase E — SAT-model completion on "
+        cout << "c o [shannon_synth] SAT-model completion on "
              << undet.size() << " undet vars over "
              << orig_sampl_cnf.size() << " orig sampling vars" << endl;
     }
@@ -115,7 +116,7 @@ void Cadet::synth_complete_with_models() {
         const auto ret = sat.solve();
         if (ret == CMSat::l_False) break;
         release_assert(ret == CMSat::l_True &&
-                       "cadet Phase E: SAT solver returned UNDEF on a "
+                       "shannon_synth: SAT solver returned UNDEF on a "
                        "supposedly-finite enumeration");
         const auto& model = sat.get_model();
         uint64_t mask = 0;
@@ -140,31 +141,31 @@ void Cadet::synth_complete_with_models() {
     }
 
     if (conf.verb >= 1) {
-        cout << "c o [cadet] Phase E done. covered " << covered_count
+        cout << "c o [shannon_synth] done. covered " << covered_count
              << "/" << n_assign << " consistent input patterns. T: "
              << fixed << setprecision(2) << (cpuTime() - t0) << endl;
     }
 }
 
-void Cadet::commit_definitions() {
+void ShannonSynth::commit_definitions() {
     vector<aig_ptr> aigs(cnf.nVars(), nullptr);
     for (uint32_t y : to_define) {
         release_assert(skol[y] != nullptr &&
-                       "cadet must produce a Skolem for every to_define var");
+                       "shannon_synth must produce a Skolem for every to_define var");
         aigs[y] = skol[y];
     }
     cnf.map_aigs_to_orig(aigs, cnf.nVars());
     cnf.simplify_aigs(conf.verb);
 }
 
-SimplifiedCNF Cadet::do_cadet() {
+SimplifiedCNF ShannonSynth::do_synth() {
     const double my_time = cpuTime();
     if (conf.verb >= 1) {
-        cout << "c o [cadet] starting; nVars=" << cnf.nVars()
+        cout << "c o [shannon_synth] starting; nVars=" << cnf.nVars()
              << " clauses=" << cnf.get_clauses().size() << endl;
     }
 
-    cnf.get_var_types(conf.verb, "start do_cadet").unpack_to(
+    cnf.get_var_types(conf.verb, "start do_synth").unpack_to(
         input, to_define, backward_defined);
 
     // VarTypes.input lumps extend-defined vars in; orig_sampl_cnf is
@@ -179,13 +180,13 @@ SimplifiedCNF Cadet::do_cadet() {
 
     if (to_define.empty()) {
         if (conf.verb >= 1) {
-            cout << "c o [cadet] nothing to define — returning unchanged CNF" << endl;
+            cout << "c o [shannon_synth] nothing to define — returning unchanged CNF" << endl;
         }
         return std::move(cnf);
     }
 
     if (conf.verb >= 1) {
-        cout << "c o [cadet] partition: |orig_sampl|=" << orig_sampl_cnf.size()
+        cout << "c o [shannon_synth] partition: |orig_sampl|=" << orig_sampl_cnf.size()
              << " |input|=" << input.size()
              << " |to_define|=" << to_define.size()
              << " |backward_defined|=" << backward_defined.size() << endl;
@@ -195,7 +196,7 @@ SimplifiedCNF Cadet::do_cadet() {
     commit_definitions();
 
     if (conf.verb >= 1) {
-        cout << "c o [cadet] done — all " << to_define.size()
+        cout << "c o [shannon_synth] done — all " << to_define.size()
              << " to_define vars committed. T: "
              << fixed << setprecision(2) << (cpuTime() - my_time) << endl;
     }
