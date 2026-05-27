@@ -411,11 +411,55 @@ bool Cadet::handle_pa_conflict_1uip(std::vector<uint8_t>& outer_in_queue,
         const uint32_t reason = pa_reason[tv];
 
         if (reason == PA_REASON_SOURCE) {
-            // Source: the assigned lit `tl` is TRUE in PA, its
-            // negation goes into the learnt clause as a FALSE lit.
-            learnt.push_back(~tl);
+            // Strict 1-UIP requires exactly one lit at conflict_dlvl
+            // in the final learnt clause. Sources fall in two cases:
+            //
+            // Case A (THE decision at its level):
+            //   tv == decision_lits[d-1].var(). The decision is the
+            //   FIRST commit at its level, so in the reverse trail
+            //   walk it's the LAST level-d source we hit. Provided we
+            //   synthetic-resolve every earlier non-decision source,
+            //   counter has wound down to 1 by then and we land
+            //   cleanly: add ~tl as the UIP lit.
+            //
+            // Case B (non-decision source at level d):
+            //   A Phase D forced commit, Phase C pos_force-const, pure
+            //   literal, or CEGAR commit at level d. We don't have a
+            //   clause reason for it, but we DO know it is implied by
+            //   the conjunction of decisions at levels 1..d (the level
+            //   was opened by them and the commit is sound under
+            //   them). The synthetic reason clause is
+            //   (¬dec_1 ∨ ... ∨ ¬dec_d ∨ assigned_lit_for_tv);
+            //   resolving tv out replaces it with ¬dec_1 ∨ ... ∨ ¬dec_d.
+            //   For i < d those are at lower levels — go straight to
+            //   learnt. For i == d that's the decision itself, mark
+            //   seen + counter++. The trail walk will pick it up later
+            //   and resolve via Case A.
+            const uint32_t d = pa_level[tv];
+            const bool is_the_decision =
+                (d >= 1 && d <= decision_lits.size()
+                 && decision_lits[d - 1].var() == tv);
+            if (is_the_decision) {
+                learnt.push_back(~tl);
+                counter--;
+                seen[tv] = 0;
+                uip_strict_decision_terminations++;
+                break;
+            }
+            // Non-decision source: synthetic-resolve.
             counter--;
             seen[tv] = 0;
+            for (uint32_t i = 0; i < d; i++) {
+                const Lit dlit = decision_lits[i];
+                const uint32_t dv = dlit.var();
+                if (seen[dv]) continue;
+                if (pa_level[dv] == 0) continue;
+                seen[dv] = 1;
+                if (dv < var_activity.size()) bump_var(dv);
+                if (pa_level[dv] == conflict_dlvl) counter++;
+                else learnt.push_back(~dlit);
+            }
+            uip_strict_synthetic_resolves++;
             trail_idx--;
             continue;
         }
@@ -1575,6 +1619,12 @@ bool Cadet::synth_by_propagation() {
                  << " uip-conflicts=" << uip_conflicts_handled
                  << " avg-uip-lits=" << fixed << setprecision(1) << avg_uip_lits
                  << endl;
+            if (uip_strict_synthetic_resolves > 0) {
+                cout << "c o [cadet]   PA-UIP strict: synthetic-resolves="
+                     << uip_strict_synthetic_resolves
+                     << " decision-terminations="
+                     << uip_strict_decision_terminations << endl;
+            }
             if (uip_min_in_lits > 0) {
                 const double drop_pct = 100.0
                     * double(uip_min_in_lits - uip_min_out_lits)

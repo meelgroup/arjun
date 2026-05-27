@@ -253,6 +253,8 @@ private:
                                  std::vector<uint32_t>& outer_neighbour_queue);
     uint64_t uip_conflicts_handled = 0;
     uint64_t uip_learnt_lits_total = 0;
+    uint64_t uip_strict_decision_terminations = 0;
+    uint64_t uip_strict_synthetic_resolves = 0;
 
     // Recursive learnt-clause minimization (Sörensson-Biere 2009).
     // Drops each lit l of `learnt` whose pa_reason chain folds entirely
