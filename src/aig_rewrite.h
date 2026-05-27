@@ -20,7 +20,6 @@
 
 namespace ArjunNS {
 
-// Statistics for AIG rewriting.
 struct AIGRewriteStats {
     uint64_t const_prop = 0;
     uint64_t complement_elim = 0;
@@ -34,18 +33,18 @@ struct AIGRewriteStats {
     uint64_t nodes_after = 0;
     double total_time = 0.0;
 
-    // SAT sweeping (FRAIG-lite) counters.
+    // FRAIG-lite SAT-sweep counters.
     uint64_t sweep_sim_groups = 0;
     uint64_t sweep_sat_checks = 0;
     uint64_t sweep_merges = 0;
     uint64_t sweep_cex_refuted = 0;
-    uint64_t sweep_timeouts = 0;         // SAT checks hitting the conflict budget (l_Undef)
-    uint64_t sweep_class_aborts = 0;     // Classes abandoned after too many consecutive refutations
-    uint64_t sweep_budget_exhausted = 0; // Wall-clock budget hit; remaining classes skipped
+    uint64_t sweep_timeouts = 0;
+    uint64_t sweep_class_aborts = 0;
+    uint64_t sweep_budget_exhausted = 0;
     uint64_t sweep_self_ref_reverts = 0;
     uint64_t sweep_cycle_reverts = 0;
-    uint64_t sweep_const_merges = 0;     // AND nodes SAT-proven constant
-    uint64_t sweep_cex_filtered = 0;     // class members dropped by a SAT counterexample
+    uint64_t sweep_const_merges = 0;
+    uint64_t sweep_cex_filtered = 0;
 
     void print(int verb) const;
     void clear();
@@ -58,12 +57,11 @@ public:
     // Rewrite a single AIG to a simpler equivalent.
     aig_ptr rewrite(const aig_ptr& aig);
 
-    // Rewrite a vector of AIGs, sharing structure across all.
+    // Rewrite a vector of AIGs sharing structure across all.
     void rewrite_all(std::vector<aig_ptr>& defs, int verb = 1);
 
-    // FRAIG-lite SAT sweeping: detect and merge functionally equivalent
-    // AND nodes across `defs`. Every merge is verified via CryptoMiniSat.
-    // Opt-in; no-op unless set_sat_sweep(true) was called.
+    // FRAIG-lite SAT-sweep across `defs`: merge functionally equivalent AND
+    // nodes. Every merge is SAT-verified through MetaSolver.
     void sat_sweep(std::vector<aig_ptr>& defs, int verb = 1);
 
     void set_sat_sweep_sim_patterns(uint32_t n) { sweep_sim_rounds = n; }
@@ -74,24 +72,18 @@ public:
 
 private:
     AIGRewriteStats stats;
-    // Number of 64-bit simulation rounds (each round = 64 patterns). More
-    // rounds = fewer bogus candidate classes at linear simulation cost.
+    // 64-bit simulation rounds (each = 64 patterns).
     uint32_t sweep_sim_rounds = 16;
-    // Skip classes larger than this to avoid quadratic SAT churn on
-    // degenerate "all constants" groups simulation can't split.
+    // Member cap per class — bounds worst-case SAT churn on degenerate groups.
     uint32_t sweep_max_class_size = 64;
-    // Per-check CMS conflict budget. Bounds worst-case solve time on big
-    // cones. l_Undef from hitting the budget is treated as "cannot prove".
+    // Per-check SAT conflict budget; l_Undef from hitting it = "cannot prove".
     uint64_t sweep_conflict_budget = 500;
-    // Give up on a class after this many consecutive refutations/timeouts
-    // with no merge. A class that keeps refuting is almost always a
-    // simulation coincidence — further SAT checks on it are wasted time.
+    // Abort a class after this many consecutive non-merges (sim coincidence).
     uint32_t sweep_class_abort_streak = 2;
 
-    // Structural hash table for canonical AND nodes. Keyed on the two signed
-    // child edges (nid + sign). In the new model an AND node has no output
-    // sign of its own — the outer sign lives on the referring edge, so it's
-    // never part of the key.
+    // Hash-cons for AND nodes keyed on the two signed child edges (nid+sign).
+    // In this AIG flavour an AND has no output sign — outer sign lives on the
+    // referring edge — so it never appears in the key.
     struct StructKey {
         uint64_t l_nid;
         uint64_t r_nid;
@@ -115,47 +107,30 @@ private:
     };
     std::unordered_map<StructKey, aig_node_ptr, StructKeyHash> struct_hash;
 
-    // Hash-cons table for t_lit nodes, keyed by variable id. Without this the
-    // rewriter would build a fresh t_lit node per source occurrence, so
-    // structurally identical literals would compare unequal and rules like
-    // AND(a, AND(~a, b)) = FALSE would silently miss. Cleared together with
-    // struct_hash at the top of each public rewrite call.
+    // Hash-cons for t_lit nodes by variable id. Without this, structurally
+    // identical literals would compare unequal and rules like
+    // AND(a, AND(~a, b)) = FALSE would silently miss.
     std::unordered_map<uint32_t, aig_node_ptr> lit_hash;
-    // A single shared t_const TRUE node so const-folded edges across the
-    // rebuild use the same underlying node — useful when downstream passes
-    // compare nodes by pointer.
+    // Shared TRUE node so const-folded edges across the rebuild share.
     aig_node_ptr const_true_node;
 
     aig_lit cached_lit(uint32_t var, bool neg);
     aig_lit cached_const(bool val);
 
-    // Per-pass caches map SOURCE NODE → rebuilt signed edge for the node's
-    // POSITIVE value. Callers XOR in the incoming edge sign on return.
+    // Maps SOURCE NODE -> rebuilt signed edge for its POSITIVE value.
     using NodeRebuildMap = std::unordered_map<const AIG*, aig_lit>;
 
-    // Bottom-up simplification: constant propagation, idempotent elimination,
-    // complementary-pair detection, local absorption, OR-subsumption,
-    // resolution / distribution on AND-of-ORs. Counters for each rule land
-    // in the matching AIGRewriteStats field.
     aig_lit simplify_pass(const aig_lit& edge, NodeRebuildMap& cache);
-
-    // Structural-hashing pass: rebuild bottom-up, routing every AND through
-    // make_canonical so structurally identical subgraphs across the AIGs
-    // share a single node. Doesn't change semantics — just dedup.
     aig_lit hash_cons(const aig_lit& edge, NodeRebuildMap& cache);
-
-    // Deep / multi-level absorption: flatten k-ary AND and OR groups,
-    // dedup, detect complementary pairs, apply cross-level absorption and
-    // subsumption between AND-siblings and OR-child disjuncts, plus
-    // resolution on OR pairs that share all-but-one term.
     aig_lit deep_absorb(const aig_lit& edge, NodeRebuildMap& cache);
-
-    // ITE chain depth reduction: flatten long AND / OR chains (common in
-    // manthan's ITE-repair output) and rebuild them as balanced trees so
-    // downstream encoders see O(log n) depth instead of O(n).
     aig_lit flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cache);
 
-    // --- Helpers ---
+    // simplify_pass rule helpers. Each returns a non-null aig_lit if the rule
+    // fires, else default-constructed (no match). `pos` in the caller is set
+    // from the first match in priority order.
+    aig_lit try_or_sibling(const aig_lit& or_e, const aig_lit& other);
+    aig_lit try_and_of_ands(const aig_lit& l, const aig_lit& r);
+    aig_lit try_resolve_distribute(const aig_lit& l, const aig_lit& r);
 
     void collect_and_edges(const aig_lit& edge, std::vector<aig_lit>& out);
     void collect_or_edges(const aig_lit& edge, std::vector<aig_lit>& out);
@@ -170,6 +145,19 @@ private:
     }
 
     aig_lit make_canonical(const aig_lit& l, const aig_lit& r);
+
+    // sat_sweep helpers. Shared state lives in SweepState (defined in the .cpp).
+    struct SweepState;
+    void sweep_collect_topology(const std::vector<aig_ptr>& defs, SweepState& st);
+    void sweep_simulate(SweepState& st);
+    void sweep_build_classes(SweepState& st, int verb, double start_time);
+    void sweep_find_constants(SweepState& st);
+    void sweep_verify_classes(SweepState& st, int verb, double start_time);
+    void sweep_rebuild_defs(std::vector<aig_ptr>& defs,
+                            std::vector<aig_ptr>& orig_defs,
+                            SweepState& st);
+    void sweep_break_cycles(std::vector<aig_ptr>& defs,
+                            const std::vector<aig_ptr>& orig_defs);
 };
 
 } // namespace ArjunNS
