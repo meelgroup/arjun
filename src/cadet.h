@@ -373,6 +373,10 @@ private:
     // CEGAR round. Used so we don't re-encode the whole skol[] table
     // every round.
     uint32_t exists_solver_committed_count = 0;
+    // Per-var flag: is skol[v] already Tseitin-encoded into the current
+    // exists_solver? Reset on rebuild. Used by cegar_sync_exists_solver
+    // to find newly-committed (since last sync) level-0 entries.
+    std::vector<uint8_t> exists_solver_encoded;
     // Per-Phase-D-entry running count of total CEGAR rounds executed,
     // for the --cadetcegarmaxtot cap. Reset at the start of
     // synth_by_propagation().

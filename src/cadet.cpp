@@ -1452,6 +1452,53 @@ void Cadet::cegar_build_interface() {
     }
 }
 
+void Cadet::cegar_build_exists_solver() {
+    // Build from scratch: F + a true-literal + Tseitin of every
+    // currently-committed skol[y]. All to_define vars whose skol[]
+    // entry is non-null at the time of the call are encoded. Caller is
+    // responsible for calling this only at decision_lvl == 0 so the
+    // skol[] table represents only permanent commits.
+    exists_solver = std::make_unique<MetaSolver>(SolverType::cadical);
+    inject_cnf(*exists_solver);
+    exists_solver->new_var();
+    exists_solver_true_lit = CMSat::Lit(exists_solver->nVars() - 1,
+                                         /*sign=*/false);
+    exists_solver->add_clause({exists_solver_true_lit});
+    // Replay CDCL learnt clauses from Phase D — same logic as
+    // build_solver_with_skols, so the fresh exists_solver benefits from
+    // the combinatorial pruning Phase D has accumulated.
+    for (const auto& lc : learnt_clauses) exists_solver->add_red_clause(lc);
+    // Reset per-var encoded flags; sync will fill in skol entries.
+    exists_solver_encoded.assign(cnf.nVars(), 0);
+    exists_solver_committed_count = 0;
+    cegar_sync_exists_solver();
+}
+
+void Cadet::cegar_sync_exists_solver() {
+    // Bring exists_solver up to date with any to_define-var skol[]
+    // entries that have been committed since the last sync. Caller
+    // must invoke at decision_lvl == 0 (so every non-null skol[v] for
+    // v in to_define is a permanent level-0 commit, not speculative).
+    if (!exists_solver) return;
+    using AIGEnc = ArjunNS::AIGToCNF<MetaSolver>;
+    AIGEnc enc(*exists_solver);
+    enc.set_true_lit(exists_solver_true_lit);
+    for (uint32_t y : to_define) {
+        if (exists_solver_encoded[y]) continue;
+        if (skol[y] == nullptr) continue;
+        if (skol[y]->type == AIGT::t_const) {
+            const bool val = !skol[y].neg;
+            exists_solver->add_clause({CMSat::Lit(y, /*sign=*/!val)});
+        } else {
+            const CMSat::Lit root = enc.encode(skol[y]);
+            exists_solver->add_clause({~CMSat::Lit(y, /*sign=*/false), root});
+            exists_solver->add_clause({CMSat::Lit(y, /*sign=*/false), ~root});
+        }
+        exists_solver_encoded[y] = 1;
+        exists_solver_committed_count++;
+    }
+}
+
 void Cadet::commit_definitions() {
     // Build a vector indexed by var, holding the Skolem AIG for each
     // to_define var. With Phase F's terminal completion guarantee,
