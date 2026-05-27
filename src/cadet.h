@@ -115,7 +115,10 @@ private:
     // per-y ordering.
     std::vector<double> var_activity;
     double activity_inc = 1.0;
-    static constexpr double kActivityDecay = 0.95;
+    // VSIDS multiplicative-decay factor (per decay step). Default 0.95;
+    // overridable via mconf.cadet_activity_decay. NOT constexpr so that
+    // mconf can override it at construction time.
+    double activity_decay = 0.95;
     static constexpr double kActivityRescaleThreshold = 1e100;
 
     void bump_var(uint32_t v);

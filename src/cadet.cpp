@@ -107,19 +107,13 @@ using CMSat::lbool;
 
 namespace ArjunInt {
 
-// Threshold for Phase E's exhaustive enumeration. 2^16 = 65536 SAT calls
-// is the wall-time upper bound we're willing to spend per benchmark on
-// Phase E's naive enumeration. For anything larger Phase F (terminal,
-// no input-size threshold) takes over.
-static constexpr uint32_t kSmallInputThreshold = 16;
-
 Cadet::Cadet(const ArjunInt::Config& _conf,
              const ArjunNS::Arjun::ManthanConf& _mconf,
              ArjunNS::SimplifiedCNF&& _cnf)
     : conf(_conf), mconf(_mconf), cnf(std::move(_cnf))
 {
-    (void)mconf; // kept for API parity with Manthan's constructor;
-                 // none of the Manthan-specific knobs apply to cadet.
+    // Apply mconf overrides to the in-class defaults.
+    activity_decay = mconf.cadet_activity_decay;
 }
 
 template<typename S>
@@ -197,7 +191,7 @@ void Cadet::decay_activities() {
     // Multiplicative decay: scale the bump-increment UP by 1/decay
     // each time, equivalent to scaling all activities DOWN by decay.
     // O(1) per decay step.
-    activity_inc *= (1.0 / kActivityDecay);
+    activity_inc *= (1.0 / activity_decay);
     if (activity_inc > kActivityRescaleThreshold) {
         const double inv = 1.0 / kActivityRescaleThreshold;
         for (auto& a : var_activity) a *= inv;
@@ -498,9 +492,9 @@ bool Cadet::synth_by_propagation() {
     // `restart_threshold` conflicts, then grow the threshold by
     // kRestartFactor. Keeps learnt clauses; just discards the
     // speculative tree so a fresh exploration can start.
-    uint32_t restart_threshold = 16;
+    uint32_t restart_threshold = mconf.cadet_restart_initial;
     uint32_t conflicts_since_restart = 0;
-    static constexpr double kRestartFactor = 1.5;
+    const double restart_factor = mconf.cadet_restart_factor;
     // Latch set when we hit the guess-depth cap and want one more
     // forced-only pass at level 0 (to pick up vars now forced by
     // learnt clauses) before exiting.
@@ -515,7 +509,7 @@ bool Cadet::synth_by_propagation() {
                 conflicts_since_restart >= restart_threshold) {
             backjump_to_level(0);
             conflicts_since_restart = 0;
-            restart_threshold = (uint32_t)(restart_threshold * kRestartFactor);
+            restart_threshold = (uint32_t)(restart_threshold * restart_factor);
             total_restarts++;
             if (conf.verb >= 1) {
                 cout << "c o [cadet] restart #" << total_restarts
@@ -736,12 +730,12 @@ bool Cadet::synth_by_propagation() {
             // will mop up anything not committed. The cap also
             // bounds the work of "explore-and-backtrack" before we
             // give up and let downstream phases finish.
-            static constexpr uint32_t kMaxGuessDepth = 8;
+            const uint32_t max_guess_depth = mconf.cadet_max_guess_depth;
             if (no_more_guesses) break;
-            if (decision_lvl >= kMaxGuessDepth) {
+            if (decision_lvl >= max_guess_depth) {
                 if (conf.verb >= 1) {
                     cout << "c o [cadet] Phase D: hit guess-depth cap "
-                         << kMaxGuessDepth << ", draining level-0 forced"
+                         << max_guess_depth << ", draining level-0 forced"
                          << endl;
                 }
                 backjump_to_level(0);
@@ -833,10 +827,10 @@ bool Cadet::synth_complete_with_models() {
     // each input are mutually consistent and consistent with what was
     // already committed.
     //
-    // Limit: |orig_sampl_cnf| <= kSmallInputThreshold (16). For larger
-    // inputs Phase E gives up; Phase F (terminal, no threshold) takes
-    // over.
-    if (orig_sampl_cnf.size() > kSmallInputThreshold) return false;
+    // Limit: |orig_sampl_cnf| <= mconf.cadet_phase_e_threshold (default 16).
+    // For larger inputs Phase E gives up; Phase F (terminal, no threshold)
+    // takes over.
+    if (orig_sampl_cnf.size() > mconf.cadet_phase_e_threshold) return false;
 
     // Identify still-undetermined to_define vars. If Phase C+D already
     // determinized everything, Phase E has nothing to do.
@@ -1008,7 +1002,8 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
     // Periodic AIG simplification cadence. Long Phase F runs build
     // deep ITE chains; without periodic compression the AIG grows
     // unboundedly and each new_ite call walks an ever-larger DAG.
-    static constexpr uint32_t kPhaseFSimplifyEvery = 1000;
+    // Tunable via mconf.cadet_phase_f_simplify_every.
+    const uint32_t simplify_every = mconf.cadet_phase_f_simplify_every;
 
     const std::vector<uint32_t>& undet = sub_undet;
     if (undet.empty()) return true;
@@ -1261,34 +1256,34 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
         // medium undet sizes (~30-60) where per-y would pay off, and
         // the adaptive disable alone would let huge-undet runs do a
         // ruinous first window before bailing.
-        static constexpr uint32_t kPerYUndetCap = 30;
-        static constexpr uint64_t kPerYProductivityWindow = 5000;
+        const uint32_t per_y_undet_cap = mconf.cadet_phase_f_per_y_undet_cap;
+        const uint64_t per_y_window = mconf.cadet_phase_f_per_y_window;
         // Below this commits/checks ratio, per-y is disabled for the
         // rest of the Phase F worker run. Calibrated against the
         // fuzzer: productive per-y typically hits >0.4 commits/check;
         // unproductive runs sit at <0.05 and dominate the slowdown.
-        static constexpr double kPerYMinProductivity = 0.1;
+        const double per_y_min_productivity = mconf.cadet_phase_f_per_y_min_productivity;
         const bool was_joint_sat_this_iter = (joint_unique_result == CMSat::l_True);
         // Adaptive disable: after the productivity window, check the
         // commits/checks ratio. If poor, disable per-y for this run.
         // per_y_disabled is a function-scope variable (declared
         // outside the iter loop) so this check persists across iters.
-        if (!per_y_disabled &&
-            n_per_y_checks >= kPerYProductivityWindow) {
+        if (!per_y_disabled && per_y_window > 0 &&
+            n_per_y_checks >= per_y_window) {
             const double ratio = double(n_per_y_commits) / double(n_per_y_checks);
-            if (ratio < kPerYMinProductivity) {
+            if (ratio < per_y_min_productivity) {
                 per_y_disabled = true;
                 if (conf.verb >= 1) {
                     cout << "c o [cadet]   Phase F per-y disabled at iter "
                          << iters << ": productivity "
                          << fixed << setprecision(3) << ratio
-                         << " < " << kPerYMinProductivity
+                         << " < " << per_y_min_productivity
                          << " ("  << n_per_y_commits << "/" << n_per_y_checks
                          << ")" << endl;
                 }
             }
         }
-        if (was_joint_sat_this_iter && undet.size() <= kPerYUndetCap
+        if (was_joint_sat_this_iter && undet.size() <= per_y_undet_cap
             && !per_y_disabled) {
             // VSIDS-ordered per-y scan: vars with higher activity get
             // checked first. A successful per-y commit reduces future
@@ -1367,10 +1362,10 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
         // each `partial[y]` is a deepening ITE chain. AIG::new_ite
         // walks the existing DAG looking for structural matches, so
         // unsimplified deep chains slow every iteration down. Walk
-        // the partial map and compress every kPhaseFSimplifyEvery
-        // iters — this keeps per-iter wall time stable across runs
-        // that take many thousands of iterations to converge.
-        if (iters % kPhaseFSimplifyEvery == 0) {
+        // the partial map and compress every simplify_every iters —
+        // this keeps per-iter wall time stable across runs that take
+        // many thousands of iterations to converge.
+        if (simplify_every > 0 && iters % simplify_every == 0) {
             for (uint32_t y : undet) {
                 partial[y] = AIG::simplify_aig(partial[y]);
             }
@@ -1530,11 +1525,11 @@ SimplifiedCNF Cadet::do_cadet() {
 
     // ---- Phase E: small-input SAT-model enumeration. Runs whenever
     // the input space is small enough that 2^|orig_sampl_cnf| naive
-    // enumeration is cheap (≤ kSmallInputThreshold = 16, so ≤ 65k
-    // SAT calls). Respects Phase C+D's partial commits via Tseitin
-    // encoding. Phase E is just faster than Phase F at this size —
-    // no per-iter uniqueness/minimization overhead, just straight
-    // model collection.
+    // enumeration is cheap (≤ mconf.cadet_phase_e_threshold = 16 by
+    // default, so ≤ 65k SAT calls). Respects Phase C+D's partial
+    // commits via Tseitin encoding. Phase E is just faster than Phase F
+    // at this size — no per-iter uniqueness/minimization overhead, just
+    // straight model collection.
     if (!done) {
         done = synth_complete_with_models();
     }
