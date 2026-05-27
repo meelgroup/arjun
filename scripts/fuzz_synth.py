@@ -459,12 +459,14 @@ if __name__ == "__main__":
         else:
             solver += "--synthmore "
 
-        # ~25% of iterations: also enable --cadet 1. This stresses the
-        # cadet→Manthan handoff against fuzz_synth.py's full Manthan
-        # flag matrix (which fuzz_cadet.py keeps fixed). Cadet handles
-        # whatever it can; main.cpp falls through to the Manthan
-        # strategy ladder for the remainder, so behavior should be
-        # strictly ≥ Manthan-alone.
+        # ~25% of iterations: also enable --cadet 1. CADET is the
+        # terminal synthesis path under --cadet 1 (no Manthan
+        # fallback); main.cpp release_asserts that cadet finished
+        # alone. This stresses cadet's correctness against the full
+        # Manthan flag matrix that this fuzzer randomizes — cadet
+        # mostly ignores those flags, but they shape the pre-cadet
+        # pipeline (BVE, autarky, extend, unate_def variants) so the
+        # CNF cadet sees varies widely across iters.
         if random.choices([True, False], weights=[1, 3])[0]:
             solver += "--cadet 1 "
 
