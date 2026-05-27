@@ -71,10 +71,14 @@ private:
     std::set<uint32_t> backward_defined; // vars already defined upstream
     std::set<uint32_t> orig_sampl_cnf;   // orig sampling vars in CNF numbering
 
-    // skol[v] = Skolem function for v in terms of input vars (and previously-
-    // synthesized vars). For inputs, this is the literal AIG. For backward
-    // vars, this is cnf.defs[v]. For to_define vars, this starts nullptr and
-    // gets filled by the algorithm.
+    // skol[v] = Skolem function for v in CNF-numbering. Phase C+D
+    // initializes input and backward_defined entries to the literal
+    // AIG (AIG::new_lit(v, false)) — opaque leaves that
+    // map_aigs_to_orig later rewrites to orig-space. For to_define
+    // vars, skol starts nullptr and gets filled by the algorithm.
+    // Phase F treats input/backward leaves through the SAT solver
+    // (their values come from the model), so skol[] for those vars
+    // is only used by Phase C+D's AIG-pos_force construction.
     std::vector<ArjunNS::aig_ptr> skol;
 
     // --- algorithm pieces ---
