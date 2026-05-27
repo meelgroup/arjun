@@ -709,7 +709,23 @@ bool Cadet::synth_by_propagation() {
         }
 
         if (!any_decided) {
-            // No undet var is forced by F under current decisions.
+            // Forced-only is stuck at the current decision context.
+            // If we're at level 0, try the CEGAR refinement loop
+            // BEFORE giving up to a speculative guess. CEGAR finds
+            // y-values forced under *universal cubes* — commits that
+            // are invisible to forced-only (which only spots values
+            // forced *universally*). Empty kept-cube rounds produce
+            // direct level-0 constant commits; non-empty rounds add
+            // implication clauses to skolem_sat that may unblock
+            // forced-only on its next pass.
+            if (decision_lvl == 0 && mconf.cadet_cegar) {
+                if (cegar_drain_at_level_0(in_queue, queue)) {
+                    // CEGAR made progress; let propagation pick up
+                    // any newly-committed neighbours and any forcing
+                    // that came from the new skolem_sat clauses.
+                    continue;
+                }
+            }
             // CDCL step: guess the highest-VSIDS undet at a new
             // decision level. Subsequent propagation runs under the
             // assumed sel_d. On a future probe UNSAT-with-sel_d-in-
@@ -1781,6 +1797,74 @@ bool Cadet::cegar_one_round(uint32_t& out_kept_cube_size,
     exists_solver->add_clause(forbid);
     cegar_stat_joint_commits++;
     return true;
+}
+
+bool Cadet::cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
+                                   std::vector<uint32_t>& queue) {
+    // Per-stall CEGAR driver. Caller invokes when Phase D's forced-only
+    // sweep stalled at decision_lvl == 0. We try up to
+    // mconf.cadet_cegar_max_rounds_per_stall rounds, but bail early
+    // on:
+    //   - the per-Phase-D total-rounds cap (mconf.cadet_cegar_max_total_rounds)
+    //   - the trailing avg kept-cube-size exceeding the effectiveness
+    //     threshold (mirrors cadet's cegar_effectiveness_threshold; the
+    //     more bits each cube keeps, the less generalization we're
+    //     getting per SAT call, so cube-minimization is paying
+    //     diminishing returns)
+    //   - two consecutive no-progress rounds (joint SAT + no per-y
+    //     commit, nothing to add).
+    assert(decision_lvl == 0);
+    if (!mconf.cadet_cegar) return false;
+    if (cegar_interface.empty()) return false;
+    const uint32_t max_total = mconf.cadet_cegar_max_total_rounds;
+    if (max_total > 0 && cegar_total_rounds >= max_total) return false;
+
+    bool any_progress = false;
+    uint32_t rounds = 0;
+    uint64_t cube_sum = 0;
+    uint64_t cube_count = 0;
+    uint32_t consec_no_progress = 0;
+    while (rounds < mconf.cadet_cegar_max_rounds_per_stall) {
+        if (max_total > 0 && cegar_total_rounds >= max_total) break;
+        // Effectiveness break: only meaningful once we've seen a
+        // handful of UNSAT rounds (≥3) so the average isn't noise.
+        if (cube_count >= 3 &&
+            (cube_sum / cube_count) > mconf.cadet_cegar_max_avg_cube) {
+            if (conf.verb >= 2) {
+                cout << "c o [cadet]   CEGAR stall break: avg kept-cube "
+                     << (cube_sum / cube_count) << " > "
+                     << mconf.cadet_cegar_max_avg_cube << endl;
+            }
+            break;
+        }
+        uint32_t kept = 0;
+        const bool round_progress = cegar_one_round(kept, in_queue, queue);
+        rounds++;
+        if (kept > 0) {
+            // Joint UNSAT with non-empty cube — track size for avg.
+            cube_sum += kept;
+            cube_count++;
+        }
+        if (round_progress) {
+            any_progress = true;
+            consec_no_progress = 0;
+            // Keep going: more rounds may catch more commits since each
+            // committed constant changes skol[] and the next round's
+            // model will reflect that.
+            continue;
+        }
+        consec_no_progress++;
+        if (consec_no_progress >= 2) break;
+    }
+    if (conf.verb >= 2 && rounds > 0) {
+        cout << "c o [cadet]   CEGAR drain: rounds=" << rounds
+             << " any_progress=" << (any_progress ? "yes" : "no")
+             << " avg_kept=";
+        if (cube_count > 0) cout << (cube_sum / cube_count);
+        else cout << "n/a";
+        cout << endl;
+    }
+    return any_progress;
 }
 
 void Cadet::commit_definitions() {

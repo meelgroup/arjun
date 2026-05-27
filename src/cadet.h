@@ -414,6 +414,16 @@ private:
     bool cegar_one_round(uint32_t& out_kept_cube_size,
                          std::vector<uint8_t>& in_queue,
                          std::vector<uint32_t>& queue);
+    // Per-stall driver: call cegar_one_round repeatedly until either
+    // (a) a round commits something (caller re-runs propagation), or
+    // (b) the per-stall round cap is hit, or
+    // (c) the trailing avg kept-cube-size exceeds the effectiveness
+    //     threshold (cube minimization isn't biting), or
+    // (d) a round returns false (joint SAT + no per-y commit) twice in
+    //     a row (no progress in sight). Returns true iff any commits
+    //     were made across the drain.
+    bool cegar_drain_at_level_0(std::vector<uint8_t>& in_queue,
+                                std::vector<uint32_t>& queue);
 };
 
 } // namespace ArjunInt
