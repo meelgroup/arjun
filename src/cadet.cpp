@@ -351,6 +351,11 @@ bool Cadet::try_propagate(uint32_t y,
         mark_clauses_dead_by_constant(y, !pos_force.neg);
     }
     tseitin_skol_into_skolem_sat(y);
+    // Small activity bump for vars whose Phase-C propagation actually
+    // pulled them in — they're more likely to participate in future
+    // tight forcing. Bumping all dependent vars too (the leaves of
+    // pos_force) would spread activity too thin; just bump y.
+    if (y < var_activity.size()) bump_var(y);
     return true;
 }
 
