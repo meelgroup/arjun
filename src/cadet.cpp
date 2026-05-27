@@ -965,10 +965,11 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
     auto print_phase_f_stats = [&](const std::string& outcome) {
         cout << "c o [cadet] Phase F " << outcome
              << ". iters=" << iters
-             << " (max " << kPhaseFMaxIters << ")"
              << " uniq-UNSAT=" << n_uniq_unsat
              << " uniq-SAT=" << n_uniq_sat
              << " uniq-UNDEF=" << n_uniq_unknown
+             << " per-y-commits=" << n_per_y_commits
+             << " / checks=" << n_per_y_checks
              << " avg-drops/iter=" << std::fixed << setprecision(1)
              << (iters > 0 ? double(total_drops) / iters : 0.0)
              << " avg-core-size=" << std::fixed << setprecision(1)
