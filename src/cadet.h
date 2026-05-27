@@ -109,24 +109,39 @@ private:
     bool synth_complete_with_models();
 
     // Phase F: like Phase E but each SAT-model case is generalized to
-    // cover many inputs via greedy bit-dropping with a uniqueness
-    // check. For each model M, iterate over input bits; for each bit
-    // i, ask SAT: "F + (kept input lits minus i) + (joint undet y ≠
-    // M's values) UNSAT?". If yes, joint y = M's values is forced
-    // over inputs with bit i either way — drop bit i. Greedy across
-    // bits gives a minimal kept set; commit a single case covering
-    // that whole region.
+    // cover many inputs via UNSAT-core-based bit-dropping with a
+    // uniqueness check. For each model M, ask the SAT solver under
+    // (sel + kept_input_lits) whether joint undet Y must differ from
+    // M's value. On UNSAT, the conflict core identifies the kept
+    // input bits required for forcing — every other bit can be
+    // dropped. On joint-SAT (alternatives exist), fall back to
+    // per-y uniqueness for small undet sets.
     //
-    // Soundness: the uniqueness check verifies that joint y = M is
+    // Soundness: the uniqueness check verifies that joint Y = M is
     // the ONLY joint Skolem over the (potentially exponential) kept
     // region, so committing that joint value over the region is
-    // correct. Each iteration covers many inputs at once, lifting
-    // Phase E's |orig_sampl_cnf| ≤ 16 ceiling.
+    // correct.
     //
-    // Cost: O(|orig_sampl_cnf|) SAT calls per iteration (one per
-    // bit-drop attempt). Bounded by an iteration budget to keep
-    // runtime sane on poorly-converging inputs.
+    // Terminal completion guarantee: no input-size threshold, no iter
+    // cap. Each iteration forbids a non-empty kept-input region, so
+    // total iterations ≤ 2^|sub_inputs| — finite.
+    //
+    // Wrapper that decomposes the undet set into clause-graph
+    // components (sinks at orig sampling vars + already-determined
+    // vars) and calls synth_phase_f_subset() per component. Smaller
+    // components mean smaller per-iter SAT calls and far fewer iters
+    // overall on structured CNFs.
     bool synth_complete_with_interp_generalization();
+
+    // Phase F worker: run the SAT-model + UNSAT-core-generalize loop
+    // on the supplied (sub_inputs, sub_undet) subset. Builds its own
+    // sat and minim solvers, encoding the current skol[] state, then
+    // enumerates over sub_inputs to fill in Skolems for sub_undet.
+    // Returns true on convergence (sub_undet fully determined), false
+    // on UNDEF from the SAT solver (never happens in practice — no
+    // hard timeout is set).
+    bool synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs,
+                              const std::vector<uint32_t>& sub_undet);
 
     // Phase C+D: incremental determinization (CADET's signature).
     //

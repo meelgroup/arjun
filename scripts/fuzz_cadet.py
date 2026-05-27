@@ -313,7 +313,7 @@ def run_synth(solver, fname):
             m = re.search(r"on (\d+) undet vars", line)
             if m:
                 info["phase_e_committed"] = int(m.group(1))
-        elif "Phase F — generalized cases on" in line:
+        elif "Phase F worker —" in line:
             info["phase_f_ran"] = True
         elif "Phase F converged + committed" in line or \
              "Phase F did NOT converge" in line:

@@ -777,7 +777,40 @@ bool Cadet::synth_complete_with_models() {
 }
 
 bool Cadet::synth_complete_with_interp_generalization() {
-    // Phase F. Like Phase E, but each iteration's case covers many
+    // Monolithic Phase F: build Skolems for all still-undet vars over
+    // the full orig sampling space in one SAT-model-enumeration loop.
+    //
+    // An earlier attempt at per-component decomposition was unsound:
+    // when a clause involves a to_define var and an extend-defined
+    // var, the extend var's existing AIG def transitively touches
+    // OTHER to_define vars in different components. The per-component
+    // Skolems then implicitly relied on consistent values for the
+    // out-of-component orig-sampling vars feeding those extend defs,
+    // producing skol[y1], skol[y2] that were each individually
+    // consistent with F but JOINTLY incorrect at some inputs. Caught
+    // by fuzz_cadet seed 11995170551103480696 (test-synth: "Sample
+    // does not satisfy the CNF"). The worker is kept as a callable
+    // helper (synth_phase_f_subset) so a future, correctly-merged
+    // decomposition can call it; the current wrapper just forwards
+    // the full undet set / full orig sampling set in one call.
+    vector<uint32_t> all_undet;
+    for (uint32_t y : to_define) {
+        if (skol[y] == nullptr) all_undet.push_back(y);
+    }
+    if (all_undet.empty()) return true;
+    vector<uint32_t> all_inputs(orig_sampl_cnf.begin(), orig_sampl_cnf.end());
+    std::sort(all_inputs.begin(), all_inputs.end());
+    return synth_phase_f_subset(all_inputs, all_undet);
+}
+
+
+bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
+                                 const std::vector<uint32_t>& sub_undet) {
+    // Phase F worker — operates on the supplied subset. Same algorithm
+    // as the original monolithic Phase F, but `sorted_inputs` and
+    // `undet` come from the parameters instead of class state.
+    //
+    // Like Phase E, but each iteration's case covers many
     // inputs (not just one). The generalization comes from greedy
     // bit-dropping with a uniqueness check:
     //
@@ -831,16 +864,13 @@ bool Cadet::synth_complete_with_interp_generalization() {
     // unboundedly and each new_ite call walks an ever-larger DAG.
     static constexpr uint32_t kPhaseFSimplifyEvery = 1000;
 
-    vector<uint32_t> undet;
-    for (uint32_t y : to_define) {
-        if (skol[y] == nullptr) undet.push_back(y);
-    }
+    const std::vector<uint32_t>& undet = sub_undet;
     if (undet.empty()) return true;
 
     if (conf.verb >= 1) {
-        cout << "c o [cadet] Phase F — generalized cases on " << undet.size()
-             << " undet vars over " << orig_sampl_cnf.size()
-             << " orig sampling vars (no iter cap; "
+        cout << "c o [cadet] Phase F worker — " << undet.size()
+             << " undet vars over " << sub_inputs_in.size()
+             << " inputs (no iter cap; "
              << "diagnostic-flush every " << kPhaseFMaxIters << ")" << endl;
     }
     const double t0 = cpuTime();
@@ -886,7 +916,7 @@ bool Cadet::synth_complete_with_interp_generalization() {
     build_solver(sat);
     build_solver(minim);
 
-    vector<uint32_t> sorted_inputs(orig_sampl_cnf.begin(), orig_sampl_cnf.end());
+    vector<uint32_t> sorted_inputs = sub_inputs_in;
     std::sort(sorted_inputs.begin(), sorted_inputs.end());
     const uint32_t n_in = sorted_inputs.size();
 
@@ -1180,28 +1210,21 @@ bool Cadet::synth_complete_with_interp_generalization() {
     };
 
     if (!converged) {
-        // Phase F did not finish covering the input space within the
-        // iteration budget. Whatever ITE chain we'd build has UNCOVERED
-        // inputs defaulting to FALSE — and FALSE may be the wrong joint
-        // y value at those inputs. Committing partial would produce a
-        // wrong Skolem (caught by test-synth's UNSAT verifier on the
-        // fuzzer; seed 2609914553842841542). Roll back: skip the
-        // commit and let the caller hand the rest off to Manthan.
+        // Phase F did not finish covering the input space — should
+        // never happen since the loop has no iter cap. The only path
+        // is SAT-solver UNDEF on outer solve. Print stats and bail.
         if (conf.verb >= 1) {
-            print_phase_f_stats("did NOT converge — reverting commits");
+            print_phase_f_stats("did NOT converge (SAT UNDEF — bailing)");
         }
         return false;
     }
 
     for (uint32_t y : undet) skol[y] = partial[y];
 
-    bool all_done = true;
-    for (uint32_t y : to_define) if (skol[y] == nullptr) all_done = false;
-
     if (conf.verb >= 1) {
         print_phase_f_stats("converged + committed");
     }
-    return all_done;
+    return true;
 }
 
 void Cadet::commit_definitions() {
