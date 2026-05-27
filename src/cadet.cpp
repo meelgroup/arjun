@@ -493,7 +493,11 @@ bool Cadet::synth_complete_with_models() {
     // assignments are UNSAT under F + prior commits, so y's value
     // there is vacuously free and "false" is a fine default — it
     // gets folded away by AIG simplification anyway).
-    std::map<uint32_t, vector<bool>> tables;
+    // unordered_map — see the matching note on `partial` in Phase F.
+    // We only index `tables[y]` with y from `undet`; never iterate the
+    // map itself, so ordered traversal is unneeded.
+    std::unordered_map<uint32_t, vector<bool>> tables;
+    tables.reserve(undet.size());
     for (uint32_t y : undet) tables[y].assign(n_assign, false);
 
     vector<Lit> forbid;
