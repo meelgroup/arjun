@@ -1027,12 +1027,11 @@ SimplifiedCNF Cadet::do_cadet() {
     // how many vars F forces to constants.
     bool done = synth_by_propagation();
 
-    // Count what Phase C+D committed in case it didn't finish.
-    // If it committed nothing, Phase B/A are safe to try (they reset
-    // skol[] internally, so they'd clobber any partial work — only
-    // run them when there's nothing to clobber). If C+D committed
-    // some but not all, we keep those partial commits and let the
-    // caller (main.cpp) hand off the remainder to Manthan.
+    // Count what Phase C+D committed. Phase E only kicks in when at
+    // least one C+D commit landed, since Phase E's setup pays its
+    // Tseitin-encoding cost up front and that's wasted if there's
+    // nothing to encode (Phase F would do strictly more work in less
+    // time on a no-commits formula).
     uint32_t cd_committed = 0;
     for (uint32_t y : to_define) if (skol[y] != nullptr) cd_committed++;
 
