@@ -679,6 +679,10 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
     // the case condition is just a conjunction of input lits).
     uint64_t n_per_y_checks = 0;       // total per-y uniqueness SAT calls
     uint64_t n_per_y_commits = 0;      // per-y individually-forced commits
+    // Adaptive disable flag: after the first productivity window of
+    // per-y attempts, if commits/checks ratio is too low, per-y is
+    // disabled for the remainder of this worker run.
+    bool per_y_disabled = false;
     while (true) {
         // Outer solve: find an uncovered input pattern.
         const auto ret = sat.solve();
@@ -846,16 +850,45 @@ bool Cadet::synth_phase_f_subset(const std::vector<uint32_t>& sub_inputs_in,
         // than joint Y.
         //
         // Cost guard: per-y adds |undet| SAT calls + |undet| clauses
-        // to the running solvers per joint-SAT iter. On large undet
-        // sets this dominates; bench evidence (/tmp/slow.cnf with
-        // |undet|=65) showed per-y making total wall time worse, not
-        // better, because the bloating solver state slowed every
-        // subsequent SAT call. Skip per-y when |undet| exceeds
-        // kPerYUndetCap; the joint single-minterm commit still
-        // covers progress, just less per iter.
+        // to the running solvers per joint-SAT iter. Tight static cap
+        // (kPerYUndetCap) avoids the worst case; an additional ADAPTIVE
+        // disable kicks in mid-run when the first window of per-y
+        // attempts has poor productivity (very few commits relative to
+        // checks), since that means subsequent per-y calls will
+        // probably be the same costly miss. Either guard alone is
+        // unsound for performance: the static cap misses fast runs at
+        // medium undet sizes (~30-60) where per-y would pay off, and
+        // the adaptive disable alone would let huge-undet runs do a
+        // ruinous first window before bailing.
         static constexpr uint32_t kPerYUndetCap = 30;
+        static constexpr uint64_t kPerYProductivityWindow = 5000;
+        // Below this commits/checks ratio, per-y is disabled for the
+        // rest of the Phase F worker run. Calibrated against the
+        // fuzzer: productive per-y typically hits >0.4 commits/check;
+        // unproductive runs sit at <0.05 and dominate the slowdown.
+        static constexpr double kPerYMinProductivity = 0.1;
         const bool was_joint_sat_this_iter = (joint_unique_result == CMSat::l_True);
-        if (was_joint_sat_this_iter && undet.size() <= kPerYUndetCap) {
+        // Adaptive disable: after the productivity window, check the
+        // commits/checks ratio. If poor, disable per-y for this run.
+        // per_y_disabled is a function-scope variable (declared
+        // outside the iter loop) so this check persists across iters.
+        if (!per_y_disabled &&
+            n_per_y_checks >= kPerYProductivityWindow) {
+            const double ratio = double(n_per_y_commits) / double(n_per_y_checks);
+            if (ratio < kPerYMinProductivity) {
+                per_y_disabled = true;
+                if (conf.verb >= 1) {
+                    cout << "c o [cadet]   Phase F per-y disabled at iter "
+                         << iters << ": productivity "
+                         << fixed << setprecision(3) << ratio
+                         << " < " << kPerYMinProductivity
+                         << " ("  << n_per_y_commits << "/" << n_per_y_checks
+                         << ")" << endl;
+                }
+            }
+        }
+        if (was_joint_sat_this_iter && undet.size() <= kPerYUndetCap
+            && !per_y_disabled) {
             for (uint32_t y : undet) {
                 n_per_y_checks++;
                 minim.new_var();
