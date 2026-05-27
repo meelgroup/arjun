@@ -275,6 +275,48 @@ void add_arjun_options() {
     myopt("--interprepairfullconf", mconf.interp_repair_full_conflict, fc_int,
           "Full-conflict interpolation: put ALL conflict units in B (not just input units). The interpolant is then over every conflict var rather than the input projection, generalising the whole conflict clause 'as-is'. build_interp_branch_formula drops the AND with y_other leaves since the interpolant already covers them. 0=off (default, input-only), 1=on.");
 
+    // === CADET (--cadet 1) knobs ===
+    myopt("--cadetcegar", mconf.cadet_cegar, fc_int,
+          "CADET CEGAR refinement in Phase D: when forced-only stalls, run a counterexample-guided sub-loop that shrinks the universal search space via UNSAT-core cube minimization before falling back to a speculative guess. 0=off, 1=on.");
+    myopt("--cadetcegarevery", mconf.cadet_cegar_every, fc_int,
+          "Try CEGAR every N Phase-D outer passes. 1 = every stall.");
+    myopt("--cadetcegarmaxtot", mconf.cadet_cegar_max_total_rounds, fc_int,
+          "Per Phase D entry: cap on total CEGAR rounds across all stalls. 0 = no cap.");
+    myopt("--cadetcegarmaxperstall", mconf.cadet_cegar_max_rounds_per_stall, fc_int,
+          "Per stall: max CEGAR rounds before guessing. Mirrors cadet's max_cegar_iterations_per_learnt_clause.");
+    myopt("--cadetcegarmaxavgcube", mconf.cadet_cegar_max_avg_cube, fc_int,
+          "Avg cube-size break: bail CEGAR for this stall when the trailing mean kept-cube size exceeds this. Mirrors cadet's cegar_effectiveness_threshold.");
+    myopt("--cadetcegarpery", mconf.cadet_cegar_per_y, fc_int,
+          "Per-y forcing fallback inside CEGAR rounds. 0=off, 1=on.");
+    myopt("--cadetcegarperyundetcap", mconf.cadet_cegar_per_y_undet_cap, fc_int,
+          "Per-y CEGAR fallback: skip when undet count > this (each per-y call adds |undet| SAT calls per round).");
+    myopt("--cadetcegarperywindow", mconf.cadet_cegar_per_y_productivity_window, fc_int,
+          "Per-y CEGAR adaptive disable productivity window (number of checks before evaluating commits/checks ratio). 0 = no adaptive disable.");
+    myopt("--cadetcegarperyminprod", mconf.cadet_cegar_per_y_min_productivity, fc_double,
+          "Per-y CEGAR adaptive disable: ratio threshold below which per-y is disabled for the rest of the run.");
+    myopt("--cadetcegarrebuildevery", mconf.cadet_cegar_rebuild_every, fc_int,
+          "Rebuild exists_solver from scratch every N level-0 commits (keeps Tseitin growth bounded). 0 = never rebuild.");
+
+    // Existing Phase C/D/E/F internals exposed as knobs.
+    myopt("--cadetphaseeth", mconf.cadet_phase_e_threshold, fc_int,
+          "Phase E gate: |orig_sampl_cnf| ≤ this triggers SAT-model enumeration (Phase E). Above this, Phase F runs directly.");
+    myopt("--cadetguessdepth", mconf.cadet_max_guess_depth, fc_int,
+          "Phase D speculative guess-depth cap. Above this, drain forced-only at level 0 and hand off to Phase E/F.");
+    myopt("--cadetrestartinit", mconf.cadet_restart_initial, fc_int,
+          "Phase D geometric-restart initial conflict count.");
+    myopt("--cadetrestartfactor", mconf.cadet_restart_factor, fc_double,
+          "Phase D geometric-restart growth factor.");
+    myopt("--cadetactdecay", mconf.cadet_activity_decay, fc_double,
+          "VSIDS multiplicative-decay factor (per decay step).");
+    myopt("--cadetphasefsimpevery", mconf.cadet_phase_f_simplify_every, fc_int,
+          "Phase F periodic AIG simplification cadence (iters between simplify passes on each partial[y]).");
+    myopt("--cadetphasefperycap", mconf.cadet_phase_f_per_y_undet_cap, fc_int,
+          "Phase F per-y uniqueness fallback cap (undet count above which per-y is skipped).");
+    myopt("--cadetphasefperywindow", mconf.cadet_phase_f_per_y_window, fc_int,
+          "Phase F per-y adaptive disable productivity window.");
+    myopt("--cadetphasefperyminprod", mconf.cadet_phase_f_per_y_min_productivity, fc_double,
+          "Phase F per-y adaptive disable: ratio threshold below which per-y is disabled.");
+
     // Simplification options for minim
     myopt("--probe", conf.probe_based, fc_int,"Use simple probing to set (and define) some variables");
     myopt("--bvepresimp", conf.bve_pre_simplify, fc_int,"simplify");

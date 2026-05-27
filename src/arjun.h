@@ -1762,6 +1762,93 @@ public:
         // interpolant already covers them. 0=off (default, input-only),
         // 1=on (full conflict).
         int interp_repair_full_conflict = 0;
+
+        // === In-tree CADET (--cadet 1) knobs ============================
+        //
+        // CEGAR refinement layer for Phase D. Inspired by the
+        // counterexample-guided abstraction refinement loop in the
+        // original CADET (cadet/src/cegar.c, casesplits.c). When Phase D
+        // stalls after a forced-only sweep, instead of immediately
+        // resorting to a speculative VSIDS guess, we run a CEGAR round:
+        //   1. Solve skolem_sat under active selectors to get a model.
+        //   2. Read off the orig sampling-var "cube" from the model.
+        //   3. Probe a SECOND solver (exists_solver, F + Tseitin of
+        //      level-0 commits) with (sel + "∃ undet y differs from M").
+        //   4. On UNSAT, the failed-assumption core tells us which
+        //      input bits in the cube were actually load-bearing.
+        //      Drop the rest, then commit joint Y=M as a permanent
+        //      blocking clause over the kept cube — same UNSAT-core-
+        //      based generalization Phase F uses, just slotted earlier.
+        //   5. (Optional) Per-y CEGAR fallback when the joint cube is
+        //      small: for each undet y, ask "is y individually forced
+        //      under the kept cube?" via the same UNSAT-core trick.
+        //
+        // Effect on synthesis: each CEGAR round shrinks the universal
+        // search space that Phase F must later cover, often eliminating
+        // Phase F entirely on benchmarks where Phase D was the
+        // bottleneck. Soundness mirrors Phase F's: the uniqueness check
+        // is over the FULL kept region, so committing joint Y=M over
+        // the region is correct.
+        //
+        // Master switch.
+        int cadet_cegar = 1;
+        // Try CEGAR every N Phase-D outer passes (counted from the top
+        // of the synth_by_propagation loop). 1 = try after every
+        // forced-only stall.
+        uint32_t cadet_cegar_every = 1;
+        // Per Phase-D entry: total cap on CEGAR rounds across all
+        // passes. Bounds worst-case wall time when CEGAR finds easy
+        // commits but each round is expensive on large F. 0 = no cap.
+        uint32_t cadet_cegar_max_total_rounds = 0;
+        // Per stall: max CEGAR rounds before falling back to a guess.
+        // Mirrors cadet's max_cegar_iterations_per_learnt_clause = 50.
+        uint32_t cadet_cegar_max_rounds_per_stall = 50;
+        // Average cube-size break: when the trailing-window mean of
+        // surviving (kept) cube sizes exceeds this, abandon CEGAR for
+        // this stall and let Phase D guess. Mirrors cadet's
+        // cegar_effectiveness_threshold = 17.
+        uint32_t cadet_cegar_max_avg_cube = 17;
+        // Enable per-y forcing fallback inside CEGAR rounds.
+        int cadet_cegar_per_y = 1;
+        // Per-y cap on undet count (analog of Phase F's kPerYUndetCap).
+        // Past this size, per-y fallback is skipped — each per-y call
+        // adds |undet| SAT calls per CEGAR round.
+        uint32_t cadet_cegar_per_y_undet_cap = 30;
+        // Adaptive disable: after this many per-y CEGAR checks, if
+        // commits/checks < productivity_threshold, disable per-y CEGAR
+        // for the remainder of the run. 0 = no adaptive disable.
+        uint64_t cadet_cegar_per_y_productivity_window = 5000;
+        double cadet_cegar_per_y_min_productivity = 0.1;
+        // Rebuild exists_solver from scratch every N level-0 commits.
+        // Keeps Tseitin clause growth bounded across long runs. 0 = no
+        // periodic rebuild (the solver only grows).
+        uint32_t cadet_cegar_rebuild_every = 0;
+
+        // === Existing internal Phase C/D/E/F constants, exposed ========
+        // Defaults match the in-source constants they replace; set to 0
+        // to fall back to the compile-time default where noted.
+        //
+        // Phase E gating: |orig_sampl_cnf| ≤ this triggers naïve
+        // SAT-model enumeration. Above this, Phase F (terminal) runs
+        // directly. Default 16 (~ 2^16 = 65k SAT calls cap).
+        uint32_t cadet_phase_e_threshold = 16;
+        // Phase D speculative guess-depth cap. Above this, we drain
+        // forced-only at level 0 and hand off to Phase E/F.
+        uint32_t cadet_max_guess_depth = 8;
+        // Geometric-restart initial conflict count, and growth factor.
+        uint32_t cadet_restart_initial = 16;
+        double cadet_restart_factor = 1.5;
+        // VSIDS multiplicative-decay factor (per decay step).
+        double cadet_activity_decay = 0.95;
+        // Phase F: periodic AIG simplification cadence (iters between
+        // simplify passes on each partial[y]).
+        uint32_t cadet_phase_f_simplify_every = 1000;
+        // Phase F: per-y uniqueness fallback cap (undet count above
+        // which per-y is skipped).
+        uint32_t cadet_phase_f_per_y_undet_cap = 30;
+        // Phase F: adaptive per-y disable productivity window + threshold.
+        uint64_t cadet_phase_f_per_y_window = 5000;
+        double cadet_phase_f_per_y_min_productivity = 0.1;
     };
 
     struct IndepInfo {
