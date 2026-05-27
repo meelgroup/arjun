@@ -467,9 +467,40 @@ bool Cadet::synth_by_propagation() {
     uint32_t total_committed = 0;
     uint32_t total_decisions = 0;
     uint32_t total_pure = 0;
+    uint32_t total_conflicts = 0;
+    uint32_t total_restarts = 0;
+    // Geometric restart schedule: backjump to level 0 after every
+    // `restart_threshold` conflicts, then grow the threshold by
+    // kRestartFactor. Keeps learnt clauses; just discards the
+    // speculative tree so a fresh exploration can start.
+    uint32_t restart_threshold = 16;
+    uint32_t conflicts_since_restart = 0;
+    static constexpr double kRestartFactor = 1.5;
     uint32_t pass = 0;
     while (true) {
         pass++;
+        // Geometric restart: when we've taken enough conflicts inside
+        // the current speculative tree, throw away the tree (keeping
+        // learnt clauses) and start fresh.
+        if (decision_lvl > 0 &&
+                conflicts_since_restart >= restart_threshold) {
+            backjump_to_level(0);
+            conflicts_since_restart = 0;
+            restart_threshold = (uint32_t)(restart_threshold * kRestartFactor);
+            total_restarts++;
+            if (conf.verb >= 1) {
+                cout << "c o [cadet] restart #" << total_restarts
+                     << ", next threshold " << restart_threshold
+                     << ", learnt=" << learnt_clauses.size() << endl;
+            }
+            // Re-enqueue every undet var.
+            for (uint32_t y : to_define) {
+                if (skol[y] == nullptr && !in_queue[y]) {
+                    in_queue[y] = 1;
+                    queue.push_back(y);
+                }
+            }
+        }
         uint32_t committed_this_pass = 0;
         // Drain the propagation worklist.
         while (!queue.empty()) {
@@ -562,6 +593,8 @@ bool Cadet::synth_by_propagation() {
                 // for Phase E/F to inject into their fresh solvers.
                 decision_sat.add_clause(learnt);
                 learnt_clauses.push_back(learnt);
+                total_conflicts++;
+                conflicts_since_restart++;
                 backjump_to_level(second_lvl);
                 if (conf.verb >= 1) {
                     cout << "c o [cadet] CDCL conflict at lvl "
@@ -729,6 +762,9 @@ bool Cadet::synth_by_propagation() {
              << " props: " << total_committed
              << " (pure: " << total_pure << ")"
              << " decisions: " << total_decisions
+             << " conflicts: " << total_conflicts
+             << " restarts: " << total_restarts
+             << " learnt: " << learnt_clauses.size()
              << " remaining: " << remaining
              << " T: " << fixed << setprecision(2) << (cpuTime() - t0) << endl;
     }
