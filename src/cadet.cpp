@@ -2,7 +2,8 @@
  Arjun
 
  cadet.cpp — In-tree port of CADET's incremental-determinization core
- (Markus N. Rabe, SAT 2016). Used in place of Manthan when --cadet 1 is set.
+ (Markus N. Rabe, SAT 2016). Used in place of Manthan when --cadet 1 is
+ set. Always finishes synthesis alone — no Manthan fallback.
 
  Algorithm overview
  ==================
@@ -11,33 +12,39 @@
  y ∈ Y is a Boolean function f_y(X) such that ∀X. φ(X, f_y(X), …) holds
  — i.e. plugging the Skolem functions into φ yields a tautology over X.
 
- CADET builds the Skolem functions incrementally rather than guessing
- them up-front (as Manthan does). It uses a SAT solver to detect when an
- existential variable's value is *forced* by the formula given the
- partial Skolem functions built so far ("unique consequence" / pure-
- literal propagation), and falls back to decisions + conflict analysis
- when no propagation is possible.
+ CADET builds Skolem functions incrementally rather than guessing them
+ up-front (as Manthan does). It uses a SAT solver to detect when an
+ existential variable's value is *forced* by F given the partial
+ Skolem functions built so far ("unique consequence" propagation),
+ and falls back to SAT-model-driven case construction when propagation
+ stops.
 
- Phasing
- =======
- This file implements the algorithm in phases, gated on input size and
- partition structure:
+ Phases (current implementation)
+ ===============================
+   Phase C — unique-consequence propagation. For each undet y, walk
+   its clauses; when every other literal is already a function of
+   inputs / earlier-determined vars, the clause forces y over its
+   "negated-other-literals" region. Accumulating those regions over
+   all positive-y clauses gives a candidate Skolem; a cycle check
+   guards against creating defs[] cycles.
 
-   Phase A — exhaustive enumeration. When |inputs| is small, build the
-   Skolem function for every y by enumerating every input assignment,
-   calling SAT under the assumption, and constructing a multi-input
-   table (DNF-of-minterms) AIG. Slow but correct, and sufficient for
-   the small fuzzer CNFs where every other phase might miss corner
-   cases. This is the v1.
+   Phase D — constant-value decisions. When Phase C stalls, pick
+   undet vars in least-constrained order and try y=false; if F+y=true
+   is UNSAT, y must be false (and vice versa). Commits only when one
+   polarity is provably UNSAT — never an unsound guess.
 
-   Phase B (TODO) — per-clause unique-consequence propagation. For each
-   clause C ∋ y where every other literal is already a function of
-   inputs, the disjunction-of-negated-other-literals is a sub-region
-   where y must hold; OR these into the running Skolem.
+   Phase E — small-input SAT-model enumeration. When |orig_sampl| ≤
+   16, repeatedly solve F+Tseitin(prior commits) under "forbid seen
+   inputs"; collect each model's undet y values into a per-y table;
+   build Shannon trees at the end.
 
-   Phase C (TODO) — decisions + conflict analysis. When propagation
-   stops, pick an undetermined y, set f_y = false (or true), use the
-   SAT solver to detect conflicts, learn clauses, and backtrack.
+   Phase F — terminal: SAT-model + UNSAT-core generalization with
+   per-y uniqueness fallback. No input-size threshold, no iter cap.
+   Each iter either drops bits via the joint UNSAT core or, on
+   joint-SAT, falls back to per-y uniqueness checks (capped at 30
+   undet vars to bound per-iter cost). Total iter count is bounded
+   by 2^|orig_sampl_cnf| — finite. Phase F is what backs cadet's
+   "always finishes" contract.
 
  Copyright (c) 2026, Mate Soos. All rights reserved.
 */
