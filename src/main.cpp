@@ -596,7 +596,7 @@ int main(int argc, char** argv) {
                 mconf.ganak_binary = "ganak";
             }
         }
-        if (conf.verb) cout << "c o [checkrepair] Using ganak binary: " << mconf.ganak_binary << endl;
+        verb_print(1, "[checkrepair] Using ganak binary: " << mconf.ganak_binary);
     }
 
     if (etof_conf.sbva_tiebreak != 0 && etof_conf.sbva_tiebreak != 1) {
