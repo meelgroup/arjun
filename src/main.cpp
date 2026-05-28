@@ -160,10 +160,11 @@ void add_arjun_options() {
     myflag("--synth", synthesis, "Run synthesis");
     myflag("--synthmore", synthesis, "Run synthesis, with more aggressive BVE options");
     myopt("--shannonsynth", use_shannon_synth, fc_int,
-          "Use brute-force Shannon-tree synthesis for the final synthesis "
-          "step instead of Manthan. Only viable when |orig_sampl_cnf| ≤ "
-          "--shannonsynththresh; release_asserts above that. "
-          "0=Manthan, 1=Shannon synthesis (default).");
+          "Try brute-force Shannon-tree synthesis for the final synthesis "
+          "step before Manthan. Viable when |orig_sampl_cnf| ≤ "
+          "--shannonsynththresh (after the minim pre-pass); above that it "
+          "declines and Manthan takes over. 0=Manthan only, 1=try Shannon "
+          "first (default).");
     myopt("--maxsat", mconf.maxsat_better_ctx, fc_int, "Use maxsat to find better counterexamples during Manthan");
     myopt("--synthbve", do_synth_bve, fc_int,"Perform BVE for synthesis");
     myopt("--extend", etof_conf.do_extend_indep, fc_int,"Extend independent set just before CNF dumping");
@@ -263,9 +264,11 @@ void add_arjun_options() {
 
     // === Shannon-tree synthesis (--shannonsynth 1) knobs ===
     myopt("--shannonsynththresh", mconf.shannon_synth_threshold, fc_int,
-          "Hard cap: |orig_sampl_cnf| ≤ this. Above it shannon_synth release_asserts (each y allocates 2^N truth-table entries, so raising past ~20 OOMs).");
+          "Cap: shannon_synth runs only when |orig_sampl_cnf| ≤ this (after the minim pre-pass); above it it declines to Manthan. Each y allocates 2^N truth-table entries, so raising past ~20 OOMs.");
     myopt("--shannonsynthminim", mconf.shannon_synth_minim, fc_int,
           "Dry-run backward minim on orig_sampl_cnf before enumeration: prunes sampling vars that the post-preproc CNF defines from the rest, shrinking the 2^N truth tables. 0=off, 1=on (default).");
+    myopt("--shannonsynthminimmax", mconf.shannon_synth_minim_max, fc_int,
+          "Only attempt the minim pre-pass when |orig_sampl_cnf| ≤ this (default 40). Above it the doubled-CNF minim is too expensive and unlikely to shrink below --shannonsynththresh, so it is skipped.");
 
     // Simplification options for minim
     myopt("--probe", conf.probe_based, fc_int,"Use simple probing to set (and define) some variables");
@@ -454,19 +457,17 @@ void do_synthesis() {
     }
 
     cnf.rewrite_aigs(conf.verb, do_sat_sweep);
-    if (use_shannon_synth) {
+    if (use_shannon_synth && !cnf.synth_done()) {
         // Brute-force Shannon-tree synthesis: enumerate every consistent
-        // X assignment, build per-y Shannon trees. Always finishes alone
-        // or release_asserts; no Manthan fallback.
-        if (!cnf.synth_done()) {
-            cout << "c o [arjun] Synthesis: Shannon trees" << endl;
-            cnf = arjun->standalone_shannon_synth(std::move(cnf), mconf);
-        }
+        // X assignment, build per-y Shannon trees. Declines (returns the
+        // CNF unchanged, synth not done) when the minimized enum set
+        // exceeds the threshold; Manthan below then finishes the job.
+        cout << "c o [arjun] Synthesis: Shannon trees" << endl;
+        cnf = arjun->standalone_shannon_synth(std::move(cnf), mconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-shannon_synth.aig");
         SLOW_DEBUG_DO(check_stage("shannon_synth"));
-        release_assert(cnf.synth_done() &&
-                       "shannon_synth must produce a Skolem for every existential");
-    } else {
+    }
+    if (!cnf.synth_done()) {
         SynthRunner synth_runner(conf, arjun);
         auto strategies = synth_runner.parse_mstrategy(mstrategy);
         synth_runner.run_manthan_strategies(cnf, mconf, strategies);

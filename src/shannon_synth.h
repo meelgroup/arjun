@@ -3,8 +3,10 @@
 
  shannon_synth.h — Brute-force Shannon-tree synthesis. Enumerate every
  consistent input pattern via a forbid-clause SAT loop, record each
- undet y per SAT model, then build per-y Shannon trees over the orig
- sampling vars. Only runs when |orig_sampl_cnf| ≤ shannon_synth_threshold.
+ undet y per model, build per-y Shannon trees over the orig sampling
+ vars. Synthesizes when |orig_sampl_cnf| ≤ shannon_synth_threshold
+ (after the optional minim pre-pass); otherwise returns the CNF
+ unchanged so the caller falls back to Manthan.
 
  Copyright (c) 2026, Mate Soos. All rights reserved.
 
@@ -52,7 +54,7 @@ private:
     ArjunNS::SimplifiedCNF cnf;
 
     // `input` includes extend-defined vars; `orig_sampl_cnf` is the
-    // narrower set we actually enumerate over.
+    // narrower set we enumerate over.
     std::set<uint32_t> input;
     std::set<uint32_t> to_define;
     std::set<uint32_t> backward_defined;
@@ -60,15 +62,8 @@ private:
 
     std::vector<ArjunNS::aig_ptr> skol;
 
-    // If shannon_synth_minim is on, run a dry-run backward minim over
-    // orig_sampl_cnf in the current CNF and shrink the set to the
-    // minimized subset before enumeration.
     void maybe_minimize_enum_set();
-
     void synth_complete_with_models();
-
-    // Shannon decomposition over sorted_inputs; collapses identical
-    // sibling subtrees via AIG::new_ite folding.
     ArjunNS::aig_ptr build_shannon_tree(const std::vector<bool>& table,
                                         const std::vector<uint32_t>& sorted_inputs);
 

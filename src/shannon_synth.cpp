@@ -1,11 +1,7 @@
 /*
  Arjun — shannon_synth.cpp
 
- Brute-force Shannon-tree synthesis: enumerate consistent X assignments
- via a forbid-clause SAT loop, tabulate every undet y per model, then
- build a Shannon tree per y over the sorted orig sampling vars. Always
- finishes alone (no Manthan fallback) when |orig_sampl_cnf| is within
- the threshold.
+ Brute-force Shannon-tree synthesis. See shannon_synth.h.
 
  Copyright (c) 2026, Mate Soos. All rights reserved.
 */
@@ -27,8 +23,6 @@
 #include <unordered_map>
 #include <vector>
 
-using std::cout;
-using std::endl;
 using std::vector;
 using std::setprecision;
 using std::fixed;
@@ -55,8 +49,7 @@ void ShannonSynth::inject_cnf(S& s) const {
 
 aig_ptr ShannonSynth::build_shannon_tree(const vector<bool>& table,
                                          const vector<uint32_t>& sorted_inputs) {
-    // Bottom-up pair-merge: level[i] = ITE(sorted_inputs[L],
-    //   high=prev[2i+1], low=prev[2i]). ITE folds constant subtrees.
+    // Bottom-up pair-merge; ITE folds constant subtrees.
     const uint32_t n = sorted_inputs.size();
     if (n == 0) {
         assert(table.size() == 1);
@@ -83,6 +76,11 @@ aig_ptr ShannonSynth::build_shannon_tree(const vector<bool>& table,
 void ShannonSynth::maybe_minimize_enum_set() {
     if (!mconf.shannon_synth_minim) return;
     if (orig_sampl_cnf.empty()) return;
+    if (orig_sampl_cnf.size() > mconf.shannon_synth_minim_max) {
+        verb_print(1, "[shannon_synth] enum set " << orig_sampl_cnf.size()
+            << " > minim cap " << mconf.shannon_synth_minim_max << "; skipping minim");
+        return;
+    }
 
     const double t0 = cpuTime();
     const size_t before = orig_sampl_cnf.size();
@@ -94,30 +92,21 @@ void ShannonSynth::maybe_minimize_enum_set() {
     orig_sampl_cnf.clear();
     orig_sampl_cnf.insert(minimized.begin(), minimized.end());
 
-    if (conf.verb >= 1) {
-        cout << "c o [shannon_synth] minim shrank enum set: " << before
-             << " -> " << orig_sampl_cnf.size()
-             << " (2^N rows: " << (1ull << before) << " -> "
-             << (1ull << orig_sampl_cnf.size()) << "). T: "
-             << fixed << setprecision(2) << (cpuTime() - t0) << endl;
-    }
+    verb_print(1, "[shannon_synth] minim shrank enum set: " << before
+        << " -> " << orig_sampl_cnf.size()
+        << " (2^N rows: " << (1ull << before) << " -> "
+        << (1ull << orig_sampl_cnf.size()) << "). T: "
+        << fixed << setprecision(2) << (cpuTime() - t0));
 }
 
 void ShannonSynth::synth_complete_with_models() {
-    // 2^|orig_sampl_cnf| tables; guard or we OOM. No fallback exists.
-    release_assert(orig_sampl_cnf.size() <= mconf.shannon_synth_threshold &&
-                   "shannon_synth: |orig_sampl_cnf| > shannon_synth_threshold "
-                   "(would OOM on the 2^N truth tables); raise --shannonsynththresh "
-                   "if you understand the memory cost, or don't use --shannonsynth");
+    assert(orig_sampl_cnf.size() <= mconf.shannon_synth_threshold);
 
     vector<uint32_t> undet(to_define.begin(), to_define.end());
     if (undet.empty()) return;
 
-    if (conf.verb >= 1) {
-        cout << "c o [shannon_synth] SAT-model completion on "
-             << undet.size() << " undet vars over "
-             << orig_sampl_cnf.size() << " orig sampling vars" << endl;
-    }
+    verb_print(1, "[shannon_synth] SAT-model completion on " << undet.size()
+        << " undet vars over " << orig_sampl_cnf.size() << " orig sampling vars");
     const double t0 = cpuTime();
 
     MetaSolver sat(SolverType::cadical);
@@ -164,11 +153,9 @@ void ShannonSynth::synth_complete_with_models() {
         skol[y] = build_shannon_tree(tables.at(y), sorted_inputs);
     }
 
-    if (conf.verb >= 1) {
-        cout << "c o [shannon_synth] done. covered " << covered_count
-             << "/" << n_assign << " consistent input patterns. T: "
-             << fixed << setprecision(2) << (cpuTime() - t0) << endl;
-    }
+    verb_print(1, "[shannon_synth] done. covered " << covered_count
+        << "/" << n_assign << " consistent input patterns. T: "
+        << fixed << setprecision(2) << (cpuTime() - t0));
 }
 
 void ShannonSynth::commit_definitions() {
@@ -184,16 +171,14 @@ void ShannonSynth::commit_definitions() {
 
 SimplifiedCNF ShannonSynth::do_synth() {
     const double my_time = cpuTime();
-    if (conf.verb >= 1) {
-        cout << "c o [shannon_synth] starting; nVars=" << cnf.nVars()
-             << " clauses=" << cnf.get_clauses().size() << endl;
-    }
+    verb_print(1, "[shannon_synth] starting; nVars=" << cnf.nVars()
+        << " clauses=" << cnf.get_clauses().size());
 
     cnf.get_var_types(conf.verb, "start do_synth").unpack_to(
         input, to_define, backward_defined);
 
-    // VarTypes.input lumps extend-defined vars in; orig_sampl_cnf is
-    // the narrower set we actually enumerate over.
+    // VarTypes.input lumps extend-defined vars in; we enumerate over the
+    // narrower orig sampling set only.
     orig_sampl_cnf.clear();
     const auto& o2n = cnf.get_orig_to_new_var();
     for (uint32_t v : cnf.get_orig_sampl_vars()) {
@@ -203,28 +188,31 @@ SimplifiedCNF ShannonSynth::do_synth() {
     }
 
     if (to_define.empty()) {
-        if (conf.verb >= 1) {
-            cout << "c o [shannon_synth] nothing to define — returning unchanged CNF" << endl;
-        }
+        verb_print(1, "[shannon_synth] nothing to define — returning unchanged CNF");
         return std::move(cnf);
     }
 
-    if (conf.verb >= 1) {
-        cout << "c o [shannon_synth] partition: |orig_sampl|=" << orig_sampl_cnf.size()
-             << " |input|=" << input.size()
-             << " |to_define|=" << to_define.size()
-             << " |backward_defined|=" << backward_defined.size() << endl;
-    }
+    verb_print(1, "[shannon_synth] partition: |orig_sampl|=" << orig_sampl_cnf.size()
+        << " |input|=" << input.size()
+        << " |to_define|=" << to_define.size()
+        << " |backward_defined|=" << backward_defined.size());
 
     maybe_minimize_enum_set();
+
+    // Decline (don't abort) above the threshold: caller falls back to Manthan.
+    if (orig_sampl_cnf.size() > mconf.shannon_synth_threshold) {
+        verb_print(1, "[shannon_synth] enum set " << orig_sampl_cnf.size()
+            << " > threshold " << mconf.shannon_synth_threshold
+            << "; declining — Manthan will synthesize");
+        return std::move(cnf);
+    }
+
     synth_complete_with_models();
     commit_definitions();
 
-    if (conf.verb >= 1) {
-        cout << "c o [shannon_synth] done — all " << to_define.size()
-             << " to_define vars committed. T: "
-             << fixed << setprecision(2) << (cpuTime() - my_time) << endl;
-    }
+    verb_print(1, "[shannon_synth] done — all " << to_define.size()
+        << " to_define vars committed. T: "
+        << fixed << setprecision(2) << (cpuTime() - my_time));
     return std::move(cnf);
 }
 

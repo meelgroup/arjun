@@ -241,12 +241,6 @@ def run_synth(solver, fname):
         print("Too much time to solve with %s, aborted: " % solver)
         return None, []
     if returncode != 0 and not out.startswith("TIMEOUT"):
-        # shannon_synth release_asserts when |orig_sampl_cnf| >
-        # shannon_synth_threshold (each y allocates a 2^N truth table).
-        # Skip the iter rather than report a bug — the limit is by design.
-        if "shannon_synth_threshold" in out:
-            print("shannon_synth threshold exceeded; skipping iteration")
-            return None, []
         print("Solver crashed with exit code %d (signal %d)" % (returncode, -returncode))
         return True, []
 
@@ -466,9 +460,9 @@ if __name__ == "__main__":
             solver += "--synthmore "
 
         # --shannonsynth is default-on in the binary, so explicitly
-        # toggle 50/50 to cover both terminal paths equally: 1 = Shannon
-        # synthesis (no Manthan fallback; release_asserts above
-        # --shannonsynththresh), 0 = Manthan. shannon_synth mostly
+        # toggle 50/50 to cover both paths: 1 = try Shannon synthesis
+        # first (it declines to Manthan when the enum set exceeds
+        # --shannonsynththresh), 0 = Manthan only. shannon_synth mostly
         # ignores the Manthan flag matrix this fuzzer randomizes, but
         # the flags shape the pre-synth pipeline (BVE, autarky, extend,
         # unate_def variants), so the CNF varies widely across iters.
@@ -477,6 +471,9 @@ if __name__ == "__main__":
         # affects iters where --shannonsynth=1, but the binary accepts
         # it either way.
         solver += "--shannonsynthminim %d " % random.randint(0, 1)
+        # Vary the minim cap so we exercise both the gated path (cap
+        # below the enum set, minim skipped) and the ungated path.
+        solver += "--shannonsynthminimmax %d " % random.choice([0, 8, 40, 9999])
 
         opts = [
             " --synthbve"
