@@ -920,13 +920,10 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
 //   3. Rebuild defs through make_canonical so structural sharing recovers
 //      after merges.
 
-struct AIGRewriter::SweepState {
-    std::unordered_map<const AIG*, aig_node_ptr> raw_to_shared;
-    std::vector<const AIG*> topo;
-    std::set<uint32_t> used_vars;
-    std::unordered_map<const AIG*, std::vector<uint64_t>> sigs;
-    uint32_t rounds = 0;
-
+// Sat-sweep-specific per-pass scratch: candidate-equivalence classes,
+// substitution maps. The topology + signatures + used_vars half lives on
+// the base SimState (see aig_sim.h), so other AIG passes can reuse it.
+struct AIGRewriter::SweepState : public SimState {
     struct Key {
         std::vector<uint64_t> data;
         bool operator==(const Key& o) const { return data == o.data; }
@@ -943,68 +940,6 @@ struct AIGRewriter::SweepState {
     std::unordered_map<const AIG*, bool> const_sub;
     std::unordered_map<const AIG*, std::pair<const AIG*, bool>> sub;
 };
-
-void AIGRewriter::sweep_collect_topology(const vector<aig_ptr>& defs, SweepState& st) {
-    // Post-order DFS, keeping owning shared_ptrs so rebuild can't have its
-    // inputs freed out from under it when defs[] is mutated.
-    std::function<void(const aig_ptr&)> dfs = [&](const aig_ptr& e) {
-        if (!e) return;
-        if (st.raw_to_shared.count(e.get())) return;
-        st.raw_to_shared[e.get()] = e.node;
-        if (e->type == AIGT::t_and) {
-            dfs(e->l);
-            if (e->r.get() != e->l.get()) dfs(e->r);
-        }
-        st.topo.push_back(e.get());
-    };
-    for (const auto& r : defs) dfs(r);
-    for (const auto* n : st.topo) {
-        if (n->type == AIGT::t_lit) st.used_vars.insert(n->var);
-    }
-}
-
-void AIGRewriter::sweep_simulate(SweepState& st) {
-    // Adaptive depth: +4 rounds per 4× past 256 nodes, capped at 48. More
-    // rounds = fewer bogus candidate classes at linear sim cost.
-    uint32_t R = sweep_sim_rounds;
-    for (size_t t = st.topo.size(); t > 256 && R < 48; t >>= 2) R += 4;
-    st.rounds = R;
-
-    std::mt19937_64 rng(0xA11CEULL);
-    std::unordered_map<uint32_t, vector<uint64_t>> var_pats;
-    // Round 0 = all-zero / all-one / one-hot rows; splits near-constant and
-    // single-variable-sensitive nodes that pure-random sim lumps together.
-    uint32_t var_idx = 0;
-    for (uint32_t v : st.used_vars) {
-        var_pats[v].resize(R);
-        for (uint32_t i = 0; i < R; i++) var_pats[v][i] = rng();
-        uint64_t structured = 2ULL;  // bit 1 ⇒ "all variables = 1" row
-        if (var_idx < 62) structured |= (1ULL << (var_idx + 2));
-        var_pats[v][0] = structured;
-        var_idx++;
-    }
-
-    // Simulate POSITIVE value of each node; fanin sign flips on the way in.
-    st.sigs.reserve(st.topo.size());
-    for (const auto* n : st.topo) {
-        vector<uint64_t> s(R);
-        if (n->type == AIGT::t_const) {
-            for (uint32_t i = 0; i < R; i++) s[i] = ~0ULL;
-        } else if (n->type == AIGT::t_lit) {
-            const auto& p = var_pats[n->var];
-            for (uint32_t i = 0; i < R; i++) s[i] = p[i];
-        } else {
-            const auto& ls = st.sigs.at(n->l.get());
-            const auto& rs = st.sigs.at(n->r.get());
-            for (uint32_t i = 0; i < R; i++) {
-                uint64_t lv = ls[i]; if (n->l.neg) lv = ~lv;
-                uint64_t rv = rs[i]; if (n->r.neg) rv = ~rv;
-                s[i] = lv & rv;
-            }
-        }
-        st.sigs.emplace(n, std::move(s));
-    }
-}
 
 void AIGRewriter::sweep_build_classes(SweepState& st, int verb, double start_time) {
     // Canonical sig: flip if round-0 MSB is 1, so x and ~x cluster together.
@@ -1364,8 +1299,9 @@ void AIGRewriter::sat_sweep(vector<aig_ptr>& defs, int verb) {
     const size_t nodes_before = AIG::count_aig_nodes_fast(defs);
 
     SweepState st;
-    sweep_collect_topology(defs, st);
-    sweep_simulate(st);
+    st.sim_rounds = sweep_sim_rounds;
+    st.collect_topology(defs);
+    st.simulate();
     sweep_build_classes(st, verb, start_time);
     sweep_find_constants(st);
     sweep_verify_classes(st, verb, start_time);

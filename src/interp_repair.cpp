@@ -808,9 +808,11 @@ aig_ptr InterpRepair::compute_interpolant(
     release_assert(interp != nullptr
         && "interp-repair: simplify_aig of the interpolant returned null");
 
-    // SLOW_DEBUG: verify the interpolant only references shared vars —
-    // input vars in the default mode, every conflict var in full-conflict
-    // mode. A leaf outside this set means the tracer mislabelled something.
+    // SLOW_DEBUG bug-hunting check: the interpolant references only shared
+    // vars — input vars in the default mode, every conflict var in
+    // full-conflict mode — by construction. We assert it here only when
+    // hunting for bugs; a leaf outside this set would point to a malformed
+    // partition / mini-CNF setup feeding the interpolation.
     SLOW_DEBUG_DO({
         std::vector<uint8_t> is_allowed_leaf;
         if (full_conflict) {

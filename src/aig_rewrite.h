@@ -8,6 +8,7 @@
 #pragma once
 
 #include "arjun.h"
+#include "aig_sim.h"
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
@@ -146,10 +147,10 @@ private:
 
     aig_lit make_canonical(const aig_lit& l, const aig_lit& r);
 
-    // sat_sweep helpers. Shared state lives in SweepState (defined in the .cpp).
+    // sat_sweep helpers. Shared state lives in SweepState (defined in the
+    // .cpp); the topology + simulation half is the standalone SimState
+    // helper (see aig_sim.h), reusable by other AIG passes.
     struct SweepState;
-    void sweep_collect_topology(const std::vector<aig_ptr>& defs, SweepState& st);
-    void sweep_simulate(SweepState& st);
     void sweep_build_classes(SweepState& st, int verb, double start_time);
     void sweep_find_constants(SweepState& st);
     void sweep_verify_classes(SweepState& st, int verb, double start_time);

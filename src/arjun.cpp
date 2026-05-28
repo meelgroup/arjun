@@ -2569,6 +2569,77 @@ DLL_PUBLIC aig_ptr AIG::simplify_aig(aig_ptr aig) {
     return result;
 }
 
+// Re-establishes the "every opt_sampl_var's recursive deps are subsets of
+// orig_sampl_vars" invariant after a pass that mutates defs[] (sat-sweep).
+// Any opt_sampl_var whose deps now include a non-orig-sampl var has its
+// pre-pass cone reverted; iterates to a fixpoint because reverting one
+// cone can re-expose another opt_sampl_var that shared a substituted
+// sub-AIG. Returns the number of defs reverted (for logging).
+//
+// A free helper (file-scope) rather than a private SimplifiedCNF method
+// so its dependency-walk callback can be passed in by the caller.
+namespace {
+uint32_t revert_opt_sampl_safety(
+        const std::vector<ArjunNS::aig_ptr>& pre_defs,
+        std::vector<ArjunNS::aig_ptr>& defs,
+        const std::map<uint32_t, std::vector<CMSat::Lit>>& new_to_orig,
+        const std::vector<uint32_t>& opt_sampl_vars_vec,
+        const std::set<uint32_t>& orig_sampl_vars_set,
+        std::function<std::vector<uint32_t>(uint32_t,
+            std::map<uint32_t, std::vector<uint32_t>>&)> get_recursive_deps)
+{
+    auto pre_leaves = [&](uint32_t v, std::set<uint32_t>& out) {
+        out.clear();
+        ArjunNS::AIG::get_dependent_vars(pre_defs[v], out, v);
+    };
+    auto pre_cone = [&](uint32_t orig_v, std::set<uint32_t>& cone) {
+        cone.clear();
+        std::vector<uint32_t> stack{orig_v};
+        cone.insert(orig_v);
+        std::set<uint32_t> leaves;
+        while (!stack.empty()) {
+            uint32_t v = stack.back(); stack.pop_back();
+            if (!pre_defs[v]) continue;
+            pre_leaves(v, leaves);
+            for (uint32_t u : leaves) {
+                if (orig_sampl_vars_set.count(u)) continue;
+                if (u >= pre_defs.size() || !pre_defs[u]) continue;
+                if (cone.insert(u).second) stack.push_back(u);
+            }
+        }
+    };
+    uint32_t reverted_total = 0;
+    for (int iter = 0; iter < 32; iter++) {
+        std::map<uint32_t, std::vector<uint32_t>> dep_cache;
+        std::set<uint32_t> to_revert_cone;
+        for (uint32_t new_v : opt_sampl_vars_vec) {
+            auto it = new_to_orig.find(new_v);
+            if (it == new_to_orig.end()) continue;
+            for (const auto& orig_lit : it->second) {
+                const uint32_t orig_v = orig_lit.var();
+                if (orig_sampl_vars_set.count(orig_v)) continue;
+                if (orig_v >= defs.size() || !defs[orig_v]) continue;
+                auto deps = get_recursive_deps(orig_v, dep_cache);
+                bool bad = false;
+                for (uint32_t d : deps) if (!orig_sampl_vars_set.count(d)) { bad = true; break; }
+                if (!bad) continue;
+                std::set<uint32_t> cone;
+                pre_cone(orig_v, cone);
+                for (uint32_t c : cone) to_revert_cone.insert(c);
+            }
+        }
+        if (to_revert_cone.empty()) break;
+        for (uint32_t v : to_revert_cone) {
+            if (defs[v] == pre_defs[v]
+                && defs[v].neg == pre_defs[v].neg) continue;
+            defs[v] = pre_defs[v];
+            reverted_total++;
+        }
+    }
+    return reverted_total;
+}
+} // namespace
+
 DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb, bool sat_sweep) {
     assert(need_aig);
     AIGRewriter rw;
@@ -2595,68 +2666,14 @@ DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb, bool sat_sweep)
         vector<aig_ptr> pre_sweep_defs = defs;
         rw.sat_sweep(defs, verb);
 
-        const auto new_to_orig = get_new_to_orig_var_list();
-
-        // Direct-leaf walk on pre_sweep_defs[v] (def-graph traversal does NOT
-        // see post-sweep mutations of intermediate defs).
-        auto pre_leaves = [&](uint32_t v, std::set<uint32_t>& out) {
-            out.clear();
-            AIG::get_dependent_vars(pre_sweep_defs[v], out, v);
-        };
-
-        // Pre-sweep recursive cone of orig_v: orig_v plus every defined non-
-        // input var transitively reachable from defs[orig_v] when looking up
-        // children through pre_sweep_defs (consistent snapshot).
-        auto pre_sweep_cone = [&](uint32_t orig_v, std::set<uint32_t>& cone) {
-            cone.clear();
-            std::vector<uint32_t> stack{orig_v};
-            cone.insert(orig_v);
-            std::set<uint32_t> leaves;
-            while (!stack.empty()) {
-                uint32_t v = stack.back(); stack.pop_back();
-                if (!pre_sweep_defs[v]) continue;
-                pre_leaves(v, leaves);
-                for (uint32_t u : leaves) {
-                    if (orig_sampl_vars.count(u)) continue;
-                    if (u >= pre_sweep_defs.size() || !pre_sweep_defs[u]) continue;
-                    if (cone.insert(u).second) stack.push_back(u);
-                }
-            }
-        };
-
-        uint32_t reverted_total = 0;
-        for (int iter = 0; iter < 32; iter++) {
-            // Build the cache once per iteration; reverts below invalidate
-            // any cached entry that walked through a reverted def, but we
-            // discard the whole cache at iter boundaries anyway.
-            std::map<uint32_t, std::vector<uint32_t>> dep_cache;
-            std::set<uint32_t> to_revert_cone;
-            for (uint32_t new_v : opt_sampl_vars) {
-                auto it = new_to_orig.find(new_v);
-                if (it == new_to_orig.end()) continue;
-                for (const auto& orig_lit : it->second) {
-                    const uint32_t orig_v = orig_lit.var();
-                    if (orig_sampl_vars.count(orig_v)) continue;
-                    if (orig_v >= defs.size() || !defs[orig_v]) continue;
-                    auto deps = get_dependent_vars_recursive(orig_v, dep_cache);
-                    bool bad = false;
-                    for (uint32_t d : deps) if (!orig_sampl_vars.count(d)) { bad = true; break; }
-                    if (!bad) continue;
-                    std::set<uint32_t> cone;
-                    pre_sweep_cone(orig_v, cone);
-                    for (uint32_t c : cone) to_revert_cone.insert(c);
-                }
-            }
-            if (to_revert_cone.empty()) break;
-            for (uint32_t v : to_revert_cone) {
-                if (defs[v] == pre_sweep_defs[v]
-                    && defs[v].neg == pre_sweep_defs[v].neg) continue;
-                defs[v] = pre_sweep_defs[v];
-                reverted_total++;
-            }
-        }
-        if (verb >= 1 && reverted_total > 0) {
-            cout << "c o [aig-rw/sweep] reverted " << reverted_total
+        const uint32_t reverted = revert_opt_sampl_safety(
+            pre_sweep_defs, defs, get_new_to_orig_var_list(),
+            opt_sampl_vars, orig_sampl_vars,
+            [this](uint32_t v, std::map<uint32_t, std::vector<uint32_t>>& cache) {
+                return get_dependent_vars_recursive(v, cache);
+            });
+        if (verb >= 1 && reverted > 0) {
+            cout << "c o [aig-rw/sweep] reverted " << reverted
                  << " defs that gained non-orig-sampl recursive deps" << endl;
         }
     }

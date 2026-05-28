@@ -85,11 +85,18 @@ it (`./test-interp-repair`, also wired into `ctest`).
   (or Pudlák) interpolant over the input vars generalises it to the
   whole must-flip region, so one `compose_or/and` captures many repairs.
   Interpolants are reconstructed from a cadical proof trace and trimmed
-  to the proof core. The pass returns nullptr (caller then uses the
-  plain conflict-clause branch) only when there is nothing to
-  interpolate (empty conflict, no input lits in conflict), the AIG
-  exceeds the node cap, or the per-call conflict budget is exhausted.
-  See the `--interprepair*` flags in `main.cpp`.
+  to the proof core. A McMillan interpolant CANNOT be wrong: given a
+  valid UNSAT proof of a correctly-built miter it is sound by
+  construction. Any "wrong interpolant" symptom is therefore a bug in
+  the miter / partition / mini-CNF setup, never in the interpolation
+  itself — debug by SAT-checking the A-only and B-only clause subsets.
+  Any double-checking of an interpolant (A→I / g≡N miters) is a
+  bug-hunting safety net only and belongs under `SLOW_DEBUG_DO`. The
+  pass returns nullptr (caller then uses the plain conflict-clause
+  branch) only when there is nothing to interpolate (empty conflict, no
+  input lits in conflict), the AIG exceeds the node cap, or the per-call
+  conflict budget is exhausted. See the `--interprepair*` flags in
+  `main.cpp`.
 - `aig_to_cnf.{h,cpp}` — Tseitin encoding with fanout-based helper
   suppression, k-ary AND/OR fusion, ITE / MUX3 detection.
 - `puura.{h,cpp}` — SharpSAT-td-derived simplification.
