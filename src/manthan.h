@@ -52,7 +52,6 @@ class Manthan {
             , repair_solver(static_cast<SolverType>(_mconf.repair_solver_type), _mconf.repair_cache_size)
             , cnf(std::move(_cnf))
         {
-                mtrand.seed(42);
         }
         ArjunNS::SimplifiedCNF do_manthan();
         friend class ManthanLearn;
@@ -71,7 +70,6 @@ class Manthan {
 
         const Config& conf;
         const ArjunNS::Arjun::ManthanConf& mconf;
-        std::unique_ptr<CMSat::FieldGen> fg;
         MetaSolver2 cex_solver;
         CachedSolver repair_solver;
 
@@ -232,7 +230,6 @@ class Manthan {
         std::vector<sample> get_cmsgen_samples(const uint32_t samples);
         std::vector<sample> get_samples_ccnr(const uint32_t samples);
         void sort_all_samples(std::vector<sample>& samples);
-        double train(const std::vector<sample>& samples, const uint32_t v); // returns training error
         std::vector<std::vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
 
         // Formulas
@@ -291,7 +288,6 @@ class Manthan {
         // invariant that glues "cex_solver UNSAT means synthesis correct"
         // to "final .aig export is correct".
         [[nodiscard]] bool check_aig_matches_clauses_per_formula(const std::string& where) const;
-        std::mt19937 mtrand;
         std::vector<uint32_t> updated_y_funcs; // y_hats updated during last round of training
 
         // stats
@@ -301,13 +297,10 @@ class Manthan {
         uint32_t num_loops_repair = 0;
         uint64_t conflict_sizes_sum = 0;
         uint32_t generalized_repair_ok = 0;
-        uint32_t generalized_repair_fallback = 0;
         uint64_t needs_repair_sum = 0;
         uint32_t tot_repaired = 0;
         uint32_t repair_failed = 0;
         std::vector<uint32_t> repaired_vars_count; // for each y, how many times it was repaired
-        std::vector<uint32_t> input_only_ok; // per-var: consecutive input-only successes
-        std::vector<uint32_t> input_only_fail; // per-var: consecutive input-only failures
         double sampl_time = 0;
         double train_time = 0;
 

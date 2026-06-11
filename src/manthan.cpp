@@ -1322,8 +1322,6 @@ SimplifiedCNF Manthan::do_manthan() {
     var_conflict_freq.resize(cnf.nVars(), 0);
     conflict_branch_lits_per_var.assign(cnf.nVars(), 0);
     conflict_branch_repairs_per_var.assign(cnf.nVars(), 0);
-    input_only_ok.resize(cnf.nVars(), 0);
-    input_only_fail.resize(cnf.nVars(), 0);
 
     if (!mconf.write_manthan_cnf.empty()) cnf.write_simpcnf(mconf.write_manthan_cnf);
 
