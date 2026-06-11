@@ -1749,30 +1749,30 @@ public:
         // 0 disables the gate.
         uint32_t interp_repair_progress_max_var_repairs = 100;
 
-        // Shannon-tree synthesis (--shannonsynth 1): enumerate every
+        // Brute-force synthesis (--bruteforcesynth 1): enumerate every
         // consistent X assignment via a forbid-clause loop, tabulate y
-        // values per SAT model, build per-y Shannon trees.
+        // values per SAT model, build per-y decision trees.
         //
         // Upper bound on |orig_sampl_cnf| (after the minim pre-pass).
         // Each undet y allocates a 2^N truth table, so raising this past
-        // ~20 will OOM. Above the threshold shannon_synth declines and
+        // ~20 will OOM. Above the threshold brute_force_synth declines and
         // the caller falls back to Manthan.
-        uint32_t shannon_synth_threshold = 16;
+        uint32_t brute_force_synth_threshold = 16;
 
         // If set, run a dry-run backward minim on orig_sampl_cnf in the
         // *current* (post-preproc, post-AIG-rewrite) CNF before the
         // enumeration. The transforms can introduce dependencies among
         // orig sampling vars that didn't exist at initial minim time;
         // shrinking the enum domain makes the 2^N table much cheaper
-        // and lets more cases stay under shannon_synth_threshold.
-        int shannon_synth_minim = 1;
+        // and lets more cases stay under brute_force_synth_threshold.
+        int brute_force_synth_minim = 1;
 
         // Only attempt the minim pre-pass when |orig_sampl_cnf| is at
         // most this. The backward minim solves a doubled-CNF SAT per
         // candidate var, so on a large sampling set it is expensive and
-        // unlikely to shrink below shannon_synth_threshold anyway — skip
+        // unlikely to shrink below brute_force_synth_threshold anyway — skip
         // it there and let the threshold release_assert fire.
-        uint32_t shannon_synth_minim_max = 40;
+        uint32_t brute_force_synth_minim_max = 40;
     };
 
     struct IndepInfo {
@@ -1799,15 +1799,15 @@ public:
         uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1,
         uint32_t sbva_max_new_vars = 0);
     SimplifiedCNF standalone_manthan(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
-    // Brute-force Shannon-tree synthesis: enumerate every consistent X
-    // assignment via a forbid-clause SAT loop, build per-y Shannon
-    // trees. Synthesizes when |orig_sampl_cnf| ≤ shannon_synth_threshold
+    // Brute-force synthesis: enumerate every consistent X
+    // assignment via a forbid-clause SAT loop, build per-y decision
+    // trees. Synthesizes when |orig_sampl_cnf| ≤ brute_force_synth_threshold
     // (after the optional minim pre-pass); otherwise returns the CNF
     // unchanged (synth_done() stays false) so the caller can fall back
     // to Manthan. ManthanConf is kept for API parity with
-    // standalone_manthan; shannon_synth only reads its shannon_synth_*
+    // standalone_manthan; brute_force_synth only reads its brute_force_synth_*
     // fields.
-    SimplifiedCNF standalone_shannon_synth(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
+    SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
     void standalone_autarky(SimplifiedCNF& cnf);
 
     //Set config

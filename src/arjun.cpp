@@ -42,7 +42,7 @@
 #include "autarky.h"
 #include "unate_def.h"
 #include "manthan.h"
-#include "shannon_synth.h"
+#include "brute_force_synth.h"
 #include "metasolver.h"
 #include "aig_rewrite.h"
 #include "constants.h"
@@ -178,9 +178,9 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
     return manthan.do_manthan();
 }
 
-DLL_PUBLIC SimplifiedCNF Arjun::standalone_shannon_synth(SimplifiedCNF&& cnf, const ManthanConf& mconf)
+DLL_PUBLIC SimplifiedCNF Arjun::standalone_brute_force_synth(SimplifiedCNF&& cnf, const ManthanConf& mconf)
 {
-    ShannonSynth ss(arjdata->conf, mconf, std::move(cnf));
+    BruteForceSynth ss(arjdata->conf, mconf, std::move(cnf));
     return ss.do_synth();
 }
 

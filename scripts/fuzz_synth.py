@@ -361,7 +361,7 @@ def gen_mstrategy():
                    "min_leaf_size", "const_vote_samples", "stats_every",
                    "detailed_stats_every",
                    "conflict_drop_y_max",
-                   "conflict_cap", "conflict_cap_keep", "batch_minim_min",
+                   "conflict_cap_keep", "batch_minim_min",
                    "minim_budget_threshold", "minim_budget_max", "minim_budget_mult",
                    "ccnr_mems_per_sample", "ccnr_per_call_limit",
                    "cz_high_ratio", "cz_low_ratio",
@@ -459,21 +459,21 @@ if __name__ == "__main__":
         else:
             solver += "--synthmore "
 
-        # --shannonsynth is default-on in the binary, so explicitly
-        # toggle 50/50 to cover both paths: 1 = try Shannon synthesis
+        # --bruteforcesynth is default-on in the binary, so explicitly
+        # toggle 50/50 to cover both paths: 1 = try brute-force synthesis
         # first (it declines to Manthan when the enum set exceeds
-        # --shannonsynththresh), 0 = Manthan only. shannon_synth mostly
+        # --bruteforcesynththresh), 0 = Manthan only. brute_force_synth mostly
         # ignores the Manthan flag matrix this fuzzer randomizes, but
         # the flags shape the pre-synth pipeline (BVE, autarky, extend,
         # unate_def variants), so the CNF varies widely across iters.
-        solver += "--shannonsynth %d " % random.randint(0, 1)
+        solver += "--bruteforcesynth %d " % random.randint(0, 1)
         # Independently toggle the dry-run backward minim pre-pass. Only
-        # affects iters where --shannonsynth=1, but the binary accepts
+        # affects iters where --bruteforcesynth=1, but the binary accepts
         # it either way.
-        solver += "--shannonsynthminim %d " % random.randint(0, 1)
+        solver += "--bruteforcesynthminim %d " % random.randint(0, 1)
         # Vary the minim cap so we exercise both the gated path (cap
         # below the enum set, minim skipped) and the ungated path.
-        solver += "--shannonsynthminimmax %d " % random.choice([0, 8, 40, 9999])
+        solver += "--bruteforcesynthminimmax %d " % random.choice([0, 8, 40, 9999])
 
         opts = [
             " --synthbve"
@@ -524,7 +524,6 @@ if __name__ == "__main__":
         solver += " --statsevery " + random.choice(["0", "1", "10", "40", "1000"])
         solver += " --detailedstatsevery " + random.choice(["0", "1", "10", "200", "5000"])
         solver += " --confldropy " + random.choice(["1", "5", "25", "100", "10000"])
-        solver += " --conflcap " + random.choice(["1", "5", "10", "40", "200", "100000"])
         solver += " --conflcapkeep " + random.choice(["1", "2", "5", "30", "100", "100000"])
         solver += " --batchminimmin " + random.choice(["1", "3", "6", "20", "10000"])
         solver += " --minimbudgetthresh " + random.choice(["1", "5", "20", "100", "10000"])

@@ -1,12 +1,12 @@
 /*
- Arjun — shannon_synth.cpp
+ Arjun — brute_force_synth.cpp
 
- Brute-force Shannon-tree synthesis. See shannon_synth.h.
+ Brute-force synthesis. See brute_force_synth.h.
 
  Copyright (c) 2026, Mate Soos. All rights reserved.
 */
 
-#include "shannon_synth.h"
+#include "brute_force_synth.h"
 
 #include "arjun.h"
 #include "backward.h"
@@ -34,20 +34,20 @@ using CMSat::Lit;
 
 namespace ArjunInt {
 
-ShannonSynth::ShannonSynth(const ArjunInt::Config& _conf,
+BruteForceSynth::BruteForceSynth(const ArjunInt::Config& _conf,
                            const ArjunNS::Arjun::ManthanConf& _mconf,
                            ArjunNS::SimplifiedCNF&& _cnf)
     : conf(_conf), mconf(_mconf), cnf(std::move(_cnf))
 {}
 
 template<typename S>
-void ShannonSynth::inject_cnf(S& s) const {
+void BruteForceSynth::inject_cnf(S& s) const {
     s.new_vars(cnf.nVars());
     for (const auto& c : cnf.get_clauses()) s.add_clause(c);
     for (const auto& c : cnf.get_red_clauses()) s.add_red_clause(c);
 }
 
-aig_ptr ShannonSynth::build_shannon_tree(const vector<bool>& table,
+aig_ptr BruteForceSynth::build_decision_tree(const vector<bool>& table,
                                          const vector<uint32_t>& sorted_inputs) {
     // Bottom-up pair-merge; ITE folds constant subtrees.
     const uint32_t n = sorted_inputs.size();
@@ -73,12 +73,12 @@ aig_ptr ShannonSynth::build_shannon_tree(const vector<bool>& table,
     return level[0];
 }
 
-void ShannonSynth::maybe_minimize_enum_set() {
-    if (!mconf.shannon_synth_minim) return;
+void BruteForceSynth::maybe_minimize_enum_set() {
+    if (!mconf.brute_force_synth_minim) return;
     if (orig_sampl_cnf.empty()) return;
-    if (orig_sampl_cnf.size() > mconf.shannon_synth_minim_max) {
-        verb_print(1, "[shannon_synth] enum set " << orig_sampl_cnf.size()
-            << " > minim cap " << mconf.shannon_synth_minim_max << "; skipping minim");
+    if (orig_sampl_cnf.size() > mconf.brute_force_synth_minim_max) {
+        verb_print(1, "[brute_force_synth] enum set " << orig_sampl_cnf.size()
+            << " > minim cap " << mconf.brute_force_synth_minim_max << "; skipping minim");
         return;
     }
 
@@ -92,20 +92,20 @@ void ShannonSynth::maybe_minimize_enum_set() {
     orig_sampl_cnf.clear();
     orig_sampl_cnf.insert(minimized.begin(), minimized.end());
 
-    verb_print(1, "[shannon_synth] minim shrank enum set: " << before
+    verb_print(1, "[brute_force_synth] minim shrank enum set: " << before
         << " -> " << orig_sampl_cnf.size()
         << " (2^N rows: " << (1ull << before) << " -> "
         << (1ull << orig_sampl_cnf.size()) << "). T: "
         << fixed << setprecision(2) << (cpuTime() - t0));
 }
 
-void ShannonSynth::synth_complete_with_models() {
-    assert(orig_sampl_cnf.size() <= mconf.shannon_synth_threshold);
+void BruteForceSynth::synth_complete_with_models() {
+    assert(orig_sampl_cnf.size() <= mconf.brute_force_synth_threshold);
 
     vector<uint32_t> undet(to_define.begin(), to_define.end());
     if (undet.empty()) return;
 
-    verb_print(1, "[shannon_synth] SAT-model completion on " << undet.size()
+    verb_print(1, "[brute_force_synth] SAT-model completion on " << undet.size()
         << " undet vars over " << orig_sampl_cnf.size() << " orig sampling vars");
     const double t0 = cpuTime();
 
@@ -129,7 +129,7 @@ void ShannonSynth::synth_complete_with_models() {
         const auto ret = sat.solve();
         if (ret == CMSat::l_False) break;
         release_assert(ret == CMSat::l_True &&
-                       "shannon_synth: SAT solver returned UNDEF on a "
+                       "brute_force_synth: SAT solver returned UNDEF on a "
                        "supposedly-finite enumeration");
         const auto& model = sat.get_model();
         uint64_t mask = 0;
@@ -150,28 +150,28 @@ void ShannonSynth::synth_complete_with_models() {
 
     skol.assign(cnf.nVars(), nullptr);
     for (uint32_t y : undet) {
-        skol[y] = build_shannon_tree(tables.at(y), sorted_inputs);
+        skol[y] = build_decision_tree(tables.at(y), sorted_inputs);
     }
 
-    verb_print(1, "[shannon_synth] done. covered " << covered_count
+    verb_print(1, "[brute_force_synth] done. covered " << covered_count
         << "/" << n_assign << " consistent input patterns. T: "
         << fixed << setprecision(2) << (cpuTime() - t0));
 }
 
-void ShannonSynth::commit_definitions() {
+void BruteForceSynth::commit_definitions() {
     vector<aig_ptr> aigs(cnf.nVars(), nullptr);
     for (uint32_t y : to_define) {
         release_assert(skol[y] != nullptr &&
-                       "shannon_synth must produce a Skolem for every to_define var");
+                       "brute_force_synth must produce a Skolem for every to_define var");
         aigs[y] = skol[y];
     }
     cnf.map_aigs_to_orig(aigs, cnf.nVars());
     cnf.simplify_aigs(conf.verb);
 }
 
-SimplifiedCNF ShannonSynth::do_synth() {
+SimplifiedCNF BruteForceSynth::do_synth() {
     const double my_time = cpuTime();
-    verb_print(1, "[shannon_synth] starting; nVars=" << cnf.nVars()
+    verb_print(1, "[brute_force_synth] starting; nVars=" << cnf.nVars()
         << " clauses=" << cnf.get_clauses().size());
 
     cnf.get_var_types(conf.verb, "start do_synth").unpack_to(
@@ -188,11 +188,11 @@ SimplifiedCNF ShannonSynth::do_synth() {
     }
 
     if (to_define.empty()) {
-        verb_print(1, "[shannon_synth] nothing to define — returning unchanged CNF");
+        verb_print(1, "[brute_force_synth] nothing to define — returning unchanged CNF");
         return std::move(cnf);
     }
 
-    verb_print(1, "[shannon_synth] partition: |orig_sampl|=" << orig_sampl_cnf.size()
+    verb_print(1, "[brute_force_synth] partition: |orig_sampl|=" << orig_sampl_cnf.size()
         << " |input|=" << input.size()
         << " |to_define|=" << to_define.size()
         << " |backward_defined|=" << backward_defined.size());
@@ -200,9 +200,9 @@ SimplifiedCNF ShannonSynth::do_synth() {
     maybe_minimize_enum_set();
 
     // Decline (don't abort) above the threshold: caller falls back to Manthan.
-    if (orig_sampl_cnf.size() > mconf.shannon_synth_threshold) {
-        verb_print(1, "[shannon_synth] enum set " << orig_sampl_cnf.size()
-            << " > threshold " << mconf.shannon_synth_threshold
+    if (orig_sampl_cnf.size() > mconf.brute_force_synth_threshold) {
+        verb_print(1, "[brute_force_synth] enum set " << orig_sampl_cnf.size()
+            << " > threshold " << mconf.brute_force_synth_threshold
             << "; declining — Manthan will synthesize");
         return std::move(cnf);
     }
@@ -210,7 +210,7 @@ SimplifiedCNF ShannonSynth::do_synth() {
     synth_complete_with_models();
     commit_definitions();
 
-    verb_print(1, "[shannon_synth] done — all " << to_define.size()
+    verb_print(1, "[brute_force_synth] done — all " << to_define.size()
         << " to_define vars committed. T: "
         << fixed << setprecision(2) << (cpuTime() - my_time));
     return std::move(cnf);
