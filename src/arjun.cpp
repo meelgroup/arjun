@@ -32,6 +32,7 @@
 
 #include "arjun.h"
 #include "config.h"
+#include "backward.h"
 #include "minimize.h"
 #include "GitSHA1.h"
 #include "puura.h"
@@ -40,8 +41,8 @@
 #include "constants.h"
 #include "autarky.h"
 #include "unate_def.h"
-#include "unate_def_rep.h"
 #include "manthan.h"
+#include "brute_force_synth.h"
 #include "metasolver.h"
 #include "aig_rewrite.h"
 #include "constants.h"
@@ -129,12 +130,12 @@ DLL_PUBLIC string Arjun::get_compilation_env() {
 
 DLL_PUBLIC void Arjun::standalone_minimize_indep(SimplifiedCNF& cnf, bool all_indep) {
     Minimize common(arjdata->conf);
-    common.run_minimize_indep(cnf, all_indep);
+    common.run_minimize(cnf, all_indep);
 }
 
 DLL_PUBLIC Arjun::IndepInfo Arjun::standalone_minimize_indep_info(SimplifiedCNF& cnf, bool all_indep) {
     Minimize common(arjdata->conf);
-    return common.run_minimize_indep_info(cnf, all_indep);
+    return common.run_minimize_info(cnf, all_indep);
 }
 
 DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {
@@ -143,7 +144,7 @@ DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {
 }
 
 DLL_PUBLIC void Arjun::standalone_backward_round_synth(SimplifiedCNF& cnf, const ManthanConf& mconf) {
-    Minimize common(arjdata->conf);
+    Backward common(arjdata->conf);
     common.backward_round_synth(cnf, mconf);
 }
 
@@ -177,22 +178,16 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
     return manthan.do_manthan();
 }
 
-DLL_PUBLIC void Arjun::standalone_rev_bce(SimplifiedCNF& cnf)
+DLL_PUBLIC SimplifiedCNF Arjun::standalone_brute_force_synth(SimplifiedCNF&& cnf, const ManthanConf& mconf)
 {
-    Puura puura(arjdata->conf);
-    return puura.reverse_bce(cnf);
+    BruteForceSynth ss(arjdata->conf, mconf, std::move(cnf));
+    return ss.do_synth();
 }
 
 DLL_PUBLIC void Arjun::standalone_unate_def(SimplifiedCNF& cnf)
 {
     Unate unate(arjdata->conf);
     unate.synthesis_unate_def(cnf);
-}
-
-DLL_PUBLIC void Arjun::standalone_unate_def_rep(SimplifiedCNF& cnf)
-{
-    UnateDefRep rep(arjdata->conf, cnf);
-    rep.run();
 }
 
 DLL_PUBLIC void Arjun::standalone_sbva(SimplifiedCNF& orig,
@@ -202,83 +197,6 @@ DLL_PUBLIC void Arjun::standalone_sbva(SimplifiedCNF& orig,
     Puura puura(arjdata->conf);
     puura.run_sbva(orig, sbva_steps, sbva_cls_cutoff, sbva_lits_cutoff, sbva_tiebreak,
             sbva_max_new_vars);
-}
-
-// DELETES ALL REDUNDANT CLAUSES!!!
-// This is a must, because it's impossible to ascertain
-// which redundant clauses are actually deriveable from the irred clauses
-// after deletion. Sad.
-DLL_PUBLIC void Arjun::standalone_bce(SimplifiedCNF& cnf) {
-    SLOW_DEBUG_DO(cnf.check_red_cls_deriveable());
-
-    // Unfortunately, with opt_sampling_set, we rely on a variables
-    // being fully deterministic. So we can't block on them
-    // otherwise we'd need to remove those variables from the opt_sampling set
-    set<uint32_t> dont_block;
-    for(const auto& v: cnf.get_sampl_vars()) dont_block.insert(v);
-    for(const auto& v: cnf.get_opt_sampl_vars()) dont_block.insert(v);
-    if (dont_block.size() == cnf.nVars()) return;
-
-    const double start_time = cpuTime();
-    vector<SimplifiedCNF::BCEClause> cls;
-    vector<vector<uint32_t>> occs(cnf.nVars()*2);
-    uint32_t at = 0;
-    for(const auto& cl: cnf.get_clauses()) {
-        if (cl.empty()) {
-            // Empty clause, CNF is unsat, skip BCE
-            return;
-        }
-
-        SimplifiedCNF::BCEClause c;
-        c.lits = cl;
-        c.at = at;
-        assert(cls.size() == at);
-        cls.push_back(c);
-        for(const auto& l: cl) occs[l.toInt()].push_back(at);
-        assert(cl.size() > 1 && "CNF must be simplified for BCE");
-        at++;
-    }
-
-    vector<uint8_t> seen;
-    seen.resize(cnf.nVars()*2, 0);
-
-    uint32_t tot_removed = 0;
-    bool removed_one;
-    do {
-        removed_one = false;
-        for(auto& cl: cls) {
-            if (cl.to_remove) continue;
-
-            bool can_remove = false;
-            for(const auto& l: cl.lits) seen[l.toInt()] = true;
-            for(const auto& l: cl.lits) {
-                if (dont_block.count(l.var())) continue;
-                bool all_blocking = true;
-                for(const auto& cl2_at: occs[(~l).toInt()]) {
-                    const SimplifiedCNF::BCEClause& cl2 = cls[cl2_at];
-                    if (cl2.to_remove) continue;
-                    bool found_blocking_lit = false;
-                    for(const auto& l2: cl2.lits) {
-                        if (l2 == ~l) continue;
-                        if (seen[(~l2).toInt()]) {found_blocking_lit = true; break;}
-                    }
-                    if (!found_blocking_lit) {all_blocking = false; break;}
-                }
-                if (all_blocking) {can_remove = true; break; }
-            }
-            for(const auto& l: cl.lits) seen[l.toInt()] = 0;
-            if (can_remove) {
-                cl.to_remove = true;
-                removed_one = true;
-                tot_removed++;
-            }
-        }
-    } while(removed_one);
-    cnf.replace_clauses_with(cls);
-
-    verb_print2(1, "[arjun] BCE removed " << tot_removed << " clauses"
-        " T: " << (cpuTime() - start_time));
-    SLOW_DEBUG_DO(cnf.check_red_cls_deriveable());
 }
 
 DLL_PUBLIC void Arjun::standalone_backbone(SimplifiedCNF& cnf) {
@@ -312,12 +230,6 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
     } else {
         if (etof_conf.do_extend_indep && cnf.get_opt_sampl_vars().size() != cnf.nVars())
             standalone_extend_sampl_set(cnf);
-
-        // BCE shoudl be after extension, as opt_sampl_vars
-        // could be smaller if BCE is run before... maybe we should try
-        // reverse system, though. Would work... but then BCE would be
-        // better, and opt_sampl_vars would be smaller
-        if (etof_conf.do_bce) standalone_bce(cnf);
     }
     cnf.remove_equiv_weights();
     if (etof_conf.do_renumber) cnf.renumber_sampling_vars_for_ganak();
@@ -508,17 +420,14 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig
     // fresh aig_lits with XOR'd edge signs — so a full rebuild.
     std::unordered_map<const AIG*, aig_lit> cache;
 
-    std::function<aig_lit(const aig_ptr&)> rebuild = [&](const aig_ptr& aig) -> aig_lit {
-        if (aig == nullptr) return aig_lit();
-        auto it = cache.find(aig.get());
-        if (it != cache.end()) {
-            // Cache stores the rebuilt positive-value edge for `aig.node`.
-            // Apply the incoming edge sign on the way out.
-            return aig_lit(it->second.node, it->second.neg ^ aig.neg);
-        }
+    // Iterative post-order rebuild. The cache stores the rebuilt
+    // positive-edge form per source node; outer edge sign is applied
+    // on the way out. Iterative because proof-driven interpolant AIGs
+    // can be deep enough that the recursive form overflows the stack.
+    auto build_node = [&](const AIG* src) {
         aig_lit pos_result;
-        if (aig->type == AIGT::t_lit) {
-            Lit l = Lit(aig->var, false);
+        if (src->type == AIGT::t_lit) {
+            Lit l = Lit(src->var, false);
             if (back_map.has_value()) {
                 if(back_map->get().count(l.var()))
                     l = back_map->get().at(l.var()) ^ l.sign();
@@ -526,23 +435,54 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig
             assert(l.var() < max_num_vars);
             l = new_to_orig_var.at(l.var()) ^ l.sign();
             pos_result = AIG::new_lit(l.var(), l.sign());
-        } else if (aig->type == AIGT::t_const) {
+        } else if (src->type == AIGT::t_const) {
             pos_result = AIG::new_const(true);
-        } else if (aig->type == AIGT::t_and) {
-            aig_lit lc = rebuild(aig->l);
-            aig_lit rc = rebuild(aig->r);
+        } else if (src->type == AIGT::t_and) {
+            auto it_l = cache.find(src->l.get());
+            auto it_r = cache.find(src->r.get());
+            aig_lit lcp = (it_l != cache.end()) ? it_l->second : aig_lit();
+            aig_lit rcp = (it_r != cache.end()) ? it_r->second : aig_lit();
+            aig_lit lc(lcp.node, lcp.neg ^ src->l.neg);
+            aig_lit rc(rcp.node, rcp.neg ^ src->r.neg);
             pos_result = AIG::new_and(lc, rc);
         } else {
             assert(false && "Unknown AIG type");
             std::exit(EXIT_FAILURE);
         }
-        cache[aig.get()] = pos_result;
+        cache[src] = pos_result;
+    };
+
+    auto rebuild_iter = [&](const aig_ptr& aig) -> aig_lit {
+        if (aig == nullptr) return aig_lit();
+        if (!cache.count(aig.get())) {
+            struct Frame { const AIG* src; bool children_done; };
+            std::vector<Frame> stack;
+            stack.reserve(64);
+            stack.push_back({aig.get(), false});
+            while (!stack.empty()) {
+                Frame& f = stack.back();
+                const AIG* src = f.src;
+                if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
+                if (src->type == AIGT::t_and && !f.children_done) {
+                    f.children_done = true;
+                    const AIG* ln = src->l.get();
+                    const AIG* rn = src->r.get();
+                    stack.push_back({rn, false});
+                    stack.push_back({ln, false});
+                } else {
+                    build_node(src);
+                    stack.pop_back();
+                }
+            }
+        }
+        auto it = cache.find(aig.get());
+        aig_lit pos_result = (it != cache.end()) ? it->second : aig_lit();
         return aig_lit(pos_result.node, pos_result.neg ^ aig.neg);
     };
 
     vector<aig_ptr> aigs;
     aigs.reserve(aigs_orig.size());
-    for (const auto& a : aigs_orig) aigs.push_back(rebuild(a));
+    for (const auto& a : aigs_orig) aigs.push_back(rebuild_iter(a));
 
     for(uint32_t v = 0; v < aigs.size(); ++v) {
         auto& aig = aigs[v];
@@ -1425,7 +1365,7 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
         fout << "    output wire x" << (v + 1);
         first = false;
     }
-    fout << "\n);\n\n";
+    fout << "\n);\n";
 
     // Build a node's RHS in unparenthesized form, and note whether it is a
     // bare `a & b` (callers must parenthesize it if composing further).
@@ -1453,13 +1393,11 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
         fout << "    assign _n" << id << " = " << rhs << ";\n";
     }
 
-    fout << "\n";
-
     // Output assignments
     for (const auto& v : outputs)
         fout << "    assign x" << (v + 1) << " = " << edge_expr_raw(defs[v]) << ";\n";
 
-    fout << "\nendmodule\n";
+    fout << "endmodule\n";
     fout.close();
     cout << "c o Wrote Verilog AIG: " << fname << endl;
 }
@@ -1869,7 +1807,7 @@ DLL_PUBLIC VarTypes
 
         const uint32_t new_var = orig_to_new_var.at(orig).var();
         assert(new_var < nVars());
-        // Skolem-committed vars (from unate_def_rep aux>=1) are never
+        // Skolem-committed vars are never
         // extend-defined: their AIG is just one valid Skolem choice, not
         // the unique value F forces, so Manthan must build a formula
         // for them and run the y_hat propagation. Categorizing them as
@@ -2379,8 +2317,7 @@ DLL_PUBLIC void SimplifiedCNF::check_pre_post_backward_round_synth() const {
                     break;
                 }
             }
-            // Skolem-committed vars (set_def_skolem, e.g. from
-            // unate_def_rep aux>=1) are allowed to reach non-orig-sampl
+            // Skolem-committed vars (set_def_skolem) are allowed to reach non-orig-sampl
             // leaves: their AIG is just one valid winning Skolem, not a
             // unique-defining function over inputs. The "pre-backward-
             // round-synth" invariant only applies to unique-defining defs
@@ -2632,97 +2569,10 @@ DLL_PUBLIC aig_ptr AIG::simplify_aig(aig_ptr aig) {
     return result;
 }
 
-DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb, bool sat_sweep) {
+DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb) {
     assert(need_aig);
     AIGRewriter rw;
     rw.rewrite_all(defs, verb);
-    if (sat_sweep) {
-        // sat_sweep merges functionally-equivalent AIG nodes. The substituted
-        // node and its representative compute the same function, but their
-        // leaf-var sets need not coincide: a leaf u may be functionally
-        // irrelevant (e.g. cancels via internal contradiction) yet still
-        // appear as a t_lit in the rebuilt AIG. If such a u (directly, or
-        // transitively via another def whose own leaves are non-orig-sampl)
-        // exposes a non-orig-sampl var as a recursive dep of an opt_sampl_var's
-        // orig def, defs_invariant /
-        // check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars trips on
-        // the next pass / test-synth read.
-        //
-        // Pre-sweep this invariant holds for every opt_sampl_var (defs_invariant
-        // asserts it on entry). Snapshot defs and: per opt_sampl_var, walk the
-        // PRE-sweep recursive cone; if the CURRENT (post-sweep) deps of that
-        // orig contain any non-orig-sampl var, revert the entire pre-sweep
-        // cone for that orig. That restores the opt_sampl_var to its provably-
-        // good pre-sweep shape. Iterate to a fixpoint — reverting one cone can
-        // re-expose another opt_sampl_var that shared a substituted sub-AIG.
-        vector<aig_ptr> pre_sweep_defs = defs;
-        rw.sat_sweep(defs, verb);
-
-        const auto new_to_orig = get_new_to_orig_var_list();
-
-        // Direct-leaf walk on pre_sweep_defs[v] (def-graph traversal does NOT
-        // see post-sweep mutations of intermediate defs).
-        auto pre_leaves = [&](uint32_t v, std::set<uint32_t>& out) {
-            out.clear();
-            AIG::get_dependent_vars(pre_sweep_defs[v], out, v);
-        };
-
-        // Pre-sweep recursive cone of orig_v: orig_v plus every defined non-
-        // input var transitively reachable from defs[orig_v] when looking up
-        // children through pre_sweep_defs (consistent snapshot).
-        auto pre_sweep_cone = [&](uint32_t orig_v, std::set<uint32_t>& cone) {
-            cone.clear();
-            std::vector<uint32_t> stack{orig_v};
-            cone.insert(orig_v);
-            std::set<uint32_t> leaves;
-            while (!stack.empty()) {
-                uint32_t v = stack.back(); stack.pop_back();
-                if (!pre_sweep_defs[v]) continue;
-                pre_leaves(v, leaves);
-                for (uint32_t u : leaves) {
-                    if (orig_sampl_vars.count(u)) continue;
-                    if (u >= pre_sweep_defs.size() || !pre_sweep_defs[u]) continue;
-                    if (cone.insert(u).second) stack.push_back(u);
-                }
-            }
-        };
-
-        uint32_t reverted_total = 0;
-        for (int iter = 0; iter < 32; iter++) {
-            // Build the cache once per iteration; reverts below invalidate
-            // any cached entry that walked through a reverted def, but we
-            // discard the whole cache at iter boundaries anyway.
-            std::map<uint32_t, std::vector<uint32_t>> dep_cache;
-            std::set<uint32_t> to_revert_cone;
-            for (uint32_t new_v : opt_sampl_vars) {
-                auto it = new_to_orig.find(new_v);
-                if (it == new_to_orig.end()) continue;
-                for (const auto& orig_lit : it->second) {
-                    const uint32_t orig_v = orig_lit.var();
-                    if (orig_sampl_vars.count(orig_v)) continue;
-                    if (orig_v >= defs.size() || !defs[orig_v]) continue;
-                    auto deps = get_dependent_vars_recursive(orig_v, dep_cache);
-                    bool bad = false;
-                    for (uint32_t d : deps) if (!orig_sampl_vars.count(d)) { bad = true; break; }
-                    if (!bad) continue;
-                    std::set<uint32_t> cone;
-                    pre_sweep_cone(orig_v, cone);
-                    for (uint32_t c : cone) to_revert_cone.insert(c);
-                }
-            }
-            if (to_revert_cone.empty()) break;
-            for (uint32_t v : to_revert_cone) {
-                if (defs[v] == pre_sweep_defs[v]
-                    && defs[v].neg == pre_sweep_defs[v].neg) continue;
-                defs[v] = pre_sweep_defs[v];
-                reverted_total++;
-            }
-        }
-        if (verb >= 1 && reverted_total > 0) {
-            cout << "c o [aig-rewrite] sat-sweep reverted " << reverted_total
-                 << " defs that gained non-orig-sampl recursive deps" << endl;
-        }
-    }
 }
 
 DLL_PUBLIC aig_ptr AIG::rewrite_aig(const aig_ptr& aig) {
@@ -2794,81 +2644,125 @@ DLL_PUBLIC aig_ptr AIG::simplify(aig_ptr aig) {
 
 // CSE rebuild. Each AND node is keyed on (type, var, l_nid, l_neg, r_nid, r_neg).
 // Only the AND *node* is shared; the outer edge sign is applied by the caller.
+// Iterative post-order — see AIG::simplify for the reasoning.
 aig_ptr AIG::simplify_cse(aig_ptr aig, map<AIGKey, aig_node_ptr>& cse_map, unordered_map<const AIG*, aig_node_ptr>& cache) {
     if (!aig) return nullptr;
 
-    std::function<aig_node_ptr(const AIG*)> rebuild = [&](const AIG* src) -> aig_node_ptr {
-        if (!src) return nullptr;
-        auto it = cache.find(src);
-        if (it != cache.end()) return it->second;
-
-        if (src->type == AIGT::t_const || src->type == AIGT::t_lit) {
-            // Leaves are keyed for dedup across the whole simplification pass.
-            AIGKey key(src->type, src->var, 0, false, 0, false);
-            auto cit = cse_map.find(key);
-            if (cit != cse_map.end()) { cache[src] = cit->second; return cit->second; }
-            auto node = make_shared<AIG>();
-            node->type = src->type;
-            node->var = src->var;
-            cse_map[key] = node;
-            cache[src] = node;
-            return node;
-        }
-        assert(src->type == AIGT::t_and);
-
-        auto ln = rebuild(src->l.get());
-        auto rn = rebuild(src->r.get());
-        aig_lit le(ln, src->l.neg);
-        aig_lit re(rn, src->r.neg);
-        // Canonicalise operand order for AND (commutative).
-        if (le.get() && re.get() && le->nid < re->nid) std::swap(le, re);
-        AIGKey key(src->type, src->var, le.get() ? le->nid : 0, le.neg,
-                                       re.get() ? re->nid : 0, re.neg);
+    auto build_leaf = [&](const AIG* src) -> aig_node_ptr {
+        // Leaves are keyed for dedup across the whole simplification pass.
+        AIGKey key(src->type, src->var, 0, false, 0, false);
         auto cit = cse_map.find(key);
         if (cit != cse_map.end()) { cache[src] = cit->second; return cit->second; }
-
         auto node = make_shared<AIG>();
         node->type = src->type;
         node->var = src->var;
-        node->l = le;
-        node->r = re;
         cse_map[key] = node;
         cache[src] = node;
         return node;
     };
 
-    return aig_lit(rebuild(aig.get()), aig.neg);
+    struct Frame { const AIG* src; bool children_done; };
+    std::vector<Frame> stack;
+    stack.reserve(64);
+    stack.push_back({aig.get(), false});
+
+    while (!stack.empty()) {
+        Frame& f = stack.back();
+        const AIG* src = f.src;
+        if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
+        if (src->type == AIGT::t_const || src->type == AIGT::t_lit) {
+            build_leaf(src);
+            stack.pop_back();
+            continue;
+        }
+        assert(src->type == AIGT::t_and);
+        if (!f.children_done) {
+            f.children_done = true;
+            const AIG* ln = src->l.get();
+            const AIG* rn = src->r.get();
+            stack.push_back({rn, false});
+            stack.push_back({ln, false});
+        } else {
+            auto it_l = cache.find(src->l.get());
+            auto it_r = cache.find(src->r.get());
+            aig_node_ptr ln = (it_l != cache.end()) ? it_l->second : nullptr;
+            aig_node_ptr rn = (it_r != cache.end()) ? it_r->second : nullptr;
+            aig_lit le(ln, src->l.neg);
+            aig_lit re(rn, src->r.neg);
+            // Canonicalise operand order for AND (commutative).
+            if (le.get() && re.get() && le->nid < re->nid) std::swap(le, re);
+            AIGKey key(src->type, src->var, le.get() ? le->nid : 0, le.neg,
+                                           re.get() ? re->nid : 0, re.neg);
+            auto cit = cse_map.find(key);
+            if (cit != cse_map.end()) { cache[src] = cit->second; stack.pop_back(); continue; }
+
+            auto node = make_shared<AIG>();
+            node->type = src->type;
+            node->var = src->var;
+            node->l = le;
+            node->r = re;
+            cse_map[key] = node;
+            cache[src] = node;
+            stack.pop_back();
+        }
+    }
+
+    auto it = cache.find(aig.get());
+    aig_node_ptr root = (it != cache.end()) ? it->second : nullptr;
+    return aig_lit(root, aig.neg);
 }
 
 // Rebuild the AIG tree bottom-up, running all algebraic simplifications
 // through the new_and / new_const / new_lit constructors. The cache stores, for
 // every source node, the rebuilt signed-edge form of that node's POSITIVE
 // value; the outer edge sign from the caller is applied on the final return.
+// Iterative post-order via an explicit stack — proof-driven interpolants
+// can be deep enough that a recursive rebuild blows the program stack.
 aig_ptr AIG::simplify(aig_ptr aig, unordered_map<const AIG*, aig_lit>& cache) {
     if (!aig) return nullptr;
 
-    std::function<aig_lit(const AIG*)> rebuild = [&](const AIG* src) -> aig_lit {
-        if (!src) return aig_lit();
-        auto it = cache.find(src);
-        if (it != cache.end()) return it->second;
-        aig_lit result;
-        if (src->type == AIGT::t_const) {
-            result = AIG::new_const(true);
-        } else if (src->type == AIGT::t_lit) {
-            result = AIG::new_lit(src->var, false);
+    struct Frame { const AIG* src; bool children_done; };
+    std::vector<Frame> stack;
+    stack.reserve(64);
+    stack.push_back({aig.get(), false});
+
+    while (!stack.empty()) {
+        Frame& f = stack.back();
+        const AIG* src = f.src;
+        if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
+        if (!f.children_done) {
+            if (src->type == AIGT::t_const) {
+                cache[src] = AIG::new_const(true);
+                stack.pop_back();
+            } else if (src->type == AIGT::t_lit) {
+                cache[src] = AIG::new_lit(src->var, false);
+                stack.pop_back();
+            } else {
+                assert(src->type == AIGT::t_and);
+                f.children_done = true;
+                // Pointer to f is invalidated by push_back, so capture
+                // children up-front. Right then left, so left is processed
+                // first when popped (LIFO).
+                const AIG* ln = src->l.get();
+                const AIG* rn = src->r.get();
+                stack.push_back({rn, false});
+                stack.push_back({ln, false});
+            }
         } else {
             assert(src->type == AIGT::t_and);
-            aig_lit lpos = rebuild(src->l.get());
-            aig_lit rpos = rebuild(src->r.get());
+            auto it_l = cache.find(src->l.get());
+            auto it_r = cache.find(src->r.get());
+            aig_lit lpos = (it_l != cache.end()) ? it_l->second : aig_lit();
+            aig_lit rpos = (it_r != cache.end()) ? it_r->second : aig_lit();
             aig_lit l_edge(lpos.node, lpos.neg ^ src->l.neg);
             aig_lit r_edge(rpos.node, rpos.neg ^ src->r.neg);
-            result = AIG::new_and(l_edge, r_edge);
+            cache[src] = AIG::new_and(l_edge, r_edge);
+            stack.pop_back();
         }
-        cache[src] = result;
-        return result;
-    };
+    }
 
-    aig_lit rebuilt_pos = rebuild(aig.get());
+    auto it = cache.find(aig.get());
+    aig_lit rebuilt_pos = (it != cache.end()) ? it->second : aig_lit();
     return aig_lit(rebuilt_pos.node, rebuilt_pos.neg ^ aig.neg);
 }
 
@@ -2977,25 +2871,11 @@ set_get_macro(double, no_gates_below)
 set_get_macro(string, specified_order_fname)
 set_get_macro(uint32_t, verb)
 set_get_macro(uint32_t, extend_max_confl)
-set_get_macro(int, unate_def_cond)
-set_get_macro(uint32_t, unate_def_cond_max_per_var)
-set_get_macro(uint32_t, unate_def_cond_max_confl)
-set_get_macro(uint32_t, unate_def_rep_iters)
-set_get_macro(uint32_t, unate_def_rep_max_pattern)
-set_get_macro(uint32_t, unate_def_rep_max_costzero)
-set_get_macro(uint32_t, unate_def_rep_max_confl)
-set_get_macro(uint32_t, unate_def_rep_aux)
-set_get_macro(uint32_t, unate_def_rep_minim)
-set_get_macro(uint32_t, unate_def_rep_minim_budget)
-set_get_macro(uint32_t, unate_def_rep_input_only_first)
-set_get_macro(uint32_t, unate_def_rep_drop_aux)
-set_get_macro(uint32_t, unate_def_rep_multi_cex_k)
-set_get_macro(uint32_t, unate_def_rep_iter_verb)
-set_get_macro(uint32_t, unate_def_rep_freq_sort)
-set_get_macro(uint32_t, unate_def_rep_minim_extra_passes)
-set_get_macro(uint32_t, unate_def_rep_multi_pat)
-set_get_macro(uint32_t, unate_def_cond_dry_streak)
-set_get_macro(int, unate_def_cond_noninput)
+set_get_macro(int, unate_def_eq)
+set_get_macro(uint32_t, unate_def_eq_max_per_var)
+set_get_macro(uint32_t, unate_def_eq_max_confl)
+set_get_macro(uint32_t, unate_def_eq_dry_streak)
+set_get_macro(int, unate_def_eq_noninput)
 set_get_macro(int, oracle_find_bins)
 set_get_macro(double, cms_glob_mult)
 set_get_macro(int, extend_ccnr)

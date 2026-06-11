@@ -52,7 +52,6 @@ class Manthan {
             , repair_solver(static_cast<SolverType>(_mconf.repair_solver_type), _mconf.repair_cache_size)
             , cnf(std::move(_cnf))
         {
-                mtrand.seed(42);
         }
         ArjunNS::SimplifiedCNF do_manthan();
         friend class ManthanLearn;
@@ -71,7 +70,6 @@ class Manthan {
 
         const Config& conf;
         const ArjunNS::Arjun::ManthanConf& mconf;
-        std::unique_ptr<CMSat::FieldGen> fg;
         MetaSolver2 cex_solver;
         CachedSolver repair_solver;
 
@@ -80,7 +78,6 @@ class Manthan {
         std::set<uint32_t> to_define;
         std::set<uint32_t> backward_defined;
         std::set<uint32_t> to_define_full; // to_define + backward_defined
-        std::set<uint32_t> helper_functions; // these are in BW, but we definitely want them
 
         // Byte-map mirrors of the sets above for O(1) membership tests in hot
         // paths (sort comparators in minimize_conflict / find_conflict, etc.).
@@ -119,6 +116,53 @@ class Manthan {
         bool find_conflict(const uint32_t y_rep, sample& ctx,
                 std::vector<CMSat::Lit>& conflict,
                 ArjunNS::aig_ptr& interp_branch);
+        // Populate the aig_dep_is_dep/aig_dep_list scratch (below) with the
+        // input variables that y_rep's current AIG depends on, using dep_cache
+        // when the formula is unchanged. Returns true if any dependency was
+        // found, i.e. the don't-care input filter is usable.
+        bool compute_aig_dep_set(const uint32_t y_rep);
+        // Try an input-only conflict: assume only the (dependent) input vars +
+        // ~to_repair, leaving earlier y-variables free. On UNSAT-with-to_repair
+        // sets `conflict`/`assumps` and returns true; the conflict is strictly
+        // more general than the full-assumption one. Returns false otherwise.
+        bool try_input_only_conflict(const uint32_t y_rep, const sample& ctx,
+                const CMSat::Lit to_repair, const bool have_aig_deps,
+                std::vector<CMSat::Lit>& conflict,
+                std::vector<CMSat::Lit>& assumps);
+        // Full-assumption conflict: dependent inputs + earlier y-vars +
+        // ~to_repair. Returns true with `conflict` set on UNSAT; false on a
+        // cost-zero repair (ctx updated). Used when try_input_only fails.
+        bool solve_full_assumption_conflict(const uint32_t y_rep, sample& ctx,
+                const CMSat::Lit to_repair, const bool have_aig_deps,
+                std::vector<CMSat::Lit>& conflict,
+                std::vector<CMSat::Lit>& assumps,
+                const double repair_solver_start_time);
+        // Copy the repair_solver model into ctx for y_rep and all later y-vars
+        // (cost-zero repair: y_rep is satisfiable without changing the formula).
+        void apply_cost_zero_model(const uint32_t y_rep, sample& ctx);
+        // Minimize then generalise the conflict (drop y-vars, cap size) and
+        // strip the to_repair literal, leaving the must-flip region's literals.
+        void minimize_and_generalize_conflict(std::vector<CMSat::Lit>& conflict,
+                std::vector<CMSat::Lit>& assumps, const CMSat::Lit to_repair);
+        // Drop ALL y-vars from the conflict if the input-only remainder is
+        // still UNSAT (a strictly more general repair).
+        void try_drop_y_vars(std::vector<CMSat::Lit>& conflict,
+                std::vector<CMSat::Lit>& assumps, const CMSat::Lit to_repair);
+        // Optionally compute a Craig interpolant branch for perform_repair;
+        // leaves interp_branch null when interp repair is off or gated out.
+        void maybe_compute_interp_branch(const uint32_t y_rep,
+                const CMSat::Lit to_repair,
+                const std::vector<CMSat::Lit>& conflict,
+                ArjunNS::aig_ptr& interp_branch);
+        // Per-var gating for interp repair (min-conflict / adaptive-ratio /
+        // progress blacklist); updates skip/blacklist bookkeeping.
+        bool should_compute_interp(const uint32_t y_rep,
+                const std::vector<CMSat::Lit>& conflict);
+        // Track interp node/lit ratio and blacklist the var when it grows too
+        // large relative to the conflict it generalises.
+        void interp_adaptive_bookkeeping(const uint32_t y_rep,
+                const std::vector<CMSat::Lit>& conflict,
+                const ArjunNS::aig_ptr& interp_branch);
         // Reusable scratch for AIG::get_dependent_vars inside find_conflict;
         // avoids per-call heap allocations for bitmap/stack. Visited state
         // is tracked via AIG::visit_epoch (no scratch needed).
@@ -182,7 +226,6 @@ class Manthan {
         std::vector<sample> get_cmsgen_samples(const uint32_t samples);
         std::vector<sample> get_samples_ccnr(const uint32_t samples);
         void sort_all_samples(std::vector<sample>& samples);
-        double train(const std::vector<sample>& samples, const uint32_t v); // returns training error
         std::vector<std::vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
 
         // Formulas
@@ -241,7 +284,6 @@ class Manthan {
         // invariant that glues "cex_solver UNSAT means synthesis correct"
         // to "final .aig export is correct".
         [[nodiscard]] bool check_aig_matches_clauses_per_formula(const std::string& where) const;
-        std::mt19937 mtrand;
         std::vector<uint32_t> updated_y_funcs; // y_hats updated during last round of training
 
         // stats
@@ -250,25 +292,14 @@ class Manthan {
         void print_detailed_stats() const;
         uint32_t num_loops_repair = 0;
         uint64_t conflict_sizes_sum = 0;
-        uint32_t generalized_repair_ok = 0;
-        uint32_t generalized_repair_fallback = 0;
+        uint32_t input_only_rep = 0;
         uint64_t needs_repair_sum = 0;
         uint32_t tot_repaired = 0;
         uint32_t repair_failed = 0;
         std::vector<uint32_t> repaired_vars_count; // for each y, how many times it was repaired
-        std::vector<uint32_t> input_only_ok; // per-var: consecutive input-only successes
-        std::vector<uint32_t> input_only_fail; // per-var: consecutive input-only failures
         double sampl_time = 0;
         double train_time = 0;
 
-        // detailed timing stats
-        double time_cex_finding = 0;
-        double time_find_better_ctx = 0;
-        double time_find_conflict = 0;
-        double time_minimize_conflict = 0;
-        double time_perform_repair = 0;
-        double time_inject_formulas = 0;
-        double time_recompute_y_hat = 0;
         uint64_t input_only_conflict_sizes_sum = 0;
         uint64_t full_conflict_sizes_sum = 0;
         uint32_t input_only_conflict_count = 0;
@@ -276,18 +307,7 @@ class Manthan {
         uint32_t cost_zero_repairs = 0;
         uint32_t cex_solver_calls = 0;
         uint32_t repair_solver_calls = 0;
-        // Repairs that came from the interp path (real repairs only).
         uint32_t interp_repairs_used = 0;
-
-        // Per-var record of which branch drove the var's most recent
-        // successful repair: 0=none yet, 1=conflict-clause, 2=interp.
-        // Used to attribute later cost-zero (failed) repairs of that var
-        // to whichever branch last touched it — a high interp share means
-        // the interpolant is not generalising, just churning.
-        std::vector<uint8_t> last_repair_branch;
-        uint64_t interp_path_cost_zero = 0;
-        uint64_t conflict_path_cost_zero = 0;
-        uint64_t unrepaired_cost_zero = 0; // cost-zero before any success
 
         // Progress gate: per-var flag set once interp has been disabled
         // for a var that kept needing repairs without converging.
@@ -312,9 +332,19 @@ class Manthan {
         std::vector<uint64_t> interp_var_lit_sum;
         // Stat: adaptive-gate skips.
         uint64_t interp_adaptive_skips = 0;
-        // Per-var: interp-driven repair count and summed conflict size.
+        // Per-var: interp-driven repair count.
         std::vector<uint32_t> interp_repairs_per_var;
-        std::vector<uint64_t> interp_conflict_lits_per_var;
+        // Per-var: AIG node count summed across interp-branch repairs of
+        // this var (avg = sum / interp_repairs_per_var[v]).
+        std::vector<uint64_t> interp_branch_nodes_per_var;
+        // Per-var: successful conflict-branch repair count, and the sum
+        // of conflict-clause lengths over those repairs. Both increment
+        // together (in lockstep with each conflict-branch success), so
+        // avg = lits_sum / count. Kept separate from
+        // repaired_vars_count[v] (which counts attempts incl. cost-zero
+        // failures) and interp_repairs_per_var[v] (interp-branch only).
+        std::vector<uint32_t> conflict_branch_repairs_per_var;
+        std::vector<uint64_t> conflict_branch_lits_per_var;
         // cex_solver helper-var growth per repair, by path.
         uint64_t helpers_added_interp = 0;
         uint64_t helpers_added_legacy = 0;

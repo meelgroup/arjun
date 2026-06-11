@@ -69,11 +69,10 @@ int do_pre_backbone = 0;
 string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_learnt=1),bve";
 
 int synthesis = false;
+int use_brute_force_synth = 1;
 int do_unate_def = true;
-int do_unate_def_rep = false;
 int do_revbce = false;
-int do_minim_indep = true;
-int do_sat_sweep = false;
+int do_backward = true;
 string debug_minim;
 double cms_glob_mult = -1.0;
 int mode = 0;
@@ -159,32 +158,23 @@ void add_arjun_options() {
     // synth main
     myflag("--synth", synthesis, "Run synthesis");
     myflag("--synthmore", synthesis, "Run synthesis, with more aggressive BVE options");
+    myopt("--bruteforcesynth", use_brute_force_synth, fc_int,
+          "Try brute-force synthesis for the final synthesis "
+          "step before Manthan. Viable when |orig_sampl_cnf| ≤ "
+          "--bruteforcesynththresh (after the minim pre-pass); above that it "
+          "declines and Manthan takes over. 0=Manthan only, 1=try brute-force "
+          "first (default).");
     myopt("--maxsat", mconf.maxsat_better_ctx, fc_int, "Use maxsat to find better counterexamples during Manthan");
     myopt("--synthbve", do_synth_bve, fc_int,"Perform BVE for synthesis");
     myopt("--extend", etof_conf.do_extend_indep, fc_int,"Extend independent set just before CNF dumping");
     myopt("--minimconfl", mconf.minimize_conflict, fc_int,"Minimize conflict size when repairing");
     myopt("--unatedef", do_unate_def, fc_int,"Perform definition-aware unate analysis");
     myopt("--unatedefmaxconfl", conf.unate_def_max_confl, fc_int,"Conflict budget per SAT call in the standard unate_def probe");
-    myopt("--unatedefcond", conf.unate_def_cond, fc_int,"In unate_def, also detect conditional defs of the form t = ITE(L,c1,c0) for input literals L (i.e., t = L or t = ~L)");
-    myopt("--unatedefcondmax", conf.unate_def_cond_max_per_var, fc_int,"Max conditional candidates to test per to-define variable in unate_def");
-    myopt("--unatedefcondconfl", conf.unate_def_cond_max_confl, fc_int,"Conflict budget per SAT call inside the conditional unate_def search");
-    myopt("--unatedefconddry", conf.unate_def_cond_dry_streak, fc_int,"Disable conditional unate_def probe after this many consecutive misses with zero hits so far (very low = bail aggressively, very high = effectively never disable)");
-    myopt("--unatedefcondnoninp", conf.unate_def_cond_noninput, fc_int,"Allow non-input vars (to-define + already-tested) as the candidate L in t = L. Inputs are still tried first; non-inputs only after the input list is exhausted. 0 = inputs only");
-    myopt("--unatedefrep", do_unate_def_rep, fc_int,"In unate_def, run a manthan-style guess-and-repair pass for vars still undefined after the literal-only conditional probe");
-    myopt("--unatedefrepiters", conf.unate_def_rep_iters, fc_int,"Per-variable iteration budget in the repair-based unate_def pass");
-    myopt("--unatedefrepmaxpat", conf.unate_def_rep_max_pattern, fc_int,"Skip CEX whose minimized core (= candidate AIG conjunct count) exceeds this");
-    myopt("--unatedefrepmaxcz", conf.unate_def_rep_max_costzero, fc_int,"Give up on a variable after this many cost-zero CEXes in the repair pass");
-    myopt("--unatedefrepconfl", conf.unate_def_rep_max_confl, fc_int,"Conflict budget per SAT call inside the repair-based unate_def pass");
-    myopt("--unatedefrepaux", conf.unate_def_rep_aux, fc_int,"Allow H to use non-input leaves in unate_def_rep. 0=input-only; 1=input+backward-defined (cycle-checked); 2=input+backward-defined+to-define (richest)");
-    myopt("--unatedefrepminim", conf.unate_def_rep_minim, fc_int,"Greedy conflict minimization on the F-only solver in unate_def_rep. 0=off; 1=greedy single pass; 2=greedy + extra shuffled passes for hot vars");
-    myopt("--unatedefrepminbud", conf.unate_def_rep_minim_budget, fc_int,"Per-iter budget on minimization solver calls (number of literal-removal attempts allowed before bailing out)");
-    myopt("--unatedefrepinpfirst", conf.unate_def_rep_input_only_first, fc_int,"Try input-only F-solver call before input+aux. 0=off; 1=always; 2=only when aux_vars is non-empty");
-    myopt("--unatedefrepdropaux", conf.unate_def_rep_drop_aux, fc_int,"After greedy minim, attempt a single-shot SAT call dropping all aux lits from the pattern. 0=off; 1=on");
-    myopt("--unatedefrepmulticex", conf.unate_def_rep_multi_cex_k, fc_int,"Collect K CEX models per iteration and refine H using the one with the smallest input-only conflict. 1 = off");
-    myopt("--unatedefrepiterverb", conf.unate_def_rep_iter_verb, fc_int,"Per-iteration trace verbosity threshold. The trace fires when --verb >= this value");
-    myopt("--unatedefrepfreqsort", conf.unate_def_rep_freq_sort, fc_int,"Sort minim drop order by ascending pattern-frequency (manthan-style). 0=off; 1=on");
-    myopt("--unatedefrepminextra", conf.unate_def_rep_minim_extra_passes, fc_int,"Number of extra minim passes with reverse-order shuffle after the main greedy loop (manthan-style hot-var extra passes)");
-    myopt("--unatedefrepmultipat", conf.unate_def_rep_multi_pat, fc_int,"With multi-CEX>1, refine H with patterns from ALL collected models (not just chosen). 0=off; 1=on");
+    myopt("--unatedefeq", conf.unate_def_eq, fc_int,"In unate_def, also detect equiv defs of the form t = L or t = ~L for some literal L");
+    myopt("--unatedefeqmax", conf.unate_def_eq_max_per_var, fc_int,"Max equiv candidates to test per to-define variable in unate_def");
+    myopt("--unatedefeqconfl", conf.unate_def_eq_max_confl, fc_int,"Conflict budget per SAT call inside the equiv unate_def search");
+    myopt("--unatedefeqdry", conf.unate_def_eq_dry_streak, fc_int,"Disable equiv unate_def probe after this many consecutive misses with zero hits so far (very low = bail aggressively, very high = effectively never disable)");
+    myopt("--unatedefeqnoninp", conf.unate_def_eq_noninput, fc_int,"Allow non-input vars (to-define + already-tested) as the candidate L in t = L. Inputs are still tried first; non-inputs only after the input list is exhausted. 0 = inputs only");
     myopt("--autarky", etof_conf.do_autarky, fc_int,"Perform autarky analysis");
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
     myopt("--minvertlearn", mconf.inv_learnt, fc_int,"Invert learnt functions");
@@ -221,13 +211,11 @@ void add_arjun_options() {
     myopt("--statsevery", mconf.stats_every, fc_int, "Print stats every N repair loops");
     myopt("--detailedstatsevery", mconf.detailed_stats_every, fc_int, "Print detailed stats every N repair loops");
     myopt("--confldropy", mconf.conflict_drop_y_max, fc_int, "Max conflict size to try dropping y-vars");
-    myopt("--conflcap", mconf.conflict_cap, fc_int, "Cap very large conflicts above this size");
     myopt("--conflcapkeep", mconf.conflict_cap_keep, fc_int, "Keep this many literals when capping conflicts");
     myopt("--batchminimmin", mconf.batch_minim_min, fc_int, "Min conflict size for batch minimization");
     myopt("--minimbudgetthresh", mconf.minim_budget_threshold, fc_int, "Conflict size above which minim budget is capped");
     myopt("--minimbudgetmax", mconf.minim_budget_max, fc_int, "Max minimization solver calls");
     myopt("--minimbudgetmult", mconf.minim_budget_mult, fc_int, "Minim budget = conflict.size * mult (up to max)");
-    myflag("--sat-sweep", do_sat_sweep, "Run FRAIG-lite SAT sweeping after AIG rewrite (merges proven-equivalent gates)");
     myopt("--ccnrmemspersample", mconf.ccnr_mems_per_sample, fc_int, "CCNR total memory budget per sample");
     myopt("--ccnrpercalllimit", mconf.ccnr_per_call_limit, fc_int, "CCNR per-call step limit for local_search");
     myopt("--czhighratio", mconf.cz_high_ratio, fc_int, "cost_zero > tot_repaired * this triggers tightest cz_threshold");
@@ -251,11 +239,9 @@ void add_arjun_options() {
     myopt("--interprepairmaxnodes", mconf.interp_repair_max_aig_nodes, fc_int,
           "Cap interpolant AIG size; if bigger, fall back to conflict-clause path. 0=no cap.");
     myopt("--interprepairb1rewrite", mconf.interp_repair_b1_rewrite, fc_int,
-          "Independent: AIG rewrite of the combined branch b1=NOT(I) AND y_other_matches before Tseitin-encoding. simplify_aig is always on; this controls the heavier rewrite_aig pass. 0=off, 1=on.");
-    myopt("--interprepairb1satsweep", mconf.interp_repair_b1_satsweep, fc_int,
-          "FRAIG-lite sat_sweep on b1 — random-pattern sim + SAT-driven merging. Catches structural equivalences rewrite_aig misses. Expensive, opt-in. 0=off, 1=on.");
+          "Independent: AIG rewrite of the guard=NOT(I) AND y_other_matches before Tseitin-encoding. simplify_aig is always on; this controls the heavier rewrite_aig pass. 0=off, 1=on.");
     myopt("--interprepairgroupcse", mconf.interp_repair_group_cse, fc_int,
-          "Pass --group-cse to AIGToCNF when encoding the interp branch b1. Dedups Tseitin helpers for structurally identical sub-AIGs. 0=off, 1=on.");
+          "Pass --group-cse to AIGToCNF when encoding the interp guard. Dedups Tseitin helpers for structurally identical sub-AIGs. 0=off, 1=on.");
     myopt("--interprepairmaxconfl", mconf.interp_repair_max_conflicts, fc_int,
           "Per-call cadical conflict budget for the interpolation solve. 0=no limit (default). Try 50000 to cap interp call cost; budget-exhausted calls fall back to the conflict-clause path.");
     myopt("--interprepairadaptive", mconf.interp_repair_adaptive_gate, fc_int,
@@ -266,8 +252,14 @@ void add_arjun_options() {
           "How many tot_repaired ticks the adaptive blacklist persists before the var gets another chance.");
     myopt("--interprepairprogressmax", mconf.interp_repair_progress_max_var_repairs, fc_int,
           "Progress gate: once a var has been interp-repaired this many times and still needs more, drop interp for it (it is not generalising). 0=off.");
-    myopt("--interprepairsystem", mconf.interp_repair_system, fc_int,
-          "Labeled-interpolation system: 0=McMillan (strongest interpolant, default), 1=Pudlák (symmetric selector; smaller but weaker interpolant).");
+
+    // === Brute-force synthesis (--bruteforcesynth 1) knobs ===
+    myopt("--bruteforcesynththresh", mconf.brute_force_synth_threshold, fc_int,
+          "Cap: brute_force_synth runs only when |orig_sampl_cnf| ≤ this (after the minim pre-pass); above it it declines to Manthan. Each y allocates 2^N truth-table entries, so raising past ~20 OOMs.");
+    myopt("--bruteforcesynthminim", mconf.brute_force_synth_minim, fc_int,
+          "Dry-run backward minim on orig_sampl_cnf before enumeration: prunes sampling vars that the post-preproc CNF defines from the rest, shrinking the 2^N truth tables. 0=off, 1=on (default).");
+    myopt("--bruteforcesynthminimmax", mconf.brute_force_synth_minim_max, fc_int,
+          "Only attempt the minim pre-pass when |orig_sampl_cnf| ≤ this (default 40). Above it the doubled-CNF minim is too expensive and unlikely to shrink below --bruteforcesynththresh, so it is skipped.");
 
     // Simplification options for minim
     myopt("--probe", conf.probe_based, fc_int,"Use simple probing to set (and define) some variables");
@@ -311,13 +303,12 @@ void add_arjun_options() {
     myopt("--distill", conf.distill, fc_int, "Distill clauses before minimization of indep");
     myopt("--weakenlim", simp_conf.weaken_limit, fc_int, "Limit to weaken BVE resolvents");
     myopt("--puurastrategy", simp_conf.puura_strategy, fc_int, "Puura iter1 simplification strategy: 0=default, 1=new-model");
-    myopt("--bce", etof_conf.do_bce, fc_int, "Use blocked clause elimination (BCE) statically");
     myopt("--red", redundant_cls, fc_int,"Also dump redundant clauses");
 
     // Debug
     myopt("--renumber", etof_conf.do_renumber, fc_int,"Renumber variables to start from 1...N in CNF.");
     myopt("--specifiedorder", conf.specified_order_fname, fc_string, "Try to remove variables from the independent set in this order. File must contain a variable on each line. Variables start at ZERO. Variable from the BOTTOM will be removed FIRST. This is for DEBUG ONLY");
-    myopt("--minimize", do_minim_indep, fc_int,"Minimize indep set");
+    myopt("--backward", do_backward, fc_int,"Run the backward pass to minimize the independent set");
     myopt("--debugminim", debug_minim, fc_string,"Create this file that is the CNF after indep set minimization");
     myopt("--cmsmult", conf.cms_glob_mult, fc_double,"Multiply timeouts in CMS by this. Default is -1, which means no change. Useful for debugging");
 
@@ -366,25 +357,11 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_gauss_jordan(conf.gauss_jordan);
     arj->set_simp(conf.simp);
     arj->set_extend_max_confl(conf.extend_max_confl);
-    arj->set_unate_def_cond(conf.unate_def_cond);
-    arj->set_unate_def_cond_max_per_var(conf.unate_def_cond_max_per_var);
-    arj->set_unate_def_cond_max_confl(conf.unate_def_cond_max_confl);
-    arj->set_unate_def_cond_dry_streak(conf.unate_def_cond_dry_streak);
-    arj->set_unate_def_cond_noninput(conf.unate_def_cond_noninput);
-    arj->set_unate_def_rep_iters(conf.unate_def_rep_iters);
-    arj->set_unate_def_rep_max_pattern(conf.unate_def_rep_max_pattern);
-    arj->set_unate_def_rep_max_costzero(conf.unate_def_rep_max_costzero);
-    arj->set_unate_def_rep_max_confl(conf.unate_def_rep_max_confl);
-    arj->set_unate_def_rep_aux(conf.unate_def_rep_aux);
-    arj->set_unate_def_rep_minim(conf.unate_def_rep_minim);
-    arj->set_unate_def_rep_minim_budget(conf.unate_def_rep_minim_budget);
-    arj->set_unate_def_rep_input_only_first(conf.unate_def_rep_input_only_first);
-    arj->set_unate_def_rep_drop_aux(conf.unate_def_rep_drop_aux);
-    arj->set_unate_def_rep_multi_cex_k(conf.unate_def_rep_multi_cex_k);
-    arj->set_unate_def_rep_iter_verb(conf.unate_def_rep_iter_verb);
-    arj->set_unate_def_rep_freq_sort(conf.unate_def_rep_freq_sort);
-    arj->set_unate_def_rep_minim_extra_passes(conf.unate_def_rep_minim_extra_passes);
-    arj->set_unate_def_rep_multi_pat(conf.unate_def_rep_multi_pat);
+    arj->set_unate_def_eq(conf.unate_def_eq);
+    arj->set_unate_def_eq_max_per_var(conf.unate_def_eq_max_per_var);
+    arj->set_unate_def_eq_max_confl(conf.unate_def_eq_max_confl);
+    arj->set_unate_def_eq_dry_streak(conf.unate_def_eq_dry_streak);
+    arj->set_unate_def_eq_noninput(conf.unate_def_eq_noninput);
     arj->set_oracle_find_bins(conf.oracle_find_bins);
 }
 
@@ -458,7 +435,7 @@ void do_synthesis() {
         cnf.simplify_aigs(conf.verb);
         SLOW_DEBUG_DO(check_stage("extend_synth"));
     }
-    if (do_minim_indep && !cnf.synth_done()) {
+    if (do_backward && !cnf.synth_done()) {
         arjun->standalone_backward_round_synth(cnf, mconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-minim_idep_synt.aig");
         cnf.simplify_aigs(conf.verb);
@@ -469,22 +446,29 @@ void do_synthesis() {
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unate_def.aig");
         SLOW_DEBUG_DO(check_stage("unate_def"));
     }
-    if (do_unate_def && do_unate_def_rep && !cnf.synth_done()) {
-        arjun->standalone_unate_def_rep(cnf);
-        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-unate_def_rep.aig");
-        SLOW_DEBUG_DO(check_stage("unate_def_rep"));
+
+    cnf.rewrite_aigs(conf.verb);
+    if (use_brute_force_synth && !cnf.synth_done()) {
+        // Brute-force synthesis: enumerate every consistent
+        // X assignment, build per-y decision trees. Declines (returns the
+        // CNF unchanged, synth not done) when the minimized enum set
+        // exceeds the threshold; Manthan below then finishes the job.
+        cout << "c o [arjun] Synthesis: brute-force decision trees" << endl;
+        cnf = arjun->standalone_brute_force_synth(std::move(cnf), mconf);
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-brute_force_synth.aig");
+        SLOW_DEBUG_DO(check_stage("brute_force_synth"));
     }
+    if (!cnf.synth_done()) {
+        SynthRunner synth_runner(conf, arjun);
+        auto strategies = synth_runner.parse_mstrategy(mstrategy);
+        synth_runner.run_manthan_strategies(cnf, mconf, strategies);
 
-    SynthRunner synth_runner(conf, arjun);
-    auto strategies = synth_runner.parse_mstrategy(mstrategy);
-    cnf.rewrite_aigs(conf.verb, do_sat_sweep);
-    synth_runner.run_manthan_strategies(cnf, mconf, strategies);
-
-    release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
-    if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
-    SLOW_DEBUG_DO(check_stage("manthan"));
+        release_assert(cnf.synth_done() && "Synthesis should be done by now, but it is not!");
+        if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
+        SLOW_DEBUG_DO(check_stage("manthan"));
+    }
     if (!output_file.empty()) {
-        cnf.rewrite_aigs(conf.verb, do_sat_sweep);
+        cnf.rewrite_aigs(conf.verb);
         cnf.write_aig_def_to_verilog(output_file);
         cout << "c o [arjun] dumped synthesized functions to verilog file '" << output_file << "'" << endl;
     }
@@ -498,7 +482,7 @@ void do_synthesis() {
     }
 }
 
-void do_minimize() {
+void do_backward_pass() {
     ArjunNS::SimplifiedCNF cnf(fg);
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
     cnf.clean_idiotic_mccomp_weights();
@@ -506,7 +490,7 @@ void do_minimize() {
 
     if (do_pre_backbone) arjun->standalone_backbone(cnf);
     const auto orig_sampl_vars = cnf.get_sampl_vars();
-    if (do_minim_indep) arjun->standalone_minimize_indep(cnf, etof_conf.all_indep);
+    if (do_backward) arjun->standalone_minimize_indep(cnf, etof_conf.all_indep);
     if (!debug_minim.empty()) {
         cnf.write_simpcnf(debug_minim, false);
         auto cnf2 = cnf;
@@ -603,7 +587,7 @@ int main(int argc, char** argv) {
                 mconf.ganak_binary = "ganak";
             }
         }
-        if (conf.verb) cout << "c o [checkrepair] Using ganak binary: " << mconf.ganak_binary << endl;
+        verb_print(1, "[checkrepair] Using ganak binary: " << mconf.ganak_binary);
     }
 
     if (etof_conf.sbva_tiebreak != 0 && etof_conf.sbva_tiebreak != 1) {
@@ -655,7 +639,7 @@ int main(int argc, char** argv) {
     if (synthesis) {
         do_synthesis();
     } else {
-        do_minimize();
+        do_backward_pass();
     }
     cout << "c o [arjun] All done. T: " << std::setprecision(2) << std::fixed
         << (cpuTime() - start_time) << endl;

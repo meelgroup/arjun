@@ -82,7 +82,6 @@ const std::map<string, ParamDef> param_table = {
     {"stats_every",              {PT::UInt,   [](MC& c, const string& v) { c.stats_every              = parse_val<uint32_t>(v); }}},
     {"detailed_stats_every",     {PT::UInt,   [](MC& c, const string& v) { c.detailed_stats_every     = parse_val<uint32_t>(v); }}},
     {"conflict_drop_y_max",      {PT::UInt,   [](MC& c, const string& v) { c.conflict_drop_y_max      = parse_val<uint32_t>(v); }}},
-    {"conflict_cap",             {PT::UInt,   [](MC& c, const string& v) { c.conflict_cap             = parse_val<uint32_t>(v); }}},
     {"conflict_cap_keep",        {PT::UInt,   [](MC& c, const string& v) { c.conflict_cap_keep        = parse_val<uint32_t>(v); }}},
     {"batch_minim_min",          {PT::UInt,   [](MC& c, const string& v) { c.batch_minim_min          = parse_val<uint32_t>(v); }}},
     {"minim_budget_threshold",   {PT::UInt,   [](MC& c, const string& v) { c.minim_budget_threshold   = parse_val<uint32_t>(v); }}},

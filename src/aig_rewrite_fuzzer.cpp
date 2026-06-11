@@ -44,14 +44,6 @@ using std::map;
 
 static AIGManager aig_mng;
 
-// Aggregate counter for multi-def mode: how many defs were reverted by the
-// post-sweep self-ref check in AIGRewriter::sat_sweep across all iters.
-static uint64_t g_total_self_ref_reverts = 0;
-
-// Aggregate counters for sat_sweep effectiveness across all iters.
-static uint64_t g_total_sweep_merges = 0;
-static uint64_t g_total_sweep_const_merges = 0;
-
 // Naive Tseitin encoding: one helper per AND node, 3 clauses each; constants
 // via a single unit-clauses helper. Returns the output literal. Identical in
 // spirit to the baseline used by fuzz_aig_to_cnf.
@@ -219,7 +211,7 @@ static void report_failure(const aig_ptr& orig, const aig_ptr& simp,
 
 static bool run_one(const aig_ptr& orig, uint32_t num_vars,
                     uint64_t seed, uint64_t iter, std::mt19937& rng,
-                    FuzzStats& fs, bool verbose, bool sat_sweep)
+                    FuzzStats& fs, bool verbose)
 {
     // 1. Rewrite.
     AIGRewriter rw;
@@ -245,32 +237,6 @@ static bool run_one(const aig_ptr& orig, uint32_t num_vars,
                            "rewrite grew an already-rewritten AIG");
             return false;
         }
-    }
-
-    // 1b. Optional SAT sweeping pass over the single-rooted vector.
-    if (sat_sweep) {
-        // Half the time, sweep the RAW (un-rewritten) AIG instead of the
-        // rewritten one. The raw AIG still carries the multi-level
-        // contradictions / tautologies and structural equivalences that the
-        // rewriter would otherwise fold away — exactly what exercises
-        // sat_sweep's constant detection and FRAIG merging. Verify that
-        // raw-swept result against `orig` independently.
-        if (rng() & 1) {
-            std::vector<aig_ptr> raw_defs{orig};
-            rw.sat_sweep(raw_defs, 0);
-            aig_ptr raw_swept = raw_defs[0] ? raw_defs[0] : orig;
-            if (!random_check(orig, raw_swept, num_vars, rng, 40)) {
-                report_failure(orig, raw_swept, num_vars, seed, iter,
-                               "random_check(raw-sweep)");
-                return false;
-            }
-        }
-        std::vector<aig_ptr> defs{simp};
-        rw.sat_sweep(defs, 0);
-        simp = defs[0];
-        if (!simp) simp = orig;
-        g_total_sweep_merges       += rw.get_stats().sweep_merges;
-        g_total_sweep_const_merges += rw.get_stats().sweep_const_merges;
     }
 
     size_t before = AIG::count_aig_nodes_fast(orig);
@@ -323,113 +289,6 @@ static bool run_one(const aig_ptr& orig, uint32_t num_vars,
     return true;
 }
 
-// Walk `aig` looking for any t_lit leaf with var == target. Used for the
-// self-ref invariant check post-sat-sweep.
-static bool contains_lit_var(const aig_ptr& aig, uint32_t target) {
-    if (!aig) return false;
-    std::set<const AIG*> seen;
-    std::function<bool(const aig_ptr&)> walk = [&](const aig_ptr& e) -> bool {
-        if (!e || !seen.insert(e.get()).second) return false;
-        if (e->type == AIGT::t_lit) return e->var == target;
-        if (e->type == AIGT::t_and) return walk(e->l) || walk(e->r);
-        return false;
-    };
-    return walk(aig);
-}
-
-// Multi-def mode: build K random defs over K+F total vars, ensuring each
-// defs[v] does NOT reference var v (so defs[v] is defined purely in terms
-// of other vars). Then run SAT sweep and verify (1) no defs[v] contains
-// lit(v), and (2) each defs[v] is semantically unchanged on random
-// assignments to all vars.
-//
-// Allowing cross-def references to vars in [0, K) is what makes this
-// stress the self-ref path: other defs can have lit(v) as an input, and
-// a sat-sweep merge+fold can pull that lit(v) into defs[v]'s rebuild via
-// make_canonical's idempotent fold of an AND rep collapsing to a literal.
-static bool run_multi_def(uint32_t k_defs, uint32_t f_free,
-                          uint32_t max_depth, uint32_t max_nodes_cfg,
-                          uint64_t seed, uint64_t iter, std::mt19937& rng,
-                          bool verbose)
-{
-    const uint32_t num_vars_total = k_defs + f_free;
-    vector<aig_ptr> defs(k_defs);
-    vector<aig_ptr> defs_pre(k_defs);
-    uint32_t total_nodes_before = 0;
-    for (uint32_t v = 0; v < k_defs; v++) {
-        // Try up to a few times to generate a def that doesn't reference
-        // lit(v) (so it's a valid definition of v). If the generator
-        // keeps including lit(v), skip this iter.
-        aig_ptr cand;
-        for (int attempt = 0; attempt < 16; attempt++) {
-            uint32_t depth = 3 + rng() % (max_depth - 2);
-            uint32_t max_nodes = 8 + rng() % max_nodes_cfg;
-            aig_ptr raw = fuzz::gen_random_shape(
-                aig_mng, rng, num_vars_total, depth, max_nodes);
-            if (raw && !contains_lit_var(raw, v)) { cand = raw; break; }
-        }
-        if (!cand) return true; // skip iter
-        defs[v] = cand;
-        defs_pre[v] = defs[v];
-        total_nodes_before += AIG::count_aig_nodes_fast(defs[v]);
-    }
-
-    AIGRewriter rw;
-    rw.sat_sweep(defs, 0);
-    g_total_self_ref_reverts += rw.get_stats().sweep_self_ref_reverts;
-
-    // Invariant: no defs[v] contains lit(v). The fix in aig_rewrite.cpp
-    // reverts any def whose rebuild would violate this; the fuzzer asserts
-    // that the invariant holds post-sweep.
-    for (uint32_t v = 0; v < k_defs; v++) {
-        if (!defs[v]) continue;
-        if (contains_lit_var(defs[v], v)) {
-            cerr << "\n!!! FAILURE in phase 'multi_def_self_ref' at iter " << iter << " !!!" << endl;
-            cerr << "Seed: " << seed << "  k_defs: " << k_defs
-                 << "  f_free: " << f_free << endl;
-            cerr << "defs[" << v << "] contains lit(" << v << ") after sat-sweep" << endl;
-            cerr << "defs[" << v << "] pre:  " << defs_pre[v] << endl;
-            cerr << "defs[" << v << "] post: " << defs[v] << endl;
-            return false;
-        }
-    }
-
-    // Semantic check: each defs[v] over all vars must evaluate identically
-    // before and after the sweep. defs_pre gives us a ground-truth to
-    // compare against. Note that defs can reference each other's defined
-    // vars; for this check we treat ALL vars as free inputs (empty_defs).
-    vector<aig_ptr> empty_defs(num_vars_total, nullptr);
-    for (uint32_t t = 0; t < 20; t++) {
-        vector<CMSat::lbool> vals(num_vars_total);
-        for (uint32_t v = 0; v < num_vars_total; v++) {
-            vals[v] = (rng() & 1) ? CMSat::l_True : CMSat::l_False;
-        }
-        for (uint32_t v = 0; v < k_defs; v++) {
-            if (!defs[v] || !defs_pre[v]) continue;
-            std::map<aig_ptr, CMSat::lbool> c_pre, c_post;
-            CMSat::lbool e_pre  = AIG::evaluate(vals, defs_pre[v], empty_defs, c_pre);
-            CMSat::lbool e_post = AIG::evaluate(vals, defs[v],     empty_defs, c_post);
-            if (e_pre != e_post) {
-                cerr << "\n!!! FAILURE in phase 'multi_def_semantic' at iter " << iter << " !!!" << endl;
-                cerr << "Seed: " << seed << "  v=" << v << "  trial=" << t << endl;
-                cerr << "defs_pre:  " << defs_pre[v] << endl;
-                cerr << "defs_post: " << defs[v] << endl;
-                return false;
-            }
-        }
-    }
-
-    if (verbose) {
-        uint32_t total_nodes_after = 0;
-        for (const auto& d : defs) total_nodes_after += AIG::count_aig_nodes_fast(d);
-        cout << "[" << std::setw(6) << iter << "] multi-def K=" << k_defs
-             << " F=" << f_free
-             << " nodes " << std::setw(5) << total_nodes_before
-             << " -> " << std::setw(5) << total_nodes_after << endl;
-    }
-    return true;
-}
-
 static void print_usage(const char* prog) {
     cout << "Usage: " << prog
          << " [--num N] [--seed S] [--vars V] [--depth D] [--nodes N] [--verbose]" << endl;
@@ -439,11 +298,6 @@ static void print_usage(const char* prog) {
     cout << "  --depth D   Max AIG depth (default: 10)" << endl;
     cout << "  --nodes N   Max nodes per AIG (default: 50)" << endl;
     cout << "  --verbose   Per-iteration progress output" << endl;
-    cout << "  --sat-sweep Also run SAT sweeping pass (FRAIG-lite)" << endl;
-    cout << "  --multi-def K  Also run multi-def SAT sweep mode with K defs" << endl;
-    cout << "                 over F free vars (F = --vars). Checks the" << endl;
-    cout << "                 no-self-ref invariant plus per-def semantic" << endl;
-    cout << "                 preservation." << endl;
     cout << "  --require-all-rules  Fail run if any rewrite rule was never" << endl;
     cout << "                       triggered. Useful when adding new rules" << endl;
     cout << "                       to confirm the shape corpus covers them." << endl;
@@ -455,10 +309,8 @@ int main(int argc, char** argv) {
     uint32_t max_vars = 8;
     uint32_t max_depth = 10;
     uint32_t max_nodes_cfg = 50;
-    uint32_t multi_def_k = 0;
     bool verbose = false;
     bool require_all_rules = false;
-    uint32_t sat_sweep = 3;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--num") == 0 && i + 1 < argc) num_iters = std::stoull(argv[++i]);
@@ -467,8 +319,6 @@ int main(int argc, char** argv) {
         else if (strcmp(argv[i], "--depth") == 0 && i + 1 < argc) max_depth = std::stoul(argv[++i]);
         else if (strcmp(argv[i], "--nodes") == 0 && i + 1 < argc) max_nodes_cfg = std::stoul(argv[++i]);
         else if (strcmp(argv[i], "--verbose") == 0) verbose = true;
-        else if (strcmp(argv[i], "--sat-sweep") == 0 && i + 1 < argc) sat_sweep = std::stoull(argv[++i]);
-        else if (strcmp(argv[i], "--multi-def") == 0 && i + 1 < argc) multi_def_k = std::stoul(argv[++i]);
         else if (strcmp(argv[i], "--require-all-rules") == 0) require_all_rules = true;
         else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]);
@@ -482,9 +332,7 @@ int main(int argc, char** argv) {
 
     cout << "fuzz_aig_rewrite" << endl;
     cout << "Seed: " << seed << "  max_vars: " << max_vars
-         << "  max_depth: " << max_depth << "  max_nodes: " << max_nodes_cfg
-         << "  sat-sweep: " << ((sat_sweep > 1) ? "random" : (sat_sweep ? "ON" : "OFF"))
-         << "  multi-def: " << (multi_def_k ? std::to_string(multi_def_k) : std::string("off")) << endl;
+         << "  max_depth: " << max_depth << "  max_nodes: " << max_nodes_cfg << endl;
     cout << "Reproduce: fuzz_aig_rewrite --seed " << seed
          << " --vars " << max_vars << " --depth " << max_depth
          << " --nodes " << max_nodes_cfg << endl;
@@ -503,15 +351,7 @@ int main(int argc, char** argv) {
         aig_ptr aig = fuzz::gen_random_shape(aig_mng, rng, num_vars, depth, max_nodes);
         if (!aig) continue;
 
-        bool actual_sat_sweep = sat_sweep;
-        if (sat_sweep > 1) {
-            actual_sat_sweep = rng() %2;
-        }
-        if (!run_one(aig, num_vars, seed, iter, rng, fs, verbose, actual_sat_sweep)) return 1;
-        if (multi_def_k > 0) {
-            if (!run_multi_def(multi_def_k, max_vars, max_depth, max_nodes_cfg,
-                               seed, iter, rng, verbose)) return 1;
-        }
+        if (!run_one(aig, num_vars, seed, iter, rng, fs, verbose)) return 1;
         fs.iters++;
 
         if (iter > 0 && iter % 500 == 0) {
@@ -532,13 +372,6 @@ int main(int argc, char** argv) {
     auto t_end = std::chrono::steady_clock::now();
     fs.total_time_s = std::chrono::duration<double>(t_end - t_start).count();
     fs.print();
-    if (g_total_sweep_merges || g_total_sweep_const_merges) {
-        cout << "sat_sweep: merges=" << g_total_sweep_merges
-             << "  const_merges=" << g_total_sweep_const_merges << endl;
-    }
-    if (multi_def_k > 0) {
-        cout << "Multi-def self-ref reverts: " << g_total_self_ref_reverts << endl;
-    }
     if (require_all_rules) {
         const int unfired = fs.report_unfired_rules();
         if (unfired > 0) {

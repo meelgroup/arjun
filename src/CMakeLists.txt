@@ -44,12 +44,12 @@ set(libfiles
     arjun_c.cpp
     puura.cpp
     unate_def.cpp
-    unate_def_rep.cpp
     unate_def_common.cpp
     autarky.cpp
     ccnr/ccnr.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
     manthan.cpp
+    brute_force_synth.cpp
     aig_rewrite.cpp
     aig_to_cnf.cpp
     interpolant.cpp
@@ -235,6 +235,24 @@ if(ENABLE_TESTING)
     add_test(
         NAME test-interp-repair
         COMMAND test-interp-repair
+        WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
+    )
+
+    # Verilog emitter must not produce blank lines.
+    add_test(
+        NAME test-verilog-no-blank-lines
+        COMMAND bash -c [=[
+            set -e
+            tmpd=$(mktemp -d)
+            trap "rm -rf $tmpd" EXIT
+            printf 'p cnf 3 3\n-1 -2 3 0\n1 -3 0\n2 -3 0\nc p show 1 2 0\n' > "$tmpd/in.cnf"
+            ./arjun --synth "$tmpd/in.cnf" "$tmpd/out.v" > "$tmpd/log" 2>&1
+            if grep -q '^[[:space:]]*$' "$tmpd/out.v"; then
+                echo "FAIL: blank lines found in verilog output"
+                cat -An "$tmpd/out.v"
+                exit 1
+            fi
+        ]=]
         WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
     )
 endif()

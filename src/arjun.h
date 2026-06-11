@@ -1578,7 +1578,7 @@ public:
         assert(need_aig);
         AIG::simplify_aigs(verb, defs);
     }
-    void rewrite_aigs(const uint32_t verb = 0, bool sat_sweep = false);
+    void rewrite_aigs(const uint32_t verb = 0);
     [[nodiscard]] const auto& get_aig_mng() const { return aig_mng; }
     void import_candidate_functions(const std::string& fname, int verb = 0);
     void check_red_cls_deriveable() const;
@@ -1654,7 +1654,6 @@ public:
     struct ElimToFileConf {
         bool all_indep = false;
         bool do_extend_indep = true;
-        bool do_bce = false;
         int num_sbva_steps = 1000;
         uint32_t sbva_cls_cutoff = 4;
         uint32_t sbva_lits_cutoff = 5;
@@ -1696,9 +1695,8 @@ public:
         // Hard-coded cutoffs now configurable
         uint32_t const_vote_samples = 100;   // const_functions: majority voting samples
         uint32_t stats_every = 40;          // print stats every N repair loops
-        uint32_t detailed_stats_every = 200;// print detailed stats every N repair loops
+        uint32_t detailed_stats_every = 600;// print detailed stats every N repair loops
         uint32_t conflict_drop_y_max = 25;  // max conflict size to try dropping y-vars
-        uint32_t conflict_cap = 40;         // cap very large conflicts to this size
         uint32_t conflict_cap_keep = 30;    // keep this many literals when capping
         uint32_t batch_minim_min = 6;       // min conflict size for batch minimization
         uint32_t minim_budget_threshold = 20; // conflict size above which budget is capped
@@ -1723,26 +1721,22 @@ public:
         uint32_t interp_repair_min_conflict = 4;
         // Cap interpolant AIG node count; bigger falls back. 0=no cap.
         uint32_t interp_repair_max_aig_nodes = 0;
-        // rewrite_aig of the combined b1 AIG before Tseitin encoding.
-        // 0=simplify only, 1=+rewrite_aig. On by default: b1 is composed
-        // into the candidate formula and Tseitin-encoded into the cex
-        // solver on every interpolant repair, so a smaller b1 directly
-        // slows cex-solver growth between rebuilds.
+        // rewrite_aig of the guard AIG before Tseitin encoding.
+        // 0=simplify only, 1=+rewrite_aig. On by default: the guard is
+        // composed into the candidate formula and Tseitin-encoded into the
+        // cex solver on every interpolant repair, so a smaller guard
+        // directly slows cex-solver growth between rebuilds. (The flag name
+        // keeps the historical "b1" spelling for backward compatibility.)
         int interp_repair_b1_rewrite = 1;
-        // FRAIG-lite SAT-sweep on b1. 0=off, 1=on.
-        int interp_repair_b1_satsweep = 0;
-        // Pass --group-cse to AIGToCNF when encoding b1: dedups Tseitin
-        // helpers for structurally identical sub-AIGs. On by default for
-        // the same cex-solver-growth reason as b1_rewrite.
+        // Pass --group-cse to AIGToCNF when encoding the guard: dedups
+        // Tseitin helpers for structurally identical sub-AIGs. On by
+        // default for the same cex-solver-growth reason as b1_rewrite.
         int interp_repair_group_cse = 1;
         // Per-call cadical conflict budget for the interp solve. 0=no limit.
         uint64_t interp_repair_max_conflicts = 0;
-        // Labeled-interpolation system: 0=McMillan (strongest, default),
-        // 1=Pudlák (symmetric selector; smaller but weaker interpolant).
-        int interp_repair_system = 0;
         // Adaptive per-var gating: blacklist a var when its mean
         // interp/conflict ratio exceeds the threshold. 0=off, 1=on.
-        int interp_repair_adaptive_gate = 0;
+        int interp_repair_adaptive_gate = 1;
         double interp_repair_adaptive_ratio_skip = 8.0;
         uint32_t interp_repair_adaptive_skip_window = 20;
         // Progress-based per-var gating: once a variable has been repaired
@@ -1751,6 +1745,31 @@ public:
         // back permanently to the conflict clause for that variable.
         // 0 disables the gate.
         uint32_t interp_repair_progress_max_var_repairs = 100;
+
+        // Brute-force synthesis (--bruteforcesynth 1): enumerate every
+        // consistent X assignment via a forbid-clause loop, tabulate y
+        // values per SAT model, build per-y decision trees.
+        //
+        // Upper bound on |orig_sampl_cnf| (after the minim pre-pass).
+        // Each undet y allocates a 2^N truth table, so raising this past
+        // ~20 will OOM. Above the threshold brute_force_synth declines and
+        // the caller falls back to Manthan.
+        uint32_t brute_force_synth_threshold = 16;
+
+        // If set, run a dry-run backward minim on orig_sampl_cnf in the
+        // *current* (post-preproc, post-AIG-rewrite) CNF before the
+        // enumeration. The transforms can introduce dependencies among
+        // orig sampling vars that didn't exist at initial minim time;
+        // shrinking the enum domain makes the 2^N table much cheaper
+        // and lets more cases stay under brute_force_synth_threshold.
+        int brute_force_synth_minim = 1;
+
+        // Only attempt the minim pre-pass when |orig_sampl_cnf| is at
+        // most this. The backward minim solves a doubled-CNF SAT per
+        // candidate var, so on a large sampling set it is expensive and
+        // unlikely to shrink below brute_force_synth_threshold anyway — skip
+        // it there and let the threshold release_assert fire.
+        uint32_t brute_force_synth_minim_max = 40;
     };
 
     struct IndepInfo {
@@ -1768,18 +1787,24 @@ public:
     bool standalone_check_extend(const SimplifiedCNF& cnf);
     void standalone_unsat_define(SimplifiedCNF& cnf);
     void standalone_unate_def(SimplifiedCNF& cnf);
-    void standalone_unate_def_rep(SimplifiedCNF& cnf);
     void standalone_elim_to_file(SimplifiedCNF& cnf,
             const ElimToFileConf& etof_conf, const SimpConf& simp_conf);
     SimplifiedCNF standalone_get_simplified_cnf(const SimplifiedCNF& cnf, const SimpConf& simp_conf);
-    void standalone_bce(SimplifiedCNF& cnf);
-    void standalone_rev_bce(SimplifiedCNF& cnf);
     void standalone_backbone(SimplifiedCNF& cnf);
     void standalone_sbva(SimplifiedCNF& orig,
         int64_t sbva_steps = 200, uint32_t sbva_cls_cutoff = 2,
         uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1,
         uint32_t sbva_max_new_vars = 0);
     SimplifiedCNF standalone_manthan(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
+    // Brute-force synthesis: enumerate every consistent X
+    // assignment via a forbid-clause SAT loop, build per-y decision
+    // trees. Synthesizes when |orig_sampl_cnf| ≤ brute_force_synth_threshold
+    // (after the optional minim pre-pass); otherwise returns the CNF
+    // unchanged (synth_done() stays false) so the caller can fall back
+    // to Manthan. ManthanConf is kept for API parity with
+    // standalone_manthan; brute_force_synth only reads its brute_force_synth_*
+    // fields.
+    SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
     void standalone_autarky(SimplifiedCNF& cnf);
 
     //Set config
@@ -1803,25 +1828,11 @@ public:
     void set_specified_order_fname(std::string specified_order_fname);
     void set_weighted(const bool);
     void set_extend_max_confl(uint32_t extend_max_confl);
-    void set_unate_def_cond(int unate_def_cond);
-    void set_unate_def_cond_max_per_var(uint32_t unate_def_cond_max_per_var);
-    void set_unate_def_cond_max_confl(uint32_t unate_def_cond_max_confl);
-    void set_unate_def_cond_dry_streak(uint32_t unate_def_cond_dry_streak);
-    void set_unate_def_cond_noninput(int unate_def_cond_noninput);
-    void set_unate_def_rep_iters(uint32_t unate_def_rep_iters);
-    void set_unate_def_rep_max_pattern(uint32_t unate_def_rep_max_pattern);
-    void set_unate_def_rep_max_costzero(uint32_t unate_def_rep_max_costzero);
-    void set_unate_def_rep_max_confl(uint32_t unate_def_rep_max_confl);
-    void set_unate_def_rep_aux(uint32_t unate_def_rep_aux);
-    void set_unate_def_rep_minim(uint32_t unate_def_rep_minim);
-    void set_unate_def_rep_minim_budget(uint32_t unate_def_rep_minim_budget);
-    void set_unate_def_rep_input_only_first(uint32_t unate_def_rep_input_only_first);
-    void set_unate_def_rep_drop_aux(uint32_t unate_def_rep_drop_aux);
-    void set_unate_def_rep_multi_cex_k(uint32_t unate_def_rep_multi_cex_k);
-    void set_unate_def_rep_iter_verb(uint32_t unate_def_rep_iter_verb);
-    void set_unate_def_rep_freq_sort(uint32_t unate_def_rep_freq_sort);
-    void set_unate_def_rep_minim_extra_passes(uint32_t unate_def_rep_minim_extra_passes);
-    void set_unate_def_rep_multi_pat(uint32_t unate_def_rep_multi_pat);
+    void set_unate_def_eq(int unate_def_eq);
+    void set_unate_def_eq_max_per_var(uint32_t unate_def_eq_max_per_var);
+    void set_unate_def_eq_max_confl(uint32_t unate_def_eq_max_confl);
+    void set_unate_def_eq_dry_streak(uint32_t unate_def_eq_dry_streak);
+    void set_unate_def_eq_noninput(int unate_def_eq_noninput);
     void set_oracle_find_bins(int oracle_find_bins);
     void set_cms_glob_mult(double cms_glob_mult);
     void set_extend_ccnr(int extend_ccnr);
@@ -1846,25 +1857,11 @@ public:
     [[nodiscard]] bool get_ite_gate_based() const;
     [[nodiscard]] bool get_irreg_gate_based() const;
     [[nodiscard]] uint32_t get_extend_max_confl() const;
-    [[nodiscard]] int get_unate_def_cond() const;
-    [[nodiscard]] uint32_t get_unate_def_cond_max_per_var() const;
-    [[nodiscard]] uint32_t get_unate_def_cond_max_confl() const;
-    [[nodiscard]] uint32_t get_unate_def_cond_dry_streak() const;
-    [[nodiscard]] int get_unate_def_cond_noninput() const;
-    [[nodiscard]] uint32_t get_unate_def_rep_iters() const;
-    [[nodiscard]] uint32_t get_unate_def_rep_max_pattern() const;
-    [[nodiscard]] uint32_t get_unate_def_rep_max_costzero() const;
-    [[nodiscard]] uint32_t get_unate_def_rep_max_confl() const;
-    [[nodiscard]] uint32_t get_unate_def_rep_aux() const;
-    [[nodiscard]] uint32_t get_unate_def_rep_minim() const;
-    [[nodiscard]] uint32_t get_unate_def_rep_minim_budget() const;
-    [[nodiscard]] uint32_t get_unate_def_rep_input_only_first() const;
-    [[nodiscard]] uint32_t get_unate_def_rep_drop_aux() const;
-    [[nodiscard]] uint32_t get_unate_def_rep_multi_cex_k() const;
-    [[nodiscard]] uint32_t get_unate_def_rep_iter_verb() const;
-    [[nodiscard]] uint32_t get_unate_def_rep_freq_sort() const;
-    [[nodiscard]] uint32_t get_unate_def_rep_minim_extra_passes() const;
-    [[nodiscard]] uint32_t get_unate_def_rep_multi_pat() const;
+    [[nodiscard]] int get_unate_def_eq() const;
+    [[nodiscard]] uint32_t get_unate_def_eq_max_per_var() const;
+    [[nodiscard]] uint32_t get_unate_def_eq_max_confl() const;
+    [[nodiscard]] uint32_t get_unate_def_eq_dry_streak() const;
+    [[nodiscard]] int get_unate_def_eq_noninput() const;
     [[nodiscard]] int get_oracle_find_bins() const;
     [[nodiscard]] double get_cms_glob_mult() const;
     [[nodiscard]] int get_extend_ccnr() const;

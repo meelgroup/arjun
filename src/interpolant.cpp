@@ -141,9 +141,10 @@ void Interpolant::generate_interpolant(const vector<Lit>& assumptions,
     solver->conclude();
 
     aig_ptr interp = tracer->build_interpolant();
-    // The proof exists and was traced, so reconstruction must succeed.
+    // Invariant: after a UNSAT solve the tracer has seen a refutation root,
+    // so build_interpolant returns a non-null AIG.
     release_assert(interp != nullptr
-        && "interpolant tracer failed to reconstruct from proof");
+        && "interpolant: build_interpolant returned null after UNSAT proof");
     interp = AIG::simplify_aig(interp);
     release_assert(interp != nullptr
         && "interpolant: simplify_aig returned null");

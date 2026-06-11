@@ -34,7 +34,7 @@ only_dirs = [
     # "out-synth-1286344-0", # 4.5GB memory, improvements but no AIG speedup
     # "out-synth-1367674-2", # 2-3x faster because of AIG --- BEST, 386!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     # "out-synth-1375532-0", # 2x via aig_rewrite + AIGtoCNF in BVE
-    # "out-synth-1448672-1", # formula move, unate_def_cond, unate_def_rep
+    # "out-synth-1448672-1", # formula move, unate_def_eq, unate_def_rep
     # "out-synth-1452293-", # same as above, but puura changes reverted to old good one
     # "out-synth-1455773-0", # now version 2 of puura
     # "out-synth-1455773-3", # now version 2 of puura
@@ -42,11 +42,14 @@ only_dirs = [
     # "out-synth-1471320-1", # repair is better now I think
     # "out-synth-1479607-0", # cadet
     # "out-synth-1570930-", # check what can be removed
-    # "out-synth-1583187-0", # interpolation, cadet-style
+    # "out-synth-1583187-0", # interpolation, cadet-style (turned off)
     # "out-synth-1583187-5", # interpolation, cadet-style
+    # "out-synth-1587721-0", # whatever
     "out-synth-1587721-6", # CADET
     # "out-synth-1595974-5", # ALWAYS ON INTERPOLATION
-    "out-synth-1595974-1", # now interpolation is using minimized ("touched" variables) cnf so interpolation generation is faster
+    # "out-synth-1595974-", # now interpolation is using minimized ("touched" variables) cnf so interpolation generation is faster
+    "out-synth-1652067-0", # inprocessing with "cadet" turned OFF
+    # "out-synth-1652067-2", # inprocessing with cadet
 ]
 # -------------------------------------------------------------
 
@@ -544,7 +547,7 @@ def generate_cdf(fname2_s):
 
     with open(gnuplotfn, "w") as f:
         for term, out in [
-            ('pdfcairo size 20cm,15cm background "#d0d0d0"', pdf_file),
+            ('pdfcairo size 15cm,12cm background "#d0d0d0"', pdf_file),
             ('pngcairo size 800,600 background "#d0d0d0"',   png_file),
         ]:
             f.write(f'set terminal {term}\n')

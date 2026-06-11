@@ -109,7 +109,7 @@ if __name__ == "__main__":
         else:
             solver += "--synthmore "
         # Boolean opts (a small subset; full sweep is fuzz_synth's job).
-        for opt in ["--synthbve", "--extend", "--minimize", "--minimconfl",
+        for opt in ["--synthbve", "--extend", "--backward", "--minimconfl",
                     "--filtersamples", "--uniqsamp", "--bwequal"]:
             solver += " %s %d" % (opt, random.choice([0, 1]))
         # CTX/repair solver picks (cadical only — tracer needs cadical anyway).
@@ -121,9 +121,7 @@ if __name__ == "__main__":
         solver += " --interprepairmaxnodes %s" % random.choice(["0", "10", "100", "10000"])
         solver += " --interprepairb1rewrite %s" % random.choice(["0", "1"])
         solver += " --interprepairmaxconfl %s" % random.choice(["0", "100", "10000"])
-        solver += " --interprepairb1satsweep %s" % random.choice(["0", "1"])
         solver += " --interprepairgroupcse %s" % random.choice(["0", "1"])
-        solver += " --interprepairsystem %s" % random.choice(["0", "1"])
         solver += " --interprepairadaptive %s" % random.choice(["0", "1"])
         solver += " --interprepairratioskip %s" % random.choice(["1.0", "5.0", "20.0"])
         solver += " --interprepairskipwindow %s" % random.choice(["1", "10", "100"])

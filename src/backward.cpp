@@ -23,11 +23,12 @@
  */
 
 #include "constants.h"
-#include "minimize.h"
+#include "backward.h"
 #include "interpolant.h"
 #include "time_mem.h"
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <set>
 
@@ -42,9 +43,153 @@ using std::endl;
 using std::optional;
 using std::setw;
 
+void Backward::update_sampling_set(
+    const vector<uint32_t>& unknown,
+    const vector<char>& unknown_set,
+    const vector<uint32_t>& indep
+) {
+    sampling_vars.clear();
+    for(const auto& var: unknown) {
+        if (unknown_set[var]) sampling_vars.push_back(var);
+    }
+    for(const auto& var: indep) sampling_vars.push_back(var);
+
+}
+
+void Backward::add_fixed_clauses(bool all)
+{
+    double fix_cl_time = cpuTime();
+    dont_elim.clear();
+    var_to_indic.clear();
+    var_to_indic.resize(orig_num_vars, var_Undef);
+    indic_to_var.clear();
+    indic_to_var.resize(solver->nVars(), var_Undef);
+
+    //If indicator variable is TRUE, they are FORCED EQUAL
+    set<uint32_t> add_indic_for;
+    add_indic_for.insert(sampling_vars.begin(), sampling_vars.end());
+    if (all) for(uint32_t i = 0; i < orig_num_vars; i++) add_indic_for.insert(i);
+
+    vector<Lit> tmp;
+    for(uint32_t var: add_indic_for) {
+        solver->new_var();
+        uint32_t this_indic = solver->nVars()-1;
+        //torem_orig.push_back(Lit(this_indic, false));
+        var_to_indic[var] = this_indic;
+        dont_elim.push_back(Lit(this_indic, false));
+        indic_to_var.resize(this_indic+1, var_Undef);
+        indic_to_var[this_indic] = var;
+
+        // Below two mean var == (var+orig) in case indic is TRUE
+        tmp.clear();
+        tmp.push_back(Lit(var,               false));
+        tmp.push_back(Lit(var+orig_num_vars, true));
+        tmp.push_back(Lit(this_indic,        true));
+        solver->add_clause(tmp);
+
+        tmp.clear();
+        tmp.push_back(Lit(var,               true));
+        tmp.push_back(Lit(var+orig_num_vars, false));
+        tmp.push_back(Lit(this_indic,        true));
+        solver->add_clause(tmp);
+    }
+
+    //Don't eliminate the sampling variables
+    for(uint32_t var: sampling_vars) {
+        dont_elim.push_back(Lit(var, false));
+        dont_elim.push_back(Lit(var+orig_num_vars, false));
+    }
+    verb_print(1, "[arjun] Adding fixed clauses time: " << (cpuTime()-fix_cl_time));
+}
+
+void Backward::duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf) {
+    assert(!already_duplicated);
+    solver->set_verbosity(conf.verb);
+
+    //Duplicate the already simplified problem
+    verb_print(1, "[arjun] Duplicating CNF...");
+    double dupl_time = cpuTime();
+
+    solver->new_vars(orig_num_vars);
+    for(const auto& cl: orig_cnf.get_clauses()) {
+        auto cl2 = cl;
+        for(auto& l: cl2) l = Lit(l.var()+orig_num_vars, l.sign());
+        solver->add_clause(cl2);
+    }
+    verb_print(1, "[arjun] Duplicated CNF. T: " << (cpuTime() - dupl_time));
+    already_duplicated = true;
+}
+
+void Backward::get_incidence() {
+    assert(orig_num_vars == solver->nVars());
+
+    incidence.clear();
+    incidence.resize(orig_num_vars, 0);
+    assert(solver->nVars() == orig_num_vars);
+    vector<uint32_t> inc = solver->get_lit_incidence();
+    assert(inc.size() == orig_num_vars*2);
+    for(uint32_t i = 0; i < orig_num_vars; i++) {
+        Lit l = Lit(i, true);
+        incidence[l.var()] = std::min(inc[l.toInt()], inc[(~l).toInt()]);
+    }
+}
+
+void Backward::set_up_solver()
+{
+    assert(solver == nullptr);
+    solver = std::make_unique<SATSolver>();
+    solver->set_up_for_arjun();
+    solver->set_prefix("c o ");
+    solver->set_renumber(0);
+    solver->set_bve(0);
+    solver->set_verbosity(conf.verb);
+    solver->set_intree_probe(conf.intree && conf.simp);
+    solver->set_distill(conf.distill && conf.simp);
+    solver->set_sls(false);
+    solver->set_find_xors(false);
+    if (conf.cms_glob_mult > 0) solver->set_orig_global_timeout_multiplier(conf.cms_glob_mult);
+}
+
+template <class T>
+static void check_sanity_sampling_vars(T vars, const uint32_t nvars) {
+    for(const auto& v: vars) if (v >= nvars) {
+        cout << "ERROR: sampling set provided is incorrect, it has a variable in it: " << v+1 << " that is larger than the total number of variables: " << nvars << endl;
+        release_assert(false && "sampling var exceeds total variable count");
+    }
+}
+
+void Backward::init() {
+    assert(orig_num_vars == std::numeric_limits<uint32_t>::max() && "double init");
+    orig_num_vars = solver->nVars();
+    check_sanity_sampling_vars(sampling_vars, orig_num_vars);
+    seen.clear();
+    seen.resize(solver->nVars(), 0);
+}
+
+void Backward::fill_solver(const ArjunNS::SimplifiedCNF& cnf) {
+    solver->set_verbosity(conf.verb);
+    solver->new_vars(cnf.nVars());
+    for(const auto& cl: cnf.get_clauses()) solver->add_clause(cl);
+    for(const auto& cl: cnf.get_red_clauses()) solver->add_red_clause(cl);
+    sampling_vars = cnf.get_sampl_vars();
+    if (cnf.get_opt_sampl_vars_set()) {
+        if (cnf.get_sampl_vars() != cnf.get_opt_sampl_vars()) {
+            cout <<"ERROR: backwards does not support opt sampling set" << endl;
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
+void Backward::fill_solver_synth(const ArjunNS::SimplifiedCNF& cnf) {
+    solver->set_verbosity(conf.verb);
+    solver->new_vars(cnf.nVars());
+    for(const auto& cl: cnf.get_clauses()) solver->add_clause(cl);
+    for(const auto& cl: cnf.get_red_clauses()) solver->add_red_clause(cl);
+    sampling_vars = cnf.get_opt_sampl_vars();
+}
 
 template<typename T>
-void Minimize::fill_assumptions_backward(
+void Backward::fill_assumptions_backward(
     vector<Lit>& assumptions,
     vector<uint32_t>& unknown,
     const vector<char>& unknown_set,
@@ -85,7 +230,7 @@ void Minimize::fill_assumptions_backward(
     verb_print(5, "Filling assumps END, total assumps size: " << assumptions.size());
 }
 
-void Minimize::order_by_file(const string& fname, vector<uint32_t>& unknown) {
+void Backward::order_by_file(const string& fname, vector<uint32_t>& unknown) {
     std::set<uint32_t> old_unknown(unknown.begin(), unknown.end());
     unknown.clear();
 
@@ -110,7 +255,7 @@ void Minimize::order_by_file(const string& fname, vector<uint32_t>& unknown) {
     }
 }
 
-void Minimize::print_sorted_unknown(const vector<uint32_t>& unknown) const {
+void Backward::print_sorted_unknown(const vector<uint32_t>& unknown) const {
     if (conf.verb >= 4) {
         cout << "c o Sorted output: "<< endl;
         for (const auto& v: unknown) {
@@ -121,7 +266,7 @@ void Minimize::print_sorted_unknown(const vector<uint32_t>& unknown) const {
     }
 }
 
-void Minimize::backward_round() {
+void Backward::backward_round() {
     SLOW_DEBUG_DO( for(const auto& x: seen) assert(x == 0));
     double start_round_time = cpuTime();
     //start with empty independent set
@@ -355,12 +500,35 @@ void Minimize::backward_round() {
     if (conf.verb >= 4) solver->print_stats();
 }
 
-void Minimize::add_all_indics_except(const set<uint32_t>& except) {
+vector<uint32_t> Backward::minimize_subset(
+    const ArjunNS::SimplifiedCNF& cnf,
+    const vector<uint32_t>& candidate)
+{
+    // Mirrors run_minimize's wiring without Minimize's BVE/gauss
+    // preproc and without mutating cnf. fill_solver is inlined to skip
+    // the opt_sampl_vars guard and to override sampling_vars with the
+    // caller's candidate set instead of cnf.get_sampl_vars().
+    solver->set_verbosity(conf.verb);
+    solver->new_vars(cnf.nVars());
+    for (const auto& cl : cnf.get_clauses())     solver->add_clause(cl);
+    for (const auto& cl : cnf.get_red_clauses()) solver->add_red_clause(cl);
+    sampling_vars = candidate;
+
+    init();
+    get_incidence();
+    duplicate_problem(cnf);
+    add_fixed_clauses();
+    backward_round();
+
+    return sampling_vars;
+}
+
+void Backward::add_all_indics_except(const set<uint32_t>& except) {
     ::add_all_indics_except(*solver, orig_num_vars, except,
         var_to_indic, indic_to_var, dont_elim, seen, conf.verb);
 }
 
-void Minimize::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf&) {
+void Backward::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf&) {
     SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
 

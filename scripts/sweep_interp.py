@@ -67,7 +67,6 @@ ALL_CONFIGS: List[Tuple[str, str]] = [
     ("adaptive",         "--interprepair 1 --interprepairadaptive 1"),
     # AIG post-processing
     ("b1rewrite",        "--interprepair 1 --interprepairb1rewrite 1"),
-    ("b1satsweep",       "--interprepair 1 --interprepairb1satsweep 1"),
     ("groupcse",         "--interprepair 1 --interprepairgroupcse 1"),
     # Combo: "kitchen sink" for benchmarks where interp shines
     ("combo-aggressive", "--interprepair 1 "

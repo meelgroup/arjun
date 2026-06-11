@@ -77,17 +77,17 @@ aig_ptr InterpTracerMcMillan::hash_or(const aig_ptr& l, const aig_ptr& r) {
     return ~hash_and(~l, ~r);
 }
 
-// OR over the input literals in `cl` — the McMillan/Pudlák label for an
-// A-side clause. Empty input set => label FALSE.
-aig_ptr InterpTracerMcMillan::or_of_input_lits(const vector<Lit>& cl) {
-    // Collect the input literals and fold them in a canonical order:
-    // two A-clauses with the same input-literal *set* (in any clause
+// OR over the shared (B-visible) literals in `cl` — the McMillan label
+// for an A-side clause. Empty shared set => label FALSE.
+aig_ptr InterpTracerMcMillan::or_of_shared_lits(const vector<Lit>& cl) {
+    // Collect the shared literals and fold them in a canonical order:
+    // two A-clauses with the same shared-literal *set* (in any clause
     // order) then produce the identical OR-AIG, so hash_or's table
     // shares it instead of building two structurally-equal cones.
     vector<Lit> ins;
     ins.reserve(cl.size());
     for (const auto& l : cl) {
-        if (input_vars.count(l.var())) ins.push_back(l);
+        if (is_shared(l.var())) ins.push_back(l);
     }
     if (ins.empty()) return aig_mng.new_const(false);
     std::sort(ins.begin(), ins.end());
@@ -130,24 +130,15 @@ void InterpTracerMcMillan::add_original_clause(uint64_t id, bool /*red*/,
     });
 }
 
-// McMillan/Pudlák label of an original clause from the current input_vars.
+// McMillan label of an original clause from the current input_vars.
 aig_ptr InterpTracerMcMillan::original_label(uint64_t id) {
     const vector<Lit>& cl = cls[id];
     if (!b_clause_ids.count(id)) {
-        // A-side clause: label = OR of input lits in the clause. Shared
-        // lits are 'b' (McMillan) or 'ab' (Pudlák); either way they are
-        // the disjuncts, so this base label is the same for both systems.
-        return or_of_input_lits(cl);
+        // A-side clause: label = OR of shared lits in the clause. Shared
+        // lits are 'b'-labelled, so they are the disjuncts.
+        return or_of_shared_lits(cl);
     }
-    if (system == SYS_PUDLAK) {
-        // Pudlák: shared (input) lits are 'ab'-labelled, so a B-side
-        // clause's partial interpolant is ∧ ¬l over its shared lits.
-        aig_ptr lab = aig_mng.new_const(true);
-        for (const auto& l : cl)
-            if (input_vars.count(l.var())) lab = hash_and(lab, lit_aig(~l));
-        return lab;
-    }
-    // McMillan: shared lits are 'b'-labelled → B-clause label TRUE.
+    // B-side clause: shared lits are 'b'-labelled → label TRUE.
     return aig_mng.new_const(true);
 }
 
@@ -250,15 +241,13 @@ aig_ptr InterpTracerMcMillan::build_interpolant() {
         // is TRUE and is AND'd in (no change); an A-side unit's label is
         // OR'd in. So these steps only matter for an A-side input
         // assumption — but doing them keeps the result fully general.
-        release_assert(system == SYS_MCMILLAN
-            && "assumption-based interpolation supports McMillan only");
         for (const Lit m : cls[root]) {           // m = ¬a
             const Lit a = ~m;
             const aig_ptr unit_lab = (a.var() >= b_local_from)
                 ? aig_mng.new_const(true)             // B-side unit → TRUE
-                : or_of_input_lits(vector<Lit>{a});   // A-side unit
+                : or_of_shared_lits(vector<Lit>{a});  // A-side unit
             const bool want_and =
-                input_vars.count(m.var()) || m.var() >= b_local_from;
+                is_shared(m.var()) || m.var() >= b_local_from;
             res = want_and ? hash_and(res, unit_lab) : hash_or(res, unit_lab);
         }
     }
@@ -360,27 +349,10 @@ bool InterpTracerMcMillan::resolve_chain(uint64_t id,
             resolvent.insert(l);
         }
 
-        const bool pivot_is_input = input_vars.count(pivot.var());
+        const bool pivot_is_shared = is_shared(pivot.var());
 
-        // Pudlák: a shared (input) pivot is 'ab'-labelled → partial
-        // interpolant is the selector (v∨I1)∧(¬v∨I2), I1/I2 from the
-        // parents holding the variable positively/negatively. `lab` holds
-        // `pivot`; `it_l2->second` holds `~pivot`.
-        if (pivot_is_input && system == SYS_PUDLAK) {
-            flush_batch();
-            const aig_ptr I_run = lab;               // parent with `pivot`
-            const aig_ptr I_new = it_l2->second;     // parent with `~pivot`
-            aig_ptr I1, I2;
-            if (!pivot.sign()) { I1 = I_run; I2 = I_new; }
-            else               { I1 = I_new; I2 = I_run; }
-            const aig_ptr v_pos = lit_aig(Lit(pivot.var(), false));
-            const aig_ptr v_neg = lit_aig(Lit(pivot.var(), true));
-            lab = hash_and(hash_or(v_pos, I1), hash_or(v_neg, I2));
-            continue;
-        }
-
-        // McMillan: shared (input) or B-local pivot → AND, A-local → OR.
-        const bool want_and = pivot_is_input || pivot.var() >= b_local_from;
+        // McMillan: shared or B-local pivot → AND, A-local → OR.
+        const bool want_and = pivot_is_shared || pivot.var() >= b_local_from;
 
         if (!batch.empty() && batch_is_and != want_and) flush_batch();
         if (batch.empty()) {
@@ -422,16 +394,17 @@ uint32_t InterpRepair::setup_mini_cnf(CaDiCaL::Solver& solver,
         tracer.next_is_b = false;
     };
 
-    // Non-input conflict units (A side) + ~to_repair (A side). The
-    // conflict is the negated assumptions, so we add ~l to reproduce the
-    // original assumptions.
+    // ~to_repair is A-side (the y-output assumption we are trying to
+    // refute); it joins the non-input (y_other) conflict units on A. The
+    // conflict is the negated assumptions, so add ~l to reproduce the
+    // original assumption.
     for (const auto& l : conflict) {
         if (l.var() < is_input.size() && is_input[l.var()]) continue;
         add_unit_a(~l);
     }
     add_unit_a(~to_repair_lit);
 
-    // Input conflict units (B side).
+    // B-side units: input conflict lits only.
     uint32_t b_marked = 0;
     for (const auto& l : conflict) {
         if (l.var() >= is_input.size() || !is_input[l.var()]) continue;
@@ -672,8 +645,7 @@ std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
 
 aig_ptr InterpRepair::solve_one_interpolant(
         Lit to_repair_lit, const vector<Lit>& conflict,
-        uint64_t conflict_budget,
-        int system, int& out_ret)
+        uint64_t conflict_budget, int& out_ret)
 {
     out_ret = 0;
     // Build the mini CNF and solve on a fresh CaDiCaL with proof
@@ -686,7 +658,6 @@ aig_ptr InterpRepair::solve_one_interpolant(
         solver->limit("conflicts", (int)clamped);
     }
     InterpTracerMcMillan tracer(conf, aig_mng, input_vars);
-    tracer.system = system;
     solver->connect_proof_tracer(&tracer, true);
 
     const uint32_t b_marked = setup_mini_cnf(*solver, tracer,
@@ -712,10 +683,10 @@ aig_ptr InterpRepair::solve_one_interpolant(
     if (ret != 20) return nullptr;  // 20=UNSAT, 0=UNKNOWN(budget exhausted)
 
     aig_ptr one = tracer.build_interpolant();
-    // The proof exists (UNSAT) and the tracer recorded it, so reconstructing
-    // the interpolant from the proof trace must always succeed.
+    // Invariant: after a UNSAT solve the tracer has seen a refutation root,
+    // so build_interpolant returns a non-null AIG.
     release_assert(one != nullptr
-        && "interp-repair tracer failed to reconstruct interpolant from proof");
+        && "interp-repair: build_interpolant returned null after UNSAT proof");
     // Diagnostics: proof-core trim ratio and chain-reconstruction bails.
     total_proof_derived += tracer.derived_count;
     total_proof_core += tracer.core_count;
@@ -730,8 +701,7 @@ aig_ptr InterpRepair::solve_one_interpolant(
 aig_ptr InterpRepair::compute_interpolant(
         [[maybe_unused]] uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
-        uint64_t conflict_budget,
-        int system)
+        uint64_t conflict_budget)
 {
     calls++;
     total_conflict_lits += conflict.size();
@@ -744,13 +714,13 @@ aig_ptr InterpRepair::compute_interpolant(
     }
 
     // No input lits in conflict => no B side => trivial interpolant.
-    bool has_input = false;
+    bool has_b = false;
     for (const auto& l : conflict) {
         if (l.var() < is_input.size() && is_input[l.var()]) {
-            has_input = true; break;
+            has_b = true; break;
         }
     }
-    if (!has_input) {
+    if (!has_b) {
         calls_failed_empty_or_no_input++;
         return nullptr;
     }
@@ -760,7 +730,7 @@ aig_ptr InterpRepair::compute_interpolant(
     // repair generalises over.
     int ret = 0;
     aig_ptr interp = solve_one_interpolant(to_repair_lit, conflict,
-            conflict_budget, system, ret);
+            conflict_budget, ret);
     if (interp == nullptr) {
         if (ret == 0) {
             // UNKNOWN is only reachable with a conflict budget set (asserted
@@ -782,16 +752,22 @@ aig_ptr InterpRepair::compute_interpolant(
     release_assert(interp != nullptr
         && "interp-repair: simplify_aig of the interpolant returned null");
 
-    // SLOW_DEBUG: verify the interpolant only references input vars.
+    // SLOW_DEBUG bug-hunting check: the interpolant references only input
+    // vars (the shared/B-side set) by construction. We assert it here only
+    // when hunting for bugs; a leaf outside this set would point to a
+    // malformed partition / mini-CNF setup feeding the interpolation.
     SLOW_DEBUG_DO({
+        auto leaf_ok = [&](uint32_t v) -> bool {
+            return v < is_input.size() && is_input[v];
+        };
         set<const AIG*> seen2;
         std::function<bool(const aig_ptr&)> check = [&](const aig_ptr& a) -> bool {
             if (a == nullptr) return true;
             if (a->type == AIGT::t_const) return true;
             if (a->type == AIGT::t_lit) {
-                if (a->var >= is_input.size() || !is_input[a->var]) {
-                    cout << "c o [interp-repair] SLOW_DEBUG: interpolant has non-input leaf var="
-                         << (a->var+1) << endl;
+                if (!leaf_ok(a->var)) {
+                    cout << "c o [interp-repair] SLOW_DEBUG: interpolant has bad leaf var="
+                         << (a->var+1) << " (expected input var)" << endl;
                     return false;
                 }
                 return true;
@@ -800,7 +776,7 @@ aig_ptr InterpRepair::compute_interpolant(
             return check(a->l) && check(a->r);
         };
         if (!check(interp)) {
-            assert(false && "interpolant has non-input leaf — tracer bug");
+            assert(false && "interpolant has bad leaf — tracer bug");
         }
     });
 
@@ -841,17 +817,6 @@ aig_ptr InterpRepair::compute_interpolant(
         VERBOSE_DEBUG_DO(cout << "c o [interp-repair] interp has "
             << interp_nodes << " AIG nodes > cap " << max_aig_nodes
             << "; falling back" << endl);
-        // A McMillan interpolant can be much larger than the Pudlák
-        // selector form. Rather than dropping straight to the conflict
-        // clause, retry once with Pudlák — it is weaker but often fits.
-        if (system == InterpTracerMcMillan::SYS_MCMILLAN) {
-            calls_oversize_pudlak_retry++;
-            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] retrying oversize "
-                "McMillan interpolant with Pudlák" << endl);
-            return compute_interpolant(y_rep, to_repair_lit, conflict,
-                max_aig_nodes, conflict_budget,
-                InterpTracerMcMillan::SYS_PUDLAK);
-        }
         return nullptr;
     }
     total_interp_nodes += interp_nodes;
@@ -889,9 +854,10 @@ aig_ptr InterpRepair::compute_interpolant(
     return interp;
 }
 
-// Full miter: check A & ~I is UNSAT (i.e. A -> I), with I Tseitin-encoded
-// inline. `conflict_budget` (0 = unlimited) caps the solve; an exhausted
-// budget leaves the check inconclusive and returns true.
+// SLOW_DEBUG / test-only sanity helper. Encodes A & ~I and checks UNSAT
+// (i.e. A -> I), with I Tseitin-encoded inline. `conflict_budget`
+// (0 = unlimited) caps the solve; a budget-exhausted (inconclusive)
+// solve returns true. Not invoked on the default runtime path.
 bool InterpRepair::slow_check_a_implies_i(
         Lit to_repair_lit,
         const vector<Lit>& conflict,
@@ -918,11 +884,10 @@ bool InterpRepair::slow_check_a_implies_i(
     };
 
     // A-side original CNF — added from the pre-serialised buffer rather
-    // than re-walking cnf.get_clauses() on every (always-on) verify.
+    // than re-walking cnf.get_clauses() on every SLOW_DEBUG sanity call.
     if (!cnf_serialized_built) build_serialized_cnf();
     for (int v : cnf_serialized) solver->add(v);
-    // A-side: original CNF + ~to_repair, plus the non-input (y_other)
-    // conflict units.
+    // A-side units: ~to_repair plus the non-input (y_other) conflict units.
     for (const auto& l : conflict) {
         if (l.var() < is_input.size() && is_input[l.var()]) continue;
         add_unit(~l);
@@ -960,11 +925,11 @@ bool InterpRepair::slow_check_a_implies_i(
     add_unit(~interp_lit);  // assert ¬I
 
     int ret = solver->solve();
-    // ret==10 (SAT) is a genuine model of A & ¬I — the interpolant would
-    // violate A→I, which a sound interpolant never does.
+    // ret==10 (SAT) would mean A & ¬I is satisfiable — impossible by
+    // construction of the McMillan interpolant. Guards the math.
     release_assert(ret != 10
-        && "interp-repair: A→I miter came back SAT — interpolant violates A→I");
-    // ret==20 (UNSAT, verified) or ret==0 (budget exhausted, inconclusive).
+        && "interp-repair: A→I miter came back SAT");
+    // ret==20 (UNSAT) or ret==0 (budget exhausted, inconclusive).
     return true;
 }
 
@@ -992,6 +957,15 @@ bool InterpRepair::sample_check_interpolant(
         std::vector<lbool> assign(cnf.nVars(), l_Undef);
         for (uint32_t v : ins) {
             assign[v] = (rng() & 1) ? l_True : l_False;
+        }
+        // Also pin every y_other conflict lit to its CEX value. The
+        // interpolant doesn't reference those vars so they're ignored, but
+        // pinning keeps the SAT check below conditioned on the same CEX.
+        for (const auto& l : conflict) {
+            if (l.var() >= assign.size()) continue;
+            if (l.var() < is_input.size() && is_input[l.var()]) continue;
+            const Lit asm_lit = ~l;
+            assign[l.var()] = asm_lit.sign() ? l_False : l_True;
         }
         std::map<aig_ptr, lbool> cache;
         std::vector<aig_ptr> defs(cnf.nVars(), nullptr);
@@ -1023,7 +997,8 @@ bool InterpRepair::sample_check_interpolant(
 
         int ret = solver->solve();
         // ret==10 (SAT) would mean I(X)=FALSE on an input where flipping
-        // y_rep is in fact feasible — a sound interpolant never does this.
+        // y_rep is in fact feasible — impossible by construction of the
+        // McMillan interpolant. Guards the math.
         release_assert(ret != 10
             && "interp-repair: sample_check found I(X)=FALSE but y_rep is flippable");
         // ret == 20 (UNSAT) or 0 (UNKNOWN, shouldn't happen w/o budget): pass
@@ -1042,15 +1017,15 @@ bool InterpRepair::quick_check_interpolant_excludes_cex(
 {
     if (interp == nullptr) return false;
 
-    // Partial assignment from the input lits in conflict; conflict lits
-    // are negated assumptions, so use ~l for the CEX value.
+    // Partial assignment from every conflict lit (input + y_other). The
+    // interpolant only ever references input vars, so y_other entries are
+    // harmless — the interpolant ignores them. Conflict lits are negated
+    // assumptions, so use ~l for the CEX value.
     vector<lbool> assign(cnf.nVars(), l_Undef);
     for (const auto& l : conflict) {
         if (l.var() >= assign.size()) continue;
-        if (l.var() < is_input.size() && is_input[l.var()]) {
-            const Lit asm_lit = ~l;
-            assign[l.var()] = asm_lit.sign() ? l_False : l_True;
-        }
+        const Lit asm_lit = ~l;
+        assign[l.var()] = asm_lit.sign() ? l_False : l_True;
     }
 
     // Evaluate the interpolant; l_Undef result => report pass.
@@ -1074,12 +1049,14 @@ void InterpRepair::print_stats(const std::string& prefix) const {
          << " avg interp-nodes: "
          << (calls_succeeded ? (double)total_interp_nodes / (double)calls_succeeded : 0.0)
          << " max interp-nodes: " << max_interp_nodes_seen
-         << " smaller/larger: " << interp_smaller_than_conflict
+         << " AIG-nodes</>conflict-lits: " << interp_smaller_than_conflict
          << "/" << interp_larger_than_conflict
+         << " avg AIG input-vars: "
+         << (calls_succeeded ? (double)total_interp_support / (double)calls_succeeded : 0.0)
          << " mini-CNF kept: "
          << (total_minicnf_clauses
                 ? safe_div(total_minicnf_clauses_kept*100.0, total_minicnf_clauses)
                 : 0.0)
-         << "%"
-         << endl;
+         << "%";
+    cout << endl;
 }

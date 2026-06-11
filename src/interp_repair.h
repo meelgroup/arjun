@@ -66,18 +66,19 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     const ArjunNS::AIGManager& aig_mng;
     const std::set<uint32_t>& input_vars;
 
+    // O(1) shared-var lookup. "Shared" = a B-visible var, i.e. an input
+    // var: interp_repair's B side holds input assumption units only.
+    [[nodiscard]] bool is_shared(uint32_t v) const {
+        return input_vars.count(v) != 0;
+    }
+
     // Set by the caller before each solver->add(0): is the next clause
     // B-side (label TRUE) or A-side (label = OR of input lits)?
     bool next_is_b = false;
 
-    // Labeled-interpolation system for resolution on a shared (input)
-    // pivot. SYS_MCMILLAN: shared='b' → AND of children (strongest
-    // interpolant). SYS_PUDLAK: shared='ab' → the selector
-    // (v∨I1)∧(¬v∨I2) (a smaller, symmetric interpolant). A-local
-    // pivots are 'a' → OR in both systems.
-    static constexpr int SYS_MCMILLAN = 0;
-    static constexpr int SYS_PUDLAK = 1;
-    int system = SYS_MCMILLAN;
+    // McMillan's labelled-interpolation rule: a shared (input) pivot is
+    // 'b' → AND of children (the strongest interpolant); an A-local pivot
+    // is 'a' → OR.
 
     // Variables with index >= b_local_from are B-local: they occur only
     // in B clauses, so a resolution pivot on them is AND'd just like a
@@ -142,7 +143,9 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     void mark_b_clause(uint64_t id) { b_clause_ids.insert(id); }
 
     ArjunNS::aig_ptr lit_aig(CMSat::Lit l);
-    ArjunNS::aig_ptr or_of_input_lits(const std::vector<CMSat::Lit>& cl);
+    // OR of the shared (B-visible) lits in `cl` — the partial label for an
+    // A-side clause. "Shared" is decided by is_shared() = the input_vars set.
+    ArjunNS::aig_ptr or_of_shared_lits(const std::vector<CMSat::Lit>& cl);
 
     void add_original_clause(uint64_t id, bool red,
             const std::vector<int>& clause, bool restored = false) override;
@@ -178,12 +181,12 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     ArjunNS::aig_ptr build_interpolant();
 
 private:
-    // McMillan/Pudlák label of an original clause, computed lazily from
+    // McMillan label of an original clause, computed lazily from
     // the current input_vars — deferred out of add_original_clause so a
     // persistent tracer picks up input vars added since the clause was.
     [[nodiscard]] ArjunNS::aig_ptr original_label(uint64_t id);
-    // Resolve one derived clause's antecedent chain into a McMillan /
-    // Pudlák label. Tries the chain reversed, then forward.
+    // Resolve one derived clause's antecedent chain into a McMillan
+    // label. Tries the chain reversed, then forward.
     void build_derived_label(uint64_t id);
     // Replay `chain` as a linear resolution and set labels[id]. Returns
     // false (with labels[id] left at a partial value) if the chain is
@@ -219,34 +222,40 @@ public:
         ArjunNS::AIGManager& _aig_mng);
     ~InterpRepair() = default;
 
-    // Compute an interpolant I(input_vars): FALSE on the CEX inputs,
-    // TRUE where flipping y_rep stays feasible. Returns nullptr when
-    // there is nothing to interpolate (empty or input-free conflict),
-    // the AIG exceeds the node cap, or the conflict budget is exhausted.
+    // Compute an interpolant I(input_vars): FALSE on the CEX, TRUE where
+    // flipping y_rep stays feasible. The shared set is the input vars, so
+    // I(input_vars) only captures the input projection of the must-flip
+    // region — the caller must AND in the y_other-matches-context
+    // conjuncts.
+    //
+    // Returns nullptr when there is nothing to interpolate (empty
+    // conflict, or no shared lits in the conflict), the AIG exceeds
+    // the node cap, or the conflict budget is exhausted.
     [[nodiscard]] ArjunNS::aig_ptr compute_interpolant(
         uint32_t y_rep, CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         uint32_t max_aig_nodes = 0,
-        uint64_t conflict_budget = 0,
-        int system = 0);
+        uint64_t conflict_budget = 0);
 
-    // Cheap check: interpolant evaluates to FALSE on the CEX inputs.
+    // SLOW_DEBUG / test-only sanity helper: interpolant evaluates to
+    // FALSE on the CEX inputs. Not called on the default runtime path.
     [[nodiscard]] bool quick_check_interpolant_excludes_cex(
         const ArjunNS::aig_ptr& interp,
         const std::vector<CMSat::Lit>& conflict) const;
 
-    // Heavy check: full miter that A → I. A genuine A & ¬I model trips
-    // an assert; returns true otherwise (an exhausted conflict budget
-    // leaves the check inconclusive and also returns true).
+    // SLOW_DEBUG / test-only sanity helper: full A → I miter, used to
+    // guard the math during development and in unit tests. Returns true
+    // on UNSAT and on a budget-exhausted (inconclusive) solve. A holds the
+    // original CNF, the y_other conflict units, and ~to_repair.
     [[nodiscard]] bool slow_check_a_implies_i(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         const ArjunNS::aig_ptr& interp,
         uint64_t conflict_budget = 0) const;
 
-    // Probabilistic check: for K random input patterns where I(X)=FALSE,
-    // SAT-check that flipping y_rep is genuinely impossible. Always
-    // returns true; a confirmed counterexample trips an assert.
+    // SLOW_DEBUG / test-only sanity helper: for K random input patterns
+    // where I(X)=FALSE, SAT-check that flipping y_rep is genuinely
+    // impossible. Always returns true on the happy path.
     [[nodiscard]] bool sample_check_interpolant(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
@@ -258,16 +267,17 @@ public:
     uint64_t calls = 0;
     uint64_t calls_succeeded = 0;
     uint64_t calls_failed_oversize = 0;
-    // Oversize McMillan interpolants that triggered a Pudlák retry.
-    uint64_t calls_oversize_pudlak_retry = 0;
     uint64_t calls_failed_other = 0;
     uint64_t calls_failed_empty_or_no_input = 0;
     // Cadical hit the conflict budget and returned l_Undef, not a proof.
     uint64_t calls_budget_exhausted = 0;
     uint64_t total_interp_nodes = 0;
     uint64_t total_conflict_lits = 0;
-    // How often the interpolant was smaller/larger than the conflict
-    // (node-vs-lit count).
+    // How often the interpolant AIG had fewer/more nodes than the
+    // conflict clause had literals. Apples-to-oranges (gates vs lits),
+    // but a useful coarse signal for whether interpolation is
+    // compressing the explanation. See total_interp_support for the
+    // average input-variable count of the interpolant AIG.
     uint64_t interp_smaller_than_conflict = 0;
     uint64_t interp_larger_than_conflict = 0;
     // Largest interpolant we accepted, in nodes.
@@ -300,9 +310,9 @@ public:
         return lbl[i];
     }
     // rewrite_aig effectiveness, node counts summed pre vs post the
-    // heavier structural rewrite pass. The b1_* pair tracks the combined
-    // branch b1 (--interprepairb1rewrite); it stays zero unless the flag
-    // is enabled.
+    // heavier structural rewrite pass. The b1_* fields track the guard AIG
+    // (--interprepairb1rewrite); they stay zero unless the flag is enabled.
+    // The "b1_" field names keep the historical spelling.
     uint64_t total_b1_pre_rewrite = 0;
     uint64_t total_b1_post_rewrite = 0;
     uint64_t b1_rewrite_calls = 0;
@@ -339,7 +349,7 @@ private:
 
     // Original CNF clauses pre-converted to cadical signed-ints (0
     // terminated), built lazily on the first interp call. Used by the
-    // always-on verification solves, which need the full A-side CNF.
+    // SLOW_DEBUG sanity helpers, which need the full A-side CNF.
     mutable std::vector<int> cnf_serialized;
     mutable bool cnf_serialized_built = false;
     void build_serialized_cnf() const;
@@ -367,8 +377,7 @@ private:
     [[nodiscard]] ArjunNS::aig_ptr solve_one_interpolant(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
-        uint64_t conflict_budget,
-        int system, int& out_ret);
+        uint64_t conflict_budget, int& out_ret);
 };
 
 } // namespace ArjunInt

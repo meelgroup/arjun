@@ -1,0 +1,97 @@
+/*
+ Arjun
+
+ Copyright (c) 2019, Mate Soos and Kuldeep S. Meel. All rights reserved.
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ */
+
+#pragma once
+
+#include "arjun.h"
+#include <vector>
+#include <memory>
+#include <optional>
+#include <set>
+#include <cryptominisat5/cryptominisat.h>
+
+#include "config.h"
+
+namespace ArjunInt {
+
+struct Backward
+{
+    Backward(const Config& _conf) : conf(_conf) {
+        set_up_solver();
+    }
+    ~Backward() = default;
+
+    const Config conf;
+    std::unique_ptr<CMSat::SATSolver> solver;
+    bool already_duplicated = false;
+    std::vector<uint32_t> sampling_vars;
+    std::vector<uint32_t> empty_sampling_vars;
+
+    std::vector<char> seen;
+    uint32_t orig_num_vars = std::numeric_limits<uint32_t>::max();
+
+    //assert indic[var] to TRUE to force var==var+orig_num_vars
+    std::vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR
+    std::vector<uint32_t> indic_to_var; //maps an INDICATOR VAR to ORIG VAR
+
+    //Incidence as counted by clauses it's appeared together with other variables
+    std::vector<uint32_t> incidence;
+
+    std::vector<CMSat::Lit> dont_elim;
+
+    void init();
+    void update_sampling_set(
+        const std::vector<uint32_t>& unknown,
+        const std::vector<char>& unknown_set,
+        const std::vector<uint32_t>& indep
+    );
+    void add_fixed_clauses(bool all = false);
+    void duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf);
+    void get_incidence();
+    void set_up_solver();
+    void fill_solver(const ArjunNS::SimplifiedCNF& cnf);
+    void fill_solver_synth(const ArjunNS::SimplifiedCNF& cnf);
+
+    template<typename T>
+    void fill_assumptions_backward(
+        std::vector<CMSat::Lit>& assumptions,
+        std::vector<uint32_t>& unknown,
+        const std::vector<char>& unknown_set,
+        const T& indep,
+        const std::optional<std::set<uint32_t>>& ignore = std::nullopt);
+    void backward_round();
+    void backward_round_synth(ArjunNS::SimplifiedCNF& cnf, const ArjunNS::Arjun::ManthanConf& mconf);
+
+    // Dry-run minim: returns a minimal independent subset of `candidate`
+    // in the simplified CNF, without mutating cnf. Single-use — the
+    // caller must construct a fresh Backward per call.
+    std::vector<uint32_t> minimize_subset(
+        const ArjunNS::SimplifiedCNF& cnf,
+        const std::vector<uint32_t>& candidate);
+    void add_all_indics_except(const std::set<uint32_t>& except);
+    void order_by_file(const std::string& fname, std::vector<uint32_t>& unknown);
+    void print_sorted_unknown(const std::vector<uint32_t>& unknown) const;
+};
+
+}

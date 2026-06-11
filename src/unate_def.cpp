@@ -43,11 +43,11 @@ using std::vector;
 constexpr uint32_t NOT_INPUT = std::numeric_limits<uint32_t>::max();
 
 void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
-    cond_stats = UnateDefCondStats{};
-    cond_my_time = cpuTime();
-    my_time = cond_my_time;
+    eq_stats = UnateDefEqStats{};
+    eq_my_time = cpuTime();
+    my_time = eq_my_time;
     new_units = 0;
-    cond_new_defs = 0;
+    eq_new_defs = 0;
     tested_num = 0;
     true_lit = lit_Undef;
     cnf_ptr = &cnf;
@@ -64,13 +64,13 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
 
     setup_y_prime_backward_defs();
     build_indicators();
-    build_cond_state();
+    build_eq_state();
 
-    // Adaptive disable: if conditional probing finds nothing for long,
+    // Adaptive disable: if equiv probing finds nothing for long,
     // turn it off for the rest of the run so we don't waste SAT calls
     // on inputs that obviously won't yield a single-literal definition.
-    cond_enabled = (conf.unate_def_cond != 0);
-    cond_attempts_since_last_hit = 0;
+    eq_enabled = (conf.unate_def_eq != 0);
+    eq_attempts_since_last_hit = 0;
 
     const uint32_t to_define_size_before = to_define.size();
     for (uint32_t test : to_define) process_test_var(test);
@@ -153,7 +153,7 @@ void Unate::build_indicators() {
     }
 }
 
-// Populate the conditional-probe scratch state used by try_cond_unate_def:
+// Populate the equiv-probe scratch state used by try_eq_unate_def:
 // the deterministic input + non-input candidate lists, the position
 // lookup, the per-to-define "related" prefixes (inputs and non-inputs
 // kept separate so iteration is strictly inputs-first), and the
@@ -163,31 +163,31 @@ void Unate::build_indicators() {
 // to-define non-already-tested vars, permanent-unit-pinned for
 // already-tested vars), so a single Y-side literal suffices to fix v
 // on both miter copies — same property inputs already had via sharing.
-void Unate::build_cond_state() {
+void Unate::build_eq_state() {
     auto& cnf = *cnf_ptr;
 
     // Sorted candidate lists: inputs (shared between Y and Y') and
     // non-inputs (Y/Y' kept consistent by indicators).
-    cond_input_vars_list.assign(input.begin(), input.end());
-    std::sort(cond_input_vars_list.begin(), cond_input_vars_list.end());
+    eq_input_vars_list.assign(input.begin(), input.end());
+    std::sort(eq_input_vars_list.begin(), eq_input_vars_list.end());
 
-    cond_noninput_vars_list.clear();
+    eq_noninput_vars_list.clear();
     for (uint32_t v = 0; v < cnf.nVars(); v++) {
         if (input.count(v)) continue;
         if (backward_defined.count(v)) continue;
-        cond_noninput_vars_list.push_back(v);
+        eq_noninput_vars_list.push_back(v);
     }
     // Already in sorted order from the index-ascending loop.
 
     // Dense global position lookup: inputs occupy [0, n_inp), non-inputs
     // [n_inp, n_inp + n_nonin). NOT_INPUT marks a non-candidate (i.e. a
     // backward-defined var, since those have no indicator).
-    cond_cand_pos.assign(cnf.nVars(), NOT_INPUT);
-    for (uint32_t i = 0; i < cond_input_vars_list.size(); i++)
-        cond_cand_pos[cond_input_vars_list[i]] = i;
-    const uint32_t n_inp = cond_input_vars_list.size();
-    for (uint32_t i = 0; i < cond_noninput_vars_list.size(); i++)
-        cond_cand_pos[cond_noninput_vars_list[i]] = n_inp + i;
+    eq_cand_pos.assign(cnf.nVars(), NOT_INPUT);
+    for (uint32_t i = 0; i < eq_input_vars_list.size(); i++)
+        eq_cand_pos[eq_input_vars_list[i]] = i;
+    const uint32_t n_inp = eq_input_vars_list.size();
+    for (uint32_t i = 0; i < eq_noninput_vars_list.size(); i++)
+        eq_cand_pos[eq_noninput_vars_list[i]] = n_inp + i;
 
     // Per to-define var, inputs and non-inputs co-occurring in clauses,
     // each ordered by co-occurrence count (descending). Co-occurring
@@ -196,8 +196,8 @@ void Unate::build_cond_state() {
     // so the iteration order is strictly [related_in, related_ni,
     // all_in, all_ni] (user choice: do all related-input work before
     // touching non-inputs at all).
-    cond_related_inputs.assign(cnf.nVars(), {});
-    cond_related_noninputs.assign(cnf.nVars(), {});
+    eq_related_inputs.assign(cnf.nVars(), {});
+    eq_related_noninputs.assign(cnf.nVars(), {});
     vector<uint8_t> in_cl(cnf.nVars(), 0); // scratch, cleared per clause
     vector<uint32_t> ins_in_cl;
     vector<uint32_t> ninps_in_cl;
@@ -221,11 +221,11 @@ void Unate::build_cond_state() {
         // pair against).
         for (uint32_t v : ninps_in_cl) {
             if (!ins_in_cl.empty()) {
-                auto& dst = cond_related_inputs[v];
+                auto& dst = eq_related_inputs[v];
                 dst.insert(dst.end(), ins_in_cl.begin(), ins_in_cl.end());
             }
             if (ninps_in_cl.size() >= 2) {
-                auto& dst = cond_related_noninputs[v];
+                auto& dst = eq_related_noninputs[v];
                 for (uint32_t w : ninps_in_cl) {
                     if (w != v) dst.push_back(w);
                 }
@@ -258,22 +258,22 @@ void Unate::build_cond_state() {
         for (const auto& p : counts) lst.push_back(p.second);
     };
     for (uint32_t v = 0; v < cnf.nVars(); v++) {
-        reorder_by_cooccur(cond_related_inputs[v]);
-        reorder_by_cooccur(cond_related_noninputs[v]);
+        reorder_by_cooccur(eq_related_inputs[v]);
+        reorder_by_cooccur(eq_related_noninputs[v]);
     }
 
     // Generation-counter dedup for the per-test candidate list.
-    cond_cand_seen_gen.assign(cnf.nVars(), 0);
-    cond_cand_gen = 0;
-    cond_cur_cands.clear();
-    cond_cur_cands.reserve(cond_input_vars_list.size() + cond_noninput_vars_list.size());
+    eq_cand_seen_gen.assign(cnf.nVars(), 0);
+    eq_cand_gen = 0;
+    eq_cur_cands.clear();
+    eq_cur_cands.reserve(eq_input_vars_list.size() + eq_noninput_vars_list.size());
 
     // Fresh deps cache for this pass.
-    cond_deps_cache.clear();
+    eq_deps_cache.clear();
 }
 
-// Run both standard-unate flips on `test`, then dispatch to the conditional
-// probe if both flips were SAT. Updates new_units / cond_new_defs as a side
+// Run both standard-unate flips on `test`, then dispatch to the equiv
+// probe if both flips were SAT. Updates new_units / eq_new_defs as a side
 // effect. Returns true if any def was found.
 bool Unate::process_test_var(const uint32_t test) {
     auto& cnf = *cnf_ptr;
@@ -283,7 +283,7 @@ bool Unate::process_test_var(const uint32_t test) {
     if (tested_num % 300 == 299) {
         verb_print(1, "[unate_def] test no: " << setw(5) << tested_num
             << " new units: " << setw(4) << new_units
-            << " new cond defs: " << setw(4) << cond_new_defs
+            << " new eq defs: " << setw(4) << eq_new_defs
             << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
     }
 
@@ -333,19 +333,19 @@ bool Unate::process_test_var(const uint32_t test) {
         // inputs Y/Y' are shared, for non-input candidates the indicator
         // assumption forces Y-side == Y'-side, so a single value per cand
         // is unambiguous. We only ever read these positions when picking
-        // conditional candidates, so keeping the projected vector instead
+        // equiv candidates, so keeping the projected vector instead
         // of the full ~2*nVars + helpers SAT model.
         if (ret == l_True) {
             const auto& m = s->get_model();
-            const size_t total = cond_input_vars_list.size() + cond_noninput_vars_list.size();
+            const size_t total = eq_input_vars_list.size() + eq_noninput_vars_list.size();
             input_vals[flip].assign(total, l_Undef);
-            for (size_t i = 0; i < cond_input_vars_list.size(); i++) {
-                const uint32_t v = cond_input_vars_list[i];
+            for (size_t i = 0; i < eq_input_vars_list.size(); i++) {
+                const uint32_t v = eq_input_vars_list[i];
                 if (v < m.size()) input_vals[flip][i] = m[v];
             }
-            const size_t n_inp = cond_input_vars_list.size();
-            for (size_t i = 0; i < cond_noninput_vars_list.size(); i++) {
-                const uint32_t v = cond_noninput_vars_list[i];
+            const size_t n_inp = eq_input_vars_list.size();
+            for (size_t i = 0; i < eq_noninput_vars_list.size(); i++) {
+                const uint32_t v = eq_noninput_vars_list[i];
                 if (v < m.size()) input_vals[flip][n_inp + i] = m[v];
             }
             model_valid[flip] = true;
@@ -354,8 +354,8 @@ bool Unate::process_test_var(const uint32_t test) {
         assumps.pop_back();
     }
 
-    if (!found_def && cond_enabled && model_valid[0] && model_valid[1]) {
-        if (try_cond_unate_def(test)) found_def = true;
+    if (!found_def && eq_enabled && model_valid[0] && model_valid[1]) {
+        if (try_eq_unate_def(test)) found_def = true;
     }
     already_tested.insert(test);
     s->add_clause({Lit(var_to_indic.at(test), false)});
@@ -366,14 +366,14 @@ void Unate::log_pass_summary(const uint32_t to_define_size_before) {
     const double total_time = cpuTime() - my_time;
     verb_print(1, COLYEL "[unate_def] "
             << " units: " << setw(7) << new_units
-            << " cond defs: " << setw(7) << cond_new_defs
-            << " cond calls: " << setw(7) << cond_stats.cond_sat_calls
+            << " eq defs: " << setw(7) << eq_new_defs
+            << " eq calls: " << setw(7) << eq_stats.eq_sat_calls
             << " tested: " << setw(7) << tested_num
             << " tests/s: " << setprecision(2) << fixed << setw(6) << safe_div(tested_num, total_time));
 
-    if (conf.unate_def_cond) {
-        const auto& cs = cond_stats;
-        verb_print(1, COLYEL "[unate_def] cond stats:"
+    if (conf.unate_def_eq) {
+        const auto& cs = eq_stats;
+        verb_print(1, COLYEL "[unate_def] eq stats:"
             << " elig=" << cs.tests_eligible
             << " hits=" << cs.hits
             << " hits_in_related=" << cs.hits_in_related
@@ -387,7 +387,7 @@ void Unate::log_pass_summary(const uint32_t to_define_size_before) {
             << " p2[U=" << cs.p2_unsat << " S=" << cs.p2_sat << " T=" << cs.p2_undef << "]"
             << " avg_win_depth=" << setprecision(1) << fixed << safe_div(cs.winning_depth_sum, cs.hits)
             << " max_win_depth=" << cs.winning_depth_max
-            << " cond_T=" << setprecision(2) << fixed << cs.time_in_cond);
+            << " eq_T=" << setprecision(2) << fixed << cs.time_in_eq);
     }
 
     auto [input2, to_define2, backward_defined2] =
@@ -412,14 +412,14 @@ void Unate::log_pass_summary(const uint32_t to_define_size_before) {
 //     defined; their indicator pins y_L_F == y_L_F' both during this
 //     probe and permanently after the var is processed). Inputs are
 //     iterated first; non-inputs come only after the input list is
-//     exhausted, gated by `unate_def_cond_noninput`.
-bool Unate::try_cond_unate_def(const uint32_t test) {
+//     exhausted, gated by `unate_def_eq_noninput`.
+bool Unate::try_eq_unate_def(const uint32_t test) {
     auto& cnf = *cnf_ptr;
-    const double cond_t0 = cpuTime();
-    cond_stats.tests_eligible++;
+    const double eq_t0 = cpuTime();
+    eq_stats.tests_eligible++;
     const uint32_t nv = cnf.nVars();
-    cond_attempts_since_last_hit++;
-    const bool noninput_enabled = conf.unate_def_cond_noninput != 0;
+    eq_attempts_since_last_hit++;
+    const bool noninput_enabled = conf.unate_def_eq_noninput != 0;
     const Lit test_orig = new_to_orig.at(test);
 
     // Build per-test candidate list, in priority order:
@@ -430,36 +430,36 @@ bool Unate::try_cond_unate_def(const uint32_t test) {
     // `related_count` covers (1) + (2): hits within it are attributed to
     // the structural pre-ordering. Non-inputs only get a fair shot after
     // every input has been considered, matching the "inputs first" intent.
-    cond_cand_gen++;
-    cond_cur_cands.clear();
-    for (uint32_t iv : cond_related_inputs[test]) {
-        if (cond_cand_seen_gen[iv] != cond_cand_gen) {
-            cond_cand_seen_gen[iv] = cond_cand_gen;
-            cond_cur_cands.push_back(iv);
+    eq_cand_gen++;
+    eq_cur_cands.clear();
+    for (uint32_t iv : eq_related_inputs[test]) {
+        if (eq_cand_seen_gen[iv] != eq_cand_gen) {
+            eq_cand_seen_gen[iv] = eq_cand_gen;
+            eq_cur_cands.push_back(iv);
         }
     }
     if (noninput_enabled) {
-        for (uint32_t iv : cond_related_noninputs[test]) {
+        for (uint32_t iv : eq_related_noninputs[test]) {
             if (iv == test) continue;
-            if (cond_cand_seen_gen[iv] != cond_cand_gen) {
-                cond_cand_seen_gen[iv] = cond_cand_gen;
-                cond_cur_cands.push_back(iv);
+            if (eq_cand_seen_gen[iv] != eq_cand_gen) {
+                eq_cand_seen_gen[iv] = eq_cand_gen;
+                eq_cur_cands.push_back(iv);
             }
         }
     }
-    const uint32_t related_count = cond_cur_cands.size();
-    for (uint32_t iv : cond_input_vars_list) {
-        if (cond_cand_seen_gen[iv] != cond_cand_gen) {
-            cond_cand_seen_gen[iv] = cond_cand_gen;
-            cond_cur_cands.push_back(iv);
+    const uint32_t related_count = eq_cur_cands.size();
+    for (uint32_t iv : eq_input_vars_list) {
+        if (eq_cand_seen_gen[iv] != eq_cand_gen) {
+            eq_cand_seen_gen[iv] = eq_cand_gen;
+            eq_cur_cands.push_back(iv);
         }
     }
     if (noninput_enabled) {
-        for (uint32_t iv : cond_noninput_vars_list) {
+        for (uint32_t iv : eq_noninput_vars_list) {
             if (iv == test) continue;
-            if (cond_cand_seen_gen[iv] != cond_cand_gen) {
-                cond_cand_seen_gen[iv] = cond_cand_gen;
-                cond_cur_cands.push_back(iv);
+            if (eq_cand_seen_gen[iv] != eq_cand_gen) {
+                eq_cand_seen_gen[iv] = eq_cand_gen;
+                eq_cur_cands.push_back(iv);
             }
         }
     }
@@ -467,23 +467,23 @@ bool Unate::try_cond_unate_def(const uint32_t test) {
     bool found_def = false;
     uint32_t cand_count = 0;
     uint32_t cand_depth = 0; // 1-based position of the winner
-    for (const uint32_t l_var : cond_cur_cands) {
+    for (const uint32_t l_var : eq_cur_cands) {
         cand_depth++;
-        if (cand_count >= conf.unate_def_cond_max_per_var) {
-            cond_stats.cands_skipped_budget +=
-                (uint64_t)(cond_cur_cands.size() - (cand_depth - 1));
+        if (cand_count >= conf.unate_def_eq_max_per_var) {
+            eq_stats.cands_skipped_budget +=
+                (uint64_t)(eq_cur_cands.size() - (cand_depth - 1));
             break;
         }
-        const uint32_t pos = cond_cand_pos[l_var];
+        const uint32_t pos = eq_cand_pos[l_var];
         assert(pos != NOT_INPUT);
         lbool v1 = input_vals[0][pos]; // M1: test_x=0 was SAT
         lbool v2 = input_vals[1][pos]; // M2: test_x=1 was SAT
         if (v1 == l_Undef || v2 == l_Undef) {
-            cond_stats.cands_skipped_undef++;
+            eq_stats.cands_skipped_undef++;
             continue;
         }
         if (v1 == v2) {
-            cond_stats.cands_skipped_v_eq++;
+            eq_stats.cands_skipped_v_eq++;
             continue;
         }
 
@@ -505,11 +505,11 @@ bool Unate::try_cond_unate_def(const uint32_t test) {
         const Lit l_orig = new_to_orig.at(l_var);
         if (!l_is_input) {
             if (!cnf.defined(l_orig.var())) {
-                cond_stats.cands_skipped_cycle++;
+                eq_stats.cands_skipped_cycle++;
                 continue;
             }
             const auto& deps = cnf.get_dependent_vars_recursive(
-                l_orig.var(), cond_deps_cache);
+                l_orig.var(), eq_deps_cache);
             const auto& orig_inputs = cnf.get_orig_sampl_vars();
             bool unsafe = false;
             for (uint32_t d : deps) {
@@ -519,13 +519,13 @@ bool Unate::try_cond_unate_def(const uint32_t test) {
                 }
             }
             if (unsafe) {
-                cond_stats.cands_skipped_cycle++;
+                eq_stats.cands_skipped_cycle++;
                 continue;
             }
         }
 
         cand_count++;
-        cond_stats.cands_examined++;
+        eq_stats.cands_examined++;
 
         // Under L = v1, the SAT witness M1 had flip=0 SAT
         // (test_x=0, test_y'=1). Try flip=1 (test_x=1, test_y'=0)
@@ -543,26 +543,26 @@ bool Unate::try_cond_unate_def(const uint32_t test) {
         assumps.push_back(l_eq_v1);
         assumps.emplace_back(test, false);
         assumps.emplace_back(test + nv, true);
-        s->set_max_confl(conf.unate_def_cond_max_confl);
-        cond_stats.cond_sat_calls++;
+        s->set_max_confl(conf.unate_def_eq_max_confl);
+        eq_stats.eq_sat_calls++;
         auto r1 = s->solve(&assumps);
         assumps.pop_back(); assumps.pop_back(); assumps.pop_back();
-        if (r1 == l_False) cond_stats.p1_unsat++;
-        else if (r1 == l_True) cond_stats.p1_sat++;
-        else cond_stats.p1_undef++;
+        if (r1 == l_False) eq_stats.p1_unsat++;
+        else if (r1 == l_True) eq_stats.p1_sat++;
+        else eq_stats.p1_undef++;
         if (r1 != l_False) continue;
 
         // Mirror probe under L=v2: pins test=1 under L=v2.
         assumps.push_back(l_eq_v2);
         assumps.emplace_back(test, true);
         assumps.emplace_back(test + nv, false);
-        s->set_max_confl(conf.unate_def_cond_max_confl);
-        cond_stats.cond_sat_calls++;
+        s->set_max_confl(conf.unate_def_eq_max_confl);
+        eq_stats.eq_sat_calls++;
         auto r2 = s->solve(&assumps);
         assumps.pop_back(); assumps.pop_back(); assumps.pop_back();
-        if (r2 == l_False) cond_stats.p2_unsat++;
-        else if (r2 == l_True) cond_stats.p2_sat++;
-        else cond_stats.p2_undef++;
+        if (r2 == l_False) eq_stats.p2_unsat++;
+        else if (r2 == l_True) eq_stats.p2_sat++;
+        else eq_stats.p2_undef++;
         if (r2 != l_False) continue;
 
         // Under L=v1 → test=0, under L=v2 → test=1, and v1≠v2.
@@ -587,21 +587,21 @@ bool Unate::try_cond_unate_def(const uint32_t test) {
         // New def changed the dep graph; drop cached recursive deps so
         // later non-input candidates (in this or future tests) see the
         // updated transitive closure.
-        cond_deps_cache.clear();
-        cond_new_defs++;
-        cond_stats.hits++;
-        cond_stats.winning_depth_sum += cand_depth;
-        if ((uint64_t)cand_depth > cond_stats.winning_depth_max)
-            cond_stats.winning_depth_max = cand_depth;
-        if (cand_depth <= related_count) cond_stats.hits_in_related++;
-        if (!l_is_input) cond_stats.hits_using_noninput++;
-        verb_print(2, "[unate_def] cond def: NEW test " << test+1
+        eq_deps_cache.clear();
+        eq_new_defs++;
+        eq_stats.hits++;
+        eq_stats.winning_depth_sum += cand_depth;
+        if ((uint64_t)cand_depth > eq_stats.winning_depth_max)
+            eq_stats.winning_depth_max = cand_depth;
+        if (cand_depth <= related_count) eq_stats.hits_in_related++;
+        if (!l_is_input) eq_stats.hits_using_noninput++;
+        verb_print(2, "[unate_def] eq def: NEW test " << test+1
             << " = " << (test_equals_l ? "" : "~") << "NEW " << (l_var+1)
             << " (orig: " << test_orig.var()+1 << " "
             << (def_neg ? "-" : "+") << l_orig.var()+1
             << ") depth=" << cand_depth
             << (l_is_input ? " input" : " noninput")
-            << " T: " << fixed << setprecision(2) << (cpuTime()-cond_my_time));
+            << " T: " << fixed << setprecision(2) << (cpuTime()-eq_my_time));
 
         // Tighten the SAT solver: equate test on both sides to L (or its
         // negation). Implies the indicator becoming TRUE, and helps
@@ -621,17 +621,17 @@ bool Unate::try_cond_unate_def(const uint32_t test) {
             s->add_clause({lit_t_y, ~lit_l_yp});
         }
         found_def = true;
-        cond_attempts_since_last_hit = 0;
+        eq_attempts_since_last_hit = 0;
         break;
     }
-    cond_stats.time_in_cond += cpuTime() - cond_t0;
-    if (cond_enabled
-            && cond_attempts_since_last_hit >= conf.unate_def_cond_dry_streak
-            && cond_new_defs == 0) {
-        verb_print(1, "[unate_def] disabling cond probe after "
-                << cond_attempts_since_last_hit
+    eq_stats.time_in_eq += cpuTime() - eq_t0;
+    if (eq_enabled
+            && eq_attempts_since_last_hit >= conf.unate_def_eq_dry_streak
+            && eq_new_defs == 0) {
+        verb_print(1, "[unate_def] disabling eq probe after "
+                << eq_attempts_since_last_hit
                 << " dry attempts");
-        cond_enabled = false;
+        eq_enabled = false;
     }
     return found_def;
 }

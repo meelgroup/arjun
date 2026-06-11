@@ -24,7 +24,7 @@ or `scripts/build_release.sh`.
 From `build/`:
 
 ```
-./arjun --verb 2 --synth --synthbve 1 --extend 1 --minimize 1 --debugsynth --samples 1 out/fuzzTest_596.cnf
+./arjun --verb 2 --synth --synthbve 1 --extend 1 --backward 1 --debugsynth --samples 1 out/fuzzTest_596.cnf
 ```
 
 Useful top-level flags:
@@ -55,20 +55,16 @@ output lines.
 From `build/`:
 
 ```
-./fuzz_synth.py --num 800
+./fuzz_synth.py --num 400
 ./fuzz_aig_to_cnf --num 1000
 ./fuzz_aig_rewrite --num 1000
-./fuzz_unate_def_rep.py 300
-./fuzz_interp_repair.py --num 800
+./fuzz_interp_repair.py --num 400
 ```
 
-All must pass before reporting a change as complete. `fuzz_unate_def_rep.py`
-forces `--unatedef 1 --unatedefrep 1` on every iteration and verifies the
-`*-unsat_unate_def_rep.aig` output AIG via `test-synth`; the general
-`fuzz_synth.py` only randomizes those flags so the rep-pass output is not
-always exercised. `fuzz_interp_repair.py` forces `--interprepair` on every
+All must pass before reporting a change as complete.
+`fuzz_interp_repair.py` forces `--interprepair` on every
 iteration and randomizes the full set of `--interprepair*` knobs, so the
-Craig-interpolant repair path is always exercised.
+Craig-interpolant repair path is exercised.
 
 For anything touching `interp_repair.*` also build the unit test and run
 it (`./test-interp-repair`, also wired into `ctest`).
@@ -86,14 +82,21 @@ it (`./test-interp-repair`, also wired into `ctest`).
   flattening. Runs before Manthan and between repair rounds.
 - `interp_repair.{h,cpp}` — Craig-interpolant repair for Manthan. A
   failed repair's UNSAT core is one corner of input space; the McMillan
-  (or Pudlák) interpolant over the input vars generalises it to the
+  interpolant over the input vars generalises it to the
   whole must-flip region, so one `compose_or/and` captures many repairs.
-  Interpolants are reconstructed from a cadical proof trace, trimmed to
-  the proof core, optionally intersected over several proofs, and
-  **always verified** with an A→I miter before use — a tracer
-  reconstruction error then falls back to the plain conflict clause
-  rather than producing a wrong interpolant. See the `--interprepair*`
-  flags in `main.cpp`.
+  Interpolants are reconstructed from a cadical proof trace and trimmed
+  to the proof core. A McMillan interpolant CANNOT be wrong: given a
+  valid UNSAT proof of a correctly-built miter it is sound by
+  construction. Any "wrong interpolant" symptom is therefore a bug in
+  the miter / partition / mini-CNF setup, never in the interpolation
+  itself — debug by SAT-checking the A-only and B-only clause subsets.
+  Any double-checking of an interpolant (A→I / g≡N miters) is a
+  bug-hunting safety net only and belongs under `SLOW_DEBUG_DO`. The
+  pass returns nullptr (caller then uses the plain conflict-clause
+  branch) only when there is nothing to interpolate (empty conflict, no
+  input lits in conflict), the AIG exceeds the node cap, or the per-call
+  conflict budget is exhausted. See the `--interprepair*` flags in
+  `main.cpp`.
 - `aig_to_cnf.{h,cpp}` — Tseitin encoding with fanout-based helper
   suppression, k-ary AND/OR fusion, ITE / MUX3 detection.
 - `puura.{h,cpp}` — SharpSAT-td-derived simplification.

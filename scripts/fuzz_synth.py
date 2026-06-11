@@ -361,7 +361,7 @@ def gen_mstrategy():
                    "min_leaf_size", "const_vote_samples", "stats_every",
                    "detailed_stats_every",
                    "conflict_drop_y_max",
-                   "conflict_cap", "conflict_cap_keep", "batch_minim_min",
+                   "conflict_cap_keep", "batch_minim_min",
                    "minim_budget_threshold", "minim_budget_max", "minim_budget_mult",
                    "ccnr_mems_per_sample", "ccnr_per_call_limit",
                    "cz_high_ratio", "cz_low_ratio",
@@ -459,29 +459,40 @@ if __name__ == "__main__":
         else:
             solver += "--synthmore "
 
+        # --bruteforcesynth is default-on in the binary, so explicitly
+        # toggle 50/50 to cover both paths: 1 = try brute-force synthesis
+        # first (it declines to Manthan when the enum set exceeds
+        # --bruteforcesynththresh), 0 = Manthan only. brute_force_synth mostly
+        # ignores the Manthan flag matrix this fuzzer randomizes, but
+        # the flags shape the pre-synth pipeline (BVE, autarky, extend,
+        # unate_def variants), so the CNF varies widely across iters.
+        solver += "--bruteforcesynth %d " % random.randint(0, 1)
+        # Independently toggle the dry-run backward minim pre-pass. Only
+        # affects iters where --bruteforcesynth=1, but the binary accepts
+        # it either way.
+        solver += "--bruteforcesynthminim %d " % random.randint(0, 1)
+        # Vary the minim cap so we exercise both the gated path (cap
+        # below the enum set, minim skipped) and the ungated path.
+        solver += "--bruteforcesynthminimmax %d " % random.choice([0, 8, 40, 9999])
+
         opts = [
             " --synthbve"
             , " --extend"
-            , " --minimize"
+            , " --backward"
             , " --minimconfl"
             , " --filtersamples"
             , " --uniqsamp"
             , " --ctxsolver"
             , " --repairsolver"
             , " --unatedef"
-            , " --unatedefcond"
-            , " --unatedefcondnoninp"
-            , " --unatedefrep"
+            , " --unatedefeq"
+            , " --unatedefeqnoninp"
             , " --bwequal"
             , " --learnuseall"
         ]
         for o in opts:
             val = random.choice([0, 1])
             solver += o + " " + str(val)
-
-        # Pure boolean flag (no 0/1 value). ~1-in-2 coverage.
-        if random.choice([True, False]):
-            solver += " --sat-sweep"
 
         # Force the doubled-CNF interpolation solver to rebuild after every
         # 1..5 interpolants so the rebuild path is exercised on every fuzz
@@ -494,39 +505,9 @@ if __name__ == "__main__":
         solver += " --maxsatorder " + random.choice(["0", "1"])
         solver += " --fixedconf " + random.choice(["1", "10", "100", "1000"])
         solver += " --unatedefmaxconfl " + random.choice(["1", "100", "1000", "15000", "100000"])
-        solver += " --unatedefcondmax " + random.choice(["0", "1", "4", "16", "64", "1024"])
-        solver += " --unatedefcondconfl " + random.choice(["1", "10", "100", "1000", "100000"])
-        solver += " --unatedefconddry " + random.choice(["1", "10", "100", "100000"])
-        # 0 = inner loop never runs (no commits at all); high values stress
-        # the per-iteration refinement.
-        solver += " --unatedefrepiters " + random.choice(["0", "1", "5", "30", "100", "10000"])
-        # 0 = skip every CEX (no refinement); 1 = only single-lit patterns;
-        # 1000 = effectively unlimited.
-        solver += " --unatedefrepmaxpat " + random.choice(["0", "1", "5", "12", "40", "1000"])
-        # 0 = give up on first cost-zero; high = never give up.
-        solver += " --unatedefrepmaxcz " + random.choice(["0", "1", "2", "5", "30"])
-        # 1 = miter/uniqueness/F-solver mostly time out; 100000 = never.
-        solver += " --unatedefrepconfl " + random.choice(["1", "10", "100", "1000", "100000"])
-        # 0=input only, 1=+backward-defined, 2=+to-define (richest).
-        solver += " --unatedefrepaux " + random.choice(["0", "1", "2"])
-        # 0 = greedy minim off, 1 = on.
-        solver += " --unatedefrepminim " + random.choice(["0", "1"])
-        # 0..200 budget for greedy literal-drop.
-        solver += " --unatedefrepminbud " + random.choice(["0", "1", "4", "16", "200"])
-        # 0=off; 1=always; 2=only when aux non-empty.
-        solver += " --unatedefrepinpfirst " + random.choice(["0", "1", "2"])
-        # 0/1: single-shot drop-all-aux after greedy minim.
-        solver += " --unatedefrepdropaux " + random.choice(["0", "1"])
-        # 1 = off (single CEX), 2..8 = collect that many.
-        solver += " --unatedefrepmulticex " + random.choice(["1", "2", "3", "5", "8"])
-        # per-iter trace verbosity threshold (low = chatty).
-        solver += " --unatedefrepiterverb " + random.choice(["0", "1", "4", "99"])
-        # 0/1: sort minim drop order by pattern-frequency.
-        solver += " --unatedefrepfreqsort " + random.choice(["0", "1"])
-        # extra reverse-shuffle minim passes (manthan-style).
-        solver += " --unatedefrepminextra " + random.choice(["0", "1", "3", "10"])
-        # 0/1: refine H using all collected multi-cex models.
-        solver += " --unatedefrepmultipat " + random.choice(["0", "1"])
+        solver += " --unatedefeqmax " + random.choice(["0", "1", "4", "16", "64", "1024"])
+        solver += " --unatedefeqconfl " + random.choice(["1", "10", "100", "1000", "100000"])
+        solver += " --unatedefeqdry " + random.choice(["1", "10", "100", "100000"])
         solver += " --bveresolvmaxsz " + str(random.randint(2, 20))
         solver += " --iter1grow " + str(random.randint(0, 5))
         solver += " --iter2grow " + str(random.choice([0, 10, 100]))
@@ -543,7 +524,6 @@ if __name__ == "__main__":
         solver += " --statsevery " + random.choice(["0", "1", "10", "40", "1000"])
         solver += " --detailedstatsevery " + random.choice(["0", "1", "10", "200", "5000"])
         solver += " --confldropy " + random.choice(["1", "5", "25", "100", "10000"])
-        solver += " --conflcap " + random.choice(["1", "5", "10", "40", "200", "100000"])
         solver += " --conflcapkeep " + random.choice(["1", "2", "5", "30", "100", "100000"])
         solver += " --batchminimmin " + random.choice(["1", "3", "6", "20", "10000"])
         solver += " --minimbudgetthresh " + random.choice(["1", "5", "20", "100", "10000"])
@@ -566,7 +546,6 @@ if __name__ == "__main__":
             solver += " --interprepairmaxnodes " + random.choice(["0", "10", "100", "1000", "100000"])
             solver += " --interprepairb1rewrite " + random.choice(["0", "1"])
             solver += " --interprepairmaxconfl " + random.choice(["0", "100", "10000"])
-            solver += " --interprepairb1satsweep " + random.choice(["0", "1"])
             solver += " --interprepairgroupcse " + random.choice(["0", "1"])
             solver += " --interprepairadaptive " + random.choice(["0", "1"])
             solver += " --interprepairratioskip " + random.choice(["1.0", "5.0", "20.0"])
