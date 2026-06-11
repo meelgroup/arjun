@@ -1119,7 +1119,7 @@ void Manthan::print_detailed_stats() const {
                 const double pct = 100.0 *
                     (1.0 - safe_div(interp_repair->total_b1_post_rewrite,
                                     interp_repair->total_b1_pre_rewrite));
-                verb_print(1, COLCYN "[manthan-stats]   b1 rewrite:         "
+                verb_print(1, COLCYN "[manthan-stats]   guard rewrite:      "
                     << "pre=" << interp_repair->total_b1_pre_rewrite
                     << " post=" << interp_repair->total_b1_post_rewrite
                     << "  (" << fixed << setprecision(1) << pct << "% reduction"
@@ -2117,8 +2117,9 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
         aig_ptr interp_branch) {
     FHolder<MetaSolver2>::Formula f;
 
-    // Build the must-flip region AIG in raw cnf-var space:
-    //   b1 = AND( ~I(X), AND_{y_other ∈ conflict}(y_other matches ctx) )
+    // Build the must-flip region (the "guard"): the AIG that is TRUE
+    // exactly on the inputs where H is wrong and y_rep must be flipped.
+    //   guard = AND( ~I(X), AND_{y_other ∈ conflict}(y_other matches ctx) )
     //
     // The interpolant I only ranges over input vars, so the y_other
     // ctx-matching has to be ANDed in explicitly.
@@ -2130,28 +2131,28 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
     // formulas already grown by prior interp repairs. Leaf-referencing is
     // semantically identical — y_other is itself a defined variable, so
     // the leaf resolves to its own def AIG on export.
-    aig_ptr b1 = AIG::new_not(interp_branch);
+    aig_ptr guard = AIG::new_not(interp_branch);
     for (const auto& l : conflict) {
         if (is_input[l.var()] || is_backward_defined[l.var()]) continue;
         assert(var_to_formula.count(l.var()));
-        b1 = AIG::new_and(b1, AIG::new_lit(~l));
+        guard = AIG::new_and(guard, AIG::new_lit(~l));
     }
 
-    // AIG-level simplification of b1. simplify_aig is always run; the
-    // heavier rewrite_aig pass is opt-in and its pre/post node counts
+    // AIG-level simplification of the guard. simplify_aig is always run;
+    // the heavier rewrite_aig pass is opt-in and its pre/post node counts
     // are tracked for the b1-rewrite effectiveness stat.
-    b1 = AIG::simplify_aig(b1);
+    guard = AIG::simplify_aig(guard);
     if (mconf.interp_repair_b1_rewrite != 0) {
-        const size_t pre_rw = AIG::count_aig_nodes_fast(b1);
-        b1 = AIG::rewrite_aig(b1);
-        b1 = AIG::simplify_aig(b1);
+        const size_t pre_rw = AIG::count_aig_nodes_fast(guard);
+        guard = AIG::rewrite_aig(guard);
+        guard = AIG::simplify_aig(guard);
         if (interp_repair) {
             interp_repair->total_b1_pre_rewrite += pre_rw;
-            interp_repair->total_b1_post_rewrite += AIG::count_aig_nodes_fast(b1);
+            interp_repair->total_b1_post_rewrite += AIG::count_aig_nodes_fast(guard);
             interp_repair->b1_rewrite_calls++;
         }
     }
-    f.aig = b1;
+    f.aig = guard;
 
     // f.clauses must be in y_hat space, so translate the raw leaves
     // before encoding; the mapper is identity outside to_define_full.
@@ -2161,10 +2162,10 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
         // Helper var or true_lit: already in cex_solver space.
         return Lit(v, false);
     };
-    aig_ptr b1_yhat = AIG::translate_leaves(b1, leaf_to_yhat);
+    aig_ptr guard_yhat = AIG::translate_leaves(guard, leaf_to_yhat);
 
     SLOW_DEBUG_DO({
-        // Defensive: every b1_yhat leaf must be an input, y_hat, helper
+        // Defensive: every guard_yhat leaf must be an input, y_hat, helper
         // or true_lit — a raw to_define leaf means incomplete translation.
         std::set<const ArjunNS::AIG*> seen;
         std::function<void(const aig_ptr&)> walk = [&](const aig_ptr& a) {
@@ -2177,16 +2178,16 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
                 if (helpers.count(var)) return;
                 if (var == fh->get_true_lit().var()) return;
                 std::cout << "c o [interp-perform_repair] BAD leaf var=" << (var+1)
-                          << " in b1_yhat for y_rep=" << (y_rep+1)
+                          << " in guard_yhat for y_rep=" << (y_rep+1)
                           << " is_to_def=" << to_define.count(var) << std::endl;
-                assert(false && "interp-perform_repair: b1_yhat has bad leaf");
+                assert(false && "interp-perform_repair: guard_yhat has bad leaf");
                 return;
             }
             if (!seen.insert(a.get()).second) return;
             walk(a->l);
             walk(a->r);
         };
-        walk(b1_yhat);
+        walk(guard_yhat);
     });
 
     // Encode via AIGToCNF; InterpClauseSink allocates cex_solver helper
@@ -2206,7 +2207,7 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
     ArjunNS::AIGToCNF<InterpClauseSink> enc(sink);
     enc.set_true_lit(fh->get_true_lit());
     if (mconf.interp_repair_group_cse != 0) enc.set_group_cse(true);
-    f.out = enc.encode(b1_yhat, /*force_helper=*/true);
+    f.out = enc.encode(guard_yhat, /*force_helper=*/true);
 
     // Dependency tracking; set_depends_on skips inputs itself.
     for (const auto& l : conflict) set_depends_on(y_rep, l);
@@ -2269,17 +2270,17 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         }
         f.out = fresh_l;
 
-        // AIG part
-        aig_ptr b1 = nullptr;
+        // AIG part: the guard, TRUE exactly on the conflict cube.
+        aig_ptr guard = nullptr;
         for(const auto& l: conflict) assert(l.var() < cnf.nVars());
-        if (conflict.empty()) b1 = aig_mng.new_const(true);
+        if (conflict.empty()) guard = aig_mng.new_const(true);
         else {
-            b1 = AIG::new_lit(~conflict[0]);
+            guard = AIG::new_lit(~conflict[0]);
             for(size_t i = 1; i < conflict.size(); i++) {
-                b1 = AIG::new_and(b1, AIG::new_lit(~conflict[i]));
+                guard = AIG::new_and(guard, AIG::new_lit(~conflict[i]));
             }
         }
-        f.aig = b1;
+        f.aig = guard;
         helpers_added_legacy += cex_solver.nVars() - cex_nvars_before;
     }
 

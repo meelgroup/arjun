@@ -318,9 +318,9 @@ public:
         return lbl[i];
     }
     // rewrite_aig effectiveness, node counts summed pre vs post the
-    // heavier structural rewrite pass. The b1_* pair tracks the combined
-    // branch b1 (--interprepairb1rewrite); it stays zero unless the flag
-    // is enabled.
+    // heavier structural rewrite pass. The b1_* fields track the guard AIG
+    // (--interprepairb1rewrite); they stay zero unless the flag is enabled.
+    // The "b1_" field names keep the historical spelling.
     uint64_t total_b1_pre_rewrite = 0;
     uint64_t total_b1_post_rewrite = 0;
     uint64_t b1_rewrite_calls = 0;

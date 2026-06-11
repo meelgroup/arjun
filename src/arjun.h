@@ -1721,15 +1721,16 @@ public:
         uint32_t interp_repair_min_conflict = 4;
         // Cap interpolant AIG node count; bigger falls back. 0=no cap.
         uint32_t interp_repair_max_aig_nodes = 0;
-        // rewrite_aig of the combined b1 AIG before Tseitin encoding.
-        // 0=simplify only, 1=+rewrite_aig. On by default: b1 is composed
-        // into the candidate formula and Tseitin-encoded into the cex
-        // solver on every interpolant repair, so a smaller b1 directly
-        // slows cex-solver growth between rebuilds.
+        // rewrite_aig of the guard AIG before Tseitin encoding.
+        // 0=simplify only, 1=+rewrite_aig. On by default: the guard is
+        // composed into the candidate formula and Tseitin-encoded into the
+        // cex solver on every interpolant repair, so a smaller guard
+        // directly slows cex-solver growth between rebuilds. (The flag name
+        // keeps the historical "b1" spelling for backward compatibility.)
         int interp_repair_b1_rewrite = 1;
-        // Pass --group-cse to AIGToCNF when encoding b1: dedups Tseitin
-        // helpers for structurally identical sub-AIGs. On by default for
-        // the same cex-solver-growth reason as b1_rewrite.
+        // Pass --group-cse to AIGToCNF when encoding the guard: dedups
+        // Tseitin helpers for structurally identical sub-AIGs. On by
+        // default for the same cex-solver-growth reason as b1_rewrite.
         int interp_repair_group_cse = 1;
         // Per-call cadical conflict budget for the interp solve. 0=no limit.
         uint64_t interp_repair_max_conflicts = 0;

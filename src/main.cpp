@@ -240,9 +240,9 @@ void add_arjun_options() {
     myopt("--interprepairmaxnodes", mconf.interp_repair_max_aig_nodes, fc_int,
           "Cap interpolant AIG size; if bigger, fall back to conflict-clause path. 0=no cap.");
     myopt("--interprepairb1rewrite", mconf.interp_repair_b1_rewrite, fc_int,
-          "Independent: AIG rewrite of the combined branch b1=NOT(I) AND y_other_matches before Tseitin-encoding. simplify_aig is always on; this controls the heavier rewrite_aig pass. 0=off, 1=on.");
+          "Independent: AIG rewrite of the guard=NOT(I) AND y_other_matches before Tseitin-encoding. simplify_aig is always on; this controls the heavier rewrite_aig pass. 0=off, 1=on.");
     myopt("--interprepairgroupcse", mconf.interp_repair_group_cse, fc_int,
-          "Pass --group-cse to AIGToCNF when encoding the interp branch b1. Dedups Tseitin helpers for structurally identical sub-AIGs. 0=off, 1=on.");
+          "Pass --group-cse to AIGToCNF when encoding the interp guard. Dedups Tseitin helpers for structurally identical sub-AIGs. 0=off, 1=on.");
     myopt("--interprepairmaxconfl", mconf.interp_repair_max_conflicts, fc_int,
           "Per-call cadical conflict budget for the interpolation solve. 0=no limit (default). Try 50000 to cap interp call cost; budget-exhausted calls fall back to the conflict-clause path.");
     myopt("--interprepairadaptive", mconf.interp_repair_adaptive_gate, fc_int,
