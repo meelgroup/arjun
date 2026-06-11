@@ -408,8 +408,7 @@ InterpRepair::InterpRepair(const Config& _conf,
 
 uint32_t InterpRepair::setup_mini_cnf(CaDiCaL::Solver& solver,
         InterpTracerMcMillan& tracer, Lit to_repair_lit,
-        const std::vector<Lit>& conflict,
-        bool full_conflict) const
+        const std::vector<Lit>& conflict) const
 {
     auto add_unit_a = [&](Lit l) {
         tracer.next_is_b = false;
@@ -423,27 +422,20 @@ uint32_t InterpRepair::setup_mini_cnf(CaDiCaL::Solver& solver,
         tracer.next_is_b = false;
     };
 
-    // ~to_repair is always A-side (the y-output assumption we are
-    // trying to refute). In the default mode it joins the y_other conflict
-    // units on A; in full-conflict mode it is the only A-side assumption
-    // unit and every conflict unit moves to B.
-    if (!full_conflict) {
-        // Non-input conflict units join A. The conflict is the negated
-        // assumptions, so add ~l to reproduce the original assumption.
-        for (const auto& l : conflict) {
-            if (l.var() < is_input.size() && is_input[l.var()]) continue;
-            add_unit_a(~l);
-        }
+    // ~to_repair is A-side (the y-output assumption we are trying to
+    // refute); it joins the non-input (y_other) conflict units on A. The
+    // conflict is the negated assumptions, so add ~l to reproduce the
+    // original assumption.
+    for (const auto& l : conflict) {
+        if (l.var() < is_input.size() && is_input[l.var()]) continue;
+        add_unit_a(~l);
     }
     add_unit_a(~to_repair_lit);
 
-    // B-side units: input-only in the default mode, every conflict lit
-    // (input + y_other) in full-conflict mode.
+    // B-side units: input conflict lits only.
     uint32_t b_marked = 0;
     for (const auto& l : conflict) {
-        if (!full_conflict) {
-            if (l.var() >= is_input.size() || !is_input[l.var()]) continue;
-        }
+        if (l.var() >= is_input.size() || !is_input[l.var()]) continue;
         add_unit_b(~l);
         b_marked++;
     }
@@ -682,7 +674,7 @@ std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
 aig_ptr InterpRepair::solve_one_interpolant(
         Lit to_repair_lit, const vector<Lit>& conflict,
         uint64_t conflict_budget,
-        int system, bool full_conflict, int& out_ret)
+        int system, int& out_ret)
 {
     out_ret = 0;
     // Build the mini CNF and solve on a fresh CaDiCaL with proof
@@ -696,22 +688,10 @@ aig_ptr InterpRepair::solve_one_interpolant(
     }
     InterpTracerMcMillan tracer(conf, aig_mng, input_vars);
     tracer.system = system;
-    // Full-conflict mode: tell the tracer that the shared/B-visible vars
-    // are every conflict var (~to_repair excluded since it stays A-side).
-    // The tracer then labels A-clauses with an OR over their conflict-var
-    // lits (not just inputs) and treats every conflict-var pivot as
-    // shared. Default mode leaves the override empty so input_vars is
-    // used as before.
-    if (full_conflict) {
-        for (const auto& l : conflict) {
-            if (l.var() == to_repair_lit.var()) continue;
-            tracer.shared_vars_override.insert(l.var());
-        }
-    }
     solver->connect_proof_tracer(&tracer, true);
 
     const uint32_t b_marked = setup_mini_cnf(*solver, tracer,
-            to_repair_lit, conflict, full_conflict);
+            to_repair_lit, conflict);
     if (b_marked == 0) {
         // No input units. Interpolant would be trivial. Bail.
         VERBOSE_DEBUG_DO(cout << "c o [interp-repair] no input B units; bailing" << endl);
@@ -752,10 +732,9 @@ aig_ptr InterpRepair::compute_interpolant(
         [[maybe_unused]] uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
         uint64_t conflict_budget,
-        int system, bool full_conflict)
+        int system)
 {
     calls++;
-    if (full_conflict) calls_full_conflict++;
     total_conflict_lits += conflict.size();
 
     // Empty conflict: y_rep forced to ctx[y_rep]; perform_repair already
@@ -765,13 +744,9 @@ aig_ptr InterpRepair::compute_interpolant(
         return nullptr;
     }
 
-    // No B-side lits in conflict => no B side => trivial interpolant.
-    // Default mode: B = input lits. Full-conflict: B = every conflict
-    // lit, so as long as the conflict is non-empty B is non-empty too —
-    // the check still falls through correctly.
+    // No input lits in conflict => no B side => trivial interpolant.
     bool has_b = false;
     for (const auto& l : conflict) {
-        if (full_conflict) { has_b = true; break; }
         if (l.var() < is_input.size() && is_input[l.var()]) {
             has_b = true; break;
         }
@@ -786,7 +761,7 @@ aig_ptr InterpRepair::compute_interpolant(
     // repair generalises over.
     int ret = 0;
     aig_ptr interp = solve_one_interpolant(to_repair_lit, conflict,
-            conflict_budget, system, full_conflict, ret);
+            conflict_budget, system, ret);
     if (interp == nullptr) {
         if (ret == 0) {
             // UNKNOWN is only reachable with a conflict budget set (asserted
@@ -808,24 +783,12 @@ aig_ptr InterpRepair::compute_interpolant(
     release_assert(interp != nullptr
         && "interp-repair: simplify_aig of the interpolant returned null");
 
-    // SLOW_DEBUG bug-hunting check: the interpolant references only shared
-    // vars — input vars in the default mode, every conflict var in
-    // full-conflict mode — by construction. We assert it here only when
-    // hunting for bugs; a leaf outside this set would point to a malformed
-    // partition / mini-CNF setup feeding the interpolation.
+    // SLOW_DEBUG bug-hunting check: the interpolant references only input
+    // vars (the shared/B-side set) by construction. We assert it here only
+    // when hunting for bugs; a leaf outside this set would point to a
+    // malformed partition / mini-CNF setup feeding the interpolation.
     SLOW_DEBUG_DO({
-        std::vector<uint8_t> is_allowed_leaf;
-        if (full_conflict) {
-            is_allowed_leaf.assign(cnf.nVars(), 0);
-            for (const auto& l : conflict) {
-                if (l.var() == to_repair_lit.var()) continue;
-                if (l.var() < is_allowed_leaf.size()) is_allowed_leaf[l.var()] = 1;
-            }
-        }
         auto leaf_ok = [&](uint32_t v) -> bool {
-            if (full_conflict) {
-                return v < is_allowed_leaf.size() && is_allowed_leaf[v];
-            }
             return v < is_input.size() && is_input[v];
         };
         set<const AIG*> seen2;
@@ -835,10 +798,7 @@ aig_ptr InterpRepair::compute_interpolant(
             if (a->type == AIGT::t_lit) {
                 if (!leaf_ok(a->var)) {
                     cout << "c o [interp-repair] SLOW_DEBUG: interpolant has bad leaf var="
-                         << (a->var+1)
-                         << (full_conflict ? " (expected conflict var)"
-                                           : " (expected input var)")
-                         << endl;
+                         << (a->var+1) << " (expected input var)" << endl;
                     return false;
                 }
                 return true;
@@ -897,7 +857,7 @@ aig_ptr InterpRepair::compute_interpolant(
                 "McMillan interpolant with Pudlák" << endl);
             return compute_interpolant(y_rep, to_repair_lit, conflict,
                 max_aig_nodes, conflict_budget,
-                InterpTracerMcMillan::SYS_PUDLAK, full_conflict);
+                InterpTracerMcMillan::SYS_PUDLAK);
         }
         return nullptr;
     }
@@ -933,7 +893,6 @@ aig_ptr InterpRepair::compute_interpolant(
     }
 
     calls_succeeded++;
-    if (full_conflict) calls_full_conflict_succeeded++;
     return interp;
 }
 
@@ -945,8 +904,7 @@ bool InterpRepair::slow_check_a_implies_i(
         Lit to_repair_lit,
         const vector<Lit>& conflict,
         const aig_ptr& interp,
-        uint64_t conflict_budget,
-        bool full_conflict) const
+        uint64_t conflict_budget) const
 {
     if (interp == nullptr) return true;
 
@@ -971,13 +929,10 @@ bool InterpRepair::slow_check_a_implies_i(
     // than re-walking cnf.get_clauses() on every SLOW_DEBUG sanity call.
     if (!cnf_serialized_built) build_serialized_cnf();
     for (int v : cnf_serialized) solver->add(v);
-    // A-side units: ~to_repair always; non-input (y_other) conflict units
-    // only in the default mode (in full-conflict mode they move to B).
-    if (!full_conflict) {
-        for (const auto& l : conflict) {
-            if (l.var() < is_input.size() && is_input[l.var()]) continue;
-            add_unit(~l);
-        }
+    // A-side units: ~to_repair plus the non-input (y_other) conflict units.
+    for (const auto& l : conflict) {
+        if (l.var() < is_input.size() && is_input[l.var()]) continue;
+        add_unit(~l);
     }
     add_unit(~to_repair_lit);
 
@@ -1045,10 +1000,9 @@ bool InterpRepair::sample_check_interpolant(
         for (uint32_t v : ins) {
             assign[v] = (rng() & 1) ? l_True : l_False;
         }
-        // Also pin every y_other conflict lit to its CEX value. In the
-        // default mode the interpolant doesn't reference those vars so
-        // they're ignored; in full-conflict mode they're leaves of I and
-        // need to match the CEX for the must-flip claim to apply.
+        // Also pin every y_other conflict lit to its CEX value. The
+        // interpolant doesn't reference those vars so they're ignored, but
+        // pinning keeps the SAT check below conditioned on the same CEX.
         for (const auto& l : conflict) {
             if (l.var() >= assign.size()) continue;
             if (l.var() < is_input.size() && is_input[l.var()]) continue;
@@ -1106,10 +1060,9 @@ bool InterpRepair::quick_check_interpolant_excludes_cex(
     if (interp == nullptr) return false;
 
     // Partial assignment from every conflict lit (input + y_other). The
-    // interpolant only ever references shared vars (inputs in the default
-    // mode, every conflict var in full-conflict mode), so y_other entries
-    // are harmless if the interpolant ignores them. Conflict lits are
-    // negated assumptions, so use ~l for the CEX value.
+    // interpolant only ever references input vars, so y_other entries are
+    // harmless — the interpolant ignores them. Conflict lits are negated
+    // assumptions, so use ~l for the CEX value.
     vector<lbool> assign(cnf.nVars(), l_Undef);
     for (const auto& l : conflict) {
         if (l.var() >= assign.size()) continue;
@@ -1147,9 +1100,5 @@ void InterpRepair::print_stats(const std::string& prefix) const {
                 ? safe_div(total_minicnf_clauses_kept*100.0, total_minicnf_clauses)
                 : 0.0)
          << "%";
-    if (calls_full_conflict > 0) {
-        cout << " full-conflict: " << calls_full_conflict_succeeded
-             << "/" << calls_full_conflict;
-    }
     cout << endl;
 }

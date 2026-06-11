@@ -123,7 +123,6 @@ if __name__ == "__main__":
         solver += " --interprepairmaxconfl %s" % random.choice(["0", "100", "10000"])
         solver += " --interprepairgroupcse %s" % random.choice(["0", "1"])
         solver += " --interprepairsystem %s" % random.choice(["0", "1"])
-        solver += " --interprepairfullconf %s" % random.choice(["0", "1"])
         solver += " --interprepairadaptive %s" % random.choice(["0", "1"])
         solver += " --interprepairratioskip %s" % random.choice(["1.0", "5.0", "20.0"])
         solver += " --interprepairskipwindow %s" % random.choice(["1", "10", "100"])

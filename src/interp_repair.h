@@ -66,19 +66,10 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     const ArjunNS::AIGManager& aig_mng;
     const std::set<uint32_t>& input_vars;
 
-    // Per-solve override for the "shared variables" set used when labelling
-    // McMillan / Pudlák clauses. Empty (default) means: use `input_vars`,
-    // i.e. the input-only interp_repair partition where B contains input
-    // assumption units only. When non-empty (set by the full-conflict mode
-    // in InterpRepair::solve_one_interpolant), all decisions that ask
-    // "is this var shared / in B?" use this set instead. The set must
-    // include every var that occurs in a B-side unit clause.
-    std::set<uint32_t> shared_vars_override;
-    // O(1) shared-var lookup; replaces `input_vars.count(v)`.
+    // O(1) shared-var lookup. "Shared" = a B-visible var, i.e. an input
+    // var: interp_repair's B side holds input assumption units only.
     [[nodiscard]] bool is_shared(uint32_t v) const {
-        return shared_vars_override.empty()
-            ? input_vars.count(v) != 0
-            : shared_vars_override.count(v) != 0;
+        return input_vars.count(v) != 0;
     }
 
     // Set by the caller before each solver->add(0): is the next clause
@@ -158,8 +149,7 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
 
     ArjunNS::aig_ptr lit_aig(CMSat::Lit l);
     // OR of the shared (B-visible) lits in `cl` — the partial label for an
-    // A-side clause. "Shared" is decided by is_shared(): default = the
-    // input_vars set; full-conflict mode = the per-solve override set.
+    // A-side clause. "Shared" is decided by is_shared() = the input_vars set.
     ArjunNS::aig_ptr or_of_shared_lits(const std::vector<CMSat::Lit>& cl);
 
     void add_original_clause(uint64_t id, bool red,
@@ -237,14 +227,11 @@ public:
         ArjunNS::AIGManager& _aig_mng);
     ~InterpRepair() = default;
 
-    // Compute an interpolant I(shared_vars): FALSE on the CEX, TRUE
-    // where flipping y_rep stays feasible. With `full_conflict=false`
-    // (default) the shared set is the input vars, so I(input_vars) only
-    // captures the input projection of the must-flip region — the caller
-    // must AND in the y_other-matches-context conjuncts. With
-    // `full_conflict=true` the shared set is every conflict var, so I is
-    // a smaller AIG over all conflict vars that generalises the whole
-    // conflict clause as-is; the caller skips the y_other ANDs.
+    // Compute an interpolant I(input_vars): FALSE on the CEX, TRUE where
+    // flipping y_rep stays feasible. The shared set is the input vars, so
+    // I(input_vars) only captures the input projection of the must-flip
+    // region — the caller must AND in the y_other-matches-context
+    // conjuncts.
     //
     // Returns nullptr when there is nothing to interpolate (empty
     // conflict, or no shared lits in the conflict), the AIG exceeds
@@ -254,8 +241,7 @@ public:
         const std::vector<CMSat::Lit>& conflict,
         uint32_t max_aig_nodes = 0,
         uint64_t conflict_budget = 0,
-        int system = 0,
-        bool full_conflict = false);
+        int system = 0);
 
     // SLOW_DEBUG / test-only sanity helper: interpolant evaluates to
     // FALSE on the CEX inputs. Not called on the default runtime path.
@@ -265,16 +251,13 @@ public:
 
     // SLOW_DEBUG / test-only sanity helper: full A → I miter, used to
     // guard the math during development and in unit tests. Returns true
-    // on UNSAT and on a budget-exhausted (inconclusive) solve.
-    // `full_conflict` must match the mode used to compute `interp` so the
-    // miter knows which conflict units belong to A vs B (default: A holds
-    // y_other units; full-conflict: A only holds ~to_repair).
+    // on UNSAT and on a budget-exhausted (inconclusive) solve. A holds the
+    // original CNF, the y_other conflict units, and ~to_repair.
     [[nodiscard]] bool slow_check_a_implies_i(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         const ArjunNS::aig_ptr& interp,
-        uint64_t conflict_budget = 0,
-        bool full_conflict = false) const;
+        uint64_t conflict_budget = 0) const;
 
     // SLOW_DEBUG / test-only sanity helper: for K random input patterns
     // where I(X)=FALSE, SAT-check that flipping y_rep is genuinely
@@ -289,11 +272,6 @@ public:
     // Statistics (read-only)
     uint64_t calls = 0;
     uint64_t calls_succeeded = 0;
-    // Subset of calls/calls_succeeded that used the full-conflict
-    // partition (full_conflict=true). Aggregated, not split: lets us see
-    // at a glance whether the new mode is being exercised.
-    uint64_t calls_full_conflict = 0;
-    uint64_t calls_full_conflict_succeeded = 0;
     uint64_t calls_failed_oversize = 0;
     // Oversize McMillan interpolants that triggered a Pudlák retry.
     uint64_t calls_oversize_pudlak_retry = 0;
@@ -358,18 +336,13 @@ public:
     mutable uint64_t total_minicnf_clauses_kept = 0;
 
     // Wire up the mini-CNF on `solver` with `tracer` attached.
-    //   full_conflict=false (default):
-    //     A: original CNF + non-input conflict units + ~to_repair_lit
-    //     B: input conflict units
-    //   full_conflict=true:
-    //     A: original CNF + ~to_repair_lit
-    //     B: ALL conflict units (input + non-input)
+    //   A: original CNF + non-input conflict units + ~to_repair_lit
+    //   B: input conflict units
     // Returns the B-side unit count; 0 means a trivial interpolant.
     uint32_t setup_mini_cnf(CaDiCaL::Solver& solver,
             InterpTracerMcMillan& tracer,
             CMSat::Lit to_repair_lit,
-            const std::vector<CMSat::Lit>& conflict,
-            bool full_conflict = false) const;
+            const std::vector<CMSat::Lit>& conflict) const;
 
     void print_stats(const std::string& prefix = "[interp-repair]") const;
 
@@ -409,12 +382,11 @@ private:
 
     // Run one tracing solve and return its raw McMillan interpolant.
     // out_ret receives the cadical status (20=UNSAT, 0=budget, 10=SAT).
-    // `full_conflict` selects the partition (see setup_mini_cnf).
     [[nodiscard]] ArjunNS::aig_ptr solve_one_interpolant(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         uint64_t conflict_budget,
-        int system, bool full_conflict, int& out_ret);
+        int system, int& out_ret);
 };
 
 } // namespace ArjunInt

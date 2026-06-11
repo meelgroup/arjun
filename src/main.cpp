@@ -255,8 +255,6 @@ void add_arjun_options() {
           "Progress gate: once a var has been interp-repaired this many times and still needs more, drop interp for it (it is not generalising). 0=off.");
     myopt("--interprepairsystem", mconf.interp_repair_system, fc_int,
           "Labeled-interpolation system: 0=McMillan (strongest interpolant, default), 1=Pudlák (symmetric selector; smaller but weaker interpolant).");
-    myopt("--interprepairfullconf", mconf.interp_repair_full_conflict, fc_int,
-          "Full-conflict interpolation: put ALL conflict units in B (not just input units). The interpolant is then over every conflict var rather than the input projection, generalising the whole conflict clause 'as-is'. build_interp_branch_formula drops the AND with y_other leaves since the interpolant already covers them. 0=off (default, input-only), 1=on.");
 
     // === Shannon-tree synthesis (--shannonsynth 1) knobs ===
     myopt("--shannonsynththresh", mconf.shannon_synth_threshold, fc_int,
