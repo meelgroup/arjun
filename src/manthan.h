@@ -312,14 +312,6 @@ class Manthan {
         double sampl_time = 0;
         double train_time = 0;
 
-        // detailed timing stats
-        double time_cex_finding = 0;
-        double time_find_better_ctx = 0;
-        double time_find_conflict = 0;
-        double time_minimize_conflict = 0;
-        double time_perform_repair = 0;
-        double time_inject_formulas = 0;
-        double time_recompute_y_hat = 0;
         uint64_t input_only_conflict_sizes_sum = 0;
         uint64_t full_conflict_sizes_sum = 0;
         uint32_t input_only_conflict_count = 0;

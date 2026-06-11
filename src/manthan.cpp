@@ -1027,18 +1027,6 @@ void Manthan::print_stats(const string& txt, const string& color, const string& 
 }
 
 void Manthan::print_detailed_stats() const {
-    const double repair_time = cpuTime() - repair_start_time;
-    const double accounted = time_cex_finding + time_find_better_ctx
-        + time_find_conflict + time_perform_repair + time_inject_formulas + time_recompute_y_hat;
-    verb_print(1, COLCYN "[manthan-stats] === DETAILED TIMING BREAKDOWN ===");
-    verb_print(1, COLCYN "[manthan-stats] Total repair time:     " << fixed << setprecision(2) << repair_time << "s");
-    verb_print(1, COLCYN "[manthan-stats]   cex_finding:         " << fixed << setprecision(2) << time_cex_finding << "s (" << setprecision(1) << safe_div(time_cex_finding, repair_time)*100.0 << "%)");
-    verb_print(1, COLCYN "[manthan-stats]   find_better_ctx:     " << fixed << setprecision(2) << time_find_better_ctx << "s (" << setprecision(1) << safe_div(time_find_better_ctx, repair_time)*100.0 << "%)");
-    verb_print(1, COLCYN "[manthan-stats]   find_conflict:       " << fixed << setprecision(2) << time_find_conflict << "s (" << setprecision(1) << safe_div(time_find_conflict, repair_time)*100.0 << "%)");
-    verb_print(1, COLCYN "[manthan-stats]   perform_repair:      " << fixed << setprecision(2) << time_perform_repair << "s (" << setprecision(1) << safe_div(time_perform_repair, repair_time)*100.0 << "%)");
-    verb_print(1, COLCYN "[manthan-stats]   inject_formulas:     " << fixed << setprecision(2) << time_inject_formulas << "s (" << setprecision(1) << safe_div(time_inject_formulas, repair_time)*100.0 << "%)");
-    verb_print(1, COLCYN "[manthan-stats]   recompute_y_hat:     " << fixed << setprecision(2) << time_recompute_y_hat << "s (" << setprecision(1) << safe_div(time_recompute_y_hat, repair_time)*100.0 << "%)");
-    verb_print(1, COLCYN "[manthan-stats]   unaccounted:         " << fixed << setprecision(2) << (repair_time - accounted) << "s (" << setprecision(1) << safe_div(repair_time - accounted, repair_time)*100.0 << "%)");
     verb_print(1, COLCYN "[manthan-stats] === CONFLICT STATS ===");
     verb_print(1, COLCYN "[manthan-stats]   input-only conflicts: " << input_only_conflict_count
         << "  avg sz: " << fixed << setprecision(1) << safe_div(input_only_conflict_sizes_sum, input_only_conflict_count));
@@ -1441,14 +1429,10 @@ SimplifiedCNF Manthan::do_manthan() {
         at_least_one_repaired = false;
         num_loops_repair++;
 
-        double t0 = cpuTime();
         inject_formulas_into_solver();
-        time_inject_formulas += cpuTime() - t0;
 
-        t0 = cpuTime();
         sample ctx;
         const bool finished = get_counterexample(ctx);
-        time_cex_finding += cpuTime() - t0;
         cex_solver_calls++;
         if (finished) {
             // cex_solver claims no CEX. Triangulate:
@@ -1489,7 +1473,6 @@ SimplifiedCNF Manthan::do_manthan() {
 
         compute_needs_repair(ctx);
 
-        t0 = cpuTime();
         const uint32_t old_needs_repair_size = needs_repair.size();
         if (mconf.maxsat_better_ctx == 1) {
             #ifdef EXTRA_SYNTH
@@ -1501,7 +1484,6 @@ SimplifiedCNF Manthan::do_manthan() {
         } else {
             find_better_ctx_normal(ctx);
         }
-        time_find_better_ctx += cpuTime() - t0;
         SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
         SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
         compute_needs_repair(ctx);
@@ -1644,10 +1626,8 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     vector<Lit> conflict;
     repaired_vars_count[y_rep]++;
 
-    double t0 = cpuTime();
     aig_ptr interp_branch = nullptr;
     bool ret = find_conflict(y_rep, ctx, conflict, interp_branch);
-    time_find_conflict += cpuTime() - t0;
     repair_solver_calls++;
 
     if (ret) {
@@ -1655,7 +1635,6 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
 
         add_repair_conflict_clause(y_rep, ctx, conflict);
 
-        t0 = cpuTime();
         if (interp_branch != nullptr) {
             interp_repairs_used++;
             if (y_rep < interp_repairs_per_var.size()) {
@@ -1672,18 +1651,11 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
         if (y_rep < last_repair_branch.size())
             last_repair_branch[y_rep] = (interp_branch != nullptr) ? 2 : 1;
         perform_repair(y_rep, ctx, conflict, interp_branch);
-        time_perform_repair += cpuTime() - t0;
 
         if (!mconf.one_repair_per_loop) {
             ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
-
-            t0 = cpuTime();
             inject_formulas_into_solver();
-            time_inject_formulas += cpuTime() - t0;
-
-            t0 = cpuTime();
             recompute_all_y_hat_cnf(ctx);
-            time_recompute_y_hat += cpuTime() - t0;
         }
 
         // Track conflict type
