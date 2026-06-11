@@ -80,7 +80,6 @@ class Manthan {
         std::set<uint32_t> to_define;
         std::set<uint32_t> backward_defined;
         std::set<uint32_t> to_define_full; // to_define + backward_defined
-        std::set<uint32_t> helper_functions; // these are in BW, but we definitely want them
 
         // Byte-map mirrors of the sets above for O(1) membership tests in hot
         // paths (sort comparators in minimize_conflict / find_conflict, etc.).

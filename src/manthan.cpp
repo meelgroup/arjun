@@ -433,7 +433,6 @@ bool Manthan::check_functions_for_y_vars() const {
                          << " backward_defined=" << (backward_defined.count(var) ? 1 : 0)
                          << " to_define=" << (to_define.count(var) ? 1 : 0)
                          << " to_define_full=" << (to_define_full.count(var) ? 1 : 0)
-                         << " helper_functions=" << (helper_functions.count(var) ? 1 : 0)
                          << " cnf.nVars=" << cnf.nVars()
                          << " y_hats.size=" << y_hats.size()
                          << " helpers.size=" << helpers.size()
@@ -733,7 +732,6 @@ bool Manthan::check_aig_matches_clauses_per_formula(const string& where) const {
                  << " aig.neg=" << f.aig.neg
                  << " bw_def=" << backward_defined.count(y)
                  << " to_define=" << to_define.count(y)
-                 << " helper_func=" << helper_functions.count(y)
                  << " f.clauses.size=" << f.clauses.size()
                  << endl;
             const auto& m = s.get_model();
@@ -1338,13 +1336,6 @@ SimplifiedCNF Manthan::do_manthan() {
         verb_print(1, "[manthan] No variables to-define, returning original CNF");
         return cnf;
     }
-    for(const auto& v: helper_functions) {
-        if (!input.count(v)) {
-            cout << "ERROR: helper function var " << v+1 << " is not detected as an input var" << endl;
-            release_assert(false);
-        }
-    }
-
     // Extend to_define_full to to_define + backward_defined
     to_define_full.clear();
     to_define_full.insert(to_define.begin(), to_define.end());
@@ -1388,7 +1379,6 @@ SimplifiedCNF Manthan::do_manthan() {
     // Order & train
     pre_order_vars();
     fill_var_to_formula_with(backward_defined);
-    fill_var_to_formula_with(helper_functions);
 
     if (mconf.manthan_base == 0) {
 #ifdef EXTRA_SYNTH
@@ -2782,8 +2772,8 @@ void Manthan::inject_formulas_into_solver() {
         tmp[2] = ~tmp[2];
         cex_solver.add_clause(tmp);
 
-        if (mconf.force_bw_equal && backward_defined.count(y) && !helper_functions.count(y)) {
-            verb_print(3, "backward defined y (except helper function), forcing indic to TRUE, since it must be correct");
+        if (mconf.force_bw_equal && backward_defined.count(y)) {
+            verb_print(3, "backward defined y, forcing indic to TRUE, since it must be correct");
             cex_solver.add_clause({Lit(ind, false)});
         }
     }
@@ -2800,7 +2790,7 @@ bool Manthan::get_counterexample(sample& ctx) {
     assumps.reserve(y_hat_to_indic.size());
     for(const auto& [y_hat, ind]: y_hat_to_indic) {
         uint32_t y = indic_to_y[ind];
-        if (mconf.force_bw_equal && backward_defined.count(y) && !helper_functions.count(y))
+        if (mconf.force_bw_equal && backward_defined.count(y))
             continue; // already forced to true
         assumps.emplace_back(ind, false);
     }
