@@ -1847,34 +1847,6 @@ void Manthan::try_drop_y_vars(vector<Lit>& conflict, vector<Lit>& assumps,
     generalized_repair_ok++;
 }
 
-// Cap very large conflicts to prevent formula bloat. A conflict of 40+ literals
-// creates 40+ clauses per repair, leading to 100K+ clause formulas. Keep a
-// subset (to_repair + inputs first, as those generalise best) and verify it's
-// still UNSAT.
-void Manthan::try_cap_conflict(vector<Lit>& conflict, vector<Lit>& assumps,
-        const Lit to_repair) {
-    // Sort: to_repair first, then inputs (more general), then y-vars.
-    std::sort(conflict.begin(), conflict.end(),
-        [&](const Lit& a, const Lit& b) {
-            if (a == to_repair) return true;
-            if (b == to_repair) return false;
-            bool a_inp = is_input[a.var()];
-            bool b_inp = is_input[b.var()];
-            if (a_inp != b_inp) return a_inp;
-            return false;
-        });
-    assumps.clear();
-    for (size_t i = 0; i < mconf.conflict_cap_keep && i < conflict.size(); i++) {
-        assumps.push_back(~conflict[i]);
-    }
-    auto ret_cap = repair_solver.solve(&assumps);
-    if (ret_cap != l_False) return;
-    auto capped = repair_solver.get_conflict();
-    if (std::find(capped.begin(), capped.end(), to_repair) == capped.end()) return;
-    verb_print(2, "[manthan] Capped conflict: " << conflict.size() << " -> " << capped.size());
-    conflict = capped;
-}
-
 // Minimize the conflict, then generalise it (drop y-vars, cap size) and strip
 // the to_repair literal so only the must-flip region's input/y literals remain.
 void Manthan::minimize_and_generalize_conflict(vector<Lit>& conflict,
@@ -1890,8 +1862,6 @@ void Manthan::minimize_and_generalize_conflict(vector<Lit>& conflict,
         if (conflict.size() <= mconf.conflict_drop_y_max)
             try_drop_y_vars(conflict, assumps, to_repair);
     }
-    if (conflict.size() > mconf.conflict_cap)
-        try_cap_conflict(conflict, assumps, to_repair);
 
     auto now_end = std::remove_if(conflict.begin(), conflict.end(),
                 [&](const Lit l){ return l == to_repair; });

@@ -148,10 +148,6 @@ class Manthan {
         // still UNSAT (a strictly more general repair).
         void try_drop_y_vars(std::vector<CMSat::Lit>& conflict,
                 std::vector<CMSat::Lit>& assumps, const CMSat::Lit to_repair);
-        // Shrink an oversized conflict to a still-UNSAT subset to avoid formula
-        // bloat (keeps to_repair + inputs first).
-        void try_cap_conflict(std::vector<CMSat::Lit>& conflict,
-                std::vector<CMSat::Lit>& assumps, const CMSat::Lit to_repair);
         // Optionally compute a Craig interpolant branch for perform_repair;
         // leaves interp_branch null when interp repair is off or gated out.
         void maybe_compute_interp_branch(const uint32_t y_rep,

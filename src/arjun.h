@@ -1697,7 +1697,6 @@ public:
         uint32_t stats_every = 40;          // print stats every N repair loops
         uint32_t detailed_stats_every = 200;// print detailed stats every N repair loops
         uint32_t conflict_drop_y_max = 25;  // max conflict size to try dropping y-vars
-        uint32_t conflict_cap = 40;         // cap very large conflicts to this size
         uint32_t conflict_cap_keep = 30;    // keep this many literals when capping
         uint32_t batch_minim_min = 6;       // min conflict size for batch minimization
         uint32_t minim_budget_threshold = 20; // conflict size above which budget is capped
