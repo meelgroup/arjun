@@ -996,7 +996,7 @@ void Manthan::print_stats(const string& txt, const string& color, const string& 
             << "   avg conflsz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
             << "   avg need rep: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
             << "   cache-hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
-            << "   gen-ok: " << setw(4) << generalized_repair_ok
+            << "   input-only: " << setw(4) << input_only_rep
             << "   interp: " << setw(3) << fixed << setprecision(0)
                 << safe_div(interp_repairs_used*100.0, tot_repaired) << "%"
             << "   T: " << setprecision(2) << fixed << setw(7) << repair_time
@@ -1663,7 +1663,7 @@ bool Manthan::try_input_only_conflict(const uint32_t y_rep, const sample& ctx,
         if (std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end()) {
             verb_print(2, "[manthan] Found INPUT-ONLY conflict sz " << conflict.size()
                 << " for y_rep=" << y_rep+1);
-            generalized_repair_ok++;
+            input_only_rep++;
             assumps = std::move(input_assumps);
             return true;
         }
@@ -1781,7 +1781,7 @@ void Manthan::try_drop_y_vars(vector<Lit>& conflict, vector<Lit>& assumps,
     verb_print(2, "[manthan] Dropped y-vars from conflict: "
         << conflict.size() << " -> " << conflict3.size());
     conflict = conflict3;
-    generalized_repair_ok++;
+    input_only_rep++;
 }
 
 // Minimize the conflict, then generalise it (drop y-vars, cap size) and strip
