@@ -1421,12 +1421,7 @@ SimplifiedCNF Manthan::do_manthan() {
 
         const uint32_t old_needs_repair_size = needs_repair.size();
         if (mconf.maxsat_better_ctx == 1) {
-            #ifdef EXTRA_SYNTH
             find_better_ctx_maxsat(ctx);
-            #else
-            cout << "ERROR: maxsat_better_ctx is set to 1 but we are not in EXTRA_SYNTH mode!" << endl;
-            exit(EXIT_FAILURE);
-            #endif
         } else {
             find_better_ctx_normal(ctx);
         }
@@ -2410,8 +2405,11 @@ void Manthan::bve_order() {
     assert(y_order.size() == to_define_full.size());
 }
 
-#ifdef EXTRA_SYNTH
 void Manthan::find_better_ctx_maxsat(sample& ctx) {
+#ifndef EXTRA_SYNTH
+    cout << "ERROR: maxsat_better_ctx is set to 1 but we are not in EXTRA_SYNTH mode!" << endl;
+    exit(EXIT_FAILURE);
+#else
     verb_print(2, "Finding better ctx via maxsat.");
     EvalMaxSAT s_ctx;
     for(uint32_t i = 0; i < cnf.nVars(); i++) s_ctx.newVar();
@@ -2458,8 +2456,8 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
     assert(ret && "must be satisfiable");
     assert(s_ctx.getCost() > 0);
     for(const auto& v: to_define_full) ctx[v] = s_ctx.getValue(v+1) ? l_True : l_False;
-}
 #endif
+}
 
 // Fills needs_repair with vars from y (i.e. output) using normal SAT solver with assumptions
 void Manthan::find_better_ctx_normal(sample& ctx) {
