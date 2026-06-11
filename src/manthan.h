@@ -307,7 +307,6 @@ class Manthan {
         uint32_t cost_zero_repairs = 0;
         uint32_t cex_solver_calls = 0;
         uint32_t repair_solver_calls = 0;
-        // Repairs that came from the interp path (real repairs only).
         uint32_t interp_repairs_used = 0;
 
         // Progress gate: per-var flag set once interp has been disabled
