@@ -119,6 +119,19 @@ class Manthan {
         bool find_conflict(const uint32_t y_rep, sample& ctx,
                 std::vector<CMSat::Lit>& conflict,
                 ArjunNS::aig_ptr& interp_branch);
+        // Populate the aig_dep_is_dep/aig_dep_list scratch (below) with the
+        // input variables that y_rep's current AIG depends on, using dep_cache
+        // when the formula is unchanged. Returns true if any dependency was
+        // found, i.e. the don't-care input filter is usable.
+        bool compute_aig_dep_set(const uint32_t y_rep);
+        // Try an input-only conflict: assume only the (dependent) input vars +
+        // ~to_repair, leaving earlier y-variables free. On UNSAT-with-to_repair
+        // sets `conflict`/`assumps` and returns true; the conflict is strictly
+        // more general than the full-assumption one. Returns false otherwise.
+        bool try_input_only_conflict(const uint32_t y_rep, const sample& ctx,
+                const CMSat::Lit to_repair, const bool have_aig_deps,
+                std::vector<CMSat::Lit>& conflict,
+                std::vector<CMSat::Lit>& assumps);
         // Reusable scratch for AIG::get_dependent_vars inside find_conflict;
         // avoids per-call heap allocations for bitmap/stack. Visited state
         // is tracked via AIG::visit_epoch (no scratch needed).

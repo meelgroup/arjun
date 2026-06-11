@@ -1718,14 +1718,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     return ret;
 }
 
-bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
-        vector<Lit>& conflict, aig_ptr& interp_branch) {
-    interp_branch = nullptr;
-    const double repair_solver_start_time = cpuTime();
-
-    // Find which input variables the AIG for y_rep actually depends on.
-    // Any input not in the AIG's dependency set is a don't-care and can be
-    // excluded from assumptions, producing a more general (shorter) conflict.
+bool Manthan::compute_aig_dep_set(const uint32_t y_rep) {
     // Reset marks left by the previous call before reusing the scratch bitmap.
     for (const uint32_t prev_v : aig_dep_list) aig_dep_is_dep[prev_v] = 0;
     aig_dep_list.clear();
@@ -1754,36 +1747,44 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
             }
         }
     }
-    const bool have_aig_deps = !aig_dep_list.empty();
+    return !aig_dep_list.empty();
+}
 
+bool Manthan::try_input_only_conflict(const uint32_t y_rep, const sample& ctx,
+        const Lit to_repair, const bool have_aig_deps,
+        vector<Lit>& conflict, vector<Lit>& assumps) {
+    vector<Lit> input_assumps;
+    input_assumps.reserve(input.size() + 1);
+    for (const auto& x : input) {
+        if (have_aig_deps && (x >= aig_dep_is_dep.size() || !aig_dep_is_dep[x])) continue;
+        input_assumps.emplace_back(x, ctx[x] == l_False);
+    }
+    input_assumps.push_back({~to_repair});
+    auto input_ret = repair_solver.solve(&input_assumps);
+    if (input_ret == l_False) {
+        conflict = repair_solver.get_conflict();
+        if (std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end()) {
+            verb_print(2, "[manthan] Found INPUT-ONLY conflict sz " << conflict.size()
+                << " for y_rep=" << y_rep+1);
+            generalized_repair_ok++;
+            assumps = std::move(input_assumps);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
+        vector<Lit>& conflict, aig_ptr& interp_branch) {
+    interp_branch = nullptr;
+    const double repair_solver_start_time = cpuTime();
+    const bool have_aig_deps = compute_aig_dep_set(y_rep);
     assert(ctx[y_rep] != ctx[y_to_y_hat[y_rep]] && "before repair, y and y_hat must be different");
     const Lit to_repair = Lit(y_rep, ctx[y_to_y_hat[y_rep]] == l_True);
 
-    // Try input-only conflict first: assume only input vars + ~to_repair, without
-    // fixing earlier y-variables. If UNSAT, the conflict is strictly more general:
-    // it shows the formula is wrong for these inputs regardless of y-variable values.
-    bool found_input_only = false;
     vector<Lit> assumps;
-    {
-        vector<Lit> input_assumps;
-        input_assumps.reserve(input.size() + 1);
-        for (const auto& x : input) {
-            if (have_aig_deps && (x >= aig_dep_is_dep.size() || !aig_dep_is_dep[x])) continue;
-            input_assumps.emplace_back(x, ctx[x] == l_False);
-        }
-        input_assumps.push_back({~to_repair});
-        auto input_ret = repair_solver.solve(&input_assumps);
-        if (input_ret == l_False) {
-            conflict = repair_solver.get_conflict();
-            if (std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end()) {
-                verb_print(2, "[manthan] Found INPUT-ONLY conflict sz " << conflict.size()
-                    << " for y_rep=" << y_rep+1);
-                generalized_repair_ok++;
-                found_input_only = true;
-                assumps = std::move(input_assumps);
-            }
-        }
-    }
+    const bool found_input_only = try_input_only_conflict(
+            y_rep, ctx, to_repair, have_aig_deps, conflict, assumps);
 
     if (!found_input_only) {
         uint32_t skipped_inputs = 0;
@@ -1859,7 +1860,7 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
         } else {
             conflict = repair_solver.get_conflict();
         }
-    } // end if (!found_input_only)
+    }
     assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end() &&
         "to_repair literal must be in conflict");
 
