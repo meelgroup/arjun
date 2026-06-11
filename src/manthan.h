@@ -310,16 +310,6 @@ class Manthan {
         // Repairs that came from the interp path (real repairs only).
         uint32_t interp_repairs_used = 0;
 
-        // Per-var record of which branch drove the var's most recent
-        // successful repair: 0=none yet, 1=conflict-clause, 2=interp.
-        // Used to attribute later cost-zero (failed) repairs of that var
-        // to whichever branch last touched it — a high interp share means
-        // the interpolant is not generalising, just churning.
-        std::vector<uint8_t> last_repair_branch;
-        uint64_t interp_path_cost_zero = 0;
-        uint64_t conflict_path_cost_zero = 0;
-        uint64_t unrepaired_cost_zero = 0; // cost-zero before any success
-
         // Progress gate: per-var flag set once interp has been disabled
         // for a var that kept needing repairs without converging.
         std::vector<uint8_t> interp_progress_blacklist;

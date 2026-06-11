@@ -1031,9 +1031,6 @@ void Manthan::print_detailed_stats() const {
     verb_print(1, COLCYN "[manthan-stats]   full conflicts:       " << full_conflict_count
         << "  avg sz: " << fixed << setprecision(1) << safe_div(full_conflict_sizes_sum, full_conflict_count));
     verb_print(1, COLCYN "[manthan-stats]   cost-zero repairs:    " << cost_zero_repairs);
-    verb_print(1, COLCYN "[manthan-stats]   cost-zero by last branch: interp "
-        << interp_path_cost_zero << "  conflict " << conflict_path_cost_zero
-        << "  pre-repair " << unrepaired_cost_zero);
     verb_print(1, COLCYN "[manthan-stats]   repair_failed:        " << repair_failed);
     verb_print(1, COLCYN "[manthan-stats]   cex_solver calls:     " << cex_solver_calls);
     verb_print(1, COLCYN "[manthan-stats]   repair_solver calls:  " << repair_solver_calls);
@@ -1065,14 +1062,6 @@ void Manthan::print_detailed_stats() const {
             << " / " << tot_repaired
             << "  (" << fixed << setprecision(1) << interp_used_pct << "%)");
         verb_print(1, COLCYN "[manthan-stats]   conflict drove rep.:  " << conflict_repairs);
-        // The discriminator: cost-zero (failed) repairs per successful
-        // repair, split by branch. A low interp ratio means interpolants
-        // generalise; a high one means they churn without progress.
-        verb_print(1, COLCYN "[manthan-stats]   cost-zero / repair:   "
-            << "interp " << fixed << setprecision(2)
-            << safe_div(interp_path_cost_zero, interp_repairs_used)
-            << "  conflict "
-            << safe_div(conflict_path_cost_zero, conflict_repairs));
         // Fresh cex_solver helper vars created per repair, by path.
         if (interp_repairs_used > 0) {
             verb_print(1, COLCYN "[manthan-stats]   helpers/rep:          "
@@ -1317,7 +1306,6 @@ SimplifiedCNF Manthan::do_manthan() {
     const auto ret = cnf.find_disconnected();
     verb_print(1, "[manthan] Found " << ret.size() << " components");
     repaired_vars_count.resize(cnf.nVars(), 0);
-    last_repair_branch.assign(cnf.nVars(), 0);
     interp_progress_blacklist.assign(cnf.nVars(), 0);
     var_conflict_freq.resize(cnf.nVars(), 0);
     conflict_branch_lits_per_var.assign(cnf.nVars(), 0);
@@ -1634,10 +1622,6 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
             conflict_branch_lits_per_var[y_rep] += conflict.size();
             conflict_branch_repairs_per_var[y_rep]++;
         }
-        // Record which branch drove this (successful) repair, so a later
-        // cost-zero repair of the same var can be attributed to it.
-        if (y_rep < last_repair_branch.size())
-            last_repair_branch[y_rep] = (interp_branch != nullptr) ? 2 : 1;
         perform_repair(y_rep, ctx, conflict, interp_branch);
 
         if (!mconf.one_repair_per_loop) {
@@ -1659,20 +1643,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
             full_conflict_sizes_sum += conflict.size();
         }
 
-    } else {
-        cost_zero_repairs++;
-        // Attribute this failed repair to the branch that last successfully
-        // repaired the var: a cost-zero repair on a var the interpolant
-        // "handled" means the interpolant did not generalise.
-        const uint8_t br = (y_rep < last_repair_branch.size())
-            ? last_repair_branch[y_rep] : 0;
-        if (br == 2) interp_path_cost_zero++;
-        else if (br == 1) conflict_path_cost_zero++;
-        else unrepaired_cost_zero++;
-        // Cost 0: find_conflict updated ctx[y] for y_rep and later vars only.
-        // Formulas and inputs haven't changed, so y_hat values are still valid.
-        // No recomputation needed.
-    }
+    } else cost_zero_repairs++;
     compute_needs_repair(ctx);
     print_needs_repair_vars();
     return ret;
