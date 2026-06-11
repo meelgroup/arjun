@@ -96,6 +96,23 @@ private:
     aig_lit deep_absorb(const aig_lit& edge, NodeRebuildMap& cache);
     aig_lit flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cache);
 
+    // deep_absorb helpers. Each rewrites one AND node given its already-rebuilt
+    // child edges `l` and `r` (the positive value of the node is AND(l, r)).
+    // `absorb_and_node` is the per-node entry point; the rest are its stages.
+    aig_lit absorb_and_node(const aig_lit& l, const aig_lit& r);
+    // Local AND shortcuts when neither child opens an AND/OR chain to flatten.
+    aig_lit absorb_local_and(const aig_lit& l, const aig_lit& r);
+    // Fold constants and complementary pairs in a flat AND child list. Returns
+    // true and sets `out` to a constant if the conjunction collapses.
+    bool fold_and_children(std::vector<aig_lit>& children, bool wide, aig_lit& out);
+    // O(n) hash-set OR-absorption pass for wide nodes (drops the O(n²) loops).
+    void absorb_wide_or(std::vector<aig_lit>& children);
+    // O(n²) cross-level absorption / subsumption against OR children. Returns
+    // true and sets `out` to FALSE if an emptied OR collapses the conjunction.
+    bool absorb_cross_level(std::vector<aig_lit>& children, aig_lit& out);
+    // Resolution on OR pairs: AND(OR(X,b), OR(X,~b)) = X.
+    void resolve_or_pairs(std::vector<aig_lit>& children);
+
     // simplify_pass rule helpers. Each returns a non-null aig_lit if the rule
     // fires, else default-constructed (no match). `pos` in the caller is set
     // from the first match in priority order.

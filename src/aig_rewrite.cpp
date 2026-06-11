@@ -423,6 +423,247 @@ aig_lit AIGRewriter::hash_cons(const aig_lit& edge, NodeRebuildMap& cache) {
 // Flattens k-ary AND/OR groups, dedups, applies cross-level absorption /
 // subsumption / resolution that simplify_pass's local rules miss.
 
+// Local AND shortcuts for the case where neither child opens an AND/OR chain.
+aig_lit AIGRewriter::absorb_local_and(const aig_lit& l, const aig_lit& r) {
+    if (l == r) { stats.idempotent_elim++; return l; }
+    if (is_complement(l, r)) { stats.complement_elim++; return cached_const(false); }
+    if (l->type == AIGT::t_const) {
+        stats.const_prop++;
+        return l.neg ? cached_const(false) : r;
+    }
+    if (r->type == AIGT::t_const) {
+        stats.const_prop++;
+        return r.neg ? cached_const(false) : l;
+    }
+    return make_canonical(l, r);
+}
+
+// Fold constants and complementary pairs in a flat (sorted, deduped) AND child
+// list. Returns true and sets `out` to a constant when the conjunction
+// collapses (complementary pair or a FALSE conjunct ⇒ FALSE; empty ⇒ TRUE).
+// Otherwise drops TRUE conjuncts in place and returns false.
+bool AIGRewriter::fold_and_children(vector<aig_lit>& children, bool wide,
+                                    aig_lit& out) {
+    // Complementary pair ⇒ AND = FALSE. Sorted keys put same-node entries
+    // adjacent, so a linear scan suffices.
+    if (!wide) {
+        for (size_t i = 0; i + 1 < children.size(); i++) {
+            if (children[i].node == children[i+1].node
+                && children[i].neg != children[i+1].neg) {
+                stats.complement_elim++;
+                out = cached_const(false);
+                return true;
+            }
+        }
+    }
+
+    // Constants: drop TRUE, any FALSE ⇒ collapse.
+    vector<aig_lit> tmp;
+    tmp.reserve(children.size());
+    for (const auto& c : children) {
+        if (c->type == AIGT::t_const) {
+            stats.const_prop++;
+            if (c.neg) { out = cached_const(false); return true; }
+        } else {
+            tmp.push_back(c);
+        }
+    }
+    children = std::move(tmp);
+
+    if (children.empty()) { out = cached_const(true); return true; }
+    return false;
+}
+
+// Wide nodes: O(n) hash-set OR-absorption only — skip the O(n²) loops.
+// Drops any OR child that has a disjunct matching an AND sibling.
+void AIGRewriter::absorb_wide_or(vector<aig_lit>& children) {
+    std::set<std::pair<uint64_t, bool>> sibset;
+    for (const auto& c : children)
+        sibset.insert({c.node->nid, c.neg});
+    vector<aig_lit> kept;
+    kept.reserve(children.size());
+    for (const auto& c : children) {
+        bool absorbed = false;
+        if (is_or(c)) {
+            vector<aig_lit> dj;
+            collect_or_edges(c, dj);
+            for (const auto& d : dj) {
+                if (d.node && d != c
+                    && sibset.count({d.node->nid, d.neg})) {
+                    absorbed = true;
+                    break;
+                }
+            }
+        }
+        if (absorbed) stats.absorption++;
+        else kept.push_back(c);
+    }
+    children.swap(kept);
+}
+
+// Cross-level absorption / subsumption against OR children (O(n²) fixed point):
+//   AND(a, OR(a, ...))            = a          — drop the OR
+//   AND(OR(narrow), OR(wide⊇narrow)) = OR(narrow) — drop the wider OR
+//   OR disjuncts complementing an AND sibling are removed from the OR
+// Returns true and sets `out` to FALSE if an emptied OR collapses the AND.
+bool AIGRewriter::absorb_cross_level(vector<aig_lit>& children, aig_lit& out) {
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (size_t i = 0; i < children.size() && !changed; i++) {
+            if (!is_or(children[i])) continue;
+            vector<aig_lit> disj;
+            collect_or_edges(children[i], disj);
+            if (disj.size() < 2) continue;
+
+            // AND(a, OR(a, ...)) = a — drop the OR.
+            bool absorbed = false;
+            for (size_t j = 0; j < children.size() && !absorbed; j++) {
+                if (i == j) continue;
+                for (const auto& d : disj) {
+                    if (d == children[j]) {
+                        stats.absorption++;
+                        children.erase(children.begin() + i);
+                        absorbed = true;
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+            if (absorbed) break;
+
+            // OR-vs-OR: narrower implies wider, so drop the wider.
+            std::sort(disj.begin(), disj.end(), aig_lit_nid_less);
+            bool dropped_wide = false;
+            for (size_t j = 0; j < children.size() && !dropped_wide; j++) {
+                if (i == j || !is_or(children[j])) continue;
+                vector<aig_lit> dj;
+                collect_or_edges(children[j], dj);
+                if (dj.size() >= disj.size()) continue;
+                std::sort(dj.begin(), dj.end(), aig_lit_nid_less);
+                if (std::includes(disj.begin(), disj.end(),
+                                  dj.begin(), dj.end(),
+                                  aig_lit_nid_less)) {
+                    stats.absorption++;
+                    children.erase(children.begin() + i);
+                    dropped_wide = true;
+                    changed = true;
+                }
+            }
+            if (dropped_wide) break;
+
+            // Drop OR disjuncts that complement an AND sibling.
+            vector<aig_lit> new_disj;
+            bool disj_changed = false;
+            for (const auto& d : disj) {
+                bool drop = false;
+                for (size_t j = 0; j < children.size(); j++) {
+                    if (i == j) continue;
+                    if (is_complement(d, children[j])) {
+                        drop = true;
+                        stats.complement_elim++;
+                        break;
+                    }
+                }
+                if (drop) disj_changed = true;
+                else new_disj.push_back(d);
+            }
+            if (disj_changed) {
+                if (new_disj.empty()) {
+                    // Empty OR = FALSE ⇒ AND collapses.
+                    out = cached_const(false);
+                    return true;
+                }
+                children[i] = build_or_tree(new_disj);
+                changed = true;
+            }
+        }
+    }
+    return false;
+}
+
+// Resolution on OR pairs of equal width: AND(OR(X,b), OR(X,~b)) = X.
+void AIGRewriter::resolve_or_pairs(vector<aig_lit>& children) {
+    bool rchanged = true;
+    while (rchanged) {
+        rchanged = false;
+        for (size_t i = 0; i < children.size() && !rchanged; i++) {
+            if (!is_or(children[i])) continue;
+            vector<aig_lit> di;
+            collect_or_edges(children[i], di);
+            std::sort(di.begin(), di.end(), aig_lit_nid_less);
+
+            for (size_t j = i + 1; j < children.size() && !rchanged; j++) {
+                if (!is_or(children[j])) continue;
+                vector<aig_lit> dj;
+                collect_or_edges(children[j], dj);
+                std::sort(dj.begin(), dj.end(), aig_lit_nid_less);
+
+                if (di.size() != dj.size()) continue;
+
+                vector<aig_lit> common;
+                aig_lit diff_i, diff_j;
+                int diffs = 0;
+                for (size_t k = 0; k < di.size(); k++) {
+                    if (di[k] == dj[k]) common.push_back(di[k]);
+                    else { diffs++; diff_i = di[k]; diff_j = dj[k]; }
+                }
+                if (diffs == 1 && is_complement(diff_i, diff_j)) {
+                    stats.complement_elim++;
+                    if (common.empty()) {
+                        children.erase(children.begin() + j);
+                        children.erase(children.begin() + i);
+                    } else if (common.size() == 1) {
+                        children[i] = common[0];
+                        children.erase(children.begin() + j);
+                    } else {
+                        children[i] = build_or_tree(common);
+                        children.erase(children.begin() + j);
+                    }
+                    rchanged = true;
+                }
+            }
+        }
+    }
+}
+
+// Rewrite one AND node (positive value AND(l, r)) given its rebuilt children.
+aig_lit AIGRewriter::absorb_and_node(const aig_lit& l, const aig_lit& r) {
+    // Fast path: no AND/OR chain to flatten ⇒ use local shortcuts.
+    auto is_proper_and = [](const aig_lit& e) {
+        return e.node && e->type == AIGT::t_and && !e.neg && e->l != e->r;
+    };
+    const bool any_chain = is_proper_and(l) || is_proper_and(r)
+                          || is_or(l) || is_or(r);
+    if (!any_chain) return absorb_local_and(l, r);
+
+    // Collect flat AND conjuncts.
+    vector<aig_lit> children;
+    collect_and_edges(l, children);
+    collect_and_edges(r, children);
+
+    std::sort(children.begin(), children.end(), aig_lit_nid_less);
+    children.erase(std::unique(children.begin(), children.end()), children.end());
+
+    constexpr size_t kWide = 16;
+    const bool wide = children.size() > kWide;
+
+    aig_lit pos;
+    if (fold_and_children(children, wide, pos)) return pos;
+
+    if (wide) {
+        absorb_wide_or(children);
+    } else if (absorb_cross_level(children, pos)) {
+        return pos;  // emptied OR collapsed the conjunction to FALSE
+    }
+
+    if (!wide) resolve_or_pairs(children);
+
+    std::sort(children.begin(), children.end(), aig_lit_nid_less);
+    children.erase(std::unique(children.begin(), children.end()), children.end());
+    return children.empty() ? cached_const(true) : build_and_tree(children);
+}
+
 aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
     if (!edge) return aig_lit();
 
@@ -455,229 +696,9 @@ aig_lit AIGRewriter::deep_absorb(const aig_lit& edge, NodeRebuildMap& cache) {
         aig_lit rcached = (it_rc != cache.end()) ? it_rc->second : aig_lit();
         const aig_lit l(lcached.node, lcached.neg ^ src->l.neg);
         const aig_lit r(rcached.node, rcached.neg ^ src->r.neg);
-        aig_lit pos;
         assert(l.node && r.node);
 
-        // Fast path: no AND/OR chain to flatten ⇒ use local shortcuts.
-        auto is_proper_and = [](const aig_lit& e) {
-            return e.node && e->type == AIGT::t_and && !e.neg && e->l != e->r;
-        };
-        const bool any_chain = is_proper_and(l) || is_proper_and(r)
-                              || is_or(l) || is_or(r);
-
-        if (!any_chain) {
-            if (l == r) { stats.idempotent_elim++; pos = l; }
-            else if (is_complement(l, r)) { stats.complement_elim++; pos = cached_const(false); }
-            else if (l->type == AIGT::t_const) {
-                stats.const_prop++;
-                pos = l.neg ? cached_const(false) : r;
-            } else if (r->type == AIGT::t_const) {
-                stats.const_prop++;
-                pos = r.neg ? cached_const(false) : l;
-            } else {
-                pos = make_canonical(l, r);
-            }
-        } else {
-            // Collect flat AND conjuncts.
-            vector<aig_lit> children;
-            collect_and_edges(l, children);
-            collect_and_edges(r, children);
-
-            std::sort(children.begin(), children.end(), aig_lit_nid_less);
-            children.erase(std::unique(children.begin(), children.end()), children.end());
-
-            constexpr size_t kWide = 16;
-            const bool wide = children.size() > kWide;
-
-            // Complementary pair ⇒ AND = FALSE. Sorted keys put same-node
-            // entries adjacent, so a linear scan suffices.
-            bool folded_false = false;
-            if (!wide) {
-                for (size_t i = 0; i + 1 < children.size(); i++) {
-                    if (children[i].node == children[i+1].node
-                        && children[i].neg != children[i+1].neg) {
-                        stats.complement_elim++;
-                        folded_false = true;
-                        break;
-                    }
-                }
-            }
-
-            // Constants: drop TRUE, any FALSE ⇒ collapse.
-            if (!folded_false) {
-                vector<aig_lit> tmp;
-                tmp.reserve(children.size());
-                for (const auto& c : children) {
-                    if (c->type == AIGT::t_const) {
-                        stats.const_prop++;
-                        if (c.neg) { folded_false = true; break; }
-                    } else {
-                        tmp.push_back(c);
-                    }
-                }
-                if (!folded_false) children = std::move(tmp);
-            }
-
-            if (folded_false) {
-                pos = cached_const(false);
-            } else if (children.empty()) {
-                pos = cached_const(true);
-            } else {
-                // Wide: O(n) hash-set pass of OR-absorption only —
-                // skip the O(n²) loops below.
-                if (wide) {
-                    std::set<std::pair<uint64_t, bool>> sibset;
-                    for (const auto& c : children)
-                        sibset.insert({c.node->nid, c.neg});
-                    vector<aig_lit> kept;
-                    kept.reserve(children.size());
-                    for (const auto& c : children) {
-                        bool absorbed = false;
-                        if (is_or(c)) {
-                            vector<aig_lit> dj;
-                            collect_or_edges(c, dj);
-                            for (const auto& d : dj) {
-                                if (d.node && d != c
-                                    && sibset.count({d.node->nid, d.neg})) {
-                                    absorbed = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if (absorbed) stats.absorption++;
-                        else kept.push_back(c);
-                    }
-                    children.swap(kept);
-                }
-
-                // Cross-level absorption / subsumption with OR children.
-                bool changed = !wide;
-                while (changed) {
-                    changed = false;
-                    for (size_t i = 0; i < children.size() && !changed; i++) {
-                        if (!is_or(children[i])) continue;
-                        vector<aig_lit> disj;
-                        collect_or_edges(children[i], disj);
-                        if (disj.size() < 2) continue;
-
-                        // AND(a, OR(a, ...)) = a — drop the OR.
-                        bool absorbed = false;
-                        for (size_t j = 0; j < children.size() && !absorbed; j++) {
-                            if (i == j) continue;
-                            for (const auto& d : disj) {
-                                if (d == children[j]) {
-                                    stats.absorption++;
-                                    children.erase(children.begin() + i);
-                                    absorbed = true;
-                                    changed = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if (absorbed) break;
-
-                        // OR-vs-OR: narrower implies wider, so drop the wider.
-                        std::sort(disj.begin(), disj.end(), aig_lit_nid_less);
-                        bool dropped_wide = false;
-                        for (size_t j = 0; j < children.size() && !dropped_wide; j++) {
-                            if (i == j || !is_or(children[j])) continue;
-                            vector<aig_lit> dj;
-                            collect_or_edges(children[j], dj);
-                            if (dj.size() >= disj.size()) continue;
-                            std::sort(dj.begin(), dj.end(), aig_lit_nid_less);
-                            if (std::includes(disj.begin(), disj.end(),
-                                              dj.begin(), dj.end(),
-                                              aig_lit_nid_less)) {
-                                stats.absorption++;
-                                children.erase(children.begin() + i);
-                                dropped_wide = true;
-                                changed = true;
-                            }
-                        }
-                        if (dropped_wide) break;
-
-                        // Drop OR disjuncts that complement an AND sibling.
-                        vector<aig_lit> new_disj;
-                        bool disj_changed = false;
-                        for (const auto& d : disj) {
-                            bool drop = false;
-                            for (size_t j = 0; j < children.size(); j++) {
-                                if (i == j) continue;
-                                if (is_complement(d, children[j])) {
-                                    drop = true;
-                                    stats.complement_elim++;
-                                    break;
-                                }
-                            }
-                            if (drop) disj_changed = true;
-                            else new_disj.push_back(d);
-                        }
-                        if (disj_changed) {
-                            if (new_disj.empty()) {
-                                // Empty OR = FALSE ⇒ AND collapses.
-                                pos = cached_const(false);
-                                break;
-                            }
-                            children[i] = build_or_tree(new_disj);
-                            changed = true;
-                        }
-                    }
-                }
-
-                // Resolution on OR pairs: AND(OR(X,b), OR(X,~b)) = X.
-                if (!pos.node && !wide) {
-                    bool rchanged = true;
-                    while (rchanged) {
-                        rchanged = false;
-                        for (size_t i = 0; i < children.size() && !rchanged; i++) {
-                            if (!is_or(children[i])) continue;
-                            vector<aig_lit> di;
-                            collect_or_edges(children[i], di);
-                            std::sort(di.begin(), di.end(), aig_lit_nid_less);
-
-                            for (size_t j = i + 1; j < children.size() && !rchanged; j++) {
-                                if (!is_or(children[j])) continue;
-                                vector<aig_lit> dj;
-                                collect_or_edges(children[j], dj);
-                                std::sort(dj.begin(), dj.end(), aig_lit_nid_less);
-
-                                if (di.size() != dj.size()) continue;
-
-                                vector<aig_lit> common;
-                                aig_lit diff_i, diff_j;
-                                int diffs = 0;
-                                for (size_t k = 0; k < di.size(); k++) {
-                                    if (di[k] == dj[k]) common.push_back(di[k]);
-                                    else { diffs++; diff_i = di[k]; diff_j = dj[k]; }
-                                }
-                                if (diffs == 1 && is_complement(diff_i, diff_j)) {
-                                    stats.complement_elim++;
-                                    if (common.empty()) {
-                                        children.erase(children.begin() + j);
-                                        children.erase(children.begin() + i);
-                                    } else if (common.size() == 1) {
-                                        children[i] = common[0];
-                                        children.erase(children.begin() + j);
-                                    } else {
-                                        children[i] = build_or_tree(common);
-                                        children.erase(children.begin() + j);
-                                    }
-                                    rchanged = true;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (!pos.node) {
-                    std::sort(children.begin(), children.end(), aig_lit_nid_less);
-                    children.erase(std::unique(children.begin(), children.end()), children.end());
-                    if (children.empty()) pos = cached_const(true);
-                    else pos = build_and_tree(children);
-                }
-            }
-        }
-        cache[src] = pos;
+        cache[src] = absorb_and_node(l, r);
         stack.pop_back();
     }
 
