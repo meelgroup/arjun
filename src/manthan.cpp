@@ -1420,11 +1420,8 @@ SimplifiedCNF Manthan::do_manthan() {
         compute_needs_repair(ctx);
 
         const uint32_t old_needs_repair_size = needs_repair.size();
-        if (mconf.maxsat_better_ctx == 1) {
-            find_better_ctx_maxsat(ctx);
-        } else {
-            find_better_ctx_normal(ctx);
-        }
+        if (mconf.maxsat_better_ctx == 1) find_better_ctx_maxsat(ctx);
+        else find_better_ctx_normal(ctx);
         SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
         SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
         compute_needs_repair(ctx);
