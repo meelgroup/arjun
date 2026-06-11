@@ -132,6 +132,44 @@ class Manthan {
                 const CMSat::Lit to_repair, const bool have_aig_deps,
                 std::vector<CMSat::Lit>& conflict,
                 std::vector<CMSat::Lit>& assumps);
+        // Full-assumption conflict: dependent inputs + earlier y-vars +
+        // ~to_repair. Returns true with `conflict` set on UNSAT; false on a
+        // cost-zero repair (ctx updated). Used when try_input_only fails.
+        bool solve_full_assumption_conflict(const uint32_t y_rep, sample& ctx,
+                const CMSat::Lit to_repair, const bool have_aig_deps,
+                std::vector<CMSat::Lit>& conflict,
+                std::vector<CMSat::Lit>& assumps,
+                const double repair_solver_start_time);
+        // Copy the repair_solver model into ctx for y_rep and all later y-vars
+        // (cost-zero repair: y_rep is satisfiable without changing the formula).
+        void apply_cost_zero_model(const uint32_t y_rep, sample& ctx);
+        // Minimize then generalise the conflict (drop y-vars, cap size) and
+        // strip the to_repair literal, leaving the must-flip region's literals.
+        void minimize_and_generalize_conflict(std::vector<CMSat::Lit>& conflict,
+                std::vector<CMSat::Lit>& assumps, const CMSat::Lit to_repair);
+        // Drop ALL y-vars from the conflict if the input-only remainder is
+        // still UNSAT (a strictly more general repair).
+        void try_drop_y_vars(std::vector<CMSat::Lit>& conflict,
+                std::vector<CMSat::Lit>& assumps, const CMSat::Lit to_repair);
+        // Shrink an oversized conflict to a still-UNSAT subset to avoid formula
+        // bloat (keeps to_repair + inputs first).
+        void try_cap_conflict(std::vector<CMSat::Lit>& conflict,
+                std::vector<CMSat::Lit>& assumps, const CMSat::Lit to_repair);
+        // Optionally compute a Craig interpolant branch for perform_repair;
+        // leaves interp_branch null when interp repair is off or gated out.
+        void maybe_compute_interp_branch(const uint32_t y_rep,
+                const CMSat::Lit to_repair,
+                const std::vector<CMSat::Lit>& conflict,
+                ArjunNS::aig_ptr& interp_branch);
+        // Per-var gating for interp repair (min-conflict / adaptive-ratio /
+        // progress blacklist); updates skip/blacklist bookkeeping.
+        bool should_compute_interp(const uint32_t y_rep,
+                const std::vector<CMSat::Lit>& conflict);
+        // Track interp node/lit ratio and blacklist the var when it grows too
+        // large relative to the conflict it generalises.
+        void interp_adaptive_bookkeeping(const uint32_t y_rep,
+                const std::vector<CMSat::Lit>& conflict,
+                const ArjunNS::aig_ptr& interp_branch);
         // Reusable scratch for AIG::get_dependent_vars inside find_conflict;
         // avoids per-call heap allocations for bitmap/stack. Visited state
         // is tracked via AIG::visit_epoch (no scratch needed).

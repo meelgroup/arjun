@@ -1774,6 +1774,286 @@ bool Manthan::try_input_only_conflict(const uint32_t y_rep, const sample& ctx,
     return false;
 }
 
+// Adopt the repair_solver model into ctx for y_rep and all later y-vars.
+// Used on a cost-zero repair: y_rep can be satisfied without changing the
+// formula, so we just copy the consistent assignment back into ctx.
+void Manthan::apply_cost_zero_model(const uint32_t y_rep, sample& ctx) {
+    bool found_yrep = false;
+    const auto& model = repair_solver.get_model();
+    for(const auto& y: y_order) {
+        if (y == y_rep) found_yrep = true;
+        if (found_yrep) ctx[y] = model[y];
+    }
+    assert(ctx[y_rep] == ctx[y_to_y_hat[y_rep]]);
+}
+
+// Build the full assumption set (dependent inputs + earlier y-vars + ~to_repair)
+// and solve. Returns true with `conflict` populated when UNSAT. Returns false
+// for a cost-zero repair (SAT): ctx has been updated and find_conflict should
+// return false. When inputs were skipped via the don't-care filter and the
+// reduced solve is SAT, retries with the full input set first.
+bool Manthan::solve_full_assumption_conflict(const uint32_t y_rep, sample& ctx,
+        const Lit to_repair, const bool have_aig_deps,
+        vector<Lit>& conflict, vector<Lit>& assumps,
+        const double repair_solver_start_time) {
+    uint32_t skipped_inputs = 0;
+    assumps.clear();
+    assumps.reserve(input.size() + y_order.size() + 1);
+    for(const auto& x: input) {
+        // Skip inputs that the AIG for y_rep doesn't depend on
+        if (have_aig_deps && (x >= aig_dep_is_dep.size() || !aig_dep_is_dep[x])) {
+            skipped_inputs++;
+            continue;
+        }
+        assumps.push_back(Lit(x, ctx[x] == l_False));
+    }
+    verb_print(2, "[manthan] skipped " << skipped_inputs << " / " << input.size()
+            << " inputs for y_rep=" << y_rep+1);
+
+    // Assume earlier (already-correct) y-variables; y_rep does not depend on them.
+    for(const auto& y: y_order) {
+        if (y == y_rep) break; // beyond this point we don't care
+        assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen. Otherwise y depends on y_rep, but we will repair y_rep potentially with y_rep");
+        assert(ctx[y] == ctx[y_to_y_hat[y]]); // they are correct
+        verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
+        assumps.push_back(Lit(y, ctx[y] == l_False));
+    }
+    assumps.push_back({~to_repair});
+
+    verb_print(2, "assuming reverse for y_rep: " << ~to_repair);
+    auto ret = repair_solver.solve(&assumps);
+    verb_print(2, "repair_solver finished "
+            << " with result: " << (ret == l_True ? "SAT" : (ret == l_False ? "UNSAT" : "UNKNOWN"))
+            << " in T: " << cpuTime()-repair_solver_start_time);
+    assert(ret != l_Undef);
+
+    if (ret == l_False) {
+        conflict = repair_solver.get_conflict();
+        return true;
+    }
+
+    // SAT. With no skipped inputs this is directly a cost-zero repair.
+    if (skipped_inputs == 0) {
+        verb_print(2, "Repair cost is 0 for y: " << y_rep+1);
+        apply_cost_zero_model(y_rep, ctx);
+        return false;
+    }
+
+    // SAT with reduced inputs - retry with all inputs to get a proper conflict /
+    // cost-zero repair.
+    assumps.clear();
+    for(const auto& x: input) assumps.push_back(Lit(x, ctx[x] == l_False));
+    for(const auto& y: y_order) {
+        if (y == y_rep) break;
+        assumps.push_back(Lit(y, ctx[y] == l_False));
+    }
+    assumps.push_back({~to_repair});
+    ret = repair_solver.solve(&assumps);
+    assert(ret != l_Undef);
+    if (ret == l_True) {
+        verb_print(2, "Repair cost is 0 for y: " << y_rep+1);
+        apply_cost_zero_model(y_rep, ctx);
+        return false;
+    }
+    // UNSAT with all inputs - extract conflict normally
+    conflict = repair_solver.get_conflict();
+    return true;
+}
+
+// After minimization, try dropping ALL y-variables from the conflict. If the
+// remaining input-only conflict is still UNSAT, the repair is more general
+// (independent of intermediate variable values).
+void Manthan::try_drop_y_vars(vector<Lit>& conflict, vector<Lit>& assumps,
+        const Lit to_repair) {
+    bool has_y_vars = false;
+    for (const auto& l : conflict) {
+        if (l != to_repair && !is_input[l.var()]) { has_y_vars = true; break; }
+    }
+    if (!has_y_vars) return;
+
+    assumps.clear();
+    for (const auto& l : conflict) {
+        if (l == to_repair || is_input[l.var()]) assumps.push_back(~l);
+    }
+    if (assumps.empty()) return;
+
+    auto ret3 = repair_solver.solve(&assumps);
+    if (ret3 != l_False) return;
+    auto conflict3 = repair_solver.get_conflict();
+    if (std::find(conflict3.begin(), conflict3.end(), to_repair) == conflict3.end()) return;
+    verb_print(2, "[manthan] Dropped y-vars from conflict: "
+        << conflict.size() << " -> " << conflict3.size());
+    conflict = conflict3;
+    generalized_repair_ok++;
+}
+
+// Cap very large conflicts to prevent formula bloat. A conflict of 40+ literals
+// creates 40+ clauses per repair, leading to 100K+ clause formulas. Keep a
+// subset (to_repair + inputs first, as those generalise best) and verify it's
+// still UNSAT.
+void Manthan::try_cap_conflict(vector<Lit>& conflict, vector<Lit>& assumps,
+        const Lit to_repair) {
+    // Sort: to_repair first, then inputs (more general), then y-vars.
+    std::sort(conflict.begin(), conflict.end(),
+        [&](const Lit& a, const Lit& b) {
+            if (a == to_repair) return true;
+            if (b == to_repair) return false;
+            bool a_inp = is_input[a.var()];
+            bool b_inp = is_input[b.var()];
+            if (a_inp != b_inp) return a_inp;
+            return false;
+        });
+    assumps.clear();
+    for (size_t i = 0; i < mconf.conflict_cap_keep && i < conflict.size(); i++) {
+        assumps.push_back(~conflict[i]);
+    }
+    auto ret_cap = repair_solver.solve(&assumps);
+    if (ret_cap != l_False) return;
+    auto capped = repair_solver.get_conflict();
+    if (std::find(capped.begin(), capped.end(), to_repair) == capped.end()) return;
+    verb_print(2, "[manthan] Capped conflict: " << conflict.size() << " -> " << capped.size());
+    conflict = capped;
+}
+
+// Minimize the conflict, then generalise it (drop y-vars, cap size) and strip
+// the to_repair literal so only the must-flip region's input/y literals remain.
+void Manthan::minimize_and_generalize_conflict(vector<Lit>& conflict,
+        vector<Lit>& assumps, const Lit to_repair) {
+    verb_print(2, "find_conflict sz: " << setw(5) << conflict.size() << " conflict: " << conflict);
+    const uint32_t orig_size = conflict.size();
+    const double minimize_start_time = cpuTime();
+    if (conflict.size() > 1 && mconf.minimize_conflict) {
+        minimize_conflict(conflict, assumps, to_repair);
+        assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end() &&
+            "to_repair literal must be in conflict");
+        // Skip the y-drop for very large conflicts (unlikely to succeed, expensive).
+        if (conflict.size() <= mconf.conflict_drop_y_max)
+            try_drop_y_vars(conflict, assumps, to_repair);
+    }
+    if (conflict.size() > mconf.conflict_cap)
+        try_cap_conflict(conflict, assumps, to_repair);
+
+    auto now_end = std::remove_if(conflict.begin(), conflict.end(),
+                [&](const Lit l){ return l == to_repair; });
+    conflict.erase(now_end, conflict.end());
+    verb_print(2, "[manthan] minim. Removed: " << setw(3) << (orig_size - conflict.size())
+            << " from conflict, now size: " << setw(3) << conflict.size()
+            << " repair cache size: " << setw(8) << repair_solver.cache_size()/1000 << "K"
+            << " repair cache hit rate: " << setw(5) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
+            << " T: " << setw(5) << setprecision(2) << cpuTime()-minimize_start_time);
+}
+
+// Decide whether to attempt an interpolant for this repair, applying the
+// min-conflict, adaptive-ratio, and progress-based per-var gates. Updates the
+// skip/blacklist bookkeeping as a side effect.
+bool Manthan::should_compute_interp(const uint32_t y_rep, const vector<Lit>& conflict) {
+    if (mconf.interp_repair == 2 &&
+        conflict.size() < mconf.interp_repair_min_conflict) return false;
+
+    // Adaptive per-var gating: skip vars currently blacklisted for oversized
+    // interpolants.
+    if (mconf.interp_repair_adaptive_gate != 0
+            && y_rep < interp_skip_until.size()
+            && tot_repaired < interp_skip_until[y_rep]) {
+        interp_adaptive_skips++;
+        VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
+            cout << "c o [manthan-interp] adaptive-skip y=" << y_rep+1
+                 << " until tot_repaired=" << interp_skip_until[y_rep]
+                 << " (current=" << tot_repaired << ")" << endl;
+        });
+        return false;
+    }
+
+    // Progress-based per-var gating: once a var has been interp-repaired more
+    // than the threshold and still keeps coming back for repair, the interpolant
+    // is not generalising for it — a good interpolant captures the must-flip
+    // region in a handful of repairs. Permanently fall back to the conflict
+    // clause for that var.
+    if (mconf.interp_repair_progress_max_var_repairs > 0
+            && y_rep < interp_progress_blacklist.size()) {
+        if (!interp_progress_blacklist[y_rep]
+                && y_rep < interp_repairs_per_var.size()
+                && interp_repairs_per_var[y_rep]
+                   >= mconf.interp_repair_progress_max_var_repairs) {
+            interp_progress_blacklist[y_rep] = 1;
+            interp_progress_blacklisted++;
+            VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 2) {
+                cout << "c o [manthan-interp] progress-blacklist y=" << y_rep+1
+                     << " after " << interp_repairs_per_var[y_rep]
+                     << " non-converging interp repairs" << endl;
+            });
+        }
+        if (interp_progress_blacklist[y_rep]) {
+            interp_progress_skips++;
+            return false;
+        }
+    }
+    return true;
+}
+
+// Track interp-vs-conflict size and blacklist the var (skip-until a future
+// tot_repaired) if the running mean node/lit ratio exceeds the threshold.
+void Manthan::interp_adaptive_bookkeeping(const uint32_t y_rep,
+        const vector<Lit>& conflict, const aig_ptr& interp_branch) {
+    if (interp_branch == nullptr
+            || mconf.interp_repair_adaptive_gate == 0
+            || y_rep >= interp_var_calls.size()) return;
+    size_t nodes = ArjunNS::AIG::count_aig_nodes_fast(interp_branch);
+    interp_var_calls[y_rep]++;
+    interp_var_node_sum[y_rep] += nodes;
+    interp_var_lit_sum[y_rep] += conflict.size();
+    if (interp_var_calls[y_rep] >= 3 && interp_var_lit_sum[y_rep] > 0) {
+        double mean_ratio = (double)interp_var_node_sum[y_rep]
+                           / (double)interp_var_lit_sum[y_rep];
+        if (mean_ratio > mconf.interp_repair_adaptive_ratio_skip) {
+            interp_skip_until[y_rep] = tot_repaired
+                + mconf.interp_repair_adaptive_skip_window;
+            // Reset running stats so the next chance is fresh.
+            interp_var_calls[y_rep] = 0;
+            interp_var_node_sum[y_rep] = 0;
+            interp_var_lit_sum[y_rep] = 0;
+            VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 2) {
+                cout << "c o [manthan-interp] adaptive blacklist y=" << y_rep+1
+                     << " ratio=" << mean_ratio
+                     << " until tot_repaired="
+                     << interp_skip_until[y_rep] << endl;
+            });
+        }
+    }
+}
+
+// Optionally compute a Craig interpolant as a generalisation of the conflict
+// clause, for perform_repair to use as the AIG branch. Leaves interp_branch
+// null (conflict-clause fallback) when interp repair is off or gated out.
+void Manthan::maybe_compute_interp_branch(const uint32_t y_rep, const Lit to_repair,
+        const vector<Lit>& conflict, aig_ptr& interp_branch) {
+    if (!(interp_repair && mconf.interp_repair > 0)) return;
+    if (!should_compute_interp(y_rep, conflict)) return;
+
+    interp_branch = interp_repair->compute_interpolant(
+        y_rep, to_repair, conflict,
+        mconf.interp_repair_max_aig_nodes,
+        mconf.interp_repair_max_conflicts,
+        mconf.interp_repair_system,
+        /*full_conflict=*/mconf.interp_repair_full_conflict != 0);
+    interp_adaptive_bookkeeping(y_rep, conflict, interp_branch);
+
+    SLOW_DEBUG_DO(
+      if (interp_branch != nullptr) {
+        const bool fc = mconf.interp_repair_full_conflict != 0;
+        if (!interp_repair->quick_check_interpolant_excludes_cex(interp_branch, conflict)) {
+            assert(false &&& "verify (CEX-excluded) fails");
+        }
+        if (!interp_repair->slow_check_a_implies_i(to_repair, conflict, interp_branch, 0, fc)) {
+            assert(false && "verify (full miter) fails");
+        }
+        if (!interp_repair->sample_check_interpolant(to_repair, conflict, interp_branch,
+                       /*num_samples=*/8, /*seed=*/num_loops_repair * 7919u)) {
+            assert(false && "verify (sample check) fails");
+        }
+    });
+}
+
 bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
         vector<Lit>& conflict, aig_ptr& interp_branch) {
     interp_branch = nullptr;
@@ -1787,255 +2067,17 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
             y_rep, ctx, to_repair, have_aig_deps, conflict, assumps);
 
     if (!found_input_only) {
-        uint32_t skipped_inputs = 0;
-        assumps.clear();
-        assumps.reserve(input.size() + y_order.size() + 1);
-        for(const auto& x: input) {
-            // Skip inputs that the AIG for y_rep doesn't depend on
-            if (have_aig_deps && (x >= aig_dep_is_dep.size() || !aig_dep_is_dep[x])) {
-                skipped_inputs++;
-                continue;
-            }
-            const Lit l = Lit(x, ctx[x] == l_False);
-            assumps.push_back(l);
-        }
-        verb_print(2, "[manthan] skipped " << skipped_inputs << " / " << input.size()
-                << " inputs for y_rep=" << y_rep+1);
-
-        // We go through the variables that y_rep does NOT depend on, and assume them to be correct
-        for(const auto& y: y_order) {
-            if (y == y_rep) break; // beyond this point we don't care
-            assert(dependency_mat[y][y_rep] != 1 && "due to ordering, this should not happen. Otherwise y depends on y_rep, but we will repair y_rep potentially with y_rep");
-            assert(ctx[y] == ctx[y_to_y_hat[y]]); // they are correct
-            const Lit l = Lit(y, ctx[y] == l_False);
-            verb_print(3, "assuming " << y+1 << " is " << ctx[y]);
-            assumps.push_back(l);
-        }
-
-        assumps.push_back({~to_repair});
-
-        verb_print(2, "assuming reverse for y_rep: " << ~to_repair);
-        auto ret = repair_solver.solve(&assumps);
-        verb_print(2, "repair_solver finished "
-                << " with result: " << (ret == l_True ? "SAT" : (ret == l_False ? "UNSAT" : "UNKNOWN"))
-                << " in T: " << cpuTime()-repair_solver_start_time);
-        assert(ret != l_Undef);
-
-        if (ret == l_True) {
-            if (skipped_inputs > 0) {
-                // SAT with reduced inputs - retry with all inputs to get proper cost-0 repair
-                assumps.clear();
-                for(const auto& x: input) assumps.push_back(Lit(x, ctx[x] == l_False));
-                for(const auto& y: y_order) {
-                    if (y == y_rep) break;
-                    assumps.push_back(Lit(y, ctx[y] == l_False));
-                }
-                assumps.push_back({~to_repair});
-                ret = repair_solver.solve(&assumps);
-                assert(ret != l_Undef);
-                if (ret == l_True) {
-                    verb_print(2, "Repair cost is 0 for y: " << y_rep+1);
-                    bool found_yrep = false;
-                    const auto& model = repair_solver.get_model();
-                    for(const auto& y: y_order) {
-                        if (y == y_rep) found_yrep = true;
-                        if (found_yrep) ctx[y] = model[y];
-                    }
-                    assert(ctx[y_rep] == ctx[y_to_y_hat[y_rep]]);
-                    return false;
-                }
-                // UNSAT with all inputs - extract conflict normally
-                conflict = repair_solver.get_conflict();
-            } else {
-                verb_print(2, "Repair cost is 0 for y: " << y_rep+1);
-                bool found_yrep = false;
-                const auto& model = repair_solver.get_model();
-                for(const auto& y: y_order) {
-                    if (y == y_rep) found_yrep = true;
-                    if (found_yrep) ctx[y] = model[y];
-                }
-                assert(ctx[y_rep] == ctx[y_to_y_hat[y_rep]]);
-                return false;
-            }
-        } else {
-            conflict = repair_solver.get_conflict();
-        }
+        // Returns false on a cost-zero repair (ctx already updated); otherwise
+        // `conflict` is the UNSAT core to minimise below.
+        if (!solve_full_assumption_conflict(y_rep, ctx, to_repair, have_aig_deps,
+                    conflict, assumps, repair_solver_start_time))
+            return false;
     }
     assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end() &&
         "to_repair literal must be in conflict");
 
-    verb_print(2, "find_conflict sz: " << setw(5) << conflict.size() << " conflict: " << conflict);
-    uint32_t orig_size = conflict.size();
-    const double minimize_start_time = cpuTime();
-    if (conflict.size() > 1 && mconf.minimize_conflict) {
-        minimize_conflict(conflict, assumps, to_repair);
-        assert(std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end() &&
-            "to_repair literal must be in conflict");
-
-        // After minimization, try dropping ALL y-variables from the conflict.
-        // If the remaining input-only conflict is still UNSAT, the repair is
-        // more general (independent of intermediate variable values).
-        // Skip for very large conflicts (unlikely to succeed and expensive).
-        if (conflict.size() <= mconf.conflict_drop_y_max) {
-            bool has_y_vars = false;
-            for (const auto& l : conflict) {
-                if (l != to_repair && !is_input[l.var()]) { has_y_vars = true; break; }
-            }
-            if (has_y_vars) {
-                assumps.clear();
-                for (const auto& l : conflict) {
-                    if (l == to_repair || is_input[l.var()]) assumps.push_back(~l);
-                }
-                if (!assumps.empty()) {
-                    auto ret3 = repair_solver.solve(&assumps);
-                    if (ret3 == l_False) {
-                        auto conflict3 = repair_solver.get_conflict();
-                        if (std::find(conflict3.begin(), conflict3.end(), to_repair) != conflict3.end()) {
-                            verb_print(2, "[manthan] Dropped y-vars from conflict: "
-                                << conflict.size() << " -> " << conflict3.size());
-                            conflict = conflict3;
-                            generalized_repair_ok++;
-                        }
-                    }
-                }
-            }
-        }
-
-    }
-    // Cap very large conflicts to prevent formula bloat. A conflict of 40+
-    // literals creates 40+ clauses per repair, leading to 100K+ clause formulas.
-    // Try keeping a subset and verify it's still UNSAT.
-    if (conflict.size() > mconf.conflict_cap) {
-        // Sort: to_repair first, then inputs (more general), then y-vars by freq
-        std::sort(conflict.begin(), conflict.end(),
-            [&](const Lit& a, const Lit& b) {
-                if (a == to_repair) return true;
-                if (b == to_repair) return false;
-                bool a_inp = is_input[a.var()];
-                bool b_inp = is_input[b.var()];
-                if (a_inp != b_inp) return a_inp;
-                return false;
-            });
-        assumps.clear();
-        for (size_t i = 0; i < mconf.conflict_cap_keep && i < conflict.size(); i++) {
-            assumps.push_back(~conflict[i]);
-        }
-        auto ret_cap = repair_solver.solve(&assumps);
-        if (ret_cap == l_False) {
-            auto capped = repair_solver.get_conflict();
-            if (std::find(capped.begin(), capped.end(), to_repair) != capped.end()) {
-                verb_print(2, "[manthan] Capped conflict: " << conflict.size() << " -> " << capped.size());
-                conflict = capped;
-            }
-        }
-    }
-
-    auto now_end = std::remove_if(conflict.begin(), conflict.end(),
-                [&](const Lit l){ return l == to_repair; });
-    conflict.erase(now_end, conflict.end());
-    verb_print(2, "[manthan] minim. Removed: " << setw(3) << (orig_size - conflict.size())
-            << " from conflict, now size: " << setw(3) << conflict.size()
-            << " repair cache size: " << setw(8) << repair_solver.cache_size()/1000 << "K"
-            << " repair cache hit rate: " << setw(5) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
-            << " T: " << setw(5) << setprecision(2) << cpuTime()-minimize_start_time);
-
-    // Optionally compute a Craig interpolant as a generalisation of the
-    // conflict clause, for perform_repair to use as the AIG branch.
-    if (interp_repair && mconf.interp_repair > 0) {
-        bool do_interp = true;
-        if (mconf.interp_repair == 2 &&
-            conflict.size() < mconf.interp_repair_min_conflict) do_interp = false;
-        // Adaptive per-var gating: skip vars currently blacklisted for
-        // oversized interpolants.
-        if (do_interp && mconf.interp_repair_adaptive_gate != 0) {
-            if (y_rep < interp_skip_until.size()
-                    && tot_repaired < interp_skip_until[y_rep]) {
-                do_interp = false;
-                interp_adaptive_skips++;
-                VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
-                    cout << "c o [manthan-interp] adaptive-skip y=" << y_rep+1
-                         << " until tot_repaired=" << interp_skip_until[y_rep]
-                         << " (current=" << tot_repaired << ")" << endl;
-                });
-            }
-        }
-        // Progress-based per-var gating: once a var has been interp-repaired
-        // more than the threshold and still keeps coming back for repair,
-        // the interpolant is not generalising for it — a good interpolant
-        // captures the must-flip region in a handful of repairs. Permanently
-        // fall back to the conflict clause for that var.
-        if (do_interp && mconf.interp_repair_progress_max_var_repairs > 0
-                && y_rep < interp_progress_blacklist.size()) {
-            if (!interp_progress_blacklist[y_rep]
-                    && y_rep < interp_repairs_per_var.size()
-                    && interp_repairs_per_var[y_rep]
-                       >= mconf.interp_repair_progress_max_var_repairs) {
-                interp_progress_blacklist[y_rep] = 1;
-                interp_progress_blacklisted++;
-                VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 2) {
-                    cout << "c o [manthan-interp] progress-blacklist y=" << y_rep+1
-                         << " after " << interp_repairs_per_var[y_rep]
-                         << " non-converging interp repairs" << endl;
-                });
-            }
-            if (interp_progress_blacklist[y_rep]) {
-                do_interp = false;
-                interp_progress_skips++;
-            }
-        }
-
-        if (do_interp) {
-            interp_branch = interp_repair->compute_interpolant(
-                y_rep, to_repair, conflict,
-                mconf.interp_repair_max_aig_nodes,
-                mconf.interp_repair_max_conflicts,
-                mconf.interp_repair_system,
-                /*full_conflict=*/mconf.interp_repair_full_conflict != 0);
-            // Adaptive bookkeeping: track interp-vs-conflict size and
-            // blacklist the var if the mean ratio exceeds the threshold.
-            if (interp_branch != nullptr
-                    && mconf.interp_repair_adaptive_gate != 0
-                    && y_rep < interp_var_calls.size()) {
-                size_t nodes = ArjunNS::AIG::count_aig_nodes_fast(interp_branch);
-                interp_var_calls[y_rep]++;
-                interp_var_node_sum[y_rep] += nodes;
-                interp_var_lit_sum[y_rep] += conflict.size();
-                if (interp_var_calls[y_rep] >= 3 && interp_var_lit_sum[y_rep] > 0) {
-                    double mean_ratio = (double)interp_var_node_sum[y_rep]
-                                       / (double)interp_var_lit_sum[y_rep];
-                    if (mean_ratio > mconf.interp_repair_adaptive_ratio_skip) {
-                        interp_skip_until[y_rep] = tot_repaired
-                            + mconf.interp_repair_adaptive_skip_window;
-                        // Reset running stats so the next chance is fresh.
-                        interp_var_calls[y_rep] = 0;
-                        interp_var_node_sum[y_rep] = 0;
-                        interp_var_lit_sum[y_rep] = 0;
-                        VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 2) {
-                            cout << "c o [manthan-interp] adaptive blacklist y=" << y_rep+1
-                                 << " ratio=" << mean_ratio
-                                 << " until tot_repaired="
-                                 << interp_skip_until[y_rep] << endl;
-                        });
-                    }
-                }
-            }
-
-            SLOW_DEBUG_DO(
-              if (interp_branch != nullptr) {
-                const bool fc = mconf.interp_repair_full_conflict != 0;
-                if (!interp_repair->quick_check_interpolant_excludes_cex(interp_branch, conflict)) {
-                    assert(false &&& "verify (CEX-excluded) fails");
-                }
-                if (!interp_repair->slow_check_a_implies_i(to_repair, conflict, interp_branch, 0, fc)) {
-                    assert(false && "verify (full miter) fails");
-                }
-                if (!interp_repair->sample_check_interpolant(to_repair, conflict, interp_branch,
-                               /*num_samples=*/8, /*seed=*/num_loops_repair * 7919u)) {
-                    assert(false && "verify (sample check) fails");
-                }
-            });
-        }
-    }
+    minimize_and_generalize_conflict(conflict, assumps, to_repair);
+    maybe_compute_interp_branch(y_rep, to_repair, conflict, interp_branch);
     return true;
 }
 
