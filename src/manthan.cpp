@@ -2200,7 +2200,7 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
             helpers_set.insert(solver.nVars() - 1);
         }
         [[nodiscard]] uint32_t nVars() const { return solver.nVars(); }
-        void add_clause(const std::vector<Lit>& cl) { clauses->emplace_back(cl); }
+        void add_clause(const std::vector<Lit>& cl) const { clauses->emplace_back(cl); }
     };
     InterpClauseSink sink{cex_solver, &f.clauses, helpers};
     ArjunNS::AIGToCNF<InterpClauseSink> enc(sink);
