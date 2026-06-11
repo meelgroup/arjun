@@ -76,14 +76,9 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     // B-side (label TRUE) or A-side (label = OR of input lits)?
     bool next_is_b = false;
 
-    // Labeled-interpolation system for resolution on a shared (input)
-    // pivot. SYS_MCMILLAN: shared='b' → AND of children (strongest
-    // interpolant). SYS_PUDLAK: shared='ab' → the selector
-    // (v∨I1)∧(¬v∨I2) (a smaller, symmetric interpolant). A-local
-    // pivots are 'a' → OR in both systems.
-    static constexpr int SYS_MCMILLAN = 0;
-    static constexpr int SYS_PUDLAK = 1;
-    int system = SYS_MCMILLAN;
+    // McMillan's labelled-interpolation rule: a shared (input) pivot is
+    // 'b' → AND of children (the strongest interpolant); an A-local pivot
+    // is 'a' → OR.
 
     // Variables with index >= b_local_from are B-local: they occur only
     // in B clauses, so a resolution pivot on them is AND'd just like a
@@ -186,12 +181,12 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     ArjunNS::aig_ptr build_interpolant();
 
 private:
-    // McMillan/Pudlák label of an original clause, computed lazily from
+    // McMillan label of an original clause, computed lazily from
     // the current input_vars — deferred out of add_original_clause so a
     // persistent tracer picks up input vars added since the clause was.
     [[nodiscard]] ArjunNS::aig_ptr original_label(uint64_t id);
-    // Resolve one derived clause's antecedent chain into a McMillan /
-    // Pudlák label. Tries the chain reversed, then forward.
+    // Resolve one derived clause's antecedent chain into a McMillan
+    // label. Tries the chain reversed, then forward.
     void build_derived_label(uint64_t id);
     // Replay `chain` as a linear resolution and set labels[id]. Returns
     // false (with labels[id] left at a partial value) if the chain is
@@ -240,8 +235,7 @@ public:
         uint32_t y_rep, CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         uint32_t max_aig_nodes = 0,
-        uint64_t conflict_budget = 0,
-        int system = 0);
+        uint64_t conflict_budget = 0);
 
     // SLOW_DEBUG / test-only sanity helper: interpolant evaluates to
     // FALSE on the CEX inputs. Not called on the default runtime path.
@@ -273,8 +267,6 @@ public:
     uint64_t calls = 0;
     uint64_t calls_succeeded = 0;
     uint64_t calls_failed_oversize = 0;
-    // Oversize McMillan interpolants that triggered a Pudlák retry.
-    uint64_t calls_oversize_pudlak_retry = 0;
     uint64_t calls_failed_other = 0;
     uint64_t calls_failed_empty_or_no_input = 0;
     // Cadical hit the conflict budget and returned l_Undef, not a proof.
@@ -385,8 +377,7 @@ private:
     [[nodiscard]] ArjunNS::aig_ptr solve_one_interpolant(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
-        uint64_t conflict_budget,
-        int system, int& out_ret);
+        uint64_t conflict_budget, int& out_ret);
 };
 
 } // namespace ArjunInt

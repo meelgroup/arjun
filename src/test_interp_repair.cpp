@@ -26,8 +26,8 @@
 //
 // These exercise compute_interpolant() directly on hand-built CNFs and
 // check the interpolant property — A→I and exclusion of the CEX — via
-// the public verification methods, plus the McMillan/Pudlák systems,
-// multi-proof intersection, and the memoisation cache.
+// the public verification methods, multi-proof intersection, and the
+// memoisation cache.
 
 #include "interp_repair.h"
 #include "arjun.h"
@@ -93,23 +93,6 @@ int main() {
         }
     }
 
-    // --- Test 2: Pudlák system also yields a verified interpolant. ---
-    {
-        SimplifiedCNF cnf = make_cnf(fg, 2, cls_xy);
-        set<uint32_t> inputs = {0};
-        AIGManager aig_mng;
-        InterpRepair ir(conf, cnf, inputs, aig_mng);
-
-        aig_ptr interp = ir.compute_interpolant(
-            1, to_repair, conflict, /*max_aig_nodes=*/0,
-            /*conflict_budget=*/0, /*system=*/1 /*Pudlák*/);
-        check(interp != nullptr, "Pudlák interpolant produced");
-        if (interp != nullptr) {
-            check(ir.slow_check_a_implies_i(to_repair, conflict, interp),
-                  "Pudlák interpolant satisfies A -> I");
-        }
-    }
-
     // --- Test 4: a conflict with no input literal has no B side, so
     // compute_interpolant must decline (return null). ---
     {
@@ -168,7 +151,7 @@ int main() {
         InterpRepair ir(conf, cnf, inputs, aig_mng);
 
         aig_ptr interp = ir.compute_interpolant(
-            1, to_repair, conflict, 0, 0, /*system=*/0);
+            1, to_repair, conflict, 0, 0);
         check(interp != nullptr, "interpolant produced with verify disabled");
         if (interp != nullptr) {
             check(ir.slow_check_a_implies_i(to_repair, conflict, interp),

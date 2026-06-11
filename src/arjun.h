@@ -1734,9 +1734,6 @@ public:
         int interp_repair_group_cse = 1;
         // Per-call cadical conflict budget for the interp solve. 0=no limit.
         uint64_t interp_repair_max_conflicts = 0;
-        // Labeled-interpolation system: 0=McMillan (strongest, default),
-        // 1=Pudlák (symmetric selector; smaller but weaker interpolant).
-        int interp_repair_system = 0;
         // Adaptive per-var gating: blacklist a var when its mean
         // interp/conflict ratio exceeds the threshold. 0=off, 1=on.
         int interp_repair_adaptive_gate = 1;

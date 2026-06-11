@@ -77,8 +77,8 @@ aig_ptr InterpTracerMcMillan::hash_or(const aig_ptr& l, const aig_ptr& r) {
     return ~hash_and(~l, ~r);
 }
 
-// OR over the shared (B-visible) literals in `cl` — the McMillan/Pudlák
-// label for an A-side clause. Empty shared set => label FALSE.
+// OR over the shared (B-visible) literals in `cl` — the McMillan label
+// for an A-side clause. Empty shared set => label FALSE.
 aig_ptr InterpTracerMcMillan::or_of_shared_lits(const vector<Lit>& cl) {
     // Collect the shared literals and fold them in a canonical order:
     // two A-clauses with the same shared-literal *set* (in any clause
@@ -130,24 +130,15 @@ void InterpTracerMcMillan::add_original_clause(uint64_t id, bool /*red*/,
     });
 }
 
-// McMillan/Pudlák label of an original clause from the current input_vars.
+// McMillan label of an original clause from the current input_vars.
 aig_ptr InterpTracerMcMillan::original_label(uint64_t id) {
     const vector<Lit>& cl = cls[id];
     if (!b_clause_ids.count(id)) {
         // A-side clause: label = OR of shared lits in the clause. Shared
-        // lits are 'b' (McMillan) or 'ab' (Pudlák); either way they are
-        // the disjuncts, so this base label is the same for both systems.
+        // lits are 'b'-labelled, so they are the disjuncts.
         return or_of_shared_lits(cl);
     }
-    if (system == SYS_PUDLAK) {
-        // Pudlák: shared lits are 'ab'-labelled, so a B-side
-        // clause's partial interpolant is ∧ ¬l over its shared lits.
-        aig_ptr lab = aig_mng.new_const(true);
-        for (const auto& l : cl)
-            if (is_shared(l.var())) lab = hash_and(lab, lit_aig(~l));
-        return lab;
-    }
-    // McMillan: shared lits are 'b'-labelled → B-clause label TRUE.
+    // B-side clause: shared lits are 'b'-labelled → label TRUE.
     return aig_mng.new_const(true);
 }
 
@@ -250,8 +241,6 @@ aig_ptr InterpTracerMcMillan::build_interpolant() {
         // is TRUE and is AND'd in (no change); an A-side unit's label is
         // OR'd in. So these steps only matter for an A-side input
         // assumption — but doing them keeps the result fully general.
-        release_assert(system == SYS_MCMILLAN
-            && "assumption-based interpolation supports McMillan only");
         for (const Lit m : cls[root]) {           // m = ¬a
             const Lit a = ~m;
             const aig_ptr unit_lab = (a.var() >= b_local_from)
@@ -361,23 +350,6 @@ bool InterpTracerMcMillan::resolve_chain(uint64_t id,
         }
 
         const bool pivot_is_shared = is_shared(pivot.var());
-
-        // Pudlák: a shared pivot is 'ab'-labelled → partial interpolant
-        // is the selector (v∨I1)∧(¬v∨I2), I1/I2 from the parents holding
-        // the variable positively/negatively. `lab` holds `pivot`;
-        // `it_l2->second` holds `~pivot`.
-        if (pivot_is_shared && system == SYS_PUDLAK) {
-            flush_batch();
-            const aig_ptr I_run = lab;               // parent with `pivot`
-            const aig_ptr I_new = it_l2->second;     // parent with `~pivot`
-            aig_ptr I1, I2;
-            if (!pivot.sign()) { I1 = I_run; I2 = I_new; }
-            else               { I1 = I_new; I2 = I_run; }
-            const aig_ptr v_pos = lit_aig(Lit(pivot.var(), false));
-            const aig_ptr v_neg = lit_aig(Lit(pivot.var(), true));
-            lab = hash_and(hash_or(v_pos, I1), hash_or(v_neg, I2));
-            continue;
-        }
 
         // McMillan: shared or B-local pivot → AND, A-local → OR.
         const bool want_and = pivot_is_shared || pivot.var() >= b_local_from;
@@ -673,8 +645,7 @@ std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
 
 aig_ptr InterpRepair::solve_one_interpolant(
         Lit to_repair_lit, const vector<Lit>& conflict,
-        uint64_t conflict_budget,
-        int system, int& out_ret)
+        uint64_t conflict_budget, int& out_ret)
 {
     out_ret = 0;
     // Build the mini CNF and solve on a fresh CaDiCaL with proof
@@ -687,7 +658,6 @@ aig_ptr InterpRepair::solve_one_interpolant(
         solver->limit("conflicts", (int)clamped);
     }
     InterpTracerMcMillan tracer(conf, aig_mng, input_vars);
-    tracer.system = system;
     solver->connect_proof_tracer(&tracer, true);
 
     const uint32_t b_marked = setup_mini_cnf(*solver, tracer,
@@ -731,8 +701,7 @@ aig_ptr InterpRepair::solve_one_interpolant(
 aig_ptr InterpRepair::compute_interpolant(
         [[maybe_unused]] uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
-        uint64_t conflict_budget,
-        int system)
+        uint64_t conflict_budget)
 {
     calls++;
     total_conflict_lits += conflict.size();
@@ -761,7 +730,7 @@ aig_ptr InterpRepair::compute_interpolant(
     // repair generalises over.
     int ret = 0;
     aig_ptr interp = solve_one_interpolant(to_repair_lit, conflict,
-            conflict_budget, system, ret);
+            conflict_budget, ret);
     if (interp == nullptr) {
         if (ret == 0) {
             // UNKNOWN is only reachable with a conflict budget set (asserted
@@ -848,17 +817,6 @@ aig_ptr InterpRepair::compute_interpolant(
         VERBOSE_DEBUG_DO(cout << "c o [interp-repair] interp has "
             << interp_nodes << " AIG nodes > cap " << max_aig_nodes
             << "; falling back" << endl);
-        // A McMillan interpolant can be much larger than the Pudlák
-        // selector form. Rather than dropping straight to the conflict
-        // clause, retry once with Pudlák — it is weaker but often fits.
-        if (system == InterpTracerMcMillan::SYS_MCMILLAN) {
-            calls_oversize_pudlak_retry++;
-            VERBOSE_DEBUG_DO(cout << "c o [interp-repair] retrying oversize "
-                "McMillan interpolant with Pudlák" << endl);
-            return compute_interpolant(y_rep, to_repair_lit, conflict,
-                max_aig_nodes, conflict_budget,
-                InterpTracerMcMillan::SYS_PUDLAK);
-        }
         return nullptr;
     }
     total_interp_nodes += interp_nodes;
@@ -968,7 +926,7 @@ bool InterpRepair::slow_check_a_implies_i(
 
     int ret = solver->solve();
     // ret==10 (SAT) would mean A & ¬I is satisfiable — impossible by
-    // construction of the McMillan/Pudlák interpolant. Guards the math.
+    // construction of the McMillan interpolant. Guards the math.
     release_assert(ret != 10
         && "interp-repair: A→I miter came back SAT");
     // ret==20 (UNSAT) or ret==0 (budget exhausted, inconclusive).
@@ -1040,7 +998,7 @@ bool InterpRepair::sample_check_interpolant(
         int ret = solver->solve();
         // ret==10 (SAT) would mean I(X)=FALSE on an input where flipping
         // y_rep is in fact feasible — impossible by construction of the
-        // McMillan/Pudlák interpolant. Guards the math.
+        // McMillan interpolant. Guards the math.
         release_assert(ret != 10
             && "interp-repair: sample_check found I(X)=FALSE but y_rep is flippable");
         // ret == 20 (UNSAT) or 0 (UNKNOWN, shouldn't happen w/o budget): pass

@@ -252,8 +252,6 @@ void add_arjun_options() {
           "How many tot_repaired ticks the adaptive blacklist persists before the var gets another chance.");
     myopt("--interprepairprogressmax", mconf.interp_repair_progress_max_var_repairs, fc_int,
           "Progress gate: once a var has been interp-repaired this many times and still needs more, drop interp for it (it is not generalising). 0=off.");
-    myopt("--interprepairsystem", mconf.interp_repair_system, fc_int,
-          "Labeled-interpolation system: 0=McMillan (strongest interpolant, default), 1=Pudlák (symmetric selector; smaller but weaker interpolant).");
 
     // === Brute-force synthesis (--bruteforcesynth 1) knobs ===
     myopt("--bruteforcesynththresh", mconf.brute_force_synth_threshold, fc_int,

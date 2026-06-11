@@ -82,7 +82,7 @@ it (`./test-interp-repair`, also wired into `ctest`).
   flattening. Runs before Manthan and between repair rounds.
 - `interp_repair.{h,cpp}` — Craig-interpolant repair for Manthan. A
   failed repair's UNSAT core is one corner of input space; the McMillan
-  (or Pudlák) interpolant over the input vars generalises it to the
+  interpolant over the input vars generalises it to the
   whole must-flip region, so one `compose_or/and` captures many repairs.
   Interpolants are reconstructed from a cadical proof trace and trimmed
   to the proof core. A McMillan interpolant CANNOT be wrong: given a

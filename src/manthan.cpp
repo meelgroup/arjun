@@ -1898,8 +1898,7 @@ void Manthan::maybe_compute_interp_branch(const uint32_t y_rep, const Lit to_rep
     interp_branch = interp_repair->compute_interpolant(
         y_rep, to_repair, conflict,
         mconf.interp_repair_max_aig_nodes,
-        mconf.interp_repair_max_conflicts,
-        mconf.interp_repair_system);
+        mconf.interp_repair_max_conflicts);
     interp_adaptive_bookkeeping(y_rep, conflict, interp_branch);
 
     SLOW_DEBUG_DO(
