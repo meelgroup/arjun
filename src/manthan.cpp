@@ -1462,7 +1462,13 @@ SimplifiedCNF Manthan::do_manthan() {
                 // cost-zero rate is high (saving more solver calls).
                 const uint32_t cz_threshold = (cost_zero_repairs > tot_repaired * mconf.cz_high_ratio) ? mconf.cz_threshold_high :
                     (cost_zero_repairs > tot_repaired * mconf.cz_low_ratio) ? mconf.cz_threshold_mid : mconf.cz_threshold_low;
-                if (consecutive_cost_zero >= cz_threshold && num_repaired > 0) break;
+                if (consecutive_cost_zero >= cz_threshold && num_repaired > 0) {
+                    verb_print(2, "[manthan] Breaking repair loop after " << consecutive_cost_zero
+                        << " consecutive cost-zero repairs (threshold " << cz_threshold
+                        << ", cost-zero repairs " << cost_zero_repairs
+                        << ", tot repaired " << tot_repaired << ")");
+                    break;
+                }
             }
             SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
             SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));

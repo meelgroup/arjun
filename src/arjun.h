@@ -1695,7 +1695,7 @@ public:
         // Hard-coded cutoffs now configurable
         uint32_t const_vote_samples = 100;   // const_functions: majority voting samples
         uint32_t stats_every = 40;          // print stats every N repair loops
-        uint32_t detailed_stats_every = 200;// print detailed stats every N repair loops
+        uint32_t detailed_stats_every = 600;// print detailed stats every N repair loops
         uint32_t conflict_drop_y_max = 25;  // max conflict size to try dropping y-vars
         uint32_t conflict_cap_keep = 30;    // keep this many literals when capping
         uint32_t batch_minim_min = 6;       // min conflict size for batch minimization
