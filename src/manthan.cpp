@@ -936,13 +936,11 @@ void Manthan::bve_and_substitute() {
 
     AIGRewriter rw;
     rw.rewrite_all(aigs, conf.verb);
-    rw.sat_sweep(aigs, conf.verb);
-    rw.rewrite_all(aigs, conf.verb);
 
     // One AIGToCNF encoder per formula. An earlier version used a persistent
     // encoder across formulas, reasoning that the node-pointer-keyed cache
     // would dedup helpers for hash-consed sub-AIGs shared across formulas.
-    // That turned out to be unsound: with sat_sweep + AIGRewriter massaging
+    // That turned out to be unsound: with AIGRewriter massaging
     // the aigs vector, a cached Lit from one formula's encoding would be
     // reused for another formula's encode_edge cache hit, yielding a Lit
     // whose value disagreed with direct AIG evaluation (via an independent
@@ -2217,14 +2215,6 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
             interp_repair->total_b1_post_rewrite += AIG::count_aig_nodes_fast(b1);
             interp_repair->b1_rewrite_calls++;
         }
-    }
-    // Optional FRAIG-lite sat-sweep pass; sat_sweep takes a root vector.
-    if (mconf.interp_repair_b1_satsweep != 0) {
-        ArjunNS::AIGRewriter rw;
-        std::vector<aig_ptr> roots = {b1};
-        rw.sat_sweep(roots, /*verb=*/0);
-        b1 = roots[0];
-        b1 = AIG::simplify_aig(b1);
     }
     f.aig = b1;
 

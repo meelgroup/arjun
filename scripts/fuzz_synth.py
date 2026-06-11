@@ -494,10 +494,6 @@ if __name__ == "__main__":
             val = random.choice([0, 1])
             solver += o + " " + str(val)
 
-        # Pure boolean flag (no 0/1 value). ~1-in-2 coverage.
-        if random.choice([True, False]):
-            solver += " --sat-sweep"
-
         # Force the doubled-CNF interpolation solver to rebuild after every
         # 1..5 interpolants so the rebuild path is exercised on every fuzz
         # iteration (production default is 512 — fuzz CNFs would never trip
@@ -551,7 +547,6 @@ if __name__ == "__main__":
             solver += " --interprepairmaxnodes " + random.choice(["0", "10", "100", "1000", "100000"])
             solver += " --interprepairb1rewrite " + random.choice(["0", "1"])
             solver += " --interprepairmaxconfl " + random.choice(["0", "100", "10000"])
-            solver += " --interprepairb1satsweep " + random.choice(["0", "1"])
             solver += " --interprepairgroupcse " + random.choice(["0", "1"])
             solver += " --interprepairadaptive " + random.choice(["0", "1"])
             solver += " --interprepairratioskip " + random.choice(["1.0", "5.0", "20.0"])

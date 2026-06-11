@@ -50,7 +50,6 @@ set(libfiles
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
     manthan.cpp
     shannon_synth.cpp
-    aig_sim.cpp
     aig_rewrite.cpp
     aig_to_cnf.cpp
     interpolant.cpp

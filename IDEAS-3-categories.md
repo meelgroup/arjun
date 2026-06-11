@@ -40,8 +40,8 @@ The three fixes split along three orthogonal axes:
 
 Treat the chained AIG as the source of truth and never let it grow
 unboundedly. When a variable's per-formula AIG exceeds a threshold (e.g.
-depth > 100 or nodes > 2000), run `AIGRewriter::rewrite_all` + `sat_sweep`
-+ `rewrite_all` on it (the same passes already used in
+depth > 100 or nodes > 2000), run `AIGRewriter::rewrite_all` on it (the
+same pass already used in
 `bve_and_substitute`), then **discard** `var_to_formula[y].clauses` /
 `out` and re-Tseitin from the compacted AIG via `AIGToCNF`. Reset
 `uninserted_start = 0` so `inject_formulas_into_solver` sees the new

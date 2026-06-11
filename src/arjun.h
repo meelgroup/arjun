@@ -1578,7 +1578,7 @@ public:
         assert(need_aig);
         AIG::simplify_aigs(verb, defs);
     }
-    void rewrite_aigs(const uint32_t verb = 0, bool sat_sweep = false);
+    void rewrite_aigs(const uint32_t verb = 0);
     [[nodiscard]] const auto& get_aig_mng() const { return aig_mng; }
     void import_candidate_functions(const std::string& fname, int verb = 0);
     void check_red_cls_deriveable() const;
@@ -1728,8 +1728,6 @@ public:
         // solver on every interpolant repair, so a smaller b1 directly
         // slows cex-solver growth between rebuilds.
         int interp_repair_b1_rewrite = 1;
-        // FRAIG-lite SAT-sweep on b1. 0=off, 1=on.
-        int interp_repair_b1_satsweep = 0;
         // Pass --group-cse to AIGToCNF when encoding b1: dedups Tseitin
         // helpers for structurally identical sub-AIGs. On by default for
         // the same cex-solver-growth reason as b1_rewrite.

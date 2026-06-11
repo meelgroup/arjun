@@ -73,7 +73,6 @@ int use_shannon_synth = 1;
 int do_unate_def = true;
 int do_revbce = false;
 int do_backward = true;
-int do_sat_sweep = false;
 string debug_minim;
 double cms_glob_mult = -1.0;
 int mode = 0;
@@ -218,7 +217,6 @@ void add_arjun_options() {
     myopt("--minimbudgetthresh", mconf.minim_budget_threshold, fc_int, "Conflict size above which minim budget is capped");
     myopt("--minimbudgetmax", mconf.minim_budget_max, fc_int, "Max minimization solver calls");
     myopt("--minimbudgetmult", mconf.minim_budget_mult, fc_int, "Minim budget = conflict.size * mult (up to max)");
-    myflag("--sat-sweep", do_sat_sweep, "Run FRAIG-lite SAT sweeping after AIG rewrite (merges proven-equivalent gates)");
     myopt("--ccnrmemspersample", mconf.ccnr_mems_per_sample, fc_int, "CCNR total memory budget per sample");
     myopt("--ccnrpercalllimit", mconf.ccnr_per_call_limit, fc_int, "CCNR per-call step limit for local_search");
     myopt("--czhighratio", mconf.cz_high_ratio, fc_int, "cost_zero > tot_repaired * this triggers tightest cz_threshold");
@@ -243,8 +241,6 @@ void add_arjun_options() {
           "Cap interpolant AIG size; if bigger, fall back to conflict-clause path. 0=no cap.");
     myopt("--interprepairb1rewrite", mconf.interp_repair_b1_rewrite, fc_int,
           "Independent: AIG rewrite of the combined branch b1=NOT(I) AND y_other_matches before Tseitin-encoding. simplify_aig is always on; this controls the heavier rewrite_aig pass. 0=off, 1=on.");
-    myopt("--interprepairb1satsweep", mconf.interp_repair_b1_satsweep, fc_int,
-          "FRAIG-lite sat_sweep on b1 — random-pattern sim + SAT-driven merging. Catches structural equivalences rewrite_aig misses. Expensive, opt-in. 0=off, 1=on.");
     myopt("--interprepairgroupcse", mconf.interp_repair_group_cse, fc_int,
           "Pass --group-cse to AIGToCNF when encoding the interp branch b1. Dedups Tseitin helpers for structurally identical sub-AIGs. 0=off, 1=on.");
     myopt("--interprepairmaxconfl", mconf.interp_repair_max_conflicts, fc_int,
@@ -456,7 +452,7 @@ void do_synthesis() {
         SLOW_DEBUG_DO(check_stage("unate_def"));
     }
 
-    cnf.rewrite_aigs(conf.verb, do_sat_sweep);
+    cnf.rewrite_aigs(conf.verb);
     if (use_shannon_synth && !cnf.synth_done()) {
         // Brute-force Shannon-tree synthesis: enumerate every consistent
         // X assignment, build per-y Shannon trees. Declines (returns the
@@ -477,7 +473,7 @@ void do_synthesis() {
         SLOW_DEBUG_DO(check_stage("manthan"));
     }
     if (!output_file.empty()) {
-        cnf.rewrite_aigs(conf.verb, do_sat_sweep);
+        cnf.rewrite_aigs(conf.verb);
         cnf.write_aig_def_to_verilog(output_file);
         cout << "c o [arjun] dumped synthesized functions to verilog file '" << output_file << "'" << endl;
     }

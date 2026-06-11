@@ -8,7 +8,6 @@
 #pragma once
 
 #include "arjun.h"
-#include "aig_sim.h"
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
@@ -34,19 +33,6 @@ struct AIGRewriteStats {
     uint64_t nodes_after = 0;
     double total_time = 0.0;
 
-    // FRAIG-lite SAT-sweep counters.
-    uint64_t sweep_sim_groups = 0;
-    uint64_t sweep_sat_checks = 0;
-    uint64_t sweep_merges = 0;
-    uint64_t sweep_cex_refuted = 0;
-    uint64_t sweep_timeouts = 0;
-    uint64_t sweep_class_aborts = 0;
-    uint64_t sweep_budget_exhausted = 0;
-    uint64_t sweep_self_ref_reverts = 0;
-    uint64_t sweep_cycle_reverts = 0;
-    uint64_t sweep_const_merges = 0;
-    uint64_t sweep_cex_filtered = 0;
-
     void print(int verb) const;
     void clear();
 };
@@ -61,26 +47,10 @@ public:
     // Rewrite a vector of AIGs sharing structure across all.
     void rewrite_all(std::vector<aig_ptr>& defs, int verb = 1);
 
-    // FRAIG-lite SAT-sweep across `defs`: merge functionally equivalent AND
-    // nodes. Every merge is SAT-verified through MetaSolver.
-    void sat_sweep(std::vector<aig_ptr>& defs, int verb = 1);
-
-    void set_sat_sweep_sim_patterns(uint32_t n) { sweep_sim_rounds = n; }
-    void set_sat_sweep_max_class(uint32_t n) { sweep_max_class_size = n; }
-    void set_sat_sweep_conflict_budget(uint64_t n) { sweep_conflict_budget = n; }
-
     const AIGRewriteStats& get_stats() const { return stats; }
 
 private:
     AIGRewriteStats stats;
-    // 64-bit simulation rounds (each = 64 patterns).
-    uint32_t sweep_sim_rounds = 16;
-    // Member cap per class — bounds worst-case SAT churn on degenerate groups.
-    uint32_t sweep_max_class_size = 64;
-    // Per-check SAT conflict budget; l_Undef from hitting it = "cannot prove".
-    uint64_t sweep_conflict_budget = 500;
-    // Abort a class after this many consecutive non-merges (sim coincidence).
-    uint32_t sweep_class_abort_streak = 2;
 
     // Hash-cons for AND nodes keyed on the two signed child edges (nid+sign).
     // In this AIG flavour an AND has no output sign — outer sign lives on the
@@ -146,19 +116,6 @@ private:
     }
 
     aig_lit make_canonical(const aig_lit& l, const aig_lit& r);
-
-    // sat_sweep helpers. Shared state lives in SweepState (defined in the
-    // .cpp); the topology + simulation half is the standalone SimState
-    // helper (see aig_sim.h), reusable by other AIG passes.
-    struct SweepState;
-    void sweep_build_classes(SweepState& st, int verb, double start_time);
-    void sweep_find_constants(SweepState& st);
-    void sweep_verify_classes(SweepState& st, int verb, double start_time);
-    void sweep_rebuild_defs(std::vector<aig_ptr>& defs,
-                            std::vector<aig_ptr>& orig_defs,
-                            SweepState& st);
-    void sweep_break_cycles(std::vector<aig_ptr>& defs,
-                            const std::vector<aig_ptr>& orig_defs);
 };
 
 } // namespace ArjunNS

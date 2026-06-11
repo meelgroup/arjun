@@ -121,7 +121,6 @@ if __name__ == "__main__":
         solver += " --interprepairmaxnodes %s" % random.choice(["0", "10", "100", "10000"])
         solver += " --interprepairb1rewrite %s" % random.choice(["0", "1"])
         solver += " --interprepairmaxconfl %s" % random.choice(["0", "100", "10000"])
-        solver += " --interprepairb1satsweep %s" % random.choice(["0", "1"])
         solver += " --interprepairgroupcse %s" % random.choice(["0", "1"])
         solver += " --interprepairsystem %s" % random.choice(["0", "1"])
         solver += " --interprepairfullconf %s" % random.choice(["0", "1"])
