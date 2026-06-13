@@ -287,7 +287,7 @@ def timeout_parse(fname):
     }
 
 
-def read_file(fname, files):
+def read_file(fname, files, existing=None):
     if ".csv" in fname:
         return
 
@@ -309,6 +309,11 @@ def read_file(fname, files):
         return
     basename = m.group(1)
     base = dirname + "/" + basename
+
+    # Incremental: already in the DB from a previous run — skip before doing
+    # the expensive file-content parse.
+    if existing is not None and (dirname, basename) in existing:
+        return
 
     if base not in files:
         files[base] = {}
@@ -373,14 +378,22 @@ COLUMNS = [
 ]
 
 
-def create_db(db_path):
-    if os.path.exists(db_path):
+def open_db(db_path, recreate):
+    # recreate: drop any existing DB so only the files given on this run end
+    # up in it. Otherwise we open (or create) the DB and append, skipping
+    # benchmark entries already present.
+    if recreate and os.path.exists(db_path):
         os.remove(db_path)
     conn = sqlite3.connect(db_path)
     col_defs = ", ".join(f"{name} {typ}" for name, typ in COLUMNS)
-    conn.execute(f"CREATE TABLE arjun ({col_defs})")
+    conn.execute(f"CREATE TABLE IF NOT EXISTS arjun ({col_defs})")
     conn.commit()
     return conn
+
+
+def get_existing_keys(conn):
+    # (dirname, fname) pairs already parsed into the DB.
+    return set(conn.execute("SELECT dirname, fname FROM arjun"))
 
 
 def insert_rows(conn, files):
@@ -400,6 +413,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Parse arjun output files into SQLite database")
     parser.add_argument("--files", default="out-synth-*/*cnf*",
                         help="Glob pattern for files to parse (e.g. 'out-synth-1286344-3/*')")
+    parser.add_argument("--recreate", action="store_true",
+                        help="Empty the database first and parse only the given files "
+                             "(default: accumulate, skipping already-parsed entries)")
     args = parser.parse_args()
 
     file_list = glob.glob(args.files)
@@ -408,14 +424,18 @@ if __name__ == "__main__":
         exit(1)
     print(f"Found {len(file_list)} files matching '{args.files}'")
 
+    db_path = "data.sqlite3"
+    conn = open_db(db_path, args.recreate)
+    existing = get_existing_keys(conn)
+    if existing:
+        print(f"Database already has {len(existing)} benchmark entries")
+
     files = {}
     for f in file_list:
-        read_file(f, files)
+        read_file(f, files, existing)
 
-    print(f"Parsed {len(files)} benchmark entries")
+    print(f"Parsed {len(files)} new benchmark entries")
 
-    db_path = "data.sqlite3"
-    conn = create_db(db_path)
     insert_rows(conn, files)
     conn.close()
 
