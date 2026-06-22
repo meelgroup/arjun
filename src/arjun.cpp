@@ -1448,17 +1448,20 @@ DLL_PUBLIC void SimplifiedCNF::replace_clauses_with(vector<int>& ret, uint32_t n
     clauses.clear();
     vector<CMSat::Lit> cl;
     uint32_t at = 0;
+    uint32_t num_parsed = 0;
     while(ret.size() > at) {
         int l = ret[at++];
         if (l == 0) {
+            // NOTE: add_clause() drops tautologies (x v -x), and normalizes clauses
             add_clause(cl);
             cl.clear();
+            num_parsed++;
             continue;
         }
         cl.emplace_back(abs(l)-1, l < 0);
     }
     assert(cl.empty() && "SBVA should have ended with a 0");
-    assert(clauses.size() == new_nclauses && "Number of clauses mismatch after SBVA");
+    assert(num_parsed == new_nclauses && "Number of clauses mismatch after SBVA");
 }
 
 // returns in CNF (new vars) the dependencies of each variable
