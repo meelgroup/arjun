@@ -293,7 +293,6 @@ void add_arjun_options() {
     myopt("--iter1grow", simp_conf.bve_grow_iter1, fc_int,"Puura BVE grow rate allowed before Oracle");
     myopt("--iter2", simp_conf.iter2, fc_int,"Puura iterations after oracle");
     myopt("--iter2grow", simp_conf.bve_grow_iter2, fc_int,"Puura BVE grow rate allowed after Oracle");
-    myopt("--bvegrownonstop", simp_conf.bve_grow_nonstop, fc_int,"Do not stop BVE if nothing got eliminated, keep going until grow factor limit");
     myopt("--bveresolvmaxsz", simp_conf.bve_too_large_resolvent, fc_int,"Puura BVE max resolvent size in literals. -1 == no limit");
     myopt("--oraclemult", simp_conf.oracle_mult, fc_double,"Oracle multiplier for timeout (i.e. steps-out)");
     myopt("--oraclesparsify", simp_conf.oracle_sparsify, fc_int,"Use Oracle to sparsify");
@@ -566,7 +565,6 @@ int main(int argc, char** argv) {
         if (!program.is_used("--bveresolvmaxsz")) simp_conf.bve_too_large_resolvent = 1000;
         /* if (!program.is_used("--iter1grow")) simp_conf.bve_grow_iter1 = 200; */
         if (!program.is_used("--iter2grow")) simp_conf.bve_grow_iter2 = 500;
-        if (!program.is_used("--bvegrownonstop")) simp_conf.bve_grow_nonstop = true;
     }
 
     // Default ganak binary: look next to arjun binary, or in ../ganak/build/
