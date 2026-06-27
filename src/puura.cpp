@@ -161,9 +161,10 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     string str;
     switch (simp_conf.puura_strategy & 1) {
         case 0:
-            release_assert(false);
+            str = string("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, occ-bve, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
+            break;
         case 1:
-            str = string("must-scc-vrepl, full-probe, occ-gate-eq, must-scc-vrepl, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, must-scc-vrepl, occ-bve, sub-impl, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
+            str = string("must-scc-vrepl, full-probe, sub-impl, sub-cls-with-bin, distill-cls-onlyrem, occ-backw-sub, occ-resolv-subs, occ-rem-with-orgates, occ-ternary-res, must-scc-vrepl, occ-bve, sub-impl, distill-cls-onlyrem, intree-probe, occ-backw-sub-str, sub-str-cls-with-bin, clean-cls, distill-cls, distill-bins, ");
             break;
     }
 
@@ -206,6 +207,10 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     }
     solver->set_max_red_linkin_size(20);
     for (int i = 0; i < simp_conf.iter2; i++) {
+        if (i >= 1) {
+            solver->set_picosat_gate_limitK(400);
+            solver->set_picosat_confl_limit(1000);
+        }
         solver->simplify(&dont_elim, &str_iter2);
     }
 
