@@ -3024,9 +3024,7 @@ bool Manthan::count_error_formula(mpz_class& out_count) {
         Lit y_hat_lit(y_hat, false);
 
         // y_hat <-> func_out
-        // y_hat OR ~func_out
         clauses.push_back({y_hat_lit, ~func_out});
-        // ~y_hat OR func_out
         clauses.push_back({~y_hat_lit, func_out});
     }
 
