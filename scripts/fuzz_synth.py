@@ -361,7 +361,7 @@ def gen_mstrategy():
                    "min_leaf_size", "const_vote_samples", "stats_every",
                    "detailed_stats_every",
                    "conflict_drop_y_max",
-                   "conflict_cap_keep", "batch_minim_min",
+                   "batch_minim_min",
                    "minim_budget_threshold", "minim_budget_max", "minim_budget_mult",
                    "ccnr_mems_per_sample", "ccnr_per_call_limit",
                    "cz_high_ratio", "cz_low_ratio",
@@ -524,7 +524,6 @@ if __name__ == "__main__":
         solver += " --statsevery " + random.choice(["0", "1", "10", "40", "1000"])
         solver += " --detailedstatsevery " + random.choice(["0", "1", "10", "200", "5000"])
         solver += " --confldropy " + random.choice(["1", "5", "25", "100", "10000"])
-        solver += " --conflcapkeep " + random.choice(["1", "2", "5", "30", "100", "100000"])
         solver += " --batchminimmin " + random.choice(["1", "3", "6", "20", "10000"])
         solver += " --minimbudgetthresh " + random.choice(["1", "5", "20", "100", "10000"])
         solver += " --minimbudgetmax " + random.choice(["1", "10", "150", "1000", "100000"])

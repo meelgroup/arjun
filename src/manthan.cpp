@@ -1587,8 +1587,8 @@ void Manthan::try_drop_y_vars(vector<Lit>& conflict, vector<Lit>& assumps,
     input_only_rep++;
 }
 
-// Minimize the conflict, then generalise it (drop y-vars, cap size) and strip
-// the to_repair literal so only the must-flip region's input/y literals remain.
+// Minimize the conflict, then generalise it (drop y-vars) and strip the
+// to_repair literal so only the must-flip region's input/y literals remain.
 void Manthan::minimize_and_generalize_conflict(vector<Lit>& conflict,
         vector<Lit>& assumps, const Lit to_repair) {
     verb_print(2, "find_conflict sz: " << setw(5) << conflict.size() << " conflict: " << conflict);
@@ -1807,15 +1807,12 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         }
         f.out = fresh_l;
 
-        // AIG part: the guard, TRUE exactly on the conflict cube.
-        aig_lit guard = nullptr;
+        // AIG part: the guard, TRUE exactly on the conflict cube. conflict is
+        // non-empty here (the empty case returned early above).
         for(const auto& l: conflict) assert(l.var() < cnf.nVars());
-        if (conflict.empty()) guard = aig_mng.new_const(true);
-        else {
-            guard = AIG::new_lit(~conflict[0]);
-            for(size_t i = 1; i < conflict.size(); i++) {
-                guard = AIG::new_and(guard, AIG::new_lit(~conflict[i]));
-            }
+        aig_lit guard = AIG::new_lit(~conflict[0]);
+        for(size_t i = 1; i < conflict.size(); i++) {
+            guard = AIG::new_and(guard, AIG::new_lit(~conflict[i]));
         }
         f.aig = guard;
     }

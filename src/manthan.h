@@ -132,8 +132,8 @@ class Manthan {
         // Copy the repair_solver model into ctx for y_rep and all later y-vars
         // (cost-zero repair: y_rep is satisfiable without changing the formula).
         void apply_cost_zero_model(const uint32_t y_rep, sample& ctx);
-        // Minimize then generalise the conflict (drop y-vars, cap size) and
-        // strip the to_repair literal, leaving the must-flip region's literals.
+        // Minimize then generalise the conflict (drop y-vars) and strip the
+        // to_repair literal, leaving the must-flip region's literals.
         void minimize_and_generalize_conflict(std::vector<CMSat::Lit>& conflict,
                 std::vector<CMSat::Lit>& assumps, const CMSat::Lit to_repair);
         // Drop ALL y-vars from the conflict if the input-only remainder is

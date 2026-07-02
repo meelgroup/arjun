@@ -207,7 +207,6 @@ void add_arjun_options() {
     myopt("--statsevery", mconf.stats_every, fc_int, "Print stats every N repair loops");
     myopt("--detailedstatsevery", mconf.detailed_stats_every, fc_int, "Print detailed stats every N repair loops");
     myopt("--confldropy", mconf.conflict_drop_y_max, fc_int, "Max conflict size to try dropping y-vars");
-    myopt("--conflcapkeep", mconf.conflict_cap_keep, fc_int, "Keep this many literals when capping conflicts");
     myopt("--batchminimmin", mconf.batch_minim_min, fc_int, "Min conflict size for batch minimization");
     myopt("--minimbudgetthresh", mconf.minim_budget_threshold, fc_int, "Conflict size above which minim budget is capped");
     myopt("--minimbudgetmax", mconf.minim_budget_max, fc_int, "Max minimization solver calls");
