@@ -1768,6 +1768,8 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 
 void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         const vector<Lit>& conflict) {
+    for(const auto& l: conflict) assert(l.var() < cnf.nVars());
+
     // Track conflict variable frequency for smarter minimization ordering
     for (const auto& l : conflict) {
         if (l.var() < var_conflict_freq.size()) var_conflict_freq[l.var()]++;
@@ -1779,6 +1781,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         updated_y_funcs.push_back(y_rep);
         return;
     }
+
     verb_print(2, "[manthan] Performing repair on " << setw(5) << y_rep+1
             << " with conflict size " << setw(3) << conflict.size());
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
@@ -1807,8 +1810,6 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         f.out = fresh_l;
 
         // AIG part: the guard, TRUE exactly on the conflict cube.
-        assert(!conflict.empty());
-        for(const auto& l: conflict) assert(l.var() < cnf.nVars());
         aig_lit guard = AIG::new_lit(~conflict[0]);
         for(size_t i = 1; i < conflict.size(); i++) {
             guard = AIG::new_and(guard, AIG::new_lit(~conflict[i]));
