@@ -269,10 +269,8 @@ inline const MinCnf& min_cnf_for_tt(uint32_t num_inputs, uint32_t tt) {
     const uint32_t canon_tt = (tt_bits <= tt_compl) ? tt_bits : tt_compl;
     const uint64_t canon_key = ((uint64_t)num_inputs << 32) | canon_tt;
 
-    // Ensure the canonical entry is cached. std::unordered_map keeps
-    // references to mapped values stable across rehashes (only iterators
-    // may invalidate), so any reference we hold into `cache` remains valid
-    // across further emplaces.
+    // Ensure the canonical entry is cached. unordered_map keeps mapped-value
+    // references valid across rehashes, so held references survive emplaces.
     auto cit = cache.find(canon_key);
     if (cit == cache.end()) {
         MinCnf computed = compute_min_cnf(num_inputs, canon_tt);

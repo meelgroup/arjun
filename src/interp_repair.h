@@ -89,11 +89,9 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     // correctly. A-local pivots (below the threshold, non-input) → OR.
     uint32_t b_local_from = UINT32_MAX;
 
-    // Original clauses decided to be B-side (label = TRUE).
-    // Clause-id keyed and only ever point-accessed (never iterated), so
-    // these are unordered: a persistent tracer accumulates them across
-    // many incremental solves, and O(1) lookup keeps resolve_chain off
-    // the O(log N) red-black-tree walk.
+    // Original clauses decided to be B-side (label = TRUE). Clause-id keyed,
+    // only point-accessed (never iterated) so unordered is determinism-safe
+    // and gives resolve_chain O(1) lookup.
     std::unordered_set<uint64_t> b_clause_ids;
 
     // ID -> clause literals (kept to find resolution pivots).

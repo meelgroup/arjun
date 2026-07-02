@@ -288,7 +288,6 @@ enum class Feature {
     NONE,               // baseline: all features on
     NORMALIZE_INPUTS,   // dedup/complementary/const fold in k-ary groups
     GROUP_CSE,          // content-hashed CSE for AND/OR/ITE groups
-    DEMORGAN_FLATTEN,   // flatten k-ary through NOT-wrappers
     ITE_SUB_SELECTOR,   // ITE detection with non-literal sub-AIG selectors
     DETECT_ITE,         // ITE detection entirely
     KARY_FUSION,        // k-ary AND/OR fusion
@@ -299,7 +298,6 @@ static const char* feature_name(Feature f) {
         case Feature::NONE:             return "baseline (all on)";
         case Feature::NORMALIZE_INPUTS: return "normalize_inputs";
         case Feature::GROUP_CSE:        return "group_cse";
-        case Feature::DEMORGAN_FLATTEN: return "demorgan_flatten";
         case Feature::ITE_SUB_SELECTOR: return "ite_sub_selector";
         case Feature::DETECT_ITE:       return "detect_ite";
         case Feature::KARY_FUSION:      return "kary_fusion";
@@ -330,7 +328,6 @@ static MeasureResult run_measure_pass(const std::vector<aig_ptr>& aigs,
             case Feature::NONE: break;
             case Feature::NORMALIZE_INPUTS: enc.set_normalize_inputs(false); break;
             case Feature::GROUP_CSE:        enc.set_group_cse(false); break;
-            case Feature::DEMORGAN_FLATTEN: enc.set_demorgan_flatten(false); break;
             case Feature::ITE_SUB_SELECTOR: enc.set_ite_sub_selector(false); break;
             case Feature::DETECT_ITE:       enc.set_detect_ite(false); break;
             case Feature::KARY_FUSION:      enc.set_kary_fusion(false); break;
@@ -428,7 +425,6 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
     Feature features[] = {
         Feature::NORMALIZE_INPUTS,
         Feature::GROUP_CSE,
-        Feature::DEMORGAN_FLATTEN,
         Feature::ITE_SUB_SELECTOR,
         Feature::DETECT_ITE,
         Feature::KARY_FUSION,

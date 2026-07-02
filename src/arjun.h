@@ -51,9 +51,7 @@ template<class Solver> class AIGToCNF;
 
 // Underlying AIG node. Nodes are positive-output only — the complement of a
 // reference is carried on the referring edge (see aig_lit below), not on the
-// node. This matches the AIGER literature convention: every fanin of an AND
-// gate may be independently complemented, but the AND's own output is never
-// inverted.
+// node (the AIGER convention).
 using aig_node_ptr = std::shared_ptr<AIG>;
 
 enum class AIGT {t_and, t_lit, t_const};
@@ -66,13 +64,10 @@ inline std::ostream& operator<<(std::ostream& os, const AIGT& value) {
     }
 }
 
-// Signed reference to an AIG node: the edge carries a complement bit.
-// Every consumer that needs to refer to an AIG (as a root, as a fanin of an
-// AND gate, as a value stored in defs[], as a key in a map, etc.) uses
-// `aig_lit` rather than a bare shared_ptr. This is the only place where
-// complementation lives in the new representation.
-//
-// `aig_ptr` is an alias for `aig_lit` for backwards-compatible naming.
+// Signed reference to an AIG node: the edge carries the complement bit. All
+// references (roots, AND fanins, defs[] values, map keys) use `aig_lit`, not a
+// bare shared_ptr — this is the only place complementation lives.
+// `aig_ptr` is a backwards-compatible alias.
 struct aig_lit {
     aig_node_ptr node;
     bool neg;
@@ -109,11 +104,8 @@ public:
     AIG(const AIG&) = delete;
     AIG& operator=(const AIG&) = delete;
 
-    // Monotonically increasing id assigned at construction time. Used as a
-    // deterministic ordering/hash key in place of the raw shared_ptr address,
-    // which varies run-to-run and machine-to-machine due to ASLR / allocator
-    // variance. Assignment order reflects construction order, which is
-    // itself deterministic given deterministic inputs.
+    // Monotonic id assigned at construction. Deterministic ordering/hash key in
+    // place of the raw shared_ptr address, which ASLR randomises run-to-run.
     uint64_t nid;
 
     [[nodiscard]] bool invariants() const {
@@ -580,11 +572,8 @@ private:
         return ++counter;
     }
 
-    // Counter backing the `nid` field. A plain static counter is sufficient
-    // because AIG construction is not thread-parallel in our pipeline, and
-    // determinism only requires that within a single process the issued ids
-    // are a deterministic function of construction order. Not reset across
-    // runs, but each run starts from 0, which is what callers rely on.
+    // Counter backing `nid`. A plain static counter suffices: construction is
+    // single-threaded, and each run starts from 0.
     static uint64_t next_nid() {
         static uint64_t counter = 0;
         return ++counter;
@@ -656,10 +645,9 @@ private:
         const_true_node = nullptr;
     }
 
-    // Shared positive TRUE const node. Managers copied from others share the
-    // same node so comparisons stay pointer-equal across copies. Note: there
-    // can still be other TRUE nodes elsewhere (e.g. created by AIG::new_const);
-    // this manager is a convenience, not a canonical source.
+    // Shared positive TRUE const node; copies share it so comparisons stay
+    // pointer-equal. A convenience, not canonical — AIG::new_const can make
+    // other TRUE nodes.
     aig_node_ptr const_true_node = nullptr;
 };
 
@@ -1772,14 +1760,10 @@ public:
         uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1,
         uint32_t sbva_max_new_vars = 0);
     SimplifiedCNF standalone_manthan(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
-    // Brute-force synthesis: enumerate every consistent X
-    // assignment via a forbid-clause SAT loop, build per-y decision
-    // trees. Synthesizes when |orig_sampl_cnf| ≤ brute_force_synth_threshold
-    // (after the optional minim pre-pass); otherwise returns the CNF
-    // unchanged (synth_done() stays false) so the caller can fall back
-    // to Manthan. ManthanConf is kept for API parity with
-    // standalone_manthan; brute_force_synth only reads its brute_force_synth_*
-    // fields.
+    // Brute-force synthesis (see ManthanConf::brute_force_synth_* above).
+    // Synthesizes when |orig_sampl_cnf| ≤ brute_force_synth_threshold, else
+    // returns the CNF unchanged (synth_done() stays false) for the Manthan
+    // fallback. Only the brute_force_synth_* fields of manthan_conf are read.
     SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
     void standalone_autarky(SimplifiedCNF& cnf);
 

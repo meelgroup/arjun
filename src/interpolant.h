@@ -48,22 +48,16 @@ namespace ArjunInt {
 //   B = everything else (copy 2, indicators, and their units)
 // over the shared input variables IS the definition of test_var.
 //
-// No PicoSAT is involved. The (CMS-simplified) doubled CNF is loaded once
-// in fill_from_solver into a single persistent incremental CaDiCaL with
-// InterpTracerMcMillan attached. Indicator units are added incrementally
-// via add_unit_cl, and each generate_interpolant call is one
-// assumption-based solve on that same solver: assume the
-// test_var-differs-across-copies literals, solve, conclude(), and let the
-// tracer reconstruct the interpolant from the refutation. Because the
-// doubled CNF is added (and the tracer told about it) only once, the
-// per-test_var cost is just the solve and the proof-core reconstruction.
+// The doubled CNF is loaded once in fill_from_solver into one
+// persistent incremental CaDiCaL with InterpTracerMcMillan attached; indicator
+// units are added via add_unit_cl. Each generate_interpolant is one
+// assumption-based solve (assume the differs-across-copies lits, solve,
+// conclude()), so per-test_var cost is just the solve plus proof-core rebuild.
 //
-// The tracer's clause maps (cls / antec) grow with every incremental
-// solve and cannot be pruned safely (a derived clause kept by cadical
-// may be an antecedent of a later proof). To bound both memory and the
-// per-lookup cost, the solver + tracer are rebuilt from scratch every
-// conf.interp_rebuild_every interpolants — cheap, since reloading just
-// re-adds the doubled CNF and the indicator units.
+// The tracer's clause maps (cls / antec) can't be pruned safely — a derived
+// clause may antecede a later proof — so they grow unboundedly. The
+// solver + tracer are therefore rebuilt every conf.interp_rebuild_every
+// interpolants to cap memory and lookup cost.
 class Interpolant {
 public:
     Interpolant(const Config& _conf, const uint32_t num_vars) :
@@ -72,7 +66,7 @@ public:
     }
     ~Interpolant();
 
-    // Extract the (CMS-simplified) doubled CNF from `solver` once and load
+    // Extract the doubled CNF from `solver` once and load
     // it into the persistent incremental interpolation solver, before the
     // per-variable solve loop starts. `input_vars` is the caller's live
     // input-variable set: the tracer keeps a reference to it and picks up
@@ -99,7 +93,7 @@ private:
     uint32_t tot_num_vars = 0;
     const ArjunNS::AIGManager* aig_mng = nullptr;
 
-    // The doubled CMS-simplified CNF, extracted once in fill_from_solver
+    // The doubled CNF, extracted once in fill_from_solver
     // (kept only for the optional --debugsynth CNF dump).
     std::vector<std::vector<CMSat::Lit>> all_cls;
     // Indicator units accumulated as variables get defined / proven

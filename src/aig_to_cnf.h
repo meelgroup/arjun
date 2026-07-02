@@ -81,11 +81,6 @@ public:
     void set_kary_fusion(bool b) { kary_fusion = b; }
     void set_group_cse(bool b) { group_cse = b; }
     void set_ite_sub_selector(bool b) { ite_sub_selector = b; }
-    // The DeMorgan-flatten toggle is a no-op in the new model — flattening
-    // through what used to be NOT-wrappers of OR gates is already captured
-    // by collect_and_edges's positive-edge AND descent. Kept for API
-    // compatibility.
-    void set_demorgan_flatten(bool) {}
     void set_normalize_inputs(bool b) { normalize_inputs = b; }
     void set_max_kary_width(uint32_t w) { max_kary_width = w; }
 
@@ -581,11 +576,8 @@ void AIGToCNF<Solver>::emit_and_equiv(CMSat::Lit g, const std::vector<CMSat::Lit
 template<class Solver>
 void AIGToCNF<Solver>::emit_or_equiv(CMSat::Lit g, const std::vector<CMSat::Lit>& inputs) {
     // g = OR(inputs):
-    //   for each i: i → g  ⇔ ~i ∨ g
-    //   ~g → (or-of-all-inputs) ⇔ g ∨ i1 ∨ i2 ... wait that's wrong.
-    // Let me redo:
-    //   g → OR  : g → (i1 ∨ i2 ∨ ...)  ⇔ ~g ∨ i1 ∨ i2 ...  (one big clause)
-    //   OR → g  : for each i, i → g    ⇔ ~i ∨ g             (per-input)
+    //   g → OR : g → (i1 ∨ i2 ∨ ...) ⇔ ~g ∨ i1 ∨ i2 ...  (one big clause)
+    //   OR → g : for each i, i → g   ⇔ ~i ∨ g             (per-input)
     std::vector<CMSat::Lit> forward;
     forward.reserve(inputs.size() + 1);
     forward.push_back(~g);

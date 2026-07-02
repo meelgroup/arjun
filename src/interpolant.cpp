@@ -79,7 +79,7 @@ void Interpolant::fill_from_solver(SATSolver* cms_solver,
     aig_mng = &_aig_mng;
     input_vars = &_input_vars;
 
-    // Extract the (already CMS-simplified) doubled CNF once. The indicator
+    // Extract the doubled CNF once. The indicator
     // units permanently added to the solver later come via add_unit_cl.
     all_cls.clear();
     cms_solver->start_getting_constraints(false);
