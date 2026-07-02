@@ -175,7 +175,6 @@ struct FuzzStats {
     uint64_t opt_clauses_total = 0;
     uint64_t opt_helpers_total = 0;
     uint64_t opt_kary_and = 0, opt_kary_and_width = 0;
-    uint64_t opt_kary_or = 0, opt_kary_or_width = 0;
     uint64_t opt_ite = 0;
     uint64_t opt_mux3 = 0;
     double total_time_s = 0;
@@ -200,10 +199,6 @@ struct FuzzStats {
         cout << "k-ary ANDs: " << opt_kary_and
              << " (avg width "
              << (opt_kary_and ? (double)opt_kary_and_width / opt_kary_and : 0.0)
-             << ")" << endl;
-        cout << "k-ary ORs:  " << opt_kary_or
-             << " (avg width "
-             << (opt_kary_or ? (double)opt_kary_or_width / opt_kary_or : 0.0)
              << ")" << endl;
         cout << "ITE patterns detected: " << opt_ite << endl;
         cout << "MUX3 patterns detected: " << opt_mux3 << endl;
@@ -254,7 +249,6 @@ static bool run_one(const aig_ptr& aig, uint32_t num_vars,
              << "  ratio=" << std::fixed << std::setprecision(2) << cls_ratio
              << "/" << hlp_ratio
              << "  kAND=" << es.kary_and_count
-             << " kOR=" << es.kary_or_count
              << " ITE=" << es.ite_patterns
              << " MUX3=" << es.mux3_patterns
              << " XOR=" << es.xor_patterns
@@ -268,8 +262,6 @@ static bool run_one(const aig_ptr& aig, uint32_t num_vars,
     fs.opt_helpers_total += es.helpers_added;
     fs.opt_kary_and += es.kary_and_count;
     fs.opt_kary_and_width += es.kary_and_width_total;
-    fs.opt_kary_or += es.kary_or_count;
-    fs.opt_kary_or_width += es.kary_or_width_total;
     fs.opt_ite += es.ite_patterns;
     fs.opt_mux3 += es.mux3_patterns;
 
@@ -681,7 +673,6 @@ int main(int argc, char** argv) {
                  << "  cls_ratio=" << std::setprecision(2) << ratio_cls
                  << "  hlp_ratio=" << ratio_h
                  << "  kAND=" << fs.opt_kary_and
-                 << " kOR=" << fs.opt_kary_or
                  << " ITE=" << fs.opt_ite
                  << " MUX3=" << fs.opt_mux3
                  << endl;

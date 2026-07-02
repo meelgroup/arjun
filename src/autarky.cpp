@@ -42,7 +42,8 @@ Autarky::Autarky(const Config& _conf) : conf(_conf) {}
 void Autarky::find_autarkies(SimplifiedCNF& cnf) {
     const double start_time = cpuTime();
     if (cnf.get_need_aig()) {
-        cnf.get_var_types(conf.verb, "start find_autarkies").unpack_to(input, to_define, backward_defined);
+        auto vt = cnf.get_var_types(conf.verb, "start find_autarkies");
+        to_define = std::move(vt.to_define);
     }
 
     s.set_verbosity(0);

@@ -63,7 +63,6 @@ ArjunNS::Arjun::ManthanConf mconf;
 int do_gates = 1;
 int redundant_cls = true;
 int simptofile = true;
-int sampl_start_at_zero = false;
 int do_synth_bve = true;
 int do_pre_backbone = 0;
 string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_learnt=1),bve";
@@ -71,10 +70,8 @@ string mstrategy = "const(max_repairs=400),const(max_repairs=400,inv_learnt=1),b
 int synthesis = false;
 int use_brute_force_synth = 1;
 int do_unate_def = true;
-int do_revbce = false;
 int do_backward = true;
 string debug_minim;
-double cms_glob_mult = -1.0;
 int mode = 0;
 unique_ptr<FieldGen> fg = nullptr;
 
@@ -150,7 +147,6 @@ void add_arjun_options() {
     myopt("--mode", mode , fc_int, "0=counting, 1=weightd counting");
     myopt("--allindep", etof_conf.all_indep , fc_int, "All variables can be made part of the indepedent support. Indep support is given ONLY to help the solver.");
     myopt("--maxc", conf.backw_max_confl, fc_int,"Maximum conflicts per variable in backward mode");
-    myopt("--revbce", do_revbce, fc_int,"Perform reverse BCE");
     myopt("--sbva", etof_conf.num_sbva_steps, fc_int,"SBVA timeout in K steps. 0 = no sbva");
     myopt("--prebackbone", do_pre_backbone, fc_int,"Perform backbone before other things");
     myopt("--seed", conf.seed, fc_int, "Random seed");

@@ -1035,28 +1035,3 @@ bool InterpRepair::quick_check_interpolant_excludes_cex(
     if (v == l_Undef) return true; // can't tell; don't fail
     return v == l_False;
 }
-
-void InterpRepair::print_stats(const std::string& prefix) const {
-    cout << "c o " << prefix
-         << " calls: " << calls
-         << " ok: " << calls_succeeded
-         << " oversize: " << calls_failed_oversize
-         << " trivial: " << calls_failed_empty_or_no_input
-         << " other: " << calls_failed_other
-         << " avg conflict-lits: "
-         << fixed << setprecision(1)
-         << (calls ? (double)total_conflict_lits / (double)calls : 0.0)
-         << " avg interp-nodes: "
-         << (calls_succeeded ? (double)total_interp_nodes / (double)calls_succeeded : 0.0)
-         << " max interp-nodes: " << max_interp_nodes_seen
-         << " AIG-nodes</>conflict-lits: " << interp_smaller_than_conflict
-         << "/" << interp_larger_than_conflict
-         << " avg AIG input-vars: "
-         << (calls_succeeded ? (double)total_interp_support / (double)calls_succeeded : 0.0)
-         << " mini-CNF kept: "
-         << (total_minicnf_clauses
-                ? safe_div(total_minicnf_clauses_kept*100.0, total_minicnf_clauses)
-                : 0.0)
-         << "%";
-    cout << endl;
-}

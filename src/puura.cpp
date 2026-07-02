@@ -122,7 +122,8 @@ SimplifiedCNF Puura::get_fully_simplified_renumbered_cnf(
     const double my_time = cpuTime();
     if (cnf.get_need_aig()) {
         SLOW_DEBUG_DO(assert(cnf.defs_invariant()));
-        cnf.get_var_types(conf.verb | verbose_debug_enabled, "start get_fully_simplified_renumbered_cnf").unpack_to(input, to_define, backward_defined);
+        auto vt = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start get_fully_simplified_renumbered_cnf");
+        to_define = std::move(vt.to_define);
     }
     for(const auto& v: cnf.get_sampl_vars())
         verb_print(5, "[w-debug] orig sampl var: " << v+1);
@@ -290,8 +291,6 @@ void Puura::set_up_sampl_vars_dont_elim(const SimplifiedCNF& cnf) {
         }
     }
     for(uint32_t v: cnf.get_sampl_vars()) dont_elim.emplace_back(v, false);
-    sampl_set.clear();
-    for(uint32_t v: cnf.get_sampl_vars()) sampl_set.insert(v);
 }
 
 void Puura::run_sbva(SimplifiedCNF& cnf,

@@ -88,8 +88,6 @@ struct EncResult {
     uint64_t helpers;
     uint64_t kary_and;
     uint64_t kary_and_width_total;
-    uint64_t kary_or;
-    uint64_t kary_or_width_total;
     Lit out;
 };
 
@@ -110,8 +108,6 @@ static EncResult encode(const aig_ptr& root, uint32_t nvars) {
         st.helpers_added,
         st.kary_and_count,
         st.kary_and_width_total,
-        st.kary_or_count,
-        st.kary_or_width_total,
         out
     };
 }

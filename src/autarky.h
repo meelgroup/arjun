@@ -40,9 +40,7 @@ public:
 
 private:
     /// For synthesis stats
-    std::set<uint32_t> input;
     std::set<uint32_t> to_define;
-    std::set<uint32_t> backward_defined;
 
     struct LitSub {
         CMSat::Lit pos = CMSat::lit_Undef;

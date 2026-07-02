@@ -36,7 +36,7 @@ namespace ArjunInt {
 
 class MetaSolver2 {
 public:
-    explicit MetaSolver2(SolverType type = SolverType::cadical) : solver_type(type) {
+    explicit MetaSolver2(SolverType type = SolverType::cadical) {
         solver[0] = std::make_unique<MetaSolver>(type);
         solver[1] = std::make_unique<MetaSolver>(type);
     }
@@ -97,18 +97,8 @@ public:
         solver[1]->simplify(assumps);
     }
 
-    SolverType get_solver_type() const { return solver_type; }
-
-    // Reset both solver instances, discarding all variables and clauses.
-    // The new solvers start empty with 0 variables.
-    void reset() {
-        solver[0] = std::make_unique<MetaSolver>(solver_type);
-        solver[1] = std::make_unique<MetaSolver>(solver_type);
-    }
-
 private:
     std::array<std::unique_ptr<MetaSolver>,2> solver;
-    SolverType solver_type;
 };
 
 } // namespace ArjunInt

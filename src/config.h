@@ -35,7 +35,6 @@ struct Config {
     int distill = 1;
     int intree = 1;
     int bve_pre_simplify = 1;
-    int incidence_count = 3; // this determines what incidence MEANS
     int or_gate_based = 1;
     int xor_gates_based = 1;
     int ite_gate_based = 1;
@@ -45,7 +44,6 @@ struct Config {
     double no_gates_below = 0.01;
     std::string specified_order_fname;
     uint32_t backw_max_confl = 20000;
-    uint32_t unate_max_confl = 100;
     uint32_t extend_max_confl = 30000;
     int unate_def_eq = 1;
     uint32_t unate_def_eq_max_per_var = 128;
@@ -60,7 +58,6 @@ struct Config {
     // tried first; non-inputs only after the input list is exhausted.
     // 0 = inputs only (old behavior). 1 = inputs first, then non-inputs.
     int unate_def_eq_noninput = 1;
-    bool weighted = false;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;
     int extend_ccnr = 0;

@@ -129,8 +129,6 @@ public:
         else cadical->limit("conflicts", static_cast<int>(max_confl));
     }
 
-    SolverType get_solver_type() const { return solver_type; }
-
 private:
     SolverType solver_type;
     std::unique_ptr<CMSat::SATSolver> cms = nullptr;
@@ -172,11 +170,6 @@ private:
         return l.sign() ? -v : v;
     }
 
-    // Convert CaDiCaL int to CMSat::Lit
-    static CMSat::Lit cadical_to_lit(int l) {
-        uint32_t var = std::abs(l) - 1;  // 0-indexed
-        return CMSat::Lit(var, l < 0);
-    }
 };
 
 } // namespace ArjunInt

@@ -177,10 +177,8 @@ void Manthan::rebuild_var_bytemaps() {
     const uint32_t nv = cnf.nVars();
     is_input.assign(nv, 0);
     is_backward_defined.assign(nv, 0);
-    is_to_define_full.assign(nv, 0);
     for (const auto& v : input) is_input[v] = 1;
     for (const auto& v : backward_defined) is_backward_defined[v] = 1;
-    for (const auto& v : to_define_full) is_to_define_full[v] = 1;
 }
 
 void Manthan::fill_dependency_mat_with_backward() {
@@ -2629,7 +2627,6 @@ void Manthan::inject_formulas_into_solver() {
         const auto& y_hat = y_to_y_hat.at(y);
 
         y_hat_to_indic[y_hat] = ind;
-        indic_to_y_hat[ind] = y_hat;
         indic_to_y[ind] = y;
         verb_print(3, "->CTX ind: " << ind+1 << " y_hat: " << y_hat+1  << " form_out: " << form_out);
 

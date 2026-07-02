@@ -61,13 +61,7 @@ private:
 
     const Config& conf;
 
-    std::set<uint32_t> input;
     std::set<uint32_t> to_define;
-    std::set<uint32_t> backward_defined;
-
-    std::vector<uint32_t> var_to_indic;
-    uint32_t orig_num_vars;
-    std::set<uint32_t> sampl_set;
     std::vector<CMSat::Lit> dont_elim;
 };
 }

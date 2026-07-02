@@ -1562,7 +1562,6 @@ public:
     }
     void rewrite_aigs(const uint32_t verb = 0);
     [[nodiscard]] const auto& get_aig_mng() const { return aig_mng; }
-    void import_candidate_functions(const std::string& fname, int verb = 0);
     void check_red_cls_deriveable() const;
 
 private:
@@ -1790,7 +1789,6 @@ public:
     void set_intree(bool intree);
     void set_simp(int simp);
     void set_bve_pre_simplify(bool bve_pre_simp);
-    void set_incidence_count(uint32_t incidence_count);
     void set_or_gate_based(bool or_gate_based);
     void set_xor_gates_based(bool xor_gates_based);
     void set_probe_based(bool probe_based);
@@ -1823,7 +1821,6 @@ public:
     [[nodiscard]] bool get_distill() const;
     [[nodiscard]] bool get_intree() const;
     [[nodiscard]] bool get_bve_pre_simplify() const;
-    [[nodiscard]] uint32_t get_incidence_count() const;
     [[nodiscard]] bool get_or_gate_based() const;
     [[nodiscard]] bool get_xor_gates_based() const;
     [[nodiscard]] bool get_probe_based() const;

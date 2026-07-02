@@ -64,7 +64,6 @@ class Manthan {
 
         // when indic is TRUE, y_hat and func_out are EQUAL
         std::map<uint32_t, uint32_t> y_hat_to_indic;
-        std::map<uint32_t, uint32_t> indic_to_y_hat;
         std::map<uint32_t, uint32_t> indic_to_y;
         std::set<uint32_t> needs_repair;
 
@@ -84,7 +83,6 @@ class Manthan {
         // Sized to cnf.nVars(); kept in sync with the sets via rebuild_var_bytemaps().
         std::vector<uint8_t> is_input;
         std::vector<uint8_t> is_backward_defined;
-        std::vector<uint8_t> is_to_define_full;
         void rebuild_var_bytemaps();
 
         // To help us account for every variable in the formulas' clauses

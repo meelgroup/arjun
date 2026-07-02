@@ -64,31 +64,6 @@ constexpr int slow_debug_enabled = 1;
 constexpr int slow_debug_enabled = 0;
 #endif
 
-template<typename LIT, typename T, typename T2>
-inline void dump_cnf(T2& s, const std::string& name, const T& sampl_set) {
-    std::vector<std::vector<LIT>> cls;
-    std::vector<LIT> cl;
-    s.start_getting_constraints(false);
-    bool is_xor, rhs;
-    while(s.get_next_constraint(cl, is_xor, rhs)) {
-        assert(!is_xor); assert(rhs);
-        cls.push_back(cl);
-    }
-    s.end_getting_constraints();
-
-    std::ofstream f(name);
-    f << "p cnf " << s.nVars() << " " << cls.size() << std::endl;
-
-    f << "c p show ";
-    for(const auto& l: sampl_set) f << l << " ";
-    f << " 0" << std::endl;
-
-    for(const auto& c: cls) f << c << " 0" << std::endl;
-    f.close();
-    std::cout << "c o DEBUG dumped CNF to " << name << " with " << cls.size() << " clauses and "
-        << s.nVars() << " vars" << std::endl;
-}
-
 inline double safe_div(double a, double b) noexcept {
     if (b == 0) {
         return 0;
@@ -176,29 +151,6 @@ template<typename T, typename  T2> void sort_unknown(T& unknown, const std::vect
         }
         return a < b;
         });
-}
-
-[[nodiscard]] inline std::string print_value_kilo_mega(const int64_t value, bool setw = true)
-{
-    std::stringstream ss;
-    if (value > 20*1000LL*1000LL) {
-        if (setw) {
-            ss << std::setw(4);
-        }
-        ss << value/(1000LL*1000LL) << "M";
-    } else if (value > 20LL*1000LL) {
-        if (setw) {
-            ss << std::setw(4);
-        }
-        ss << value/1000LL << "K";
-    } else {
-        if (setw) {
-            ss << std::setw(5);
-        }
-        ss << value;
-    }
-
-    return ss.str();
 }
 
 [[nodiscard]] inline double stats_line_percent(double num, double total) noexcept

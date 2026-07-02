@@ -336,7 +336,6 @@ public:
             CMSat::Lit to_repair_lit,
             const std::vector<CMSat::Lit>& conflict) const;
 
-    void print_stats(const std::string& prefix = "[interp-repair]") const;
 
 private:
     const Config& conf;

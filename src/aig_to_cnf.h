@@ -41,23 +41,13 @@ struct AIG2CNFStats {
 
     uint64_t kary_and_count = 0;
     uint64_t kary_and_width_total = 0;
-    // In the input-edge-neg model OR is just a negative-edge reference to an
-    // AND — encode_and_node handles both polarities uniformly, so kary_or_*
-    // are always zero. Kept for API compatibility with callers that still
-    // query them.
-    uint64_t kary_or_count = 0;
-    uint64_t kary_or_width_total = 0;
-    uint64_t const_nodes = 0;
-    uint64_t lit_nodes = 0;
 
-    // Stubs kept for API compatibility with callers that still track these.
     uint64_t ite_patterns = 0;
     uint64_t mux3_patterns = 0;
     // Sum of selector counts across all fused MUX chains (≥2 each). With
     // mux3_patterns counting one per chain, the average chain length is
     // mux_chain_levels_total / mux3_patterns.
     uint64_t mux_chain_levels_total = 0;
-    uint64_t mux_chain_cse_hits = 0;
     uint64_t xor_patterns = 0;
     uint64_t cut_cnf_patterns = 0;
     uint64_t cut_cnf_clauses = 0;
@@ -67,24 +57,6 @@ struct AIG2CNFStats {
     uint64_t cut_cnf_proj = 0;
     // Cut-CNF cones served from the functional (leaves+tt) CSE cache.
     uint64_t cut_cnf_cse_hits = 0;
-
-    // Group-CSE contribution counters.
-    uint64_t cse_and_hits = 0;
-    uint64_t cse_ite_hits = 0;
-
-    // How often collect_and_edges flattens through a positive-edge AND. In
-    // the new input-edge-neg model this subsumes the old NOT-wrapper-of-OR
-    // DeMorgan rewrite: a "double-negated OR" becomes a positive edge to
-    // the underlying AND, whose children are the negations of the original
-    // disjuncts — exactly the shape DeMorgan targeted.
-    uint64_t demorgan_and_flat = 0;
-
-    // Structural (AIG-level) simplification counters for the k-ary AND
-    // conjunct list, applied BEFORE encoding conjuncts as CNF literals.
-    uint64_t aig_dedup_and = 0;       // duplicate conjuncts dropped
-    uint64_t aig_complement_and = 0;  // x and ~x in same group → FALSE
-    uint64_t absorption_and = 0;      // AND(a, OR(a, ...)) → drop OR
-    uint64_t dedup_const_and = 0;     // group folded to constant
 
     double encode_time_s = 0.0;
 
@@ -396,12 +368,10 @@ template<class Solver>
 CMSat::Lit AIGToCNF<Solver>::encode_edge(const aig_ptr& n) {
     stats.nodes_visited++;
     if (n->type == AIGT::t_const) {
-        stats.const_nodes++;
         CMSat::Lit t = get_true_lit();
         return n.neg ? ~t : t;
     }
     if (n->type == AIGT::t_lit) {
-        stats.lit_nodes++;
         return CMSat::Lit(n->var, n.neg);
     }
     assert(n->type == AIGT::t_and);
@@ -480,7 +450,6 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_positive(const AIG* n) {
     if (normalize_inputs) {
         bool is_const = false;
         if (structural_simplify_and(conjunct_edges, is_const)) {
-            stats.dedup_const_and++;
             return is_const ? get_true_lit() : ~get_true_lit();
         }
         if (conjunct_edges.empty()) return get_true_lit();
@@ -538,7 +507,6 @@ CMSat::Lit AIGToCNF<Solver>::encode_and_positive(const AIG* n) {
         canon_sort_lits(inputs);
         auto it_cse = and_group_cse.find(inputs);
         if (it_cse != and_group_cse.end()) {
-            stats.cse_and_hits++;
             return it_cse->second;
         }
     }
@@ -590,7 +558,6 @@ void AIGToCNF<Solver>::collect_and_edges(const aig_lit& child, std::vector<aig_l
         && fanout[child.get()] <= 1
         && cache.find(child.get()) == cache.end())
     {
-        stats.demorgan_and_flat++;
         collect_and_edges(child->l, out);
         collect_and_edges(child->r, out);
         return;
@@ -939,7 +906,6 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
             key.push_back(pack(base_lit));
             auto it_cse = mux_chain_cse.find(key);
             if (it_cse != mux_chain_cse.end()) {
-                stats.mux_chain_cse_hits++;
                 out = it_cse->second;
                 return true;
             }
@@ -989,7 +955,6 @@ bool AIGToCNF<Solver>::try_ite(const aig_lit& n, CMSat::Lit& out) {
         IteKey key{pack(s), pack(t), pack(e)};
         auto it = ite_cse.find(key);
         if (it != ite_cse.end()) {
-            stats.cse_ite_hits++;
             stats.ite_patterns++;
             out = it->second;
             return true;
@@ -1032,7 +997,6 @@ bool AIGToCNF<Solver>::structural_simplify_and(std::vector<aig_lit>& conjuncts,
     // conjunct order — the subsequent OR-absorption pass below is
     // order-sensitive and would otherwise produce different CNF across runs.
     {
-        const size_t before = conjuncts.size();
         std::sort(conjuncts.begin(), conjuncts.end(),
             [](const aig_lit& a, const aig_lit& b) {
                 if (a.node->nid != b.node->nid) return a.node->nid < b.node->nid;
@@ -1040,14 +1004,12 @@ bool AIGToCNF<Solver>::structural_simplify_and(std::vector<aig_lit>& conjuncts,
             });
         conjuncts.erase(std::unique(conjuncts.begin(), conjuncts.end()),
                          conjuncts.end());
-        if (conjuncts.size() < before) stats.aig_dedup_and += before - conjuncts.size();
     }
     // (3) Complementary pair: after sort by nid, same-node entries are
     // adjacent and differ only in sign.
     for (size_t i = 0; i + 1 < conjuncts.size(); i++) {
         if (conjuncts[i].node.get() == conjuncts[i+1].node.get()
             && conjuncts[i].neg != conjuncts[i+1].neg) {
-            stats.aig_complement_and++;
             out_const = false;
             return true;
         }
@@ -1081,8 +1043,8 @@ bool AIGToCNF<Solver>::structural_simplify_and(std::vector<aig_lit>& conjuncts,
                 else if (conjuncts[j] == ci->r) resolved = ~ci->l;
             }
         }
-        if (absorbed) { stats.absorption_and++; continue; }
-        if (resolved.node) { stats.absorption_and++; kept.push_back(resolved); continue; }
+        if (absorbed) { continue; }
+        if (resolved.node) { kept.push_back(resolved); continue; }
         kept.push_back(ci);
     }
     conjuncts.swap(kept);
