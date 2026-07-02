@@ -537,20 +537,6 @@ if __name__ == "__main__":
         solver += " --czthreshmid " + random.choice(["0", "1", "2", "5", "1000"])
         solver += " --czthreshlow " + random.choice(["0", "1", "2", "5", "1000"])
 
-        # Craig-interpolant repair: mostly off, ~25% on.
-        ir_mode = random.choices([0, 1, 2], weights=[3, 1, 1])[0]
-        solver += " --interprepair " + str(ir_mode)
-        if ir_mode == 2:
-            solver += " --interprepairmincl " + random.choice(["1", "2", "4", "8", "20"])
-        if ir_mode > 0:
-            solver += " --interprepairmaxnodes " + random.choice(["0", "10", "100", "1000", "100000"])
-            solver += " --interprepairb1rewrite " + random.choice(["0", "1"])
-            solver += " --interprepairmaxconfl " + random.choice(["0", "100", "10000"])
-            solver += " --interprepairgroupcse " + random.choice(["0", "1"])
-            solver += " --interprepairadaptive " + random.choice(["0", "1"])
-            solver += " --interprepairratioskip " + random.choice(["1.0", "5.0", "20.0"])
-            solver += " --interprepairskipwindow " + random.choice(["1", "10", "100"])
-
         solver += " --mstrategy " + gen_mstrategy()
 
         err, aigs = run_synth(solver, fname)

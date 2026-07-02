@@ -58,16 +58,9 @@ From `build/`:
 ./fuzz_synth.py --num 400
 ./fuzz_aig_to_cnf --num 1000
 ./fuzz_aig_rewrite --num 1000
-./fuzz_interp_repair.py --num 400
 ```
 
 All must pass before reporting a change as complete.
-`fuzz_interp_repair.py` forces `--interprepair` on every
-iteration and randomizes the full set of `--interprepair*` knobs, so the
-Craig-interpolant repair path is exercised.
-
-For anything touching `interp_repair.*` also build the unit test and run
-it (`./test-interp-repair`, also wired into `ctest`).
 
 ## Source layout (`src/`)
 
@@ -80,23 +73,11 @@ it (`./test-interp-repair`, also wired into `ctest`).
   synthesis / repair loop. Hot path for large benchmarks.
 - `aig_rewrite.{h,cpp}` — structural hashing, CSE, absorption, ITE
   flattening. Runs before Manthan and between repair rounds.
-- `interp_repair.{h,cpp}` — Craig-interpolant repair for Manthan. A
-  failed repair's UNSAT core is one corner of input space; the McMillan
-  interpolant over the input vars generalises it to the
-  whole must-flip region, so one `compose_or/and` captures many repairs.
-  Interpolants are reconstructed from a cadical proof trace and trimmed
-  to the proof core. A McMillan interpolant CANNOT be wrong: given a
-  valid UNSAT proof of a correctly-built miter it is sound by
-  construction. Any "wrong interpolant" symptom is therefore a bug in
-  the miter / partition / mini-CNF setup, never in the interpolation
-  itself — debug by SAT-checking the A-only and B-only clause subsets.
-  Any double-checking of an interpolant (A→I / g≡N miters) is a
-  bug-hunting safety net only and belongs under `SLOW_DEBUG_DO`. The
-  pass returns nullptr (caller then uses the plain conflict-clause
-  branch) only when there is nothing to interpolate (empty conflict, no
-  input lits in conflict), the AIG exceeds the node cap, or the per-call
-  conflict budget is exhausted. See the `--interprepair*` flags in
-  `main.cpp`.
+- `interpolant.{h,cpp}` — definition extraction by Craig interpolation
+  over a doubled CNF (used by the `--backward` and `--extend` passes),
+  plus the `InterpTracerMcMillan` McMillan-interpolant tracer that
+  reconstructs interpolants from a cadical proof trace. See the
+  `--interprebuildevery` flag in `main.cpp`.
 - `aig_to_cnf.{h,cpp}` — Tseitin encoding with fanout-based helper
   suppression, k-ary AND/OR fusion, ITE / MUX3 detection.
 - `puura.{h,cpp}` — SharpSAT-td-derived simplification.
@@ -104,8 +85,8 @@ it (`./test-interp-repair`, also wired into `ctest`).
   `unate_def.cpp` — independent-set extraction passes.
 - `metasolver.h`, `metasolver2.h`, `cachedsolver.h` — SAT-solver wrappers
   used by Manthan.
-- `test_aig_rewrite.cpp`, `test_aig_to_cnf.cpp`, `test-synth.cpp`,
-  `test_interp_repair.cpp` — correctness checkers.
+- `test_aig_rewrite.cpp`, `test_aig_to_cnf.cpp`, `test-synth.cpp` —
+  correctness checkers.
 - `aig_fuzzer.cpp`, `aig_to_cnf_fuzzer.cpp` — fuzzers.
 
 ## Determinism

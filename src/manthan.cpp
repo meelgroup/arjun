@@ -960,8 +960,6 @@ void Manthan::print_stats(const string& txt, const string& color, const string& 
             << "   avg need rep: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
             << "   cache-hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
             << "   input-only: " << setw(4) << input_only_rep
-            << "   interp: " << setw(3) << fixed << setprecision(0)
-                << safe_div(interp_repairs_used*100.0, tot_repaired) << "%"
             << "   T: " << setprecision(2) << fixed << setw(7) << repair_time
             << "   rep/s: " << setprecision(4) << safe_div(tot_repaired,repair_time) << setprecision(2)
             << extra);
@@ -994,123 +992,13 @@ void Manthan::print_detailed_stats() const {
             << ", >1000x: " << vars_over_1000 << ")");
     }
 
-    // Interp-repair: Manthan-side aggregates (how often interp drove a
-    // repair); InterpRepair's own print_stats has per-call internals.
-    if (interp_repair) {
-        const double interp_used_pct = safe_div(interp_repairs_used*100.0, tot_repaired);
-        const uint64_t conflict_repairs = (tot_repaired >= interp_repairs_used)
-            ? (tot_repaired - interp_repairs_used) : 0;
-        verb_print(1, COLCYN "[manthan-stats] === INTERP-REPAIR STATS ===");
-        verb_print(1, COLCYN "[manthan-stats]   interp drove repairs: " << interp_repairs_used
-            << " / " << tot_repaired
-            << "  (" << fixed << setprecision(1) << interp_used_pct << "%)");
-        verb_print(1, COLCYN "[manthan-stats]   conflict drove rep.:  " << conflict_repairs);
-        // Fresh cex_solver helper vars created per repair, by path.
-        if (interp_repairs_used > 0) {
-            verb_print(1, COLCYN "[manthan-stats]   helpers/rep:          "
-                << "interp avg " << fixed << setprecision(1)
-                << safe_div(helpers_added_interp, interp_repairs_used)
-                << "  legacy avg " << safe_div(helpers_added_legacy, conflict_repairs));
-        }
-        if (mconf.interp_repair_adaptive_gate != 0) {
-            verb_print(1, COLCYN "[manthan-stats]   adaptive skips:       " << interp_adaptive_skips
-                << "  (ratio>" << fixed << setprecision(1) << mconf.interp_repair_adaptive_ratio_skip
-                << " → blacklist for " << mconf.interp_repair_adaptive_skip_window << " repairs)");
-        }
-        if (mconf.interp_repair_progress_max_var_repairs > 0) {
-            verb_print(1, COLCYN "[manthan-stats]   progress gate:        "
-                << interp_progress_blacklisted << " vars blacklisted, "
-                << interp_progress_skips << " repairs fell back"
-                << "  (>" << mconf.interp_repair_progress_max_var_repairs
-                << " non-converging interp repairs/var)");
-        }
-        verb_print(1, COLCYN "[manthan-stats]   interp calls (incl. fallbacks): " << interp_repair->calls
-            << "  ok: " << interp_repair->calls_succeeded
-            << "  oversize: " << interp_repair->calls_failed_oversize
-            << "  budget_exh: " << interp_repair->calls_budget_exhausted
-            << "  trivial: " << interp_repair->calls_failed_empty_or_no_input
-            << "  other_fail: " << interp_repair->calls_failed_other);
-        if (interp_repair->calls_succeeded > 0) {
-            verb_print(1, COLCYN "[manthan-stats]   interp avg conflict-lits: " << fixed << setprecision(1)
-                << safe_div(interp_repair->total_conflict_lits, interp_repair->calls)
-                << "  avg interp-nodes: "
-                << safe_div(interp_repair->total_interp_nodes, interp_repair->calls_succeeded)
-                << "  max interp-nodes: " << interp_repair->max_interp_nodes_seen);
-            verb_print(1, COLCYN "[manthan-stats]   interp-AIG-nodes < / > conflict-clause-lits: "
-                << interp_repair->interp_smaller_than_conflict << " / "
-                << interp_repair->interp_larger_than_conflict
-                << "  (avg AIG input-vars: " << fixed << setprecision(1)
-                << safe_div(interp_repair->total_interp_support,
-                            interp_repair->calls_succeeded) << ")");
-            if (interp_repair->calls_succeeded > 0
-                    && interp_repair->total_input_lits_in_conflict > 0) {
-                const double avg_supp = safe_div(interp_repair->total_interp_support,
-                                                 interp_repair->calls_succeeded);
-                const double avg_inplits = safe_div(interp_repair->total_input_lits_in_conflict,
-                                                    interp_repair->calls_succeeded);
-                // ratio > 1: interp uses input vars beyond the conflict's.
-                const double ratio = safe_div(avg_supp, avg_inplits);
-                verb_print(1, COLCYN "[manthan-stats]   support: avg interp uses "
-                    << fixed << setprecision(1) << avg_supp
-                    << " input vars (conflict had " << avg_inplits << " input lits, ratio "
-                    << setprecision(2) << ratio << "x)");
-            }
-            // rewrite_aig effectiveness: AIG node counts summed pre vs
-            // post the heavier structural rewrite pass. Each line is
-            // printed only when its rewrite flag is enabled.
-            if (interp_repair->b1_rewrite_calls > 0) {
-                const double pct = 100.0 *
-                    (1.0 - safe_div(interp_repair->total_b1_post_rewrite,
-                                    interp_repair->total_b1_pre_rewrite));
-                verb_print(1, COLCYN "[manthan-stats]   guard rewrite:      "
-                    << "pre=" << interp_repair->total_b1_pre_rewrite
-                    << " post=" << interp_repair->total_b1_post_rewrite
-                    << "  (" << fixed << setprecision(1) << pct << "% reduction"
-                    << ", " << interp_repair->b1_rewrite_calls << " calls)");
-            }
-            if (interp_repair->total_proof_derived > 0) {
-                verb_print(1, COLCYN "[manthan-stats]   interp proof-core:  "
-                    << interp_repair->total_proof_core << " / "
-                    << interp_repair->total_proof_derived << " derived clauses kept ("
-                    << fixed << setprecision(1)
-                    << safe_div(interp_repair->total_proof_core*100.0,
-                                interp_repair->total_proof_derived)
-                    << "%)");
-            }
-            if (interp_repair->total_minicnf_clauses > 0) {
-                verb_print(1, COLCYN "[manthan-stats]   interp mini-CNF:    "
-                    << interp_repair->total_minicnf_clauses_kept << " / "
-                    << interp_repair->total_minicnf_clauses << " orig clauses fed ("
-                    << fixed << setprecision(1)
-                    << safe_div(interp_repair->total_minicnf_clauses_kept*100.0,
-                                interp_repair->total_minicnf_clauses)
-                    << "%)");
-            }
-            // Compact histograms: only print non-zero buckets.
-            auto print_hist = [&](const char* label, const uint64_t* h) {
-                std::stringstream ss;
-                ss << "[manthan-stats]   " << label;
-                for (size_t i = 0; i < InterpRepair::HIST_BUCKETS; i++) {
-                    if (h[i] == 0) continue;
-                    ss << "  " << InterpRepair::bucket_label(i) << "=" << h[i];
-                }
-                verb_print(1, COLCYN << ss.str());
-            };
-            print_hist("conflict-sz hist:   ", interp_repair->conflict_size_hist);
-            print_hist("interp-nodes hist:  ", interp_repair->interp_size_hist);
-        }
-    }
-
     // Print top 20 most successfully repaired vars with their AIG sizes.
-    // Order by i+c (successful interp + conflict-branch repairs); ties
-    // broken by total attempts so cost-zero-heavy vars still show up
-    // below their successful peers.
+    // Order by successful (non-cost-zero) repairs; ties broken by total
+    // attempts so cost-zero-heavy vars still show up below their
+    // successful peers.
     auto n_succ_of = [&](uint32_t v) -> uint32_t {
-        const uint32_t ni = (v < interp_repairs_per_var.size())
-            ? interp_repairs_per_var[v] : 0;
-        const uint32_t nc = (v < conflict_branch_repairs_per_var.size())
+        return (v < conflict_branch_repairs_per_var.size())
             ? conflict_branch_repairs_per_var[v] : 0;
-        return ni + nc;
     };
     vector<uint32_t> rep(cnf.nVars());
     for(uint32_t i = 0; i < cnf.nVars(); i++) rep[i] = i;
@@ -1140,39 +1028,22 @@ void Manthan::print_detailed_stats() const {
             aig_depth = get_depth(var_to_formula.at(v).aig, dc);
         }
         const uint32_t n_attempts = repaired_vars_count[v];
-        const uint32_t n_interp = (v < interp_repairs_per_var.size())
-            ? interp_repairs_per_var[v] : 0;
-        const uint32_t n_confl_succ = (v < conflict_branch_repairs_per_var.size())
+        const uint32_t n_succ = (v < conflict_branch_repairs_per_var.size())
             ? conflict_branch_repairs_per_var[v] : 0;
-        const uint32_t n_succ = n_interp + n_confl_succ;
         const uint32_t n_cost_zero = (n_attempts >= n_succ) ? (n_attempts - n_succ) : 0;
-        // interp% is over *successful* repairs (interp + conflict),
-        // ignoring cost-zero failures so the two paths add up to 100%.
-        const double interp_pct = safe_div(n_interp * 100.0, n_succ);
         auto fmt_avg = [&](uint64_t sum, uint32_t cnt, int w) {
             std::ostringstream os;
             if (cnt == 0) os << setw(w) << "-";
             else os << setw(w) << fixed << setprecision(1) << ((double)sum / (double)cnt);
             return os.str();
         };
-        auto fmt_pct = [&](double v, uint32_t denom) {
-            std::ostringstream os;
-            if (denom == 0) os << setw(5) << "-";
-            else os << setw(5) << fixed << setprecision(1) << v;
-            return os.str();
-        };
         verb_print(1, COLCYN "[m-stats] v" << setw(5) << v+1
             << " att:" << setw(5) << n_attempts
-            << " i:" << setw(4) << n_interp
-            << " c:" << setw(4) << n_confl_succ
+            << " c:" << setw(4) << n_succ
             << " z:" << setw(4) << n_cost_zero
-            << " i%:" << fmt_pct(interp_pct, n_succ)
             << " acl:" << fmt_avg(
                 v < conflict_branch_lits_per_var.size() ? conflict_branch_lits_per_var[v] : 0,
-                n_confl_succ, 6)
-            << " ain:" << fmt_avg(
-                v < interp_branch_nodes_per_var.size() ? interp_branch_nodes_per_var[v] : 0,
-                n_interp, 7)
+                n_succ, 6)
             << " cl:" << setw(6) << (var_to_formula.count(v) ? var_to_formula.at(v).clauses.size() : 0)
             << " an:" << setw(6) << aig_sz
             << " ad:" << setw(3) << aig_depth
@@ -1180,13 +1051,10 @@ void Manthan::print_detailed_stats() const {
     }
     verb_print(1, COLCYN "[m-stats] --- legend ---");
     verb_print(1, COLCYN "[m-stats]   v   : var id (1-indexed)");
-    verb_print(1, COLCYN "[m-stats]   att : total repair() calls for this var (successes + cost-zero failures); att = i + c + z");
-    verb_print(1, COLCYN "[m-stats]   i   : # repairs that succeeded via the Craig-interpolant branch");
-    verb_print(1, COLCYN "[m-stats]   c   : # repairs that succeeded via the conflict-clause branch (interp absent or fell back)");
-    verb_print(1, COLCYN "[m-stats]   z   : # cost-zero outcomes: solver found the bug is fixable by flipping later y-vars instead; y_rep needs no repair, so NEITHER branch (conflict-clause nor interpolant) is attempted");
-    verb_print(1, COLCYN "[m-stats]   i%  : i/(i+c), share of *successful* repairs that used the interp branch ('-' if i+c=0)");
+    verb_print(1, COLCYN "[m-stats]   att : total repair() calls for this var (successes + cost-zero failures); att = c + z");
+    verb_print(1, COLCYN "[m-stats]   c   : # repairs that succeeded via the conflict-clause branch");
+    verb_print(1, COLCYN "[m-stats]   z   : # cost-zero outcomes: solver found the bug is fixable by flipping later y-vars instead; y_rep needs no repair, so no repair is performed");
     verb_print(1, COLCYN "[m-stats]   acl : avg #literals in the conflict clause, over the 'c' successes only ('-' if c=0)");
-    verb_print(1, COLCYN "[m-stats]   ain : avg #AIG-nodes in the interp branch, over the 'i' successes only ('-' if i=0)");
     verb_print(1, COLCYN "[m-stats]   cl  : #clauses currently in this var's Manthan formula (var_to_formula[v].clauses)");
     verb_print(1, COLCYN "[m-stats]   an  : #AIG nodes in this var's current Manthan formula");
     verb_print(1, COLCYN "[m-stats]   ad  : longest AND-gate path from the formula's AIG root");
@@ -1247,7 +1115,6 @@ SimplifiedCNF Manthan::do_manthan() {
     const auto ret = cnf.find_disconnected();
     verb_print(1, "[manthan] Found " << ret.size() << " components");
     repaired_vars_count.resize(cnf.nVars(), 0);
-    interp_progress_blacklist.assign(cnf.nVars(), 0);
     var_conflict_freq.resize(cnf.nVars(), 0);
     conflict_branch_lits_per_var.assign(cnf.nVars(), 0);
     conflict_branch_repairs_per_var.assign(cnf.nVars(), 0);
@@ -1278,25 +1145,6 @@ SimplifiedCNF Manthan::do_manthan() {
         for(const auto& c: cnf.get_red_clauses()) cex_solver.add_red_clause(c, true);
     }
     fh = std::make_unique<FHolder<MetaSolver2>>(&cex_solver);
-    if (mconf.interp_repair > 0) {
-        interp_repair = std::make_unique<InterpRepair>(conf, cnf, input, aig_mng);
-        interp_repairs_per_var.assign(cnf.nVars(), 0);
-        interp_branch_nodes_per_var.assign(cnf.nVars(), 0);
-        // Per-var adaptive gating bookkeeping, sized to nVars.
-        if (mconf.interp_repair_adaptive_gate != 0) {
-            interp_skip_until.assign(cnf.nVars(), 0);
-            interp_var_calls.assign(cnf.nVars(), 0);
-            interp_var_node_sum.assign(cnf.nVars(), 0);
-            interp_var_lit_sum.assign(cnf.nVars(), 0);
-        }
-        verb_print(1, "[manthan] InterpRepair enabled (mode "
-                << mconf.interp_repair
-                << ", min_conflict=" << mconf.interp_repair_min_conflict
-                << ", max_aig_nodes=" << mconf.interp_repair_max_aig_nodes
-                << ", adaptive=" << mconf.interp_repair_adaptive_gate
-                << ", progress_max=" << mconf.interp_repair_progress_max_var_repairs
-                << ")");
-    }
     create_vars_for_y_hats();
     add_not_f_x_yhat();
     verb_print(2, "True lit in solver_train: " << fh->get_true_lit());
@@ -1531,8 +1379,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     vector<Lit> conflict;
     repaired_vars_count[y_rep]++;
 
-    aig_lit interp_branch = nullptr;
-    bool ret = find_conflict(y_rep, ctx, conflict, interp_branch);
+    bool ret = find_conflict(y_rep, ctx, conflict);
     repair_solver_calls++;
 
     if (ret) {
@@ -1540,18 +1387,11 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
 
         add_repair_conflict_clause(y_rep, ctx, conflict);
 
-        if (interp_branch != nullptr) {
-            interp_repairs_used++;
-            if (y_rep < interp_repairs_per_var.size()) {
-                interp_repairs_per_var[y_rep]++;
-                interp_branch_nodes_per_var[y_rep] +=
-                    AIG::count_aig_nodes_fast(interp_branch);
-            }
-        } else if (y_rep < conflict_branch_lits_per_var.size()) {
+        if (y_rep < conflict_branch_lits_per_var.size()) {
             conflict_branch_lits_per_var[y_rep] += conflict.size();
             conflict_branch_repairs_per_var[y_rep]++;
         }
-        perform_repair(y_rep, ctx, conflict, interp_branch);
+        perform_repair(y_rep, ctx, conflict);
 
         if (!mconf.one_repair_per_loop) {
             ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
@@ -1773,115 +1613,8 @@ void Manthan::minimize_and_generalize_conflict(vector<Lit>& conflict,
             << " T: " << setw(5) << setprecision(2) << cpuTime()-minimize_start_time);
 }
 
-// Decide whether to attempt an interpolant for this repair, applying the
-// min-conflict, adaptive-ratio, and progress-based per-var gates. Updates the
-// skip/blacklist bookkeeping as a side effect.
-bool Manthan::should_compute_interp(const uint32_t y_rep, const vector<Lit>& conflict) {
-    if (mconf.interp_repair == 2 &&
-        conflict.size() < mconf.interp_repair_min_conflict) return false;
-
-    // Adaptive per-var gating: skip vars currently blacklisted for oversized
-    // interpolants.
-    if (mconf.interp_repair_adaptive_gate != 0
-            && y_rep < interp_skip_until.size()
-            && tot_repaired < interp_skip_until[y_rep]) {
-        interp_adaptive_skips++;
-        VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
-            cout << "c o [manthan-interp] adaptive-skip y=" << y_rep+1
-                 << " until tot_repaired=" << interp_skip_until[y_rep]
-                 << " (current=" << tot_repaired << ")" << endl;
-        });
-        return false;
-    }
-
-    // Progress-based per-var gating: a var still coming back after many interp
-    // repairs isn't generalising (a good interpolant converges in a handful),
-    // so permanently fall back to the conflict clause for it.
-    if (mconf.interp_repair_progress_max_var_repairs > 0
-            && y_rep < interp_progress_blacklist.size()) {
-        if (!interp_progress_blacklist[y_rep]
-                && y_rep < interp_repairs_per_var.size()
-                && interp_repairs_per_var[y_rep]
-                   >= mconf.interp_repair_progress_max_var_repairs) {
-            interp_progress_blacklist[y_rep] = 1;
-            interp_progress_blacklisted++;
-            VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 2) {
-                cout << "c o [manthan-interp] progress-blacklist y=" << y_rep+1
-                     << " after " << interp_repairs_per_var[y_rep]
-                     << " non-converging interp repairs" << endl;
-            });
-        }
-        if (interp_progress_blacklist[y_rep]) {
-            interp_progress_skips++;
-            return false;
-        }
-    }
-    return true;
-}
-
-// Track interp-vs-conflict size and blacklist the var (skip-until a future
-// tot_repaired) if the running mean node/lit ratio exceeds the threshold.
-void Manthan::interp_adaptive_bookkeeping(const uint32_t y_rep,
-        const vector<Lit>& conflict, const aig_lit& interp_branch) {
-    if (interp_branch == nullptr
-            || mconf.interp_repair_adaptive_gate == 0
-            || y_rep >= interp_var_calls.size()) return;
-    size_t nodes = ArjunNS::AIG::count_aig_nodes_fast(interp_branch);
-    interp_var_calls[y_rep]++;
-    interp_var_node_sum[y_rep] += nodes;
-    interp_var_lit_sum[y_rep] += conflict.size();
-    if (interp_var_calls[y_rep] >= 3 && interp_var_lit_sum[y_rep] > 0) {
-        double mean_ratio = (double)interp_var_node_sum[y_rep]
-                           / (double)interp_var_lit_sum[y_rep];
-        if (mean_ratio > mconf.interp_repair_adaptive_ratio_skip) {
-            interp_skip_until[y_rep] = tot_repaired
-                + mconf.interp_repair_adaptive_skip_window;
-            // Reset running stats so the next chance is fresh.
-            interp_var_calls[y_rep] = 0;
-            interp_var_node_sum[y_rep] = 0;
-            interp_var_lit_sum[y_rep] = 0;
-            VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 2) {
-                cout << "c o [manthan-interp] adaptive blacklist y=" << y_rep+1
-                     << " ratio=" << mean_ratio
-                     << " until tot_repaired="
-                     << interp_skip_until[y_rep] << endl;
-            });
-        }
-    }
-}
-
-// Optionally compute a Craig interpolant as a generalisation of the conflict
-// clause, for perform_repair to use as the AIG branch. Leaves interp_branch
-// null (conflict-clause fallback) when interp repair is off or gated out.
-void Manthan::maybe_compute_interp_branch(const uint32_t y_rep, const Lit to_repair,
-        const vector<Lit>& conflict, aig_lit& interp_branch) {
-    if (!(interp_repair && mconf.interp_repair > 0)) return;
-    if (!should_compute_interp(y_rep, conflict)) return;
-
-    interp_branch = interp_repair->compute_interpolant(
-        y_rep, to_repair, conflict,
-        mconf.interp_repair_max_aig_nodes,
-        mconf.interp_repair_max_conflicts);
-    interp_adaptive_bookkeeping(y_rep, conflict, interp_branch);
-
-    SLOW_DEBUG_DO(
-      if (interp_branch != nullptr) {
-        if (!interp_repair->quick_check_interpolant_excludes_cex(interp_branch, conflict)) {
-            assert(false &&& "verify (CEX-excluded) fails");
-        }
-        if (!interp_repair->slow_check_a_implies_i(to_repair, conflict, interp_branch, 0)) {
-            assert(false && "verify (full miter) fails");
-        }
-        if (!interp_repair->sample_check_interpolant(to_repair, conflict, interp_branch,
-                       /*num_samples=*/8, /*seed=*/num_loops_repair * 7919u)) {
-            assert(false && "verify (sample check) fails");
-        }
-    });
-}
-
 bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
-        vector<Lit>& conflict, aig_lit& interp_branch) {
-    interp_branch = nullptr;
+        vector<Lit>& conflict) {
     const double repair_solver_start_time = cpuTime();
     const bool have_aig_deps = compute_aig_dep_set(y_rep);
     assert(ctx[y_rep] != ctx[y_to_y_hat[y_rep]] && "before repair, y and y_hat must be different");
@@ -1902,7 +1635,6 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
         "to_repair literal must be in conflict");
 
     minimize_and_generalize_conflict(conflict, assumps, to_repair);
-    maybe_compute_interp_branch(y_rep, to_repair, conflict, interp_branch);
     return true;
 }
 
@@ -2034,104 +1766,8 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 #endif
 }
 
-// See manthan.h for the contract. Unlike the legacy clause-by-clause
-// path, this builds at AIG level and Tseitin-encodes via AIGToCNF.
-FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
-        const uint32_t y_rep, const vector<Lit>& conflict,
-        aig_lit interp_branch) {
-    FHolder<MetaSolver2>::Formula f;
-
-    // The guard is the must-flip region: TRUE exactly where H is wrong and
-    // y_rep must flip.  guard = ~I(X) AND_{y_other ∈ conflict}(y_other==ctx).
-    // I ranges over inputs only, so the y_other matches are ANDed in here.
-    // They are leaf literals on the y-var, never the inlined y_other formula
-    // AIG: inlining made the AIGs blow up super-linearly across repairs, and
-    // a leaf is semantically identical (y_other resolves to its def on export).
-    aig_lit guard = AIG::new_not(interp_branch);
-    for (const auto& l : conflict) {
-        if (is_input[l.var()] || is_backward_defined[l.var()]) continue;
-        assert(var_to_formula.count(l.var()));
-        guard = AIG::new_and(guard, AIG::new_lit(~l));
-    }
-
-    // simplify_aig is always run; the heavier rewrite_aig pass is opt-in,
-    // its pre/post node counts feeding the b1-rewrite stat.
-    guard = AIG::simplify_aig(guard);
-    if (mconf.interp_repair_b1_rewrite != 0) {
-        const size_t pre_rw = AIG::count_aig_nodes_fast(guard);
-        guard = AIG::rewrite_aig(guard);
-        guard = AIG::simplify_aig(guard);
-        if (interp_repair) {
-            interp_repair->total_b1_pre_rewrite += pre_rw;
-            interp_repair->total_b1_post_rewrite += AIG::count_aig_nodes_fast(guard);
-            interp_repair->b1_rewrite_calls++;
-        }
-    }
-    f.aig = guard;
-
-    // f.clauses must be in y_hat space, so translate the raw leaves
-    // before encoding; the mapper is identity outside to_define_full.
-    auto leaf_to_yhat = [&](uint32_t v) -> Lit {
-        if (input.count(v)) return Lit(v, false);
-        if (to_define_full.count(v)) return Lit(y_to_y_hat.at(v), false);
-        // Helper var or true_lit: already in cex_solver space.
-        return Lit(v, false);
-    };
-    aig_lit guard_yhat = AIG::translate_leaves(guard, leaf_to_yhat);
-
-    SLOW_DEBUG_DO({
-        // Defensive: every guard_yhat leaf must be an input, y_hat, helper
-        // or true_lit — a raw to_define leaf means incomplete translation.
-        std::set<const ArjunNS::AIG*> seen;
-        std::function<void(const aig_lit&)> walk = [&](const aig_lit& a) {
-            if (a == nullptr) return;
-            if (a->type == ArjunNS::AIGT::t_const) return;
-            if (a->type == ArjunNS::AIGT::t_lit) {
-                const uint32_t var = a->var;
-                if (var < is_input.size() && is_input[var]) return;
-                if (y_hats.count(var)) return;
-                if (helpers.count(var)) return;
-                if (var == fh->get_true_lit().var()) return;
-                std::cout << "c o [interp-perform_repair] BAD leaf var=" << (var+1)
-                          << " in guard_yhat for y_rep=" << (y_rep+1)
-                          << " is_to_def=" << to_define.count(var) << std::endl;
-                assert(false && "interp-perform_repair: guard_yhat has bad leaf");
-                return;
-            }
-            if (!seen.insert(a.get()).second) return;
-            walk(a->l);
-            walk(a->r);
-        };
-        walk(guard_yhat);
-    });
-
-    // Encode via AIGToCNF; InterpClauseSink allocates cex_solver helper
-    // vars and records them in `helpers`.
-    struct InterpClauseSink {
-        MetaSolver2& solver;
-        std::vector<CL>* clauses;
-        std::set<uint32_t>& helpers_set;
-        void new_var() {
-            solver.new_var();
-            helpers_set.insert(solver.nVars() - 1);
-        }
-        [[nodiscard]] uint32_t nVars() const { return solver.nVars(); }
-        void add_clause(const std::vector<Lit>& cl) const { clauses->emplace_back(cl); }
-    };
-    InterpClauseSink sink{cex_solver, &f.clauses, helpers};
-    ArjunNS::AIGToCNF<InterpClauseSink> enc(sink);
-    enc.set_true_lit(fh->get_true_lit());
-    if (mconf.interp_repair_group_cse != 0) enc.set_group_cse(true);
-    f.out = enc.encode(guard_yhat, /*force_helper=*/true);
-
-    // Dependency tracking; set_depends_on skips inputs itself.
-    for (const auto& l : conflict) set_depends_on(y_rep, l);
-
-    return f;
-}
-
 void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
-        const vector<Lit>& conflict, aig_lit interp_branch) {
+        const vector<Lit>& conflict) {
     // Track conflict variable frequency for smarter minimization ordering
     for (const auto& l : conflict) {
         if (l.var() < var_conflict_freq.size()) var_conflict_freq[l.var()]++;
@@ -2144,28 +1780,14 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         return;
     }
     verb_print(2, "[manthan] Performing repair on " << setw(5) << y_rep+1
-            << " with conflict size " << setw(3) << conflict.size()
-            << (interp_branch ? " [INTERP]" : ""));
+            << " with conflict size " << setw(3) << conflict.size());
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
     conflict_sizes_sum += conflict.size();
 
     // not (conflict) -> v = ctx(v)
     FHolder<MetaSolver2>::Formula f;
 
-    if (interp_branch != nullptr) {
-        // Interpolant path
-        const uint32_t cex_nvars_before = cex_solver.nVars();
-        f = build_interp_branch_formula(y_rep, conflict, interp_branch);
-        helpers_added_interp += cex_solver.nVars() - cex_nvars_before;
-        VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 3) {
-            cout << "c o [manthan-interp] y=" << y_rep+1
-                 << " interp f.clauses=" << f.clauses.size()
-                 << " f.out=" << f.out
-                 << endl;
-        });
-    } else {
-        // Conflict-clause path
-        const uint32_t cex_nvars_before = cex_solver.nVars();
+    {
         vector<Lit> cl;
         cex_solver.new_var();
         auto fresh_l = Lit(cex_solver.nVars()-1, false);
@@ -2196,7 +1818,6 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
             }
         }
         f.aig = guard;
-        helpers_added_legacy += cex_solver.nVars() - cex_nvars_before;
     }
 
     // when fresh_l is true, confl is satisfied → guard is active → use constant

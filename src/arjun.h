@@ -1673,40 +1673,6 @@ public:
         uint32_t cz_threshold_mid = 2;      // consecutive cost-zero break threshold (medium ratio)
         uint32_t cz_threshold_low = 3;      // consecutive cost-zero break threshold (low ratio)
 
-        // Craig-interpolant repair: use a McMillan interpolant (input
-        // vars only) as the compose_or/and branch instead of the AND of
-        // conflict literals. 0=off, 1=every repair, 2=only when conflict
-        // size >= interp_repair_min_conflict.
-        int interp_repair = 0;
-        // Mode 2 only: minimum conflict size to interpolate.
-        uint32_t interp_repair_min_conflict = 4;
-        // Cap interpolant AIG node count; bigger falls back. 0=no cap.
-        uint32_t interp_repair_max_aig_nodes = 0;
-        // rewrite_aig of the guard AIG before Tseitin encoding.
-        // 0=simplify only, 1=+rewrite_aig. On by default: the guard is
-        // composed into the candidate formula and Tseitin-encoded into the
-        // cex solver on every interpolant repair, so a smaller guard
-        // directly slows cex-solver growth between rebuilds. (The flag name
-        // keeps the historical "b1" spelling for backward compatibility.)
-        int interp_repair_b1_rewrite = 1;
-        // Pass --group-cse to AIGToCNF when encoding the guard: dedups
-        // Tseitin helpers for structurally identical sub-AIGs. On by
-        // default for the same cex-solver-growth reason as b1_rewrite.
-        int interp_repair_group_cse = 1;
-        // Per-call cadical conflict budget for the interp solve. 0=no limit.
-        uint64_t interp_repair_max_conflicts = 0;
-        // Adaptive per-var gating: blacklist a var when its mean
-        // interp/conflict ratio exceeds the threshold. 0=off, 1=on.
-        int interp_repair_adaptive_gate = 1;
-        double interp_repair_adaptive_ratio_skip = 8.0;
-        uint32_t interp_repair_adaptive_skip_window = 20;
-        // Progress-based per-var gating: once a variable has been repaired
-        // via the interpolant branch this many times and still needs more
-        // repairs, the interpolant is not generalising for it, so fall
-        // back permanently to the conflict clause for that variable.
-        // 0 disables the gate.
-        uint32_t interp_repair_progress_max_var_repairs = 100;
-
         // Brute-force synthesis (--bruteforcesynth 1): enumerate every
         // consistent X assignment via a forbid-clause loop, tabulate y
         // values per SAT model, build per-y decision trees.

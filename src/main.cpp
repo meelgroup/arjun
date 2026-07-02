@@ -226,28 +226,6 @@ void add_arjun_options() {
           "Rebuild the doubled-CNF interpolation solver every N interpolants (bounds tracer maps; smaller = exercise the rebuild path more).");
     myflag("--checkrepair", mconf.check_repair, "Check that error formula count decreases monotonically after each repair iteration (uses ganak)");
     myopt("--ganakbin", mconf.ganak_binary, fc_string, "Path to ganak binary (for --checkrepair)");
-    // Craig-interpolant repair options.
-    myopt("--interprepair", mconf.interp_repair, fc_int,
-          "Craig-interpolant repair branch in compose_or/and. "
-          "0=off, 1=on for every repair, 2=on only when conflict size >= --interprepairmincl");
-    myopt("--interprepairmincl", mconf.interp_repair_min_conflict, fc_int,
-          "(--interprepair=2 only) Minimum conflict size to attempt interpolation.");
-    myopt("--interprepairmaxnodes", mconf.interp_repair_max_aig_nodes, fc_int,
-          "Cap interpolant AIG size; if bigger, fall back to conflict-clause path. 0=no cap.");
-    myopt("--interprepairb1rewrite", mconf.interp_repair_b1_rewrite, fc_int,
-          "Independent: AIG rewrite of the guard=NOT(I) AND y_other_matches before Tseitin-encoding. simplify_aig is always on; this controls the heavier rewrite_aig pass. 0=off, 1=on.");
-    myopt("--interprepairgroupcse", mconf.interp_repair_group_cse, fc_int,
-          "Pass --group-cse to AIGToCNF when encoding the interp guard. Dedups Tseitin helpers for structurally identical sub-AIGs. 0=off, 1=on.");
-    myopt("--interprepairmaxconfl", mconf.interp_repair_max_conflicts, fc_int,
-          "Per-call cadical conflict budget for the interpolation solve. 0=no limit (default). Try 50000 to cap interp call cost; budget-exhausted calls fall back to the conflict-clause path.");
-    myopt("--interprepairadaptive", mconf.interp_repair_adaptive_gate, fc_int,
-          "Adaptive per-var gating: blacklist a var from interp when its running mean interp/conflict ratio exceeds --interprepairratioskip. 0=off, 1=on.");
-    myopt("--interprepairratioskip", mconf.interp_repair_adaptive_ratio_skip, fc_double,
-          "Mean interp/conflict ratio above which the adaptive gate blacklists a var.");
-    myopt("--interprepairskipwindow", mconf.interp_repair_adaptive_skip_window, fc_int,
-          "How many tot_repaired ticks the adaptive blacklist persists before the var gets another chance.");
-    myopt("--interprepairprogressmax", mconf.interp_repair_progress_max_var_repairs, fc_int,
-          "Progress gate: once a var has been interp-repaired this many times and still needs more, drop interp for it (it is not generalising). 0=off.");
 
     // === Brute-force synthesis (--bruteforcesynth 1) knobs ===
     myopt("--bruteforcesynththresh", mconf.brute_force_synth_threshold, fc_int,
