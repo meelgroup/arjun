@@ -30,7 +30,7 @@ depends on inputs and its own y_hat". That reasoning is false for
 ```c
 // bve_and_substitute's per-clause loop
 if (later_in_order(y, l.var())) {
-    aig_ptr aig = get_aig(~l);   // include l as a leaf
+    aig_lit aig = get_aig(~l);   // include l as a leaf
     ...
 }
 ```
