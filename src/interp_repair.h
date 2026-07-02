@@ -98,23 +98,23 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     std::unordered_map<uint64_t, std::vector<CMSat::Lit>> cls;
     // ID -> partial McMillan label (an AIG over input vars), filled for
     // the proof core during build_interpolant().
-    std::unordered_map<uint64_t, ArjunNS::aig_ptr> labels;
+    std::unordered_map<uint64_t, ArjunNS::aig_lit> labels;
     // ID -> antecedent chain for derived clauses. Recorded as the proof
     // streams in, but only resolved (into a label) for the proof core.
     std::unordered_map<uint64_t, std::vector<uint64_t>> antec;
 
     // Cache: input lit -> AIG leaf node, so structural hashing dedups.
-    std::map<CMSat::Lit, ArjunNS::aig_ptr> lit_to_aig;
+    std::map<CMSat::Lit, ArjunNS::aig_lit> lit_to_aig;
 
     // Structural-hash table over the t_and nodes built while resolving
     // partial interpolants. Keyed on the canonicalised (smaller-nid
     // first) child edges so equal cones across different proof clauses
     // collapse to one shared sub-DAG instead of a fresh tree each time.
-    std::map<ArjunNS::AIG::AIGKey, ArjunNS::aig_ptr> and_table;
-    ArjunNS::aig_ptr hash_and(const ArjunNS::aig_ptr& l,
-                              const ArjunNS::aig_ptr& r);
-    ArjunNS::aig_ptr hash_or(const ArjunNS::aig_ptr& l,
-                             const ArjunNS::aig_ptr& r);
+    std::map<ArjunNS::AIG::AIGKey, ArjunNS::aig_lit> and_table;
+    ArjunNS::aig_lit hash_and(const ArjunNS::aig_lit& l,
+                              const ArjunNS::aig_lit& r);
+    ArjunNS::aig_lit hash_or(const ArjunNS::aig_lit& l,
+                             const ArjunNS::aig_lit& r);
 
     // ID of the derived empty clause; set when first seen.
     uint64_t empty_id = UINT64_MAX;
@@ -129,7 +129,7 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     uint64_t conclusion_root = UINT64_MAX;
 
     // Set by build_interpolant(): the McMillan interpolant AIG, or null.
-    ArjunNS::aig_ptr out = nullptr;
+    ArjunNS::aig_lit out = nullptr;
 
     // For diagnostics.
     uint64_t derived_count = 0;
@@ -140,10 +140,10 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
 
     void mark_b_clause(uint64_t id) { b_clause_ids.insert(id); }
 
-    ArjunNS::aig_ptr lit_aig(CMSat::Lit l);
+    ArjunNS::aig_lit lit_aig(CMSat::Lit l);
     // OR of the shared (B-visible) lits in `cl` — the partial label for an
     // A-side clause. "Shared" is decided by is_shared() = the input_vars set.
-    ArjunNS::aig_ptr or_of_shared_lits(const std::vector<CMSat::Lit>& cl);
+    ArjunNS::aig_lit or_of_shared_lits(const std::vector<CMSat::Lit>& cl);
 
     void add_original_clause(uint64_t id, bool red,
             const std::vector<int>& clause, bool restored = false) override;
@@ -176,13 +176,13 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     // build McMillan labels only for the reachable proof-core clauses,
     // and return the interpolant AIG (sets `out`). Returns null if no
     // refutation was recorded.
-    ArjunNS::aig_ptr build_interpolant();
+    ArjunNS::aig_lit build_interpolant();
 
 private:
     // McMillan label of an original clause, computed lazily from
     // the current input_vars — deferred out of add_original_clause so a
     // persistent tracer picks up input vars added since the clause was.
-    [[nodiscard]] ArjunNS::aig_ptr original_label(uint64_t id);
+    [[nodiscard]] ArjunNS::aig_lit original_label(uint64_t id);
     // Resolve one derived clause's antecedent chain into a McMillan
     // label. Tries the chain reversed, then forward.
     void build_derived_label(uint64_t id);
@@ -229,7 +229,7 @@ public:
     // Returns nullptr when there is nothing to interpolate (empty
     // conflict, or no shared lits in the conflict), the AIG exceeds
     // the node cap, or the conflict budget is exhausted.
-    [[nodiscard]] ArjunNS::aig_ptr compute_interpolant(
+    [[nodiscard]] ArjunNS::aig_lit compute_interpolant(
         uint32_t y_rep, CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         uint32_t max_aig_nodes = 0,
@@ -238,7 +238,7 @@ public:
     // SLOW_DEBUG / test-only sanity helper: interpolant evaluates to
     // FALSE on the CEX inputs. Not called on the default runtime path.
     [[nodiscard]] bool quick_check_interpolant_excludes_cex(
-        const ArjunNS::aig_ptr& interp,
+        const ArjunNS::aig_lit& interp,
         const std::vector<CMSat::Lit>& conflict) const;
 
     // SLOW_DEBUG / test-only sanity helper: full A → I miter, used to
@@ -248,7 +248,7 @@ public:
     [[nodiscard]] bool slow_check_a_implies_i(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
-        const ArjunNS::aig_ptr& interp,
+        const ArjunNS::aig_lit& interp,
         uint64_t conflict_budget = 0) const;
 
     // SLOW_DEBUG / test-only sanity helper: for K random input patterns
@@ -257,7 +257,7 @@ public:
     [[nodiscard]] bool sample_check_interpolant(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
-        const ArjunNS::aig_ptr& interp,
+        const ArjunNS::aig_lit& interp,
         uint32_t num_samples = 8,
         uint64_t seed = 42) const;
 
@@ -371,7 +371,7 @@ private:
 
     // Run one tracing solve and return its raw McMillan interpolant.
     // out_ret receives the cadical status (20=UNSAT, 0=budget, 10=SAT).
-    [[nodiscard]] ArjunNS::aig_ptr solve_one_interpolant(
+    [[nodiscard]] ArjunNS::aig_lit solve_one_interpolant(
         CMSat::Lit to_repair_lit,
         const std::vector<CMSat::Lit>& conflict,
         uint64_t conflict_budget, int& out_ret);

@@ -26,11 +26,11 @@
 namespace ArjunNS::fuzz {
 
 // General random AIG: mixed AND/OR/NOT/ITE/XOR ops over a literal pool.
-inline aig_ptr gen_random_aig(ArjunNS::AIGManager& aig_mng,
+inline aig_lit gen_random_aig(ArjunNS::AIGManager& aig_mng,
                               std::mt19937& rng, uint32_t num_vars,
                               uint32_t depth, uint32_t max_nodes)
 {
-    std::vector<aig_ptr> pool;
+    std::vector<aig_lit> pool;
     for (uint32_t v = 0; v < num_vars; v++) {
         pool.push_back(AIG::new_lit(v, false));
         pool.push_back(AIG::new_lit(v, true));
@@ -51,10 +51,10 @@ inline aig_ptr gen_random_aig(ArjunNS::AIGManager& aig_mng,
             uint32_t idx_a = pick();
             uint32_t idx_b = pick();
             if (idx_a == idx_b) idx_b = (idx_b + 1) % pool.size();
-            aig_ptr a = pool[idx_a];
-            aig_ptr b = pool[idx_b];
+            aig_lit a = pool[idx_a];
+            aig_lit b = pool[idx_b];
             uint32_t op = rng() % 7;
-            aig_ptr node;
+            aig_lit node;
             switch (op) {
                 case 0: node = AIG::new_and(a, b, false); break;
                 case 1: node = AIG::new_and(a, b, true); break;
@@ -87,7 +87,7 @@ inline aig_ptr gen_random_aig(ArjunNS::AIGManager& aig_mng,
 // Manthan-style: nested ITE trees whose selectors are ANDs of many literals.
 // Exponential in depth — caller must pick tiny depth (2..6). Doesn't use
 // AIGManager directly but takes one so every generator has the same signature.
-inline aig_ptr gen_manthan_aig(ArjunNS::AIGManager& aig_mng,
+inline aig_lit gen_manthan_aig(ArjunNS::AIGManager& aig_mng,
                                std::mt19937& rng, uint32_t num_vars,
                                uint32_t depth, uint32_t max_branch_width)
 {
@@ -99,33 +99,33 @@ inline aig_ptr gen_manthan_aig(ArjunNS::AIGManager& aig_mng,
     }
     uint32_t k = 1 + rng() % std::max<uint32_t>(1u, max_branch_width);
     if (rng() % 3 == 0) k = std::max<uint32_t>(k, 3u + rng() % std::max<uint32_t>(1u, max_branch_width));
-    aig_ptr branch = AIG::new_lit(rng() % num_vars, rng() % 2);
+    aig_lit branch = AIG::new_lit(rng() % num_vars, rng() % 2);
     for (uint32_t i = 1; i < k; i++) {
         branch = AIG::new_and(branch, AIG::new_lit(rng() % num_vars, rng() % 2));
     }
     if (rng() % 5 == 0) branch = AIG::new_not(branch);
-    aig_ptr then_arm = gen_manthan_aig(aig_mng, rng, num_vars, depth - 1, max_branch_width);
-    aig_ptr else_arm = gen_manthan_aig(aig_mng, rng, num_vars, depth - 1, max_branch_width);
+    aig_lit then_arm = gen_manthan_aig(aig_mng, rng, num_vars, depth - 1, max_branch_width);
+    aig_lit else_arm = gen_manthan_aig(aig_mng, rng, num_vars, depth - 1, max_branch_width);
     return AIG::new_or(AIG::new_and(branch, then_arm),
                        AIG::new_and(AIG::new_not(branch), else_arm));
 }
 
 // Deep linear ITE chain. Models manthan's repair loop: each iteration adds
 // one ITE on top of the growing formula. Linear in chain_depth.
-inline aig_ptr gen_deep_ite_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
+inline aig_lit gen_deep_ite_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
                                       std::mt19937& rng, uint32_t num_vars,
                                       uint32_t chain_depth,
                                       uint32_t max_branch_width)
 {
-    aig_ptr f = AIG::new_lit(rng() % num_vars, rng() % 2);
+    aig_lit f = AIG::new_lit(rng() % num_vars, rng() % 2);
     for (uint32_t step = 0; step < chain_depth; step++) {
         uint32_t k = 1 + rng() % std::max<uint32_t>(1u, max_branch_width);
         if (rng() % 4 == 0) k = std::max<uint32_t>(k, max_branch_width);
-        aig_ptr branch = AIG::new_lit(rng() % num_vars, rng() % 2);
+        aig_lit branch = AIG::new_lit(rng() % num_vars, rng() % 2);
         for (uint32_t i = 1; i < k; i++) {
             branch = AIG::new_and(branch, AIG::new_lit(rng() % num_vars, rng() % 2));
         }
-        aig_ptr repair;
+        aig_lit repair;
         if (rng() % 5 == 0) {
             repair = AIG::new_and(
                 AIG::new_lit(rng() % num_vars, rng() % 2),
@@ -140,14 +140,14 @@ inline aig_ptr gen_deep_ite_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
 }
 
 // OR of several (AND of literals). Models the DNF-cover loop in manthan.cpp.
-inline aig_ptr gen_dnf_cover_aig(ArjunNS::AIGManager& aig_mng,
+inline aig_lit gen_dnf_cover_aig(ArjunNS::AIGManager& aig_mng,
                                  std::mt19937& rng, uint32_t num_vars,
                                  uint32_t num_branches, uint32_t max_branch_width)
 {
-    aig_ptr overall = nullptr;
+    aig_lit overall = nullptr;
     for (uint32_t b = 0; b < num_branches; b++) {
         uint32_t k = 1 + rng() % std::max<uint32_t>(1u, max_branch_width);
-        aig_ptr cur = AIG::new_lit(rng() % num_vars, rng() % 2);
+        aig_lit cur = AIG::new_lit(rng() % num_vars, rng() % 2);
         for (uint32_t i = 1; i < k; i++) {
             cur = AIG::new_and(cur, AIG::new_lit(rng() % num_vars, rng() % 2));
         }
@@ -160,7 +160,7 @@ inline aig_ptr gen_dnf_cover_aig(ArjunNS::AIGManager& aig_mng,
 
 // Pure big-AND of distinct literals. Canonical target for k-ary AND fusion.
 // Uses each var at most once (one polarity) to avoid complementary fold to FALSE.
-inline aig_ptr gen_pure_and_chain(ArjunNS::AIGManager& /*aig_mng*/,
+inline aig_lit gen_pure_and_chain(ArjunNS::AIGManager& /*aig_mng*/,
                                   std::mt19937& rng, uint32_t num_vars, uint32_t len)
 {
     if (len < 2) len = 2;
@@ -174,12 +174,12 @@ inline aig_ptr gen_pure_and_chain(ArjunNS::AIGManager& /*aig_mng*/,
     uint32_t actual = std::min<uint32_t>(len, pool.size());
     if (actual < 2) actual = std::min<uint32_t>(2u, pool.size());
     std::vector<char> used(num_vars, 0);
-    aig_ptr cur = nullptr;
+    aig_lit cur = nullptr;
     uint32_t made = 0;
     for (auto& p : pool) {
         if (used[p.first]) continue;
         used[p.first] = 1;
-        aig_ptr lit = AIG::new_lit(p.first, p.second);
+        aig_lit lit = AIG::new_lit(p.first, p.second);
         cur = cur ? AIG::new_and(cur, lit) : lit;
         if (++made >= actual) break;
     }
@@ -188,7 +188,7 @@ inline aig_ptr gen_pure_and_chain(ArjunNS::AIGManager& /*aig_mng*/,
     return cur;
 }
 
-inline aig_ptr gen_pure_or_chain(ArjunNS::AIGManager& /*aig_mng*/,
+inline aig_lit gen_pure_or_chain(ArjunNS::AIGManager& /*aig_mng*/,
                                  std::mt19937& rng, uint32_t num_vars, uint32_t len)
 {
     if (len < 2) len = 2;
@@ -202,12 +202,12 @@ inline aig_ptr gen_pure_or_chain(ArjunNS::AIGManager& /*aig_mng*/,
     uint32_t actual = std::min<uint32_t>(len, pool.size());
     if (actual < 2) actual = std::min<uint32_t>(2u, pool.size());
     std::vector<char> used(num_vars, 0);
-    aig_ptr cur = nullptr;
+    aig_lit cur = nullptr;
     uint32_t made = 0;
     for (auto& p : pool) {
         if (used[p.first]) continue;
         used[p.first] = 1;
-        aig_ptr lit = AIG::new_lit(p.first, p.second);
+        aig_lit lit = AIG::new_lit(p.first, p.second);
         cur = cur ? AIG::new_or(cur, lit) : lit;
         if (++made >= actual) break;
     }
@@ -219,17 +219,17 @@ inline aig_ptr gen_pure_or_chain(ArjunNS::AIGManager& /*aig_mng*/,
 // Balanced-tree big-AND / big-OR: pairwise bottom-up. log2(len) deep but
 // k-ary semantics. Exercises the encoder's flattening through internal
 // fanout-1 AND nodes.
-inline aig_ptr gen_balanced_and_tree(ArjunNS::AIGManager& /*aig_mng*/,
+inline aig_lit gen_balanced_and_tree(ArjunNS::AIGManager& /*aig_mng*/,
                                      std::mt19937& rng, uint32_t num_vars, uint32_t len)
 {
     if (len < 2) len = 2;
-    std::vector<aig_ptr> level;
+    std::vector<aig_lit> level;
     level.reserve(len);
     for (uint32_t i = 0; i < len; i++) {
         level.push_back(AIG::new_lit(rng() % num_vars, rng() % 2));
     }
     while (level.size() > 1) {
-        std::vector<aig_ptr> next;
+        std::vector<aig_lit> next;
         for (size_t i = 0; i + 1 < level.size(); i += 2) {
             next.push_back(AIG::new_and(level[i], level[i+1]));
         }
@@ -239,17 +239,17 @@ inline aig_ptr gen_balanced_and_tree(ArjunNS::AIGManager& /*aig_mng*/,
     return level[0];
 }
 
-inline aig_ptr gen_balanced_or_tree(ArjunNS::AIGManager& /*aig_mng*/,
+inline aig_lit gen_balanced_or_tree(ArjunNS::AIGManager& /*aig_mng*/,
                                     std::mt19937& rng, uint32_t num_vars, uint32_t len)
 {
     if (len < 2) len = 2;
-    std::vector<aig_ptr> level;
+    std::vector<aig_lit> level;
     level.reserve(len);
     for (uint32_t i = 0; i < len; i++) {
         level.push_back(AIG::new_lit(rng() % num_vars, rng() % 2));
     }
     while (level.size() > 1) {
-        std::vector<aig_ptr> next;
+        std::vector<aig_lit> next;
         for (size_t i = 0; i + 1 < level.size(); i += 2) {
             next.push_back(AIG::new_or(level[i], level[i+1]));
         }
@@ -264,19 +264,19 @@ inline aig_ptr gen_balanced_or_tree(ArjunNS::AIGManager& /*aig_mng*/,
 // into a single MUX3 (1 helper + 6 clauses) when fanout permits. Random
 // flips of the polarity of the selectors and arms cover the "selector
 // negative" / "arm sub-AIG" branches of the MUX3 detection too.
-inline aig_ptr gen_mux3_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
+inline aig_lit gen_mux3_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
                                   std::mt19937& rng, uint32_t num_vars,
                                   uint32_t depth)
 {
     // Bottom value
-    aig_ptr cur = AIG::new_lit(rng() % num_vars, rng() % 2);
+    aig_lit cur = AIG::new_lit(rng() % num_vars, rng() % 2);
     for (uint32_t i = 0; i < depth; i++) {
         // Selector (literal, optionally complemented).
         const CMSat::Lit s(rng() % num_vars, rng() % 2);
         // Then-arm: literal most of the time, sub-AIG (AND of two lits)
         // every fifth step — that's exactly the shape MUX3's inner ITE
         // detection looks for.
-        aig_ptr then_arm;
+        aig_lit then_arm;
         if (rng() % 5 == 0) {
             then_arm = AIG::new_and(
                 AIG::new_lit(rng() % num_vars, rng() % 2),
@@ -292,18 +292,18 @@ inline aig_ptr gen_mux3_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
 
 // XOR-of-XOR shape: builds (XOR(a, b)) XOR c style nested XORs. Exercises
 // the try_xor / XNOR detection across multiple levels.
-inline aig_ptr gen_xor_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
+inline aig_lit gen_xor_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
                                  std::mt19937& rng, uint32_t num_vars,
                                  uint32_t depth)
 {
-    auto xor_of = [](const aig_ptr& a, const aig_ptr& b) -> aig_ptr {
+    auto xor_of = [](const aig_lit& a, const aig_lit& b) -> aig_lit {
         return AIG::new_or(
             AIG::new_and(a, AIG::new_not(b)),
             AIG::new_and(AIG::new_not(a), b));
     };
-    aig_ptr cur = AIG::new_lit(rng() % num_vars, rng() % 2);
+    aig_lit cur = AIG::new_lit(rng() % num_vars, rng() % 2);
     for (uint32_t i = 0; i < depth; i++) {
-        aig_ptr next = AIG::new_lit(rng() % num_vars, rng() % 2);
+        aig_lit next = AIG::new_lit(rng() % num_vars, rng() % 2);
         cur = xor_of(cur, next);
     }
     if (rng() % 4 == 0) cur = AIG::new_not(cur);
@@ -314,23 +314,23 @@ inline aig_ptr gen_xor_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
 // fanin, then AND them. Drives the AND-of-AND sharing rule (factor out the
 // shared fanin) and helps exercise structural-hash hits when the second AND
 // rebuilds against the same shared.
-inline aig_ptr gen_shared_diamond_aig(ArjunNS::AIGManager& /*aig_mng*/,
+inline aig_lit gen_shared_diamond_aig(ArjunNS::AIGManager& /*aig_mng*/,
                                       std::mt19937& rng, uint32_t num_vars,
                                       uint32_t depth)
 {
-    aig_ptr common = AIG::new_lit(rng() % num_vars, rng() % 2);
+    aig_lit common = AIG::new_lit(rng() % num_vars, rng() % 2);
     // Optionally make `common` a small AND/OR to bias hash-hit testing.
     if (rng() % 3 == 0) {
-        aig_ptr c2 = AIG::new_lit(rng() % num_vars, rng() % 2);
+        aig_lit c2 = AIG::new_lit(rng() % num_vars, rng() % 2);
         common = (rng() % 2) ? AIG::new_and(common, c2) : AIG::new_or(common, c2);
     }
-    aig_ptr left = common, right = common;
+    aig_lit left = common, right = common;
     for (uint32_t i = 0; i < depth; i++) {
-        aig_ptr leaf = AIG::new_lit(rng() % num_vars, rng() % 2);
+        aig_lit leaf = AIG::new_lit(rng() % num_vars, rng() % 2);
         left = (rng() % 2) ? AIG::new_and(left, leaf) : AIG::new_or(left, leaf);
     }
     for (uint32_t i = 0; i < depth; i++) {
-        aig_ptr leaf = AIG::new_lit(rng() % num_vars, rng() % 2);
+        aig_lit leaf = AIG::new_lit(rng() % num_vars, rng() % 2);
         right = (rng() % 2) ? AIG::new_and(right, leaf) : AIG::new_or(right, leaf);
     }
     return AIG::new_and(left, right);
@@ -340,35 +340,35 @@ inline aig_ptr gen_shared_diamond_aig(ArjunNS::AIGManager& /*aig_mng*/,
 // rewriter should fold the whole thing to FALSE (or TRUE for the OR side).
 // Stresses the complement-pair detection in both simplify_pass and
 // deep_absorb.
-inline aig_ptr gen_contradiction_aig(ArjunNS::AIGManager& /*aig_mng*/,
+inline aig_lit gen_contradiction_aig(ArjunNS::AIGManager& /*aig_mng*/,
                                      std::mt19937& rng, uint32_t num_vars,
                                      uint32_t width)
 {
     if (num_vars < 2) num_vars = 2;
     const uint32_t pivot = rng() % num_vars;
-    aig_ptr pivot_lit = AIG::new_lit(pivot, false);
-    aig_ptr not_pivot = AIG::new_lit(pivot, true);
-    aig_ptr cur = pivot_lit;
+    aig_lit pivot_lit = AIG::new_lit(pivot, false);
+    aig_lit not_pivot = AIG::new_lit(pivot, true);
+    aig_lit cur = pivot_lit;
     for (uint32_t i = 0; i < width; i++) {
         cur = AIG::new_and(cur, AIG::new_lit(rng() % num_vars, rng() % 2));
     }
     // Splice the complementary pivot in somewhere by ANDing it deep.
-    aig_ptr tail = not_pivot;
+    aig_lit tail = not_pivot;
     for (uint32_t i = 0; i < width; i++) {
         tail = AIG::new_and(tail, AIG::new_lit(rng() % num_vars, rng() % 2));
     }
-    aig_ptr both = AIG::new_and(cur, tail);
+    aig_lit both = AIG::new_and(cur, tail);
     if (rng() % 2) both = AIG::new_not(both);
     return both;
 }
 
 // Arbitrary deep chain of mixed AND/OR with a literal threaded through.
-inline aig_ptr gen_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
+inline aig_lit gen_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
                              std::mt19937& rng, uint32_t num_vars, uint32_t chain_len)
 {
-    aig_ptr chain = AIG::new_lit(rng() % num_vars, rng() % 2);
+    aig_lit chain = AIG::new_lit(rng() % num_vars, rng() % 2);
     for (uint32_t i = 0; i < chain_len; i++) {
-        aig_ptr leaf = AIG::new_lit(rng() % num_vars, rng() % 2);
+        aig_lit leaf = AIG::new_lit(rng() % num_vars, rng() % 2);
         switch (rng() % 4) {
             case 0: chain = AIG::new_and(chain, leaf); break;
             case 1: chain = AIG::new_or(chain, leaf); break;
@@ -378,7 +378,7 @@ inline aig_ptr gen_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
     }
     if (rng() % 3 == 0) chain = AIG::new_not(chain);
     if (rng() % 4 == 0) {
-        aig_ptr other = AIG::new_lit(rng() % num_vars, rng() % 2);
+        aig_lit other = AIG::new_lit(rng() % num_vars, rng() % 2);
         chain = AIG::new_ite(chain, other, CMSat::Lit(rng() % num_vars, rng() % 2));
     }
     return chain;
@@ -422,7 +422,7 @@ inline Shape pick_shape(std::mt19937& rng) {
 
 // Emit a random AIG whose shape is picked by pick_shape(). max_vars, max_depth
 // and max_nodes are the same knobs the existing fuzzer uses.
-inline aig_ptr gen_random_shape(ArjunNS::AIGManager& aig_mng,
+inline aig_lit gen_random_shape(ArjunNS::AIGManager& aig_mng,
                                 std::mt19937& rng,
                                 uint32_t num_vars, uint32_t depth, uint32_t max_nodes)
 {

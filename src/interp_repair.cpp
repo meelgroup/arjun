@@ -42,10 +42,10 @@ using std::endl;
 using std::setprecision;
 using std::fixed;
 
-aig_ptr InterpTracerMcMillan::lit_aig(Lit l) {
+aig_lit InterpTracerMcMillan::lit_aig(Lit l) {
     auto it = lit_to_aig.find(l);
     if (it != lit_to_aig.end()) return it->second;
-    aig_ptr a = AIG::new_lit(l);
+    aig_lit a = AIG::new_lit(l);
     lit_to_aig[l] = a;
     return a;
 }
@@ -53,8 +53,8 @@ aig_ptr InterpTracerMcMillan::lit_aig(Lit l) {
 // new_and + structural hash-consing: if an AND node with the same
 // child edges already exists, reuse it. Equal cones across the proof
 // thus collapse into a shared DAG before simplify_aig ever runs.
-aig_ptr InterpTracerMcMillan::hash_and(const aig_ptr& l, const aig_ptr& r) {
-    aig_ptr res = AIG::new_and(l, r);
+aig_lit InterpTracerMcMillan::hash_and(const aig_lit& l, const aig_lit& r) {
+    aig_lit res = AIG::new_and(l, r);
     // new_and may have folded to a constant, a leaf, or an input node.
     if (res.node == nullptr || res->type != AIGT::t_and) return res;
 
@@ -69,17 +69,17 @@ aig_ptr InterpTracerMcMillan::hash_and(const aig_ptr& l, const aig_ptr& r) {
     auto it = and_table.find(key);
     if (it != and_table.end()) return res.neg ? ~it->second : it->second;
 
-    and_table.emplace(key, aig_ptr(res.node, false));
+    and_table.emplace(key, aig_lit(res.node, false));
     return res;
 }
 
-aig_ptr InterpTracerMcMillan::hash_or(const aig_ptr& l, const aig_ptr& r) {
+aig_lit InterpTracerMcMillan::hash_or(const aig_lit& l, const aig_lit& r) {
     return ~hash_and(~l, ~r);
 }
 
 // OR over the shared (B-visible) literals in `cl` — the McMillan label
 // for an A-side clause. Empty shared set => label FALSE.
-aig_ptr InterpTracerMcMillan::or_of_shared_lits(const vector<Lit>& cl) {
+aig_lit InterpTracerMcMillan::or_of_shared_lits(const vector<Lit>& cl) {
     // Collect the shared literals and fold them in a canonical order:
     // two A-clauses with the same shared-literal *set* (in any clause
     // order) then produce the identical OR-AIG, so hash_or's table
@@ -93,13 +93,13 @@ aig_ptr InterpTracerMcMillan::or_of_shared_lits(const vector<Lit>& cl) {
     std::sort(ins.begin(), ins.end());
     ins.erase(std::unique(ins.begin(), ins.end()), ins.end());
 
-    vector<aig_ptr> leaves;
+    vector<aig_lit> leaves;
     leaves.reserve(ins.size());
     for (const auto& l : ins) leaves.push_back(lit_aig(l));
 
     // Balanced binary fold to keep AIG depth small.
     while (leaves.size() > 1) {
-        vector<aig_ptr> next;
+        vector<aig_lit> next;
         next.reserve((leaves.size() + 1) / 2);
         for (size_t i = 0; i < leaves.size(); i += 2) {
             if (i + 1 >= leaves.size()) next.push_back(leaves[i]);
@@ -131,7 +131,7 @@ void InterpTracerMcMillan::add_original_clause(uint64_t id, bool /*red*/,
 }
 
 // McMillan label of an original clause from the current input_vars.
-aig_ptr InterpTracerMcMillan::original_label(uint64_t id) {
+aig_lit InterpTracerMcMillan::original_label(uint64_t id) {
     const vector<Lit>& cl = cls[id];
     if (!b_clause_ids.count(id)) {
         // A-side clause: label = OR of shared lits in the clause. Shared
@@ -191,7 +191,7 @@ void InterpTracerMcMillan::add_derived_clause(uint64_t id, bool /*red*/,
     }
 }
 
-aig_ptr InterpTracerMcMillan::build_interpolant() {
+aig_lit InterpTracerMcMillan::build_interpolant() {
     // Refutation root: the failing-assumption clause for an
     // assumption-based UNSAT (conclude_unsat reported ASSUMPTIONS),
     // otherwise the derived empty clause.
@@ -232,7 +232,7 @@ aig_ptr InterpTracerMcMillan::build_interpolant() {
     }
 
     auto it = labels.find(root);
-    aig_ptr res = (it != labels.end()) ? it->second : nullptr;
+    aig_lit res = (it != labels.end()) ? it->second : nullptr;
 
     if (res != nullptr && conclusion_type == CaDiCaL::ASSUMPTIONS) {
         // The root clause is {¬a : a a failing assumption}. Resolving it
@@ -243,7 +243,7 @@ aig_ptr InterpTracerMcMillan::build_interpolant() {
         // assumption — but doing them keeps the result fully general.
         for (const Lit m : cls[root]) {           // m = ¬a
             const Lit a = ~m;
-            const aig_ptr unit_lab = (a.var() >= b_local_from)
+            const aig_lit unit_lab = (a.var() >= b_local_from)
                 ? aig_mng.new_const(true)             // B-side unit → TRUE
                 : or_of_shared_lits(vector<Lit>{a});  // A-side unit
             const bool want_and =
@@ -283,18 +283,18 @@ bool InterpTracerMcMillan::resolve_chain(uint64_t id,
         labels[id] = aig_mng.new_const(false);
         return false;
     }
-    aig_ptr lab = it_lab->second;
+    aig_lit lab = it_lab->second;
     set<Lit> resolvent(cls[id1].begin(), cls[id1].end());
 
     // Batch consecutive same-op steps into balanced ANDs/ORs to avoid
     // stack-blowing left-leaning chains.
-    vector<aig_ptr> batch;
+    vector<aig_lit> batch;
     bool batch_is_and = false;
     auto flush_batch = [&]() {
         if (batch.empty()) return;
         // Balanced fold over batch.
         while (batch.size() > 1) {
-            vector<aig_ptr> next;
+            vector<aig_lit> next;
             next.reserve((batch.size() + 1) / 2);
             for (size_t i = 0; i < batch.size(); i += 2) {
                 if (i + 1 >= batch.size()) next.push_back(batch[i]);
@@ -643,7 +643,7 @@ std::vector<uint32_t> InterpRepair::collect_relevant_clauses(
             n_vars, occ);
 }
 
-aig_ptr InterpRepair::solve_one_interpolant(
+aig_lit InterpRepair::solve_one_interpolant(
         Lit to_repair_lit, const vector<Lit>& conflict,
         uint64_t conflict_budget, int& out_ret)
 {
@@ -682,7 +682,7 @@ aig_ptr InterpRepair::solve_one_interpolant(
         && "interp-repair solve returned UNKNOWN with no conflict budget");
     if (ret != 20) return nullptr;  // 20=UNSAT, 0=UNKNOWN(budget exhausted)
 
-    aig_ptr one = tracer.build_interpolant();
+    aig_lit one = tracer.build_interpolant();
     // Invariant: after a UNSAT solve the tracer has seen a refutation root,
     // so build_interpolant returns a non-null AIG.
     release_assert(one != nullptr
@@ -698,7 +698,7 @@ aig_ptr InterpRepair::solve_one_interpolant(
     return one;
 }
 
-aig_ptr InterpRepair::compute_interpolant(
+aig_lit InterpRepair::compute_interpolant(
         [[maybe_unused]] uint32_t y_rep, Lit to_repair_lit,
         const vector<Lit>& conflict, uint32_t max_aig_nodes,
         uint64_t conflict_budget)
@@ -729,7 +729,7 @@ aig_ptr InterpRepair::compute_interpolant(
     // A→I and I∧B UNSAT, so its negation is the must-flip region the
     // repair generalises over.
     int ret = 0;
-    aig_ptr interp = solve_one_interpolant(to_repair_lit, conflict,
+    aig_lit interp = solve_one_interpolant(to_repair_lit, conflict,
             conflict_budget, ret);
     if (interp == nullptr) {
         if (ret == 0) {
@@ -761,7 +761,7 @@ aig_ptr InterpRepair::compute_interpolant(
             return v < is_input.size() && is_input[v];
         };
         set<const AIG*> seen2;
-        std::function<bool(const aig_ptr&)> check = [&](const aig_ptr& a) -> bool {
+        std::function<bool(const aig_lit&)> check = [&](const aig_lit& a) -> bool {
             if (a == nullptr) return true;
             if (a->type == AIGT::t_const) return true;
             if (a->type == AIGT::t_lit) {
@@ -802,7 +802,7 @@ aig_ptr InterpRepair::compute_interpolant(
 
     // Size: count internal AND nodes in this AIG sub-tree.
     set<const AIG*> seen;
-    std::function<void(const aig_ptr&)> walk = [&](const aig_ptr& a) {
+    std::function<void(const aig_lit&)> walk = [&](const aig_lit& a) {
         if (a == nullptr) return;
         if (a->type == AIGT::t_const || a->type == AIGT::t_lit) return;
         if (!seen.insert(a.get()).second) return;
@@ -831,7 +831,7 @@ aig_ptr InterpRepair::compute_interpolant(
     {
         std::set<uint32_t> support;
         std::set<const AIG*> seen_supp;
-        std::function<void(const aig_ptr&)> walk_supp = [&](const aig_ptr& a) {
+        std::function<void(const aig_lit&)> walk_supp = [&](const aig_lit& a) {
             if (a == nullptr) return;
             if (a->type == AIGT::t_lit) {
                 if (a->var < is_input.size() && is_input[a->var]) support.insert(a->var);
@@ -861,7 +861,7 @@ aig_ptr InterpRepair::compute_interpolant(
 bool InterpRepair::slow_check_a_implies_i(
         Lit to_repair_lit,
         const vector<Lit>& conflict,
-        const aig_ptr& interp,
+        const aig_lit& interp,
         uint64_t conflict_budget) const
 {
     if (interp == nullptr) return true;
@@ -896,8 +896,8 @@ bool InterpRepair::slow_check_a_implies_i(
 
     // Tseitin-encode interp; fresh helper IDs start at cnf.nVars().
     uint32_t next_var = cnf.nVars();
-    map<aig_ptr, Lit> cache;
-    std::function<Lit(const aig_ptr&)> enc = [&](const aig_ptr& a) -> Lit {
+    map<aig_lit, Lit> cache;
+    std::function<Lit(const aig_lit&)> enc = [&](const aig_lit& a) -> Lit {
         auto it = cache.find(a);
         if (it != cache.end()) return it->second;
         Lit ret;
@@ -936,7 +936,7 @@ bool InterpRepair::slow_check_a_implies_i(
 bool InterpRepair::sample_check_interpolant(
         Lit to_repair_lit,
         const vector<Lit>& conflict,
-        const aig_ptr& interp,
+        const aig_lit& interp,
         uint32_t num_samples,
         uint64_t seed) const
 {
@@ -967,8 +967,8 @@ bool InterpRepair::sample_check_interpolant(
             const Lit asm_lit = ~l;
             assign[l.var()] = asm_lit.sign() ? l_False : l_True;
         }
-        std::map<aig_ptr, lbool> cache;
-        std::vector<aig_ptr> defs(cnf.nVars(), nullptr);
+        std::map<aig_lit, lbool> cache;
+        std::vector<aig_lit> defs(cnf.nVars(), nullptr);
         const lbool ival = AIG::evaluate(assign, interp, defs, cache);
         if (ival != l_False) continue; // only must-flip region matters
         num_false_seen++;
@@ -1013,7 +1013,7 @@ bool InterpRepair::sample_check_interpolant(
 }
 
 bool InterpRepair::quick_check_interpolant_excludes_cex(
-        const aig_ptr& interp, const vector<Lit>& conflict) const
+        const aig_lit& interp, const vector<Lit>& conflict) const
 {
     if (interp == nullptr) return false;
 
@@ -1029,8 +1029,8 @@ bool InterpRepair::quick_check_interpolant_excludes_cex(
     }
 
     // Evaluate the interpolant; l_Undef result => report pass.
-    map<aig_ptr, lbool> cache;
-    vector<aig_ptr> defs(cnf.nVars(), nullptr);
+    map<aig_lit, lbool> cache;
+    vector<aig_lit> defs(cnf.nVars(), nullptr);
     lbool v = AIG::evaluate(assign, interp, defs, cache);
     if (v == l_Undef) return true; // can't tell; don't fail
     return v == l_False;

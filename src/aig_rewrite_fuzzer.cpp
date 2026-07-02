@@ -47,10 +47,10 @@ static AIGManager aig_mng;
 // Naive Tseitin encoding: one helper per AND node, 3 clauses each; constants
 // via a single unit-clauses helper. Returns the output literal. Identical in
 // spirit to the baseline used by fuzz_aig_to_cnf.
-static Lit naive_encode(const aig_ptr& aig, SATSolver& solver,
+static Lit naive_encode(const aig_lit& aig, SATSolver& solver,
                         Lit& true_lit, bool& true_lit_set)
 {
-    map<aig_ptr, Lit> cache;
+    map<aig_lit, Lit> cache;
     auto visitor = [&](AIGT type, uint32_t var,
                        const Lit* left, const Lit* right) -> Lit {
         if (type == AIGT::t_const) {
@@ -91,7 +91,7 @@ static bool sat_equivalent(SATSolver& s, Lit a, Lit b) {
 
 // Largest variable index referenced by any literal in `aig`. Used to size
 // the SAT solver before encoding.
-static uint32_t max_var(const aig_ptr& aig) {
+static uint32_t max_var(const aig_lit& aig) {
     std::set<uint32_t> seen;
     AIG::get_dependent_vars(aig, seen,
                             std::numeric_limits<uint32_t>::max());
@@ -101,17 +101,17 @@ static uint32_t max_var(const aig_ptr& aig) {
 // Random-value check: pick random input assignments, evaluate both AIGs,
 // expect identical results. Defs are empty — these AIGs have no defined
 // variables, only primary inputs.
-static bool random_check(const aig_ptr& orig, const aig_ptr& simplified,
+static bool random_check(const aig_lit& orig, const aig_lit& simplified,
                          uint32_t num_vars, std::mt19937& rng,
                          uint32_t num_trials)
 {
-    vector<aig_ptr> defs(num_vars, nullptr);
+    vector<aig_lit> defs(num_vars, nullptr);
     for (uint32_t t = 0; t < num_trials; t++) {
         vector<lbool> vals(num_vars);
         for (uint32_t v = 0; v < num_vars; v++) {
             vals[v] = (rng() & 1) ? l_True : l_False;
         }
-        map<aig_ptr, lbool> c_orig, c_simp;
+        map<aig_lit, lbool> c_orig, c_simp;
         lbool e_orig = AIG::evaluate(vals, orig, defs, c_orig);
         lbool e_simp = AIG::evaluate(vals, simplified, defs, c_simp);
         if (e_orig != e_simp) {
@@ -199,7 +199,7 @@ struct FuzzStats {
     }
 };
 
-static void report_failure(const aig_ptr& orig, const aig_ptr& simp,
+static void report_failure(const aig_lit& orig, const aig_lit& simp,
                            uint32_t num_vars, uint64_t seed, uint64_t iter,
                            const char* phase)
 {
@@ -209,13 +209,13 @@ static void report_failure(const aig_ptr& orig, const aig_ptr& simp,
     cerr << "SIMPLIFIED: " << simp << endl;
 }
 
-static bool run_one(const aig_ptr& orig, uint32_t num_vars,
+static bool run_one(const aig_lit& orig, uint32_t num_vars,
                     uint64_t seed, uint64_t iter, std::mt19937& rng,
                     FuzzStats& fs, bool verbose)
 {
     // 1. Rewrite.
     AIGRewriter rw;
-    aig_ptr simp = rw.rewrite(orig);
+    aig_lit simp = rw.rewrite(orig);
     if (!simp) simp = orig;
 
     // 1a. Idempotence: rewriting an already-rewritten AIG must keep it
@@ -224,7 +224,7 @@ static bool run_one(const aig_ptr& orig, uint32_t num_vars,
     // rule is unsound only on already-canonical input.
     {
         AIGRewriter rw2;
-        aig_ptr simp2 = rw2.rewrite(simp);
+        aig_lit simp2 = rw2.rewrite(simp);
         if (!simp2) simp2 = simp;
         if (!random_check(simp, simp2, num_vars, rng, 40)) {
             report_failure(orig, simp2, num_vars, seed, iter,
@@ -348,7 +348,7 @@ int main(int argc, char** argv) {
         uint32_t depth = 3 + rng() % (max_depth - 2);
         uint32_t max_nodes = 8 + rng() % max_nodes_cfg;
 
-        aig_ptr aig = fuzz::gen_random_shape(aig_mng, rng, num_vars, depth, max_nodes);
+        aig_lit aig = fuzz::gen_random_shape(aig_mng, rng, num_vars, depth, max_nodes);
         if (!aig) continue;
 
         if (!run_one(aig, num_vars, seed, iter, rng, fs, verbose)) return 1;

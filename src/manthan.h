@@ -91,7 +91,7 @@ class Manthan {
 
         void const_functions();
         void bve_and_substitute();
-        ArjunNS::aig_ptr one_level_substitute(const CMSat::Lit l, const uint32_t v, std::map<uint32_t, ArjunNS::aig_ptr>& transformed);
+        ArjunNS::aig_lit one_level_substitute(const CMSat::Lit l, const uint32_t v, std::map<uint32_t, ArjunNS::aig_lit>& transformed);
 
         void create_vars_for_y_hats();
         std::vector<uint32_t> incidence;
@@ -113,7 +113,7 @@ class Manthan {
         // fall back to the conflict-clause path.
         bool find_conflict(const uint32_t y_rep, sample& ctx,
                 std::vector<CMSat::Lit>& conflict,
-                ArjunNS::aig_ptr& interp_branch);
+                ArjunNS::aig_lit& interp_branch);
         // Populate the aig_dep_is_dep/aig_dep_list scratch (below) with the
         // input variables that y_rep's current AIG depends on, using dep_cache
         // when the formula is unchanged. Returns true if any dependency was
@@ -151,7 +151,7 @@ class Manthan {
         void maybe_compute_interp_branch(const uint32_t y_rep,
                 const CMSat::Lit to_repair,
                 const std::vector<CMSat::Lit>& conflict,
-                ArjunNS::aig_ptr& interp_branch);
+                ArjunNS::aig_lit& interp_branch);
         // Per-var gating for interp repair (min-conflict / adaptive-ratio /
         // progress blacklist); updates skip/blacklist bookkeeping.
         bool should_compute_interp(const uint32_t y_rep,
@@ -160,7 +160,7 @@ class Manthan {
         // large relative to the conflict it generalises.
         void interp_adaptive_bookkeeping(const uint32_t y_rep,
                 const std::vector<CMSat::Lit>& conflict,
-                const ArjunNS::aig_ptr& interp_branch);
+                const ArjunNS::aig_lit& interp_branch);
         // Reusable scratch for AIG::get_dependent_vars inside find_conflict;
         // avoids per-call heap allocations for bitmap/stack. Visited state
         // is tracked via AIG::visit_epoch (no scratch needed).
@@ -171,7 +171,7 @@ class Manthan {
         // var_to_formula[y_rep].aig at the time of caching; a pointer mismatch
         // (happens when perform_repair rewrites the formula) triggers recompute.
         struct DepCacheEntry {
-            const ArjunNS::AIG* aig_ptr;
+            const ArjunNS::AIG* aig_lit;
             std::vector<uint32_t> dep_list;
         };
         std::unordered_map<uint32_t, DepCacheEntry> dep_cache;
@@ -186,14 +186,14 @@ class Manthan {
         // AIG branch; otherwise it builds the branch from conflict literals.
         void perform_repair(const uint32_t y_rep, const sample& ctx,
                 const std::vector<CMSat::Lit>& conflict,
-                ArjunNS::aig_ptr interp_branch = nullptr);
+                ArjunNS::aig_lit interp_branch = nullptr);
 
         // Build the Formula for the interpolant branch path. Sets f.aig
         // (raw AIG), f.clauses (Tseitin-encoded in y_hat space) and
         // f.out.
         FHolder<MetaSolver2>::Formula build_interp_branch_formula(
                 const uint32_t y_rep, const std::vector<CMSat::Lit>& conflict,
-                ArjunNS::aig_ptr interp_branch);
+                ArjunNS::aig_lit interp_branch);
 
         void add_not_f_x_yhat();
         void fill_dependency_mat_with_backward();
@@ -247,12 +247,12 @@ class Manthan {
         void check_repair_monotonic();
         bool count_error_formula(mpz_class& out_count);
         CMSat::Lit tseitin_encode_aig(
-            const ArjunNS::aig_ptr& aig,
+            const ArjunNS::aig_lit& aig,
             const std::map<uint32_t, uint32_t>& count_y_to_y_hat,
             std::vector<std::vector<CMSat::Lit>>& clauses,
             uint32_t& next_var,
             CMSat::Lit true_lit,
-            std::map<ArjunNS::aig_ptr, CMSat::Lit>& cache);
+            std::map<ArjunNS::aig_lit, CMSat::Lit>& cache);
         mpz_class prev_error_count = -1; // -1 means no previous count
 
         // debug

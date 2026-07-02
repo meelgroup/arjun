@@ -61,7 +61,7 @@ public:
         // holds automatically.
         uint32_t uninserted_start = 0;
         CMSat::Lit out = CMSat::lit_Error;
-        ArjunNS::aig_ptr aig = nullptr;
+        ArjunNS::aig_lit aig = nullptr;
     };
 
     std::set<uint32_t> get_dependent_vars(const Formula& f, uint32_t v) const {

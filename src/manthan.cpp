@@ -280,7 +280,7 @@ void Manthan::fill_var_to_formula_with(set<uint32_t>& vars) {
 bool Manthan::check_aig_dependency_cycles() const {
     // We need to copy these, so we don't accidentally update the original.
     // We deep copy them together in one go, to preserve e.g. cycles
-    vector<aig_ptr> aigs(cnf.nVars(), nullptr);
+    vector<aig_lit> aigs(cnf.nVars(), nullptr);
     for(const auto& y: to_define) {
         if (!var_to_formula.count(y)) continue;
         aigs[y] = var_to_formula.at(y).aig;
@@ -552,7 +552,7 @@ bool Manthan::check_synth_via_aig(const string& where) const {
     // (Manthan-internal) y_hat leaf from perform_repair, use the
     // corresponding shadow_y_hat via y_hat_to_y; otherwise treat as raw.
     std::unordered_map<const AIG*, Lit> cache;
-    std::function<Lit(const aig_ptr&)> enc_edge = [&](const aig_ptr& n) -> Lit {
+    std::function<Lit(const aig_lit&)> enc_edge = [&](const aig_lit& n) -> Lit {
         assert(n != nullptr);
         if (n->type == AIGT::t_const) return n.neg ? ~true_l : true_l;
         if (n->type == AIGT::t_lit) {
@@ -666,7 +666,7 @@ bool Manthan::check_aig_matches_clauses_per_formula(const string& where) const {
         // leaves exactly as bve_and_substitute/perform_repair would (so we
         // get a lit that represents the AIG's value over y_hat vars).
         std::unordered_map<const AIG*, Lit> cache;
-        std::function<Lit(const aig_ptr&)> enc_edge = [&](const aig_ptr& n) -> Lit {
+        std::function<Lit(const aig_lit&)> enc_edge = [&](const aig_lit& n) -> Lit {
             assert(n != nullptr);
             if (n->type == AIGT::t_const) {
                 Lit t = fh->get_true_lit();
@@ -749,7 +749,7 @@ bool Manthan::check_aig_matches_clauses_per_formula(const string& where) const {
             // which under the miter map to y_hats. So read m[y_hat[v]] for
             // to_define_full leaves, m[v] for inputs.
             std::map<const AIG*, bool> eval_cache;
-            std::function<bool(const aig_ptr&)> eval_aig = [&](const aig_ptr& n) -> bool {
+            std::function<bool(const aig_lit&)> eval_aig = [&](const aig_lit& n) -> bool {
                 if (n->type == AIGT::t_const) return !n.neg;  // const TRUE is base, edge may flip
                 if (n->type == AIGT::t_lit) {
                     uint32_t v = n->var;
@@ -778,7 +778,7 @@ bool Manthan::check_aig_matches_clauses_per_formula(const string& where) const {
             // opt-in for deep triage.
             VERBOSE_DEBUG_DO({
                 std::set<uint64_t> printed_nids;
-                std::function<void(const aig_ptr&, int)> dump_aig = [&](const aig_ptr& n, int depth) {
+                std::function<void(const aig_lit&, int)> dump_aig = [&](const aig_lit& n, int depth) {
                     std::string indent(depth * 2, ' ');
                     cout << "c o [aig_vs_clauses]   " << indent
                          << "nid=" << n->nid << " type=" << (int)n->type
@@ -800,21 +800,21 @@ bool Manthan::check_aig_matches_clauses_per_formula(const string& where) const {
     return true;
 }
 
-aig_ptr Manthan::one_level_substitute(Lit l, const uint32_t v, map<uint32_t, aig_ptr>& transformed) {
+aig_lit Manthan::one_level_substitute(Lit l, const uint32_t v, map<uint32_t, aig_lit>& transformed) {
     if (!transformed.count(l.var())) {
         assert(var_to_formula.count(l.var()) == 1);
         auto aig = var_to_formula.at(l.var()).aig;
         std::unordered_map<const AIG*, aig_node_ptr> cache;
         auto aig2 = AIG::deep_clone(aig, cache);
-        map<aig_ptr, aig_ptr> cache_aig;
-        auto aig3 = AIG::transform<aig_ptr>(
+        map<aig_lit, aig_lit> cache_aig;
+        auto aig3 = AIG::transform<aig_lit>(
           aig2,
-          [&](AIGT type, const uint32_t var, const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
+          [&](AIGT type, const uint32_t var, const aig_lit* left, const aig_lit* right) -> aig_lit {
             if (type == AIGT::t_const) {
                 return aig_mng.new_const(true);
             }
             if (type == AIGT::t_lit) {
-                aig_ptr l_aig = nullptr;
+                aig_lit l_aig = nullptr;
                 if (later_in_order(v, var)) {
                     l_aig = AIG::new_lit(Lit(var, false));
                     set_depends_on(v, var);
@@ -839,11 +839,11 @@ aig_ptr Manthan::one_level_substitute(Lit l, const uint32_t v, map<uint32_t, aig
 // Hence, we only care about clauses where v appears positively
 void Manthan::bve_and_substitute() {
     const double start_time = cpuTime();
-    map<Lit, aig_ptr> lit_to_aig;
+    map<Lit, aig_lit> lit_to_aig;
 
     auto get_aig = [&](const Lit l) {
       if (lit_to_aig.count(l)) return lit_to_aig.at(l);
-      aig_ptr aig = AIG::new_lit(l);
+      aig_lit aig = AIG::new_lit(l);
       lit_to_aig[l] = aig;
       return aig;
     };
@@ -857,12 +857,12 @@ void Manthan::bve_and_substitute() {
     }
 
     uint32_t num_done = 0;
-    vector<aig_ptr> aigs;
+    vector<aig_lit> aigs;
     for(const auto& y: y_order) {
         if (!to_define.count(y)) continue;
         assert(var_to_formula.count(y) == 0);
 
-        map<uint32_t, aig_ptr> transformed;
+        map<uint32_t, aig_lit> transformed;
 
         // For optimizing which side of the BVE to take
         uint32_t num_pos = 0;
@@ -881,7 +881,7 @@ void Manthan::bve_and_substitute() {
             << " neg occur: " << setw(6) << num_neg);
 
         const bool sign = (num_pos >= num_neg);
-        aig_ptr overall = nullptr;
+        aig_lit overall = nullptr;
 
         // AIG
         for(const auto& at: lit_to_cls[Lit(y, sign).toInt()]) {
@@ -894,11 +894,11 @@ void Manthan::bve_and_substitute() {
                 }
             }
             if (!todo) continue;
-            aig_ptr current = nullptr;
+            aig_lit current = nullptr;
             for(const auto& l: cl) {
                 if (l.var() == y) continue;
                 if (later_in_order(y, l.var())) {
-                    aig_ptr aig = get_aig(~l);
+                    aig_lit aig = get_aig(~l);
                     set_depends_on(y, l);
                     if (current == nullptr) current = aig;
                     else current = AIG::new_and(current, aig);
@@ -951,7 +951,7 @@ void Manthan::bve_and_substitute() {
         ArjunNS::AIGToCNF<FormulaClauseSink> enc(sink);
         enc.set_true_lit(fh->get_true_lit());
 
-        aig_ptr aig_yhat = AIG::translate_leaves(
+        aig_lit aig_yhat = AIG::translate_leaves(
             f.aig,
             [&](uint32_t var2) { return map_y_to_y_hat(Lit(var2, false)); });
 
@@ -1162,8 +1162,8 @@ void Manthan::print_detailed_stats() const {
         size_t aig_depth = 0;
         if (var_to_formula.count(v) && var_to_formula.at(v).aig) {
             aig_sz = AIG::count_aig_nodes_fast(var_to_formula.at(v).aig);
-            std::function<size_t(const aig_ptr&, std::map<aig_ptr,size_t>&)> get_depth =
-                [&](const aig_ptr& a, std::map<aig_ptr,size_t>& dc) -> size_t {
+            std::function<size_t(const aig_lit&, std::map<aig_lit,size_t>&)> get_depth =
+                [&](const aig_lit& a, std::map<aig_lit,size_t>& dc) -> size_t {
                     if (!a || a->type != AIGT::t_and) return 0;
                     auto it = dc.find(a);
                     if (it != dc.end()) return it->second;
@@ -1171,7 +1171,7 @@ void Manthan::print_detailed_stats() const {
                     dc[a] = d;
                     return d;
                 };
-            std::map<aig_ptr,size_t> dc;
+            std::map<aig_lit,size_t> dc;
             aig_depth = get_depth(var_to_formula.at(v).aig, dc);
         }
         const uint32_t n_attempts = repaired_vars_count[v];
@@ -1481,7 +1481,7 @@ SimplifiedCNF Manthan::do_manthan() {
     print_stats("", COLYEL, " DONE");
 
     // Build final CNF
-    vector<aig_ptr> aigs(cnf.nVars(), nullptr);
+    vector<aig_lit> aigs(cnf.nVars(), nullptr);
     for(const auto& y: to_define) {
         assert(var_to_formula.count(y));
         verb_print(3, "Final formula for " << y+1 << ":" << endl << var_to_formula[y]);
@@ -1566,7 +1566,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     vector<Lit> conflict;
     repaired_vars_count[y_rep]++;
 
-    aig_ptr interp_branch = nullptr;
+    aig_lit interp_branch = nullptr;
     bool ret = find_conflict(y_rep, ctx, conflict, interp_branch);
     repair_solver_calls++;
 
@@ -1623,7 +1623,7 @@ bool Manthan::compute_aig_dep_set(const uint32_t y_rep) {
         assert(aig != nullptr);
         const ArjunNS::AIG* aig_raw = aig.get();
         auto it = dep_cache.find(y_rep);
-        if (it != dep_cache.end() && it->second.aig_ptr == aig_raw) {
+        if (it != dep_cache.end() && it->second.aig_lit == aig_raw) {
             // Cache hit: reuse memoized dep_list, just repopulate the bitmap.
             const auto& cached = it->second.dep_list;
             for (const uint32_t dv : cached) {
@@ -1635,7 +1635,7 @@ bool Manthan::compute_aig_dep_set(const uint32_t y_rep) {
             AIG::get_dependent_vars(aig, aig_dep_is_dep, aig_dep_list,
                                     aig_dep_stack, y_rep);
             if (it != dep_cache.end()) {
-                it->second.aig_ptr = aig_raw;
+                it->second.aig_lit = aig_raw;
                 it->second.dep_list = aig_dep_list;
             } else {
                 dep_cache.emplace(y_rep, DepCacheEntry{aig_raw, aig_dep_list});
@@ -1857,7 +1857,7 @@ bool Manthan::should_compute_interp(const uint32_t y_rep, const vector<Lit>& con
 // Track interp-vs-conflict size and blacklist the var (skip-until a future
 // tot_repaired) if the running mean node/lit ratio exceeds the threshold.
 void Manthan::interp_adaptive_bookkeeping(const uint32_t y_rep,
-        const vector<Lit>& conflict, const aig_ptr& interp_branch) {
+        const vector<Lit>& conflict, const aig_lit& interp_branch) {
     if (interp_branch == nullptr
             || mconf.interp_repair_adaptive_gate == 0
             || y_rep >= interp_var_calls.size()) return;
@@ -1889,7 +1889,7 @@ void Manthan::interp_adaptive_bookkeeping(const uint32_t y_rep,
 // clause, for perform_repair to use as the AIG branch. Leaves interp_branch
 // null (conflict-clause fallback) when interp repair is off or gated out.
 void Manthan::maybe_compute_interp_branch(const uint32_t y_rep, const Lit to_repair,
-        const vector<Lit>& conflict, aig_ptr& interp_branch) {
+        const vector<Lit>& conflict, aig_lit& interp_branch) {
     if (!(interp_repair && mconf.interp_repair > 0)) return;
     if (!should_compute_interp(y_rep, conflict)) return;
 
@@ -1915,7 +1915,7 @@ void Manthan::maybe_compute_interp_branch(const uint32_t y_rep, const Lit to_rep
 }
 
 bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
-        vector<Lit>& conflict, aig_ptr& interp_branch) {
+        vector<Lit>& conflict, aig_lit& interp_branch) {
     interp_branch = nullptr;
     const double repair_solver_start_time = cpuTime();
     const bool have_aig_deps = compute_aig_dep_set(y_rep);
@@ -2073,7 +2073,7 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 // path, this builds at AIG level and Tseitin-encodes via AIGToCNF.
 FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
         const uint32_t y_rep, const vector<Lit>& conflict,
-        aig_ptr interp_branch) {
+        aig_lit interp_branch) {
     FHolder<MetaSolver2>::Formula f;
 
     // The guard is the must-flip region: TRUE exactly where H is wrong and
@@ -2082,7 +2082,7 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
     // They are leaf literals on the y-var, never the inlined y_other formula
     // AIG: inlining made the AIGs blow up super-linearly across repairs, and
     // a leaf is semantically identical (y_other resolves to its def on export).
-    aig_ptr guard = AIG::new_not(interp_branch);
+    aig_lit guard = AIG::new_not(interp_branch);
     for (const auto& l : conflict) {
         if (is_input[l.var()] || is_backward_defined[l.var()]) continue;
         assert(var_to_formula.count(l.var()));
@@ -2112,13 +2112,13 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
         // Helper var or true_lit: already in cex_solver space.
         return Lit(v, false);
     };
-    aig_ptr guard_yhat = AIG::translate_leaves(guard, leaf_to_yhat);
+    aig_lit guard_yhat = AIG::translate_leaves(guard, leaf_to_yhat);
 
     SLOW_DEBUG_DO({
         // Defensive: every guard_yhat leaf must be an input, y_hat, helper
         // or true_lit — a raw to_define leaf means incomplete translation.
         std::set<const ArjunNS::AIG*> seen;
-        std::function<void(const aig_ptr&)> walk = [&](const aig_ptr& a) {
+        std::function<void(const aig_lit&)> walk = [&](const aig_lit& a) {
             if (a == nullptr) return;
             if (a->type == ArjunNS::AIGT::t_const) return;
             if (a->type == ArjunNS::AIGT::t_lit) {
@@ -2166,7 +2166,7 @@ FHolder<MetaSolver2>::Formula Manthan::build_interp_branch_formula(
 }
 
 void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
-        const vector<Lit>& conflict, aig_ptr interp_branch) {
+        const vector<Lit>& conflict, aig_lit interp_branch) {
     // Track conflict variable frequency for smarter minimization ordering
     for (const auto& l : conflict) {
         if (l.var() < var_conflict_freq.size()) var_conflict_freq[l.var()]++;
@@ -2221,7 +2221,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         f.out = fresh_l;
 
         // AIG part: the guard, TRUE exactly on the conflict cube.
-        aig_ptr guard = nullptr;
+        aig_lit guard = nullptr;
         for(const auto& l: conflict) assert(l.var() < cnf.nVars());
         if (conflict.empty()) guard = aig_mng.new_const(true);
         else {
@@ -2864,9 +2864,9 @@ void Manthan::recompute_all_y_hat_cnf(sample& ctx) {
 }
 
 void Manthan::recompute_all_y_hat_aig(sample& ctx, const uint32_t y_rep) {
-    vector<aig_ptr> defs(ctx.size(), nullptr);
+    vector<aig_lit> defs(ctx.size(), nullptr);
     bool found = false;
-    map<aig_ptr, lbool> cache;
+    map<aig_lit, lbool> cache;
     for (const auto& y : y_order) {
         // Only need to recompute after y_rep
         if (!found && y == y_rep) {
@@ -2910,12 +2910,12 @@ void Manthan::check_repair_monotonic() {
 }
 
 Lit Manthan::tseitin_encode_aig(
-    const aig_ptr& aig,
+    const aig_lit& aig,
     const map<uint32_t, uint32_t>& count_y_to_y_hat,
     vector<vector<Lit>>& clauses,
     uint32_t& next_var,
     Lit true_lit,
-    map<aig_ptr, Lit>& cache)
+    map<aig_lit, Lit>& cache)
 {
     auto it = cache.find(aig);
     if (it != cache.end()) return it->second;
@@ -3013,7 +3013,7 @@ bool Manthan::count_error_formula(mpz_class& out_count) {
 
     // 3. Add synthesized function definitions: y_hat = f(x)
     // For each y, Tseitin-encode the AIG and equate to y_hat
-    map<aig_ptr, Lit> tseitin_cache;
+    map<aig_lit, Lit> tseitin_cache;
     for (const auto& y : to_define_full) {
         assert(var_to_formula.count(y));
         const auto& aig = var_to_formula.at(y).aig;

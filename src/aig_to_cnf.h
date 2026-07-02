@@ -69,8 +69,8 @@ class AIGToCNF {
 public:
     explicit AIGToCNF(Solver& s) : solver(s) {}
 
-    CMSat::Lit encode(const aig_ptr& root, bool force_helper = false);
-    std::vector<CMSat::Lit> encode_batch(const std::vector<aig_ptr>& roots);
+    CMSat::Lit encode(const aig_lit& root, bool force_helper = false);
+    std::vector<CMSat::Lit> encode_batch(const std::vector<aig_lit>& roots);
 
     void set_true_lit(CMSat::Lit t) { my_true_lit = t; my_has_true_lit = true; }
     [[nodiscard]] const AIG2CNFStats& get_stats() const { return stats; }
@@ -162,8 +162,8 @@ private:
         });
     }
 
-    void count_fanout(const aig_ptr& root);
-    CMSat::Lit encode_edge(const aig_ptr& n);
+    void count_fanout(const aig_lit& root);
+    CMSat::Lit encode_edge(const aig_lit& n);
     // Encode the node n's POSITIVE value as an AND (k-ary). Callers handle
     // caching and outer-sign application.
     CMSat::Lit encode_and_positive(const AIG* n);
@@ -295,7 +295,7 @@ CMSat::Lit AIGToCNF<Solver>::get_true_lit() {
 }
 
 template<class Solver>
-void AIGToCNF<Solver>::count_fanout(const aig_ptr& root) {
+void AIGToCNF<Solver>::count_fanout(const aig_lit& root) {
     fanout.clear();
     if (!root) return;
     std::unordered_set<const AIG*, AigNodeHash> visited;
@@ -315,7 +315,7 @@ void AIGToCNF<Solver>::count_fanout(const aig_ptr& root) {
 }
 
 template<class Solver>
-CMSat::Lit AIGToCNF<Solver>::encode(const aig_ptr& root, bool force_helper) {
+CMSat::Lit AIGToCNF<Solver>::encode(const aig_lit& root, bool force_helper) {
     assert(root);
     count_fanout(root);
     CMSat::Lit out = encode_edge(root);
@@ -329,7 +329,7 @@ CMSat::Lit AIGToCNF<Solver>::encode(const aig_ptr& root, bool force_helper) {
 }
 
 template<class Solver>
-std::vector<CMSat::Lit> AIGToCNF<Solver>::encode_batch(const std::vector<aig_ptr>& roots) {
+std::vector<CMSat::Lit> AIGToCNF<Solver>::encode_batch(const std::vector<aig_lit>& roots) {
     fanout.clear();
     std::unordered_set<const AIG*, AigNodeHash> visited;
     std::function<void(const AIG*)> dfs = [&](const AIG* n) {
@@ -360,7 +360,7 @@ std::vector<CMSat::Lit> AIGToCNF<Solver>::encode_batch(const std::vector<aig_ptr
 }
 
 template<class Solver>
-CMSat::Lit AIGToCNF<Solver>::encode_edge(const aig_ptr& n) {
+CMSat::Lit AIGToCNF<Solver>::encode_edge(const aig_lit& n) {
     stats.nodes_visited++;
     if (n->type == AIGT::t_const) {
         CMSat::Lit t = get_true_lit();

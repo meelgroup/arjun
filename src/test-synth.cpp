@@ -260,7 +260,7 @@ void fill_var_to_formula(T& solver, FHolder<T>& fh, const SimplifiedCNF& cnf, ma
         };
 
         // Recursively generate clauses for the AIG using the transform function
-        map<aig_ptr, Lit> cache;
+        map<aig_lit, Lit> cache;
         const Lit out_lit = AIG::transform<Lit>(aig, aig_to_cnf_visitor, cache);
         f.out = out_lit;
         f.aig = aig;
@@ -498,7 +498,7 @@ void check_aig_contains_no_self_refs(const SimplifiedCNF& cnf) {
             return true;
         };
 
-        map<aig_ptr, bool> cache;
+        map<aig_lit, bool> cache;
         AIG::transform<bool>(aig, visitor, cache);
     }
 }

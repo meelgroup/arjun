@@ -67,7 +67,6 @@ inline std::ostream& operator<<(std::ostream& os, const AIGT& value) {
 // Signed reference to an AIG node: the edge carries the complement bit. All
 // references (roots, AND fanins, defs[] values, map keys) use `aig_lit`, not a
 // bare shared_ptr — this is the only place complementation lives.
-// `aig_ptr` is a backwards-compatible alias.
 struct aig_lit {
     aig_node_ptr node;
     bool neg;
@@ -79,7 +78,7 @@ struct aig_lit {
 
     AIG* operator->() const { return node.get(); }
     AIG& operator*() const { return *node; }
-    AIG* get() const { return node.get(); }
+    [[nodiscard]] AIG* get() const { return node.get(); }
     explicit operator bool() const { return (bool)node; }
 
     aig_lit operator~() const { return {node, !neg}; }
@@ -94,8 +93,6 @@ struct aig_lit {
     // CLAUDE.md's determinism rule.
     bool operator<(const aig_lit& o) const;
 };
-
-using aig_ptr = aig_lit;
 
 class AIG {
 public:
@@ -130,8 +127,8 @@ public:
     // vals = input variable assignments
     // aig = AIG to evaluate (signed edge; carries its own complement bit)
     // defs = known definitions of variables (each def is a signed edge)
-    static CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, const aig_ptr& a, const std::vector<aig_ptr>& defs, std::map<aig_ptr, CMSat::lbool>& cache) {
-        std::function<CMSat::lbool(const aig_ptr&)> sub_eval = [&](const aig_ptr& aig) -> CMSat::lbool {
+    static CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, const aig_lit& a, const std::vector<aig_lit>& defs, std::map<aig_lit, CMSat::lbool>& cache) {
+        std::function<CMSat::lbool(const aig_lit&)> sub_eval = [&](const aig_lit& aig) -> CMSat::lbool {
             if (cache.count(aig)) return cache.at(aig);
             assert(aig->invariants());
             if (aig->type == AIGT::t_lit) {
@@ -168,20 +165,20 @@ public:
         return sub_eval(a);
     }
 
-    static aig_ptr new_lit(CMSat::Lit l) {
+    static aig_lit new_lit(CMSat::Lit l) {
         return new_lit(l.var(), l.sign());
     }
 
     // Creates a positive t_lit node for `var` and returns a signed edge to it.
     // The node itself has no `neg`; the sign lives on the returned aig_lit.
-    static aig_ptr new_lit(uint32_t v, bool neg = false) {
+    static aig_lit new_lit(uint32_t v, bool neg = false) {
         auto n = std::make_shared<AIG>();
         n->type = AIGT::t_lit;
         n->var = v;
         return aig_lit(n, neg);
     }
 
-    static aig_ptr new_const(bool val) {
+    static aig_lit new_const(bool val) {
         // Single positive t_const node representing TRUE. Callers ask for FALSE
         // via a complemented edge.
         auto n = std::make_shared<AIG>();
@@ -189,7 +186,7 @@ public:
         return aig_lit(n, !val);
     }
 
-    static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, CMSat::Lit b) {
+    static aig_lit new_ite(const aig_lit& l, const aig_lit& r, CMSat::Lit b) {
         assert(l != nullptr);
         assert(r != nullptr);
         // ITE(b, x, x) = x
@@ -200,15 +197,15 @@ public:
 
     // Logical NOT is an edge-only operation in the new representation: flip
     // the complement bit of the reference, don't create a new node.
-    static aig_ptr new_not(const aig_ptr& a) {
+    static aig_lit new_not(const aig_lit& a) {
         assert(a != nullptr);
         return ~a;
     }
 
-    static aig_ptr new_and(const aig_ptr& l, const aig_ptr& r, bool neg = false) {
+    static aig_lit new_and(const aig_lit& l, const aig_lit& r, bool neg = false) {
         assert(l != nullptr && r != nullptr);
 
-        auto apply_out_neg = [&](const aig_ptr& v) -> aig_ptr {
+        auto apply_out_neg = [&](const aig_lit& v) -> aig_lit {
             return neg ? ~v : v;
         };
 
@@ -265,7 +262,7 @@ public:
         return aig_lit(ret, neg);
     }
 
-    static aig_ptr new_or(const aig_ptr& l, const aig_ptr& r, bool neg = false) {
+    static aig_lit new_or(const aig_lit& l, const aig_lit& r, bool neg = false) {
         // OR(a, b) = ~AND(~a, ~b). The result's output complement collapses
         // with the caller-provided `neg`.
         return new_and(~l, ~r, !neg);
@@ -278,7 +275,7 @@ public:
     using AIGKey = std::tuple<AIGT, uint32_t, uint64_t, bool, uint64_t, bool>;
 
 
-    static aig_ptr new_ite(const aig_ptr& l, const aig_ptr& r, const aig_ptr& b) {
+    static aig_lit new_ite(const aig_lit& l, const aig_lit& r, const aig_lit& b) {
         assert(l != nullptr);
         assert(r != nullptr);
         assert(b != nullptr);
@@ -290,7 +287,7 @@ public:
         return AIG::new_or(AIG::new_and(b, l), AIG::new_and(AIG::new_not(b), r));
     }
 
-    static void get_dependent_vars(const aig_ptr& aig_orig, std::set<uint32_t>& dep, uint32_t v) {
+    static void get_dependent_vars(const aig_lit& aig_orig, std::set<uint32_t>& dep, uint32_t v) {
         const uint64_t epoch = next_visit_epoch();
         std::vector<const AIG*> stack;
         const AIG* root = aig_orig.get();
@@ -316,7 +313,7 @@ public:
     // dep_list receives the vars newly marked. stack is used for DFS and
     // left dirty on exit so the caller can reuse its capacity. Visited
     // state is tracked via AIG::visit_epoch; each call bumps the epoch.
-    static void get_dependent_vars(const aig_ptr& aig_orig,
+    static void get_dependent_vars(const aig_lit& aig_orig,
                                    std::vector<char>& is_dep,
                                    std::vector<uint32_t>& dep_list,
                                    std::vector<const AIG*>& stack,
@@ -345,8 +342,8 @@ public:
         }
     }
 
-    static std::vector<aig_ptr> deep_clone_vec(const std::vector<aig_ptr>& aigs) {
-        std::vector<aig_ptr> ret;
+    static std::vector<aig_lit> deep_clone_vec(const std::vector<aig_lit>& aigs) {
+        std::vector<aig_lit> ret;
         std::unordered_map<const AIG*, aig_node_ptr> cache;
         ret.reserve(aigs.size());
         for (const auto& aig : aigs) {
@@ -367,7 +364,7 @@ public:
         return ret;
     }
 
-    static aig_ptr deep_clone(const aig_ptr& aig, std::unordered_map<const AIG*, aig_node_ptr>& cache) {
+    static aig_lit deep_clone(const aig_lit& aig, std::unordered_map<const AIG*, aig_node_ptr>& cache) {
         if (!aig) return nullptr;
 
         // Clones nodes, not signed edges. Sign is carried on the returned edge.
@@ -398,14 +395,14 @@ public:
     // aig_lit. De-dup is by signed-edge: two references with opposite sign
     // visit the same underlying node twice (the sign can matter to callers).
     template<typename Func>
-    static void traverse(const aig_ptr& aig, Func&& func) {
+    static void traverse(const aig_lit& aig, Func&& func) {
         if (!aig) return;
-        std::set<aig_ptr> visited;
+        std::set<aig_lit> visited;
         traverse_helper(aig, std::forward<Func>(func), visited);
     }
 
     template<typename Func>
-    static void traverse_helper(const aig_ptr& node, Func&& func, std::set<aig_ptr>& visited) {
+    static void traverse_helper(const aig_lit& node, Func&& func, std::set<aig_lit>& visited) {
         if (!node) return;
 
         if (visited.count(node)) return;
@@ -440,9 +437,9 @@ public:
     // visitor twice — duplicating any side effects (e.g. Tseitin clauses).
     template<typename ResultType, typename Visitor>
     static ResultType transform(
-        const aig_ptr& aig,
+        const aig_lit& aig,
         Visitor&& visitor,
-        std::map<aig_ptr, ResultType>& cache
+        std::map<aig_lit, ResultType>& cache
     ) {
         assert(aig);
 
@@ -477,7 +474,7 @@ public:
     // visited node and per emitted helper respectively.
     template<typename Solver, typename TrueFn, typename LeafFn>
     static CMSat::Lit tseitin_encode(
-        const aig_ptr& aig,
+        const aig_lit& aig,
         Solver& solver,
         TrueFn&& true_lit_fn,
         LeafFn&& leaf_to_lit,
@@ -502,7 +499,7 @@ public:
             assert(false && "Unhandled AIG type in tseitin_encode");
             std::abort();
         };
-        std::map<aig_ptr, CMSat::Lit> cache;
+        std::map<aig_lit, CMSat::Lit> cache;
         return transform<CMSat::Lit>(aig, visit, cache);
     }
 
@@ -510,39 +507,39 @@ public:
     // preserving structure. `out_negate` flips the top edge. Used to remap
     // AIGs across var spaces (NEW↔ORIG, y→y_hat, etc.).
     template<typename LitFn>
-    static aig_ptr translate_leaves(
-        const aig_ptr& aig,
+    static aig_lit translate_leaves(
+        const aig_lit& aig,
         LitFn&& lit_of_var,
         bool out_negate = false
     ) {
         auto visit = [&](AIGT type, uint32_t var,
-                         const aig_ptr* left, const aig_ptr* right) -> aig_ptr {
+                         const aig_lit* left, const aig_lit* right) -> aig_lit {
             if (type == AIGT::t_const) return new_const(true);
             if (type == AIGT::t_lit)   return new_lit(lit_of_var(var));
             if (type == AIGT::t_and)   return new_and(*left, *right);
             assert(false && "Unhandled AIG type in translate_leaves");
             std::abort();
         };
-        std::map<aig_ptr, aig_ptr> cache;
-        aig_ptr ret = transform<aig_ptr>(aig, visit, cache);
+        std::map<aig_lit, aig_lit> cache;
+        aig_lit ret = transform<aig_lit>(aig, visit, cache);
         return out_negate ? ~ret : ret;
     }
 
     // Fast variant: iterative DFS using AIG::visit_epoch marking. Shared
     // structure across the input vector is counted only once. Used by the
-    // rewriter's hot paths where the std::set<aig_ptr> version was the
+    // rewriter's hot paths where the std::set<aig_lit> version was the
     // dominant cost on large (500k+ node) AIGs.
-    static size_t count_aig_nodes_fast(const std::vector<aig_ptr>& roots);
-    static size_t count_aig_nodes_fast(const aig_ptr& root);
+    static size_t count_aig_nodes_fast(const std::vector<aig_lit>& roots);
+    static size_t count_aig_nodes_fast(const aig_lit& root);
     // Batch-counting helper: marks newly seen nodes against `epoch` and
     // adds their count to `count`. Callers obtain `epoch` once via
     // next_visit_epoch() and then invoke this for each root to union-count.
     static void count_aig_nodes_batch(const AIG* aig, uint64_t epoch, size_t& count);
-    static void simplify_aigs(uint32_t verb, std::vector<aig_ptr>& defs);
-    static aig_ptr simplify_aig(aig_ptr aig);
-    static aig_ptr rewrite_aig(const aig_ptr& aig);
+    static void simplify_aigs(uint32_t verb, std::vector<aig_lit>& defs);
+    static aig_lit simplify_aig(aig_lit aig);
+    static aig_lit rewrite_aig(const aig_lit& aig);
 
-    friend std::ostream& operator<<(std::ostream& out, const aig_ptr& aig);
+    friend std::ostream& operator<<(std::ostream& out, const aig_lit& aig);
     friend class AIGManager;
     friend class AIGRewriter;
     friend class SimplifiedCNF;
@@ -558,9 +555,9 @@ public:
     aig_lit r;
 
 private:
-    static aig_ptr simplify(aig_ptr aig);
-    static aig_ptr simplify(aig_ptr aig, std::unordered_map<const AIG*, aig_lit>& cache);
-    static aig_ptr simplify_cse(aig_ptr aig, std::map<AIGKey, aig_node_ptr>& cse_map, std::unordered_map<const AIG*, aig_node_ptr>& cache);
+    static aig_lit simplify(aig_lit aig);
+    static aig_lit simplify(aig_lit aig, std::unordered_map<const AIG*, aig_lit>& cache);
+    static aig_lit simplify_cse(aig_lit aig, std::map<AIGKey, aig_node_ptr>& cse_map, std::unordered_map<const AIG*, aig_node_ptr>& cache);
 
     // Epoch-based visited marker used by DFS traversals (get_dependent_vars,
     // count_aig_nodes, ...) in place of an unordered_set<const AIG*>. A
@@ -580,7 +577,7 @@ private:
     }
 };
 
-// Deterministic ordering for aig_lit (a.k.a. aig_ptr) — keyed on the node's
+// Deterministic ordering for aig_lit (a.k.a. aig_lit) — keyed on the node's
 // monotonic nid rather than its raw address. std::map<aig_lit,…> and
 // std::set<aig_lit> rely on this to stay stable across runs (raw pointers
 // are ASLR-randomised).
@@ -591,7 +588,7 @@ inline bool aig_lit::operator<(const aig_lit& o) const {
     return (int)neg < (int)o.neg;
 }
 
-inline std::ostream& operator<<(std::ostream& out, const aig_ptr& aig) {
+inline std::ostream& operator<<(std::ostream& out, const aig_lit& aig) {
     if (!aig) {
         out << "NULL_AIG";
         return out;
@@ -635,7 +632,7 @@ public:
         const_true_node = other.const_true_node;
     }
 
-    [[nodiscard]] aig_ptr new_const(bool val) const {
+    [[nodiscard]] aig_lit new_const(bool val) const {
         return aig_lit(const_true_node, !val);
     }
 
@@ -1452,7 +1449,7 @@ public:
             const std::vector<uint32_t>& new_sampl_vars,
             const std::vector<uint32_t>& empty_sampling_vars);
 
-    CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var, std::map<aig_ptr, CMSat::lbool>& cache ) const;
+    CMSat::lbool evaluate(const std::vector<CMSat::lbool>& vals, uint32_t var, std::map<aig_lit, CMSat::lbool>& cache ) const;
 
     // returns in CNF (NEW VARS) the dependencies of each variable
     // input is also NEW VARS
@@ -1472,7 +1469,7 @@ public:
 
     [[nodiscard]] std::vector<CMSat::lbool> extend_sample(const std::vector<CMSat::lbool>& sample, const bool relaxed = false) const;
 
-    void map_aigs_to_orig(const std::vector<aig_ptr>& aigs, const uint32_t max_num_vars,
+    void map_aigs_to_orig(const std::vector<aig_lit>& aigs, const uint32_t max_num_vars,
             std::optional<std::reference_wrapper<const std::map<uint32_t, CMSat::Lit>>> back_map = std::nullopt);
 
     SimplifiedCNF get_cnf(
@@ -1537,12 +1534,12 @@ public:
     }
 
     // Get AIG definition for a variable (in ORIG numbering)
-    [[nodiscard]] const aig_ptr& get_def(uint32_t v) const {
+    [[nodiscard]] const aig_lit& get_def(uint32_t v) const {
         assert(v < defs.size());
         return defs[v];
     }
 
-    void set_def(const uint32_t v_orig, const aig_ptr& def);
+    void set_def(const uint32_t v_orig, const aig_lit& def);
     void clear_orig_sampl_defs();
     void simplify_aigs(const uint32_t verb = 0) {
         assert(need_aig);
@@ -1586,7 +1583,7 @@ private:
     std::map<uint32_t, CMSat::Lit> orig_to_new_var; // ONLY maps in the CNF
                                                     // does NOT map to vars NOT in the CNF
     AIGManager aig_mng; // only for const true/false
-    std::vector<aig_ptr> defs; //Definition of variables in terms of AIG. ORIGINAL number space.
+    std::vector<aig_lit> defs; //Definition of variables in terms of AIG. ORIGINAL number space.
                                //Size is the original number of variables, ALWAYS
                                //Full of nullptr-s in case synthesis is not needed
 

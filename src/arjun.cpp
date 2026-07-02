@@ -284,7 +284,7 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         }
         bool sign = neg > pos;
 
-        aig_ptr overall = nullptr;
+        aig_lit overall = nullptr;
         for(const auto& cl: orig_def) {
             auto current = scnf.aig_mng.new_const(true);
 
@@ -410,7 +410,7 @@ DLL_PUBLIC void SimplifiedCNF::add_fixed_values(const vector<Lit>& fixed) {
     }
 }
 
-DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig, const uint32_t max_num_vars,
+DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_lit>& aigs_orig, const uint32_t max_num_vars,
             std::optional<std::reference_wrapper<const std::map<uint32_t, CMSat::Lit>>> back_map) {
     const auto new_to_orig_var = get_new_to_orig_var();
     // Rebuild each AIG: t_lit nodes are replaced with remapped variables, and
@@ -452,7 +452,7 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig
         cache[src] = pos_result;
     };
 
-    auto rebuild_iter = [&](const aig_ptr& aig) -> aig_lit {
+    auto rebuild_iter = [&](const aig_lit& aig) -> aig_lit {
         if (aig == nullptr) return aig_lit();
         if (!cache.count(aig.get())) {
             struct Frame { const AIG* src; bool children_done; };
@@ -480,7 +480,7 @@ DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_ptr>& aigs_orig
         return aig_lit(pos_result.node, pos_result.neg ^ aig.neg);
     };
 
-    vector<aig_ptr> aigs;
+    vector<aig_lit> aigs;
     aigs.reserve(aigs_orig.size());
     for (const auto& a : aigs_orig) aigs.push_back(rebuild_iter(a));
 
@@ -536,7 +536,7 @@ DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
         for(const auto& l: orig_sampl_vars) orig_vals[l] = model[l];
         auto vals = orig_vals;
 
-        map<aig_ptr, CMSat::lbool> cache;
+        map<aig_lit, CMSat::lbool> cache;
         for(uint32_t v = 0; v < defs.size(); ++v) {
             if (orig_sampl_vars.count(v)) continue;
             if (defs[v] == nullptr) continue;
@@ -595,8 +595,8 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
     // mapped via y_hat[leaf_var] when that var is also defined. This
     // requires DAG traversal not just per-def trees, to reuse shared
     // sub-AIGs. Simpler: one Tseitin per def, with a recursive encode.
-    std::function<Lit(const aig_ptr&, std::map<aig_ptr, Lit>&)> enc =
-      [&](const aig_ptr& a, std::map<aig_ptr, Lit>& cache) -> Lit {
+    std::function<Lit(const aig_lit&, std::map<aig_lit, Lit>&)> enc =
+      [&](const aig_lit& a, std::map<aig_lit, Lit>& cache) -> Lit {
         assert(a != nullptr);
         auto it = cache.find(a);
         if (it != cache.end()) return it->second;
@@ -647,8 +647,8 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
             // Check deps: walk def[v] collecting lit-vars, skip if any
             // dep is also defined but not yet encoded.
             std::set<uint32_t> deps;
-            std::function<void(const aig_ptr&, std::set<const AIG*>&)> collect =
-              [&](const aig_ptr& a, std::set<const AIG*>& seen) {
+            std::function<void(const aig_lit&, std::set<const AIG*>&)> collect =
+              [&](const aig_lit& a, std::set<const AIG*>& seen) {
                 if (!a || !seen.insert(a.get()).second) return;
                 if (a->type == AIGT::t_lit) {
                     deps.insert(a->var);
@@ -667,7 +667,7 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
             if (!ready) continue;
             check.new_var();
             y_hat[v] = Lit(check.nVars() - 1, false);
-            std::map<aig_ptr, Lit> cache;
+            std::map<aig_lit, Lit> cache;
             Lit out = enc(defs[v], cache);
             // y_hat_v <-> out
             check.add_clause({~y_hat[v], out});
@@ -1129,7 +1129,7 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_defs(ofstream& out) const {
     uint32_t next_id = 0;
     vector<uint32_t> order;
 
-    function<void(const aig_ptr&)> collect = [&](const aig_ptr& aig) {
+    function<void(const aig_lit&)> collect = [&](const aig_lit& aig) {
         if (!aig || node_to_id.count(aig.get())) return;
         uint32_t id = next_id++;
         node_to_id[aig.get()] = id;
@@ -1231,7 +1231,7 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
     vector<AIG*> topo_order;
     uint32_t next_id = 0;
 
-    function<void(const aig_ptr&)> collect = [&](const aig_ptr& aig) {
+    function<void(const aig_lit&)> collect = [&](const aig_lit& aig) {
         if (!aig || node_to_id.count(aig.get())) return;
         if (aig->type == AIGT::t_and) {
             collect(aig->l);
@@ -1373,7 +1373,7 @@ DLL_PUBLIC vector<CMSat::lbool> SimplifiedCNF::extend_sample(const vector<CMSat:
     vector<lbool> vals(defs.size(), l_Undef);
     for(const auto& v: orig_sampl_vars) vals[v] = s[v];
 
-    map<aig_ptr, CMSat::lbool> cache;
+    map<aig_lit, CMSat::lbool> cache;
     for(uint32_t v = 0; v < defs.size(); v++) {
         if (defs[v] == nullptr) continue;
         auto val = AIG::evaluate(s, defs[v], defs, cache);
@@ -1658,7 +1658,7 @@ DLL_PUBLIC void SimplifiedCNF::write_simpcnf(const string& fname, bool red) cons
     outf << "c MUST MULTIPLY BY " << *multiplier_weight << " 0" << endl;
 }
 
-void SimplifiedCNF::set_def(const uint32_t v_orig, const aig_ptr& def) {
+void SimplifiedCNF::set_def(const uint32_t v_orig, const aig_lit& def) {
     assert(need_aig);
     assert(v_orig < defs.size());
     assert(defs[v_orig] == nullptr);
@@ -1852,7 +1852,7 @@ DLL_PUBLIC VarTypes
     return VarTypes{input, to_define_new, backw_synth_defined_new};
 }
 
-DLL_PUBLIC CMSat::lbool SimplifiedCNF::evaluate(const vector<CMSat::lbool>& vals, uint32_t var, map<aig_ptr, CMSat::lbool>& cache) const {
+DLL_PUBLIC CMSat::lbool SimplifiedCNF::evaluate(const vector<CMSat::lbool>& vals, uint32_t var, map<aig_lit, CMSat::lbool>& cache) const {
     assert(var < defs.size());
     assert(vals.size() == defs.size());
     for(uint32_t i = 0; i < vals.size(); i++) {
@@ -2427,7 +2427,7 @@ DLL_PUBLIC void AIG::count_aig_nodes_batch(const AIG* aig, uint64_t epoch, size_
     }
 }
 
-DLL_PUBLIC size_t AIG::count_aig_nodes_fast(const std::vector<aig_ptr>& roots) {
+DLL_PUBLIC size_t AIG::count_aig_nodes_fast(const std::vector<aig_lit>& roots) {
     const uint64_t epoch = next_visit_epoch();
     size_t count = 0;
     for (const auto& r : roots) {
@@ -2436,7 +2436,7 @@ DLL_PUBLIC size_t AIG::count_aig_nodes_fast(const std::vector<aig_ptr>& roots) {
     return count;
 }
 
-DLL_PUBLIC size_t AIG::count_aig_nodes_fast(aig_ptr const& root) {
+DLL_PUBLIC size_t AIG::count_aig_nodes_fast(aig_lit const& root) {
     if (!root) return 0;
     const uint64_t epoch = next_visit_epoch();
     size_t count = 0;
@@ -2444,9 +2444,9 @@ DLL_PUBLIC size_t AIG::count_aig_nodes_fast(aig_ptr const& root) {
     return count;
 }
 
-DLL_PUBLIC aig_ptr AIG::simplify_aig(aig_ptr aig) {
+DLL_PUBLIC aig_lit AIG::simplify_aig(aig_lit aig) {
     const size_t original_nodes = count_aig_nodes_fast(aig);
-    aig_ptr result = aig;
+    aig_lit result = aig;
 
     // Simplify AIG
     {
@@ -2472,13 +2472,13 @@ DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb) {
     rw.rewrite_all(defs, verb);
 }
 
-DLL_PUBLIC aig_ptr AIG::rewrite_aig(const aig_ptr& aig) {
+DLL_PUBLIC aig_lit AIG::rewrite_aig(const aig_lit& aig) {
     if (!aig) return nullptr;
     AIGRewriter rw;
     return rw.rewrite(aig);
 }
 
-DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
+DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_lit>& defs) {
     const double my_time = cpuTime();
     size_t before;
     size_t after;
@@ -2491,7 +2491,7 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
     }
 
     // Save originals and per-AIG node counts for revert
-    vector<aig_ptr> originals = defs;
+    vector<aig_lit> originals = defs;
     vector<size_t> original_node_counts(defs.size());
     for (size_t i = 0; i < defs.size(); i++) {
         original_node_counts[i] = count_aig_nodes_fast(defs[i]);
@@ -2534,7 +2534,7 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_ptr>& defs) {
     }
 }
 
-DLL_PUBLIC aig_ptr AIG::simplify(aig_ptr aig) {
+DLL_PUBLIC aig_lit AIG::simplify(aig_lit aig) {
     unordered_map<const AIG*, aig_lit> cache;
     return simplify(aig, cache);
 }
@@ -2542,7 +2542,7 @@ DLL_PUBLIC aig_ptr AIG::simplify(aig_ptr aig) {
 // CSE rebuild. Each AND node is keyed on (type, var, l_nid, l_neg, r_nid, r_neg).
 // Only the AND *node* is shared; the outer edge sign is applied by the caller.
 // Iterative post-order — see AIG::simplify for the reasoning.
-aig_ptr AIG::simplify_cse(aig_ptr aig, map<AIGKey, aig_node_ptr>& cse_map, unordered_map<const AIG*, aig_node_ptr>& cache) {
+aig_lit AIG::simplify_cse(aig_lit aig, map<AIGKey, aig_node_ptr>& cse_map, unordered_map<const AIG*, aig_node_ptr>& cache) {
     if (!aig) return nullptr;
 
     auto build_leaf = [&](const AIG* src) -> aig_node_ptr {
@@ -2615,7 +2615,7 @@ aig_ptr AIG::simplify_cse(aig_ptr aig, map<AIGKey, aig_node_ptr>& cse_map, unord
 // value; the outer edge sign from the caller is applied on the final return.
 // Iterative post-order via an explicit stack — proof-driven interpolants
 // can be deep enough that a recursive rebuild blows the program stack.
-aig_ptr AIG::simplify(aig_ptr aig, unordered_map<const AIG*, aig_lit>& cache) {
+aig_lit AIG::simplify(aig_lit aig, unordered_map<const AIG*, aig_lit>& cache) {
     if (!aig) return nullptr;
 
     struct Frame { const AIG* src; bool children_done; };

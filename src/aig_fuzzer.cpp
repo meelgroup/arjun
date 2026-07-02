@@ -31,13 +31,13 @@ using std::map;
 static AIGManager aig_mng;
 
 // Generate a random AIG with given number of input variables
-static aig_ptr gen_random_aig(
+static aig_lit gen_random_aig(
     std::mt19937& rng,
     uint32_t num_vars,
     uint32_t depth,
     uint32_t max_nodes)
 {
-    vector<aig_ptr> pool;
+    vector<aig_lit> pool;
     for (uint32_t v = 0; v < num_vars; v++) {
         pool.push_back(AIG::new_lit(v, false));
         pool.push_back(AIG::new_lit(v, true));
@@ -62,11 +62,11 @@ static aig_ptr gen_random_aig(
             uint32_t idx_b = pick();
             if (idx_a == idx_b) idx_b = (idx_b + 1) % pool.size();
 
-            aig_ptr a = pool[idx_a];
-            aig_ptr b = pool[idx_b];
+            aig_lit a = pool[idx_a];
+            aig_lit b = pool[idx_b];
 
             uint32_t op = rng() % 7;
-            aig_ptr node;
+            aig_lit node;
             switch (op) {
                 case 0: node = AIG::new_and(a, b, false); break;
                 case 1: node = AIG::new_and(a, b, true); break;
@@ -101,10 +101,10 @@ static aig_ptr gen_random_aig(
 }
 
 // Generate a deeply nested chain AIG (stress test for flattening)
-static aig_ptr gen_chain_aig(std::mt19937& rng, uint32_t num_vars, uint32_t chain_len) {
-    aig_ptr chain = AIG::new_lit(rng() % num_vars, rng() % 2);
+static aig_lit gen_chain_aig(std::mt19937& rng, uint32_t num_vars, uint32_t chain_len) {
+    aig_lit chain = AIG::new_lit(rng() % num_vars, rng() % 2);
     for (uint32_t i = 0; i < chain_len; i++) {
-        aig_ptr leaf = AIG::new_lit(rng() % num_vars, rng() % 2);
+        aig_lit leaf = AIG::new_lit(rng() % num_vars, rng() % 2);
         uint32_t op = rng() % 4;
         switch (op) {
             case 0: chain = AIG::new_and(chain, leaf); break;
@@ -116,19 +116,19 @@ static aig_ptr gen_chain_aig(std::mt19937& rng, uint32_t num_vars, uint32_t chai
     // Optionally wrap in NOT or ITE
     if (rng() % 3 == 0) chain = AIG::new_not(chain);
     if (rng() % 4 == 0) {
-        aig_ptr other = AIG::new_lit(rng() % num_vars, rng() % 2);
+        aig_lit other = AIG::new_lit(rng() % num_vars, rng() % 2);
         chain = AIG::new_ite(chain, other, Lit(rng() % num_vars, rng() % 2));
     }
     return chain;
 }
 
 // Generate multiple random AIGs that share substructure
-static vector<aig_ptr> gen_random_aig_batch(
+static vector<aig_lit> gen_random_aig_batch(
     std::mt19937& rng,
     uint32_t num_vars,
     uint32_t count)
 {
-    vector<aig_ptr> pool;
+    vector<aig_lit> pool;
     for (uint32_t v = 0; v < num_vars; v++) {
         pool.push_back(AIG::new_lit(v, false));
         pool.push_back(AIG::new_lit(v, true));
@@ -142,7 +142,7 @@ static vector<aig_ptr> gen_random_aig_batch(
         uint32_t idx_b = rng() % pool.size();
         if (idx_a == idx_b) idx_b = (idx_b + 1) % pool.size();
         uint32_t op = rng() % 5;
-        aig_ptr node;
+        aig_lit node;
         switch (op) {
             case 0: node = AIG::new_and(pool[idx_a], pool[idx_b]); break;
             case 1: node = AIG::new_or(pool[idx_a], pool[idx_b]); break;
@@ -158,7 +158,7 @@ static vector<aig_ptr> gen_random_aig_batch(
     }
 
     // Pick `count` outputs from the pool
-    vector<aig_ptr> results;
+    vector<aig_lit> results;
     for (uint32_t i = 0; i < count; i++) {
         uint32_t start = pool.size() > 4 ? pool.size() / 2 : 0;
         results.push_back(pool[start + rng() % (pool.size() - start)]);
@@ -167,8 +167,8 @@ static vector<aig_ptr> gen_random_aig_batch(
 }
 
 // Tseitin-encode an AIG into a SAT solver, returning the output literal
-static Lit aig_to_sat(const aig_ptr& aig, SATSolver& solver, uint32_t num_input_vars,
-                       map<aig_ptr, Lit>& cache)
+static Lit aig_to_sat(const aig_lit& aig, SATSolver& solver, uint32_t num_input_vars,
+                       map<aig_lit, Lit>& cache)
 {
     std::function<Lit(AIGT, uint32_t, const Lit*, const Lit*)> visitor =
         [&](AIGT type, uint32_t var, const Lit* left, const Lit* right) -> Lit {
@@ -199,14 +199,14 @@ static Lit aig_to_sat(const aig_ptr& aig, SATSolver& solver, uint32_t num_input_
 }
 
 // Check equivalence of two AIGs using SAT (UNSAT = equivalent)
-static bool check_equivalence_sat(const aig_ptr& orig, const aig_ptr& simplified,
+static bool check_equivalence_sat(const aig_lit& orig, const aig_lit& simplified,
                                    uint32_t num_vars)
 {
     SATSolver solver;
     solver.set_verbosity(0);
     solver.new_vars(num_vars);
 
-    map<aig_ptr, Lit> cache_orig, cache_simp;
+    map<aig_lit, Lit> cache_orig, cache_simp;
     Lit out_orig = aig_to_sat(orig, solver, num_vars, cache_orig);
     Lit out_simp = aig_to_sat(simplified, solver, num_vars, cache_simp);
 
@@ -223,17 +223,17 @@ static bool check_equivalence_sat(const aig_ptr& orig, const aig_ptr& simplified
 }
 
 // Brute-force evaluation check for small variable counts
-static bool check_equivalence_eval(const aig_ptr& orig, const aig_ptr& simplified,
+static bool check_equivalence_eval(const aig_lit& orig, const aig_lit& simplified,
                                     uint32_t num_vars)
 {
     if (num_vars > 18) return true;
     uint32_t limit = 1u << num_vars;
-    vector<aig_ptr> defs(num_vars, nullptr);
+    vector<aig_lit> defs(num_vars, nullptr);
     for (uint32_t mask = 0; mask < limit; mask++) {
         vector<lbool> vals(num_vars);
         for (uint32_t v = 0; v < num_vars; v++)
             vals[v] = ((mask >> v) & 1) ? l_True : l_False;
-        map<aig_ptr, lbool> c1, c2;
+        map<aig_lit, lbool> c1, c2;
         lbool r1 = AIG::evaluate(vals, orig, defs, c1);
         lbool r2 = AIG::evaluate(vals, simplified, defs, c2);
         if (r1 != r2) return false;
@@ -242,15 +242,15 @@ static bool check_equivalence_eval(const aig_ptr& orig, const aig_ptr& simplifie
 }
 
 // Random evaluation check: evaluate on 10 random input assignments
-static bool check_equivalence_random_eval(const aig_ptr& orig, const aig_ptr& simplified,
+static bool check_equivalence_random_eval(const aig_lit& orig, const aig_lit& simplified,
                                            uint32_t num_vars, std::mt19937& rng)
 {
-    vector<aig_ptr> defs(num_vars, nullptr);
+    vector<aig_lit> defs(num_vars, nullptr);
     for (uint32_t trial = 0; trial < 10; trial++) {
         vector<lbool> vals(num_vars);
         for (uint32_t v = 0; v < num_vars; v++)
             vals[v] = (rng() % 2) ? l_True : l_False;
-        map<aig_ptr, lbool> c1, c2;
+        map<aig_lit, lbool> c1, c2;
         lbool r1 = AIG::evaluate(vals, orig, defs, c1);
         lbool r2 = AIG::evaluate(vals, simplified, defs, c2);
         if (r1 != r2) return false;
@@ -258,7 +258,7 @@ static bool check_equivalence_random_eval(const aig_ptr& orig, const aig_ptr& si
     return true;
 }
 
-static void report_failure(const char* method, const aig_ptr& orig, const aig_ptr& simplified,
+static void report_failure(const char* method, const aig_lit& orig, const aig_lit& simplified,
                            uint32_t num_vars, uint64_t seed, uint64_t iter,
                            size_t nodes_before, size_t nodes_after)
 {
@@ -270,12 +270,12 @@ static void report_failure(const char* method, const aig_ptr& orig, const aig_pt
 
     if (num_vars <= 6) {
         cerr << "Truth table differences:" << endl;
-        vector<aig_ptr> defs(num_vars, nullptr);
+        vector<aig_lit> defs(num_vars, nullptr);
         for (uint32_t mask = 0; mask < (1u << num_vars); mask++) {
             vector<lbool> vals(num_vars);
             for (uint32_t v = 0; v < num_vars; v++)
                 vals[v] = ((mask >> v) & 1) ? l_True : l_False;
-            map<aig_ptr, lbool> c1, c2;
+            map<aig_lit, lbool> c1, c2;
             lbool r1 = AIG::evaluate(vals, orig, defs, c1);
             lbool r2 = AIG::evaluate(vals, simplified, defs, c2);
             if (r1 != r2) {
@@ -290,9 +290,9 @@ static void report_failure(const char* method, const aig_ptr& orig, const aig_pt
 }
 
 // Check all AIG node invariants recursively
-static bool check_invariants(const aig_ptr& aig, uint64_t seed, uint64_t iter, const char* method) {
+static bool check_invariants(const aig_lit& aig, uint64_t seed, uint64_t iter, const char* method) {
     bool ok = true;
-    AIG::traverse(aig, [&](const aig_ptr& node) {
+    AIG::traverse(aig, [&](const aig_lit& node) {
         if (!node->invariants()) {
             cerr << "INVARIANT FAILURE (" << method << ") at iter " << iter
                  << " seed " << seed << ": " << node << endl;
@@ -303,7 +303,7 @@ static bool check_invariants(const aig_ptr& aig, uint64_t seed, uint64_t iter, c
 }
 
 // Verify a single AIG transformation
-static bool verify_rewrite(const aig_ptr& orig, const aig_ptr& simplified,
+static bool verify_rewrite(const aig_lit& orig, const aig_lit& simplified,
                            uint32_t num_vars, uint64_t seed, uint64_t iter,
                            const char* method, std::mt19937& rng)
 {
@@ -434,7 +434,7 @@ int main(int argc, char** argv) {
 
         if (test_type == 0 || test_type == 3) {
             // Single AIG rewrite (and optionally double-rewrite)
-            aig_ptr orig = gen_random_aig(rng, num_vars, depth, max_nodes);
+            aig_lit orig = gen_random_aig(rng, num_vars, depth, max_nodes);
             if (!orig) continue;
 
             size_t nodes_before = AIG::count_aig_nodes_fast(orig);
@@ -446,7 +446,7 @@ int main(int argc, char** argv) {
 
             AIGRewriter rw;
             auto t0 = std::chrono::steady_clock::now();
-            aig_ptr simplified = rw.rewrite(orig);
+            aig_lit simplified = rw.rewrite(orig);
             auto t1 = std::chrono::steady_clock::now();
             stats.rewrite_time_s += std::chrono::duration<double>(t1 - t0).count();
             stats.total_rewrites++;
@@ -461,7 +461,7 @@ int main(int argc, char** argv) {
             if (test_type == 3) {
                 AIGRewriter rw2;
                 auto t2 = std::chrono::steady_clock::now();
-                aig_ptr double_simplified = rw2.rewrite(simplified);
+                aig_lit double_simplified = rw2.rewrite(simplified);
                 auto t3 = std::chrono::steady_clock::now();
                 stats.rewrite_time_s += std::chrono::duration<double>(t3 - t2).count();
                 stats.total_rewrites++;
@@ -485,8 +485,8 @@ int main(int argc, char** argv) {
         } else if (test_type == 1) {
             // rewrite_all: multiple AIGs sharing structure
             uint32_t batch_size = 2 + rng() % 4;
-            vector<aig_ptr> originals = gen_random_aig_batch(rng, num_vars, batch_size);
-            vector<aig_ptr> to_rewrite = originals; // copy
+            vector<aig_lit> originals = gen_random_aig_batch(rng, num_vars, batch_size);
+            vector<aig_lit> to_rewrite = originals; // copy
 
             AIGRewriter rw;
             auto t0 = std::chrono::steady_clock::now();
@@ -510,12 +510,12 @@ int main(int argc, char** argv) {
 
         } else if (test_type == 2) {
             // simplify_aig (the static method)
-            aig_ptr orig = gen_random_aig(rng, num_vars, depth, max_nodes);
+            aig_lit orig = gen_random_aig(rng, num_vars, depth, max_nodes);
             if (!orig) continue;
 
             size_t nodes_before = AIG::count_aig_nodes_fast(orig);
             auto t0 = std::chrono::steady_clock::now();
-            aig_ptr simplified = AIG::simplify_aig(orig);
+            aig_lit simplified = AIG::simplify_aig(orig);
             auto t1 = std::chrono::steady_clock::now();
             stats.rewrite_time_s += std::chrono::duration<double>(t1 - t0).count();
             stats.total_rewrites++;
@@ -533,8 +533,8 @@ int main(int argc, char** argv) {
         } else if (test_type == 4) {
             // simplify_aigs (vector version)
             uint32_t batch_size = 2 + rng() % 5;
-            vector<aig_ptr> originals = gen_random_aig_batch(rng, num_vars, batch_size);
-            vector<aig_ptr> to_simplify = originals;
+            vector<aig_lit> originals = gen_random_aig_batch(rng, num_vars, batch_size);
+            vector<aig_lit> to_simplify = originals;
 
             auto t0 = std::chrono::steady_clock::now();
             AIG::simplify_aigs(0, to_simplify);
@@ -563,14 +563,14 @@ int main(int argc, char** argv) {
         } else {
             // Chain rewrite: deeply nested AND/OR chains
             uint32_t chain_len = 5 + rng() % 25;
-            aig_ptr orig = gen_chain_aig(rng, num_vars, chain_len);
+            aig_lit orig = gen_chain_aig(rng, num_vars, chain_len);
             if (!orig) continue;
 
             size_t nodes_before = AIG::count_aig_nodes_fast(orig);
 
             AIGRewriter rw;
             auto t0 = std::chrono::steady_clock::now();
-            aig_ptr simplified = rw.rewrite(orig);
+            aig_lit simplified = rw.rewrite(orig);
             auto t1 = std::chrono::steady_clock::now();
             stats.rewrite_time_s += std::chrono::duration<double>(t1 - t0).count();
             stats.total_rewrites++;

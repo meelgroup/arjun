@@ -60,11 +60,11 @@ private:
     std::set<uint32_t> backward_defined;
     std::set<uint32_t> orig_sampl_cnf;
 
-    std::vector<ArjunNS::aig_ptr> skol;
+    std::vector<ArjunNS::aig_lit> skol;
 
     void maybe_minimize_enum_set();
     void synth_complete_with_models();
-    ArjunNS::aig_ptr build_decision_tree(const std::vector<bool>& table,
+    ArjunNS::aig_lit build_decision_tree(const std::vector<bool>& table,
                                         const std::vector<uint32_t>& sorted_inputs);
 
     template<typename S>

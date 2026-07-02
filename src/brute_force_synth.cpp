@@ -28,7 +28,7 @@ using std::setprecision;
 using std::fixed;
 
 using ArjunNS::AIG;
-using ArjunNS::aig_ptr;
+using ArjunNS::aig_lit;
 using ArjunNS::SimplifiedCNF;
 using CMSat::Lit;
 
@@ -47,7 +47,7 @@ void BruteForceSynth::inject_cnf(S& s) const {
     for (const auto& c : cnf.get_red_clauses()) s.add_red_clause(c);
 }
 
-aig_ptr BruteForceSynth::build_decision_tree(const vector<bool>& table,
+aig_lit BruteForceSynth::build_decision_tree(const vector<bool>& table,
                                          const vector<uint32_t>& sorted_inputs) {
     // Bottom-up pair-merge; ITE folds constant subtrees.
     const uint32_t n = sorted_inputs.size();
@@ -55,14 +55,14 @@ aig_ptr BruteForceSynth::build_decision_tree(const vector<bool>& table,
         assert(table.size() == 1);
         return AIG::new_const(table[0]);
     }
-    vector<aig_ptr> level;
+    vector<aig_lit> level;
     level.reserve(table.size());
     for (bool b : table) level.push_back(AIG::new_const(b));
 
     for (uint32_t lvl = 0; lvl < n; lvl++) {
         const uint32_t split_var = sorted_inputs[lvl];
         const CMSat::Lit branch_lit(split_var, /*sign=*/false);
-        vector<aig_ptr> next;
+        vector<aig_lit> next;
         next.reserve(level.size() / 2);
         for (size_t i = 0; i + 1 < level.size(); i += 2) {
             next.push_back(AIG::new_ite(level[i + 1], level[i], branch_lit));
@@ -159,7 +159,7 @@ void BruteForceSynth::synth_complete_with_models() {
 }
 
 void BruteForceSynth::commit_definitions() {
-    vector<aig_ptr> aigs(cnf.nVars(), nullptr);
+    vector<aig_lit> aigs(cnf.nVars(), nullptr);
     for (uint32_t y : to_define) {
         release_assert(skol[y] != nullptr &&
                        "brute_force_synth must produce a Skolem for every to_define var");

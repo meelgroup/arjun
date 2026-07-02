@@ -14,18 +14,18 @@ using std::vector;
 
 static AIGManager aig_mng;
 
-static size_t count_nodes(const aig_ptr& aig) {
+static size_t count_nodes(const aig_lit& aig) {
     return AIG::count_aig_nodes_fast(aig);
 }
 
 // Evaluate an AIG with a given assignment using the public evaluate() method
-static bool eval(const aig_ptr& aig, uint32_t num_vars, uint32_t mask) {
+static bool eval(const aig_lit& aig, uint32_t num_vars, uint32_t mask) {
     std::vector<CMSat::lbool> vals(num_vars);
     for (uint32_t v = 0; v < num_vars; v++) {
         vals[v] = ((mask >> v) & 1) ? CMSat::l_True : CMSat::l_False;
     }
-    std::vector<aig_ptr> defs(num_vars, nullptr);
-    std::map<aig_ptr, CMSat::lbool> cache;
+    std::vector<aig_lit> defs(num_vars, nullptr);
+    std::map<aig_lit, CMSat::lbool> cache;
     auto result = AIG::evaluate(vals, aig, defs, cache);
     assert(result != CMSat::l_Undef);
     return result == CMSat::l_True;
@@ -33,7 +33,7 @@ static bool eval(const aig_ptr& aig, uint32_t num_vars, uint32_t mask) {
 
 // Check that two AIGs are functionally equivalent over all assignments
 // of variables 0..num_vars-1
-static bool functionally_equal(const aig_ptr& a, const aig_ptr& b, uint32_t num_vars) {
+static bool functionally_equal(const aig_lit& a, const aig_lit& b, uint32_t num_vars) {
     assert(num_vars <= 20);
     for (uint32_t mask = 0; mask < (1u << num_vars); mask++) {
         if (eval(a, num_vars, mask) != eval(b, num_vars, mask)) return false;
@@ -221,7 +221,7 @@ void test_multi_aig_sharing() {
     auto aig1 = AIG::new_and(ab, c);
     auto aig2 = AIG::new_or(ab, c);
 
-    vector<aig_ptr> defs = {aig1, aig2};
+    vector<aig_lit> defs = {aig1, aig2};
     rw.rewrite_all(defs, 0);
 
     check(functionally_equal(aig1, defs[0], 3), "multi-AIG rewrite preserves AIG 1");
@@ -232,7 +232,7 @@ void test_large_and_chain() {
     // AND(x0, AND(x1, AND(x2, ... AND(x0, x1)...)))
     // The repeated x0 should be eliminated
     const uint32_t n = 8;
-    vector<aig_ptr> lits;
+    vector<aig_lit> lits;
     for (uint32_t i = 0; i < n; i++) lits.push_back(AIG::new_lit(i));
 
     // Build a chain with duplicates
@@ -369,7 +369,7 @@ void test_deep_or_chain_flattening() {
     // This mimics what happens after many ITE repairs with TRUE value
     const uint32_t n = 10;
     auto base = AIG::new_lit(n); // base variable
-    aig_ptr chain = base;
+    aig_lit chain = base;
     for (uint32_t i = 0; i < n; i++) {
         chain = AIG::new_or(AIG::new_lit(i), chain);
     }
@@ -390,7 +390,7 @@ void test_deep_or_chain_flattening() {
 void test_deep_and_chain_flattening() {
     const uint32_t n = 10;
     auto base = AIG::new_lit(n);
-    aig_ptr chain = base;
+    aig_lit chain = base;
     for (uint32_t i = 0; i < n; i++) {
         chain = AIG::new_and(AIG::new_not(AIG::new_lit(i)), chain);
     }
@@ -487,7 +487,7 @@ void test_structural_hash_hits() {
     auto root1 = AIG::new_and(ab1, c);
     auto root2 = AIG::new_and(ab2, c);
 
-    vector<aig_ptr> defs = {root1, root2};
+    vector<aig_lit> defs = {root1, root2};
     rw.rewrite_all(defs, 0);
     check(rw.get_stats().structural_hash_hits >= 1,
           "duplicate AND subtrees produce a structural-hash hit");

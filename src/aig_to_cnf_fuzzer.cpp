@@ -68,8 +68,8 @@ struct NaiveStats {
     uint64_t helpers = 0;
 };
 
-static Lit naive_encode(const aig_ptr& aig, SATSolver& solver,
-                         map<aig_ptr, Lit>& cache, NaiveStats& ns,
+static Lit naive_encode(const aig_lit& aig, SATSolver& solver,
+                         map<aig_lit, Lit>& cache, NaiveStats& ns,
                          Lit& true_lit, bool& true_lit_set)
 {
     // Use AIG::transform so we don't touch AIG's private members directly.
@@ -129,11 +129,11 @@ static bool sat_equivalent(SATSolver& s, Lit a, Lit b) {
 // correctly models the AIG). For every input assignment we fix all input
 // vars as assumptions, solve, and check the model's value of the output lit
 // matches the AIG's value on that assignment.
-static bool cnf_matches_aig(SATSolver& s, const aig_ptr& aig, Lit out_lit,
+static bool cnf_matches_aig(SATSolver& s, const aig_lit& aig, Lit out_lit,
                              uint32_t num_vars)
 {
     if (num_vars > 12) return true; // too expensive
-    vector<aig_ptr> defs(num_vars, nullptr);
+    vector<aig_lit> defs(num_vars, nullptr);
     for (uint32_t mask = 0; mask < (1u << num_vars); mask++) {
         vector<lbool> vals(num_vars);
         vector<Lit> assumps;
@@ -142,7 +142,7 @@ static bool cnf_matches_aig(SATSolver& s, const aig_ptr& aig, Lit out_lit,
             vals[v] = b ? l_True : l_False;
             assumps.emplace_back(v, !b); // force var v = b
         }
-        map<aig_ptr, lbool> ca;
+        map<aig_lit, lbool> ca;
         lbool expected = AIG::evaluate(vals, aig, defs, ca);
         lbool ret = s.solve(&assumps);
         if (ret != l_True) {
@@ -207,7 +207,7 @@ struct FuzzStats {
     }
 };
 
-static void report_failure(const aig_ptr& aig, uint32_t num_vars,
+static void report_failure(const aig_lit& aig, uint32_t num_vars,
                             uint64_t seed, uint64_t iter, const char* phase)
 {
     cerr << "\n!!! FAILURE in phase '" << phase << "' at iter " << iter << " !!!" << endl;
@@ -215,7 +215,7 @@ static void report_failure(const aig_ptr& aig, uint32_t num_vars,
     cerr << "AIG: " << aig << endl;
 }
 
-static bool run_one(const aig_ptr& aig, uint32_t num_vars,
+static bool run_one(const aig_lit& aig, uint32_t num_vars,
                     uint64_t seed, uint64_t iter, FuzzStats& fs,
                     bool verbose)
 {
@@ -228,7 +228,7 @@ static bool run_one(const aig_ptr& aig, uint32_t num_vars,
     // 1. Naive encoding
     NaiveStats ns;
     Lit true_lit_unused; bool true_set = false;
-    map<aig_ptr, Lit> naive_cache;
+    map<aig_lit, Lit> naive_cache;
     Lit naive_out = naive_encode(aig, solver, naive_cache, ns, true_lit_unused, true_set);
 
     // 2. Optimized encoding (into the same solver, in a fresh variable range)
@@ -312,13 +312,13 @@ struct MeasureResult {
 };
 
 // Encode all aigs with a single feature disabled and collect totals.
-static MeasureResult run_measure_pass(const std::vector<aig_ptr>& aigs,
+static MeasureResult run_measure_pass(const std::vector<aig_lit>& aigs,
                                        const std::vector<uint32_t>& nvars,
                                        Feature disabled)
 {
     MeasureResult r;
     for (size_t i = 0; i < aigs.size(); i++) {
-        const aig_ptr& aig = aigs[i];
+        const aig_lit& aig = aigs[i];
         if (!aig) continue;
         SATSolver solver;
         solver.set_verbosity(0);
@@ -351,7 +351,7 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
     // identical corpus for every feature toggle, otherwise random variance
     // dwarfs the effect we're trying to see.
     std::mt19937 rng(seed);
-    std::vector<aig_ptr> aigs;
+    std::vector<aig_lit> aigs;
     std::vector<uint32_t> nvars;
     aigs.reserve(num_iters);
     nvars.reserve(num_iters);
@@ -360,7 +360,7 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
         uint32_t num_vars = 2 + rng() % (max_vars - 1);
         uint32_t depth = 3 + rng() % (max_depth - 2);
         uint32_t max_nodes = 8 + rng() % max_nodes_cfg;
-        aig_ptr aig;
+        aig_lit aig;
         uint32_t shape = rng() % 16;
         if (shape < 4) {
             uint32_t d = 50 + rng() % 450;
@@ -388,7 +388,7 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
         } else {
             uint32_t d = 50 + rng() % 200;
             uint32_t bw = 2 + rng() % 6;
-            aig_ptr raw = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, d, bw);
+            aig_lit raw = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, d, bw);
             if (raw) { AIGRewriter rw; aig = rw.rewrite(raw); }
         }
         if (!aig) continue;
@@ -466,7 +466,7 @@ static int run_bench_rewrite_mode(uint64_t seed, uint64_t num_aigs,
                                     uint32_t max_vars, uint32_t chain_depth)
 {
     std::mt19937 rng(seed);
-    std::vector<aig_ptr> aigs;
+    std::vector<aig_lit> aigs;
     aigs.reserve(num_aigs);
     cout << "Generating " << num_aigs << " deep-chain AIGs "
          << "(seed " << seed << ", depth " << chain_depth
@@ -476,7 +476,7 @@ static int run_bench_rewrite_mode(uint64_t seed, uint64_t num_aigs,
     for (uint64_t i = 0; i < num_aigs; i++) {
         uint32_t num_vars = 4 + rng() % max_vars;
         uint32_t bw = 2 + rng() % 6;
-        aig_ptr a = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, chain_depth, bw);
+        aig_lit a = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, chain_depth, bw);
         if (a) {
             aigs.push_back(a);
             total_raw_nodes += ArjunNS::AIG::count_aig_nodes_fast(a);
@@ -594,7 +594,7 @@ int main(int argc, char** argv) {
         uint32_t depth = 3 + rng() % (max_depth - 2);
         uint32_t max_nodes = 8 + rng() % max_nodes_cfg;
 
-        aig_ptr aig;
+        aig_lit aig;
         // Weight the shape distribution so the deep linear ITE chain --
         // the *actual* manthan Skolem-function shape with aig_depth 200+
         // -- is the dominant case, but also cover pure k-ary AND/OR chains
@@ -643,7 +643,7 @@ int main(int argc, char** argv) {
             // rewritten AIGs (closest to the real pipeline).
             uint32_t d = 50 + rng() % 200;
             uint32_t bw = 2 + rng() % 6;
-            aig_ptr raw = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, d, bw);
+            aig_lit raw = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, d, bw);
             if (raw) {
                 AIGRewriter rw;
                 aig = rw.rewrite(raw);

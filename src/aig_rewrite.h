@@ -42,10 +42,10 @@ public:
     AIGRewriter() = default;
 
     // Rewrite a single AIG to a simpler equivalent.
-    aig_ptr rewrite(const aig_ptr& aig);
+    aig_lit rewrite(const aig_lit& aig);
 
     // Rewrite a vector of AIGs sharing structure across all.
-    void rewrite_all(std::vector<aig_ptr>& defs, int verb = 1);
+    void rewrite_all(std::vector<aig_lit>& defs, int verb = 1);
 
     const AIGRewriteStats& get_stats() const { return stats; }
 

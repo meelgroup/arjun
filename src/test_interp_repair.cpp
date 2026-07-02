@@ -83,7 +83,7 @@ int main() {
         AIGManager aig_mng;
         InterpRepair ir(conf, cnf, inputs, aig_mng);
 
-        aig_ptr interp = ir.compute_interpolant(1, to_repair, conflict);
+        aig_lit interp = ir.compute_interpolant(1, to_repair, conflict);
         check(interp != nullptr, "McMillan interpolant produced for (x0 v y1)");
         if (interp != nullptr) {
             check(ir.quick_check_interpolant_excludes_cex(interp, conflict),
@@ -102,7 +102,7 @@ int main() {
         InterpRepair ir(conf, cnf, inputs, aig_mng);
 
         const vector<Lit> conflict_no_input = { Lit(1, false) };
-        aig_ptr interp = ir.compute_interpolant(1, to_repair, conflict_no_input);
+        aig_lit interp = ir.compute_interpolant(1, to_repair, conflict_no_input);
         check(interp == nullptr, "no-input conflict yields no interpolant");
     }
 
@@ -113,7 +113,7 @@ int main() {
         AIGManager aig_mng;
         InterpRepair ir(conf, cnf, inputs, aig_mng);
 
-        aig_ptr interp = ir.compute_interpolant(1, to_repair, {});
+        aig_lit interp = ir.compute_interpolant(1, to_repair, {});
         check(interp == nullptr, "empty conflict yields no interpolant");
     }
 
@@ -132,7 +132,7 @@ int main() {
 
         const Lit tr2(2, false);
         const vector<Lit> conf2 = { Lit(2, false), Lit(0, false), Lit(1, false) };
-        aig_ptr interp = ir.compute_interpolant(2, tr2, conf2);
+        aig_lit interp = ir.compute_interpolant(2, tr2, conf2);
         check(interp != nullptr, "two-clause / two-input interpolant produced");
         if (interp != nullptr) {
             check(ir.quick_check_interpolant_excludes_cex(interp, conf2),
@@ -150,7 +150,7 @@ int main() {
         AIGManager aig_mng;
         InterpRepair ir(conf, cnf, inputs, aig_mng);
 
-        aig_ptr interp = ir.compute_interpolant(
+        aig_lit interp = ir.compute_interpolant(
             1, to_repair, conflict, 0, 0);
         check(interp != nullptr, "interpolant produced with verify disabled");
         if (interp != nullptr) {
@@ -174,7 +174,7 @@ int main() {
         AIGManager aig_mng;
         InterpRepair ir(conf, cnf, inputs, aig_mng);
 
-        aig_ptr interp = ir.compute_interpolant(1, to_repair, conflict);
+        aig_lit interp = ir.compute_interpolant(1, to_repair, conflict);
         check(interp != nullptr, "interpolant produced despite padded CNF");
         if (interp != nullptr) {
             check(ir.quick_check_interpolant_excludes_cex(interp, conflict),
@@ -197,7 +197,7 @@ int main() {
         AIGManager aig_mng;
         InterpRepair ir(conf, cnf, inputs, aig_mng);
 
-        aig_ptr interp = ir.compute_interpolant(1, to_repair, conflict);
+        aig_lit interp = ir.compute_interpolant(1, to_repair, conflict);
         check(interp != nullptr, "interpolant produced with unit-clause conflict");
         if (interp != nullptr) {
             check(ir.slow_check_a_implies_i(to_repair, conflict, interp),

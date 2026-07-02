@@ -168,7 +168,7 @@ void ManthanLearn::verify_aig_error_rate(
     for (const auto& [y, y_hat] : m.y_to_y_hat)
         max_var = std::max(max_var, y_hat + 1);
 
-    const vector<aig_ptr> defs(max_var, nullptr);
+    const vector<aig_lit> defs(max_var, nullptr);
 
     uint32_t wrong = 0;
     for (const auto* s : samples) {
@@ -177,7 +177,7 @@ void ManthanLearn::verify_aig_error_rate(
         for (uint32_t i = 0; i < m.cnf.nVars(); i++) vals[i] = (*s)[i];
         for (const auto& [y, y_hat] : m.y_to_y_hat) vals.at(y_hat) = (*s)[y];
 
-        std::map<aig_ptr, CMSat::lbool> cache;
+        std::map<aig_lit, CMSat::lbool> cache;
         const CMSat::lbool result = ArjunNS::AIG::evaluate(vals, aig, defs, cache);
         if (result != (*s)[v]) wrong++;
     }

@@ -111,7 +111,7 @@ private:
 
     // defs[v] = AIG definition of v over the input vars (original var
     // space), or nullptr if v was not defined this way.
-    std::vector<ArjunNS::aig_ptr> defs;
+    std::vector<ArjunNS::aig_lit> defs;
 
     // Create a fresh solver + tracer and (re)load the doubled CNF and the
     // indicator units accumulated so far into it.

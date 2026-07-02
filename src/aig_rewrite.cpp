@@ -37,7 +37,7 @@ inline bool aig_lit_nid_less(const aig_lit& a, const aig_lit& b) {
 #ifdef SLOW_DEBUG
 // Brute-force equivalence check across all input assignments (≤ kMaxVars).
 // Catches a rewrite rule that breaks the function the moment it fires.
-inline void slow_assert_equiv(const aig_ptr& a, const aig_ptr& b) {
+inline void slow_assert_equiv(const aig_lit& a, const aig_lit& b) {
     if (!a.node || !b.node) { assert(a.node == b.node); return; }
     std::set<uint32_t> vars;
     AIG::get_dependent_vars(a, vars, std::numeric_limits<uint32_t>::max());
@@ -45,13 +45,13 @@ inline void slow_assert_equiv(const aig_ptr& a, const aig_ptr& b) {
     constexpr size_t kMaxVars = 16;
     if (vars.empty() || vars.size() > kMaxVars) return;
     const uint32_t maxv = *vars.rbegin();
-    std::vector<aig_ptr> defs(maxv + 1, nullptr);
+    std::vector<aig_lit> defs(maxv + 1, nullptr);
     std::vector<uint32_t> vlist(vars.begin(), vars.end());
     for (uint32_t mask = 0; mask < (1u << vlist.size()); mask++) {
         std::vector<CMSat::lbool> vals(maxv + 1, CMSat::l_False);
         for (size_t i = 0; i < vlist.size(); i++)
             if ((mask >> i) & 1u) vals[vlist[i]] = CMSat::l_True;
-        std::map<aig_ptr, CMSat::lbool> ca, cb;
+        std::map<aig_lit, CMSat::lbool> ca, cb;
         const CMSat::lbool va = AIG::evaluate(vals, a, defs, ca);
         const CMSat::lbool vb = AIG::evaluate(vals, b, defs, cb);
         assert(va == vb && "AIGRewriter changed the function!");
@@ -806,7 +806,7 @@ aig_lit AIGRewriter::flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cac
 
 // ========== Main rewrite entry points ==========
 
-aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
+aig_lit AIGRewriter::rewrite(const aig_lit& aig) {
     if (!aig) return nullptr;
     struct_hash.clear();
     lit_hash.clear();
@@ -836,7 +836,7 @@ aig_ptr AIGRewriter::rewrite(const aig_ptr& aig) {
     return result;
 }
 
-void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
+void AIGRewriter::rewrite_all(vector<aig_lit>& defs, int verb) {
     const double t = cpuTime();
     stats.clear();
     struct_hash.clear();
@@ -844,7 +844,7 @@ void AIGRewriter::rewrite_all(vector<aig_ptr>& defs, int verb) {
     const_true_node.reset();
     stats.nodes_before = AIG::count_aig_nodes_fast(defs);
 
-    vector<aig_ptr> originals = defs;
+    vector<aig_lit> originals = defs;
 
     constexpr int kMaxIters = 4;
     size_t prev_count = stats.nodes_before;

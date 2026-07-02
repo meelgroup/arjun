@@ -140,7 +140,7 @@ void Interpolant::generate_interpolant(const vector<Lit>& assumptions,
     // the tracer sees the failing-assumption clause and conclude_unsat.
     solver->conclude();
 
-    aig_ptr interp = tracer->build_interpolant();
+    aig_lit interp = tracer->build_interpolant();
     // Invariant: after a UNSAT solve the tracer has seen a refutation root,
     // so build_interpolant returns a non-null AIG.
     release_assert(interp != nullptr
