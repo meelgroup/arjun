@@ -1094,16 +1094,6 @@ DLL_PUBLIC void SimplifiedCNF::read_aig_defs(ifstream& in) {
         assert(id_to_node[id] != nullptr);
         defs[i] = aig_lit(id_to_node[id], edge_neg);
     }
-
-    // Read skolem_defined_vars set (vars committed via set_def_skolem).
-    uint32_t num_skolem;
-    in.read((char*)&num_skolem, sizeof(num_skolem));
-    skolem_defined_vars.clear();
-    for (uint32_t i = 0; i < num_skolem; i++) {
-        uint32_t v;
-        in.read((char*)&v, sizeof(v));
-        skolem_defined_vars.insert(v);
-    }
 }
 
 // Serialize SimplifiedCNF to binary file
@@ -1233,16 +1223,6 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_defs(ofstream& out) const {
         bool edge_neg = aig.neg;
         out.write((char*)&id, sizeof(id));
         out.write((char*)&edge_neg, sizeof(edge_neg));
-    }
-
-    // 5. Write skolem_defined_vars (vars committed as Skolem replacements,
-    //    not unique-defining functions). Read by check_pre_post_backward
-    //    _round_synth (test-synth verification entry point) to skip the
-    //    only-orig-sampl invariant for them.
-    uint32_t num_skolem = skolem_defined_vars.size();
-    out.write((char*)&num_skolem, sizeof(num_skolem));
-    for (const auto& v : skolem_defined_vars) {
-        out.write((char*)&v, sizeof(v));
     }
 }
 
@@ -1733,11 +1713,6 @@ void SimplifiedCNF::set_def(const uint32_t v_orig, const aig_ptr& def) {
 #endif
 }
 
-DLL_PUBLIC void SimplifiedCNF::set_def_skolem(const uint32_t v_orig, const aig_ptr& def) {
-    set_def(v_orig, def);
-    skolem_defined_vars.insert(v_orig);
-}
-
 // Returns NEW vars, i.e. < nVars()
 // It is checked that it is correct and total
 DLL_PUBLIC VarTypes
@@ -1810,13 +1785,7 @@ DLL_PUBLIC VarTypes
 
         const uint32_t new_var = orig_to_new_var.at(orig).var();
         assert(new_var < nVars());
-        // Skolem-committed vars are never
-        // extend-defined: their AIG is just one valid Skolem choice, not
-        // the unique value F forces, so Manthan must build a formula
-        // for them and run the y_hat propagation. Categorizing them as
-        // extend-defined would let Manthan treat them as inputs, silently
-        // dropping the constraint a later commit's miter relied on.
-        if (only_input_deps && !skolem_defined_vars.count(orig)) {
+        if (only_input_deps) {
             extend_defined_vars.insert({orig,new_var});
         } else {
             backw_synth_defined_vars.insert({orig,new_var});
@@ -1911,22 +1880,6 @@ DLL_PUBLIC VarTypes
     }
     assert(input.size() + to_define.size() + extend_defined_vars.size() + backw_synth_defined_vars.size() == nVars());
 
-    // SLOW_DEBUG: a Skolem-committed var (see set_def_skolem) must never be
-    // categorized as extend-defined. The whole point of the Skolem flag is
-    // to keep such vars in backward_synth_defined_vars even when their AIG
-    // happens to be input-only or a constant: extend-defined gets treated
-    // as an input by Manthan, dropping the y_test = H_test commit
-    // constraint that downstream code (later commits, find_better_ctx) may
-    // rely on. If this assert ever fires, the categorization branch above
-    // (`only_input_deps && !skolem_defined_vars.count(orig)`) has been
-    // changed and the bug is back.
-    SLOW_DEBUG_DO({
-        for (const auto& v : extend_defined_vars) {
-            assert(!skolem_defined_vars.count(v.o)
-                && "Skolem-committed var landed in extend_defined_vars");
-        }
-    });
-
     // extend-defined vars can be treateed as input vars
     for(const auto& v: extend_defined_vars) input.insert(v.n);
 
@@ -2000,19 +1953,6 @@ DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
     check_pre_post_backward_round_synth();
     check_all_vars_accounted_for();
     check_self_dependency();
-    // skolem_defined_vars set well-formedness: every entry must point at a
-    // valid, currently-defined, non-orig-sampl var. A violation usually
-    // means set_def_skolem was called with the wrong arg or
-    // clear_orig_sampl_defs / a copy/move forgot to keep the set in sync
-    // with `defs`.
-    for (uint32_t v : skolem_defined_vars) {
-        release_assert(v < defs.size()
-            && "skolem_defined_vars entry past defs.size()");
-        release_assert(defs[v] != nullptr
-            && "skolem_defined_vars entry has no def");
-        release_assert(!orig_sampl_vars.count(v)
-            && "orig sampling var must never be Skolem-committed");
-    }
     [[maybe_unused]] auto ret = get_var_types(0, "defs_invariant");
     SLOW_DEBUG_DO(check_synth_funs_randomly());
     return true;
@@ -2320,13 +2260,7 @@ DLL_PUBLIC void SimplifiedCNF::check_pre_post_backward_round_synth() const {
                     break;
                 }
             }
-            // Skolem-committed vars (set_def_skolem) are allowed to reach non-orig-sampl
-            // leaves: their AIG is just one valid winning Skolem, not a
-            // unique-defining function over inputs. The "pre-backward-
-            // round-synth" invariant only applies to unique-defining defs
-            // produced by extend_synth.
-            if (!after_backward_round_synth && !only_orig_sampl
-                    && !skolem_defined_vars.count(o)) {
+            if (!after_backward_round_synth && !only_orig_sampl) {
                 cout << "ERROR: Found a variable in CNF, orig: " << o+1 << " new: " << n.var()+1
                     << " that is defined in terms of non-orig-sampl-vars before backward round synth.";
                 cout << endl << " in old: ";
