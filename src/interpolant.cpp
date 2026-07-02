@@ -40,19 +40,15 @@ using std::set;
 using std::endl;
 
 Interpolant::~Interpolant() {
-    // Detach the tracer before either it or the solver is destroyed:
-    // an attached tracer is otherwise deleted by the solver's destructor.
+    // Detach the tracer, else the solver's destructor deletes it.
     if (solver && tracer) solver->disconnect_proof_tracer(tracer.get());
 }
 
 void Interpolant::load_solver() {
-    // Build a fresh incremental CaDiCaL + McMillan tracer and (re)load the
-    // doubled CNF and the indicator units accumulated so far. Partition:
-    // A = clauses entirely in copy 1, B = everything else (copy 2,
-    // indicators, and their units).
+    // Fresh CaDiCaL + tracer, (re)load doubled CNF + indicator units.
+    // A = clauses entirely in copy 1, B = everything else.
     solver = std::make_unique<Solver>();
     tracer = std::make_unique<InterpTracerMcMillan>(conf, *aig_mng, *input_vars);
-    // copy-2 and indicator variables (index >= orig_num_vars) are B-local.
     tracer->b_local_from = orig_num_vars;
     solver->connect_proof_tracer(tracer.get(), true);
 
@@ -79,8 +75,7 @@ void Interpolant::fill_from_solver(SATSolver* cms_solver,
     aig_mng = &_aig_mng;
     input_vars = &_input_vars;
 
-    // Extract the doubled CNF once. The indicator
-    // units permanently added to the solver later come via add_unit_cl.
+    // Extract the doubled CNF once; indicator units arrive via add_unit_cl.
     all_cls.clear();
     cms_solver->start_getting_constraints(false);
     vector<Lit> cl;
@@ -98,8 +93,6 @@ void Interpolant::fill_from_solver(SATSolver* cms_solver,
 
 void Interpolant::add_unit_cl(const vector<Lit>& cl) {
     assert(cl.size() == 1);
-    // A variable proven defined/independent: add its indicator unit,
-    // B-side, to the persistent interpolation solver.
     tracer->next_is_b = true;
     solver->add(lit_to_pl(cl[0]));
     solver->add(0);
@@ -128,21 +121,16 @@ void Interpolant::generate_interpolant(const vector<Lit>& assumptions,
         f.close();
     }
 
-    // One incremental, assumption-based solve on the persistent solver.
-    // The test_var assumptions are assumed (not added as clauses), so the
-    // doubled CNF and indicator units stay reusable for the next call.
+    // One assumption-based solve; assumptions are assumed (not added as
+    // clauses), so the doubled CNF stays reusable for the next call.
     tracer->reset_per_solve();
     for (const auto& l : assumptions) solver->assume(lit_to_pl(l));
     const int ret = solver->solve();
-    // CMS already proved this UNSAT under the same assumptions.
     release_assert(ret == 20 && "interpolant solve must be UNSAT");
-    // conclude() makes cadical emit the incremental-proof conclusion, so
-    // the tracer sees the failing-assumption clause and conclude_unsat.
+    // conclude() emits the proof conclusion so the tracer sees the refutation.
     solver->conclude();
 
     aig_lit interp = tracer->build_interpolant();
-    // Invariant: after a UNSAT solve the tracer has seen a refutation root,
-    // so build_interpolant returns a non-null AIG.
     release_assert(interp != nullptr
         && "interpolant: build_interpolant returned null after UNSAT proof");
     interp = AIG::simplify_aig(interp);
@@ -153,9 +141,7 @@ void Interpolant::generate_interpolant(const vector<Lit>& assumptions,
     verb_print(5, "[interp] definition of var " << test_var+1
             << " is: " << interp);
 
-    // Periodically rebuild solver + tracer so the tracer's clause maps
-    // (which accumulate every clause of every solve) do not grow without
-    // bound. The doubled CNF and indicator units are simply reloaded.
+    // Periodically rebuild so the tracer's clause maps don't grow unbounded.
     if (++solves_since_rebuild >= conf.interp_rebuild_every) {
         verb_print(2, "[interp] rebuilding incremental solver after "
                 << solves_since_rebuild << " interpolants");
