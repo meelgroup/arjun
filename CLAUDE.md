@@ -72,7 +72,7 @@ it (`./test-interp-repair`, also wired into `ctest`).
 ## Source layout (`src/`)
 
 - `arjun.{h,cpp}` — public API, the `AIG` class, and the `SimplifiedCNF`
-  container. AIG nodes are `std::shared_ptr<AIG>` (`aig_ptr`). Every AIG
+  container. AIG nodes are `std::shared_ptr<AIG>` (`aig_lit`). Every AIG
   node carries a monotonic `uint64_t nid` assigned at construction; use
   `nid` for ordering/hashing, never the raw pointer (ASLR makes pointers
   non-deterministic across runs).

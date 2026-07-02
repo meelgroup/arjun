@@ -25,7 +25,6 @@
 #pragma once
 
 #include <cryptominisat5/solvertypesmini.h>
-#include "constants.h"
 #include "arjun.h"
 #include "config.h"
 #include "interp_repair.h"
