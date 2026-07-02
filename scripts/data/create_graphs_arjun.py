@@ -45,11 +45,13 @@ only_dirs = [
     # "out-synth-1583187-0", # interpolation, cadet-style (turned off)
     # "out-synth-1583187-5", # interpolation, cadet-style
     # "out-synth-1587721-0", # whatever
-    "out-synth-1587721-6", # CADET
+    # "out-synth-1587721-6", # CADET
     # "out-synth-1595974-5", # ALWAYS ON INTERPOLATION
     # "out-synth-1595974-", # now interpolation is using minimized ("touched" variables) cnf so interpolation generation is faster
     "out-synth-1652067-0", # inprocessing with "cadet" turned OFF
     # "out-synth-1652067-2", # inprocessing with cadet
+    "out-synth-1595974-4", # check interpolation
+    "out-synth-1595974-0", # check interpolation
 ]
 # -------------------------------------------------------------
 
@@ -553,7 +555,7 @@ def generate_cdf(fname2_s):
             f.write(f'set terminal {term}\n')
             f.write(f'set output "{out}"\n')
             f.write('set title "Arjun synthesis CDF: instances solved vs. time"\n')
-            f.write('set key top left\n')
+            f.write('set key bottom right font ",6"\n')
             f.write('set logscale x\n')
             f.write('unset logscale y\n')
             f.write(f'set xrange [0.001:{TIMEOUT}]\n')
@@ -561,6 +563,7 @@ def generate_cdf(fname2_s):
             f.write('set ylabel "Instances synthesised"\n')
             f.write('set xlabel "Time (s)"\n')
             f.write('set grid\n')
+            f.write('set pointsize 0.2\n')
             f.write('plot \\\n')
             f.write(plot_lines())
             f.write('\n\n')
@@ -724,6 +727,10 @@ def main():
                 sys.exit(1)
             eff_fname_like = fname_like
         print_summary_tables(table_todo, eff_fname_like, full=args.full)
+        if fname2_s:
+            generate_cdf(fname2_s)
+        else:
+            print(f"{RED}No CDF data (no solved instances?){RESET}")
         return
 
     print_signal_warnings(table_todo, fname_like)
