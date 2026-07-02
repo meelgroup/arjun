@@ -182,7 +182,7 @@ void add_arjun_options() {
         "Comma-separated synthesis strategy list, e.g. "
         "\"learn(samples=1,max_repairs=100),learn(max_repairs=800),bve\". "
         "Each non-last strategy runs for 20*max_repairs tries; the last runs unlimited. "
-        "Params: max_repairs, samples, samples_ccnr, min_gain_split, "
+        "Params: max_repairs, samples, min_gain_split, "
         "max_depth, sampler_fixed_conflicts, and other ManthanConf fields.");
     // Order
     myopt("--morder", mconf.manthan_order, fc_int,"Order vars: incidence (0), BVE (2)");
@@ -193,7 +193,6 @@ void add_arjun_options() {
     myopt("--repaircache", mconf.repair_cache_size, fc_int,"Repair cache size. 0 = no cache");
     // synth -- sampling
     myopt("--samples", mconf.samples, fc_int,"Number of samples");
-    myopt("--samplesccnr", mconf.samples_ccnr, fc_int,"Number of samples from CCNR");
     myopt("--uniqsamp", mconf.do_unique_input_samples, fc_int, "Unique samples on input vars");
     myopt("--filtersamples", mconf.filter_samples, fc_int,"Filter samples from useless ones");
     myopt("--fixedconf", mconf.sampler_fixed_conflicts, fc_int,"Restart conflict limit in CMSGen");
@@ -211,8 +210,6 @@ void add_arjun_options() {
     myopt("--minimbudgetthresh", mconf.minim_budget_threshold, fc_int, "Conflict size above which minim budget is capped");
     myopt("--minimbudgetmax", mconf.minim_budget_max, fc_int, "Max minimization solver calls");
     myopt("--minimbudgetmult", mconf.minim_budget_mult, fc_int, "Minim budget = conflict.size * mult (up to max)");
-    myopt("--ccnrmemspersample", mconf.ccnr_mems_per_sample, fc_int, "CCNR total memory budget per sample");
-    myopt("--ccnrpercalllimit", mconf.ccnr_per_call_limit, fc_int, "CCNR per-call step limit for local_search");
     myopt("--czhighratio", mconf.cz_high_ratio, fc_int, "cost_zero > tot_repaired * this triggers tightest cz_threshold");
     myopt("--czlowratio", mconf.cz_low_ratio, fc_int, "cost_zero > tot_repaired * this triggers medium cz_threshold");
     myopt("--czthreshhigh", mconf.cz_threshold_high, fc_int, "Consecutive cost-zero break count when high cz ratio");

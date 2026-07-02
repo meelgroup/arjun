@@ -37,7 +37,6 @@
 #include "constants.h"
 #include "metasolver2.h"
 #include "time_mem.h"
-#include "ccnr/ccnr.h"
 #include <fstream>
 #include <sstream>
 #include <cstdio>
@@ -110,59 +109,6 @@ vector<sample> Manthan::get_cmsgen_samples(const uint32_t num) {
     }
     verb_print(1, "[manthan] CMSGen got " << samples.size() << " samples."
             << " T: " << setprecision(2) << std::fixed << (cpuTime() - my_time));
-    return samples;
-}
-
-vector<sample> Manthan::get_samples_ccnr(const uint32_t num) {
-    const double my_time = cpuTime();
-    verb_print(1, "[manthan] Getting " << num << " CCNR samples...");
-
-    vector<sample> samples;
-    ::Arjun::CCNR::ls_solver ls_s(true, conf.seed);
-    uint32_t cl_num = 0;
-    ls_s._num_vars = cnf.nVars();
-    ls_s._num_clauses = cnf.get_clauses().size();
-    ls_s.make_space();
-    vector<int> yals_lits;
-
-    auto add_this_clause = [&](const vector<Lit>& cl) {
-        yals_lits.clear();
-        for(auto lit : cl) yals_lits.push_back(lit_to_pl(lit));
-        for(auto& lit: yals_lits) {
-            ls_s._clauses[cl_num].literals.emplace_back(lit, cl_num);
-        }
-        cl_num++;
-    };
-
-    for(const auto& cl: cnf.get_clauses()) add_this_clause(cl);
-
-    //Shrink the space if we have to
-    assert(ls_s._num_clauses >= (int)cl_num);
-    ls_s._num_clauses = (int)cl_num;
-    ls_s.make_space();
-
-    for (int c=0; c < ls_s._num_clauses; c++) {
-        for(auto& item: ls_s._clauses[c].literals) {
-            int v = item.var_num;
-            ls_s._vars[v].literals.push_back(item);
-        }
-    }
-    ls_s.build_neighborhood();
-
-    sample s;
-    long long int mems = (long long int)(num * mconf.ccnr_mems_per_sample);
-    for(uint32_t si = 0; si < num; si++) {
-        int res = ls_s.local_search(nullptr, mems, "c o", (long long int)mconf.ccnr_per_call_limit);
-        if (res) {
-          s.clear();
-          s.resize(cnf.nVars(), l_Undef);
-          for(uint32_t i = 0; i < cnf.nVars(); i++) s[i] = ls_s._solution[i+1] ? l_True : l_False;
-          samples.push_back(s);
-        }
-    }
-
-    verb_print(1, "[manthan] CCNR got " << samples.size() << " / " << num << " samples. T: "
-            << setprecision(2) << std::fixed << (cpuTime() - my_time));
     return samples;
 }
 

@@ -357,13 +357,12 @@ def gen_mstrategy():
     # Valid types: "const" and "bve". ("learn" requires EXTRA_SYNTH, so skip it.)
     types = ["const", "bve"]
 
-    uint_params = ["samples", "samples_ccnr", "max_depth", "sampler_fixed_conflicts",
+    uint_params = ["samples", "max_depth", "sampler_fixed_conflicts",
                    "min_leaf_size", "const_vote_samples", "stats_every",
                    "detailed_stats_every",
                    "conflict_drop_y_max",
                    "batch_minim_min",
                    "minim_budget_threshold", "minim_budget_max", "minim_budget_mult",
-                   "ccnr_mems_per_sample", "ccnr_per_call_limit",
                    "cz_high_ratio", "cz_low_ratio",
                    "cz_threshold_high", "cz_threshold_mid", "cz_threshold_low"]
     # manthan_order is handled separately (only 0/2 valid, gen_int would emit 1).
@@ -511,7 +510,6 @@ if __name__ == "__main__":
         solver += " --bveresolvmaxsz " + str(random.randint(2, 20))
         solver += " --iter1grow " + str(random.randint(0, 5))
         solver += " --iter2grow " + str(random.choice([0, 10, 100]))
-        solver += " --samplesccnr " + random.choice(["0", "100", "10000"])
         solver += " --samples " + random.choice(["0", "100", "10000"])
         solver += " --mingainsplit " + random.choice(["0.1", "0.001", "5"])
         solver += " --maxdepth " + random.choice(["2", "10"])
@@ -528,8 +526,6 @@ if __name__ == "__main__":
         solver += " --minimbudgetthresh " + random.choice(["1", "5", "20", "100", "10000"])
         solver += " --minimbudgetmax " + random.choice(["1", "10", "150", "1000", "100000"])
         solver += " --minimbudgetmult " + random.choice(["1", "2", "4", "10", "100"])
-        solver += " --ccnrmemspersample " + random.choice(["0", "1", "100", "1000", "100000", "10000000"])
-        solver += " --ccnrpercalllimit " + random.choice(["0", "1", "100", "1000", "50000", "10000000"])
         solver += " --czhighratio " + random.choice(["0", "1", "3", "10", "1000"])
         solver += " --czlowratio " + random.choice(["0", "1", "2", "5", "100"])
         solver += " --czthreshhigh " + random.choice(["0", "1", "2", "5", "1000"])

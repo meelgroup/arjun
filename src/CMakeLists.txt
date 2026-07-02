@@ -46,7 +46,6 @@ set(libfiles
     unate_def.cpp
     unate_def_common.cpp
     autarky.cpp
-    ccnr/ccnr.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/GitSHA1.cpp
     manthan.cpp
     brute_force_synth.cpp

@@ -1629,7 +1629,6 @@ public:
         int filter_samples = 1;
         /// Also to try:
         uint32_t samples = 5000;
-        uint32_t samples_ccnr = 0;
         uint32_t min_leaf_size = 10;
         // TODO experiment with 0.003
         double min_gain_split = 0.001;
@@ -1662,9 +1661,6 @@ public:
         uint32_t minim_budget_threshold = 20; // conflict size above which budget is capped
         uint32_t minim_budget_max = 150;    // max minimization solver calls
         uint32_t minim_budget_mult = 4;     // budget = conflict.size * mult (up to max)
-        // CCNR sampling constants
-        uint64_t ccnr_mems_per_sample = 100000; // total CCNR mem budget per sample
-        uint32_t ccnr_per_call_limit = 50000;   // per-call step limit for CCNR local_search
         // Adaptive consecutive cost-zero break threshold
         uint32_t cz_high_ratio = 3;         // cost_zero > tot_repaired * cz_high_ratio triggers tight threshold
         uint32_t cz_low_ratio = 2;          // cost_zero > tot_repaired * cz_low_ratio triggers medium threshold

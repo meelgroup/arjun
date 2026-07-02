@@ -49,10 +49,6 @@ void ManthanLearn::full_train() {
         << ", maximumDepth=" << mconf.max_depth);
     double samp_start_time = cpuTime();
     vector<sample> samples = m.get_cmsgen_samples(mconf.samples);
-    {
-        vector<sample> samples2 = m.get_samples_ccnr(mconf.samples_ccnr);
-        samples.insert(samples.end(), samples2.begin(), samples2.end());
-    }
     m.sampl_time = cpuTime() - samp_start_time;
     verb_print(1, COLYEL "[manthan] Got " << setw(8) << samples.size() << " samples."
         << " samp/var: " << setw(8) << setprecision(2) << std::fixed << m.sampl_time/(double)m.to_define.size()

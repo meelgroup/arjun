@@ -61,7 +61,6 @@ struct ParamDef { PT type; std::function<void(MC&, const string&)> setter; };
 const std::map<string, ParamDef> param_table = {
     {"max_repairs",              {PT::UInt,   [](MC& c, const string& v) { c.max_repairs              = parse_val<uint32_t>(v); }}},
     {"samples",                  {PT::UInt,   [](MC& c, const string& v) { c.samples                  = parse_val<uint32_t>(v); }}},
-    {"samples_ccnr",             {PT::UInt,   [](MC& c, const string& v) { c.samples_ccnr             = parse_val<uint32_t>(v); }}},
     {"min_gain_split",           {PT::Double, [](MC& c, const string& v) { c.min_gain_split           = parse_val<double>(v); }}},
     {"max_depth",                {PT::UInt,   [](MC& c, const string& v) { c.max_depth                = parse_val<uint32_t>(v); }}},
     {"sampler_fixed_conflicts",  {PT::UInt,   [](MC& c, const string& v) { c.sampler_fixed_conflicts  = parse_val<uint32_t>(v); }}},
@@ -86,8 +85,6 @@ const std::map<string, ParamDef> param_table = {
     {"minim_budget_threshold",   {PT::UInt,   [](MC& c, const string& v) { c.minim_budget_threshold   = parse_val<uint32_t>(v); }}},
     {"minim_budget_max",         {PT::UInt,   [](MC& c, const string& v) { c.minim_budget_max         = parse_val<uint32_t>(v); }}},
     {"minim_budget_mult",        {PT::UInt,   [](MC& c, const string& v) { c.minim_budget_mult        = parse_val<uint32_t>(v); }}},
-    {"ccnr_mems_per_sample",     {PT::UInt,   [](MC& c, const string& v) { c.ccnr_mems_per_sample     = parse_val<uint64_t>(v); }}},
-    {"ccnr_per_call_limit",      {PT::UInt,   [](MC& c, const string& v) { c.ccnr_per_call_limit      = parse_val<uint32_t>(v); }}},
     {"cz_high_ratio",            {PT::UInt,   [](MC& c, const string& v) { c.cz_high_ratio            = parse_val<uint32_t>(v); }}},
     {"cz_low_ratio",             {PT::UInt,   [](MC& c, const string& v) { c.cz_low_ratio             = parse_val<uint32_t>(v); }}},
     {"cz_threshold_high",        {PT::UInt,   [](MC& c, const string& v) { c.cz_threshold_high        = parse_val<uint32_t>(v); }}},
