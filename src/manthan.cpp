@@ -1786,7 +1786,6 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
 
     // not (conflict) -> v = ctx(v)
     FHolder<MetaSolver2>::Formula f;
-
     {
         vector<Lit> cl;
         cex_solver.new_var();
@@ -1807,8 +1806,8 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         }
         f.out = fresh_l;
 
-        // AIG part: the guard, TRUE exactly on the conflict cube. conflict is
-        // non-empty here (the empty case returned early above).
+        // AIG part: the guard, TRUE exactly on the conflict cube.
+        assert(!conflict.empty());
         for(const auto& l: conflict) assert(l.var() < cnf.nVars());
         aig_lit guard = AIG::new_lit(~conflict[0]);
         for(size_t i = 1; i < conflict.size(); i++) {
