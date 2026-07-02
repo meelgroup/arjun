@@ -800,41 +800,6 @@ bool Manthan::check_aig_matches_clauses_per_formula(const string& where) const {
     return true;
 }
 
-aig_lit Manthan::one_level_substitute(Lit l, const uint32_t v, map<uint32_t, aig_lit>& transformed) {
-    if (!transformed.count(l.var())) {
-        assert(var_to_formula.count(l.var()) == 1);
-        auto aig = var_to_formula.at(l.var()).aig;
-        std::unordered_map<const AIG*, aig_node_ptr> cache;
-        auto aig2 = AIG::deep_clone(aig, cache);
-        map<aig_lit, aig_lit> cache_aig;
-        auto aig3 = AIG::transform<aig_lit>(
-          aig2,
-          [&](AIGT type, const uint32_t var, const aig_lit* left, const aig_lit* right) -> aig_lit {
-            if (type == AIGT::t_const) {
-                return aig_mng.new_const(true);
-            }
-            if (type == AIGT::t_lit) {
-                aig_lit l_aig = nullptr;
-                if (later_in_order(v, var)) {
-                    l_aig = AIG::new_lit(Lit(var, false));
-                    set_depends_on(v, var);
-                } else {
-                    l_aig = aig_mng.new_const(true);
-                }
-                return l_aig;
-            }
-            if (type == AIGT::t_and) {
-                return AIG::new_and(*left, *right);
-            }
-            release_assert(false && "Unhandled AIG type in visitor");
-          }, cache_aig);
-        transformed[l.var()] = aig3;
-    }
-    auto aig = transformed.at(l.var());
-    if (l.sign()) aig = AIG::new_not(aig);
-    return aig;
-}
-
 // Prefer FALSE, i.e. it should be false unless we have evidence otherwise
 // Hence, we only care about clauses where v appears positively
 void Manthan::bve_and_substitute() {
@@ -2861,27 +2826,6 @@ void Manthan::recompute_all_y_hat_cnf(sample& ctx) {
         uint32_t y_hat = y_to_y_hat.at(y);
         ctx[y_hat] = m[y_hat];
     }
-}
-
-void Manthan::recompute_all_y_hat_aig(sample& ctx, const uint32_t y_rep) {
-    vector<aig_lit> defs(ctx.size(), nullptr);
-    bool found = false;
-    map<aig_lit, lbool> cache;
-    for (const auto& y : y_order) {
-        // Only need to recompute after y_rep
-        if (!found && y == y_rep) {
-            found = true;
-            continue;
-        }
-        if (!found) continue; // skip vars before y_rep
-        if (!var_to_formula.count(y)) continue; // skip vars without formulas
-        const auto& aig = var_to_formula.at(y).aig;
-        assert(aig != nullptr && "All formulas should have AIGs for evaluation");
-        lbool val = AIG::evaluate(ctx, aig, defs, cache);
-        if (val == l_Undef) continue;
-        ctx[y_to_y_hat.at(y)] = val;
-    }
-    verb_print(2, "Recomputed all y_hat values in ctx.");
 }
 
 void Manthan::compute_needs_repair(const sample& ctx) {

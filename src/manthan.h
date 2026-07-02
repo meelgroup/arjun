@@ -91,7 +91,6 @@ class Manthan {
 
         void const_functions();
         void bve_and_substitute();
-        ArjunNS::aig_lit one_level_substitute(const CMSat::Lit l, const uint32_t v, std::map<uint32_t, ArjunNS::aig_lit>& transformed);
 
         void create_vars_for_y_hats();
         std::vector<uint32_t> incidence;
@@ -201,7 +200,6 @@ class Manthan {
         void print_y_order_occur() const;
         void compute_needs_repair(const sample& ctx);
         void recompute_all_y_hat_cnf(sample& ctx);
-        void recompute_all_y_hat_aig(sample& ctx, const uint32_t y_rep);
 
         // ordering
         std::vector<uint32_t> y_order; //1st only depends on inputs
