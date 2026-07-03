@@ -48,10 +48,11 @@ only_dirs = [
     # "out-synth-1587721-6", # CADET
     # "out-synth-1595974-5", # ALWAYS ON INTERPOLATION
     # "out-synth-1595974-", # now interpolation is using minimized ("touched" variables) cnf so interpolation generation is faster
-    "out-synth-1652067-0", # inprocessing with "cadet" turned OFF
+    # "out-synth-1652067-0", # inprocessing with "cadet" turned OFF
     # "out-synth-1652067-2", # inprocessing with cadet
-    "out-synth-1595974-4", # check interpolation
+    # "out-synth-1595974-4", # check interpolation
     "out-synth-1595974-0", # check interpolation
+    "out-synth-1859870-0", # AI slop cleanup
 ]
 # -------------------------------------------------------------
 
