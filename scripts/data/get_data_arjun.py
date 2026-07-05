@@ -291,6 +291,9 @@ def timeout_parse(fname):
     call = re.sub(r'--verb \S+ ', '', call)
     call = call.strip()
 
+    # User time as reported, kept regardless of signal (unlike timeout_t).
+    timeout_t_nonnull = t
+
     # If the job was killed by signal, the recorded user time is not a valid solve time
     if signal is not None:
         t = None
@@ -299,6 +302,7 @@ def timeout_parse(fname):
 
     return {
         "timeout_t": t,
+        "timeout_t_nonnull": timeout_t_nonnull,
         "timeout_mem": mem,
         "timeout_call_full": call_full,
         "timeout_call": call,
@@ -369,6 +373,7 @@ COLUMNS = [
     ("dirname",                 "TEXT"),
     ("fname",                   "TEXT"),
     ("timeout_t",               "REAL"),
+    ("timeout_t_nonnull",       "REAL"),
     ("timeout_mem",             "REAL"),
     ("timeout_call_full",       "TEXT"),
     ("timeout_call",            "TEXT"),
