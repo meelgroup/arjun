@@ -48,17 +48,7 @@ void ManthanLearn::full_train() {
         << ", minGainSplit=" << setprecision(6) << mconf.min_gain_split << setprecision(2)
         << ", maximumDepth=" << mconf.max_depth);
     double samp_start_time = cpuTime();
-    // CMSGen sampling is a full SAT solve per sample, so it scales badly on
-    // hard instances -- and large to-define sets are a decent proxy for that.
-    // Halve the sample count when there are many functions to synthesize.
-    uint32_t n_samples = mconf.samples;
-    if (m.to_define.size() > 200) {
-        n_samples = std::max<uint32_t>(1, n_samples / 2);
-        verb_print(1, "[manthan] to-define vars " << m.to_define.size()
-            << " > 200; halving CMSGen samples " << mconf.samples
-            << " -> " << n_samples);
-    }
-    vector<sample> samples = m.get_cmsgen_samples(n_samples);
+    vector<sample> samples = m.get_cmsgen_samples(mconf.samples);
     m.sampl_time = cpuTime() - samp_start_time;
     verb_print(1, COLYEL "[manthan] Got " << setw(8) << samples.size() << " samples."
         << " samp/var: " << setw(8) << setprecision(2) << std::fixed << m.sampl_time/(double)m.to_define.size()

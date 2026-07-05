@@ -91,7 +91,9 @@ void Manthan::inject_cnf(S& s) const {
     for(const auto& c: cnf.get_red_clauses()) s.add_red_clause(c);
 }
 
-vector<sample> Manthan::get_cmsgen_samples(const uint32_t num) {
+vector<sample> Manthan::get_cmsgen_samples(uint32_t num) {
+    // Sampling costs one SAT solve each; halve it on large to-define sets.
+    if (to_define.size() > 200) num = std::max<uint32_t>(1, num / 2);
     verb_print(1, "[manthan] Getting " << num << " CMSGen samples...");
 
     const double my_time = cpuTime();

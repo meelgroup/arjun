@@ -189,7 +189,7 @@ class Manthan {
             set_depends_on(a, b.var());
         }
 
-        std::vector<sample> get_cmsgen_samples(const uint32_t samples);
+        std::vector<sample> get_cmsgen_samples(uint32_t samples);
         void sort_all_samples(std::vector<sample>& samples);
         std::vector<std::vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
 
