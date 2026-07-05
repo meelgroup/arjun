@@ -12,9 +12,16 @@ def strip_ansi(text):
     return ansi_escape.sub('', text)
 
 
+# any "start <label> [get-var-types]"; the raw label is stored as the stage
+STAGE_RE = re.compile(r'^c o start (\w+) \[get-var-types\]')
+
+
 def find_arjun_time(fname):
     mem_out = 0
     solved = False
+    # last_stage: last stage entered; last_stage_done: last stage completed.
+    last_stage = None
+    last_stage_done = None
     arjun_sha1 = None
     sbva_sha1 = None
     cms_sha1 = None
@@ -64,6 +71,14 @@ def find_arjun_time(fname):
                 mem_out = 1
             elif line.startswith("c o [arjun] All done."):
                 solved = True
+
+            m = STAGE_RE.match(line)
+            if m and m.group(1) != "do_synthesis":
+                stage = m.group(1)
+                # a new stage starting means the previous one finished
+                if last_stage is not None and stage != last_stage:
+                    last_stage_done = last_stage
+                last_stage = stage
 
             # c o Arjun SHA1: 8bc2e1402ab782c8ab62aa4d5ffe40eb317691a1
             if arjun_sha1 is None and "c o Arjun SHA1:" in line:
@@ -185,6 +200,10 @@ def find_arjun_time(fname):
     if repairs is not None:
         repairs += current_strategy_rep
 
+    # solved => the final stage entered also completed
+    if solved:
+        last_stage_done = last_stage
+
     return {
         "arjun_sha1": arjun_sha1,
         "sbva_sha1": sbva_sha1,
@@ -207,6 +226,8 @@ def find_arjun_time(fname):
         "repairs_per_sec": repairs_per_sec,
         "manthan_defined": manthan_defined,
         "arjun_time": arjun_time,
+        "last_stage": last_stage,
+        "last_stage_done": last_stage_done,
         "mem_out": mem_out,
         "solved": solved,
     }
@@ -374,6 +395,8 @@ COLUMNS = [
     ("repairs_per_sec",         "REAL"),
     ("manthan_defined",         "INTEGER"),
     ("arjun_time",              "REAL"),
+    ("last_stage",              "TEXT"),
+    ("last_stage_done",         "TEXT"),
     ("mem_out",                 "INTEGER"),
 ]
 

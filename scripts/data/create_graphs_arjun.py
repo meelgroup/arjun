@@ -51,8 +51,8 @@ only_dirs = [
     # "out-synth-1652067-0", # inprocessing with "cadet" turned OFF
     # "out-synth-1652067-2", # inprocessing with cadet
     # "out-synth-1595974-4", # check interpolation
-    "out-synth-1595974-0", # check interpolation
-    "out-synth-1859870-0", # AI slop cleanup
+    # "out-synth-1595974-0", # check interpolation
+    "out-synth-1859870-", # AI slop cleanup
 ]
 # -------------------------------------------------------------
 
@@ -364,6 +364,30 @@ def print_instance_stats_table(table_todo, fname_like):
         union_parts.append("SELECT " + ", ".join(parts))
     _sqlite_run("\nUNION ALL\n".join(union_parts),
                 title="Instance stats: variable counts and synthesis phase results (median/avg)")
+
+
+def print_stuck_stage_table(table_todo, fname_like):
+    """One table per dir/ver counting UNSOLVED runs by the stage they stopped in."""
+    if not table_todo:
+        return
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    for dir, ver in table_todo:
+        cur.execute(
+            f"SELECT last_stage, COUNT(*) FROM {TABLE}"
+            f" WHERE dirname=? AND {VER_EXPR}=?"
+            f" AND {SOLVE_TIME_EXPR} IS NULL{fname_like}"
+            f" GROUP BY last_stage", (dir, ver))
+        rows = [(s if s is not None else "startup", n) for s, n in cur.fetchall()]
+        total = sum(n for _, n in rows)
+        str_rows = []
+        for stage, n in sorted(rows, key=lambda r: -r[1]):
+            pct = f"{100.0 * n / total:.0f}%" if total else "0%"
+            str_rows.append([stage, str(n), pct])
+        print(f"\n{BLUE}Where UNSOLVED runs got stuck (last_stage): "
+              f"{dir} [{ver[:10]}]{RESET}")
+        _print_table(["stuck at", "n", "% unsolved"], str_rows)
+    con.close()
 
 
 def print_signal_warnings(table_todo, fname_like):
@@ -735,6 +759,7 @@ def main():
         return
 
     print_signal_warnings(table_todo, fname_like)
+    print_stuck_stage_table(table_todo, fname_like)
     print_summary_tables(table_todo, fname_like, full=args.full)
     print_median_tables(table_todo, fname_like)
     print_instance_stats_table(table_todo, fname_like)
