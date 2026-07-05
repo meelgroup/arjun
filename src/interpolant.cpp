@@ -102,9 +102,9 @@ void Interpolant::add_unit_cl(const vector<Lit>& cl) {
     indicator_units.push_back(cl[0]);
 }
 
-void Interpolant::generate_interpolant(const vector<Lit>& assumptions,
+bool Interpolant::generate_interpolant(const vector<Lit>& assumptions,
         uint32_t test_var) {
-    verb_print(2, "[interp] generating interpolant for var: " << test_var+1);
+    verb_print(3, "[interp] generating interpolant for var: " << test_var+1);
     verb_print(3, "[interp] assumptions: " << assumptions);
 
     if (!conf.debug_synth.empty()) {
@@ -126,9 +126,20 @@ void Interpolant::generate_interpolant(const vector<Lit>& assumptions,
     // One assumption-based solve; assumptions are assumed (not added as
     // clauses), so the doubled CNF stays reusable for the next call.
     tracer->reset_per_solve();
+    // Skip deep vars whose proof would OOM or stall.
+    if (conf.interp_max_confl != 0)
+        solver->limit("conflicts", (int)conf.interp_max_confl);
     for (const auto& l : assumptions) solver->assume(lit_to_pl(l));
     const int ret = solver->solve();
-    release_assert(ret == 20 && "interpolant solve must be UNSAT");
+    release_assert(ret != 10 && "interpolant solve must not be SAT");
+    if (ret != 20) {
+        // Budget exhausted: rebuild to free the tracer maps.
+        verb_print(1, "[interp] var " << test_var+1 << " exceeded "
+                << conf.interp_max_confl << " conflicts; skipping definition");
+        solver->disconnect_proof_tracer(tracer.get());
+        load_solver();
+        return false;
+    }
     // conclude() emits the proof conclusion so the tracer sees the refutation.
     solver->conclude();
 
@@ -150,6 +161,7 @@ void Interpolant::generate_interpolant(const vector<Lit>& assumptions,
         solver->disconnect_proof_tracer(tracer.get());
         load_solver();
     }
+    return true;
 }
 
 aig_lit InterpTracerMcMillan::lit_aig(Lit l) {

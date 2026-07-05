@@ -65,6 +65,8 @@ struct Config {
     // many interpolants, to bound the tracer's accumulating clause maps.
     // Lowering it forces the rebuild path on every fuzz iteration.
     uint32_t interp_rebuild_every = 512;
+    // Per-interpolant conflict budget; over this, skip the var. 0 = off.
+    uint32_t interp_max_confl = 100000;
     std::string debug_synth;
     uint32_t seed = 42;
 };

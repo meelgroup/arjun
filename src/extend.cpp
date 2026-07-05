@@ -93,8 +93,9 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
     vector<Lit> assumptions;
     uint32_t num_done = 0;
     uint32_t num_unsat = 0;
+    uint32_t num_skipped = 0;
     while(!unknown.empty()) {
-        if (num_done % 100 == 99) {
+        if (num_done % 100 == 99 || conf.verb >= 2) {
             verb_print(1, "[synth-extend] done: " << setw(4) << num_done
                     << " unsat: " << setw(4) << num_unsat
                     << " left: " << setw(4) << unknown.size()
@@ -126,18 +127,21 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
         ret = solver->solve(&assumptions);
         num_done++;
 
-        if (ret == l_False) verb_print(5, "[synth-extend] extend solve(): False");
-        else if (ret == l_True) {verb_print(5, "[synth-extend] extend solve(): True");num_sat++;}
-        else if (ret == l_Undef) {verb_print(5, "[synth-extend] extend solve(): Undef"); num_unknown++;}
+        if (ret == l_False) verb_print(3, "[synth-extend] extend solve(): False");
+        else if (ret == l_True) {verb_print(3, "[synth-extend] extend solve(): True");num_sat++;}
+        else if (ret == l_Undef) {verb_print(3, "[synth-extend] extend solve(): Undef"); num_unknown++;}
 
         if (ret == l_False) {
             num_unsat++;
-            // Dependent fully on `indep`
-            interp.generate_interpolant(assumptions, test_var);
-            solver->add_clause({Lit(indic, false)});
-            interp.add_unit_cl({Lit(indic, false)});
-            cnf.add_opt_sampl_var(test_var);
-            input_vars.insert(test_var);
+            // Dependent fully on `indep`; skip if the interpolant blew budget.
+            if (interp.generate_interpolant(assumptions, test_var)) {
+                solver->add_clause({Lit(indic, false)});
+                interp.add_unit_cl({Lit(indic, false)});
+                cnf.add_opt_sampl_var(test_var);
+                input_vars.insert(test_var);
+            } else {
+                num_skipped++;
+            }
         } else if (ret == l_True) {
             // Optimisation: if we see both true and false, then it cannot be independent
             for(uint32_t v = 0; v < orig_num_vars; v++) {
@@ -174,6 +178,7 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
     verb_print(1, COLRED "[synth-extend] Done. "
             << " True: " << num_sat
             << " Unkn: " << num_unknown
+            << " skipped(confl): " << num_skipped
             << " defined: " << to_define.size()-to_define2.size()
             << " still to-define: " << to_define2.size()
             << " T: " << std::setprecision(2) << std::fixed << (cpuTime() - my_time));

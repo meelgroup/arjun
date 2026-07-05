@@ -220,6 +220,8 @@ void add_arjun_options() {
     myopt("--debugsynth", conf.debug_synth, fc_string,"Debug synthesis, prefix with this fname");
     myopt("--interprebuildevery", conf.interp_rebuild_every, fc_int,
           "Rebuild the doubled-CNF interpolation solver every N interpolants (bounds tracer maps; smaller = exercise the rebuild path more).");
+    myopt("--interpmaxconfl", conf.interp_max_confl, fc_int,
+          "Per-interpolant conflict budget; over this, skip the var. 0 = unlimited.");
     myflag("--checkrepair", mconf.check_repair, "Check that error formula count decreases monotonically after each repair iteration (uses ganak)");
     myopt("--ganakbin", mconf.ganak_binary, fc_string, "Path to ganak binary (for --checkrepair)");
 

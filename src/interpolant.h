@@ -156,9 +156,9 @@ public:
         const ArjunNS::AIGManager& aig_mng,
         const std::set<uint32_t>& input_vars);
 
-    // `test_var` was just proven UNSAT under `assumptions`; reconstruct
-    // and store its definition AIG over the current input vars.
-    void generate_interpolant(const std::vector<CMSat::Lit>& assumptions,
+    // Reconstruct and store test_var's definition AIG. Returns false (var
+    // left undefined) if the solve exceeded conf.interp_max_confl.
+    bool generate_interpolant(const std::vector<CMSat::Lit>& assumptions,
         uint32_t test_var);
 
     // Add an indicator unit (a var proven independent/defined), B-side.
