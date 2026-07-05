@@ -421,6 +421,35 @@ def print_stuck_top_table(table_todo, fname_like, top=5):
     con.close()
 
 
+def print_cmsgen_time_table(table_todo, fname_like, top=15):
+    """One table per dir/ver: the files that spent the most wall-clock time in
+    CMSGen sampling (cmsgen_sampling_time, accumulated across all CMSGen calls
+    for that benchmark). Highest first, so the worst offenders are on top."""
+    if not table_todo:
+        return
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    for dir, ver in table_todo:
+        cur.execute(
+            f"SELECT fname, cmsgen_sampling_time, {SOLVE_TIME_EXPR},"
+            f" manthan_time FROM {TABLE}"
+            f" WHERE dirname=? AND {VER_EXPR}=?"
+            f" AND cmsgen_sampling_time IS NOT NULL{fname_like}"
+            f" ORDER BY cmsgen_sampling_time DESC LIMIT {top}", (dir, ver))
+        str_rows = []
+        for fn, cms_t, solve_t, mant_t in cur.fetchall():
+            str_rows.append([
+                fn,
+                f"{cms_t:.2f}" if cms_t is not None else "",
+                f"{solve_t:.2f}" if solve_t is not None else "unsolved",
+                f"{mant_t:.2f}" if mant_t is not None else "",
+            ])
+        print(f"\n{BLUE}Top {top} CMSGen sampling-time offenders: "
+              f"{dir} [{ver[:10]}]{RESET}")
+        _print_table(["fname", "cmsgen(s)", "solve(s)", "manthan(s)"], str_rows)
+    con.close()
+
+
 def print_signal_warnings(table_todo, fname_like):
     dirs = ",".join("'" + d + "'" for d, _ in table_todo)
     vers = ",".join("'" + v + "'" for _, v in table_todo)
@@ -792,6 +821,7 @@ def main():
     print_signal_warnings(table_todo, fname_like)
     print_stuck_stage_table(table_todo, fname_like)
     print_stuck_top_table(table_todo, fname_like)
+    print_cmsgen_time_table(table_todo, fname_like)
     print_summary_tables(table_todo, fname_like, full=args.full)
     print_median_tables(table_todo, fname_like)
     print_instance_stats_table(table_todo, fname_like)

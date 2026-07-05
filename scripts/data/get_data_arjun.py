@@ -39,6 +39,8 @@ def find_arjun_time(fname):
     backward_time = None
     backward_defined = None
 
+    cmsgen_sampling_time = None
+
     manthan_sampling_time = None
     manthan_training_time = None
     manthan_repair_time = None
@@ -141,6 +143,16 @@ def find_arjun_time(fname):
                 if match:
                     backward_time = float(match.group(1))
 
+            # c o [manthan] CMSGen got 100 samples. Biased: 0 T: 173.08
+            # CMSGen is invoked repeatedly per benchmark; accumulate the
+            # per-call sampling time so we can find the worst offenders.
+            if "CMSGen got" in line and "samples." in line:
+                match = re.search(r'T:\s*([\d.]+)', line)
+                if match:
+                    if cmsgen_sampling_time is None:
+                        cmsgen_sampling_time = 0.0
+                    cmsgen_sampling_time += float(match.group(1))
+
             # c o [manthan] rep:   1319   loops:   1319   avg rep/loop:  1.0   ...   T:    1.83   rep/s: 718.8093
             # Progress line. Tail may carry "Reached max repairs" (strategy
             # gave up — commit its rep count) or "DONE" (a [manthan] Done.
@@ -217,6 +229,7 @@ def find_arjun_time(fname):
         "extend_defined": extend_defined,
         "backward_time": backward_time,
         "backward_defined": backward_defined,
+        "cmsgen_sampling_time": cmsgen_sampling_time,
         "manthan_sampling_time": manthan_sampling_time,
         "manthan_training_time": manthan_training_time,
         "manthan_repair_time": manthan_repair_time,
@@ -391,6 +404,7 @@ COLUMNS = [
     ("extend_defined",          "INTEGER"),
     ("backward_time",           "REAL"),
     ("backward_defined",        "INTEGER"),
+    ("cmsgen_sampling_time",    "REAL"),
     ("manthan_sampling_time",   "REAL"),
     ("manthan_training_time",   "REAL"),
     ("manthan_repair_time",     "REAL"),
