@@ -1670,30 +1670,10 @@ public:
         uint32_t cz_threshold_mid = 2;      // consecutive cost-zero break threshold (medium ratio)
         uint32_t cz_threshold_low = 3;      // consecutive cost-zero break threshold (low ratio)
 
-        // Brute-force synthesis (--bruteforcesynth 1): enumerate every
-        // consistent X assignment via a forbid-clause loop, tabulate y
-        // values per SAT model, build per-y decision trees.
-        //
-        // Upper bound on |orig_sampl_cnf| (after the minim pre-pass).
-        // Each undet y allocates a 2^N truth table, so raising this past
-        // ~20 will OOM. Above the threshold brute_force_synth declines and
-        // the caller falls back to Manthan.
+        // Brute-force synthesis (--bruteforcesynth 1). Max |orig_sampl_cnf|; each undet y allocates a 2^N table, so >~20 OOMs.
         uint32_t brute_force_synth_threshold = 16;
-
-        // If set, run a dry-run backward minim on orig_sampl_cnf in the
-        // *current* (post-preproc, post-AIG-rewrite) CNF before the
-        // enumeration. The transforms can introduce dependencies among
-        // orig sampling vars that didn't exist at initial minim time;
-        // shrinking the enum domain makes the 2^N table much cheaper
-        // and lets more cases stay under brute_force_synth_threshold.
-        int brute_force_synth_minim = 1;
-
-        // Only attempt the minim pre-pass when |orig_sampl_cnf| is at
-        // most this. The backward minim solves a doubled-CNF SAT per
-        // candidate var, so on a large sampling set it is expensive and
-        // unlikely to shrink below brute_force_synth_threshold anyway — skip
-        // it there and let the threshold release_assert fire.
-        uint32_t brute_force_synth_minim_max = 40;
+        int brute_force_synth_minim = 1;         // dry-run backward minim to shrink the enum domain before enumerating
+        uint32_t brute_force_synth_minim_max = 40; // only try the minim pre-pass when |orig_sampl_cnf| is at most this
     };
 
     struct IndepInfo {
@@ -1720,10 +1700,7 @@ public:
         uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1,
         uint32_t sbva_max_new_vars = 0);
     SimplifiedCNF standalone_manthan(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
-    // Brute-force synthesis (see ManthanConf::brute_force_synth_* above).
-    // Synthesizes when |orig_sampl_cnf| ≤ brute_force_synth_threshold, else
-    // returns the CNF unchanged (synth_done() stays false) for the Manthan
-    // fallback. Only the brute_force_synth_* fields of manthan_conf are read.
+    // Synthesizes when |orig_sampl_cnf| ≤ brute_force_synth_threshold, else returns the CNF unchanged for the Manthan fallback.
     SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
     void standalone_autarky(SimplifiedCNF& cnf);
 

@@ -1,12 +1,8 @@
 /*
  Arjun
 
- brute_force_synth.h — Brute-force synthesis. Enumerate every
- consistent input pattern via a forbid-clause SAT loop, record each
- undet y per model, build per-y decision trees over the orig sampling
- vars. Synthesizes when |orig_sampl_cnf| ≤ brute_force_synth_threshold
- (after the optional minim pre-pass); otherwise returns the CNF
- unchanged so the caller falls back to Manthan.
+ brute_force_synth.h — Brute-force synthesis: enumerate every consistent
+ input pattern via a forbid-clause SAT loop and build per-y decision trees.
 
  Copyright (c) 2026, Mate Soos. All rights reserved.
 
