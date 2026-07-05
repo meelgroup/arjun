@@ -191,11 +191,9 @@ private:
     uint32_t tot_num_vars = 0;
     const ArjunNS::AIGManager* aig_mng = nullptr;
 
-    // The pristine doubled CNF: reused for the --debugsynth dump and re-loaded
-    // (with indicator equalities substituted in) on every rebuild.
+    // The pristine doubled CNF; re-loaded with equalities substituted on rebuild.
     std::vector<std::vector<CMSat::Lit>> all_cls;
-    // Accumulated indicator units. indic TRUE forces v == v' via the equality
-    // clauses, i.e. merges copy-2 var v' back into copy-1 var v.
+    // Accumulated indicator units; indic TRUE merges copy-2 var v' into copy-1 v.
     std::vector<CMSat::Lit> indicator_units;
     // indic var -> the copy-1 var v it ties. Built in fill_from_solver.
     std::unordered_map<uint32_t, uint32_t> indic_to_defvar;
@@ -211,9 +209,8 @@ private:
 
     void load_solver(bool is_rebuild);
 
-    // Apply the accumulated v' := v merges to a copy of all_cls, dropping
-    // tautologies and duplicates. Collapses copy-2 into copy-1 as more vars get
-    // defined, keeping proofs and interpolant AIGs small. Returns #merges.
+    // all_cls with the accumulated v' := v merges applied, tautologies and
+    // duplicates dropped. Returns the number of merges.
     uint32_t build_effective_clauses(
         std::vector<std::vector<CMSat::Lit>>& out_cls) const;
 

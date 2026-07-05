@@ -48,15 +48,11 @@ Interpolant::~Interpolant() {
     if (solver && tracer) solver->disconnect_proof_tracer(tracer.get());
 }
 
-// Apply every accumulated indicator equality to a copy of the pristine doubled
-// CNF: substitute the copy-2 var v' by its copy-1 var v, drop clauses that
-// became tautological (the merged vars' equality clauses collapse to v ∨ ¬v),
-// and dedup. Each merge folds one copy-2 var into copy-1, so the effective CNF
-// — and every proof/interpolant built from it — shrinks as more vars are
-// defined. Returns the number of merges applied (for logging).
+// Substitute every accumulated indicator equality (v' := v) into a copy of the
+// pristine doubled CNF, then drop tautologies and duplicates. Each merge folds
+// a copy-2 var into copy-1, so the effective CNF shrinks as more vars get
+// defined. Returns the number of merges applied.
 uint32_t Interpolant::build_effective_clauses(vector<vector<Lit>>& out_cls) const {
-    // subst_var[x] = x, except a merged copy-2 var v' maps to its copy-1 v.
-    // Every unit is Lit(indic, false); indic_to_defvar gives the var it ties.
     vector<uint32_t> subst_var(tot_num_vars);
     for (uint32_t i = 0; i < tot_num_vars; i++) subst_var[i] = i;
     uint32_t num_merged = 0;
@@ -72,17 +68,16 @@ uint32_t Interpolant::build_effective_clauses(vector<vector<Lit>>& out_cls) cons
 
     out_cls.clear();
     out_cls.reserve(all_cls.size());
-    std::set<vector<Lit>> seen; // canonical (sorted) clauses already emitted
+    std::set<vector<Lit>> seen;
     vector<Lit> nc;
     for (const auto& c : all_cls) {
         nc.clear();
         for (const auto& l : c) nc.emplace_back(subst_var[l.var()], l.sign());
         std::sort(nc.begin(), nc.end());
         nc.erase(std::unique(nc.begin(), nc.end()), nc.end());
-        // After sort+unique, a var with both signs sits in adjacent slots.
         bool taut = false;
         for (size_t i = 0; i + 1 < nc.size(); i++)
-            if (nc[i].var() == nc[i+1].var()) { taut = true; break; }
+            if (nc[i].var() == nc[i+1].var()) { taut = true; break; } // v and ¬v adjacent
         if (taut) continue;
         if (seen.insert(nc).second) out_cls.push_back(nc);
     }
@@ -90,8 +85,7 @@ uint32_t Interpolant::build_effective_clauses(vector<vector<Lit>>& out_cls) cons
 }
 
 void Interpolant::load_solver(bool is_rebuild) {
-    // Fresh CaDiCaL + tracer, (re)load the simplified doubled CNF.
-    // A = clauses entirely in copy 1, B = everything else.
+    // Fresh CaDiCaL + tracer, (re)load the effective doubled CNF.
     const double my_time = cpuTime();
     solver = std::make_unique<Solver>();
     tracer = std::make_unique<InterpTracerMcMillan>(conf, *aig_mng, *input_vars);
@@ -129,8 +123,7 @@ void Interpolant::fill_from_solver(SATSolver* cms_solver,
     aig_mng = &_aig_mng;
     input_vars = &_input_vars;
 
-    // Reverse var_to_indic over the copy-1 vars: indic -> the var it ties.
-    // An indicator unit (indic TRUE) then tells us to merge v' := v.
+    // Reverse var_to_indic: indic var -> the copy-1 var v it ties (v' := v).
     indic_to_defvar.clear();
     for (uint32_t v = 0; v < orig_num_vars && v < var_to_indic.size(); v++) {
         const uint32_t indic = var_to_indic[v];
@@ -210,9 +203,8 @@ bool Interpolant::generate_interpolant(const vector<Lit>& assumptions,
     verb_print(5, "[interp] definition of var " << test_var+1
             << " is: " << interp);
 
-    // Periodically rebuild: bounds the tracer's clause maps AND re-simplifies
-    // the doubled CNF with all indicator equalities substituted in, keeping
-    // proofs and interpolant AIGs small.
+    // Periodically rebuild: bounds the tracer's clause maps and re-simplifies
+    // the doubled CNF with the accumulated indicator equalities substituted in.
     if (++solves_since_rebuild >= conf.interp_rebuild_every) {
         solver->disconnect_proof_tracer(tracer.get());
         load_solver(true);
