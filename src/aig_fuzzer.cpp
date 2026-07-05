@@ -431,6 +431,8 @@ int main(int argc, char** argv) {
         uint32_t depth = 3 + rng() % (max_depth - 2);
         uint32_t max_nodes = 8 + rng() % max_nodes_cfg;
         uint32_t test_type = rng() % 6; // 0=rewrite, 1=rewrite_all, 2=simplify_aig, 3=double_rewrite, 4=simplify_aigs, 5=chain_rewrite
+        // Exercise both the default (cheap) and --deeprewrite (deep) pass sets.
+        const bool deep = (rng() & 1);
 
         if (test_type == 0 || test_type == 3) {
             // Single AIG rewrite (and optionally double-rewrite)
@@ -445,6 +447,7 @@ int main(int argc, char** argv) {
             }
 
             AIGRewriter rw;
+            rw.do_deep_passes = deep;
             auto t0 = std::chrono::steady_clock::now();
             aig_lit simplified = rw.rewrite(orig);
             auto t1 = std::chrono::steady_clock::now();
@@ -460,6 +463,7 @@ int main(int argc, char** argv) {
             // Double-rewrite: rewrite the already-rewritten AIG
             if (test_type == 3) {
                 AIGRewriter rw2;
+                rw2.do_deep_passes = deep;
                 auto t2 = std::chrono::steady_clock::now();
                 aig_lit double_simplified = rw2.rewrite(simplified);
                 auto t3 = std::chrono::steady_clock::now();
@@ -489,6 +493,7 @@ int main(int argc, char** argv) {
             vector<aig_lit> to_rewrite = originals; // copy
 
             AIGRewriter rw;
+            rw.do_deep_passes = deep;
             auto t0 = std::chrono::steady_clock::now();
             rw.rewrite_all(to_rewrite, 0);
             auto t1 = std::chrono::steady_clock::now();
@@ -515,7 +520,7 @@ int main(int argc, char** argv) {
 
             size_t nodes_before = AIG::count_aig_nodes_fast(orig);
             auto t0 = std::chrono::steady_clock::now();
-            aig_lit simplified = AIG::simplify_aig(orig);
+            aig_lit simplified = AIG::simplify_aig(orig, deep);
             auto t1 = std::chrono::steady_clock::now();
             stats.rewrite_time_s += std::chrono::duration<double>(t1 - t0).count();
             stats.total_rewrites++;
@@ -537,7 +542,7 @@ int main(int argc, char** argv) {
             vector<aig_lit> to_simplify = originals;
 
             auto t0 = std::chrono::steady_clock::now();
-            AIG::simplify_aigs(0, to_simplify);
+            AIG::simplify_aigs(0, to_simplify, deep);
             auto t1 = std::chrono::steady_clock::now();
             stats.rewrite_time_s += std::chrono::duration<double>(t1 - t0).count();
             stats.total_rewrites += batch_size;
@@ -569,6 +574,7 @@ int main(int argc, char** argv) {
             size_t nodes_before = AIG::count_aig_nodes_fast(orig);
 
             AIGRewriter rw;
+            rw.do_deep_passes = deep;
             auto t0 = std::chrono::steady_clock::now();
             aig_lit simplified = rw.rewrite(orig);
             auto t1 = std::chrono::steady_clock::now();

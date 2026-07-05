@@ -41,6 +41,14 @@ class ARJUN_PUBLIC AIGRewriter {
 public:
     AIGRewriter() = default;
 
+    // When false (the default), the expensive k-ary absorption (deep_absorb)
+    // and ITE-flattening passes are skipped; only local simplification plus
+    // structural hash-consing run. These extra passes are O(n^2) in the
+    // conjunct count and dominate rewrite time, so they are opt-in. Per
+    // instance (not global) so a library embedder can vary it per thread; set
+    // from --deeprewrite in the CLI.
+    bool do_deep_passes = false;
+
     // Rewrite a single AIG to a simpler equivalent.
     aig_lit rewrite(const aig_lit& aig);
 

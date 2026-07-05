@@ -2444,12 +2444,14 @@ DLL_PUBLIC size_t AIG::count_aig_nodes_fast(aig_lit const& root) {
     return count;
 }
 
-DLL_PUBLIC aig_lit AIG::simplify_aig(aig_lit aig) {
+DLL_PUBLIC aig_lit AIG::simplify_aig(aig_lit aig, bool do_folding) {
     const size_t original_nodes = count_aig_nodes_fast(aig);
     aig_lit result = aig;
 
-    // Simplify AIG
-    {
+    // Algebraic folding (opt-in): a full new_and rebuild — the make_shared
+    // churn dominates, so it is off by default. CSE below still deduplicates
+    // structurally regardless.
+    if (do_folding) {
         unordered_map<const AIG*, aig_lit> cache;
         result = simplify(result, cache);
     }
@@ -2466,9 +2468,10 @@ DLL_PUBLIC aig_lit AIG::simplify_aig(aig_lit aig) {
     return result;
 }
 
-DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb) {
+DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb, bool deep) {
     assert(need_aig);
     AIGRewriter rw;
+    rw.do_deep_passes = deep;
     rw.rewrite_all(defs, verb);
 }
 
@@ -2478,7 +2481,7 @@ DLL_PUBLIC aig_lit AIG::rewrite_aig(const aig_lit& aig) {
     return rw.rewrite(aig);
 }
 
-DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_lit>& defs) {
+DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_lit>& defs, bool do_folding) {
     const double my_time = cpuTime();
     size_t before;
     size_t after;
@@ -2497,10 +2500,18 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_lit>& defs) {
         original_node_counts[i] = count_aig_nodes_fast(defs[i]);
     }
 
-    // simplify the AIGs
-    {
+    auto phase = [&](const char* name) {
+        if (verb < 2) return;
+        cout << "c o [synth] AIG simplify: " << name << " done, "
+             << defs.size() << " defs, T: " << std::setprecision(2)
+             << std::fixed << cpuTime() - my_time << endl;
+    };
+
+    // Algebraic folding (opt-in): see simplify_aig. CSE below still dedups.
+    if (do_folding) {
         unordered_map<const AIG*, aig_lit> cache;
         for(auto& aig: defs) aig = simplify(aig, cache);
+        phase("folding");
     }
 
     // perform CSE
@@ -2508,6 +2519,7 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_lit>& defs) {
         map<AIGKey, aig_node_ptr> cse_map;
         unordered_map<const AIG*, aig_node_ptr> cache2;
         for(auto& aig: defs) aig = simplify_cse(aig, cse_map, cache2);
+        phase("CSE");
     }
 
     // Revert individual AIGs that grew

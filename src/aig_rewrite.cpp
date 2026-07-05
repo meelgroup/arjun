@@ -155,6 +155,25 @@ aig_lit AIGRewriter::build_or_tree(vector<aig_lit>& children) {
 // constants / idempotent / complementary / local absorption; if the result is
 // a fresh t_and we canonicalise operand order by nid and hash-cons it.
 aig_lit AIGRewriter::make_canonical(const aig_lit& l, const aig_lit& r) {
+    // Fast path: build the canonical key straight from the inputs and probe
+    // the hash before new_and allocates. A genuine AND node stores its
+    // children in the passed order, so this key matches what new_and would
+    // produce — but on a hit we skip the make_shared (and the shared_ptr
+    // destruction of the discarded node), which is the hot case: nearly every
+    // call hits. Fold cases (const/identity/absorption) never store their
+    // input key, so they miss here and fall through to new_and unchanged.
+    {
+        uint64_t lnid = l->nid, rnid = r->nid;
+        bool lneg = l.neg, rneg = r.neg;
+        bool swap = (lnid != rnid) ? (lnid < rnid) : ((int)lneg > (int)rneg);
+        if (swap) { std::swap(lnid, rnid); std::swap(lneg, rneg); }
+        auto it = struct_hash.find(StructKey{lnid, rnid, lneg, rneg});
+        if (it != struct_hash.end()) {
+            stats.structural_hash_hits++;
+            return aig_lit(it->second, false);
+        }
+    }
+
     aig_lit folded = AIG::new_and(l, r);
     if (!folded || folded->type != AIGT::t_and) return folded;
 
@@ -815,17 +834,22 @@ aig_lit AIGRewriter::rewrite(const aig_lit& aig) {
     aig_lit result = aig;
 
     // Fixed-point loop: deep_absorb's k-ary flattening can expose new local
-    // patterns and vice versa. Capped to avoid pathological oscillation.
-    constexpr int kMaxIters = 4;
+    // patterns and vice versa. With the deep passes off, one pass of local
+    // simplification + hash-consing already reaches the fixed point, so don't
+    // pay for repeat sweeps over the whole (possibly huge) AIG.
+    const int max_iters = do_deep_passes ? 4 : 1;
     size_t prev_count = before;
-    for (int iter = 0; iter < kMaxIters; iter++) {
-        { NodeRebuildMap c; result = simplify_pass(result, c); }
+    for (int iter = 0; iter < max_iters; iter++) {
+        { NodeRebuildMap c; c.reserve(before); result = simplify_pass(result, c); }
         struct_hash.clear();
-        { NodeRebuildMap c; result = hash_cons(result, c); }
-        { NodeRebuildMap c; result = deep_absorb(result, c); }
-        { NodeRebuildMap c; result = flatten_ite_chains(result, c); }
-        struct_hash.clear();
-        { NodeRebuildMap c; result = hash_cons(result, c); }
+        struct_hash.reserve(before);
+        { NodeRebuildMap c; c.reserve(before); result = hash_cons(result, c); }
+        if (do_deep_passes) {
+            { NodeRebuildMap c; result = deep_absorb(result, c); }
+            { NodeRebuildMap c; result = flatten_ite_chains(result, c); }
+            struct_hash.clear();
+            { NodeRebuildMap c; result = hash_cons(result, c); }
+        }
         const size_t cur_count = AIG::count_aig_nodes_fast(result);
         if (cur_count >= prev_count) break;
         prev_count = cur_count;
@@ -846,19 +870,43 @@ void AIGRewriter::rewrite_all(vector<aig_lit>& defs, int verb) {
 
     vector<aig_lit> originals = defs;
 
-    constexpr int kMaxIters = 4;
+    // Per-pass tracing so a long rewrite isn't a black box: prints the AIG
+    // node count and elapsed time after each pass at verb >= 2.
+    auto trace = [&](const char* pass, int iter) {
+        if (verb < 2) return;
+        const size_t nodes = AIG::count_aig_nodes_fast(defs);
+        cout << "c o [aig-rw] iter " << iter << " after " << std::setw(14)
+             << std::left << pass << std::right << " nodes: " << std::setw(10)
+             << nodes << " T: " << std::fixed << std::setprecision(2)
+             << (cpuTime() - t) << endl;
+    };
+    if (verb >= 2)
+        cout << "c o [aig-rw] start nodes: " << stats.nodes_before
+             << " deep_passes: " << (do_deep_passes ? 1 : 0)
+             << " defs: " << defs.size() << endl;
+
+    // See rewrite(): the fixed-point loop only pays off when deep_absorb is on
+    // to expose fresh patterns; otherwise a single sweep suffices.
+    const size_t n = stats.nodes_before;
+    const int max_iters = do_deep_passes ? 4 : 1;
     size_t prev_count = stats.nodes_before;
-    for (int iter = 0; iter < kMaxIters; iter++) {
-        { NodeRebuildMap cache;
+    for (int iter = 0; iter < max_iters; iter++) {
+        { NodeRebuildMap cache; cache.reserve(n);
           for (auto& d : defs) if (d) d = simplify_pass(d, cache); }
-        { NodeRebuildMap cache;
-          for (auto& d : defs) if (d) d = deep_absorb(d, cache); }
-        { NodeRebuildMap cache;
-          for (auto& d : defs) if (d) d = flatten_ite_chains(d, cache); }
+        trace("simplify_pass", iter);
+        if (do_deep_passes) {
+            { NodeRebuildMap cache; cache.reserve(n);
+              for (auto& d : defs) if (d) d = deep_absorb(d, cache); }
+            trace("deep_absorb", iter);
+            { NodeRebuildMap cache; cache.reserve(n);
+              for (auto& d : defs) if (d) d = flatten_ite_chains(d, cache); }
+            trace("flatten_ite", iter);
+        }
         // hash_cons last so new ANDs from OR/resolution rewrites also share.
-        { struct_hash.clear();
-          NodeRebuildMap cache;
+        { struct_hash.clear(); struct_hash.reserve(n);
+          NodeRebuildMap cache; cache.reserve(n);
           for (auto& d : defs) if (d) d = hash_cons(d, cache); }
+        trace("hash_cons", iter);
         const size_t cur_count = AIG::count_aig_nodes_fast(defs);
         if (cur_count >= prev_count) break;
         prev_count = cur_count;

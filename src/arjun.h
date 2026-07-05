@@ -535,8 +535,10 @@ public:
     // adds their count to `count`. Callers obtain `epoch` once via
     // next_visit_epoch() and then invoke this for each root to union-count.
     static void count_aig_nodes_batch(const AIG* aig, uint64_t epoch, size_t& count);
-    static void simplify_aigs(uint32_t verb, std::vector<aig_lit>& defs);
-    static aig_lit simplify_aig(aig_lit aig);
+    // do_folding: also run the algebraic-folding rebuild (a full new_and
+    // sweep). Off by default — the CSE pass alone dedups structurally.
+    static void simplify_aigs(uint32_t verb, std::vector<aig_lit>& defs, bool do_folding = false);
+    static aig_lit simplify_aig(aig_lit aig, bool do_folding = false);
     static aig_lit rewrite_aig(const aig_lit& aig);
 
     friend std::ostream& operator<<(std::ostream& out, const aig_lit& aig);
@@ -1541,11 +1543,11 @@ public:
 
     void set_def(const uint32_t v_orig, const aig_lit& def);
     void clear_orig_sampl_defs();
-    void simplify_aigs(const uint32_t verb = 0) {
+    void simplify_aigs(const uint32_t verb = 0, bool do_folding = false) {
         assert(need_aig);
-        AIG::simplify_aigs(verb, defs);
+        AIG::simplify_aigs(verb, defs, do_folding);
     }
-    void rewrite_aigs(const uint32_t verb = 0);
+    void rewrite_aigs(const uint32_t verb = 0, bool deep = false);
     [[nodiscard]] const auto& get_aig_mng() const { return aig_mng; }
     void check_red_cls_deriveable() const;
 

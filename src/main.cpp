@@ -238,6 +238,7 @@ void add_arjun_options() {
     myopt("--bvepresimp", conf.bve_pre_simplify, fc_int,"simplify");
     myopt("--simp", conf.simp, fc_int,"Do ~ sort of simplification during indep minimixation");
     myopt("--intree", conf.intree, fc_int,"intree");
+    myopt("--deeprewrite", conf.deep_rewrite, fc_int,"Enable the expensive AIG rewrite passes (k-ary absorption + ITE flattening). Off by default: O(n^2), dominates rewrite time. 1=on.");
 
     // Gate options
     myopt("--gates", do_gates, fc_int,"Turn on/off all gate-based definability");
@@ -403,13 +404,13 @@ void do_synthesis() {
     if (etof_conf.do_extend_indep && !cnf.synth_done()) {
         arjun->standalone_unsat_define(cnf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-extend_synth.aig");
-        cnf.simplify_aigs(conf.verb);
+        cnf.simplify_aigs(conf.verb, conf.deep_rewrite);
         SLOW_DEBUG_DO(check_stage("extend_synth"));
     }
     if (do_backward && !cnf.synth_done()) {
         arjun->standalone_backward_round_synth(cnf, mconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-minim_idep_synt.aig");
-        cnf.simplify_aigs(conf.verb);
+        cnf.simplify_aigs(conf.verb, conf.deep_rewrite);
         SLOW_DEBUG_DO(check_stage("minim_idep_synt"));
     }
     if (do_unate_def && !cnf.synth_done()) {
@@ -418,7 +419,7 @@ void do_synthesis() {
         SLOW_DEBUG_DO(check_stage("unate_def"));
     }
 
-    cnf.rewrite_aigs(conf.verb);
+    cnf.rewrite_aigs(conf.verb, conf.deep_rewrite);
     if (use_brute_force_synth && !cnf.synth_done()) {
         // Brute-force synthesis: enumerate every consistent
         // X assignment, build per-y decision trees. Declines (returns the
@@ -439,7 +440,7 @@ void do_synthesis() {
         SLOW_DEBUG_DO(check_stage("manthan"));
     }
     if (!output_file.empty()) {
-        cnf.rewrite_aigs(conf.verb);
+        cnf.rewrite_aigs(conf.verb, conf.deep_rewrite);
         cnf.write_aig_def_to_verilog(output_file);
         cout << "c o [arjun] dumped synthesized functions to verilog file '" << output_file << "'" << endl;
     }

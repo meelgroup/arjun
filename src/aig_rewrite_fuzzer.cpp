@@ -211,10 +211,11 @@ static void report_failure(const aig_lit& orig, const aig_lit& simp,
 
 static bool run_one(const aig_lit& orig, uint32_t num_vars,
                     uint64_t seed, uint64_t iter, std::mt19937& rng,
-                    FuzzStats& fs, bool verbose)
+                    FuzzStats& fs, bool verbose, bool deep)
 {
     // 1. Rewrite.
     AIGRewriter rw;
+    rw.do_deep_passes = deep;
     aig_lit simp = rw.rewrite(orig);
     if (!simp) simp = orig;
 
@@ -224,6 +225,7 @@ static bool run_one(const aig_lit& orig, uint32_t num_vars,
     // rule is unsound only on already-canonical input.
     {
         AIGRewriter rw2;
+        rw2.do_deep_passes = deep;
         aig_lit simp2 = rw2.rewrite(simp);
         if (!simp2) simp2 = simp;
         if (!random_check(simp, simp2, num_vars, rng, 40)) {
@@ -351,7 +353,10 @@ int main(int argc, char** argv) {
         aig_lit aig = fuzz::gen_random_shape(aig_mng, rng, num_vars, depth, max_nodes);
         if (!aig) continue;
 
-        if (!run_one(aig, num_vars, seed, iter, rng, fs, verbose)) return 1;
+        // Exercise both the default (cheap) and --deeprewrite (deep) pass sets.
+        const bool deep = (rng() & 1);
+
+        if (!run_one(aig, num_vars, seed, iter, rng, fs, verbose, deep)) return 1;
         fs.iters++;
 
         if (iter > 0 && iter % 500 == 0) {
