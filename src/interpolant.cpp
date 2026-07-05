@@ -41,11 +41,6 @@ using std::set;
 using std::endl;
 using std::cout;
 
-namespace {
-// Lit::toInt() is a small positive int, so it's a perfect hash.
-struct LitHash { size_t operator()(const Lit& l) const { return l.toInt(); } };
-}
-
 Interpolant::~Interpolant() {
     // Detach the tracer, else the solver's destructor deletes it.
     if (solver && tracer) solver->disconnect_proof_tracer(tracer.get());
@@ -177,22 +172,22 @@ aig_lit InterpTracerMcMillan::lit_aig(Lit l) {
 // child edges already exists, reuse it. Equal cones across the proof
 // thus collapse into a shared DAG before simplify_aig ever runs.
 aig_lit InterpTracerMcMillan::hash_and(const aig_lit& l, const aig_lit& r) {
-    aig_lit res = AIG::new_and(l, r);
-    // new_and may have folded to a constant, a leaf, or an input node.
-    if (res.node == nullptr || res->type != AIGT::t_and) return res;
-
-    // Canonical key: order the two child edges by (nid, neg).
-    uint64_t lnid = res->l.node->nid, rnid = res->r.node->nid;
-    bool lneg = res->l.neg, rneg = res->r.neg;
+    // Key over the child edges (ordered by nid, then sign), built from the
+    // inputs so we hit the table before new_and allocates.
+    uint64_t lnid = l.node->nid, rnid = r.node->nid;
+    bool lneg = l.neg, rneg = r.neg;
     if (std::tie(rnid, rneg) < std::tie(lnid, lneg)) {
         std::swap(lnid, rnid);
         std::swap(lneg, rneg);
     }
     const AIG::AIGKey key{AIGT::t_and, 0u, lnid, lneg, rnid, rneg};
     auto it = and_table.find(key);
-    if (it != and_table.end()) return res.neg ? ~it->second : it->second;
+    if (it != and_table.end()) return it->second;
 
-    and_table.emplace(key, aig_lit(res.node, false));
+    aig_lit res = AIG::new_and(l, r);
+    // Cache only positive AND nodes (new_and may fold to const/leaf/neg edge).
+    if (res.node != nullptr && res->type == AIGT::t_and && !res.neg)
+        and_table.emplace(key, res);
     return res;
 }
 
@@ -329,7 +324,7 @@ aig_lit InterpTracerMcMillan::build_interpolant() {
 
     // Backward reachability from the root over the recorded antecedent
     // chains. Only these clauses contribute to the interpolant.
-    set<uint64_t> reach;
+    std::unordered_set<uint64_t> reach;
     vector<uint64_t> stack{root};
     while (!stack.empty()) {
         const uint64_t id = stack.back();
@@ -340,12 +335,11 @@ aig_lit InterpTracerMcMillan::build_interpolant() {
         for (const uint64_t a : it->second) stack.push_back(a);
     }
 
-    // Forward pass: a derived clause's antecedents always have smaller
-    // IDs (cadical hands out IDs monotonically), so ascending-ID order —
-    // which is how std::set iterates — is a valid topological order. Both
-    // original- and derived-clause labels are built here (deferred from
-    // add_original_clause), so they use the current input_vars.
-    for (const uint64_t id : reach) {
+    // Forward pass: cadical IDs are monotonic, so ascending-ID order is a
+    // valid topological order. Labels (both kinds) are built here.
+    vector<uint64_t> order(reach.begin(), reach.end());
+    std::sort(order.begin(), order.end());
+    for (const uint64_t id : order) {
         if (antec.count(id)) {
             build_derived_label(id);
             core_count++;
@@ -358,12 +352,8 @@ aig_lit InterpTracerMcMillan::build_interpolant() {
     aig_lit res = (it != labels.end()) ? it->second : nullptr;
 
     if (res != nullptr && conclusion_type == CaDiCaL::ASSUMPTIONS) {
-        // The root clause is {¬a : a a failing assumption}. Resolving it
-        // with each assumption unit a reaches the empty clause; the label
-        // of that empty clause is the interpolant. A B-side unit's label
-        // is TRUE and is AND'd in (no change); an A-side unit's label is
-        // OR'd in. So these steps only matter for an A-side input
-        // assumption — but doing them keeps the result fully general.
+        // Root clause is {¬a : a failing assumption}. Resolve with each unit a
+        // to the empty clause: B-side units AND in TRUE (no-op), A-side OR in.
         for (const Lit m : cls[root]) {           // m = ¬a
             const Lit a = ~m;
             const aig_lit unit_lab = (a.var() >= b_local_from)
@@ -385,29 +375,41 @@ void InterpTracerMcMillan::build_derived_label(uint64_t id) {
         // A derived clause always has antecedents.
         assert(false && "derived clause with no antecedents");
     }
-    // cadical usually hands the antecedent list in reverse linear-
-    // resolution order, so replaying it reversed reconstructs the chain;
-    // fall back to forward order if that is not a clean linear chain.
-    const vector<uint64_t> rev(antecedents.rbegin(), antecedents.rend());
-    if (resolve_chain(id, rev)) return;
-    if (resolve_chain(id, antecedents)) return;
+    // cadical usually lists antecedents in reverse resolution order; try
+    // reversed first, fall back to forward.
+    if (resolve_chain(id, antecedents, /*reversed=*/true)) return;
+    if (resolve_chain(id, antecedents, /*reversed=*/false)) return;
     assert(false && "failed to resolve derived clause's antecedent chain");
 }
 
 bool InterpTracerMcMillan::resolve_chain(uint64_t id,
-        const vector<uint64_t>& chain) {
+        const vector<uint64_t>& chain, bool reversed) {
     release_assert(!chain.empty());
+    const size_t n = chain.size();
+    // Walk `chain` forward or reversed without copying it.
+    auto at = [&](size_t i) { return reversed ? chain[n - 1 - i] : chain[i]; };
 
     // Initial resolvent = first clause in the chain + its label.
-    const uint64_t id1 = chain[0];
+    const uint64_t id1 = at(0);
     auto it_lab = labels.find(id1);
-    if (it_lab == labels.end()) {
-        // Antecedent label missing — the chain cannot be reconstructed.
-        labels[id] = aig_mng.new_const(false);
-        return false;
-    }
+    release_assert(it_lab != labels.end() && "antecedent label must exist");
     aig_lit lab = it_lab->second;
-    std::unordered_set<Lit, LitHash> resolvent(cls[id1].begin(), cls[id1].end());
+    // Generation-stamped resolvent membership: O(1) has/add/del, no hashing.
+    res_gen++;
+    auto res_has = [&](Lit l) {
+        const uint32_t i = l.toInt();
+        return i < res_stamp.size() && res_stamp[i] == res_gen;
+    };
+    auto res_add = [&](Lit l) {
+        const uint32_t i = l.toInt();
+        if (i >= res_stamp.size()) res_stamp.resize(i + 1, 0);
+        res_stamp[i] = res_gen;
+    };
+    auto res_del = [&](Lit l) {
+        const uint32_t i = l.toInt();
+        if (i < res_stamp.size()) res_stamp[i] = 0;  // 0 == untouched; res_gen is always >=1
+    };
+    for (const auto& l : cls[id1]) res_add(l);
 
     // Batch consecutive same-op steps into balanced ANDs/ORs to avoid
     // stack-blowing left-leaning chains.
@@ -432,44 +434,30 @@ bool InterpTracerMcMillan::resolve_chain(uint64_t id,
         batch.clear();
     };
 
-    for (size_t i = 1; i < chain.size(); i++) {
-        const uint64_t id2 = chain[i];
+    for (size_t i = 1; i < n; i++) {
+        const uint64_t id2 = at(i);
         auto it_cl = cls.find(id2);
         auto it_l2 = labels.find(id2);
-        if (it_cl == cls.end() || it_l2 == labels.end()) {
-            // Antecedent missing: chain cannot be reconstructed.
-            flush_batch();
-            labels[id] = lab;
-            return false;
-        }
+        release_assert(it_cl != cls.end() && it_l2 != labels.end() &&
+                       "antecedent clause and label must exist");
         const vector<Lit>& cl = it_cl->second;
 
         // Find the resolution pivot: the unique literal in the new
         // antecedent whose negation is currently in the resolvent.
         Lit pivot = lit_Undef;
         for (const auto& l : cl) {
-            if (resolvent.count(~l)) {
-                if (pivot != lit_Undef) {
-                    // Multiple pivots — non-linear chain step. Bail.
-                    flush_batch();
-                    labels[id] = lab;
-                    return false;
-                }
+            if (res_has(~l)) {
+                release_assert(pivot == lit_Undef && "chain step has multiple pivots");
                 pivot = ~l;
             }
         }
-        if (pivot == lit_Undef) {
-            // No pivot — not a real resolution step. Bail.
-            flush_batch();
-            labels[id] = lab;
-            return false;
-        }
+        release_assert(pivot != lit_Undef && "chain step has no pivot");
 
         // Update resolvent.
-        resolvent.erase(pivot);
+        res_del(pivot);
         for (const auto& l : cl) {
             if (l == ~pivot) continue;
-            resolvent.insert(l);
+            res_add(l);
         }
 
         const bool pivot_is_shared = is_shared(pivot.var());

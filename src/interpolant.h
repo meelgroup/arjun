@@ -39,6 +39,19 @@
 
 namespace ArjunInt {
 
+// Lit::toInt() is a small positive int, so it's a perfect hash.
+struct LitHash { size_t operator()(const CMSat::Lit& l) const { return l.toInt(); } };
+
+// Hash over an AIGKey: mix the two child nids (elems 2,4) and sign bits.
+struct AigKeyHash {
+    size_t operator()(const ArjunNS::AIG::AIGKey& k) const {
+        uint64_t h = std::get<2>(k) * 1000003ULL + std::get<4>(k);
+        h = (h << 1) ^ std::get<3>(k);
+        h = (h << 1) ^ std::get<5>(k);
+        return std::hash<uint64_t>{}(h);
+    }
+};
+
 // McMillan labelled interpolation for the partition
 //   A = clauses entirely inside copy 1,   B = everything else.
 // Original A clauses get label = OR of their shared lits, B clauses get TRUE.
@@ -71,11 +84,16 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     std::unordered_map<uint64_t, std::vector<CMSat::Lit>> cls;
     std::unordered_map<uint64_t, ArjunNS::aig_lit> labels;
     std::unordered_map<uint64_t, std::vector<uint64_t>> antec;
-    std::map<CMSat::Lit, ArjunNS::aig_lit> lit_to_aig;
+    std::unordered_map<CMSat::Lit, ArjunNS::aig_lit, LitHash> lit_to_aig;
+
+    // Resolvent membership scratch for resolve_chain, indexed by Lit::toInt().
+    // res_stamp[i] == res_gen means literal i is in the resolvent.
+    std::vector<uint64_t> res_stamp;
+    uint64_t res_gen = 0;
 
     // Structural-hash table over t_and nodes, keyed on canonicalised child
     // edges so equal cones across proof clauses share one sub-DAG.
-    std::map<ArjunNS::AIG::AIGKey, ArjunNS::aig_lit> and_table;
+    std::unordered_map<ArjunNS::AIG::AIGKey, ArjunNS::aig_lit, AigKeyHash> and_table;
     ArjunNS::aig_lit hash_and(const ArjunNS::aig_lit& l,
                               const ArjunNS::aig_lit& r);
     ArjunNS::aig_lit hash_or(const ArjunNS::aig_lit& l,
@@ -129,7 +147,7 @@ private:
     // Replay `chain` as a linear resolution into labels[id]. Returns false
     // (labels[id] left partial) if the chain is not a clean linear resolution.
     [[nodiscard]] bool resolve_chain(uint64_t id,
-            const std::vector<uint64_t>& chain);
+            const std::vector<uint64_t>& chain, bool reversed);
 };
 
 // Definition extraction by Craig interpolation over a doubled CNF.
