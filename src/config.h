@@ -62,7 +62,10 @@ struct Config {
     // bounding the tracer's clause maps and keeping proofs small.
     uint32_t interp_rebuild_every = 50;
     // Per-interpolant conflict budget; over this, skip the var. 0 = off.
-    uint32_t interp_max_confl = 100000;
+    uint32_t interp_max_confl = 30000;
+    // Also rebuild once this many conflicts are burned since the last rebuild.
+    // 0 = off.
+    uint64_t interp_rebuild_max_confl = 500000;
     std::string debug_synth;
     uint32_t seed = 42;
 };

@@ -199,6 +199,9 @@ private:
 
     void load_solver(bool is_rebuild);
 
+    // Rebuild if the define-count or conflict-count trigger has fired.
+    void maybe_rebuild();
+
     // all_cls with the accumulated v' := v merges applied, tautologies and
     // duplicates dropped. Returns the number of merges.
     uint32_t build_effective_clauses(

@@ -222,6 +222,8 @@ void add_arjun_options() {
           "Rebuild the doubled-CNF interpolation solver every N interpolants (bounds tracer maps; smaller = exercise the rebuild path more).");
     myopt("--interpmaxconfl", conf.interp_max_confl, fc_int,
           "Per-interpolant conflict budget; over this, skip the var. 0 = unlimited.");
+    myopt("--interprebuildmaxconfl", conf.interp_rebuild_max_confl, fc_int,
+          "Rebuild the interpolation solver once it burns this many conflicts since the last rebuild (bounds tracer maps after skipped/conflict-heavy solves). 0 = off.");
     myflag("--checkrepair", mconf.check_repair, "Check that error formula count decreases monotonically after each repair iteration (uses ganak)");
     myopt("--ganakbin", mconf.ganak_binary, fc_string, "Path to ganak binary (for --checkrepair)");
 

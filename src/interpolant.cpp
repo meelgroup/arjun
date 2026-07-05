@@ -184,11 +184,11 @@ bool Interpolant::generate_interpolant(const vector<Lit>& assumptions,
     const int ret = solver->solve();
     release_assert(ret != 10 && "interpolant solve must not be SAT");
     if (ret != 20) {
-        // Budget exhausted: rebuild to free the tracer maps.
+        // Budget exhausted: no definition. maybe_rebuild's conflict trigger
+        // frees the maps rather than rebuilding an identical solver per skip.
         verb_print(1, "[interp] var " << test_var+1 << " exceeded "
                 << conf.interp_max_confl << " conflicts; skipping definition");
-        solver->disconnect_proof_tracer(tracer.get());
-        load_solver(true);
+        maybe_rebuild();
         return false;
     }
     // conclude() emits the proof conclusion so the tracer sees the refutation.
@@ -203,11 +203,21 @@ bool Interpolant::generate_interpolant(const vector<Lit>& assumptions,
 
     // Periodically rebuild: bounds the tracer's clause maps and re-simplifies
     // the doubled CNF with the accumulated indicator equalities substituted in.
-    if (++solves_since_rebuild >= conf.interp_rebuild_every) {
-        solver->disconnect_proof_tracer(tracer.get());
-        load_solver(true);
-    }
+    ++solves_since_rebuild;
+    maybe_rebuild();
     return true;
+}
+
+// Rebuild on either trigger: enough defines (re-simplify with new equalities)
+// or enough conflicts burned (bound the tracer maps). solver->conflicts() is
+// cumulative over the current solver, i.e. exactly "since the last rebuild".
+void Interpolant::maybe_rebuild() {
+    const bool by_defines = solves_since_rebuild >= conf.interp_rebuild_every;
+    const bool by_confl = conf.interp_rebuild_max_confl != 0
+            && (uint64_t)solver->conflicts() >= conf.interp_rebuild_max_confl;
+    if (!by_defines && !by_confl) return;
+    solver->disconnect_proof_tracer(tracer.get());
+    load_solver(true);
 }
 
 aig_lit InterpTracerMcMillan::lit_aig(Lit l) {
