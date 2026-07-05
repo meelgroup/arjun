@@ -66,7 +66,7 @@ struct Backward
         const std::vector<char>& unknown_set,
         const std::vector<uint32_t>& indep
     );
-    void add_fixed_clauses(bool all = false);
+    void add_fixed_clauses();
     void duplicate_problem(const ArjunNS::SimplifiedCNF& orig_cnf);
     void get_incidence();
     void set_up_solver();

@@ -42,7 +42,6 @@ struct Minimize : public Backward
     void remove_eq_literals();
     void get_empty_occs();
     bool probe_all();
-    void empty_out_indep_set_if_unsat();
     bool simplify_bve_only();
     bool run_gauss_jordan();
     void check_no_duplicate_in_sampling_set();

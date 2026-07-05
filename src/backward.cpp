@@ -56,7 +56,7 @@ void Backward::update_sampling_set(
 
 }
 
-void Backward::add_fixed_clauses(bool all)
+void Backward::add_fixed_clauses()
 {
     double fix_cl_time = cpuTime();
     dont_elim.clear();
@@ -68,13 +68,11 @@ void Backward::add_fixed_clauses(bool all)
     //If indicator variable is TRUE, they are FORCED EQUAL
     set<uint32_t> add_indic_for;
     add_indic_for.insert(sampling_vars.begin(), sampling_vars.end());
-    if (all) for(uint32_t i = 0; i < orig_num_vars; i++) add_indic_for.insert(i);
 
     vector<Lit> tmp;
     for(uint32_t var: add_indic_for) {
         solver->new_var();
         uint32_t this_indic = solver->nVars()-1;
-        //torem_orig.push_back(Lit(this_indic, false));
         var_to_indic[var] = this_indic;
         dont_elim.push_back(Lit(this_indic, false));
         indic_to_var.resize(this_indic+1, var_Undef);
@@ -453,7 +451,6 @@ void Backward::backward_round() {
         }
 
         if (iter % mod == (mod-1) && conf.verb) {
-            //solver->remove_and_clean_all();
             cout
             << "c [arjun] iter: " << std::setw(5) << iter;
             if (mod == 1) {

@@ -109,8 +109,6 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     uint64_t orig_count = 0;
     uint64_t core_count = 0;
 
-    void mark_b_clause(uint64_t id) { b_clause_ids.insert(id); }
-
     ArjunNS::aig_lit lit_aig(CMSat::Lit l);
     ArjunNS::aig_lit or_of_shared_lits(const std::vector<CMSat::Lit>& cl);
 

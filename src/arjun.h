@@ -352,14 +352,6 @@ public:
         return ret;
     }
 
-    template<typename T>
-    static T deep_clone_map(const T& aigs) {
-        T ret;
-        std::unordered_map<const AIG*, aig_node_ptr> cache;
-        for (auto& [x, aig] : aigs) ret[x] = deep_clone(aig, cache);
-        return ret;
-    }
-
     static aig_lit deep_clone(const aig_lit& aig, std::unordered_map<const AIG*, aig_node_ptr>& cache) {
         if (!aig) return nullptr;
 
@@ -1691,7 +1683,6 @@ public:
     void set_find_xors(bool find_xors);
     void set_ite_gate_based(bool ite_gate_based);
     void set_irreg_gate_based(const bool irreg_gate_based);
-    //void set_polar_mode(CMSat::PolarityMode mode);
     void set_no_gates_below(double no_gates_below);
     void set_specified_order_fname(std::string specified_order_fname);
     void set_weighted(const bool);

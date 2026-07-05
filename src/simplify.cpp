@@ -111,14 +111,6 @@ bool Minimize::simplify() {
     return true;
 }
 
-void Minimize::empty_out_indep_set_if_unsat() {
-    if (solver->okay()) return;
-
-    //It's UNSAT so the sampling set is empty
-    sampling_vars.clear();
-    verb_print(1, "[arjun] CNF is UNSAT, setting sampling set to empty");
-}
-
 bool Minimize::probe_all()
 {
     double my_time = cpuTime();

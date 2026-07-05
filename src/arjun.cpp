@@ -93,12 +93,6 @@ using std::ifstream;
 using std::ofstream;
 using std::numeric_limits;
 
-void check_duplicated(bool duplicated) {
-    if (!duplicated) return;
-    cout << "ERROR: manipulating the solver AFTER call to indep support manipulation" << endl;
-    release_assert(false && "solver manipulation after indep support manipulation");
-}
-
 DLL_PUBLIC Arjun::Arjun() { arjdata = new ArjPrivateData; }
 DLL_PUBLIC Arjun::~Arjun() { delete arjdata; }
 DLL_PUBLIC string Arjun::get_sbva_version_sha1() {
