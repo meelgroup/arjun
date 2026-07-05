@@ -41,11 +41,6 @@ class ARJUN_PUBLIC AIGRewriter {
 public:
     AIGRewriter() = default;
 
-    // Opt-in (via --deeprewrite): the extra k-ary absorption + ITE-flattening
-    // passes are O(n^2) in conjunct count and dominate rewrite time. Per
-    // instance so an embedder can vary it per thread.
-    bool do_deep_passes = false;
-
     // Rewrite a single AIG to a simpler equivalent.
     aig_lit rewrite(const aig_lit& aig);
 
@@ -96,35 +91,12 @@ private:
 
     aig_lit simplify_pass(const aig_lit& edge, NodeRebuildMap& cache);
     aig_lit hash_cons(const aig_lit& edge, NodeRebuildMap& cache);
-    aig_lit deep_absorb(const aig_lit& edge, NodeRebuildMap& cache);
-    aig_lit flatten_ite_chains(const aig_lit& edge, NodeRebuildMap& cache);
-
-    // deep_absorb helpers. absorb_and_node is the per-node entry point (rewrites
-    // AND(l,r) from rebuilt children); the rest are its stages.
-    aig_lit absorb_and_node(const aig_lit& l, const aig_lit& r);
-    // Local AND shortcuts when neither child opens an AND/OR chain to flatten.
-    aig_lit absorb_local_and(const aig_lit& l, const aig_lit& r);
-    // Fold constants and complementary pairs in a flat AND child list. Returns
-    // true and sets `out` to a constant if the conjunction collapses.
-    bool fold_and_children(std::vector<aig_lit>& children, bool wide, aig_lit& out);
-    // O(n) hash-set OR-absorption pass for wide nodes (drops the O(n²) loops).
-    void absorb_wide_or(std::vector<aig_lit>& children);
-    // O(n²) cross-level absorption / subsumption against OR children. Returns
-    // true and sets `out` to FALSE if an emptied OR collapses the conjunction.
-    bool absorb_cross_level(std::vector<aig_lit>& children, aig_lit& out);
-    // Resolution on OR pairs: AND(OR(X,b), OR(X,~b)) = X.
-    void resolve_or_pairs(std::vector<aig_lit>& children);
 
     // simplify_pass rule helpers. Return non-null if the rule fires, else
     // default-constructed (no match).
     aig_lit try_or_sibling(const aig_lit& or_e, const aig_lit& other);
     aig_lit try_and_of_ands(const aig_lit& l, const aig_lit& r);
     aig_lit try_resolve_distribute(const aig_lit& l, const aig_lit& r);
-
-    void collect_and_edges(const aig_lit& edge, std::vector<aig_lit>& out);
-    void collect_or_edges(const aig_lit& edge, std::vector<aig_lit>& out);
-    aig_lit build_and_tree(std::vector<aig_lit>& children);
-    aig_lit build_or_tree(std::vector<aig_lit>& children);
 
     static bool is_complement(const aig_lit& a, const aig_lit& b) {
         return a.node && b.node && a.node == b.node && a.neg != b.neg;

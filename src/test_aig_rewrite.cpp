@@ -378,8 +378,7 @@ void test_deep_or_chain_flattening() {
     check(functionally_equal(chain, r, n + 1), "deep OR chain flattening functional");
 
     size_t nodes_after = count_nodes(r);
-    // A balanced OR tree of 11 inputs needs ~10 AND nodes (for the OR encoding)
-    // The linear chain has ~20 nodes (each OR = 2 nodes due to NOT encoding)
+    // Rewrite must never grow the AIG (it reverts if it would).
     check(nodes_after <= nodes_before, "deep OR chain nodes reduced or equal");
     cout << "  OR chain nodes: " << nodes_before << " -> " << nodes_after << endl;
 }
@@ -632,8 +631,8 @@ void test_xor_pattern_recognized() {
           "XOR pattern bumps xor_simplify counter");
 }
 
-// Fixed-point iteration: deep_absorb flattening enables simplify_pass rules
-// that fire only after several passes. Checks the rewriter reaches the fixed point.
+// Shared-conjunct factoring: (a∧b) ∨ (a∧c) ∨ (a∧d) collapses to a ∧ (b∨c∨d)
+// via simplify_pass's resolve/distribute rule.
 void test_fixed_point_iteration() {
     // (a∧b) ∨ (a∧c) ∨ (a∧d) collapses to a ∧ (b∨c∨d); the single-pass result
     // is bigger than the fixed-point result.

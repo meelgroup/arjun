@@ -2414,16 +2414,9 @@ DLL_PUBLIC size_t AIG::count_aig_nodes_fast(aig_lit const& root) {
     return count;
 }
 
-DLL_PUBLIC aig_lit AIG::simplify_aig(aig_lit aig, bool do_folding) {
+DLL_PUBLIC aig_lit AIG::simplify_aig(aig_lit aig) {
     const size_t original_nodes = count_aig_nodes_fast(aig);
     aig_lit result = aig;
-
-    // Algebraic folding (opt-in): a full new_and rebuild, off by default as the
-    // make_shared churn dominates. CSE below still dedups structurally regardless.
-    if (do_folding) {
-        unordered_map<const AIG*, aig_lit> cache;
-        result = simplify(result, cache);
-    }
 
     // Perform CSE
     {
@@ -2437,10 +2430,9 @@ DLL_PUBLIC aig_lit AIG::simplify_aig(aig_lit aig, bool do_folding) {
     return result;
 }
 
-DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb, bool deep) {
+DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb) {
     assert(need_aig);
     AIGRewriter rw;
-    rw.do_deep_passes = deep;
     rw.rewrite_all(defs, verb);
 }
 
@@ -2450,7 +2442,7 @@ DLL_PUBLIC aig_lit AIG::rewrite_aig(const aig_lit& aig) {
     return rw.rewrite(aig);
 }
 
-DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_lit>& defs, bool do_folding) {
+DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_lit>& defs) {
     const double my_time = cpuTime();
     size_t before;
     size_t after;
@@ -2475,13 +2467,6 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_lit>& defs, b
              << defs.size() << " defs, T: " << std::setprecision(2)
              << std::fixed << cpuTime() - my_time << endl;
     };
-
-    // Algebraic folding (opt-in): see simplify_aig. CSE below still dedups.
-    if (do_folding) {
-        unordered_map<const AIG*, aig_lit> cache;
-        for(auto& aig: defs) aig = simplify(aig, cache);
-        phase("folding");
-    }
 
     // perform CSE
     {
@@ -2513,11 +2498,6 @@ DLL_PUBLIC void AIG::simplify_aigs(const uint32_t verb, vector<aig_lit>& defs, b
              << " T: " << std::setprecision(2) << std::fixed << cpuTime() - my_time
              << endl;
     }
-}
-
-DLL_PUBLIC aig_lit AIG::simplify(aig_lit aig) {
-    unordered_map<const AIG*, aig_lit> cache;
-    return simplify(aig, cache);
 }
 
 // CSE rebuild. Each AND node is keyed on (type, var, l_nid, l_neg, r_nid, r_neg).
@@ -2594,53 +2574,6 @@ aig_lit AIG::simplify_cse(aig_lit aig, map<AIGKey, aig_node_ptr>& cse_map, unord
 // simplifications). Cache holds each node's rebuilt positive-edge form; outer sign
 // applied on return. Iterative post-order — recursion can blow the stack on deep
 // interpolant AIGs.
-aig_lit AIG::simplify(aig_lit aig, unordered_map<const AIG*, aig_lit>& cache) {
-    if (!aig) return nullptr;
-
-    struct Frame { const AIG* src; bool children_done; };
-    std::vector<Frame> stack;
-    stack.reserve(64);
-    stack.push_back({aig.get(), false});
-
-    while (!stack.empty()) {
-        Frame& f = stack.back();
-        const AIG* src = f.src;
-        if (src == nullptr || cache.count(src)) { stack.pop_back(); continue; }
-        if (!f.children_done) {
-            if (src->type == AIGT::t_const) {
-                cache[src] = AIG::new_const(true);
-                stack.pop_back();
-            } else if (src->type == AIGT::t_lit) {
-                cache[src] = AIG::new_lit(src->var, false);
-                stack.pop_back();
-            } else {
-                assert(src->type == AIGT::t_and);
-                f.children_done = true;
-                // Capture children before push_back invalidates f. Push right
-                // then left so left is processed first (LIFO).
-                const AIG* ln = src->l.get();
-                const AIG* rn = src->r.get();
-                stack.push_back({rn, false});
-                stack.push_back({ln, false});
-            }
-        } else {
-            assert(src->type == AIGT::t_and);
-            auto it_l = cache.find(src->l.get());
-            auto it_r = cache.find(src->r.get());
-            aig_lit lpos = (it_l != cache.end()) ? it_l->second : aig_lit();
-            aig_lit rpos = (it_r != cache.end()) ? it_r->second : aig_lit();
-            aig_lit l_edge(lpos.node, lpos.neg ^ src->l.neg);
-            aig_lit r_edge(rpos.node, rpos.neg ^ src->r.neg);
-            cache[src] = AIG::new_and(l_edge, r_edge);
-            stack.pop_back();
-        }
-    }
-
-    auto it = cache.find(aig.get());
-    aig_lit rebuilt_pos = (it != cache.end()) ? it->second : aig_lit();
-    return aig_lit(rebuilt_pos.node, rebuilt_pos.neg ^ aig.neg);
-}
-
 DLL_PUBLIC vector<vector<uint32_t>> SimplifiedCNF::find_disconnected() const {
   vector<int> var_to_bag(nvars, -1);
   map<int, vector<int>> bag_to_vars;

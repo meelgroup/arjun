@@ -813,13 +813,12 @@ void Manthan::bve_and_substitute() {
         }
         if (overall == nullptr) overall = aig_mng.new_const(true);
         if (sign) overall = AIG::new_not(overall);
-        overall = AIG::simplify_aig(overall, conf.deep_rewrite);
+        overall = AIG::simplify_aig(overall);
         aigs.push_back(overall);
     }
     assert(aigs.size() == to_define.size());
 
     AIGRewriter rw;
-    rw.do_deep_passes = conf.deep_rewrite;
     rw.rewrite_all(aigs, conf.verb);
 
     // One AIGToCNF encoder per formula. A shared encoder is unsound: cached

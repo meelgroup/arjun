@@ -373,7 +373,7 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
             uint32_t d = 50 + rng() % 200;
             uint32_t bw = 2 + rng() % 6;
             aig_lit raw = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, d, bw);
-            if (raw) { AIGRewriter rw; rw.do_deep_passes = (rng() & 1); aig = rw.rewrite(raw); }
+            if (raw) { AIGRewriter rw; aig = rw.rewrite(raw); }
         }
         if (!aig) continue;
         aigs.push_back(aig);
@@ -574,8 +574,6 @@ int main(int argc, char** argv) {
         uint32_t num_vars = 2 + rng() % (max_vars - 1);
         uint32_t depth = 3 + rng() % (max_depth - 2);
         uint32_t max_nodes = 8 + rng() % max_nodes_cfg;
-        // Exercise both the default (cheap) and --deeprewrite (deep) pass sets.
-        const bool deep = (rng() & 1);
 
         aig_lit aig;
         // Weight shapes toward the deep linear ITE chain (the real manthan
@@ -625,7 +623,6 @@ int main(int argc, char** argv) {
             aig_lit raw = gen_deep_ite_chain_aig(aig_mng, rng, num_vars, d, bw);
             if (raw) {
                 AIGRewriter rw;
-                rw.do_deep_passes = deep;
                 aig = rw.rewrite(raw);
             }
         }

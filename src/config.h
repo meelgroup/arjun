@@ -64,9 +64,6 @@ struct Config {
     // Per-interpolant conflict budget; over this, skip the var. 0 = off.
     uint32_t interp_max_confl = 100000;
     std::string debug_synth;
-    // Enable the expensive AIG rewrite passes (k-ary absorption + ITE
-    // flattening). Off by default: they are O(n^2) and dominate rewrite time.
-    int deep_rewrite = 0;
     uint32_t seed = 42;
 };
 

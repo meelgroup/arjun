@@ -166,7 +166,7 @@ void BruteForceSynth::commit_definitions() {
         aigs[y] = skol[y];
     }
     cnf.map_aigs_to_orig(aigs, cnf.nVars());
-    cnf.simplify_aigs(conf.verb, conf.deep_rewrite);
+    cnf.simplify_aigs(conf.verb);
 }
 
 SimplifiedCNF BruteForceSynth::do_synth() {
