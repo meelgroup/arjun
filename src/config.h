@@ -62,9 +62,13 @@ struct Config {
     double cms_glob_mult = -1.0;
     int extend_ccnr = 0;
     // Rebuild the persistent interpolation solver + tracer after this
-    // many interpolants, to bound the tracer's accumulating clause maps.
-    // Lowering it forces the rebuild path on every fuzz iteration.
-    uint32_t interp_rebuild_every = 512;
+    // many interpolants. Besides bounding the tracer's accumulating clause
+    // maps, the rebuild re-loads the doubled CNF with all accumulated
+    // indicator equalities substituted in (v' merged into v), which
+    // collapses copy-2 into copy-1 and keeps the proofs — and hence the
+    // interpolant AIGs — small. Lowering it rebuilds (and re-simplifies)
+    // more often.
+    uint32_t interp_rebuild_every = 50;
     // Per-interpolant conflict budget; over this, skip the var. 0 = off.
     uint32_t interp_max_confl = 100000;
     std::string debug_synth;

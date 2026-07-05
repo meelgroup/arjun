@@ -72,7 +72,7 @@ void Extend::extend_synth(SimplifiedCNF& cnf) {
     // set up interpolant
     Interpolant interp(conf, cnf.nVars());
     interp.fill_from_solver(solver.get(), orig_num_vars, cnf.get_aig_mng(),
-            input_vars);
+            input_vars, var_to_indic);
 
     //Initially, all of non-opt sampling set is unknown
     for(const auto& x: seen) assert(x == 0);

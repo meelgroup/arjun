@@ -172,7 +172,8 @@ public:
 
     void fill_from_solver(CMSat::SATSolver* solver, uint32_t orig_num_vars,
         const ArjunNS::AIGManager& aig_mng,
-        const std::set<uint32_t>& input_vars);
+        const std::set<uint32_t>& input_vars,
+        const std::vector<uint32_t>& var_to_indic);
 
     // Reconstruct and store test_var's definition AIG. Returns false (var
     // left undefined) if the solve exceeded conf.interp_max_confl.
@@ -190,19 +191,31 @@ private:
     uint32_t tot_num_vars = 0;
     const ArjunNS::AIGManager* aig_mng = nullptr;
 
-    // The doubled CNF, kept for the --debugsynth CNF dump.
+    // The pristine doubled CNF: reused for the --debugsynth dump and re-loaded
+    // (with indicator equalities substituted in) on every rebuild.
     std::vector<std::vector<CMSat::Lit>> all_cls;
+    // Accumulated indicator units. indic TRUE forces v == v' via the equality
+    // clauses, i.e. merges copy-2 var v' back into copy-1 var v.
     std::vector<CMSat::Lit> indicator_units;
+    // indic var -> the copy-1 var v it ties. Built in fill_from_solver.
+    std::unordered_map<uint32_t, uint32_t> indic_to_defvar;
 
     std::unique_ptr<CaDiCaL::Solver> solver;
     std::unique_ptr<InterpTracerMcMillan> tracer;
     const std::set<uint32_t>* input_vars = nullptr;
     uint32_t solves_since_rebuild = 0;
+    uint32_t num_rebuilds = 0;
 
     // defs[v] = AIG definition of v over the input vars, or nullptr.
     std::vector<ArjunNS::aig_lit> defs;
 
-    void load_solver();
+    void load_solver(bool is_rebuild);
+
+    // Apply the accumulated v' := v merges to a copy of all_cls, dropping
+    // tautologies and duplicates. Collapses copy-2 into copy-1 as more vars get
+    // defined, keeping proofs and interpolant AIGs small. Returns #merges.
+    uint32_t build_effective_clauses(
+        std::vector<std::vector<CMSat::Lit>>& out_cls) const;
 
     // B-side iff it touches any var outside copy 1.
     bool is_b_clause(const std::vector<CMSat::Lit>& cl) const {

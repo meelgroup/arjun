@@ -24,10 +24,12 @@
 
 #include "interpolant.h"
 #include "constants.h"
+#include "time_mem.h"
 
 #include <cadical.hpp>
 #include <algorithm>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <sstream>
@@ -46,36 +48,94 @@ Interpolant::~Interpolant() {
     if (solver && tracer) solver->disconnect_proof_tracer(tracer.get());
 }
 
-void Interpolant::load_solver() {
-    // Fresh CaDiCaL + tracer, (re)load doubled CNF + indicator units.
+// Apply every accumulated indicator equality to a copy of the pristine doubled
+// CNF: substitute the copy-2 var v' by its copy-1 var v, drop clauses that
+// became tautological (the merged vars' equality clauses collapse to v ∨ ¬v),
+// and dedup. Each merge folds one copy-2 var into copy-1, so the effective CNF
+// — and every proof/interpolant built from it — shrinks as more vars are
+// defined. Returns the number of merges applied (for logging).
+uint32_t Interpolant::build_effective_clauses(vector<vector<Lit>>& out_cls) const {
+    // subst_var[x] = x, except a merged copy-2 var v' maps to its copy-1 v.
+    // Every unit is Lit(indic, false); indic_to_defvar gives the var it ties.
+    vector<uint32_t> subst_var(tot_num_vars);
+    for (uint32_t i = 0; i < tot_num_vars; i++) subst_var[i] = i;
+    uint32_t num_merged = 0;
+    for (const auto& u : indicator_units) {
+        auto it = indic_to_defvar.find(u.var());
+        if (it == indic_to_defvar.end()) continue; // not an equality indic
+        const uint32_t v2 = it->second + orig_num_vars;
+        if (v2 < tot_num_vars && subst_var[v2] != it->second) {
+            subst_var[v2] = it->second;
+            num_merged++;
+        }
+    }
+
+    out_cls.clear();
+    out_cls.reserve(all_cls.size());
+    std::set<vector<Lit>> seen; // canonical (sorted) clauses already emitted
+    vector<Lit> nc;
+    for (const auto& c : all_cls) {
+        nc.clear();
+        for (const auto& l : c) nc.emplace_back(subst_var[l.var()], l.sign());
+        std::sort(nc.begin(), nc.end());
+        nc.erase(std::unique(nc.begin(), nc.end()), nc.end());
+        // After sort+unique, a var with both signs sits in adjacent slots.
+        bool taut = false;
+        for (size_t i = 0; i + 1 < nc.size(); i++)
+            if (nc[i].var() == nc[i+1].var()) { taut = true; break; }
+        if (taut) continue;
+        if (seen.insert(nc).second) out_cls.push_back(nc);
+    }
+    return num_merged;
+}
+
+void Interpolant::load_solver(bool is_rebuild) {
+    // Fresh CaDiCaL + tracer, (re)load the simplified doubled CNF.
     // A = clauses entirely in copy 1, B = everything else.
+    const double my_time = cpuTime();
     solver = std::make_unique<Solver>();
     tracer = std::make_unique<InterpTracerMcMillan>(conf, *aig_mng, *input_vars);
     tracer->b_local_from = orig_num_vars;
     solver->connect_proof_tracer(tracer.get(), true);
 
-    for (const auto& c : all_cls) {
+    vector<vector<Lit>> eff_cls;
+    const uint32_t num_merged = build_effective_clauses(eff_cls);
+    for (const auto& c : eff_cls) {
         tracer->next_is_b = is_b_clause(c);
         for (const auto& l : c) solver->add(lit_to_pl(l));
         solver->add(0);
         tracer->next_is_b = false;
     }
-    for (const auto& l : indicator_units) {
-        tracer->next_is_b = true;
-        solver->add(lit_to_pl(l));
-        solver->add(0);
-        tracer->next_is_b = false;
+
+    if (is_rebuild) {
+        num_rebuilds++;
+        verb_print(1, "[interp] rebuild #" << num_rebuilds
+                << " after " << solves_since_rebuild << " defines"
+                << ": merged " << num_merged << " vars"
+                << ", clauses " << all_cls.size() << " -> " << eff_cls.size()
+                << " mem: " << memUsedTotal()/(1024*1024) << " MB"
+                << " T: " << std::fixed << std::setprecision(2)
+                << (cpuTime() - my_time));
     }
     solves_since_rebuild = 0;
 }
 
 void Interpolant::fill_from_solver(SATSolver* cms_solver,
         uint32_t _orig_num_vars, const AIGManager& _aig_mng,
-        const set<uint32_t>& _input_vars) {
+        const set<uint32_t>& _input_vars,
+        const vector<uint32_t>& var_to_indic) {
     orig_num_vars = _orig_num_vars;
     tot_num_vars = cms_solver->nVars();
     aig_mng = &_aig_mng;
     input_vars = &_input_vars;
+
+    // Reverse var_to_indic over the copy-1 vars: indic -> the var it ties.
+    // An indicator unit (indic TRUE) then tells us to merge v' := v.
+    indic_to_defvar.clear();
+    for (uint32_t v = 0; v < orig_num_vars && v < var_to_indic.size(); v++) {
+        const uint32_t indic = var_to_indic[v];
+        if (indic != var_Undef) indic_to_defvar[indic] = v;
+    }
 
     // Extract the doubled CNF once; indicator units arrive via add_unit_cl.
     all_cls.clear();
@@ -88,7 +148,7 @@ void Interpolant::fill_from_solver(SATSolver* cms_solver,
     }
     cms_solver->end_getting_constraints();
 
-    load_solver();
+    load_solver(false);
     verb_print(2, "[interp] doubled CNF loaded into incremental solver: "
             << all_cls.size() << " clauses, " << tot_num_vars << " vars");
 }
@@ -137,7 +197,7 @@ bool Interpolant::generate_interpolant(const vector<Lit>& assumptions,
         verb_print(1, "[interp] var " << test_var+1 << " exceeded "
                 << conf.interp_max_confl << " conflicts; skipping definition");
         solver->disconnect_proof_tracer(tracer.get());
-        load_solver();
+        load_solver(true);
         return false;
     }
     // conclude() emits the proof conclusion so the tracer sees the refutation.
@@ -150,12 +210,12 @@ bool Interpolant::generate_interpolant(const vector<Lit>& assumptions,
     verb_print(5, "[interp] definition of var " << test_var+1
             << " is: " << interp);
 
-    // Periodically rebuild so the tracer's clause maps don't grow unbounded.
+    // Periodically rebuild: bounds the tracer's clause maps AND re-simplifies
+    // the doubled CNF with all indicator equalities substituted in, keeping
+    // proofs and interpolant AIGs small.
     if (++solves_since_rebuild >= conf.interp_rebuild_every) {
-        verb_print(2, "[interp] rebuilding incremental solver after "
-                << solves_since_rebuild << " interpolants");
         solver->disconnect_proof_tracer(tracer.get());
-        load_solver();
+        load_solver(true);
     }
     return true;
 }

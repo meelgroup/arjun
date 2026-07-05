@@ -565,7 +565,7 @@ void Backward::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     // set up interpolant
     Interpolant interp(conf, cnf.nVars());
     interp.fill_from_solver(solver.get(), orig_num_vars, cnf.get_aig_mng(),
-            pretend_input);
+            pretend_input, var_to_indic);
 
     for(uint32_t x = 0; x < orig_num_vars; x++) {
         pretend_input.insert(x); // we pretend that all vars are input vars
