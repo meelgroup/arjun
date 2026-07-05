@@ -41,6 +41,11 @@ using std::set;
 using std::endl;
 using std::cout;
 
+namespace {
+// Lit::toInt() is a small positive int, so it's a perfect hash.
+struct LitHash { size_t operator()(const Lit& l) const { return l.toInt(); } };
+}
+
 Interpolant::~Interpolant() {
     // Detach the tracer, else the solver's destructor deletes it.
     if (solver && tracer) solver->disconnect_proof_tracer(tracer.get());
@@ -146,10 +151,6 @@ bool Interpolant::generate_interpolant(const vector<Lit>& assumptions,
     aig_lit interp = tracer->build_interpolant();
     release_assert(interp != nullptr
         && "interpolant: build_interpolant returned null after UNSAT proof");
-    interp = AIG::simplify_aig(interp);
-    release_assert(interp != nullptr
-        && "interpolant: simplify_aig returned null");
-
     defs[test_var] = interp;
     verb_print(5, "[interp] definition of var " << test_var+1
             << " is: " << interp);
@@ -406,7 +407,7 @@ bool InterpTracerMcMillan::resolve_chain(uint64_t id,
         return false;
     }
     aig_lit lab = it_lab->second;
-    set<Lit> resolvent(cls[id1].begin(), cls[id1].end());
+    std::unordered_set<Lit, LitHash> resolvent(cls[id1].begin(), cls[id1].end());
 
     // Batch consecutive same-op steps into balanced ANDs/ORs to avoid
     // stack-blowing left-leaning chains.
