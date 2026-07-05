@@ -87,10 +87,8 @@ struct aig_lit {
     bool operator!=(const aig_lit& o) const { return !(*this == o); }
     bool operator==(std::nullptr_t) const { return node == nullptr; }
     bool operator!=(std::nullptr_t) const { return node != nullptr; }
-    // Defined out-of-line below class AIG, since the body needs access to
-    // AIG::nid which isn't complete here. Ordering on the monotonic nid
-    // (not the raw pointer) is required for cross-run determinism — see
-    // CLAUDE.md's determinism rule.
+    // Out-of-line below AIG (body needs the complete AIG::nid). Orders on nid,
+    // not the raw pointer, for cross-run determinism (see CLAUDE.md).
     bool operator<(const aig_lit& o) const;
 };
 
@@ -308,11 +306,9 @@ public:
         }
     }
 
-    // Fast variant: writes into caller-owned scratch buffers to avoid
-    // per-call heap allocation. is_dep is a bitmap indexed by var id;
-    // dep_list receives the vars newly marked. stack is used for DFS and
-    // left dirty on exit so the caller can reuse its capacity. Visited
-    // state is tracked via AIG::visit_epoch; each call bumps the epoch.
+    // Fast variant using caller-owned scratch buffers (no per-call alloc):
+    // is_dep bitmap by var id, dep_list gets newly-marked vars, stack for DFS
+    // (left dirty for reuse). Visited state via AIG::visit_epoch.
     static void get_dependent_vars(const aig_lit& aig_orig,
                                    std::vector<char>& is_dep,
                                    std::vector<uint32_t>& dep_list,
@@ -390,10 +386,8 @@ public:
         return aig_lit(clone_node(aig.get()), aig.neg);
     }
 
-    // Generic recursive traversal function that applies a function to each AIG
-    // node (post-edge). Each edge in the walk is passed to `func` as an
-    // aig_lit. De-dup is by signed-edge: two references with opposite sign
-    // visit the same underlying node twice (the sign can matter to callers).
+    // Apply `func` to each AIG edge (as aig_lit). De-dup is by signed-edge:
+    // opposite-sign references to one node are visited twice.
     template<typename Func>
     static void traverse(const aig_lit& aig, Func&& func) {
         if (!aig) return;
@@ -425,16 +419,11 @@ public:
         else return ~x;
     }
 
-    // Post-order traversal producing a caller-defined fold. Visitor signature:
-    //   (type, var, left_result*, right_result*)
-    // The visitor is always invoked as if the edge were positive; transform
-    // applies the outer edge sign ITSELF by negating the visitor's result
-    // (`operator~` for aig_lit and CMSat::Lit, logical NOT for bool). Child
-    // results already reflect their own edge sign.
-    //
-    // Caching is per NODE rather than per signed edge. Without this, a shared
-    // sub-AIG referenced both positively and negatively would invoke the
-    // visitor twice — duplicating any side effects (e.g. Tseitin clauses).
+    // Post-order fold. Visitor(type, var, left_result*, right_result*) is
+    // always called as if the edge were positive; transform applies the outer
+    // sign itself by negating the result. Caching is per NODE (not signed
+    // edge) so a shared sub-AIG isn't visited twice, which would duplicate
+    // side effects (e.g. Tseitin clauses).
     template<typename ResultType, typename Visitor>
     static ResultType transform(
         const aig_lit& aig,
@@ -462,16 +451,11 @@ public:
         return aig.neg ? negate_result(result) : result;
     }
 
-    // Tseitin-encode `aig` into `solver`. Walks once (shared subgraphs are
-    // encoded once via the cache), allocating one fresh helper var per AND
-    // node and emitting the standard Tseitin clauses
-    //     (~h ∨ l), (~h ∨ r), (h ∨ ~l ∨ ~r).
-    // Leaf vars go through `leaf_to_lit`. The const-TRUE literal is supplied
-    // lazily via `true_lit_fn` (called only if the AIG references a const),
-    // so callers can defer allocating their TRUE helper. `Solver` must expose
-    // `new_var()`, `nVars()`, and `add_clause(const std::vector<CMSat::Lit>&)`.
-    // `visit_count` and `and_emit_count`, when non-null, are incremented per
-    // visited node and per emitted helper respectively.
+    // Tseitin-encode `aig` into `solver` (one helper per AND, cached so shared
+    // subgraphs encode once): (~h∨l), (~h∨r), (h∨~l∨~r). Leaves via
+    // `leaf_to_lit`; const-TRUE lazily via `true_lit_fn`. `Solver` needs
+    // new_var()/nVars()/add_clause(). visit_count / and_emit_count, if
+    // non-null, count visited nodes / emitted helpers.
     template<typename Solver, typename TrueFn, typename LeafFn>
     static CMSat::Lit tseitin_encode(
         const aig_lit& aig,
@@ -525,15 +509,12 @@ public:
         return out_negate ? ~ret : ret;
     }
 
-    // Fast variant: iterative DFS using AIG::visit_epoch marking. Shared
-    // structure across the input vector is counted only once. Used by the
-    // rewriter's hot paths where the std::set<aig_lit> version was the
-    // dominant cost on large (500k+ node) AIGs.
+    // Fast variant: iterative DFS with AIG::visit_epoch marking; shared
+    // structure counted once. For rewriter hot paths on large (500k+) AIGs.
     static size_t count_aig_nodes_fast(const std::vector<aig_lit>& roots);
     static size_t count_aig_nodes_fast(const aig_lit& root);
-    // Batch-counting helper: marks newly seen nodes against `epoch` and
-    // adds their count to `count`. Callers obtain `epoch` once via
-    // next_visit_epoch() and then invoke this for each root to union-count.
+    // Batch-count helper: marks nodes unseen this `epoch` and adds to `count`.
+    // Callers get `epoch` once, then call per root to union-count.
     static void count_aig_nodes_batch(const AIG* aig, uint64_t epoch, size_t& count);
     // do_folding: also run the algebraic-folding rebuild (a full new_and
     // sweep). Off by default — the CSE pass alone dedups structurally.
@@ -561,10 +542,9 @@ private:
     static aig_lit simplify(aig_lit aig, std::unordered_map<const AIG*, aig_lit>& cache);
     static aig_lit simplify_cse(aig_lit aig, std::map<AIGKey, aig_node_ptr>& cse_map, std::unordered_map<const AIG*, aig_node_ptr>& cache);
 
-    // Epoch-based visited marker used by DFS traversals (get_dependent_vars,
-    // count_aig_nodes, ...) in place of an unordered_set<const AIG*>. A
-    // traversal bumps the global counter once via next_visit_epoch() and
-    // then marks nodes by assignment; membership is an integer compare.
+    // Epoch-based visited marker for DFS traversals (replaces
+    // unordered_set<const AIG*>): bump epoch once, mark by assignment, test
+    // membership by integer compare.
     mutable uint64_t visit_epoch = 0;
     static uint64_t next_visit_epoch() {
         static uint64_t counter = 0;
@@ -579,10 +559,8 @@ private:
     }
 };
 
-// Deterministic ordering for aig_lit (a.k.a. aig_lit) — keyed on the node's
-// monotonic nid rather than its raw address. std::map<aig_lit,…> and
-// std::set<aig_lit> rely on this to stay stable across runs (raw pointers
-// are ASLR-randomised).
+// Deterministic aig_lit ordering: keyed on the node's monotonic nid, not its
+// ASLR-randomised address, so std::map/std::set stay stable across runs.
 inline bool aig_lit::operator<(const aig_lit& o) const {
     const uint64_t a = node ? node->nid : 0;
     const uint64_t b = o.node ? o.node->nid : 0;
@@ -644,9 +622,8 @@ private:
         const_true_node = nullptr;
     }
 
-    // Shared positive TRUE const node; copies share it so comparisons stay
-    // pointer-equal. A convenience, not canonical — AIG::new_const can make
-    // other TRUE nodes.
+    // Shared positive TRUE const node (copies share it, so comparisons stay
+    // pointer-equal). A convenience — AIG::new_const can make other TRUE nodes.
     aig_node_ptr const_true_node = nullptr;
 };
 
@@ -1228,9 +1205,8 @@ public:
     [[nodiscard]] bool check_orig_sampl_vars_undefined() const;
     [[nodiscard]] bool defs_invariant() const;
 
-    // Get the orig vars this AIG depends on, recursively expanding defined vars.
-    // Returns a sorted, unique vector. Cache entries are stored by std::map so
-    // references remain stable across inserts (needed by the internal helper).
+    // Orig vars this AIG depends on, recursively expanding defined vars; sorted
+    // unique. Cache is std::map so entry refs stay stable across inserts.
     std::vector<uint32_t> get_dependent_vars_recursive(const uint32_t orig_v, std::map<uint32_t, std::vector<uint32_t>>& cache) const;
 
     [[nodiscard]] bool check_aig_cycles() const;
@@ -1771,10 +1747,8 @@ private:
 namespace std {
 template<> struct hash<ArjunNS::aig_lit> {
     size_t operator()(const ArjunNS::aig_lit& a) const noexcept {
-        // Hash on the monotonic nid + edge sign. Using the raw pointer
-        // would make bucket layout ASLR-dependent, and while lookup-only
-        // uses are fine, any future iteration over such a map would leak
-        // non-determinism — see CLAUDE.md.
+        // Hash on monotonic nid + edge sign, not the raw pointer, whose
+        // ASLR-dependent buckets would leak non-determinism (see CLAUDE.md).
         const uint64_t nid = a.node ? a.node->nid : 0;
         return std::hash<uint64_t>{}(nid) ^ (a.neg ? 0x9e3779b97f4a7c15ULL : 0);
     }

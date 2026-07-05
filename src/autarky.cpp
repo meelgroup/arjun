@@ -90,23 +90,14 @@ void Autarky::find_autarkies(SimplifiedCNF& cnf) {
         s.add_clause(cl);
 
 
-        // We add clauses to require that a clause be enabled (y_i = TRUE) if
-        // any one of its variables is enabled. Thus, for any x_j present in clause C_i,
-        // we add a clause (x+_j → y_i) = (¬x+_j ∨ y_i).
+        // Enable clause C_i if any of its vars is enabled: (x+_j → y_i).
         for(const auto& l: ocl) {
             s.add_clause({~var_sel[l.var()], cl_sel[i]});
         }
     }
 
-    /*
-    We create a variable-selector x+_j for every variable x_j .
-    When x+_j is TRUE, x_j will be enabled, and it is disabled otherwise.
-    For every variable xj , we add clauses to relate its variable-selector x+_j ,
-    its two literal-substitutes x0_j and x1_j , and the value of the variable itself, x_j .
-    In short, we want each literal- substitute to be TRUE when the variable is enabled (x+_j is TRUE)
-    and x_j has the corresponding value. This leads to new clauses encoding the following:
-    (x1 j = x+ j AND xj ) and (x0 j = x+ j AND ¬xj ).
-    */
+    // Relate each var's selector x+_j and its literal-substitutes to x_j:
+    // (x1_j = x+_j AND x_j) and (x0_j = x+_j AND ¬x_j).
 
     for(uint32_t i = 0; i < cnf.nVars(); i++) {
         // (x1 j = x+_j AND x_j)

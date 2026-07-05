@@ -49,21 +49,17 @@ struct Config {
     uint32_t unate_def_eq_max_per_var = 128;
     uint32_t unate_def_max_confl = 15000;
     uint32_t unate_def_eq_max_confl = 10000;
-    // Disable equiv probe after this many consecutive misses with
-    // zero hits so far. Low = bail aggressively; very high = effectively
-    // never disable.
+    // Disable equiv probe after this many consecutive misses with zero hits.
+    // Low = bail aggressively; high = effectively never.
     uint32_t unate_def_eq_dry_streak = 128;
-    // Allow non-input vars (to-define + already-tested non-backward-defined)
-    // as the candidate L in the equiv t = L probe. Inputs are still
-    // tried first; non-inputs only after the input list is exhausted.
-    // 0 = inputs only (old behavior). 1 = inputs first, then non-inputs.
+    // Allow non-input vars as candidate L in the equiv t=L probe (tried after
+    // inputs). 0 = inputs only; 1 = inputs first, then non-inputs.
     int unate_def_eq_noninput = 1;
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;
     int extend_ccnr = 0;
-    // Rebuild the persistent interpolation solver + tracer after this many
-    // interpolants. Bounds the tracer's clause maps and re-loads the doubled
-    // CNF with all indicator equalities substituted in, keeping proofs small.
+    // Rebuild the interpolation solver+tracer after this many interpolants,
+    // bounding the tracer's clause maps and keeping proofs small.
     uint32_t interp_rebuild_every = 50;
     // Per-interpolant conflict budget; over this, skip the var. 0 = off.
     uint32_t interp_max_confl = 100000;

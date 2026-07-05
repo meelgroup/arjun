@@ -202,9 +202,9 @@ void Manthan::fill_var_to_formula_with(set<uint32_t>& vars) {
         const auto& aig = cnf.get_def(v_orig);
         assert(aig != nullptr);
 
-        // Remap the AIG from original var space into y_hat space and bake in
-        // orig.sign(). AIGToCNF consumes raw AIG lit vars, so the y_hat remap
-        // must live in the AIG rather than a visit-time hook.
+        // Remap AIG leaves from orig var space into y_hat space (baking in
+        // orig.sign()) — AIGToCNF consumes raw lit vars, so the remap must
+        // live in the AIG.
         f.aig = AIG::translate_leaves(
             aig,
             [&](uint32_t var_orig2) {
@@ -226,8 +226,7 @@ void Manthan::fill_var_to_formula_with(set<uint32_t>& vars) {
 // This adds (and re-numbers) the deep-copied AIGs to a fresh copy of the CNF, then checks if the CNF
 // has any AIG cycles
 bool Manthan::check_aig_dependency_cycles() const {
-    // We need to copy these, so we don't accidentally update the original.
-    // We deep copy them together in one go, to preserve e.g. cycles
+    // Deep-copy together in one go (preserves cycles, doesn't mutate originals).
     vector<aig_lit> aigs(cnf.nVars(), nullptr);
     for(const auto& y: to_define) {
         if (!var_to_formula.count(y)) continue;
@@ -389,10 +388,8 @@ bool Manthan::check_functions_for_y_vars() const {
     return true;
 }
 
-// SLOW_DEBUG: fresh SAT miter from var_to_formula[y].clauses+.out (the same
-// encoding cex_solver sees, minus indicator gating). Asks: is there a
-// formula-consistent y_hat that falsifies an orig clause? UNSAT = correct;
-// SAT = encoding bug that cex_solver itself should have caught.
+// SLOW_DEBUG: fresh SAT miter from .clauses+.out (cex_solver's encoding minus
+// indicator gating). UNSAT = correct; SAT = encoding bug cex_solver missed.
 bool Manthan::check_synth_via_clauses(const string& where) const {
     SATSolver s;
     while (s.nVars() < cex_solver.nVars()) s.new_var();
@@ -472,10 +469,9 @@ bool Manthan::check_synth_via_clauses(const string& where) const {
     return true;
 }
 
-// SLOW_DEBUG: same miter as check_synth_via_clauses, but encoding the
-// formula from var_to_formula[y].aig (what becomes cnf.defs[y]). Disagreeing
-// results between the two pinpoint an AIG-vs-CNF rep divergence; a failure
-// here only is likely an AIG leaf-substitution issue.
+// SLOW_DEBUG: same miter as check_synth_via_clauses, but encoded from .aig
+// (what becomes cnf.defs[y]). Disagreement with the .clauses check pinpoints
+// an AIG-vs-CNF rep divergence; failure here alone suggests a leaf-sub issue.
 bool Manthan::check_synth_via_aig(const string& where) const {
     SATSolver s;
     while (s.nVars() < cnf.nVars()) s.new_var();
@@ -495,10 +491,9 @@ bool Manthan::check_synth_via_aig(const string& where) const {
     // Orig CNF on x + y (for F(x, y) side).
     for (const auto& c : cnf.get_clauses()) s.add_clause(c);
 
-    // Tseitin-encode each var_to_formula[y].aig onto shadow_y_hats.
-    // Leaves: if var is to_define_full, use shadow_y_hat[v]; if it's a
-    // (Manthan-internal) y_hat leaf from perform_repair, use the
-    // corresponding shadow_y_hat via y_hat_to_y; otherwise treat as raw.
+    // Tseitin-encode each .aig onto shadow_y_hats. Leaves: to_define_full ->
+    // shadow_y_hat[v]; Manthan-internal y_hat leaf -> shadow via y_hat_to_y;
+    // else raw.
     std::unordered_map<const AIG*, Lit> cache;
     std::function<Lit(const aig_lit&)> enc_edge = [&](const aig_lit& n) -> Lit {
         assert(n != nullptr);
@@ -509,10 +504,8 @@ bool Manthan::check_synth_via_aig(const string& where) const {
             if (to_define_full.count(v)) {
                 base = shadow_y_hat.at(v);
             } else if (y_hat_to_y.count(v)) {
-                // AIG leaf is a Manthan y_hat (from map_y_to_y_hat
-                // remapping of input/backward_defined vars). For inputs
-                // map_y_to_y_hat returns the input var itself, so if we
-                // reach here it's backward_defined. Use shadow.
+                // Manthan y_hat leaf. Inputs map to themselves, so reaching
+                // here means backward_defined -> use shadow.
                 uint32_t y = y_hat_to_y.at(v).var();
                 if (to_define_full.count(y)) base = shadow_y_hat.at(y);
                 else base = Lit(v, false);
@@ -589,9 +582,8 @@ bool Manthan::check_synth_via_aig(const string& where) const {
     return true;
 }
 
-// SLOW_DEBUG: per-y pairwise miter proving f.aig (leaves remapped to y_hat
-// space) evaluates to f.out under the f.clauses constraints. Fires on the
-// exact y whose AIG and CNF reps diverge.
+// SLOW_DEBUG: per-y pairwise miter proving f.aig == f.out under f.clauses.
+// Fires on the exact y whose AIG and CNF reps diverge.
 bool Manthan::check_aig_matches_clauses_per_formula(const string& where) const {
     for (const auto& y : to_define_full) {
         auto it = var_to_formula.find(y);
@@ -602,17 +594,14 @@ bool Manthan::check_aig_matches_clauses_per_formula(const string& where) const {
         SATSolver s;
         while (s.nVars() < cex_solver.nVars()) s.new_var();
         s.add_clause({fh->get_true_lit()});
-        // Add ALL formulas' clauses (not just this one) because
-        // bve_and_substitute shares helper vars across formulas via the
-        // persistent AIGToCNF encoder — a helper referenced in this f.out
-        // may be defined in a different formula's .clauses.
+        // Add ALL formulas' clauses: helper vars are shared across formulas,
+        // so a helper in this f.out may be defined in another's .clauses.
         for (const auto& [yy, ff] : var_to_formula) {
             for (const auto& cl : ff.clauses) s.add_clause(cl.lits);
         }
 
-        // Tseitin-encode f.aig on top of the SAME var namespace, mapping
-        // leaves exactly as bve_and_substitute/perform_repair would (so we
-        // get a lit that represents the AIG's value over y_hat vars).
+        // Tseitin-encode f.aig in the SAME var namespace, mapping leaves
+        // exactly as bve_and_substitute/perform_repair do (value over y_hat).
         std::unordered_map<const AIG*, Lit> cache;
         std::function<Lit(const aig_lit&)> enc_edge = [&](const aig_lit& n) -> Lit {
             assert(n != nullptr);
@@ -693,9 +682,8 @@ bool Manthan::check_aig_matches_clauses_per_formula(const string& where) const {
                  << " (AIGT: 0=and, 1=lit, 2=const)"
                  << endl;
             // Cross-check: evaluate f.aig directly under the SAT model.
-            // For bve_and_substitute, f.aig leaves are y-space orig vars,
-            // which under the miter map to y_hats. So read m[y_hat[v]] for
-            // to_define_full leaves, m[v] for inputs.
+            // Leaves are y-space orig vars: read m[y_hat[v]] for to_define_full,
+            // m[v] for inputs.
             std::map<const AIG*, bool> eval_cache;
             std::function<bool(const aig_lit&)> eval_aig = [&](const aig_lit& n) -> bool {
                 if (n->type == AIGT::t_const) return !n.neg;  // const TRUE is base, edge may flip
@@ -721,9 +709,7 @@ bool Manthan::check_aig_matches_clauses_per_formula(const string& where) const {
             };
             bool direct = eval_aig(f.aig);
             cout << "c o [aig_vs_clauses]   direct AIG eval under SAT model = " << (direct ? 1 : 0) << endl;
-            // Full recursive AIG structure dump — gated under VERBOSE_DEBUG
-            // so SLOW_DEBUG alone gets a concise diagnostic; verbose is
-            // opt-in for deep triage.
+            // Full recursive AIG structure dump — VERBOSE_DEBUG only.
             VERBOSE_DEBUG_DO({
                 std::set<uint64_t> printed_nids;
                 std::function<void(const aig_lit&, int)> dump_aig = [&](const aig_lit& n, int depth) {
@@ -836,12 +822,10 @@ void Manthan::bve_and_substitute() {
     rw.do_deep_passes = conf.deep_rewrite;
     rw.rewrite_all(aigs, conf.verb);
 
-    // One AIGToCNF encoder per formula. A persistent cross-formula encoder is
-    // unsound: AIGRewriter reshuffles the aigs vector, so a Lit cached from
-    // one formula's encoding gets reused on a cache hit in another, making
-    // .aig and .clauses+.out encode different functions. cex_solver (which
-    // sees only .clauses+.out) stays happy, but the exported AIGs are wrong.
-    // SLOW_DEBUG's check_aig_matches_clauses_per_formula catches it.
+    // One AIGToCNF encoder per formula. A shared encoder is unsound: cached
+    // Lits get reused across formulas (AIGRewriter reshuffles aigs), so .aig
+    // and .clauses+.out diverge — cex_solver stays happy but exported AIGs are
+    // wrong. Caught by check_aig_matches_clauses_per_formula under SLOW_DEBUG.
     struct FormulaClauseSink {
         MetaSolver2& solver;
         std::vector<CL>* clauses;
@@ -941,10 +925,8 @@ void Manthan::print_detailed_stats() const {
             << ", >1000x: " << vars_over_1000 << ")");
     }
 
-    // Print top 20 most successfully repaired vars with their AIG sizes.
-    // Order by successful (non-cost-zero) repairs; ties broken by total
-    // attempts so cost-zero-heavy vars still show up below their
-    // successful peers.
+    // Print top 20 most successfully repaired vars + AIG sizes. Order by
+    // successful (non-cost-zero) repairs, ties broken by total attempts.
     auto n_succ_of = [&](uint32_t v) -> uint32_t {
         return (v < conflict_branch_repairs_per_var.size())
             ? conflict_branch_repairs_per_var[v] : 0;
@@ -1149,9 +1131,7 @@ SimplifiedCNF Manthan::do_manthan() {
         cex_solver_calls++;
         if (finished) {
             // cex_solver claims no CEX. Triangulate with three SLOW_DEBUG
-            // miters: via_clauses (cex_solver's own encoding), via_aig (the
-            // exported .aig), and a per-formula pairwise check that pinpoints
-            // which y's reps disagree.
+            // miters: via_clauses, via_aig, and the per-formula pairwise check.
             SLOW_DEBUG_DO({
                 const std::string where = "finished-loop-exit iter=" + std::to_string(num_loops_repair);
                 bool clauses_ok = check_synth_via_clauses(where);
@@ -1209,9 +1189,8 @@ SimplifiedCNF Manthan::do_manthan() {
             } else {
                 repair_failed++;
                 consecutive_cost_zero++;
-                // After consecutive cost-zero repairs, break to get a fresh
-                // counterexample. Adaptive threshold: break sooner when the
-                // cost-zero rate is high (saving more solver calls).
+                // Break for a fresh counterexample after enough consecutive
+                // cost-zero repairs; threshold drops as the cost-zero rate rises.
                 const uint32_t cz_threshold = (cost_zero_repairs > tot_repaired * mconf.cz_high_ratio) ? mconf.cz_threshold_high :
                     (cost_zero_repairs > tot_repaired * mconf.cz_low_ratio) ? mconf.cz_threshold_mid : mconf.cz_threshold_low;
                 if (consecutive_cost_zero >= cz_threshold && num_repaired > 0) {
@@ -1293,9 +1272,8 @@ uint32_t Manthan::find_next_repair_var(const sample& ctx) const {
     return y_rep;
 }
 
-// The conflict {l1..ln} (to_repair already removed) means ~l1 ∧..∧ ~ln ∧
-// ~to_repair → FALSE under the CNF, so (l1 ∨..∨ ln ∨ to_repair) is valid.
-// Added as redundant to speed up the repair solver.
+// (l1 ∨..∨ ln ∨ to_repair) is valid under the CNF; add as redundant to speed
+// up the repair solver.
 void Manthan::add_repair_conflict_clause(const uint32_t y_rep, const sample& ctx,
         const vector<Lit>& conflict) {
     if (conflict.empty()) return;
@@ -1423,9 +1401,8 @@ bool Manthan::try_input_only_conflict(const uint32_t y_rep, const sample& ctx,
     return false;
 }
 
-// Adopt the repair_solver model into ctx for y_rep and all later y-vars.
-// Used on a cost-zero repair: y_rep can be satisfied without changing the
-// formula, so we just copy the consistent assignment back into ctx.
+// Cost-zero repair: y_rep is satisfiable without a formula change, so copy the
+// repair_solver model into ctx for y_rep and all later y-vars.
 void Manthan::apply_cost_zero_model(const uint32_t y_rep, sample& ctx) {
     bool found_yrep = false;
     const auto& model = repair_solver.get_model();
@@ -1436,11 +1413,9 @@ void Manthan::apply_cost_zero_model(const uint32_t y_rep, sample& ctx) {
     assert(ctx[y_rep] == ctx[y_to_y_hat[y_rep]]);
 }
 
-// Build the full assumption set (dependent inputs + earlier y-vars + ~to_repair)
-// and solve. Returns true with `conflict` populated when UNSAT. Returns false
-// for a cost-zero repair (SAT): ctx has been updated and find_conflict should
-// return false. When inputs were skipped via the don't-care filter and the
-// reduced solve is SAT, retries with the full input set first.
+// Solve over (dependent inputs + earlier y-vars + ~to_repair). Returns true
+// with `conflict` on UNSAT; false on a cost-zero repair (SAT, ctx updated). If
+// don't-care inputs were skipped and the reduced solve is SAT, retries with all.
 bool Manthan::solve_full_assumption_conflict(const uint32_t y_rep, sample& ctx,
         const Lit to_repair, const bool have_aig_deps,
         vector<Lit>& conflict, vector<Lit>& assumps,
@@ -1509,9 +1484,8 @@ bool Manthan::solve_full_assumption_conflict(const uint32_t y_rep, sample& ctx,
     return true;
 }
 
-// After minimization, try dropping ALL y-variables from the conflict. If the
-// remaining input-only conflict is still UNSAT, the repair is more general
-// (independent of intermediate variable values).
+// Drop ALL y-vars from the conflict; if the input-only remainder is still
+// UNSAT the repair generalises (independent of intermediate values).
 void Manthan::try_drop_y_vars(vector<Lit>& conflict, vector<Lit>& assumps,
         const Lit to_repair) {
     bool has_y_vars = false;
@@ -1588,9 +1562,8 @@ bool Manthan::find_conflict(const uint32_t y_rep, sample& ctx,
 }
 
 void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, const Lit to_repair) {
-    // Quick batch removal: try keeping only the to_repair literal and the
-    // first/last halves of the conflict. If UNSAT, we dramatically reduce
-    // the conflict in a single SAT call instead of O(n) individual calls.
+    // Quick batch removal: keep to_repair + a shrinking prefix; if UNSAT we cut
+    // the conflict in one SAT call instead of O(n) individual ones.
     if (conflict.size() > mconf.batch_minim_min) {
         // Try keeping just the first half + to_repair
         for (size_t keep = conflict.size() / 2; keep >= 2; keep /= 2) {
@@ -1617,17 +1590,15 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
     bool removed_any = true;
     set<Lit> dont_remove;
     dont_remove.insert(to_repair);
-    // Cap solver calls during greedy minimization: uncapped, large conflicts
-    // cost O(n^2). Budget scales with size but is bounded; small conflicts
-    // (below the threshold) are minimized without limit.
+    // Cap solver calls during greedy minimization (uncapped it's O(n^2));
+    // small conflicts below the threshold are minimized without limit.
     const uint32_t minim_budget = (conflict.size() > mconf.minim_budget_threshold) ?
         min((uint32_t)(conflict.size() * mconf.minim_budget_mult), mconf.minim_budget_max) :
         std::numeric_limits<uint32_t>::max();
     uint32_t minim_calls = 0;
     while(removed_any) {
-        // Sort to try removing the most beneficial literals first:
-        // 1. y-variables before inputs (removing y-vars reduces dependencies)
-        // 2. Within each category, least-frequent vars first (more likely removable)
+        // Remove most-beneficial literals first: y-vars before inputs (fewer
+        // deps), then least-frequent first (more likely removable).
         std::sort(conflict.begin(), conflict.end(),
             [this](const Lit& a, const Lit& b) {
                 bool a_is_input = is_input[a.var()];
@@ -1770,14 +1741,9 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
     verb_print(4, "Original formula for " << y_rep+1 << ":" << endl << var_to_formula[y_rep]);
     verb_print(4, "Branch formula. When this is true, H is wrong:" << endl << f);
 
-    // ITE(guard, TRUE, old) simplifies to OR(guard, old)
-    // ITE(guard, FALSE, old) simplifies to AND(NOT(guard), old)
-    // These create flatter AIGs with fewer nodes than the generic ITE encoding.
-    //
-    // We std::move(var_to_formula[y_rep]) into the rvalue-overload so the
-    // accumulated-clause vector is reused instead of copied. For hot vars
-    // this used to grow O(N²) in repairs (each repair copies every prior
-    // clause); the move makes per-repair cost O(|f|) instead.
+    // ITE(guard,TRUE,old)=OR(guard,old); ITE(guard,FALSE,old)=AND(!guard,old)
+    // — flatter AIGs than a generic ITE. std::move reuses the clause vector
+    // (rvalue overload), keeping per-repair cost O(|f|) instead of O(N²).
     if (ctx[y_rep] == l_True) {
         var_to_formula[y_rep] = fh->compose_or(f, std::move(var_to_formula[y_rep]), helpers);
     } else {
@@ -2029,9 +1995,8 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
     assert(incorrect_lits.size() == needs_repair.size());
     for(const auto& c: cnf.get_clauses()) s.add_clause(c);
 
-    // Sort incorrect lits by weight (higher weight = higher priority to fix).
-    // Additionally boost weight for variables that were repaired in this session,
-    // as they are known to be important for correctness.
+    // Sort incorrect lits by weight (higher = fix first), boosting vars already
+    // repaired this session since they matter for correctness.
     for (auto& [lit, weight] : incorrect_lits) {
         if (repaired_vars_count[lit.var()] > 0) {
             weight += repaired_vars_count[lit.var()];
@@ -2124,10 +2089,8 @@ void Manthan::add_not_f_x_yhat() {
 void Manthan::inject_formulas_into_solver() {
     SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
 
-    // Replace y with y_hat. uninserted_start skips the already-inserted
-    // prefix: the compose_or/and move overloads keep that prefix invariant,
-    // while the const-ref overloads reset it to 0, so cl.inserted stays the
-    // source of truth on degenerate paths.
+    // Replace y with y_hat. uninserted_start skips the already-inserted prefix;
+    // cl.inserted stays the source of truth on degenerate paths.
     for(auto& k: updated_y_funcs) {
         auto& form = var_to_formula.at(k);
         for (size_t i = form.uninserted_start; i < form.clauses.size(); i++) {
@@ -2488,9 +2451,8 @@ bool Manthan::count_error_formula(mpz_class& out_count) {
     for (const auto& cl : cnf.get_clauses()) clauses.push_back(cl);
     for (const auto& cl : cnf.get_red_clauses()) clauses.push_back(cl);
 
-    // 2. Add ~F(x, y_hat) - negation of F with y -> y_hat substitution
-    // For each clause, create indicator: ind_i <-> clause_i[y->y_hat] is satisfied
-    // Then add: at least one clause is NOT satisfied
+    // 2. Add ~F(x, y_hat): per-clause indicator ind_i <-> clause_i[y->y_hat],
+    // then assert at least one clause is unsatisfied.
     vector<Lit> neg_clause;
     for (const auto& cl_orig : cnf.get_clauses()) {
         // Substitute y -> y_hat

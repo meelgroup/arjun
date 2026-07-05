@@ -321,11 +321,8 @@ DLL_PUBLIC void SimplifiedCNF::get_bve_mapping(SimplifiedCNF& scnf, unique_ptr<C
         var_to_lits_it_replaced[replacement.var()].push_back(orig ^ replacement.sign());
     }
 
-    // Check if any are like [... orig sampl var...] -> replaced by some non-orig sampl var
-    // In these cases, we make SURE the orig sampl var is the one defining the others.
-    // ->> Once we flipped it around, we need to add this new replacing var as if it was "elimed"
-    //     since it's an orig var, that's fine, it can always define other vars.
-    // Annoying as hell.
+    // If an orig sampl var got replaced by a non-orig sampl var, flip it around so
+    // the orig var defines the others, then add the new replacing var as "elimed".
     vector<uint32_t> add_elimed;
     for(const auto& elimed: elimed_vars) {
         const auto orig_replacing = new_to_orig_var.at(elimed);
@@ -413,17 +410,12 @@ DLL_PUBLIC void SimplifiedCNF::add_fixed_values(const vector<Lit>& fixed) {
 DLL_PUBLIC void SimplifiedCNF::map_aigs_to_orig(const vector<aig_lit>& aigs_orig, const uint32_t max_num_vars,
             std::optional<std::reference_wrapper<const std::map<uint32_t, CMSat::Lit>>> back_map) {
     const auto new_to_orig_var = get_new_to_orig_var();
-    // Rebuild each AIG: t_lit nodes are replaced with remapped variables, and
-    // any sign flip introduced by the remapping is propagated onto the edges
-    // that reach those t_lits. Because signs live on edges (aig_lit.neg) and
-    // not on nodes, remapping a variable with a sign flip means producing
-    // fresh aig_lits with XOR'd edge signs — so a full rebuild.
+    // Full rebuild: remap t_lit vars, propagating any sign flip onto edges
+    // (signs live on edges, not nodes).
     std::unordered_map<const AIG*, aig_lit> cache;
 
-    // Iterative post-order rebuild. The cache stores the rebuilt
-    // positive-edge form per source node; outer edge sign is applied
-    // on the way out. Iterative because proof-driven interpolant AIGs
-    // can be deep enough that the recursive form overflows the stack.
+    // Iterative post-order rebuild (recursion can overflow on deep interpolant
+    // AIGs). Cache holds the rebuilt positive-edge form; outer sign applied on exit.
     auto build_node = [&](const AIG* src) {
         aig_lit pos_result;
         if (src->type == AIGT::t_lit) {
@@ -563,14 +555,9 @@ DLL_PUBLIC void SimplifiedCNF::check_synth_funs_randomly() const {
 }
 
 DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
-    // Full semantic correctness check matching test-synth's UNSAT-verify:
-    // build a solver with orig_clauses, then Tseitin-encode each def[v] into
-    // a fresh "y_hat_v" var (distinct from v) with def leaves substituted via
-    // y_hat_w when w is also defined (chain through the def graph). Require
-    // that every defined var's y_hat equals the orig var, under a per-miter
-    // activation lit that we flip on one at a time. If *all* y_hat=v miters
-    // are forced on simultaneously the solver should become UNSAT; if any
-    // single miter flip reveals SAT, that def is semantically wrong.
+    // Full semantic check (test-synth UNSAT-verify style): Tseitin-encode each
+    // def[v] into a fresh y_hat_v (leaves substituted by y_hat_w for defined w),
+    // then check F(x) ∧ ¬F(x, y_hat) is UNSAT. SAT means some def is wrong.
     SATSolver s;
     s.new_vars(defs.size());
     for (const auto& cl : orig_clauses) s.add_clause(cl);
@@ -579,9 +566,8 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
         return -1;
     }
 
-    // Build one solver that has: orig clauses + y_hat_v for every defined v,
-    // with y_hat_v = def[v] where leaves are y_hat_w for defined w and raw
-    // sampl vars otherwise. Record y_hat_v for each defined v.
+    // Solver with orig clauses + a y_hat_v per defined v (= def[v], leaves mapped
+    // to y_hat_w for defined w, raw sampl vars otherwise).
     SATSolver check;
     check.new_vars(defs.size());
     for (const auto& cl : orig_clauses) check.add_clause(cl);
@@ -591,10 +577,7 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
     Lit true_lit;
     bool true_lit_set = false;
 
-    // Topological encode: for each defined v, encode def[v] with leaves
-    // mapped via y_hat[leaf_var] when that var is also defined. This
-    // requires DAG traversal not just per-def trees, to reuse shared
-    // sub-AIGs. Simpler: one Tseitin per def, with a recursive encode.
+    // Recursive Tseitin encode of a def, mapping leaves to y_hat[leaf] when defined.
     std::function<Lit(const aig_lit&, std::map<aig_lit, Lit>&)> enc =
       [&](const aig_lit& a, std::map<aig_lit, Lit>& cache) -> Lit {
         assert(a != nullptr);
@@ -684,10 +667,8 @@ DLL_PUBLIC int SimplifiedCNF::check_synth_funs_sat() const {
         }
     }
 
-    // test-synth-style check: build ¬F(x, y_hat) via a cls-indic trick on a
-    // SEPARATE copy of orig_clauses where every defined orig var is
-    // substituted by its y_hat. Then assert "at least one substituted clause
-    // is unsatisfied". F(x) ∧ ¬F(x, y_hat) UNSAT ⇔ defs correct.
+    // Build ¬F(x, y_hat): substitute defined orig vars by y_hat in each clause,
+    // add a per-clause indicator, and assert at least one substituted clause is unsat.
     vector<Lit> cl_indics;
     for (const auto& cl_orig : orig_clauses) {
         // Substitute defined orig vars with their y_hat.
@@ -1009,9 +990,8 @@ DLL_PUBLIC void SimplifiedCNF::read_aig_defs(ifstream& in) {
     in.read((char*)&num_nodes, sizeof(num_nodes));
     cout << "c o [aig-io] Reading " << num_nodes << " AIG nodes from file." << endl;
 
-    // Read all nodes. Format stores each AND node as (type, var, l_id, l_neg,
-    // r_id, r_neg). For leaves only (type, var) is stored; sign lives on the
-    // referring edge and so is written as part of the def block below.
+    // AND nodes stored as (type, var, l_id, l_neg, r_id, r_neg); leaves as
+    // (type, var) only, their sign living on the referring edge (def block below).
     vector<aig_node_ptr> id_to_node(num_nodes, nullptr);
     for (uint32_t i = 0; i < num_nodes; i++) {
         auto node = make_shared<AIG>();
@@ -1149,9 +1129,8 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_defs(ofstream& out) const {
     cout << "c o [aig-io] Writing " << num_nodes << " AIG nodes to file." << endl;
     out.write((char*)&num_nodes, sizeof(num_nodes));
 
-    // 3. Write each node (postorder: children before parents). AND nodes
-    //    carry their two signed child edges; leaves carry no sign (it moves
-    //    to the referring edge in the defs block below).
+    // 3. Write each node postorder (children first). AND nodes carry their two
+    //    signed child edges; leaf sign moves to the referring edge (defs block below).
     for (auto id : order) {
         AIG* node = id_to_node[id];
         out.write((char*)&id, sizeof(id));
@@ -1250,9 +1229,8 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
         outputs.push_back(v);
     }
 
-    // Fanout count: children from other AND nodes + uses as an output root.
-    // AND nodes with fanout 1 are inlined into their sole user instead of
-    // being emitted as a named wire.
+    // Fanout = uses by other AND nodes + output roots. Fanout-1 AND nodes are
+    // inlined into their sole user rather than emitted as a named wire.
     map<const AIG*, uint32_t> fanout;
     for (const auto* node : topo_order) {
         if (node->type != AIGT::t_and) continue;
@@ -1267,10 +1245,8 @@ DLL_PUBLIC void SimplifiedCNF::write_aig_def_to_verilog(const string& fname) con
     // compound and need parenthesizing when further composed.
     map<const AIG*, string> inline_expr;
     set<const AIG*> inline_compound;
-    // Render a signed edge (aig_lit). The node gives the base expression; the
-    // edge sign prepends '~' or flips the const's polarity. Leaf nodes are
-    // unsigned in the new representation, so their sign lives entirely on the
-    // referring edge.
+    // Render a signed edge (aig_lit): node gives the base expr, edge sign prepends
+    // '~' or flips the const. Leaves are unsigned, so their sign lives on the edge.
     auto edge_expr_raw = [&](const aig_lit& e) -> string {
         if (e->type == AIGT::t_const) return e.neg ? "1'b0" : "1'b1";
         if (e->type == AIGT::t_lit)
@@ -1353,9 +1329,8 @@ DLL_PUBLIC void SimplifiedCNF::read_aig_defs_from_file(const string& fname) {
     in.close();
 }
 
-// In this case, *this is the CNF that has been processed. "s" is the original CNF
-// Notice that *this can have a "defs" that is LARGER than the original CNF
-// Since we can add vars via BVA
+// *this is the processed CNF, "s" the original. *this may have more defs than
+// the original CNF, since BVA can add vars.
 DLL_PUBLIC vector<CMSat::lbool> SimplifiedCNF::extend_sample(const vector<CMSat::lbool>& s, const bool relaxed) const {
     SLOW_DEBUG_DO(assert(get_need_aig() && defs_invariant()));
     assert(s.size() <= defs.size() && "Sample size must be at least the number of variables. BVA could add vars");
@@ -1905,8 +1880,7 @@ DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
     release_assert(sampl_vars.size() <= opt_sampl_vars.size() && "We add to opt_sampl_vars via extend_synth in extend.cpp");
     release_assert(defs.size() >= nvars && "Defs size must be at least nvars, as nvars can only be smaller");
     assert(check_orig_sampl_vars_undefined());
-    // Cycle check must run BEFORE check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars
-    // and check_self_dependency, since those use get_dependent_vars_recursive
+    // Cycle check must run first: the checks below use get_dependent_vars_recursive,
     // which infinite-loops on cycles rather than detecting them.
     assert(check_aig_cycles());
     assert(check_all_opt_sampl_vars_depend_only_on_orig_sampl_vars());
@@ -1918,11 +1892,9 @@ DLL_PUBLIC bool SimplifiedCNF::defs_invariant() const {
     return true;
 }
 
-// Get the orig vars this AIG depends on, recursively expanding defined vars.
-// Iterative (variable-level) DFS that reuses scratch buffers across calls.
-// Dedup uses a per-frame epoch stamp in a shared vector, so merging a child's
-// cached result into the parent is O(size) with no set/RB-tree overhead.
-// Result vectors are unique but NOT sorted; callers only iterate them.
+// Orig vars this AIG depends on, recursively expanding defined vars. Iterative
+// variable-level DFS with reused scratch buffers; dedup via per-frame epoch
+// stamps. Results are unique but NOT sorted (callers only iterate).
 DLL_PUBLIC vector<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const uint32_t orig_v, map<uint32_t, vector<uint32_t>>& cache) const {
     assert(need_aig);
     assert(defined(orig_v));
@@ -1932,10 +1904,8 @@ DLL_PUBLIC vector<uint32_t> SimplifiedCNF::get_dependent_vars_recursive(const ui
     vector<uint32_t> aig_dep_list;
     vector<const AIG*> ag_stack;
 
-    // Per-frame epoch stamp: merge_stamp[u] == frame.epoch means u is already
-    // present in that frame's `merged`. Each new frame gets a fresh epoch, so
-    // an ancestor frame's marks never collide with the current frame's — which
-    // is what the earlier boolean-bitmap implementation got wrong.
+    // Per-frame epoch stamp: merge_stamp[u] == frame.epoch means u is already in
+    // that frame's `merged`. Fresh epoch per frame avoids ancestor-frame collisions.
     vector<uint64_t> merge_stamp;
     uint64_t epoch_counter = 0;
 
@@ -2448,9 +2418,8 @@ DLL_PUBLIC aig_lit AIG::simplify_aig(aig_lit aig, bool do_folding) {
     const size_t original_nodes = count_aig_nodes_fast(aig);
     aig_lit result = aig;
 
-    // Algebraic folding (opt-in): a full new_and rebuild — the make_shared
-    // churn dominates, so it is off by default. CSE below still deduplicates
-    // structurally regardless.
+    // Algebraic folding (opt-in): a full new_and rebuild, off by default as the
+    // make_shared churn dominates. CSE below still dedups structurally regardless.
     if (do_folding) {
         unordered_map<const AIG*, aig_lit> cache;
         result = simplify(result, cache);
@@ -2621,12 +2590,10 @@ aig_lit AIG::simplify_cse(aig_lit aig, map<AIGKey, aig_node_ptr>& cse_map, unord
     return aig_lit(root, aig.neg);
 }
 
-// Rebuild the AIG tree bottom-up, running all algebraic simplifications
-// through the new_and / new_const / new_lit constructors. The cache stores, for
-// every source node, the rebuilt signed-edge form of that node's POSITIVE
-// value; the outer edge sign from the caller is applied on the final return.
-// Iterative post-order via an explicit stack — proof-driven interpolants
-// can be deep enough that a recursive rebuild blows the program stack.
+// Rebuild the AIG bottom-up through new_and/new_const/new_lit (running algebraic
+// simplifications). Cache holds each node's rebuilt positive-edge form; outer sign
+// applied on return. Iterative post-order — recursion can blow the stack on deep
+// interpolant AIGs.
 aig_lit AIG::simplify(aig_lit aig, unordered_map<const AIG*, aig_lit>& cache) {
     if (!aig) return nullptr;
 
@@ -2649,9 +2616,8 @@ aig_lit AIG::simplify(aig_lit aig, unordered_map<const AIG*, aig_lit>& cache) {
             } else {
                 assert(src->type == AIGT::t_and);
                 f.children_done = true;
-                // Pointer to f is invalidated by push_back, so capture
-                // children up-front. Right then left, so left is processed
-                // first when popped (LIFO).
+                // Capture children before push_back invalidates f. Push right
+                // then left so left is processed first (LIFO).
                 const AIG* ln = src->l.get();
                 const AIG* rn = src->r.get();
                 stack.push_back({rn, false});

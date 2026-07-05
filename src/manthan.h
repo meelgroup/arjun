@@ -77,9 +77,8 @@ class Manthan {
         std::set<uint32_t> backward_defined;
         std::set<uint32_t> to_define_full; // to_define + backward_defined
 
-        // Byte-map mirrors of the sets above for O(1) membership tests in hot
-        // paths (sort comparators in minimize_conflict / find_conflict, etc.).
-        // Sized to cnf.nVars(); kept in sync with the sets via rebuild_var_bytemaps().
+        // O(1) membership mirrors of the sets above; sized to cnf.nVars(),
+        // kept in sync via rebuild_var_bytemaps().
         std::vector<uint8_t> is_input;
         std::vector<uint8_t> is_backward_defined;
         void rebuild_var_bytemaps();
@@ -108,15 +107,12 @@ class Manthan {
         bool repair(const uint32_t v, sample& ctx);
         bool find_conflict(const uint32_t y_rep, sample& ctx,
                 std::vector<CMSat::Lit>& conflict);
-        // Populate the aig_dep_is_dep/aig_dep_list scratch (below) with the
-        // input variables that y_rep's current AIG depends on, using dep_cache
-        // when the formula is unchanged. Returns true if any dependency was
-        // found, i.e. the don't-care input filter is usable.
+        // Fill aig_dep_is_dep/aig_dep_list with y_rep's AIG input deps (via
+        // dep_cache when unchanged). Returns true if any dep was found.
         bool compute_aig_dep_set(const uint32_t y_rep);
-        // Try an input-only conflict: assume only the (dependent) input vars +
-        // ~to_repair, leaving earlier y-variables free. On UNSAT-with-to_repair
-        // sets `conflict`/`assumps` and returns true; the conflict is strictly
-        // more general than the full-assumption one. Returns false otherwise.
+        // Try an input-only conflict: assume dependent inputs + ~to_repair,
+        // leaving earlier y-vars free. On UNSAT sets conflict/assumps and
+        // returns true (more general than full-assumption); else false.
         bool try_input_only_conflict(const uint32_t y_rep, const sample& ctx,
                 const CMSat::Lit to_repair, const bool have_aig_deps,
                 std::vector<CMSat::Lit>& conflict,
@@ -140,15 +136,13 @@ class Manthan {
         // still UNSAT (a strictly more general repair).
         void try_drop_y_vars(std::vector<CMSat::Lit>& conflict,
                 std::vector<CMSat::Lit>& assumps, const CMSat::Lit to_repair);
-        // Reusable scratch for AIG::get_dependent_vars inside find_conflict;
-        // avoids per-call heap allocations for bitmap/stack. Visited state
-        // is tracked via AIG::visit_epoch (no scratch needed).
+        // Reusable scratch for AIG::get_dependent_vars in find_conflict;
+        // avoids per-call allocs (visited state via AIG::visit_epoch).
         std::vector<char> aig_dep_is_dep;
         std::vector<uint32_t> aig_dep_list;
         std::vector<const ArjunNS::AIG*> aig_dep_stack;
-        // Memoized dependency list per y_rep. Keyed by the raw AIG pointer of
-        // var_to_formula[y_rep].aig at the time of caching; a pointer mismatch
-        // (happens when perform_repair rewrites the formula) triggers recompute.
+        // Memoized dep list per y_rep, keyed by var_to_formula[y_rep].aig's
+        // pointer; a mismatch (formula rewritten) triggers recompute.
         struct DepCacheEntry {
             const ArjunNS::AIG* aig_lit;
             std::vector<uint32_t> dep_list;
@@ -232,22 +226,15 @@ class Manthan {
         [[nodiscard]] bool check_aig_dependency_cycles() const;
         [[nodiscard]] bool check_transitive_closure_correctness() const;
         [[nodiscard]] bool check_functions_for_y_vars() const;
-        // SLOW_DEBUG helpers: return true iff the current var_to_formula is a
-        // semantically correct synthesis against cnf.get_clauses(). Each
-        // rebuilds a fresh SAT miter and does NOT share state with cex_solver,
-        // so they catch cases where cex_solver's "no CEX" / UNSAT conclusion
-        // is inconsistent with the actual formulas. The _via_clauses variant
-        // uses var_to_formula[y].clauses + .out (exactly the encoding
-        // cex_solver sees); _via_aig uses var_to_formula[y].aig (what
-        // ultimately becomes cnf.defs). If _via_clauses passes but _via_aig
-        // fails, there's a divergence between the CNF and AIG representations.
+        // SLOW_DEBUG: verify var_to_formula is a correct synthesis vs
+        // cnf.get_clauses() with a fresh miter (independent of cex_solver).
+        // _via_clauses checks .clauses+.out (what cex_solver sees); _via_aig
+        // checks .aig (what becomes cnf.defs). Divergence => CNF/AIG mismatch.
         [[nodiscard]] bool check_synth_via_clauses(const std::string& where) const;
         [[nodiscard]] bool check_synth_via_aig(const std::string& where) const;
-        // SLOW_DEBUG: for every y in var_to_formula, prove that f.aig and
-        // f.clauses+f.out denote the same Boolean function. If they don't,
-        // returns a specific y and prints diagnostics. This is the specific
-        // invariant that glues "cex_solver UNSAT means synthesis correct"
-        // to "final .aig export is correct".
+        // SLOW_DEBUG: prove f.aig and f.clauses+f.out denote the same function
+        // for every y; the invariant linking "cex_solver UNSAT = correct" to
+        // "final .aig export is correct".
         [[nodiscard]] bool check_aig_matches_clauses_per_formula(const std::string& where) const;
         std::vector<uint32_t> updated_y_funcs; // y_hats updated during last round of training
 
@@ -277,11 +264,9 @@ class Manthan {
         ArjunNS::SimplifiedCNF cnf;
         ArjunNS::AIGManager aig_mng;
 
-        // Per-var: successful repair count, and the sum of conflict-clause
-        // lengths over those repairs. Both increment together (in lockstep
-        // with each success), so avg = lits_sum / count. Kept separate from
-        // repaired_vars_count[v] (which counts attempts incl. cost-zero
-        // failures).
+        // Per-var successful-repair count and summed conflict-clause length
+        // (avg = lits_sum / count). Separate from repaired_vars_count[v],
+        // which counts attempts incl. cost-zero failures.
         std::vector<uint32_t> conflict_branch_repairs_per_var;
         std::vector<uint64_t> conflict_branch_lits_per_var;
 };

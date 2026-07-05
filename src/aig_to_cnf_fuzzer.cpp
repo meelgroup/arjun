@@ -42,11 +42,8 @@ using std::map;
 
 static AIGManager aig_mng;
 
-// -----------------------------------------------------------------------------
-// Random AIG generation.  The actual generators live in aig_fuzz_gen.h so the
-// aig_rewrite fuzzer sees the same corpus and the same shape distribution.
-// Local wrappers below preserve the previous file-local call sites.
-// -----------------------------------------------------------------------------
+// Random AIG generators live in aig_fuzz_gen.h (shared corpus/shape
+// distribution). Local using-declarations below keep the old call sites.
 
 using fuzz::gen_random_aig;
 using fuzz::gen_manthan_aig;
@@ -104,17 +101,10 @@ static Lit naive_encode(const aig_lit& aig, SATSolver& solver,
 
 // Check A <-> B using SAT. Adds a fresh XOR gadget forcing A != B; UNSAT = equal.
 static bool sat_equivalent(SATSolver& s, Lit a, Lit b) {
-    // Save state; use assumptions so we don't mutate the solver permanently.
-    // But CMSat's add_clause is permanent. Use assumptions via auxiliary lit.
+    // add_clause is permanent, so gate everything on a fresh activation lit:
+    // act -> (a != b), encoded as (¬act∨a∨b) ∧ (¬act∨¬a∨¬b).
     s.new_var();
     Lit act = Lit(s.nVars() - 1, false);
-    // (act) -> (a XOR b)
-    // XOR encoding:
-    //   (¬act ∨ a ∨ b)
-    //   (¬act ∨ ¬a ∨ ¬b)
-    //   ... we only need: if act true, then a and b differ.
-    // Equivalent: (act -> a != b). This holds iff
-    //   (¬act ∨ a ∨ b) ∧ (¬act ∨ ¬a ∨ ¬b)   // at least one is true and at least one is false
     s.add_clause({~act, a, b});
     s.add_clause({~act, ~a, ~b});
     vector<Lit> assumps{act};
@@ -124,11 +114,8 @@ static bool sat_equivalent(SATSolver& s, Lit a, Lit b) {
     return ret == l_False;
 }
 
-// Per-assignment equivalence using brute-force AIG evaluation on the input
-// AIG, versus the *solved* model of the CNF encoding (ensuring the CNF
-// correctly models the AIG). For every input assignment we fix all input
-// vars as assumptions, solve, and check the model's value of the output lit
-// matches the AIG's value on that assignment.
+// Per-assignment check: for each input assignment, fix inputs as assumptions,
+// solve, and verify the CNF model's output lit matches AIG::evaluate.
 static bool cnf_matches_aig(SATSolver& s, const aig_lit& aig, Lit out_lit,
                              uint32_t num_vars)
 {
@@ -146,9 +133,7 @@ static bool cnf_matches_aig(SATSolver& s, const aig_lit& aig, Lit out_lit,
         lbool expected = AIG::evaluate(vals, aig, defs, ca);
         lbool ret = s.solve(&assumps);
         if (ret != l_True) {
-            // The CNF encoding should be satisfiable for *any* input assignment.
-            // If the AIG evaluates to undef (shouldn't happen with all inputs
-            // set), skip. Otherwise this is a bug.
+            // The CNF must be SAT for any full input assignment; UNSAT is a bug.
             cerr << "  cnf_matches_aig: solver UNSAT on assignment mask="
                  << mask << " (expected "
                  << (expected == l_True ? "T" : expected == l_False ? "F" : "U")
@@ -347,9 +332,8 @@ static int run_measure_mode(uint64_t seed, uint64_t num_iters,
                              uint32_t max_vars, uint32_t max_depth,
                              uint32_t max_nodes_cfg)
 {
-    // Pre-generate a fixed set of AIGs -- the measurement must be on an
-    // identical corpus for every feature toggle, otherwise random variance
-    // dwarfs the effect we're trying to see.
+    // Pre-generate a fixed corpus: every feature toggle must measure the same
+    // AIGs, else random variance dwarfs the effect.
     std::mt19937 rng(seed);
     std::vector<aig_lit> aigs;
     std::vector<uint32_t> nvars;
@@ -505,12 +489,9 @@ static int run_bench_rewrite_mode(uint64_t seed, uint64_t num_aigs,
         if (!a) continue;
         CMSat::SATSolver s;
         s.set_verbosity(0);
-        // Pre-allocate enough solver vars for the highest lit var used
-        // by this AIG. AIG::get_dependent_vars does a full DFS collecting
-        // literal vars; it's enough for sizing.
+        // Size solver vars from the highest lit var (full DFS via get_dependent_vars).
         std::set<uint32_t> vars_seen;
-        // Use the sentinel none_var (=UINT32_MAX) as the "self" guard so
-        // the assertion inside get_dependent_vars cannot fire.
+        // Sentinel none_var (UINT32_MAX) as self-guard so the assert can't fire.
         AIG::get_dependent_vars(a, vars_seen,
             std::numeric_limits<uint32_t>::max());
         s.new_vars(vars_seen.empty() ? 1u : *vars_seen.rbegin() + 1);
@@ -597,10 +578,8 @@ int main(int argc, char** argv) {
         const bool deep = (rng() & 1);
 
         aig_lit aig;
-        // Weight the shape distribution so the deep linear ITE chain --
-        // the *actual* manthan Skolem-function shape with aig_depth 200+
-        // -- is the dominant case, but also cover pure k-ary AND/OR chains
-        // (the target for large single-gate fusion).
+        // Weight shapes toward the deep linear ITE chain (the real manthan
+        // Skolem shape), while still covering pure k-ary AND/OR chains.
         uint32_t shape = rng() % 16;
         if (shape < 4) {
             // Deep linear ITE chain (primary manthan workload).
@@ -623,18 +602,16 @@ int main(int argc, char** argv) {
         } else if (shape < 9) {
             aig = gen_chain_aig(aig_mng, rng, num_vars, 5 + rng() % 25);
         } else if (shape < 11) {
-            // Pure big-AND chain of distinct literal inputs: canonical target
-            // for k-ary AND fusion. Length 10..800 to also exercise the width
-            // cap path.
+            // Pure big-AND chain of distinct lits: canonical k-ary AND fusion
+            // target. Length 10..800 also exercises the width cap.
             uint32_t len = 10 + rng() % 790;
             aig = gen_pure_and_chain(aig_mng, rng, num_vars, len);
         } else if (shape < 13) {
             uint32_t len = 10 + rng() % 790;
             aig = gen_pure_or_chain(aig_mng, rng, num_vars, len);
         } else if (shape < 14) {
-            // Balanced AND tree: same semantics as a pure big-AND but
-            // built bottom-up, so the encoder has to flatten through internal
-            // AND nodes.
+            // Balanced AND tree: pure big-AND built bottom-up, forcing the
+            // encoder to flatten through internal AND nodes.
             uint32_t len = 8 + rng() % 500;
             aig = gen_balanced_and_tree(aig_mng, rng, num_vars, len);
         } else if (shape < 15) {

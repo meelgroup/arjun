@@ -1,28 +1,12 @@
 /*
  Arjun - Minimum-clause CNF encoding for small truth tables.
 
- Given the truth table of a k-input Boolean function f (k ≤ 4), compute the
- minimum-clause CNF encoding of `g ↔ f(x₀, …, x_{k-1})`.
-
- This backs the cut-based CNF path in AIGToCNF: once a subtree is
- characterised by a (leaves, tt) pair, the minimum clause set for `g ↔ f`
- replaces whatever pairwise/Tseitin clauses the pattern path would emit.
-
- Minimum CNF for g ↔ f splits into:
-   • Clauses enforcing g → f: one clause per prime-implicant cover of the
-     on-set of f. Each prime π becomes `(¬x_i)_{for x_i set in π} ∨ g ...` —
-     but here we want CNF, so we translate differently: each prime implicant
-     of ¬f becomes a clause of g (covers off-minterms).
-   • Clauses enforcing f → g: each prime implicant of f becomes a clause of
-     ¬g (covers on-minterms).
-
- The minimum-cover-of-primes problem is NP-hard in general; for k ≤ 4 we
- solve it exactly by brute force over subsets.
-
- Implemented as a header-only cache keyed on (num_inputs, tt). The cache is
- populated lazily and is thread-safe under `std::call_once` if the caller
- needs concurrency — the current AIGToCNF is single-threaded per encoder so
- we keep it lock-free.
+ Given the truth table of a k-input Boolean function f, compute the
+ minimum-clause CNF for `g ↔ f`. Backs AIGToCNF's cut-based path: a subtree
+ characterised by (leaves, tt) uses this in place of pairwise/Tseitin clauses.
+ f→g clauses come from prime implicants of the on-set, g→f from the off-set;
+ min-cover of primes is exact brute force (greedy fallback when too costly).
+ Header-only, lazily-populated cache keyed on (num_inputs, tt).
 
  Copyright (c) 2020, Mate Soos. MIT License.
  */
@@ -36,10 +20,8 @@
 
 namespace ArjunNS::cut_cnf {
 
-// A clause is encoded as two bit-masks over k ≤ 4 inputs:
-//   present[i] = 1 iff input i appears in the clause
-//   sign[i]    = 1 iff input i appears negated in the clause
-// Plus a "g sign": 0 → clause contains +g, 1 → clause contains ¬g.
+// A clause = two bit-masks over the k inputs (present[i], sign[i]) plus a
+// g-sign (0 → +g, 1 → ¬g). See field comments below.
 struct Clause {
     uint8_t present; // bit i: x_i present
     uint8_t sign;    // bit i: x_i appears negated (requires present[i]=1)
@@ -51,14 +33,9 @@ struct MinCnf {
     uint32_t num_inputs = 0;
 };
 
-// ---------------------------------------------------------------------------
-// Quine-McCluskey: find all prime implicants of the boolean function whose
-// on-minterms are the 1-bits of `on_mask`. Implicants are encoded as
-// (value, dontcare): for input i,
-//   dontcare bit i = 1 → input irrelevant in this implicant
-//   value bit i    = literal value if not dontcare
-// num_inputs determines the minterm-space size (1 << num_inputs).
-// ---------------------------------------------------------------------------
+// Quine-McCluskey: all prime implicants of the function whose on-minterms are
+// the 1-bits of `on_mask`. Implicant = (value, dontcare): dontcare bit i set
+// means input i is irrelevant, else value bit i is its literal value.
 
 struct Implicant {
     uint8_t value;
@@ -166,11 +143,9 @@ inline std::vector<Implicant> greedy_cover(const std::vector<Implicant>& primes,
     return pick;
 }
 
-// Exact min-cover of `target_minterms` using primes. For k ≤ 4 there are at
-// most 16 minterms and typically ≤ 16 primes; brute force over subsets is
-// fine. For k = 5 a pathological truth table can yield many primes — past a
-// threshold fall back to the (still-correct) greedy cover so we never risk a
-// 2^n blow-up.
+// Exact min-cover of `target_minterms` via brute force over prime subsets.
+// Past a threshold (many primes, e.g. pathological k=5 TTs) fall back to the
+// greedy cover to avoid a 2^n blow-up.
 inline std::vector<Implicant> min_cover(const std::vector<Implicant>& primes,
                                         uint32_t target_minterms)
 {
@@ -245,14 +220,10 @@ inline MinCnf compute_min_cnf(uint32_t num_inputs, uint32_t tt) {
     return out;
 }
 
-// Cache lookup. Key: (num_inputs << 16) | tt_bits.
-//
-// Output-polarity canonicalisation: in the input-edge-neg AIG model the
-// referring edge's sign is free, so f and ~f share one canonical CNF entry.
-// We key the underlying compute on min(tt, ~tt & full_mask); the complement
-// is derived by flipping g_sign on every clause. For 4-input cuts this
-// halves the table (up to 64K TTs → 32K canonical entries) without changing
-// any observable encoder output.
+// Cache lookup. Output-polarity canonicalisation: f and ~f share one entry
+// (the referring AIG edge's sign is free), so we compute on min(tt, ~tt) and
+// derive the complement by flipping every clause's g_sign. Roughly halves the
+// table without changing any observable encoder output.
 inline const MinCnf& min_cnf_for_tt(uint32_t num_inputs, uint32_t tt) {
     static std::unordered_map<uint64_t, MinCnf> cache;
     const uint32_t max_m = 1u << num_inputs;

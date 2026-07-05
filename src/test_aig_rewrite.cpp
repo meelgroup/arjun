@@ -268,9 +268,7 @@ void test_not_through_and() {
 
     AIGRewriter rw;
 
-    // NOT(AND(a,b)) should simplify to NAND(a,b) = AND(a,b,neg=true).
-    // Original shape: outer-NOT node + inner-AND node + 2 lits = 4 nodes.
-    // Expected shape: single AND(neg=true) + 2 lits = 3 nodes.
+    // NOT(AND(a,b)) -> NAND(a,b) = AND(a,b,neg=true): 4 nodes collapse to 3.
     {
         auto and_ab = AIG::new_and(a, b);
         auto not_and = AIG::new_not(and_ab);
@@ -288,9 +286,8 @@ void test_not_through_and() {
         check(count_nodes(r) == 3, "NOT(NAND(a,b)) = AND(a,b) is 3 nodes");
     }
 
-    // NOT(AND(a, AND(b,c))): in the edge-signed model NOT is just an
-    // edge-flip — there is no separate inverter node for the rewriter to
-    // absorb. The rewrite is a no-op on node count; semantics must match.
+    // NOT(AND(a, AND(b,c))): NOT is just an edge-flip (no inverter node), so
+    // node count is unchanged; only semantics must match.
     {
         auto and_bc = AIG::new_and(b, c);
         auto and_abc = AIG::new_and(a, and_bc);
@@ -401,10 +398,8 @@ void test_deep_and_chain_flattening() {
     check(count_nodes(r) <= count_nodes(chain), "deep AND chain node count reduced or equal");
 }
 
-// AND-of-AND contradiction: AND(AND(a,b), AND(~a,c)) must collapse to FALSE
-// in a single simplify_pass — without flatten-based deep_absorb having to
-// run. Tests the 4-fanin complement check that's the basis of the Brummayer
-// algebraic rules.
+// AND-of-AND contradiction: AND(AND(a,b), AND(~a,c)) collapses to FALSE in one
+// simplify_pass. Tests the 4-fanin complement check (Brummayer algebraic rules).
 void test_and_of_and_contradiction() {
     auto a = AIG::new_lit(0);
     auto na = AIG::new_lit(0, true);
@@ -423,9 +418,8 @@ void test_and_of_and_contradiction() {
           "AND-of-AND contradiction bumps complement_elim");
 }
 
-// ITE(s, s, e) = OR(s, e). The encoding is AND(neg=true) over two inner
-// ANDs: AND_T = AND(s, t), AND_E = AND(~s, e). With t==s the OR view
-// collapses to s∨e; this test verifies the rewriter sees that.
+// ITE(s, s, e) = OR(s, e): with the then-arm equal to the selector, the OR view
+// collapses to s∨e. Verifies the rewriter sees that.
 void test_ite_t_eq_sel() {
     auto s = AIG::new_lit(0);
     auto e = AIG::new_lit(1);
@@ -473,9 +467,8 @@ void test_and_or_distrib() {
           "and_or_distrib counter bumped");
 }
 
-// structural_hash_hits: same AND subtree built twice from independent
-// fresh edges should collapse to one node after rewriting (across two AIGs
-// in rewrite_all).
+// structural_hash_hits: the same AND subtree built twice from fresh edges
+// should collapse to one node after rewrite_all across two AIGs.
 void test_structural_hash_hits() {
     auto a = AIG::new_lit(0);
     auto b = AIG::new_lit(1);
@@ -497,9 +490,8 @@ void test_structural_hash_hits() {
           "structural-hash defs[1] functional");
 }
 
-// BCP-lite disjunct drill: AND(a, OR(AND(a, x), d2)) collapses to AND(a, OR(x, d2)).
-// Verifies the disj-drill branch fires and the result is functionally
-// equivalent. Saves at least one AND node vs the unsimplified shape.
+// BCP-lite disjunct drill: AND(a, OR(AND(a, x), d2)) -> AND(a, OR(x, d2)).
+// Verifies the disj-drill branch fires and stays equivalent.
 void test_bcp_disjunct_drill_share() {
     auto a = AIG::new_lit(0);
     auto x = AIG::new_lit(1);
@@ -516,10 +508,8 @@ void test_bcp_disjunct_drill_share() {
           "BCP drill shared bumps absorption");
 }
 
-// Multi-level BCP: AND(a, OR(AND(b, OR(AND(a, x), c)), d)). One BCP fire
-// reduces the deep AND(a, x) under context a to x. A second iteration
-// then exposes the now-smaller inner OR for further folds. Tests that the
-// fixed-point loop is genuinely composing rewrites across iterations.
+// Multi-level BCP: nested AND(a, OR(AND(b, OR(AND(a,x), c)), d)). Needs multiple
+// iterations to compose folds — tests the fixed-point loop across passes.
 void test_bcp_multi_level() {
     auto a = AIG::new_lit(0);
     auto b = AIG::new_lit(1);
@@ -540,15 +530,13 @@ void test_bcp_multi_level() {
     check(functionally_equal(root, r, 5),
           "multi-level BCP functional");
     cout << "  multi-level BCP nodes: " << before << " -> " << count_nodes(r) << endl;
-    // Even if multi-level BCP doesn't shrink, semantic equivalence under all
-    // 32 assignments is the hard correctness property. Count check is a
-    // soft expectation — leave commented for now.
+    // Semantic equivalence over all 32 assignments is the real property;
+    // the node-count check below is a soft expectation.
     check(count_nodes(r) <= before, "multi-level BCP doesn't grow AIG");
 }
 
-// BCP-lite disjunct drill with complement: AND(a, OR(AND(~a, x), d2)) =
-// AND(a, d2). The disjunct with ~a is FALSE under a, so the OR reduces to
-// d2. This is the strongest of the two BCP-lite cases.
+// BCP-lite drill with complement: AND(a, OR(AND(~a, x), d2)) = AND(a, d2) —
+// the ~a disjunct is FALSE under a. Strongest of the two BCP-lite cases.
 void test_bcp_disjunct_drill_complement() {
     auto a = AIG::new_lit(0);
     auto na = AIG::new_lit(0, true);
@@ -569,10 +557,8 @@ void test_bcp_disjunct_drill_complement() {
     check(count_nodes(r) <= 3, "BCP complement drill reduces to AND(a, d)");
 }
 
-// is_or drill-down into AND fanin: AND(AND(a,b), OR(a, c)) should absorb
-// the OR (since a∧b implies a, and a satisfies the OR clause). Verifies
-// the new sub-fanin absorption branch added on top of the existing is_or
-// rules.
+// is_or drill-down into AND fanin: AND(AND(a,b), OR(a,c)) absorbs the OR since
+// a∧b implies a. Verifies the sub-fanin absorption branch.
 void test_is_or_drill_into_and() {
     auto a = AIG::new_lit(0);
     auto b = AIG::new_lit(1);
@@ -593,9 +579,8 @@ void test_is_or_drill_into_and() {
           "AND(AND(a,b), OR(a,c)) reduces to AND(a,b)");
 }
 
-// is_or drill-down with complement: AND(AND(a,b), OR(~a, c)) — under a∧b
-// the ~a disjunct is false, so the OR reduces to c, giving AND(a∧b, c) =
-// AND(a, b, c). Verifies the complement-of-fanin path in the drill-down.
+// is_or drill-down with complement: AND(AND(a,b), OR(~a,c)) — under a∧b the ~a
+// disjunct is false, so OR reduces to c, giving AND(a,b,c). Tests the complement path.
 void test_is_or_drill_into_and_complement() {
     auto a = AIG::new_lit(0);
     auto b = AIG::new_lit(1);
@@ -647,13 +632,10 @@ void test_xor_pattern_recognized() {
           "XOR pattern bumps xor_simplify counter");
 }
 
-// Fixed-point iteration: deep_absorb's flattening enables simplify_pass
-// rules that fire only after several passes. Build a contrived shape that
-// collapses to a literal only with iteration; check the rewriter reaches
-// that fixed point.
+// Fixed-point iteration: deep_absorb flattening enables simplify_pass rules
+// that fire only after several passes. Checks the rewriter reaches the fixed point.
 void test_fixed_point_iteration() {
-    // (a ∧ b) ∨ (a ∧ c) ∨ (a ∧ d) — should collapse to a ∧ (b ∨ c ∨ d) and
-    // ultimately to "a ∧ <smaller>" with iteration. The single-pass result
+    // (a∧b) ∨ (a∧c) ∨ (a∧d) collapses to a ∧ (b∨c∨d); the single-pass result
     // is bigger than the fixed-point result.
     auto a = AIG::new_lit(0);
     auto b = AIG::new_lit(1);
@@ -671,16 +653,13 @@ void test_fixed_point_iteration() {
     AIGRewriter rw;
     auto r = rw.rewrite(or2);
     check(functionally_equal(or2, r, 4), "fixed-point iteration functional");
-    // Fixed-point result should have the shared `a` factored to the top.
-    // Lower bound: 4 lits + 2 ANDs (inner OR, outer AND) = 6 nodes is the
-    // best we'd hope for. Existing iteration achieves it.
+    // Fixed-point result factors shared `a` to the top; best case is
+    // 4 lits + 2 ANDs = 6 nodes, which iteration achieves.
     check(count_nodes(r) < before, "fixed-point shrinks AIG");
 }
 
-// OR-of-OR with shared disjunct: OR(OR(a, b), OR(a, c)) should collapse
-// via the AND-of-AND rule applied to the De Morgan dual (the outer OR is
-// stored as a negative-edge AND, and its two underlying AND children are
-// positive ANDs of negated lits — AND-of-AND rule finds the shared ~a).
+// OR-of-OR with shared disjunct: OR(OR(a,b), OR(a,c)) collapses via the
+// AND-of-AND rule on the De Morgan dual (shared ~a in the negated-lit ANDs).
 void test_or_of_or_sharing() {
     auto a = AIG::new_lit(0);
     auto b = AIG::new_lit(1);
@@ -696,11 +675,8 @@ void test_or_of_or_sharing() {
           "OR-of-OR sharing bumps absorption (via AND-of-AND on De Morgan)");
 }
 
-// OR-of-OR contradiction: OR(OR(a, b), OR(~a, c)) — under any assignment
-// either a or ~a is true, so the outer OR is always TRUE. The De Morgan
-// dual has AND-of-AND with complementary fanins (~a vs a in the underlying
-// ANDs of negated disjuncts), which folds to FALSE; the OR view is then
-// the complement TRUE.
+// OR-of-OR tautology: OR(OR(a,b), OR(~a,c)) is always TRUE (a or ~a holds).
+// De Morgan dual is AND-of-AND with complementary fanins, folding to FALSE.
 void test_or_of_or_tautology() {
     auto a = AIG::new_lit(0);
     auto na = AIG::new_lit(0, true);
@@ -721,10 +697,8 @@ void test_or_of_or_tautology() {
     check(count_nodes(r) == 1, "OR(OR(a,b), OR(~a,c)) folds to const");
 }
 
-// AND-of-AND with shared fanin: AND(AND(a,b), AND(a,c)) factors as
-// AND(a, AND(b,c)) — same node count locally, but the inner AND(b,c) can
-// now be hash-consed against existing AND(b,c) nodes elsewhere, and the
-// top-level shared 'a' is visible to further outer rewrites.
+// AND-of-AND with shared fanin: AND(AND(a,b), AND(a,c)) factors to
+// AND(a, AND(b,c)), exposing AND(b,c) for hash-consing and the shared 'a'.
 void test_and_of_and_sharing() {
     auto a = AIG::new_lit(0);
     auto b = AIG::new_lit(1);

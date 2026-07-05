@@ -84,9 +84,8 @@ inline aig_lit gen_random_aig(ArjunNS::AIGManager& aig_mng,
     return pool[start + rng() % (pool.size() - start)];
 }
 
-// Manthan-style: nested ITE trees whose selectors are ANDs of many literals.
-// Exponential in depth — caller must pick tiny depth (2..6). Doesn't use
-// AIGManager directly but takes one so every generator has the same signature.
+// Manthan-style: nested ITE trees with AND-of-literals selectors. Exponential
+// in depth — caller must pick tiny depth (2..6).
 inline aig_lit gen_manthan_aig(ArjunNS::AIGManager& aig_mng,
                                std::mt19937& rng, uint32_t num_vars,
                                uint32_t depth, uint32_t max_branch_width)
@@ -216,9 +215,8 @@ inline aig_lit gen_pure_or_chain(ArjunNS::AIGManager& /*aig_mng*/,
     return cur;
 }
 
-// Balanced-tree big-AND / big-OR: pairwise bottom-up. log2(len) deep but
-// k-ary semantics. Exercises the encoder's flattening through internal
-// fanout-1 AND nodes.
+// Balanced-tree big-AND/big-OR: pairwise bottom-up, log2(len) deep but k-ary
+// semantics. Exercises flattening through internal fanout-1 AND nodes.
 inline aig_lit gen_balanced_and_tree(ArjunNS::AIGManager& /*aig_mng*/,
                                      std::mt19937& rng, uint32_t num_vars, uint32_t len)
 {
@@ -259,11 +257,9 @@ inline aig_lit gen_balanced_or_tree(ArjunNS::AIGManager& /*aig_mng*/,
     return level[0];
 }
 
-// Pure ITE-tree that exercises MUX3 fusion in aig_to_cnf. Each ITE's else
-// branch is itself an ITE, so the encoder can collapse two adjacent ITEs
-// into a single MUX3 (1 helper + 6 clauses) when fanout permits. Random
-// flips of the polarity of the selectors and arms cover the "selector
-// negative" / "arm sub-AIG" branches of the MUX3 detection too.
+// Pure ITE-tree exercising MUX3 fusion: each ITE's else branch is another ITE,
+// so the encoder collapses adjacent ITEs into a MUX3 when fanout permits. Random
+// selector/arm polarity flips cover the negative-selector / sub-AIG-arm paths.
 inline aig_lit gen_mux3_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
                                   std::mt19937& rng, uint32_t num_vars,
                                   uint32_t depth)
@@ -273,9 +269,8 @@ inline aig_lit gen_mux3_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
     for (uint32_t i = 0; i < depth; i++) {
         // Selector (literal, optionally complemented).
         const CMSat::Lit s(rng() % num_vars, rng() % 2);
-        // Then-arm: literal most of the time, sub-AIG (AND of two lits)
-        // every fifth step — that's exactly the shape MUX3's inner ITE
-        // detection looks for.
+        // Then-arm: usually a literal, but an AND-of-two-lits every fifth step
+        // — exactly the shape MUX3's inner ITE detection looks for.
         aig_lit then_arm;
         if (rng() % 5 == 0) {
             then_arm = AIG::new_and(
@@ -310,10 +305,8 @@ inline aig_lit gen_xor_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
     return cur;
 }
 
-// Shared-fanin diamond: build two non-trivial sub-AIGs that share a common
-// fanin, then AND them. Drives the AND-of-AND sharing rule (factor out the
-// shared fanin) and helps exercise structural-hash hits when the second AND
-// rebuilds against the same shared.
+// Shared-fanin diamond: two sub-AIGs sharing a common fanin, then ANDed.
+// Drives the AND-of-AND sharing rule and structural-hash hits.
 inline aig_lit gen_shared_diamond_aig(ArjunNS::AIGManager& /*aig_mng*/,
                                       std::mt19937& rng, uint32_t num_vars,
                                       uint32_t depth)
@@ -336,10 +329,9 @@ inline aig_lit gen_shared_diamond_aig(ArjunNS::AIGManager& /*aig_mng*/,
     return AIG::new_and(left, right);
 }
 
-// AND/OR with a complementary fanin somewhere in the conjunction. The
-// rewriter should fold the whole thing to FALSE (or TRUE for the OR side).
-// Stresses the complement-pair detection in both simplify_pass and
-// deep_absorb.
+// AND/OR with a complementary fanin buried in the conjunction; rewriter should
+// fold to FALSE (or TRUE). Stresses complement-pair detection in simplify_pass
+// and deep_absorb.
 inline aig_lit gen_contradiction_aig(ArjunNS::AIGManager& /*aig_mng*/,
                                      std::mt19937& rng, uint32_t num_vars,
                                      uint32_t width)
@@ -384,9 +376,8 @@ inline aig_lit gen_chain_aig(ArjunNS::AIGManager& /*aig_mng*/,
     return chain;
 }
 
-// Shape codes returned by pick_shape. The selection weights here are the
-// same ones the aig_to_cnf fuzzer has always used, mirroring the relative
-// frequency of each pattern in the real manthan / arjun workload.
+// Shape codes for pick_shape. Weights mirror the aig_to_cnf fuzzer's, matching
+// each pattern's frequency in the real manthan/arjun workload.
 enum class Shape : uint8_t {
     DeepIteChain,
     DnfCover,

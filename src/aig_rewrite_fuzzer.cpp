@@ -44,9 +44,8 @@ using std::map;
 
 static AIGManager aig_mng;
 
-// Naive Tseitin encoding: one helper per AND node, 3 clauses each; constants
-// via a single unit-clauses helper. Returns the output literal. Identical in
-// spirit to the baseline used by fuzz_aig_to_cnf.
+// Naive Tseitin encoding: one helper per AND node (3 clauses), constants via a
+// unit-clause helper. Returns the output lit. Mirrors fuzz_aig_to_cnf's baseline.
 static Lit naive_encode(const aig_lit& aig, SATSolver& solver,
                         Lit& true_lit, bool& true_lit_set)
 {
@@ -98,9 +97,8 @@ static uint32_t max_var(const aig_lit& aig) {
     return seen.empty() ? 0u : *seen.rbegin();
 }
 
-// Random-value check: pick random input assignments, evaluate both AIGs,
-// expect identical results. Defs are empty — these AIGs have no defined
-// variables, only primary inputs.
+// Random-value check: evaluate both AIGs on random assignments, expect equal.
+// Defs are empty — these AIGs have only primary inputs, no defined vars.
 static bool random_check(const aig_lit& orig, const aig_lit& simplified,
                          uint32_t num_vars, std::mt19937& rng,
                          uint32_t num_trials)
@@ -135,10 +133,8 @@ struct FuzzStats {
     uint64_t nodes_after = 0;
     double total_time_s = 0;
 
-    // Aggregated rule-firing counters across all iters. Used to assert that
-    // each rewrite rule was exercised by the corpus — if a new rule lands
-    // and its counter stays at 0 after N>>0 iters, the fuzzer is silently
-    // not covering it and we want a loud signal.
+    // Aggregated rule-firing counters. If a rule's counter stays 0 after many
+    // iters, the corpus isn't covering it — we want a loud signal.
     uint64_t total_const_prop = 0;
     uint64_t total_complement_elim = 0;
     uint64_t total_idempotent_elim = 0;
@@ -172,9 +168,8 @@ struct FuzzStats {
              << endl;
     }
 
-    // Verify every rule was triggered at least once. Called at end of a run
-    // long enough that zero fires implies the shape corpus or the rule body
-    // is broken. Returns the count of rules that never fired.
+    // Verify every rule fired at least once; zero fires implies a broken corpus
+    // or rule body. Returns the count of rules that never fired.
     int report_unfired_rules() const {
         struct Rule { const char* name; uint64_t count; };
         Rule rules[] = {
@@ -219,10 +214,8 @@ static bool run_one(const aig_lit& orig, uint32_t num_vars,
     aig_lit simp = rw.rewrite(orig);
     if (!simp) simp = orig;
 
-    // 1a. Idempotence: rewriting an already-rewritten AIG must keep it
-    // equivalent and must never make it bigger. A growth here would mean a
-    // rewrite rule is non-confluent / oscillating; a mismatch would mean a
-    // rule is unsound only on already-canonical input.
+    // 1a. Idempotence: re-rewriting must stay equivalent and never grow.
+    // Growth = non-confluent rule; mismatch = rule unsound on canonical input.
     {
         AIGRewriter rw2;
         rw2.do_deep_passes = deep;
@@ -267,9 +260,8 @@ static bool run_one(const aig_lit& orig, uint32_t num_vars,
         return false;
     }
 
-    // 3. SAT-based equivalence. Both AIGs are encoded by the trivial Tseitin
-    // baseline — same variable range for primary inputs (the first num_vars
-    // vars in the solver), fresh helpers per AND node for each.
+    // 3. SAT equivalence: both AIGs encoded by the trivial Tseitin baseline,
+    // sharing the primary-input var range, fresh helpers per AND node.
     SATSolver solver;
     solver.set_verbosity(0);
     uint32_t mv_orig = max_var(orig);

@@ -52,11 +52,9 @@ struct AigKeyHash {
     }
 };
 
-// McMillan labelled interpolation for the partition
-//   A = clauses entirely inside copy 1,   B = everything else.
-// Original A clauses get label = OR of their shared lits, B clauses get TRUE.
-// A resolution pivot on a shared/B-local var → AND of children, on an
-// A-local var → OR.
+// McMillan labelled interpolation for A = clauses inside copy 1, B = the rest.
+// A clauses label = OR of their shared lits, B clauses = TRUE. Pivot on a
+// shared/B-local var → AND of children, on an A-local var → OR.
 struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     InterpTracerMcMillan(const Config& _conf,
         const ArjunNS::AIGManager& _aig_mng,
@@ -75,9 +73,8 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     // Set before each solver->add(0): is the next original clause B-side?
     bool next_is_b = false;
 
-    // Vars with index >= b_local_from occur only in B, so a pivot on them
-    // is AND'd like a shared pivot. Set to orig_num_vars by the doubled-CNF
-    // interpolation to cover the copy-2 and indicator variables.
+    // Vars with index >= b_local_from occur only in B (copy-2 and indicator
+    // vars), so a pivot on them is AND'd like a shared pivot. = orig_num_vars.
     uint32_t b_local_from = UINT32_MAX;
 
     std::unordered_set<uint64_t> b_clause_ids;
@@ -128,15 +125,13 @@ struct InterpTracerMcMillan : public CaDiCaL::Tracer {
     void conclude_unsat(CaDiCaL::ConclusionType type,
             const std::vector<uint64_t>& ids) override;
 
-    // Drop per-solve scratch (labels, and-table, refutation root) between
-    // solves; cls / antec / b_clause_ids outlive a single solve. Must be
-    // called by the caller, not solve_query(): cadical can derive the empty
-    // clause while clauses are still being added, before solve().
+    // Drop per-solve scratch (labels, and-table, refutation root); cls /
+    // antec / b_clause_ids outlive a solve. Caller must call it, not
+    // solve_query(): cadical can derive the empty clause before solve().
     void reset_per_solve();
 
-    // Trace back from the refutation root over the antecedent chains,
-    // build McMillan labels for the reachable proof core, and return the
-    // interpolant AIG (also sets `out`). Null if no refutation was recorded.
+    // Trace back from the refutation root, label the reachable proof core,
+    // and return the interpolant AIG (sets `out`). Null if no refutation.
     ArjunNS::aig_lit build_interpolant();
 
 private:
@@ -150,18 +145,15 @@ private:
             const std::vector<uint64_t>& chain, bool reversed);
 };
 
-// Definition extraction by Craig interpolation over a doubled CNF.
+// Definition extraction by Craig interpolation over a doubled CNF (copy 1 =
+// vars [0,orig_num_vars), copy 2 = [orig_num_vars,2*orig_num_vars), tied by
+// indicators). When test_var is UNSAT under the differs-across-copies
+// assumptions, the McMillan interpolant of A=copy 1 / B=rest over the shared
+// input vars is its definition.
 //
-// extend/backward build a doubled formula: copy 1 = vars [0, orig_num_vars),
-// copy 2 = vars [orig_num_vars, 2*orig_num_vars), tied by indicators. When
-// `test_var` is proven determined by the input vars (UNSAT under the
-// differs-across-copies assumptions), the McMillan interpolant of A = copy 1,
-// B = everything else, over the shared input vars, IS its definition.
-//
-// The doubled CNF is loaded once into a persistent incremental CaDiCaL with
-// InterpTracerMcMillan attached; each generate_interpolant is one
-// assumption-based solve. The tracer's clause maps can't be pruned safely, so
-// solver + tracer are rebuilt every conf.interp_rebuild_every interpolants.
+// Loaded once into a persistent incremental CaDiCaL + InterpTracerMcMillan;
+// each generate_interpolant is one assumption-based solve. The tracer's maps
+// can't be pruned, so both are rebuilt every conf.interp_rebuild_every.
 class Interpolant {
 public:
     Interpolant(const Config& _conf, const uint32_t num_vars) :

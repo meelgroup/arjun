@@ -69,10 +69,8 @@ struct UnateDefEqStats {
     // average winning depth metric.
     uint64_t winning_depth_sum = 0;
     uint64_t winning_depth_max = 0;
-    // Of `hits`, how many had the winning L in the related-inputs prefix
-    // (i.e. an input sharing at least one clause with `test`). The
-    // remainder (hits - hits_in_related) came from the fall-through tail.
-    // Tells us whether the structural pre-ordering actually pays off.
+    // Of `hits`, how many had the winning L in the related prefix (vs the
+    // fall-through tail) — tells us if the structural pre-ordering pays off.
     uint64_t hits_in_related = 0;
     // Of `hits`, how many used a non-input as the definer L. Counts the
     // payoff of the non-input extension.
@@ -144,10 +142,9 @@ class Unate {
         uint32_t eq_new_defs = 0;
         double eq_my_time = 0.0;                       // wall-clock baseline for verb_print
 
-        // Try to express `test` as a single input literal (test = L or test = ~L),
-        // using the two SAT witnesses from the standard-unate flips
-        // (projected to input vars in input_vals[0/1]). Returns true if a
-        // definition was found and committed to `*cnf_ptr`.
+        // Try to express `test` as a single literal (test = L or test = ~L)
+        // using the two flip witnesses in input_vals[0/1]. Returns true if a
+        // def was found and committed to `*cnf_ptr`.
         bool try_eq_unate_def(uint32_t test);
 
         UnateDefEqStats eq_stats;

@@ -96,10 +96,8 @@ static EncResult encode(const aig_lit& root, uint32_t nvars) {
     s.set_verbosity(0);
     s.new_vars(nvars);
     AIGToCNF<SATSolver> enc(s);
-    // Disable cut-based CNF so n=4 chains surface as k-ary gates here.
-    // The cut encoder would otherwise absorb small (≤4-leaf) cones into
-    // CUT patterns, which is what these tests are explicitly NOT
-    // checking.
+    // Disable cut-based CNF so small (≤4-leaf) chains surface as k-ary gates
+    // instead of being absorbed into CUT patterns.
     enc.set_cut_cnf(false);
     Lit out = enc.encode(root);
     const auto& st = enc.get_stats();
@@ -139,13 +137,9 @@ static void check_single_kand(const char* name, aig_lit root, uint32_t n) {
     }
 }
 
-// After the input-edge-neg refactor an OR chain isn't encoded through a
-// distinct OR path any more. new_or(a, b) is ~new_and(~a, ~b), so an OR
-// tree of N positive literals surfaces as one k-ary AND of width N over
-// the NEGATED leaves, referenced via a negative outer edge. The clause
-// count and helper count are identical to what emit_or_equiv would have
-// produced; only the bucket in the stats moved (kary_and instead of
-// kary_or). The test checks the AND-side bucket here to reflect that.
+// OR chains have no distinct OR path: new_or(a,b) = ~new_and(~a,~b), so an OR
+// tree of N positive lits surfaces as one k-ary AND of width N over negated
+// leaves. Clause/helper counts match emit_or_equiv; only the stats bucket moved.
 static void check_single_kor(const char* name, aig_lit root, uint32_t n) {
     EncResult r = encode(root, n);
     std::cout << name << " (n=" << n << "):"

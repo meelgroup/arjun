@@ -270,9 +270,8 @@ void SynthRunner::run_manthan_strategies(
         if (is_last && strat.overrides.count("max_repairs") == 0)
             mconf.max_repairs = std::numeric_limits<uint32_t>::max();
 
-        // If the previous non-final strategy hit max_repairs without finishing,
-        // reduce the budget for subsequent non-final strategies to avoid wasting
-        // time on strategies that are unlikely to help this instance.
+        // Previous non-final strategy hit max_repairs: shrink the budget for
+        // later non-final strategies unlikely to help this instance.
         if (!is_last && prev_hit_max_repairs) {
             auto orig = mconf.max_repairs;
             mconf.max_repairs = std::max(50u, orig / 4);

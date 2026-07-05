@@ -444,11 +444,9 @@ void Extend::extend_round(SimplifiedCNF& cnf) {
     if (conf.verb >= 4) solver->print_stats();
 }
 
-// Checks that every variable in opt_sampl_vars that is NOT in sampl_vars
-// is functionally determined by sampl_vars given the clauses.
-// The construction doubles the formula and shares sampl_vars across both copies;
-// then for each extra opt_sampl var v, asks: can v differ across two satisfying
-// assignments that agree on all sampl_vars? Should be UNSAT if extend was correct.
+// Checks each opt_sampl var not in sampl_vars is determined by sampl_vars:
+// double the formula sharing sampl_vars, then ask if v can differ across two
+// assignments agreeing on sampl_vars. UNSAT iff extend was correct.
 bool Extend::check_extend(const SimplifiedCNF& cnf) {
     const auto& sampl_vars = cnf.get_sampl_vars();
     const auto& opt_sampl_vars  = cnf.get_opt_sampl_vars();

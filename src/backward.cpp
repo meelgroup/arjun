@@ -504,10 +504,8 @@ vector<uint32_t> Backward::minimize_subset(
     const ArjunNS::SimplifiedCNF& cnf,
     const vector<uint32_t>& candidate)
 {
-    // Mirrors run_minimize's wiring without Minimize's BVE/gauss
-    // preproc and without mutating cnf. fill_solver is inlined to skip
-    // the opt_sampl_vars guard and to override sampling_vars with the
-    // caller's candidate set instead of cnf.get_sampl_vars().
+    // Like run_minimize but no BVE/gauss preproc, no mutating cnf. fill_solver
+    // inlined to skip the opt_sampl_vars guard and use `candidate` as sampling_vars.
     solver->set_verbosity(conf.verb);
     solver->new_vars(cnf.nVars());
     for (const auto& cl : cnf.get_clauses())     solver->add_clause(cl);
@@ -538,9 +536,8 @@ void Backward::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     get_incidence();
     duplicate_problem(cnf);
 
-    // Initially, all of opt_samping_set is known, we do NOT want to minimize those
-    // Instead, all non-sampling-set vars, get definitions for them
-    // in terms of ANY other variables, but NOT in a self-referential way
+    // opt_sampl_set vars are kept as-is; define every other var in terms of any
+    // other variables, but not self-referentially.
     vector<char> unknown_set(orig_num_vars, 0);
     vector<uint32_t> unknown;
     auto [input, to_define, backward_defined] = cnf.get_var_types(conf.verb | verbose_debug_enabled, "start backward_round_synth");

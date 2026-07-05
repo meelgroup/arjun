@@ -48,10 +48,8 @@ Interpolant::~Interpolant() {
     if (solver && tracer) solver->disconnect_proof_tracer(tracer.get());
 }
 
-// Substitute every accumulated indicator equality (v' := v) into a copy of the
-// pristine doubled CNF, then drop tautologies and duplicates. Each merge folds
-// a copy-2 var into copy-1, so the effective CNF shrinks as more vars get
-// defined. Returns the number of merges applied.
+// Apply each indicator equality (v' := v) to a copy of the pristine doubled
+// CNF (folding copy-2 vars into copy-1), drop tautologies/dups. Returns merges.
 uint32_t Interpolant::build_effective_clauses(vector<vector<Lit>>& out_cls) const {
     vector<uint32_t> subst_var(tot_num_vars);
     for (uint32_t i = 0; i < tot_num_vars; i++) subst_var[i] = i;
@@ -220,12 +218,11 @@ aig_lit InterpTracerMcMillan::lit_aig(Lit l) {
     return a;
 }
 
-// new_and + structural hash-consing: if an AND node with the same
-// child edges already exists, reuse it. Equal cones across the proof
-// thus collapse into a shared DAG before simplify_aig ever runs.
+// new_and with structural hash-consing: reuse an existing AND with the same
+// child edges, so equal cones collapse into a shared DAG before simplify_aig.
 aig_lit InterpTracerMcMillan::hash_and(const aig_lit& l, const aig_lit& r) {
-    // Key over the child edges (ordered by nid, then sign), built from the
-    // inputs so we hit the table before new_and allocates.
+    // Key over child edges (ordered by nid, then sign), so we hit the table
+    // before new_and allocates.
     uint64_t lnid = l.node->nid, rnid = r.node->nid;
     bool lneg = l.neg, rneg = r.neg;
     if (std::tie(rnid, rneg) < std::tie(lnid, lneg)) {
@@ -250,10 +247,8 @@ aig_lit InterpTracerMcMillan::hash_or(const aig_lit& l, const aig_lit& r) {
 // OR over the shared (B-visible) literals in `cl` — the McMillan label
 // for an A-side clause. Empty shared set => label FALSE.
 aig_lit InterpTracerMcMillan::or_of_shared_lits(const vector<Lit>& cl) {
-    // Collect the shared literals and fold them in a canonical order:
-    // two A-clauses with the same shared-literal *set* (in any clause
-    // order) then produce the identical OR-AIG, so hash_or's table
-    // shares it instead of building two structurally-equal cones.
+    // Fold shared literals in canonical order so clauses with the same
+    // shared-literal set produce an identical OR-AIG (shared via hash_or).
     vector<Lit> ins;
     ins.reserve(cl.size());
     for (const auto& l : cl) {
@@ -283,16 +278,14 @@ aig_lit InterpTracerMcMillan::or_of_shared_lits(const vector<Lit>& cl) {
 
 void InterpTracerMcMillan::add_original_clause(uint64_t id, bool /*red*/,
         const vector<int>& clause, bool restored) {
-    // A restored clause was already recorded on its first add; cadical
-    // re-announces it after weakening, when next_is_b no longer reflects
-    // its side — so skip the re-record.
+    // Restored clauses are re-announced after weakening with a stale
+    // next_is_b; they were recorded on first add, so skip the re-record.
     if (restored && cls.count(id)) return;
     orig_count++;
     cls[id] = pl_to_lit_cl(clause);
     if (next_is_b) b_clause_ids.insert(id);
-    // The label is *not* computed here: it depends on input_vars, which
-    // a persistent tracer sees grow between solves, and only proof-core
-    // clauses ever need one. See original_label() / build_interpolant().
+    // Label deferred to build_interpolant(): it depends on input_vars (which
+    // grow between solves) and only proof-core clauses ever need one.
     VERBOSE_DEBUG_DO(if (verbose_debug_enabled >= 5) {
         cout << "c o [interp] orig id=" << id
              << (next_is_b ? " B" : " A")
@@ -313,9 +306,8 @@ aig_lit InterpTracerMcMillan::original_label(uint64_t id) {
 }
 
 void InterpTracerMcMillan::reset_per_solve() {
-    // cls / antec / b_clause_ids persist — the clause database outlives a
-    // single incremental solve — but labels and the and-table do not:
-    // both depend on input_vars, which may have grown since last solve.
+    // cls / antec / b_clause_ids persist across solves; labels and the
+    // and-table don't (they depend on input_vars, which may have grown).
     labels.clear();
     and_table.clear();
     empty_id = UINT64_MAX;
@@ -338,9 +330,8 @@ void InterpTracerMcMillan::add_assumption_clause(uint64_t id,
 void InterpTracerMcMillan::conclude_unsat(CaDiCaL::ConclusionType type,
         const vector<uint64_t>& ids) {
     conclusion_type = type;
-    // ASSUMPTIONS: one failing-assumption clause id. CONFLICT: the empty
-    // clause id. (Failing constraints would give several ids, but the
-    // doubled-CNF interpolation uses assumptions only.)
+    // ASSUMPTIONS: failing-assumption clause id. CONFLICT: empty clause id.
+    // (Doubled-CNF interpolation uses assumptions only, so ids[0] suffices.)
     if (!ids.empty()) conclusion_root = ids[0];
 }
 
@@ -348,9 +339,8 @@ void InterpTracerMcMillan::add_derived_clause(uint64_t id, bool /*red*/,
         const vector<int>& clause,
         const vector<uint64_t>& antecedents) {
     derived_count++;
-    // Record only — label construction is deferred to build_interpolant()
-    // so we resolve solely the clauses on the proof core (those reachable
-    // from the empty clause), not every derived clause cadical streams.
+    // Record only; label building is deferred to build_interpolant() so we
+    // resolve just the proof core, not every derived clause cadical streams.
     cls[id] = pl_to_lit_cl(clause);
     antec[id] = antecedents;
     if (cls[id].empty() && empty_id == UINT64_MAX) {
@@ -362,9 +352,8 @@ void InterpTracerMcMillan::add_derived_clause(uint64_t id, bool /*red*/,
 }
 
 aig_lit InterpTracerMcMillan::build_interpolant() {
-    // Refutation root: the failing-assumption clause for an
-    // assumption-based UNSAT (conclude_unsat reported ASSUMPTIONS),
-    // otherwise the derived empty clause.
+    // Refutation root: failing-assumption clause for ASSUMPTIONS UNSAT,
+    // else the derived empty clause.
     uint64_t root;
     if (conclusion_type == CaDiCaL::ASSUMPTIONS) {
         if (conclusion_root == UINT64_MAX) return nullptr;

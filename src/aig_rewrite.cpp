@@ -155,13 +155,10 @@ aig_lit AIGRewriter::build_or_tree(vector<aig_lit>& children) {
 // constants / idempotent / complementary / local absorption; if the result is
 // a fresh t_and we canonicalise operand order by nid and hash-cons it.
 aig_lit AIGRewriter::make_canonical(const aig_lit& l, const aig_lit& r) {
-    // Fast path: build the canonical key straight from the inputs and probe
-    // the hash before new_and allocates. A genuine AND node stores its
-    // children in the passed order, so this key matches what new_and would
-    // produce — but on a hit we skip the make_shared (and the shared_ptr
-    // destruction of the discarded node), which is the hot case: nearly every
-    // call hits. Fold cases (const/identity/absorption) never store their
-    // input key, so they miss here and fall through to new_and unchanged.
+    // Fast path: probe the hash from the input key before new_and allocates.
+    // On a hit (the hot case) we skip the make_shared. Fold cases
+    // (const/identity/absorption) never stored their input key, so they miss
+    // here and fall through to new_and.
     {
         uint64_t lnid = l->nid, rnid = r->nid;
         bool lneg = l.neg, rneg = r.neg;
@@ -299,8 +296,7 @@ aig_lit AIGRewriter::try_resolve_distribute(const aig_lit& l, const aig_lit& r) 
 aig_lit AIGRewriter::simplify_pass(const aig_lit& edge, NodeRebuildMap& cache) {
     if (!edge) return aig_lit();
 
-    // Iterative post-order — deep AIGs (e.g. interpolant-derived) overflow
-    // the program stack on recursion.
+    // Iterative post-order: deep AIGs would overflow the stack on recursion.
     struct Frame { const AIG* src; bool children_done; };
     std::vector<Frame> stack;
     stack.reserve(64);
@@ -457,10 +453,9 @@ aig_lit AIGRewriter::absorb_local_and(const aig_lit& l, const aig_lit& r) {
     return make_canonical(l, r);
 }
 
-// Fold constants and complementary pairs in a flat (sorted, deduped) AND child
-// list. Returns true and sets `out` to a constant when the conjunction
-// collapses (complementary pair or a FALSE conjunct ⇒ FALSE; empty ⇒ TRUE).
-// Otherwise drops TRUE conjuncts in place and returns false.
+// Fold constants/complementary pairs in a sorted, deduped AND child list.
+// Returns true with `out` set if it collapses (compl pair or FALSE ⇒ FALSE;
+// empty ⇒ TRUE); else drops TRUE conjuncts in place and returns false.
 bool AIGRewriter::fold_and_children(vector<aig_lit>& children, bool wide,
                                     aig_lit& out) {
     // Complementary pair ⇒ AND = FALSE. Sorted keys put same-node entries
@@ -833,10 +828,8 @@ aig_lit AIGRewriter::rewrite(const aig_lit& aig) {
     const size_t before = AIG::count_aig_nodes_fast(aig);
     aig_lit result = aig;
 
-    // Fixed-point loop: deep_absorb's k-ary flattening can expose new local
-    // patterns and vice versa. With the deep passes off, one pass of local
-    // simplification + hash-consing already reaches the fixed point, so don't
-    // pay for repeat sweeps over the whole (possibly huge) AIG.
+    // Fixed-point loop: deep_absorb and local patterns expose each other. With
+    // deep passes off, one sweep already reaches the fixed point.
     const int max_iters = do_deep_passes ? 4 : 1;
     size_t prev_count = before;
     for (int iter = 0; iter < max_iters; iter++) {

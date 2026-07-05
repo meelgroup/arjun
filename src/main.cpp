@@ -360,10 +360,7 @@ void do_synthesis() {
     cnf.set_need_aig();
     read_in_a_file(input_file, &cnf, etof_conf.all_indep, fg);
     if (etof_conf.all_indep) {
-        // all_indep is set by read_in_a_file when either no `c p show`
-        // projection was given (default is all-indep) or the projection
-        // happens to cover every variable. In both cases there are no
-        // defined vars left to synthesize, so synthesis has no work.
+        // No projection (or it covers all vars) => no defined vars to synth.
         cout << "ERROR: no defined vars to synthesize "
                 "(no projection set, or projection covers all vars)" << endl;
         exit(EXIT_FAILURE);
@@ -379,9 +376,7 @@ void do_synthesis() {
     if (conf.verb)
         cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
 
-    // SLOW_DEBUG: after every pipeline stage, run the semantic SAT check on
-    // the current defs. If any stage produces a wrong def, flag it with the
-    // stage name so it's obvious which pass introduced the bug.
+    // SLOW_DEBUG: SAT-check defs after each stage; names the offending pass.
     [[maybe_unused]] auto check_stage = [&](const std::string& stage) {
         int bad = cnf.check_synth_funs_sat();
         if (bad >= 0) {
@@ -421,10 +416,9 @@ void do_synthesis() {
 
     cnf.rewrite_aigs(conf.verb, conf.deep_rewrite);
     if (use_brute_force_synth && !cnf.synth_done()) {
-        // Brute-force synthesis: enumerate every consistent
-        // X assignment, build per-y decision trees. Declines (returns the
-        // CNF unchanged, synth not done) when the minimized enum set
-        // exceeds the threshold; Manthan below then finishes the job.
+        // Brute-force: enumerate consistent X assignments, build per-y
+        // decision trees. Declines (CNF unchanged) if the enum set is too
+        // large; Manthan below then finishes the job.
         cout << "c o [arjun] Synthesis: brute-force decision trees" << endl;
         cnf = arjun->standalone_brute_force_synth(std::move(cnf), mconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-brute_force_synth.aig");

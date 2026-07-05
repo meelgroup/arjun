@@ -66,9 +66,7 @@ void Unate::synthesis_unate_def(SimplifiedCNF& cnf) {
     build_indicators();
     build_eq_state();
 
-    // Adaptive disable: if equiv probing finds nothing for long,
-    // turn it off for the rest of the run so we don't waste SAT calls
-    // on inputs that obviously won't yield a single-literal definition.
+    // Adaptive disable: turn eq probing off if it stays unproductive.
     eq_enabled = (conf.unate_def_eq != 0);
     eq_attempts_since_last_hit = 0;
 
@@ -153,16 +151,12 @@ void Unate::build_indicators() {
     }
 }
 
-// Populate the equiv-probe scratch state used by try_eq_unate_def:
-// the deterministic input + non-input candidate lists, the position
-// lookup, the per-to-define "related" prefixes (inputs and non-inputs
-// kept separate so iteration is strictly inputs-first), and the
-// generation-counter dedup buffer. Non-input candidates are vars that
-// have an indicator (i.e. neither input nor backward-defined): for
-// every such v the SAT setup forces y_v_F == y_v_F' (assumed-pinned for
-// to-define non-already-tested vars, permanent-unit-pinned for
-// already-tested vars), so a single Y-side literal suffices to fix v
-// on both miter copies — same property inputs already had via sharing.
+// Populate try_eq_unate_def's scratch state: sorted input/non-input
+// candidate lists, position lookup, per-to-define "related" prefixes
+// (inputs/non-inputs kept separate for inputs-first iteration), and the
+// dedup buffer. Non-input candidates are indicator-carrying vars (neither
+// input nor backward-defined); their indicator forces y_v == y_v' on both
+// miter copies, so a single Y-side literal fixes v — as inputs get via sharing.
 void Unate::build_eq_state() {
     auto& cnf = *cnf_ptr;
 
@@ -179,9 +173,8 @@ void Unate::build_eq_state() {
     }
     // Already in sorted order from the index-ascending loop.
 
-    // Dense global position lookup: inputs occupy [0, n_inp), non-inputs
-    // [n_inp, n_inp + n_nonin). NOT_INPUT marks a non-candidate (i.e. a
-    // backward-defined var, since those have no indicator).
+    // Dense position lookup: inputs at [0, n_inp), non-inputs after;
+    // NOT_INPUT marks a non-candidate (backward-defined, no indicator).
     eq_cand_pos.assign(cnf.nVars(), NOT_INPUT);
     for (uint32_t i = 0; i < eq_input_vars_list.size(); i++)
         eq_cand_pos[eq_input_vars_list[i]] = i;
@@ -189,13 +182,10 @@ void Unate::build_eq_state() {
     for (uint32_t i = 0; i < eq_noninput_vars_list.size(); i++)
         eq_cand_pos[eq_noninput_vars_list[i]] = n_inp + i;
 
-    // Per to-define var, inputs and non-inputs co-occurring in clauses,
-    // each ordered by co-occurrence count (descending). Co-occurring
-    // candidates are more likely single-literal definers, so we examine
-    // them before the rest of the candidate list. Two lists kept separate
-    // so the iteration order is strictly [related_in, related_ni,
-    // all_in, all_ni] (user choice: do all related-input work before
-    // touching non-inputs at all).
+    // Per to-define var: co-occurring inputs and non-inputs (ordered by
+    // co-occurrence count desc) — more likely single-literal definers, so
+    // examined first. Kept separate to iterate [related_in, related_ni,
+    // all_in, all_ni] (all related-input work before any non-input).
     eq_related_inputs.assign(cnf.nVars(), {});
     eq_related_noninputs.assign(cnf.nVars(), {});
     vector<uint8_t> in_cl(cnf.nVars(), 0); // scratch, cleared per clause
@@ -215,10 +205,8 @@ void Unate::build_eq_state() {
                 ninps_in_cl.push_back(v);
             }
         }
-        // For each non-input candidate v in the clause, record co-occurring
-        // inputs and co-occurring other non-inputs. Self is excluded from
-        // the non-input list (a clause containing v alone has no peer to
-        // pair against).
+        // For each non-input candidate v, record co-occurring inputs and
+        // other non-inputs (v itself excluded from the non-input list).
         for (uint32_t v : ninps_in_cl) {
             if (!ins_in_cl.empty()) {
                 auto& dst = eq_related_inputs[v];
@@ -235,9 +223,8 @@ void Unate::build_eq_state() {
         for (uint32_t v : ninps_in_cl) in_cl[v] = 0;
     }
 
-    // Reorder each per-var list by co-occurrence count (descending),
-    // ties broken by lower var id for determinism. Same logic for both
-    // input and non-input related lists.
+    // Reorder each per-var list by co-occurrence count desc, ties by
+    // lower var id for determinism.
     auto reorder_by_cooccur = [](vector<uint32_t>& lst) {
         if (lst.empty()) return;
         std::sort(lst.begin(), lst.end());
@@ -298,9 +285,8 @@ bool Unate::process_test_var(const uint32_t test) {
         assumps.emplace_back(ind, false);
     }
     bool found_def = false;
-    // Models from the standard-unate flip attempts, projected down
-    // to just input vars (input_vars_list[i] -> input_vals[flip][i]).
-    // Avoids keeping the full ~2*nVars + helpers SAT model around.
+    // Flip-attempt models, projected to candidate vars only (avoids
+    // keeping the full ~2*nVars + helpers SAT model).
     model_valid[0] = false;
     model_valid[1] = false;
     for (int flip = 0; flip < 2; flip++) {
@@ -328,13 +314,9 @@ bool Unate::process_test_var(const uint32_t test) {
             assumps.pop_back();
             break;
         }
-        // SAT: project the model down to all candidate vars (inputs +
-        // non-input candidates). Reading m[v] gives the Y-side value; for
-        // inputs Y/Y' are shared, for non-input candidates the indicator
-        // assumption forces Y-side == Y'-side, so a single value per cand
-        // is unambiguous. We only ever read these positions when picking
-        // equiv candidates, so keeping the projected vector instead
-        // of the full ~2*nVars + helpers SAT model.
+        // SAT: project the model to all candidate vars. m[v] is the Y-side
+        // value; inputs share Y/Y', non-inputs are pinned equal by their
+        // indicator, so one value per candidate is unambiguous.
         if (ret == l_True) {
             const auto& m = s->get_model();
             const size_t total = eq_input_vars_list.size() + eq_noninput_vars_list.size();
@@ -399,20 +381,13 @@ void Unate::log_pass_summary(const uint32_t to_define_size_before) {
         << " T: " << total_time);
 }
 
-// Try to express `test` as a single literal (test = L or test = ~L) over
-// some candidate var L, by checking — for each candidate L — whether
-// forcing L to v1 makes test forced to a specific value, and similarly
-// for L = !v1. The two flips of the standard test give us free SAT
-// witnesses (projected into `input_vals`); we only have to issue the
-// OPPOSITE flip per L value, i.e. 2 SAT calls per candidate.
-//
-// L can be:
-//   - an input (shared between Y and Y' miter sides), or
-//   - a non-input candidate (to-define or already-tested non-backward-
-//     defined; their indicator pins y_L_F == y_L_F' both during this
-//     probe and permanently after the var is processed). Inputs are
-//     iterated first; non-inputs come only after the input list is
-//     exhausted, gated by `unate_def_eq_noninput`.
+// Try to express `test` as a single literal (test = L or test = ~L) over a
+// candidate L: for each L check whether forcing L=v1 forces test to a value
+// and L=!v1 forces the opposite. The standard flips give free witnesses
+// (in `input_vals`), so only the opposite flip is issued: 2 SAT calls per L.
+// L is an input (shared Y/Y') or a non-input candidate (indicator pins
+// y_L == y_L'); inputs iterated first, non-inputs only after and gated by
+// `unate_def_eq_noninput`.
 bool Unate::try_eq_unate_def(const uint32_t test) {
     auto& cnf = *cnf_ptr;
     const double eq_t0 = cpuTime();
@@ -422,14 +397,9 @@ bool Unate::try_eq_unate_def(const uint32_t test) {
     const bool noninput_enabled = conf.unate_def_eq_noninput != 0;
     const Lit test_orig = new_to_orig.at(test);
 
-    // Build per-test candidate list, in priority order:
-    //   1. inputs sharing a clause with `test` (most likely definers)
-    //   2. non-inputs sharing a clause with `test` (only if enabled)
-    //   3. rest of inputs
-    //   4. rest of non-inputs (only if enabled)
-    // `related_count` covers (1) + (2): hits within it are attributed to
-    // the structural pre-ordering. Non-inputs only get a fair shot after
-    // every input has been considered, matching the "inputs first" intent.
+    // Per-test candidate list in priority order: (1) related inputs,
+    // (2) related non-inputs, (3) rest of inputs, (4) rest of non-inputs
+    // (2/4 only if enabled). `related_count` covers (1)+(2).
     eq_cand_gen++;
     eq_cur_cands.clear();
     for (uint32_t iv : eq_related_inputs[test]) {
@@ -487,20 +457,13 @@ bool Unate::try_eq_unate_def(const uint32_t test) {
             continue;
         }
 
-        // Dep-graph safety for non-input L. cnf.set_def(test, L) puts
-        // test into backward_defined, and Manthan's BW-recompute pass
-        // requires every backward_defined var to bottom out at orig
-        // sampling vars (i.e. inputs in orig-var space) — otherwise the
-        // value of test gets recomputed against a stale leaf and breaks
-        // find_next_repair_var's invariant ("first wrong cannot be a BW
-        // var"). So we accept non-input L only when:
-        //   (i) L is currently defined (no chain through a synth var), and
-        //   (ii) deps_recursive(L_orig) ⊆ orig_sampl_vars (chain bottoms
-        //        out at inputs), and
-        //   (iii) test_orig ∉ deps_recursive(L_orig) — the cycle check.
-        // get_dependent_vars_recursive asserts `defined(l_orig)`, hence
-        // the (i)-then-(ii)/(iii) order. Inputs trivially satisfy all
-        // three (no incoming defs), so the check is a no-op for them.
+        // Dep-graph safety for non-input L: set_def(test, L) makes test
+        // backward_defined, which Manthan requires to bottom out at orig
+        // sampling vars. Accept non-input L only when (i) L is defined,
+        // (ii) deps_recursive(L_orig) ⊆ orig_sampl_vars, and (iii) test_orig
+        // ∉ deps_recursive(L_orig) (cycle check). (i) is checked first since
+        // get_dependent_vars_recursive asserts defined(l_orig). Inputs pass
+        // trivially (no incoming defs).
         const bool l_is_input = input.count(l_var) > 0;
         const Lit l_orig = new_to_orig.at(l_var);
         if (!l_is_input) {
@@ -527,19 +490,13 @@ bool Unate::try_eq_unate_def(const uint32_t test) {
         cand_count++;
         eq_stats.cands_examined++;
 
-        // Under L = v1, the SAT witness M1 had flip=0 SAT
-        // (test_x=0, test_y'=1). Try flip=1 (test_x=1, test_y'=0)
-        // under L=v1 — UNSAT means test is forced to 0 under L=v1.
-        // l_eq_v1/v2 are Y-side lits: for inputs that's also the Y' lit
-        // (shared); for non-input candidates the indicator (in `assumps`
-        // for the to-define case or pinned by a prior unit clause for the
-        // already-tested case) forces y_L = y_L' on both sides.
+        // l_eq_v1/v2 are Y-side lits; for inputs also the Y' lit (shared),
+        // for non-inputs the indicator forces y_L == y_L' on both sides.
         Lit l_eq_v1 = Lit(l_var, v1 != l_True);
         Lit l_eq_v2 = Lit(l_var, v2 != l_True);
 
-        // Probe (test_x=1, test_y'=0) under L=v1: UNSAT here means test
-        // cannot be 1 under L=v1. Combined with M1 (which had test_x=0
-        // SAT under L=v1), this pins test=0 under L=v1.
+        // Probe (test_x=1, test_y'=0) under L=v1: UNSAT (with M1's test_x=0
+        // SAT) pins test=0 under L=v1.
         assumps.push_back(l_eq_v1);
         assumps.emplace_back(test, false);
         assumps.emplace_back(test + nv, true);
@@ -574,19 +531,11 @@ bool Unate::try_eq_unate_def(const uint32_t test) {
         assert(new_to_orig.count(l_var) > 0);
         assert(test_orig.var() != l_orig.var());
 
-        // NEW positive `test` corresponds to ORIG lit
-        //   Lit(test_orig.var(), test_orig.sign()).
-        // We've established NEW test == NEW l_var XOR (!test_equals_l).
-        // Translating to ORIG vars:
-        //   NEW test = ORIG-var-of-test-pos ⊕ test_orig.sign()
-        //   NEW l_var = ORIG-var-of-L-pos ⊕ l_orig.sign()
-        // So ORIG-var-of-test = ORIG-var-of-L XOR
-        //   (l_orig.sign() ⊕ !test_equals_l ⊕ test_orig.sign())
+        // NEW test == NEW l_var XOR !test_equals_l; translating both to
+        // ORIG vars gives the sign below.
         const bool def_neg = l_orig.sign() ^ (!test_equals_l) ^ test_orig.sign();
         cnf.set_def(test_orig.var(), AIG::new_lit(l_orig.var(), def_neg));
-        // New def changed the dep graph; drop cached recursive deps so
-        // later non-input candidates (in this or future tests) see the
-        // updated transitive closure.
+        // New def changed the dep graph; drop cached recursive deps.
         eq_deps_cache.clear();
         eq_new_defs++;
         eq_stats.hits++;
@@ -603,11 +552,9 @@ bool Unate::try_eq_unate_def(const uint32_t test) {
             << (l_is_input ? " input" : " noninput")
             << " T: " << fixed << setprecision(2) << (cpuTime()-eq_my_time));
 
-        // Tighten the SAT solver: equate test on both sides to L (or its
-        // negation). Implies the indicator becoming TRUE, and helps
-        // subsequent tests prove more. For input L the Y- and Y'-side
-        // lits coincide (shared SAT var); for non-input L they're
-        // distinct so we add the equivalence on each side separately.
+        // Tighten the solver: equate test to L (or ~L) on both sides,
+        // helping subsequent tests. Input L shares the Y/Y' lit; non-input
+        // L needs the equivalence added per side.
         {
             const Lit lit_t_x = Lit(test, false);
             const Lit lit_t_y = Lit(test + nv, false);
