@@ -52,7 +52,8 @@ only_dirs = [
     # "out-synth-1652067-2", # inprocessing with cadet
     # "out-synth-1595974-4", # check interpolation
     # "out-synth-1595974-0", # check interpolation
-    "out-synth-1859870-", # AI slop cleanup
+    "out-synth-1859870-0", # AI slop cleanup
+    "out-synth-1595974-0", # old system where interpolant was with picosat and MyTracer
 ]
 # -------------------------------------------------------------
 
@@ -387,6 +388,36 @@ def print_stuck_stage_table(table_todo, fname_like):
         print(f"\n{BLUE}Where UNSOLVED runs got stuck (last_stage): "
               f"{dir} [{ver[:10]}]{RESET}")
         _print_table(["stuck at", "n", "% unsolved"], str_rows)
+    con.close()
+
+
+def print_stuck_top_table(table_todo, fname_like, top=5):
+    """One table per dir/ver: the shortest-running UNSOLVED runs by term time."""
+    if not table_todo:
+        return
+    con = sqlite3.connect(DB)
+    cur = con.cursor()
+    for dir, ver in table_todo:
+        cur.execute(
+            f"SELECT fname, last_stage, timeout_t_nonnull, timeout_mem,"
+            f" signal, mem_out FROM {TABLE}"
+            f" WHERE dirname=? AND {VER_EXPR}=?"
+            f" AND {SOLVE_TIME_EXPR} IS NULL{fname_like}"
+            f" AND timeout_t_nonnull IS NOT NULL"
+            f" ORDER BY timeout_t_nonnull ASC LIMIT {top}", (dir, ver))
+        str_rows = []
+        for fn, stage, t, mem, sig, mo in cur.fetchall():
+            str_rows.append([
+                fn,
+                stage if stage is not None else "startup",
+                f"{t:.1f}" if t is not None else "",
+                f"{mem:.0f}" if mem is not None else "",
+                str(sig) if sig is not None else "",
+                str(mo) if mo is not None else "",
+            ])
+        print(f"\n{BLUE}Top {top} shortest UNSOLVED runs: {dir} [{ver[:10]}]{RESET}")
+        _print_table(["fname", "stuck at", "term(s)", "memMB", "sig", "mem_out"],
+                     str_rows)
     con.close()
 
 
@@ -760,6 +791,7 @@ def main():
 
     print_signal_warnings(table_todo, fname_like)
     print_stuck_stage_table(table_todo, fname_like)
+    print_stuck_top_table(table_todo, fname_like)
     print_summary_tables(table_todo, fname_like, full=args.full)
     print_median_tables(table_todo, fname_like)
     print_instance_stats_table(table_todo, fname_like)
