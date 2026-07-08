@@ -36,6 +36,18 @@ The three fixes split along three orthogonal axes:
 
 ## Option 1 — Periodic per-variable AIG compaction + lazy CNF re-encoding
 
+> **IMPLEMENTED** (2026-07-08) as a *restart* rather than in-place per-var
+> compaction: after `--mrestartevery` repairs (default 5000; also an
+> `mstrategy` param `restart_every`), Manthan exits, `standalone_manthan`
+> takes every to_define var's AIG as the next round's initial guess, and a
+> fresh Manthan round compacts them all together via
+> `AIGRewriter::rewrite_all` and re-encodes via `AIGToCNF`
+> (`Manthan::init_from_guess`). This rewrites ALL accumulated repair-chain
+> structure — not just per-var thresholds — and sidesteps the
+> indicator-lifecycle landmine below entirely, since the fresh round
+> rebuilds cex_solver/repair_solver/indicators from scratch.
+> `max_repairs` stays a cumulative budget across rounds.
+
 ### The idea
 
 Treat the chained AIG as the source of truth and never let it grow
