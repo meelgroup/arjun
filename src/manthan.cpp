@@ -1233,7 +1233,9 @@ SimplifiedCNF Manthan::do_manthan() {
         if (mconf.restart_every != 0 && tot_repaired >= mconf.restart_every) {
             restart_needed = true;
             print_stats("", COLYEL, " Hit restart limit, exiting to compact AIGs + re-enter");
-            return cnf;
+            // Moving is safe: the only post-return use of this Manthan is
+            // export_formula_aigs(), which never touches cnf.
+            return std::move(cnf);
         }
         print_cnf_debug_info(ctx);
         print_needs_repair_vars();
@@ -1271,7 +1273,8 @@ SimplifiedCNF Manthan::do_manthan() {
                 if (mconf.restart_every != 0 && tot_repaired >= mconf.restart_every) {
                     restart_needed = true;
                     print_stats("", COLYEL, " Hit restart limit, exiting to compact AIGs + re-enter");
-                    return cnf;
+                    // Moving is safe: see the restart exit above.
+                    return std::move(cnf);
                 }
                 if (mconf.one_repair_per_loop) break;
             } else {
