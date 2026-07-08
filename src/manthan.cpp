@@ -755,7 +755,6 @@ void Manthan::bve_and_substitute() {
         }
     }
 
-    uint32_t num_done = 0;
     vector<aig_lit> aigs;
     for(const auto& y: y_order) {
         if (!to_define.count(y)) continue;
@@ -820,6 +819,20 @@ void Manthan::bve_and_substitute() {
 
     AIGRewriter rw;
     rw.rewrite_all(aigs, conf.verb);
+    encode_aigs_to_formulas(aigs, start_time);
+
+    verb_print(1, COLYEL "[manthan] BVE and substitute done."
+        << " funs: " << setw(6) << to_define.size()
+        << " funs/s: " << setw(6) << fixed << setprecision(2) << safe_div(to_define.size(),(cpuTime()-start_time))
+        << " T: " << setw(5) << (cpuTime()-start_time)
+        << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
+}
+
+// Encode per-y AIGs into var_to_formula. `aigs` holds one AIG per to_define
+// var, in y_order sequence, with leaves in orig var space. Shared by
+// bve_and_substitute and init_from_guess.
+void Manthan::encode_aigs_to_formulas(const vector<aig_lit>& aigs, const double start_time) {
+    assert(aigs.size() == to_define.size());
 
     // One AIGToCNF encoder per formula. A shared encoder is unsound: cached
     // Lits get reused across formulas (AIGRewriter reshuffles aigs), so .aig
@@ -838,6 +851,7 @@ void Manthan::bve_and_substitute() {
     };
     FormulaClauseSink sink{cex_solver, nullptr, helpers};
 
+    uint32_t num_done = 0;
     uint32_t at = 0;
     for(const auto& y: y_order) {
         if (!to_define.count(y)) continue;
@@ -858,14 +872,14 @@ void Manthan::bve_and_substitute() {
         f.out = enc.encode(aig_yhat);
         uint32_t nv_after = cex_solver.nVars();
         size_t h_after = helpers.size();
-        verb_print(4, "[bve-sub] y=" << (y+1)
+        verb_print(4, "[aig-enc] y=" << (y+1)
                   << " cex_solver.nVars " << nv_before << "->" << nv_after
                   << " helpers " << h_before << "->" << h_after);
         var_to_formula[y] = f;
 
         num_done++;
         if (num_done % 50 == 0 && num_done > 0) {
-            verb_print(1, "[manthan] done with BVE "
+            verb_print(1, "[manthan] done encoding AIGs"
                 << " funs: " << setw(6) << num_done
                 << " funs/s: " << setw(6) << fixed << setprecision(2) << safe_div(num_done,(cpuTime()-start_time))
                 << " T: " << setw(5) << (cpuTime()-start_time)
@@ -875,11 +889,6 @@ void Manthan::bve_and_substitute() {
     }
 
     assert(check_aig_dependency_cycles());
-    verb_print(1, COLYEL "[manthan] BVE and substitute done."
-        << " funs: " << setw(6) << to_define.size()
-        << " funs/s: " << setw(6) << fixed << setprecision(2) << safe_div(num_done,(cpuTime()-start_time))
-        << " T: " << setw(5) << (cpuTime()-start_time)
-        << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
 }
 
 void Manthan::print_stats(const string& txt, const string& color, const string& extra) const {

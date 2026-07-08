@@ -89,6 +89,10 @@ class Manthan {
 
         void const_functions();
         void bve_and_substitute();
+        // Encode per-y AIGs (one per to_define var, in y_order sequence,
+        // leaves in orig var space) into var_to_formula via AIGToCNF.
+        void encode_aigs_to_formulas(const std::vector<ArjunNS::aig_lit>& aigs,
+                const double start_time);
 
         void create_vars_for_y_hats();
         std::vector<uint32_t> incidence;
