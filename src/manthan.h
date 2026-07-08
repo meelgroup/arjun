@@ -55,6 +55,15 @@ class Manthan {
         ArjunNS::SimplifiedCNF do_manthan();
         friend class ManthanLearn;
 
+        // Restart-with-compacted-guess support (mconf.restart_every). The
+        // guess maps each to_define var to its tentative AIG (leaves in orig
+        // var space); it replaces the manthan_base initialization.
+        void set_guess(std::map<uint32_t, ArjunNS::aig_lit>&& g) { guess = std::move(g); }
+        [[nodiscard]] bool restart_requested() const { return restart_needed; }
+        [[nodiscard]] uint32_t get_tot_repaired() const { return tot_repaired; }
+        // AIG snapshot of every to_define formula; feeds the next round's guess.
+        [[nodiscard]] std::map<uint32_t, ArjunNS::aig_lit> export_formula_aigs() const;
+
     private:
         // y is original output var, i.e. to_define
         // y_hat is learned var
@@ -93,6 +102,11 @@ class Manthan {
         // leaves in orig var space) into var_to_formula via AIGToCNF.
         void encode_aigs_to_formulas(const std::vector<ArjunNS::aig_lit>& aigs,
                 const double start_time);
+        // Round >= 2 of the restart loop: compact the guess AIGs with the
+        // rewriter and seed var_to_formula from them.
+        void init_from_guess();
+        std::map<uint32_t, ArjunNS::aig_lit> guess;
+        bool restart_needed = false;
 
         void create_vars_for_y_hats();
         std::vector<uint32_t> incidence;

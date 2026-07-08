@@ -168,8 +168,34 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_get_simplified_cnf(
 
 DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const ManthanConf& mconf)
 {
-    Manthan manthan(arjdata->conf, mconf, std::move(cnf));
-    return manthan.do_manthan();
+    // Restart loop (mconf.restart_every): each Manthan round exits after that
+    // many repairs; we take its per-var AIGs as the next round's initial
+    // guess. The new round compacts them with the AIG rewriter and re-encodes
+    // via AIGToCNF into fresh solvers, shedding the accumulated repair-chain
+    // and Tseitin bloat while keeping all learned progress. max_repairs stays
+    // a cumulative budget across rounds.
+    SimplifiedCNF work = std::move(cnf);
+    std::map<uint32_t, aig_lit> guess;
+    uint64_t repairs_all_rounds = 0;
+    uint32_t round = 0;
+    while (true) {
+        ManthanConf round_mconf = mconf;
+        if (mconf.max_repairs != std::numeric_limits<uint32_t>::max()) {
+            assert(mconf.max_repairs > repairs_all_rounds);
+            round_mconf.max_repairs = mconf.max_repairs - (uint32_t)repairs_all_rounds;
+        }
+        Manthan manthan(arjdata->conf, round_mconf, std::move(work));
+        if (!guess.empty()) manthan.set_guess(std::move(guess));
+        work = manthan.do_manthan();
+        repairs_all_rounds += manthan.get_tot_repaired();
+        if (!manthan.restart_requested()) break;
+        guess = manthan.export_formula_aigs();
+        round++;
+        verb_print2(1, COLYEL "[manthan-restart] round " << round
+            << " done, tot repairs so far: " << repairs_all_rounds
+            << "; compacting " << guess.size() << " AIGs and re-entering");
+    }
+    return work;
 }
 
 DLL_PUBLIC SimplifiedCNF Arjun::standalone_brute_force_synth(SimplifiedCNF&& cnf, const ManthanConf& mconf)

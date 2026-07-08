@@ -891,6 +891,72 @@ void Manthan::encode_aigs_to_formulas(const vector<aig_lit>& aigs, const double 
     assert(check_aig_dependency_cycles());
 }
 
+// Seed var_to_formula from the previous restart round's AIGs: compact them all
+// together with the rewriter, refill dependency_mat from their leaves, then
+// re-Tseitin via AIGToCNF. Replaces the manthan_base initialization, so ALL
+// accumulated repair chains get rewritten, not just the initial guesses.
+void Manthan::init_from_guess() {
+    const double start_time = cpuTime();
+    assert(!guess.empty());
+
+    vector<aig_lit> aigs;
+    aigs.reserve(to_define.size());
+    for(const auto& y: y_order) {
+        if (!to_define.count(y)) continue;
+        assert(guess.count(y) && "guess must cover every to_define var");
+        aigs.push_back(guess.at(y));
+    }
+    assert(aigs.size() == to_define.size());
+
+    const size_t nodes_before = AIG::count_aig_nodes_fast(aigs);
+    AIGRewriter rw;
+    rw.rewrite_all(aigs, conf.verb);
+    const size_t nodes_after = AIG::count_aig_nodes_fast(aigs);
+    verb_print(1, COLYEL "[manthan-restart] guess AIGs compacted: "
+        << nodes_before << " -> " << nodes_after << " nodes ("
+        << fixed << setprecision(1)
+        << (nodes_before ? 100.0 * ((double)nodes_before - (double)nodes_after) / (double)nodes_before : 0.0)
+        << "% less) T: " << setprecision(2) << (cpuTime() - start_time));
+
+    // The guess AIGs' leaves are inputs + earlier y-vars (in the shared,
+    // deterministic order); mirror them into dependency_mat, as
+    // bve_and_substitute does while building its AIGs.
+    uint32_t at = 0;
+    set<uint32_t> deps;
+    for(const auto& y: y_order) {
+        if (!to_define.count(y)) continue;
+        deps.clear();
+        AIG::get_dependent_vars(aigs[at], deps, y);
+        for(const auto& d: deps) {
+            if (input.count(d)) continue;
+            assert(later_in_order(y, d) &&
+                "guess AIG must only depend on earlier vars in the (deterministic) order");
+            set_depends_on(y, d);
+        }
+        at++;
+    }
+
+    encode_aigs_to_formulas(aigs, start_time);
+    guess.clear();
+    verb_print(1, COLYEL "[manthan-restart] guess encoded."
+        << " funs: " << setw(6) << to_define.size()
+        << " T: " << setw(5) << fixed << setprecision(2) << (cpuTime()-start_time)
+        << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
+}
+
+// AIG snapshot of every to_define formula, leaves in orig var space; feeds the
+// next restart round's guess. The AIGs are shared_ptr-owned, so they outlive
+// this Manthan instance.
+std::map<uint32_t, aig_lit> Manthan::export_formula_aigs() const {
+    std::map<uint32_t, aig_lit> ret;
+    for(const auto& y: to_define) {
+        assert(var_to_formula.count(y));
+        assert(var_to_formula.at(y).aig != nullptr);
+        ret[y] = var_to_formula.at(y).aig;
+    }
+    return ret;
+}
+
 void Manthan::print_stats(const string& txt, const string& color, const string& extra) const {
     const double repair_time = cpuTime() - repair_start_time;
     verb_print(1, color << "[manthan]" << txt
@@ -1093,7 +1159,11 @@ SimplifiedCNF Manthan::do_manthan() {
     pre_order_vars();
     fill_var_to_formula_with(backward_defined);
 
-    if (mconf.manthan_base == 0) {
+    if (!guess.empty()) {
+        // Restart round: the previous round's (about-to-be-compacted) AIGs
+        // replace the manthan_base initialization.
+        init_from_guess();
+    } else if (mconf.manthan_base == 0) {
 #ifdef EXTRA_SYNTH
         ManthanLearn learn(*this, conf, mconf);
         learn.full_train();
@@ -1160,6 +1230,11 @@ SimplifiedCNF Manthan::do_manthan() {
             print_stats("", COLRED, " Reached max repairs");
             return cnf;
         }
+        if (mconf.restart_every != 0 && tot_repaired >= mconf.restart_every) {
+            restart_needed = true;
+            print_stats("", COLYEL, " Hit restart limit, exiting to compact AIGs + re-enter");
+            return cnf;
+        }
         print_cnf_debug_info(ctx);
         print_needs_repair_vars();
         SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
@@ -1191,6 +1266,11 @@ SimplifiedCNF Manthan::do_manthan() {
                 consecutive_cost_zero = 0;
                 if (tot_repaired >= mconf.max_repairs) {
                     print_stats("", COLRED, " Reached max repairs");
+                    return cnf;
+                }
+                if (mconf.restart_every != 0 && tot_repaired >= mconf.restart_every) {
+                    restart_needed = true;
+                    print_stats("", COLYEL, " Hit restart limit, exiting to compact AIGs + re-enter");
                     return cnf;
                 }
                 if (mconf.one_repair_per_loop) break;
