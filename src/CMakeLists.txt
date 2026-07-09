@@ -105,6 +105,12 @@ add_executable(arjun-example example.cpp)
 add_executable(fuzz_aig aig_fuzzer.cpp)
 add_executable(fuzz_aig_to_cnf aig_to_cnf_fuzzer.cpp)
 add_executable(fuzz_aig_rewrite aig_rewrite_fuzzer.cpp)
+add_executable(aig_chain_stats aig_chain_stats.cpp)
+target_link_libraries(aig_chain_stats PRIVATE arjun cryptominisat5)
+target_include_directories(aig_chain_stats PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
 
 target_link_libraries(arjun-bin PRIVATE arjun)
 target_link_libraries(arjun-example PRIVATE arjun)

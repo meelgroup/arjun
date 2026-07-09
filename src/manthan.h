@@ -55,9 +55,7 @@ class Manthan {
         ArjunNS::SimplifiedCNF do_manthan();
         friend class ManthanLearn;
 
-        // Restart-with-compacted-guess support (mconf.restart_every). The
-        // guess maps each to_define var to its tentative AIG (leaves in orig
-        // var space); it replaces the manthan_base initialization.
+        // Restart support: guess maps each to_define var to its tentative AIG.
         void set_guess(std::map<uint32_t, ArjunNS::aig_lit>&& g) { guess = std::move(g); }
         [[nodiscard]] bool restart_requested() const { return restart_needed; }
         [[nodiscard]] uint32_t get_tot_repaired() const { return tot_repaired; }
@@ -98,19 +96,15 @@ class Manthan {
 
         void const_functions();
         void bve_and_substitute();
-        // Encode per-y AIGs (one per to_define var, in y_order sequence,
-        // leaves in orig var space) into var_to_formula via AIGToCNF.
+        // Encode per-y AIGs into var_to_formula via AIGToCNF.
         void encode_aigs_to_formulas(const std::vector<ArjunNS::aig_lit>& aigs,
                 const double start_time);
-        // Round >= 2 of the restart loop: compact the guess AIGs with the
-        // rewriter and seed var_to_formula from them.
+        // Compact the guess AIGs and seed var_to_formula from them.
         void init_from_guess();
         std::map<uint32_t, ArjunNS::aig_lit> guess;
         bool restart_needed = false;
-        // Shared-batch AIGToCNF encode of `aigs` (one per to_define var, in
-        // y_order sequence, leaves in orig var space); swaps each y's formula
-        // for {aig, out, no clauses}. Helper defs go to shared_helper_cls and
-        // straight into cex_solver. Does NOT touch updated_y_funcs.
+        // Shared-batch AIGToCNF encode of `aigs`; sets each y's formula to
+        // {aig, out}, helper defs into shared_helper_cls + cex_solver.
         void install_shared_encoded_formulas(const std::vector<ArjunNS::aig_lit>& aigs);
 
         void create_vars_for_y_hats();
@@ -213,11 +207,9 @@ class Manthan {
         // Formulas
         std::unique_ptr<FHolder<MetaSolver2>> fh = nullptr;
         std::map<uint32_t, FHolder<MetaSolver2>::Formula> var_to_formula; // var -> formula
-        // Helper-definition clauses emitted by init_from_guess's shared
-        // (cross-formula) AIGToCNF batch encode; multiple formulas' .out chains
-        // reference these helpers. Inserted into cex_solver once at init and
-        // never discarded, unlike per-formula .clauses which a repair may
-        // replace. Debug miters must add these alongside formula clauses.
+        // Helper defs from the shared AIGToCNF batch, referenced by multiple
+        // formulas' .out chains. Inserted into cex_solver once, never dropped.
+        // Debug miters must add these alongside formula clauses.
         std::vector<std::vector<CMSat::Lit>> shared_helper_cls;
 
         // helper functions
@@ -281,8 +273,7 @@ class Manthan {
         double sampl_time = 0;
         double train_time = 0;
 
-        // Cumulative per-phase CPU time (s) for the repair loop, printed by
-        // print_detailed_stats to locate where repair time actually goes.
+        // Cumulative per-phase CPU time (s) for the repair loop.
         double t_cex_solve = 0;      // get_counterexample
         double t_better_ctx = 0;     // find_better_ctx_{normal,maxsat}
         double t_find_conflict = 0;  // repair_solver solves incl. minimize

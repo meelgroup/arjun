@@ -29,6 +29,10 @@ struct AIGRewriteStats {
     uint64_t xor_simplify = 0;
     uint64_t structural_hash_hits = 0;
     uint64_t total_passes = 0;
+    // Decision-list (repair-chain) compression
+    uint64_t chain_defs = 0;      // defs rebuilt by compress_cube_chains
+    uint64_t chain_cubes = 0;     // cubes canonicalised across those defs
+    uint64_t chain_dup_cubes = 0; // duplicate cubes dropped within runs
     uint64_t nodes_before = 0;
     uint64_t nodes_after = 0;
     double total_time = 0.0;
@@ -91,6 +95,10 @@ private:
 
     aig_lit simplify_pass(const aig_lit& edge, NodeRebuildMap& cache);
     aig_lit hash_cons(const aig_lit& edge, NodeRebuildMap& cache);
+
+    // Rebuild repair-chain cube runs in one global literal order so
+    // hash-consing shares near-duplicate cubes' tails.
+    void compress_cube_chains(std::vector<aig_lit>& defs);
 
     // simplify_pass rule helpers. Return non-null if the rule fires, else
     // default-constructed (no match).

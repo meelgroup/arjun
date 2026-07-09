@@ -184,7 +184,7 @@ void add_arjun_options() {
         "Each non-last strategy runs for 20*max_repairs tries; the last runs unlimited. "
         "Params: max_repairs, samples, min_gain_split, "
         "max_depth, sampler_fixed_conflicts, and other ManthanConf fields.");
-    myopt("--mrestartevery", mconf.restart_every, fc_int,
+    myopt("--mrestart", mconf.restart, fc_int,
         "Exit Manthan every N repairs, compact ALL per-var AIGs via the AIG rewriter, "
         "and re-enter Manthan with the compacted AIGs as the initial guess. 0 = never");
     myopt("--dumprestartaig", conf.dump_restart_aig, fc_string,

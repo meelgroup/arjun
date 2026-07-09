@@ -314,8 +314,7 @@ bool Manthan::ctx_y_hat_correct(const sample& ctx) const {
     }
 
 
-    // Add y_hat definitions. Shared helper defs (init_from_guess) first: the
-    // formulas' .out chains reference them.
+    // Shared helper defs first: the formulas' .out chains reference them.
     for(const auto& cl: shared_helper_cls) s.add_clause(cl);
     vector<Lit> tmp;
     for(const auto& y: y_order) {
@@ -844,9 +843,8 @@ void Manthan::bve_and_substitute() {
         << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
 }
 
-// Encode per-y AIGs into var_to_formula. `aigs` holds one AIG per to_define
-// var, in y_order sequence, with leaves in orig var space. Shared by
-// bve_and_substitute and init_from_guess.
+// Encode per-y AIGs (one per to_define var, y_order sequence, orig var space)
+// into var_to_formula.
 void Manthan::encode_aigs_to_formulas(const vector<aig_lit>& aigs, const double start_time) {
     assert(aigs.size() == to_define.size());
 
@@ -907,10 +905,8 @@ void Manthan::encode_aigs_to_formulas(const vector<aig_lit>& aigs, const double 
     assert(check_aig_dependency_cycles());
 }
 
-// Seed var_to_formula from the previous restart round's AIGs: compact them all
-// together with the rewriter, refill dependency_mat from their leaves, then
-// re-Tseitin via AIGToCNF. Replaces the manthan_base initialization, so ALL
-// accumulated repair chains get rewritten, not just the initial guesses.
+// Seed var_to_formula from the previous round's AIGs: compact, refill
+// dependency_mat, re-Tseitin. Replaces the manthan_base init.
 void Manthan::init_from_guess() {
     const double start_time = cpuTime();
     assert(!guess.empty());
@@ -934,9 +930,7 @@ void Manthan::init_from_guess() {
         << (nodes_before ? 100.0 * ((double)nodes_before - (double)nodes_after) / (double)nodes_before : 0.0)
         << "% less) T: " << setprecision(2) << (cpuTime() - start_time));
 
-    // The guess AIGs' leaves are inputs + earlier y-vars (in the shared,
-    // deterministic order); mirror them into dependency_mat, as
-    // bve_and_substitute does while building its AIGs.
+    // Mirror each guess AIG's leaves into dependency_mat.
     uint32_t at = 0;
     set<uint32_t> deps;
     for(const auto& y: y_order) {
@@ -963,17 +957,10 @@ void Manthan::init_from_guess() {
         << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
 }
 
-// Encode ALL AIGs with ONE shared AIGToCNF batch. The compaction's node
-// reduction is largely cross-formula sharing; per-formula encoders (as in
-// bve_and_substitute) re-duplicate every shared node, so the CNF the
-// cex_solver sees would not shrink at all (measured on amba5b5n: 155k->61k
-// nodes yet 91k->92k clauses). Sharing needs two pieces:
-// (1) the y->y_hat leaf translation must reuse one transform cache across
-//     all roots, else translation itself un-shares the DAG;
-// (2) helper-definition clauses go into shared_helper_cls, owned by
-//     Manthan and inserted once — NOT into any formula's .clauses, which a
-//     later repair may drop (constant_formula) while other formulas still
-//     reference the shared helpers.
+// Encode all AIGs with one shared AIGToCNF batch so cross-formula nodes stay
+// shared. Needs (1) one transform cache across all roots for the y->y_hat leaf
+// translation; (2) helper defs in shared_helper_cls (inserted once), not in
+// any formula's .clauses which a repair may drop.
 void Manthan::install_shared_encoded_formulas(const vector<aig_lit>& aigs) {
     assert(aigs.size() == to_define.size());
     vector<aig_lit> aig_yhats;
@@ -1001,8 +988,7 @@ void Manthan::install_shared_encoded_formulas(const vector<aig_lit>& aigs) {
         [[nodiscard]] uint32_t nVars() const { return solver.nVars(); }
         void add_clause(const std::vector<Lit>& cl) { cls.push_back(cl); }
     };
-    // In-place compactions call this repeatedly: only the new suffix of
-    // shared_helper_cls gets inserted below.
+    // Only the new suffix of shared_helper_cls is inserted below.
     const size_t cls_start = shared_helper_cls.size();
     SharedClauseSink sink{cex_solver, shared_helper_cls, helpers};
     ArjunNS::AIGToCNF<SharedClauseSink> enc(sink);
@@ -1024,9 +1010,8 @@ void Manthan::install_shared_encoded_formulas(const vector<aig_lit>& aigs) {
         cex_solver.add_clause(shared_helper_cls[i]);
 }
 
-// AIG snapshot of every to_define formula, leaves in orig var space; feeds the
-// next restart round's guess. The AIGs are shared_ptr-owned, so they outlive
-// this Manthan instance.
+// AIG snapshot of every to_define formula (orig var space); feeds the next
+// round's guess.
 std::map<uint32_t, aig_lit> Manthan::export_formula_aigs() const {
     std::map<uint32_t, aig_lit> ret;
     for(const auto& y: to_define) {
@@ -1260,8 +1245,7 @@ SimplifiedCNF Manthan::do_manthan() {
     fill_var_to_formula_with(backward_defined);
 
     if (!guess.empty()) {
-        // Restart round: the previous round's (about-to-be-compacted) AIGs
-        // replace the manthan_base initialization.
+        // Restart round: seed from the previous round's AIGs.
         init_from_guess();
     } else if (mconf.manthan_base == 0) {
 #ifdef EXTRA_SYNTH
@@ -1332,11 +1316,10 @@ SimplifiedCNF Manthan::do_manthan() {
             print_stats("", COLRED, " Reached max repairs");
             return cnf;
         }
-        if (mconf.restart_every != 0 && tot_repaired >= mconf.restart_every) {
+        if (mconf.restart != 0 && tot_repaired >= mconf.restart) {
             restart_needed = true;
             print_stats("", COLYEL, " Hit restart limit, exiting to compact AIGs + re-enter");
-            // Moving is safe: the only post-return use of this Manthan is
-            // export_formula_aigs(), which never touches cnf.
+            // Move is safe: post-return only export_formula_aigs() runs.
             return std::move(cnf);
         }
         print_cnf_debug_info(ctx);
@@ -1373,12 +1356,6 @@ SimplifiedCNF Manthan::do_manthan() {
                 if (tot_repaired >= mconf.max_repairs) {
                     print_stats("", COLRED, " Reached max repairs");
                     return cnf;
-                }
-                if (mconf.restart_every != 0 && tot_repaired >= mconf.restart_every) {
-                    restart_needed = true;
-                    print_stats("", COLYEL, " Hit restart limit, exiting to compact AIGs + re-enter");
-                    // Moving is safe: see the restart exit above.
-                    return std::move(cnf);
                 }
                 if (mconf.one_repair_per_loop) break;
             } else {

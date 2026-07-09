@@ -66,6 +66,9 @@ void AIGRewriteStats::print(int verb) const {
          << " dst:" << and_or_distrib
          << " xor:" << xor_simplify
          << " hh:" << structural_hash_hits
+         << " chd:" << chain_defs
+         << " chc:" << chain_cubes
+         << " chdup:" << chain_dup_cubes
          << endl;
 }
 
@@ -371,6 +374,287 @@ aig_lit AIGRewriter::hash_cons(const aig_lit& edge, NodeRebuildMap& cache) {
     return aig_lit(cached.node, cached.neg ^ edge.neg);
 }
 
+// ========== Decision-list (repair-chain) compression ==========
+// Rebuild root-anchored OR-of-cube / AND-of-clause runs with every cube in one
+// global frequency-descending literal order, so hash-consing shares the
+// near-duplicate cubes' tails. Reorders only within a same-op run.
+
+namespace {
+
+// Collect a pure cube (positive AND-tree) into var*2+neg literals; false if
+// not a cube.
+bool peel_cube(const aig_lit& e, vector<uint32_t>& out) {
+    if (!e) return false;
+    std::vector<aig_lit> todo{e};
+    while (!todo.empty()) {
+        aig_lit c = todo.back();
+        todo.pop_back();
+        if (c->type == AIGT::t_lit) {
+            out.push_back(c->var * 2 + (c.neg ? 1u : 0u));
+        } else if (c->type == AIGT::t_and && !c.neg) {
+            todo.push_back(c->l);
+            todo.push_back(c->r);
+        } else {
+            return false;
+        }
+    }
+    return true;
+}
+
+inline bool is_or_edge(const aig_lit& e) {
+    return e.node && e->type == AIGT::t_and && e.neg;
+}
+
+struct ChainRun {
+    bool is_or; // true: OR(cube1, cube2, ..., tail); false: AND(~c1, ~c2, ..., tail)
+    vector<vector<uint32_t>> cubes; // each sorted by literal value
+};
+
+} // namespace
+
+void AIGRewriter::compress_cube_chains(vector<aig_lit>& defs) {
+    // Global literal frequency over all defs (one shared order).
+    std::unordered_map<uint32_t, uint64_t> freq;
+    {
+        const uint64_t epoch = AIG::next_visit_epoch();
+        std::vector<const AIG*> stack;
+        auto count_edge = [&](const aig_lit& e) {
+            if (e.node && e->type == AIGT::t_lit)
+                freq[e->var * 2 + (e.neg ? 1u : 0u)]++;
+        };
+        for (const auto& d : defs) {
+            if (!d) continue;
+            count_edge(d);
+            if (d->type != AIGT::t_and) continue;
+            if (d.get()->visit_epoch == epoch) continue;
+            d.get()->visit_epoch = epoch;
+            stack.push_back(d.get());
+            while (!stack.empty()) {
+                const AIG* n = stack.back();
+                stack.pop_back();
+                for (const aig_lit* ch : {&n->l, &n->r}) {
+                    count_edge(*ch);
+                    const AIG* cn = ch->get();
+                    if (cn && cn->type == AIGT::t_and && cn->visit_epoch != epoch) {
+                        cn->visit_epoch = epoch;
+                        stack.push_back(cn);
+                    }
+                }
+            }
+        }
+    }
+    // rank: most frequent first; ties by literal value for determinism.
+    std::unordered_map<uint32_t, uint32_t> rank;
+    {
+        vector<std::pair<uint64_t, uint32_t>> fr;
+        fr.reserve(freq.size());
+        for (const auto& [l, f] : freq) fr.push_back({f, l});
+        std::sort(fr.begin(), fr.end(), [](const auto& a, const auto& b) {
+            if (a.first != b.first) return a.first > b.first;
+            return a.second < b.second;
+        });
+        for (uint32_t i = 0; i < fr.size(); i++) rank[fr[i].second] = i;
+    }
+    // Literals never seen as an edge get a fallback rank past all real ones.
+    const uint32_t rank_base = rank.size();
+    auto rank_of = [&](uint32_t l) -> uint64_t {
+        auto it = rank.find(l);
+        if (it != rank.end()) return it->second;
+        return (uint64_t)rank_base + l;
+    };
+
+    auto mk_or = [&](const aig_lit& a, const aig_lit& b) {
+        return ~make_canonical(~a, ~b);
+    };
+    // Build a cube right-deep, most frequent literal deepest (shared suffix).
+    auto build_cube = [&](const vector<uint32_t>& lits_by_rank) -> aig_lit {
+        aig_lit acc = cached_lit(lits_by_rank.back() / 2, lits_by_rank.back() & 1);
+        for (size_t i = lits_by_rank.size() - 1; i-- > 0; ) {
+            acc = make_canonical(cached_lit(lits_by_rank[i] / 2, lits_by_rank[i] & 1), acc);
+        }
+        return acc;
+    };
+    // Emit OR(cubes) by greedily factoring the locally most frequent literal
+    // (f = OR(lit AND f_with, f_without)); single cubes use the global rank
+    // order. An empty residual (cube == {lit}) absorbs its with-group.
+    std::function<aig_lit(vector<vector<uint32_t>>&&)> emit_or_of_cubes =
+        [&](vector<vector<uint32_t>>&& cs) -> aig_lit {
+            vector<aig_lit> terms;
+            while (!cs.empty()) {
+                if (cs.size() == 1) {
+                    terms.push_back(build_cube(cs[0]));
+                    break;
+                }
+                std::map<uint32_t, size_t> f;
+                for (const auto& c : cs) for (const uint32_t l : c) f[l]++;
+                uint32_t best = 0;
+                size_t bestf = 0;
+                for (const auto& [l, cnt] : f)
+                    if (cnt > bestf) { bestf = cnt; best = l; }
+                if (bestf <= 1) {
+                    for (const auto& c : cs) terms.push_back(build_cube(c));
+                    break;
+                }
+                vector<vector<uint32_t>> with;
+                vector<vector<uint32_t>> without;
+                bool has_empty = false;
+                for (auto& c : cs) {
+                    auto it = std::find(c.begin(), c.end(), best);
+                    if (it == c.end()) { without.push_back(std::move(c)); continue; }
+                    c.erase(it);
+                    if (c.empty()) has_empty = true;
+                    else with.push_back(std::move(c));
+                }
+                if (has_empty) {
+                    // cube == {best}: absorbs the with-group entirely.
+                    terms.push_back(cached_lit(best / 2, best & 1));
+                } else {
+                    terms.push_back(make_canonical(cached_lit(best / 2, best & 1),
+                                                   emit_or_of_cubes(std::move(with))));
+                }
+                cs = std::move(without);
+            }
+            assert(!terms.empty());
+            aig_lit acc = terms[0];
+            for (size_t i = 1; i < terms.size(); i++) acc = mk_or(acc, terms[i]);
+            return acc;
+        };
+
+    // Only rebuild defs with at least this many cubes.
+    constexpr size_t kMinChainCubes = 16;
+
+    for (auto& def : defs) {
+        if (!def || def->type != AIGT::t_and) continue;
+
+        // Peel root-anchored runs into cube + non-cube units; continue into a
+        // single non-cube unit, stop otherwise.
+        vector<ChainRun> runs;
+        size_t total_cubes = 0;
+        aig_lit tail = def;
+        bool tail_const = false; // tail became a constant (absorbing level)
+        bool tail_const_val = false;
+        while (true) {
+            aig_lit e = tail;
+            if (!e.node || e->type != AIGT::t_and) break;
+            const bool level_or = is_or_edge(e);
+            // Flatten this op level, dissolving same-op internal nodes.
+            vector<uint32_t> cur_lits; // free literals at this level
+            vector<vector<uint32_t>> cubes;
+            vector<aig_lit> others;
+            bool level_const_absorb = false;
+            {
+                const uint64_t epoch = AIG::next_visit_epoch();
+                std::vector<aig_lit> todo{e};
+                e.get()->visit_epoch = epoch;
+                while (!todo.empty()) {
+                    aig_lit n = todo.back();
+                    todo.pop_back();
+                    // n is a same-op internal node edge; its two child units:
+                    const aig_lit c1 = level_or ? ~n->l : n->l;
+                    const aig_lit c2 = level_or ? ~n->r : n->r;
+                    for (const aig_lit& c : {c1, c2}) {
+                        if (!c.node) continue;
+                        if (c->type == AIGT::t_const) {
+                            // OR with TRUE / AND with FALSE absorbs the level.
+                            if (c.neg != level_or) level_const_absorb = true;
+                            continue; // else neutral element
+                        }
+                        if (c->type == AIGT::t_lit) {
+                            cur_lits.push_back(c->var * 2 + (c.neg ? 1u : 0u));
+                            continue;
+                        }
+                        // AND node child
+                        const bool same_op = level_or ? is_or_edge(c)
+                                                      : (!c.neg);
+                        if (same_op) {
+                            if (c.get()->visit_epoch != epoch) {
+                                c.get()->visit_epoch = epoch;
+                                todo.push_back(c);
+                            }
+                            continue;
+                        }
+                        // Opposite-polarity AND child: cube is c on OR
+                        // levels, ~c on AND levels.
+                        vector<uint32_t> cube;
+                        const aig_lit cube_root = level_or ? c : ~c;
+                        if (peel_cube(cube_root, cube)) {
+                            cubes.push_back(std::move(cube));
+                        } else {
+                            others.push_back(c);
+                        }
+                    }
+                }
+            }
+            if (level_const_absorb) {
+                tail_const = true;
+                tail_const_val = level_or; // OR absorbed by TRUE, AND by FALSE
+                break;
+            }
+            // Free literals: width-1 cubes on OR levels, clause cube {~l}
+            // on AND levels.
+            for (const uint32_t l : cur_lits)
+                cubes.push_back({level_or ? l : (l ^ 1u)});
+            if (cubes.empty()) break; // not a chain level; tail stays as-is
+
+            runs.push_back({level_or, std::move(cubes)});
+            total_cubes += runs.back().cubes.size();
+            if (others.empty()) {
+                // Level was exactly cubes: identity tail (OR: FALSE, AND: TRUE)
+                tail_const = true;
+                tail_const_val = !level_or;
+                break;
+            }
+            if (others.size() == 1) {
+                tail = others[0];
+                continue;
+            }
+            // Multiple non-cube units: fold them and stop peeling.
+            aig_lit acc = others[0];
+            for (size_t i = 1; i < others.size(); i++)
+                acc = level_or ? mk_or(acc, others[i])
+                               : make_canonical(acc, others[i]);
+            tail = acc;
+            break;
+        }
+
+        if (total_cubes < kMinChainCubes) continue;
+
+        // Rebuild from the innermost tail outward, preserving run order.
+        aig_lit acc = tail_const ? cached_const(tail_const_val) : tail;
+        size_t dup_dropped = 0;
+        for (size_t ri = runs.size(); ri-- > 0; ) {
+            ChainRun& run = runs[ri];
+            // Canonicalise cubes; drop always-false (l and ~l) and duplicates.
+            std::set<vector<uint32_t>> uniq;
+            for (auto& c : run.cubes) {
+                // Value-sort: dedup repeats, detect always-false (adjacent l, ~l).
+                std::sort(c.begin(), c.end());
+                c.erase(std::unique(c.begin(), c.end()), c.end());
+                bool is_false = false;
+                for (size_t i = 0; i + 1 < c.size(); i++)
+                    if ((c[i] ^ 1u) == c[i+1]) { is_false = true; break; }
+                if (is_false) { dup_dropped++; continue; }
+                // Rarest first, most frequent last (deepest = shared suffix).
+                std::sort(c.begin(), c.end(), [&](uint32_t a, uint32_t b) {
+                    const uint64_t ra = rank_of(a), rb = rank_of(b);
+                    if (ra != rb) return ra > rb;
+                    return a > b;
+                });
+                if (!uniq.insert(c).second) dup_dropped++;
+            }
+            if (uniq.empty()) continue; // run had only false/dup cubes
+            stats.chain_cubes += uniq.size();
+            // std::set iterates in sorted (canonical) order already.
+            vector<vector<uint32_t>> cs(uniq.begin(), uniq.end());
+            const aig_lit s = emit_or_of_cubes(std::move(cs));
+            acc = run.is_or ? mk_or(s, acc) : make_canonical(~s, acc);
+        }
+        stats.chain_dup_cubes += dup_dropped;
+        stats.chain_defs++;
+        def = acc;
+    }
+}
+
 // ========== Main rewrite entry points ==========
 
 aig_lit AIGRewriter::rewrite(const aig_lit& aig) {
@@ -415,6 +699,10 @@ void AIGRewriter::rewrite_all(vector<aig_lit>& defs, int verb) {
     if (verb >= 2)
         cout << "c o [aig-rw] start nodes: " << stats.nodes_before
              << " defs: " << defs.size() << endl;
+
+    // Chain compression first (needs the raw decision-list structure).
+    compress_cube_chains(defs);
+    trace("chain_compress");
 
     // A single simplify sweep suffices; hash_cons last so new ANDs from
     // OR/resolution rewrites also share.

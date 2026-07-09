@@ -168,12 +168,8 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_get_simplified_cnf(
 
 DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const ManthanConf& mconf)
 {
-    // Restart loop (mconf.restart_every): each Manthan round exits after that
-    // many repairs; we take its per-var AIGs as the next round's initial
-    // guess. The new round compacts them with the AIG rewriter and re-encodes
-    // via AIGToCNF into fresh solvers, shedding the accumulated repair-chain
-    // and Tseitin bloat while keeping all learned progress. max_repairs stays
-    // a cumulative budget across rounds.
+    // Restart loop: each round exits after "restart" repairs; its AIGs
+    // seeds the next round (compacted, re-encoded). max_repairs is cumulative.
     SimplifiedCNF work = std::move(cnf);
     std::map<uint32_t, aig_lit> guess;
     uint64_t repairs_all_rounds = 0;
@@ -195,8 +191,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
             << " done, tot repairs so far: " << repairs_all_rounds
             << "; compacting " << guess.size() << " AIGs and re-entering");
         if (!arjdata->conf.dump_restart_aig.empty()) {
-            // Dump the PRE-compaction guess for offline rewrite experiments.
-            // deep_clone: map_aigs_to_orig must not disturb the live guess.
+            // deep_clone so map_aigs_to_orig does not disturb the live guess.
             SimplifiedCNF dcnf = work;
             std::vector<aig_lit> aigs(work.nVars(), nullptr);
             for (const auto& [y, a] : guess) aigs[y] = a;
@@ -207,6 +202,12 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
             dcnf.write_aig_defs_to_file(base + ".aig");
             dcnf.write_aig_def_to_verilog(base + ".v");
         }
+    }
+    if (arjdata->conf.verb >= 1) {
+        cout << COLYEL "[manthan] done. "
+            << " restart rounds: " << round + 1
+            << ", total repairs: " << repairs_all_rounds
+            << endl;
     }
     return work;
 }

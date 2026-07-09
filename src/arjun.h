@@ -1615,15 +1615,7 @@ public:
         int force_bw_equal = 1;
         int inv_learnt = 0;
         uint32_t max_repairs = std::numeric_limits<uint32_t>::max();
-        // Exit Manthan every this many repairs, compact ALL per-var AIGs via
-        // the AIG rewriter, then re-enter Manthan with the compacted AIGs as
-        // the initial guess (fresh solvers, shared AIGToCNF re-encode).
-        // Bounds the repair-chain AIG/CNF blowup. 0 = never restart.
-        // (An in-place variant that swaps formulas inside the running solvers
-        // was tried and measured worse: the superseded circuits/generation
-        // garbage outweigh the kept learned state, even with per-generation
-        // activation-literal retirement.)
-        uint32_t restart_every = 5000;
+        uint32_t restart = 5000;
         int check_repair = 0;
         std::string ganak_binary;
 

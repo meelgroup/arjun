@@ -360,7 +360,7 @@ def gen_mstrategy():
     uint_params = ["samples", "max_depth", "sampler_fixed_conflicts",
                    "min_leaf_size", "const_vote_samples", "stats_every",
                    "detailed_stats_every",
-                   "restart_every",
+                   "restart",
                    "conflict_drop_y_max",
                    "batch_minim_min",
                    "minim_budget_threshold", "minim_budget_max", "minim_budget_mult",
