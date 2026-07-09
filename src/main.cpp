@@ -187,6 +187,10 @@ void add_arjun_options() {
     myopt("--mrestartevery", mconf.restart_every, fc_int,
         "Exit Manthan every N repairs, compact ALL per-var AIGs via the AIG rewriter, "
         "and re-enter Manthan with the compacted AIGs as the initial guess. 0 = never");
+    myopt("--dumprestartaig", conf.dump_restart_aig, fc_string,
+        "Dump the pre-compaction guess AIGs at every Manthan restart to "
+        "<prefix>-restart<N>.aig (binary defs) and .v (verilog), for offline "
+        "rewrite experiments");
     // Order
     myopt("--morder", mconf.manthan_order, fc_int,"Order vars: incidence (0), BVE (2)");
     myopt("--maxsatorder", mconf.maxsat_order, fc_int,"Which order to use to try to fix vars? 0 = norm, 1 = rev");
@@ -311,6 +315,7 @@ void set_config(ArjunNS::Arjun* arj) {
     arj->set_verb(conf.verb);
     arj->set_distill(conf.distill);
     arj->set_specified_order_fname(conf.specified_order_fname);
+    arj->set_dump_restart_aig(conf.dump_restart_aig);
     arj->set_intree(conf.intree);
     arj->set_bve_pre_simplify(conf.bve_pre_simplify);
     arj->set_cms_glob_mult(conf.cms_glob_mult);

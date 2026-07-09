@@ -67,6 +67,10 @@ struct Config {
     // 0 = off.
     uint64_t interp_rebuild_max_confl = 500000;
     std::string debug_synth;
+    // If non-empty, dump the (pre-compaction) guess AIGs at every Manthan
+    // restart to <prefix>-restart<N>.aig (binary defs) and .v (verilog), for
+    // offline inspection / rewrite experiments.
+    std::string dump_restart_aig;
     uint32_t seed = 42;
 };
 

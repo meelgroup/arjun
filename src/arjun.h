@@ -1694,6 +1694,7 @@ public:
     void set_irreg_gate_based(const bool irreg_gate_based);
     void set_no_gates_below(double no_gates_below);
     void set_specified_order_fname(std::string specified_order_fname);
+    void set_dump_restart_aig(std::string dump_restart_aig);
     void set_weighted(const bool);
     void set_extend_max_confl(uint32_t extend_max_confl);
     void set_unate_def_eq(int unate_def_eq);
@@ -1709,6 +1710,7 @@ public:
     //Get config
     [[nodiscard]] uint32_t get_verb() const;
     [[nodiscard]] std::string get_specified_order_fname() const;
+    [[nodiscard]] std::string get_dump_restart_aig() const;
     [[nodiscard]] double get_no_gates_below() const;
     [[nodiscard]] int get_simp() const;
     [[nodiscard]] bool get_distill() const;

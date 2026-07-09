@@ -194,6 +194,19 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
         verb_print2(1, COLYEL "[manthan-restart] round " << round
             << " done, tot repairs so far: " << repairs_all_rounds
             << "; compacting " << guess.size() << " AIGs and re-entering");
+        if (!arjdata->conf.dump_restart_aig.empty()) {
+            // Dump the PRE-compaction guess for offline rewrite experiments.
+            // deep_clone: map_aigs_to_orig must not disturb the live guess.
+            SimplifiedCNF dcnf = work;
+            std::vector<aig_lit> aigs(work.nVars(), nullptr);
+            for (const auto& [y, a] : guess) aigs[y] = a;
+            auto aigs_copy = AIG::deep_clone_vec(aigs);
+            dcnf.map_aigs_to_orig(aigs_copy, work.nVars());
+            const std::string base = arjdata->conf.dump_restart_aig
+                + "-restart" + std::to_string(round);
+            dcnf.write_aig_defs_to_file(base + ".aig");
+            dcnf.write_aig_def_to_verilog(base + ".v");
+        }
     }
     return work;
 }
@@ -2696,6 +2709,7 @@ set_get_macro(bool, ite_gate_based)
 set_get_macro(bool, irreg_gate_based)
 set_get_macro(double, no_gates_below)
 set_get_macro(string, specified_order_fname)
+set_get_macro(string, dump_restart_aig)
 set_get_macro(uint32_t, verb)
 set_get_macro(uint32_t, extend_max_confl)
 set_get_macro(int, unate_def_eq)
