@@ -314,7 +314,9 @@ bool Manthan::ctx_y_hat_correct(const sample& ctx) const {
     }
 
 
-    // Add y_hat definitions
+    // Add y_hat definitions. Shared helper defs (init_from_guess) first: the
+    // formulas' .out chains reference them.
+    for(const auto& cl: shared_helper_cls) s.add_clause(cl);
     vector<Lit> tmp;
     for(const auto& y: y_order) {
         const auto& f = var_to_formula.at(y);
@@ -360,6 +362,15 @@ bool Manthan::ctx_y_hat_correct(const sample& ctx) const {
 
 bool Manthan::check_functions_for_y_vars() const {
     verb_print(4, "[check] START nVars=" << cex_solver.nVars() << " helpers.size=" << helpers.size());
+    for(const auto& cl: shared_helper_cls) {
+        for(const auto& l: cl) {
+            const uint32_t var = l.var();
+            if (input.count(var)) continue;
+            assert((y_hats.count(var) || helpers.count(var)
+                    || var == fh->get_true_lit().var())
+                && "shared helper clause vars must be y_hat/helper/true/input");
+        }
+    }
     for(const auto& [v, f]  : var_to_formula) {
         for(const auto& cl: f.clauses) {
             for(const auto& l: cl.lits) {
@@ -397,6 +408,9 @@ bool Manthan::check_synth_via_clauses(const string& where) const {
 
     // Orig CNF on x + y (0..cnf.nVars()-1) — same var namespace cex_solver uses.
     for (const auto& c : cnf.get_clauses()) s.add_clause(c);
+
+    // Shared helper defs from init_from_guess's batch encode.
+    for (const auto& cl : shared_helper_cls) s.add_clause(cl);
 
     // Add every formula's clauses + couple its y_hat to its .out
     // unconditionally (no indicator).
@@ -599,6 +613,8 @@ bool Manthan::check_aig_matches_clauses_per_formula(const string& where) const {
         for (const auto& [yy, ff] : var_to_formula) {
             for (const auto& cl : ff.clauses) s.add_clause(cl.lits);
         }
+        // Shared helper defs from init_from_guess's batch encode.
+        for (const auto& cl : shared_helper_cls) s.add_clause(cl);
 
         // Tseitin-encode f.aig in the SAME var namespace, mapping leaves
         // exactly as bve_and_substitute/perform_repair do (value over y_hat).
@@ -936,12 +952,76 @@ void Manthan::init_from_guess() {
         at++;
     }
 
-    encode_aigs_to_formulas(aigs, start_time);
+    install_shared_encoded_formulas(aigs);
+    assert(check_aig_dependency_cycles());
+
     guess.clear();
-    verb_print(1, COLYEL "[manthan-restart] guess encoded."
+    verb_print(1, COLYEL "[manthan-restart] guess encoded (shared)."
         << " funs: " << setw(6) << to_define.size()
+        << " shared cls: " << shared_helper_cls.size()
         << " T: " << setw(5) << fixed << setprecision(2) << (cpuTime()-start_time)
         << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
+}
+
+// Encode ALL AIGs with ONE shared AIGToCNF batch. The compaction's node
+// reduction is largely cross-formula sharing; per-formula encoders (as in
+// bve_and_substitute) re-duplicate every shared node, so the CNF the
+// cex_solver sees would not shrink at all (measured on amba5b5n: 155k->61k
+// nodes yet 91k->92k clauses). Sharing needs two pieces:
+// (1) the y->y_hat leaf translation must reuse one transform cache across
+//     all roots, else translation itself un-shares the DAG;
+// (2) helper-definition clauses go into shared_helper_cls, owned by
+//     Manthan and inserted once — NOT into any formula's .clauses, which a
+//     later repair may drop (constant_formula) while other formulas still
+//     reference the shared helpers.
+void Manthan::install_shared_encoded_formulas(const vector<aig_lit>& aigs) {
+    assert(aigs.size() == to_define.size());
+    vector<aig_lit> aig_yhats;
+    aig_yhats.reserve(aigs.size());
+    {
+        std::map<aig_lit, aig_lit> tcache;
+        auto visit = [&](AIGT type, uint32_t var,
+                         const aig_lit* l, const aig_lit* r) -> aig_lit {
+            if (type == AIGT::t_const) return AIG::new_const(true);
+            if (type == AIGT::t_lit)   return AIG::new_lit(map_y_to_y_hat(Lit(var, false)));
+            return AIG::new_and(*l, *r);
+        };
+        for(const auto& a: aigs)
+            aig_yhats.push_back(AIG::transform<aig_lit>(a, visit, tcache));
+    }
+
+    struct SharedClauseSink {
+        MetaSolver2& solver;
+        std::vector<std::vector<Lit>>& cls;
+        std::set<uint32_t>& helpers_set;
+        void new_var() {
+            solver.new_var();
+            helpers_set.insert(solver.nVars() - 1);
+        }
+        [[nodiscard]] uint32_t nVars() const { return solver.nVars(); }
+        void add_clause(const std::vector<Lit>& cl) { cls.push_back(cl); }
+    };
+    // In-place compactions call this repeatedly: only the new suffix of
+    // shared_helper_cls gets inserted below.
+    const size_t cls_start = shared_helper_cls.size();
+    SharedClauseSink sink{cex_solver, shared_helper_cls, helpers};
+    ArjunNS::AIGToCNF<SharedClauseSink> enc(sink);
+    enc.set_true_lit(fh->get_true_lit());
+    const vector<Lit> outs = enc.encode_batch(aig_yhats);
+    assert(outs.size() == aigs.size());
+
+    uint32_t at = 0;
+    for(const auto& y: y_order) {
+        if (!to_define.count(y)) continue;
+        FHolder<MetaSolver2>::Formula f;
+        f.aig = aigs.at(at);
+        f.out = outs.at(at);
+        var_to_formula[y] = f;
+        at++;
+    }
+    // Shared clauses are already in y_hat/input/helper space; insert directly.
+    for(size_t i = cls_start; i < shared_helper_cls.size(); i++)
+        cex_solver.add_clause(shared_helper_cls[i]);
 }
 
 // AIG snapshot of every to_define formula, leaves in orig var space; feeds the
@@ -1083,7 +1163,8 @@ void Manthan::print_detailed_stats() const {
     verb_print(1, COLCYN "[manthan-stats] === AIG STATS ===");
     verb_print(1, COLCYN "[manthan-stats]   total unique AIG nodes: " << total_aig_nodes);
     verb_print(1, COLCYN "[manthan-stats]   max AIG nodes (single var): " << max_aig_nodes);
-    verb_print(1, COLCYN "[manthan-stats]   total formula clauses: " << total_clauses);
+    verb_print(1, COLCYN "[manthan-stats]   total formula clauses: " << total_clauses
+        << " (+ " << shared_helper_cls.size() << " shared helper cls)");
     verb_print(1, COLCYN "[manthan-stats]   cex_solver nVars: " << cex_solver.nVars());
 
     const double loop_t = cpuTime() - repair_start_time;

@@ -107,6 +107,11 @@ class Manthan {
         void init_from_guess();
         std::map<uint32_t, ArjunNS::aig_lit> guess;
         bool restart_needed = false;
+        // Shared-batch AIGToCNF encode of `aigs` (one per to_define var, in
+        // y_order sequence, leaves in orig var space); swaps each y's formula
+        // for {aig, out, no clauses}. Helper defs go to shared_helper_cls and
+        // straight into cex_solver. Does NOT touch updated_y_funcs.
+        void install_shared_encoded_formulas(const std::vector<ArjunNS::aig_lit>& aigs);
 
         void create_vars_for_y_hats();
         std::vector<uint32_t> incidence;
@@ -208,6 +213,12 @@ class Manthan {
         // Formulas
         std::unique_ptr<FHolder<MetaSolver2>> fh = nullptr;
         std::map<uint32_t, FHolder<MetaSolver2>::Formula> var_to_formula; // var -> formula
+        // Helper-definition clauses emitted by init_from_guess's shared
+        // (cross-formula) AIGToCNF batch encode; multiple formulas' .out chains
+        // reference these helpers. Inserted into cex_solver once at init and
+        // never discarded, unlike per-formula .clauses which a repair may
+        // replace. Debug miters must add these alongside formula clauses.
+        std::vector<std::vector<CMSat::Lit>> shared_helper_cls;
 
         // helper functions
         std::string pr(const CMSat::lbool val) const;
