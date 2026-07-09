@@ -47,6 +47,23 @@ The three fixes split along three orthogonal axes:
 > indicator-lifecycle landmine below entirely, since the fresh round
 > rebuilds cex_solver/repair_solver/indicators from scratch.
 > `max_repairs` stays a cumulative budget across rounds.
+>
+> **Performance findings** (2026-07-09, per-phase time breakdown in
+> print_detailed_stats): the ~60% AIG node reduction is almost entirely
+> *cross-formula sharing*, not per-var chain shrinkage (the rewriter fires
+> ~no Boolean rules on repair chains; the win is CSE). Per-formula
+> re-encoding threw that sharing away (91k→92k clauses across a restart);
+> fixed with one shared AIGToCNF::encode_batch (→77k). With the fix,
+> restart rounds match the no-restart run's *marginal* repair cost
+> exactly; the remaining premium is per-round re-init + the first solve
+> on the fresh encode (relearn), ~5-15s/round locally. So on instances
+> that finish anyway (amba5b5n 9.7k reps, query52 15.5k reps), restarts
+> are ≈ net-neutral insurance, not a speedup; the payoff is bounded
+> memory/formula size on the non-finishing blowup instances. An in-place
+> variant (swap formulas inside the live solvers, per-generation
+> activation-lit retirement of old circuits) was benchmarked and rejected:
+> generation garbage outweighs the kept learned state (query52: 387s
+> in-place vs 314s hard vs 286s none).
 
 ### The idea
 
