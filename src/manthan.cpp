@@ -1085,6 +1085,25 @@ void Manthan::print_detailed_stats() const {
     verb_print(1, COLCYN "[manthan-stats]   max AIG nodes (single var): " << max_aig_nodes);
     verb_print(1, COLCYN "[manthan-stats]   total formula clauses: " << total_clauses);
     verb_print(1, COLCYN "[manthan-stats]   cex_solver nVars: " << cex_solver.nVars());
+
+    const double loop_t = cpuTime() - repair_start_time;
+    const double accounted = t_cex_solve + t_better_ctx + t_find_conflict
+        + t_perform_repair + t_inject + t_recompute_yhat;
+    verb_print(1, COLCYN "[manthan-stats] === TIME BREAKDOWN (cpu s) ===" << fixed << setprecision(2));
+    verb_print(1, COLCYN "[manthan-stats]   cex_solver solve:     " << setw(8) << t_cex_solve
+        << "  (" << setw(4) << setprecision(1) << safe_div(t_cex_solve*100.0, loop_t) << "%)" << setprecision(2));
+    verb_print(1, COLCYN "[manthan-stats]   better_ctx:           " << setw(8) << t_better_ctx
+        << "  (" << setw(4) << setprecision(1) << safe_div(t_better_ctx*100.0, loop_t) << "%)" << setprecision(2));
+    verb_print(1, COLCYN "[manthan-stats]   find_conflict+minim:  " << setw(8) << t_find_conflict
+        << "  (" << setw(4) << setprecision(1) << safe_div(t_find_conflict*100.0, loop_t) << "%)" << setprecision(2));
+    verb_print(1, COLCYN "[manthan-stats]   perform_repair:       " << setw(8) << t_perform_repair
+        << "  (" << setw(4) << setprecision(1) << safe_div(t_perform_repair*100.0, loop_t) << "%)" << setprecision(2));
+    verb_print(1, COLCYN "[manthan-stats]   inject_formulas:      " << setw(8) << t_inject
+        << "  (" << setw(4) << setprecision(1) << safe_div(t_inject*100.0, loop_t) << "%)" << setprecision(2));
+    verb_print(1, COLCYN "[manthan-stats]   recompute_y_hat:      " << setw(8) << t_recompute_yhat
+        << "  (" << setw(4) << setprecision(1) << safe_div(t_recompute_yhat*100.0, loop_t) << "%)" << setprecision(2));
+    verb_print(1, COLCYN "[manthan-stats]   accounted/loop total: " << setw(8) << accounted
+        << " / " << loop_t);
 }
 
 void Manthan::const_functions() {
@@ -1205,7 +1224,9 @@ SimplifiedCNF Manthan::do_manthan() {
         inject_formulas_into_solver();
 
         sample ctx;
+        const double t_cex0 = cpuTime();
         const bool finished = get_counterexample(ctx);
+        t_cex_solve += cpuTime() - t_cex0;
         cex_solver_calls++;
         if (finished) {
             // cex_solver claims no CEX. Triangulate with three SLOW_DEBUG
@@ -1245,8 +1266,10 @@ SimplifiedCNF Manthan::do_manthan() {
         compute_needs_repair(ctx);
 
         const uint32_t old_needs_repair_size = needs_repair.size();
+        const double t_bctx0 = cpuTime();
         if (mconf.maxsat_better_ctx == 1) find_better_ctx_maxsat(ctx);
         else find_better_ctx_normal(ctx);
+        t_better_ctx += cpuTime() - t_bctx0;
         SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
         SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
         compute_needs_repair(ctx);
@@ -1397,7 +1420,9 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     vector<Lit> conflict;
     repaired_vars_count[y_rep]++;
 
+    const double t_fc0 = cpuTime();
     bool ret = find_conflict(y_rep, ctx, conflict);
+    t_find_conflict += cpuTime() - t_fc0;
     repair_solver_calls++;
 
     if (ret) {
@@ -1409,12 +1434,16 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
             conflict_branch_lits_per_var[y_rep] += conflict.size();
             conflict_branch_repairs_per_var[y_rep]++;
         }
+        const double t_pr0 = cpuTime();
         perform_repair(y_rep, ctx, conflict);
+        t_perform_repair += cpuTime() - t_pr0;
 
         if (!mconf.one_repair_per_loop) {
             ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
             inject_formulas_into_solver();
+            const double t_rc0 = cpuTime();
             recompute_all_y_hat_cnf(ctx);
+            t_recompute_yhat += cpuTime() - t_rc0;
         }
 
         // Track conflict type
@@ -2178,6 +2207,7 @@ void Manthan::add_not_f_x_yhat() {
 }
 
 void Manthan::inject_formulas_into_solver() {
+    const double t_inj0 = cpuTime();
     SLOW_DEBUG_DO(assert(check_functions_for_y_vars()));
 
     // Replace y with y_hat. uninserted_start skips the already-inserted prefix;
@@ -2243,6 +2273,7 @@ void Manthan::inject_formulas_into_solver() {
         }
     }
     updated_y_funcs.clear();
+    t_inject += cpuTime() - t_inj0;
 }
 
 bool Manthan::get_counterexample(sample& ctx) {

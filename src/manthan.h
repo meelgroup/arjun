@@ -270,6 +270,15 @@ class Manthan {
         double sampl_time = 0;
         double train_time = 0;
 
+        // Cumulative per-phase CPU time (s) for the repair loop, printed by
+        // print_detailed_stats to locate where repair time actually goes.
+        double t_cex_solve = 0;      // get_counterexample
+        double t_better_ctx = 0;     // find_better_ctx_{normal,maxsat}
+        double t_find_conflict = 0;  // repair_solver solves incl. minimize
+        double t_perform_repair = 0; // formula/AIG compose
+        double t_inject = 0;         // inject_formulas_into_solver
+        double t_recompute_yhat = 0; // recompute_all_y_hat_cnf
+
         uint64_t input_only_conflict_sizes_sum = 0;
         uint64_t full_conflict_sizes_sum = 0;
         uint32_t input_only_conflict_count = 0;
