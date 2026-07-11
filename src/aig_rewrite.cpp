@@ -54,10 +54,12 @@ inline void slow_assert_equiv(const aig_lit& a, const aig_lit& b) {
 
 void AIGRewriteStats::print(int verb) const {
     if (verb < 1) return;
+    double perc;
+    if (nodes_before == 0) perc = 0.0;
+    else perc = (1.0-((double)nodes_after / nodes_before)) * -100.0;
     cout << "c o [aig-rw] T:" << std::fixed << std::setprecision(2) << total_time
          << " n:" << nodes_before << "->" << nodes_after
-         << " (-" << std::fixed << std::setprecision(1)
-         << (nodes_before > 0 ? (1.0 - (double)nodes_after / nodes_before) * 100.0 : 0.0) << "%)"
+         << " (" << std::fixed << std::setprecision(1) << perc << "%)"
          << " p:" << total_passes
          << " cp:" << const_prop
          << " cmp:" << complement_elim
