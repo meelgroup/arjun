@@ -393,6 +393,50 @@ static size_t emit_adaptive_factored(const vector<Cube>& cubes,
     return AIG::count_aig_nodes_fast(root);
 }
 
+// Compact structural printer: node kind (by edge), subtree node count,
+// chain-collapsed. Helps see what the non-chain tails are made of.
+static void print_shape(const aig_lit& e, int depth, int max_depth) {
+    for (int i = 0; i < depth; i++) cout << "  ";
+    if (!e) { cout << "NULL" << endl; return; }
+    if (e->type == AIGT::t_lit) {
+        cout << (e.neg ? "~" : "") << "x" << (e->var + 1) << endl;
+        return;
+    }
+    if (e->type == AIGT::t_const) {
+        cout << (e.neg ? "FALSE" : "TRUE") << endl;
+        return;
+    }
+    const bool is_or = e.neg;
+    // Flatten same-op chain.
+    vector<aig_lit> units;
+    vector<aig_lit> todo{e};
+    while (!todo.empty()) {
+        aig_lit n = todo.back(); todo.pop_back();
+        const aig_lit c1 = is_or ? ~n->l : n->l;
+        const aig_lit c2 = is_or ? ~n->r : n->r;
+        for (const aig_lit& c : {c1, c2}) {
+            const bool same = c.node && c->type == AIGT::t_and
+                && (is_or ? is_or_edge(c) : !c.neg);
+            if (same) todo.push_back(c);
+            else units.push_back(c);
+        }
+    }
+    const size_t sz = AIG::count_aig_nodes_fast(e);
+    size_t n_lits = 0, n_cubes = 0, n_other = 0;
+    vector<aig_lit> others;
+    for (const auto& u : units) {
+        if (u->type == AIGT::t_lit) { n_lits++; continue; }
+        Cube c;
+        if (collect_cube(is_or ? u : ~u, c)) n_cubes++;
+        else { n_other++; others.push_back(u); }
+    }
+    cout << (is_or ? "OR" : "AND") << "[" << sz << "] units:" << units.size()
+         << " (lits:" << n_lits << " cubes:" << n_cubes
+         << " other:" << n_other << ")" << endl;
+    if (depth >= max_depth) return;
+    for (const auto& o : others) print_shape(o, depth + 1, max_depth);
+}
+
 // Deep-dive one run: support, literal frequency, pairwise overlap, and
 // trie-node simulations. Optionally writes a PLA file for espresso.
 static void analyze_run(const vector<Cube>& cubes, const std::string& pla_fname) {
@@ -703,12 +747,16 @@ int main(int argc, char** argv) {
         vector<RunStats> runs;
         walk_chain(d, runs);
         cout << "deep dive var " << deep_var << " (" << runs.size() << " runs):" << endl;
-        // largest run
-        size_t best = 0;
-        for (size_t i = 1; i < runs.size(); i++)
-            if (runs[i].cubes.size() > runs[best].cubes.size()) best = i;
-        cout << "  largest run op=" << runs[best].op << endl;
-        analyze_run(runs[best].cubes, pla_fname);
+        cout << "shape:" << endl;
+        print_shape(d, 0, 8);
+        if (!runs.empty()) {
+            // largest run
+            size_t best = 0;
+            for (size_t i = 1; i < runs.size(); i++)
+                if (runs[i].cubes.size() > runs[best].cubes.size()) best = i;
+            cout << "  largest run op=" << runs[best].op << endl;
+            analyze_run(runs[best].cubes, pla_fname);
+        }
     }
     return 0;
 }
