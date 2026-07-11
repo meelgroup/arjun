@@ -39,14 +39,10 @@ def find_arjun_time(fname):
     backward_time = None
     backward_defined = None
 
-    cmsgen_sampling_time = None
-
-    manthan_sampling_time = None
     manthan_training_time = None
     manthan_repair_time = None
     manthan_time = None
     repairs = None
-    repairs_failed = None
     repairs_per_sec = None
     manthan_defined = None
     # Manthan may run several strategies in sequence; each resets its rep
@@ -143,20 +139,8 @@ def find_arjun_time(fname):
                 if match:
                     backward_time = float(match.group(1))
 
-            # c o [manthan] CMSGen got 100 samples. Biased: 0 T: 173.08
-            # CMSGen is invoked repeatedly per benchmark; accumulate the
-            # per-call sampling time so we can find the worst offenders.
-            if "CMSGen got" in line and "samples." in line:
-                match = re.search(r'T:\s*([\d.]+)', line)
-                if match:
-                    if cmsgen_sampling_time is None:
-                        cmsgen_sampling_time = 0.0
-                    cmsgen_sampling_time += float(match.group(1))
-
             # c o [manthan] rep:   1319   loops:   1319   avg rep/loop:  1.0   ...   T:    1.83   rep/s: 718.8093
             # Progress line. Tail may carry "Reached max repairs" (strategy
-            # gave up — commit its rep count) or "DONE" (a [manthan] Done.
-            # line will follow, which supplies the final repairs count).
             if "c o [manthan] rep:" in line:
                 if repairs is None:
                     repairs = 0
@@ -174,32 +158,18 @@ def find_arjun_time(fname):
                     current_strategy_rep = 0
 
             # c o [manthan] Done.  sampl T: 3.72 train T: 44.99 repair T: 0.71 repairs: 75 repair failed: 0 defined: 158 still to-define: 0 T: 51.05
-            if "c o [manthan] Done." in line:
+            if "c o [manthan] " in line and "DONE" in line:
                 if repairs is None:
                     repairs = 0
-                match = re.search(r'sampl T:\s*([\d.]+)', line)
+                match = re.search(r'T:\s*([\d.]+)', line)
                 if match:
-                    manthan_sampling_time = float(match.group(1))
-                match = re.search(r'train T:\s*([\d.]+)', line)
+                    manthan_time = float(match.group(1))
+                match = re.search(r'rep:\s*(\d+)', line)
                 if match:
-                    manthan_training_time = float(match.group(1))
-                match = re.search(r'repair T:\s*([\d.]+)', line)
+                    current_strategy_rep = int(match.group(1))
+                match = re.search(r'rep/s:\s*([\d.]+)', line)
                 if match:
-                    manthan_repair_time = float(match.group(1))
-                match = re.search(r'repairs:\s*(\d+)', line)
-                if match:
-                    repairs += int(match.group(1))
-                current_strategy_rep = 0
-                match = re.search(r'repair failed:\s*(\d+)', line)
-                if match:
-                    repairs_failed = int(match.group(1))
-                match = re.search(r'defined:\s*(\d+)', line)
-                if match:
-                    manthan_defined = int(match.group(1))
-                # Get the last T: value (total time for manthan)
-                matches = re.findall(r'T:\s*([\d.]+)', line)
-                if matches:
-                    manthan_time = float(matches[-1])
+                    repairs_per_sec = float(match.group(1))
 
             # c o [arjun] All done. T: 53.52
             if arjun_time is None and "c o [arjun] All done." in line:
@@ -229,13 +199,10 @@ def find_arjun_time(fname):
         "extend_defined": extend_defined,
         "backward_time": backward_time,
         "backward_defined": backward_defined,
-        "cmsgen_sampling_time": cmsgen_sampling_time,
-        "manthan_sampling_time": manthan_sampling_time,
         "manthan_training_time": manthan_training_time,
         "manthan_repair_time": manthan_repair_time,
         "manthan_time": manthan_time,
         "repairs": repairs,
-        "repairs_failed": repairs_failed,
         "repairs_per_sec": repairs_per_sec,
         "manthan_defined": manthan_defined,
         "arjun_time": arjun_time,
@@ -404,13 +371,13 @@ COLUMNS = [
     ("extend_defined",          "INTEGER"),
     ("backward_time",           "REAL"),
     ("backward_defined",        "INTEGER"),
-    ("cmsgen_sampling_time",    "REAL"),
-    ("manthan_sampling_time",   "REAL"),
+    # ("cmsgen_sampling_time",    "REAL"),
+    # ("manthan_sampling_time",   "REAL"),
     ("manthan_training_time",   "REAL"),
     ("manthan_repair_time",     "REAL"),
     ("manthan_time",            "REAL"),
     ("repairs",                 "INTEGER"),
-    ("repairs_failed",          "INTEGER"),
+    # ("repairs_failed",          "INTEGER"),
     ("repairs_per_sec",         "REAL"),
     ("manthan_defined",         "INTEGER"),
     ("arjun_time",              "REAL"),
