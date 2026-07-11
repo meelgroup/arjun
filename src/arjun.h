@@ -1615,7 +1615,7 @@ public:
         int force_bw_equal = 1;
         int inv_learnt = 0;
         int32_t max_repairs = std::numeric_limits<int32_t>::max();
-        uint32_t restart = 5000;
+        uint32_t restart = 10000;
         int check_repair = 0;
         std::string ganak_binary;
 
