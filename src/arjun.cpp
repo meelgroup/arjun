@@ -215,7 +215,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
     }
 
     // Done!
-    if (arjdata->conf.verb >= 1) cumul_stats.print_stats(COLRED "Done. ");
+    if (arjdata->conf.verb >= 1) cumul_stats.print_stats(COLRED " Done. ");
     return cnf;
 }
 
