@@ -9,7 +9,9 @@
 */
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -18,6 +20,7 @@
 #include <cryptominisat5/cryptominisat.h>
 #include <cryptominisat5/solvertypesmini.h>
 #include "arjun.h"
+#include "aig_rewrite.h"
 #include "time_mem.h"
 
 using namespace ArjunNS;
@@ -597,6 +600,96 @@ static void analyze_run(const vector<Cube>& cubes, const std::string& pla_fname)
     }
 }
 
+// ===== Collapse-to-SOP analysis =====
+// OR view collapse: e interpreted as an OR of its flattened operands.
+static bool collapse_rec(const aig_lit& e, vector<Cube>& out,
+                         size_t max_cubes, size_t max_w);
+
+// SOP of a single edge (any polarity).
+static bool sop_of_edge(const aig_lit& e, vector<Cube>& out,
+                        size_t max_cubes, size_t max_w) {
+    if (!e) return false;
+    if (e->type == AIGT::t_const) {
+        if (!e.neg) out.push_back({});
+        return true;
+    }
+    if (e->type == AIGT::t_lit) {
+        out.push_back({e->var * 2 + (e.neg ? 1u : 0u)});
+        return true;
+    }
+    if (e.neg) return collapse_rec(e, out, max_cubes, max_w); // OR node
+    // AND node: product of the two children's SOPs.
+    vector<Cube> a, b;
+    if (!sop_of_edge(e->l, a, max_cubes, max_w)) return false;
+    if (!sop_of_edge(e->r, b, max_cubes, max_w)) return false;
+    if (a.size() * b.size() > max_cubes) return false;
+    for (const auto& ca : a) {
+        for (const auto& cb : b) {
+            Cube c = ca;
+            c.insert(c.end(), cb.begin(), cb.end());
+            std::sort(c.begin(), c.end());
+            c.erase(std::unique(c.begin(), c.end()), c.end());
+            bool is_false = false;
+            for (size_t i = 0; i + 1 < c.size(); i++)
+                if ((c[i] ^ 1u) == c[i+1]) { is_false = true; break; }
+            if (is_false) continue;
+            if (c.size() > max_w) return false;
+            out.push_back(std::move(c));
+            if (out.size() > max_cubes) return false;
+        }
+    }
+    return true;
+}
+
+static bool collapse_rec(const aig_lit& e, vector<Cube>& out,
+                         size_t max_cubes, size_t max_w) {
+    // e is an OR edge: union of operand SOPs.
+    vector<aig_lit> ops;
+    {
+        vector<aig_lit> todo{e};
+        while (!todo.empty()) {
+            aig_lit n = todo.back(); todo.pop_back();
+            for (const aig_lit c : {~n->l, ~n->r}) {
+                if (!c.node) continue;
+                if (is_or_edge(c)) todo.push_back(c);
+                else ops.push_back(c);
+            }
+        }
+    }
+    for (const auto& op : ops) {
+        if (!sop_of_edge(op, out, max_cubes, max_w)) return false;
+        if (out.size() > max_cubes) return false;
+    }
+    return true;
+}
+
+// Iterated dedup + containment + distance-1 merge on a cover.
+static vector<Cube> minimize_cover(vector<Cube> cs, size_t& n_d1_merges) {
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        cs = reduce_cover(std::move(cs));
+        // distance-1 merge: identical except one complemented literal.
+        std::map<Cube, uint32_t> half; // cube-with-slot-removed -> lit
+        for (size_t i = 0; i < cs.size() && !changed; i++) {
+            for (size_t j = i + 1; j < cs.size(); j++) {
+                if (distance1(cs[i], cs[j])) {
+                    // merge: drop the complemented literal pair
+                    Cube m;
+                    for (size_t k = 0; k < cs[i].size(); k++)
+                        if (cs[i][k] == cs[j][k]) m.push_back(cs[i][k]);
+                    cs[i] = std::move(m);
+                    cs.erase(cs.begin() + j);
+                    n_d1_merges++;
+                    changed = true;
+                    break;
+                }
+            }
+        }
+    }
+    return cs;
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) {
         cout << "usage: " << argv[0] << " [-r] <dump.aig> [top_n] [deep_var_1idx [out.pla]]" << endl;
@@ -606,8 +699,19 @@ int main(int argc, char** argv) {
     int argi = 1;
     bool do_rewrite = false;
     bool do_verify = false;
-    if (std::string(argv[argi]) == "-r") { do_rewrite = true; argi++; }
-    else if (std::string(argv[argi]) == "-R") { do_rewrite = true; do_verify = true; argi++; }
+    bool do_collapse = false;
+    std::string blif_out;
+    int top_filter = 0; // keep only the K biggest defs (approximates the
+                        // in-run to_define population at a Manthan restart)
+    while (argi < argc && argv[argi][0] == '-') {
+        if (std::string(argv[argi]) == "-r") { do_rewrite = true; argi++; }
+        else if (std::string(argv[argi]) == "-R") { do_rewrite = true; do_verify = true; argi++; }
+        else if (std::string(argv[argi]) == "-c") { do_collapse = true; argi++; }
+        else if (std::string(argv[argi]) == "-t") { top_filter = atoi(argv[argi+1]); argi += 2; }
+        else if (std::string(argv[argi]) == "-T") { top_filter = -atoi(argv[argi+1]); argi += 2; }
+        else if (std::string(argv[argi]) == "-B") { blif_out = argv[argi+1]; argi += 2; }
+        else break;
+    }
     const char* fname = argv[argi++];
     const int top_n = argc > argi ? atoi(argv[argi]) : 10;
     argi++;
@@ -617,19 +721,59 @@ int main(int argc, char** argv) {
     auto fg = std::make_unique<FGenMpz>();
     SimplifiedCNF cnf(fg.get());
     cnf.read_aig_defs_from_file(fname);
+
+    // Local def list (var, aig) so we can filter to the top K defs; the
+    // in-run Manthan restart compaction only rewrites the to_define chain
+    // AIGs, which -t approximates.
+    vector<uint32_t> def_vars;
+    vector<aig_lit> defs_local;
+    for (uint32_t v = 0; v < cnf.num_defs(); v++) {
+        if (!cnf.get_def(v)) continue;
+        def_vars.push_back(v);
+        defs_local.push_back(cnf.get_def(v));
+    }
+    if (top_filter != 0) {
+        vector<std::pair<size_t, size_t>> sizes; // (nodes, idx)
+        for (size_t i = 0; i < defs_local.size(); i++)
+            sizes.push_back({AIG::count_aig_nodes_fast(defs_local[i]), i});
+        std::sort(sizes.rbegin(), sizes.rend());
+        std::set<size_t> keep;
+        if (top_filter > 0) {
+            for (int i = 0; i < top_filter && i < (int)sizes.size(); i++)
+                keep.insert(sizes[i].second);
+        } else { // -T: drop the top K, keep the rest
+            for (size_t i = (size_t)(-top_filter); i < sizes.size(); i++)
+                keep.insert(sizes[i].second);
+        }
+        vector<uint32_t> fv;
+        vector<aig_lit> fd;
+        for (size_t i = 0; i < defs_local.size(); i++) {
+            if (!keep.count(i)) continue;
+            fv.push_back(def_vars[i]);
+            fd.push_back(defs_local[i]);
+        }
+        def_vars = std::move(fv);
+        defs_local = std::move(fd);
+        cout << "kept top " << defs_local.size() << " defs" << endl;
+    }
     // -R: keep pre-rewrite copies for SAT-miter equivalence checking.
     vector<aig_lit> before_defs;
-    if (do_verify) {
-        for (uint32_t v = 0; v < cnf.num_defs(); v++)
-            before_defs.push_back(cnf.get_def(v));
+    if (do_verify) before_defs = defs_local;
+    if (do_rewrite) {
+        AIGRewriter rw;
+        rw.rewrite_all(defs_local, 2);
+        if (getenv("CHAIN_STATS_TWICE")) {
+            AIGRewriter rw2;
+            rw2.rewrite_all(defs_local, 2);
+        }
     }
-    if (do_rewrite) cnf.rewrite_aigs(2);
     if (do_verify) {
         // SAT miter per changed def: old XOR new must be UNSAT.
         size_t checked = 0, changed = 0;
-        for (uint32_t v = 0; v < cnf.num_defs(); v++) {
-            const auto& oldd = before_defs[v];
-            const auto& newd = cnf.get_def(v);
+        for (size_t i = 0; i < defs_local.size(); i++) {
+            const uint32_t v = def_vars[i];
+            const auto& oldd = before_defs[i];
+            const auto& newd = defs_local[i];
             if (!oldd || !newd) { if (oldd != newd) { cout << "DEF DISAPPEARED v=" << v+1 << endl; return 1; } continue; }
             if (oldd == newd) continue;
             changed++;
@@ -667,6 +811,55 @@ int main(int argc, char** argv) {
              << changed << " changed)" << endl;
     }
 
+    if (!blif_out.empty()) {
+        // Dump the (possibly rewritten) union DAG as BLIF for abc experiments.
+        FILE* f = fopen(blif_out.c_str(), "w");
+        fprintf(f, ".model aig_defs\n");
+        std::map<const AIG*, std::string> name;
+        std::set<uint32_t> inputs;
+        vector<const AIG*> order;
+        {
+            std::set<const AIG*> seen;
+            std::function<void(const AIG*)> dfs = [&](const AIG* n) {
+                if (!n || !seen.insert(n).second) return;
+                if (n->type == AIGT::t_lit) { inputs.insert(n->var); return; }
+                if (n->type == AIGT::t_const) return;
+                dfs(n->l.get());
+                dfs(n->r.get());
+                order.push_back(n);
+            };
+            for (const auto& d : defs_local) if (d) dfs(d.get());
+        }
+        fprintf(f, ".inputs");
+        for (auto v : inputs) fprintf(f, " x%u", v + 1);
+        fprintf(f, "\n.outputs");
+        for (size_t i = 0; i < def_vars.size(); i++)
+            if (defs_local[i]) fprintf(f, " o%u", def_vars[i] + 1);
+        fprintf(f, "\n");
+        bool have_const = false;
+        auto nm = [&](const AIG* n) -> std::string {
+            if (n->type == AIGT::t_lit) return "x" + std::to_string(n->var + 1);
+            if (n->type == AIGT::t_const) { have_const = true; return "CONST1"; }
+            return "n" + std::to_string(n->nid);
+        };
+        for (const AIG* n : order) {
+            fprintf(f, ".names %s %s %s\n%c%c 1\n",
+                    nm(n->l.get()).c_str(), nm(n->r.get()).c_str(), nm(n).c_str(),
+                    n->l.neg ? '0' : '1', n->r.neg ? '0' : '1');
+        }
+        for (size_t i = 0; i < def_vars.size(); i++) {
+            const auto& d = defs_local[i];
+            if (!d) continue;
+            fprintf(f, ".names %s o%u\n%c 1\n", nm(d.get()).c_str(),
+                    def_vars[i] + 1, d.neg ? '0' : '1');
+        }
+        if (have_const) fprintf(f, ".names CONST1\n1\n");
+        fprintf(f, ".end\n");
+        fclose(f);
+        cout << "wrote BLIF: " << blif_out << " (" << order.size()
+             << " AND nodes)" << endl;
+    }
+
     struct DefInfo {
         uint32_t var;
         size_t nodes, layers, runs, cubes;
@@ -675,19 +868,14 @@ int main(int argc, char** argv) {
         double avg_w = 0;
     };
     vector<DefInfo> infos;
-    size_t tot_nodes_union = 0;
-    {
-        vector<aig_lit> roots;
-        for (uint32_t v = 0; v < cnf.num_defs(); v++)
-            if (cnf.get_def(v)) roots.push_back(cnf.get_def(v));
-        tot_nodes_union = AIG::count_aig_nodes_fast(roots);
-    }
+    const size_t tot_nodes_union = AIG::count_aig_nodes_fast(defs_local);
+    std::map<Cube, size_t> global_cubes; // cross-def duplication census
 
-    for (uint32_t v = 0; v < cnf.num_defs(); v++) {
-        const auto& d = cnf.get_def(v);
+    for (size_t di = 0; di < defs_local.size(); di++) {
+        const auto& d = defs_local[di];
         if (!d) continue;
         DefInfo in;
-        in.var = v;
+        in.var = def_vars[di];
         in.nodes = AIG::count_aig_nodes_fast(d);
         vector<RunStats> runs;
         in.layers = walk_chain(d, runs);
@@ -696,7 +884,7 @@ int main(int argc, char** argv) {
         for (auto& r : runs) {
             in.max_run = std::max(in.max_run, r.cubes.size());
             cube_cnt += r.cubes.size();
-            for (auto& c : r.cubes) wsum += c.size();
+            for (auto& c : r.cubes) { wsum += c.size(); global_cubes[c]++; }
             // Opportunity counts within the run.
             std::set<Cube> seen;
             for (auto& c : r.cubes) {
@@ -721,17 +909,26 @@ int main(int argc, char** argv) {
               [](const DefInfo& a, const DefInfo& b) { return a.nodes > b.nodes; });
 
     size_t tot_cubes = 0, tot_dup = 0, tot_subs = 0, tot_d1 = 0, tot_layers = 0;
+    size_t tot_standalone = 0;
     for (auto& in : infos) {
         tot_cubes += in.cubes; tot_dup += in.dup; tot_subs += in.subs;
         tot_d1 += in.d1; tot_layers += in.layers;
+        tot_standalone += in.nodes;
     }
+    size_t multi_def_cubes = 0, multi_def_insts = 0;
+    for (const auto& [c, cnt] : global_cubes)
+        if (cnt > 1) { multi_def_cubes++; multi_def_insts += cnt; }
     cout << "defs: " << infos.size()
          << "  union nodes: " << tot_nodes_union
+         << "  sum standalone: " << tot_standalone
          << "  chain layers: " << tot_layers
          << "  cubes: " << tot_cubes
          << "  dup: " << tot_dup
          << "  subsumed: " << tot_subs
          << "  dist1-pairs: " << tot_d1 << endl;
+    cout << "global cube census: distinct " << global_cubes.size()
+         << "  appearing >1x: " << multi_def_cubes
+         << " (covering " << multi_def_insts << " instances)" << endl;
     cout << "top defs by node count:" << endl;
     cout << "  var    nodes layers  runs maxrun  cubes  avg_w    dup   subs     d1" << endl;
     for (int i = 0; i < top_n && i < (int)infos.size(); i++) {
@@ -741,8 +938,101 @@ int main(int argc, char** argv) {
                in.cubes, in.avg_w, in.dup, in.subs, in.d1);
     }
 
+    {
+        // FRAIG potential estimate: random-simulate the union DAG with 4x64
+        // deterministic patterns; nodes sharing a (polarity-normalized)
+        // signature are candidate functional merges.
+        auto sm64 = [](uint64_t x) {
+            x += 0x9e3779b97f4a7c15ULL;
+            x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+            x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+            return x ^ (x >> 31);
+        };
+        constexpr int W = 4;
+        using Sig = std::array<uint64_t, W>;
+        std::map<const AIG*, Sig> sig;
+        std::map<Sig, size_t> classes;
+        size_t n_nodes = 0, n_const = 0;
+        std::function<Sig(const aig_lit&)> sim = [&](const aig_lit& e) -> Sig {
+            Sig s;
+            const AIG* n = e.get();
+            auto it = sig.find(n);
+            if (it != sig.end()) s = it->second;
+            else {
+                if (n->type == AIGT::t_const) s.fill(~0ULL);
+                else if (n->type == AIGT::t_lit)
+                    for (int w = 0; w < W; w++) s[w] = sm64(n->var * 977 + w);
+                else {
+                    const Sig a = sim(n->l);
+                    const Sig b = sim(n->r);
+                    for (int w = 0; w < W; w++) s[w] = a[w] & b[w];
+                }
+                sig[n] = s;
+                if (n->type == AIGT::t_and) {
+                    n_nodes++;
+                    bool all0 = true, all1 = true;
+                    for (int w = 0; w < W; w++) {
+                        if (s[w]) all0 = false;
+                        if (~s[w]) all1 = false;
+                    }
+                    if (all0 || all1) n_const++;
+                    else {
+                        Sig norm = s;
+                        if (s[0] & 1) for (int w = 0; w < W; w++) norm[w] = ~s[w];
+                        classes[norm]++;
+                    }
+                }
+            }
+            if (e.neg) for (int w = 0; w < W; w++) s[w] = ~s[w];
+            return s;
+        };
+        for (const auto& d : defs_local)
+            if (d) sim(d);
+        size_t mergeable = 0;
+        for (const auto& [s, cnt] : classes) mergeable += cnt - 1;
+        cout << "FRAIG potential: AND nodes " << n_nodes
+             << "  const-candidates " << n_const
+             << "  sig-merge candidates " << mergeable << endl;
+    }
+
+    if (do_collapse) {
+        // Collapse each top def to a flat SOP (with caps), minimize the
+        // cover, and report the re-emitted factored size vs the current one.
+        cout << "collapse-to-SOP analysis (top " << top_n << " defs):" << endl;
+        cout << "  var    nodes    sop_cubes  min_cubes  d1merges  refactored" << endl;
+        std::map<uint32_t, size_t> var2idx;
+        for (size_t i = 0; i < def_vars.size(); i++) var2idx[def_vars[i]] = i;
+        for (int i = 0; i < top_n && i < (int)infos.size(); i++) {
+            const auto& in = infos[i];
+            const auto& d = defs_local[var2idx.at(in.var)];
+            vector<Cube> sop;
+            const bool ok = sop_of_edge(d, sop, 20000, 64);
+            if (!ok) {
+                printf("  %-5u %7zu    BLOWN\n", in.var+1, in.nodes);
+                continue;
+            }
+            const size_t raw_cubes = sop.size();
+            size_t d1 = 0;
+            sop = minimize_cover(std::move(sop), d1);
+            size_t refac = 0;
+            if (!sop.empty()) {
+                std::map<uint32_t, size_t> lf, ord;
+                for (const auto& c : sop) for (auto l : c) lf[l]++;
+                vector<std::pair<size_t, uint32_t>> fq;
+                for (auto& [l, f] : lf) fq.push_back({f, l});
+                std::sort(fq.rbegin(), fq.rend());
+                for (size_t k = 0; k < fq.size(); k++) ord[fq[k].second] = k;
+                refac = emit_adaptive_factored(sop, ord);
+            }
+            printf("  %-5u %7zu %10zu %10zu %9zu %11zu\n",
+                   in.var+1, in.nodes, raw_cubes, sop.size(), d1, refac);
+        }
+    }
+
     if (deep_var > 0) {
-        const auto& d = cnf.get_def(deep_var - 1);
+        aig_lit d;
+        for (size_t i = 0; i < def_vars.size(); i++)
+            if (def_vars[i] == (uint32_t)(deep_var - 1)) d = defs_local[i];
         if (!d) { cout << "deep var has no def" << endl; return 1; }
         vector<RunStats> runs;
         walk_chain(d, runs);
