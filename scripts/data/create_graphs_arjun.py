@@ -58,6 +58,7 @@ only_dirs = [
     # "out-synth-1877264-0", # faster interpolation, less AIG rewrite&simplify, less CMSGen sampling what's slow, AI slop cleanup
     # "out-synth-1903613-2", # restarts between manthan & ITE chain rewrite
     "out-synth-1903613-1", # restarts between manthan & ITE chain rewrite
+    "out-synth-1903613-2", # restarts between manthan & ITE chain rewrite
 ]
 # -------------------------------------------------------------
 
@@ -647,8 +648,8 @@ def generate_cdf(fname2_s):
             f.write('set key bottom right font ",6"\n')
             f.write('set logscale x\n')
             f.write('unset logscale y\n')
-            f.write(f'set xrange [0.001:{TIMEOUT}]\n')
-            f.write('set yrange [0:]\n')
+            f.write(f'set xrange [50:{TIMEOUT}]\n')
+            # f.write('set yrange [0:]\n')
             f.write('set ylabel "Instances synthesised"\n')
             f.write('set xlabel "Time (s)"\n')
             f.write('set grid\n')
