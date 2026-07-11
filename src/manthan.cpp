@@ -1198,6 +1198,10 @@ void Manthan::const_functions() {
     }
 }
 
+void Manthan::print_cache_hit_rate() const {
+    verb_print(1, "repair solver cache hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%");
+}
+
 SimplifiedCNF Manthan::do_manthan() {
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
     const double my_time = cpuTime();
@@ -1279,7 +1283,6 @@ SimplifiedCNF Manthan::do_manthan() {
     while(true) {
         if (mconf.stats_every > 0 && stats.num_loops_repair % mconf.stats_every == mconf.stats_every - 1) {
             if (conf.verb >= 1) stats.print_stats();
-            verb_print(1, "repair solver cache hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%");
         }
         if (mconf.detailed_stats_every > 0 && stats.num_loops_repair % mconf.detailed_stats_every == mconf.detailed_stats_every - 1) {
             print_detailed_stats(stats);
@@ -1315,14 +1318,18 @@ SimplifiedCNF Manthan::do_manthan() {
             break;
         }
         if (stats.tot_repaired >= mconf.max_repairs) {
-            if (conf.verb >= 1) stats.print_stats("", COLRED, " Reached max repairs: " + std::to_string(mconf.max_repairs));
-            verb_print(1, "repair solver cache hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%");
+            if (conf.verb >= 1) {
+                stats.print_stats("", COLRED, " Reached max repairs: " + std::to_string(mconf.max_repairs));
+                print_cache_hit_rate();
+            }
             return cnf;
         }
         if (mconf.restart != 0 && stats.tot_repaired >= mconf.restart) {
             restart_needed = true;
-            stats.print_stats("", COLYEL, " Hit restart limit, exiting to compact AIGs + re-enter");
-            verb_print(1, "repair solver cache hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%");
+            if (conf.verb >= 1) {
+                stats.print_stats("", COLYEL, " Hit restart limit, exiting to compact AIGs + re-enter");
+                print_cache_hit_rate();
+            }
             return std::move(cnf);
         }
         print_cnf_debug_info(ctx);

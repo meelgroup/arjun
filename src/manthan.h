@@ -155,6 +155,7 @@ class Manthan {
         CMSat::Lit map_y_to_y_hat(const CMSat::Lit& l) const;
         void print_needs_repair_vars() const;
         void print_cnf_debug_info(const sample& ctx) const;
+        void print_cache_hit_rate() const;
         void get_incidence();
         bool get_counterexample(sample& ctx);
         void inject_formulas_into_solver();
