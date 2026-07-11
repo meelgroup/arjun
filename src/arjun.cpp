@@ -176,7 +176,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
     while (true) {
         ManthanConf round_mconf = mconf;
         if (mconf.max_repairs != std::numeric_limits<int32_t>::max()) {
-            assert(mconf.max_repairs > repairs_all_rounds);
+            assert(mconf.max_repairs > cumul_stats.tot_repaired);
             round_mconf.max_repairs = mconf.max_repairs - cumul_stats.tot_repaired;
             cout << "here, setting: " << round_mconf.max_repairs << " all rounds: " << cumul_stats.tot_repaired << " orig: " << mconf.max_repairs << endl;
         }
