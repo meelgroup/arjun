@@ -134,6 +134,16 @@ aig_lit AIGRewriter::make_canonical(const aig_lit& l, const aig_lit& r) {
     return folded;
 }
 
+aig_lit AIGRewriter::existing_and(const aig_lit& l, const aig_lit& r) const {
+    uint64_t lnid = l->nid, rnid = r->nid;
+    bool lneg = l.neg, rneg = r.neg;
+    bool swap = (lnid != rnid) ? (lnid < rnid) : ((int)lneg > (int)rneg);
+    if (swap) { std::swap(lnid, rnid); std::swap(lneg, rneg); }
+    auto it = struct_hash.find(StructKey{lnid, rnid, lneg, rneg});
+    if (it != struct_hash.end()) return aig_lit(it->second, false);
+    return aig_lit();
+}
+
 // ========== Pass 1: Bottom-up simplification ==========
 //
 // Walks the AIG by node identity, rebuilding bottom-up through make_canonical
@@ -462,6 +472,48 @@ void AIGRewriter::compress_cube_chains(vector<aig_lit>& defs) {
     auto mk_or = [&](const aig_lit& a, const aig_lit& b) {
         return ~make_canonical(~a, ~b);
     };
+    // Reduce a canonically ordered operand list to one node with balanced
+    // pairwise rounds. In each round, pairs that already exist in the hash
+    // get reused first (DAG-aware pairing, quadratic probe capped at
+    // kMaxProbe operands); the rest pair up adjacently.
+    constexpr size_t kMaxProbe = 96;
+    auto balanced_reduce = [&](vector<aig_lit>& ts, bool is_or_op) -> aig_lit {
+        auto combine = [&](const aig_lit& a, const aig_lit& b) {
+            return is_or_op ? mk_or(a, b) : make_canonical(a, b);
+        };
+        while (ts.size() > 1) {
+            vector<aig_lit> nxt;
+            nxt.reserve((ts.size() + 1) / 2);
+            vector<bool> used(ts.size(), false);
+            if (ts.size() <= kMaxProbe) {
+                for (size_t i = 0; i < ts.size(); i++) {
+                    if (used[i]) continue;
+                    for (size_t j = i + 1; j < ts.size(); j++) {
+                        if (used[j]) continue;
+                        const bool hit = is_or_op
+                            ? (bool)existing_and(~ts[i], ~ts[j]).node
+                            : (bool)existing_and(ts[i], ts[j]).node;
+                        if (hit) {
+                            used[i] = used[j] = true;
+                            nxt.push_back(combine(ts[i], ts[j]));
+                            break;
+                        }
+                    }
+                }
+            }
+            // Remaining operands: canonical adjacent pairing.
+            aig_lit carry;
+            for (size_t i = 0; i < ts.size(); i++) {
+                if (used[i]) continue;
+                if (!carry.node) { carry = ts[i]; continue; }
+                nxt.push_back(combine(carry, ts[i]));
+                carry = aig_lit();
+            }
+            if (carry.node) nxt.push_back(carry);
+            ts = std::move(nxt);
+        }
+        return ts[0];
+    };
     // OR together a list of terms: canonical (nid, sign) operand order plus
     // a balanced pairwise fold, so equal operand sub-multisets across defs
     // and levels hash-cons to the same nodes (the node-sharing effect of
@@ -472,14 +524,7 @@ void AIGRewriter::compress_cube_chains(vector<aig_lit>& defs) {
             if (a->nid != b->nid) return a->nid < b->nid;
             return (int)a.neg < (int)b.neg;
         });
-        while (ts.size() > 1) {
-            size_t o = 0;
-            for (size_t i = 0; i + 1 < ts.size(); i += 2)
-                ts[o++] = mk_or(ts[i], ts[i + 1]);
-            if (ts.size() & 1) ts[o++] = ts.back();
-            ts.resize(o);
-        }
-        return ts[0];
+        return balanced_reduce(ts, true);
     };
     // Build a cube as a balanced pairwise tree over the rank-ordered
     // literals. All cubes use the same global order, so equal literal
@@ -490,14 +535,7 @@ void AIGRewriter::compress_cube_chains(vector<aig_lit>& defs) {
         ts.reserve(lits_by_rank.size());
         for (const uint32_t l : lits_by_rank)
             ts.push_back(cached_lit(l / 2, l & 1));
-        while (ts.size() > 1) {
-            size_t o = 0;
-            for (size_t i = 0; i + 1 < ts.size(); i += 2)
-                ts[o++] = make_canonical(ts[i], ts[i + 1]);
-            if (ts.size() & 1) ts[o++] = ts.back();
-            ts.resize(o);
-        }
-        return ts[0];
+        return balanced_reduce(ts, false);
     };
     // Emit OR(cubes) by greedily factoring the locally most frequent literal
     // (f = OR(lit AND f_with, f_without)); single cubes use the global rank

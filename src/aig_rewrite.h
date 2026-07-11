@@ -114,6 +114,8 @@ private:
     }
 
     aig_lit make_canonical(const aig_lit& l, const aig_lit& r);
+    // Probe-only: the already hash-consed AND(l,r), or null. Never creates.
+    aig_lit existing_and(const aig_lit& l, const aig_lit& r) const;
 };
 
 } // namespace ArjunNS
