@@ -431,7 +431,7 @@ bool Manthan::check_synth_via_clauses(const string& where) const {
         cl_sub.reserve(cl_orig.size());
         for (const auto& l : cl_orig) {
             if (to_define_full.count(l.var()))
-                cl_sub.push_back(Lit(y_to_y_hat.at(l.var()), l.sign()));
+                cl_sub.emplace_back(y_to_y_hat.at(l.var()), l.sign());
             else cl_sub.push_back(l);
         }
         s.new_var();
@@ -1022,31 +1022,30 @@ std::map<uint32_t, aig_lit> Manthan::export_formula_aigs() const {
     return ret;
 }
 
-void Manthan::print_stats(const string& txt, const string& color, const string& extra) const {
+void ManthanStats::print_stats(const string& txt, const string& color, const string& extra) const {
     const double repair_time = cpuTime() - repair_start_time;
-    verb_print(1, color << "[manthan]" << txt
+    col_print(color << "[manthan]" << txt
             << " rep: " << setw(6) << tot_repaired
             << "   loops: "<< setw(6) << num_loops_repair
             << "   avg rep/loop: " << setprecision(1) << setw(4) << (double)tot_repaired/(num_loops_repair+0.0001)
             << "   avg conflsz: " << setw(6) << fixed << setprecision(2) << (double)conflict_sizes_sum/(tot_repaired+0.0001)
             << "   avg need rep: " << setw(6) << fixed << setprecision(2) << (double)needs_repair_sum/(num_loops_repair+0.0001)
-            << "   cache-hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%"
             << "   input-only: " << setw(4) << input_only_rep
             << "   T: " << setprecision(2) << fixed << setw(7) << repair_time
             << "   rep/s: " << setprecision(4) << safe_div(tot_repaired,repair_time) << setprecision(2)
             << extra);
 }
 
-void Manthan::print_detailed_stats() const {
+void Manthan::print_detailed_stats(const ManthanStats& stats) const {
     verb_print(1, COLCYN "[manthan-stats] === CONFLICT STATS ===");
-    verb_print(1, COLCYN "[manthan-stats]   input-only conflicts: " << input_only_conflict_count
-        << "  avg sz: " << fixed << setprecision(1) << safe_div(input_only_conflict_sizes_sum, input_only_conflict_count));
-    verb_print(1, COLCYN "[manthan-stats]   full conflicts:       " << full_conflict_count
-        << "  avg sz: " << fixed << setprecision(1) << safe_div(full_conflict_sizes_sum, full_conflict_count));
-    verb_print(1, COLCYN "[manthan-stats]   cost-zero repairs:    " << cost_zero_repairs);
-    verb_print(1, COLCYN "[manthan-stats]   repair_failed:        " << repair_failed);
-    verb_print(1, COLCYN "[manthan-stats]   cex_solver calls:     " << cex_solver_calls);
-    verb_print(1, COLCYN "[manthan-stats]   repair_solver calls:  " << repair_solver_calls);
+    verb_print(1, COLCYN "[manthan-stats]   input-only conflicts: " << stats.input_only_conflict_count
+        << "  avg sz: " << fixed << setprecision(1) << safe_div(stats.input_only_conflict_sizes_sum, stats.input_only_conflict_count));
+    verb_print(1, COLCYN "[manthan-stats]   full conflicts:       " << stats.full_conflict_count
+        << "  avg sz: " << fixed << setprecision(1) << safe_div(stats.full_conflict_sizes_sum, stats.full_conflict_count));
+    verb_print(1, COLCYN "[manthan-stats]   cost-zero repairs:    " << stats.cost_zero_repairs);
+    verb_print(1, COLCYN "[manthan-stats]   repair_failed:        " << stats.repair_failed);
+    verb_print(1, COLCYN "[manthan-stats]   cex_solver calls:     " << stats.cex_solver_calls);
+    verb_print(1, COLCYN "[manthan-stats]   repair_solver calls:  " << stats.repair_solver_calls);
     // Repair recurrence: a single var repaired hundreds/thousands of
     // times means the repairs of that var are not generalising at all.
     {
@@ -1152,7 +1151,7 @@ void Manthan::print_detailed_stats() const {
         << " (+ " << shared_helper_cls.size() << " shared helper cls)");
     verb_print(1, COLCYN "[manthan-stats]   cex_solver nVars: " << cex_solver.nVars());
 
-    const double loop_t = cpuTime() - repair_start_time;
+    const double loop_t = cpuTime() - stats.repair_start_time;
     const double accounted = t_cex_solve + t_better_ctx + t_find_conflict
         + t_perform_repair + t_inject + t_recompute_yhat;
     verb_print(1, COLCYN "[manthan-stats] === TIME BREAKDOWN (cpu s) ===" << fixed << setprecision(2));
@@ -1263,7 +1262,7 @@ SimplifiedCNF Manthan::do_manthan() {
     verb_print(4, "[trace] post bve_and_substitute nVars=" << cex_solver.nVars() << " helpers=" << helpers.size());
 
     // Counterexample-guided repair
-    repair_start_time = cpuTime();
+    stats.repair_start_time = cpuTime();
     for(const auto& v: to_define_full) {
         assert(var_to_formula.count(v) && "All must have a tentative definition");
         updated_y_funcs.push_back(v);
@@ -1278,13 +1277,16 @@ SimplifiedCNF Manthan::do_manthan() {
     });
 
     while(true) {
-        if (mconf.stats_every > 0 && num_loops_repair % mconf.stats_every == mconf.stats_every - 1) print_stats();
-        if (mconf.detailed_stats_every > 0 && num_loops_repair % mconf.detailed_stats_every == mconf.detailed_stats_every - 1) {
-            print_detailed_stats();
+        if (mconf.stats_every > 0 && stats.num_loops_repair % mconf.stats_every == mconf.stats_every - 1) {
+            if (conf.verb >= 1) stats.print_stats();
+            verb_print(1, "repair solver cache hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%");
+        }
+        if (mconf.detailed_stats_every > 0 && stats.num_loops_repair % mconf.detailed_stats_every == mconf.detailed_stats_every - 1) {
+            print_detailed_stats(stats);
         }
         assert(at_least_one_repaired);
         at_least_one_repaired = false;
-        num_loops_repair++;
+        stats.num_loops_repair++;
 
         inject_formulas_into_solver();
 
@@ -1292,7 +1294,7 @@ SimplifiedCNF Manthan::do_manthan() {
         const double t_cex0 = cpuTime();
         const bool finished = get_counterexample(ctx);
         t_cex_solve += cpuTime() - t_cex0;
-        cex_solver_calls++;
+        stats.cex_solver_calls++;
         if (finished) {
             // cex_solver claims no CEX. Triangulate with three SLOW_DEBUG
             // miters: via_clauses, via_aig, and the per-formula pairwise check.
@@ -1312,14 +1314,15 @@ SimplifiedCNF Manthan::do_manthan() {
             });
             break;
         }
-        if (tot_repaired >= mconf.max_repairs) {
-            print_stats("", COLRED, " Reached max repairs");
+        if (stats.tot_repaired >= mconf.max_repairs) {
+            if (conf.verb >= 1) stats.print_stats("", COLRED, " Reached max repairs: " + std::to_string(mconf.max_repairs));
+            verb_print(1, "repair solver cache hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%");
             return cnf;
         }
-        if (mconf.restart != 0 && tot_repaired >= mconf.restart) {
+        if (mconf.restart != 0 && stats.tot_repaired >= mconf.restart) {
             restart_needed = true;
-            print_stats("", COLYEL, " Hit restart limit, exiting to compact AIGs + re-enter");
-            // Move is safe: post-return only export_formula_aigs() runs.
+            stats.print_stats("", COLYEL, " Hit restart limit, exiting to compact AIGs + re-enter");
+            verb_print(1, "repair solver cache hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%");
             return std::move(cnf);
         }
         print_cnf_debug_info(ctx);
@@ -1340,7 +1343,7 @@ SimplifiedCNF Manthan::do_manthan() {
         verb_print(2, "[manthan] finding better ctx done, needs_repair size before vs now: "
               << setw(3) << old_needs_repair_size << " -- " << setw(4) << needs_repair.size());
         print_needs_repair_vars();
-        needs_repair_sum += needs_repair.size();
+        stats.needs_repair_sum += needs_repair.size();
 
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
@@ -1351,25 +1354,21 @@ SimplifiedCNF Manthan::do_manthan() {
             if (done) {
                 at_least_one_repaired = true;
                 num_repaired++;
-                tot_repaired++;
+                stats.tot_repaired++;
                 consecutive_cost_zero = 0;
-                if (tot_repaired >= mconf.max_repairs) {
-                    print_stats("", COLRED, " Reached max repairs");
-                    return cnf;
-                }
                 if (mconf.one_repair_per_loop) break;
             } else {
-                repair_failed++;
+                stats.repair_failed++;
                 consecutive_cost_zero++;
                 // Break for a fresh counterexample after enough consecutive
                 // cost-zero repairs; threshold drops as the cost-zero rate rises.
-                const uint32_t cz_threshold = (cost_zero_repairs > tot_repaired * mconf.cz_high_ratio) ? mconf.cz_threshold_high :
-                    (cost_zero_repairs > tot_repaired * mconf.cz_low_ratio) ? mconf.cz_threshold_mid : mconf.cz_threshold_low;
+                const uint32_t cz_threshold = (stats.cost_zero_repairs > stats.tot_repaired * mconf.cz_high_ratio) ? mconf.cz_threshold_high :
+                    (stats.cost_zero_repairs > stats.tot_repaired * mconf.cz_low_ratio) ? mconf.cz_threshold_mid : mconf.cz_threshold_low;
                 if (consecutive_cost_zero >= cz_threshold && num_repaired > 0) {
                     verb_print(2, "[manthan] Breaking repair loop after " << consecutive_cost_zero
                         << " consecutive cost-zero repairs (threshold " << cz_threshold
-                        << ", cost-zero repairs " << cost_zero_repairs
-                        << ", tot repaired " << tot_repaired << ")");
+                        << ", cost-zero repairs " << stats.cost_zero_repairs
+                        << ", tot repaired " << stats.tot_repaired << ")");
                     break;
                 }
             }
@@ -1384,14 +1383,13 @@ SimplifiedCNF Manthan::do_manthan() {
             });
             verb_print(3, "[manthan] finished repairing " << y_rep+1 << " : " << std::boolalpha << done);
         }
-        verb_print(2, "[manthan] Num repaired: " << num_repaired << " tot repaired: " << tot_repaired << " num_loops_repair: " << num_loops_repair);
+        verb_print(2, "[manthan] Num repaired: " << num_repaired << " tot repaired: " << stats.tot_repaired << " num_loops_repair: " << stats.num_loops_repair);
 
         if (mconf.check_repair) check_repair_monotonic();
     }
-    const double repair_time = cpuTime() - repair_start_time;
+    const double repair_time = cpuTime() - stats.repair_start_time;
     assert(check_map_dependency_cycles());
-    print_detailed_stats();
-    print_stats("", COLYEL, " DONE");
+    print_detailed_stats(stats);
 
     // Build final CNF
     vector<aig_lit> aigs(cnf.nVars(), nullptr);
@@ -1406,14 +1404,7 @@ SimplifiedCNF Manthan::do_manthan() {
     fcnf.map_aigs_to_orig(aigs, cnf_nvars, y_hat_to_y);
     assert(verify_final_cnf(fcnf));
     auto [input2, to_define2, backward_defined2] = fcnf.get_var_types(0 | verbose_debug_enabled, "end do_manthan");
-    verb_print(1, COLRED "[manthan] Done. "
-        << " sampl T: " << setprecision(2) << std::fixed << sampl_time
-        << " train T: " << setprecision(2) << std::fixed << train_time
-        << " repair T: " << setprecision(2) << std::fixed << repair_time
-        << " repairs: " << tot_repaired << " repair failed: " << repair_failed
-        << " defined: " << to_define.size() - to_define2.size()
-        << " still to-define: " << to_define2.size()
-        << " T: " << cpuTime()-my_time);
+    stats.print_stats("", COLYEL, " Round done");
     return fcnf;
 }
 
@@ -1481,7 +1472,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     const double t_fc0 = cpuTime();
     bool ret = find_conflict(y_rep, ctx, conflict);
     t_find_conflict += cpuTime() - t_fc0;
-    repair_solver_calls++;
+    stats.repair_solver_calls++;
 
     if (ret) {
         SLOW_DEBUG_DO(assert(is_unsat(conflict, y_rep, ctx)));
@@ -1510,14 +1501,14 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
             if (!is_input[l.var()]) { is_input_only = false; break; }
         }
         if (is_input_only) {
-            input_only_conflict_count++;
-            input_only_conflict_sizes_sum += conflict.size();
+            stats.input_only_conflict_count++;
+            stats.input_only_conflict_sizes_sum += conflict.size();
         } else {
-            full_conflict_count++;
-            full_conflict_sizes_sum += conflict.size();
+            stats.full_conflict_count++;
+            stats.full_conflict_sizes_sum += conflict.size();
         }
 
-    } else cost_zero_repairs++;
+    } else stats.cost_zero_repairs++;
     compute_needs_repair(ctx);
     print_needs_repair_vars();
     return ret;
@@ -1571,7 +1562,7 @@ bool Manthan::try_input_only_conflict(const uint32_t y_rep, const sample& ctx,
         if (std::find(conflict.begin(), conflict.end(), to_repair) != conflict.end()) {
             verb_print(2, "[manthan] Found INPUT-ONLY conflict sz " << conflict.size()
                 << " for y_rep=" << y_rep+1);
-            input_only_rep++;
+            stats.input_only_rep++;
             assumps = std::move(input_assumps);
             return true;
         }
@@ -1685,7 +1676,7 @@ void Manthan::try_drop_y_vars(vector<Lit>& conflict, vector<Lit>& assumps,
     verb_print(2, "[manthan] Dropped y-vars from conflict: "
         << conflict.size() << " -> " << conflict3.size());
     conflict = conflict3;
-    input_only_rep++;
+    stats.input_only_rep++;
 }
 
 // Minimize the conflict, then generalise it (drop y-vars) and strip the
@@ -1883,7 +1874,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
     verb_print(2, "[manthan] Performing repair on " << setw(5) << y_rep+1
             << " with conflict size " << setw(3) << conflict.size());
     assert(backward_defined.count(y_rep) == 0 && "Backward defined should need NO repair, ever");
-    conflict_sizes_sum += conflict.size();
+    stats.conflict_sizes_sum += conflict.size();
 
     // not (conflict) -> v = ctx(v)
     FHolder<MetaSolver2>::Formula f;
@@ -1903,7 +1894,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
             cl.clear();
             cl.push_back(~fresh_l);
             cl.push_back(~map_y_to_y_hat(l));
-            f.clauses.push_back(cl);
+            f.clauses.emplace_back(cl);
         }
         f.out = fresh_l;
 
@@ -2239,7 +2230,7 @@ void Manthan::add_not_f_x_yhat() {
         // Replace y with y_hat in the clause
         cl.clear();
         for(const auto& l: cl_orig) {
-            if (to_define_full.count(l.var())) cl.push_back(Lit(y_to_y_hat.at(l.var()), l.sign()));
+            if (to_define_full.count(l.var())) cl.emplace_back(y_to_y_hat.at(l.var()), l.sign());
             else cl.push_back(l);
         }
 
@@ -2337,7 +2328,7 @@ void Manthan::inject_formulas_into_solver() {
 bool Manthan::get_counterexample(sample& ctx) {
     const double my_time_start = cpuTime();
     needs_repair.clear();
-    if (num_loops_repair == 1)
+    if (stats.num_loops_repair == 1)
         verb_print(1, "[manthan] Getting counterexample for the first time...");
 
     vector<Lit> assumps;
@@ -2353,11 +2344,11 @@ bool Manthan::get_counterexample(sample& ctx) {
 
     verb_print(4, "assumptions: " << assumps);
     cex_solver.set_verbosity(conf.verb <= 2 ? 0 : conf.verb-1);
-    if (num_loops_repair == 1) cex_solver.simplify(&assumps);
+    if (stats.num_loops_repair == 1) cex_solver.simplify(&assumps);
 
     /* solver.set_up_for_sample_counter(1000); */
     auto ret = cex_solver.solve(&assumps);
-    if (num_loops_repair == 1)
+    if (stats.num_loops_repair == 1)
         verb_print(1, "[manthan] First cex_solver ran in T: " << setprecision(2) << cpuTime() - my_time_start);
     else
         verb_print(2, "[manthan] cex_solver ran in T: " << setprecision(2) << cpuTime() - my_time_start);
@@ -2521,12 +2512,12 @@ void Manthan::recompute_all_y_hat_cnf(sample& ctx) {
     vector<Lit> assumps;
     assumps.reserve(input.size() + y_order.size() + y_hat_to_indic.size());
     for(const auto& x: input) {
-        assumps.push_back(Lit(x, ctx[x] == l_False));
+        assumps.emplace_back(x, ctx[x] == l_False);
     }
     for(const auto& [y_hat, ind]: y_hat_to_indic) {
         uint32_t y = indic_to_y[ind];
         if (mconf.force_bw_equal && backward_defined.count(y)) continue;
-        assumps.push_back(Lit(ind, false));
+        assumps.emplace_back(ind, false);
     }
 
     lbool ret = cex_solver.solve(&assumps, 1);
@@ -2640,7 +2631,7 @@ bool Manthan::count_error_formula(mpz_class& out_count) {
         for (const auto& l : cl_orig) {
             auto it = count_y_to_y_hat.find(l.var());
             if (it != count_y_to_y_hat.end())
-                cl_subst.push_back(Lit(it->second, l.sign()));
+                cl_subst.emplace_back(it->second, l.sign());
             else
                 cl_subst.push_back(l);
         }

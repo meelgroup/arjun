@@ -381,7 +381,7 @@ void do_synthesis() {
     cnf.set_orig_sampl_vars(cnf.get_sampl_vars());
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
     check_cnf_sat(cnf);
-    cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
+    if (conf.verb >= 1) cout << "c o ignoring --backbone option, doing backbone for synth no matter what" << endl;
     if (conf.verb)
         cnf.get_var_types(conf.verb | verbose_debug_enabled, "start do_synthesis");
 
@@ -428,7 +428,7 @@ void do_synthesis() {
         // Brute-force: enumerate consistent X assignments, build per-y
         // decision trees. Declines (CNF unchanged) if the enum set is too
         // large; Manthan below then finishes the job.
-        cout << "c o [arjun] Synthesis: brute-force decision trees" << endl;
+        verb_print(1, "[arjun] Synthesis: brute-force decision trees");
         cnf = arjun->standalone_brute_force_synth(std::move(cnf), mconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-brute_force_synth.aig");
         SLOW_DEBUG_DO(check_stage("brute_force_synth"));

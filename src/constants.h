@@ -90,17 +90,24 @@ inline double safe_div(double a, double b) noexcept {
     return ret;
 }
 
+#define col_print(x) \
+    do { \
+        std::cout << "c o " << COLDEF << x << COLDEF << std::endl; \
+    } while (0)
+
 #define verb_print(a, x) \
     do { \
         if (conf.verb >= a) {\
-            std::cout << "c o " << COLDEF << x << COLDEF << std::endl;}\
+            col_print(x); \
+        } \
     } while (0)
 
 
 #define verb_print2(a, x) \
     do { \
         if (arjdata->conf.verb >= a) {\
-            std::cout << "c o " << COLDEF << x << COLDEF << std::endl;}\
+            col_print(x); \
+        } \
     } while (0)
 
 #ifdef VERBOSE_DEBUG

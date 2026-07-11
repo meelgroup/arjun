@@ -43,6 +43,48 @@ namespace ArjunInt {
 using sample = std::vector<CMSat::lbool>;
 class ManthanLearn;
 
+struct ManthanStats {
+    double repair_start_time;
+    void print_stats(const std::string& txt = "", const std::string& color = "", const std::string& extra = "") const;
+
+    uint32_t num_loops_repair = 0;
+    uint64_t conflict_sizes_sum = 0;
+    uint32_t input_only_rep = 0;
+    uint64_t needs_repair_sum = 0;
+    int32_t tot_repaired = 0;
+    uint32_t repair_failed = 0;
+    double sampl_time = 0;
+    double train_time = 0;
+
+    uint64_t input_only_conflict_sizes_sum = 0;
+    uint64_t full_conflict_sizes_sum = 0;
+    uint32_t input_only_conflict_count = 0;
+    uint32_t full_conflict_count = 0;
+    uint32_t cost_zero_repairs = 0;
+    uint32_t cex_solver_calls = 0;
+    uint32_t repair_solver_calls = 0;
+
+    ManthanStats& operator+=(const ManthanStats& other) {
+        num_loops_repair += other.num_loops_repair;
+        conflict_sizes_sum += other.conflict_sizes_sum;
+        input_only_rep += other.input_only_rep;
+        needs_repair_sum += other.needs_repair_sum;
+        tot_repaired += other.tot_repaired;
+        repair_failed += other.repair_failed;
+        sampl_time += other.sampl_time;
+        train_time += other.train_time;
+
+        input_only_conflict_sizes_sum += other.input_only_conflict_sizes_sum;
+        full_conflict_sizes_sum += other.full_conflict_sizes_sum;
+        input_only_conflict_count += other.input_only_conflict_count;
+        full_conflict_count += other.full_conflict_count;
+        cost_zero_repairs += other.cost_zero_repairs;
+        cex_solver_calls += other.cex_solver_calls;
+        repair_solver_calls += other.repair_solver_calls;
+        return *this;
+    }
+};
+
 class Manthan {
     public:
         Manthan(const Config& _conf, const ArjunNS::Arjun::ManthanConf& _mconf, ArjunNS::SimplifiedCNF&& _cnf) :
@@ -58,7 +100,7 @@ class Manthan {
         // Restart support: guess maps each to_define var to its tentative AIG.
         void set_guess(std::map<uint32_t, ArjunNS::aig_lit>&& g) { guess = std::move(g); }
         [[nodiscard]] bool restart_requested() const { return restart_needed; }
-        [[nodiscard]] uint32_t get_tot_repaired() const { return tot_repaired; }
+        [[nodiscard]] const ManthanStats& get_stats() const { return stats; }
         // AIG snapshot of every to_define formula; feeds the next round's guess.
         [[nodiscard]] std::map<uint32_t, ArjunNS::aig_lit> export_formula_aigs() const;
 
@@ -259,19 +301,9 @@ class Manthan {
         [[nodiscard]] bool check_aig_matches_clauses_per_formula(const std::string& where) const;
         std::vector<uint32_t> updated_y_funcs; // y_hats updated during last round of training
 
-        // stats
-        double repair_start_time;
-        void print_stats(const std::string& txt = "", const std::string& color = "", const std::string& extra = "") const;
-        void print_detailed_stats() const;
-        uint32_t num_loops_repair = 0;
-        uint64_t conflict_sizes_sum = 0;
-        uint32_t input_only_rep = 0;
-        uint64_t needs_repair_sum = 0;
-        uint32_t tot_repaired = 0;
-        uint32_t repair_failed = 0;
+        ManthanStats stats;
         std::vector<uint32_t> repaired_vars_count; // for each y, how many times it was repaired
-        double sampl_time = 0;
-        double train_time = 0;
+        void print_detailed_stats(const ManthanStats& stats) const;
 
         // Cumulative per-phase CPU time (s) for the repair loop.
         double t_cex_solve = 0;      // get_counterexample
@@ -281,13 +313,6 @@ class Manthan {
         double t_inject = 0;         // inject_formulas_into_solver
         double t_recompute_yhat = 0; // recompute_all_y_hat_cnf
 
-        uint64_t input_only_conflict_sizes_sum = 0;
-        uint64_t full_conflict_sizes_sum = 0;
-        uint32_t input_only_conflict_count = 0;
-        uint32_t full_conflict_count = 0;
-        uint32_t cost_zero_repairs = 0;
-        uint32_t cex_solver_calls = 0;
-        uint32_t repair_solver_calls = 0;
 
         // Main stuff
         ArjunNS::SimplifiedCNF cnf;

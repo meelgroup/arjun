@@ -1614,7 +1614,7 @@ public:
         int one_repair_per_loop = 0;
         int force_bw_equal = 1;
         int inv_learnt = 0;
-        uint32_t max_repairs = std::numeric_limits<uint32_t>::max();
+        int32_t max_repairs = std::numeric_limits<int32_t>::max();
         uint32_t restart = 5000;
         int check_repair = 0;
         std::string ganak_binary;

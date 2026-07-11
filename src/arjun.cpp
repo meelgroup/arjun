@@ -170,46 +170,53 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
 {
     // Restart loop: each round exits after "restart" repairs; its AIGs
     // seeds the next round (compacted, re-encoded). max_repairs is cumulative.
-    SimplifiedCNF work = std::move(cnf);
     std::map<uint32_t, aig_lit> guess;
-    uint64_t repairs_all_rounds = 0;
     uint32_t round = 0;
+    ManthanStats cumul_stats;
     while (true) {
         ManthanConf round_mconf = mconf;
-        if (mconf.max_repairs != std::numeric_limits<uint32_t>::max()) {
+        if (mconf.max_repairs != std::numeric_limits<int32_t>::max()) {
             assert(mconf.max_repairs > repairs_all_rounds);
-            round_mconf.max_repairs = mconf.max_repairs - (uint32_t)repairs_all_rounds;
+            round_mconf.max_repairs = mconf.max_repairs - cumul_stats.tot_repaired;
+            cout << "here, setting: " << round_mconf.max_repairs << " all rounds: " << cumul_stats.tot_repaired << " orig: " << mconf.max_repairs << endl;
         }
-        Manthan manthan(arjdata->conf, round_mconf, std::move(work));
+
+        // Run
+        Manthan manthan(arjdata->conf, round_mconf, std::move(cnf));
         if (!guess.empty()) manthan.set_guess(std::move(guess));
-        work = manthan.do_manthan();
-        repairs_all_rounds += manthan.get_tot_repaired();
+        cnf = manthan.do_manthan();
+
+        // Stats
+        ManthanStats stats = manthan.get_stats();
+        if (round == 0) cumul_stats = stats;
+        else cumul_stats += stats;
+
+        // Check if done
         if (!manthan.restart_requested()) break;
         guess = manthan.export_formula_aigs();
         round++;
         verb_print2(1, COLYEL "[manthan-restart] round " << round
-            << " done, tot repairs so far: " << repairs_all_rounds
+            << " done, tot repairs so far: " << cumul_stats.tot_repaired
             << "; compacting " << guess.size() << " AIGs and re-entering");
+
+        // Debug dump AIGs
         if (!arjdata->conf.dump_restart_aig.empty()) {
             // deep_clone so map_aigs_to_orig does not disturb the live guess.
-            SimplifiedCNF dcnf = work;
-            std::vector<aig_lit> aigs(work.nVars(), nullptr);
+            SimplifiedCNF dcnf = cnf;
+            std::vector<aig_lit> aigs(cnf.nVars(), nullptr);
             for (const auto& [y, a] : guess) aigs[y] = a;
             auto aigs_copy = AIG::deep_clone_vec(aigs);
-            dcnf.map_aigs_to_orig(aigs_copy, work.nVars());
+            dcnf.map_aigs_to_orig(aigs_copy, cnf.nVars());
             const std::string base = arjdata->conf.dump_restart_aig
                 + "-restart" + std::to_string(round);
             dcnf.write_aig_defs_to_file(base + ".aig");
             dcnf.write_aig_def_to_verilog(base + ".v");
         }
     }
-    if (arjdata->conf.verb >= 1) {
-        cout << COLYEL "[manthan] done. "
-            << " restart rounds: " << round + 1
-            << ", total repairs: " << repairs_all_rounds
-            << endl;
-    }
-    return work;
+
+    // Done!
+    if (arjdata->conf.verb >= 1) cumul_stats.print_stats("", COLRED, " DONE");
+    return cnf;
 }
 
 DLL_PUBLIC SimplifiedCNF Arjun::standalone_brute_force_synth(SimplifiedCNF&& cnf, const ManthanConf& mconf)

@@ -59,7 +59,7 @@ using PT = SynthRunner::ParamType;
 struct ParamDef { PT type; std::function<void(MC&, const string&)> setter; };
 
 const std::map<string, ParamDef> param_table = {
-    {"max_repairs",              {PT::UInt,   [](MC& c, const string& v) { c.max_repairs              = parse_val<uint32_t>(v); }}},
+    {"max_repairs",              {PT::Int,    [](MC& c, const string& v) { c.max_repairs              = parse_val<int64_t>(v); }}},
     {"restart",                  {PT::UInt,   [](MC& c, const string& v) { c.restart                  = parse_val<uint32_t>(v); }}},
     {"samples",                  {PT::UInt,   [](MC& c, const string& v) { c.samples                  = parse_val<uint32_t>(v); }}},
     {"min_gain_split",           {PT::Double, [](MC& c, const string& v) { c.min_gain_split           = parse_val<double>(v); }}},
@@ -262,6 +262,7 @@ void SynthRunner::run_manthan_strategies(
         exit(EXIT_FAILURE);
     }
     if (cnf.synth_done()) return;
+
     bool prev_hit_max_repairs = false;
     for (size_t i = 0; i < strategies.size(); i++) {
         const auto& strat = strategies[i];
@@ -269,20 +270,20 @@ void SynthRunner::run_manthan_strategies(
 
         auto mconf = apply_strategy(mconf_orig, strat);
         if (is_last && strat.overrides.count("max_repairs") == 0)
-            mconf.max_repairs = std::numeric_limits<uint32_t>::max();
+            mconf.max_repairs = std::numeric_limits<int32_t>::max();
 
         // Previous non-final strategy hit max_repairs: shrink the budget for
         // later non-final strategies unlikely to help this instance.
         if (!is_last && prev_hit_max_repairs) {
             auto orig = mconf.max_repairs;
-            mconf.max_repairs = std::max(50u, orig / 4);
+            mconf.max_repairs = std::max((int32_t)50, orig / 4);
             verb_print(1, "[synth] Reducing max_repairs " << orig << " -> " << mconf.max_repairs
                     << " (previous strategy hit limit without finishing)");
         }
 
         verb_print(1, "Running Manthan strategy " << i+1 << "/" << strategies.size()
             << " -- " << strat.raw << " with max_repairs="
-            << (mconf.max_repairs == std::numeric_limits<uint32_t>::max() ? std::string("unlimited") : std::to_string(mconf.max_repairs)));
+            << (mconf.max_repairs == std::numeric_limits<int32_t>::max() ? std::string("unlimited") : std::to_string(mconf.max_repairs)));
         cnf = arjun->standalone_manthan(std::move(cnf), mconf);
         if (cnf.synth_done()) {
             verb_print(1,"Manthan finished with strategy " << i+1 << "/" << strategies.size()
