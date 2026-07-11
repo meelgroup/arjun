@@ -49,10 +49,10 @@ void ManthanLearn::full_train() {
         << ", maximumDepth=" << mconf.max_depth);
     double samp_start_time = cpuTime();
     vector<sample> samples = m.get_cmsgen_samples(mconf.samples);
-    m.sampl_time = cpuTime() - samp_start_time;
+    m.stats.sampl_time = cpuTime() - samp_start_time;
     verb_print(1, COLYEL "[manthan] Got " << setw(8) << samples.size() << " samples."
-        << " samp/var: " << setw(8) << setprecision(2) << std::fixed << m.sampl_time/(double)m.to_define.size()
-        << " T: " << setprecision(2) << std::fixed << m.sampl_time);
+        << " samp/var: " << setw(8) << setprecision(2) << std::fixed << m.stats.sampl_time/(double)m.to_define.size()
+        << " T: " << setprecision(2) << std::fixed << m.stats.sampl_time);
     m.sort_all_samples(samples);
 
     // Training -- updates depenndency_mat
@@ -61,11 +61,11 @@ void ManthanLearn::full_train() {
         if (m.backward_defined.count(v)) continue;
         train(samples, v);
     }
-    m.train_time = cpuTime() - train_start_time;
+    m.stats.train_time = cpuTime() - train_start_time;
     verb_print(1, COLYEL "[manthan] Training done."
             << " funs: " << setw(6) << m.to_define.size()
             << " fun/s: " << setw(6) << setprecision(2) << std::fixed << safe_div(m.to_define.size(), cpuTime() - train_start_time)
-            << " T: " << setw(6) << setprecision(2) << std::fixed << m.train_time
+            << " T: " << setw(6) << setprecision(2) << std::fixed << m.stats.train_time
             << " mem: " << memUsedTotal()/(1024.0*1024.0) << " MB");
     assert(m.check_map_dependency_cycles());
 }
