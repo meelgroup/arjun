@@ -29,6 +29,8 @@ SOLVE_TIME_EXPR = "(CASE WHEN solver='cadet' THEN timeout_t ELSE arjun_time END)
 
 # ---- Configuration: which dirs to include (prefix match) ----
 only_dirs = [
+    # "out-synth-1587721-6", # CADET
+
     # "out-synth-1068169-0",
     # "out-synth-1296625-", # lots of memory (9GB)
     # "out-synth-1286344-0", # 4.5GB memory, improvements but no AIG speedup
@@ -45,7 +47,6 @@ only_dirs = [
     # "out-synth-1583187-0", # interpolation, cadet-style (turned off)
     # "out-synth-1583187-5", # interpolation, cadet-style
     # "out-synth-1587721-0", # whatever
-    # "out-synth-1587721-6", # CADET
     # "out-synth-1595974-5", # ALWAYS ON INTERPOLATION
     # "out-synth-1595974-", # now interpolation is using minimized ("touched" variables) cnf so interpolation generation is faster
     # "out-synth-1652067-0", # inprocessing with "cadet" turned OFF
@@ -54,7 +55,9 @@ only_dirs = [
     # "out-synth-1595974-0", # check interpolation
     # "out-synth-1859870-0", # AI slop cleanup
     # "out-synth-1595974-0", # old system where interpolant was with picosat and MyTracer
-    "out-synth-1877264-0", # faster interpolation, less AIG rewrite&simplify, less CMSGen sampling what's slow, AI slop cleanup
+    # "out-synth-1877264-0", # faster interpolation, less AIG rewrite&simplify, less CMSGen sampling what's slow, AI slop cleanup
+    # "out-synth-1903613-2", # restarts between manthan & ITE chain rewrite
+    "out-synth-1903613-1", # restarts between manthan & ITE chain rewrite
 ]
 # -------------------------------------------------------------
 
