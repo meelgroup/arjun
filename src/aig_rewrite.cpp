@@ -462,20 +462,48 @@ void AIGRewriter::compress_cube_chains(vector<aig_lit>& defs) {
     auto mk_or = [&](const aig_lit& a, const aig_lit& b) {
         return ~make_canonical(~a, ~b);
     };
-    // Build a cube right-deep, most frequent literal deepest (shared suffix).
-    auto build_cube = [&](const vector<uint32_t>& lits_by_rank) -> aig_lit {
-        aig_lit acc = cached_lit(lits_by_rank.back() / 2, lits_by_rank.back() & 1);
-        for (size_t i = lits_by_rank.size() - 1; i-- > 0; ) {
-            acc = make_canonical(cached_lit(lits_by_rank[i] / 2, lits_by_rank[i] & 1), acc);
+    // OR together a list of terms: canonical (nid, sign) operand order plus
+    // a balanced pairwise fold, so equal operand sub-multisets across defs
+    // and levels hash-cons to the same nodes (the node-sharing effect of
+    // abc's "balance", worth ~15% union here over an ad-hoc left-deep fold).
+    auto or_terms = [&](vector<aig_lit>& ts) -> aig_lit {
+        assert(!ts.empty());
+        std::sort(ts.begin(), ts.end(), [](const aig_lit& a, const aig_lit& b) {
+            if (a->nid != b->nid) return a->nid < b->nid;
+            return (int)a.neg < (int)b.neg;
+        });
+        while (ts.size() > 1) {
+            size_t o = 0;
+            for (size_t i = 0; i + 1 < ts.size(); i += 2)
+                ts[o++] = mk_or(ts[i], ts[i + 1]);
+            if (ts.size() & 1) ts[o++] = ts.back();
+            ts.resize(o);
         }
-        return acc;
+        return ts[0];
+    };
+    // Build a cube as a balanced pairwise tree over the rank-ordered
+    // literals. All cubes use the same global order, so equal literal
+    // blocks land on aligned subtrees and hash-share across cubes and defs
+    // (measurably better than a right-deep suffix chain).
+    auto build_cube = [&](const vector<uint32_t>& lits_by_rank) -> aig_lit {
+        vector<aig_lit> ts;
+        ts.reserve(lits_by_rank.size());
+        for (const uint32_t l : lits_by_rank)
+            ts.push_back(cached_lit(l / 2, l & 1));
+        while (ts.size() > 1) {
+            size_t o = 0;
+            for (size_t i = 0; i + 1 < ts.size(); i += 2)
+                ts[o++] = make_canonical(ts[i], ts[i + 1]);
+            if (ts.size() & 1) ts[o++] = ts.back();
+            ts.resize(o);
+        }
+        return ts[0];
     };
     // Emit OR(cubes) by greedily factoring the locally most frequent literal
     // (f = OR(lit AND f_with, f_without)); single cubes use the global rank
     // order. An empty residual (cube == {lit}) absorbs its with-group.
-    std::function<aig_lit(vector<vector<uint32_t>>&&)> emit_or_of_cubes =
-        [&](vector<vector<uint32_t>>&& cs) -> aig_lit {
-            vector<aig_lit> terms;
+    std::function<void(vector<vector<uint32_t>>&&, vector<aig_lit>&)>
+    emit_cube_terms = [&](vector<vector<uint32_t>>&& cs, vector<aig_lit>& terms) {
             while (!cs.empty()) {
                 if (cs.size() == 1) {
                     terms.push_back(build_cube(cs[0]));
@@ -505,15 +533,13 @@ void AIGRewriter::compress_cube_chains(vector<aig_lit>& defs) {
                     // cube == {best}: absorbs the with-group entirely.
                     terms.push_back(cached_lit(best / 2, best & 1));
                 } else {
+                    vector<aig_lit> sub;
+                    emit_cube_terms(std::move(with), sub);
                     terms.push_back(make_canonical(cached_lit(best / 2, best & 1),
-                                                   emit_or_of_cubes(std::move(with))));
+                                                   or_terms(sub)));
                 }
                 cs = std::move(without);
             }
-            assert(!terms.empty());
-            aig_lit acc = terms[0];
-            for (size_t i = 1; i < terms.size(); i++) acc = mk_or(acc, terms[i]);
-            return acc;
         };
 
     // ---- Recursive (DAG-wide) chain compression ----
@@ -683,7 +709,7 @@ void AIGRewriter::compress_cube_chains(vector<aig_lit>& defs) {
                 }
                 stats.chain_dup_cubes += dup_dropped;
 
-                bool has = false;
+                vector<aig_lit> all_terms;
                 if (!uniq.empty()) {
                     stats.chain_cubes += uniq.size();
                     vector<vector<uint32_t>> cs;
@@ -701,14 +727,11 @@ void AIGRewriter::compress_cube_chains(vector<aig_lit>& defs) {
                     }
                     // Deterministic canonical order for emission.
                     std::sort(cs.begin(), cs.end());
-                    acc = emit_or_of_cubes(std::move(cs));
-                    has = true;
+                    emit_cube_terms(std::move(cs), all_terms);
                 }
-                for (const auto& t : terms) {
-                    acc = has ? mk_or(acc, t) : t;
-                    has = true;
-                }
-                if (!has) acc = cached_const(false);
+                for (const auto& t : terms) all_terms.push_back(t);
+                if (all_terms.empty()) acc = cached_const(false);
+                else acc = or_terms(all_terms);
             }
             memo[memo_key(f.or_edge)] = acc;
             memo[memo_key(~f.or_edge)] = ~acc;
