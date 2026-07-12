@@ -27,7 +27,7 @@
 #include "arjun.h"
 #include "config.h"
 #include "constants.h"
-#include "metasolver2.h"
+#include "metasolver.h"
 #include "cachedsolver.h"
 #include <cryptominisat5/solvertypesmini.h>
 
@@ -117,7 +117,7 @@ class Manthan {
 
         const Config& conf;
         const ArjunNS::Arjun::ManthanConf& mconf;
-        MetaSolver2 cex_solver;
+        MetaSolver cex_solver;
         CachedSolver repair_solver;
 
         // 3 sets of variables, together adding up to the CNF
@@ -201,13 +201,25 @@ class Manthan {
         std::vector<char> aig_dep_is_dep;
         std::vector<uint32_t> aig_dep_list;
         std::vector<const ArjunNS::AIG*> aig_dep_stack;
-        // Memoized dep list per y_rep, keyed by var_to_formula[y_rep].aig's
+        // Memoized dep list per y, keyed by var_to_formula[y].aig's
         // pointer; a mismatch (formula rewritten) triggers recompute.
         struct DepCacheEntry {
             const ArjunNS::AIG* aig_lit;
             std::vector<uint32_t> dep_list;
         };
         std::unordered_map<uint32_t, DepCacheEntry> dep_cache;
+        // Cached leaf-var list of y's formula AIG (all leaves: inputs +
+        // y/y_hat vars, mixed space). Backing store is dep_cache.
+        const std::vector<uint32_t>& formula_dep_list(const uint32_t y);
+        // Scratch for recompute_all_y_hat_cnf's topological evaluation.
+        std::vector<uint8_t> recompute_state;
+        std::vector<uint32_t> recompute_topo;
+        std::vector<uint32_t> recompute_dfs;
+        std::vector<uint8_t> recompute_changed;
+        // O(1) y <-> y_hat maps (mirrors of y_to_y_hat / y_hat_to_y) for the
+        // recompute hot path; entries are UINT32_MAX where unmapped.
+        std::vector<uint32_t> y_to_yhat_flat;
+        std::vector<uint32_t> yhat_to_y_flat;
         std::vector<uint32_t> var_conflict_freq; // how often each var appears in conflicts
         void minimize_conflict(std::vector<CMSat::Lit>& conflict, std::vector<CMSat::Lit>& assumps, const CMSat::Lit repairing);
         uint32_t find_next_repair_var(const sample& ctx) const;
@@ -223,7 +235,7 @@ class Manthan {
         void fill_var_to_formula_with(std::set<uint32_t>& vars);
         void print_y_order_occur() const;
         void compute_needs_repair(const sample& ctx);
-        void recompute_all_y_hat_cnf(sample& ctx);
+        void recompute_all_y_hat_cnf(sample& ctx, const uint32_t y_rep);
 
         // ordering
         std::vector<uint32_t> y_order; //1st only depends on inputs
@@ -248,8 +260,8 @@ class Manthan {
         std::vector<std::vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
 
         // Formulas
-        std::unique_ptr<FHolder<MetaSolver2>> fh = nullptr;
-        std::map<uint32_t, FHolder<MetaSolver2>::Formula> var_to_formula; // var -> formula
+        std::unique_ptr<FHolder<MetaSolver>> fh = nullptr;
+        std::map<uint32_t, FHolder<MetaSolver>::Formula> var_to_formula; // var -> formula
         // Helper defs from the shared AIGToCNF batch, referenced by multiple
         // formulas' .out chains. Inserted into cex_solver once, never dropped.
         // Debug miters must add these alongside formula clauses.
@@ -313,6 +325,8 @@ class Manthan {
         double t_perform_repair = 0; // formula/AIG compose
         double t_inject = 0;         // inject_formulas_into_solver
         double t_recompute_yhat = 0; // recompute_all_y_hat_cnf
+        double t_recompute_topo = 0; // recompute: topo DFS + dirty scan
+        double t_recompute_eval = 0; // recompute: AIG evaluations
 
 
         // Main stuff

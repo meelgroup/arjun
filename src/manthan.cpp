@@ -35,7 +35,7 @@
 #include <algorithm>
 #include <ranges>
 #include "constants.h"
-#include "metasolver2.h"
+#include "metasolver.h"
 #include "time_mem.h"
 #include <fstream>
 #include <sstream>
@@ -181,7 +181,7 @@ void Manthan::fill_var_to_formula_with(set<uint32_t>& vars) {
     // Routes AIGToCNF clauses into the per-formula clause list while allocating
     // helper vars in cex_solver (same pattern as the rebuild sink below).
     struct FormulaClauseSink {
-        MetaSolver2& solver;
+        MetaSolver& solver;
         std::vector<CL>& clauses;
         std::set<uint32_t>& helpers_set;
         void new_var() {
@@ -195,7 +195,7 @@ void Manthan::fill_var_to_formula_with(set<uint32_t>& vars) {
     };
 
     for(const auto& v: vars) {
-        FHolder<MetaSolver2>::Formula f;
+        FHolder<MetaSolver>::Formula f;
 
         const auto orig = new_to_orig.at(v);
         const uint32_t v_orig = orig.var();
@@ -853,7 +853,7 @@ void Manthan::encode_aigs_to_formulas(const vector<aig_lit>& aigs, const double 
     // and .clauses+.out diverge — cex_solver stays happy but exported AIGs are
     // wrong. Caught by check_aig_matches_clauses_per_formula under SLOW_DEBUG.
     struct FormulaClauseSink {
-        MetaSolver2& solver;
+        MetaSolver& solver;
         std::vector<CL>* clauses;
         std::set<uint32_t>& helpers_set;
         void new_var() {
@@ -869,7 +869,7 @@ void Manthan::encode_aigs_to_formulas(const vector<aig_lit>& aigs, const double 
     uint32_t at = 0;
     for(const auto& y: y_order) {
         if (!to_define.count(y)) continue;
-        FHolder<MetaSolver2>::Formula f;
+        FHolder<MetaSolver>::Formula f;
         f.aig = aigs.at(at);
 
         // Fresh encoder per formula — see comment above FormulaClauseSink.
@@ -978,7 +978,7 @@ void Manthan::install_shared_encoded_formulas(const vector<aig_lit>& aigs) {
     }
 
     struct SharedClauseSink {
-        MetaSolver2& solver;
+        MetaSolver& solver;
         std::vector<std::vector<Lit>>& cls;
         std::set<uint32_t>& helpers_set;
         void new_var() {
@@ -999,7 +999,7 @@ void Manthan::install_shared_encoded_formulas(const vector<aig_lit>& aigs) {
     uint32_t at = 0;
     for(const auto& y: y_order) {
         if (!to_define.count(y)) continue;
-        FHolder<MetaSolver2>::Formula f;
+        FHolder<MetaSolver>::Formula f;
         f.aig = aigs.at(at);
         f.out = outs.at(at);
         var_to_formula[y] = f;
@@ -1166,7 +1166,8 @@ void Manthan::print_detailed_stats(const ManthanStats& stats) const {
     verb_print(1, COLCYN "[manthan-stats]   inject_formulas:      " << setw(8) << t_inject
         << "  (" << setw(4) << setprecision(1) << safe_div(t_inject*100.0, loop_t) << "%)" << setprecision(2));
     verb_print(1, COLCYN "[manthan-stats]   recompute_y_hat:      " << setw(8) << t_recompute_yhat
-        << "  (" << setw(4) << setprecision(1) << safe_div(t_recompute_yhat*100.0, loop_t) << "%)" << setprecision(2));
+        << "  (" << setw(4) << setprecision(1) << safe_div(t_recompute_yhat*100.0, loop_t) << "%)" << setprecision(2)
+        << "  [topo: " << t_recompute_topo << " eval: " << t_recompute_eval << "]");
     verb_print(1, COLCYN "[manthan-stats]   accounted/loop total: " << setw(8) << accounted
         << " / " << loop_t);
 }
@@ -1234,10 +1235,10 @@ SimplifiedCNF Manthan::do_manthan() {
     inject_cnf(repair_solver);
     {
         cex_solver.new_vars(cnf.nVars());
-        for(const auto& c: cnf.get_clauses()) cex_solver.add_clause(c, true);
-        for(const auto& c: cnf.get_red_clauses()) cex_solver.add_red_clause(c, true);
+        for(const auto& c: cnf.get_clauses()) cex_solver.add_clause(c);
+        for(const auto& c: cnf.get_red_clauses()) cex_solver.add_red_clause(c);
     }
-    fh = std::make_unique<FHolder<MetaSolver2>>(&cex_solver);
+    fh = std::make_unique<FHolder<MetaSolver>>(&cex_solver);
     create_vars_for_y_hats();
     add_not_f_x_yhat();
     verb_print(2, "True lit in solver_train: " << fh->get_true_lit());
@@ -1302,7 +1303,7 @@ SimplifiedCNF Manthan::do_manthan() {
             // cex_solver claims no CEX. Triangulate with three SLOW_DEBUG
             // miters: via_clauses, via_aig, and the per-formula pairwise check.
             SLOW_DEBUG_DO({
-                const std::string where = "finished-loop-exit iter=" + std::to_string(num_loops_repair);
+                const std::string where = "finished-loop-exit iter=" + std::to_string(stats.num_loops_repair);
                 bool clauses_ok = check_synth_via_clauses(where);
                 bool aig_ok = check_synth_via_aig(where);
                 if (!clauses_ok) std::cout << "c o [BUG] cex_solver FINISHED but via_clauses miter is SAT" << std::endl;
@@ -1384,7 +1385,7 @@ SimplifiedCNF Manthan::do_manthan() {
             SLOW_DEBUG_DO({
                 if (!check_aig_matches_clauses_per_formula(
                         "post-repair y=" + std::to_string(y_rep+1) +
-                        " iter=" + std::to_string(num_loops_repair))) {
+                        " iter=" + std::to_string(stats.num_loops_repair))) {
                     assert(false && "perform_repair introduced a diverging aig/clauses");
                 }
             });
@@ -1498,7 +1499,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
             ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
             inject_formulas_into_solver();
             const double t_rc0 = cpuTime();
-            recompute_all_y_hat_cnf(ctx);
+            recompute_all_y_hat_cnf(ctx, y_rep);
             t_recompute_yhat += cpuTime() - t_rc0;
         }
 
@@ -1521,34 +1522,44 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
     return ret;
 }
 
-bool Manthan::compute_aig_dep_set(const uint32_t y_rep) {
-    // Reset marks left by the previous call before reusing the scratch bitmap.
+// Memoized list of y's formula-AIG leaf vars (mixed orig/y_hat space), keyed
+// by the AIG's raw pointer; a mismatch (formula rewritten) triggers recompute.
+// Uses the aig_dep_* scratch internally — callers needing the scratch bitmap
+// must repopulate it from the returned list afterwards.
+const std::vector<uint32_t>& Manthan::formula_dep_list(const uint32_t y) {
+    const auto& aig = var_to_formula.at(y).aig;
+    assert(aig != nullptr);
+    const ArjunNS::AIG* aig_raw = aig.get();
+    auto it = dep_cache.find(y);
+    if (it != dep_cache.end() && it->second.aig_lit == aig_raw)
+        return it->second.dep_list;
+
     for (const uint32_t prev_v : aig_dep_list) aig_dep_is_dep[prev_v] = 0;
     aig_dep_list.clear();
     aig_dep_stack.clear();
-    if (mconf.minimize_conflict) {
-        const auto& aig = var_to_formula.at(y_rep).aig;
-        assert(aig != nullptr);
-        const ArjunNS::AIG* aig_raw = aig.get();
-        auto it = dep_cache.find(y_rep);
-        if (it != dep_cache.end() && it->second.aig_lit == aig_raw) {
-            // Cache hit: reuse memoized dep_list, just repopulate the bitmap.
-            const auto& cached = it->second.dep_list;
-            for (const uint32_t dv : cached) {
-                if (dv >= aig_dep_is_dep.size()) aig_dep_is_dep.resize(dv + 1, 0);
-                aig_dep_is_dep[dv] = 1;
-                aig_dep_list.push_back(dv);
-            }
-        } else {
-            AIG::get_dependent_vars(aig, aig_dep_is_dep, aig_dep_list,
-                                    aig_dep_stack, y_rep);
-            if (it != dep_cache.end()) {
-                it->second.aig_lit = aig_raw;
-                it->second.dep_list = aig_dep_list;
-            } else {
-                dep_cache.emplace(y_rep, DepCacheEntry{aig_raw, aig_dep_list});
-            }
-        }
+    AIG::get_dependent_vars(aig, aig_dep_is_dep, aig_dep_list, aig_dep_stack, y);
+    if (it != dep_cache.end()) {
+        it->second.aig_lit = aig_raw;
+        it->second.dep_list = aig_dep_list;
+        return it->second.dep_list;
+    }
+    return dep_cache.emplace(y, DepCacheEntry{aig_raw, aig_dep_list}).first->second.dep_list;
+}
+
+bool Manthan::compute_aig_dep_set(const uint32_t y_rep) {
+    if (!mconf.minimize_conflict) {
+        // Reset marks left by the previous call before reusing the scratch.
+        for (const uint32_t prev_v : aig_dep_list) aig_dep_is_dep[prev_v] = 0;
+        aig_dep_list.clear();
+        return false;
+    }
+    const auto& deps = formula_dep_list(y_rep);
+    for (const uint32_t prev_v : aig_dep_list) aig_dep_is_dep[prev_v] = 0;
+    aig_dep_list.clear();
+    for (const uint32_t dv : deps) {
+        if (dv >= aig_dep_is_dep.size()) aig_dep_is_dep.resize(dv + 1, 0);
+        aig_dep_is_dep[dv] = 1;
+        aig_dep_list.push_back(dv);
     }
     return !aig_dep_list.empty();
 }
@@ -1884,7 +1895,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
     stats.conflict_sizes_sum += conflict.size();
 
     // not (conflict) -> v = ctx(v)
-    FHolder<MetaSolver2>::Formula f;
+    FHolder<MetaSolver>::Formula f;
     {
         vector<Lit> cl;
         cex_solver.new_var();
@@ -2216,12 +2227,17 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
 }
 
 void Manthan::create_vars_for_y_hats() {
+    constexpr uint32_t none = std::numeric_limits<uint32_t>::max();
+    y_to_yhat_flat.assign(cnf.nVars(), none);
     for(const auto& y: to_define_full) {
         cex_solver.new_var();
         const uint32_t y_hat = cex_solver.nVars()-1;
         y_to_y_hat[y] = y_hat;
         y_hat_to_y[y_hat] = Lit(y, false);
         y_hats.insert(y_hat);
+        y_to_yhat_flat[y] = y_hat;
+        if (y_hat >= yhat_to_y_flat.size()) yhat_to_y_flat.resize(y_hat + 1, none);
+        yhat_to_y_flat[y_hat] = y;
         verb_print(3, "mapping -- y: " << y+1 << " y_hat: " << y_hat+1);
     }
 }
@@ -2247,19 +2263,19 @@ void Manthan::add_not_f_x_yhat() {
         tmp.clear();
         tmp.push_back(~cl_ind);
         for(const auto&l : cl) tmp.push_back(l);
-        cex_solver.add_clause(tmp, true);
+        cex_solver.add_clause(tmp);
 
         for(const auto&l : cl) {
             tmp.clear();
             tmp.push_back(cl_ind);
             tmp.push_back(~l);
-            cex_solver.add_clause(tmp, true);
+            cex_solver.add_clause(tmp);
         }
         cl_indics.push_back(cl_ind);
     }
     tmp.clear();
     for(const auto& l: cl_indics) tmp.push_back(~l); // at least one is unsatisfied
-    cex_solver.add_clause(tmp, true);
+    cex_solver.add_clause(tmp);
 }
 
 void Manthan::inject_formulas_into_solver() {
@@ -2515,25 +2531,94 @@ void Manthan::get_incidence() {
     }
 }
 
-void Manthan::recompute_all_y_hat_cnf(sample& ctx) {
-    vector<Lit> assumps;
-    assumps.reserve(input.size() + y_order.size() + y_hat_to_indic.size());
-    for(const auto& x: input) {
-        assumps.emplace_back(x, ctx[x] == l_False);
+// Recompute every y_hat in ctx by evaluating each formula's AIG. The
+// formulas force y_hat from the inputs, so evaluation is exact — no SAT
+// solve needed. Formula dependencies may cross y_order (backward defs under
+// bve_order reference later-in-order vars), so evaluate along a topological
+// order of the actual AIG dependencies. One visit epoch for the whole pass,
+// so structure shared across formulas evaluates once. Change-driven: within
+// one counterexample the inputs are fixed and y_hats are a function of
+// inputs alone, so only y_rep's flip can cascade — formulas none of whose
+// y-deps changed keep their ctx value.
+void Manthan::recompute_all_y_hat_cnf(sample& ctx, const uint32_t y_rep) {
+    const double t_topo0 = cpuTime();
+    // Topological DFS over the y-vars' formula dependency graph.
+    // state: 0=unvisited, 1=being expanded (on stack), 2=done.
+    recompute_state.assign(cnf.nVars(), 0);
+    recompute_topo.clear();
+    recompute_dfs.clear();
+    for (const auto& y_root : y_order) {
+        if (recompute_state[y_root]) continue;
+        recompute_dfs.push_back(y_root);
+        while (!recompute_dfs.empty()) {
+            const uint32_t y = recompute_dfs.back();
+            if (recompute_state[y] == 2) { recompute_dfs.pop_back(); continue; }
+            if (recompute_state[y] == 1) {
+                recompute_state[y] = 2;
+                recompute_topo.push_back(y);
+                recompute_dfs.pop_back();
+                continue;
+            }
+            recompute_state[y] = 1;
+            for (const uint32_t v : formula_dep_list(y)) {
+                uint32_t d;
+                if (v < cnf.nVars()) {
+                    if (is_input[v]) continue;
+                    d = v;
+                } else {
+                    if (v >= yhat_to_y_flat.size()) continue;
+                    d = yhat_to_y_flat[v];
+                    if (d == std::numeric_limits<uint32_t>::max()) continue;
+                }
+                assert(recompute_state[d] != 1 &&
+                    "formula dependency cycle among y-vars");
+                if (recompute_state[d] == 0) recompute_dfs.push_back(d);
+            }
+        }
     }
-    for(const auto& [y_hat, ind]: y_hat_to_indic) {
-        uint32_t y = indic_to_y[ind];
-        if (mconf.force_bw_equal && backward_defined.count(y)) continue;
-        assumps.emplace_back(ind, false);
-    }
+    assert(recompute_topo.size() == y_order.size());
 
-    lbool ret = cex_solver.solve(&assumps, 1);
-    assert(ret == l_True);
-    const auto& m = cex_solver.get_model(1);
-    for(const auto& y: y_order) {
-        uint32_t y_hat = y_to_y_hat.at(y);
-        ctx[y_hat] = m[y_hat];
+    recompute_changed.assign(cnf.nVars(), 0);
+    recompute_changed[y_rep] = 1; // caller already set ctx[y_hat[y_rep]]
+    const double t_topo1 = cpuTime();
+    t_recompute_topo += t_topo1 - t_topo0;
+
+    const uint64_t epoch = AIG::next_visit_epoch();
+    for(const auto& y: recompute_topo) {
+        if (y == y_rep) continue;
+        bool dep_changed = false;
+        for (const uint32_t v : formula_dep_list(y)) {
+            uint32_t d;
+            if (v < cnf.nVars()) {
+                if (is_input[v]) continue;
+                d = v;
+            } else {
+                if (v >= yhat_to_y_flat.size()) continue;
+                d = yhat_to_y_flat[v];
+                if (d == std::numeric_limits<uint32_t>::max()) continue;
+            }
+            if (recompute_changed[d]) { dep_changed = true; break; }
+        }
+        if (!dep_changed) continue;
+
+        const bool val = AIG::evaluate_epoch(
+            var_to_formula.at(y).aig, epoch, aig_dep_stack,
+            [&](uint32_t v) -> uint8_t {
+                // Leaves are mixed-space: orig-space y vars read their
+                // (already recomputed, earlier-in-topo) y_hat; inputs and
+                // y_hat-space leaves read ctx directly.
+                if (v < cnf.nVars() && !is_input[v])
+                    return ctx[y_to_yhat_flat[v]] == l_True;
+                return ctx[v] == l_True;
+            });
+        const lbool lval = val ? l_True : l_False;
+        const uint32_t y_hat = y_to_yhat_flat[y];
+        if (ctx[y_hat] != lval) {
+            ctx[y_hat] = lval;
+            recompute_changed[y] = 1;
+        }
     }
+    t_recompute_eval += cpuTime() - t_topo1;
 }
 
 void Manthan::compute_needs_repair(const sample& ctx) {

@@ -30,7 +30,7 @@
 #include <iostream>
 #include <iomanip>
 #include "arjun.h"
-#include "metasolver2.h"
+#include "metasolver.h"
 namespace ArjunInt {
 
 struct CL {
@@ -273,7 +273,7 @@ private:
     CMSat::Lit my_true_lit = CMSat::lit_Error;
 };
 
-inline std::ostream& operator<<(std::ostream& os, const FHolder<ArjunInt::MetaSolver2>::Formula& f) {
+inline std::ostream& operator<<(std::ostream& os, const FHolder<ArjunInt::MetaSolver>::Formula& f) {
     os << " === Formula out: " << f.out << " === " << std::endl;
     for (const auto& cl : f.clauses) {
         for (const auto& l : cl.lits) os << std::setw(6) << l;

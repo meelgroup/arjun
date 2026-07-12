@@ -337,6 +337,49 @@ public:
         }
     }
 
+    // Evaluate the AIG under an assignment supplied per t_lit var by
+    // `leaf_val` (must return 0/1). Iterative, lazy, short-circuiting: the
+    // left child is evaluated first and a FALSE left edge skips the right
+    // subtree entirely (Manthan repair chains are guard-cube ANDs — most
+    // cubes fail on an early literal, so this walks the chain instead of the
+    // whole DAG). Nodes already visited under `epoch` reuse their cached
+    // value, so structure shared across many roots evaluates once per pass.
+    // Get a fresh epoch (next_visit_epoch()) once per assignment; `stack` is
+    // caller-owned scratch (left dirty for reuse).
+    template<typename F>
+    static bool evaluate_epoch(const aig_lit& root_e, const uint64_t epoch,
+                               std::vector<const AIG*>& stack, F&& leaf_val) {
+        const AIG* root = root_e.get();
+        if (root->visit_epoch != epoch) {
+            stack.clear();
+            stack.push_back(root);
+            while (!stack.empty()) {
+                const AIG* a = stack.back();
+                if (a->visit_epoch == epoch) { stack.pop_back(); continue; }
+                if (a->type != AIGT::t_and) {
+                    a->eval_val = (a->type == AIGT::t_const) ? 1 : leaf_val(a->var);
+                    a->visit_epoch = epoch;
+                    stack.pop_back();
+                    continue;
+                }
+                const AIG* la = a->l.get();
+                if (la->visit_epoch != epoch) { stack.push_back(la); continue; }
+                if (((la->eval_val != 0) != a->l.neg) == false) {
+                    a->eval_val = 0;
+                    a->visit_epoch = epoch;
+                    stack.pop_back();
+                    continue;
+                }
+                const AIG* ra = a->r.get();
+                if (ra->visit_epoch != epoch) { stack.push_back(ra); continue; }
+                a->eval_val = ((ra->eval_val != 0) != a->r.neg) ? 1 : 0;
+                a->visit_epoch = epoch;
+                stack.pop_back();
+            }
+        }
+        return (root->eval_val != 0) != root_e.neg;
+    }
+
     static std::vector<aig_lit> deep_clone_vec(const std::vector<aig_lit>& aigs) {
         std::vector<aig_lit> ret;
         std::unordered_map<const AIG*, aig_node_ptr> cache;
@@ -533,6 +576,10 @@ private:
     // unordered_set<const AIG*>): bump epoch once, mark by assignment, test
     // membership by integer compare.
     mutable uint64_t visit_epoch = 0;
+    // Value cache for evaluate_epoch, valid only under the epoch it was
+    // written with (the value of the POSITIVE node; edge signs applied by
+    // the reader).
+    mutable uint8_t eval_val = 0;
     static uint64_t next_visit_epoch() {
         static uint64_t counter = 0;
         return ++counter;

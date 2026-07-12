@@ -45,7 +45,7 @@ public:
 private:
     double train(const std::vector<sample>& orig_samples, const uint32_t v);
     void verify_aig_error_rate(const std::vector<const sample*>& samples, uint32_t v, double train_error);
-    FHolder<MetaSolver2>::Formula recur(
+    FHolder<MetaSolver>::Formula recur(
             mlpack::tree::DecisionTree<>* node, const uint32_t learned_v, const std::vector<uint32_t>& var_remap, uint32_t depth, uint32_t& max_depth);
     arma::vec point_0;
     arma::vec point_1;

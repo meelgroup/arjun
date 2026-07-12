@@ -184,7 +184,7 @@ void ManthanLearn::verify_aig_error_rate(
     assert(std::abs(aig_error - train_error) <= 0.01);
 }
 
-FHolder<MetaSolver2>::Formula ManthanLearn::recur(mlpack::tree::DecisionTree<>* node,
+FHolder<MetaSolver>::Formula ManthanLearn::recur(mlpack::tree::DecisionTree<>* node,
         const uint32_t learned_v, const vector<uint32_t>& used_vars, uint32_t depth, uint32_t& max_depth) {
     max_depth = std::max(max_depth, depth);
     /* for(uint32_t i = 0; i < depth; i++) cout << " "; */
