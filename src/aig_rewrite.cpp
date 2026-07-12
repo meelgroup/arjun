@@ -71,6 +71,7 @@ void AIGRewriteStats::print(int verb) const {
          << " chd:" << chain_defs
          << " chc:" << chain_cubes
          << " chdup:" << chain_dup_cubes
+         << " bal:" << balance_gates
          << endl;
 }
 
@@ -784,6 +785,224 @@ void AIGRewriter::compress_cube_chains(vector<aig_lit>& defs) {
     }
 }
 
+// ========== Balance (abc `b` port) ==========
+// Flatten every maximal AND supergate (stopping at complemented edges,
+// literals, and fanout>1 nodes), then rebuild it pairing the two
+// shallowest operands first; before each pairing, an operand from the same
+// level group is preferred if its AND with the shallowest already exists in
+// struct_hash (sharing-aware permute, as in abc's balance).
+void AIGRewriter::balance_defs(vector<aig_lit>& defs) {
+    // One sweep over the union DAG collecting every AND node, then park each
+    // node's index into visit_epoch (offset by kIdxBase = 2^63, far above
+    // any epoch the monotonic counter can reach, so stale indices never
+    // alias a live epoch mark). All per-node side data (fanout, root flag,
+    // rebuilt copy) then lives in plain vectors — no hash maps.
+    constexpr uint64_t kIdxBase = 1ULL << 63;
+    std::vector<const AIG*> nodes;
+    {
+        const uint64_t epoch = AIG::next_visit_epoch();
+        auto visit = [&](const AIG* n) {
+            if (n && n->type == AIGT::t_and && n->visit_epoch != epoch) {
+                n->visit_epoch = epoch;
+                nodes.push_back(n);
+            }
+        };
+        for (const auto& d : defs)
+            if (d.node && d->type == AIGT::t_and) visit(d.get());
+        for (size_t i = 0; i < nodes.size(); i++) {
+            const AIG* n = nodes[i];
+            visit(n->l.get());
+            visit(n->r.get());
+        }
+    }
+    for (size_t i = 0; i < nodes.size(); i++)
+        nodes[i]->visit_epoch = kIdxBase + i;
+    auto idx = [&](const AIG* n) { return (size_t)(n->visit_epoch - kIdxBase); };
+
+    // Fanout counts; def roots count as one ref each so a root shared
+    // between defs stays a supergate boundary.
+    std::vector<uint32_t> fanout(nodes.size(), 0);
+    for (const auto& d : defs)
+        if (d.node && d->type == AIGT::t_and) fanout[idx(d.get())]++;
+    for (const AIG* n : nodes)
+        for (const aig_lit* ch : {&n->l, &n->r}) {
+            const AIG* c = ch->get();
+            if (c && c->type == AIGT::t_and) fanout[idx(c)]++;
+        }
+
+    // Supergate roots: nodes NOT absorbed into a parent's supergate — i.e.
+    // shared (fanout > 1, which includes every def root due to the ref
+    // above), or referenced through a complemented edge. nid is monotonic
+    // at construction (children < parents), so processing roots in
+    // ascending nid order guarantees operand roots are rebuilt before any
+    // supergate that uses them — no recursion needed.
+    std::vector<bool> is_root(nodes.size(), false);
+    for (size_t i = 0; i < nodes.size(); i++)
+        if (fanout[i] > 1) is_root[i] = true;
+    for (const auto& d : defs)
+        if (d.node && d->type == AIGT::t_and) is_root[idx(d.get())] = true;
+    for (const AIG* n : nodes)
+        for (const aig_lit* ch : {&n->l, &n->r}) {
+            const AIG* c = ch->get();
+            if (c && c->type == AIGT::t_and && ch->neg) is_root[idx(c)] = true;
+        }
+    std::vector<const AIG*> roots;
+    for (size_t i = 0; i < nodes.size(); i++)
+        if (is_root[i]) roots.push_back(nodes[i]);
+    std::sort(roots.begin(), roots.end(),
+              [](const AIG* a, const AIG* b) { return a->nid < b->nid; });
+
+    // bcopy: old root AND node -> rebuilt (positive-value) edge plus its
+    // level (depth over the rebuilt structure; literals/consts are 0). The
+    // level rides along so no separate depth map is needed.
+    struct Op { aig_lit e; uint32_t lv; };
+    std::vector<Op> bcopy(nodes.size());
+
+    constexpr size_t kMaxSuper = 10000;
+    // Scratch buffers reused across all supergates.
+    std::vector<aig_lit> ops, todo;
+    std::vector<uint64_t> seen_keys;
+    std::vector<Op> super, fresh;
+
+    for (const AIG* root : roots) {
+        // Collect the supergate: flatten through positive fanout-1 AND
+        // edges; boundary operands are literals, consts, and root nodes.
+        ops.clear();
+        seen_keys.clear();
+        todo.clear();
+        todo.push_back(root->r);
+        todo.push_back(root->l);
+        bool zero = false;
+        while (!todo.empty()) {
+            const aig_lit e = todo.back();
+            todo.pop_back();
+            const AIG* c = e.get();
+            const bool expand = !e.neg && c->type == AIGT::t_and
+                && fanout[idx(c)] <= 1 && ops.size() < kMaxSuper;
+            if (expand) {
+                todo.push_back(e->r);
+                todo.push_back(e->l);
+                continue;
+            }
+            const uint64_t key = c->nid * 2 + (e.neg ? 1u : 0u);
+            bool dup = false;
+            for (const uint64_t k : seen_keys) {
+                if (k == key) { dup = true; break; }
+                if (k == (key ^ 1u)) { zero = true; break; } // x & ~x
+            }
+            if (zero) break;
+            if (dup) continue;                        // idempotent operand
+            seen_keys.push_back(key);
+            ops.push_back(e);
+        }
+        if (zero) {
+            bcopy[idx(root)] = {cached_const(false), 0};
+            continue;
+        }
+        // Rebuilt operands with cached levels, sorted ascending so the
+        // two shallowest are processed first (ties by nid/neg for
+        // determinism).
+        super.clear();
+        for (const auto& op : ops) {
+            const AIG* c = op.get();
+            Op nb;
+            if (c->type == AIGT::t_and) {
+                // A kMaxSuper-capped boundary can name a fanout-1 node that
+                // is not a root; keep it as-is (identity rebuild).
+                nb = is_root[idx(c)] ? bcopy[idx(c)]
+                                     : Op{aig_lit(op.node, false), 1};
+            }
+            else if (c->type == AIGT::t_lit) nb = {cached_lit(c->var, false), 0};
+            else nb = {cached_const(true), 0};
+            super.push_back({aig_lit(nb.e.node, nb.e.neg ^ op.neg), nb.lv});
+        }
+        std::sort(super.begin(), super.end(), [](const Op& a, const Op& b) {
+            if (a.lv != b.lv) return a.lv < b.lv;
+            if (a.e->nid != b.e->nid) return a.e->nid < b.e->nid;
+            return (int)a.e.neg < (int)b.e.neg;
+        });
+        stats.balance_gates++;
+        // Merge-consume: `pos` scans the sorted originals; `fresh` holds
+        // new nodes (each appended with level >= all consumed so far, so
+        // a stable merge by level keeps global ascending order).
+        size_t pos = 0;
+        fresh.clear();
+        size_t fpos = 0;
+        auto remaining = [&]() { return (super.size() - pos) + (fresh.size() - fpos); };
+        auto pop_smallest = [&]() -> Op {
+            const bool take_f = pos >= super.size()
+                || (fpos < fresh.size() && fresh[fpos].lv < super[pos].lv);
+            return take_f ? fresh[fpos++] : super[pos++];
+        };
+        auto push_fresh = [&](const Op& o) {
+            fresh.push_back(o);
+            // Bubble down: the pushed level can undercut pending entries
+            // when make_canonical folded / reused an existing node.
+            for (size_t i = fresh.size() - 1;
+                 i > fpos && fresh[i].lv < fresh[i - 1].lv; i--)
+                std::swap(fresh[i], fresh[i - 1]);
+        };
+        bool done = false;
+        Op result;
+        while (remaining() > 1) {
+            const Op o1 = pop_smallest();
+            // Sharing permute: prefer a partner at the SAME level as the
+            // next-shallowest whose AND with o1 already exists.
+            const uint32_t lv2 = (pos >= super.size()
+                || (fpos < fresh.size() && fresh[fpos].lv < super[pos].lv))
+                ? fresh[fpos].lv : super[pos].lv;
+            // Probe scan capped so huge equal-level groups (wide OR
+            // spines) stay linear overall.
+            constexpr size_t kBalProbe = 8;
+            size_t probes = 0;
+            Op o2;
+            bool have_o2 = false;
+            for (size_t p = pos; p < super.size() && super[p].lv == lv2
+                                 && probes < kBalProbe; p++, probes++)
+                if (existing_and(o1.e, super[p].e).node) {
+                    o2 = super[p];
+                    super[p] = super[pos++]; // same-level swap-out
+                    have_o2 = true;
+                    break;
+                }
+            if (!have_o2)
+                for (size_t fp = fpos; fp < fresh.size() && fresh[fp].lv == lv2
+                                       && probes < kBalProbe; fp++, probes++)
+                    if (existing_and(o1.e, fresh[fp].e).node) {
+                        o2 = fresh[fp];
+                        fresh[fp] = fresh[fpos++]; // same-level swap-out
+                        have_o2 = true;
+                        break;
+                    }
+            if (!have_o2) o2 = pop_smallest();
+            if (o1.e == o2.e) { push_fresh(o1); continue; } // dup operand
+            const aig_lit a = make_canonical(o2.e, o1.e);
+            if (a->type == AIGT::t_const) {
+                if (a.neg) { done = true; result = {a, 0}; break; }
+                continue; // AND with TRUE: drop
+            }
+            // Level of the result: a fold to one operand keeps its level, a
+            // real (or reused) AND is max+1 (upper bound if reused).
+            uint32_t alv;
+            if (a.node == o1.e.node) alv = o1.lv;
+            else if (a.node == o2.e.node) alv = o2.lv;
+            else if (a->type != AIGT::t_and) alv = 0;
+            else alv = std::max(o1.lv, o2.lv) + 1;
+            push_fresh({a, alv});
+        }
+        if (!done)
+            result = remaining() ? pop_smallest()
+                                 : Op{cached_const(true), 0};
+        bcopy[idx(root)] = result;
+    }
+
+    for (auto& def : defs) {
+        if (!def.node || def->type != AIGT::t_and) continue;
+        const aig_lit nb = bcopy[idx(def.get())].e;
+        def = aig_lit(nb.node, nb.neg ^ def.neg);
+    }
+}
+
 // ========== Main rewrite entry points ==========
 
 aig_lit AIGRewriter::rewrite(const aig_lit& aig) {
@@ -799,13 +1018,14 @@ aig_lit AIGRewriter::rewrite(const aig_lit& aig) {
     struct_hash.clear();
     struct_hash.reserve(before);
     { NodeRebuildMap c; c.reserve(before); result = hash_cons(result, c); }
+    { std::vector<aig_lit> one{result}; balance_defs(one); result = one[0]; }
     stats.total_passes++;
     SLOW_DEBUG_DO(slow_assert_equiv(aig, result));
     if (AIG::count_aig_nodes_fast(result) > before) return aig;
     return result;
 }
 
-void AIGRewriter::rewrite_all(vector<aig_lit>& defs, int verb) {
+void AIGRewriter::rewrite_all(vector<aig_lit>& defs, int verb, bool balance) {
     const double t = cpuTime();
     stats.clear();
     struct_hash.clear();
@@ -843,6 +1063,10 @@ void AIGRewriter::rewrite_all(vector<aig_lit>& defs, int verb) {
       NodeRebuildMap cache; cache.reserve(n);
       for (auto& d : defs) if (d) d = hash_cons(d, cache); }
     trace("hash_cons");
+    if (balance) {
+        balance_defs(defs);
+        trace("balance");
+    }
     stats.total_passes++;
 
     // Revert any def that grew.

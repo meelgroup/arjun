@@ -1510,7 +1510,7 @@ public:
         assert(need_aig);
         AIG::simplify_aigs(verb, defs);
     }
-    void rewrite_aigs(const uint32_t verb = 0);
+    void rewrite_aigs(const uint32_t verb = 0, bool balance = true);
     [[nodiscard]] const auto& get_aig_mng() const { return aig_mng; }
     void check_red_cls_deriveable() const;
 

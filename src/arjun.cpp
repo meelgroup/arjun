@@ -2471,10 +2471,10 @@ DLL_PUBLIC aig_lit AIG::simplify_aig(aig_lit aig) {
     return result;
 }
 
-DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb) {
+DLL_PUBLIC void SimplifiedCNF::rewrite_aigs(const uint32_t verb, bool balance) {
     assert(need_aig);
     AIGRewriter rw;
-    rw.rewrite_all(defs, verb);
+    rw.rewrite_all(defs, verb, balance);
 }
 
 DLL_PUBLIC aig_lit AIG::rewrite_aig(const aig_lit& aig) {

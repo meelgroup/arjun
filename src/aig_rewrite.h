@@ -33,6 +33,7 @@ struct AIGRewriteStats {
     uint64_t chain_defs = 0;      // defs rebuilt by compress_cube_chains
     uint64_t chain_cubes = 0;     // cubes canonicalised across those defs
     uint64_t chain_dup_cubes = 0; // duplicate cubes dropped within runs
+    uint64_t balance_gates = 0;   // supergates rebuilt by balance_defs
     uint64_t nodes_before = 0;
     uint64_t nodes_after = 0;
     double total_time = 0.0;
@@ -48,8 +49,13 @@ public:
     // Rewrite a single AIG to a simpler equivalent.
     aig_lit rewrite(const aig_lit& aig);
 
-    // Rewrite a vector of AIGs sharing structure across all.
-    void rewrite_all(std::vector<aig_lit>& defs, int verb = 1);
+    // Rewrite a vector of AIGs sharing structure across all. `balance`
+    // additionally runs the abc-style balance pass: best node counts, but
+    // the balanced trees SAT-solve measurably slower than the factored
+    // right-deep chains, so the Manthan restart compaction (whose output is
+    // re-encoded into the cex solver) turns it off.
+    void rewrite_all(std::vector<aig_lit>& defs, int verb = 1,
+                     bool balance = true);
 
     const AIGRewriteStats& get_stats() const { return stats; }
 
@@ -99,6 +105,10 @@ private:
     // Rebuild repair-chain cube runs in one global literal order so
     // hash-consing shares near-duplicate cubes' tails.
     void compress_cube_chains(std::vector<aig_lit>& defs);
+
+    // abc-style balance: flatten fanout-1 AND supergates, rebuild each with
+    // level-driven pairing that prefers pairs already in struct_hash.
+    void balance_defs(std::vector<aig_lit>& defs);
 
     // simplify_pass rule helpers. Return non-null if the rule fires, else
     // default-constructed (no match).
