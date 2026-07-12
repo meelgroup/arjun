@@ -816,6 +816,16 @@ int main(int argc, char** argv) {
     const int deep_var = program.get<int>("--deep");
     const int viz_var = program.get<int>("--viz");
     const std::string pla_fname = program.get<std::string>("--pla");
+    // These take a variable number; a bare "--deep"/"--viz" resolves to 0 and
+    // would otherwise silently do nothing. Reject that explicitly.
+    if (program.is_used("--deep") && deep_var <= 0) {
+        std::cerr << "ERROR: --deep needs a 1-indexed variable number, e.g. --deep 861" << endl;
+        return 1;
+    }
+    if (program.is_used("--viz") && viz_var <= 0) {
+        std::cerr << "ERROR: --viz needs a 1-indexed variable number, e.g. --viz 861" << endl;
+        return 1;
+    }
     auto fg = std::make_unique<FGenMpz>();
     SimplifiedCNF cnf(fg.get());
     cnf.read_aig_defs_from_file(fname);
