@@ -58,7 +58,8 @@ only_dirs = [
     # "out-synth-1877264-0", # faster interpolation, less AIG rewrite&simplify, less CMSGen sampling what's slow, AI slop cleanup
     # "out-synth-1903613-2", # restarts between manthan & ITE chain rewrite
     "out-synth-1903613-1", # restarts between manthan & ITE chain rewrite
-    "out-synth-1903613-2", # restarts between manthan & ITE chain rewrite
+    # "out-synth-1903613-2", # restarts between manthan & ITE chain rewrite
+    "out-synth-1914059-0", # more rewrite
 ]
 # -------------------------------------------------------------
 
