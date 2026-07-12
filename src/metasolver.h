@@ -124,6 +124,11 @@ public:
         if (solver_type == SolverType::cms) cms->simplify(assumps);
     }
 
+    // Only materialize the first `n` vars of the model on SAT (0 = all).
+    // Pure perf cap for callers that never read past a known prefix; the
+    // returned model vector is simply shorter.
+    void set_model_prefix(uint32_t n) { model_prefix = n; }
+
     void set_max_confl(int64_t max_confl) {
         if (solver_type == SolverType::cms) cms->set_max_confl(max_confl);
         else cadical->limit("conflicts", static_cast<int>(max_confl));
@@ -134,6 +139,7 @@ private:
     std::unique_ptr<CMSat::SATSolver> cms = nullptr;
     std::unique_ptr<CaDiCaL::Solver> cadical = nullptr;
     uint32_t cadical_nvars = 0;
+    uint32_t model_prefix = 0;
     mutable std::vector<CMSat::lbool> cadical_model;
     mutable std::vector<CMSat::Lit> cadical_conflict;
 
@@ -144,8 +150,10 @@ private:
         cadical_model.clear();
         cadical_conflict.clear();
         if (status == CaDiCaL::Status::SATISFIABLE) {
-            cadical_model.resize(cadical_nvars);
-            for (uint32_t i = 0; i < cadical_nvars; i++) {
+            const uint32_t n_model = (model_prefix != 0 && model_prefix < cadical_nvars)
+                ? model_prefix : cadical_nvars;
+            cadical_model.resize(n_model);
+            for (uint32_t i = 0; i < n_model; i++) {
                 int val = cadical->val(i + 1);
                 if (val > 0) cadical_model[i] = CMSat::l_True;
                 else if (val < 0) cadical_model[i] = CMSat::l_False;

@@ -1240,6 +1240,9 @@ SimplifiedCNF Manthan::do_manthan() {
     }
     fh = std::make_unique<FHolder<MetaSolver>>(&cex_solver);
     create_vars_for_y_hats();
+    // Manthan only ever reads cex models up to the y_hats (created just
+    // above); skip materializing the tens of thousands of helper vars.
+    cex_solver.set_model_prefix(cex_solver.nVars());
     add_not_f_x_yhat();
     verb_print(2, "True lit in solver_train: " << fh->get_true_lit());
     verb_print(2, "[manthan] After fh creation: solver_train.nVars() = " << cex_solver.nVars() << " cnf.nVars() = " << cnf.nVars());
@@ -1843,10 +1846,9 @@ void Manthan::minimize_conflict(vector<Lit>& conflict, vector<Lit>& assumps, con
 
 Lit Manthan::map_y_to_y_hat(const Lit& l) const {
     const uint32_t var = l.var();
-    if (input.count(var)) return l;
+    if (is_input[var]) return l;
     assert(to_define_full.count(var));
-    const uint32_t y_hat = y_to_y_hat.at(var);
-    return Lit(y_hat, l.sign());
+    return Lit(y_to_yhat_flat[var], l.sign());
 }
 
 // Update dependency matrix to say that a depends on b
@@ -2002,6 +2004,12 @@ void Manthan::pre_order_vars() {
     for(uint32_t i = 0; i < y_order.size(); i++) order_val[y_order[i]] = i;
     for(const auto& v: order_val) assert(v != -2);
 
+    // Per-y better-ctx weight, fixed for the whole run.
+    y_order_weight.assign(cnf.nVars(), 0);
+    for(size_t i = 0; i < y_order.size(); i++) {
+        y_order_weight[y_order[i]] = mconf.maxsat_order ? i+1 : y_order.size()-i;
+    }
+
     verb_print(1, "[manthan] Fixed order. T: " << setprecision(2) << fixed << (cpuTime() - my_time)
             << " Final order size: " << y_order.size());
     print_y_order_occur();
@@ -2113,21 +2121,13 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
     // Add all clauses
     for(const auto& c: cnf.get_clauses()) s_ctx.addClause(lits_to_ints(c));
 
-    map<uint32_t, uint32_t> y_to_y_order_pos;
-    for(size_t i = 0; i < y_order.size(); i++) {
-        if (mconf.maxsat_order)
-            y_to_y_order_pos[y_order[i]] = i+1;
-        else
-            y_to_y_order_pos[y_order[i]] = y_order.size()-i;
-    }
-
     // Fix to_define variables that are incorrect via assumptions
     for(const auto& y: y_order) {
         const auto y_hat = y_to_y_hat[y];
         if (ctx[y] == ctx[y_hat]) continue;
         const auto l = Lit(y, ctx[y_hat] == l_False);
         verb_print(3, "[find-better-ctx] put into assumps y= " << l);
-        int w = y_to_y_order_pos[y];
+        int w = y_order_weight[y];
         s_ctx.addClause(lits_to_ints({l}), w); // want to flip valuation to ctx[y_hat]
     }
 
@@ -2140,23 +2140,21 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
 
 // Fills needs_repair with vars from y (i.e. output) using normal SAT solver with assumptions
 void Manthan::find_better_ctx_normal(sample& ctx) {
-    SATSolver s;
-    s.new_vars(cnf.nVars());
+    // Persistent solver: the CNF never changes, so inject it once and fix
+    // per-call values via assumptions. Learnt clauses carry across calls.
+    if (!better_ctx_solver) {
+        better_ctx_solver = std::make_unique<SATSolver>();
+        inject_cnf(*better_ctx_solver);
+    }
+    SATSolver& s = *better_ctx_solver;
     verb_print(2, "Finding better ctx via normal SAT solver.");
 
-    // Fix input values
+    // Fixed assumptions: input values + already-correct y values.
+    vector<Lit> fixed;
+    fixed.reserve(input.size() + to_define_full.size());
     for(const auto& x: input) {
         assert(ctx[x] != l_Undef && "Input variable must be defined in counterexample");
-        const auto l = Lit(x, ctx[x] == l_False);
-        s.add_clause({l});
-    }
-
-    map<uint32_t, uint32_t> y_to_y_order_pos;
-    for(size_t i = 0; i < y_order.size(); i++) {
-        if (mconf.maxsat_order)
-            y_to_y_order_pos[y_order[i]] = i+1;
-        else
-            y_to_y_order_pos[y_order[i]] = y_order.size()-i;
+        fixed.emplace_back(x, ctx[x] == l_False);
     }
 
     // For to_define variables, separate into correct and incorrect
@@ -2166,13 +2164,13 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
         const Lit l = Lit(y, ctx[y_hat] == l_False); // literal that makes y match y_hat
 
         if (ctx[y] == ctx[y_hat]) {
-            // Already correct, make this a fixed assumption
+            // Already correct, keep it fixed
             verb_print(3, "[find-better-ctx-normal] CTX is CORRECT on y=" << y+1 << " y_hat=" << y_hat+1
                  << " -- ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat]));
-            s.add_clause({l});
+            fixed.push_back(l);
         } else {
             // Incorrect, we want to try to fix this
-            uint32_t weight = y_to_y_order_pos[y];
+            uint32_t weight = y_order_weight[y];
             incorrect_lits.emplace_back(l, weight);
             verb_print(3, "[find-better-ctx-normal] CTX is INCORRECT on y=" << y+1
                  << " ctx[y]=" << pr(ctx[y]) << " ctx[y_hat]=" << pr(ctx[y_hat])
@@ -2180,7 +2178,6 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
         }
     }
     assert(incorrect_lits.size() == needs_repair.size());
-    for(const auto& c: cnf.get_clauses()) s.add_clause(c);
 
     // Sort incorrect lits by weight (higher = fix first), boosting vars already
     // repaired this session since they matter for correctness.
@@ -2196,7 +2193,7 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
     set<uint32_t> cannot_fix; // variables we cannot fix
     vector<Lit> assumps;
     while (true) {
-        assumps.clear();
+        assumps = fixed;
         for(const auto& [lit, weight]: incorrect_lits) {
             if (cannot_fix.count(lit.var()) == 0) assumps.push_back(lit);
         }
@@ -2214,15 +2211,20 @@ void Manthan::find_better_ctx_normal(sample& ctx) {
         assert(!conflict.empty() && "Got UNSAT with empty conflict!");
         verb_print(3, "[find-better-ctx-normal] UNSAT, conflict size: " << conflict.size());
 
-        // Find the first soft assumption in the conflict and remove it.
+        // Find the first soft assumption in the conflict and remove it. The
+        // core must contain one: the fixed assumptions alone are satisfied
+        // by ctx itself.
         set<Lit> conflict_set(conflict.begin(), conflict.end());
+        bool found_soft = false;
         for(const auto& [lit, weight]: incorrect_lits) {
             if (conflict_set.count(~lit) && !cannot_fix.count(lit.var())) {
                 verb_print(3, "[find-better-ctx-normal] Giving up on fixing var " << lit.var()+1);
                 cannot_fix.insert(lit.var());
+                found_soft = true;
                 break;
             }
         }
+        release_assert(found_soft && "UNSAT core must contain a soft assumption");
     }
 }
 
@@ -2284,15 +2286,17 @@ void Manthan::inject_formulas_into_solver() {
 
     // Replace y with y_hat. uninserted_start skips the already-inserted prefix;
     // cl.inserted stays the source of truth on degenerate paths.
+    vector<Lit> cl2;
     for(auto& k: updated_y_funcs) {
         auto& form = var_to_formula.at(k);
         for (size_t i = form.uninserted_start; i < form.clauses.size(); i++) {
             auto& cl = form.clauses[i];
             if (cl.inserted) continue;
-            vector<Lit> cl2;
+            cl2.clear();
             for(const auto& l: cl.lits) {
-                auto v = l.var();
-                if (to_define_full.count(v)) { cl2.emplace_back(y_to_y_hat.at(v), l.sign());}
+                const auto v = l.var();
+                // Every non-input orig-CNF var is in to_define_full.
+                if (v < cnf.nVars() && !is_input[v]) cl2.emplace_back(y_to_yhat_flat[v], l.sign());
                 else cl2.push_back(l);
             }
             cex_solver.add_clause(cl2);
@@ -2625,7 +2629,7 @@ void Manthan::compute_needs_repair(const sample& ctx) {
     assert(ctx[fh->get_true_lit().var()] == l_True);
     needs_repair.clear();
     for(const auto& y: to_define_full) {
-        if (ctx[y] != ctx[y_to_y_hat[y]]) needs_repair.insert(y);
+        if (ctx[y] != ctx[y_to_yhat_flat[y]]) needs_repair.insert(y);
     }
 }
 

@@ -240,6 +240,7 @@ class Manthan {
         // ordering
         std::vector<uint32_t> y_order; //1st only depends on inputs
         std::vector<int> order_val; // inputs have order -1, everything else as per y_order
+        std::vector<uint32_t> y_order_weight; // better-ctx weight per y (see pre_order_vars)
         void pre_order_vars();
         void learn_order();
         void bve_order();
@@ -260,6 +261,9 @@ class Manthan {
         std::vector<std::vector<char>> dependency_mat; // dependency_mat[a][b] = 1 if a depends on b
 
         // Formulas
+        // Persistent solver for find_better_ctx_normal: holds the (fixed)
+        // CNF; per-call values arrive as assumptions.
+        std::unique_ptr<CMSat::SATSolver> better_ctx_solver;
         std::unique_ptr<FHolder<MetaSolver>> fh = nullptr;
         std::map<uint32_t, FHolder<MetaSolver>::Formula> var_to_formula; // var -> formula
         // Helper defs from the shared AIGToCNF batch, referenced by multiple
