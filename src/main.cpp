@@ -424,9 +424,7 @@ void do_synthesis() {
         SLOW_DEBUG_DO(check_stage("unate_def"));
     }
 
-    // No balance: these defs are encoded into Manthan's solvers, and the
-    // factored right-deep chains SAT-solve faster than balanced trees.
-    cnf.rewrite_aigs(conf.verb, false);
+    cnf.rewrite_aigs(conf.verb);
     if (use_brute_force_synth && !cnf.synth_done()) {
         // Brute-force: enumerate consistent X assignments, build per-y
         // decision trees. Declines (CNF unchanged) if the enum set is too
@@ -445,9 +443,9 @@ void do_synthesis() {
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-manthan.aig");
         SLOW_DEBUG_DO(check_stage("manthan"));
     }
-    // Final output-side compaction, now with balance: nothing downstream
+    // Final output-side compaction, with balance: nothing downstream
     // re-encodes these into a repair loop, so the smallest form wins.
-    cnf.rewrite_aigs(conf.verb);
+    cnf.rewrite_aigs(conf.verb, true);
     if (!output_file.empty()) {
         cnf.write_aig_def_to_verilog(output_file);
         cout << "c o [arjun] dumped synthesized functions to verilog file '" << output_file << "'" << endl;

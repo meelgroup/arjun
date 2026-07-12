@@ -859,10 +859,10 @@ int main(int argc, char** argv) {
     if (do_verify) before_defs = defs_local;
     if (do_rewrite) {
         AIGRewriter rw;
-        rw.rewrite_all(defs_local, 2);
+        rw.rewrite_all(defs_local, 2, true);
         if (getenv("CHAIN_STATS_TWICE")) {
             AIGRewriter rw2;
-            rw2.rewrite_all(defs_local, 2);
+            rw2.rewrite_all(defs_local, 2, true);
         }
     }
     if (do_verify) {
@@ -1177,7 +1177,7 @@ int main(int argc, char** argv) {
         // Dump the rewritten defs next to the input. rewrite_aigs() applies the
         // same deterministic AIGRewriter::rewrite_all to the cnf's own (full,
         // unfiltered) def set, so the file is a rewritten twin of the input.
-        cnf.rewrite_aigs(0);
+        cnf.rewrite_aigs(0, true);
         const std::string out_fname = fname + "-rewritten.aig";
         cnf.write_aig_defs_to_file(out_fname);
         cout << "wrote rewritten AIG defs: " << out_fname << endl;

@@ -46,16 +46,17 @@ class ARJUN_PUBLIC AIGRewriter {
 public:
     AIGRewriter() = default;
 
-    // Rewrite a single AIG to a simpler equivalent.
-    aig_lit rewrite(const aig_lit& aig);
+    // Rewrite a single AIG to a simpler equivalent. `balance` as in
+    // rewrite_all.
+    aig_lit rewrite(const aig_lit& aig, bool balance = false);
 
     // Rewrite a vector of AIGs sharing structure across all. `balance`
     // additionally runs the abc-style balance pass: best node counts, but
     // the balanced trees SAT-solve measurably slower than the factored
-    // right-deep chains, so the Manthan restart compaction (whose output is
-    // re-encoded into the cex solver) turns it off.
+    // right-deep chains, so only output-boundary rewrites (final AIG dump)
+    // opt in.
     void rewrite_all(std::vector<aig_lit>& defs, int verb = 1,
-                     bool balance = true);
+                     bool balance = false);
 
     const AIGRewriteStats& get_stats() const { return stats; }
 

@@ -1005,7 +1005,7 @@ void AIGRewriter::balance_defs(vector<aig_lit>& defs) {
 
 // ========== Main rewrite entry points ==========
 
-aig_lit AIGRewriter::rewrite(const aig_lit& aig) {
+aig_lit AIGRewriter::rewrite(const aig_lit& aig, bool balance) {
     if (!aig) return nullptr;
     struct_hash.clear();
     lit_hash.clear();
@@ -1018,7 +1018,11 @@ aig_lit AIGRewriter::rewrite(const aig_lit& aig) {
     struct_hash.clear();
     struct_hash.reserve(before);
     { NodeRebuildMap c; c.reserve(before); result = hash_cons(result, c); }
-    { std::vector<aig_lit> one{result}; balance_defs(one); result = one[0]; }
+    if (balance) {
+        std::vector<aig_lit> one{result};
+        balance_defs(one);
+        result = one[0];
+    }
     stats.total_passes++;
     SLOW_DEBUG_DO(slow_assert_equiv(aig, result));
     if (AIG::count_aig_nodes_fast(result) > before) return aig;

@@ -475,7 +475,7 @@ static int run_bench_rewrite_mode(uint64_t seed, uint64_t num_aigs,
     cout << "\nRunning AIGRewriter::rewrite_all..." << std::endl;
     auto t_rw = std::chrono::steady_clock::now();
     AIGRewriter rewriter;
-    rewriter.rewrite_all(aigs, 1);
+    rewriter.rewrite_all(aigs, 1, true);
     double rw_s = std::chrono::duration<double>(
         std::chrono::steady_clock::now() - t_rw).count();
     cout << "rewrite_all wall-clock: " << std::fixed << std::setprecision(2)

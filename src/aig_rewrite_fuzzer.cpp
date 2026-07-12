@@ -208,16 +208,16 @@ static bool run_one(const aig_lit& orig, uint32_t num_vars,
                     uint64_t seed, uint64_t iter, std::mt19937& rng,
                     FuzzStats& fs, bool verbose)
 {
-    // 1. Rewrite.
+    // 1. Rewrite. Balance is drawn at random so both modes are fuzzed.
     AIGRewriter rw;
-    aig_lit simp = rw.rewrite(orig);
+    aig_lit simp = rw.rewrite(orig, rng() & 1);
     if (!simp) simp = orig;
 
     // 1a. Idempotence: re-rewriting must stay equivalent and never grow.
     // Growth = non-confluent rule; mismatch = rule unsound on canonical input.
     {
         AIGRewriter rw2;
-        aig_lit simp2 = rw2.rewrite(simp);
+        aig_lit simp2 = rw2.rewrite(simp, rng() & 1);
         if (!simp2) simp2 = simp;
         if (!random_check(simp, simp2, num_vars, rng, 40)) {
             report_failure(orig, simp2, num_vars, seed, iter,

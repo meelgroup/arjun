@@ -446,7 +446,7 @@ int main(int argc, char** argv) {
 
             AIGRewriter rw;
             auto t0 = std::chrono::steady_clock::now();
-            aig_lit simplified = rw.rewrite(orig);
+            aig_lit simplified = rw.rewrite(orig, rng() & 1);
             auto t1 = std::chrono::steady_clock::now();
             stats.rewrite_time_s += std::chrono::duration<double>(t1 - t0).count();
             stats.total_rewrites++;
@@ -461,7 +461,7 @@ int main(int argc, char** argv) {
             if (test_type == 3) {
                 AIGRewriter rw2;
                 auto t2 = std::chrono::steady_clock::now();
-                aig_lit double_simplified = rw2.rewrite(simplified);
+                aig_lit double_simplified = rw2.rewrite(simplified, rng() & 1);
                 auto t3 = std::chrono::steady_clock::now();
                 stats.rewrite_time_s += std::chrono::duration<double>(t3 - t2).count();
                 stats.total_rewrites++;
@@ -490,7 +490,7 @@ int main(int argc, char** argv) {
 
             AIGRewriter rw;
             auto t0 = std::chrono::steady_clock::now();
-            rw.rewrite_all(to_rewrite, 0);
+            rw.rewrite_all(to_rewrite, 0, rng() & 1);
             auto t1 = std::chrono::steady_clock::now();
             stats.rewrite_time_s += std::chrono::duration<double>(t1 - t0).count();
             stats.total_rewrites += batch_size;
@@ -570,7 +570,7 @@ int main(int argc, char** argv) {
 
             AIGRewriter rw;
             auto t0 = std::chrono::steady_clock::now();
-            aig_lit simplified = rw.rewrite(orig);
+            aig_lit simplified = rw.rewrite(orig, rng() & 1);
             auto t1 = std::chrono::steady_clock::now();
             stats.rewrite_time_s += std::chrono::duration<double>(t1 - t0).count();
             stats.total_rewrites++;

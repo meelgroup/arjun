@@ -833,9 +833,7 @@ void Manthan::bve_and_substitute() {
     assert(aigs.size() == to_define.size());
 
     AIGRewriter rw;
-    // No balance: these AIGs are encoded into the repair loop's solvers,
-    // and the factored right-deep chains SAT-solve faster.
-    rw.rewrite_all(aigs, conf.verb, false);
+    rw.rewrite_all(aigs, conf.verb);
     encode_aigs_to_formulas(aigs, start_time);
 
     verb_print(1, COLYEL "[manthan] BVE and substitute done."
@@ -924,9 +922,7 @@ void Manthan::init_from_guess() {
 
     const size_t nodes_before = AIG::count_aig_nodes_fast(aigs);
     AIGRewriter rw;
-    // No balance: this output is re-encoded into the cex solver, and the
-    // factored right-deep chains SAT-solve faster than balanced trees.
-    rw.rewrite_all(aigs, conf.verb, false);
+    rw.rewrite_all(aigs, conf.verb);
     const size_t nodes_after = AIG::count_aig_nodes_fast(aigs);
     verb_print(1, COLYEL "[manthan-restart] guess AIGs compacted: "
         << nodes_before << " -> " << nodes_after << " nodes ("
