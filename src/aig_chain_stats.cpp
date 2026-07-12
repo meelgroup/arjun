@@ -694,9 +694,11 @@ static vector<Cube> minimize_cover(vector<Cube> cs, size_t& n_d1_merges) {
 }
 
 // Dump the AIG of one def as a Graphviz DOT graph.
-//   - AND nodes         : filled blue boxes
-//   - variable inputs   : non-filled boxes with the (1-indexed) var number
-//   - complemented edges : a small filled circle (dot arrowhead)
+//   - AND nodes         : filled blue boxes (shared, one per node)
+//   - variable inputs   : non-filled boxes with the (1-indexed) var number;
+//                         NOT shared -- one fresh box per use, so the graph is
+//                         a readable tree at the leaves rather than a hairball
+//   - complemented edges : a filled circle (dot arrowhead)
 //   - the output        : a box at the top labelled with the output variable
 static void write_aig_dot(const aig_lit& root, uint32_t out_var_0idx,
                           const std::string& dot_fname) {
@@ -705,13 +707,6 @@ static void write_aig_dot(const aig_lit& root, uint32_t out_var_0idx,
         std::cerr << "ERROR: cannot open " << dot_fname << " for writing" << endl;
         return;
     }
-    // Name of the graph target for a child edge: variable inputs are shared by
-    // var number, everything else by node id.
-    auto tgt_name = [](const aig_lit& e) -> std::string {
-        if (e->type == AIGT::t_lit) return "v" + std::to_string(e->var);
-        return "n" + std::to_string(e->nid);
-    };
-
     fprintf(f, "digraph aig {\n");
     fprintf(f, "  rankdir=TB;\n");
     fprintf(f, "  node [fontname=\"Helvetica\"];\n");
@@ -719,35 +714,40 @@ static void write_aig_dot(const aig_lit& root, uint32_t out_var_0idx,
     fprintf(f, "  { rank=source; out [label=\"var %u\", shape=box, "
                "style=rounded, penwidth=2]; }\n", out_var_0idx + 1);
 
-    std::set<const AIG*> seen_nodes;   // AND / const nodes, keyed by pointer
-    std::set<uint32_t> seen_vars;      // variable inputs, keyed by var number
+    std::set<const AIG*> seen_and;  // AND nodes are shared (keyed by pointer)
+    uint64_t leaf_id = 0;           // unique id for per-use leaf (input/const) boxes
+
+    // Emit the edge parent -> child. AND children reference the shared node;
+    // variable / const children get a fresh, unshared leaf box each time.
+    auto emit_edge = [&](const std::string& parent, const aig_lit& ch) {
+        std::string cname;
+        if (ch->type == AIGT::t_and) {
+            cname = "n" + std::to_string(ch->nid);
+        } else {
+            cname = "l" + std::to_string(leaf_id++);
+            if (ch->type == AIGT::t_lit)
+                fprintf(f, "  %s [label=\"%u\", shape=box];\n", cname.c_str(), ch->var + 1);
+            else // t_const (TRUE; complemented edge = FALSE)
+                fprintf(f, "  %s [label=\"1\", shape=box];\n", cname.c_str());
+        }
+        fprintf(f, "  %s -> %s%s;\n", parent.c_str(), cname.c_str(),
+                ch.neg ? " [arrowhead=dot, arrowsize=2]" : "");
+    };
+
     std::function<void(const AIG*)> dfs = [&](const AIG* n) {
-        if (!n) return;
-        if (n->type == AIGT::t_lit) {
-            if (seen_vars.insert(n->var).second)
-                fprintf(f, "  v%u [label=\"%u\", shape=box];\n", n->var, n->var + 1);
-            return;
-        }
-        if (n->type == AIGT::t_const) {
-            if (seen_nodes.insert(n).second)
-                fprintf(f, "  n%llu [label=\"1\", shape=box];\n",
-                        (unsigned long long)n->nid);
-            return;
-        }
-        // AND node
-        if (!seen_nodes.insert(n).second) return;
+        if (!n || n->type != AIGT::t_and) return; // leaves handled at the edge
+        if (!seen_and.insert(n).second) return;
         fprintf(f, "  n%llu [label=\"\", shape=box, style=filled, "
                    "fillcolor=\"steelblue\"];\n", (unsigned long long)n->nid);
+        const std::string parent = "n" + std::to_string(n->nid);
         for (const aig_lit& ch : {n->l, n->r}) {
             dfs(ch.get());
-            fprintf(f, "  n%llu -> %s%s;\n", (unsigned long long)n->nid,
-                    tgt_name(ch).c_str(), ch.neg ? " [arrowhead=dot]" : "");
+            emit_edge(parent, ch);
         }
     };
     dfs(root.get());
     // Edge from the output to the def's root (complemented if root is negated).
-    fprintf(f, "  out -> %s%s;\n", tgt_name(root).c_str(),
-            root.neg ? " [arrowhead=dot]" : "");
+    emit_edge("out", root);
     fprintf(f, "}\n");
     fclose(f);
 }
