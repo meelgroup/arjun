@@ -11,8 +11,10 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <set>
@@ -21,6 +23,7 @@
 #include <cryptominisat5/solvertypesmini.h>
 #include "arjun.h"
 #include "aig_rewrite.h"
+#include "argparse.hpp"
 #include "time_mem.h"
 
 using namespace ArjunNS;
@@ -690,34 +693,129 @@ static vector<Cube> minimize_cover(vector<Cube> cs, size_t& n_d1_merges) {
     return cs;
 }
 
+// Dump the AIG of one def as a Graphviz DOT graph.
+//   - AND nodes         : filled blue boxes
+//   - variable inputs   : non-filled boxes with the (1-indexed) var number
+//   - complemented edges : a small filled circle (dot arrowhead)
+//   - the output        : a box at the top labelled with the output variable
+static void write_aig_dot(const aig_lit& root, uint32_t out_var_0idx,
+                          const std::string& dot_fname) {
+    FILE* f = fopen(dot_fname.c_str(), "w");
+    if (!f) {
+        std::cerr << "ERROR: cannot open " << dot_fname << " for writing" << endl;
+        return;
+    }
+    // Name of the graph target for a child edge: variable inputs are shared by
+    // var number, everything else by node id.
+    auto tgt_name = [](const aig_lit& e) -> std::string {
+        if (e->type == AIGT::t_lit) return "v" + std::to_string(e->var);
+        return "n" + std::to_string(e->nid);
+    };
+
+    fprintf(f, "digraph aig {\n");
+    fprintf(f, "  rankdir=TB;\n");
+    fprintf(f, "  node [fontname=\"Helvetica\"];\n");
+    // Output node, pinned to the top rank.
+    fprintf(f, "  { rank=source; out [label=\"var %u\", shape=box, "
+               "style=rounded, penwidth=2]; }\n", out_var_0idx + 1);
+
+    std::set<const AIG*> seen_nodes;   // AND / const nodes, keyed by pointer
+    std::set<uint32_t> seen_vars;      // variable inputs, keyed by var number
+    std::function<void(const AIG*)> dfs = [&](const AIG* n) {
+        if (!n) return;
+        if (n->type == AIGT::t_lit) {
+            if (seen_vars.insert(n->var).second)
+                fprintf(f, "  v%u [label=\"%u\", shape=box];\n", n->var, n->var + 1);
+            return;
+        }
+        if (n->type == AIGT::t_const) {
+            if (seen_nodes.insert(n).second)
+                fprintf(f, "  n%llu [label=\"1\", shape=box];\n",
+                        (unsigned long long)n->nid);
+            return;
+        }
+        // AND node
+        if (!seen_nodes.insert(n).second) return;
+        fprintf(f, "  n%llu [label=\"\", shape=box, style=filled, "
+                   "fillcolor=\"steelblue\"];\n", (unsigned long long)n->nid);
+        for (const aig_lit& ch : {n->l, n->r}) {
+            dfs(ch.get());
+            fprintf(f, "  n%llu -> %s%s;\n", (unsigned long long)n->nid,
+                    tgt_name(ch).c_str(), ch.neg ? " [arrowhead=dot]" : "");
+        }
+    };
+    dfs(root.get());
+    // Edge from the output to the def's root (complemented if root is negated).
+    fprintf(f, "  out -> %s%s;\n", tgt_name(root).c_str(),
+            root.neg ? " [arrowhead=dot]" : "");
+    fprintf(f, "}\n");
+    fclose(f);
+}
+
 int main(int argc, char** argv) {
-    if (argc < 2) {
-        cout << "usage: " << argv[0] << " [-r] <dump.aig> [top_n] [deep_var_1idx [out.pla]]" << endl;
-        cout << "  -r: run AIGRewriter::rewrite_all on the defs first" << endl;
+    argparse::ArgumentParser program("aig_chain_stats", "1.0",
+            argparse::default_arguments::help);
+    program.add_description(
+        "Repair-chain shape analyzer: loads a --dumprestartaig dump and prints "
+        "per-def and aggregate stats on the Manthan repair-chain structure.");
+    program.add_argument("-r", "--rewrite")
+        .flag()
+        .help("run AIGRewriter::rewrite_all on the defs first");
+    program.add_argument("-R", "--verify")
+        .flag()
+        .help("rewrite, then SAT-miter each changed def to prove equivalence");
+    program.add_argument("-c", "--collapse")
+        .flag()
+        .help("collapse each top def to a flat SOP and report refactored size");
+    program.add_argument("--all")
+        .flag()
+        .help("print ALL var defs, not just the top ones (overrides --top)");
+    program.add_argument("-n", "--top")
+        .default_value(10).scan<'i', int>()
+        .help("number of top defs to print / analyze");
+    program.add_argument("-t", "--top-filter")
+        .default_value(0).scan<'i', int>()
+        .help("keep only the K biggest defs (approximates the in-run to_define "
+              "population at a Manthan restart)");
+    program.add_argument("-T", "--drop-top")
+        .default_value(0).scan<'i', int>()
+        .help("drop the K biggest defs, keep the rest");
+    program.add_argument("-B", "--blif")
+        .default_value(std::string(""))
+        .help("dump the (possibly rewritten) union DAG as BLIF to this file");
+    program.add_argument("--deep")
+        .default_value(0).scan<'i', int>()
+        .help("deep-dive the largest run of this 1-indexed var");
+    program.add_argument("--viz")
+        .default_value(0).scan<'i', int>()
+        .help("dump the AIG of this 1-indexed var as DOT + PDF");
+    program.add_argument("--pla")
+        .default_value(std::string(""))
+        .help("write the deep-dived run as a PLA file for espresso");
+    program.add_argument("file").help("input AIG dump");
+
+    try {
+        program.parse_args(argc, argv);
+    } catch (const std::exception& err) {
+        std::cerr << err.what() << endl << program;
         return 1;
     }
-    int argi = 1;
-    bool do_rewrite = false;
-    bool do_verify = false;
-    bool do_collapse = false;
-    std::string blif_out;
-    int top_filter = 0; // keep only the K biggest defs (approximates the
-                        // in-run to_define population at a Manthan restart)
-    while (argi < argc && argv[argi][0] == '-') {
-        if (std::string(argv[argi]) == "-r") { do_rewrite = true; argi++; }
-        else if (std::string(argv[argi]) == "-R") { do_rewrite = true; do_verify = true; argi++; }
-        else if (std::string(argv[argi]) == "-c") { do_collapse = true; argi++; }
-        else if (std::string(argv[argi]) == "-t") { top_filter = atoi(argv[argi+1]); argi += 2; }
-        else if (std::string(argv[argi]) == "-T") { top_filter = -atoi(argv[argi+1]); argi += 2; }
-        else if (std::string(argv[argi]) == "-B") { blif_out = argv[argi+1]; argi += 2; }
-        else break;
-    }
-    const char* fname = argv[argi++];
-    const int top_n = argc > argi ? atoi(argv[argi]) : 10;
-    argi++;
-    const int deep_var = argc > argi ? atoi(argv[argi]) : 0;
-    argi++;
-    const std::string pla_fname = argc > argi ? argv[argi] : "";
+
+    const bool do_verify = program.get<bool>("--verify");
+    const bool do_rewrite = program.get<bool>("--rewrite") || do_verify;
+    const bool do_collapse = program.get<bool>("--collapse");
+    const bool do_all = program.get<bool>("--all");
+    // With --all, print/analyze every def rather than just the top ones.
+    const int top_n = do_all ? std::numeric_limits<int>::max()
+                             : program.get<int>("--top");
+    const std::string blif_out = program.get<std::string>("--blif");
+    // -t keeps the top K, -T drops the top K (encoded as a negative filter).
+    int top_filter = program.get<int>("--top-filter");
+    if (top_filter == 0) top_filter = -program.get<int>("--drop-top");
+    const std::string fname = program.get<std::string>("file");
+    const int deep_var = program.get<int>("--deep");
+    const int viz_var = program.get<int>("--viz");
+    const std::string pla_fname = program.get<std::string>("--pla");
     auto fg = std::make_unique<FGenMpz>();
     SimplifiedCNF cnf(fg.get());
     cnf.read_aig_defs_from_file(fname);
@@ -929,7 +1027,16 @@ int main(int argc, char** argv) {
     cout << "global cube census: distinct " << global_cubes.size()
          << "  appearing >1x: " << multi_def_cubes
          << " (covering " << multi_def_insts << " instances)" << endl;
-    cout << "top defs by node count:" << endl;
+    cout << (do_all ? "all defs by node count:" : "top defs by node count:") << endl;
+    cout << "  column legend (per def):" << endl;
+    cout << "    layers = number of AND-chain layers walked in the decision-list chain" << endl;
+    cout << "    runs   = number of maximal same-operator (OR/AND) runs in that chain" << endl;
+    cout << "    maxrun = cube count of the largest single run" << endl;
+    cout << "    cubes  = total cubes across all runs" << endl;
+    cout << "    avg_w  = average cube width (literals per cube)" << endl;
+    cout << "    dup    = duplicate cubes within a run (exact repeats)" << endl;
+    cout << "    subs   = cubes subsumed by another cube in the same run" << endl;
+    cout << "    d1     = distance-1 cube pairs (differ in one complemented literal)" << endl;
     cout << "  var    nodes layers  runs maxrun  cubes  avg_w    dup   subs     d1" << endl;
     for (int i = 0; i < top_n && i < (int)infos.size(); i++) {
         auto& in = infos[i];
@@ -1047,6 +1154,33 @@ int main(int argc, char** argv) {
             cout << "  largest run op=" << runs[best].op << endl;
             analyze_run(runs[best].cubes, pla_fname);
         }
+    }
+
+    if (viz_var > 0) {
+        aig_lit d;
+        for (size_t i = 0; i < def_vars.size(); i++)
+            if (def_vars[i] == (uint32_t)(viz_var - 1)) d = defs_local[i];
+        if (!d) { cout << "viz var " << viz_var << " has no def" << endl; return 1; }
+        const std::string dot_fname = fname + "-var" + std::to_string(viz_var) + ".dot";
+        const std::string pdf_fname = fname + "-var" + std::to_string(viz_var) + ".pdf";
+        write_aig_dot(d, viz_var - 1, dot_fname);
+        const std::string cmd = "dot -Tpdf " + dot_fname + " -o " + pdf_fname;
+        cout << "wrote DOT: " << dot_fname << endl;
+        cout << "convert to PDF with: " << cmd << endl;
+        const int rc = system(cmd.c_str());
+        if (rc != 0) cout << "WARNING: '" << cmd << "' returned " << rc
+                          << " (is graphviz installed?)" << endl;
+        else cout << "wrote PDF: " << pdf_fname << endl;
+    }
+
+    if (do_rewrite) {
+        // Dump the rewritten defs next to the input. rewrite_aigs() applies the
+        // same deterministic AIGRewriter::rewrite_all to the cnf's own (full,
+        // unfiltered) def set, so the file is a rewritten twin of the input.
+        cnf.rewrite_aigs(0);
+        const std::string out_fname = fname + "-rewritten.aig";
+        cnf.write_aig_defs_to_file(out_fname);
+        cout << "wrote rewritten AIG defs: " << out_fname << endl;
     }
     return 0;
 }

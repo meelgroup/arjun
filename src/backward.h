@@ -37,7 +37,7 @@ namespace ArjunInt {
 
 struct Backward
 {
-    Backward(const Config& _conf, const ArjunNS::Arjun::InterpConf& _iconf) : iconf(_iconf), conf(_conf) {
+    Backward(const Config& _conf, const ArjunNS::Arjun::InterpConf& _iconf) : conf(_conf), iconf(_iconf) {
         set_up_solver();
     }
     ~Backward() = default;
