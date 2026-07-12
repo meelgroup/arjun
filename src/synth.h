@@ -27,7 +27,6 @@
 #include <string>
 #include <vector>
 #include <map>
-#include <cstdint>
 #include "arjun.h"
 #include "config.h"
 

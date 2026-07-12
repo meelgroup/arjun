@@ -60,6 +60,7 @@ string output_file;
 ArjunNS::SimpConf simp_conf;
 ArjunNS::Arjun::ElimToFileConf etof_conf;
 ArjunNS::Arjun::ManthanConf mconf;
+ArjunNS::Arjun::InterpConf iconf;
 int do_gates = 1;
 int redundant_cls = true;
 int simptofile = true;
@@ -225,11 +226,11 @@ void add_arjun_options() {
     // synth -- debug
     myopt("--manthancnf", mconf.write_manthan_cnf, fc_string, "Write Manthan CNF to this file");
     myopt("--debugsynth", conf.debug_synth, fc_string,"Debug synthesis, prefix with this fname");
-    myopt("--interprebuildevery", conf.interp_rebuild_every, fc_int,
+    myopt("--interprebuildevery", iconf.interp_rebuild_every, fc_int,
           "Rebuild the doubled-CNF interpolation solver every N interpolants (bounds tracer maps; smaller = exercise the rebuild path more).");
-    myopt("--interpmaxconfl", conf.interp_max_confl, fc_int,
+    myopt("--interpmaxconfl", iconf.interp_max_confl, fc_int,
           "Per-interpolant conflict budget; over this, skip the var. 0 = unlimited.");
-    myopt("--interprebuildmaxconfl", conf.interp_rebuild_max_confl, fc_int,
+    myopt("--interprebuildmaxconfl", iconf.interp_rebuild_max_confl, fc_int,
           "Rebuild the interpolation solver once it burns this many conflicts since the last rebuild (bounds tracer maps after skipped/conflict-heavy solves). 0 = off.");
     myflag("--checkrepair", mconf.check_repair, "Check that error formula count decreases monotonically after each repair iteration (uses ganak)");
     myopt("--ganakbin", mconf.ganak_binary, fc_string, "Path to ganak binary (for --checkrepair)");
@@ -406,13 +407,13 @@ void do_synthesis() {
         SLOW_DEBUG_DO(check_stage("autarky"));
     }
     if (etof_conf.do_extend_indep && !cnf.synth_done()) {
-        arjun->standalone_unsat_define(cnf);
+        arjun->standalone_extend_synth(cnf, iconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-extend_synth.aig");
         cnf.simplify_aigs(conf.verb);
         SLOW_DEBUG_DO(check_stage("extend_synth"));
     }
     if (do_backward && !cnf.synth_done()) {
-        arjun->standalone_backward_round_synth(cnf, mconf);
+        arjun->standalone_backward_round_synth(cnf, iconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-minim_idep_synt.aig");
         cnf.simplify_aigs(conf.verb);
         SLOW_DEBUG_DO(check_stage("minim_idep_synt"));
@@ -429,7 +430,7 @@ void do_synthesis() {
         // decision trees. Declines (CNF unchanged) if the enum set is too
         // large; Manthan below then finishes the job.
         verb_print(1, "[arjun] Synthesis: brute-force decision trees");
-        cnf = arjun->standalone_brute_force_synth(std::move(cnf), mconf);
+        cnf = arjun->standalone_brute_force_synth(std::move(cnf), mconf, iconf);
         if (!conf.debug_synth.empty()) cnf.write_aig_defs_to_file(conf.debug_synth + "-brute_force_synth.aig");
         SLOW_DEBUG_DO(check_stage("brute_force_synth"));
     }
@@ -465,7 +466,7 @@ void do_backward_pass() {
 
     if (do_pre_backbone) arjun->standalone_backbone(cnf);
     const auto orig_sampl_vars = cnf.get_sampl_vars();
-    if (do_backward) arjun->standalone_minimize_indep(cnf, etof_conf.all_indep);
+    if (do_backward) arjun->standalone_minimize_indep(cnf, iconf, etof_conf.all_indep);
     if (!debug_minim.empty()) {
         cnf.write_simpcnf(debug_minim, false);
         auto cnf2 = cnf;
@@ -474,7 +475,7 @@ void do_backward_pass() {
     }
 
     if (!output_file.empty()) {
-        arjun->standalone_elim_to_file(cnf, etof_conf, simp_conf);
+        arjun->standalone_elim_to_file(cnf, etof_conf, simp_conf, iconf);
         cnf.write_simpcnf(output_file, redundant_cls);
         cout << "c o [arjun] dumped simplified problem to '" << output_file << "'" << endl;
     } else {

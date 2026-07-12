@@ -36,8 +36,9 @@ namespace ArjunInt {
 
 BruteForceSynth::BruteForceSynth(const ArjunInt::Config& _conf,
                            const ArjunNS::Arjun::ManthanConf& _mconf,
+                           const ArjunNS::Arjun::InterpConf& _iconf,
                            ArjunNS::SimplifiedCNF&& _cnf)
-    : conf(_conf), mconf(_mconf), cnf(std::move(_cnf))
+    : conf(_conf), mconf(_mconf), iconf(_iconf), cnf(std::move(_cnf))
 {}
 
 template<typename S>
@@ -86,7 +87,7 @@ void BruteForceSynth::maybe_minimize_enum_set() {
     const size_t before = orig_sampl_cnf.size();
     vector<uint32_t> candidate(orig_sampl_cnf.begin(), orig_sampl_cnf.end());
 
-    Backward bw(conf);
+    Backward bw(conf, iconf);
     vector<uint32_t> minimized = bw.minimize_subset(cnf, candidate);
 
     orig_sampl_cnf.clear();

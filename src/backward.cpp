@@ -521,7 +521,7 @@ void Backward::add_all_indics_except(const set<uint32_t>& except) {
         var_to_indic, indic_to_var, dont_elim, seen, conf.verb);
 }
 
-void Backward::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf&) {
+void Backward::backward_round_synth(SimplifiedCNF& cnf)  {
     SLOW_DEBUG_DO(for(const auto& x: seen) assert(x == 0));
     SLOW_DEBUG_DO(assert(cnf.get_need_aig() && cnf.defs_invariant()));
 
@@ -555,7 +555,7 @@ void Backward::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     }
 
     // set up interpolant
-    Interpolant interp(conf, cnf.nVars());
+    Interpolant interp(conf, iconf, cnf.nVars());
     interp.fill_from_solver(solver.get(), orig_num_vars, cnf.get_aig_mng(),
             pretend_input, var_to_indic);
 

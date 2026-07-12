@@ -37,12 +37,11 @@ namespace ArjunInt {
 
 struct Backward
 {
-    Backward(const Config& _conf) : conf(_conf) {
+    Backward(const Config& _conf, const ArjunNS::Arjun::InterpConf& _iconf) : iconf(_iconf), conf(_conf) {
         set_up_solver();
     }
     ~Backward() = default;
 
-    const Config conf;
     std::unique_ptr<CMSat::SATSolver> solver;
     bool already_duplicated = false;
     std::vector<uint32_t> sampling_vars;
@@ -81,7 +80,7 @@ struct Backward
         const T& indep,
         const std::optional<std::set<uint32_t>>& ignore = std::nullopt);
     void backward_round();
-    void backward_round_synth(ArjunNS::SimplifiedCNF& cnf, const ArjunNS::Arjun::ManthanConf& mconf);
+    void backward_round_synth(ArjunNS::SimplifiedCNF& cnf);
 
     // Dry-run minim: returns a minimal independent subset of `candidate`
     // in the simplified CNF, without mutating cnf. Single-use — the
@@ -92,6 +91,9 @@ struct Backward
     void add_all_indics_except(const std::set<uint32_t>& except);
     void order_by_file(const std::string& fname, std::vector<uint32_t>& unknown);
     void print_sorted_unknown(const std::vector<uint32_t>& unknown) const;
+
+    const Config& conf;
+    const ArjunNS::Arjun::InterpConf& iconf;
 };
 
 }

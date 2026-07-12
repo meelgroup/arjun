@@ -58,14 +58,6 @@ struct Config {
     int oracle_find_bins = 6;
     double cms_glob_mult = -1.0;
     int extend_ccnr = 0;
-    // Rebuild the interpolation solver+tracer after this many interpolants,
-    // bounding the tracer's clause maps and keeping proofs small.
-    uint32_t interp_rebuild_every = 50;
-    // Per-interpolant conflict budget; over this, skip the var. 0 = off.
-    uint32_t interp_max_confl = 30000;
-    // Also rebuild once this many conflicts are burned since the last rebuild.
-    // 0 = off.
-    uint64_t interp_rebuild_max_confl = 500000;
     std::string debug_synth;
     // If set, dump guess AIGs at each restart to <prefix>-restart<N>.aig/.v.
     std::string dump_restart_aig;

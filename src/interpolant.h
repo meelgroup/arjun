@@ -154,8 +154,8 @@ private:
 // can't be pruned, so both are rebuilt every conf.interp_rebuild_every.
 class Interpolant {
 public:
-    Interpolant(const Config& _conf, const uint32_t num_vars) :
-        conf(_conf) {
+    Interpolant(const Config& _conf, const ArjunNS::Arjun::InterpConf& _iconf, const uint32_t num_vars) :
+        conf(_conf), iconf(_iconf) {
         defs.resize(num_vars, nullptr);
     }
     ~Interpolant();
@@ -177,6 +177,7 @@ public:
 
 private:
     const Config conf;
+    const ArjunNS::Arjun::InterpConf& iconf;
     uint32_t orig_num_vars = 0;
     uint32_t tot_num_vars = 0;
     const ArjunNS::AIGManager* aig_mng = nullptr;

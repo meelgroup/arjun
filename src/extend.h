@@ -34,7 +34,7 @@
 
 class Extend {
 public:
-    Extend(const ArjunInt::Config& _conf) : conf(_conf) {}
+    Extend(const ArjunInt::Config& _conf, const ArjunNS::Arjun::InterpConf& _iconf) : conf(_conf), iconf(_iconf) {}
     void extend_round(ArjunNS::SimplifiedCNF& cnf);
     void extend_synth(ArjunNS::SimplifiedCNF& cnf);
     bool check_extend(const ArjunNS::SimplifiedCNF& cnf);
@@ -49,7 +49,8 @@ private:
         std::vector<CMSat::Lit>& assumptions,
         const T& indep);
 
-    ArjunInt::Config conf;
+    const ArjunInt::Config& conf;
+    const ArjunNS::Arjun::InterpConf& iconf;
 
     //assert indic[var] to TRUE to force var==var+orig_num_vars
     std::vector<uint32_t> var_to_indic; //maps an ORIG VAR to an INDICATOR VAR

@@ -40,6 +40,7 @@ class BruteForceSynth {
 public:
     BruteForceSynth(const ArjunInt::Config& _conf,
                  const ArjunNS::Arjun::ManthanConf& _mconf,
+                 const ArjunNS::Arjun::InterpConf& _iconf,
                  ArjunNS::SimplifiedCNF&& _cnf);
 
     ArjunNS::SimplifiedCNF do_synth();
@@ -47,6 +48,7 @@ public:
 private:
     const ArjunInt::Config& conf;
     const ArjunNS::Arjun::ManthanConf& mconf;
+    const ArjunNS::Arjun::InterpConf& iconf;
     ArjunNS::SimplifiedCNF cnf;
 
     // `input` includes extend-defined vars; `orig_sampl_cnf` is the

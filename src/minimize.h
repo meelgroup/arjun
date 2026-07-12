@@ -30,7 +30,7 @@ namespace ArjunInt {
 
 struct Minimize : public Backward
 {
-    Minimize(const Config& _conf) : Backward(_conf) {}
+    Minimize(const Config& _conf, const ArjunNS::Arjun::InterpConf& _iconf) : Backward(_conf, _iconf) {}
     ~Minimize() = default;
 
     //simp

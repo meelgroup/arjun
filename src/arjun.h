@@ -1,6 +1,5 @@
 /******************************************
 Copyright (C) 2020 Mate Soos
-
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
@@ -1589,6 +1588,11 @@ public:
         bool do_renumber = true;
         bool do_autarky = true;
     };
+    struct InterpConf {
+        uint32_t interp_rebuild_every = 50;
+        uint32_t interp_max_confl = 30000;
+        uint64_t interp_rebuild_max_confl = 500000;
+    };
     struct ManthanConf {
         ManthanConf() = default;
         ManthanConf(const ManthanConf& other) = default;
@@ -1649,15 +1653,15 @@ public:
 
     /// Standalone functions
     ///
-    IndepInfo standalone_minimize_indep_info(SimplifiedCNF& cnf, bool all_indep);
-    void standalone_minimize_indep(SimplifiedCNF& cnf, bool all_indep);
-    void standalone_backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf& manthan_conf);
-    void standalone_extend_sampl_set(SimplifiedCNF& cnf);
-    bool standalone_check_extend(const SimplifiedCNF& cnf);
-    void standalone_unsat_define(SimplifiedCNF& cnf);
+    IndepInfo standalone_minimize_indep_info(SimplifiedCNF& cnf, const InterpConf& iconf, bool all_indep);
+    void standalone_minimize_indep(SimplifiedCNF& cnf, const InterpConf& iconf, bool all_indep);
+    void standalone_backward_round_synth(SimplifiedCNF& cnf, const InterpConf& iconf);
+    void standalone_extend_sampl_set(SimplifiedCNF& cnf, const InterpConf& iconf);
+    bool standalone_check_extend(const SimplifiedCNF& cnf, const InterpConf& iconf);
+    void standalone_extend_synth(SimplifiedCNF& cnf, const InterpConf& iconf);
     void standalone_unate_def(SimplifiedCNF& cnf);
     void standalone_elim_to_file(SimplifiedCNF& cnf,
-            const ElimToFileConf& etof_conf, const SimpConf& simp_conf);
+            const ElimToFileConf& etof_conf, const SimpConf& simp_conf, const InterpConf& iconf);
     SimplifiedCNF standalone_get_simplified_cnf(const SimplifiedCNF& cnf, const SimpConf& simp_conf);
     void standalone_backbone(SimplifiedCNF& cnf);
     void standalone_sbva(SimplifiedCNF& orig,
@@ -1665,8 +1669,7 @@ public:
         uint32_t sbva_lits_cutoff = 2, int sbva_tiebreak = 1,
         uint32_t sbva_max_new_vars = 0);
     SimplifiedCNF standalone_manthan(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
-    // Synthesizes when |orig_sampl_cnf| ≤ brute_force_synth_threshold, else returns the CNF unchanged for the Manthan fallback.
-    SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf);
+    SimplifiedCNF standalone_brute_force_synth(SimplifiedCNF&& cnf, const ManthanConf& manthan_conf, const InterpConf& iconf);
     void standalone_autarky(SimplifiedCNF& cnf);
 
     //Set config

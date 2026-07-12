@@ -103,7 +103,8 @@ void Interpolant::load_solver(bool is_rebuild) {
         num_rebuilds++;
         verb_print(1, "[interp] rebuild #" << num_rebuilds
                 << " after " << solves_since_rebuild << " defines"
-                << ": merged " << num_merged << " vars"
+                << " conf: " << solver->conflicts()
+                << " --  merged " << num_merged << " vars"
                 << ", clauses " << all_cls.size() << " -> " << eff_cls.size()
                 << " mem: " << memUsedTotal()/(1024*1024) << " MB"
                 << " T: " << std::fixed << std::setprecision(2)
@@ -178,8 +179,8 @@ bool Interpolant::generate_interpolant(const vector<Lit>& assumptions,
     // clauses), so the doubled CNF stays reusable for the next call.
     tracer->reset_per_solve();
     // Skip deep vars whose proof would OOM or stall.
-    if (conf.interp_max_confl != 0)
-        solver->limit("conflicts", (int)conf.interp_max_confl);
+    if (iconf.interp_max_confl != 0)
+        solver->limit("conflicts", (int)iconf.interp_max_confl);
     for (const auto& l : assumptions) solver->assume(lit_to_pl(l));
     const int ret = solver->solve();
     release_assert(ret != 10 && "interpolant solve must not be SAT");
@@ -187,7 +188,7 @@ bool Interpolant::generate_interpolant(const vector<Lit>& assumptions,
         // Budget exhausted: no definition. maybe_rebuild's conflict trigger
         // frees the maps rather than rebuilding an identical solver per skip.
         verb_print(1, "[interp] var " << test_var+1 << " exceeded "
-                << conf.interp_max_confl << " conflicts; skipping definition");
+                << iconf.interp_max_confl << " conflicts; skipping definition");
         maybe_rebuild();
         return false;
     }
@@ -208,13 +209,11 @@ bool Interpolant::generate_interpolant(const vector<Lit>& assumptions,
     return true;
 }
 
-// Rebuild on either trigger: enough defines (re-simplify with new equalities)
-// or enough conflicts burned (bound the tracer maps). solver->conflicts() is
-// cumulative over the current solver, i.e. exactly "since the last rebuild".
+// Rebuild on either trigger: enough defines or enough conflicts
 void Interpolant::maybe_rebuild() {
-    const bool by_defines = solves_since_rebuild >= conf.interp_rebuild_every;
-    const bool by_confl = conf.interp_rebuild_max_confl != 0
-            && (uint64_t)solver->conflicts() >= conf.interp_rebuild_max_confl;
+    const bool by_defines = solves_since_rebuild >= iconf.interp_rebuild_every;
+    const bool by_confl = iconf.interp_rebuild_max_confl != 0
+            && (uint64_t)solver->conflicts() >= iconf.interp_rebuild_max_confl;
     if (!by_defines && !by_confl) return;
     solver->disconnect_proof_tracer(tracer.get());
     load_solver(true);

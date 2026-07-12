@@ -122,13 +122,13 @@ DLL_PUBLIC string Arjun::get_compilation_env() {
     return ArjunIntNS::get_compilation_env();
 }
 
-DLL_PUBLIC void Arjun::standalone_minimize_indep(SimplifiedCNF& cnf, bool all_indep) {
-    Minimize common(arjdata->conf);
+DLL_PUBLIC void Arjun::standalone_minimize_indep(SimplifiedCNF& cnf, const InterpConf& iconf, bool all_indep) {
+    Minimize common(arjdata->conf, iconf);
     common.run_minimize(cnf, all_indep);
 }
 
-DLL_PUBLIC Arjun::IndepInfo Arjun::standalone_minimize_indep_info(SimplifiedCNF& cnf, bool all_indep) {
-    Minimize common(arjdata->conf);
+DLL_PUBLIC Arjun::IndepInfo Arjun::standalone_minimize_indep_info(SimplifiedCNF& cnf, const InterpConf& iconf, bool all_indep) {
+    Minimize common(arjdata->conf, iconf);
     return common.run_minimize_info(cnf, all_indep);
 }
 
@@ -137,25 +137,25 @@ DLL_PUBLIC void Arjun::standalone_autarky(SimplifiedCNF& cnf) {
     autarky.find_autarkies(cnf);
 }
 
-DLL_PUBLIC void Arjun::standalone_backward_round_synth(SimplifiedCNF& cnf, const ManthanConf& mconf) {
-    Backward common(arjdata->conf);
-    common.backward_round_synth(cnf, mconf);
+DLL_PUBLIC void Arjun::standalone_backward_round_synth(SimplifiedCNF& cnf, const InterpConf& iconf) {
+    Backward common(arjdata->conf, iconf);
+    common.backward_round_synth(cnf);
 }
 
-DLL_PUBLIC void Arjun::standalone_unsat_define(SimplifiedCNF& cnf) {
-    Extend extend(arjdata->conf);
+DLL_PUBLIC void Arjun::standalone_extend_synth(SimplifiedCNF& cnf, const InterpConf& iconf) {
+    Extend extend(arjdata->conf, iconf);
     extend.extend_synth(cnf);
 }
 
-DLL_PUBLIC void Arjun::standalone_extend_sampl_set(SimplifiedCNF& cnf)
+DLL_PUBLIC void Arjun::standalone_extend_sampl_set(SimplifiedCNF& cnf, const InterpConf& iconf)
 {
-    Extend extend(arjdata->conf);
+    Extend extend(arjdata->conf, iconf);
     extend.extend_round(cnf);
 }
 
-DLL_PUBLIC bool Arjun::standalone_check_extend(const SimplifiedCNF& cnf)
+DLL_PUBLIC bool Arjun::standalone_check_extend(const SimplifiedCNF& cnf, const InterpConf& iconf)
 {
-    Extend extend(arjdata->conf);
+    Extend extend(arjdata->conf, iconf);
     return extend.check_extend(cnf);
 }
 
@@ -219,9 +219,9 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
     return cnf;
 }
 
-DLL_PUBLIC SimplifiedCNF Arjun::standalone_brute_force_synth(SimplifiedCNF&& cnf, const ManthanConf& mconf)
+DLL_PUBLIC SimplifiedCNF Arjun::standalone_brute_force_synth(SimplifiedCNF&& cnf, const ManthanConf& mconf, const InterpConf& iconf)
 {
-    BruteForceSynth ss(arjdata->conf, mconf, std::move(cnf));
+    BruteForceSynth ss(arjdata->conf, mconf, iconf, std::move(cnf));
     return ss.do_synth();
 }
 
@@ -246,7 +246,7 @@ DLL_PUBLIC void Arjun::standalone_backbone(SimplifiedCNF& cnf) {
 }
 
 DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
-        const ElimToFileConf& etof_conf, const SimpConf& simp_conf) {
+        const ElimToFileConf& etof_conf, const SimpConf& simp_conf, const InterpConf& iconf) {
     SLOW_DEBUG_DO(cnf.check_red_cls_deriveable());
     cnf.remove_equiv_weights();
     cnf = standalone_get_simplified_cnf(cnf, simp_conf);
@@ -270,7 +270,7 @@ DLL_PUBLIC void Arjun::standalone_elim_to_file(SimplifiedCNF& cnf,
         cnf.set_opt_sampl_vars(all_vars);
     } else {
         if (etof_conf.do_extend_indep && cnf.get_opt_sampl_vars().size() != cnf.nVars())
-            standalone_extend_sampl_set(cnf);
+            standalone_extend_sampl_set(cnf, iconf);
     }
     cnf.remove_equiv_weights();
     if (etof_conf.do_renumber) cnf.renumber_sampling_vars_for_ganak();
