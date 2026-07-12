@@ -73,28 +73,28 @@ void Backward::add_fixed_clauses()
         solver->new_var();
         uint32_t this_indic = solver->nVars()-1;
         var_to_indic[var] = this_indic;
-        dont_elim.push_back(Lit(this_indic, false));
+        dont_elim.emplace_back(this_indic, false);
         indic_to_var.resize(this_indic+1, var_Undef);
         indic_to_var[this_indic] = var;
 
         // Below two mean var == (var+orig) in case indic is TRUE
         tmp.clear();
-        tmp.push_back(Lit(var,               false));
-        tmp.push_back(Lit(var+orig_num_vars, true));
-        tmp.push_back(Lit(this_indic,        true));
+        tmp.emplace_back(var,               false);
+        tmp.emplace_back(var+orig_num_vars, true);
+        tmp.emplace_back(this_indic,        true);
         solver->add_clause(tmp);
 
         tmp.clear();
-        tmp.push_back(Lit(var,               true));
-        tmp.push_back(Lit(var+orig_num_vars, false));
-        tmp.push_back(Lit(this_indic,        true));
+        tmp.emplace_back(var,               true);
+        tmp.emplace_back(var+orig_num_vars, false);
+        tmp.emplace_back(this_indic,        true);
         solver->add_clause(tmp);
     }
 
     //Don't eliminate the sampling variables
     for(uint32_t var: sampling_vars) {
-        dont_elim.push_back(Lit(var, false));
-        dont_elim.push_back(Lit(var+orig_num_vars, false));
+        dont_elim.emplace_back(var, false);
+        dont_elim.emplace_back(var+orig_num_vars, false);
     }
     verb_print(1, "[arjun] Adding fixed clauses time: " << (cpuTime()-fix_cl_time));
 }
@@ -206,7 +206,7 @@ void Backward::fill_assumptions_backward(
 
         uint32_t indic = var_to_indic[var];
         assert(indic != var_Undef);
-        assumptions.push_back(Lit(indic, false));
+        assumptions.emplace_back(indic, false);
         verb_print(5, "Filled assump with indep: " << var+1);
     }
 
@@ -215,13 +215,13 @@ void Backward::fill_assumptions_backward(
     for(uint32_t i = 0; i < unknown.size(); i++) {
         uint32_t var = unknown[i];
         if (unknown_set[var] == 0) continue;
-        else unknown[j++] = var;
+        unknown[j++] = var;
         verb_print(5, "Filled assump with unknown: " << var+1);
 
         assert(var < orig_num_vars);
         uint32_t indic = var_to_indic[var];
         assert(indic != var_Undef);
-        assumptions.push_back(Lit(indic, false));
+        assumptions.emplace_back(indic, false);
     }
     unknown.resize(j);
     verb_print(5, "Filling assumps END, total assumps size: " << assumptions.size());
@@ -342,9 +342,8 @@ void Backward::backward_round() {
                     test_var = var;
                     unknown.pop_back();
                     break;
-                } else {
-                    unknown.pop_back();
                 }
+                unknown.pop_back();
             }
 
             if (test_var == var_Undef) {
@@ -364,8 +363,8 @@ void Backward::backward_round() {
         if (!quick_pop_ok) {
             fill_assumptions_backward(assumptions, unknown, unknown_set, indep);
         }
-        assumptions.push_back(Lit(test_var, false));
-        assumptions.push_back(Lit(test_var + orig_num_vars, true));
+        assumptions.emplace_back(test_var, false);
+        assumptions.emplace_back(test_var + orig_num_vars, true);
 
         solver->set_no_confl_needed();
 
@@ -547,8 +546,8 @@ void Backward::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
     add_all_indics_except(input);
     for(const auto& v: input) {
         vector<Lit> cl;
-        cl.push_back(Lit(v, false));
-        cl.push_back(Lit(v+orig_num_vars, true));
+        cl.emplace_back(v, false);
+        cl.emplace_back(v+orig_num_vars, true);
         solver->add_clause(cl);
         cl[0] = ~cl[0];
         cl[1] = ~cl[1];
@@ -596,9 +595,8 @@ void Backward::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
                 test_var = var;
                 unknown.pop_back();
                 break;
-            } else {
-                unknown.pop_back();
             }
+            unknown.pop_back();
         }
 
         if (test_var == var_Undef) {
@@ -616,8 +614,8 @@ void Backward::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
         //Assumption filling
         assert(test_var != var_Undef);
         fill_assumptions_backward(assumptions, unknown, unknown_set, pretend_input, input);
-        assumptions.push_back(Lit(test_var, false));
-        assumptions.push_back(Lit(test_var + orig_num_vars, true));
+        assumptions.emplace_back(test_var, false);
+        assumptions.emplace_back(test_var + orig_num_vars, true);
         solver->set_no_confl_needed();
         const uint32_t indic = var_to_indic[test_var];
 
@@ -666,7 +664,7 @@ void Backward::backward_round_synth(SimplifiedCNF& cnf, const Arjun::ManthanConf
             set<uint32_t> dep_vars;
             AIG::get_dependent_vars(aig, dep_vars, v);
             vector<Lit> deps_lits; deps_lits.reserve(dep_vars.size());
-            for(const auto& dv: dep_vars) deps_lits.push_back(Lit(dv, false));
+            for(const auto& dv: dep_vars) deps_lits.emplace_back(dv, false);
             verb_print(2, "[backw-synth] var: " << v+1 << " depends on vars: " << deps_lits); // << " aig: " << aig);
         }
     }
