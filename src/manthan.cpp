@@ -2007,7 +2007,7 @@ void Manthan::pre_order_vars() {
     // Per-y better-ctx weight, fixed for the whole run.
     y_order_weight.assign(cnf.nVars(), 0);
     for(size_t i = 0; i < y_order.size(); i++) {
-        y_order_weight[y_order[i]] = mconf.maxsat_order ? i+1 : y_order.size()-i;
+        y_order_weight[y_order[i]] = i+1;
     }
 
     verb_print(1, "[manthan] Fixed order. T: " << setprecision(2) << fixed << (cpuTime() - my_time)

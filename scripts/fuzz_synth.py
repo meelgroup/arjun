@@ -369,7 +369,7 @@ def gen_mstrategy():
     # manthan_order is handled separately (only 0/2 valid, gen_int would emit 1).
     int_params  = ["filter_samples", "minimize_conflict",
                    # maxsat_better_ctx=1 requires EXTRA_SYNTH — omit from strategies
-                   "maxsat_order", "use_all_vars_as_feats",
+                   "use_all_vars_as_feats",
                    "repair_cache_size",
                    "one_repair_per_loop", "force_bw_equal",
                    "inv_learnt"]

@@ -1651,7 +1651,6 @@ public:
         int minimize_conflict = 1;
         std::string write_manthan_cnf;
         int maxsat_better_ctx = 0;
-        int maxsat_order = 1;
         int do_unique_input_samples = 1;
         int use_all_vars_as_feats = 1;
         int ctx_solver_type = 1;

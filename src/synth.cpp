@@ -69,7 +69,6 @@ const std::map<string, ParamDef> param_table = {
     {"filter_samples",           {PT::Int,    [](MC& c, const string& v) { c.filter_samples           = parse_val<int>(v); }}},
     {"minimize_conflict",        {PT::Int,    [](MC& c, const string& v) { c.minimize_conflict        = parse_val<int>(v); }}},
     {"maxsat_better_ctx",        {PT::Int,    [](MC& c, const string& v) { c.maxsat_better_ctx        = parse_val<int>(v); }}},
-    {"maxsat_order",             {PT::Int,    [](MC& c, const string& v) { c.maxsat_order             = parse_val<int>(v); }}},
     {"use_all_vars_as_feats",    {PT::Int,    [](MC& c, const string& v) { c.use_all_vars_as_feats    = parse_val<int>(v); }}},
     {"ctx_solver_type",          {PT::Int,    [](MC& c, const string& v) { c.ctx_solver_type          = parse_val<int>(v); }}},
     {"repair_solver_type",       {PT::Int,    [](MC& c, const string& v) { c.repair_solver_type       = parse_val<int>(v); }}},
