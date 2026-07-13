@@ -2140,9 +2140,9 @@ void Manthan::find_better_ctx_maxsat(sample& ctx) {
 
 // Fills needs_repair with vars from y (i.e. output) using normal SAT solver with assumptions
 void Manthan::find_better_ctx_normal(sample& ctx) {
-    // Persistent solver: the CNF never changes, so inject it once and fix
-    // per-call values via assumptions. Learnt clauses carry across calls.
     if (!better_ctx_solver) {
+        // Persistent solver: the CNF never changes, so inject it once and fix
+        // per-call values via assumptions
         better_ctx_solver = std::make_unique<SATSolver>();
         inject_cnf(*better_ctx_solver);
     }
