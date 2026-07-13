@@ -2536,13 +2536,13 @@ void Manthan::get_incidence() {
 }
 
 // Recompute every y_hat in ctx by evaluating each formula's AIG. The
-// formulas force y_hat from the inputs, so evaluation is exact — no SAT
+// formulas force y_hat from the inputs, so evaluation is exact -- no SAT
 // solve needed. Formula dependencies may cross y_order (backward defs under
 // bve_order reference later-in-order vars), so evaluate along a topological
 // order of the actual AIG dependencies. One visit epoch for the whole pass,
 // so structure shared across formulas evaluates once. Change-driven: within
 // one counterexample the inputs are fixed and y_hats are a function of
-// inputs alone, so only y_rep's flip can cascade — formulas none of whose
+// inputs alone, so only y_rep's flip can cascade -- formulas none of whose
 // y-deps changed keep their ctx value.
 void Manthan::recompute_all_y_hat_cnf(sample& ctx, const uint32_t y_rep) {
     const double t_topo0 = cpuTime();

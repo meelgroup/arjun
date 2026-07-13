@@ -338,11 +338,8 @@ public:
     }
 
     // Evaluate the AIG under an assignment supplied per t_lit var by
-    // `leaf_val` (must return 0/1). Iterative, lazy, short-circuiting: the
-    // left child is evaluated first and a FALSE left edge skips the right
-    // subtree entirely (Manthan repair chains are guard-cube ANDs — most
-    // cubes fail on an early literal, so this walks the chain instead of the
-    // whole DAG). Nodes already visited under `epoch` reuse their cached
+    // `leaf_val` (must return 0/1). Iterative, lazy, short-circuiting.
+    // Nodes already visited under `epoch` reuse their cached
     // value, so structure shared across many roots evaluates once per pass.
     // Get a fresh epoch (next_visit_epoch()) once per assignment; `stack` is
     // caller-owned scratch (left dirty for reuse).
