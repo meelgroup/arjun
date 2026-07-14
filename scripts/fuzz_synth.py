@@ -502,7 +502,6 @@ if __name__ == "__main__":
 
         # manthan_order: 0 = incidence/learn, 2 = BVE. 1 is not a valid value.
         solver += " --morder " + str(random.choice([0, 2]))
-        solver += " --maxsatorder " + random.choice(["0", "1"])
         solver += " --fixedconf " + random.choice(["1", "10", "100", "1000"])
         solver += " --unatedefmaxconfl " + random.choice(["1", "100", "1000", "15000", "100000"])
         solver += " --unatedefeqmax " + random.choice(["0", "1", "4", "16", "64", "1024"])
