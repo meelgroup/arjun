@@ -208,6 +208,12 @@ class Manthan {
             std::vector<uint32_t> dep_list;
         };
         std::unordered_map<uint32_t, DepCacheEntry> dep_cache;
+        // Extend y_rep's cached dep list with the conflict vars after a
+        // repair (new deps = old ∪ conflict); erases the entry on any
+        // structurally unexpected compose result.
+        void update_dep_cache_after_repair(const uint32_t y_rep,
+                const ArjunNS::AIG* old_root,
+                const std::vector<CMSat::Lit>& conflict);
         // Cached leaf-var list of y's formula AIG (all leaves: inputs +
         // y/y_hat vars, mixed space). Backing store is dep_cache.
         const std::vector<uint32_t>& formula_dep_list(const uint32_t y);

@@ -1875,6 +1875,39 @@ void Manthan::set_depends_on(const uint32_t a, const uint32_t b) {
 #endif
 }
 
+// A repair wraps the old formula: new = OR(guard, old) / AND(~guard, old)
+// with the guard's leaves exactly the conflict vars, so the new dep set is
+// old ∪ conflict — extend the cached list instead of invalidating it (which
+// would force a full O(AIG-nodes) walk on the next formula_dep_list call).
+// Any structurally different result (constant folds) falls back to erase.
+void Manthan::update_dep_cache_after_repair(const uint32_t y_rep,
+        const ArjunNS::AIG* old_root, const vector<Lit>& conflict) {
+    const auto& new_aig = var_to_formula[y_rep].aig;
+    if (new_aig.get() == old_root) return; // constant-folded to the old formula
+    auto it = dep_cache.find(y_rep);
+    if (it == dep_cache.end()) return; // no cached list to extend
+    if (it->second.aig_lit != old_root
+            || new_aig->type != AIGT::t_and
+            || (new_aig->l.get() != old_root && new_aig->r.get() != old_root)) {
+        dep_cache.erase(it);
+        return;
+    }
+    auto& dep_list = it->second.dep_list;
+    for (const auto& l : conflict) {
+        const uint32_t v = l.var();
+        if (std::find(dep_list.begin(), dep_list.end(), v) == dep_list.end())
+            dep_list.push_back(v);
+    }
+    it->second.aig_lit = new_aig.get();
+    SLOW_DEBUG_DO({
+        // The incremental list must match a fresh full walk (as sets).
+        std::set<uint32_t> full;
+        AIG::get_dependent_vars(new_aig, full, y_rep);
+        std::set<uint32_t> inc(dep_list.begin(), dep_list.end());
+        assert(inc == full && "incremental dep list diverged from full walk");
+    });
+}
+
 void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
         const vector<Lit>& conflict) {
     for(const auto& l: conflict) assert(l.var() < cnf.nVars());
@@ -1887,6 +1920,7 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
     if (conflict.empty()) {
         verb_print(2, "[manthan] conflict empty for " << setw(5) << y_rep+1 << ", unconditionally fixing it to " << ctx[y_rep]);
         var_to_formula[y_rep] = fh->constant_formula(ctx[y_rep] == l_True);
+        dep_cache.erase(y_rep);
         updated_y_funcs.push_back(y_rep);
         return;
     }
@@ -1933,11 +1967,13 @@ void Manthan::perform_repair(const uint32_t y_rep, const sample& ctx,
     // ITE(guard,TRUE,old)=OR(guard,old); ITE(guard,FALSE,old)=AND(!guard,old)
     // — flatter AIGs than a generic ITE. std::move reuses the clause vector
     // (rvalue overload), keeping per-repair cost O(|f|) instead of O(N²).
+    const AIG* old_root = var_to_formula[y_rep].aig.get();
     if (ctx[y_rep] == l_True) {
         var_to_formula[y_rep] = fh->compose_or(f, std::move(var_to_formula[y_rep]), helpers);
     } else {
         var_to_formula[y_rep] = fh->compose_and(fh->neg(f), std::move(var_to_formula[y_rep]), helpers);
     }
+    update_dep_cache_after_repair(y_rep, old_root, conflict);
     updated_y_funcs.push_back(y_rep);
 
     verb_print(2, "repaired formula for " << y_rep+1 << " with " << conflict.size() << " vars");
