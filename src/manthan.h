@@ -164,45 +164,50 @@ class Manthan {
         void find_better_ctx_normal(sample& ctx);
         template<typename S>
         void inject_cnf(S& s) const;
+        uint32_t find_next_repair_var(const sample& ctx) const;
+        void add_not_f_x_yhat();
+        void fill_dependency_mat_with_backward();
+        void fill_var_to_formula_with(std::set<uint32_t>& vars);
+        void print_y_order_occur() const;
+        void compute_needs_repair(const sample& ctx);
+
+        // Repair
         bool repair(const uint32_t v, sample& ctx);
+        void add_repair_conflict_clause(const uint32_t y_rep, const sample& ctx,
+                const std::vector<CMSat::Lit>& conflict);
+        void perform_repair(const uint32_t y_rep, const sample& ctx,
+                const std::vector<CMSat::Lit>& conflict);
+
+        // Conflict detection and minimization
         bool find_conflict(const uint32_t y_rep, sample& ctx,
                 std::vector<CMSat::Lit>& conflict);
-        // Fill aig_dep_is_dep/aig_dep_list with y_rep's AIG input deps (via
-        // dep_cache when unchanged). Returns true if any dep was found.
-        bool compute_aig_dep_set(const uint32_t y_rep);
-        // Try an input-only conflict: assume dependent inputs + ~to_repair,
-        // leaving earlier y-vars free. On UNSAT sets conflict/assumps and
-        // returns true (more general than full-assumption); else false.
         bool try_input_only_conflict(const uint32_t y_rep, const sample& ctx,
                 const CMSat::Lit to_repair, const bool have_aig_deps,
                 std::vector<CMSat::Lit>& conflict,
                 std::vector<CMSat::Lit>& assumps);
-        // Full-assumption conflict: dependent inputs + earlier y-vars +
-        // ~to_repair. Returns true with `conflict` set on UNSAT; false on a
-        // cost-zero repair (ctx updated). Used when try_input_only fails.
         bool solve_full_assumption_conflict(const uint32_t y_rep, sample& ctx,
                 const CMSat::Lit to_repair, const bool have_aig_deps,
                 std::vector<CMSat::Lit>& conflict,
                 std::vector<CMSat::Lit>& assumps,
                 const double repair_solver_start_time);
-        // Copy the repair_solver model into ctx for y_rep and all later y-vars
-        // (cost-zero repair: y_rep is satisfiable without changing the formula).
-        void apply_cost_zero_model(const uint32_t y_rep, sample& ctx);
-        // Minimize then generalise the conflict (drop y-vars) and strip the
-        // to_repair literal, leaving the must-flip region's literals.
+        void minimize_conflict(std::vector<CMSat::Lit>& conflict, std::vector<CMSat::Lit>& assumps,
+                const CMSat::Lit repairing);
         void minimize_and_generalize_conflict(std::vector<CMSat::Lit>& conflict,
                 std::vector<CMSat::Lit>& assumps, const CMSat::Lit to_repair);
-        // Drop ALL y-vars from the conflict if the input-only remainder is
-        // still UNSAT (a strictly more general repair).
         void try_drop_y_vars(std::vector<CMSat::Lit>& conflict,
                 std::vector<CMSat::Lit>& assumps, const CMSat::Lit to_repair);
-        // Reusable scratch for AIG::get_dependent_vars in find_conflict;
-        // avoids per-call allocs (visited state via AIG::visit_epoch).
+
+        // Reusable scratch
         std::vector<char> aig_dep_is_dep;
         std::vector<uint32_t> aig_dep_list;
         std::vector<const ArjunNS::AIG*> aig_dep_stack;
-        // Memoized dep list per y, keyed by var_to_formula[y].aig's
-        // pointer; a mismatch (formula rewritten) triggers recompute.
+
+        // Fill aig_dep_is_dep/aig_dep_list with y_rep's AIG input deps (via
+        // dep_cache when unchanged). Returns true if any dep was found.
+        bool compute_aig_dep_set(const uint32_t y_rep);
+        // Copy the repair_solver model into ctx for y_rep and all later y-vars
+        // (cost-zero repair: y_rep is satisfiable without changing the formula).
+        void apply_cost_zero_model(const uint32_t y_rep, sample& ctx);
         struct DepCacheEntry {
             const ArjunNS::AIG* aig_lit;
             std::vector<uint32_t> dep_list;
@@ -216,32 +221,31 @@ class Manthan {
                 const std::vector<CMSat::Lit>& conflict);
         // Cached leaf-var list of y's formula AIG (all leaves: inputs +
         // y/y_hat vars, mixed space). Backing store is dep_cache.
+        // Needed for fast RecomputeYHat's topological evaluation.
         const std::vector<uint32_t>& formula_dep_list(const uint32_t y);
-        // Scratch for recompute_all_y_hat_cnf's topological evaluation.
-        std::vector<uint8_t> recompute_state;
-        std::vector<uint32_t> recompute_topo;
-        std::vector<uint32_t> recompute_dfs;
-        std::vector<uint8_t> recompute_changed;
+
         // O(1) y <-> y_hat maps (mirrors of y_to_y_hat / y_hat_to_y) for the
         // recompute hot path; entries are UINT32_MAX where unmapped.
         std::vector<uint32_t> y_to_yhat_flat;
         std::vector<uint32_t> yhat_to_y_flat;
         std::vector<uint32_t> var_conflict_freq; // how often each var appears in conflicts
-        void minimize_conflict(std::vector<CMSat::Lit>& conflict, std::vector<CMSat::Lit>& assumps, const CMSat::Lit repairing);
-        uint32_t find_next_repair_var(const sample& ctx) const;
-        // Add the repair conflict as a redundant clause to repair_solver,
-        // to speed up future repair_solver reasoning.
-        void add_repair_conflict_clause(const uint32_t y_rep, const sample& ctx,
-                const std::vector<CMSat::Lit>& conflict);
-        void perform_repair(const uint32_t y_rep, const sample& ctx,
-                const std::vector<CMSat::Lit>& conflict);
+                                                 //
 
-        void add_not_f_x_yhat();
-        void fill_dependency_mat_with_backward();
-        void fill_var_to_formula_with(std::set<uint32_t>& vars);
-        void print_y_order_occur() const;
-        void compute_needs_repair(const sample& ctx);
-        void recompute_all_y_hat_cnf(sample& ctx, const uint32_t y_rep);
+        // Fast incremental recompute of every y_hat after a single repair.
+        struct RecomputeYHat {
+            // Topological-DFS scratch. state: 0=unvisited, 1=on stack
+            // (being expanded), 2=done. topo is the finished order, dfs the
+            // explicit work stack, changed marks y-vars whose y_hat moved.
+            std::vector<uint8_t> state;
+            std::vector<uint32_t> topo;
+            std::vector<uint32_t> dfs;
+            std::vector<uint8_t> changed;
+
+            // Cumulative CPU time (s) of the whole pass.
+            double t_total = 0;
+
+            void run(Manthan& m, sample& ctx, const uint32_t y_rep);
+        } recompute;
 
         // ordering
         std::vector<uint32_t> y_order; //1st only depends on inputs
@@ -334,9 +338,7 @@ class Manthan {
         double t_find_conflict = 0;  // repair_solver solves incl. minimize
         double t_perform_repair = 0; // formula/AIG compose
         double t_inject = 0;         // inject_formulas_into_solver
-        double t_recompute_yhat = 0; // recompute_all_y_hat_cnf
-        double t_recompute_topo = 0; // recompute: topo DFS + dirty scan
-        double t_recompute_eval = 0; // recompute: AIG evaluations
+        // recompute_y_hat timing lives on `recompute` (RecomputeYHat).
 
 
         // Main stuff

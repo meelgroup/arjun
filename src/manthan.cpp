@@ -1153,7 +1153,7 @@ void Manthan::print_detailed_stats(const ManthanStats& stats) const {
 
     const double loop_t = cpuTime() - stats.repair_start_time;
     const double accounted = t_cex_solve + t_better_ctx + t_find_conflict
-        + t_perform_repair + t_inject + t_recompute_yhat;
+        + t_perform_repair + t_inject + recompute.t_total;
     verb_print(1, COLCYN "[manthan-stats] === TIME BREAKDOWN (cpu s) ===" << fixed << setprecision(2));
     verb_print(1, COLCYN "[manthan-stats]   cex_solver solve:     " << setw(8) << t_cex_solve
         << "  (" << setw(4) << setprecision(1) << safe_div(t_cex_solve*100.0, loop_t) << "%)" << setprecision(2));
@@ -1165,9 +1165,8 @@ void Manthan::print_detailed_stats(const ManthanStats& stats) const {
         << "  (" << setw(4) << setprecision(1) << safe_div(t_perform_repair*100.0, loop_t) << "%)" << setprecision(2));
     verb_print(1, COLCYN "[manthan-stats]   inject_formulas:      " << setw(8) << t_inject
         << "  (" << setw(4) << setprecision(1) << safe_div(t_inject*100.0, loop_t) << "%)" << setprecision(2));
-    verb_print(1, COLCYN "[manthan-stats]   recompute_y_hat:      " << setw(8) << t_recompute_yhat
-        << "  (" << setw(4) << setprecision(1) << safe_div(t_recompute_yhat*100.0, loop_t) << "%)" << setprecision(2)
-        << "  [topo: " << t_recompute_topo << " eval: " << t_recompute_eval << "]");
+    verb_print(1, COLCYN "[manthan-stats]   recompute_y_hat:      " << setw(8) << recompute.t_total
+        << "  (" << setw(4) << setprecision(1) << safe_div(recompute.t_total*100.0, loop_t) << "%)" << setprecision(2));
     verb_print(1, COLCYN "[manthan-stats]   accounted/loop total: " << setw(8) << accounted
         << " / " << loop_t);
 }
@@ -1501,9 +1500,7 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
         if (!mconf.one_repair_per_loop) {
             ctx[y_to_y_hat[y_rep]] = ctx[y_rep];
             inject_formulas_into_solver();
-            const double t_rc0 = cpuTime();
-            recompute_all_y_hat_cnf(ctx, y_rep);
-            t_recompute_yhat += cpuTime() - t_rc0;
+            recompute.run(*this, ctx, y_rep);
         }
 
         // Track conflict type
@@ -2576,85 +2573,83 @@ void Manthan::get_incidence() {
 // NOTE: Formula dependencies may cross y_order because backward defs under
 // bve_order reference later-in-order vars. So we must evaluate along a
 // topological order of the actual AIG dependencies.
-void Manthan::recompute_all_y_hat_cnf(sample& ctx, const uint32_t y_rep) {
+void Manthan::RecomputeYHat::run(Manthan& m, sample& ctx, const uint32_t y_rep) {
     const double t_topo0 = cpuTime();
     // Topological DFS over the y-vars' formula dependency graph.
     // state: 0=unvisited, 1=being expanded (on stack), 2=done.
-    recompute_state.assign(cnf.nVars(), 0);
-    recompute_topo.clear();
-    recompute_dfs.clear();
-    for (const auto& y_root : y_order) {
-        if (recompute_state[y_root]) continue;
-        recompute_dfs.push_back(y_root);
-        while (!recompute_dfs.empty()) {
-            const uint32_t y = recompute_dfs.back();
-            if (recompute_state[y] == 2) { recompute_dfs.pop_back(); continue; }
-            if (recompute_state[y] == 1) {
-                recompute_state[y] = 2;
-                recompute_topo.push_back(y);
-                recompute_dfs.pop_back();
+    state.assign(m.cnf.nVars(), 0);
+    topo.clear();
+    dfs.clear();
+    for (const auto& y_root : m.y_order) {
+        if (state[y_root]) continue;
+        dfs.push_back(y_root);
+        while (!dfs.empty()) {
+            const uint32_t y = dfs.back();
+            if (state[y] == 2) { dfs.pop_back(); continue; }
+            if (state[y] == 1) {
+                state[y] = 2;
+                topo.push_back(y);
+                dfs.pop_back();
                 continue;
             }
-            recompute_state[y] = 1;
-            for (const uint32_t v : formula_dep_list(y)) {
+            state[y] = 1;
+            for (const uint32_t v : m.formula_dep_list(y)) {
                 uint32_t d;
-                if (v < cnf.nVars()) {
-                    if (is_input[v]) continue;
+                if (v < m.cnf.nVars()) {
+                    if (m.is_input[v]) continue;
                     d = v;
                 } else {
-                    if (v >= yhat_to_y_flat.size()) continue;
-                    d = yhat_to_y_flat[v];
+                    if (v >= m.yhat_to_y_flat.size()) continue;
+                    d = m.yhat_to_y_flat[v];
                     if (d == std::numeric_limits<uint32_t>::max()) continue;
                 }
-                assert(recompute_state[d] != 1 &&
+                assert(state[d] != 1 &&
                     "formula dependency cycle among y-vars");
-                if (recompute_state[d] == 0) recompute_dfs.push_back(d);
+                if (state[d] == 0) dfs.push_back(d);
             }
         }
     }
-    assert(recompute_topo.size() == y_order.size());
+    assert(topo.size() == m.y_order.size());
 
-    recompute_changed.assign(cnf.nVars(), 0);
-    recompute_changed[y_rep] = 1; // caller already set ctx[y_hat[y_rep]]
-    const double t_topo1 = cpuTime();
-    t_recompute_topo += t_topo1 - t_topo0;
+    changed.assign(m.cnf.nVars(), 0);
+    changed[y_rep] = 1; // caller already set ctx[y_hat[y_rep]]
 
     const uint64_t epoch = AIG::next_visit_epoch();
-    for(const auto& y: recompute_topo) {
+    for(const auto& y: topo) {
         if (y == y_rep) continue;
         bool dep_changed = false;
-        for (const uint32_t v : formula_dep_list(y)) {
+        for (const uint32_t v : m.formula_dep_list(y)) {
             uint32_t d;
-            if (v < cnf.nVars()) {
-                if (is_input[v]) continue;
+            if (v < m.cnf.nVars()) {
+                if (m.is_input[v]) continue;
                 d = v;
             } else {
-                if (v >= yhat_to_y_flat.size()) continue;
-                d = yhat_to_y_flat[v];
+                if (v >= m.yhat_to_y_flat.size()) continue;
+                d = m.yhat_to_y_flat[v];
                 if (d == std::numeric_limits<uint32_t>::max()) continue;
             }
-            if (recompute_changed[d]) { dep_changed = true; break; }
+            if (changed[d]) { dep_changed = true; break; }
         }
         if (!dep_changed) continue;
 
         const bool val = AIG::evaluate_epoch(
-            var_to_formula.at(y).aig, epoch, aig_dep_stack,
+            m.var_to_formula.at(y).aig, epoch, m.aig_dep_stack,
             [&](uint32_t v) -> uint8_t {
                 // Leaves are mixed-space: orig-space y vars read their
                 // (already recomputed, earlier-in-topo) y_hat; inputs and
                 // y_hat-space leaves read ctx directly.
-                if (v < cnf.nVars() && !is_input[v])
-                    return ctx[y_to_yhat_flat[v]] == l_True;
+                if (v < m.cnf.nVars() && !m.is_input[v])
+                    return ctx[m.y_to_yhat_flat[v]] == l_True;
                 return ctx[v] == l_True;
             });
         const lbool lval = val ? l_True : l_False;
-        const uint32_t y_hat = y_to_yhat_flat[y];
+        const uint32_t y_hat = m.y_to_yhat_flat[y];
         if (ctx[y_hat] != lval) {
             ctx[y_hat] = lval;
-            recompute_changed[y] = 1;
+            changed[y] = 1;
         }
     }
-    t_recompute_eval += cpuTime() - t_topo1;
+    t_total += cpuTime() - t_topo0;
 }
 
 void Manthan::compute_needs_repair(const sample& ctx) {
