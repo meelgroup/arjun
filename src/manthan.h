@@ -198,7 +198,7 @@ class Manthan {
                 std::vector<CMSat::Lit>& assumps, const CMSat::Lit to_repair);
 
         // Reusable scratch
-        std::vector<char> aig_dep_is_dep;
+        std::vector<char> is_aig_dep;
         std::vector<uint32_t> aig_dep_list;
         std::vector<const ArjunNS::AIG*> aig_dep_stack;
 

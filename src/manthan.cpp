@@ -1534,10 +1534,10 @@ const std::vector<uint32_t>& Manthan::formula_dep_list(const uint32_t y) {
     if (it != dep_cache.end() && it->second.aig_lit == aig_raw)
         return it->second.dep_list;
 
-    for (const uint32_t prev_v : aig_dep_list) aig_dep_is_dep[prev_v] = 0;
+    for (const uint32_t prev_v : aig_dep_list) is_aig_dep[prev_v] = 0;
     aig_dep_list.clear();
     aig_dep_stack.clear();
-    AIG::get_dependent_vars(aig, aig_dep_is_dep, aig_dep_list, aig_dep_stack, y);
+    AIG::get_dependent_vars(aig, is_aig_dep, aig_dep_list, aig_dep_stack, y);
     if (it != dep_cache.end()) {
         it->second.aig_lit = aig_raw;
         it->second.dep_list = aig_dep_list;
@@ -1549,16 +1549,16 @@ const std::vector<uint32_t>& Manthan::formula_dep_list(const uint32_t y) {
 bool Manthan::compute_aig_dep_set(const uint32_t y_rep) {
     if (!mconf.minimize_conflict) {
         // Reset marks left by the previous call before reusing the scratch.
-        for (const uint32_t prev_v : aig_dep_list) aig_dep_is_dep[prev_v] = 0;
+        for (const uint32_t prev_v : aig_dep_list) is_aig_dep[prev_v] = 0;
         aig_dep_list.clear();
         return false;
     }
     const auto& deps = formula_dep_list(y_rep);
-    for (const uint32_t prev_v : aig_dep_list) aig_dep_is_dep[prev_v] = 0;
+    for (const uint32_t prev_v : aig_dep_list) is_aig_dep[prev_v] = 0;
     aig_dep_list.clear();
     for (const uint32_t dv : deps) {
-        if (dv >= aig_dep_is_dep.size()) aig_dep_is_dep.resize(dv + 1, 0);
-        aig_dep_is_dep[dv] = 1;
+        if (dv >= is_aig_dep.size()) is_aig_dep.resize(dv + 1, 0);
+        is_aig_dep[dv] = 1;
         aig_dep_list.push_back(dv);
     }
     return !aig_dep_list.empty();
@@ -1570,7 +1570,7 @@ bool Manthan::try_input_only_conflict(const uint32_t y_rep, const sample& ctx,
     vector<Lit> input_assumps;
     input_assumps.reserve(input.size() + 1);
     for (const auto& x : input) {
-        if (have_aig_deps && (x >= aig_dep_is_dep.size() || !aig_dep_is_dep[x])) continue;
+        if (have_aig_deps && (x >= is_aig_dep.size() || !is_aig_dep[x])) continue;
         input_assumps.emplace_back(x, ctx[x] == l_False);
     }
     input_assumps.push_back({~to_repair});
@@ -1612,7 +1612,7 @@ bool Manthan::solve_full_assumption_conflict(const uint32_t y_rep, sample& ctx,
     assumps.reserve(input.size() + y_order.size() + 1);
     for(const auto& x: input) {
         // Skip inputs that the AIG for y_rep doesn't depend on
-        if (have_aig_deps && (x >= aig_dep_is_dep.size() || !aig_dep_is_dep[x])) {
+        if (have_aig_deps && (x >= is_aig_dep.size() || !is_aig_dep[x])) {
             skipped_inputs++;
             continue;
         }
