@@ -206,6 +206,16 @@ jobs:
         $EXE --help
         echo $?
 
+    - name: Check the binary is statically linked (Linux)
+      if: contains(matrix.os, 'ubuntu')
+      run: |
+        file ./project/build/arjun
+        if ! file ./project/build/arjun | grep -q "statically linked"; then
+          echo "ERROR: arjun is not statically linked"
+          ldd ./project/build/arjun || true
+          exit 1
+        fi
+
     - name: Determine artifact name
       id: artifact
       shell: bash
