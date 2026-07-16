@@ -2355,7 +2355,12 @@ void Manthan::inject_formulas_into_solver() {
         indic_to_y[ind] = y;
         verb_print(3, "->CTX ind: " << ind+1 << " y_hat: " << y_hat+1  << " form_out: " << form_out);
 
-        // when indic is TRUE, y_hat and form_out are EQUAL
+        // when indic is TRUE, y_hat and form_out are EQUAL. Both directions
+        // are encoded even though indicators are only ever assumed TRUE:
+        // indicators are frozen (assumption vars), so the reverse
+        // implication is what keeps a retired indicator functionally
+        // defined and propagated instead of a free decision variable.
+        // Dropping it measurably slows the cex_solver (tested 2026-07).
         auto y_hat_l = Lit(y_hat, false);
         auto ind_l = Lit(ind, false);
         tmp.clear();

@@ -61,6 +61,7 @@ struct ParamDef { PT type; std::function<void(MC&, const string&)> setter; };
 const std::map<string, ParamDef> param_table = {
     {"max_repairs",              {PT::Int,    [](MC& c, const string& v) { c.max_repairs              = parse_val<int64_t>(v); }}},
     {"restart",                  {PT::UInt,   [](MC& c, const string& v) { c.restart                  = parse_val<uint32_t>(v); }}},
+    {"restart_growth",           {PT::Double, [](MC& c, const string& v) { c.restart_growth           = parse_val<double>(v); }}},
     {"samples",                  {PT::UInt,   [](MC& c, const string& v) { c.samples                  = parse_val<uint32_t>(v); }}},
     {"min_gain_split",           {PT::Double, [](MC& c, const string& v) { c.min_gain_split           = parse_val<double>(v); }}},
     {"max_depth",                {PT::UInt,   [](MC& c, const string& v) { c.max_depth                = parse_val<uint32_t>(v); }}},

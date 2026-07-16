@@ -23,6 +23,7 @@
  */
 
 
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <iomanip>
@@ -175,6 +176,11 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
     ManthanStats cumul_stats;
     while (true) {
         ManthanConf round_mconf = mconf;
+        if (mconf.restart != 0 && mconf.restart_growth > 1.0) {
+            const double r = mconf.restart * std::pow(mconf.restart_growth, round);
+            round_mconf.restart = (r > (double)std::numeric_limits<uint32_t>::max())
+                ? std::numeric_limits<uint32_t>::max() : (uint32_t)r;
+        }
         if (mconf.max_repairs != std::numeric_limits<int32_t>::max()) {
             assert(mconf.max_repairs > cumul_stats.tot_repaired);
             round_mconf.max_repairs = mconf.max_repairs - cumul_stats.tot_repaired;

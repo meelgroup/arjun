@@ -399,6 +399,9 @@ def gen_mstrategy():
         # manthan_order accepts only 0 (learn) and 2 (bve); 1 aborts.
         if random.choice([True, False]):
             params.setdefault("manthan_order", str(random.choice([0, 2])))
+        # Geometric restart growth (values < 1.0 behave as 1.0 = fixed).
+        if random.choice([True, False]):
+            params.setdefault("restart_growth", str(random.choice([1.0, 1.5, 2.0, 3.0])))
         if not params:
             return stype
         param_str = ",".join("%s=%s" % (k, v) for k, v in params.items())

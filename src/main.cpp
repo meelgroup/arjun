@@ -188,6 +188,9 @@ void add_arjun_options() {
     myopt("--mrestart", mconf.restart, fc_int,
         "Exit Manthan every N repairs, compact ALL per-var AIGs via the AIG rewriter, "
         "and re-enter Manthan with the compacted AIGs as the initial guess. 0 = never");
+    myopt("--mrestartgrowth", mconf.restart_growth, fc_double,
+        "Per-round growth of the Manthan restart threshold: round N restarts "
+        "after mrestart * growth^N repairs. 1.0 = fixed threshold");
     myopt("--dumprestartaig", conf.dump_restart_aig, fc_string,
         "Dump the pre-compaction guess AIGs at every Manthan restart to "
         "<prefix>-restart<N>.aig (binary defs) and .v (verilog), for offline "

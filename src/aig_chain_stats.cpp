@@ -1037,6 +1037,14 @@ int main(int argc, char** argv) {
     cout << "global cube census: distinct " << global_cubes.size()
          << "  appearing >1x: " << multi_def_cubes
          << " (covering " << multi_def_insts << " instances)" << endl;
+    {
+        // Cube width histogram (instances, incl. per-def repeats).
+        std::map<size_t, size_t> whist;
+        for (const auto& [c, cnt] : global_cubes) whist[c.size()] += cnt;
+        cout << "cube width histogram (width: count):";
+        for (const auto& [w, cnt] : whist) cout << " " << w << ":" << cnt;
+        cout << endl;
+    }
     cout << (do_all ? "all defs by node count:" : "top defs by node count:") << endl;
     cout << "  column legend (per def):" << endl;
     cout << "    layers = number of AND-chain layers walked in the decision-list chain" << endl;
