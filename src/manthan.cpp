@@ -1340,19 +1340,20 @@ SimplifiedCNF Manthan::do_manthan() {
         SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
         SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
 
-        compute_needs_repair(ctx);
-
-        const uint32_t old_needs_repair_size = needs_repair.size();
-        const double t_bctx0 = cpuTime();
-        if (mconf.maxsat_better_ctx == 1) find_better_ctx_maxsat(ctx);
-        else find_better_ctx_normal(ctx);
-        t_better_ctx += cpuTime() - t_bctx0;
-        SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
-        SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
-        compute_needs_repair(ctx);
-        verb_print(2, "[manthan] finding better ctx done, needs_repair size before vs now: "
-              << setw(3) << old_needs_repair_size << " -- " << setw(4) << needs_repair.size());
-        print_needs_repair_vars();
+        { // Find a better ctx if possible
+            compute_needs_repair(ctx);
+            const uint32_t old_needs_repair_size = needs_repair.size();
+            const double t_bctx0 = cpuTime();
+            if (mconf.maxsat_better_ctx == 1) find_better_ctx_maxsat(ctx);
+            else find_better_ctx_normal(ctx);
+            t_better_ctx += cpuTime() - t_bctx0;
+            SLOW_DEBUG_DO(assert(ctx_is_sat(ctx)));
+            SLOW_DEBUG_DO(assert(ctx_y_hat_correct(ctx)));
+            compute_needs_repair(ctx);
+            verb_print(2, "[manthan] finding better ctx done, needs_repair size before vs now: "
+                  << setw(3) << old_needs_repair_size << " -- " << setw(4) << needs_repair.size());
+            print_needs_repair_vars();
+        }
         stats.needs_repair_sum += needs_repair.size();
 
         assert(!needs_repair.empty());
