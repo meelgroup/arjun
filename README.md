@@ -144,7 +144,7 @@ Arjun supports several top-level modes, selected via command-line flags:
   ./arjun --synth input.cnf output.v
   ```
 ## How to Use to Synthesize
-Simply use `--synth` and then you can get a Verilog for the skolem functions by passing a 2nd argument as a output.v for verilog:
+Simply use `--synth` and then you can get a Verilog for the skolem functions by passing a 2nd argument as an `output.v` for verilog:
 
 ```bash
 ./arjun --synth myfile.dimacs skolems.v
