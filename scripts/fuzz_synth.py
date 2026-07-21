@@ -375,7 +375,7 @@ def gen_mstrategy():
                    "one_repair_per_loop", "force_bw_equal",
                    "inv_learnt"]
     #  "ctx_solver_type", "repair_solver_type",
-    double_params = ["min_gain_split", "reorder_hot_ratio"]
+    double_params = ["min_gain_split", "reorder_hot_ratio", "reorder_cz_ratio"]
 
     def gen_uint():
         return str(random.choice([0, 1, 10, 100, 400, 1000]))
@@ -534,6 +534,7 @@ if __name__ == "__main__":
         solver += " --czthreshlow " + random.choice(["0", "1", "2", "5", "1000"])
         solver += " --mreorderevery " + random.choice(["0", "1", "2", "10", "100"])
         solver += " --mreorderhot " + random.choice(["0.0", "0.3", "0.5", "0.9"])
+        solver += " --mreorderczhot " + random.choice(["0.0", "0.1", "0.25", "0.9"])
 
         solver += " --mstrategy " + gen_mstrategy()
 

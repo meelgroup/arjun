@@ -267,6 +267,7 @@ class Manthan {
         // window; a chronically-wrong var means the ordering is bad for it,
         // so demote it as late as dependency_mat allows.
         std::vector<uint32_t> needs_repair_window;
+        std::vector<uint32_t> cz_window; // per-var cost-zero outcomes in the window
         uint32_t loops_since_reorder = 0;
         uint32_t num_reorders = 0;
         void maybe_reorder_vars();

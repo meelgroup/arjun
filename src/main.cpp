@@ -200,6 +200,9 @@ void add_arjun_options() {
     myopt("--mreorderhot", mconf.reorder_hot_ratio, fc_double,
         "Ordering CEGAR: a var is demoted if it needed repair in more than this "
         "fraction of the window's loops");
+    myopt("--mreorderczhot", mconf.reorder_cz_ratio, fc_double,
+        "Ordering CEGAR: a var is also demoted if it hit cost-zero repair "
+        "outcomes in more than this fraction of the window's loops. 0 = off");
     // solver config
     myopt("--ctxsolver", mconf.ctx_solver_type, fc_int,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
     myopt("--repairsolver", mconf.repair_solver_type, fc_int,"Repair solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");

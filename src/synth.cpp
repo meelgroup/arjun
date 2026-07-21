@@ -76,6 +76,7 @@ const std::map<string, ParamDef> param_table = {
     {"manthan_order",            {PT::Int,    [](MC& c, const string& v) { c.manthan_order            = parse_val<int>(v); }}},
     {"reorder_every",            {PT::UInt,   [](MC& c, const string& v) { c.reorder_every            = parse_val<uint32_t>(v); }}},
     {"reorder_hot_ratio",        {PT::Double, [](MC& c, const string& v) { c.reorder_hot_ratio        = parse_val<double>(v); }}},
+    {"reorder_cz_ratio",         {PT::Double, [](MC& c, const string& v) { c.reorder_cz_ratio         = parse_val<double>(v); }}},
     {"one_repair_per_loop",      {PT::Int,    [](MC& c, const string& v) { c.one_repair_per_loop      = parse_val<int>(v); }}},
     {"force_bw_equal",           {PT::Int,    [](MC& c, const string& v) { c.force_bw_equal           = parse_val<int>(v); }}},
     {"inv_learnt",               {PT::Int,    [](MC& c, const string& v) { c.inv_learnt               = parse_val<int>(v); }}},

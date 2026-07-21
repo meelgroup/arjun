@@ -1210,6 +1210,7 @@ SimplifiedCNF Manthan::do_manthan() {
     repaired_vars_count.resize(cnf.nVars(), 0);
     var_conflict_freq.resize(cnf.nVars(), 0);
     needs_repair_window.assign(cnf.nVars(), 0);
+    cz_window.assign(cnf.nVars(), 0);
     conflict_branch_lits_per_var.assign(cnf.nVars(), 0);
     conflict_branch_repairs_per_var.assign(cnf.nVars(), 0);
 
@@ -1524,7 +1525,10 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
             stats.full_conflict_sizes_sum += conflict.size();
         }
 
-    } else stats.cost_zero_repairs++;
+    } else {
+        stats.cost_zero_repairs++;
+        cz_window[y_rep]++;
+    }
     compute_needs_repair(ctx);
     print_needs_repair_vars();
     return ret;
@@ -2077,20 +2081,27 @@ void Manthan::maybe_reorder_vars() {
     if (mconf.reorder_every == 0) return;
     if (loops_since_reorder < mconf.reorder_every) return;
     const uint32_t cutoff = (uint32_t)(mconf.reorder_hot_ratio * (double)loops_since_reorder);
+    // Cost-zero cutoff: repeated cost-zero outcomes prove the var's error is
+    // absorbable by later y-vars, so repairing it early is wasted work.
+    const uint32_t cz_cutoff = (uint32_t)(mconf.reorder_cz_ratio * (double)loops_since_reorder);
     vector<uint8_t> is_hot(cnf.nVars(), 0);
     uint32_t num_hot = 0;
     // Backward-defined vars are never wrong, only to_define can be hot.
     for (const auto& y : to_define) {
-        if (needs_repair_window[y] > cutoff) {
+        const bool nr_hot = needs_repair_window[y] > cutoff;
+        const bool cz_hot = mconf.reorder_cz_ratio > 0 && cz_window[y] > cz_cutoff;
+        if (nr_hot || cz_hot) {
             is_hot[y] = 1;
             num_hot++;
             verb_print(2, "[manthan-reorder] hot var " << y+1
-                << " needs_repair in " << needs_repair_window[y] << "/"
-                << loops_since_reorder << " loops");
+                << " needs_repair in " << needs_repair_window[y]
+                << ", cost-zero in " << cz_window[y]
+                << " of " << loops_since_reorder << " loops");
         }
     }
     loops_since_reorder = 0;
     std::fill(needs_repair_window.begin(), needs_repair_window.end(), 0);
+    std::fill(cz_window.begin(), cz_window.end(), 0);
     // All-hot means no discrimination — reordering would just be noise.
     if (num_hot == 0 || num_hot == to_define.size()) return;
     reorder_vars(is_hot);
