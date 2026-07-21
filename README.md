@@ -65,7 +65,7 @@ cmake -DBUILD_SHARED_LIBS=OFF \
 make -j8
 ```
 
-## How to Use
+## How to Use to Preprocess
 Run it on your instance and it will write a simplified CNF with a reduced
 independent set:
 
@@ -123,7 +123,7 @@ understands the following comment-style extensions:
 | `c MUST MULTIPLY BY N`       | Existing count multiplier carried into Arjun (Arjun will combine it with the multiplier it produces).    |
 | `c ind v1 v2 ... 0`          | Legacy independent-set syntax. Still accepted, but prefer `c p show`. |
 
-## Modes
+### Modes
 Arjun supports several top-level modes, selected via command-line flags:
 
 - **Default (unweighted model counting preprocessing)** — minimize the
@@ -143,3 +143,9 @@ Arjun supports several top-level modes, selected via command-line flags:
   ```shell
   ./arjun --synth input.cnf output.v
   ```
+## How to Use to Synthesize
+Simply use `--synth` and then you can get a Verilog for the skolem functions by passing a 2nd argument as an `output.v` for verilog:
+
+```bash
+./arjun --synth myfile.dimacs skolems.v
+```
