@@ -171,6 +171,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
     // Restart loop: each round exits after "restart" repairs; its AIGs
     // seeds the next round (compacted, re-encoded). max_repairs is cumulative.
     std::map<uint32_t, aig_lit> guess;
+    std::vector<uint32_t> order_hint;
     uint32_t round = 0;
     ManthanStats cumul_stats;
     while (true) {
@@ -184,6 +185,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
         // Run
         Manthan manthan(arjdata->conf, round_mconf, std::move(cnf));
         if (!guess.empty()) manthan.set_guess(std::move(guess));
+        if (!order_hint.empty()) manthan.set_order_hint(std::move(order_hint));
         cnf = manthan.do_manthan();
 
         // Stats
@@ -194,6 +196,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
         // Check if done
         if (!manthan.restart_requested()) break;
         guess = manthan.export_formula_aigs();
+        order_hint = manthan.export_y_order();
         round++;
         verb_print2(1, COLYEL "[manthan-restart] round " << round
             << " done, tot repairs so far: " << cumul_stats.tot_repaired

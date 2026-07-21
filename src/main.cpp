@@ -194,6 +194,12 @@ void add_arjun_options() {
         "rewrite experiments");
     // Order
     myopt("--morder", mconf.manthan_order, fc_int,"Order vars: incidence (0), BVE (2)");
+    myopt("--mreorderevery", mconf.reorder_every, fc_int,
+        "Ordering CEGAR: every N repair loops, demote vars chronically stuck in "
+        "needs_repair as late as the dependency matrix allows. 0 = off");
+    myopt("--mreorderhot", mconf.reorder_hot_ratio, fc_double,
+        "Ordering CEGAR: a var is demoted if it needed repair in more than this "
+        "fraction of the window's loops");
     // solver config
     myopt("--ctxsolver", mconf.ctx_solver_type, fc_int,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
     myopt("--repairsolver", mconf.repair_solver_type, fc_int,"Repair solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");

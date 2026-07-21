@@ -361,6 +361,7 @@ def gen_mstrategy():
                    "min_leaf_size", "const_vote_samples", "stats_every",
                    "detailed_stats_every",
                    "restart",
+                   "reorder_every",
                    "conflict_drop_y_max",
                    "batch_minim_min",
                    "minim_budget_threshold", "minim_budget_max", "minim_budget_mult",
@@ -374,7 +375,7 @@ def gen_mstrategy():
                    "one_repair_per_loop", "force_bw_equal",
                    "inv_learnt"]
     #  "ctx_solver_type", "repair_solver_type",
-    double_params = ["min_gain_split"]
+    double_params = ["min_gain_split", "reorder_hot_ratio"]
 
     def gen_uint():
         return str(random.choice([0, 1, 10, 100, 400, 1000]))
@@ -531,6 +532,8 @@ if __name__ == "__main__":
         solver += " --czthreshhigh " + random.choice(["0", "1", "2", "5", "1000"])
         solver += " --czthreshmid " + random.choice(["0", "1", "2", "5", "1000"])
         solver += " --czthreshlow " + random.choice(["0", "1", "2", "5", "1000"])
+        solver += " --mreorderevery " + random.choice(["0", "1", "2", "10", "100"])
+        solver += " --mreorderhot " + random.choice(["0.0", "0.3", "0.5", "0.9"])
 
         solver += " --mstrategy " + gen_mstrategy()
 

@@ -1209,6 +1209,7 @@ SimplifiedCNF Manthan::do_manthan() {
     verb_print(1, "[manthan] Found " << ret.size() << " components");
     repaired_vars_count.resize(cnf.nVars(), 0);
     var_conflict_freq.resize(cnf.nVars(), 0);
+    needs_repair_window.assign(cnf.nVars(), 0);
     conflict_branch_lits_per_var.assign(cnf.nVars(), 0);
     conflict_branch_repairs_per_var.assign(cnf.nVars(), 0);
 
@@ -1294,6 +1295,7 @@ SimplifiedCNF Manthan::do_manthan() {
         at_least_one_repaired = false;
         stats.num_loops_repair++;
 
+        maybe_reorder_vars();
         inject_formulas_into_solver();
 
         sample ctx;
@@ -1355,6 +1357,11 @@ SimplifiedCNF Manthan::do_manthan() {
             print_needs_repair_vars();
         }
         stats.needs_repair_sum += needs_repair.size();
+
+        // Ordering-CEGAR signal: vars still wrong after better-ctx tried to
+        // flip them are the ones being repaired without generalising.
+        loops_since_reorder++;
+        for(const auto& y: needs_repair) needs_repair_window[y]++;
 
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
@@ -2026,27 +2033,125 @@ void Manthan::pre_order_vars() {
     const double my_time = cpuTime();
     verb_print(2, "[manthan] Fixing order " << (mconf.manthan_base == 0 ? "[LEARN]" : (mconf.manthan_base == 1 ? "[CONST]" : "[BVE]")) << "...");
 
-    switch(mconf.manthan_order) {
+    if (!order_hint.empty()) {
+        // Restart round: inherit the previous round's final order. Mandatory,
+        // not just a warm-start — the guess AIGs' deps (incl. those added by
+        // repairs and ordering-CEGAR reorders) only point earlier under it.
+        release_assert(order_hint.size() == to_define_full.size());
+        SLOW_DEBUG_DO(for (const auto& y : order_hint) assert(to_define_full.count(y)));
+        y_order = std::move(order_hint);
+        order_hint.clear();
+        verb_print(1, "[manthan] Inherited y_order from previous round");
+    } else switch(mconf.manthan_order) {
         case 0: learn_order(); break;
         case 2: bve_order(); break;
         default: release_assert(false && "Invalid manthan_order");
     }
 
-    // fill order_val
-    order_val.resize(cnf.nVars(), -2);
-    for(const auto& x: input) order_val[x] = -1;
-    for(uint32_t i = 0; i < y_order.size(); i++) order_val[y_order[i]] = i;
-    for(const auto& v: order_val) assert(v != -2);
-
-    // Per-y better-ctx weight, fixed for the whole run.
-    y_order_weight.assign(cnf.nVars(), 0);
-    for(size_t i = 0; i < y_order.size(); i++) {
-        y_order_weight[y_order[i]] = i+1;
-    }
+    rebuild_order_index();
 
     verb_print(1, "[manthan] Fixed order. T: " << setprecision(2) << fixed << (cpuTime() - my_time)
             << " Final order size: " << y_order.size());
     print_y_order_occur();
+}
+
+void Manthan::rebuild_order_index() {
+    order_val.assign(cnf.nVars(), -2);
+    for(const auto& x: input) order_val[x] = -1;
+    for(uint32_t i = 0; i < y_order.size(); i++) order_val[y_order[i]] = i;
+    for(const auto& v: order_val) assert(v != -2);
+
+    // Per-y better-ctx weight: later in order = higher weight.
+    y_order_weight.assign(cnf.nVars(), 0);
+    for(size_t i = 0; i < y_order.size(); i++) {
+        y_order_weight[y_order[i]] = i+1;
+    }
+}
+
+// Ordering CEGAR. A var that stays in needs_repair (post better-ctx) in most
+// loops of the window is being repaired over and over without generalising:
+// its position in y_order is wrong. Demote it as late as dependency_mat
+// allows — later repairs then see every other y-var as available conflict
+// vocabulary, and better-ctx weights it higher.
+void Manthan::maybe_reorder_vars() {
+    if (mconf.reorder_every == 0) return;
+    if (loops_since_reorder < mconf.reorder_every) return;
+    const uint32_t cutoff = (uint32_t)(mconf.reorder_hot_ratio * (double)loops_since_reorder);
+    vector<uint8_t> is_hot(cnf.nVars(), 0);
+    uint32_t num_hot = 0;
+    // Backward-defined vars are never wrong, only to_define can be hot.
+    for (const auto& y : to_define) {
+        if (needs_repair_window[y] > cutoff) {
+            is_hot[y] = 1;
+            num_hot++;
+            verb_print(2, "[manthan-reorder] hot var " << y+1
+                << " needs_repair in " << needs_repair_window[y] << "/"
+                << loops_since_reorder << " loops");
+        }
+    }
+    loops_since_reorder = 0;
+    std::fill(needs_repair_window.begin(), needs_repair_window.end(), 0);
+    // All-hot means no discrimination — reordering would just be noise.
+    if (num_hot == 0 || num_hot == to_define.size()) return;
+    reorder_vars(is_hot);
+}
+
+// Topological re-sort of y_order over dependency_mat (Kahn), placing hot vars
+// only when no cold var is placeable — i.e. maximally demoting them. Cold
+// vars keep their current relative order, so the result is deterministic and
+// respects every dependency accumulated so far (base defs + repairs).
+void Manthan::reorder_vars(const vector<uint8_t>& is_hot) {
+    const double my_time = cpuTime();
+    const uint32_t n = y_order.size();
+
+    // rem_deps[a] = # unplaced direct deps of a; dependents[b] = direct a's.
+    std::vector<uint32_t> rem_deps(cnf.nVars(), 0);
+    std::vector<std::vector<uint32_t>> dependents(cnf.nVars());
+    for (const auto& a : y_order) {
+        for (const auto& b : y_order) {
+            if (dependency_mat[a][b]) {
+                rem_deps[a]++;
+                dependents[b].push_back(a);
+            }
+        }
+    }
+
+    // Ready sets hold current order positions -> stable, deterministic picks.
+    std::set<uint32_t> ready_cold, ready_hot;
+    auto push_ready = [&](const uint32_t v) {
+        (is_hot[v] ? ready_hot : ready_cold).insert((uint32_t)order_val[v]);
+    };
+    for (const auto& v : y_order) if (rem_deps[v] == 0) push_ready(v);
+
+    vector<uint32_t> new_order;
+    new_order.reserve(n);
+    while (new_order.size() < n) {
+        auto& ready = ready_cold.empty() ? ready_hot : ready_cold;
+        assert(!ready.empty() && "dependency_mat must stay acyclic");
+        const uint32_t v = y_order[*ready.begin()];
+        ready.erase(ready.begin());
+        new_order.push_back(v);
+        for (const auto& a : dependents[v]) {
+            assert(rem_deps[a] > 0);
+            if (--rem_deps[a] == 0) push_ready(a);
+        }
+    }
+    assert(new_order.size() == n);
+
+    uint32_t num_moved = 0;
+    for (uint32_t i = 0; i < n; i++) if (new_order[i] != y_order[i]) num_moved++;
+    y_order = std::move(new_order);
+    rebuild_order_index();
+    num_reorders++;
+    verb_print(1, COLYEL "[manthan-reorder] #" << num_reorders
+        << " demoted hot vars, moved " << num_moved << "/" << n
+        << " positions. T: " << setprecision(2) << fixed << (cpuTime() - my_time));
+    SLOW_DEBUG_DO({
+        // Every direct dependency must still point at an earlier var.
+        for (const auto& a : y_order)
+            for (const auto& b : y_order)
+                if (dependency_mat[a][b]) assert(later_in_order(a, b));
+    });
 }
 
 // Finds the order that minimizes dependencies that need to be broken by BVE system
