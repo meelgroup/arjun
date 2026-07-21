@@ -1675,16 +1675,10 @@ public:
         uint32_t minim_budget_threshold = 20; // conflict size above which budget is capped
         uint32_t minim_budget_max = 150;    // max minimization solver calls
         uint32_t minim_budget_mult = 4;     // budget = conflict.size * mult (up to max)
-        // Ordering CEGAR: a var stuck in needs_repair in more than
-        // reorder_hot_ratio of the last reorder_every repair loops signals its
-        // position in y_order is wrong; demote it as late as the dependency
-        // matrix allows so its later repairs can use richer conflict vocabulary.
+        // Ordering CEGAR: demote vars chronically in needs_repair / cost-zero
         uint32_t reorder_every = 100;   // check window in repair loops; 0 = off
-        double reorder_hot_ratio = 0.5; // needs-repair frequency marking a var hot
-        // Second hotness signal: a cost-zero outcome means the var's error was
-        // absorbable by later y-vars — it sits too early. Frequency of
-        // cost-zero outcomes over the window that marks a var hot; 0 = off.
-        double reorder_cz_ratio = 0.25;
+        double reorder_hot_ratio = 0.5; // needs-repair fraction marking a var hot
+        double reorder_cz_ratio = 0.25; // cost-zero fraction marking a var hot; 0 = off
         // Adaptive consecutive cost-zero break threshold
         uint32_t cz_high_ratio = 3;         // cost_zero > tot_repaired * cz_high_ratio triggers tight threshold
         uint32_t cz_low_ratio = 2;          // cost_zero > tot_repaired * cz_low_ratio triggers medium threshold

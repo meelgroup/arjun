@@ -1359,8 +1359,6 @@ SimplifiedCNF Manthan::do_manthan() {
         }
         stats.needs_repair_sum += needs_repair.size();
 
-        // Ordering-CEGAR signal: vars still wrong after better-ctx tried to
-        // flip them are the ones being repaired without generalising.
         loops_since_reorder++;
         for(const auto& y: needs_repair) needs_repair_window[y]++;
 
@@ -2038,9 +2036,7 @@ void Manthan::pre_order_vars() {
     verb_print(2, "[manthan] Fixing order " << (mconf.manthan_base == 0 ? "[LEARN]" : (mconf.manthan_base == 1 ? "[CONST]" : "[BVE]")) << "...");
 
     if (!order_hint.empty()) {
-        // Restart round: inherit the previous round's final order. Mandatory,
-        // not just a warm-start — the guess AIGs' deps (incl. those added by
-        // repairs and ordering-CEGAR reorders) only point earlier under it.
+        // Mandatory: guess AIG deps only point earlier under the prev order.
         release_assert(order_hint.size() == to_define_full.size());
         SLOW_DEBUG_DO(for (const auto& y : order_hint) assert(to_define_full.count(y)));
         y_order = std::move(order_hint);
@@ -2072,21 +2068,15 @@ void Manthan::rebuild_order_index() {
     }
 }
 
-// Ordering CEGAR. A var that stays in needs_repair (post better-ctx) in most
-// loops of the window is being repaired over and over without generalising:
-// its position in y_order is wrong. Demote it as late as dependency_mat
-// allows — later repairs then see every other y-var as available conflict
-// vocabulary, and better-ctx weights it higher.
+// Ordering CEGAR: a var chronically in needs_repair (or chronically
+// cost-zero) sits too early in y_order; demote it.
 void Manthan::maybe_reorder_vars() {
     if (mconf.reorder_every == 0) return;
     if (loops_since_reorder < mconf.reorder_every) return;
     const uint32_t cutoff = (uint32_t)(mconf.reorder_hot_ratio * (double)loops_since_reorder);
-    // Cost-zero cutoff: repeated cost-zero outcomes prove the var's error is
-    // absorbable by later y-vars, so repairing it early is wasted work.
     const uint32_t cz_cutoff = (uint32_t)(mconf.reorder_cz_ratio * (double)loops_since_reorder);
     vector<uint8_t> is_hot(cnf.nVars(), 0);
     uint32_t num_hot = 0;
-    // Backward-defined vars are never wrong, only to_define can be hot.
     for (const auto& y : to_define) {
         const bool nr_hot = needs_repair_window[y] > cutoff;
         const bool cz_hot = mconf.reorder_cz_ratio > 0 && cz_window[y] > cz_cutoff;
@@ -2102,15 +2092,12 @@ void Manthan::maybe_reorder_vars() {
     loops_since_reorder = 0;
     std::fill(needs_repair_window.begin(), needs_repair_window.end(), 0);
     std::fill(cz_window.begin(), cz_window.end(), 0);
-    // All-hot means no discrimination — reordering would just be noise.
     if (num_hot == 0 || num_hot == to_define.size()) return;
     reorder_vars(is_hot);
 }
 
-// Topological re-sort of y_order over dependency_mat (Kahn), placing hot vars
-// only when no cold var is placeable — i.e. maximally demoting them. Cold
-// vars keep their current relative order, so the result is deterministic and
-// respects every dependency accumulated so far (base defs + repairs).
+// Kahn topo re-sort of y_order over dependency_mat. Hot vars are placed only
+// when no cold var is placeable (maximal demotion); cold keep relative order.
 void Manthan::reorder_vars(const vector<uint8_t>& is_hot) {
     const double my_time = cpuTime();
     const uint32_t n = y_order.size();
@@ -2127,7 +2114,7 @@ void Manthan::reorder_vars(const vector<uint8_t>& is_hot) {
         }
     }
 
-    // Ready sets hold current order positions -> stable, deterministic picks.
+    // Ready sets hold current order positions -> deterministic picks.
     std::set<uint32_t> ready_cold, ready_hot;
     auto push_ready = [&](const uint32_t v) {
         (is_hot[v] ? ready_hot : ready_cold).insert((uint32_t)order_val[v]);
@@ -2154,7 +2141,7 @@ void Manthan::reorder_vars(const vector<uint8_t>& is_hot) {
     y_order = std::move(new_order);
     rebuild_order_index();
     num_reorders++;
-    verb_print(1, COLYEL "[manthan-reorder] #" << num_reorders
+    verb_print((num_moved == 0 ? 2 : 1), COLYEL "[manthan-reorder] #" << num_reorders
         << " demoted hot vars, moved " << num_moved << "/" << n
         << " positions. T: " << setprecision(2) << fixed << (cpuTime() - my_time));
     SLOW_DEBUG_DO({

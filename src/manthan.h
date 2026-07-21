@@ -103,10 +103,8 @@ class Manthan {
         [[nodiscard]] const ManthanStats& get_stats() const { return stats; }
         // AIG snapshot of every to_define formula; feeds the next round's guess.
         [[nodiscard]] std::map<uint32_t, ArjunNS::aig_lit> export_formula_aigs() const;
-        // Restart support: the finished round's final y_order. The next round
-        // MUST inherit it (set_order_hint): the guess AIGs' dependencies were
-        // accumulated under it (incl. ordering-CEGAR reorders), so recomputing
-        // the order from the CNF would break the deps-point-earlier invariant.
+        // Final y_order; restart rounds MUST inherit it via set_order_hint
+        // (guess AIG deps only point earlier under it).
         [[nodiscard]] std::vector<uint32_t> export_y_order() const { return y_order; }
         void set_order_hint(std::vector<uint32_t>&& h) { order_hint = std::move(h); }
 
@@ -263,10 +261,8 @@ class Manthan {
         void rebuild_order_index(); // order_val + y_order_weight from y_order
         std::vector<uint32_t> order_hint; // inherited final order of the previous round
 
-        // Ordering CEGAR: per-var needs_repair appearances in the current
-        // window; a chronically-wrong var means the ordering is bad for it,
-        // so demote it as late as dependency_mat allows.
-        std::vector<uint32_t> needs_repair_window;
+        // Ordering CEGAR (see maybe_reorder_vars)
+        std::vector<uint32_t> needs_repair_window; // per-var needs_repair hits in window
         std::vector<uint32_t> cz_window; // per-var cost-zero outcomes in the window
         uint32_t loops_since_reorder = 0;
         uint32_t num_reorders = 0;
