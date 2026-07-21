@@ -42,7 +42,7 @@ only_dirs = [
     # "out-synth-1455773-3", # now version 2 of puura
     # "out-synth-1471320-0", # repair is better now I think
     # "out-synth-1471320-1", # repair is better now I think
-    # "out-synth-1479607-0", # cadet
+    "out-synth-1479607-0", # cadet
     # "out-synth-1570930-", # check what can be removed
     # "out-synth-1583187-0", # interpolation, cadet-style (turned off)
     # "out-synth-1583187-5", # interpolation, cadet-style
@@ -57,7 +57,7 @@ only_dirs = [
     # "out-synth-1595974-0", # old system where interpolant was with picosat and MyTracer
     # "out-synth-1877264-0", # faster interpolation, less AIG rewrite&simplify, less CMSGen sampling what's slow, AI slop cleanup
     # "out-synth-1903613-2", # restarts between manthan & ITE chain rewrite
-    "out-synth-1903613-1", # restarts between manthan & ITE chain rewrite
+    # "out-synth-1903613-1", # restarts between manthan & ITE chain rewrite
     # "out-synth-1903613-2", # restarts between manthan & ITE chain rewrite
     "out-synth-1914059-0", # more rewrite
 ]
@@ -649,7 +649,7 @@ def generate_cdf(fname2_s):
             f.write('set key bottom right font ",6"\n')
             f.write('set logscale x\n')
             f.write('unset logscale y\n')
-            f.write(f'set xrange [50:{TIMEOUT}]\n')
+            f.write(f'set xrange [0.001:{TIMEOUT}]\n')
             # f.write('set yrange [0:]\n')
             f.write('set ylabel "Instances synthesised"\n')
             f.write('set xlabel "Time (s)"\n')
