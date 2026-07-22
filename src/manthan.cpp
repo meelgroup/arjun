@@ -2098,6 +2098,7 @@ void Manthan::maybe_reorder_vars() {
 
 // Kahn topo re-sort of y_order over dependency_mat. Hot vars are placed only
 // when no cold var is placeable (maximal demotion); cold keep relative order.
+// See:  Kahn, "Topological sorting of large networks", 1962
 void Manthan::reorder_vars(const vector<uint8_t>& is_hot) {
     const double my_time = cpuTime();
     const uint32_t n = y_order.size();
