@@ -2138,12 +2138,14 @@ void Manthan::reorder_vars(const vector<uint8_t>& is_hot) {
 
     uint32_t num_moved = 0;
     for (uint32_t i = 0; i < n; i++) if (new_order[i] != y_order[i]) num_moved++;
+    uint32_t num_hot = 0;
+    for (const auto& v : y_order) if (is_hot[v]) num_hot++;
     y_order = std::move(new_order);
     rebuild_order_index();
     num_reorders++;
     verb_print((num_moved == 0 ? 2 : 1), COLYEL "[manthan-reorder] #" << num_reorders
-        << " demoted hot vars, moved " << num_moved << "/" << n
-        << " positions. T: " << setprecision(2) << fixed << (cpuTime() - my_time));
+        << " demoted " << num_hot << " hot vars, " << num_moved << " of " << n
+        << " vars changed position. T: " << setprecision(2) << fixed << (cpuTime() - my_time));
     SLOW_DEBUG_DO({
         // Every direct dependency must still point at an earlier var.
         for (const auto& a : y_order)
