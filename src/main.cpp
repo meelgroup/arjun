@@ -195,17 +195,17 @@ void add_arjun_options() {
     // Order
     myopt("--morder", mconf.manthan_order, fc_int,"Order vars: incidence (0), BVE (2)");
     myopt("--mreorderevery", mconf.reorder_every, fc_int,
-        "Ordering CEGAR: every N repair loops, demote vars chronically stuck in "
-        "needs_repair as late as the dependency matrix allows. 0 = off");
-    myopt("--mreorderhot", mconf.reorder_hot_ratio, fc_double,
-        "Ordering CEGAR: a var is demoted if it needed repair in more than this "
-        "fraction of the window's loops");
-    myopt("--mreorderczhot", mconf.reorder_cz_ratio, fc_double,
-        "Ordering CEGAR: a var is also demoted if it hit cost-zero repair "
-        "outcomes in more than this fraction of the window's loops. 0 = off");
-    myopt("--mreorderstall", mconf.reorder_stall_limit, fc_int,
-        "Ordering CEGAR: freeze the order after this many consecutive reorders "
-        "that reproduce a recent order (churn). 0 = off");
+        "VSIDS ordering CEGAR: re-sort y_order every N repair loops, demoting "
+        "high-activity (frequently-conflicting) vars. 0 = off");
+    myopt("--mvsidsdecay", mconf.reorder_vsids_decay, fc_double,
+        "VSIDS ordering CEGAR: initial decay (var_inc /= decay per conflict); "
+        "tightens toward 1 across restarts");
+    myopt("--mvsidshot", mconf.reorder_vsids_hot_ratio, fc_double,
+        "VSIDS ordering CEGAR: demote only vars with activity > ratio*max "
+        "(higher = gentler)");
+    myopt("--mvsidsbump", mconf.reorder_vsids_bump, fc_int,
+        "VSIDS ordering CEGAR: bump source, 0 = conflict-clause vars, "
+        "1 = needs_repair vars");
     // solver config
     myopt("--ctxsolver", mconf.ctx_solver_type, fc_int,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
     myopt("--repairsolver", mconf.repair_solver_type, fc_int,"Repair solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");

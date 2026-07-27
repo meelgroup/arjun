@@ -1209,8 +1209,7 @@ SimplifiedCNF Manthan::do_manthan() {
     verb_print(1, "[manthan] Found " << ret.size() << " components");
     repaired_vars_count.resize(cnf.nVars(), 0);
     var_conflict_freq.resize(cnf.nVars(), 0);
-    needs_repair_window.assign(cnf.nVars(), 0);
-    cz_window.assign(cnf.nVars(), 0);
+    vsids.init(cnf.nVars());
     conflict_branch_lits_per_var.assign(cnf.nVars(), 0);
     conflict_branch_repairs_per_var.assign(cnf.nVars(), 0);
 
@@ -1360,7 +1359,10 @@ SimplifiedCNF Manthan::do_manthan() {
         stats.needs_repair_sum += needs_repair.size();
 
         loops_since_reorder++;
-        for(const auto& y: needs_repair) needs_repair_window[y]++;
+        if (mconf.reorder_vsids_bump == 1) {
+            for (const auto& y : needs_repair) vsids.bump(y);
+            vsids.decay_step();
+        }
 
         assert(!needs_repair.empty());
         uint32_t num_repaired = 0;
@@ -1500,6 +1502,17 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
             conflict_branch_lits_per_var[y_rep] += conflict.size();
             conflict_branch_repairs_per_var[y_rep]++;
         }
+
+        // VSIDS: bump the y-vars taking part in this conflict, then decay.
+        if (mconf.reorder_vsids_bump == 0) {
+            vsids.bump(y_rep);
+            for (const auto& l : conflict) {
+                const uint32_t v = l.var();
+                if (v < order_val.size() && order_val[v] >= 0) vsids.bump(v);
+            }
+            vsids.decay_step();
+        }
+
         const double t_pr0 = cpuTime();
         perform_repair(y_rep, ctx, conflict);
         t_perform_repair += cpuTime() - t_pr0;
@@ -1525,7 +1538,6 @@ bool Manthan::repair(const uint32_t y_rep, sample& ctx) {
 
     } else {
         stats.cost_zero_repairs++;
-        cz_window[y_rep]++;
     }
     compute_needs_repair(ctx);
     print_needs_repair_vars();
@@ -2068,47 +2080,31 @@ void Manthan::rebuild_order_index() {
     }
 }
 
-// Ordering CEGAR: a var chronically in needs_repair (or chronically
-// cost-zero) sits too early in y_order; demote it.
+// VSIDS ordering CEGAR: every reorder_every loops, re-sort y_order so that
+// low-activity vars come first and high-activity (frequently-conflicting) vars
+// are demoted as late as dependency_mat allows.
 void Manthan::maybe_reorder_vars() {
     if (mconf.reorder_every == 0) return;
-    if (reorder_frozen) return;
     if (loops_since_reorder < mconf.reorder_every) return;
-    const uint32_t cutoff = (uint32_t)(mconf.reorder_hot_ratio * (double)loops_since_reorder);
-    const uint32_t cz_cutoff = (uint32_t)(mconf.reorder_cz_ratio * (double)loops_since_reorder);
-    vector<uint8_t> is_hot(cnf.nVars(), 0);
-    uint32_t num_hot = 0;
-    for (const auto& y : to_define) {
-        const bool nr_hot = needs_repair_window[y] > cutoff;
-        const bool cz_hot = mconf.reorder_cz_ratio > 0 && cz_window[y] > cz_cutoff;
-        if (nr_hot || cz_hot) {
-            is_hot[y] = 1;
-            num_hot++;
-            verb_print(2, "[manthan-reorder] hot var " << y+1
-                << " needs_repair in " << needs_repair_window[y]
-                << ", cost-zero in " << cz_window[y]
-                << " of " << loops_since_reorder << " loops");
-        }
-    }
     loops_since_reorder = 0;
-    std::fill(needs_repair_window.begin(), needs_repair_window.end(), 0);
-    std::fill(cz_window.begin(), cz_window.end(), 0);
-    if (num_hot == 0 || num_hot == to_define.size()) return;
-    reorder_vars(is_hot);
+    reorder_vars();
 }
 
-uint64_t Manthan::hash_order(const vector<uint32_t>& order) {
-    uint64_t h = 1469598103934665603ULL;
-    for (const auto& v : order) { h ^= v; h *= 1099511628211ULL; }
-    return h;
-}
-
-// Kahn topo re-sort of y_order over dependency_mat. Hot vars are placed only
-// when no cold var is placeable (maximal demotion); cold keep relative order.
-// See:  Kahn, "Topological sorting of large networks", 1962
-void Manthan::reorder_vars(const vector<uint8_t>& is_hot) {
+// Gentle VSIDS demotion: mark the highest-activity vars hot (activity >
+// hot_ratio*max) and Kahn topo re-sort demoting only those as late as
+// dependency_mat allows; cold vars keep relative order. See Kahn 1962.
+void Manthan::reorder_vars() {
     const double my_time = cpuTime();
     const uint32_t n = y_order.size();
+
+    double max_act = 0.0;
+    for (const auto& v : y_order) max_act = std::max(max_act, vsids.get(v));
+    if (max_act <= 0.0) return;
+    const double hot_cut = mconf.reorder_vsids_hot_ratio * max_act;
+    std::vector<uint8_t> is_hot(cnf.nVars(), 0);
+    uint32_t num_hot = 0;
+    for (const auto& v : y_order) if (vsids.get(v) > hot_cut) { is_hot[v] = 1; num_hot++; }
+    if (num_hot == 0 || num_hot == n) return;
 
     // rem_deps[a] = # unplaced direct deps of a; dependents[b] = direct a's.
     std::vector<uint32_t> rem_deps(cnf.nVars(), 0);
@@ -2122,7 +2118,7 @@ void Manthan::reorder_vars(const vector<uint8_t>& is_hot) {
         }
     }
 
-    // Ready sets hold current order positions -> deterministic picks.
+    // Ready sets hold current order positions; cold placed before hot.
     std::set<uint32_t> ready_cold, ready_hot;
     auto push_ready = [&](const uint32_t v) {
         (is_hot[v] ? ready_hot : ready_cold).insert((uint32_t)order_val[v]);
@@ -2146,32 +2142,13 @@ void Manthan::reorder_vars(const vector<uint8_t>& is_hot) {
 
     uint32_t num_moved = 0;
     for (uint32_t i = 0; i < n; i++) if (new_order[i] != y_order[i]) num_moved++;
-    uint32_t num_hot = 0;
-    for (const auto& v : y_order) if (is_hot[v]) num_hot++;
     y_order = std::move(new_order);
     rebuild_order_index();
     num_reorders++;
     verb_print((num_moved == 0 ? 2 : 1), COLYEL "[manthan-reorder] #" << num_reorders
         << " demoted " << num_hot << " hot vars, " << num_moved << " of " << n
-        << " vars changed position. T: " << setprecision(2) << fixed << (cpuTime() - my_time));
-
-    // Churn guard: repeatedly reproducing a recent order = limit cycle, not
-    // convergence. Freeze after reorder_stall_limit consecutive repeats.
-    if (mconf.reorder_stall_limit > 0 && num_moved > 0) {
-        const uint64_t h = hash_order(y_order);
-        const bool seen = std::find(recent_order_hashes.begin(),
-            recent_order_hashes.end(), h) != recent_order_hashes.end();
-        reorder_stall_count = seen ? reorder_stall_count + 1 : 0;
-        if (reorder_stall_count >= mconf.reorder_stall_limit) {
-            reorder_frozen = true;
-            verb_print(1, COLYEL "[manthan-reorder] order churning; frozen after "
-                << num_reorders << " reorders");
-        }
-        recent_order_hashes.push_back(h);
-        while (recent_order_hashes.size() > 6) recent_order_hashes.pop_front();
-    }
+        << " vars changed. T: " << setprecision(2) << fixed << (cpuTime() - my_time));
     SLOW_DEBUG_DO({
-        // Every direct dependency must still point at an earlier var.
         for (const auto& a : y_order)
             for (const auto& b : y_order)
                 if (dependency_mat[a][b]) assert(later_in_order(a, b));

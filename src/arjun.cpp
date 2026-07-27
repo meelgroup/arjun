@@ -172,6 +172,8 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
     // seeds the next round (compacted, re-encoded). max_repairs is cumulative.
     std::map<uint32_t, aig_lit> guess;
     std::vector<uint32_t> order_hint;
+    VsidsOrder vsids;
+    vsids.set_decay(mconf.reorder_vsids_decay);
     uint32_t round = 0;
     ManthanStats cumul_stats;
     while (true) {
@@ -186,6 +188,7 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
         Manthan manthan(arjdata->conf, round_mconf, std::move(cnf));
         if (!guess.empty()) manthan.set_guess(std::move(guess));
         if (!order_hint.empty()) manthan.set_order_hint(std::move(order_hint));
+        manthan.set_vsids(std::move(vsids));
         cnf = manthan.do_manthan();
 
         // Stats
@@ -197,6 +200,8 @@ DLL_PUBLIC SimplifiedCNF Arjun::standalone_manthan(SimplifiedCNF&& cnf, const Ma
         if (!manthan.restart_requested()) break;
         guess = manthan.export_formula_aigs();
         order_hint = manthan.export_y_order();
+        vsids = manthan.export_vsids();
+        vsids.on_restart();
         round++;
         verb_print2(1, COLYEL "[manthan-restart] round " << round
             << " done, tot repairs so far: " << cumul_stats.tot_repaired
