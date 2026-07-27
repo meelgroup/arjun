@@ -1679,6 +1679,7 @@ public:
         uint32_t reorder_every = 100;   // check window in repair loops; 0 = off
         double reorder_hot_ratio = 0.5; // needs-repair fraction marking a var hot
         double reorder_cz_ratio = 0.25; // cost-zero fraction marking a var hot; 0 = off
+        uint32_t reorder_stall_limit = 3; // freeze reorder after N repeated orders (churn); 0 = off
         // Adaptive consecutive cost-zero break threshold
         uint32_t cz_high_ratio = 3;         // cost_zero > tot_repaired * cz_high_ratio triggers tight threshold
         uint32_t cz_low_ratio = 2;          // cost_zero > tot_repaired * cz_low_ratio triggers medium threshold

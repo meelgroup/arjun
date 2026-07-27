@@ -32,6 +32,7 @@
 #include <cryptominisat5/solvertypesmini.h>
 
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <vector>
 #include <set>
@@ -266,6 +267,10 @@ class Manthan {
         std::vector<uint32_t> cz_window; // per-var cost-zero outcomes in the window
         uint32_t loops_since_reorder = 0;
         uint32_t num_reorders = 0;
+        std::deque<uint64_t> recent_order_hashes; // churn guard: recent order hashes
+        uint32_t reorder_stall_count = 0;
+        bool reorder_frozen = false;
+        static uint64_t hash_order(const std::vector<uint32_t>& order);
         void maybe_reorder_vars();
         void reorder_vars(const std::vector<uint8_t>& is_hot);
         bool later_in_order(const uint32_t a, const uint32_t b) const {

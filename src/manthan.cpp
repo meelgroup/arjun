@@ -2072,6 +2072,7 @@ void Manthan::rebuild_order_index() {
 // cost-zero) sits too early in y_order; demote it.
 void Manthan::maybe_reorder_vars() {
     if (mconf.reorder_every == 0) return;
+    if (reorder_frozen) return;
     if (loops_since_reorder < mconf.reorder_every) return;
     const uint32_t cutoff = (uint32_t)(mconf.reorder_hot_ratio * (double)loops_since_reorder);
     const uint32_t cz_cutoff = (uint32_t)(mconf.reorder_cz_ratio * (double)loops_since_reorder);
@@ -2094,6 +2095,12 @@ void Manthan::maybe_reorder_vars() {
     std::fill(cz_window.begin(), cz_window.end(), 0);
     if (num_hot == 0 || num_hot == to_define.size()) return;
     reorder_vars(is_hot);
+}
+
+uint64_t Manthan::hash_order(const vector<uint32_t>& order) {
+    uint64_t h = 1469598103934665603ULL;
+    for (const auto& v : order) { h ^= v; h *= 1099511628211ULL; }
+    return h;
 }
 
 // Kahn topo re-sort of y_order over dependency_mat. Hot vars are placed only
@@ -2147,6 +2154,22 @@ void Manthan::reorder_vars(const vector<uint8_t>& is_hot) {
     verb_print((num_moved == 0 ? 2 : 1), COLYEL "[manthan-reorder] #" << num_reorders
         << " demoted " << num_hot << " hot vars, " << num_moved << " of " << n
         << " vars changed position. T: " << setprecision(2) << fixed << (cpuTime() - my_time));
+
+    // Churn guard: repeatedly reproducing a recent order = limit cycle, not
+    // convergence. Freeze after reorder_stall_limit consecutive repeats.
+    if (mconf.reorder_stall_limit > 0 && num_moved > 0) {
+        const uint64_t h = hash_order(y_order);
+        const bool seen = std::find(recent_order_hashes.begin(),
+            recent_order_hashes.end(), h) != recent_order_hashes.end();
+        reorder_stall_count = seen ? reorder_stall_count + 1 : 0;
+        if (reorder_stall_count >= mconf.reorder_stall_limit) {
+            reorder_frozen = true;
+            verb_print(1, COLYEL "[manthan-reorder] order churning; frozen after "
+                << num_reorders << " reorders");
+        }
+        recent_order_hashes.push_back(h);
+        while (recent_order_hashes.size() > 6) recent_order_hashes.pop_front();
+    }
     SLOW_DEBUG_DO({
         // Every direct dependency must still point at an earlier var.
         for (const auto& a : y_order)
