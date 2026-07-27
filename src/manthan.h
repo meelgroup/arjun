@@ -35,7 +35,6 @@
 #include <memory>
 #include <vector>
 #include <set>
-#include "vsids_order.h"
 #include <unordered_map>
 #include "formula.h"
 
@@ -104,15 +103,6 @@ class Manthan {
         [[nodiscard]] const ManthanStats& get_stats() const { return stats; }
         // AIG snapshot of every to_define formula; feeds the next round's guess.
         [[nodiscard]] std::map<uint32_t, ArjunNS::aig_lit> export_formula_aigs() const;
-        // Final y_order; restart rounds MUST inherit it via set_order_hint
-        // (guess AIG deps only point earlier under it).
-        [[nodiscard]] std::vector<uint32_t> export_y_order() const { return y_order; }
-        void set_order_hint(std::vector<uint32_t>&& h) { order_hint = std::move(h); }
-
-        // VSIDS ordering activity, carried across restart rounds.
-        [[nodiscard]] VsidsOrder export_vsids() const { return vsids; }
-        void set_vsids(VsidsOrder&& v) { vsids = std::move(v); }
-
     private:
         // y is original output var, i.e. to_define
         // y_hat is learned var
@@ -264,14 +254,6 @@ class Manthan {
         void learn_order();
         void bve_order();
         void rebuild_order_index(); // order_val + y_order_weight from y_order
-        std::vector<uint32_t> order_hint; // inherited final order of the previous round
-
-        // VSIDS ordering CEGAR (see maybe_reorder_vars)
-        VsidsOrder vsids;
-        uint32_t loops_since_reorder = 0;
-        uint32_t num_reorders = 0;
-        void maybe_reorder_vars();
-        void reorder_vars();
         bool later_in_order(const uint32_t a, const uint32_t b) const {
             SLOW_DEBUG_DO({
                 assert(order_val.size() > a);

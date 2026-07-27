@@ -194,18 +194,6 @@ void add_arjun_options() {
         "rewrite experiments");
     // Order
     myopt("--morder", mconf.manthan_order, fc_int,"Order vars: incidence (0), BVE (2)");
-    myopt("--mreorderevery", mconf.reorder_every, fc_int,
-        "VSIDS ordering CEGAR: re-sort y_order every N repair loops, demoting "
-        "high-activity (frequently-conflicting) vars. 0 = off");
-    myopt("--mvsidsdecay", mconf.reorder_vsids_decay, fc_double,
-        "VSIDS ordering CEGAR: initial decay (var_inc /= decay per conflict); "
-        "tightens toward 1 across restarts");
-    myopt("--mvsidshot", mconf.reorder_vsids_hot_ratio, fc_double,
-        "VSIDS ordering CEGAR: demote only vars with activity > ratio*max "
-        "(higher = gentler)");
-    myopt("--mvsidsbump", mconf.reorder_vsids_bump, fc_int,
-        "VSIDS ordering CEGAR: bump source, 0 = conflict-clause vars, "
-        "1 = needs_repair vars");
     // solver config
     myopt("--ctxsolver", mconf.ctx_solver_type, fc_int,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
     myopt("--repairsolver", mconf.repair_solver_type, fc_int,"Repair solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
