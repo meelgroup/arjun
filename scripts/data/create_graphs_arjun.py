@@ -60,9 +60,12 @@ only_dirs = [
     # "out-synth-1903613-1", # restarts between manthan & ITE chain rewrite
     # "out-synth-1903613-2", # restarts between manthan & ITE chain rewrite
     # "out-synth-1914059-0", # more rewrite
-    "out-synth-1925733-0", # faster y_hat recompute, persistent conflict minim SAT solver
+    # "out-synth-1925733-0", # faster y_hat recompute, persistent conflict minim SAT solver
     # "out-synth-1932323-0", # reorder CEGAR variable order on-the-fly
-    "out-synth-1943539-0", # reorder churn prevention
+    # "out-synth-1943539-0", # reorder churn prevention
+    "out-synth-1945355-0", # vsids and some other checks
+    "out-synth-1945355-5", # vsids and some other checks
+    # "out-synth-1945355-", # vsids and some other checks
 ]
 # -------------------------------------------------------------
 
