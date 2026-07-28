@@ -63,9 +63,10 @@ only_dirs = [
     # "out-synth-1925733-0", # faster y_hat recompute, persistent conflict minim SAT solver
     # "out-synth-1932323-0", # reorder CEGAR variable order on-the-fly
     # "out-synth-1943539-0", # reorder churn prevention
-    "out-synth-1945355-0", # vsids and some other checks
-    "out-synth-1945355-5", # vsids and some other checks
+    # "out-synth-1945355-0", # vsids and some other checks
+    # "out-synth-1945355-5", # vsids and some other checks
     # "out-synth-1945355-", # vsids and some other checks
+    "out-synth-1957159-2", # cleanup
 ]
 # -------------------------------------------------------------
 
@@ -655,7 +656,7 @@ def generate_cdf(fname2_s):
             f.write('set key bottom right font ",6"\n')
             f.write('set logscale x\n')
             f.write('unset logscale y\n')
-            f.write(f'set xrange [50:{TIMEOUT}]\n')
+            f.write(f'set xrange [0.001:{TIMEOUT}]\n')
             # f.write('set yrange [0:]\n')
             f.write('set ylabel "Instances synthesised"\n')
             f.write('set xlabel "Time (s)"\n')
