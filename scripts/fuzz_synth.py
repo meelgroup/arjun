@@ -531,6 +531,7 @@ if __name__ == "__main__":
         solver += " --czthreshhigh " + random.choice(["0", "1", "2", "5", "1000"])
         solver += " --czthreshmid " + random.choice(["0", "1", "2", "5", "1000"])
         solver += " --czthreshlow " + random.choice(["0", "1", "2", "5", "1000"])
+        solver += " --msimplepolar " + random.choice(["0", "1", "2"])
 
         solver += " --mstrategy " + gen_mstrategy()
 

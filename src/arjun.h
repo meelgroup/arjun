@@ -1668,6 +1668,7 @@ public:
 
         // Hard-coded cutoffs now configurable
         uint32_t const_vote_samples = 51;   // const_functions: majority voting samples
+        int simple_polar = 0;               // const_functions polarity: 0=CMSGen sample, 1=CNF literal count, 2=always FALSE
         uint32_t stats_every = 40;          // print stats every N repair loops
         uint32_t detailed_stats_every = 600;// print detailed stats every N repair loops
         uint32_t conflict_drop_y_max = 25;  // max conflict size to try dropping y-vars
