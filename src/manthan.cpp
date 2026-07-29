@@ -1172,49 +1172,14 @@ void Manthan::print_detailed_stats(const ManthanStats& stats) const {
 }
 
 void Manthan::const_functions() {
-    if (mconf.simple_polar == 0) {
-        // Majority-vote the constant over several CMSGen samples: a single
-        // sample can be atypical, so voting cuts counterexamples to converge.
-        const uint32_t num_samples = std::max(mconf.const_vote_samples, (uint32_t)1);
-        vector<sample> samples = get_cmsgen_samples(num_samples);
-        for(const auto& y: Manthan::y_order) {
-            if (!to_define.count(y)) continue;
-
-            vector<const sample*> filt_s = filter_samples(y, samples);
-            assert(var_to_formula.count(y) == 0);
-            bool val;
-            if (filt_s.empty()) {
-                val = true;
-            } else {
-                // Majority voting across filtered samples
-                uint32_t true_count = 0;
-                for (const auto* s : filt_s) {
-                    if ((*s)[y] == l_True) true_count++;
-                }
-                val = true_count * 2 >= filt_s.size(); // majority is TRUE
-            }
-            if (mconf.inv_learnt) val = !val;
-            verb_print(3, "[manthan] const function for var " << y+1 << " is " << val);
-            var_to_formula[y] = fh->constant_formula(val);
-        }
-        return;
-    }
-
-    // No sampling: pick polarity from CNF literal counts (1), or always FALSE (2).
-    release_assert((mconf.simple_polar == 1 || mconf.simple_polar == 2)
-        && "simple_polar must be 0, 1, or 2");
-    vector<uint32_t> pos, neg;
-    if (mconf.simple_polar == 1) {
-        pos.assign(cnf.nVars(), 0);
-        neg.assign(cnf.nVars(), 0);
-        for (const auto& cl : cnf.get_clauses())
-            for (const auto& l : cl) (l.sign() ? neg : pos)[l.var()]++;
-    }
+    // Initial constant per to_define var: the more frequent CNF literal polarity.
+    vector<uint32_t> pos(cnf.nVars(), 0), neg(cnf.nVars(), 0);
+    for (const auto& cl : cnf.get_clauses())
+        for (const auto& l : cl) (l.sign() ? neg : pos)[l.var()]++;
     for(const auto& y: Manthan::y_order) {
         if (!to_define.count(y)) continue;
         assert(var_to_formula.count(y) == 0);
-        bool val = false;
-        if (mconf.simple_polar == 1) val = pos[y] >= neg[y];
+        bool val = pos[y] >= neg[y];
         if (mconf.inv_learnt) val = !val;
         verb_print(3, "[manthan] const function for var " << y+1 << " is " << val);
         var_to_formula[y] = fh->constant_formula(val);

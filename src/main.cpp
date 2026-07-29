@@ -209,10 +209,6 @@ void add_arjun_options() {
     myopt("--mingainsplit", mconf.min_gain_split, fc_double,"Minimum gain for a split in decision tree");
     myopt("--learnuseall", mconf.use_all_vars_as_feats, fc_int,"Use all variables as features in decision tree learning. 0 = only inputs");
     // synth -- cutoff/tuning constants
-    myopt("--constvotesamples", mconf.const_vote_samples, fc_int, "Majority voting samples for const_functions");
-    myopt("--msimplepolar", mconf.simple_polar, fc_int,
-        "const_functions polarity: 0 = CMSGen sampling, 1 = more-frequent CNF "
-        "literal, 2 = always FALSE");
     myopt("--statsevery", mconf.stats_every, fc_int, "Print stats every N repair loops");
     myopt("--detailedstatsevery", mconf.detailed_stats_every, fc_int, "Print detailed stats every N repair loops");
     myopt("--confldropy", mconf.conflict_drop_y_max, fc_int, "Max conflict size to try dropping y-vars");

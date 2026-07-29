@@ -358,7 +358,7 @@ def gen_mstrategy():
     types = ["const", "bve"]
 
     uint_params = ["samples", "max_depth", "sampler_fixed_conflicts",
-                   "min_leaf_size", "const_vote_samples", "stats_every",
+                   "min_leaf_size", "stats_every",
                    "detailed_stats_every",
                    "restart",
                    "conflict_drop_y_max",
@@ -518,7 +518,6 @@ if __name__ == "__main__":
         solver += " --repaircache " + " " + random.choice(["0", "100", "1000"])
 
         # Hard-coded cutoff constants (very low and very high values)
-        solver += " --constvotesamples " + random.choice(["0", "1", "2", "10", "100"])
         solver += " --statsevery " + random.choice(["0", "1", "10", "40", "1000"])
         solver += " --detailedstatsevery " + random.choice(["0", "1", "10", "200", "5000"])
         solver += " --confldropy " + random.choice(["1", "5", "25", "100", "10000"])
@@ -531,7 +530,6 @@ if __name__ == "__main__":
         solver += " --czthreshhigh " + random.choice(["0", "1", "2", "5", "1000"])
         solver += " --czthreshmid " + random.choice(["0", "1", "2", "5", "1000"])
         solver += " --czthreshlow " + random.choice(["0", "1", "2", "5", "1000"])
-        solver += " --msimplepolar " + random.choice(["0", "1", "2"])
 
         solver += " --mstrategy " + gen_mstrategy()
 
