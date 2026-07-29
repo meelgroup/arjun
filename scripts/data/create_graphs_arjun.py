@@ -66,7 +66,8 @@ only_dirs = [
     # "out-synth-1945355-0", # vsids and some other checks
     # "out-synth-1945355-5", # vsids and some other checks
     # "out-synth-1945355-", # vsids and some other checks
-    "out-synth-1957159-", # cleanup
+    "out-synth-1957159-2", # cleanup
+    "out-synth-1965186-0", # polarity that's easier?
 ]
 # -------------------------------------------------------------
 
