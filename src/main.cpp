@@ -194,8 +194,6 @@ void add_arjun_options() {
         "<prefix>-restart<N>.aig (binary defs) and .v (verilog), for offline "
         "rewrite experiments");
 
-    // Order
-    myopt("--morder", mconf.cegr_order, fc_int,"Order vars: incidence (0), BVE (2)");
     // solver config
     myopt("--ctxsolver", mconf.ctx_solver_type, fc_int,"Context solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");
     myopt("--repairsolver", mconf.repair_solver_type, fc_int,"Repair solver type. 0 = CryptoMiniSat, 1 = CaDiCaL");

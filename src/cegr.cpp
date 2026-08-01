@@ -1948,7 +1948,7 @@ void Cegr::perform_repair(const uint32_t y_rep, const sample& ctx,
     SLOW_DEBUG_DO(assert(check_map_dependency_cycles()));
 }
 
-void Cegr::learn_order() {
+void Cegr::calc_best_order() {
     assert(y_order.empty());
     verb_print(2, "[cegr] Fixing LEARN order...");
     vector<uint32_t> sorted(to_define_full.begin(), to_define_full.end());
@@ -1993,13 +1993,7 @@ void Cegr::pre_order_vars() {
     assert(y_order.empty());
     const double my_time = cpuTime();
     verb_print(2, "[cegr] Fixing order " << (mconf.cegr_base == 0 ? "[LEARN]" : (mconf.cegr_base == 1 ? "[CONST]" : "[BVE]")) << "...");
-
-    switch(mconf.cegr_order) {
-        case 0: learn_order(); break;
-        case 2: bve_order(); break;
-        default: release_assert(false && "Invalid cegr_order");
-    }
-
+    calc_best_order();
     rebuild_order_index();
 
     verb_print(1, "[cegr] Fixed order. T: " << setprecision(2) << fixed << (cpuTime() - my_time)
@@ -2018,83 +2012,6 @@ void Cegr::rebuild_order_index() {
     for(size_t i = 0; i < y_order.size(); i++) {
         y_order_weight[y_order[i]] = i+1;
     }
-}
-
-// Finds the order that minimizes dependencies that need to be broken by BVE system
-void Cegr::bve_order() {
-    const double my_time = cpuTime();
-    assert(y_order.empty());
-    auto depends_on = dependency_mat;
-
-    for(const auto& v: to_define) {
-        // For optimizing which side of the BVE to take
-        uint32_t num_pos = 0;
-        uint32_t num_neg = 0;
-        for(const auto& cl: cnf.get_clauses()) {
-            for(const auto& l: cl) {
-                if (l.var() == v) {
-                    if (l.sign()) num_neg++;
-                    else num_pos++;
-                    break;
-                }
-            }
-        }
-        bool sign = (num_pos >= num_neg);
-        /* bool sign = false; */
-        for(const auto& cl: cnf.get_clauses()) {
-            bool todo = false;
-            for(const auto& l: cl) {
-                if (l.var() == v && l.sign() == sign) {
-                    todo = true;
-                    break;
-                }
-            }
-            if (!todo) continue;
-            for(const auto& l: cl) {
-                if (l.var() == v) continue;
-                if (input.count(l.var())) continue;
-                depends_on[v][l.var()] = 1;
-            }
-        }
-    }
-
-    uint32_t total_break = 0;
-    set<uint32_t> already_fixed;
-    while(y_order.size() != to_define_full.size()) {
-        uint32_t smallest = std::numeric_limits<uint32_t>::max();
-        uint32_t smallest_var = std::numeric_limits<uint32_t>::max();
-        for(const auto& y: to_define_full) {
-            if (already_fixed.count(y)) continue;
-
-            uint32_t cnt = 0;
-            for(uint32_t v = 0; v < cnf.nVars(); v++) {
-                if (input.count(v)) continue;
-                if (already_fixed.count(v)) continue;
-                if (depends_on[y][v] == 1) cnt++;
-            }
-            if (backward_defined.count(y)) {
-                if (cnt == 0) {
-                    smallest = cnt;
-                    smallest_var = y;
-                }
-            } else {
-                if (cnt < smallest) {
-                    smallest = cnt;
-                    smallest_var = y;
-                }
-            }
-        }
-        assert(smallest_var != std::numeric_limits<uint32_t>::max());
-        verb_print(1, "Fixed order of " << setw(5) << smallest_var+1 << " to: " << setw(5) << y_order.size() << " cnt: " << smallest
-                << " BW: " << backward_defined.count(smallest_var));
-        total_break += smallest;
-
-        assert(!already_fixed.count(smallest_var));
-        already_fixed.insert(smallest_var);
-        y_order.push_back(smallest_var);
-    }
-    verb_print(2, "[cegr] BVE order total breaks: " << total_break << " T: " << setprecision(2) << fixed << (cpuTime() - my_time));
-    assert(y_order.size() == to_define_full.size());
 }
 
 void Cegr::find_better_ctx_maxsat(sample& ctx) {

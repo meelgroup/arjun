@@ -251,8 +251,7 @@ class Cegr {
         std::vector<int> order_val; // inputs have order -1, everything else as per y_order
         std::vector<uint32_t> y_order_weight; // better-ctx weight per y (see pre_order_vars)
         void pre_order_vars();
-        void learn_order();
-        void bve_order();
+        void calc_best_order();
         void rebuild_order_index(); // order_val + y_order_weight from y_order
         bool later_in_order(const uint32_t a, const uint32_t b) const {
             SLOW_DEBUG_DO({

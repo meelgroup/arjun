@@ -73,7 +73,6 @@ const std::map<string, ParamDef> param_table = {
     {"ctx_solver_type",          {PT::Int,    [](MC& c, const string& v) { c.ctx_solver_type          = parse_val<int>(v); }}},
     {"repair_solver_type",       {PT::Int,    [](MC& c, const string& v) { c.repair_solver_type       = parse_val<int>(v); }}},
     {"repair_cache_size",        {PT::Int,    [](MC& c, const string& v) { c.repair_cache_size        = parse_val<int>(v); }}},
-    {"cegr_order",            {PT::Int,    [](MC& c, const string& v) { c.cegr_order            = parse_val<int>(v); }}},
     {"one_repair_per_loop",      {PT::Int,    [](MC& c, const string& v) { c.one_repair_per_loop      = parse_val<int>(v); }}},
     {"force_bw_equal",           {PT::Int,    [](MC& c, const string& v) { c.force_bw_equal           = parse_val<int>(v); }}},
     {"inv_guess",                {PT::Int,    [](MC& c, const string& v) { c.inv_guess               = parse_val<int>(v); }}},

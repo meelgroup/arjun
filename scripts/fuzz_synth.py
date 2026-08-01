@@ -366,7 +366,6 @@ def gen_mstrategy():
                    "minim_budget_threshold", "minim_budget_max", "minim_budget_mult",
                    "cz_high_ratio", "cz_low_ratio",
                    "cz_threshold_high", "cz_threshold_mid", "cz_threshold_low"]
-    # cegr_order is handled separately (only 0/2 valid, gen_int would emit 1).
     int_params  = ["filter_samples", "minimize_conflict",
                    # maxsat_better_ctx=1 requires EXTRA_SYNTH — omit from strategies
                    "use_all_vars_as_feats",
@@ -396,9 +395,6 @@ def gen_mstrategy():
             params.setdefault(p, gen_int())
         for p in random.sample(double_params, random.randint(0, 1)):
             params.setdefault(p, gen_double())
-        # cegr_order accepts only 0 (learn) and 2 (bve); 1 aborts.
-        if random.choice([True, False]):
-            params.setdefault("cegr_order", str(random.choice([0, 2])))
         if not params:
             return stype
         param_str = ",".join("%s=%s" % (k, v) for k, v in params.items())
@@ -500,8 +496,6 @@ if __name__ == "__main__":
         # it otherwise).
         solver += " --interprebuildevery %d" % random.randint(1, 5)
 
-        # cegr_order: 0 = incidence/learn, 2 = BVE. 1 is not a valid value.
-        solver += " --morder " + str(random.choice([0, 2]))
         solver += " --fixedconf " + random.choice(["1", "10", "100", "1000"])
         solver += " --unatedefmaxconfl " + random.choice(["1", "100", "1000", "15000", "100000"])
         solver += " --unatedefeqmax " + random.choice(["0", "1", "4", "16", "64", "1024"])
