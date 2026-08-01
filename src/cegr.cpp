@@ -1163,6 +1163,15 @@ void Cegr::const_functions() {
     }
 }
 
+void Cegr::random_functions() {
+    std::mt19937 mt(conf.seed);
+    std::uniform_int_distribution coin{ 0, 1 };
+    for(const auto& y: Cegr::y_order) {
+        const bool val = coin(mt);
+        var_to_formula[y] = fh->constant_formula(val);
+    }
+}
+
 void Cegr::print_cache_hit_rate() const {
     verb_print(1, "repair solver cache hit: " << setw(3) << fixed << setprecision(0) << repair_solver.get_cache_hit_rate()*100.0 << "%");
 }
@@ -1230,6 +1239,8 @@ SimplifiedCNF Cegr::do_cegr() {
         const_functions();
     } else if (mconf.cegr_base == 2) {
         bve_and_substitute();
+    } else if (mconf.cegr_base == 3) {
+        random_functions();
     }
     verb_print(4, "[trace] post bve_and_substitute nVars=" << cex_solver.nVars() << " helpers=" << helpers.size());
 
@@ -1992,7 +2003,7 @@ void Cegr::pre_order_vars() {
     assert(order_val.empty());
     assert(y_order.empty());
     const double my_time = cpuTime();
-    verb_print(2, "[cegr] Fixing order " << (mconf.cegr_base == 0 ? "[LEARN]" : (mconf.cegr_base == 1 ? "[CONST]" : "[BVE]")) << "...");
+    verb_print(2, "[cegr] Fixing order " << mconf.cegr_base_str() << "...");
     calc_best_order();
     rebuild_order_index();
 

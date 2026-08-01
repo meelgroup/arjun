@@ -136,6 +136,7 @@ class Cegr {
         std::set<uint32_t> y_hats; // the potential y_hats (due to ITE chains, some are "old" and unused)
 
         void const_functions();
+        void random_functions();
         void bve_and_substitute();
         // Encode per-y AIGs into var_to_formula via AIGToCNF.
         void encode_aigs_to_formulas(const std::vector<ArjunNS::aig_lit>& aigs,

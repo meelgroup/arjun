@@ -1683,6 +1683,16 @@ public:
         uint32_t brute_force_synth_threshold = 16;
         int brute_force_synth_minim = 1;         // dry-run backward minim to shrink the enum domain before enumerating
         uint32_t brute_force_synth_minim_max = 40; // only try the minim pre-pass when |orig_sampl_cnf| is at most this
+
+        std::string cegr_base_str() const {
+            switch (cegr_base) {
+                case 0: return "[LEARN]";
+                case 1: return "[CONST]";
+                case 2: return "[BVE]";
+                case 3: return "[RND]";
+                default: return "[UNKNOWN]";
+            }
+        }
     };
 
     struct IndepInfo {

@@ -226,6 +226,8 @@ ArjunNS::Arjun::CegrConf SynthRunner::apply_strategy(const ArjunNS::Arjun::CegrC
         mconf.cegr_base = 1;
     } else if (strat.type == "bve") {
         mconf.cegr_base = 2;
+    } else if (strat.type == "rnd") {
+        mconf.cegr_base = 3;
     } else {
         cout << "ERROR: unknown strategy type '" << strat.type << "'" << endl;
         exit(EXIT_FAILURE);
