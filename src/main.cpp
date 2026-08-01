@@ -178,7 +178,7 @@ void add_arjun_options() {
     // repairing on vars
     myopt("--bwequal", mconf.force_bw_equal, fc_int,"Force BW vars' indicators to be TRUE -- prevents repairing with them, but faster to repair");
     // Strategy
-    myopt("--mstrategy", mstrategy, fc_string,
+    myopt("--cstrategy", mstrategy, fc_string,
         "Comma-separated synthesis strategy list, e.g. "
         "\"learn(samples=1,max_repairs=100),learn(max_repairs=800),bve\". "
         "Each non-last strategy runs for 20*max_repairs tries; the last runs unlimited. "
@@ -186,7 +186,7 @@ void add_arjun_options() {
         "max_depth, sampler_fixed_conflicts, and other CegrConf fields.");
 
     // Restarting
-    myopt("--mrestart", mconf.restart, fc_int,
+    myopt("--crestart", mconf.restart, fc_int,
         "Exit Cegr every N repairs, compact ALL per-var AIGs via the AIG rewriter, "
         "and re-enter Cegr with the compacted AIGs as the initial guess. 0 = never");
     myopt("--dumprestartaig", conf.dump_restart_aig, fc_string,
@@ -210,8 +210,8 @@ void add_arjun_options() {
     myopt("--minleaf", mconf.min_leaf_size, fc_int,"Minimum leaf size in decision tree");
     myopt("--mingainsplit", mconf.min_gain_split, fc_double,"Minimum gain for a split in decision tree");
     // synth -- cutoff/tuning constants
-    myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
-    myopt("--minvertguessed", mconf.inv_guess, fc_int,"Invert guessed functions");
+    myopt("--coneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
+    myopt("--cinvertguessed", mconf.inv_guess, fc_int,"Invert guessed functions");
     myopt("--statsevery", mconf.stats_every, fc_int, "Print stats every N repair loops");
     myopt("--detailedstatsevery", mconf.detailed_stats_every, fc_int, "Print detailed stats every N repair loops");
     myopt("--confldropy", mconf.conflict_drop_y_max, fc_int, "Max conflict size to try dropping y-vars");
