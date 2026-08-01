@@ -368,7 +368,6 @@ def gen_mstrategy():
                    "cz_threshold_high", "cz_threshold_mid", "cz_threshold_low"]
     int_params  = ["filter_samples", "minimize_conflict",
                    # maxsat_better_ctx=1 requires EXTRA_SYNTH — omit from strategies
-                   "use_all_vars_as_feats",
                    "repair_cache_size",
                    "one_repair_per_loop", "force_bw_equal",
                    "inv_guess"]
@@ -484,7 +483,6 @@ if __name__ == "__main__":
             , " --unatedefeq"
             , " --unatedefeqnoninp"
             , " --bwequal"
-            , " --learnuseall"
         ]
         for o in opts:
             val = random.choice([0, 1])

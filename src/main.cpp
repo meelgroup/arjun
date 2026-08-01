@@ -209,7 +209,6 @@ void add_arjun_options() {
     myopt("--maxdepth", mconf.max_depth, fc_int,"Maximum depth of decision tree");
     myopt("--minleaf", mconf.min_leaf_size, fc_int,"Minimum leaf size in decision tree");
     myopt("--mingainsplit", mconf.min_gain_split, fc_double,"Minimum gain for a split in decision tree");
-    myopt("--learnuseall", mconf.use_all_vars_as_feats, fc_int,"Use all variables as features in decision tree learning. 0 = only inputs");
     // synth -- cutoff/tuning constants
     myopt("--moneperloop", mconf.one_repair_per_loop, fc_int,"One repair per CEX loop");
     myopt("--minvertguessed", mconf.inv_guess, fc_int,"Invert guessed functions");

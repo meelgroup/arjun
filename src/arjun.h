@@ -1652,7 +1652,6 @@ public:
         std::string write_cegr_cnf;
         int maxsat_better_ctx = 0;
         int do_unique_input_samples = 1;
-        int use_all_vars_as_feats = 1;
         int ctx_solver_type = 1;
         int repair_solver_type = 1;
         int repair_cache_size = 1000;

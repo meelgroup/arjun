@@ -73,12 +73,10 @@ double CegrLearn::train(const vector<sample>& orig_samples, const uint32_t v) {
     verb_print(2, "training variable: " << v+1);
 
     vector<uint32_t> used_vars(m.input.begin(), m.input.end());
-    if (mconf.use_all_vars_as_feats) {
-        for(const auto& y: m.y_order) {
-            if (y == v) break;
-            assert(m.dependency_mat[y][v] != 1);
-            used_vars.push_back(y);
-        }
+    for(const auto& y: m.y_order) {
+        if (y == v) break;
+        assert(m.dependency_mat[y][v] != 1);
+        used_vars.push_back(y);
     }
     /* assert(!orig_samples.empty()); */
     vector<const sample*> samples;
