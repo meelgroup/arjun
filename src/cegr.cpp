@@ -1167,7 +1167,10 @@ void Cegr::random_functions() {
     std::mt19937 mt(conf.seed);
     std::uniform_int_distribution coin{ 0, 1 };
     for(const auto& y: Cegr::y_order) {
+        if (!to_define.count(y)) continue;
+        assert(var_to_formula.count(y) == 0);
         const bool val = coin(mt);
+        verb_print(3, "[cegr] random function for var " << y+1 << " is " << val);
         var_to_formula[y] = fh->constant_formula(val);
     }
 }
